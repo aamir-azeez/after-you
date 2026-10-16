@@ -1,4 +1,4 @@
-import { ApiError, canonicalJson, digest, fail, HASH_PATTERN, isObject, ok, type Outcome } from "../protocol";
+import { ApiError, canonicalJson, digest, fail, HASH_PATTERN, isObject, ok, type Outcome, unwrap } from "../protocol";
 import { chapter } from "./chapters";
 import { boundedCampaign, campaignContinue, campaignContinueKey, campaignContinueResult, campaignRequestHash, campaignResumeActivation, continueOrigin, type CampaignDefinitionResolver } from "./campaign-protocol";
 import { campaignAccessUnchanged, campaignSource, prepareCampaignAccess, type CampaignAccess, type SourceDecision, type SourceRequest } from "./campaign-source";
@@ -22,7 +22,6 @@ export type CampaignControlDependencies = {
 const emptyResolver: CampaignDefinitionResolver = () => undefined;
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 function need(value: unknown, code = "campaign_state_changed", status = 409): asserts value { if (!value) throw new ApiError(status, code); }
-function unwrap<T>(value: Outcome<T>): T { if (!value.ok) throw new ApiError(value.status, value.code); return value.value; }
 function failure(error: unknown): Outcome<never> { return error instanceof ApiError ? fail(error.status, error.code) : fail(503, "campaign_state_unavailable"); }
 function projection(a: StoredCampaignAnchorV2, owner: string): CampaignView {
   const v = a.control; need(owner === v.host_id || owner === v.guest_id, "campaign_owner_mismatch", 403);

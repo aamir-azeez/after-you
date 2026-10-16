@@ -1,4 +1,4 @@
-import { ApiError, HASH_PATTERN, boundedJson, digest, equalHash, isObject, type Outcome } from "./protocol";
+import { ApiError, HASH_PATTERN, boundedJson, digest, equalHash, isObject, unwrap } from "./protocol";
 import { flags, type ServerVars } from "./flags";
 
 export const TESTER_CODE_DOMAIN = "afteryou.tester-code.v1:";
@@ -16,7 +16,6 @@ export function testerReceipt(owner: string, grant: TesterGrant | null): TesterA
   return grant ? { schema_version: 1, granted: true, access_source: "tester_grant", entitlement: "full_journey", player_id: owner, granted_at: grant.granted_at } :
     { schema_version: 1, granted: false, player_id: owner };
 }
-function unwrap<T>(result: Outcome<T>): T { if (!result.ok) throw new ApiError(result.status, result.code); return result.value; }
 /** Normal authenticated caller only. The submitted code is never persisted or logged. */
 export async function routeTesterAccess(request: Request, owner: string, env: Env & ServerVars): Promise<TesterAccess> {
   if (!["GET", "POST"].includes(request.method)) throw new ApiError(405, "method_not_allowed");

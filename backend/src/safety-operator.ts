@@ -1,6 +1,5 @@
-import { ApiError, HASH_PATTERN, SECRET_PATTERN, boundedJson, canonicalJson, digest, equalHash, object, text, type Outcome } from "./protocol";
+import { ApiError, HASH_PATTERN, SECRET_PATTERN, boundedJson, canonicalJson, digest, equalHash, object, text, unwrap } from "./protocol";
 import type { ServerVars } from "./flags";
-const unwrap = <T>(value: Outcome<T>): T => { if (!value.ok) throw new ApiError(value.status, value.code); return value.value; };
 
 /** Separate operator credential; never accepts a player credential or a caller target. */
 export async function routeSafetyOperator(request: Request, path: string, env: Env & ServerVars): Promise<unknown> {

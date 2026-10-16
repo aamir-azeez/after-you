@@ -1,10 +1,9 @@
-import { ApiError, ID_PATTERN, boundedJson, digest, object, randomToken, text, type Outcome } from "./protocol";
+import { ApiError, ID_PATTERN, boundedJson, digest, object, randomToken, text, unwrap } from "./protocol";
 import { FRIEND_REFRESH_SECONDS, sameFriendLink, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom } from "./friends";
 import { interactionBlocked } from "./safety";
 import { flags } from "./flags";
 import { FRIEND_ALIAS_HEADER, aliasShaped, friendAliasFor, resolveFriendAlias } from "./friend-aliases";
 
-const unwrap = <T>(v: Outcome<T>): T => { if (!v.ok) throw new ApiError(v.status, v.code); return v.value; };
 const exact = (v: Record<string, unknown>, keys: string[]) => {
   if (Object.keys(v).length !== keys.length || keys.some(k => !Object.hasOwn(v, k)) || v.schema_version !== 1) throw new ApiError(400, "invalid_friend_request");
 };

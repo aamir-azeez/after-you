@@ -9,6 +9,8 @@ export function legacySimulationVersion(value: unknown): LegacySimulationVersion
 export type Outcome<T> = { ok: true; value: T } | { ok: false; status: number; code: string };
 export const ok = <T>(value: T): Outcome<T> => ({ ok: true, value });
 export const fail = (status: number, code: string): Outcome<never> => ({ ok: false, status, code });
+/** The value of an ok outcome; a failed one throws ApiError(status, code). */
+export function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 export type Recording = {
   schema_version: 1; simulation_version: LegacySimulationVersion; level_id: string; level_version: 1;
   role: Role; duration_ticks: number; tick_rate: 30; catch_assistance: boolean;

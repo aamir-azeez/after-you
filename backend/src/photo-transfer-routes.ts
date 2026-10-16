@@ -1,8 +1,7 @@
-import { ApiError, boundedJson, digest, IDEMPOTENCY_PATTERN, text, type Outcome } from "./protocol";
+import { ApiError, boundedJson, digest, IDEMPOTENCY_PATTERN, text, unwrap } from "./protocol";
 import { flags } from "./flags";
 import { TRANSFER_BODY_BYTES } from "./photo-transfer";
 
-function unwrap<T>(result: Outcome<T>): T { if (!result.ok) throw new ApiError(result.status, result.code); return result.value; }
 /** Authenticated account-only transfer; no room read/share or gameplay mutation. */
 export async function routePhotoTransfer(request: Request, path: string, owner: string, env: Env): Promise<Response> {
   const upload = path === "/v1/photo-transfer/sessions" || /^\/v1\/photo-transfer\/[^/]+\/entries$/.test(path);

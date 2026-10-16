@@ -1,4 +1,4 @@
-import { ApiError, canonicalJson, fail, HASH_PATTERN, ID_PATTERN, isObject, ok, type Outcome } from "../protocol";
+import { ApiError, canonicalJson, fail, HASH_PATTERN, ID_PATTERN, isObject, ok, type Outcome, unwrap } from "../protocol";
 import { flags } from "../flags";
 import { requireHostAccess } from "./host-access";
 import { interactionBlocked } from "../safety";
@@ -19,7 +19,6 @@ import { campaignProductionEnabled, requireCampaignProduction } from "./campaign
 type RootAccess = NonNullable<CampaignAccess> & { anchor: StoredCampaignAnchorV2 };
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 function need(value: unknown, code = "campaign_state_unavailable", status = 409): asserts value { if (!value) throw new ApiError(status, code); }
-function unwrap<T>(r: Outcome<T>): T { if (!r.ok) throw new ApiError(r.status, r.code); return r.value; }
 function failure(e: unknown): Outcome<never> { return e instanceof ApiError ? fail(e.status, e.code) : fail(503, "campaign_state_unavailable"); }
 function caller(owner: string, value: unknown): CampaignRoomContext {
   need(ID_PATTERN.test(owner) && isObject(value) && Object.keys(value).length === 3 && value.schema_version === 2 &&

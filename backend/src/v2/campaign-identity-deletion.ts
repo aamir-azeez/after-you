@@ -1,4 +1,4 @@
-import { ApiError, fail, isObject, type Outcome } from "../protocol";
+import { ApiError, fail, isObject, type Outcome, unwrap } from "../protocol";
 import type { CampaignLinkReleased, RoomLink } from "../room-links";
 import { campaignDeleted, type CampaignDeleted, type CampaignNotMember } from "./campaign-deletion";
 import { campaignJoinCancellationAck } from "./campaign-join-cancellation";
@@ -14,7 +14,6 @@ export type CampaignIdentityRooms = {
   erase(owner: string, roomId: string, allocation: unknown): Promise<Outcome<CampaignDeleted | CampaignNotMember>>;
   cancel(owner: string, roomId: string, request: CampaignJoin): Promise<Outcome<unknown>>;
 };
-function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 /** Fixed authenticated dispatcher closure carries the original device hash.
  * Every RPC is an actual binding call; no unverified public ack is accepted. */
 export async function deleteCampaignIdentityLink(player: DeletingPlayer, rooms: CampaignIdentityRooms, owner: string, link: RoomLink, deviceHash: string, resolver: CampaignDefinitionResolver = () => undefined): Promise<Outcome<CampaignLinkReleased>> {

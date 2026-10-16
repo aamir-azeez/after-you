@@ -1,6 +1,6 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
 import { flags } from "./flags";
-import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, legacySimulationVersion, object, randomToken, recording, text, type Outcome, type RoomSnapshot } from "./protocol";
+import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, legacySimulationVersion, object, randomToken, recording, text, type Outcome, type RoomSnapshot, unwrap } from "./protocol";
 import { entitlement } from "./entitlement";
 import { requireHostAccess } from "./v2/host-access";
 import { routeTesterAccess } from "./tester-access";
@@ -31,7 +31,6 @@ export { RoomV2 } from "./v2/room";
 
 const responseHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" };
 function json(value: unknown, status = 200): Response { return new Response(JSON.stringify(value), { status, headers: responseHeaders }); }
-function unwrap<T>(result: Outcome<T>): T { if (!result.ok) throw new ApiError(result.status, result.code); return result.value; }
 function result<T>(outcome: Outcome<T>): Response { return json(unwrap(outcome)); }
 function invite(value: unknown): string {
   if (typeof value !== "string" || value.length > 40) throw new ApiError(400, "invalid_invite");

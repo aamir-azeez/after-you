@@ -1,11 +1,10 @@
-import { ApiError, ID_PATTERN, boundedJson, digest, object, text, type Outcome } from "./protocol";
+import { ApiError, ID_PATTERN, boundedJson, digest, object, text, unwrap } from "./protocol";
 import { flags } from "./flags";
 import { interactionBlocked } from "./safety";
 import { sameFriendLink, validSharedFriendRoom, type FriendEdge } from "./friends";
 import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomEvent } from "./friend-room-events";
 import type { FriendPublication } from "./friend-room-event-storage";
 
-const unwrap = <T>(value: Outcome<T>): T => { if (!value.ok) throw new ApiError(value.status, value.code); return value.value; };
 const exact = (value: Record<string, unknown>, keys: string[]) => {
   if (Object.keys(value).length !== keys.length || keys.some(key => !Object.hasOwn(value, key)) || value.schema_version !== 1) throw new ApiError(400, "invalid_friend_notification");
 };

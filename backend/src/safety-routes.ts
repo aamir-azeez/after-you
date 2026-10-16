@@ -1,11 +1,10 @@
-import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "./protocol";
+import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, object, text, unwrap } from "./protocol";
 import { flags } from "./flags";
 import { LEGACY_STAGE_COUNT } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, roomStages } from "./v2/room-stage";
 import { TERMS_VERSION } from "./public-policy";
 import { interactionBlocked, parseReport, type SafetyReport } from "./safety";
 import { campaignRequestContext, type CampaignRoomContext } from "./v2/campaign-room-access";
-const unwrap = <T>(value: Outcome<T>): T => { if (!value.ok) throw new ApiError(value.status, value.code); return value.value; };
 const exact = (value: Record<string, unknown>, keys: string[]) => { if (Object.keys(value).length !== keys.length || Object.keys(value).some(key => !keys.includes(key))) throw new ApiError(400, "invalid_safety_request"); };
 export async function safetyMembers(env: Env, owner: string, family: string, room: string, context?: CampaignRoomContext) {
   text(room, ID_PATTERN); if (!["legacy", "relay"].includes(family)) throw new ApiError(400, "invalid_safety_request");

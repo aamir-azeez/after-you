@@ -1,4 +1,4 @@
-import { ApiError, HASH_PATTERN, ID_PATTERN, canonicalJson, digest, fail, isObject, ok, type Outcome } from "../protocol";
+import { ApiError, HASH_PATTERN, ID_PATTERN, canonicalJson, digest, fail, isObject, ok, type Outcome, unwrap } from "../protocol";
 import { chapter } from "./chapters";
 import { boundedCampaign, campaignDefinition, campaignView } from "./campaign-protocol";
 import { campaignAccessGuard, campaignAccessUnchanged, campaignRoomHint, prepareCampaignAccess, type CampaignAccess } from "./campaign-source";
@@ -20,7 +20,6 @@ type Authority = { schema_version: 1; definition: CampaignDefinition; campaign: 
 export type CampaignHttpAccess = (NonNullable<CampaignAccess> & { publication: CampaignView }) | null;
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 function need(value: unknown, code = "campaign_state_unavailable", status = 409): asserts value { if (!value) throw new ApiError(status, code); }
-function unwrap<T>(result: Outcome<T>): T { if (!result.ok) throw new ApiError(result.status, result.code); return result.value; }
 function known(pin: CampaignDefinition["chapters"][number]): boolean {
   try { const a = chapter(pin); return a.premium === pin.premium && (a.supported_simulation_versions ?? [a.simulation_version]).includes(pin.simulation_version); }
   catch { return false; }

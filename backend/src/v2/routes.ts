@@ -1,4 +1,4 @@
-import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, type Outcome } from "../protocol";
+import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, unwrap } from "../protocol";
 import { flags } from "../flags";
 import { roomLinkVersion, type RoomLink } from "../room-links";
 import { reserveWithinRoomLimit } from "../room-limit";
@@ -22,7 +22,6 @@ import { MAX_ATTEMPT_BYTES } from "./history-blob";
 import { parsePosition } from "./history-room";
 import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 
-function unwrap<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new ApiError(outcome.status, outcome.code); return outcome.value; }
 function json(value: unknown): Response {
   return new Response(JSON.stringify(value), { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" } });
 }
