@@ -74,7 +74,7 @@ If the chapter is a shared Full Journey chapter, then only the host requires the
 
 A RevenueCat Test Store APK is included in the GitHub release. You can make a trial purchase without using real money. This build includes premium solo play for test purchases. Invited tester access is still required to host premium online rooms. Test purchases are not transferred to Google Play.
 
-[Download the Test Store APK](https://github.com/aamir-azeez/after-you/releases/download/v0.4.15/After-You-v0.4.15-RevenueCat-Test-Store.apk) · [All APKs & checksums](https://github.com/aamir-azeez/after-you/releases/tag/v0.4.15)
+[Latest APK & checksums](https://github.com/aamir-azeez/after-you/releases/latest)
 
 </details>
 
