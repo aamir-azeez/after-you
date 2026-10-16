@@ -252,7 +252,7 @@ describe("operator Story drain", () => {
     // An old client holding a Story room id is turned away exactly as before the erase.
     expect(await oldClientAnswers([R, w.targetId])).toEqual(readsBefore);
     expect((await roomRead(H, w.ordinaryId)).status).toBe(200);
-  });
+  }, 60_000); // 96 room requests before and after
 
   it("is idempotent: a second run writes nothing and changes nothing", async () => {
     const w = await world(); await erase();
