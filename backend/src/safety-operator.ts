@@ -1,11 +1,16 @@
 import { ApiError, HASH_PATTERN, SECRET_PATTERN, boundedJson, canonicalJson, digest, equalHash, object, text, unwrap } from "./protocol";
 import type { ServerVars } from "./flags";
 
-/** Separate operator credential; never accepts a player credential or a caller target. */
-export async function routeSafetyOperator(request: Request, path: string, env: Env & ServerVars): Promise<unknown> {
+/** The operator credential check every /operator/ route runs first. A player credential never passes it. */
+export async function requireOperator(request: Request, env: ServerVars): Promise<void> {
   const secret = env.SAFETY_OPERATOR_TOKEN;
   const authorization = request.headers.get("Authorization");
   if (!secret || !SECRET_PATTERN.test(secret) || !authorization?.startsWith("Bearer ") || !SECRET_PATTERN.test(authorization.slice(7)) || !equalHash(await digest(secret), await digest(authorization.slice(7)))) throw new ApiError(401, "invalid_operator_auth");
+}
+
+/** Separate operator credential; never accepts a player credential or a caller target. */
+export async function routeSafetyOperator(request: Request, path: string, env: Env & ServerVars): Promise<unknown> {
+  await requireOperator(request, env);
   const inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   if (path === "/operator/safety/reports" && request.method === "GET") return { schema_version: 1, reports: await inbox.listReports() };
   const match = path.match(/^\/operator\/safety\/reports\/([a-f0-9]{64})\/(resolve|remove-photo|block)$/);
