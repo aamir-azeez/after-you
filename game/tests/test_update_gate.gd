@@ -19,6 +19,7 @@ const PlatformSupport = preload("res://services/platform_support.gd")
 const UpdateGate = preload("res://presentation/update_gate_screen.gd")
 const Copy = preload("res://presentation/player_copy.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const VECTORS := "res://tests/fixtures/update_gate/versions.json"
 const APP_STORE_LINK := "https://apps.apple.com/app/after-you/id0000000000"
 const SUCCESS := HTTPRequest.RESULT_SUCCESS
@@ -155,6 +156,8 @@ func _required(min_version: String = "0.6.2", channel: String = "play") -> Dicti
 
 func _interpret() -> void:
 	var good := AppStatus.interpret(_reply(_required()), "0.6.1", "play")
+	for variant: Dictionary in WrongTypes.variants(_required()):
+		_check(AppStatus.interpret(_reply(variant.value), "0.6.1", "play") == AppStatus.OFF, "A status with a wrongly typed field leaves the gate off: " + variant.path)
 	_check(good == {"gate": "required", "min_version": "0.6.2", "channel": "play"}, "A complete answer naming a newer version for this channel blocks")
 	_check(AppStatus.interpret(_reply(JSON.stringify(_required()).replace("1,", "1.0,")), "0.6.1", "play").gate == "required", "schema_version 1.0 from the JSON parser still counts as 1")
 	_check(AppStatus.interpret(_reply(_required("0.6.2", "github")), "0.6.2-rc.1", "github").gate == "required", "A pre-release of the minimum is still below it")

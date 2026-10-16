@@ -1,5 +1,6 @@
 extends SceneTree
 const Client = preload("res://services/room_inbox_client.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 var ready := true
 var epoch := 1
 var response: Dictionary
@@ -47,6 +48,8 @@ func _run() -> void:
 	var server_old := server_room(old_room.room_id,2)
 	var server_new := server_room(newer_room.room_id,3)
 	check(Client.valid_page({"schema_version":1,"rooms":[server_old,server_new]}),"accepts the backend nested room projection")
+	for variant: Dictionary in WrongTypes.variants({"schema_version":1,"rooms":[server_old]}):
+		check(not Client.valid_page(variant.value),"A rooms page with a wrongly typed field is refused: "+variant.path)
 	response = {"ok":true,"data":{"schema_version":1,"rooms":[server_old,server_new]}}
 	check(await client.refresh(),"inbox accepts schema-v1 room summaries")
 	check(calls.size() == 1 and calls[0].path == "/v1/room-inbox","refresh is one explicit metadata request")

@@ -6,6 +6,7 @@ const Capture = preload("res://services/optional_photo_capture.gd")
 const PhotoStore = preload("res://services/turn_photo_store.gd")
 const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const PhotoResume = preload("res://services/photo_capture_resume.gd")
+const Save = preload("res://services/local_save.gd")
 const MARKER_KEY := "deleted_identity_cleanup"
 const TIMEOUT_MS := 16000
 var bridge: Node
@@ -38,7 +39,7 @@ static func valid_owner(owner: String) -> bool:
 	return found != null and found.get_string() == owner
 
 static func marker_owner(value: Variant) -> String:
-	if not value is Dictionary or value.size() != 2 or value.get("schema_version") != 1 or not value.get("owner") is String:
+	if not value is Dictionary or value.size() != 2 or not Save.equal(value.get("schema_version"), 1) or not value.get("owner") is String:
 		return ""
 	return value.owner if valid_owner(value.owner) else ""
 

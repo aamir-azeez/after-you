@@ -54,7 +54,7 @@ static func decode_scope(snapshot: Dictionary) -> Dictionary:
 		var parser := JSON.new()
 		if parser.parse(raw.get_string_from_utf8()) != OK: continue
 		var value: Variant = parser.data
-		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or not (value.get("generation") is int or value.get("generation") is float) or float(value.get("generation", -1)) < 0 or float(value.get("generation", -1)) != floor(float(value.get("generation", -1))) or value.get("relay_online_scope") != scope or not value.get("relay_online_value") is Dictionary):
+		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or not (value.get("generation") is int or value.get("generation") is float) or float(value.get("generation", -1)) < 0 or float(value.get("generation", -1)) != floor(float(value.get("generation", -1))) or not Save.equal(value.get("relay_online_scope"), scope) or not value.get("relay_online_value") is Dictionary):
 			return {"ok": false, "error": "unsupported_save"}
 		if not Save._valid(value): continue
 		var generation := int(value.get("generation", 0))
@@ -88,7 +88,7 @@ func _load_scope_locked(scope: String) -> Dictionary:
 		file.close()
 		# A truncated generation may be recovered by LocalSave. A readable
 		# unfamiliar generation must not be overwritten by an older backup.
-		if raw is Dictionary and (not Save.whole_number(raw.get("version")) or raw.version != 1 or not (raw.get("generation") is int or raw.get("generation") is float) or float(raw.get("generation", -1)) < 0 or float(raw.get("generation", -1)) != floor(float(raw.get("generation", -1))) or raw.get("relay_online_scope") != scope or not raw.get("relay_online_value") is Dictionary):
+		if raw is Dictionary and (not Save.whole_number(raw.get("version")) or raw.version != 1 or not (raw.get("generation") is int or raw.get("generation") is float) or float(raw.get("generation", -1)) < 0 or float(raw.get("generation", -1)) != floor(float(raw.get("generation", -1))) or not Save.equal(raw.get("relay_online_scope"), scope) or not raw.get("relay_online_value") is Dictionary):
 			return {"ok": false, "error": "unsupported_save"}
 	var storage := Save.new(path)
 	storage.load_data()

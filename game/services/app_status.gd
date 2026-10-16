@@ -15,6 +15,7 @@ signal answered(result: Dictionary)
 
 const ClientIdentity = preload("res://services/client_identity.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
+const Save = preload("res://services/local_save.gd")
 const PATH := "/v1/app-status"
 const TIMEOUT_SECONDS := 8.0
 const BODY_LIMIT := 4096
@@ -86,9 +87,9 @@ static func interpret(response: Array, own_version: String, own_channel: String)
 	if not parsed is Dictionary or RoomsApi.json_int(parsed.get("schema_version")) != 1: return OFF.duplicate()
 	var keys: Array = parsed.keys()
 	keys.sort()
-	if parsed.get("gate") != "required" or keys != ["channel", "gate", "min_version", "schema_version"]: return OFF.duplicate()
+	if not Save.equal(parsed.get("gate"), "required") or keys != ["channel", "gate", "min_version", "schema_version"]: return OFF.duplicate()
 	var minimum: Variant = parsed.get("min_version")
-	if not minimum is String or parsed.get("channel") != own_channel or own_channel == ClientIdentity.DEV: return OFF.duplicate()
+	if not minimum is String or not Save.equal(parsed.get("channel"), own_channel) or own_channel == ClientIdentity.DEV: return OFF.duplicate()
 	var order: Variant = ClientIdentity.compare(own_version, minimum)
 	if order == null or int(order) >= 0: return OFF.duplicate()
 	return {"gate": "required", "min_version": minimum, "channel": own_channel}

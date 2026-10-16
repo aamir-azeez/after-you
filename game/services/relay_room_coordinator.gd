@@ -18,6 +18,7 @@ const Keepsakes = preload("res://services/home_keepsakes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
+const Save = preload("res://services/local_save.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -348,7 +349,7 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 		_draft_writer = null
 		_draft_write_generation = -1
 		return _error("storage_write_failed", PlayerCopy.RELAY_ROOM_COORDINATOR_5DADE5ECBD15)
-	if not str(simulation.get("error")).is_empty() or simulation.get("role") != room.active_role or not Canonical.same(simulation.get("level"), _level) or not Canonical.same(simulation.get("stage"), _simulation.stage_by_id(_level, room.stage_id)) or not Canonical.same(simulation.get("_checkpoint"), room.checkpoint) or not Canonical.same(simulation.get("_prior"), prior):
+	if not str(simulation.get("error")).is_empty() or simulation.get("role") != room.active_role or not Save.same(simulation.get("level"), _level) or not Save.same(simulation.get("stage"), _simulation.stage_by_id(_level, room.stage_id)) or not Save.same(simulation.get("_checkpoint"), room.checkpoint) or not Save.same(simulation.get("_prior"), prior):
 		return _error("changed_rehearsal", PlayerCopy.RELAY_ROOM_COORDINATOR_B17841629D7A)
 	var recording: Dictionary = simulation.export_recording()
 	if not _bounded(recording) or not _simulation.recording_error(_level, recording, room.checkpoint).is_empty() or recording.get("role") != room.active_role or recording.get("source_recording_hash") != prior.get("recording_hash", ""):
@@ -370,7 +371,7 @@ static func _capture_draft(job: Dictionary) -> Dictionary:
 	var level: Dictionary = job.level
 	var room: Dictionary = job.room
 	var prior: Dictionary = job.prior
-	if not Canonical.same(simulation.get("level"), level) or not Canonical.same(simulation.get("stage"), family.stage_by_id(level, room.stage_id)) or not Canonical.same(simulation.get("_checkpoint"), room.checkpoint) or not Canonical.same(simulation.get("_prior"), prior):
+	if not Save.same(simulation.get("level"), level) or not Save.same(simulation.get("stage"), family.stage_by_id(level, room.stage_id)) or not Save.same(simulation.get("_checkpoint"), room.checkpoint) or not Save.same(simulation.get("_prior"), prior):
 		return {"ok": false, "code": "changed_rehearsal", "message": PlayerCopy.RELAY_ROOM_COORDINATOR_B17841629D7A}
 	var recording: Dictionary = simulation.export_recording()
 	if not _bounded(recording) or not family.recording_error(level, recording, room.checkpoint).is_empty() or recording.get("role") != room.active_role or recording.get("source_recording_hash") != prior.get("recording_hash", ""):
@@ -525,7 +526,7 @@ func fetch_pair(pair_id: String) -> Dictionary:
 		_network_error(response)
 		return {}
 	var pair: Variant = response.get("data")
-	if not _pair_bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or pair.pair_id != pair_id or not _range(pair.branch, 0, 31) or not RoomStages.within(pair.stage_index, _level) or not pair.checkpoint is Dictionary:
+	if not _pair_bounded(pair) or not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or not Save.equal(pair.pair_id, pair_id) or not _range(pair.branch, 0, 31) or not RoomStages.within(pair.stage_index, _level) or not pair.checkpoint is Dictionary:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_E6C7811105B3)
 		return {}
 	var proof: Variant = pair.checkpoint.get("proof")
@@ -533,7 +534,7 @@ func fetch_pair(pair_id: String) -> Dictionary:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_806EA219BFEC)
 		return {}
 	var derived: Dictionary = _simulation.derive_checkpoint(_level, Registry.previous_checkpoint(_chapter_key, pair.checkpoint), pair.a, pair.b)
-	if not derived.valid or not Canonical.same(derived.get("checkpoint", {}), pair.checkpoint) or pair.stage_index != int(pair.checkpoint.stage_index) - 1 or pair_id != "p%d-%d" % [int(pair.branch), int(pair.stage_index)]:
+	if not derived.valid or not Save.same(derived.get("checkpoint", {}), pair.checkpoint) or pair.stage_index != int(pair.checkpoint.stage_index) - 1 or pair_id != "p%d-%d" % [int(pair.branch), int(pair.stage_index)]:
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_35B4466C889C)
 		return {}
 	_clear_error()
@@ -577,7 +578,7 @@ func _recover_transferred_pending() -> Dictionary:
 	_replay_recovering = true
 	var result: Dictionary = await recover_replay_operation.call(_room, str(request.body.idempotency_key), _valid_receipt.bind(request))
 	if generation == _generation: _replay_recovering = false
-	if generation != _generation or not _guard() or not Canonical.same(request, _state.pending): return {"ok": false, "ignored": true, "code": "identity_changed"}
+	if generation != _generation or not _guard() or not Save.same(request, _state.pending): return {"ok": false, "ignored": true, "code": "identity_changed"}
 	return result
 
 
@@ -597,7 +598,7 @@ func _recover_guest_join() -> bool:
 	if not _pending_guest_join_recovery(): return false
 	var rejected: Dictionary = _state.pending.duplicate(true)
 	var response := await _request(HTTPClient.METHOD_GET, _room_path())
-	if response.get("ignored", false) or not _pending_guest_join_recovery() or not Canonical.same(_state.pending, rejected): return false
+	if response.get("ignored", false) or not _pending_guest_join_recovery() or not Save.same(_state.pending, rejected): return false
 	if not response.get("ok", false): return _network_error(response)
 	var room: Variant = response.get("data")
 	if not _valid_snapshot(room):
@@ -608,10 +609,10 @@ func _recover_guest_join() -> bool:
 	joined.revision = 1
 	joined.guest_id = room.guest_id
 	joined.updated_at = room.updated_at
-	if not Canonical.same(joined, room): return false
+	if not Save.same(joined, room): return false
 	# A later refresh may already have verified a turn or fork while the held
 	# request remained recoverable. An old join projection cannot roll it back.
-	if not Canonical.same(_state.snapshot, rejected.origin) and not Canonical.same(_state.snapshot, room): return false
+	if not Save.same(_state.snapshot, rejected.origin) and not Save.same(_state.snapshot, room): return false
 	# Keep the rejected request intact until its replacement is durably written.
 	# Recording bytes and gameplay context do not change; a new key binds the
 	# new revision so later lost-response recovery can still retry exactly.
@@ -653,7 +654,7 @@ func _accept_receipt(value: Variant) -> bool:
 	# A later response can confirm the old receipt without rolling back a newer
 	# already-verified snapshot obtained by a previous refresh.
 	if next.snapshot.is_empty() or int(value.room.revision) >= int(next.snapshot.revision):
-		if not next.snapshot.is_empty() and int(value.room.revision) == int(next.snapshot.revision) and not Canonical.same(value.room, next.snapshot):
+		if not next.snapshot.is_empty() and int(value.room.revision) == int(next.snapshot.revision) and not Save.same(value.room, next.snapshot):
 			return _error("snapshot_conflict", PlayerCopy.RELAY_ROOM_COORDINATOR_666CD1F2C6F9)
 		next.snapshot = value.room.duplicate(true)
 	next.last_receipt = value.receipt.duplicate(true)
@@ -679,19 +680,19 @@ func _accept_snapshot(value: Variant) -> bool:
 	# already passed full verification when it was accepted or loaded, so an
 	# identical copy skips the checkpoint and recording re-simulation.
 	var guarded := _guard()
-	var identical: bool = guarded and not _state.snapshot.is_empty() and Canonical.same(value, _state.snapshot)
+	var identical: bool = guarded and not _state.snapshot.is_empty() and Save.same(value, _state.snapshot)
 	if not guarded or (not identical and not _valid_snapshot(value)):
 		_remote_hold = true
 		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_97B931D8DEE0)
 	if not _state.snapshot.is_empty():
 		if int(value.revision) < int(_state.snapshot.revision) or int(value.branch) < int(_state.snapshot.branch):
 			return _error("stale_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_FE7E854E465F)
-		if int(value.revision) == int(_state.snapshot.revision) and not Canonical.same(value, _state.snapshot):
+		if int(value.revision) == int(_state.snapshot.revision) and not Save.same(value, _state.snapshot):
 			return _error("snapshot_conflict", PlayerCopy.RELAY_ROOM_COORDINATOR_666CD1F2C6F9)
 		# An identical GET confirms availability without producing another save
 		# generation. Its stored copy passed full native verification and revision checks.
 		# Auth recovery must persist; a receipt must separately resolve pending.
-		if Canonical.same(value, _state.snapshot) and not _state.auth_required:
+		if Save.same(value, _state.snapshot) and not _state.auth_required:
 			_remote_hold = false
 			_gone = false
 			_clear_error()
@@ -751,7 +752,7 @@ func _prove_room_ahead(response: Variant) -> void:
 	var room: Variant = data.get("room") if data.get("room") is Dictionary else data
 	if not room is Dictionary or not room.get("checkpoint") is Dictionary or not _bounded(room): return
 	# The stored snapshot's checkpoint was proved when it was accepted.
-	if not _state.is_empty() and Canonical.same(room, _state.get("snapshot", {})): return
+	if not _state.is_empty() and Save.same(room, _state.get("snapshot", {})): return
 	var stage: Variant = room.checkpoint.get("stage_index")
 	if not _range(stage, 2, 64): return
 	var chapter := Registry.resolve(room)
@@ -872,7 +873,7 @@ func _accept_persisted(next: Dictionary) -> void:
 
 
 func _valid_state(value: Variant) -> bool:
-	if not _journal_bounded(value) or not value is Dictionary or not _exact(value, STATE_KEYS) or value.schema_version != 1 or value.api_version != 2 or value.owner_player_id != _owner or value.room_id != _room or not value.auth_required is bool:
+	if not _journal_bounded(value) or not value is Dictionary or not _exact(value, STATE_KEYS) or not Save.equal(value.schema_version, 1) or not Save.equal(value.api_version, 2) or not Save.equal(value.owner_player_id, _owner) or not Save.equal(value.room_id, _room) or not value.auth_required is bool:
 		return false
 	if not value.snapshot is Dictionary or (not value.snapshot.is_empty() and not _valid_snapshot(value.snapshot)) or not value.pending is Dictionary or (not value.pending.is_empty() and not _valid_pending(value.pending)):
 		return false
@@ -901,7 +902,7 @@ func _valid_snapshot(value: Variant) -> bool:
 	if value.has("simulation_version"):
 		keys.append("simulation_version")
 		if not _range(value.simulation_version, 1, MAX_SIMULATION_VERSION) or int(value.simulation_version) not in Registry.supported_rules(chapter): return false
-	if not _exact(value, keys) or value.api_version != 2 or value.schema_version != 2 or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or value.validation != "structural_client_replay_required" or value.room_id != _room:
+	if not _exact(value, keys) or not Save.equal(value.api_version, 2) or not Save.equal(value.schema_version, 2) or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or not Save.equal(value.validation, "structural_client_replay_required") or not Save.equal(value.room_id, _room):
 		return false
 	if not _token(value.host_id, 22) or (value.guest_id != null and (not _token(value.guest_id, 22) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
 		return false
@@ -920,22 +921,22 @@ func _valid_snapshot(value: Variant) -> bool:
 	for name: String in ["created_at", "updated_at", "invite_expires_at"]:
 		if not value[name] is String or value[name].length() < 10 or value[name].length() > 40:
 			return false
-	if value.player_slot != ("p0" if value.host_id == _owner else "p1") or (value.host_id == _owner and (not value.has("invite_code") or not _pattern(value.invite_code, "^[A-F0-9]{20}$"))) or (value.host_id != _owner and value.has("invite_code")):
+	if not Save.equal(value.player_slot, ("p0" if Save.equal(value.host_id, _owner) else "p1")) or (Save.equal(value.host_id, _owner) and (not value.has("invite_code") or not _pattern(value.invite_code, "^[A-F0-9]{20}$"))) or (not Save.equal(value.host_id, _owner) and value.has("invite_code")):
 		return false
 	if index == stages:
-		return value.stage_id == "" and value.active_role == "complete" and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null
+		return Save.equal(value.stage_id, "") and Save.equal(value.active_role, "complete") and value.first_player_id == null and value.active_player_id == null and value.a_turn_id == null and value.recording_a == null
 	var stage: Dictionary = level.stages[index]
 	var first: Variant = value.host_id if stage.first_player_slot == "p0" else value.guest_id
 	var second: Variant = value.guest_id if stage.first_player_slot == "p0" else value.host_id
-	if value.stage_id != stage.id or value.first_player_id != first:
+	if not Save.equal(value.stage_id, stage.id) or not Save.equal(value.first_player_id, first):
 		return false
 	if value.recording_a == null:
-		return value.a_turn_id == null and value.active_role == "a" and value.active_player_id == first
-	if not value.recording_a is Dictionary or value.a_turn_id != "t%d-%d-a" % [int(value.branch), index] or value.active_role != "b" or value.active_player_id != second:
+		return value.a_turn_id == null and Save.equal(value.active_role, "a") and Save.equal(value.active_player_id, first)
+	if not value.recording_a is Dictionary or not Save.equal(value.a_turn_id, "t%d-%d-a" % [int(value.branch), index]) or not Save.equal(value.active_role, "b") or not Save.equal(value.active_player_id, second):
 		return false
-	if value.recording_a.get("simulation_version") != value.get("simulation_version", level.simulation_version): return false
+	if not Save.equal(value.recording_a.get("simulation_version"), value.get("simulation_version", level.simulation_version)): return false
 	var verified: Dictionary = engine.verify_recording(level, value.recording_a, value.checkpoint)
-	return value.recording_a.get("role") == "a" and verified.valid and verified.get("snapshot", {}).get("can_commit", false)
+	return Save.equal(value.recording_a.get("role"), "a") and verified.valid and verified.get("snapshot", {}).get("can_commit", false)
 
 
 func _valid_draft(value: Variant) -> bool:
@@ -943,11 +944,11 @@ func _valid_draft(value: Variant) -> bool:
 
 
 func _verify_recording(recording: Variant, origin: Dictionary) -> Dictionary:
-	if not _bounded(recording) or not recording is Dictionary or origin.is_empty() or origin.active_player_id != _owner or recording.get("role") != origin.active_role or origin.active_role == "complete":
+	if not _bounded(recording) or not recording is Dictionary or origin.is_empty() or not Save.equal(origin.active_player_id, _owner) or not Save.equal(recording.get("role"), origin.active_role) or Save.equal(origin.active_role, "complete"):
 		return {"valid": false}
 	var chapter := Registry.resolve(origin)
 	if chapter.is_empty(): return {"valid": false}
-	if recording.get("simulation_version") != origin.get("simulation_version", Registry.definition(chapter).simulation_version): return {"valid": false}
+	if not Save.equal(recording.get("simulation_version"), origin.get("simulation_version", Registry.definition(chapter).simulation_version)): return {"valid": false}
 	var engine := Registry.simulation_script(chapter)
 	return engine.verify_recording(Registry.definition(chapter), recording, origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {})
 
@@ -961,9 +962,9 @@ func _valid_pending(value: Variant) -> bool:
 		return false
 	var body: Dictionary = value.body
 	var keys := ["base_revision", "idempotency_key", "branch", "recording"] if value.operation == "turns" else ["base_revision", "idempotency_key", "branch", "stage_index"]
-	if value.operation == "turns" and body.get("recording") is Dictionary and body.recording.get("role") == "b":
+	if Save.equal(value.operation, "turns") and body.get("recording") is Dictionary and Save.equal(body.recording.get("role"), "b"):
 		keys.append("checkpoint")
-	if not _exact(body, keys) or not _token(body.idempotency_key, -1, 80) or body.idempotency_key.length() < 16 or body.base_revision != value.origin.revision or body.branch != value.origin.branch or value.request_hash != _request_hash(value.operation, body):
+	if not _exact(body, keys) or not _token(body.idempotency_key, -1, 80) or body.idempotency_key.length() < 16 or not Save.equal(body.base_revision, value.origin.revision) or not Save.equal(body.branch, value.origin.branch) or not Save.equal(value.request_hash, _request_hash(value.operation, body)):
 		return false
 	if value.operation == "fork":
 		return RoomStages.within(body.stage_index, Registry.definition(Registry.resolve(value.origin))) and body.stage_index <= value.origin.stage_index and (body.stage_index < value.origin.stage_index or value.origin.a_turn_id != null)
@@ -974,11 +975,11 @@ func _valid_pending(value: Variant) -> bool:
 		return true
 	var engine := Registry.simulation_script(Registry.resolve(value.origin))
 	var derived: Dictionary = engine.derive_checkpoint(Registry.definition(Registry.resolve(value.origin)), value.origin.checkpoint, value.origin.recording_a, body.recording)
-	return derived.valid and Canonical.same(derived.get("checkpoint", {}), body.checkpoint)
+	return derived.valid and Save.same(derived.get("checkpoint", {}), body.checkpoint)
 
 
 func _valid_receipt(value: Variant, request: Dictionary) -> bool:
-	if not value is Dictionary or not _exact(value, RECEIPT_KEYS) or value.schema_version != 2 or value.room_id != _room or value.idempotency_key != request.body.idempotency_key or value.request_hash != request.request_hash or value.operation != request.operation or value.accepted_revision != int(request.body.base_revision) + 1:
+	if not value is Dictionary or not _exact(value, RECEIPT_KEYS) or not Save.equal(value.schema_version, 2) or not Save.equal(value.room_id, _room) or not Save.equal(value.idempotency_key, request.body.idempotency_key) or not Save.equal(value.request_hash, request.request_hash) or not Save.equal(value.operation, request.operation) or not Save.equal(value.accepted_revision, int(request.body.base_revision) + 1):
 		return false
 	var branch := int(request.body.branch)
 	var index := int(request.origin.stage_index)
@@ -994,18 +995,18 @@ func _valid_receipt(value: Variant, request: Dictionary) -> bool:
 			return false
 	else:
 		var recording: Dictionary = request.body.recording
-		if value.turn_id != "t%d-%d-%s" % [branch, index, recording.role] or value.recording_hash != recording.recording_hash or value.pair_id != ("p%d-%d" % [branch, index] if recording.role == "b" else null):
+		if not Save.equal(value.turn_id, "t%d-%d-%s" % [branch, index, recording.role]) or not Save.equal(value.recording_hash, recording.recording_hash) or not Save.equal(value.pair_id, ("p%d-%d" % [branch, index] if recording.role == "b" else null)):
 			return false
 		if recording.role == "b":
 			expected_checkpoint = request.body.checkpoint.checkpoint_hash
-	return value.branch == branch and value.stage_index == index and value.stage_id == Registry.definition(Registry.resolve(request.origin)).stages[index].id and value.checkpoint_hash == expected_checkpoint
+	return Save.equal(value.branch, branch) and Save.equal(value.stage_index, index) and Save.equal(value.stage_id, Registry.definition(Registry.resolve(request.origin)).stages[index].id) and Save.equal(value.checkpoint_hash, expected_checkpoint)
 
 
 func _same_context(first: Dictionary, second: Dictionary) -> bool:
 	for name: String in ["room_id", "branch", "stage_id", "definition_hash", "simulation_version", "active_role", "active_player_id"]:
 		if first.get(name) != second.get(name):
 			return false
-	return Canonical.same(first.checkpoint, second.checkpoint) and Canonical.same(first.recording_a, second.recording_a)
+	return Save.same(first.checkpoint, second.checkpoint) and Save.same(first.recording_a, second.recording_a)
 
 
 func _guard() -> bool:

@@ -9,6 +9,7 @@ const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const TEST_SAVED_PLAYER := "SSSSSSSSSSSSSSSSSSSSSS"
 const TEST_RECOVERY_PLAYER := "RRRRRRRRRRRRRRRRRRRRRR"
 const TEST_DEVICE_TOKEN := "DDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDDD"
@@ -199,6 +200,11 @@ func _test_save_field_types() -> void:
 		_check(Storage.whole_number(value), "A whole number: %s" % [value])
 	for value: Variant in [1.5, INF, NAN, "1", [1], {}, null, true]:
 		_check(not Storage.whole_number(value), "Not a whole number: %s" % [value])
+	var kinds: Array = [1, 1.0, "1", &"1", true, null, [1], {"a": 1}, PackedByteArray([1])]
+	for a: Variant in kinds:
+		for b: Variant in kinds:
+			var comparable: bool = a == null or b == null or typeof(a) == typeof(b) or ((a is int or a is float) and (b is int or b is float)) or ((a is String or a is StringName) and (b is String or b is StringName))
+			_check(Storage.equal(a, b) == (comparable and a == b), "equal matches == where Godot can compare, else false: %s %s" % [type_string(typeof(a)), type_string(typeof(b))])
 	for value: Variant in [0, 0.0, 7, 7.0]:
 		_check(Storage.valid_generation(value), "A save generation: %s" % [value])
 	for value: Variant in [-1, 1.5, INF, "2", [1], {}, null]:
@@ -231,6 +237,16 @@ func _test_receipts_and_roles() -> void:
 	_check(State.pending_status(pending,room)=="accepted","Actual saved recording confirms uncertain submission")
 	var fresh: Dictionary=State._normalized_value(first)
 	_check(State.same_recording(fresh,first),"Native integer recording matches JSON parsed numeric receipt")
+	for variant: Dictionary in WrongTypes.variants(pending, 1):
+		if variant.path == "room_id":
+			_check(State.pending_status(variant.value,room) != "accepted","A pending turn with a wrongly typed field is never taken as accepted: "+variant.path)
+	for odd: Variant in ["4", [4], {}, true]:
+		var changed: Dictionary = pending.duplicate(true)
+		changed.base_revision = odd
+		changed.recording = {"role": "a"}
+		_check(State.pending_status(changed,room) == "stale","A pending turn whose base revision is not a number is stale: %s" % [odd])
+	for variant: Dictionary in WrongTypes.variants(first, 1):
+		_check(not State.same_recording(variant.value,first),"A recording with a wrongly typed field is not the same recording: "+variant.path)
 	room.recordings.a.actions[0].x+=1
 	_check(State.pending_status(pending,room)=="stale","Matching final hash alone is not enough to confirm a turn")
 	room.room_id="another-room"
@@ -678,6 +694,9 @@ func _test_recovery_interruptions(app: Node, api: Node, storage: TestSecrets) ->
 	var original: Dictionary=api.calls[0].body.duplicate(true)
 	var pending: Dictionary=JSON.parse_string(storage.values.recovery_pending)
 	_check(pending.request==original and RecoveryDetails.valid_pending(pending),"Lost recovery response retains the exact secured rotation proposal")
+	for variant: Dictionary in WrongTypes.variants(pending, 1):
+		if variant.path == "schema_version":
+			_check(not RecoveryDetails.valid_pending(variant.value),"A pending recovery with a wrongly typed version is refused")
 	for field: String in ["player_id","recovery_code","idempotency_key"]:
 		var invalid: Dictionary=pending.duplicate(true)
 		invalid.request[field]="short"

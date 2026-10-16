@@ -18,6 +18,12 @@ func _run() -> void:
 	replacement.content_id = "b".repeat(64)
 	_check(not next.is_hidden(replacement), "A different content identity remains visible")
 	_check(not next.hide({"visibility_key":"bad","content_id":"not-a-digest"}), "Invalid rows cannot be removed")
+	for version: Variant in ["1", [1], {}, true]:
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string(JSON.stringify({"schema_version": version, "hidden": {}}))
+		file.close()
+		var odd := FileAccess.get_file_as_string(path)
+		_check(not Visibility.new(path).is_hidden(row) and FileAccess.get_file_as_string(path) == odd, "A visibility file whose version is not a number hides nothing and stays unchanged")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	print("Solo replay visibility: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

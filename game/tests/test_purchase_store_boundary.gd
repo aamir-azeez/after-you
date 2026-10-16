@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Purchases = preload("res://services/purchases.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 var checks := 0
 var failures := 0
 
@@ -42,6 +43,9 @@ func _test_store_boundary(demo: Dictionary, play: Dictionary) -> void:
 	var payload := {"schema_version":1,"mode":"test_store","entitlements":{
 		"full_journey":{"active":true,"store":"TEST_STORE","product_id":Purchases.TEST_PRODUCT}}}
 	_check(Purchases.store_enabled(demo) and Purchases.entitled_for_configuration(payload, demo), "Test Store admits its exact product and separate entitlement")
+	for config: Dictionary in [play, demo]:
+		for variant: Dictionary in WrongTypes.variants(config):
+			_check(not Purchases.store_enabled(variant.value) and not Purchases.review_candidate(payload, variant.value), "A configuration with a wrongly typed field enables no store: " + variant.path)
 	_check(not Purchases.entitled_for_configuration(payload, play) and not Purchases.review_candidate(payload, play), "A Test Store purchase never grants Play or reviewer access")
 	for store: String in ["PLAY_STORE", "PROMOTIONAL", "UNKNOWN_STORE", "APP_STORE", ""]:
 		payload.entitlements.full_journey.store = store

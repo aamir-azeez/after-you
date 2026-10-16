@@ -12,6 +12,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Capture = preload("res://services/optional_photo_capture.gd")
+const Save = preload("res://services/local_save.gd")
 const MAX_BYTES := 160 * 1024
 const MAX_STATE := 256 * 1024
 const META_KEYS := ["schema_version", "turn_id", "owner_player_id", "recording_hash", "photo_revision", "sha256", "width", "height", "byte_length", "updated_at"]
@@ -61,7 +62,7 @@ func _init(transport: Callable, load_store: Callable, save_store: Callable, iden
 func keep_selected_bytes(metadata: Dictionary, bytes: PackedByteArray) -> bool:
 	# Keeping is local even if the player never presses Share. Do not retire a
 	# native selection until its exact pixels and provenance are durable here.
-	if not _guard() or not Canonical.same(metadata, selection()):
+	if not _guard() or not Save.same(metadata, selection()):
 		return false
 	if _library == null:
 		return true
@@ -207,7 +208,7 @@ func upload_selected() -> bool:
 	var local: Variant = await _local.call("read", selected.photo_id)
 	if not _same(ticket):
 		return false
-	if not local is Dictionary or not local.get("ok", false) or not Canonical.same(local.get("metadata"), selected) or not local.get("bytes") is PackedByteArray:
+	if not local is Dictionary or not local.get("ok", false) or not Save.same(local.get("metadata"), selected) or not local.get("bytes") is PackedByteArray:
 		return _finish(ticket, _fail("local_photo_unavailable"))
 	var bytes: PackedByteArray = local.bytes
 	if bytes.size() != selected.byte_count or bytes.size() > MAX_BYTES or _digest(bytes) != selected.sha256:
@@ -370,7 +371,7 @@ func _read_photo(room_id: String, expected: Dictionary, ticket: int, context: Re
 func _valid_delivery(value: Variant, expected: Dictionary, acknowledgement: bool = false) -> bool:
 	var keys := ["schema_version", "photo", "available", "removed_reason", "intended_player_ids", "acked_player_ids"]
 	if acknowledgement: keys.append("acked")
-	if not value is Dictionary or not _exact(value, keys) or value.schema_version != 1 or not _metadata(value.photo, expected) or not value.available is bool or value.removed_reason not in [null, "delivered", "owner_deleted"] or not value.intended_player_ids is Array or not value.acked_player_ids is Array:
+	if not value is Dictionary or not _exact(value, keys) or not Save.equal(value.schema_version, 1) or not _metadata(value.photo, expected) or not value.available is bool or value.removed_reason not in [null, "delivered", "owner_deleted"] or not value.intended_player_ids is Array or not value.acked_player_ids is Array:
 		return false
 	if value.intended_player_ids.is_empty() or value.intended_player_ids.size() > 2 or value.acked_player_ids.size() > 2 or _owner not in value.intended_player_ids: return false
 	var seen: Array = []
@@ -381,7 +382,7 @@ func _valid_delivery(value: Variant, expected: Dictionary, acknowledgement: bool
 	for player: Variant in value.acked_player_ids:
 		if player not in value.intended_player_ids or player in seen: return false
 		seen.append(player)
-	return not acknowledgement or value.acked == true
+	return not acknowledgement or Save.equal(value.acked, true)
 
 func _ack_cached(room_id: String, cached: Dictionary, ticket: int, context: RefCounted) -> void:
 	if not _same(ticket) or _library == null or not cached.get("ok", false) or not cached.get("found", false) or cached.get("delivery_ack", false): return
@@ -465,7 +466,7 @@ func _accepted_target(value: Variant, room: String, key: String) -> Dictionary:
 	var r: Dictionary = value.receipt
 	var s: Dictionary = value.room
 	var keys := ["schema_version", "room_id", "idempotency_key", "request_hash", "operation", "accepted_revision", "branch", "stage_index", "stage_id", "turn_id", "recording_hash", "pair_id", "checkpoint_hash"]
-	if not _exact(r, keys) or r.schema_version != 2 or r.operation != "turns" or r.room_id != room or r.idempotency_key != key or not _hash(r.request_hash) or not _hash(r.recording_hash) or not _hash(r.checkpoint_hash) or not _range(r.branch, 0, 31) or not _range(r.stage_index, 0, RoomStages.MAX_STAGES - 1) or not _range(r.accepted_revision, 1, 256) or not _turn(r.turn_id):
+	if not _exact(r, keys) or not Save.equal(r.schema_version, 2) or not Save.equal(r.operation, "turns") or not Save.equal(r.room_id, room) or not Save.equal(r.idempotency_key, key) or not _hash(r.request_hash) or not _hash(r.recording_hash) or not _hash(r.checkpoint_hash) or not _range(r.branch, 0, 31) or not _range(r.stage_index, 0, RoomStages.MAX_STAGES - 1) or not _range(r.accepted_revision, 1, 256) or not _turn(r.turn_id):
 		return {}
 	var chapter := Registry.resolve(s)
 	if chapter.is_empty(): return {}
@@ -473,13 +474,13 @@ func _accepted_target(value: Variant, room: String, key: String) -> Dictionary:
 	var role: String = str(r.turn_id).right(1)
 	var index := int(r.stage_index)
 	if not RoomStages.within(index, level): return {}
-	if r.turn_id != "t%d-%d-%s" % [int(r.branch), index, role] or r.stage_id != level.stages[index].id or r.pair_id != ("p%d-%d" % [int(r.branch), index] if role == "b" else null):
+	if not Save.equal(r.turn_id, "t%d-%d-%s" % [int(r.branch), index, role]) or not Save.equal(r.stage_id, level.stages[index].id) or not Save.equal(r.pair_id, ("p%d-%d" % [int(r.branch), index] if role == "b" else null)):
 		return {}
-	if s.get("api_version") != 2 or s.get("schema_version") != 2 or s.get("room_id") != room or not _range(s.get("revision"), int(r.accepted_revision), 256) or _owner not in [s.get("host_id"), s.get("guest_id")]:
+	if not Save.equal(s.get("api_version"), 2) or not Save.equal(s.get("schema_version"), 2) or not Save.equal(s.get("room_id"), room) or not _range(s.get("revision"), int(r.accepted_revision), 256) or _owner not in [s.get("host_id"), s.get("guest_id")]:
 		return {}
 	var first: Variant = s.get("host_id") if level.stages[index].first_player_slot == "p0" else s.get("guest_id")
 	var second: Variant = s.get("guest_id") if level.stages[index].first_player_slot == "p0" else s.get("host_id")
-	if _owner != (first if role == "a" else second):
+	if not Save.equal(_owner, (first if role == "a" else second)):
 		return {}
 	return {"room_id": room, "turn_id": r.turn_id, "recording_hash": r.recording_hash, "owner_player_id": _owner, "branch": r.branch, "stage_index": index, "stage_id": r.stage_id, "role": role, "gameplay_key": key}
 
@@ -496,17 +497,17 @@ func _read_payload(value: Variant, expected: Dictionary) -> Dictionary:
 func _metadata(value: Variant, expected: Dictionary) -> bool:
 	if value == null:
 		return true
-	if not value is Dictionary or not _exact(value, META_KEYS) or value.schema_version != 1 or value.turn_id != expected.turn_id or value.recording_hash != expected.recording_hash or not _id(value.owner_player_id) or (expected.has("owner_player_id") and value.owner_player_id != expected.owner_player_id) or not _range(value.photo_revision, 1, 256) or not value.updated_at is String or value.updated_at.length() > 32:
+	if not value is Dictionary or not _exact(value, META_KEYS) or not Save.equal(value.schema_version, 1) or not Save.equal(value.turn_id, expected.turn_id) or not Save.equal(value.recording_hash, expected.recording_hash) or not _id(value.owner_player_id) or (expected.has("owner_player_id") and not Save.equal(value.owner_player_id, expected.owner_player_id)) or not _range(value.photo_revision, 1, 256) or not value.updated_at is String or value.updated_at.length() > 32:
 		return false
 	if value.sha256 == null:
-		return value.width == null and value.height == null and value.byte_length == 0
+		return value.width == null and value.height == null and Save.equal(value.byte_length, 0)
 	return _hash(value.sha256) and _range(value.width, 1, 960) and _range(value.height, 1, 960) and _range(value.byte_length, 1, MAX_BYTES)
 
 func _valid_receipt(value: Variant) -> bool:
-	return value is Dictionary and _exact(value, RECEIPT_KEYS) and value.schema_version == 1 and value.room_id == _state.target.room_id and value.turn_id == _state.target.turn_id and value.recording_hash == _state.target.recording_hash and _key(value.idempotency_key) and _hash(value.request_hash) and value.operation in ["photo_upload", "photo_delete"] and _range(value.photo_revision, 1, 256) and (value.photo_hash == null if value.operation == "photo_delete" else _hash(value.photo_hash))
+	return value is Dictionary and _exact(value, RECEIPT_KEYS) and Save.equal(value.schema_version, 1) and Save.equal(value.room_id, _state.target.room_id) and Save.equal(value.turn_id, _state.target.turn_id) and Save.equal(value.recording_hash, _state.target.recording_hash) and _key(value.idempotency_key) and _hash(value.request_hash) and value.operation in ["photo_upload", "photo_delete"] and _range(value.photo_revision, 1, 256) and (value.photo_hash == null if value.operation == "photo_delete" else _hash(value.photo_hash))
 
 func _valid_state(value: Variant, expected: Dictionary) -> bool:
-	if not value is Dictionary or JSON.stringify(value).to_utf8_buffer().size() > MAX_STATE or not _exact(value, STATE_KEYS) or value.schema_version != 1 or not Canonical.same(value.target, expected) or not value.selection is Dictionary or (not value.selection.is_empty() and not Capture._metadata_valid(value.selection)) or not value.cleanup is Array or value.cleanup.size() > 16 or not value.last_receipt is Dictionary or not value.pending is Dictionary:
+	if not value is Dictionary or JSON.stringify(value).to_utf8_buffer().size() > MAX_STATE or not _exact(value, STATE_KEYS) or not Save.equal(value.schema_version, 1) or not Save.same(value.target, expected) or not value.selection is Dictionary or (not value.selection.is_empty() and not Capture._metadata_valid(value.selection)) or not value.cleanup is Array or value.cleanup.size() > 16 or not value.last_receipt is Dictionary or not value.pending is Dictionary:
 		return false
 	var seen: Array = []
 	for id: Variant in value.cleanup:
@@ -529,16 +530,16 @@ func _valid_state(value: Variant, expected: Dictionary) -> bool:
 	var required := ["idempotency_key", "recording_hash", "expected_photo_revision", "expected_photo_hash"]
 	if p.operation == "photo_upload":
 		required.append_array(["jpeg_base64", "sha256"])
-	if not _exact(body, required) or not _key(body.idempotency_key) or body.recording_hash != expected.recording_hash or not _range(body.expected_photo_revision, 0, 255) or (body.expected_photo_hash != null and not _hash(body.expected_photo_hash)):
+	if not _exact(body, required) or not _key(body.idempotency_key) or not Save.equal(body.recording_hash, expected.recording_hash) or not _range(body.expected_photo_revision, 0, 255) or (body.expected_photo_hash != null and not _hash(body.expected_photo_hash)):
 		return false
 	if p.operation == "photo_upload":
-		if not Capture._matches(p.local_photo_id, "^[a-f0-9]{32}$") or p.local_photo_id != value.selection.get("photo_id") or body.sha256 != value.selection.get("sha256") or _decode(body.jpeg_base64, body.sha256).size() != value.selection.get("byte_count"):
+		if not Capture._matches(p.local_photo_id, "^[a-f0-9]{32}$") or p.local_photo_id != value.selection.get("photo_id") or not Save.equal(body.sha256, value.selection.get("sha256")) or _decode(body.jpeg_base64, body.sha256).size() != value.selection.get("byte_count"):
 			return false
-	elif p.local_photo_id != "":
+	elif not Save.equal(p.local_photo_id, ""):
 		return false
 	var material := body.duplicate(true)
 	material.merge({"operation": p.operation, "turn_id": expected.turn_id})
-	return p.request_hash == Canonical.digest(material)
+	return Save.equal(p.request_hash, Canonical.digest(material))
 
 func _persist(next: Dictionary) -> bool:
 	if not _guard() or read_only or not _valid_state(next, _state.target):

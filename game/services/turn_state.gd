@@ -7,10 +7,10 @@ const LocalSave = preload("res://services/local_save.gd")
 static func review(definition: Dictionary, recording: Dictionary, attempt: Dictionary, expected_simulation_version: int = 0, progress: RefCounted = null) -> Dictionary:
 	if recording.is_empty():
 		return {"valid": false, "can_commit": false, "error": PlayerCopy.TURN_STATE_6DB429755E0C}
-	if expected_simulation_version != 0 and recording.get("simulation_version") != expected_simulation_version:
+	if expected_simulation_version != 0 and not LocalSave.equal(recording.get("simulation_version"), expected_simulation_version):
 		return {"valid": false, "can_commit": false, "error": "Unsupported recording version."}
 	var normalized := LocalSave.normalize_attempt(attempt)
-	var check: Dictionary = Simulation.verify_recording(definition, recording, normalized.a if recording.get("role") == "b" else {}, progress)
+	var check: Dictionary = Simulation.verify_recording(definition, recording, normalized.a if LocalSave.equal(recording.get("role"), "b") else {}, progress)
 	check["can_commit"] = bool(check.get("snapshot", {}).get("can_commit", false)) if check.valid else false
 	return check
 
@@ -22,7 +22,7 @@ static func simulation_version(attempt: Dictionary, role: String, room: Dictiona
 	if role == "a" and not resume_draft:
 		return Simulation.COMFORT_SIMULATION_VERSION
 	var source := LocalSave.normalize_attempt(attempt)
-	for record: Dictionary in [source.a if role == "b" else {}, source.draft if source.draft.get("role") == role else {}, source.get(role, {})]:
+	for record: Dictionary in [source.a if role == "b" else {}, source.draft if LocalSave.equal(source.draft.get("role"), role) else {}, source.get(role, {})]:
 		if not record.is_empty():
 			var version: Variant = record.get("simulation_version")
 			return int(version) if Simulation.supported_version(version) else -1
@@ -31,14 +31,16 @@ static func simulation_version(attempt: Dictionary, role: String, room: Dictiona
 static func pending_status(pending: Dictionary, room: Dictionary) -> String:
 	if pending.is_empty():
 		return "none"
-	if pending.get("room_id", "") != room.get("room_id", ""):
+	if not LocalSave.equal(pending.get("room_id", ""), room.get("room_id", "")):
 		return "other_room"
 	var record: Dictionary = pending.get("recording", {})
 	var attempt := LocalSave.normalize_attempt(room.get("recordings", {}))
 	var saved: Dictionary = attempt.get(str(record.get("role", "")), {})
 	if same_recording(record, saved):
 		return "accepted"
-	if int(pending.get("base_revision", -1)) != int(room.get("revision", -2)):
+	var base: Variant = pending.get("base_revision", -1)
+	var revision: Variant = room.get("revision", -2)
+	if not LocalSave.whole_number(base) or not LocalSave.whole_number(revision) or int(base) != int(revision):
 		return "stale"
 	return "retry"
 
@@ -46,9 +48,9 @@ static func same_recording(first: Dictionary, second: Dictionary) -> bool:
 	if first.is_empty() or second.is_empty():
 		return false
 	for key: String in ["schema_version", "simulation_version", "level_id", "level_version", "role", "duration_ticks", "tick_rate", "actions", "checkpoints", "final_state_hash", "completed", "outcome"]:
-		if _normalized_value(first.get(key)) != _normalized_value(second.get(key)):
+		if not LocalSave.equal(_normalized_value(first.get(key)), _normalized_value(second.get(key))):
 			return false
-	return first.get("source_recording_hash", "") == second.get("source_recording_hash", "") and first.get("catch_assistance", true) == second.get("catch_assistance", true)
+	return LocalSave.equal(first.get("source_recording_hash", ""), second.get("source_recording_hash", "")) and LocalSave.equal(first.get("catch_assistance", true), second.get("catch_assistance", true))
 
 static func _normalized_value(value: Variant) -> Variant:
 	# Godot JSON parses numbers as doubles; freshly recorded actions use ints.

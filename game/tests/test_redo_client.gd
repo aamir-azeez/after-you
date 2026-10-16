@@ -3,6 +3,7 @@ const Client = preload("res://services/redo_client.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Store = preload("res://services/relay_online_store.gd")
 const Cleanup = preload("res://services/deleted_identity_cache_cleanup.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -101,6 +102,7 @@ func _run() -> void:
 	for family: String in ["relay","legacy"]: await _flow(family)
 	await _identity_and_conflict()
 	_disk_scope_cleanup()
+	_wrong_types()
 	print("After You redo client: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 func _flow(family: String) -> void:
@@ -197,3 +199,23 @@ func _disk_scope_cleanup() -> void:
 	_check(cleaner.erase_owner(HOST).ok and not FileAccess.file_exists(directory.path_join(own.sha256_text()+".json")) and FileAccess.file_exists(directory.path_join(peer.sha256_text()+".json")),"Confirmed account cleanup removes own redo journal and preserves peer")
 	_check(cleaner.erase_owner(GUEST).ok,"Temporary peer redo scope cleans up through normal ownership verification")
 	DirAccess.remove_absolute(directory)
+
+## A wrongly typed field in a room, a redo reply or a saved redo journal is
+## refused like any other wrong value.
+func _wrong_types() -> void:
+	for family: String in ["relay","legacy"]:
+		var room := _room(family)
+		var source := Client.source_for(family,room)
+		_check(not source.is_empty(),"The exact room has a redo source: "+family)
+		for variant: Dictionary in WrongTypes.variants(room, 1):
+			if variant.path == "active_role":
+				_check(Client.source_for(family,variant.value).is_empty(),"A room with a wrongly typed role has no redo source: "+family)
+		var view := {"schema_version":1,"source":source,"request":{"request_id":Canonical.digest(source),"source":source,"status":"pending"}}
+		_check(Client.valid_view(view,source),"The exact redo view is accepted: "+family)
+		for variant: Dictionary in WrongTypes.variants(view):
+			if variant.path in ["schema_version","request","request.request_id","request.status"]:
+				_check(not Client.valid_view(variant.value,source),"A redo view with a wrongly typed field is refused: "+variant.path)
+		var journal := {"schema_version":1,"owner_player_id":HOST,"family":family,"room_id":ROOM,"server_hash":"https://example.test".sha256_text(),"pending":{}}
+		_check(Client.valid_journal(journal,HOST,family,ROOM,"https://example.test"),"The exact empty redo journal is accepted: "+family)
+		for variant: Dictionary in WrongTypes.variants(journal, 1):
+			_check(not Client.valid_journal(variant.value,HOST,family,ROOM,"https://example.test"),"A redo journal with a wrongly typed field is refused: "+variant.path)

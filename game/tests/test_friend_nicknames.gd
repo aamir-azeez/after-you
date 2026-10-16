@@ -53,6 +53,12 @@ func _run() -> void:
 	check(names.display_name(SERVER,OWNER,"ffffffffffffffffffffff") == "a friend","Without a nickname the display helper says 'a friend', never a raw id")
 	check(Nicknames.sentence_start(Nicknames.FALLBACK) == "A friend" and Nicknames.sentence_start("sunny") == "sunny","Only the fallback is capitalised at a sentence start; a nickname keeps its case")
 	check(names.nickname("https://other.test",OWNER,FRIEND).is_empty(),"Nicknames are scoped to their server")
+	var saved := FileAccess.get_file_as_string(PATH)
+	for version: Variant in ["1", [1], {}, true]:
+		_write(PATH, JSON.stringify({"schema_version": version, "entries": []}))
+		var odd := FileAccess.get_file_as_string(PATH)
+		check(Nicknames.new(PATH).nickname(SERVER,OWNER,FRIEND).is_empty() and FileAccess.get_file_as_string(PATH) == odd,"A nickname file whose version is not a number is read as none and left unchanged")
+	_write(PATH, saved)
 	check(names.nickname(SERVER,"cccccccccccccccccccccc",FRIEND).is_empty(),"Nicknames are scoped to their owner")
 	var restarted := Nicknames.new(PATH)
 	check(restarted.nickname(SERVER,OWNER,FRIEND) == "Sunny","Nicknames persist across service restart")

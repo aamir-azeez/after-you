@@ -315,7 +315,7 @@ static func _verify_source_snapshot(snapshot: Dictionary, validator: RefCounted,
 	if snapshot.kind == "friend": return validator.verify_keepsake_snapshot(snapshot)
 	if snapshot.kind == "legacy":
 		var attempt: Dictionary = snapshot.attempt
-		if not attempt.get("a") is Dictionary or not attempt.get("b") is Dictionary or attempt.a.get("role") != "a" or attempt.b.get("role") != "b": return {"ok": false, "ids": []}
+		if not attempt.get("a") is Dictionary or not attempt.get("b") is Dictionary or not Storage.equal(attempt.a.get("role"), "a") or not Storage.equal(attempt.b.get("role"), "b"): return {"ok": false, "ids": []}
 		var checked: Dictionary = LegacySimulation.verify_recording(Levels.get_level(snapshot.level_id), attempt.b, attempt.a)
 		var valid: bool = checked.get("valid", false) and checked.get("snapshot", {}).get("can_commit", false)
 		return {"ok": valid, "ids": [snapshot.id] if valid else []}
@@ -331,7 +331,7 @@ static func _verify_source_snapshot(snapshot: Dictionary, validator: RefCounted,
 		var state: Dictionary
 		var candidate_generation := 0
 		if snapshot.kind == "archive":
-			if value.size() != 2 or value.get("archive_version") != 1 or not value.get(field) is Dictionary or Canonical.digest(value[field]) != snapshot.archive_id: return {"ok": false, "ids": []}
+			if value.size() != 2 or not Storage.equal(value.get("archive_version"), 1) or not value.get(field) is Dictionary or Canonical.digest(value[field]) != snapshot.archive_id: return {"ok": false, "ids": []}
 			state = value[field]
 		else:
 			if not validator._envelope_valid(value) or not value.get(field) is Dictionary: return {"ok": false, "ids": []}
@@ -491,7 +491,7 @@ func _load_scan() -> void:
 	var parsed := json.parse(file.get_as_text())
 	file.close()
 	var value: Variant = json.data if parsed == OK else null
-	if not value is Dictionary or value.size() != 3 or value.get("scan_version") != float(SCAN_VERSION) or value.get("stamp") != _scan_stamp() or not value.get("sources") is Dictionary: return
+	if not value is Dictionary or value.size() != 3 or not Storage.equal(value.get("scan_version"), float(SCAN_VERSION)) or not Storage.equal(value.get("stamp"), _scan_stamp()) or not value.get("sources") is Dictionary: return
 	var memory: Dictionary = {}
 	for source: Variant in value.sources:
 		var entry: Variant = value.sources[source]

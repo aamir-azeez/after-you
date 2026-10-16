@@ -3,6 +3,7 @@ extends Node
 
 const Secrets = preload("res://services/secure_store.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
+const Save = preload("res://services/local_save.gd")
 const LIMIT_MS := 60000
 var secret_factory: Callable
 var api_factory: Callable
@@ -129,7 +130,7 @@ func _bound(operation: String, authority: String, expected_owner: String, code: 
 			var parser := JSON.new()
 			if parser.parse(saved.value) != OK or not parser.data is Dictionary: return _error("invalid_cached_grant")
 			var envelope: Dictionary = parser.data
-			if not _exact(envelope, ["schema_version","authority","player_id","credential_hash","receipt"]) or not _schema_one(envelope.get("schema_version")) or envelope.get("authority") != authority or envelope.get("player_id") != owner or envelope.get("credential_hash") != before.device_token.sha256_text(): return _error("invalid_cached_grant")
+			if not _exact(envelope, ["schema_version","authority","player_id","credential_hash","receipt"]) or not _schema_one(envelope.get("schema_version")) or not Save.equal(envelope.get("authority"), authority) or not Save.equal(envelope.get("player_id"), owner) or not Save.equal(envelope.get("credential_hash"), before.device_token.sha256_text()): return _error("invalid_cached_grant")
 			if not envelope.get("receipt") is Dictionary or not _grant(envelope.receipt, owner): return _error("invalid_cached_grant")
 			receipt = envelope.receipt.duplicate(true)
 		_binding = name
@@ -249,10 +250,10 @@ static func _exact(value: Dictionary, keys: Array) -> bool:
 	return true
 
 static func _grant(value: Dictionary, owner: String) -> bool:
-	return _exact(value, ["schema_version","granted","access_source","entitlement","player_id","granted_at"]) and _schema_one(value.get("schema_version")) and value.get("granted") is bool and value.granted and value.get("access_source") == "tester_grant" and value.get("entitlement") == "full_journey" and value.get("player_id") == owner and _date(value.get("granted_at"))
+	return _exact(value, ["schema_version","granted","access_source","entitlement","player_id","granted_at"]) and _schema_one(value.get("schema_version")) and value.get("granted") is bool and value.granted and Save.equal(value.get("access_source"), "tester_grant") and Save.equal(value.get("entitlement"), "full_journey") and Save.equal(value.get("player_id"), owner) and _date(value.get("granted_at"))
 
 static func _no_grant(value: Dictionary, owner: String) -> bool:
-	return _exact(value, ["schema_version","granted","player_id"]) and _schema_one(value.get("schema_version")) and value.get("granted") is bool and not value.granted and value.get("player_id") == owner
+	return _exact(value, ["schema_version","granted","player_id"]) and _schema_one(value.get("schema_version")) and value.get("granted") is bool and not value.granted and Save.equal(value.get("player_id"), owner)
 
 static func _date(value: Variant) -> bool:
 	if not value is String or RegEx.create_from_string("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}\\.[0-9]{3}Z$").search(value) == null: return false

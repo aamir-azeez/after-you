@@ -6,6 +6,7 @@ const Levels = preload("res://core/levels.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const OWNER := "AAAAAAAAAAAAAAAAAAAAAA"
 const ROOM := "BBBBBBBBBBBBBBBBBBBBBB"
 const EPOCH := "CCCCCCCCCCCCCCCCCCCCCC"
@@ -191,6 +192,12 @@ func _test_shapes_and_old_settings() -> void:
 	_check(not Storage.default_settings_envelope_valid(old), "A chapter journal cannot smuggle a nondefault notification preference")
 	var event := _route()
 	_check(Notifications.valid_route(event), "The exact native string-valued turn hint is accepted")
+	for variant: Dictionary in WrongTypes.variants(event):
+		_check(not Notifications.valid_route(variant.value), "A hint with a wrongly typed field is refused: " + variant.path)
+	var binding := {"schema_version": 1, "owner": OWNER, "credential_hash": "a".repeat(64), "binding_epoch": EPOCH}
+	_check(Notifications.valid_binding(binding), "An exact saved binding is accepted")
+	for variant: Dictionary in WrongTypes.variants(binding):
+		_check(not Notifications.valid_binding(variant.value), "A saved binding with a wrongly typed field is refused: " + variant.path)
 	for field: String in event.keys():
 		var missing := event.duplicate(true); missing.erase(field)
 		_check(not Notifications.valid_route(missing), "Missing hint fields fail closed")

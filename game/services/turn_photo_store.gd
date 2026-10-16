@@ -29,7 +29,7 @@ func load_scope(scope: String) -> Dictionary:
 		var parser := JSON.new()
 		var value: Variant = parser.data if parser.parse(file.get_as_text()) == OK else null
 		file.close()
-		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or not _generation(value.get("generation")) or value.get("turn_photo_scope") != scope or not value.get("turn_photo_value") is Dictionary):
+		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or not _generation(value.get("generation")) or not Save.equal(value.get("turn_photo_scope"), scope) or not value.get("turn_photo_value") is Dictionary):
 			return {"ok": false, "error": "unsupported_save"}
 	var store := Save.new(path)
 	store.load_data()

@@ -207,7 +207,7 @@ func save_live_draft(simulation: RefCounted) -> bool:
 	# Compare whole dictionaries so mutating an object while keeping its old
 	# hash cannot reuse a trusted context. These references never leave local
 	# application code; all values are copied before they reach storage.
-	if not str(simulation.get("error")).is_empty() or simulation.get("role") != role() or not Canonical.same(simulation.get("_level"), Catalog.definition(stage_id())) or not Canonical.same(simulation.get("_checkpoint"), _checkpoint) or not Canonical.same(simulation.get("_prior"), _state.a):
+	if not str(simulation.get("error")).is_empty() or simulation.get("role") != role() or not Storage.same(simulation.get("_level"), Catalog.definition(stage_id())) or not Storage.same(simulation.get("_checkpoint"), _checkpoint) or not Storage.same(simulation.get("_prior"), _state.a):
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41
 		return false
 	var recording: Dictionary = simulation.export_recording()
@@ -332,7 +332,7 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 func _validate_state(value: Variant) -> Dictionary:
 	if not value is Dictionary or not _exact_keys(value, STATE_KEYS):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
-	if value.schema_version != 3 or value.simulation_version != 3 or value.level_id != _level.id or value.level_version != _level.version:
+	if not Storage.equal(value.schema_version, 3) or not Storage.equal(value.simulation_version, 3) or not Storage.equal(value.level_id, _level.id) or not Storage.equal(value.level_version, _level.version):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD)
 	if not value.pairs is Array or value.pairs.size() > TOTAL_STAGES or not value.a is Dictionary or not value.draft is Dictionary:
 		return _invalid("Malformed stage history.")
@@ -346,11 +346,11 @@ func _validate_state(value: Variant) -> Dictionary:
 		return {"valid": true, "error": "", "checkpoint": derived}
 	if not value.a.is_empty():
 		var first := Simulation.verify_recording(value.a, {}, value.pairs)
-		if value.a.get("role") != "a" or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
+		if not Storage.equal(value.a.get("role"), "a") or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B)
 	if not value.draft.is_empty():
 		var expected_role := "a" if value.a.is_empty() else "b"
-		if value.draft.get("role") != expected_role:
+		if not Storage.equal(value.draft.get("role"), expected_role):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
 		var rehearsal := Simulation.verify_recording(value.draft, value.a, value.pairs)
 		if not rehearsal.valid:

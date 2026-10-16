@@ -676,6 +676,18 @@ func _disk() -> void:
 		before = FileAccess.get_sha256(file_path)
 		_check(not store.load_scope(scope).ok and not store.save_scope(scope, {"schema_version": 1, "owner": HOST, "rooms": {}}) and FileAccess.get_sha256(file_path) == before, "A cache version that is not a number is held unchanged: %s" % [version])
 		_check(not Disk.decode_scope(store.capture_scope(scope)).ok, "The worker decode holds a cache version that is not a number: %s" % [version])
+	raw.version = 1
+	for field: String in ["shared_replay_scope", "schema_version"]:
+		for odd: Variant in [7, [1], {}, true, "1"]:
+			var changed: Dictionary = raw.duplicate(true)
+			if field == "schema_version": changed.shared_replay_value.schema_version = odd
+			else: changed.shared_replay_scope = odd
+			file = FileAccess.open(file_path, FileAccess.WRITE)
+			file.store_string(JSON.stringify(changed))
+			file.close()
+			before = FileAccess.get_sha256(file_path)
+			_check(not store.load_scope(scope).ok and not store.save_scope(scope, {"schema_version": 1, "owner": HOST, "rooms": {}}) and FileAccess.get_sha256(file_path) == before, "A cache with a wrongly typed %s is held unchanged: %s" % [field, odd])
+			_check(not Disk.decode_scope(store.capture_scope(scope)).ok, "The worker decode holds a wrongly typed %s: %s" % [field, odd])
 	for suffix: String in ["", ".backup", ".tmp"]:
 		if FileAccess.file_exists(file_path + suffix): DirAccess.remove_absolute(file_path + suffix)
 	DirAccess.remove_absolute(directory)

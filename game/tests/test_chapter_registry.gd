@@ -8,6 +8,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Golden = preload("res://tests/golden_support.gd")
 const OldCoordinatorTests = preload("res://tests/test_relay_room_coordinator.gd")
 const OldOnlineTests = preload("res://tests/test_relay_online.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -75,6 +76,15 @@ func _run() -> void:
 	_check(Registry.descriptor(Registry.FIRST_STEPS).local_path != Registry.descriptor(Registry.RELAY).local_path, "Local chapters use separate files")
 	var caps := _caps()
 	_check(Registry.supported_capabilities(caps).chapters.size() == Registry.keys().size(), "Per-chapter supported versions enable all exact bundled choices")
+	for variant: Dictionary in WrongTypes.variants(caps, 1):
+		if variant.path in ["api_version", "simulation_version", "recording_version", "validation", "mutations_enabled", "chapters"]:
+			_check(not Registry.supported_capabilities(variant.value).valid, "Capabilities with a wrongly typed field are refused: " + variant.path)
+	for field: String in ["premium", "recording_version", "stage_count"]:
+		for swap: Variant in ["1", [1], {"x": 1}, 1]:
+			if WrongTypes._same_kind(swap, caps.chapters[0].get(field)): continue
+			var changed: Dictionary = caps.duplicate(true)
+			changed.chapters[0][field] = swap
+			_check(not Registry.supported_capabilities(changed).valid, "A chapter with a wrongly typed %s is refused" % field)
 	var well := Registry.descriptor(Registry.WISHING_WELL)
 	_check(not well.premium and well.simulation_version == 9 and Registry.supported_rules(Registry.WISHING_WELL) == [9] and Registry.is_cooperative(Registry.WISHING_WELL) and not Registry.is_journey(Registry.WISHING_WELL), "The Wishing Well is free and plays only the rules 9 comfort alias")
 	_check(well.local_path == "user://the-wishing-well-journey-v1.json" and Registry.simulation_script(Registry.WISHING_WELL) == Registry.simulation_script(Registry.HOUSE) and Registry.world_script(Registry.WISHING_WELL) != Registry.world_script(Registry.HOUSE), "The well reuses the physical engine with its own journal and world")

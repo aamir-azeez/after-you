@@ -2,6 +2,7 @@ class_name TurnPhotoLocal
 extends Node
 ## Signal-to-request adapter for a dedicated OptionalPhotoCapture node. It never
 ## starts capture; UI owns the explicit camera action. Returned bytes are local.
+const Save = preload("res://services/local_save.gd")
 signal _done
 var _capture: Node
 var _busy := false
@@ -25,7 +26,7 @@ func migrate_owner(owner: String, store: RefCounted, library: RefCounted, still_
 	for item: Dictionary in listing.scopes:
 		var state: Dictionary = item.value
 		var target: Variant = state.get("target")
-		if not target is Dictionary or target.get("owner_player_id") != owner:
+		if not target is Dictionary or not Save.equal(target.get("owner_player_id"), owner):
 			failed += 1
 			continue
 		var ids: Dictionary = {}

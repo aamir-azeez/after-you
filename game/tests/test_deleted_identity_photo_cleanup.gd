@@ -7,6 +7,7 @@ const Main = preload("res://main.gd")
 const Ack = preload("res://services/deleted_identity_ack.gd")
 const Resume = preload("res://services/photo_capture_resume.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const OWNER := "AAAAAAAAAAAAAAAAAAAAAA"
 const OTHER := "BBBBBBBBBBBBBBBBBBBBBB"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -138,6 +139,8 @@ func _test_helper() -> void:
 		_check(not (await helper.clear_owner(invalid)).ok, "Invalid owner cannot trigger native or file cleanup")
 	_check(bridge.calls == 0 and store.calls.is_empty(), "Invalid requests perform no destructive action")
 	_check(Cleanup.marker_owner({"schema_version": 1, "owner": OWNER}) == OWNER, "Exact owner-only marker is recognized")
+	for variant: Dictionary in WrongTypes.variants({"schema_version": 1, "owner": OWNER}):
+		_check(Cleanup.marker_owner(variant.value).is_empty(), "A marker with a wrongly typed field is held: " + variant.path)
 	for invalid: Variant in [{}, {"schema_version": 2, "owner": OWNER}, {"schema_version": 1, "owner": OWNER, "token": "ignored"}, {"schema_version": 1, "owner": OWNER + "\n"}]:
 		_check(Cleanup.marker_owner(invalid).is_empty(), "Unknown or malformed deletion marker remains held")
 	bridge.available = false

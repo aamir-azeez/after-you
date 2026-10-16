@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Photos = preload("res://services/optional_photo_capture.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const PHOTO_ID := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const OTHER_ID := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 var checks := 0
@@ -201,6 +202,8 @@ func _test_recovered() -> void:
 	var dated := _metadata()
 	dated.taken_at = 1792065600
 	_check(Photos._metadata_valid(dated) and Photos._metadata_valid(_metadata()), "A capture time is optional photo metadata")
+	for variant: Dictionary in WrongTypes.variants(_metadata()):
+		_check(not Photos._metadata_valid(variant.value), "Photo metadata with a wrongly typed field is refused: " + variant.path)
 	for bad: Variant in [0, -5, 1792065600.5, "1792065600", 99999999999]:
 		var wrong := _metadata()
 		wrong.taken_at = bad

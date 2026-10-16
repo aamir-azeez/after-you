@@ -21,6 +21,12 @@ func _initialize() -> void:
 	_check(service.clear_owner(owner,"https://other.invalid") and service.read() == preferences,"Different server consent is preserved")
 	_check(service.clear_owner(owner,"https://synthetic.invalid"),"Local account deletion clears matching scopes")
 	_check(Preferences.new(path).read().is_empty(),"Deletion survives restart")
+	for version: String in ["\"1\"", "[1]", "true"]:
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string("[hosting]\nschema_version=%s\npreferences={}\n" % version)
+		file.close()
+		var odd := FileAccess.get_file_as_string(path)
+		_check(Preferences.new(path).read().is_empty() and FileAccess.get_file_as_string(path) == odd,"A consent file whose version is not a number reads as empty and stays unchanged")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 	print("HOSTING PREFERENCES: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

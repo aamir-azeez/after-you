@@ -18,6 +18,7 @@ const HistorySync = preload("res://services/history_sync.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
+const Save = preload("res://services/local_save.gd")
 ## Every rules version this build can replay, for a server that allows at most
 ## 8 entries (every server before room level 2). Saved joins keep their exact
 ## body: each array ever sent stays listed in _valid_index.
@@ -144,7 +145,7 @@ func _transfer_client() -> RefCounted:
 ## Room history (replay transfer schema 2): this phone keeps finished attempts
 ## durably and the server says it serves them. Otherwise replay transfer v1 runs.
 func history_mode() -> bool:
-	return RoomsApi.history_supported and capabilities.get("history_version") == 1.0
+	return RoomsApi.history_supported and Save.equal(capabilities.get("history_version"), 1.0)
 
 func history_client() -> RefCounted:
 	if _history == null: _history = HistorySync.new(_history_transport, _history_eligibility, history_store)
@@ -157,7 +158,7 @@ func _history_eligibility(room_id: String) -> Dictionary:
 	if not _ready() or _server_key().is_empty(): return {"ok": false}
 	if archived_room_kind(room_id) == "story": return {"ok": false}
 	var scope := _pending_work(room_id, false)
-	scope.merge({"ok": true, "server_key": _server_key(), "owner": _owner, "standalone": true, "offload_enabled": capabilities.get("history_offload_enabled") == true}, true)
+	scope.merge({"ok": true, "server_key": _server_key(), "owner": _owner, "standalone": true, "offload_enabled": Save.equal(capabilities.get("history_offload_enabled"), true)}, true)
 	return scope
 
 func _history_transport(method: int, path: String, body: Variant, raw: bool) -> Dictionary:
@@ -199,7 +200,7 @@ func _transfer_eligibility(room_id: String) -> Dictionary:
 	if archived_room_kind(room_id) == "story": return {"ok": false}
 	var work := _pending_work(room_id, true)
 	return {"ok": true, "server_key": _server_key(), "standalone": true, "gameplay_pending": work.gameplay_pending,
-		"photo_pending": work.photo_pending, "redo_pending": work.redo_pending, "enabled": capabilities.get("replay_transfer_version") == 1}
+		"photo_pending": work.photo_pending, "redo_pending": work.redo_pending, "enabled": Save.equal(capabilities.get("replay_transfer_version"), 1)}
 
 ## Gameplay, redo and photo work still waiting for this room. A room this phone
 ## has no journal for counts as pending unless `absent_is_pending` is false.
@@ -210,7 +211,7 @@ func _pending_work(room_id: String, absent_is_pending: bool) -> Dictionary:
 	else:
 		var saved: Dictionary = _store.load_scope("relay-room-v2:" + _owner + ":" + room_id)
 		var state: Variant = saved.get("value")
-		gameplay_pending = not saved.get("ok", false) or not state is Dictionary or not Coordinator._exact(state, Coordinator.STATE_KEYS) or state.get("schema_version") != 1 or state.get("owner_player_id") != _owner or state.get("room_id") != room_id or state.get("auth_required") != false or not state.get("pending") is Dictionary or not state.pending.is_empty()
+		gameplay_pending = not saved.get("ok", false) or not state is Dictionary or not Coordinator._exact(state, Coordinator.STATE_KEYS) or not Save.equal(state.get("schema_version"), 1) or not Save.equal(state.get("owner_player_id"), _owner) or not Save.equal(state.get("room_id"), room_id) or not Save.equal(state.get("auth_required"), false) or not state.get("pending") is Dictionary or not state.pending.is_empty()
 		if not absent_is_pending and saved.get("ok", false) and not saved.get("found", false): gameplay_pending = false
 	gameplay_pending = gameplay_pending or not _index.get("pending", {}).is_empty()
 	var redo := _load_redo_journal(room_id, true)
@@ -300,7 +301,7 @@ func recover_transferred_operation(room_id: String, key: String, validate_receip
 	if generation != _generation or server_key != _server_key(): return {"ok": false, "code": "replay_transfer_context_changed"}
 	if response.get("ok", false):
 		var data: Variant = response.get("data")
-		if not data is Dictionary or not Coordinator._exact(data, ["schema_version", "receipt", "transfer"]) or data.schema_version != 1 or not ReplayTransfer.valid_transfer(data.transfer, _owner, room_id) or not validate_receipt.call(data.receipt):
+		if not data is Dictionary or not Coordinator._exact(data, ["schema_version", "receipt", "transfer"]) or not Save.equal(data.schema_version, 1) or not ReplayTransfer.valid_transfer(data.transfer, _owner, room_id) or not validate_receipt.call(data.receipt):
 			return {"ok": false, "code": "invalid_receipt"}
 	elif response.get("status") != 404 or response.get("code") != "operation_not_found": return response
 	# Definitive absence permits only the caller's original request to retry.
@@ -385,7 +386,7 @@ func load_lobby() -> bool:
 	var observed: Dictionary = {}
 	var summaries: Dictionary = {}
 	for room: Variant in rooms:
-		if not room is Dictionary or room.get("api_version") != 2 or not _id(room.get("room_id")) or _owner not in [room.get("host_id"), room.get("guest_id")]:
+		if not room is Dictionary or not Save.equal(room.get("api_version"), 2) or not _id(room.get("room_id")) or _owner not in [room.get("host_id"), room.get("guest_id")]:
 			last_error = PlayerCopy.RELAY_ONLINE_SESSION_EDC8E84089EF
 			return false
 		var chapter_key := Registry.resolve(room)
@@ -417,7 +418,7 @@ func load_lobby() -> bool:
 
 func _room_summary(room: Dictionary, chapter_key: String) -> Dictionary:
 	return {"room_id": room.room_id, "title": RoomChapterTitle.title(chapter_key),
-		"hosted": room.get("host_id") == _owner, "active_role": str(room.get("active_role", "")),
+		"hosted": Save.equal(room.get("host_id"), _owner), "active_role": str(room.get("active_role", "")),
 		"updated_at": str(room.get("updated_at", ""))}
 
 func _simulation_versions() -> Dictionary:
@@ -524,7 +525,7 @@ func retry_lobby() -> String:
 		# before host access, so host_unlock_required created no room either.
 		# Lost replies, timeouts, rate limits and outages stay recoverable.
 		if not response.get("ignored", false) and _definitive_refusal(response):
-			if not _ready() or not Canonical.same(_index.pending, request): return ""
+			if not _ready() or not Save.same(_index.pending, request): return ""
 			var next := _index.duplicate(true)
 			next.pending = {}
 			if not _write_index(next): return ""
@@ -647,7 +648,7 @@ func _archived_lifetime() -> Dictionary:
 func archived_room_kind(room_id: String) -> String:
 	# Server observations are only in memory and expire with this API identity.
 	var lifetime := _archived_lifetime()
-	if lifetime.is_empty() or not Canonical.same(lifetime,_archived_evidence_lifetime): return ""
+	if lifetime.is_empty() or not Save.same(lifetime,_archived_evidence_lifetime): return ""
 	return str(_archived_room_evidence.get(room_id,""))
 
 func prepare_archived_navigation() -> bool:
@@ -664,7 +665,7 @@ func prepare_archived_navigation() -> bool:
 	_opening = true
 	var response := await _call(HTTPClient.METHOD_GET,"/v2/rooms/"+room_id)
 	if lease.generation == _generation: _opening = false
-	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
+	if not _ready() or not Save.same(lease,_ordinary_lease()): return false
 	var validator := Coordinator.new(Callable(),func(_scope: String) -> Dictionary: return {"ok":true,"found":false},
 		func(_scope: String,_value: Dictionary) -> Dictionary: return {"ok":false},_identity)
 	validator.supported_simulation_versions = _simulation_versions()
@@ -700,7 +701,7 @@ func _classify_room_answer(room_id: String, response: Dictionary, validator: Ref
 		kind = "ordinary"
 	var lifetime := _archived_lifetime()
 	if kind.is_empty() or lifetime.is_empty(): return kind
-	if not Canonical.same(lifetime,_archived_evidence_lifetime): _archived_room_evidence.clear()
+	if not Save.same(lifetime,_archived_evidence_lifetime): _archived_room_evidence.clear()
 	_archived_evidence_lifetime = lifetime
 	_archived_room_evidence[room_id] = kind
 	return kind
@@ -778,9 +779,9 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 	if not candidate.bind_room(room_id):
 		last_error = candidate.last_error
 		return false
-	if not _ready() or not Canonical.same(lease,_ordinary_lease()): return false
+	if not _ready() or not Save.same(lease,_ordinary_lease()): return false
 	var response := await _call(HTTPClient.METHOD_GET,"/v2/rooms/"+room_id)
-	if not _ready() or not Canonical.same(lease,_ordinary_lease()) or archived_room_kind(room_id) == "story": return false
+	if not _ready() or not Save.same(lease,_ordinary_lease()) or archived_room_kind(room_id) == "story": return false
 	var kind := _classify_room_answer(room_id,response,candidate)
 	if kind == "story":
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
@@ -803,7 +804,7 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 	if not candidate.accept_room_snapshot(response.data):
 		last_error = candidate.last_error
 		return false
-	if not _ready() or not Canonical.same(lease,_ordinary_lease()) or archived_room_kind(room_id) == "story": return false
+	if not _ready() or not Save.same(lease,_ordinary_lease()) or archived_room_kind(room_id) == "story": return false
 	var next := _index.duplicate(true)
 	next.schema_version = 2
 	next["standalone_ids"] = next.get("standalone_ids",[]).duplicate()
@@ -813,7 +814,7 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 	if not _write_index(next): return false
 	var saved_lease := lease.duplicate(true)
 	saved_lease.index = Canonical.digest(next)
-	if not Canonical.same(saved_lease,_ordinary_lease()): return false
+	if not Save.same(saved_lease,_ordinary_lease()): return false
 	if coordinator != null: coordinator.invalidate_identity()
 	coordinator = candidate
 	_bound_room = room_id
@@ -891,7 +892,7 @@ func remember_photo_receipt(reference: Dictionary) -> bool:
 	var turn: String = reference.turn_id
 	var key: String = reference.idempotency_key
 	var accepted: Dictionary = coordinator.last_receipt() if coordinator != null else {}
-	if not Canonical.same(reference, accepted):
+	if not Save.same(reference, accepted):
 		# Historical replay references can reuse an existing scoped hint, but
 		# cannot manufacture a new one from an arbitrary offer/reference object.
 		if local_photo_key(room, turn, reference.recording_hash) == key:
@@ -909,7 +910,7 @@ func remember_photo_receipt(reference: Dictionary) -> bool:
 		var existing: Variant = loaded.get("value")
 		# Never replace a selection, cleanup queue, uncertain request or unknown
 		# journal. An already matching hint needs no write at all.
-		if existing is Dictionary and existing.get("schema_version") == 1 and Canonical.same(existing.get("target"), target):
+		if existing is Dictionary and Save.equal(existing.get("schema_version"), 1) and Save.same(existing.get("target"), target):
 			return true
 		return _photo_hint_error()
 	var value := {"schema_version": 1, "target": target, "selection": {}, "pending": {}, "cleanup": [], "last_receipt": {}}
@@ -921,7 +922,7 @@ func remember_photo_receipt(reference: Dictionary) -> bool:
 func _photo_hint_target(receipt: Dictionary, room: Dictionary) -> Dictionary:
 	# The reference must equal the coordinator's accepted receipt above. Keep
 	# the owner/chapter/turn checks explicit even for restored local receipts.
-	if not PhotoController._exact(receipt, Coordinator.RECEIPT_KEYS) or receipt.schema_version != 2 or receipt.operation != "turns" or not PhotoController._hash(receipt.request_hash) or not PhotoController._hash(receipt.checkpoint_hash) or not PhotoController._range(receipt.branch, 0, 31) or not PhotoController._range(receipt.stage_index, 0, RoomStages.MAX_STAGES - 1) or not PhotoController._range(receipt.accepted_revision, 1, 256):
+	if not PhotoController._exact(receipt, Coordinator.RECEIPT_KEYS) or not Save.equal(receipt.schema_version, 2) or not Save.equal(receipt.operation, "turns") or not PhotoController._hash(receipt.request_hash) or not PhotoController._hash(receipt.checkpoint_hash) or not PhotoController._range(receipt.branch, 0, 31) or not PhotoController._range(receipt.stage_index, 0, RoomStages.MAX_STAGES - 1) or not PhotoController._range(receipt.accepted_revision, 1, 256):
 		return {}
 	var chapter := Registry.resolve(room)
 	if chapter.is_empty() or room.get("api_version") != 2 or room.get("schema_version") != 2 or room.get("room_id") != receipt.room_id or not PhotoController._range(room.get("revision"), int(receipt.accepted_revision), 256) or _owner not in [room.get("host_id"), room.get("guest_id")]:
@@ -930,7 +931,7 @@ func _photo_hint_target(receipt: Dictionary, room: Dictionary) -> Dictionary:
 	var index := int(receipt.stage_index)
 	if not RoomStages.within(index, level): return {}
 	var role: String = str(receipt.turn_id).right(1)
-	if receipt.turn_id != "t%d-%d-%s" % [int(receipt.branch), index, role] or receipt.stage_id != level.stages[index].id or receipt.pair_id != ("p%d-%d" % [int(receipt.branch), index] if role == "b" else null):
+	if not Save.equal(receipt.turn_id, "t%d-%d-%s" % [int(receipt.branch), index, role]) or not Save.equal(receipt.stage_id, level.stages[index].id) or not Save.equal(receipt.pair_id, ("p%d-%d" % [int(receipt.branch), index] if role == "b" else null)):
 		return {}
 	var first: Variant = room.get("host_id") if level.stages[index].first_player_slot == "p0" else room.get("guest_id")
 	var second: Variant = room.get("guest_id") if level.stages[index].first_player_slot == "p0" else room.get("host_id")
@@ -948,10 +949,10 @@ func local_photo_key(room: String, turn: String, recording_hash: String) -> Stri
 	var scope := "turn-photo-v1:" + _owner + ":" + room + ":" + turn
 	var loaded: Dictionary = photo_store.load_scope(scope)
 	var value: Variant = loaded.get("value", {})
-	if not loaded.get("ok", false) or not loaded.get("found", false) or not value is Dictionary or value.get("schema_version") != 1 or not value.get("target") is Dictionary:
+	if not loaded.get("ok", false) or not loaded.get("found", false) or not value is Dictionary or not Save.equal(value.get("schema_version"), 1) or not value.get("target") is Dictionary:
 		return ""
 	var target: Dictionary = value.target
-	if target.get("room_id") != room or target.get("owner_player_id") != _owner or target.get("turn_id") != turn or target.get("recording_hash") != recording_hash or not PhotoController._key(target.get("gameplay_key")):
+	if not Save.equal(target.get("room_id"), room) or not Save.equal(target.get("owner_player_id"), _owner) or not Save.equal(target.get("turn_id"), turn) or not Save.equal(target.get("recording_hash"), recording_hash) or not PhotoController._key(target.get("gameplay_key")):
 		return ""
 	# This is only a lookup hint. open_owned_turn re-fetches the authoritative
 	# caller-scoped gameplay receipt before granting photo mutation access.
@@ -962,7 +963,7 @@ func replay_photo_turns(index: int, pair: Dictionary) -> Array:
 		return []
 	var room: Dictionary = coordinator.snapshot()
 	var pairs: Array = chapter_pairs()
-	if index < 0 or index >= pairs.size() or not Canonical.same(pair, pairs[index]) or index >= room.get("completed_pair_ids", []).size():
+	if index < 0 or index >= pairs.size() or not Save.same(pair, pairs[index]) or index >= room.get("completed_pair_ids", []).size():
 		return []
 	var pair_id: String = room.completed_pair_ids[index]
 	if not PhotoController._turn("t" + pair_id.substr(1) + "-a") or int(pair_id.get_slice("-", 1)) != index:
@@ -1110,7 +1111,7 @@ func _write_index(next: Dictionary) -> bool:
 	return true
 
 func _valid_index(value: Dictionary) -> bool:
-	if not Coordinator._bounded(value, 32768) or (value.get("schema_version") != 1 and value.get("schema_version") != 2) or value.size() != (6 if value.get("schema_version") == 2 else 5) or value.get("owner_player_id") != _owner or not value.get("room_ids") is Array or value.room_ids.size() > 128 or not value.get("last_room") is String or (value.last_room != "" and not _id(value.last_room)) or not value.get("pending") is Dictionary:
+	if not Coordinator._bounded(value, 32768) or (not Save.equal(value.get("schema_version"), 1) and not Save.equal(value.get("schema_version"), 2)) or value.size() != (6 if Save.equal(value.get("schema_version"), 2) else 5) or not Save.equal(value.get("owner_player_id"), _owner) or not value.get("room_ids") is Array or value.room_ids.size() > 128 or not value.get("last_room") is String or (value.last_room != "" and not _id(value.last_room)) or not value.get("pending") is Dictionary:
 		return false
 	for room: Variant in value.room_ids:
 		if not _id(room):
@@ -1124,14 +1125,14 @@ func _valid_index(value: Dictionary) -> bool:
 	var pending: Dictionary = value.pending
 	if pending.is_empty():
 		return true
-	if pending.size() != 3 or pending.get("path") not in ["/v2/rooms", "/v2/rooms/join"] or not pending.get("body") is Dictionary or pending.get("request_hash") != Canonical.digest({"path": pending.path, "body": pending.body}):
+	if pending.size() != 3 or pending.get("path") not in ["/v2/rooms", "/v2/rooms/join"] or not pending.get("body") is Dictionary or not Save.equal(pending.get("request_hash"), Canonical.digest({"path": pending.path, "body": pending.body})):
 		return false
 	var body: Dictionary = pending.body
 	if pending.path == "/v2/rooms":
 		var optional_pin: bool = body.has("simulation_version")
 		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry._integer(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
-	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Canonical.same(body.supported_simulation_versions, [2, 4, 5]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Canonical.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Canonical.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Canonical.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
+	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Save.same(body.supported_simulation_versions, [2, 4, 5]) or Save.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Save.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Save.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Save.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Save.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Save.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
 
 func _failure(response: Dictionary, fallback: String = "") -> bool:
 	if fallback.is_empty() and response.get("code") == "host_unlock_required":

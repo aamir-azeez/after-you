@@ -7,6 +7,7 @@ extends SceneTree
 const Sync = preload("res://services/history_sync.gd")
 const Store = preload("res://services/history_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 
 const SERVER := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
@@ -66,6 +67,8 @@ func _run() -> void:
 	var facts := {"room_id": ROOM, "level_id": vectors.room.level_id, "level_version": vectors.room.level_version, "definition_hash": vectors.room.definition_hash, "host_id": OWNER, "guest_id": "GGGGGGGGGGGGGGGGGGGGGG"}
 	server.view = {"schema_version": 1, "mode": "attempts", "head": vectors.links[0], "room": facts, "partner_supports": true, "attempts": [_attempt(vectors, 0, "held")]}
 	_check(Sync.valid_view(server.view), "The server's list shape is accepted")
+	for variant: Dictionary in WrongTypes.variants(server.view):
+		_check(not Sync.valid_view(variant.value), "A list with a wrongly typed field is refused: " + variant.path)
 	var broken: Dictionary = server.view.duplicate(true)
 	broken.head = "c".repeat(64)
 	_check(not Sync.valid_view(broken), "A head that is not the last link is refused")

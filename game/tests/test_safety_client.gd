@@ -3,6 +3,7 @@ const Client = preload("res://services/safety_client.gd")
 const Store = preload("res://services/safety_store.gd")
 const Save = preload("res://services/local_save.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const PEER := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -171,6 +172,16 @@ func _run() -> void:
 	check(FileAccess.get_file_as_bytes(path) == bytes, "future state bytes not migrated or overwritten")
 	check(not store.partner_allowed(OWNER, "relay", ROOM, PEER), "unreadable safety state does not expose cached partner photos")
 	check(store.erase(OWNER) and not FileAccess.file_exists(path), "explicit account cleanup removes only owner's safety generations")
+	var config := {"schema_version": 1, "enforced": true, "terms_version": Client.TERMS_VERSION, "privacy_path": "/privacy", "deletion_path": "/account-deletion", "rules_path": "/community-rules"}
+	var terms := {"schema_version": 1, "terms_version": Client.TERMS_VERSION, "accepted": true, "accepted_at": "2026-09-16T00:00:00.000Z"}
+	var receipt := {"schema_version": 1, "received": true, "report_id": "a".repeat(64), "request_hash": "b".repeat(64)}
+	check(Client.valid_config(config) and Client.valid_terms(terms) and Store.valid_receipt(receipt), "exact safety replies are accepted")
+	for variant: Dictionary in WrongTypes.variants(config):
+		check(not Client.valid_config(variant.value), "safety config with a wrongly typed field is refused: " + variant.path)
+	for variant: Dictionary in WrongTypes.variants(terms):
+		check(not Client.valid_terms(variant.value), "terms with a wrongly typed field are refused: " + variant.path)
+	for variant: Dictionary in WrongTypes.variants(receipt):
+		check(not Store.valid_receipt(variant.value), "a report receipt with a wrongly typed field is refused: " + variant.path)
 	server.free()
 	print("Safety client: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

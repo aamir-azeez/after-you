@@ -44,6 +44,7 @@ func _run() -> void:
 	_backup_shares_stages()
 	_written_turns_are_remembered()
 	print("drafts, damage and backups: %d ms" % (Time.get_ticks_msec() - started))
+	_wrong_type_cache()
 	print("JOURNEY PROOFS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -326,3 +327,19 @@ func _check(condition: bool, message: String) -> void:
 		failures += 1
 		push_error("FAIL: " + message)
 		print("FAIL: " + message)
+
+
+## A cache file whose version or chapter has the wrong kind is ignored as a
+## whole, and the lock around it is released.
+func _wrong_type_cache() -> void:
+	DirAccess.make_dir_recursive_absolute(Proofs.directory)
+	for value: Dictionary in [{"schema_version": "1", "chapter": "wrong-types-a", "entries": []}, {"schema_version": 1, "chapter": ["wrong-types-b"], "entries": []}]:
+		var chapter := "wrong-types-a" if value.chapter is String else "wrong-types-b"
+		var file := FileAccess.open(Proofs._path(chapter), FileAccess.WRITE)
+		file.store_buffer(var_to_bytes(value))
+		file.close()
+		Proofs._mutex.lock()
+		var entries: Array = Proofs._entries(chapter)
+		Proofs._mutex.unlock()
+		_check(entries.is_empty() and Proofs._mutex.try_lock(), "A wrongly typed proof cache is ignored: " + chapter)
+		Proofs._mutex.unlock()

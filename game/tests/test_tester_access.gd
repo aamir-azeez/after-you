@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Tester = preload("res://services/tester_access.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const URL := "https://tester.example.invalid"
 const OWNER := "aaaaaaaaaaaaaaaaaaaaaa"
 const TOKEN := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -131,6 +132,8 @@ func _run() -> void:
 	await _late_network()
 	await _late_put()
 	await _explicit_erasure()
+	for variant: Dictionary in WrongTypes.variants(_grant()):
+		_check(not Tester._grant(variant.value, OWNER), "A grant with a wrongly typed field is refused: " + variant.path)
 	await process_frame
 	print("Tester access: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)

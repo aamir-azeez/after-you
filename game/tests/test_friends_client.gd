@@ -1,6 +1,7 @@
 extends SceneTree
 const Client = preload("res://services/friends_client.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 var failures := 0
 var now := 1000
 var epoch := 1
@@ -60,6 +61,8 @@ func _run() -> void:
 	altered.friends[0].online = false
 	altered.friends[0].expires_after_seconds = 0
 	check(Client.valid_page(altered,OWNER),"An offline accepted friend may share a room")
+	for variant: Dictionary in WrongTypes.variants(page()):
+		check(not Client.valid_page(variant.value,OWNER),"A friends page with a wrongly typed field is refused: "+variant.path)
 	altered.friends[0].status = "incoming"
 	check(not Client.valid_page(altered,OWNER),"An unaccepted request cannot expose an offline shared room")
 	altered = page()

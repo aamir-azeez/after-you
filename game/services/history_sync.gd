@@ -14,6 +14,7 @@ extends RefCounted
 const Store = preload("res://services/history_store.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const Save = preload("res://services/local_save.gd")
 
 const ATTEMPT_KEYS := ["position", "branch", "digest", "link", "byte_length", "last_stage", "state", "acked_by_you", "partner_acked", "wanted_by_partner", "pair_ids"]
 
@@ -48,7 +49,7 @@ static func _int(value: Variant, low: int, high: int) -> bool:
 ## The server's list, checked: one record a finished attempt in order, and the head
 ## is the last link. Every attempt keeps the server's exact field set.
 static func valid_view(value: Variant) -> bool:
-	if not value is Dictionary or value.size() != 6 or value.get("schema_version") != 1.0 or not value.get("mode") in ["attempts", "v1_transferred"] or not _hash(value.get("head")) or not value.get("attempts") is Array or not value.get("partner_supports") is bool: return false
+	if not value is Dictionary or value.size() != 6 or not Save.equal(value.get("schema_version"), 1.0) or not value.get("mode") in ["attempts", "v1_transferred"] or not _hash(value.get("head")) or not value.get("attempts") is Array or not value.get("partner_supports") is bool: return false
 	var room: Variant = value.get("room")
 	if not room is Dictionary or room.size() != 6 or not Store._id(str(room.get("room_id"))) or not Store._id(str(room.get("host_id"))) or not (room.get("guest_id") == null or Store._id(str(room.guest_id))) or Registry.resolve(room).is_empty(): return false
 	var attempts: Array = value.attempts
@@ -68,7 +69,7 @@ static func check_download(tagged: PackedByteArray, record: Dictionary, previous
 	var bytes := Store.verified_bytes(tagged, record)
 	if bytes.is_empty(): return {}
 	var blob: Variant = JSON.parse_string(bytes.get_string_from_utf8())
-	if not blob is Dictionary or blob.get("format") != "after-you.attempt" or blob.get("format_version") != 1.0 or blob.get("room_id") != room_id or blob.get("position") != float(record.position): return {}
+	if not blob is Dictionary or not Save.equal(blob.get("format"), "after-you.attempt") or not Save.equal(blob.get("format_version"), 1.0) or not Save.equal(blob.get("room_id"), room_id) or not Save.equal(blob.get("position"), float(record.position)): return {}
 	if Store.link(blob, int(record.position), previous_link, record.digest, int(record.byte_length)) != record.link: return {}
 	return blob
 
@@ -200,7 +201,7 @@ func local_pair(server_key: String, owner: String, room_id: String, chapter_key:
 	var loaded: Dictionary = store.read_attempt(server_key, owner, room_id, position)
 	if not loaded.get("ok", false): return {}
 	var blob: Variant = JSON.parse_string(loaded.bytes.get_string_from_utf8())
-	if not blob is Dictionary or not blob.get("checkpoint") is Dictionary or blob.get("room_id") != room_id: return {}
+	if not blob is Dictionary or not blob.get("checkpoint") is Dictionary or not Save.equal(blob.get("room_id"), room_id): return {}
 	var checkpoint: Dictionary = blob.checkpoint
 	while int(checkpoint.get("stage_index", -1)) > stage + 1:
 		checkpoint = Registry.previous_checkpoint(chapter_key, checkpoint)

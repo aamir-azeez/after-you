@@ -4,6 +4,7 @@ extends RefCounted
 const Presence = preload("res://services/friend_presence.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
+const Save = preload("res://services/local_save.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
 const UNAVAILABLE_TITLE := "Unavailable room"
 ## A room taken off the list for good (closed or left), not just hidden: its
@@ -331,7 +332,7 @@ static func ordered(rooms: Array, seen: Dictionary, current_player: String = "")
 	return result
 
 static func valid_page(value: Variant) -> bool:
-	if not value is Dictionary or value.size() != 2 or value.get("schema_version") != 1 or not value.get("rooms") is Array or value.rooms.size() > 100: return false
+	if not value is Dictionary or value.size() != 2 or not Save.equal(value.get("schema_version"), 1) or not value.get("rooms") is Array or value.rooms.size() > 100: return false
 	var keys := {}
 	for item: Variant in value.rooms:
 		if not valid_server_room(item) and not valid_room(item): return false

@@ -3,6 +3,7 @@ extends RefCounted
 const Canonical = preload("res://core/v2/canonical.gd")
 const Journal = preload("res://services/relay_online_store.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
+const Save = preload("res://services/local_save.gd")
 
 class DiskStore:
 	extends RefCounted
@@ -55,7 +56,7 @@ func bind_room(family: String, room: Dictionary) -> bool:
 	if busy: return _fail("request_busy")
 	var context := _context()
 	if context.is_empty(): return _fail("identity_changed")
-	var preserve_view: bool = _storage_ready and context == _binding and _family == family and _room.get("room_id") == room.get("room_id") and Canonical.same(_source,source_for(family,room))
+	var preserve_view: bool = _storage_ready and context == _binding and _family == family and Save.equal(_room.get("room_id"), room.get("room_id")) and Save.same(_source,source_for(family,room))
 	var previous_view := _view.duplicate(true)
 	var previous_state := _state.duplicate(true)
 	if context != _binding:
@@ -74,7 +75,7 @@ func bind_room(family: String, room: Dictionary) -> bool:
 	var value: Variant = loaded.get("value",{})
 	if not value is Dictionary or (not value.is_empty() and not _valid_state(value)): return _fail("redo_storage_unavailable")
 	_state = {"schema_version":1,"owner_player_id":context.player_id,"family":family,"room_id":room.room_id,"server_hash":str(_api.base_url).sha256_text(),"pending":{}} if value.is_empty() else value.duplicate(true)
-	if preserve_view and Canonical.same(previous_state,_state): _view = previous_view
+	if preserve_view and Save.same(previous_state,_state): _view = previous_view
 	_storage_ready = true
 	return true
 
@@ -94,7 +95,7 @@ func can_request() -> bool: return _can("second_player_id") and _view.get("reque
 func can_accept() -> bool: return _can("first_player_id") and _view.get("request") is Dictionary and _view.request.status == "pending"
 func can_cancel() -> bool: return _can("second_player_id") and _view.get("request") is Dictionary and _view.request.status == "pending"
 func _can(role: String) -> bool:
-	return _storage_ready and not busy and pending().is_empty() and _same(_generation) and not _source.is_empty() and _source.get(role) == _binding.player_id and Canonical.same(_view.get("source"), _source)
+	return _storage_ready and not busy and pending().is_empty() and _same(_generation) and not _source.is_empty() and _source.get(role) == _binding.player_id and Save.same(_view.get("source"), _source)
 
 func refresh() -> bool:
 	if busy or not _storage_ready or not _same(_generation) or _room.is_empty(): return _fail("request_busy")
@@ -169,7 +170,7 @@ func retry(allow_mutations: bool = true) -> bool:
 	return true
 
 func _transfer_receipt_valid(receipt: Variant, operation: Dictionary) -> bool:
-	return _same(_generation) and Canonical.same(pending(), operation) and valid_fork_receipt(receipt, operation.source, operation.body, operation.checkpoint_hash, operation.stage_id)
+	return _same(_generation) and Save.same(pending(), operation) and valid_fork_receipt(receipt, operation.source, operation.body, operation.checkpoint_hash, operation.stage_id)
 
 func _failed_reply(response: Dictionary) -> bool:
 	var code := str(response.get("code","redo_unavailable"))
@@ -202,17 +203,17 @@ func _valid_view(value: Variant) -> bool:
 	return valid_view(value, _source)
 
 static func valid_view(value: Variant, source: Dictionary) -> bool:
-	if not value is Dictionary or value.size()!=3 or value.get("schema_version")!=1 or not value.has("source") or not value.has("request"): return false
+	if not value is Dictionary or value.size()!=3 or not Save.equal(value.get("schema_version"), 1) or not value.has("source") or not value.has("request"): return false
 	if source.is_empty(): return value.source == null and value.request == null
-	if not Canonical.same(value.source,source): return false
+	if not Save.same(value.source,source): return false
 	if value.request == null: return true
 	var request: Variant = value.request
-	return request is Dictionary and request.size()==3 and request.get("request_id")==Canonical.digest(source) and Canonical.same(request.get("source"),source) and request.get("status") in ["pending","declined","cancelled","accepted"]
+	return request is Dictionary and request.size()==3 and Save.equal(request.get("request_id"), Canonical.digest(source)) and Save.same(request.get("source"),source) and request.get("status") in ["pending","declined","cancelled","accepted"]
 
 func _accepted_response(value: Variant, operation: Dictionary) -> bool:
 	if not value is Dictionary: return false
 	var room: Variant = value.get("room") if _family == "relay" else value
-	if not room is Dictionary or room.get("room_id")!=_room.room_id or room.get("host_id")!=_room.host_id or room.get("guest_id")!=_room.guest_id or int(room.get("revision",-1))<=int(operation.source.revision): return false
+	if not room is Dictionary or not Save.equal(room.get("room_id"), _room.room_id) or not Save.equal(room.get("host_id"), _room.host_id) or not Save.equal(room.get("guest_id"), _room.guest_id) or int(room.get("revision",-1))<=int(operation.source.revision): return false
 	if _family == "legacy": return int(room.get("attempt",-1)) > int(operation.source.branch)
 	return valid_fork_receipt(value.get("receipt"),operation.source,operation.body,operation.checkpoint_hash,operation.stage_id)
 
@@ -235,18 +236,18 @@ func _valid_state(value: Dictionary) -> bool:
 	return valid_journal(value,str(_binding.get("player_id","")),_family,str(_room.get("room_id","")),str(_api.base_url))
 
 static func valid_journal(value: Dictionary, owner: String, family: String, room_id: String, base_url: String) -> bool:
-	if JSON.stringify(value).length()>8192 or value.size()!=6 or value.get("schema_version")!=1 or value.get("owner_player_id")!=owner or value.get("family")!=family or value.get("room_id")!=room_id or value.get("server_hash")!=base_url.sha256_text() or not value.get("pending") is Dictionary: return false
+	if JSON.stringify(value).length()>8192 or value.size()!=6 or not Save.equal(value.get("schema_version"), 1) or not Save.equal(value.get("owner_player_id"), owner) or not Save.equal(value.get("family"), family) or not Save.equal(value.get("room_id"), room_id) or not Save.equal(value.get("server_hash"), base_url.sha256_text()) or not value.get("pending") is Dictionary: return false
 	var operation: Dictionary = value.pending
 	if operation.is_empty(): return true
 	if operation.size()!=5 or operation.get("action") not in ["request","decline","cancel","accept"] or not _valid_source(operation.get("source")) or operation.source.room_id!=value.room_id or owner not in [operation.source.first_player_id,operation.source.second_player_id] or not operation.get("body") is Dictionary or not operation.get("checkpoint_hash") is String or not operation.get("stage_id") is String: return false
 	var body: Dictionary = operation.body
 	var expected_owner: String = operation.source.first_player_id if operation.action in ["accept","decline"] else operation.source.second_player_id
 	if owner != expected_owner: return false
-	if operation.action != "accept": return body.size()==2 and body.get("action")==operation.action and Canonical.same(body.get("source"),operation.source)
-	return body.size()==(5 if family=="relay" else 3) and body.get("base_revision")==operation.source.revision and body.get("redo_request_id")==Canonical.digest(operation.source) and body.get("idempotency_key") is String and body.idempotency_key.length()==36 and (family=="legacy" or (body.get("branch")==operation.source.branch and body.get("stage_index")==operation.source.stage_index))
+	if operation.action != "accept": return body.size()==2 and Save.equal(body.get("action"), operation.action) and Save.same(body.get("source"),operation.source)
+	return body.size()==(5 if family=="relay" else 3) and Save.equal(body.get("base_revision"), operation.source.revision) and Save.equal(body.get("redo_request_id"), Canonical.digest(operation.source)) and body.get("idempotency_key") is String and body.idempotency_key.length()==36 and (family=="legacy" or (Save.equal(body.get("branch"), operation.source.branch) and Save.equal(body.get("stage_index"), operation.source.stage_index)))
 
 static func source_for(family: String, room: Dictionary) -> Dictionary:
-	if family not in ["legacy","relay"] or room.get("active_role")!="b" or not _id(room.get("host_id")) or not _id(room.get("guest_id")) or room.get("first_player_id") not in [room.get("host_id"),room.get("guest_id")]: return {}
+	if family not in ["legacy","relay"] or not Save.equal(room.get("active_role"), "b") or not _id(room.get("host_id")) or not _id(room.get("guest_id")) or room.get("first_player_id") not in [room.get("host_id"),room.get("guest_id")]: return {}
 	var a: Variant = room.get("recording_a") if family=="relay" else room.get("recordings",{}).get("a")
 	if not a is Dictionary: return {}
 	var source := {"room_id":room.get("room_id"),"revision":room.get("revision"),"branch":room.get("branch") if family=="relay" else room.get("attempt"),"stage_index":room.get("stage_index") if family=="relay" else room.get("level_index"),"a_hash":a.get("recording_hash") if family=="relay" else a.get("final_state_hash"),"first_player_id":room.first_player_id,"second_player_id":room.guest_id if room.first_player_id==room.get("host_id") else room.get("host_id")}

@@ -2,6 +2,7 @@ extends RefCounted
 ## Device-local phone consent, separate from gameplay settings and journals.
 ## Scope includes server, identity and credential hash; values bind consent to friendship tokens.
 const AtomicFile = preload("res://services/atomic_file.gd")
+const Save = preload("res://services/local_save.gd")
 const PATH := "user://hosting_notification_preferences.cfg"
 var path := PATH
 var _preferences: Dictionary = {}
@@ -9,7 +10,7 @@ var _preferences: Dictionary = {}
 func _init(storage_path: String = PATH) -> void:
 	path = storage_path
 	var config := ConfigFile.new()
-	if config.load(path) == OK and config.get_value("hosting","schema_version",-1) == 1:
+	if config.load(path) == OK and Save.equal(config.get_value("hosting","schema_version",-1), 1):
 		var value: Variant = config.get_value("hosting","preferences",{})
 		if valid(value): _preferences = value.duplicate(true)
 

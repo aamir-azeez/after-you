@@ -3,6 +3,7 @@ extends Node
 
 const Secrets = preload("res://services/secure_store.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
+const Save = preload("res://services/local_save.gd")
 var secret_factory: Callable
 var api_factory: Callable
 var _secrets: Node
@@ -70,7 +71,7 @@ func _verify_bound(owner: String, base_url: String, generation: int) -> bool:
 static func valid_response(response: Dictionary, owner: String) -> bool:
 	var data: Variant = response.get("data")
 	if response.get("ok") != true or response.get("status") != 200 or not data is Dictionary: return false
-	return data.get("full_journey") is bool and data.full_journey and data.get("status") == "verified" and data.get("access_source") == "review_grant" and data.get("entitlement") == "full_journey_play" and data.get("player_id") == owner
+	return data.get("full_journey") is bool and data.full_journey and Save.equal(data.get("status"), "verified") and Save.equal(data.get("access_source"), "review_grant") and Save.equal(data.get("entitlement"), "full_journey_play") and Save.equal(data.get("player_id"), owner)
 
 func _identity(generation: int) -> Dictionary:
 	# A queued recovery must finish before using either the old or new credential.

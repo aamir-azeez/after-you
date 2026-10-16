@@ -1,10 +1,11 @@
 extends RefCounted
 ## Called after local cleanup, before forgetting the old device credential.
 const Photos = preload("res://services/deleted_identity_photo_cleanup.gd")
+const Save = preload("res://services/local_save.gd")
 const KEY := "deleted_identity_server_ack"
 
 static func valid_marker(value: Variant, owner: String) -> bool:
-	return value is Dictionary and value.size() == 3 and value.get("schema_version") == 1 and value.get("owner") == owner and Photos.valid_owner(owner) and value.get("acknowledged") is bool
+	return value is Dictionary and value.size() == 3 and Save.equal(value.get("schema_version"), 1) and Save.equal(value.get("owner"), owner) and Photos.valid_owner(owner) and value.get("acknowledged") is bool
 
 static func permitted(save: RefCounted, owner: String) -> bool:
 	return Photos.valid_owner(owner) and (not save.data.has(KEY) or valid_marker(save.data[KEY], owner))
@@ -22,7 +23,7 @@ static func finish(api: Node, save: RefCounted, owner: String) -> Dictionary:
 	var credential_hash: String = api.device_token.sha256_text()
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST, "/v1/identity/deletion-ack", {"schema_version": 1})
 	var data: Variant = response.get("data")
-	if api.player_id != owner or api.device_token.sha256_text() != credential_hash or not response.get("ok", false) or not data is Dictionary or data.size() != 2 or data.get("schema_version") != 1 or not data.get("acknowledged") is bool or not data.acknowledged:
+	if api.player_id != owner or api.device_token.sha256_text() != credential_hash or not response.get("ok", false) or not data is Dictionary or data.size() != 2 or not Save.equal(data.get("schema_version"), 1) or not data.get("acknowledged") is bool or not data.acknowledged:
 		return {"ok": false, "error": "cleanup_ack_unconfirmed"}
 	if not permitted(save, owner) or Photos.marker_owner(save.data.get(Photos.MARKER_KEY)) != owner or not save.update_values({KEY: {"schema_version": 1, "owner": owner, "acknowledged": true}}):
 		return {"ok": false, "error": "cleanup_ack_unwritable"}

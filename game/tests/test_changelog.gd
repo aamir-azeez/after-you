@@ -15,6 +15,8 @@ func _initialize() -> void:
 	_shipped_file()
 	_text_rules()
 	_channels()
+	for mode: Variant in [[1], {"x": 1}, true, 1]:
+		_check(Changelog.channel({"purchase_mode": mode}) == Changelog.GITHUB, "A configuration with a wrongly typed purchase mode reads as the GitHub build")
 	_highlights()
 	_malformed()
 	_decide()

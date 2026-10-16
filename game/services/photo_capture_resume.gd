@@ -7,6 +7,7 @@ extends RefCounted
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Capture = preload("res://services/optional_photo_capture.gd")
 const RoomStages = preload("res://services/room_stages.gd")
+const Save = preload("res://services/local_save.gd")
 const MAX_ENTRIES := 8
 const MAX_FILE := 32 * 1024
 ## Long enough to come back after a busy week; an entry is only a hint to reopen a card.
@@ -36,7 +37,7 @@ func entries(owner: String) -> Array[Dictionary]:
 	var json := JSON.new()
 	if json.parse(text) != OK: return result # A damaged file reads as nothing waiting.
 	var parsed: Variant = json.data
-	if not parsed is Dictionary or parsed.get("schema_version") != 1 or parsed.get("owner_player_id") != owner or not parsed.get("entries") is Array:
+	if not parsed is Dictionary or not Save.equal(parsed.get("schema_version"), 1) or not Save.equal(parsed.get("owner_player_id"), owner) or not parsed.get("entries") is Array:
 		return result
 	var now := int(clock.call())
 	for entry: Variant in parsed.entries:

@@ -8,6 +8,7 @@ const Save = preload("res://services/local_save.gd")
 const Relay = preload("res://services/relay_online_store.gd")
 const Shared = preload("res://services/shared_replay_store.gd")
 const Safety = preload("res://services/safety_store.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const PEER := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -127,6 +128,8 @@ func _test_ack() -> void:
 	var cold := Save.new(save.path)
 	cold.load_data()
 	check(Ack.valid_marker(cold.data[Ack.KEY], OWNER) and not cold.data[Ack.KEY].acknowledged, "Cold restart preserves pending ACK without credential data")
+	for variant: Dictionary in WrongTypes.variants(cold.data[Ack.KEY]):
+		check(not Ack.valid_marker(variant.value, OWNER), "An ACK marker with a wrongly typed field is refused: " + variant.path)
 	api.drop = false
 	api.wrong_shape = true
 	check(not (await Ack.finish(api, cold, OWNER)).ok, "Future response is not completion")

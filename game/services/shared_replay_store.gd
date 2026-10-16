@@ -40,7 +40,7 @@ static func decode_scope(snapshot: Dictionary) -> Dictionary:
 		var parser := JSON.new()
 		if parser.parse(raw.get_string_from_utf8()) != OK: continue
 		var value: Variant = parser.data
-		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or value.get("shared_replay_scope") != snapshot.scope or not value.get("shared_replay_value") is Dictionary or value.shared_replay_value.get("schema_version") != 1): return {"ok": false}
+		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or not Save.equal(value.get("shared_replay_scope"), snapshot.scope) or not value.get("shared_replay_value") is Dictionary or not Save.equal(value.shared_replay_value.get("schema_version"), 1)): return {"ok": false}
 		if not Save._valid(value): continue
 		var generation: Variant = value.get("generation", 0)
 		if not (generation is int or generation is float) or not is_finite(float(generation)) or generation < 0 or floor(float(generation)) != float(generation): return {"ok": false}
@@ -61,7 +61,7 @@ func load_scope(scope: String) -> Dictionary:
 		if file == null or file.get_length() > _file_limit(scope): return {"ok": false}
 		var value: Variant = JSON.parse_string(file.get_as_text())
 		file.close()
-		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or value.get("shared_replay_scope") != scope or not value.get("shared_replay_value") is Dictionary or value.shared_replay_value.get("schema_version") != 1):
+		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or not Save.equal(value.get("shared_replay_scope"), scope) or not value.get("shared_replay_value") is Dictionary or not Save.equal(value.shared_replay_value.get("schema_version"), 1)):
 			return {"ok": false}
 	var save := Save.new(path)
 	save.load_data()
@@ -69,7 +69,7 @@ func load_scope(scope: String) -> Dictionary:
 	return {"ok": true, "found": found, "value": save.data.get("shared_replay_value", {}).duplicate(true)}
 
 func save_scope(scope: String, value: Dictionary) -> bool:
-	if not _scope_valid(scope) or value.get("schema_version") != 1 or JSON.stringify(value).to_utf8_buffer().size() > _file_limit(scope) - 4096: return false
+	if not _scope_valid(scope) or not Save.equal(value.get("schema_version"), 1) or JSON.stringify(value).to_utf8_buffer().size() > _file_limit(scope) - 4096: return false
 	if not load_scope(scope).ok: return false
 	if DirAccess.make_dir_recursive_absolute(directory) != OK: return false
 	var save := Save.new(directory.path_join(scope.sha256_text() + ".json"))

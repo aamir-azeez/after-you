@@ -5,6 +5,7 @@ const Cleanup = preload("res://services/deleted_identity_cache_cleanup.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Fixture = preload("res://tests/replay_transfer_fixture.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 const Memory = Fixture.Memory
 const HOST := Fixture.HOST
 const GUEST := Fixture.GUEST
@@ -105,6 +106,10 @@ func _native_archives() -> void:
 
 func _malformed(archive: Dictionary, manifest: Dictionary) -> void:
 	_check(Transfer.valid_transfer(_transfer(manifest), HOST, ROOM), "Exact server manifest identifies the completed member room")
+	for variant: Dictionary in WrongTypes.variants(_transfer(manifest), 3):
+		_check(not Transfer.valid_transfer(variant.value, HOST, ROOM), "A transfer with a wrongly typed field is refused: " + variant.path)
+	for variant: Dictionary in WrongTypes.variants(archive, 1):
+		_check(not Transfer.verify_archive(variant.value, manifest, HOST, ROOM).get("ok", false), "An archive with a wrongly typed field is refused: " + variant.path)
 	_check(manifest.room.simulation_version is float and Transfer.valid_transfer(_transfer(manifest), HOST, ROOM), "Integral JSON numbers use the native supported-rules path")
 	var native_numbers := manifest.duplicate(true)
 	native_numbers.room.simulation_version = int(native_numbers.room.simulation_version)

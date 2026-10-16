@@ -5,6 +5,7 @@ extends RefCounted
 ## room (RelayOnlineSession.archived_room_kind) is held, never read as ordinary.
 const Canonical = preload("res://core/v2/canonical.gd")
 const RoomStages = preload("res://services/room_stages.gd")
+const Save = preload("res://services/local_save.gd")
 var _online: WeakRef
 var _lifetime: Dictionary = {}
 var _contexts: Dictionary = {}
@@ -71,7 +72,7 @@ func dispatch(binding: Dictionary, value: Dictionary, external_api: Node = null,
 	elif binding.purpose == "photo" and delivery_ack(value): response = await online.auxiliary_photo_ack_transport(value)
 	else: response = await online.transport(value)
 	if not current(): return _held("identity_changed")
-	if external_api != null and not Canonical.same(external,_external_binding(external_api,external_identity)): return _held("identity_changed")
+	if external_api != null and not Save.same(external,_external_binding(external_api,external_identity)): return _held("identity_changed")
 	if not _authorized(binding): return _held("campaign_context_changed")
 	return response
 

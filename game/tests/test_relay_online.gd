@@ -701,6 +701,16 @@ func _disk_boundaries() -> void:
 		var odd := DiskStore.new(directory)
 		_check(odd.load_scope(scope).get("error")=="unsupported_save" and not odd.save_scope(scope,{}).ok and FileAccess.get_file_as_string(path)==before,"A version that is not a number is held unchanged: %s" % [version])
 		_check(DiskStore.decode_scope(odd.capture_scope(scope)).get("error")=="unsupported_save","The worker decode holds a version that is not a number: %s" % [version])
+	raw.version = 1
+	for scope_value: Variant in [7,[1],{},true]:
+		raw.relay_online_scope = scope_value
+		file = FileAccess.open(path,FileAccess.WRITE)
+		file.store_string(JSON.stringify(raw))
+		file.close()
+		before = FileAccess.get_file_as_string(path)
+		var odd := DiskStore.new(directory)
+		_check(odd.load_scope(scope).get("error")=="unsupported_save" and not odd.save_scope(scope,{}).ok and FileAccess.get_file_as_string(path)==before,"A scope that is not a string is held unchanged: %s" % [scope_value])
+		_check(DiskStore.decode_scope(odd.capture_scope(scope)).get("error")=="unsupported_save","The worker decode holds a scope that is not a string: %s" % [scope_value])
 
 func _load_into(session, result: Dictionary) -> void:
 	result.value = await session.load_lobby()

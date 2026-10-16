@@ -1,5 +1,6 @@
 extends SceneTree
 const Client = preload("res://services/friend_room_events_client.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 var player_id := "aaaaaaaaaaaaaaaaaaaaaa"
 var friend_id := "bbbbbbbbbbbbbbbbbbbbbb"
 var request_id := "cccccccccccccccccccccc"
@@ -58,6 +59,12 @@ func _run() -> void:
 	var preference := {"player_id":friend_id,"request_id":request_id,"enabled":true}
 	var inbox := {"schema_version":1,"available":true,"events":[event],"preferences":[preference]}
 	check(Client.valid_inbox(inbox),"validates event and preference inbox projections")
+	for variant: Dictionary in WrongTypes.variants(inbox):
+		check(not Client.valid_inbox(variant.value),"An inbox with a wrongly typed field is refused: "+variant.path)
+	for variant: Dictionary in WrongTypes.variants(event):
+		check(not Client.valid_event(variant.value),"An event with a wrongly typed field is refused: "+variant.path)
+	for variant: Dictionary in WrongTypes.variants({"schema_version":1,"publication_epoch":2,"queued":20}):
+		check(not Client.valid_publication_ack(variant.value),"An acknowledgement with a wrongly typed field is refused: "+variant.path)
 	# The real API parses every JSON number as a float (2.0, 4.0).
 	var parsed: Variant = JSON.parse_string(JSON.stringify(inbox))
 	check(parsed.events[0].room.api_version is float and Client.valid_inbox(parsed),"accepts a hosting event exactly as the parsed server reply carries it")

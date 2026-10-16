@@ -8,6 +8,7 @@ const AtomicFile = preload("res://services/atomic_file.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Capture = preload("res://services/optional_photo_capture.gd")
 const RoomStages = preload("res://services/room_stages.gd")
+const Save = preload("res://services/local_save.gd")
 const MAX_BYTES := 160 * 1024
 const MAX_EDGE := 960
 const MAX_METADATA := 8192
@@ -160,7 +161,7 @@ func import_entry(owner: String, value: Dictionary) -> Dictionary:
 	var keys := ["entry_id", "room_id", "turn_id", "recording_hash", "photo_revision", "photo_owner", "local_only", "sha256", "width", "height", "byte_length", "created_at", "jpeg_base64", "deleted"]
 	if not _owner(owner) or not _keys(value, keys) or not value.local_only is bool or not value.deleted is bool or not value.jpeg_base64 is String or value.jpeg_base64.length() > ceili(MAX_BYTES / 3.0) * 4 or not _timestamp(value.created_at):
 		return _error("invalid_photo_import")
-	if value.local_only and value.photo_owner != owner:
+	if value.local_only and not Save.equal(value.photo_owner, owner):
 		return _error("invalid_photo_import_owner")
 	var bytes := Marshalls.base64_to_raw(value.jpeg_base64)
 	if Marshalls.raw_to_base64(bytes) != value.jpeg_base64:
@@ -280,7 +281,7 @@ func _write_doc(path: String, value: Dictionary) -> Dictionary:
 	if step == AtomicFile.Step.OPEN or step == AtomicFile.Step.BACKUP:
 		return _error("photo_storage_unavailable")
 	var checked := _read_doc(path)
-	if step != AtomicFile.Step.DONE or not checked.ok or checked.get("generation") != generation or not Canonical.same(checked.get("value"), value):
+	if step != AtomicFile.Step.DONE or not checked.ok or checked.get("generation") != generation or not Save.same(checked.get("value"), value):
 		return _error("photo_write_unconfirmed")
 	return {"ok": true, "durable": true}
 
@@ -300,9 +301,9 @@ func _read_doc(path: String) -> Dictionary:
 		if parse_error != OK:
 			continue
 		var doc: Variant = parser.data
-		if doc is Dictionary and doc.get("schema_version") != 1:
+		if doc is Dictionary and not Save.equal(doc.get("schema_version"), 1):
 			return _error("unsupported_photo_library")
-		if not doc is Dictionary or not _keys(doc, ["schema_version", "generation", "value", "checksum"]) or not _integer(doc.generation, 1, 2147483647) or not doc.value is Dictionary or doc.checksum != Canonical.digest(doc.value):
+		if not doc is Dictionary or not _keys(doc, ["schema_version", "generation", "value", "checksum"]) or not _integer(doc.generation, 1, 2147483647) or not doc.value is Dictionary or not Save.equal(doc.checksum, Canonical.digest(doc.value)):
 			continue
 		if not best.found or doc.generation > best.generation:
 			best = {"ok": true, "found": true, "generation": int(doc.generation), "value": doc.value.duplicate(true), "source": candidate}
@@ -330,7 +331,7 @@ func _tombstone(owner: String, room_id: String, photo: Dictionary) -> Dictionary
 	if not read.ok or not read.get("found", false):
 		return read
 	var value: Dictionary = read.value
-	if not _keys(value, ["schema_version", "room_id", "turn_id", "recording_hash", "owner_player_id", "photo_revision", "updated_at"]) or value.schema_version != 1 or value.room_id != room_id or value.turn_id != photo.turn_id or value.recording_hash != photo.recording_hash or value.owner_player_id != photo.owner_player_id or not _integer(value.photo_revision, 1, 256) or not _timestamp(value.updated_at):
+	if not _keys(value, ["schema_version", "room_id", "turn_id", "recording_hash", "owner_player_id", "photo_revision", "updated_at"]) or not Save.equal(value.schema_version, 1) or not Save.equal(value.room_id, room_id) or not Save.equal(value.turn_id, photo.turn_id) or not Save.equal(value.recording_hash, photo.recording_hash) or not Save.equal(value.owner_player_id, photo.owner_player_id) or not _integer(value.photo_revision, 1, 256) or not _timestamp(value.updated_at):
 		return _error("unreadable_photo_library")
 	return read
 
@@ -345,7 +346,7 @@ func _visibility(owner: String, entry: Dictionary, tomb: Dictionary) -> Dictiona
 	if not hidden.ok:
 		return hidden
 	if hidden.get("found", false):
-		if not _keys(hidden.value, ["entry_id", "hidden"]) or hidden.value.entry_id != entry.entry_id or not hidden.value.hidden is bool or not hidden.value.hidden:
+		if not _keys(hidden.value, ["entry_id", "hidden"]) or not Save.equal(hidden.value.entry_id, entry.entry_id) or not hidden.value.hidden is bool or not hidden.value.hidden:
 			return _error("unreadable_photo_library")
 		return {"ok": true, "deleted": true}
 	return {"ok": true, "deleted": _deleted(entry, tomb)}
@@ -392,10 +393,10 @@ static func _pixels_reference(entry: Dictionary) -> String:
 	return Canonical.digest([entry.room_id, photo.turn_id, photo.recording_hash, photo.owner_player_id, photo.sha256, entry.deleted])
 
 static func _entry(value: Variant, owner: String) -> bool:
-	return value is Dictionary and _keys(value, ENTRY_KEYS) and value.schema_version == 1 and _id(value.room_id) and value.local_only is bool and value.delivery_ack is bool and (not value.local_only or (value.photo is Dictionary and value.photo.get("owner_player_id") == owner and not value.delivery_ack)) and _photo(value.photo, value.local_only) and _timestamp(value.created_at) and value.entry_id == _entry_id(value.room_id, value.photo, value.local_only)
+	return value is Dictionary and _keys(value, ENTRY_KEYS) and Save.equal(value.schema_version, 1) and _id(value.room_id) and value.local_only is bool and value.delivery_ack is bool and (not value.local_only or (value.photo is Dictionary and Save.equal(value.photo.get("owner_player_id"), owner) and not value.delivery_ack)) and _photo(value.photo, value.local_only) and _timestamp(value.created_at) and Save.equal(value.entry_id, _entry_id(value.room_id, value.photo, value.local_only))
 
 static func _photo(value: Variant, local_only: bool, allow_tombstone: bool = false) -> bool:
-	if not value is Dictionary or not _keys(value, PHOTO_KEYS) or value.schema_version != 1 or not _turn(value.turn_id) or not _id(value.owner_player_id) or not _hash(value.recording_hash) or not _integer(value.photo_revision, 0 if local_only else 1, 0 if local_only else 256) or not _timestamp(value.updated_at):
+	if not value is Dictionary or not _keys(value, PHOTO_KEYS) or not Save.equal(value.schema_version, 1) or not _turn(value.turn_id) or not _id(value.owner_player_id) or not _hash(value.recording_hash) or not _integer(value.photo_revision, 0 if local_only else 1, 0 if local_only else 256) or not _timestamp(value.updated_at):
 		return false
 	if value.sha256 == null:
 		return allow_tombstone and not local_only and value.width == null and value.height == null and value.byte_length == 0

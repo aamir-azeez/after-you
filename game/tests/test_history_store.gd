@@ -55,6 +55,7 @@ func _run() -> void:
 	var started := Time.get_ticks_msec()
 	_check(Store.decode(bomb, Store.MAX_ATTEMPT_BYTES).is_empty() and Time.get_ticks_msec() - started < 3000, "Inflating stops at the expected length, so a bomb decodes to nothing quickly")
 	_store(vectors, canonical)
+	_wrong_types()
 	print("History store: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -91,3 +92,18 @@ func _store(vectors: Dictionary, canonical: PackedByteArray) -> void:
 	_check(store.erase_owner(OWNER) and store.index(SERVER, OWNER, ROOM).is_empty() and not DirAccess.dir_exists_absolute(root.path_join(SERVER.left(16)).path_join(OWNER)), "Identity deletion removes that identity's attempts")
 	DirAccess.remove_absolute(root.path_join(SERVER.left(16)))
 	DirAccess.remove_absolute(root)
+
+## An index whose version, room or file name has the wrong kind reads as no
+## saved attempts, and its bytes stay as they were.
+func _wrong_types() -> void:
+	var store := Store.new("user://history-wrong-types-%d" % Time.get_ticks_usec())
+	var directory := store.room_directory(SERVER, OWNER, ROOM)
+	DirAccess.make_dir_recursive_absolute(directory)
+	var index := directory.path_join("index.json")
+	for value: Dictionary in [{"schema_version": "1", "room_id": ROOM, "attempts": []}, {"schema_version": [1], "room_id": ROOM, "attempts": []}, {"schema_version": 1, "room_id": 7, "attempts": []}, {"schema_version": 1, "room_id": [ROOM], "attempts": []}]:
+		var file := FileAccess.open(index, FileAccess.WRITE)
+		file.store_string(JSON.stringify(value))
+		file.close()
+		var bytes := FileAccess.get_file_as_string(index)
+		_check(store.index(SERVER, OWNER, ROOM).is_empty() and FileAccess.get_file_as_string(index) == bytes, "A wrongly typed index reads as none and stays unchanged: " + JSON.stringify(value))
+	DirAccess.remove_absolute(index)

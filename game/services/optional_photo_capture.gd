@@ -6,6 +6,7 @@ extends Node
 ## the camera was open) waits natively until recovered_photo() reads it and forget_recovered()
 ## releases it after a turn journal holds it.
 const NativeBridge = preload("res://services/native_bridge.gd")
+const Save = preload("res://services/local_save.gd")
 
 signal kept(request_id: String, metadata: Dictionary)
 signal skipped(request_id: String)
@@ -285,7 +286,7 @@ func _exit_tree() -> void:
 ## photos kept before it existed have none and show no date.
 static func _metadata_valid(value: Dictionary) -> bool:
 	var keys_ok: bool = _keys(value, META_KEYS) or (_keys(value, META_KEYS + ["taken_at"]) and _integer(value.taken_at, MAX_TAKEN_AT) and value.taken_at >= MIN_TAKEN_AT)
-	return keys_ok and value.status == "kept" and value.mime == "image/jpeg" and value.metadata_removed is bool and value.metadata_removed == true and value.uploaded is bool and value.uploaded == false and _matches(value.photo_id, "^[a-f0-9]{32}$") and _matches(value.sha256, "^[a-f0-9]{64}$") and _integer(value.width, MAX_EDGE) and _integer(value.height, MAX_EDGE) and _integer(value.byte_count, MAX_BYTES)
+	return keys_ok and Save.equal(value.status, "kept") and Save.equal(value.mime, "image/jpeg") and value.metadata_removed is bool and value.metadata_removed == true and value.uploaded is bool and value.uploaded == false and _matches(value.photo_id, "^[a-f0-9]{32}$") and _matches(value.sha256, "^[a-f0-9]{64}$") and _integer(value.width, MAX_EDGE) and _integer(value.height, MAX_EDGE) and _integer(value.byte_count, MAX_BYTES)
 
 static func _integer(value: Variant, maximum: int) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and value >= 1 and value <= maximum and value == int(value)

@@ -66,7 +66,7 @@ func _bound() -> bool:
 				# Do not recover over an understandable future/invalid transfer
 				# generation, even when an older envelope is otherwise loadable.
 				if parsed == OK and parser.data is Dictionary:
-					if parser.data.get("version") != 1 or (parser.data.has("photo_transfer") and not _valid_state(parser.data.photo_transfer)): return false
+					if not Save.equal(parser.data.get("version"), 1) or (parser.data.has("photo_transfer") and not _valid_state(parser.data.photo_transfer)): return false
 		_save = Save.new(path)
 		_save.load_data()
 		if _save.read_only or (found and _save.loaded_from.is_empty()): return false
@@ -211,7 +211,7 @@ func _upload(ticket: int) -> bool:
 		var response := await _net(HTTPClient.METHOD_POST, BASE + "/sessions", {"schema_version": 1, "idempotency_key": _state.upload.start_key}, ticket)
 		if not response.get("ok", false): return _error(response)
 		var session: Variant = response.get("data", {}).get("session")
-		if not session is Dictionary or session.get("session_id") != _state.upload.start_key:
+		if not session is Dictionary or not Save.equal(session.get("session_id"), _state.upload.start_key):
 			_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_6BF6BB0AE3B6)
 			return false
 		var next := _state.duplicate(true)
@@ -286,7 +286,7 @@ func receive() -> bool:
 			var expected: Dictionary = batch[ids.find(entry.entry_id)]
 			var metadata: Dictionary = entry.duplicate(true)
 			metadata.erase("jpeg_base64")
-			if not Canonical.same(metadata, expected): return _finish(ticket, _invalid_receive())
+			if not Save.same(metadata, expected): return _finish(ticket, _invalid_receive())
 			var portable: Dictionary = entry.duplicate(true)
 			portable.erase("entry_revision")
 			portable.erase("expires_at")
@@ -313,16 +313,16 @@ func _send_pending(ticket: int) -> bool:
 	var response := await _net(HTTPClient.METHOD_POST, pending.path, pending.body, ticket)
 	if not response.get("ok", false): return _error(response)
 	var receipt: Variant = response.get("data", {}).get("receipt")
-	if not receipt is Dictionary or receipt.get("idempotency_key") != pending.body.idempotency_key or receipt.get("operation") != pending.operation or receipt.get("session_id") != pending.session_id or not receipt.get("entries") is Array or receipt.entries.size() != pending.body.entries.size():
+	if not receipt is Dictionary or not Save.equal(receipt.get("idempotency_key"), pending.body.idempotency_key) or not Save.equal(receipt.get("operation"), pending.operation) or not Save.equal(receipt.get("session_id"), pending.session_id) or not receipt.get("entries") is Array or receipt.entries.size() != pending.body.entries.size():
 		_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_EB45998E4C92)
 		return false
 	var material: Dictionary = pending.body.duplicate(true)
 	material.merge({"operation": pending.operation, "session_id": pending.session_id})
-	if receipt.get("request_hash") != Canonical.digest(material): return _invalid_receive()
+	if not Save.equal(receipt.get("request_hash"), Canonical.digest(material)): return _invalid_receive()
 	var by_id: Dictionary = {}
 	for sent: Dictionary in pending.body.entries: by_id[sent.entry_id] = sent
 	for accepted: Variant in receipt.entries:
-		if not accepted is Dictionary or not by_id.has(accepted.get("entry_id")) or accepted.get("sha256") != by_id[accepted.entry_id].sha256 or not _positive_integer(accepted.get("entry_revision")): return _invalid_receive()
+		if not accepted is Dictionary or not by_id.has(accepted.get("entry_id")) or not Save.equal(accepted.get("sha256"), by_id[accepted.entry_id].sha256) or not _positive_integer(accepted.get("entry_revision")): return _invalid_receive()
 		if pending.operation == "restore_ack" and accepted.entry_revision != by_id[accepted.entry_id].entry_revision: return _invalid_receive()
 		by_id.erase(accepted.entry_id)
 	if not by_id.is_empty(): return _invalid_receive()
@@ -332,7 +332,7 @@ func _send_pending(ticket: int) -> bool:
 	return _persist(next) or _storage_error()
 
 func _valid_inventory(value: Variant) -> bool:
-	if not value is Dictionary or value.get("schema_version") != 1 or not value.get("entries") is Array or value.entries.size() > MAX_ENTRIES or value.get("entry_count") != value.entries.size(): return false
+	if not value is Dictionary or not Save.equal(value.get("schema_version"), 1) or not value.get("entries") is Array or value.entries.size() > MAX_ENTRIES or not Save.equal(value.get("entry_count"), value.entries.size()): return false
 	var seen: Array = []
 	for entry: Variant in value.entries:
 		if not entry is Dictionary or not _hash(entry.get("entry_id")) or not _hash(entry.get("sha256")) or entry.entry_id in seen or not _positive_integer(entry.get("entry_revision")) or not _positive_integer(entry.get("byte_length")) or entry.byte_length > 160 * 1024 or not entry.get("expires_at") is String: return false
@@ -367,7 +367,7 @@ static func _positive_integer(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and value > 0 and value <= 2147483647 and value == int(value)
 
 func _valid_state(value: Variant) -> bool:
-	if not value is Dictionary or not _exact(value, ["schema_version", "owner", "upload", "pending"]) or value.schema_version != 1 or value.owner != _owner or not value.upload is Dictionary or not value.pending is Dictionary: return false
+	if not value is Dictionary or not _exact(value, ["schema_version", "owner", "upload", "pending"]) or not Save.equal(value.schema_version, 1) or not Save.equal(value.owner, _owner) or not value.upload is Dictionary or not value.pending is Dictionary: return false
 	var upload: Dictionary = value.upload
 	if not upload.is_empty():
 		if not _exact(upload, ["start_key", "session_id", "entry_ids", "cursor"]) or not _matches(upload.start_key, "^[A-Za-z0-9_-]{16,80}$") or upload.session_id not in ["", upload.start_key] or not upload.entry_ids is Array or upload.entry_ids.is_empty() or upload.entry_ids.size() > MAX_ENTRIES or not _integer(upload.cursor, 0, upload.entry_ids.size()): return false
@@ -379,10 +379,10 @@ func _valid_state(value: Variant) -> bool:
 	if pending.is_empty(): return true
 	if not _exact(pending, ["operation", "path", "session_id", "count", "body"]) or pending.operation not in ["upload", "restore_ack"] or not _integer(pending.count, 1, 16) or not pending.body is Dictionary or not _exact(pending.body, ["schema_version", "idempotency_key", "entries"]): return false
 	var body: Dictionary = pending.body
-	if body.schema_version != 1 or not _matches(body.idempotency_key, "^[A-Za-z0-9_-]{16,80}$") or not body.entries is Array or body.entries.size() != pending.count or JSON.stringify(body).to_utf8_buffer().size() > BODY_LIMIT: return false
+	if not Save.equal(body.schema_version, 1) or not _matches(body.idempotency_key, "^[A-Za-z0-9_-]{16,80}$") or not body.entries is Array or body.entries.size() != pending.count or JSON.stringify(body).to_utf8_buffer().size() > BODY_LIMIT: return false
 	if pending.operation == "upload":
-		if upload.is_empty() or upload.session_id == "" or pending.session_id != upload.session_id or pending.path != BASE + "/" + str(upload.session_id) + "/entries" or int(upload.cursor) + body.entries.size() > upload.entry_ids.size(): return false
-	elif pending.session_id != null or pending.path != BASE + "/restore-ack": return false
+		if upload.is_empty() or Save.equal(upload.session_id, "") or not Save.equal(pending.session_id, upload.session_id) or not Save.equal(pending.path, BASE + "/" + str(upload.session_id) + "/entries") or int(upload.cursor) + body.entries.size() > upload.entry_ids.size(): return false
+	elif pending.session_id != null or not Save.equal(pending.path, BASE + "/restore-ack"): return false
 	var seen: Array = []
 	for index in range(body.entries.size()):
 		var entry: Variant = body.entries[index]
