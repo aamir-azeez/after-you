@@ -99,7 +99,8 @@ class ProofRun extends "res://services/stop_request.gd":
 static func covering() -> bool:
 	for id: int in _showing.keys():
 		if not is_instance_id_valid(id): _showing.erase(id)
-	return not _showing.is_empty()
+		elif (instance_from_id(id) as Node).is_inside_tree(): return true
+	return false
 
 ## Whether an open of key is expected to take long enough to show the card.
 static func expected_slow(open_key: String) -> bool:
@@ -268,11 +269,13 @@ func follow_scene_change(previous: Node) -> void:
 		await tree.process_frame
 		frames += 1
 	if not is_inside_tree(): return
-	await _while_building(tree.current_scene)
+	var screen := tree.current_scene
+	await _while_building(screen)
 	if not is_inside_tree(): return
 	if is_instance_valid(_bar): _bar.follow(1.0)
 	await tree.process_frame
-	_finish(frames < MAX_WAIT_FRAMES)
+	# A screen left before it was up (Back while it built) times nothing.
+	_finish(frames < MAX_WAIT_FRAMES and is_instance_valid(screen) and screen == tree.current_scene)
 
 ## A chapter screen that builds its world over several frames says so with
 ## building(); the card stays up (its bar moving) until it is done, never

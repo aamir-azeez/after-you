@@ -44,6 +44,10 @@ func check_cache_once(context: String, current_context: Callable, base_url: Stri
 	if context != current_context.call(): return
 	if result.get("ok", false): note_cache_checked(context, base_url, owner, device_token)
 
+## Whether the saved receipt was read for `context` and is loaded for this binding.
+func checked_for(context: String, base_url: String, owner: String, device_token: String) -> bool:
+	return not context.is_empty() and context == cache_checked_context and cache_loaded_for(base_url, owner, device_token)
+
 ## A redeem or restore that loaded this binding also counts as the context's check.
 func note_cache_checked(context: String, base_url: String, owner: String, device_token: String) -> void:
 	if cache_loaded_for(base_url, owner, device_token): cache_checked_context = context
@@ -95,7 +99,7 @@ func erase_binding(base_url: String, owner: String, device_token: String) -> Dic
 
 func _run(operation: String, base_url: String, expected_owner: String, code: String = "") -> Dictionary:
 	if _busy: return _error("service_busy")
-	var authority := _authority(base_url)
+	var authority := api_authority(base_url)
 	if authority.is_empty() or (not expected_owner.is_empty() and not _owner(expected_owner)): return _error("invalid_binding")
 	if operation != "cache" and not _owner(expected_owner): return _error("invalid_binding")
 	if operation == "redeem" and RegEx.create_from_string("^[!-~]{8,128}$").search(code) == null: return _error("invalid_tester_request")
@@ -265,7 +269,9 @@ static func _owner(value: String) -> bool:
 static func _token(value: String) -> bool:
 	return RegEx.create_from_string("^[A-Za-z0-9_-]{43}$").search(value) != null
 
-static func _authority(value: String) -> String:
+## The API address as the origin receipts are bound to, or "" when it is not
+## an https origin.
+static func api_authority(value: String) -> String:
 	var match_value := RegEx.create_from_string("^https://([A-Za-z0-9]+(?:[.-][A-Za-z0-9]+)*)(?::([0-9]{1,5}))?/?$").search(value)
 	if match_value == null: return ""
 	var port := match_value.get_string(2)
@@ -273,7 +279,7 @@ static func _authority(value: String) -> String:
 	return "https://" + match_value.get_string(1).to_lower() + (":" + str(int(port)) if not port.is_empty() and int(port) != 443 else "")
 
 static func _scope(base_url: String, owner: String, device_token: String) -> String:
-	var authority := _authority(base_url)
+	var authority := api_authority(base_url)
 	if authority.is_empty() or not _owner(owner) or not _token(device_token): return ""
 	return "tester_v1_" + (authority + "\n" + owner + "\n" + device_token.sha256_text()).sha256_text().substr(0,54)
 

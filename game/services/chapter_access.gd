@@ -36,7 +36,7 @@ static var _handed: Dictionary = {}
 ## background) reads it again. It lasts only for that scene change: the next
 ## frame at most.
 static func hand_over(scene: String, base_url: String, granted: bool) -> void:
-	_handed = {"scene": scene, "authority": TesterAccess._authority(base_url), "granted": granted, "frame": Engine.get_process_frames()}
+	_handed = {"scene": scene, "authority": TesterAccess.api_authority(base_url), "granted": granted, "frame": Engine.get_process_frames()}
 
 static func drop_hand_over() -> void:
 	_handed = {}
@@ -46,7 +46,7 @@ static func drop_hand_over() -> void:
 static func _take_hand_over(scene: String, base_url: String) -> Dictionary:
 	var handed := _handed
 	_handed = {}
-	var authority := TesterAccess._authority(base_url)
+	var authority := TesterAccess.api_authority(base_url)
 	if handed.is_empty() or Engine.get_process_frames() - int(handed.frame) > 1: return {}
 	if handed.scene != scene or authority.is_empty() or handed.authority != authority: return {}
 	return handed

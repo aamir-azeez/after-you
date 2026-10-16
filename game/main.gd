@@ -941,8 +941,11 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> vo
 			waiting = ChapterLoadingCard.new()
 			waiting.start(get_tree(), scene, bool(saves.data.settings.get("reduced_motion", false)))
 			_chapter_opening = waiting
+			# Main leaving during the read takes its waiting card with it.
+			tree_exiting.connect(waiting.cancel, CONNECT_ONE_SHOT)
 		await _load_cached_tester()
 		if is_instance_valid(waiting):
+			if tree_exiting.is_connected(waiting.cancel): tree_exiting.disconnect(waiting.cancel)
 			waiting.cancel()
 			if _chapter_opening == waiting: _chapter_opening = null
 		if application_backgrounded or view != store_view_generation or lifecycle != lifecycle_generation or context != _tester_context(): return
@@ -3693,8 +3696,7 @@ func _load_cached_tester() -> void:
 ## receipt, written in the frame the scene opens, when that read is for the
 ## identity now in use. Otherwise the scene reads the receipt itself.
 func _hand_over_tester_check(scene: String) -> void:
-	var context := _tester_context()
-	if _tester_checks_enabled() and is_instance_valid(tester_access) and not context.is_empty() and tester_access.cache_checked_context == context and tester_access.cache_loaded_for(api.base_url, api.player_id, api.device_token):
+	if _tester_checks_enabled() and is_instance_valid(tester_access) and tester_access.checked_for(_tester_context(), api.base_url, api.player_id, api.device_token):
 		ChapterAccess.hand_over(scene, api.base_url, _tester_active())
 	else:
 		ChapterAccess.drop_hand_over()

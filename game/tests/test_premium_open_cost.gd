@@ -69,6 +69,8 @@ func _run() -> void:
 	await _store_unavailable()
 	await _buyer_open()
 	await _cover_leaves()
+	await _back_while_covered()
+	await _background_while_covered()
 	await _hand_over_rules()
 	node_added.disconnect(_counted)
 	PlatformSupport.override_platform = ""
@@ -156,6 +158,54 @@ func _buyer_open() -> void:
 func _cover_leaves() -> void:
 	var app := await _home()
 	if app == null: return
+	var screen := await _covered_open(app)
+	if screen == null: return
+	var card: Node = root.get_node_or_null("ChapterLoadingCard")
+	if card != null: card.cancel()
+	await process_frame
+	_check(screen.mode == "access" and is_instance_valid(screen.controls) and screen.admission.state == "checking", "Once the card has gone the access card shows the check")
+	store.answer(store.requests[0], true)
+	var deadline := Time.get_ticks_msec() + 20000
+	while not (screen._prepared and screen.mode == "ready" and root.get_node_or_null("ChapterLoadingCard") == null) and Time.get_ticks_msec() < deadline: await process_frame
+	_check(screen._prepared and screen.mode == "ready" and counts.cards == 2, "The grant then opens the chapter behind its own card")
+	store = null
+	await _leave_chapter()
+
+## Back while the store check is out under Main's card returns to Home, takes
+## the card with it and times nothing.
+func _back_while_covered() -> void:
+	var app := await _home()
+	if app == null: return
+	var screen := await _covered_open(app)
+	if screen == null: return
+	screen.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	PlatformSupport.override_platform = ""
+	var deadline := Time.get_ticks_msec() + 20000
+	while (is_instance_valid(screen) or current_scene == null or current_scene.scene_file_path != "res://main.tscn" or root.get_node_or_null("ChapterLoadingCard") != null) and Time.get_ticks_msec() < deadline: await process_frame
+	_check(not is_instance_valid(screen) and current_scene != null and current_scene.scene_file_path == "res://main.tscn", "Back under Main's card returns to Home")
+	_check(root.get_node_or_null("ChapterLoadingCard") == null and Card.last_cost_usec(SCENE) == Card.SHOW_AFTER_USEC, "The card goes with it and the open left early is not timed")
+	store = null
+	await _leave_chapter()
+
+## Going to the background under Main's card holds on the access card; coming
+## back checks access again from the start, with a full read of the receipt.
+func _background_while_covered() -> void:
+	var app := await _home()
+	if app == null: return
+	var screen := await _covered_open(app)
+	if screen == null: return
+	screen.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	_check(screen.mode == "access" and is_instance_valid(screen.controls) and screen.admission.reason == "backgrounded" and not screen.building(), "The background holds the chapter on its access card")
+	native.calls.clear()
+	screen.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	var deadline := Time.get_ticks_msec() + 5000
+	while store.requests.size() < 2 and Time.get_ticks_msec() < deadline: await process_frame
+	_check(native.calls.size() == FULL_READ and store.requests.size() == 2 and screen.admission.state == "checking", "Coming back reads the saved receipt in full and asks the store again (%d calls)" % native.calls.size())
+	store = null
+	await _leave_chapter()
+
+## A buyer's open, its store check still out under Main's opening card.
+func _covered_open(app: Node) -> Node:
 	store = _store()
 	Card._record(SCENE, Card.SHOW_AFTER_USEC)
 	PlatformSupport.override_platform = PlatformSupport.ANDROID
@@ -164,16 +214,9 @@ func _cover_leaves() -> void:
 	var deadline := Time.get_ticks_msec() + 20000
 	while (current_scene == null or current_scene.scene_file_path != SCENE or store.requests.is_empty()) and Time.get_ticks_msec() < deadline: await process_frame
 	var screen: Node = current_scene
-	var card: Node = root.get_node_or_null("ChapterLoadingCard")
-	_check(card != null and screen.building() and not is_instance_valid(screen.controls), "Under Main's card the store check draws nothing and keeps the card up")
-	if card != null: card.cancel()
-	await process_frame
-	_check(screen.mode == "access" and is_instance_valid(screen.controls) and screen.admission.state == "checking", "Once the card has gone the access card shows the check")
-	store.answer(store.requests[0], true)
-	while not (screen._prepared and screen.mode == "ready" and root.get_node_or_null("ChapterLoadingCard") == null) and Time.get_ticks_msec() < deadline: await process_frame
-	_check(screen._prepared and screen.mode == "ready" and counts.cards == 2, "The grant then opens the chapter behind its own card")
-	store = null
-	await _leave_chapter()
+	var covered: bool = screen.scene_file_path == SCENE and root.get_node_or_null("ChapterLoadingCard") != null and screen.building() and not is_instance_valid(screen.controls)
+	_check(covered, "Under Main's card the store check draws nothing and keeps the card up")
+	return screen if covered else null
 
 ## Main's read reaches only the scene it opened, at the same API, for the
 ## identity that read it.
@@ -194,10 +237,15 @@ func _hand_over_rules() -> void:
 	if app == null: return
 	app._hand_over_tester_check(scene)
 	_check(ChapterAccess._take_hand_over(scene, BASE).get("granted") == true, "Main hands over its read for the identity in use")
-	app.tester_access.forget_cache_check()
-	app.tester_access.invalidate()
+	app._invalidate_relay_identity()
 	app._hand_over_tester_check(scene)
 	_check(ChapterAccess._take_hand_over(scene, BASE).is_empty(), "After an identity change Main hands over nothing; the scene reads the receipt itself")
+	await app._load_cached_tester()
+	app._hand_over_tester_check(scene)
+	_check(ChapterAccess._take_hand_over(scene, BASE).get("granted") == true, "Fixture: Main read the receipt again for the identity now in use")
+	var erased: Dictionary = await app.tester_access.erase_binding(BASE, OWNER, TOKEN)
+	app._hand_over_tester_check(scene)
+	_check(erased.get("ok") == true and ChapterAccess._take_hand_over(scene, BASE).is_empty(), "After the receipt is erased Main hands over nothing")
 	root.remove_child(app)
 	app.queue_free()
 	current_scene = null
