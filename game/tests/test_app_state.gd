@@ -175,6 +175,7 @@ func _test_save_generations() -> void:
 	_check(not unavailable.save_attempt("first-light",{"a":first},true),"Unwritable save reports failure")
 	_check(unavailable.data.attempts.is_empty() and unavailable.data.completed.is_empty(),"Failed transaction rolls back in-memory commitment")
 	_test_failed_flush_leaves_no_tmp()
+	_test_save_field_types()
 	var normalized := Storage.normalize_attempt({"a":null,"b":second,"draft":null})
 	_check(normalized.a.is_empty() and normalized.draft.is_empty() and not normalized.b.is_empty(),"Nullable network recordings normalize safely")
 
@@ -192,6 +193,30 @@ func _test_failed_flush_leaves_no_tmp() -> void:
 	var reopened := Storage.new(path)
 	reopened.load_data()
 	_check(reopened.loaded_from==path and not reopened.data.completed.has("first-light") and reopened.attempt("first-light").b.is_empty(),"The refused change does not apply after a restart")
+
+func _test_save_field_types() -> void:
+	for value: Variant in [0, 7, 1.0, -3, 9007199254740991.0]:
+		_check(Storage.whole_number(value), "A whole number: %s" % [value])
+	for value: Variant in [1.5, INF, NAN, "1", [1], {}, null, true]:
+		_check(not Storage.whole_number(value), "Not a whole number: %s" % [value])
+	for value: Variant in [0, 0.0, 7, 7.0]:
+		_check(Storage.valid_generation(value), "A save generation: %s" % [value])
+	for value: Variant in [-1, 1.5, INF, "2", [1], {}, null]:
+		_check(not Storage.valid_generation(value), "Not a save generation: %s" % [value])
+	var path := _temporary_path()
+	var store := Storage.new(path)
+	var good := {"version":1,"generation":3,"settings":{"sound":false},"attempts":{},"completed":{},"room":{}}
+	_write(path+".backup",good)
+	for odd: Dictionary in [{"version":1,"generation":[1]}, {"version":1,"generation":{}}, {"version":1,"generation":-1}, {"version":[2]}, {"version":{}}, {"version":true}]:
+		var bytes := JSON.stringify(odd)
+		_write(path,bytes)
+		store.load_data()
+		_check(store.loaded_from==path+".backup" and not store.data.settings.sound and not store.read_only,"A primary with odd version or generation types is skipped for the backup: %s" % [bytes])
+		_check(FileAccess.get_file_as_string(path)==bytes,"Loading leaves the odd primary unchanged: %s" % [bytes])
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path+".backup"))
+	_write(path,JSON.stringify({"version":1,"generation":[1]}))
+	store.load_data()
+	_check(store.read_only and store.last_error==PlayerCopy.LOCAL_SAVE_34FCC2945DC1,"A primary with a list generation and no other copy is held read-only")
 
 func _room() -> Dictionary:
 	return {"room_id":"room-test","revision":4,"level_id":"first-light","level_index":0,"first_player_id":"host","host_id":"host","guest_id":null,"active_role":"a","recordings":{"a":null,"b":null}}

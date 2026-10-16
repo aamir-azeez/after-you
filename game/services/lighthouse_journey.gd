@@ -369,8 +369,7 @@ func _envelope_valid(value: Dictionary) -> bool:
 			return false
 	if value.get("version") != 1 or not value.has("lighthouse"):
 		return false
-	var generation: Variant = value.get("generation", 0)
-	if not (generation is int or generation is float) or not is_finite(float(generation)) or float(generation) != floor(float(generation)) or generation < 0:
+	if not Storage.valid_generation(value.get("generation", 0)):
 		return false
 	for reserved: String in ["attempts", "completed", "replays", "room"]:
 		if value.has(reserved) and (not value[reserved] is Dictionary or not value[reserved].is_empty()):

@@ -38,7 +38,7 @@ func load_data() -> void:
 		if not FileAccess.file_exists(candidate):
 			continue
 		var value: Variant = _read_json(candidate)
-		if candidate == path and value is Dictionary and int(value.get("version", 0)) > 1:
+		if candidate == path and _newer(value):
 			read_only = true
 			last_error = PlayerCopy.LOCAL_SAVE_59005ED74543
 		if not _valid(value):
@@ -158,12 +158,30 @@ static func normalize_attempt(value: Variant) -> Dictionary:
 	return result
 
 static func _valid(value: Variant) -> bool:
-	if not value is Dictionary or value.get("version", 0) != 1:
+	if not value is Dictionary:
+		return false
+	var version: Variant = value.get("version", 0)
+	if not whole_number(version) or version != 1 or not valid_generation(value.get("generation", 0)):
 		return false
 	for key: String in ["settings", "attempts", "completed", "room"]:
 		if value.has(key) and not value[key] is Dictionary:
 			return false
 	return true
+
+## A whole, finite number. JSON reads every number as a float.
+static func whole_number(value: Variant) -> bool:
+	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value))
+
+## A save generation: a whole number that is not negative.
+static func valid_generation(value: Variant) -> bool:
+	return whole_number(value) and value >= 0
+
+## A save written by a newer version of the app. A numeric string counts too.
+static func _newer(value: Variant) -> bool:
+	if not value is Dictionary:
+		return false
+	var version: Variant = value.get("version", 0)
+	return (version is int or version is float or version is String) and int(version) > 1
 
 static func _read_json(file_path: String) -> Variant:
 	var parser := JSON.new()

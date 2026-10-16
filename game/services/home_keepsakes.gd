@@ -528,20 +528,17 @@ static func _valid_envelope(value: Variant) -> bool:
 	if not value is Dictionary or value.size() != ENVELOPE_KEYS.size(): return false
 	for key: String in ENVELOPE_KEYS:
 		if not value.has(key): return false
-	if not _integer(value.version) or value.version != 1 or not _integer(value.generation) or value.generation < 0 or value.generation > 9007199254740991 or not Storage.default_settings_envelope_valid(value.settings): return false
+	if not Storage.whole_number(value.version) or value.version != 1 or not Storage.valid_generation(value.generation) or value.generation > 9007199254740991 or not Storage.default_settings_envelope_valid(value.settings): return false
 	for key: String in ["attempts", "completed", "replays", "room"]:
 		if not value[key] is Dictionary or not value[key].is_empty(): return false
 	var state: Variant = value.home_keepsakes
-	if not state is Dictionary or state.size() != 2 or not _integer(state.get("schema_version")) or state.schema_version != 1 or not state.get("earned") is Dictionary or state.earned.size() > Catalog.ROWS.size(): return false
+	if not state is Dictionary or state.size() != 2 or not Storage.whole_number(state.get("schema_version")) or state.schema_version != 1 or not state.get("earned") is Dictionary or state.earned.size() > Catalog.ROWS.size(): return false
 	for id: Variant in state.earned:
 		if not id is String: return false
 		var item := Catalog.by_id(id)
 		var mark: Variant = state.earned[id]
 		if item.is_empty() or not mark is Dictionary or mark.size() != 2 or not mark.get("solo") is bool or not mark.get("friend") is bool or (not mark.solo and not mark.friend) or (mark.friend and not item.friend_available): return false
 	return true
-
-static func _integer(value: Variant) -> bool:
-	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value))
 
 func _preserve_unreadable(path: String) -> bool:
 	var digest := FileAccess.get_sha256(path)
