@@ -1,4 +1,4 @@
-import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, object, text, unwrap } from "../protocol";
+import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, inviteRoomId, newInvite, object, parseInvite, readBounded, text, unwrap } from "../protocol";
 import { bytes, json, bearerDigest } from "../http";
 import { flags } from "../flags";
 import { roomLinkVersion, type RoomLink } from "../room-links";
@@ -28,18 +28,8 @@ async function boundedBytes(request: Request, max: number): Promise<Uint8Array> 
   if (request.headers.get("content-type")?.toLowerCase() !== "application/octet-stream") throw new ApiError(415, "bytes_required");
   if (Number(request.headers.get("content-length")) > max) throw new ApiError(413, "body_too_large");
   if (!request.body) throw new ApiError(400, "body_required");
-  const reader = request.body.getReader(), chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    for (;;) {
-      const part = await reader.read(); if (part.done) break;
-      size += part.value.byteLength;
-      if (size > max) { await reader.cancel(); throw new ApiError(413, "body_too_large"); }
-      chunks.push(part.value);
-    }
-  } finally { reader.releaseLock(); }
-  const data = new Uint8Array(size); let offset = 0;
-  for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
+  const data = await readBounded(request.body, max);
+  if (!data) throw new ApiError(413, "body_too_large");
   return data;
 }
 /** A client opts into chapters with more than two stages with a header (like X-AfterYou-Campaign-Schema); the router refuses query strings, and older servers ignore unknown headers. */
@@ -119,8 +109,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       const previous = unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined));
       if (!previous) { await requireHostAccess(playerId, env); await reauthorize(request, playerId, env); }
     }
-    const invite_code = [...crypto.getRandomValues(new Uint8Array(10))].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
-    const proposed: RoomLink = { room_id: (await digest("v2:" + invite_code)).slice(0, 22), invite_code, host: true, api_version: 2 };
+    const invite_code = newInvite();
+    const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
     const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled)));
     const link = intent.link;
     return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version)));
@@ -130,9 +120,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const input = object(await boundedJson(request, 4096)); exact(input, ["invite_code", ...(input.supported_simulation_versions === undefined ? [] : ["supported_simulation_versions"])]);
     const versions = input.supported_simulation_versions;
     if (versions !== undefined && (!Array.isArray(versions) || !versions.length || versions.length > MAX_JOIN_VERSIONS || versions.some(version => !Number.isInteger(version) || version < 1) || new Set(versions).size !== versions.length)) throw new ApiError(422, "unsupported_simulation_version");
-    if (typeof input.invite_code !== "string" || input.invite_code.length > 40) throw new ApiError(400, "invalid_invite");
-    const code = text(input.invite_code.replace(/[\s-]/g, "").toUpperCase(), /^[A-F0-9]{20}$/, "invalid_invite");
-    const roomId = (await digest("v2:" + code)).slice(0, 22), room = env.ROOMS_V2.getByName(roomId);
+    const code = parseInvite(input.invite_code);
+    const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled)));
     const joined = await room.join(playerId, code, versions as number[] | undefined);

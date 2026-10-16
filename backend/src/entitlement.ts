@@ -1,4 +1,4 @@
-import { isObject } from "./protocol";
+import { isObject, readBounded } from "./protocol";
 import { flags, type ServerVars } from "./flags";
 import { playEntitlement } from "./play-entitlement";
 import { storeEntitlement, type StoreEntitlementConfig } from "./store-entitlement";
@@ -36,17 +36,8 @@ export async function entitlement(playerId: string, env: RevenueCatConfiguration
     if (response.status === 404) return { ...base, status: "verified" };
     if (!response.ok) return { ...base, status: "unavailable", reason: `provider_http_${response.status}` };
     if (!response.body) return { ...base, status: "unavailable", reason: "provider_empty_response" };
-    const reader = response.body.getReader(); let size = 0; const chunks: Uint8Array[] = [];
-    try {
-      while (true) {
-        const next = await reader.read(); if (next.done) break;
-        size += next.value.byteLength;
-        if (size > 262_144) { await reader.cancel(); return { ...base, status: "unavailable", reason: "provider_response_too_large" }; }
-        chunks.push(next.value);
-      }
-    } finally { reader.releaseLock(); }
-    const bytes = new Uint8Array(size); let offset = 0;
-    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    const bytes = await readBounded(response.body, 262_144);
+    if (!bytes) return { ...base, status: "unavailable", reason: "provider_response_too_large" };
     const data: unknown = JSON.parse(new TextDecoder().decode(bytes));
     if (v2) {
       if (!isObject(data) || data.object !== "list" || !Array.isArray(data.items)) return { ...base, status: "unavailable", reason: "provider_invalid_list" };

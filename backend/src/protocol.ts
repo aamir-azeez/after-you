@@ -97,22 +97,45 @@ export async function boundedJson(request: Request, max = MAX_BODY_BYTES): Promi
   if (!request.headers.get("content-type")?.toLowerCase().startsWith("application/json")) throw new ApiError(415, "json_required");
   if (Number(request.headers.get("content-length")) > max) throw new ApiError(413, "body_too_large");
   if (!request.body) throw new ApiError(400, "body_required");
-  const reader = request.body.getReader(); const chunks: Uint8Array[] = []; let size = 0;
+  const data = await readBounded(request.body, max);
+  if (!data) throw new ApiError(413, "body_too_large");
+  try { return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(data)); }
+  catch { throw new ApiError(400, "invalid_json"); }
+}
+/**
+ * All of a stream's bytes, or null once they pass `max` (the stream is then cancelled). Read errors
+ * propagate. Every size-capped body, upload and provider answer is read through this one loop; each
+ * caller keeps its own checks before reading and its own decoding after.
+ */
+export async function readBounded(stream: ReadableStream<Uint8Array>, max: number): Promise<Uint8Array | null> {
+  const reader = stream.getReader(), chunks: Uint8Array[] = [];
+  let size = 0;
   try {
-    while (true) {
+    for (;;) {
       const part = await reader.read(); if (part.done) break;
       size += part.value.byteLength;
-      if (size > max) { await reader.cancel(); throw new ApiError(413, "body_too_large"); }
+      if (size > max) { await reader.cancel(); return null; }
       chunks.push(part.value);
     }
-    const data = new Uint8Array(size); let offset = 0;
-    for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
-    try { return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(data)); }
-    catch { throw new ApiError(400, "invalid_json"); }
   } finally { reader.releaseLock(); }
+  const data = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { data.set(chunk, offset); offset += chunk.byteLength; }
+  return data;
 }
 export function randomToken(bytes = 32): string {
   return btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(bytes)))).replaceAll("+", "-").replaceAll("/", "_").replaceAll("=", "");
+}
+/** A room invite code as a player typed it: spaces and dashes dropped, upper case, 20 hex digits. */
+export function parseInvite(value: unknown): string {
+  if (typeof value !== "string" || value.length > 40) throw new ApiError(400, "invalid_invite");
+  return text(value.replace(/[\s-]/g, "").toUpperCase(), /^[A-F0-9]{20}$/, "invalid_invite");
+}
+export function newInvite(): string {
+  return [...crypto.getRandomValues(new Uint8Array(10))].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
+}
+/** The room an invite code names in each family: legacy rooms hash the code, relay (v2) rooms hash "v2:" + code. */
+export async function inviteRoomId(code: string, apiVersion: 1 | 2): Promise<string> {
+  return (await digest(apiVersion === 1 ? code : "v2:" + code)).slice(0, 22);
 }
 export async function digest(value: string): Promise<string> {
   const bytes = new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)));

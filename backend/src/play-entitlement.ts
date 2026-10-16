@@ -1,4 +1,4 @@
-import { isObject } from "./protocol";
+import { isObject, readBounded } from "./protocol";
 import { commaList, type ServerVars } from "./flags";
 
 export type PlayEntitlementConfig = Pick<ServerVars, "REVENUECAT_SECRET_KEY" | "REVENUECAT_PROJECT_ID" | "REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID" |
@@ -29,17 +29,8 @@ export async function revenuecatRequest(url: string, key: string, method = "GET"
     if (response.status === 404) { await response.body?.cancel(); return { ok: true, status: 404, value: null }; }
     if (!response.ok) { await response.body?.cancel(); return { ok: false, reason: `provider_http_${response.status}` }; }
     if (!response.body) return { ok: false, reason: "provider_empty_response" };
-    const reader = response.body.getReader(); const parts: Uint8Array[] = []; let length = 0;
-    try {
-      while (true) {
-        const item = await reader.read(); if (item.done) break;
-        length += item.value.byteLength;
-        if (length > 262144) { await reader.cancel(); return { ok: false, reason: "provider_response_too_large" }; }
-        parts.push(item.value);
-      }
-    } finally { reader.releaseLock(); }
-    const bytes = new Uint8Array(length); let offset = 0;
-    for (const part of parts) { bytes.set(part, offset); offset += part.byteLength; }
+    const bytes = await readBounded(response.body, 262144);
+    if (!bytes) return { ok: false, reason: "provider_response_too_large" };
     return { ok: true, status: response.status, value: JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: false }).decode(bytes)) };
   } catch { return { ok: false, reason: "provider_request_or_decode_failed" }; }
 }

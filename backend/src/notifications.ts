@@ -1,4 +1,4 @@
-import { isObject } from "./protocol";
+import { isObject, readBounded } from "./protocol";
 import { flags, type ServerVars } from "./flags";
 import { errorCode, logWarning, upstreamCode } from "./log";
 
@@ -104,12 +104,7 @@ function encoded(value: unknown): string { return base64url(new TextEncoder().en
 /** Responses are bounded before decoding; never return upstream text to callers. */
 async function boundedResponse(response: Response): Promise<unknown> {
   if (!response.body) return null;
-  const reader = response.body.getReader(), chunks: Uint8Array[] = []; let count = 0;
-  try {
-    while (true) { const item = await reader.read(); if (item.done) break; count += item.value.byteLength;
-      if (count > 16_384) { await reader.cancel(); return null; } chunks.push(item.value); }
-  } finally { reader.releaseLock(); }
-  const bytes = new Uint8Array(count); let offset = 0; for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+  const bytes = await readBounded(response.body, 16_384); if (!bytes) return null;
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)); } catch { return null; }
 }
 function retryAfter(response: Response): number {

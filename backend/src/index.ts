@@ -1,7 +1,7 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
 import { JSON_HEADERS, json, result, bearerDigest } from "./http";
 import { flags } from "./flags";
-import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, legacySimulationVersion, object, randomToken, recording, text, type RoomSnapshot, unwrap } from "./protocol";
+import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, inviteRoomId, legacySimulationVersion, newInvite, object, parseInvite, randomToken, recording, text, type RoomSnapshot, unwrap } from "./protocol";
 import { entitlement } from "./entitlement";
 import { requireHostAccess } from "./v2/host-access";
 import { routeTesterAccess } from "./tester-access";
@@ -30,10 +30,6 @@ export { Player } from "./player";
 export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
 
-function invite(value: unknown): string {
-  if (typeof value !== "string" || value.length > 40) throw new ApiError(400, "invalid_invite");
-  return text(value.replace(/[\s-]/g, "").toUpperCase(), /^[A-F0-9]{20}$/, "invalid_invite");
-}
 async function auth(request: Request, env: Env, deleting = false): Promise<string> {
   const id = request.headers.get("X-Player-Id");
   if (!id || !ID_PATTERN.test(id)) throw new ApiError(401, "invalid_auth");
@@ -172,15 +168,15 @@ export default {
         const input = object(await boundedJson(request, 4096)); exactKeys(input, ["idempotency_key", "simulation_version"]);
         const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
         const simulationVersion = legacySimulationVersion(input.simulation_version === undefined ? 1 : input.simulation_version);
-        const invite_code = [...crypto.getRandomValues(new Uint8Array(10))].map(value => value.toString(16).padStart(2, "0")).join("").toUpperCase();
-        const proposed: RoomLink = { room_id: (await digest(invite_code)).slice(0, 22), invite_code, host: true };
+        const invite_code = newInvite();
+        const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 1), invite_code, host: true };
         const link = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveRoom(key, proposed, settled)));
         return result(await env.ROOMS.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, simulationVersion));
       }
       if (path === "/v1/rooms/join" && request.method === "POST") {
         const input = object(await boundedJson(request, 4096)); exactKeys(input, ["invite_code", "simulation_version"]);
         const supportedSimulationVersion = legacySimulationVersion(input.simulation_version === undefined ? 1 : input.simulation_version);
-        const code = invite(input.invite_code), roomId = (await digest(code)).slice(0, 22);
+        const code = parseInvite(input.invite_code), roomId = await inviteRoomId(code, 1);
         const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 1 && link.room_id === roomId);
         unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false }, settled)));
         const joined = await env.ROOMS.getByName(roomId).join(playerId, code, supportedSimulationVersion);

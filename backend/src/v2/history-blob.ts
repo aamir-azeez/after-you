@@ -1,4 +1,4 @@
-import { ApiError, canonicalJson, digest } from "../protocol";
+import { ApiError, canonicalJson, digest, readBounded } from "../protocol";
 import type { ChapterKey } from "./chapter-types";
 import { checkpointAt, nestedProof } from "./checkpoint-chain";
 import type { CheckpointV2, RecordingV2 } from "./protocol";
@@ -89,20 +89,9 @@ export function attemptRows(blob: AttemptBlob): { pairs: Map<string, PairV2>; tu
   return { pairs, turns };
 }
 
+/** A corrupt deflate stream errors while it is read; that counts as no blob. */
 async function drain(stream: ReadableStream<Uint8Array>, limit: number): Promise<Uint8Array | null> {
-  const reader = stream.getReader(), chunks: Uint8Array[] = [];
-  let size = 0;
-  try {
-    for (;;) {
-      const part = await reader.read(); if (part.done) break;
-      size += part.value.byteLength;
-      if (size > limit) { await reader.cancel(); return null; }
-      chunks.push(part.value);
-    }
-  } catch { return null; }
-  const out = new Uint8Array(size); let offset = 0;
-  for (const chunk of chunks) { out.set(chunk, offset); offset += chunk.byteLength; }
-  return out;
+  try { return await readBounded(stream, limit); } catch { return null; }
 }
 function through(bytes: Uint8Array, transform: CompressionStream | DecompressionStream): ReadableStream<Uint8Array> {
   const writer = transform.writable.getWriter();
