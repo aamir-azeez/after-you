@@ -6,6 +6,9 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
 const UNAVAILABLE_TITLE := "Unavailable room"
+## A room taken off the list for good (closed or left), not just hidden: its
+## entry in the hidden map never comes back, and it is not a hidden room.
+const FORGOTTEN := 1 << 40
 var busy := false
 var last_error := ""
 var _api: Node
@@ -195,7 +198,25 @@ func forget(api_version: int, room_id: String) -> void:
 	_rooms = kept
 	_seen.erase(key)
 	# Local history may still carry the room; keep it off the list there too.
-	_hidden[key] = 1 << 40
+	_hidden[key] = FORGOTTEN
+	_save()
+
+## Finished rooms this player hid on this device that are still hidden, in the
+## list's order. A forgotten room is not one of them.
+func hidden_rooms() -> Array[Dictionary]:
+	if not _bind(): return []
+	var history := _local_rooms()
+	var hidden := _resolved(_merge(_rooms,history),history).filter(func(room: Dictionary) -> bool:
+		var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
+		return room.get("status") == "completed" and _hidden.has(key) and int(_hidden[key]) < FORGOTTEN and not _shown(room))
+	return ordered(hidden,_seen,_binding.player_id)
+
+## Puts a hidden room back on the list.
+func show_again(room: Dictionary) -> void:
+	if not _bind(): return
+	var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
+	if not _hidden.has(key) or int(_hidden[key]) >= FORGOTTEN: return
+	_hidden.erase(key)
 	_save()
 
 func _bind(force: bool = false) -> bool:

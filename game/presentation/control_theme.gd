@@ -157,6 +157,17 @@ static func plain_tab(button: Button) -> void:
 	for key: String in ["font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color"]:
 		button.add_theme_color_override(key,CREAM)
 
+static func outlined_tab(button: Button) -> void:
+	## An unselected tab that still shows its own edge, so a row of tabs reads
+	## as separate controls; selected_tab keeps the filled look.
+	button.add_theme_stylebox_override("normal",padded(rounded(Color("1b4941"),14,Color("54766a"))))
+	button.add_theme_stylebox_override("hover",padded(rounded(Color("254b45"),14,Color("6f9a8c"))))
+	button.add_theme_stylebox_override("pressed",padded(rounded(Color("3a6b5f"),14)))
+	button.add_theme_stylebox_override("hover_pressed",padded(rounded(Color("3a6b5f"),14)))
+	button.add_theme_color_override("font_color",Color("afc6be"))
+	for key: String in ["font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color"]:
+		button.add_theme_color_override(key,CREAM)
+
 static func choice_button(button: OptionButton) -> void:
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
 		var disabled := state == "disabled"

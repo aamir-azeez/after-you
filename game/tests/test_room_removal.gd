@@ -38,7 +38,6 @@ func _initialize() -> void: _run.call_deferred()
 func _run() -> void:
 	root.size = Vector2i(1280, 720)
 	await _hub_choices()
-	await _leave_choices()
 	await _inbox_memory()
 	await _main_requests()
 	await _main_leave()
@@ -117,65 +116,13 @@ func _hub_choices() -> void:
 	_check(requests.back() == ["closed", "leave"], "Removing a room the other player closed drops its link")
 	hub._select_tab("Completed")
 	await process_frame
-	var done: Button = _card_buttons(hub).get("Completed")
-	_check(done != null and done.tooltip_text == "Remove from list", "The Completed tab offers Remove from list")
-	done.pressed.emit()
-	await process_frame
-	modal = hub.find_child("RoomRemoveModal", true, false)
-	_check(modal != null and _label(modal, "Remove this room?") and _label(modal, "Your friend keeps the room and its replay."), "Removing a finished room says the friend keeps it")
-	var confirm := modal.find_child("ModalConfirm", true, false) as Button
-	_check(confirm.text == "Remove", "The confirm button for a finished room reads Remove")
-	confirm.pressed.emit()
-	await process_frame
-	_check(requests.back() == ["done", "hide"], "Removing a finished room only takes it off this list")
+	var finished_card: Node = hub._rooms_list.get_child(0)
+	_check(finished_card.find_child("RemoveRoom", true, false) == null and finished_card.find_child("RoomMenu", true, false) != null, "A finished room has the ... menu in place of the trash button (test_room_card_menu covers the menu)")
 	hub.set_removing(true)
 	await process_frame
-	done = _card_buttons(hub).get("Completed")
-	_check(done != null and done.disabled, "Remove controls wait while a request runs")
+	_check((hub._rooms_list.get_child(0).find_child("RoomMenu", true, false) as Button).disabled, "The menu button waits while a request runs")
 	hub.queue_free()
 	await process_frame
-
-## While the server offers it, a confirmed finished room offers Leave room in
-## place of Remove from list; any other finished room keeps the device-only hide.
-func _leave_choices() -> void:
-	var inbox := Inbox.new()
-	inbox.rooms = [_room("done", "completed"), _room("legacy", "completed", [ME, FRIEND], 1), _room("cached", "completed"), _room("story", "completed", [], 3)]
-	inbox.unconfirmed = ["cached"]
-	var hub := Hub.new()
-	hub.client = inbox
-	var requests: Array = []
-	hub.room_remove_requested.connect(func(room: Dictionary, action: String): requests.append([room.room_id, action]))
-	root.add_child(hub)
-	hub._select_tab("Completed")
-	for i in range(3): await process_frame
-	_check(_tooltips(hub) == ["Remove from list", "Remove from list", "Remove from list", "Remove from list"], "Without the server's offer every finished room only hides")
-	hub.set_leave_finished(true)
-	await process_frame
-	_check(_tooltips(hub) == [PlayerCopy.ROOM_LEAVE, PlayerCopy.ROOM_LEAVE, "Remove from list", "Remove from list"], "Confirmed relay and legacy rooms offer Leave room; an unconfirmed or Story room keeps Remove from list")
-	var leave: Button = hub._rooms_list.get_child(0).find_child("RemoveRoom", true, false)
-	_check(leave.accessibility_name == PlayerCopy.ROOM_LEAVE, "Screen readers hear Leave room")
-	leave.pressed.emit()
-	await process_frame
-	var modal: Control = hub.find_child("RoomRemoveModal", true, false)
-	_check(modal != null and _label(modal, PlayerCopy.ROOM_LEAVE_TITLE) and _label(modal, PlayerCopy.ROOM_LEAVE_BODY), "Leave asks first and says what is deleted and what the friend keeps")
-	_check((modal.find_child("ModalConfirm", true, false) as Button).text == PlayerCopy.ROOM_LEAVE, "The confirm button reads Leave room")
-	(modal.find_child("ModalCancel", true, false) as Button).pressed.emit()
-	await process_frame
-	_check(requests.is_empty(), "Cancel leaves nothing")
-	leave.pressed.emit()
-	await process_frame
-	(hub.find_child("RoomRemoveModal", true, false).find_child("ModalConfirm", true, false) as Button).pressed.emit()
-	await process_frame
-	_check(requests == [["done", "leave_finished"]], "Confirming asks the app to leave the room")
-	hub.queue_free()
-	await process_frame
-
-func _tooltips(hub: Node) -> Array:
-	var result := []
-	for card: Node in hub._rooms_list.get_children():
-		var button := card.find_child("RemoveRoom", true, false) as Button
-		result.append(button.tooltip_text if button != null else "")
-	return result
 
 func _label(node: Node, text: String) -> bool:
 	for label: Label in node.find_children("*", "Label", true, false):

@@ -10,7 +10,15 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const RoomCardMenu = preload("res://presentation/room_card_menu.gd")
 const REMOVE_ICON = preload("res://assets/ui/social/trash.svg")
+const MENU_ICON = preload("res://assets/ui/room/dots.svg")
+const HIDE_ICON = preload("res://assets/ui/room/eye-off.svg")
+const LEAVE_ICON = preload("res://assets/ui/room/door-exit.svg")
+const PHONE_ICON = preload("res://assets/ui/room/phone.svg")
+const FOLD_CLOSED_ICON = preload("res://assets/ui/social/chevron-right.svg")
+const FOLD_OPEN_ICON = preload("res://assets/ui/social/chevron-down.svg")
+const WARM := Color("f4d77b")
 ## Rooms still in play; closing one ends it for both members.
 const ACTIVE_STATUSES := ["waiting_for_friend","your_turn","waiting_for_their_turn"]
 const CREAM := Color("eceddb")
@@ -30,11 +38,13 @@ signal tester_code_requested
 ## "lobby" retries a held create or join request, "redo" reopens the room with
 ## an unfinished redo request.
 signal retry_requested(kind: String)
-## After the player confirms: "close" ends a room still in play for both
-## members, "leave" drops a room the other member closed, "leave_finished"
-## leaves a finished room on the server (the friend keeps it), and "hide" takes
-## a finished or unavailable room off this device's list.
+## "close" ends a room still in play for both members and "leave" drops a room
+## the other member closed, both after a confirm step. From a finished room's
+## "..." menu, "hide" takes it off this device's list at once, and
+## "leave_finished" leaves it on the server after its confirm step.
 signal room_remove_requested(room: Dictionary, action: String)
+## Show again on a room in the Hidden rooms section.
+signal room_show_requested(room: Dictionary)
 ## The room cards were rebuilt (a refresh landed); a tap still waiting moves its
 ## label onto the new copy of its control (room_action).
 signal cards_redrawn
@@ -83,6 +93,10 @@ var _modal: Control
 var _removing := false
 ## The server lets a member leave a finished room (capability room_leave_version).
 var _leave_finished := false
+## The open "..." menu of a finished room card (room_card_menu.gd), if any.
+var _menu: CanvasLayer
+## Whether the Hidden rooms section is unfolded; folded each time the hub opens.
+var _hidden_open := false
 ## What the room cards were last drawn from; a refresh that changes nothing
 ## keeps the same cards, so a finger already on one still taps it.
 var _rooms_drawn := 0
@@ -333,6 +347,9 @@ func show_notice(text: String) -> void:
 ## Android Back and Escape: the chapter picker handles its own Back, so this
 ## closes the hub only when nothing is open on top of it.
 func go_back() -> void:
+	if is_instance_valid(_menu) and not _menu.is_closed():
+		_menu.close()
+		return
 	if is_instance_valid(_modal):
 		_modal.close()
 		return
@@ -344,7 +361,7 @@ func set_removing(value: bool) -> void:
 	_removing = value
 	_render()
 
-## Whether finished rooms offer Leave room in place of Remove from list.
+## Whether a finished room's menu offers Leave room as well as Hide.
 func set_leave_finished(value: bool) -> void:
 	if value == _leave_finished: return
 	_leave_finished = value
@@ -512,7 +529,7 @@ func _style_tabs() -> void:
 		var button: Button = _tab_buttons[tab_name]
 		_clear_button_style(button)
 		if tab_name == _tab: ThemeRules.selected_tab(button)
-		else: ThemeRules.plain_tab(button)
+		else: ThemeRules.outlined_tab(button)
 
 func _style_visibility() -> void:
 	for option: Variant in _visibility_buttons:
@@ -579,6 +596,12 @@ func _draw_room_cards(filtered: Array[Dictionary]) -> void:
 		_rooms_waiting = true
 		set_process(true)
 		return
+	# An open "..." menu holds the cards like a finger does: freeing its button
+	# would close it under the player, and the next tap would land on a card.
+	# The menu's closed signal draws them once it is gone.
+	if room_menu() != null:
+		_rooms_waiting = false
+		return
 	_rooms_waiting = false
 	_rooms_drawn = drawn
 	_room_actions.clear()
@@ -602,6 +625,7 @@ func _draw_room_cards(filtered: Array[Dictionary]) -> void:
 		_rooms_list.add_child(empty)
 	else:
 		for room: Dictionary in filtered: _add_room_card(room)
+	if _tab == "Completed": _add_hidden_section(_hidden_rooms())
 	cards_redrawn.emit()
 
 ## The drawn card's action button for a room, or null.
@@ -615,7 +639,8 @@ func _room_cards_key(filtered: Array[Dictionary]) -> int:
 		var names: Array[String] = []
 		for member: Variant in room.get("member_ids",[]):
 			names.append(str(display_name.call(str(member))) if display_name.is_valid() else "")
-		parts.append([room, client != null and client.unread(room), _removal(room), names])
+		parts.append([room, client != null and client.unread(room), _removal(room), _menu_ids(room), names])
+	if _tab == "Completed": parts.append([_hidden_open, _hidden_rooms().map(func(room: Dictionary) -> Array: return [room, _friend(room)])])
 	return hash(parts)
 
 func _process(_delta: float) -> void:
@@ -719,6 +744,9 @@ func _add_room_card(room: Dictionary) -> void:
 	action.pressed.connect(func(): room_open_requested.emit(room.duplicate(true), action))
 	_room_actions[str(room.get("room_id",""))] = action
 	row.add_child(action)
+	if status == "completed":
+		row.add_child(_menu_button(room,action))
+		return
 	var removal := _removal(room)
 	if removal.is_empty(): return
 	var remove := Button.new()
@@ -744,37 +772,199 @@ func _add_room_card(room: Dictionary) -> void:
 	remove.pressed.connect(func(): _ask_remove(room.duplicate(true),removal,remove))
 	row.add_child(remove)
 
-## "close" for a room still in play, "leave" for one the other member closed,
-## "leave_finished" for a finished one while the server offers it, "hide" for
-## any other finished or unavailable one, or "" when nothing applies. Every
-## action but hide needs the latest server list to have confirmed the room.
+## The trash button's action on a card that is not finished: "close" for a
+## room still in play, "leave" for one the other member closed, "hide" for an
+## unavailable one, or "" when nothing applies. Close and leave need the latest
+## server list to have confirmed the room. Finished rooms use the "..." menu.
 func _removal(room: Dictionary) -> String:
 	if client == null or not client.has_method("confirmed"): return ""
 	var status := str(room.get("status",""))
-	var server_room: bool = int(room.get("api_version",0)) in [1,2]
-	if status == "completed" and _leave_finished and server_room and client.confirmed(room): return "leave_finished"
-	if status in ["completed","unavailable"]: return "hide"
-	if not server_room or not client.confirmed(room): return ""
+	if status == "completed": return ""
+	if status == "unavailable": return "hide"
+	if int(room.get("api_version",0)) not in [1,2] or not client.confirmed(room): return ""
 	if status == "closed": return "leave"
 	return "close" if status in ACTIVE_STATUSES else ""
 
 func _removal_label(removal: String) -> String:
-	match removal:
-		"close": return "Close room"
-		"leave_finished": return PlayerCopy.ROOM_LEAVE
-		_: return "Remove from list"
+	return "Close room" if removal == "close" else "Remove from list"
+
+## The rows of a finished room's "..." menu: Hide always, and Leave room while
+## the server offers it for a room its latest list confirmed.
+func _menu_rows(room: Dictionary) -> Array[Dictionary]:
+	var rows: Array[Dictionary] = [{"id": "hide", "title": PlayerCopy.ROOM_HIDE, "detail": PlayerCopy.ROOM_HIDE_DETAIL, "icon": HIDE_ICON}]
+	if _leave_finished and int(room.get("api_version",0)) in [1,2] and client != null and client.has_method("confirmed") and client.confirmed(room):
+		rows.append({"id": "leave_finished", "title": PlayerCopy.ROOM_LEAVE, "detail": PlayerCopy.ROOM_LEAVE_DETAIL, "icon": LEAVE_ICON, "tone": "danger"})
+	return rows
+
+func _menu_ids(room: Dictionary) -> Array:
+	if room.get("status") != "completed": return []
+	return _menu_rows(room).map(func(row: Dictionary) -> String: return str(row.id))
+
+## The square "..." button after Watch replay, with Watch replay's border and fill.
+func _menu_button(room: Dictionary, beside: Button) -> Button:
+	var button := Button.new()
+	button.name = "RoomMenu"
+	button.icon = MENU_ICON
+	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	button.vertical_icon_alignment = VERTICAL_ALIGNMENT_CENTER
+	button.expand_icon = true
+	button.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
+	button.add_theme_constant_override("icon_max_width",24)
+	button.custom_minimum_size = Vector2(beside.custom_minimum_size.y,beside.custom_minimum_size.y)
+	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	button.mouse_filter = Control.MOUSE_FILTER_PASS
+	button.tooltip_text = PlayerCopy.ROOM_MENU
+	button.accessibility_name = PlayerCopy.ROOM_MENU + ": " + str(room.get("chapter_title",""))
+	button.disabled = _removing
+	_secondary(button)
+	for state: String in ["normal","hover","pressed","disabled","focus"]:
+		if not button.has_theme_stylebox(state): continue
+		var style := button.get_theme_stylebox(state).duplicate() as StyleBox
+		for edge: String in ["left","top","right","bottom"]: style.set("content_margin_"+edge,12)
+		button.add_theme_stylebox_override(state,style)
+	button.pressed.connect(func(): open_room_menu(room.duplicate(true),button,Input.is_action_pressed("ui_accept")))
+	return button
+
+## Opens the menu under a finished room's "..." button.
+func open_room_menu(room: Dictionary, button: Control, keyboard: bool = false) -> void:
+	if _removing or is_instance_valid(_modal) or (is_instance_valid(_menu) and not _menu.is_closed()): return
+	_menu = RoomCardMenu.open(button,_menu_rows(room),keyboard)
+	if _menu == null: return
+	# Deferred, so a picked row's action runs before the cards it sits on are rebuilt.
+	_menu.closed.connect(_render,CONNECT_DEFERRED)
+	_menu.chosen.connect(func(id: String):
+		if id == "hide": room_remove_requested.emit(room,"hide")
+		elif id == "leave_finished": _ask_leave(room,button))
+
+## The open menu, for tests and captures; null when none is open.
+func room_menu() -> CanvasLayer:
+	return _menu if is_instance_valid(_menu) and not _menu.is_closed() else null
+
+## The friend's nickname for a room's texts, or ROOM_FRIEND.
+func _friend(room: Dictionary) -> String:
+	for member: Variant in room.get("member_ids",[]):
+		var shown := str(display_name.call(str(member))) if display_name.is_valid() else ""
+		if not shown.is_empty(): return shown
+	return PlayerCopy.ROOM_FRIEND
+
+func _ask_leave(room: Dictionary, opener: Control) -> void:
+	if _removing or is_instance_valid(_modal): return
+	var friend := _friend(room)
+	_modal = InGameModal.open(_root,"RoomLeaveModal",PlayerCopy.ROOM_LEAVE_TITLE,PlayerCopy.ROOM_LEAVE_SUBTITLE % [str(room.get("chapter_title","")),friend],opener)
+	_modal.label(PlayerCopy.ROOM_LEAVE_BODY_LAST % friend if room.get("partner_left") == true else PlayerCopy.ROOM_LEAVE_BODY % friend)
+	var phone := HBoxContainer.new()
+	phone.name = "LeavePhoneLine"
+	phone.add_theme_constant_override("separation",10)
+	_modal.content.add_child(phone)
+	var icon := TextureRect.new()
+	icon.name = "PhoneIcon"
+	icon.texture = PHONE_ICON
+	icon.custom_minimum_size = Vector2(22,22)
+	icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	icon.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	icon.modulate = MUTED
+	phone.add_child(icon)
+	var line: Label = _modal.label(PlayerCopy.ROOM_LEAVE_PHONE,17,phone)
+	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_theme_color_override("font_color",MUTED)
+	var confirm: Button = _modal.add_actions(PlayerCopy.ROOM_LEAVE,func():
+		_modal.close(false)
+		room_remove_requested.emit(room,"leave_finished"),"Cancel",true)
+	# Leaving can't be undone, so the safe choice takes focus first.
+	(_modal.find_child("ModalCancel",true,false) as Button).grab_focus()
+	confirm.name = "ModalConfirm"
+
+func _hidden_rooms() -> Array:
+	return client.hidden_rooms() if client != null and client.has_method("hidden_rooms") else []
+
+## The fold line "Hidden rooms · N" under the finished rooms, and, unfolded, a
+## smaller dimmed card for each hidden room with Show again.
+func _add_hidden_section(hidden: Array) -> void:
+	if hidden.is_empty(): return
+	var divider := HSeparator.new()
+	var line := StyleBoxLine.new()
+	line.color = Color("3e5e55")
+	line.thickness = 1
+	divider.add_theme_stylebox_override("separator",line)
+	_rooms_list.add_child(divider)
+	var fold := Button.new()
+	fold.name = "HiddenRoomsFold"
+	fold.text = PlayerCopy.ROOM_HIDDEN_FOLD % hidden.size()
+	fold.icon = FOLD_OPEN_ICON if _hidden_open else FOLD_CLOSED_ICON
+	fold.add_theme_constant_override("icon_max_width",20)
+	fold.alignment = HORIZONTAL_ALIGNMENT_LEFT
+	fold.custom_minimum_size.y = 48
+	fold.mouse_filter = Control.MOUSE_FILTER_PASS
+	fold.accessibility_name = fold.text
+	for state: String in ["normal","hover","pressed","hover_pressed","focus"]:
+		fold.add_theme_stylebox_override(state,ThemeRules.padded(ThemeRules.rounded(Color(1,1,1,0.05) if state in ["hover","pressed","hover_pressed"] else Color.TRANSPARENT,12,ThemeRules.CHOICE_BORDER if state == "focus" else Color.TRANSPARENT),10.0,6.0))
+	for key: String in ["font_color","font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color","icon_normal_color","icon_hover_color","icon_pressed_color","icon_hover_pressed_color","icon_focus_color"]:
+		fold.add_theme_color_override(key,WARM)
+	fold.pressed.connect(func():
+		_hidden_open = not _hidden_open
+		_render())
+	_rooms_list.add_child(fold)
+	if not _hidden_open: return
+	for room: Dictionary in hidden: _add_hidden_card(room)
+
+func _add_hidden_card(room: Dictionary) -> void:
+	var card := _panel()
+	card.name = "HiddenRoom"
+	card.mouse_filter = Control.MOUSE_FILTER_PASS
+	card.modulate = Color(1,1,1,0.82)
+	_rooms_list.add_child(card)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation",12)
+	card.add_child(row)
+	var texture: Variant = thumbnail_for.call(str(room.chapter_key)) if thumbnail_for.is_valid() else _catalog_thumbnail(str(room.chapter_key))
+	if texture is String: texture = load(texture)
+	if texture is Texture2D:
+		var image := TextureRect.new()
+		image.texture = texture
+		image.custom_minimum_size = Vector2(104,64)
+		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
+		row.add_child(image)
+	var details := VBoxContainer.new()
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	details.add_theme_constant_override("separation",2)
+	row.add_child(details)
+	var heading := Label.new()
+	heading.text = str(room.get("chapter_title","A journey"))
+	if _heading_font != null: heading.add_theme_font_override("font",_heading_font)
+	heading.add_theme_font_size_override("font_size",20)
+	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details.add_child(heading)
+	var friend := _friend(room)
+	var meta := Label.new()
+	meta.text = PlayerCopy.ROOM_HIDDEN_ALONE if friend == PlayerCopy.ROOM_FRIEND else PlayerCopy.ROOM_HIDDEN_LINE % friend
+	meta.add_theme_font_size_override("font_size",17)
+	meta.add_theme_color_override("font_color",MUTED)
+	meta.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	details.add_child(meta)
+	var show := Button.new()
+	show.name = "ShowAgain"
+	show.text = PlayerCopy.ROOM_SHOW_AGAIN
+	show.custom_minimum_size = Vector2(0,46)
+	show.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	show.mouse_filter = Control.MOUSE_FILTER_PASS
+	show.disabled = _removing
+	_secondary(show)
+	show.pressed.connect(func(): room_show_requested.emit(room.duplicate(true)))
+	row.add_child(show)
 
 func _ask_remove(room: Dictionary, removal: String, opener: Control) -> void:
 	if _removing or is_instance_valid(_modal): return
 	var label := _removal_label(removal)
-	var heading := "Close this room?" if removal == "close" else PlayerCopy.ROOM_LEAVE_TITLE if removal == "leave_finished" else "Remove this room?"
-	_modal = InGameModal.open(_root,"RoomRemoveModal",heading,str(room.get("chapter_title","")),opener)
+	_modal = InGameModal.open(_root,"RoomRemoveModal","Close this room?" if removal == "close" else "Remove this room?",str(room.get("chapter_title","")),opener)
 	var status := str(room.get("status",""))
-	if removal == "leave_finished": _modal.label(PlayerCopy.ROOM_LEAVE_BODY)
-	elif removal != "close": _modal.label("Your friend keeps the room and its replay." if status == "completed" else "It only leaves your list.")
+	if removal != "close": _modal.label("It only leaves your list.")
 	elif status == "waiting_for_friend": _modal.label("Your invitation stops working, and any turn you saved here is deleted. You can't undo this.")
 	else: _modal.label("The room closes for both of you, and its saved turns are deleted. You can't undo this.")
-	var confirm: Button = _modal.add_actions(label if removal in ["close","leave_finished"] else "Remove",func():
+	var confirm: Button = _modal.add_actions(label if removal == "close" else "Remove",func():
 		_modal.close(false)
 		room_remove_requested.emit(room,removal))
 	confirm.grab_focus()

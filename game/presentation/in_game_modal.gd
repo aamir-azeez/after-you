@@ -2,6 +2,8 @@ extends Control
 ## Shared in-game pop-up used across After You: a dimmed backdrop that blocks
 ## the page behind it, a teal panel with a heading and a quiet Close button,
 ## optional body text or fields, and a coral Cancel beside a cream main action.
+## An action that can't be undone swaps them (add_actions destructive): Cancel
+## is the cream button and the action itself is coral.
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const CLOSE_ICON = preload("res://assets/ui/social/x.svg")
@@ -103,7 +105,7 @@ func label(text: String, size: int = 19, parent: Node = null) -> Label:
 	(parent if parent != null else content).add_child(value)
 	return value
 
-func add_actions(primary_label: String, primary: Callable, cancel_label: String = "Cancel") -> Button:
+func add_actions(primary_label: String, primary: Callable, cancel_label: String = "Cancel", destructive: bool = false) -> Button:
 	var gap := Control.new()
 	gap.custom_minimum_size.y = 6
 	content.add_child(gap)
@@ -117,7 +119,7 @@ func add_actions(primary_label: String, primary: Callable, cancel_label: String 
 	cancel.custom_minimum_size.y = 54
 	cancel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	cancel.pressed.connect(func(): close())
-	ThemeRules.danger(cancel)
+	if not destructive: ThemeRules.danger(cancel)
 	footer.add_child(cancel)
 	var confirm := Button.new()
 	confirm.name = "ModalConfirm"
@@ -125,6 +127,7 @@ func add_actions(primary_label: String, primary: Callable, cancel_label: String 
 	confirm.custom_minimum_size.y = 54
 	confirm.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	confirm.pressed.connect(primary)
+	if destructive: ThemeRules.danger(confirm)
 	footer.add_child(confirm)
 	_trap_focus()
 	return confirm

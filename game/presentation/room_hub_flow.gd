@@ -121,6 +121,7 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	screen.join_code_requested.connect(_join)
 	screen.retry_requested.connect(_retry)
 	screen.room_remove_requested.connect(_remove_room)
+	screen.room_show_requested.connect(_show_room)
 	screen.set_held_request(_held_room_request())
 	screen.set_leave_finished(_leave_offered())
 	host.add_child(screen)
@@ -240,6 +241,12 @@ func _remove_room(room: Dictionary, action: String) -> void:
 	else:
 		hub.show_notice(str(response.get("error",PlayerCopy.ROOMS_API_1C556A121773)))
 		refresh_when_idle(hub)
+
+## Show again on a hidden room: it returns to the list on this device.
+func _show_room(room: Dictionary) -> void:
+	if host.mode != MODE_ROOMS or not is_instance_valid(screen) or inbox == null: return
+	inbox.show_again(room)
+	screen.show_notice("")
 
 ## A create or join request saved before its reply arrived, or a room with an
 ## unfinished redo request. Either blocks other rooms until it is retried.

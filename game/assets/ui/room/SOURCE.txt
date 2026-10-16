@@ -1,0 +1,2 @@
+Icons drawn for After You (dots, eye-off, door-exit, phone), in the style of the Phosphor regular set used in ../social.
+White strokes or fills on a 256 viewBox, so Godot can tint them.

@@ -44,11 +44,24 @@ const UPDATE_REQUIRED_ERROR := "Playing with friends needs a newer version of Af
 const ROOM_TURN_KEPT := "Your rehearsal is still on this device."
 # Host or join refused at the server's room limit (room_limit_reached).
 const ROOM_LIMIT_REACHED := "You have reached the room limit. Close one of Your rooms that is still in play, then try again."
-# Leaving a finished room from the hub's Completed tab (the trash button), its
-# confirm step, and why a leave did not happen.
+# A finished room's "..." menu on the hub's Completed tab, the Leave room
+# confirm step, why a leave did not happen, and the Hidden rooms section.
+# %s in the leave texts is the friend's nickname, or ROOM_FRIEND.
+const ROOM_MENU := "More options"
+const ROOM_HIDE := "Hide from my list"
+const ROOM_HIDE_DETAIL := "Only on this phone. Show it again any time."
 const ROOM_LEAVE := "Leave room"
+const ROOM_LEAVE_DETAIL := "Deletes your photos and reactions here."
+const ROOM_FRIEND := "Your friend"
 const ROOM_LEAVE_TITLE := "Leave this room?"
-const ROOM_LEAVE_BODY := "This deletes your photos and reactions in this room and takes the room off your list for good. Your friend keeps the room and its replay, including your turns. You can't undo this."
+const ROOM_LEAVE_SUBTITLE := "%s · %s"
+const ROOM_LEAVE_BODY := "This deletes your photos and reactions in this room and takes it off your list for good. %s keeps the room and its replay, including your turns."
+const ROOM_LEAVE_BODY_LAST := "%s has already left, so this deletes the room for good."
+const ROOM_LEAVE_PHONE := "The replay saved on this phone stays."
+const ROOM_HIDDEN_FOLD := "Hidden rooms · %d"
+const ROOM_HIDDEN_LINE := "%s · hidden on this phone"
+const ROOM_HIDDEN_ALONE := "Hidden on this phone"
+const ROOM_SHOW_AGAIN := "Show again"
 const ROOM_LEAVE_FAILED := "Couldn't leave the room. Check your connection and try again."
 const ROOM_LEAVE_UNAVAILABLE := "Couldn't leave the room right now. Try again later."
 const ROOM_LEAVE_IN_PLAY := "Your friend is playing this room again, so you can't leave it yet."

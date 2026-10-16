@@ -314,12 +314,24 @@ func _card_room(hub: Node, card: Node) -> String:
 	var index := card.get_index()
 	return str(hub._visible_rooms[index].room_id) if index < hub._visible_rooms.size() else ""
 
-## Hub: the trash button on a room card, then the confirm in its dialog.
+## Hub: a finished room's "..." menu, then Hide from my list; on any other
+## card, the trash button, then the confirm in its dialog.
 func remove_room_card(device: Node, room_id: String) -> bool:
 	var hub: Node = device.hub()
 	if hub == null: return false
 	for card: Node in hub._rooms_list.get_children():
 		if _card_room(hub, card) != room_id: continue
+		var menu_button: Button = card.find_child("RoomMenu", true, false)
+		if menu_button != null:
+			if menu_button.disabled: return false
+			menu_button.pressed.emit()
+			var menu: CanvasLayer = hub.room_menu()
+			if menu == null: return false
+			for row: Button in menu.rows:
+				if row.get_meta("menu_id") == "hide":
+					row.pressed.emit()
+					return true
+			return false
 		var remove: Button = card.find_child("RemoveRoom", true, false)
 		if remove == null or remove.disabled: return false
 		remove.pressed.emit()
