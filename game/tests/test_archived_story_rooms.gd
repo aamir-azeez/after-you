@@ -152,13 +152,13 @@ func _schema_one_ordinary_pending() -> void:
 	c.h.free()
 
 func _unknown_replies_hold() -> void:
-	for failure: String in ["offline","timeout","forbidden","missing","server","other409","wrong_room","wrong_proof"]:
+	# A definitive gone answer releases the room instead (test_gone_room_release).
+	for failure: String in ["offline","timeout","forbidden","server","other409","wrong_room","wrong_proof"]:
 		var c := await _unproven_last_room(ORDINARY,"high-and-low")
 		var response := {"ok":false,"status":0,"code":"connection_interrupted"}
 		match failure:
 			"timeout": response.code = "request_timeout"
 			"forbidden": response = {"ok":false,"status":403,"code":"player_blocked"}
-			"missing": response = {"ok":false,"status":404,"code":"room_not_found"}
 			"server": response = {"ok":false,"status":503,"code":"service_unavailable"}
 			"other409": response = {"ok":false,"status":409,"code":"campaign_required"}
 			"wrong_room","wrong_proof":

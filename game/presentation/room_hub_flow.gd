@@ -87,8 +87,12 @@ func show_rooms() -> void:
 	var lifecycle: int = host.lifecycle_generation
 	if not host._relay_available() or not await host._ensure_identity(): return
 	if view != host.store_view_generation or lifecycle != host.lifecycle_generation or host.application_backgrounded: return
-	if not await host._prepare_ordinary_navigation(): return
-	open_hub()
+	# A toast would sit under the hub, so a note from the check shows on the hub.
+	var report := {"text": ""}
+	if not await host._prepare_ordinary_navigation(func(text: String) -> void: report.text = text):
+		if not report.text.is_empty(): host._toast(report.text)
+		return
+	open_hub(report.text)
 
 ## Builds the hub without the entry checks of show_rooms; every room flow
 ## returns here. A notice, such as why a room could not be opened, shows above

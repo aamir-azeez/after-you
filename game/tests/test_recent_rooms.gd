@@ -114,9 +114,8 @@ func _run() -> void:
 	# once before any room action.
 	_check(await session.prepare_archived_navigation() and session.last_room() == OTHER, "The pruned selected room is checked once and kept")
 	api.lookup.erase(ROOM)
-	# Known gap, left for the owner: the check of an unproven room that is gone
-	# refuses it but leaves its row listed until the next refresh.
 	_check(not await session.open_room(ROOM) and session.last_room() == OTHER, "A now-deleted room is refused after its direct authenticated read fails")
+	_check(session.room_ids().is_empty() and session.room_summaries().is_empty(), "Its row is dropped at once, before the next refresh")
 	api.listed = []
 	_check(await session.load_lobby() and session.room_ids().is_empty(), "The next refresh drops the deleted room")
 	api.lookup[ROOM] = _room(ROOM)

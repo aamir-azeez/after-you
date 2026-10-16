@@ -3554,4 +3554,8 @@ func _prepare_ordinary_navigation(report: Callable = Callable()) -> bool:
 	var prepared: bool = await session.prepare_archived_navigation()
 	if relay_session != session or application_backgrounded or not _relay_identity().ready or context != {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}: return false
 	if not prepared: _report(report,session.last_error)
+	else:
+		# The last room was found gone with a request still held for it.
+		var note: String = session.take_released_room_note()
+		if not note.is_empty(): _report(report,note)
 	return prepared

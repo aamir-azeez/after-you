@@ -4,6 +4,7 @@ const Client = preload("res://services/redo_client.gd")
 const Recent = preload("res://tests/test_recent_rooms.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const HOST := Recent.HOST
 const ROOM := Recent.ROOM
 const OTHER := Recent.OTHER
@@ -19,9 +20,11 @@ class Api:
 	var rooms: Dictionary = {}
 	var receipt: Dictionary = {}
 	var requested: Dictionary = {}
+	var replies: Dictionary = {}
 	var calls: Array = []
 	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append({"path":path,"method":method,"body":body.duplicate(true)})
+		if replies.has(path): return replies[path].duplicate(true)
 		if path=="/v2/capabilities":
 			var chapter := Registry.descriptor(Registry.RELAY)
 			return _ok({"api_version":2,"recording_version":2,"simulation_version":2,"mutations_enabled":enabled,"validation":"structural_client_replay_required","chapters":[{"level_id":chapter.level_id,"level_version":chapter.level_version,"definition_hash":chapter.definition_hash,"premium":false}]})
@@ -120,13 +123,64 @@ func _run() -> void:
 	_check(await session.load_lobby() and session.room_ids()==[OTHER] and session.pending_redo_room()==ROOM,"Cold omitted room retains an explicit validated recovery target")
 	_check(not await session.open_room(OTHER) and session.pending_redo_room()==ROOM,"List omission alone never discards uncertain acceptance")
 	# The omitted room lost its standalone proof with its list row, so it is
-	# checked once before anything else. Known gap, left for the owner: a gone
-	# room that still holds an uncertain redo stays held after that check.
+	# checked once before anything else.
+	var room_scope := "relay-room-v2:"+HOST+":"+ROOM
+	var journals := _journals(store,[redo_scope,room_scope])
 	calls=api.calls.size()
 	_check(not await session.open_room(ROOM) and session.pending_redo_room()==ROOM and api.calls.size()==calls,"An unproven omitted room is never opened unchecked")
-	_check(not await session.prepare_archived_navigation() and session.pending_redo_room()==ROOM,"The check finds the room gone but keeps its uncertain redo")
-	_check(api.calls.size()==calls+1 and api.calls.back().method==HTTPClient.METHOD_GET and not await session.open_room(OTHER),"The check is one GET and no mutation; other rooms stay held behind the redo")
+	api.replies["/v2/rooms/"+ROOM]={"ok":false,"status":0,"code":"request_timeout"}
+	_check(not await session.prepare_archived_navigation() and session.pending_redo_room()==ROOM and not await session.open_room(OTHER),"A check that times out keeps the uncertain redo and holds other rooms")
+	_check(session.take_released_room_note().is_empty() and journals==_journals(store,[redo_scope,room_scope]),"A timeout releases and writes nothing")
+	api.replies.clear()
+	calls=api.calls.size()
+	_check(await session.prepare_archived_navigation() and session.pending_redo_room().is_empty() and session.last_room().is_empty(),"A check that finds the room gone releases its uncertain redo")
+	_check(api.calls.size()==calls+1 and api.calls.back().method==HTTPClient.METHOD_GET,"The check is one GET and no mutation")
+	_check(session.take_released_room_note()==PlayerCopy.ROOMS_API_A7ACF38988EE and session.take_released_room_note().is_empty(),"The player is told once that the room was closed")
+	_check(await session.open_room(OTHER) and session.last_room()==OTHER,"Other rooms open again")
+	_check(journals==_journals(store,[redo_scope,room_scope]),"The redo and room journals keep their exact bytes")
 	api.queue_free()
 	await process_frame
+	await _warm_gone_redo()
 	print("After You redo Session integration: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
+
+func _journals(store: RefCounted, scopes: Array) -> PackedByteArray:
+	return var_to_bytes(scopes.map(func(scope: String) -> Variant: return store.values.get(scope)))
+
+## A Session restored from the room's saved proof, with its redo client bound
+## to the lost-reply redo. The friend's phone then removes the room, the list
+## drops it, and the one check that finds it gone releases the redo; the
+## released client's late retry sends nothing.
+func _warm_gone_redo() -> void:
+	var api := Api.new()
+	root.add_child(api)
+	api.rooms={ROOM:_room(ROOM,true),OTHER:_room(OTHER,false)}
+	var source := Client.source_for("relay",api.rooms[ROOM])
+	api.requested={"request_id":Canonical.digest(source),"source":source,"status":"pending"}
+	var identity := Recent.Identity.new()
+	identity.player=HOST
+	var store := Recent.MemoryStore.new()
+	var first := Session.new(api,identity.current,store)
+	_check(await first.load_lobby() and await first.open_room(OTHER) and await first.open_room(ROOM),"Warm: both rooms open")
+	var first_client: RefCounted = first.redo_client()
+	_check(first_client.bind_room("relay",first.coordinator.snapshot()) and await first_client.refresh(),"Warm: the redo request is read")
+	api.drop_accept=true
+	_check(not await first_client.accept() and not first_client.pending().is_empty(),"Warm: the accept's reply is lost")
+	var session := Session.new(api,identity.current,store)
+	var calls := api.calls.size()
+	_check(await session.load_lobby() and await session.prepare_archived_navigation() and api.calls.size()==calls+2 and session.coordinator!=null,"Warm: a later start restores the room from its saved proof, with no room read")
+	var client: RefCounted = session.redo_client()
+	_check(client.bind_room("relay",session.coordinator.snapshot()) and client.pending().action=="accept","Warm: its redo client loads the lost-reply accept")
+	api.rooms.erase(ROOM)
+	_check(await session.load_lobby() and session.room_ids()==[OTHER] and not session.standalone_room_proven(ROOM),"Warm: the list no longer shows the room, so it is checked before its next use")
+	var journals := _journals(store,["relay-redo-relay-v1:"+HOST+":"+ROOM,"relay-room-v2:"+HOST+":"+ROOM])
+	calls = api.calls.size()
+	_check(not await session.open_room(OTHER) and api.calls.size()==calls,"Warm: the uncertain redo holds other rooms")
+	_check(await session.prepare_archived_navigation() and client.pending().is_empty() and session.pending_redo_room().is_empty() and session.coordinator==null,"Warm: the check releases the redo and the room")
+	_check(api.calls.size()==calls+1 and api.calls.back().method==HTTPClient.METHOD_GET,"Warm: one GET and no mutation")
+	calls=api.calls.size()
+	_check(not await client.retry() and not await client.refresh() and api.calls.size()==calls,"Warm: the released client's late retry sends nothing")
+	_check(await session.open_room(OTHER) and session.last_room()==OTHER,"Warm: other rooms open")
+	_check(journals==_journals(store,["relay-redo-relay-v1:"+HOST+":"+ROOM,"relay-room-v2:"+HOST+":"+ROOM]),"Warm: the redo and room journals keep their exact bytes")
+	api.queue_free()
+	await process_frame

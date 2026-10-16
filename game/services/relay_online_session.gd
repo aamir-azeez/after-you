@@ -65,6 +65,7 @@ var _redo_read_key := ""
 var _redo_read_result: Dictionary = {}
 var _archived_room_evidence: Dictionary = {}
 var _archived_evidence_lifetime: Dictionary = {}
+var _released_room_note := ""
 var _replay_transfer: RefCounted
 var _transfer_busy := false
 var _transferred_rooms: Dictionary = {}
@@ -83,6 +84,7 @@ func invalidate_identity() -> void:
 	_transferred_rooms.clear()
 	_archived_room_evidence.clear()
 	_archived_evidence_lifetime.clear()
+	_released_room_note = ""
 	_auxiliary_factory = null
 	if _safety != null: _safety.invalidate()
 	if _redo != null: _redo.invalidate()
@@ -664,7 +666,7 @@ func prepare_archived_navigation() -> bool:
 	validator.supported_simulation_versions = _simulation_versions()
 	var kind := _classify_room_answer(room_id,response,validator) if validator.bind_room(room_id) else ""
 	if kind.is_empty():
-		if _room_gone(response) and not _room_recovery_pending(room_id): return _forget_last_room(room_id)
+		if _room_gone(response): return _release_gone_room(room_id)
 		last_error = PlayerCopy.MAIN_571E92F64ED1
 		return false
 	# Restoring an ordinary cache leaves its original draft and pending bytes
@@ -704,8 +706,32 @@ static func _room_gone(response: Dictionary) -> bool:
 	if response.get("ok") != false or response.get("ignored",false): return false
 	return (response.get("status") == 404 and response.get("code") == "room_not_found") or (response.get("status") == 410 and response.get("code") in ["room_closed","room_deleted"])
 
+## A checked read of this room said the server no longer has it (`_room_gone`).
+## A turn or redo this phone still holds for it, whose reply was lost, can never
+## be accepted now, so the room stops holding every other room: it is no longer
+## the last room, its listed row and any coordinator or redo client bound to it
+## are dropped, and the player gets one note when such a request was held. Its
+## journals stay on disk exactly as they were. False only when the index save
+## fails; the room then stays held as before.
+func _release_gone_room(room_id: String) -> bool:
+	var held: bool = _index.last_room == room_id and _room_recovery_pending(room_id)
+	if _index.last_room == room_id and not _forget_last_room(room_id): return false
+	_room_chapters.erase(room_id)
+	_room_summaries.erase(room_id)
+	if _redo != null and (_redo.bound_room_id("relay") == room_id or str(_redo.pending().get("source", {}).get("room_id", "")) == room_id): _redo.invalidate()
+	_redo_read_key = ""
+	_redo_read_result = {}
+	if held: _released_room_note = PlayerCopy.ROOMS_API_A7ACF38988EE
+	return true
+
+## The note from the last release of a gone room that held a request, once; "" after.
+func take_released_room_note() -> String:
+	var note := _released_room_note
+	_released_room_note = ""
+	return note
+
 ## True when this phone still holds an uncertain turn or redo request for the
-## room, or cannot tell. Such a room keeps its recovery hold.
+## room, or cannot tell.
 func _room_recovery_pending(room_id: String) -> bool:
 	var saved: Dictionary = _store.load_scope("relay-room-v2:" + _owner + ":" + room_id)
 	if not saved.get("ok", false): return true
@@ -756,6 +782,7 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
 		return false
 	if not response.get("ok",false):
+		if _room_gone(response) and not _release_gone_room(room_id): return false
 		if response.get("code") in ["room_not_found","room_deleted","player_blocked"]:
 			_clear_terminal_redo(room_id)
 		return _failure(response)

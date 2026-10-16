@@ -68,11 +68,11 @@ func _guarded_redo_recovery() -> void:
 	_check(await online.load_lobby() and online.pending_redo_room() == ROOM,"Cold omitted selection retains its exact redo recovery target")
 	calls = api.calls.size()
 	_check(not await online.open_room(OTHER) and api.calls.size() == calls,"An omitted source cannot be silently replaced by another ordinary room")
-	# Known gap, left for the owner: the one check finds the room gone, but an
-	# uncertain redo keeps it held (see test_redo_session).
+	var journals := _journals(store,[redo_scope,"relay-room-v2:"+HOST+":"+ROOM])
 	_check(not await online.open_room(ROOM) and api.calls.size() == calls and online.pending_redo_room() == ROOM,"The unproven omitted room is not opened before its check")
-	_check(not await online.prepare_archived_navigation() and online.pending_redo_room() == ROOM and api.calls.size() == calls+1,"Its one check keeps the uncertain redo")
-	_check(Canonical.same(old_cache,store.values["relay-room-v2:"+HOST+":"+ROOM]),"The check preserves the original native room journal")
+	_check(await online.prepare_archived_navigation() and online.pending_redo_room().is_empty() and api.calls.size() == calls+1,"Its one check finds the room gone and releases the uncertain redo")
+	_check(Canonical.same(old_cache,store.values["relay-room-v2:"+HOST+":"+ROOM]) and journals == _journals(store,[redo_scope,"relay-room-v2:"+HOST+":"+ROOM]),"The check keeps the room and redo journals byte for byte")
+	_check(await online.open_room(OTHER) and online.last_room() == OTHER,"Other rooms open again")
 	api.queue_free()
 	await process_frame
 
