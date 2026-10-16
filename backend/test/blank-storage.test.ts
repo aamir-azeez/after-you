@@ -28,6 +28,7 @@ const RELAY_READS: Read<V2>[] = [
   ["resolvesInvitation", room => room.resolvesInvitation(CODE)],
   ["safetyMembers", room => room.safetyMembers(P)],
   ["safetyMembers from a Story client", (room, id) => room.safetyMembers(P, story(id))],
+  ["interactionAllowed", room => room.interactionAllowed(P, undefined, "t".repeat(22))],
   ["memberRoomState", room => room.memberRoomState(P)],
   ["inboxProjection", room => room.inboxProjection(P)],
   ["notificationEligible", (room, id) => room.notificationEligible(P, makeHint("relay", id, 2))],
@@ -69,6 +70,7 @@ const PLAYER_READS: Read<PlayerStub>[] = [
   ["authorize", player => player.authorize(HASH)],
   ["authorize while deleting", player => player.authorize(HASH, true)],
   ["authorizeRoom", player => player.authorizeRoom(HASH, "r".repeat(22))],
+  ["rotateSafetyToken", player => player.rotateSafetyToken()],
 ];
 const PROFILE_READS: Read<ProfileStub>[] = [
   ["deletionReceipt", (profile, id) => profile.deletionReceipt(id, HASH)],

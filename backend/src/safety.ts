@@ -85,7 +85,7 @@ export class SafetyProfile extends DurableObject<Env> {
     const p = this.read(owner); const has = p.blocks.includes(peer);
     if (blocked && !has && p.blocks.length >= 128) return fail(409, "block_list_full");
     if (blocked !== has) { p.blocks = blocked ? [...p.blocks, peer].sort() : p.blocks.filter(id => id !== peer); this.write(p); }
-    if (blocked) await this.revokeFriendRoomEvents(owner, peer);
+    if (blocked) await Promise.all([this.revokeFriendRoomEvents(owner, peer), rotateSafetyTokens(this.env, [owner, peer])]);
     return ok({ schema_version: 1, blocked, player_id: peer });
   }
   async operatorBlock(owner: string, peer: string): Promise<Outcome<{ schema_version: 1; blocked: true; player_id: string }>> {
@@ -93,7 +93,7 @@ export class SafetyProfile extends DurableObject<Env> {
     if (!await this.env.PLAYERS.getByName(owner).safetyIdentityActive(owner)) return fail(409, "reporter_unavailable");
     const p = this.read(owner); if (readErasure(this.ctx.storage)) return fail(409, "identity_deletion_pending");
     if (!p.blocks.includes(peer)) { if (p.blocks.length >= 128) return fail(409, "block_list_full"); p.blocks.push(peer); p.blocks.sort(); this.write(p); }
-    await this.revokeFriendRoomEvents(owner, peer);
+    await Promise.all([this.revokeFriendRoomEvents(owner, peer), rotateSafetyTokens(this.env, [owner, peer])]);
     return ok({ schema_version: 1, blocked: true, player_id: peer });
   }
   private async revokeFriendRoomEvents(owner: string, peer: string): Promise<void> {
@@ -199,7 +199,7 @@ export class SafetyProfile extends DurableObject<Env> {
       // Portable restore selects the destination Player explicitly; never send
       // a restored deletion job to an archived source object's physical ID.
       if (erasure) erasure.player_object_id = text(targetPlayerObjectId ?? this.env.PLAYERS.idFromName(owner).toString(), HASH_PATTERN);
-      return await this.ctx.storage.transaction(async () => {
+      const restored = await this.ctx.storage.transaction(async (): Promise<Outcome<{ restored: true }>> => {
         knownSchema(this.ctx.storage, [PROFILE_SCHEMA, ERASURE_SCHEMA]);
         if (this.ctx.storage.sql.exec("SELECT id FROM safety_profile").toArray().length || readErasure(this.ctx.storage) || await this.ctx.storage.getAlarm() !== null) return fail(409, "restore_target_not_empty");
         if (profile) this.write(profile);
@@ -211,6 +211,9 @@ export class SafetyProfile extends DurableObject<Env> {
         }
         return ok({ restored: true });
       });
+      // Restored blocks count as new blocks for any room that remembered these pairs as unblocked.
+      if (restored.ok && profile?.blocks.length) await rotateSafetyTokens(this.env, [owner, ...profile.blocks]);
+      return restored;
     } catch { return fail(409, "invalid_safety_archive"); }
   }
 }
@@ -307,6 +310,14 @@ export class SafetyInbox extends DurableObject<Env> {
   }
 }
 
+/**
+ * After a block is stored: every player in it gets a new safety token before the block is answered, so a room
+ * that remembered the pair as unblocked checks again on their next request (v2/block-memo.ts). One call per
+ * player; no room is called. A failure fails the block request, and repeating it repeats the change.
+ */
+async function rotateSafetyTokens(env: Env, players: string[]): Promise<void> {
+  await Promise.all(players.map(id => env.PLAYERS.getByName(id).rotateSafetyToken()));
+}
 export async function interactionBlocked(env: Env, a: string, b: string | null): Promise<boolean> {
   if (!b) return false;
   const [ab, ba] = await Promise.all([env.SAFETY_PROFILES.getByName(a).hasBlocked(a, b), env.SAFETY_PROFILES.getByName(b).hasBlocked(b, a)]);

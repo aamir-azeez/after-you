@@ -1,7 +1,7 @@
 import { DurableObject } from "cloudflare:workers";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
 import { flags } from "./flags";
-import { ApiError, ID_PATTERN, equalHash, fail, isObject, ok, type Outcome } from "./protocol";
+import { ApiError, ID_PATTERN, equalHash, fail, isObject, ok, randomToken, type Outcome } from "./protocol";
 import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, reserveCampaignGuestLink, reserveCampaignJoin, readCampaignJoin, readCampaignLink, cancelUnreservedCampaignJoin, cancelCampaignCreation, finalizeCampaignJoinCancellation } from "./v2/campaign-player";
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
 import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS, validSocial, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom, type SocialState } from "./friends";
@@ -72,13 +72,21 @@ export class Player extends DurableObject<Env> {
   /**
    * authorize() for a request that names a room, plus whether this player may reach that room:
    * it holds a link to it, or holds a Story link (Story chapter rooms are not linked one by one).
+   * An authorized answer also carries the player's current safety token (see v2/block-memo.ts).
    */
-  authorizeRoom(deviceHash: string, roomId: string): { authorized: boolean; linked: boolean } {
+  authorizeRoom(deviceHash: string, roomId: string): { authorized: boolean; linked: boolean; safety_token?: string } {
     if (!this.authorize(deviceHash)) return { authorized: false, linked: false };
     const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 ||
       this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE json_extract(data,'$.api_version')=3 LIMIT 1").toArray().length > 0;
-    return { authorized: true, linked };
+    return { authorized: true, linked, safety_token: this.safetyToken };
   }
+  /**
+   * Changes whenever this player blocks or is blocked, so no room keeps treating the pair as unblocked.
+   * Memory only and random: a new instance, after eviction or a restore, starts with a value no room has seen.
+   */
+  private safetyToken = randomToken(16);
+  /** Called by SafetyProfile after it stores a block that involves this player. */
+  rotateSafetyToken(): void { this.safetyToken = randomToken(16); }
   private social(identity: Identity): SocialState {
     if (identity.social !== undefined && !validSocial(identity.social, identity.player_id)) throw new Error("unsupported_friend_state");
     return identity.social ?? emptySocial();
@@ -593,4 +601,4 @@ export class Player extends DurableObject<Env> {
 }
 
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
-answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }) });
+answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined });

@@ -70,7 +70,7 @@ describe("room link gate", () => {
     });
     const reached = await counted(`/v2/rooms/${id}`, "GET", who);
     expect(reached.answer).toBe("404 room_not_found");
-    expect(reached.calls).toContain("ROOMS_V2.safetyMembers");
+    expect(reached.calls).toContain("ROOMS_V2.interactionAllowed");
   });
 
   it("stores nothing for an unknown invite code, a resolve or a join", async () => {

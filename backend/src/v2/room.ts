@@ -35,6 +35,7 @@ import type { MemberRoomState } from "../room-leave";
 import { anyDeparture, clearDepartures, departed, isMember, recordDeparture } from "../room-departure";
 import { HostAccessMemo } from "./host-access";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
+import { UnblockedPairMemo } from "./block-memo";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -128,6 +129,17 @@ export class RoomV2 extends DurableObject<Env> {
   }); }
   campaignRoomAuthority(player: string, room: string) { return campaignRoomAuthority(this.ctx.storage, player, room); }
   campaignRoomNegotiation(supported: boolean) { return campaignRoomNegotiation(this.ctx.storage, supported === true); }
+  private readonly unblocked = new UnblockedPairMemo();
+  /**
+   * The router's check before a room request: membership as safetyMembers answers it, then blocks.
+   * With the requester's safety token the pair's "not blocked" is remembered until a block changes a token.
+   */
+  async interactionAllowed(player: string, context?: CampaignRoomContext, safetyToken?: string): Promise<Outcome<true>> {
+    const members = await this.safetyMembers(player, context); if (!members.ok) return members;
+    const { host_id: host, guest_id: guest } = members.value, check = () => interactionBlocked(this.env, host, guest);
+    const blocked = safetyToken === undefined ? await check() : await this.unblocked.blocked(player, safetyToken, host, guest, check);
+    return blocked ? fail(403, "player_blocked") : ok(true);
+  }
   // Premium turn admission memo; the policy lives in v2/host-access.ts.
   private readonly hostAccess = new HostAccessMemo();
   hostAccessAge(host: string): number | null { return this.hostAccess.age(host); }
@@ -781,5 +793,5 @@ answerWhileBlank(RoomV2, {
   safetyMembers: async () => roomNotFound(), snapshot: async () => roomNotFound(), snapshotIfChanged: async () => roomNotFound(), lobbySnapshot: async () => roomNotFound(),
   operation: async () => roomNotFound(), collection: async () => roomNotFound(), pairRecording: async () => roomNotFound(), reactions: async () => roomNotFound(),
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
-  redo: async () => roomNotFound(), history: async () => roomNotFound()
+  redo: async () => roomNotFound(), history: async () => roomNotFound(), interactionAllowed: async () => roomNotFound()
 });

@@ -73,7 +73,7 @@ async function reauthorize(request: Request, playerId: string, env: Env): Promis
 }
 
 /** Called only after the shared Player authentication/rate limiter succeeds. */
-export async function routeV2(request: Request, path: string, playerId: string, env: Env): Promise<Response> {
+export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string): Promise<Response> {
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: flags.v2Rooms(env), recording_version: 2, simulation_version: 2,
@@ -146,7 +146,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const [, roomId, action, key] = transferMatch, target = env.ROOMS_V2.getByName(roomId);
     // Standalone only. Never promote a Story room through an ordinary route.
     if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "replay_transfer_standalone_only");
-    await requireInteraction(env, playerId, "relay", roomId);
+    await requireInteraction(env, playerId, "relay", roomId, undefined, safetyToken);
     if (request.method === "GET" && !key && (!action || action === "manifest")) return json(unwrap(await target.replayTransfer(playerId, !action,
       flags.replayTransfer(env))));
     if (request.method === "GET" && action === "operations" && key) return json(unwrap(await target.replayTransferOperation(playerId, text(key, IDEMPOTENCY_PATTERN))));
@@ -164,7 +164,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (historyMatch) {
     const [, roomId, item, action] = historyMatch, target = env.ROOMS_V2.getByName(roomId), support = historySupport(request, env);
     if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "history_standalone_only");
-    await requireInteraction(env, playerId, "relay", roomId);
+    await requireInteraction(env, playerId, "relay", roomId, undefined, safetyToken);
     if (request.method === "GET" && item === undefined) return json(unwrap(await target.history(playerId, support)));
     const position = item === undefined ? -1 : parsePosition(item);
     if (request.method === "GET" && !action && position >= 0) return bytes(unwrap(await target.historyAttempt(playerId, position, support)));
@@ -186,7 +186,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const [, roomId, turnId, action] = deliveryMatch, target = env.ROOMS_V2.getByName(roomId);
     await stageWithin(target, turnId, "not_found", 404);
     const context = await campaignRequestContext(request, roomId);
-    await requireInteraction(env, playerId, "relay", roomId, context);
+    await requireInteraction(env, playerId, "relay", roomId, context, safetyToken);
     if (action === "delivery" && request.method === "GET") return json(unwrap(await target.photoDelivery(playerId, turnId, context)));
     if (action === "ack" && request.method === "POST") {
       if (!flags.photoDelivery(env)) throw new ApiError(503, "photo_delivery_disabled");
@@ -207,7 +207,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // DELETE photo bypasses the interaction gate so owners can remove media.
   // It must still negotiate before inspecting recording/photo authority.
   if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
-  if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id, context);
+  if (request.method !== "DELETE") await requireInteraction(env, playerId, "relay", id, context, safetyToken);
   if (operation === "redo" && !item) {
     // A read: auth() has just checked the device, and the room checks membership and blocks. Requests re-check it.
     if (request.method === "GET") return json(unwrap(await room.redo(playerId)));

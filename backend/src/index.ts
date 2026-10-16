@@ -36,7 +36,8 @@ export { RoomV2 } from "./v2/room";
  * room object is opened.
  */
 const ROOM_ROUTE = /^\/v[12]\/rooms\/([A-Za-z0-9_-]{22})(?:\/(?!leave(?:\/|$))|$)/;
-async function auth(request: Request, env: Env, path: string, deleting = false): Promise<string> {
+/** The authenticated player, and on a room route its current safety token (Player.authorizeRoom). */
+async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string }> {
   const id = request.headers.get("X-Player-Id");
   if (!id || !ID_PATTERN.test(id)) throw new ApiError(401, "invalid_auth");
   const value = request.headers.get("Authorization");
@@ -45,11 +46,11 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   if (!SECRET_PATTERN.test(token)) throw new ApiError(401, "invalid_auth");
   const hash = await digest(token), player = env.PLAYERS.getByName(id), room = ROOM_ROUTE.exec(path)?.[1];
   // The same single Player call either way; a room route also learns whether the room is linked.
-  const access = room === undefined ? { authorized: await player.authorize(hash, deleting), linked: true } : await player.authorizeRoom(hash, room);
+  const access: { authorized: boolean; linked: boolean; safety_token?: string } = room === undefined ? { authorized: await player.authorize(hash, deleting), linked: true } : await player.authorizeRoom(hash, room);
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   if (!(await env.PLAYER_LIMITER.limit({ key: id })).success) throw new ApiError(429, "rate_limited");
   if (!access.linked) throw new ApiError(404, "room_not_found");
-  return id;
+  return { playerId: id, safetyToken: access.safety_token };
 }
 async function publicLimit(request: Request, env: Env): Promise<void> {
   // Bootstrap has no player identity yet. The edge-provided IP is used only as an ephemeral limiter key.
@@ -98,7 +99,7 @@ export default {
         if (Object.keys(input).length !== 1 || input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
         return result(await env.SAFETY_PROFILES.getByName(owner).acknowledgeDeletion(owner, await digest(authorization.slice(7))));
       }
-      const playerId = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
+      const { playerId, safetyToken } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
       if (path === "/v1/room-inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
@@ -163,7 +164,7 @@ export default {
         if (!await player.authorize(await bearerDigest(request))) throw new ApiError(401, "invalid_auth");
         return json(checked);
       }
-      if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env);
+      if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken);
       if (path === "/v1/rooms" && request.method === "GET") {
         const snapshots: RoomSnapshot[] = [], blocked = partnerBlocks(env, playerId);
         for (const link of await player.listRooms()) {

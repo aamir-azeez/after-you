@@ -11,7 +11,9 @@ export async function safetyMembers(env: Env, owner: string, family: string, roo
   text(room, ID_PATTERN); if (!["legacy", "relay"].includes(family)) throw new ApiError(400, "invalid_safety_request");
   return unwrap(family === "legacy" ? await env.ROOMS.getByName(room).safetyMembers(owner) : await env.ROOMS_V2.getByName(room).safetyMembers(owner, context));
 }
-export async function requireInteraction(env: Env, owner: string, family: string, room: string, context?: CampaignRoomContext): Promise<void> {
+export async function requireInteraction(env: Env, owner: string, family: string, room: string, context?: CampaignRoomContext, safetyToken?: string): Promise<void> {
+  // A Relay room checks its own pair, and with the requester's safety token remembers while they are not blocked.
+  if (family === "relay") { unwrap(await env.ROOMS_V2.getByName(text(room, ID_PATTERN)).interactionAllowed(owner, context, safetyToken)); return; }
   const members = await safetyMembers(env, owner, family, room, context);
   if (await interactionBlocked(env, members.host_id, members.guest_id)) throw new ApiError(403, "player_blocked");
 }
