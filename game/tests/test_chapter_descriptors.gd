@@ -8,6 +8,10 @@ extends SceneTree
 ## dressing and folding by the world fingerprints; sounds by the sound_map and
 ## sound_trace goldens.
 ##
+## A released chapter fails here when it is not in GOLDEN_KEYS, when it shows
+## the placeholder thumbnail or "TODO copy" text that scripts/new_chapter.py
+## writes, and when an earlier version of it names no superseded_by.
+##
 ## The menu, Home, look and sound tables also hold entries that are not
 ## registered chapters (the Sleeping Lighthouse @1, the earlier islands, Home,
 ## legacy thumbnails). They are pinned below exactly, positions included.
@@ -23,6 +27,10 @@ const IslandWorld = preload("res://presentation/island_world.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
 
 const LEGACY_LIGHTHOUSE := "sleeping-lighthouse@1"
+## The placeholder thumbnail scripts/new_chapter.py gives a new chapter
+## (scripts/chapter_templates/placeholder-thumbnail.png) and its placeholder text.
+const PLACEHOLDER_THUMBNAIL_SHA256 := "95cdc9db8d5a28b39303e4fc0533f6f97f9a05e1472c967577703b9b704adb67"
+const PLACEHOLDER_COPY := "TODO copy"
 const EARLIER_STAGES := ["first-light", "long-way-home", "patient-garden", "rising-together", "across-the-blue", "lantern-crossing", "two-beats", "after-you"]
 const LIGHTHOUSE_STAGES := ["borrowed-light", "missing-piece", "two-promises", "after-the-first-bell", "what-carried-you", "a-welcome-left-on"]
 const LEGACY_THUMBNAILS := ["legacy-first-light", "legacy-long-way-home", "legacy-patient-garden", "sleeping-lighthouse",
@@ -158,8 +166,20 @@ func _offering() -> void:
 			_check(data.version_of.get_slice("@", 0) == key.get_slice("@", 0) and int(data.version_of.get_slice("@", 1)) < version, "A version is of an earlier version of the same chapter: " + key)
 		if data.superseded_by != "":
 			_check(data.superseded_by in Index.keys() and data.superseded_by.get_slice("@", 0) == key.get_slice("@", 0) and int(data.superseded_by.get_slice("@", 1)) > version, "A chapter is superseded by a later registered version of itself: " + key)
+		if data.released: _finished(key, data)
 	# home_keepsake_catalog reads UNRELEASED through load(), not a preload.
 	_check(load("res://services/chapter_registry.gd").UNRELEASED is Array, "The registry's UNRELEASED is readable through load()")
+
+## Fails a released chapter that shows the placeholder thumbnail, has "TODO
+## copy" anywhere in its descriptor or hashed definition, or has an earlier
+## version still offered (no superseded_by).
+func _finished(key: String, data: Dictionary) -> void:
+	_check(FileAccess.get_sha256(data.thumbnail) != PLACEHOLDER_THUMBNAIL_SHA256, "Released chapter %s still shows the placeholder thumbnail %s" % [key, data.thumbnail])
+	var words := JSON.stringify(data) + JSON.stringify(Registry.definition(key))
+	_check(PLACEHOLDER_COPY not in words, "Released chapter %s still has \"%s\" placeholder text" % [key, PLACEHOLDER_COPY])
+	for earlier: String in Index.keys():
+		if earlier.get_slice("@", 0) == key.get_slice("@", 0) and int(earlier.get_slice("@", 1)) < int(key.get_slice("@", 1)):
+			_check(Index.data(earlier).superseded_by != "", "Released chapter %s is offered in place of %s, which names no superseded_by" % [key, earlier])
 
 ## Home's entries that are not registered chapters, exactly as before.
 func _home() -> void:
