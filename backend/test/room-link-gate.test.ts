@@ -6,6 +6,8 @@ import { randomToken } from "../src/protocol";
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import { account, call, relayPair, type Account } from "./history-http";
 import { countingEnv, meterAllRows } from "./meter";
+import { flags } from "../src/flags";
+import { CHAINS, play } from "./history-chains";
 
 // A room request names a room id. A player who holds no link to that id (and no Story link,
 // whose chapter rooms are not linked one by one) is answered 404 room_not_found by the Player
@@ -15,7 +17,7 @@ afterEach(async () => { await reset(); });
 const answer = async (response: Response) => `${response.status} ${response.status === 200 ? "ok" : (await response.json<{ error: { code: string } }>()).error.code}`;
 let address = 0;
 async function counted(path: string, method: string, who: Account, body?: unknown, token = who.device_token): Promise<{ answer: string; calls: string[] }> {
-  const { env: counting, calls } = countingEnv(env); Object.assign(counting, { V2_ROOMS_ENABLED: "true", PRESENCE_ENABLED: "true" });
+  const { env: counting, calls } = countingEnv(env); Object.assign(counting, { V2_ROOMS_ENABLED: "true", PRESENCE_ENABLED: "true", FINISHED_ROOM_LEAVE_ENABLED: "true" });
   const response = await worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.7." + (++address % 250),
     "X-Player-Id": who.player_id, Authorization: "Bearer " + token }, body: body === undefined ? undefined : JSON.stringify(body) }), counting);
   return { answer: await answer(response), calls };
@@ -71,6 +73,17 @@ describe("room link gate", () => {
     const reached = await counted(`/v2/rooms/${id}`, "GET", who);
     expect(reached.answer).toBe("404 room_not_found");
     expect(reached.calls).toContain("ROOMS_V2.interactionAllowed");
+  });
+
+  // Runs once the leave-room branch (FINISHED_ROOM_LEAVE_ENABLED, flags.finishedRoomLeave) has landed.
+  const leaveLanded = typeof (flags as Record<string, unknown>).finishedRoomLeave === "function";
+  it.runIf(leaveLanded)("refuses a member who left a finished room before opening it, while the partner keeps it", async () => {
+    const { host, guest, room } = await relayPair(), path = `/v2/rooms/${room.room_id}`;
+    const finished = await play(env.ROOMS_V2.getByName(room.room_id), room, CHAINS[0], 0, undefined, { host: host.player_id, guest: guest.player_id });
+    expect((await counted(path + "/leave", "POST", guest, { schema_version: 1, leave_finished: true })).answer).toBe("200 ok");
+    for (const route of [path, path + "/redo", path + "/collection", path + "/presence"]) expect(await counted(route, "GET", guest)).toEqual({ answer: "404 room_not_found", calls: ["PLAYERS.authorizeRoom"] });
+    expect(await answer(await call(path, "GET", host))).toBe("200 ok");
+    expect(finished.room_id).toBe(room.room_id);
   });
 
   it("stores nothing for an unknown invite code, a resolve or a join", async () => {
