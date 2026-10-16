@@ -29,7 +29,7 @@ func load_scope(scope: String) -> Dictionary:
 		var parser := JSON.new()
 		var value: Variant = parser.data if parser.parse(file.get_as_text()) == OK else null
 		file.close()
-		if value is Dictionary and (value.get("version") != 1 or not _generation(value.get("generation")) or value.get("turn_photo_scope") != scope or not value.get("turn_photo_value") is Dictionary):
+		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or not _generation(value.get("generation")) or value.get("turn_photo_scope") != scope or not value.get("turn_photo_value") is Dictionary):
 			return {"ok": false, "error": "unsupported_save"}
 	var store := Save.new(path)
 	store.load_data()
@@ -85,7 +85,7 @@ func list_scopes(owner: String) -> Dictionary:
 			file.close()
 			if error != OK: continue
 			var doc: Variant = parser.data
-			if not doc is Dictionary or not doc.get("turn_photo_scope") is String or doc.get("version") != 1:
+			if not doc is Dictionary or not doc.get("turn_photo_scope") is String or not Save.whole_number(doc.get("version")) or doc.version != 1:
 				return {"ok": false, "error": "unsupported_save"}
 			var candidate: String = doc.turn_photo_scope
 			if _path(candidate).get_file() != base or not candidate.begins_with("turn-photo-v1:" + owner + ":") or (scope != "" and scope != candidate):

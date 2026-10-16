@@ -665,6 +665,15 @@ func _disk() -> void:
 	var before := FileAccess.get_sha256(file_path)
 	_check(not store.load_scope(scope).ok and not store.save_scope(scope, {"schema_version": 1, "owner": HOST, "rooms": {}}), "Future replay-cache data is held rather than overwritten")
 	_check(FileAccess.get_sha256(file_path) == before, "Future cache bytes remain exactly preserved")
+	raw.shared_replay_value.schema_version = 1
+	for version: Variant in ["1", [1], {}]:
+		raw.version = version
+		file = FileAccess.open(file_path, FileAccess.WRITE)
+		file.store_string(JSON.stringify(raw))
+		file.close()
+		before = FileAccess.get_sha256(file_path)
+		_check(not store.load_scope(scope).ok and not store.save_scope(scope, {"schema_version": 1, "owner": HOST, "rooms": {}}) and FileAccess.get_sha256(file_path) == before, "A cache version that is not a number is held unchanged: %s" % [version])
+		_check(not Disk.decode_scope(store.capture_scope(scope)).ok, "The worker decode holds a cache version that is not a number: %s" % [version])
 	for suffix: String in ["", ".backup", ".tmp"]:
 		if FileAccess.file_exists(file_path + suffix): DirAccess.remove_absolute(file_path + suffix)
 	DirAccess.remove_absolute(directory)
