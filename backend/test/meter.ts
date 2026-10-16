@@ -44,7 +44,8 @@ export function countingEnv(base: Env): { env: Env; calls: string[] } {
         return new Proxy(stub, { get(inner, method) {
           const value = Reflect.get(inner, method);
           if (typeof method !== "string" || typeof value !== "function" || method === "fetch") return value;
-          return (...args: unknown[]) => { calls.push(`${name}.${method}`); return (value as (...a: unknown[]) => unknown).apply(inner, args); };
+          // An RPC method is itself a stub, so call it through the stub rather than with apply().
+          return (...args: unknown[]) => { calls.push(`${name}.${method}`); return (inner as unknown as Record<string, (...a: unknown[]) => unknown>)[method](...args); };
         } });
       };
     } });

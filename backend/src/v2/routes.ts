@@ -1,4 +1,4 @@
-import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, inviteRoomId, newInvite, object, parseInvite, readBounded, text, unwrap } from "../protocol";
+import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, inviteRoomId, newInvite, object, parseInvite, readBounded, text, unwrap, type Outcome } from "../protocol";
 import { bytes, json, bearerDigest } from "../http";
 import { flags } from "../flags";
 import { roomLinkVersion, type RoomLink } from "../room-links";
@@ -7,7 +7,7 @@ import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import { MAX_ROOM_STAGES } from "./chapter-types";
 import { stageWithin } from "./room-stage";
-import type { KnownRoom, RoomLobbyV2 } from "./room";
+import type { KnownRoom, PolledRoomV2, RoomLobbyV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
@@ -56,6 +56,13 @@ export function knownRoom(request: Request): KnownRoom | undefined {
   const match = /^(0|[1-9][0-9]{0,14})\.(0|[1-9][0-9]?)$/.exec(request.headers.get(KNOWN_ROOM_HEADER) ?? "");
   return match ? { revision: Number(match[1]), branch: Number(match[2]) } : undefined;
 }
+/**
+ * Sent with X-AfterYou-Known-Room by a client that reads the redo state from its poll instead of
+ * a separate GET /redo. Its capabilities then say poll_redo_version 1, and both poll replies end
+ * with `redo`. Without it every byte is as before.
+ */
+export const POLL_REDO_HEADER = "X-AfterYou-Poll-Redo";
+function pollRedo(request: Request): boolean { return request.headers.get(POLL_REDO_HEADER) === "1"; }
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
 export const MAX_JOIN_VERSIONS = 16;
@@ -83,6 +90,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(roomLevel(request) >= 2 ? { room_level: 2, max_join_versions: MAX_JOIN_VERSIONS, max_stages: MAX_ROOM_STAGES } : {}),
     // Only clients that keep attempts ask; everyone else gets the same bytes as before.
     ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: flags.historyOffload(env) } : {}),
+    ...(pollRedo(request) ? { poll_redo_version: 1 } : {}),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -207,7 +215,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (!operation && request.method === "GET") {
     const known = context === undefined ? knownRoom(request) : undefined;
-    const snapshot = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env))
+    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env), pollRedo(request))
       : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined);
     if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, env, context)) throw new ApiError(409, "campaign_client_required");
     return json(unwrap(snapshot));

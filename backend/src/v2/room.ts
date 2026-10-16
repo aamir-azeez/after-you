@@ -60,6 +60,8 @@ export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 };
 export type KnownRoom = { revision: number; branch: number };
 /** The small poll reply when nothing changed since the member's known revision and branch. */
 export type RoomUnchangedV2 = { schema_version: 1; unchanged: true; revision: number; branch: number; updated_at: string };
+/** A conditional poll's reply; `redo` only for a client that asked for it (X-AfterYou-Poll-Redo). */
+export type PolledRoomV2 = (RoomSnapshotV2 | RoomUnchangedV2) & { redo?: RedoState };
 export type PairV2 = { pair_id: string; branch: number; stage_index: number; a: RecordingV2; b: RecordingV2; checkpoint: CheckpointV2 };
 type StoredTurn = { data: string; player_id: string; accepted_revision: number };
 const MAX_TURNS = 128, MAX_PAIRS = 64, MAX_BRANCHES = 32, MAX_OPERATIONS = 256;
@@ -270,14 +272,16 @@ export class RoomV2 extends DurableObject<Env> {
    * A standalone room poll from a member that already holds `known`. Every check
    * runs exactly as in `snapshot`, history support is still noted, and only then
    * an unchanged room answers with a small reply instead of the full view.
+   * With `withRedo`, either reply ends with `redo`: the same state GET /redo reads.
    */
-  snapshotIfChanged(player: string, known: KnownRoom, history?: HistorySupport): Promise<Outcome<RoomSnapshotV2 | RoomUnchangedV2>> {
-    return this.project<RoomSnapshotV2 | RoomUnchangedV2>(player, undefined, () => {
+  snapshotIfChanged(player: string, known: KnownRoom, history?: HistorySupport, withRedo = false): Promise<Outcome<PolledRoomV2>> {
+    return this.project<PolledRoomV2>(player, undefined, () => {
       const state = this.polledState(player, undefined, history);
       if (!state.ok) return state;
-      if (state.value.revision === known.revision && state.value.branch === known.branch)
-        return ok<RoomUnchangedV2>({ schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at });
-      return ok(this.view(state.value, player));
+      const reply: RoomSnapshotV2 | RoomUnchangedV2 = state.value.revision === known.revision && state.value.branch === known.branch
+        ? { schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at }
+        : this.view(state.value, player);
+      return ok(withRedo ? { ...reply, redo: redoState(this.ctx.storage, this.redoSource(state.value)) } : reply);
     });
   }
   /** The checks every member poll shares; a standalone poll also notes the member's history support. */
