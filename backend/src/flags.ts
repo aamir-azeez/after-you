@@ -5,7 +5,7 @@
  * "1", "" and any other value are off. (A boolean true, as tests pass it, also
  * reads on, because String(true) is "true".)
  */
-const FLAG_VARS = {
+export const FLAG_VARS = Object.freeze({
   /** Friend presence (online dots and the presence endpoints). */
   presence: "PRESENCE_ENABLED",
   /** Tester-code redemption. */
@@ -53,7 +53,7 @@ const FLAG_VARS = {
   legacyTransferredRoomUnblock: "LEGACY_TRANSFERRED_ROOM_UNBLOCK",
   /** The Play plus App Store hosting check in place of the Play-only one. */
   appStoreEntitlements: "APP_STORE_ENTITLEMENTS_ENABLED",
-} as const;
+} as const);
 
 export type FlagName = keyof typeof FLAG_VARS;
 export type FlagVar = typeof FLAG_VARS[FlagName];
