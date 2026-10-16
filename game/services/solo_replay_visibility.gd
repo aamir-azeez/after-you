@@ -3,7 +3,7 @@ extends RefCounted
 ## touching the gameplay journal that contains them.
 const Canonical = preload("res://core/v2/canonical.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const VERSION := 1
 const DEFAULT_PATH := "user://solo-replay-visibility.json"
 const MAX_BYTES := 262144
@@ -55,7 +55,7 @@ func _load() -> void:
 		return
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	file.close()
-	if not parsed is Dictionary or not Save.equal(parsed.get("schema_version"), VERSION) or not parsed.get("hidden") is Dictionary:
+	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), VERSION) or not parsed.get("hidden") is Dictionary:
 		last_error = "Some replay removals could not be loaded."
 		return
 	for key: Variant in parsed.hidden:

@@ -13,7 +13,7 @@ const ReviewAccess = preload("res://services/review_access.gd")
 const PurchaseSession = preload("res://services/purchase_session.gd")
 const NativeBridge = preload("res://services/native_bridge.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 ## Full Journey is sold as a monthly or yearly subscription. The earlier
 ## one-time products stay admitted so anyone who bought them keeps access.
 const PLAY_PRODUCT := "after_you_full_journey"
@@ -54,9 +54,9 @@ func _ready() -> void:
 static func store_enabled(configuration: Dictionary) -> bool:
 	var mode: Variant = configuration.get("purchase_mode")
 	var entitlement: Variant = configuration.get("entitlement_id")
-	if Save.equal(mode, "google_play"): return Save.equal(entitlement, "full_journey_play") and not PlatformSupport.is_ios()
-	if Save.equal(mode, "app_store"): return Save.equal(entitlement, "full_journey_play") and PlatformSupport.is_ios()
-	return Save.equal(mode, "test_store") and Save.equal(entitlement, "full_journey")
+	if Typed.equal(mode, "google_play"): return Typed.equal(entitlement, "full_journey_play") and not PlatformSupport.is_ios()
+	if Typed.equal(mode, "app_store"): return Typed.equal(entitlement, "full_journey_play") and PlatformSupport.is_ios()
+	return Typed.equal(mode, "test_store") and Typed.equal(entitlement, "full_journey")
 
 ## Where a subscriber manages the subscription, or "" when the store has no such page.
 static func subscriptions_url(configuration: Dictionary) -> String:
@@ -117,7 +117,7 @@ func restore() -> String:
 
 func has_entitlement(entitlement_id: String = "") -> bool:
 	if is_instance_valid(_session) and not _session.accepts(_configuration, _session_generation, _session_identity_generation): return false
-	if not entitlement_id.is_empty() and not Save.equal(entitlement_id, _configuration.get("entitlement_id", "")):
+	if not entitlement_id.is_empty() and not Typed.equal(entitlement_id, _configuration.get("entitlement_id", "")):
 		return false
 	return entitled_payload(customer_info)
 
@@ -136,7 +136,7 @@ func invalidate_review_access() -> void:
 	if is_instance_valid(_review_access) and not _review_access is ReviewAccess: _review_access.invalidate()
 
 static func review_candidate(payload: Dictionary, configuration: Dictionary) -> bool:
-	if not Save.equal(configuration.get("purchase_mode"), "google_play") or not Save.equal(configuration.get("entitlement_id"), "full_journey_play") or not Save.equal(payload.get("schema_version"), 1) or not Save.equal(payload.get("mode"), "google_play"): return false
+	if not Typed.equal(configuration.get("purchase_mode"), "google_play") or not Typed.equal(configuration.get("entitlement_id"), "full_journey_play") or not Typed.equal(payload.get("schema_version"), 1) or not Typed.equal(payload.get("mode"), "google_play"): return false
 	var entries: Variant = payload.get("entitlements")
 	if not entries is Dictionary: return false
 	var entry: Variant = entries.get("full_journey_play")
@@ -151,27 +151,27 @@ static func entitled_for_configuration(payload: Dictionary, configuration: Dicti
 	# The SDK reports an active subscription through its paid period and any
 	# store grace period, and inactive once it lapses, so no clock check here.
 	if not admitted_product(entry.get("product_id"), configuration): return false
-	if Save.equal(configuration.get("purchase_mode"), "test_store"):
+	if Typed.equal(configuration.get("purchase_mode"), "test_store"):
 		return payload.get("schema_version") == 1 and payload.get("mode") == "test_store" and entry.get("store") == "TEST_STORE"
-	if Save.equal(configuration.get("purchase_mode"), "app_store"):
+	if Typed.equal(configuration.get("purchase_mode"), "app_store"):
 		return payload.get("schema_version") == 1 and payload.get("mode") == "app_store" and entry.get("store") == "APP_STORE"
 	# Promotional reviewer access requires its separate authenticated check.
 	# Test Store receipts never unlock the Google Play configuration.
-	return Save.equal(payload.get("schema_version"), 1) and Save.equal(payload.get("mode"), "google_play") and Save.equal(entry.get("store"), "PLAY_STORE")
+	return Typed.equal(payload.get("schema_version"), 1) and Typed.equal(payload.get("mode"), "google_play") and Typed.equal(entry.get("store"), "PLAY_STORE")
 
 ## Google Play subscription IDs can arrive as "product" or "product:base_plan".
 static func store_product(product_id: Variant) -> String:
 	return str(product_id).get_slice(":", 0) if product_id is String else ""
 
 static func subscription_products(configuration: Dictionary) -> Array[String]:
-	if Save.equal(configuration.get("purchase_mode"), "app_store"): return APP_STORE_SUBSCRIPTIONS
-	return TEST_SUBSCRIPTIONS if Save.equal(configuration.get("purchase_mode"), "test_store") else PLAY_SUBSCRIPTIONS
+	if Typed.equal(configuration.get("purchase_mode"), "app_store"): return APP_STORE_SUBSCRIPTIONS
+	return TEST_SUBSCRIPTIONS if Typed.equal(configuration.get("purchase_mode"), "test_store") else PLAY_SUBSCRIPTIONS
 
 static func admitted_product(product_id: Variant, configuration: Dictionary) -> bool:
 	var product := store_product(product_id)
 	if product.is_empty(): return false
-	if Save.equal(configuration.get("purchase_mode"), "app_store"): return product in APP_STORE_SUBSCRIPTIONS
-	return product == (TEST_PRODUCT if Save.equal(configuration.get("purchase_mode"), "test_store") else PLAY_PRODUCT) or product in subscription_products(configuration)
+	if Typed.equal(configuration.get("purchase_mode"), "app_store"): return product in APP_STORE_SUBSCRIPTIONS
+	return product == (TEST_PRODUCT if Typed.equal(configuration.get("purchase_mode"), "test_store") else PLAY_PRODUCT) or product in subscription_products(configuration)
 
 ## Why hosting a Full Journey chapter is locked: "" when it is open,
 ## HOSTING_NEEDS_TESTER_CODE when this GitHub Test Store build's purchase unlocked
@@ -181,7 +181,7 @@ const HOSTING_NEEDS_TESTER_CODE := "tester_code"
 const HOSTING_NEEDS_FULL_JOURNEY := "full_journey"
 static func hosting_lock_reason(configuration: Dictionary, owned: bool, tester_active: bool) -> String:
 	if tester_active: return ""
-	if Save.equal(configuration.get("purchase_mode"), "test_store"):
+	if Typed.equal(configuration.get("purchase_mode"), "test_store"):
 		return HOSTING_NEEDS_TESTER_CODE if owned else HOSTING_NEEDS_FULL_JOURNEY
 	return "" if owned else HOSTING_NEEDS_FULL_JOURNEY
 
@@ -202,7 +202,7 @@ static func select_subscription_offer(payload: Dictionary, configuration: Dictio
 		var packages: Array[Dictionary] = []
 		for type: String in SUBSCRIPTION_PERIODS:
 			for item: Variant in entry.get("packages",[]):
-				if not item is Dictionary or not Save.equal(item.get("type",""), type) or str(item.get("price","")).is_empty() or str(item.get("id","")).is_empty(): continue
+				if not item is Dictionary or not Typed.equal(item.get("type",""), type) or str(item.get("price","")).is_empty() or str(item.get("id","")).is_empty(): continue
 				if not store_product(item.get("product_id")) in subscription_products(configuration): continue
 				var selected: Dictionary=item.duplicate(true)
 				selected["offering_id"]=current_id
@@ -242,7 +242,7 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 	if _pending.get(id, "") != operation:
 		return
 	var parsed: Variant = JSON.parse_string(payload_json)
-	if not parsed is Dictionary or not Save.equal(parsed.get("schema_version", 0), 1):
+	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version", 0), 1):
 		_on_error(id, operation, "invalid_native_response", PlayerCopy.PURCHASES_79A34D6B63D8, false)
 		return
 	_pending.erase(id)

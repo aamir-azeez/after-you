@@ -1,6 +1,7 @@
 extends RefCounted
 ## Separate account-scoped safety state; never shares gameplay/photo journals.
 const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const MAX_FILE := 96 * 1024
@@ -21,7 +22,7 @@ static func empty(owner: String) -> Dictionary:
 	return {"schema_version": 1, "owner": owner, "blocked_players": [], "blocked_rooms": {}, "pending": {}, "receipt": {}}
 
 static func valid_report(body: Variant) -> bool:
-	if not body is Dictionary or body.size() != 6 or not body.has("photo") or not Save.equal(body.get("schema_version"), 1) or body.get("room_family") not in ["legacy", "relay"] or not id(body.get("room_id")) or not matches(body.get("idempotency_key"), "^[A-Za-z0-9_-]{16,80}$") or body.get("reason") not in ["sexual_content", "child_safety", "harassment", "hate", "privacy", "other"]: return false
+	if not body is Dictionary or body.size() != 6 or not body.has("photo") or not Typed.equal(body.get("schema_version"), 1) or body.get("room_family") not in ["legacy", "relay"] or not id(body.get("room_id")) or not matches(body.get("idempotency_key"), "^[A-Za-z0-9_-]{16,80}$") or body.get("reason") not in ["sexual_content", "child_safety", "harassment", "hate", "privacy", "other"]: return false
 	if body.get("photo") == null: return true
 	var photo: Variant = body.photo
 	if body.room_family != "relay" or not photo is Dictionary or photo.size() != 3 or not matches(photo.get("turn_id"), RoomStages.TURN_ID) or not matches(photo.get("sha256"), "^[a-f0-9]{64}$"): return false
@@ -29,10 +30,10 @@ static func valid_report(body: Variant) -> bool:
 	return (revision is int or revision is float) and is_finite(float(revision)) and revision == floor(float(revision)) and revision >= 1 and revision <= 1000000
 
 static func valid_receipt(value: Variant) -> bool:
-	return value is Dictionary and value.size() == 4 and Save.equal(value.get("schema_version"), 1) and Save.equal(value.get("received"), true) and matches(value.get("report_id"), "^[a-f0-9]{64}$") and matches(value.get("request_hash"), "^[a-f0-9]{64}$")
+	return value is Dictionary and value.size() == 4 and Typed.equal(value.get("schema_version"), 1) and Typed.equal(value.get("received"), true) and matches(value.get("report_id"), "^[a-f0-9]{64}$") and matches(value.get("request_hash"), "^[a-f0-9]{64}$")
 
 static func valid(value: Variant, owner: String) -> bool:
-	if not value is Dictionary or value.size() != 6 or not Save.equal(value.get("schema_version"), 1) or not Save.equal(value.get("owner"), owner) or not value.get("blocked_players") is Array or value.blocked_players.size() > 128 or not value.get("blocked_rooms") is Dictionary or value.blocked_rooms.size() > 128 or not value.get("pending") is Dictionary or not value.get("receipt") is Dictionary: return false
+	if not value is Dictionary or value.size() != 6 or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("owner"), owner) or not value.get("blocked_players") is Array or value.blocked_players.size() > 128 or not value.get("blocked_rooms") is Dictionary or value.blocked_rooms.size() > 128 or not value.get("pending") is Dictionary or not value.get("receipt") is Dictionary: return false
 	var seen: Array = []
 	for player: Variant in value.blocked_players:
 		if not id(player) or player == owner or player in seen: return false
@@ -54,7 +55,7 @@ func read(owner: String) -> Dictionary:
 		var error := parser.parse(file.get_as_text())
 		file.close()
 		if error == OK and parser.data is Dictionary:
-			if not Save.equal(parser.data.get("version"), 1) or not parser.data.has("safety") or not valid(parser.data.safety, owner): return {"ok": false}
+			if not Typed.equal(parser.data.get("version"), 1) or not parser.data.has("safety") or not valid(parser.data.safety, owner): return {"ok": false}
 	var save := Save.new(path)
 	save.load_data()
 	if save.read_only or (exists and save.loaded_from.is_empty()): return {"ok": false}
@@ -64,7 +65,7 @@ func read(owner: String) -> Dictionary:
 func write(owner: String, value: Dictionary, expected: Dictionary) -> bool:
 	if not valid(value, owner): return false
 	var latest := read(owner)
-	if not latest.get("ok", false) or not Save.same(latest.value, expected): return false
+	if not latest.get("ok", false) or not Typed.same(latest.value, expected): return false
 	if DirAccess.make_dir_recursive_absolute(directory) != OK: return false
 	return latest.save.update_values({"safety": value.duplicate(true)})
 

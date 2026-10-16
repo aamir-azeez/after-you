@@ -1,7 +1,7 @@
 extends RefCounted
 ## Device-local friend labels. Entries are separated by the API server and identity owner.
 const AtomicFile = preload("res://services/atomic_file.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const MAX_LENGTH := 32
 const FILE_PATH := "user://friend_nicknames.json"
 const VERSION := 1
@@ -82,7 +82,7 @@ func _load() -> void:
 ## The valid entries in a saved file's text, or null when the file is not one.
 func _entries_from(text: String) -> Variant:
 	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
-	if not parsed is Dictionary or not Save.equal(parsed.get("schema_version"), VERSION) or not parsed.get("entries") is Array: return null
+	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), VERSION) or not parsed.get("entries") is Array: return null
 	var entries: Array[Dictionary] = []
 	for value: Variant in parsed.entries:
 		if not value is Dictionary or value.size() != 4: continue

@@ -47,7 +47,7 @@ const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
@@ -871,7 +871,7 @@ func _collection_delete_button(callback: Callable, title: String) -> Button:
 func _confirm_delete_collection_replay(index: int, expected: Dictionary) -> void:
 	if host.mode not in [MODE_COLLECTION,MODE_SOLO_REPLAY_ATTEMPT] or host.application_backgrounded or host.submission_in_flight or index < 0 or index >= host.levels.size(): return
 	var level_id := str(host.levels[index].id)
-	if expected.get("b",{}).is_empty() or not Save.same(host.saves.replay(level_id),expected): return
+	if expected.get("b",{}).is_empty() or not Typed.same(host.saves.replay(level_id),expected): return
 	var storage: RefCounted = host.saves
 	var selected := expected.duplicate(true)
 	host.mode=MODE_CONFIRM_DELETE
@@ -1588,7 +1588,7 @@ func _save_finished_replay_once(room_id: String, revision: int, in_play: bool = 
 		if session.capabilities.is_empty() and not await session.load_capabilities(): continue
 		if owner != host._relay_identity() or session != host.relay_session: return false
 		if session.has_method("last_room"): session.last_room() # Loads the saved room index the proof below reads.
-		if (not Save.equal(session.capabilities.get("replay_transfer_version"), 1) and not host._history_mode(session)) or (in_play and not host._history_mode(session)) or (not host._history_mode(session) and not session.standalone_room_proven(room_id)): return false
+		if (not Typed.equal(session.capabilities.get("replay_transfer_version"), 1) and not host._history_mode(session)) or (in_play and not host._history_mode(session)) or (not host._history_mode(session) and not session.standalone_room_proven(room_id)): return false
 		if session.busy() or _shared_archive_sync: continue
 		_shared_archive_sync = true
 		var result: Dictionary

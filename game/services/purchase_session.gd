@@ -8,7 +8,7 @@ signal customer_info_updated(payload: String)
 
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ReviewAccess = preload("res://services/review_access.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const READ_TIMEOUT_MS := 30000
 const ACTION_TIMEOUT_MS := 180000
 const MAX_READERS := 32
@@ -117,7 +117,7 @@ func dispatch(id: String, operation: String, arguments: Array, configuration: Di
 		else: _waiting_reads.append({"id":id, "operation":operation, "arguments":arguments.duplicate(true), "configuration":configuration.duplicate(true), "force":force, "identity_generation":identity_generation, "generation":generation, "deadline":Time.get_ticks_msec() + READ_TIMEOUT_MS})
 		_refresh_processing()
 		return
-	if operation == "configure" and (arguments.size() != 3 or not Save.equal(arguments[0], _configuration.get("revenuecat_public_key")) or arguments[1] != _owner or not Save.equal(arguments[2], _configuration.get("purchase_mode"))):
+	if operation == "configure" and (arguments.size() != 3 or not Typed.equal(arguments[0], _configuration.get("revenuecat_public_key")) or arguments[1] != _owner or not Typed.equal(arguments[2], _configuration.get("purchase_mode"))):
 		_fail.call_deferred(id, operation)
 		return
 	if operation == "get_customer_info" and not _configured and (_read.is_empty() or _read.operation != "configure"):
@@ -146,7 +146,7 @@ func _same_configuration(configuration: Dictionary) -> bool:
 func _valid(payload: Variant) -> bool:
 	var mode: String = str(_configuration.get("purchase_mode", ""))
 	if mode not in ["google_play", "test_store", "app_store"]: return false
-	if not payload is Dictionary or not Save.equal(payload.get("schema_version"), 1) or not Save.equal(payload.get("mode"), mode) or not Save.equal(payload.get("player_id"), _owner) or not payload.get("entitlements") is Dictionary: return false
+	if not payload is Dictionary or not Typed.equal(payload.get("schema_version"), 1) or not Typed.equal(payload.get("mode"), mode) or not Typed.equal(payload.get("player_id"), _owner) or not payload.get("entitlements") is Dictionary: return false
 	if not (payload.get("request_date_ms") is int or payload.get("request_date_ms") is float) or not is_finite(float(payload.request_date_ms)) or float(payload.request_date_ms) < 0: return false
 	for entry: Variant in payload.entitlements.values():
 		if not entry is Dictionary or not entry.get("active") is bool or not entry.get("store") is String or not entry.get("product_id") is String: return false

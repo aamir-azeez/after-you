@@ -4,6 +4,7 @@ extends RefCounted
 ## on a keepsake write succeeding.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Storage = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Levels = preload("res://core/levels.gd")
@@ -315,7 +316,7 @@ static func _verify_source_snapshot(snapshot: Dictionary, validator: RefCounted,
 	if snapshot.kind == "friend": return validator.verify_keepsake_snapshot(snapshot)
 	if snapshot.kind == "legacy":
 		var attempt: Dictionary = snapshot.attempt
-		if not attempt.get("a") is Dictionary or not attempt.get("b") is Dictionary or not Storage.equal(attempt.a.get("role"), "a") or not Storage.equal(attempt.b.get("role"), "b"): return {"ok": false, "ids": []}
+		if not attempt.get("a") is Dictionary or not attempt.get("b") is Dictionary or not Typed.equal(attempt.a.get("role"), "a") or not Typed.equal(attempt.b.get("role"), "b"): return {"ok": false, "ids": []}
 		var checked: Dictionary = LegacySimulation.verify_recording(Levels.get_level(snapshot.level_id), attempt.b, attempt.a)
 		var valid: bool = checked.get("valid", false) and checked.get("snapshot", {}).get("can_commit", false)
 		return {"ok": valid, "ids": [snapshot.id] if valid else []}
@@ -331,7 +332,7 @@ static func _verify_source_snapshot(snapshot: Dictionary, validator: RefCounted,
 		var state: Dictionary
 		var candidate_generation := 0
 		if snapshot.kind == "archive":
-			if value.size() != 2 or not Storage.equal(value.get("archive_version"), 1) or not value.get(field) is Dictionary or Canonical.digest(value[field]) != snapshot.archive_id: return {"ok": false, "ids": []}
+			if value.size() != 2 or not Typed.equal(value.get("archive_version"), 1) or not value.get(field) is Dictionary or Canonical.digest(value[field]) != snapshot.archive_id: return {"ok": false, "ids": []}
 			state = value[field]
 		else:
 			if not validator._envelope_valid(value) or not value.get(field) is Dictionary: return {"ok": false, "ids": []}
@@ -491,7 +492,7 @@ func _load_scan() -> void:
 	var parsed := json.parse(file.get_as_text())
 	file.close()
 	var value: Variant = json.data if parsed == OK else null
-	if not value is Dictionary or value.size() != 3 or not Storage.equal(value.get("scan_version"), float(SCAN_VERSION)) or not Storage.equal(value.get("stamp"), _scan_stamp()) or not value.get("sources") is Dictionary: return
+	if not value is Dictionary or value.size() != 3 or not Typed.equal(value.get("scan_version"), float(SCAN_VERSION)) or not Typed.equal(value.get("stamp"), _scan_stamp()) or not value.get("sources") is Dictionary: return
 	var memory: Dictionary = {}
 	for source: Variant in value.sources:
 		var entry: Variant = value.sources[source]
@@ -528,11 +529,11 @@ static func _valid_envelope(value: Variant) -> bool:
 	if not value is Dictionary or value.size() != ENVELOPE_KEYS.size(): return false
 	for key: String in ENVELOPE_KEYS:
 		if not value.has(key): return false
-	if not Storage.whole_number(value.version) or value.version != 1 or not Storage.valid_generation(value.generation) or value.generation > 9007199254740991 or not Storage.default_settings_envelope_valid(value.settings): return false
+	if not Typed.whole_number(value.version) or value.version != 1 or not Typed.valid_generation(value.generation) or value.generation > 9007199254740991 or not Storage.default_settings_envelope_valid(value.settings): return false
 	for key: String in ["attempts", "completed", "replays", "room"]:
 		if not value[key] is Dictionary or not value[key].is_empty(): return false
 	var state: Variant = value.home_keepsakes
-	if not state is Dictionary or state.size() != 2 or not Storage.whole_number(state.get("schema_version")) or state.schema_version != 1 or not state.get("earned") is Dictionary or state.earned.size() > Catalog.ROWS.size(): return false
+	if not state is Dictionary or state.size() != 2 or not Typed.whole_number(state.get("schema_version")) or state.schema_version != 1 or not state.get("earned") is Dictionary or state.earned.size() > Catalog.ROWS.size(): return false
 	for id: Variant in state.earned:
 		if not id is String: return false
 		var item := Catalog.by_id(id)

@@ -5,7 +5,7 @@ extends RefCounted
 ## file left by an open that never finished is removed, so it can never block
 ## another chapter or room.
 const AtomicFile = preload("res://services/atomic_file.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const PATH := "user://solo-replay-playback.json"
 const MAX_BYTES := 2097152
 static var _requested := false
@@ -50,7 +50,7 @@ static func _read(path: String, rules: Dictionary) -> Dictionary:
 	var parser := JSON.new()
 	if parser.parse(raw) != OK or not parser.data is Dictionary: return failed
 	var context: Dictionary = parser.data
-	if not Save.equal(context.get("schema_version"), 1) or not Save.equal(context.get("chapter_key"), rules.get("chapter_key")): return failed
+	if not Typed.equal(context.get("schema_version"), 1) or not Typed.equal(context.get("chapter_key"), rules.get("chapter_key")): return failed
 	var stage_index: Variant = context.get("selected_stage_index")
 	var pairs: Variant = context.get("accepted_pairs")
 	var visibility_key: Variant = context.get("visibility_key")
@@ -62,7 +62,7 @@ static func _read(path: String, rules: Dictionary) -> Dictionary:
 		var pair: Variant = pairs[index]
 		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: return failed
 		var expected := str(stage_ids[index])
-		if expected.is_empty() or not Save.equal(pair.a.get("role"), "a") or not Save.equal(pair.b.get("role"), "b") or not Save.equal(pair.a.get("stage_id"), expected) or not Save.equal(pair.b.get("stage_id"), expected): return failed
+		if expected.is_empty() or not Typed.equal(pair.a.get("role"), "a") or not Typed.equal(pair.b.get("role"), "b") or not Typed.equal(pair.a.get("stage_id"), expected) or not Typed.equal(pair.b.get("stage_id"), expected): return failed
 	var pairs_valid: Callable = rules.get("pairs_valid", Callable())
 	if not pairs_valid.is_valid() or not pairs_valid.call(pairs): return failed
 	return {"status": "consumed", "context": context.duplicate(true)}

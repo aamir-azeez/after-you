@@ -1,7 +1,7 @@
 extends Node
 ## Optional native bridge. Tokens and route payloads are never logged.
 const NativeBridge = preload("res://services/native_bridge.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 signal token_changed
 signal received(route: Dictionary)
 
@@ -58,7 +58,7 @@ func _on_token_changed(payload_json: String) -> void:
 	if payload_json.length() > 256: return
 	var data: Variant = JSON.parse_string(payload_json)
 	# route_pending comes only from iOS, where a tap can be recorded after the resume check.
-	if data is Dictionary and (Save.equal(data.get("registration_pending"), true) or Save.equal(data.get("route_pending"), true)):
+	if data is Dictionary and (Typed.equal(data.get("registration_pending"), true) or Typed.equal(data.get("route_pending"), true)):
 		token_changed.emit()
 
 func _on_received(payload_json: String) -> void:

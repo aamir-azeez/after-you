@@ -3,7 +3,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Authenticated, explicit safety operations. No timer-triggered POSTs.
 const Store = preload("res://services/safety_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const TERMS_VERSION := "2026-09-16"
 const PATHS := ["/privacy", "/account-deletion", "/community-rules"]
 var busy := false
@@ -76,7 +76,7 @@ func _finish(generation: int, result: bool) -> bool:
 
 func _persist(value: Dictionary) -> bool:
 	if _context() != _binding: return _fail("identity_changed")
-	if Save.same(value, _state): return true
+	if Typed.same(value, _state): return true
 	if not _store.write(_owner, value, _state): return _fail("safety_storage_unavailable")
 	_state = value.duplicate(true)
 	return true
@@ -120,10 +120,10 @@ func open_public(path: String) -> bool:
 	return not url.is_empty() and OS.shell_open(url) == OK
 
 static func valid_config(value: Variant) -> bool:
-	return value is Dictionary and value.size() == 6 and Save.equal(value.get("schema_version"), 1) and value.get("enforced") is bool and Save.equal(value.get("terms_version"), TERMS_VERSION) and Save.equal(value.get("privacy_path"), "/privacy") and Save.equal(value.get("deletion_path"), "/account-deletion") and Save.equal(value.get("rules_path"), "/community-rules")
+	return value is Dictionary and value.size() == 6 and Typed.equal(value.get("schema_version"), 1) and value.get("enforced") is bool and Typed.equal(value.get("terms_version"), TERMS_VERSION) and Typed.equal(value.get("privacy_path"), "/privacy") and Typed.equal(value.get("deletion_path"), "/account-deletion") and Typed.equal(value.get("rules_path"), "/community-rules")
 
 static func valid_terms(value: Variant) -> bool:
-	return value is Dictionary and value.size() == 4 and Save.equal(value.get("schema_version"), 1) and Save.equal(value.get("terms_version"), TERMS_VERSION) and value.get("accepted") is bool and value.has("accepted_at") and ((value.accepted_at is String and value.accepted_at.length() >= 20 and value.accepted_at.length() <= 40) if value.accepted else value.accepted_at == null)
+	return value is Dictionary and value.size() == 4 and Typed.equal(value.get("schema_version"), 1) and Typed.equal(value.get("terms_version"), TERMS_VERSION) and value.get("accepted") is bool and value.has("accepted_at") and ((value.accepted_at is String and value.accepted_at.length() >= 20 and value.accepted_at.length() <= 40) if value.accepted else value.accepted_at == null)
 
 func check_terms() -> bool:
 	var ticket := _begin()
@@ -174,7 +174,7 @@ func refresh_blocks() -> bool:
 	if not _same(ticket): return false
 	if not response.get("ok", false): return _finish(ticket, false)
 	var value: Variant = response.get("data")
-	if not value is Dictionary or value.size() != 2 or not Save.equal(value.get("schema_version"), 1) or not value.get("blocked_players") is Array or value.blocked_players.size() > 128: return _finish(ticket, _fail("unsupported_safety_response"))
+	if not value is Dictionary or value.size() != 2 or not Typed.equal(value.get("schema_version"), 1) or not value.get("blocked_players") is Array or value.blocked_players.size() > 128: return _finish(ticket, _fail("unsupported_safety_response"))
 	var next := _state.duplicate(true)
 	next.blocked_players = value.blocked_players.duplicate()
 	for key: String in next.blocked_rooms.keys():
@@ -195,7 +195,7 @@ func block(room: Dictionary) -> bool:
 	if not _same(ticket): return false
 	if not response.get("ok", false): return _finish(ticket, false)
 	var value: Variant = response.get("data")
-	if not value is Dictionary or value.size() != 3 or not Save.equal(value.get("schema_version"), 1) or not Save.equal(value.get("blocked"), true) or not Save.equal(value.get("player_id"), room.peer_id): return _finish(ticket, _fail("unsupported_safety_response"))
+	if not value is Dictionary or value.size() != 3 or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("blocked"), true) or not Typed.equal(value.get("player_id"), room.peer_id): return _finish(ticket, _fail("unsupported_safety_response"))
 	Store.suppressed_rooms[_owner + ":" + room.room_family + ":" + room.room_id] = room.peer_id
 	var next := _state.duplicate(true)
 	if room.peer_id not in next.blocked_players: next.blocked_players.append(room.peer_id)
@@ -210,7 +210,7 @@ func unblock(player: String) -> bool:
 	if not _same(ticket): return false
 	if not response.get("ok", false): return _finish(ticket, false)
 	var value: Variant = response.get("data")
-	if not value is Dictionary or value.size() != 3 or not Save.equal(value.get("schema_version"), 1) or not Save.equal(value.get("blocked"), false) or not Save.equal(value.get("player_id"), player): return _finish(ticket, _fail("unsupported_safety_response"))
+	if not value is Dictionary or value.size() != 3 or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("blocked"), false) or not Typed.equal(value.get("player_id"), player): return _finish(ticket, _fail("unsupported_safety_response"))
 	var next := _state.duplicate(true)
 	next.blocked_players.erase(player)
 	var cleared: Array[String] = []
@@ -260,7 +260,7 @@ func check_report() -> bool:
 func _accept_receipt(value: Variant, body: Dictionary) -> bool:
 	var material := body.duplicate(true)
 	material.merge({"operation": "safety_report", "reporter_id": _owner})
-	if not Store.valid_receipt(value) or value.request_hash != Canonical.digest(material) or value.report_id != (_owner + ":" + str(body.idempotency_key)).sha256_text() or not Save.same(_state.pending, body): return _fail("unsupported_safety_response")
+	if not Store.valid_receipt(value) or value.request_hash != Canonical.digest(material) or value.report_id != (_owner + ":" + str(body.idempotency_key)).sha256_text() or not Typed.same(_state.pending, body): return _fail("unsupported_safety_response")
 	var next := _state.duplicate(true)
 	next.pending = {}
 	next.receipt = value.duplicate(true)

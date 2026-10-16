@@ -32,7 +32,7 @@ const RelayOnline = preload("res://services/relay_online_session.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const Levels = preload("res://core/levels.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const CREAM := Color("eceddb")
 ## Main's mode on the Notifications settings screen.
 const MODE_NOTIFICATIONS := "notifications"
@@ -85,14 +85,14 @@ func _read_binding() -> Dictionary:
 	var result: Dictionary = await host._await_secret(host.secrets.get_secret("notification_binding"))
 	var payload: Variant = result.get("payload")
 	if not result.get("ok", false) or not payload is Dictionary: return {"ok": false}
-	if Save.equal(payload.get("found"), false) and payload.get("value") == null: return {"ok": true, "value": {}}
-	if not Save.equal(payload.get("found"), true) or not payload.get("value") is String: return {"ok": false}
+	if Typed.equal(payload.get("found"), false) and payload.get("value") == null: return {"ok": true, "value": {}}
+	if not Typed.equal(payload.get("found"), true) or not payload.get("value") is String: return {"ok": false}
 	var value: Variant = host._parse_json(payload.value)
 	return {"ok": value is Dictionary, "value": value}
 
 func _write_binding(value: Dictionary) -> Dictionary:
 	var result: Dictionary = await host._await_secret(host.secrets.put_secret("notification_binding", JSON.stringify(value)))
-	return {"ok": result.get("ok", false) and Save.equal(result.get("payload", {}).get("stored"), true)}
+	return {"ok": result.get("ok", false) and Typed.equal(result.get("payload", {}).get("stored"), true)}
 
 ## What a room's own Enable offer shows.
 func status() -> Dictionary:
@@ -256,7 +256,7 @@ func _open_route(route: Dictionary) -> void:
 			host._toast(PlayerCopy.MAIN_22017C43B345)
 			return
 	else:
-		if not Save.equal(room.get("api_version"), 2) or ChapterRegistry.resolve(room).is_empty():
+		if not Typed.equal(room.get("api_version"), 2) or ChapterRegistry.resolve(room).is_empty():
 			host.turn_notifications.acknowledge_route(route.event_id)
 			host._toast(PlayerCopy.MAIN_F4F6AF4420A6)
 			return
@@ -279,4 +279,4 @@ func _open_route(route: Dictionary) -> void:
 	host.turn_notifications.acknowledge_route(route.event_id)
 
 func _owned_room(room: Variant, route: Dictionary) -> bool:
-	return room is Dictionary and Save.equal(room.get("room_id"), route.room_id) and host.api.player_id in [room.get("host_id"), room.get("guest_id")] and TurnNotifications._integer(room.get("revision")) and int(room.revision) >= int(route.revision)
+	return room is Dictionary and Typed.equal(room.get("room_id"), route.room_id) and host.api.player_id in [room.get("host_id"), room.get("guest_id")] and TurnNotifications._integer(room.get("revision")) and int(room.revision) >= int(route.revision)

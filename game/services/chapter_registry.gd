@@ -7,7 +7,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const RELAY := "relay-isles@2"
 const FIRST_STEPS := "first-steps@1"
 const HIGH_AND_LOW := "high-and-low@1"
@@ -189,7 +189,7 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 	var level_two: bool = value is Dictionary and value.has("room_level")
 	if level_two and (not _integer(value.get("room_level")) or int(value.room_level) < 2 or not _integer(value.get("max_join_versions")) or int(value.max_join_versions) < 8 or int(value.max_join_versions) > 64 or not _integer(value.get("max_stages")) or int(value.max_stages) < 2):
 		return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_F13B5AC3829B}
-	if not value is Dictionary or not Save.equal(value.get("api_version"), 2) or not Save.equal(value.get("simulation_version"), 2) or not Save.equal(value.get("recording_version"), 2) or not value.get("mutations_enabled") is bool or not Save.equal(value.get("validation"), "structural_client_replay_required") or not value.get("chapters") is Array or value.chapters.size() > (64 if level_two else 16):
+	if not value is Dictionary or not Typed.equal(value.get("api_version"), 2) or not Typed.equal(value.get("simulation_version"), 2) or not Typed.equal(value.get("recording_version"), 2) or not value.get("mutations_enabled") is bool or not Typed.equal(value.get("validation"), "structural_client_replay_required") or not value.get("chapters") is Array or value.chapters.size() > (64 if level_two else 16):
 		return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_F13B5AC3829B}
 	var found: Dictionary = {}
 	for item: Variant in value.chapters:
@@ -200,9 +200,9 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 		var known := descriptor(key)
 		var old_relay: bool = key == RELAY and not item.has("simulation_version") and not item.has("recording_version")
 		var supported_version: bool = _integer(item.get("simulation_version")) and int(item.simulation_version) in supported_rules(key)
-		if not Save.equal(item.get("premium"), known.premium) or (not old_relay and (not supported_version or not Save.equal(item.get("recording_version"), known.recording_version))):
+		if not Typed.equal(item.get("premium"), known.premium) or (not old_relay and (not supported_version or not Typed.equal(item.get("recording_version"), known.recording_version))):
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
-		if item.has("stage_count") and not Save.equal(item.get("stage_count"), known.stage_count):
+		if item.has("stage_count") and not Typed.equal(item.get("stage_count"), known.stage_count):
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 		# Older clients retain their legacy capability and reject unsupported records.
 		# New clients opt into cumulative rules only when this server advertises them.

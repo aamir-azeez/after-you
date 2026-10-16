@@ -7,7 +7,7 @@ extends RefCounted
 
 const NativeFiles = preload("res://services/native_files.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 
 const ROOT := "user://history"
 const MAX_ATTEMPT_BYTES := 4 * 1024 * 1024
@@ -72,10 +72,10 @@ func index(server_key: String, owner: String, room_id: String) -> Dictionary:
 	var file := FileAccess.open(directory.path_join("index.json"), FileAccess.READ)
 	if file == null or file.get_length() > MAX_INDEX_BYTES: return {}
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
-	if not parsed is Dictionary or not Save.equal(parsed.get("schema_version"), 1.0) or not Save.equal(parsed.get("room_id"), room_id) or not parsed.get("attempts") is Array: return {}
+	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), 1.0) or not Typed.equal(parsed.get("room_id"), room_id) or not parsed.get("attempts") is Array: return {}
 	var result := {}
 	for item: Variant in parsed.attempts:
-		if not item is Dictionary or item.size() != RECORD_KEYS.size() or not _record_shape(item) or not Save.equal(item.get("file"), _file_name(int(item.position), str(item.link))): return {}
+		if not item is Dictionary or item.size() != RECORD_KEYS.size() or not _record_shape(item) or not Typed.equal(item.get("file"), _file_name(int(item.position), str(item.link))): return {}
 		var record := {"position": int(item.position), "link": item.link, "digest": item.digest, "byte_length": int(item.byte_length), "file": item.file}
 		result[record.position] = record
 	return result

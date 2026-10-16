@@ -1,7 +1,7 @@
 class_name RecoveryDetails
 extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 ## Parses the complete copied recovery block locally. Never log input or results.
 
 const MAX_TEXT_LENGTH := 2048
@@ -36,7 +36,7 @@ static func field_matches(value: Variant, pattern: String) -> bool:
 
 ## A secured rotation proposal in the exact field formats the backend accepts.
 static func valid_pending(value: Variant) -> bool:
-	if not value is Dictionary or not Save.equal(value.get("schema_version"), 1) or not value.get("request") is Dictionary:
+	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not value.get("request") is Dictionary:
 		return false
 	var request: Dictionary=value.request
 	if request.size()!=5:

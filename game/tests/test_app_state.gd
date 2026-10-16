@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Storage = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const State = preload("res://services/turn_state.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Levels = preload("res://core/levels.gd")
@@ -197,18 +198,18 @@ func _test_failed_flush_leaves_no_tmp() -> void:
 
 func _test_save_field_types() -> void:
 	for value: Variant in [0, 7, 1.0, -3, 9007199254740991.0]:
-		_check(Storage.whole_number(value), "A whole number: %s" % [value])
+		_check(Typed.whole_number(value), "A whole number: %s" % [value])
 	for value: Variant in [1.5, INF, NAN, "1", [1], {}, null, true]:
-		_check(not Storage.whole_number(value), "Not a whole number: %s" % [value])
+		_check(not Typed.whole_number(value), "Not a whole number: %s" % [value])
 	var kinds: Array = [1, 1.0, "1", &"1", true, null, [1], {"a": 1}, PackedByteArray([1])]
 	for a: Variant in kinds:
 		for b: Variant in kinds:
 			var comparable: bool = a == null or b == null or typeof(a) == typeof(b) or ((a is int or a is float) and (b is int or b is float)) or ((a is String or a is StringName) and (b is String or b is StringName))
-			_check(Storage.equal(a, b) == (comparable and a == b), "equal matches == where Godot can compare, else false: %s %s" % [type_string(typeof(a)), type_string(typeof(b))])
+			_check(Typed.equal(a, b) == (comparable and a == b), "equal matches == where Godot can compare, else false: %s %s" % [type_string(typeof(a)), type_string(typeof(b))])
 	for value: Variant in [0, 0.0, 7, 7.0]:
-		_check(Storage.valid_generation(value), "A save generation: %s" % [value])
+		_check(Typed.valid_generation(value), "A save generation: %s" % [value])
 	for value: Variant in [-1, 1.5, INF, "2", [1], {}, null]:
-		_check(not Storage.valid_generation(value), "Not a save generation: %s" % [value])
+		_check(not Typed.valid_generation(value), "Not a save generation: %s" % [value])
 	var path := _temporary_path()
 	var store := Storage.new(path)
 	var good := {"version":1,"generation":3,"settings":{"sound":false},"attempts":{},"completed":{},"room":{}}

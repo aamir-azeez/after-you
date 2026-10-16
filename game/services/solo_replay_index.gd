@@ -5,7 +5,7 @@ extends RefCounted
 ## Stored in its own bounded file; gameplay journals are never touched.
 const Registry = preload("res://services/chapter_registry.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const SCHEMA := 1
 const DEFAULT_PATH := "user://solo-replay-index.json"
 const MAX_BYTES := 524288
@@ -86,7 +86,7 @@ func _load() -> void:
 	var json := JSON.new()
 	var parsed: Variant = json.data if json.parse(text) == OK else null
 	# Missing, damaged or older snapshots are ignored as a whole.
-	if not parsed is Dictionary or parsed.size() != 2 or not Save.equal(parsed.get("schema_version"), SCHEMA) or not parsed.get("rows") is Array or parsed.rows.size() > MAX_ROWS: return
+	if not parsed is Dictionary or parsed.size() != 2 or not Typed.equal(parsed.get("schema_version"), SCHEMA) or not parsed.get("rows") is Array or parsed.rows.size() > MAX_ROWS: return
 	var loaded: Array[Dictionary] = []
 	for row: Variant in parsed.rows:
 		# One row that no longer applies (a chapter this build does not list)

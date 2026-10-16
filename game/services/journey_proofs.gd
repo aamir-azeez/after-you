@@ -25,7 +25,7 @@ const JourneySimulation = preload("res://core/journey/simulation.gd")
 const CooperativeSimulation = preload("res://core/cooperative/simulation.gd")
 const LighthouseSimulation = preload("res://core/lighthouse/room_simulation.gd")
 const LighthouseProof = preload("res://core/lighthouse/room_proof.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 
 ## One small file per chapter, never a journal.
 const DIRECTORY := "user://journey-proofs"
@@ -109,8 +109,8 @@ static func _draft_shape(journey: RefCounted, value: Variant, checked: Dictionar
 	var draft: Dictionary = value.draft
 	if draft.is_empty(): return checked
 	var next_stage := str(checked.checkpoint.get("next_stage_id", ""))
-	var fits: bool = not next_stage.is_empty() and Save.equal(draft.get("stage_id"), next_stage) and Save.equal(draft.get("role"), ("a" if value.a.is_empty() else "b"))
-	if str(journey._chapter_key) != Registry.FIRST_STEPS and not Save.equal(draft.get("simulation_version"), value.simulation_version): fits = false
+	var fits: bool = not next_stage.is_empty() and Typed.equal(draft.get("stage_id"), next_stage) and Typed.equal(draft.get("role"), ("a" if value.a.is_empty() else "b"))
+	if str(journey._chapter_key) != Registry.FIRST_STEPS and not Typed.equal(draft.get("simulation_version"), value.simulation_version): fits = false
 	if fits: return checked
 	var full: Dictionary = journey._validate_state(value)
 	return full if not full.get("valid", false) else journey._invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
@@ -268,7 +268,7 @@ static func _prove(journey: RefCounted, value: Variant, cancelled: Callable = Ca
 	var first: Dictionary = value.a
 	if not first.is_empty():
 		if cancelled.is_valid() and cancelled.call(): return {}
-		if str(derived.get("next_stage_id", "")).is_empty() or not Save.equal(first.get("role"), "a"): return {}
+		if str(derived.get("next_stage_id", "")).is_empty() or not Typed.equal(first.get("role"), "a"): return {}
 		var turn: RefCounted = family._proof(family._record_version(first))
 		var checked: Dictionary = turn.verify_recording(level, first, derived) if value.pairs.is_empty() else turn._verify_raw(level, first, derived, {})
 		if not checked.get("valid", false) or not checked.get("snapshot", {}).get("can_commit", false): return {}
@@ -358,7 +358,7 @@ static func _entries(chapter: String) -> Array:
 	var data: Variant = bytes_to_var(file.get_buffer(file.get_length()))
 	file.close()
 	# Anything unexpected is ignored as a whole; the next proof rewrites it.
-	if not data is Dictionary or data.size() != 3 or not Save.equal(data.get("schema_version"), SCHEMA) or not Save.equal(data.get("chapter"), chapter) or not data.get("entries") is Array: return entries
+	if not data is Dictionary or data.size() != 3 or not Typed.equal(data.get("schema_version"), SCHEMA) or not Typed.equal(data.get("chapter"), chapter) or not data.get("entries") is Array: return entries
 	for entry: Variant in data.entries:
 		if not entry is Array or entry.size() != 3 or not entry[0] is String or not entry[1] is String or not entry[2] is Dictionary:
 			entries.clear()

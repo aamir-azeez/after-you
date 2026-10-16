@@ -12,7 +12,7 @@ const RelayJourney = preload("res://services/relay_journey.gd")
 const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
 const LighthouseStages = preload("res://core/lighthouse/stage_catalog.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const MAX_SAVE_BYTES := 2097152
 const MAX_ARCHIVED_ATTEMPTS := 32
 ## Main-thread budget per advance for sources that need no worker: missing
@@ -386,15 +386,15 @@ func _load_trusted() -> void:
 	var parsed: Variant = json.data if not text.is_empty() and json.parse(text) == OK else null
 	# Anything unexpected is ignored; the next finished scan rewrites the file.
 	if not parsed is Dictionary or not parsed.get("keys") is Array or parsed.keys.size() > VERIFIED_LIMIT: return
-	if Save.equal(parsed.get("schema_version"), LEGACY_SCHEMA):
-		if parsed.size() != 3 or not Save.equal(parsed.get("stamp"), _legacy_stamp()): return
+	if Typed.equal(parsed.get("schema_version"), LEGACY_SCHEMA):
+		if parsed.size() != 3 or not Typed.equal(parsed.get("stamp"), _legacy_stamp()): return
 		for key: Variant in parsed.keys:
 			if not _digest(key):
 				_trusted.clear()
 				return
 			_trusted[key] = LEGACY_GROUP
 		return
-	if parsed.size() != 4 or not Save.equal(parsed.get("schema_version"), VERIFIED_SCHEMA) or not Save.equal(parsed.get("stamp"), _verifier_stamp()) or not parsed.get("chapters") is Dictionary: return
+	if parsed.size() != 4 or not Typed.equal(parsed.get("schema_version"), VERIFIED_SCHEMA) or not Typed.equal(parsed.get("stamp"), _verifier_stamp()) or not parsed.get("chapters") is Dictionary: return
 	var current := {}
 	for entry: Variant in parsed.keys:
 		if not entry is Array or entry.size() != 2 or not _digest(entry[0]) or not entry[1] is String or not parsed.chapters.get(entry[1]) is String:
@@ -504,7 +504,7 @@ static func _verify_snapshot(snapshot: Dictionary, validator: RefCounted, truste
 		var value: Variant = json.data
 		if not value is Dictionary: return {"ok": false, "hold": true}
 		if snapshot.source_kind == "archive":
-			if value.size() != 2 or not Save.equal(value.get("archive_version"), 1) or not value.get(field) is Dictionary or Canonical.digest(value[field]) != snapshot.source_id: return {"ok": false, "hold": true}
+			if value.size() != 2 or not Typed.equal(value.get("archive_version"), 1) or not value.get(field) is Dictionary or Canonical.digest(value[field]) != snapshot.source_id: return {"ok": false, "hold": true}
 			var archived: Dictionary = value[field]
 			var checked_archive: Dictionary = {"valid": true} if trusted else validator._validate_state(archived)
 			if not checked_archive.get("valid", false): return {"ok": false, "hold": true}

@@ -4,7 +4,7 @@ extends RefCounted
 ## its failure is independent from room creation and never blocks hosting.
 const Presence = preload("res://services/friend_presence.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const PENDING_PATH := "user://friend-room-publication-pending.cfg"
 ## An owed hosting alert older than the server's event lifetime is dropped.
 const OWED_TTL_S := 24 * 60 * 60
@@ -231,11 +231,11 @@ static func valid_friend(value: Variant) -> bool:
 	return value is Dictionary and value.size() >= 2 and Presence.valid_id(value.get("player_id")) and Presence.valid_id(value.get("request_id"))
 
 static func valid_publication_ack(value: Variant) -> bool:
-	if not value is Dictionary or value.size() != 3 or not Save.equal(value.get("schema_version"), 1): return false
+	if not value is Dictionary or value.size() != 3 or not Typed.equal(value.get("schema_version"), 1): return false
 	return _positive_integer(value.get("publication_epoch")) and _integer_between(value.get("queued"),0,20)
 
 static func valid_inbox(value: Variant) -> bool:
-	if not value is Dictionary or value.size() != 4 or not Save.equal(value.get("schema_version"), 1) or not value.get("available") is bool: return false
+	if not value is Dictionary or value.size() != 4 or not Typed.equal(value.get("schema_version"), 1) or not value.get("available") is bool: return false
 	if not value.get("events") is Array or value.events.size() > 20 or not value.get("preferences") is Array or value.preferences.size() > 20: return false
 	var seen_events := {}
 	for event: Variant in value.events:
@@ -248,17 +248,17 @@ static func valid_inbox(value: Variant) -> bool:
 	return true
 
 static func valid_event(value: Variant) -> bool:
-	if not value is Dictionary or value.size() != 7 or not Save.equal(value.get("category"), "room_available"): return false
+	if not value is Dictionary or value.size() != 7 or not Typed.equal(value.get("category"), "room_available"): return false
 	if not Presence.valid_id(value.get("player_id")) or not Presence.valid_id(value.get("request_id")) or not valid_room(value.get("room")): return false
 	if not _positive_integer(value.get("publication_epoch")) or not _positive_integer(value.get("published_at")): return false
 	var event_id: Variant = value.get("event_id")
 	return event_id is String and event_id == str(value.player_id)+"_"+str(RoomsApi.json_int(value.publication_epoch)) and event_id.length() <= 39
 
 static func valid_ack_response(value: Variant, request_id: String) -> bool:
-	return value is Dictionary and value.size() == 3 and Save.equal(value.get("schema_version"), 1) and Save.equal(value.get("acknowledged"), true) and Save.equal(value.get("request_id"), request_id)
+	return value is Dictionary and value.size() == 3 and Typed.equal(value.get("schema_version"), 1) and Typed.equal(value.get("acknowledged"), true) and Typed.equal(value.get("request_id"), request_id)
 
 static func valid_subscription_ack(value: Variant, request_id: String, enabled: bool) -> bool:
-	return value is Dictionary and value.size() == 3 and Save.equal(value.get("schema_version"), 1) and Save.equal(value.get("subscribed"), enabled) and Save.equal(value.get("request_id"), request_id)
+	return value is Dictionary and value.size() == 3 and Typed.equal(value.get("schema_version"), 1) and Typed.equal(value.get("subscribed"), enabled) and Typed.equal(value.get("request_id"), request_id)
 
 static func _positive_integer(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and float(value) > 0 and float(value) == floor(float(value))

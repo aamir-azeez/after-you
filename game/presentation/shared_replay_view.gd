@@ -21,7 +21,7 @@ const LoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const COMPLETION_DURATION := 3.0
 ## The wait at the end of the watched second turn: the doze and the ring.
 var memory_wait := MemoryWait.new()
@@ -214,7 +214,7 @@ static func valid_sequence(values: Array, owner: String, progress: RefCounted = 
 		valid = part.room == first.room and int(part.pair.stage_index) == index
 		if valid and index > 0:
 			var earlier: Dictionary = values[index - 1]
-			valid = earlier.pair.branch <= part.pair.branch and Save.same(earlier.pair.checkpoint, Registry.previous_checkpoint(first.room.chapter_key, part.pair.checkpoint))
+			valid = earlier.pair.branch <= part.pair.branch and Typed.same(earlier.pair.checkpoint, Registry.previous_checkpoint(first.room.chapter_key, part.pair.checkpoint))
 	if valid and progress != null: progress.advance()
 	return valid
 

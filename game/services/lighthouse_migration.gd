@@ -14,7 +14,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const V1Journey = preload("res://services/lighthouse_journey.gd")
 const Native = preload("res://core/lighthouse/borrowed_light.gd")
 const RoomSimulation = preload("res://core/lighthouse/room_simulation.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const KEY := Registry.LIGHTHOUSE_V2
 const V1_PATH := V1Journey.PATH
 const MARKER_PATH := "user://sleeping-lighthouse-v1-migration.json"
@@ -97,7 +97,7 @@ static func remember(result: String, v1_path: String = V1_PATH, marker_path: Str
 static func _marker(marker_path: String, v1_path: String) -> String:
 	if not FileAccess.file_exists(marker_path): return ""
 	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(marker_path))
-	if not parsed is Dictionary or not Save.equal(parsed.get("schema_version"), MARKER_SCHEMA) or not Save.equal(parsed.get("source"), _digest(v1_path)): return ""
+	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), MARKER_SCHEMA) or not Typed.equal(parsed.get("source"), _digest(v1_path)): return ""
 	return str(parsed.get("result", ""))
 
 ## The @1 save as it is now: every generation file's bytes.

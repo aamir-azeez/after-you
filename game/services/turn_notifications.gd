@@ -2,7 +2,7 @@ extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 ## One registration owner. Push is a hint; authenticated room reads remain authority.
 signal changed
 signal foreground_hint(route: Dictionary)
@@ -131,7 +131,7 @@ func sync_hosting_preferences(preferences: Array) -> void:
 	var peers := _hosting_ids()
 	var restored := false
 	for item: Variant in preferences:
-		if item is Dictionary and Save.equal(item.get("enabled"), true):
+		if item is Dictionary and Typed.equal(item.get("enabled"), true):
 			peers.erase(str(item.player_id))
 			if _hosting_ids().get(str(item.player_id)) != str(item.request_id):
 				restored = restored or not _hosting_ids().has(str(item.player_id))
@@ -148,7 +148,7 @@ func _ask_hosting_permission_once() -> void:
 	var asked := ConfigFile.new()
 	asked.load(permission_asked_path)
 	var section := key.sha256_text()
-	if Save.equal(asked.get_value(section,"asked",false), true): return
+	if Typed.equal(asked.get_value(section,"asked",false), true): return
 	asked.set_value(section,"asked",true)
 	if asked.save(permission_asked_path) != OK: return
 	_request_permission = true
@@ -192,7 +192,7 @@ func _sync_native_categories() -> void:
 	var key := identity_key(_identity.call())
 	var result: Dictionary = await bridge.call_native("set_categories",[enabled(),hosting_enabled(),requests_enabled()])
 	if generation != _generation or key != identity_key(_identity.call()): return
-	if not result.get("ok",false) or not Save.equal(result.get("data",{}).get("updated"), true):
+	if not result.get("ok",false) or not Typed.equal(result.get("data",{}).get("updated"), true):
 		_fail(Time.get_ticks_msec(),PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
 
 func queue_reconcile() -> void:
@@ -219,7 +219,7 @@ func _reset_native(operation: String) -> void:
 	changed.emit()
 	var result: Dictionary = await bridge.call_native(operation)
 	_resetting -= 1
-	if operation == "disable" and (not result.get("ok", false) or not Save.equal(result.get("data", {}).get("token_deleted"), true)):
+	if operation == "disable" and (not result.get("ok", false) or not Typed.equal(result.get("data", {}).get("token_deleted"), true)):
 		_off_cleared = false
 		_reset_next_ms = Time.get_ticks_msec() + 30000
 	changed.emit()
@@ -292,7 +292,7 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 		return
 	var categories: Dictionary = await bridge.call_native("set_categories",[enabled(),hosting_enabled(),requests_enabled()])
 	if not _current(generation,key): return
-	if not categories.get("ok",false) or not Save.equal(categories.get("data",{}).get("updated"), true):
+	if not categories.get("ok",false) or not Typed.equal(categories.get("data",{}).get("updated"), true):
 		_fail(now_ms,PlayerCopy.TURN_NOTIFICATIONS_3ACFC48F089A)
 		return
 	var operation := "request_permission" if _request_permission else "status"
@@ -305,17 +305,17 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	var status: Dictionary = native.data
 	# A saved opt-in whose native flag was cleared (0.6.0 did that on cold
 	# starts) comes back without a dialog: Android permission is still granted.
-	if operation == "status" and not _opt_in_restored and not Save.equal(status.get("opted_in"), true) and Save.equal(status.get("permission_granted"), true) and Save.equal(status.get("configured"), true):
+	if operation == "status" and not _opt_in_restored and not Typed.equal(status.get("opted_in"), true) and Typed.equal(status.get("permission_granted"), true) and Typed.equal(status.get("configured"), true):
 		_opt_in_restored = true
 		var restored: Dictionary = await bridge.call_native("request_permission")
 		if not _current(generation, key): return
 		if restored.get("ok", false) and restored.get("data") is Dictionary: status = restored.data
-	_turn_channel_ready = Save.equal(status.get("permission_granted"), true) and Save.equal(status.get("channel_enabled"), true)
-	_hosting_channel_ready = Save.equal(status.get("permission_granted"), true) and Save.equal(status.get("hosting_channel_enabled",status.get("channel_enabled")), true)
-	if not Save.equal(status.get("supported"), true) or not Save.equal(status.get("configured"), true):
+	_turn_channel_ready = Typed.equal(status.get("permission_granted"), true) and Typed.equal(status.get("channel_enabled"), true)
+	_hosting_channel_ready = Typed.equal(status.get("permission_granted"), true) and Typed.equal(status.get("hosting_channel_enabled",status.get("channel_enabled")), true)
+	if not Typed.equal(status.get("supported"), true) or not Typed.equal(status.get("configured"), true):
 		_status(PlayerCopy.TURN_NOTIFICATIONS_F3CB97B22B0F)
 		return
-	if not Save.equal(status.get("opted_in"), true) or not Save.equal(status.get("permission_granted"), true) or (not enabled() or not Save.equal(status.get("channel_enabled"), true)) and (not hosting_enabled() or not Save.equal(status.get("hosting_channel_enabled",status.get("channel_enabled")), true)):
+	if not Typed.equal(status.get("opted_in"), true) or not Typed.equal(status.get("permission_granted"), true) or (not enabled() or not Typed.equal(status.get("channel_enabled"), true)) and (not hosting_enabled() or not Typed.equal(status.get("hosting_channel_enabled",status.get("channel_enabled")), true)):
 		_last_registration = ""
 		_status(PlayerCopy.for_platform(PlayerCopy.TURN_NOTIFICATIONS_5015371169FE, PlayerCopy.TURN_NOTIFICATIONS_5015371169FE_IOS))
 		return
@@ -340,7 +340,7 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	var registration := str(_binding.binding_epoch) + ":" + str(token_data.token).sha256_text() + ":" + str(token_data.generation)
 	# iOS shows a push without running app code, so the server filters by these; a change re-registers.
 	if PlatformSupport.is_ios(): registration += ":" + push_categories(enabled(), hosting_enabled())
-	if registration == _last_registration and not Save.equal(status.get("registration_pending"), true):
+	if registration == _last_registration and not Typed.equal(status.get("registration_pending"), true):
 		_status(PlayerCopy.TURN_NOTIFICATIONS_D05B75D3C933)
 		await _sync_request_category(generation, key, now_ms)
 		return
@@ -351,13 +351,13 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 	else: response = await _api.request_json(HTTPClient.METHOD_POST, REGISTRATION_PATH, body)
 	if not _current(generation, key): return
 	var ack: Variant = response.get("data")
-	if not response.get("ok", false) or not ack is Dictionary or not Save.equal(ack.get("registered"), true) or not Save.equal(ack.get("binding_epoch"), epoch):
+	if not response.get("ok", false) or not ack is Dictionary or not Typed.equal(ack.get("registered"), true) or not Typed.equal(ack.get("binding_epoch"), epoch):
 		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_F20AF0DE21A8, int(response.get("retry_after_ms", 0)))
 		return
 	var bound: Dictionary = await bridge.call_native("set_binding", [epoch, token_data.token, int(token_data.generation)])
 	if not _current(generation, key): return
 	var result: Variant = bound.get("data")
-	if not bound.get("ok", false) or not result is Dictionary or not Save.equal(result.get("bound"), true) or not Save.equal(result.get("binding_epoch"), epoch) or not Save.equal(result.get("generation"), token_data.generation):
+	if not bound.get("ok", false) or not result is Dictionary or not Typed.equal(result.get("bound"), true) or not Typed.equal(result.get("binding_epoch"), epoch) or not Typed.equal(result.get("generation"), token_data.generation):
 		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_9BF0800B5B39)
 		return
 	_last_registration = registration
@@ -395,7 +395,7 @@ func _sync_request_category(generation: int, key: String, now_ms: int) -> void:
 	_category_busy = false
 	if not _current(generation, key): return
 	var ack: Variant = response.get("data")
-	if response.get("ok", false) and ack is Dictionary and ack.size() == 3 and Save.equal(ack.get("schema_version"), 1) and Save.equal(ack.get("binding_epoch"), epoch) and Save.equal(ack.get("redo_requests"), desired):
+	if response.get("ok", false) and ack is Dictionary and ack.size() == 3 and Typed.equal(ack.get("schema_version"), 1) and Typed.equal(ack.get("binding_epoch"), epoch) and Typed.equal(ack.get("redo_requests"), desired):
 		_request_categories[epoch] = desired
 		_category_failures = 0
 		_save_off(epoch if not desired else "")
@@ -418,7 +418,7 @@ func _saved_off() -> String:
 	if not _confirmed_off_loaded:
 		_confirmed_off_loaded = true
 		var value: Variant = JSON.parse_string(FileAccess.get_file_as_string(categories_path)) if FileAccess.file_exists(categories_path) else null
-		var digest: Variant = value.get("confirmed_off") if value is Dictionary and value.size() == 2 and Save.equal(value.get("schema_version"), 1) else null
+		var digest: Variant = value.get("confirmed_off") if value is Dictionary and value.size() == 2 and Typed.equal(value.get("schema_version"), 1) else null
 		_confirmed_off = digest if digest is String and digest.length() == 64 and digest.is_valid_hex_number(false) else ""
 	return _confirmed_off
 
@@ -433,7 +433,7 @@ func _unregister(generation: int, key: String, now_ms: int) -> void:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_DELETE, REGISTRATION_PATH, {"schema_version": 1, "binding_epoch": _binding.binding_epoch})
 	if not _current(generation, key): return
 	var ack: Variant = response.get("data")
-	if not response.get("ok", false) or not ack is Dictionary or not Save.equal(ack.get("unregistered"), true):
+	if not response.get("ok", false) or not ack is Dictionary or not Typed.equal(ack.get("unregistered"), true):
 		_fail(now_ms, PlayerCopy.TURN_NOTIFICATIONS_A304E7C06EFD, int(response.get("retry_after_ms", 0)))
 		return
 	var stored: Dictionary = await _write_binding.call({})
@@ -497,11 +497,11 @@ static func binding_key(binding: Dictionary) -> String:
 	return str(binding.get("owner", "")) + ":" + str(binding.get("credential_hash", ""))
 
 static func valid_binding(value: Dictionary) -> bool:
-	return value.size() == 4 and Save.equal(value.get("schema_version"), 1) and _matches(value.get("owner"), "^[A-Za-z0-9_-]{22}$") and _matches(value.get("credential_hash"), "^[a-f0-9]{64}$") and _matches(value.get("binding_epoch"), "^[A-Za-z0-9_-]{22}$")
+	return value.size() == 4 and Typed.equal(value.get("schema_version"), 1) and _matches(value.get("owner"), "^[A-Za-z0-9_-]{22}$") and _matches(value.get("credential_hash"), "^[a-f0-9]{64}$") and _matches(value.get("binding_epoch"), "^[A-Za-z0-9_-]{22}$")
 
 static func valid_route(value: Variant) -> bool:
 	if not value is Dictionary: return false
-	var hosting: bool = Save.equal(value.get("kind"), "friend_room_available")
+	var hosting: bool = Typed.equal(value.get("kind"), "friend_room_available")
 	var keys: Array = ["schema_version","event_id","kind","room_id","room_family","binding_epoch","host_id","publication_epoch"] if hosting else ["schema_version","event_id","kind","room_id","room_family","revision","binding_epoch"]
 	if value.size() != keys.size(): return false
 	for key: String in keys:

@@ -4,6 +4,7 @@ extends RefCounted
 ## Owner separation permits deleting every local photo journal after account
 ## deletion. Call erase_owner only on an explicit account-data removal flow.
 const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const MAX_FILE := 384 * 1024
 const MAX_VALUE := 256 * 1024
@@ -29,7 +30,7 @@ func load_scope(scope: String) -> Dictionary:
 		var parser := JSON.new()
 		var value: Variant = parser.data if parser.parse(file.get_as_text()) == OK else null
 		file.close()
-		if value is Dictionary and (not Save.whole_number(value.get("version")) or value.version != 1 or not _generation(value.get("generation")) or not Save.equal(value.get("turn_photo_scope"), scope) or not value.get("turn_photo_value") is Dictionary):
+		if value is Dictionary and (not Typed.whole_number(value.get("version")) or value.version != 1 or not _generation(value.get("generation")) or not Typed.equal(value.get("turn_photo_scope"), scope) or not value.get("turn_photo_value") is Dictionary):
 			return {"ok": false, "error": "unsupported_save"}
 	var store := Save.new(path)
 	store.load_data()
@@ -85,7 +86,7 @@ func list_scopes(owner: String) -> Dictionary:
 			file.close()
 			if error != OK: continue
 			var doc: Variant = parser.data
-			if not doc is Dictionary or not doc.get("turn_photo_scope") is String or not Save.whole_number(doc.get("version")) or doc.version != 1:
+			if not doc is Dictionary or not doc.get("turn_photo_scope") is String or not Typed.whole_number(doc.get("version")) or doc.version != 1:
 				return {"ok": false, "error": "unsupported_save"}
 			var candidate: String = doc.turn_photo_scope
 			if _path(candidate).get_file() != base or not candidate.begins_with("turn-photo-v1:" + owner + ":") or (scope != "" and scope != candidate):

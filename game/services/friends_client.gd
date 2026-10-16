@@ -4,7 +4,7 @@ const Presence = preload("res://services/friend_presence.gd")
 const Api = preload("res://services/rooms_api.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const REFRESH_MS := 60000
 const MIN_REFRESH_MS := 30000
 const JOIN_COOLDOWN_MS := 3000
@@ -158,7 +158,7 @@ func share_room(room: Variant) -> bool:
 	var response := await _request(HTTPClient.METHOD_POST,"/v1/friends/share",{"schema_version":1,"room":room})
 	if not response.get("ok",false): return false
 	var data: Variant = response.get("data")
-	if not data is Dictionary or data.size() != 2 or not Save.equal(data.get("schema_version"), 1) or not data.has("shared_room") or not same_room(data.shared_room,room):
+	if not data is Dictionary or data.size() != 2 or not Typed.equal(data.get("schema_version"), 1) or not data.has("shared_room") or not same_room(data.shared_room,room):
 		last_error = "Friends unavailable"
 		return false
 	# The response confirms only our sharing choice. Keep friends and their
@@ -177,7 +177,7 @@ func join_friend(row: Dictionary) -> Dictionary:
 				if peer.player_id == row.player_id and peer.request_id == row.request_id: peer.join_available = false
 		return {}
 	var data: Variant = response.get("data")
-	if not data is Dictionary or data.size() != 4 or not Save.equal(data.get("schema_version"), 1) or not _room({"api_version":data.get("api_version"),"room_id":data.get("room_id")}):
+	if not data is Dictionary or data.size() != 4 or not Typed.equal(data.get("schema_version"), 1) or not _room({"api_version":data.get("api_version"),"room_id":data.get("room_id")}):
 		last_error = "Room unavailable"; return {}
 	var code: Variant = data.get("invite_code")
 	if not code is String or code.length() != 20: last_error = "Room unavailable"; return {}
@@ -192,13 +192,13 @@ func _mutation(method: int, path: String, body: Dictionary) -> bool:
 	if not response.get("ok",false): return false
 	var data: Variant = response.get("data")
 	if method == HTTPClient.METHOD_DELETE:
-		if not data is Dictionary or data.size() != 2 or not Save.equal(data.get("schema_version"), 1) or not Save.equal(data.get("removed"), true):
+		if not data is Dictionary or data.size() != 2 or not Typed.equal(data.get("schema_version"), 1) or not Typed.equal(data.get("removed"), true):
 			last_error = "Friends unavailable"; return false
 		if not _page.is_empty():
 			_page.friends = _page.friends.filter(func(peer: Dictionary) -> bool: return peer.player_id != path.get_file() or peer.request_id != body.request_id)
 	else:
 		# A short name comes back as the player ID the server resolved it to.
-		if not data is Dictionary or data.size() != 4 or not Save.equal(data.get("schema_version"), 1) or not _row(data) or data.get("status") not in ["incoming","outgoing","accepted"] or data.player_id == _binding.get("player_id") or (data.player_id != body.get("player_id",body.get("friend_code")) and not ShareCodes.is_alias(body.get("friend_code"))):
+		if not data is Dictionary or data.size() != 4 or not Typed.equal(data.get("schema_version"), 1) or not _row(data) or data.get("status") not in ["incoming","outgoing","accepted"] or data.player_id == _binding.get("player_id") or (data.player_id != body.get("player_id",body.get("friend_code")) and not ShareCodes.is_alias(body.get("friend_code"))):
 			last_error = "Friends unavailable"; return false
 		if path.ends_with("/accept") and (data.request_id != body.request_id or data.status != "accepted"):
 			last_error = "Friends unavailable"; return false
@@ -265,7 +265,7 @@ static func same_room(left: Variant, right: Variant) -> bool:
 static func valid_page(value: Variant, owner: String) -> bool:
 	# friend_alias is the only optional key: the player's short name, sent when the request asks for it.
 	if value is Dictionary and value.has("friend_alias") and not ShareCodes.is_alias(value.friend_alias): return false
-	if not value is Dictionary or value.size() != (6 if value.has("friend_alias") else 5) or not value.has("shared_room") or not Save.equal(value.get("schema_version"), 1) or not Save.equal(value.get("friend_code"), owner) or not value.get("friends") is Array or value.friends.size() > 20: return false
+	if not value is Dictionary or value.size() != (6 if value.has("friend_alias") else 5) or not value.has("shared_room") or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("friend_code"), owner) or not value.get("friends") is Array or value.friends.size() > 20: return false
 	var refresh: Variant = value.get("refresh_after_seconds")
 	if not (refresh is int or refresh is float) or not is_finite(refresh) or refresh < 30 or refresh > 3600 or refresh != floor(refresh): return false
 	if value.get("shared_room") != null and not _room(value.shared_room): return false

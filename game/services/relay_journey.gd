@@ -5,6 +5,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Storage = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const Archive = preload("res://services/attempt_archive.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
@@ -318,8 +319,8 @@ func adopt_live_simulation(job: Dictionary, built: Dictionary) -> RefCounted:
 	for key: String in ["chapter", "stage", "role"]:
 		if str(job.get(key)) != str(now[key]): return null
 	for key: String in ["level", "checkpoint", "prior", "saved"]:
-		if not job.get(key) is Dictionary or not Storage.same(job[key], now[key]): return null
-	if tick_of(simulation) != 0 or not str(simulation.get("error")).is_empty() or simulation.get("role") != now.role or not Storage.same(simulation.get("_checkpoint"), _checkpoint) or not Storage.same(simulation.get("_prior"), _state.a):
+		if not job.get(key) is Dictionary or not Typed.same(job[key], now[key]): return null
+	if tick_of(simulation) != 0 or not str(simulation.get("error")).is_empty() or simulation.get("role") != now.role or not Typed.same(simulation.get("_checkpoint"), _checkpoint) or not Typed.same(simulation.get("_prior"), _state.a):
 		return null
 	_last_setup_usec = int(built.get("usec", 0))
 	_live_simulation = weakref(simulation)
@@ -384,7 +385,7 @@ static func _draft_state(job: Dictionary) -> Dictionary:
 	# Compare whole dictionaries so mutating an object while keeping its old
 	# hash cannot reuse a trusted context. These references never leave local
 	# application code; all values are copied before they reach storage.
-	if not str(simulation.get("error")).is_empty() or simulation.get("role") != job.role or not Storage.same(simulation.get("level"), level) or not Storage.same(simulation.get("stage"), family.stage_by_id(level, str(checkpoint.next_stage_id))) or not Storage.same(simulation.get("_checkpoint"), checkpoint) or not Storage.same(simulation.get("_prior"), state.a):
+	if not str(simulation.get("error")).is_empty() or simulation.get("role") != job.role or not Typed.same(simulation.get("level"), level) or not Typed.same(simulation.get("stage"), family.stage_by_id(level, str(checkpoint.next_stage_id))) or not Typed.same(simulation.get("_checkpoint"), checkpoint) or not Typed.same(simulation.get("_prior"), state.a):
 		return {"ok": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41}
 	var recording: Dictionary = simulation.export_recording()
 	if job.chapter != Registry.FIRST_STEPS and recording.get("simulation_version") != state.simulation_version:
@@ -481,9 +482,9 @@ func verify_turn(recording: Dictionary) -> Dictionary:
 
 
 func _verify_current(recording: Dictionary) -> Dictionary:
-	if _chapter_key != Registry.FIRST_STEPS and not Storage.equal(recording.get("simulation_version"), _state.simulation_version):
+	if _chapter_key != Registry.FIRST_STEPS and not Typed.equal(recording.get("simulation_version"), _state.simulation_version):
 		return _invalid("Unsupported recording version.")
-	if not Storage.equal(recording.get("role"), role()) or not Storage.equal(recording.get("stage_id"), stage_id()):
+	if not Typed.equal(recording.get("role"), role()) or not Typed.equal(recording.get("stage_id"), stage_id()):
 		return {"valid": false, "error": PlayerCopy.LIGHTHOUSE_JOURNEY_1E2666F7F555}
 	var key := _turn_key(recording)
 	if _verified_turns.has(key):
@@ -534,7 +535,7 @@ func final_scene_job() -> Dictionary:
 	var last: Variant = _state.pairs[-1]
 	var proof: Variant = _checkpoint.get("proof")
 	if not last is Dictionary or not proof is Dictionary or not proof.get("checkpoint") is Dictionary: return {}
-	if not Storage.same(proof.get("a"), last.a) or not Storage.same(proof.get("b"), last.b): return {}
+	if not Typed.same(proof.get("a"), last.a) or not Typed.same(proof.get("b"), last.b): return {}
 	return {"chapter": _chapter_key, "family": _simulation, "level": _level, "stage": str(last.b.get("stage_id", "")), "checkpoint": proof.checkpoint,
 		"prior": last.a, "role": "b", "saved": {}, "proven": true, "turn": last.b}
 
@@ -779,7 +780,7 @@ func _adopt_written(next: Dictionary, derived_checkpoint: Dictionary) -> void:
 func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 	if not value is Dictionary or not _exact_keys(value, STATE_KEYS):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
-	if not Storage.equal(value.schema_version, _level.schema_version) or not Registry._integer(value.simulation_version) or int(value.simulation_version) not in Registry.supported_rules(_chapter_key) or not Storage.equal(value.level_id, _level.id) or not Storage.equal(value.level_version, _level.version) or not Storage.equal(value.definition_hash, Canonical.digest(_level)):
+	if not Typed.equal(value.schema_version, _level.schema_version) or not Registry._integer(value.simulation_version) or int(value.simulation_version) not in Registry.supported_rules(_chapter_key) or not Typed.equal(value.level_id, _level.id) or not Typed.equal(value.level_version, _level.version) or not Typed.equal(value.definition_hash, Canonical.digest(_level)):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD)
 	if not value.pairs is Array or value.pairs.size() > _level.stages.size() or not value.a is Dictionary or not value.draft is Dictionary:
 		return _invalid("Malformed stage history.")
@@ -788,7 +789,7 @@ func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 	for pair: Variant in value.pairs:
 		if not pair is Dictionary or not _exact_keys(pair, ["a", "b"]) or not pair.a is Dictionary or not pair.b is Dictionary:
 			return _invalid("Malformed completed pair.")
-		if _chapter_key != Registry.FIRST_STEPS and (not Storage.equal(pair.a.get("simulation_version"), value.simulation_version) or not Storage.equal(pair.b.get("simulation_version"), value.simulation_version)): return _invalid("Unsupported recording version.")
+		if _chapter_key != Registry.FIRST_STEPS and (not Typed.equal(pair.a.get("simulation_version"), value.simulation_version) or not Typed.equal(pair.b.get("simulation_version"), value.simulation_version)): return _invalid("Unsupported recording version.")
 		if proven: continue
 		var checked: Dictionary = _simulation.derive_checkpoint(_level, derived, pair.a, pair.b)
 		if not checked.valid:
@@ -801,14 +802,14 @@ func _validate_state(value: Variant, trusted: Dictionary = {}) -> Dictionary:
 			return _invalid(PlayerCopy.RELAY_JOURNEY_0B5E838FD37D)
 		return {"valid": true, "error": "", "checkpoint": derived}
 	if not value.a.is_empty():
-		if _chapter_key != Registry.FIRST_STEPS and not Storage.equal(value.a.get("simulation_version"), value.simulation_version): return _invalid("Unsupported recording version.")
+		if _chapter_key != Registry.FIRST_STEPS and not Typed.equal(value.a.get("simulation_version"), value.simulation_version): return _invalid("Unsupported recording version.")
 		var first: Dictionary = {"valid": true, "snapshot": {"can_commit": true}} if proven and trusted.get("a_verified", false) else _simulation.verify_recording(_level, value.a, derived)
-		if not Storage.equal(value.a.get("role"), "a") or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
+		if not Typed.equal(value.a.get("role"), "a") or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B)
 	if not value.draft.is_empty():
-		if _chapter_key != Registry.FIRST_STEPS and not Storage.equal(value.draft.get("simulation_version"), value.simulation_version): return _invalid("Unsupported recording version.")
+		if _chapter_key != Registry.FIRST_STEPS and not Typed.equal(value.draft.get("simulation_version"), value.simulation_version): return _invalid("Unsupported recording version.")
 		var expected_role := "a" if value.a.is_empty() else "b"
-		if not Storage.equal(value.draft.get("role"), expected_role):
+		if not Typed.equal(value.draft.get("role"), expected_role):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
 		var rehearsal: Dictionary = Proofs.rehearse(self, value.draft, derived, value.a) if proven else _simulation.verify_recording(_level, value.draft, derived, value.a)
 		if not rehearsal.valid:
@@ -825,9 +826,9 @@ func _envelope_valid(value: Dictionary) -> bool:
 	for key: Variant in value:
 		if key not in ENVELOPE_KEYS:
 			return false
-	if not Storage.whole_number(value.get("version")) or value.version != 1 or not value.has("relay"):
+	if not Typed.whole_number(value.get("version")) or value.version != 1 or not value.has("relay"):
 		return false
-	if not Storage.valid_generation(value.get("generation", 0)):
+	if not Typed.valid_generation(value.get("generation", 0)):
 		return false
 	for reserved: String in ["attempts", "completed", "replays", "room"]:
 		if value.has(reserved) and (not value[reserved] is Dictionary or not value[reserved].is_empty()):
@@ -848,7 +849,7 @@ func _preserve_unreadable(candidate: String) -> bool:
 
 
 func _retired(value: Variant) -> bool:
-	return value is Dictionary and Storage.equal(value.get("level_id"), _level.id) and Storage.equal(value.get("level_version"), _level.version) and str(value.get("definition_hash", "")) in RETIRED_DEFINITIONS.get(_chapter_key, [])
+	return value is Dictionary and Typed.equal(value.get("level_id"), _level.id) and Typed.equal(value.get("level_version"), _level.version) and str(value.get("definition_hash", "")) in RETIRED_DEFINITIONS.get(_chapter_key, [])
 
 
 ## Renames each retired generation, and every archived attempt of a retired

@@ -21,7 +21,7 @@ const Journey = preload("res://services/relay_journey.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 ## The bar's share for the work before the scene change, where it waits while
 ## the chapter builds, and the proof's weight against the scene load.
 const PREPARED := 0.85
@@ -410,7 +410,7 @@ static func _load_costs() -> void:
 	var parsed: Variant = JSON.parse_string(file.get_as_text())
 	file.close()
 	# Anything unexpected is ignored; the next open writes a fresh record.
-	if not parsed is Dictionary or not Save.equal(parsed.get("schema_version"), 1) or not parsed.get("costs") is Dictionary: return
+	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), 1) or not parsed.get("costs") is Dictionary: return
 	for name: Variant in parsed.costs:
 		var value: Variant = parsed.costs[name]
 		if name is String and (value is int or value is float) and value >= 0 and _costs.size() < MAX_COSTS: _costs[name] = int(value)

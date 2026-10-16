@@ -3,7 +3,7 @@ extends RefCounted
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 
 static func save(path: String, field: String, state: Dictionary, maximum_bytes: int, maximum_attempts: int) -> String:
 	var body := JSON.stringify(Canonical.normalized({"archive_version": 1, field: state}))
@@ -61,7 +61,7 @@ static func load_attempt(path: String, field: String, id: String, maximum_bytes:
 	var json := JSON.new()
 	if json.parse(file.get_as_text()) != OK: return {}
 	var value: Variant = json.data
-	if not value is Dictionary or value.size() != 2 or not Save.equal(value.get("archive_version"), 1) or not value.get(field) is Dictionary:
+	if not value is Dictionary or value.size() != 2 or not Typed.equal(value.get("archive_version"), 1) or not value.get(field) is Dictionary:
 		return {}
 	var state: Dictionary = value[field]
 	return state.duplicate(true) if Canonical.digest(state) == id else {}

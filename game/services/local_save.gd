@@ -1,5 +1,6 @@
 extends RefCounted
 const AtomicFile = preload("res://services/atomic_file.gd")
+const Typed = preload("res://services/typed_values.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -205,39 +206,12 @@ static func _valid(value: Variant) -> bool:
 	if not value is Dictionary:
 		return false
 	var version: Variant = value.get("version", 0)
-	if not whole_number(version) or version != 1 or not valid_generation(value.get("generation", 0)):
+	if not Typed.whole_number(version) or version != 1 or not Typed.valid_generation(value.get("generation", 0)):
 		return false
 	for key: String in ["settings", "attempts", "completed", "room"]:
 		if value.has(key) and not value[key] is Dictionary:
 			return false
 	return true
-
-## A whole, finite number. JSON reads every number as a float.
-static func whole_number(value: Variant) -> bool:
-	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value))
-
-## A save generation: a whole number that is not negative.
-static func valid_generation(value: Variant) -> bool:
-	return whole_number(value) and value >= 0
-
-## a == b for values read from a file or a response, where either may have any
-## type. Kinds Godot cannot compare (a list against a number, a string against a
-## bool) are not equal instead of a script error.
-static func equal(a: Variant, b: Variant) -> bool:
-	return comparable(a, b) and a == b
-
-## Canonical.same for values that may have any type, with the same rule.
-static func same(a: Variant, b: Variant) -> bool:
-	return comparable(a, b) and Canonical.same(a, b)
-
-## True when == can compare the two values: the same kind, two numbers, String
-## with StringName, or null on either side.
-static func comparable(a: Variant, b: Variant) -> bool:
-	if a == null or b == null or typeof(a) == typeof(b):
-		return true
-	if (a is int or a is float) and (b is int or b is float):
-		return true
-	return (a is String or a is StringName) and (b is String or b is StringName)
 
 ## A save written by a newer version of the app. A numeric string counts too.
 static func _newer(value: Variant) -> bool:

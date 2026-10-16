@@ -8,7 +8,7 @@ const Collection = preload("res://services/shared_replay_collection.gd")
 const Store = preload("res://services/shared_replay_store.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const MAX_ARCHIVE_BYTES := 16 * 1024 * 1024
 const MAX_INTEGER := 9007199254740991
 const ROOM_KEYS := ["schema_version", "room_id", "revision", "branch", "stage_index", "level_id", "level_version", "definition_hash", "host_id", "guest_id", "checkpoint_hash", "a_turn_id", "completed_pair_ids", "invite_expires_at", "created_at", "updated_at"]
@@ -73,7 +73,7 @@ func acknowledge(room_id: String, manifest: Dictionary) -> Dictionary:
 	var response := await _request(ticket, HTTPClient.METHOD_POST, "/ack", _key(manifest), true)
 	if not response.get("ok", false): return _finish(ticket, response)
 	var value: Variant = response.get("data")
-	if not valid_transfer(value, ticket.owner, room_id) or not Save.same(value.manifest, manifest) or ticket.owner not in value.acked_player_ids:
+	if not valid_transfer(value, ticket.owner, room_id) or not Typed.same(value.manifest, manifest) or ticket.owner not in value.acked_player_ids:
 		return _finish(ticket, _failure("invalid_replay_ack"))
 	return _finish(ticket, {"ok": true, "transfer": value.duplicate(true)})
 
@@ -90,11 +90,11 @@ func restore(room_id: String, manifest: Dictionary) -> Dictionary:
 	var response := await _request(ticket, HTTPClient.METHOD_POST, "/restore", body)
 	if not response.get("ok", false): return _finish(ticket, response)
 	var value: Variant = response.get("data")
-	if not value is Dictionary or not _exact(value, ["restored", "transfer"]) or not Save.equal(value.restored, true) or not valid_transfer(value.transfer, ticket.owner, room_id):
+	if not value is Dictionary or not _exact(value, ["restored", "transfer"]) or not Typed.equal(value.restored, true) or not valid_transfer(value.transfer, ticket.owner, room_id):
 		return _finish(ticket, _failure("invalid_replay_restore"))
 	var expected := manifest.duplicate(true)
 	expected.epoch = int(manifest.epoch) + 1
-	if not Save.same(value.transfer.manifest, expected) or value.transfer.transferred or not value.transfer.acked_player_ids.is_empty():
+	if not Typed.same(value.transfer.manifest, expected) or value.transfer.transferred or not value.transfer.acked_player_ids.is_empty():
 		return _finish(ticket, _failure("invalid_replay_restore"))
 	var retained := await _save_verified(ticket, expected, saved.archive)
 	if not retained.get("ok", false): return _finish(ticket, retained)
@@ -114,7 +114,7 @@ func _begin(room_id: String) -> Dictionary:
 	return {"owner": identity.player_id, "identity": identity.duplicate(true), "server_key": scope.server_key, "room": room_id, "generation": _generation}
 
 func _current(ticket: Dictionary, acknowledgement: bool = false) -> bool:
-	if ticket.get("generation") != _generation or not _identity.is_valid() or not _eligibility.is_valid() or not Save.same(ticket.identity, _identity.call()): return false
+	if ticket.get("generation") != _generation or not _identity.is_valid() or not _eligibility.is_valid() or not Typed.same(ticket.identity, _identity.call()): return false
 	var scope: Variant = _eligibility.call(ticket.room)
 	if not _valid_scope(scope) or scope.server_key != ticket.server_key: return false
 	return not acknowledgement or (scope.enabled and not scope.gameplay_pending and not scope.photo_pending and not scope.redo_pending)
@@ -142,7 +142,7 @@ static func _verify_saved(source: Dictionary, raw: bool, manifest: Dictionary, o
 	var stored: Dictionary = Store.decode_scope(source) if raw else source
 	if not stored.get("ok", false) or not stored.get("found", false): return _failure("local_replay_archive_missing")
 	var value: Variant = stored.get("value")
-	if not value is Dictionary or not _exact(value, ["schema_version", "owner", "server_key", "manifest", "archive"]) or not Save.equal(value.schema_version, 1) or not Save.equal(value.owner, owner) or not Save.equal(value.server_key, server_key) or not Save.same(value.manifest, manifest):
+	if not value is Dictionary or not _exact(value, ["schema_version", "owner", "server_key", "manifest", "archive"]) or not Typed.equal(value.schema_version, 1) or not Typed.equal(value.owner, owner) or not Typed.equal(value.server_key, server_key) or not Typed.same(value.manifest, manifest):
 		return _failure("local_replay_archive_mismatch")
 	var checked := verify_archive(value.archive, manifest, owner, room_id)
 	if not checked.get("ok", false): return checked
@@ -199,22 +199,22 @@ static func _key(manifest: Dictionary) -> Dictionary:
 	return {"schema_version": 1, "epoch": manifest.epoch, "archive_hash": manifest.archive_hash}
 
 static func valid_transfer(value: Variant, owner: String, room_id: String) -> bool:
-	if not value is Dictionary or not _exact(value, ["schema_version", "manifest", "acked_player_ids", "transferred"]) or not Save.equal(value.schema_version, 1) or not value.transferred is bool or not _manifest_valid(value.manifest, owner, room_id) or not value.acked_player_ids is Array: return false
+	if not value is Dictionary or not _exact(value, ["schema_version", "manifest", "acked_player_ids", "transferred"]) or not Typed.equal(value.schema_version, 1) or not value.transferred is bool or not _manifest_valid(value.manifest, owner, room_id) or not value.acked_player_ids is Array: return false
 	var members: Array = [value.manifest.room.host_id, value.manifest.room.guest_id]
 	var expected: Array = members.filter(func(id: String): return id in value.acked_player_ids)
-	return Save.same(value.acked_player_ids, expected) and value.transferred == (expected.size() == 2)
+	return Typed.same(value.acked_player_ids, expected) and value.transferred == (expected.size() == 2)
 
 static func _manifest_valid(value: Variant, owner: String, room_id: String) -> bool:
-	if not value is Dictionary or not _exact(value, ["schema_version", "epoch", "archive_hash", "room", "turns", "pairs"]) or not Save.equal(value.schema_version, 1) or not _integer(value.epoch, 1, MAX_INTEGER) or not _hash(value.archive_hash) or not value.room is Dictionary: return false
+	if not value is Dictionary or not _exact(value, ["schema_version", "epoch", "archive_hash", "room", "turns", "pairs"]) or not Typed.equal(value.schema_version, 1) or not _integer(value.epoch, 1, MAX_INTEGER) or not _hash(value.archive_hash) or not value.room is Dictionary: return false
 	var room: Dictionary = value.room
 	var fields := ROOM_KEYS.duplicate()
 	if room.has("simulation_version"): fields.append("simulation_version")
 	var chapter := Registry.resolve(room)
-	if chapter.is_empty() or not _exact(room, fields) or not Save.equal(room.schema_version, 2) or not Save.equal(room.room_id, room_id) or not _id(room_id) or not _id(room.host_id) or not _id(room.guest_id) or room.host_id == room.guest_id or owner not in [room.host_id, room.guest_id]: return false
+	if chapter.is_empty() or not _exact(room, fields) or not Typed.equal(room.schema_version, 2) or not Typed.equal(room.room_id, room_id) or not _id(room_id) or not _id(room.host_id) or not _id(room.guest_id) or room.host_id == room.guest_id or owner not in [room.host_id, room.guest_id]: return false
 	var level := Registry.definition(chapter)
 	# A transferred room is complete: its stage index is its chapter's stage count.
 	var stages := RoomStages.count(level)
-	if not _integer(room.revision, 1, MAX_INTEGER) or not _integer(room.branch, 0, 31) or not Save.equal(room.stage_index, stages) or room.a_turn_id != null or not _hash(room.checkpoint_hash): return false
+	if not _integer(room.revision, 1, MAX_INTEGER) or not _integer(room.branch, 0, 31) or not Typed.equal(room.stage_index, stages) or room.a_turn_id != null or not _hash(room.checkpoint_hash): return false
 	var rules: Variant = room.get("simulation_version", level.simulation_version)
 	if not _integer(rules, 1, MAX_INTEGER) or int(rules) not in Registry.supported_rules(chapter): return false
 	for name: String in ["created_at", "updated_at", "invite_expires_at"]:
@@ -230,14 +230,14 @@ static func _manifest_valid(value: Variant, owner: String, room_id: String) -> b
 		var stage: Dictionary = level.stages[int(id.get_slice("-", 1))]
 		var first: String = room.host_id if stage.first_player_slot == "p0" else room.guest_id
 		var second: String = room.guest_id if first == room.host_id else room.host_id
-		if not Save.equal(item.player_id, (first if id.ends_with("-a") else second)): return false
+		if not Typed.equal(item.player_id, (first if id.ends_with("-a") else second)): return false
 		turns[id] = item
 		revisions[item.accepted_revision] = true
 	var pairs: Dictionary = {}
 	for item: Variant in value.pairs:
-		if not item is Dictionary or not _exact(item, ["pair_id", "branch", "stage_index", "a_hash", "b_hash", "checkpoint_hash"]) or not _integer(item.branch, 0, int(room.branch)) or not RoomStages.within(item.stage_index, level) or not Save.equal(item.pair_id, "p%d-%d" % [item.branch, item.stage_index]) or pairs.has(item.pair_id) or not _hash(item.checkpoint_hash): return false
+		if not item is Dictionary or not _exact(item, ["pair_id", "branch", "stage_index", "a_hash", "b_hash", "checkpoint_hash"]) or not _integer(item.branch, 0, int(room.branch)) or not RoomStages.within(item.stage_index, level) or not Typed.equal(item.pair_id, "p%d-%d" % [item.branch, item.stage_index]) or pairs.has(item.pair_id) or not _hash(item.checkpoint_hash): return false
 		var stem := "t%d-%d-" % [item.branch, item.stage_index]
-		if not Save.equal(turns.get(stem + "a", {}).get("recording_hash"), item.a_hash) or not Save.equal(turns.get(stem + "b", {}).get("recording_hash"), item.b_hash): return false
+		if not Typed.equal(turns.get(stem + "a", {}).get("recording_hash"), item.a_hash) or not Typed.equal(turns.get(stem + "b", {}).get("recording_hash"), item.b_hash): return false
 		if turns[stem + "a"].accepted_revision >= turns[stem + "b"].accepted_revision: return false
 		pairs[item.pair_id] = item
 	if not room.completed_pair_ids is Array or room.completed_pair_ids.size() != stages: return false
@@ -254,14 +254,14 @@ static func _manifest_valid(value: Variant, owner: String, room_id: String) -> b
 
 static func verify_archive(archive: Variant, manifest: Dictionary, owner: String, room_id: String) -> Dictionary:
 	# Pure worker: no files, identity observations, transport or shared writers.
-	if not _manifest_valid(manifest, owner, room_id) or not Coordinator._bounded_nodes(archive, MAX_ARCHIVE_BYTES, 2000000) or not archive is Dictionary or not _exact(archive, ["schema_version", "room", "turns", "pairs"]) or not Save.equal(archive.schema_version, 1) or not archive.room is Dictionary or not archive.turns is Array or not archive.pairs is Array: return _failure("invalid_replay_archive")
+	if not _manifest_valid(manifest, owner, room_id) or not Coordinator._bounded_nodes(archive, MAX_ARCHIVE_BYTES, 2000000) or not archive is Dictionary or not _exact(archive, ["schema_version", "room", "turns", "pairs"]) or not Typed.equal(archive.schema_version, 1) or not archive.room is Dictionary or not archive.turns is Array or not archive.pairs is Array: return _failure("invalid_replay_archive")
 	if Canonical.digest(archive) != manifest.archive_hash or archive.turns.size() != manifest.turns.size() or archive.pairs.size() != manifest.pairs.size(): return _failure("replay_archive_mismatch")
 	var room: Dictionary = archive.room
 	var metadata := room.duplicate()
 	var checkpoint: Variant = metadata.get("checkpoint")
 	metadata.erase("checkpoint")
 	metadata["checkpoint_hash"] = checkpoint.get("checkpoint_hash") if checkpoint is Dictionary else null
-	if not Save.same(metadata, manifest.room): return _failure("replay_archive_mismatch")
+	if not Typed.same(metadata, manifest.room): return _failure("replay_archive_mismatch")
 	var chapter := Registry.resolve(room)
 	var level := Registry.definition(chapter)
 	var engine := Registry.simulation_script(chapter)
@@ -279,17 +279,17 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 		var facts: Dictionary = item.duplicate()
 		facts.erase("recording")
 		facts["recording_hash"] = item.recording.get("recording_hash")
-		if not Save.same(facts, manifest.turns[index]): return _failure("replay_archive_mismatch")
+		if not Typed.same(facts, manifest.turns[index]): return _failure("replay_archive_mismatch")
 		turns[item.turn_id] = item
 	for index in range(archive.pairs.size()):
 		var pair: Variant = archive.pairs[index]
 		if not pair is Dictionary or not _exact(pair, ["pair_id", "branch", "stage_index", "a", "b", "checkpoint"]) or not pair.a is Dictionary or not pair.b is Dictionary or not pair.checkpoint is Dictionary: return _failure("invalid_replay_pair")
 		var facts := {"pair_id": pair.pair_id, "branch": pair.branch, "stage_index": pair.stage_index, "a_hash": pair.a.get("recording_hash"), "b_hash": pair.b.get("recording_hash"), "checkpoint_hash": pair.checkpoint.get("checkpoint_hash")}
 		var entry := {"schema_version": 1, "room": native_room, "pair": pair}
-		if not Save.same(facts, manifest.pairs[index]) or not Collection.verify_entry(entry, owner): return _failure("invalid_replay_pair")
+		if not Typed.same(facts, manifest.pairs[index]) or not Collection.verify_entry(entry, owner): return _failure("invalid_replay_pair")
 		var stem := "t%d-%d-" % [pair.branch, pair.stage_index]
-		if not Save.same(turns[stem + "a"].recording, pair.a) or not Save.same(turns[stem + "b"].recording, pair.b): return _failure("replay_archive_mismatch")
-		if checkpoints.has(pair.checkpoint.checkpoint_hash) and not Save.same(checkpoints[pair.checkpoint.checkpoint_hash], pair.checkpoint): return _failure("replay_checkpoint_conflict")
+		if not Typed.same(turns[stem + "a"].recording, pair.a) or not Typed.same(turns[stem + "b"].recording, pair.b): return _failure("replay_archive_mismatch")
+		if checkpoints.has(pair.checkpoint.checkpoint_hash) and not Typed.same(checkpoints[pair.checkpoint.checkpoint_hash], pair.checkpoint): return _failure("replay_checkpoint_conflict")
 		checkpoints[pair.checkpoint.checkpoint_hash] = pair.checkpoint
 		if not checkpoint_context.has(pair.checkpoint.checkpoint_hash): checkpoint_context[pair.checkpoint.checkpoint_hash] = []
 		checkpoint_context[pair.checkpoint.checkpoint_hash].append({"branch": pair.branch, "revision": turns[stem + "b"].accepted_revision})
@@ -299,7 +299,7 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 	var completed: Array = room.completed_pair_ids
 	var nested: Dictionary = room.checkpoint
 	for index in range(completed.size() - 1, -1, -1):
-		if not Save.same(nested, pairs[completed[index]].checkpoint): return _failure("replay_checkpoint_conflict")
+		if not Typed.same(nested, pairs[completed[index]].checkpoint): return _failure("replay_checkpoint_conflict")
 		nested = Registry.previous_checkpoint(chapter, nested)
 	for item: Dictionary in archive.turns:
 		var record: Dictionary = item.recording
@@ -307,7 +307,7 @@ static func verify_archive(archive: Variant, manifest: Dictionary, owner: String
 		var stage_index := int(id.get_slice("-", 1))
 		var role := id.get_slice("-", 2)
 		var source: Variant = checkpoints.get(record.get("checkpoint_hash"))
-		if not source is Dictionary or not Save.equal(source.stage_index, stage_index) or not Save.equal(record.get("stage_id"), level.stages[stage_index].id) or not Save.equal(record.get("role"), role) or not Save.equal(record.get("simulation_version"), room.get("simulation_version", level.simulation_version)): return _failure("invalid_replay_turn")
+		if not source is Dictionary or not Typed.equal(source.stage_index, stage_index) or not Typed.equal(record.get("stage_id"), level.stages[stage_index].id) or not Typed.equal(record.get("role"), role) or not Typed.equal(record.get("simulation_version"), room.get("simulation_version", level.simulation_version)): return _failure("invalid_replay_turn")
 		if stage_index > 0:
 			var branch := int(id.substr(1).get_slice("-", 0))
 			var contexts: Array = checkpoint_context.get(record.checkpoint_hash, [])

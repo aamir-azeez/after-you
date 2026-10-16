@@ -9,7 +9,7 @@ extends RefCounted
 const PlatformSupport = preload("res://services/platform_support.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const VersionOrder = preload("res://services/version_order.gd")
-const Save = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 
 const PATH := "res://content/changelog.json"
 const SCHEMA_VERSION := 1
@@ -41,8 +41,8 @@ static func current_version() -> String:
 ## Which build this is. iOS is always the App Store build; elsewhere Google Play
 ## builds are "play" and the Test Store and tester APKs are "github".
 static func channel(config: Dictionary) -> String:
-	if PlatformSupport.is_ios() or Save.equal(config.get("purchase_mode"), "app_store"): return APP_STORE
-	return PLAY if Save.equal(config.get("purchase_mode"), "google_play") else GITHUB
+	if PlatformSupport.is_ios() or Typed.equal(config.get("purchase_mode"), "app_store"): return APP_STORE
+	return PLAY if Typed.equal(config.get("purchase_mode"), "google_play") else GITHUB
 
 ## Entries for one build: [{"version", "date", "highlights": [{"icon", "text"}],
 ## "paragraphs": [String]}], newest first.

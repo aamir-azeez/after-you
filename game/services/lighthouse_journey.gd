@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Durable Lighthouse practice with replay-verified checkpoints and immutable turns.
 
 const Storage = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const Archive = preload("res://services/attempt_archive.gd")
 const Catalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
@@ -207,7 +208,7 @@ func save_live_draft(simulation: RefCounted) -> bool:
 	# Compare whole dictionaries so mutating an object while keeping its old
 	# hash cannot reuse a trusted context. These references never leave local
 	# application code; all values are copied before they reach storage.
-	if not str(simulation.get("error")).is_empty() or simulation.get("role") != role() or not Storage.same(simulation.get("_level"), Catalog.definition(stage_id())) or not Storage.same(simulation.get("_checkpoint"), _checkpoint) or not Storage.same(simulation.get("_prior"), _state.a):
+	if not str(simulation.get("error")).is_empty() or simulation.get("role") != role() or not Typed.same(simulation.get("_level"), Catalog.definition(stage_id())) or not Typed.same(simulation.get("_checkpoint"), _checkpoint) or not Typed.same(simulation.get("_prior"), _state.a):
 		last_error = PlayerCopy.LIGHTHOUSE_JOURNEY_A3F995624F41
 		return false
 	var recording: Dictionary = simulation.export_recording()
@@ -332,7 +333,7 @@ func _write_verified_state(next: Dictionary, derived_checkpoint: Dictionary) -> 
 func _validate_state(value: Variant) -> Dictionary:
 	if not value is Dictionary or not _exact_keys(value, STATE_KEYS):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_E45D0DDEDD2F)
-	if not Storage.equal(value.schema_version, 3) or not Storage.equal(value.simulation_version, 3) or not Storage.equal(value.level_id, _level.id) or not Storage.equal(value.level_version, _level.version):
+	if not Typed.equal(value.schema_version, 3) or not Typed.equal(value.simulation_version, 3) or not Typed.equal(value.level_id, _level.id) or not Typed.equal(value.level_version, _level.version):
 		return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_3277AC1A21BD)
 	if not value.pairs is Array or value.pairs.size() > TOTAL_STAGES or not value.a is Dictionary or not value.draft is Dictionary:
 		return _invalid("Malformed stage history.")
@@ -346,11 +347,11 @@ func _validate_state(value: Variant) -> Dictionary:
 		return {"valid": true, "error": "", "checkpoint": derived}
 	if not value.a.is_empty():
 		var first := Simulation.verify_recording(value.a, {}, value.pairs)
-		if not Storage.equal(value.a.get("role"), "a") or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
+		if not Typed.equal(value.a.get("role"), "a") or not first.valid or not first.get("snapshot", {}).get("can_commit", false):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_1393CFB1623B)
 	if not value.draft.is_empty():
 		var expected_role := "a" if value.a.is_empty() else "b"
-		if not Storage.equal(value.draft.get("role"), expected_role):
+		if not Typed.equal(value.draft.get("role"), expected_role):
 			return _invalid(PlayerCopy.LIGHTHOUSE_JOURNEY_2A6C3206C0FC)
 		var rehearsal := Simulation.verify_recording(value.draft, value.a, value.pairs)
 		if not rehearsal.valid:
@@ -367,9 +368,9 @@ func _envelope_valid(value: Dictionary) -> bool:
 	for key: Variant in value:
 		if key not in ENVELOPE_KEYS:
 			return false
-	if not Storage.whole_number(value.get("version")) or value.version != 1 or not value.has("lighthouse"):
+	if not Typed.whole_number(value.get("version")) or value.version != 1 or not value.has("lighthouse"):
 		return false
-	if not Storage.valid_generation(value.get("generation", 0)):
+	if not Typed.valid_generation(value.get("generation", 0)):
 		return false
 	for reserved: String in ["attempts", "completed", "replays", "room"]:
 		if value.has(reserved) and (not value[reserved] is Dictionary or not value[reserved].is_empty()):
