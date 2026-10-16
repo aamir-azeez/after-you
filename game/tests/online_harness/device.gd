@@ -182,5 +182,5 @@ func where() -> String:
 		var rooms: Array = app.room_hub_flow.inbox.view().rooms if app.room_hub_flow.inbox != null else []
 		parts.append("hub[%s](%s)" % [hub()._message, ",".join(rooms.map(func(room: Dictionary) -> String: return str(room.room_id).left(4) + ":" + str(room.status)))])
 	if is_instance_valid(app.shared_replay_child): parts.append("replay")
-	if is_instance_valid(app.friends_screen): parts.append("friends")
+	if app.friends_flow.is_open(): parts.append("friends")
 	return "/".join(parts)

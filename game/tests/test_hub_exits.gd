@@ -61,7 +61,7 @@ func _friends(app: Node, api: FakeApi) -> void:
 	app.saves.data["pending_turn"]={"idempotency_key":"held"}
 	tab.pressed.emit()
 	await _frames(3)
-	_check(is_instance_valid(hub) and hub==app.room_hub_flow.screen and app.mode=="rooms" and not is_instance_valid(app.friends_screen),"A refused Friends open keeps the hub instead of a blank screen")
+	_check(is_instance_valid(hub) and hub==app.room_hub_flow.screen and app.mode=="rooms" and not app.friends_flow.is_open(),"A refused Friends open keeps the hub instead of a blank screen")
 	_check(is_instance_valid(hub) and hub._message==Copy.MAIN_8184DEB41266,"The refusal's reason shows on the hub")
 	_check(tab.text==tab_text,"The tapped control reads as usual again once its flow ends")
 	var state: Dictionary = hub.client.view()
@@ -73,22 +73,22 @@ func _friends(app: Node, api: FakeApi) -> void:
 	app.foreground_refresh_running=true
 	tab.pressed.emit()
 	await _frames(3)
-	_check(is_instance_valid(hub) and app.mode=="rooms" and not is_instance_valid(app.friends_screen),"Friends waits with the hub up while the refresh runs")
+	_check(is_instance_valid(hub) and app.mode=="rooms" and not app.friends_flow.is_open(),"Friends waits with the hub up while the refresh runs")
 	_check(tab.text==Copy.HUB_OPENING,"The tapped control says it is opening")
 	_check(hub._message.is_empty(),"A new tap clears the last tap's reason")
 	app.foreground_refresh_running=false
 	await _frames(4)
-	_check(is_instance_valid(app.friends_screen) and app.mode=="friends" and not is_instance_valid(app.room_hub_flow.screen),"Friends opens once the refresh ends, and only then releases the hub")
-	if is_instance_valid(app.friends_screen): app.friends_screen.closed.emit()
+	_check(app.friends_flow.is_open() and app.mode=="friends" and not is_instance_valid(app.room_hub_flow.screen),"Friends opens once the refresh ends, and only then releases the hub")
+	if app.friends_flow.is_open(): app.friends_flow.screen.closed.emit()
 	await _frames(3)
 	# A replay save between retries holds the room session only: Friends never waits for it.
 	await _hub(app)
 	app.relay_session._transfer_busy=true
 	app.room_hub_flow.screen._tab_buttons["Friends"].pressed.emit()
 	await _frames(2)
-	_check(is_instance_valid(app.friends_screen) and app.mode=="friends","Friends opens at once while only a replay save holds the room session")
+	_check(app.friends_flow.is_open() and app.mode=="friends","Friends opens at once while only a replay save holds the room session")
 	app.relay_session._transfer_busy=false
-	if is_instance_valid(app.friends_screen): app.friends_screen.closed.emit()
+	if app.friends_flow.is_open(): app.friends_flow.screen.closed.emit()
 	await _frames(3)
 	# Work that never ends: the wait ends on the hub with a reason, and the control reads as usual.
 	await _hub(app)
@@ -98,7 +98,7 @@ func _friends(app: Node, api: FakeApi) -> void:
 	app.foreground_refresh_running=true
 	tab.pressed.emit()
 	await create_timer(0.8).timeout
-	_check(is_instance_valid(hub) and app.mode=="rooms" and not is_instance_valid(app.friends_screen) and hub._message==Copy.HUB_FRIENDS_WAIT_EXPIRED,"A wait that runs out keeps the hub and says to tap Friends again")
+	_check(is_instance_valid(hub) and app.mode=="rooms" and not app.friends_flow.is_open() and hub._message==Copy.HUB_FRIENDS_WAIT_EXPIRED,"A wait that runs out keeps the hub and says to tap Friends again")
 	_check(tab.text==tab_text,"The control gets its own text back")
 	app.foreground_refresh_running=false
 	# Only the latest tap waits: an earlier one gives its control back and never runs.

@@ -161,14 +161,14 @@ func _run() -> void:
 	await app._show_friends()
 	await _frames(2)
 	accepted = publication_ids.size()
-	_check(is_instance_valid(app.friends_screen),"Friends opens over the hosted room (mode=%s)" % app.mode)
-	if is_instance_valid(app.friends_screen):
+	_check(app.friends_flow.is_open(),"Friends opens over the hosted room (mode=%s)" % app.mode)
+	if app.friends_flow.is_open():
 		_check(await app.friends_client.share_room(room),"The Friends screen share succeeds")
-		app.friends_screen.room_shared.emit(room)
+		app.friends_flow.screen.room_shared.emit(room)
 		await _frames(8)
-		app.friends_screen.room_shared.emit(room)
+		app.friends_flow.screen.room_shared.emit(room)
 		await _frames(8)
-		app.friends_screen.close()
+		app.friends_flow.screen.close()
 		await _frames(2)
 	_check(publication_ids.size() == accepted+1 and not app._friend_events().owes(room),"Sharing from Friends sends the owed alert exactly once")
 

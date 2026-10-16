@@ -26,7 +26,7 @@ func _texts(device: Node) -> Array[String]:
 	return device.visible_texts()
 
 func _friends_open(device: Node) -> bool:
-	return device.running() and is_instance_valid(device.app.friends_screen) and device.app.mode == "friends"
+	return device.running() and device.app.friends_flow.is_open() and device.app.mode == "friends"
 
 func _hub_choice(device: Node) -> String:
 	return device.hub().selected_key() if device.hub() != null else ""
@@ -35,7 +35,7 @@ func _hero(device: Node) -> String:
 	return device.hub()._hero_title.text if device.hub() != null else ""
 
 func _shared_line(device: Node) -> String:
-	var line: Label = device.app.friends_screen.find_child("SharedRoomLine", true, false) if _friends_open(device) else null
+	var line: Label = device.app.friends_flow.screen.find_child("SharedRoomLine", true, false) if _friends_open(device) else null
 	return line.text if line != null and line.is_visible_in_tree() else ""
 
 ## One resolver names every room: each chapter's own id and version give its

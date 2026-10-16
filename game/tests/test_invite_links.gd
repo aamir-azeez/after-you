@@ -73,13 +73,13 @@ func _run() -> void:
 	_check(not FileAccess.get_file_as_string(path).contains(PEER),"A pending invite link is never written to the save")
 	# Identity not ready yet: wait quietly, without navigation or requests.
 	await app._service_invite_link()
-	_check(app.invite_link_pending == PEER and not is_instance_valid(app.friends_screen) and api.calls.is_empty() and app.toasts.is_empty(),"An unread identity keeps the link pending without a message or request")
+	_check(app.invite_link_pending == PEER and not app.friends_flow.is_open() and api.calls.is_empty() and app.toasts.is_empty(),"An unread identity keeps the link pending without a message or request")
 	# No identity yet: a link from outside never creates one. It waits for the player's own Friends visit.
 	app.identity_read_state = Main.IdentityReadState.MISSING
 	api.player_id = ""
 	for _i in 3: await app._service_invite_link()
 	await _frames(2)
-	_check(app.invite_link_pending == PEER and app.friends_opens == 0 and not is_instance_valid(app.friends_screen) and app.toasts.is_empty(),"Without an identity the link stays pending quietly and Friends is not opened")
+	_check(app.invite_link_pending == PEER and app.friends_opens == 0 and not app.friends_flow.is_open() and app.toasts.is_empty(),"Without an identity the link stays pending quietly and Friends is not opened")
 	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/identity").is_empty() and api.calls.is_empty(),"A link never posts a new identity or makes any request")
 	# The player opens Friends themselves (their identity is ready after that visit).
 	api.player_id = HOST
@@ -91,7 +91,7 @@ func _run() -> void:
 	await app._service_invite_link()
 	await _frames(3)
 	var modal := _modal(app)
-	_check(app.mode == "friends" and is_instance_valid(app.friends_screen) and modal != null,"Once the player is in Friends with an identity the invite confirmation opens")
+	_check(app.mode == "friends" and app.friends_flow.is_open() and modal != null,"Once the player is in Friends with an identity the invite confirmation opens")
 	_check(app.friends_opens == 1,"The link reused the Friends screen the player opened")
 	_check(app.invite_link_pending.is_empty(),"The pending link is cleared after one use")
 	_check(modal != null and _label_in(modal,"friend-"+PEER) and _label_in(modal,PlayerCopy.INVITE_LINK_TITLE),"The confirmation names the typed friend code")
@@ -104,9 +104,9 @@ func _run() -> void:
 		_check(cancel != null and cancel.text == "Cancel" and outline != null and outline.border_width_left > 0 and outline.bg_color != Color("eceddb") and outline.bg_color != Color("e9b3aa"),"Cancel is an outlined secondary, not coral or cream")
 		if cancel != null: cancel.pressed.emit()
 	await _frames(2)
-	_check(_modal(app) == null and _requests(api).is_empty() and is_instance_valid(app.friends_screen),"Cancel closes the confirmation and sends nothing")
+	_check(_modal(app) == null and _requests(api).is_empty() and app.friends_flow.is_open(),"Cancel closes the confirmation and sends nothing")
 	# Warm link from Home; duplicate hints and resume polls deliver it once.
-	app.friends_screen.close()
+	app.friends_flow.screen.close()
 	await _frames(1)
 	app._show_home()
 	native.offer(ShareCodes.link(ShareCodes.FRIEND,OTHER).replace("#","?c="))
@@ -119,7 +119,7 @@ func _run() -> void:
 	await app._service_invite_link()
 	await _frames(3)
 	modal = _modal(app)
-	_check(modal != null and _label_in(modal,"friend-"+OTHER) and app.friends_screen.find_children("InviteLinkModal","",true,false).size() == 1,"The warm query-form link opens one confirmation for that friend")
+	_check(modal != null and _label_in(modal,"friend-"+OTHER) and app.friends_flow.screen.find_children("InviteLinkModal","",true,false).size() == 1,"The warm query-form link opens one confirmation for that friend")
 	if modal != null:
 		var confirm: Button = modal.find_child("ModalConfirm",true,false)
 		_check(confirm.disabled,"Add friend starts disabled right after the automatic navigation")
@@ -133,7 +133,7 @@ func _run() -> void:
 	await _frames(3)
 	var adds := _requests(api)
 	_check(adds.size() == 1 and adds[0].body == {"schema_version":1,"friend_code":OTHER},"Confirm uses the existing add path once with the bare ID")
-	_check(app.friends_screen._message.is_empty() and _screen_label(app.friends_screen,"Request sent"),"The new request appears through the normal add result")
+	_check(app.friends_flow.screen._message.is_empty() and _screen_label(app.friends_flow.screen,"Request sent"),"The new request appears through the normal add result")
 	# Invalid links are ignored with the existing gentle error.
 	for bad: String in ["invalid","https://evil.test/after-you/link#friend-"+PEER,"https://aamirazeez.com/after-you/link#room-0123456789ABCDEF0123"]:
 		app.toasts.clear()
@@ -145,15 +145,15 @@ func _run() -> void:
 	await _frames(2)
 	await app._service_invite_link()
 	await _frames(2)
-	_check(_modal(app) == null and app.friends_screen._message == PlayerCopy.FRIEND_CODE_OWN,"Your own invite link explains itself without a confirmation")
+	_check(_modal(app) == null and app.friends_flow.screen._message == PlayerCopy.FRIEND_CODE_OWN,"Your own invite link explains itself without a confirmation")
 	friend_rows = [{"player_id":PEER,"request_id":"R".repeat(22),"status":"accepted","online":false,"expires_after_seconds":0,"join_available":false}]
 	app.friends_client.invalidate()
-	await app.friends_screen._refresh(true)
+	await app.friends_flow.screen._refresh(true)
 	native.offer(ShareCodes.link(ShareCodes.FRIEND,PEER))
 	await _frames(2)
 	await app._service_invite_link()
 	await _frames(2)
-	_check(_modal(app) == null and app.friends_screen._message == PlayerCopy.FRIEND_ALREADY_ADDED,"An existing friend's link says you are already friends")
+	_check(_modal(app) == null and app.friends_flow.screen._message == PlayerCopy.FRIEND_ALREADY_ADDED,"An existing friend's link says you are already friends")
 	_check(_requests(api).size() == 1,"Own and existing-friend links send no request")
 	# A short-name link opens the same confirmation, naming friend-<name>.
 	native.offer("https://aamirazeez.com/after-you/link#friend-Aamir")
@@ -166,7 +166,7 @@ func _run() -> void:
 	if named != null: (named.find_child("ModalCancel",true,false) as Button).pressed.emit()
 	await _frames(2)
 	# Active play defers the link with one short note, then opens it when safe.
-	app.friends_screen.close()
+	app.friends_flow.screen.close()
 	await _frames(1)
 	app._show_home()
 	app.running = true
@@ -175,12 +175,12 @@ func _run() -> void:
 	await _frames(2)
 	await app._service_invite_link()
 	await app._service_invite_link()
-	_check(app.toasts == [PlayerCopy.INVITE_LINK_WAITING] and not is_instance_valid(app.friends_screen) and app.invite_link_pending == "Z".repeat(22),"Gameplay keeps the link and notes it once")
+	_check(app.toasts == [PlayerCopy.INVITE_LINK_WAITING] and not app.friends_flow.is_open() and app.invite_link_pending == "Z".repeat(22),"Gameplay keeps the link and notes it once")
 	app.running = false
 	await app._service_invite_link()
 	await _frames(3)
 	_check(_modal(app) != null and _label_in(_modal(app),"friend-"+"Z".repeat(22)),"Leaving play opens the waiting confirmation")
-	app.friends_screen.close()
+	app.friends_flow.screen.close()
 	await _frames(1)
 	# Bounded: expiry and an identity change both drop an unopened link.
 	app._show_home()
@@ -188,7 +188,7 @@ func _run() -> void:
 	await _frames(2)
 	app.invite_link_expires_ms = 0
 	await app._service_invite_link()
-	_check(app.invite_link_pending.is_empty() and not is_instance_valid(app.friends_screen),"An expired link is dropped without navigation")
+	_check(app.invite_link_pending.is_empty() and not app.friends_flow.is_open(),"An expired link is dropped without navigation")
 	native.offer(ShareCodes.link(ShareCodes.FRIEND,PEER))
 	await _frames(2)
 	app.invite_link_busy = true
@@ -254,7 +254,7 @@ func _home_share(app: Node, api: FakeApi) -> void:
 	await _frames(2)
 	_check(shared == [InviteShare.message(HOST)] and copied.is_empty(),"Home sends the invite link plus friend code once")
 	_check(shared.size() == 1 and shared[0].contains(ShareCodes.link(ShareCodes.FRIEND,HOST)) and shared[0].contains("friend-"+HOST),"The Home share text has both the link and the typed code")
-	_check(app.mode == "home" and not is_instance_valid(app.friends_screen) and api.calls.size() == calls,"Sharing from Home stays on Home and makes no request")
+	_check(app.mode == "home" and not app.friends_flow.is_open() and api.calls.size() == calls,"Sharing from Home stays on Home and makes no request")
 	sheet[0] = false
 	shared.clear()
 	share.pressed.emit()
@@ -340,8 +340,8 @@ func _frames(count: int) -> void:
 	for _i in count: await process_frame
 
 func _modal(app: Node) -> Control:
-	if not is_instance_valid(app.friends_screen): return null
-	var found: Node = app.friends_screen.find_child("InviteLinkModal",true,false)
+	if not app.friends_flow.is_open(): return null
+	var found: Node = app.friends_flow.screen.find_child("InviteLinkModal",true,false)
 	return found if found is Control and not found.is_queued_for_deletion() else null
 
 func _label_in(node: Node, text: String) -> bool:

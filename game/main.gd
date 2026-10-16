@@ -218,9 +218,6 @@ var notification_flow: NotificationFlow = _host_notification_flow()
 var room_hub_flow: RoomHubFlow = _host_room_hub_flow()
 ## Friends: its screen and its Leave, Host, Return and Join taps.
 var friends_flow: FriendsFlow = _host_friends_flow()
-var friends_screen: CanvasLayer:
-	get: return friends_flow.screen
-	set(value): friends_flow.screen = value
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -2060,9 +2057,6 @@ func _open_friend_legacy(room_id: String) -> void:
 	var context := _friends_route_context()
 	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
 	if _friends_route_current(context): _accept_room(response)
-
-func _join_friend_room(descriptor: Dictionary) -> void:
-	await friends_flow._join(descriptor)
 
 func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}

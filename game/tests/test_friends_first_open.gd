@@ -31,13 +31,13 @@ func _run() -> void:
 	_check(app.relay_session == null and app.friend_share_target.is_empty(),"Cold Home has no relay session or selected room")
 	await app._show_friends()
 	await process_frame
-	_check(is_instance_valid(app.friends_screen) and app.friends_screen._message.is_empty(),"First Friends open has no room error")
-	var host := _screen_button(app.friends_screen,"Host a room")
+	_check(app.friends_flow.is_open() and app.friends_flow.screen._message.is_empty(),"First Friends open has no room error")
+	var host := _screen_button(app.friends_flow.screen,"Host a room")
 	_check(host != null and not host.disabled,"First Friends open has a usable Host button")
 	if host != null: host.pressed.emit()
 	await process_frame
 	await process_frame
-	_check(app.mode == "rooms" and is_instance_valid(app.room_hub_flow.screen) and not is_instance_valid(app.friends_screen),"Cold Host returns to the room hub")
+	_check(app.mode == "rooms" and is_instance_valid(app.room_hub_flow.screen) and not app.friends_flow.is_open(),"Cold Host returns to the room hub")
 	_check(app.room_hub_flow.screen.find_children("ChapterChoice","Button",true,false).size() == 1 and not app.room_hub_flow.screen._chapter_choice.text.is_empty(),"Room hub has a populated chapter selector")
 	_check(app.room_hub_flow.screen.find_children("*","Button",true,false).any(func(button: Button): return button.text == "Host a room"),"Room hub shows the host action")
 	_check(api.calls.all(func(call: Dictionary): return call.method == HTTPClient.METHOD_GET),"Opening Friends and Host does not create or share any room")
