@@ -4,6 +4,7 @@ extends RefCounted
 ## holds the photo, or once the player skips. A photo the native side recovered after a
 ## restart is attached to its entry by request ID. One small file per owner, outside the
 ## turn-photo journal folder, erased with the rest of an owner's photos on account deletion.
+const AtomicFile = preload("res://services/atomic_file.gd")
 const Capture = preload("res://services/optional_photo_capture.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const MAX_ENTRIES := 8
@@ -23,6 +24,7 @@ func entries(owner: String) -> Array[Dictionary]:
 	if not _owner(owner): return result
 	var text := ""
 	var path := _path(owner)
+	# The file only: a copy a cut-off write left beside it may hold an entry removed since.
 	if FileAccess.file_exists(path):
 		var file := FileAccess.open(path, FileAccess.READ)
 		if file == null or file.get_length() > MAX_FILE: return result
@@ -78,12 +80,7 @@ func remove(owner: String, room_id: String, turn_id: String) -> bool:
 
 ## Explicit account deletion only.
 func erase_owner(owner: String) -> bool:
-	if not _owner(owner): return false
-	var removed := true
-	for suffix: String in ["", ".tmp"]:
-		var path := _path(owner) + suffix
-		if FileAccess.file_exists(path) and DirAccess.remove_absolute(path) != OK: removed = false
-	return removed
+	return _owner(owner) and AtomicFile.remove(_path(owner))
 
 ## Moves a photo the native side recovered into its entry, then lets the native side forget
 ## it. local_request is TurnPhotoLocal.request. A recovered photo no entry of this owner asked
@@ -117,11 +114,5 @@ func _write(owner: String, list: Array[Dictionary]) -> bool:
 	if list.is_empty():
 		return not FileAccess.file_exists(path) or DirAccess.remove_absolute(path) == OK
 	var text := JSON.stringify({"schema_version": 1, "owner_player_id": owner, "entries": list})
-	if text.to_utf8_buffer().size() > MAX_FILE: return false
-	var file := FileAccess.open(path + ".tmp", FileAccess.WRITE)
-	if file == null: return false
-	file.store_string(text)
-	file.flush()
-	var stored := file.get_error() == OK
-	file.close()
-	return stored and DirAccess.rename_absolute(path + ".tmp", path) == OK
+	var bytes := text.to_utf8_buffer()
+	return bytes.size() <= MAX_FILE and AtomicFile.write_bytes(path, bytes)

@@ -92,6 +92,18 @@ func _store_rules() -> void:
 	bad.uploaded = true
 	_check(not store.attach_photo(OWNER, "capture-3", bad), "Recovered metadata is validated before it is saved")
 	_check(Canonical.same(store.entry_for_room(OWNER, ROOM).photo, photo) and store.entry_for_room(GUEST, ROOM).is_empty(), "Entries are per owner")
+	# A write cut off before its rename leaves its new copy beside the file.
+	var leftover := FileAccess.open(store._path(OWNER) + ".tmp", FileAccess.WRITE)
+	leftover.store_string("{\"schema_version\": 1, \"entr")
+	leftover.close()
+	_check(store.entries(OWNER).size() == 1 and Canonical.same(store.entries(OWNER)[0].photo, photo), "A cut-off write's half copy leaves the saved entry readable")
+	var whole := FileAccess.get_file_as_string(store._path(OWNER))
+	_check(store.attach_photo(OWNER, "capture-3", photo) and not FileAccess.file_exists(store._path(OWNER) + ".tmp") and FileAccess.get_file_as_string(store._path(OWNER)) == whole, "The next write replaces the file whole and leaves no copy beside it")
+	_check(store.remove(OWNER, ROOM, _target().turn_id) and store.entries(OWNER).is_empty(), "Removing the last entry leaves nothing waiting")
+	leftover = FileAccess.open(store._path(OWNER) + ".tmp", FileAccess.WRITE)
+	leftover.store_string(whole)
+	leftover.close()
+	_check(store.entries(OWNER).is_empty(), "A whole copy an earlier cut-off write left never brings a removed entry back")
 	var file := FileAccess.open(store._path(OWNER), FileAccess.WRITE)
 	file.store_string("{not json")
 	file.close()
@@ -100,7 +112,10 @@ func _store_rules() -> void:
 	_check(store.begin(OWNER, _target(), "capture-4"), "A damaged file is replaced by the next entry")
 	store.clock = func() -> int: return 2000000000 + Resume.MAX_AGE_SEC + 1
 	_check(store.entries(OWNER).is_empty(), "Old entries expire")
-	_check(store.erase_owner(OWNER) and not FileAccess.file_exists(store._path(OWNER)), "Account deletion removes the owner's resume file")
+	leftover = FileAccess.open(store._path(OWNER) + ".tmp", FileAccess.WRITE)
+	leftover.store_string(whole)
+	leftover.close()
+	_check(store.erase_owner(OWNER) and not FileAccess.file_exists(store._path(OWNER)) and not FileAccess.file_exists(store._path(OWNER) + ".tmp"), "Account deletion removes the owner's resume file and any copy beside it")
 
 func _process_death_round_trip() -> void:
 	var store := _store()
