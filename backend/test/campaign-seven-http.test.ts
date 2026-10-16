@@ -60,7 +60,8 @@ const proofs = [
 ] as const;
 
 import { env } from "cloudflare:workers";
-import { reset, runInDurableObject, evictDurableObject, runDurableObjectAlarm } from "cloudflare:test";
+import { reset, evictDurableObject, runDurableObjectAlarm } from "cloudflare:test";
+import { runInDurableObject } from "./room-objects";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";

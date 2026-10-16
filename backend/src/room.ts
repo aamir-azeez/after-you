@@ -11,16 +11,17 @@ import { interactionBlocked } from "./safety";
 import { friendRoomInvite } from "./friends";
 import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "./room-inbox-storage";
 import { legacyInboxProjection } from "./room-inbox";
+import { answerWhileBlank, openRoomStorage } from "./room-storage";
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
-    this.ctx.blockConcurrencyWhile(async () => {
+    this.ctx.blockConcurrencyWhile(async () => openRoomStorage(this, this.ctx.storage, () => {
       initializeSchema(this.ctx.storage, "Room");
       initializeNotifications(this.ctx.storage, "Room");
       initializeRedo(this.ctx.storage);
       initializeRoomInboxActivity(this.ctx.storage);
-    });
+    }));
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportSnapshot(this.ctx, "Room", sourceCommit)); }
@@ -270,3 +271,11 @@ export class Room extends DurableObject<Env> {
     });
   }
 }
+
+// A Room nobody has written to answers these reads as an empty room did, and stores nothing.
+const roomNotFound = () => fail(404, "room_not_found");
+answerWhileBlank(Room, {
+  join: async () => fail(404, "invite_not_found"), resolvesInvitation: () => false, memberRoomState: () => "gone", notificationEligible: () => false,
+  friendInvite: roomNotFound, inboxProjection: roomNotFound, safetyMembers: roomNotFound, snapshot: roomNotFound, operationSnapshot: roomNotFound,
+  collection: roomNotFound, redo: async () => roomNotFound()
+});

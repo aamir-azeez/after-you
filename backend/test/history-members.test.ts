@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { reset, runInDurableObject } from "cloudflare:test";
+import { reset } from "cloudflare:test";
+import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it } from "vitest";
 import { initializeHistory } from "../src/v2/storage-schema";
 import { CHAINS, play } from "./history-chains";

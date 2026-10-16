@@ -5,7 +5,8 @@ vi.mock("../src/v2/campaign-production", () => ({
 }));
 
 import { env } from "cloudflare:workers";
-import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
+import { evictDurableObject, reset } from "cloudflare:test";
+import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encode } from "jpeg-js";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";

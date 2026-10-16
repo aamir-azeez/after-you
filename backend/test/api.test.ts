@@ -1,5 +1,6 @@
 import { env, exports } from "cloudflare:workers";
-import { reset, evictDurableObject, runInDurableObject } from "cloudflare:test";
+import { reset, evictDurableObject } from "cloudflare:test";
+import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { entitlement, makeProviderRequest } from "../src/entitlement";
 import worker from "../src/index";

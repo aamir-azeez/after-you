@@ -52,3 +52,20 @@ export function countingEnv(base: Env): { env: Env; calls: string[] } {
   }
   return { env: counted, calls };
 }
+
+/**
+ * Rows every object in this runtime reads and writes while `work` runs, constructors included,
+ * so a request that creates storage in an object nobody has opened yet is counted too.
+ */
+export async function meterAllRows<T>(work: () => Promise<T>): Promise<{ value: T; rows: Rows }> {
+  const { env } = await import("cloudflare:workers");
+  const sqlClass = await runInDurableObject(env.PLAYERS.getByName("meter-probe-player-00"), async (_, ctx) => Object.getPrototypeOf(ctx.storage.sql) as { exec: SqlStorage["exec"] });
+  const original = sqlClass.exec, cursors: SqlStorageCursor<Record<string, SqlStorageValue>>[] = [];
+  sqlClass.exec = function (this: SqlStorage, query: string, ...bindings: SqlStorageValue[]) {
+    const cursor = original.call(this, query, ...bindings); cursors.push(cursor); return cursor;
+  } as SqlStorage["exec"];
+  try {
+    const value = await work();
+    return { value, rows: { read: cursors.reduce((sum, c) => sum + c.rowsRead, 0), written: cursors.reduce((sum, c) => sum + c.rowsWritten, 0) } };
+  } finally { sqlClass.exec = original; }
+}
