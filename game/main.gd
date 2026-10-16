@@ -87,6 +87,7 @@ const AuxiliaryContext = preload("res://services/campaign_auxiliary_context.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const LighthouseMigration = preload("res://services/lighthouse_migration.gd")
 const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
+const ChapterAccess = preload("res://services/chapter_access.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 ## What's new: this version's notes have not been opened since an update.
 var _whats_new_unseen := false
@@ -983,8 +984,10 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 		_toast("Replay could not be opened. Please try again.")
 		return
 	RelayPreview.request_staged_build(scene)
+	_hand_over_tester_check(scene)
 	if opening.change_scene(scene) != OK:
 		RelayPreview.request_staged_build("")
+		ChapterAccess.drop_hand_over()
 		opening.cancel()
 		if not replay_context.is_empty(): SoloReplayLaunch.discard()
 		_toast(PlayerCopy.MAIN_EB8856600899)
@@ -3675,6 +3678,16 @@ func _full_journey_access() -> bool:
 func _load_cached_tester() -> void:
 	if not _tester_checks_enabled() or not is_instance_valid(tester_access): return
 	await tester_access.check_cache_once(_tester_context(),_tester_context,api.base_url,api.player_id,api.device_token)
+
+## A paid scene's first access check takes Main's read of the saved tester
+## receipt, written in the frame the scene opens, when that read is for the
+## identity now in use. Otherwise the scene reads the receipt itself.
+func _hand_over_tester_check(scene: String) -> void:
+	var context := _tester_context()
+	if _tester_checks_enabled() and is_instance_valid(tester_access) and not context.is_empty() and tester_access.cache_checked_context == context and tester_access.cache_loaded_for(api.base_url, api.player_id, api.device_token):
+		ChapterAccess.hand_over(scene, api.base_url, _tester_active())
+	else:
+		ChapterAccess.drop_hand_over()
 
 func _sync_presence() -> void:
 	if not is_instance_valid(friend_presence): return

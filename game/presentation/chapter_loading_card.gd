@@ -47,6 +47,8 @@ const CREAM := Color("eceddb")
 static var costs_path := COSTS_PATH
 static var _costs: Dictionary = {}
 static var _costs_from := ""
+## The cards on screen now, by instance id.
+static var _showing: Dictionary = {}
 
 var key := ""
 var shown := false
@@ -92,6 +94,13 @@ class ProofRun extends "res://services/stop_request.gd":
 
 
 
+## Whether an opening card is on screen now. A chapter screen opened behind
+## one can leave its own first card until this card has gone.
+static func covering() -> bool:
+	for id: int in _showing.keys():
+		if not is_instance_id_valid(id): _showing.erase(id)
+	return not _showing.is_empty()
+
 ## Whether an open of key is expected to take long enough to show the card.
 static func expected_slow(open_key: String) -> bool:
 	var cost := last_cost_usec(open_key)
@@ -111,7 +120,9 @@ func start(tree: SceneTree, open_key: String, reduced_motion: bool = false) -> v
 	layer = LAYER
 	shown = expected_slow(key)
 	visible = shown
-	if shown: _build(reduced_motion)
+	if shown:
+		_build(reduced_motion)
+		_showing[get_instance_id()] = true
 	tree.root.add_child(self)
 	_started = Time.get_ticks_usec()
 
@@ -298,6 +309,7 @@ func run(work: Callable, prove_chapter: String = "") -> void:
 ## Leaves without recording a time: the open did not happen.
 func cancel() -> void:
 	_closed = true
+	_showing.erase(get_instance_id())
 	_release()
 	if is_inside_tree(): get_parent().remove_child(self)
 	queue_free()
@@ -305,6 +317,7 @@ func cancel() -> void:
 func _finish(measured: bool) -> void:
 	if _closed: return
 	_closed = true
+	_showing.erase(get_instance_id())
 	if measured: _record(key, Time.get_ticks_usec() - _started)
 	_release()
 	if is_inside_tree(): get_parent().remove_child(self)

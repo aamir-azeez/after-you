@@ -193,6 +193,7 @@ physical_runtime 1
 plant_animation 2
 player_copy 1
 player_copy_render 1
+premium_open_cost 1
 production_without_story 1
 proof_warmup 1
 purchase_recovery 3

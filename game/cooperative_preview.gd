@@ -16,13 +16,14 @@ func _ready() -> void:
 	if not requires_access:
 		_prepare_chapter()
 		return
-	_build_ui()
 	admission = ChapterAccess.new()
+	admission.opened_scene = scene_file_path
 	admission.purchase_service_factory = purchase_service_factory
 	admission.tester_access_factory = tester_access_factory
 	admission.state_changed.connect(_access_changed)
 	add_child(admission)
 	admission.check_access()
+	_draw_access_unless_covered()
 
 func _prepare_chapter() -> void:
 	if _prepared: return
@@ -32,8 +33,20 @@ func _prepare_chapter() -> void:
 	_prepared = true
 	super._ready()
 
-## The chapter builds once access is granted, behind the shared opening card
-## (drawn first). Injected access services (tests) build at once.
+## While Main's opening card is still up, a check still out draws nothing: the
+## card stays (building) and the chapter builds behind it once access is
+## granted. Without that card the access card shows the check.
+func _draw_access_unless_covered() -> void:
+	if _prepared or _leaving or is_instance_valid(controls) or LoadingCard.covering(): return
+	_build_ui()
+	_show_access()
+
+func building() -> bool:
+	return (not _prepared and not is_instance_valid(controls)) or super.building()
+
+## The chapter builds once access is granted. Behind the access card it builds
+## behind its own opening card (drawn first); injected access services (tests)
+## build at once.
 func _prepare_after_access() -> void:
 	if purchase_service_factory.is_valid() or tester_access_factory.is_valid():
 		_prepare_chapter()
@@ -47,7 +60,8 @@ func _access_changed(state: String, _reason: String) -> void:
 	if _leaving or not is_inside_tree(): return
 	if state == "granted":
 		if not _prepared:
-			_prepare_after_access()
+			if is_instance_valid(controls): _prepare_after_access()
+			else: _prepare_chapter()
 		elif _admission_save_failed:
 			_show_save_problem(journey.last_error, "review" if _held_mode in ["review", "bloom"] else "play")
 		elif _held_mode in ["review", "bloom"] and not review.is_empty():
@@ -63,6 +77,9 @@ func _access_changed(state: String, _reason: String) -> void:
 		stick.release()
 		soundscape.stop_reunion()
 		world.set_process(false)
+	if not _prepared and not is_instance_valid(controls):
+		if state == "checking": return
+		_build_ui()
 	_show_access()
 
 func _show_access() -> void:
@@ -134,6 +151,7 @@ func _persist_draft(after_retry: String = "play", periodic: bool = false) -> boo
 
 func _process(delta: float) -> void:
 	_service_world_cover()
+	_draw_access_unless_covered()
 	if _prepared and mode != "access": super._process(delta)
 
 ## The chapter's own handling (relay_preview._notification, which Godot has
@@ -142,7 +160,7 @@ func _handles_screen_notifications() -> bool:
 	return _prepared
 
 func _notification(what: int) -> void:
-	if not _prepared and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and is_instance_valid(controls): _leave()
+	if not _prepared and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: _leave()
 	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
 		backgrounded = true
 		if is_instance_valid(admission): admission.set_backgrounded(true)

@@ -10,6 +10,9 @@ const PlatformSupport = preload("res://services/platform_support.gd")
 
 var purchase_service_factory: Callable
 var tester_access_factory: Callable
+## The scene this admission is for. Its first check takes Main's tester check
+## for that scene, when Main handed one over (hand_over).
+var opened_scene := ""
 var state := "hold"
 var reason := "not_checked"
 var api_base_url := ""
@@ -23,6 +26,30 @@ var _tester_admitted := false
 var _backgrounded := false
 var _closed := false
 var _force_refresh := false
+## Main's read of the saved tester receipt, for the paid scene it is opening.
+static var _handed: Dictionary = {}
+
+## Main hands over its tester check in the frame it opens `scene`: `granted`
+## says whether its read of the saved receipt, for the identity now in use at
+## `base_url`, found a tester grant. That scene's first check uses it instead of
+## reading the receipt again; any later check (Check again, a return from the
+## background) reads it again. It lasts only for that scene change: the next
+## frame at most.
+static func hand_over(scene: String, base_url: String, granted: bool) -> void:
+	_handed = {"scene": scene, "authority": TesterAccess._authority(base_url), "granted": granted, "frame": Engine.get_process_frames()}
+
+static func drop_hand_over() -> void:
+	_handed = {}
+
+## The hand-off for `scene` at `base_url`, once; empty when there is none. Taking
+## it removes it, whichever scene it was for.
+static func _take_hand_over(scene: String, base_url: String) -> Dictionary:
+	var handed := _handed
+	_handed = {}
+	var authority := TesterAccess._authority(base_url)
+	if handed.is_empty() or Engine.get_process_frames() - int(handed.frame) > 1: return {}
+	if handed.scene != scene or authority.is_empty() or handed.authority != authority: return {}
+	return handed
 
 func _ready() -> void:
 	if api_base_url.is_empty():
@@ -37,10 +64,14 @@ func check_access(force_refresh: bool = false) -> void:
 	_generation += 1
 	_tester_admitted = false
 	_set_state("checking", "checking")
-	if PlatformSupport.store_gated() or tester_access_factory.is_valid():
-		_check_tester(_generation)
-	else:
+	if not PlatformSupport.store_gated() and not tester_access_factory.is_valid():
 		_check_purchase()
+		return
+	var handed := {} if opened_scene.is_empty() else _take_hand_over(opened_scene, api_base_url)
+	opened_scene = ""
+	if handed.is_empty(): _check_tester(_generation)
+	elif handed.granted: _admit_tester()
+	else: _check_purchase()
 
 func _check_tester(generation: int) -> void:
 	if not is_instance_valid(_tester):
@@ -51,12 +82,13 @@ func _check_tester(generation: int) -> void:
 	var result: Dictionary = await _tester.load_cached(api_base_url)
 	if not _current(generation): return
 	_tester_checking = false
-	if result.get("ok") == true and result.get("granted") == true and result.get("durable") == true:
-		_tester_admitted = true
-		_deadline = 0
-		_set_state("granted", "tester")
-	else:
-		_check_purchase()
+	if result.get("ok") == true and result.get("granted") == true and result.get("durable") == true: _admit_tester()
+	else: _check_purchase()
+
+func _admit_tester() -> void:
+	_tester_admitted = true
+	_deadline = 0
+	_set_state("granted", "tester")
 
 func _check_purchase() -> void:
 	if _closed or _backgrounded: return
