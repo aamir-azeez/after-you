@@ -241,8 +241,9 @@ export class Room extends DurableObject<Env> {
     clearRoomInboxActivity(this.ctx.storage);
     this.ctx.storage.sql.exec("DELETE FROM archive"); this.ctx.storage.sql.exec("DELETE FROM operations");
     resetRedo(this.ctx.storage);
-    clearDepartures(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
+    // Last, so nothing after it can roll back the drop under the cached answer in room-departure.ts.
+    clearDepartures(this.ctx.storage);
   }
   /**
    * A member leaves an island that is finished for them: their reaction is

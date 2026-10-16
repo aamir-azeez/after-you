@@ -1,11 +1,11 @@
 import { env } from "cloudflare:workers";
-import { reset, runInDurableObject } from "cloudflare:test";
+import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
 import { LEVEL_IDS, type Outcome, type Recording, type RoomSnapshot } from "../src/protocol";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
-import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
+import type { MutationV2, RoomSnapshotV2, RoomV2 } from "../src/v2/room";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -36,6 +36,7 @@ async function create(): Promise<Account> { const result = await call("/v1/ident
 const links = async (account: Account) => (await env.PLAYERS.getByName(account.player_id).listRooms()).map(link => link.room_id);
 const inbox = async (account: Account, headers: Record<string, string> = {}) => (await call("/v1/room-inbox", "GET", account, undefined, true, headers)).json<Inbox>();
 const LEFT = { "X-AfterYou-Room-Leave": "1" };
+const LOOKUP = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
 const leave = (version: 1 | 2, roomId: string, account: Account, body: unknown = LEAVE, enabled = true) => call(`/v${version}/rooms/${roomId}/leave`, "POST", account, body, enabled);
 
 const create2 = (host: Account, idempotency_key: string) => call("/v2/rooms", "POST", host, { idempotency_key, level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH });
@@ -313,6 +314,32 @@ describe("leaving a finished room", () => {
       expect(record).toMatchObject({ state: "held", acked: [host.player_id, guest.player_id] });
       expect(offloadedCount(ctx.storage)).toBe(0);
     });
+  });
+
+  it("reads no more rows on a room nobody left: one table lookup per room instance, then nothing", async () => {
+    const { host, guest, room, stub } = await finishedRelay();
+    await evictDurableObject(stub);
+    await runInDurableObject(stub, async (instance: RoomV2, ctx) => {
+      const sql = ctx.storage.sql, exec = sql.exec.bind(sql);
+      const seen: { query: string }[] = [];
+      Object.defineProperty(sql, "exec", { configurable: true, value: (query: string, ...bindings: unknown[]) => { seen.push({ query }); return exec(query, ...bindings); } });
+      // Only this branch's queries; the campaign boundary keeps its own existing schema reads.
+      const departure = (query: string) => query === LOOKUP || query.includes("room_departures");
+      const poll = async () => { seen.length = 0; value(await instance.snapshot(host.player_id)); value(await instance.lobbySnapshot(host.player_id)); expect(await instance.memberRoomState(host.player_id)).toBe("finished"); };
+      await poll();
+      expect(seen.filter(entry => departure(entry.query)).map(entry => entry.query)).toEqual([LOOKUP]);
+      for (let round = 0; round < 3; round++) {
+        await poll();
+        // Every query a warm poll runs is one it ran before this branch, so it reads the same rows.
+        expect(seen.filter(entry => departure(entry.query))).toEqual([]);
+      }
+      // Once someone has left, a poll reads the departure rows and never the schema again.
+      value(await instance.leaveFinished(guest.player_id));
+      await poll();
+      expect(seen.filter(entry => departure(entry.query)).every(entry => entry.query.includes("room_departures"))).toBe(true);
+      delete (sql as unknown as Record<string, unknown>).exec;
+    });
+    expect(room.room_id).toBeTruthy();
   });
 });
 

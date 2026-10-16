@@ -740,8 +740,9 @@ export class RoomV2 extends DurableObject<Env> {
     clearReplayTransfer(this.ctx.storage);
     clearHistory(this.ctx.storage);
     resetRedo(this.ctx.storage);
-    clearDepartures(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
+    // Last, so nothing after it can roll back the drop under the cached answer in room-departure.ts.
+    clearDepartures(this.ctx.storage);
   }
   /**
    * A member leaves a room that is finished for them: their photos, photo
