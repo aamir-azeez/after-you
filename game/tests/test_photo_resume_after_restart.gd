@@ -69,6 +69,7 @@ func _frames(count: int = 4) -> void:
 
 func _run() -> void:
 	await _store_rules()
+	await _failed_rename_keeps_entries()
 	await _process_death_round_trip()
 	await _missing_photo_is_offered_again()
 	await _other_owner_and_unmatched_photo()
@@ -99,11 +100,10 @@ func _store_rules() -> void:
 	_check(store.entries(OWNER).size() == 1 and Canonical.same(store.entries(OWNER)[0].photo, photo), "A cut-off write's half copy leaves the saved entry readable")
 	var whole := FileAccess.get_file_as_string(store._path(OWNER))
 	_check(store.attach_photo(OWNER, "capture-3", photo) and not FileAccess.file_exists(store._path(OWNER) + ".tmp") and FileAccess.get_file_as_string(store._path(OWNER)) == whole, "The next write replaces the file whole and leaves no copy beside it")
-	_check(store.remove(OWNER, ROOM, _target().turn_id) and store.entries(OWNER).is_empty(), "Removing the last entry leaves nothing waiting")
 	leftover = FileAccess.open(store._path(OWNER) + ".tmp", FileAccess.WRITE)
 	leftover.store_string(whole)
 	leftover.close()
-	_check(store.entries(OWNER).is_empty(), "A whole copy an earlier cut-off write left never brings a removed entry back")
+	_check(store.remove(OWNER, ROOM, _target().turn_id) and store.entries(OWNER).is_empty() and not FileAccess.file_exists(store._path(OWNER) + ".tmp"), "Removing the last entry removes the file and any copy beside it, so nothing comes back")
 	var file := FileAccess.open(store._path(OWNER), FileAccess.WRITE)
 	file.store_string("{not json")
 	file.close()
@@ -116,6 +116,37 @@ func _store_rules() -> void:
 	leftover.store_string(whole)
 	leftover.close()
 	_check(store.erase_owner(OWNER) and not FileAccess.file_exists(store._path(OWNER)) and not FileAccess.file_exists(store._path(OWNER) + ".tmp"), "Account deletion removes the owner's resume file and any copy beside it")
+
+func _failed_rename_keeps_entries() -> void:
+	var store := _store()
+	var path: String = store._path(OWNER)
+	_check(store.begin(OWNER, _target(), "capture-a"), "A turn waits for its photo")
+	if OS.get_name() == "Windows":
+		# A handle open on the new copy makes Windows refuse both renames of it,
+		# while the file itself can still be removed between them.
+		var copy := FileAccess.open(path + ".tmp", FileAccess.WRITE)
+		copy.close()
+		var held := FileAccess.open(path + ".tmp", FileAccess.READ)
+		_check(not store.begin(OWNER, _target(OWNER, OTHER_ROOM), "capture-b"), "A write whose renames fail reports failure")
+		held.close()
+	else:
+		# Elsewhere a held file still renames: leave the disk as that failed write does.
+		_check(store.begin(OWNER, _target(OWNER, OTHER_ROOM), "capture-b"), "A second turn waits too")
+		DirAccess.rename_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(path + ".tmp"))
+	_check(not FileAccess.file_exists(path) and FileAccess.file_exists(path + ".tmp"), "Only the write's new copy is left")
+	_check(store.has_request(OWNER, "capture-a") and store.entry_for_room(OWNER, ROOM).request_id == "capture-a", "The waiting turn survives the failed write")
+	var native := UI.Capture.new()
+	var photo := _photo(native)
+	native.free()
+	var forgotten: Array[String] = []
+	var local := func(action: String, value: String) -> Dictionary:
+		if action == "recovered": return {"ok": true, "recovered": true, "request_id": "capture-a", "photo": photo}
+		forgotten.append(value)
+		return {"ok": true}
+	await store.sync_native(OWNER, local)
+	_check(Canonical.same(store.entry_for_room(OWNER, ROOM).photo, photo) and forgotten == [str(photo.photo_id)], "A recovered photo is attached to its turn before the native side lets it go")
+	_check(FileAccess.file_exists(path) and not FileAccess.file_exists(path + ".tmp"), "The next write puts the file back and leaves no copy")
+	store.erase_owner(OWNER)
 
 func _process_death_round_trip() -> void:
 	var store := _store()

@@ -24,7 +24,9 @@ func entries(owner: String) -> Array[Dictionary]:
 	if not _owner(owner): return result
 	var text := ""
 	var path := _path(owner)
-	# The file only: a copy a cut-off write left beside it may hold an entry removed since.
+	# A write whose rename failed after the file was removed leaves only its new copy.
+	# Removing the last entry removes that copy too, so it never holds a removed entry.
+	if not FileAccess.file_exists(path): path += AtomicFile.TMP
 	if FileAccess.file_exists(path):
 		var file := FileAccess.open(path, FileAccess.READ)
 		if file == null or file.get_length() > MAX_FILE: return result
@@ -112,7 +114,7 @@ func _write(owner: String, list: Array[Dictionary]) -> bool:
 	if DirAccess.make_dir_recursive_absolute(directory) != OK: return false
 	var path := _path(owner)
 	if list.is_empty():
-		return not FileAccess.file_exists(path) or DirAccess.remove_absolute(path) == OK
+		return AtomicFile.remove(path)
 	var text := JSON.stringify({"schema_version": 1, "owner_player_id": owner, "entries": list})
 	var bytes := text.to_utf8_buffer()
 	return bytes.size() <= MAX_FILE and AtomicFile.write_bytes(path, bytes)
