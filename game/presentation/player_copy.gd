@@ -1129,6 +1129,8 @@ const LOCAL_SAVE_59005ED74543 := "This save is from a newer version of the app. 
 const LOCAL_SAVE_27DCFA34F3AD := "Recovered the last saved progress after an interrupted write."
 # Local progress save status — Status or error (load data)
 const LOCAL_SAVE_34FCC2945DC1 := "The existing save could not be read. It is stored for retrieval."
+# Local progress save status — Note after an unreadable save was moved aside (start fresh if unreadable)
+const LOCAL_SAVE_STARTED_FRESH := "After You could not read your saved progress, so it started a new save. Your old save file is still on this phone."
 # Local progress save status — Status or error (flush)
 const LOCAL_SAVE_D4B7ABA2BF24 := "The progress was not saved due to an invalid format."
 # Local progress save status — Status or error (flush)

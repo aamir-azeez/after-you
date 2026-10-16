@@ -79,11 +79,12 @@ static func remove(path: String, tmp_suffix: String = TMP) -> bool:
 
 ## Renames `source` to `stem` + its SHA-256 + ".json", a recovery name no store
 ## reads, writes or removes. When that name already holds the same bytes,
-## `source` is removed instead, since its bytes are kept there. False when the
-## move cannot be confirmed.
-static func move_aside(source: String, stem: String) -> bool:
+## `source` is removed instead, since its bytes are kept there. With `expected`,
+## only a file whose SHA-256 is `expected` moves. False when the move cannot be
+## confirmed.
+static func move_aside(source: String, stem: String, expected: String = "") -> bool:
 	var digest := FileAccess.get_sha256(source)
-	if digest.is_empty():
+	if digest.is_empty() or (not expected.is_empty() and digest != expected):
 		return false
 	var aside := stem + digest + ".json"
 	if FileAccess.file_exists(aside):

@@ -281,6 +281,7 @@ func _ready() -> void:
 	# A replay open that never reached its chapter leaves nothing behind.
 	SoloReplayLaunch.discard()
 	saves.load_data()
+	saves.start_fresh_if_unreadable()
 	_decide_whats_new()
 	home_keepsakes.load_data()
 	home_keepsakes.activate()

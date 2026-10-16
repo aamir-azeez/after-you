@@ -5,11 +5,17 @@ const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 ## Recoverable generations. Device credentials are never stored in this file.
 const PATH := "user://journey.json"
+## Each copy start_fresh_if_unreadable moves aside keeps its own name, then
+## this, then its SHA-256 and ".json".
+const UNREADABLE := ".unreadable-"
 var data: Dictionary = defaults()
 var path := PATH
 var last_error := ""
 var read_only := false
 var loaded_from := ""
+## Set by load_data when the file exists and every copy of it opened but none
+## parses as JSON.
+var _unreadable := false
 
 func _init(save_path: String = PATH) -> void:
 	path = save_path
@@ -33,11 +39,21 @@ func load_data() -> void:
 	last_error = ""
 	read_only = false
 	loaded_from = ""
+	_unreadable = false
+	var existing := 0
+	var unparsed := 0
 	var best_generation := -1
 	for candidate: String in AtomicFile.read_candidates(path):
 		if not FileAccess.file_exists(candidate):
 			continue
-		var value: Variant = _read_json(candidate)
+		existing += 1
+		var bytes: Variant = _copy_bytes(candidate)
+		var parser := JSON.new()
+		if not bytes is PackedByteArray or parser.parse(bytes.get_string_from_utf8()) != OK:
+			if bytes is PackedByteArray:
+				unparsed += 1
+			continue
+		var value: Variant = parser.data
 		if candidate == path and _newer(value):
 			read_only = true
 			last_error = PlayerCopy.LOCAL_SAVE_59005ED74543
@@ -53,6 +69,34 @@ func load_data() -> void:
 	elif loaded_from.is_empty() and FileAccess.file_exists(path) and not read_only:
 		read_only = true
 		last_error = PlayerCopy.LOCAL_SAVE_34FCC2945DC1
+		_unreadable = unparsed == existing
+
+## After load_data, for a save that may start over. When load_data found the
+## file and every copy of it opened but none parses, renames each copy to
+## `<copy>.unreadable-<SHA-256>.json`, which nothing reads, writes or removes,
+## and continues with defaults as if no save existed. Each copy is read again
+## just before its rename and moves only if those same bytes still do not
+## parse. Nothing is written here: the first ordinary save writes the new file.
+## last_error holds the note for the player.
+## False when there was nothing to recover, or when a copy could not be
+## confirmed or renamed and the save stays read-only. The primary file moves
+## last, so after a failed rename the next load still finds it and tries again.
+func start_fresh_if_unreadable() -> bool:
+	if not _unreadable:
+		return false
+	var copies := AtomicFile.read_candidates(path)
+	copies.reverse()
+	for candidate: String in copies:
+		if not FileAccess.file_exists(candidate):
+			continue
+		var bytes: Variant = _copy_bytes(candidate)
+		if not bytes is PackedByteArray or _parses(bytes) or not AtomicFile.move_aside(candidate, candidate + UNREADABLE, _sha256(bytes)):
+			return false
+	load_data()
+	if read_only or not loaded_from.is_empty():
+		return false
+	last_error = PlayerCopy.LOCAL_SAVE_STARTED_FRESH
+	return true
 
 func flush() -> bool:
 	if read_only:
@@ -186,6 +230,23 @@ static func _newer(value: Variant) -> bool:
 static func _read_json(file_path: String) -> Variant:
 	var parser := JSON.new()
 	return parser.data if parser.parse(FileAccess.get_file_as_string(file_path))==OK else null
+
+## The bytes of one copy of the save, or null when the file cannot be opened.
+func _copy_bytes(file_path: String) -> Variant:
+	var bytes := FileAccess.get_file_as_bytes(file_path)
+	if bytes.is_empty() and FileAccess.get_open_error() != OK:
+		return null
+	return bytes
+
+static func _parses(bytes: PackedByteArray) -> bool:
+	return JSON.new().parse(bytes.get_string_from_utf8()) == OK
+
+static func _sha256(bytes: PackedByteArray) -> String:
+	var hashing := HashingContext.new()
+	hashing.start(HashingContext.HASH_SHA256)
+	if not bytes.is_empty():
+		hashing.update(bytes)
+	return hashing.finish().hex_encode()
 
 ## JSON reads every number as a float, so int and float count as one kind.
 static func _same_kind(value: Variant, default: Variant) -> bool:
