@@ -86,7 +86,8 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
   });
 }
 
-function fallback(link: RoomLink, status: RoomInboxStatus = "unavailable"): RoomInboxEntry {
+/** The entry for a link with no readable projection: a Story or unknown link, or a failed or refused read. */
+export function fallback(link: RoomLink, status: RoomInboxStatus = "unavailable"): RoomInboxEntry {
   const version = roomLinkVersion(link);
   return { room_id: link.room_id, family: version === 1 ? "legacy" : version === 2 ? "relay" : version === 3 ? "story" : "unknown",
     api_version: version, chapter: { id: null, version: null },
@@ -94,38 +95,61 @@ function fallback(link: RoomLink, status: RoomInboxStatus = "unavailable"): Room
     revision: null, remote_activity_sequence: 0, activity_at: null };
 }
 
-/** Rooms read at once for one inbox request; the link list itself is capped at MAX_ROOM_LINKS (room-limit.ts). */
+/** Rooms read at once for one inbox request or room list page. */
 export const ROOM_INBOX_CONCURRENCY = 4;
+
+/** Runs `work` over `items`, `size` at a time; the results keep the items' order. */
+export async function pooled<T, R>(items: readonly T[], size: number, work: (item: T) => Promise<R>): Promise<R[]> {
+  const results: R[] = new Array(items.length);
+  let next = 0;
+  const worker = async () => { while (next < items.length) { const index = next++; results[index] = await work(items[index]); } };
+  await Promise.all(Array.from({ length: Math.min(size, items.length) }, worker));
+  return results;
+}
+
+/** A link's projection, read live or taken from the room index; null stands for a read that failed. */
+export type InboxSource = () => Promise<Outcome<RoomInboxProjection> | null> | Outcome<RoomInboxProjection> | null;
+
+/**
+ * The one way an inbox entry is built, for the original and the indexed inbox.
+ * Story and unknown links, failed reads and refused reads give the fallback
+ * entry (with showClosed, a room another member erased reads "closed"); a room
+ * whose pair is blocked in either direction is left out (null). partner_left
+ * is kept only with showLeft.
+ */
+export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>): Promise<RoomInboxEntry | null> {
+  const version = roomLinkVersion(link);
+  if (version !== 1 && version !== 2) return fallback(link);
+  try {
+    const result = await source();
+    if (!result) return fallback(link);
+    if (!result.ok) return fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable");
+    const { partner_left, ...value } = result.value;
+    if (await blocked(value.membership.host_id!, value.membership.guest_id)) return null;
+    return { ...value, family: version === 1 ? "legacy" : "relay", api_version: version, ...(showLeft && partner_left ? { partner_left } : {}) };
+  } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return fallback(link); }
+}
+
+/** The inbox body: entries in link order, then a stable sort by activity time, so equal times list as before. */
+export function inboxBody(entries: readonly (RoomInboxEntry | null)[]): { schema_version: 1; rooms: RoomInboxEntry[] } {
+  const rooms = entries.filter((room): room is RoomInboxEntry => room !== null);
+  rooms.sort((a, b) => (Date.parse(b.activity_at ?? "") || 0) - (Date.parse(a.activity_at ?? "") || 0));
+  return { schema_version: 1, rooms };
+}
 
 /**
  * Authenticated, bounded summary list. Unavailable links remain visible for recovery.
  * With showClosed, a room another member erased reads "closed" so its remaining
  * member can tell it apart and remove it; otherwise it stays "unavailable".
  * Rooms are read a few at a time, each partner's block check runs once, and a
- * room that throws reads "unavailable" without failing the others.
+ * room that throws reads "unavailable" without failing the others. The router
+ * passes the links it already read; it sends at most MAX_ROOM_LINKS (room-limit.ts)
+ * here, and longer lists or the room index go to room-index-lists.ts.
  */
-export async function roomInbox(playerId: string, env: Env, showClosed = false, showLeft = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
-  const links = await env.PLAYERS.getByName(playerId).listRooms();
-  const pairBlocked = partnerBlocks(env, playerId);
-  const entry = async (link: RoomLink): Promise<RoomInboxEntry | null> => {
-    const version = roomLinkVersion(link);
-    if (version !== 1 && version !== 2) return fallback(link);
-    try {
-      const result = version === 1
-        ? await env.ROOMS.getByName(link.room_id).inboxProjection(playerId)
-        : await env.ROOMS_V2.getByName(link.room_id).inboxProjection(playerId);
-      if (!result.ok) return fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable");
-      const { partner_left, ...value } = result.value;
-      if (await pairBlocked(value.membership.host_id!, value.membership.guest_id)) return null;
-      return { ...value, family: version === 1 ? "legacy" : "relay", api_version: version, ...(showLeft && partner_left ? { partner_left } : {}) };
-    } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return fallback(link); }
-  };
-  // Results keep link order before the stable sort, so equal activity times list as before.
-  const results: (RoomInboxEntry | null)[] = new Array(links.length).fill(null);
-  let next = 0;
-  const worker = async () => { while (next < links.length) { const index = next++; results[index] = await entry(links[index]); } };
-  await Promise.all(Array.from({ length: Math.min(ROOM_INBOX_CONCURRENCY, links.length) }, worker));
-  const rooms = results.filter((room): room is RoomInboxEntry => room !== null);
-  rooms.sort((a, b) => (Date.parse(b.activity_at ?? "") || 0) - (Date.parse(a.activity_at ?? "") || 0));
-  return { schema_version: 1, rooms };
+export async function roomInbox(playerId: string, env: Env, showClosed = false, showLeft = false, known?: RoomLink[]): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
+  const links = known ?? await env.PLAYERS.getByName(playerId).listRooms();
+  const blocked = partnerBlocks(env, playerId);
+  return inboxBody(await pooled(links, ROOM_INBOX_CONCURRENCY, link => inboxEntry(link, () => roomLinkVersion(link) === 1
+    ? env.ROOMS.getByName(link.room_id).inboxProjection(playerId)
+    : env.ROOMS_V2.getByName(link.room_id).inboxProjection(playerId), showClosed, showLeft, blocked)));
 }

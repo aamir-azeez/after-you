@@ -1,6 +1,6 @@
 import { ApiError, canonicalJson, digest, equalHash, fail, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, isObject, ok, type Outcome } from "../protocol";
 import { roomLinkVersion, validRoomLink, type RoomLink, type CampaignLinkReleased } from "../room-links";
-import { MAX_ROOM_LINKS, roomLimitReached } from "../room-limit";
+import { MAX_INDEXED_ROOM_LINKS, roomLimitReached } from "../room-limit";
 import { boundedCampaign } from "./campaign-protocol";
 import { campaignCreation, validCampaignCreation, type CampaignCreation } from "./campaign-creation-intent";
 import { readCreation } from "./creation-intent";
@@ -24,9 +24,9 @@ function failure(e: unknown): Outcome<never> { return e instanceof ApiError ? fa
 function capture(storage: DurableObjectStorage): Capture {
   currentSnapshotSchema(storage, "Player");
   const identity = storage.sql.exec<{ rowid: string; id: number; data: string }>("SELECT CAST(rowid AS TEXT) AS rowid,id,data FROM identity ORDER BY rowid LIMIT 2").toArray();
-  const rooms = storage.sql.exec<LinkRow>(`SELECT CAST(rowid AS TEXT) AS rowid,room_id,data FROM rooms ORDER BY rowid LIMIT ${MAX_ROOM_LINKS + 1}`).toArray();
+  const rooms = storage.sql.exec<LinkRow>(`SELECT CAST(rowid AS TEXT) AS rowid,room_id,data FROM rooms ORDER BY rowid LIMIT ${MAX_INDEXED_ROOM_LINKS + 1}`).toArray();
   const creations = storage.sql.exec<CreationRow>("SELECT CAST(rowid AS TEXT) AS rowid,request_key,data FROM creations ORDER BY rowid LIMIT 129").toArray();
-  need(identity.length === 1 && identity[0].rowid === "1" && identity[0].id === 1 && rooms.length <= MAX_ROOM_LINKS && creations.length <= 128);
+  need(identity.length === 1 && identity[0].rowid === "1" && identity[0].id === 1 && rooms.length <= MAX_INDEXED_ROOM_LINKS && creations.length <= 128);
   return { identity, rooms, creations };
 }
 function authorize(saved: Capture, owner: string, deviceHash: string): void {

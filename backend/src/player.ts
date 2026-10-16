@@ -8,8 +8,10 @@ import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS
 import { initializeSchema } from "./storage-schema";
 import { blankPlayerInventory, campaignPlayerAllocation, campaignPlayerInventory } from "./v2/campaign-drain";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
-import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
-import { roomLimitReached } from "./room-limit";
+import { ROOM_DELETION_BATCH, eraseRoomLinks, roomDeletionDispatcher, roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
+import { roomLimitReached, roomLinkBound } from "./room-limit";
+import { clearRoomErasure, deletionOrder, dropRoomIndex, recordRoomObservation, removeRoomIndexRow, roomErasureDelay, roomErasurePending, roomIndexCount, roomIndexPage, roomIndexUnsettled, writeRoomErasure, type RoomFamily, type RoomIndexPage, type RoomObservation } from "./room-index";
+import { errorCode, logWarning } from "./log";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
@@ -47,12 +49,18 @@ export class Player extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.notificationSender = new FcmSender(env);
-    this.ctx.blockConcurrencyWhile(async () => openLazyStorage(this, this.ctx.storage, "identity", () => {
-      initializeSchema(this.ctx.storage, "Player");
-      initializeNotifications(this.ctx.storage, "Player");
-      for (const table of [FRIEND_PUBLICATION_TABLE, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_SUBSCRIPTIONS_TABLE]) this.ctx.storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
-      initializePresence(this.ctx.storage);
-    }));
+    this.ctx.blockConcurrencyWhile(async () => {
+      openLazyStorage(this, this.ctx.storage, "identity", () => {
+        initializeSchema(this.ctx.storage, "Player");
+        initializeNotifications(this.ctx.storage, "Player");
+        for (const table of [FRIEND_PUBLICATION_TABLE, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_SUBSCRIPTIONS_TABLE]) this.ctx.storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+        initializePresence(this.ctx.storage);
+      });
+      // A deletion continuation whose alarm was lost (for example across a code
+      // rollback) starts again on the object's next wake. A blank Player has no
+      // marker table, so this reads nothing and writes nothing.
+      if (roomErasurePending(this.ctx.storage) && await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now());
+    });
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportSnapshot(this.ctx, "Player", sourceCommit)); }
@@ -329,6 +337,7 @@ export class Player extends DurableObject<Env> {
     return this.ctx.storage.sql.exec<{ expires_at: number | null }>("SELECT MAX(expires_at) AS expires_at FROM presence_leases WHERE device_hash=?", identity.device_hash).one().expires_at ?? 0;
   }
   async alarm(): Promise<void> {
+    if (roomErasurePending(this.ctx.storage)) return this.continueRoomErasure();
     await this.ctx.storage.transaction(async () => {
       const actual = await this.ctx.storage.getAlarm();
       if (!presenceAlarmOwned(this.ctx.storage, actual, true)) throw new Error("unowned_presence_alarm");
@@ -556,17 +565,45 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT OR IGNORE INTO rooms VALUES (?,?)", link.room_id, JSON.stringify(link));
     return ok(link);
   }
-  /** `settled` comes from the router's reserveWithinRoomLimit (room-limit.ts). */
+  /**
+   * `settled` comes from the router's reserveWithinRoomLimit (room-limit.ts).
+   * With the room index on, rows the index holds as finished, closed or
+   * unavailable are settled too, and the bound may rise (roomLinkBound).
+   */
   private roomsFull(settled: readonly string[]): boolean {
-    return roomLimitReached(this.ctx.storage.sql.exec<{ room_id: string }>("SELECT room_id FROM rooms").toArray().map(row => row.room_id), settled);
+    const linked = this.ctx.storage.sql.exec<{ room_id: string }>("SELECT room_id FROM rooms").toArray().map(row => row.room_id);
+    if (!flags.roomIndex(this.env)) return roomLimitReached(linked, settled);
+    const index = roomIndexCount(this.ctx.storage);
+    return roomLimitReached(linked, [...settled, ...index.settled], roomLinkBound(true, index.unindexed === 0));
   }
   listRooms(): RoomLink[] {
     return this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms ORDER BY rowid DESC").toArray().map(row => JSON.parse(row.data) as RoomLink);
   }
   removeRoom(roomId: string, expectedVersion = 1): void {
     const existing = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", roomId).toArray()[0];
-    if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) === expectedVersion) this.ctx.storage.sql.exec("DELETE FROM rooms WHERE room_id=?", roomId);
+    if (existing && roomLinkVersion(JSON.parse(existing.data) as RoomLink) === expectedVersion) {
+      this.ctx.storage.sql.exec("DELETE FROM rooms WHERE room_id=?", roomId);
+      removeRoomIndexRow(this.ctx.storage, roomId);
+    }
   }
+  // Binding-only room index (room-index.ts). The router and the rooms call these; a row never grants access to a room.
+  /** A room's push after a change: what it now says about this member. */
+  /** While the index is off (an erase still pushes) it only updates a row that already exists. */
+  noteRoomIndex(owner: string, roomId: string, version: number, observation: RoomObservation): void {
+    const identity = this.identity();
+    if (identity?.state === "active" && identity.player_id === owner) recordRoomObservation(this.ctx.storage, roomId, version, observation, flags.roomIndex(this.env));
+  }
+  /** The router's live reads from an indexed list; null marks a read that failed. */
+  recordRoomIndex(owner: string, observations: { room_id: string; api_version: number; observation: RoomObservation | null }[]): void {
+    const identity = this.identity();
+    if (identity?.state !== "active" || identity.player_id !== owner) return;
+    this.ctx.storage.transactionSync(() => { for (const item of observations) recordRoomObservation(this.ctx.storage, item.room_id, item.api_version, item.observation, true); });
+  }
+  /** Linked rooms the index holds as finished or gone. */
+  roomIndexSettled(): string[] { return roomIndexCount(this.ctx.storage).settled; }
+  roomIndexPage(family: RoomFamily, offset: number): RoomIndexPage { return roomIndexPage(this.ctx.storage, family, offset); }
+  /** v1 and v2 links the index cannot vouch for as settled, for a refused reservation to read. */
+  roomIndexUnsettled(limit: number): RoomLink[] { return roomIndexUnsettled(this.ctx.storage, limit); }
   beginDelete(supportedVersions: number[] = [1], deviceHash?: string): Outcome<RoomLink[]> {
     // Public deletion carries the original request hash across rate limiting
     // and other awaits. Check it in this same synchronous state transition.
@@ -588,7 +625,65 @@ export class Player extends DurableObject<Env> {
       clearRegistrations(this.ctx.storage);
       clearPresence(this.ctx.storage);
     });
-    return ok(links);
+    // Above one deletion batch, hosted rooms still in play (waiting ones included) go first.
+    return ok(links.length > ROOM_DELETION_BATCH ? deletionOrder(this.ctx.storage, links) : links);
+  }
+  /**
+   * Binding only: hands the rest of a started identity deletion to this
+   * object's alarm. Presence leases were cleared by beginDelete, so the
+   * presence alarm marker goes too and the alarm belongs to the deletion.
+   * `failed` are rooms the request could not erase; the next batch takes them last.
+   */
+  async continueDeletion(failed: string[] = []): Promise<void> {
+    if (this.identity()?.state !== "deleting") return;
+    const pending = roomErasurePending(this.ctx.storage), next = pending?.next_at ?? Date.now() + roomErasureDelay(0);
+    this.ctx.storage.transactionSync(() => {
+      writeRoomErasure(this.ctx.storage, { attempts: pending?.attempts ?? 0, next_at: next, failed: [...new Set([...(pending?.failed ?? []), ...failed])] });
+      this.ctx.storage.sql.exec("DELETE FROM presence_alarm");
+    });
+    await this.ctx.storage.setAlarm(next);
+  }
+  /**
+   * One deletion batch: up to ROOM_DELETION_BATCH v1 and v2 links, through the
+   * same dispatcher the router uses, past any room that fails. Hosted rooms
+   * still in play go first (deletionOrder); rooms that failed last time go to
+   * the back, so they can never hold up the rest. When
+   * no link is left it finishes the deletion as the router would. It never
+   * throws; while links remain it runs again a second later, or with a
+   * doubling delay up to an hour while rooms keep failing, with no attempt
+   * limit. Only v3 links left (they need the request's device hash) end it,
+   * and a client retry takes them.
+   */
+  private async continueRoomErasure(): Promise<void> {
+    const storage = this.ctx.storage, pending = roomErasurePending(storage)!;
+    const failed: string[] = [];
+    let problem: string | null = null;
+    try {
+      const identity = this.identity();
+      if (identity?.state !== "deleting") { clearRoomErasure(storage); return; }
+      const dispatcher = roomDeletionDispatcher(this.env.ROOMS, (link, id) => this.env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host));
+      const before = new Set(pending.failed);
+      const rooms = deletionOrder(storage, this.listRooms().filter(link => roomLinkVersion(link) === 1 || roomLinkVersion(link) === 2));
+      const batch = [...rooms.filter(link => !before.has(link.room_id)), ...rooms.filter(link => before.has(link.room_id))].slice(0, ROOM_DELETION_BATCH);
+      const erased = await eraseRoomLinks(identity.player_id, batch, this, dispatcher, false, failed);
+      if (!erased.ok) problem = erased.code;
+      const remaining = this.listRooms();
+      if (remaining.length === 0) {
+        const finished = await this.finishDelete();
+        if (finished.ok || finished.code === "provider_deletion_pending") { clearRoomErasure(storage); return; }
+        problem = finished.code;
+      } else if (!remaining.some(link => roomLinkVersion(link) === 1 || roomLinkVersion(link) === 2)) { clearRoomErasure(storage); return; }
+    } catch (error) { problem = errorCode(error); }
+    if (!roomErasurePending(storage) || this.identity()?.state !== "deleting") return;
+    const attempts = problem === null ? 0 : pending.attempts + 1, next = Date.now() + roomErasureDelay(attempts);
+    if (problem !== null) logWarning("room_erasure_batch_failed", { reason: problem, attempts, rooms_failed: failed.length });
+    writeRoomErasure(storage, { attempts, next_at: next, failed });
+    await storage.setAlarm(next);
+  }
+  /** Binding only: whether this deviceHash belongs to this owner's identity while its deletion is still running. */
+  deletingWith(owner: string, deviceHash: string): boolean {
+    const identity = this.identity();
+    return identity?.state === "deleting" && identity.player_id === owner && equalHash(identity.device_hash, deviceHash);
   }
   deletionInProgress(owner: string): boolean { const identity = this.identity(); return identity?.state === "deleting" && identity.player_id === owner; }
   safetyIdentityActive(owner: string): boolean { const identity = this.identity(); return identity?.state === "active" && identity.player_id === owner; }
@@ -622,6 +717,7 @@ export class Player extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DELETE FROM friend_room_subscriptions");
       clearRegistrations(this.ctx.storage);
       clearPresence(this.ctx.storage);
+      dropRoomIndex(this.ctx.storage);
     });
     await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner);
     return ok({ deleted: true });
@@ -631,4 +727,5 @@ export class Player extends DurableObject<Env> {
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
-  operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent") });
+  operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
+  deletingWith: () => false, noteRoomIndex: () => undefined });

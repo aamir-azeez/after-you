@@ -2,7 +2,8 @@ import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, invi
 import { bytes, json, bearerDigest } from "../http";
 import { flags } from "../flags";
 import { roomLinkVersion, type RoomLink } from "../room-links";
-import { reserveWithinRoomLimit } from "../room-limit";
+import { MAX_ROOM_LINKS, reserveWithinRoomLimit } from "../room-limit";
+import { indexedRelayRooms, pageOffset, roomSettler, withNext } from "../room-index-lists";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import { MAX_ROOM_STAGES } from "./chapter-types";
@@ -94,8 +95,10 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
+    const links = flags.roomIndex(env) ? null : await player.listRooms();
+    if (!links || links.length > MAX_ROOM_LINKS) { const page = await indexedRelayRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next); }
     const rooms: RoomLobbyV2[] = [], blocked = partnerBlocks(env, playerId);
-    for (const link of await player.listRooms()) {
+    for (const link of links) {
       if (roomLinkVersion(link) !== 2) continue;
       const snapshot = await env.ROOMS_V2.getByName(link.room_id).lobbySnapshot(playerId);
       if (snapshot.ok) { if (!await blocked(snapshot.value.host_id, snapshot.value.guest_id)) rooms.push(snapshot.value); }
@@ -119,7 +122,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     const invite_code = newInvite();
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
-    const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled)));
+    const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
     const link = intent.link;
     return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version)));
   }
@@ -131,7 +134,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const code = parseInvite(input.invite_code);
     const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
-    unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled)));
+    unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), roomSettler(env)));
     const joined = await room.join(playerId, code, versions as number[] | undefined);
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a

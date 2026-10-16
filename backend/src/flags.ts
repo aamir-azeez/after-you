@@ -57,6 +57,8 @@ export const FLAG_VARS = Object.freeze({
   appStoreEntitlements: "APP_STORE_ENTITLEMENTS_ENABLED",
   /** Leaving a finished room (POST .../leave with leave_finished) and its capability. */
   finishedRoomLeave: "FINISHED_ROOM_LEAVE_ENABLED",
+  /** Room pushes into each member's room index, indexed lists and the 500-link bound. */
+  roomIndex: "ROOM_INDEX_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;

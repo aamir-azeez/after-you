@@ -103,11 +103,23 @@ export class SafetyProfile extends DurableObject<Env> {
   deletionReceipt(owner: string, deviceHash: string): boolean { return erasureReceipt(this.ctx.storage, owner, deviceHash); }
   async acknowledgeDeletion(owner: string, deviceHash: string): Promise<Outcome<{ schema_version: 1; acknowledged: true }>> {
     text(owner, ID_PATTERN); text(deviceHash, HASH_PATTERN);
+    // A deletion of more than 60 rooms answers 200 while the Player's alarm is
+    // still erasing (room-links.ts deleteLinkedIdentity). Its acknowledgement
+    // waits until erasure finishes, so the receipt is cleared only after it exists.
+    if (!readErasure(this.ctx.storage) && await this.env.PLAYERS.getByName(owner).deletingWith(owner, deviceHash)) return fail(409, "deletion_not_ready");
     return this.ctx.storage.transaction(async () => {
       knownSchema(this.ctx.storage, [PROFILE_SCHEMA, ERASURE_SCHEMA]);
       const job = readErasure(this.ctx.storage);
       // Absence is a harmless repeat after a lost acknowledgement. This endpoint
       // cannot authenticate an account or authorize any other operation.
+      // After a deletion of more than 60 rooms the client already had its 200
+      // and only retries this acknowledgement, so that device's retry is the
+      // explicit retry that resumes a held job, as a DELETE retry does. The
+      // answer stays the same.
+      if (job && job.state !== "complete" && job.owner === owner && equalHash(job.device_hash, deviceHash) && (job.state === "pending" ? job.attempts >= 8 : job.cleanup_attempts >= 8)) {
+        if (job.state === "pending") job.attempts = 0; else job.cleanup_attempts = 0;
+        job.next_at = Date.now() + 60000; writeErasure(this.ctx.storage, job); await this.ctx.storage.setAlarm(job.next_at);
+      }
       if (job && !erasureReceipt(this.ctx.storage, owner, deviceHash)) return fail(401, "invalid_auth");
       if (job) {
         if (this.ctx.storage.sql.exec("SELECT id FROM safety_profile").toArray().length) return fail(409, "deletion_not_ready");

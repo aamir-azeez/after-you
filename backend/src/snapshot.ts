@@ -10,6 +10,7 @@ import { PRESENCE_TABLES, presenceAlarmOwned, resetPresence } from "./presence";
 import { validSocial } from "./friends";
 import { REDO_TABLE, redoRuntimeValid, resetRedo } from "./redo-control";
 import { ROOM_INBOX_ACTIVITY, clearRoomInboxActivity } from "./room-inbox-storage";
+import { dropRoomIndex, isRoomIndexTable } from "./room-index";
 
 export const MAX_SNAPSHOT_BYTES = 24 * 1024 * 1024;
 export const MAX_SNAPSHOT_ROW_BYTES = 256 * 1024;
@@ -215,8 +216,9 @@ export function currentSnapshotSchema(storage: DurableObjectStorage, kind: Objec
   // Internal SQLite autoindices have null SQL. Any application-defined extra
   // table, index, view or trigger requires review. Only the explicitly classified
   // notification/presence/redo and room-inbox operational tables are excluded;
-  // gameplay rows retain their format.
-  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
+  // gameplay rows retain their format. A Player's room index tables are
+  // rebuilt from the rooms, so they are accepted only in their exact form.
+  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row) && !(kind === "Player" && isRoomIndexTable(row)));
   // Room inbox sequences are operational metadata. They are accepted as part
   // of the runtime schema but intentionally excluded from portable snapshots.
   const expected = [...TABLES[kind], ...notificationTables(kind), ...(kind === "Player" ? PRESENCE_TABLES : [REDO_TABLE, ROOM_INBOX_ACTIVITY])].sort((a, b) => a.name.localeCompare(b.name));
@@ -295,7 +297,7 @@ export async function restoreSnapshot(ctx: DurableObjectState, kind: ObjectKind,
     }
     await resetNotificationRuntime(ctx.storage, kind);
     if (kind === "Room") { resetRedo(ctx.storage); clearRoomInboxActivity(ctx.storage); }
-    if (kind === "Player") await resetPresence(ctx.storage);
+    if (kind === "Player") { await resetPresence(ctx.storage); dropRoomIndex(ctx.storage); }
   });
   return { restored: true, checksum: archive.checksum.value };
 }

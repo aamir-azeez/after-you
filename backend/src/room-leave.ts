@@ -1,10 +1,22 @@
-import { ApiError, boundedJson, exactKeys, object } from "./protocol";
+import { ApiError, boundedJson, exactKeys, object, type Outcome } from "./protocol";
+import type { RoomInboxProjection } from "./room-inbox";
 import { bearerDigest } from "./http";
 import { roomLinkVersion } from "./room-links";
 import { flags } from "./flags";
 
 /** A member's view of a room: still being played, finished, or no longer theirs (closed, erased or never joined). */
 export type MemberRoomState = "in_play" | "finished" | "gone";
+/**
+ * The one rule for MemberRoomState, from the member's inbox projection
+ * (room-inbox.ts), which both rooms and the room index use: a room waiting for
+ * a friend or a turn is in play, a completed one is finished, and an erased
+ * room (410) or one the caller is not in (404) is gone. Any other answer counts
+ * as in play, so a failure can only keep a room counted, never free one.
+ */
+export function memberStateOf(outcome: Outcome<RoomInboxProjection>): MemberRoomState {
+  if (!outcome.ok) return outcome.status === 404 || outcome.status === 410 ? "gone" : "in_play";
+  return outcome.value.status === "completed" ? "finished" : "in_play";
+}
 
 /** Sent by clients from 0.5.2 with DELETE: close only a room still in play, never one that has just finished. */
 export const CLOSE_IF_HEADER = "X-AfterYou-Close-If";

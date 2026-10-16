@@ -20,7 +20,8 @@ import { partnerBlocks } from "./safety";
 import { routeSafetyOperator } from "./safety-operator";
 export { SafetyProfile, SafetyInbox } from "./safety";
 import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion, type RoomLink } from "./room-links";
-import { reserveWithinRoomLimit } from "./room-limit";
+import { MAX_ROOM_LINKS, reserveWithinRoomLimit } from "./room-limit";
+import { indexedLegacyRooms, indexedRoomInbox, pageOffset, roomSettler, withNext } from "./room-index-lists";
 import { routeV2 } from "./v2/routes";
 import { campaignRequestContext } from "./v2/campaign-room-access";
 import { deleteCampaignIdentityLink } from "./v2/campaign-identity-deletion";
@@ -106,7 +107,11 @@ export default {
       const player = env.PLAYERS.getByName(playerId);
       if (path === "/v1/room-inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        return json(await roomInbox(playerId, env, request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", flags.finishedRoomLeave(env) && request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1"));
+        const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = flags.finishedRoomLeave(env) && request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
+        const links = flags.roomIndex(env) ? null : await player.listRooms();
+        if (links && links.length <= MAX_ROOM_LINKS) return json(await roomInbox(playerId, env, showClosed, showLeft, links));
+        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request));
+        return withNext(json(page.body), page.next);
       }
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
@@ -169,8 +174,10 @@ export default {
       }
       if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken);
       if (path === "/v1/rooms" && request.method === "GET") {
+        const links = flags.roomIndex(env) ? null : await player.listRooms();
+        if (!links || links.length > MAX_ROOM_LINKS) { const page = await indexedLegacyRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next); }
         const snapshots: RoomSnapshot[] = [], blocked = partnerBlocks(env, playerId);
-        for (const link of await player.listRooms()) {
+        for (const link of links) {
           if (roomLinkVersion(link) !== 1) continue;
           const item = await env.ROOMS.getByName(link.room_id).snapshot(playerId);
           if (item.ok) { if (!await blocked(item.value.host_id, item.value.guest_id)) snapshots.push(item.value); } else if (item.status === 404) await player.removeRoom(link.room_id);
@@ -183,7 +190,7 @@ export default {
         const simulationVersion = legacySimulationVersion(input.simulation_version === undefined ? 1 : input.simulation_version);
         const invite_code = newInvite();
         const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 1), invite_code, host: true };
-        const link = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveRoom(key, proposed, settled)));
+        const link = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveRoom(key, proposed, settled), roomSettler(env)));
         return result(await env.ROOMS.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, simulationVersion));
       }
       if (path === "/v1/rooms/join" && request.method === "POST") {
@@ -191,7 +198,7 @@ export default {
         const supportedSimulationVersion = legacySimulationVersion(input.simulation_version === undefined ? 1 : input.simulation_version);
         const code = parseInvite(input.invite_code), roomId = await inviteRoomId(code, 1);
         const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 1 && link.room_id === roomId);
-        unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false }, settled)));
+        unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false }, settled), roomSettler(env)));
         const joined = await env.ROOMS.getByName(roomId).join(playerId, code, supportedSimulationVersion);
         if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId); return result(joined); }
         if (!await player.authorize(await bearerDigest(request))) {

@@ -1,8 +1,9 @@
 import { DurableObject } from "cloudflare:workers";
+import { flags } from "./flags";
 import { ApiError, LEVEL_IDS, equalHash, fail, ok, type LegacySimulationVersion, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "./redo-control";
 import { initializeSchema } from "./storage-schema";
-import type { MemberRoomState } from "./room-leave";
+import { memberStateOf, type MemberRoomState } from "./room-leave";
 import { anyDeparture, clearDepartures, departed, isMember, recordDeparture } from "./room-departure";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { clearTurnHints, deliverTurnHints, initializeNotifications, queueRedoHint, queueTurnHint, redoHintCurrent, scheduleGameplayNotifications, scheduleNotifications, turnHintEligible } from "./notification-storage";
@@ -12,6 +13,7 @@ import { friendRoomInvite } from "./friends";
 import { clearRoomInboxActivity, initializeRoomInboxActivity, recordRemoteRoomActivity } from "./room-inbox-storage";
 import { legacyInboxProjection } from "./room-inbox";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
+import { observeRoom, pushRoomIndex } from "./room-index-sync";
 
 export class Room extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
@@ -32,12 +34,23 @@ export class Room extends DurableObject<Env> {
     return turnHintEligible(this.ctx.storage, state, player, hint) && (hint.kind !== "redo_requested" || redoHintCurrent(this.ctx.storage, state && this.redoSource(state), player, hint));
   }
   inboxProjection(player: string) { return legacyInboxProjection(this.ctx.storage, player); }
-  /** Whether this member's island is in play (or waiting for a friend), finished, or gone. */
-  memberRoomState(player: string): MemberRoomState {
+  /** Binding only: the member's inbox projection with this room's clock, for their room index. */
+  indexEntry(player: string) { return observeRoom(() => legacyInboxProjection(this.ctx.storage, player)); }
+  /**
+   * After a committed change, sends each member's projection to their room
+   * index (room-index-sync.ts), but only when the island is now complete or
+   * `reopened` says it was before (a fork or advance). The index reads rooms
+   * in play live, so ordinary turns need no push. While the index is off it
+   * reads nothing.
+   */
+  private indexed<T>(outcome: Outcome<T>, reopened = false): Outcome<T> {
+    if (!outcome.ok || !flags.roomIndex(this.env)) return outcome;
     const state = this.read();
-    if (!state || !this.member(state, player)) return "gone";
-    return state.active_role === "complete" ? "finished" : "in_play";
+    if (state && (reopened || state.active_role === "complete")) pushRoomIndex(this.ctx, this.env, state.room_id, 1, [state.host_id, state.guest_id], player => legacyInboxProjection(this.ctx.storage, player));
+    return outcome;
   }
+  /** Whether this member's island is in play (or waiting for a friend), finished, or gone. */
+  memberRoomState(player: string): MemberRoomState { return memberStateOf(legacyInboxProjection(this.ctx.storage, player)); }
   resolvesInvitation(inviteCode: string): boolean {
     return this.ctx.storage.sql.exec("SELECT 1 AS found FROM room WHERE id=1 AND (json_extract(data,'$.invite_code')=? OR json_extract(data,'$.deleted') IS 1)", inviteCode).toArray().length > 0;
   }
@@ -150,7 +163,7 @@ export class Room extends DurableObject<Env> {
     const observed = this.read();
     if (observed && await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
     if (redoDeviceHash !== undefined && !await this.env.PLAYERS.getByName(playerId).authorize(redoDeviceHash)) return fail(401, "invalid_auth");
-    return this.ctx.storage.transaction(async () => {
+    return this.indexed(await this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
     const scopedKey = playerId + ":" + key;
@@ -165,7 +178,7 @@ export class Room extends DurableObject<Env> {
       if (notify) queueTurnHint(this.ctx.storage, this.env, "legacy", state, playerId);
       await scheduleGameplayNotifications(this.ctx.storage);
       return ok(this.view(state, playerId));
-    });
+    }), observed?.active_role === "complete");
   }
   commit(playerId: string, revision: number, key: string, requestHash: string, recording: Recording): Promise<Outcome<RoomSnapshot>> {
     return this.change(playerId, revision, key, requestHash, state => {
@@ -223,8 +236,13 @@ export class Room extends DurableObject<Env> {
       state.reactions[playerId] = reaction; return ok(null);
     });
   }
+  /**
+   * The erase always tells the other member's room index, whatever the flag,
+   * so no index row keeps the erased member's id (room-index-sync.ts).
+   */
   async eraseForPlayer(playerId: string, pendingCreation = false): Promise<Outcome<{ deleted: boolean }>> {
-    return this.ctx.storage.transaction(async () => {
+    let erased: { room_id: string; partner: string | null } | null = null;
+    const result = await this.ctx.storage.transaction(async () => {
     const state = this.read();
     if (!state && pendingCreation) {
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO room VALUES (1,?)", JSON.stringify({ deleted: true }));
@@ -232,9 +250,13 @@ export class Room extends DurableObject<Env> {
     }
     if (!state) return fail(404, "room_not_found");
     if (!this.member(state, playerId)) return fail(404, "room_not_found");
+      erased = { room_id: state.room_id, partner: playerId === state.host_id ? state.guest_id : state.host_id };
     await this.eraseRoom();
     return ok({ deleted: true });
     });
+    const done = erased as { room_id: string; partner: string | null } | null;
+    if (result.ok && done?.partner) pushRoomIndex(this.ctx, this.env, done.room_id, 1, [done.partner], member => legacyInboxProjection(this.ctx.storage, member));
+    return result;
   }
   /** Erases the whole room for both members; the caller owns the transaction and has checked membership. */
   private async eraseRoom(): Promise<void> {
@@ -253,7 +275,8 @@ export class Room extends DurableObject<Env> {
    * member out erases the whole room. 404 means the caller is no longer a member.
    */
   async leaveFinished(playerId: string): Promise<Outcome<{ left: true }>> {
-    return this.ctx.storage.transaction(async () => {
+    // The partner's index row picks up partner_left; a leave is not an erasure, so the push stays flag-gated.
+    return this.indexed(await this.ctx.storage.transaction(async () => {
       const state = this.read();
       if (!state || !this.member(state, playerId)) return fail(404, "room_not_found");
       if (this.memberRoomState(playerId) !== "finished") return fail(409, "room_not_closed");
@@ -268,7 +291,7 @@ export class Room extends DurableObject<Env> {
       }
       recordDeparture(this.ctx.storage, playerId);
       return ok({ left: true });
-    });
+    }), true);
   }
 }
 
@@ -276,6 +299,6 @@ export class Room extends DurableObject<Env> {
 const roomNotFound = () => fail(404, "room_not_found");
 answerWhileBlank(Room, {
   join: async () => fail(404, "invite_not_found"), resolvesInvitation: () => false, memberRoomState: () => "gone", notificationEligible: () => false,
-  friendInvite: roomNotFound, inboxProjection: roomNotFound, safetyMembers: roomNotFound, snapshot: roomNotFound, operationSnapshot: roomNotFound,
+  friendInvite: roomNotFound, inboxProjection: roomNotFound, indexEntry: () => observeRoom(roomNotFound), safetyMembers: roomNotFound, snapshot: roomNotFound, operationSnapshot: roomNotFound,
   collection: roomNotFound, redo: async () => roomNotFound()
 });
