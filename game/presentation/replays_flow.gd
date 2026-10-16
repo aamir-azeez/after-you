@@ -62,7 +62,7 @@ const MODE_SHARED_REPLAY := "shared_replay"
 ## Replay library shows the row list beside a fixed preview card once the safe
 ## width reaches this; narrower screens stack the preview under the list.
 const REPLAY_SPLIT_MIN_WIDTH := 1000.0
-const EMPTY_SOLO_COLLECTION := "Finish your first island to see your solo replays here."
+const EMPTY_SOLO_COLLECTION := PlayerCopy.EMPTY_SOLO_TEXT
 const SOLO_COLLECTION_SCANNING := "Looking for more saved replays…"
 ## Newly settled solo rows are revealed at most this often during a scan.
 const SOLO_COLLECTION_REDRAW_MS := 400
@@ -252,12 +252,12 @@ func show_collection(message: String="") -> void:
 		var selected: bool=wide and str(entry.get("key",""))==str(_selected_solo_attempt.get("key",""))
 		_solo_entries_by_key[str(entry.get("key",""))]=entry
 		left.add_child(_solo_collection_row(entry,selected,wide))
-	# "Nothing saved" only after a finished scan has found nothing.
-	if entries.is_empty() and not scanning:
-		left.add_child(host._paragraph(EMPTY_SOLO_COLLECTION,620))
 	# Failed sources simply drop out; the error shows only when nothing could be checked.
 	if not scanning and not solo_replays.last_error.is_empty() and solo_replays.items().is_empty(): left.add_child(host._paragraph(solo_replays.last_error,620))
 	if not _solo_collection_message.is_empty(): left.add_child(host._paragraph(_solo_collection_message,620))
+	# "Nothing saved" only after a finished scan has found nothing.
+	if entries.is_empty() and not scanning:
+		ControlTheme.empty_state(left,"replays_solo",PlayerCopy.EMPTY_SOLO_TITLE,EMPTY_SOLO_COLLECTION)
 	if not wide:
 		var refresh: Button = host._button("Refresh saved replays",func(): _solo_collection_started=false; show_collection(),false)
 		refresh.disabled=scanning
@@ -1048,13 +1048,12 @@ func _draw_shared_replay_empty(message: String="") -> void:
 	left.add_child(host._label("Together",24,MINT,true))
 	left.add_child(host._paragraph(PlayerCopy.MAIN_529CFAE68DF1,630))
 	_add_shared_replay_loading_bar(left,shell.wide)
-	if not host.shared_replays.local_loading():
-		left.add_child(host._paragraph(PlayerCopy.MAIN_87534286A315,620))
 	if not message.is_empty(): left.add_child(host._paragraph(message,630))
 	elif not host.shared_replays.last_error.is_empty(): left.add_child(host._paragraph(host.shared_replays.last_error,630))
 	var refresh: Button = host._button("Refresh shared rooms",_refresh_shared_replay_rooms,false)
 	refresh.disabled=host.shared_replays.busy()
-	left.add_child(refresh)
+	if host.shared_replays.local_loading(): left.add_child(refresh)
+	else: ControlTheme.empty_state(left,"replays_together",PlayerCopy.EMPTY_TOGETHER_TITLE,PlayerCopy.EMPTY_TOGETHER_TEXT,refresh)
 	shell.preview_panel.visible=false
 
 func _refresh_shared_replay_rooms() -> void:

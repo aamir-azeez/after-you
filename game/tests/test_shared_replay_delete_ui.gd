@@ -102,7 +102,7 @@ func _run() -> void:
 	app.replays_flow.show_shared_replays()
 	await _drain_local(app.shared_replays)
 	app.replays_flow._open_default_shared_room()
-	_check(app.replays_flow._listed_shared_rooms().is_empty() and app.mode == "shared_replays" and _has_text(app.overlay,Main.PlayerCopy.MAIN_87534286A315),"Deleting the last replay drops its room so Together shows the empty state")
+	_check(app.replays_flow._listed_shared_rooms().is_empty() and app.mode == "shared_replays" and _has_text(app.overlay,Main.PlayerCopy.EMPTY_TOGETHER_TEXT),"Deleting the last replay drops its room so Together shows the empty state")
 	app.shared_replays=Collection.new(api,app._relay_identity,cache,OnlineMemory.new())
 	app.saves.data.room=next_attempt.duplicate(true)
 	var replay_reads: int = cache.reads.count("shared-replays:"+HOST+":"+key)

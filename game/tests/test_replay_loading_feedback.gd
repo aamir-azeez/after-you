@@ -477,11 +477,11 @@ func _together(app: Node) -> void:
 	_check(app.replays_flow._shared_identity_wait_until == -1, "The account wait ends once the account is read")
 	app.replays_flow.show_shared_replays()
 	_check(app.shared_replays.local_loading() and is_instance_valid(app.replays_flow._shared_replay_loading_bar) and app.replays_flow._shared_replay_loading_bar.is_inside_tree(), "First open shows the Together bar in its first frame")
-	_check(not _has_text(app.overlay, PlayerCopy.MAIN_87534286A315) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "No nothing-saved text before the local check finishes")
+	_check(not _has_text(app.overlay, PlayerCopy.EMPTY_TOGETHER_TEXT) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "No nothing-saved text before the local check finishes")
 	var guard := 0
 	while app.shared_replays.local_loading() and guard < 4000:
 		app.replays_flow.service_shared_replays()
-		if app.shared_replays.local_loading(): _check(is_instance_valid(app.replays_flow._shared_replay_loading_bar) and not _has_text(app.overlay, PlayerCopy.MAIN_87534286A315) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "Every loading frame keeps the bar and no empty text")
+		if app.shared_replays.local_loading(): _check(is_instance_valid(app.replays_flow._shared_replay_loading_bar) and not _has_text(app.overlay, PlayerCopy.EMPTY_TOGETHER_TEXT) and not _has_text(app.overlay, PlayerCopy.MAIN_DE8FFD26387B), "Every loading frame keeps the bar and no empty text")
 		guard += 1
 		await process_frame
 	_check(app.mode == "shared_memories" and app.replays_flow._listed_shared_rooms().size() == 2 and app.replays_flow._shared_replay_loading_bar == null, "Finished local check opens a room, with the bar gone")

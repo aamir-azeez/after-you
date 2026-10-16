@@ -10,6 +10,7 @@ const CHOICE_HIGHLIGHT := Color("315e53")
 const CHOICE_DISABLED := Color("9aaaa3")
 const TOUCH_SCROLL_META := "touch_scroll"
 const TouchInput = preload("res://presentation/touch_input.gd")
+const EmptyState = preload("res://presentation/empty_state.gd")
 static var _blank_choice_icon: Texture2D
 
 class ChoiceList extends CanvasLayer:
@@ -104,6 +105,16 @@ static func hint_bounds(ui_width: float, left_handed: bool) -> Rect2:
 	var right := ui_width - (218.0 if left_handed else 258.0)
 	var width := minf(680.0, maxf(120.0, right - left))
 	return Rect2((left + right - width) / 2.0, -94, width, 78)
+
+static func empty_state(parent: Control, art: String, title: String, text: String, below: Control = null) -> Control:
+	## An empty list's placeholder (presentation/empty_state.gd), with an
+	## optional control of the screen's own under its text. A list inside a
+	## scroller grows to fill it, so the art gets the blank space.
+	var empty := EmptyState.new()
+	empty.setup(art, title, text, below)
+	if parent.get_parent() is ScrollContainer: parent.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	parent.add_child(empty)
+	return empty
 
 static func rounded(color: Color, radius: int=16, border: Color=Color.TRANSPARENT) -> StyleBoxFlat:
 	var style := StyleBoxFlat.new()

@@ -618,11 +618,10 @@ func _draw_room_cards(filtered: Array[Dictionary]) -> void:
 		open.custom_minimum_size.y = 52
 		open.pressed.connect(func(): friends_requested.emit(open))
 		_rooms_list.add_child(open)
+	elif _tab == "Completed" and filtered.is_empty():
+		ThemeRules.empty_state(_rooms_list,"rooms_completed",PlayerCopy.EMPTY_COMPLETED_TITLE,PlayerCopy.EMPTY_COMPLETED_TEXT)
 	elif filtered.is_empty():
-		var empty := Label.new()
-		empty.text = "No rooms completed." if _tab == "Completed" else "Your rooms will be listed here."
-		empty.add_theme_color_override("font_color",MUTED)
-		_rooms_list.add_child(empty)
+		ThemeRules.empty_state(_rooms_list,"rooms",PlayerCopy.EMPTY_ROOMS_TITLE,PlayerCopy.EMPTY_ROOMS_TEXT)
 	else:
 		for room: Dictionary in filtered: _add_room_card(room)
 	if _tab == "Completed": _add_hidden_section(_hidden_rooms())

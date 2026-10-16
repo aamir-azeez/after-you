@@ -28,6 +28,17 @@ const HUB_JOIN_WAIT_EXPIRED := "The last request is still running. Tap Join agai
 # The finished spirit waits while its friend's memory plays on. %s is the
 # friend's nickname, or "a friend".
 const MEMORY_WAIT_FOR := "Waiting for %s"
+# Empty lists: the title and line under each list's empty-state art.
+const EMPTY_ROOMS_TITLE := "No rooms yet"
+const EMPTY_ROOMS_TEXT := "Host a room and it waits here for your friend."
+const EMPTY_COMPLETED_TITLE := "Nothing finished yet"
+const EMPTY_COMPLETED_TEXT := "Rooms you finish together are kept here to watch again."
+const EMPTY_FRIENDS_TITLE := "No friends yet"
+const EMPTY_FRIENDS_TEXT := "Share your friend code and they show up here."
+const EMPTY_SOLO_TITLE := "No replays yet"
+const EMPTY_SOLO_TEXT := "Finish your first island to watch it back here."
+const EMPTY_TOGETHER_TITLE := "No shared replays yet"
+const EMPTY_TOGETHER_TEXT := "Finish a room with a friend, then tap Refresh."
 # A solo turn waits for the player's own earlier memory.
 const MEMORY_WAIT_SOLO := "Waiting for your memory"
 const INVITE_SHARE_MESSAGE := "Play After You with me! My invite link: %s\nFriend code: %s"
@@ -396,8 +407,6 @@ const MAIN_43ADB38D37BC := "Complete your first island to keep a replay of both 
 const MAIN_1E12325B0B49 := "Open your saved account to find the moments you made with a friend. Solo replays remain distinct."
 # Shared replay room list — body text
 const MAIN_529CFAE68DF1 := "Moments made with a friend. Replays saved on this device work offline. Refresh to see other shared rooms."
-# Shared replay room list — body text
-const MAIN_87534286A315 := "Here you will see your completed shared stages. Play with a friend and then try Refresh."
 # Refresh shared replay rooms — message
 const MAIN_2CEDB8F94036 := "Checking your shared rooms…"
 # Refresh shared replay rooms — message
@@ -2065,7 +2074,6 @@ const TEXT := {
 	"main.43adb38d37bc": MAIN_43ADB38D37BC,
 	"main.1e12325b0b49": MAIN_1E12325B0B49,
 	"main.529cfae68df1": MAIN_529CFAE68DF1,
-	"main.87534286a315": MAIN_87534286A315,
 	"main.2cedb8f94036": MAIN_2CEDB8F94036,
 	"main.a931aa250d92": MAIN_A931AA250D92,
 	"main.c8f7a8fdc485": MAIN_C8F7A8FDC485,

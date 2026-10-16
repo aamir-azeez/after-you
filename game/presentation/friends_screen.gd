@@ -402,8 +402,10 @@ func _render() -> void:
 		for peer: Dictionary in page.get("friends",[]):
 			if peer.join_available != joinable: continue
 			_friend_row(peer,friend_list)
-	if page.get("friends",[]).is_empty():
-		_label("No friends yet" if not page.is_empty() else "Refreshing…",22,friend_list).add_theme_color_override("font_color",MUTED)
+	if page.is_empty():
+		_label("Refreshing…",22,friend_list).add_theme_color_override("font_color",MUTED)
+	elif page.get("friends",[]).is_empty():
+		ThemeRules.empty_state(friend_list,"friends",PlayerCopy.EMPTY_FRIENDS_TITLE,PlayerCopy.EMPTY_FRIENDS_TEXT)
 	_room_panel(page,main)
 	var utility := _card(_content,_utility_inset())
 	utility.get_parent().name = "FriendCodeUtilities"

@@ -1,0 +1,299 @@
+extends RefCounted
+## Empty-state art kit: the two spirits, a few props and the dashed ghost
+## cards, drawn straight onto a CanvasItem with no assets. Spirits have no
+## limbs; mood comes from the eyes, blush, head tilt and lean, as in game.
+## A scene is data: rows of [kind, position, options] in a 200 x 120 box
+## centred on the origin, scaled to fit the picture slot it is drawn into.
+## Everything is drawn in canvas coordinates, so strokes keep one width.
+
+const PEACH := Color("f4c38d")
+const MINT := Color("91d6c6")
+const EYE := Color("24433f")
+const SHINE := Color("fff4d9")
+const SPROUT := Color("abd1a2")
+const CHEEK := Color("e8a695")
+const HEART := Color("f09a94")
+const GOLD := Color("f4d77b")
+const LINE := Color("eceddb")
+const PAPER := Color("f6f1e1")
+const PHOTO := Color("2f5f56")
+const GRASS := Color("bfe3a6")
+const CLIFF := Color("7fae88")
+const SAND := Color("e5cf9c")
+const STEP := Color("6f9f72")
+const WATER := Color("5aa5a0")
+## "memory" is the player's spirit as a faded recording: paler, so it reads as
+## light rather than shadow on a dark page.
+const SPIRITS := {"peach": PEACH, "mint": MINT, "memory": Color("f9d9af")}
+const BOX := Vector2(200, 120)
+const HEAD := Vector2(0, -60)
+const NECK := Vector2(0, -38)
+## A spirit in a scene is this many scene units per in-game spirit unit.
+const SPIRIT_SIZE := 0.42
+## The player's spirit on the Solo island block.
+const WALKER_SIZE := 0.5
+## The faded memory, a little further away on the block.
+const MEMORY_SIZE := 0.4
+## Half the island block's top face: along its length and across its depth.
+const BLOCK_LENGTH := Vector2(62, -15)
+const BLOCK_DEPTH := Vector2(26, 15)
+## A spirit's feet reach this far either side of its base point, in spirit units.
+const FOOT_REACH := 24.0
+## Each list's real card, from room_hub_screen._add_room_card,
+## friends_screen._friend_row and replays_flow._replay_row_card. "slot" is the
+## picture (thumbnail or avatar); "preview" adds the wide Replays preview card.
+const CARDS := {
+	"room": {"height": 120.0, "radius": 16.0, "pad": Vector2(14, 12), "slot": Vector2(154, 96), "slot_radius": 8.0, "button": Vector2(132, 50)},
+	"friend": {"height": 116.0, "radius": 16.0, "pad": Vector2(16, 16), "slot": Vector2(64, 64), "slot_radius": 32.0, "button": Vector2(48, 48)},
+	"replay": {"height": 112.0, "radius": 16.0, "pad": Vector2(28, 20), "slot": Vector2(128, 72), "slot_radius": 10.0, "button": Vector2(96, 50), "preview": true},
+}
+const SCENES := {
+	"invite": [["face", Vector2(-58, 14), {"color": "peach", "look": Vector2(1, -0.2), "tilt": 0.22, "size": 0.62}], ["envelope", Vector2(4, 4), -0.12], ["outline", Vector2(70, 2)], ["sparkle", Vector2(36, -38), 7.0]],
+	"finished": [["island", Vector2(0, 24), 150.0], ["flag", Vector2(46, 22)], ["spirit", Vector2(-24, 26), {"color": "peach", "eyes": "happy", "sit": true, "lean": 0.12, "tilt": 0.22}], ["spirit", Vector2(4, 26), {"color": "mint", "eyes": "happy", "sit": true, "lean": -0.12, "tilt": -0.22, "blush": 1.3}], ["sparkle", Vector2(-64, -30), 6.0], ["sparkle", Vector2(70, -46), 5.0]],
+	"friend": [["face", Vector2(-4, 4), {"color": "mint", "eyes": "happy", "blush": 1.6, "size": 2.0}], ["heart", Vector2(72, -40), 16.0]],
+	"friend_next": [["face", Vector2(66, 6), {"color": "peach", "eyes": "wide", "look": Vector2(-1, 0), "tilt": -0.3, "size": 1.5}]],
+	"footprints": [["walk", Vector2(0, 8), {"from": Vector2(-0.5, 0.45), "to": Vector2(0.55, -0.4)}]],
+	"pond": [["pond", Vector2(20, 26)], ["spirit", Vector2(22, 14), {"color": "memory", "alpha": 0.4, "flip": true, "size": 0.3}], ["spirit", Vector2(-50, 26), {"color": "peach", "eyes": "soft", "look": Vector2(0.6, 1), "lean": 0.28, "tilt": 0.2, "blush": 1.3}], ["sparkle", Vector2(48, -12), 5.0]],
+	"polaroid": [["polaroid", Vector2(-10, 4), 0.08], ["heart", Vector2(62, -26), 11.0], ["sparkle", Vector2(66, 26), 7.0]],
+}
+static var _circle := PackedVector2Array()
+
+## Draws a scene into a slot rect, keeping the scene's aspect.
+static func scene(ci: CanvasItem, scene_id: String, slot: Rect2) -> void:
+	var s := minf(slot.size.x / BOX.x, slot.size.y / BOX.y)
+	var at := Transform2D(0.0, Vector2(s, s), 0.0, slot.get_center())
+	for row: Array in SCENES.get(scene_id, []):
+		var pos: Vector2 = row[1]
+		match row[0]:
+			"spirit", "face": spirit(ci, at * _place(pos, row[2]), row[2], row[0] == "face")
+			"outline": outline(ci, at, pos)
+			"envelope": envelope(ci, at * Transform2D(row[2], pos))
+			"island": island(ci, at, pos, row[2])
+			"flag": flag(ci, at, pos)
+			"heart": heart(ci, at, pos, row[2])
+			"sparkle": sparkle(ci, at, pos, row[2])
+			"walk": walk(ci, at, pos, row[2])
+			"pond": pond(ci, at, pos)
+			"polaroid": polaroid(ci, at * Transform2D(row[2], Vector2(1.3, 1.3), 0.0, pos))
+
+static func _place(pos: Vector2, options: Dictionary) -> Transform2D:
+	var size: float = options.get("size", SPIRIT_SIZE)
+	# A reflection is upside down and squashed, as on still water.
+	return Transform2D(0.0, Vector2(size, -size * 0.5 if options.get("flip", false) else size), 0.0, pos)
+
+## One spirit with its feet at the origin, or only its head centred on the
+## origin (face). Options: color, alpha, eyes (dot, wide, happy, soft), look
+## (where the eyes glance), blush, tilt, lean and sit.
+static func spirit(ci: CanvasItem, at: Transform2D, options: Dictionary, face := false) -> void:
+	var color: Color = SPIRITS[options.get("color", "peach")]
+	var alpha: float = options.get("alpha", 1.0)
+	var tilt: float = options.get("tilt", 0.0)
+	var head := at * Transform2D(tilt, Vector2.ZERO) * Transform2D(0.0, -HEAD)
+	if not face:
+		var body := at * Transform2D(options.get("lean", 0.0), Vector2.ZERO)
+		head = body * Transform2D(tilt, NECK) * Transform2D(0.0, -NECK)
+		if not options.get("sit", false):
+			for side: float in [-1.0, 1.0]: fill(ci, at, ellipse(Vector2(side * 13, -5), Vector2(11, 6.5)), Color(color.darkened(0.14), alpha))
+		fill(ci, body, ellipse(Vector2(0, -29), Vector2(28, 24)), Color(color, alpha))
+	stroke(ci, head, PackedVector2Array([Vector2(-6, -86), Vector2(-9, -93), Vector2(-10, -97)]), Color(SPROUT, alpha), 3.0)
+	fill(ci, head * Transform2D(-0.55, Vector2(-17, -98)), ellipse(Vector2.ZERO, Vector2(7.5, 4)), Color(SPROUT, alpha))
+	fill(ci, head * Transform2D(0.6, Vector2(-4, -101)), ellipse(Vector2.ZERO, Vector2(6, 3.4)), Color(SPROUT, alpha))
+	fill(ci, head, ellipse(HEAD, Vector2(33, 29)), Color(color, alpha))
+	var look: Vector2 = options.get("look", Vector2.ZERO)
+	var blush: float = options.get("blush", 1.0)
+	for side: float in [-1.0, 1.0]:
+		var eye := Vector2(side * 11.5, -58) + look * Vector2(6, 3)
+		match str(options.get("eyes", "dot")):
+			"happy": stroke(ci, head, arc(eye + Vector2(0, 1.5), 4.8, -4.0), Color(EYE, alpha), 2.6)
+			"soft": stroke(ci, head, arc(eye, 4.4, 2.4), Color(EYE, alpha), 2.4)
+			"wide":
+				fill(ci, head, ellipse(eye, Vector2(5.4, 6.4)), Color(EYE, alpha))
+				fill(ci, head, ellipse(eye + Vector2(-1.7, -2.3), Vector2(2.1, 2.1)), Color(SHINE, alpha))
+				fill(ci, head, ellipse(eye + Vector2(1.9, 2.2), Vector2(1, 1)), Color(SHINE, alpha))
+			_:
+				fill(ci, head, ellipse(eye, Vector2(4, 4.7)), Color(EYE, alpha))
+				fill(ci, head, ellipse(eye + Vector2(-1.1 + look.x, -1.7), Vector2(1.4, 1.4)), Color(SHINE, alpha))
+		fill(ci, head, ellipse(Vector2(side * 18.5, -49) + look * Vector2(4, 1), Vector2(4.6, 3) * blush), Color(CHEEK, 0.8 * alpha))
+
+## The friend who is not there yet: a dashed head with a question mark.
+static func outline(ci: CanvasItem, at: Transform2D, pos: Vector2) -> void:
+	dashed(ci, at * ellipse(pos, Vector2(23, 21)), Color(MINT, 0.9), 1.6, 5.0, 4.0)
+	var hook := PackedVector2Array()
+	for step: int in range(9): hook.append(pos + Vector2(0, -6) + Vector2.from_angle(PI + step * PI * 0.17) * 6.0)
+	hook.append(pos + Vector2(0, 4))
+	stroke(ci, at, hook, Color(MINT, 0.95), 3.0)
+	fill(ci, at, ellipse(pos + Vector2(0, 10), Vector2(1.9, 1.9)), Color(MINT, 0.95))
+
+static func envelope(ci: CanvasItem, at: Transform2D) -> void:
+	var paper := Rect2(-38, -25, 76, 50)
+	fill(ci, at, round_rect(paper, 4.0), PAPER)
+	stroke(ci, at, PackedVector2Array([Vector2(-36, -22), Vector2(0, 4), Vector2(36, -22)]), Color(EYE, 0.35), 2.0)
+	stroke(ci, at, PackedVector2Array([Vector2(-36, 23), Vector2(-10, 2)]), Color(EYE, 0.18), 1.6)
+	stroke(ci, at, PackedVector2Array([Vector2(36, 23), Vector2(10, 2)]), Color(EYE, 0.18), 1.6)
+	heart(ci, at, Vector2(0, 3), 7.0)
+
+## The soft rounded island: grass over a rounded earth underside.
+static func island(ci: CanvasItem, at: Transform2D, pos: Vector2, width: float) -> void:
+	var half := width * 0.5
+	var under := PackedVector2Array()
+	for step: int in range(17): under.append(pos + Vector2(cos(PI * step / 16.0) * half * (1.0 - 0.25 * sin(PI * step / 16.0)), sin(PI * step / 16.0) * width * 0.24))
+	fill(ci, at, under, CLIFF)
+	fill(ci, at, ellipse(pos, Vector2(half, width * 0.1)), GRASS)
+
+static func flag(ci: CanvasItem, at: Transform2D, pos: Vector2) -> void:
+	stroke(ci, at, PackedVector2Array([pos, pos + Vector2(0, -56)]), LINE, 2.6)
+	fill(ci, at, PackedVector2Array([pos + Vector2(1, -56), pos + Vector2(26, -48), pos + Vector2(1, -40)]), GOLD)
+
+static func heart(ci: CanvasItem, at: Transform2D, pos: Vector2, size: float) -> void:
+	for side: float in [-1.0, 1.0]: fill(ci, at, ellipse(pos + Vector2(side * 0.5, -0.3) * size, Vector2(0.56, 0.56) * size), HEART)
+	fill(ci, at, PackedVector2Array([pos + Vector2(-1.04, -0.1) * size, pos + Vector2(1.04, -0.1) * size, pos + Vector2(0, 1.0) * size]), HEART)
+
+static func sparkle(ci: CanvasItem, at: Transform2D, pos: Vector2, size: float) -> void:
+	var points := PackedVector2Array()
+	for step: int in range(8): points.append(pos + Vector2.from_angle(step * PI * 0.25 - PI * 0.5) * size * (1.0 if step % 2 == 0 else 0.3))
+	fill(ci, at, points, GOLD)
+
+## The game's island block: a grass top over two sandy sides, flat shaded.
+## Points on its top face are given as (along, across) in -1..1.
+static func block_point(pos: Vector2, on_top: Vector2) -> Vector2:
+	return pos + BLOCK_LENGTH * on_top.x + BLOCK_DEPTH * on_top.y
+
+static func block_top(pos: Vector2) -> PackedVector2Array:
+	return PackedVector2Array([block_point(pos, Vector2(-1, -1)), block_point(pos, Vector2(1, -1)), block_point(pos, Vector2(1, 1)), block_point(pos, Vector2(-1, 1))])
+
+## The player's spirit near the front of the block, glancing back at its faded
+## memory walking off at the far end, six footprints between them. Returns the
+## spirit, memory and step points, which tests keep on the top face.
+static func walk_points(pos: Vector2, options: Dictionary) -> Dictionary:
+	var you := block_point(pos, options.from)
+	var memory := block_point(pos, options.to)
+	var steps: Array[Vector2] = []
+	for step: int in range(6): steps.append(you.lerp(memory, 0.14 + 0.72 * step / 5.0))
+	return {"you": you, "memory": memory, "steps": steps}
+
+static func walk(ci: CanvasItem, at: Transform2D, pos: Vector2, options: Dictionary) -> void:
+	var top := block_top(pos)
+	var drop := Vector2(0, 20)
+	fill(ci, at, PackedVector2Array([top[3], top[2], top[2] + drop, top[3] + drop]), SAND)
+	fill(ci, at, PackedVector2Array([top[0], top[3], top[3] + drop, top[0] + drop]), SAND.darkened(0.12))
+	fill(ci, at, top, GRASS)
+	var points := walk_points(pos, options)
+	var heading: Vector2 = (points.memory - points.you).normalized()
+	for step: int in range(6):
+		var side := heading.orthogonal() * (2.4 if step % 2 == 0 else -2.4)
+		fill(ci, at * Transform2D(heading.angle(), points.steps[step] + side), ellipse(Vector2.ZERO, Vector2(3.2, 2.0)), Color(STEP, 0.3 + 0.08 * step))
+	spirit(ci, at * _place(points.memory, {"size": MEMORY_SIZE}), {"color": "memory", "alpha": 0.4, "look": Vector2(1, -0.4), "lean": 0.1})
+	sparkle(ci, at, points.memory + Vector2(18, -36), 5.0)
+	spirit(ci, at * _place(points.you, {"size": WALKER_SIZE}), {"color": "peach", "look": Vector2(1, -0.6), "tilt": 0.16, "blush": 1.4})
+
+## A small pond on a patch of grass, with two ripples.
+static func pond(ci: CanvasItem, at: Transform2D, pos: Vector2) -> void:
+	fill(ci, at, ellipse(pos + Vector2(-16, 2), Vector2(88, 22)), GRASS)
+	fill(ci, at, ellipse(pos, Vector2(50, 15)), WATER)
+	for ripple: Vector3 in [Vector3(-22, 4, 9), Vector3(26, -3, 7)]:
+		stroke(ci, at, arc(pos + Vector2(ripple.x, ripple.y), ripple.z, 2.0), Color(LINE, 0.4), 1.4)
+
+## A taped photo of both spirits smiling.
+static func polaroid(ci: CanvasItem, at: Transform2D) -> void:
+	fill(ci, at, round_rect(Rect2(-34, -40, 68, 80), 3.0), PAPER)
+	fill(ci, at, round_rect(Rect2(-28, -34, 56, 52), 1.5), PHOTO)
+	for pair: Array in [[-12.0, "peach", 0.12], [12.0, "mint", -0.12]]:
+		spirit(ci, at * Transform2D(0.0, Vector2(0.36, 0.36), 0.0, Vector2(pair[0], -6)), {"color": pair[1], "eyes": "happy", "tilt": pair[2]}, true)
+	fill(ci, at * Transform2D(-0.12, Vector2(0, -41)), round_rect(Rect2(-15, -5, 30, 10), 1.0), Color(LINE, 0.6))
+
+## The paper plane flying up on a dotted trail, between two canvas points.
+static func plane_trail(ci: CanvasItem, from: Vector2, to: Vector2, bow: float) -> void:
+	var control := (from + to) * 0.5 + Vector2(bow, 0)
+	var dots := 7
+	for step: int in range(dots):
+		var t := float(step) / dots
+		var point := from.lerp(control, t).lerp(control.lerp(to, t), t)
+		fill(ci, Transform2D.IDENTITY, ellipse(point, Vector2(1.6, 1.6)), Color(LINE, 0.25 + 0.4 * t))
+	var at := Transform2D((to - control).angle(), to)
+	fill(ci, at, PackedVector2Array([Vector2(12, 0), Vector2(-10, -8), Vector2(-4, 1)]), PAPER)
+	fill(ci, at, PackedVector2Array([Vector2(12, 0), Vector2(-4, 1), Vector2(-7, 7)]), PAPER.darkened(0.22))
+
+## A ghost card: dashed outlines of the card, its picture slot and its button,
+## plus faint text bars unless the card carries the real text.
+static func ghost_card(ci: CanvasItem, spec: Dictionary, rect: Rect2, fade: float, bars: bool) -> Dictionary:
+	var parts := card_parts(spec, rect)
+	dashed(ci, round_rect(rect, spec.radius), Color(LINE, 0.3 * fade), 1.5, 7.0, 6.0)
+	if parts.has("slot"): dashed(ci, round_rect(parts.slot, spec.slot_radius), Color(LINE, 0.22 * fade), 1.5, 5.0, 5.0)
+	if parts.has("button"): dashed(ci, round_rect(parts.button, minf(14.0, parts.button.size.y * 0.5)), Color(LINE, 0.18 * fade), 1.5, 5.0, 5.0)
+	if bars:
+		var text: Rect2 = parts.text
+		for line: Vector3 in [Vector3(0.62, 14, -18), Vector3(0.38, 10, 8)]:
+			var bar := Rect2(text.position.x, text.get_center().y + line.z, text.size.x * line.x, line.y)
+			fill(ci, Transform2D.IDENTITY, round_rect(bar, line.y * 0.5), Color(LINE, 0.07 * fade))
+	return parts
+
+## The wide Replays preview card (replays_flow._begin_replay_split): a picture
+## over the text, with the full-width button outline at the bottom.
+static func ghost_preview(ci: CanvasItem, panel: Rect2, picture: Rect2) -> void:
+	dashed(ci, round_rect(panel, 20.0), Color(LINE, 0.3), 1.5, 7.0, 6.0)
+	dashed(ci, round_rect(picture, 16.0), Color(LINE, 0.22), 1.5, 5.0, 5.0)
+	var inner := panel.grow(-16.0)
+	dashed(ci, round_rect(Rect2(inner.position.x, inner.end.y - 50, inner.size.x, 50), 14.0), Color(LINE, 0.18), 1.5, 5.0, 5.0)
+
+## Where a card's picture slot, text and button sit, as in the real card.
+## Narrow cards drop the slot and button so the text keeps its room.
+static func card_parts(spec: Dictionary, rect: Rect2) -> Dictionary:
+	var pad: Vector2 = spec.pad
+	var slot: Vector2 = spec.slot
+	var button: Vector2 = spec.button
+	var inner := rect.grow_individual(-pad.x, -pad.y, -pad.x, -pad.y)
+	var parts := {"text": inner}
+	if inner.size.x - slot.x - button.x - 24.0 >= 180.0:
+		parts.slot = Rect2(Vector2(inner.position.x, inner.get_center().y - slot.y * 0.5), slot)
+		parts.button = Rect2(Vector2(inner.end.x - button.x, inner.get_center().y - button.y * 0.5), button)
+		parts.text = Rect2(inner.position.x + slot.x + 12.0, inner.position.y, inner.size.x - slot.x - button.x - 24.0, inner.size.y)
+	return parts
+
+static func ellipse(center: Vector2, radius: Vector2) -> PackedVector2Array:
+	if _circle.is_empty():
+		for step: int in range(32): _circle.append(Vector2.from_angle(step * TAU / 32.0))
+	return Transform2D(0.0, radius, 0.0, center) * _circle
+
+static func round_rect(rect: Rect2, radius: float) -> PackedVector2Array:
+	var r := minf(radius, minf(rect.size.x, rect.size.y) * 0.5)
+	var points := PackedVector2Array()
+	var corners := [Vector2(rect.end.x - r, rect.position.y + r), Vector2(rect.end.x - r, rect.end.y - r), Vector2(rect.position.x + r, rect.end.y - r), Vector2(rect.position.x + r, rect.position.y + r)]
+	for corner: int in range(4):
+		for step: int in range(7): points.append(corners[corner] + Vector2.from_angle(-PI * 0.5 + (corner + step / 6.0) * PI * 0.5) * r)
+	return points
+
+## A shallow curve for closed eyes: bow < 0 arches up (happy), > 0 dips (soft).
+static func arc(center: Vector2, half_width: float, bow: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for step: int in range(7):
+		var t := step / 6.0
+		points.append(center + Vector2(lerpf(-half_width, half_width, t), bow * 4.0 * t * (1.0 - t)))
+	return points
+
+## A filled shape with a one-pixel antialiased edge.
+static func fill(ci: CanvasItem, at: Transform2D, points: PackedVector2Array, color: Color) -> void:
+	var placed := at * points
+	ci.draw_colored_polygon(placed, color)
+	placed.append(placed[0])
+	ci.draw_polyline(placed, color, 1.0, true)
+
+static func stroke(ci: CanvasItem, at: Transform2D, points: PackedVector2Array, color: Color, width: float) -> void:
+	ci.draw_polyline(at * points, color, maxf(1.0, width * at.get_scale().x), true)
+
+## A closed dashed outline in canvas pixels, drawn as one multiline.
+static func dashed(ci: CanvasItem, points: PackedVector2Array, color: Color, width: float, dash: float, gap: float) -> void:
+	var segments := PackedVector2Array()
+	var phase := 0.0
+	for index: int in range(points.size()):
+		var a := points[index]
+		var b := points[(index + 1) % points.size()]
+		var length := a.distance_to(b)
+		var along := 0.0
+		while along < length:
+			var end := minf(length, along + (dash if phase < dash else dash + gap) - phase)
+			if phase < dash:
+				segments.append(a.lerp(b, along / length))
+				segments.append(a.lerp(b, end / length))
+			phase = fmod(phase + end - along, dash + gap)
+			along = end
+	if not segments.is_empty(): ci.draw_multiline(segments, color, width, true)

@@ -328,7 +328,7 @@ func _shared_screens(app: Node, viewport: SubViewport, api: Node, count: int, ca
 		var lists: Array[Node] = _scrollers(app)
 		_check(lists.size() == 1, context + " uses one bounded scroller")
 		if lists.size() == 1: _check(area.grow(0.5).encloses((lists[0] as Control).get_global_rect()), context + " list fits the viewport")
-		_check(_label_contains(app.overlay, PlayerCopy.MAIN_87534286A315), context + " explains that nothing is saved yet")
+		_check(_label_contains(app.overlay, PlayerCopy.EMPTY_TOGETHER_TEXT), context + " explains that nothing is saved yet")
 		var refresh := _find_button(app.overlay, "Refresh shared rooms")
 		var home_back := _find_button(app.overlay, "Back")
 		_check(refresh != null and home_back != null and area.grow(0.5).encloses(home_back.get_global_rect()), context + " keeps Refresh and a Home-going Back reachable")
