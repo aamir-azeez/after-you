@@ -9,18 +9,17 @@ extends Node
 ## screen and where its Back leads. It asks Main to navigate through the signals
 ## below, and reads Main only through this host contract (read at call time, so
 ## Main or a test can swap a service):
-## - services: api, saves, relay_session, friends_client, friend_nicknames,
-##   turn_notifications, _friend_events
+## - services: api, saves, relay_session, friend_nicknames, turn_notifications,
+##   room_sharing, _friends_client, _friend_events
 ## - identity: _relay_identity, _tester_context
 ## - screen: mode, running, ui, application_backgrounded, lifecycle_generation,
 ##   _sync_presence
 ## - room flow: active_room, friend_share_target, relay_menu_generation,
 ##   _friends_to_rooms, _show_relay_rooms, _relay_lobby_action,
-##   _open_friend_legacy, _join_room, _friends_room_shared
+##   _open_friend_legacy, _join_room
 ## - node: add_child (the Friends layer stays Main's child)
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link().
-const FriendsClient = preload("res://services/friends_client.gd")
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 ## Main's mode while Friends is up.
@@ -42,8 +41,8 @@ func _init(main: Node = null) -> void:
 ## Builds Friends once Main's entry checks have passed and the hub has gone.
 func open(from_home: bool) -> void:
 	_return_home = from_home
-	if host.friends_client == null: host.friends_client = FriendsClient.new(host.api,host._relay_identity)
-	host._friend_events()
+	var client: RefCounted = host._friends_client(true)
+	var events: RefCounted = host._friend_events()
 	var shareable := {}
 	var current := _current_room()
 	var title := ""
@@ -59,12 +58,12 @@ func open(from_home: bool) -> void:
 	host._sync_presence()
 	host.ui.visible = false
 	screen = FriendsScreen.new()
-	screen.client = host.friends_client
-	screen.event_client = host.friend_room_events
+	screen.client = client
+	screen.event_client = events
 	screen.nickname_store = host.friend_nicknames
 	screen.notification_transport = host.turn_notifications
 	screen.hosting_view_ready.connect(func(events: Array): hosting_view_ready.emit(events))
-	screen.room_shared.connect(host._friends_room_shared)
+	screen.room_shared.connect(host.room_sharing.send_owed_alert)
 	screen.shareable_room = shareable
 	screen.room_title = title
 	screen.shared_room_title = _shared_room_title

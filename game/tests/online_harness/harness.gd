@@ -128,7 +128,7 @@ func _quiet() -> bool:
 		if app.relay_session != null and app.relay_session.busy(): return false
 		if app.room_hub_flow.inbox != null and app.room_hub_flow.inbox.busy: return false
 		# A hosting alert and its quiet retries belong to the step that hosted.
-		if (app.friend_room_events != null and app.friend_room_events.busy) or not app._owed_alert_retrying.is_empty(): return false
+		if (app.friend_room_events != null and app.friend_room_events.busy) or app.room_sharing.retrying(): return false
 		if app.replays_flow._shared_archive_sync or app.replays_flow._shared_photo_sync or not app.replays_flow.replay_saves.is_empty(): return false
 		if app.shared_replays != null and app.mode in ["shared_replays", "shared_memories"] and app.shared_replays.local_loading(): return false
 		var child: Node = device.child()

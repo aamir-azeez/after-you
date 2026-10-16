@@ -69,7 +69,7 @@ func boot() -> void:
 	app.api = api
 	# The app's quiet retries wait seconds; a test phone waits moments.
 	app.replays_flow.replay_save_retry_s.assign([0.05, 0.05, 0.05])
-	app.owed_alert_retry_s.assign([0.05, 0.05, 0.05])
+	app.room_sharing.retry_delays_s.assign([0.05, 0.05, 0.05])
 	# Main configured its notification service with the api it built in _ready.
 	app.turn_notifications._api = api
 	app.identity_read_state = Main.IdentityReadState.LOADED

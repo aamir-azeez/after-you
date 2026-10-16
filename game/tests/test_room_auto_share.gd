@@ -105,7 +105,7 @@ func _run() -> void:
 
 	# The share lands but its alert fails: quiet retries send it once.
 	var room := {"api_version":2,"room_id":ROOM}
-	app.owed_alert_retry_s.assign([0.05, 0.05, 0.05])
+	app.room_sharing.retry_delays_s.assign([0.05, 0.05, 0.05])
 	publish_failures = 1
 	var accepted := publication_ids.size()
 	alerts = _count(api,"/v1/social/publication")
@@ -144,8 +144,8 @@ func _run() -> void:
 	hold_alert = true
 	await _host(app,api,"friends")
 	_check(_count(api,"/v1/social/publication") == alerts+1 and api.busy,"The hosting alert is on its way with a slow reply")
-	app._friends_room_shared(room)
-	app._friends_room_shared(room)
+	app.room_sharing.send_owed_alert(room)
+	app.room_sharing.send_owed_alert(room)
 	await _frames(4)
 	_check(_count(api,"/v1/social/publication") == alerts+1,"A share confirmed during a slow alert reply sends no second alert")
 	api.release.emit()

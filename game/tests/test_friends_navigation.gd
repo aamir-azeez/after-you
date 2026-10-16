@@ -249,7 +249,7 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	shares = requests.size()
 	api.player_id = GUEST
 	app.identity_data.player_id = GUEST
-	_check(not (await app._share_current_room({"api_version":1,"room_id":legacy.room_id})).get("ok",false) and api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share").size() == shares,"A stale host action cannot share after the current identity becomes a guest")
+	_check(not (await app.room_sharing.share({"api_version":1,"room_id":legacy.room_id})).get("ok",false) and api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share").size() == shares,"A stale host action cannot share after the current identity becomes a guest")
 
 func _tap_direct_share(viewport: SubViewport, screen: Node, label: String = "Share current room") -> void:
 	var share: Button = _button_named(screen,label)
