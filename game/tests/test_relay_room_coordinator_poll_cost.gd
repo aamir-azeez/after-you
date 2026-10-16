@@ -5,6 +5,9 @@ extends SceneTree
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Schedule = preload("res://services/refresh_schedule.gd")
+const RelayPreview = preload("res://relay_preview.gd")
+const IDLE_WAIT_MS := 600000
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
 const GUEST := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -76,6 +79,11 @@ func _run() -> void:
 	boundary.responses.append({"ok": true, "status": 200, "data": newer})
 	_check(await reopened.refresh() and reopened.verifications == on_load, "After a reopen, an identical poll reuses the snapshot verified on load")
 	await _unchanged_replies(checkpoint, recording)
+	var before := await _idle_wait(checkpoint, recording, false)
+	var after := await _idle_wait(checkpoint, recording, true)
+	print("Relay room poll cost: a %d-minute idle wait sends %d room reads without the idle backoff, %d with it" % [IDLE_WAIT_MS / 60000, before, after])
+	_check(before >= 195 and after <= 60, "A 10-minute idle wait sends far fewer room reads (%d before, %d after)" % [before, after])
+	await _change_during_idle_wait(checkpoint, recording)
 	print("Relay room poll cost: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -116,6 +124,57 @@ func _unchanged_replies(checkpoint: Dictionary, recording: Dictionary) -> void:
 	# A Worker from before the small reply ignores the header and sends the full room.
 	boundary.responses.append({"ok": true, "status": 200, "data": room})
 	_check(await coordinator.refresh() and coordinator.verifications == verified, "An older Worker's identical full room runs no verification")
+
+## A waiting phone's room reads over a simulated idle wait: the real
+## coordinator and refresh schedule, a 100 ms clock and instant replies, with
+## the room screen's own change test (RelayPreview.poll_changed).
+## `backoff` false passes every read as changed, the cadence before the backoff.
+func _idle_wait(checkpoint: Dictionary, recording: Dictionary, backoff: bool, change_at_ms: int = -1, gaps: Array = []) -> int:
+	var room := _snapshot(checkpoint, recording, 3)
+	var newer := _snapshot(checkpoint, recording, 4)
+	newer.updated_at = "2026-09-14T12:00:09Z"
+	var boundary := Boundary.new()
+	var coordinator := Counting.new(boundary.transport, boundary.load_store, boundary.save_store, boundary.owner, boundary.key)
+	_check(coordinator.bind_room(ROOM), "Bind the room for the idle wait")
+	boundary.responses.append({"ok": true, "status": 200, "data": room})
+	_check(await coordinator.refresh(), "The idle wait starts from the full room")
+	var schedule := Schedule.new()
+	schedule.bind("guest:" + ROOM, 0)
+	var reads := 0
+	var last := 0
+	for now in range(0, IDLE_WAIT_MS, 100):
+		var token: Dictionary = schedule.begin_if_due(now, true, false)
+		if token.is_empty(): continue
+		reads += 1
+		gaps.append(now - last)
+		last = now
+		var held: Dictionary = coordinator.snapshot()
+		var held_turn: bool = coordinator.my_turn()
+		var held_pending: Dictionary = coordinator.pending()
+		if change_at_ms >= 0 and now >= change_at_ms and int(held.revision) == 3:
+			boundary.responses.append({"ok": true, "status": 200, "data": newer})
+		else:
+			boundary.responses.append({"ok": true, "status": 200, "data": {"schema_version": 1, "unchanged": true, "revision": held.revision, "branch": 0, "updated_at": held.updated_at}})
+		var succeeded := await coordinator.refresh()
+		var changed := not backoff or RelayPreview.poll_changed(coordinator, held, held_turn, held_pending, succeeded, false)
+		schedule.complete(token, now, succeeded, 0, false, changed)
+	_check(boundary.responses.is_empty() and coordinator.last_error.is_empty(), "Every idle read was answered and accepted")
+	return reads
+
+## A partner's turn that lands while the backoff is long is seen at the next
+## read, and the reads after it keep the 3 s cadence for a minute.
+func _change_during_idle_wait(checkpoint: Dictionary, recording: Dictionary) -> void:
+	var gaps: Array = []
+	await _idle_wait(checkpoint, recording, true, 300000, gaps)
+	var at := 0
+	var seen := -1
+	for index in gaps.size():
+		at += int(gaps[index])
+		if at >= 300000:
+			seen = index
+			break
+	_check(seen > 0 and at - 300000 < 15000, "The turn is read within one 15 s idle wait (%d ms after it landed)" % [at - 300000])
+	_check(seen + 21 < gaps.size() and gaps.slice(seen + 1, seen + 21).all(func(gap: int) -> bool: return gap == 3000) and int(gaps[seen + 21]) == 4500, "After the change reads come every 3 s for a minute, then the room backs off again: %s" % [gaps.slice(seen, seen + 23)])
 
 func _snapshot(checkpoint: Dictionary, recording: Dictionary, revision: int) -> Dictionary:
 	return {

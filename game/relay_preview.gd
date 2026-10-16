@@ -1154,7 +1154,10 @@ func _open_redo() -> void:
 		elif previous_mode == "paused":
 			_restore_paused_draft()
 		elif previous_mode == "review":
-			if client.pending().get("action") == "accept": _show_online_waiting()
+			if client.pending().get("action") == "accept":
+				# A redo accepted from review: the room is read again soon.
+				refresh_schedule.note_activity(Time.get_ticks_msec())
+				_show_online_waiting()
 			else: _show_review()
 		else:
 			_show_ready()
@@ -1529,12 +1532,21 @@ func _service_online_refresh() -> void:
 	var redo_changed := await _refresh_redo() if succeeded else false
 	if succeeded: online_last_checked_ms = Time.get_ticks_msec()
 	var refresh_result: Dictionary=journey.last_refresh_result()
-	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)))
+	# A turn whose receipt is still being checked never waits any longer.
+	var changed: bool = unconfirmed or poll_changed(journey,before,before_my_turn,saved_pending,succeeded,redo_changed)
+	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)),changed)
 	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
 	# A tap that began during the read finishes on the card it started on.
 	await TouchInput.until_released(controls)
 	if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
-	if before_my_turn != journey.my_turn() or saved_pending != journey.pending() or _room_gone() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
+	if poll_changed(journey,before,before_my_turn,saved_pending,succeeded,redo_changed): _show_ready()
+
+## True when a room poll found something the room card shows: the turn moved
+## to or from this phone, the unsent turn changed, the room is gone, or the
+## room or its turn requests changed. The card is redrawn then, and the next
+## poll comes at the base cadence; a poll that found nothing waits longer.
+static func poll_changed(source: RefCounted, before: Dictionary, before_my_turn: bool, saved_pending: Dictionary, succeeded: bool, redo_changed: bool) -> bool:
+	return before_my_turn != source.my_turn() or saved_pending != source.pending() or (source.has_method("room_gone") and source.room_gone()) or succeeded and (before != source.snapshot() or redo_changed)
 
 
 func identity_invalidated() -> void:
@@ -1987,6 +1999,8 @@ func _accept() -> void:
 		if not accepted:
 			_show_online_waiting()
 			return
+		# A sent turn: the partner's reply is looked for at the base cadence again.
+		refresh_schedule.note_activity(Time.get_ticks_msec())
 		if is_instance_valid(reaction_photos):
 			# Only a validated server acknowledgement reaches this optional card.
 			# Native Use and even a failed photo request never recommit the turn.

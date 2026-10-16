@@ -2364,6 +2364,8 @@ func _accept_room(response: Dictionary, return_to_friends: bool = false) -> void
 	if not response.ok:
 		_toast(response.error)
 		return
+	# Opening the room, a write's reply or a manual read: the next poll comes soon.
+	foreground_schedule.note_activity(Time.get_ticks_msec())
 	var incoming: Variant=response.data.get("room",response.data)
 	if not incoming is Dictionary or str(incoming.get("room_id","")).is_empty() or Levels.get_level(str(incoming.get("level_id",""))).is_empty():
 		_toast(PlayerCopy.MAIN_22FBAEF49772)
@@ -3096,7 +3098,9 @@ func _service_foreground_refresh() -> void:
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
 	foreground_refresh_running=false
 	var current := context==_foreground_room_context(room_id)
-	foreground_schedule.complete(ticket,Time.get_ticks_msec(),response.get("ok",false),int(response.get("retry_after_ms",0)),response.get("status",0) in [401,403,404,410])
+	# A room that reads the same as last time waits longer before the next read.
+	var changed: bool = not response.get("ok",false) or foreground_schedule.changed(response.get("data"))
+	foreground_schedule.complete(ticket,Time.get_ticks_msec(),response.get("ok",false),int(response.get("retry_after_ms",0)),response.get("status",0) in [401,403,404,410],changed)
 	if generation!=lifecycle_generation or not current:
 		return
 	if not _foreground_refresh_safe():

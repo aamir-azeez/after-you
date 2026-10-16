@@ -150,6 +150,19 @@ func _waiting_polls_answer_small() -> void:
 	for poll in 3: await h.step("a poll passes while the host waits", func(): h.elapse(host))
 	h.check(int(h.server.unchanged_replies) >= small + 3, "each waiting poll is answered with the small unchanged reply")
 	h.check(_overlay_ids(child) == card and child.mode == "online_waiting", "an unchanged room never rebuilds the waiting card")
+	h.check(child.refresh_schedule.idle_extra_ms() == 0, "the first minute after a turn keeps the 3 s cadence")
+	for poll in 20: await h.step("the host keeps waiting", func(): h.elapse(host))
+	h.check(child.refresh_schedule.idle_extra_ms() > 0, "after a quiet minute the waiting screen waits longer before the next poll (%d ms extra)" % child.refresh_schedule.idle_extra_ms())
+	h.check(_overlay_ids(child) == card and child.mode == "online_waiting", "a quiet minute never rebuilds the waiting card")
+	# A failed poll keeps its failure delay through a redraw of the waiting card.
+	host.api.faults.append({"path": "/v2/rooms/" + room, "kind": "status", "status": 503, "code": "service_unavailable", "count": 1})
+	await h.step("a poll fails while the host waits", func(): h.elapse(host), [host])
+	var failed_due: int = child.refresh_schedule.next_due_ms()
+	h.check(failed_due - Time.get_ticks_msec() > 3500, "a failed poll waits its failure delay (%d ms left)" % [failed_due - Time.get_ticks_msec()])
+	child._show_ready()
+	h.check(child.refresh_schedule.next_due_ms() == failed_due, "redrawing the waiting card leaves the failure delay alone")
+	await h.step("the failure delay passes", func(): h.elapse(host, 5200))
+	card = _overlay_ids(child)
 	h.server.known_room_polls = false
 	small = int(h.server.unchanged_replies)
 	for poll in 2: await h.step("a poll to a Worker without the small reply", func(): h.elapse(host))
@@ -160,6 +173,7 @@ func _waiting_polls_answer_small() -> void:
 	await h.step("guest takes stage 1 B", func(): await h.take_turn(guest))
 	await h.step("a poll passes for the host", func(): h.elapse(host))
 	h.check(host.child() != null and int(host.child().journey.snapshot().revision) == int(h.server.rooms[room].revision), "the host's room follows once it moves")
+	h.check(host.child() != null and host.child().refresh_schedule.idle_extra_ms() == 0, "a room that moved is read again at the base cadence")
 	h.check(h.server.accepted(room).size() == 2, "both turns reached the server once")
 	await h.finish()
 
