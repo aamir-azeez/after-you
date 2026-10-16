@@ -19,7 +19,8 @@ extends Node
 ##   _open_friend_legacy, _join_room
 ## - node: add_child (the Friends layer stays Main's child)
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
-## refresh() and confirm_invite_link().
+## refresh() and confirm_invite_link(). refresh() calls the screen's private
+## _refresh, as Main's alert routing did.
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 ## Main's mode while Friends is up.
@@ -62,7 +63,7 @@ func open(from_home: bool) -> void:
 	screen.event_client = events
 	screen.nickname_store = host.friend_nicknames
 	screen.notification_transport = host.turn_notifications
-	screen.hosting_view_ready.connect(func(events: Array): hosting_view_ready.emit(events))
+	screen.hosting_view_ready.connect(hosting_view_ready.emit)
 	screen.room_shared.connect(host.room_sharing.send_owed_alert)
 	screen.shareable_room = shareable
 	screen.room_title = title

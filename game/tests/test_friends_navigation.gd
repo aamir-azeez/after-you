@@ -147,6 +147,7 @@ func _run() -> void:
 	await _share_current_room(viewport,app,api,{"api_version":2,"room_id":ROOM},"Opening the chapter after an earlier island shares the latest chapter")
 	await _host_from_friends(viewport,app,api)
 	await _direct_room_actions(viewport,app,api)
+	await _notification_entry_points(app,api)
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.2).timeout
@@ -271,6 +272,31 @@ func _tap_direct_share(viewport: SubViewport, screen: Node, label: String = "Sha
 	_pointer(viewport,share.get_global_rect().get_center(),false)
 	await process_frame
 
+## NotificationFlow reaches Friends only through these Main entry points; a
+## rename must fail here, not at an alert's runtime.
+func _notification_entry_points(app: Node, api: FakeApi) -> void:
+	app._show_home()
+	_check(not app.friends_open(),"friends_open is false while Friends is closed")
+	await app._show_friends()
+	for frame: int in 30:
+		if not app.friends_flow.is_open() or not app.friends_flow.screen._busy: break
+		await process_frame
+	_check(app.friends_open(),"friends_open is true while Friends is up")
+	if not app.friends_open(): return
+	var inbox_reads: int = api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/social/inbox").size()
+	app.friends_hosting_hint()
+	for frame: int in 30:
+		if not app.friends_flow.screen._busy: break
+		await process_frame
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/social/inbox").size() == inbox_reads + 1,"friends_hosting_hint has Friends read its hosting inbox once")
+	friend_clock += Main.FriendsClient.REFRESH_MS + 1000
+	var list_reads: int = api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/friends").size()
+	await app.refresh_friends()
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/friends").size() == list_reads + 1,"refresh_friends reads the open Friends list again")
+	app.friends_flow.close()
+	await process_frame
+	_check(not app.friends_open(),"friends_open is false once Friends closes")
+
 func _window_back_notification(node: Node) -> void:
 	node.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	var index := 0
@@ -349,7 +375,7 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	await app._show_friends()
 	await process_frame
 	api.hold_next=true
-	app.friends_flow._join({"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22),"invite_code":LEGACY_CODE})
+	app.friends_flow.screen.join_requested.emit({"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22),"invite_code":LEGACY_CODE})
 	app.friends_flow.screen.close()
 	await process_frame
 	app._show_home()
@@ -360,7 +386,7 @@ func _host_from_friends(viewport: SubViewport, app: Node, api: FakeApi) -> void:
 	await app._show_friends()
 	await process_frame
 	api.hold_next=true
-	app.friends_flow._join({"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22),"invite_code":LEGACY_CODE})
+	app.friends_flow.screen.join_requested.emit({"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22),"invite_code":LEGACY_CODE})
 	app.friends_flow.screen.close()
 	app._background_application()
 	api.release.emit()

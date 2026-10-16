@@ -8,8 +8,8 @@ extends Node
 ##
 ## The relay lobby, the open room, the legacy room page and Friends drive it; it
 ## draws nothing. Main hosts it as an internal child, so a quiet retry ends with
-## Main, and passes in what it reads (called each time, so Main or a test can
-## swap a client):
+## Main, and passes in what it reads. share reads the Friends client once, when
+## it starts; view and each retry read it again:
 ## - friends(create) -> the Friends client, made on first use when create is set
 ## - events() -> the room event client
 ## - identity() -> the relay identity ({"ready": ...})
