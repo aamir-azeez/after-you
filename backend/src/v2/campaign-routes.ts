@@ -1,4 +1,5 @@
 import { ApiError, boundedJson, canonicalJson, digest, HASH_PATTERN, unwrap } from "../protocol";
+import { json } from "../http";
 import { roomLinkVersion } from "../room-links";
 import { campaignAdmissionHash, campaignAdmissionRequest } from "./campaign-admission-intent";
 import { campaignCreate, campaignJoin } from "./campaign-protocol";
@@ -11,8 +12,6 @@ import { requireCampaignProduction } from "./campaign-production";
 
 const same = (a: unknown, b: unknown) => canonicalJson(a) === canonicalJson(b);
 function need(v: unknown, code: string, status = 409): asserts v { if (!v) throw new ApiError(status, code); }
-function json(value: unknown, status = 200): Response { return new Response(JSON.stringify(value), { status,
-  headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" } }); }
 async function context(request: Request, room: string, hash: string): Promise<CampaignRoomContext> {
   const c = await campaignRequestContext(request, room, hash); need(c, "campaign_client_required"); return c;
 }

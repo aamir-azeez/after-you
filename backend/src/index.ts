@@ -1,6 +1,7 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
+import { JSON_HEADERS, json, result } from "./http";
 import { flags } from "./flags";
-import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, legacySimulationVersion, object, randomToken, recording, text, type Outcome, type RoomSnapshot, unwrap } from "./protocol";
+import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, legacySimulationVersion, object, randomToken, recording, text, type RoomSnapshot, unwrap } from "./protocol";
 import { entitlement } from "./entitlement";
 import { requireHostAccess } from "./v2/host-access";
 import { routeTesterAccess } from "./tester-access";
@@ -29,9 +30,6 @@ export { Player } from "./player";
 export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
 
-const responseHeaders = { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" };
-function json(value: unknown, status = 200): Response { return new Response(JSON.stringify(value), { status, headers: responseHeaders }); }
-function result<T>(outcome: Outcome<T>): Response { return json(unwrap(outcome)); }
 function invite(value: unknown): string {
   if (typeof value !== "string" || value.length > 40) throw new ApiError(400, "invalid_invite");
   return text(value.replace(/[\s-]/g, "").toUpperCase(), /^[A-F0-9]{20}$/, "invalid_invite");
@@ -67,7 +65,7 @@ export default {
       // Absent unless UPDATE_GATE_ENABLED is "true": the path then falls through to auth() as before.
       if (path === "/v1/app-status" && request.method === "GET" && flags.updateGate(env)) { await publicLimit(request, env); return json(appStatus(request, env)); }
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
-      if (request.method === "OPTIONS") return new Response(null, { status: 405, headers: responseHeaders });
+      if (request.method === "OPTIONS") return new Response(null, { status: 405, headers: JSON_HEADERS });
       if (path === "/v1/identity" && request.method === "POST") {
         await publicLimit(request, env); const input = object(await boundedJson(request, 4096)); exactKeys(input, []);
         const player_id = randomToken(16), device_token = randomToken(), recovery_code = randomToken();

@@ -1,4 +1,5 @@
 import { ApiError, boundedJson, digest, IDEMPOTENCY_PATTERN, text, unwrap } from "./protocol";
+import { json } from "./http";
 import { flags } from "./flags";
 import { TRANSFER_BODY_BYTES } from "./photo-transfer";
 
@@ -21,5 +22,5 @@ export async function routePhotoTransfer(request: Request, path: string, owner: 
     else if (entries && request.method === "POST") value = unwrap(await transfer.upload(owner, device, text(entries[1], IDEMPOTENCY_PATTERN), await boundedJson(request, TRANSFER_BODY_BYTES)));
     else throw new ApiError(404, "not_found");
   }
-  return new Response(JSON.stringify(value), { headers: { "Cache-Control": "no-store", "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8" } });
+  return json(value);
 }
