@@ -155,6 +155,7 @@ describe("short-lived room-scoped presence", () => {
         const target = env.PLAYERS.getByName(id);
         return {
           authorize: (hash: string) => target.authorize(hash),
+          authorizeRoom: (hash: string, room: string) => target.authorizeRoom(hash, room),
           presenceExpiry: async (owner: string) => {
             const expires = await target.presenceExpiry(owner);
             if (action === "delete") value(await env.ROOMS.getByName(p.room.room_id).eraseForPlayer(p.guest.player_id));

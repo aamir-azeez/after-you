@@ -194,6 +194,7 @@ describe("replay transfer HTTP compatibility", () => {
     const guest = await (await call("/v1/identity", "POST", undefined, {})).json<Account>();
     const room = env.ROOMS_V2.getByName(R), { receipts } = await complete(room, host.player_id, guest.player_id);
     value(await env.PLAYERS.getByName(host.player_id).addRoom({ room_id: R, invite_code: I, host: true, api_version: 2 }));
+    value(await env.PLAYERS.getByName(guest.player_id).addRoom({ room_id: R, invite_code: "", host: false, api_version: 2 }));
     const otherId = "Q".repeat(22), other = env.ROOMS_V2.getByName(otherId); value(await other.initialize(otherId, host.player_id, "CD".repeat(10)));
     value(await env.PLAYERS.getByName(host.player_id).addRoom({ room_id: otherId, invite_code: "CD".repeat(10), host: true, api_version: 2 }));
     const base = `/v2/rooms/${R}/replay-transfer`;

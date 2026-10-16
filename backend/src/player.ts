@@ -68,6 +68,16 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity();
     return !!identity && (identity.state === "active" || allowDeleting) && equalHash(identity.device_hash, deviceHash);
   }
+  /**
+   * authorize() for a request that names a room, plus whether this player may reach that room:
+   * it holds a link to it, or holds a Story link (Story chapter rooms are not linked one by one).
+   */
+  authorizeRoom(deviceHash: string, roomId: string): { authorized: boolean; linked: boolean } {
+    if (!this.authorize(deviceHash)) return { authorized: false, linked: false };
+    const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 ||
+      this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE json_extract(data,'$.api_version')=3 LIMIT 1").toArray().length > 0;
+    return { authorized: true, linked };
+  }
   private social(identity: Identity): SocialState {
     if (identity.social !== undefined && !validSocial(identity.social, identity.player_id)) throw new Error("unsupported_friend_state");
     return identity.social ?? emptySocial();

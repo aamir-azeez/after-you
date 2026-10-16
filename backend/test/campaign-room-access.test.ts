@@ -58,8 +58,13 @@ async function call(path: string, method = "GET", body?: unknown, negotiation: s
     ...(negotiation === null ? {} : { "X-AfterYou-Campaign-Schema": negotiation })
   }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
+const storyLink = (owner: string) => ({ room_id: R, invite_code: owner === H ? I : "", host: owner === H, api_version: 3 });
 async function setup(joined = true) {
   for (const owner of [H, G]) value(await env.PLAYERS.getByName(owner).create(owner, hash, "b".repeat(64)));
+  // Every Story member holds its api_version 3 link to the root, which lets its room requests past the link gate.
+  for (const owner of [H, G]) await runInDurableObject(env.PLAYERS.getByName(owner), (_, ctx) => {
+    ctx.storage.sql.exec("INSERT INTO rooms VALUES (?,?)", R, JSON.stringify(storyLink(owner)));
+  });
   value(await runInDurableObject(root(), (_, ctx) => initializeCampaignRoot(ctx.storage, { schema_version: 1, host_id: H,
     intent: { creation_schema: 2, link: { room_id: R, invite_code: I, host: true, api_version: 3 }, campaign_key: key } }, resolver)));
   if (joined) value(await runInDurableObject(root(), (_, ctx) => joinCampaignRoot(ctx.storage, G, { schema_version: 2, idempotency_key: "http-join-attempt-0001", invite_code: I, campaign_key: key, supported_simulation_versions: [6] }, resolver)));
@@ -158,6 +163,7 @@ describe("fixed campaign room HTTP authority", () => {
   it("keeps ordinary reads unchanged with and without campaign negotiation", async () => {
     value(await env.PLAYERS.getByName(H).create(H, hash, "b".repeat(64)));
     value(await root().initialize(R, H, I, definition.chapters[0]));
+    value(await env.PLAYERS.getByName(H).addRoom({ room_id: R, invite_code: "", host: false, api_version: 2 }));
     const a = await call(`/v2/rooms/${R}`, "GET", undefined, null), b = await call(`/v2/rooms/${R}`);
     expect(a.status).toBe(200); expect(b.status).toBe(200); expect(await a.json()).toEqual(await b.json());
   });
@@ -171,7 +177,7 @@ describe("fixed campaign room HTTP authority", () => {
     expect((await call(`/v2/rooms/${R}/turns`, "POST", { base_revision: s.revision, branch: 0, idempotency_key: "guest-b-after-join", recording: highB, checkpoint: middle }, "2", G)).status).toBe(200);
     const snapshot = value(await root().snapshot(H, context()));
     expect(snapshot.stage_index).toBe(1); expect(Object.keys(snapshot)).not.toContain("campaign");
-    expect(await env.PLAYERS.getByName(H).listRooms()).toEqual([]);
+    expect(await env.PLAYERS.getByName(H).listRooms()).toEqual([storyLink(H)]);
   });
   it("requires exact route, owner and original device even with the supported header", async () => {
     await setup();
@@ -207,7 +213,7 @@ describe("fixed campaign room HTTP authority", () => {
     const accepted = value(await p.child.commit(H, body, context(p.id)));
     const r = await call(`/v2/rooms/${p.id}/turns`, "POST", body); expect(r.status).toBe(200); expect(await r.json()).toEqual(accepted);
     expect((await call(`/v2/rooms/${p.id}/turns`, "POST", body, null)).status).toBe(409);
-    expect(await env.PLAYERS.getByName(G).listRooms()).toEqual([]);
+    expect(await env.PLAYERS.getByName(G).listRooms()).toEqual([storyLink(G)]);
   });
   it("checks the premium host only for new parent-bound redo acceptance, not accepted receipt recovery", async () => {
     const p = await published(), s = value(await p.child.snapshot(H, context(p.id))), path = `/v2/campaigns/${R}/chapters/1/redo`;

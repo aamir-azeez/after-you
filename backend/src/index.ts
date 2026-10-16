@@ -30,16 +30,25 @@ export { Player } from "./player";
 export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
 
-async function auth(request: Request, env: Env, deleting = false): Promise<string> {
+/**
+ * Every route under a room id except leave, which is already a quiet success for a room the caller has
+ * no link to and never opens it. A player with no link to that room gets 404 room_not_found before any
+ * room object is opened.
+ */
+const ROOM_ROUTE = /^\/v[12]\/rooms\/([A-Za-z0-9_-]{22})(?:\/(?!leave(?:\/|$))|$)/;
+async function auth(request: Request, env: Env, path: string, deleting = false): Promise<string> {
   const id = request.headers.get("X-Player-Id");
   if (!id || !ID_PATTERN.test(id)) throw new ApiError(401, "invalid_auth");
   const value = request.headers.get("Authorization");
   if (!value?.startsWith("Bearer ")) throw new ApiError(401, "invalid_auth");
   const token = value.slice(7);
   if (!SECRET_PATTERN.test(token)) throw new ApiError(401, "invalid_auth");
-  const hash = await digest(token);
-  if (!await env.PLAYERS.getByName(id).authorize(hash, deleting) && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
+  const hash = await digest(token), player = env.PLAYERS.getByName(id), room = ROOM_ROUTE.exec(path)?.[1];
+  // The same single Player call either way; a room route also learns whether the room is linked.
+  const access = room === undefined ? { authorized: await player.authorize(hash, deleting), linked: true } : await player.authorizeRoom(hash, room);
+  if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   if (!(await env.PLAYER_LIMITER.limit({ key: id })).success) throw new ApiError(429, "rate_limited");
+  if (!access.linked) throw new ApiError(404, "room_not_found");
   return id;
 }
 async function publicLimit(request: Request, env: Env): Promise<void> {
@@ -89,7 +98,7 @@ export default {
         if (Object.keys(input).length !== 1 || input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
         return result(await env.SAFETY_PROFILES.getByName(owner).acknowledgeDeletion(owner, await digest(authorization.slice(7))));
       }
-      const playerId = await auth(request, env, path === "/v1/identity" && request.method === "DELETE");
+      const playerId = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
       if (path === "/v1/room-inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
