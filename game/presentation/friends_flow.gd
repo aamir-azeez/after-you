@@ -120,7 +120,6 @@ func _current_room() -> Dictionary:
 	var room := {}
 	var target: Dictionary = host.friend_share_target
 	if target.get("api_version") == 2 and host.relay_session != null and host.relay_session.coordinator != null:
-		if host.relay_session.coordinator.campaign_scoped() or host.relay_session.coordinator.campaign_recovery_only(): return {}
 		room = host.relay_session.coordinator.snapshot()
 	elif target.get("api_version") == 1:
 		room = host.active_room

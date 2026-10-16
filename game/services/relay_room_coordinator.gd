@@ -47,9 +47,6 @@ var restore_replay_transfer: Callable
 var recover_replay_operation: Callable
 var _replay_recovering := false
 var _transport: Callable
-var _transport_lifetime: RefCounted
-var _live_authority: Callable
-var _recovery_authority: Callable
 var _load: Callable
 var _save: Callable
 var _identity: Callable
@@ -70,7 +67,6 @@ var _live_context: Dictionary = {}
 var _draft_replay_verified := true
 var _remote_hold := false
 var _gone := false
-var _campaign_recovery_only := false
 var _last_refresh_result: Dictionary = {}
 var _background_save: Callable
 var _draft_writer: Thread
@@ -92,11 +88,8 @@ class DraftWrite:
 		return save.call(scope, value)
 
 
-func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, key_factory: Callable = Callable(), transport_lifetime: RefCounted = null, live_authority: Callable = Callable(), recovery_authority: Callable = Callable(), background_save: Callable = Callable()) -> void:
+func _init(transport: Callable, load_store: Callable, save_store: Callable, identity_owner: Callable, key_factory: Callable = Callable(), background_save: Callable = Callable()) -> void:
 	_transport = transport
-	_transport_lifetime = transport_lifetime
-	_live_authority = live_authority
-	_recovery_authority = recovery_authority
 	_load = load_store
 	_save = save_store
 	_identity = identity_owner
@@ -143,7 +136,6 @@ func invalidate_identity() -> void:
 	# Account deletion removes its namespace only after this invalidation.
 	# An older writer must never recreate a file after that cleanup.
 	finish_live_draft_save()
-	_campaign_recovery_only = false
 	_clear_chapter()
 	_retire_live()
 	_last_refresh_result = {}
@@ -267,20 +259,8 @@ func chapter_complete() -> bool:
 
 func my_turn() -> bool:
 	var room := snapshot()
-	return _live_allowed() and not _campaign_recovery_only and not _remote_hold and not room.is_empty() and room.active_player_id == _owner and _state.pending.is_empty()
+	return not _remote_hold and not room.is_empty() and room.active_player_id == _owner and _state.pending.is_empty()
 
-func _live_allowed() -> bool:
-	# Ordinary coordinators have no extra authority. A scoped coordinator must
-	# retain its context even after retirement so suspended calls can finish.
-	return _transport_lifetime == null or (_live_authority.is_valid() and _live_authority.call() == true)
-
-func restrict_campaign_recovery() -> void:
-	finish_live_draft_save()
-	_campaign_recovery_only = true
-	_retire_live()
-
-func campaign_recovery_only() -> bool:
-	return _campaign_recovery_only or (_transport_lifetime != null and (not _recovery_authority.is_valid() or _recovery_authority.call() != false))
 
 
 func draft() -> Dictionary:
@@ -437,7 +417,7 @@ func refresh() -> bool:
 ## not moved answers small (X-AfterYou-Known-Room). Only an ordinary room with
 ## a stored snapshot asks; recovering sign-in needs the full room to persist.
 func _known_room_headers() -> PackedStringArray:
-	if _transport_lifetime != null or _state.is_empty() or _state.snapshot.is_empty() or _state.auth_required: return PackedStringArray()
+	if _state.is_empty() or _state.snapshot.is_empty() or _state.auth_required: return PackedStringArray()
 	return PackedStringArray(["X-AfterYou-Known-Room: %d.%d" % [int(_state.snapshot.revision), int(_state.snapshot.branch)]])
 
 
@@ -480,11 +460,11 @@ func commit(recording: Dictionary) -> bool:
 func fork(stage_index: int) -> bool:
 	if not finish_live_draft_save(): return false
 	if _replay_recovering: return false
-	if not _guard() or read_only or not _live_allowed() or _campaign_recovery_only or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0 or (_remote_hold and last_code != "replay_transferred"):
+	if not _guard() or read_only or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0 or (_remote_hold and last_code != "replay_transferred"):
 		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
 	if not RoomStages.within(stage_index, _level) or stage_index > int(_state.snapshot.stage_index) or (stage_index == int(_state.snapshot.stage_index) and _state.snapshot.a_turn_id == null):
 		return _error("nothing_to_fork", PlayerCopy.RELAY_ROOM_COORDINATOR_CFE2D14056BD)
-	if _guard() and _transport_lifetime == null and _state.pending.is_empty() and _busy == 0 and _state.snapshot.get("active_role") == "complete" and restore_replay_transfer.is_valid():
+	if _guard() and _state.pending.is_empty() and _busy == 0 and _state.snapshot.get("active_role") == "complete" and restore_replay_transfer.is_valid():
 		var generation := _generation
 		_replay_recovering = true
 		var restored: Dictionary = await restore_replay_transfer.call(_room)
@@ -492,7 +472,7 @@ func fork(stage_index: int) -> bool:
 		if generation != _generation or not _guard(): return false
 		if not restored.get("ok", false): return _network_error(restored)
 		if not await refresh(): return false
-	if not _guard() or read_only or not _live_allowed() or _campaign_recovery_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
+	if not _guard() or read_only or _remote_hold or _state.auth_required or _state.snapshot.is_empty() or not _state.pending.is_empty() or _busy != 0:
 		return _error("fork_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_827CAA5E0407)
 	var room: Dictionary = _state.snapshot
 	if not RoomStages.within(stage_index, _level) or stage_index > int(room.stage_index) or (stage_index == int(room.stage_index) and room.a_turn_id == null):
@@ -591,7 +571,7 @@ func _send_pending(recover_guest_join: bool = true) -> bool:
 	return _accept_receipt(response.get("data"))
 
 func _recover_transferred_pending() -> Dictionary:
-	if _replay_recovering or not _guard() or _transport_lifetime != null or _state.pending.is_empty() or not recover_replay_operation.is_valid(): return {"ok": false, "code": "replay_transferred", "status": 410}
+	if _replay_recovering or not _guard() or _state.pending.is_empty() or not recover_replay_operation.is_valid(): return {"ok": false, "code": "replay_transferred", "status": 410}
 	var generation := _generation
 	var request: Dictionary = _state.pending.duplicate(true)
 	_replay_recovering = true
@@ -605,7 +585,7 @@ func _pending_guest_join_recovery() -> bool:
 	# Joining changes the initial room revision even if the host is already
 	# recording A. Only a definitively rejected ordinary first turn can rebase;
 	# an uncertain delivery must always keep its exact request and key.
-	if not _guard() or read_only or _transport_lifetime != null or _state.auth_required or _state.pending.is_empty():
+	if not _guard() or read_only or _state.auth_required or _state.pending.is_empty():
 		return false
 	var request: Dictionary = _state.pending
 	if not request.held or request.error_code != "stale_revision" or request.operation != "turns": return false
@@ -738,10 +718,6 @@ func _accept_snapshot(value: Variant) -> bool:
 func _request(method: int, path: String, body: Dictionary = {}, headers: PackedStringArray = PackedStringArray()) -> Dictionary:
 	if not _guard() or read_only or _busy != 0:
 		return {"ignored": true}
-	if _campaign_recovery_only and method != HTTPClient.METHOD_GET:
-		# Reconcile may retry only its existing exact POST after a known absent receipt.
-		if method != HTTPClient.METHOD_POST or _state.pending.is_empty() or path != _room_path()+"/"+str(_state.pending.operation) or not Canonical.same(body,_state.pending.body):
-			return {"ok":false,"status":0,"code":"campaign_recovery_only"}
 	_serial += 1
 	var request_id := _serial
 	var generation := _generation
@@ -836,9 +812,9 @@ func _network_error(response: Dictionary, definitive_rejection: bool = false) ->
 static func _room_gone_response(status: int, code: String) -> bool:
 	return (status == 404 and code == "room_not_found") or (status == 410 and code in ["room_deleted", "room_closed"])
 
-## A gone-room answer for an ordinary room. Story rooms keep their own recovery.
+## A gone-room answer: the room was closed, left or removed.
 func _ordinary_room_gone(status: int, code: String) -> bool:
-	return _transport_lifetime == null and _room_gone_response(status, code)
+	return _room_gone_response(status, code)
 
 ## True once a turn this phone sent (or was about to send) found the room gone.
 func room_gone() -> bool:
@@ -1186,7 +1162,7 @@ func observe_room_binding() -> Dictionary:
 	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch or not _token(_room,22): return {}
 	return {"owner":_owner,"epoch":_epoch,"room_id":_room}
 
-func observe_campaign_state() -> Dictionary:
+func observe_state() -> Dictionary:
 	# Inspect only already-verified memory. Do not call _guard or replay a draft:
 	# readiness must not invalidate, restore, write diagnostics or touch disk.
 	if read_only or _busy != 0 or _draft_writer != null or _owner.is_empty() or _state.is_empty() or _state.auth_required: return {}
@@ -1200,29 +1176,18 @@ func observe_campaign_state() -> Dictionary:
 		"draft_ready":draft_ready,"pending":_state.pending.duplicate(true)}
 
 func playback_context() -> Dictionary:
-	# Pure observation of already-verified memory. Never restore a journal or
-	# fall back to ordinary authority when a retained scoped context expires.
+	# Pure observation of already-verified memory. Never restore a journal.
 	var binding := observe_room_binding()
 	if binding.is_empty() or _state.is_empty() or _state.auth_required or read_only or _remote_hold: return {}
-	if _transport_lifetime == null and _campaign_recovery_only: return {}
 	var room: Dictionary = _state.snapshot
 	if room.is_empty(): return {}
-	var authority := {}
-	if _transport_lifetime != null:
-		if not _transport_lifetime.has_method("playback_context"): return {}
-		authority = _transport_lifetime.playback_context()
-		if authority.is_empty(): return {}
-	return {"kind":"campaign" if _transport_lifetime != null else "ordinary",
-		"binding":binding,"generation":_generation,"authority":authority,
+	return {"binding":binding,"generation":_generation,
 		"room":{"revision":room.revision,"branch":room.branch,"level_id":room.level_id,
 			"level_version":room.level_version,"definition_hash":room.definition_hash,
 			"simulation_version":room.get("simulation_version",_level.get("simulation_version")),
 			"host_id":room.host_id,"guest_id":room.guest_id,"player_slot":room.player_slot,
 			"checkpoint_hash":room.checkpoint.checkpoint_hash,
 			"recording_hash":room.recording_a.get("recording_hash","") if room.recording_a is Dictionary else ""}}
-
-func campaign_scoped() -> bool:
-	return _transport_lifetime != null
 
 func verify_room_snapshot(value: Variant) -> bool:
 	# A navigation probe can use the complete native validator without accepting

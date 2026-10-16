@@ -610,7 +610,7 @@ func open_room(room_id: String) -> bool:
 
 func _ordinary_coordinator() -> RefCounted:
 	var background_writer: Callable = _store.save_scope if _store.get_script() == Store else Callable()
-	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity,Callable(),null,Callable(),Callable(),background_writer)
+	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity,Callable(),background_writer)
 	result.supported_simulation_versions = _simulation_versions()
 	result.accepted_pair_cache = accepted_pair_cache
 	result.restore_replay_transfer = restore_complete_replay
@@ -730,7 +730,7 @@ func _ordinary_lease() -> Dictionary:
 	return {"owner":_owner,"epoch":_epoch,"generation":_generation,"selection":_room_selection_generation,
 		"api_owner":str(_api.player_id),"device_hash":str(_api.device_token).sha256_text(),"base_url":str(_api.base_url),
 		"index":Canonical.digest(_index),"coordinator":coordinator.get_instance_id() if coordinator != null else 0,
-		"state":coordinator.observe_campaign_state() if coordinator != null else {},
+		"state":coordinator.observe_state() if coordinator != null else {},
 		"redo_pending":_redo.pending() if _redo != null else {},"redo_busy":_redo != null and _redo.busy}
 
 func _probe_standalone(room_id: String) -> bool:

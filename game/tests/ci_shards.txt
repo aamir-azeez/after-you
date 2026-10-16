@@ -143,6 +143,7 @@ online_history_more 2
 online_random 1
 online_random_extra 1
 online_random_more 3
+online_replay_authority 1
 online_scenarios 1
 online_scenarios_edges 1
 online_scenarios_more 3

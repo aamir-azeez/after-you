@@ -159,13 +159,6 @@ func _guest_join_during_first_turn() -> void:
 	_check(not await coordinator.commit(fixtures["relay-a"]) and boundary.requests.size() == 3 and coordinator.snapshot().is_empty(), "Recovery cannot rebase across an identity epoch change")
 	_check(boundary.disk["relay-room-v2:" + HOST + ":" + ROOM].pending.body.base_revision == 0, "Identity change preserves the old identity's rejected request on disk")
 	boundary.on_request = Callable()
-	boundary = Boundary.new()
-	coordinator = await _open(boundary, waiting)
-	boundary.responses.append(_error(409, "stale_revision"))
-	boundary.responses.append(_error(503, "unavailable"))
-	await coordinator.commit(fixtures["relay-a"])
-	coordinator._transport_lifetime = RefCounted.new()
-	_check(not coordinator._pending_guest_join_recovery(), "Campaign-scoped transports cannot use ordinary initial-join recovery")
 
 func _open(boundary: Boundary, room: Dictionary = {}):
 	var coordinator = _coordinator(boundary)

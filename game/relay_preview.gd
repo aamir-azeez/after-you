@@ -30,7 +30,6 @@ const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const SoloRedoOffer = preload("res://presentation/solo_redo_offer.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
-const StoryCamera = preload("res://presentation/story_camera.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
@@ -192,20 +191,8 @@ var _sound_seen: Dictionary = {}
 var _moment_replay := false
 var title_font: Font
 var modal_shade: ColorRect
-var story_flow: Node
-var story_chapter_index := -1
-var campaign_card_state: Callable
-var campaign_card_action: Callable
-var campaign_control_refresh: Callable
-var campaign_refresh_ready: Callable
-var campaign_redo_client: Callable
-var _story_hold := -1
-var _story_overlay_was_visible := false
-var _story_badges: Array[Dictionary] = []
-var _story_context_lost := false
-var _story_last_release := -1
-var _campaign_actions: VBoxContainer
-var _story_camera := StoryCamera.new()
+## A replay whose room changed under it locks this screen with an error.
+var _room_context_lost := false
 
 
 func _ready() -> void:
@@ -531,7 +518,6 @@ func _plain_card(title: String, body: String) -> VBoxContainer:
 	_restore_ready_world()
 	_close_room_options()
 	_room_ready_panel = null
-	_campaign_actions = null
 	_ready_turn_buttons.clear()
 	if is_instance_valid(reaction_strip) and mode == "replay": _safety_photos = reaction_strip.report_targets()
 	running=false
@@ -555,15 +541,11 @@ func _show_ready() -> void:
 		_show_journal_loading()
 		return
 	_restore_ready_world()
-	if _story_context_lost:
+	if _room_context_lost:
 		_show_error(PlayerCopy.RELAY_PREVIEW_17179ABFBE5C)
 		return
 	_clear_reaction_view()
 	_replay_collection = []
-	if _campaign_recovery_only():
-		if not journey.read_only and journey.chapter_complete() and journey.pending().is_empty(): _show_completed()
-		else: _show_campaign_recovery()
-		return
 	mode = "ready"
 	replay_pair_index = -1
 	if journey.read_only:
@@ -641,9 +623,7 @@ func _show_ready() -> void:
 	_add_local_restart(card)
 	_add_redo_action(card)
 	_add_recent_photo_action(card)
-	_add_campaign_card_actions(card)
 	if not compact: card.add_child(_action_button("back", _leave))
-	_offer_story_arrival()
 
 func _chapter_body(stage_index: int, for_role: String, stage_item: Dictionary) -> String:
 	return Registry.turn_intro(chapter_key, stage_index) + PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage_item)["hint_" + for_role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
@@ -652,8 +632,8 @@ func _turn_title(stage_index: int, for_role: String) -> String:
 	return "%d / %d  ·  %s" % [stage_index + 1, definition.stages.size(), "Leave a path" if for_role == "a" else "Follow the recording"]
 
 func _room_panel_fits() -> bool:
-	# Story and campaign rooms keep the centred card; ordinary rooms use the side panel.
-	return not journey.campaign_scoped() and not is_instance_valid(story_flow) and ui.size.x >= 880
+	# Wide screens use the side panel; narrow ones keep the centred card.
+	return ui.size.x >= 880
 
 func _ordinary_room_card(title: String, hint: String, details: Callable = Callable()) -> VBoxContainer:
 	_plain_card("", "")
@@ -676,7 +656,7 @@ func _ordinary_room_card(title: String, hint: String, details: Callable = Callab
 	return card
 
 func _frame_ready_world() -> void:
-	if _room_camera.is_empty() or not is_instance_valid(_room_ready_panel) or mode not in ["ready", "online_waiting"] or _story_hold >= 0: return
+	if _room_camera.is_empty() or not is_instance_valid(_room_ready_panel) or mode not in ["ready", "online_waiting"]: return
 	var target: Rect2 = _room_ready_panel.scene_space.get_global_rect()
 	if target.size.x < 80 or target.size.y < 60: return
 	var camera: Camera3D = world.camera
@@ -811,7 +791,7 @@ func _panel_button(text: String, primary: bool) -> Button:
 
 
 func _share_available() -> bool:
-	return online_session != null and not online_session.invitation_code().is_empty() and share_current_room.is_valid() and not journey.campaign_scoped() and not journey.campaign_recovery_only()
+	return online_session != null and not online_session.invitation_code().is_empty() and share_current_room.is_valid()
 
 
 func _notifications_available() -> bool:
@@ -947,9 +927,7 @@ func _show_online_waiting() -> void:
 		if not _pairs().is_empty():
 			card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
 		_add_recent_photo_action(card)
-		_add_campaign_card_actions(card)
 		card.add_child(_action_button("back", _leave))
-		_offer_story_arrival()
 		return
 	# One cream action per panel: Notify, else Share room, else Your rooms.
 	var secondary: Array[Button] = []
@@ -991,12 +969,10 @@ func _show_online_waiting() -> void:
 		actions.move_child(share_status, holder.get_index() + 1)
 	else:
 		share_status.free()
-	_add_campaign_card_actions(card)
 	_add_online_sync_status(actions, true)
 	online_sync_status.add_theme_color_override("font_color", MUTED)
 	online_sync_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	online_sync_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_offer_story_arrival()
 
 
 func _add_share_action(parent: VBoxContainer, text: String, primary: bool, status: Label) -> Button:
@@ -1096,72 +1072,6 @@ func _refresh_waiting_panel() -> void:
 	if (not turn_notification_status.call().get("registered", false)) != _waiting_notify_offered: _show_ready()
 
 
-func story_boundary_ready(allow_completed: bool = false) -> bool:
-	if campaign_redo_client.is_valid():
-		var client: RefCounted = campaign_redo_client.call()
-		if client != null and client.held(): return false
-	if _campaign_recovery_only() and not (allow_completed and journey.chapter_complete() and journey.pending().is_empty()): return false
-	if online_session == null or backgrounded or running or _leaving or _story_context_lost: return false
-	if (mode not in ["ready", "online_waiting"] and not (allow_completed and mode == "complete")) or journey.read_only or journey.busy(): return false
-	if online_session.busy() or online_session.photo_request_busy() or not journey.pending().is_empty(): return false
-	if (journey.chapter_complete() and not allow_completed) or is_instance_valid(_safety_screen): return false
-	if is_instance_valid(reaction_photos) and reaction_photos.active: return false
-	return not journey.snapshot().is_empty()
-
-func hold_story(generation: int, allow_completed: bool = false) -> bool:
-	if _story_hold >= 0 or not story_boundary_ready(allow_completed): return false
-	if not _story_camera.begin(world,generation): return false
-	_story_hold = generation
-	_story_last_release = -1
-	_story_overlay_was_visible = is_instance_valid(overlay) and overlay.visible
-	if is_instance_valid(overlay): overlay.hide()
-	for actor: Node in world.actors.values():
-		for badge: Node in actor.get_children():
-			# Every shipped spirit's direct Label3D child is its turn-role badge.
-			# Lighthouse-derived worlds predate the replay metadata tag.
-			if badge is Label3D:
-				_story_badges.append({"reference":weakref(badge),"visible":badge.visible})
-				badge.hide()
-	action_pressed = false
-	if is_instance_valid(stick): stick.release()
-	return true
-
-func frame_story_camera(generation: int, panel_rect: Rect2, safe_rect: Rect2 = Rect2()) -> bool:
-	return generation == _story_hold and not _story_context_lost and _story_camera.frame(generation,panel_rect,mode == "complete",safe_rect)
-
-func release_story(generation: int) -> void:
-	if _story_hold != generation: return
-	_story_camera.restore(generation)
-	_story_hold = -1
-	if not _story_context_lost and is_instance_valid(overlay):
-		overlay.visible = _story_overlay_was_visible
-	_story_overlay_was_visible = false
-	for saved: Dictionary in _story_badges:
-		var badge: Variant = saved.reference.get_ref()
-		if is_instance_valid(badge): badge.visible = saved.visible
-	_story_badges.clear()
-	_story_last_release = generation
-	if campaign_card_state.is_valid(): _refresh_released_campaign_card.call_deferred(generation)
-
-func _refresh_released_campaign_card(generation: int) -> void:
-	if generation != _story_last_release or _story_hold >= 0 or _story_context_lost or _leaving or not is_inside_tree() or not campaign_card_state.is_valid(): return
-	# Only action widgets change: replaying a completed/ready world here would
-	# overwrite the exact camera and exploration state restored above.
-	refresh_campaign_actions()
-
-func story_context_changed() -> void:
-	_story_last_release = -1
-	if _story_hold >= 0: _story_camera.restore(_story_hold)
-	_story_context_lost = true
-	online_request_generation += 1
-	running = false
-	action_pressed = false
-	_show_error(PlayerCopy.RELAY_PREVIEW_17179ABFBE5C)
-
-func _offer_story_arrival() -> void:
-	if is_instance_valid(story_flow): story_flow.present_arrival(self, story_chapter_index)
-
-
 func _add_recent_photo_action(card: VBoxContainer) -> void:
 	_add_safety_action(card)
 	var receipt := _recent_photo_receipt()
@@ -1177,8 +1087,7 @@ func _recent_photo_receipt() -> Dictionary:
 	return receipt if receipt.get("operation") == "turns" else {}
 
 func _ordinary_redo_available() -> bool:
-	if online_session == null or journey == null or is_instance_valid(story_flow): return false
-	return not journey.has_method("campaign_scoped") or not journey.campaign_scoped()
+	return online_session != null and journey != null
 
 func _add_redo_action(card: VBoxContainer) -> void:
 	if online_session == null:
@@ -1219,7 +1128,7 @@ func _announce_redo_request(client: RefCounted, room_id: String, review: Callabl
 	open.grab_focus()
 
 func _open_redo() -> void:
-	if not _ordinary_redo_available() or online_session.busy() or running or backgrounded or _story_hold >= 0 or _story_context_lost or is_instance_valid(_redo_screen): return
+	if not _ordinary_redo_available() or online_session.busy() or running or backgrounded or _room_context_lost or is_instance_valid(_redo_screen): return
 	if mode not in ["ready", "online_waiting", "paused", "review"]: return
 	var client: RefCounted = online_session.redo_client()
 	if not client.bind_room("relay",journey.snapshot()): return
@@ -1273,7 +1182,7 @@ func _restore_paused_draft() -> void:
 const SOLO_REDO_MODES := ["ready", "review", "paused", "checkpoint", "complete"]
 
 func _solo_redo_plan() -> Dictionary:
-	if online_session != null or _solo_replay_only or _solo_replay_context_error or is_instance_valid(story_flow) or _story_hold >= 0: return {}
+	if online_session != null or _solo_replay_only or _solo_replay_context_error: return {}
 	if journey == null or not journey.has_method("redo_plan") or journey.read_only or mode not in SOLO_REDO_MODES: return {}
 	return journey.redo_plan()
 
@@ -1363,15 +1272,7 @@ func _note_refusal(reason: String) -> void:
 	controls.modal_stack.move_child(note, mini(2, controls.modal_stack.get_child_count() - 1))
 
 func _refresh_redo() -> bool:
-	if campaign_redo_client.is_valid() and not backgrounded and _story_hold < 0 and not _story_context_lost and journey.pending().is_empty():
-		var campaign_client: RefCounted = campaign_redo_client.call()
-		if campaign_client == null or campaign_client.busy or campaign_client.held() or not campaign_client.available(): return false
-		var before: Dictionary = campaign_client.view()
-		# The existing refresh cycle already verified parent and child. Add only
-		# the advisory read on that cadence, never a separate timer.
-		await campaign_client.refresh(false)
-		return before != campaign_client.view()
-	if not _ordinary_redo_available() or backgrounded or _story_hold >= 0 or _story_context_lost or not journey.pending().is_empty(): return false
+	if not _ordinary_redo_available() or backgrounded or _room_context_lost or not journey.pending().is_empty(): return false
 	var client: RefCounted = online_session.redo_client()
 	if client.busy: return false
 	var before: Dictionary = client.view()
@@ -1380,47 +1281,6 @@ func _refresh_redo() -> bool:
 	if not client.bind_room("relay",room): return false
 	await client.refresh()
 	return before != client.view()
-
-func _add_campaign_redo_action(card: VBoxContainer) -> void:
-	if not campaign_redo_client.is_valid() or journey == null or not journey.pending().is_empty(): return
-	var client: RefCounted = campaign_redo_client.call()
-	if client == null or not client.available(): return
-	var source := RedoClient.source_for("relay",journey.snapshot())
-	if source.is_empty() and not client.held(): return
-	var label := "Turn requests"
-	if client.held(): label = "Recover turn request"
-	elif client.can_accept(): label = "Redo requested"
-	elif not source.is_empty() and source.second_player_id == client._context().get("owner"): label = "Request redo"
-	card.add_child(_button(label,_open_campaign_redo,false))
-	if not client.held() and client.can_accept(): _announce_redo_request.call_deferred(client,str(journey.snapshot().get("room_id","")),_open_campaign_redo)
-
-func _open_campaign_redo() -> void:
-	# Review is intentionally allowed only here, not at Story dialogue/Continue boundaries.
-	if not campaign_redo_client.is_valid() or online_session == null or online_session.busy() or running or backgrounded or _leaving or _story_hold >= 0 or _story_context_lost or is_instance_valid(_redo_screen): return
-	if not journey.pending().is_empty(): return
-	var client: RefCounted = campaign_redo_client.call()
-	if client == null or client.busy or not client.available(): return
-	# A completed card can still own an unsettled receipt or obsolete intent.
-	# Its visible recovery action must not grant new consent on completed play.
-	if mode not in ["ready","online_waiting","review","campaign_recovery"] and not (mode == "complete" and journey.chapter_complete() and client.held()): return
-	var previous_mode := mode
-	var previous_room: Dictionary = journey.snapshot()
-	var saved_journey: RefCounted = journey
-	var generation := online_request_generation
-	var context: Dictionary = client._context()
-	mode = "redo_requests"
-	ui.visible = false
-	_redo_screen = RedoScreen.new()
-	_redo_screen.client = client
-	_redo_screen.allow_mutations = online_session.mutations_enabled()
-	_redo_screen.closed.connect(func():
-		_redo_screen = null
-		if _leaving or not is_inside_tree() or generation != online_request_generation or journey != saved_journey or client._context() != context: return
-		ui.visible = true
-		if client.held() or client.busy: _show_campaign_recovery()
-		elif previous_mode == "review" and journey.snapshot() == previous_room: _show_review()
-		else: _show_ready())
-	add_child(_redo_screen)
 
 func _add_invitation_copy(card: VBoxContainer, include_share: bool = true) -> bool:
 	if online_session == null or online_session.invitation_code().is_empty():
@@ -1522,7 +1382,7 @@ func _set_feedback(status: Label, text: String) -> void:
 	status.visible = not text.is_empty()
 
 func _share_room_from_card(button: Button, status: Label) -> void:
-	if _sharing_room or backgrounded or running or _leaving or _story_hold >= 0 or _story_context_lost or online_session == null or online_session.busy() or not share_current_room.is_valid() or not is_instance_valid(button) or not button.is_inside_tree(): return
+	if _sharing_room or backgrounded or running or _leaving or _room_context_lost or online_session == null or online_session.busy() or not share_current_room.is_valid() or not is_instance_valid(button) or not button.is_inside_tree(): return
 	var target := _share_target()
 	# An automatic share already in flight owns the request; the button waits.
 	if room_share_state.is_valid() and room_share_state.call(target).get("busy", false): return
@@ -1551,7 +1411,7 @@ static func _copy_with_display_server(code: String) -> bool:
 
 
 func _online_refresh() -> void:
-	if online_session == null or online_session.busy() or running or _story_hold >= 0 or _story_context_lost or not _campaign_refresh_ready():
+	if online_session == null or online_session.busy() or running or _room_context_lost:
 		return
 	var now := Time.get_ticks_msec()
 	refresh_schedule.bind(_online_refresh_context(), now)
@@ -1567,19 +1427,13 @@ func _online_refresh() -> void:
 	_card(PlayerCopy.RELAY_PREVIEW_E274B279C9CF, PlayerCopy.RELAY_PREVIEW_AE8554BD7C76)
 	var source: RefCounted = journey
 	var context := _online_refresh_context()
-	var saved_pending: Dictionary = journey.pending()
-	var reconciling: bool = not saved_pending.is_empty()
-	var control: Dictionary = await _refresh_campaign_control()
-	if not control.current or not _online_refresh_is_current(generation,source,context,["online_request"]):
+	var reconciling: bool = not journey.pending().is_empty()
+	if not _online_refresh_is_current(generation,source,context,["online_request"]):
 		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
 		_remember_suspended_manual_refresh(generation,source,context)
 		return
-	if not control.okay or saved_pending != journey.pending():
-		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
-		_show_ready()
-		return
-	# The explicit action keeps the exact saved direction captured before the
-	# control GET. It does not infer a new contribution or Continue request.
+	# The explicit action keeps the exact saved direction. It does not infer a
+	# new contribution.
 	if reconciling:
 		await journey.reconcile()
 	else:
@@ -1594,21 +1448,11 @@ func _online_refresh() -> void:
 		_remember_suspended_manual_refresh(generation,source,context)
 
 func _remember_suspended_manual_refresh(generation: int, source: RefCounted, context: String) -> void:
-	if backgrounded and is_inside_tree() and mode == "online_request" and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not _leaving and not _story_context_lost:
+	if backgrounded and is_inside_tree() and mode == "online_request" and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not _leaving and not _room_context_lost:
 		_suspended_manual_refresh = {"generation":generation,"context":context}
 
-func _refresh_campaign_control() -> Dictionary:
-	if not campaign_control_refresh.is_valid(): return {"current":true,"okay":true,"changed":false}
-	var result: Variant = await campaign_control_refresh.call()
-	if not result is Dictionary or not result.get("current") is bool or not result.get("okay") is bool or not result.get("changed") is bool:
-		return {"current":false,"okay":false,"changed":false}
-	return result
-
-func _campaign_refresh_ready() -> bool:
-	return not campaign_refresh_ready.is_valid() or campaign_refresh_ready.call() == true
-
 func _online_refresh_is_current(generation: int, source: RefCounted, context: String, allowed_modes: Array) -> bool:
-	return is_inside_tree() and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not backgrounded and not running and not _leaving and _story_hold < 0 and not _story_context_lost and mode in allowed_modes and not is_instance_valid(_safety_screen) and not (is_instance_valid(reaction_photos) and reaction_photos.active) and not online_session.photo_request_busy()
+	return is_inside_tree() and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not backgrounded and not running and not _leaving and not _room_context_lost and mode in allowed_modes and not is_instance_valid(_safety_screen) and not (is_instance_valid(reaction_photos) and reaction_photos.active) and not online_session.photo_request_busy()
 
 func _online_refresh_context() -> String:
 	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
@@ -1639,7 +1483,7 @@ func _update_online_sync_status(now: int) -> void:
 		online_sync_status.visible = terminal or not journey.last_error.is_empty()
 
 func _service_online_refresh() -> void:
-	if online_session==null or backgrounded or running or _sharing_room or _story_hold >= 0 or _story_context_lost or not is_inside_tree() or not _campaign_refresh_ready(): return
+	if online_session==null or backgrounded or running or _sharing_room or _room_context_lost or not is_inside_tree(): return
 	# A manual read may finish while backgrounded. Rebuild its stable card only
 	# after foreground returns, then leave all retry traffic on the GET-only path.
 	if not _suspended_manual_refresh.is_empty():
@@ -1672,17 +1516,8 @@ func _service_online_refresh() -> void:
 	var saved_pending: Dictionary = journey.pending()
 	var before: Dictionary=journey.snapshot()
 	var before_my_turn: bool = journey.my_turn()
-	refresh_campaign_actions()
-	var control: Dictionary = await _refresh_campaign_control()
-	if not control.current or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
+	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
 		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
-		return
-	if not control.okay or saved_pending != journey.pending():
-		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
-		await TouchInput.until_released(controls)
-		if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
-		if control.changed: _show_ready()
-		else: refresh_campaign_actions()
 		return
 	# A saved turn whose receipt never arrived is checked on the same schedule:
 	# reconcile() first asks the server for the turn's receipt and resends the
@@ -1699,12 +1534,10 @@ func _service_online_refresh() -> void:
 	# A tap that began during the read finishes on the card it started on.
 	await TouchInput.until_released(controls)
 	if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
-	if control.changed or before_my_turn != journey.my_turn() or saved_pending != journey.pending() or _room_gone() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
-	else: refresh_campaign_actions()
+	if before_my_turn != journey.my_turn() or saved_pending != journey.pending() or _room_gone() or succeeded and (before!=journey.snapshot() or redo_changed): _show_ready()
 
 
 func identity_invalidated() -> void:
-	if is_instance_valid(story_flow): story_flow.invalidate()
 	online_request_generation += 1
 	if is_instance_valid(_redo_screen):
 		_redo_screen.invalidate()
@@ -1724,8 +1557,7 @@ func _pairs() -> Array:
 
 
 func _begin() -> void:
-	if _campaign_recovery_only(): return
-	if _story_hold >= 0 or _story_context_lost: return
+	if _room_context_lost: return
 	if online_session != null and online_session.busy(): return
 	if not _reset_live():
 		return
@@ -1802,8 +1634,7 @@ func _present_stage_history(authored: Dictionary, verified_checkpoint: Dictionar
 
 
 func _start_play() -> void:
-	if _campaign_recovery_only(): return
-	if _story_hold >= 0 or _story_context_lost: return
+	if _room_context_lost: return
 	_restore_ready_world()
 	mode = "play"
 	overlay.visible = false
@@ -1813,8 +1644,7 @@ func _start_play() -> void:
 
 
 func _resume_draft() -> void:
-	if _campaign_recovery_only(): return
-	if _story_hold >= 0 or _story_context_lost: return
+	if _room_context_lost: return
 	if online_session != null and online_session.busy(): return
 	var draft: Dictionary = journey.draft()
 	if not _reset_live(true):
@@ -1855,11 +1685,10 @@ func _physics_process(_delta: float) -> void:
 
 
 func advance_input(input: Dictionary) -> void:
-	if _story_hold >= 0 or _story_context_lost: return
+	if _room_context_lost: return
 	if mode == "replay":
 		if not _replay_ready() or replay_cursor >= replay_frames.size(): return
 		input = replay_frames[replay_cursor]
-	elif _campaign_recovery_only(): return
 	# Both touch/keyboard input and input-driven QA use this single tick path.
 	var state: Dictionary = sim.step(input)
 	if mode == "replay": replay_cursor += 1
@@ -1962,7 +1791,7 @@ func _playing_turn() -> bool:
 ## Skip to end: the rest of the memory goes by on the next physics ticks.
 func _skip_memory_wait() -> void:
 	if not running or backgrounded or mode != "play" or not memory_wait.waiting(): return
-	if _story_hold >= 0 or _story_context_lost or _campaign_recovery_only(): return
+	if _room_context_lost: return
 	memory_wait.skipping = true
 
 
@@ -2070,7 +1899,6 @@ func _show_review() -> void:
 		card.add_child(_label(PlayerCopy.RELAY_PREVIEW_FAF7DFD92132,17))
 	card.add_child(_action_button("retry", _retry_review))
 	_add_redo_action(card)
-	if not can_save and role == "b": _add_campaign_redo_action(card)
 	_add_local_restart(card)
 	card.add_child(_action_button("leave_draft", _leave))
 
@@ -2145,7 +1973,6 @@ func _confirm_restart_chapter() -> void:
 
 
 func _accept() -> void:
-	if _campaign_recovery_only(): return
 	if online_session != null:
 		if online_session.busy() or not online_session.mutations_enabled() or not journey.pending().is_empty():
 			_show_online_waiting()
@@ -2308,7 +2135,7 @@ func _preview_turn() -> void:
 
 
 func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary) -> void:
-	if _story_hold >= 0 or _story_context_lost or backgrounded or _leaving: return
+	if _room_context_lost or backgrounded or _leaving: return
 	if _continue_replay_context:
 		if not _replay_ready(): return
 	else:
@@ -2345,17 +2172,23 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 
 
 func _replay_ready() -> bool:
-	if _story_hold >= 0 or backgrounded or _leaving or _story_context_lost or not is_inside_tree(): return false
+	if backgrounded or _leaving or _room_context_lost or not is_inside_tree(): return false
 	if online_session == null: return true
 	if online_session.coordinator == journey and not _replay_context.is_empty() and Canonical.same(_replay_context,journey.playback_context()): return true
 	_retire_replay()
 	return false
 
+## The replay's room changed under it: stop and say so. Nothing on this screen
+## can act on the old room again.
 func _retire_replay() -> void:
 	_replay_context = {}
 	if is_instance_valid(world): world.set_process(false)
 	if is_instance_valid(soundscape): soundscape.stop_reunion()
-	story_context_changed()
+	_room_context_lost = true
+	online_request_generation += 1
+	running = false
+	action_pressed = false
+	_show_error(PlayerCopy.RELAY_PREVIEW_17179ABFBE5C)
 
 func _replay_ended() -> void:
 	running = false
@@ -2487,13 +2320,11 @@ func _show_completed() -> void:
 		card.add_child(_action_button("retry", _choose_local_checkpoint))
 	else:
 		card.add_child(_action_button("replays", func(): replay_pair_index = 0; _play_collection_pair()))
-		if not is_instance_valid(story_flow): card.add_child(_button("New room", _create_another_room))
-	_add_campaign_card_actions(card)
+		card.add_child(_button("New room", _create_another_room))
 	_add_redo_action(card)
 	_add_recent_photo_action(card)
 	_add_safety_action(card)
 	card.add_child(_action_button("back", _leave))
-	_offer_story_arrival()
 
 ## True when this screen's simulation finished exactly the accepted turn, so
 ## its state is the one a rebuild from the chain would reach.
@@ -2634,7 +2465,6 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 
 
 func _leave(allow_unsaved: bool = false) -> void:
-	if _story_hold >= 0: return
 	if _leaving:
 		return
 	if _journal_loader != null:
@@ -2685,11 +2515,9 @@ func _exit_tree() -> void:
 		_journal_loader = null
 	_restore_ready_world()
 	if journey != null and journey.has_method("finish_live_draft_save"): journey.finish_live_draft_save()
-	if _story_hold >= 0: _story_camera.restore(_story_hold)
 	if _world_covered:
 		_world_covered = false
 		get_viewport().disable_3d = false
-	if is_instance_valid(story_flow): story_flow.retire_child(self)
 	if is_instance_valid(_safety_screen): _safety_screen.client.invalidate()
 	_clear_reaction_view()
 	if is_instance_valid(reaction_photos):
@@ -2697,7 +2525,6 @@ func _exit_tree() -> void:
 
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if _story_hold >= 0: return
 	if is_instance_valid(_redo_screen): return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
@@ -2732,12 +2559,12 @@ func _process(delta: float) -> void:
 	if (mode == "replay" or (mode == "bloom" and _completion_is_replay)) and not _replay_ready():
 		if is_instance_valid(world): world.set_process(false)
 		return
-	if is_instance_valid(world): world.set_process(_story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"])
+	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["play", "replay", "bloom"])
 	# The ready and waiting cards hold the world still but let its spirits
 	# breathe, a few times a second (island_world.advance_idle).
-	if is_instance_valid(world) and _story_hold < 0 and not backgrounded and not _world_covered and mode in ["ready", "online_waiting"] and world.has_method("advance_idle"): world.advance_idle(delta)
+	if is_instance_valid(world) and not backgrounded and not _world_covered and mode in ["ready", "online_waiting"] and world.has_method("advance_idle"): world.advance_idle(delta)
 	# The friend has arrived: the ring follows the startled wake.
-	if _story_hold < 0 and not backgrounded and mode in ["play", "replay", "bloom"]: memory_wait.advance(delta)
+	if not backgrounded and mode in ["play", "replay", "bloom"]: memory_wait.advance(delta)
 	_service_online_refresh()
 	_position_replay_photos()
 	if completion_counting():
@@ -2765,13 +2592,13 @@ func _service_world_cover() -> void:
 
 
 ## How often this chapter needs drawing (services/frame_policy.gd): no cap
-## while the world is built a step per frame; full rate while a turn, replay,
-## story camera or ending moves, or a saved journal loads; calm on every card,
-## where the world holds still.
+## while the world is built a step per frame; full rate while a turn, replay
+## or ending moves, or a saved journal loads; calm on every card, where the
+## world holds still.
 func frame_demand() -> String:
 	if _world_building: return Frames.LOADING
 	if mode == "loading": return Frames.ACTIVE
-	if (running and not backgrounded) or _story_hold >= 0 or mode in ["play", "replay", "bloom", "moment"]: return Frames.ACTIVE
+	if (running and not backgrounded) or mode in ["play", "replay", "bloom", "moment"]: return Frames.ACTIVE
 	return Frames.CALM
 
 
@@ -2788,7 +2615,6 @@ func _notification(what: int) -> void:
 	if is_instance_valid(_safety_screen) and what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST]: return
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		backgrounded = true
-		if is_instance_valid(story_flow): story_flow.set_backgrounded(true)
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(true)
 		if is_instance_valid(stick) and (running or mode == "bloom"):
@@ -2796,19 +2622,13 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		var was_backgrounded := backgrounded
 		backgrounded = false
-		if is_instance_valid(story_flow): story_flow.set_backgrounded(false)
 		if online_session != null and was_backgrounded:
 			online_refresh_queued = true
-			if _story_hold < 0 and not _story_context_lost and not _leaving and mode in ["ready","online_waiting","complete"]:
-				refresh_campaign_actions()
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
 		if is_instance_valid(_room_options_modal):
 			_close_room_options()
-			return
-		if _story_hold >= 0:
-			if is_instance_valid(story_flow): story_flow.skip_from_system_back(self)
 			return
 		if is_instance_valid(stick):
 			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
@@ -2914,64 +2734,3 @@ func _camera_exploration_active() -> bool:
 
 func _camera_exploration_allowed(point: Vector2) -> bool:
 	return not world.CameraExploration.ui_blocks(controls, point)
-
-
-func _campaign_recovery_only() -> bool:
-	return online_session != null and journey != null and journey.has_method("campaign_recovery_only") and journey.campaign_recovery_only()
-
-func _add_campaign_card_actions(card: VBoxContainer) -> void:
-	if not campaign_card_state.is_valid() or not campaign_card_action.is_valid(): return
-	_campaign_actions = VBoxContainer.new()
-	_campaign_actions.add_theme_constant_override("separation",12)
-	card.add_child(_campaign_actions)
-	refresh_campaign_actions()
-
-func refresh_campaign_actions() -> void:
-	if not is_instance_valid(_campaign_actions) or not _campaign_actions.is_inside_tree() or not campaign_card_state.is_valid() or not campaign_card_action.is_valid(): return
-	for old: Node in _campaign_actions.get_children():
-		_campaign_actions.remove_child(old)
-		old.queue_free()
-	var state: Variant = campaign_card_state.call()
-	if not state is Dictionary: return
-	if not str(state.get("message","")).is_empty(): _campaign_actions.add_child(_label(str(state.message),18))
-	for item: Dictionary in state.get("actions",[]):
-		var button := _button(str(item.label),func(): campaign_card_action.call(str(item.action)))
-		button.disabled = not item.get("enabled",false)
-		button.mouse_filter = Control.MOUSE_FILTER_PASS
-		_campaign_actions.add_child(button)
-	_add_campaign_redo_action(_campaign_actions)
-	# One poll owns both the campaign and room reads, even between their awaits.
-	if refresh_schedule.busy():
-		for button: Node in _campaign_actions.get_children():
-			if button is BaseButton: button.disabled = true
-
-func _show_campaign_recovery() -> void:
-	running = false
-	action_pressed = false
-	mode = "campaign_recovery"
-	var card := _card("Saved chapter",PlayerCopy.RELAY_PREVIEW_53416F9C53E3)
-	_add_campaign_card_actions(card)
-	card.add_child(_action_button("back",_leave))
-
-func refresh_campaign_card() -> void:
-	if _story_hold >= 0 or _story_context_lost or running or _leaving: return
-	if journey.chapter_complete() and journey.pending().is_empty(): _show_completed()
-	elif _campaign_recovery_only(): _show_campaign_recovery()
-	else: _show_ready()
-
-func show_story_history(entries: Array, open_entry: Callable) -> void:
-	if not story_boundary_ready(true) or not open_entry.is_valid(): return
-	mode = "story_history"
-	var card := _card("History","")
-	var scroll := ScrollContainer.new()
-	scroll.custom_minimum_size = Vector2(480,220)
-	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
-	card.add_child(scroll)
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	scroll.add_child(list)
-	for entry: Dictionary in entries:
-		var row := _button("%d · %s" % [int(entry.index)+1,"Arrival" if entry.phase == "arrival" else "Completion"],func(): open_entry.call(int(entry.index),str(entry.phase)),false)
-		row.mouse_filter = Control.MOUSE_FILTER_PASS
-		list.add_child(row)
-	card.add_child(_action_button("back",refresh_campaign_card))

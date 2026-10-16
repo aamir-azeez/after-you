@@ -150,9 +150,6 @@ func _run() -> void:
 	for name: String in ["ready", "review", "online_waiting", "turn_wait", "paused", "complete", "replay_collection", "error", "access", "room_gone"]:
 		preview.mode = name
 		_check(preview.frame_demand() == Frames.CALM, "Chapter card %s is calm" % name)
-	preview.mode = "paused"
-	preview._story_hold = 3
-	_check(preview.frame_demand() == Frames.ACTIVE, "A story camera move is full rate")
 	preview.free()
 	# Main's answers.
 	change_scene_to_file("res://main.tscn")

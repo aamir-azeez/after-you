@@ -23,7 +23,7 @@ func _run() -> void:
 		fixtures[name] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))
 	var boundary := Boundary.new()
 	var disk := ControlledDisk.new(directory)
-	var c := Coordinator.new(boundary.transport, disk.load_scope, disk.save_scope, boundary.owner, boundary.key, null, Callable(), Callable(), disk.write_background)
+	var c := Coordinator.new(boundary.transport, disk.load_scope, disk.save_scope, boundary.owner, boundary.key, disk.write_background)
 	_check(c.bind_room(ROOM), "Bind isolated disk owner")
 	boundary.responses.append(_ok(_snapshot()))
 	if not await c.refresh():
@@ -34,7 +34,7 @@ func _run() -> void:
 	for tick in range(30): live.step({})
 	_check(c.save_live_draft(live, true), "Periodic capture returns while the controlled disk writer is still blocked")
 	var entered: bool = await _await_writer(disk)
-	_check(entered and c.busy() and c.observe_campaign_state().is_empty(), "In-flight draft cannot be adopted as a durably saved campaign source")
+	_check(entered and c.busy() and c.observe_state().is_empty(), "In-flight draft is not observed as durably saved state")
 	for tick in range(30): live.step({})
 	_check(live.tick == 60 and c._state.draft.is_empty() and c.pending().is_empty(), "Native play advances while unconfirmed draft and progress remain unaccepted")
 	disk.gate.post()
@@ -115,7 +115,7 @@ func _run() -> void:
 func _commit_after_periodic() -> void:
 	var boundary := Boundary.new()
 	var disk := ControlledDisk.new(directory + "-commit")
-	var c := Coordinator.new(boundary.transport, disk.load_scope, disk.save_scope, boundary.owner, boundary.key, null, Callable(), Callable(), disk.write_background)
+	var c := Coordinator.new(boundary.transport, disk.load_scope, disk.save_scope, boundary.owner, boundary.key, disk.write_background)
 	_check(c.bind_room(ROOM), "Bind independent commit-order fixture")
 	boundary.responses.append(_ok(_snapshot()))
 	if not await c.refresh(): _check(false, "Admit commit fixture"); return

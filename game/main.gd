@@ -1946,7 +1946,6 @@ func _current_room_share_allowed(target: Dictionary) -> bool:
 	var room := {}
 	if target.api_version == 2:
 		if mode != "relay_online" or not is_instance_valid(relay_child) or relay_session == null or relay_session.coordinator == null or relay_child.journey != relay_session.coordinator: return false
-		if relay_session.coordinator.campaign_scoped() or relay_session.coordinator.campaign_recovery_only(): return false
 		room = relay_session.coordinator.snapshot()
 	elif target.api_version == 1:
 		if mode != "room": return false
