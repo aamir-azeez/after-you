@@ -1,0 +1,4 @@
+{
+  "world_base": "res://presentation/journey_world.gd",
+  "version_witness": "res://tests/journey_witness.gd"
+}

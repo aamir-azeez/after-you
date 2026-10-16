@@ -1,0 +1,44 @@
+extends RefCounted
+## {{TITLE}}: two placeholder stages on the cooperative rules, pinned to rules 9
+## (the comfort rules under a number 0.5.x never advertised). The layout is High
+## and Low's: a shore, a raised loft, a lower ledge and a garden, in integer cm.
+
+static func definition() -> Dictionary:
+	return {"schema_version":6,"simulation_version":9,"id":"{{ID}}","version":1,"title":"{{TITLE}}","premium":{{PREMIUM}},
+		"starts":{"p0":[-528,-128],"p1":[-288,0]},"props":[],
+		"islands":[_island("shore",[-640,-240,-240,240],0),_island("loft",[-80,-240,320,240],160),_island("lower-ledge",[128,-96,576,192],0),_island("garden",[736,-176,1088,176],0)],
+		"stairs":[{"id":"blue-stair","rect_cm":[-240,-48,-80,48],"axis":"x","from_surface":"shore","to_surface":"loft","from_height_cm":0,"to_height_cm":160,"owner_slot":"p1"}],
+		"bridges":[_bridge("lower-causeway",[-240,96,128,192],"shore","lower-ledge","p0"),_bridge("red-passage",[576,-48,736,48],"lower-ledge","garden","p0")],
+		"drops":[{"id":"loft-hole","rect_cm":[216,24,264,72],"surface_id":"loft","destination_surface":"lower-ledge","height_cm":0,"requires_lever":"loft-lever"}],
+		"stages":[{
+			"id":"{{STAGE_1}}","version":1,"first_player_slot":"p0","kind":"hold_switch","levers":[_goal("shore-lever",[-544,112],"shore","p0")],"ball_pads":[],
+			"pressure_pads":[_pad("lower-switch",[-448,-128],"shore","p0")],
+			"gates":[{"route_id":"blue-stair","pad_id":"lower-switch","lever_id":"shore-lever","ball_pad_id":""}],
+			"source_policy":{"kind":"hold_switch","pad_id":"lower-switch","lever_id":"shore-lever","minimum_hold_ticks":15},
+			"goal_policy":{"kind":"ring"},"goal":_goal("loft-bell",[160,-128],"loft","p1"),
+			"receiver_route_cm":[[-288,0],[160,0],[160,-128]],"receiver_action_ticks":1,
+			"hint_a":"TODO copy: {{TITLE}}, stage 1, first turn",
+			"hint_b":"TODO copy: {{TITLE}}, stage 1, second turn"
+		},{
+			"id":"{{STAGE_2}}","version":1,"first_player_slot":"p1","kind":"hold_switch","ball_pads":[],
+			"levers":[_goal("loft-lever",[240,-128],"loft","p1")],
+			"pressure_pads":[_pad("lower-ledge-switch",[448,48],"lower-ledge","p1")],
+			"gates":[{"route_id":"lower-causeway","pad_id":"lower-ledge-switch","lever_id":"loft-lever","ball_pad_id":""},{"route_id":"red-passage","pad_id":"lower-ledge-switch","lever_id":"loft-lever","ball_pad_id":""}],
+			"source_policy":{"kind":"hold_switch","pad_id":"lower-ledge-switch","lever_id":"loft-lever","minimum_hold_ticks":15},
+			"goal_policy":{"kind":"ring"},"goal":_goal("garden-bell",[912,0],"garden","p0"),
+			"receiver_route_cm":[[-448,144],[448,144],[448,0],[912,0]],"receiver_action_ticks":1,
+			"hint_a":"TODO copy: {{TITLE}}, stage 2, first turn",
+			"hint_b":"TODO copy: {{TITLE}}, stage 2, second turn"
+		}]}
+
+static func _island(id: String, rect: Array, height: int) -> Dictionary:
+	return {"id":id,"rect_cm":rect,"height_cm":height}
+
+static func _bridge(id: String, rect: Array, from: String, to: String, owner: String="") -> Dictionary:
+	return {"id":id,"rect_cm":rect,"from_surface":from,"to_surface":to,"height_cm":0,"owner_slot":owner}
+
+static func _pad(id: String, at: Array, surface: String, owner: String) -> Dictionary:
+	return {"id":id,"position_cm":at,"surface_id":surface,"radius_cm":32,"owner_slot":owner}
+
+static func _goal(id: String, at: Array, surface: String, owner: String) -> Dictionary:
+	return {"id":id,"position_cm":at,"surface_id":surface,"radius_cm":28,"owner_slot":owner}

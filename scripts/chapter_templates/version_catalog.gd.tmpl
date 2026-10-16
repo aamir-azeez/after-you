@@ -1,0 +1,11 @@
+extends RefCounted
+## {{KEY}}: {{EARLIER}}'s definition as version {{VERSION}}, pinned to rules 9 (the
+## comfort rules under a number 0.5.x never advertised), so it never shares a
+## record with an earlier version.
+const Earlier = preload("{{EARLIER_SCRIPT}}")
+
+static func definition() -> Dictionary:
+	var level: Dictionary = Earlier.{{EARLIER_CALL}}
+	level.version = {{VERSION}}
+	level.simulation_version = 9
+	return level

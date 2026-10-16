@@ -1,0 +1,8 @@
+extends "res://tests/chapter_witness.gd"
+## {{KEY}} played through with real inputs by its family's witness
+## ({{FAMILY_WITNESS}}), which picks each stage's routes by stage id.
+const KEY := "{{KEY}}"
+const FamilyWitness = preload("{{FAMILY_WITNESS}}")
+
+func chapter() -> Dictionary:
+	return FamilyWitness.chapter(KEY)

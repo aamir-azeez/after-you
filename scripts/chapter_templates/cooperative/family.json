@@ -1,0 +1,4 @@
+{
+  "world_base": "res://presentation/cooperative_world.gd",
+  "no_versions": "core/cooperative/stage_catalog.gd known() finds a definition by its bare id, so it cannot tell two versions of one chapter apart"
+}
