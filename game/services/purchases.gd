@@ -279,7 +279,7 @@ func _on_customer_info(payload_json: String) -> void:
 	if not store_enabled(_configuration): return
 	if is_instance_valid(_session) and _session.identity_generation() != _session_identity_generation: return
 	var parsed: Variant = JSON.parse_string(payload_json)
-	if parsed is Dictionary and parsed.get("schema_version", 0) == 1:
+	if parsed is Dictionary and Typed.equal(parsed.get("schema_version", 0), 1):
 		if parsed != customer_info:
 			invalidate_review_access()
 			ReviewAccess.forget_shared()

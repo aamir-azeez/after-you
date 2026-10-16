@@ -17,6 +17,7 @@ const ActionButtons = preload("res://presentation/action_buttons.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const LocalSave = preload("res://services/local_save.gd")
+const Typed = preload("res://services/typed_values.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const TurnState = preload("res://services/turn_state.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -1655,7 +1656,7 @@ func whats_new_unseen() -> bool:
 func _remember_whats_new() -> void:
 	_whats_new_unseen = false
 	var current := Changelog.current_version()
-	if saves.read_only or saves.data.get(Changelog.SAVE_KEY) == current: return
+	if saves.read_only or Typed.equal(saves.data.get(Changelog.SAVE_KEY), current): return
 	saves.update_values({Changelog.SAVE_KEY: current})
 
 ## A notification or link that changes the screen takes an open card away with it.
@@ -2707,7 +2708,7 @@ func _keep_held_turn(pending: Dictionary, room: Dictionary) -> bool:
 	var held: Array=saves.data.get("held_turns",[]).duplicate(true)
 	held.append(pending.duplicate(true))
 	var changes := {"held_turns":held,"room":room.duplicate(true)}
-	if TurnState.my_turn(room,api.player_id) and pending.recording.level_id==room.level_id:
+	if TurnState.my_turn(room,api.player_id) and Typed.equal(Typed.as_dict(pending.get("recording")).get("level_id"),room.get("level_id")):
 		var current_attempt := LocalSave.normalize_attempt(room.get("recordings",{}))
 		if TurnState.review(Levels.get_level(room.level_id),pending.recording,current_attempt,TurnState.simulation_version({},str(pending.recording.get("role","")),room)).valid:
 			current_attempt.draft=pending.recording.duplicate(true)
@@ -3424,10 +3425,10 @@ func _blocked_safety(room_id: String = "") -> void:
 		# The server has confirmed the block, so nothing saved for this room can
 		# ever be sent: an unsent turn is kept like a held turn, a turn left part
 		# way is dropped, and online play reopens.
-		var pending: Dictionary = saves.data.get("pending_turn",{}).duplicate(true)
-		if str(pending.get("room_id","")) == room_id and (not pending.has("owner_player_id") or pending.owner_player_id == api.player_id):
+		var pending: Dictionary = Typed.as_dict(saves.data.get("pending_turn")).duplicate(true)
+		if str(pending.get("room_id","")) == room_id and (not pending.has("owner_player_id") or Typed.equal(pending.owner_player_id, api.player_id)):
 			_keep_held_turn(_reject_pending(pending),{})
-		if str(saves.data.get("room_draft",{}).get("room_id","")) == room_id and not saves.update_values({},["room_draft"]): _toast(saves.last_error)
+		if str(Typed.as_dict(saves.data.get("room_draft")).get("room_id","")) == room_id and not saves.update_values({},["room_draft"]): _toast(saves.last_error)
 		forget_removed_room(1,room_id)
 		room_hub_flow.hide_room(1,room_id)
 	_return_to_room_hub()

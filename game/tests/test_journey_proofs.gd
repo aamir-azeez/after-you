@@ -11,6 +11,7 @@ const Proofs = preload("res://services/journey_proofs.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Preview = preload("res://cooperative_preview.gd")
+const WrongTypes = preload("res://tests/wrong_types.gd")
 
 var checks := 0
 var failures := 0
@@ -92,6 +93,9 @@ func _live_equals_reset(journey: RefCounted, label: String, refusals: bool) -> v
 	var public: RefCounted = job.family.new()
 	var reset_ok: bool = Registry.reset_simulation(public, str(job.chapter), job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), job.saved)
 	_check(Proofs.reset_live(trusted, job) and reset_ok, label + ": both setups succeed")
+	var odd_job: Dictionary = job.duplicate()
+	odd_job.saved = {"simulation_version": [1]}
+	_check(not Registry.reset_simulation(job.family.new(), str(job.chapter), job.level, str(job.stage), job.checkpoint, job.prior, str(job.role), odd_job.saved) and not Proofs.reset_live(job.family.new(), odd_job), label + ": a saved turn whose rules are not a number sets up nothing")
 	_check(_bytes(_dump(trusted)) == _bytes(_dump(public)), label + ": the setup from the proven checkpoint equals the full reset, variable for variable")
 	var built: Dictionary = Journey.build_live(job)
 	_check(built.get("ok", false) and _bytes(_dump(built.simulation)) == _bytes(_dump(public)), label + ": build_live uses it")

@@ -81,7 +81,7 @@ func _run() -> void:
 			_check(not Registry.supported_capabilities(variant.value).valid, "Capabilities with a wrongly typed field are refused: " + variant.path)
 	for field: String in ["premium", "recording_version", "stage_count"]:
 		for swap: Variant in ["1", [1], {"x": 1}, 1]:
-			if WrongTypes._same_kind(swap, caps.chapters[0].get(field)): continue
+			if WrongTypes.same_kind(swap, caps.chapters[0].get(field)): continue
 			var changed: Dictionary = caps.duplicate(true)
 			changed.chapters[0][field] = swap
 			_check(not Registry.supported_capabilities(changed).valid, "A chapter with a wrongly typed %s is refused" % field)

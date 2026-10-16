@@ -213,8 +213,8 @@ static func valid_view(value: Variant, source: Dictionary) -> bool:
 func _accepted_response(value: Variant, operation: Dictionary) -> bool:
 	if not value is Dictionary: return false
 	var room: Variant = value.get("room") if _family == "relay" else value
-	if not room is Dictionary or not Typed.equal(room.get("room_id"), _room.room_id) or not Typed.equal(room.get("host_id"), _room.host_id) or not Typed.equal(room.get("guest_id"), _room.guest_id) or int(room.get("revision",-1))<=int(operation.source.revision): return false
-	if _family == "legacy": return int(room.get("attempt",-1)) > int(operation.source.branch)
+	if not room is Dictionary or not Typed.equal(room.get("room_id"), _room.room_id) or not Typed.equal(room.get("host_id"), _room.host_id) or not Typed.equal(room.get("guest_id"), _room.guest_id) or Typed.as_int(room.get("revision"),-1)<=int(operation.source.revision): return false
+	if _family == "legacy": return Typed.as_int(room.get("attempt"),-1) > int(operation.source.branch)
 	return valid_fork_receipt(value.get("receipt"),operation.source,operation.body,operation.checkpoint_hash,operation.stage_id)
 
 static func valid_fork_receipt(receipt: Variant, source: Dictionary, body: Dictionary, checkpoint_hash: String, stage_id: String) -> bool:
@@ -248,7 +248,7 @@ static func valid_journal(value: Dictionary, owner: String, family: String, room
 
 static func source_for(family: String, room: Dictionary) -> Dictionary:
 	if family not in ["legacy","relay"] or not Typed.equal(room.get("active_role"), "b") or not _id(room.get("host_id")) or not _id(room.get("guest_id")) or room.get("first_player_id") not in [room.get("host_id"),room.get("guest_id")]: return {}
-	var a: Variant = room.get("recording_a") if family=="relay" else room.get("recordings",{}).get("a")
+	var a: Variant = room.get("recording_a") if family=="relay" else Typed.as_dict(room.get("recordings")).get("a")
 	if not a is Dictionary: return {}
 	var source := {"room_id":room.get("room_id"),"revision":room.get("revision"),"branch":room.get("branch") if family=="relay" else room.get("attempt"),"stage_index":room.get("stage_index") if family=="relay" else room.get("level_index"),"a_hash":a.get("recording_hash") if family=="relay" else a.get("final_state_hash"),"first_player_id":room.first_player_id,"second_player_id":room.guest_id if room.first_player_id==room.get("host_id") else room.get("host_id")}
 	return source if _valid_source(source) else {}

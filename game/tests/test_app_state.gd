@@ -9,6 +9,7 @@ const Main = preload("res://main.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const FakeApi = preload("res://tests/fake_rooms_api.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const WrongTypes = preload("res://tests/wrong_types.gd")
 const TEST_SAVED_PLAYER := "SSSSSSSSSSSSSSSSSSSSSS"
@@ -201,11 +202,22 @@ func _test_save_field_types() -> void:
 		_check(Typed.whole_number(value), "A whole number: %s" % [value])
 	for value: Variant in [1.5, INF, NAN, "1", [1], {}, null, true]:
 		_check(not Typed.whole_number(value), "Not a whole number: %s" % [value])
-	var kinds: Array = [1, 1.0, "1", &"1", true, null, [1], {"a": 1}, PackedByteArray([1])]
-	for a: Variant in kinds:
-		for b: Variant in kinds:
-			var comparable: bool = a == null or b == null or typeof(a) == typeof(b) or ((a is int or a is float) and (b is int or b is float)) or ((a is String or a is StringName) and (b is String or b is StringName))
-			_check(Typed.equal(a, b) == (comparable and a == b), "equal matches == where Godot can compare, else false: %s %s" % [type_string(typeof(a)), type_string(typeof(b))])
+	# [a, b, expected]: Godot's == where it can compare the two kinds, else false.
+	for row: Array in [
+		[1, 1, true], [1, 1.0, true], [1, 2, false], [1, "1", false], [1, true, false], [1, null, false], [1, [1], false], [1, {"a": 1}, false],
+		["1", "1", true], ["1", &"1", true], ["1", "2", false], ["1", 1.0, false], ["1", [1], false], ["1", null, false],
+		[true, true, true], [true, false, false], [true, 1, false], [true, "true", false],
+		[null, null, true], [null, {}, false], [null, PackedByteArray([1]), false],
+		[[1], [1], true], [[1], [1.0], false], [[1], ["1"], false], [[1], {"a": 1}, false],
+		[{"a": 1}, {"a": 1}, true], [{"a": 1}, {"a": "1"}, false],
+		[PackedByteArray([1]), PackedByteArray([1]), true], [PackedByteArray([1]), [1], false],
+	]:
+		_check(Typed.equal(row[0], row[1]) == row[2] and Typed.equal(row[1], row[0]) == row[2], "equal(%s, %s) is %s" % row)
+	for row: Array in [[{"a": 3.0}, {"a": 3}, true], [[1], [1.0], true], [{"a": 1}, "a", false], [[1], {"a": 1}, false], [null, null, true], ["x", &"x", true]]:
+		_check(Typed.same(row[0], row[1]) == row[2], "same(%s, %s) is %s" % row)
+	_check(Typed.as_int(4.0) == 4 and Typed.as_int(-2) == -2 and Typed.as_int("4", -1) == -1 and Typed.as_int([4], -1) == -1 and Typed.as_int(4.5, -1) == -1 and Typed.as_int(INF, -1) == -1, "as_int reads only whole numbers")
+	_check(Typed.as_dict({"a": 1}) == {"a": 1} and Typed.as_dict([1]).is_empty() and Typed.as_dict("x").is_empty(), "as_dict reads only dictionaries")
+	_check(Typed.as_int(float(1 << 52)) == 1 << 52 and Typed.as_int(1e300, -1) == -1 and Typed.as_int(-1e300, -1) == -1 and RoomsApi.json_int(1e300) == -1 and RoomsApi.json_int(1e300, 7) == 7, "as_int and json_int read no number past 2^53")
 	for value: Variant in [0, 0.0, 7, 7.0]:
 		_check(Typed.valid_generation(value), "A save generation: %s" % [value])
 	for value: Variant in [-1, 1.5, INF, "2", [1], {}, null]:
@@ -246,6 +258,10 @@ func _test_receipts_and_roles() -> void:
 		changed.base_revision = odd
 		changed.recording = {"role": "a"}
 		_check(State.pending_status(changed,room) == "stale","A pending turn whose base revision is not a number is stale: %s" % [odd])
+	for odd: Variant in ["1", [1], true]:
+		var changed: Dictionary = pending.duplicate(true)
+		changed.recording = odd
+		_check(State.pending_status(changed,room) != "accepted","A pending turn whose recording is not a dictionary is never taken as accepted: %s" % [odd])
 	for variant: Dictionary in WrongTypes.variants(first, 1):
 		_check(not State.same_recording(variant.value,first),"A recording with a wrongly typed field is not the same recording: "+variant.path)
 	room.recordings.a.actions[0].x+=1

@@ -206,10 +206,10 @@ static func reset_live(simulation: RefCounted, job: Dictionary) -> bool:
 	var saved: Dictionary = job.saved
 	var lighthouse := Registry.is_lighthouse(chapter)
 	# The rules Registry.reset_simulation hands both runtime facades.
-	var rules := int(saved.get("simulation_version", prior.get("simulation_version", Registry.preferred_rules(chapter))))
+	var rules := Typed.as_int(saved.get("simulation_version", prior.get("simulation_version", Registry.preferred_rules(chapter))), -1)
 	var family: Script = job.family
 	# The Lighthouse facade plays only its chapter's pinned rules.
-	var allowed: bool = (rules in Registry.supported_rules(chapter) if lighthouse else family.rules_allowed(level, rules)) and not (role == "b" and prior.get("simulation_version") != rules)
+	var allowed: bool = (rules in Registry.supported_rules(chapter) if lighthouse else family.rules_allowed(level, rules)) and not (role == "b" and not Typed.equal(prior.get("simulation_version"), rules))
 	var fits: bool = role in ["a", "b"] and not stage.is_empty() and stage == checkpoint.get("next_stage_id") and not (role == "a" and not prior.is_empty())
 	if allowed and fits:
 		simulation.simulation_version = rules

@@ -5,6 +5,7 @@ extends RefCounted
 ## A chapter this build cannot name gets the caller's neutral fallback.
 const Registry = preload("res://services/chapter_registry.gd")
 const Levels = preload("res://core/levels.gd")
+const Typed = preload("res://services/typed_values.gd")
 ## The neutral name for a room whose chapter this build does not know.
 const UNKNOWN := "Saved chapter"
 ## Room cards key an earlier island as legacy-<level id>.
@@ -12,7 +13,7 @@ const LEGACY_PREFIX := "legacy-"
 
 ## The registry key ("<id>@<version>") for a level id and version, or "".
 static func key(level_id: Variant, version: Variant) -> String:
-	if not level_id is String or level_id.is_empty() or level_id.contains("@") or not Registry._integer(version): return ""
+	if not level_id is String or level_id.is_empty() or level_id.contains("@") or not Typed.whole_number(version): return ""
 	return "%s@%d" % [level_id, int(version)]
 
 ## The title of a chapter key, or of a legacy-<id> earlier island.

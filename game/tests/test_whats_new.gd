@@ -169,6 +169,12 @@ func _quiet_launches(current: String) -> void:
 		_check(not _marked(_pill(app)) and not app.whats_new_unseen(), "No dot when the saved version is " + saved)
 		_check(app.saves.data.get(Changelog.SAVE_KEY) == current, "The version on record is this one after launching with " + saved)
 		await _close(made)
+	var odd := await _boot(_storage({Changelog.SAVE_KEY: "0.6.0"}))
+	var odd_app: Node = odd[1]
+	odd_app.saves.data[Changelog.SAVE_KEY] = [1]
+	odd_app._remember_whats_new()
+	_check(odd_app.saves.data.get(Changelog.SAVE_KEY) == current, "A recorded version that is not a string is replaced by this one when the notes are opened")
+	await _close(odd)
 
 func _settings_row(current: String) -> void:
 	var storage := _storage({Changelog.SAVE_KEY: "0.6.0"})

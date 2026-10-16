@@ -2,6 +2,7 @@ extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ClientIdentity = preload("res://services/client_identity.gd")
 const RequestQueue = preload("res://services/request_queue.gd")
+const Typed = preload("res://services/typed_values.gd")
 ## One bounded request at a time, in the order asked (services/request_queue.gd).
 ## Callers retain draft/idempotency state.
 const MAX_RESPONSE_BYTES := 4194304
@@ -133,10 +134,7 @@ func _send_raw(method: int, path: String, headers: PackedStringArray, body: Pack
 ## (2.0): `2.0 in [1,2]` is false, `2.0 is int` is false and str(4.0) is "4.0".
 ## The whole number a parsed JSON value holds, or `fallback` when it holds none.
 static func json_int(value: Variant, fallback: int = -1) -> int:
-	if not (value is int or value is float): return fallback
-	var number := float(value)
-	if not is_finite(number) or number != floor(number) or absf(number) > 9007199254740991.0: return fallback
-	return int(number)
+	return Typed.as_int(value, fallback)
 
 ## The capability headers this build sends for one request (no credentials).
 static func capability_headers(method: int, path: String) -> PackedStringArray:

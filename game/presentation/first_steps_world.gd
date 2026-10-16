@@ -2,7 +2,6 @@ extends "res://presentation/island_world.gd"
 ## The vertical First Steps world follows its authored surfaces and verified snapshots.
 ## Visual interpolation never decides boarding, arrival, seed ownership or activation.
 const Catalog = preload("res://core/first_steps/stage_catalog.gd")
-const Canonical = preload("res://core/v2/canonical.gd")
 const Typed = preload("res://services/typed_values.gd")
 var actor_badges: Dictionary = {}
 var control_visuals: Dictionary = {}

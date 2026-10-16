@@ -31,9 +31,9 @@ static func rows(room: Dictionary, viewer: String) -> Array[Dictionary]:
 static func same_completed_room(first: Dictionary, second: Dictionary) -> bool:
 	return not str(first.get("room_id", "")).is_empty() and Typed.equal(first.get("room_id"), second.get("room_id")) \
 		and Typed.equal(first.get("active_role"), "complete") and Typed.equal(second.get("active_role"), "complete") \
-		and int(first.get("attempt", -1)) == int(second.get("attempt", -2)) \
+		and Typed.as_int(first.get("attempt"), -1) == Typed.as_int(second.get("attempt"), -2) \
 		and Typed.equal(first.get("level_id"), second.get("level_id")) \
-		and int(first.get("level_index", -1)) == int(second.get("level_index", -2)) \
+		and Typed.as_int(first.get("level_index"), -1) == Typed.as_int(second.get("level_index"), -2) \
 		and Typed.equal(first.get("host_id"), second.get("host_id")) and Typed.equal(first.get("guest_id"), second.get("guest_id"))
 
 static func new_partner_notice(previous: Dictionary, current: Dictionary, viewer: String, seen: Dictionary) -> String:

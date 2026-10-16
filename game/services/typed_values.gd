@@ -32,14 +32,12 @@ static func whole_number(value: Variant) -> bool:
 static func valid_generation(value: Variant) -> bool:
 	return whole_number(value) and value >= 0
 
-## int(value) for a whole number, otherwise `fallback`.
+## int(value) for a whole number JSON carries exactly (at most 2^53 - 1 from
+## zero), otherwise `fallback`.
 static func as_int(value: Variant, fallback: int = 0) -> int:
-	return int(value) if whole_number(value) else fallback
+	if not whole_number(value) or absf(float(value)) > 9007199254740991.0: return fallback
+	return int(value)
 
 ## The value when it is a Dictionary, otherwise an empty one.
 static func as_dict(value: Variant) -> Dictionary:
 	return value if value is Dictionary else {}
-
-## The value when it is an Array, otherwise an empty one.
-static func as_array(value: Variant) -> Array:
-	return value if value is Array else []

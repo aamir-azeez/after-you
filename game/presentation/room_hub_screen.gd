@@ -18,6 +18,7 @@ const LEAVE_ICON = preload("res://assets/ui/room/door-exit.svg")
 const PHONE_ICON = preload("res://assets/ui/room/phone.svg")
 const FOLD_CLOSED_ICON = preload("res://assets/ui/social/chevron-right.svg")
 const FOLD_OPEN_ICON = preload("res://assets/ui/social/chevron-down.svg")
+const Typed = preload("res://services/typed_values.gd")
 const WARM := Color("f4d77b")
 ## Rooms still in play; closing one ends it for both members.
 const ACTIVE_STATUSES := ["waiting_for_friend","your_turn","waiting_for_their_turn"]
@@ -793,7 +794,7 @@ func _removal(room: Dictionary) -> String:
 	var status := str(room.get("status",""))
 	if status == "completed": return ""
 	if status == "unavailable": return "hide"
-	if int(room.get("api_version",0)) not in [1,2] or not client.confirmed(room): return ""
+	if Typed.as_int(room.get("api_version")) not in [1,2] or not client.confirmed(room): return ""
 	if status == "closed": return "leave"
 	return "close" if status in ACTIVE_STATUSES else ""
 
@@ -1000,9 +1001,9 @@ func _part_line(room: Dictionary) -> String:
 	var total := 0
 	for chapter: Dictionary in chapters:
 		if str(chapter.get("key","")) == str(room.get("chapter_key","")): total = int(chapter.get("stage_count",0))
-	var part: int = int(room.get("part",0))
-	if part <= 0 and room.has("stage_index"): part = int(room.get("stage_index",0)) + 1
-	if total <= 0: total = int(room.get("stage_count",0))
+	var part: int = Typed.as_int(room.get("part"))
+	if part <= 0 and room.has("stage_index"): part = Typed.as_int(room.get("stage_index")) + 1
+	if total <= 0: total = Typed.as_int(room.get("stage_count"))
 	if part <= 0 or total <= 0: return ""
 	# A finished room's stage index is past its last stage.
 	return "Part %d / %d" % [mini(part,total),total]

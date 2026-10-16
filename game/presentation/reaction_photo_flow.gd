@@ -9,7 +9,6 @@ const OPEN_WAIT_MS := 5000
 const Capture = preload("res://services/optional_photo_capture.gd")
 const Local = preload("res://services/turn_photo_local.gd")
 const Resume = preload("res://services/photo_capture_resume.gd")
-const Canonical = preload("res://core/v2/canonical.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const Polaroid = preload("res://presentation/photo_polaroid_card.gd")
 const Typed = preload("res://services/typed_values.gd")

@@ -123,7 +123,7 @@ static func _words(key: String) -> Dictionary:
 	return words
 
 static func resolve(value: Variant) -> String:
-	if not value is Dictionary or not value.get("level_id") is String or not value.get("definition_hash") is String or not _integer(value.get("level_version")):
+	if not value is Dictionary or not value.get("level_id") is String or not value.get("definition_hash") is String or not Typed.whole_number(value.get("level_version")):
 		return ""
 	for key: String in keys():
 		if value.level_id != key.get_slice("@", 0):
@@ -138,7 +138,7 @@ static func simulation_script(key: String) -> Script:
 
 static func reset_simulation(simulation: RefCounted, key: String, level: Dictionary, stage_id: String, checkpoint: Dictionary, prior: Dictionary, role: String, recording: Dictionary = {}) -> bool:
 	if not _chapter(key).is_empty(): # Every family's engine takes the rules to play by.
-		var rules := int(recording.get("simulation_version", prior.get("simulation_version", preferred_rules(key))))
+		var rules := Typed.as_int(recording.get("simulation_version", prior.get("simulation_version", preferred_rules(key))), -1)
 		return simulation.reset(level, stage_id, checkpoint, prior, role, rules)
 	return simulation.reset(level, stage_id, checkpoint, prior, role)
 
@@ -187,7 +187,7 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 	# A room-level-2 answer (to X-AfterYou-Room-Level: 2) may list up to 64
 	# chapters, names each one's stage count and says how long a join list may be.
 	var level_two: bool = value is Dictionary and value.has("room_level")
-	if level_two and (not _integer(value.get("room_level")) or int(value.room_level) < 2 or not _integer(value.get("max_join_versions")) or int(value.max_join_versions) < 8 or int(value.max_join_versions) > 64 or not _integer(value.get("max_stages")) or int(value.max_stages) < 2):
+	if level_two and (not Typed.whole_number(value.get("room_level")) or int(value.room_level) < 2 or not Typed.whole_number(value.get("max_join_versions")) or int(value.max_join_versions) < 8 or int(value.max_join_versions) > 64 or not Typed.whole_number(value.get("max_stages")) or int(value.max_stages) < 2):
 		return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_F13B5AC3829B}
 	if not value is Dictionary or not Typed.equal(value.get("api_version"), 2) or not Typed.equal(value.get("simulation_version"), 2) or not Typed.equal(value.get("recording_version"), 2) or not value.get("mutations_enabled") is bool or not Typed.equal(value.get("validation"), "structural_client_replay_required") or not value.get("chapters") is Array or value.chapters.size() > (64 if level_two else 16):
 		return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_F13B5AC3829B}
@@ -199,7 +199,7 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_11371699AFFA}
 		var known := descriptor(key)
 		var old_relay: bool = key == RELAY and not item.has("simulation_version") and not item.has("recording_version")
-		var supported_version: bool = _integer(item.get("simulation_version")) and int(item.simulation_version) in supported_rules(key)
+		var supported_version: bool = Typed.whole_number(item.get("simulation_version")) and int(item.simulation_version) in supported_rules(key)
 		if not Typed.equal(item.get("premium"), known.premium) or (not old_relay and (not supported_version or not Typed.equal(item.get("recording_version"), known.recording_version))):
 			return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 		if item.has("stage_count") and not Typed.equal(item.get("stage_count"), known.stage_count):
@@ -213,7 +213,7 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 				return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 			var unique: Array = []
 			for version: Variant in versions:
-				if not _integer(version) or int(version) in unique:
+				if not Typed.whole_number(version) or int(version) in unique:
 					return {"valid": false, "chapters": [], "error": PlayerCopy.CHAPTER_REGISTRY_6FD55BE1E08F}
 				unique.append(int(version))
 			if not int(known.simulation_version) in unique:
@@ -226,8 +226,6 @@ static func supported_capabilities(value: Variant) -> Dictionary:
 		if found.has(key): supported.append(found[key].duplicate(true))
 	return {"valid": true, "chapters": supported, "error": ""}
 
-static func _integer(value: Variant) -> bool:
-	return (value is int or value is float) and is_finite(float(value)) and float(value) == floor(float(value))
 
 ## One chapter's descriptor (content/chapters/), {} if it is not registered. Read-only.
 static func _chapter(key: String) -> Dictionary:

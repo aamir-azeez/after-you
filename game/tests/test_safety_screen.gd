@@ -3,6 +3,7 @@ const Harness = preload("res://tests/test_safety_client.gd")
 const Screen = preload("res://presentation/safety_screen.gd")
 const Client = preload("res://services/safety_client.gd")
 const Store = preload("res://services/safety_store.gd")
+const Canonical = preload("res://core/v2/canonical.gd")
 var checks := 0
 var failures := 0
 
@@ -95,7 +96,7 @@ func _run() -> void:
 	check(not is_instance_valid(screen) and closed.size() == 1, "Back closes screen while report request drains")
 	api.release.emit()
 	await frames()
-	check(Store.Canonical.same(Store.new(directory).read(Harness.OWNER).value.pending, pending), "late accepted report does not overwrite cancelled view's durable request")
+	check(Canonical.same(Store.new(directory).read(Harness.OWNER).value.pending, pending), "late accepted report does not overwrite cancelled view's durable request")
 	api.hold_path = ""
 	service = Client.new(api, identity.current, Store.new(directory))
 	check(await service.check_report(), "later independent owner can reconcile cancelled report")

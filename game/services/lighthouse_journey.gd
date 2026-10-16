@@ -186,7 +186,7 @@ func create_live_simulation(resume_draft: bool = false) -> RefCounted:
 	var simulation := Simulation.new()
 	var saved: Dictionary = draft() if resume_draft else {}
 	if read_only: return null
-	var rules := int(saved.get("simulation_version", Simulation.CURRENT_SIMULATION_VERSION))
+	var rules := Typed.as_int(saved.get("simulation_version", Simulation.CURRENT_SIMULATION_VERSION), -1)
 	if not simulation.reset(role(), _state.a, _state.pairs, rules):
 		last_error = str(simulation.error)
 		return null

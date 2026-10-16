@@ -343,7 +343,7 @@ static func valid_page(value: Variant) -> bool:
 
 static func valid_server_room(value: Variant) -> bool:
 	# partner_left (true only) comes only to clients that send X-AfterYou-Room-Leave.
-	if not value is Dictionary or value.size() != (10 if value.has("partner_left") else 9) or value.get("partner_left",true) != true: return false
+	if not value is Dictionary or value.size() != (10 if value.has("partner_left") else 9) or not Typed.equal(value.get("partner_left",true), true): return false
 	if not value.get("room_id") is String or not Presence.valid_id(value.room_id): return false
 	if value.get("family") not in ["legacy","relay","story","unknown"]: return false
 	var version: Variant = value.get("api_version")
@@ -367,7 +367,7 @@ static func _nonnegative_integer(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(value) and value >= 0 and value == floor(value)
 
 static func valid_room(value: Variant) -> bool:
-	if not value is Dictionary or value.size() not in ([10,11] if value.has("partner_left") else [9,10]) or value.get("partner_left",true) != true: return false
+	if not value is Dictionary or value.size() not in ([10,11] if value.has("partner_left") else [9,10]) or not Typed.equal(value.get("partner_left",true), true): return false
 	if not value.get("api_version") is int and not value.get("api_version") is float: return false
 	if value.api_version not in [1,2] or not Presence.valid_id(value.get("room_id")): return false
 	if not value.get("chapter_key") is String or value.chapter_key.is_empty() or value.chapter_key.length() > 80: return false

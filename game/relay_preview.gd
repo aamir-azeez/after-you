@@ -158,6 +158,7 @@ var _wait_frames := 0
 var _fresh_live: Dictionary = {}
 const Reaper = preload("res://services/worker_reaper.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
+const Typed = preload("res://services/typed_values.gd")
 ## The turn after a solo first turn, set up on a worker while its review card
 ## is up, so Save turn need not replay that turn again on this thread. Joined
 ## in _process once it ends, before use; leaving hands it to the reaper.
@@ -1095,7 +1096,7 @@ func _add_recent_photo_action(card: VBoxContainer) -> void:
 func _recent_photo_receipt() -> Dictionary:
 	if not is_instance_valid(reaction_photos) or not journey.pending().is_empty(): return {}
 	var receipt: Dictionary = journey.last_receipt()
-	return receipt if receipt.get("operation") == "turns" else {}
+	return receipt if Typed.equal(receipt.get("operation"), "turns") else {}
 
 func _ordinary_redo_available() -> bool:
 	return online_session != null and journey != null

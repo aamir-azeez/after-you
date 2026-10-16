@@ -2,7 +2,6 @@ extends RefCounted
 ## Separate account-scoped safety state; never shares gameplay/photo journals.
 const Save = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
-const Canonical = preload("res://core/v2/canonical.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const MAX_FILE := 96 * 1024
 static var suppressed_rooms: Dictionary = {}

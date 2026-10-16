@@ -194,6 +194,8 @@ func _run() -> void:
 	for variant: Dictionary in WrongTypes.variants(done):
 		if variant.path in ["room_id", "active_role", "level_id", "host_id", "guest_id"]:
 			_check(not Reactions.same_completed_room(variant.value, done) and not Reactions.same_completed_room(done, variant.value), "A room with a wrongly typed field is not the same finished room: " + variant.path)
+		if variant.path in ["attempt", "level_index"]:
+			_check(not Reactions.same_completed_room(variant.value, done) and not Reactions.same_completed_room(done, variant.value), "A room with a wrongly typed count is not the same finished room: " + variant.path)
 
 	app.queue_free()
 	await process_frame

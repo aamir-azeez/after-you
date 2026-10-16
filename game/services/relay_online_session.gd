@@ -499,7 +499,7 @@ func join_room(code: String) -> String:
 func join_versions() -> Array:
 	var longer: Array = JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS
 	var allowed: Variant = capabilities.get("max_join_versions")
-	if Registry._integer(capabilities.get("room_level")) and int(capabilities.room_level) >= 2 and Registry._integer(allowed) and int(allowed) >= longer.size(): return longer
+	if Typed.whole_number(capabilities.get("room_level")) and int(capabilities.room_level) >= 2 and Typed.whole_number(allowed) and int(allowed) >= longer.size(): return longer
 	return JOIN_SIMULATION_VERSIONS.duplicate()
 
 func _start_lobby(path: String, body: Dictionary) -> String:
@@ -1130,7 +1130,7 @@ func _valid_index(value: Dictionary) -> bool:
 	var body: Dictionary = pending.body
 	if pending.path == "/v2/rooms":
 		var optional_pin: bool = body.has("simulation_version")
-		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Registry._integer(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
+		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Typed.whole_number(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
 	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Typed.same(body.supported_simulation_versions, [2, 4, 5]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
 

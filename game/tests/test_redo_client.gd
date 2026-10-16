@@ -207,6 +207,11 @@ func _wrong_types() -> void:
 		var room := _room(family)
 		var source := Client.source_for(family,room)
 		_check(not source.is_empty(),"The exact room has a redo source: "+family)
+		if family == "legacy":
+			for odd: Variant in ["1", [1], true]:
+				var changed := room.duplicate(true)
+				changed.recordings = odd
+				_check(Client.source_for(family,changed).is_empty(),"A legacy room whose recordings are not a dictionary has no redo source")
 		for variant: Dictionary in WrongTypes.variants(room, 1):
 			if variant.path == "active_role":
 				_check(Client.source_for(family,variant.value).is_empty(),"A room with a wrongly typed role has no redo source: "+family)

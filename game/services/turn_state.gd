@@ -34,14 +34,12 @@ static func pending_status(pending: Dictionary, room: Dictionary) -> String:
 		return "none"
 	if not Typed.equal(pending.get("room_id", ""), room.get("room_id", "")):
 		return "other_room"
-	var record: Dictionary = pending.get("recording", {})
+	var record: Dictionary = Typed.as_dict(pending.get("recording"))
 	var attempt := LocalSave.normalize_attempt(room.get("recordings", {}))
 	var saved: Dictionary = attempt.get(str(record.get("role", "")), {})
 	if same_recording(record, saved):
 		return "accepted"
-	var base: Variant = pending.get("base_revision", -1)
-	var revision: Variant = room.get("revision", -2)
-	if not Typed.whole_number(base) or not Typed.whole_number(revision) or int(base) != int(revision):
+	if Typed.as_int(pending.get("base_revision"), -1) != Typed.as_int(room.get("revision"), -2):
 		return "stale"
 	return "retry"
 
