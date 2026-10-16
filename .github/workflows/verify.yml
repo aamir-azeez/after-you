@@ -158,3 +158,8 @@ jobs:
             XDG_DATA_HOME="$RUNNER_TEMP/godot-native-wrappers" timeout 120s "$GODOT" --headless \
               --path "$RUNNER_TEMP/after-you-game" --script "$GITHUB_WORKSPACE/native/tests/test_wrappers.gd"
           fi
+      # Scaffolds a cooperative chapter, a journey chapter and a later version in a
+      # temporary copy, then runs their suites and the chapter list suites there.
+      - name: New chapter scaffold
+        if: matrix.shard == 1
+        run: python3 scripts/test_new_chapter.py --godot "$GODOT" --game "$RUNNER_TEMP/after-you-game"
