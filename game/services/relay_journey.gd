@@ -3,6 +3,7 @@ extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Local v2 progression. The v1 journey and Android identity vault are untouched.
 
+const AtomicFile = preload("res://services/atomic_file.gd")
 const Storage = preload("res://services/local_save.gd")
 const Archive = preload("res://services/attempt_archive.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -110,8 +111,7 @@ func load_data() -> void:
 	# key covers all evidence, not the checkpoint's user-supplied hash.
 	var verified_generations: Dictionary = {}
 	var retired: Array[String] = []
-	for suffix: String in ["", ".tmp", ".backup"]:
-		var candidate := _path + suffix
+	for candidate: String in AtomicFile.read_candidates(_path):
 		if not FileAccess.file_exists(candidate):
 			continue
 		any_existing = true
@@ -148,8 +148,8 @@ func load_data() -> void:
 			_hold(PlayerCopy.LIGHTHOUSE_JOURNEY_44A358EB95E9)
 			return
 		any_existing = false
-		for suffix: String in ["", ".tmp", ".backup"]:
-			any_existing = any_existing or FileAccess.file_exists(_path + suffix)
+		for candidate: String in AtomicFile.read_candidates(_path):
+			any_existing = any_existing or FileAccess.file_exists(candidate)
 	_storage.load_data()
 	if _storage.read_only:
 		_hold(str(_storage.last_error))
