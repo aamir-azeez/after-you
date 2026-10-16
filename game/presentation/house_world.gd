@@ -20,7 +20,6 @@ func _has_completion_garden(stage_id: String) -> bool:
 	return stage_id == "the-room-below"
 
 func _uses_lower_cutaway() -> bool: return true
-func _uses_scrolling_camera() -> bool: return true
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	if not _completion_view: return super._should_cutaway(raised,state)

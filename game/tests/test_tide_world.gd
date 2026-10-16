@@ -477,7 +477,8 @@ func _bubble_cover(world: Node3D, id: String) -> float:
 
 func _dressing(level: Dictionary) -> void:
 	var data := Dressing.for_key(KEY)
-	_check(data.get("look", "") == "dusk" and data.get("camera", "") == "follow", "The harbour is dressed at dusk with the follow camera")
+	# The follow camera is every physical world's (test_scrolling_camera).
+	_check(data.get("look", "") == "dusk", "The harbour is dressed at dusk")
 	# The scenery lint's own rules, run against this chapter's geometry.
 	var lint: Object = Lint.new()
 	for stage: Dictionary in level.stages:

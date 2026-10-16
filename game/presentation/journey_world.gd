@@ -84,7 +84,6 @@ func _configure_shared_view(view: Dictionary) -> void:
 
 func _beam_height() -> float: return 2.4
 func _uses_lower_cutaway() -> bool: return true
-func _uses_scrolling_camera() -> bool: return true
 
 func _control_base_height(entity: Dictionary) -> float:
 	if entity.has("surface_id"): return _surface_height(str(entity.surface_id))

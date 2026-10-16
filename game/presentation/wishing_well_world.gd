@@ -109,7 +109,6 @@ func _completion_garden_scale() -> float:
 ## The well is an open notch in the cliff, so nothing ever covers the pit and the
 ## waiting friend stays in view. The garden is never beneath the cliff either.
 func _uses_lower_cutaway() -> bool: return false
-func _uses_scrolling_camera() -> bool: return true
 
 func _camera_center() -> Vector3:
 	var target := super._camera_center()

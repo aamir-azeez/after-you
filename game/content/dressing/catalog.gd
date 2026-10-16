@@ -11,7 +11,6 @@ extends RefCounted
 ##   "cables": "floor" to draw gate links only along a shared floor
 ##   "props":  {"*" or stage_id: [kit/props.gd specs]}
 ##   "fireflies": count of drifting lights near the props (dusk looks)
-##   "camera": "follow" for the scrolling follow camera
 ## tests/test_dressing_lint.gd checks every prop against every route, pad,
 ## lever, goal, start and drop, including the camera's view of them.
 

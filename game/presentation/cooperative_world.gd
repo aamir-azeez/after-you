@@ -150,10 +150,11 @@ func _has_completion_garden(stage_id: String) -> bool:
 func _uses_lower_cutaway() -> bool:
 	return displayed_stage_id == "down-and-around"
 
+## Every physical chapter scrolls with a follow camera (in the Lighthouse's
+## fit-all frame the spirits were tiny). The camera angle, and so the stick, is
+## the Lighthouse's.
 func _uses_scrolling_camera() -> bool:
-	# The dressing can ask for the follow camera (High and Low's spirits were
-	# tiny in the fit-all frame). The camera angle, and so the stick, is unchanged.
-	return chapter_definition.get("id", "") == "rolling-home" or str(dressing.get("camera", "")) == "follow"
+	return true
 
 func _shore(island: Dictionary, color: Color) -> void:
 	var original := terrain
