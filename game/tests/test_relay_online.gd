@@ -426,13 +426,13 @@ func _real_ui_flow() -> void:
 	var sibling_probe := SiblingProbe.new()
 	app.add_child(sibling_probe)
 	api.enabled = false
-	await app._show_relay_rooms("relay-isles@2")
+	await app.relay_lobby_flow.open_lobby("relay-isles@2")
 	var creates_before := api.calls.filter(func(call: Dictionary) -> bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms").size()
-	await app._relay_lobby_action("create","relay-isles@2")
+	await app.relay_lobby_flow.lobby_action("create","relay-isles@2")
 	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v2/rooms").size()==creates_before and app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen),"While live capability is off, creating sends nothing and returns to the room hub")
 	api.enabled = true
-	await app._show_relay_rooms("relay-isles@2")
-	await app._relay_lobby_action("create","relay-isles@2")
+	await app.relay_lobby_flow.open_lobby("relay-isles@2")
+	await app.relay_lobby_flow.lobby_action("create","relay-isles@2")
 	var preview = app.relay_child
 	preview.set_physics_process(false)
 	preview.set_process(false)
@@ -491,9 +491,9 @@ func _real_ui_flow() -> void:
 	app._service_foreground_refresh()
 	_check(api.calls.size()==calls,"Parent cannot compete with pending online chapter request")
 	preview._leave()
-	await app._relay_lobby_action("open","Z".repeat(22))
+	await app.relay_lobby_flow.lobby_action("open","Z".repeat(22))
 	_check(not is_instance_valid(app.relay_child) and app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen),"Blocked room selection never enters a different cached room and returns to the room hub")
-	await app._relay_lobby_action("open",ROOM)
+	await app.relay_lobby_flow.lobby_action("open",ROOM)
 	preview = app.relay_child
 	preview.set_physics_process(false)
 	preview.set_process(false)
@@ -517,8 +517,8 @@ func _real_ui_flow() -> void:
 	api.player_id = GUEST
 	app.identity_data.player_id = GUEST
 	app.relay_session = Session.new(api,app._relay_identity,store)
-	await app._show_relay_rooms("relay-isles@2")
-	await app._relay_lobby_action("join","A1".repeat(10))
+	await app.relay_lobby_flow.open_lobby("relay-isles@2")
+	await app.relay_lobby_flow.lobby_action("join","A1".repeat(10))
 	preview = app.relay_child
 	preview.set_physics_process(false)
 	preview.set_process(false)
@@ -535,8 +535,8 @@ func _real_ui_flow() -> void:
 	api.player_id = HOST
 	app.identity_data.player_id = HOST
 	app.relay_session = Session.new(api,app._relay_identity,store)
-	await app._show_relay_rooms("relay-isles@2")
-	await app._relay_lobby_action("open",ROOM)
+	await app.relay_lobby_flow.open_lobby("relay-isles@2")
+	await app.relay_lobby_flow.lobby_action("open",ROOM)
 	preview = app.relay_child
 	preview.set_physics_process(false)
 	preview.set_process(false)
@@ -544,7 +544,7 @@ func _real_ui_flow() -> void:
 	await _play(preview,"garden-b")
 	_check(preview.mode=="online_waiting" and not preview.journey.pending().is_empty(),"Lost final B reply keeps a receipt-check state")
 	preview._leave()
-	await app._relay_lobby_action("open",ROOM)
+	await app.relay_lobby_flow.lobby_action("open",ROOM)
 	preview = app.relay_child
 	preview.set_physics_process(false)
 	preview.set_process(false)
@@ -631,7 +631,7 @@ func _recent_room_recovery(app: Node, api: FakeApi, store: MemoryStore) -> void:
 	for status: int in [0, 429, 503, 403, 404, 410]:
 		preview._leave()
 		api.room_failure = {"ok":false,"status":status,"code":codes[status]}
-		await app._relay_lobby_action("open", ROOM)
+		await app.relay_lobby_flow.lobby_action("open", ROOM)
 		preview = app.relay_child
 		_check(is_instance_valid(preview), "Cached recent room retains its explicit recovery screen")
 		if not is_instance_valid(preview): return
@@ -642,7 +642,7 @@ func _recent_room_recovery(app: Node, api: FakeApi, store: MemoryStore) -> void:
 			_check(not preview.journey.last_error.is_empty(), "Unavailable room keeps the existing error visible")
 			preview._leave()
 			api.room_failure = {"ok":false,"status":0,"code":"connection_interrupted"}
-			await app._relay_lobby_action("open", ROOM)
+			await app.relay_lobby_flow.lobby_action("open", ROOM)
 			preview = app.relay_child
 			_check(is_instance_valid(preview), "Known unavailable room remains reachable for recovery while offline")
 			if not is_instance_valid(preview): return
@@ -665,7 +665,7 @@ func _recent_room_recovery(app: Node, api: FakeApi, store: MemoryStore) -> void:
 	await preview._online_refresh()
 	_check(api.calls.size()==calls and preview.refresh_schedule.stopped(), "Terminal scheduling stays paused until the player returns to rooms")
 	preview._leave()
-	await app._relay_lobby_action("open", ROOM)
+	await app.relay_lobby_flow.lobby_action("open", ROOM)
 	preview = app.relay_child
 	_check(is_instance_valid(preview), "Verified explicit reopen reconnects the retained room")
 	if not is_instance_valid(preview): return

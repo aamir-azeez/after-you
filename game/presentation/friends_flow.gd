@@ -14,9 +14,9 @@ extends Node
 ## - identity: _relay_identity, _tester_context
 ## - screen: mode, running, ui, application_backgrounded, lifecycle_generation,
 ##   _sync_presence
-## - room flow: active_room, friend_share_target, relay_menu_generation,
-##   _friends_to_rooms, _show_relay_rooms, _relay_lobby_action,
-##   legacy_room_flow (open_room, join_room)
+## - room flow: active_room, friend_share_target, _friends_to_rooms,
+##   legacy_room_flow (open_room, join_room), relay_lobby_flow (open_lobby,
+##   lobby_action, relay_menu_generation)
 ## - node: add_child (the Friends layer stays Main's child)
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link(). refresh() calls the screen's private
@@ -24,6 +24,7 @@ extends Node
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Typed = preload("res://services/typed_values.gd")
+const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 ## Main's mode while Friends is up.
 const MODE_FRIENDS := "friends"
 
@@ -138,7 +139,7 @@ func _return_to_room() -> void:
 	var target := _current_room()
 	if target.is_empty(): return
 	host._friends_to_rooms()
-	if target.api_version == 2: host._relay_lobby_action("open",target.room_id)
+	if target.api_version == 2: host.relay_lobby_flow.lobby_action("open",target.room_id)
 	else: host.legacy_room_flow.open_room(target.room_id)
 
 func _leave() -> void:
@@ -156,15 +157,15 @@ func _join(descriptor: Dictionary) -> void:
 	if descriptor.get("api_version") == 2:
 		var room_id := str(descriptor.get("room_id",""))
 		if host.relay_session != null and (room_id in host.relay_session.room_ids() or (host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("room_id") == room_id)):
-			host._relay_lobby_action("open",room_id)
+			host.relay_lobby_flow.lobby_action("open",room_id)
 		else:
-			var generation: int = host.relay_menu_generation+1
+			var generation: int = host.relay_lobby_flow.relay_menu_generation+1
 			var lifecycle: int = host.lifecycle_generation
 			var identity: String = host._tester_context()
-			await host._show_relay_rooms()
-			if generation != host.relay_menu_generation or host.mode != "relay_rooms" or lifecycle != host.lifecycle_generation or host.application_backgrounded or identity != host._tester_context() or host.relay_session == null: return
-			if room_id in host.relay_session.room_ids(): host._relay_lobby_action("open",room_id)
-			else: host._relay_lobby_action("join",str(descriptor.get("invite_code","")))
+			await host.relay_lobby_flow.open_lobby()
+			if generation != host.relay_lobby_flow.relay_menu_generation or host.mode != RelayLobbyFlow.MODE_LOBBY or lifecycle != host.lifecycle_generation or host.application_backgrounded or identity != host._tester_context() or host.relay_session == null: return
+			if room_id in host.relay_session.room_ids(): host.relay_lobby_flow.lobby_action("open",room_id)
+			else: host.relay_lobby_flow.lobby_action("join",str(descriptor.get("invite_code","")))
 	elif descriptor.get("api_version") == 1:
 		var room_id := str(descriptor.get("room_id",""))
 		var saved: Dictionary = host.saves.data.get("room",{})

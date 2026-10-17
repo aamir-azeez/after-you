@@ -352,7 +352,7 @@ func _screen() -> void:
 	app._service_update_gate()
 	await _settle()
 	_check(app.mode == "home", "After Play Solo, Home stays Home for this session")
-	for item: Array in [[app.room_hub_flow.show_rooms, "Play with your friend"], [app._show_friends, "Friends"], [app._share_invite_from_home, "Invite"], [app._open_photo_transfer, "Photo transfer"], [app._show_relay_rooms, "Rooms"]]:
+	for item: Array in [[app.room_hub_flow.show_rooms, "Play with your friend"], [app._show_friends, "Friends"], [app._share_invite_from_home, "Invite"], [app._open_photo_transfer, "Photo transfer"], [app.relay_lobby_flow.open_lobby, "Rooms"]]:
 		app._show_home()
 		await _settle()
 		await item[0].call()
@@ -371,7 +371,7 @@ func _screen() -> void:
 	app.add_child(layer)
 	app.friends_flow.screen = layer
 	app.mode = "friends"
-	await app._show_relay_rooms()
+	await app.relay_lobby_flow.open_lobby()
 	await _settle()
 	var update_button := _button(app, Copy.UPDATE_GATE_UPDATE)
 	_check(app.mode == "update_gate" and app.friends_flow.screen == null and not is_instance_valid(layer) and app.ui.visible and update_button != null, "From Friends, the update screen closes Friends and shows on top")

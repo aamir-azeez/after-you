@@ -1,13 +1,18 @@
 extends "res://tests/test_scroll_lists.gd"
 const PaidCatalog = preload("res://services/paid_level_catalog.gd")
 const Thumbnails = preload("res://presentation/paid_level_thumbnails.gd")
+const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 
 class Routes extends Main:
 	var routed: Array = []
 	func _open_lighthouse() -> void: routed.append("lighthouse")
 	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("premium:"+scene)
-	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
+	func _new_relay_lobby_flow() -> RelayLobbyFlow: return RoutesLobby.new(self)
 	func _start_practice(index: int) -> void: routed.append("legacy:"+str(index))
+
+## Records where a chapter's Play with your friend leads, instead of opening rooms.
+class RoutesLobby extends RelayLobbyFlow:
+	func open_lobby(key: String = "") -> void: host.routed.append("together:"+key)
 
 func _run() -> void:
 	var expected := ["sleeping-lighthouse","rolling-home","a-house-for-two","conservatory","long-way-home","legacy-rising-together","legacy-across-the-blue","legacy-lantern-crossing","legacy-two-beats","legacy-after-you"]

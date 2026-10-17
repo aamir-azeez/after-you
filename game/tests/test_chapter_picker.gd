@@ -2,6 +2,7 @@ extends "res://tests/test_scroll_lists.gd"
 const Completion = preload("res://presentation/chapter_completion.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 
 class Routes extends Main:
 	var routed: Array = []
@@ -9,8 +10,12 @@ class Routes extends Main:
 	func _full_journey_access() -> bool: return owned
 	func _open_chapter_preview(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("free:"+scene)
 	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("premium:"+scene)
-	func _show_relay_rooms(key: String = "") -> void: routed.append("together:"+key)
+	func _new_relay_lobby_flow() -> RelayLobbyFlow: return RoutesLobby.new(self)
 	func _show_friends(_report: Callable = Callable()) -> void: routed.append("friends")
+
+## Records where a chapter's Play with your friend leads, instead of opening rooms.
+class RoutesLobby extends RelayLobbyFlow:
+	func open_lobby(key: String = "") -> void: host.routed.append("together:"+key)
 
 func _run() -> void:
 	var path := "user://chapter-picker-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"

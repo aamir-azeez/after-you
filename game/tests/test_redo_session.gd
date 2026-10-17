@@ -139,7 +139,7 @@ func _run() -> void:
 	_check(await session.open_room(OTHER) and session.last_room()==OTHER,"Other rooms open again")
 	_check(journals==_journals(store,[redo_scope,room_scope]),"The redo and room journals keep their exact bytes")
 	# A cold start that still holds the room's proof. One tap runs Main's order
-	# (_relay_lobby_action): check, list refresh, check again, open.
+	# (relay_lobby_flow.lobby_action): check, list refresh, check again, open.
 	var index: Dictionary = store.values["relay-lobby-v2:"+HOST]
 	index.last_room=ROOM
 	index.room_ids=[ROOM,OTHER]

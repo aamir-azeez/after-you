@@ -40,8 +40,8 @@ func _run() -> void:
 	var redo_journals := RedoFixture.MemoryStore.new()
 	app.relay_session=Session.new(api,app._relay_identity,journals)
 	app.relay_session._redo=Redo.new(api,app._relay_identity,redo_journals)
-	await app._show_relay_rooms("relay-isles@2")
-	await app._relay_lobby_action("open",ROOM)
+	await app.relay_lobby_flow.open_lobby("relay-isles@2")
+	await app.relay_lobby_flow.lobby_action("open",ROOM)
 	var preview: Node=app.relay_child
 	_check(is_instance_valid(preview),"Open a real online chapter with the first stage already verified")
 	if not is_instance_valid(preview): quit(1); return
@@ -101,8 +101,8 @@ func _run() -> void:
 	app.identity_data.player_id=GUEST
 	app.relay_session=Session.new(api,app._relay_identity,journals)
 	app.relay_session._redo=Redo.new(api,app._relay_identity,redo_journals)
-	await app._show_relay_rooms("relay-isles@2")
-	await app._relay_lobby_action("open",ROOM)
+	await app.relay_lobby_flow.open_lobby("relay-isles@2")
+	await app.relay_lobby_flow.lobby_action("open",ROOM)
 	preview=app.relay_child
 	preview.set_process(false)
 	preview.set_physics_process(false)

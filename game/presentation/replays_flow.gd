@@ -9,7 +9,7 @@ extends Node
 ## this host contract (read at call time, so Main or a test can swap a service):
 ## - services: api, saves, shared_replays, relay_session, ensure_relay_session,
 ##   _wire_shared_history, friend_nicknames, _room_context_factory, app_status,
-##   _update_gate_active, _history_mode, _relay_identity, identity_loading
+##   _update_gate_active, _relay_identity, identity_loading
 ## - screen: mode, running, room_play, store_view_generation,
 ##   application_backgrounded, submission_in_flight, lifecycle_generation,
 ##   supersede_foreground_refresh, _retry_cancel, ui, overlay,
@@ -22,7 +22,8 @@ extends Node
 ## - card kit: _card, _label, _paragraph, _button, _list_button, _back_button,
 ##   _scroll_list, _style, _fit_icon_button, _replay_preview_thumb, _toast
 ## - node: get_tree, is_inside_tree, add_child, remove_child
-## Main calls the service_* methods each frame, cancel_collection_replay when its
+## Main calls deliver_completed_replay after a chapter room's play ends, the
+## service_* methods each frame, cancel_collection_replay when its
 ## overlay is cleared, cancel_solo_collection_scan when the mode leaves Your
 ## replays, invalidate_identity when the identity changes and release_workers
 ## when it leaves the tree.
@@ -1548,6 +1549,25 @@ func _leave_shared_replay() -> void:
 	elif host._relay_identity().ready: show_shared_replay_room(shared_replay_room)
 	else: show_shared_replays()
 
+## After leaving a chapter room's play (Main's _leave_online_relay), saves that
+## room's replay to this phone.
+func deliver_completed_replay() -> void:
+	# After leaving completed play, save that room's replay to this phone. It is
+	# never a playback/tick poll: a few quiet retries cover a busy or offline
+	# moment, then the next leave or Watch replay tries again.
+	if host.relay_session == null or host.relay_session.coordinator == null or not host._relay_identity().ready: return
+	var room: Dictionary = host.relay_session.coordinator.snapshot()
+	if not host.relay_session.coordinator.pending().is_empty(): return
+	if room.get("active_role") != "complete":
+		# With room history, a room still in play also keeps its finished attempts here.
+		if _history_mode(host.relay_session) and int(room.get("branch", 0)) > 0: await save_finished_replay(str(room.room_id), int(room.revision), true)
+		return
+	await save_finished_replay(str(room.room_id), int(room.revision))
+
+## Room history is on for this session (older test doubles have no such method).
+static func _history_mode(session: RefCounted) -> bool:
+	return session != null and session.has_method("history_mode") and session.history_mode()
+
 ## Brings a finished room's whole replay to this phone and, once both phones
 ## hold it, lets the server keep only a compact record; then fetches the
 ## friend's photos for it. Safe to repeat: the download and its ACK are keyed
@@ -1585,7 +1605,7 @@ func _save_finished_replay_once(room_id: String, revision: int, in_play: bool = 
 		if session.capabilities.is_empty() and not await session.load_capabilities(): continue
 		if owner != host._relay_identity() or session != host.relay_session: return false
 		if session.has_method("last_room"): session.last_room() # Loads the saved room index the proof below reads.
-		if (not Typed.equal(session.capabilities.get("replay_transfer_version"), 1) and not host._history_mode(session)) or (in_play and not host._history_mode(session)) or (not host._history_mode(session) and not session.standalone_room_proven(room_id)): return false
+		if (not Typed.equal(session.capabilities.get("replay_transfer_version"), 1) and not _history_mode(session)) or (in_play and not _history_mode(session)) or (not _history_mode(session) and not session.standalone_room_proven(room_id)): return false
 		if session.busy() or _shared_archive_sync: continue
 		_shared_archive_sync = true
 		var result: Dictionary
@@ -1595,7 +1615,7 @@ func _save_finished_replay_once(room_id: String, revision: int, in_play: bool = 
 		if owner != host._relay_identity(): return false
 		if result.get("ok", false):
 			# A room history pass from Watch replay may run again on a later tap.
-			if revision >= 0 or not host._history_mode(session): _shared_archive_attempts[key] = true
+			if revision >= 0 or not _history_mode(session): _shared_archive_attempts[key] = true
 			# The replay now plays from this phone, so bring the friend's photos with it.
 			await _fetch_shared_room_photos("chapter:" + room_id, true)
 			return true

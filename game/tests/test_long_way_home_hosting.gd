@@ -11,6 +11,7 @@ const Hub = preload("res://presentation/room_hub_screen.gd")
 const Picker = preload("res://presentation/chapter_picker.gd")
 const Purchases = preload("res://services/purchases.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const V1 := "long-way-home@1"
 const V2 := "long-way-home@2"
 var checks := 0
@@ -63,11 +64,15 @@ class HostApp extends Main:
 	var tester := true
 	func _relay_identity() -> Dictionary: return {"ready": true, "player_id": Fakes.HOST, "epoch": 1}
 	func _tester_active() -> bool: return tester
-	func _show_relay_rooms(_chapter: String = "") -> void:
-		mode = "relay_rooms"
-		await relay_session.load_lobby()
-	func _relay_lobby_action(action: String, value: String = "") -> void: actions.append([action, value])
+	func _new_relay_lobby_flow() -> RelayLobbyFlow: return HostLobby.new(self)
 	func _return_to_room_hub(notice: String = "", _refresh: bool = true) -> void: actions.append(["hub", notice])
+
+## Checks the rooms without the progress card and records each lobby step instead of taking it.
+class HostLobby extends RelayLobbyFlow:
+	func open_lobby(_chapter: String = "") -> void:
+		host.mode = "relay_rooms"
+		await host.relay_session.load_lobby()
+	func lobby_action(action: String, value: String = "") -> void: host.actions.append([action, value])
 
 func _chooser() -> void:
 	var viewport := SubViewport.new()

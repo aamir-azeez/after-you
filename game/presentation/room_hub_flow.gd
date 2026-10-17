@@ -15,12 +15,12 @@ extends Node
 ##   _online_gated, _friend_display_name, _chapter_marks
 ## - screen: mode, running, ui, store_view_generation, lifecycle_generation,
 ##   application_backgrounded, _toast
-## - room flow: active_room, relay_menu_generation, _relay_available,
+## - room flow: active_room, _relay_available,
 ##   _return_to_room_hub, _settle_room_flow, _online_flow_idle,
 ##   _room_session_idle, _prepare_ordinary_navigation, _friends_route_context,
-##   _friends_route_current, _show_relay_rooms, _relay_lobby_action,
-##   _join_chapter_room, _show_friends, forget_removed_room,
-##   legacy_room_flow (open_room, join_room)
+##   _friends_route_current, _show_friends, forget_removed_room,
+##   legacy_room_flow (open_room, join_room), relay_lobby_flow (open_lobby,
+##   lobby_action, join_room, relay_menu_generation)
 ## - card kit: _card, _label, _paragraph, _list_button, _back_button
 ## - node: add_child (the hub layer stays Main's child)
 ## Main asks is_open() and drives the hub through go_back(), redraw_chapters()
@@ -31,6 +31,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
+const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -308,11 +309,11 @@ func _retry(kind: String) -> void:
 	var pending_redo: String = host.relay_session.pending_redo_room()
 	_leave()
 	# A retry needs the service's chapters, which a fresh start has not read yet.
-	var generation: int = host.relay_menu_generation + 1
-	await host._show_relay_rooms()
-	if generation != host.relay_menu_generation or host.mode != "relay_rooms" or host.relay_session == null: return
-	if kind == "lobby": await host._relay_lobby_action("retry")
-	elif not pending_redo.is_empty(): await host._relay_lobby_action("open",pending_redo)
+	var generation: int = host.relay_lobby_flow.relay_menu_generation + 1
+	await host.relay_lobby_flow.open_lobby()
+	if generation != host.relay_lobby_flow.relay_menu_generation or host.mode != RelayLobbyFlow.MODE_LOBBY or host.relay_session == null: return
+	if kind == "lobby": await host.relay_lobby_flow.lobby_action("retry")
+	elif not pending_redo.is_empty(): await host.relay_lobby_flow.lobby_action("open",pending_redo)
 	else: host._return_to_room_hub()
 
 ## Chapter picker entries for Play with a friend. The hub lists offered chapters
@@ -456,7 +457,7 @@ func _open_room_now(room: Dictionary) -> void:
 		shared_replay_requested.emit(room_id)
 		return
 	if version == 2:
-		await host._relay_lobby_action("open",room_id)
+		await host.relay_lobby_flow.lobby_action("open",room_id)
 		if host.mode == "relay_online" and host.relay_session != null and host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("room_id") == room_id:
 			if client != null: client.confirm_room_rendered(2,room_id)
 	elif version == 1:
@@ -485,11 +486,11 @@ func _host_room(chapter_key: String, visibility: String, source: Control = null)
 
 func _host_room_now(chapter_key: String) -> void:
 	_leave()
-	await host._show_relay_rooms(chapter_key)
-	if host.mode != "relay_rooms" or host.relay_session == null: return
+	await host.relay_lobby_flow.open_lobby(chapter_key)
+	if host.mode != RelayLobbyFlow.MODE_LOBBY or host.relay_session == null: return
 	var host_key := ChapterRegistry.hosting_key(ChapterRegistry.offered_key(chapter_key),host.relay_session.supports_creation)
 	if host.relay_session.supports_creation(host_key):
-		await host._relay_lobby_action("create",host_key)
+		await host.relay_lobby_flow.lobby_action("create",host_key)
 	else:
 		host._return_to_room_hub(host.relay_session.last_error if not host.relay_session.last_error.is_empty() else PlayerCopy.MAIN_73FEF220EAF1)
 
@@ -520,7 +521,7 @@ func _join_code(code: String) -> void:
 			# The resolver is not deployed yet. Fall back to the existing modern
 			# join; the visible invitation field remains a single mutating call.
 			_leave()
-			await host._join_chapter_room(code)
+			await host.relay_lobby_flow.join_room(code)
 			return
 		message(str(response.get("error","Invitation unavailable")))
 		return
@@ -530,6 +531,6 @@ func _join_code(code: String) -> void:
 		return
 	_leave()
 	if data.api_version == 2:
-		await host._join_chapter_room(code)
+		await host.relay_lobby_flow.join_room(code)
 	else:
 		await host.legacy_room_flow.join_room(code)

@@ -57,15 +57,15 @@ func _app() -> Main:
 
 func _run() -> void:
 	var app := _app()
-	await app._deliver_completed_replay()
-	await app._deliver_completed_replay()
+	await app.replays_flow.deliver_completed_replay()
+	await app.replays_flow.deliver_completed_replay()
 	_check(app.relay_session.calls == [ROOM], "Completed room leaving play gets one delivery attempt, not a recurring poll")
 	_check(_probe(app).photo_fetches == [["chapter:" + ROOM, true]], "The saved replay brings the friend's missing photos with it: %s" % [_probe(app).photo_fetches])
 	app.relay_session.coordinator.value.revision += 1
-	await app._deliver_completed_replay()
+	await app.replays_flow.deliver_completed_replay()
 	_check(app.relay_session.calls.size() == 2, "A genuinely newer completed revision can deliver its new archive")
 	app.test_identity.player_id = "GGGGGGGGGGGGGGGGGGGGGG"
-	await app._deliver_completed_replay()
+	await app.replays_flow.deliver_completed_replay()
 	_check(app.relay_session.calls.size() == 3, "A different participant gets an independent delivery attempt")
 	app.queue_free()
 	for condition: String in ["incomplete", "story", "background", "playback", "pending", "disabled"]:
@@ -76,7 +76,7 @@ func _run() -> void:
 		if condition == "playback": app.mode = "shared_replay"
 		if condition == "pending": app.relay_session.coordinator.unresolved = {"body": {"idempotency_key": "original-key"}}
 		if condition == "disabled": app.relay_session.capabilities.replay_transfer_version = 0
-		await app._deliver_completed_replay()
+		await app.replays_flow.deliver_completed_replay()
 		_check(app.relay_session.calls.is_empty() and app.replays_flow._shared_archive_attempts.is_empty(), "Automatic transfer is not started for " + condition)
 		_check(_probe(app).photo_fetches.is_empty(), "No photo fetch without a saved replay: " + condition)
 		app.queue_free()
@@ -86,7 +86,7 @@ func _run() -> void:
 		# Another room request holds the session; the save waits for it.
 		original.held = true
 		get_tree_change.call_deferred(app, condition, original)
-		await app._deliver_completed_replay()
+		await app.replays_flow.deliver_completed_replay()
 		_check(original.calls.is_empty(), "Context change while waiting for the room session cancels transfer: " + condition)
 		_check(app.replays_flow._shared_archive_attempts.is_empty(), "Cancelled admission never consumes an attempt: " + condition)
 		app.queue_free()

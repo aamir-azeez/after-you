@@ -34,6 +34,7 @@ const RoomHubFlow = preload("res://presentation/room_hub_flow.gd")
 const FriendsFlow = preload("res://presentation/friends_flow.gd")
 const TurnFlow = preload("res://presentation/turn_flow.gd")
 const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
+const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -71,7 +72,7 @@ const INVITE_LINK_ATTEMPTS := 3
 # Invite links open Friends by themselves only from these modes, and only when idle.
 const INVITE_LINK_MODES := ["home", RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS]
 ## Screens a tapped notification may leave to open its room (Friends too, for a hosting alert).
-const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, LegacyRoomFlow.MODE_ROOM, "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"]
+const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, LegacyRoomFlow.MODE_ROOM, "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", RelayLobbyFlow.MODE_LOBBY]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
@@ -209,6 +210,8 @@ var friends_flow: FriendsFlow = _host_friends_flow()
 var turn_flow: TurnFlow = _host_turn_flow()
 ## The earlier-island room page, its redo request, fork and advance.
 var legacy_room_flow: LegacyRoomFlow = _host_legacy_room_flow()
+## The chapter room lobby: checking rooms, its progress card and its create, join, retry and open steps.
+var relay_lobby_flow: RelayLobbyFlow = _host_relay_lobby_flow()
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -221,7 +224,6 @@ var submission_in_flight := false
 var relay_session: RefCounted
 var relay_child: Node3D
 var relay_identity_epoch := 0
-var relay_menu_generation := 0
 var room_reaction_notices: Dictionary = {}
 var deleted_identity_owner := ""
 var safety_screen: CanvasLayer
@@ -1199,7 +1201,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 			if mode == ReplaysFlow.MODE_COLLECTION_LOADING: replays_flow.show_collection()
 			elif mode in ["confirm_retry", "confirm_restart", ReplaysFlow.MODE_CONFIRM_DELETE]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
-			elif mode == "relay_rooms": _return_to_room_hub()
+			elif mode == RelayLobbyFlow.MODE_LOBBY: _return_to_room_hub()
 			elif mode == RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open(): room_hub_flow.go_back()
 			else: _pause() if running or mode=="completion" else _show_home()
 
@@ -1802,6 +1804,16 @@ func _host_legacy_room_flow() -> LegacyRoomFlow:
 func _new_legacy_room_flow() -> LegacyRoomFlow:
 	return LegacyRoomFlow.new(self)
 
+## An internal child, like StoreFlow.
+func _host_relay_lobby_flow() -> RelayLobbyFlow:
+	var flow := _new_relay_lobby_flow()
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	return flow
+
+## The flow Main hosts; a test harness may return its own RelayLobbyFlow.
+func _new_relay_lobby_flow() -> RelayLobbyFlow:
+	return RelayLobbyFlow.new(self)
+
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
 
@@ -1908,7 +1920,7 @@ func _await_secret(id: String) -> Dictionary:
 ## Leaving a room or a failed room request lands on the hub. When the hub
 ## cannot open (no service or identity), Home is the safe place instead.
 func _return_to_room_hub(notice: String = "", refresh: bool = true) -> void:
-	relay_menu_generation += 1
+	relay_lobby_flow.cancel()
 	if not api.configured() or not _relay_identity().ready:
 		_show_home()
 		if not notice.is_empty(): _toast(notice)
@@ -2037,7 +2049,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	lifecycle_generation += 1
 	foreground_response = {}
 	relay_identity_epoch += 1
-	relay_menu_generation += 1
+	relay_lobby_flow.cancel()
 	if relay_session != null:
 		relay_session.invalidate_identity()
 	if is_instance_valid(relay_child):
@@ -2067,100 +2079,11 @@ func _relay_available(report: Callable = Callable()) -> bool:
 		return false
 	return true
 
-func _show_relay_rooms(chapter: String = "") -> void:
-	if _online_gated(): return
-	if not chapter.is_empty():
-		if ChapterRegistry.descriptor(chapter).is_empty():
-			_toast(PlayerCopy.MAIN_ED8E80825350)
-			_settle_room_flow()
-			return
-		room_hub_flow.selected_chapter = chapter
-	var view := store_view_generation
-	var lifecycle := lifecycle_generation
-	if not _relay_available() or not await _ensure_identity() or view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or not await _prepare_ordinary_navigation():
-		_settle_room_flow()
-		return
-	if relay_session == null:
-		relay_session = _new_relay_session()
-	running = false
-	relay_menu_generation += 1
-	var generation := relay_menu_generation
-	_draw_room_progress(PlayerCopy.MAIN_07713E9CC81E)
-	var context := _friends_route_context()
-	var loaded: bool = await relay_session.load_lobby()
-	if generation != relay_menu_generation or not _friends_route_current(context):
-		return
-	# The caller continues from this progress card; a failed check returns to the hub.
-	if not loaded: _return_to_room_hub(relay_session.last_error)
-
-## The short wait while a room is checked, created, joined or opened. Back,
-## Escape and Android Back return to the hub, as the old lobby's Back did.
-func _draw_room_progress(message: String) -> void:
-	mode = "relay_rooms"
-	var card := _card(minf(700.0,maxf(280.0,ui.size.x-48.0)))
-	card.name = "RoomProgress"
-	card.add_child(_label("Play with a friend",34,CREAM,true))
-	card.add_child(_paragraph(message,minf(640.0,maxf(240.0,ui.size.x-88.0))))
-	var back := _back_button("Back",_return_to_room_hub,false)
-	back.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
-	back.custom_minimum_size.x = 128
-	card.add_child(back)
-
-func _relay_lobby_action(action: String, value: String = "") -> void:
-	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready or not legacy_room_flow.navigation_ready() or not await _prepare_ordinary_navigation():
-		_settle_room_flow()
-		return
-	relay_menu_generation += 1
-	var generation := relay_menu_generation
-	_draw_room_progress(PlayerCopy.MAIN_6734074E99D4)
-	var context := _friends_route_context()
-	# After a cold start the hub opens rooms before anything read the service's
-	# chapters, and a room opened without them cannot save a turn.
-	if relay_session.capabilities.is_empty():
-		var loaded: bool = await relay_session.load_lobby()
-		if generation != relay_menu_generation or not _friends_route_current(context): return
-		if not loaded:
-			_return_to_room_hub(relay_session.last_error)
-			return
-		# The list can drop the last room's proof. Checking it again here lets
-		# this same tap go on, or releases a last room that is gone.
-		var checked: bool = await _prepare_ordinary_navigation()
-		if generation != relay_menu_generation or not _friends_route_current(context): return
-		if not checked:
-			_settle_room_flow()
-			return
-	var room_id := ""
-	match action:
-		"create": room_id = await relay_session.create_room(value)
-		"join": room_id = await relay_session.join_room(value)
-		"retry": room_id = await relay_session.retry_lobby()
-		"open":
-			await relay_session.open_room(value)
-			if relay_session.coordinator != null and relay_session.coordinator.snapshot().get("room_id", "") == value:
-				room_id = value
-	if generation != relay_menu_generation or not _friends_route_current(context):
-		return
-	if room_id.is_empty():
-		_return_to_room_hub(relay_session.last_error)
-		return
-	var hosted := {"api_version":2,"room_id":room_id}
-	var sharing: bool = bool(saves.data.settings.get("share_online_status", true))
-	var host: bool = relay_session.coordinator != null and relay_session.coordinator.snapshot().get("host_id") == api.player_id
-	if action in ["create", "retry"] and host and room_hub_flow.host_visibility == "friends" and sharing:
-		# A Friends room is shared as soon as it exists and sends one hosting
-		# alert. The alert is saved as owed first, so a restart keeps it.
-		_friend_events().owe(hosted)
-		room_sharing.share.call_deferred(hosted)
-	elif action == "open" and sharing and _friend_events().owes(hosted):
-		# Reopened before its alert went out (e.g. after a restart): finish it.
-		room_sharing.share.call_deferred(hosted)
-	_enter_online_relay()
-
 ## A room flow that stopped before drawing anything (the caller already left
 ## the hub or Friends) returns to the hub instead of leaving a bare screen.
 func _settle_room_flow() -> void:
 	# A toast sits under the hub, so its reason moves into the hub's notice.
-	if mode in [RoomHubFlow.MODE_ROOMS, "relay_rooms"] and not room_hub_flow.is_open(): _return_to_room_hub(toast_label.text if toast_label.visible else "")
+	if mode in [RoomHubFlow.MODE_ROOMS, RelayLobbyFlow.MODE_LOBBY] and not room_hub_flow.is_open(): _return_to_room_hub(toast_label.text if toast_label.visible else "")
 
 ## The Friends client; made here on first use when create is set.
 func _friends_client(create: bool) -> RefCounted:
@@ -2217,25 +2140,8 @@ func _leave_online_relay() -> void:
 ## The one replay delivery after leaving play goes first; the hub reads its
 ## rooms after, so neither request finds the API busy and gives up.
 func _deliver_then_refresh_hub() -> void:
-	await _deliver_completed_replay()
+	await replays_flow.deliver_completed_replay()
 	if room_hub_flow.is_open() and mode == RoomHubFlow.MODE_ROOMS: room_hub_flow.refresh()
-
-func _deliver_completed_replay() -> void:
-	# After leaving completed play, save that room's replay to this phone. It is
-	# never a playback/tick poll: a few quiet retries cover a busy or offline
-	# moment, then the next leave or Watch replay tries again.
-	if relay_session == null or relay_session.coordinator == null or not _relay_identity().ready: return
-	var room: Dictionary = relay_session.coordinator.snapshot()
-	if not relay_session.coordinator.pending().is_empty(): return
-	if room.get("active_role") != "complete":
-		# With room history, a room still in play also keeps its finished attempts here.
-		if _history_mode(relay_session) and int(room.get("branch", 0)) > 0: await replays_flow.save_finished_replay(str(room.room_id), int(room.revision), true)
-		return
-	await replays_flow.save_finished_replay(str(room.room_id), int(room.revision))
-
-## Room history is on for this session (older test doubles have no such method).
-static func _history_mode(session: RefCounted) -> bool:
-	return session != null and session.has_method("history_mode") and session.history_mode()
 
 func _ensure_identity(report: Callable = Callable()) -> bool:
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty():
@@ -2286,18 +2192,6 @@ func _ensure_identity(report: Callable = Callable()) -> bool:
 
 func _room_simulation_version() -> int:
 	return TurnState.simulation_version({},role,active_room) if room_play else 0
-
-func _join_chapter_room(code: String) -> void:
-	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
-		return
-	if not legacy_room_flow.navigation_ready(): return
-	# Both protocols use twenty hex characters, so the visible room-type choice
-	# is authoritative. Never probe two mutating join endpoints with one code.
-	var generation := relay_menu_generation+1
-	await _show_relay_rooms()
-	if generation != relay_menu_generation or mode != "relay_rooms" or relay_session == null:
-		return
-	await _relay_lobby_action("join",code)
 
 ## Starts this player's turn in the open legacy room, resuming the draft saved
 ## for its revision. The room page's Play your turn checks first
@@ -2797,7 +2691,7 @@ func _notification(what: int) -> void:
 			_show_licenses()
 		elif mode in ["licenses", StoreFlow.MODE_TESTER_ACCESS, "graphics_settings"]:
 			_show_settings()
-		elif mode=="relay_rooms":
+		elif mode==RelayLobbyFlow.MODE_LOBBY:
 			_return_to_room_hub()
 		elif mode==RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open():
 			room_hub_flow.go_back()

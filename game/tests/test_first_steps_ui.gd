@@ -227,7 +227,7 @@ func _hub_actions_fit() -> void:
 				await process_frame
 				_check(column.get_global_rect().grow(0.5).encloses(button.get_global_rect()) and screen.encloses(button.get_global_rect()), label + " scrolls fully into view at " + str(size))
 	# The short wait card while a room loads: Android Back returns to the hub.
-	app._draw_room_progress(PlayerCopy.MAIN_6734074E99D4)
+	app.relay_lobby_flow.draw_progress(PlayerCopy.MAIN_6734074E99D4)
 	await process_frame
 	var progress: Control = app.overlay.find_child("RoomProgress", true, false)
 	_check(app.mode == "relay_rooms" and progress != null and not is_instance_valid(app.room_hub_flow.screen) and _find_button(app.overlay, "Back") != null, "A loading room shows a small card with Back in place of the hub")
