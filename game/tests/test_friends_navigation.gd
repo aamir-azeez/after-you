@@ -136,7 +136,7 @@ func _run() -> void:
 	await process_frame
 	app._enter_online_relay()
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
-	app._accept_room(_ok({"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":1,"host_id":HOST,"guest_id":GUEST,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}))
+	app.legacy_room_flow.accept_room(_ok({"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":1,"host_id":HOST,"guest_id":GUEST,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}))
 	await _share_current_room(viewport,app,api,{"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22)},"Opening an earlier island after a chapter shares the latest earlier island")
 	app._enter_online_relay()
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
@@ -233,14 +233,14 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	await process_frame
 	_check(app.mode == "home" and not app.friends_flow.is_open(),"A late share reply cannot reopen a room or Friends after leaving")
 	var legacy := {"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":0,"host_id":HOST,"guest_id":null,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}
-	app._accept_room(_ok(legacy))
+	app.legacy_room_flow.accept_room(_ok(legacy))
 	friend_status = app.overlay.find_child("RoomFriendStatus",true,false)
 	_check(friend_status != null and friend_status.text == "Waiting for friend","Earlier-island hosting exposes the same waiting status")
 	shares = api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share").size()
 	await _tap_direct_share(viewport,app)
 	requests = api.calls.filter(func(call: Dictionary): return call.path == "/v1/friends/share")
 	_check(requests.size() == shares + 1 and requests.back().body.room == {"api_version":1,"room_id":legacy.room_id} and app.mode == "room","Earlier-island hosts share directly without leaving their room")
-	await app._refresh_room()
+	await app.legacy_room_flow.refresh_room()
 	friend_status = app.overlay.find_child("RoomFriendStatus",true,false)
 	_check(friend_status != null and friend_status.text == "Friend joined","An authoritative earlier-island refresh updates the joined indicator")
 	shares = requests.size()

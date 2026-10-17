@@ -33,6 +33,7 @@ const NotificationFlow = preload("res://presentation/notification_flow.gd")
 const RoomHubFlow = preload("res://presentation/room_hub_flow.gd")
 const FriendsFlow = preload("res://presentation/friends_flow.gd")
 const TurnFlow = preload("res://presentation/turn_flow.gd")
+const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -55,9 +56,6 @@ const SCREEN_BACK := &"screen_back"
 const Changelog = preload("res://services/changelog.gd")
 const WhatsNewCard = preload("res://presentation/whats_new_card.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
-const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
-const RedoClient = preload("res://services/redo_client.gd")
-const RedoScreen = preload("res://presentation/redo_screen.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const InviteLinkBridge = preload("res://services/invite_link_bridge.gd")
@@ -73,7 +71,7 @@ const INVITE_LINK_ATTEMPTS := 3
 # Invite links open Friends by themselves only from these modes, and only when idle.
 const INVITE_LINK_MODES := ["home", RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS]
 ## Screens a tapped notification may leave to open its room (Friends too, for a hosting alert).
-const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, "room", "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"]
+const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, LegacyRoomFlow.MODE_ROOM, "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", "relay_rooms"]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
@@ -94,8 +92,6 @@ var _whats_new_card_mode := ""
 ## Tests set this to see a link instead of opening the browser.
 var external_link_opener: Callable
 var _bounded_card_scroll: ScrollContainer
-var _redo_request_modal: Control
-var _announced_redo_requests: Dictionary = {}
 ## Holds the scroll area of a bounded card; controls added after it stay fixed below the list.
 var _bounded_card_footer: VBoxContainer
 var _bounded_card_stack: VBoxContainer
@@ -142,10 +138,6 @@ var friend_share_target: Dictionary = {}
 var room_sharing: RoomSharing = _host_room_sharing()
 ## The live socket; the room page, hub and Friends read on its hints.
 var live_connection: LiveConnection = _host_live_connection()
-var legacy_redo: RefCounted
-var legacy_redo_restore_scope := ""
-var legacy_redo_restore_ok := true
-var redo_screen: CanvasLayer
 var shared_replay_child: Node3D
 var photo_transfer_child: Node
 var ui: Control
@@ -215,6 +207,8 @@ var room_hub_flow: RoomHubFlow = _host_room_hub_flow()
 var friends_flow: FriendsFlow = _host_friends_flow()
 ## Earlier-island turns: submitting one, checking an unanswered one and the held turn.
 var turn_flow: TurnFlow = _host_turn_flow()
+## The earlier-island room page, its redo request, fork and advance.
+var legacy_room_flow: LegacyRoomFlow = _host_legacy_room_flow()
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -1188,9 +1182,9 @@ func _request_context_action() -> void:
 		action_pressed=true
 
 func _unhandled_key_input(event: InputEvent) -> void:
-	if is_instance_valid(redo_screen):
+	if legacy_room_flow.redo_open():
 		if event is InputEventKey and event.pressed and not event.echo and event.physical_keycode == KEY_ESCAPE:
-			redo_screen.close()
+			legacy_room_flow.close_redo()
 			get_viewport().set_input_as_handled()
 		return
 	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child):
@@ -1401,7 +1395,7 @@ func _send_reaction(code: String) -> void:
 		if not incoming is Dictionary or not RoomReactions.same_completed_room(context.room, incoming) or not incoming.get("reactions") is Dictionary or incoming.reactions.get(identity.player_id) != code:
 			_toast(PlayerCopy.MAIN_B94C73E90E5B)
 			return
-		_accept_room(response)
+		legacy_room_flow.accept_room(response)
 		_toast("Reaction sent.")
 	else:
 		_toast(str(response.get("error", PlayerCopy.MAIN_B94C73E90E5B)))
@@ -1423,7 +1417,7 @@ func _notice_room_reactions(previous: Dictionary, incoming: Dictionary) -> void:
 
 func _next_island() -> void:
 	if room_play:
-		await _advance_room()
+		await legacy_room_flow.advance_room()
 	elif level_index+1>=3 and not _full_journey_access():
 		store_flow.show_paywall()
 	else:
@@ -1448,7 +1442,7 @@ func _confirm_restart_attempt() -> void:
 
 func _restart_attempt() -> void:
 	if room_play:
-		await _fork_room()
+		await legacy_room_flow.fork_room()
 		return
 	var old_data: Dictionary=saves.data.duplicate(true)
 	if not attempt.get("a",{}).is_empty():
@@ -1796,6 +1790,18 @@ func _host_turn_flow() -> TurnFlow:
 	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
 	return flow
 
+## An internal child, like StoreFlow.
+func _host_legacy_room_flow() -> LegacyRoomFlow:
+	var flow := _new_legacy_room_flow()
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
+	flow.home_requested.connect(_show_home)
+	return flow
+
+## The flow Main hosts and wires; a test harness may return its own LegacyRoomFlow.
+func _new_legacy_room_flow() -> LegacyRoomFlow:
+	return LegacyRoomFlow.new(self)
+
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
 
@@ -1972,45 +1978,18 @@ func _current_room_share_allowed(target: Dictionary) -> bool:
 		if mode != "relay_online" or not is_instance_valid(relay_child) or relay_session == null or relay_session.coordinator == null or relay_child.journey != relay_session.coordinator: return false
 		room = relay_session.coordinator.snapshot()
 	elif target.api_version == 1:
-		if mode != "room": return false
+		if mode != LegacyRoomFlow.MODE_ROOM: return false
 		room = active_room
 	return room.get("room_id") == target.room_id and room.get("host_id") == api.player_id
 
 func _room_share_changed(target: Dictionary) -> void:
 	if target.get("api_version") == 2 and is_instance_valid(relay_child) and relay_child.has_method("update_share_controls"): relay_child.update_share_controls()
 
-func _add_current_room_share(card: VBoxContainer) -> void:
-	var target := {"api_version": 1, "room_id": active_room.get("room_id", "")}
-	if not _current_room_share_allowed(target): return
-	var status := _label("All friends",17)
-	var button := _list_button("Share current room",func(): _share_room_from_card(target, card, status),false)
-	button.name = "ShareCurrentRoom"
-	button.disabled = room_sharing.busy
-	card.add_child(button)
-	card.add_child(status)
-
-func _share_room_from_card(target: Dictionary, card: VBoxContainer, status: Label) -> void:
-	if not is_instance_valid(card) or not card.is_inside_tree(): return
-	var button: Button = card.get_node("ShareCurrentRoom")
-	button.disabled = true
-	var result: Dictionary = await room_sharing.share(target)
-	if not is_instance_valid(card) or not card.is_inside_tree() or not _current_room_share_allowed(target) or result.get("ignored", false): return
-	button.disabled = false
-	status.text = str(result.get("message", "Friends unavailable"))
-
 func _friends_route_context() -> Dictionary:
 	return {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}
 
 func _friends_route_current(context: Dictionary) -> bool:
 	return not application_backgrounded and _relay_identity().ready and context == _friends_route_context()
-
-func _open_friend_legacy(room_id: String) -> void:
-	if not _relay_available() or not _legacy_redo_navigation_ready(room_id): return
-	if not await _prepare_ordinary_navigation(): return
-	if relay_session != null and not relay_session.can_leave_for_legacy(): return
-	var context := _friends_route_context()
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
-	if _friends_route_current(context): _accept_room(response)
 
 func _relay_identity() -> Dictionary:
 	return {"ready": api != null and not identity_loading and not identity_busy and not identity_restart_required and pending_recovery.is_empty() and identity_read_state==IdentityReadState.LOADED and not api.player_id.is_empty() and not api.device_token.is_empty(), "player_id": str(api.player_id) if api != null else "", "epoch": relay_identity_epoch}
@@ -2049,14 +2028,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	# Recovery/deletion clear authority; ordinary identity loading only holds it.
 	Purchases.suspend_session(clear_notifications)
 	friend_share_target = {}
-	legacy_redo_restore_scope = ""
-	legacy_redo_restore_ok = true
-	var had_redo_screen := is_instance_valid(redo_screen)
-	if legacy_redo != null: legacy_redo.invalidate()
-	if is_instance_valid(redo_screen):
-		redo_screen.invalidate()
-		redo_screen = null
-		ui.visible = true
+	var had_redo_screen := legacy_room_flow.invalidate_identity()
 	_keepsake_identity.clear()
 	if friends_client != null: friends_client.invalidate()
 	if friend_room_events != null: friend_room_events.invalidate()
@@ -2093,7 +2065,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 		if photo_transfer_child.has_method("identity_invalidated"): photo_transfer_child.identity_invalidated()
 		elif photo_transfer_child.has_method("invalidate"): photo_transfer_child.invalidate()
 	# The room hub needs a ready identity, so a stale redo panel returns Home.
-	if had_redo_screen and mode == "redo_requests": _show_home()
+	if had_redo_screen and mode == LegacyRoomFlow.MODE_REDO: _show_home()
 
 ## Whether an online action may start. A request still out refuses with its
 ## reason (report). An unsent turn refuses by opening it (turn_flow.show_unsent_turn),
@@ -2147,7 +2119,7 @@ func _draw_room_progress(message: String) -> void:
 	card.add_child(back)
 
 func _relay_lobby_action(action: String, value: String = "") -> void:
-	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready or not _legacy_redo_navigation_ready() or not await _prepare_ordinary_navigation():
+	if relay_session == null or relay_session.busy() or not _relay_available() or not _relay_identity().ready or not legacy_room_flow.navigation_ready() or not await _prepare_ordinary_navigation():
 		_settle_room_flow()
 		return
 	relay_menu_generation += 1
@@ -2212,7 +2184,7 @@ func _friend_events() -> FriendRoomEventsClient:
 	return friend_room_events as FriendRoomEventsClient
 
 func _enter_online_relay() -> void:
-	if not _legacy_redo_navigation_ready(): return
+	if not legacy_room_flow.navigation_ready(): return
 	if relay_session == null or relay_session.coordinator == null or relay_session.busy() or is_instance_valid(relay_child):
 		return
 	lifecycle_generation += 1
@@ -2324,27 +2296,13 @@ func _ensure_identity(report: Callable = Callable()) -> bool:
 	store_flow.configure_purchases()
 	return true
 
-func _create_room() -> void:
-	var navigation := _friends_route_context()
-	if not _relay_available() or not await _ensure_identity(): return
-	if navigation.view != store_view_generation or navigation.lifecycle != lifecycle_generation or application_backgrounded: return
-	if not _legacy_redo_navigation_ready(): return
-	if not await _prepare_ordinary_navigation(): return
-	if not relay_session.can_leave_for_legacy():
-		_toast(relay_session.last_error)
-		return
-	var context := _friends_route_context()
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms",{"idempotency_key":RoomsApi.new_key(),"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
-	if not _friends_route_current(context): return
-	_accept_room(response)
-
 func _room_simulation_version() -> int:
 	return TurnState.simulation_version({},role,active_room) if room_play else 0
 
 func _join_chapter_room(code: String) -> void:
 	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
 		return
-	if not _legacy_redo_navigation_ready(): return
+	if not legacy_room_flow.navigation_ready(): return
 	# Both protocols use twenty hex characters, so the visible room-type choice
 	# is authoritative. Never probe two mutating join endpoints with one code.
 	var generation := relay_menu_generation+1
@@ -2353,252 +2311,10 @@ func _join_chapter_room(code: String) -> void:
 		return
 	await _relay_lobby_action("join",code)
 
-func _join_room(code: String) -> void:
-	var navigation := _friends_route_context()
-	if code.strip_edges().is_empty() or not _relay_available() or not await _ensure_identity():
-		return
-	if navigation.view != store_view_generation or navigation.lifecycle != lifecycle_generation or application_backgrounded: return
-	if not _legacy_redo_navigation_ready(): return
-	if not await _prepare_ordinary_navigation(): return
-	if relay_session == null:
-		relay_session=_new_relay_session()
-	if not relay_session.can_leave_for_legacy():
-		_toast(relay_session.last_error)
-		return
-	var parsed := ShareCodes.parse(code,ShareCodes.ROOM)
-	if not parsed.ok:
-		_toast(ShareCodes.error_message(parsed,PlayerCopy.ROOMS_API_57B8AA801916))
-		return
-	var context := _friends_route_context()
-	var response: Dictionary = await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/join",{"invite_code":parsed.id,"simulation_version":Simulation.COMFORT_SIMULATION_VERSION})
-	if _friends_route_current(context): _accept_room(response)
-
-func _refresh_room() -> void:
-	# An explicit refresh supersedes any older automatically fetched snapshot.
-	foreground_refresh_queued=false
-	foreground_response={}
-	lifecycle_generation+=1
-	if not await _ensure_identity():
-		return
-	var room_id := str(saves.data.get("room",{}).get("room_id",""))
-	if room_id.is_empty():
-		room_hub_flow.show_rooms()
-		return
-	_restore_legacy_redo()
-	if _legacy_redo_client().pending().get("action") == "accept":
-		active_room = saves.data.room.duplicate(true)
-		_show_room_detail()
-	var context := _foreground_room_context(room_id)
-	var response: Dictionary=await api.request_json(HTTPClient.METHOD_GET,"/v1/rooms/"+room_id)
-	if context!=_foreground_room_context(room_id): return
-	if not response.get("ok",false) and _legacy_redo_client().observe_room_failure(room_id,str(response.get("code",""))):
-		room_hub_flow.show_rooms()
-		_toast(str(response.get("error",_legacy_redo_client().last_error)))
-		return
-	foreground_schedule.bind(context,Time.get_ticks_msec())
-	_accept_room(response)
-
-func _accept_room(response: Dictionary, return_to_friends: bool = false) -> void:
-	if not response.ok:
-		_toast(response.error)
-		return
-	# Opening the room, a write's reply or a manual read: the next poll comes soon.
-	foreground_schedule.note_activity(Time.get_ticks_msec())
-	var incoming: Variant=response.data.get("room",response.data)
-	if not incoming is Dictionary or str(incoming.get("room_id","")).is_empty() or Levels.get_level(str(incoming.get("level_id",""))).is_empty():
-		_toast(PlayerCopy.MAIN_22FBAEF49772)
-		return
-	if not _legacy_redo_navigation_ready(str(incoming.room_id)): return
-	if relay_session != null and not relay_session.can_leave_for_legacy():
-		_toast(relay_session.last_error)
-		return
-	_notice_room_reactions(active_room,incoming)
-	active_room=incoming.duplicate(true)
-	if _relay_identity().ready: friend_share_target = {"api_version":1,"room_id":active_room.room_id}
-	var erased: Array=[]
-	if TurnState.pending_status(saves.data.get("pending_turn",{}),active_room)=="accepted":
-		erased=["pending_turn","room_draft"]
-	if not saves.update_values({"room":active_room},erased):
-		_toast(saves.last_error)
-	if return_to_friends:
-		_show_friends()
-		return
-	_show_room_detail()
-	_refresh_legacy_redo()
-
-func _show_room_detail() -> void:
-	running=false
-	mode="room"
-	var frame := _card(700)
-	frame.add_child(_label(PlayerCopy.MAIN_8046BBD776CA,34,CREAM,true))
-	var card := _scroll_list(frame)
-	card.get_parent().custom_minimum_size.y = clampf(overlay.size.y-230.0,180.0,390.0)
-	if active_room.has("invite_code"):
-		var invitation := ShareCodes.display(ShareCodes.ROOM,active_room.invite_code)
-		card.add_child(_paragraph("Invitation code: "+invitation))
-		card.add_child(_list_button("Copy invitation code",func(): DisplayServer.clipboard_set(invitation); _toast("Invitation code copied."),false))
-	if _relay_identity().ready and active_room.get("host_id") == api.player_id:
-		var friend_status := _label("Waiting for friend" if active_room.get("guest_id") == null else "Friend joined",20)
-		friend_status.name = "RoomFriendStatus"
-		card.add_child(friend_status)
-	_add_current_room_share(card)
-	var active_role := str(active_room.get("active_role","a"))
-	var my_turn: bool = TurnState.my_turn(active_room,api.player_id)
-	var redo: RefCounted = _legacy_redo_client()
-	if not redo.busy: redo.bind_room("legacy",active_room)
-	var redo_pending: bool = redo.pending().get("action") == "accept"
-	if redo_pending: my_turn = false
-	var pending: Dictionary=saves.data.get("pending_turn",{})
-	card.add_child(_paragraph("Island %d of 8 · %s" % [int(active_room.get("level_index",0))+1,PlayerCopy.MAIN_1AAC5BE95E22 if my_turn else (PlayerCopy.MAIN_FAC85D5E6CA7 if active_role=="complete" else PlayerCopy.MAIN_BD6413254AB9)]))
-	if is_instance_valid(friend_presence):
-		_sync_presence()
-		var badge := PresenceBadge.new()
-		badge.configure(friend_presence, "v1", str(active_room.get("room_id", "")))
-		card.add_child(badge)
-	if not pending.is_empty():
-		card.add_child(_paragraph(PlayerCopy.MAIN_52C04F6029F5))
-		card.add_child(_list_button("Check saved submission",turn_flow.reconcile_pending))
-	if not my_turn and active_role != "complete" and pending.is_empty():
-		notification_flow.add_offer(card)
-	if my_turn and pending.is_empty():
-		card.add_child(_list_button("Play your turn",_play_room_turn))
-	if active_role=="complete":
-		_add_room_reaction_summary(card, active_room)
-		card.add_child(_list_button("Watch this island",_watch_room_replay,false))
-		if int(active_room.get("level_index",0))<7 and pending.is_empty() and not redo_pending:
-			card.add_child(_list_button("Next island",_advance_room))
-		var reactions := HBoxContainer.new()
-		for reaction: String in ["Beautiful!","We did it!","Again soon"]:
-			reactions.add_child(_list_button(reaction,func(): room_play=true; _react(reaction),false))
-		card.add_child(reactions)
-	if active_room.get("guest_id") != null:
-		card.add_child(_list_button("Report or block player",_room_safety,false))
-	if pending.is_empty() and not redo_pending and not LocalSave.normalize_attempt(active_room.get("recordings",{})).a.is_empty():
-		card.add_child(_list_button("Start a new attempt",_confirm_fork,false))
-	if pending.is_empty(): _add_legacy_redo_action(card)
-	var navigation := HBoxContainer.new()
-	navigation.add_theme_constant_override("separation",10)
-	for entry: Array in [["Refresh",_refresh_room],["Home",_show_home]]:
-		var action := _button(entry[0],entry[1],false)
-		action.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-		navigation.add_child(action)
-	frame.add_child(navigation)
-
-func _legacy_redo_client() -> RefCounted:
-	if legacy_redo == null: legacy_redo = RedoClient.new(api,_relay_identity)
-	return legacy_redo
-
-func _restore_legacy_redo() -> bool:
-	var context := _tester_context()
-	# Cached room presentation has no authenticated redo scope until identity
-	# is loaded. Network mutations separately require that identity.
-	if context.is_empty(): return true
-	var client := _legacy_redo_client()
-	var saved: Dictionary = saves.data.get("room",{})
-	var bound_id: String = client.bound_room_id("legacy")
-	if not bound_id.is_empty() and (not client.pending().is_empty() or bound_id == saved.get("room_id")):
-		return true
-	# Notification safety is checked every frame. Restore this journal once per
-	# identity and saved room, never once per safety check.
-	var scope := context + ":" + str(saved.get("room_id",""))
-	if scope == legacy_redo_restore_scope: return legacy_redo_restore_ok
-	legacy_redo_restore_scope = scope
-	legacy_redo_restore_ok = true
-	if bound_id.is_empty(): client.invalidate()
-	if not str(saved.get("room_id","")).is_empty() and api.player_id in [saved.get("host_id"),saved.get("guest_id")]:
-		legacy_redo_restore_ok = client.bind_room("legacy",saved)
-	return legacy_redo_restore_ok
-
-func _legacy_redo_navigation_ready(target_room: String = "", reveal_recovery: bool = true) -> bool:
-	var restored := _restore_legacy_redo()
-	var client := _legacy_redo_client()
-	var pending: Dictionary = client.pending()
-	var saved: Dictionary = saves.data.get("room",{})
-	var recover_room := str(pending.get("source",{}).get("room_id",saved.get("room_id","")))
-	# Reading the current room is safe even after a lost acceptance reply or a
-	# damaged local journal. It must not strand the route back to recovery.
-	if not target_room.is_empty() and target_room == recover_room: return true
-	if restored and pending.is_empty(): return true
-	if reveal_recovery:
-		var room: Dictionary = client.bound_room("legacy")
-		if room.is_empty(): room = saved
-		if not room.is_empty() and api.player_id in [room.get("host_id"),room.get("guest_id")]:
-			active_room = room.duplicate(true)
-			_show_room_detail()
-		_toast(PlayerCopy.MAIN_8184DEB41266)
-	return false
-
-func _add_legacy_redo_action(card: VBoxContainer) -> void:
-	var client: RefCounted = _legacy_redo_client()
-	var source := RedoClient.source_for("legacy",active_room)
-	if source.is_empty() and client.pending().is_empty(): return
-	var label := "Redo requested" if client.can_accept() else "Ask for redo" if TurnState.my_turn(active_room,api.player_id) else "Turn requests"
-	if not client.pending().is_empty(): label = "Retry request"
-	card.add_child(_list_button(label,_open_legacy_redo,false))
-	if client.can_accept(): _announce_redo_request.call_deferred(client,str(active_room.get("room_id","")),_open_legacy_redo)
-
-func _announce_redo_request(client: RefCounted, room_id: String, review: Callable) -> void:
-	## A friend's redo request is easy to miss as a button label, so show it once
-	## per request in the shared pop-up. Not now leaves the request waiting.
-	if not is_inside_tree() or running or is_instance_valid(_redo_request_modal) or not client.can_accept(): return
-	var request: Variant = client.view().get("request")
-	if not request is Dictionary: return
-	var key := room_id + ":" + str(request.get("request_id",JSON.stringify(request)))
-	if _announced_redo_requests.has(key): return
-	_announced_redo_requests[key] = true
-	_redo_request_modal = InGameModal.open(ui,"RedoRequestModal","Redo requested")
-	_redo_request_modal.label(REDO_REQUEST_BODY)
-	var open: Button = _redo_request_modal.add_actions("Review request",func():
-		if is_instance_valid(_redo_request_modal): _redo_request_modal.close(false)
-		_redo_request_modal = null
-		review.call(),"Not now")
-	open.grab_focus()
-
-func _open_legacy_redo() -> void:
-	if not _relay_available() or application_backgrounded or running or is_instance_valid(redo_screen): return
-	var client := _legacy_redo_client()
-	if not client.bind_room("legacy",active_room): _toast(client.last_error); return
-	var context := _tester_context()
-	mode = "redo_requests"
-	ui.visible = false
-	redo_screen = RedoScreen.new()
-	redo_screen.client = client
-	redo_screen.closed.connect(func():
-		redo_screen = null
-		ui.visible = true
-		if _tester_context() != context or mode != "redo_requests": return
-		_show_room_detail()
-		queue_foreground_refresh()
-		if not application_backgrounded: _refresh_room())
-	add_child(redo_screen)
-
-func _refresh_legacy_redo() -> void:
-	if mode != "room" or application_backgrounded or not saves.data.get("pending_turn",{}).is_empty(): return
-	var client := _legacy_redo_client()
-	if client.busy: return
-	if RedoClient.source_for("legacy",active_room).is_empty() and client.pending().is_empty(): return
-	var context := _foreground_room_context(str(active_room.room_id))
-	var before: Dictionary = client.view()
-	if not client.bind_room("legacy",active_room): return
-	await client.refresh()
-	if context != _foreground_room_context(str(active_room.get("room_id",""))) or mode != "room" or application_backgrounded: return
-	if before != client.view(): _redraw_room_when_free(str(active_room.get("room_id","")))
-
-## A poll's redraw of the room page waits for a tap in progress to finish, or
-## the button under the finger would be freed and the tap lost.
-func _redraw_room_when_free(room_id: String) -> void:
-	await TouchInput.redraw_when_released(overlay,func() -> bool: return mode=="room" and str(active_room.get("room_id",""))==room_id,_show_room_detail)
-
-func _play_room_turn() -> void:
-	if not _restore_legacy_redo():
-		_toast(PlayerCopy.MAIN_8184DEB41266)
-		return
-	if _legacy_redo_client().pending().get("action") == "accept":
-		_show_room_detail()
-		return
-	if not TurnState.my_turn(active_room,api.player_id) or not saves.data.get("pending_turn",{}).is_empty():
-		_show_room_detail()
-		return
+## Starts this player's turn in the open legacy room, resuming the draft saved
+## for its revision. The room page's Play your turn checks first
+## (legacy_room_flow.play_turn).
+func _start_room_turn() -> void:
 	room_play=true
 	level_index=int(active_room.level_index)
 	current_level=Levels.get_level(str(active_room.level_id))
@@ -2626,30 +2342,6 @@ func _one_room_write(work: Callable) -> Variant:
 	var result: Variant = await work.call()
 	submission_in_flight = false
 	return result
-
-func _confirm_fork() -> void:
-	if not _legacy_redo_navigation_ready(): return
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_F817D954E490,34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_C9DD5A234C97))
-	card.add_child(_button("Start a new attempt",_fork_room))
-	card.add_child(_button("Keep this attempt",_show_room_detail,false))
-
-func _fork_room() -> void:
-	if not _relay_identity().ready or not _legacy_redo_navigation_ready(): return
-	if submission_in_flight or not saves.data.get("pending_turn",{}).is_empty():
-		return
-	var context := _foreground_room_context(str(active_room.room_id))
-	var response: Dictionary = await _one_room_write(api.request_json.bind(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/fork",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
-	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
-
-func _advance_room() -> void:
-	if not _relay_identity().ready or not _legacy_redo_navigation_ready(): return
-	if submission_in_flight or not saves.data.get("pending_turn",{}).is_empty():
-		return
-	var context := _foreground_room_context(str(active_room.room_id))
-	var response: Dictionary = await _one_room_write(api.request_json.bind(HTTPClient.METHOD_POST,"/v1/rooms/"+str(active_room.room_id)+"/advance",{"base_revision":active_room.revision,"idempotency_key":RoomsApi.new_key()}))
-	if context == _foreground_room_context(str(active_room.get("room_id",""))): _accept_room(response)
 
 func _show_online_collection() -> void:
 	replays_flow.show_shared_replays()
@@ -2721,7 +2413,7 @@ func _service_world_cover() -> void:
 	var shade_id := shade.get_instance_id() if shade != null else 0
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
-	var covered := friends_flow.is_open() or room_hub_flow.is_open() or is_instance_valid(safety_screen) or is_instance_valid(redo_screen) or (shade != null and _backdrop_ready)
+	var covered := friends_flow.is_open() or room_hub_flow.is_open() or is_instance_valid(safety_screen) or legacy_room_flow.redo_open() or (shade != null and _backdrop_ready)
 	if not covered and _backdrop_still != null:
 		_backdrop_still = null
 		_backdrop_key = []
@@ -2818,7 +2510,7 @@ func _place_still(shade: ColorRect, texture: Texture2D) -> void:
 func _foreground_refresh_safe() -> bool:
 	# A paused rehearsal is still active work. Do not swap its source recording,
 	# revision or review screen behind the player's back.
-	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home",RoomHubFlow.MODE_ROOMS,"room","journey",ReplaysFlow.MODE_COLLECTION,"settings","saved"]
+	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home",RoomHubFlow.MODE_ROOMS,LegacyRoomFlow.MODE_ROOM,"journey",ReplaysFlow.MODE_COLLECTION,"settings","saved"]
 
 func _background_application() -> void:
 	if application_backgrounded:
@@ -2875,7 +2567,7 @@ func _online_gated() -> bool:
 	if not _update_gate_active(): return false
 	# A full-screen child (a room, a replay, Photo transfer, Safety, a redo request)
 	# keeps its own Back; the screen then waits for Home instead of drawing beneath it.
-	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen):
+	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open():
 		_toast(PlayerCopy.UPDATE_REQUIRED_ERROR)
 		_request_update_gate()
 		return true
@@ -2893,7 +2585,7 @@ func _request_update_gate() -> void:
 func _service_update_gate() -> void:
 	if update_gate_dismissed or mode != "home" or not _update_gate_active(): return
 	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or friends_flow.is_open() or room_hub_flow.is_open(): return
-	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen): return
+	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open(): return
 	# A card on Home (What's new, a confirmation) is read and closed first.
 	if is_instance_valid(_whats_new_card): return
 	for child: Node in ui.get_children():
@@ -2964,7 +2656,7 @@ func _service_foreground_refresh() -> void:
 	if foreground_refresh_queued:
 		foreground_schedule.request_now(now)
 		foreground_refresh_queued=false
-	elif mode not in ["room",RoomHubFlow.MODE_ROOMS]:
+	elif mode not in [LegacyRoomFlow.MODE_ROOM,RoomHubFlow.MODE_ROOMS]:
 		return
 	var ticket: Dictionary=foreground_schedule.begin_if_due(now,true,false)
 	if ticket.is_empty():
@@ -2989,7 +2681,7 @@ func _foreground_room_context(room_id: String) -> String:
 
 func _apply_foreground_response(response: Dictionary, requested_room: String) -> void:
 	if not response.get("ok",false):
-		if mode in ["room",RoomHubFlow.MODE_ROOMS]:
+		if mode in [LegacyRoomFlow.MODE_ROOM,RoomHubFlow.MODE_ROOMS]:
 			_toast(str(response.get("error",PlayerCopy.MAIN_076E60DB25EC)))
 		return
 	var incoming: Variant=response.get("data",{})
@@ -2997,7 +2689,7 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 		incoming=incoming.get("room",incoming)
 	if not incoming is Dictionary or str(incoming.get("room_id",""))!=requested_room or Levels.get_level(str(incoming.get("level_id",""))).is_empty():
 		return
-	if not _legacy_redo_navigation_ready(requested_room,false): return
+	if not legacy_room_flow.navigation_ready(requested_room,false): return
 	var displayed: bool=str(active_room.get("room_id",""))==requested_room
 	var remembered: bool=str(saves.data.get("room",{}).get("room_id",""))==requested_room
 	var pending: Dictionary=saves.data.get("pending_turn",{})
@@ -3025,13 +2717,13 @@ func _apply_foreground_response(response: Dictionary, requested_room: String) ->
 		if not TurnState.my_turn(active_room,api.player_id) and TurnState.my_turn(incoming,api.player_id):
 			_toast(PlayerCopy.MAIN_09164F93CEA2)
 		active_room=incoming.duplicate(true)
-		if mode=="room" and changed:
-			_redraw_room_when_free(requested_room)
+		if mode==LegacyRoomFlow.MODE_ROOM and changed:
+			legacy_room_flow.redraw_when_free(requested_room)
 	if confirmed:
 		_toast(PlayerCopy.MAIN_A917FC21E486)
 	# An unmatched pending request stays queued for explicit reconciliation.
 	# Returning to the app never starts or retries a POST automatically.
-	if mode == "room": _refresh_legacy_redo()
+	if mode == LegacyRoomFlow.MODE_ROOM: legacy_room_flow.refresh_redo()
 
 ## A flow's reason for stopping goes where its caller shows reasons: Home's
 ## toast by default, the hub's notice (RoomHubFlow.message) for a hub tap.
@@ -3095,7 +2787,7 @@ func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
 	# input and Back/close behavior. Never let both screens process Back.
 	# Checks what first: other notifications arrive before the flows exist and after they are freed.
-	if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or friends_flow.is_open() or is_instance_valid(redo_screen)):
+	if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or friends_flow.is_open() or legacy_room_flow.redo_open()):
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()
@@ -3161,16 +2853,6 @@ func ensure_relay_session() -> void:
 func queue_foreground_refresh() -> void:
 	foreground_refresh_queued = true
 
-## A legacy room a notification named becomes the saved and shown room. False
-## when the save cannot be written; nothing changes then.
-func show_legacy_room(room: Dictionary, refresh_redo: bool) -> bool:
-	if not saves.update_values({"room": room.duplicate(true)}): return false
-	active_room = room.duplicate(true)
-	friend_share_target = {"api_version":1,"room_id":active_room.room_id}
-	_show_room_detail()
-	if refresh_redo: _refresh_legacy_redo()
-	return true
-
 ## Once a session, on Home: a turn that still waits for its photo because After You closed
 ## while the camera was open. Its room opens on request and offers that photo again.
 func _service_photo_resume() -> void:
@@ -3191,7 +2873,7 @@ func _photo_resume_safe() -> bool:
 	if _update_gate_active(): return false # The room cannot open until this build is updated.
 	if not _relay_identity().ready or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
 	if relay_session != null and (relay_session.busy() or not relay_session.can_leave_for_legacy() or (relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty())): return false
-	return _legacy_redo_navigation_ready("", false)
+	return legacy_room_flow.navigation_ready("", false)
 
 func _open_photo_resume_room(room_id: String) -> void:
 	if _online_gated(): return
@@ -3235,7 +2917,7 @@ func _invite_link_received(result: Dictionary) -> void:
 ## True while the player is in the middle of something a link must not interrupt.
 func _invite_link_occupied() -> bool:
 	if running or mode not in INVITE_LINK_MODES: return true
-	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or is_instance_valid(redo_screen): return true
+	if is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open(): return true
 	if not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return true
 	if relay_session != null and relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty(): return true
 	return false
@@ -3252,7 +2934,7 @@ func _invite_link_safe() -> bool:
 	if saves.read_only or _invite_link_settling() or _invite_link_occupied(): return false
 	if not _relay_identity().ready: return false
 	if mode == FriendsFlow.MODE_FRIENDS and not friends_flow.is_open(): return false
-	if not _legacy_redo_navigation_ready("", false): return false
+	if not legacy_room_flow.navigation_ready("", false): return false
 	return relay_session == null or relay_session.can_leave_for_legacy()
 
 func _service_invite_link() -> void:
@@ -3317,7 +2999,7 @@ func _open_safety(context: Dictionary = {}, return_to: String = "settings") -> v
 func _close_safety() -> void:
 	safety_screen = null
 	ui.visible = true
-	if safety_return == "room" and not active_room.is_empty(): _show_room_detail()
+	if safety_return == "room" and not active_room.is_empty(): legacy_room_flow.show_room()
 	elif safety_return == "account": account_flow.show_account()
 	else: _show_settings()
 
@@ -3391,7 +3073,7 @@ func _sync_presence() -> void:
 	if is_instance_valid(relay_child) and relay_session != null:
 		family = "v2"
 		room = relay_session.last_room()
-	elif not active_room.is_empty() and (mode == "room" or (room_play and mode in ["ready", "play", "preview", "review", "paused", "saved", "completion"])):
+	elif not active_room.is_empty() and (mode == LegacyRoomFlow.MODE_ROOM or (room_play and mode in ["ready", "play", "preview", "review", "paused", "saved", "completion"])):
 		family = "v1"
 		room = str(active_room.get("room_id", ""))
 	if family == "v2":

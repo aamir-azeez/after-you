@@ -58,7 +58,7 @@ func _run() -> void:
 			app.saves.update_values({},["pending_turn"])
 			if not scenario.pending.is_empty():
 				app.saves.update_values({"pending_turn":scenario.pending.duplicate(true)})
-			app._accept_room({"ok":true,"data":scenario.room.duplicate(true)})
+			app.legacy_room_flow.accept_room({"ok":true,"data":scenario.room.duplicate(true)})
 			await process_frame
 			_check(app.mode=="room" and app.active_room.active_role==scenario.room.active_role,scenario.label+" renders through the real saved room acceptance flow")
 			_check_visible(app.overlay,Rect2(Vector2.ZERO,Vector2(size)),scenario.label)

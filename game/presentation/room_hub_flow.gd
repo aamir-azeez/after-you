@@ -4,8 +4,8 @@ extends Node
 ## this session's rooms and saved replays, removes and retries rooms, and routes
 ## the hub's Open, Host, Join and Friends taps through one busy-tap gate.
 ##
-## Main hosts it as a child and keeps the room session, the legacy room, Friends
-## and the relay lobby. The flow keeps the hub's own state: the screen, its
+## Main hosts it as a child and keeps the room session, Friends and the relay
+## lobby; the legacy room is LegacyRoomFlow's. The flow keeps the hub's own state: the screen, its
 ## inbox, and the chapter and visibility last chosen. It asks Main to navigate
 ## through the signals below, and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
@@ -19,8 +19,8 @@ extends Node
 ##   _return_to_room_hub, _settle_room_flow, _online_flow_idle,
 ##   _room_session_idle, _prepare_ordinary_navigation, _friends_route_context,
 ##   _friends_route_current, _show_relay_rooms, _relay_lobby_action,
-##   _join_chapter_room, _join_room, _open_friend_legacy, _show_friends,
-##   forget_removed_room
+##   _join_chapter_room, _show_friends, forget_removed_room,
+##   legacy_room_flow (open_room, join_room)
 ## - card kit: _card, _label, _paragraph, _list_button, _back_button
 ## - node: add_child (the hub layer stays Main's child)
 ## Main asks is_open() and drives the hub through go_back(), redraw_chapters()
@@ -459,7 +459,7 @@ func _open_room_now(room: Dictionary) -> void:
 		if host.mode == "relay_online" and host.relay_session != null and host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("room_id") == room_id:
 			if client != null: client.confirm_room_rendered(2,room_id)
 	elif version == 1:
-		await host._open_friend_legacy(room_id)
+		await host.legacy_room_flow.open_room(room_id)
 		if host.mode == "room" and Typed.equal(host.active_room.get("room_id"), room_id):
 			if client != null: client.confirm_room_rendered(1,room_id)
 		else: host._settle_room_flow()
@@ -531,4 +531,4 @@ func _join_code(code: String) -> void:
 	if data.api_version == 2:
 		await host._join_chapter_room(code)
 	else:
-		await host._join_room(code)
+		await host.legacy_room_flow.join_room(code)

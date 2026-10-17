@@ -65,7 +65,7 @@ func _room_ui(key: String) -> void:
 	_check(service._room.is_empty(), "Returning from a chapter clears its room lookup immediately: " + key)
 	await process_frame
 	app.active_room = {"schema_version": 1, "room_id": "L".repeat(22), "revision": 1, "level_index": 0, "level_id": "first-light", "host_id": HOST, "guest_id": GUEST, "first_player_id": HOST, "active_role": "a", "attempt": 0, "recordings": {"a": null, "b": null}, "completed_islands": [], "reactions": {}}
-	app._show_room_detail()
+	app.legacy_room_flow.show_room()
 	presence_api.response = {"ok": true, "data": {"schema_version": 1, "partner_joined": false, "partner_online": false, "expires_after_seconds": 0}}
 	await service.service()
 	badge = app.overlay.find_child("FriendPresence", true, false)

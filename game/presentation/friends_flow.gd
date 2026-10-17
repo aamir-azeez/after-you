@@ -16,7 +16,7 @@ extends Node
 ##   _sync_presence
 ## - room flow: active_room, friend_share_target, relay_menu_generation,
 ##   _friends_to_rooms, _show_relay_rooms, _relay_lobby_action,
-##   _open_friend_legacy, _join_room
+##   legacy_room_flow (open_room, join_room)
 ## - node: add_child (the Friends layer stays Main's child)
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link(). refresh() calls the screen's private
@@ -139,7 +139,7 @@ func _return_to_room() -> void:
 	if target.is_empty(): return
 	host._friends_to_rooms()
 	if target.api_version == 2: host._relay_lobby_action("open",target.room_id)
-	else: host._open_friend_legacy(target.room_id)
+	else: host.legacy_room_flow.open_room(target.room_id)
 
 func _leave() -> void:
 	screen = null
@@ -168,5 +168,5 @@ func _join(descriptor: Dictionary) -> void:
 	elif descriptor.get("api_version") == 1:
 		var room_id := str(descriptor.get("room_id",""))
 		var saved: Dictionary = host.saves.data.get("room",{})
-		if Typed.equal(saved.get("room_id"), room_id) and host.api.player_id in [saved.get("host_id"),saved.get("guest_id")]: host._open_friend_legacy(room_id)
-		else: host._join_room(str(descriptor.get("invite_code","")))
+		if Typed.equal(saved.get("room_id"), room_id) and host.api.player_id in [saved.get("host_id"),saved.get("guest_id")]: host.legacy_room_flow.open_room(room_id)
+		else: host.legacy_room_flow.join_room(str(descriptor.get("invite_code","")))

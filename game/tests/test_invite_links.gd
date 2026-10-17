@@ -332,7 +332,7 @@ func _typed_room_joins(app: Node, api: FakeApi) -> void:
 	before = api.calls.size()
 	app._show_home()
 	await _frames(2)
-	await app._join_room("room-" + LEGACY_CODE)
+	await app.legacy_room_flow.join_room("room-" + LEGACY_CODE)
 	var joins: Array = api.calls.slice(before).filter(func(call: Dictionary) -> bool: return call.path == "/v1/rooms/join")
 	_check(joins.size() == 1 and joins[0].body.invite_code == LEGACY_CODE,"The legacy join sends a typed room code as the bare code")
 

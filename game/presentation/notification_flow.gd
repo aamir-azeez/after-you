@@ -16,9 +16,9 @@ extends Node
 ##   identity_busy, identity_read_state, IdentityReadState,
 ##   foreground_refresh_running, relay_identity_epoch, lifecycle_generation
 ## - rules: _relay_identity, _token_digest, _await_secret, _parse_json,
-##   _legacy_redo_navigation_ready,
 ##   _update_gate_active, _friend_display_name
-## - entry points: show_legacy_room, ensure_relay_session, queue_foreground_refresh,
+## - entry points: legacy_room_flow (navigation_ready, show_saved_room),
+##   ensure_relay_session, queue_foreground_refresh,
 ##   _show_friends, friends_open, friends_hosting_hint, refresh_friends,
 ##   _enter_online_relay, _request_update_gate
 ## - modes: NOTIFICATION_ROUTE_MODES (the screens a tap may leave)
@@ -185,7 +185,7 @@ func route_safe(route: Dictionary) -> bool:
 	if host.application_backgrounded or host.running or host.submission_in_flight or host.identity_loading or host.identity_busy or host.foreground_refresh_running or is_instance_valid(host.relay_child) or host.saves.read_only: return false
 	if host.mode not in host.NOTIFICATION_ROUTE_MODES and not (host.mode == "friends" and route.get("kind") == "friend_room_available"): return false
 	if not host._relay_identity().ready or not host.saves.data.get("pending_turn", {}).is_empty() or not host.saves.data.get("room_draft", {}).is_empty(): return false
-	if not host._legacy_redo_navigation_ready(str(route.room_id) if route.room_family == "legacy" else "",false): return false
+	if not host.legacy_room_flow.navigation_ready(str(route.room_id) if route.room_family == "legacy" else "",false): return false
 	if host.relay_session != null:
 		if host.relay_session.busy() or not host.relay_session.can_leave_for_legacy(): return false
 		if host.relay_session.coordinator != null and not host.relay_session.coordinator.draft().is_empty(): return false
@@ -251,7 +251,7 @@ func _open_route(route: Dictionary) -> void:
 			host.turn_notifications.acknowledge_route(route.event_id)
 			host._toast(PlayerCopy.MAIN_6DE42F59590C)
 			return
-		if not host.show_legacy_room(room, route.get("kind") == "redo_requested"):
+		if not host.legacy_room_flow.show_saved_room(room, route.get("kind") == "redo_requested"):
 			route_retry_ms = Time.get_ticks_msec() + 15000
 			host._toast(PlayerCopy.MAIN_22017C43B345)
 			return

@@ -35,16 +35,16 @@ func _run() -> void:
 	api.requested = {"request_id":Canonical.digest(source),"source":source,"status":"pending"}
 	var store := CountingStore.new()
 	var app := _make_app(viewport,path,api,store)
-	app._accept_room({"ok":true,"data":api.room})
+	app.legacy_room_flow.accept_room({"ok":true,"data":api.room})
 	await _settle()
 	_check(_button(app.overlay,"Redo requested") != null,"Fetched partner request survives Main's same-room menu rebuild")
-	app._open_legacy_redo()
+	app.legacy_room_flow.open_redo()
 	await _settle()
-	var screen: CanvasLayer = app.redo_screen
+	var screen: CanvasLayer = app.legacy_room_flow.redo_screen
 	_check(is_instance_valid(screen) and _button(screen,"Redo my turn") != null,"Actual Main panel offers first-player consent")
 	api.drop_next = true
 	await _tap(viewport,_button(screen,"Redo my turn"))
-	var pending: Dictionary = app.legacy_redo.pending()
+	var pending: Dictionary = app.legacy_room_flow.legacy_redo.pending()
 	_check(api.room.attempt == 1 and pending.get("action") == "accept","Lost consent reply retains its exact legacy fork operation")
 	screen.close()
 	await _settle()
@@ -57,23 +57,23 @@ func _run() -> void:
 	app.queue_free()
 	await _settle()
 	app = _make_app(viewport,path,api,store)
-	_check(app.active_room.is_empty() and app.legacy_redo.pending().is_empty(),"Cold Main starts without a bound runtime redo client")
+	_check(app.active_room.is_empty() and app.legacy_room_flow.legacy_redo.pending().is_empty(),"Cold Main starts without a bound runtime redo client")
 	var before := api.calls.size()
-	await app._create_room()
+	await app.legacy_room_flow.create_room()
 	_check(api.calls.size() == before and app.active_room.room_id == ROOM and app.mode == "room","Cold create restores the saved room's acceptance before any new-room POST")
-	_check(Canonical.same(app.legacy_redo.pending(),pending),"Cold recovery preserves the original fork key and source")
-	await app._join_room("B1".repeat(10))
+	_check(Canonical.same(app.legacy_room_flow.legacy_redo.pending(),pending),"Cold recovery preserves the original fork key and source")
+	await app.legacy_room_flow.join_room("B1".repeat(10))
 	await app._join_chapter_room("B1".repeat(10))
 	app.relay_session = Session.new(api,app._relay_identity,LobbyFixture.MemoryStore.new())
 	await app._relay_lobby_action("create","relay-isles@2")
 	await app._relay_lobby_action("join","B1".repeat(10))
 	await app._relay_lobby_action("open","S".repeat(22))
-	await app._fork_room()
-	await app._advance_room()
+	await app.legacy_room_flow.fork_room()
+	await app.legacy_room_flow.advance_room()
 	_check(api.calls.size() == before,"Both protocols, generic fork and advance cannot hide the unresolved acceptance")
 	var other := api.room.duplicate(true)
 	other.room_id = "S".repeat(22)
-	app._accept_room({"ok":true,"data":other})
+	app.legacy_room_flow.accept_room({"ok":true,"data":other})
 	app._apply_foreground_response({"ok":true,"data":other},other.room_id)
 	_check(app.active_room.room_id == ROOM and app.saves.data.room.room_id == ROOM,"An incoming different room cannot replace either the visible or durable recovery target")
 	var reads := store.reads
@@ -81,23 +81,23 @@ func _run() -> void:
 	for index in range(20): _check(not app.notification_flow.route_safe(route),"A notification cannot navigate away from the unresolved legacy acceptance")
 	_check(store.reads == reads,"Repeated notification guards do not reread the redo journal")
 	before = api.calls.size()
-	await app._refresh_room()
+	await app.legacy_room_flow.refresh_room()
 	var calls: Array = api.calls.slice(before)
 	_check(calls.size() == 2 and calls.all(func(call: Dictionary) -> bool: return call.method == HTTPClient.METHOD_GET),"Same-room recovery refresh remains available and only reads the room and request")
 	for size: Vector2i in [Vector2i(1280,720),Vector2i(960,540)]:
 		viewport.size = size
-		app._show_room_detail()
+		app.legacy_room_flow.show_room()
 		await _settle()
 		for label: String in ["Home","Refresh"]:
 			var button := _button(app.overlay,label)
 			_check(button != null and Rect2(Vector2.ZERO,Vector2(size)).encloses(button.get_global_rect()),"Legacy room navigation remains outside the scrolling card at both landscape sizes")
-	app._open_legacy_redo()
+	app.legacy_room_flow.open_redo()
 	await _settle()
-	screen = app.redo_screen
+	screen = app.legacy_room_flow.redo_screen
 	var back := _button(screen,"Back")
 	_check(back != null and Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(back.get_global_rect()),"Request panel's fixed Back remains visible on the short viewport")
 	await _tap(viewport,_button(screen,"Retry request"))
-	_check(screen.accepted and app.legacy_redo.pending().is_empty() and api.receipts.size() == 1,"Visible cold retry resolves the original legacy key without another attempt")
+	_check(screen.accepted and app.legacy_room_flow.legacy_redo.pending().is_empty() and api.receipts.size() == 1,"Visible cold retry resolves the original legacy key without another attempt")
 	screen.close()
 	await _settle()
 	_check(app.active_room.attempt == 1 and _button(app.overlay,"Play your turn") != null,"Recovered acceptance restores the ordinary recordable A menu")
@@ -108,10 +108,10 @@ func _run() -> void:
 	api.room.recordings = {"a":{"final_state_hash":"b".repeat(64)},"b":null}
 	source = Client.source_for("legacy",api.room)
 	api.requested = {"request_id":Canonical.digest(source),"source":source,"status":"pending"}
-	app._accept_room({"ok":true,"data":api.room})
-	app._open_legacy_redo()
+	app.legacy_room_flow.accept_room({"ok":true,"data":api.room})
+	app.legacy_room_flow.open_redo()
 	await _settle()
-	screen = app.redo_screen
+	screen = app.legacy_room_flow.redo_screen
 	api.hold_next = true
 	screen._act("accept")
 	_check(api.busy,"Owner invalidation holds a real acceptance callback")
@@ -121,32 +121,32 @@ func _run() -> void:
 	app.identity_data = {"player_id":GUEST,"device_token":api.device_token}
 	api.release.emit()
 	await _settle()
-	_check(not is_instance_valid(app.redo_screen) and app.ui.visible and app.mode == "home" and app.legacy_redo.view().is_empty(),"Late acceptance from the old identity cannot reopen its room or panel")
+	_check(not is_instance_valid(app.legacy_room_flow.redo_screen) and app.ui.visible and app.mode == "home" and app.legacy_room_flow.legacy_redo.view().is_empty(),"Late acceptance from the old identity cannot reopen its room or panel")
 	# An advisory request may remain uncertain, but B can still take their turn.
 	api.room.active_role = "b"
 	api.room.revision += 1
 	api.room.recordings = {"a":{"final_state_hash":"c".repeat(64)},"b":null}
 	api.requested = null
-	app.legacy_redo = Client.new(api,app._relay_identity,store)
-	app.legacy_redo_restore_scope = ""
-	app._accept_room({"ok":true,"data":api.room})
-	app._open_legacy_redo()
+	app.legacy_room_flow.legacy_redo = Client.new(api,app._relay_identity,store)
+	app.legacy_room_flow.legacy_redo_restore_scope = ""
+	app.legacy_room_flow.accept_room({"ok":true,"data":api.room})
+	app.legacy_room_flow.open_redo()
 	await _settle()
-	screen = app.redo_screen
+	screen = app.legacy_room_flow.redo_screen
 	api.drop_next = true
 	await _tap(viewport,_button(screen,"Ask for redo"))
-	_check(app.legacy_redo.pending().get("action") == "request","B's uncertain advisory request is retained")
+	_check(app.legacy_room_flow.legacy_redo.pending().get("action") == "request","B's uncertain advisory request is retained")
 	screen.close()
 	await _settle()
 	_check(_button(app.overlay,"Play your turn") != null,"Advisory redo uncertainty does not block B's ordinary turn")
 	# The terminal room response, rather than omission from any list, is the
 	# authority that can clear this room's stale pending operation.
 	api.room_failure = "connection_interrupted"
-	await app._refresh_room()
-	_check(not app.legacy_redo.pending().is_empty(),"Transient room failure retains pending recovery")
+	await app.legacy_room_flow.refresh_room()
+	_check(not app.legacy_room_flow.legacy_redo.pending().is_empty(),"Transient room failure retains pending recovery")
 	api.room_failure = "room_not_found"
-	await app._refresh_room()
-	_check(app.legacy_redo.pending().is_empty() and app.mode == "rooms","Definitive same-room GET removes a vanished room's recovery dead end")
+	await app.legacy_room_flow.refresh_room()
+	_check(app.legacy_room_flow.legacy_redo.pending().is_empty() and app.mode == "rooms","Definitive same-room GET removes a vanished room's recovery dead end")
 	viewport.queue_free()
 	await _settle()
 	await create_timer(0.3).timeout
@@ -171,7 +171,7 @@ func _make_app(viewport: SubViewport, path: String, api: MainApi, store: Countin
 	app.api = api
 	app.identity_read_state = Main.IdentityReadState.LOADED
 	app.identity_data = {"player_id":api.player_id,"device_token":api.device_token}
-	app.legacy_redo = Client.new(api,app._relay_identity,store)
+	app.legacy_room_flow.legacy_redo = Client.new(api,app._relay_identity,store)
 	return app
 
 func _button(node: Node, label: String) -> Button:

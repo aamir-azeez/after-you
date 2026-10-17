@@ -2,6 +2,7 @@ extends SceneTree
 const Notifications = preload("res://services/turn_notifications.gd")
 const Storage = preload("res://services/local_save.gd")
 const Main = preload("res://main.gd")
+const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const Levels = preload("res://core/levels.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Session = preload("res://services/relay_online_session.gd")
@@ -106,10 +107,14 @@ class RouteMain extends Main:
 	var opened := 0
 	var messages := 0
 	func _ready() -> void: pass
-	func _show_room_detail() -> void: opened += 1; mode = "room"
+	func _new_legacy_room_flow() -> LegacyRoomFlow: return RouteRoomFlow.new(self)
 	func _enter_online_relay() -> void: opened += 1; mode = "relay_online"
 	func _toast(_message: String) -> void: messages += 1
 	func _process(_delta: float) -> void: pass
+
+## Counts each time the room page opens, instead of drawing it.
+class RouteRoomFlow extends LegacyRoomFlow:
+	func show_room() -> void: host.opened += 1; host.mode = "room"
 
 class RoomStub extends Node3D:
 	var notes: Array[String] = []

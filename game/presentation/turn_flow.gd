@@ -4,16 +4,16 @@ extends Node
 ## a turn whose answer was lost, a turn the server refuses, and the held screen
 ## that keeps its rehearsal.
 ##
-## Main hosts it as a child and keeps the room page, the room write lock
-## (submission_in_flight, _one_room_write, shared with fork, advance and
-## reactions) and active_room. The flow keeps no state of its own: the unsent
+## Main hosts it as a child and keeps the room write lock (submission_in_flight,
+## _one_room_write, shared with fork, advance and reactions) and active_room;
+## the room page is LegacyRoomFlow's. The flow keeps no state of its own: the unsent
 ## turn lives in saves ("pending_turn", "held_turns"). It asks Main to show the
 ## room hub through rooms_requested, and reads Main only through this host
 ## contract (read at call time, so Main or a test can swap a service):
 ## - services: api, saves, _ensure_identity
 ## - screen: mode, running, review_recording, _toast, _report
 ## - room flow: active_room, submission_in_flight, _one_room_write,
-##   _accept_room, _show_room_detail, _return_to_room_hub
+##   _return_to_room_hub, legacy_room_flow (accept_room, show_room)
 ## - card kit: _card, _label, _paragraph, _button, _back_button
 ## Main calls commit_online() from review, reconcile_pending() from the room
 ## page's Check saved submission, show_unsent_turn() when an unsent turn holds
@@ -62,7 +62,7 @@ func _send_pending(pending: Dictionary) -> void:
 		# room has advanced and the API returns its latest snapshot.
 		if not host.saves.update_values({},["pending_turn","room_draft"]):
 			host._toast(PlayerCopy.MAIN_B701225FD961)
-		host._accept_room(response)
+		host.legacy_room_flow.accept_room(response)
 	elif int(response.status)>=400 and int(response.status)<500 and int(response.status) not in [408,429]:
 		# A player who moved on meanwhile is not pulled back; their next online
 		# tap opens the held turn (Main's _relay_available).
@@ -97,7 +97,7 @@ func reconcile_pending() -> void:
 	var room: Dictionary=response.data.get("room",response.data)
 	var status := TurnState.pending_status(pending,room)
 	if status=="accepted":
-		host._accept_room(response)
+		host.legacy_room_flow.accept_room(response)
 		host._toast(PlayerCopy.MAIN_A917FC21E486)
 		return
 	host.active_room=room.duplicate(true)
@@ -147,7 +147,7 @@ func show_unsent_turn(report: Callable = Callable()) -> void:
 	var saved: Dictionary = Typed.as_dict(host.saves.data.get("room"))
 	host.active_room = saved.duplicate(true) if Typed.equal(saved.get("room_id"),pending.get("room_id")) else {}
 	if bool(pending.get("rejected",false)) or host.active_room.is_empty(): show_held_turn(pending)
-	else: host._show_room_detail()
+	else: host.legacy_room_flow.show_room()
 
 func show_held_turn(pending: Dictionary) -> void:
 	host.running=false
@@ -170,7 +170,7 @@ func reject_pending(pending: Dictionary, error: String = PlayerCopy.MAIN_52480E5
 func _archive_held_turn(pending: Dictionary) -> void:
 	if not keep_held_turn(pending,host.active_room): return
 	if host.active_room.is_empty(): rooms_requested.emit()
-	else: host._show_room_detail()
+	else: host.legacy_room_flow.show_room()
 
 ## Keeps a held turn's rehearsal in held_turns and clears the unsent turn, as
 ## Keep rehearsal & return does; room becomes the saved room ({} for none).

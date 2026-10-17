@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Main = preload("res://main.gd")
+const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const Reactions = preload("res://presentation/room_reactions.gd")
 const Storage = preload("res://services/local_save.gd")
 const WrongTypes = preload("res://tests/wrong_types.gd")
@@ -21,9 +22,15 @@ class Harness:
 		pass
 	func _toast(message: String) -> void:
 		notices.append(message)
-	func _accept_room(response: Dictionary, _return_to_friends: bool = false) -> void:
-		accepted += 1
-		active_room = response.data.duplicate(true)
+	func _new_legacy_room_flow() -> LegacyRoomFlow:
+		return AcceptingRoomFlow.new(self)
+
+## Counts each accepted room reply and keeps the room, instead of drawing it.
+class AcceptingRoomFlow:
+	extends LegacyRoomFlow
+	func accept_room(response: Dictionary, _return_to_friends: bool = false) -> void:
+		host.accepted += 1
+		host.active_room = response.data.duplicate(true)
 
 class FakeApi:
 	extends Node
