@@ -5,7 +5,10 @@ extends "res://tests/test_relay_online.gd"
 ## any more, even while the hub can only show its saved list. That room's
 ## unsent turn is kept as a held turn, so online play opens again. When the
 ## other player blocks first, checking an unsent turn holds it instead of
-## leaving it pending for good.
+## leaving it pending for good. A turn the server refuses on submit opens its
+## held screen, and when the player left before the answer, their next online
+## tap does. A timeout or server error leaves the turn unsent and retryable.
+## Another identity's unsent turn is never opened.
 
 const Safety = preload("res://services/safety_client.gd")
 const SafetyStore = preload("res://services/safety_store.gd")
@@ -15,6 +18,12 @@ const LEGACY_PARTNER := "QQQQQQQQQQQQQQQQQQQQQQ"
 const LEGACY_OTHER := "OOOOOOOOOOOOOOOOOOOOOO"
 const LEGACY_DRAFT := "DDDDDDDDDDDDDDDDDDDDDD"
 const LEGACY_BACK := "KKKKKKKKKKKKKKKKKKKKKK"
+const LEGACY_SUBMIT := "SSSSSSSSSSSSSSSSSSSSSS"
+const LEGACY_AWAY := "WWWWWWWWWWWWWWWWWWWWWW"
+const LEGACY_RETRY := "TTTTTTTTTTTTTTTTTTTTTT"
+const LEGACY_CHECK := "CCCCCCCCCCCCCCCCCCCCCC"
+const LEGACY_EARLIER := "EEEEEEEEEEEEEEEEEEEEEE"
+const NEXT_IDENTITY := "NNNNNNNNNNNNNNNNNNNNNN"
 const Copy = preload("res://presentation/player_copy.gd")
 const PEER := "PPPPPPPPPPPPPPPPPPPPPP"
 const BLOCKED_ERROR := "Synthetic blocked room."
@@ -22,6 +31,11 @@ var blocked: Dictionary = {}
 var inbox_offline := false
 var block_target := ""
 var safety_dir := ""
+## The next answers to a turn submitted in a room: "blocked", "timeout" or
+## "unavailable"; with none left the turn is accepted.
+var turn_replies: Dictionary = {}
+## A finished first turn on the first island.
+var played: Dictionary
 
 func _run() -> void:
 	for name: String in ["relay-a","relay-b","garden-a","garden-b","initial-checkpoint","relay-checkpoint","final-checkpoint"]:
@@ -66,6 +80,12 @@ func _run() -> void:
 	await _block_with_room_draft(app,api)
 	await _partner_blocked_keep(app,api)
 	await _partner_blocked_back(app,api)
+	played=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
+	await _refused_on_submit(app,api)
+	await _refused_after_leaving(app,api)
+	await _unanswered_submit(app,api)
+	await _refused_while_checking(app,api)
+	await _previous_identity_turn(app,api)
 	_finish(viewport)
 
 ## Opens the earlier-island room from the hub card; false when it did not open.
@@ -241,6 +261,235 @@ func _partner_blocked_back(app: Node, api: FakeApi) -> void:
 	_check(app.saves.data.get("pending_turn",{}).is_empty() and app.saves.data.get("held_turns",[]).any(func(turn: Dictionary) -> bool: return turn.get("room_id")==LEGACY_BACK),"Back keeps the rehearsal and clears the unsent turn")
 	_check(app._relay_available(),"Online play is open again after Back")
 
+## Opens the room from the hub and plays this player's turn up to its review:
+## the turn was played to its end and left there, so Play your turn offers
+## Resume. Returns the review's Save turn, or null.
+func _review_turn(app: Node, api: FakeApi, room_id: String) -> Button:
+	inbox_offline=false
+	if app.room_hub_flow.is_open(): await app.room_hub_flow.refresh()
+	await _frames(2)
+	if not await _open_from_hub(app,api,room_id): return null
+	_check(app.saves.update_values({"room_draft":{"room_id":room_id,"revision":1,"attempt":{"a":{},"b":{},"draft":played.duplicate(true)}}}),"Save the played turn's draft: "+room_id)
+	var play: Button=_button_named(app,"Play your turn")
+	_check(play!=null,"The room offers Play your turn: "+room_id)
+	if play==null: return null
+	play.pressed.emit()
+	await _frames(2)
+	var resume: Button=_button_named(app,"Resume")
+	_check(app.mode=="ready" and resume!=null,"The ready card offers Resume for the played turn: "+app.mode)
+	if resume==null: return null
+	resume.pressed.emit()
+	await _frames(2)
+	var save: Button=_button_named(app,"Save turn")
+	_check(app.mode=="review" and save!=null,"The played turn reaches its review with Save turn: "+app.mode)
+	return save
+
+func _turns_sent(api: FakeApi, room_id: String) -> Array:
+	return api.calls.filter(func(call: Dictionary) -> bool: return call.method==HTTPClient.METHOD_POST and call.path=="/v1/rooms/"+room_id+"/turns")
+
+## The other player blocked during this player's turn: Save turn gets 403
+## player_blocked, and the held screen opens straight away.
+func _refused_on_submit(app: Node, api: FakeApi) -> void:
+	var save := await _review_turn(app,api,LEGACY_SUBMIT)
+	if save==null: return
+	var held_before: int=app.saves.data.get("held_turns",[]).size()
+	turn_replies[LEGACY_SUBMIT]=["blocked"]
+	save.pressed.emit()
+	await _frames(4)
+	_check(_turns_sent(api,LEGACY_SUBMIT).size()==1,"Save turn submits the turn once")
+	var pending: Dictionary=app.saves.data.get("pending_turn",{})
+	_check(app.mode=="held" and _button_named(app,"Keep rehearsal & return")!=null,"A turn refused on submit opens the held screen: "+app.mode)
+	_check(pending.get("rejected",false) and pending.get("error")==Copy.MAIN_52480E5314F5,"The refused turn is saved as refused, with the held screen's reason: %s" % [pending])
+	_check(app.saves.data.get("room",{}).is_empty() and app.saves.data.get("room_draft",{}).is_empty() and app.active_room.is_empty(),"The blocked room and the draft played there are cleared")
+	var keep: Button=_button_named(app,"Keep rehearsal & return")
+	if keep==null: return
+	keep.pressed.emit()
+	await _frames(4)
+	var held: Array=app.saves.data.get("held_turns",[])
+	_check(held.size()==held_before+1 and held[-1].get("room_id")==LEGACY_SUBMIT and Canonical.same(held[-1].get("recording"),played),"Keep keeps the played turn's rehearsal on this phone")
+	_check(app.saves.data.get("pending_turn",{}).is_empty() and app._relay_available(),"Keep clears the unsent turn and online play opens")
+	_check(app.mode=="rooms" and app.room_hub_flow.is_open(),"Keep returns to the room hub: "+app.mode)
+	_check(not app._invite_link_occupied(),"Nothing saved for the blocked room holds invite links")
+
+## The player goes Home while the turn is still being sent, and the partner's
+## block refuses it meanwhile. Home stays put; Friends and Play with your friend
+## then open the held turn, and Back keeps it.
+func _refused_after_leaving(app: Node, api: FakeApi) -> void:
+	var save := await _review_turn(app,api,LEGACY_AWAY)
+	if save==null: return
+	var held_before: int=app.saves.data.get("held_turns",[]).size()
+	turn_replies[LEGACY_AWAY]=["blocked"]
+	api.hold_next=true
+	save.pressed.emit()
+	await _frames(2)
+	_check(app.submission_in_flight,"The turn is being sent")
+	_escape(app)
+	await _frames(2)
+	_check(app.mode=="home","Escape goes Home while the turn is being sent: "+app.mode)
+	var waiting: Button=_button_named(app,"Play with your friend")
+	if waiting!=null: waiting.pressed.emit()
+	await _frames(2)
+	_check(app.mode=="home" and app.toast_label.visible and app.toast_label.text==Copy.MAIN_8184DEB41266,"While the turn is being sent, Play with your friend says to wait: "+app.toast_label.text)
+	api.release.emit()
+	await _frames(4)
+	var pending: Dictionary=app.saves.data.get("pending_turn",{})
+	_check(app.mode=="home" and pending.get("rejected",false) and not app.submission_in_flight,"The refusal lands while the player is Home and leaves them there: "+app.mode)
+	var friends: Button=_button_named(app,"Friends")
+	_check(friends!=null,"Home offers Friends")
+	if friends==null: return
+	friends.pressed.emit()
+	await _frames(4)
+	_check(app.mode=="held" and _button_named(app,"Keep rehearsal & return")!=null and not app.friends_flow.is_open(),"Friends from Home opens the held turn: "+app.mode)
+	# Escape on the held screen goes Home and leaves the turn as it was.
+	_escape(app)
+	await _frames(2)
+	var rooms: Button=_button_named(app,"Play with your friend")
+	_check(app.mode=="home" and rooms!=null and app.saves.data.get("pending_turn",{}).get("rejected",false),"Back Home the refused turn is still unsent")
+	if rooms==null: return
+	rooms.pressed.emit()
+	await _frames(4)
+	_check(app.mode=="held" and _button_named(app,"Keep rehearsal & return")!=null and not app.room_hub_flow.is_open(),"Play with your friend opens the held turn: "+app.mode)
+	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _frames(4)
+	var held: Array=app.saves.data.get("held_turns",[])
+	_check(held.size()==held_before+1 and held[-1].get("room_id")==LEGACY_AWAY,"Back keeps the rehearsal on this phone")
+	_check(app.saves.data.get("pending_turn",{}).is_empty() and app._relay_available(),"Back clears the unsent turn and online play opens")
+	_check(app.mode=="rooms" and app.room_hub_flow.is_open(),"Back returns to the room hub: "+app.mode)
+	_check(app.saves.data.get("room",{}).is_empty() and app.saves.data.get("room_draft",{}).is_empty(),"Nothing saved names the blocked room")
+
+## A timeout, then a server error: the turn stays unsent and not refused.
+## Leaving the review opens its room, where Check saved submission sends the
+## same turn again.
+func _unanswered_submit(app: Node, api: FakeApi) -> void:
+	var save := await _review_turn(app,api,LEGACY_RETRY)
+	if save==null: return
+	var held_before: Array=app.saves.data.get("held_turns",[]).duplicate(true)
+	turn_replies[LEGACY_RETRY]=["timeout","unavailable"]
+	save.pressed.emit()
+	await _frames(4)
+	var pending: Dictionary=app.saves.data.get("pending_turn",{})
+	_check(app.mode=="review" and not pending.is_empty() and not pending.get("rejected",false),"A timeout leaves the turn unsent and not refused: %s %s" % [app.mode,pending])
+	save=_button_named(app,"Save turn")
+	if save!=null: save.pressed.emit()
+	await _frames(6)
+	pending=app.saves.data.get("pending_turn",{})
+	_check(_turns_sent(api,LEGACY_RETRY).size()==2 and not pending.is_empty() and not pending.get("rejected",false),"A server error on the resend leaves it unsent and not refused: %s" % [pending])
+	_check(app.saves.data.get("held_turns",[])==held_before and app.mode!="held","Neither answer holds the turn")
+	var back: Button=_button_named(app,"Back")
+	_check(back!=null,"The review offers Back")
+	if back==null: return
+	back.pressed.emit()
+	await _frames(4)
+	var check: Button=_button_named(app,"Check saved submission")
+	_check(app.mode=="room" and app.active_room.get("room_id")==LEGACY_RETRY and check!=null,"Leaving the review with an unsent turn opens its room with Check saved submission: "+app.mode)
+	if check==null: return
+	check.pressed.emit()
+	await _frames(6)
+	var sent: Array=_turns_sent(api,LEGACY_RETRY)
+	_check(sent.size()==3 and sent[0].body==sent[2].body,"Check saved submission sends the same turn with the same key")
+	_check(app.saves.data.get("pending_turn",{}).is_empty() and app._relay_available() and app.active_room.get("active_role")=="b","The accepted turn clears the unsent turn and online play opens")
+
+## Home, then Play with your friend, from wherever the last pass ended.
+func _to_hub(app: Node) -> void:
+	if app.room_hub_flow.is_open(): return
+	var home: Button=_button_named(app,"Home")
+	if home!=null: home.pressed.emit()
+	await _frames(2)
+	var rooms: Button=_button_named(app,"Play with your friend")
+	if rooms!=null: rooms.pressed.emit()
+	await _frames(4)
+	_check(app.mode=="rooms" and app.room_hub_flow.is_open(),"Home's Play with your friend opens the hub: "+app.mode)
+
+## Check saved submission, then the player goes Home and on to Play Solo while
+## the check is out; the room then answers that the block ended it. The turn
+## is saved as refused without pulling them back, and their next online tap
+## opens it.
+func _refused_while_checking(app: Node, api: FakeApi) -> void:
+	await _to_hub(app)
+	inbox_offline=false
+	if app.room_hub_flow.is_open(): await app.room_hub_flow.refresh()
+	await _frames(2)
+	if not await _open_from_hub(app,api,LEGACY_CHECK): return
+	var pending := {"room_id":LEGACY_CHECK,"owner_player_id":HOST,"base_revision":1,"idempotency_key":"synthetic-key-check","recording":{}}
+	_check(app.saves.update_values({"pending_turn":pending}),"Save an unsent turn for the room")
+	var refresh: Button=_button_named(app,"Refresh")
+	if refresh!=null: refresh.pressed.emit()
+	await _frames(4)
+	var check: Button=_button_named(app,"Check saved submission")
+	_check(app.mode=="room" and check!=null,"The room offers Check saved submission")
+	if check==null: return
+	blocked[LEGACY_CHECK]=true
+	api.hold_next=true
+	check.pressed.emit()
+	await _frames(2)
+	var home: Button=_button_named(app,"Home")
+	if home!=null: home.pressed.emit()
+	await _frames(2)
+	var solo: Button=_button_named(app,"Play Solo")
+	if solo!=null: solo.pressed.emit()
+	await _frames(2)
+	_check(app.mode=="journey" and app.submission_in_flight,"The player is in Play Solo while the check is out: "+app.mode)
+	api.release.emit()
+	await _frames(4)
+	var saved: Dictionary=app.saves.data.get("pending_turn",{})
+	_check(app.mode=="journey","The refusal leaves the player in Play Solo: "+app.mode)
+	_check(saved.get("idempotency_key")=="synthetic-key-check" and saved.get("rejected",false) and saved.get("error")==Copy.MAIN_52480E5314F5,"The turn is saved as refused: %s" % [saved])
+	_check(app.saves.data.get("room",{}).is_empty(),"The refused room is no longer the saved room")
+	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _frames(2)
+	var rooms: Button=_button_named(app,"Play with your friend")
+	_check(app.mode=="home" and rooms!=null,"Back from Play Solo goes Home: "+app.mode)
+	if rooms==null: return
+	rooms.pressed.emit()
+	await _frames(4)
+	var keep: Button=_button_named(app,"Keep rehearsal & return")
+	_check(app.mode=="held" and keep!=null,"The next online tap opens the held turn: "+app.mode)
+	if keep==null: return
+	keep.pressed.emit()
+	await _frames(4)
+	_check(app.saves.data.get("pending_turn",{}).is_empty() and app.saves.data.get("held_turns",[]).any(func(turn: Dictionary) -> bool: return turn.get("room_id")==LEGACY_CHECK) and app._relay_available(),"Keep keeps the rehearsal and online play opens")
+
+## The phone switched to another identity while a turn was unsent. That turn
+## is never opened, held or sent for the new identity: an online tap shows why
+## and the screen stays.
+func _previous_identity_turn(app: Node, api: FakeApi) -> void:
+	await _to_hub(app)
+	inbox_offline=false
+	if app.room_hub_flow.is_open(): await app.room_hub_flow.refresh()
+	await _frames(2)
+	if not await _open_from_hub(app,api,LEGACY_EARLIER): return
+	var pending := {"room_id":LEGACY_EARLIER,"owner_player_id":HOST,"base_revision":1,"idempotency_key":"synthetic-key-earlier","recording":{}}
+	_check(app.saves.update_values({"pending_turn":pending}),"Save an unsent turn for the room")
+	var home: Button=_button_named(app,"Home")
+	if home!=null: home.pressed.emit()
+	await _frames(2)
+	api.player_id=NEXT_IDENTITY
+	app.identity_data={"player_id":NEXT_IDENTITY,"device_token":"synthetic-device-token"}
+	var held_before: Array=app.saves.data.get("held_turns",[]).duplicate(true)
+	var saved_room: Dictionary=app.saves.data.get("room",{}).duplicate(true)
+	var before: int=api.calls.size()
+	for label: String in ["Play with your friend","Friends"]:
+		app.toast_label.visible=false
+		var tap: Button=_button_named(app,label)
+		_check(app.mode=="home" and tap!=null,"Home offers "+label)
+		if tap==null: continue
+		tap.pressed.emit()
+		await _frames(4)
+		_check(app.mode=="home" and not app.room_hub_flow.is_open() and not app.friends_flow.is_open(),label+" with another identity's turn keeps Home: "+app.mode)
+		_check(app.toast_label.visible and app.toast_label.text==Copy.MAIN_ECBD713D8F0C,label+" says the turn is from the previous identity: "+app.toast_label.text)
+	_check(app.saves.data.get("pending_turn",{})==pending and app.saves.data.get("held_turns",[])==held_before and app.saves.data.get("room",{})==saved_room,"The previous identity's turn, held turns and saved room are untouched")
+	_check(api.calls.size()==before,"Nothing is sent for the previous identity's turn")
+	api.player_id=HOST
+	app.identity_data={"player_id":HOST,"device_token":"synthetic-device-token"}
+	_check(app.saves.update_values({},["pending_turn"]),"Clear the previous identity's turn")
+
+## Escape, as a keyboard player leaves a screen.
+func _escape(app: Node) -> void:
+	var key := InputEventKey.new()
+	key.physical_keycode=KEY_ESCAPE
+	key.pressed=true
+	app._unhandled_key_input(key)
+
 ## Every toast shown over the next frames.
 func _notices(app: Node, count: int) -> Array[String]:
 	var seen: Array[String] = []
@@ -266,7 +515,7 @@ func _finish(viewport: SubViewport) -> void:
 func _peer(room_id: String) -> String:
 	return GUEST if room_id==LEGACY else PEER
 
-const LEGACY_ROOMS := [LEGACY,LEGACY_OTHER,LEGACY_PENDING,LEGACY_DRAFT,LEGACY_PARTNER,LEGACY_BACK]
+const LEGACY_ROOMS := [LEGACY,LEGACY_OTHER,LEGACY_PENDING,LEGACY_DRAFT,LEGACY_PARTNER,LEGACY_BACK,LEGACY_SUBMIT,LEGACY_AWAY,LEGACY_RETRY,LEGACY_CHECK,LEGACY_EARLIER]
 
 func _legacy_room(room_id: String) -> Dictionary:
 	return {"room_id":room_id,"revision":1,"host_id":HOST,"guest_id":_peer(room_id),"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}
@@ -283,6 +532,8 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 			if not blocked.has(room_id): rooms.append(_inbox_room(room_id,"legacy",{"id":"first-light","version":1},_peer(room_id)))
 		return _ok({"schema_version":1,"rooms":rooms})
 	for room_id: String in LEGACY_ROOMS:
+		if request.path=="/v1/rooms/"+room_id+"/turns" and request.method==HTTPClient.METHOD_POST:
+			return _turn_reply(room_id,request)
 		if request.path=="/v1/rooms/"+room_id and request.method==HTTPClient.METHOD_GET:
 			if blocked.has(room_id): return {"ok":false,"status":403,"code":"player_blocked","error":BLOCKED_ERROR}
 			return _ok(_legacy_room(room_id))
@@ -293,6 +544,21 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 		inbox_offline=true
 		return _ok({"schema_version":1,"blocked":true,"player_id":_peer(block_target)})
 	return super._server(request,api)
+
+func _turn_reply(room_id: String, request: Dictionary) -> Dictionary:
+	var queue: Array=turn_replies.get(room_id,[])
+	var reply: String=str(queue.pop_front()) if not queue.is_empty() else ""
+	match reply:
+		"blocked":
+			blocked[room_id]=true
+			return {"ok":false,"status":403,"code":"player_blocked","error":BLOCKED_ERROR}
+		"timeout": return {"ok":false,"status":0,"code":"connection_interrupted","error":"Synthetic interrupted response."}
+		"unavailable": return {"ok":false,"status":503,"code":"service_unavailable","error":"Synthetic unavailable response."}
+	var room := _legacy_room(room_id)
+	room.revision=2
+	room.active_role="b"
+	room.recordings={"a":request.body.recording}
+	return _ok(room)
 
 func _frames(count: int) -> void:
 	for _frame in range(count): await process_frame

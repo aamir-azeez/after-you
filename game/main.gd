@@ -1921,7 +1921,7 @@ func _online_flow_idle() -> bool:
 	return not submission_in_flight and not foreground_refresh_running
 
 ## ... plus the room session, for taps that open or make a chapter room. A saved
-## legacy turn is not transient; the room flow reports it as before.
+## legacy turn is not transient; the room flow opens it (_relay_available).
 func _room_session_idle() -> bool:
 	return _online_flow_idle() and (relay_session == null or not relay_session.busy())
 
@@ -2085,11 +2085,32 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	# The room hub needs a ready identity, so a stale redo panel returns Home.
 	if had_redo_screen and mode == "redo_requests": _show_home()
 
+## Whether an online action may start. A request still out refuses with its
+## reason (report). An unsent turn refuses by opening it (_show_unsent_turn),
+## so the player always has a way back to online play.
 func _relay_available(report: Callable = Callable()) -> bool:
-	if submission_in_flight or foreground_refresh_running or not saves.data.get("pending_turn",{}).is_empty():
+	if submission_in_flight or foreground_refresh_running:
 		_report(report,PlayerCopy.MAIN_8184DEB41266)
 		return false
+	if not saves.data.get("pending_turn",{}).is_empty():
+		_show_unsent_turn(report)
+		return false
 	return true
+
+## An unsent turn holds online play. A turn the server refused opens its held
+## screen, whose Keep and Back both keep the rehearsal. One still unanswered
+## opens its saved room, where Check saved submission sends it again; with no
+## saved room to show, it is held too. Another identity's turn is never opened
+## here: the reason shows (report) and the screen stays.
+func _show_unsent_turn(report: Callable = Callable()) -> void:
+	var pending: Dictionary = saves.data.get("pending_turn",{})
+	if not _pending_owned(pending):
+		_report(report,PlayerCopy.MAIN_ECBD713D8F0C)
+		return
+	var saved: Dictionary = Typed.as_dict(saves.data.get("room"))
+	active_room = saved.duplicate(true) if Typed.equal(saved.get("room_id"),pending.get("room_id")) else {}
+	if bool(pending.get("rejected",false)) or active_room.is_empty(): _show_held_turn(pending)
+	else: _show_room_detail()
 
 func _show_relay_rooms(chapter: String = "") -> void:
 	if _online_gated(): return
@@ -2628,6 +2649,7 @@ func _one_room_write(work: Callable) -> Variant:
 	return result
 
 func _send_pending(pending: Dictionary) -> void:
+	var screen := mode
 	submission_in_flight=true
 	var response: Dictionary=await api.request_json(HTTPClient.METHOD_POST,"/v1/rooms/"+str(pending.room_id)+"/turns",{"base_revision":pending.base_revision,"idempotency_key":pending.idempotency_key,"recording":pending.recording})
 	submission_in_flight=false
@@ -2637,9 +2659,13 @@ func _send_pending(pending: Dictionary) -> void:
 		if not saves.update_values({},["pending_turn","room_draft"]):
 			_toast(PlayerCopy.MAIN_B701225FD961)
 		_accept_room(response)
+	elif int(response.status)>=400 and int(response.status)<500 and int(response.status) not in [408,429]:
+		# A player who moved on meanwhile is not pulled back; their next online
+		# tap opens the held turn (_relay_available).
+		_save_refused_turn(pending,response)
+		if mode==screen: _show_held_turn(pending)
 	else:
-		if int(response.status)>=400 and int(response.status)<500 and int(response.status) not in [408,429]:
-			saves.update_values({"pending_turn":_reject_pending(pending,response.error)})
+		# A timeout or server error leaves the turn unsent, to check and send again.
 		_toast(response.error+PlayerCopy.MAIN_F7B46601CBC3)
 
 func _reconcile_pending() -> void:
@@ -2648,20 +2674,22 @@ func _reconcile_pending() -> void:
 	var pending: Dictionary=saves.data.get("pending_turn",{})
 	if pending.is_empty():
 		return
-	if pending.has("owner_player_id") and pending.owner_player_id!=api.player_id:
+	if not _pending_owned(pending):
 		_toast(PlayerCopy.MAIN_ECBD713D8F0C)
 		return
+	var screen := mode
 	var response: Dictionary=await _one_room_write(api.request_json.bind(HTTPClient.METHOD_GET,"/v1/rooms/"+str(pending.room_id)))
+	# A player who moved on meanwhile is not pulled back: only a refusal is
+	# saved, and their next online tap opens it (_relay_available).
+	var current := mode==screen
 	if not response.ok:
-		# A block between the two players also ends the room for this turn.
-		if int(response.get("status",0)) in [404,410] or (int(response.get("status",0))==403 and str(response.get("code",""))=="player_blocked"):
-			_reject_pending(pending)
-			active_room={}
-			saves.update_values({"pending_turn":pending})
-			_show_held_turn(pending)
+		if _room_refused(response):
+			_save_refused_turn(pending,response)
+			if current: _show_held_turn(pending)
 			return
 		_toast(response.error+PlayerCopy.MAIN_602A7BD28B67)
 		return
+	if not current: return
 	var room: Dictionary=response.data.get("room",response.data)
 	var status := TurnState.pending_status(pending,room)
 	if status=="accepted":
@@ -2675,9 +2703,32 @@ func _reconcile_pending() -> void:
 	# Retry once with exactly the same saved body/key. The server deduplicates
 	# before revision checks, so an earlier success cannot become a second turn.
 	await _send_pending(pending)
-	var still_pending: Dictionary=saves.data.get("pending_turn",{})
-	if bool(still_pending.get("rejected",false)):
-		_show_held_turn(still_pending)
+
+## Whether an unsent turn is this identity's: a turn saved before turns named
+## their owner counts as this identity's.
+func _pending_owned(pending: Dictionary) -> bool:
+	return not pending.has("owner_player_id") or Typed.equal(pending.owner_player_id,api.player_id)
+
+## The room is gone for this player: deleted, not found, or a block between
+## the two players.
+static func _room_refused(response: Dictionary) -> bool:
+	var status := int(response.get("status",0))
+	return status in [404,410] or (status==403 and str(response.get("code",""))=="player_blocked")
+
+## The server refused an unsent turn for good: it is saved as rejected, for
+## its held screen. A room that is gone goes with it, and so does the draft
+## played there, so neither holds anything later.
+func _save_refused_turn(pending: Dictionary, response: Dictionary) -> void:
+	var changes := {"pending_turn":pending}
+	var erased: Array = []
+	if _room_refused(response):
+		_reject_pending(pending)
+		active_room={}
+		if Typed.equal(Typed.as_dict(saves.data.get("room")).get("room_id"),pending.get("room_id")): changes["room"]={}
+		if Typed.equal(Typed.as_dict(saves.data.get("room_draft")).get("room_id"),pending.get("room_id")): erased.append("room_draft")
+	else:
+		_reject_pending(pending,response.error)
+	if not saves.update_values(changes,erased): _toast(saves.last_error)
 
 func _show_held_turn(pending: Dictionary) -> void:
 	running=false
@@ -3043,7 +3094,7 @@ func _service_foreground_refresh() -> void:
 		return
 	var pending: Dictionary=saves.data.get("pending_turn",{})
 	var room_id := str(saves.data.get("room",{}).get("room_id",""))
-	if not pending.is_empty() and (not pending.has("owner_player_id") or pending.owner_player_id==api.player_id):
+	if not pending.is_empty() and _pending_owned(pending):
 		room_id=str(pending.get("room_id",""))
 	if room_id.is_empty():
 		foreground_refresh_queued=false
@@ -3426,7 +3477,7 @@ func _blocked_safety(room_id: String = "") -> void:
 		# ever be sent: an unsent turn is kept like a held turn, a turn left part
 		# way is dropped, and online play reopens.
 		var pending: Dictionary = Typed.as_dict(saves.data.get("pending_turn")).duplicate(true)
-		if str(pending.get("room_id","")) == room_id and (not pending.has("owner_player_id") or Typed.equal(pending.owner_player_id, api.player_id)):
+		if str(pending.get("room_id","")) == room_id and _pending_owned(pending):
 			_keep_held_turn(_reject_pending(pending),{})
 		if str(Typed.as_dict(saves.data.get("room_draft")).get("room_id","")) == room_id and not saves.update_values({},["room_draft"]): _toast(saves.last_error)
 		forget_removed_room(1,room_id)

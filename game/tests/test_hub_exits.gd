@@ -57,18 +57,30 @@ func _friends(app: Node, api: FakeApi) -> void:
 	var hub: Node = app.room_hub_flow.screen
 	var tab: Button = hub._tab_buttons["Friends"]
 	var tab_text := tab.text
-	# A saved legacy turn refuses Friends: the hub stays with the reason on it.
-	app.saves.data["pending_turn"]={"idempotency_key":"held"}
+	# An identity that needs a restart refuses Friends: the hub stays with the reason on it.
+	app.identity_restart_required=true
 	tab.pressed.emit()
 	await _frames(3)
 	_check(is_instance_valid(hub) and hub==app.room_hub_flow.screen and app.mode=="rooms" and not app.friends_flow.is_open(),"A refused Friends open keeps the hub instead of a blank screen")
-	_check(is_instance_valid(hub) and hub._message==Copy.MAIN_8184DEB41266,"The refusal's reason shows on the hub")
+	_check(is_instance_valid(hub) and hub._message==Copy.MAIN_5BC549F4B951,"The refusal's reason shows on the hub")
 	_check(tab.text==tab_text,"The tapped control reads as usual again once its flow ends")
 	var state: Dictionary = hub.client.view()
 	var list_state: String = ("Displaying saved rooms when offline" if not state.get("rooms",[]).is_empty() else str(state.get("error",""))) if state.get("stale",true) else ""
 	_check(hub._notice.text == "
-".join([Copy.MAIN_8184DEB41266, list_state].filter(func(line: String) -> bool: return not line.is_empty())),"The reason sits above the hub's own list line, never in place of it: '%s'" % hub._notice.text)
-	app.saves.data.erase("pending_turn")
+".join([Copy.MAIN_5BC549F4B951, list_state].filter(func(line: String) -> bool: return not line.is_empty())),"The reason sits above the hub's own list line, never in place of it: '%s'" % hub._notice.text)
+	app.identity_restart_required=false
+	# A saved legacy turn refuses Friends by opening it: with no saved room to
+	# show, its held screen, whose Back keeps it and returns to the hub.
+	app.saves.data["pending_turn"]={"idempotency_key":"held"}
+	tab.pressed.emit()
+	await _frames(3)
+	_check(app.mode=="held" and app.ui.visible and not app.room_hub_flow.is_open() and not app.friends_flow.is_open() and _button_named(app,"Keep rehearsal & return")!=null,"Friends with a saved turn opens the held turn in place of the hub: "+app.mode)
+	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _frames(3)
+	_check(app.mode=="rooms" and app.room_hub_flow.is_open() and app.saves.data.get("pending_turn",{}).is_empty() and app._relay_available(),"Back from it keeps the turn and returns to the hub with online play open")
+	await _hub(app)
+	hub=app.room_hub_flow.screen
+	tab=hub._tab_buttons["Friends"]
 	# A room refresh still running: Friends waits with the hub up and says so on its control.
 	app.foreground_refresh_running=true
 	tab.pressed.emit()
