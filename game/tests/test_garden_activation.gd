@@ -45,6 +45,8 @@ func _test_legacy_gate_lift_replay() -> void:
 	_check(world.garden_state == "closed" and not world.goal_ring.visible,
 		"The initially unavailable garden has folded leaves and an incomplete ring")
 	_check(_emission(world) == 0.0 and not world.bloomed, "Unavailable garden has no ready emission or flowers")
+	_check(_drawn_bloom(world) == 0 and _bloom_meshes(world) > 0,
+		"An unbloomed garden draws none of its flower, blossom or leaf-bed meshes: they are hidden, not shrunk to a speck")
 	_check(world.garden_activation.get_parent() == world.garden and world.goal_ring.get_parent() == world.garden,
 		"Activation leaves and ring share the planter's moving root")
 	_check(_count(world.garden_activation, "MeshInstance3D") == 4, "Only four small cue meshes are added")
@@ -92,6 +94,7 @@ func _test_legacy_gate_lift_replay() -> void:
 		"Garden presentation retains the original completed replay outcome")
 	_check(world.garden_state == "completed" and world.bloomed and _flowers_at(world, 1.0),
 		"Seeking directly to completed replay shows the whole bloom immediately")
+	_check(_drawn_bloom(world) == _bloom_meshes(world), "A whole bloom draws every flower, blossom and leaf-bed mesh")
 	_check(_pose(world) != ready_pose and world.goal_ring.visible and _emission(world) > 0.0,
 		"Completed flowers and flatter leaves remain distinct from the ready planter")
 	_check(is_equal_approx(world.garden.global_position.y, float(level.lift.height) / 100.0),
@@ -129,6 +132,20 @@ func _test_legacy_gate_lift_replay() -> void:
 		"Repeated presentation never mutates a snapshot, definition or either committed recording")
 	world.queue_free()
 	await process_frame
+
+## Every flower, blossom and leaf-bed mesh of the garden's bloom.
+func _bloom_meshes(world: Node3D) -> int:
+	var count := 0
+	for root_node: Node3D in world.flowers + world._garden_cover: count += _count(root_node, "MeshInstance3D")
+	return count
+
+## Those of them drawn now.
+func _drawn_bloom(world: Node3D) -> int:
+	var count := 0
+	for root_node: Node3D in world.flowers + world._garden_cover:
+		for mesh: Node in root_node.find_children("*", "MeshInstance3D", true, false):
+			if (mesh as Node3D).is_visible_in_tree(): count += 1
+	return count
 
 func _test_plain_garden_and_replacement() -> void:
 	var world := World.new()

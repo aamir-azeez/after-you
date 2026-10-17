@@ -600,7 +600,7 @@ func _create_garden() -> void:
 		var leaf := sphere(0.34, Color("739d76") if i % 2 == 0 else Color("97b982"), Vector3.ZERO, holder)
 		if holder != cover: leaf.rotation.y = angle
 		leaf.scale = Vector3(0.85, 0.095, 1.35)
-		cover.scale = Vector3.ONE * 0.001
+		_grow(cover, Vector3.ZERO)
 		_garden_cover.append(cover)
 	var petal_shape := _sphere_mesh(0.225)
 	for i in range(13):
@@ -636,7 +636,7 @@ func _create_garden() -> void:
 			mesh.rotation.y = -a
 		sphere(0.145, Color("fff0bf"), Vector3(0, 0.055, 0), head)
 		_garden_heads.append(head)
-		flower.scale=Vector3.ONE*0.001
+		_grow(flower, Vector3.ZERO)
 		flowers.append(flower)
 	_present_garden(false, false, true)
 
@@ -727,15 +727,25 @@ func _advance_garden_bloom(delta: float) -> void:
 		var opened := clampf((age - 0.23) / 0.48, 0.0, 1.0) if bloomed else 0.0
 		var size := 1.0 if settled and bloomed else 1.0 - pow(1.0 - growth, 3.0)
 		var width := 1.0 if settled and bloomed else size + sin(growth * PI) * 0.07
-		flower.scale = Vector3(maxf(0.001, width), maxf(0.001, size), maxf(0.001, width))
+		_grow(flower, Vector3(width, size, width))
 		var sway := pow(1.0 - clampf(garden_bloom_age / GARDEN_BLOOM_SECONDS, 0.0, 1.0), 2.0)
 		flower.rotation.z = sin(maxf(age, 0.0) * 8.0 + float(i) * 0.7) * 0.085 * sway * growth if bloomed and not settled and not reduced_motion else 0.0
 		if i < _garden_heads.size():
-			_garden_heads[i].scale = Vector3.ONE * maxf(0.001, 1.0 - pow(1.0 - opened, 3.0))
+			_grow(_garden_heads[i], Vector3.ONE * (1.0 - pow(1.0 - opened, 3.0)))
 	for cover: Node3D in _garden_cover:
 		var delay := Vector2(cover.position.x, cover.position.z).length() * 0.14
 		var spread := clampf((garden_bloom_age - delay) / 0.40, 0.0, 1.0) if bloomed else 0.0
-		cover.scale = Vector3.ONE * maxf(0.001, 1.0 - pow(1.0 - spread, 3.0))
+		_grow(cover, Vector3.ONE * (1.0 - pow(1.0 - spread, 3.0)))
+
+## The smallest scale a growing garden piece is given (never zero, which a
+## basis cannot invert).
+const UNGROWN := 0.001
+
+## Sizes a growing garden piece. One not yet grown is hidden, not drawn as a
+## speck: a hidden node costs no draw call.
+static func _grow(node: Node3D, size: Vector3) -> void:
+	node.visible = size.x > UNGROWN and size.y > UNGROWN and size.z > UNGROWN
+	node.scale = size.max(Vector3.ONE * UNGROWN)
 
 func present(snapshot: Dictionary, immediate: bool=false) -> void:
 	if immediate: reset_camera_exploration()
