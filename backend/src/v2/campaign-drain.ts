@@ -18,7 +18,7 @@
  */
 import { ApiError, ID_PATTERN, boundedJson, isObject, object, type Outcome } from "../protocol";
 import { roomLinkVersion, validRoomLink } from "../room-links";
-import { requireOperator } from "../safety-operator";
+import { requireOperator } from "../operator-auth";
 import type { ServerVars } from "../flags";
 import { validCampaignCreation, type CampaignCreation } from "./campaign-creation-intent";
 import { campaignStoragePresent } from "./campaign-storage";

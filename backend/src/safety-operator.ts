@@ -1,12 +1,6 @@
-import { ApiError, HASH_PATTERN, SECRET_PATTERN, boundedJson, canonicalJson, digest, equalHash, object, text, unwrap } from "./protocol";
+import { ApiError, HASH_PATTERN, boundedJson, canonicalJson, digest, object, text, unwrap } from "./protocol";
 import type { ServerVars } from "./flags";
-
-/** The operator credential check every /operator/ route runs first. A player credential never passes it. */
-export async function requireOperator(request: Request, env: ServerVars): Promise<void> {
-  const secret = env.SAFETY_OPERATOR_TOKEN;
-  const authorization = request.headers.get("Authorization");
-  if (!secret || !SECRET_PATTERN.test(secret) || !authorization?.startsWith("Bearer ") || !SECRET_PATTERN.test(authorization.slice(7)) || !equalHash(await digest(secret), await digest(authorization.slice(7)))) throw new ApiError(401, "invalid_operator_auth");
-}
+import { requireOperator } from "./operator-auth";
 
 /** Separate operator credential; never accepts a player credential or a caller target. */
 export async function routeSafetyOperator(request: Request, path: string, env: Env & ServerVars): Promise<unknown> {
