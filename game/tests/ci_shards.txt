@@ -276,10 +276,6 @@ turn_of_the_tide_history 3
 turn_of_the_tide_limits 1
 turn_of_the_tide_presses 1
 turn_of_the_tide_reach 3
-turn_of_the_tide_settled 3
-turn_of_the_tide_settled_ways 3
-turn_of_the_tide_v2 3
-turn_of_the_tide_v2_world 3
 turn_of_the_tide_variants_half 3
 turn_of_the_tide_variants_high 3
 turn_of_the_tide_variants_low 2

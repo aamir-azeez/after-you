@@ -48,17 +48,14 @@ func verify_recording(definition: Dictionary, record: Dictionary, checkpoint: Di
 func _verify_raw(definition: Dictionary, record: Dictionary, checkpoint: Dictionary, prior_a: Dictionary) -> Dictionary:
 	var reason := recording_error(definition, record, checkpoint)
 	if not reason.is_empty(): return _invalid(reason)
-	var prior_end: Dictionary = {}
 	if record.role == "b":
 		if prior_a.get("role") != "a" or record.source_recording_hash != prior_a.get("recording_hash", ""): return _invalid("The partner recording does not match.")
 		var first_check := _verify_raw(definition, prior_a, checkpoint, {})
 		if not first_check.valid or not first_check.snapshot.can_commit: return _invalid("The partner recording is not ready.")
-		prior_end = first_check.snapshot
 	elif not prior_a.is_empty() or not str(record.source_recording_hash).is_empty(): return _invalid("Unexpected partner recording.")
 	var simulation: RefCounted = _factory.new()
 	simulation.simulation_version = _version
 	simulation.catch_assistance = record.catch_assistance
-	if not prior_end.is_empty() and simulation.has_method("hand_over_prior_end"): simulation.hand_over_prior_end(prior_end)
 	simulation._reset_trusted(definition, record.stage_id, checkpoint, prior_a, record.role)
 	for input: Dictionary in expand_recording_inputs(record):
 		if simulation.finished: return _invalid("The recording continues after the turn ended.")

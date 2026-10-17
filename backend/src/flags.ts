@@ -31,7 +31,6 @@ export const FLAG_VARS = Object.freeze({
   longWayHomeV2Chapter: "LONG_WAY_HOME_V2_CHAPTER_ENABLED",
   turnOfTheTideChapter: "TURN_OF_THE_TIDE_CHAPTER_ENABLED",
   lighthouseV2Chapter: "LIGHTHOUSE_V2_CHAPTER_ENABLED",
-  turnOfTheTideV2Chapter: "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED",
   /** Campaign creation and its capability. */
   campaignCreation: "CAMPAIGN_CREATION_ENABLED",
   /** Campaign control and redo mutations. */

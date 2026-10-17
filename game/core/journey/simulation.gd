@@ -14,14 +14,6 @@ const COMFORT_ALIAS_VERSION := 9
 var _entry_latches: Dictionary = {}
 var _ready_branch := ""
 var _optics: Dictionary = {"segments":[],"signals":{}}
-## A pinned definition with "settled_source": true plays its second turns in
-## the world the first turn left: from tick zero, every control, lever and
-## pressure pad of the first player reads as at the end of the first recording,
-## so whatever the second player does takes effect at once and the only wait
-## is at the goal (the stage still completes when the memory ends). The first
-## spirit still replays as a memory; only what the gates read is settled.
-## {"player", "controls", "levers"} in such a second turn, {} otherwise.
-var _settled: Dictionary = {}
 
 func _init() -> void:
 	simulation_version = CURRENT_SIMULATION_VERSION
@@ -34,47 +26,6 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 		return false
 	simulation_version = rules_version
 	return super.reset(definition, stage_id, checkpoint, prior_a, current_role)
-
-func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String) -> void:
-	# Read before the base reset drops it.
-	var prior_end := _verified_prior_end
-	_settled = {}
-	super._reset_trusted(definition, stage_id, checkpoint, prior_a, current_role)
-	if role == "b" and pinned_rules(level) > 0 and level.get("settled_source") == true:
-		_settle(prior_end if not prior_end.is_empty() else _prior_end_state(definition, stage_id, checkpoint, prior_a))
-		_refresh_routes()
-
-## The first recording's final snapshot, played here when the caller has not
-## just checked it (reset() and the proofs hand it over).
-func _prior_end_state(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary) -> Dictionary:
-	var end: RefCounted = _new_simulation()
-	end.simulation_version = simulation_version
-	end.catch_assistance = bool(prior_a.catch_assistance)
-	end._reset_trusted(definition, stage_id, checkpoint, {}, "a")
-	for frame: Dictionary in _prior_frames: end.step(frame)
-	return end.snapshot()
-
-## Keeps what the gates read from the first player's end state.
-func _settle(end: Dictionary) -> void:
-	var controls: Dictionary = {}
-	for control: Dictionary in stage.get("controls", []):
-		if control.owner_slot == first_player_slot: controls[control.id] = end.controls[control.id]
-	var levers: Dictionary = {}
-	for lever: Dictionary in stage.get("levers", []):
-		if lever.owner_slot == first_player_slot and end.levers.has(lever.id): levers[lever.id] = end.levers[lever.id]
-	var player: Dictionary = end.players[first_player_slot]
-	_settled = {"player": {"x": int(player.x), "z": int(player.z), "height": int(player.height), "surface_id": str(player.surface_id)}, "controls": controls, "levers": levers}
-	_apply_settled()
-
-func _apply_settled() -> void:
-	for id: String in _settled.controls: _mechanisms.controls[id] = _settled.controls[id]
-	for id: String in _settled.levers: _mechanisms.levers[id] = _settled.levers[id]
-
-## The players the gates read: with a settled source, the first player stands
-## where the first turn ended.
-func _gate_players() -> Dictionary:
-	if _settled.is_empty(): return _players
-	return {first_player_slot: _settled.player, _other(first_player_slot): _players[_other(first_player_slot)]}
 
 func _schema_version() -> int:
 	return CURRENT_SIMULATION_VERSION
@@ -117,23 +68,19 @@ func _reset_mechanics() -> void:
 
 func _advance_source() -> void:
 	super._advance_source()
-	if not _settled.is_empty():
-		_apply_settled()
-	else:
-		# A evolves independently. Copy only its declared controls, never B's local
-		# selector, shutter, entry latches, or future changed source ownership.
-		for control: Dictionary in stage.get("controls", []):
-			if control.owner_slot == first_player_slot:
-				_mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
+	# A evolves independently. Copy only its declared controls, never B's local
+	# selector, shutter, entry latches, or future changed source ownership.
+	for control: Dictionary in stage.get("controls", []):
+		if control.owner_slot == first_player_slot:
+			_mechanisms.controls[control.id] = _source._mechanisms.controls[control.id]
 	_ready_branch = _source._ready_branch
 
 func _refresh_routes() -> void:
 	_refresh_optics()
 	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_entry_latches.get(route.id, false))
-	var players := _gate_players()
 	for gate: Dictionary in stage.get("gates", []):
-		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or Seven.predicate(gate.get("when", {}), stage, players, _mechanisms, _optics.signals)
+		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or Seven.predicate(gate.get("when", {}), stage, _players, _mechanisms, _optics.signals)
 
 func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
@@ -171,7 +118,7 @@ func context_action() -> Dictionary:
 	if inherited.id == "ring" and level.id == "conservatory": inherited.label = "Light garden"
 	# Stage one of the harbour keeps its bell; only the second stage is a lantern.
 	if inherited.id == "ring" and level.id == "turn-of-the-tide" and stage.id == "slack-water": inherited.label = "Light lantern"
-	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_gate_players(),_mechanisms,_optics.signals):
+	if inherited.id == "ring" and not Seven.predicate(stage.goal_policy.get("when", {}),stage,_players,_mechanisms,_optics.signals):
 		inherited.enabled = false
 	return inherited
 
@@ -246,20 +193,7 @@ func snapshot() -> Dictionary:
 		value.route_progress["entered_routes"]=_sorted_latches()
 		value["source_branch"]=_ready_branch
 		value["optics"]=_optics.duplicate(true)
-		if not _settled.is_empty(): value["memory_mechanisms"]=_memory_mechanisms()
 	return value
-
-## Display only, in a settled second turn: the first player's levers and
-## controls as its memory has them now (a lever it has not pulled yet is
-## false), so the memory's own pulls and turns still sound and show as they
-## did live. The gates read the settled ones.
-func _memory_mechanisms() -> Dictionary:
-	var controls: Dictionary = {}
-	for id: String in _settled.controls: controls[id] = _source._mechanisms.controls[id]
-	var levers: Dictionary = {}
-	for lever: Dictionary in stage.get("levers", []):
-		if lever.owner_slot == first_player_slot: levers[lever.id] = bool(_source._mechanisms.levers.get(lever.id, false))
-	return {"controls": controls, "levers": levers}
 
 func _state_body() -> Dictionary:
 	var value:=super._state_body()

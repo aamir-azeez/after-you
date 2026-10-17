@@ -3,7 +3,7 @@ import { flagOn, type FlagVar } from "../flags";
 import * as Relay from "./protocol-relay";
 import * as FirstSteps from "./protocol-first-steps";
 import { highAndLow, rollingHome, houseForTwo, wishingWell } from "./protocol-cooperative";
-import { conservatory, longWayHome, longWayHomeV2, turnOfTheTide, turnOfTheTideV2 } from "./protocol-journey";
+import { conservatory, longWayHome, longWayHomeV2, turnOfTheTide } from "./protocol-journey";
 import { sleepingLighthouseV2 } from "./protocol-lighthouse";
 import { LEGACY_STAGE_COUNT, type ChapterAdapter, type ChapterKey } from "./chapter-types";
 
@@ -36,7 +36,6 @@ export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly fla
   { adapter: longWayHomeV2, flag: "LONG_WAY_HOME_V2_CHAPTER_ENABLED" },
   { adapter: turnOfTheTide, flag: "TURN_OF_THE_TIDE_CHAPTER_ENABLED" },
   { adapter: sleepingLighthouseV2, flag: "LIGHTHOUSE_V2_CHAPTER_ENABLED" },
-  { adapter: turnOfTheTideV2, flag: "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED" },
 ]);
 const entries: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
 

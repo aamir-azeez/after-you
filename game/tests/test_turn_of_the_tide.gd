@@ -165,8 +165,7 @@ func _latest(start: Dictionary) -> void:
 	exported["latest"] = pair
 
 ## The definition's turn lengths, read by the runtime, its snapshot and the
-## proof; no other chapter (but @2, which keeps @1's) sets any, and no rules
-## before 9 read them.
+## proof; no other chapter sets any, and no rules before 9 read them.
 func _turn_limits(first: Dictionary) -> void:
 	_check(Canonical.same(level.get("turn_limits"), {"a_ticks": A_TICKS, "b_ticks": B_TICKS}) and B_TICKS > A_TICKS, "The definition sets 2,700 ticks for A and a longer 3,000 for B")
 	var definitions: Dictionary = {}
@@ -174,7 +173,7 @@ func _turn_limits(first: Dictionary) -> void:
 	for key: String in CoopCatalog.KEYS: definitions[key] = CoopCatalog.definition(key)
 	for key: String in definitions:
 		var definition: Dictionary = definitions[key]
-		var tide := key.get_slice("@", 0) == Witness.KEY.get_slice("@", 0)
+		var tide := key == Witness.KEY
 		_check(definition.has("turn_limits") == tide, "%s %s turn limits" % [key, "sets" if tide else "sets no"])
 		for version: int in [6, 7, 8, 9]:
 			for turn_role: String in ["a", "b"]:
