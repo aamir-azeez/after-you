@@ -1,5 +1,6 @@
 import { env } from "cloudflare:workers";
-import { reset, runInDurableObject } from "cloudflare:test";
+import { reset } from "cloudflare:test";
+import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
