@@ -160,6 +160,23 @@ describe("fixed campaign room HTTP authority", () => {
       expect(r.status).toBe(409); expect(await r.json()).toMatchObject({ error: { code: "campaign_client_required" } });
     }
   });
+  it("keeps answering campaign_client_required, not 404, once a player's Story link is released but its fence rows remain", async () => {
+    await setup();
+    // What the Story drain leaves a player: no v3 link, but the host's allocation (creation_schema 2) or a closed Join intent (3).
+    const fence = (owner: string) => owner === H ? { creation_schema: 2, link: storyLink(H), campaign_key: key } : { creation_schema: 3, admission: "join", player_id: G, state: "closed", room_id: R };
+    for (const owner of [H, G]) await runInDurableObject(env.PLAYERS.getByName(owner), (_, ctx) => {
+      ctx.storage.sql.exec("DELETE FROM rooms WHERE room_id=?", R);
+      ctx.storage.sql.exec("INSERT INTO creations VALUES (?,?)", "story-fence-" + owner, JSON.stringify(fence(owner)));
+    });
+    for (const owner of [H, G]) for (const [suffix, method, body] of branches) {
+      const r = await call(`/v2/rooms/${R}${suffix}`, method, body, null, owner);
+      expect(`${owner === H ? "host" : "guest"} ${method} ${suffix} ${r.status} ${(await r.json<{ error?: { code: string } }>()).error?.code}`).toBe(`${owner === H ? "host" : "guest"} ${method} ${suffix} 409 campaign_client_required`);
+    }
+    // With neither a link nor a fence row, the link gate answers first.
+    await runInDurableObject(env.PLAYERS.getByName(G), (_, ctx) => { ctx.storage.sql.exec("DELETE FROM creations"); });
+    const gone = await call(`/v2/rooms/${R}`, "GET", undefined, null, G);
+    expect(gone.status).toBe(404); expect(await gone.json()).toMatchObject({ error: { code: "room_not_found" } });
+  });
   it("keeps ordinary reads unchanged with and without campaign negotiation", async () => {
     value(await env.PLAYERS.getByName(H).create(H, hash, "b".repeat(64)));
     value(await root().initialize(R, H, I, definition.chapters[0]));

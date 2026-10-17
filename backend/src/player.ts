@@ -71,14 +71,23 @@ export class Player extends DurableObject<Env> {
   }
   /**
    * authorize() for a request that names a room, plus whether this player may reach that room:
-   * it holds a link to it, or holds a Story link (Story chapter rooms are not linked one by one).
+   * it holds a link to it, or has Story rows (see storyHeld).
    * An authorized answer also carries the player's current safety token (see v2/block-memo.ts).
    */
   authorizeRoom(deviceHash: string, roomId: string): { authorized: boolean; linked: boolean; safety_token?: string } {
     if (!this.authorize(deviceHash)) return { authorized: false, linked: false };
-    const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 ||
-      this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE json_extract(data,'$.api_version')=3 LIMIT 1").toArray().length > 0;
+    const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 || this.storyHeld();
     return { authorized: true, linked, safety_token: this.safetyToken };
+  }
+  /**
+   * Story rooms are not linked one by one, and the Story drain releases a player's v3 links but keeps the
+   * Story creation and admission rows that fence them (creation_schema 2 and 3). A player with either may
+   * reach any room id, so a Story room keeps giving its own 409 campaign_client_required instead of 404.
+   * Read only when the room id itself is not linked.
+   */
+  private storyHeld(): boolean {
+    return this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE json_extract(data,'$.api_version')=3 LIMIT 1").toArray().length > 0 ||
+      this.ctx.storage.sql.exec("SELECT 1 FROM creations WHERE json_extract(data,'$.creation_schema') IN (2,3) LIMIT 1").toArray().length > 0;
   }
   /**
    * Changes whenever this player blocks or is blocked, so no room keeps treating the pair as unblocked.
