@@ -102,7 +102,7 @@ func _tide() -> void:
 		var world: Node3D = Registry.world_script(KEY).new()
 		root.add_child(world)
 		world.load_level(level)
-		world.show_stage(stage)
+		await world.show_stage(stage)
 		world.present_history(checkpoint)
 		var locks: WaterLocks = _locks(world)
 		_check(locks != null, "Turn of the Tide builds its locks: " + str(stage.id))
@@ -202,25 +202,43 @@ func _no_water_in_doors(world: Node3D, locks: WaterLocks, label: String) -> void
 				if overlap.size.x > 0.001 and overlap.size.y > 0.001: crossing += 1
 	_check(crossing == 0, "No water runs into a door: %s (%d)" % [label, crossing])
 
-## Settled doors cost nothing a frame; a change moves them, then they rest.
+## Settled doors cost nothing: repeated snapshots and idle frames do no lock
+## work at all. A turn of the tide moves doors; a snapshot shown at once snaps
+## them; settled, each door rests on its target, shown only while up.
 func _idle(world: Node3D, locks: WaterLocks, sim: Simulation, label: String) -> void:
 	sim._mechanisms.controls["tide"] = "low"
 	sim._refresh_routes()
 	var low: Dictionary = sim.snapshot()
 	world.present(low, true)
-	var changes := locks.changes
+	var updates := locks.updates
 	for _frame in range(20):
 		world.present(low, false)
 		await process_frame
-	_check(locks.changes == changes and not locks.moving() and not locks.advance(1.0 / 60.0), "Idle frames and repeated snapshots move no door: " + label)
+	_check(locks.updates == updates and not locks.moving() and not locks.advance(1.0 / 60.0), "Idle frames and repeated snapshots do no lock work: " + label)
 	sim._mechanisms.controls["tide"] = "high"
 	sim._refresh_routes()
-	world.present(sim.snapshot(), false)
-	_check(locks.changes > changes and locks.moving(), "Turning the tide sets doors moving: " + label)
+	var high: Dictionary = sim.snapshot()
+	world.present(high, false)
+	_check(locks.updates == updates + 1 and locks.moving(), "Turning the tide sets doors moving: " + label)
+	locks.advance(1.0 / 60.0)
+	world.present(high, true)
+	_check(not locks.moving() and _resting(locks), "A snapshot shown at once snaps travelling doors to their targets: " + label)
+	world.present(low, false)
 	for _frame in range(240): locks.advance(1.0 / 60.0)
-	_check(not locks.moving(), "Doors come to rest after the tide turns: " + label)
-	var settled := locks.changes
-	_check(not locks.advance(1.0 / 60.0) and locks.changes == settled, "A rested lock does no work on the next frame: " + label)
+	_check(not locks.moving() and _resting(locks), "Doors come to rest on their targets after the tide turns: " + label)
+	var settled := locks.updates
+	_check(not locks.advance(1.0 / 60.0) and locks.updates == settled, "A rested lock does no work on the next frame: " + label)
+
+## Every door stands at its target height, shown while up and hidden while down.
+func _resting(locks: WaterLocks) -> bool:
+	var states := locks.door_states()
+	var nodes := locks.door_nodes()
+	for index in range(nodes.size()):
+		var door: MeshInstance3D = nodes[index]
+		var target := float(locks.runs.filter(func(run: Dictionary) -> bool: return run.kind == WaterLocks.DOOR)[index].shut) if states[index] == "shut" else door.position.y
+		if states[index] == "shut" and (not door.visible or not is_equal_approx(door.position.y, target)): return false
+		if states[index] == "open" and door.visible: return false
+	return true
 
 # --- Other chapters ---
 
