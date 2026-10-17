@@ -355,7 +355,8 @@ func _process(delta: float) -> void:
 	if mode == "preparing":
 		_prepare_replay()
 	_position_replay_photos()
-	if mode == "bloom" and not backgrounded:
+	# The bloom's time runs from the goal's ring, which a wait holds to the wake.
+	if mode == "bloom" and not backgrounded and not memory_wait.ring_pending():
 		completion_remaining = maxf(0.0, completion_remaining - delta)
 		if completion_remaining == 0.0: _show_finished()
 

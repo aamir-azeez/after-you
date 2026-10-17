@@ -16,6 +16,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Golden = preload("res://tests/golden_support.gd")
 const ReplayGolden = preload("res://tests/test_replay_golden.gd")
 const Light = preload("res://core/lighthouse/borrowed_light.gd")
+const PlantAnimation = preload("res://presentation/plant_animation.gd")
 
 const LEVEL := "high-and-low"
 const KEY := Registry.HIGH_AND_LOW
@@ -86,6 +87,8 @@ func _run() -> void:
 				_test_lighthouse_world.bind(false), _test_lighthouse_world.bind(true), _test_hud_strip]:
 			_timed(part)
 	_timed(_test_every_chapter)
+	_timed(_test_seed_held)
+	_timed(_test_bloom_waits_for_ring)
 	print("AFTER YOU MEMORY WAIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -546,3 +549,167 @@ func _follow(key: String, sim: RefCounted, frames: Array, prior: Dictionary, lab
 		waits_seen[key] = int(waits_seen.get(key, 0)) + 1
 		_check(started < prior_end, "A wait starts before the memory ends: " + label)
 		_check(ended_at_memory, "A wait ends exactly when the memory ends: " + label)
+
+## The seed chapters: a seed planted or placed while the friend's memory still
+## plays stays in the dozing spirit's hands, its cue silent, until the memory
+## ends; after the wake the seed goes in (the planting beat for a planted one)
+## and its cue sounds once, at the pitch it had at the press. Each fixture turn
+## of the seed chapters that waits is replayed in its real world, and each
+## fixture turn is also made to wait by letting its memory linger.
+func _test_seed_held() -> void:
+	var goals_seen: Dictionary = {}
+	for key: String in [Registry.RELAY, Registry.FIRST_STEPS]:
+		for name: String in ReplayGolden.CHAINS[key]:
+			for pair: Dictionary in _fixture_pairs(key, ReplayGolden.CHAINS[key][name]):
+				var label := "%s %s %s" % [key, name, pair.b.stage_id]
+				var lingering := _lingering_pair(key, pair)
+				for turn: Dictionary in [pair, lingering]:
+					if turn.is_empty(): continue
+					var goal := _seed_wait(key, turn, label + (" lingering" if turn == lingering else ""))
+					if not goal.is_empty(): goals_seen[goal] = int(goals_seen.get(goal, 0)) + 1
+	print("Seed waits replayed by goal: ", goals_seen)
+	_check(goals_seen.has("planted") and goals_seen.has("socket"), "A planted seed and a seed placed in the relay are both seen held through a wait")
+
+## The same pair with the memory lingering LINGER_TICKS longer and the second
+## turn standing still to the new end, or {} if that is not a valid turn.
+func _lingering_pair(key: String, pair: Dictionary) -> Dictionary:
+	var level := Registry.definition(key)
+	var engine: Script = Registry.simulation_script(key)
+	var a: RefCounted = engine.new()
+	a.catch_assistance = bool(pair.a.get("catch_assistance", true))
+	if not Registry.reset_simulation(a, key, level, str(pair.a.stage_id), pair.at, {}, "a", pair.a): return {}
+	for input: Dictionary in engine.expand_recording_inputs(pair.a): a.step(input)
+	for _tick in range(LINGER_TICKS):
+		if a.finished: break
+		a.step(STILL)
+	if not a.can_commit(): return {}
+	var first_turn: Dictionary = a.export_recording()
+	var b: RefCounted = engine.new()
+	b.catch_assistance = bool(pair.b.get("catch_assistance", true))
+	if not Registry.reset_simulation(b, key, level, str(pair.b.stage_id), pair.at, first_turn, "b"): return {}
+	var frames: Array = engine.expand_recording_inputs(pair.b)
+	var index := 0
+	while not b.finished and index < 20000:
+		b.step(frames[index] if index < frames.size() else STILL)
+		index += 1
+	if not bool(b.complete): return {}
+	return {"a": first_turn, "b": b.export_recording(), "at": pair.at}
+
+const NO_SOUNDS := {"cues": [], "sources": []}
+
+## Replays one second turn in its real world through MemoryWait. Returns the
+## seed's status after the goal ("planted", "socket"), or "" if it never waited.
+func _seed_wait(key: String, pair: Dictionary, label: String) -> String:
+	var level := Registry.definition(key)
+	var engine: Script = Registry.simulation_script(key)
+	var make := func() -> RefCounted:
+		var sim: RefCounted = engine.new()
+		sim.catch_assistance = bool(pair.b.get("catch_assistance", true))
+		Registry.reset_simulation(sim, key, level, str(pair.b.stage_id), pair.at, pair.a, "b", pair.b)
+		return sim
+	var frames: Array = engine.expand_recording_inputs(pair.b)
+	var prior_end := MemoryWait.prior_ticks(pair.a)
+	var probe := MemoryWait.new()
+	probe.begin("b", prior_end)
+	var probe_sim: RefCounted = make.call()
+	for input: Dictionary in frames: probe.step_silently(probe_sim.step(input), NO_SOUNDS)
+	# Only a seed goal (not First Steps' loft) keeps the seed in hand.
+	if not probe.waited or str(probe_sim.snapshot().seed.status) not in ["planted", "socket"]: return ""
+	# Nothing held: the cues as they sounded before waits held seeds.
+	var plain := CueLog.new()
+	plain.begin_turn(key, str(pair.b.stage_id))
+	var plain_seen := {}
+	var reference: RefCounted = make.call()
+	for input: Dictionary in frames:
+		var state: Dictionary = reference.step(input)
+		var sounds := ChapterSoundMap.cues(key, state, plain_seen)
+		plain.consume_turn_events(sounds.cues, sounds.sources, false)
+	var stage: Dictionary = {}
+	for item: Dictionary in level.stages: if item.id == pair.b.stage_id: stage = item
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1560, 720)
+	root.add_child(viewport)
+	var world: Node3D = Registry.world_script(key).new()
+	viewport.add_child(world)
+	world.load_level(level)
+	world.show_stage(stage)
+	if world.has_method("present_history"): world.present_history(pair.at)
+	var sound := CueLog.new()
+	viewport.add_child(sound)
+	sound.begin_turn(key, str(pair.b.stage_id))
+	var wait := MemoryWait.new()
+	wait.world = world
+	wait.soundscape = sound
+	wait.begin("b", prior_end)
+	var sim: RefCounted = make.call()
+	var seen := {}
+	wait.show(sim.snapshot(), true)
+	var waited_ticks := 0
+	var carried := true
+	var dozed := false
+	var planted_early := false
+	var cue_early := false
+	## Seed cues heard before the press (the memory may open the garden).
+	var before_wait := 0
+	var goal := ""
+	var live := ""
+	for input: Dictionary in frames:
+		var state: Dictionary = sim.step(input)
+		live = str(state.active_slot)
+		wait.step(state, ChapterSoundMap.cues(key, state, seen), false)
+		world._process(1.0 / 30.0)
+		wait.advance(1.0 / 30.0)
+		goal = str(state.seed.status)
+		if wait.waiting():
+			waited_ticks += 1
+			var actor: Node3D = world.actors.get(live)
+			carried = carried and actor != null and world.seed.visible and str(world.get("_seed_holder")) == live and bool(actor.carrying_seed)
+			if carried: carried = world.seed.position.distance_to(actor.position + actor.carry_anchor_position()) < 0.05
+			dozed = dozed or (actor != null and actor.pose() == SpiritIdle.DOZE)
+			planted_early = planted_early or not PlantAnimation.running(world.terrain).is_empty()
+			cue_early = cue_early or _seed_cues(sound.played) > before_wait
+		else: before_wait = _seed_cues(sound.played)
+	_check(waited_ticks > 0 and goal in ["planted", "socket"], "The seed goal is reached before the memory ends: " + label)
+	_check(carried, "The waiting spirit keeps carrying the seed: " + label)
+	_check(dozed, "The spirit dozes with the seed: " + label)
+	_check(not planted_early, "No planting beat during the wait: " + label)
+	_check(not cue_early, "The seed's cue is silent during the wait: " + label)
+	_check(wait.ring_pending() and world.seed.visible, "At the arrival the spirit wakes still holding the seed: " + label)
+	for _frame in range(40):
+		world._process(FRAME)
+		wait.advance(FRAME)
+	_check(not wait.ring_pending() and wait.rings_released == 1, "After the wake the seed goes in: " + label)
+	if goal == "planted":
+		_check(not PlantAnimation.running(world.terrain).is_empty() and not world.seed.visible, "The planting beat plays after the wake: " + label)
+	else:
+		_check(world.seed.visible and str(world.get("_seed_holder")).is_empty(), "The seed sits in the relay after the wake: " + label)
+	var same := true
+	for cue: String in Soundscape.CLIPS:
+		if _count(sound.played, cue) != _count(plain.played, cue): same = false
+	_check(same, "Every cue sounds as often as with nothing held: " + label)
+	for cue: String in ["island_bloomed", "garden_opened"]:
+		_check(_first(sound.played, cue).get("step") == _first(plain.played, cue).get("step"), "A held seed cue keeps its pitch (%s): %s" % [cue, label])
+	plain.free()
+	viewport.free()
+	return goal
+
+static func _seed_cues(played: Array) -> int:
+	return _count(played, "island_bloomed") + _count(played, "garden_opened")
+
+## The review waits for the goal's ring, so a planting beat that starts at the
+## ring plays whole before the review card covers it.
+func _test_bloom_waits_for_ring() -> void:
+	_check(PlantAnimation.DURATION <= Preview.COMPLETION_DURATION, "The planting beat fits in the completion hold")
+	var run := _preview_to_ring()
+	var preview: Preview = run.preview
+	while preview.running: preview.advance_input(STILL)
+	_check(preview.memory_wait.ring_pending(), "The friend has arrived and the ring waits for the wake")
+	preview.mode = "bloom"
+	_check(not preview.completion_counting(), "The completion hold does not count before the ring")
+	var elapsed := 0.0
+	while preview.memory_wait.ring_pending() and elapsed < 2.0:
+		preview.memory_wait.advance(FRAME)
+		elapsed += FRAME
+	_check(preview.completion_counting(), "The completion hold counts from the ring")
+	preview.mode = "ready"
+	_free_preview(run)

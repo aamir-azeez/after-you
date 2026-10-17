@@ -9,7 +9,9 @@ extends RefCounted
 ## camera follows the memory. When the memory ends (the tick the simulation
 ## completes the stage) the spirit wakes with a start, and only then does the
 ## goal ring: its cue, the goal's glow and the celebration were held back from
-## the press. The press itself is simulated and recorded as usual.
+## the press. A seed goes the same way: the spirit dozes still holding it, and
+## the seed goes in (the planting beat, its cue) only after the wake. The
+## press itself is simulated and recorded as usual.
 ##
 ## Presentation only. The simulation is stepped exactly as before; this reads
 ## its snapshots and changes what the world is shown and when held cues sound.
@@ -17,8 +19,11 @@ extends RefCounted
 ## works out its identity on that tick), so it sounds the same everywhere.
 
 ## Goal events that ring. Their cue waits for the friend; other goal events
-## (a seed planted, a lens fitted) are placements and sound at once.
+## (a lens fitted) are placements and sound at once.
 const RING_EVENTS := ["bell", "loft_opened", "court_activated", "beacon_lit", "tower_anchored"]
+## A seed planted or placed in the relay. The seed stays in the spirit's hands
+## through the wait (shown_state), so its cue waits with it.
+const SEED_EVENTS := ["garden_bloomed", "relay_filled"]
 ## Outcome flags that mean the second spirit's part is done, for engines whose
 ## snapshot has no objective_done (the relay and First Steps).
 const OBJECTIVE_OUTCOMES := ["placed_relay", "planted_seed", "reached_loft"]
@@ -57,6 +62,9 @@ var _holding := false
 var _live_key := ""
 var _memory_key := ""
 var _last_state: Dictionary = {}
+## The seed as the live spirit last carried it (the snapshot's own "seed"),
+## shown in its hands while the goal is held; {} in a chapter without a seed.
+var _carried_seed: Dictionary = {}
 ## The hold ends right after this tick is shown (Reduce motion, or a turn
 ## that ran out before the memory ended).
 var _ring_after_present := false
@@ -83,6 +91,7 @@ func begin(role: String, prior_ticks: int) -> void:
 	_live_key = ""
 	_memory_key = ""
 	_last_state = {}
+	_carried_seed = {}
 	waited = false
 	rings_released = 0
 	skipping = false
@@ -184,11 +193,13 @@ func ring_at() -> float:
 	return 0.0 if reduced_motion else SpiritVisual.WAKE_RING_AT
 
 ## The state the world is shown: while the ring is held, the goal looks
-## untouched and the stage unsolved, so its glow and celebration wait.
+## untouched and the stage unsolved, so its glow and celebration wait, and a
+## seed is still in the spirit's hands.
 func shown_state(state: Dictionary) -> Dictionary:
 	if not _holding or state.is_empty(): return state
 	var shown := state.duplicate()
 	shown["ring_held"] = true
+	if not _carried_seed.is_empty() and state.has("seed"): shown["seed"] = _carried_seed
 	if shown.has("objective_done"): shown["objective_done"] = false
 	if shown.get("complete", false): shown["complete"] = false
 	var beacon: Variant = shown.get("beacon")
@@ -205,6 +216,9 @@ func _observe(state: Dictionary, sounds: Dictionary) -> PackedInt32Array:
 	if state.is_empty(): return hold
 	_tick = int(state.get("tick", _tick))
 	_last_state = state
+	var seed: Variant = state.get("seed")
+	if seed is Dictionary and str(seed.get("status", "")) == "held" and str(seed.get("owner", "")) == str(state.get("active_slot", "")):
+		_carried_seed = seed
 	_find_keys(state)
 	if _role != "b" or _prior_end <= 0: return hold
 	var done := objective_done(state)
@@ -267,7 +281,7 @@ static func _ring_indices(sounds: Dictionary) -> PackedInt32Array:
 	for index in range(sounds.get("cues", []).size()):
 		var source := str(sources[index]) if index < sources.size() else ""
 		var kind := source.get_slice("|", 1) if source.contains("|") else source
-		if kind in RING_EVENTS: indices.append(index)
+		if kind in RING_EVENTS or kind in SEED_EVENTS: indices.append(index)
 	return indices
 
 func _find_keys(state: Dictionary) -> void:

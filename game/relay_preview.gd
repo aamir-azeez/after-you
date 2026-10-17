@@ -2619,10 +2619,11 @@ func _process(delta: float) -> void:
 			else: _after_visible_wait(_show_review)
 
 
-## The completion bloom counts down toward the review, or a replay's end. A
-## backgrounded bloom, or a replay's still waiting for its frames, holds still.
+## The completion bloom counts down toward the review, or a replay's end, from
+## the goal's ring (after a wait, the wake comes first). A backgrounded bloom,
+## or a replay's still waiting for its frames, holds still.
 func completion_counting() -> bool:
-	return mode == "bloom" and not backgrounded and not (_completion_is_replay and not _replay_ready())
+	return mode == "bloom" and not backgrounded and not memory_wait.ring_pending() and not (_completion_is_replay and not _replay_ready())
 
 
 ## Safety and Redo requests are opaque full-screen layers: the world behind
