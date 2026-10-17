@@ -27,6 +27,7 @@ func _run() -> void:
 	await _note_survives_backgrounding()
 	await _two_phones()
 	await _story_room_left_lists()
+	for gone: bool in [false,true]: await _read_proof_follows_list(gone)
 	print("Gone room release: %d checks, %d failures" % [checks,failures])
 	quit(0 if failures == 0 else 1)
 
@@ -212,3 +213,31 @@ func _story_room_left_lists() -> void:
 	_check(await online.load_lobby() and await online.prepare_archived_navigation() and await online.open_room(NEXT_ROOM),"Story: a later list refresh keeps other rooms open")
 	_check(_room_bytes(c.h.store,STORY_ROOM) == room_bytes and not c.h.store.saved[_room_scope(STORY_ROOM)].pending.is_empty(),"Story: the room's journal keeps its exact bytes")
 	c.h.free()
+
+## A room this session read and found ordinary counts as proven only while the
+## list shows it. Each tap below runs Main's order: check, then open.
+## Alive but unlisted, with nothing held: one read keeps it, and another room
+## opens on the first tap. Deleted with a held turn: that read releases it.
+func _read_proof_follows_list(gone: bool) -> void:
+	var label := "deleted: " if gone else "alive: "
+	var h := ArchiveHarness.new()
+	root.add_child(h)
+	h.rooms[ORDINARY] = _room("high-and-low",ORDINARY,false)
+	h.rooms[NEXT_ROOM] = _room("rolling-home",NEXT_ROOM,false)
+	var online := Online.new(h,h.identity,h.store)
+	_check(await online.open_room(NEXT_ROOM) and await online.open_room(ORDINARY) and online.archived_room_kind(ORDINARY) == "ordinary",label+"this session read the room and found it ordinary")
+	online.capabilities = {"mutations_enabled":true}
+	if gone:
+		_check(not await online.coordinator.commit(_json("res://tests/fixtures/cooperative/upper-path-a.json")) and not online.coordinator.pending().is_empty(),label+"the turn's reply is lost")
+		h.rooms.erase(ORDINARY)
+	h.replies["/v2/capabilities"] = {"ok":true,"data":{"api_version":2,"simulation_version":2,"recording_version":2,"mutations_enabled":true,"validation":"structural_client_replay_required","chapters":[]}}
+	h.replies["/v2/rooms"] = {"ok":true,"data":{"rooms":[h.rooms[NEXT_ROOM]]}}
+	var room_bytes := _room_bytes(h.store,ORDINARY)
+	_check(await online.load_lobby() and not online.standalone_room_proven(ORDINARY) and online.archived_room_kind(ORDINARY).is_empty(),label+"the list no longer shows the room, so its read proof is dropped")
+	var count: int = h.calls.size()
+	_check(await online.prepare_archived_navigation() and h.calls.size() == count+1 and h.calls.back().path == "/v2/rooms/"+ORDINARY,label+"the next tap reads the room once")
+	if gone: _check(online.last_room().is_empty() and online.coordinator == null and online.take_released_room_note() == PlayerCopy.ROOMS_API_A7ACF38988EE,label+"the read finds it gone and releases it")
+	else: _check(online.last_room() == ORDINARY and online.archived_room_kind(ORDINARY) == "ordinary" and online.take_released_room_note().is_empty(),label+"the read finds it alive and keeps it selected")
+	_check(await online.open_room(NEXT_ROOM) and online.last_room() == NEXT_ROOM,label+"the same tap opens another room")
+	_check(_room_bytes(h.store,ORDINARY) == room_bytes,label+"the room's journal keeps its exact bytes")
+	h.free()
