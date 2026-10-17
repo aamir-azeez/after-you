@@ -66,7 +66,7 @@ func _run() -> void:
 		held.rejected=true
 		held.error="This room is no longer available to this identity. Keep the rehearsal locally; it will not be submitted again."
 		app.saves.update_values({"pending_turn":held})
-		app._show_held_turn(held)
+		app.turn_flow.show_held_turn(held)
 		await process_frame
 		_check_visible(app.overlay,Rect2(Vector2.ZERO,Vector2(size)),"Rejected held submission")
 	_check(api.calls.is_empty(),"Room layout checks never send network requests or submit a recording")

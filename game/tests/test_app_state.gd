@@ -381,7 +381,7 @@ func _test_main_pending(app: Node) -> void:
 	app.review_recording=first.duplicate(true)
 	app.collection_preview=false
 	app.mode="review"
-	await app._commit_online()
+	await app.turn_flow.commit_online()
 	var pending: Dictionary=app.saves.data.pending_turn.duplicate(true)
 	_check(fake.calls.size()==1 and not pending.is_empty(),"Interrupted POST retains durable original request")
 	var accepted := _room()
@@ -391,7 +391,7 @@ func _test_main_pending(app: Node) -> void:
 	fake.responses=[{"ok":true,"status":200,"data":_room()},{"ok":true,"status":200,"data":accepted}]
 	var writing: Array = []
 	fake.on_call = func() -> void: writing.append(app.submission_in_flight)
-	await app._reconcile_pending()
+	await app.turn_flow.reconcile_pending()
 	fake.on_call = Callable()
 	_check(writing == [true, true],"The turn check holds other room writes during its GET as well as its resend: %s" % [writing])
 	_check(fake.calls.size()==3 and fake.calls[1].method==HTTPClient.METHOD_GET,"Uncertain submission is checked before retry")
@@ -400,13 +400,13 @@ func _test_main_pending(app: Node) -> void:
 	app.saves.update_values({"pending_turn":pending})
 	fake.responses=[{"ok":true,"status":200,"data":accepted}]
 	var before_calls: int=fake.calls.size()
-	await app._reconcile_pending()
+	await app.turn_flow.reconcile_pending()
 	_check(fake.calls.size()==before_calls+1 and not app.saves.data.has("pending_turn"),"Matching saved recording resolves uncertainty without another POST")
 	app.saves=Storage.new("user://absent-parent-"+Crypto.new().generate_random_bytes(8).hex_encode()+"/journey.json")
 	app.active_room=_room()
 	app.review_recording=first.duplicate(true)
 	before_calls=fake.calls.size()
-	await app._commit_online()
+	await app.turn_flow.commit_online()
 	_check(fake.calls.size()==before_calls and not app.saves.data.has("pending_turn"),"Failed durable pending write prevents network submission")
 
 func _test_identity_and_entitlement() -> void:
