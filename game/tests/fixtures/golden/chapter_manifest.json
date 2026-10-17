@@ -216,6 +216,25 @@
 			"supported_simulation_versions": [
 				9
 			]
+		},
+		"turn-of-the-tide@2": {
+			"definition_fixture": "journey/turn-of-the-tide-v2-definition.json",
+			"definition_hash": "df0c4209c74b93d547cc5cdc8ca049944f810fbce42dccc6e57e305122de390c",
+			"family": "journey",
+			"flag": "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED",
+			"initial_checkpoint_hash": "d0e53e6c046d5338dfe2f1ec1b46493cb6ed69b1d58945cffd20d448975e6981",
+			"initial_fixture": "journey/turn-of-the-tide-v2-initial-checkpoint.json",
+			"key": "turn-of-the-tide@2",
+			"level_id": "turn-of-the-tide",
+			"level_version": 2,
+			"max_branches": 7,
+			"premium": false,
+			"recording_version": 7,
+			"simulation_version": 9,
+			"stage_count": 2,
+			"supported_simulation_versions": [
+				9
+			]
 		}
 	},
 	"keys": [
@@ -229,6 +248,7 @@
 		"the-wishing-well@1",
 		"long-way-home@2",
 		"turn-of-the-tide@1",
-		"sleeping-lighthouse@2"
+		"sleeping-lighthouse@2",
+		"turn-of-the-tide@2"
 	]
 }

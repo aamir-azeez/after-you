@@ -47,6 +47,11 @@ var _offer_tick := -1
 var _claimed := false
 var _objective := false
 var _comfort_entries: Dictionary = {}
+## The partner recording's final snapshot when reset() or a proof has just
+## replayed it to check it (hand_over_prior_end). Only the next _reset_trusted
+## may read it (a journey with a settled source), so the partner is not
+## replayed once more; that reset drops it. Never part of the state.
+var _verified_prior_end: Dictionary = {}
 
 func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", _rules_version: int = 0) -> bool:
 	level = {}
@@ -67,10 +72,17 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 		if not prior_check.valid or prior_a.get("role") != "a" or not prior_check.get("snapshot", {}).get("can_commit", false):
 			error = "The partner recording is not ready."
 			return false
+		hand_over_prior_end(prior_check.snapshot)
 	_reset_trusted(definition, stage_id, checkpoint, prior_a, current_role)
 	return true
 
+## The checked partner's final snapshot, for the next _reset_trusted only.
+## Proofs call it on engines that have it (the Lighthouse room's does not).
+func hand_over_prior_end(snapshot: Dictionary) -> void:
+	_verified_prior_end = snapshot
+
 func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String) -> void:
+	_verified_prior_end = {}
 	level = definition.duplicate(true)
 	stage = stage_by_id(level, stage_id)
 	role = current_role

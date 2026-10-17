@@ -1,0 +1,217 @@
+{
+	"actions": [
+		{
+			"action": false,
+			"ticks": 8,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 52,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 88,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 54,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 12,
+			"x": 100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 68,
+			"x": 0,
+			"z": 100
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 56,
+			"x": 0,
+			"z": -100
+		},
+		{
+			"action": false,
+			"ticks": 66,
+			"x": -100,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": true,
+			"ticks": 1,
+			"x": 0,
+			"z": 0
+		},
+		{
+			"action": false,
+			"ticks": 20,
+			"x": 0,
+			"z": -100
+		}
+	],
+	"catch_assistance": true,
+	"checkpoint_hash": "d0e53e6c046d5338dfe2f1ec1b46493cb6ed69b1d58945cffd20d448975e6981",
+	"completed": false,
+	"definition_hash": "df0c4209c74b93d547cc5cdc8ca049944f810fbce42dccc6e57e305122de390c",
+	"duration_ticks": 458,
+	"final_state_hash": "ed643d10d924a3452e0f684f58a47c30ab5477543d01e92851293329186205e4",
+	"level_id": "turn-of-the-tide",
+	"level_version": 2,
+	"outcome": {
+		"objective_complete": false,
+		"source_ready": true
+	},
+	"player_slot": "p0",
+	"recording_hash": "2533fb60a696e76a2365533d9a86bcdbe7c76cbbb078d6a33091572c73f3b556",
+	"replay_checks": [
+		{
+			"state_hash": "ee5127f0afe3621cd797ceb56052a80baea3799f30e9649f692911e7e0ccdd50",
+			"tick": 30
+		},
+		{
+			"state_hash": "c8dce84a5e9626d328c4242d31b315f18bacef7b4e091a6cf259c4740c952824",
+			"tick": 60
+		},
+		{
+			"state_hash": "fee5112502d74aa6869341d439149dba6b6cfd376911fe5cb603feec19ec449b",
+			"tick": 90
+		},
+		{
+			"state_hash": "5267ef49d1c23c170ec8ef48b846a853e1dbb06e1f4d715586a108203b506c14",
+			"tick": 120
+		},
+		{
+			"state_hash": "3fb4b77a056fb588ceeae737fbecd0e1b8aa4f442e678b6327e8cacefa2b2498",
+			"tick": 150
+		},
+		{
+			"state_hash": "eec42153258fd709d74291b592525d001d6528009e2a056dcf203b61e2eeb1fe",
+			"tick": 180
+		},
+		{
+			"state_hash": "4ac43994addac941c42c9fafc34b6c35d50fb8fbefb1f25b5e36e4eba3b42632",
+			"tick": 210
+		},
+		{
+			"state_hash": "61438ba03bc9c724fbb8039a9cd6bdef9a800b2e726eb53fdfcddd4b75846fe4",
+			"tick": 240
+		},
+		{
+			"state_hash": "094d17a364c9e89e0bf91299722700e3459ca46c4b84ce2098ce1a90d0856503",
+			"tick": 270
+		},
+		{
+			"state_hash": "c83c3f2fd66cc6dfdb4ff19127826bc51dd33af5474c49b453f5933849e14b77",
+			"tick": 300
+		},
+		{
+			"state_hash": "b48b107f53442a2047f4d76a169657a1f41cd51a853d879a14762c693ef9cb78",
+			"tick": 330
+		},
+		{
+			"state_hash": "4114241944a9eaea08410ceb829338c0dbe73a33169e923b944002a43a4d605b",
+			"tick": 360
+		},
+		{
+			"state_hash": "3180ae65b0973a6d6dcc766479f583659eca278555c09e9952b2cd1817742915",
+			"tick": 390
+		},
+		{
+			"state_hash": "ce37b3008b4940af5549160bae687862bd2e7d6768fef1646b68ceca4338625c",
+			"tick": 420
+		},
+		{
+			"state_hash": "02b162e25ddfb99844edf15ab4c48fbdeb2cc716567cb5b54c594d0df50346ac",
+			"tick": 450
+		},
+		{
+			"state_hash": "ed643d10d924a3452e0f684f58a47c30ab5477543d01e92851293329186205e4",
+			"tick": 458
+		}
+	],
+	"role": "a",
+	"schema_version": 7,
+	"simulation_version": 9,
+	"source_recording_hash": "",
+	"stage_id": "set-the-tide",
+	"stage_version": 1,
+	"tick_rate": 30
+}

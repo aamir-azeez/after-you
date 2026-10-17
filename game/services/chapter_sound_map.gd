@@ -59,13 +59,29 @@ const NO_TURNS := [[], []]
 ## A fresh per-turn memory from the snapshot at tick zero.
 static func remember(state: Dictionary) -> Dictionary:
 	var seen := {}
-	_track(seen, state)
+	_track(seen, _with_memory(state))
 	return seen
+
+## A settled second turn (core/journey/simulation.gd _settled) shows the
+## partner's levers and controls as it left them; its memory's own are in
+## "memory_mechanisms". Cues read those over the snapshot's, so the memory's
+## pulls and turns sound as they did live. Other snapshots pass unchanged.
+static func _with_memory(state: Dictionary) -> Dictionary:
+	var memory: Variant = state.get("memory_mechanisms")
+	if not memory is Dictionary: return state
+	var merged := state.duplicate()
+	for field: String in ["levers", "controls"]:
+		if not state.get(field) is Dictionary: continue
+		var values: Dictionary = state[field].duplicate()
+		values.merge(memory.get(field, NO_TABLE), true)
+		merged[field] = values
+	return merged
 
 ## {cues, sources} for one tick; unmapped events pass through and stay silent
 ## unless the soundscape has a cue of that name. Updates `seen` in place.
 static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) -> Dictionary:
 	if Registry.is_lighthouse(chapter_key): return lighthouse(state, seen)
+	state = _with_memory(state)
 	var role := str(state.get("role", ""))
 	var cooperative := Registry.is_cooperative(chapter_key)
 	var journey := Registry.is_journey(chapter_key)

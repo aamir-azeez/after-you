@@ -10,11 +10,14 @@ import homeV2Definition from "./long-way-home-v2.json";
 import homeV2Initial from "./long-way-home-v2-initial.json";
 import tideDefinition from "./turn-of-the-tide.json";
 import tideInitial from "./turn-of-the-tide-initial.json";
+import tideV2Definition from "./turn-of-the-tide-v2.json";
+import tideV2Initial from "./turn-of-the-tide-v2-initial.json";
 
 export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
 export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
 export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
 export const TURN_OF_THE_TIDE_HASH = "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a";
+export const TURN_OF_THE_TIDE_V2_HASH = "df0c4209c74b93d547cc5cdc8ca049944f810fbce42dccc6e57e305122de390c";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot: string };
 type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
@@ -128,3 +131,6 @@ export const longWayHomeV2 = adapter(homeV2Definition, homeV2Initial, LONG_WAY_H
 /** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join.
  * Seven branches keep its widest replay archive and room snapshot under their caps. */
 export const turnOfTheTide: ChapterAdapter = adapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH, 7);
+/** @1 with a settled source: the second turn plays in the harbour the first
+ * turn left. Its end state, and so every checkpoint check here, is @1's. */
+export const turnOfTheTideV2: ChapterAdapter = adapter(tideV2Definition, tideV2Initial, TURN_OF_THE_TIDE_V2_HASH, 7);
