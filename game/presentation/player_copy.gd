@@ -731,9 +731,9 @@ const RELAY_PREVIEW_8E35E137EA15 := "Looking for your friend's turn…"
 # Relay chapter — update online sync status; Automatic room refresh delayed. %d = seconds until next retry.
 const RELAY_PREVIEW_EF61644814DA := "Connection delayed · retrying in %d seconds. Refresh also works."
 # Relay chapter — update online sync status
-const RELAY_PREVIEW_F85672E29DEB := "Up to date · checking every 3 seconds while you're here."
+const RELAY_PREVIEW_F85672E29DEB := "Up to date · checking while you're here."
 # Relay chapter — update online sync status
-const RELAY_PREVIEW_AE39B1E4A9F7 := "Checking every 3 seconds for your friend's turn."
+const RELAY_PREVIEW_AE39B1E4A9F7 := "Checking for your friend's turn."
 # Relay chapter — identity invalidated
 const RELAY_PREVIEW_34409DD3D3AA := "Your identity changed. Before reopening this room, go back to the account screen. Requests that are saved retain their identity."
 # Relay chapter — finish

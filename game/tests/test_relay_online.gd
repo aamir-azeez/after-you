@@ -2,6 +2,7 @@ extends SceneTree
 
 const Main = preload("res://main.gd")
 const Preview = preload("res://relay_preview.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const DiskStore = preload("res://services/relay_online_store.gd")
 const Save = preload("res://services/local_save.gd")
@@ -503,7 +504,7 @@ func _real_ui_flow() -> void:
 	var manual_calls := api.calls.size()
 	await preview._online_refresh()
 	_check(api.calls.size()==manual_calls+1 and api.calls.back().method==HTTPClient.METHOD_GET and api.calls.back().path=="/v2/rooms/"+ROOM,"Manual refresh reads only the active room, without unrelated capability or lobby downloads")
-	_check(preview.online_sync_status != null and preview.online_sync_status.text.contains("3 seconds"),"Waiting room explains its frequent automatic update cadence")
+	_check(preview.online_sync_status != null and preview.online_sync_status.text in [PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7, PlayerCopy.RELAY_PREVIEW_F85672E29DEB],"Waiting room says it keeps checking for the friend's turn")
 	await _check_waiting_layout(preview,viewport,"host waiting before the friend joins")
 	var waiting_copy: Label = preview.overlay.find_child("RelayCopyStatus",true,false)
 	preview.clipboard_copy = func(_text: String): return true
@@ -731,7 +732,7 @@ func _check_waiting_layout(preview, viewport: SubViewport, context: String) -> v
 	var labels: Array = [] if modal == null else modal.find_children("*","Button",true,false).map(func(button: Button): return button.text)
 	_check(labels.has("Refresh") and labels.has("About this chapter"),"Room options keeps manual refresh and chapter details: "+context)
 	if modal == null: return
-	_check(modal.find_children("*","Label",true,false).any(func(label: Label): return label.text.contains("3 seconds") and label.is_visible_in_tree()),"Room options explains the automatic update cadence beside Refresh: "+context)
+	_check(modal.find_children("*","Label",true,false).any(func(label: Label): return label.text in [PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7, PlayerCopy.RELAY_PREVIEW_F85672E29DEB] and label.is_visible_in_tree()),"Room options says it keeps checking beside Refresh: "+context)
 	preview._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await process_frame
 	_check(preview.mode=="online_waiting" and not is_instance_valid(preview._room_options_modal),"Android Back closes Room options before leaving the room: "+context)
