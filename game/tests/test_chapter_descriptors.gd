@@ -26,6 +26,7 @@ const Dressing = preload("res://content/dressing/catalog.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
 const Props = preload("res://presentation/kit/props.gd")
+const WaitHints = preload("res://presentation/wait_hints.gd")
 
 const LEGACY_LIGHTHOUSE := "sleeping-lighthouse@1"
 ## The placeholder thumbnail scripts/new_chapter.py gives a new chapter
@@ -126,7 +127,7 @@ func _chapter(key: String, data: Dictionary) -> void:
 		_check(place.get("stage_id") in stage_ids, "Keepsake place names a stage of its chapter: %s/%s" % [key, place.get("stage_id")])
 	_check(data.version_of == "" or data.keepsakes.is_empty(), "A version earns its earlier version's places, not its own: " + key)
 	_sounds(key, data, level)
-	_seats(key, data, level)
+	_wait_hints(key, data, level)
 
 ## The chapter's own cues and beds are sounds of services/sound_cues.gd, and each
 ## water control is a selector of every stage that has it, with the levels as
@@ -147,11 +148,46 @@ func _sounds(key: String, data: Dictionary, level: Dictionary) -> void:
 				_same(_sorted(control.get("values", [])), _sorted(levels) if levels is Array else levels, "Selector values of %s/%s/%s are its water levels" % [key, stage.id, id])
 		_check(found > 0, "Water control %s of %s is a control in its definition" % [id, key])
 
-## Each seat is a pad of a stage, as a prop the kit builds.
-func _seats(key: String, data: Dictionary, level: Dictionary) -> void:
+## Wait hints and seats name what the chapter has: each reason a control,
+## lever or pad of a stage (a water reason by side: a water control), each crossing a
+## route, each seat a pad, as a prop the kit builds.
+func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
+	var mechanisms: Dictionary = {}
 	var pads: Dictionary = {}
 	for stage: Dictionary in level.stages:
+		for field: String in ["controls", "levers", "pressure_pads"]:
+			for item: Dictionary in stage.get(field, []): mechanisms[str(item.id)] = true
 		for pad: Dictionary in stage.get("pressure_pads", []): pads[str(pad.id)] = true
+	var hints: Dictionary = data.wait_hints
+	if not hints.is_empty():
+		_check(hints.get("fallback") is String and hints.get("never") is String and hints.get("reasons") is Dictionary, "Wait hints of %s have reasons, a fallback and a never phrase" % key)
+	for id: String in hints.get("reasons", {}):
+		var phrase: Variant = hints.reasons[id]
+		_check(mechanisms.has(id), "Wait hint reason %s of %s is a control, lever or pad" % [id, key])
+		if phrase is Dictionary:
+			_check(not phrase.is_empty() and phrase.keys().all(func(side: Variant) -> bool: return side in ["too_low", "too_high"]), "A water reason says too low, too high or both: %s/%s" % [key, id])
+			_check(data.water_levels.has(id), "A two-sided reason is a water control: %s/%s" % [key, id])
+		else: _check(phrase is String, "A reason is a phrase: %s/%s" % [key, id])
+	# Everything listed can be said: a reason is a memory's term of a crossing
+	# that can give a hint (a water control's side, one it can be on), and a
+	# named crossing is one of those crossings.
+	var reasons: Dictionary = {}
+	var crossings: Array = []
+	for stage: Dictionary in level.stages:
+		var detector := WaitHints.new()
+		detector.setup(stage, data, "")
+		var reach := detector.reachable()
+		crossings.append_array(reach.crossings)
+		for id: String in reach.reasons:
+			var sides: Array = reasons.get(id, [])
+			sides.append_array(reach.reasons[id])
+			reasons[id] = sides
+	for id: String in hints.get("reasons", {}):
+		var phrase: Variant = hints.reasons[id]
+		var sides: Array = phrase.keys() if phrase is Dictionary else []
+		_check(reasons.has(id) and sides.all(func(side: String) -> bool: return side in reasons[id]), "Wait hint reason %s of %s can be said (%s)" % [id, key, str(reasons.get(id, "never"))])
+	for id: String in hints.get("crossings", {}):
+		_check(id in crossings, "Wait hint crossing %s of %s can be hinted about" % [id, key])
 	for id: String in data.seats:
 		_check(pads.has(id), "Seat %s of %s is a pressure pad" % [id, key])
 		_check(Props.extent(data.seats[id]).height > 0.05 and not data.seats[id].has("at"), "Seat %s of %s is a prop the kit builds, placed by its pad" % [id, key])

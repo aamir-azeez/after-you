@@ -286,6 +286,7 @@ turn_photo_library 2
 turn_save_checks 2
 two_promises 1
 update_gate 3
+wait_hints 2
 water_locks 3
 welcome_light 2
 whats_new 3

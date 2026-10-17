@@ -2,7 +2,11 @@ extends "res://presentation/cooperative_world.gd"
 ## View adapter for the sealed simulation7 snapshot. The physical renderer and
 ## Lighthouse optical geometry remain shared; this file adds no game state.
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
+const WaitHints = preload("res://presentation/wait_hints.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
+## The soft honey dashes round a crossing a wait hint names.
+const HINT_DASH := Color("f2d39b")
 ## A selector's bubble body stands as if its tail ended here, just over the
 ## lever's knob; the tail's tip itself lands on the knob's top (_knob_top).
 const LEVER_TOP := Vector3(0,0.80,0)
@@ -64,6 +68,16 @@ var _placement_due := true
 var placement_passes := 0
 var _waiting_ring: MeshInstance3D
 var _remembered: Node3D
+## Wait hints (wait_hints.gd): off until the screen turns them on for a
+## friend's room turn (set_wait_hints).
+var _wait_hints := WaitHints.new()
+var _wait_hints_on := false
+## Per crossing the stage can hint about, built hidden with the stage and
+## then only shown, hidden or reworded:
+## route id -> {"bubble": LabelBubble, "dashes": MeshInstance3D, "anchor"}.
+var _wait_marks: Dictionary = {}
+## The stage on show, for the hints' anchors.
+var _shown_stage: Dictionary = {}
 ## Step seats (descriptor "seats"): [{"pad", "params"}], params being the
 ## sit pose's ({"seat": global point, "seat_radius"}); and each seat holder's
 ## last snapshot position, so it sits only while still.
@@ -79,10 +93,15 @@ func show_stage(stage: Dictionary) -> void:
 	_sceneries.clear()
 	_journey_handles.clear()
 	_waiting_ring = null
+	_wait_marks.clear()
 	_seats.clear()
 	_seat_last.clear()
+	_shown_stage = stage
+	# Before the build awaits: a present meanwhile reads this stage's crossings.
+	_wait_hints.setup(stage, _descriptor(), PlayerCopy.WAIT_HINT_CROSSING)
 	await super.show_stage(stage)
 	_build_seats(stage)
+	_build_wait_marks()
 	# Lowest on screen first: see _lift_bubbles.
 	var up := LabelBubble.screen_up()
 	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))
@@ -145,6 +164,9 @@ func _follow_knobs() -> void:
 	for id: String in _journey_switches:
 		var bubble: LabelBubble = _journey_switches[id].bubble
 		if is_instance_valid(bubble) and _physical_levers.has(id): bubble.set_anchor(_knob_top(id))
+	for route: String in _wait_marks:
+		var mark: Dictionary = _wait_marks[route]
+		if (mark.bubble as LabelBubble).visible and _physical_levers.has(mark.anchor): (mark.bubble as LabelBubble).set_anchor(_knob_top(mark.anchor))
 
 ## The top of a selector lever's knob (terrain space), as the lever now tilts:
 ## where its bubble's tail lands.
@@ -186,7 +208,7 @@ func _idle_card_frame() -> void:
 
 func _advance_bubbles(delta: float) -> void:
 	for bubble: LabelBubble in _bubbles:
-		if not is_instance_valid(bubble): continue
+		if not is_instance_valid(bubble) or not bubble.visible: continue
 		if bubble.is_bobbing() == reduced_motion: bubble.set_bob(not reduced_motion)
 		bubble.advance_bob(delta)
 
@@ -228,7 +250,7 @@ func _lift_bubbles() -> void:
 	_placed_count = 0
 	_find_spirits()
 	for bubble: LabelBubble in _bubbles:
-		if not is_instance_valid(bubble) or bubble.labels[0].no_depth_test: continue
+		if not is_instance_valid(bubble) or not bubble.visible or bubble.labels[0].no_depth_test: continue
 		var rect := bubble.plane_rect(true)
 		var anchor := (bubble.get_parent() as Node3D).to_global(bubble.anchor)
 		var tip := LabelBubble.plane_point(anchor)
@@ -456,6 +478,7 @@ func _shares_floor(a: Vector3, b: Vector3) -> bool:
 func present_history(checkpoint: Dictionary) -> void:
 	super.present_history(checkpoint)
 	_placement_due = true
+	_wait_hints.set_start(checkpoint)
 	if is_instance_valid(_remembered):
 		_remembered.get_parent().remove_child(_remembered)
 		_remembered.queue_free()
@@ -489,6 +512,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	_follow_knobs()
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) else 0.0)
 	_present_seats(state, immediate)
+	if _wait_hints_on and _wait_hints.update(state): _show_wait_marks()
 	# What a world sets after this (its own levers and wheels) is read by the
 	# next pass, not by the one an immediate present already ran.
 	_placement_due = true
@@ -506,6 +530,98 @@ func _camera_center() -> Vector3:
 ## This chapter's descriptor (content/chapters/index.gd), or the test's.
 func _descriptor() -> Dictionary:
 	return descriptor_override if not descriptor_override.is_empty() else ChapterIndex.data(_chapter_key())
+
+# --- Wait hints ---
+
+## Turns wait hints on for the live spirit's turn in a friend's room, with
+## the memory's length in ticks (MemoryWait.prior_ticks), or off.
+func set_wait_hints(on: bool, memory_ticks: int = -1) -> void:
+	_wait_hints_on = on
+	_wait_hints.set_memory_ticks(memory_ticks if on else -1)
+	if not on:
+		_wait_hints.shown = []
+		_show_wait_marks()
+
+## The hints on screen now: [{"route", "anchor", "text"}].
+func wait_hints() -> Array:
+	return _wait_hints.shown if _wait_hints_on else []
+
+## How many times the hints were worked out.
+func wait_hint_evaluations() -> int:
+	return _wait_hints.evaluations
+
+## Every crossing the stage can hint about gets its bubble (over the live
+## spirit's lever or selector) and dashes now, hidden, so the bubble is placed
+## and cleared like every other and nothing is built mid-play.
+func _build_wait_marks() -> void:
+	for candidate: Dictionary in _wait_hints.candidates():
+		var bubble := LabelBubble.new()
+		bubble.build_sentence(terrain, _hint_anchor(str(candidate.anchor)), str(_descriptor().get("wait_hints", {}).get("fallback", "")))
+		if not reduced_motion: bubble.set_bob(true)
+		_bubbles.append(bubble)
+		var dashes := _wait_dashes(str(candidate.route))
+		_wait_marks[candidate.route] = {"bubble": bubble, "dashes": dashes, "anchor": str(candidate.anchor)}
+		_show_mark(_wait_marks[candidate.route], false)
+
+## Shows each hinted crossing's mark with its words; hides the rest.
+func _show_wait_marks() -> void:
+	var live: Dictionary = {}
+	for hint: Dictionary in _wait_hints.shown:
+		var mark: Dictionary = _wait_marks.get(hint.route, {})
+		if mark.is_empty(): continue
+		live[hint.route] = true
+		(mark.bubble as LabelBubble).set_sentence(str(hint.text))
+		_show_mark(mark, true)
+	for route: String in _wait_marks:
+		if not live.has(route): _show_mark(_wait_marks[route], false)
+
+## A hidden bubble also stops refitting itself every frame.
+func _show_mark(mark: Dictionary, shown: bool) -> void:
+	var bubble: LabelBubble = mark.bubble
+	bubble.visible = shown
+	bubble.set_process(shown)
+	(mark.dashes as Node3D).visible = shown
+	if shown: bubble.set_anchor(_hint_anchor(str(mark.anchor)))
+
+## Where a hint's tail points: the top of its lever's knob, as the lever now
+## tilts, else just over the stage's control or lever.
+func _hint_anchor(id: String) -> Vector3:
+	if _physical_levers.has(id): return _knob_top(id)
+	for key: String in ["controls", "levers"]:
+		for item: Dictionary in _shown_stage.get(key, []):
+			if str(item.id) == id: return _at(item)+LEVER_TOP
+	return Vector3.ZERO
+
+## Soft dashes along a crossing's edges at its deck height: one mesh, shown or
+## hidden with its hint.
+func _wait_dashes(route_id: String) -> MeshInstance3D:
+	var node := MeshInstance3D.new()
+	node.name = "WaitDashes_"+route_id
+	node.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	terrain.add_child(node)
+	var route: Dictionary = {}
+	for candidate: Dictionary in chapter_definition.get("bridges", []) + chapter_definition.get("stairs", []):
+		if str(candidate.id) == route_id: route = candidate
+	if route.is_empty(): return node
+	var r: Array = route.rect_cm
+	var y := float(route.get("height_cm", route.get("from_height_cm", 0)))/100.0+0.02
+	var low := Vector2(float(r[0]), float(r[1]))/100.0+Vector2.ONE*0.04
+	var high := Vector2(float(r[2]), float(r[3]))/100.0-Vector2.ONE*0.04
+	var along_x := Primitives.shared_mesh("box", 0.11, 0.02, 0.045)
+	var along_z := Primitives.shared_mesh("box", 0.045, 0.02, 0.11)
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for edge: Array in [[low, Vector2(high.x, low.y)], [Vector2(low.x, high.y), high], [low, Vector2(low.x, high.y)], [Vector2(high.x, low.y), high]]:
+		var a: Vector2 = edge[0]
+		var b: Vector2 = edge[1]
+		var count := int(a.distance_to(b)/0.20)
+		for index in range(count):
+			var at := a.lerp(b, (float(index)+0.5)/float(count))
+			tool.append_from(along_x if absf(b.x-a.x) > 0.01 else along_z, 0, Transform3D(Basis.IDENTITY, Vector3(at.x, y, at.y)))
+	node.mesh = tool.commit()
+	# An opaque shaded kit material: no shader variant the stage lacks.
+	node.material_override = Primitives.shared_material(HINT_DASH)
+	return node
 
 # --- Step seats ---
 
@@ -529,7 +645,10 @@ func _build_seats(stage: Dictionary) -> void:
 		_seats.append({"pad": pad, "params": {"seat": top, "seat_radius": (extent.rect as Rect2).size.x*0.5}})
 
 ## Whoever holds a seat's pad sits on it while standing still, and stands
-## the moment its snapshot moves. A dozing spirit (memory wait) keeps its doze.
+## the moment its snapshot moves. A dozing spirit (memory wait) keeps its
+## doze: only the live spirit dozes, and in Turn of the Tide every seat is the
+## first spirit's, so a seat holder never dozes. A chapter that seats the
+## live spirit would see it doze inside its seat.
 func _present_seats(state: Dictionary, immediate: bool) -> void:
 	if _seats.is_empty() or not state.has("players"): return
 	for seat: Dictionary in _seats:

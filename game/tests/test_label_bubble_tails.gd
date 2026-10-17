@@ -370,9 +370,11 @@ func _stretch(bubble: LabelBubble) -> float:
 	var value: Variant = bubble.body.get_instance_shader_parameter(LabelBubble.STRETCH)
 	return float(value) if value != null else 0.0
 
+## Every bubble shown: a hidden one (a wait hint not saying anything) is
+## neither drawn nor placed.
 func _bubbles_in(node: Node) -> Array[LabelBubble]:
 	var found: Array[LabelBubble] = []
-	if node is LabelBubble and not node.is_queued_for_deletion(): found.append(node)
+	if node is LabelBubble and not node.is_queued_for_deletion() and (node as Node3D).visible: found.append(node)
 	for child: Node in node.get_children(): found.append_array(_bubbles_in(child))
 	return found
 

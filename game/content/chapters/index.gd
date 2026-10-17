@@ -48,6 +48,14 @@ const OPTIONAL := {
 	## Background loops (services/sound_cues.gd LOOPS) under the shared ambience
 	## while this chapter's world is on screen.
 	"beds": [],
+	## Why a crossing the live spirit has done its part for is still shut,
+	## waiting on the memory (presentation/wait_hints.gd has the rules):
+	## {"reasons": {mechanism id: phrase, or for a "water_levels" control
+	## {"too_low": phrase, "too_high": phrase}}, "fallback": phrase, "never":
+	## the phrase when the memory ends without its part, "crossings": {route
+	## id: its name}}. Phrases are PlayerCopy constants; {crossing} names the
+	## crossing. {} gives no hints.
+	"wait_hints": {},
 	## {pressure pad id: a kit/props.gd spec without "at"}: a seat on the pad,
 	## and whoever holds the pad sits on it while still.
 	"seats": {},

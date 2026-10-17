@@ -1651,7 +1651,7 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	sim = live
 	_fresh_live = _live_fingerprint(sim) if not resume_draft and online_session == null and journey.has_method("is_live_simulation") else {}
 	_begin_sound_turn()
-	_begin_memory_wait(journey.role(), journey.prior_recording())
+	_begin_memory_wait(journey.role(), journey.prior_recording(), true)
 	# A family with no catch to assist (the Lighthouse) always records false.
 	sim.catch_assistance = bool(settings.get("assistance", true)) and Registry.catch_assistance(chapter_key)
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
@@ -1792,9 +1792,14 @@ func _wait() -> RefCounted:
 	return memory_wait
 
 ## The simulation is back at tick zero for `turn_role`, following `prior`.
-func _begin_memory_wait(turn_role: String, prior_recording: Variant) -> void:
+## live: a turn being played, not a replay. A journey world's wait hints
+## show only in this player's second turn of a friend's room, never in solo
+## play or a replay; they know when the memory ends.
+func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool = false) -> void:
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
 	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))
+	if is_instance_valid(world) and world.has_method("set_wait_hints"):
+		world.set_wait_hints(live and online_session != null and turn_role == "b", MemoryWait.prior_ticks(prior_recording))
 	_memory_wait_text = ""
 	_update_memory_wait_hud()
 

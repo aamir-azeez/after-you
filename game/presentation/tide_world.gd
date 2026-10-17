@@ -1701,7 +1701,7 @@ func _clear_scenery() -> void:
 	if _scenery_placed.size() < _bubbles.size(): _scenery_placed.resize(_bubbles.size())
 	_scenery_placed_count = 0
 	for bubble: LabelBubble in _bubbles:
-		if not is_instance_valid(bubble): continue
+		if not is_instance_valid(bubble) or not bubble.visible: continue
 		var own := _bubble_owner(bubble)
 		var rect := bubble.plane_rect()
 		var climb := 0.0

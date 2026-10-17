@@ -203,6 +203,19 @@ const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the 
 const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
 const TURN_OF_THE_TIDE_SLACK_HINT_A := "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there."
 const TURN_OF_THE_TIDE_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern."
+# Wait hints (presentation/wait_hints.gd): why a crossing the player has done
+# their part for is still shut, waiting on the friend's memory. {crossing} is
+# the crossing's name from the chapter descriptor, or WAIT_HINT_CROSSING.
+const WAIT_HINT_CROSSING := "crossing"
+const TURN_OF_THE_TIDE_CROSSING_JETTY := "jetty"
+const TURN_OF_THE_TIDE_WAIT_BOLLARD_STEP := "This {crossing} won't budge till someone's holding the bollard step…"
+const TURN_OF_THE_TIDE_WAIT_TIDE_LOW := "Hmm, the water's not high enough for this {crossing} yet…"
+const TURN_OF_THE_TIDE_WAIT_BAR := "The gate's not barred yet, so it won't swing…"
+const TURN_OF_THE_TIDE_WAIT_BOOM_CHAIN := "The boom's still loose, so it won't hold…"
+const TURN_OF_THE_TIDE_WAIT_PUNT_CHAIN := "The punt's still loose, so it would drift…"
+const TURN_OF_THE_TIDE_WAIT_SEA := "Hmm, the sea's not at the right level here…"
+const TURN_OF_THE_TIDE_WAIT_NOT_YET := "Not quite yet…"
+const TURN_OF_THE_TIDE_WAIT_STAYS_SHUT := "Looks like this {crossing} stays shut this turn…"
 
 # Lighthouse chapter — begin journal load
 const LIGHTHOUSE_PREVIEW_E52C132C24BE := "Your saved paths remain on this device."
