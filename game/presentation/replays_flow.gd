@@ -7,12 +7,12 @@ extends Node
 ## viewer child. The flow keeps its own state and screens,
 ## asks Main to navigate through the signals below, and reads Main only through
 ## this host contract (read at call time, so Main or a test can swap a service):
-## - services: api, saves, shared_replays, relay_session, _new_relay_session,
+## - services: api, saves, shared_replays, relay_session, ensure_relay_session,
 ##   _wire_shared_history, friend_nicknames, _room_context_factory, app_status,
 ##   _update_gate_active, _history_mode, _relay_identity, identity_loading
 ## - screen: mode, running, room_play, store_view_generation,
 ##   application_backgrounded, submission_in_flight, lifecycle_generation,
-##   foreground_refresh_queued, foreground_response, _retry_cancel, ui, overlay,
+##   supersede_foreground_refresh, _retry_cancel, ui, overlay,
 ##   overlay_shade, _clear_overlay, _update_shade_bounds, _bounded_card_scroll,
 ##   _bounded_card_stack, _set_world_visible, soundscape, title_font
 ## - play: levels, current_level, attempt, preview_saved_attempt,
@@ -1517,9 +1517,7 @@ func _open_shared_memory(key: String, row: Dictionary) -> void:
 
 func _play_shared_entries(entries: Array) -> void:
 	if entries.is_empty() or host.mode != MODE_SHARED_MEMORIES or not host._relay_identity().ready or is_instance_valid(host.shared_replay_child) or not _replay_key_allowed(shared_replay_room): return
-	host.lifecycle_generation+=1
-	host.foreground_refresh_queued=false
-	host.foreground_response={}
+	host.supersede_foreground_refresh()
 	host.mode=MODE_SHARED_REPLAY
 	host.running=false
 	host._set_world_visible(false)
@@ -1570,7 +1568,7 @@ func _save_finished_replay_once(room_id: String, revision: int, in_play: bool = 
 	var owner: Dictionary = host._relay_identity()
 	var key := str(owner.player_id) + ":" + room_id + ":" + str(revision)
 	if not owner.ready or _shared_archive_attempts.has(key): return _shared_archive_attempts.get(key, false) == true
-	if host.relay_session == null: host.relay_session = host._new_relay_session()
+	host.ensure_relay_session()
 	var session: RefCounted = host.relay_session
 	var delays: Array[float] = [0.0]
 	delays.append_array(replay_save_retry_s)
