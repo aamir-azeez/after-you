@@ -2,6 +2,7 @@ import { fail, type Outcome } from "./protocol";
 import { errorCode, logWarning } from "./log";
 import type { RoomInboxProjection } from "./room-inbox";
 import type { RoomObservation } from "./room-index";
+import type { LiveHint } from "./live";
 
 /** One member's inbox projection, stamped with this room's clock. A throw reads as a failure with no lasting answer. */
 export function observeRoom(project: () => Outcome<RoomInboxProjection>): RoomObservation {
@@ -16,13 +17,14 @@ export function observeRoom(project: () => Outcome<RoomInboxProjection>): RoomOb
  * on it or changes because of it, and the index re-checks rows, so a lost push
  * only delays a correction. The rooms call it only while the room index is on,
  * except after an erase, which always tells the other member so that no index
- * row keeps the erased member's id.
+ * row keeps the erased member's id. `live` rides one member's live hint
+ * (live.ts) on that member's push, so a change never costs a second call.
  */
-export function pushRoomIndex(ctx: DurableObjectState, env: Env, roomId: string, version: 1 | 2, members: readonly (string | null | undefined)[], project: (player: string) => Outcome<RoomInboxProjection>): void {
+export function pushRoomIndex(ctx: DurableObjectState, env: Env, roomId: string, version: 1 | 2, members: readonly (string | null | undefined)[], project: (player: string) => Outcome<RoomInboxProjection>, live?: { to: string; hint: LiveHint }): void {
   for (const member of new Set(members)) {
     if (!member) continue;
     const observation = observeRoom(() => project(member));
-    ctx.waitUntil(env.PLAYERS.getByName(member).noteRoomIndex(member, roomId, version, observation)
+    ctx.waitUntil(env.PLAYERS.getByName(member).noteRoomIndex(member, roomId, version, observation, member === live?.to ? live.hint : undefined)
       .catch(error => logWarning("room_index_push_failed", { api_version: version, reason: errorCode(error) })));
   }
 }

@@ -71,6 +71,8 @@ const PLAYER_READS: Read<PlayerStub>[] = [
   ["authorize while deleting", player => player.authorize(HASH, true)],
   ["authorizeRoom", player => player.authorizeRoom(HASH, "r".repeat(22))],
   ["rotateSafetyToken", player => player.rotateSafetyToken()],
+  ["liveHint for a room", player => player.liveHint(P, { kind: "room", room_id: "r".repeat(22), revision: 1 })],
+  ["liveHint from a friend", player => player.liveHint(P, { kind: "friends", from: Q, request_id: "q".repeat(22) })],
 ];
 const PROFILE_READS: Read<ProfileStub>[] = [
   ["deletionReceipt", (profile, id) => profile.deletionReceipt(id, HASH)],

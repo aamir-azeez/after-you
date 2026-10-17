@@ -37,7 +37,8 @@
     "PHOTO_DELIVERY_ENABLED": "false",
     "PHOTO_TRANSFER_ENABLED": "false",
     "FINISHED_ROOM_LEAVE_ENABLED": "false",
-    "ROOM_INDEX_ENABLED": "false"
+    "ROOM_INDEX_ENABLED": "false",
+    "LIVE_CONNECTION_ENABLED": "false"
   },
   "durable_objects": {
     "bindings": [

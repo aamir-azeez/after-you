@@ -4,6 +4,7 @@ import { FRIEND_REFRESH_SECONDS, sameFriendLink, validSharedFriendRoom, type Fri
 import { interactionBlocked } from "./safety";
 import { flags } from "./flags";
 import { FRIEND_ALIAS_HEADER, aliasShaped, friendAliasFor, resolveFriendAlias } from "./friend-aliases";
+import { announceToFriends } from "./live";
 
 const exact = (v: Record<string, unknown>, keys: string[]) => {
   if (Object.keys(v).length !== keys.length || keys.some(k => !Object.hasOwn(v, k)) || v.schema_version !== 1) throw new ApiError(400, "invalid_friend_request");
@@ -140,7 +141,8 @@ export async function routeFriends(request: Request, path: string, owner: string
     const previous = unwrap(await player.friendList(owner, hash, false));
     const result = unwrap(await player.friendShare(owner, hash, input.room));
     if (previous.shared_room?.room_id !== result.shared_room?.room_id || previous.shared_room?.api_version !== result.shared_room?.api_version) {
-      await Promise.all(previous.links.filter(link => link.accepted).map(async link => { try { await env.FRIEND_ROOM_EVENTS.getByName(link.player_id).revoke(owner); } catch { /* eligibility rechecks still cancel a stale event */ } }));
+      await Promise.all([announceToFriends(env, owner, previous.links),
+        ...previous.links.filter(link => link.accepted).map(async link => { try { await env.FRIEND_ROOM_EVENTS.getByName(link.player_id).revoke(owner); } catch { /* eligibility rechecks still cancel a stale event */ } })]);
     }
     return { schema_version: 1, ...result };
   }

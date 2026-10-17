@@ -59,6 +59,8 @@ export const FLAG_VARS = Object.freeze({
   finishedRoomLeave: "FINISHED_ROOM_LEAVE_ENABLED",
   /** Room pushes into each member's room index, indexed lists and the 500-link bound. */
   roomIndex: "ROOM_INDEX_ENABLED",
+  /** The live socket (GET /v1/live), its capability and the hints room and friend changes send to it. */
+  liveConnection: "LIVE_CONNECTION_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;

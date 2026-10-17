@@ -38,6 +38,7 @@ import { HostAccessMemo } from "./host-access";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import { UnblockedPairMemo } from "./block-memo";
 import { observeRoom, pushRoomIndex } from "../room-index-sync";
+import { announceRoomChange, liveRoomHint, type LiveHint, type LiveRoomMembers } from "../live";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -156,6 +157,16 @@ export class RoomV2 extends DurableObject<Env> {
   }
   // Campaign notification orchestration is not enabled by the control2 foundation.
   private notificationsAvailable(): boolean { return campaignBoundaryGuard(this.ctx.storage, "campaign_notifications_unavailable") === null; }
+  /** The live hint a change makes (live.ts), or null: the flag is off, or a Story room, which sends none. */
+  private liveHintFrom(room: LiveRoomMembers): LiveHint | null {
+    return flags.liveConnection(this.env) && this.notificationsAvailable() ? liveRoomHint(room) : null;
+  }
+  /** After a committed change indexed() does not cover (a join, a redo request): one live hint to the other member. */
+  private announce(actor: string, room?: LiveRoomMembers | null): void {
+    if (!flags.liveConnection(this.env)) return;
+    const members = room === undefined ? this.read() : room;
+    if (members && this.liveHintFrom(members)) announceRoomChange(this.env, promise => this.ctx.waitUntil(promise), members, actor);
+  }
   alarm(): Promise<void> {
     if (!this.notificationsAvailable()) return Promise.resolve();
     return deliverTurnHints(this.ctx.storage, this.env, () => this.notificationsAvailable() ? this.read() : null, () => this.notificationsAvailable());
@@ -175,12 +186,21 @@ export class RoomV2 extends DurableObject<Env> {
    * members (finished, replay-transferred) or `reopened` says it may have been
    * before (a fork). The index reads rooms in play live, so ordinary turns
    * need no push. While the index is off it reads nothing.
+   *
+   * With `actor`, the member who did not act also gets one live hint
+   * (live.ts): on the index push when there is one, else on its own call.
    */
-  private indexed<T>(outcome: Outcome<T>, reopened = false): Outcome<T> {
-    if (!outcome.ok || !flags.roomIndex(this.env)) return outcome;
+  private indexed<T>(outcome: Outcome<T>, reopened = false, actor?: string): Outcome<T> {
+    const live = actor !== undefined && flags.liveConnection(this.env);
+    if (!outcome.ok || (!flags.roomIndex(this.env) && !live)) return outcome;
     const state = this.stored();
+    if (!state) return outcome;
+    const partner = actor === state.host_id ? state.guest_id : state.host_id;
+    const hint = live && partner && partner !== actor ? this.liveHintFrom(state) : null;
     const project = (player: string) => relayInboxProjection(this.ctx.storage, player);
-    if (state && (reopened || memberStateOf(project(state.host_id)) !== "in_play")) pushRoomIndex(this.ctx, this.env, state.room_id, 2, [state.host_id, state.guest_id], project);
+    if (flags.roomIndex(this.env) && (reopened || memberStateOf(project(state.host_id)) !== "in_play")) {
+      pushRoomIndex(this.ctx, this.env, state.room_id, 2, [state.host_id, state.guest_id], project, hint && partner ? { to: partner, hint } : undefined);
+    } else if (hint) announceRoomChange(this.env, promise => this.ctx.waitUntil(promise), state, actor!);
     return outcome;
   }
   /** Whether this member's chapter has a stage left (or waits for a friend), is finished (archived replays too), or is gone. */
@@ -226,7 +246,7 @@ export class RoomV2 extends DurableObject<Env> {
       const input = value === undefined ? null : binding ? await campaignRedoInput(value, binding, false) : await parseRedoMutation(value);
       const access = binding ? await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context) : null;
       if (deviceHash !== undefined && !await this.env.PLAYERS.getByName(player).authorize(deviceHash)) return fail(401, "invalid_auth");
-      return await this.ctx.storage.transaction(async () => {
+      const outcome = await this.ctx.storage.transaction(async () => {
         if (!binding) { const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_redo_unavailable"); if (boundary) return boundary; }
         else {
           const guard = campaignHttpAccessGuard(this.ctx.storage, access, input !== null); if (guard) return guard;
@@ -244,6 +264,8 @@ export class RoomV2 extends DurableObject<Env> {
           queueRedoHint(this.ctx.storage, this.env, "relay", state, source.first_player_id, result.value.request.request_id)) await scheduleGameplayNotifications(this.ctx.storage);
         return result;
       });
+      if (input && !binding && outcome.ok) this.announce(player);
+      return outcome;
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   private unsupported(state: RoomStateV2): Outcome<never> | null {
@@ -358,7 +380,8 @@ export class RoomV2 extends DurableObject<Env> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.stored();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
-    return this.ctx.storage.transaction(async () => {
+    let joined = false;
+    const outcome = await this.ctx.storage.transaction(async () => {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const state = this.read();
     const archived = transferredRoom(this.ctx.storage);
@@ -375,8 +398,11 @@ export class RoomV2 extends DurableObject<Env> {
     recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
     if (state.a_turn_id) queueTurnHint(this.ctx.storage, this.env, "relay", state, state.host_id, player);
     await scheduleGameplayNotifications(this.ctx.storage);
+    joined = true;
     return ok(this.view(state, player));
     });
+    if (joined && outcome.ok) this.announce(player, outcome.value);
+    return outcome;
   }
   operation(player: string, key: string, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
     return this.project(player, context, () => {
@@ -622,7 +648,7 @@ export class RoomV2 extends DurableObject<Env> {
           await scheduleGameplayNotifications(this.ctx.storage);
         }
         return ok(saved);
-      }));
+      }), false, player);
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   fork(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string): Promise<Outcome<MutationV2>> {
@@ -690,7 +716,7 @@ export class RoomV2 extends DurableObject<Env> {
         if (redoRequestId !== undefined) recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
         if (!campaignRedo) { clearTurnHints(this.ctx.storage); await scheduleGameplayNotifications(this.ctx.storage); }
         return ok(saved);
-      }), true);
+      }), true, campaignRedo ? undefined : player);
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   collection(player: string, context?: CampaignRoomContext): Promise<Outcome<{ pairs: { pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }[]; active_pair_ids: string[] }>> {
@@ -755,7 +781,7 @@ export class RoomV2 extends DurableObject<Env> {
    * so no index row keeps the erased member's id (room-index-sync.ts).
    */
   async eraseForPlayer(player: string, pendingCreation = false): Promise<Outcome<{ deleted: boolean }>> {
-    let erased: { room_id: string; partner: string | null } | null = null;
+    let erased: { room_id: string; partner: string | null; hint: LiveHint | null } | null = null;
     const result = await this.ctx.storage.transaction(async () => {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_delete_required"); if (boundary) return boundary;
     const state = this.stored();
@@ -763,12 +789,13 @@ export class RoomV2 extends DurableObject<Env> {
       this.ctx.storage.sql.exec("INSERT OR IGNORE INTO room VALUES (1,?)", '{"deleted":true}'); return ok({ deleted: true });
     }
     if (!state || !this.member(state, player)) return fail(404, "room_not_found");
-      erased = { room_id: state.room_id, partner: player === state.host_id ? state.guest_id : state.host_id };
+      erased = { room_id: state.room_id, partner: player === state.host_id ? state.guest_id : state.host_id, hint: this.liveHintFrom(state) };
     await this.eraseRoom();
     return ok({ deleted: true });
     });
-    const done = erased as { room_id: string; partner: string | null } | null;
-    if (result.ok && done?.partner) pushRoomIndex(this.ctx, this.env, done.room_id, 2, [done.partner], member => relayInboxProjection(this.ctx.storage, member));
+    const done = erased as { room_id: string; partner: string | null; hint: LiveHint | null } | null;
+    // The erase push always reaches the partner; a live hint rides on it.
+    if (result.ok && done?.partner) pushRoomIndex(this.ctx, this.env, done.room_id, 2, [done.partner], member => relayInboxProjection(this.ctx.storage, member), done.hint ? { to: done.partner, hint: done.hint } : undefined);
     return result;
   }
   /** Erases the whole room for both members; the caller owns the transaction and has checked membership. */
@@ -806,7 +833,7 @@ export class RoomV2 extends DurableObject<Env> {
       erasePlayerReactions(this.ctx.storage, player);
       recordDeparture(this.ctx.storage, player);
       return ok({ left: true });
-    }), true);
+    }), true, player);
   }
 }
 

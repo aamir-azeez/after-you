@@ -11,6 +11,7 @@ import { friendNotifications, publishSocialRoom, socialInbox } from "./social-ro
 import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, roomInbox } from "./room-inbox";
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
+import { LIVE_PATH, forwardLiveUpgrade } from "./live";
 export { FriendRoomEvents } from "./friend-room-events";
 import { friendEventsCapable } from "./friend-room-events";
 import { publicPolicy } from "./public-policy";
@@ -105,6 +106,8 @@ export default {
       }
       const { playerId, safetyToken } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      // Absent unless LIVE_CONNECTION_ENABLED is "true": the path then answers 404 as before.
+      if (path === LIVE_PATH && flags.liveConnection(env)) return await forwardLiveUpgrade(request, player, await bearerDigest(request));
       if (path === "/v1/room-inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
         const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = flags.finishedRoomLeave(env) && request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";

@@ -22,6 +22,7 @@ import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEven
 import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
+import { LIVE_FRIENDS_REFRESH_SECONDS, LIVE_PRESENCE_HINT_MS, acceptLiveSocket, announceToFriends, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
 type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt; social?: SocialState };
@@ -61,6 +62,55 @@ export class Player extends DurableObject<Env> {
       // marker table, so this reads nothing and writes nothing.
       if (roomErasurePending(this.ctx.storage) && await this.ctx.storage.getAlarm() === null) await this.ctx.storage.setAlarm(Date.now());
     });
+    setLiveAutoResponse(this.ctx);
+  }
+  /** The live socket (live.ts). The router forwards only an authenticated upgrade with its device hash. */
+  fetch(request: Request): Response {
+    return acceptLiveSocket(this.ctx, request, this.env, deviceHash => this.authorize(deviceHash));
+  }
+  webSocketMessage(socket: WebSocket): void { liveMessageReceived(socket); }
+  webSocketClose(socket: WebSocket, code: number): void { liveClosed(socket, code); }
+  webSocketError(socket: WebSocket): void { liveClosed(socket, 1011); }
+  /** When this player's friend online hint last went out; memory only, so a restart may send one more. */
+  private presenceHintAt = 0;
+  /**
+   * Binding only: a hint from the object where something changed. Sent only to
+   * this player's open sockets of the current device, and only after the same
+   * local checks the matching read makes; a friend hint also checks blocks,
+   * paid only when a socket is open. Returns whether any socket got it.
+   */
+  async liveHint(owner: string, hint: LiveHint): Promise<boolean> {
+    if (!flags.liveConnection(this.env) || !validLiveHint(hint)) return false;
+    const identity = this.identity();
+    if (!identity || identity.state !== "active" || identity.player_id !== owner) { closeLiveSockets(this.ctx); return false; }
+    if (!liveSockets(this.ctx, identity.device_hash).length) return false;
+    if (hint.kind === "room") {
+      const link = this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms WHERE room_id=?", hint.room_id).toArray()[0];
+      if (!link || roomLinkVersion(JSON.parse(link.data) as RoomLink) !== 2) return false;
+      return sendLive(liveSockets(this.ctx, identity.device_hash), liveMessage(hint)) > 0;
+    }
+    if (!this.acceptedFriend(identity, hint.from, hint.request_id)) return false;
+    if (await interactionBlocked(this.env, owner, hint.from)) return false;
+    const current = this.identity();
+    if (!current || current.state !== "active" || current.player_id !== owner || !this.acceptedFriend(current, hint.from, hint.request_id)) return false;
+    if (hint.kind === "friends") this.grantFriendsRefresh(current);
+    return sendLive(liveSockets(this.ctx, current.device_hash), liveMessage(hint)) > 0;
+  }
+  private acceptedFriend(identity: Identity, peer: string, requestId: string): boolean {
+    const link = this.social(identity).links.find(x => x.player_id === peer);
+    return !!link && link.accepted && link.request_id === requestId;
+  }
+  /** A hint makes the next friends list read due LIVE_FRIENDS_REFRESH_SECONDS after the last one, not FRIEND_REFRESH_SECONDS. */
+  private grantFriendsRefresh(identity: Identity): void {
+    const social = this.social(identity), now = Date.now();
+    // Already open, or already granted: a second hint never shortens it again.
+    if (social.next_refresh_at - now <= LIVE_FRIENDS_REFRESH_SECONDS * 1000) return;
+    const granted = Math.max(0, social.next_refresh_at - (FRIEND_REFRESH_SECONDS - LIVE_FRIENDS_REFRESH_SECONDS) * 1000);
+    if (granted < social.next_refresh_at) { social.next_refresh_at = granted; this.writeSocial(identity, social, false); }
+  }
+  /** A friend change made in this object for this player (writeSocial already reopened the list read). */
+  private pushFriendsChanged(identity: Identity): void {
+    if (flags.liveConnection(this.env)) sendLive(liveSockets(this.ctx, identity.device_hash), { type: "friends_changed" });
   }
   // Binding-only maintenance primitives; never dispatched by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportSnapshot(this.ctx, "Player", sourceCommit)); }
@@ -155,7 +205,7 @@ export class Player extends DurableObject<Env> {
     if (old) return old.request_id === requestId && old.requested_by === peer ? ok(old) : fail(409, "friend_request_changed");
     if (social.links.length >= MAX_FRIENDS) return fail(409, "friend_list_full");
     const link: FriendLink = { player_id: peer, request_id: requestId, requested_by: peer, accepted: false, created_at: createdAt };
-    social.links.push(link); this.writeSocial(identity, social); return ok(link);
+    social.links.push(link); this.writeSocial(identity, social); this.pushFriendsChanged(identity); return ok(link);
   }
   friendApprove(owner: string, deviceHash: string, peer: string, requestId: string): Outcome<FriendLink> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
@@ -169,7 +219,7 @@ export class Player extends DurableObject<Env> {
     if (!identity || identity.player_id !== owner || identity.state !== "active") return fail(404, "friend_unavailable");
     const social = this.social(identity), link = social.links.find(x => x.player_id === peer);
     if (!link || link.request_id !== requestId || link.requested_by !== owner) return fail(409, "friend_request_changed");
-    link.accepted = true; this.writeSocial(identity, social); return ok(link);
+    link.accepted = true; this.writeSocial(identity, social); this.pushFriendsChanged(identity); return ok(link);
   }
   /** Exact-token removal cannot erase a newer request after a lost reply. */
   friendForget(owner: string, peer: string, requestId: string, deviceHash?: string): Outcome<{ removed: true }> {
@@ -179,7 +229,10 @@ export class Player extends DurableObject<Env> {
     const social = this.social(identity);
     social.links = social.links.filter(x => x.player_id !== peer || x.request_id !== requestId);
     this.ctx.storage.sql.exec("DELETE FROM friend_room_subscriptions WHERE host_id=? AND json_extract(data,'$.request_id')=?", peer, requestId);
-    this.writeSocial(identity, social); return ok({ removed: true });
+    this.writeSocial(identity, social);
+    // A peer's removal (no device hash) reaches this player's open Friends page.
+    if (deviceHash === undefined && identity.state === "active") this.pushFriendsChanged(identity);
+    return ok({ removed: true });
   }
   friendShare(owner: string, deviceHash: string, room: SharedFriendRoom | null): Outcome<{ shared_room: SharedFriendRoom | null }> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
@@ -310,12 +363,14 @@ export class Player extends DurableObject<Env> {
   }
   async updatePresence(owner: string, deviceHash: string, session: string, online: boolean): Promise<Outcome<PresencePolicy>> {
     if (!PRESENCE_SESSION.test(session) || typeof online !== "boolean") return fail(400, "invalid_presence_request");
-    return this.ctx.storage.transaction(async () => {
+    let cameOnline = false;
+    const result = await this.ctx.storage.transaction(async (): Promise<Outcome<PresencePolicy>> => {
       const alarm = await this.ctx.storage.getAlarm();
       if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
       if (online && !flags.presence(this.env)) return fail(503, "presence_unavailable");
       if (!presenceAlarmOwned(this.ctx.storage, alarm)) return fail(503, "presence_unavailable");
       prunePresence(this.ctx.storage);
+      cameOnline = online && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM presence_leases").one().n === 0;
       if (online) {
         const existing = this.ctx.storage.sql.exec("SELECT session_id FROM presence_leases WHERE session_id=?", session).toArray();
         if (!existing.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM presence_leases").one().n >= MAX_PRESENCE_SESSIONS) return fail(409, "presence_session_limit");
@@ -324,6 +379,16 @@ export class Player extends DurableObject<Env> {
       await schedulePresence(this.ctx.storage);
       return ok(presencePolicy());
     });
+    if (result.ok && cameOnline) this.hintFriendsOnline(owner);
+    return result;
+  }
+  /** Offline to online only: the Friends page already lets an online dot lapse on its own. */
+  private hintFriendsOnline(owner: string): void {
+    const identity = this.identity(), now = Date.now();
+    if (!flags.liveConnection(this.env) || !identity || identity.state !== "active" || now - this.presenceHintAt < LIVE_PRESENCE_HINT_MS) return;
+    this.presenceHintAt = now;
+    // Best effort: an unreadable friend list never fails the heartbeat it follows.
+    try { this.ctx.waitUntil(announceToFriends(this.env, owner, this.social(identity).links, "presence")); } catch { /* the friends' safety poll covers it */ }
   }
   /** Binding only: never expose a per-player presence lookup over HTTP. */
   presenceExpiry(owner: string): number {
@@ -465,6 +530,7 @@ export class Player extends DurableObject<Env> {
       clearRegistrations(this.ctx.storage);
       clearPresence(this.ctx.storage);
     });
+    closeLiveSockets(this.ctx);
     return ok({ player_id: identity.player_id, recovered: true });
   }
   reserveRoom(key: string, link: RoomLink, settled: readonly string[] = []): Outcome<RoomLink> {
@@ -589,9 +655,11 @@ export class Player extends DurableObject<Env> {
   // Binding-only room index (room-index.ts). The router and the rooms call these; a row never grants access to a room.
   /** A room's push after a change: what it now says about this member. */
   /** While the index is off (an erase still pushes) it only updates a row that already exists. */
-  noteRoomIndex(owner: string, roomId: string, version: number, observation: RoomObservation): void {
+  noteRoomIndex(owner: string, roomId: string, version: number, observation: RoomObservation, hint?: LiveHint): void {
     const identity = this.identity();
     if (identity?.state === "active" && identity.player_id === owner) recordRoomObservation(this.ctx.storage, roomId, version, observation, flags.roomIndex(this.env));
+    // A live hint that rode on this push (room-index-sync.ts).
+    if (hint) this.ctx.waitUntil(this.liveHint(owner, hint).catch(() => false));
   }
   /** The router's live reads from an indexed list; null marks a read that failed. */
   recordRoomIndex(owner: string, observations: { room_id: string; api_version: number; observation: RoomObservation | null }[]): void {
@@ -625,6 +693,7 @@ export class Player extends DurableObject<Env> {
       clearRegistrations(this.ctx.storage);
       clearPresence(this.ctx.storage);
     });
+    closeLiveSockets(this.ctx);
     // Above one deletion batch, hosted rooms still in play (waiting ones included) go first.
     return ok(links.length > ROOM_DELETION_BATCH ? deletionOrder(this.ctx.storage, links) : links);
   }
@@ -728,4 +797,6 @@ export class Player extends DurableObject<Env> {
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
-  deletingWith: () => false, noteRoomIndex: () => undefined });
+  deletingWith: () => false, noteRoomIndex: () => undefined,
+  // No identity, so no socket: a hint is dropped and an upgrade (unreachable past auth()) is refused.
+  liveHint: async () => false, fetch: () => liveUnauthorized() });
