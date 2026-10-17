@@ -15,6 +15,13 @@ extends Node3D
 ##   bubble.set_bob(true)             # gentle idle bob, off by default
 ##   bubble.advance_bob(delta)        # from the world's clock, so it stops with it
 ##
+## Sentence mode says one short sentence instead: the text keeps its own case
+## and wraps onto a second line, under the same body and tail.
+##
+##   var hint := LabelBubble.new()
+##   hint.build_sentence(terrain, lever_top, "Not quite yet…")
+##   hint.set_sentence("Hmm, this crossing needs the sluice running…")
+##
 ## The tail's tip never leaves its anchor. A lift, a lean or the bob moves the
 ## body, pills and letters; the tail stretches (and leans, when its tip lies
 ## beyond the body's straight edge) so its tip stays on the anchor on the fixed
@@ -56,6 +63,8 @@ const EDGE := Color("b98d5f")
 const DARK_FILL := Color("1b4740")
 const DARK_EDGE := Color("e9edd6")
 const PILL_HEIGHT := 0.36
+## Sentence mode: a sentence wider than this on one line (metres) takes two.
+const SENTENCE_WIDTH := 3.2
 const PILL_PAD := 0.12
 const GAP := 0.04
 const PAD := Vector2(0.07, 0.07)
@@ -223,21 +232,79 @@ static func create(parent: Node3D, anchor_at: Vector3, options: Array, selected:
 ## shift moves the body sideways on screen (metres) while the tail keeps
 ## pointing at `at`, to clear a nearby prop.
 func build(parent: Node3D, at: Vector3, options: Array, shift: float = 0.0) -> void:
+	var shown: Array[String] = []
+	for value: Variant in options: shown.append(str(value).to_upper())
+	_build(parent, at, options, shown, shift)
+
+## Sentence mode: one sentence in its own case, broken onto two lines when one
+## would be wider than SENTENCE_WIDTH. Plain: no pill is filled. `values`
+## holds the sentence as given.
+func build_sentence(parent: Node3D, at: Vector3, text: String, shift: float = 0.0) -> void:
+	_build(parent, at, [text], [sentence_lines(text)], shift)
+
+## Says another sentence in a bubble built with build_sentence. The body
+## refits around it; its tail stays on the anchor. Nothing changes when the
+## sentence is the same.
+func set_sentence(text: String) -> void:
+	if labels.is_empty() or (not values.is_empty() and str(values[0]) == text): return
+	values = [text]
+	var label := labels[0]
+	var pill: MeshInstance3D = label.get_meta("backing")
+	var shape := pill.mesh as QuadMesh
+	var before := shape.size.y
+	label.text = sentence_lines(text)
+	shape.size = _pill_size(label.text)
+	# The pill grows from its foot, so the body still stands on its tail.
+	var rise := _up * ((shape.size.y - before) * 0.5)
+	pill.position += rise
+	label.position += rise
+	sync()
+
+## A sentence wider than SENTENCE_WIDTH on one line, broken at the space that
+## leaves its longer line shortest; at most two lines.
+static func sentence_lines(text: String) -> String:
+	var font := shared_font()
+	if _line_width(font, text) <= SENTENCE_WIDTH: return text
+	var best := text
+	var best_width := INF
+	var at := text.find(" ")
+	while at >= 0:
+		var width := maxf(_line_width(font, text.left(at)), _line_width(font, text.substr(at + 1)))
+		if width < best_width:
+			best_width = width
+			best = text.left(at) + "\n" + text.substr(at + 1)
+		at = text.find(" ", at + 1)
+	return best
+
+static func _line_width(font: Font, text: String) -> float:
+	return font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x * PIXEL_SIZE
+
+## A pill's size around `text` (metres): one line is PILL_HEIGHT tall, each
+## further line adds a line of letters.
+static func _pill_size(text: String) -> Vector2:
+	var font := shared_font()
+	var width := 0.0
+	var lines := text.split("\n")
+	for line: String in lines: width = maxf(width, _line_width(font, line))
+	var extra := float(lines.size() - 1) * font.get_height(FONT_SIZE) * PIXEL_SIZE
+	return Vector2(width + PILL_PAD * 2.0, PILL_HEIGHT + extra)
+
+func _build(parent: Node3D, at: Vector3, options: Array, shown: Array[String], shift: float) -> void:
 	name = "LabelBubble"
 	anchor = at
 	values = options.duplicate()
-	var shown: Array[String] = []
-	for value: Variant in options: shown.append(str(value).to_upper())
 	parent.add_child(self)
 	_axes_from(VIEW)
 	var font := shared_font()
-	var widths: Array[float] = []
+	var sizes: Array[Vector2] = []
 	var total := -GAP
+	var tallest := PILL_HEIGHT
 	for text: String in shown:
-		var width := font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, FONT_SIZE).x * PIXEL_SIZE + PILL_PAD * 2.0
-		widths.append(width)
-		total += width + GAP
-	var body_height := PILL_HEIGHT + PAD.y * 2.0
+		var size := _pill_size(text)
+		sizes.append(size)
+		total += size.x + GAP
+		tallest = maxf(tallest, size.y)
+	var body_height := tallest + PAD.y * 2.0
 	# The tail must still reach its anchor from inside the body's straight edge.
 	var reach := maxf((total + PAD.x * 2.0) * 0.5 - minf(RADIUS, body_height * 0.5) - TAIL * 0.62 - 0.02, 0.0)
 	shift = clampf(shift, -reach, reach)
@@ -255,10 +322,10 @@ func build(parent: Node3D, at: Vector3, options: Array, shift: float = 0.0) -> v
 	add_child(body)
 	var x := -total * 0.5
 	for index in range(shown.size()):
-		var middle := center + _right * (x + widths[index] * 0.5)
-		x += widths[index] + GAP
+		var middle := center + _right * (x + sizes[index].x * 0.5)
+		x += sizes[index].x + GAP
 		var shape := QuadMesh.new()
-		shape.size = Vector2(widths[index], PILL_HEIGHT)
+		shape.size = sizes[index]
 		var pill := MeshInstance3D.new()
 		pill.name = "BubblePill"
 		pill.mesh = shape

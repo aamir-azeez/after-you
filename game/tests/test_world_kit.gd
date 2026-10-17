@@ -137,4 +137,21 @@ func _check_label_bubbles() -> void:
 	var other_tip: Vector2 = other.plane_tail()
 	bubble.set_lift(0.0)
 	_check(bubble.body.material_override == other.body.material_override and other.plane_tail().is_equal_approx(other_tip), "A lift stretches only that bubble's tail; the shared material is unchanged")
+	_check_sentence_bubble(holder, other)
 	holder.free()
+
+## Sentence mode: the text keeps its own case, a long one takes two lines, a
+## new sentence refits the body and the tail stays on its anchor.
+func _check_sentence_bubble(holder: Node3D, word: Node3D) -> void:
+	var short: Node3D = LabelBubble.new()
+	short.build_sentence(holder, Vector3(-3, 0.8, 0), "Not quite yet…")
+	_check(short.labels[0].text == "Not quite yet…" and short.values == ["Not quite yet…"], "A sentence keeps its own case on one line")
+	_check(short.body.material_override == word.body.material_override and (short.labels[0].get_meta("backing").material_override as StandardMaterial3D).albedo_color.a == 0.0, "A sentence is a plain bubble: no pill is filled")
+	var tip: Vector2 = short.plane_tail()
+	var height: float = short.body.scale.y
+	var long := "This crossing won't budge till someone's holding the far step…"
+	short.set_sentence(long)
+	_check(short.labels[0].text.count("\n") == 1 and short.labels[0].text.replace("\n", " ") == long, "A long sentence breaks onto two lines")
+	_check(short.body.scale.y > height + 0.2 and short.plane_tail().distance_to(tip) < 0.001, "The body grows for the second line and the tail stays on its anchor")
+	var lines: PackedStringArray = short.labels[0].text.split("\n")
+	_check(absi(lines[0].length() - lines[1].length()) < long.length() / 4, "The break leaves two lines of about the same length (%s)" % str(lines))
