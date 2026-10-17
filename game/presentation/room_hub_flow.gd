@@ -30,6 +30,7 @@ extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
+const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -460,7 +461,7 @@ func _open_room_now(room: Dictionary) -> void:
 			if client != null: client.confirm_room_rendered(2,room_id)
 	elif version == 1:
 		await host.legacy_room_flow.open_room(room_id)
-		if host.mode == "room" and Typed.equal(host.active_room.get("room_id"), room_id):
+		if host.mode == LegacyRoomFlow.MODE_ROOM and Typed.equal(host.active_room.get("room_id"), room_id):
 			if client != null: client.confirm_room_rendered(1,room_id)
 		else: host._settle_room_flow()
 	else:

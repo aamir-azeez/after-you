@@ -268,30 +268,30 @@ func _tap_direct_share(viewport: SubViewport, screen: Node, label: String = "Sha
 	_pointer(viewport,share.get_global_rect().get_center(),false)
 	await process_frame
 
-## NotificationFlow reaches Friends only through these Main entry points; a
-## rename must fail here, not at an alert's runtime.
+## NotificationFlow reaches Friends only through these FriendsFlow entry points;
+## a rename must fail here, not at an alert's runtime.
 func _notification_entry_points(app: Node, api: FakeApi) -> void:
 	app._show_home()
-	_check(not app.friends_open(),"friends_open is false while Friends is closed")
+	_check(not app.friends_flow.is_open(),"is_open is false while Friends is closed")
 	await app._show_friends()
 	for frame: int in 30:
 		if not app.friends_flow.is_open() or not app.friends_flow.screen._busy: break
 		await process_frame
-	_check(app.friends_open(),"friends_open is true while Friends is up")
-	if not app.friends_open(): return
+	_check(app.friends_flow.is_open(),"is_open is true while Friends is up")
+	if not app.friends_flow.is_open(): return
 	var inbox_reads: int = api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/social/inbox").size()
-	app.friends_hosting_hint()
+	app.friends_flow.hosting_hint()
 	for frame: int in 30:
 		if not app.friends_flow.screen._busy: break
 		await process_frame
-	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/social/inbox").size() == inbox_reads + 1,"friends_hosting_hint has Friends read its hosting inbox once")
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/social/inbox").size() == inbox_reads + 1,"hosting_hint has Friends read its hosting inbox once")
 	friend_clock += Main.FriendsClient.REFRESH_MS + 1000
 	var list_reads: int = api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/friends").size()
-	await app.refresh_friends()
-	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/friends").size() == list_reads + 1,"refresh_friends reads the open Friends list again")
+	await app.friends_flow.refresh()
+	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v1/friends").size() == list_reads + 1,"refresh reads the open Friends list again")
 	app.friends_flow.close()
 	await process_frame
-	_check(not app.friends_open(),"friends_open is false once Friends closes")
+	_check(not app.friends_flow.is_open(),"is_open is false once Friends closes")
 
 func _window_back_notification(node: Node) -> void:
 	node.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)

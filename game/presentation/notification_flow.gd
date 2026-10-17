@@ -19,7 +19,7 @@ extends Node
 ##   _update_gate_active, _friend_display_name
 ## - entry points: legacy_room_flow (navigation_ready, show_saved_room),
 ##   ensure_relay_session, queue_foreground_refresh,
-##   _show_friends, friends_open, friends_hosting_hint, refresh_friends,
+##   _show_friends, friends_flow (is_open, hosting_hint, refresh),
 ##   _enter_online_relay, _request_update_gate
 ## - modes: NOTIFICATION_ROUTE_MODES (the screens a tap may leave)
 ## - card kit: _card, _label, _paragraph, _button, _back_button, _toast
@@ -162,7 +162,7 @@ func foreground_hint(route: Dictionary) -> void:
 		# Android shows no banner while the app is open, so say it here. The toast
 		# sits under the hidden main UI while a room is open; the room card shows it.
 		var message: String = FriendNicknames.sentence_start(host._friend_display_name(str(route.host_id))) + " has a room ready"
-		if host.friends_open(): host.friends_hosting_hint()
+		if host.friends_flow.is_open(): host.friends_flow.hosting_hint()
 		elif is_instance_valid(host.relay_child): host.relay_child.notification_deferred(message)
 		else: host._toast(message)
 		return
@@ -223,7 +223,7 @@ func _open_route(route: Dictionary) -> void:
 	if not route_safe(route): return
 	if route.get("kind") == "friend_room_available":
 		route_retry_ms = Time.get_ticks_msec() + 15000
-		if host.friends_open(): await host.refresh_friends()
+		if host.friends_flow.is_open(): await host.friends_flow.refresh()
 		else: await host._show_friends()
 		return
 	var context := _route_context()

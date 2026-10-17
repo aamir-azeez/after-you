@@ -14,11 +14,11 @@ extends Node
 ## through the signals below, and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
 ## - services: api, saves, relay_session, room_sharing, friend_presence,
-##   foreground_schedule, turn_flow, notification_flow, _new_relay_session
+##   foreground_schedule, turn_flow, notification_flow, ensure_relay_session
 ## - identity: _relay_identity, _tester_context, _ensure_identity
 ## - screen: mode, running, ui, overlay, application_backgrounded,
-##   store_view_generation, lifecycle_generation, foreground_refresh_queued,
-##   foreground_response, queue_foreground_refresh, _sync_presence, _toast
+##   store_view_generation, lifecycle_generation, queue_foreground_refresh,
+##   supersede_foreground_refresh, _sync_presence, _toast
 ## - room state: active_room, friend_share_target, room_play (the reaction
 ##   buttons set it), submission_in_flight, _one_room_write
 ## - room rules: _relay_available, _prepare_ordinary_navigation,
@@ -86,8 +86,7 @@ func join_room(code: String) -> void:
 	if navigation.view != host.store_view_generation or navigation.lifecycle != host.lifecycle_generation or host.application_backgrounded: return
 	if not navigation_ready(): return
 	if not await host._prepare_ordinary_navigation(): return
-	if host.relay_session == null:
-		host.relay_session=host._new_relay_session()
+	host.ensure_relay_session()
 	if not host.relay_session.can_leave_for_legacy():
 		host._toast(host.relay_session.last_error)
 		return
@@ -110,9 +109,7 @@ func open_room(room_id: String) -> void:
 
 func refresh_room() -> void:
 	# An explicit refresh supersedes any older automatically fetched snapshot.
-	host.foreground_refresh_queued=false
-	host.foreground_response={}
-	host.lifecycle_generation+=1
+	host.supersede_foreground_refresh()
 	if not await host._ensure_identity():
 		return
 	var room_id := str(host.saves.data.get("room",{}).get("room_id",""))

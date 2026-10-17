@@ -1959,18 +1959,6 @@ func _friends_to_rooms() -> void:
 	mode = RoomHubFlow.MODE_ROOMS
 	ui.visible = true
 
-## A hosting alert while the app is open: whether Friends is up to show it.
-func friends_open() -> bool:
-	return friends_flow.is_open()
-
-## A hosting alert arrived while Friends is up.
-func friends_hosting_hint() -> void:
-	friends_flow.hosting_hint()
-
-## A tapped hosting alert while Friends is up reads its list again.
-func refresh_friends() -> void:
-	await friends_flow.refresh()
-
 func _current_room_share_allowed(target: Dictionary) -> bool:
 	if application_backgrounded or not _relay_identity().ready or not FriendsClient._room(target): return false
 	var room := {}
@@ -2342,9 +2330,6 @@ func _one_room_write(work: Callable) -> Variant:
 	var result: Variant = await work.call()
 	submission_in_flight = false
 	return result
-
-func _show_online_collection() -> void:
-	replays_flow.show_shared_replays()
 
 func _scroll_list(card: VBoxContainer, scrolling: bool=true) -> VBoxContainer:
 	var list := VBoxContainer.new()
@@ -2852,6 +2837,13 @@ func ensure_relay_session() -> void:
 ## The open legacy room is read again at the next foreground refresh.
 func queue_foreground_refresh() -> void:
 	foreground_refresh_queued = true
+
+## An explicit read of the legacy room supersedes the foreground refresh: a queued
+## read and a held answer are dropped, and one still out is ignored when it returns.
+func supersede_foreground_refresh() -> void:
+	foreground_refresh_queued=false
+	foreground_response={}
+	lifecycle_generation+=1
 
 ## Once a session, on Home: a turn that still waits for its photo because After You closed
 ## while the camera was open. Its room opens on request and offers that photo again.
