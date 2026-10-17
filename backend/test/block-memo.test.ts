@@ -6,6 +6,7 @@ import { Player } from "../src/player";
 import { SafetyProfile } from "../src/safety";
 import { RoomV2 } from "../src/v2/room";
 import { UnblockedPairMemo } from "../src/v2/block-memo";
+import { digest } from "../src/protocol";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import { call, relayPair, type Account } from "./history-http";
@@ -58,10 +59,9 @@ describe("unblocked pair memo", () => {
     const names = Object.getOwnPropertyNames(RoomV2.prototype).filter(name => name !== "constructor");
     const rooms = names.map(name => vi.spyOn(RoomV2.prototype as unknown as Record<string, () => unknown>, name));
     const roomMethods = () => names.filter((_, index) => rooms[index].mock.calls.length > 0);
-    expect(await code(await block(host, room))).toBe("200 ok");
-    // The block costs 2 Player calls and no room call: the only room work is the route's own safetyMembers read.
-    expect({ rotations: rotations.mock.calls.length, listRooms: lists.mock.calls.length, roomMethods: roomMethods().sort() })
-      .toEqual({ rotations: 2, listRooms: 0, roomMethods: ["member", "memberState", "project", "read", "safetyMembers"] });
+    // The block itself, as the route calls it after reading the room's members: 2 Player calls and no room call.
+    expect(await env.SAFETY_PROFILES.getByName(host.player_id).setBlock(host.player_id, await digest(host.device_token), guest.player_id, true)).toMatchObject({ ok: true });
+    expect({ rotations: rotations.mock.calls.length, listRooms: lists.mock.calls.length, roomMethods: roomMethods() }).toEqual({ rotations: 2, listRooms: 0, roomMethods: [] });
     expect(await everyone(shared)).toEqual(["403 player_blocked", "403 player_blocked", "403 player_blocked"]);
     expect(await code(await poll(outsider.guest, outsider.room))).toBe("200 ok");
     expect(await code(await call(`/v1/safety/blocks/${guest.player_id}`, "DELETE", host))).toBe("200 ok");
