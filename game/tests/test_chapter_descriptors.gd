@@ -25,6 +25,7 @@ const Keepsakes = preload("res://services/home_keepsake_catalog.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
+const Props = preload("res://presentation/kit/props.gd")
 
 const LEGACY_LIGHTHOUSE := "sleeping-lighthouse@1"
 ## The placeholder thumbnail scripts/new_chapter.py gives a new chapter
@@ -125,6 +126,7 @@ func _chapter(key: String, data: Dictionary) -> void:
 		_check(place.get("stage_id") in stage_ids, "Keepsake place names a stage of its chapter: %s/%s" % [key, place.get("stage_id")])
 	_check(data.version_of == "" or data.keepsakes.is_empty(), "A version earns its earlier version's places, not its own: " + key)
 	_sounds(key, data, level)
+	_seats(key, data, level)
 
 ## The chapter's own cues and beds are sounds of services/sound_cues.gd, and each
 ## water control is a selector of every stage that has it, with the levels as
@@ -144,6 +146,15 @@ func _sounds(key: String, data: Dictionary, level: Dictionary) -> void:
 				_check(control.get("kind") == "selector", "Water control %s of %s/%s is a selector" % [id, key, stage.id])
 				_same(_sorted(control.get("values", [])), _sorted(levels) if levels is Array else levels, "Selector values of %s/%s/%s are its water levels" % [key, stage.id, id])
 		_check(found > 0, "Water control %s of %s is a control in its definition" % [id, key])
+
+## Each seat is a pad of a stage, as a prop the kit builds.
+func _seats(key: String, data: Dictionary, level: Dictionary) -> void:
+	var pads: Dictionary = {}
+	for stage: Dictionary in level.stages:
+		for pad: Dictionary in stage.get("pressure_pads", []): pads[str(pad.id)] = true
+	for id: String in data.seats:
+		_check(pads.has(id), "Seat %s of %s is a pressure pad" % [id, key])
+		_check(Props.extent(data.seats[id]).height > 0.05 and not data.seats[id].has("at"), "Seat %s of %s is a prop the kit builds, placed by its pad" % [id, key])
 
 ## Read from the registry alone: every chapter shows its own summary. Versions of
 ## one chapter id may share theirs. A chapter must never quietly show another

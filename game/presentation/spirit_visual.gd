@@ -201,7 +201,9 @@ func set_expression_role(role: String) -> void:
 ## Switches the resting pose layer (spirit_idle.gd), easing in over about half
 ## a second, or at once with `immediate`. &"rest" is the default. Calling it
 ## again with the same pose and params does nothing, so a world may assert it
-## every frame. params: pose-specific, e.g. {"toward": a global point}.
+## every frame. params: pose-specific, e.g. {"toward": a global point} for a
+## doze, {"seat": the seat's top as a global point, "seat_radius": metres}
+## for a sit.
 func set_pose(pose: StringName, params: Dictionary = {}, immediate: bool = false) -> void:
 	if not SpiritIdle.has_pose(pose):
 		push_warning("Unknown spirit pose %s" % pose)
@@ -403,6 +405,7 @@ func _apply_pose(amount: float) -> void:
 	# Only a pose other than rest moves the body that carried props hang from.
 	if rest.body_lean!=Vector3.ZERO: upper_body.rotation+=rest.body_lean
 	if rest.body_drop!=0.0: upper_body.position.y-=rest.body_drop
+	if rest.body_shift!=Vector3.ZERO: upper_body.position+=rest.body_shift
 	torso.scale=TORSO_SCALE*rest.torso_scale
 	# Face and sprout are the head's siblings: they lift and turn with it.
 	var rise := Vector3(0,rest.head_lift,0)
@@ -451,15 +454,20 @@ func _apply_pose(amount: float) -> void:
 		feet[index].position += Vector3(side*tap*0.075,tap*0.11,tap*0.075)
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
 		feet[index].rotation.x -= tap*0.22
+		if rest.body_shift!=Vector3.ZERO or rest.feet_forward!=0.0: feet[index].position+=rest.body_shift+Vector3(0,0,rest.feet_forward)
 	if not _doze_zs.is_empty(): _apply_doze_zs(idle)
 
 ## The pose layer's offsets this frame, faded by `idle` (none while walking).
 ## Reduce motion gives each pose's still frame: nothing at all for rest.
 func _sample_pose(idle: float) -> SpiritIdle.Frame:
-	if _pose_params.has("toward"):
-		var toward: Vector3=_pose_params.toward
-		var local := to_local(toward) if is_inside_tree() else toward-position
-		_pose_context["toward"]=facing.basis.inverse()*local
+	# A point param ("toward", "seat") is global; the pose reads it in the
+	# facing pivot's space. Other params pass as they are.
+	for key: Variant in _pose_params:
+		var value: Variant=_pose_params[key]
+		if value is Vector3:
+			var local: Vector3=to_local(value) if is_inside_tree() else value-position
+			_pose_context[key]=facing.basis.inverse()*local
+		else: _pose_context[key]=value
 	if _pose_blend>=1.0 or _pose_from==_pose:
 		SpiritIdle.sample(_pose,_expression_time,expression_phase,_reduced_motion,_pose_context,_pose_frame)
 	else:

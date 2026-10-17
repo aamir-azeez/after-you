@@ -15,6 +15,10 @@ const REST := &"rest"
 ## Done with its part and waiting for its friend's memory: eyes shut, head
 ## low, slow deep breaths, leaning on its goal when one is near.
 const DOZE := &"doze"
+## Holding a step by sitting on its seat (a bollard on the step's pad): the
+## body perches on the seat's top over its middle, the feet hang in front of
+## it, and the resting breath, leaf sway and glance go on.
+const SIT := &"sit"
 
 ## Breath: torso swells a little, head rides it.
 const BREATH_RATE := 1.75
@@ -55,6 +59,10 @@ const WAKE_HOP := 0.17
 const WAKE_HOP_END := 0.5
 const WAKE_EYES := 0.38
 const WAKE_LEAF := 0.45
+## Sit: how far the body settles into the seat's top, and how far in front of
+## the seat's edge the feet hang (metres).
+const SIT_SINK := 0.03
+const SIT_FEET := 0.06
 
 ## Offsets from the built pose. Every field at its cleared value means the
 ## pose adds nothing.
@@ -77,6 +85,11 @@ class Frame:
 	var body_drop := 0.0
 	## Widens the open eyes (0 none, 1 double height). Never set by rest.
 	var eyes_wide := 0.0
+	## Moves upper_body and the feet across the ground, in the facing pivot's
+	## space (metres). Never set by rest.
+	var body_shift := Vector3.ZERO
+	## Moves the feet forward (+Z in the facing pivot, metres). Never set by rest.
+	var feet_forward := 0.0
 
 	func clear() -> void:
 		torso_scale = Vector3.ONE
@@ -88,6 +101,8 @@ class Frame:
 		body_lean = Vector3.ZERO
 		body_drop = 0.0
 		eyes_wide = 0.0
+		body_shift = Vector3.ZERO
+		feet_forward = 0.0
 
 	## Scales every offset by weight (0 = nothing, 1 = full).
 	func scale_by(weight: float) -> void:
@@ -100,6 +115,8 @@ class Frame:
 		body_lean *= weight
 		body_drop *= weight
 		eyes_wide *= weight
+		body_shift *= weight
+		feet_forward *= weight
 
 	## This frame becomes a + (b - a) * weight.
 	func blend(a: Frame, b: Frame, weight: float) -> void:
@@ -112,6 +129,8 @@ class Frame:
 		body_lean = a.body_lean.lerp(b.body_lean, weight)
 		body_drop = lerpf(a.body_drop, b.body_drop, weight)
 		eyes_wide = lerpf(a.eyes_wide, b.eyes_wide, weight)
+		body_shift = a.body_shift.lerp(b.body_shift, weight)
+		feet_forward = lerpf(a.feet_forward, b.feet_forward, weight)
 
 	## Adds another frame's offsets to this one.
 	func add(other: Frame) -> void:
@@ -124,10 +143,12 @@ class Frame:
 		body_lean += other.body_lean
 		body_drop += other.body_drop
 		eyes_wide += other.eyes_wide
+		body_shift += other.body_shift
+		feet_forward += other.feet_forward
 
 ## Whether `pose` has a sampler here.
 static func has_pose(pose: StringName) -> bool:
-	return pose == REST or pose == DOZE
+	return pose == REST or pose == DOZE or pose == SIT
 
 ## Fills `out` for `pose` at spirit time t. `still` (Reduce motion): the
 ## pose's still frame, which for rest is nothing. `context` carries pose
@@ -137,6 +158,7 @@ static func sample(pose: StringName, t: float, phase: float, still: bool, contex
 	match pose:
 		REST: _rest(t, phase, still, out)
 		DOZE: _doze(t, phase, still, context, out)
+		SIT: _sit(t, phase, still, context, out)
 
 static func _rest(t: float, phase: float, still: bool, out: Frame) -> void:
 	if still: return
@@ -184,6 +206,17 @@ static func _doze(t: float, phase: float, still: bool, context: Dictionary, out:
 		out.body_lean = Vector3(lean.y, 0.0, -lean.x)
 	else:
 		out.body_lean = Vector3(DOZE_NOD + DOZE_NOD_SWAY * b, 0.0, 0.0)
+
+## Perched on a seat. context "seat": the seat's top centre in the facing
+## pivot's space; "seat_radius": its radius (metres). Reduce motion keeps the
+## perch and drops the breath and glance, as rest does.
+static func _sit(t: float, phase: float, still: bool, context: Dictionary, out: Frame) -> void:
+	_rest(t, phase, still, out)
+	var seat: Variant = context.get("seat")
+	if not seat is Vector3: return
+	out.body_drop = -(seat.y - SIT_SINK)
+	out.body_shift = Vector3(seat.x, 0.0, seat.z)
+	out.feet_forward = float(context.get("seat_radius", 0.0)) + SIT_FEET
 
 ## The startled wake at `age` seconds: a quick hop, eyes wide, the leaf
 ## jolting. Nothing under Reduce motion, where the eyes simply open.

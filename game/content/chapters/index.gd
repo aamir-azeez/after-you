@@ -48,6 +48,9 @@ const OPTIONAL := {
 	## Background loops (services/sound_cues.gd LOOPS) under the shared ambience
 	## while this chapter's world is on screen.
 	"beds": [],
+	## {pressure pad id: a kit/props.gd spec without "at"}: a seat on the pad,
+	## and whoever holds the pad sits on it while still.
+	"seats": {},
 }
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
 

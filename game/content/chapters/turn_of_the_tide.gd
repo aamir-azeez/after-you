@@ -33,5 +33,7 @@ const DATA := {
 	"dressing": "res://content/dressing/turn_of_the_tide.gd",
 	"water_levels": {"tide": ["low", "half", "high"], "basin": ["shut", "low", "half", "high"], "chamber": ["low", "half", "high"]},
 	"beds": ["water_near"],
+	# The bollard step's own bollard: whoever holds the step sits on it.
+	"seats": {"bollard-pad": {"kind": "bollard", "size": 1.6}},
 	"server": {"flag": "TURN_OF_THE_TIDE_CHAPTER_ENABLED", "max_branches": 7},
 }

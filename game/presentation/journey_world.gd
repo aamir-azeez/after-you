@@ -2,6 +2,7 @@ extends "res://presentation/cooperative_world.gd"
 ## View adapter for the sealed simulation7 snapshot. The physical renderer and
 ## Lighthouse optical geometry remain shared; this file adds no game state.
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
+const Seven = preload("res://core/journey/seven_mechanisms.gd")
 ## A selector's bubble body stands as if its tail ended here, just over the
 ## lever's knob; the tail's tip itself lands on the knob's top (_knob_top).
 const LEVER_TOP := Vector3(0,0.80,0)
@@ -63,6 +64,13 @@ var _placement_due := true
 var placement_passes := 0
 var _waiting_ring: MeshInstance3D
 var _remembered: Node3D
+## Step seats (descriptor "seats"): [{"pad", "params"}], params being the
+## sit pose's ({"seat": global point, "seat_radius"}); and each seat holder's
+## last snapshot position, so it sits only while still.
+var _seats: Array = []
+var _seat_last: Dictionary = {}
+## Tests may stand in a descriptor; otherwise the chapter's own.
+var descriptor_override: Dictionary = {}
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -71,7 +79,10 @@ func show_stage(stage: Dictionary) -> void:
 	_sceneries.clear()
 	_journey_handles.clear()
 	_waiting_ring = null
+	_seats.clear()
+	_seat_last.clear()
 	await super.show_stage(stage)
+	_build_seats(stage)
 	# Lowest on screen first: see _lift_bubbles.
 	var up := LabelBubble.screen_up()
 	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))
@@ -477,6 +488,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		(switch.bubble as LabelBubble).highlight(chosen)
 	_follow_knobs()
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) else 0.0)
+	_present_seats(state, immediate)
 	# What a world sets after this (its own levers and wheels) is read by the
 	# next pass, not by the one an immediate present already ran.
 	_placement_due = true
@@ -490,3 +502,45 @@ func _camera_center() -> Vector3:
 	if not _completion_view: target.z = clampf(actors[_camera_slot(_active_player)].position.z,-1.1,2.0)
 	target.y = 0.45
 	return target
+
+## This chapter's descriptor (content/chapters/index.gd), or the test's.
+func _descriptor() -> Dictionary:
+	return descriptor_override if not descriptor_override.is_empty() else ChapterIndex.data(_chapter_key())
+
+# --- Step seats ---
+
+## A seat prop on each pad the descriptor's "seats" names
+## ({pad id: a kit/props.gd spec without "at"}).
+func _build_seats(stage: Dictionary) -> void:
+	var seats: Dictionary = _descriptor().get("seats", {})
+	if seats.is_empty(): return
+	for pad: Dictionary in stage.get("pressure_pads", []):
+		if not seats.has(str(pad.id)): continue
+		var spec: Dictionary = seats[pad.id].duplicate()
+		spec["at"] = pad.position_cm
+		var base := _at(pad).y
+		var prop := Props.build(spec, terrain, base, false)
+		if prop == null: continue
+		# A seat is the pad's, not the chapter's dressing.
+		prop.name = "Seat_"+str(pad.id)
+		prop.remove_meta("dressing_kind")
+		var extent := Props.extent(spec)
+		var top := terrain.to_global(Vector3(prop.position.x, base+float(extent.height), prop.position.z))
+		_seats.append({"pad": pad, "params": {"seat": top, "seat_radius": (extent.rect as Rect2).size.x*0.5}})
+
+## Whoever holds a seat's pad sits on it while standing still, and stands
+## the moment its snapshot moves. A dozing spirit (memory wait) keeps its doze.
+func _present_seats(state: Dictionary, immediate: bool) -> void:
+	if _seats.is_empty() or not state.has("players"): return
+	for seat: Dictionary in _seats:
+		var slot := str(seat.pad.owner_slot)
+		if not actors.has(slot) or not state.players.has(slot): continue
+		var player: Dictionary = state.players[slot]
+		var here := Vector3i(int(player.x), int(player.height), int(player.z))
+		var still: bool = immediate or _seat_last.get(slot) == here
+		_seat_last[slot] = here
+		var actor: SpiritVisual = actors[slot]
+		var pose := actor.pose()
+		if still and Seven.near(player, seat.pad):
+			if pose != SpiritVisual.SpiritIdle.DOZE: actor.set_pose(SpiritVisual.SpiritIdle.SIT, seat.params, immediate)
+		elif pose == SpiritVisual.SpiritIdle.SIT: actor.set_pose(SpiritVisual.SpiritIdle.REST, {}, true)
