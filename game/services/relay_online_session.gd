@@ -409,6 +409,10 @@ func load_lobby() -> bool:
 	if not _write_index(next): return false
 	_room_chapters = observed
 	_room_summaries = summaries
+	# Like a standalone proof, a read that found a room ordinary counts only while
+	# the list shows the room; a room the list dropped is read again before use.
+	for id: String in _archived_room_evidence.keys():
+		if _archived_room_evidence[id] == "ordinary" and not observed.has(id): _archived_room_evidence.erase(id)
 	return true
 
 func _room_summary(room: Dictionary, chapter_key: String) -> Dictionary:
@@ -782,9 +786,14 @@ func _probe_standalone_owned(room_id: String, lease: Dictionary) -> bool:
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_28632F597E2A
 		return false
 	if not response.get("ok",false):
-		if _room_gone(response) and not _release_gone_room(room_id): return false
-		if response.get("code") in ["room_not_found","room_deleted","player_blocked"]:
-			_clear_terminal_redo(room_id)
+		if _room_gone(response):
+			if not _release_gone_room(room_id): return false
+			# Shown here, as this tap's answer, and not again at the next visit.
+			var note := take_released_room_note()
+			_failure(response)
+			if not note.is_empty(): last_error = note
+			return false
+		if response.get("code") == "player_blocked": _clear_terminal_redo(room_id)
 		return _failure(response)
 	if kind != "ordinary" and not candidate.verify_room_snapshot(response.get("data")):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_C0AD24FCB05A
@@ -1049,7 +1058,9 @@ func _redo_navigation_ready(target_room: String = "") -> bool:
 	var previous: String = _index.last_room
 	if previous.is_empty() or target_room == previous: return true
 	if archived_room_kind(previous) == "story": return true
-	if not standalone_room_proven(previous): return false
+	if not standalone_room_proven(previous):
+		last_error = PlayerCopy.MAIN_571E92F64ED1
+		return false
 	var loaded := _load_redo_journal(previous)
 	if not loaded.get("ok",false) or not loaded.value.get("pending",{}).is_empty():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_9584CB32FD17

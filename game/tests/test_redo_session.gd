@@ -119,16 +119,16 @@ func _run() -> void:
 	store.values[redo_scope]=held
 	store.values["relay-lobby-v2:"+HOST].last_room=ROOM
 	api.rooms.erase(ROOM)
-	session=Session.new(api,identity.current,store)
-	_check(await session.load_lobby() and session.room_ids()==[OTHER] and session.pending_redo_room()==ROOM,"Cold omitted room retains an explicit validated recovery target")
-	_check(not await session.open_room(OTHER) and session.pending_redo_room()==ROOM,"List omission alone never discards uncertain acceptance")
-	# The omitted room lost its standalone proof with its list row, so it is
-	# checked once before anything else.
 	var room_scope := "relay-room-v2:"+HOST+":"+ROOM
 	var journals := _journals(store,[redo_scope,room_scope])
+	session=Session.new(api,identity.current,store)
+	# The omitted room lost its standalone proof with its list row, so it is
+	# checked once before anything else. A check that times out keeps it held.
+	api.replies["/v2/rooms/"+ROOM]={"ok":false,"status":0,"code":"request_timeout"}
+	_check(await session.load_lobby() and session.room_ids()==[OTHER] and session.pending_redo_room()==ROOM,"Cold omitted room whose check times out retains an explicit validated recovery target")
+	_check(not await session.open_room(OTHER) and session.pending_redo_room()==ROOM,"List omission and a timeout never discard uncertain acceptance")
 	calls=api.calls.size()
 	_check(not await session.open_room(ROOM) and session.pending_redo_room()==ROOM and api.calls.size()==calls,"An unproven omitted room is never opened unchecked")
-	api.replies["/v2/rooms/"+ROOM]={"ok":false,"status":0,"code":"request_timeout"}
 	_check(not await session.prepare_archived_navigation() and session.pending_redo_room()==ROOM and not await session.open_room(OTHER),"A check that times out keeps the uncertain redo and holds other rooms")
 	_check(session.take_released_room_note().is_empty() and journals==_journals(store,[redo_scope,room_scope]),"A timeout releases and writes nothing")
 	api.replies.clear()
@@ -138,6 +138,20 @@ func _run() -> void:
 	_check(session.take_released_room_note()==PlayerCopy.ROOMS_API_A7ACF38988EE and session.take_released_room_note().is_empty(),"The player is told once that the room was closed")
 	_check(await session.open_room(OTHER) and session.last_room()==OTHER,"Other rooms open again")
 	_check(journals==_journals(store,[redo_scope,room_scope]),"The redo and room journals keep their exact bytes")
+	# A cold start that still holds the room's proof. One tap runs Main's order
+	# (_relay_lobby_action): check, list refresh, check again, open.
+	var index: Dictionary = store.values["relay-lobby-v2:"+HOST]
+	index.last_room=ROOM
+	index.room_ids=[ROOM,OTHER]
+	index.standalone_ids=[ROOM,OTHER]
+	session=Session.new(api,identity.current,store)
+	calls=api.calls.size()
+	_check(await session.prepare_archived_navigation() and session.pending_redo_room()==ROOM and api.calls.size()==calls,"The proven room is restored with no read")
+	_check(await session.load_lobby() and not session.standalone_room_proven(ROOM) and session.pending_redo_room()==ROOM,"The list refresh drops its proof and releases nothing by itself")
+	_check(await session.prepare_archived_navigation() and session.pending_redo_room().is_empty() and session.last_room().is_empty(),"The check after the refresh finds the room gone and releases its redo")
+	_check(api.calls.size()==calls+3 and api.calls.back().path=="/v2/rooms/"+ROOM and api.calls.back().method==HTTPClient.METHOD_GET,"Capabilities, the list and one room GET; no mutation")
+	_check(await session.open_room(OTHER) and session.last_room()==OTHER,"The same tap opens another room")
+	_check(journals==_journals(store,[redo_scope,room_scope]),"The released journals still keep their exact bytes")
 	api.queue_free()
 	await process_frame
 	await _warm_gone_redo()
@@ -148,9 +162,9 @@ func _journals(store: RefCounted, scopes: Array) -> PackedByteArray:
 	return var_to_bytes(scopes.map(func(scope: String) -> Variant: return store.values.get(scope)))
 
 ## A Session restored from the room's saved proof, with its redo client bound
-## to the lost-reply redo. The friend's phone then removes the room, the list
-## drops it, and the one check that finds it gone releases the redo; the
-## released client's late retry sends nothing.
+## to the lost-reply redo. The friend's phone then removes the room; after the
+## list drops it, the next tap's one check releases the redo, and the released
+## client's late retry sends nothing.
 func _warm_gone_redo() -> void:
 	var api := Api.new()
 	root.add_child(api)
@@ -171,16 +185,16 @@ func _warm_gone_redo() -> void:
 	_check(await session.load_lobby() and await session.prepare_archived_navigation() and api.calls.size()==calls+2 and session.coordinator!=null,"Warm: a later start restores the room from its saved proof, with no room read")
 	var client: RefCounted = session.redo_client()
 	_check(client.bind_room("relay",session.coordinator.snapshot()) and client.pending().action=="accept","Warm: its redo client loads the lost-reply accept")
-	api.rooms.erase(ROOM)
-	_check(await session.load_lobby() and session.room_ids()==[OTHER] and not session.standalone_room_proven(ROOM),"Warm: the list no longer shows the room, so it is checked before its next use")
 	var journals := _journals(store,["relay-redo-relay-v1:"+HOST+":"+ROOM,"relay-room-v2:"+HOST+":"+ROOM])
 	calls = api.calls.size()
 	_check(not await session.open_room(OTHER) and api.calls.size()==calls,"Warm: the uncertain redo holds other rooms")
-	_check(await session.prepare_archived_navigation() and client.pending().is_empty() and session.pending_redo_room().is_empty() and session.coordinator==null,"Warm: the check releases the redo and the room")
-	_check(api.calls.size()==calls+1 and api.calls.back().method==HTTPClient.METHOD_GET,"Warm: one GET and no mutation")
+	api.rooms.erase(ROOM)
+	_check(await session.load_lobby() and session.room_ids()==[OTHER] and not session.standalone_room_proven(ROOM),"Warm: the list no longer shows the room, so it is checked before its next use")
+	_check(await session.prepare_archived_navigation() and client.pending().is_empty() and session.pending_redo_room().is_empty() and session.coordinator==null,"Warm: the next tap's check releases the redo and the room")
+	_check(api.calls.size()==calls+3 and api.calls.back().path=="/v2/rooms/"+ROOM and api.calls.back().method==HTTPClient.METHOD_GET,"Warm: one room GET and no mutation")
 	calls=api.calls.size()
 	_check(not await client.retry() and not await client.refresh() and api.calls.size()==calls,"Warm: the released client's late retry sends nothing")
-	_check(await session.open_room(OTHER) and session.last_room()==OTHER,"Warm: other rooms open")
+	_check(await session.open_room(OTHER) and session.last_room()==OTHER,"Warm: the same tap opens another room")
 	_check(journals==_journals(store,["relay-redo-relay-v1:"+HOST+":"+ROOM,"relay-room-v2:"+HOST+":"+ROOM]),"Warm: the redo and room journals keep their exact bytes")
 	api.queue_free()
 	await process_frame

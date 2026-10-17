@@ -119,6 +119,11 @@ func _run() -> void:
 	api.listed = []
 	_check(await session.load_lobby() and session.room_ids().is_empty(), "The next refresh drops the deleted room")
 	api.lookup[ROOM] = _room(ROOM)
+	# The list dropped the selected room too, and with it the proof from its
+	# read. A room action is refused, with a reason, until it is checked again;
+	# Main checks after every list refresh, so its tap goes on.
+	_check(not await session.open_room(ROOM) and session.last_error == preload("res://presentation/player_copy.gd").MAIN_571E92F64ED1, "An unlisted selected room is not trusted without a new check")
+	_check(await session.prepare_archived_navigation() and session.last_room() == OTHER, "The check reads it again and keeps it")
 	_check(await session.open_room(ROOM), "Same room can recover without discarding its saved state")
 	api.hold_read = true
 	var completed := {"done":false,"value":true}

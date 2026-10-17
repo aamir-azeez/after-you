@@ -2132,6 +2132,13 @@ func _relay_lobby_action(action: String, value: String = "") -> void:
 		if not loaded:
 			_return_to_room_hub(relay_session.last_error)
 			return
+		# The list can drop the last room's proof. Checking it again here lets
+		# this same tap go on, or releases a last room that is gone.
+		var checked: bool = await _prepare_ordinary_navigation()
+		if generation != relay_menu_generation or not _friends_route_current(context): return
+		if not checked:
+			_settle_room_flow()
+			return
 	var room_id := ""
 	match action:
 		"create": room_id = await relay_session.create_room(value)
