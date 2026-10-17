@@ -53,6 +53,15 @@ export type CampaignRoomCensus = {
   rows: Record<string, number>;
 };
 
+/** The census of a room that holds nothing: never created, or tables with no rows. */
+export function absentCensus(): CampaignRoomCensus {
+  return { schema_version: 1, kind: "absent", campaign_room_id: null, state: null, host_id: null, guest_id: null, children: [], pending_targets: [], rows: {} };
+}
+/** The inventory of a Player that holds nothing: no identity, links or intents. */
+export function blankPlayerInventory(): CampaignPlayerInventory {
+  return { schema_version: 1, player_id: null, state: null, links: [], intents: { allocations: 0, open: 0, closed: 0, unreadable: 0 }, open_intent_rooms: [] };
+}
+
 function parsed(data: string): unknown { try { return JSON.parse(data); } catch { return undefined; } }
 
 /** Read-only Player inventory. Runs inside the Player object. */
@@ -87,7 +96,7 @@ export function campaignPlayerAllocation(storage: DurableObjectStorage, roomId: 
 
 /** Read-only RoomV2 census. Runs inside the room object and never parses gameplay rows. */
 export function campaignRoomCensus(storage: DurableObjectStorage, roomId: string): CampaignRoomCensus {
-  const census: CampaignRoomCensus = { schema_version: 1, kind: "absent", campaign_room_id: null, state: null, host_id: null, guest_id: null, children: [], pending_targets: [], rows: {} };
+  const census = absentCensus();
   try {
     if (!campaignStoragePresent(storage)) {
       census.kind = storage.sql.exec("SELECT 1 FROM room LIMIT 1").toArray().length ? "ordinary" : "absent";
@@ -140,7 +149,7 @@ function addRows(totals: StoryCountTotals, room: CampaignRoomCensus): void {
   for (const [name, count] of Object.entries(room.rows)) { totals.rows[name] = (totals.rows[name] ?? 0) + count; totals.total_rows += count; }
 }
 
-const UNREADABLE: CampaignRoomCensus = { schema_version: 1, kind: "unreadable", campaign_room_id: null, state: null, host_id: null, guest_id: null, children: [], pending_targets: [], rows: {} };
+const UNREADABLE: CampaignRoomCensus = { ...absentCensus(), kind: "unreadable" };
 /** One failing object reports "unreadable" instead of failing the whole batch. */
 async function readCensus(env: Env, roomId: string): Promise<CampaignRoomCensus> {
   try { return await env.ROOMS_V2.getByName(roomId).campaignDrainCensus(roomId); } catch { return structuredClone(UNREADABLE); }

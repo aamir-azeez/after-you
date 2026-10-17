@@ -6,7 +6,7 @@ import { pruneCreationHistory, readCampaignCreation, reserveCampaignCreation, re
 import { campaignIdentityDeletionScope, finalizeCampaignIdentityDeletion, campaignTerminalScope, finalizeCampaignTerminalLink, campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "./v2/campaign-player";
 import { emptySocial, FRIEND_REFRESH_SECONDS, FRIEND_REQUEST_TTL_MS, MAX_FRIENDS, validSocial, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom, type SocialState } from "./friends";
 import { initializeSchema } from "./storage-schema";
-import { campaignPlayerAllocation, campaignPlayerInventory } from "./v2/campaign-drain";
+import { blankPlayerInventory, campaignPlayerAllocation, campaignPlayerInventory } from "./v2/campaign-drain";
 import { exportSnapshot, restoreSnapshot, snapshotResult } from "./snapshot";
 import { roomLinkVersion, validRoomLink, type RoomLink } from "./room-links";
 import { roomLimitReached } from "./room-limit";
@@ -629,4 +629,6 @@ export class Player extends DurableObject<Env> {
 }
 
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
-answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined });
+answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
+  campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
+  operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent") });

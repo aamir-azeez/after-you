@@ -24,7 +24,7 @@ import { initializeCampaignTarget, activateCampaignTarget } from "./campaign-tar
 import { readCampaignControl, readCampaignOperation } from "./campaign-control";
 import { initializeCampaignRoot, joinCampaignRoot, cancelCampaignJoinRoot } from "./campaign-root";
 import { eraseCampaignChildWithDefinition, eraseCampaignRoot, readCampaignRootTerminal } from "./campaign-deletion";
-import { campaignRoomCensus } from "./campaign-drain";
+import { absentCensus, campaignRoomCensus } from "./campaign-drain";
 import { campaignBindingRead, campaignBindingInitialize, campaignBindingInvite, campaignBindingJoin, campaignBindingCancelJoin, campaignBindingSource, campaignBindingTarget, campaignBindingAdvance, campaignBindingRedo, campaignHostAccess } from "./campaign-bindings";
 import { campaignRedoAccess, campaignRedoFork, campaignRedoInput, campaignRedoMutations, campaignRedoReceipt, sameRedoValue, type CampaignRedoAccept, type CampaignRedoBinding, type CampaignRedoEnvelope, type CampaignRedoMode } from "./campaign-redo";
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "../redo-control";
@@ -796,5 +796,6 @@ answerWhileBlank(RoomV2, {
   safetyMembers: async () => roomNotFound(), snapshot: async () => roomNotFound(), snapshotIfChanged: async () => roomNotFound(), lobbySnapshot: async () => roomNotFound(),
   operation: async () => roomNotFound(), collection: async () => roomNotFound(), pairRecording: async () => roomNotFound(), reactions: async () => roomNotFound(),
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
-  redo: async () => roomNotFound(), history: async () => roomNotFound(), interactionAllowed: async () => roomNotFound()
+  redo: async () => roomNotFound(), history: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
+  campaignDrainCensus: () => absentCensus()
 });

@@ -1,10 +1,11 @@
 import { env } from "cloudflare:workers";
-import { reset } from "cloudflare:test";
+import { reset, runInDurableObject as openRaw } from "cloudflare:test";
 import { runInDurableObject } from "./room-objects";
+import { meterAllRows } from "./meter";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
-import { canonicalJson, digest, type Outcome } from "../src/protocol";
+import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { isAlarmMetadataTable } from "../src/notification-storage";
 import { cancelCampaignJoinRoot } from "../src/v2/campaign-root";
 import { initializeCampaignTarget, type TargetInitializeRequest } from "../src/v2/campaign-target";
@@ -358,6 +359,43 @@ describe("operator Story drain", () => {
     const erased = await drain<Erase>("erase", { schema_version: 1, anchor: R, players: [H, G, X] }, { PLAYERS: throwing(env.PLAYERS, "operatorCampaignTerminalScope", args => args[0] === G) });
     expect(erased.players).toEqual([{ player_id: H, result: "released" }, { player_id: G, result: "player_unavailable" }, { player_id: X, result: "released" }]);
     expect((await erase()).players).toEqual([{ player_id: H, result: "no_link" }, { player_id: G, result: "released" }, { player_id: X, result: "no_link" }]);
+  });
+
+  it("answers the drain's reads on objects nobody wrote as empty objects do, and stores nothing", async () => {
+    const tables = (stub: DurableObjectStub) => openRaw(stub, async (_, ctx) => ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE '_cf_%'").toArray().length);
+    const answer = async (work: () => Promise<unknown>) => { try { return await work(); } catch (error) { return { threw: String(error) }; } };
+    type Read<S> = [string, (stub: S, id: string) => Promise<unknown>];
+    const rooms: Read<DurableObjectStub<import("../src/v2/room").RoomV2>>[] = [["campaignDrainCensus", (room, id) => room.campaignDrainCensus(id)]];
+    const players: Read<DurableObjectStub<import("../src/player").Player>>[] = [
+      ["campaignDrainInventory", player => player.campaignDrainInventory()], ["operatorCampaignAllocation", player => player.operatorCampaignAllocation(R)],
+      ["operatorCampaignTerminalScope", player => player.operatorCampaignTerminalScope(R)],
+      ["operatorFinalizeCampaignTerminalLink", player => player.operatorFinalizeCampaignTerminalLink({}, { schema_version: 1, status: "deleted", campaign_room_id: R, room_id: R })]];
+    // Each read on a blank object, against the same read on an object whose tables exist but hold no rows.
+    async function compare<S extends DurableObjectStub>(namespace: { getByName(id: string): S }, reads: Read<S>[]) {
+      for (const [name, read] of reads) {
+        const blankId = randomToken(16), emptyId = randomToken(16), empty = namespace.getByName(emptyId);
+        await runInDurableObject(empty as DurableObjectStub<Rpc.DurableObjectBranded>, () => undefined);
+        const expected = await answer(() => read(empty, emptyId));
+        const blank = await meterAllRows(() => answer(() => read(namespace.getByName(blankId), blankId)));
+        expect({ name, answer: blank.value, written: blank.rows.written }).toEqual({ name, answer: expected, written: 0 });
+        expect(await tables(namespace.getByName(blankId))).toBe(0);
+      }
+    }
+    await compare(env.ROOMS_V2, rooms);
+    await compare(env.PLAYERS, players);
+
+    // Through the route: a count of a root nobody created, and a scan and an erase naming players with no data.
+    const ghostRoom = randomToken(16), ghostPlayer = "Ghost_player_no_data_1";
+    const counted = await meterAllRows(() => drain<Count>("count", { schema_version: 1, anchors: [ghostRoom] }));
+    expect({ kind: counted.value.anchors[0].root.kind, written: counted.rows.written }).toEqual({ kind: "absent", written: 0 });
+    expect(await tables(env.ROOMS_V2.getByName(ghostRoom))).toBe(0);
+    const scanned = await meterAllRows(() => drain<{ players: { player_id: string | null }[] }>("scan", { schema_version: 1, players: [objectId(ghostPlayer)] }));
+    expect({ id: scanned.value.players[0].player_id, written: scanned.rows.written }).toEqual({ id: null, written: 0 });
+    const w = await world();
+    const erased = await drain<Erase>("erase", { schema_version: 1, anchor: R, players: [H, ghostPlayer] });
+    expect(erased.players).toEqual([{ player_id: H, result: "released" }, { player_id: ghostPlayer, result: "identity_absent" }]);
+    expect(await tables(env.PLAYERS.getByName(ghostPlayer))).toBe(0);
+    void w;
   });
 
   it("costs a bounded number of Durable Object requests and rows per batch", async () => {
