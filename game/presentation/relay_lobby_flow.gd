@@ -8,8 +8,9 @@ extends Node
 ## screen (relay_child) and the step that swaps Main's screen for it
 ## (_enter_online_relay, which a finished step calls), and the way back to the
 ## hub (_return_to_room_hub, _settle_room_flow). The flow keeps the lobby's
-## staleness token, relay_menu_generation: a step that waited checks it, and
-## Main's return to the hub or an identity change cancels pending steps through
+## private staleness token (_menu_generation): a step that waited checks it,
+## open_lobby() tells its caller whether its lobby is still current, and Main's
+## return to the hub or an identity change cancels pending steps through
 ## cancel(). It reads Main only through this host contract (read at call time,
 ## so Main or a test can swap a service):
 ## - services: api, saves, relay_session, ensure_relay_session, room_sharing,
@@ -17,14 +18,13 @@ extends Node
 ## - identity: _relay_identity, _ensure_identity
 ## - screen: mode, running, ui, application_backgrounded, store_view_generation,
 ##   lifecycle_generation, _online_gated, _toast
-## - room flow: room_hub_flow (selected_chapter written, host_visibility read),
+## - room flow: room_hub_flow (select_chapter, host_visibility),
 ##   legacy_room_flow (navigation_ready), _relay_available,
 ##   _prepare_ordinary_navigation, _friends_route_context,
 ##   _friends_route_current, _settle_room_flow, _return_to_room_hub,
 ##   _enter_online_relay
 ## - card kit: _card, _label, _paragraph, _back_button
-## RoomHubFlow and FriendsFlow call open_lobby(), lobby_action() and join_room()
-## and read relay_menu_generation.
+## RoomHubFlow and FriendsFlow call open_lobby(), lobby_action() and join_room().
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const CREAM := Color("eceddb")
@@ -33,23 +33,30 @@ const MODE_LOBBY := "relay_rooms"
 
 var host: Node
 ## Bumped by each lobby step and by cancel(); a step that waited stops when it moved.
-var relay_menu_generation := 0
+var _menu_generation := 0
 
 func _init(main: Node = null) -> void:
 	host = main
 
 ## Pending lobby steps stop: the player went back to the hub or the identity changed.
 func cancel() -> void:
-	relay_menu_generation += 1
+	_menu_generation += 1
 
-func open_lobby(chapter: String = "") -> void:
+## Checks the chapter rooms and shows the progress card. True when this call's
+## lobby is still the current one, so its caller may take the next step.
+func open_lobby(chapter: String = "") -> bool:
+	var start := _menu_generation
+	await _check_rooms(chapter)
+	return _menu_generation == start + 1 and host.mode == MODE_LOBBY and host.relay_session != null
+
+func _check_rooms(chapter: String) -> void:
 	if host._online_gated(): return
 	if not chapter.is_empty():
 		if ChapterRegistry.descriptor(chapter).is_empty():
 			host._toast(PlayerCopy.MAIN_ED8E80825350)
 			host._settle_room_flow()
 			return
-		host.room_hub_flow.selected_chapter = chapter
+		host.room_hub_flow.select_chapter(chapter)
 	var view: int = host.store_view_generation
 	var lifecycle: int = host.lifecycle_generation
 	if not host._relay_available() or not await host._ensure_identity() or view != host.store_view_generation or lifecycle != host.lifecycle_generation or host.application_backgrounded or not await host._prepare_ordinary_navigation():
@@ -57,12 +64,12 @@ func open_lobby(chapter: String = "") -> void:
 		return
 	host.ensure_relay_session()
 	host.running = false
-	relay_menu_generation += 1
-	var generation := relay_menu_generation
+	_menu_generation += 1
+	var generation := _menu_generation
 	draw_progress(PlayerCopy.MAIN_07713E9CC81E)
 	var context: Dictionary = host._friends_route_context()
 	var loaded: bool = await host.relay_session.load_lobby()
-	if generation != relay_menu_generation or not host._friends_route_current(context):
+	if generation != _menu_generation or not host._friends_route_current(context):
 		return
 	# The caller continues from this progress card; a failed check returns to the hub.
 	if not loaded: host._return_to_room_hub(host.relay_session.last_error)
@@ -84,22 +91,22 @@ func lobby_action(action: String, value: String = "") -> void:
 	if host.relay_session == null or host.relay_session.busy() or not host._relay_available() or not host._relay_identity().ready or not host.legacy_room_flow.navigation_ready() or not await host._prepare_ordinary_navigation():
 		host._settle_room_flow()
 		return
-	relay_menu_generation += 1
-	var generation := relay_menu_generation
+	_menu_generation += 1
+	var generation := _menu_generation
 	draw_progress(PlayerCopy.MAIN_6734074E99D4)
 	var context: Dictionary = host._friends_route_context()
 	# After a cold start the hub opens rooms before anything read the service's
 	# chapters, and a room opened without them cannot save a turn.
 	if host.relay_session.capabilities.is_empty():
 		var loaded: bool = await host.relay_session.load_lobby()
-		if generation != relay_menu_generation or not host._friends_route_current(context): return
+		if generation != _menu_generation or not host._friends_route_current(context): return
 		if not loaded:
 			host._return_to_room_hub(host.relay_session.last_error)
 			return
 		# The list can drop the last room's proof. Checking it again here lets
 		# this same tap go on, or releases a last room that is gone.
 		var checked: bool = await host._prepare_ordinary_navigation()
-		if generation != relay_menu_generation or not host._friends_route_current(context): return
+		if generation != _menu_generation or not host._friends_route_current(context): return
 		if not checked:
 			host._settle_room_flow()
 			return
@@ -112,7 +119,7 @@ func lobby_action(action: String, value: String = "") -> void:
 			await host.relay_session.open_room(value)
 			if host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("room_id", "") == value:
 				room_id = value
-	if generation != relay_menu_generation or not host._friends_route_current(context):
+	if generation != _menu_generation or not host._friends_route_current(context):
 		return
 	if room_id.is_empty():
 		host._return_to_room_hub(host.relay_session.last_error)
@@ -136,8 +143,6 @@ func join_room(code: String) -> void:
 	if not host.legacy_room_flow.navigation_ready(): return
 	# Both protocols use twenty hex characters, so the visible room-type choice
 	# is authoritative. Never probe two mutating join endpoints with one code.
-	var generation := relay_menu_generation+1
-	await open_lobby()
-	if generation != relay_menu_generation or host.mode != MODE_LOBBY or host.relay_session == null:
+	if not await open_lobby():
 		return
 	await lobby_action("join",code)

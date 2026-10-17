@@ -69,9 +69,11 @@ class HostApp extends Main:
 
 ## Checks the rooms without the progress card and records each lobby step instead of taking it.
 class HostLobby extends RelayLobbyFlow:
-	func open_lobby(_chapter: String = "") -> void:
-		host.mode = "relay_rooms"
+	func open_lobby(_chapter: String = "") -> bool:
+		host.mode = RelayLobbyFlow.MODE_LOBBY
 		await host.relay_session.load_lobby()
+		# The token never moves here, so a caller that checks it stops, as before.
+		return false
 	func lobby_action(action: String, value: String = "") -> void: host.actions.append([action, value])
 
 func _chooser() -> void:

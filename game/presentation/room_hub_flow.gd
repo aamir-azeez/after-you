@@ -20,13 +20,14 @@ extends Node
 ##   _room_session_idle, _prepare_ordinary_navigation, _friends_route_context,
 ##   _friends_route_current, _show_friends, forget_removed_room,
 ##   legacy_room_flow (open_room, join_room), relay_lobby_flow (open_lobby,
-##   lobby_action, join_room, relay_menu_generation)
+##   lobby_action, join_room)
 ## - card kit: _card, _label, _paragraph, _list_button, _back_button
 ## - node: add_child (the hub layer stays Main's child)
 ## Main asks is_open() and drives the hub through go_back(), redraw_chapters()
 ## and refresh(). It calls release() when another screen replaces the hub, and
 ## drop() when Friends takes over or the identity changes. After a block it
 ## calls hide_room() so the hub's saved list never shows the blocked room.
+## RelayLobbyFlow calls select_chapter() when a chapter's rooms are checked.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
@@ -171,6 +172,10 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	_refresh_together_locks(screen)
 	if refresh: refresh_when_idle(screen)
 
+## The chapter a hosted or checked room is for becomes the hub's choice.
+func select_chapter(chapter_key: String) -> void:
+	selected_chapter = chapter_key
+
 ## Whether the hub is up.
 func is_open() -> bool:
 	return is_instance_valid(screen)
@@ -309,9 +314,7 @@ func _retry(kind: String) -> void:
 	var pending_redo: String = host.relay_session.pending_redo_room()
 	_leave()
 	# A retry needs the service's chapters, which a fresh start has not read yet.
-	var generation: int = host.relay_lobby_flow.relay_menu_generation + 1
-	await host.relay_lobby_flow.open_lobby()
-	if generation != host.relay_lobby_flow.relay_menu_generation or host.mode != RelayLobbyFlow.MODE_LOBBY or host.relay_session == null: return
+	if not await host.relay_lobby_flow.open_lobby(): return
 	if kind == "lobby": await host.relay_lobby_flow.lobby_action("retry")
 	elif not pending_redo.is_empty(): await host.relay_lobby_flow.lobby_action("open",pending_redo)
 	else: host._return_to_room_hub()

@@ -12,7 +12,9 @@ class Routes extends Main:
 
 ## Records where a chapter's Play with your friend leads, instead of opening rooms.
 class RoutesLobby extends RelayLobbyFlow:
-	func open_lobby(key: String = "") -> void: host.routed.append("together:"+key)
+	func open_lobby(key: String = "") -> bool:
+		host.routed.append("together:"+key)
+		return false
 
 func _run() -> void:
 	var expected := ["sleeping-lighthouse","rolling-home","a-house-for-two","conservatory","long-way-home","legacy-rising-together","legacy-across-the-blue","legacy-lantern-crossing","legacy-two-beats","legacy-after-you"]
