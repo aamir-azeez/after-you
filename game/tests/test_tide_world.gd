@@ -31,6 +31,7 @@ func _run() -> void:
 	var level := TideCatalog.definition()
 	var digest := Canonical.digest(level)
 	await _first_stage(level)
+	_memory_camera(level)
 	await _second_stage(level)
 	_crest_glyphs(level)
 	_dressing(level)
@@ -518,6 +519,25 @@ func _sound(level: Dictionary) -> void:
 	if Registry.is_journey(KEY):
 		var mapped := SoundMap.cues(KEY, {"events": ["drop", "selector:tide", "selector:basin"], "role": "b"})
 		_check(mapped.cues == ["seed_landed", "switch_set", "switch_set"] and mapped.sources[1] != mapped.sources[2], "The spout lands with a thud and each wheel turns with its own switch cue")
+
+## While the second spirit waits for its friend's memory (memory_wait.gd), the
+## harbour camera follows the memory, as every chapter's does; otherwise it
+## follows the live spirit.
+func _memory_camera(level: Dictionary) -> void:
+	var checkpoint := JourneyCatalog.initial_checkpoint(level)
+	var world := _world(level, 0, checkpoint)
+	var state: Dictionary = _sim(level, "set-the-tide", checkpoint).snapshot()
+	state.active_slot = "p1"
+	world.present(state, true)
+	world.actors.p0.position = Vector3(2.0, 0.0, -3.0)
+	world.actors.p1.position = Vector3(-3.0, 0.0, 3.0)
+	var live: Vector3 = world._camera_center()
+	world.show_memory_wait("p1", "p0", true)
+	var waiting: Vector3 = world._camera_center()
+	world.end_memory_wait("p1")
+	_check(is_equal_approx(live.x, -3.0) and is_equal_approx(waiting.x, 2.0) and is_equal_approx(waiting.z, -3.0), "The harbour camera follows the memory while the spirit waits, and the live spirit otherwise")
+	_check(is_equal_approx(world._camera_center().x, -3.0), "After the wait the camera follows the live spirit again")
+	world.free()
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:
 	# A trusted reset opens the turn without the proof's catalog check; every

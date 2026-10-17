@@ -1701,8 +1701,8 @@ static func _hidden_under(raised: Node3D, player: Dictionary) -> bool:
 
 func _camera_center() -> Vector3:
 	var target := super._camera_center()
-	if not _completion_view and actors.has(_active_player):
-		var at: Vector3 = actors[_active_player].position
+	if not _completion_view and actors.has(_camera_slot(_active_player)):
+		var at: Vector3 = actors[_camera_slot(_active_player)].position
 		target.x = clampf(at.x, CAMERA_X.x, CAMERA_X.y)
 		target.z = clampf(at.z, CAMERA_Z.x, CAMERA_Z.y)
 	return target
