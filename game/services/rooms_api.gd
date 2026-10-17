@@ -144,6 +144,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	# Room level 2: this build plays chapters with more than two stages, so the
 	# server may list them and accept a longer join list. Older servers ignore it.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Room-Level: 2")
+	# This build can hold the live socket (services/live_connection.gd), so the server may offer it.
+	if path == "/v2/capabilities": headers.append("X-AfterYou-Live: 1")
 	# The inbox then reports a room another member closed as "closed".
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# A finished room the other member left then says so (partner_left), for Leave room's confirm step.

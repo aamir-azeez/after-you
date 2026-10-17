@@ -48,6 +48,18 @@ signal open_requested
 signal join_requested(descriptor: Dictionary)
 var client: RefCounted
 var event_client: RefCounted
+## The phone's live socket (services/live_connection.gd), or null. A friends
+## hint makes the list due at once (the server opened that read early); a
+## reopened socket or a friend coming online makes it due as soon as a manual
+## refresh may be. The page's own refresh then reads the list and the hosting
+## inbox as usual.
+var live: Node:
+	set(value):
+		live = value
+		if is_instance_valid(value):
+			value.friends_changed.connect(_live_hint.bind(true))
+			value.resynced.connect(_live_hint.bind(false))
+			value.presence_changed.connect(_live_hint.bind(false))
 var shareable_room: Dictionary = {}
 var room_title := ""
 ## Names the chapter of a shared room ({api_version, room_id}) from that room's
@@ -198,6 +210,9 @@ func _layout() -> void:
 	_countdown.visible = not narrow
 	if changed: _render()
 	else: _fit_utilities()
+
+func _live_hint(granted: bool) -> void:
+	if client != null: client.hint(granted)
 
 func _current() -> bool:
 	return _alive and is_inside_tree() and not _context.is_empty() and client.context() == _context

@@ -10,7 +10,7 @@ extends Node
 ## below, and reads Main only through this host contract (read at call time, so
 ## Main or a test can swap a service):
 ## - services: api, saves, relay_session, friend_nicknames, turn_notifications,
-##   room_sharing, _friends_client, _friend_events
+##   room_sharing, live_connection, _friends_client, _friend_events
 ## - identity: _relay_identity, _tester_context
 ## - screen: mode, running, ui, application_backgrounded, lifecycle_generation,
 ##   _sync_presence
@@ -63,6 +63,7 @@ func open(from_home: bool) -> void:
 	screen.event_client = events
 	screen.nickname_store = host.friend_nicknames
 	screen.notification_transport = host.turn_notifications
+	screen.live = host.live_connection
 	screen.hosting_view_ready.connect(hosting_view_ready.emit)
 	screen.room_shared.connect(host.room_sharing.send_owed_alert)
 	screen.shareable_room = shareable

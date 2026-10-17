@@ -128,6 +128,7 @@ lighthouse_v2_room 2
 lighthouse_v2_solo 2
 lighthouse_verification_cache 3
 lighthouse_world 3
+live_connection 2
 long_way_home_hosting 3
 long_way_home_v2 2
 long_way_home_v2_latest 1
@@ -142,6 +143,7 @@ old_story_replays 2
 old_story_saves 2
 online_history 2
 online_history_more 2
+online_live 2
 online_random 1
 online_random_extra 1
 online_random_more 3

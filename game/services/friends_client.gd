@@ -7,6 +7,9 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const REFRESH_MS := 60000
 const MIN_REFRESH_MS := 30000
 const JOIN_COOLDOWN_MS := 3000
+## A live hint's early read comes no sooner than this after the last read; the
+## server grants the same early read when it sends the hint.
+const LIVE_FLOOR_MS := 3000
 var busy := false
 var last_error := ""
 ## The server's error code for the last failed request, e.g. "room_not_found".
@@ -24,6 +27,11 @@ var _next_manual_refresh := 0
 var _refresh_floor_ms := MIN_REFRESH_MS
 var _retry_until := 0
 var _next_join := 0
+## When the last list reply arrived (always after the server served it, so a
+## floor timed from here never comes before the server's own).
+var _last_read_at := -LIVE_FLOOR_MS
+## A friends hint came while a list read was out; that read may predate the change.
+var _hinted_mid_read := false
 ## The room the server last confirmed as shared with friends (or null), from a
 ## share reply or a list page, so a room card can show it without a list read.
 var _shared: Variant = null
@@ -48,6 +56,8 @@ func invalidate() -> void:
 	_refresh_floor_ms = MIN_REFRESH_MS
 	_retry_until = 0
 	_next_join = 0
+	_last_read_at = -LIVE_FLOOR_MS
+	_hinted_mid_read = false
 	_shared = null
 	busy = false
 	last_error = ""
@@ -89,10 +99,16 @@ func refresh(manual: bool = false) -> bool:
 	if not _bind() or busy: return false
 	if not refresh_due(manual): return not _page.is_empty()
 	var started := int(clock_ms.call())
+	_hinted_mid_read = false
 	_next_refresh = started + maxi(REFRESH_MS,_refresh_floor_ms)
 	_next_manual_refresh = started + _refresh_floor_ms
 	var response := await _request(HTTPClient.METHOD_GET,"/v1/friends")
-	if not response.get("ok",false): return false
+	if not response.get("ok",false):
+		# An early read the server had not opened (the change landed before it
+		# served the previous one, or another phone of this player read the list)
+		# waits for the server's own floor, not a minute, and never less than a few seconds.
+		if str(response.get("code","")) == "friends_refresh_limited": _next_refresh = maxi(int(clock_ms.call()) + 2 * LIVE_FLOOR_MS, _last_read_at + _refresh_floor_ms)
+		return false
 	var data: Variant = response.get("data")
 	if not valid_page(data,_binding.get("player_id","")):
 		last_error = "Friends unavailable"
@@ -103,7 +119,20 @@ func refresh(manual: bool = false) -> bool:
 	_refresh_floor_ms = int(data.refresh_after_seconds) * 1000
 	_next_manual_refresh = started + _refresh_floor_ms
 	_next_refresh = started + maxi(REFRESH_MS,_refresh_floor_ms)
+	_last_read_at = int(clock_ms.call())
+	if _hinted_mid_read:
+		_hinted_mid_read = false
+		_next_refresh = mini(_next_refresh, _last_read_at + LIVE_FLOOR_MS)
 	return true
+
+## The live socket says the list changed. `granted` (a friends hint) makes the
+## next read due now, at least LIVE_FLOOR_MS after the last; otherwise (the
+## socket reopened) it comes as early as a manual refresh may.
+func hint(granted: bool) -> void:
+	if context().is_empty() or context() != _binding: return
+	if granted and busy: _hinted_mid_read = true
+	var due := maxi(int(clock_ms.call()), (_last_read_at + LIVE_FLOOR_MS) if granted else _next_manual_refresh)
+	_next_refresh = mini(_next_refresh, due)
 
 func add_friend(code: String) -> bool:
 	# Accepts friend-<id>, a legacy bare ID or an invite link; the API receives only the bare ID.
@@ -210,8 +239,10 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 		last_code = code
 		var retry := maxi(0,int(response.get("retry_after_ms",0)))
 		if code == "rate_limited": retry = maxi(REFRESH_MS,retry)
-		if retry > 0: _retry_until = maxi(_retry_until,int(clock_ms.call()) + retry)
-		if method == HTTPClient.METHOD_GET and path == "/v1/friends":
+		# The list's own floor: refresh() waits for exactly that, not the generic minute.
+		var list_floor := code == "friends_refresh_limited" and method == HTTPClient.METHOD_GET and path == "/v1/friends"
+		if retry > 0 and not list_floor: _retry_until = maxi(_retry_until,int(clock_ms.call()) + retry)
+		if method == HTTPClient.METHOD_GET and path == "/v1/friends" and not list_floor:
 			_next_refresh = maxi(_next_refresh,int(clock_ms.call()) + REFRESH_MS)
 		last_error = "Friend unavailable" if code in ["friend_unavailable","friend_not_found","player_blocked"] else "Room unavailable" if code in ["friend_room_unavailable","friend_not_joinable","room_full"] else "Friends unavailable"
 	return response

@@ -22,10 +22,40 @@ const MAX_ACTIVE_LINKS := 20
 const MAX_LINKS := 60
 const INVITE_DAYS := 7
 ## Header names a 0.6.0 phone never sent (rooms_api.gd at v0.6.0).
-const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history", "x-afteryou-known-room"]
+const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history", "x-afteryou-known-room", "x-afteryou-live"]
 const HistoryStore = preload("res://services/history_store.gd")
 
 var replay_transfer_enabled := true
+## LIVE_CONNECTION_ENABLED on the live Worker (off unless "true"). On, the
+## capability offers live_version 1 to a phone that asks, and live_socket (a
+## phone's socket factory) opens that phone's live socket. The server then
+## hints as live.ts does: the other member on a join, turn, fork or close, and
+## each friend when a player shares a room.
+var live_enabled := false
+var live_sockets: Dictionary = {}
+## Hints written to open sockets.
+var live_hints := 0
+
+## One phone's live socket: opens on its first poll when the handshake was
+## accepted, answers "ping" with "pong", and holds the hints written to it.
+class LiveSocket:
+	extends RefCounted
+	var state := WebSocketPeer.STATE_CONNECTING
+	var accepted := false
+	var inbound: Array[PackedByteArray] = []
+	var close_code := -1
+	func poll() -> void:
+		if state == WebSocketPeer.STATE_CONNECTING: state = WebSocketPeer.STATE_OPEN if accepted else WebSocketPeer.STATE_CLOSED
+	func get_ready_state() -> int: return state
+	func get_available_packet_count() -> int: return inbound.size() if state == WebSocketPeer.STATE_OPEN else 0
+	func get_packet() -> PackedByteArray: return inbound.pop_front()
+	func send_text(text: String) -> int:
+		if state == WebSocketPeer.STATE_OPEN and text == "ping": inbound.append("pong".to_utf8_buffer())
+		return OK
+	func close(code: int = 1000, _reason: String = "") -> void:
+		close_code = code
+		state = WebSocketPeer.STATE_CLOSED
+	func get_close_code() -> int: return close_code
 ## False models a Worker from before the conditional room poll (v2/routes.ts
 ## knownRoom), which ignores X-AfterYou-Known-Room and always sends the full room.
 var known_room_polls := true
@@ -244,6 +274,7 @@ func _capabilities(headers: Dictionary) -> Dictionary:
 	if headers.get("x-afteryou-history") == "1": value.merge({"history_version": 1, "history_offload_enabled": history_offload_enabled})
 	if headers.has("x-afteryou-room-level"):
 		value.merge({"room_level": 2, "max_join_versions": 16, "max_stages": 8})
+	if live_enabled and headers.get("x-afteryou-live") == "1": value["live_version"] = 1
 	return _ok(value)
 
 ## The chapter definition a room was created in.
@@ -311,6 +342,41 @@ func _bump(room: Dictionary, actor: String) -> void:
 	room.updated_at = _stamp()
 	for member: Variant in [room.host_id, room.guest_id]:
 		if member is String and member != actor: room.activity[member] = int(room.activity.get(member, 0)) + 1
+	_hint_room(room, actor)
+
+# Live socket ----------------------------------------------------------------
+
+## The socket factory a phone's LiveConnection uses: the upgrade authenticates
+## with the same headers as every request (index.ts auth, live.ts).
+func live_socket(url: String, header_list: PackedStringArray) -> Object:
+	now += 1
+	var headers := _headers(header_list)
+	var player := str(headers.get("x-player-id", ""))
+	var record: Variant = players.get(player)
+	var socket := LiveSocket.new()
+	socket.accepted = live_enabled and url.ends_with("/v1/live") and record is Dictionary and not record.deleted and str(headers.get("authorization", "")) == "Bearer " + str(record.token)
+	if socket.accepted:
+		if not live_sockets.has(player): live_sockets[player] = []
+		live_sockets[player].append(socket)
+	requests.append({"player": player, "method": HTTPClient.METHOD_GET, "path": "/v1/live", "status": 101 if socket.accepted else 401, "code": ""})
+	return socket
+
+## Drops every open socket, as a server deploy does.
+func drop_live_sockets() -> void:
+	for list: Array in live_sockets.values():
+		for socket: LiveSocket in list: socket.close(1001)
+	live_sockets.clear()
+
+func _hint(player: Variant, message: Dictionary) -> void:
+	if not live_enabled or not player is String: return
+	for socket: LiveSocket in live_sockets.get(player, []):
+		if socket.state == WebSocketPeer.STATE_OPEN or socket.state == WebSocketPeer.STATE_CONNECTING:
+			socket.inbound.append(JSON.stringify(message).to_utf8_buffer())
+			live_hints += 1
+
+func _hint_room(room: Dictionary, actor: String) -> void:
+	for member: Variant in [room.host_id, room.guest_id]:
+		if member != actor: _hint(member, {"type": "room_changed", "room": room.room_id, "seq": int(room.revision)})
 
 # Routes ---------------------------------------------------------------------
 
@@ -468,6 +534,7 @@ func _close(player: String, room_id: String, headers: Dictionary) -> Dictionary:
 	room.history = {"members": {}, "attempts": []}
 	room.stubbed = {}
 	_unlink(player, room_id)
+	_hint_room(room, player)
 	return _ok({"deleted": true})
 
 ## POST /v2/rooms/:id/leave (room-leave.ts:11-31).
@@ -519,13 +586,18 @@ func _resolve(body: Dictionary) -> Dictionary:
 func _share(player: String, body: Dictionary) -> Dictionary:
 	var target: Variant = body.get("room")
 	if target == null:
+		if players[player].get("shared_room") != null:
+			for friend: String in players[player].get("friends", {}): _hint(friend, {"type": "friends_changed"})
 		players[player].shared_room = null
 		return _ok({"schema_version": 1, "shared_room": null})
 	var room: Variant = rooms.get(str(target.get("room_id", "")))
 	if not room is Dictionary or room.deleted or room.host_id != player: return _fail(404, "room_not_found")
 	if room.transferred: return _fail(410, "replay_transferred")
 	if room.guest_id == null and Time.get_unix_time_from_datetime_string(str(room.invite_expires_at).left(19)) < now: return _fail(410, "invite_expired")
+	var changed: bool = players[player].get("shared_room") != {"api_version": 2, "room_id": room.room_id}
 	players[player].shared_room = {"api_version": 2, "room_id": room.room_id}
+	if changed:
+		for friend: String in players[player].get("friends", {}): _hint(friend, {"type": "friends_changed"})
 	return _ok({"schema_version": 1, "shared_room": players[player].shared_room})
 
 ## Accepted friends' rows (friends-routes.ts:58-90). No presence: every friend

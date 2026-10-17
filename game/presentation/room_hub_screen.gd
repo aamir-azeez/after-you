@@ -506,6 +506,10 @@ func _chapter_index(key: String) -> int:
 		if str(chapters[index].get("key","")) == key: return index
 	return -1
 
+## True while a rooms read is out.
+func refreshing() -> bool:
+	return _busy
+
 func refresh() -> void:
 	if client == null or _busy: return
 	_busy = true

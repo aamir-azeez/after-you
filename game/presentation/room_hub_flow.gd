@@ -9,7 +9,7 @@ extends Node
 ## inbox, and the chapter and visibility last chosen. It asks Main to navigate
 ## through the signals below, and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
-## - services: api, relay_session, shared_replays, tester_access
+## - services: api, relay_session, shared_replays, tester_access, live_connection (read once, in _ready)
 ## - identity and access: _relay_identity, _ensure_identity, _tester_context,
 ##   _tester_checks_enabled, _load_cached_tester, _hosting_lock_reason,
 ##   _online_gated, _friend_display_name, _chapter_marks
@@ -42,6 +42,9 @@ const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const CREAM := Color("eceddb")
 ## Main's mode while the hub (or its no-service card) is up.
 const MODE_ROOMS := "rooms"
+const RefreshClock = preload("res://services/refresh_schedule.gd")
+## The hub has no timer of its own: its hint-driven reads never come due by time.
+const LIVE_ONLY_INTERVAL_MS := 86400000
 
 signal home_requested
 signal journey_requested
@@ -68,8 +71,42 @@ var _tap_room := ""
 ## confirmed finished room. A failed leave forgets it.
 var leave_support := RoomLeaveSupport.new()
 
+## Hint-driven reads of the open hub's rooms (services/refresh_schedule.gd):
+## one at a time, one more for hints that arrive while a read is out.
+var _live_reads := RefreshClock.new()
+## The socket went down while the hub was up, so its reopening may follow missed hints.
+var _live_missed := false
+
 func _init(main: Node = null) -> void:
 	host = main
+
+## A room changed (a turn, a join, a close): the open hub reads its rooms once.
+## A reopened socket reads only when it went down while the hub was up; the
+## hub's own read on opening already covers the first one.
+func _ready() -> void:
+	var live: Node = host.get("live_connection") if host != null else null
+	if not is_instance_valid(live): return
+	live.room_changed.connect(func(_room: String, _seq: int) -> void: _live_hint())
+	live.health_changed.connect(func(healthy: bool) -> void:
+		if not healthy and is_open(): _live_missed = true)
+	live.resynced.connect(func() -> void:
+		if _live_missed: _live_hint()
+		_live_missed = false)
+
+func _live_hint() -> void:
+	if is_open(): _live_reads.hint(Time.get_ticks_msec())
+
+func _process(_delta: float) -> void:
+	if not is_open():
+		_live_reads.bind("", 0)
+		return
+	var now := Time.get_ticks_msec()
+	_live_reads.bind(str(screen.get_instance_id()), now, LIVE_ONLY_INTERVAL_MS)
+	var ticket: Dictionary = _live_reads.begin_if_due(now, host.mode == MODE_ROOMS and not screen.refreshing(), false)
+	if ticket.is_empty(): return
+	var hub := screen
+	await refresh_when_idle(hub)
+	_live_reads.complete(ticket, Time.get_ticks_msec(), true)
 
 func show_rooms() -> void:
 	if host._online_gated(): return

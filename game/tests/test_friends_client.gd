@@ -158,6 +158,7 @@ func _run() -> void:
 	check(await client.remove_friend(row) and client.view().friends.size() == 1 and client.view().friends[0].player_id == "d".repeat(22),"Remove only retires its exact acknowledged peer and leaves the other row visible")
 	check(not client.refresh_due(true),"Friend mutations preserve the server refresh floor")
 	await _short_names()
+	await _live_hints()
 	ready = false
 	check(client.view().is_empty(),"unavailable identity sees no friends")
 	api.queue_free()
@@ -190,6 +191,44 @@ func _short_names() -> void:
 	count = calls.size()
 	for own: String in ["friend-aamir","Aamir","friend-" + OWNER]:
 		check(not await client.add_friend(own) and client.last_error == PlayerCopy.FRIEND_CODE_OWN and calls.size() == count,"Adding your own short name is refused locally: " + own)
+
+## A live hint makes the list due early: a friends hint (which the server
+## grants) a few seconds after the last read, a reopened socket only as early
+## as a manual refresh may.
+func _live_hints() -> void:
+	client.invalidate()
+	response = {"ok":true,"data":page()}
+	check(await client.refresh(),"hint setup read")
+	var count := calls.size()
+	client.hint(false)
+	check(not client.refresh_due() and client.refresh_wait_ms() == 30000,"A reopened socket waits for the server's own floor")
+	client.hint(true)
+	check(client.refresh_wait_ms() == Client.LIVE_FLOOR_MS,"A friends hint right after a read waits only the live floor")
+	now += Client.LIVE_FLOOR_MS
+	check(client.refresh_due() and await client.refresh() and calls.size() == count + 1,"The hinted read runs once")
+	check(not client.refresh_due() and client.refresh_wait_ms() == 60000,"After it the page keeps its usual interval")
+	now += 10000
+	client.hint(true)
+	check(client.refresh_due(),"A later hint makes the list due at once")
+	ready = false
+	client.hint(true)
+	ready = true
+	# A hint while a read is out: that read may predate the change, so one more follows within the floor.
+	now += 60000
+	hold = true
+	client.refresh()
+	client.hint(true)
+	hold = false
+	release.emit()
+	await process_frame
+	check(not client.busy and client.refresh_wait_ms() == Client.LIVE_FLOOR_MS,"A hint during a read makes one more read due a few seconds after it (%d)" % client.refresh_wait_ms())
+	# The server had not opened that early read: it waits for the list's own floor, not the generic minute.
+	now += 10000
+	response = {"ok":false,"status":429,"code":"friends_refresh_limited","retry_after_ms":60000,"error":"Friends unavailable"}
+	check(not await client.refresh(),"the early read is refused")
+	var wait: int = client.refresh_wait_ms()
+	check(wait >= 2 * Client.LIVE_FLOOR_MS and wait <= 30000,"A refused early read waits for the server's floor, not a minute (%d)" % wait)
+	response = {"ok":true,"data":page()}
 
 func _delayed_change() -> void:
 	epoch += 1

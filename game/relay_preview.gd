@@ -63,6 +63,17 @@ var _simulation: Script = Simulation
 var journey: RefCounted = Journey.new()
 var online_session: RefCounted
 var friend_presence: Node
+## The phone's live socket (services/live_connection.gd), or null. A hint for
+## this room asks the poll for one read now, and while the socket is healthy
+## the poll slows to the socket's safety interval.
+var live_connection: Node:
+	set(value):
+		live_connection = value
+		if is_instance_valid(value):
+			value.room_changed.connect(_on_live_room_changed)
+			value.resynced.connect(_live_hint)
+## A hint is waiting for its read, which runs even where the page does not poll.
+var _live_read_queued := false
 var presence_hud: Label
 var _safety_screen: CanvasLayer
 var _redo_screen: CanvasLayer
@@ -1417,7 +1428,7 @@ func _online_refresh() -> void:
 	if online_session == null or online_session.busy() or running or _room_context_lost:
 		return
 	var now := Time.get_ticks_msec()
-	refresh_schedule.bind(_online_refresh_context(), now)
+	refresh_schedule.bind(_online_refresh_context(), now, _room_poll_interval_ms())
 	refresh_schedule.request_now(now)
 	var ticket := refresh_schedule.begin_if_due(now, not backgrounded, online_session.busy())
 	if ticket.is_empty():
@@ -1456,6 +1467,20 @@ func _remember_suspended_manual_refresh(generation: int, source: RefCounted, con
 
 func _online_refresh_is_current(generation: int, source: RefCounted, context: String, allowed_modes: Array) -> bool:
 	return is_inside_tree() and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not backgrounded and not running and not _leaving and not _room_context_lost and mode in allowed_modes and not is_instance_valid(_safety_screen) and not (is_instance_valid(reaction_photos) and reaction_photos.active) and not online_session.photo_request_busy()
+
+func _room_poll_interval_ms() -> int:
+	return live_connection.poll_interval_ms(RefreshClock.ROOM_INTERVAL_MS) if is_instance_valid(live_connection) else RefreshClock.ROOM_INTERVAL_MS
+
+func _on_live_room_changed(room_id: String, seq: int) -> void:
+	if online_session == null or room_id != online_session.last_room(): return
+	# Reads are ordered inside the room: a hint older than the room this page holds is already shown.
+	var held := int(journey.snapshot().get("revision", -1))
+	if held >= 0 and seq < held: return
+	_live_hint()
+
+func _live_hint() -> void:
+	if online_session == null or _leaving: return
+	if refresh_schedule.hint(Time.get_ticks_msec()): _live_read_queued = true
 
 func _online_refresh_context() -> String:
 	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
@@ -1500,12 +1525,12 @@ func _service_online_refresh() -> void:
 	if is_instance_valid(reaction_photos) and reaction_photos.active: return
 	var now := Time.get_ticks_msec()
 	var context := _online_refresh_context()
-	refresh_schedule.bind(context,now)
+	refresh_schedule.bind(context,now,_room_poll_interval_ms())
 	_update_online_sync_status(now)
 	if online_refresh_queued:
 		refresh_schedule.request_now(now)
 		online_refresh_queued=false
-	elif mode=="ready" and journey.snapshot().get("guest_id") != null:
+	elif mode=="ready" and journey.snapshot().get("guest_id") != null and not _live_read_queued:
 		# The existing GET scheduler observes a friend's arrival before Begin.
 		# Once joined, ready cards and active play do not keep polling.
 		return
@@ -1514,6 +1539,7 @@ func _service_online_refresh() -> void:
 	if now >= refresh_schedule.next_due_ms() and TouchInput.press_held(controls): return
 	var ticket: Dictionary=refresh_schedule.begin_if_due(now,true,online_session.busy())
 	if ticket.is_empty(): return
+	_live_read_queued = false
 	var generation := online_request_generation
 	var source: RefCounted = journey
 	var saved_pending: Dictionary = journey.pending()

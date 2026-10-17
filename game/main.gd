@@ -44,6 +44,7 @@ const FriendsClient = preload("res://services/friends_client.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
 const RoomSharing = preload("res://services/room_sharing.gd")
+const LiveConnection = preload("res://services/live_connection.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
@@ -137,6 +138,8 @@ var friend_room_events: RefCounted
 var friend_share_target: Dictionary = {}
 ## Sharing the hosted room with friends and the hosting alert it owes.
 var room_sharing: RoomSharing = _host_room_sharing()
+## The live socket; the room page, hub and Friends read on its hints.
+var live_connection: LiveConnection = _host_live_connection()
 var legacy_redo: RefCounted
 var legacy_redo_restore_scope := ""
 var legacy_redo_restore_ok := true
@@ -1763,6 +1766,16 @@ func _host_room_sharing() -> RoomSharing:
 	add_child(sharing,false,Node.INTERNAL_MODE_BACK)
 	return sharing
 
+## An internal child, so the socket closes with Main. It opens once an online
+## screen is up (the hub, a room or Friends) and reuses the capability answer
+## the relay session already holds.
+func _host_live_connection() -> LiveConnection:
+	var live := LiveConnection.new()
+	live.capabilities = func() -> Dictionary: return relay_session.capabilities if relay_session != null else {}
+	live.wanted = func() -> bool: return mode in [RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS, "relay_online"] or is_instance_valid(relay_child)
+	add_child(live,false,Node.INTERNAL_MODE_BACK)
+	return live
+
 ## An internal child, like StoreFlow.
 func _host_friends_flow() -> FriendsFlow:
 	var flow := FriendsFlow.new(self)
@@ -2200,6 +2213,7 @@ func _enter_online_relay() -> void:
 	relay_child.chapter_key = relay_session.chapter_key()
 	relay_child.online_session = relay_session
 	relay_child.friend_presence = friend_presence
+	relay_child.live_connection = live_connection
 	relay_child.settings = saves.data.settings.duplicate(true)
 	relay_child.save_photo_prompt_preference = _save_photo_prompt_preference
 	relay_child.turn_notification_status = notification_flow.status
@@ -3182,6 +3196,7 @@ func _process(delta: float) -> void:
 	replays_flow.service_shared_replays()
 	_service_home_keepsakes(delta)
 	_sync_presence()
+	_sync_live()
 	_advance_completion_moment(delta)
 	_service_foreground_refresh()
 	if is_instance_valid(turn_notifications):
@@ -3487,14 +3502,22 @@ func _hand_over_tester_check(scene: String) -> void:
 	else:
 		ChapterAccess.drop_hand_over()
 
-func _sync_presence() -> void:
-	if not is_instance_valid(friend_presence): return
+## The identity presence and the live socket follow.
+func _online_identity() -> Dictionary:
 	var identity := _relay_identity()
 	identity["base_url"] = api.base_url
 	identity["device_token"] = api.device_token
 	# A pending account deletion cannot republish an old credential.
 	if saves.data.has(DeletedPhotos.MARKER_KEY) or not deleted_identity_owner.is_empty(): identity.ready = false
-	friend_presence.set_identity(identity)
+	return identity
+
+func _sync_live() -> void:
+	live_connection.api = api
+	live_connection.set_identity(_online_identity())
+
+func _sync_presence() -> void:
+	if not is_instance_valid(friend_presence): return
+	friend_presence.set_identity(_online_identity())
 	var family := ""
 	var room := ""
 	if is_instance_valid(relay_child) and relay_session != null:

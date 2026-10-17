@@ -25,6 +25,7 @@ func _run() -> void:
 	_test_terminal_and_clock()
 	_test_idle_backoff()
 	_test_idle_backoff_resets()
+	_test_live_hint_and_pace()
 	print("REFRESH SCHEDULE: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -253,3 +254,39 @@ func _test_idle_backoff_resets() -> void:
 	busy.complete(token, 3000, false, 60000)
 	busy.request_now(3001)
 	_check(busy.begin_if_due(62999, true, false).is_empty() and not busy.begin_if_due(63000, true, false).is_empty(), "A tap resets the backoff but never the provider cooldown")
+## A live hint makes a read due now, or one more after the read already out
+## (it may have been answered before the change). A changed pace (the socket
+## came or went) re-times the next read without resetting failure or terminal state.
+func _test_live_hint_and_pace() -> void:
+	var clock := Schedule.new()
+	_check(not clock.hint(0), "A hint with no room bound asks for nothing")
+	clock.bind("room", 0, 60000)
+	_check(clock.next_due_ms() == 60000, "A healthy socket paces the room at its safety interval")
+	_check(clock.hint(10) and clock.next_due_ms() == 10, "A hint makes the read due now")
+	var token: Dictionary = clock.begin_if_due(10, true, false)
+	_check(clock.hint(20), "A hint during a read is kept")
+	clock.complete(token, 30, true)
+	_check(clock.next_due_ms() == 30, "The read after a mid-read hint runs at once")
+	token = clock.begin_if_due(30, true, false)
+	clock.complete(token, 40, true)
+	_check(clock.next_due_ms() == 60040, "Only one extra read follows a hint")
+	clock.bind("room", 50)
+	_check(clock.next_due_ms() == 50 + Schedule.ROOM_INTERVAL_MS, "Losing the socket brings the next read within one normal interval")
+	clock.bind("room", 60, 60000)
+	_check(clock.next_due_ms() == 50 + Schedule.ROOM_INTERVAL_MS, "Regaining it never pushes a due read later")
+	token = clock.begin_if_due(50 + Schedule.ROOM_INTERVAL_MS, true, false)
+	clock.complete(token, 4000, false, 0, true)
+	clock.bind("room", 4001)
+	_check(clock.stopped() and not clock.hint(4002), "A pace change never restarts a room that answered 401/403/404/410")
+	# The idle backoff runs only while the socket is down, and a hint starts it over.
+	var idle := Schedule.new()
+	idle.bind("room", 0, 60000)
+	var now := 60000
+	for read in 25: now += _poll(idle, now, false)
+	_check(_poll(idle, now, false) == 60000, "A healthy socket keeps the safety pace, with no idle growth on top")
+	now += 60000
+	idle.bind("room", now, Schedule.ROOM_INTERVAL_MS)
+	var quiet := _idle_until(idle, now + Schedule.ROOM_INTERVAL_MS, 15000)
+	_check(quiet - now >= 60000, "With the socket down, idle reads keep 3 s for a minute and then back off to 15 s")
+	_check(idle.hint(quiet + 1) and _poll(idle, quiet + 1, false) == Schedule.ROOM_INTERVAL_MS, "A hint reads at once and the next read is back at 3 s")
+

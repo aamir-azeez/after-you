@@ -24,12 +24,23 @@ var _terminal := false
 var _active: Dictionary = {}
 var _backoff := PollBackoff.new(ROOM_INTERVAL_MS)
 var _idle_extra := 0
+var _rerun := false
 
 
 func bind(context_key: String, now_ms: int, interval_ms: int = ROOM_INTERVAL_MS) -> void:
 	var now := _now(now_ms)
 	var interval := maxi(1, interval_ms)
-	if context_key == _context and interval == _interval:
+	if context_key == _context:
+		# Only the pace changed (the live socket came or went): the next read
+		# comes no later than one new interval from now. Failure, terminal and
+		# retry state stay as they were.
+		if interval != _interval:
+			_interval = interval
+			_due = mini(_due, now + _interval)
+			# The idle backoff works from the new pace: none while the socket
+			# keeps the safety pace, today's from the base again while it is down.
+			_backoff = PollBackoff.new(_interval, maxi(_interval, PollBackoff.CAP_MS))
+			_idle_extra = 0
 		return
 	_context = context_key
 	_interval = interval
@@ -39,6 +50,7 @@ func bind(context_key: String, now_ms: int, interval_ms: int = ROOM_INTERVAL_MS)
 	_due = now + _interval
 	_backoff = PollBackoff.new(_interval, maxi(_interval, PollBackoff.CAP_MS))
 	_idle_extra = 0
+	_rerun = false
 	# An old request still occupies the transport. Its exact completion releases
 	# the slot, but cannot schedule or validate data for this new context.
 	# Provider Retry-After also survives switching rooms on the same scheduler.
@@ -75,11 +87,29 @@ func changed(value: Variant) -> bool:
 	return _backoff.observe(value)
 
 
+## The server said something changed at or after now (a live hint). A read
+## that is already out may have been answered before the change, so one more
+## read follows it; otherwise the next read is due now.
+func hint(now_ms: int) -> bool:
+	var now := _now(now_ms)
+	if _context.is_empty() or _terminal:
+		return false
+	# The room moved: the idle backoff starts over.
+	_backoff.reset()
+	_idle_extra = 0
+	if not _active.is_empty() and _active.generation == _generation:
+		_rerun = true
+	else:
+		_due = mini(_due, now)
+	return true
+
+
 func begin_if_due(now_ms: int, eligible: bool, transport_busy: bool) -> Dictionary:
 	var now := _now(now_ms)
 	if not eligible or transport_busy or busy() or stopped() or now < next_due_ms():
 		return {}
 	_serial += 1
+	_rerun = false
 	_active = {"serial": _serial, "generation": _generation}
 	return _active.duplicate()
 
@@ -99,8 +129,8 @@ func complete(token: Dictionary, now_ms: int, success: bool, retry_after_ms: int
 	if success:
 		_failure_count = 0
 		var delay := _backoff.next_ms(changed)
-		_due = now + delay
-		_idle_extra = delay - _interval
+		_due = now if _rerun else now + delay
+		_idle_extra = 0 if _rerun else delay - _interval
 	else:
 		_failure_count = mini(_failure_count + 1, FAILURE_DELAYS_MS.size())
 		_due = now + int(FAILURE_DELAYS_MS[_failure_count - 1])
