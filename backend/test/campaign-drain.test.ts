@@ -75,8 +75,9 @@ function counted() {
   return { calls, env: { PLAYERS: wrap(env.PLAYERS, "Player"), ROOMS_V2: wrap(env.ROOMS_V2, "RoomV2") } };
 }
 
-function request(path: string, init: { method?: string; body?: unknown; token?: string | null; player?: string } = {}) {
+function request(path: string, init: { method?: string; body?: unknown; token?: string | null; player?: string; story?: boolean } = {}) {
   const headers: Record<string, string> = { "Content-Type": "application/json", "CF-Connecting-IP": "198.22.0." + (++address % 250) };
+  if (init.story) headers["X-AfterYou-Campaign-Schema"] = "2";
   if (init.token !== null) headers.Authorization = "Bearer " + (init.token ?? OPERATOR);
   if (init.player) { headers["X-Player-Id"] = init.player; headers.Authorization = "Bearer " + TOKENS[init.player]; }
   return new Request("https://game.test" + path, { method: init.method ?? "POST", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
@@ -169,7 +170,7 @@ async function ordinaryPlayerRows(stub: World["host"]) {
     rooms: rows(ctx, "SELECT room_id,data FROM rooms ORDER BY rowid").filter(row => JSON.parse(String(row.data)).api_version !== 3),
     creations: rows(ctx, "SELECT request_key,data FROM creations ORDER BY rowid").filter(row => ![2, 3].includes(JSON.parse(String(row.data)).creation_schema)) }));
 }
-const scanAll = () => drain<{ players: { object_id: string; player_id: string; state: string; links: { room_id: string; host: boolean }[]; intents: Record<string, number> }[] }>("scan", { schema_version: 1, players: [H, G, X, U].map(objectId) });
+const scanAll = () => drain<{ players: { object_id: string; player_id: string; state: string; links: { room_id: string; host: boolean }[]; intents: Record<string, number>; open_intent_rooms: string[] }[] }>("scan", { schema_version: 1, players: [H, G, X, U].map(objectId) });
 type Census = { kind: string; children: string[]; pending_targets: string[]; rows: Record<string, number> };
 type Count = { anchors: { room_id: string; root: Census; children: (Census & { room_id: string })[] }[]; totals: { campaign_rooms: number; deleted_rooms: number; absent_rooms: number; unreadable_rooms: number; pending_targets: number; rows: Record<string, number>; total_rows: number } };
 type Erase = { room_id: string; before: string; root: string; players: { player_id: string; result: string }[]; after: string };
@@ -208,11 +209,11 @@ describe("operator Story drain", () => {
   it("counts exactly and writes nothing in the dry run", async () => {
     const w = await world(), before = await snapshotAll(w), written = await meter(everyObject(w));
     const scan = await scanAll();
-    expect(scan.players.map(p => [p.player_id, p.state, p.links, p.intents])).toEqual([
-      [H, "active", [{ room_id: R, host: true }], { allocations: 1, open: 0, closed: 0, unreadable: 0 }],
-      [G, "active", [{ room_id: R, host: false }], { allocations: 0, open: 1, closed: 0, unreadable: 0 }],
-      [X, "active", [{ room_id: R, host: false }], { allocations: 0, open: 1, closed: 0, unreadable: 0 }],
-      [U, "active", [], { allocations: 0, open: 0, closed: 0, unreadable: 0 }]]);
+    expect(scan.players.map(p => [p.player_id, p.state, p.links, p.intents, p.open_intent_rooms])).toEqual([
+      [H, "active", [{ room_id: R, host: true }], { allocations: 1, open: 0, closed: 0, unreadable: 0 }, []],
+      [G, "active", [{ room_id: R, host: false }], { allocations: 0, open: 1, closed: 0, unreadable: 0 }, [R]],
+      [X, "active", [{ room_id: R, host: false }], { allocations: 0, open: 1, closed: 0, unreadable: 0 }, [R]],
+      [U, "active", [], { allocations: 0, open: 0, closed: 0, unreadable: 0 }, []]]);
     const counted = await count();
     expect(counted.anchors[0].root).toMatchObject({ kind: "campaign", campaign_room_id: R, state: "active", host_id: H, guest_id: G, children: [w.targetId], pending_targets: [] });
     expect(counted.anchors[0].children.map(c => [c.room_id, c.kind])).toEqual([[w.targetId, "campaign"]]);
@@ -254,6 +255,23 @@ describe("operator Story drain", () => {
     expect((await roomRead(H, w.ordinaryId)).status).toBe(200);
   }, 60_000); // 96 room requests before and after
 
+  it("answers a Story-capable client (0.6.0 to 0.6.3, header 2) on the campaign list, read and reconcile", async () => {
+    const w = await world();
+    const story = async (owner: string, method: string, path: string, body?: unknown) => {
+      const response = await worker.fetch(request(path, { method, player: owner, body, story: true }), { ...env, ...LIVE_FLAGS } as unknown as Env);
+      return response.status + " " + await response.text();
+    };
+    const calls = (owner: string) => [story(owner, "GET", "/v2/campaigns"), story(owner, "GET", "/v2/campaigns/" + R), story(owner, "GET", "/v2/rooms/" + R), story(owner, "POST", "/v2/campaigns/" + R + "/reconcile-deletion", { schema_version: 1 })];
+    const [list, read, room, reconcile] = await Promise.all(calls(H));
+    expect(list).toContain('"campaign_room_id":"' + R + '"'); expect(read.startsWith("200 ")).toBe(true); expect(room.startsWith("200 ")).toBe(true);
+    expect(reconcile).toBe('409 {"error":{"code":"campaign_not_terminal","retryable":false}}');
+    await erase();
+    const unavailable = '409 {"error":{"code":"campaign_state_unavailable","retryable":false}}';
+    for (const owner of [H, X]) expect(await Promise.all(calls(owner))).toEqual(['200 {"campaigns":[]}', unavailable, unavailable,
+      '200 {"schema_version":1,"operation":"campaign_terminal_cleanup","status":"released","player_id":"' + owner + '","campaign_room_id":"' + R + '"}']);
+    expect(await story(H, "GET", "/v2/rooms/" + w.targetId)).toBe(unavailable);
+  });
+
   it("is idempotent: a second run writes nothing and changes nothing", async () => {
     const w = await world(); await erase();
     const before = await snapshotAll(w), written = await meter(everyObject(w));
@@ -283,6 +301,16 @@ describe("operator Story drain", () => {
     expect(await erase()).toEqual({ schema_version: 1, room_id: R, before: "deleted", root: "already_deleted", players: [{ player_id: H, result: "released" }, { player_id: G, result: "identity_absent" }, { player_id: X, result: "released" }], after: "deleted" });
     const late = await worker.fetch(request("/v1/identity", { method: "DELETE", player: H }), env);
     expect(late.status).toBe(200); expect(await late.json()).toEqual({ deleted: true });
+  });
+
+  it("names the root of an open intent whose link is gone, and the erase closes that intent", async () => {
+    const w = await world();
+    await runInDurableObject(w.stranger, (_, ctx) => { ctx.storage.sql.exec("DELETE FROM rooms WHERE room_id=?", R); });
+    const before = (await scanAll()).players.find(p => p.player_id === X)!;
+    expect([before.links, before.intents.open, before.open_intent_rooms]).toEqual([[], 1, [R]]);
+    expect((await erase()).players).toContainEqual({ player_id: X, result: "released" });
+    const after = (await scanAll()).players.find(p => p.player_id === X)!;
+    expect([after.links, after.intents.open, after.intents.closed, after.open_intent_rooms]).toEqual([[], 0, 1, []]);
   });
 
   it("leaves an identity that is being deleted to identity deletion", async () => {

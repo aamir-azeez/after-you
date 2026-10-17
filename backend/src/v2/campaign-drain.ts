@@ -37,6 +37,8 @@ export type CampaignPlayerInventory = {
   links: { room_id: string; host: boolean }[];
   /** creation_schema 2 (an admitted Create) and creation_schema 3 (open or closed admission intents). */
   intents: { allocations: number; open: number; closed: number; unreadable: number };
+  /** Rooms named by open admission intents, so an open intent whose link is gone still names its root. */
+  open_intent_rooms: string[];
 };
 export type CampaignRoomCensus = {
   schema_version: 1;
@@ -62,14 +64,14 @@ export function campaignPlayerInventory(storage: DurableObjectStorage): Campaign
     const link = parsed(row.data);
     if (validRoomLink(link) && roomLinkVersion(link) === 3) links.push({ room_id: link.room_id, host: link.host });
   }
-  const intents = { allocations: 0, open: 0, closed: 0, unreadable: 0 };
+  const intents = { allocations: 0, open: 0, closed: 0, unreadable: 0 }, openRooms = new Set<string>();
   for (const row of storage.sql.exec<{ data: string }>("SELECT data FROM creations ORDER BY rowid").toArray()) {
     const value = parsed(row.data);
     if (!isObject(value)) { intents.unreadable++; continue; }
     if (value.creation_schema === 2) intents.allocations++;
-    else if (value.creation_schema === 3) { if (value.state === "open") intents.open++; else if (value.state === "closed") intents.closed++; else intents.unreadable++; }
+    else if (value.creation_schema === 3) { if (value.state === "open") { intents.open++; if (typeof value.room_id === "string" && ID_PATTERN.test(value.room_id)) openRooms.add(value.room_id); } else if (value.state === "closed") intents.closed++; else intents.unreadable++; }
   }
-  return { schema_version: 1, player_id: known ? identity.player_id as string : null, state: known ? identity.state as "active" | "deleting" : null, links, intents };
+  return { schema_version: 1, player_id: known ? identity.player_id as string : null, state: known ? identity.state as "active" | "deleting" : null, links, intents, open_intent_rooms: [...openRooms] };
 }
 
 /** The admitted host allocation for a root that was never created, as identity deletion builds it. Read-only. */
