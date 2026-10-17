@@ -25,6 +25,9 @@ var _active: Dictionary = {}
 var _backoff := PollBackoff.new(ROOM_INTERVAL_MS)
 var _idle_extra := 0
 var _rerun := false
+## When the read out now began, and when the last successful read in this context began (-1: none).
+var _read_began := -1
+var _covered_from := -1
 
 
 func bind(context_key: String, now_ms: int, interval_ms: int = ROOM_INTERVAL_MS) -> void:
@@ -51,6 +54,7 @@ func bind(context_key: String, now_ms: int, interval_ms: int = ROOM_INTERVAL_MS)
 	_backoff = PollBackoff.new(_interval, maxi(_interval, PollBackoff.CAP_MS))
 	_idle_extra = 0
 	_rerun = false
+	_covered_from = -1
 	# An old request still occupies the transport. Its exact completion releases
 	# the slot, but cannot schedule or validate data for this new context.
 	# Provider Retry-After also survives switching rooms on the same scheduler.
@@ -90,10 +94,17 @@ func changed(value: Variant) -> bool:
 ## The server said something changed at or after now (a live hint). A read
 ## that is already out may have been answered before the change, so one more
 ## read follows it; otherwise the next read is due now.
-func hint(now_ms: int) -> bool:
+##
+## `covered_since` (a catch-up after missed hints): changes since then may be
+## missing, and a read that began at or after it, out now or done (a resume
+## read), already shows them: no other read is asked for and it returns false.
+func hint(now_ms: int, covered_since: int = -1) -> bool:
 	var now := _now(now_ms)
 	if _context.is_empty() or _terminal:
 		return false
+	if covered_since >= 0:
+		var running: bool = not _active.is_empty() and _active.generation == _generation
+		if (running and _read_began >= covered_since) or _covered_from >= covered_since: return false
 	# The room moved: the idle backoff starts over.
 	_backoff.reset()
 	_idle_extra = 0
@@ -111,6 +122,7 @@ func begin_if_due(now_ms: int, eligible: bool, transport_busy: bool) -> Dictiona
 	_serial += 1
 	_rerun = false
 	_active = {"serial": _serial, "generation": _generation}
+	_read_began = now
 	return _active.duplicate()
 
 
@@ -128,6 +140,7 @@ func complete(token: Dictionary, now_ms: int, success: bool, retry_after_ms: int
 	_terminal = terminal
 	if success:
 		_failure_count = 0
+		_covered_from = _read_began
 		var delay := _backoff.next_ms(changed)
 		_due = now if _rerun else now + delay
 		_idle_extra = 0 if _rerun else delay - _interval

@@ -62,7 +62,7 @@ async function until(condition: () => boolean, ms = 8000): Promise<void> {
 const settle = () => new Promise(resolve => setTimeout(resolve, 60));
 const roomEvents = (socket: Socket) => socket.messages.filter(m => typeof m === "object" && (m as { type: string }).type === "room_changed");
 const friendEvents = (socket: Socket) => socket.messages.filter(m => typeof m === "object" && (m as { type: string }).type === "friends_changed");
-const presenceEvents = (socket: Socket) => socket.messages.filter(m => typeof m === "object" && (m as { type: string }).type === "presence_changed");
+const requestEvents = (socket: Socket) => socket.messages.filter(m => typeof m === "object" && (m as { type: string }).type === "friend_requests_changed");
 
 async function relayRoom(host: Account): Promise<RoomSnapshotV2> {
   const created = await call("/v2/rooms", "POST", host, { idempotency_key: crypto.randomUUID(), level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH });
@@ -232,18 +232,27 @@ describe("room hints", () => {
     expect(await env.PLAYERS.getByName(guest.player_id).liveHint(host.player_id, { kind: "room", room_id: room.room_id, revision: 1 })).toBe(false);
   });
 
-  it("cost one hint RPC per change with the flag on and none with it off", async () => {
-    const hints = vi.spyOn(Player.prototype, "liveHint");
+  it("cost one hint RPC per change with the flag on and the room index off, and none with the flag off", async () => {
+    const hints = vi.spyOn(Player.prototype, "liveHint"), indexed = vi.spyOn(Player.prototype, "noteRoomIndex");
     const host = await account(), guest = await account();
     const room = await relayRoom(host);
+    for (const stub of [env.ROOMS_V2.getByName(room.room_id), env.PLAYERS.getByName(host.player_id), env.PLAYERS.getByName(guest.player_id)]) await objectFlags(stub, { ...ON, ROOM_INDEX_ENABLED: "false" });
+    const hostSocket = await connect(host), guestSocket = await connect(guest);
     expect((await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code })).status).toBe(200);
     await settle();
     expect(hints).toHaveBeenCalledTimes(1);
+    // A turn with the index off: the partner's hint is its own single call.
+    const joined = await (await call(`/v2/rooms/${room.room_id}`, "GET", guest)).json<RoomSnapshotV2>();
+    const stage = CHAINS[0].stages[0], partner = stage.a.player_slot === "p0" ? guestSocket : hostSocket;
+    const turned = await playA(env.ROOMS_V2.getByName(room.room_id), joined, stage, { host: host.player_id, guest: guest.player_id });
+    await until(() => roomEvents(partner).some(m => (m as { seq: number }).seq === turned.revision));
+    expect(hints).toHaveBeenCalledTimes(2);
+    expect(indexed).not.toHaveBeenCalled();
     for (const stub of [env.ROOMS_V2.getByName(room.room_id), env.PLAYERS.getByName(host.player_id), env.PLAYERS.getByName(guest.player_id)]) await objectFlags(stub, { LIVE_CONNECTION_ENABLED: "false" });
     const state = await (await call(`/v2/rooms/${room.room_id}`, "GET", guest)).json<RoomSnapshotV2>();
-    await playA(env.ROOMS_V2.getByName(room.room_id), state, CHAINS[0].stages[0], { host: host.player_id, guest: guest.player_id });
+    await fork(env.ROOMS_V2.getByName(room.room_id), state, 0, host.player_id);
     await settle();
-    expect(hints).toHaveBeenCalledTimes(1);
+    expect(hints).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -292,27 +301,34 @@ describe("friend hints", () => {
     expect((await call("/v1/friends", "GET", friend)).status).toBe(200);
   });
 
-  it("tell friends when a friend comes online, at most once per 20 s and without opening their list read, and push friend requests at no extra RPC", async () => {
+  it("send nothing when a friend comes online, and push requests and cancels from the recipient's own object as non-granting hints", async () => {
     const a = await account(), b = await account(), c = await account();
     await befriend(a, b);
-    expect((await call("/v1/friends", "GET", b)).status).toBe(200);
     const socket = await connect(b);
     const hints = vi.spyOn(Player.prototype, "liveHint");
     expect((await call("/v1/presence", "POST", a, { schema_version: 1, session_id: SESSION, online: true })).status).toBe(200);
-    await until(() => presenceEvents(socket).length === 1);
-    expect(friendEvents(socket)).toHaveLength(0);
-    expect((await call("/v1/friends", "GET", b)).status).toBe(429);
-    expect((await call("/v1/presence", "POST", a, { schema_version: 1, session_id: SESSION, online: true })).status).toBe(200);
-    expect((await call("/v1/presence", "POST", a, { schema_version: 1, session_id: SESSION, online: false })).status).toBe(200);
-    expect((await call("/v1/presence", "POST", a, { schema_version: 1, session_id: "d".repeat(36), online: true })).status).toBe(200);
     await settle();
-    expect(presenceEvents(socket)).toHaveLength(1);
-    expect(hints).toHaveBeenCalledTimes(1);
-    // A friend request reaches the recipient from its own object.
-    hints.mockClear();
-    expect((await call("/v1/friends/request", "POST", c, { schema_version: 1, friend_code: b.player_id })).status).toBe(200);
-    await until(() => friendEvents(socket).length === 1);
+    expect(socket.messages).toEqual([]);
     expect(hints).not.toHaveBeenCalled();
+    const asked = await call("/v1/friends/request", "POST", c, { schema_version: 1, friend_code: b.player_id });
+    expect(asked.status).toBe(200);
+    await until(() => requestEvents(socket).length === 1);
+    const { request_id } = await asked.json<{ request_id: string }>();
+    expect((await call(`/v1/friends/${b.player_id}`, "DELETE", c, { schema_version: 1, request_id })).status).toBe(200);
+    await until(() => requestEvents(socket).length === 2);
+    expect(friendEvents(socket)).toEqual([]);
+    expect(hints).not.toHaveBeenCalled();
+  });
+
+  it("cost an accepted friend with no socket one hint RPC and no block lookups", async () => {
+    const host = await account(), friend = await account();
+    await befriend(host, friend);
+    const room = await relayRoom(host);
+    const hints = vi.spyOn(Player.prototype, "liveHint"), blocks = vi.spyOn(SafetyProfile.prototype, "hasBlocked");
+    expect((await call("/v1/friends/share", "POST", host, { schema_version: 1, room: { api_version: 2, room_id: room.room_id } })).status).toBe(200);
+    await settle();
+    expect(hints).toHaveBeenCalledTimes(1);
+    expect(blocks).not.toHaveBeenCalled();
   });
 
   it("send nothing with the flag off", async () => {

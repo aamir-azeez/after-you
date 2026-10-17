@@ -73,6 +73,8 @@ func step(advance: int = 0) -> void:
 
 func last() -> FakeSocket: return sockets.back() if not sockets.is_empty() else null
 
+func missed() -> int: return events.filter(func(item: Array) -> bool: return item[0] == "missed").size()
+
 func _run() -> void:
 	api = FakeApi.new()
 	root.add_child(api)
@@ -84,8 +86,8 @@ func _run() -> void:
 	root.add_child(live)
 	live.set_process(false)
 	live.room_changed.connect(func(room: String, seq: int) -> void: events.append(["room", room, seq]))
-	live.friends_changed.connect(func() -> void: events.append(["friends"]))
-	live.resynced.connect(func() -> void: events.append(["resynced"]))
+	live.friends_changed.connect(func(early: bool) -> void: events.append(["friends", early]))
+	live.missed_hints.connect(func(since: int) -> void: events.append(["missed", since]))
 	live.health_changed.connect(func(healthy: bool) -> void: events.append(["health", healthy]))
 	await _capability_gate()
 	await _handshake_and_hints()
@@ -132,7 +134,7 @@ func _handshake_and_hints() -> void:
 	events.clear()
 	await step()
 	check(live.healthy() and live.poll_interval_ms(3000) == Live.SAFETY_POLL_MS, "An open socket slows the poll to its safety interval")
-	check(events == [["health", true], ["resynced"]], "Opening asks every subscriber for one catch-up read")
+	check(events == [["health", true]], "A first open asks for no catch-up read: the screen's own open read covers it")
 	events.clear()
 	socket.push(JSON.stringify({"type": "room_changed", "room": ROOM, "seq": 7}))
 	socket.push(JSON.stringify({"type": "friends_changed"}))
@@ -142,7 +144,7 @@ func _handshake_and_hints() -> void:
 	socket.push("not json")
 	socket.push(JSON.stringify({"type": "friends_changed", "pad": "x".repeat(Live.MAX_MESSAGE_BYTES)}))
 	await step()
-	check(events == [["room", ROOM, 7], ["friends"]], "Valid hints are passed on; malformed, unknown and oversized ones are dropped")
+	check(events == [["room", ROOM, 7], ["friends", true]], "Valid hints are passed on; malformed, unknown and oversized ones are dropped")
 
 func _keepalive_and_silence() -> void:
 	var socket := last()
@@ -246,7 +248,8 @@ func _wanted_and_held() -> void:
 	live.wanted = func() -> bool: return up
 	root.add_child(live)
 	live.set_process(false)
-	live.presence_changed.connect(func() -> void: events.append(["presence"]))
+	live.friends_changed.connect(func(early: bool) -> void: events.append(["friends", early]))
+	live.missed_hints.connect(func(since: int) -> void: events.append(["missed", since]))
 	live.set_identity(identity("held-credential", 9))
 	var count := sockets.size()
 	await step(); await step(Live.CAPABILITY_GRACE_MS * 3)
@@ -262,12 +265,48 @@ func _wanted_and_held() -> void:
 	await step()
 	check(live.healthy(), "Open")
 	events.clear()
-	last().push(JSON.stringify({"type": "presence_changed"}))
+	last().push(JSON.stringify({"type": "friend_requests_changed"}))
 	await step()
-	check(events == [["presence"]], "A friend coming online is its own hint")
+	check(events == [["friends", false]], "A request that arrived or was cancelled is a hint with no early read")
+	# A server deploy drops the socket: the reopen asks every screen for one read.
+	events.clear()
+	last().close_code = 1001
+	last().state = WebSocketPeer.STATE_CLOSED
+	await step()
+	await step(Live.BACKOFF_MS[0])
+	last().state = WebSocketPeer.STATE_OPEN
+	await step()
+	check(live.healthy() and missed() == 1, "A reopen after a drop asks for one catch-up read")
+	# Leaving the online screens closes the socket after a grace, and misses nothing.
 	up = false
 	await step()
-	check(live.healthy(), "An open socket stays open after the screen closes")
+	await step(Live.WANTED_GRACE_MS - 1)
+	check(live.healthy(), "An open socket stays open for a moment after the screens close")
+	await step(1)
+	check(not live.healthy() and last().closed_here, "It closes WANTED_GRACE_MS after the last online screen, so none stays open in solo play")
+	up = true
+	events.clear()
+	var reopened_from := sockets.size()
+	await step()
+	check(sockets.size() == reopened_from + 1, "An online screen opens it again")
+	last().state = WebSocketPeer.STATE_OPEN
+	await step()
+	check(live.healthy() and missed() == 0, "Reopening for a screen asks for no catch-up read")
+	# A focus change keeps the socket; only a pause closes it.
+	live.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	await step()
+	check(live.healthy() and not last().closed_here, "A focus change keeps the socket open")
+	# A pause closes it; hints sent meanwhile are lost, so the reopen after resume asks for one catch-up read from the pause on.
+	events.clear()
+	var paused_at := now
+	live.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	check(not live.healthy() and last().closed_here, "A pause closes the socket")
+	await step(5000)
+	live.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	await step()
+	last().state = WebSocketPeer.STATE_OPEN
+	await step()
+	check(live.healthy() and events.filter(func(item: Array) -> bool: return item[0] == "missed") == [["missed", paused_at]], "A resume reopens with exactly one catch-up read, from the pause (%s)" % [events])
 	last().state = WebSocketPeer.STATE_CLOSING
 	await step()
 	check(not live.healthy(), "A closing socket is not healthy")

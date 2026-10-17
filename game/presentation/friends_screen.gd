@@ -48,18 +48,17 @@ signal open_requested
 signal join_requested(descriptor: Dictionary)
 var client: RefCounted
 var event_client: RefCounted
-## The phone's live socket (services/live_connection.gd), or null. A friends
-## hint makes the list due at once (the server opened that read early); a
-## reopened socket or a friend coming online makes it due as soon as a manual
-## refresh may be. The page's own refresh then reads the list and the hosting
-## inbox as usual.
+## The phone's live socket (services/live_connection.gd), or null. An early
+## friends hint makes the list due at once (the server opened that read
+## early); a request that arrived or was cancelled, or a socket that reopened
+## after dropping, makes it due only as soon as a manual refresh may be. The
+## page's own refresh then reads the list and the hosting inbox as usual.
 var live: Node:
 	set(value):
 		live = value
 		if is_instance_valid(value):
-			value.friends_changed.connect(_live_hint.bind(true))
-			value.resynced.connect(_live_hint.bind(false))
-			value.presence_changed.connect(_live_hint.bind(false))
+			value.friends_changed.connect(_live_hint)
+			value.missed_hints.connect(func(_since_ms: int) -> void: _live_hint(false))
 var shareable_room: Dictionary = {}
 var room_title := ""
 ## Names the chapter of a shared room ({api_version, room_id}) from that room's

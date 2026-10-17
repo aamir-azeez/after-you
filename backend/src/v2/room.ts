@@ -38,7 +38,7 @@ import { HostAccessMemo } from "./host-access";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import { UnblockedPairMemo } from "./block-memo";
 import { observeRoom, pushRoomIndex } from "../room-index-sync";
-import { announceRoomChange, liveRoomHint, type LiveHint, type LiveRoomMembers } from "../live";
+import { announceRoomChange, liveRecipient, liveRoomHint, type LiveHint, type LiveRoomMembers } from "../live";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -165,7 +165,7 @@ export class RoomV2 extends DurableObject<Env> {
   private announce(actor: string, room?: LiveRoomMembers | null): void {
     if (!flags.liveConnection(this.env)) return;
     const members = room === undefined ? this.read() : room;
-    if (members && this.liveHintFrom(members)) announceRoomChange(this.env, promise => this.ctx.waitUntil(promise), members, actor);
+    if (members && this.notificationsAvailable()) announceRoomChange(this.env, promise => this.ctx.waitUntil(promise), members, actor);
   }
   alarm(): Promise<void> {
     if (!this.notificationsAvailable()) return Promise.resolve();
@@ -195,8 +195,8 @@ export class RoomV2 extends DurableObject<Env> {
     if (!outcome.ok || (!flags.roomIndex(this.env) && !live)) return outcome;
     const state = this.stored();
     if (!state) return outcome;
-    const partner = actor === state.host_id ? state.guest_id : state.host_id;
-    const hint = live && partner && partner !== actor ? this.liveHintFrom(state) : null;
+    const partner = actor === undefined ? null : liveRecipient(state, actor);
+    const hint = live && partner ? this.liveHintFrom(state) : null;
     const project = (player: string) => relayInboxProjection(this.ctx.storage, player);
     if (flags.roomIndex(this.env) && (reopened || memberStateOf(project(state.host_id)) !== "in_play")) {
       pushRoomIndex(this.ctx, this.env, state.room_id, 2, [state.host_id, state.guest_id], project, hint && partner ? { to: partner, hint } : undefined);

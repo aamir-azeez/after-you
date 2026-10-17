@@ -289,4 +289,15 @@ func _test_live_hint_and_pace() -> void:
 	var quiet := _idle_until(idle, now + Schedule.ROOM_INTERVAL_MS, 15000)
 	_check(quiet - now >= 60000, "With the socket down, idle reads keep 3 s for a minute and then back off to 15 s")
 	_check(idle.hint(quiet + 1) and _poll(idle, quiet + 1, false) == Schedule.ROOM_INTERVAL_MS, "A hint reads at once and the next read is back at 3 s")
+	# A catch-up after missed hints merges with a read that began after they started being missed.
+	var resume := Schedule.new()
+	resume.bind("room", 0)
+	var paused := 1000
+	resume.request_now(5000)
+	var read: Dictionary = resume.begin_if_due(5000, true, false)
+	_check(not resume.hint(5200, paused), "A catch-up during the resume read asks for nothing more")
+	resume.complete(read, 5400, true)
+	_check(resume.next_due_ms() == 5400 + Schedule.ROOM_INTERVAL_MS, "The resume read was the only read")
+	_check(not resume.hint(5500, paused), "A catch-up after the resume read asks for nothing more either")
+	_check(resume.hint(5600, 5100) and resume.next_due_ms() == 5600, "Hints missed since after that read began make one read due")
 

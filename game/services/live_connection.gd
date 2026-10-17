@@ -1,6 +1,7 @@
 extends Node
 ## One live socket per phone to its own server object, open while the app is
-## in front and an identity exists. The server sends hints; each subscriber
+## in front, an identity exists and an online screen is up (closed WANTED_GRACE_MS
+## after the last one goes, so none stays open in solo play). The server sends hints; each subscriber
 ## answers a hint with one ordinary read through the request queue, so no data
 ## and no access decision ever comes over the socket. A missed hint is caught
 ## by the subscriber's slower safety poll.
@@ -18,8 +19,15 @@ extends Node
 ##   reset only once a socket has stayed open a while. The server closing with
 ##   4401 (identity revoked) stops it until the identity changes or the app
 ##   comes back to the front.
-## - Subscribers read once on `resynced` (every open), since hints sent while
-##   the socket was down are lost.
+## - `missed_hints(since_ms)` is the one rule for catch-up reads: it fires when a
+##   socket reopens after one that was open while wanted went away, by itself (a
+##   deploy, a network switch, silence) or with the app paused. `since_ms` is when
+##   hints started being missed, so a screen whose own resume read began after it
+##   (RefreshSchedule.hint) reads no second time. A first open, closing for solo
+##   play or an identity change sends nothing.
+## - Keepalive: engine protocol pings every HEARTBEAT_S keep the path open at no
+##   cost to the server; Godot reports no pongs, so a rare text "ping"
+##   (answered by the server without waking it) is the liveness check.
 ## - `poll_interval_ms(base)` is the shared delay: a poller asks it for its
 ##   interval, and gets the slow safety poll while the socket is healthy.
 const Presence = preload("res://services/friend_presence.gd")
@@ -27,10 +35,13 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const ClientIdentity = preload("res://services/client_identity.gd")
 
 signal room_changed(room_id: String, seq: int)
-signal friends_changed()
-## A friend came online. The server opened no early list read for it.
-signal presence_changed()
-signal resynced()
+## `early`: the server opened an early friends list read for it (a shared room
+## changed, a request was accepted). A request that arrived or was cancelled is not early.
+signal friends_changed(early: bool)
+## The socket reopened after one that was open dropped or was paused: hints sent
+## since `since_ms` are lost, so each screen reads once unless a read it began
+## after `since_ms` already covers them.
+signal missed_hints(since_ms: int)
 signal health_changed(healthy: bool)
 
 const PATH := "/v1/live"
@@ -38,9 +49,12 @@ const VERSION := 1
 const CAPABILITY_HEADER := "X-AfterYou-Live: 1"
 ## A poller's interval while the socket is healthy (its safety poll).
 const SAFETY_POLL_MS := 60000
-const PING_MS := 40000
+## Engine protocol pings, free on the server, keep idle proxies and NATs from closing the socket.
+const HEARTBEAT_S := 30.0
+## The text ping that proves the socket still reaches the server (billed as a fraction of a request).
+const PING_MS := 240000
 ## No pong or hint for this long means the socket is gone (a network switch, a sleeping radio).
-const SILENCE_MS := 60000
+const SILENCE_MS := 300000
 const CONNECT_TIMEOUT_MS := 15000
 const BACKOFF_MS: Array[int] = [1000, 2000, 5000, 15000, 30000, 60000, 300000]
 const JITTER_MS := 1000
@@ -52,14 +66,15 @@ const MAX_FAILED_OPENS := 3
 const RECHECK_MS := 600000
 ## How long an online screen may be up before this asks the capability itself.
 const CAPABILITY_GRACE_MS := 3000
+## An open socket closes this long after the last online screen goes.
+const WANTED_GRACE_MS := 30000
 const MAX_MESSAGE_BYTES := 512
 const REVOKED := 4401
 
 var api: Node
 ## func() -> Dictionary: the capability answer the app already holds, or {}.
 var capabilities: Callable
-## func() -> bool: whether a screen that reads on hints is up. A socket already
-## open stays open while the app is in front.
+## func() -> bool: whether a screen that reads on hints is up.
 var wanted: Callable
 ## func(url: String, headers: PackedStringArray) -> Object with poll(),
 ## get_ready_state(), get_available_packet_count(), get_packet(), send_text(),
@@ -87,6 +102,9 @@ var _failed_opens := 0
 var _stopped := false
 var _healthy := false
 var _wanted_since := -1
+var _unwanted_since := -1
+## When an open, wanted socket dropped or was paused (-1: nothing missed); the next open sends missed_hints.
+var _missed_since := -1
 ## The held answer proved wrong (handshakes failed) or old (a "no" being asked
 ## again): the next answer comes from this service's own read.
 var _own_read := false
@@ -110,17 +128,20 @@ func set_identity(value: Dictionary) -> void:
 	_failed_opens = 0
 	_next_attempt = 0
 	_stopped = false
+	_missed_since = -1
 
+## A pause closes the socket; hints sent while paused are lost, so the reopen
+## after resume asks each screen for one catch-up read (merged with a screen's own
+## resume read). A pending reconnect delay still holds on resume.
 func set_foreground(value: bool) -> void:
 	if _foreground == value: return
 	_foreground = value
 	_generation += 1
 	if not value:
+		if _opened_at >= 0 and (not wanted.is_valid() or wanted.call()): _note_missed(_now())
 		_drop_socket()
 		return
 	_stopped = false
-	_failures = 0
-	_next_attempt = 0
 
 ## True while a socket is open and heard from recently.
 func healthy() -> bool:
@@ -133,7 +154,8 @@ func poll_interval_ms(base_ms: int) -> int:
 func service() -> void:
 	var now := _now()
 	if _socket != null:
-		_service_socket(now)
+		_close_when_unwanted(now)
+		if _socket != null: _service_socket(now)
 		return
 	if _key.is_empty() or not _foreground or _stopped or _checking or now < _next_attempt: return
 	if not is_instance_valid(api) or not api.configured(): return
@@ -192,6 +214,17 @@ func _connect(now: int) -> void:
 	_opened_at = -1
 	if _socket == null: _after_close(now, -1, false)
 
+## No online screen for WANTED_GRACE_MS: the socket closes, and nothing is missed.
+func _close_when_unwanted(now: int) -> void:
+	if not wanted.is_valid() or wanted.call():
+		_unwanted_since = -1
+		return
+	if _unwanted_since < 0: _unwanted_since = now
+	if now - _unwanted_since < WANTED_GRACE_MS: return
+	_unwanted_since = -1
+	_missed_since = -1
+	_drop_socket()
+
 func _service_socket(now: int) -> void:
 	_socket.poll()
 	match int(_socket.get_ready_state()):
@@ -205,7 +238,10 @@ func _service_socket(now: int) -> void:
 				_failed_opens = 0
 				_own_read = false
 				_set_healthy(true)
-				resynced.emit()
+				if _missed_since >= 0:
+					var since := _missed_since
+					_missed_since = -1
+					missed_hints.emit(since)
 			if _socket == null: return
 			while _socket != null and _socket.get_available_packet_count() > 0:
 				var packet: PackedByteArray = _socket.get_packet()
@@ -242,9 +278,13 @@ func _handle(packet: PackedByteArray) -> void:
 			var seq := RoomsApi.json_int(value.get("seq"))
 			if Presence.valid_id(value.get("room")) and seq >= 0: room_changed.emit(str(value.room), seq)
 		"friends_changed":
-			friends_changed.emit()
-		"presence_changed":
-			presence_changed.emit()
+			friends_changed.emit(true)
+		"friend_requests_changed":
+			friends_changed.emit(false)
+
+## Keeps the earliest moment: a drop while an earlier one is still owed changes nothing.
+func _note_missed(now: int) -> void:
+	if _missed_since < 0: _missed_since = now
 
 func _close_and_retry(now: int) -> void:
 	var opened := _opened_at >= 0
@@ -253,6 +293,7 @@ func _close_and_retry(now: int) -> void:
 
 func _after_close(now: int, code: int, opened: bool) -> void:
 	_opened_at = -1
+	if opened: _note_missed(now)
 	_closing_since = -1
 	_set_healthy(false)
 	if code == REVOKED:
@@ -295,9 +336,10 @@ func _now() -> int:
 	return int(clock_ms.call())
 
 func _notification(what: int) -> void:
-	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT, NOTIFICATION_WM_CLOSE_REQUEST]:
+	# Pause only: a focus change (a notification shade, a dialog) keeps the socket.
+	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_WM_CLOSE_REQUEST]:
 		set_foreground(false)
-	elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN]:
+	elif what == NOTIFICATION_APPLICATION_RESUMED:
 		set_foreground(true)
 
 func _exit_tree() -> void:
@@ -312,5 +354,5 @@ static func _open_socket(url: String, headers: PackedStringArray) -> Object:
 	peer.inbound_buffer_size = 4096
 	peer.outbound_buffer_size = 4096
 	peer.max_queued_packets = 32
-	peer.heartbeat_interval = 0.0
+	peer.heartbeat_interval = HEARTBEAT_S
 	return peer if peer.connect_to_url(url) == OK else null

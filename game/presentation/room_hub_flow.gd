@@ -74,27 +74,24 @@ var leave_support := RoomLeaveSupport.new()
 ## Hint-driven reads of the open hub's rooms (services/refresh_schedule.gd):
 ## one at a time, one more for hints that arrive while a read is out.
 var _live_reads := RefreshClock.new()
-## The socket went down while the hub was up, so its reopening may follow missed hints.
-var _live_missed := false
 
 func _init(main: Node = null) -> void:
 	host = main
 
-## A room changed (a turn, a join, a close): the open hub reads its rooms once.
-## A reopened socket reads only when it went down while the hub was up; the
-## hub's own read on opening already covers the first one.
+## A room changed (a turn, a join, a close), or the socket came back after
+## dropping (LiveConnection.missed_hints): the open hub reads its rooms once.
 func _ready() -> void:
 	var live: Node = host.get("live_connection") if host != null else null
 	if not is_instance_valid(live): return
 	live.room_changed.connect(func(_room: String, _seq: int) -> void: _live_hint())
-	live.health_changed.connect(func(healthy: bool) -> void:
-		if not healthy and is_open(): _live_missed = true)
-	live.resynced.connect(func() -> void:
-		if _live_missed: _live_hint()
-		_live_missed = false)
+	live.missed_hints.connect(_live_caught_up)
 
 func _live_hint() -> void:
 	if is_open(): _live_reads.hint(Time.get_ticks_msec())
+
+## Hints were missed since `since_ms` (the socket dropped, or the app was paused): one catch-up read.
+func _live_caught_up(since_ms: int) -> void:
+	if is_open(): _live_reads.hint(Time.get_ticks_msec(), since_ms)
 
 func _process(_delta: float) -> void:
 	if not is_open():

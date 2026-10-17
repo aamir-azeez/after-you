@@ -22,8 +22,6 @@ export const MAX_LIVE_SOCKETS = 4;
 /** An early friends refresh a hint grants comes at most this soon after the previous list read
  * (the app waits a second longer, timed from its own request, so the grant always covers it). */
 export const LIVE_FRIENDS_REFRESH_SECONDS = 2;
-/** A friend's online hint goes out at most once per this long per player. */
-export const LIVE_PRESENCE_HINT_MS = 20_000;
 export const LIVE_PING = "ping";
 export const LIVE_PONG = "pong";
 /** Close codes: replaced by a newer socket; identity revoked (recovery or deletion); unexpected client message. */
@@ -33,20 +31,26 @@ const DEVICE_HEADER = "X-AfterYou-Live-Device";
 /** What a source object asks a recipient's Player to announce. Binding only. */
 export type LiveHint =
   | { kind: "room"; room_id: string; revision: number }
-  | { kind: "friends" | "presence"; from: string; request_id: string };
-/** What the phone receives. A hint names nothing the phone could not already read. */
-export type LiveMessage = { type: "room_changed"; room: string; seq: number } | { type: "friends_changed" } | { type: "presence_changed" };
+  | { kind: "friends"; from: string; request_id: string };
+/**
+ * What the phone receives. A hint names nothing the phone could not already read.
+ * `friends_changed` (a friend's shared room, an accepted request) comes with an
+ * early list read the server opened; `friend_requests_changed` (a request
+ * arrived, was cancelled, or a friend was removed) does not, so a stranger's
+ * request/cancel loop never drives extra list reads on the phone.
+ */
+export type LiveMessage = { type: "room_changed"; room: string; seq: number } | { type: "friends_changed" } | { type: "friend_requests_changed" };
 type Attachment = { device_hash: string; opened_at: number };
 
 export function validLiveHint(value: unknown): value is LiveHint {
   if (typeof value !== "object" || value === null) return false;
   const hint = value as Record<string, unknown>;
   if (hint.kind === "room") return Object.keys(hint).length === 3 && typeof hint.room_id === "string" && ID_PATTERN.test(hint.room_id) && Number.isSafeInteger(hint.revision) && Number(hint.revision) >= 0;
-  if (hint.kind === "friends" || hint.kind === "presence") return Object.keys(hint).length === 3 && typeof hint.from === "string" && ID_PATTERN.test(hint.from) && typeof hint.request_id === "string" && ID_PATTERN.test(hint.request_id);
+  if (hint.kind === "friends") return Object.keys(hint).length === 3 && typeof hint.from === "string" && ID_PATTERN.test(hint.from) && typeof hint.request_id === "string" && ID_PATTERN.test(hint.request_id);
   return false;
 }
 export function liveMessage(hint: LiveHint): LiveMessage {
-  return hint.kind === "room" ? { type: "room_changed", room: hint.room_id, seq: hint.revision } : hint.kind === "presence" ? { type: "presence_changed" } : { type: "friends_changed" };
+  return hint.kind === "room" ? { type: "room_changed", room: hint.room_id, seq: hint.revision } : { type: "friends_changed" };
 }
 
 /** The capability fields for GET /v2/capabilities: empty unless the flag is on and the client asked. */
@@ -117,21 +121,22 @@ type PlayerHints = { getByName(name: string): { liveHint(owner: string, hint: Li
 /** A room's members after a change; the recipient is whoever did not act. */
 export type LiveRoomMembers = { room_id: string; host_id: string; guest_id: string | null; revision: number };
 export function liveRoomHint(room: LiveRoomMembers): LiveHint { return { kind: "room", room_id: room.room_id, revision: room.revision }; }
+/** The member a change by `actor` is announced to: the other one, or null. */
+export function liveRecipient(room: Pick<LiveRoomMembers, "host_id" | "guest_id">, actor: string): string | null {
+  const other = actor === room.host_id ? room.guest_id : room.host_id;
+  return other && other !== actor ? other : null;
+}
 
 /** After a room write commits: one hint to the partner, best effort. Off: no call at all. */
 export function announceRoomChange(env: ServerVars & { PLAYERS: PlayerHints }, wait: Waiter, room: LiveRoomMembers, actor: string): void {
   if (!flags.liveConnection(env)) return;
-  const recipient = actor === room.host_id ? room.guest_id : room.host_id;
-  if (!recipient || recipient === actor) return;
+  const recipient = liveRecipient(room, actor);
+  if (!recipient) return;
   wait(env.PLAYERS.getByName(recipient).liveHint(recipient, liveRoomHint(room)).catch(() => false));
 }
-/**
- * One hint to each accepted friend, best effort. Off: no call at all. A "friends"
- * hint (a shared room changed) also opens the friend's next list read early; a
- * "presence" hint does not, so a friend coming online never adds list reads.
- */
-export function announceToFriends(env: ServerVars & { PLAYERS: PlayerHints }, owner: string, links: readonly FriendLink[], kind: "friends" | "presence" = "friends"): Promise<unknown> {
+/** One hint to each accepted friend that a shared room changed, best effort; it also opens the friend's next list read early. Off: no call at all. */
+export function announceToFriends(env: ServerVars & { PLAYERS: PlayerHints }, owner: string, links: readonly FriendLink[]): Promise<unknown> {
   if (!flags.liveConnection(env)) return Promise.resolve();
   return Promise.all(links.filter(link => link.accepted).map(link =>
-    env.PLAYERS.getByName(link.player_id).liveHint(link.player_id, { kind, from: owner, request_id: link.request_id }).catch(() => false)));
+    env.PLAYERS.getByName(link.player_id).liveHint(link.player_id, { kind: "friends", from: owner, request_id: link.request_id }).catch(() => false)));
 }

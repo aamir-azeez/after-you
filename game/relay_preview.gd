@@ -71,7 +71,7 @@ var live_connection: Node:
 		live_connection = value
 		if is_instance_valid(value):
 			value.room_changed.connect(_on_live_room_changed)
-			value.resynced.connect(_live_hint)
+			value.missed_hints.connect(_live_caught_up)
 ## A hint is waiting for its read, which runs even where the page does not poll.
 var _live_read_queued := false
 var presence_hud: Label
@@ -1481,6 +1481,11 @@ func _on_live_room_changed(room_id: String, seq: int) -> void:
 func _live_hint() -> void:
 	if online_session == null or _leaving: return
 	if refresh_schedule.hint(Time.get_ticks_msec()): _live_read_queued = true
+
+## Hints were missed since `since_ms`; a resume read that began after it already covers them.
+func _live_caught_up(since_ms: int) -> void:
+	if online_session == null or _leaving: return
+	if refresh_schedule.hint(Time.get_ticks_msec(), since_ms): _live_read_queued = true
 
 func _online_refresh_context() -> String:
 	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
