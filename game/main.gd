@@ -2638,9 +2638,7 @@ func _send_pending(pending: Dictionary) -> void:
 		_accept_room(response)
 	else:
 		if int(response.status)>=400 and int(response.status)<500 and int(response.status) not in [408,429]:
-			pending["rejected"]=true
-			pending["error"]=response.error
-			saves.update_values({"pending_turn":pending})
+			saves.update_values({"pending_turn":_reject_pending(pending,response.error)})
 		_toast(response.error+PlayerCopy.MAIN_F7B46601CBC3)
 
 func _reconcile_pending() -> void:
@@ -2656,8 +2654,7 @@ func _reconcile_pending() -> void:
 	if not response.ok:
 		# A block between the two players also ends the room for this turn.
 		if int(response.get("status",0)) in [404,410] or (int(response.get("status",0))==403 and str(response.get("code",""))=="player_blocked"):
-			pending["rejected"]=true
-			pending["error"]=PlayerCopy.MAIN_52480E5314F5
+			_reject_pending(pending)
 			active_room={}
 			saves.update_values({"pending_turn":pending})
 			_show_held_turn(pending)
@@ -2691,19 +2688,32 @@ func _show_held_turn(pending: Dictionary) -> void:
 	card.add_child(_button("Keep rehearsal & return",func(): _archive_held_turn(pending)))
 	card.add_child(_back_button("Back",room_hub_flow.show_rooms,false))
 
+## Marks an unsent turn as refused for good, with the reason its held turn shows.
+func _reject_pending(pending: Dictionary, error: String = PlayerCopy.MAIN_52480E5314F5) -> Dictionary:
+	pending["rejected"]=true
+	pending["error"]=error
+	return pending
+
 func _archive_held_turn(pending: Dictionary) -> void:
+	if not _keep_held_turn(pending,active_room): return
+	room_hub_flow.show_rooms() if active_room.is_empty() else _show_room_detail()
+
+## Keeps a held turn's rehearsal in held_turns and clears the unsent turn, as
+## Keep rehearsal & return does; room becomes the saved room ({} for none).
+## False, with the reason shown, if not saved.
+func _keep_held_turn(pending: Dictionary, room: Dictionary) -> bool:
 	var held: Array=saves.data.get("held_turns",[]).duplicate(true)
 	held.append(pending.duplicate(true))
-	var changes := {"held_turns":held,"room":active_room.duplicate(true)}
-	if TurnState.my_turn(active_room,api.player_id) and pending.recording.level_id==active_room.level_id:
-		var current_attempt := LocalSave.normalize_attempt(active_room.get("recordings",{}))
-		if TurnState.review(Levels.get_level(active_room.level_id),pending.recording,current_attempt,TurnState.simulation_version({},str(pending.recording.get("role","")),active_room)).valid:
+	var changes := {"held_turns":held,"room":room.duplicate(true)}
+	if TurnState.my_turn(room,api.player_id) and pending.recording.level_id==room.level_id:
+		var current_attempt := LocalSave.normalize_attempt(room.get("recordings",{}))
+		if TurnState.review(Levels.get_level(room.level_id),pending.recording,current_attempt,TurnState.simulation_version({},str(pending.recording.get("role","")),room)).valid:
 			current_attempt.draft=pending.recording.duplicate(true)
-			changes["room_draft"]={"room_id":active_room.room_id,"revision":active_room.revision,"attempt":current_attempt}
+			changes["room_draft"]={"room_id":room.room_id,"revision":room.revision,"attempt":current_attempt}
 	if not saves.update_values(changes,["pending_turn"]):
 		_toast(saves.last_error)
-		return
-	room_hub_flow.show_rooms() if active_room.is_empty() else _show_room_detail()
+		return false
+	return true
 
 func _confirm_fork() -> void:
 	if not _legacy_redo_navigation_ready(): return
@@ -3406,10 +3416,17 @@ func _blocked_safety(room_id: String = "") -> void:
 	ui.visible = true
 	running = false
 	# The server leaves the blocked room out of the hub. This phone forgets it as
-	# a removed room would be, keeps any unsent turn, and stops showing it.
+	# a removed room would be and stops showing it.
 	if not room_id.is_empty():
-		forget_removed_room(1,room_id)
 		active_room = {}
+		# The server has confirmed the block, so nothing saved for this room can
+		# ever be sent: an unsent turn is kept like a held turn, a turn left part
+		# way is dropped, and online play reopens.
+		var pending: Dictionary = saves.data.get("pending_turn",{}).duplicate(true)
+		if str(pending.get("room_id","")) == room_id and (not pending.has("owner_player_id") or pending.owner_player_id == api.player_id):
+			_keep_held_turn(_reject_pending(pending),{})
+		if str(saves.data.get("room_draft",{}).get("room_id","")) == room_id and not saves.update_values({},["room_draft"]): _toast(saves.last_error)
+		forget_removed_room(1,room_id)
 		room_hub_flow.hide_room(1,room_id)
 	_return_to_room_hub()
 
