@@ -503,7 +503,7 @@ func _account(app: Node, viewport: SubViewport, api: Node) -> void:
 
 
 func _settings(app: Node, viewport: SubViewport) -> void:
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await _settle()
 	var lists: Array[Node] = app.overlay.find_children("*", "ScrollContainer", true, false)
 	_check(lists.size() == 1, "Settings has one scrolling list")
@@ -527,7 +527,7 @@ func _settings(app: Node, viewport: SubViewport) -> void:
 
 func _licenses(app: Node, viewport: SubViewport) -> void:
 	# The list the owner reported as working uses the same path.
-	app._show_licenses()
+	app.settings_flow.show_licenses()
 	await _settle()
 	var lists: Array[Node] = app.overlay.find_children("*", "ScrollContainer", true, false)
 	if lists.size() != 1:

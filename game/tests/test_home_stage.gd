@@ -312,7 +312,7 @@ func _test_real_menu() -> void:
 	_check(is_equal_approx(stage.zoom_target,released_zoom) and stage._exploration.pan.is_equal_approx(retained_pan) and stage._touches.is_empty(),"Returning from Settings keeps home pan and zoom without restoring captured fingers")
 	_check(app.world.camera.global_transform.is_equal_approx(retained_frame) and is_equal_approx(app.world.camera.size,retained_size) and Vector2(app.world.camera.h_offset,app.world.camera.v_offset).is_equal_approx(retained_offsets),"Recreated home applies retained exploration once to the authored frame")
 	for visit in range(3):
-		app._show_settings()
+		app.settings_flow.show_settings()
 		app._show_home()
 		await process_frame
 		stage=app.overlay.get_child(0)
@@ -321,7 +321,7 @@ func _test_real_menu() -> void:
 	_check(app.world.camera.global_transform.is_equal_approx(retained_frame) and is_equal_approx(app.world.camera.size,retained_size),"Repeated menu navigation cannot accumulate retained camera offsets")
 	stage._reset.pressed.emit()
 	for frame in range(180): stage._process(1.0/60.0)
-	app._show_settings()
+	app.settings_flow.show_settings()
 	app._show_home()
 	await process_frame
 	stage=app.overlay.get_child(0)
@@ -560,7 +560,7 @@ func _test_real_spirit_tap() -> void:
 	var journey: Control = app.overlay.find_child("HomeFullJourney",true,false)
 	if is_instance_valid(journey) and journey.is_visible_in_tree():
 		_check(not stage._allowed(journey.get_global_rect().get_center()),"Full Journey keeps its own input")
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await process_frame
 	_check(app.mode=="settings" and not app.world.actors.a.is_happy() and not app.world.actors.a.reunion_sparkles.visible,"Leaving Home mid-greeting cleans up the spirits")
 	_check(FileAccess.get_file_as_bytes(path)==saved,"Greeting the spirits never writes the save")

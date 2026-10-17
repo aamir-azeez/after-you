@@ -180,7 +180,7 @@ func _main_flow() -> void:
 	scene.store_flow.show_paywall()
 	await process_frame
 	_check(scene.mode == "tester_access" and _text(scene, "Tester access active"), "A cached tester sees distinct active access instead of an unnecessary purchase offer")
-	scene._show_settings()
+	scene.settings_flow.show_settings()
 	await process_frame
 	await process_frame
 	var entry := _button(scene, "Tester code")
@@ -209,7 +209,7 @@ func _main_flow() -> void:
 	scene.opened = ""
 	scene._show_journey()
 	scene._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
-	scene._show_settings()
+	scene.settings_flow.show_settings()
 	cache.pause_read = false
 	await _settle_main(scene)
 	_check(scene.opened.is_empty() and scene.mode == "settings", "Back or another view cancels a deferred Lighthouse entry intent")
@@ -266,7 +266,7 @@ func _main_flow() -> void:
 	cache.pause_read = true
 	scene.store_flow._tester_form()
 	scene.store_flow._restore_tester_access()
-	scene._show_settings()
+	scene.settings_flow.show_settings()
 	scene.store_flow.show_tester_access()
 	cache.pause_read = false
 	await process_frame

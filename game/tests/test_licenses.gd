@@ -42,7 +42,7 @@ func _within(control: Control, area: Rect2, description: String) -> void:
 
 
 func _settings_fit(app: Node, area: Rect2) -> void:
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await _settle()
 	var account := _button(app.overlay, "Account & recovery")
 	var licenses := _button(app.overlay, "Licenses")
@@ -109,7 +109,7 @@ func _list_fit(app: Node, entries: Array[Dictionary], area: Rect2) -> void:
 
 
 func _open_entry(app: Node, entry: Dictionary, area: Rect2) -> void:
-	app._show_licenses()
+	app.settings_flow.show_licenses()
 	await _settle()
 	var scroll := _scroll(app.overlay)
 	var choice := _button(app.overlay, str(entry.title))
@@ -196,7 +196,7 @@ func _run() -> void:
 			back.pressed.emit()
 			await _settle()
 		_check(app.mode == "settings", "List Back returns to Settings at " + str(size))
-	app._show_license(longest)
+	app.settings_flow.show_license(longest)
 	await _settle()
 	var long_text := app.overlay.find_child("LicenseText", true, false) as RichTextLabel
 	_check(long_text != null and long_text.get_v_scroll_bar().max_value > long_text.get_v_scroll_bar().page,

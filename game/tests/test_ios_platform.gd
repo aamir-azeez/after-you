@@ -261,11 +261,11 @@ func _paywall_and_settings() -> void:
 	scene.store_flow.show_paywall()
 	await process_frame
 	_check(_button(scene, "Get it on Google Play") == null and _button(scene, "Tester code") == null, "The iOS paywall has no Google Play link and no Tester code")
-	scene._show_settings()
+	scene.settings_flow.show_settings()
 	await process_frame
 	_check(_button(scene, "Tester code") == null and _button(scene, "Account & recovery") != null, "iOS settings hide Tester code and keep Account & recovery")
 	PlatformSupport.override_release = false
-	scene._show_settings()
+	scene.settings_flow.show_settings()
 	await process_frame
 	_check(_button(scene, "Tester code") != null, "An iOS debug build keeps Tester code for testing")
 

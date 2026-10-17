@@ -21,7 +21,7 @@ func _run() -> void:
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await process_frame
 	var graphics := _button(app,"Graphics")
 	_check(graphics != null and viewport.get_visible_rect().encloses(graphics.get_global_rect()),"Graphics is reachable at the top of compact Settings")

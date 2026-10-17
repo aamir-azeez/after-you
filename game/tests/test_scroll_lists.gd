@@ -179,7 +179,7 @@ func _screens(app: Node, viewport: SubViewport, api: Node, can_drag: bool) -> vo
 	var license_titles: Array[String] = []
 	for entry: Dictionary in Catalog.entries():
 		license_titles.append(entry.title)
-	app._show_licenses()
+	app.settings_flow.show_licenses()
 	await _inspect(app, viewport, license_titles, "", "Back to settings", "Bundled license catalog", can_drag)
 
 

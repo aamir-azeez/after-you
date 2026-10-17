@@ -137,7 +137,7 @@ func _subscriber_screens() -> void:
 	_check(app._hosting_entitled(), "A Play subscription grants hosting")
 
 	# Settings keeps a way back to Manage and Restore after Home hides the offer.
-	app._show_settings()
+	app.settings_flow.show_settings()
 	var entry := _button(app.overlay, "Full Journey")
 	_check(entry != null, "Settings lists Full Journey for a store build")
 	if entry != null:
@@ -159,7 +159,7 @@ func _subscriber_screens() -> void:
 	store.customer_info = payload(play_entry("after_you_full_journey_monthly", false, NOW_MS - 1000))
 	_check(not store.has_entitlement() and not app._hosting_entitled() and not app._full_journey_access(), "An expired subscription locks paid chapters and hosting again")
 	app.config.purchase_mode = "tester_only"
-	app._show_settings()
+	app.settings_flow.show_settings()
 	_check(_button(app.overlay, "Full Journey") == null, "A build without a store has no Full Journey settings entry")
 	root.remove_child(app)
 	app.queue_free()

@@ -24,7 +24,7 @@ func _run() -> void:
 	app.set_physics_process(false)
 	await process_frame
 	var screens := {
-		"settings": app._show_settings,
+		"settings": app.settings_flow.show_settings,
 		"notifications": app.notification_flow.show_settings,
 		"account": app.account_flow.show_account,
 		"delete identity confirm": app.account_flow.confirm_delete_identity,
@@ -32,7 +32,7 @@ func _run() -> void:
 		"play solo": app._show_journey,
 		"earlier islands": app._show_earlier_islands,
 		"replays": app.replays_flow.show_collection,
-		"graphics": app._show_graphics_settings,
+		"graphics": app.settings_flow.show_graphics_settings,
 	}
 	for name: String in screens:
 		await _same_as_on_screen(name, screens[name])
@@ -91,7 +91,7 @@ func _unmarked_cancel() -> void:
 	_check(pressed[0] == 0, "Android Back presses only a control marked as the way back, never one by its label")
 
 func _modal_first() -> void:
-	await _open(app._show_settings)
+	await _open(app.settings_flow.show_settings)
 	var modal := InGameModal.open(app.ui, "BackTestModal", "A card")
 	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await process_frame

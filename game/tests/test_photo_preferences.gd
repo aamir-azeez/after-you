@@ -42,7 +42,7 @@ func _run() -> void:
 	app.saves = storage
 	var preview := Preview.new()
 	preview.settings = storage.data.settings.duplicate(true)
-	preview.save_photo_prompt_preference = app._save_photo_prompt_preference
+	preview.save_photo_prompt_preference = app.settings_flow.save_photo_prompt_preference
 	var host := Fakes.Host.new()
 	root.add_child(host)
 	var session := Session.new()

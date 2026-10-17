@@ -35,10 +35,10 @@ const FriendsFlow = preload("res://presentation/friends_flow.gd")
 const TurnFlow = preload("res://presentation/turn_flow.gd")
 const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
+const SettingsFlow = preload("res://presentation/settings_flow.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
-const Licenses = preload("res://services/licenses.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
@@ -212,6 +212,8 @@ var turn_flow: TurnFlow = _host_turn_flow()
 var legacy_room_flow: LegacyRoomFlow = _host_legacy_room_flow()
 ## The chapter room lobby: checking rooms, its progress card and its create, join, retry and open steps.
 var relay_lobby_flow: RelayLobbyFlow = _host_relay_lobby_flow()
+## Settings, Graphics and Licenses.
+var settings_flow: SettingsFlow = _host_settings_flow()
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -706,7 +708,7 @@ func _show_home() -> void:
 	journey_offer.offset_bottom = 86
 	journey_offer.visible = not _full_journey_access()
 	# Settings is a square cog beside the offer, or in its corner once owned.
-	var settings := _button("",_show_settings,false)
+	var settings := _button("",settings_flow.show_settings,false)
 	settings.name = "HomeSettings"
 	settings.icon = preload("res://assets/ui/social/gear.svg")
 	settings.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1518,126 +1520,6 @@ func _leave_photo_transfer() -> void:
 	lifecycle_generation+=1
 	account_flow.show_account()
 
-func _show_settings() -> void:
-	running=false
-	mode="settings"
-	var card := _card()
-	card.add_theme_constant_override("separation", 10)
-	card.add_child(_label(PlayerCopy.MAIN_0FEE4C6E23F4,34,CREAM,true))
-	var settings_list := _scroll_list(card)
-	settings_list.get_parent().custom_minimum_size.y = clampf(overlay.size.y-220.0,180.0,420.0)
-	var display_links := HBoxContainer.new()
-	display_links.add_theme_constant_override("separation",10)
-	settings_list.add_child(display_links)
-	var display_entries: Array = [["Graphics",_show_graphics_settings],["Notifications",notification_flow.show_settings]]
-	# Subscribers reach Manage subscription and Restore here once Home hides the offer.
-	if _play_store_enabled(): display_entries.append(["Full Journey",store_flow.show_store_from_settings])
-	for entry: Array in display_entries:
-		var link := _list_button(entry[0],entry[1],false)
-		link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		display_links.add_child(link)
-	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed",PlayerCopy.MAIN_A1E007823FF0],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts",PlayerCopy.MAIN_289D745F1246],["share_online_status","Share online status"]]:
-		var toggle := CheckButton.new()
-		toggle.text=entry[1]
-		toggle.mouse_filter = Control.MOUSE_FILTER_PASS
-		toggle.button_pressed=bool(saves.data.settings.get(entry[0],true))
-		toggle.toggled.connect(func(value: bool):
-			var next: Dictionary = saves.data.settings.duplicate(true)
-			next[entry[0]] = value
-			if not saves.update_values({"settings": next}):
-				toggle.set_pressed_no_signal(bool(saves.data.settings.get(entry[0], true)))
-				_toast(PlayerCopy.MAIN_34B82590B663)
-				return
-			_apply_settings())
-		settings_list.add_child(toggle)
-	var account_group: Array = [["Account & recovery",account_flow.show_account]]
-	if PlatformSupport.tester_code_offered(): account_group.append(["Tester code",store_flow.show_tester_access])
-	for group: Array in [account_group,[["Community & privacy",_open_safety],[PlayerCopy.WHATS_NEW,func(): _open_whats_new_card()],["Licenses",_show_licenses]]]:
-		var links := HBoxContainer.new()
-		links.add_theme_constant_override("separation",10)
-		settings_list.add_child(links)
-		for entry: Array in group:
-			var link := _button(entry[0],entry[1],false)
-			link.size_flags_horizontal=Control.SIZE_EXPAND_FILL
-			links.add_child(link)
-	card.add_child(_back_button("Done",_show_home,false))
-
-func _show_graphics_settings() -> void:
-	running = false
-	mode = "graphics_settings"
-	var card := _card()
-	card.add_child(_label("Graphics",34,CREAM,true))
-	var selected := GraphicsPolicy.normalize(saves.data.settings.get("graphics_quality"))
-	var group := ButtonGroup.new()
-	for quality: String in GraphicsPolicy.QUALITIES:
-		var option := _button(quality.capitalize(),func(): _set_graphics_quality(quality),false)
-		option.toggle_mode = true
-		option.button_group = group
-		option.button_pressed = quality == selected
-		option.set_meta("graphics_quality",quality)
-		card.add_child(option)
-	var unlimited := CheckButton.new()
-	unlimited.name = "UnlimitedFrameRate"
-	unlimited.text = "Unlimited frame rate"
-	unlimited.mouse_filter = Control.MOUSE_FILTER_PASS
-	unlimited.button_pressed = GraphicsPolicy.unlimited_frame_rate(saves.data.settings)
-	unlimited.toggled.connect(func(value: bool): _set_unlimited_frame_rate(value, unlimited))
-	card.add_child(unlimited)
-	card.add_child(_paragraph("Plays at your screen's full refresh rate. Uses more battery and can warm your phone.",500))
-	card.add_child(_back_button("Back",_show_settings,false))
-
-func _set_graphics_quality(quality: String) -> void:
-	if mode != "graphics_settings" or quality not in GraphicsPolicy.QUALITIES: return
-	var next: Dictionary = saves.data.settings.duplicate(true)
-	next.graphics_quality = quality
-	if not saves.update_values({"settings":next}):
-		_toast(PlayerCopy.MAIN_34B82590B663)
-		_show_graphics_settings()
-		return
-	_apply_settings()
-
-func _set_unlimited_frame_rate(value: bool, toggle: CheckButton) -> void:
-	if mode != "graphics_settings": return
-	var next: Dictionary = saves.data.settings.duplicate(true)
-	next.unlimited_frame_rate = value
-	if not saves.update_values({"settings":next}):
-		toggle.set_pressed_no_signal(GraphicsPolicy.unlimited_frame_rate(saves.data.settings))
-		_toast(PlayerCopy.MAIN_34B82590B663)
-		return
-	_apply_settings()
-
-func _save_photo_prompt_preference(enabled: bool) -> bool:
-	var next: Dictionary = saves.data.settings.duplicate(true)
-	next.photo_prompts = enabled
-	return saves.update_values({"settings": next})
-
-func _show_licenses() -> void:
-	running=false
-	mode="licenses"
-	var card := _card(680)
-	card.add_child(_label("Made with care.",34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_0A022EF54291,600))
-	var list := _scroll_list(card)
-	for entry: Dictionary in Licenses.entries():
-		list.add_child(_list_button(str(entry.title),func(): _show_license(entry),false))
-	card.add_child(_back_button("Back to settings",_show_settings,false))
-
-func _show_license(entry: Dictionary) -> void:
-	mode="license_text"
-	var card := _card(920)
-	card.add_child(_label(str(entry.title),30,CREAM,true))
-	var text := RichTextLabel.new()
-	text.name="LicenseText"
-	text.bbcode_enabled=false
-	text.selection_enabled=true
-	text.scroll_active=true
-	text.custom_minimum_size=Vector2(840,390)
-	text.add_theme_font_size_override("normal_font_size",18)
-	text.add_theme_color_override("default_color",CREAM)
-	text.text=str(entry.text)
-	card.add_child(text)
-	card.add_child(_back_button("Back to licenses",_show_licenses,false))
-
 ## At launch, before anything writes the save: after an update this version's
 ## notes wait to be opened; a fresh install or a downgrade only records the
 ## version, in memory, so the next ordinary save keeps it.
@@ -1665,7 +1547,7 @@ func _service_whats_new() -> void:
 ## This version's card, opened from the Home button or the Settings row. It never
 ## opens on its own.
 func _open_whats_new_card(opener: Control = null) -> void:
-	if mode not in ["home", "settings"] or is_instance_valid(_whats_new_card): return
+	if mode not in ["home", SettingsFlow.MODE_SETTINGS] or is_instance_valid(_whats_new_card): return
 	var entries := Changelog.load_entries(Changelog.channel(config))
 	if entries.is_empty() or entries[0].version != Changelog.current_version(): return
 	_remember_whats_new()
@@ -1710,7 +1592,7 @@ func _apply_settings() -> void:
 func _host_store_flow() -> StoreFlow:
 	var flow := StoreFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.settings_requested.connect(_show_settings)
+	flow.settings_requested.connect(func(): settings_flow.show_settings())
 	flow.chapters_requested.connect(_show_journey)
 	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
 	flow.lighthouse_requested.connect(_open_lighthouse)
@@ -1721,7 +1603,7 @@ func _host_store_flow() -> StoreFlow:
 func _host_account_flow() -> AccountFlow:
 	var flow := AccountFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.settings_requested.connect(_show_settings)
+	flow.settings_requested.connect(func(): settings_flow.show_settings())
 	flow.photo_transfer_requested.connect(_open_photo_transfer)
 	flow.safety_requested.connect(func(): _open_safety({},"account"))
 	return flow
@@ -1742,7 +1624,7 @@ func _new_replays_flow() -> ReplaysFlow:
 func _host_notification_flow() -> NotificationFlow:
 	var flow := _new_notification_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.settings_requested.connect(_show_settings)
+	flow.settings_requested.connect(func(): settings_flow.show_settings())
 	return flow
 
 ## The flow Main hosts and wires; a subclass may return its own NotificationFlow.
@@ -1813,6 +1695,13 @@ func _host_relay_lobby_flow() -> RelayLobbyFlow:
 ## The flow Main hosts; a test harness may return its own RelayLobbyFlow.
 func _new_relay_lobby_flow() -> RelayLobbyFlow:
 	return RelayLobbyFlow.new(self)
+
+## An internal child, like StoreFlow.
+func _host_settings_flow() -> SettingsFlow:
+	var flow := SettingsFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.home_requested.connect(_show_home)
+	return flow
 
 func _play_store_enabled() -> bool:
 	return Purchases.store_enabled(config)
@@ -2115,7 +2004,7 @@ func _enter_online_relay() -> void:
 	relay_child.friend_presence = friend_presence
 	relay_child.live_connection = live_connection
 	relay_child.settings = saves.data.settings.duplicate(true)
-	relay_child.save_photo_prompt_preference = _save_photo_prompt_preference
+	relay_child.save_photo_prompt_preference = settings_flow.save_photo_prompt_preference
 	relay_child.turn_notification_status = notification_flow.status
 	relay_child.enable_turn_notifications = notification_flow.enable
 	relay_child.share_current_room = room_sharing.share
@@ -2389,7 +2278,7 @@ func _place_still(shade: ColorRect, texture: Texture2D) -> void:
 func _foreground_refresh_safe() -> bool:
 	# A paused rehearsal is still active work. Do not swap its source recording,
 	# revision or review screen behind the player's back.
-	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home",RoomHubFlow.MODE_ROOMS,LegacyRoomFlow.MODE_ROOM,"journey",ReplaysFlow.MODE_COLLECTION,"settings","saved"]
+	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home",RoomHubFlow.MODE_ROOMS,LegacyRoomFlow.MODE_ROOM,"journey",ReplaysFlow.MODE_COLLECTION,SettingsFlow.MODE_SETTINGS,"saved"]
 
 func _background_application() -> void:
 	if application_backgrounded:
@@ -2687,10 +2576,10 @@ func _notification(what: int) -> void:
 		elif mode in [ReplaysFlow.MODE_SHARED_REPLAYS, ReplaysFlow.MODE_SHARED_MEMORIES] and not is_instance_valid(shared_replay_child): _show_home()
 		elif running or mode=="completion":
 			_pause()
-		elif mode=="license_text":
-			_show_licenses()
-		elif mode in ["licenses", StoreFlow.MODE_TESTER_ACCESS, "graphics_settings"]:
-			_show_settings()
+		elif mode==SettingsFlow.MODE_LICENSE_TEXT:
+			settings_flow.show_licenses()
+		elif mode in [SettingsFlow.MODE_LICENSES, StoreFlow.MODE_TESTER_ACCESS, SettingsFlow.MODE_GRAPHICS]:
+			settings_flow.show_settings()
 		elif mode==RelayLobbyFlow.MODE_LOBBY:
 			_return_to_room_hub()
 		elif mode==RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open():
@@ -2887,7 +2776,7 @@ func _close_safety() -> void:
 	ui.visible = true
 	if safety_return == "room" and not active_room.is_empty(): legacy_room_flow.show_room()
 	elif safety_return == "account": account_flow.show_account()
-	else: _show_settings()
+	else: settings_flow.show_settings()
 
 ## room_id is the earlier-island room the block came from; only such a room
 ## can be blocked from here.

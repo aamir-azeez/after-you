@@ -24,7 +24,7 @@ func _run() -> void:
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await process_frame
 	var toggles := app.overlay.find_children("*","CheckButton",true,false)
 	var keys := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status"]
@@ -58,7 +58,7 @@ func _run() -> void:
 			_check(loaded.data.settings[keys[index]]==toggle.button_pressed,"Changed setting survives a fresh file read: "+keys[index])
 			_check(app.saves.data.settings[keys[index]]==toggle.button_pressed,"Runtime setting matches the visible switch")
 	app._show_home()
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await process_frame
 	toggles=app.overlay.find_children("*","CheckButton",true,false)
 	for index: int in range(toggles.size()):
@@ -121,7 +121,7 @@ func _damaged_setting_types() -> void:
 	app.saves=Storage.new(path)
 	viewport.add_child(app)
 	app.set_process(false)
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await process_frame
 	_check(app.overlay.find_children("*","CheckButton",true,false).size()==7 and app.overlay.find_children("*","Button",true,false).any(func(b: Button) -> bool: return b.text=="Done"),"Settings from a damaged save shows every switch and Done")
 	viewport.queue_free()

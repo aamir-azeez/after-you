@@ -131,7 +131,7 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app._show_journey()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Journey")
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Settings")
 	app.store_flow.purchase_offer = {"offering_id":"journey","packages":[{"id":"$rc_monthly","offering_id":"journey","price":"$0.99","period":"month"},{"id":"$rc_annual","offering_id":"journey","price":"$9.99","period":"year"}]}

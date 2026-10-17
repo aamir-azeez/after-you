@@ -180,7 +180,7 @@ func _settings_row(current: String) -> void:
 	var storage := _storage({Changelog.SAVE_KEY: "0.6.0"})
 	var made := await _boot(storage)
 	var app: Node = made[1]
-	app._show_settings()
+	app.settings_flow.show_settings()
 	await _settle()
 	var row := _button(app.overlay, PlayerCopy.WHATS_NEW)
 	_check(row != null, "Settings has a What's new row")
