@@ -54,6 +54,13 @@ var _spirit_count := 0
 ## first time any bubble leans in a stage.
 var _sceneries: Dictionary = {}
 var _journey_handles: Dictionary = {}
+## Placement (_place_bubbles) reads only what a snapshot, a stage or a history
+## sets: the spirits' targets, the levers, wheels and pads, the bubbles' pills
+## and the fixed view plane, never the live camera or any animation. So it runs
+## once after one of those changes, not on every rendered frame.
+var _placement_due := true
+## Placement passes run so far (tests and profiling read it).
+var placement_passes := 0
 var _waiting_ring: MeshInstance3D
 var _remembered: Node3D
 
@@ -68,6 +75,7 @@ func show_stage(stage: Dictionary) -> void:
 	# Lowest on screen first: see _lift_bubbles.
 	var up := LabelBubble.screen_up()
 	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))
+	_placement_due = true
 	var endpoint: Dictionary = stage.get("source_policy", {}).get("endpoint", {})
 	if not endpoint.is_empty():
 		var at := _at(endpoint)
@@ -173,6 +181,17 @@ func _advance_bubbles(delta: float) -> void:
 
 func _frame_camera() -> void:
 	super._frame_camera()
+	if not _placement_due: return
+	_placement_due = false
+	_place_bubbles()
+
+## One placement pass: each bubble refitted to its pills first (as its own
+## frame would refit it), then placed. A world that clears its own scenery
+## after the shared placement extends this.
+func _place_bubbles() -> void:
+	placement_passes += 1
+	for bubble: LabelBubble in _bubbles:
+		if is_instance_valid(bubble): bubble.sync()
 	_lift_bubbles()
 
 ## A bubble rises straight up, tail still over its control, while a spirit or
@@ -425,6 +444,7 @@ func _shares_floor(a: Vector3, b: Vector3) -> bool:
 
 func present_history(checkpoint: Dictionary) -> void:
 	super.present_history(checkpoint)
+	_placement_due = true
 	if is_instance_valid(_remembered):
 		_remembered.get_parent().remove_child(_remembered)
 		_remembered.queue_free()
@@ -439,6 +459,7 @@ func present_history(checkpoint: Dictionary) -> void:
 		box(Vector3(0.04,0.035,0.20),GOLD,at+Vector3(0,0.02,0),_remembered)
 
 func present(state: Dictionary, immediate: bool = false) -> void:
+	_placement_due = true
 	var visual := state.duplicate()
 	visual["mirrors"] = state.get("controls",{}).duplicate()
 	visual["emitter_powered"] = not state.get("optics",{}).get("segments",[]).is_empty()
@@ -456,6 +477,9 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		(switch.bubble as LabelBubble).highlight(chosen)
 	_follow_knobs()
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) else 0.0)
+	# What a world sets after this (its own levers and wheels) is read by the
+	# next pass, not by the one an immediate present already ran.
+	_placement_due = true
 
 func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 	if not _completion_view: return super._should_cutaway(raised,state)

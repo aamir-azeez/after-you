@@ -15,6 +15,7 @@ backup_plan 2
 ball_ownership 1
 beam_field 1
 borrowed_light 1
+bubble_placement 1
 busy_tap_gate 1
 camera_exploration 2
 campaign_photo_context 1

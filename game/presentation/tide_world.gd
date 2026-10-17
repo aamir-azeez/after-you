@@ -1616,8 +1616,8 @@ func _advance_camera(delta: float) -> void:
 	_advance_water(delta)
 	super._advance_camera(delta)
 
-func _frame_camera() -> void:
-	super._frame_camera()
+func _place_bubbles() -> void:
+	super._place_bubbles()
 	_clear_scenery()
 
 ## The shared placement (journey_world) sees this frame's scenery marks.
