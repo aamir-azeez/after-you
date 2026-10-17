@@ -14,6 +14,7 @@ const LEGACY_PENDING := "MMMMMMMMMMMMMMMMMMMMMM"
 const LEGACY_PARTNER := "QQQQQQQQQQQQQQQQQQQQQQ"
 const LEGACY_OTHER := "OOOOOOOOOOOOOOOOOOOOOO"
 const LEGACY_DRAFT := "DDDDDDDDDDDDDDDDDDDDDD"
+const LEGACY_BACK := "KKKKKKKKKKKKKKKKKKKKKK"
 const Copy = preload("res://presentation/player_copy.gd")
 const PEER := "PPPPPPPPPPPPPPPPPPPPPP"
 const BLOCKED_ERROR := "Synthetic blocked room."
@@ -63,7 +64,8 @@ func _run() -> void:
 	await _block_with_other_pending_turn(app,api)
 	await _block_with_pending_turn(app,api)
 	await _block_with_room_draft(app,api)
-	await _partner_blocked_pending_turn(app,api)
+	await _partner_blocked_keep(app,api)
+	await _partner_blocked_back(app,api)
 	_finish(viewport)
 
 ## Opens the earlier-island room from the hub card; false when it did not open.
@@ -192,25 +194,34 @@ func _block_with_room_draft(app: Node, api: FakeApi) -> void:
 	_check(not notices.any(func(text: String) -> bool: return text.contains(BLOCKED_ERROR)),"No refusal for the blocked room shows on the hub: %s" % [notices])
 
 ## The other player blocked this one while a turn was saved but unsent: the
-## server refuses the room, and Check saved submission holds the turn so
-## Keep rehearsal & return can clear it and online play opens again.
-func _partner_blocked_pending_turn(app: Node, api: FakeApi) -> void:
-	# Straight after a block with an unsent turn: the hub opens another room.
+## server refuses the room, and Check saved submission shows the turn held.
+## False when the held turn did not show.
+func _held_by_partner_block(app: Node, api: FakeApi, room_id: String) -> bool:
 	inbox_offline=false
 	if app.room_hub_flow.is_open(): await app.room_hub_flow.refresh()
 	await _frames(2)
-	if not await _open_from_hub(app,api,LEGACY_PARTNER): return
-	var pending := {"room_id":LEGACY_PARTNER,"owner_player_id":HOST,"base_revision":1,"idempotency_key":"synthetic-partner-key","recording":{}}
+	if not await _open_from_hub(app,api,room_id): return false
+	var pending := {"room_id":room_id,"owner_player_id":HOST,"base_revision":1,"idempotency_key":"synthetic-key-"+room_id,"recording":{}}
 	_check(app.saves.update_values({"pending_turn":pending}),"Save an unsent turn for the room")
-	blocked[LEGACY_PARTNER]=true
-	await app._reconcile_pending()
-	await _frames(2)
+	var refresh: Button=_button_named(app,"Refresh")
+	if refresh!=null: refresh.pressed.emit()
+	await _frames(4)
+	var check: Button=_button_named(app,"Check saved submission")
+	_check(app.mode=="room" and check!=null,"The room offers Check saved submission: "+room_id)
+	if check==null: return false
+	blocked[room_id]=true
+	check.pressed.emit()
+	await _frames(4)
 	var held: Dictionary=app.saves.data.get("pending_turn",{})
 	_check(app.mode=="held" and held.get("rejected",false) and held.get("error")==Copy.MAIN_52480E5314F5,"Checking a turn the server refuses after a block holds it: %s %s" % [app.mode,held])
 	_check(app.active_room.is_empty(),"The refused room is no longer the current room")
-	var keep: Button
-	for button: Button in app.overlay.find_children("*","Button",true,false):
-		if button.text=="Keep rehearsal & return": keep=button
+	return app.mode=="held"
+
+## Straight after a block with an unsent turn, the hub opens another room;
+## Keep rehearsal & return then clears the held turn and online play opens.
+func _partner_blocked_keep(app: Node, api: FakeApi) -> void:
+	if not await _held_by_partner_block(app,api,LEGACY_PARTNER): return
+	var keep: Button=_button_named(app,"Keep rehearsal & return")
 	_check(keep!=null,"The held turn offers Keep rehearsal & return")
 	if keep==null: return
 	keep.pressed.emit()
@@ -219,6 +230,16 @@ func _partner_blocked_pending_turn(app: Node, api: FakeApi) -> void:
 	_check(app.saves.data.get("held_turns",[]).any(func(turn: Dictionary) -> bool: return turn.get("room_id")==LEGACY_PARTNER),"The rehearsal is kept on this phone")
 	_check(app._relay_available(),"Online play is open again")
 	_check(app.mode=="rooms" and app.room_hub_flow.is_open(),"Keeping the rehearsal returns to the room hub")
+
+## Back on the held turn keeps the rehearsal too, so no refused turn is left
+## unsent to hold online play for good.
+func _partner_blocked_back(app: Node, api: FakeApi) -> void:
+	if not await _held_by_partner_block(app,api,LEGACY_BACK): return
+	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await _frames(4)
+	_check(app.mode=="rooms" and app.room_hub_flow.is_open(),"Back from the held turn opens the room hub: "+app.mode)
+	_check(app.saves.data.get("pending_turn",{}).is_empty() and app.saves.data.get("held_turns",[]).any(func(turn: Dictionary) -> bool: return turn.get("room_id")==LEGACY_BACK),"Back keeps the rehearsal and clears the unsent turn")
+	_check(app._relay_available(),"Online play is open again after Back")
 
 ## Every toast shown over the next frames.
 func _notices(app: Node, count: int) -> Array[String]:
@@ -245,7 +266,7 @@ func _finish(viewport: SubViewport) -> void:
 func _peer(room_id: String) -> String:
 	return GUEST if room_id==LEGACY else PEER
 
-const LEGACY_ROOMS := [LEGACY,LEGACY_OTHER,LEGACY_PENDING,LEGACY_DRAFT,LEGACY_PARTNER]
+const LEGACY_ROOMS := [LEGACY,LEGACY_OTHER,LEGACY_PENDING,LEGACY_DRAFT,LEGACY_PARTNER,LEGACY_BACK]
 
 func _legacy_room(room_id: String) -> Dictionary:
 	return {"room_id":room_id,"revision":1,"host_id":HOST,"guest_id":_peer(room_id),"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}

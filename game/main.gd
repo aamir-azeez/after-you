@@ -2686,7 +2686,9 @@ func _show_held_turn(pending: Dictionary) -> void:
 	card.add_child(_paragraph(str(pending.get("error",PlayerCopy.MAIN_6D127185ABF4))))
 	card.add_child(_paragraph(PlayerCopy.MAIN_BCD95F847CF2))
 	card.add_child(_button("Keep rehearsal & return",func(): _archive_held_turn(pending)))
-	card.add_child(_back_button("Back",room_hub_flow.show_rooms,false))
+	# Back keeps the rehearsal too, then goes to the hub: a refused turn left
+	# unsent would hold online play for good.
+	card.add_child(_back_button("Back",func(): if _keep_held_turn(pending,active_room): _return_to_room_hub(),false))
 
 ## Marks an unsent turn as refused for good, with the reason its held turn shows.
 func _reject_pending(pending: Dictionary, error: String = PlayerCopy.MAIN_52480E5314F5) -> Dictionary:
