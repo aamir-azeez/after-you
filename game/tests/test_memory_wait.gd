@@ -16,7 +16,9 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Golden = preload("res://tests/golden_support.gd")
 const ReplayGolden = preload("res://tests/test_replay_golden.gd")
 const Light = preload("res://core/lighthouse/borrowed_light.gd")
+const LighthouseCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const PlantAnimation = preload("res://presentation/plant_animation.gd")
+const Joystick = preload("res://presentation/joystick.gd")
 
 const LEVEL := "high-and-low"
 const KEY := Registry.HIGH_AND_LOW
@@ -58,10 +60,69 @@ class ControlsStub extends CanvasLayer:
 ## The chapter screen with its save and turn check left out.
 class Preview extends "res://relay_preview.gd":
 	var finishes := 0
-	func _persist_draft(_after_retry: String = "play", _periodic: bool = false) -> bool: return true
+	## The tick of every draft save, in order.
+	var drafts: Array = []
+	var cards: Array = []
+	## The pause and save-problem cards' actions, by id.
+	var actions: Dictionary = {}
+	var fail_saves := false
+	func _persist_draft(after_retry: String = "play", _periodic: bool = false) -> bool:
+		drafts.append(int(sim.snapshot().tick))
+		if fail_saves: _show_save_problem("The disk is full.", after_retry)
+		return not fail_saves
+	## True runs the screen's own finish (a room test); otherwise it only stops.
+	var real_finish := false
+	func _finish() -> void:
+		finishes += 1
+		if real_finish: super._finish()
+		else: running = false
+	# The pause card without the chapter's own UI.
+	func _card(_title: String, _body: String) -> VBoxContainer:
+		running = false
+		var card := VBoxContainer.new()
+		cards.append(card)
+		return card
+	func _action_button(action_id: String, callback: Callable) -> Button:
+		var button := Button.new()
+		button.name = action_id
+		actions[action_id] = callback
+		return button
+	func _add_safety_action(_card: VBoxContainer) -> void: pass
+	func _add_redo_action(_card: VBoxContainer) -> void: pass
+
+## The solo Lighthouse screen with its save and finish left out.
+class LighthouseScreen extends "res://lighthouse_preview.gd":
+	var finishes := 0
+	var saves: Array = []
+	var fail_saves := false
+	func _save_draft(_after_retry: String = "play") -> bool:
+		saves.append(int(sim.tick))
+		if fail_saves:
+			mode = "save_error"
+			running = false
+		return not fail_saves
 	func _finish() -> void:
 		finishes += 1
 		running = false
+	func _show_final_moment() -> void:
+		finishes += 1
+		running = false
+
+class RoomStub extends RefCounted:
+	var coordinator: RefCounted
+	func busy() -> bool: return false
+	func mutations_enabled() -> bool: return true
+
+class JourneyStub extends RefCounted:
+	var sends := 0
+	func snapshot() -> Dictionary: return {}
+	func pending() -> Dictionary: return {}
+	func commit(_recording: Dictionary) -> bool:
+		sends += 1
+		return true
+	func accept_recording(_recording: Dictionary) -> bool:
+		sends += 1
+		return true
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -83,12 +144,16 @@ func _run() -> void:
 	_find_ring()
 	if _check(not to_ring.is_empty(), "The receiver rings the bell before the memory ends"):
 		for part: Callable in [_test_detection, _test_identity, _test_ring_once_and_pitch, _test_draft_resume,
+				_test_auto_skip_resumed_draft, _test_auto_skip_pause, _test_auto_skip_not_sent, _test_auto_skip_only_live,
 				_test_world_doze_and_replay.bind(false), _test_world_doze_and_replay.bind(true),
 				_test_lighthouse_world.bind(false), _test_lighthouse_world.bind(true), _test_hud_strip]:
 			_timed(part)
 	_timed(_test_every_chapter)
 	_timed(_test_seed_held)
 	_timed(_test_bloom_waits_for_ring)
+	_timed(_test_auto_skip_save_fails)
+	_timed(_test_lighthouse_auto_skip)
+	await _test_skip_budget_per_frame()
 	print("AFTER YOU MEMORY WAIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -138,6 +203,11 @@ func _test_detection() -> void:
 	source.reset(level, STAGE, checkpoint)
 	for _tick in range(30): first_wait.step_silently(source.step(STILL), {"cues": [], "sources": []})
 	_check(not first_wait.waiting(), "A first turn never waits")
+	first_wait.auto_skip = true
+	_check(not first_wait.auto_skip_due(), "Always skip waits has nothing to skip in a first turn")
+	for value: Variant in [null, "true", 1, {}]:
+		_check(not MemoryWait.skip_waits({"skip_waits": value}), "A saved %s reads as off" % str(value))
+	_check(not MemoryWait.skip_waits({}) and MemoryWait.skip_waits({"skip_waits": true}), "Always skip waits is on only when saved on")
 
 ## A still player at normal speed, Hold to fast-forward and Skip to end all
 ## leave the same simulation and the same recording, byte for byte.
@@ -147,17 +217,20 @@ func _test_identity() -> void:
 	while not still.finished: still.step(STILL)
 	var expected: Dictionary = still.export_recording()
 	_check(bool(still.complete), "At normal speed the stage completes when the memory ends")
-	for way: String in ["normal", "fast_forward", "skip", "fast_forward_slow_phone", "skip_slow_phone"]:
-		var run := _preview_to_ring()
+	for way: String in ["normal", "fast_forward", "skip", "auto", "fast_forward_slow_phone", "skip_slow_phone", "auto_slow_phone"]:
+		var auto := way.begins_with("auto")
+		var run := _preview_to_ring(auto)
 		var preview: Preview = run.preview
 		var controls: ControlsStub = run.controls
 		# A huge budget pins the speed checks; a slow phone (1 usec) still
 		# reaches the very same end, only over more frames.
 		var slow := way.ends_with("_slow_phone")
 		preview.memory_wait.step_budget_usec = 1 if slow else 1 << 40
+		preview.memory_wait.skip_budget_usec = 1 if slow else 1 << 40
+		var drafts_before := preview.drafts.size()
 		if slow:
 			controls.held = way.begins_with("fast_forward")
-			if not controls.held: preview._skip_memory_wait()
+			if way.begins_with("skip"): preview._skip_memory_wait()
 			var frames := 0
 			while preview.running and frames < 20000:
 				preview._physics_process(1.0 / 30.0)
@@ -173,20 +246,23 @@ func _test_identity() -> void:
 			var waited := int(first.duration_ticks) - to_ring.size()
 			_check(physics_ticks <= int(ceil(float(waited) / MemoryWait.FAST_FORWARD_TICKS)) + 1, "Fast-forward plays the wait about %d times faster" % MemoryWait.FAST_FORWARD_TICKS)
 		else:
-			preview._skip_memory_wait()
+			if not auto: preview._skip_memory_wait()
 			var skip_ticks := 0
 			while preview.running and skip_ticks < 10000:
 				preview._physics_process(1.0 / 30.0)
 				skip_ticks += 1
-			_check(skip_ticks <= 2, "With frame time to spare, Skip reaches the end at once")
+			_check(skip_ticks <= 2, "With frame time to spare, Skip reaches the end at once: " + way)
+		if way.contains("skip") or auto:
+			_check(preview.drafts.size() > drafts_before and preview.drafts[drafts_before] == to_ring.size(), "The draft is saved at the press, before the skip steps on: " + way)
 		_check(preview.finishes == 1, "The turn ends once: " + way)
 		_check(preview.sim.state_hash() == still.state_hash(), "The final state is byte-identical: " + way)
 		_check(Canonical.same(preview.sim.export_recording(), expected) and JSON.stringify(preview.sim.export_recording()) == JSON.stringify(expected), "The recording is byte-identical: " + way)
 		_free_preview(run)
 
-func _preview_to_ring() -> Dictionary:
-	var preview := Preview.new()
+func _preview_to_ring(auto_skip: bool = false, preview: Preview = null) -> Dictionary:
+	if preview == null: preview = Preview.new()
 	preview.memory_wait.step_budget_usec = 1 << 40
+	preview.memory_wait.skip_budget_usec = 1 << 40
 	var controls := ControlsStub.new()
 	var sound := CueLog.new()
 	var world := WorldStub.new()
@@ -195,7 +271,7 @@ func _preview_to_ring() -> Dictionary:
 	preview.definition = Registry.definition(KEY)
 	preview.checkpoint = Registry.initial_checkpoint(KEY).duplicate()
 	preview.checkpoint["stage_index"] = 0
-	preview.settings = {"sound": true, "haptics": false, "reduced_motion": false}
+	preview.settings = {"sound": true, "haptics": false, "reduced_motion": false, "skip_waits": auto_skip}
 	preview.controls = controls
 	preview.soundscape = sound
 	preview.world = world
@@ -211,6 +287,10 @@ func _preview_to_ring() -> Dictionary:
 
 func _free_preview(run: Dictionary) -> void:
 	run.controls.stick.free()
+	for card: Node in run.preview.cards: card.free()
+	for part: String in ["stick", "overlay", "hud", "hint_label", "action_button", "finish_button"]:
+		var node: Variant = run.preview.get(part)
+		if is_instance_valid(node): node.free()
 	for part: String in ["controls", "sound", "world", "preview"]: run[part].free()
 
 ## The bell's cue is held at the press, sounds once after the friend arrives
@@ -229,8 +309,8 @@ func _test_ring_once_and_pitch() -> void:
 	for cue: Dictionary in plain.played:
 		if cue.key == "bell_rung": plain_bell.append(cue)
 	_check(plain_bell.size() == 1, "Without a wait the bell sounds once")
-	for way: String in ["normal", "fast_forward", "skip"]:
-		var run := _preview_to_ring()
+	for way: String in ["normal", "fast_forward", "skip", "auto"]:
+		var run := _preview_to_ring(way == "auto")
 		var preview: Preview = run.preview
 		var sound: CueLog = run.sound
 		_check(_count(sound.played, "bell_rung") == 0, "The bell is silent at the press: " + way)
@@ -240,7 +320,7 @@ func _test_ring_once_and_pitch() -> void:
 			run.controls.held = true
 			while preview.running: preview._physics_process(1.0 / 30.0)
 		else:
-			preview._skip_memory_wait()
+			if way == "skip": preview._skip_memory_wait()
 			while preview.running: preview._physics_process(1.0 / 30.0)
 		_check(_count(sound.played, "bell_rung") == 0 and preview.memory_wait.ring_pending(), "The friend arrives and the spirit wakes before the bell: " + way)
 		var elapsed := 0.0
@@ -713,3 +793,261 @@ func _test_bloom_waits_for_ring() -> void:
 	_check(preview.completion_counting(), "The completion hold counts from the ring")
 	preview.mode = "ready"
 	_free_preview(run)
+
+## The recording a still player makes, waiting the memory out at normal speed.
+func _still_recording() -> Dictionary:
+	var still := _receiver()
+	for input: Dictionary in to_ring: still.step(input)
+	while not still.finished: still.step(STILL)
+	return {"recording": still.export_recording(), "hash": still.state_hash()}
+
+func _same_as_still(preview: Preview, expected: Dictionary, label: String) -> void:
+	_check(preview.sim.state_hash() == expected.hash, "The final state is byte-identical: " + label)
+	_check(JSON.stringify(preview.sim.export_recording()) == JSON.stringify(expected.recording), "The recording is byte-identical: " + label)
+
+## Always skip waits on a draft resumed in the middle of the wait (the
+## screen's _resume_draft steps it silently, then plays on): it skips again.
+func _test_auto_skip_resumed_draft() -> void:
+	var expected := _still_recording()
+	var run := _preview_to_ring(true)
+	var preview: Preview = run.preview
+	preview.memory_wait.auto_skip = false
+	for _tick in range(40): preview.advance_input(STILL)
+	var draft: Dictionary = preview.sim.export_recording()
+	_free_preview(run)
+	var resumed := Preview.new()
+	var controls := ControlsStub.new()
+	var sound := CueLog.new()
+	var world := WorldStub.new()
+	resumed.memory_wait.skip_budget_usec = 1 << 40
+	resumed.chapter_key = KEY
+	resumed.chapter = Registry.descriptor(KEY)
+	resumed.definition = Registry.definition(KEY)
+	resumed.checkpoint = Registry.initial_checkpoint(KEY).duplicate()
+	resumed.checkpoint["stage_index"] = 0
+	resumed.settings = {"sound": true, "haptics": false, "reduced_motion": false, "skip_waits": true}
+	resumed.controls = controls
+	resumed.soundscape = sound
+	resumed.world = world
+	resumed.sim = _receiver()
+	resumed.role = "b"
+	sound.begin_turn(KEY, STAGE)
+	resumed._begin_sound_turn()
+	resumed._begin_memory_wait("b", first)
+	# What the screen's _fast_forward does with a saved draft.
+	for input: Dictionary in Simulation.expand_recording_inputs(draft):
+		var state: Dictionary = resumed.sim.step(input)
+		resumed.memory_wait.step_silently(state, resumed._turn_sounds(state))
+	resumed.mode = "play"
+	resumed.running = true
+	_check(resumed.memory_wait.waiting() and resumed.memory_wait.auto_skip_due(), "A draft resumed mid-wait is due a skip")
+	var ticks := 0
+	while resumed.running and ticks < 10000:
+		resumed._physics_process(1.0 / 30.0)
+		ticks += 1
+	_check(ticks <= 2 and resumed.finishes == 1, "The resumed draft skips straight to the end")
+	_check(resumed.drafts == [int(draft.duration_ticks)], "The resumed skip saves the draft once, where it resumed")
+	_same_as_still(resumed, expected, "resumed draft, auto")
+	for _frame in range(60): resumed.memory_wait.advance(FRAME)
+	_check(_count(sound.played, "bell_rung") == 1, "The resumed skip rings once")
+	_free_preview({"preview": resumed, "controls": controls, "sound": sound, "world": world})
+
+## Pause (the app goes to the background) in the middle of an automatic skip:
+## the draft is saved where the skip got to, nothing steps while paused, and
+## Resume finishes the same skip with the same recording and the same bell.
+func _test_auto_skip_pause() -> void:
+	var expected := _still_recording()
+	var run := _preview_to_ring(true)
+	var preview: Preview = run.preview
+	var before: int = preview.drafts.size()
+	preview.stick = Joystick.new()
+	preview.overlay = Control.new()
+	preview.hud = Control.new()
+	# A slow phone: one tick per physics tick.
+	preview.memory_wait.skip_budget_usec = 1
+	preview._physics_process(1.0 / 30.0)
+	_check(preview.memory_wait.skipping and preview.drafts.slice(before) == [to_ring.size()], "The skip starts by itself on the next physics tick, after a draft save at the press")
+	for _tick in range(5): preview._physics_process(1.0 / 30.0)
+	var at := int(preview.sim.snapshot().tick)
+	_check(at > to_ring.size() and at < int(first.duration_ticks), "The skip is under way")
+	preview._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	_check(preview.mode == "paused" and not preview.running and preview.drafts[-1] == at, "Backgrounding pauses the skip and saves the draft where it got to")
+	for _tick in range(10): preview._physics_process(1.0 / 30.0)
+	_check(int(preview.sim.snapshot().tick) == at, "Nothing steps while paused")
+	preview._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	preview._start_play()
+	_check(preview.memory_wait.skipping and not preview.memory_wait.auto_skip_due(), "Resume carries on with the same skip")
+	preview.memory_wait.skip_budget_usec = 1 << 40
+	var ticks := 0
+	while preview.running and ticks < 10000:
+		preview._physics_process(1.0 / 30.0)
+		ticks += 1
+	_check(preview.finishes == 1 and preview.drafts.size() == before + 2, "The resumed skip ends the turn once, with no further skip-start save")
+	_same_as_still(preview, expected, "paused auto skip")
+	for _frame in range(60): preview.memory_wait.advance(FRAME)
+	_check(_count(run.sound.played, "bell_rung") == 1, "The paused skip still rings once")
+	_free_preview(run)
+
+## A friend's room: the automatic skip reaches the friend's arrival and the
+## completion bloom with the real finish, and nothing sends the turn.
+func _test_auto_skip_not_sent() -> void:
+	var expected := _still_recording()
+	var preview := Preview.new()
+	preview.real_finish = true
+	var journey := JourneyStub.new()
+	var room := RoomStub.new()
+	room.coordinator = journey
+	preview.journey = journey
+	preview.online_session = room
+	preview.hint_label = Label.new()
+	preview.stick = Joystick.new()
+	preview.action_button = Button.new()
+	preview.finish_button = Button.new()
+	var run := _preview_to_ring(true, preview)
+	var ticks := 0
+	while preview.running and ticks < 10000:
+		preview._physics_process(1.0 / 30.0)
+		ticks += 1
+	_check(preview.finishes == 1 and preview.mode == "bloom", "The skipped room turn reaches the completion bloom")
+	_check(JSON.stringify(preview.review) == JSON.stringify(expected.recording), "The turn kept for review is the still player's, byte for byte")
+	for _frame in range(60): preview.memory_wait.advance(FRAME)
+	_check(journey.sends == 0, "Nothing sends the turn: the player's Save on the review card does")
+	preview.mode = "ready"
+	_free_preview(run)
+
+## Replays and anything but live play never skip by themselves: the screen's
+## own Skip refuses them, as it refuses a tap.
+func _test_auto_skip_only_live() -> void:
+	var run := _preview_to_ring(true)
+	var preview: Preview = run.preview
+	for mode: String in ["replay", "paused", "bloom"]:
+		preview.mode = mode
+		preview._fast_forward_wait()
+		_check(not preview.memory_wait.skipping, "No automatic skip in " + mode)
+	preview.mode = "play"
+	preview.backgrounded = true
+	preview._fast_forward_wait()
+	_check(not preview.memory_wait.skipping, "No automatic skip while backgrounded")
+	preview.backgrounded = false
+	var off := _preview_to_ring(false)
+	off.preview._fast_forward_wait()
+	_check(not off.preview.memory_wait.skipping and off.preview.memory_wait.waiting(), "With the setting off the wait plays as before")
+	_free_preview(off)
+	preview.mode = "ready"
+	_free_preview(run)
+
+## The skip's budget is per rendered frame: a physics tick catching up in a
+## frame that has spent it steps once, and the next frame gets it back.
+func _test_skip_budget_per_frame() -> void:
+	var run := _preview_to_ring()
+	var preview: Preview = run.preview
+	var wait: RefCounted = preview.memory_wait
+	wait.skipping = true
+	wait.skip_budget_usec = 3000
+	var ticks := func() -> int: return int(preview.sim.snapshot().tick)
+	var shown := func() -> int: return run.world.presented.size()
+	await process_frame
+	var start: int = ticks.call()
+	wait.skip_tick(preview.sim, preview._turn_sounds, preview.advance_input)
+	var first: int = ticks.call() - start
+	var shown_first: int = shown.call()
+	start = ticks.call()
+	wait.skip_tick(preview.sim, preview._turn_sounds, preview.advance_input)
+	_check(first > 1 and ticks.call() - start == 1, "A tick catching up in a spent frame steps once (%d, then %d)" % [first, ticks.call() - start])
+	_check(shown.call() == shown_first, "and does not show the world a second time that frame")
+	await process_frame
+	start = ticks.call()
+	wait.skip_tick(preview.sim, preview._turn_sounds, preview.advance_input)
+	_check(ticks.call() - start > 1 and shown.call() == shown_first + 1, "The next frame gets the whole budget back")
+	wait.skipping = false
+	preview.mode = "ready"
+	_free_preview(run)
+
+## A draft that cannot be saved as the skip starts: the save problem card
+## shows, no skip starts and nothing steps; Retry saves and the skip goes on.
+func _test_auto_skip_save_fails() -> void:
+	var expected := _still_recording()
+	var run := _preview_to_ring(true)
+	var preview: Preview = run.preview
+	preview.overlay = Control.new()
+	preview.hud = Control.new()
+	preview.fail_saves = true
+	var at := int(preview.sim.snapshot().tick)
+	preview._physics_process(1.0 / 30.0)
+	_check(preview.mode == "save_error" and not preview.running and not preview.memory_wait.skipping, "A failed save at the skip's start shows the save problem and starts no skip")
+	for _tick in range(5): preview._physics_process(1.0 / 30.0)
+	_check(int(preview.sim.snapshot().tick) == at and preview.actions.has("retry_save"), "Nothing steps behind the save problem, and it offers Retry")
+	preview.fail_saves = false
+	preview.actions["retry_save"].call()
+	_check(preview.mode == "play" and preview.running, "Retry saves and plays on")
+	var ticks := 0
+	while preview.running and ticks < 10000:
+		preview._physics_process(1.0 / 30.0)
+		ticks += 1
+	_check(preview.finishes == 1 and ticks <= 2, "Then the skip starts by itself and reaches the end")
+	_same_as_still(preview, expected, "skip after a failed save")
+	_free_preview(run)
+
+## The solo Lighthouse screen (lighthouse_preview.gd): its own Skip is pressed
+## by Always skip waits after its draft save, refused when that save fails,
+## and leaves the same turn as a still player at normal speed.
+func _test_lighthouse_auto_skip() -> void:
+	var six := Golden.fixture(ReplayGolden.LIGHTHOUSE_FIXTURE)
+	var tried := 0
+	for index in range(six.pairs.size() - 1):
+		var pair: Dictionary = six.pairs[index]
+		if int(pair.b.duration_ticks) != int(pair.a.duration_ticks): continue
+		var prefix: Array = six.pairs.slice(0, index)
+		var frames: Array = Light.expand_recording_inputs(pair.b)
+		var probe := Light.new()
+		probe.reset("b", pair.a, prefix, int(pair.b.simulation_version))
+		var press := -1
+		for tick in range(frames.size()):
+			if MemoryWait.objective_done(probe.step(frames[tick])):
+				press = tick + 1
+				break
+		if press < 0 or press >= int(pair.a.duration_ticks) - 2: continue
+		var still := Light.new()
+		still.reset("b", pair.a, prefix, int(pair.b.simulation_version))
+		for tick in range(press): still.step(frames[tick])
+		while not still.finished: still.step(STILL)
+		for failing: bool in [true, false]:
+			var label := " (Lighthouse %d%s)" % [index, ", failed save" if failing else ""]
+			var screen := LighthouseScreen.new()
+			var controls := ControlsStub.new()
+			var sound := CueLog.new()
+			var world := WorldStub.new()
+			screen.controls = controls
+			screen.soundscape = sound
+			screen.world = world
+			screen.settings = {"sound": true, "reduced_motion": false, "skip_waits": true}
+			screen.sim = Light.new()
+			screen.sim.reset("b", pair.a, prefix, int(pair.b.simulation_version))
+			screen.stage = LighthouseCatalog.definition(str(pair.b.stage_id))
+			screen.checkpoint = Light.checkpoint_from_pairs(prefix).checkpoint if not prefix.is_empty() else {"stage_index": 0}
+			screen.role = "b"
+			screen.mode = "play"
+			screen.running = true
+			screen._begin_sound_turn()
+			screen._begin_memory_wait("b", pair.a)
+			for tick in range(press): screen.advance_input(frames[tick])
+			_check(screen.memory_wait.waiting() and screen.memory_wait.auto_skip_due(), "The Lighthouse wait is due a skip" + label)
+			var before: int = screen.saves.size()
+			screen.fail_saves = failing
+			screen.memory_wait.skip_budget_usec = 1 << 40
+			var ticks := 0
+			while screen.running and ticks < 10000:
+				screen._physics_process(1.0 / 30.0)
+				ticks += 1
+			if failing:
+				_check(screen.mode == "save_error" and not screen.memory_wait.skipping and int(screen.sim.tick) == press, "A failed save refuses the Lighthouse skip" + label)
+			else:
+				_check(screen.saves.slice(before) == [press] and screen.finishes == 1 and ticks <= 2, "The Lighthouse skip saves at the press and reaches the end%s (saves %s, press %d, ticks %d)" % [label, str(screen.saves.slice(before)), press, ticks])
+				_check(screen.sim.state_hash() == still.state_hash() and JSON.stringify(screen.sim.export_recording()) == JSON.stringify(still.export_recording()), "The Lighthouse turn is byte-identical to a still player" + label)
+				for _frame in range(60): screen.memory_wait.advance(FRAME)
+				_check(screen.memory_wait.rings_released == 1, "The Lighthouse ring is released once" + label)
+			controls.stick.free()
+			for part: Node in [controls, sound, world, screen]: part.free()
+		tried += 1
+		break
+	_check(tried == 1, "A solo Lighthouse fixture turn waits for its memory")

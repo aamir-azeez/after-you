@@ -1792,6 +1792,7 @@ func _wait() -> RefCounted:
 ## play or a replay; they know when the memory ends.
 func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool = false) -> void:
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
+	memory_wait.auto_skip = MemoryWait.skip_waits(settings)
 	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))
 	if is_instance_valid(world) and world.has_method("set_wait_hints"):
 		# A memory with no length is unknown (-1): its end is never assumed.
@@ -1822,6 +1823,11 @@ func _memory_wait_label() -> String:
 ## (MemoryWait.fast_forward_tick, skip_tick). True when it used this tick.
 func _fast_forward_wait() -> bool:
 	if not controls.has_method("fast_forward_held"): return false
+	# Always skip waits presses Skip, through the same checks as a tap. A
+	# draft that cannot be saved first shows its problem and ends this tick.
+	if memory_wait.auto_skip_due():
+		_skip_memory_wait()
+		if not running: return true
 	if memory_wait.skipping and mode == "play":
 		var reached: Dictionary = _wait().skip_tick(sim, _turn_sounds, advance_input)
 		if not reached.is_empty(): _update_hud(reached)
@@ -1835,9 +1841,11 @@ func _playing_turn() -> bool:
 	return running and mode == "play" and not backgrounded
 
 ## Skip to end: the rest of the memory goes by on the next physics ticks.
+## The draft is saved first, so an app closed mid-skip keeps the press.
 func _skip_memory_wait() -> void:
 	if not running or backgrounded or mode != "play" or not memory_wait.waiting(): return
 	if _room_context_lost: return
+	if not _persist_draft(): return
 	memory_wait.skipping = true
 
 

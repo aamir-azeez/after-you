@@ -22,7 +22,7 @@ func _init(save_path: String = PATH) -> void:
 	path = save_path
 
 static func defaults() -> Dictionary:
-	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
+	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false, "skip_waits": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
 
 static func default_settings_envelope_valid(value: Variant) -> bool:
 	# Chapter journals do not own UI preferences. Older envelopes may omit

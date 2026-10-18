@@ -27,8 +27,9 @@ func _run() -> void:
 	app.settings_flow.show_settings()
 	await process_frame
 	var toggles := app.overlay.find_children("*","CheckButton",true,false)
-	var keys := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status"]
+	var keys := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status","skip_waits"]
 	_check(toggles.size()==keys.size(),"Every saved setting has one reachable switch")
+	_check(toggles.size()==keys.size() and toggles[-1].text=="Always skip waits" and not toggles[-1].button_pressed,"Always skip waits has its switch, off at first")
 	for index: int in range(toggles.size()):
 		var toggle: CheckButton=toggles[index]
 		var parent: Node = toggle.get_parent()
@@ -66,6 +67,7 @@ func _run() -> void:
 	await _redo_request_option(app,path)
 	viewport.queue_free()
 	await _damaged_setting_types()
+	_skip_waits_default()
 	await process_frame
 	await create_timer(0.15).timeout
 	for suffix: String in ["",".tmp",".backup"]:
@@ -104,7 +106,7 @@ func _redo_request_option(app: Node, path: String) -> void:
 func _damaged_setting_types() -> void:
 	var path := "user://settings-types-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
 	var damaged := Storage.defaults()
-	damaged.settings = {"sound":"yes","haptics":1,"reduced_motion":null,"left_handed":"no","assistance":0.5,"photo_prompts":[],"share_online_status":{},"graphics_quality":42,"unlimited_frame_rate":"x","left_over":"kept"}
+	damaged.settings = {"sound":"yes","haptics":1,"reduced_motion":null,"left_handed":"no","assistance":0.5,"photo_prompts":[],"share_online_status":{},"graphics_quality":42,"unlimited_frame_rate":"x","skip_waits":"yes","left_over":"kept"}
 	var file := FileAccess.open(path,FileAccess.WRITE)
 	file.store_string(JSON.stringify(damaged))
 	file.close()
@@ -123,8 +125,25 @@ func _damaged_setting_types() -> void:
 	app.set_process(false)
 	app.settings_flow.show_settings()
 	await process_frame
-	_check(app.overlay.find_children("*","CheckButton",true,false).size()==7 and app.overlay.find_children("*","Button",true,false).any(func(b: Button) -> bool: return b.text=="Done"),"Settings from a damaged save shows every switch and Done")
+	_check(app.overlay.find_children("*","CheckButton",true,false).size()==8 and app.overlay.find_children("*","Button",true,false).any(func(b: Button) -> bool: return b.text=="Done"),"Settings from a damaged save shows every switch and Done")
 	viewport.queue_free()
 	await process_frame
+	for suffix: String in ["",".tmp",".backup"]:
+		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+
+## Always skip waits starts off, an older save without it loads it off, and a
+## chapter journal's settings envelope may omit it or hold only its default.
+func _skip_waits_default() -> void:
+	_check(Storage.defaults().settings.skip_waits == false,"Always skip waits is off by default")
+	var path := "user://settings-skip-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
+	var older := Storage.defaults()
+	older.settings.erase("skip_waits")
+	var file := FileAccess.open(path,FileAccess.WRITE)
+	file.store_string(JSON.stringify(older))
+	file.close()
+	var loaded := Storage.new(path)
+	loaded.load_data()
+	_check(loaded.data.settings.get("skip_waits")==false,"A save from before the setting loads it off")
+	_check(Storage.default_settings_envelope_valid({"sound":true}) and Storage.default_settings_envelope_valid({"skip_waits":false}) and not Storage.default_settings_envelope_valid({"skip_waits":true}),"Chapter envelopes may omit Always skip waits or hold its default only")
 	for suffix: String in ["",".tmp",".backup"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)

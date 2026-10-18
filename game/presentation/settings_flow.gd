@@ -23,6 +23,7 @@ extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
+const LocalSave = preload("res://services/local_save.gd")
 const Licenses = preload("res://services/licenses.gd")
 const CREAM := Color("eceddb")
 ## Main's modes on these screens.
@@ -56,16 +57,17 @@ func show_settings() -> void:
 		var link: Button = host._list_button(entry[0],entry[1],false)
 		link.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		display_links.add_child(link)
-	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed",PlayerCopy.MAIN_A1E007823FF0],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts",PlayerCopy.MAIN_289D745F1246],["share_online_status","Share online status"]]:
+	var defaults: Dictionary = LocalSave.defaults().settings
+	for entry in [["assistance","Forgiving catches"],["reduced_motion","Reduce motion"],["left_handed",PlayerCopy.MAIN_A1E007823FF0],["sound","Sound"],["haptics","Gentle haptics"],["photo_prompts",PlayerCopy.MAIN_289D745F1246],["share_online_status","Share online status"],["skip_waits","Always skip waits"]]:
 		var toggle := CheckButton.new()
 		toggle.text=entry[1]
 		toggle.mouse_filter = Control.MOUSE_FILTER_PASS
-		toggle.button_pressed=bool(host.saves.data.settings.get(entry[0],true))
+		toggle.button_pressed=bool(host.saves.data.settings.get(entry[0],defaults[entry[0]]))
 		toggle.toggled.connect(func(value: bool):
 			var next: Dictionary = host.saves.data.settings.duplicate(true)
 			next[entry[0]] = value
 			if not host.saves.update_values({"settings": next}):
-				toggle.set_pressed_no_signal(bool(host.saves.data.settings.get(entry[0], true)))
+				toggle.set_pressed_no_signal(bool(host.saves.data.settings.get(entry[0], defaults[entry[0]])))
 				host._toast(PlayerCopy.MAIN_34B82590B663)
 				return
 			host._apply_settings())

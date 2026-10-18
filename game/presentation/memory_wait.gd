@@ -33,10 +33,15 @@ const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const TICK_RATE := 30.0
 ## Hold to fast-forward plays up to this many ordinary ticks per physics tick.
 const FAST_FORWARD_TICKS := 4
-## Fast-forward and Skip stop stepping for this frame once this much time is
-## spent (a heavy chapter on a slow phone), so the screen keeps drawing. Only
-## how fast the wait goes by changes; the ticks are the same.
+## Fast-forward stops stepping for this frame once this much time is spent
+## (a heavy chapter on a slow phone), so the screen keeps drawing. Only how
+## fast the wait goes by changes; the ticks are the same.
 const STEP_BUDGET_USEC := 8000
+## Skip to end may spend this much of one rendered frame stepping the memory.
+## Nothing on screen is played then, so it takes more of the frame than
+## Fast-forward, yet a frame still ends within one 30 Hz tick on a desktop.
+## Physics ticks that catch up after a slow frame share it.
+const SKIP_BUDGET_USEC := 16000
 ## What a fast-forwarded or skipped tick feeds the simulation: no movement and
 ## no press, as a still player at normal speed would.
 const STILL_INPUT := {"move_x": 0.0, "move_z": 0.0, "interact": false}
@@ -73,8 +78,17 @@ var waited := false
 var rings_released := 0
 ## Skip to end is under way (see skip_tick).
 var skipping := false
-## This screen's frame budget for Fast-forward and Skip (tests vary it).
+## The player's Always skip waits: the screen presses its own Skip to end as
+## soon as a live wait is under way (auto_skip_due). Set by the screen.
+var auto_skip := false
+## This screen's frame budgets for Fast-forward and for Skip (tests vary them).
 var step_budget_usec := STEP_BUDGET_USEC
+var skip_budget_usec := SKIP_BUDGET_USEC
+## The rendered frame Skip last stepped in, the time it spent there, and
+## the frame it last showed the world in (once a frame is enough).
+var _skip_frame := -1
+var _skip_spent_usec := 0
+var _skip_shown_frame := -1
 
 ## A recorded turn starts at tick zero. `prior_ticks` is the length of the
 ## memory being followed; a first turn has none and never waits.
@@ -101,6 +115,17 @@ func begin(role: String, prior_ticks: int) -> void:
 ## The prior recording's length, read the same way on every screen.
 static func prior_ticks(prior: Variant) -> int:
 	return int(prior.get("duration_ticks", 0)) if prior is Dictionary else 0
+
+## The player's Always skip waits setting ("skip_waits"), read the same way
+## on every screen. Anything but a saved true is off.
+static func skip_waits(settings: Dictionary) -> bool:
+	var value: Variant = settings.get("skip_waits", false)
+	return value is bool and value
+
+## True when Always skip waits should press Skip to end now: a wait is
+## under way and no skip is. Still true after a pause or a resumed draft.
+func auto_skip_due() -> bool:
+	return auto_skip and _waiting and not skipping
 
 ## True while the live spirit is done and the memory still plays.
 func waiting() -> bool:
@@ -153,19 +178,28 @@ func fast_forward_tick(advance: Callable, playing: Callable) -> void:
 		advance.call(STILL_INPUT)
 
 ## One physics tick of Skip to end: steps the memory silently (cue identities
-## still advance) for up to STEP_BUDGET_USEC, showing where it got to, and
-## once only the last tick is left, places the world there and plays the
-## friend's arrival through `advance` as usual. Returns the state reached
-## while the skip goes on, or {} when it is over.
+## still advance) until this rendered frame has spent skip_budget_usec on it,
+## at least one tick, showing where it got to, and once only the last tick is
+## left, places the world there and plays the friend's arrival through
+## `advance` as usual. Returns the state reached while the skip goes on, or
+## {} when it is over.
 func skip_tick(sim: RefCounted, sounds: Callable, advance: Callable) -> Dictionary:
 	var started := Time.get_ticks_usec()
+	var frame := Engine.get_process_frames()
+	if frame != _skip_frame:
+		_skip_frame = frame
+		_skip_spent_usec = 0
 	var last := last_waiting_tick()
 	var state: Dictionary = {}
 	while skipping and _waiting and _tick < last and not bool(sim.get("finished")) and str(sim.get("error")).is_empty():
 		state = sim.step(STILL_INPUT)
 		step_silently(state, sounds.call(state))
-		if Time.get_ticks_usec() - started > step_budget_usec:
-			show(state, false)
+		if _skip_spent_usec + Time.get_ticks_usec() - started > skip_budget_usec:
+			# A tick catching up in a frame already shown leaves the redraw to the next frame.
+			if _skip_shown_frame != frame:
+				_skip_shown_frame = frame
+				show(state, false)
+			_skip_spent_usec += Time.get_ticks_usec() - started
 			return state
 	var arriving := skipping and _waiting
 	skipping = false
