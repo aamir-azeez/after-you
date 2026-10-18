@@ -145,6 +145,9 @@ static func _width(kind: String) -> float:
 ## Where a chapter stage's placement is baked: one JSON file, {"digest",
 ## "runs"}, written by test_water_locks_bake from the same find_runs().
 const BAKE_DIR := "res://content/water_locks/"
+## Bump whenever find_runs() would place differently for the same plan, so
+## every bake falls back (logged) until it is rewritten.
+const PLACEMENT_VERSION := 1
 ## Bake files already found missing or stale, so each logs once.
 static var _unbaked: Dictionary = {}
 
@@ -171,14 +174,17 @@ static func load_runs(plan: Dictionary, path: String) -> Array:
 static func bake(plan: Dictionary) -> Dictionary:
 	return {"digest": plan_digest(plan), "runs": find_runs(plan)}
 
-## A digest of everything placement reads from a plan, with the wall boxes
-## rounded to a tenth of a millimetre so it is the same on every platform.
+## A digest of everything placement reads: the plan, with the wall boxes
+## rounded to a tenth of a millimetre so it is the same on every platform, and
+## the kit's placement version and the constants placement uses, so a kit
+## change makes a bake stale rather than read as current.
 static func plan_digest(plan: Dictionary) -> String:
 	var walls: Array = []
 	for box: AABB in plan.walls:
 		walls.append([roundi(box.position.x * 10000.0), roundi(box.position.y * 10000.0), roundi(box.position.z * 10000.0), roundi(box.size.x * 10000.0), roundi(box.size.y * 10000.0), roundi(box.size.z * 10000.0)])
 	var shape := plan.duplicate()
 	shape.walls = walls
+	shape["placement"] = [PLACEMENT_VERSION, THICKNESS, POST, FREEBOARD, LEVEL, SLIVER, TILE]
 	return JSON.stringify(shape, "", true).sha256_text()
 
 # --- Placement ---

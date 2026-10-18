@@ -2,8 +2,9 @@ extends SceneTree
 ## Water lock bakes (presentation/kit/water_locks.gd): every stage of every
 ## chapter whose world places water locks has a committed bake in
 ## content/water_locks/, made from that stage's plan by the same find_runs(),
-## and a world opening the stage uses it rather than working placement out.
-## A stale or missing bake fails here.
+## and a world opening the stage the way the game does uses it rather than
+## working placement out. A stale or missing bake, or a drift in the bake's
+## name or the plan between baking and opening, fails here.
 ## To rewrite the bakes after an intended change, set AFTER_YOU_WRITE_BAKE to
 ## the absolute path of game/content/water_locks (or to 1 for res://) and run
 ## this suite; a write run compares nothing and prints each file it wrote.
@@ -33,9 +34,14 @@ func _run() -> void:
 			continue
 		root.add_child(world)
 		world.process_mode = Node.PROCESS_MODE_DISABLED
+		# Nothing cached: each stage opens as on a fresh launch.
+		WaterLocks._found.clear()
+		WaterLocks._unbaked.clear()
 		world.load_level(level)
 		for stage: Dictionary in level.stages:
 			await world.show_stage(stage)
+			var fell_back: bool = not WaterLocks._unbaked.is_empty()
+			var built: Array = world._locks.runs if is_instance_valid(world._locks) else []
 			var plan: Dictionary = world._water_plan()
 			var path := WaterLocks.bake_path(key, str(stage.id))
 			# Worked out afresh, never from a cache or the bake itself.
@@ -54,11 +60,11 @@ func _run() -> void:
 			# A Windows checkout may turn the file's line ends into CRLF.
 			var committed := FileAccess.get_file_as_string(path).replace("\r\n", "\n")
 			_check(committed == text, "The bake matches the stage's plan and placement (rewrite it with %s): %s" % [WRITE_ENV, path])
-			# Opening the stage uses the bake: the runs come from the file, unchanged.
+			# Opening the stage built its locks from the bake: no fallback, and the
+			# runs it built are the committed ones.
+			_check(not fell_back and JSON.stringify(built, "", true) == JSON.stringify(JSON.parse_string(committed).runs, "", true), "Opening the stage builds its locks from the bake: " + path)
 			WaterLocks._found.clear()
 			WaterLocks._unbaked.clear()
-			var runs := WaterLocks.load_runs(plan, path)
-			_check(WaterLocks._unbaked.is_empty() and JSON.stringify(runs, "", true) == JSON.stringify(JSON.parse_string(committed).runs, "", true), "Opening the stage reads its placement from the bake: " + path)
 		world.free()
 	_check(baked > 0, "At least one chapter places water locks")
 	print("WATER LOCKS BAKE: %d checks, %d failures, %d stages" % [checks, failures, baked])
