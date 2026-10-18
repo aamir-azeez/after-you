@@ -54,11 +54,18 @@ func show_stage(stage: Dictionary) -> void:
 		_bell.get_parent().position.y = _surface_height(str(goal.surface_id))
 		_court_light.position.y += _surface_height(str(goal.surface_id))
 	await _build_step()
-	for stair: Dictionary in view.get("stairs", []): _build_stair(stair)
-	for pad: Dictionary in view.get("pressure_pads", []): _build_physical_pad(pad, false)
-	for pad: Dictionary in view.get("ball_pads", []): _build_physical_pad(pad, true)
-	for lever: Dictionary in view.get("levers", []): _build_lever(lever)
-	await _build_step()
+	for stair: Dictionary in view.get("stairs", []):
+		_build_stair(stair)
+		await _build_step()
+	for pad: Dictionary in view.get("pressure_pads", []):
+		_build_physical_pad(pad, false)
+		await _build_step()
+	for pad: Dictionary in view.get("ball_pads", []):
+		_build_physical_pad(pad, true)
+		await _build_step()
+	for lever: Dictionary in view.get("levers", []):
+		_build_lever(lever)
+		await _build_step()
 	for zone: Dictionary in view.get("access_zones", []):
 		var r: Array = zone.rect_cm
 		var zone_height := _surface_height(str(zone.surface_id))

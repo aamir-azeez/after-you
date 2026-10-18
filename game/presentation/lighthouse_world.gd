@@ -139,7 +139,7 @@ func load_level(definition: Dictionary) -> void:
 			_build_mirror(control)
 		elif control.get("kind", "") == "selector":
 			_build_selector(control)
-	await _build_step()
+		await _build_step()
 	for receiver: Dictionary in definition.optics.receivers:
 		_build_receiver(receiver)
 	for pad: Dictionary in definition.get("hold_pads", []):
@@ -191,7 +191,7 @@ func load_level(definition: Dictionary) -> void:
 				for height in [-1.65, 1.65]:
 					_frame_points.append(Vector3(float(x) / 100.0, height, float(z) / 100.0))
 	await _build_step()
-	_build_dressing()
+	await _build_dressing()
 	await _build_step()
 	show_keepsake_landmark(str(definition.get("stage_id", "")))
 	_frame_camera()
@@ -213,12 +213,14 @@ func _ground_style(island_id: String) -> String:
 	var style := str(ground.get(island_id, ground.get("*", "")))
 	return style if Surfaces.has_style(style) else ""
 
-## Props from the dressing data: visual only, never collision or state.
+## Props from the dressing data: visual only, never collision or state. A
+## staged build gets the frame back between props. Await it.
 func _build_dressing() -> void:
 	var specs := Props.expand(DressingCatalog.stage_props(dressing, _dressing_stage_id()))
 	var lit := bool(dressing.get("lit", true))
 	var anchors: Array[Vector3] = []
 	for spec: Dictionary in specs:
+		await _build_step()
 		if not GraphicsPolicy.detail_dressing(_motion_quality) and bool(spec.get("detail", false)): continue
 		var surface := str(spec.get("surface", ""))
 		var parent: Node3D = _surface_nodes.get(surface, terrain)

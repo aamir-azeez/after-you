@@ -169,6 +169,10 @@ var scenery_backstop := 0.0
 ## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
 ## which both stages share: worked out once per definition, then reused.
 static var _wall_layouts: Dictionary = {}
+## Wall layout samples (4 cm apart) worked out between two build steps.
+const WALL_SAMPLES_PER_STEP := 48
+## Water grid lines worked out between two build steps.
+const WATER_LINES_PER_STEP := 8
 
 ## Builds only the stage shown first. Controllers call show_stage straight
 ## after load_level, so opening on the second stage no longer builds the first
@@ -222,28 +226,31 @@ func show_stage(stage: Dictionary) -> void:
 	var islands: Array = chapter_definition.get("islands", [])
 	var cut: Array = [CHAMBER_PIT]
 	for id: String in _walled: cut.append(_route(id).rect_cm)
-	_water["harbour"] = _water_body("HarbourWater", [HARBOUR_REGION], islands, cut, WATER, HARBOUR_LEVELS.low)
+	_water["harbour"] = await _water_body("HarbourWater", [HARBOUR_REGION], islands, cut, WATER, HARBOUR_LEVELS.low)
 	await _build_step()
-	_water["sea"] = _water_body("OuterSea", SEA_REGIONS, islands, cut, SEA, SEA_LEVELS.shut)
+	_water["sea"] = await _water_body("OuterSea", SEA_REGIONS, islands, cut, SEA, SEA_LEVELS.shut)
 	await _build_step()
-	_water["chamber"] = _water_body("ChamberWater", [CHAMBER_PIT], islands, [], CHAMBER_WATER, HARBOUR_LEVELS.half)
+	_water["chamber"] = await _water_body("ChamberWater", [CHAMBER_PIT], islands, [], CHAMBER_WATER, HARBOUR_LEVELS.half)
 	await _build_step()
 	await _build_parapets()
 	await _build_step()
 	await _build_sea_walls()
 	await _build_step()
-	_build_route_walls(stage)
+	await _build_route_walls(stage)
 	await _build_step()
 	_build_chamber()
+	await _build_step()
 	_build_sea_gates()
 	await _build_locks()
 	await _build_step()
 	_build_mouth_lamps()
+	await _build_step()
 	_build_spout()
 	await _build_step()
 	_build_foreshore()
 	await _build_step()
 	_build_boats()
+	await _build_step()
 	_build_lamplight()
 
 # --- Floors: solid decks with walls down to the water ---
@@ -459,9 +466,9 @@ func _wall_layout() -> Dictionary:
 		var holes := _parapet_holes(islands)
 		var walls: Array = []
 		for island: Dictionary in islands:
-			walls.append_array(_island_parapet_runs(island, holes, routes))
+			walls.append_array(await _island_parapet_runs(island, holes, routes))
 			await _build_step()
-		var sea_walls := _sea_wall_runs(islands)
+		var sea_walls: Array = await _sea_wall_runs(islands)
 		await _build_step()
 		if not _wall_layouts.has(key): _wall_layouts[key] = {"parapets": walls, "sea_walls": sea_walls}
 	return _wall_layouts[key]
@@ -471,7 +478,7 @@ func _parapet_holes(islands: Array) -> Array:
 	for island: Dictionary in islands: holes.append(island.rect_cm)
 	return holes
 
-## One island's parapet runs, in _wall_layout order.
+## One island's parapet runs, in _wall_layout order, a side at a time. Await it.
 func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Array:
 	var walls: Array = []
 	var id := str(island.id)
@@ -497,6 +504,7 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 			t += 4.0
 		for run: Array in runs:
 			if run[2] == "wall": walls.append([run, edge, outward, along_x, height])
+		await _build_step()
 	return walls
 
 func _wet_at(at: Array, holes: Array) -> bool:
@@ -534,10 +542,13 @@ func _build_sea_walls() -> void:
 		_mark_bands(piece.position, Vector2(size.x, size.z), SEABED, PARAPET_TOP, root, 0.0, 0 if along_x else 1)
 		await _build_step()
 
+## Every sea-wall run, in _wall_layout order, giving a staged build the frame
+## back every WALL_SAMPLES_PER_STEP samples. Await it.
 func _sea_wall_runs(islands: Array) -> Array:
 	var holes: Array = [CHAMBER_PIT]
 	for island: Dictionary in islands: holes.append(island.rect_cm)
 	var walls: Array = []
+	var sampled := 0
 	for body: Array in [[HARBOUR_REGION], SEA_REGIONS]:
 		for region: Array in body:
 			for side in range(4):
@@ -563,6 +574,8 @@ func _sea_wall_runs(islands: Array) -> Array:
 					if wall and not runs.is_empty() and float(runs[-1][1]) >= t - 2.0: runs[-1][1] = t + 2.0
 					elif wall: runs.append([t - 2.0, t + 2.0])
 					t += 4.0
+					sampled += 1
+					if sampled % WALL_SAMPLES_PER_STEP == 0: await _build_step()
 				for run: Array in runs: walls.append([run, edge, outward, along_x])
 	return walls
 
@@ -591,12 +604,13 @@ func _fender(run: Array, edge: float, outward: float, along_x: bool, height: flo
 	_edge_box(run, edge, outward, along_x, 0.10, height - 0.16, height - 0.03, FENDER, parent, 0.6).name = "QuayFender"
 
 ## Walled crossings: masonry along the sides that do not meet their floors, a floor in the dry pit, a plinth under
-## each stair, and for a gated one the water that fills it while it is shut.
+## each stair, and for a gated one the water that fills it while it is shut. Await it.
 func _build_route_walls(stage: Dictionary) -> void:
 	var root := Node3D.new()
 	root.name = "WalledCrossings"
 	terrain.add_child(root)
 	for id: String in _walled:
+		await _build_step()
 		var route := _route(id)
 		var r: Array = route.rect_cm
 		var floors: Array = []
@@ -1188,6 +1202,7 @@ func _build_slack_mark(route: Dictionary) -> void:
 ## each island and walled crossing, and of the end of the body: inside the
 ## wall that holds the water back, or behind the sea wall past it, and never
 ## on a wall's inner face, where the two would fight over the same pixels.
+## A staged build gets the frame back between grid lines. Await it.
 func _water_body(name: String, regions: Array, islands: Array, excluded: Array, color: Color, level: float) -> Node3D:
 	var holes: Array = []
 	for rect: Array in excluded + islands.map(func(island: Dictionary) -> Array: return island.rect_cm):
@@ -1208,6 +1223,7 @@ func _water_body(name: String, regions: Array, islands: Array, excluded: Array, 
 	# within WATER_INSET of where the body ends to its east or south stays dry.
 	var wet: Array = []
 	for zi in range(zs.size() - 1):
+		if zi % WATER_LINES_PER_STEP == 0: await _build_step()
 		var row: Array[bool] = []
 		for xi in range(xs.size() - 1):
 			var east := float(xs[xi + 1] + WATER_INSET)
@@ -1221,6 +1237,7 @@ func _water_body(name: String, regions: Array, islands: Array, excluded: Array, 
 	var faces := 0
 	# The surface, one quad per run of wet cells along each row.
 	for zi in range(wet.size()):
+		if zi % WATER_LINES_PER_STEP == 0: await _build_step()
 		var start := -1
 		for xi in range(xs.size()):
 			var here: bool = xi < xs.size() - 1 and wet[zi][xi]
@@ -1238,6 +1255,7 @@ func _water_body(name: String, regions: Array, islands: Array, excluded: Array, 
 		var lines: Array = zs if along_x else xs
 		var cells: Array = xs if along_x else zs
 		for line in range(lines.size()):
+			if line % WATER_LINES_PER_STEP == 0: await _build_step()
 			var start := 0
 			var facing := 0
 			for cell in range(cells.size()):
