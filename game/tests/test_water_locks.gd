@@ -110,7 +110,8 @@ func _small_plans() -> void:
 
 ## A raised door dips while a spirit stands in its mouth, easing down in about
 ## 0.2 s, and rises again once the spirit leaves; told at once it snaps. A
-## spirit away from the mouth, or at a door that is down, changes nothing.
+## spirit away from the mouth, at a walkway nobody may enter, or at a door that
+## is down, changes nothing.
 func _small_dip(plan: Dictionary, level: Dictionary, apart: Dictionary) -> void:
 	var locks: WaterLocks = WaterLocks.new()
 	var parent := Node3D.new()
@@ -119,25 +120,28 @@ func _small_dip(plan: Dictionary, level: Dictionary, apart: Dictionary) -> void:
 	locks.present(apart, true)
 	var door: MeshInstance3D = locks.door_nodes()[0]
 	var inside := PackedVector2Array([Vector2(110, 50)])
-	locks.occupy(PackedVector2Array([Vector2(50, 50)]))
+	var open := {"walk": true}
+	locks.occupy(PackedVector2Array([Vector2(50, 50)]), open)
 	_check(locks.door_states() == ["shut"] and not locks.moving(), "A spirit away from the mouth leaves the door up")
-	locks.occupy(PackedVector2Array([Vector2(90, 50)]), true)
+	locks.occupy(inside, {"walk": false})
+	_check(locks.door_states() == ["shut"] and not locks.moving(), "A spirit at a walkway nobody may enter leaves its door up")
+	locks.occupy(PackedVector2Array([Vector2(90, 50)]), open, true)
 	_check(locks.door_states() == ["dipped"], "A spirit about to step through the mouth, on either side, dips the door")
-	locks.occupy(PackedVector2Array(), true)
-	locks.occupy(inside)
+	locks.occupy(PackedVector2Array(), open, true)
+	locks.occupy(inside, open)
 	_check(locks.door_states() == ["dipped"] and locks.moving(), "A spirit in the mouth sets the raised door dipping")
 	for _frame in range(12): locks.advance(1.0 / 60.0, apart)
 	var shut := float(locks.runs[0].shut)
 	_check(not locks.moving() and not door.visible and door.position.y < shut, "The door is down out of the way within 0.2 s")
-	locks.occupy(PackedVector2Array())
+	locks.occupy(PackedVector2Array(), open)
 	_check(locks.door_states() == ["shut"] and locks.moving(), "Once the spirit leaves the door rises")
 	for _frame in range(12): locks.advance(1.0 / 60.0, apart)
 	_check(not locks.moving() and door.visible and is_equal_approx(door.position.y, shut), "The door is back up within 0.2 s")
-	locks.occupy(inside, true)
+	locks.occupy(inside, open, true)
 	_check(not locks.moving() and not door.visible and door.position.y < shut, "Told at once, the door snaps down")
-	locks.occupy(PackedVector2Array(), true)
+	locks.occupy(PackedVector2Array(), open, true)
 	locks.present(level, true)
-	locks.occupy(inside)
+	locks.occupy(inside, open)
 	_check(locks.door_states() == ["open"] and not locks.moving(), "A spirit at a door that is down changes nothing")
 	parent.free()
 
@@ -607,7 +611,8 @@ func _walled_sides(world: Node3D, route: String) -> bool:
 	return true
 
 ## A sand bar nobody kept, from a stage that never latched it: covered at half
-## and high, it floods behind its raised doors.
+## and high, it floods behind its raised doors, which stay up for a spirit
+## waiting on the beach at its mouth.
 func _sand_bar_not_kept() -> void:
 	var level := Registry.definition(KEY)
 	var world: Node3D = Registry.world_script(KEY).new()
@@ -623,9 +628,14 @@ func _sand_bar_not_kept() -> void:
 	for tide: String in ["half", "high"]:
 		sim._mechanisms.controls["tide"] = tide
 		sim._refresh_routes()
-		world.present(sim.snapshot(), true)
+		# A spirit waiting on the beach at its mouth leaves its doors up.
+		var state: Dictionary = sim.snapshot()
+		state.players.p0.x = 15
+		state.players.p0.z = 352
+		world.present(state, true)
 		var doors := _states_at(locks, "sand-1")
-		_check(world._floods["sand-1"].visible and doors == ["shut", "shut"], "A sand bar nobody kept floods behind its raised doors at %s: %s" % [tide, doors])
+		var shown := locks.door_nodes().filter(func(door: MeshInstance3D) -> bool: return door.visible).size()
+		_check(world._floods["sand-1"].visible and doors == ["shut", "shut"] and shown == locks.door_states().count("shut"), "A sand bar nobody kept floods behind its raised doors at %s, a spirit waiting at its mouth or not: %s" % [tide, doors])
 	world.free()
 
 # --- Other chapters ---

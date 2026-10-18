@@ -597,15 +597,17 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 		sheet.scale = Vector3(1, maxf(fall, 0.01), 1)
 	if immediate: _settle()
 
-## Tells the doors where the spirits stand (plan cm): a door that is up dips
-## while a spirit stands in its mouth (within DIP_REACH of the door, either
-## side), and rises again once it leaves. Only doors that are up are checked,
-## with a squared-distance test; call it with each snapshot. Immediate (pass it
-## for reduced motion) skips the easing.
-func occupy(spirits: PackedVector2Array, immediate: bool = false) -> void:
+## Tells the doors where the spirits stand (plan cm) and which walkways can be
+## walked now (`walkable`: mouth id -> bool): a door that is up dips while a
+## spirit stands in its mouth (within DIP_REACH of the door, either side) and
+## its walkway can be walked, and rises again once it leaves. A door holding
+## water back from a walkway nobody may enter never dips. Only doors that are
+## up are checked, with a squared-distance test; call it with each snapshot.
+## Immediate (pass it for reduced motion) skips the easing.
+func occupy(spirits: PackedVector2Array, walkable: Dictionary, immediate: bool = false) -> void:
 	for entry: Dictionary in _doors:
 		var dipped := false
-		if bool(entry.up):
+		if bool(entry.up) and bool(walkable.get(entry.run.mouth, false)):
 			for at: Vector2 in spirits:
 				if _in_mouth(entry.run, at):
 					dipped = true

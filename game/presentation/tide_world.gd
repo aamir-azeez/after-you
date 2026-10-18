@@ -1709,7 +1709,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		for slot: String in players:
 			_spirits[index] = Vector2(float(players[slot].x), float(players[slot].z))
 			index += 1
-		_locks.occupy(_spirits, immediate or reduced_motion)
+		_locks.occupy(_spirits, routes, immediate or reduced_motion)
 		# A door that must rise stands clear of the water shown now at once.
 		if _locks.moving(): _locks.advance(0.0, _lock_levels("shown"))
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
