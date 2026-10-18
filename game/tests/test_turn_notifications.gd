@@ -8,6 +8,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const WrongTypes = preload("res://tests/wrong_types.gd")
+const Toast = preload("res://presentation/toast.gd")
 const OWNER := "AAAAAAAAAAAAAAAAAAAAAA"
 const ROOM := "BBBBBBBBBBBBBBBBBBBBBB"
 const EPOCH := "CCCCCCCCCCCCCCCCCCCCCC"
@@ -502,19 +503,23 @@ func _test_foreground_hosting_hint() -> void:
 	screen.identity_read_state = screen.IdentityReadState.LOADED
 	screen.saves.path = "user://notification-hint-test.json"
 	root.add_child(screen)
+	screen.toast = Toast.new()
+	screen.add_child(screen.toast)
 	var event := {"schema_version":"1","event_id":peer+"_1","kind":"friend_room_available","room_id":ROOM,"room_family":"relay","host_id":peer,"publication_epoch":"1","binding_epoch":f.native.bound}
 	var requests: int = f.api.calls.size()
 	screen.notification_flow.foreground_hint(event)
-	_check(screen.messages == 1 and screen.opened == 0 and f.api.calls.size() == requests,"A hosting alert received while the app is open shows a message and opens nothing")
+	var shown: bool = screen.toast.showing() and screen.toast.text.ends_with("has a room ready") and screen.toast._action.visible and screen.toast._action.text == "View"
+	_check(shown and screen.opened == 0 and f.api.calls.size() == requests,"A hosting alert received while the app is open shows the pop-up with View and opens nothing")
+	screen.toast.dismiss()
 	var other := event.duplicate(true); other.host_id = OWNER; other.event_id = OWNER+"_1"
 	screen.notification_flow.foreground_hint(other)
-	_check(screen.messages == 1,"A hosting hint for a friend without alerts shows nothing")
-	# In a room the main UI (and its toast) is hidden, so the room card shows it.
+	_check(not screen.toast.showing(),"A hosting hint for a friend without alerts shows nothing")
+	# A room keeps its own notes on its card.
 	var room := RoomStub.new()
 	screen.add_child(room)
 	screen.relay_child = room
 	screen.notification_flow.foreground_hint(event)
-	_check(screen.messages == 1 and room.notes.size() == 1 and room.notes[0].ends_with("has a room ready"),"A hosting alert during a room shows on the room card, not the hidden toast")
+	_check(not screen.toast.showing() and room.notes.size() == 1 and room.notes[0].ends_with("has a room ready"),"A hosting alert during a room shows on the room card, not the pop-up")
 	screen.relay_child = null
 	room.free()
 	screen.free()

@@ -58,6 +58,7 @@ const Changelog = preload("res://services/changelog.gd")
 const WhatsNewCard = preload("res://presentation/whats_new_card.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
+const Toast = preload("res://presentation/toast.gd")
 const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const InviteLinkBridge = preload("res://services/invite_link_bridge.gd")
 const InviteShare = preload("res://services/invite_share.gd")
@@ -151,7 +152,8 @@ var role_label: Label
 var progress: SeedTimerBar
 var interact_button: Button
 var finish_button: Button
-var toast_label: Label
+## The pop-up (presentation/toast.gd), above every screen.
+var toast: Toast
 var title_font: Font=preload("res://assets/fonts/fredoka.ttf")
 var body_font: Font=preload("res://assets/fonts/nunito.ttf")
 var levels: Array=[]
@@ -178,7 +180,6 @@ var room_play := false
 var identity_request := ""
 var recovery_read_request := ""
 var pending_recovery: Dictionary = {}
-var toast_time := 0.0
 var capture_path := ""
 var capture_frames := 0
 var ui_theme: Theme
@@ -445,17 +446,11 @@ func _build_ui() -> void:
 	overlay=Control.new()
 	overlay.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	ui.add_child(overlay)
-	toast_label=_label("",18,INK)
-	toast_label.add_theme_stylebox_override("normal",_style(CREAM,12))
-	toast_label.set_anchors_and_offsets_preset(Control.PRESET_CENTER_TOP)
-	toast_label.position=Vector2(-350,112)
-	toast_label.size=Vector2(700,60)
-	toast_label.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
-	toast_label.vertical_alignment=VERTICAL_ALIGNMENT_CENTER
-	toast_label.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-	toast_label.mouse_filter=Control.MOUSE_FILTER_IGNORE
-	toast_label.visible=false
-	ui.add_child(toast_label)
+	toast=Toast.new()
+	toast.theme=ui_theme
+	toast.reduced_motion=func() -> bool: return bool(saves.data.settings.get("reduced_motion",false))
+	toast.in_header=friends_flow.is_open
+	add_child(toast)
 
 func _refresh_safe_area() -> void:
 	if not is_instance_valid(ui):
@@ -1624,6 +1619,7 @@ func _new_replays_flow() -> ReplaysFlow:
 func _host_notification_flow() -> NotificationFlow:
 	var flow := _new_notification_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	live_connection.friends_changed.connect(flow.friends_hint)
 	return flow
 
 ## The flow Main hosts and wires; a subclass may return its own NotificationFlow.
@@ -1923,6 +1919,7 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	_keepsake_identity.clear()
 	if friends_client != null: friends_client.invalidate()
 	if friend_room_events != null: friend_room_events.invalidate()
+	notification_flow.forget_friends_news()
 	room_hub_flow.drop()
 	if friends_flow.is_open():
 		if mode == FriendsFlow.MODE_FRIENDS: mode = RoomHubFlow.MODE_ROOMS
@@ -1973,8 +1970,8 @@ func _relay_available(report: Callable = Callable()) -> bool:
 ## A room flow that stopped before drawing anything (the caller already left
 ## the hub or Friends) returns to the hub instead of leaving a bare screen.
 func _settle_room_flow() -> void:
-	# A toast sits under the hub, so its reason moves into the hub's notice.
-	if mode in [RoomHubFlow.MODE_ROOMS, RelayLobbyFlow.MODE_LOBBY] and not room_hub_flow.is_open(): _return_to_room_hub(toast_label.text if toast_label.visible else "")
+	# The reason moves from the pop-up into the hub's notice, where it stays.
+	if mode in [RoomHubFlow.MODE_ROOMS, RelayLobbyFlow.MODE_LOBBY] and not room_hub_flow.is_open(): _return_to_room_hub(toast.take_plain())
 
 ## The Friends client; made here on first use when create is set.
 func _friends_client(create: bool) -> RefCounted:
@@ -2503,9 +2500,7 @@ func _report(report: Callable, text: String) -> void:
 	else: _toast(text)
 
 func _toast(text: String) -> void:
-	toast_label.text=text
-	toast_label.visible=true
-	toast_time=6.0
+	toast.post(text)
 
 func _process(delta: float) -> void:
 	_service_world_cover()
@@ -2521,12 +2516,10 @@ func _process(delta: float) -> void:
 		turn_notifications.service(Time.get_ticks_msec(), not application_backgrounded, not submission_in_flight and not foreground_refresh_running and not running and (relay_session == null or not relay_session.busy()))
 		notification_flow.service_route()
 	_service_invite_link()
+	notification_flow.service_friends()
 	_service_whats_new()
 	_service_update_gate()
 	_service_photo_resume()
-	if toast_time>0:
-		toast_time-=delta
-		toast_label.visible=toast_time>0
 	if not capture_path.is_empty():
 		capture_frames+=1
 		if capture_frames==90:
@@ -2682,7 +2675,7 @@ func _setup_invite_links() -> void:
 
 func _invite_link_received(result: Dictionary) -> void:
 	if not result.get("ok", false) or result.get("type") != ShareCodes.FRIEND:
-		if is_instance_valid(toast_label): _toast(PlayerCopy.FRIEND_CODE_INVALID)
+		if is_instance_valid(toast): _toast(PlayerCopy.FRIEND_CODE_INVALID)
 		return
 	# A newer link replaces one that has not been shown yet.
 	invite_link_pending = str(result.id)

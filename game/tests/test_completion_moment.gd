@@ -267,7 +267,7 @@ func _test_failed_save() -> void:
 	_feed(frames.back())
 	_check(app.sim.complete and app.mode=="review" and app.completion_time_left==0.0,"A failed final save bypasses the delay and opens review immediately")
 	_check(app.review_recording.completed and not app.review_recording.actions.is_empty() and _button(app.overlay,"Save turn")!=null,"Failed persistence retains the full in-memory recording for retry")
-	_check(app.toast_label.visible and app.toast_label.text=="Injected final draft write failure","Final save failure is visible to the player")
+	_check(app.toast.visible and app.toast.text=="Injected final draft write failure","Final save failure is visible to the player")
 	_check(FileAccess.get_file_as_string(path)==before and app.saves.data.completed.is_empty(),"Failed final write preserves the previous durable draft without marking completion")
 	app.saves.read_only=false
 

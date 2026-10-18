@@ -8,6 +8,14 @@ var joins := 0
 var closes := 0
 var hosts := 0
 var opens := 0
+## Every line the open screen handed to the pop-up: [text, news].
+var said: Array = []
+
+func _heard(text: String, news: bool) -> void:
+	said.append([text,news])
+
+func _last_said() -> String:
+	return str(said.back()[0]) if not said.is_empty() else ""
 
 func _run() -> void:
 	api = Transport.new()
@@ -24,6 +32,7 @@ func _run() -> void:
 	screen.openable_room = true
 	screen.closed.connect(func(): closes += 1)
 	screen.join_requested.connect(func(_value: Dictionary): joins += 1)
+	screen.notice.connect(_heard)
 	root.add_child(screen)
 	await process_frame
 	await process_frame
@@ -130,9 +139,8 @@ func _run() -> void:
 	for wrong: Array in [["room-0123456789ABCDEF0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["0123456789abcdef0123",PlayerCopy.SHARE_CODE_ROOM_NOT_FRIEND],["friend-" + OWNER,PlayerCopy.FRIEND_CODE_OWN],["friend-sh",PlayerCopy.FRIEND_CODE_INVALID]]:
 		screen._code = wrong[0]
 		await screen._act("add")
-		check(screen._message == wrong[1] and calls.size() == count_before_share,"Add friend explains rejected input locally: " + str(wrong[0]))
+		check(_last_said() == wrong[1] and calls.size() == count_before_share,"Add friend explains rejected input locally: " + str(wrong[0]))
 	screen._code = ""
-	screen._message = ""
 	screen._render()
 	await process_frame
 	var utilities: Control = screen.find_child("FriendCodeUtilities",true,false)
@@ -235,11 +243,11 @@ func _run() -> void:
 	response = {"ok":true,"data":page()}
 	await screen._refresh()
 	check(calls.size() == count + 1 and find_button(screen,"Join") != null and not find_button(screen,"Join").disabled,"A later poll surfaces the friend's shared room as a direct Join")
-	check(screen._message == "Room available","A later poll announces a newly shared room in the open screen")
-	check(screen._change_notice(page(),page()).is_empty(),"An unchanged poll does not repeat the room alert")
+	check(said.back() == ["Room available",true],"A later poll announces a newly shared room in the open screen, as friend news")
+	check(Client.change_notice(page(),page()).is_empty(),"An unchanged poll does not repeat the room alert")
 	var with_request := page()
 	with_request.friends.append({"player_id":"dddddddddddddddddddddd","request_id":"eeeeeeeeeeeeeeeeeeeeee","status":"incoming","online":false,"expires_after_seconds":0,"join_available":false})
-	check(screen._change_notice(page(),with_request) == "New friend request","A new incoming request gets a short in-app alert")
+	check(Client.change_notice(page(),with_request) == "New friend request","A new incoming request gets a short in-app alert")
 	check(find_label(screen,"All friends") != null and find_button(screen,"Share current room") != null,"An unshared current room makes the sharing scope explicit")
 	# Main sends any alert the room still owes once a share from Friends lands.
 	var reported: Array = []
@@ -260,6 +268,7 @@ func _run() -> void:
 	hold = false
 	await process_frame
 	await _cached_feedback_and_empty_room()
+	await _steady_layout()
 	await _navigation_controls()
 	await _code_row_widths()
 	await _notify_survives_reopen()
@@ -310,8 +319,10 @@ func _short_name_code() -> void:
 		if copy != null: copy.pressed.emit()
 		check(shared == [InviteShare.message("aamir")] and shared[0].contains("https://aamirazeez.com/after-you/link#friend-aamir") and copied == ["friend-aamir"],"Share Invite and Copy use the short code at %d" % width)
 		view._foreground = true
+		var view_said: Array = []
+		view.notice.connect(func(text: String, _news: bool) -> void: view_said.append(text))
 		view.confirm_invite_link("aamir")
-		check(view._message == PlayerCopy.FRIEND_CODE_OWN and view.find_child("InviteLinkModal",true,false) == null,"Opening your own short-name link says it is yours at %d" % width)
+		check(view_said == [PlayerCopy.FRIEND_CODE_OWN] and view.find_child("InviteLinkModal",true,false) == null,"Opening your own short-name link says it is yours at %d" % width)
 		viewport.queue_free()
 		await process_frame
 
@@ -435,6 +446,44 @@ func find_label(node: Node, text: String) -> Label:
 		if found != null: return found
 	return null
 
+## A friend request, an error and a result go to the pop-up: the page keeps
+## its content where it was, with no line above it and no scroll.
+func _steady_layout() -> void:
+	for size: Vector2i in [Vector2i(1280,720),Vector2i(1561,720)]:
+		var viewport := SubViewport.new()
+		viewport.size = size
+		root.add_child(viewport)
+		now += 120000
+		response = {"ok":true,"data":page()}
+		var view := Screen.new()
+		view.client = client
+		var heard: Array = []
+		view.notice.connect(func(text: String, news: bool) -> void: heard.append([text,news]))
+		viewport.add_child(view)
+		for _i in 4: await process_frame
+		heard.clear()
+		var main: Control = view.find_child("FriendsAndRoom",true,false)
+		var top := main.get_global_rect().position.y if main != null else -1.0
+		var content_top: float = view._content.get_global_rect().position.y
+		now += 120000
+		response = {"ok":true,"data":page()}
+		response.data.friends.append({"player_id":"dddddddddddddddddddddd","request_id":"eeeeeeeeeeeeeeeeeeeeee","status":"incoming","online":false,"expires_after_seconds":0,"join_available":false})
+		await view._refresh()
+		for _i in 3: await process_frame
+		main = view.find_child("FriendsAndRoom",true,false)
+		check(heard == [["New friend request",true]],"A new request is said once as friend news at %s: %s" % [size,heard])
+		check(main != null and is_equal_approx(main.get_global_rect().position.y,top) and is_equal_approx(view._content.get_global_rect().position.y,content_top),"The page content keeps its top when a request arrives at %s" % size)
+		check(find_label(view,"New friend request") == null and view._scroll.get_v_scroll_bar().max_value <= view._scroll.size.y + 1.0,"The page draws no message line and gains no scroll at %s" % size)
+		response = {"ok":false,"code":"friend_not_joinable"}
+		now += Client.JOIN_COOLDOWN_MS
+		await view._act("join",client.view().friends[0])
+		for _i in 2: await process_frame
+		main = view.find_child("FriendsAndRoom",true,false)
+		check(heard.size() == 2 and heard.back() == ["Room unavailable",false] and main != null and is_equal_approx(main.get_global_rect().position.y,top),"An error is said plainly and the page stays put at %s" % size)
+		view.close()
+		viewport.queue_free()
+		await process_frame
+
 func _cached_feedback_and_empty_room() -> void:
 	now += 60000
 	response = {"ok":true,"data":page()}
@@ -442,26 +491,36 @@ func _cached_feedback_and_empty_room() -> void:
 	await client.refresh()
 	screen = Screen.new()
 	screen.client = client
+	screen.notice.connect(_heard)
 	root.add_child(screen)
 	await process_frame
 	response = {"ok":false,"code":"friend_not_joinable"}
+	said.clear()
 	await screen._act("join",client.view().friends[0])
-	check(screen._message == "Room unavailable","A fresh unavailable-room reply is shown on the active screen")
+	check(said == [["Room unavailable",false]] and find_label(screen,"Room unavailable") == null,"A fresh unavailable-room reply goes to the pop-up, not onto the page")
 	var count := calls.size()
 	screen.close()
 	await process_frame
 	screen = Screen.new()
 	screen.client = client
+	screen.notice.connect(_heard)
+	said.clear()
 	root.add_child(screen)
 	await process_frame
-	check(screen._message.is_empty() and find_label(screen,"Room unavailable") == null and calls.size() == count,"Reopening with a successful cached page does not redisplay the old room error or poll")
+	check(said.is_empty() and calls.size() == count,"Reopening with a successful cached page does not say the old room error again or poll")
 	check(client.last_error == "Room unavailable","Clearing screen feedback leaves the client's action result intact")
 	await screen._refresh()
-	check(screen._message.is_empty() and calls.size() == count,"A successful cached refresh also keeps the stale action error hidden")
+	check(said.is_empty() and calls.size() == count,"A successful cached refresh also keeps the stale action error quiet")
 	now += 60000
 	response = {"ok":false,"code":"offline"}
 	await screen._refresh()
-	check(calls.size() == count + 1 and screen._message == "Friends unavailable" and find_label(screen,"Friends unavailable") != null,"A fresh failed list request still displays its current error")
+	check(calls.size() == count + 1 and said == [["Friends unavailable",false]] and find_label(screen,"Friends unavailable") == null,"A fresh failed list request says its error once, off the page")
+	now += 60000
+	await screen._refresh()
+	check(calls.size() == count + 2 and said.size() == 1,"An automatic refresh that fails the same way stays quiet")
+	now += 60000
+	await screen._refresh(true)
+	check(calls.size() == count + 3 and said.size() == 2 and _last_said() == "Friends unavailable","A manual refresh that fails says so again")
 	var title := find_label(screen,"No current room")
 	var host := find_button(screen,"Host a room")
 	check(title != null and find_label(screen,"Host a room") == null and find_label(screen,"Choose a chapter to host, then share it with friends.") != null,"The empty room panel has an explicit state and explains how to start")

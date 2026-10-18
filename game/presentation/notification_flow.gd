@@ -5,6 +5,9 @@ extends Node
 ## them) and the Enable offer on room cards, alerts that arrive while the app is open, and
 ## opening the room or Friends that a tapped alert names. A tap from a cold start
 ## or a resume stays in the service's pending route until opening it is safe.
+## Friends news goes to the pop-up (Main.toast): the Friends screen's own lines,
+## and on any other screen a hosting alert or a live friends hint's news, with
+## View to open Friends once leaving the screen is safe.
 ##
 ## Main hosts it as a child. Main creates the notification service and its native
 ## bridge and keeps the service (turn_notifications); this flow configures it.
@@ -12,7 +15,7 @@ extends Node
 ## a test can swap a service):
 ## - services: api, saves, secrets, turn_notifications,
 ##   hosting_notification_preferences, relay_session
-## - screens: mode, running, relay_child, toast_label
+## - screens: mode, running, relay_child, toast, ui
 ## - state: application_backgrounded, submission_in_flight, identity_loading,
 ##   identity_busy, identity_read_state, IdentityReadState,
 ##   foreground_refresh_running, relay_identity_epoch, lifecycle_generation
@@ -22,17 +25,21 @@ extends Node
 ##   ensure_relay_session, queue_foreground_refresh,
 ##   _show_friends, friends_flow (is_open, hosting_hint, refresh),
 ##   _enter_online_relay, _request_update_gate, settings_flow (is_open,
-##   refresh: Settings redraws its notification rows when the service changes)
+##   refresh: Settings redraws its notification rows when the service changes),
+##   _friends_client, INVITE_LINK_TTL_MS
 ## - modes: NOTIFICATION_ROUTE_MODES (the screens a tap may leave)
 ## - card kit: _paragraph, _button, _toast
 ## It also calls two private members, as Main did: RelayOnline._room_gone and
 ## TurnNotifications._integer.
-## Main calls service_route() every frame while the service exists.
+## Main calls service_route() every frame while the service exists, and
+## service_friends() every frame.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const TurnNotifications = preload("res://services/turn_notifications.gd")
 const RelayOnline = preload("res://services/relay_online_session.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const FriendsClient = preload("res://services/friends_client.gd")
+const Toast = preload("res://presentation/toast.gd")
 const Levels = preload("res://core/levels.gd")
 const Typed = preload("res://services/typed_values.gd")
 var host: Node
@@ -42,6 +49,12 @@ var _route_busy := false
 var _deferred_event := ""
 var _hint: Label
 var _offer: Button
+## A live friends hint came while Friends was closed; one list read is owed.
+var _friends_hint := false
+var _friends_reading := false
+## View was tapped where Friends cannot open yet: {identity, until}.
+var _view_wanted: Dictionary = {}
+var _view_opening := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -54,7 +67,8 @@ func configure_service(service: Node, native: Node) -> void:
 	service.changed.connect(update_offer)
 	service.foreground_hint.connect(foreground_hint)
 	service.route_available.connect(func():
-		if is_instance_valid(host.toast_label): host._toast(PlayerCopy.MAIN_6FE6B224FD24))
+		# Only where Main's own screens show; a room or Friends says why on its own.
+		if is_instance_valid(host.toast) and is_instance_valid(host.ui) and host.ui.visible: host._toast(PlayerCopy.MAIN_6FE6B224FD24))
 
 func _identity() -> Dictionary:
 	return {"ready": host._relay_identity().ready, "settled": not host.identity_loading and host.identity_read_state not in [host.IdentityReadState.UNCHECKED, host.IdentityReadState.LOADING], "owner": host.api.player_id if host.api != null else "", "credential_hash": host._token_digest() if host.api != null and not host.api.device_token.is_empty() else ""}
@@ -146,12 +160,12 @@ func update_offer() -> void:
 func foreground_hint(route: Dictionary) -> void:
 	if not host.turn_notifications.accepts(route): return
 	if route.get("kind") == "friend_room_available":
-		# Android shows no banner while the app is open, so say it here. The toast
-		# sits under the hidden main UI while a room is open; the room card shows it.
+		# Android shows no banner while the app is open, so say it here. A room
+		# keeps its own notes on its card; elsewhere the pop-up offers View.
 		var message: String = FriendNicknames.sentence_start(host._friend_display_name(str(route.host_id))) + " has a room ready"
 		if host.friends_flow.is_open(): host.friends_flow.hosting_hint()
 		elif is_instance_valid(host.relay_child): host.relay_child.notification_deferred(message)
-		else: host._toast(message)
+		else: _friends_news(message)
 		return
 	if route.room_family == "relay" and is_instance_valid(host.relay_child):
 		host.relay_child.notification_room_hint(route.room_id)
@@ -169,14 +183,96 @@ func hosting_view_ready(_events: Array) -> void:
 
 ## True when a tapped alert may change the screen now.
 func route_safe(route: Dictionary) -> bool:
+	if not _can_leave(route.get("kind") == "friend_room_available", str(route.room_id) if route.room_family == "legacy" else ""): return false
+	return host.turn_notifications.accepts(route)
+
+## True when nothing in progress stops leaving this screen: no play, request,
+## identity work, open room, unsent turn or draft. Friends may stay up only when
+## `friends_ok`; `legacy_room` is the earlier-island room about to open, if any.
+func _can_leave(friends_ok: bool, legacy_room: String) -> bool:
 	if host.application_backgrounded or host.running or host.submission_in_flight or host.identity_loading or host.identity_busy or host.foreground_refresh_running or is_instance_valid(host.relay_child) or host.saves.read_only: return false
-	if host.mode not in host.NOTIFICATION_ROUTE_MODES and not (host.mode == "friends" and route.get("kind") == "friend_room_available"): return false
+	if host.mode not in host.NOTIFICATION_ROUTE_MODES and not (host.mode == "friends" and friends_ok): return false
 	if not host._relay_identity().ready or not host.saves.data.get("pending_turn", {}).is_empty() or not host.saves.data.get("room_draft", {}).is_empty(): return false
-	if not host.legacy_room_flow.navigation_ready(str(route.room_id) if route.room_family == "legacy" else "",false): return false
+	if not host.legacy_room_flow.navigation_ready(legacy_room,false): return false
 	if host.relay_session != null:
 		if host.relay_session.busy() or not host.relay_session.can_leave_for_legacy(): return false
 		if host.relay_session.coordinator != null and not host.relay_session.coordinator.draft().is_empty(): return false
-	return host.turn_notifications.accepts(route)
+	return true
+
+## A line from the open Friends screen. Its news needs no View: the row it
+## names is on the page.
+func friends_notice(text: String, news: bool) -> void:
+	if is_instance_valid(host.toast): host.toast.post(text, Toast.FRIENDS_ICON if news else null)
+
+## Friends news that arrived on another screen: the pop-up offers View. An
+## open room keeps its own notes on its card instead.
+func _friends_news(text: String) -> void:
+	if text.is_empty(): return
+	if is_instance_valid(host.relay_child): host.relay_child.notification_deferred(text)
+	elif is_instance_valid(host.toast): host.toast.post(text, Toast.FRIENDS_ICON, PlayerCopy.FRIENDS_VIEW, view_friends.bind(_identity_key()))
+
+## The signed-in player changed: their friends news and a waiting View go.
+func forget_friends_news() -> void:
+	_friends_hint = false
+	_view_wanted = {}
+	if is_instance_valid(host.toast): host.toast.drop_actions()
+
+## The live socket says the friends list changed. Friends reads its own hints.
+## On any other screen only a request hint (not `early`) is read: a friend
+## request has no phone alert, while a shared room has the hosting alert. One
+## list read, once the shared client allows it, finds what is new. The socket
+## is only open on the online screens.
+func friends_hint(early: bool) -> void:
+	if early or host.friends_flow.is_open(): return
+	var client: RefCounted = host._friends_client(false)
+	if client != null: client.hint(false)
+	_friends_hint = true
+
+## Main calls this every frame: a waiting View, then an owed friends read.
+func service_friends() -> void:
+	_service_view()
+	if not _friends_hint or _friends_reading: return
+	if host.friends_flow.is_open():
+		_friends_hint = false
+		return
+	if host.application_backgrounded or not host._relay_identity().ready: return
+	var client: RefCounted = host._friends_client(true)
+	if client.busy or not client.refresh_due(): return
+	_friends_hint = false
+	_friends_reading = true
+	var before: Dictionary = client.view()
+	var identity := _identity_key()
+	var read: bool = await client.refresh()
+	_friends_reading = false
+	# A read the server held back for its own floor is owed again; the client
+	# already waits that floor, so this is not a poll.
+	if not read and client.last_code == "friends_refresh_limited": _friends_hint = true
+	if not read or identity != _identity_key() or host.friends_flow.is_open() or host.application_backgrounded: return
+	# With no earlier page, a waiting request or room is the news the hint is about.
+	_friends_news(FriendsClient.change_notice(before if not before.is_empty() else {"friends": []}, client.view()))
+
+## View on the pop-up: Friends opens now when leaving this screen is safe, or
+## quietly once it is, within Main.INVITE_LINK_TTL_MS. A View from another
+## identity does nothing.
+func view_friends(identity: String) -> void:
+	if identity.is_empty() or identity != _identity_key(): return
+	_view_wanted = {"identity": identity, "until": Time.get_ticks_msec() + host.INVITE_LINK_TTL_MS}
+	_service_view()
+
+func _service_view() -> void:
+	if _view_wanted.is_empty() or _view_opening: return
+	if host.friends_flow.is_open() or Time.get_ticks_msec() >= int(_view_wanted.until) or _view_wanted.identity != _identity_key():
+		_view_wanted = {}
+		return
+	if not _can_leave(true, ""): return
+	_view_wanted = {}
+	_view_opening = true
+	await host._show_friends()
+	_view_opening = false
+
+func _identity_key() -> String:
+	var key := TurnNotifications.identity_key(_identity())
+	return "" if key.is_empty() else key + ":" + str(host.relay_identity_epoch)
 
 func _route_context() -> String:
 	return JSON.stringify([TurnNotifications.identity_key(_identity()), host.relay_identity_epoch, host.lifecycle_generation, host.mode])

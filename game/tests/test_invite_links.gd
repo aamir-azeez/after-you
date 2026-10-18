@@ -133,7 +133,7 @@ func _run() -> void:
 	await _frames(3)
 	var adds := _requests(api)
 	_check(adds.size() == 1 and adds[0].body == {"schema_version":1,"friend_code":OTHER},"Confirm uses the existing add path once with the bare ID")
-	_check(app.friends_flow.screen._message.is_empty() and _screen_label(app.friends_flow.screen,"Request sent"),"The new request appears through the normal add result")
+	_check(not app.toast.showing() and _screen_label(app.friends_flow.screen,"Request sent"),"The new request appears through the normal add result, with no pop-up")
 	# Invalid links are ignored with the existing gentle error.
 	for bad: String in ["invalid","https://evil.test/after-you/link#friend-"+PEER,"https://aamirazeez.com/after-you/link#room-0123456789ABCDEF0123"]:
 		app.toasts.clear()
@@ -145,7 +145,7 @@ func _run() -> void:
 	await _frames(2)
 	await app._service_invite_link()
 	await _frames(2)
-	_check(_modal(app) == null and app.friends_flow.screen._message == PlayerCopy.FRIEND_CODE_OWN,"Your own invite link explains itself without a confirmation")
+	_check(_modal(app) == null and app.toast.showing() and app.toast.text == PlayerCopy.FRIEND_CODE_OWN,"Your own invite link explains itself in the pop-up without a confirmation")
 	friend_rows = [{"player_id":PEER,"request_id":"R".repeat(22),"status":"accepted","online":false,"expires_after_seconds":0,"join_available":false}]
 	app.friends_client.invalidate()
 	await app.friends_flow.screen._refresh(true)
@@ -153,7 +153,7 @@ func _run() -> void:
 	await _frames(2)
 	await app._service_invite_link()
 	await _frames(2)
-	_check(_modal(app) == null and app.friends_flow.screen._message == PlayerCopy.FRIEND_ALREADY_ADDED,"An existing friend's link says you are already friends")
+	_check(_modal(app) == null and app.toast.showing() and app.toast.text == PlayerCopy.FRIEND_ALREADY_ADDED,"An existing friend's link says you are already friends in the pop-up")
 	_check(_requests(api).size() == 1,"Own and existing-friend links send no request")
 	# A short-name link opens the same confirmation, naming friend-<name>.
 	native.offer("https://aamirazeez.com/after-you/link#friend-Aamir")

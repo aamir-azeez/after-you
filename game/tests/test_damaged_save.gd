@@ -229,7 +229,7 @@ func _main_shows_note_once() -> void:
 	var app := Main.new()
 	app.saves = Storage.new(path)
 	root.add_child(app)
-	_check(app.toast_label.visible and app.toast_label.text == PlayerCopy.LOCAL_SAVE_STARTED_FRESH, "The app shows the note at launch")
+	_check(app.toast.visible and app.toast.text == PlayerCopy.LOCAL_SAVE_STARTED_FRESH, "The app shows the note at launch")
 	_check(not app.saves.read_only and app.saves.update_values({"settings": _flipped(app.saves.data.settings)}), "A toggle saves after the fix")
 	app.queue_free()
 	await process_frame
@@ -237,7 +237,7 @@ func _main_shows_note_once() -> void:
 	var again := Main.new()
 	again.saves = Storage.new(path)
 	root.add_child(again)
-	_check(again.toast_label.text != PlayerCopy.LOCAL_SAVE_STARTED_FRESH and not again.saves.data.settings.sound, "The next launch keeps the toggle and shows no note")
+	_check(again.toast.text != PlayerCopy.LOCAL_SAVE_STARTED_FRESH and not again.saves.data.settings.sound, "The next launch keeps the toggle and shows no note")
 	_check(_files(directory).filter(func(name: String) -> bool: return name.contains(Storage.UNREADABLE)).size() == 1, "The next launch moves nothing more")
 	again.queue_free()
 	await process_frame

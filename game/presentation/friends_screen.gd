@@ -47,6 +47,10 @@ signal closed
 signal host_requested
 signal open_requested
 signal join_requested(descriptor: Dictionary)
+## A short line for the app's pop-up (presentation/toast.gd): an error, a result
+## or `news` (a friend request, a room made available). The page never draws
+## it, so nothing on the page moves for one.
+signal notice(text: String, news: bool)
 var client: RefCounted
 var event_client: RefCounted
 ## The phone's live socket (services/live_connection.gd), or null. An early
@@ -75,7 +79,9 @@ var _context: Dictionary = {}
 var _alive := true
 var _foreground := true
 var _busy := false
-var _message := ""
+## The last error an automatic refresh said, so a poll that keeps failing the
+## same way says it once.
+var _poll_error := ""
 var _remove: Dictionary = {}
 var _code := ""
 var _presence_signature := ""
@@ -347,7 +353,7 @@ func _drawn_from() -> String:
 	var page: Dictionary = client.view().duplicate(true)
 	for peer: Variant in page.get("friends",[]):
 		if peer is Dictionary: (peer as Dictionary).erase("expires_after_seconds")
-	return JSON.stringify([page, _social_events, _notification_preferences, _message, _events_supported])
+	return JSON.stringify([page, _social_events, _notification_preferences, _events_supported])
 
 ## Redraws for news the player did not ask for (a poll, a push). Rebuilding
 ## the page frees every button, so a tap in progress would be lost; the redraw
@@ -371,7 +377,6 @@ func _render() -> void:
 	for child: Node in _content.get_children():
 		_content.remove_child(child)
 		child.queue_free()
-	if not _message.is_empty(): _label(_message)
 	_add_hosting_events()
 	if not _remove.is_empty():
 		var confirmation := _card(_content,24)
@@ -809,9 +814,9 @@ func _set_hosting_alert(peer: Dictionary, enabled: bool) -> void:
 	if okay:
 		_notification_preferences[str(peer.player_id)] = enabled
 		if is_instance_valid(notification_transport): notification_transport.set_hosting_friend(str(peer.player_id),enabled,str(peer.request_id))
-		_message = "Hosting alerts saved" if enabled else "Hosting alerts turned off"
+		_say("Hosting alerts saved" if enabled else "Hosting alerts turned off")
 	else:
-		_message = "Hosting alerts could not be updated"
+		_say("Hosting alerts could not be updated")
 	_busy = false
 	_render()
 
@@ -886,7 +891,7 @@ func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
 
 func _save_nickname(server: String, owner: String, friend: String, text: String) -> void:
 	if not is_instance_valid(_modal) or not _current(): return
-	_message = "" if _nicknames.set_nickname(server,owner,friend,text) else "Nickname could not be saved"
+	if not _nicknames.set_nickname(server,owner,friend,text): _say("Nickname could not be saved")
 	_close_modal(false)
 	_render()
 
@@ -973,14 +978,12 @@ func _offer_link() -> void:
 	var friend := _link_id
 	_link_id = ""
 	if friend == str(_context.get("player_id","")) or friend == str(client.view().get("friend_alias","")):
-		_message = PlayerCopy.FRIEND_CODE_OWN
-		_render()
+		_say(PlayerCopy.FRIEND_CODE_OWN)
 		return
 	for peer: Dictionary in client.view().get("friends",[]):
 		if peer.player_id != friend: continue
 		if peer.status in ["accepted","outgoing"]:
-			_message = PlayerCopy.FRIEND_ALREADY_ADDED if peer.status == "accepted" else "Request sent"
-			_render()
+			_say(PlayerCopy.FRIEND_ALREADY_ADDED if peer.status == "accepted" else "Request sent")
 			return
 	var code := ShareCodes.format(ShareCodes.FRIEND,friend)
 	_modal = InGameModal.open(_root,"InviteLinkModal",PlayerCopy.INVITE_LINK_TITLE,code)
@@ -1049,8 +1052,13 @@ func _refresh(manual: bool = false) -> void:
 			_apply_social(social.data)
 	_busy = false
 	_refreshing = false
-	_message = "" if refreshed else client.last_error
-	if _message.is_empty() and _foreground: _message = _change_notice(before,client.view())
+	var error: String = "" if refreshed else client.last_error
+	if error.is_empty():
+		_poll_error = ""
+		if _foreground: _say(FriendsClient.change_notice(before,client.view()),true)
+	elif manual or error != _poll_error:
+		_poll_error = error
+		_say(error)
 	if _drawn_from() != _render_signature: _render_when_free()
 	else: _update_countdowns()
 	if refreshed and social_loaded and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
@@ -1100,18 +1108,9 @@ func hosting_hint() -> void:
 	_render_when_free()
 	if social.get("ok",false) and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
 
-func _change_notice(before: Dictionary, after: Dictionary) -> String:
-	if before.is_empty(): return ""
-	var prior := {}
-	for peer: Dictionary in before.get("friends",[]): prior[peer.player_id] = peer
-	var request := false
-	var room := false
-	for peer: Dictionary in after.get("friends",[]):
-		var old: Dictionary = prior.get(peer.player_id,{})
-		if peer.status == "incoming" and (old.get("status") != "incoming" or old.get("request_id") != peer.request_id): request = true
-		if peer.join_available and (not old.get("join_available",false) or old.get("request_id") != peer.request_id): room = true
-	if request and room: return "New friend request · Room available"
-	return "New friend request" if request else "Room available" if room else ""
+## Hands a line to the pop-up; an empty line says nothing.
+func _say(text: String, news: bool = false) -> void:
+	if not text.is_empty(): notice.emit(text,news)
 
 func _act(action: String, peer: Dictionary = {}) -> void:
 	if _keep_for_after_refresh(_act_on_current.bind(action,peer)): return
@@ -1138,7 +1137,7 @@ func _act(action: String, peer: Dictionary = {}) -> void:
 		await client.refresh()
 		if not _current(): return
 	_busy = false
-	_message = client.last_error
+	_say(client.last_error)
 	if not descriptor.is_empty() and _foreground:
 		join_requested.emit(descriptor)
 		close()

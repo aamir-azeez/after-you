@@ -126,6 +126,23 @@ func refresh(manual: bool = false) -> bool:
 		_next_refresh = mini(_next_refresh, _last_read_at + LIVE_FLOOR_MS)
 	return true
 
+## The short news line between two list pages: a new friend request, a room a
+## friend made available, or both; "" when nothing new. Friends and the live
+## hint on other screens both use it, on the one shared page, so the same news
+## is never said twice.
+static func change_notice(before: Dictionary, after: Dictionary) -> String:
+	if before.is_empty(): return ""
+	var prior := {}
+	for peer: Dictionary in before.get("friends",[]): prior[peer.player_id] = peer
+	var request := false
+	var room := false
+	for peer: Dictionary in after.get("friends",[]):
+		var old: Dictionary = prior.get(peer.player_id,{})
+		if peer.status == "incoming" and (old.get("status") != "incoming" or old.get("request_id") != peer.request_id): request = true
+		if peer.join_available and (not old.get("join_available",false) or old.get("request_id") != peer.request_id): room = true
+	if request and room: return "New friend request · Room available"
+	return "New friend request" if request else "Room available" if room else ""
+
 ## The live socket says the list changed. `granted` (a friends hint) makes the
 ## next read due now, at least LIVE_FLOOR_MS after the last; otherwise (the
 ## socket reopened) it comes as early as a manual refresh may.

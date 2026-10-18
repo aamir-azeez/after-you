@@ -621,7 +621,7 @@ func _home_after_replays() -> void:
 		if delay_s < 0.0:
 			app.room_hub_flow._gate = BusyTapGate.new(app.overlay)
 			app.room_hub_flow._gate.wait_ms = 300
-		app.toast_label.visible = false
+		app.toast.visible = false
 		var play := _home_button(app, "Play with your friend")
 		_check(play != null, "Home shows Play with your friend (%s)" % case)
 		if play == null:
@@ -632,7 +632,7 @@ func _home_after_replays() -> void:
 		_check(app.mode == "home" and play.text == PlayerCopy.HUB_OPENING, "The first tap registers while the save runs: Play with your friend reads Opening… (%s): %s / %s" % [case, play.text, app.mode])
 		if delay_s < 0.0:
 			await create_timer(0.6).timeout
-			_check(app.mode == "home" and not app.room_hub_flow.is_open() and app.toast_label.visible and app.toast_label.text == PlayerCopy.ROOMS_API_DA75E6F7A674, "A save that outlasts the wait says why: " + app.toast_label.text)
+			_check(app.mode == "home" and not app.room_hub_flow.is_open() and app.toast.visible and app.toast.text == PlayerCopy.ROOMS_API_DA75E6F7A674, "A save that outlasts the wait says why: " + app.toast.text)
 			_check(play.text == "Play with your friend", "The button reads as usual again")
 		api.hold = false
 		api.release.emit()

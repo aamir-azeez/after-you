@@ -382,7 +382,7 @@ func _screen() -> void:
 	var before_mode: String = app.mode
 	await app.room_hub_flow.show_rooms()
 	await _settle()
-	_check(app.mode == before_mode and app.toast_label.visible and app.toast_label.text == Copy.UPDATE_REQUIRED_ERROR, "Inside a room the screen is not drawn underneath; a short line says why")
+	_check(app.mode == before_mode and app.toast.visible and app.toast.text == Copy.UPDATE_REQUIRED_ERROR, "Inside a room the screen is not drawn underneath; a short line says why")
 	room.free()
 	app.relay_child = null
 	app._show_home()
@@ -390,11 +390,11 @@ func _screen() -> void:
 	await _settle()
 	_check(app.mode == "update_gate", "Back on Home, the update screen shows")
 	# An invite link is dropped at once while gated, with no promise to open it later.
-	app.toast_label.visible = false
+	app.toast.visible = false
 	app.invite_link_pending = "LLLLLLLLLLLLLLLLLLLLLL"
 	app.invite_link_expires_ms = Time.get_ticks_msec() + 60000
 	app._service_invite_link()
-	_check(app.invite_link_pending.is_empty() and not (app.toast_label.visible and app.toast_label.text == Copy.INVITE_LINK_WAITING) and app.mode == "update_gate", "An invite link while gated is dropped without saying it will open later")
+	_check(app.invite_link_pending.is_empty() and not (app.toast.visible and app.toast.text == Copy.INVITE_LINK_WAITING) and app.mode == "update_gate", "An invite link while gated is dropped without saying it will open later")
 	# Offline features keep working.
 	for item: Array in [[app.settings_flow, "show_settings", "settings"], [app.replays_flow, "show_collection", "collection"], [app.settings_flow, "show_graphics_settings", "settings"], [app.settings_flow, "show_licenses", "settings"], [app.account_flow, "confirm_delete_identity", ""], [app, "_show_journey", "journey"]]:
 		await item[0].call(item[1])
@@ -406,7 +406,7 @@ func _screen() -> void:
 	_check(app.mode == "shared_replays", "Together replays already on the phone still open")
 	app.replays_flow._refresh_shared_replay_rooms()
 	await _settle()
-	_check(app.toast_label.visible and app.toast_label.text == UpdateGate.notice("0.6.2") and app.api.calls.is_empty(), "A shared-replay download waits for the update and says so, sending nothing")
+	_check(app.toast.visible and app.toast.text == UpdateGate.notice("0.6.2") and app.api.calls.is_empty(), "A shared-replay download waits for the update and says so, sending nothing")
 	# A notification or invite link while gated brings the screen back on Home.
 	app._show_home()
 	await _settle()

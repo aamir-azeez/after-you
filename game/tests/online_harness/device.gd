@@ -115,7 +115,7 @@ static func _window_notification(node: Node, what: int) -> void:
 ## Records any new toast text (called by the harness every frame).
 func observe() -> void:
 	if not running(): return
-	var toast: Label = app.toast_label
+	var toast: Variant = app.toast
 	if is_instance_valid(toast) and toast.visible and toast.text != _last_toast:
 		_last_toast = toast.text
 		toasts.append(toast.text)

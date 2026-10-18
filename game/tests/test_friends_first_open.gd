@@ -31,7 +31,7 @@ func _run() -> void:
 	_check(app.relay_session == null and app.friend_share_target.is_empty(),"Cold Home has no relay session or selected room")
 	await app._show_friends()
 	await process_frame
-	_check(app.friends_flow.is_open() and app.friends_flow.screen._message.is_empty(),"First Friends open has no room error")
+	_check(app.friends_flow.is_open() and not app.toast.showing(),"First Friends open has no room error")
 	var host := _screen_button(app.friends_flow.screen,"Host a room")
 	_check(host != null and not host.disabled,"First Friends open has a usable Host button")
 	if host != null: host.pressed.emit()

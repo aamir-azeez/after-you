@@ -329,7 +329,7 @@ func _refused_after_leaving(app: Node, api: FakeApi) -> void:
 	var waiting: Button=_button_named(app,"Play with your friend")
 	if waiting!=null: waiting.pressed.emit()
 	await _frames(2)
-	_check(app.mode=="home" and app.toast_label.visible and app.toast_label.text==Copy.MAIN_8184DEB41266,"While the turn is being sent, Play with your friend says to wait: "+app.toast_label.text)
+	_check(app.mode=="home" and app.toast.visible and app.toast.text==Copy.MAIN_8184DEB41266,"While the turn is being sent, Play with your friend says to wait: "+app.toast.text)
 	api.release.emit()
 	await _frames(4)
 	var pending: Dictionary=app.saves.data.get("pending_turn",{})
@@ -469,14 +469,14 @@ func _previous_identity_turn(app: Node, api: FakeApi) -> void:
 	var saved_room: Dictionary=app.saves.data.get("room",{}).duplicate(true)
 	var before: int=api.calls.size()
 	for label: String in ["Play with your friend","Friends"]:
-		app.toast_label.visible=false
+		app.toast.visible=false
 		var tap: Button=_button_named(app,label)
 		_check(app.mode=="home" and tap!=null,"Home offers "+label)
 		if tap==null: continue
 		tap.pressed.emit()
 		await _frames(4)
 		_check(app.mode=="home" and not app.room_hub_flow.is_open() and not app.friends_flow.is_open(),label+" with another identity's turn keeps Home: "+app.mode)
-		_check(app.toast_label.visible and app.toast_label.text==Copy.MAIN_ECBD713D8F0C,label+" says the turn is from the previous identity: "+app.toast_label.text)
+		_check(app.toast.visible and app.toast.text==Copy.MAIN_ECBD713D8F0C,label+" says the turn is from the previous identity: "+app.toast.text)
 	_check(app.saves.data.get("pending_turn",{})==pending and app.saves.data.get("held_turns",[])==held_before and app.saves.data.get("room",{})==saved_room,"The previous identity's turn, held turns and saved room are untouched")
 	_check(api.calls.size()==before,"Nothing is sent for the previous identity's turn")
 	api.player_id=HOST
@@ -495,7 +495,7 @@ func _notices(app: Node, count: int) -> Array[String]:
 	var seen: Array[String] = []
 	for _frame in range(count):
 		await process_frame
-		if app.toast_label.visible and not app.toast_label.text in seen: seen.append(app.toast_label.text)
+		if app.toast.visible and not app.toast.text in seen: seen.append(app.toast.text)
 	return seen
 
 func _finish(viewport: SubViewport) -> void:

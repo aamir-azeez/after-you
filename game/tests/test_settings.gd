@@ -162,7 +162,7 @@ func _failed_save(app: Node) -> void:
 	app.saves.read_only=true
 	await _click(app,toggle)
 	_check(toggle.button_pressed==before and app.saves.data.settings.sound==before,"A failed save puts the switch back as saved")
-	_check(app.toast_label.visible and app.toast_label.text==PlayerCopy.MAIN_34B82590B663,"A failed save says the setting could not be saved")
+	_check(app.toast.visible and app.toast.text==PlayerCopy.MAIN_34B82590B663,"A failed save says the setting could not be saved")
 	app.saves.read_only=false
 
 func _rows_table(app: Node) -> void:

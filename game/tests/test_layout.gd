@@ -109,7 +109,7 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app.running=false
 	app._toast("Your rehearsal is safely saved on this device.")
 	await process_frame
-	for control: Control in [app.timer_label,app.progress,app.hint_label,app.toast_label]:
+	for control: Control in [app.timer_label,app.progress,app.hint_label,app.toast.card]:
 		_check(screen.encloses(control.get_global_rect()),"Anchored HUD control stays visible at %s: %s" % [viewport.size,control.name])
 	for button: Button in _buttons(app.hud):
 		_check(screen.encloses(button.get_global_rect()),"Anchored HUD action stays visible at %s: %s" % [viewport.size,button.text])

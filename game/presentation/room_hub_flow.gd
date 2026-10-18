@@ -127,7 +127,7 @@ func show_rooms() -> void:
 	var lifecycle: int = host.lifecycle_generation
 	if not host._relay_available() or not await host._ensure_identity(): return
 	if view != host.store_view_generation or lifecycle != host.lifecycle_generation or host.application_backgrounded: return
-	# A toast would sit under the hub, so a note from the check shows on the hub.
+	# A note from the check stays on the hub's own notice.
 	var report := {"text": ""}
 	if not await host._prepare_ordinary_navigation(func(text: String) -> void: report.text = text):
 		if not report.text.is_empty(): host._toast(report.text)

@@ -17,6 +17,7 @@ extends Node
 ## - room flow: active_room, friend_share_target, _friends_to_rooms,
 ##   legacy_room_flow (open_room, join_room), relay_lobby_flow (open_lobby,
 ##   lobby_action)
+## - pop-up: notification_flow (friends_notice), which shows the screen's lines
 ## - node: add_child (the Friends layer stays Main's child)
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link(). refresh() calls the screen's private
@@ -67,6 +68,7 @@ func open(from_home: bool) -> void:
 	screen.live = host.live_connection
 	screen.hosting_view_ready.connect(hosting_view_ready.emit)
 	screen.room_shared.connect(host.room_sharing.send_owed_alert)
+	screen.notice.connect(host.notification_flow.friends_notice)
 	screen.shareable_room = shareable
 	screen.room_title = title
 	screen.shared_room_title = _shared_room_title

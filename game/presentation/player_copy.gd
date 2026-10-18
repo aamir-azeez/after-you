@@ -17,6 +17,8 @@ const INVITE_LINK_SHARE := "Share Invite"
 const INVITE_LINK_TITLE := "Add friend?"
 const INVITE_LINK_NICKNAME := "Nickname: %s"
 const INVITE_LINK_WAITING := "Invite link saved. It opens when you're done here."
+## The pop-up's button that opens Friends for news that arrived elsewhere.
+const FRIENDS_VIEW := "View"
 # Short progress lines while a room tap waits for the request already out.
 const HUB_OPENING_ROOM := "Opening room…"
 const HUB_JOINING := "Joining…"

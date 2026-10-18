@@ -731,10 +731,10 @@ func _restart_with_recovery(app: Node, api: Node, storage: TestSecrets) -> void:
 func _test_recovery_interruptions(app: Node, api: Node, storage: TestSecrets) -> void:
 	_reset_recovery_case(app,api,storage)
 	for input: Array in [["short",TEST_RECOVERY_CODE],[TEST_RECOVERY_PLAYER,"mistyped"],[TEST_RECOVERY_PLAYER,"+".repeat(43)],["",""],["",TEST_RECOVERY_CODE],[TEST_RECOVERY_PLAYER,""]]:
-		app.toast_label.text = ""
+		app.toast.text = ""
 		await app.account_flow.recover_identity(input[0],input[1])
 		_check(api.calls.is_empty() and storage.writes.is_empty() and app.pending_recovery.is_empty() and not app.identity_restart_required,"Mistyped recovery input is rejected before creating, persisting or sending a proposal")
-		_check(app.toast_label.text == PlayerCopy.MAIN_C1B99419085A,"Mistyped or empty recovery input says what to check: %s" % [input])
+		_check(app.toast.text == PlayerCopy.MAIN_C1B99419085A,"Mistyped or empty recovery input says what to check: %s" % [input])
 	await app.account_flow.recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
 	var original: Dictionary=api.calls[0].body.duplicate(true)
 	var pending: Dictionary=JSON.parse_string(storage.values.recovery_pending)
