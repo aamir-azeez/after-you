@@ -46,20 +46,16 @@ func _ready() -> void:
 	_content.add_theme_constant_override("separation",12)
 	scroll.add_child(_content)
 	_button("Back",close,layout)
-	get_viewport().size_changed.connect(_layout)
+	SafeArea.watch(self,_layout)
 	_layout()
 	_render()
 	await _refresh()
 
 func _layout() -> void:
 	var rect := get_viewport().get_visible_rect()
-	var safe := rect
-	if SafeArea.applies(): safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),rect)
+	var safe := SafeArea.rect(get_viewport())
 	var side := maxi(20,int((safe.size.x-680)*0.5))
-	_margin.add_theme_constant_override("margin_left",int(safe.position.x)+side)
-	_margin.add_theme_constant_override("margin_right",int(rect.end.x-safe.end.x)+side)
-	_margin.add_theme_constant_override("margin_top",int(safe.position.y)+24)
-	_margin.add_theme_constant_override("margin_bottom",int(rect.end.y-safe.end.y)+24)
+	SafeArea.pad(_margin,rect,safe,side,24,side,24)
 
 func _current() -> bool: return _alive and is_inside_tree() and not _owner.is_empty() and client._context() == _owner
 func _process(_delta: float) -> void:

@@ -178,7 +178,7 @@ func _ready() -> void:
 	_content.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_content.add_theme_constant_override("separation",18)
 	_scroll.add_child(_content)
-	get_viewport().size_changed.connect(_layout)
+	SafeArea.watch(self,_layout)
 	_layout()
 	# The list read is throttled across visits, so start from the alerts the
 	# shared client already knows rather than showing every friend as off.
@@ -189,8 +189,7 @@ func _ready() -> void:
 func _layout() -> void:
 	if not is_instance_valid(_margin): return
 	var rect := get_viewport().get_visible_rect()
-	var safe := rect
-	if SafeArea.applies(): safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),rect)
+	var safe := SafeArea.rect(get_viewport())
 	var compact := safe.size.x < 1100
 	var stacked := safe.size.x < 900
 	var narrow := safe.size.x < 560
@@ -200,10 +199,7 @@ func _layout() -> void:
 	_narrow = narrow
 	var side := maxi(20,int((safe.size.x-1192)*0.5))
 	_safe_width = safe.size.x - side * 2
-	_margin.add_theme_constant_override("margin_left",int(safe.position.x)+side)
-	_margin.add_theme_constant_override("margin_right",int(rect.end.x-safe.end.x)+side)
-	_margin.add_theme_constant_override("margin_top",int(safe.position.y)+(16 if compact else 20))
-	_margin.add_theme_constant_override("margin_bottom",int(rect.end.y-safe.end.y)+(16 if compact else 20))
+	SafeArea.pad(_margin,rect,safe,side,16 if compact else 20,side,16 if compact else 20)
 	_title.add_theme_font_size_override("font_size",38 if compact else 54)
 	_countdown.add_theme_font_size_override("font_size",16 if compact else 20)
 	_countdown.visible = not narrow

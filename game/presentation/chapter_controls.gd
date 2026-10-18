@@ -51,7 +51,7 @@ var _view_world: Node
 
 func _ready() -> void:
 	_build_ui()
-	get_viewport().size_changed.connect(_resize)
+	SafeArea.watch(self, _resize)
 	_resize()
 
 func show_play() -> void:
@@ -278,9 +278,7 @@ func _resize() -> void:
 	if not is_inside_tree() or not is_instance_valid(ui):
 		return
 	var viewport := get_viewport().get_visible_rect()
-	var safe := viewport
-	if SafeArea.applies():
-		safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()), get_viewport().get_screen_transform(), viewport)
+	var safe := SafeArea.rect(get_viewport())
 	ui.offset_left = safe.position.x - viewport.position.x
 	ui.offset_top = safe.position.y - viewport.position.y
 	ui.offset_right = safe.end.x - viewport.end.x
@@ -292,7 +290,6 @@ func _resize() -> void:
 		# timer and progress text in the centre of the display.
 		chapter_label.size.x = maxf(240.0, ui.size.x * 0.5 - 244.0)
 		_fit_chapter_title.call_deferred()
-	_resize_shade()
 	_layout_card.call_deferred()
 
 
@@ -303,17 +300,6 @@ func _fit_chapter_title() -> void:
 	if is_instance_valid(chapter_label):
 		chapter_label.size.y = 0.0
 	_place_wait_row()
-
-
-func _resize_shade() -> void:
-	# Controls respect display cutouts; the dimming backdrop covers the whole
-	# world, including those insets. Otherwise a bright side strip remains.
-	if not is_instance_valid(modal_shade):
-		return
-	modal_shade.offset_left = -ui.offset_left
-	modal_shade.offset_top = -ui.offset_top
-	modal_shade.offset_right = -ui.offset_right
-	modal_shade.offset_bottom = -ui.offset_bottom
 
 
 func _style(color: Color) -> StyleBoxFlat:
@@ -369,8 +355,10 @@ func card(title: String, body: String) -> VBoxContainer:
 	modal_shade = ColorRect.new()
 	modal_shade.color = Color(0.025, 0.10, 0.10, 0.73)
 	modal_shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Controls respect display cutouts; the dimming backdrop covers the whole
+	# world, including those insets. Otherwise a bright side strip remains.
+	SafeArea.bleed(modal_shade)
 	overlay.add_child(modal_shade)
-	_resize_shade()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)

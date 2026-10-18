@@ -17,17 +17,11 @@ func _ready() -> void:
 	badge.add_theme_constant_override("shadow_offset_y",1)
 	badge.mouse_filter=Control.MOUSE_FILTER_IGNORE
 	add_child(badge)
-	get_viewport().size_changed.connect(_position_badge)
+	SafeArea.watch(self,_position_badge)
 	_position_badge.call_deferred()
 
 func _position_badge() -> void:
 	if not is_instance_valid(badge): return
-	var safe := get_viewport().get_visible_rect()
-	if SafeArea.applies():
-		safe=SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),safe)
+	var safe := SafeArea.rect(get_viewport())
 	badge.size=badge.get_combined_minimum_size()
 	badge.position=Vector2(safe.end.x-badge.size.x-24,safe.position.y+4)
-
-func _notification(what: int) -> void:
-	if what==NOTIFICATION_APPLICATION_RESUMED:
-		_position_badge.call_deferred()

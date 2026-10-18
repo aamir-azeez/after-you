@@ -326,7 +326,7 @@ func _ready() -> void:
 	TouchInput.install(get_viewport())
 	_build_ui()
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
-	get_viewport().size_changed.connect(_refresh_safe_area)
+	SafeArea.watch(self,_refresh_safe_area)
 	_refresh_safe_area()
 	_refresh_safe_area.call_deferred()
 	_apply_settings()
@@ -463,11 +463,7 @@ func _refresh_safe_area() -> void:
 	if not is_instance_valid(ui):
 		return
 	TouchInput.install(get_viewport())
-	var viewport := get_viewport().get_visible_rect()
-	var safe := viewport
-	if SafeArea.applies():
-		safe=SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),viewport)
-	_apply_safe_area(safe)
+	_apply_safe_area(SafeArea.rect(get_viewport()))
 
 func _apply_safe_area(safe: Rect2) -> void:
 	var viewport := get_viewport().get_visible_rect()
@@ -476,7 +472,6 @@ func _apply_safe_area(safe: Rect2) -> void:
 	ui.offset_right=safe.end.x-viewport.end.x
 	ui.offset_bottom=safe.end.y-viewport.end.y
 	_layout_hint()
-	_update_shade_bounds()
 	_layout_bounded_card.call_deferred()
 
 func _layout_hint() -> void:
@@ -486,14 +481,6 @@ func _layout_hint() -> void:
 	hint_label.offset_top=bounds.position.y
 	hint_label.offset_right=bounds.end.x
 	hint_label.offset_bottom=bounds.end.y
-
-func _update_shade_bounds() -> void:
-	# The world and dialog backdrop fill the screen; only interactive UI is inset.
-	if is_instance_valid(overlay_shade):
-		overlay_shade.offset_left=-ui.offset_left
-		overlay_shade.offset_top=-ui.offset_top
-		overlay_shade.offset_right=-ui.offset_right
-		overlay_shade.offset_bottom=-ui.offset_bottom
 
 func _label(text: String, font_size: int=20, color: Color=CREAM, title: bool=false) -> Label:
 	var label := Label.new()
@@ -597,9 +584,10 @@ func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 	var shade := ColorRect.new()
 	shade.color=Color(0.025,0.10,0.10,0.68)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# The world and dialog backdrop fill the screen; only interactive UI is inset.
+	SafeArea.bleed(shade)
 	overlay.add_child(shade)
 	overlay_shade=shade
-	_update_shade_bounds()
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	overlay.add_child(center)
@@ -793,9 +781,10 @@ func _screen_shell(title: String, back_callback: Callable) -> Dictionary:
 	var shade := ColorRect.new()
 	shade.color=Color(0.025,0.10,0.10,0.9)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# The world and dialog backdrop fill the screen; only interactive UI is inset.
+	SafeArea.bleed(shade)
 	overlay.add_child(shade)
 	overlay_shade=shade
-	_update_shade_bounds()
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	for side in ["left","top","right","bottom"]:
@@ -2270,7 +2259,7 @@ func _place_still(shade: ColorRect, texture: Texture2D) -> void:
 	still.stretch_mode = TextureRect.STRETCH_SCALE
 	still.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	still.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side: String in ["offset_left", "offset_top", "offset_right", "offset_bottom"]: still.set(side, shade.get(side))
+	SafeArea.bleed(still)
 	shade.get_parent().add_child(still)
 	shade.get_parent().move_child(still, shade.get_index())
 	_backdrop_ready = true
@@ -2562,7 +2551,6 @@ func _notification(what: int) -> void:
 		_write_backup_plan()
 	elif what==NOTIFICATION_APPLICATION_RESUMED:
 		if is_instance_valid(turn_notifications): turn_notifications.queue_reconcile()
-		_refresh_safe_area.call_deferred()
 		_resume_application()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		# The update screen has no Back: the player updates or picks Play Solo.

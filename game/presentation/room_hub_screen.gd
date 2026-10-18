@@ -217,7 +217,7 @@ func _ready() -> void:
 	_right_column.add_theme_constant_override("separation",12)
 	_right_scroll.add_child(_right_column)
 	_build_host_panel(heading_font)
-	get_viewport().size_changed.connect(_layout_safe_area)
+	SafeArea.watch(self,_layout_safe_area)
 	_layout_safe_area()
 	_render()
 
@@ -390,9 +390,7 @@ func _fit_hero() -> void:
 func _layout_safe_area() -> void:
 	if not is_instance_valid(_margin): return
 	var rect := get_viewport().get_visible_rect()
-	var safe := rect
-	if SafeArea.applies():
-		safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()),get_viewport().get_screen_transform(),rect)
+	var safe := SafeArea.rect(get_viewport())
 	var compact := safe.size.x < 1050
 	var stacked := safe.size.x < 820
 	_compact = compact
@@ -400,10 +398,7 @@ func _layout_safe_area() -> void:
 	_body.vertical = stacked
 	_body.add_theme_constant_override("separation",12 if compact else 22)
 	var side := maxi(18,int((safe.size.x-1480)*0.5))
-	_margin.add_theme_constant_override("margin_left",int(safe.position.x)+side)
-	_margin.add_theme_constant_override("margin_right",int(rect.end.x-safe.end.x)+side)
-	_margin.add_theme_constant_override("margin_top",int(safe.position.y)+12)
-	_margin.add_theme_constant_override("margin_bottom",int(rect.end.y-safe.end.y)+12)
+	SafeArea.pad(_margin,rect,safe,side,12,side,12)
 	if is_instance_valid(_picker): _picker.refit()
 
 func set_client(value: RefCounted) -> void:

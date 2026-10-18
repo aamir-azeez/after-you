@@ -209,8 +209,12 @@ func _create_text_backing() -> void:
 func _layout() -> void:
 	if not is_instance_valid(_reset): return
 	var rect := _stage_rect()
-	_menu_backing.position = Vector2.ZERO
-	_menu_backing.size = Vector2(rect.position.x-global_position.x+80, size.y)
+	# The backing is a backdrop: it reaches the screen edges, under a camera
+	# cutout too, though the stage itself sits in the safe area.
+	var screen := get_viewport_rect()
+	var reach := screen.position-global_position
+	_menu_backing.position = reach
+	_menu_backing.size = Vector2(rect.position.x-global_position.x+80-reach.x, screen.size.y)
 	var backing_strength := clampf(maxf((DEFAULT_SIZE-zoom_size)/(DEFAULT_SIZE-MIN_SIZE)*2.0,_exploration.pan.length()*10.0),0,1)
 	_menu_backing.modulate.a = backing_strength
 	_reset.position = rect.position-global_position+Vector2(rect.size.x-116,0)

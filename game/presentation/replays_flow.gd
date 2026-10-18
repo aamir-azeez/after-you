@@ -13,7 +13,7 @@ extends Node
 ## - screen: mode, running, room_play, store_view_generation,
 ##   application_backgrounded, submission_in_flight, lifecycle_generation,
 ##   supersede_foreground_refresh, _retry_cancel, ui, overlay,
-##   overlay_shade, _clear_overlay, _update_shade_bounds, _bounded_card_scroll,
+##   overlay_shade, _clear_overlay, _bounded_card_scroll,
 ##   _bounded_card_stack, _set_world_visible, soundscape, title_font
 ## - play: levels, current_level, attempt, preview_saved_attempt,
 ##   _activate_preview, _room_simulation_version, relay_child, LIGHTHOUSE_SCENE,
@@ -31,6 +31,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
 const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const UpdateGate = preload("res://presentation/update_gate_screen.gd")
 const WhenLabel = preload("res://presentation/when_label.gd")
@@ -439,9 +440,9 @@ func _begin_replay_split(selected: String, back_text: String="Back", back_callba
 	var shade := ColorRect.new()
 	shade.color=Color(0.025,0.10,0.10,0.9)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	SafeArea.bleed(shade)
 	host.overlay.add_child(shade)
 	host.overlay_shade=shade
-	host._update_shade_bounds()
 	var wide: bool=host.ui.size.x>=REPLAY_SPLIT_MIN_WIDTH
 	var margin := MarginContainer.new()
 	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)

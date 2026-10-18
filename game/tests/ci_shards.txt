@@ -50,6 +50,7 @@ cooperative 1
 cooperative_admission 3
 cooperative_integration 1
 cumulative_holds 1
+cutout_full_bleed 3
 damaged_save 1
 deleted_identity_caches 3
 deleted_identity_photo_cleanup 1

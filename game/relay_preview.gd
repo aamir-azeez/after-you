@@ -14,7 +14,6 @@ const RefreshClock = preload("res://services/refresh_schedule.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Joystick = preload("res://presentation/joystick.gd")
-const SafeArea = preload("res://presentation/safe_area.gd")
 const LegacySave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Frames = preload("res://services/frame_policy.gd")
@@ -478,10 +477,6 @@ func _resize() -> void:
 	if is_instance_valid(_room_ready_panel) and mode in ["ready", "online_waiting"]:
 		if ui.size.x < 880 or _room_ready_panel.short_layout != (ui.size.y < 640): _show_ready.call_deferred()
 		else: _frame_ready_world.call_deferred()
-
-
-func _resize_shade() -> void:
-	if is_instance_valid(controls): controls._resize_shade()
 
 
 func _style(color: Color) -> StyleBoxFlat:

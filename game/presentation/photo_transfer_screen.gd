@@ -60,7 +60,7 @@ func _ready() -> void:
 	_content.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_content.add_theme_constant_override("separation", 14)
 	scroll.add_child(_content)
-	get_viewport().size_changed.connect(_layout)
+	SafeArea.watch(self, _layout)
 	_layout()
 	_client.progress.connect(_progress)
 	_render()
@@ -85,14 +85,9 @@ func _set_migration_result(result: Dictionary) -> void:
 func _layout() -> void:
 	if not is_instance_valid(_margin): return
 	var rect := get_viewport().get_visible_rect()
-	var safe := rect
-	if SafeArea.applies():
-		safe = SafeArea.viewport_rect(Rect2(DisplayServer.get_display_safe_area()), get_viewport().get_screen_transform(), rect)
+	var safe := SafeArea.rect(get_viewport())
 	var side := maxi(24, int((safe.size.x - 820) * 0.5))
-	_margin.add_theme_constant_override("margin_left", int(safe.position.x) + side)
-	_margin.add_theme_constant_override("margin_right", int(rect.end.x - safe.end.x) + side)
-	_margin.add_theme_constant_override("margin_top", int(safe.position.y) + 28)
-	_margin.add_theme_constant_override("margin_bottom", int(rect.end.y - safe.end.y) + 24)
+	SafeArea.pad(_margin, rect, safe, side, 28, side, 24)
 
 func _request(method: int, path: String, body: Dictionary) -> Dictionary:
 	if not _current() or not is_instance_valid(_api):

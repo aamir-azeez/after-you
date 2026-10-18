@@ -6,6 +6,7 @@ extends Control
 ## is the cream button and the action itself is coral.
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
 const CLOSE_ICON = preload("res://assets/ui/social/x.svg")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
@@ -45,6 +46,9 @@ func _build(heading: String, subtitle: String) -> void:
 	shade.color = Color(0.02,0.08,0.08,0.74)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	# The dim reaches every screen edge, under a camera cutout too, even when the
+	# modal sits in an inset content root; the panel stays in the parent's safe rect.
+	SafeArea.bleed(shade)
 	add_child(shade)
 	_center = CenterContainer.new()
 	_center.name = "ModalCenter"

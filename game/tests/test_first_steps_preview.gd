@@ -56,7 +56,6 @@ func _run() -> void:
 		app.ui.offset_top = insets.y
 		app.ui.offset_right = -insets.z
 		app.ui.offset_bottom = -insets.w
-		app._resize_shade()
 		await process_frame
 		_check(app.modal_shade.get_global_rect().is_equal_approx(Rect2(0, 0, 1280, 720)), "Modal dimming covers the viewport despite asymmetric safe insets")
 	app._resize()
