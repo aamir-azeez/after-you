@@ -21,6 +21,7 @@ var _materials: Array[Dictionary] = []
 var _labels: Array[Dictionary] = []
 var _shaders: Dictionary = {}
 var _where: Dictionary = {}
+var _by_chapter: Dictionary = {}
 
 func _suite() -> String:
 	return "gl_warmup_coverage"
@@ -52,6 +53,7 @@ func _run() -> void:
 		for key: String in Registry.keys():
 			if not pinned.has(key): _built_stages(key)
 	_check_covered()
+	_check_chapters()
 	_report_unseen()
 	if _owns_the_rest():
 		var split: Array = []
@@ -98,7 +100,10 @@ func _collect_drawn(world: Node3D, key: String, scenario: String) -> void:
 		var node: Node = stack.pop_back()
 		if node.is_queued_for_deletion(): continue
 		stack.append_array(node.get_children())
-		if node is Label3D: _add(_labels, Warmup.label_key(node), key, scenario)
+		if node is Label3D:
+			var label := Warmup.label_key(node)
+			_add(_labels, label, key, scenario)
+			_drew(key, "l", Warmup.LABELS.find(label))
 		elif node is GeometryInstance3D:
 			var geometry := node as GeometryInstance3D
 			var found: Array[Material] = [geometry.material_override, geometry.material_overlay]
@@ -109,10 +114,37 @@ func _collect_drawn(world: Node3D, key: String, scenario: String) -> void:
 					found.append(mesh_node.mesh.surface_get_material(surface))
 			for material: Material in found:
 				while material != null:
-					if material is BaseMaterial3D: _add(_materials, Warmup.material_key(material), key, scenario)
+					if material is BaseMaterial3D:
+						var found_key := Warmup.material_key(material)
+						_add(_materials, found_key, key, scenario)
+						_drew(key, "m", Warmup.MATERIALS.find(found_key))
 					elif material is ShaderMaterial and (material as ShaderMaterial).shader != null:
 						_shaders[(material as ShaderMaterial).shader.code] = "%s %s" % [key, scenario]
+						_drew(key, "s", _shader_codes().find((material as ShaderMaterial).shader.code))
 					material = material.next_pass
+
+## What each chapter drew, as gl_warmup.gd CHAPTERS lists it (-1: unlisted,
+## reported by _check_covered).
+func _drew(chapter: String, kind: String, index: int) -> void:
+	if index < 0: return
+	if not _by_chapter.has(chapter): _by_chapter[chapter] = {"m": [], "s": [], "l": []}
+	if index not in _by_chapter[chapter][kind]: _by_chapter[chapter][kind].append(index)
+
+func _shader_codes() -> Array:
+	return Warmup.shaders().map(func(shader: Shader) -> String: return shader.code)
+
+## Every chapter this suite walked has its CHAPTERS entry, exactly.
+func _check_chapters() -> void:
+	for chapter: String in _by_chapter:
+		for kind: String in ["m", "s", "l"]: _by_chapter[chapter][kind].sort()
+		if not OS.get_environment("AFTER_YOU_GL_WARMUP_DUMP").is_empty(): print("CHAPTER \"%s\": %s," % [chapter, JSON.stringify(_by_chapter[chapter])])
+		var listed: Dictionary = Warmup.CHAPTERS.get(chapter, {})
+		var same := true
+		for kind: String in ["m", "s", "l"]:
+			var entry: Array = listed.get(kind, []).duplicate()
+			entry.sort()
+			same = same and entry == _by_chapter[chapter][kind]
+		_check(same, "gl_warmup.gd CHAPTERS lists exactly what %s draws: %s" % [chapter, JSON.stringify(_by_chapter[chapter])])
 
 func _add(found: Array[Dictionary], item: Dictionary, key: String, scenario: String) -> void:
 	if item in found: return
@@ -138,6 +170,15 @@ func _report_unseen() -> void:
 		if item not in _materials and item not in _labels: print("ADVISORY %s chapters never drew listed key %s" % [_suite(), str(item)])
 
 func _check_made() -> void:
+	var total: int = Warmup.MATERIALS.size() + Warmup.shaders().size() + Warmup.LABELS.size()
+	for chapter: String in Warmup.CHAPTERS:
+		var order := Warmup.order(chapter)
+		var listed: Dictionary = Warmup.CHAPTERS[chapter]
+		var lead: int = listed.get("m", []).size() + listed.get("s", []).size() + listed.get("l", []).size()
+		var leads := true
+		for entry: Array in order.slice(0, lead): leads = leads and entry[1] in listed.get(entry[0], [])
+		_check(order.size() == total and leads, "The warm-up draws everything once, %s's programs first" % chapter)
+	_check(Warmup.order("").size() == total, "With no chapter in view it draws everything once")
 	for item: Dictionary in Warmup.MATERIALS:
 		_check(Warmup.material_key(Warmup.material_for(item)) == item, "The warm-up's material for %s has exactly that key" % str(item))
 	for item: Dictionary in Warmup.LABELS:
@@ -153,6 +194,7 @@ func _drawn_frame() -> void:
 	RenderingServer.frame_post_draw.emit()
 
 func _service() -> void:
+	Warmup._order = []
 	Warmup.stamp_path = "user://gl-warmup-test-" + Crypto.new().generate_random_bytes(6).hex_encode() + ".json"
 	var idle := [true]
 	var first: Node = Warmup.new()
@@ -191,6 +233,7 @@ func _service() -> void:
 	await process_frame
 	Warmup._done = false
 	Warmup._next = 0
+	Warmup._order = []
 	var second: Node = Warmup.new()
 	second.enabled = true
 	second.idle_seconds = 0.0

@@ -54,6 +54,22 @@ const MATERIALS: Array[Dictionary] = [
 	{"cull_mode": BaseMaterial3D.CULL_DISABLED, "vertex_color_use_as_albedo": true},
 	{"cull_mode": BaseMaterial3D.CULL_DISABLED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA, "vertex_color_use_as_albedo": true},
 ]
+## Which listed keys each chapter draws: "m" indices into MATERIALS, "s" into
+## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.
+const CHAPTERS := {
+	"first-steps@1": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 4], "l": [2]},
+	"relay-isles@2": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 4], "l": [2]},
+	"high-and-low@1": {"m": [0, 1, 2, 6, 8], "s": [0], "l": [2]},
+	"rolling-home@1": {"m": [0, 1, 2, 6, 8], "s": [0], "l": [2]},
+	"a-house-for-two@1": {"m": [0, 1, 2, 3, 6], "s": [0], "l": [2]},
+	"conservatory@1": {"m": [0, 1, 2, 3, 6, 8, 9], "s": [0], "l": [2]},
+	"the-wishing-well@1": {"m": [0, 1, 2, 6, 8], "s": [0], "l": [2]},
+	"long-way-home@1": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 1], "l": [0, 2]},
+	"long-way-home@2": {"m": [0, 1, 2, 5, 6, 8], "s": [0, 1], "l": [0, 2]},
+	"turn-of-the-tide@1": {"m": [0, 1, 2, 3, 4, 5, 6, 7], "s": [0, 1], "l": [0, 1, 2]},
+	"sleeping-lighthouse@1": {"m": [0, 1, 2, 3, 6, 8], "s": [0], "l": [2]},
+	"sleeping-lighthouse@2": {"m": [0, 1, 2, 3, 6, 8], "s": [0], "l": [2]},
+}
 ## Every Label3D key the chapters draw ("msdf": the font draws from a distance field).
 const LABELS: Array[Dictionary] = [
 	{"billboard": BaseMaterial3D.BILLBOARD_ENABLED},
@@ -63,14 +79,18 @@ const LABELS: Array[Dictionary] = [
 
 ## Where the warm-up marks this install; tests point it elsewhere.
 static var stamp_path := STAMP_PATH
-## Done for this run, and how far an interrupted run got.
+## Done for this run, how far an interrupted run got, and its order.
 static var _done := false
 static var _next := 0
+static var _order: Array = []
 
 ## True while the player is idle at Home; set by the owner.
 var idle: Callable
 ## The saved settings now, for the look the chapters draw with.
 var settings: Callable
+## The chapter the player most likely opens next (a registry key, or ""); its
+## programs are warmed first. Set by the owner.
+var next_chapter: Callable
 var enabled := DisplayServer.get_name() != "headless"
 var idle_seconds := IDLE_SECONDS
 var _idle_for := 0.0
@@ -155,6 +175,20 @@ static func label_key(label: Label3D) -> Dictionary:
 	if font != null and font.get("multichannel_signed_distance_field") == true: key["msdf"] = true
 	return key
 
+## What the warm-up draws, in order: ["m", index] into MATERIALS, ["s", index]
+## into shaders(), ["l", index] into LABELS. The chapter `first` draws comes
+## first (CHAPTERS), then everything else in list order.
+static func order(first: String) -> Array:
+	var result: Array = []
+	var chosen: Dictionary = CHAPTERS.get(first, {})
+	for kind: String in ["m", "s", "l"]:
+		for index: int in chosen.get(kind, []): result.append([kind, index])
+	var counts := {"m": MATERIALS.size(), "s": shaders().size(), "l": LABELS.size()}
+	for kind: String in ["m", "s", "l"]:
+		for index in range(counts[kind]):
+			if [kind, index] not in result: result.append([kind, index])
+	return result
+
 ## Every ShaderMaterial shader the worlds draw.
 static func shaders() -> Array[Shader]:
 	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER]
@@ -182,18 +216,22 @@ func _open() -> void:
 	if _stamp_matches():
 		_done = true
 		return
+	# The order is kept for the whole run, so a resumed warm-up goes on
+	# exactly where it stopped.
+	if _order.is_empty(): _order = order(str(next_chapter.call()) if next_chapter.is_valid() else "")
 	_items.clear()
-	# Each beside the lamp, then out of its reach: one program a frame.
-	for key: Dictionary in MATERIALS:
-		var material := material_for(key)
+	var shader_list := shaders()
+	for entry: Array in _order:
+		var kind: String = entry[0]
+		var index: int = entry[1]
+		if kind == "l":
+			_items.append({"label": LABELS[index]})
+			continue
+		var material: Material = material_for(MATERIALS[index]) if kind == "m" else ShaderMaterial.new()
+		if kind == "s": (material as ShaderMaterial).shader = shader_list[index]
+		# Beside the lamp, then out of its reach: one program a frame.
 		_items.append({"material": material, "lit": true})
 		_items.append({"material": material, "lit": false})
-	for shader: Shader in shaders():
-		var material := ShaderMaterial.new()
-		material.shader = shader
-		_items.append({"material": material, "lit": true})
-		_items.append({"material": material, "lit": false})
-	for key: Dictionary in LABELS: _items.append({"label": key})
 	if _next >= _items.size():
 		_finish()
 		return

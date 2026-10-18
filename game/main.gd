@@ -314,6 +314,7 @@ func _ready() -> void:
 	add_child(_proof_warmup)
 	_gl_warmup = GlWarmup.new()
 	_gl_warmup.settings = func() -> Dictionary: return saves.data.settings
+	_gl_warmup.next_chapter = _next_solo_chapter
 	_gl_warmup.idle = func() -> bool: return mode in ["home", "journey"] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	add_child(_gl_warmup)
 	world=World.new()
@@ -855,6 +856,19 @@ func _open_solo_chapter(key: String) -> void:
 ## Lighthouse card opens (lighthouse_scene()).
 static func _own_solo_card(key: String) -> bool:
 	return not ChapterRegistry.is_lighthouse(key) and not ChapterRegistry.solo_scene(key).is_empty()
+
+## The chapter the player most likely opens next: the first in picker order
+## (free ones, then the Full Journey if owned) not yet finished solo; "" once
+## every one is.
+func _next_solo_chapter() -> String:
+	var marks := _chapter_marks()
+	var owned := _full_journey_access()
+	for premium: bool in [false, true]:
+		if premium and not owned: break
+		for key: String in ChapterRegistry.offered_keys():
+			if ChapterRegistry.descriptor(key).premium != premium: continue
+			if not bool(marks.get(key, {}).get("solo", false)): return key
+	return ""
 
 func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
