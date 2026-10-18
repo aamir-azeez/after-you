@@ -379,7 +379,10 @@ static func detail_text(text: String, strong: bool = false) -> Label:
 	result.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	return result
 
-static func detail_button(text: String, callback: Callable) -> Button:
+## The one button for Settings' cream panel. `_primary` matches Main's
+## _button signature so another flow can build with it (StoreFlow's
+## add_store_elsewhere); on cream every button is the quiet kind.
+static func detail_button(text: String, callback: Callable, _primary: bool = false) -> Button:
 	var button := Button.new()
 	button.text = text
 	button.custom_minimum_size.y = 52

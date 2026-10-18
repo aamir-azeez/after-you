@@ -106,9 +106,13 @@ func _play_store_enabled() -> bool:
 
 ## A build without a store points to the Google Play listing and to tester access. An iOS
 ## App Store build shows neither: no other store, and no code that unlocks paid content.
-func add_store_elsewhere(card: VBoxContainer) -> void:
-	if PlatformSupport.play_listing_offered(): card.add_child(host._button("Get it on Google Play",func(): google_play_requested.emit()))
-	if PlatformSupport.tester_code_offered(): card.add_child(host._button("Tester code",show_tester_access,false))
+## make_button(text, callback, primary) -> Button builds each button, so a
+## caller on another surface (Settings' cream panel) keeps its own look; Main's
+## card kit by default.
+func add_store_elsewhere(card: VBoxContainer, make_button: Callable = Callable()) -> void:
+	var make: Callable = make_button if make_button.is_valid() else host._button
+	if PlatformSupport.play_listing_offered(): card.add_child(make.call("Get it on Google Play",func(): google_play_requested.emit(),true))
+	if PlatformSupport.tester_code_offered(): card.add_child(make.call("Tester code",show_tester_access,false))
 
 ## Every store state shares this card: the paid chapters on the left, and on
 ## the right the title and what the subscription pays for. Callers add the

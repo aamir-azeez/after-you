@@ -9,6 +9,8 @@ extends Node
 ## at call time, so Main or a test can swap a service):
 ## - services: api, secrets, saves, purchases, tester_access, relay_session,
 ##   hosting_notification_preferences, friend_nicknames, config, store_flow
+##   (restore_purchases, show_tester_access, add_store_elsewhere with
+##   Settings' button)
 ## - identity: IdentityReadState, identity_read_state, identity_data,
 ##   identity_loading, identity_busy, identity_restart_required,
 ##   pending_recovery, deleted_identity_owner, _ensure_identity,
@@ -168,8 +170,7 @@ func show_hosting_access(detail: VBoxContainer, response: Dictionary) -> void:
 	# the separate RevenueCat SDK entitlement used for local solo play.
 	_fill(detail, items)
 	if elsewhere:
-		host.store_flow.add_store_elsewhere(detail)
-		for button: Button in detail.find_children("*","Button",true,false): SettingsKit.quiet_button(button)
+		host.store_flow.add_store_elsewhere(detail, SettingsKit.detail_button)
 		detail.visible = detail.get_child_count() > 0
 
 ## The recovery details row: shows the identity and its recovery code in
