@@ -1,14 +1,14 @@
 extends RefCounted
-## The Settings page's look and its shared row builders: one builder per row
-## kind (toggle, choice, link, action, info), the category rail item, the
-## header pieces and the cream panel. presentation/settings_flow.gd puts them
+## The Settings page's look and its shared builders: on/off settings as tiles (two to
+## a row in a grid), one row builder per other kind (choice, link, action,
+## info), the category rail item, the header pieces and the cream panel. presentation/settings_flow.gd puts them
 ## together from the rows table (presentation/settings_rows.gd); nothing here
 ## reads saves or knows a setting by name.
 ##
 ## Every interactive control is named by its row id (a rail item by
 ## "category_<id>"), so code and tests find a row with find_child(id) whatever
-## its wording. Row text is drawn by labels inside the control, which ignore
-## the mouse, so the whole row is one touch target.
+## its wording. Row and tile text is drawn by labels inside the control, which
+## ignore the mouse, so the whole row or tile is one touch target.
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const NUNITO := preload("res://assets/fonts/nunito.ttf")
 const FREDOKA := preload("res://assets/fonts/fredoka.ttf")
@@ -27,11 +27,19 @@ const MUTED := Color("b4cec3")
 const MINT := Color("a9dbc4")
 const DIVIDER := Color("dfe2cc")
 const PRESSED := Color("e6e5cd")
-const TRACK_OFF := Color("dde0cf")
-const KNOB_OFF := Color("6d7d70")
 const SEGMENTS := Color("e4e5d0")
 const FIELD := Color("e8e8d3")
 const DISABLED_INK := Color("8e9c92")
+## A toggle tile: a lighter cream card with a faint edge, a mint well for its icon.
+const TILE := Color("fbf8ec")
+const TILE_EDGE := Color("ddd6bf")
+const TILE_HELD := Color("efeadb")
+const ICON_WELL := Color("bfe6d5")
+const TRACK_ON_EDGE := Color("7cc7a8")
+const TRACK_OFF_TILE := Color("d8d3c0")
+const TRACK_OFF_EDGE := Color("c4bea8")
+const KNOB_OFF_TILE := Color("8a948c")
+const TILE_GAP := 16
 ## Space inside a row; the panel's own padding plus this lines text up with the title.
 const ROW_PAD := 12
 const ROW_GAP := 2
@@ -93,7 +101,7 @@ static func _vbox(separation: int) -> VBoxContainer:
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return box
 
-static func _pad(child: Control, horizontal: int, vertical: int) -> MarginContainer:
+static func pad(child: Control, horizontal: int, vertical: int) -> MarginContainer:
 	var margin := MarginContainer.new()
 	margin.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for side: String in ["left", "right"]: margin.add_theme_constant_override("margin_" + side, horizontal)
@@ -149,19 +157,104 @@ static func _tap_row(row: Dictionary, button: BaseButton, trailing: Control) -> 
 	var line := _hbox(16)
 	line.add_child(_texts(row))
 	if trailing != null: line.add_child(trailing)
-	holder.add_child(_pad(line, ROW_PAD, 20))
+	holder.add_child(pad(line, ROW_PAD, 20))
 	return holder
 
-## A switch row. The switch is drawn, so it stays crisp at any screen scale.
-static func toggle_row(row: Dictionary, pressed: bool) -> Control:
+## An on/off setting as a tile: its icon in a mint well and a big switch on
+## top, its name and note below. The whole tile is the CheckButton, so a tap
+## anywhere flips it; the switch only shows the state. While a finger is down
+## the tile darkens a little.
+static func toggle_tile(row: Dictionary, pressed: bool, icon_texture: Texture2D) -> Control:
+	var holder := MarginContainer.new()
+	holder.name = str(row.id) + "Row"
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var button := CheckButton.new()
+	button.name = str(row.id)
+	button.accessibility_name = str(row.label)
+	button.accessibility_description = str(row.get("note", ""))
 	for icon_name: String in ["checked", "unchecked", "checked_disabled", "unchecked_disabled", "checked_mirrored", "unchecked_mirrored", "checked_disabled_mirrored", "unchecked_disabled_mirrored"]:
 		button.add_theme_icon_override(icon_name, _blank_icon())
 	button.button_pressed = pressed
+	button.mouse_filter = Control.MOUSE_FILTER_PASS
+	button.focus_mode = Control.FOCUS_ALL
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	_tile_surface(button, false)
+	button.button_down.connect(func(): _tile_surface(button, true))
+	button.button_up.connect(func(): _tile_surface(button, false))
+	holder.add_child(button)
+	var stack := _vbox(4)
+	var top := _hbox(12)
+	var well := PanelContainer.new()
+	well.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	well.custom_minimum_size = Vector2(46, 46)
+	well.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	well.add_theme_stylebox_override("panel", rounded(ICON_WELL, 23))
+	var glyph := icon(icon_texture, 24, INK)
+	glyph.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	well.add_child(glyph)
+	top.add_child(well)
+	var gap := Control.new()
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	top.add_child(gap)
 	var mark := Switch.new()
 	mark.button = button
 	button.toggled.connect(func(_on: bool): mark.refresh())
-	return _tap_row(row, button, mark)
+	top.add_child(mark)
+	stack.add_child(top)
+	var space := Control.new()
+	space.custom_minimum_size.y = 8
+	space.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	stack.add_child(space)
+	var title := label(str(row.label), 19, INK, 700)
+	title.name = "Label"
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	stack.add_child(title)
+	stack.add_child(note(str(row.get("note", ""))))
+	holder.add_child(pad(stack, 22, 18))
+	return holder
+
+## The tile's card: cream with a faint edge, a shade darker while held, and an
+## ink ring for keyboard focus. Being on never changes the card; the switch says it.
+static func _tile_surface(button: BaseButton, held: bool) -> void:
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		var fill := TILE_HELD if held else TILE
+		var edge := Color(INK, 0.3) if state in ["hover", "hover_pressed"] and not held else TILE_EDGE
+		button.add_theme_stylebox_override(state, rounded(fill, 18, edge, 2))
+	button.add_theme_stylebox_override("focus", rounded(Color.TRANSPARENT, 18, INK, 2))
+
+## Tiles two to a row. An odd last tile keeps its column's width.
+static func tile_grid() -> GridContainer:
+	var grid := GridContainer.new()
+	grid.name = "Tiles"
+	grid.columns = 2
+	grid.add_theme_constant_override("h_separation", TILE_GAP)
+	grid.add_theme_constant_override("v_separation", TILE_GAP)
+	grid.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	grid.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	return grid
+
+## A soft cream fade over the panel's bottom edge while more rows lie below.
+static func bottom_fade() -> TextureRect:
+	var gradient := Gradient.new()
+	gradient.set_color(0, Color(PANEL, 0.0))
+	gradient.set_color(1, PANEL)
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.fill_from = Vector2(0, 0)
+	texture.fill_to = Vector2(0, 1)
+	texture.width = 4
+	texture.height = 64
+	var fade := TextureRect.new()
+	fade.name = "MoreBelow"
+	fade.texture = texture
+	fade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	fade.stretch_mode = TextureRect.STRETCH_SCALE
+	fade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	fade.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_WIDE)
+	fade.offset_top = -40
+	return fade
 
 ## A row that opens something: a chevron, or a live value before it.
 static func link_row(row: Dictionary, value: String = "") -> Control:
@@ -183,7 +276,7 @@ static func action_row(row: Dictionary) -> Control:
 	detail.name = "Detail"
 	detail.mouse_filter = Control.MOUSE_FILTER_PASS
 	detail.visible = false
-	block.add_child(_pad(detail, ROW_PAD, 0))
+	block.add_child(pad(detail, ROW_PAD, 0))
 	block.get_child(1).name = "DetailPad"
 	return block
 
@@ -192,7 +285,7 @@ static func info_row(row: Dictionary) -> Control:
 	var texts := _texts(row, INK)
 	var title: Label = texts.get_node("Label")
 	if str(row.label).is_empty(): title.visible = false
-	var holder := _pad(texts, ROW_PAD, 16)
+	var holder := pad(texts, ROW_PAD, 16)
 	holder.name = str(row.id)
 	return holder
 
@@ -206,7 +299,7 @@ static func danger_row(row: Dictionary) -> Control:
 	button.add_theme_font_override("font", font(700))
 	button.add_theme_font_size_override("font_size", 18)
 	ControlTheme.danger(button, TRASH)
-	var holder := _pad(button, ROW_PAD, 18)
+	var holder := pad(button, ROW_PAD, 18)
 	holder.name = str(row.id) + "Row"
 	return holder
 
@@ -252,7 +345,7 @@ static func choice_row(row: Dictionary, selected: String, stacked: bool) -> Cont
 		button.add_theme_color_override("font_disabled_color", DISABLED_INK)
 		options.add_child(button)
 	line.add_child(track)
-	var holder := _pad(line, ROW_PAD, 20)
+	var holder := pad(line, ROW_PAD, 20)
 	holder.name = str(row.id) + "Row"
 	return holder
 
@@ -268,7 +361,7 @@ static func divider() -> Control:
 	line.color = DIVIDER
 	line.custom_minimum_size.y = 1
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var holder := _pad(line, ROW_PAD, 0)
+	var holder := pad(line, ROW_PAD, 0)
 	holder.name = "DividerRow"
 	return holder
 
@@ -415,40 +508,63 @@ static func style_scroll(scroll: ScrollContainer, on_cream: bool) -> void:
 		style.content_margin_left = 6
 		bar.add_theme_stylebox_override(state, style)
 
-## The drawn switch of a toggle row: a mint track with a dark knob and a check
-## when on, a pale track with a grey knob when off; faded while disabled.
+## The big switch on a toggle tile: a mint track with a dark knob on the
+## right and a small check on the left when on; a pale track with a grey knob
+## on the left when off; faded while disabled. The knob slides over a moment,
+## or snaps under Reduce motion. Drawn, so it stays crisp at any scale.
 class Switch extends Control:
+	const SLIDE := 0.16
 	var button: BaseButton
+	## Reduce motion: the knob snaps.
+	var reduced := false
+	## 0 off, 1 on; between while sliding.
+	var _at := -1.0
+	var _tween: Tween
 
 	func _init() -> void:
 		name = "Switch"
-		custom_minimum_size = Vector2(52, 28)
+		custom_minimum_size = Vector2(88, 48)
 		size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 
+	func _ready() -> void:
+		_at = 1.0 if _on() else 0.0
+
+	func _on() -> bool:
+		return is_instance_valid(button) and button.button_pressed
+
+	func _set_at(value: float) -> void:
+		_at = value
+		queue_redraw()
+
 	func _draw() -> void:
-		var on := is_instance_valid(button) and button.button_pressed
-		var rect := Rect2(Vector2.ZERO, custom_minimum_size)
-		rect.position.y = (size.y - rect.size.y) * 0.5
+		var at := clampf(_at if _at >= 0.0 else (1.0 if _on() else 0.0), 0.0, 1.0)
+		var rect := Rect2(Vector2(0, (size.y - custom_minimum_size.y) * 0.5), custom_minimum_size)
 		var radius := rect.size.y * 0.5
 		var track := StyleBoxFlat.new()
 		track.set_corner_radius_all(int(radius))
 		track.anti_aliasing = true
-		track.bg_color = MINT if on else TRACK_OFF
-		if not on:
-			track.set_border_width_all(2)
-			track.border_color = KNOB_OFF
+		track.bg_color = TRACK_OFF_TILE.lerp(MINT, at)
+		track.border_color = TRACK_OFF_EDGE.lerp(TRACK_ON_EDGE, at)
+		track.set_border_width_all(2)
 		draw_style_box(track, rect)
-		var center_y := rect.position.y + radius
-		if on:
-			draw_circle(Vector2(rect.end.x - radius, center_y), radius - 4.0, INK, true, -1.0, true)
-			var at := Vector2(rect.position.x + 12.0, center_y)
-			draw_polyline(PackedVector2Array([at + Vector2(-4.5, 0.2), at + Vector2(-1.5, 3.2), at + Vector2(4.5, -3.2)]), INK, 1.8, true)
-		else:
-			draw_circle(Vector2(rect.position.x + radius, center_y), radius - 6.0, KNOB_OFF, true, -1.0, true)
+		var knob := radius - 5.0
+		var center := Vector2(lerpf(rect.position.x + radius, rect.end.x - radius, at), rect.position.y + radius)
+		draw_circle(center, knob, KNOB_OFF_TILE.lerp(INK, at), true, -1.0, true)
+		if at > 0.5:
+			var tick := Vector2(rect.position.x + 24.0, rect.position.y + radius)
+			var ink := Color(INK, (at - 0.5) * 2.0)
+			draw_polyline(PackedVector2Array([tick + Vector2(-7.0, 0.5), tick + Vector2(-2.0, 5.0), tick + Vector2(7.0, -5.0)]), ink, 2.4, true)
 
-	## After the button's state changed without a toggle (disabled, or set
-	## without a signal).
+	## After the state changed: slide (or snap) to it, and fade while disabled.
 	func refresh() -> void:
 		modulate.a = 0.45 if is_instance_valid(button) and button.disabled else 1.0
-		queue_redraw()
+		var target := 1.0 if _on() else 0.0
+		if is_instance_valid(_tween): _tween.kill()
+		if reduced or not is_inside_tree() or _at < 0.0:
+			_set_at(target)
+		elif not is_equal_approx(_at, target):
+			_tween = create_tween()
+			_tween.tween_method(_set_at, _at, target, SLIDE).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		else:
+			queue_redraw()

@@ -456,6 +456,7 @@ func _app() -> void:
 	viewport.size = Vector2i(1280, 720)
 	await _settle()
 	await _settings(app, viewport)
+	await _settings_tiles(app, viewport)
 	await _licenses(app, viewport)
 	await _room_selector(app, viewport)
 	_check(FileAccess.get_file_as_string(path) == saved_bytes, "Gestures never modify the isolated save on disk")
@@ -524,6 +525,37 @@ func _settings(app: Node, viewport: SubViewport) -> void:
 	await _settle()
 	await _tap(viewport, delete.get_global_rect().get_center())
 	_check(app.mode == "account" and _find_button(app.overlay, "Keep my identity") != null, "A short tap on the row still acts: Delete asks first")
+
+
+## A Settings page longer than its panel (a temporary fixture of eight more
+## switches and three rows): a drag that starts on a tile scrolls the panel
+## and never flips the tile; Done and the rail stay put. (test_settings taps.)
+func _settings_tiles(app: Node, viewport: SubViewport) -> void:
+	app.settings_flow.show_settings("play")
+	await _settle()
+	var keys := ["sound", "haptics", "skip_waits", "reduced_motion", "assistance", "left_handed", "photo_prompts", "share_online_status"]
+	for index: int in range(keys.size()):
+		app.settings_flow._rows.append({"id": "long_%d" % index, "category": "play", "kind": "toggle", "label": "Long page switch %d" % index, "note": "A switch on a long page", "key": keys[index], "icon": preload("res://assets/ui/settings/sound.svg")})
+	for index: int in range(3):
+		app.settings_flow._rows.append({"id": "long_row_%d" % index, "category": "play", "kind": "link", "label": "Long page row %d" % index, "open": func(): pass})
+	app.settings_flow._select("play")
+	await _settle()
+	var scroll := app.overlay.find_child("SettingsRows", true, false) as ScrollContainer
+	var tile := scroll.find_child("long_0", true, false) as CheckButton
+	scroll.ensure_control_visible(tile)
+	await _settle()
+	scroll.scroll_vertical = maxi(0, scroll.scroll_vertical - 1)
+	await _settle()
+	var was := tile.button_pressed
+	var saved: Dictionary = app.saves.data.settings.duplicate(true)
+	var done := (app.overlay.find_child("SettingsDone", true, false) as Control).get_global_rect()
+	var rail := (app.overlay.find_child("category_play", true, false) as Control).get_global_rect()
+	var before := scroll.scroll_vertical
+	await _drag(viewport, tile.get_global_rect().get_center(), Vector2(0, -120))
+	_check(scroll.scroll_vertical > before, "A drag from a Settings tile scrolls the panel")
+	_check(tile.button_pressed == was and app.saves.data.settings == saved, "That drag never flips the tile")
+	_check((app.overlay.find_child("SettingsDone", true, false) as Control).get_global_rect() == done and (app.overlay.find_child("category_play", true, false) as Control).get_global_rect() == rail, "Done and the rail stay put while the panel scrolls")
+	await _rest(scroll)
 
 
 func _licenses(app: Node, viewport: SubViewport) -> void:

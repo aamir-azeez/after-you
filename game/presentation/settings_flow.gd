@@ -16,7 +16,7 @@ extends Node
 ## through home_requested, and reads Main only through this host contract (read
 ## at call time, so Main or a test can swap a service):
 ## - services: saves, _apply_settings, _play_store_enabled, identity_data, api,
-##   secrets, get_tree
+##   secrets, get_tree, soundscape (tap_haptic: a flipped tile's tick)
 ## - screen: mode, running, overlay, ui, _clear_overlay, _back_button, _card,
 ##   _label, _toast
 ## - flows (flow to flow, through the rows table): notification_flow
@@ -71,6 +71,7 @@ var _head: HBoxContainer
 var _reset: Button
 var _list: VBoxContainer
 var _scroll: ScrollContainer
+var _fade: Control
 var _spirit: Control
 ## The rows on show and their controls, for refresh().
 var _live: Array[Dictionary] = []
@@ -126,6 +127,7 @@ func view_current(token: int) -> bool:
 func _forget() -> void:
 	_page = null
 	_reset = null
+	_fade = null
 	_live.clear()
 	_rail.clear()
 	_rows.clear()
@@ -178,7 +180,7 @@ func _header(compact: bool) -> Control:
 	header.name = "SettingsHeader"
 	header.add_theme_constant_override("separation", 18)
 	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_spirit = Spirit.new(bool(host.saves.data.settings.get("reduced_motion", false)))
+	_spirit = Spirit.new(_reduced_motion())
 	if compact: _spirit.custom_minimum_size = Vector2(54, 75)
 	header.add_child(_spirit)
 	var titles := VBoxContainer.new()
@@ -259,7 +261,19 @@ func _panel() -> Control:
 	_list.add_theme_constant_override("separation", 0)
 	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_scroll.add_child(_list)
-	stack.add_child(_scroll)
+	# Only the panel scrolls, and only down. A soft fade at its bottom edge
+	# says more lies below, until the end is reached.
+	var area := Control.new()
+	area.name = "SettingsRowsArea"
+	area.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	area.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_scroll.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	area.add_child(_scroll)
+	_fade = Kit.bottom_fade()
+	area.add_child(_fade)
+	_scroll.get_v_scroll_bar().value_changed.connect(func(_value: float): _update_fade())
+	_scroll.get_v_scroll_bar().changed.connect(_update_fade)
+	stack.add_child(area)
 	return panel
 
 func _open_category(id: String) -> void:
@@ -295,14 +309,30 @@ func _build_rows(rows: Array[Dictionary]) -> void:
 		child.queue_free()
 	_scroll.scroll_vertical = 0
 	var stacked := _panel_width() < STACK_BELOW
+	# On/off settings are tiles, two to a row, above every other row.
+	var tiles := rows.filter(func(row: Dictionary) -> bool: return row.kind == Rows.TOGGLE)
+	if not tiles.is_empty():
+		var grid := Kit.tile_grid()
+		for row: Dictionary in tiles:
+			var tile := _row_control(row, stacked)
+			grid.add_child(tile)
+			_live.append({"row": row, "control": tile})
+		_list.add_child(Kit.pad(grid, Kit.ROW_PAD, 6))
 	var previous: Dictionary = {}
 	for row: Dictionary in rows:
-		if row.get("danger", false): _list.add_child(Kit.separation())
+		if row.kind == Rows.TOGGLE: continue
+		if row.get("danger", false) or (previous.is_empty() and not tiles.is_empty()): _list.add_child(Kit.separation())
 		elif not previous.is_empty(): _list.add_child(Kit.divider())
 		var control := _row_control(row, stacked)
 		_list.add_child(control)
 		_live.append({"row": row, "control": control})
 		previous = row
+	_update_fade.call_deferred()
+
+func _update_fade() -> void:
+	if not is_open() or not is_instance_valid(_fade): return
+	var bar := _scroll.get_v_scroll_bar()
+	_fade.visible = bar.max_value - bar.page - bar.value > 1.0
 
 ## The panel's width for its rows, from the page's own measures.
 func _panel_width() -> float:
@@ -315,9 +345,10 @@ func _row_control(row: Dictionary, stacked: bool) -> Control:
 	shown_row.note = Rows.text(row.get("note", ""))
 	match str(row.kind):
 		Rows.TOGGLE:
-			var holder := Kit.toggle_row(shown_row, bool(_value(row)))
+			var holder := Kit.toggle_tile(shown_row, bool(_value(row)), row.get("icon"))
 			var toggle := holder.get_node(id) as CheckButton
 			toggle.toggled.connect(func(on: bool): _change(row, on))
+			(holder.find_child("Switch", true, false) as Kit.Switch).reduced = _reduced_motion()
 			return holder
 		Rows.CHOICE:
 			var holder := Kit.choice_row(shown_row, str(_value(row)), stacked)
@@ -362,7 +393,10 @@ func _change(row: Dictionary, value: Variant) -> void:
 		kept = host.saves.update_values({"settings": next})
 		if kept: host._apply_settings()
 	if not kept: host._toast(PlayerCopy.MAIN_34B82590B663)
-	elif row.has("on_change"): row.on_change.call(value)
+	else:
+		if row.has("on_change"): row.on_change.call(value)
+		# A flipped tile answers with the usual light tick (when haptics are on).
+		if row.kind == Rows.TOGGLE and is_instance_valid(host.soundscape): host.soundscape.tap_haptic()
 	refresh()
 
 ## Puts every row on show, the rail's summaries, the reset and the spirit in
@@ -381,7 +415,9 @@ func refresh() -> void:
 				var toggle := target as CheckButton
 				toggle.set_pressed_no_signal(bool(_value(row)))
 				toggle.disabled = not on
-				(toggle.get_parent().find_child("Switch", true, false) as Kit.Switch).refresh()
+				var mark := toggle.get_parent().find_child("Switch", true, false) as Kit.Switch
+				mark.reduced = _reduced_motion()
+				mark.refresh()
 			Rows.CHOICE:
 				for option: Button in Kit.options(target):
 					option.set_pressed_no_signal(str(option.get_meta("value")) == str(_value(row)))
@@ -396,7 +432,10 @@ func refresh() -> void:
 	for id: String in _rail: Kit.set_rail_summary(_rail[id], Rows.summary(Rows.category(_categories, id), _rows, _value))
 	var reset: Dictionary = Rows.category(_categories, _category).get("reset", {})
 	if is_instance_valid(_reset): _reset.disabled = reset.is_empty() or _at_defaults(reset.rows)
-	if _spirit.has_method("set_reduced"): _spirit.set_reduced(bool(host.saves.data.settings.get("reduced_motion", false)))
+	if _spirit.has_method("set_reduced"): _spirit.set_reduced(_reduced_motion())
+
+func _reduced_motion() -> bool:
+	return bool(host.saves.data.settings.get("reduced_motion", false))
 
 func _at_defaults(ids: Array) -> bool:
 	var defaults: Dictionary = LocalSave.defaults().settings

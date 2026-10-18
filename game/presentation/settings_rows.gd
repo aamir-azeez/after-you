@@ -10,7 +10,8 @@ extends RefCounted
 ## A row:
 ## - id: unique; the name of its control on the page.
 ## - category: a category id.
-## - kind: TOGGLE (on/off), CHOICE (one of "options": [[value, label], ...]),
+## - kind: TOGGLE (on/off, drawn as a tile with its "icon" in a two-column
+##   grid above the category's other rows), CHOICE (one of "options": [[value, label], ...]),
 ##   LINK (opens another screen: "open"), ACTION (acts in place: "run", or
 ##   "inline" which gets the row's Detail box and the row) or INFO (text only).
 ## - label, note: PlayerCopy text, or a Callable for text that changes.
@@ -63,26 +64,26 @@ static func rows(host: Node) -> Array[Dictionary]:
 	var account: Node = host.account_flow
 	var state := func(names: Array) -> Callable: return func() -> bool: return account.panel_state() in names
 	return [
-		{"id": "sound", "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_SOUND, "note": PlayerCopy.SETTINGS_SOUND_NOTE, "key": "sound"},
-		{"id": "haptics", "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_HAPTICS, "note": PlayerCopy.SETTINGS_HAPTICS_NOTE, "key": "haptics"},
-		{"id": "skip_waits", "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_SKIP_WAITS, "note": PlayerCopy.SETTINGS_SKIP_WAITS_NOTE, "key": "skip_waits"},
-		{"id": "reduced_motion", "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_REDUCED_MOTION, "note": PlayerCopy.SETTINGS_REDUCED_MOTION_NOTE, "key": "reduced_motion"},
+		{"id": "sound", "icon": preload("res://assets/ui/settings/sound.svg"), "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_SOUND, "note": PlayerCopy.SETTINGS_SOUND_NOTE, "key": "sound"},
+		{"id": "haptics", "icon": preload("res://assets/ui/settings/haptics.svg"), "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_HAPTICS, "note": PlayerCopy.SETTINGS_HAPTICS_NOTE, "key": "haptics"},
+		{"id": "skip_waits", "icon": preload("res://assets/ui/settings/skip.svg"), "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_SKIP_WAITS, "note": PlayerCopy.SETTINGS_SKIP_WAITS_NOTE, "key": "skip_waits"},
+		{"id": "reduced_motion", "icon": preload("res://assets/ui/settings/calm.svg"), "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_REDUCED_MOTION, "note": PlayerCopy.SETTINGS_REDUCED_MOTION_NOTE, "key": "reduced_motion"},
 
-		{"id": "assistance", "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ASSISTANCE, "note": PlayerCopy.SETTINGS_ASSISTANCE_NOTE, "key": "assistance"},
-		{"id": "left_handed", "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.MAIN_A1E007823FF0, "note": PlayerCopy.SETTINGS_LEFT_HANDED_NOTE, "key": "left_handed"},
-		{"id": "photo_prompts", "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.MAIN_289D745F1246, "note": PlayerCopy.SETTINGS_PHOTO_PROMPTS_NOTE, "key": "photo_prompts"},
+		{"id": "assistance", "icon": preload("res://assets/ui/settings/catch.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ASSISTANCE, "note": PlayerCopy.SETTINGS_ASSISTANCE_NOTE, "key": "assistance"},
+		{"id": "left_handed", "icon": preload("res://assets/ui/settings/swap.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.MAIN_A1E007823FF0, "note": PlayerCopy.SETTINGS_LEFT_HANDED_NOTE, "key": "left_handed"},
+		{"id": "photo_prompts", "icon": preload("res://assets/ui/settings/camera.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.MAIN_289D745F1246, "note": PlayerCopy.SETTINGS_PHOTO_PROMPTS_NOTE, "key": "photo_prompts"},
 
 		{"id": "graphics_quality", "category": GRAPHICS, "kind": CHOICE, "label": PlayerCopy.SETTINGS_QUALITY, "note": PlayerCopy.SETTINGS_QUALITY_NOTE, "key": "graphics_quality",
 			"options": GraphicsPolicy.QUALITIES.map(func(quality: String) -> Array: return [quality, quality.capitalize()])},
 		{"id": "frame_rate", "category": GRAPHICS, "kind": CHOICE, "label": PlayerCopy.SETTINGS_FRAME_RATE, "note": PlayerCopy.SETTINGS_FRAME_RATE_NOTE, "key": "frame_rate",
 			"options": [["30", PlayerCopy.SETTINGS_FPS_30], ["60", PlayerCopy.SETTINGS_FPS_60], ["unlimited", PlayerCopy.SETTINGS_FPS_UNLIMITED]]},
 
-		{"id": "share_online_status", "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ONLINE_STATUS, "note": PlayerCopy.SETTINGS_ONLINE_STATUS_NOTE, "key": "share_online_status"},
+		{"id": "share_online_status", "icon": preload("res://assets/ui/whats_new/people.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ONLINE_STATUS, "note": PlayerCopy.SETTINGS_ONLINE_STATUS_NOTE, "key": "share_online_status"},
 		{"id": "notifications_about", "category": FRIENDS, "kind": INFO, "label": PlayerCopy.SETTINGS_NOTIFICATIONS,
 			"note": PlayerCopy.for_platform(PlayerCopy.MAIN_EF43E19393E4, PlayerCopy.MAIN_EF43E19393E4_IOS)},
-		{"id": "turn_notifications", "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.MAIN_C4B947AAAE59, "note": notices.status_line,
+		{"id": "turn_notifications", "icon": preload("res://assets/ui/whats_new/bell.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.MAIN_C4B947AAAE59, "note": notices.status_line,
 			"get": notices.turn_notifications_on, "set": notices.set_turn_notifications, "summary": PlayerCopy.SETTINGS_NOTIFICATIONS},
-		{"id": "turn_requests", "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.TURN_REQUEST_NOTIFICATIONS,
+		{"id": "turn_requests", "icon": preload("res://assets/ui/settings/reset.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.TURN_REQUEST_NOTIFICATIONS,
 			"note": func() -> String: return "" if notices.turn_notifications_on() else PlayerCopy.TURN_REQUEST_NOTIFICATIONS_NEEDS_TURNS,
 			"get": notices.turn_requests_on, "set": notices.set_turn_requests, "enabled_if": notices.turn_notifications_on},
 		{"id": "notifications_off", "category": FRIENDS, "kind": ACTION, "label": PlayerCopy.SETTINGS_TURN_OFF, "run": notices.turn_off, "enabled_if": notices.turn_notifications_on},

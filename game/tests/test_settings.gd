@@ -7,6 +7,10 @@ extends SceneTree
 ## - The rows table: each row's category exists, ids are unique, every saved
 ##   setting has a row, a fake new row is drawn by the shared builders, and
 ##   each category's summary comes from its rows and follows a change live.
+## - On/off settings are tiles, two to a row, above the other rows: the whole
+##   tile flips it, an odd last tile keeps its width, the knob slides (snaps
+##   under Reduce motion), and a long page scrolls only its panel, down, with
+##   a fade while more lies below; a drag over a tile scrolls without flipping.
 ## - Every category draws its rows inside the panel, with 48 px targets, at
 ##   the base and phone shapes; Done and the rail stay put.
 ## - Friends & notifications holds the notification switches inline.
@@ -128,6 +132,8 @@ func _run() -> void:
 	await _failed_save(app)
 	_rows_table(app)
 	await _fake_row(app)
+	await _tiles(app)
+	await _long_page(app)
 	await _summaries(app)
 	await _redo_request_option(app,path)
 	await _account_inline(app)
@@ -171,6 +177,7 @@ func _rows_table(app: Node) -> void:
 			Rows.TOGGLE, Rows.CHOICE: _check(row.has("key") or (row.has("get") and row.has("set")),"A setting row saves somewhere: "+str(row.id))
 			Rows.LINK: _check(row.get("open") is Callable,"A link opens something: "+str(row.id))
 			Rows.ACTION: _check(row.get("run") is Callable or row.get("inline") is Callable,"An action does something: "+str(row.id))
+		if row.kind == Rows.TOGGLE: _check(row.get("icon") is Texture2D,"Each on/off setting has its tile icon: "+str(row.id))
 	var saved: Dictionary = Storage.defaults().settings
 	for key: String in saved:
 		if key in ["turn_notifications","turn_request_notifications","unlimited_frame_rate"]: continue
@@ -181,7 +188,7 @@ func _rows_table(app: Node) -> void:
 func _fake_row(app: Node) -> void:
 	app.settings_flow.show_settings(Flow.PLAY)
 	await _settle()
-	app.settings_flow._rows.append({"id":"fake_new_setting","category":Flow.PLAY,"kind":Rows.TOGGLE,"label":"A new setting","note":"Drawn from one row","key":"sound"})
+	app.settings_flow._rows.append({"id":"fake_new_setting","category":Flow.PLAY,"kind":Rows.TOGGLE,"label":"A new setting","note":"Drawn from one row","key":"sound","icon":preload("res://assets/ui/settings/sound.svg")})
 	app.settings_flow._select(Flow.PLAY)
 	await _settle()
 	var toggle := _control(app,"fake_new_setting") as CheckButton
@@ -196,6 +203,87 @@ func _fake_row(app: Node) -> void:
 	app.settings_flow._select(Flow.EVERYDAY)
 	await _settle()
 	_check(_control(app,"fake_new_setting")==null,"Another category does not draw it")
+
+## Everyday and Play are tile grids: two columns, the whole tile is the
+## switch, and an odd last tile keeps its column's width.
+func _tiles(app: Node) -> void:
+	for category: String in [Flow.EVERYDAY,Flow.PLAY]:
+		app.settings_flow.show_settings(category)
+		await _settle()
+		var grid := app.overlay.find_child("Tiles",true,false) as GridContainer
+		var ids: Array = Rows.in_category(Rows.rows(app),category).filter(func(row: Dictionary) -> bool: return row.kind == Rows.TOGGLE).map(func(row: Dictionary) -> String: return row.id)
+		_check(grid != null and grid.columns==2 and grid.get_child_count()==ids.size(),"%s draws its on/off settings as a two-column tile grid" % category)
+		if grid == null or ids.is_empty(): continue
+		var first := _control(app,ids[0]) as Control
+		var last := _control(app,ids[-1]) as Control
+		_check(absf(first.size.x-last.size.x)<1.0,"Every tile in %s keeps the same width, an odd last one too" % category)
+		if ids.size() % 2 == 1: _check(last.get_global_rect().end.x < grid.get_global_rect().end.x - first.size.x * 0.5,"An odd last tile leaves the second cell empty")
+		var rows_after: Array = app.overlay.find_child("SettingsRows",true,false).find_children("*","Button",true,false).filter(func(button: Button) -> bool: return not grid.is_ancestor_of(button))
+		for button: Button in rows_after:
+			_check(button.get_global_rect().position.y >= grid.get_global_rect().end.y - 0.5,"Rows sit below the tiles: "+str(button.name))
+	app.settings_flow.show_settings(Flow.EVERYDAY)
+	await _settle()
+	var tile := _control(app,"skip_waits") as CheckButton
+	var mark := tile.get_parent().find_child("Switch",true,false)
+	var before := tile.button_pressed
+	# A tap far from the switch, on the tile's text, flips it.
+	var label := tile.get_parent().find_child("Label",true,false) as Control
+	var motion := InputEventMouseMotion.new()
+	motion.position=label.get_global_rect().get_center()
+	app.get_viewport().push_input(motion,true)
+	for pressed: bool in [true,false]:
+		var event := InputEventMouseButton.new()
+		event.position=motion.position
+		event.button_index=MOUSE_BUTTON_LEFT
+		event.pressed=pressed
+		app.get_viewport().push_input(event,true)
+	await process_frame
+	_check(tile.button_pressed!=before and app.saves.data.settings.skip_waits==tile.button_pressed,"A tap anywhere on the tile flips its setting")
+	_check(mark._at > 0.0 and mark._at < 1.0,"The knob slides to its new side")
+	await create_timer(0.4).timeout
+	_check(is_equal_approx(mark._at,1.0 if tile.button_pressed else 0.0),"and settles there")
+	await _click(app,tile)
+	var reduce := _control(app,"reduced_motion") as CheckButton
+	await _click(app,reduce)
+	_check(app.saves.data.settings.reduced_motion,"Reduce motion is on for the snap check")
+	await _click(app,tile)
+	_check(is_equal_approx(mark._at,1.0 if tile.button_pressed else 0.0),"Under Reduce motion the knob snaps")
+	await _click(app,tile)
+	await _click(app,reduce)
+	_check(tile.toggle_mode and tile.accessibility_name==PlayerCopy.SETTINGS_SKIP_WAITS,"The tile is one switch that reads out its name and state")
+
+## A page with more than fits: only the panel scrolls, down; a fade shows
+## while more is below.
+func _long_page(app: Node) -> void:
+	app.settings_flow.show_settings(Flow.PLAY)
+	await _settle()
+	var keys := ["sound","haptics","skip_waits","reduced_motion","assistance","left_handed","photo_prompts","share_online_status"]
+	for index: int in range(keys.size()):
+		app.settings_flow._rows.append({"id":"long_%d" % index,"category":Flow.PLAY,"kind":Rows.TOGGLE,"label":"Long page switch %d" % index,"note":"A switch on a long page","key":keys[index],"icon":preload("res://assets/ui/settings/sound.svg")})
+	for index: int in range(3):
+		app.settings_flow._rows.append({"id":"long_row_%d" % index,"category":Flow.PLAY,"kind":Rows.LINK,"label":"Long page row %d" % index,"note":"A row below the tiles","open":func(): pass})
+	app.settings_flow._select(Flow.PLAY)
+	await _settle()
+	await _settle()
+	var scroll := app.overlay.find_child("SettingsRows",true,false) as ScrollContainer
+	var fade := app.overlay.find_child("MoreBelow",true,false) as Control
+	var bar := scroll.get_v_scroll_bar()
+	_check(bar.max_value > bar.page,"A long page overflows its panel")
+	_check(scroll.horizontal_scroll_mode == ScrollContainer.SCROLL_MODE_DISABLED and not scroll.get_h_scroll_bar().visible,"It never scrolls sideways")
+	_check(fade != null and fade.visible and scroll.get_global_rect().grow(0.5).encloses(fade.get_global_rect()),"A fade at the panel's bottom says more is below")
+	var done_before := (app.overlay.find_child("SettingsDone",true,false) as Control).get_global_rect()
+	var rail_before := (app.overlay.find_child("category_play",true,false) as Control).get_global_rect()
+	# The drag itself is checked with real finger input in test_touch_scrolling.
+	scroll.scroll_vertical = int(bar.max_value)
+	await _settle()
+	_check(not fade.visible,"At the end the fade goes")
+	scroll.scroll_vertical = 0
+	await _settle()
+	_check(fade.visible,"and comes back above the end")
+	app.settings_flow.show_settings(Flow.EVERYDAY)
+	await _settle()
+	var short_fade := app.overlay.find_child("MoreBelow",true,false) as Control
+	_check(short_fade != null and not short_fade.visible,"A page that fits shows no fade")
 
 func _summary(app: Node, category: String) -> String:
 	var item := _control(app,"category_"+category)
