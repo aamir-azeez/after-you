@@ -219,7 +219,7 @@ func _build_dressing() -> void:
 	var lit := bool(dressing.get("lit", true))
 	var anchors: Array[Vector3] = []
 	for spec: Dictionary in specs:
-		if _motion_quality == "low" and bool(spec.get("detail", false)): continue
+		if not GraphicsPolicy.detail_dressing(_motion_quality) and bool(spec.get("detail", false)): continue
 		var surface := str(spec.get("surface", ""))
 		var parent: Node3D = _surface_nodes.get(surface, terrain)
 		var base := 0.0 if _surface_nodes.has(surface) else _surface_base(surface)
@@ -236,8 +236,9 @@ func _build_dressing() -> void:
 			_glow(lamp, LIGHT_COLOR, 0.0)
 	_build_fireflies(int(dressing.get("fireflies", 0)), anchors)
 
-## Small warm lights drifting near the planting. They are not motes: graphics
-## quality hides them on low and never counts them as authored motes.
+## Small warm lights drifting near the planting. They are not motes:
+## GraphicsPolicy.fireflies hides them on Low, and they never count as authored
+## motes.
 func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
 	if count <= 0 or anchors.is_empty(): return
 	var root := Node3D.new()
@@ -250,7 +251,7 @@ func _build_fireflies(count: int, anchors: Array[Vector3]) -> void:
 		var fly := Primitives.mesh_node(Primitives.shared_mesh("sphere", 0.028), glow, at, root)
 		fly.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		fly.set_meta("rest", at)
-		fly.visible = _motion_quality != "low"
+		fly.visible = GraphicsPolicy.fireflies(_motion_quality)
 		_fireflies.append(fly)
 
 func _advance_fireflies() -> void:
@@ -265,7 +266,7 @@ func _advance_fireflies() -> void:
 func apply_graphics_quality(quality: String) -> void:
 	super.apply_graphics_quality(quality)
 	for fly: MeshInstance3D in _fireflies:
-		if is_instance_valid(fly): fly.visible = GraphicsPolicy.normalize(quality) != "low"
+		if is_instance_valid(fly): fly.visible = GraphicsPolicy.fireflies(quality)
 
 ## Supply the checkpoint already verified by the chapter coordinator. Archived
 ## mechanisms are landmarks only: they add no controls, beams or collision.

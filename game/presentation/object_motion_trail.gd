@@ -5,6 +5,7 @@ extends Node3D
 ## motion_blur_profile.gd. Presentation only; no particles. This base draws a
 ## soft capsule behind the object, with one material shared by every capsule.
 const Profile = preload("res://presentation/motion_blur_profile.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const SOFT_SHADER = preload("res://presentation/object_motion_trail.gdshader")
 const TRAIL_COLOR := &"trail_color"
 var quality := "balanced"
@@ -49,7 +50,7 @@ func _ready() -> void:
 func set_quality(value: String) -> void:
 	quality = value
 	_preset = Profile.preset(value)
-	if quality == "low": reset()
+	if not GraphicsPolicy.motion_trails(quality): reset()
 
 func set_motion_allowed(value: bool, immediate: bool = false) -> void:
 	if immediate or not value or value != permitted: reset()
@@ -72,7 +73,7 @@ func _process(_delta: float) -> void:
 
 ## False (and reset) whenever this frame must show no exposure at all.
 func _may_expose(delta: float, reduced_motion: bool) -> bool:
-	if not permitted or quality == "low" or reduced_motion or not is_instance_valid(_object) or not _object.is_visible_in_tree() or not is_finite(delta) or delta <= 0.0 or delta > Profile.MAX_SAMPLE_GAP or not _object.global_position.is_finite():
+	if not permitted or not GraphicsPolicy.motion_trails(quality) or reduced_motion or not is_instance_valid(_object) or not _object.is_visible_in_tree() or not is_finite(delta) or delta <= 0.0 or delta > Profile.MAX_SAMPLE_GAP or not _object.global_position.is_finite():
 		reset()
 		return false
 	return true

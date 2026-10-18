@@ -9,23 +9,35 @@ static func normalize(value: Variant) -> String:
 ## The 3D picture is drawn at most this many lines tall (the screen's short
 ## side) and scaled up: a 1440p phone would otherwise shade nearly twice the
 ## pixels of a 1080p one for a difference nobody sees at arm's length. High
-## keeps the screen's own resolution. 0 = no limit.
-const MAX_LINES := {"low": 720, "balanced": 1080, "high": 0}
+## keeps the screen's own resolution. 0 = no limit. Low draws at Balanced's
+## size: a smaller picture stretched back up cost a fast GPU more than it
+## saved, so Low only leaves effects out (below).
+const MAX_LINES := {"low": 1080, "balanced": 1080, "high": 0}
 
-## short_side: the screen's shorter side in pixels; 0 leaves only the quality's
-## own scale.
+## short_side: the screen's shorter side in pixels; 0 is no limit.
 static func render_scale(quality: Variant, short_side: int = 0) -> float:
-	var name := normalize(quality)
-	var scale := 0.75 if name == "low" else 1.0
-	var lines: int = MAX_LINES[name]
-	if lines > 0 and short_side > lines: scale = minf(scale, float(lines) / short_side)
-	return scale
+	var lines: int = MAX_LINES[normalize(quality)]
+	return float(lines) / short_side if lines > 0 and short_side > lines else 1.0
 
 static func antialiasing(quality: Variant) -> Viewport.MSAA:
 	return Viewport.MSAA_2X if normalize(quality) == "high" else Viewport.MSAA_DISABLED
 
+## What Low leaves out. Every cut is presentation only, and the worlds ask here
+## instead of naming a quality themselves.
 static func mote_count(authored_count: int, quality: Variant) -> int:
 	return ceili(authored_count * 0.25) if normalize(quality) == "low" else authored_count
+
+## Motion blur behind a rolling ball or a thrown seed.
+static func motion_trails(quality: Variant) -> bool:
+	return normalize(quality) != "low"
+
+## The drifting lights near the planting on dusk looks.
+static func fireflies(quality: Variant) -> bool:
+	return normalize(quality) != "low"
+
+## Dressing marked "detail" (rows of tufts), read once as the dressing is built.
+static func detail_dressing(quality: Variant) -> bool:
+	return normalize(quality) != "low"
 
 static func apply_viewport(viewport: Viewport, quality: Variant) -> void:
 	# Scale only the 3D buffer; UI and touch coordinates retain their full size.

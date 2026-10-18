@@ -116,11 +116,18 @@ func _redrawn_pages(app: Node, viewport: Viewport) -> void:
 	app._show_journey()
 	await _frames(4)
 	_check(views.size() == 2 and app._backdrop_ready, "A moved camera takes a new still")
-	# High to Balanced keeps the 3D scale on most phones; only antialiasing changes.
+	# Every quality keeps the 3D scale on most phones. High to Balanced changes
+	# only antialiasing, and Balanced to Low only the effects it leaves out.
 	viewport.msaa_3d = Viewport.MSAA_DISABLED
 	app._show_journey()
 	await _frames(4)
 	_check(views.size() == 3 and smoothing[2] == Viewport.MSAA_DISABLED, "A changed antialiasing takes a new still")
+	var quality: Variant = app.saves.data.settings.get("graphics_quality")
+	app.saves.data.settings.graphics_quality = "low" if quality != "low" else "balanced"
+	app._show_journey()
+	await _frames(4)
+	_check(views.size() == 4 and is_equal_approx(float(views[3]), 0.6), "A changed quality at the same scale takes a new still")
+	app.saves.data.settings.graphics_quality = quality
 	app._show_home()
 	await _frames(3)
 	_check(not viewport.disable_3d and app.world.is_processing() and app._backdrop_still == null, "Home after the redrawn pages runs the live world and lets the still go")

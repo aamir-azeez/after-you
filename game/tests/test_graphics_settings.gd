@@ -38,6 +38,10 @@ func _run() -> void:
 	var reset := app.overlay.find_child("ResetGraphics",true,false) as Button
 	_check(reset != null and reset.visible and reset.text == "Reset graphics" and reset.icon != null,"Graphics has a labelled Reset graphics in its title row")
 	_check(reset != null and reset.disabled,"Reset graphics is greyed at Balanced and 60 fps")
+	# Low draws at Balanced's scale and only leaves effects out, so its motes tell it apart.
+	var authored := _visible_motes(app)
+	var low_motes := ceili(authored * 0.25)
+	_check(authored > low_motes,"Home has motes for Low to thin out")
 	for label: String in ["Low","High","Balanced","Low"]:
 		var button := _button(app,label)
 		await _reveal(button)
@@ -47,12 +51,13 @@ func _run() -> void:
 		saved.load_data()
 		_check(saved.data.settings.graphics_quality==label.to_lower() and button.button_pressed,"Actual quality tap persists and remains visibly selected")
 		_check(_button(app,"Low").button_pressed == (label == "Low") and _button(app,"High").button_pressed == (label == "High"),"Only the chosen quality looks selected")
-		_check(viewport.scaling_3d_scale==(0.75 if label=="Low" else 1.0) and viewport.msaa_3d==(Viewport.MSAA_2X if label=="High" else Viewport.MSAA_DISABLED),"Main applies quality immediately to the 3D viewport")
+		_check(viewport.scaling_3d_scale==1.0 and viewport.msaa_3d==(Viewport.MSAA_2X if label=="High" else Viewport.MSAA_DISABLED),"Main applies quality immediately to the 3D viewport, every quality at full scale here")
+		_check(_visible_motes(app)==(low_motes if label=="Low" else authored),"Main applies quality immediately to the world's effects (%s)" % label)
 		_check(not app.world.sun.shadow_enabled,"No quality runs the sun's shadow pass on Home")
 		_check(reset.disabled == (label == "Balanced"),"Reset graphics is offered whenever Graphics is off its defaults (%s)" % label)
 	app.saves.read_only = true
 	await _click(viewport,_button(app,"High"))
-	_check(_button(app,"Low").button_pressed and not _button(app,"High").button_pressed and viewport.scaling_3d_scale==0.75,"A failed save restores the old visible selection and rendering quality")
+	_check(_button(app,"Low").button_pressed and not _button(app,"High").button_pressed and viewport.msaa_3d==Viewport.MSAA_DISABLED and _visible_motes(app)==low_motes,"A failed save restores the old visible selection and rendering quality")
 	app.saves.read_only = false
 	# Frame rate: 60 by default, saved, and applied to play at once.
 	var frames: Node = root.get_node_or_null("FramePolicy")
@@ -93,7 +98,7 @@ func _run() -> void:
 	var after := Save.new(path)
 	after.load_data()
 	_check(after.data.settings.graphics_quality == "balanced" and after.data.settings.frame_rate == "60" and not after.data.settings.unlimited_frame_rate,"Reset puts back Balanced and 60 fps, saved")
-	_check(_button(app,"Balanced").button_pressed and _button(app,"60 fps").button_pressed and not _button(app,"Low").button_pressed and frames.play_fps == 60 and viewport.scaling_3d_scale == 1.0,"and shows and applies them at once")
+	_check(_button(app,"Balanced").button_pressed and _button(app,"60 fps").button_pressed and not _button(app,"Low").button_pressed and frames.play_fps == 60 and viewport.scaling_3d_scale == 1.0 and _visible_motes(app) == authored,"and shows and applies them at once")
 	_check(reset.disabled and (confirm == null or not is_instance_valid(confirm) or confirm.is_queued_for_deletion()),"Reset closes its card and greys again")
 	await _click(viewport,reset)
 	_check(app.ui.find_child("ResetConfirm",true,false) == null,"A greyed Reset asks nothing")
@@ -106,13 +111,16 @@ func _run() -> void:
 	_check(app.settings_flow.showing(Flow.GRAPHICS) and _button(app,"Low").button_pressed,"The Graphics entry point opens on Graphics")
 	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	_check(app.mode=="home","Android Back from Graphics goes where Done goes: Home")
-	_check(viewport.scaling_3d_scale==0.75,"Returning Home preserves Low quality")
+	_check(viewport.scaling_3d_scale==1.0 and _visible_motes(app)==low_motes,"Returning Home preserves Low quality")
 	viewport.queue_free()
 	await process_frame
 	for suffix: String in ["",".tmp",".backup"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 	print("GRAPHICS SETTINGS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
+
+func _visible_motes(app: Node) -> int:
+	return app.world.motes.filter(func(mote: MeshInstance3D) -> bool: return mote.visible).size()
 
 func _button(app: Node, label: String) -> Button:
 	return _button_in(app.overlay,label)

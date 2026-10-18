@@ -42,11 +42,13 @@ func _run() -> void:
 		var color: Color = world.sun.light_color
 		for quality: String in ["low", "high", "balanced", "low", "balanced"]:
 			Policy.apply(world, {"graphics_quality": quality})
-			_check(is_equal_approx(viewport.scaling_3d_scale, 0.75 if quality == "low" else 1.0), name + ": 3D scale follows selection")
+			_check(is_equal_approx(viewport.scaling_3d_scale, 1.0), name + ": every quality draws a 720-line view at full scale")
 			_check(viewport.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR and viewport.size == Vector2i(1280, 720), "UI viewport size stays unchanged")
 			_check(viewport.msaa_3d == (Viewport.MSAA_2X if quality == "high" else Viewport.MSAA_DISABLED), name + ": only High enables 2x MSAA")
 			_check(not world.sun.shadow_enabled, name + ": no quality runs the sun's shadow pass")
 			_check(_visible_motes(world) == (ceili(authored * 0.25) if quality == "low" else authored), name + ": toggles restore exactly the authored mote count")
+			var flies: Array = world.get("_fireflies") if world.get("_fireflies") != null else []
+			_check(flies.all(func(fly: MeshInstance3D) -> bool: return fly.visible == (quality != "low")), name + ": fireflies show on every quality but Low")
 			_check(world.sun.light_energy == energy and world.sun.light_color == color, name + ": quality does not darken authored lighting")
 		_check(Canonical.digest(definition) == before, name + ": graphics leave chapter data unchanged")
 		Policy.apply(world, {"graphics_quality": "low"})
@@ -73,14 +75,21 @@ func _visible_motes(world: Node3D) -> int:
 	return count
 
 func _policy() -> void:
-	# The 3D picture is at most 720 lines tall on Low and 1080 on Balanced;
-	# High and smaller screens keep their own scale.
-	for row: Array in [["low", 0, 0.75], ["low", 720, 0.75], ["low", 1080, 720.0 / 1080.0], ["low", 1440, 0.5], ["balanced", 0, 1.0], ["balanced", 1080, 1.0], ["balanced", 1440, 0.75], ["high", 1440, 1.0], ["high", 2160, 1.0]]:
+	# The 3D picture is at most 1080 lines tall on Low and Balanced alike, so Low
+	# never draws smaller and stretches; High and smaller screens keep their own scale.
+	for row: Array in [["low", 0, 1.0], ["low", 720, 1.0], ["low", 1080, 1.0], ["low", 1440, 0.75], ["balanced", 0, 1.0], ["balanced", 1080, 1.0], ["balanced", 1440, 0.75], ["high", 1440, 1.0], ["high", 2160, 1.0]]:
 		_check(is_equal_approx(Policy.render_scale(row[0], row[1]), row[2]), "%s on a %d-line screen draws 3D at %.3f" % row)
 	var window_sized := SubViewport.new()
 	window_sized.size = Vector2i(3120, 1440)
 	Policy.apply_viewport(window_sized, "balanced")
 	_check(is_equal_approx(window_sized.scaling_3d_scale, 0.75), "A 1440-line view draws Balanced 3D at 1080 lines")
+	for short_side: int in [480, 720, 1080, 1440, 2160]:
+		_check(Policy.render_scale("low", short_side) == Policy.render_scale("balanced", short_side), "Low draws 3D at Balanced's scale on a %d-line screen" % short_side)
+	# Low only leaves effects out; Balanced and High keep every one.
+	for quality: String in Policy.QUALITIES:
+		var keeps := quality != "low"
+		_check(Policy.motion_trails(quality) == keeps and Policy.fireflies(quality) == keeps and Policy.detail_dressing(quality) == keeps, quality + ": effect cuts belong to Low alone")
+		_check(Policy.mote_count(32, quality) == (8 if quality == "low" else 32), quality + ": mote count")
 	window_sized.free()
 
 func _settings() -> void:

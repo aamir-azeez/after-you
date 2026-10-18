@@ -2241,11 +2241,13 @@ func _start_backdrop(shade: ColorRect) -> void:
 	lens.current = true
 	_backdrop_view = view
 
-## What a still shows: this world through this camera, at this size and scale.
+## What a still shows: this world through this camera, at this size, scale and
+## quality. Low and Balanced share a scale, so the quality tells their motes
+## and fireflies apart.
 func _backdrop_key_for(source: Camera3D) -> Array:
 	var root := get_viewport()
 	return [world.get_instance_id(), source.get_instance_id(), source.global_transform, source.fov, source.size,
-		source.h_offset, source.v_offset, root.size, root.scaling_3d_scale, root.msaa_3d]
+		source.h_offset, source.v_offset, root.size, root.scaling_3d_scale, root.msaa_3d, GraphicsPolicy.normalize(saves.data.settings.get("graphics_quality"))]
 
 ## Puts the still under the shade once it is rendered. A renderer that gives
 ## no image (headless) keeps the live world.
