@@ -64,9 +64,6 @@ var flowers: Array[Node3D] = []
 var motes: Array[MeshInstance3D] = []
 var _authored_motes: Array[MeshInstance3D] = []
 var _graphics_authored := false
-var _authored_sun_shadows := true
-var _authored_sun_caster_mask := 0xFFFFFFFF
-var _authored_sun_shadow_opacity := 1.0
 var bridge_ready := false
 ## Home Explore raises the bridge while the explorer is near it (home_stage.gd).
 ## It counts only while a Home presentation owns the view; load_level clears it.
@@ -119,29 +116,20 @@ func ring(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInst
 	return mesh_node(Primitives.ring_mesh(radius), color, pos, parent)
 
 func _ready() -> void:
-	# Every world starts in the day look; later lineages recolour it (kit/look.gd).
-	var look := Look.preset("day")
+	# Every world starts in the day look; later lineages relight it. Colours and
+	# energies come only from kit/look.gd.
 	var environment_node := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = look.sky
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = look.ambient
-	env.ambient_light_energy = look.ambient_energy
 	env.tonemap_mode = Environment.TONE_MAPPER_LINEAR
 	environment_node.environment = env
 	add_child(environment_node)
 	sun = DirectionalLight3D.new()
 	sun.rotation_degrees = Vector3(-52,-32,0)
-	sun.light_color = look.sun
-	sun.light_energy = look.sun_energy
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 32
 	add_child(sun)
 	var bounce := DirectionalLight3D.new()
 	bounce.rotation_degrees=Vector3(28,145,0)
-	bounce.light_color=look.bounce
-	bounce.light_energy=look.bounce_energy
 	add_child(bounce)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
@@ -155,8 +143,9 @@ func _ready() -> void:
 	camera_exploration.reduced_motion = func() -> bool: return reduced_motion
 	add_child(camera_exploration)
 	for i in range(32):
-		var node := sphere(0.018 + (i % 3) * 0.008, look.mote, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
+		var node := sphere(0.018 + (i % 3) * 0.008, Color.WHITE, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
 		motes.append(node)
+	Look.apply(self, "day")
 	get_tree().process_frame.connect(_on_tree_frame)
 
 func apply_graphics_quality(quality: String) -> void:
@@ -169,16 +158,7 @@ func apply_graphics_quality(quality: String) -> void:
 	if not _graphics_authored:
 		for mote: MeshInstance3D in motes:
 			if mote.visible: _authored_motes.append(mote)
-		_authored_sun_shadows = sun.shadow_enabled
-		_authored_sun_caster_mask = sun.shadow_caster_mask
-		_authored_sun_shadow_opacity = sun.shadow_opacity
 		_graphics_authored = true
-	# Set all three every call so switching quality at runtime is exact both ways.
-	var shadow_pass := _authored_sun_shadows and GraphicsPolicy.shadows(quality)
-	var hidden := shadow_pass and not GraphicsPolicy.shadows_visible(quality)
-	sun.shadow_enabled = shadow_pass
-	sun.shadow_caster_mask = 0 if hidden else _authored_sun_caster_mask
-	sun.shadow_opacity = 0.0 if hidden else _authored_sun_shadow_opacity
 	var visible_count := GraphicsPolicy.mote_count(_authored_motes.size(), quality)
 	for index in range(_authored_motes.size()):
 		_authored_motes[index].visible = index < visible_count

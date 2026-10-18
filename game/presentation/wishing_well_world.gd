@@ -59,16 +59,7 @@ var _rope_rails: Dictionary = {}
 func _ready() -> void:
 	super._ready()
 	# Dusk instead of the Lighthouse night: warmer sky, ambient and sun.
-	for child: Node in get_children():
-		if child is WorldEnvironment:
-			child.environment.background_color = Color("2b2945")
-			child.environment.ambient_light_color = Color("aeb3cf")
-			child.environment.ambient_light_energy = 0.42
-		elif child is DirectionalLight3D:
-			child.light_color = Color("f4d9bf") if child == sun else Color("8e95c6")
-			child.light_energy = 0.72 if child == sun else 0.3
-	for mote: MeshInstance3D in motes:
-		(mote.material_override as StandardMaterial3D).albedo_color = Color("e7c48e")
+	Look.apply(self, "dusk")
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -607,7 +598,7 @@ func _lantern(at: Vector3, height: float, lit: bool, parent: Node3D) -> void:
 	if not lit: return
 	var light := OmniLight3D.new()
 	light.light_color = LAMP
-	light.light_energy = 0.55
+	light.light_energy = Look.lamp_energy(0.55)
 	light.omni_range = 2.2
 	light.position = at + Vector3(0.12, height - 0.05, 0.1)
 	parent.add_child(light)

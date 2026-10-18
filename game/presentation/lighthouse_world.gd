@@ -688,7 +688,7 @@ func _present_beacon(state: Dictionary) -> void:
 	_glow(_beacon.glass, LIGHT_COLOR, 1.8 if lit else 0.0)
 	_beacon.halo.visible = lit
 	_glow(_beacon.halo, LIGHT_COLOR, 0.65 if lit else 0.0)
-	_beacon.light.light_energy = 1.6 if lit else 0.0
+	_beacon.light.light_energy = Look.lamp_energy(1.6) if lit else 0.0
 	_beacon.lantern.set_meta("lit", lit)
 	if is_instance_valid(_tower_lamp): _glow(_tower_lamp, LIGHT_COLOR, 2.2 if lit else 0.0)
 
@@ -808,7 +808,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_bell):
 		_glow(_bell_ring, LIGHT_COLOR, 1.0 if _wake else 0.0)
 		_glow(_bell, LIGHT_COLOR, 0.65 if _wake else 0.0)
-		_court_light.light_energy = 1.2 if _wake else 0.0
+		_court_light.light_energy = Look.lamp_energy(1.2) if _wake else 0.0
 	_present_beams(state.optics.segments)
 
 ## A solved stage makes both spirits jump, sparkle and smile, as in the other

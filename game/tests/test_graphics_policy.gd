@@ -44,11 +44,7 @@ func _run() -> void:
 			_check(is_equal_approx(viewport.scaling_3d_scale, 0.75 if quality == "low" else 1.0), name + ": 3D scale follows selection")
 			_check(viewport.scaling_3d_mode == Viewport.SCALING_3D_MODE_BILINEAR and viewport.size == Vector2i(1280, 720), "UI viewport size stays unchanged")
 			_check(viewport.msaa_3d == (Viewport.MSAA_2X if quality == "high" else Viewport.MSAA_DISABLED), name + ": only High enables 2x MSAA")
-			_check(world.sun.shadow_enabled == (quality != "low"), name + ": Low toggles only the authored sun shadows")
-			if quality == "low":
-				_check(world.sun.shadow_caster_mask == 0xFFFFFFFF and is_equal_approx(world.sun.shadow_opacity, 1.0), name + ": Low keeps the authored mask and opacity behind its disabled pass")
-			else:
-				_check(world.sun.shadow_caster_mask == 0 and is_zero_approx(world.sun.shadow_opacity), name + ": Balanced and High keep the pass but draw no shadows")
+			_check(not world.sun.shadow_enabled, name + ": no quality runs the sun's shadow pass")
 			_check(_visible_motes(world) == (ceili(authored * 0.25) if quality == "low" else authored), name + ": toggles restore exactly the authored mote count")
 			_check(world.sun.light_energy == energy and world.sun.light_color == color, name + ": quality does not darken authored lighting")
 		_check(Canonical.digest(definition) == before, name + ": graphics leave chapter data unchanged")
@@ -76,9 +72,6 @@ func _visible_motes(world: Node3D) -> int:
 	return count
 
 func _policy() -> void:
-	for quality: String in Policy.QUALITIES:
-		_check(Policy.shadows(quality) == (quality != "low"), quality + ": only Low turns the shadow pass off")
-		_check(not Policy.shadows_visible(quality), quality + ": no quality draws shadow shapes")
 	# The 3D picture is at most 720 lines tall on Low and 1080 on Balanced;
 	# High and smaller screens keep their own scale.
 	for row: Array in [["low", 0, 0.75], ["low", 720, 0.75], ["low", 1080, 720.0 / 1080.0], ["low", 1440, 0.5], ["balanced", 0, 1.0], ["balanced", 1080, 1.0], ["balanced", 1440, 0.75], ["high", 1440, 1.0], ["high", 2160, 1.0]]:

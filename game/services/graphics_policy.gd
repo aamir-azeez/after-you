@@ -24,16 +24,6 @@ static func render_scale(quality: Variant, short_side: int = 0) -> float:
 static func antialiasing(quality: Variant) -> Viewport.MSAA:
 	return Viewport.MSAA_2X if normalize(quality) == "high" else Viewport.MSAA_DISABLED
 
-## Whether the sun keeps its shadow pass. In gl_compatibility that pass also
-## carries much of the sun's brightness, so only Low turns it off (and is darker).
-static func shadows(quality: Variant) -> bool:
-	return normalize(quality) != "low"
-
-## Whether shadow shapes are drawn. Every quality hides them; Balanced and High
-## keep the pass for its lighting but give it no casters and no opacity.
-static func shadows_visible(_quality: Variant) -> bool:
-	return false
-
 static func mote_count(authored_count: int, quality: Variant) -> int:
 	return ceili(authored_count * 0.25) if normalize(quality) == "low" else authored_count
 

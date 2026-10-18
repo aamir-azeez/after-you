@@ -83,10 +83,20 @@ func _check_badges() -> void:
 	spirit.free()
 
 func _check_looks() -> void:
+	var world: Node3D = LighthouseWorld.new()
+	root.add_child(world)
+	world.set_process(false)
+	var env: Environment = (world.find_children("*", "WorldEnvironment", false, false)[0] as WorldEnvironment).environment
 	for name: String in Look.PRESETS:
 		var look := Look.preset(name)
 		for field: String in ["sky", "ambient", "ambient_energy", "sun", "sun_energy", "bounce", "bounce_energy", "mote"]:
 			_check(look.has(field), "Look %s defines %s" % [name, field])
+		# Applied twice, as a chapter load does after _ready: the gains never compound.
+		Look.apply(world, name)
+		Look.apply(world, name)
+		_check(not world.sun.shadow_enabled and is_equal_approx(world.sun.light_energy, look.sun_energy * Look.SUN_GAIN) and is_equal_approx(env.ambient_light_energy, look.ambient_energy * Look.AMBIENT_GAIN),
+			"Look %s lights the sun and ambient with the shared gains and no shadow pass" % name)
+	world.free()
 
 ## The Lighthouse follow camera keeps the fit-all camera's angle, so live
 ## stick input maps to the same walking directions in every stage.

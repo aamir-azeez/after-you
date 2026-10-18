@@ -1,8 +1,18 @@
 extends RefCounted
-## World kit: look presets. Sky, ambient light, sun, bounce light and mote tint
-## for a chapter world. Presets only recolour the nodes island_world creates in
-## _ready; they never add or remove motes, so graphics quality keeps counting
-## the motes each lineage authored.
+## World kit: the one place a chapter world's lighting is set. Presets give the
+## sky, ambient light, sun, bounce light and mote tint; apply() writes them to
+## the nodes island_world creates in _ready. They never add or remove motes, so
+## graphics quality keeps counting the motes each lineage authored.
+
+## The sun draws no shadow pass at any quality. In gl_compatibility that pass
+## added the sun's light on top of the base pass, which lit scenes brighter
+## than one pass does; these gains keep the old brightness. Presets keep their
+## original values.
+const SUN_GAIN := 2.2
+const AMBIENT_GAIN := 2.0
+## Lamps (OmniLight3D) now add to that brighter base, so their pools need more
+## energy to show as before. Every lamp's energy goes through lamp_energy().
+const LAMP_GAIN := 2.5
 
 const PRESETS := {
 	# The meadow day of Home, First Steps and the Relay Isles.
@@ -21,7 +31,11 @@ const PRESETS := {
 static func preset(name: String) -> Dictionary:
 	return PRESETS.get(name, PRESETS.day)
 
-## Recolours the world's environment, sun, bounce light and motes.
+## A lamp's energy, from the value it was tuned at with the shadow pass.
+static func lamp_energy(energy: float) -> float:
+	return energy * LAMP_GAIN
+
+## Lights the world's environment, sun and bounce light and tints its motes.
 static func apply(world: Node3D, name: String) -> void:
 	var look := preset(name)
 	var sun: DirectionalLight3D = world.get("sun")
@@ -29,9 +43,13 @@ static func apply(world: Node3D, name: String) -> void:
 		if child is WorldEnvironment:
 			child.environment.background_color = look.sky
 			child.environment.ambient_light_color = look.ambient
-			child.environment.ambient_light_energy = look.ambient_energy
+			child.environment.ambient_light_energy = look.ambient_energy * AMBIENT_GAIN
+		elif child == sun:
+			sun.light_color = look.sun
+			sun.light_energy = look.sun_energy * SUN_GAIN
+			sun.shadow_enabled = false
 		elif child is DirectionalLight3D:
-			child.light_color = look.sun if child == sun else look.bounce
-			child.light_energy = look.sun_energy if child == sun else look.bounce_energy
+			child.light_color = look.bounce
+			child.light_energy = look.bounce_energy
 	for mote: MeshInstance3D in world.get("motes"):
 		(mote.material_override as StandardMaterial3D).albedo_color = look.mote

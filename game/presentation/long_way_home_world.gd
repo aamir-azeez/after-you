@@ -137,6 +137,6 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if _greeting_window.is_empty(): return
 	var lit: bool = bool(state.get("hold_pads",{}).get("near-window",false)) or bool(state.get("hold_pads",{}).get("garden-window",false))
 	WindowVisual.present(self,_greeting_window,lit,GOLD)
-	_greeting_light.light_energy = 0.65 if lit else 0.0
+	_greeting_light.light_energy = Look.lamp_energy(0.65) if lit else 0.0
 	_greeting_window.pane.set_meta("lit",lit)
 	_arrival_window.pane.set_meta("lit",bool(state.get("objective_done",false)))
