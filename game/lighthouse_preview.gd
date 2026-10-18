@@ -501,11 +501,12 @@ func _skip_memory_wait() -> void:
 	if not running or backgrounded or mode != "play" or not memory_wait.waiting() or not _access_granted: return
 	if not _save_draft(): return
 	memory_wait.skipping = true
+	_update_hud(sim.snapshot())
 
 func _update_hud(state: Dictionary) -> void:
 	# A solo Lighthouse turn waits for the player's own earlier memory.
 	if not controls.has_method("show_memory_wait"): pass
-	elif mode == "play" and memory_wait.waiting(): controls.show_memory_wait(PlayerCopy.MEMORY_WAIT_SOLO, memory_wait.remaining_ratio())
+	elif mode == "play" and memory_wait.waiting(): controls.show_memory_wait(PlayerCopy.MEMORY_WAIT_SOLO, memory_wait.remaining_ratio(), memory_wait.skipping)
 	else: controls.hide_memory_wait()
 	var display := LighthouseHud.display(state, stage)
 	controls.update_state("THE SLEEPING LIGHTHOUSE\n%d / %d  ·  %s" % [int(checkpoint.stage_index) + 1, Journey.TOTAL_STAGES, "Replay" if mode == "replay" else stage.title], float(Simulation.MAX_TICKS - int(state.tick)) / Simulation.TICK_RATE, display, mode == "play")

@@ -19,6 +19,8 @@ const Light = preload("res://core/lighthouse/borrowed_light.gd")
 const LighthouseCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const PlantAnimation = preload("res://presentation/plant_animation.gd")
 const Joystick = preload("res://presentation/joystick.gd")
+const FastForwardBadge = preload("res://presentation/fast_forward_badge.gd")
+const SafeArea = preload("res://presentation/safe_area.gd")
 
 const LEVEL := "high-and-low"
 const KEY := Registry.HIGH_AND_LOW
@@ -45,14 +47,17 @@ class CueLog extends "res://services/soundscape.gd":
 
 class WorldStub extends Node3D:
 	var presented: Array = []
+	## Whether wait hints are hushed under the fast-forward mark, as last told.
+	var hints_hushed := false
 	func present(state: Dictionary, _immediate: bool = false) -> void: presented.append(state)
+	func hush_wait_hints(hushed: bool) -> void: hints_hushed = hushed
 
 class ControlsStub extends CanvasLayer:
 	var held := false
 	var waits: Array = []
 	var stick := Control.new()
 	func update_state(_title: String, _remaining: float, _state: Dictionary, _live: bool) -> void: pass
-	func show_memory_wait(text: String, ratio: float) -> void: waits.append([text, ratio])
+	func show_memory_wait(text: String, ratio: float, _skipping: bool = false) -> void: waits.append([text, ratio])
 	func hide_memory_wait() -> void: pass
 	func fast_forward_held() -> bool: return held
 	func dim_stick(_dim: bool) -> void: pass
@@ -154,6 +159,11 @@ func _run() -> void:
 	_timed(_test_auto_skip_save_fails)
 	_timed(_test_lighthouse_auto_skip)
 	await _test_skip_budget_per_frame()
+	for reduced: bool in [false, true]:
+		var started := Time.get_ticks_msec()
+		await _test_fast_forward_badge(reduced)
+		print("TIME _test_fast_forward_badge %d ms" % (Time.get_ticks_msec() - started))
+	await _test_badge_safe_area()
 	print("AFTER YOU MEMORY WAIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -497,6 +507,7 @@ func _test_hud_strip() -> void:
 	_check(not controls.wait_row.visible and not controls.fast_forward_button.visible and controls.action_button.visible, "No wait row or wait buttons outside a wait")
 	controls.show_memory_wait("Waiting for Sam", 0.5)
 	controls.update_state("High and Low", 10.0, state, true)
+	_check(not controls.fast_forward_badge.active(), "No fast-forward mark while the wait plays at normal speed")
 	_check(controls.wait_row.visible and controls.wait_label.text == "Waiting for Sam" and is_equal_approx(controls.wait_bar.value, 0.5), "The wait row names the friend and shows the memory left")
 	_check(controls.fast_forward_button.visible and controls.skip_wait_button.visible and not controls.action_button.visible and not controls.finish_button.visible, "Fast-forward and Skip take the action and finish places")
 	var button := controls.fast_forward_button
@@ -510,9 +521,12 @@ func _test_hud_strip() -> void:
 	controls.show_memory_wait("Waiting for Sam", 0.4)
 	controls.update_state("High and Low", 9.0, state, true)
 	_check(controls.fast_forward_button.get_instance_id() == before and controls.fast_forward_held(), "Updates never rebuild the button under the finger")
+	_check(controls.fast_forward_badge.active(), "Holding Fast-forward shows the fast-forward mark")
 	touch.pressed = false
 	button._gui_input(touch)
 	_check(not controls.fast_forward_held(), "Lifting the finger lets go")
+	controls.show_memory_wait("Waiting for Sam", 0.3)
+	_check(not controls.fast_forward_badge.active(), "Letting go of Fast-forward lets the mark go")
 	touch.pressed = true
 	button._gui_input(touch)
 	controls.hide_memory_wait()
@@ -1051,3 +1065,82 @@ func _test_lighthouse_auto_skip() -> void:
 		tried += 1
 		break
 	_check(tried == 1, "A solo Lighthouse fixture turn waits for its memory")
+## The fast-forward mark in the real chapter controls: it fades in as the
+## skip starts, never takes a touch, breathes only without Reduce motion, and
+## lets go as the friend arrives, before the ring.
+func _test_fast_forward_badge(reduced: bool) -> void:
+	var label := " (Reduce motion)" if reduced else ""
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1560, 720)
+	root.add_child(viewport)
+	var controls := ChapterControls.new()
+	controls.settings = {"reduced_motion": reduced}
+	viewport.add_child(controls)
+	var run := _preview_to_ring(true)
+	var preview: Preview = run.preview
+	preview.controls = controls
+	var badge: Control = controls.fast_forward_badge
+	_check(not badge.visible and not badge.active(), "No fast-forward mark before the skip" + label)
+	# A slow phone: one tick per physics tick, so the skip lasts a while.
+	preview.memory_wait.skip_budget_usec = 1
+	preview._physics_process(1.0 / 30.0)
+	_check(badge.active() and badge.visible, "The mark shows as the skip starts" + label)
+	_check(run.world.hints_hushed, "Wait hints step aside while the mark shows" + label)
+	var ignored := badge.mouse_filter == Control.MOUSE_FILTER_IGNORE
+	for child: Node in badge.find_children("*", "Control", true, false): ignored = ignored and (child as Control).mouse_filter == Control.MOUSE_FILTER_IGNORE
+	_check(ignored, "The mark never takes a touch" + label)
+	# Rendered frames go by while the skip is under way (it steps only on
+	# physics ticks, which this test drives by hand).
+	var swell := 1.0
+	var until := Time.get_ticks_msec() + int((FastForwardBadge.FADE_IN + FastForwardBadge.PULSE) * 1000.0)
+	while Time.get_ticks_msec() < until:
+		await process_frame
+		swell = maxf(swell, badge.scale.x)
+	var steps := 0
+	_check(is_equal_approx(badge.modulate.a, 1.0) and badge.active(), "The mark has faded in while the skip runs" + label)
+	if reduced: _check(is_equal_approx(swell, 1.0), "Reduce motion: the mark holds still")
+	else: _check(swell > 1.02, "The mark breathes gently")
+	var stayed := true
+	while preview.running and steps < 20000:
+		preview._physics_process(1.0 / 30.0)
+		if preview.memory_wait.waiting(): stayed = stayed and badge.active()
+		steps += 1
+	_check(stayed, "The mark stays for the whole skip" + label)
+	_check(not badge.active() and preview.memory_wait.ring_pending(), "The mark lets go as the friend arrives, before the ring" + label)
+	_check(not run.world.hints_hushed, "and wait hints may show again" + label)
+	await create_timer(FastForwardBadge.FADE_OUT + 0.25).timeout
+	_check(not badge.visible and is_zero_approx(badge.modulate.a) and badge.scale == Vector2.ONE, "Then it has faded out" + label)
+	preview.controls = run.controls
+	_free_preview(run)
+	viewport.free()
+
+## A landscape phone with its camera hole on either side: the mark stays
+## inside the safe area, where the chapter controls' content root is inset.
+func _test_badge_safe_area() -> void:
+	# A phone-shaped window with the project's stretch, as test_cutout_full_bleed sets it.
+	var original := {"size": root.size, "content_scale_size": root.content_scale_size, "content_scale_mode": root.content_scale_mode, "content_scale_aspect": root.content_scale_aspect}
+	root.content_scale_size = Vector2i(1280, 720)
+	root.content_scale_mode = Window.CONTENT_SCALE_MODE_CANVAS_ITEMS
+	root.content_scale_aspect = Window.CONTENT_SCALE_ASPECT_EXPAND
+	root.size = Vector2i(1600, 738)
+	await process_frame
+	var controls := ChapterControls.new()
+	root.add_child(controls)
+	await process_frame
+	var visible := root.get_visible_rect()
+	var native := root.get_screen_transform() * visible
+	for side: String in ["left", "right"]:
+		var inset := 180.0
+		SafeArea.simulate(Rect2(native.position + Vector2(inset if side == "left" else 0.0, 0.0), native.size - Vector2(inset, 0.0)))
+		root.size_changed.emit()
+		controls.show_memory_wait("Waiting for Sam", 0.5, true)
+		await process_frame
+		await process_frame
+		var safe := SafeArea.rect(root)
+		var badge: Control = controls.fast_forward_badge
+		_check(safe.size.x < visible.size.x and safe.encloses(badge.get_global_rect()), "The fast-forward mark sits inside the safe area with a %s cutout (%s in %s)" % [side, str(badge.get_global_rect()), str(safe)])
+		controls.hide_memory_wait()
+	SafeArea.simulate(Rect2())
+	controls.free()
+	for property: String in original: root.set(property, original[property])
+	await process_frame

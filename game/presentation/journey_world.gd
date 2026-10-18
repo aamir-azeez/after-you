@@ -72,6 +72,8 @@ var _remembered: Node3D
 ## friend's room turn (set_wait_hints).
 var _wait_hints := WaitHints.new()
 var _wait_hints_on := false
+## Hidden while the screen's fast-forward mark is over the world (hush_wait_hints).
+var _wait_hints_hushed := false
 ## Per crossing the stage can hint about, built hidden with the stage and
 ## then only shown, hidden or reworded:
 ## route id -> {"bubble": LabelBubble, "dashes": MeshInstance3D, "anchor"}.
@@ -558,7 +560,15 @@ func set_wait_hints(on: bool, memory_ticks: int = -1) -> void:
 
 ## The hints on screen now: [{"route", "anchor", "text"}].
 func wait_hints() -> Array:
-	return _wait_hints.shown if _wait_hints_on else []
+	return _wait_hints.shown if _wait_hints_on and not _wait_hints_hushed else []
+
+## Hides the hint marks while the screen shows its fast-forward mark (a
+## skipped or fast-forwarded wait), so the two never overlap, and shows the
+## current ones again after. They keep being worked out meanwhile.
+func hush_wait_hints(hushed: bool) -> void:
+	if hushed == _wait_hints_hushed: return
+	_wait_hints_hushed = hushed
+	_show_wait_marks()
 
 ## How many times the hints were worked out.
 func wait_hint_evaluations() -> int:
@@ -583,7 +593,7 @@ func _build_wait_marks() -> void:
 ## next placement pass (_place_bubbles) places what changed.
 func _show_wait_marks() -> void:
 	var live: Dictionary = {}
-	for hint: Dictionary in _wait_hints.shown:
+	for hint: Dictionary in wait_hints():
 		var mark: Dictionary = _wait_marks.get(hint.route, {})
 		if mark.is_empty(): continue
 		live[hint.route] = true

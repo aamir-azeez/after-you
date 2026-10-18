@@ -1804,8 +1804,10 @@ func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool 
 ## The "Waiting for Sam" row, Fast-forward and Skip, shown only in a live wait.
 func _update_memory_wait_hud() -> void:
 	if not is_instance_valid(controls) or not controls.has_method("show_memory_wait"): return
-	if mode == "play" and memory_wait.waiting(): controls.show_memory_wait(_memory_wait_label(), memory_wait.remaining_ratio())
+	if mode == "play" and memory_wait.waiting(): controls.show_memory_wait(_memory_wait_label(), memory_wait.remaining_ratio(), memory_wait.skipping)
 	else: controls.hide_memory_wait()
+	# Wait hints step aside for the fast-forward mark.
+	if is_instance_valid(world) and world.has_method("hush_wait_hints"): world.hush_wait_hints(controls.has_method("fast_forwarding") and controls.fast_forwarding())
 
 ## "Waiting for Sam": the friend by this player's nickname for them, or "a
 ## friend"; a solo turn waits for the player's own earlier memory.
@@ -1847,6 +1849,7 @@ func _skip_memory_wait() -> void:
 	if _room_context_lost: return
 	if not _persist_draft(): return
 	memory_wait.skipping = true
+	_update_memory_wait_hud()
 
 
 func _update_hud(state: Dictionary) -> void:

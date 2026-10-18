@@ -15,6 +15,7 @@ const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const HoldButton = preload("res://presentation/hold_button.gd")
 const MemoryWaitBar = preload("res://presentation/memory_wait_bar.gd")
+const FastForwardBadge = preload("res://presentation/fast_forward_badge.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -46,6 +47,8 @@ var wait_bar: MemoryWaitBar
 ## finger on them never loses its press to a rebuild.
 var fast_forward_button: HoldButton
 var skip_wait_button: Button
+## Over the world while the wait goes by faster (skipped or held).
+var fast_forward_badge: FastForwardBadge
 var _memory_wait := false
 var _view_world: Node
 
@@ -90,9 +93,12 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	skip_wait_button.visible = interactive and _memory_wait
 
 ## The live spirit is waiting for its friend's memory: `text` names the friend
-## and `ratio` is how much of the memory is left (1 to 0). Cheap to call every
-## tick; nothing is rebuilt and unchanged values change nothing.
-func show_memory_wait(text: String, ratio: float) -> void:
+## and `ratio` is how much of the memory is left (1 to 0); `skipping` is true
+## while Skip to end runs. Cheap to call every tick; nothing is rebuilt and
+## unchanged values change nothing.
+func show_memory_wait(text: String, ratio: float, skipping: bool = false) -> void:
+	fast_forward_badge.reduced_motion = bool(settings.get("reduced_motion", false))
+	fast_forward_badge.set_active(skipping or fast_forward_button.held())
 	if wait_label.text != text: wait_label.text = text
 	wait_bar.value = ratio
 	if not wait_row.visible:
@@ -100,8 +106,13 @@ func show_memory_wait(text: String, ratio: float) -> void:
 		_place_wait_row.call_deferred()
 	_memory_wait = true
 
+## True while the fast-forward mark shows (a skipped or fast-forwarded wait).
+func fast_forwarding() -> bool:
+	return fast_forward_badge.active()
+
 ## The wait is over (or there is none). Fast-forward lets go of its fingers.
 func hide_memory_wait() -> void:
+	fast_forward_badge.set_active(false)
 	if not _memory_wait and not wait_row.visible: return
 	_memory_wait = false
 	wait_row.visible = false
@@ -240,6 +251,10 @@ func _build_ui() -> void:
 	skip_wait_button.size = Vector2(210, 54)
 	skip_wait_button.visible = false
 	hud.add_child(skip_wait_button)
+	fast_forward_badge = FastForwardBadge.new()
+	hud.add_child(fast_forward_badge)
+	var badge := FastForwardBadge.SIZE
+	_anchor_rect(fast_forward_badge, Control.PRESET_CENTER, Rect2(-badge * 0.5, -badge * 0.5 - 60.0, badge, badge))
 	if settings.get("left_handed", false):
 		_anchor_rect(stick, Control.PRESET_BOTTOM_RIGHT, Rect2(-200, -218, Joystick.HIT_SIZE, Joystick.HIT_SIZE))
 		_anchor_rect(action_button, Control.PRESET_BOTTOM_LEFT, Rect2(28, -178, 210, 64))
