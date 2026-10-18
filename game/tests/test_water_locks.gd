@@ -78,6 +78,20 @@ func _small_plans() -> void:
 	locks.present(apart, {"walk": true}, true)
 	_check(locks.door_states() == ["open"], "A walkway that can be walked now keeps its door down")
 	parent.free()
+	# Walls only a centimetre above the high water: the door, capped at that
+	# height, still comes to rest while it holds the water.
+	var low_walls := _basins([level, apart], true)
+	low_walls.wall_top = 0.61
+	var capped: WaterLocks = WaterLocks.new()
+	var capped_parent := Node3D.new()
+	root.add_child(capped_parent)
+	capped.build(low_walls, capped_parent)
+	capped.present(level, {}, true)
+	capped.present(apart, {}, false)
+	for _frame in range(120): capped.advance(1.0 / 60.0, apart)
+	var door: MeshInstance3D = capped.door_nodes()[0]
+	_check(not capped.moving() and capped.door_states() == ["shut"] and is_equal_approx(door.position.y, 0.61), "A door held under low walls rests at its shut height")
+	capped_parent.free()
 	# A spillway shows its sheet while the higher water stands over its lip.
 	var spill_plan := _basins([apart, {"west": 0.7, "east": 0.1}], false)
 	var spill: WaterLocks = WaterLocks.new()
@@ -266,6 +280,25 @@ func _rise_and_sink(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Di
 					world._advance_water(1.0 / 60.0)
 					worst = minf(worst, _clearance(world, locks, state))
 				_check(not locks.moving(), "Doors settle after %s turns %s to %s: %s" % [wheel, from, to, stage.id])
+				# Turned back while the water is still on its way: still never below it.
+				world.present(sim.snapshot(), true)
+				sim._mechanisms.controls[wheel] = from
+				sim._refresh_routes()
+				world.present(sim.snapshot(), true)
+				sim._mechanisms.controls[wheel] = to
+				sim._refresh_routes()
+				world.present(sim.snapshot(), false)
+				for _frame in range(15):
+					world._advance_water(1.0 / 60.0)
+					worst = minf(worst, _clearance(world, locks, state))
+				sim._mechanisms.controls[wheel] = from
+				sim._refresh_routes()
+				var back: Dictionary = sim.snapshot()
+				world.present(back, false)
+				for _frame in range(240):
+					world._advance_water(1.0 / 60.0)
+					worst = minf(worst, _clearance(world, locks, back))
+				_check(not locks.moving(), "Doors settle after %s turns back from %s to %s mid-flow: %s" % [wheel, to, from, stage.id])
 	_check(worst >= 0.0, "No door ever stands below the water it holds, on any turn of a wheel: %s (worst %.3f m)" % [stage.id, worst])
 	sim._mechanisms.controls["tide"] = "low"
 	if wheels.has("basin"): sim._mechanisms.controls["basin"] = "shut"

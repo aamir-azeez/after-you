@@ -605,7 +605,9 @@ func advance(delta: float, shown: Dictionary) -> bool:
 		if not bool(entry.walkable):
 			var a := _level(str(run.a), shown, _kinds, _heights, _seabed)
 			var b := _level(str(run.b), shown, _kinds, _heights, _seabed)
-			next = maxf(next, _held(run, a, b, _kinds, _seabed) + MARGIN)
+			# Never above its shut height, which may stand under the margin where
+			# the walls are low, so a held door still comes to rest.
+			next = maxf(next, minf(_held(run, a, b, _kinds, _seabed) + MARGIN, float(run.shut)))
 		if not is_equal_approx(next, top): _place_door(entry, next)
 		if not is_equal_approx(next, target): still = true
 	_moving = still
