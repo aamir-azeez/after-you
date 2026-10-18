@@ -34,6 +34,9 @@ const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
 const RoomFriendStrip = preload("res://presentation/room_friend_strip.gd")
 const RoomOptionsSheet = preload("res://presentation/room_options_sheet.gd")
+const WaitFraming = preload("res://presentation/wait_framing.gd")
+## Seconds the room panel's camera takes to ease into a new framing.
+const FRAMING_EASE := 0.6
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
@@ -132,6 +135,11 @@ var _room_ready_panel: Control
 var _deferred_notes: PackedStringArray = []
 const DEFERRED_NOTES := 3
 var _room_camera: Dictionary = {}
+var _camera_tween: Tween
+## The room panel's framing is on screen; a redraw in the same frame keeps
+## easing from what was shown (_shown_framing) instead of starting over.
+var _room_framed := false
+var _shown_framing: Dictionary = {}
 ## Begin and Resume on the ready card, by action, for the busy-tap gate.
 var _ready_turn_buttons: Dictionary = {}
 var notification_hint: Label
@@ -837,11 +845,15 @@ func _ordinary_room_card(title: String, hint: String) -> VBoxContainer:
 	_frame_ready_world.call_deferred()
 	return card
 
+## Frames the scene beside the room panel: the whole chapter, then eased in
+## closer on the spirits (WaitFraming) while waiting or before recording.
 func _frame_ready_world() -> void:
 	if _room_camera.is_empty() or not is_instance_valid(_room_ready_panel) or mode not in ["ready", "online_waiting"]: return
 	var target: Rect2 = _room_ready_panel.scene_space.get_global_rect()
 	if target.size.x < 80 or target.size.y < 60: return
 	var camera: Camera3D = world.camera
+	var shown: Dictionary = WaitFraming.of(camera) if _room_framed else _shown_framing.get("framing", {}) if _shown_framing.get("frame", -1) == Engine.get_process_frames() else {}
+	_shown_framing = {}
 	camera.transform = _room_camera.transform
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
 	camera.h_offset = _room_camera.h_offset
@@ -851,16 +863,47 @@ func _frame_ready_world() -> void:
 	var shift := viewport.get_center() - target.get_center()
 	var units: float = camera.size / viewport.size.y
 	camera.global_position += camera.global_basis.x * shift.x * units - camera.global_basis.y * shift.y * units
+	var whole := WaitFraming.of(camera)
+	var goal := WaitFraming.closer(camera, _framing_points(), target, viewport)
+	_room_framed = true
+	_ease_camera(camera, shown if not shown.is_empty() else whole, whole if goal.is_empty() else goal)
+
+## The spirits on the scene, and on this player's turn the goal pieces too.
+func _framing_points() -> Array[Vector3]:
+	var points: Array[Vector3] = []
+	for actor: Variant in world.actors.values():
+		if is_instance_valid(actor) and actor.is_visible_in_tree(): points.append(actor.global_position)
+	if mode == "ready" and world.has_method("_doze_anchors"):
+		for anchor: Node3D in world._doze_anchors():
+			if is_instance_valid(anchor) and anchor.is_inside_tree(): points.append(anchor.global_position)
+	return points
+
+func _ease_camera(camera: Camera3D, from: Dictionary, to: Dictionary) -> void:
+	_stop_camera_ease()
+	if bool(settings.get("reduced_motion", false)) or WaitFraming.same(from, to):
+		WaitFraming.apply(camera, to)
+		return
+	WaitFraming.apply(camera, from)
+	_camera_tween = create_tween()
+	_camera_tween.tween_method(func(weight: float): if is_instance_valid(camera): WaitFraming.apply(camera, WaitFraming.blend(from, to, weight)), 0.0, 1.0, FRAMING_EASE).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+
+func _stop_camera_ease() -> void:
+	if is_instance_valid(_camera_tween): _camera_tween.kill()
+	_camera_tween = null
 
 func _restore_ready_world() -> void:
 	if _room_camera.is_empty(): return
+	_stop_camera_ease()
 	if is_instance_valid(world) and is_instance_valid(world.camera):
 		var camera: Camera3D = world.camera
+		# A redraw that frames again this frame eases on from here.
+		if _room_framed: _shown_framing = {"frame": Engine.get_process_frames(), "framing": WaitFraming.of(camera)}
 		camera.transform = _room_camera.transform
 		camera.size = _room_camera.size
 		camera.keep_aspect = _room_camera.keep_aspect
 		camera.h_offset = _room_camera.h_offset
 		camera.v_offset = _room_camera.v_offset
+	_room_framed = false
 	_room_camera.clear()
 
 func _room_icon_button(button: Button, texture: Texture2D, accessible: String, icon_only: bool = false) -> void:

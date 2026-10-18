@@ -606,7 +606,9 @@ func _real_ui_flow() -> void:
 	_check(all_released,"Disposing the real app subtree releases its session, coordinator, API and both soundscapes")
 
 func _play(preview, name: String) -> void:
+	var framed: bool = preview._room_framed
 	preview._begin()
+	_check(not framed or (not preview._room_framed and preview._camera_tween == null and preview._room_camera.is_empty()),"Recording restores the play camera at once: "+name)
 	for input: Dictionary in Simulation.expand_recording_inputs(fixtures[name]):
 		preview.advance_input(input)
 	preview._finish()
@@ -743,6 +745,13 @@ func _check_waiting_layout(preview, viewport: SubViewport, context: String) -> v
 	_check(creams.size() == 1,"Exactly one cream primary on the waiting panel: "+context)
 	for button: Button in _visible_buttons(preview):
 		_check(button.size.y >= 48 and button.size.x >= 48,"Waiting control keeps a 48-unit target (%s): %s" % [button.text,context])
+	# The scene beside the panel is framed; under Reduce motion it lands at once.
+	_check(preview._room_framed,"The waiting scene is framed beside the panel: "+context)
+	var reduced: bool = preview.settings.get("reduced_motion",false)
+	preview.settings.reduced_motion = true
+	preview._frame_ready_world()
+	_check(preview._room_framed and preview._camera_tween == null,"Reduce motion frames the scene without easing: "+context)
+	preview.settings.reduced_motion = reduced
 	var options := _button_named(preview,"Room options")
 	_check(options != null and options.is_visible_in_tree(),"Room options is on the waiting panel: "+context)
 	if options == null: return

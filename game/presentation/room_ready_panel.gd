@@ -2,6 +2,10 @@ extends MarginContainer
 ## Ordinary online room presentation; the caller retains all turn/session actions.
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const BACK = preload("res://assets/ui/social/arrow-left.svg")
+## The shade behind the title and hint: the page colour, and how far below
+## the hint it fades out.
+const SHADE := Color(0.055, 0.17, 0.16, 0.8)
+const SHADE_FADE := 72.0
 var scene_space: Control
 var actions: VBoxContainer
 var header: HBoxContainer
@@ -51,6 +55,7 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	scene_space.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	scene_space.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	introduction.add_child(scene_space)
+	_add_title_shade()
 	var panel := PanelContainer.new()
 	panel.name = "RoomActionsPanel"
 	panel.custom_minimum_size.x = 380
@@ -86,6 +91,38 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	columns.resized.connect(fit.call_deferred)
 	fit.call_deferred()
 	return actions
+
+## A soft shade behind the title and hint rows, so they stay readable when the
+## room camera brings the scene up under them. It reaches the screen's top and
+## sides, under a camera cutout too, and fades out below the hint.
+func _add_title_shade() -> void:
+	var gradient := Gradient.new()
+	var texture := GradientTexture2D.new()
+	texture.gradient = gradient
+	texture.fill_from = Vector2(0, 0)
+	texture.fill_to = Vector2(0, 1)
+	texture.width = 4
+	texture.height = 128
+	var shade := TextureRect.new()
+	shade.name = "TitleShade"
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	shade.texture = texture
+	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	shade.stretch_mode = TextureRect.STRETCH_SCALE
+	shade.top_level = true
+	add_child(shade)
+	move_child(shade, 0)
+	var fit := func():
+		if not is_instance_valid(shade) or not shade.is_inside_tree(): return
+		var view := get_viewport().get_visible_rect()
+		var solid := maxf(0.0, scene_space.global_position.y - view.position.y)
+		shade.global_position = view.position
+		shade.size = Vector2(view.size.x, solid + SHADE_FADE)
+		gradient.offsets = PackedFloat32Array([0.0, solid / (solid + SHADE_FADE), 1.0])
+		gradient.colors = PackedColorArray([SHADE, SHADE, Color(SHADE, 0.0)])
+	scene_space.item_rect_changed.connect(fit.call_deferred)
+	get_viewport().size_changed.connect(fit.call_deferred)
+	fit.call_deferred()
 
 func _label(value: String, font_size: int) -> Label:
 	var label := Label.new()
