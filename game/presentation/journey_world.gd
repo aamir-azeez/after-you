@@ -221,6 +221,14 @@ func _advance_bubbles(delta: float) -> void:
 		if bubble.is_bobbing() == reduced_motion: bubble.set_bob(not reduced_motion)
 		bubble.advance_bob(delta)
 
+## A world shown again (a staged build stays hidden until it is whole) gathers
+## its scenery again and places its bubbles: while hidden, every mesh read as
+## no scenery at all.
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_VISIBILITY_CHANGED and is_inside_tree() and is_visible_in_tree():
+		_sceneries.clear()
+		_placement_due = true
+
 func _frame_camera() -> void:
 	super._frame_camera()
 	if not _placement_due: return

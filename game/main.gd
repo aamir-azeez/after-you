@@ -829,15 +829,9 @@ func _show_journey() -> void:
 	shell.margin.resized.connect(picker.refit)
 	# The solo-only Lighthouse leads the Full Journey chapters; the picker puts
 	# every free chapter first in registry order.
-	var lighthouse := {"key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "title": "Sleeping Lighthouse", "premium": true,
-		"level_key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "mark": "sleeping-lighthouse@1"}
-	var entries: Array[Dictionary] = [lighthouse]
-	for key: String in ChapterRegistry.offered_keys():
-		if _own_solo_card(key): entries.append(ChapterPicker.entry(key))
 	var owned := _full_journey_access()
 	_grid_access_drawn = owned
-	for item: Dictionary in entries: item.locked = item.premium and not owned
-	picker.set_entries(entries,ChapterPicker.picture_for(ui.size.x))
+	picker.set_entries(_journey_entries(owned),ChapterPicker.picture_for(ui.size.x))
 	picker.chosen.connect(_open_solo_chapter)
 	_journey_picker = picker
 	_refresh_chapter_marks()
@@ -857,17 +851,27 @@ func _open_solo_chapter(key: String) -> void:
 static func _own_solo_card(key: String) -> bool:
 	return not ChapterRegistry.is_lighthouse(key) and not ChapterRegistry.solo_scene(key).is_empty()
 
-## The chapter the player most likely opens next: the first in picker order
-## (free ones, then the Full Journey if owned) not yet finished solo; "" once
-## every one is.
+## The Chapters page's cards, as given to its picker (which shows free ones
+## first): the solo-only Lighthouse, then every chapter with its own Solo card.
+func _journey_entries(owned: bool) -> Array[Dictionary]:
+	var lighthouse := {"key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "title": "Sleeping Lighthouse", "premium": true,
+		"level_key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "mark": "sleeping-lighthouse@1"}
+	var entries: Array[Dictionary] = [lighthouse]
+	for key: String in ChapterRegistry.offered_keys():
+		if _own_solo_card(key): entries.append(ChapterPicker.entry(key))
+	for item: Dictionary in entries: item.locked = item.premium and not owned
+	return entries
+
+## The chapter the player most likely opens next: the first card the Chapters
+## page shows, in its order, that is open to them and not yet finished solo;
+## "" once every one is.
 func _next_solo_chapter() -> String:
 	var marks := _chapter_marks()
-	var owned := _full_journey_access()
-	for premium: bool in [false, true]:
-		if premium and not owned: break
-		for key: String in ChapterRegistry.offered_keys():
-			if ChapterRegistry.descriptor(key).premium != premium: continue
-			if not bool(marks.get(key, {}).get("solo", false)): return key
+	for item: Dictionary in ChapterPicker.shown_order(_journey_entries(_full_journey_access())):
+		if bool(item.locked) or bool(marks.get(str(item.mark), {}).get("solo", false)): continue
+		if str(item.key) != ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE: return str(item.key)
+		# The Lighthouse card opens @2 once it is offered, else @1.
+		return ChapterRegistry.LIGHTHOUSE_V2 if lighthouse_scene() == ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2) else str(item.mark)
 	return ""
 
 func _chapter_marks() -> Dictionary:

@@ -94,14 +94,17 @@ func set_entries(entries: Array[Dictionary], picture: Vector2) -> void:
 		grid.remove_child(card)
 		card.queue_free()
 	_buttons.clear()
-	# Free chapters lead in the order given; every Full Journey chapter follows.
-	var paid: Array[Control] = []
-	for item: Dictionary in entries:
-		var card := _card(item,picture)
-		if bool(item.get("premium",false)): paid.append(card)
-		else: grid.add_child(card)
-	for card: Control in paid: grid.add_child(card)
+	for item: Dictionary in shown_order(entries): grid.add_child(_card(item,picture))
 	_fit()
+
+## The entries in the order their cards show: free chapters lead in the order
+## given; every Full Journey chapter follows, in the order given.
+static func shown_order(entries: Array[Dictionary]) -> Array[Dictionary]:
+	var result: Array[Dictionary] = []
+	for premium: bool in [false, true]:
+		for item: Dictionary in entries:
+			if bool(item.get("premium",false)) == premium: result.append(item)
+	return result
 
 ## Completion ticks and the done tint from ChapterCompletion.chapters(); cards are
 ## restyled only when their state changes, since Play Solo refreshes on a timer.

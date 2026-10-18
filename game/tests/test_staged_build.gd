@@ -45,6 +45,7 @@ func _run() -> void:
 	for key: String in Registry.keys():
 		await _same_world(key, 0)
 		await _same_world(key, 1)
+		await _revealed_bubbles(key)
 	await _screen(Registry.CONSERVATORY)
 	await _screen(Registry.WISHING_WELL)
 	await _screen(Registry.WISHING_WELL, true)
@@ -71,6 +72,64 @@ func _slice() -> void:
 	_check(World.frame_budget_usec(-1.0, 0) == 8333, "A screen that reports no rate counts as 60 Hz")
 	_check(World.frame_budget_usec(50.0, 0) == 10000, "A slower screen gives it half its longer frame")
 	_check(World.frame_budget_usec(120.0, 30) == 16000, "A frame cap lengthens the slice, up to its bound")
+
+## Built staged while hidden, as a chapter screen builds it under its card,
+## with a spirit standing on a bubble's tail and a placement while hidden
+## (when every mesh reads as no scenery), then shown: its bubbles lean and
+## rise exactly as in a world built at once and always shown, clear of the
+## scenery it gathers once it shows.
+func _revealed_bubbles(key: String) -> void:
+	var definition := Registry.definition(key)
+	var stage: Dictionary = definition.stages[0]
+	var worlds: Array = []
+	for staged: bool in [false, true]:
+		var viewport := _viewport()
+		var world: Node3D = Registry.world_script(key).new()
+		_mount(viewport, world, false)
+		if not "_sceneries" in world:
+			viewport.free()
+			return
+		if staged:
+			world.process_mode = Node.PROCESS_MODE_DISABLED
+			world.visible = false
+			await world.build_staged(definition, 1, str(stage.id))
+		else:
+			world.load_level(definition)
+		world.present_stage(stage)
+		worlds.append([viewport, world])
+		var tailed: Node3D = null
+		for bubble: Node3D in world._bubbles:
+			if is_instance_valid(bubble) and bubble.visible:
+				tailed = bubble
+				break
+		if tailed == null or not world.actors.has("p0"):
+			for pair: Array in worlds: pair[0].free()
+			return
+		var spirit: Node3D = world.actors["p0"]
+		spirit.visible = true
+		world.actor_targets["p0"] = (spirit.get_parent() as Node3D).to_local((tailed.get_parent() as Node3D).to_global(tailed.anchor))
+		world._placement_due = true
+		world._frame_camera()
+		if staged:
+			world.visible = true
+			world.process_mode = Node.PROCESS_MODE_INHERIT
+	# Real frames: a world places its bubbles from its own frame (_on_tree_frame).
+	for frame in range(5): await process_frame
+	var direct: Node3D = worlds[0][1]
+	var revealed: Node3D = worlds[1][1]
+	var scenery := _scenery_boxes(revealed)
+	_check(scenery > 0 and scenery == _scenery_boxes(direct), key + ": shown, the world gathers its scenery whole (%d boxes, %d built at once)" % [scenery, _scenery_boxes(direct)])
+	var same: bool = revealed._bubbles.size() == direct._bubbles.size()
+	for index in range(mini(revealed._bubbles.size(), direct._bubbles.size())):
+		same = same and is_equal_approx(revealed._bubbles[index].lean, direct._bubbles[index].lean) and is_equal_approx(revealed._bubbles[index].lift, direct._bubbles[index].lift)
+	_check(same, key + ": its bubbles lean and rise as in a world built at once (%d)" % revealed._bubbles.size())
+	for pair: Array in worlds: pair[0].free()
+
+## Scenery boxes a journey world gathered for its bubbles, all bubbles together.
+func _scenery_boxes(world: Node3D) -> int:
+	var total := 0
+	for boxes: Variant in world._sceneries.values(): total += (boxes as Array).size()
+	return total
 
 ## A world as a chapter screen opening on stage stage_index has it: built in
 ## one call and then shown that stage (the screen's ready view), or built

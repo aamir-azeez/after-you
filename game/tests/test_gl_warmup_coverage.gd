@@ -179,6 +179,8 @@ func _check_made() -> void:
 		for entry: Array in order.slice(0, lead): leads = leads and entry[1] in listed.get(entry[0], [])
 		_check(order.size() == total and leads, "The warm-up draws everything once, %s's programs first" % chapter)
 	_check(Warmup.order("").size() == total, "With no chapter in view it draws everything once")
+	for chapter: String in Warmup.CHAPTERS:
+		_check(chapter in Registry.keys() or chapter == LIGHTHOUSE, "gl_warmup.gd CHAPTERS names a chapter that exists: " + chapter)
 	for item: Dictionary in Warmup.MATERIALS:
 		_check(Warmup.material_key(Warmup.material_for(item)) == item, "The warm-up's material for %s has exactly that key" % str(item))
 	for item: Dictionary in Warmup.LABELS:
