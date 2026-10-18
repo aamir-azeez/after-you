@@ -6,8 +6,9 @@ extends SceneTree
 ## match; doors rise while their sides differ and sink while they match, and
 ## rest without work once settled. On Turn of the Tide: the number of pieces
 ## each stage gets, doors following the wheels, no water surface or flooded
-## crossing running into a door, no work on idle frames, and the definition
-## unchanged. Every other chapter builds no locks.
+## crossing running into a door, no work on idle frames, kept crossings never
+## showing an empty pit, and the definition unchanged. Every other chapter
+## builds no locks.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
@@ -139,6 +140,7 @@ func _tide() -> void:
 		_rise_and_sink(world, locks, sim, stage)
 		_every_edge_covered(world, locks, str(stage.id))
 		_kept_crossings(world, locks, sim, stage)
+		_never_empty(world, sim, stage)
 		world.free()
 	_check(Canonical.digest(level) == digest, "Building and showing the locks never changes the definition")
 
@@ -377,7 +379,16 @@ func _kept_crossings(world: Node3D, locks: WaterLocks, sim: Simulation, stage: D
 			world.present(state, true)
 			var doors := _states_at(locks, route)
 			var flooded: bool = KEPT_SHOWN[tide][route] == "flooded"
-			_check(doors.size() == _mouth_count(world, route) and world._floods[route].visible == flooded and doors.all(func(door: String) -> bool: return door == ("shut" if flooded else "open")) and _resting(locks), "A kept crossing shows %s at %s: %s %s %s" % [KEPT_SHOWN[tide][route], tide, stage.id, route, doors])
+			_check(doors.size() == _mouth_count(world, route) and doors.all(func(door: String) -> bool: return door == ("shut" if flooded else "open")) and _resting(locks), "A kept crossing shows %s at %s: %s %s %s" % [KEPT_SHOWN[tide][route], tide, stage.id, route, doors])
+			# Flooded, the water stands over the walkway behind its doors. Dry, the
+			# water in its pit stands under the walkway: for stepping stones, 3 to
+			# 5 cm under the stone tops, so they poke out of it.
+			var calm: bool = world._calm[route].visible
+			var water := _top(world._calm[route] if calm else world._floods[route])
+			var stones: bool = world.DECK_KINDS.get(route, "") == "stones"
+			var under := (_stone_top(world, route) if stones else float(world._low_cm(world._route(route))) / 100.0) - water
+			var fits := under < 0.0 if flooded else (under >= 0.03 and under <= 0.05) if stones else under > 0.0
+			_check(world._floods[route].visible != calm and fits, "A kept crossing shown %s has its water %.3f m under its walkway: %s %s %s" % [KEPT_SHOWN[tide][route], under, stage.id, tide, route])
 		# Not kept (never latched here): covered, it floods behind raised doors.
 		for route: String in kept:
 			if route in world._latched_bridge_ids or not KEPT_SHOWN.high.has(route): continue
@@ -390,6 +401,34 @@ func _kept_crossings(world: Node3D, locks: WaterLocks, sim: Simulation, stage: D
 	sim._mechanisms.controls["tide"] = "low"
 	sim._refresh_routes()
 	world.present(sim.snapshot(), true)
+
+## A crossing that can be kept never shows an empty pit: at every tide, kept
+## or not, either its flood or its calm water stands in it.
+func _never_empty(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
+	for tide: String in ["low", "half", "high"]:
+		sim._mechanisms.controls["tide"] = tide
+		sim._refresh_routes()
+		var plain: Dictionary = sim.snapshot()
+		for route: String in world._kept_walled:
+			for kept: bool in [true, false]:
+				var state := plain.duplicate(true)
+				state.bridges[route] = kept
+				world.present(state, true)
+				var calm: bool = world._calm[route].visible
+				_check(world._floods[route].visible != calm, "A crossing that can be kept always holds water: %s %s %s kept %s" % [stage.id, tide, route, kept])
+	sim._mechanisms.controls["tide"] = "low"
+	sim._refresh_routes()
+	world.present(sim.snapshot(), true)
+
+## The top of a mesh in world space (m).
+func _top(mesh: MeshInstance3D) -> float:
+	return (mesh.global_transform * mesh.get_aabb()).end.y
+
+## The tops of a stepping-stone crossing's stones (m).
+func _stone_top(world: Node3D, route: String) -> float:
+	var top := -INF
+	for stone: Node in world._decks[route].find_children("SteppingStone", "", true, false): top = maxf(top, _top(stone as MeshInstance3D))
+	return top
 
 ## A crossing's doors: one at each floor it joins, so one for a stub.
 func _mouth_count(world: Node3D, route: String) -> int:
