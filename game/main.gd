@@ -1230,8 +1230,10 @@ func _show_review() -> void:
 		card.add_child(_action_button("retry",_retry_review))
 	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else _show_journey))
 
-func _retry_review() -> void:
-	if mode != "review" or application_backgrounded or submission_in_flight: return
+## From the review card, or (`paused_over`) from the pause card over its Preview.
+func _retry_review(paused_over: String = "") -> void:
+	var from_pause := mode == "paused" and _previewing_review(paused_over)
+	if (mode != "review" and not from_pause) or application_backgrounded or submission_in_flight: return
 	var checked: Dictionary = TurnState.review(current_level,review_recording,attempt,_room_simulation_version())
 	if not checked.valid or not checked.can_commit or not bool(review_recording.get("completed",false)):
 		_prepare_turn()
@@ -1253,7 +1255,9 @@ func _retry_review() -> void:
 	card.add_child(_action_button("retry",func():
 		if current.call(): _prepare_turn()))
 	_retry_cancel = func():
-		if current.call(): _show_review()
+		if not current.call(): return
+		if from_pause: _show_paused(paused_over)
+		else: _show_review()
 	card.add_child(_action_button("cancel",_retry_cancel))
 
 ## Plays an earlier island's saved attempt from Your replays.
@@ -1458,6 +1462,10 @@ func _pause() -> void:
 	stick.release()
 	action_pressed=false
 	var draft_saved := _save_draft()
+	_show_paused(previous_mode,draft_saved)
+
+## The pause card over `previous_mode` ("play" or "preview").
+func _show_paused(previous_mode: String, draft_saved: bool=true) -> void:
 	mode="paused"
 	soundscape.stop_reunion()
 	var card := _card()
@@ -1466,7 +1474,14 @@ func _pause() -> void:
 	card.add_child(_action_button("resume",func(): mode=previous_mode; _close_overlay(); running=true))
 	if previous_mode=="play":
 		card.add_child(_action_button("retry",_prepare_turn))
+	elif _previewing_review(previous_mode):
+		# A Preview from the review card keeps that card's Retry; its Cancel comes back here.
+		card.add_child(_action_button("retry",_retry_review.bind(previous_mode)))
 	card.add_child(_action_button("back",_show_home))
+
+## Watching this turn back from its review card (Preview), as against a saved replay.
+func _previewing_review(previous_mode: String) -> bool:
+	return previous_mode=="preview" and not collection_preview and not review_recording.is_empty()
 
 func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Control:
 	# One framed picture for every chapter view; the chapter picker owns it.

@@ -559,8 +559,10 @@ func _show_review() -> void:
 	card.add_child(controls.button_for("retry", _retry_review))
 	card.add_child(controls.button_for("leave_draft", _leave))
 
-func _retry_review() -> void:
-	if mode != "review" or backgrounded or not _require_access(): return
+## From the review card, or (`paused_over`) from the pause card over its Preview.
+func _retry_review(paused_over: String = "") -> void:
+	var from_pause := mode == "paused" and _previewing_review(paused_over)
+	if (mode != "review" and not from_pause) or backgrounded or not _require_access(): return
 	var verified: Dictionary = Simulation.verify_recording(review, prior, history)
 	if not verified.get("valid",false) or not verified.get("snapshot",{}).get("complete",false):
 		_begin()
@@ -581,7 +583,9 @@ func _retry_review() -> void:
 	card.add_child(controls.button_for("retry",func():
 		if current.call() and _require_access(): _begin()))
 	_retry_cancel = func():
-		if current.call() and _require_access(): _show_review()
+		if not current.call() or not _require_access(): return
+		if from_pause: _show_paused(paused_over)
+		else: _show_review()
 	card.add_child(controls.button_for("cancel",_retry_cancel))
 
 func _accept() -> void:
@@ -745,7 +749,13 @@ func _show_paused(previous: String) -> void:
 		card.add_child(controls.button_for("retry", _begin))
 	else:
 		card.add_child(controls.button_for("resume", _continue_replay))
+		# A Preview from the review card keeps that card's Retry; its Cancel comes back here.
+		if _previewing_review(previous): card.add_child(controls.button_for("retry", _retry_review.bind(previous)))
 	card.add_child(controls.button_for("back", _leave))
+
+## Watching this turn back from its review card (Preview), as against saved pairs.
+func _previewing_review(previous: String) -> bool:
+	return previous == "replay" and collection_index < 0 and not review.is_empty()
 
 func _continue_replay() -> void:
 	if not _require_access(): return

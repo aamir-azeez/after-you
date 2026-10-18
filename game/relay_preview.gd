@@ -1960,8 +1960,10 @@ func _show_review() -> void:
 	card.add_child(_action_button("leave_draft", _leave))
 
 
-func _retry_review() -> void:
-	if mode != "review" or backgrounded: return
+## From the review card, or (`paused_over`) from the pause card over its Preview.
+func _retry_review(paused_over: String = "") -> void:
+	var from_pause := mode == "paused" and _previewing_review(paused_over)
+	if (mode != "review" and not from_pause) or backgrounded: return
 	var verified: Dictionary = _verify_review()
 	if not verified.get("valid",false) or not verified.get("snapshot",{}).get("complete",false):
 		_begin()
@@ -1982,7 +1984,9 @@ func _retry_review() -> void:
 	card.add_child(_action_button("retry",func():
 		if current.call(): _begin()))
 	_retry_cancel = func():
-		if current.call(): _show_review()
+		if not current.call(): return
+		if from_pause: _show_paused(paused_over)
+		else: _show_review()
 	card.add_child(_action_button("cancel",_retry_cancel))
 
 
@@ -2481,6 +2485,11 @@ func _pause() -> void:
 		return
 	var previous := mode
 	if is_instance_valid(reaction_strip): _safety_photos = reaction_strip.report_targets()
+	_show_paused(previous)
+
+
+## The pause card over `previous`, the mode that was paused.
+func _show_paused(previous: String) -> void:
 	mode = "paused"
 	soundscape.stop_reunion()
 	var card := _card("Take your time.", PlayerCopy.RELAY_PREVIEW_50922961D853)
@@ -2489,14 +2498,25 @@ func _pause() -> void:
 		card.add_child(_action_button("retry", _begin))
 	elif previous == "replay":
 		card.add_child(_action_button("resume", _resume_replay))
+		_add_preview_retry(card, previous)
 		_add_replay_photo_action(card)
 	elif previous == "bloom":
 		card.add_child(_action_button("resume", _resume_completion))
+		_add_preview_retry(card, previous)
 	else:
 		card.add_child(_action_button("continue", _show_ready))
 	_add_safety_action(card)
 	if previous == "play": _add_redo_action(card)
 	card.add_child(_action_button("back", _leave))
+
+## Watching this turn back from its review card (Preview), as against a saved
+## pair or replay: the turn is still this screen's to keep or retry.
+func _previewing_review(previous: String) -> bool:
+	return replay_pair_index < 0 and not review.is_empty() and (previous == "replay" or (previous == "bloom" and _completion_is_replay))
+
+## A paused Preview offers the review card's own Retry; its Cancel comes back here.
+func _add_preview_retry(card: VBoxContainer, previous: String) -> void:
+	if _previewing_review(previous): card.add_child(_action_button("retry", _retry_review.bind(previous)))
 
 
 func _show_error(message: String) -> void:

@@ -321,6 +321,7 @@ func _test_main_lifecycle() -> void:
 	app._pause()
 	app._physics_process(1.0/30.0)
 	_check(app.mode=="paused" and app.sim.tick==paused_tick,"Preview pause freezes simulation")
+	_check(_find_button(app.overlay,"Retry")==null,"A saved replay's pause offers no Retry: there is no turn to retry")
 	var continue_button := _find_button(app.overlay,"Resume")
 	continue_button.pressed.emit()
 	_check(app.mode=="preview" and app.running,"Resume restores preview mode rather than starting a live turn")
@@ -350,6 +351,21 @@ func _test_main_lifecycle() -> void:
 	_check(app.mode=="ready" and not app.running and app.sim.tick==0,"Invalid draft cannot silently start playback or live input")
 	app._resume_draft(first)
 	_check(app.mode=="review" and not app.running,"Finished rehearsal resumes into review rather than a frozen live turn")
+	# Pause while watching this turn back (Preview): the review card's Retry is there too.
+	app._preview(app.review_recording)
+	app._physics_process(1.0/30.0)
+	var preview_tick: int=app.sim.tick
+	app._pause()
+	var preview_retry := _find_button(app.overlay,"Retry")
+	_check(app.mode=="paused" and preview_retry!=null,"Pausing a Preview of this turn offers Retry")
+	if preview_retry!=null:
+		preview_retry.pressed.emit()
+		if app.mode=="confirm_retry":
+			_find_button(app.overlay,"Cancel").pressed.emit()
+			_check(app.mode=="paused" and app.sim.tick==preview_tick and _find_button(app.overlay,"Resume")!=null,"Retry's Cancel goes back to the paused Preview")
+			_find_button(app.overlay,"Retry").pressed.emit()
+			_find_button(app.overlay,"Retry").pressed.emit()
+		_check(app.mode=="ready" and not app.running and app.sim.tick==0,"Retry from a paused Preview sets this turn up again")
 	app.role="b"
 	app.attempt={"a":invalid,"b":{},"draft":{}}
 	app._prepare_turn()

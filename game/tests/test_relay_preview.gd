@@ -94,12 +94,27 @@ func _run() -> void:
 		app._physics_process(1.0 / 30.0)
 		_check(app.sim.tick == interrupted_tick and Canonical.same(_save_bytes(path), before_preview), "Paused replay does not advance or write primary/backup/tmp bytes: " + name)
 		app._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+		_check(_find_button(app.overlay, "Retry") != null, "A paused Preview offers the review card's Retry: " + name)
+		if record.role == "b":
+			var reviewed: Dictionary = app.review.duplicate(true)
+			_press(app, "Retry")
+			_check(app.mode == "confirm_retry" and app.sim.tick == interrupted_tick, "Retry from a paused Preview asks before dropping the completed turn")
+			_press(app, "Cancel")
+			_check(app.mode == "paused" and app.review == reviewed and _find_button(app.overlay, "Resume") != null and Canonical.same(_save_bytes(path), before_preview), "Its Cancel goes back to the paused Preview with the draft untouched")
 		_press(app, "Resume")
 		var iterations := 0
+		var paused_bloom := false
 		while app.mode in ["replay", "bloom"] and iterations < 650:
+			if app.mode == "bloom" and not paused_bloom:
+				# Paused in the Preview's closing bloom: Retry is offered there too.
+				paused_bloom = true
+				app._pause()
+				_check(app.mode == "paused" and _find_button(app.overlay, "Retry") != null, "A paused Preview's closing bloom offers Retry: " + name)
+				_press(app, "Resume")
 			if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
 			else: app._physics_process(1.0 / 30.0)
 			iterations += 1
+		_check(paused_bloom or record.role == "a", "A completed turn's Preview ends in its bloom: " + name)
 		_check(app.mode == "review", "Preview returns to the same draft's review: " + name)
 		_check(Canonical.same(_save_bytes(path), before_preview), "Preview and background/return preserve every save-generation byte: " + name)
 		app._accept()
@@ -116,6 +131,10 @@ func _run() -> void:
 	app.replay_pair_index = 0
 	var before_collection := _save_bytes(path)
 	app._play_collection_pair()
+	app._physics_process(1.0 / 30.0)
+	app._pause()
+	_check(app.mode == "paused" and _find_button(app.overlay, "Retry") == null and _find_button(app.overlay, "Resume") != null, "Pausing a saved pair's replay offers no Retry: there is no turn to retry")
+	_press(app, "Resume")
 	var replay_ticks := 0
 	while app.mode in ["replay", "bloom"] and replay_ticks < 1250:
 		if app.mode == "bloom": app._process(Preview.COMPLETION_DURATION)
