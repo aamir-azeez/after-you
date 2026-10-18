@@ -189,9 +189,10 @@ var _leave_after_load := false
 ## milliseconds each, while this screen waits in "loading" and the card keeps
 ## moving. Any other way of making this screen builds the world at once.
 ## Every chapter stages (island_world.build_staged), straight to the stage the
-## screen opens on. Tests lower staged_build_usec to stage a build however
-## fast the machine is.
-static var staged_build_usec := 8000
+## screen opens on, a slice of each frame sized to the device
+## (island_world.frame_budget_usec). Tests set staged_build_usec to stage a
+## build however fast the machine is; 0 leaves the slice to the world.
+static var staged_build_usec := 0
 static var _staged_request := ""
 var _world_building := false
 var _leave_after_build := false

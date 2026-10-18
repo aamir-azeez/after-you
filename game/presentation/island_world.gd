@@ -188,12 +188,33 @@ var _opening_stage_id := ""
 ## present_stage.
 var _built_stage_id := ""
 
-## Builds level over frames, using budget_usec of each, straight to the stage
-## opening_stage (a stage id; "" for the first): opening on a later stage
-## builds that stage once, never the first and then, in one frame, the saved
-## one. The world is the same, node for node, as load_level's. Await it.
-func build_staged(level: Dictionary, budget_usec: int, opening_stage: String = "") -> void:
-	build_budget_usec = maxi(budget_usec, 1)
+## A staged build's slice when its caller names none: half of the frame the
+## device draws (its screen's refresh, or a lower frame cap), so the card keeps
+## the frame rate the screen can hold while the build takes the rest. A loading
+## card never needs more than 60 frames a second, so a faster screen still
+## gets a 60 a second slice. The slice comes from the screen, never from timing
+## the build's own frames: a frame the build made long would only lengthen
+## the next slice and hold the card at a lower rate.
+const BUILD_FRAME_SHARE := 0.5
+const BUILD_FASTEST_FRAME_RATE := 60.0
+const BUILD_BUDGET_RANGE_USEC := Vector2i(4000, 16000)
+
+## The slice of each frame a staged build uses by default (microseconds) for a
+## screen refreshing refresh_rate times a second under a frame cap of max_fps
+## (0: none); a refresh rate the screen does not report counts as 60.
+static func frame_budget_usec(refresh_rate: float = DisplayServer.screen_get_refresh_rate(), max_fps: int = Engine.max_fps) -> int:
+	var rate := refresh_rate if refresh_rate > 0.0 else BUILD_FASTEST_FRAME_RATE
+	if max_fps > 0: rate = minf(rate, float(max_fps))
+	var frame_usec := 1000000.0 / minf(rate, BUILD_FASTEST_FRAME_RATE)
+	return clampi(int(frame_usec * BUILD_FRAME_SHARE), BUILD_BUDGET_RANGE_USEC.x, BUILD_BUDGET_RANGE_USEC.y)
+
+## Builds level over frames straight to the stage opening_stage (a stage id;
+## "" for the first): opening on a later stage builds that stage once, never
+## the first and then, in one frame, the saved one. Each frame it uses
+## budget_usec, or for 0 a slice sized to the screen (frame_budget_usec). The
+## world is the same, node for node, as load_level's. Await it.
+func build_staged(level: Dictionary, budget_usec: int = 0, opening_stage: String = "") -> void:
+	build_budget_usec = budget_usec if budget_usec > 0 else frame_budget_usec()
 	_opening_stage_id = opening_stage
 	_built_stage_id = ""
 	_build_mark = Time.get_ticks_usec()

@@ -37,6 +37,7 @@ func _suite() -> String:
 	return "staged_build"
 
 func _run() -> void:
+	_slice()
 	# Stage at every step, so the screen builds over frames on any machine.
 	Preview.staged_build_usec = 1
 	directory = "user://staged-build-" + Crypto.new().generate_random_bytes(6).hex_encode()
@@ -60,6 +61,16 @@ func _run() -> void:
 	await _card_waits()
 	print("STAGED BUILD: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## A build's own slice is half the screen's frame, never aiming above 60
+## frames a second, and follows a lower frame cap.
+func _slice() -> void:
+	var World := preload("res://presentation/island_world.gd")
+	_check(World.frame_budget_usec(60.0, 0) == 8333, "A 60 Hz screen gives the build half its frame")
+	_check(World.frame_budget_usec(120.0, 0) == 8333 and World.frame_budget_usec(144.0, 0) == 8333, "A faster screen still gives it a 60 a second slice")
+	_check(World.frame_budget_usec(-1.0, 0) == 8333, "A screen that reports no rate counts as 60 Hz")
+	_check(World.frame_budget_usec(50.0, 0) == 10000, "A slower screen gives it half its longer frame")
+	_check(World.frame_budget_usec(120.0, 30) == 16000, "A frame cap lengthens the slice, up to its bound")
 
 ## A world as a chapter screen opening on stage stage_index has it: built in
 ## one call and then shown that stage (the screen's ready view), or built
