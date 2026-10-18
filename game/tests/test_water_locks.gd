@@ -18,7 +18,7 @@ const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const KEY := "turn-of-the-tide@1"
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## Pieces per Turn of the Tide stage: {kind: count}.
-const TIDE_PIECES := {"set-the-tide": {"door": 22}, "slack-water": {"door": 27, "wall": 6}}
+const TIDE_PIECES := {"set-the-tide": {"door": 22, "wall": 4}, "slack-water": {"door": 27, "wall": 10}}
 var checks := 0
 var failures := 0
 

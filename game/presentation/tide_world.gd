@@ -1297,8 +1297,7 @@ func _build_locks() -> void:
 func _water_plan() -> Dictionary:
 	var areas: Array = []
 	for island: Dictionary in chapter_definition.get("islands", []):
-		# The aqueduct stands on piers over the harbour: a deck, not a floor.
-		areas.append({"id": "island:" + str(island.id), "kind": "deck" if str(island.id) in AQUEDUCT else "floor", "rects": [island.rect_cm], "height": float(island.get("height_cm", 0)) / 100.0})
+		areas.append({"id": "island:" + str(island.id), "kind": "floor", "rects": [island.rect_cm], "height": float(island.get("height_cm", 0)) / 100.0})
 	for id: String in _walled: areas.append({"id": "crossing:" + id, "kind": "pit", "rects": [_route(id).rect_cm]})
 	areas.append({"id": "chamber", "kind": "water", "rects": [CHAMBER_PIT]})
 	areas.append({"id": "harbour", "kind": "water", "rects": [HARBOUR_REGION]})

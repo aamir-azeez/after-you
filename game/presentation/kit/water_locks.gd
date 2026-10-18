@@ -21,11 +21,10 @@ extends Node3D
 ## each water ending inside it.
 ##
 ## The plan (plan positions in cm, heights in metres):
-##   "areas": [{"id", "kind": "water" | "pit" | "floor" | "deck", "rects": [[x0, z0, x1, z1], ...],
+##   "areas": [{"id", "kind": "water" | "pit" | "floor", "rects": [[x0, z0, x1, z1], ...],
 ##             "height" (floor only)}]
 ##       First match wins; a point in no area is open air. A pit is a sunken
-##       crossing that is dry while open and holds water while shut. A deck is
-##       a raised walkway on piers that water runs under: never walled.
+##       crossing that is dry while open and holds water while shut.
 ##   "bounds": [x0, z0, x1, z1]   only edges inside this window count
 ##   "mouths": [{"id", "rect"}]    walkways: an edge whose water side lies in one
 ##       gets a door; elsewhere water over a floor gets a wall
@@ -169,15 +168,13 @@ static func find_runs(plan: Dictionary) -> Array:
 			for zi in range(z0, z1):
 				for xi in range(x0, x1): cells[zi * width + xi] = index
 	# Per area index (open air last, so index -1 reads it): its id, whether it
-	# holds water, whether its edges are never held (a deck), whether a floor.
+	# holds water, whether a floor.
 	var ids := PackedStringArray()
 	var wet := PackedByteArray()
-	var skip := PackedByteArray()
 	var floors := PackedByteArray()
 	for area: Dictionary in areas + [{"id": "", "kind": ""}]:
 		ids.append(str(area.id))
 		wet.append(1 if _holds_water(str(area.id), kinds) else 0)
-		skip.append(1 if str(area.kind) == "deck" else 0)
 		floors.append(1 if str(area.kind) == "floor" else 0)
 	# Each area's level in every state, so an edge reads two columns.
 	var columns := {}
@@ -203,7 +200,7 @@ static func find_runs(plan: Dictionary) -> Array:
 				if xj >= width or zj >= zs.size() - 1: continue
 				var there_index := cells[zj * width + xj]
 				if here_index == there_index or not (wet[here_index] or wet[there_index]): continue
-				if (floors[here_index] and floors[there_index]) or skip[here_index] or skip[there_index]: continue
+				if floors[here_index] and floors[there_index]: continue
 				var here := ids[here_index]
 				var there := ids[there_index]
 				var along_x := not across
@@ -222,7 +219,7 @@ static func find_runs(plan: Dictionary) -> Array:
 					edge.mouth = _mouth_at(middle + (Vector2(wet_side, 0) if across else Vector2(0, wet_side)), plan.mouths)
 				var kind := _kind(edge, unheld, kinds)
 				edge["kind"] = kind
-				edge["shift"] = _shift(kind, _holds_water(here, kinds), _holds_water(there, kinds))
+				edge["shift"] = _shift(kind, _holds_water(here, kinds), _holds_water(there, kinds), floors[here_index] or floors[there_index])
 				edge["base"] = _base(here, there, kinds, heights, seabed)
 				# Doors keep their sides and walkway; walls and spillways only their line and side.
 				var group := "%s|%d|%s|%s|%s|%s" % [along_x, roundi(line), kind, edge.shift, edge.base, ("%s|%s|%s" % [here, there, edge.mouth]) if kind != WALL else ""]
@@ -269,6 +266,14 @@ static func _finish(run: Dictionary, columns: Dictionary, kinds: Dictionary, wal
 			var lip := INF
 			for index in range(side_a.size()): lip = minf(lip, maxf(side_a[index], side_b[index]) - 0.03)
 			run["lip"] = lip
+		WALL:
+			# Beside a floor it stands in the water, reaching just under the
+			# lowest water it ever holds.
+			if kinds.get(run.a, "") == "floor" or kinds.get(run.b, "") == "floor":
+				var wet: PackedFloat32Array = side_b if kinds.get(run.a, "") == "floor" else side_a
+				var lowest := INF
+				for level: float in wet: lowest = minf(lowest, level)
+				run.base = maxf(lowest - 0.05, seabed)
 
 ## Where a piece stands (m): on a dry side's floor (just into it), since the
 ## floor's own block holds the water below it; between waters or beside open
@@ -278,12 +283,18 @@ static func _base(a: String, b: String, kinds: Dictionary, heights: Dictionary, 
 		if kinds.get(side, "") == "floor": return float(heights[side]) - 0.03
 	return seabed
 
-## How far (cm) a piece stands off its line toward the dry side, so the
-## water ends at its face: half its width and half a centimetre. Between two
-## waters it stands on the line.
-static func _shift(kind: String, wet_a: bool, wet_b: bool) -> float:
+## How far (cm) a piece stands off its line: half its width and half a
+## centimetre. A door, and a wall against open air, stand on the dry side, so
+## the water ends at their face; a wall beside a floor stands on the water
+## side, as a parapet does, so the walkway keeps its width, overlapping the
+## floor's edge by half a centimetre so the water ends inside it. Between two
+## waters a piece stands on the line.
+static func _shift(kind: String, wet_a: bool, wet_b: bool, beside_floor: bool) -> float:
 	if wet_a == wet_b: return 0.0
 	var half := (POST if kind == DOOR else _width(kind)) * 50.0 + 0.5
+	# A wall beside a floor reaches half a centimetre over the floor's edge, so
+	# the water ends inside it whichever side the water lies on.
+	if kind == WALL and beside_floor: half = -(half - 1.0)
 	return half if wet_a else -half
 
 static func _cut(rect: Array, bounds: Array, xs: Array, zs: Array) -> void:
