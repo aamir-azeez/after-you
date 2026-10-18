@@ -144,6 +144,7 @@ func check_hosting_access(detail: VBoxContainer) -> void:
 
 ## The server's answer, in the box under the hosting access row.
 func show_hosting_access(detail: VBoxContainer, response: Dictionary) -> void:
+	if not is_instance_valid(detail): return
 	var items: Array = []
 	var data: Variant=response.get("data")
 	var verified: bool=response.get("ok",false)==true and data is Dictionary and Typed.equal(data.get("status"), "verified") and data.get("full_journey") is bool

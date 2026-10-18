@@ -141,7 +141,11 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app.store_flow._show_full_journey_unlocked()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Full Journey unlocked")
+	# The answer shows under the hosting row, which an identity has.
+	var player: String = app.api.player_id
+	app.api.player_id = "A".repeat(22)
 	app.settings_flow.show_settings("account")
+	app.api.player_id = player
 	app.account_flow.show_hosting_access(app.settings_flow.detail("hosting_access"),{"ok":true,"data":{"status":"verified","full_journey":false}})
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Introductory hosting")
