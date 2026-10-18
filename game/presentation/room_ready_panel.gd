@@ -94,7 +94,8 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 
 ## A soft shade behind the title and hint rows, so they stay readable when the
 ## room camera brings the scene up under them. It reaches the screen's top and
-## sides, under a camera cutout too, and fades out below the hint.
+## sides, under a camera cutout too, and fades out below the hint. The panel's
+## parent clears it with the panel.
 func _add_title_shade() -> void:
 	var gradient := Gradient.new()
 	var texture := GradientTexture2D.new()
@@ -109,9 +110,10 @@ func _add_title_shade() -> void:
 	shade.texture = texture
 	shade.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	shade.stretch_mode = TextureRect.STRETCH_SCALE
-	shade.top_level = true
-	add_child(shade)
-	move_child(shade, 0)
+	# Beside the panel in its parent, drawn just before it, so it stays under
+	# every row of the page.
+	get_parent().add_child(shade)
+	get_parent().move_child(shade, get_index())
 	var fit := func():
 		if not is_instance_valid(shade) or not shade.is_inside_tree(): return
 		var view := get_viewport().get_visible_rect()

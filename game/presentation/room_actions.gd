@@ -39,6 +39,7 @@ const TURN_REQUESTS := "Turn requests"
 ##   and the id; without one the row runs `run` once the sheet closes.
 ##   drawn: a screen method told about the row's button once it is drawn.
 ##   line: a line under the row where its slot's look shows lines.
+##   alert: on the panel, a coral edge while the row waits for an answer.
 ##   heading: where its slot's look shows headings, its label heads it, above
 ##   a divider.
 ##   when: facts the screen must report true, in order ("!" negates).
@@ -55,7 +56,7 @@ const ACTIONS := {
 	"refresh": {"button": "refresh", "icon": preload("res://assets/ui/social/arrows-clockwise.svg"), "run": "_online_refresh", "when": ["online", "!pending"]},
 	"replays": {"button": "replays", "section": "turns", "run": "_play_replays", "when": ["online", "watchable"]},
 	"local_replays": {"button": "replays", "run": "_show_local_replays", "when": ["solo", "watchable"]},
-	"redo_answer": {"text": REDO_REQUESTED, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "run": "_open_redo", "drawn": "_announce_pending_redo", "when": ["redo", "redo_accept"]},
+	"redo_answer": {"text": REDO_REQUESTED, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "alert": true, "run": "_open_redo", "drawn": "_announce_pending_redo", "when": ["redo", "redo_accept"]},
 	"redo": {"text": ASK_FOR_REDO, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "run": "_open_redo", "when": ["redo", "!redo_accept"]},
 	"solo_redo": {"text": PlayerCopy.SOLO_REDO_ACTION, "run": "_confirm_solo_redo", "when": ["solo_redo"]},
 	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "run": "_offer_recent_photo", "with_receipt": true, "when": ["photo"]},
@@ -81,14 +82,15 @@ const SECTIONS := {
 ## How a slot draws its rows. Every card slot draws "card"; a panel slot draws
 ## its own. Pairs are [normal, short screen].
 ##   icon: the row's icon beside its label; icon_only: the icon alone;
-##   cream: the primary look; height: the row's height; field: the invitation
-##   code field's height; fill: rows share the line's width; line and heading:
-##   the row's line and heading (ACTIONS) show.
+##   cream: the primary look; height: the row's height; field, field_font and
+##   copy_width: the invitation code field's height, text size and its Copy
+##   button's width; fill: rows share the line's width; line and heading: the
+##   row's line and heading (ACTIONS) show.
 const LOOKS := {
-	"card": {"height": [50, 50], "field": [52, 52], "line": true, "heading": true},
+	"card": {"height": [50, 50], "field": [52, 52], "field_font": [20, 20], "copy_width": [140, 140], "line": true, "heading": true},
 	"header": {"icon_only": true},
 	"status": {},
-	"invite": {"icon": true, "height": [64, 54], "field": [56, 50]},
+	"invite": {"icon": true, "height": [64, 54], "field": [56, 50], "field_font": [18, 18], "copy_width": [124, 124]},
 	"primary": {"icon": true, "cream": true, "height": [64, 54]},
 	"turn": {"icon": true, "height": [52, 52]},
 	"pair": {"icon": true, "fill": true, "height": [52, 52]},

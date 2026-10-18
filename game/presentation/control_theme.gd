@@ -3,6 +3,8 @@ extends RefCounted
 const INK := Color("193d39")
 const CREAM := Color("eceddb")
 const DANGER_INK := Color("503a37")
+## The soft warning colour: Back's fill, an alert row's edge, Safety's label.
+const CORAL := Color("e9b3aa")
 const CHECK_ICON := preload("res://assets/ui/check.svg")
 const CHOICE_PANEL := Color("173f39")
 const CHOICE_BORDER := Color("668e7f")

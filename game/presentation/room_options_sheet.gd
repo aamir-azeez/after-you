@@ -7,7 +7,8 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const CHEVRON = preload("res://assets/ui/social/chevron-right.svg")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
-const CORAL := Color("e9b3aa")
+const MINT := Color("a6d9c4")
+const CORAL := ControlTheme.CORAL
 const ROW_HEIGHT := 56.0
 
 var _columns: Array[VBoxContainer] = []
@@ -41,7 +42,7 @@ func heading(column: int, text: String) -> Label:
 	var label := Label.new()
 	label.text = text
 	label.add_theme_font_size_override("font_size", 17)
-	label.add_theme_color_override("font_color", MUTED)
+	label.add_theme_color_override("font_color", MINT)
 	# A heading below rows keeps a little air above it.
 	if _columns[column].get_child_count() > 0:
 		var gap := Control.new()

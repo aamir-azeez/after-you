@@ -693,7 +693,10 @@ func _add_room_actions(parent: Container, state: String, slot: String, facts: Ca
 func _add_room_panel_actions(card: VBoxContainer, facts: Callable) -> void:
 	var state := _room_state
 	if not RoomActions.shown(state, "invite", facts).is_empty(): _add_room_actions(_group(card, 8), state, "invite", facts)
-	card.add_child(HSeparator.new())
+	# The divider sets the turn's actions apart; an invitation that leads the
+	# panel's actions (a cream Share) stays one block with the code above it.
+	var primary := RoomActions.shown(state, "primary", facts)
+	if primary.is_empty() or RoomActions.ACTIONS[primary[0]].get("section", "") != "invite": card.add_child(HSeparator.new())
 	_add_room_actions(card, state, "primary", facts)
 	_add_room_actions(card, state, "turn", facts)
 	var line := HBoxContainer.new()
@@ -727,6 +730,7 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 	if button == null: return null
 	if look.get("icon_only", false): _room_icon_button(button, row.icon, button.text, true)
 	elif look.get("icon", false): _panel_row_look(button, RoomActions.icon(id), look.get("cream", false) or row.get("primary", false))
+	if look.get("icon", false) and row.get("alert", false): _alert_outline(button)
 	if look.has("height"): button.custom_minimum_size.y = look.height
 	if look.get("fill", false): button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if row.has("drawn"): call(str(row.drawn), button)
@@ -784,6 +788,14 @@ func _track_turn_button(button: Button) -> void:
 func _track_notify_offer(button: Button) -> void:
 	notification_offer = button
 	update_notification_offer()
+
+## A coral edge on a panel row that waits for this player's answer.
+func _alert_outline(button: Button) -> void:
+	var style := button.get_theme_stylebox("normal").duplicate() as StyleBoxFlat
+	if style == null: return
+	style.border_color = ControlTheme.CORAL
+	style.set_border_width_all(2)
+	button.add_theme_stylebox_override("normal", style)
 
 ## A panel row's icon beside its centred label, inked like the label.
 func _panel_row_look(button: Button, texture: Texture2D, cream: bool) -> void:
@@ -1458,7 +1470,6 @@ func _room_stage_title() -> String:
 ## the Friends screen.
 func _add_invitation_code_row(card: Container, _id: String, _facts: Callable, look: Dictionary) -> Button:
 	var field_height: int = look.get("field", 52)
-	var short_layout: bool = look.get("short", false)
 	card.add_child(_label("Invitation code",17))
 	var row := HBoxContainer.new()
 	row.name = "InvitationCodeRow"
@@ -1471,7 +1482,7 @@ func _add_invitation_code_row(card: Container, _id: String, _facts: Callable, lo
 	code.editable = false
 	code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	code.custom_minimum_size.y = field_height
-	code.add_theme_font_size_override("font_size",18 if short_layout else 20)
+	code.add_theme_font_size_override("font_size",look.get("field_font", 20))
 	code.add_theme_color_override("font_uneditable_color",CREAM)
 	# Same field look as the Friends code fields.
 	var field_style := ControlTheme.rounded(Color("14312f"),12,Color("466e63"))
@@ -1489,7 +1500,7 @@ func _add_invitation_code_row(card: Container, _id: String, _facts: Callable, lo
 	# A fixed 24-unit icon: an expanded icon shrank to nothing beside the centred label.
 	copy.expand_icon = false
 	copy.add_theme_constant_override("icon_max_width",24)
-	copy.custom_minimum_size = Vector2(124 if short_layout else 140,field_height)
+	copy.custom_minimum_size = Vector2(look.get("copy_width", 140),field_height)
 	ControlTheme.inset_button(copy)
 	ControlTheme.center_icon_label(copy)
 	row.add_child(copy)
