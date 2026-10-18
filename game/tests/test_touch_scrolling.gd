@@ -467,78 +467,81 @@ func _app() -> void:
 
 
 func _account(app: Node, viewport: SubViewport, api: Node) -> void:
-	app.account_flow.show_account()
+	app.settings_flow.show_settings("account")
 	await _settle()
 	await _settle()
-	_check(app.mode == "account", "Account & recovery opens")
-	var scroll: ScrollContainer = app._bounded_card_scroll
-	_check(scroll != null and scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "Account & recovery overflows its bounded card at this height")
+	_check(app.settings_flow.showing("account"), "Account & recovery opens")
+	var scroll := app.overlay.find_child("SettingsRows", true, false) as ScrollContainer
+	_check(scroll != null and scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, "Account & recovery overflows its panel at this height")
 	if scroll == null: return
 	var passing := true
 	for button: BaseButton in scroll.find_children("*", "BaseButton", true, false):
 		passing = passing and button.mouse_filter == Control.MOUSE_FILTER_PASS
-	_check(passing, "Every Account & recovery action passes drags to its card")
-	var hosting := _find_button(scroll, "Check hosting access")
+	_check(passing, "Every Account & recovery action passes drags to its panel")
+	var hosting := scroll.find_child("hosting_access", true, false) as Button
 	_check(hosting != null and scroll.get_global_rect().encloses(hosting.get_global_rect()), "Check hosting access is visible")
 	if hosting == null: return
 	var calls: int = api.calls.size()
 	await _drag(viewport, hosting.get_global_rect().get_center(), Vector2(0, -120))
-	_check(scroll.scroll_vertical > 0, "A touch drag from an account action scrolls the card")
-	_check(app.mode == "account" and api.calls.size() == calls and is_instance_valid(scroll) and scroll.is_inside_tree(), "That drag does not run the action")
+	_check(scroll.scroll_vertical > 0, "A touch drag from an account action scrolls the panel")
+	_check(app.settings_flow.showing("account") and api.calls.size() == calls and is_instance_valid(scroll) and scroll.is_inside_tree(), "That drag does not run the action")
 	await _rest(scroll)
 	scroll.scroll_vertical = 0
 	await _settle()
 	hosting.mouse_filter = Control.MOUSE_FILTER_STOP
 	await _drag(viewport, hosting.get_global_rect().get_center(), Vector2(0, -120))
-	_check(scroll.scroll_vertical == 0 and app.mode == "account", "The former STOP action reproduces the owner's blocked Account drag")
+	_check(scroll.scroll_vertical == 0 and app.settings_flow.showing("account"), "The former STOP action reproduces the owner's blocked Account drag")
 	hosting.mouse_filter = Control.MOUSE_FILTER_PASS
 	await _mouse_drag(viewport, hosting.get_global_rect().get_center(), Vector2(0, -120))
-	_check(scroll.scroll_vertical > 0 and app.mode == "account", "A mouse-emulated drag from the action scrolls too")
+	_check(scroll.scroll_vertical > 0 and app.settings_flow.showing("account"), "A mouse-emulated drag from the action scrolls too")
 	await _rest(scroll)
-	var details := _find_button(scroll, "Show my recovery details")
+	var details := scroll.find_child("recovery_details", true, false) as Button
 	scroll.ensure_control_visible(details)
 	await _settle()
 	await _tap(viewport, details.get_global_rect().get_center())
-	_check(app.mode == "recovery_details", "A short tap still opens recovery details")
+	var box: VBoxContainer = app.settings_flow.detail("recovery_details")
+	_check(app.settings_flow.showing("account") and box != null and box.visible, "A short tap still opens recovery details, in place")
 
 
 func _settings(app: Node, viewport: SubViewport) -> void:
-	app.settings_flow.show_settings()
+	app.settings_flow.show_settings("account")
 	await _settle()
-	var lists: Array[Node] = app.overlay.find_children("*", "ScrollContainer", true, false)
-	_check(lists.size() == 1, "Settings has one scrolling list")
-	if lists.size() != 1: return
-	var scroll := lists[0] as ScrollContainer
-	var account := _find_button(scroll, "Account & recovery")
-	_check(account != null and account.mouse_filter == Control.MOUSE_FILTER_PASS, "Settings links pass drags to the list")
-	if account == null: return
-	scroll.ensure_control_visible(account)
+	var scroll := app.overlay.find_child("SettingsRows", true, false) as ScrollContainer
+	var rail := app.overlay.find_child("SettingsRail", true, false) as ScrollContainer
+	_check(scroll != null and rail != null and app.overlay.find_children("*", "ScrollContainer", true, false).size() == 2, "Settings scrolls its rail and its panel, nothing else")
+	if scroll == null: return
+	var delete := scroll.find_child("delete_identity", true, false) as Button
+	_check(delete != null and delete.mouse_filter == Control.MOUSE_FILTER_PASS, "Settings rows pass drags to the panel")
+	if delete == null: return
+	scroll.ensure_control_visible(delete)
 	await _settle()
 	var before := scroll.scroll_vertical
-	_check(before > 0, "The Account & recovery link sits below the first screen of settings")
-	await _drag(viewport, account.get_global_rect().get_center(), Vector2(0, 110))
-	_check(scroll.scroll_vertical < before and app.mode == "settings", "A drag from a settings link scrolls without opening it")
+	_check(before > 0, "Delete online identity sits below the first screen of Account & recovery")
+	await _drag(viewport, delete.get_global_rect().get_center(), Vector2(0, 110))
+	_check(scroll.scroll_vertical < before and app.settings_flow.showing("account"), "A drag from a settings row scrolls without acting")
 	await _rest(scroll)
-	scroll.ensure_control_visible(account)
+	scroll.ensure_control_visible(delete)
 	await _settle()
-	await _tap(viewport, account.get_global_rect().get_center())
-	_check(app.mode == "account", "A short tap on the link opens Account & recovery")
+	await _tap(viewport, delete.get_global_rect().get_center())
+	_check(app.mode == "account" and _find_button(app.overlay, "Keep my identity") != null, "A short tap on the row still acts: Delete asks first")
 
 
 func _licenses(app: Node, viewport: SubViewport) -> void:
 	# The list the owner reported as working uses the same path.
 	app.settings_flow.show_licenses()
 	await _settle()
-	var lists: Array[Node] = app.overlay.find_children("*", "ScrollContainer", true, false)
-	if lists.size() != 1:
-		_check(false, "Licenses has one scrolling list")
+	var scroll := app.overlay.find_child("SettingsRows", true, false) as ScrollContainer
+	if scroll == null:
+		_check(false, "Licenses has its scrolling list")
 		return
-	var scroll := lists[0] as ScrollContainer
-	var row := _find_button(scroll, str(Licenses.entries()[2].title))
+	var row := scroll.find_child("license_2", true, false) as Button
+	scroll.ensure_control_visible(row)
+	await _settle()
+	var before := scroll.scroll_vertical
 	await _drag(viewport, row.get_global_rect().get_center(), Vector2(0, -110))
-	_check(scroll.scroll_vertical > 0 and app.mode == "licenses", "A drag from a license row scrolls the list")
+	_check(scroll.scroll_vertical > before and app.settings_flow.showing("about"), "A drag from a license row scrolls the list")
 	await _rest(scroll)
-	row = _find_button(scroll, str(Licenses.entries()[0].title))
+	row = scroll.find_child("license_0", true, false) as Button
 	scroll.ensure_control_visible(row)
 	await _settle()
 	await _tap(viewport, row.get_global_rect().get_center())

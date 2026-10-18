@@ -180,7 +180,7 @@ func _settings_row(current: String) -> void:
 	var storage := _storage({Changelog.SAVE_KEY: "0.6.0"})
 	var made := await _boot(storage)
 	var app: Node = made[1]
-	app.settings_flow.show_settings()
+	app.settings_flow.show_settings("about")
 	await _settle()
 	var row := _button(app.overlay, PlayerCopy.WHATS_NEW)
 	_check(row != null, "Settings has a What's new row")
@@ -304,7 +304,7 @@ func _layout(size: Vector2i) -> void:
 
 func _button(node: Node, text: String) -> Button:
 	for button: Button in node.find_children("*", "Button", true, false):
-		if (button.text == text or button.tooltip_text == text) and button.is_visible_in_tree(): return button
+		if (button.text == text or button.tooltip_text == text or (button.text.is_empty() and button.accessibility_name == text)) and button.is_visible_in_tree(): return button
 	return null
 
 func _has_label(node: Node, text: String) -> bool:

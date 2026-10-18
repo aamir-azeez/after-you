@@ -180,10 +180,11 @@ func _main_flow() -> void:
 	scene.store_flow.show_paywall()
 	await process_frame
 	_check(scene.mode == "tester_access" and _text(scene, "Tester access active"), "A cached tester sees distinct active access instead of an unnecessary purchase offer")
-	scene.settings_flow.show_settings()
+	scene.settings_flow.show_settings("account")
 	await process_frame
 	await process_frame
-	var entry := _button(scene, "Tester code")
+	# Tester code sits in Settings > Account & recovery, named by its row.
+	var entry := scene.find_child("tester_code", true, false) as Button
 	# Settings scrolls: scrolled to, the entry must sit wholly inside the
 	# list's visible area, and that area on screen.
 	var scroll: Node = entry.get_parent() if entry != null else null

@@ -179,6 +179,16 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 					_check(not actions[index].get_global_rect().intersects(actions[other].get_global_rect()), "Home actions remain distinct without overlap")
 		if is_instance_valid(app.overlay_shade):
 			_same_rect(app.overlay_shade.get_global_rect(),viewport,method+" backdrop covers the world beyond safe UI edges")
+		if method == "show_settings":
+			# Settings is one page: its colour bleeds to every edge, and every
+			# category's rows, rail and Done stay in the safe area.
+			var backdrop: Control = app.overlay.find_child("SettingsBackdrop", true, false)
+			_check(backdrop != null, "Settings has its page backdrop")
+			if backdrop != null: _same_rect(backdrop.get_global_rect(),viewport,"Settings backdrop covers the screen beyond safe UI edges")
+			for category: String in ["play","graphics","friends","account","about"]:
+				app.settings_flow.show_settings(category)
+				await _settle_layout()
+				await _check_menu(app.overlay,safe,"Settings "+category)
 	var first: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))
 	app.room_play=false
 	app.collection_preview=false

@@ -70,10 +70,8 @@ func _room_ui(key: String) -> void:
 	await service.service()
 	badge = app.overlay.find_child("FriendPresence", true, false)
 	_check(badge != null and badge.text == "○ Waiting for friend" and presence_api.calls.back().path.begins_with("/v1/rooms/"), "Earlier-island room UI uses the legacy presence route and waiting label: " + key)
-	app.settings_flow.show_settings()
-	var toggle: CheckButton
-	for candidate: Node in app.overlay.find_children("*", "CheckButton", true, false):
-		if candidate.text == "Share online status": toggle = candidate
+	app.settings_flow.show_settings("friends")
+	var toggle := app.overlay.find_child("share_online_status", true, false) as CheckButton
 	_check(toggle != null and toggle.button_pressed, "Existing/default settings expose sharing as enabled: " + key)
 	if toggle != null: toggle.button_pressed = false
 	var reloaded := Save.new(app.saves.path)

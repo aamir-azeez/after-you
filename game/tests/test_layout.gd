@@ -61,12 +61,12 @@ func _run() -> void:
 	app.api.player_id="A".repeat(22)
 	app.api.device_token="B".repeat(43)
 	app.api.base_url="https://example.invalid"
-	app.account_flow.show_account()
+	app.settings_flow.show_settings("account")
 	await process_frame
 	var account_buttons := _buttons(app.overlay)
-	_check(account_buttons.size()>=6,"Native signed-in Account includes recovery, restore and hosting actions")
-	for button: Button in account_buttons:
-		_check(Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(button.get_global_rect()),"Account action stays on-screen: "+button.text)
+	_check(["recovery_details","hosting_access","delete_identity"].all(func(id: String) -> bool: return app.overlay.find_child(id,true,false) is Button),"Native signed-in Account includes recovery, hosting and delete actions")
+	# Account & recovery scrolls inside its panel: every action is reachable on screen.
+	await _check_card_contents(app.overlay,Rect2(Vector2.ZERO,Vector2(viewport.size)),"Account & recovery")
 	viewport.queue_free()
 	await process_frame
 	await create_timer(0.15).timeout

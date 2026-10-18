@@ -265,7 +265,7 @@ func _test_main() -> void:
 	app.identity_request = "restart-read"
 	app._secret_completed("restart-read", "get", {"found": true, "value": JSON.stringify(storage.identity)})
 	_check(app.identity_restart_required and app.deleted_identity_owner == OWNER and not storage.identity.is_empty(), "Restart reads the retained identity and restores the cleanup obligation")
-	app.account_flow.show_account()
+	app.settings_flow.show_settings("account")
 	_check(_button(app, "Retry device cleanup") != null and _button(app, "Show my recovery details") == null, "Account screen offers retry instead of using the deleted account")
 	cleanup.success = true
 	storage.outcome = "false"
@@ -274,7 +274,7 @@ func _test_main() -> void:
 	_check(api.calls[-1] == {"method": HTTPClient.METHOD_POST, "path": "/v1/identity/deletion-ack", "body": {"schema_version": 1}} and app.saves.data[Ack.KEY].acknowledged, "Final server deletion ACK is persisted before attempted Keystore removal")
 	_check(app.saves.data.has(Cleanup.MARKER_KEY) and not app.identity_data.is_empty(), "A false Keystore removal receipt is not cleanup success")
 	storage.outcome = "success"
-	app.account_flow.show_account()
+	app.settings_flow.show_settings("account")
 	var retry := _button(app, "Retry device cleanup")
 	_check(retry != null, "Retry remains visible after credential cleanup failure")
 	if retry != null:
@@ -315,7 +315,8 @@ func _set_identity(app: Node, api: Node, storage: SecretsProbe) -> void:
 
 func _button(app: Node, text: String) -> Button:
 	for button: Button in app.overlay.find_children("*", "Button", true, false):
-		if button.text == text:
+		# A Settings row reads its label out; a card's button shows its text.
+		if button.text == text or (button.text.is_empty() and button.accessibility_name == text):
 			return button
 	return null
 

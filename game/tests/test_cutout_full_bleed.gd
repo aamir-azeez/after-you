@@ -190,7 +190,9 @@ func _check_whats_new(app: Node, safe: Rect2, visible: Rect2, side: String) -> v
 func _check_settings(app: Node, safe: Rect2, visible: Rect2, side: String) -> void:
 	app.settings_flow.show_settings()
 	await _frames()
-	_same_rect(app.overlay_shade.get_global_rect(), visible, "Settings dims the whole screen (%s)" % side)
+	var backdrop: Control = app.overlay.find_child("SettingsBackdrop", true, false)
+	_check(backdrop != null, "Settings has its page backdrop (%s)" % side)
+	if backdrop != null: _same_rect(backdrop.get_global_rect(), visible, "Settings colours the whole screen (%s)" % side)
 	_check_content(app.overlay, safe, "Settings (%s)" % side)
 
 func _check_room_hub(app: Node, safe: Rect2, visible: Rect2, side: String) -> void:

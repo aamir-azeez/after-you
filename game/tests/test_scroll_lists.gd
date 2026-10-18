@@ -180,7 +180,44 @@ func _screens(app: Node, viewport: SubViewport, api: Node, can_drag: bool) -> vo
 	for entry: Dictionary in Catalog.entries():
 		license_titles.append(entry.title)
 	app.settings_flow.show_licenses()
-	await _inspect(app, viewport, license_titles, "", "Back to settings", "Bundled license catalog", can_drag)
+	await _settings_licenses(app, viewport, license_titles, can_drag)
+
+
+## The licences are rows in Settings > About: one scrolling panel beside the
+## rail, every licence once in order, Done outside the list, and a drag over
+## the rows scrolls without opening one.
+func _settings_licenses(app: Node, viewport: SubViewport, expected: Array[String], can_drag: bool) -> void:
+	await _settle()
+	var context := "Bundled license catalog at " + str(viewport.size)
+	var scroll := app.overlay.find_child("SettingsRows", true, false) as ScrollContainer
+	_check(scroll != null and app.settings_flow.showing("about"), context + " is Settings' About panel")
+	if scroll == null: return
+	var area := Rect2(Vector2.ZERO, Vector2(viewport.size))
+	_check(area.grow(0.5).encloses(scroll.get_global_rect()), context + " list fits the viewport")
+	var rows: Array[Button] = []
+	for button: Button in scroll.find_children("license_*", "Button", true, false): rows.append(button)
+	var actual: Array[String] = []
+	for row: Button in rows:
+		actual.append(row.accessibility_name)
+		_check(row.mouse_filter == Control.MOUSE_FILTER_PASS, context + " row permits parent gesture handling")
+	_check(actual == expected, context + " contains every expected row once in order")
+	var done := app.overlay.find_child("SettingsDone", true, false) as Button
+	_check(done != null and not scroll.is_ancestor_of(done) and area.grow(0.5).encloses(done.get_global_rect()), context + " keeps Done visible outside the list")
+	_check(scroll.get_v_scroll_bar().max_value > scroll.get_v_scroll_bar().page, context + " overflowing rows really scroll")
+	if can_drag and rows.size() >= 3:
+		var list_id := scroll.get_instance_id()
+		scroll.ensure_control_visible(rows[2])
+		await _settle()
+		var before_scroll := scroll.scroll_vertical
+		await _drag(viewport, rows[2].get_global_rect().get_center(), Vector2(0, -130))
+		var retained := is_instance_valid(scroll) and scroll.is_inside_tree() and scroll.get_instance_id() == list_id and app.mode == "settings"
+		_check(retained, context + " drag does not launch a row or replace the current menu")
+		if not retained: return
+		_check(scroll.scroll_vertical > before_scroll, context + " viewport drag scrolls over actual row controls")
+	if not rows.is_empty():
+		scroll.ensure_control_visible(rows[-1])
+		await _settle()
+		_check(scroll.get_global_rect().grow(0.5).encloses(rows[-1].get_global_rect()), context + " final row can be brought fully into view")
 
 
 func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:

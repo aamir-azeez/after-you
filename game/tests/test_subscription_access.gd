@@ -137,7 +137,7 @@ func _subscriber_screens() -> void:
 	_check(app._hosting_entitled(), "A Play subscription grants hosting")
 
 	# Settings keeps a way back to Manage and Restore after Home hides the offer.
-	app.settings_flow.show_settings()
+	app.settings_flow.show_settings("account")
 	var entry := _button(app.overlay, "Full Journey")
 	_check(entry != null, "Settings lists Full Journey for a store build")
 	if entry != null:
@@ -151,7 +151,7 @@ func _subscriber_screens() -> void:
 		_check(back != null, "The store opened from Settings returns to Settings")
 		if back != null:
 			back.pressed.emit()
-			_check(app.mode == "settings" and not app.store_flow.store_from_settings, "Back from the store lands on Settings")
+			_check(app.settings_flow.showing("account") and not app.store_flow.store_from_settings, "Back from the store lands on Settings, at Account & recovery")
 	app.store_flow.show_paywall()
 	_check(not app.store_flow.store_from_settings, "Opening the store from anywhere else returns to chapters")
 
@@ -159,7 +159,7 @@ func _subscriber_screens() -> void:
 	store.customer_info = payload(play_entry("after_you_full_journey_monthly", false, NOW_MS - 1000))
 	_check(not store.has_entitlement() and not app._hosting_entitled() and not app._full_journey_access(), "An expired subscription locks paid chapters and hosting again")
 	app.config.purchase_mode = "tester_only"
-	app.settings_flow.show_settings()
+	app.settings_flow.show_settings("account")
 	_check(_button(app.overlay, "Full Journey") == null, "A build without a store has no Full Journey settings entry")
 	root.remove_child(app)
 	app.queue_free()
@@ -172,7 +172,8 @@ func _path(name: String) -> String:
 
 func _button(node: Node, text: String) -> Button:
 	for button: Button in node.find_children("*", "Button", true, false):
-		if button.text == text: return button
+		# A Settings row reads its label out instead of showing text.
+		if button.text == text or (button.text.is_empty() and button.accessibility_name == text): return button
 	return null
 
 func _label(node: Node, text: String) -> Label:

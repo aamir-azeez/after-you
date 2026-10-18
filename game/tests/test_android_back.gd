@@ -25,8 +25,9 @@ func _run() -> void:
 	await process_frame
 	var screens := {
 		"settings": app.settings_flow.show_settings,
-		"notifications": app.notification_flow.show_settings,
-		"account": app.account_flow.show_account,
+		"settings friends and notifications": app.settings_flow.show_settings.bind("friends"),
+		"settings account and recovery": app.settings_flow.show_settings.bind("account"),
+		"settings about": app.settings_flow.show_settings.bind("about"),
 		"delete identity confirm": app.account_flow.confirm_delete_identity,
 		"recovery form": app.account_flow.show_recovery_form,
 		"play solo": app._show_journey,

@@ -1,7 +1,8 @@
 extends Node
 ## Turn and hosting notifications inside the app: the notification service's
-## save, secret and identity callbacks, the Notifications settings screen and the
-## Enable offer on room cards, alerts that arrive while the app is open, and
+## save, secret and identity callbacks, the notification rows of Settings >
+## Friends & notifications (their values; presentation/settings_rows.gd draws
+## them) and the Enable offer on room cards, alerts that arrive while the app is open, and
 ## opening the room or Friends that a tapped alert names. A tap from a cold start
 ## or a resume stays in the service's pending route until opening it is safe.
 ##
@@ -20,9 +21,10 @@ extends Node
 ## - entry points: legacy_room_flow (navigation_ready, show_saved_room),
 ##   ensure_relay_session, queue_foreground_refresh,
 ##   _show_friends, friends_flow (is_open, hosting_hint, refresh),
-##   _enter_online_relay, _request_update_gate
+##   _enter_online_relay, _request_update_gate, settings_flow (is_open,
+##   refresh: Settings redraws its notification rows when the service changes)
 ## - modes: NOTIFICATION_ROUTE_MODES (the screens a tap may leave)
-## - card kit: _card, _label, _paragraph, _button, _back_button, _toast
+## - card kit: _paragraph, _button, _toast
 ## It also calls two private members, as Main did: RelayOnline._room_gone and
 ## TurnNotifications._integer.
 ## Main calls service_route() every frame while the service exists.
@@ -33,12 +35,6 @@ const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const Levels = preload("res://core/levels.gd")
 const Typed = preload("res://services/typed_values.gd")
-const CREAM := Color("eceddb")
-## Main's mode on the Notifications settings screen.
-const MODE_NOTIFICATIONS := "notifications"
-
-signal settings_requested
-
 var host: Node
 ## A tapped alert that could not open waits until this time before another try.
 var route_retry_ms := 0
@@ -46,8 +42,6 @@ var _route_busy := false
 var _deferred_event := ""
 var _hint: Label
 var _offer: Button
-var _request_toggle: CheckButton
-var _request_hint: Label
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -102,17 +96,31 @@ func enable() -> void:
 	host.turn_notifications.set_enabled(true)
 	update_offer()
 
-func show_settings() -> void:
-	host.running = false
-	host.mode = MODE_NOTIFICATIONS
-	host.turn_notifications.queue_reconcile()
-	var card: VBoxContainer = host._card(640)
-	card.add_child(host._label(PlayerCopy.MAIN_7EE625C6EC26, 30, CREAM, true))
-	card.add_child(host._paragraph(PlayerCopy.for_platform(PlayerCopy.MAIN_EF43E19393E4,PlayerCopy.MAIN_EF43E19393E4_IOS), 560))
-	add_offer(card)
-	_add_turn_request_option(card)
-	card.add_child(host._button("Turn notifications off", func(): host.turn_notifications.set_enabled(false); update_offer(), false))
-	card.add_child(host._back_button("Back to settings", func(): settings_requested.emit(), false))
+## Settings > Friends & notifications reads and changes these (settings_rows.gd).
+func reconcile() -> void:
+	if is_instance_valid(host.turn_notifications): host.turn_notifications.queue_reconcile()
+
+func turn_notifications_on() -> bool:
+	return is_instance_valid(host.turn_notifications) and host.turn_notifications.enabled()
+
+func set_turn_notifications(value: bool) -> bool:
+	if not is_instance_valid(host.turn_notifications) or not host.turn_notifications.set_enabled(value): return false
+	update_offer()
+	return true
+
+func turn_requests_on() -> bool:
+	return _request_preference()
+
+## A sub-option of turn notifications: off pauses it and keeps the choice.
+func set_turn_requests(value: bool) -> bool:
+	return is_instance_valid(host.turn_notifications) and host.turn_notifications.set_requests_enabled(value)
+
+func turn_off() -> void:
+	set_turn_notifications(false)
+
+## The service's own line about where notifications stand.
+func status_line() -> String:
+	return str(host.turn_notifications.status_text) if is_instance_valid(host.turn_notifications) else ""
 
 ## The turn alert status line and its Enable button, on any card.
 func add_offer(card: VBoxContainer) -> void:
@@ -124,36 +132,15 @@ func add_offer(card: VBoxContainer) -> void:
 	card.add_child(_offer)
 	update_offer()
 
-func _add_turn_request_option(card: VBoxContainer) -> void:
-	_request_toggle = CheckButton.new()
-	_request_toggle.name = "TurnRequestNotifications"
-	_request_toggle.text = PlayerCopy.TURN_REQUEST_NOTIFICATIONS
-	# Wraps within the hint's width so the label never clips on a small screen.
-	_request_toggle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_request_toggle.custom_minimum_size.x = 480
-	_request_toggle.button_pressed = _request_preference()
-	_request_toggle.toggled.connect(_set_turn_request_notifications)
-	card.add_child(_request_toggle)
-	_request_hint = host._paragraph(PlayerCopy.TURN_REQUEST_NOTIFICATIONS_NEEDS_TURNS, 480)
-	_request_hint.name = "TurnRequestNotificationsHint"
-	card.add_child(_request_hint)
-	update_offer()
-
-func _set_turn_request_notifications(value: bool) -> void:
-	if host.turn_notifications.set_requests_enabled(value): return
-	if is_instance_valid(_request_toggle): _request_toggle.set_pressed_no_signal(_request_preference())
-	host._toast(PlayerCopy.MAIN_34B82590B663)
-
 func update_offer() -> void:
 	if not is_instance_valid(host.turn_notifications): return
 	var state := status()
 	if is_instance_valid(_hint): _hint.text = state.message
-	if is_instance_valid(_request_toggle): _request_toggle.disabled = not state.enabled
-	if is_instance_valid(_request_hint): _request_hint.visible = not state.enabled
 	if is_instance_valid(_offer):
 		_offer.visible = not state.registered
 		_offer.disabled = state.busy
 	if is_instance_valid(host.relay_child): host.relay_child.update_notification_offer()
+	if host.settings_flow != null and host.settings_flow.is_open(): host.settings_flow.refresh()
 
 ## An alert that arrived while the app is open.
 func foreground_hint(route: Dictionary) -> void:

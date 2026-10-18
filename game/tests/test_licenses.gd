@@ -32,75 +32,89 @@ func _button(node: Node, caption: String) -> Button:
 
 
 func _scroll(node: Node) -> ScrollContainer:
-	for candidate: ScrollContainer in node.find_children("*", "ScrollContainer", true, false):
-		return candidate
-	return null
+	return node.find_child("SettingsRows", true, false) as ScrollContainer
 
 
 func _within(control: Control, area: Rect2, description: String) -> void:
 	_check(control != null and area.grow(0.5).encloses(control.get_global_rect()), description)
 
 
+func _row(app: Node, id: String) -> Control:
+	return app.overlay.find_child(id, true, false) as Control
+
+
+## Settings lists its categories in a rail beside one scrolling panel; About
+## holds Community & privacy, What's new and every licence.
 func _settings_fit(app: Node, area: Rect2) -> void:
 	app.settings_flow.show_settings()
 	await _settle()
-	var account := _button(app.overlay, "Account & recovery")
-	var licenses := _button(app.overlay, "Licenses")
 	var done := _button(app.overlay, "Done")
 	var scroll := _scroll(app.overlay)
 	_within(scroll, area, "Settings scroll viewport remains visible at " + str(area.size))
 	_within(done, area, "Done remains visible at " + str(area.size))
-	_check(account != null and licenses != null, "Settings retains Account and Licenses actions")
-	if account == null or licenses == null or done == null or scroll == null:
+	if done == null or scroll == null:
 		return
 	_check(not scroll.is_ancestor_of(done), "Done stays outside the scrolling Settings rows")
-	var navigation: Array[Button] = []
-	for caption: String in ["Graphics", "Account & recovery", "Notifications", "Tester code", "Community & privacy", "What's new", "Licenses"]:
-		var action := _button(app.overlay, caption)
-		_check(action != null, "Settings retains its action: " + caption)
+	var navigation: Array[Control] = []
+	for category: String in ["everyday", "play", "graphics", "friends", "account", "about"]:
+		var item := _row(app, "category_" + category)
+		_within(item, area, "Settings retains its category: " + category)
+		if item != null:
+			_check(not item.get_global_rect().intersects(done.get_global_rect()), "A category does not overlap Done: " + category)
+			for previous: Control in navigation:
+				_check(not item.get_global_rect().intersects(previous.get_global_rect()), "Categories do not overlap: " + category + " / " + previous.name)
+			navigation.append(item)
+	for pair: Array in [["graphics", "graphics_quality"], ["account", "tester_code"], ["friends", "turn_notifications"], ["about", "community"], ["about", "whats_new"], ["about", "licenses"]]:
+		app.settings_flow.show_settings(pair[0])
+		await _settle()
+		var action := _row(app, pair[1])
+		scroll = _scroll(app.overlay)
+		done = _button(app.overlay, "Done")
+		_check(action != null, "Settings retains its action: " + pair[1])
 		if action != null:
 			scroll.ensure_control_visible(action)
 			await _settle()
-			_within(action, area, "Settings action is reachable after scrolling: " + caption)
-			_within(action, scroll.get_global_rect(), "Settings action is fully inside the scroll viewport: " + caption)
-			_within(done, area, "Done remains visible while reaching: " + caption)
-			_check(not action.get_global_rect().intersects(done.get_global_rect()), "Settings action does not overlap Done: " + caption)
-			for previous: Button in navigation:
-				_check(not action.get_global_rect().intersects(previous.get_global_rect()),
-					"Settings actions do not overlap: " + caption + " / " + previous.text)
-			navigation.append(action)
-	for toggle: CheckButton in app.overlay.find_children("*", "CheckButton", true, false):
-		scroll.ensure_control_visible(toggle)
+			_within(action, area, "Settings action is reachable after scrolling: " + pair[1])
+			_within(action, scroll.get_global_rect(), "Settings action is fully inside the scroll viewport: " + pair[1])
+			_within(done, area, "Done remains visible while reaching: " + pair[1])
+			_check(not action.get_global_rect().intersects(done.get_global_rect()), "Settings action does not overlap Done: " + pair[1])
+	for category: String in ["everyday", "play", "friends"]:
+		app.settings_flow.show_settings(category)
 		await _settle()
-		_within(toggle, area, "Existing settings toggle is reachable after scrolling: " + toggle.text)
-		_within(toggle, scroll.get_global_rect(), "Existing settings toggle is fully inside the scroll viewport: " + toggle.text)
-		_within(done, area, "Done remains visible while reaching: " + toggle.text)
-		_check(not toggle.get_global_rect().intersects(done.get_global_rect()), "Settings toggle does not overlap Done: " + toggle.text)
-	scroll.ensure_control_visible(licenses)
+		scroll = _scroll(app.overlay)
+		done = _button(app.overlay, "Done")
+		for toggle: CheckButton in app.overlay.find_children("*", "CheckButton", true, false):
+			scroll.ensure_control_visible(toggle)
+			await _settle()
+			_within(toggle, area, "Existing settings toggle is reachable after scrolling: " + toggle.name)
+			_within(toggle, scroll.get_global_rect(), "Existing settings toggle is fully inside the scroll viewport: " + toggle.name)
+			_within(done, area, "Done remains visible while reaching: " + toggle.name)
+			_check(not toggle.get_global_rect().intersects(done.get_global_rect()), "Settings toggle does not overlap Done: " + toggle.name)
+	app.settings_flow.show_settings()
 	await _settle()
-	_within(licenses, scroll.get_global_rect(), "Licenses is reachable before opening its list")
-	licenses.pressed.emit()
+	var about := _row(app, "category_about")
+	about.pressed.emit()
 	await _settle()
-	_check(app.mode == "licenses", "The Settings action opens the licenses list")
+	_check(app.settings_flow.showing("about"), "The About category holds the licences list")
 
 
 func _list_fit(app: Node, entries: Array[Dictionary], area: Rect2) -> void:
 	var scroll := _scroll(app.overlay)
 	_within(scroll, area, "Component list is contained inside the viewport")
-	_within(_button(app.overlay, "Back to settings"), area, "List Back stays outside the scrolling entries")
+	_within(_button(app.overlay, "Done"), area, "Done stays outside the scrolling entries")
 	if scroll == null:
 		return
 	var bar := scroll.get_v_scroll_bar()
 	_check(bar.max_value > bar.page, "The real catalog uses a scrollable component list")
 	var actual_titles: Array[String] = []
-	for button: Button in scroll.find_children("*", "Button", true, false):
-		actual_titles.append(button.text)
+	for button: Button in scroll.find_children("license_*", "Button", true, false):
+		actual_titles.append(button.accessibility_name)
 	var expected_titles: Array[String] = []
 	for entry: Dictionary in entries:
 		expected_titles.append(str(entry.title))
 	_check(actual_titles == expected_titles, "Every catalog entry appears once in the component list")
 	if not entries.is_empty():
-		var last := _button(scroll, str(entries[-1].title))
+		var last := _row(app, "license_%d" % (entries.size() - 1))
 		if last != null:
 			scroll.ensure_control_visible(last)
 			await _settle()
@@ -108,12 +122,12 @@ func _list_fit(app: Node, entries: Array[Dictionary], area: Rect2) -> void:
 			_check(scroll.scroll_vertical > 0, "Reaching the final entry actually changes scroll position")
 
 
-func _open_entry(app: Node, entry: Dictionary, area: Rect2) -> void:
+func _open_entry(app: Node, index: int, entry: Dictionary, area: Rect2) -> void:
 	app.settings_flow.show_licenses()
 	await _settle()
 	var scroll := _scroll(app.overlay)
-	var choice := _button(app.overlay, str(entry.title))
-	_check(choice != null and scroll != null, "A reachable component action exists: " + str(entry.title))
+	var choice := _row(app, "license_%d" % index) as Button
+	_check(choice != null and scroll != null and choice.accessibility_name == str(entry.title), "A reachable component action exists: " + str(entry.title))
 	if choice == null or scroll == null:
 		return
 	scroll.ensure_control_visible(choice)
@@ -146,7 +160,9 @@ func _open_entry(app: Node, entry: Dictionary, area: Rect2) -> void:
 	if back != null:
 		back.pressed.emit()
 		await _settle()
-		_check(app.mode == "licenses", "Text Back returns to the component list")
+		await _settle()
+		var row := _row(app, "license_%d" % index)
+		_check(app.settings_flow.showing("about") and row != null and _scroll(app.overlay).get_global_rect().grow(0.5).encloses(row.get_global_rect()), "Text Back returns to the component list, at that component")
 
 
 func _run() -> void:
@@ -187,26 +203,26 @@ func _run() -> void:
 		# Verify every loop-bound action at the smallest viewport. The two other
 		# shapes exercise the longest text without repeating the entire catalog.
 		if size == Vector2i(1280, 720):
-			for entry: Dictionary in entries:
-				await _open_entry(app, entry, area)
+			for index: int in range(entries.size()):
+				await _open_entry(app, index, entries[index], area)
 		else:
-			await _open_entry(app, longest, area)
-		var back := _button(app.overlay, "Back to settings")
-		if back != null:
-			back.pressed.emit()
+			await _open_entry(app, entries.find(longest), longest, area)
+		var done := _button(app.overlay, "Done")
+		if done != null:
+			done.pressed.emit()
 			await _settle()
-		_check(app.mode == "settings", "List Back returns to Settings at " + str(size))
-	app.settings_flow.show_license(longest)
+		_check(app.mode == "home", "Done leaves the list for Home at " + str(size))
+	app.settings_flow.show_license(longest, "license_%d" % entries.find(longest))
 	await _settle()
 	var long_text := app.overlay.find_child("LicenseText", true, false) as RichTextLabel
 	_check(long_text != null and long_text.get_v_scroll_bar().max_value > long_text.get_v_scroll_bar().page,
 		"The largest real notice requires scrolling, so the long-text path is exercised")
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _settle()
-	_check(app.mode == "licenses", "Android Back leaves a notice for the component list")
+	_check(app.settings_flow.showing("about"), "Android Back leaves a notice for the component list")
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await _settle()
-	_check(app.mode == "settings", "Android Back leaves the component list for Settings")
+	_check(app.mode == "home", "Android Back leaves the component list for Home, like Done")
 	_check(JSON.stringify(app.saves.data) == state_before, "Browsing and selecting licenses do not mutate save data")
 	_check(FileAccess.get_file_as_string(path) == disk_before, "License navigation does not rewrite the saved file")
 	viewport.queue_free()

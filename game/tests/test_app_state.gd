@@ -469,7 +469,7 @@ func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
 		await process_frame
 		_check(not app.identity_loading and app.identity_read_state==Main.IdentityReadState.FAILED,"Failed or malformed secure read %d remains distinct from missing" % index)
 		_check(not await app._ensure_identity() and api.calls.is_empty() and storage.writes.is_empty(),"Secure read failure %d sends no identity creation and overwrites nothing" % index)
-	app.account_flow.show_account()
+	app.settings_flow.show_settings("account")
 	_check(_find_button(app.overlay,"Create anonymous identity")==null and _find_button(app.overlay,"Check saved identity")!=null and _find_button(app.overlay,"Recover a previous identity")!=null,"Failed identity read exposes retry/recovery instead of replacement")
 	var identity := {"player_id":TEST_SAVED_PLAYER,"device_token":TEST_DEVICE_TOKEN,"recovery_code":TEST_RECOVERY_CODE}
 	storage.read_response={"ok":true,"payload":{"found":true,"value":JSON.stringify(identity)}}
@@ -627,7 +627,7 @@ func _test_hosting_access(app: Node, api: Node) -> void:
 	api.calls.clear()
 	app.purchases.customer_info={"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
 	var original_entitlement: Dictionary=app.purchases.customer_info.duplicate(true)
-	app.account_flow.show_account()
+	app.settings_flow.show_settings("account")
 	_check(_find_button(app.overlay,"Check hosting access")!=null,"Authenticated account exposes a hosting verification action")
 	var restore := _find_button(app.overlay,"Restore purchases")
 	_check(restore!=null and restore.pressed.is_connected(app.store_flow.restore_purchases),"Fully unlocked player can restore purchases from Account through the purchase controller")
@@ -816,7 +816,7 @@ func _test_recovery_interruptions(app: Node, api: Node, storage: TestSecrets) ->
 	storage.pending_read_response={"ok":true,"payload":{"found":true,"value":JSON.stringify(legacy)}}
 	app._load_saved_identity()
 	await process_frame
-	app.account_flow.show_account()
+	app.settings_flow.show_settings("account")
 	_check(api.calls.is_empty() and _find_button(app.overlay,"Recover a previous identity")!=null,"Malformed older queued input is never retried and leaves explicit recovery available")
 	api.responses=[{"ok":true,"data":{"player_id":TEST_RECOVERY_PLAYER,"recovered":true}}]
 	await app.account_flow.recover_identity(TEST_RECOVERY_PLAYER,TEST_RECOVERY_CODE)
@@ -838,8 +838,9 @@ func _card_target(card: Node) -> Button:
 	if targets.size() != 1 or targets[0].name != "ChapterOpen" or not targets[0].text.is_empty() or targets[0].focus_mode != Control.FOCUS_ALL or targets[0].get_meta("completion_variant","") != "solo": return null
 	return targets[0]
 
+## A button by its text, or a Settings row by the label it reads out.
 func _find_button(node: Node, text: String) -> Button:
-	if node is Button and node.text==text:
+	if node is Button and (node.text==text or (node.text.is_empty() and node.accessibility_name==text)):
 		return node
 	for child: Node in node.get_children():
 		var found := _find_button(child,text)

@@ -1,7 +1,25 @@
 extends SceneTree
-
+## Settings (presentation/settings_flow.gd) is one page: a rail of categories
+## and the chosen category's rows, all from the rows table
+## (presentation/settings_rows.gd).
+## - Every saved switch is reachable in its category and a real click changes
+##   it, saves it and keeps the row's look; reopening keeps every choice.
+## - The rows table: each row's category exists, ids are unique, every saved
+##   setting has a row, a fake new row is drawn by the shared builders, and
+##   each category's summary comes from its rows and follows a change live.
+## - Every category draws its rows inside the panel, with 48 px targets, at
+##   the base and phone shapes; Done and the rail stay put.
+## - Friends & notifications holds the notification switches inline.
+## - Account & recovery holds its actions inline and they still work.
+## - Callers land in the right category, and Back goes where Done goes.
+## - A damaged save still opens with every switch; Always skip waits starts off.
 const Main=preload("res://main.gd")
 const Storage=preload("res://services/local_save.gd")
+const Rows=preload("res://presentation/settings_rows.gd")
+const Flow=preload("res://presentation/settings_flow.gd")
+const PlayerCopy=preload("res://presentation/player_copy.gd")
+const FakeApi=preload("res://tests/fake_rooms_api.gd")
+const SAVED_SWITCHES := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status","skip_waits"]
 var checks := 0
 var failures := 0
 
@@ -14,99 +32,385 @@ func _check(condition: bool, message: String) -> void:
 		failures+=1
 		push_error(message)
 
-func _run() -> void:
-	var path := "user://settings-test-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
+func _path(tag: String) -> String:
+	return "user://settings-%s-%s.json" % [tag, Crypto.new().generate_random_bytes(8).hex_encode()]
+
+func _remove(path: String) -> void:
+	for suffix: String in ["",".tmp",".backup"]:
+		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+
+func _app(path: String, size: Vector2i) -> Node:
 	var viewport := SubViewport.new()
-	viewport.size=Vector2i(1600,720)
+	viewport.size=size
 	root.add_child(viewport)
 	var app := Main.new()
 	app.saves=Storage.new(path)
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
-	app.settings_flow.show_settings()
+	return app
+
+func _settle() -> void:
 	await process_frame
-	var toggles := app.overlay.find_children("*","CheckButton",true,false)
-	var keys := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status","skip_waits"]
-	_check(toggles.size()==keys.size(),"Every saved setting has one reachable switch")
-	_check(toggles.size()==keys.size() and toggles[-1].text=="Always skip waits" and not toggles[-1].button_pressed,"Always skip waits has its switch, off at first")
-	for index: int in range(toggles.size()):
-		var toggle: CheckButton=toggles[index]
-		var parent: Node = toggle.get_parent()
-		while parent != null and not parent is ScrollContainer: parent = parent.get_parent()
-		if parent is ScrollContainer:
-			parent.ensure_control_visible(toggle)
-			await process_frame
+	await process_frame
+
+func _click(app: Node, control: Control) -> void:
+	var viewport: Viewport = app.get_viewport()
+	var motion := InputEventMouseMotion.new()
+	motion.position=control.get_global_rect().get_center()
+	viewport.push_input(motion,true)
+	for pressed: bool in [true,false]:
+		var event := InputEventMouseButton.new()
+		event.position=motion.position
+		event.button_index=MOUSE_BUTTON_LEFT
+		event.pressed=pressed
+		viewport.push_input(event,true)
+	await process_frame
+
+func _control(app: Node, id: String) -> Control:
+	return app.overlay.find_child(id,true,false) as Control
+
+func _scroll_of(control: Control) -> ScrollContainer:
+	var parent: Node = control.get_parent()
+	while parent != null and not parent is ScrollContainer: parent = parent.get_parent()
+	return parent as ScrollContainer
+
+func _reveal(control: Control) -> void:
+	var scroll := _scroll_of(control)
+	if scroll != null:
+		scroll.ensure_control_visible(control)
+		await _settle()
+
+## Opens a category by tapping its rail item, as a player would.
+func _open(app: Node, category: String) -> void:
+	var item := _control(app,"category_"+category)
+	_check(item != null,"The rail has the category: "+category)
+	if item == null: return
+	await _reveal(item)
+	await _click(app,item)
+	await _settle()
+
+func _category_of(id: String, app: Node) -> String:
+	return str(Rows.find(Rows.rows(app),id).get("category",""))
+
+func _run() -> void:
+	var path := _path("main")
+	var app := _app(path,Vector2i(1600,720))
+	app.settings_flow.show_settings()
+	await _settle()
+	_check(app.mode=="settings" and app.settings_flow.category()==Flow.EVERYDAY,"Settings opens on Everyday")
+	for key: String in SAVED_SWITCHES:
+		await _open(app,_category_of(key,app))
+		var toggle := _control(app,key) as CheckButton
+		_check(toggle != null,"Every saved setting has one reachable switch: "+key)
+		if toggle == null: continue
+		await _reveal(toggle)
+		_check(_scroll_of(toggle).get_global_rect().encloses(toggle.get_global_rect()),"The switch is wholly on show in the panel: "+key)
+		if key == "skip_waits": _check(not toggle.button_pressed and toggle.accessibility_name == "Always skip waits","Always skip waits has its switch, off at first")
 		for cycle in range(4):
 			var before := toggle.button_pressed
-			var motion := InputEventMouseMotion.new()
-			motion.position=toggle.get_global_rect().get_center()
-			viewport.push_input(motion,true)
-			for pressed: bool in [true,false]:
-				var event := InputEventMouseButton.new()
-				event.position=motion.position
-				event.button_index=MOUSE_BUTTON_LEFT
-				event.pressed=pressed
-				viewport.push_input(event,true)
-			await process_frame
-			_check(toggle.button_pressed!=before,"Repeated click changes the setting: "+keys[index])
+			await _click(app,toggle)
+			_check(toggle.button_pressed!=before,"Repeated click changes the setting: "+key)
 			_check(toggle.get_draw_mode()==(BaseButton.DRAW_HOVER_PRESSED if toggle.button_pressed else BaseButton.DRAW_HOVER),"Pointer remains over the checked/unchecked switch")
 			for state: String in ["normal","hover","pressed","hover_pressed"]:
 				var style := toggle.get_theme_stylebox(state)
 				_check(style is StyleBoxFlat and style.bg_color.a>0.9,"Switch background remains opaque in "+state)
 			var loaded := Storage.new(path)
 			loaded.load_data()
-			_check(loaded.data.settings[keys[index]]==toggle.button_pressed,"Changed setting survives a fresh file read: "+keys[index])
-			_check(app.saves.data.settings[keys[index]]==toggle.button_pressed,"Runtime setting matches the visible switch")
+			_check(loaded.data.settings[key]==toggle.button_pressed,"Changed setting survives a fresh file read: "+key)
+			_check(app.saves.data.settings[key]==toggle.button_pressed,"Runtime setting matches the visible switch")
 	app._show_home()
-	app.settings_flow.show_settings()
-	await process_frame
-	toggles=app.overlay.find_children("*","CheckButton",true,false)
-	for index: int in range(toggles.size()):
-		_check(toggles[index].button_pressed==app.saves.data.settings[keys[index]],"Reopening Settings preserves the chosen state")
+	for key: String in SAVED_SWITCHES:
+		app.settings_flow.show_settings(_category_of(key,app))
+		await process_frame
+		var toggle := _control(app,key) as CheckButton
+		_check(toggle != null and toggle.button_pressed==app.saves.data.settings[key],"Reopening Settings preserves the chosen state: "+key)
+	await _failed_save(app)
+	_rows_table(app)
+	await _fake_row(app)
+	await _summaries(app)
 	await _redo_request_option(app,path)
-	viewport.queue_free()
+	await _account_inline(app)
+	await _callers(app)
+	app.get_viewport().queue_free()
+	await process_frame
+	await _categories_fit(Vector2i(1280,720))
+	await _categories_fit(Vector2i(1560,720))
 	await _damaged_setting_types()
 	_skip_waits_default()
 	await process_frame
 	await create_timer(0.15).timeout
-	for suffix: String in ["",".tmp",".backup"]:
-		if FileAccess.file_exists(path+suffix):
-			DirAccess.remove_absolute(path+suffix)
+	_remove(path)
 	print("AFTER YOU SETTINGS: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures>0 else 0)
 
+## A save that fails puts the switch back and says so.
+func _failed_save(app: Node) -> void:
+	app.settings_flow.show_settings(Flow.EVERYDAY)
+	await _settle()
+	var toggle := _control(app,"sound") as CheckButton
+	var before := toggle.button_pressed
+	app.saves.read_only=true
+	await _click(app,toggle)
+	_check(toggle.button_pressed==before and app.saves.data.settings.sound==before,"A failed save puts the switch back as saved")
+	_check(app.toast_label.visible and app.toast_label.text==PlayerCopy.MAIN_34B82590B663,"A failed save says the setting could not be saved")
+	app.saves.read_only=false
+
+func _rows_table(app: Node) -> void:
+	var categories: Array[Dictionary] = Rows.categories(app)
+	var rows: Array[Dictionary] = Rows.rows(app)
+	var ids: Dictionary = {}
+	var category_ids: Array = categories.map(func(entry: Dictionary) -> String: return entry.id)
+	for row: Dictionary in rows:
+		_check(not ids.has(row.id),"Row ids are unique: "+str(row.id))
+		ids[row.id]=true
+		_check(row.category in category_ids,"Each row's category is in the rail: "+str(row.id))
+		_check(row.kind in [Rows.TOGGLE,Rows.CHOICE,Rows.LINK,Rows.ACTION,Rows.INFO],"Each row has a known kind: "+str(row.id))
+		_check(row.has("label"),"Each row has a label: "+str(row.id))
+		match str(row.kind):
+			Rows.TOGGLE, Rows.CHOICE: _check(row.has("key") or (row.has("get") and row.has("set")),"A setting row saves somewhere: "+str(row.id))
+			Rows.LINK: _check(row.get("open") is Callable,"A link opens something: "+str(row.id))
+			Rows.ACTION: _check(row.get("run") is Callable or row.get("inline") is Callable,"An action does something: "+str(row.id))
+	var saved: Dictionary = Storage.defaults().settings
+	for key: String in saved:
+		if key in ["turn_notifications","turn_request_notifications","unlimited_frame_rate"]: continue
+		_check(rows.any(func(row: Dictionary) -> bool: return row.get("key")==key),"Every saved setting has a row: "+key)
+	_check(Rows.summary(Rows.category(categories,Flow.GRAPHICS),rows,func(row: Dictionary) -> Variant: return saved.get(row.get("key"))) == "Balanced · 60 fps","The Graphics summary is made from its rows")
+
+## A new setting is one row: the shared builders draw it in its category.
+func _fake_row(app: Node) -> void:
+	app.settings_flow.show_settings(Flow.PLAY)
+	await _settle()
+	app.settings_flow._rows.append({"id":"fake_new_setting","category":Flow.PLAY,"kind":Rows.TOGGLE,"label":"A new setting","note":"Drawn from one row","key":"sound"})
+	app.settings_flow._select(Flow.PLAY)
+	await _settle()
+	var toggle := _control(app,"fake_new_setting") as CheckButton
+	_check(toggle != null and toggle.accessibility_name=="A new setting","A new row in the table appears in its category")
+	if toggle == null: return
+	await _reveal(toggle)
+	var before: bool=app.saves.data.settings.sound
+	await _click(app,toggle)
+	_check(app.saves.data.settings.sound!=before,"The new row saves through the shared path")
+	await _click(app,toggle)
+	_check(app.saves.data.settings.sound==before,"and back again")
+	app.settings_flow._select(Flow.EVERYDAY)
+	await _settle()
+	_check(_control(app,"fake_new_setting")==null,"Another category does not draw it")
+
+func _summary(app: Node, category: String) -> String:
+	var item := _control(app,"category_"+category)
+	return (item.find_child("Summary",true,false) as Label).text if item != null else ""
+
+## The rail's summaries show live values and follow a change at once.
+func _summaries(app: Node) -> void:
+	app.settings_flow.show_settings()
+	await _settle()
+	_check(_summary(app,Flow.EVERYDAY)==PlayerCopy.SETTINGS_EVERYDAY_SUMMARY and _summary(app,Flow.ACCOUNT)==PlayerCopy.SETTINGS_ACCOUNT_SUMMARY,"Fixed summaries read as written")
+	_check(_summary(app,Flow.GRAPHICS)=="Balanced · 60 fps","Graphics shows its live values")
+	_check(_summary(app,Flow.FRIENDS)=="Notifications: Off","Friends shows whether notifications are on")
+	await _open(app,Flow.GRAPHICS)
+	var thirty := _control(app,"Option_30") as Button
+	await _click(app,thirty)
+	_check(_summary(app,Flow.GRAPHICS)=="Balanced · 30 fps","A change shows in the rail at once")
+	await _click(app,_control(app,"Option_60"))
+	_check(_summary(app,Flow.GRAPHICS)=="Balanced · 60 fps","and changes back")
+
 func _redo_request_option(app: Node, path: String) -> void:
-	app.notification_flow.show_settings()
-	await process_frame
-	var toggle: CheckButton = app.overlay.find_child("TurnRequestNotifications", true, false)
-	var hint: Control = app.overlay.find_child("TurnRequestNotificationsHint", true, false)
-	_check(toggle != null and hint != null, "Notifications has a redo request switch")
-	if toggle == null or hint == null: return
-	_check(toggle.disabled and hint.visible and not toggle.button_pressed, "The redo request switch starts off and waits for notifications")
-	_check(toggle.autowrap_mode != TextServer.AUTOWRAP_OFF and toggle.custom_minimum_size.x >= 480 and toggle.text.begins_with("Also "), "The redo request switch wraps to the hint's width and reads as an extra")
-	_check(app.turn_notifications.set_enabled(true), "Turn notifications can be switched on for the redo request check")
-	app.notification_flow.update_offer()
-	_check(not toggle.disabled and not hint.visible, "Turning notifications on makes the redo request switch available")
-	toggle.button_pressed = true
+	app.settings_flow.show_settings(Flow.FRIENDS)
+	await _settle()
+	var toggle := _control(app,"turn_requests") as CheckButton
+	var notify := _control(app,"turn_notifications") as CheckButton
+	var hint: Label = toggle.get_parent().find_child("Note",true,false) as Label if toggle != null else null
+	_check(toggle != null and notify != null and hint != null,"Notifications has its switches inline in Friends & notifications")
+	if toggle == null or notify == null or hint == null: return
+	_check(_control(app,"notifications_off") != null,"Turn notifications off is inline too")
+	_check(toggle.disabled and hint.visible and hint.text==PlayerCopy.TURN_REQUEST_NOTIFICATIONS_NEEDS_TURNS and not toggle.button_pressed,"The redo request switch starts off and waits for notifications")
+	_check(toggle.accessibility_name.begins_with("Also "),"The redo request switch reads as an extra")
+	await _reveal(notify)
+	await _click(app,notify)
+	_check(app.turn_notifications.enabled() and notify.button_pressed,"Turn notifications can be switched on for the redo request check")
+	_check(not toggle.disabled and not hint.visible,"Turning notifications on makes the redo request switch available")
+	_check(_summary(app,Flow.FRIENDS)=="Notifications: On","The rail says notifications are on")
+	await _reveal(toggle)
+	await _click(app,toggle)
 	var loaded := Storage.new(path)
 	loaded.load_data()
 	_check(loaded.data.settings.turn_request_notifications == true and app.turn_notifications.requests_enabled(), "The redo request choice survives a fresh file read")
-	app.notification_flow.show_settings()
-	await process_frame
-	toggle = app.overlay.find_child("TurnRequestNotifications", true, false)
+	app.settings_flow.show_settings(Flow.FRIENDS)
+	await _settle()
+	toggle = _control(app,"turn_requests") as CheckButton
 	_check(toggle != null and toggle.button_pressed, "Reopening Notifications keeps the redo request choice")
 	if toggle == null: return
-	app.turn_notifications.set_enabled(false)
-	app.notification_flow.update_offer()
+	var off := _control(app,"notifications_off") as Button
+	await _reveal(off)
+	await _click(app,off)
 	_check(toggle.disabled and toggle.button_pressed and not app.turn_notifications.requests_enabled(), "Turning notifications off pauses redo request alerts and keeps the choice")
+	_check(off.disabled and _summary(app,Flow.FRIENDS)=="Notifications: Off","Off is done: its action rests and the rail says Off")
+
+## Account & recovery's actions sit in the panel and still work.
+func _account_inline(app: Node) -> void:
+	var api := FakeApi.new()
+	app.add_child(api)
+	var original: Node = app.api
+	app.api=api
+	api.player_id="P".repeat(22)
+	api.device_token="D".repeat(43)
+	app.identity_restart_required=false
+	app.identity_loading=false
+	app.identity_data={"player_id":api.player_id,"recovery_code":"R".repeat(43),"device_token":api.device_token}
+	app.settings_flow.show_settings(Flow.ACCOUNT)
+	await _settle()
+	for id: String in ["recovery_details","hosting_access","photo_transfer","safety_reports","delete_identity"]:
+		_check(_control(app,id) != null,"Account & recovery shows inline: "+id)
+	for gone: String in ["cleanup_note","create_identity","offline_note"]:
+		_check(_control(app,gone) == null,"Rows for other identity states stay hidden: "+gone)
+	var details := _control(app,"recovery_details") as Button
+	await _reveal(details)
+	await _click(app,details)
+	var box: VBoxContainer = app.settings_flow.detail("recovery_details")
+	var fields: Array = box.find_children("*","LineEdit",true,false) if box != null else []
+	_check(box != null and box.visible and fields.size()==2 and fields[0].text==api.player_id and not fields[0].editable,"Recovery details open in place")
+	var copy: Button = null
+	if box != null:
+		for button: Button in box.find_children("*","Button",true,false):
+			if button.text=="Copy recovery details": copy=button
+	_check(copy != null and not copy.disabled,"with an enabled Copy")
+	_check(app.mode=="settings","and Settings stays open")
+	await _click(app,details)
+	_check(box != null and not box.visible and box.get_child_count()==0,"A second tap hides them again")
+	api.responses=[{"ok":true,"data":{"status":"verified","full_journey":true}}]
+	var hosting := _control(app,"hosting_access") as Button
+	await _reveal(hosting)
+	await _click(app,hosting)
+	await _settle()
+	var hosting_box: VBoxContainer = app.settings_flow.detail("hosting_access")
+	var shown: bool = hosting_box != null and hosting_box.find_children("*","Label",true,false).any(func(label: Label) -> bool: return label.text=="Full Journey confirmed")
+	_check(shown and app.mode=="settings","Check hosting access answers under its row")
+	# Photo transfer and Reports open screens of their own (Main's), through the account flow.
+	var transfer := _control(app,"photo_transfer") as Button
+	var reports := _control(app,"safety_reports") as Button
+	_check(transfer.pressed.is_connected(app.account_flow.open_photo_transfer) and reports.pressed.is_connected(app.account_flow.open_safety),"Photo transfer and Reports & blocked players still open their screens")
+	_check(app.account_flow.photo_transfer_requested.is_connected(app._open_photo_transfer),"Main opens Photo transfer when the row asks")
+	app.settings_flow.show_settings(Flow.ACCOUNT)
+	await _settle()
+	var delete := _control(app,"delete_identity") as Button
+	_check(delete != null and delete.has_theme_stylebox_override("normal") and (delete.get_theme_stylebox("normal") as StyleBoxFlat).bg_color==Color("e9b3aa"),"Delete online identity is coral")
+	var separation: Node = delete.get_parent().get_parent().get_child(delete.get_parent().get_index()-1) if delete != null else null
+	_check(separation != null and separation.name=="Separation","and set apart from the rest")
+	delete.pressed.emit()
+	await process_frame
+	_check(app.mode=="account","Delete asks first (mode %s)" % app.mode)
+	_check(_has_button(app,"Delete identity and shared rooms"),"on its own card")
+	_press_button(app,"Keep my identity")
+	await _settle()
+	_check(app.settings_flow.showing(Flow.ACCOUNT),"Keep my identity returns to Account & recovery")
+	app.api=original
+	api.queue_free()
+	app.identity_data={}
+
+func _has_button(app: Node, text: String) -> bool:
+	return app.overlay.find_children("*","Button",true,false).any(func(button: Button) -> bool: return button.text==text and button.is_visible_in_tree())
+
+func _press_button(app: Node, text: String) -> void:
+	for button: Button in app.overlay.find_children("*","Button",true,false):
+		if button.text==text:
+			button.pressed.emit()
+			return
+
+## Every way into Settings lands where it should.
+func _callers(app: Node) -> void:
+	app._show_home()
+	await _settle()
+	var cog: Button = app.overlay.find_child("HomeSettings",true,false)
+	_check(cog != null,"Home has its Settings cog")
+	if cog != null:
+		cog.pressed.emit()
+		_check(app.settings_flow.showing(Flow.EVERYDAY),"The Home cog opens Settings on Everyday")
+	app.settings_flow.show_graphics_settings()
+	_check(app.settings_flow.showing(Flow.GRAPHICS),"The Graphics entry point opens Graphics")
+	app.settings_flow.show_licenses()
+	_check(app.settings_flow.showing(Flow.ABOUT),"The Licenses entry point opens About")
+	for item: Array in [[app.account_flow.settings_requested,"Account's way back"],[app.store_flow.settings_requested,"The store's way back"],[app.replays_flow.account_requested,"Replays' Account & recovery"]]:
+		app._show_home()
+		(item[0] as Signal).emit()
+		_check(app.settings_flow.showing(Flow.ACCOUNT),item[1]+" lands on Account & recovery")
+	for item: Array in [["account",Flow.ACCOUNT],["settings",Flow.ABOUT]]:
+		app._show_home()
+		app.safety_return=item[0]
+		app._close_safety()
+		_check(app.settings_flow.showing(item[1]),"Leaving Safety (%s) lands on %s" % item)
+	app._show_home()
+	app._leave_photo_transfer()
+	_check(app.settings_flow.showing(Flow.ACCOUNT),"Leaving Photo transfer lands on Account & recovery")
+	app.mode="tester_access"
+	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	_check(app.settings_flow.showing(Flow.ACCOUNT),"Android Back from Tester code lands on Account & recovery")
+	app.settings_flow.show_settings(Flow.ABOUT)
+	await _settle()
+	var last: String = Rows.license_id(Rows.license_rows(app).size()-1)
+	var licence := _control(app,last) as Button
+	_check(licence != null,"About lists every licence")
+	if licence != null:
+		licence.pressed.emit()
+		await _settle()
+		_check(app.mode=="license_text","A licence opens its full text")
+		app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+		await _settle()
+		await _settle()
+		var row := _control(app,last)
+		var scroll: ScrollContainer = _scroll_of(row) if row != null else null
+		_check(app.settings_flow.showing(Flow.ABOUT) and row != null and scroll.get_global_rect().encloses(row.get_global_rect()),"Android Back from a licence returns to the list, at that licence")
+	for category: String in [Flow.EVERYDAY,Flow.ACCOUNT]:
+		app.settings_flow.show_settings(category)
+		app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+		_check(app.mode=="home","Android Back on Settings (%s) goes Home, like Done" % category)
+	app.settings_flow.show_settings()
+	await process_frame
+	_check(app.settings_flow.is_open(),"Settings is open before Done")
+	_press_button(app,"Done")
+	await process_frame
+	_check(app.mode=="home" and not app.settings_flow.is_open() and app.settings_flow._live.is_empty() and app.settings_flow._rail.is_empty(),"Done goes Home and Settings lets go of its page")
+
+## Every category draws inside the panel with full targets at the base and phone shapes.
+func _categories_fit(size: Vector2i) -> void:
+	var path := _path("fit")
+	var app := _app(path,size)
+	var api := FakeApi.new()
+	app.add_child(api)
+	app.api=api
+	api.player_id="P".repeat(22)
+	api.device_token="D".repeat(43)
+	app.identity_restart_required=false
+	app.settings_flow.show_settings()
+	await _settle()
+	var area := Rect2(Vector2.ZERO,Vector2(size))
+	var done := _control(app,"SettingsDone")
+	_check(done != null and area.encloses(done.get_global_rect()) and done.get_global_rect().size.y>=48,"Done is on screen with a full target at %s" % str(size))
+	for entry: Dictionary in Rows.categories(app):
+		await _open(app,str(entry.id))
+		var item := _control(app,"category_"+str(entry.id))
+		_check(item.get_global_rect().size.y>=48 and area.encloses(item.get_global_rect()),"The rail item is a full target on screen: %s at %s" % [entry.id,str(size)])
+		_check(app.settings_flow.showing(str(entry.id)) and (_control(app,"PanelTitle") as Label).text==str(entry.title),"Tapping %s shows it at %s" % [entry.id,str(size)])
+		_check(not (_summary(app,str(entry.id))).is_empty(),"Every category has a summary: "+str(entry.id))
+		for row: Dictionary in Rows.in_category(Rows.rows(app),str(entry.id)):
+			var control := _control(app,str(row.id))
+			_check(control != null,"%s draws its row %s" % [entry.id,row.id])
+			if control == null or str(row.kind)==Rows.INFO: continue
+			await _reveal(control)
+			var scroll := _scroll_of(control)
+			_check(scroll != null and scroll.get_global_rect().grow(0.5).encloses(control.get_global_rect()) and area.encloses(scroll.get_global_rect()),"Row %s scrolls wholly into the panel at %s" % [row.id,str(size)])
+			_check(control.get_global_rect().size.y>=48,"Row %s is a 48 px target" % row.id)
+			_check(not control.get_global_rect().intersects(done.get_global_rect()),"Row %s never meets Done" % row.id)
+	app.get_viewport().queue_free()
+	await process_frame
+	_remove(path)
 
 ## A save whose settings hold the wrong types (a damaged file) still opens
 ## Settings with every switch, and the wrong values fall back to defaults.
 func _damaged_setting_types() -> void:
-	var path := "user://settings-types-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
+	var path := _path("types")
 	var damaged := Storage.defaults()
-	damaged.settings = {"sound":"yes","haptics":1,"reduced_motion":null,"left_handed":"no","assistance":0.5,"photo_prompts":[],"share_online_status":{},"graphics_quality":42,"unlimited_frame_rate":"x","skip_waits":"yes","left_over":"kept"}
+	damaged.settings = {"sound":"yes","haptics":1,"reduced_motion":null,"left_handed":"no","assistance":0.5,"photo_prompts":[],"share_online_status":{},"graphics_quality":42,"unlimited_frame_rate":"x","frame_rate":60,"skip_waits":"yes","left_over":"kept"}
 	var file := FileAccess.open(path,FileAccess.WRITE)
 	file.store_string(JSON.stringify(damaged))
 	file.close()
@@ -116,26 +420,23 @@ func _damaged_setting_types() -> void:
 	for key: String in defaults:
 		_check(typeof(loaded.data.settings[key])==typeof(defaults[key]) and loaded.data.settings[key]==defaults[key],"A wrong-typed setting loads as its default: "+key)
 	_check(loaded.data.settings.get("left_over")=="kept","An unknown setting is kept as saved")
-	var viewport := SubViewport.new()
-	viewport.size=Vector2i(1600,720)
-	root.add_child(viewport)
-	var app := Main.new()
-	app.saves=Storage.new(path)
-	viewport.add_child(app)
-	app.set_process(false)
-	app.settings_flow.show_settings()
+	var app := _app(path,Vector2i(1600,720))
+	var found := 0
+	for category: String in [Flow.EVERYDAY,Flow.PLAY,Flow.FRIENDS]:
+		app.settings_flow.show_settings(category)
+		await process_frame
+		for key: String in SAVED_SWITCHES:
+			if _control(app,key) is CheckButton: found+=1
+	_check(found==SAVED_SWITCHES.size() and _control(app,"SettingsDone") is Button and (_control(app,"SettingsDone") as Button).text=="Done","Settings from a damaged save shows every switch and Done")
+	app.get_viewport().queue_free()
 	await process_frame
-	_check(app.overlay.find_children("*","CheckButton",true,false).size()==8 and app.overlay.find_children("*","Button",true,false).any(func(b: Button) -> bool: return b.text=="Done"),"Settings from a damaged save shows every switch and Done")
-	viewport.queue_free()
-	await process_frame
-	for suffix: String in ["",".tmp",".backup"]:
-		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+	_remove(path)
 
 ## Always skip waits starts off, an older save without it loads it off, and a
 ## chapter journal's settings envelope may omit it or hold only its default.
 func _skip_waits_default() -> void:
 	_check(Storage.defaults().settings.skip_waits == false,"Always skip waits is off by default")
-	var path := "user://settings-skip-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
+	var path := _path("skip")
 	var older := Storage.defaults()
 	older.settings.erase("skip_waits")
 	var file := FileAccess.open(path,FileAccess.WRITE)
@@ -145,5 +446,4 @@ func _skip_waits_default() -> void:
 	loaded.load_data()
 	_check(loaded.data.settings.get("skip_waits")==false,"A save from before the setting loads it off")
 	_check(Storage.default_settings_envelope_valid({"sound":true}) and Storage.default_settings_envelope_valid({"skip_waits":false}) and not Storage.default_settings_envelope_valid({"skip_waits":true}),"Chapter envelopes may omit Always skip waits or hold its default only")
-	for suffix: String in ["",".tmp",".backup"]:
-		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+	_remove(path)

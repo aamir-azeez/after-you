@@ -212,7 +212,7 @@ var turn_flow: TurnFlow = _host_turn_flow()
 var legacy_room_flow: LegacyRoomFlow = _host_legacy_room_flow()
 ## The chapter room lobby: checking rooms, its progress card and its create, join, retry and open steps.
 var relay_lobby_flow: RelayLobbyFlow = _host_relay_lobby_flow()
-## Settings, Graphics and Licenses.
+## Settings: one page of categories, and a licence's text.
 var settings_flow: SettingsFlow = _host_settings_flow()
 var store_view_generation := 0
 var identity_restart_required := false
@@ -1522,7 +1522,7 @@ func _leave_photo_transfer() -> void:
 	ui.visible=true
 	soundscape.set_backgrounded(application_backgrounded)
 	lifecycle_generation+=1
-	account_flow.show_account()
+	settings_flow.show_settings(SettingsFlow.ACCOUNT)
 
 ## At launch, before anything writes the save: after an update this version's
 ## notes wait to be opened; a fresh install or a downgrade only records the
@@ -1596,7 +1596,7 @@ func _apply_settings() -> void:
 func _host_store_flow() -> StoreFlow:
 	var flow := StoreFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.settings_requested.connect(func(): settings_flow.show_settings())
+	flow.settings_requested.connect(func(): settings_flow.show_settings(SettingsFlow.ACCOUNT))
 	flow.chapters_requested.connect(_show_journey)
 	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
 	flow.lighthouse_requested.connect(_open_lighthouse)
@@ -1607,7 +1607,7 @@ func _host_store_flow() -> StoreFlow:
 func _host_account_flow() -> AccountFlow:
 	var flow := AccountFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.settings_requested.connect(func(): settings_flow.show_settings())
+	flow.settings_requested.connect(func(): settings_flow.show_settings(SettingsFlow.ACCOUNT))
 	flow.photo_transfer_requested.connect(_open_photo_transfer)
 	flow.safety_requested.connect(func(): _open_safety({},"account"))
 	return flow
@@ -1617,7 +1617,7 @@ func _host_replays_flow() -> ReplaysFlow:
 	var flow := _new_replays_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.home_requested.connect(_show_home)
-	flow.account_requested.connect(func(): account_flow.show_account())
+	flow.account_requested.connect(func(): settings_flow.show_settings(SettingsFlow.ACCOUNT))
 	return flow
 
 ## The flow Main hosts and wires; a subclass may return its own ReplaysFlow.
@@ -1628,7 +1628,6 @@ func _new_replays_flow() -> ReplaysFlow:
 func _host_notification_flow() -> NotificationFlow:
 	var flow := _new_notification_flow()
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.settings_requested.connect(func(): settings_flow.show_settings())
 	return flow
 
 ## The flow Main hosts and wires; a subclass may return its own NotificationFlow.
@@ -2185,7 +2184,7 @@ func _service_world_cover() -> void:
 	var shade_id := shade.get_instance_id() if shade != null else 0
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
-	var covered := friends_flow.is_open() or room_hub_flow.is_open() or is_instance_valid(safety_screen) or legacy_room_flow.redo_open() or (shade != null and _backdrop_ready)
+	var covered := friends_flow.is_open() or room_hub_flow.is_open() or settings_flow.is_open() or is_instance_valid(safety_screen) or legacy_room_flow.redo_open() or (shade != null and _backdrop_ready)
 	if not covered and _backdrop_still != null:
 		_backdrop_still = null
 		_backdrop_key = []
@@ -2581,8 +2580,8 @@ func _notification(what: int) -> void:
 			_pause()
 		elif mode==SettingsFlow.MODE_LICENSE_TEXT:
 			settings_flow.show_licenses()
-		elif mode in [SettingsFlow.MODE_LICENSES, StoreFlow.MODE_TESTER_ACCESS, SettingsFlow.MODE_GRAPHICS]:
-			settings_flow.show_settings()
+		elif mode == StoreFlow.MODE_TESTER_ACCESS:
+			settings_flow.show_settings(SettingsFlow.ACCOUNT)
 		elif mode==RelayLobbyFlow.MODE_LOBBY:
 			_return_to_room_hub()
 		elif mode==RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open():
@@ -2778,8 +2777,8 @@ func _close_safety() -> void:
 	safety_screen = null
 	ui.visible = true
 	if safety_return == "room" and not active_room.is_empty(): legacy_room_flow.show_room()
-	elif safety_return == "account": account_flow.show_account()
-	else: settings_flow.show_settings()
+	elif safety_return == "account": settings_flow.show_settings(SettingsFlow.ACCOUNT)
+	else: settings_flow.show_settings(SettingsFlow.ABOUT)
 
 ## room_id is the earlier-island room the block came from; only such a room
 ## can be blocked from here.

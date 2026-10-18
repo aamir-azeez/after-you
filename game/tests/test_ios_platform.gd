@@ -261,11 +261,11 @@ func _paywall_and_settings() -> void:
 	scene.store_flow.show_paywall()
 	await process_frame
 	_check(_button(scene, "Get it on Google Play") == null and _button(scene, "Tester code") == null, "The iOS paywall has no Google Play link and no Tester code")
-	scene.settings_flow.show_settings()
+	scene.settings_flow.show_settings("account")
 	await process_frame
 	_check(_button(scene, "Tester code") == null and _button(scene, "Account & recovery") != null, "iOS settings hide Tester code and keep Account & recovery")
 	PlatformSupport.override_release = false
-	scene.settings_flow.show_settings()
+	scene.settings_flow.show_settings("account")
 	await process_frame
 	_check(_button(scene, "Tester code") != null, "An iOS debug build keeps Tester code for testing")
 
@@ -302,7 +302,8 @@ func _find(node: Node, name: String) -> Node:
 	return null
 
 func _button(node: Node, value: String) -> Button:
-	if node is Button and node.text == value and node.is_visible_in_tree() and not node.is_queued_for_deletion(): return node
+	# A Settings row or rail item reads its label out instead of showing text.
+	if node is Button and (node.text == value or (node.text.is_empty() and node.accessibility_name == value)) and node.is_visible_in_tree() and not node.is_queued_for_deletion(): return node
 	for child: Node in node.get_children():
 		var found := _button(child, value)
 		if found != null: return found
