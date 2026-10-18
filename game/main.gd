@@ -466,11 +466,7 @@ func _refresh_safe_area() -> void:
 	_apply_safe_area(SafeArea.rect(get_viewport()))
 
 func _apply_safe_area(safe: Rect2) -> void:
-	var viewport := get_viewport().get_visible_rect()
-	ui.offset_left=safe.position.x-viewport.position.x
-	ui.offset_top=safe.position.y-viewport.position.y
-	ui.offset_right=safe.end.x-viewport.end.x
-	ui.offset_bottom=safe.end.y-viewport.end.y
+	SafeArea.inset(ui,safe)
 	_layout_hint()
 	_layout_bounded_card.call_deferred()
 

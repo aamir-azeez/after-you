@@ -32,6 +32,14 @@ static func viewport_rect(screen_safe: Rect2, screen_transform: Transform2D, vie
 	var mapped := (screen_transform.affine_inverse() * screen_safe).intersection(viewport)
 	return mapped if mapped.has_area() else viewport
 
+## Insets a full-rect content root (anchored to the whole viewport) to `safe`.
+static func inset(control: Control, safe: Rect2) -> void:
+	var visible := control.get_viewport().get_visible_rect()
+	control.offset_left = safe.position.x - visible.position.x
+	control.offset_top = safe.position.y - visible.position.y
+	control.offset_right = safe.end.x - visible.end.x
+	control.offset_bottom = safe.end.y - visible.end.y
+
 ## Content margins for a full-rect MarginContainer: the safe insets of `safe` within
 ## `full`, plus the screen's own spacing on each side.
 static func pad(margin: MarginContainer, full: Rect2, safe: Rect2, left: int, top: int, right: int, bottom: int) -> void:

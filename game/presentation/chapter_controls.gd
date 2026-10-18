@@ -277,12 +277,7 @@ func _anchor_rect(control: Control, preset: int, rect: Rect2) -> void:
 func _resize() -> void:
 	if not is_inside_tree() or not is_instance_valid(ui):
 		return
-	var viewport := get_viewport().get_visible_rect()
-	var safe := SafeArea.rect(get_viewport())
-	ui.offset_left = safe.position.x - viewport.position.x
-	ui.offset_top = safe.position.y - viewport.position.y
-	ui.offset_right = safe.end.x - viewport.end.x
-	ui.offset_bottom = safe.end.y - viewport.end.y
+	SafeArea.inset(ui, SafeArea.rect(get_viewport()))
 	if is_instance_valid(hint_label):
 		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, ControlTheme.hint_bounds(ui.size.x, bool(settings.get("left_handed", false))))
 	if is_instance_valid(chapter_label):
