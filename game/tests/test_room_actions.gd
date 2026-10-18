@@ -75,6 +75,7 @@ func _rows() -> void:
 		_check(placed.has(id), "Action has at least one place: " + id)
 		_check(row.has("when"), "Action says when it applies: " + id)
 		_check(row.get("waiting", "primary") in ["primary", "first_free", "outlined"], "Action has a known waiting panel place: " + id)
+		if row.has("short") or row.get("waiting", "") == "first_free": _check(row.get("custom", false), "Only a custom action has a short label or a first free place: " + id)
 		if row.get("custom", false):
 			_check(not row.has("run") and not row.has("bind"), "A custom action is wired only by the screen: " + id)
 			continue

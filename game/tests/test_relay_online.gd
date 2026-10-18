@@ -507,6 +507,8 @@ func _real_ui_flow() -> void:
 	_check(api.calls.size()==manual_calls+1 and api.calls.back().method==HTTPClient.METHOD_GET and api.calls.back().path=="/v2/rooms/"+ROOM,"Manual refresh reads only the active room, without unrelated capability or lobby downloads")
 	_check(preview.online_sync_status != null and preview.online_sync_status.text in _checking_lines(),"Waiting room says it keeps checking for the friend's turn")
 	await _check_waiting_layout(preview,viewport,"host waiting before the friend joins")
+	var creams: Array = _visible_buttons(preview).filter(_is_cream).map(func(button: Button): return button.text)
+	_check(creams == ["Notify me when my friend returns"],"Notify holds the waiting panel's one cream action, and Share room is outlined %s" % [str(creams)])
 	_check(_panel_texts(preview) == ["Copy", "Notify me when my friend returns", "Share room", "Room options", "Your rooms"],"The host's waiting panel before the friend joins: Copy, Notify, Share room, Room options, Your rooms %s" % [str(_panel_texts(preview))])
 	var waiting_copy: Label = preview.overlay.find_child("RelayCopyStatus",true,false)
 	preview.clipboard_copy = func(_text: String): return true

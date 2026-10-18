@@ -32,11 +32,12 @@ const TURN_REQUESTS := "Turn requests"
 ##   handler also takes the turn receipt the row was drawn for.
 ##   custom: the screen builds and wires this row itself (no run).
 ##   when: facts the screen must report true, in order ("!" negates).
-##   short: its label on the wide waiting panel.
+##   short: its label on the wide waiting panel (custom rows only).
 ##   waiting: how the wide waiting panel places it. "primary" holds the
-##   panel's one cream action while its button shows; "first_free" is cream
-##   when no row above holds it, else outlined; "outlined" always is. The
-##   outlined rows pair up two by two below the others.
+##   panel's one cream action while its button shows; "first_free" (custom
+##   rows only) is cream when no row above holds it, else outlined;
+##   "outlined" always is. The first two outlined rows share a line below the
+##   others; any further one is full width.
 const ACTIONS := {
 	"copy_code": {"text": "Copy invitation code", "icon": preload("res://assets/ui/social/copy.svg"), "custom": true, "when": ["invited", "!joined"]},
 	"share": {"text": SHARE, "short": SHARE_SHORT, "icon": preload("res://assets/ui/social/share-network.svg"), "custom": true, "waiting": "first_free", "when": ["share"]},
