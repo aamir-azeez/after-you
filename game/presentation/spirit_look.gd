@@ -161,7 +161,7 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.outer_phase = calm_phase
 			var p: Vector2 = at.call(-0.002, -0.004)
 			e.pupil = Vector4(0.066, 0.078, p.x, p.y)
-			e.pupil_wave = BLOB_WAVE * (Vector4(0.52, 0.5, 0.6, 0) if index == 0 else Vector4(0.42, 0.58, 0.5, 0))
+			e.pupil_wave = BLOB_WAVE * (Vector4(0.39, 0.375, 0.45, 0) if index == 0 else Vector4(0.315, 0.435, 0.375, 0))
 			e.pupil_phase = BLOB_PHASE if index == 0 else _turned(BLOB_PHASE, -0.5)
 	return e
 
