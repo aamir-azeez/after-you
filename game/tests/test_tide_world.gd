@@ -132,6 +132,11 @@ func _first_stage(level: Dictionary) -> void:
 	world.reduced_motion = true
 	_check(_dry_decks(world, level), "No water strip covers an island deck")
 	_walls(world, level, 0)
+	# The first stage can keep only the low crossings it latches; nothing else
+	# is walled for keeping (the sea never moves here, so its crossings stay dry).
+	var kept: Array = world._kept_walled.duplicate()
+	kept.sort()
+	_check(kept == ["sand-1", "slipway", "stones-1", "stones-2", "stones-3"], "Stage one walls exactly the crossings it can keep under water: %s" % [kept])
 	# Shut crossings stay in view as outlines; open ones show their deck.
 	sim._mechanisms.controls.tide = "half"
 	sim._refresh_routes()
@@ -245,8 +250,14 @@ func _second_stage(level: Dictionary) -> void:
 	_walls(world, level, 1)
 	for id: String in ["towpath", "boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk", "punt-ferry", "sea-gate-in", "w-steps-low", "mill-steps", "mole-slip"]:
 		_check(id in world._walled, "Stage two walls %s against the water it can stand open under" % id)
-	for id: String in ["sand-1", "stones-1", "jetty-1", "race-stage", "sea-gate-out", "boom-jetty"]:
-		_check(id not in world._walled, "Stage two leaves %s in the water: it is only open while dry" % id)
+	# Open only while dry, but they can be kept (entered in this stage or the
+	# first) and walked later under water: walled too, so a kept one can show
+	# dry. The quay-high ones never flood.
+	var kept: Array = world._kept_walled.duplicate()
+	kept.sort()
+	_check(kept == ["race-stage", "sand-1", "sea-gate-out", "slipway", "stones-1", "stones-2", "stones-3"], "Stage two walls exactly the crossings it can keep under water: %s" % [kept])
+	for id: String in ["jetty-1", "boom-jetty"]:
+		_check(id not in world._walled, "Stage two leaves %s in the water: no water reaches its deck" % id)
 	_check(world._floods.has("punt-ferry") and world._floods["punt-ferry"].visible, "The shut punt shows as flooded")
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
 	# Spirits by the wheels: every bubble rises clear of them, of the gauges and

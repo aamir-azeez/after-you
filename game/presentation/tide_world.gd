@@ -5,6 +5,9 @@ extends "res://presentation/journey_world.gd"
 ## gauges and kept-crossing marks only read the snapshot; nothing here feeds
 ## back into the simulation, a recording or a checkpoint.
 
+## A kept crossing shows dry while the water stands no deeper than this (m)
+## over its deck; deeper, it floods and its doors hold the water.
+const KEPT_DRY_DEPTH := 0.30
 ## Doors, spillways and walls at every water opening.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 ## Display heights (metres) for each water value. Low sits below the beaches,
@@ -115,6 +118,10 @@ var _history_tide := ""
 ## Crossings that may be open while their water stands above the deck: walled
 ## and kept out of the water body.
 var _walled: Array[String] = []
+## Of those, the crossings walled only because they can be kept (entered while
+## open, so walked later even when the tide covers them): shown dry while kept
+## in shallow water, flooded behind their doors in deep water.
+var _kept_walled: Array[String] = []
 ## Gated walled crossings: id -> the water that fills them while shut.
 var _floods: Dictionary = {}
 ## What holds the water at each opening in the shown stage, the walls built
@@ -190,6 +197,8 @@ func show_stage(stage: Dictionary) -> void:
 	_kept_masts.clear()
 	_bubbles_placed = false
 	_walled = _walled_routes(stage)
+	_kept_walled = _keepable_routes(stage, _walled)
+	_walled.append_array(_kept_walled)
 	await super.show_stage(stage)
 	terrain.name = "TurnOfTheTide"
 	var islands: Array = chapter_definition.get("islands", [])
@@ -330,10 +339,8 @@ func _walled_routes(stage: Dictionary) -> Array[String]:
 		var low := _low_cm(route)
 		var body := _body_of(route.rect_cm)
 		if low >= 70 or body.is_empty(): continue
-		var gate: Variant = null
-		for item: Dictionary in stage.get("gates", []):
-			if item.route_id == route.id: gate = item
-		if gate == null: continue
+		var gate := _gate_for_stage(stage, str(route.id))
+		if gate.is_empty(): continue
 		var levels: Dictionary = HARBOUR_LEVELS if body == "harbour" else SEA_LEVELS
 		var marks := _control_marks(gate.get("when", {}), "tide" if body == "harbour" else "basin")
 		var dry := not marks.is_empty()
@@ -341,6 +348,37 @@ func _walled_routes(stage: Dictionary) -> Array[String]:
 			if float(levels[value]) >= float(low) / 100.0: dry = false
 		if not dry: result.append(str(route.id))
 	return result
+
+## Crossings that can be kept (entered while open in this stage or an earlier
+## one, so walked later even when the water covers them) whose deck this
+## stage's water can stand over, not already walled: walled too, so a kept one
+## can show dry.
+func _keepable_routes(stage: Dictionary, walled: Array[String]) -> Array[String]:
+	var latched: Array = []
+	for earlier: Dictionary in chapter_definition.get("stages", []):
+		latched.append_array(earlier.get("entry_latch_routes", []))
+		if str(earlier.get("id", "")) == str(stage.get("id", "")): break
+	# The water this stage can show: a body moves only if its wheel is here.
+	var wheels: Array = []
+	for control: Dictionary in stage.get("controls", []): wheels.append(str(control.id))
+	var harbour := HARBOUR_LEVELS.values() if "tide" in wheels else [HARBOUR_LEVELS.low]
+	var sea := SEA_LEVELS.values() if "basin" in wheels else [SEA_LEVELS.shut]
+	var result: Array[String] = []
+	for route: Dictionary in chapter_definition.get("bridges", []):
+		var id := str(route.id)
+		if id in walled or id not in latched: continue
+		var body := _body_of(route.rect_cm)
+		var gate := _gate_for_stage(stage, id)
+		if body.is_empty() or (not gate.is_empty() and gate.get("when", {}).is_empty()): continue
+		var highest := -INF
+		for level: float in (harbour if body == "harbour" else sea): highest = maxf(highest, level)
+		if highest > float(_low_cm(route)) / 100.0: result.append(id)
+	return result
+
+static func _gate_for_stage(stage: Dictionary, id: String) -> Dictionary:
+	for item: Dictionary in stage.get("gates", []):
+		if item.route_id == id: return item
+	return {}
 
 ## Values a predicate needs outright (through "all" only) of one control.
 static func _control_marks(predicate: Dictionary, control: String) -> Array:
@@ -557,10 +595,10 @@ func _build_route_walls(stage: Dictionary) -> void:
 			var plinth := box(Vector3(width - 0.04, top - SEABED, depth - 0.04), WALLS.get(48, STONE).darkened(0.08), center + Vector3(0, (top + SEABED) * 0.5, 0), root)
 			plinth.name = "StairPlinth"
 			_holds_water(plinth)
-		var gate: Dictionary = {}
-		for item: Dictionary in stage.get("gates", []):
-			if item.route_id == id: gate = item
-		if gate.get("when", {}).is_empty(): continue
+		var gate := _gate_for_stage(stage, id)
+		# An always-open crossing never floods; a gated one, or one this stage
+		# leaves shut unless it was kept, fills while shut.
+		if gate.get("when", {}).is_empty() and id not in _kept_walled: continue
 		var body: Node3D = _water.get(_body_of(r))
 		if not is_instance_valid(body): continue
 		var water: MeshInstance3D = body.get_child(0) if body.get_child_count() > 0 else null
@@ -1599,9 +1637,16 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
 	for id: String in _floods:
 		var shown: bool = _decks[id].visible if _decks.has(id) else bool(routes.get(id, false))
-		_floods[id].visible = not shown
+		var flooded := not shown
+		# A kept crossing shows dry while its water stands shallow over the deck
+		# (its walls hold the water on either side), and floods behind its doors
+		# once it is deep.
+		if shown and id in _kept_walled:
+			var depth := float(_floods[id].get_parent().get_meta("target")) - float(_low_cm(_route(id))) / 100.0
+			flooded = depth > KEPT_DRY_DEPTH
+		_floods[id].visible = flooded
 	if is_instance_valid(_locks):
-		_locks.present(_lock_levels("target"), routes, immediate or reduced_motion)
+		_locks.present(_lock_levels("target"), immediate or reduced_motion)
 		# A door that must rise stands clear of the water shown now at once.
 		if _locks.moving(): _locks.advance(0.0, _lock_levels("shown"))
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)

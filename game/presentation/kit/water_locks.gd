@@ -78,22 +78,20 @@ static var _door_material_cache: StandardMaterial3D
 ## and for a door "shut" (its top while up) and "ends" (whether each end needs
 ## its own post), for a spillway "lip"}.
 var runs: Array = []
-## How many present() calls had new levels or walkways to work out. A call
-## with the same ones as the last returns before any work.
+## How many present() calls had new levels to work out. A call with the same
+## levels as the last returns before any work.
 var updates := 0
 ## How many frames advance() worked; a resting harbour adds none.
 var frames := 0
 var _kinds: Dictionary = {}
 var _heights: Dictionary = {}
 var _seabed := 0.0
-## Per opening: {"run", "door": its MeshInstance3D, "y": target top,
-## "walkable": whether its walkway can be walked now with water over its floor}
+## Per opening: {"run", "door": its MeshInstance3D, "y": target top}
 var _doors: Array = []
 ## Per spillway: {"run", "sheet": MeshInstance3D, "low": m, "falling"}
 var _sheets: Array = []
 var _moving := false
 var _levels_seen := 0
-var _open_seen := 0
 
 ## Builds the pieces for `plan` under `parent`: this node and its
 ## "WaterLockStone" sibling. Call once per stage, after find_runs(plan) if the
@@ -451,10 +449,11 @@ func _build_door(run: Dictionary) -> void:
 	# Local +x runs along the run: +x, or +z for a run along z.
 	if not run.along_x: door.rotation.y = -PI / 2.0
 	add_child(door)
-	_doors.append({"run": run, "door": door, "y": float(run.shut), "walkable": false})
-	_place_door(_doors[-1], float(run.shut))
+	var entry := {"run": run, "door": door, "y": float(run.shut)}
+	_doors.append(entry)
+	_place_door(entry, float(run.shut))
 
-## A door's top at `top`. A door that rests under the lower side is hidden.
+## A door's top at `top`. A door that rests sunk under the lower side is hidden.
 func _place_door(entry: Dictionary, top: float) -> void:
 	var door: MeshInstance3D = entry.door
 	door.position.y = top
@@ -552,29 +551,21 @@ static func _box(tool: SurfaceTool, size: Vector3, center: Vector3, color: Color
 
 ## Sets each door's target for these levels ({area id: level m}; a pit
 ## missing is dry): raised while the sides differ, else sunk under the lower
-## side. A walkway listed in `open` (mouth ids walkable now) keeps its door
-## sunk. Returns at once when the levels and walkways are the same as last
-## time; immediate (pass it for reduced motion too) skips the travel.
-func present(levels: Dictionary, open: Dictionary = {}, immediate: bool = false) -> void:
+## side. Returns at once when the levels are the same as last time; immediate
+## (pass it for reduced motion too) skips the travel.
+func present(levels: Dictionary, immediate: bool = false) -> void:
 	var levels_key := levels.hash()
-	var open_key := open.hash()
-	if levels_key == _levels_seen and open_key == _open_seen and updates > 0:
+	if levels_key == _levels_seen and updates > 0:
 		if immediate and _moving: _settle()
 		return
 	_levels_seen = levels_key
-	_open_seen = open_key
 	updates += 1
 	for entry: Dictionary in _doors:
 		var run: Dictionary = entry.run
 		var a := _level(str(run.a), levels, _kinds, _heights, _seabed)
 		var b := _level(str(run.b), levels, _kinds, _heights, _seabed)
-		var differs := _differs(run, a, b, _kinds, _seabed)
 		var target := float(run.shut)
-		# A walkway walkable while its water still stands over the floor (a kept
-		# crossing) keeps its door down; any other door waits for level water.
-		entry.walkable = bool(open.get(run.mouth, false)) and differs
-		if entry.walkable or not differs:
-			target = maxf(minf(a, b) - SINK, _seabed)
+		if not _differs(run, a, b, _kinds, _seabed): target = maxf(minf(a, b) - SINK, _seabed)
 		if is_equal_approx(target, float(entry.y)): continue
 		entry.y = target
 		_moving = true
@@ -613,12 +604,11 @@ func advance(delta: float, shown: Dictionary) -> bool:
 		var top := door.position.y
 		var target := float(entry.y)
 		var next := minf(target, top + step) if target > top else maxf(target, top - step)
-		if not bool(entry.walkable):
-			var a := _level(str(run.a), shown, _kinds, _heights, _seabed)
-			var b := _level(str(run.b), shown, _kinds, _heights, _seabed)
-			# Never above its shut height, which may stand under the margin where
-			# the walls are low, so a held door still comes to rest.
-			next = maxf(next, minf(_held(run, a, b, _kinds, _seabed) + MARGIN, float(run.shut)))
+		var a := _level(str(run.a), shown, _kinds, _heights, _seabed)
+		var b := _level(str(run.b), shown, _kinds, _heights, _seabed)
+		# Never above its shut height, which may stand under the margin where
+		# the walls are low, so a held door still comes to rest.
+		next = maxf(next, minf(_held(run, a, b, _kinds, _seabed) + MARGIN, float(run.shut)))
 		if not is_equal_approx(next, top): _place_door(entry, next)
 		if not is_equal_approx(next, target): still = true
 	_moving = still
@@ -631,7 +621,7 @@ func _settle() -> void:
 func moving() -> bool:
 	return _moving
 
-## Per door, in build order: "shut" or "open" (its target).
+## Per door, in build order: "shut" (its target is up) or "open" (sunk).
 func door_states() -> Array:
 	var found: Array = []
 	for entry: Dictionary in _doors: found.append("shut" if is_equal_approx(float(entry.y), float(entry.run.shut)) else "open")
