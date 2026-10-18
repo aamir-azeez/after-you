@@ -461,7 +461,9 @@ func _redraw_keeps_place(app: Node) -> void:
 	at = scroll.scroll_vertical
 	var press := InputEventMouseButton.new()
 	press.position = row.get_global_rect().get_center()
+	press.global_position = press.position
 	press.button_index = MOUSE_BUTTON_LEFT
+	press.button_mask = MOUSE_BUTTON_MASK_LEFT
 	press.pressed = true
 	app.get_viewport().push_input(press,true)
 	await process_frame
@@ -470,12 +472,23 @@ func _redraw_keeps_place(app: Node) -> void:
 	app.settings_flow.refresh()
 	await _settle()
 	_check(is_instance_valid(row) and row.is_inside_tree() and _control(app,"room_history") != null,"Nothing is redrawn under the finger")
+	# The finger slides off the row first, so lifting it does not press the row.
+	var away := InputEventMouseMotion.new()
+	away.position = Vector2(4,4)
+	away.global_position = away.position
+	away.button_mask = MOUSE_BUTTON_MASK_LEFT
+	app.get_viewport().push_input(away,true)
+	await process_frame
 	var release := press.duplicate() as InputEventMouseButton
 	release.pressed = false
+	release.button_mask = 0
+	# Lifted off the row, so the row itself does not act.
 	release.position = Vector2(4,4)
+	release.global_position = release.position
 	app.get_viewport().push_input(release,true)
 	await _settle()
 	await _settle()
+	_check(app.mode == "settings","Lifting off the row does not act on it")
 	_check(_control(app,"room_history") == null and app.settings_flow.showing(Flow.ACCOUNT),"Once it lifts, the row that went away is gone")
 	_check(absi(scroll.scroll_vertical - at) <= 1 or scroll.scroll_vertical == int(scroll.get_v_scroll_bar().max_value - scroll.get_v_scroll_bar().page),"and the panel keeps its place")
 	RoomsApi.history_supported = supported
