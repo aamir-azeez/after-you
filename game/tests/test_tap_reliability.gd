@@ -22,6 +22,9 @@ const ActionButtons = preload("res://presentation/action_buttons.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Thumbs = preload("res://services/chapter_thumbnail_catalog.gd")
 const PhotoStrip = preload("res://presentation/reaction_photo_strip.gd")
+const Session = preload("res://services/relay_online_session.gd")
+const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 ## A thumb's wobble during a tap: out a few pixels and partly back.
 const WOBBLES := [
@@ -66,6 +69,28 @@ class FriendsStub extends RefCounted:
 			busy = false
 		return true
 
+## A server whose answers wait while `hold` is on, as on a slow phone network.
+class HeldApi extends Node:
+	signal release
+	var player_id := "HHHHHHHHHHHHHHHHHHHHHH"
+	var device_token := "synthetic-device-token"
+	var base_url := "https://tap-replays.invalid"
+	var busy := false
+	var hold := false
+	func configured() -> bool: return true
+	func request_json(method: int, path: String, _body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
+		while hold: await release
+		if path == "/v2/capabilities": return {"ok": true, "status": 200, "data": {"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "validation": "structural_client_replay_required", "chapters": []}}
+		if method == HTTPClient.METHOD_GET and path == "/v2/rooms": return {"ok": true, "status": 200, "data": {"rooms": []}}
+		return {"ok": false, "status": 404, "code": "not_found", "error": "Synthetic missing feature."}
+
+class SessionStore extends RefCounted:
+	var values: Dictionary = {}
+	func load_scope(scope: String) -> Dictionary: return {"ok": true, "found": values.has(scope), "value": values.get(scope, {}).duplicate(true)}
+	func save_scope(scope: String, value: Dictionary) -> Dictionary:
+		values[scope] = JSON.parse_string(JSON.stringify(value))
+		return {"ok": true}
+
 class PhotoControllerStub extends RefCounted:
 	func invalidate_identity() -> void: pass
 
@@ -95,6 +120,7 @@ func _run() -> void:
 	await _long_frame()
 	await _focus_elsewhere()
 	await _home()
+	await _home_after_replays()
 	Input.emulate_touch_from_mouse = original_touch
 	print("AFTER YOU TAP RELIABILITY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
@@ -545,6 +571,80 @@ func _home() -> void:
 	await create_timer(0.15).timeout
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
+
+
+## Home > Replays > Back > Play with your friend while a finished room's replay
+## save still holds the room session (it runs after Watch replay or after that
+## room's play, and outlives the Replays screen). The first tap registers at
+## once, its button saying so, and the hub opens when the save ends with no
+## second tap, whether the tap came at once or a moment later. A save that
+## outlasts the wait says why. Before, the tap did nothing and said nothing.
+func _home_after_replays() -> void:
+	for delay_s: float in [0.0, 0.4, -1.0]:
+		var case := "at once" if delay_s == 0.0 else ("after a moment" if delay_s > 0.0 else "past the wait")
+		var path := "user://tap-replays-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
+		var storage := Storage.new(path)
+		storage.data.settings.sound = false
+		storage.data.settings.haptics = false
+		_check(storage.flush(), "Prepare an isolated muted save")
+		var viewport := SubViewport.new()
+		viewport.size = Vector2i(1280, 720)
+		viewport.handle_input_locally = true
+		root.add_child(viewport)
+		var app := Main.new()
+		app.saves = storage
+		viewport.add_child(app)
+		app.set_process(false)
+		app.set_physics_process(false)
+		app.api.queue_free()
+		var api := HeldApi.new()
+		app.add_child(api)
+		app.api = api
+		app.identity_read_state = Main.IdentityReadState.LOADED
+		app.identity_data = {"player_id": api.player_id, "device_token": api.device_token}
+		app.identity_loading = false
+		app.relay_session = Session.new(api, app._relay_identity, SessionStore.new())
+		await _settle()
+		app._show_home()
+		await _settle()
+		api.hold = true
+		app.replays_flow.save_finished_replay("RRRRRRRRRRRRRRRRRRRRRR")
+		await _settle()
+		_check(app.relay_session.busy(), "A finished room's replay save holds the room session (%s)" % case)
+		var replays := _home_button(app, "Replays")
+		if replays != null: await _tap(viewport, replays.get_global_rect().get_center(), WOBBLES[1])
+		_check(app.mode == "collection", "Home's Replays opens Replays (%s): %s" % [case, app.mode])
+		var back := _home_button(app, "Back")
+		if back != null: await _tap(viewport, back.get_global_rect().get_center(), WOBBLES[1])
+		_check(app.mode == "home", "Back from Replays goes Home (%s): %s" % [case, app.mode])
+		if delay_s > 0.0: await create_timer(delay_s).timeout
+		if delay_s < 0.0:
+			app.room_hub_flow._gate = BusyTapGate.new(app.overlay)
+			app.room_hub_flow._gate.wait_ms = 300
+		app.toast_label.visible = false
+		var play := _home_button(app, "Play with your friend")
+		_check(play != null, "Home shows Play with your friend (%s)" % case)
+		if play == null:
+			viewport.queue_free()
+			await _settle()
+			continue
+		await _tap(viewport, play.get_global_rect().get_center(), WOBBLES[2])
+		_check(app.mode == "home" and play.text == PlayerCopy.HUB_OPENING, "The first tap registers while the save runs: Play with your friend reads Opening… (%s): %s / %s" % [case, play.text, app.mode])
+		if delay_s < 0.0:
+			await create_timer(0.6).timeout
+			_check(app.mode == "home" and not app.room_hub_flow.is_open() and app.toast_label.visible and app.toast_label.text == PlayerCopy.ROOMS_API_DA75E6F7A674, "A save that outlasts the wait says why: " + app.toast_label.text)
+			_check(play.text == "Play with your friend", "The button reads as usual again")
+		api.hold = false
+		api.release.emit()
+		for _frame: int in range(8): await process_frame
+		if delay_s >= 0.0:
+			_check(app.mode == "rooms" and app.room_hub_flow.is_open(), "The hub opens when the save ends, with no second tap (%s): %s" % [case, app.mode])
+		app.room_hub_flow.drop()
+		viewport.queue_free()
+		await _settle()
+		await create_timer(0.15).timeout
+		for suffix: String in ["", ".tmp", ".backup"]:
+			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 
 
 func _home_button(app: Node, label: String) -> Button:

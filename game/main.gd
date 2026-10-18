@@ -498,7 +498,8 @@ func _button(text: String, callback: Callable, primary: bool=true) -> Button:
 	button.text=text
 	button.custom_minimum_size=Vector2(0,54)
 	button.mouse_default_cursor_shape=Control.CURSOR_POINTING_HAND
-	button.pressed.connect(callback)
+	# No callback: the caller connects one that needs the button itself.
+	if callback.is_valid(): button.pressed.connect(callback)
 	if text == "Back" or text.begins_with("Back to "):
 		ControlTheme.danger(button,preload("res://assets/ui/back.svg"))
 	elif text == "Delete":
@@ -669,7 +670,10 @@ func _show_home() -> void:
 	var actions := VBoxContainer.new()
 	actions.add_theme_constant_override("separation",10 if compact else 14)
 	stack.add_child(actions)
-	actions.add_child(_button("Play with your friend",room_hub_flow.show_rooms))
+	# A tap made while the room session is still busy waits on this button (RoomHubFlow.open_from_home).
+	var together := _button("Play with your friend",Callable())
+	together.pressed.connect(room_hub_flow.open_from_home.bind(together))
+	actions.add_child(together)
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation",10)
 	actions.add_child(pair)
@@ -2902,14 +2906,23 @@ func _room_context_factory() -> RefCounted:
 
 func _prepare_ordinary_navigation(report: Callable = Callable()) -> bool:
 	if _relay_identity().ready: _room_context_factory()
-	if relay_session == null: return false
+	if relay_session == null:
+		_report(report,PlayerCopy.MAIN_21155817127A)
+		return false
 	var session: RefCounted = relay_session
+	# The session refuses while busy (a replay save can outlive its screen) and has no reason of its own to give.
+	if session.busy():
+		_report(report,PlayerCopy.ROOMS_API_DA75E6F7A674)
+		return false
 	var context := {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}
 	var prepared: bool = await session.prepare_archived_navigation()
-	if relay_session != session or application_backgrounded or not _relay_identity().ready or context != {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}: return false
-	if not prepared: _report(report,session.last_error)
-	else:
-		# The last room was found gone with a request still held for it.
-		var note: String = session.take_released_room_note()
-		if not note.is_empty(): _report(report,note)
-	return prepared
+	# The player moved on meanwhile: nothing to say on a screen they left.
+	if relay_session != session or application_backgrounded or context != {"view":store_view_generation,"lifecycle":lifecycle_generation,"identity":_tester_context(),"mode":mode}: return false
+	# The session also refuses, without a reason, an identity that is not ready (or changed).
+	if not prepared or not _relay_identity().ready:
+		_report(report,session.last_error if _relay_identity().ready and not session.last_error.is_empty() else PlayerCopy.MAIN_21155817127A)
+		return false
+	# The last room was found gone with a request still held for it.
+	var note: String = session.take_released_room_note()
+	if not note.is_empty(): _report(report,note)
+	return true

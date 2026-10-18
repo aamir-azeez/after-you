@@ -2,7 +2,8 @@ extends Node
 ## Play with a friend: the room hub (presentation/room_hub_screen.gd) and its
 ## glue. It opens and rebuilds the hub, lists Your rooms from the room inbox,
 ## this session's rooms and saved replays, removes and retries rooms, and routes
-## the hub's Open, Host, Join and Friends taps through one busy-tap gate.
+## the hub's Open, Host, Join and Friends taps, and Home's Play with your friend,
+## through one busy-tap gate.
 ##
 ## Main hosts it as a child and keeps the room session, Friends and the relay
 ## lobby; the legacy room is LegacyRoomFlow's. The flow keeps the hub's own state: the screen, its
@@ -13,7 +14,7 @@ extends Node
 ## - identity and access: _relay_identity, _ensure_identity, _tester_context,
 ##   _tester_checks_enabled, _load_cached_tester, _hosting_lock_reason,
 ##   _online_gated, _friend_display_name, _chapter_marks
-## - screen: mode, running, ui, store_view_generation, lifecycle_generation,
+## - screen: mode, running, ui, overlay, store_view_generation, lifecycle_generation,
 ##   application_backgrounded, _toast
 ## - room flow: active_room, _relay_available,
 ##   _return_to_room_hub, _settle_room_flow, _online_flow_idle,
@@ -132,6 +133,19 @@ func show_rooms() -> void:
 		if not report.text.is_empty(): host._toast(report.text)
 		return
 	open_hub(report.text)
+
+## Home's Play with your friend (`source` is its button). The room session can
+## still be busy with work that outlives its screen, such as a finished room's
+## replay save after Watch replay or after that room's play; show_rooms cannot
+## check the last room until it ends. The tap waits for it in the busy-tap gate,
+## the button reading "Opening…", then opens the hub; a wait that runs out says why.
+func open_from_home(source: Control) -> void:
+	if _gate == null or _gate.area() != host.overlay: _gate = BusyTapGate.new(host.overlay)
+	await _gate.tap(source, PlayerCopy.HUB_OPENING,
+		func() -> bool: return host.relay_session == null or not host.relay_session.busy(),
+		show_rooms,
+		func() -> bool: return host.mode == "home",
+		func() -> void: host._toast(PlayerCopy.ROOMS_API_DA75E6F7A674))
 
 ## Builds the hub without the entry checks of show_rooms; every room flow
 ## returns here. A notice, such as why a room could not be opened, shows above
