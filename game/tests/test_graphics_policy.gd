@@ -6,6 +6,7 @@ const Island = preload("res://presentation/island_world.gd")
 const Lighthouse = preload("res://presentation/lighthouse_world.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Look = preload("res://presentation/kit/look.gd")
 var checks := 0
 var failures := 0
 
@@ -39,6 +40,8 @@ func _run() -> void:
 		if not definition.is_empty(): world.load_level(definition)
 		# A chapter's look (content/dressing) is authored lighting too.
 		var energy: float = world.sun.light_energy
+		var lanterns: Array = world.find_children("*", "OmniLight3D", true, false).filter(func(light: OmniLight3D) -> bool: return light.has_meta("lantern"))
+		_check(lanterns.is_empty() != (name == Registry.WISHING_WELL), name + ": only the Wishing Well has lantern light pools")
 		var color: Color = world.sun.light_color
 		for quality: String in ["low", "high", "balanced", "low", "balanced"]:
 			Policy.apply(world, {"graphics_quality": quality})
@@ -50,6 +53,8 @@ func _run() -> void:
 			var flies: Array = world.get("_fireflies") if world.get("_fireflies") != null else []
 			_check(flies.all(func(fly: MeshInstance3D) -> bool: return fly.visible == (quality != "low")), name + ": fireflies show on every quality but Low")
 			_check(world.sun.light_energy == energy and world.sun.light_color == color, name + ": quality does not darken authored lighting")
+			_check(_fill_matches(world, quality), name + ": only Low trades the bounce light for a little more ambient")
+			_check(lanterns.all(func(light: OmniLight3D) -> bool: return light.visible == (quality != "low")), name + ": lantern light pools show on every quality but Low")
 		_check(Canonical.digest(definition) == before, name + ": graphics leave chapter data unchanged")
 		Policy.apply(world, {"graphics_quality": "low"})
 		var hidden: MeshInstance3D = world.motes[authored - 1]
@@ -62,11 +67,36 @@ func _run() -> void:
 			_check(_visible_motes(world) == authored, name + ": another stage cannot grow the authored mote set")
 		viewport.remove_child(world)
 		world.free()
+	_quality_before_load(viewport)
 	_check(Engine.physics_ticks_per_second == original_ticks and Engine.max_fps == original_fps, "Graphics never change simulation or frame-rate limits")
 	viewport.queue_free()
 	await process_frame
 	print("GRAPHICS POLICY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## The bounce light shows, and the ambient carries none of its fill, on every
+## quality but Low.
+func _fill_matches(world: Node3D, quality: String) -> bool:
+	var look := Look.preset(world.get("_look"))
+	var fill: DirectionalLight3D = world.find_children("*", "DirectionalLight3D", false, false).filter(func(light: DirectionalLight3D) -> bool: return light != world.sun)[0]
+	var env: Environment = (world.find_children("*", "WorldEnvironment", false, false)[0] as WorldEnvironment).environment
+	var extra: float = look.bounce_energy * Look.FILL_TO_AMBIENT if quality == "low" else 0.0
+	return fill.visible == (quality != "low") and is_equal_approx(env.ambient_light_energy, look.ambient_energy * Look.AMBIENT_GAIN + extra)
+
+## The game's order: the quality is applied before the chapter loads, and the
+## chapter's own look keeps Low's lighting and lantern cuts.
+func _quality_before_load(viewport: SubViewport) -> void:
+	for key: String in [Registry.WISHING_WELL, Registry.TURN_OF_THE_TIDE]:
+		var world: Node3D = Registry.world_script(key).new()
+		viewport.add_child(world)
+		world.set_process(false)
+		Policy.apply(world, {"graphics_quality": "low"})
+		world.load_level(Registry.definition(key))
+		_check(_fill_matches(world, "low"), key + ": a chapter loaded on Low keeps its look without the bounce light")
+		var lit: Array = world.find_children("*", "OmniLight3D", true, false).filter(func(light: OmniLight3D) -> bool: return light.has_meta("lantern") and light.visible)
+		_check(lit.is_empty(), key + ": lanterns built on Low cast no light")
+		viewport.remove_child(world)
+		world.free()
 
 func _visible_motes(world: Node3D) -> int:
 	var count := 0
@@ -88,7 +118,7 @@ func _policy() -> void:
 	# Low only leaves effects out; Balanced and High keep every one.
 	for quality: String in Policy.QUALITIES:
 		var keeps := quality != "low"
-		_check(Policy.motion_trails(quality) == keeps and Policy.fireflies(quality) == keeps and Policy.detail_dressing(quality) == keeps, quality + ": effect cuts belong to Low alone")
+		_check(Policy.motion_trails(quality) == keeps and Policy.fireflies(quality) == keeps and Policy.detail_dressing(quality) == keeps and Policy.fill_light(quality) == keeps and Policy.lantern_lights(quality) == keeps, quality + ": effect cuts belong to Low alone")
 		_check(Policy.mote_count(32, quality) == (8 if quality == "low" else 32), quality + ": mote count")
 	window_sized.free()
 

@@ -70,7 +70,7 @@ func _ready() -> void:
 	# This lineage authors ten motes; graphics quality counts them after _ready.
 	for index in range(motes.size()):
 		motes[index].visible = index < 10
-	Look.apply(self, "night")
+	relight("night")
 	_frame_camera()
 
 func load_level(definition: Dictionary) -> void:
@@ -79,7 +79,7 @@ func load_level(definition: Dictionary) -> void:
 	_clear_object_trails()
 	current_level = definition.duplicate(true)
 	dressing = DressingCatalog.for_key(_chapter_key())
-	if dressing.has("look"): Look.apply(self, str(dressing.look))
+	if dressing.has("look"): relight(str(dressing.look))
 	_surface_nodes.clear()
 	_fireflies.clear()
 	_tower_lamp = null

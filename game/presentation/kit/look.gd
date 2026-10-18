@@ -13,6 +13,10 @@ const AMBIENT_GAIN := 2.0
 ## Lamps (OmniLight3D) now add to that brighter base, so their pools need more
 ## energy to show as before. Every lamp's energy goes through lamp_energy().
 const LAMP_GAIN := 2.5
+## Without the bounce light (GraphicsPolicy.fill_light, off on Low) the ambient
+## light gains this share of the bounce's energy, so shaded sides keep their
+## fill. Tuned against Balanced captures.
+const FILL_TO_AMBIENT := 0.25
 
 const PRESETS := {
 	# The meadow day of Home, First Steps and the Relay Isles.
@@ -36,14 +40,15 @@ static func lamp_energy(energy: float) -> float:
 	return energy * LAMP_GAIN
 
 ## Lights the world's environment, sun and bounce light and tints its motes.
-static func apply(world: Node3D, name: String) -> void:
+## fill false hides the bounce light and lets the ambient light carry its fill.
+static func apply(world: Node3D, name: String, fill: bool = true) -> void:
 	var look := preset(name)
 	var sun: DirectionalLight3D = world.get("sun")
 	for child: Node in world.get_children():
 		if child is WorldEnvironment:
 			child.environment.background_color = look.sky
 			child.environment.ambient_light_color = look.ambient
-			child.environment.ambient_light_energy = look.ambient_energy * AMBIENT_GAIN
+			child.environment.ambient_light_energy = look.ambient_energy * AMBIENT_GAIN + (0.0 if fill else look.bounce_energy * FILL_TO_AMBIENT)
 		elif child == sun:
 			sun.light_color = look.sun
 			sun.light_energy = look.sun_energy * SUN_GAIN
@@ -51,5 +56,6 @@ static func apply(world: Node3D, name: String) -> void:
 		elif child is DirectionalLight3D:
 			child.light_color = look.bounce
 			child.light_energy = look.bounce_energy
+			child.visible = fill
 	for mote: MeshInstance3D in world.get("motes"):
 		(mote.material_override as StandardMaterial3D).albedo_color = look.mote

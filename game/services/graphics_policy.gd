@@ -39,6 +39,16 @@ static func fireflies(quality: Variant) -> bool:
 static func detail_dressing(quality: Variant) -> bool:
 	return normalize(quality) != "low"
 
+## The bounce light that fills the shaded sides. Without it the ambient light
+## carries that fill (kit/look.gd).
+static func fill_light(quality: Variant) -> bool:
+	return normalize(quality) != "low"
+
+## The pools of light under the Wishing Well's lit lanterns; the glowing lamps
+## themselves stay.
+static func lantern_lights(quality: Variant) -> bool:
+	return normalize(quality) != "low"
+
 static func apply_viewport(viewport: Viewport, quality: Variant) -> void:
 	# Scale only the 3D buffer; UI and touch coordinates retain their full size.
 	viewport.scaling_3d_mode = Viewport.SCALING_3D_MODE_BILINEAR

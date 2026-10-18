@@ -23,6 +23,8 @@ const Look = preload("res://presentation/kit/look.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 var _motion_quality := "balanced"
+## The kit/look.gd preset the world shows, lit again when the quality changes.
+var _look := "day"
 var _motion_trails: Array[Node3D] = []
 var _seed_trail: Node3D
 
@@ -145,8 +147,13 @@ func _ready() -> void:
 	for i in range(32):
 		var node := sphere(0.018 + (i % 3) * 0.008, Color.WHITE, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
 		motes.append(node)
-	Look.apply(self, "day")
+	relight("day")
 	get_tree().process_frame.connect(_on_tree_frame)
+
+## Lights the world with a kit/look.gd preset at the current quality.
+func relight(look: String) -> void:
+	_look = look
+	Look.apply(self, look, GraphicsPolicy.fill_light(_motion_quality))
 
 func apply_graphics_quality(quality: String) -> void:
 	_motion_quality = GraphicsPolicy.normalize(quality)
@@ -155,6 +162,7 @@ func apply_graphics_quality(quality: String) -> void:
 	# Call after the complete derived _ready: Lighthouse authors ten motes,
 	# while the older island/Relay views author thirty-two. Never grow that set.
 	if not is_node_ready(): return
+	relight(_look)
 	if not _graphics_authored:
 		for mote: MeshInstance3D in motes:
 			if mote.visible: _authored_motes.append(mote)

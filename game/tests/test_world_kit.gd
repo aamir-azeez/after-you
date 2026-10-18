@@ -96,6 +96,15 @@ func _check_looks() -> void:
 		Look.apply(world, name)
 		_check(not world.sun.shadow_enabled and is_equal_approx(world.sun.light_energy, look.sun_energy * Look.SUN_GAIN) and is_equal_approx(env.ambient_light_energy, look.ambient_energy * Look.AMBIENT_GAIN),
 			"Look %s lights the sun and ambient with the shared gains and no shadow pass" % name)
+		var bounce: DirectionalLight3D = world.find_children("*", "DirectionalLight3D", false, false).filter(func(light: DirectionalLight3D) -> bool: return light != world.sun)[0]
+		_check(bounce.visible and is_equal_approx(bounce.light_energy, look.bounce_energy), "Look %s fills the shaded sides with the bounce light" % name)
+		# Without the fill (Low), the ambient carries a share of the bounce's energy.
+		Look.apply(world, name, false)
+		Look.apply(world, name, false)
+		_check(not bounce.visible and is_equal_approx(env.ambient_light_energy, look.ambient_energy * Look.AMBIENT_GAIN + look.bounce_energy * Look.FILL_TO_AMBIENT) and is_equal_approx(world.sun.light_energy, look.sun_energy * Look.SUN_GAIN),
+			"Look %s without the fill hides the bounce and raises only the ambient, once" % name)
+		Look.apply(world, name)
+		_check(bounce.visible and is_equal_approx(env.ambient_light_energy, look.ambient_energy * Look.AMBIENT_GAIN), "Look %s brings the fill back exactly" % name)
 	world.free()
 
 ## The Lighthouse follow camera keeps the fit-all camera's angle, so live

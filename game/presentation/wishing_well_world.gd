@@ -59,7 +59,13 @@ var _rope_rails: Dictionary = {}
 func _ready() -> void:
 	super._ready()
 	# Dusk instead of the Lighthouse night: warmer sky, ambient and sun.
-	Look.apply(self, "dusk")
+	relight("dusk")
+
+## Low keeps the lanterns glowing but leaves out the light they cast.
+func apply_graphics_quality(quality: String) -> void:
+	super.apply_graphics_quality(quality)
+	for light: OmniLight3D in find_children("*", "OmniLight3D", true, false):
+		if light.has_meta("lantern"): light.visible = GraphicsPolicy.lantern_lights(quality)
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -601,6 +607,8 @@ func _lantern(at: Vector3, height: float, lit: bool, parent: Node3D) -> void:
 	light.light_energy = Look.lamp_energy(0.55)
 	light.omni_range = 2.2
 	light.position = at + Vector3(0.12, height - 0.05, 0.1)
+	light.set_meta("lantern", true)
+	light.visible = GraphicsPolicy.lantern_lights(_motion_quality)
 	parent.add_child(light)
 
 func _bench(at: Vector3, parent: Node3D) -> void:
