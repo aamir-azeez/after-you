@@ -121,7 +121,6 @@ const SETTINGS_ABOUT_SUMMARY := "Privacy, updates & licenses"
 const SETTINGS_SOUND_NOTE := "Game audio"
 ## Was "Gentle haptics" before 2026-10-18 (owner's rename).
 const SETTINGS_HAPTICS := "Haptics"
-## Placeholder, pending the owner's wording.
 const SETTINGS_HAPTICS_NOTE := "Little buzzes as you play."
 const SETTINGS_SKIP_WAITS_NOTE := "Skip waiting after you finish your turn."
 const SETTINGS_REDUCED_MOTION_NOTE := "Keep movement and transitions calm."
