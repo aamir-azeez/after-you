@@ -1,17 +1,17 @@
 extends RefCounted
 ## Empty-state art kit: the two spirits, a few props and the dashed ghost
-## cards, drawn straight onto a CanvasItem with no assets. Spirits have no
-## limbs; mood comes from the eyes, blush, head tilt and lean, as in game.
+## cards, drawn straight onto a CanvasItem with no assets. Spirits are the game's
+## (spirit_look.gd): the same body proportions, leaf and eye shapes, drawn flat;
+## mood comes from the eyes, head tilt and lean.
 ## A scene is data: rows of [kind, position, options] in a 200 x 120 box
 ## centred on the origin, scaled to fit the picture slot it is drawn into.
 ## Everything is drawn in canvas coordinates, so strokes keep one width.
 
-const PEACH := Color("f4c38d")
-const MINT := Color("91d6c6")
+const Look = preload("res://presentation/spirit_look.gd")
+const PEACH := Look.PEACH
+const MINT := Look.MINT
+## Ink for the props' fine lines.
 const EYE := Color("24433f")
-const SHINE := Color("fff4d9")
-const SPROUT := Color("abd1a2")
-const CHEEK := Color("e8a695")
 const HEART := Color("f09a94")
 const GOLD := Color("f4d77b")
 const LINE := Color("eceddb")
@@ -25,8 +25,14 @@ const STEP := Color("6f9f72")
 ## light rather than shadow on a dark page.
 const SPIRITS := {"peach": PEACH, "mint": MINT, "memory": Color("f9d9af")}
 const BOX := Vector2(200, 120)
-const HEAD := Vector2(0, -60)
-const NECK := Vector2(0, -38)
+## Spirit units per metre of the game's spirit; feet rest on the origin.
+const UNIT := 105.0
+const GROUND := 0.05
+const HEAD := Vector2(0, -(Look.HEAD_CENTER.y - GROUND) * UNIT)
+## The head tilts about the top of the torso.
+const NECK := Vector2(0, -(Look.HEAD_CENTER.y - Look.HEAD_HALF.y - GROUND) * UNIT)
+## The flat art's names for eyes, as the game's expressions.
+const EYES := {"dot": Look.NORMAL, "wide": Look.SURPRISED, "soft": Look.SLEEPY}
 ## A spirit in a scene is this many scene units per in-game spirit unit.
 const SPIRIT_SIZE := 0.42
 ## The player's spirit on the Solo island block.
@@ -50,8 +56,8 @@ const CARDS := {
 }
 const SCENES := {
 	"invite": [["face", Vector2(-58, 14), {"color": "peach", "look": Vector2(1, -0.2), "tilt": 0.22, "size": 0.62}], ["envelope", Vector2(4, 4), -0.12], ["outline", Vector2(70, 2)], ["sparkle", Vector2(36, -38), 7.0]],
-	"finished": [["island", Vector2(0, 24), 150.0], ["flag", Vector2(46, 22)], ["spirit", Vector2(-24, 26), {"color": "peach", "eyes": "happy", "sit": true, "lean": 0.12, "tilt": 0.22}], ["spirit", Vector2(4, 26), {"color": "mint", "eyes": "happy", "sit": true, "lean": -0.12, "tilt": -0.22, "blush": 1.3}], ["sparkle", Vector2(-64, -30), 6.0], ["sparkle", Vector2(70, -46), 5.0]],
-	"friend": [["face", Vector2(-4, 4), {"color": "mint", "eyes": "happy", "blush": 1.6, "size": 2.0}], ["heart", Vector2(72, -40), 16.0]],
+	"finished": [["island", Vector2(0, 24), 150.0], ["flag", Vector2(46, 22)], ["spirit", Vector2(-24, 26), {"color": "peach", "eyes": "happy", "sit": true, "lean": 0.12, "tilt": 0.22}], ["spirit", Vector2(4, 26), {"color": "mint", "eyes": "happy", "sit": true, "lean": -0.12, "tilt": -0.22}], ["sparkle", Vector2(-64, -30), 6.0], ["sparkle", Vector2(70, -46), 5.0]],
+	"friend": [["face", Vector2(-4, 4), {"color": "mint", "eyes": "happy", "size": 2.0}], ["heart", Vector2(72, -40), 16.0]],
 	"friend_next": [["face", Vector2(66, 6), {"color": "peach", "eyes": "wide", "look": Vector2(-1, 0), "tilt": -0.3, "size": 1.5}]],
 	"footprints": [["walk", Vector2(0, 8), {"from": Vector2(-0.5, 0.45), "to": Vector2(0.55, -0.4)}]],
 	"polaroid": [["polaroid", Vector2(-10, 4), 0.08], ["heart", Vector2(62, -26), 11.0], ["sparkle", Vector2(66, 26), 7.0]],
@@ -80,8 +86,8 @@ static func _place(pos: Vector2, options: Dictionary) -> Transform2D:
 	return Transform2D(0.0, Vector2(size, size), 0.0, pos)
 
 ## One spirit with its feet at the origin, or only its head centred on the
-## origin (face). Options: color, alpha, eyes (dot, wide, happy, soft), look
-## (where the eyes glance), blush, tilt, lean and sit.
+## origin (face). Options: color, alpha, eyes (dot, wide, happy, soft, or any
+## spirit_look expression), look (where the eyes glance), tilt, lean and sit.
 static func spirit(ci: CanvasItem, at: Transform2D, options: Dictionary, face := false) -> void:
 	var color: Color = SPIRITS[options.get("color", "peach")]
 	var alpha: float = options.get("alpha", 1.0)
@@ -91,27 +97,50 @@ static func spirit(ci: CanvasItem, at: Transform2D, options: Dictionary, face :=
 		var body := at * Transform2D(options.get("lean", 0.0), Vector2.ZERO)
 		head = body * Transform2D(tilt, NECK) * Transform2D(0.0, -NECK)
 		if not options.get("sit", false):
-			for side: float in [-1.0, 1.0]: fill(ci, at, ellipse(Vector2(side * 13, -5), Vector2(11, 6.5)), Color(color.darkened(0.14), alpha))
-		fill(ci, body, ellipse(Vector2(0, -29), Vector2(28, 24)), Color(color, alpha))
-	stroke(ci, head, PackedVector2Array([Vector2(-6, -86), Vector2(-9, -93), Vector2(-10, -97)]), Color(SPROUT, alpha), 3.0)
-	fill(ci, head * Transform2D(-0.55, Vector2(-17, -98)), ellipse(Vector2.ZERO, Vector2(7.5, 4)), Color(SPROUT, alpha))
-	fill(ci, head * Transform2D(0.6, Vector2(-4, -101)), ellipse(Vector2.ZERO, Vector2(6, 3.4)), Color(SPROUT, alpha))
-	fill(ci, head, ellipse(HEAD, Vector2(33, 29)), Color(color, alpha))
+			for side: float in [-1.0, 1.0]: fill(ci, at, _rounded(_flat(Look.FOOT_REST + Vector3(side * Look.FOOT_SPREAD, 0, 0)), _flat_size(Look.FOOT_HALF), 2.0), Color(color.darkened(Look.FOOT_SHADE + 0.08), alpha))
+		fill(ci, body, _rounded(_flat(Look.TORSO_CENTER), _flat_size(Look.TORSO_HALF), Look.TORSO_POWER), Color(color.darkened(0.04), alpha))
+	var leaf := head * Transform2D(-Look.LEAF_LEAN, _flat(Look.LEAF_PIVOT))
+	fill(ci, leaf, _leaf(), Color(Look.LEAF, alpha))
+	fill(ci, head, _rounded(HEAD, _flat_size(Look.HEAD_HALF), Look.HEAD_POWER), Color(color, alpha))
 	var look: Vector2 = options.get("look", Vector2.ZERO)
-	var blush: float = options.get("blush", 1.0)
-	for side: float in [-1.0, 1.0]:
-		var eye := Vector2(side * 11.5, -58) + look * Vector2(6, 3)
-		match str(options.get("eyes", "dot")):
-			"happy": stroke(ci, head, arc(eye + Vector2(0, 1.5), 4.8, -4.0), Color(EYE, alpha), 2.6)
-			"soft": stroke(ci, head, arc(eye, 4.4, 2.4), Color(EYE, alpha), 2.4)
-			"wide":
-				fill(ci, head, ellipse(eye, Vector2(5.4, 6.4)), Color(EYE, alpha))
-				fill(ci, head, ellipse(eye + Vector2(-1.7, -2.3), Vector2(2.1, 2.1)), Color(SHINE, alpha))
-				fill(ci, head, ellipse(eye + Vector2(1.9, 2.2), Vector2(1, 1)), Color(SHINE, alpha))
-			_:
-				fill(ci, head, ellipse(eye, Vector2(4, 4.7)), Color(EYE, alpha))
-				fill(ci, head, ellipse(eye + Vector2(-1.1 + look.x, -1.7), Vector2(1.4, 1.4)), Color(SHINE, alpha))
-		fill(ci, head, ellipse(Vector2(side * 18.5, -49) + look * Vector2(4, 1), Vector2(4.6, 3) * blush), Color(CHEEK, 0.8 * alpha))
+	var name := str(options.get("eyes", "dot"))
+	var expression: StringName = EYES.get(name, StringName(name))
+	if not Look.has(expression): expression = Look.NORMAL
+	for index: int in range(2):
+		var anchor := HEAD + Vector2(Look.EYE_X * (-1.0 if index == 0 else 1.0), -Look.EYE_Y) * UNIT + look * Vector2(4, 2)
+		var eye := head * Transform2D(0.0, Vector2(UNIT, -UNIT), 0.0, anchor)
+		var shape: Dictionary = Look.eye_contours(expression, index)
+		for polygon: PackedVector2Array in shape.outer: fill(ci, eye, polygon, Color(Look.CREAM, alpha))
+		for polygon: PackedVector2Array in shape.pupil: fill(ci, eye, polygon, Color(Look.PUPIL, alpha))
+		for line: PackedVector2Array in shape.strokes: ci.draw_polyline(eye * line, Color(Look.PUPIL, alpha), maxf(1.0, shape.width * UNIT * at.get_scale().x), true)
+
+## A point of the game's spirit (metres, facing the camera) in spirit units.
+static func _flat(point: Vector3) -> Vector2:
+	return Vector2(point.x, -(point.y - GROUND)) * UNIT
+
+static func _flat_size(half: Vector3) -> Vector2:
+	return Vector2(half.x, half.y) * UNIT
+
+## A rounded box outline: |x/a|^p + |y/b|^p = 1 (p 2 is an ellipse).
+static func _rounded(center: Vector2, half: Vector2, power: float) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for step: int in range(72):
+		var direction := Vector2.from_angle(step * TAU / 72.0)
+		var reach := pow(pow(absf(direction.x / half.x), power) + pow(absf(direction.y / half.y), power), -1.0 / power)
+		points.append(center + direction * reach)
+	return points
+
+## The leaf's outline, stalk at the origin, pointing up.
+static func _leaf() -> PackedVector2Array:
+	var points := PackedVector2Array()
+	var steps := 12
+	for step: int in range(steps + 1):
+		var t := float(step) / steps
+		points.append(Vector2(Look.leaf_half_width(t) * Look.LEAF_WIDTH * 0.5, -t * Look.LEAF_LENGTH) * UNIT)
+	for step: int in range(steps - 1, 0, -1):
+		var t := float(step) / steps
+		points.append(Vector2(-Look.leaf_half_width(t) * Look.LEAF_WIDTH * 0.5, -t * Look.LEAF_LENGTH) * UNIT)
+	return points
 
 ## The friend who is not there yet: a dashed head with a question mark.
 static func outline(ci: CanvasItem, at: Transform2D, pos: Vector2) -> void:
@@ -182,7 +211,7 @@ static func walk(ci: CanvasItem, at: Transform2D, pos: Vector2, options: Diction
 		fill(ci, at * Transform2D(heading.angle(), points.steps[step] + side), ellipse(Vector2.ZERO, Vector2(3.2, 2.0)), Color(STEP, 0.3 + 0.08 * step))
 	spirit(ci, at * _place(points.memory, {"size": MEMORY_SIZE}), {"color": "memory", "alpha": 0.4, "look": Vector2(1, -0.4), "lean": 0.1})
 	sparkle(ci, at, points.memory + Vector2(18, -36), 5.0)
-	spirit(ci, at * _place(points.you, {"size": WALKER_SIZE}), {"color": "peach", "look": Vector2(1, -0.6), "tilt": 0.16, "blush": 1.4})
+	spirit(ci, at * _place(points.you, {"size": WALKER_SIZE}), {"color": "peach", "look": Vector2(1, -0.6), "tilt": 0.16})
 
 ## A taped photo of both spirits smiling.
 static func polaroid(ci: CanvasItem, at: Transform2D) -> void:
@@ -257,14 +286,6 @@ static func round_rect(rect: Rect2, radius: float) -> PackedVector2Array:
 	var corners := [Vector2(rect.end.x - r, rect.position.y + r), Vector2(rect.end.x - r, rect.end.y - r), Vector2(rect.position.x + r, rect.end.y - r), Vector2(rect.position.x + r, rect.position.y + r)]
 	for corner: int in range(4):
 		for step: int in range(7): points.append(corners[corner] + Vector2.from_angle(-PI * 0.5 + (corner + step / 6.0) * PI * 0.5) * r)
-	return points
-
-## A shallow curve for closed eyes: bow < 0 arches up (happy), > 0 dips (soft).
-static func arc(center: Vector2, half_width: float, bow: float) -> PackedVector2Array:
-	var points := PackedVector2Array()
-	for step: int in range(7):
-		var t := step / 6.0
-		points.append(center + Vector2(lerpf(-half_width, half_width, t), bow * 4.0 * t * (1.0 - t)))
 	return points
 
 ## A filled shape with a one-pixel antialiased edge.
