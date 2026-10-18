@@ -19,6 +19,8 @@ const CHECKPOINT_KEYS := ["schema_version", "level_id", "level_version", "defini
 
 var simulation_version := LEGACY_SIMULATION_VERSION
 var level: Dictionary = {}
+## The digest of `level`, worked out on first use after a reset; "" until then.
+var _definition_hash := ""
 var stage: Dictionary = {}
 var role := "a"
 var active_slot := "p0"
@@ -52,6 +54,7 @@ var _objective := false
 
 func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", rules_version: int = LEGACY_SIMULATION_VERSION) -> bool:
 	level = {}
+	_definition_hash = ""
 	stage = {}
 	error = ""
 	simulation_version = int(prior_a.get("simulation_version", rules_version)) if current_role == "b" else rules_version
@@ -81,6 +84,7 @@ func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, pri
 
 func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String) -> void:
 	level = definition.duplicate(true)
+	_definition_hash = ""
 	stage = stage_by_id(level, stage_id)
 	role = current_role
 	first_player_slot = stage.first_player_slot
@@ -376,7 +380,7 @@ func export_recording() -> Dictionary:
 	var checks := _checks.duplicate(true)
 	if checks.is_empty() or int(checks[-1].tick) != tick: checks.append({"tick": tick, "state_hash": state_hash()})
 	var record := {"schema_version": 4, "simulation_version": simulation_version, "level_id": level.id, "level_version": level.version,
-		"definition_hash": Canonical.digest(level), "stage_id": stage.id, "stage_version": stage.version,
+		"definition_hash": _level_digest(), "stage_id": stage.id, "stage_version": stage.version,
 		"checkpoint_hash": _checkpoint.checkpoint_hash, "role": role, "player_slot": active_slot, "tick_rate": TICK_RATE,
 		"duration_ticks": tick, "catch_assistance": catch_assistance, "actions": _actions.duplicate(true), "replay_checks": checks,
 		"final_state_hash": state_hash(), "completed": complete, "outcome": _outcome.duplicate(),
@@ -384,8 +388,13 @@ func export_recording() -> Dictionary:
 	record["recording_hash"] = recording_hash(record)
 	return record
 
+## The digest of `level`, cached after a reset (see core/physical/runtime.gd).
+func _level_digest() -> String:
+	if _definition_hash.is_empty(): _definition_hash = Canonical.digest(level)
+	return _definition_hash
+
 func state_hash() -> String:
-	return Canonical.digest({"simulation_version": simulation_version, "definition_hash": Canonical.digest(level), "stage_id": stage.id, "checkpoint_hash": _checkpoint.checkpoint_hash,
+	return Canonical.digest({"simulation_version": simulation_version, "definition_hash": _level_digest(), "stage_id": stage.id, "checkpoint_hash": _checkpoint.checkpoint_hash,
 		"role": role, "tick": tick, "players": _players, "mechanisms": _mechanisms, "seed": _seed, "held": _held,
 		"power_active": _power_active, "power_ticks": _power_ticks, "power_start": _power_start, "power_broken": _power_broken,
 		"activation_tick": _activation_tick, "throw_tick": _throw_tick, "land_tick": _land_tick,

@@ -52,9 +52,15 @@ var _comfort_entries: Dictionary = {}
 ## may read it (a journey with a settled source), so the partner is not
 ## replayed once more; that reset drops it. Never part of the state.
 var _verified_prior_end: Dictionary = {}
+## The digest of `level`, worked out on first use after a reset (level is set
+## only by a reset, to its own deep copy, and never changed after): the state
+## hash and the recording read it instead of digesting
+## the whole definition again. "" until first used.
+var _definition_hash := ""
 
 func reset(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary = {}, current_role: String = "a", _rules_version: int = 0) -> bool:
 	level = {}
+	_definition_hash = ""
 	stage = {}
 	error = ""
 	var checked: Dictionary = _proof_engine().verify_checkpoint(definition, checkpoint)
@@ -84,6 +90,7 @@ func hand_over_prior_end(snapshot: Dictionary) -> void:
 func _reset_trusted(definition: Dictionary, stage_id: String, checkpoint: Dictionary, prior_a: Dictionary, current_role: String) -> void:
 	_verified_prior_end = {}
 	level = definition.duplicate(true)
+	_definition_hash = ""
 	stage = stage_by_id(level, stage_id)
 	role = current_role
 	first_player_slot = stage.first_player_slot
@@ -433,7 +440,7 @@ func export_recording() -> Dictionary:
 	if tick == 0 or level.is_empty(): return {}
 	var checks := _checks.duplicate(true)
 	if checks.is_empty() or int(checks[-1].tick) != tick: checks.append({"tick":tick,"state_hash":state_hash()})
-	var record := {"schema_version":_schema_version(),"simulation_version":simulation_version,"level_id":level.id,"level_version":level.version,"definition_hash":Canonical.digest(level),
+	var record := {"schema_version":_schema_version(),"simulation_version":simulation_version,"level_id":level.id,"level_version":level.version,"definition_hash":_level_digest(),
 		"stage_id":stage.id,"stage_version":stage.version,"checkpoint_hash":_checkpoint.checkpoint_hash,"role":role,"player_slot":active_slot,"tick_rate":TICK_RATE,
 		"duration_ticks":tick,"catch_assistance":catch_assistance,"actions":_actions.duplicate(true),"replay_checks":checks,"final_state_hash":state_hash(),
 		"completed":complete,"outcome":_outcome(),"source_recording_hash":str(_prior.get("recording_hash", "")) if role == "b" else ""}
@@ -443,8 +450,12 @@ func export_recording() -> Dictionary:
 func state_hash() -> String:
 	return Canonical.digest(_state_body())
 
+func _level_digest() -> String:
+	if _definition_hash.is_empty(): _definition_hash = Canonical.digest(level)
+	return _definition_hash
+
 func _state_body() -> Dictionary:
-	var value := {"simulation_version":simulation_version,"definition_hash":Canonical.digest(level),"stage_id":stage.id,"checkpoint_hash":_checkpoint.checkpoint_hash,
+	var value := {"simulation_version":simulation_version,"definition_hash":_level_digest(),"stage_id":stage.id,"checkpoint_hash":_checkpoint.checkpoint_hash,
 		"role":role,"tick":tick,"players":_players,"mechanisms":_mechanisms,"routes":_routes,"held":_held,"hold_ticks":_hold_ticks,"hold_start":_hold_start,
 		"offer_tick":_offer_tick,"claimed":_claimed,"objective":_objective,"complete":complete,"outcome":_outcome(),"source_recording_hash":str(_prior.get("recording_hash", ""))}
 	if _comfort_rules():
