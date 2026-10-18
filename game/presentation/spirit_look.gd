@@ -126,7 +126,9 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			var p: Vector2 = at.call(-0.002, -0.002)
 			e.pupil = Vector4(0.062, 0.063, p.x, p.y)
 			e.pupil_wave = BLOB_WAVE if index == 0 else Vector4(0.070, 0.080, 0.024, 0.005)
-			e.pupil_phase = BLOB_PHASE if index == 0 else _turned(BLOB_PHASE, 0.12)
+			# The plain eye's blob is turned about 30 degrees, so it is no copy of
+			# the tear eye's.
+			e.pupil_phase = _turned(BLOB_PHASE, -0.5) if index == 0 else _turned(BLOB_PHASE, 0.12)
 			if index == 1:
 				var tip: Vector2 = at.call(0.054, -0.077)
 				var lobe := tip + tip.normalized() * 0.006

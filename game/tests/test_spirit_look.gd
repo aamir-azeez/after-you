@@ -78,7 +78,7 @@ func _test_open_eyes() -> void:
 		var sad := Look.eye(Look.SAD, index)
 		_check(sad.outer_wave == Vector4.ZERO and absf(sad.outer.x - sad.outer.y) < 0.01, "Sad eye %d: the main cream outline is smooth and round" % index)
 		_check(sad.pupil_wave.length() > 0.1, "Sad eye %d: the pupil is strongly blobby" % index)
-	_check(Look.eye(Look.SAD, 0).pupil_wave == Look.BLOB_WAVE and Look.eye(Look.SAD, 0).pupil_phase == Look.BLOB_PHASE, "Sad's pupil is the approved blob")
+	_check(Look.eye(Look.SAD, 0).pupil_wave == Look.BLOB_WAVE and Look.eye(Look.SAD, 0).pupil_phase != Look.eye(Look.SAD, 1).pupil_phase, "Sad's pupil is the approved blob, turned differently in each eye")
 	# Surprised: small pupils.
 	for index in range(2):
 		var shape := Look.eye_contours(Look.SURPRISED, index)
