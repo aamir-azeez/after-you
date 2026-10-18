@@ -104,7 +104,7 @@ func _test_bounds_and_body() -> void:
 			lift_top = maxf(lift_top, absf(lift))
 			head_ok = head_ok and spirit.face.position == spirit.head.position and spirit.face.rotation == spirit.head.rotation and spirit.head.position.x == 0.0 and spirit.head.position.z == 0.0
 			yaw_top = maxf(yaw_top, absf(spirit.head.rotation.y))
-			eye_reach = maxf(eye_reach, absf(spirit.eyes[0].position.x + 0.115))
+			eye_reach = maxf(eye_reach, absf(spirit.eyes[0].position.x - Spirit.EYE_REST[0].x))
 			leaf_ok = leaf_ok and absf(spirit.sprout.rotation.y - spirit.head.rotation.y) < EPSILON
 			body_still = body_still and spirit.upper_body.position == Vector3.ZERO and spirit.upper_body.scale == Vector3.ONE and absf(spirit.upper_body.rotation.z) <= 0.018
 			if not partner: body_still = body_still and spirit.upper_body.rotation == Vector3.ZERO
@@ -126,7 +126,7 @@ func _test_bounds_and_body() -> void:
 	var sway_top := 0.0
 	for _frame in range(600):
 		_idle(spirit, 1)
-		sway_top = maxf(sway_top, absf(spirit.sprout.rotation.z + 0.5 - spirit.head.rotation.z))
+		sway_top = maxf(sway_top, absf(spirit.sprout.rotation.z - Spirit.SPROUT_LEAN - spirit.head.rotation.z))
 	_check(sway_top <= Idle.LEAF_SWAY + EPSILON and sway_top > Idle.LEAF_SWAY * 0.8, "The leaf sways on top of the head's tilt (%.3f rad)" % sway_top)
 	spirit.free()
 
@@ -171,8 +171,8 @@ func _test_reduced_motion() -> void:
 	spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, true)
 	_check(spirit.torso.scale == Spirit.TORSO_SCALE and spirit.head.position == Spirit.HEAD_CENTER and spirit.face.position == Spirit.HEAD_CENTER, "Reduce motion stops the breath at once, exactly at the built pose")
 	_check(spirit.head.rotation == Vector3.ZERO and spirit.face.rotation == Vector3.ZERO, "Reduce motion stops glance and tilt at once")
-	_check(spirit.sprout.position == Spirit.SPROUT_REST and spirit.sprout.rotation == Vector3(0, 0, -0.5), "Reduce motion stops the leaf exactly at its built pose")
-	_check(spirit.eyes[0].position == Vector3(-0.115, 0.02, 0.289) and spirit.eyes[1].position == Vector3(0.115, 0.02, 0.289) and spirit.eyes[0].scale == Vector3.ONE, "Reduce motion centres the eyes and stops blinking")
+	_check(spirit.sprout.position == Spirit.SPROUT_REST and spirit.sprout.rotation == Vector3(0, 0, Spirit.SPROUT_LEAN), "Reduce motion stops the leaf exactly at its built pose")
+	_check(spirit.eyes[0].position == Spirit.EYE_REST[0] and spirit.eyes[1].position == Spirit.EYE_REST[1] and spirit.eyes[0].scale == Vector3.ONE, "Reduce motion centres the eyes and stops blinking")
 	var still := _pose(spirit)
 	for _frame in range(600): spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, true)
 	_check(_poses_match(still, _pose(spirit), 0.0), "Under Reduce motion nothing moves at all")
@@ -204,14 +204,14 @@ func _test_glance_with_partner() -> void:
 	var spirit := _spirit("a", false)
 	_idle(spirit, 13 * 60)
 	_check(absf(spirit.head.rotation.y) > Idle.GLANCE_YAW * 0.9, "Alone at 13 s the spirit is glancing")
-	_check(absf(spirit.eyes[0].position.x + 0.115) > 0.005, "The eyes lead into the glance")
+	_check(absf(spirit.eyes[0].position.x - Spirit.EYE_REST[0].x) > 0.005, "The eyes lead into the glance")
 	var yaw: float = spirit.head.rotation.y
 	spirit.set_partner_offset(Vector3(1.2, 0, 0), true)
 	spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
 	_check(absf(spirit.head.rotation.y - yaw) < 0.01, "A partner coming into view lets the glance carry on")
 	spirit.free()
 	# The partner on the spirit's +X side: full attention puts the eyes 18 mm over.
-	var reach := -0.115 + 0.018
+	var reach: float = Spirit.EYE_REST[0].x + 0.018
 	spirit = _spirit("a", false)
 	spirit.set_partner_offset(Vector3(1.2, 0, 0), true)
 	_idle(spirit, 13 * 60)
@@ -230,7 +230,7 @@ func _test_reset() -> void:
 	_idle(spirit, 13 * 60)
 	spirit.reset_motion()
 	_check(spirit.torso.scale == Spirit.TORSO_SCALE and spirit.head.position == Spirit.HEAD_CENTER and spirit.head.rotation == Vector3.ZERO and spirit.face.rotation == Vector3.ZERO, "A seek returns the head and torso to rest")
-	_check(spirit.sprout.position == Spirit.SPROUT_REST and spirit.sprout.rotation == Vector3(0, 0, -0.5), "A seek returns the sprout to rest")
+	_check(spirit.sprout.position == Spirit.SPROUT_REST and spirit.sprout.rotation == Vector3(0, 0, Spirit.SPROUT_LEAN), "A seek returns the sprout to rest")
 	# The same seconds after a seek give the same pose as from a fresh spirit.
 	var fresh := _spirit("a", false)
 	_idle(spirit, 200)

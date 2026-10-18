@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Spirit = preload("res://presentation/spirit_visual.gd")
+const Look = preload("res://presentation/spirit_look.gd")
 const World = preload("res://presentation/island_world.gd")
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
@@ -69,40 +70,29 @@ func _test_completion_dance() -> void:
 	spirit.free()
 
 func _happy_shown(spirit: Node3D) -> bool:
-	return spirit.happy_eyes[0].visible and spirit.happy_eyes[1].visible and not spirit.eyes[0].visible and not spirit.eyes[1].visible
+	return spirit.expression()==Look.HAPPY
 
 func _eyes_normal(spirit: Node3D) -> bool:
-	return not spirit.happy_eyes[0].visible and not spirit.happy_eyes[1].visible and spirit.eyes[0].visible and spirit.eyes[1].visible and not spirit.is_happy()
+	return spirit.expression()==Look.NORMAL and not spirit.face_art.swapping() and not spirit.is_happy()
 
 func _test_happy_eyes() -> void:
 	var spirit := Spirit.new()
 	root.add_child(spirit)
 	spirit.set_expression_role("a")
-	_check(_eyes_normal(spirit) and spirit.happy_eyes.size()==2 and spirit.cheeks.size()==2,"A new spirit starts with open eyes and hidden happy arcs")
-	# Brand: expression lives in the eyes only. Arcs sit on the eye line, outside the head.
-	var outside := true
-	var on_eye_line := true
-	for arc: MeshInstance3D in spirit.happy_eyes:
-		var arrays: Array=arc.mesh.surface_get_arrays(0)
-		var vertices: PackedVector3Array=arrays[Mesh.ARRAY_VERTEX]
-		var normals: PackedVector3Array=arrays[Mesh.ARRAY_NORMAL]
-		for index in range(vertices.size()):
-			var point: Vector3=arc.position+vertices[index]
-			on_eye_line=on_eye_line and point.y>-0.02 and point.y<0.07
-			if normals[index].z>0.5:
-				outside=outside and pow(point.x/Spirit.HEAD_AXES.x,2.0)+pow(point.y/Spirit.HEAD_AXES.y,2.0)+pow(point.z/Spirit.HEAD_AXES.z,2.0)>1.0
-	_check(outside and on_eye_line,"Happy arcs stay on the eye line and in front of the head surface")
-	_check(not spirit.face.has_node("Mouth") and spirit.face.get_child_count()==6,"The face holds only eyes, happy arcs and cheeks: no mouth")
-	# A reunion closes the eyes into arcs, then they reopen.
+	_check(_eyes_normal(spirit) and spirit.eyes.size()==2,"A new spirit starts with Normal open eyes")
+	# Brand: expression lives in the eyes only, painted on the head itself.
+	_check(spirit.face.find_children("*","MeshInstance3D",true,false).is_empty() and spirit.face.get_child_count()==2 and not spirit.face.has_node("Mouth"),"The face holds only the two painted eyes: no mouth, cheeks or eye meshes")
+	_check(spirit.head.material_override==spirit.face_art.material and spirit.face_art.material.shader.resource_path.ends_with("spirit_face.gdshader"),"The head's own material paints the eyes")
+	# A reunion swaps the eyes to Happy, then back.
 	spirit.set_partner_offset(Vector3(3,0,0),true)
 	spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
 	spirit.set_partner_offset(Vector3(1,0,0),true)
 	spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
 	_check(spirit.reunion_age==0.0 and spirit.is_happy(),"Meeting a partner starts happy eyes with the reunion hop")
 	for _frame in range(15): spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
-	_check(_happy_shown(spirit) and spirit.cheeks[0].scale.x>1.1,"Mid-reunion the eyes are closed into happy arcs")
+	_check(_happy_shown(spirit) and spirit.eyes[0].scale.y>0.99,"Mid-reunion the eyes are open in the Happy shape")
 	for _frame in range(ceili(Spirit.HAPPY_REUNION_DURATION*60.0)): spirit.advance_motion(Vector3.ZERO,1.0/60.0,false)
-	_check(_eyes_normal(spirit) and spirit.cheeks[0].scale==Vector3.ONE,"Happy eyes return to normal after the reunion")
+	_check(_eyes_normal(spirit),"Happy eyes return to normal after the reunion")
 	# Completion keeps its existing dance and adds happy eyes for its length.
 	spirit.set_celebration(true)
 	for _frame in range(30):
@@ -120,7 +110,7 @@ func _test_happy_eyes() -> void:
 	spirit.reset_motion()
 	spirit.set_celebration(true,false,true)
 	spirit.advance_motion(Vector3.ZERO,1.0/60.0,true)
-	_check(_happy_shown(spirit) and spirit.happy_eyes[0].scale.is_equal_approx(Vector3.ONE) and spirit.upper_body.position==Vector3.ZERO,"Reduced Motion shows a still smile without the dance")
+	_check(_happy_shown(spirit) and not spirit.face_art.swapping() and spirit.eyes[0].scale==Vector3.ONE and spirit.upper_body.position==Vector3.ZERO,"Reduced Motion shows a still smile without the dance or a swap")
 	spirit.reset_motion()
 	_check(_eyes_normal(spirit),"A replay reset clears happy eyes immediately")
 	# Home greeting: hop, sparkles and happy eyes; Reduced Motion keeps only the eyes.
@@ -148,9 +138,9 @@ func _test_happy_eyes() -> void:
 	_check(_eyes_normal(spirit) and spirit.reunion_age==Spirit.REUNION_DURATION,"Ending a greeting restores normal eyes immediately")
 	spirit.play_greeting(false)
 	spirit.advance_motion(Vector3.ZERO,0.1,false)
-	var age: float=spirit.happy_age
+	var age: float=spirit._reaction_age
 	spirit.advance_motion(Vector3.ZERO,0.0,false)
-	_check(spirit.happy_age==age,"Paused presentation holds the happy eyes")
+	_check(spirit._reaction_age==age and spirit.is_happy(),"Paused presentation holds the happy eyes")
 	spirit.free()
 
 func _test_walk_and_settle() -> void:
@@ -238,7 +228,7 @@ func _test_throw_and_head_carry() -> void:
 		highest_hop=maxf(highest_hop,spirit.upper_body.position.y)
 		lowest_scale=minf(lowest_scale,spirit.upper_body.scale.y)
 		var head: MeshInstance3D=spirit.upper_body.get_node("Head")
-		var head_top := spirit.upper_body.position.y+(head.position.y+(head.mesh as SphereMesh).radius*head.scale.y)*spirit.upper_body.scale.y
+		var head_top := spirit.upper_body.position.y+(head.position.y+Look.HEAD_HALF.y*head.scale.y)*spirit.upper_body.scale.y
 		clear=clear and spirit.carry_anchor_position().y-0.13>head_top
 		clear=clear and spirit.photo_anchor_height()>spirit.carry_anchor_position().y+0.18
 	_check(highest_hop>0.25 and lowest_scale<0.85,"Throw compresses then springs higher than the walk hop")
@@ -309,17 +299,17 @@ func _test_expressions() -> void:
 		asymmetric_blink=asymmetric_blink or absf(first.eyes[0].scale.y-second.eyes[0].scale.y)>0.5
 		bounded=bounded and absf(first.head.rotation.z)<0.1 and absf(first.upper_body.rotation.z)<=0.018 and first.upper_body.position==Vector3.ZERO
 	_check(left_closed and right_closed and asymmetric_blink,"Both spirits blink with distinct stable timing")
-	_check(first.eyes[0].position.x>-0.115 and second.eyes[0].position.x<-0.115,"Eyes follow partners on opposite sides without moving either body root")
+	_check(first.eyes[0].position.x>Spirit.EYE_REST[0].x and second.eyes[0].position.x<Spirit.EYE_REST[0].x,"Eyes follow partners on opposite sides without moving either body root")
 	_check(bounded and first.transform==root_transform,"Curiosity and idle lean stay subtle and leave the root stationary")
 	first.set_partner_offset(Vector3.ZERO,false)
 	for frame in range(120): first.advance_motion(Vector3.ZERO,1.0/60.0,false)
-	_check(absf(first.eyes[0].position.x+0.115)<0.00001,"An unavailable partner releases the gaze instead of leaving stale attention")
+	_check(absf(first.eyes[0].position.x-Spirit.EYE_REST[0].x)<0.00001,"An unavailable partner releases the gaze instead of leaving stale attention")
 	var phase := second.expression_phase
 	second.reset_motion()
 	second.set_expression_role("p1")
 	_check(second.expression_phase==phase and second.face.rotation==Vector3.ZERO,"Equivalent saved roles retain their phase while seeks clear facial pose")
 	first.advance_motion(Vector3.ZERO,1.0/60.0,true)
-	_check(first.head.rotation==Vector3.ZERO and first.face.rotation==Vector3.ZERO and first.eyes[0].scale==Vector3.ONE and first.eyes[0].position==Vector3(-0.115,0.02,0.289),"Reduced motion immediately removes blinking, attention motion and tilt")
+	_check(first.head.rotation==Vector3.ZERO and first.face.rotation==Vector3.ZERO and first.eyes[0].scale==Vector3.ONE and first.eyes[0].position==Spirit.EYE_REST[0],"Reduced motion immediately removes blinking, attention motion and tilt")
 	first.reset_motion()
 	first.carrying_seed=true
 	var min_x := INF

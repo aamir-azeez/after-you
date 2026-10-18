@@ -1,16 +1,21 @@
 extends Node3D
 ## Presentation-only gait. The world supplies rendered displacement, never input
 ## or recording events, so the same animation works for players and saved ghosts.
+## The body and the eight eye expressions come from spirit_look.gd; the eyes
+## are painted on the head (spirit_face.gd).
 
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
+const Look = preload("res://presentation/spirit_look.gd")
+const Meshes = preload("res://presentation/spirit_meshes.gd")
+const SpiritFace = preload("res://presentation/spirit_face.gd")
 
 signal stepped
 signal reunion_started
 
 const STRIDE_LENGTH := 0.82
 const WALK_SPEED := 2.4
-const FOOT_REST := Vector3(0,0.10,0.055)
+const FOOT_REST := Look.FOOT_REST
 const THROW_DURATION := 0.44
 const RELEASE_SETTLE_DURATION := 0.38
 const REUNION_DURATION := 0.48
@@ -19,9 +24,14 @@ const REUNION_FAR := 2.35
 const REUNION_SPARKLE_DURATION := 0.55
 const REUNION_SPARKLE_COUNT := 6
 const CELEBRATION_DURATION := 2.2
-const HEAD_CENTER := Vector3(0,0.57,0)
-const TORSO_SCALE := Vector3(1.0,0.82,0.92)
-const SPROUT_REST := Vector3(-0.19,0.90,-0.035)
+const HEAD_CENTER := Look.HEAD_CENTER
+## The torso mesh is built at its size; breathing scales it from here.
+const TORSO_SCALE := Vector3.ONE
+## The leaf's stalk on the head, and its resting lean (roll, radians).
+const SPROUT_REST := Look.LEAF_PIVOT
+const SPROUT_LEAN := Look.LEAF_LEAN
+## Where the eye markers rest in face space, before gaze.
+const EYE_REST: Array[Vector3] = [Vector3(-Look.EYE_X,Look.EYE_Y,0.3), Vector3(Look.EYE_X,Look.EYE_Y,0.3)]
 ## How fast a new pose (set_pose) eases in: about half a second.
 const POSE_BLEND_RATE := 6.0
 ## The startled wake (play_wake) and the moment in it when the goal rings:
@@ -36,16 +46,9 @@ const DOZE_Z_BASE := Vector3(0.28,0.82,0.0)
 ## Each z drifts up, right and back, which reads as up the screen under the
 ## chapters' high oblique cameras.
 const DOZE_Z_RISE := Vector3(0.30,0.45,-0.45)
-# Happy eyes: open eyes squeeze shut into soft upturned arcs, then reopen.
+# How long the Happy face lasts after a reunion and the Home greeting.
 const HAPPY_REUNION_DURATION := 1.1
 const GREETING_DURATION := 1.2
-const HAPPY_CLOSE_TIME := 0.10
-const HAPPY_OPEN_TIME := 0.14
-const HAPPY_ARC_STEPS := 10
-const HAPPY_ARC_SIDES := 6
-const HAPPY_ARC_RADIUS := 0.015
-const HEAD_AXES := Vector3(0.34,0.34*0.88,0.34*0.94)
-const EYE_COLOR := Color("24433f")
 ## The soft ground shadow: a thin translucent disc. It writes no depth, so an
 ## opaque face at its height shows through it in stripes. Its top lies over
 ## the floor's lines, trims, rugs, caps and zone strips (up to 2.1 cm) and
@@ -58,14 +61,21 @@ const SHADOW_THICKNESS := 0.004
 
 var facing := Node3D.new()
 var upper_body := Node3D.new()
+## Face space: moves and turns with the head. Its children are the two eye
+## markers, empty nodes the face paints its eyes at (x, y, and scale.y for a
+## blink); they hold no mesh.
 var face := Node3D.new()
 var torso: MeshInstance3D
 var head: MeshInstance3D
 var eyes: Array[Node3D] = []
-var happy_eyes: Array[MeshInstance3D] = []
-var cheeks: Array[MeshInstance3D] = []
-var happy_age := 0.0
-var happy_duration := 0.0
+## The head's material and the expression on it (spirit_face.gd).
+var face_art: SpiritFace
+## The expression asked for by set_expression, shown when nothing else is.
+var _held_expression: StringName = Look.NORMAL
+## A timed expression (show_expression; show_happy is Happy) and its clock.
+var _reaction: StringName = Look.NORMAL
+var _reaction_age := 0.0
+var _reaction_duration := 0.0
 var feet: Array[Node3D] = []
 var sprout: MeshInstance3D
 var ground_ring: MeshInstance3D
@@ -108,45 +118,39 @@ var _wake_age := SpiritIdle.WAKE_DURATION
 var _wake_frame := SpiritIdle.Frame.new()
 ## Built on the first doze only, so a spirit that never dozes has no extra nodes.
 var _doze_zs: Array[Label3D] = []
+## How shut the pose holds the eyes (a doze), as last sampled.
+var _eyes_closed := 0.0
+## Set while a placement poses the spirit: the face swaps without animating.
+var _placing := false
 
-func _init(color: Color=Color("f4c38d")) -> void:
+func _init(color: Color=Look.PEACH) -> void:
 	facing.name="Facing"
 	add_child(facing)
 	upper_body.name="UpperBody"
 	facing.add_child(upper_body)
-	torso = _sphere(0.29,color,Vector3(0,0.29,0),upper_body)
+	torso=_part(Meshes.torso(),_body_material(color),Look.TORSO_CENTER,upper_body)
 	torso.name="Torso"
-	torso.scale=TORSO_SCALE
-	head = _sphere(0.34,color,HEAD_CENTER,upper_body)
+	face_art=SpiritFace.new(color)
+	head=_part(Meshes.head(),face_art.material,HEAD_CENTER,upper_body)
 	head.name="Head"
-	head.scale=Vector3(1.0,0.88,0.94)
 	face.name="Face"
 	face.position=HEAD_CENTER
 	upper_body.add_child(face)
-	for x: float in [-0.115,0.115]:
-		var eye_group := Node3D.new()
-		eye_group.name="LeftEye" if x<0 else "RightEye"
-		eye_group.position=Vector3(x,0.02,0.289)
-		face.add_child(eye_group)
-		eyes.append(eye_group)
-		var eye := _sphere(0.041,EYE_COLOR,Vector3.ZERO,eye_group)
-		eye.scale=Vector3(0.94,1.13,0.62)
-		_sphere(0.008,Color("fff4d9"),Vector3(-0.010,0.015,0.024),eye_group)
-		var arc := _mesh(_happy_eye_mesh(x),EYE_COLOR,eye_group.position,face)
-		arc.name="LeftHappyEye" if x<0 else "RightHappyEye"
-		arc.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		arc.visible=false
-		happy_eyes.append(arc)
-		cheeks.append(_sphere(0.033,Color("e8a695"),Vector3(x*1.5,-0.065,0.267),face))
-	# The sprout leans aside so a carried seed sits clearly above the head.
-	sprout=_sphere(0.12,Color("abd1a2"),SPROUT_REST,upper_body)
-	sprout.scale=Vector3(0.6,1,0.28)
+	for index in range(2):
+		var marker := Node3D.new()
+		marker.name="LeftEye" if index==0 else "RightEye"
+		marker.position=EYE_REST[index]
+		face.add_child(marker)
+		eyes.append(marker)
+	# The leaf leans out from the head's corner, clear of a carried seed above.
+	sprout=_part(Meshes.leaf(),_body_material(Look.LEAF),SPROUT_REST,upper_body)
+	sprout.name="Leaf"
+	sprout.rotation.z=SPROUT_LEAN
 	for side: float in [-1.0,1.0]:
 		var foot := Node3D.new()
 		foot.name="LeftFoot" if side<0 else "RightFoot"
 		facing.add_child(foot)
-		var shoe := _sphere(0.095,color.darkened(0.12),Vector3.ZERO,foot)
-		shoe.scale=Vector3(1,0.6,1.5)
+		_part(Meshes.foot(),_body_material(color.darkened(Look.FOOT_SHADE)),Vector3.ZERO,foot)
 		feet.append(foot)
 	var shadow_mesh := CylinderMesh.new()
 	shadow_mesh.top_radius=SHADOW_RADIUS
@@ -175,7 +179,7 @@ func reset_motion() -> void:
 	celebration_age=CELEBRATION_DURATION
 	_celebration_complete=false
 	_clear_reunion_sparkles()
-	_clear_happy()
+	_clear_reaction()
 	_expression_time=0.0
 	_idle_blend=0.0
 	_look=Vector2.ZERO
@@ -189,7 +193,7 @@ func reset_motion() -> void:
 	_wake_age=SpiritIdle.WAKE_DURATION
 	facing_target=0.0
 	facing.rotation=Vector3.ZERO
-	_apply_pose(0.0)
+	_place()
 
 func set_expression_role(role: String) -> void:
 	# Stable phases give the two spirits different timing on every device, without
@@ -251,16 +255,57 @@ func set_celebration(completed: bool, immediate: bool = false, reduced: bool = f
 		reunion_age = REUNION_DURATION
 		_clear_reunion_sparkles()
 
-func show_happy(duration: float) -> void:
-	# Extending an active smile keeps the eyes closed instead of blinking open.
-	if is_happy():
-		happy_duration=maxf(happy_duration,happy_age+duration)
+## The face's resting expression (spirit_look.gd: NORMAL, HAPPY, ANNOYED, SAD,
+## ANGRY, SURPRISED, SLEEPY, SQUEEZE), kept until changed. A timed expression
+## (show_expression) and a doze show over it. The eyes close, swap and reopen
+## as the spirit advances; `immediate` swaps at once (a placement). Presentation
+## only: a caller that wants the same face in a replay derives it from
+## recorded state.
+func set_expression(expression: StringName, immediate: bool = false) -> void:
+	if not Look.has(expression):
+		push_warning("Unknown spirit expression %s" % expression)
+		return
+	_held_expression=expression
+	if immediate: _place(motion_blend)
+	else: _refresh_expression()
+
+## Shows `expression` for `duration` seconds of the spirit's clock, then the
+## face goes back. The same expression again extends it; another replaces it.
+func show_expression(expression: StringName, duration: float) -> void:
+	if not Look.has(expression):
+		push_warning("Unknown spirit expression %s" % expression)
+		return
+	if _reaction==expression and _reaction_age<_reaction_duration:
+		_reaction_duration=maxf(_reaction_duration,_reaction_age+duration)
 	else:
-		happy_age=0.0
-		happy_duration=maxf(0.0,duration)
+		_reaction=expression
+		_reaction_age=0.0
+		_reaction_duration=maxf(0.0,duration)
+	_refresh_expression()
+
+## The expression drawn on the face now (during a swap, the one still shown).
+func expression() -> StringName:
+	return face_art.shown
+
+## The expression the face is showing or turning to.
+func expression_target() -> StringName:
+	return _expression_target()
+
+func show_happy(duration: float) -> void:
+	show_expression(Look.HAPPY,duration)
 
 func is_happy() -> bool:
-	return happy_age<happy_duration
+	return _reaction==Look.HAPPY and _reaction_age<_reaction_duration
+
+## A timed expression, then a doze's Sleepy, then the held expression.
+func _expression_target() -> StringName:
+	if _reaction_age<_reaction_duration: return _reaction
+	if _eyes_closed>=0.5: return Look.SLEEPY
+	return _held_expression
+
+func _refresh_expression() -> void:
+	# Reduce motion swaps the face without the close and reopen.
+	face_art.request(_expression_target(),_reduced_motion)
 
 func play_greeting(reduced: bool) -> void:
 	# Home-only flourish: the reunion hop and sparkles with happy eyes. Reduced
@@ -273,18 +318,25 @@ func play_greeting(reduced: bool) -> void:
 func end_greeting() -> void:
 	reunion_age=REUNION_DURATION
 	_clear_reunion_sparkles()
-	_clear_happy()
-	_apply_pose(motion_blend)
+	_clear_reaction()
+	_place(motion_blend)
 
-func _clear_happy() -> void:
-	happy_age=0.0
-	happy_duration=0.0
+## Poses the spirit as a placement: the face takes its expression at once.
+func _place(amount: float = 0.0) -> void:
+	_placing=true
+	_apply_pose(amount)
+	_placing=false
+
+func _clear_reaction() -> void:
+	_reaction_age=0.0
+	_reaction_duration=0.0
 
 func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -> void:
 	if delta<=0.0:
 		return
 	_reduced_motion=reduced_motion
-	happy_age=minf(happy_duration,happy_age+delta)
+	_reaction_age=minf(_reaction_duration,_reaction_age+delta)
+	face_art.advance(delta)
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
@@ -402,6 +454,8 @@ func _apply_pose(amount: float) -> void:
 	var tilt := (_look.x*0.06+sin(_expression_time*0.91+expression_phase)*0.018*idle)*(1.0-amount*0.65)+settle-sway*0.08
 	if _reduced_motion: tilt=0.0
 	var rest := _sample_pose(idle)
+	_eyes_closed=rest.eyes_closed
+	face_art.request(_expression_target(),_reduced_motion or _placing)
 	# Only a pose other than rest moves the body that carried props hang from.
 	if rest.body_lean!=Vector3.ZERO: upper_body.rotation+=rest.body_lean
 	if rest.body_drop!=0.0: upper_body.position.y-=rest.body_drop
@@ -414,32 +468,22 @@ func _apply_pose(amount: float) -> void:
 	head.rotation=Vector3(0,rest.head_yaw,tilt)
 	face.rotation=Vector3(0,rest.head_yaw,tilt)
 	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.BACK,tilt)*(SPROUT_REST-HEAD_CENTER)
-	sprout.rotation=Vector3(0,rest.head_yaw,-0.5+tilt+step*0.05*amount+settle*0.45+rest.sprout_roll)
+	sprout.rotation=Vector3(0,rest.head_yaw,SPROUT_LEAN+tilt+step*0.05*amount+settle*0.45+rest.sprout_roll)
 	# A glance adds to the eyes' attention, up to the reach that attention has:
 	# glancing toward a partner off to one side turns the head, not the eyes.
 	var look := (_look+rest.look).clamp(-Vector2.ONE,Vector2.ONE)
 	var blink := 1.0
-	if not _reduced_motion and _expression_time>0.0:
+	if not _reduced_motion and _expression_time>0.0 and Look.is_open(face_art.shown):
 		var blink_time := fposmod(_expression_time+expression_phase,4.3+expression_phase*0.25)
 		if blink_time>3.8 and blink_time<3.98:
 			blink=1.0-sin((blink_time-3.8)/0.18*PI)*0.94
-	var happy := _happy_blend()
-	# Open eyes squeeze shut first and the arcs pop in as they close, so the
-	# two shapes overlap only briefly. Cheeks lift a little with the smile.
-	var closed := smoothstep(0.0,0.6,happy)
-	var arc := smoothstep(0.45,1.0,happy)
-	var shut := maxf(closed,rest.eyes_closed)
+	# An expression change closes and reopens the eyes (face_art); a wake
+	# widens them for a moment.
+	var open := blink*face_art.openness()*(1.0+rest.eyes_wide)
 	for index in range(eyes.size()):
-		var x := -0.115 if index==0 else 0.115
-		var at := Vector3(x+look.x*0.018,0.02+look.y*0.009,0.289)
-		eyes[index].position=at
-		eyes[index].scale.y=blink*lerpf(1.0,0.06,shut)*(1.0+rest.eyes_wide)
-		eyes[index].visible=closed<1.0
-		happy_eyes[index].position=at
-		happy_eyes[index].visible=arc>0.0
-		happy_eyes[index].scale=Vector3.ONE*(lerpf(0.55,1.0,arc)+sin(arc*PI)*0.08)
-		cheeks[index].scale=Vector3.ONE*(1.0+happy*0.2)
-		cheeks[index].position=Vector3(x*1.5,-0.065+happy*0.006,0.267)
+		eyes[index].position=EYE_REST[index]+Vector3(look.x*0.018,look.y*0.009,0)
+		eyes[index].scale.y=open
+	face_art.place_eyes(eyes,look)
 	for index in range(2):
 		var side := -1.0 if index==0 else 1.0
 		var foot_phase := fposmod(stride_phase+(PI if index==1 else 0.0),TAU)
@@ -449,7 +493,7 @@ func _apply_pose(amount: float) -> void:
 		var reach := STRIDE_LENGTH/4.0
 		var along := -cos(foot_phase)*reach if swinging else reach-(foot_phase-PI)/PI*reach*2.0
 		var lift := sin(foot_phase)*0.075 if swinging else 0.0
-		feet[index].position=FOOT_REST+Vector3(side*0.14,lift*amount+launch*0.23+reunion*0.095,along*amount)
+		feet[index].position=FOOT_REST+Vector3(side*Look.FOOT_SPREAD,lift*amount+launch*0.23+reunion*0.095,along*amount)
 		var tap := maxf(0.0, sin(dance_phase + (PI if index == 1 else 0.0))) * dance
 		feet[index].position += Vector3(side*tap*0.075,tap*0.11,tap*0.075)
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
@@ -514,12 +558,6 @@ func _build_doze_zs() -> void:
 		z.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		z.visible=false
 		_doze_zs.append(z)
-
-func _happy_blend() -> float:
-	if not is_happy(): return 0.0
-	# Reduced Motion swaps the expression without the squeeze animation.
-	if _reduced_motion: return 1.0
-	return minf(smoothstep(0.0,HAPPY_CLOSE_TIME,happy_age),smoothstep(0.0,HAPPY_OPEN_TIME,happy_duration-happy_age))
 
 func play_throw() -> void:
 	# Called only for an observed held -> flying transition, never from a button.
@@ -592,69 +630,25 @@ func _apply_reunion_sparkles() -> void:
 		sparkle.position=Vector3(cos(angle)*spread,0.43+float(index%3)*0.13+progress*0.30,sin(angle)*spread)
 		sparkle.scale=Vector3.ONE*size
 
-static func head_depth(x: float, y: float) -> float:
-	# Front of the head ellipsoid in face space; the face origin is the head center.
-	return HEAD_AXES.z*sqrt(maxf(0.0,1.0-pow(x/HEAD_AXES.x,2.0)-pow(y/HEAD_AXES.y,2.0)))
+## A body part: a shared mesh (spirit_meshes.gd) with a material.
+func _part(shape: Mesh, material: Material, at: Vector3, parent: Node3D) -> MeshInstance3D:
+	var mesh := MeshInstance3D.new()
+	mesh.mesh=shape
+	mesh.material_override=material
+	mesh.position=at
+	parent.add_child(mesh)
+	return mesh
 
-func _happy_eye_mesh(eye_x: float) -> ArrayMesh:
-	# A soft upturned arc (^) that follows the head surface across the eye.
-	var path: Array[Vector3] = []
-	for step in range(HAPPY_ARC_STEPS+1):
-		var angle := lerpf(PI*0.94,PI*0.06,float(step)/HAPPY_ARC_STEPS)
-		var x := cos(angle)*0.044
-		var y := sin(angle)*0.040-0.012
-		path.append(Vector3(x,y,head_depth(eye_x+x,0.02+y)+0.007-0.289))
-	var rings: Array = []
-	for index in range(path.size()):
-		var tangent := (path[mini(index+1,path.size()-1)]-path[maxi(index-1,0)]).normalized()
-		rings.append(_arc_ring(path[index],tangent,1.0,0.0))
-	# Hemispherical caps keep both ends of the stroke rounded.
-	var start_tangent := (path[1]-path[0]).normalized()
-	var end_tangent := (path[-1]-path[-2]).normalized()
-	for step in range(1,4):
-		var bend := float(step)/3.0*PI*0.5
-		rings.push_front(_arc_ring(path[0],start_tangent,cos(bend),-sin(bend)))
-		rings.append(_arc_ring(path[-1],end_tangent,cos(bend),sin(bend)))
-	var vertices := PackedVector3Array()
-	var normals := PackedVector3Array()
-	for index in range(rings.size()-1):
-		for side in range(HAPPY_ARC_SIDES):
-			var next := (side+1)%HAPPY_ARC_SIDES
-			_arc_triangle(vertices,normals,rings[index][side],rings[index+1][side],rings[index][next])
-			_arc_triangle(vertices,normals,rings[index][next],rings[index+1][side],rings[index+1][next])
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX]=vertices
-	arrays[Mesh.ARRAY_NORMAL]=normals
-	var shape := ArrayMesh.new()
-	shape.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
-	return shape
+## One matte material per body colour, shared by every spirit of that colour.
+static var _body_materials: Dictionary = {}
 
-func _arc_ring(center: Vector3, tangent: Vector3, radial: float, axial: float) -> Array:
-	# Frame: out of the face (+Z) and its binormal, both normal to the tangent.
-	var outward := (Vector3.BACK-tangent*tangent.dot(Vector3.BACK)).normalized()
-	var side := tangent.cross(outward)
-	var ring := []
-	for index in range(HAPPY_ARC_SIDES):
-		var angle := TAU*float(index)/HAPPY_ARC_SIDES
-		var normal := (outward*cos(angle)+side*sin(angle))*radial+tangent*axial
-		ring.append([center+normal*HAPPY_ARC_RADIUS,normal.normalized()])
-	return ring
-
-func _arc_triangle(vertices: PackedVector3Array, normals: PackedVector3Array, a: Array, b: Array, c: Array) -> void:
-	# Godot front faces wind clockwise as seen from outside the surface.
-	var outside: bool=(b[0]-a[0]).cross(c[0]-a[0]).dot(a[1]+b[1]+c[1])>0.0
-	for corner: Array in ([a,c,b] if outside else [a,b,c]):
-		vertices.append(corner[0])
-		normals.append(corner[1])
-
-func _sphere(radius: float, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
-	var shape := SphereMesh.new()
-	shape.radius=radius
-	shape.height=radius*2.0
-	shape.radial_segments=16
-	shape.rings=8
-	return _mesh(shape,color,at,parent)
+static func _body_material(color: Color) -> StandardMaterial3D:
+	if not _body_materials.has(color):
+		var material := StandardMaterial3D.new()
+		material.albedo_color=color
+		material.roughness=0.9
+		_body_materials[color]=material
+	return _body_materials[color]
 
 func _mesh(shape: Mesh, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()

@@ -1,0 +1,251 @@
+extends SceneTree
+## The spirits' shared look (presentation/spirit_look.gd) and the faces that
+## show it: the eight eye shapes' rules, the body's proportions, and which
+## moments change the face.
+
+const Look = preload("res://presentation/spirit_look.gd")
+const Spirit = preload("res://presentation/spirit_visual.gd")
+const Meshes = preload("res://presentation/spirit_meshes.gd")
+const Idle = preload("res://presentation/spirit_idle.gd")
+
+var checks := 0
+var failures := 0
+
+func _initialize() -> void:
+	_run.call_deferred()
+
+func _run() -> void:
+	_test_table()
+	_test_open_eyes()
+	_test_sad_tear()
+	_test_cuts()
+	_test_strokes()
+	_test_body()
+	_test_triggers()
+	_test_api_and_placement()
+	print("AFTER YOU SPIRIT LOOK: %d checks, %d failures" % [checks, failures])
+	quit(1 if failures > 0 else 0)
+
+func _check(ok: bool, label: String) -> void:
+	checks += 1
+	if not ok:
+		failures += 1
+		print("FAIL: ", label)
+
+func _area(polygons: Array) -> float:
+	var total := 0.0
+	for polygon: PackedVector2Array in polygons:
+		var area := 0.0
+		for index in range(polygon.size()): area += polygon[index].cross(polygon[(index + 1) % polygon.size()])
+		total += absf(area) * 0.5
+	return total
+
+func _points(polygons: Array) -> PackedVector2Array:
+	var all := PackedVector2Array()
+	for polygon: PackedVector2Array in polygons: all.append_array(polygon)
+	return all
+
+func _anchor(index: int) -> Vector2:
+	return Vector2(-Look.EYE_X if index == 0 else Look.EYE_X, Look.EYE_Y)
+
+func _test_table() -> void:
+	_check(Look.EXPRESSIONS.size() == 8 and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE), "Eight expressions")
+	var complete := true
+	for expression: StringName in Look.EXPRESSIONS:
+		for index in range(2):
+			var eye := Look.eye(expression, index)
+			for key: String in ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end"]:
+				complete = complete and eye.get(key) is Vector4
+			# The shader reads the mode from stroke_end.w.
+			complete = complete and (eye.stroke_end.w > 0.5) == (eye.mode == 1) and (eye.mode == 1) == (not Look.is_open(expression))
+	_check(complete, "Every expression gives both eyes every shader parameter, with the mode in step")
+
+func _test_open_eyes() -> void:
+	# Normal: most of the eye is pupil; the pupil is hand-shaped but milder than Sad's.
+	for index in range(2):
+		var shape := Look.eye_contours(Look.NORMAL, index)
+		var ratio := _area(shape.pupil) / _area(shape.outer)
+		_check(ratio > 0.5 and ratio < 0.75, "Normal eye %d: the pupil fills most of the eye (%.2f)" % [index, ratio])
+	var normal_wave: Vector4 = Look.eye(Look.NORMAL, 0).pupil_wave
+	var sad_wave: Vector4 = Look.eye(Look.SAD, 0).pupil_wave
+	_check(normal_wave.length() > 0.02 and normal_wave.length() < sad_wave.length() * 0.6, "Normal pupils are blobby, but much less than Sad's")
+	_check(Look.eye(Look.NORMAL, 0).outer_wave.length() < normal_wave.length(), "The cream oval is smoother than the pupil")
+	var left := Look.eye(Look.NORMAL, 0)
+	var right := Look.eye(Look.NORMAL, 1)
+	_check(left.pupil_wave != right.pupil_wave or left.pupil_phase != right.pupil_phase, "The two Normal eyes are not copies of each other")
+	# Sad: a smooth round cream eye around the approved blob.
+	for index in range(2):
+		var sad := Look.eye(Look.SAD, index)
+		_check(sad.outer_wave == Vector4.ZERO and absf(sad.outer.x - sad.outer.y) < 0.01, "Sad eye %d: the main cream outline is smooth and round" % index)
+		_check(sad.pupil_wave.length() > 0.12, "Sad eye %d: the pupil is strongly blobby" % index)
+	_check(Look.eye(Look.SAD, 0).pupil_wave == Look.BLOB_WAVE and Look.eye(Look.SAD, 0).pupil_phase == Look.BLOB_PHASE, "Sad's pupil is the approved blob")
+	# Surprised: small pupils.
+	for index in range(2):
+		var shape := Look.eye_contours(Look.SURPRISED, index)
+		_check(_area(shape.pupil) / _area(shape.outer) < 0.15, "Surprised eye %d has a small pupil" % index)
+	# Happy: a dome with a flat base, cream along the base under the pupil.
+	var happy := Look.eye(Look.HAPPY, 0)
+	_check(happy.cut.y < 0.0 and happy.cut.w > 0.005, "Happy is a raised dome with cream along its flat base")
+	# The face's colours: cream, a near black navy, no white glint anywhere.
+	_check(Look.PUPIL.get_luminance() < 0.15 and Look.CREAM.get_luminance() > 0.85 and Look.CREAM != Color.WHITE, "Cream eyes, near black pupils")
+
+func _test_sad_tear() -> void:
+	var tears := 0
+	for index in range(2):
+		if Look.eye(Look.SAD, index).tear.z > 0.0: tears += 1
+	_check(tears == 1 and Look.eye(Look.SAD, 1).tear.z > 0.0, "Sad has exactly one tear tip, on the viewer's right eye")
+	var sad := Look.eye(Look.SAD, 1)
+	var tear: Vector4 = sad.tear
+	var dark: Vector4 = sad.tear_pupil
+	_check(dark.z > 0.0 and dark.w > 0.0, "The pupil runs into the tip as a connected dark lobe")
+	var tip := Vector2(tear.x, tear.y)
+	var drop := Vector2(dark.x, dark.y)
+	var cream_round_drop := tear.z - (tip.distance_to(drop) + dark.z)
+	var tip_dark := pow(dark.z / tear.z, 2.0)
+	var main_dark := pow(sad.pupil.x / sad.outer.x, 2.0)
+	_check(cream_round_drop > Look.RIM * 2.0 and tip_dark < main_dark * 0.5, "The tip is mostly cream round its dark lobe (%.2f dark against %.2f in the eye)" % [tip_dark, main_dark])
+	_check(tip.x > 0.0 and tip.y < -0.05, "The tip hangs at the eye's lower outer corner")
+	# The whole tip stays on the face: well inside the head's outline, on its front.
+	var shape := Look.eye_contours(Look.SAD, 1)
+	var on_face := true
+	for point: Vector2 in _points(shape.outer):
+		var at := point + _anchor(1)
+		var reach := pow(absf(at.x / Look.HEAD_HALF.x), Look.HEAD_POWER) + pow(absf(at.y / Look.HEAD_HALF.y), Look.HEAD_POWER)
+		on_face = on_face and reach < 0.75
+	_check(on_face, "The whole Sad eye and its tip stay on the face, with face colour all round")
+	_check(shape.pupil.size() == 1, "The tip's dark lobe joins the pupil")
+
+func _test_cuts() -> void:
+	for expression: StringName in [Look.ANNOYED, Look.ANGRY]:
+		for index in range(2):
+			var eye := Look.eye(expression, index)
+			var cut: Vector4 = eye.cut
+			var normal := Vector2(cut.x, cut.y)
+			_check(cut.w == 0.0 and normal.y > 0.5, "%s eye %d: the cut is on top and the pupil is not held back from it" % [expression, index])
+			# Along the cut, the pupil spans most of the eye: no cream strip on top.
+			var shape := Look.eye_contours(expression, index, 96)
+			var along := normal.orthogonal()
+			var pupil_span := _span_on_line(_points(shape.pupil), normal, cut.z, along)
+			var outer_span := _span_on_line(_points(shape.outer), normal, cut.z, along)
+			_check(pupil_span > outer_span * 0.6, "%s eye %d: the pupil reaches the cut along %.0f%% of it" % [expression, index, 100.0 * pupil_span / maxf(outer_span, 0.0001)])
+	# Angry slopes down toward the middle of the face on both eyes.
+	_check(Look.eye(Look.ANGRY, 0).cut.x > 0.0 and Look.eye(Look.ANGRY, 1).cut.x < 0.0, "Angry cuts fall toward the face's middle")
+
+## Width of the points lying on the line dot(normal, q) = d.
+func _span_on_line(points: PackedVector2Array, normal: Vector2, d: float, along: Vector2) -> float:
+	var low := INF
+	var high := -INF
+	for point: Vector2 in points:
+		if absf(point.dot(normal) - d) < 0.0015:
+			low = minf(low, point.dot(along))
+			high = maxf(high, point.dot(along))
+	return 0.0 if low == INF else high - low
+
+func _test_strokes() -> void:
+	for expression: StringName in [Look.SLEEPY, Look.SQUEEZE]:
+		for index in range(2):
+			var shape := Look.eye_contours(expression, index)
+			_check(shape.outer.is_empty() and shape.pupil.is_empty() and shape.strokes.size() == 1, "%s eye %d: dark strokes only, no cream" % [expression, index])
+	# Squeeze: > on the viewer's left eye, < on the right, both pointing in.
+	for index in range(2):
+		var line: PackedVector2Array = Look.eye_contours(Look.SQUEEZE, index).strokes[0]
+		var inward := 1.0 if index == 0 else -1.0
+		_check(line.size() == 3 and (line[1].x - line[0].x) * inward > 0.0 and (line[1].x - line[2].x) * inward > 0.0, "Squeeze eye %d points at the face's middle" % index)
+
+func _test_body() -> void:
+	var leaf_hue := Look.LEAF.h * 360.0
+	_check(leaf_hue > 80.0 and leaf_hue < 150.0 and Look.LEAF.s > 0.35, "The leaf is green")
+	var height := Look.HEAD_HALF.y * 2.0
+	_check(Look.LEAF_LENGTH / height > 0.2 and Look.LEAF_LENGTH / height < 0.33 and absf(Look.LEAF_WIDTH / Look.LEAF_LENGTH - 0.67) < 0.1, "A compact leaf: about a quarter of the head's height, two thirds as wide as long")
+	var peach := Spirit.new(Look.PEACH)
+	var mint := Spirit.new(Look.MINT)
+	root.add_child(peach)
+	root.add_child(mint)
+	_check((peach.sprout.material_override as StandardMaterial3D).albedo_color == Look.LEAF and (mint.sprout.material_override as StandardMaterial3D).albedo_color == Look.LEAF, "Both spirits wear the same green leaf")
+	_check(peach.head.mesh == mint.head.mesh and peach.torso.mesh == mint.torso.mesh and peach.sprout.mesh == mint.sprout.mesh, "Every spirit shares one set of body meshes")
+	var triangles := 0
+	for node: Node in peach.find_children("*", "MeshInstance3D", true, false):
+		var mesh := (node as MeshInstance3D).mesh
+		if mesh is ArrayMesh and node.get_parent().name != "ReunionSparkles":
+			for surface in range(mesh.get_surface_count()):
+				var indices: PackedInt32Array = mesh.surface_get_arrays(surface)[Mesh.ARRAY_INDEX]
+				triangles += (indices.size() if not indices.is_empty() else mesh.surface_get_arrays(surface)[Mesh.ARRAY_VERTEX].size()) / 3
+	_check(triangles < 2600, "A whole spirit is light (%d triangles in its own meshes)" % triangles)
+	# The head is wider than tall, with a small torso under it, and stays inside
+	# the old head's reach so carried things and badges still clear it.
+	_check(Look.HEAD_HALF.x > Look.HEAD_HALF.y and Look.TORSO_HALF.x < Look.HEAD_HALF.x * 0.75, "A wide rounded box head over a smaller bowl")
+	_check(Look.HEAD_CENTER.y + Look.HEAD_HALF.y < 0.925 - 0.05, "A carried seed (from 0.925 m up) still sits clear above the head")
+	var low := INF
+	for foot: Node3D in peach.feet: low = minf(low, foot.position.y - Look.FOOT_HALF.y)
+	_check(low > 0.03 and low < 0.07, "The feet still meet the ground where they did")
+	peach.free()
+	mint.free()
+
+func _step(spirit: Node3D, seconds: float, reduced: bool = false) -> void:
+	for _frame in range(roundi(seconds * 60.0)): spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, reduced)
+
+func _test_triggers() -> void:
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	spirit.set_expression_role("a")
+	_step(spirit, 1.0)
+	_check(spirit.expression() == Look.NORMAL, "A resting spirit shows Normal")
+	# Doze: Sleepy while it lasts.
+	spirit.set_pose(Idle.DOZE, {})
+	_step(spirit, 1.5)
+	_check(spirit.expression() == Look.SLEEPY, "A dozing spirit shows Sleepy")
+	# The wake is not a Surprised face: the owner chose no automatic Surprised.
+	spirit.play_wake(false)
+	var surprised := false
+	for _frame in range(60):
+		spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+		surprised = surprised or spirit.expression_target() == Look.SURPRISED
+	_check(not surprised and spirit.expression() == Look.NORMAL, "Waking from a doze goes back to Normal, never Surprised")
+	# Reunion: Happy.
+	spirit.set_partner_offset(Vector3(3, 0, 0), true)
+	_step(spirit, 0.05)
+	spirit.set_partner_offset(Vector3(1, 0, 0), true)
+	_step(spirit, 0.3)
+	_check(spirit.expression() == Look.HAPPY, "A reunion shows Happy")
+	_step(spirit, Spirit.HAPPY_REUNION_DURATION + 0.3)
+	_check(spirit.expression() == Look.NORMAL, "After the reunion the face is Normal again")
+	# A finished chapter: Happy for the celebration.
+	spirit.set_celebration(true)
+	_step(spirit, 0.3)
+	_check(spirit.expression() == Look.HAPPY, "A finished chapter shows Happy")
+	spirit.free()
+	# Reduce motion: the doze shows Sleepy at once.
+	var still := Spirit.new()
+	root.add_child(still)
+	still.set_pose(Idle.DOZE, {})
+	still.advance_motion(Vector3.ZERO, 1.0 / 60.0, true)
+	_check(still.expression() == Look.SLEEPY and not still.face_art.swapping(), "Under Reduce motion the face changes without a swap")
+	still.free()
+
+func _test_api_and_placement() -> void:
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	spirit.set_expression(Look.ANGRY)
+	_step(spirit, 0.1)
+	_check(spirit.expression() == Look.ANGRY, "set_expression holds an expression")
+	spirit.show_expression(Look.SURPRISED, 0.5)
+	_step(spirit, 0.3)
+	_check(spirit.expression() == Look.SURPRISED, "show_expression shows one for a while")
+	_step(spirit, 0.6)
+	_check(spirit.expression() == Look.ANGRY, "and then the held expression comes back")
+	# A seek places the face: no swap in progress, eyes fully open.
+	spirit.show_expression(Look.SAD, 2.0)
+	spirit.reset_motion()
+	_check(spirit.expression() == Look.ANGRY and not spirit.face_art.swapping() and spirit.eyes[0].scale.y == 1.0, "A seek places the face at once")
+	# The same steps give the same face, eye for eye.
+	var twins: Array = []
+	for copy in range(2):
+		var twin := Spirit.new()
+		root.add_child(twin)
+		twin.set_expression_role("b")
+		twin.show_expression(Look.SAD, 1.0)
+		for frame in range(100): twin.advance_motion(Vector3.ZERO, 1.0 / 60.0 if frame % 3 else 1.0 / 30.0, false)
+		twins.append(twin)
+	_check(twins[0].face_art.material.get_shader_parameter("eye_at") == twins[1].face_art.material.get_shader_parameter("eye_at") and twins[0].expression() == twins[1].expression(), "The same clock gives the same face")
+	for twin: Node in twins: twin.free()
+	spirit.free()

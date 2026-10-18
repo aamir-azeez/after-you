@@ -418,7 +418,7 @@ func _test_spirit_tap() -> void:
 		stage._process(1.0/60.0)
 		highest = maxf(highest,a.upper_body.position.y)
 		sparkled = sparkled or (a.reunion_sparkles.visible and b.reunion_sparkles.visible)
-		smiling = smiling or (a.happy_eyes[0].visible and b.happy_eyes[0].visible and not a.eyes[0].visible)
+		smiling = smiling or (a.expression()==&"happy" and b.expression()==&"happy")
 	_check(highest>0.07 and sparkled and smiling,"The greeting reuses the reunion hop and sparkles with happy eyes")
 	_check(_positions(world)==still,"Both spirits pause their wandering while they greet")
 	var age: float = a.reunion_age
@@ -426,7 +426,7 @@ func _test_spirit_tap() -> void:
 	_stage_tap(stage,_spirit_point(world,"b"))
 	_check(sounds[0]==before and a.reunion_age==age,"Taps during an active greeting are ignored")
 	for frame in range(ceili(Spirit.GREETING_DURATION*60.0)): stage._process(1.0/60.0)
-	_check(not a.is_happy() and not b.is_happy() and a.eyes[0].visible and not a.happy_eyes[0].visible and not a.reunion_sparkles.visible and stage._greeting_left==0.0,"The greeting settles back to normal eyes within its short duration")
+	_check(not a.is_happy() and not b.is_happy() and a.expression()==&"normal" and not a.reunion_sparkles.visible and stage._greeting_left==0.0,"The greeting settles back to normal eyes within its short duration")
 	var settled := _positions(world)
 	for frame in range(300): stage._process(1.0/60.0)
 	_check(_positions(world)!=settled,"Normal wandering resumes after the greeting")
@@ -497,10 +497,10 @@ func _test_spirit_tap() -> void:
 	for frame in range(30):
 		stage._process(1.0/60.0)
 		calm = calm and a.upper_body.position==Vector3.ZERO and b.upper_body.position==Vector3.ZERO and not a.reunion_sparkles.visible and not b.reunion_sparkles.visible
-		smiling = smiling or (a.happy_eyes[0].visible and b.happy_eyes[0].visible)
+		smiling = smiling or (a.expression()==&"happy" and b.expression()==&"happy")
 	_check(sounds[0]==before+1 and calm and smiling and a.facing_target==facing and _positions(world)==still,"Reduced Motion greets with still happy eyes only: no hop, sparkles or turn")
 	for frame in range(ceili(Spirit.GREETING_DURATION*60.0)+2): stage._process(1.0/60.0)
-	_check(not a.is_happy() and a.eyes[0].visible and stage._greeting_left==0.0,"Reduced Motion happy eyes also return to normal")
+	_check(not a.is_happy() and a.expression()==&"normal" and stage._greeting_left==0.0,"Reduced Motion happy eyes also return to normal")
 	world.reduced_motion = false
 	foreground[0] = false
 	before = sounds[0]
@@ -519,7 +519,7 @@ func _test_spirit_tap() -> void:
 	stage._process(1.0/60.0)
 	_check(sounds[0]==before+1 and a.is_happy() and b.is_happy(),"A fresh tap after the previous greeting works again")
 	stage.free()
-	_check(not a.is_happy() and not b.is_happy() and not a.happy_eyes[0].visible and not a.reunion_sparkles.visible and a.upper_body.position==Vector3.ZERO and world.home_presentation_owner==0,"Leaving home mid-greeting clears the greeting and releases ownership")
+	_check(not a.is_happy() and not b.is_happy() and a.expression()==&"normal" and not a.reunion_sparkles.visible and a.upper_body.position==Vector3.ZERO and world.home_presentation_owner==0,"Leaving home mid-greeting clears the greeting and releases ownership")
 	before = sounds[0]
 	_check(not world.greet_home_spirits() and sounds[0]==before,"Without an owning home stage the world refuses a greeting")
 	world.home_view = false
