@@ -29,7 +29,8 @@ extends Node
 ## Photo transfer's return, Android Back from a licence or Tester code, and the
 ## settings_requested signals of StoreFlow and AccountFlow, which land on
 ## Account & recovery). show_graphics_settings() and show_licenses() open their
-## categories. NotificationFlow calls refresh() when the service changes.
+## categories. NotificationFlow calls refresh() when the service changes, and
+## Main when a secure identity read or a new identity finishes.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
@@ -38,6 +39,7 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const Rows = preload("res://presentation/settings_rows.gd")
 const Kit = preload("res://presentation/settings_kit.gd")
 const Spirit = preload("res://presentation/settings_spirit.gd")
+const TouchInput = preload("res://presentation/touch_input.gd")
 const CREAM := Color("eceddb")
 ## Main's modes on these screens.
 const MODE_SETTINGS := "settings"
@@ -79,6 +81,10 @@ var _live: Array[Dictionary] = []
 var _view := 0
 ## The licence row a licence's text returns to.
 var _license_row := ""
+## The ids of the category's rows drawn now (visible_if held), so refresh()
+## can tell when that set changes; and whether a redraw waits for a finger.
+var _shown_ids := PackedStringArray()
+var _redraw_waiting := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -327,7 +333,40 @@ func _build_rows(rows: Array[Dictionary]) -> void:
 		_list.add_child(control)
 		_live.append({"row": row, "control": control})
 		previous = row
+	_shown_ids = _visible_ids()
 	_update_fade.call_deferred()
+
+## The ids of the category's own rows whose visible_if holds now (expanded
+## rows follow their parent, so they are not read again).
+func _visible_ids() -> PackedStringArray:
+	var ids := PackedStringArray()
+	for row: Dictionary in _rows:
+		if row.category == _category and Rows.shown(row): ids.append(str(row.id))
+	return ids
+
+## Draws the category again when the rows it shows changed (an identity that
+## finished loading while Account & recovery is open), keeping the scroll
+## position and the focused row. Waits while a finger is on a row.
+func _redraw_rows() -> void:
+	if _redraw_waiting: return
+	if TouchInput.press_held(_list):
+		_redraw_waiting = true
+		await TouchInput.until_released(_list)
+		_redraw_waiting = false
+		if is_open(): refresh()
+		return
+	var scroll := _scroll.scroll_vertical
+	var focused := get_viewport().gui_get_focus_owner()
+	var focus_name := str(focused.name) if focused != null and _list.is_ancestor_of(focused) else ""
+	var view := _view
+	_build_rows(Rows.in_category(_rows, _category))
+	refresh()
+	# The new rows have no layout until the next frame.
+	await get_tree().process_frame
+	if not is_open() or _view != view + 1: return
+	_scroll.scroll_vertical = scroll
+	var again := _list.find_child(focus_name, true, false) as Control if not focus_name.is_empty() else null
+	if again != null and again.focus_mode != Control.FOCUS_NONE: again.grab_focus()
 
 func _update_fade() -> void:
 	if not is_open() or not is_instance_valid(_fade): return
@@ -400,10 +439,13 @@ func _change(row: Dictionary, value: Variant) -> void:
 	refresh()
 
 ## Puts every row on show, the rail's summaries, the reset and the spirit in
-## step with what is saved. Updates controls in place: nothing is rebuilt, so
-## a finger on the page never loses its row.
+## step with what is saved. Updates controls in place; only when the set of
+## rows a category shows has changed is it drawn again, never under a finger.
 func refresh() -> void:
 	if not is_open(): return
+	if _visible_ids() != _shown_ids:
+		_redraw_rows()
+		return
 	for item: Dictionary in _live:
 		var row: Dictionary = item.row
 		var control: Control = item.control

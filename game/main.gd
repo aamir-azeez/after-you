@@ -1789,6 +1789,8 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 			identity_restart_required=true
 			deleted_identity_owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
 		secret_results.erase(id)
+	# Settings' Account & recovery shows rows by identity state.
+	if id in [identity_request,recovery_read_request]: settings_flow.refresh()
 
 func _secret_failed(id: String, _operation: String, code: String) -> void:
 	secret_results[id]={"ok":false,"code":code}
@@ -1796,6 +1798,7 @@ func _secret_failed(id: String, _operation: String, code: String) -> void:
 		identity_loading=false
 		identity_read_state=IdentityReadState.FAILED
 		secret_results.erase(id)
+		settings_flow.refresh()
 
 func _await_secret(id: String) -> Dictionary:
 	var deadline := Time.get_ticks_msec()+10000
@@ -2076,6 +2079,7 @@ func _ensure_identity(report: Callable = Callable()) -> bool:
 	api.player_id=str(response.data.player_id)
 	api.device_token=str(response.data.device_token)
 	store_flow.configure_purchases()
+	settings_flow.refresh()
 	return true
 
 func _room_simulation_version() -> int:

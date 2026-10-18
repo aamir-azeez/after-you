@@ -15,6 +15,7 @@ extends SceneTree
 ##   the base and phone shapes; Done and the rail stay put.
 ## - Friends & notifications holds the notification switches inline.
 ## - Account & recovery holds its actions inline and they still work.
+## - Its rows follow the identity state while it is open.
 ## - Callers land in the right category, and Back goes where Done goes.
 ## - A damaged save still opens with every switch; Always skip waits starts off.
 const Main=preload("res://main.gd")
@@ -137,6 +138,7 @@ func _run() -> void:
 	await _summaries(app)
 	await _redo_request_option(app,path)
 	await _account_inline(app)
+	await _identity_arrives(app)
 	await _callers(app)
 	app.get_viewport().queue_free()
 	await process_frame
@@ -395,6 +397,48 @@ func _account_inline(app: Node) -> void:
 	app.api=original
 	api.queue_free()
 	app.identity_data={}
+
+## An identity that finishes loading while Account & recovery is open redraws
+## its rows: the "not read yet" rows go and the identity's rows come, with the
+## focused row kept. A refresh with nothing changed redraws nothing.
+func _identity_arrives(app: Node) -> void:
+	var api := FakeApi.new()
+	app.add_child(api)
+	var original: Node = app.api
+	app.api=api
+	api.player_id=""
+	api.device_token=""
+	app.identity_restart_required=false
+	app.identity_loading=true
+	app.identity_read_state=Main.IdentityReadState.LOADING
+	app.identity_data={}
+	app.settings_flow.show_settings(Flow.ACCOUNT)
+	await _settle()
+	var state: String = app.account_flow.panel_state()
+	_check(state in ["unread","offline"],"Before the read finishes Account & recovery has no identity (%s)" % state)
+	var waiting_row := "unread_note" if state == "unread" else "offline_note"
+	_check(_control(app,waiting_row) != null and _control(app,"hosting_access") == null,"It shows the waiting rows, not the identity's")
+	var kept_id := "tester_code" if _control(app,"tester_code") != null else ""
+	if not kept_id.is_empty(): (_control(app,kept_id) as Control).grab_focus()
+	var before := _control(app,waiting_row)
+	app.settings_flow.refresh()
+	_check(_control(app,waiting_row) == before,"A refresh with the same rows redraws nothing")
+	app.identity_request="settings-identity-read"
+	var identity := {"player_id":"Q".repeat(22),"device_token":"T".repeat(43),"recovery_code":"C".repeat(43)}
+	app._secret_completed("settings-identity-read","get",{"found":true,"value":JSON.stringify(identity)})
+	await _settle()
+	await _settle()
+	_check(app.account_flow.panel_state()=="ready" and app.settings_flow.showing(Flow.ACCOUNT),"The read finishes with Settings still on Account & recovery")
+	_check(_control(app,waiting_row) == null,"The waiting rows go")
+	for id: String in ["recovery_details","hosting_access","photo_transfer","safety_reports","delete_identity"]:
+		_check(_control(app,id) != null,"The identity's row comes: "+id)
+	if not kept_id.is_empty():
+		var owner := app.get_viewport().gui_get_focus_owner()
+		_check(owner != null and owner.name == kept_id,"The focused row keeps focus through the redraw")
+	app.api=original
+	api.queue_free()
+	app.identity_data={}
+	app.identity_loading=false
 
 func _has_button(app: Node, text: String) -> bool:
 	return app.overlay.find_children("*","Button",true,false).any(func(button: Button) -> bool: return button.text==text and button.is_visible_in_tree())
