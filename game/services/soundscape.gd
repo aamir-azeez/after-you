@@ -313,6 +313,11 @@ func _cue_variation(key: String, source: String) -> Dictionary:
 	var span: Vector2 = SoundCues.CUES[key].get("gain", SoundCues.CUE_GAIN)
 	return {"step": step, "gain": lerpf(span.x, span.y, identity_unit(id + ["gain"]))}
 
+## The light tick a tapped control gives (a Settings tile), when haptics are on.
+const TAP_HAPTIC_MS := 12
+func tap_haptic() -> void:
+	if haptics_enabled and not backgrounded: _emit_haptic(TAP_HAPTIC_MS)
+
 func _emit_haptic(duration_ms: int) -> void:
 	if PlatformSupport.is_phone():
 		Input.vibrate_handheld(duration_ms)
