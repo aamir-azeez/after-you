@@ -45,9 +45,6 @@ renderer/rendering_method.mobile="gl_compatibility"
 textures/default_filters/use_nearest_mipmap_filter=false
 textures/vram_compression/import_etc2_astc=true
 environment/defaults/default_clear_color=Color(0.055,0.15,0.17,1)
-; Every quality hides shadow shapes (services/graphics_policy.gd), so the sun's
-; shadow pass only needs a token map; 256 draws the same pixels as 2048.
-lights_and_shadows/directional_shadow/size=256
 
 [physics]
 common/physics_ticks_per_second=30
