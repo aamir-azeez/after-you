@@ -24,6 +24,7 @@ const Rows=preload("res://presentation/settings_rows.gd")
 const Flow=preload("res://presentation/settings_flow.gd")
 const PlayerCopy=preload("res://presentation/player_copy.gd")
 const FakeApi=preload("res://tests/fake_rooms_api.gd")
+const RoomsApi=preload("res://services/rooms_api.gd")
 const SAVED_SWITCHES := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status","skip_waits"]
 var checks := 0
 var failures := 0
@@ -435,10 +436,49 @@ func _identity_arrives(app: Node) -> void:
 	if not kept_id.is_empty():
 		var owner := app.get_viewport().gui_get_focus_owner()
 		_check(owner != null and owner.name == kept_id,"The focused row keeps focus through the redraw")
+	await _redraw_keeps_place(app)
 	app.api=original
 	api.queue_free()
 	app.identity_data={}
 	app.identity_loading=false
+
+## A row set that changes while the page is scrolled keeps the scroll, and
+## waits while a finger is on a row: the rows under it stay until it lifts.
+func _redraw_keeps_place(app: Node) -> void:
+	var supported: bool = RoomsApi.history_supported
+	RoomsApi.history_supported = true
+	app.settings_flow.show_settings(Flow.ACCOUNT)
+	await _settle()
+	_check(_control(app,"room_history") != null,"The storage line shows while room history is kept")
+	var scroll := app.overlay.find_child("SettingsRows",true,false) as ScrollContainer
+	scroll.scroll_vertical = 120
+	await _settle()
+	var at := scroll.scroll_vertical
+	_check(at > 0,"Account & recovery is scrolled for the check")
+	var row := _control(app,"safety_reports") as Button
+	scroll.ensure_control_visible(row)
+	await _settle()
+	at = scroll.scroll_vertical
+	var press := InputEventMouseButton.new()
+	press.position = row.get_global_rect().get_center()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.pressed = true
+	app.get_viewport().push_input(press,true)
+	await process_frame
+	_check(row.is_pressed(),"A finger is down on a row")
+	RoomsApi.history_supported = false
+	app.settings_flow.refresh()
+	await _settle()
+	_check(is_instance_valid(row) and row.is_inside_tree() and _control(app,"room_history") != null,"Nothing is redrawn under the finger")
+	var release := press.duplicate() as InputEventMouseButton
+	release.pressed = false
+	release.position = Vector2(4,4)
+	app.get_viewport().push_input(release,true)
+	await _settle()
+	await _settle()
+	_check(_control(app,"room_history") == null and app.settings_flow.showing(Flow.ACCOUNT),"Once it lifts, the row that went away is gone")
+	_check(absi(scroll.scroll_vertical - at) <= 1 or scroll.scroll_vertical == int(scroll.get_v_scroll_bar().max_value - scroll.get_v_scroll_bar().page),"and the panel keeps its place")
+	RoomsApi.history_supported = supported
 
 func _has_button(app: Node, text: String) -> bool:
 	return app.overlay.find_children("*","Button",true,false).any(func(button: Button) -> bool: return button.text==text and button.is_visible_in_tree())

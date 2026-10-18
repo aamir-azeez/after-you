@@ -307,13 +307,14 @@ func _select(id: String, reveal: String = "") -> void:
 	refresh()
 	if not reveal.is_empty(): _reveal.call_deferred(reveal)
 
-func _build_rows(rows: Array[Dictionary]) -> void:
+## keep_scroll: a redraw of the same category keeps its place.
+func _build_rows(rows: Array[Dictionary], keep_scroll: bool = false) -> void:
 	_view += 1
 	_live.clear()
 	for child: Node in _list.get_children():
 		_list.remove_child(child)
 		child.queue_free()
-	_scroll.scroll_vertical = 0
+	if not keep_scroll: _scroll.scroll_vertical = 0
 	var stacked := _panel_width() < STACK_BELOW
 	# On/off settings are tiles, two to a row, above every other row.
 	var tiles := rows.filter(func(row: Dictionary) -> bool: return row.kind == Rows.TOGGLE)
@@ -359,9 +360,11 @@ func _redraw_rows() -> void:
 	var focused := get_viewport().gui_get_focus_owner()
 	var focus_name := str(focused.name) if focused != null and _list.is_ancestor_of(focused) else ""
 	var view := _view
-	_build_rows(Rows.in_category(_rows, _category))
+	_build_rows(Rows.in_category(_rows, _category), true)
 	refresh()
-	# The new rows have no layout until the next frame.
+	# The new rows have no layout until the next frame; the scroll may have
+	# been clamped meanwhile. Focus comes back by node name (row ids; an inline
+	# detail's own buttons have none and are let go).
 	await get_tree().process_frame
 	if not is_open() or _view != view + 1: return
 	_scroll.scroll_vertical = scroll
