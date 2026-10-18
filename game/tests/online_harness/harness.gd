@@ -147,6 +147,7 @@ func step(label: String, action: Callable, faults_on: Array = []) -> void:
 	steps.append(label)
 	for device: Node in devices:
 		device.toasts.clear()
+		device.news.clear()
 		device.error_cards.clear()
 	faulted.clear()
 	for device: Node in faults_on: faulted[device] = true

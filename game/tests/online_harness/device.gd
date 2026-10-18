@@ -19,7 +19,9 @@ var api: Node
 var legacy_060 := false
 var latency_frames := 1
 ## Every toast and error card seen since the last clear, with the step's fault flag.
+## Friend news in the pop-up (it carries the friends icon) is kept apart in `news`.
 var toasts: Array[String] = []
+var news: Array[String] = []
 var error_cards: Array[String] = []
 var _last_toast := ""
 
@@ -118,7 +120,8 @@ func observe() -> void:
 	var toast: Variant = app.toast
 	if is_instance_valid(toast) and toast.visible and toast.text != _last_toast:
 		_last_toast = toast.text
-		toasts.append(toast.text)
+		if toast._current.get("icon") != null: news.append(toast.text)
+		else: toasts.append(toast.text)
 	elif is_instance_valid(toast) and not toast.visible:
 		_last_toast = ""
 	var child: Node = app.relay_child

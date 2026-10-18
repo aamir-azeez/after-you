@@ -130,6 +130,7 @@ func _hosted_room_shows_on_friends() -> void:
 	var started := Time.get_ticks_msec()
 	await h.step("host hosts for friends", func(): h.host_room(host, "friends"))
 	h.check(await _until(joinable, 5000), "the friend's Friends page shows the room without waiting for its minute")
+	h.check(await _until(func() -> bool: return guest.news.has("Room available"), 3000), "Friends says Room available as friend news in the pop-up (saw %s)" % [guest.news])
 	h.check(list_reads.call() == 2, "one more list read for the hosting hint (%d)" % list_reads.call())
 	h.check(Time.get_ticks_msec() - started < 20000, "well inside the old minute (%d ms)" % (Time.get_ticks_msec() - started))
 	await h.step("guest leaves Friends", func(): guest.app.friends_flow.close())
