@@ -780,6 +780,12 @@ func _check_option_round_trip(preview, expected_mode: String, context: String) -
 	if back != null: back.pressed.emit()
 	await process_frame
 	_check(preview.mode == expected_mode and preview._room_state_current() and preview.overlay.find_child("RoomActionsPanel",true,false) != null,"Back from the chapter details returns to the room panel: "+context)
+	# Android Back does the same, and does not leave the room.
+	preview._show_waiting_details()
+	_check(preview.mode == "room_details","About opens again: "+context)
+	preview._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	await process_frame
+	_check(preview.mode == expected_mode and preview._room_state_current() and not preview._leaving,"Android Back from the chapter details returns to the room panel: "+context)
 
 ## Room options' rows, column by column, as drawn.
 func _option_rows(preview) -> Array:

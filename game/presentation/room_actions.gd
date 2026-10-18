@@ -11,8 +11,8 @@ extends RefCounted
 ## section, so a row may also sit in a panel slot of the same state.
 ## A widget row (the invitation code field or button, Share, Turn alerts' status
 ## line, Room options) names the screen method that builds and wires it. In Room
-## options the invitation code and Share answer on their own row, so the
-## screen wires those two rows itself.
+## options the invitation code and Share answer on their own row, so they name
+## the screen method that wires that row.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 
@@ -35,15 +35,17 @@ const TURN_REQUESTS := "Turn requests"
 ##   handler also takes the turn receipt the row was drawn for.
 ##   widget: the screen method that builds and wires this row (no run). It
 ##   takes (parent, id, facts, look) and returns the row's button, if any.
+##   option: the screen method that wires its Room options row, taking the row
+##   and the id; without one the row runs `run` once the sheet closes.
 ##   drawn: a screen method told about the row's button once it is drawn.
 ##   line: a line under the row where its slot's look shows lines.
 ##   heading: where its slot's look shows headings, its label heads it, above
 ##   a divider.
 ##   when: facts the screen must report true, in order ("!" negates).
 const ACTIONS := {
-	"copy_code": {"text": "Copy invitation code", "icon": preload("res://assets/ui/social/copy.svg"), "section": "invite", "widget": "_add_invitation_code_row", "when": ["invited", "!joined"]},
+	"copy_code": {"text": "Copy invitation code", "icon": preload("res://assets/ui/social/copy.svg"), "section": "invite", "widget": "_add_invitation_code_row", "option": "_wire_copy_code_option", "when": ["invited", "!joined"]},
 	"copy_code_button": {"text": "Copy invitation code", "widget": "_add_copy_code_button", "when": ["invited", "!joined"]},
-	"share": {"text": SHARE, "icon": preload("res://assets/ui/social/share-network.svg"), "line": SHARE_SCOPE, "section": "invite", "widget": "_add_share_row", "when": ["share"]},
+	"share": {"text": SHARE, "icon": preload("res://assets/ui/social/share-network.svg"), "line": SHARE_SCOPE, "section": "invite", "widget": "_add_share_row", "option": "_wire_share_option", "when": ["share"]},
 	"check_saved": {"button": "check_saved", "run": "_online_refresh", "when": ["pending"]},
 	"keep_held": {"text": PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, "run": "_keep_held_turn", "when": ["held"]},
 	"alerts": {"text": "Notifications", "heading": true, "widget": "_add_alerts_status", "when": ["!pending", "alerts"]},
@@ -139,7 +141,7 @@ const LAYOUT := {
 		"primary": ["check_saved"],
 		"turn": ["keep_held"],
 		"pair": ["room_options", "your_rooms"],
-		"options": ["replays", "about", "safety"],
+		"options": ["copy_code", "share", "replays", "about", "safety"],
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],

@@ -669,9 +669,9 @@ func _room_action_handler(id: String) -> Callable:
 	return run.bind(_recent_photo_receipt()) if row.get("with_receipt", false) else run
 
 ## A plain table row as the shared action button or a plain card button.
-func _room_action_button(id: String, facts: Callable, run: Callable = Callable(), cream: bool = false) -> Button:
+func _room_action_button(id: String, facts: Callable, cream: bool = false) -> Button:
 	var row: Dictionary = RoomActions.ACTIONS[id]
-	if not run.is_valid(): run = _room_action_handler(id)
+	var run := _room_action_handler(id)
 	if row.has("button"): return _action_button(str(row.button), run)
 	return _button(RoomActions.label(id, facts), run, cream or row.get("primary", false))
 
@@ -704,17 +704,17 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 	var row: Dictionary = RoomActions.ACTIONS[id]
 	if look.get("heading", false) and row.get("heading", false):
 		var divider := HSeparator.new()
-		divider.name = "WaitingNotificationsDivider"
+		divider.name = "RoomRowDivider"
 		parent.add_child(divider)
 		var heading := _label(RoomActions.label(id), 17)
-		heading.name = "WaitingNotificationsLabel"
+		heading.name = "RoomRowHeading"
 		heading.add_theme_color_override("font_color", CREAM)
 		parent.add_child(heading)
 	var button: Button
 	if row.has("widget"):
 		button = call(str(row.widget), parent, id, facts, look)
 	else:
-		button = _room_action_button(id, facts, Callable(), look.get("cream", false))
+		button = _room_action_button(id, facts, look.get("cream", false))
 		parent.add_child(button)
 	if button == null: return null
 	if look.get("icon_only", false): _room_icon_button(button, row.icon, button.text, true)
@@ -1155,20 +1155,27 @@ func _open_room_options(opener: Control = null) -> void:
 			for id: String in group.ids:
 				_wire_room_option(sheet.row(side, RoomActions.icon(id), RoomActions.label(id, facts), section.get("danger", false)), id)
 
-## A Room options row runs its action once the sheet closes. The invitation
-## code and Share act in place and answer on the row's second line.
+## A Room options row runs its action once the sheet closes, unless the table
+## names the screen method that wires it (RoomActions "option").
 func _wire_room_option(row: Button, id: String) -> void:
+	var data: Dictionary = RoomActions.ACTIONS[id]
+	if data.has("option"):
+		call(str(data.option), row, id)
+		return
+	assert(not data.has("widget"), "A widget room action needs its own Room options row: " + id)
+	row.pressed.connect(_room_option.bind(_room_action_handler(id)))
+
+## Option rows (RoomActions "option"): each takes the sheet row and the id, and
+## answers in place on the row's second line.
+
+func _wire_copy_code_option(row: Button, _id: String) -> void:
+	row.pressed.connect(_copy_invitation.bind(row.get_meta("subtitle")))
+
+func _wire_share_option(row: Button, id: String) -> void:
 	var status: Label = row.get_meta("subtitle")
-	match id:
-		"copy_code":
-			row.pressed.connect(_copy_invitation.bind(status))
-		"share":
-			status.text = RoomActions.SHARE_SCOPE
-			status.visible = true
-			_wire_share(row, status)
-		_:
-			assert(not RoomActions.ACTIONS[id].has("widget"), "A widget room action needs its own Room options row: " + id)
-			row.pressed.connect(_room_option.bind(_room_action_handler(id)))
+	status.text = str(RoomActions.ACTIONS[id].line)
+	status.visible = true
+	_wire_share(row, status)
 
 
 func _room_option(action: Callable) -> void:
@@ -1184,7 +1191,7 @@ func _close_room_options() -> void:
 
 func _refresh_waiting_panel() -> void:
 	# Turn-notification registration moves the panel's primary action.
-	if mode != "online_waiting" or running or _leaving or not is_instance_valid(_room_ready_panel) or not _waiting_notify_section or not turn_notification_status.is_valid(): return
+	if mode != "online_waiting" or running or _leaving or not _waiting_notify_section or not turn_notification_status.is_valid(): return
 	if (not turn_notification_status.call().get("registered", false)) != _waiting_notify_offered: _show_ready()
 
 
@@ -1377,7 +1384,6 @@ func _refresh_redo() -> bool:
 	await client.refresh()
 	return before != client.view()
 
-## The invitation's friend status line on the ready card or panel.
 ## The narrow card's line saying whether the friend has joined.
 func _add_friend_status(card: VBoxContainer, joined: bool) -> void:
 	var friend_status := _label(FRIEND_JOINED if joined else WAITING_FOR_FRIEND,20)
@@ -2787,6 +2793,10 @@ func _notification(what: int) -> void:
 		if is_instance_valid(_room_options_modal):
 			_close_room_options()
 			return
+		# Back from the chapter details returns to the room panel it came from.
+		if what == NOTIFICATION_WM_GO_BACK_REQUEST and mode == "room_details":
+			_show_ready()
+			return
 		if is_instance_valid(stick):
 			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
@@ -2804,7 +2814,7 @@ func update_notification_offer() -> void:
 	if is_instance_valid(notification_offer):
 		notification_offer.visible = not registered
 		notification_offer.disabled = state.get("busy", false)
-	if mode == "online_waiting" and is_instance_valid(_room_ready_panel) and _waiting_notify_section and (not registered) != _waiting_notify_offered:
+	if mode == "online_waiting" and _waiting_notify_section and (not registered) != _waiting_notify_offered:
 		_refresh_waiting_panel.call_deferred()
 
 func notification_room_hint(room_id: String) -> void:

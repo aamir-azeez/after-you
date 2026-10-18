@@ -52,7 +52,7 @@ const GOLDEN := {
 		"primary": ["check_saved"],
 		"turn": ["keep_held"],
 		"pair": ["room_options", "your_rooms"],
-		"options": ["replays", "about", "safety"],
+		"options": ["copy_code", "share", "replays", "about", "safety"],
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
@@ -116,6 +116,9 @@ func _rows() -> void:
 			_check(not row.has("run") and not row.has("bind"), "A widget row is wired only by its widget: " + id)
 			var widget: Dictionary = methods.get(str(row.widget), {})
 			_check(not widget.is_empty() and widget.args.size() == 4, "A widget row names a room screen builder taking parent, id, facts and look: " + id)
+			if row.has("option"):
+				var option: Dictionary = methods.get(str(row.option), {})
+				_check(not option.is_empty() and option.args.size() == 2, "An option row names a room screen method taking the sheet row and the id: " + id)
 			continue
 		var method: Dictionary = methods.get(str(row.get("run", "")), {})
 		_check(not method.is_empty(), "Action names a handler on the room screen: " + id)
@@ -146,7 +149,7 @@ func _layout() -> void:
 					seen[id] = true
 				if slot == "options":
 					_check(row.has("section") and RoomActions.icon(id) != null, "A Room options row has a section and an icon: %s in %s" % [id, state])
-					_check(not row.has("widget") or id in ["copy_code", "share"], "Only the invitation code and Share have their own Room options row: " + id)
+					_check(not row.has("widget") or row.has("option"), "A widget row in Room options names how its sheet row is wired: " + id)
 				elif panel:
 					_check(RoomActions.LOOKS.has(slot), "A panel slot has a look: %s.%s" % [state, slot])
 				if slot == "header": _check(row.has("icon"), "A header action has an icon: " + id)
@@ -209,6 +212,8 @@ func _facts() -> void:
 	var answer := _facts_from({"online": true, "joined": true, "redo": true, "redo_accept": true, "about": true, "options": true})
 	_check(RoomActions.shown("waiting_panel", "turn", answer) == ["redo_answer"] and RoomActions.shown("ready_panel", "turn", answer) == ["redo_answer"], "A friend's redo request stays on the panel while it needs an answer")
 	_check(RoomActions.shown("waiting_panel", "options", answer) == ["redo_answer", "about"], "Room options lists the request too, and not Ask for redo")
+	var pending_before_join := _facts_from({"online": true, "invited": true, "share": true, "pending": true, "about": true, "options": true})
+	_check(RoomActions.shown("waiting_panel_pending", "invite", pending_before_join) == ["copy_code"] and RoomActions.shown("waiting_panel_pending", "options", pending_before_join) == ["copy_code", "share", "about"], "A pending turn before the friend joins keeps the code inline and lists it and Share in Room options")
 	var pending := _facts_from({"online": true, "joined": true, "pending": true, "held": true, "watchable": true, "about": true, "safety": true, "options": true})
 	_check(RoomActions.panel_state("waiting", pending) == "waiting_panel_pending" and RoomActions.panel_state("ready", pending) == "ready_panel", "A sent turn without a receipt is the pending column")
 	_check(RoomActions.shown("waiting_panel_pending", "primary", pending) == ["check_saved"] and RoomActions.shown("waiting_panel_pending", "turn", pending) == ["keep_held"], "A held turn: Check status, then keep it")
