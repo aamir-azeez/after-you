@@ -4,9 +4,6 @@ extends RefCounted
 ## screen whose journey returns the same plan shape can reuse it.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 
-static func action_label() -> String:
-	return PlayerCopy.SOLO_REDO_ACTION
-
 ## The confirm card's title, body and confirm button for a plan, or {} when
 ## there is nothing to take back. The button repeats the title's verb.
 static func confirm_copy(plan: Dictionary) -> Dictionary:

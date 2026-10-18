@@ -39,6 +39,7 @@ const LocalSave = preload("res://services/local_save.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
+const RoomActions = preload("res://presentation/room_actions.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
@@ -230,8 +231,8 @@ func show_room() -> void:
 func _add_room_share(card: VBoxContainer) -> void:
 	var target := {"api_version": 1, "room_id": host.active_room.get("room_id", "")}
 	if not host._current_room_share_allowed(target): return
-	var status: Label = host._label("All friends",17)
-	var button: Button = host._list_button("Share current room",func(): _share_room_from_card(target, card, status),false)
+	var status: Label = host._label(RoomActions.SHARE_SCOPE,17)
+	var button: Button = host._list_button(RoomActions.SHARE,func(): _share_room_from_card(target, card, status),false)
 	button.name = "ShareCurrentRoom"
 	button.disabled = host.room_sharing.busy
 	card.add_child(button)
@@ -297,7 +298,7 @@ func _add_redo_action(card: VBoxContainer) -> void:
 	var client: RefCounted = redo_client()
 	var source := RedoClient.source_for("legacy",host.active_room)
 	if source.is_empty() and client.pending().is_empty(): return
-	var label := "Redo requested" if client.can_accept() else "Ask for redo" if TurnState.my_turn(host.active_room,host.api.player_id) else "Turn requests"
+	var label := RoomActions.redo_label(client.can_accept(),TurnState.my_turn(host.active_room,host.api.player_id))
 	if not client.pending().is_empty(): label = "Retry request"
 	card.add_child(host._list_button(label,open_redo,false))
 	if client.can_accept(): _announce_redo_request.call_deferred(client,str(host.active_room.get("room_id","")),open_redo)
@@ -311,7 +312,7 @@ func _announce_redo_request(client: RefCounted, room_id: String, review: Callabl
 	var key := room_id + ":" + str(request.get("request_id",JSON.stringify(request)))
 	if _announced_redo_requests.has(key): return
 	_announced_redo_requests[key] = true
-	_redo_request_modal = InGameModal.open(host.ui,"RedoRequestModal","Redo requested")
+	_redo_request_modal = InGameModal.open(host.ui,"RedoRequestModal",RoomActions.REDO_REQUESTED)
 	_redo_request_modal.label(REDO_REQUEST_BODY)
 	var open: Button = _redo_request_modal.add_actions("Review request",func():
 		if is_instance_valid(_redo_request_modal): _redo_request_modal.close(false)

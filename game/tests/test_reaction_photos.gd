@@ -792,7 +792,7 @@ func _accepted_hook() -> void:
 	_check(offer.offers == 1 and preview.waiting == 1, "unconfirmed game request never offers photo")
 	var card := VBoxContainer.new()
 	preview.add_child(card)
-	preview._add_recent_photo_action(card)
+	preview._add_room_action(card, "photo")
 	_check(card.get_child_count() == 1 and card.get_child(0).text == "Photo for your last contribution", "own photo can be revisited before partner finishes replay pair")
 	preview.overlay = Control.new()
 	preview.add_child(preview.overlay)

@@ -204,7 +204,7 @@ func _room_panel_clip_test() -> void:
 	small_viewport.add_child(host)
 	var panel := RoomReadyPanel.new()
 	host.add_child(panel)
-	var actions := panel.build("Long Way Home","2 / 2 · Follow the recording","Follow the open path.",ThemeDB.fallback_font,func(): pass,func(): pass)
+	var actions := panel.build("Long Way Home","2 / 2 · Follow the recording","Follow the open path.",ThemeDB.fallback_font,func(): pass)
 	for index in range(12):
 		var button := Button.new()
 		button.text="Room action %d"%index

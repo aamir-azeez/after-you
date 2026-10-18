@@ -2,6 +2,7 @@ extends SceneTree
 
 const Main = preload("res://main.gd")
 const Preview = preload("res://relay_preview.gd")
+const RoomActions = preload("res://presentation/room_actions.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const DiskStore = preload("res://services/relay_online_store.gd")
 const Save = preload("res://services/local_save.gd")
@@ -740,6 +741,9 @@ func _check_waiting_layout(preview, viewport: SubViewport, context: String) -> v
 	var modal: Node = preview.ui.find_child("RoomOptionsModal",true,false)
 	var labels: Array = [] if modal == null else modal.find_children("*","Button",true,false).map(func(button: Button): return button.text)
 	_check(labels.has("Refresh") and labels.has("About this chapter"),"Room options keeps manual refresh and chapter details: "+context)
+	var facts: Callable = preview._room_facts()
+	var table: Array = RoomActions.shown("waiting_panel","options",facts).map(func(id: String): return RoomActions.label(id,facts))
+	_check(labels.filter(func(text: String): return not text.is_empty()) == table,"Room options lists exactly the table's rows %s: %s" % [str(labels),context])
 	if modal == null: return
 	_check(modal.find_children("*","Label",true,false).any(func(label: Label): return label.text in _checking_lines() and label.is_visible_in_tree()),"Room options says it keeps checking beside Refresh: "+context)
 	preview._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)

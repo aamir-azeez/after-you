@@ -208,6 +208,7 @@ request_queue 1
 restart_chapter_ui 1
 review_access 1
 rolling_offer 3
+room_actions 1
 room_auto_share 2
 room_card_menu 1
 room_error_copy 2

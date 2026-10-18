@@ -17,6 +17,7 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const InviteShare = preload("res://services/invite_share.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const RoomActions = preload("res://presentation/room_actions.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
@@ -635,13 +636,13 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 		if room_actions != null: room_actions.move_child(return_button,0)
 	if not shareable_room.is_empty():
 		if FriendsClient.same_room(page.get("shared_room"),shareable_room):
-			_label("Shared with friends",20,room).add_theme_color_override("font_color",MUTED)
+			_label(RoomActions.SHARED,20,room).add_theme_color_override("font_color",MUTED)
 		else:
-			var share := _button("Share current room",func(): _act("share"),not _busy,room)
+			var share := _button(RoomActions.SHARE,func(): _act("share"),not _busy,room)
 			share.icon = SHARE_ICON
 			_secondary(share)
 			_pad_labeled_icon(share)
-			var scope := _label("All friends",18,room)
+			var scope := _label(RoomActions.SHARE_SCOPE,18,room)
 			scope.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 			scope.add_theme_color_override("font_color",MUTED)
 	# A room shared earlier that is not this card's room is named by its own
@@ -649,11 +650,11 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 	var shared: Variant = page.get("shared_room")
 	if shared is Dictionary and not FriendsClient.same_room(shared,shareable_room):
 		var chapter := str(shared_room_title.call(shared)) if shared_room_title.is_valid() else ""
-		var other := _label("Shared with friends" + ("" if chapter.is_empty() else " · " + chapter),20,room)
+		var other := _label(RoomActions.SHARED + ("" if chapter.is_empty() else " · " + chapter),20,room)
 		other.name = "SharedRoomLine"
 		other.add_theme_color_override("font_color",MUTED)
 	if page.get("shared_room") != null:
-		var unshare := _button("Stop sharing room",func(): _act("unshare"),not _busy,room)
+		var unshare := _button(RoomActions.STOP_SHARING,func(): _act("unshare"),not _busy,room)
 		_secondary(unshare)
 
 func _friend_row(peer: Dictionary, parent: Node) -> void:
