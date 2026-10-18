@@ -13,6 +13,7 @@ const Simulation = preload("res://core/journey/simulation.gd")
 const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Tide = preload("res://tests/turn_of_the_tide_witness.gd")
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
+const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const KEY := "turn-of-the-tide@1"
 var checks := 0
 var failures := 0
@@ -24,6 +25,7 @@ func _run() -> void:
 	_memory_sits()
 	_first_input_stands()
 	_data_alone()
+	_seat_folds()
 	print("STEP SEATS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -72,6 +74,22 @@ func _data_alone() -> void:
 	world.present(a.snapshot(), true)
 	for _tick in range(3): world.present(a.step({}), false)
 	_check(world.actors.p0.pose() == SpiritIdle.SIT, "Data alone: the spirit holding that step sits on it")
+	world.free()
+
+## The seat is plain scenery: it folds with the rest, and the spirit holding
+## its step still sits on it afterwards.
+func _seat_folds() -> void:
+	var a := _first_turn("high")
+	var world := _world({})
+	var seat: Node3D = world.terrain.find_child("Seat_bollard-pad", true, false)
+	var before := seat.find_children("*", "MeshInstance3D", true, false).size()
+	world._bubbles_placed = true
+	world.fold_over_frames = false
+	world._fold_static_scenery()
+	_check(world.terrain.has_meta(StaticBatch.FOLDED_META) and seat.find_children("*", "MeshInstance3D", true, false).size() < before, "The seat folds with the scenery (%d meshes before)" % before)
+	world.present(a.snapshot(), true)
+	for _tick in range(3): world.present(a.step({}), false)
+	_check(world.actors.p0.pose() == SpiritIdle.SIT, "After the fold the spirit holding the step still sits")
 	world.free()
 
 func _first_turn(route: String) -> RefCounted:

@@ -230,7 +230,7 @@ func _frame_camera() -> void:
 func _place_bubbles() -> void:
 	placement_passes += 1
 	for bubble: LabelBubble in _bubbles:
-		if is_instance_valid(bubble): bubble.sync()
+		if is_instance_valid(bubble) and bubble.visible: bubble.sync()
 	_lift_bubbles()
 
 ## A bubble rises straight up, tail still over its control, while a spirit or
@@ -551,6 +551,7 @@ func set_wait_hints(on: bool, memory_ticks: int = -1) -> void:
 		_build_wait_marks()
 		_sort_bubbles()
 		_sceneries.clear()
+		_placement_due = true
 	if not on:
 		_wait_hints.shown = []
 		_show_wait_marks()
@@ -578,7 +579,8 @@ func _build_wait_marks() -> void:
 		_wait_marks[candidate.route] = {"bubble": bubble, "dashes": dashes, "anchor": str(candidate.anchor)}
 		_show_mark(_wait_marks[candidate.route], false)
 
-## Shows each hinted crossing's mark with its words; hides the rest.
+## Shows each hinted crossing's mark with its words; hides the rest. The
+## next placement pass (_place_bubbles) places what changed.
 func _show_wait_marks() -> void:
 	var live: Dictionary = {}
 	for hint: Dictionary in _wait_hints.shown:
@@ -589,6 +591,7 @@ func _show_wait_marks() -> void:
 		_show_mark(mark, true)
 	for route: String in _wait_marks:
 		if not live.has(route): _show_mark(_wait_marks[route], false)
+	_placement_due = true
 
 ## A hidden bubble also stops refitting itself every frame.
 func _show_mark(mark: Dictionary, shown: bool) -> void:
