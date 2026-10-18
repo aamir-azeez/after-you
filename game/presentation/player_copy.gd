@@ -212,7 +212,7 @@ const TURN_OF_THE_TIDE_WAIT_BOLLARD_STEP := "This {crossing} won't budge till so
 const TURN_OF_THE_TIDE_WAIT_TIDE_LOW := "Hmm, the water's not high enough for this {crossing} yet…"
 const TURN_OF_THE_TIDE_WAIT_BAR := "The gate's not barred yet, so it won't swing…"
 const TURN_OF_THE_TIDE_WAIT_BOOM_CHAIN := "The boom's still loose, so it won't hold…"
-const TURN_OF_THE_TIDE_WAIT_PUNT_CHAIN := "The punt's still loose, so it would drift…"
+const TURN_OF_THE_TIDE_WAIT_PUNT_CHAIN := "The boat's still loose, so it would drift…"
 const TURN_OF_THE_TIDE_WAIT_SEA := "Hmm, the sea's not at the right level here…"
 const TURN_OF_THE_TIDE_WAIT_NOT_YET := "Not quite yet…"
 const TURN_OF_THE_TIDE_WAIT_STAYS_SHUT := "Looks like this {crossing} stays shut this turn…"
@@ -1027,7 +1027,7 @@ const REACTION_PHOTO_FLOW_1DB47511F697 := "To send it, the photo needs a readabl
 # Optional reaction photo flow — Heading or explanatory text (share)
 const REACTION_PHOTO_FLOW_6A7F3CBB1BFE := "This photo changed on the phone. Check the preview before you send it."
 # Replay photo controls — Tooltip (add bubble)
-const REACTION_PHOTO_STRIP_12957D25E292 := "Your photo — tap to edit"
+const REACTION_PHOTO_STRIP_12957D25E292 := "Your photo. Tap to edit."
 # Replay photo controls — Tooltip (add bubble)
 const REACTION_PHOTO_STRIP_BEA648A9F221 := "Report photo or block player"
 # Community and privacy screen — Heading or explanatory text (render)
