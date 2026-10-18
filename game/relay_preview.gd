@@ -27,22 +27,23 @@ const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
+const RedoRequestNotice = preload("res://presentation/redo_request_notice.gd")
 const SoloRedoOffer = preload("res://presentation/solo_redo_offer.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
+const RoomFriendStrip = preload("res://presentation/room_friend_strip.gd")
+const RoomOptionsSheet = preload("res://presentation/room_options_sheet.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
-const USERS_ICON = preload("res://assets/ui/social/users.svg")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
 const COMPLETION_DURATION := 3.0
 const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
-const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
 const ROOM_CLOSED := "Room closed"
@@ -108,8 +109,7 @@ var _continue_replay_context := false
 var replay_pair_index := -1
 var _replay_collection: Array = []
 var _solo_replay_only := false
-var _redo_request_modal: Control
-var _announced_redo_requests: Dictionary = {}
+var redo_notice := RedoRequestNotice.new()
 var _solo_replay_context_error := false
 var running := false
 var mode := "ready"
@@ -143,7 +143,6 @@ var _room_options_modal: Control
 ## it was drawn in. Room options act only while both still hold.
 var _room_state := ""
 var _room_state_mode := ""
-var _options_sync_status: Label
 var completion_remaining := 0.0
 var _completion_is_replay := false
 var backgrounded := false
@@ -594,26 +593,21 @@ func _show_ready() -> void:
 		body += "\n\nInvitation: " + ShareCodes.display(ShareCodes.ROOM, online_session.invitation_code())
 	var title := _turn_title(int(checkpoint.stage_index), role)
 	var compact: bool = online_session != null and _room_panel_fits()
-	# Before a friend joins, the invitation heading already states that status.
-	var show_presence: bool = _presence_available() and (joined or not invited)
-	var card: VBoxContainer
+	var facts := _room_facts()
 	if compact:
 		var hint := PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]))
-		card = _ordinary_room_card(title,hint)
-		if show_presence: _add_room_status_chip(card)
+		var panel := _ordinary_room_card(title,hint)
+		_set_room_state(RoomActions.panel_state("ready", facts))
+		_add_friend_strip(panel, joined)
+		_add_room_panel_actions(panel, facts)
 	else:
-		card = _plain_card(title,body)
-		if show_presence: card.add_child(_presence_badge())
-	var state := "ready_panel" if compact else "ready_card"
-	_set_room_state(state)
-	var facts := _room_facts()
-	if invited: _add_friend_status(card, joined)
-	_add_room_actions(card, state, "invite", facts)
-	# The divider separates invitation rows from the turn actions; a guest has none.
-	if invited and compact:
-		card.add_child(HSeparator.new())
-	_add_room_actions(card, state, "turn", facts)
-	if compact: _add_room_actions(_room_ready_panel.header, state, "header", facts)
+		var card := _plain_card(title,body)
+		# Before a friend joins, the invitation heading already states that status.
+		if _presence_available() and (joined or not invited): card.add_child(_presence_badge())
+		_set_room_state("ready_card")
+		if invited: _add_friend_status(card, joined)
+		_add_room_actions(card, "ready_card", "invite", facts)
+		_add_room_actions(card, "ready_card", "turn", facts)
 	# A tap still waiting keeps its label on the redrawn button.
 	if _turn_gate != null and _ready_turn_buttons.has(_turn_gate_action): _turn_gate.follow(_ready_turn_buttons[_turn_gate_action])
 
@@ -649,7 +643,9 @@ func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 		"draft": return journey.has_draft() if journey.has_method("has_draft") else not journey.draft().is_empty()
 		"pending": return online_session != null and not journey.pending().is_empty()
 		"held": return online_session != null and bool(journey.pending().get("held", false))
-		"notifications": return _notifications_available()
+		# Turn alerts can be offered and are still off.
+		"notifications": return _notifications_available() and not turn_notification_status.call().get("registered", false)
+		"alerts": return _notifications_available()
 		# A finished chapter always has its replays; otherwise finished pairs
 		# online, or archived attempts solo.
 		"watchable": return mode == "complete" or (not _pairs().is_empty() if online_session != null else not journey.archived_attempts().is_empty())
@@ -673,85 +669,127 @@ func _room_action_handler(id: String) -> Callable:
 	return run.bind(_recent_photo_receipt()) if row.get("with_receipt", false) else run
 
 ## A plain table row as the shared action button or a plain card button.
-func _room_action_button(id: String, facts: Callable, run: Callable = Callable()) -> Button:
+func _room_action_button(id: String, facts: Callable, run: Callable = Callable(), cream: bool = false) -> Button:
 	var row: Dictionary = RoomActions.ACTIONS[id]
 	if not run.is_valid(): run = _room_action_handler(id)
 	if row.has("button"): return _action_button(str(row.button), run)
-	return _button(RoomActions.label(id, facts), run, row.get("primary", false))
+	return _button(RoomActions.label(id, facts), run, cream or row.get("primary", false))
 
-## One slot of a room state, in the table's order.
+## One slot of a room state, in the table's order and its slot's look.
 func _add_room_actions(parent: Container, state: String, slot: String, facts: Callable) -> void:
-	for id: String in RoomActions.shown(state, slot, facts): _add_room_action(parent, id, facts, slot == "header")
+	var look := RoomActions.look(state, slot, is_instance_valid(_room_ready_panel) and _room_ready_panel.short_layout)
+	for id: String in RoomActions.shown(state, slot, facts): _add_room_action(parent, id, facts, look)
 
-## Adds one table row when it applies and returns its button. Most rows are
-## one button; custom rows and Notify bring their own widgets, and a header
-## action is an icon. `lead` gives a "first_free" row the cream look.
-func _add_room_action(parent: Container, id: String, facts: Callable = Callable(), icon_only: bool = false, lead: bool = false) -> Button:
+## A wide panel's actions under its status: the invitation, a divider, the
+## cream rows, the outlined rows, then the last line's rows side by side.
+func _add_room_panel_actions(card: VBoxContainer, facts: Callable) -> void:
+	var state := _room_state
+	if not RoomActions.shown(state, "invite", facts).is_empty(): _add_room_actions(_group(card, 8), state, "invite", facts)
+	card.add_child(HSeparator.new())
+	_add_room_actions(card, state, "primary", facts)
+	_add_room_actions(card, state, "turn", facts)
+	var line := HBoxContainer.new()
+	line.name = "RoomPanelLastLine"
+	line.add_theme_constant_override("separation", 10)
+	card.add_child(line)
+	_add_room_actions(line, state, "pair", facts)
+	_add_room_actions(_room_ready_panel.header, state, "header", facts)
+
+## Adds one table row when it applies, drawn in `look` (RoomActions.look), and
+## returns its button. A plain row is one button; a widget row is built by the
+## screen method it names.
+func _add_room_action(parent: Container, id: String, facts: Callable = Callable(), look: Dictionary = {}) -> Button:
 	if not facts.is_valid(): facts = _room_facts()
 	if not RoomActions.applies(id, facts, _room_state): return null
 	var row: Dictionary = RoomActions.ACTIONS[id]
-	var short_layout: bool = is_instance_valid(_room_ready_panel) and _room_ready_panel.short_layout
-	var label := RoomActions.label(id, facts)
-	if _room_state == "waiting_panel": label = str(row.get("short", label))
+	if look.get("heading", false) and row.get("heading", false):
+		var divider := HSeparator.new()
+		divider.name = "WaitingNotificationsDivider"
+		parent.add_child(divider)
+		var heading := _label(RoomActions.label(id), 17)
+		heading.name = "WaitingNotificationsLabel"
+		heading.add_theme_color_override("font_color", CREAM)
+		parent.add_child(heading)
 	var button: Button
-	match id:
-		"copy_code":
-			if _room_state == "ready_panel":
-				_add_invitation_code_row(parent, 50 if short_layout else 64, short_layout)
-			elif _room_state == "ready_card":
-				var status := _feedback_label("RelayCopyStatus")
-				button = _panel_button(label, false)
-				button.name = "CopyInvitationCode"
-				button.pressed.connect(_copy_invitation.bind(status))
-				parent.add_child(button)
-				parent.add_child(status)
-			else:
-				_add_invitation_code_row(parent, 52)
-		"share":
-			# The waiting panel keeps its Share result line hidden until it has one.
-			var scope := _label("" if _room_state == "waiting_panel" else RoomActions.SHARE_SCOPE, 17)
-			scope.visible = _room_state != "waiting_panel"
-			if _room_state == "ready_panel": scope.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			button = _add_share_action(parent, label, lead, scope)
-			if button != null and _room_state == "ready_panel":
-				_room_icon_button(button, row.icon, label)
-				_style_share(button)
-				ControlTheme.inset_button(button)
-				ControlTheme.center_icon_label(button)
-				button.custom_minimum_size.y = 54 if short_layout else 64
-		"room_options":
-			button = _panel_button(label, false)
-			button.name = "RoomOptions"
-			button.pressed.connect(_open_room_options.bind(button))
-			parent.add_child(button)
-		"your_rooms":
-			button = _panel_button(label, lead)
-			button.name = "YourRooms"
-			button.pressed.connect(_leave)
-			parent.add_child(button)
-		"notify":
-			var section := _label("Notifications", 17)
-			section.name = "WaitingNotificationsLabel"
-			section.add_theme_color_override("font_color", CREAM)
-			parent.add_child(section)
-			_waiting_notify_offered = not turn_notification_status.call().get("registered", false)
-			notification_hint = _label("", 16)
-			notification_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			parent.add_child(notification_hint)
-			notification_offer = _room_action_button(id, facts)
-			button = notification_offer
-			parent.add_child(button)
-			update_notification_offer()
-		_:
-			assert(not row.get("custom", false), "A custom room action needs its own widget: " + id)
-			button = _room_action_button(id, facts)
-			if icon_only: _room_icon_button(button, row.icon, button.text, true)
-			parent.add_child(button)
-			if id in ["resume", "record"]: _ready_turn_buttons[id] = button
-			if id == "record" and _room_state == "ready_panel": button.custom_minimum_size.y = 54 if short_layout else 64
-			# A friend's redo request needs an answer; it is also announced once.
-			if id == "redo_answer": _announce_pending_redo()
+	if row.has("widget"):
+		button = call(str(row.widget), parent, id, facts, look)
+	else:
+		button = _room_action_button(id, facts, Callable(), look.get("cream", false))
+		parent.add_child(button)
+	if button == null: return null
+	if look.get("icon_only", false): _room_icon_button(button, row.icon, button.text, true)
+	elif look.get("icon", false): _panel_row_look(button, RoomActions.icon(id), look.get("cream", false) or row.get("primary", false))
+	if look.has("height"): button.custom_minimum_size.y = look.height
+	if look.get("fill", false): button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	if row.has("drawn"): call(str(row.drawn), button)
 	return button
+
+## Widget rows (RoomActions "widget"): each takes (parent, id, facts, look).
+
+## The narrow card's Copy invitation code button and its result line.
+func _add_copy_code_button(parent: Container, id: String, _facts: Callable, _look: Dictionary) -> Button:
+	var status := _feedback_label("RelayCopyStatus")
+	var button := _panel_button(RoomActions.label(id), false)
+	button.name = "CopyInvitationCode"
+	button.pressed.connect(_copy_invitation.bind(status))
+	parent.add_child(button)
+	parent.add_child(status)
+	return button
+
+## Share and its result line, which shows the row's line where the look has lines.
+func _add_share_row(parent: Container, id: String, _facts: Callable, look: Dictionary) -> Button:
+	var share := _panel_button(RoomActions.label(id), look.get("cream", false))
+	parent.add_child(share)
+	var lined: bool = look.get("line", false)
+	var status := _label(str(RoomActions.ACTIONS[id].line) if lined else "", 17)
+	status.visible = lined
+	parent.add_child(status)
+	_wire_share(share, status)
+	return share
+
+func _add_room_options_button(parent: Container, id: String, _facts: Callable, _look: Dictionary) -> Button:
+	var button := _panel_button(RoomActions.label(id), false)
+	button.name = "RoomOptions"
+	button.pressed.connect(_open_room_options.bind(button))
+	parent.add_child(button)
+	return button
+
+## Turn alerts' status line ("Turn notifications are on", or a problem). It
+## shows only when it has something to say; Notify is its own row.
+func _add_alerts_status(parent: Container, _id: String, _facts: Callable, _look: Dictionary) -> Button:
+	notification_hint = _label("", 16)
+	notification_hint.name = "WaitingNotificationHint"
+	notification_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	parent.add_child(notification_hint)
+	# A change in registration redraws the panel (see update_notification_offer).
+	_waiting_notify_section = true
+	_waiting_notify_offered = not turn_notification_status.call().get("registered", false)
+	update_notification_offer()
+	return null
+
+## Drawn hooks (RoomActions "drawn"): each takes the row's button.
+
+## A tap still waiting keeps its label on the redrawn Record or Resume.
+func _track_turn_button(button: Button) -> void:
+	_ready_turn_buttons[str(button.get_meta("action_id"))] = button
+
+func _track_notify_offer(button: Button) -> void:
+	notification_offer = button
+	update_notification_offer()
+
+## A panel row's icon beside its centred label, inked like the label.
+func _panel_row_look(button: Button, texture: Texture2D, cream: bool) -> void:
+	if button.icon == null and texture != null:
+		button.icon = texture
+		button.expand_icon = false
+		button.add_theme_constant_override("icon_max_width", 22)
+		button.add_theme_constant_override("h_separation", 10)
+		var ink := ControlTheme.INK if cream else CREAM
+		for state: String in ["normal", "focus"]: button.add_theme_color_override("icon_" + state + "_color", ink)
+		for state: String in ["hover", "pressed", "hover_pressed"]: button.add_theme_color_override("icon_" + state + "_color", ControlTheme.INK)
+	if button.icon != null:
+		ControlTheme.inset_button(button)
+		ControlTheme.center_icon_label(button)
 
 ## The online replays row: the finished pairs from the first.
 func _play_replays() -> void:
@@ -868,14 +906,18 @@ func _waiting_partner_name(room: Dictionary) -> String:
 	# The viewer's slot is p0 when they host and p1 when they joined, so the
 	# partner is the other player id. Use the local nickname when one is saved,
 	# otherwise "a friend" (as the room hub does). Never the raw id.
-	if room.is_empty(): return ""
-	var partner: Variant = room.get("guest_id") if room.get("player_slot") == "p0" else room.get("host_id")
-	var id := str(partner) if partner != null else ""
+	var id := _partner_id(room)
 	if id.is_empty(): return ""
 	var scope: Dictionary = online_session.nickname_scope() if online_session != null and online_session.has_method("nickname_scope") else {}
 	if scope.is_empty(): return FriendNicknames.FALLBACK
 	var names: RefCounted = nickname_store if nickname_store != null else FriendNicknames.new()
 	return names.display_name(str(scope.server), str(scope.owner), id)
+
+
+## The other player's id: the viewer's slot is p0 when they host, p1 when they joined.
+func _partner_id(room: Dictionary) -> String:
+	var partner: Variant = room.get("guest_id") if room.get("player_slot") == "p0" else room.get("host_id")
+	return str(partner) if partner != null else ""
 
 
 ## A replay names each spirit from this player's side: "You", and the friend
@@ -987,123 +1029,79 @@ func _show_online_waiting() -> void:
 	var whose := WAITING_FOR_PARTNER_TURN % (partner if not partner.is_empty() else "your friend")
 	var heading := WAITING_TURN_SAVED if saved else whose if partner_present else WAITING_FOR_FRIEND
 	var subline := whose if saved and partner_present else "" if room.is_empty() else PlayerCopy.RELAY_PREVIEW_06FE980C1040
-	# The chip carries the room status the heading does not already state.
+	notification_hint = null
+	notification_offer = null
+	_waiting_notify_section = false
+	_waiting_notify_offered = false
+	if _room_panel_fits():
+		_show_waiting_panel(room, heading, subline, whose, partner_present, saved, notices)
+		return
+	# The narrow card: the chip carries the room status the heading does not state.
 	var chip_text := ""
 	if not joined: chip_text = WAITING_FOR_FRIEND if heading != WAITING_FOR_FRIEND else ""
 	elif not _presence_available(): chip_text = FRIEND_JOINED
-	var compact: bool = _room_panel_fits()
-	var card: VBoxContainer
-	var top: VBoxContainer
-	if compact:
-		var stage_title := _turn_title(int(room.stage_index), "a" if _viewer_is_first(room) else "b") if not room.is_empty() and int(room.get("stage_index", definition.stages.size())) < definition.stages.size() else ""
-		card = _ordinary_room_card(stage_title, "")
-		card.add_theme_constant_override("separation", 16)
-		top = _group(card, 4)
-		if (joined or not chip_text.is_empty()) and _add_room_status_chip(top, chip_text) != null:
-			var gap := Control.new()
-			gap.custom_minimum_size.y = 6
-			top.add_child(gap)
+	var card := _plain_card(heading, "")
+	card.get_child(1).visible = false
+	if heading == whose: card.get_child(0).name = "WaitingPartnerLine"
+	var chip: PanelContainer = _add_room_status_chip(card, chip_text) if joined or not chip_text.is_empty() else null
+	if chip != null: card.move_child(chip, 0)
+	_add_waiting_lines(card, subline, whose, notices)
+	_set_room_state("waiting_card")
+	var facts := _room_facts()
+	_add_room_actions(card, "waiting_card", "invite", facts)
+	_add_room_actions(card, "waiting_card", "turn", facts)
+	_add_online_sync_status(card)
+	_add_room_actions(card, "waiting_card", "more", facts)
+
+## Concept 04 and 05: the friend strip, then what happened and whose turn is
+## next, then the panel's actions.
+func _show_waiting_panel(room: Dictionary, heading: String, subline: String, whose: String, partner_present: bool, saved: bool, notices: PackedStringArray) -> void:
+	var card := _ordinary_room_card(_room_stage_title(), "")
+	var facts := _room_facts()
+	_set_room_state(RoomActions.panel_state("waiting", facts))
+	var top := _group(card, 4)
+	# Before a friend arrives the strip says so, and carries the saved turn.
+	_add_friend_strip(top, room.get("guest_id") != null, WAITING_TURN_SAVED if saved and not partner_present else "")
+	if partner_present:
+		var gap := Control.new()
+		gap.custom_minimum_size.y = 8
+		top.add_child(gap)
 		var title := _label(heading, 30)
 		title.add_theme_font_override("font", title_font)
 		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		top.add_child(title)
 		if heading == whose: title.name = "WaitingPartnerLine"
-	else:
-		card = _plain_card(heading, "")
-		card.get_child(1).visible = false
-		if heading == whose: card.get_child(0).name = "WaitingPartnerLine"
-		top = card
-		var chip: PanelContainer = _add_room_status_chip(card, chip_text) if joined or not chip_text.is_empty() else null
-		if chip != null: card.move_child(chip, 0)
-	if not subline.is_empty():
-		var line := _label(subline, 18)
-		line.name = "WaitingPartnerLine" if subline == whose else "WaitingSubline"
-		line.add_theme_color_override("font_color", MUTED)
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		top.add_child(line)
-	var notes: VBoxContainer = _group(card, 6) if compact and not notices.is_empty() else top
-	for notice: String in notices:
-		var note := _label(notice, 16)
-		note.add_theme_color_override("font_color", MUTED)
-		note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		notes.add_child(note)
-	var state := "waiting_panel" if compact else "waiting_card"
-	_set_room_state(state)
-	var facts := _room_facts()
-	# The invitation is only useful until a friend has joined.
-	if not RoomActions.shown(state, "invite", facts).is_empty():
-		_add_room_actions(_group(card, 8) if compact else card, state, "invite", facts)
-	var notify := RoomActions.applies("notify", facts, state)
-	if compact or notify:
-		var divider := HSeparator.new()
-		divider.name = "WaitingNotificationsDivider"
-		card.add_child(divider)
-	var actions: VBoxContainer = _group(card, 12) if compact else card
-	notification_hint = null
-	notification_offer = null
-	_waiting_notify_section = compact and notify
-	_waiting_notify_offered = false
-	if not compact:
-		_add_room_actions(card, state, "turn", facts)
-		_add_online_sync_status(card)
-		_add_room_actions(card, state, "more", facts)
-		return
-	# One cream action per panel, placed by each row's "waiting" field.
-	var primary_taken := false
-	var secondary: Array[Button] = []
-	var share: Button = null
-	for id: String in RoomActions.shown(state, "turn", facts):
-		var place := str(RoomActions.ACTIONS[id].get("waiting", ""))
-		var lead := place == "first_free" and not primary_taken
-		var button := _add_room_action(actions, id, facts, false, lead)
-		if button == null: continue
-		if button.has_meta("status"): share = button
-		if place == "primary" and button.visible: primary_taken = true
-		elif lead: primary_taken = true
-		elif place in ["first_free", "outlined"]: secondary.append(button)
-	for button: Button in secondary:
-		if button.get_parent() != null: button.get_parent().remove_child(button)
-	# Concept 06 pairs the first two outlined actions; any further one is full width.
-	var single_from := 0
-	if secondary.size() >= 2:
-		var row := HBoxContainer.new()
-		row.add_theme_constant_override("separation", 10)
-		actions.add_child(row)
-		for index in range(2):
-			secondary[index].size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			row.add_child(secondary[index])
-		single_from = 2
-	for index in range(single_from, secondary.size()): actions.add_child(secondary[index])
-	for button: Button in actions.find_children("*", "Button", true, false):
-		button.custom_minimum_size.y = maxf(button.custom_minimum_size.y, 52)
-	# Share feedback sits directly under the control that holds Share.
-	if share != null:
-		var share_status: Label = share.get_meta("status")
-		var holder: Node = share if share.get_parent() == actions else share.get_parent()
-		actions.move_child(share_status, -1)
-		actions.move_child(share_status, holder.get_index() + 1)
-	_add_online_sync_status(actions, true)
+		top.add_child(title)
+	_add_waiting_lines(top, subline if partner_present or not saved else "", whose, notices)
+	_add_room_actions(top, _room_state, "status", facts)
+	_add_room_panel_actions(card, facts)
+	_add_online_sync_status(card, true)
 	online_sync_status.add_theme_color_override("font_color", MUTED)
 	online_sync_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	online_sync_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 
+## The waiting heading's muted lines: the sub-line, then any notices.
+func _add_waiting_lines(parent: VBoxContainer, subline: String, whose: String, notices: PackedStringArray) -> void:
+	var lines: Array[String] = []
+	if not subline.is_empty(): lines.append(subline)
+	lines.append_array(notices)
+	for text: String in lines:
+		var line := _label(text, 18 if text == subline else 16)
+		if text == subline: line.name = "WaitingPartnerLine" if subline == whose else "WaitingSubline"
+		line.add_theme_color_override("font_color", MUTED)
+		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		parent.add_child(line)
 
-func _add_share_action(parent: Container, text: String, primary: bool, status: Label) -> Button:
-	# Share sends the room to all friends; its result replaces the status text.
-	if not _share_available(): return null
-	var share := _panel_button(text, primary)
+## Share sends the room to all friends; its result replaces the status text,
+## which otherwise reads `status`'s idle text.
+func _wire_share(share: Button, status: Label) -> void:
 	share.name = "ShareCurrentRoom"
 	share.accessibility_name = RoomActions.SHARE
-	share.set_meta("share_text", text)
-	parent.add_child(share)
 	status.name = "RoomShareStatus"
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status.set_meta("idle_text", status.text)
 	share.set_meta("status", status)
-	parent.add_child(status)
 	share.pressed.connect(_share_room_from_card.bind(share, status))
 	_style_share(share)
-	return share
 
 
 func _share_target() -> Dictionary:
@@ -1116,16 +1114,19 @@ func _room_shared() -> bool:
 
 ## Restyles the Share controls in place after this room's sharing changes.
 func update_share_controls(message: String = "") -> void:
-	if not is_instance_valid(overlay): return
-	for share: Button in overlay.find_children("ShareCurrentRoom", "Button", true, false): _style_share(share, message)
+	# Room options sits beside the overlay, under the same UI root.
+	if not is_instance_valid(ui): return
+	for share: Button in ui.find_children("ShareCurrentRoom", "Button", true, false): _style_share(share, message)
 
 
 func _style_share(share: Button, message: String = "") -> void:
 	# A shared room offers Stop sharing; otherwise the original Share text.
 	var state: Dictionary = room_share_state.call(_share_target()) if room_share_state.is_valid() else {}
 	var shared: bool = state.get("shared", false)
-	var text: String = RoomActions.STOP_SHARING if shared else str(share.get_meta("share_text", RoomActions.SHARE))
-	share.text = text
+	var text: String = RoomActions.STOP_SHARING if shared else RoomActions.SHARE
+	# A Room options row shows its label in its own title.
+	if share.has_meta("title"): (share.get_meta("title") as Label).text = text
+	else: share.text = text
 	share.accessibility_name = text
 	share.tooltip_text = text if share.icon != null else ""
 	share.disabled = _sharing_room or state.get("busy", false) or online_session.busy()
@@ -1137,21 +1138,37 @@ func _style_share(share: Button, message: String = "") -> void:
 func _open_room_options(opener: Control = null) -> void:
 	if is_instance_valid(_room_options_modal) or not _room_state_current() or running or _leaving: return
 	var facts := _room_facts()
-	var entries := RoomActions.shown(_room_state, "options", facts)
-	if entries.is_empty(): return
+	var columns := RoomActions.option_columns(_room_state, facts)
+	if columns.all(func(column: Array): return column.is_empty()): return
 	_room_options_modal = InGameModal.open(ui, "RoomOptionsModal", RoomActions.label("room_options"), str(chapter.title), opener)
 	_room_options_modal.closed.connect(func(): _room_options_modal = null)
-	for id: String in entries:
-		var button := _room_action_button(id, facts, _room_option.bind(_room_action_handler(id)))
-		button.custom_minimum_size.y = 52
-		_room_options_modal.content.add_child(button)
-		if id == "refresh":
-			_options_sync_status = _label("", 16)
-			_options_sync_status.name = "RoomOptionsSyncStatus"
-			_options_sync_status.add_theme_color_override("font_color", MUTED)
-			_options_sync_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-			_room_options_modal.content.add_child(_options_sync_status)
-	_update_online_sync_status(Time.get_ticks_msec())
+	_room_options_modal.widen(880)
+	var content: VBoxContainer = _room_options_modal.content
+	content.add_theme_constant_override("separation", 14)
+	content.add_child(RoomFriendStrip.card(_friend_strip(journey.snapshot().get("guest_id") != null, "", 52.0), _room_stage_title()))
+	# The modal's heading, card and padding take about 280 of the screen's height.
+	var sheet := RoomOptionsSheet.new(content, ui.size.y - 280.0)
+	for side in range(columns.size()):
+		for group: Dictionary in columns[side]:
+			var section: Dictionary = RoomActions.SECTIONS[group.section]
+			sheet.heading(side, section.title)
+			for id: String in group.ids:
+				_wire_room_option(sheet.row(side, RoomActions.icon(id), RoomActions.label(id, facts), section.get("danger", false)), id)
+
+## A Room options row runs its action once the sheet closes. The invitation
+## code and Share act in place and answer on the row's second line.
+func _wire_room_option(row: Button, id: String) -> void:
+	var status: Label = row.get_meta("subtitle")
+	match id:
+		"copy_code":
+			row.pressed.connect(_copy_invitation.bind(status))
+		"share":
+			status.text = RoomActions.SHARE_SCOPE
+			status.visible = true
+			_wire_share(row, status)
+		_:
+			assert(not RoomActions.ACTIONS[id].has("widget"), "A widget room action needs its own Room options row: " + id)
+			row.pressed.connect(_room_option.bind(_room_action_handler(id)))
 
 
 func _room_option(action: Callable) -> void:
@@ -1198,26 +1215,13 @@ func _redo_offered() -> bool:
 	if not online_session.mutations_enabled() and client.pending().is_empty(): return false
 	return not (RedoClient.source_for("relay",journey.snapshot()).is_empty() and client.pending().is_empty())
 
-func _announce_pending_redo() -> void:
+## Drawn with Redo requested: a friend's request is also announced once.
+func _announce_pending_redo(_button: Button = null) -> void:
 	var client: RefCounted = online_session.redo_client()
-	if client.can_accept(): _announce_redo_request.call_deferred(client,str(journey.snapshot().get("room_id","")),_open_redo)
+	if client.can_accept(): _announce_redo_request.call_deferred(client,str(journey.snapshot().get("room_id","")))
 
-func _announce_redo_request(client: RefCounted, room_id: String, review: Callable) -> void:
-	## A friend's redo request is easy to miss as a button label, so show it once
-	## per request in the shared pop-up. Not now leaves the request waiting.
-	if not is_inside_tree() or running or is_instance_valid(_redo_request_modal) or not client.can_accept(): return
-	var request: Variant = client.view().get("request")
-	if not request is Dictionary: return
-	var key := room_id + ":" + str(request.get("request_id",JSON.stringify(request)))
-	if _announced_redo_requests.has(key): return
-	_announced_redo_requests[key] = true
-	_redo_request_modal = InGameModal.open(ui,"RedoRequestModal",RoomActions.REDO_REQUESTED)
-	_redo_request_modal.label(REDO_REQUEST_BODY)
-	var open: Button = _redo_request_modal.add_actions("Review request",func():
-		if is_instance_valid(_redo_request_modal): _redo_request_modal.close(false)
-		_redo_request_modal = null
-		review.call(),"Not now")
-	open.grab_focus()
+func _announce_redo_request(client: RefCounted, room_id: String) -> void:
+	if is_inside_tree() and not running: redo_notice.announce(ui, client, room_id, _open_redo)
 
 func _open_redo() -> void:
 	if not _ordinary_redo_available() or online_session.busy() or running or backgrounded or _room_context_lost or is_instance_valid(_redo_screen): return
@@ -1374,33 +1378,38 @@ func _refresh_redo() -> bool:
 	return before != client.view()
 
 ## The invitation's friend status line on the ready card or panel.
+## The narrow card's line saying whether the friend has joined.
 func _add_friend_status(card: VBoxContainer, joined: bool) -> void:
-	var compact := is_instance_valid(_room_ready_panel)
-	var short_layout: bool = compact and _room_ready_panel.short_layout
-	var friend_status := _label(FRIEND_JOINED if joined else WAITING_FOR_FRIEND,(26 if short_layout else 30) if compact else 20)
+	var friend_status := _label(FRIEND_JOINED if joined else WAITING_FOR_FRIEND,20)
 	friend_status.name = "RoomFriendStatus"
 	friend_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	if not compact:
-		card.add_child(friend_status)
-		return
-	friend_status.add_theme_font_override("font",title_font)
-	var status_row := HBoxContainer.new()
-	status_row.add_theme_constant_override("separation",12 if short_layout else 16)
-	card.add_child(status_row)
-	var people := TextureRect.new()
-	people.texture = USERS_ICON
-	people.custom_minimum_size = Vector2(40,40) if short_layout else Vector2(48,48)
-	people.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	people.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	people.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	people.self_modulate = CREAM
-	status_row.add_child(people)
-	friend_status.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	friend_status.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	status_row.add_child(friend_status)
+	card.add_child(friend_status)
 
-func _add_invitation_code_row(card: Container, field_height: int, short_layout: bool = false) -> void:
-	# Code field with a labelled Copy as tall as the field, like the Friends screen.
+## The friend strip at the top of the wide room panel.
+func _add_friend_strip(parent: VBoxContainer, joined: bool, waiting_line: String = "") -> void:
+	parent.add_child(_friend_strip(joined, waiting_line, 44.0 if _room_ready_panel.short_layout else 52.0))
+
+## The friend's avatar, name and presence; before a friend joins, the waiting
+## title with `waiting_line` under it. Presence waits for the friend too.
+func _friend_strip(joined: bool, waiting_line: String, avatar_size: float) -> HBoxContainer:
+	if not joined:
+		return RoomFriendStrip.build("", WAITING_FOR_FRIEND, RoomFriendStrip.line(waiting_line) if not waiting_line.is_empty() else null, title_font, avatar_size)
+	var room: Dictionary = journey.snapshot()
+	var status: Label = _presence_badge() if _presence_available() else RoomFriendStrip.line(FRIEND_JOINED)
+	return RoomFriendStrip.build(_partner_id(room), FriendNicknames.sentence_start(_waiting_partner_name(room)), status, title_font, avatar_size)
+
+## The stage the room panel is on, as its title row says it.
+func _room_stage_title() -> String:
+	if mode == "ready": return _turn_title(int(checkpoint.stage_index), role)
+	var room: Dictionary = journey.snapshot()
+	if room.is_empty() or int(room.get("stage_index", definition.stages.size())) >= definition.stages.size(): return ""
+	return _turn_title(int(room.stage_index), "a" if _viewer_is_first(room) else "b")
+
+## The invitation code field with a labelled Copy as tall as the field, like
+## the Friends screen.
+func _add_invitation_code_row(card: Container, _id: String, _facts: Callable, look: Dictionary) -> Button:
+	var field_height: int = look.get("field", 52)
+	var short_layout: bool = look.get("short", false)
 	card.add_child(_label("Invitation code",17))
 	var row := HBoxContainer.new()
 	row.name = "InvitationCodeRow"
@@ -1436,6 +1445,7 @@ func _add_invitation_code_row(card: Container, field_height: int, short_layout: 
 	ControlTheme.center_icon_label(copy)
 	row.add_child(copy)
 	card.add_child(status)
+	return null
 
 func _feedback_label(label_name: String) -> Label:
 	# Hidden until a result arrives; _set_feedback shows it with its text.
@@ -1554,7 +1564,7 @@ func _add_online_sync_status(card: VBoxContainer, only_when_delayed: bool = fals
 	_update_online_sync_status(Time.get_ticks_msec())
 
 func _update_online_sync_status(now: int) -> void:
-	if not is_instance_valid(online_sync_status) and not is_instance_valid(_options_sync_status): return
+	if not is_instance_valid(online_sync_status): return
 	var text := PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7
 	var terminal: bool = refresh_schedule.stopped() and journey.last_refresh_result().get("terminal", false)
 	if terminal:
@@ -1565,9 +1575,8 @@ func _update_online_sync_status(now: int) -> void:
 		text = PlayerCopy.RELAY_PREVIEW_EF61644814DA % maxi(1, ceili(float(refresh_schedule.next_due_ms() - now) / 1000.0))
 	elif online_last_checked_ms >= 0:
 		text = PlayerCopy.RELAY_PREVIEW_F85672E29DEB
-	for label: Variant in [online_sync_status, _options_sync_status]:
-		if is_instance_valid(label): label.text = text
-	if is_instance_valid(online_sync_status) and online_sync_status.has_meta("only_when_delayed"):
+	online_sync_status.text = text
+	if online_sync_status.has_meta("only_when_delayed"):
 		online_sync_status.visible = terminal or not journey.last_error.is_empty()
 
 func _service_online_refresh() -> void:

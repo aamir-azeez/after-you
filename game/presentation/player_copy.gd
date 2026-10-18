@@ -220,6 +220,11 @@ const PHOTO_RESUME_TITLE := "Your photo is waiting"
 const PHOTO_RESUME_BODY := "After You closed while the camera was open. Open the room to send the photo with your turn."
 const PHOTO_RESUME_MISSING_BODY := "After You closed while the camera was open. Open the room to take the photo again."
 const PHOTO_RESUME_OPEN := "Open room"
+# Room options section headings (owner approved 2026-10-18).
+const ROOM_OPTIONS_INVITE := "Invite"
+const ROOM_OPTIONS_TURNS := "Turns"
+const ROOM_OPTIONS_CHAPTER := "Chapter"
+const ROOM_OPTIONS_SAFETY := "Safety"
 # Solo chapters: take back the last saved turn, one turn per tap.
 const SOLO_REDO_ACTION := "Redo my previous turn"
 const SOLO_REDO_FIRST_TURN_TITLE := "Record your path again?"

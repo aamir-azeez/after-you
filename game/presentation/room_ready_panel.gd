@@ -74,7 +74,7 @@ func build(chapter: String, turn: String, hint: String, heading_font: Font, back
 	inset.add_child(scroll)
 	actions = VBoxContainer.new()
 	actions.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	actions.add_theme_constant_override("separation",12 if short_layout else 20)
+	actions.add_theme_constant_override("separation",12 if short_layout else 16)
 	scroll.add_child(actions)
 	var fit := func():
 		if not is_inside_tree() or not is_instance_valid(scroll): return

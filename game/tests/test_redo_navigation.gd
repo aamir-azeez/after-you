@@ -51,14 +51,20 @@ func _run() -> void:
 	var checkpoint_hash := Canonical.digest(initial.checkpoint)
 	var accepted_pairs: Array=initial.completed_pair_ids.duplicate()
 	_check(preview.journey.my_turn() and preview.role=="b" and initial.first_player_id==GUEST,"The actual second player receives the handoff control after role alternation")
-	_check(_find_button(preview.overlay,"Ask for redo")!=null,"The ready menu exposes the second player's request action")
-	# One dominant cream primary per view: the ordinary redo request and the
-	# safety action read as outlined secondary controls, never a second primary.
-	var redo_action := _find_button(preview.overlay,"Ask for redo")
-	_check(redo_action!=null and not _is_cream_primary(redo_action),"The ordinary redo request is an outlined secondary, not a second cream primary")
-	var report_action := _find_button(preview.overlay,"Report or block player")
-	if report_action!=null:
-		_check(not _is_cream_primary(report_action),"The safety action is an outlined secondary, never a coral or second cream primary")
+	# My turn keeps only Record inline; the request and safety actions are
+	# Room options rows, never a second cream primary.
+	_check(_find_button(preview.overlay,"Ask for redo")==null,"The ready panel leaves Ask for redo to Room options")
+	preview._open_room_options()
+	var redo_action := _option_row(preview,"Ask for redo")
+	_check(redo_action!=null and not _is_cream_primary(redo_action),"Room options exposes the second player's request action as a plain row")
+	var report_action := _option_row(preview,"Report or block player")
+	_check(report_action!=null and not _is_cream_primary(report_action),"Room options lists the safety action, never as a cream primary")
+	if redo_action!=null: redo_action.pressed.emit()
+	await _settle()
+	_check(not is_instance_valid(preview._room_options_modal) and is_instance_valid(preview._redo_screen),"Ask for redo closes Room options and opens the request panel")
+	if is_instance_valid(preview._redo_screen): preview._redo_screen.close()
+	await _settle()
+	_check(preview.mode=="ready" and preview._room_state_current(),"Closing the request panel returns to the ready panel")
 	preview._open_redo()
 	await _settle()
 	var screen: CanvasLayer=preview._redo_screen
@@ -258,6 +264,12 @@ func _find_button(node: Node, text: String) -> Button:
 	for child: Node in node.get_children():
 		var found := _find_button(child,text)
 		if found!=null: return found
+	return null
+
+func _option_row(preview: Node, label: String) -> Button:
+	if not is_instance_valid(preview._room_options_modal): return null
+	for button: Button in preview._room_options_modal.find_children("*","Button",true,false):
+		if button.accessibility_name==label: return button
 	return null
 
 func _is_cream_primary(button: Button) -> bool:

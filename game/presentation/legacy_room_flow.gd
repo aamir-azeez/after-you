@@ -40,13 +40,12 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const RedoClient = preload("res://services/redo_client.gd")
 const RedoScreen = preload("res://presentation/redo_screen.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
-const InGameModal = preload("res://presentation/in_game_modal.gd")
+const RedoRequestNotice = preload("res://presentation/redo_request_notice.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const CREAM := Color("eceddb")
-const REDO_REQUEST_BODY := "Your friend requested to redo your turn. Check the request to accept or reject it."
 ## Main's mode on the room page.
 const MODE_ROOM := "room"
 ## Main's mode while the Redo requests screen is up.
@@ -60,8 +59,7 @@ var legacy_redo: RefCounted
 var legacy_redo_restore_scope := ""
 var legacy_redo_restore_ok := true
 var redo_screen: CanvasLayer
-var _redo_request_modal: Control
-var _announced_redo_requests: Dictionary = {}
+var redo_notice := RedoRequestNotice.new()
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -301,24 +299,10 @@ func _add_redo_action(card: VBoxContainer) -> void:
 	var label := RoomActions.redo_label(client.can_accept(),TurnState.my_turn(host.active_room,host.api.player_id))
 	if not client.pending().is_empty(): label = "Retry request"
 	card.add_child(host._list_button(label,open_redo,false))
-	if client.can_accept(): _announce_redo_request.call_deferred(client,str(host.active_room.get("room_id","")),open_redo)
+	if client.can_accept(): _announce_redo_request.call_deferred(client,str(host.active_room.get("room_id","")))
 
-func _announce_redo_request(client: RefCounted, room_id: String, review: Callable) -> void:
-	## A friend's redo request is easy to miss as a button label, so show it once
-	## per request in the shared pop-up. Not now leaves the request waiting.
-	if not host.is_inside_tree() or host.running or is_instance_valid(_redo_request_modal) or not client.can_accept(): return
-	var request: Variant = client.view().get("request")
-	if not request is Dictionary: return
-	var key := room_id + ":" + str(request.get("request_id",JSON.stringify(request)))
-	if _announced_redo_requests.has(key): return
-	_announced_redo_requests[key] = true
-	_redo_request_modal = InGameModal.open(host.ui,"RedoRequestModal",RoomActions.REDO_REQUESTED)
-	_redo_request_modal.label(REDO_REQUEST_BODY)
-	var open: Button = _redo_request_modal.add_actions("Review request",func():
-		if is_instance_valid(_redo_request_modal): _redo_request_modal.close(false)
-		_redo_request_modal = null
-		review.call(),"Not now")
-	open.grab_focus()
+func _announce_redo_request(client: RefCounted, room_id: String) -> void:
+	if host.is_inside_tree() and not host.running: redo_notice.announce(host.ui, client, room_id, open_redo)
 
 func open_redo() -> void:
 	if not host._relay_available() or host.application_backgrounded or host.running or is_instance_valid(redo_screen): return

@@ -389,7 +389,7 @@ func _check_waiting_viewer(preview, api: FakeApi, store: MemoryStore, viewer: St
 		DirAccess.remove_absolute(ProjectSettings.globalize_path(NAMES_PATH))
 	var joined: bool = preview.journey.snapshot().get("guest_id") != null
 	_check(preview.overlay.find_child("RoomActionsPanel",true,false) != null and preview.controls.modal_stack == null,"Waiting uses the ready state's side panel, not a centred card: "+context)
-	_check(preview.overlay.find_children("RoomStatusChip","PanelContainer",true,false).size() == 1,"Waiting shows exactly one status chip: "+context)
+	_check(preview.overlay.find_children("RoomFriendStrip","HBoxContainer",true,false).size() == 1,"Waiting shows exactly one friend strip: "+context)
 	_check(_visible_labels(preview).filter(func(label: Label): return label.text.contains("Waiting for friend")).size() <= 1,"Waiting states the friend's status once: "+context)
 	_check(not joined or _visible_labels(preview).all(func(label: Label): return not label.text.contains("Waiting for friend")),"A joined friend is never shown as still waiting to join: "+context)
 	_check(_visible_labels(preview).all(func(label: Label): return not label.text.contains("Invitation:")),"The invitation code is never repeated as body text: "+context)
@@ -455,7 +455,8 @@ func _real_ui_flow() -> void:
 	_check(app.soundscape.backgrounded and not preview.soundscape.backgrounded,"Android resume keeps retained parent's audio suspended while child owns sound")
 	_check(not app.world.is_processing(),"Android resume keeps the hidden parent world suspended")
 	_check(preview.journey==app.relay_session.coordinator and preview.mode=="ready","Online presentation uses tested room coordinator instead of solo save")
-	_check(_panel_texts(preview) == ["Copy", "Share current room", "Record"] and _header_texts(preview) == ["[icon] Back", "[icon] Refresh"],"The host's ready panel before the friend joins: Copy, Share current room, Record, with Refresh in the header %s %s" % [str(_panel_texts(preview)), str(_header_texts(preview))])
+	_check(_panel_texts(preview) == ["Copy", "Share current room", "Record", "Room options"] and _header_texts(preview) == ["[icon] Back", "[icon] Refresh"],"The host's ready panel before the friend joins: Copy, Share current room, Record, Room options, with Refresh in the header %s %s" % [str(_panel_texts(preview)), str(_header_texts(preview))])
+	await _check_panel_fits(preview,viewport,"host's turn before the friend joins")
 	var clipboard := {"calls":0,"text":"unchanged","works":true}
 	preview.clipboard_copy = func(text: String):
 		clipboard.calls += 1
@@ -485,6 +486,8 @@ func _real_ui_flow() -> void:
 	_check(Session.verified_invitation(wrong_invite,HOST).is_empty() and Session.verified_invitation(preview.journey.snapshot(),GUEST).is_empty(),"Mismatched room and non-host values cannot become clipboard invitations")
 	await _recent_room_recovery(app, api, store)
 	preview = app.relay_child
+	_check(_panel_texts(preview) == ["Copy", "Share current room", "Resume", "Record", "Room options"],"A saved rehearsal adds Resume beside Record %s" % [str(_panel_texts(preview))])
+	await _check_panel_fits(preview,viewport,"host's turn with a saved rehearsal before the friend joins")
 	api.drop_next = true
 	await _play(preview,"relay-a")
 	_check(preview.mode=="online_waiting" and not preview.journey.pending().is_empty(),"Lost commit reply opens receipt-check state without enabling another turn")
@@ -508,8 +511,8 @@ func _real_ui_flow() -> void:
 	_check(preview.online_sync_status != null and preview.online_sync_status.text in _checking_lines(),"Waiting room says it keeps checking for the friend's turn")
 	await _check_waiting_layout(preview,viewport,"host waiting before the friend joins")
 	var creams: Array = _visible_buttons(preview).filter(_is_cream).map(func(button: Button): return button.text)
-	_check(creams == ["Notify me when my friend returns"],"Notify holds the waiting panel's one cream action, and Share room is outlined %s" % [str(creams)])
-	_check(_panel_texts(preview) == ["Copy", "Notify me when my friend returns", "Share room", "Room options", "Your rooms"],"The host's waiting panel before the friend joins: Copy, Notify, Share room, Room options, Your rooms %s" % [str(_panel_texts(preview))])
+	_check(creams == ["Share current room"],"Before the friend joins, Share holds the waiting panel's one cream action %s" % [str(creams)])
+	_check(_panel_texts(preview) == ["Copy", "Share current room", "Room options", "Your rooms"],"The host's waiting panel before the friend joins: Copy, Share current room, Room options, Your rooms %s" % [str(_panel_texts(preview))])
 	var waiting_copy: Label = preview.overlay.find_child("RelayCopyStatus",true,false)
 	preview.clipboard_copy = func(_text: String): return true
 	if waiting_copy != null: preview._copy_invitation(waiting_copy)
@@ -528,6 +531,8 @@ func _real_ui_flow() -> void:
 	preview.set_physics_process(false)
 	preview.set_process(false)
 	_check(preview.role=="b" and preview.journey.my_turn(),"Joined friend receives exact earlier ghost as B")
+	await _check_panel_fits(preview,viewport,"guest's turn")
+	await _check_option_round_trip(preview,"ready","guest's turn")
 	_check(preview.overlay.find_child("RelayCopyStatus",true,false)==null,"Guest presentation never offers host-only invitation copy")
 	await _play(preview,"relay-b")
 	_check(preview.mode=="checkpoint" and preview.journey.stage_id()=="garden","Online B advances the verified checkpoint and stops at explicit Continue")
@@ -743,16 +748,53 @@ func _check_waiting_layout(preview, viewport: SubViewport, context: String) -> v
 	if options == null: return
 	options.pressed.emit()
 	var modal: Node = preview.ui.find_child("RoomOptionsModal",true,false)
-	var labels: Array = [] if modal == null else modal.find_children("*","Button",true,false).map(func(button: Button): return button.text)
-	_check(labels.has("Refresh") and labels.has("About this chapter"),"Room options keeps manual refresh and chapter details: "+context)
+	var labels: Array = _option_rows(preview).map(func(button: Button): return button.accessibility_name)
+	_check(labels.has("About this chapter") and _header_texts(preview).has("[icon] Refresh"),"Room options keeps chapter details and Refresh sits in the title row: "+context)
 	var facts: Callable = preview._room_facts()
-	var table: Array = RoomActions.shown("waiting_panel","options",facts).map(func(id: String): return RoomActions.label(id,facts))
-	_check(labels.filter(func(text: String): return not text.is_empty()) == table,"Room options lists exactly the table's rows %s: %s" % [str(labels),context])
+	var table: Array = []
+	for column: Array in RoomActions.option_columns(preview._room_state,facts):
+		for group: Dictionary in column: table.append_array(group.ids.map(func(id: String): return RoomActions.label(id,facts)))
+	_check(labels == table,"Room options lists exactly the table's rows, by section %s: %s" % [str(labels),context])
 	if modal == null: return
-	_check(modal.find_children("*","Label",true,false).any(func(label: Label): return label.text in _checking_lines() and label.is_visible_in_tree()),"Room options says it keeps checking beside Refresh: "+context)
+	_check(modal.find_child("RoomFriendCard",true,false) != null,"Room options opens with the friend card: "+context)
 	preview._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await process_frame
 	_check(preview.mode=="online_waiting" and not is_instance_valid(preview._room_options_modal),"Android Back closes Room options before leaving the room: "+context)
+	await _check_option_round_trip(preview,"online_waiting",context)
+
+## A Room options row closes the sheet and runs; its card's Back returns to
+## the same room panel.
+func _check_option_round_trip(preview, expected_mode: String, context: String) -> void:
+	preview._open_room_options()
+	var about: Button = null
+	for row: Button in _option_rows(preview):
+		if row.accessibility_name == "About this chapter": about = row
+	_check(about != null,"Room options offers About this chapter: "+context)
+	if about == null:
+		preview._close_room_options()
+		return
+	about.pressed.emit()
+	await process_frame
+	_check(preview.mode == "room_details" and not is_instance_valid(preview._room_options_modal),"About closes Room options and opens the chapter details: "+context)
+	var back := _button_named(preview,"Back")
+	if back != null: back.pressed.emit()
+	await process_frame
+	_check(preview.mode == expected_mode and preview._room_state_current() and preview.overlay.find_child("RoomActionsPanel",true,false) != null,"Back from the chapter details returns to the room panel: "+context)
+
+## Room options' rows, column by column, as drawn.
+func _option_rows(preview) -> Array:
+	if not is_instance_valid(preview._room_options_modal): return []
+	var columns: Node = preview._room_options_modal.find_child("RoomOptionsColumns",true,false)
+	return [] if columns == null else columns.find_children("*","Button",true,false)
+
+## The wide panel shows everything without a scroll bar at this size.
+func _check_panel_fits(preview, viewport: SubViewport, context: String) -> void:
+	for frame in range(3): await process_frame
+	var panel: Control = preview.overlay.find_child("RoomActionsPanel",true,false)
+	_check(panel != null and panel.is_visible_in_tree(),"The side panel is drawn: "+context)
+	if panel == null: return
+	var bar: ScrollBar = (panel.find_child("RoomActionsScroll",true,false) as ScrollContainer).get_v_scroll_bar()
+	_check(bar.max_value - bar.page <= 1.0 and Rect2(Vector2.ZERO,Vector2(viewport.size)).encloses(panel.get_global_rect()),"The panel fits without scrolling (%.0f of %.0f): %s" % [bar.max_value,bar.page,context])
 
 ## The room panel's visible action buttons, top to bottom, as drawn.
 func _panel_texts(preview) -> Array:
@@ -774,9 +816,13 @@ func _is_cream(button: Button) -> bool:
 	return style is StyleBoxFlat and (style as StyleBoxFlat).bg_color.r > 0.7 and (style as StyleBoxFlat).bg_color.g > 0.85
 
 func _button_named(app, text: String) -> Button:
-	for button: Button in app.overlay.find_children("*","Button",true,false):
-		if button.text==text or button.accessibility_name==text:
-			return button
+	var roots: Array = [app.overlay]
+	# An open Room options sheet sits beside the overlay.
+	if "_room_options_modal" in app and is_instance_valid(app._room_options_modal): roots.append(app._room_options_modal)
+	for root_node: Node in roots:
+		for button: Button in root_node.find_children("*","Button",true,false):
+			if button.text==text or button.accessibility_name==text:
+				return button
 	return null
 
 func _ok(data: Dictionary) -> Dictionary:

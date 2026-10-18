@@ -212,7 +212,7 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	preview.refresh_schedule.request_now(Time.get_ticks_msec())
 	await preview._service_online_refresh()
 	friend_status = preview.overlay.find_child("RoomFriendStatus",true,false)
-	_check(api.calls.filter(func(call: Dictionary): return call.path == "/v2/rooms/"+ROOM).size() == reads + 1 and friend_status != null and friend_status.text == "Friend joined","Existing GET refresh shows the verified friend's arrival on the host's ready card")
+	_check(api.calls.filter(func(call: Dictionary): return call.path == "/v2/rooms/"+ROOM).size() == reads + 1 and friend_status != null and friend_status.text != "Waiting for friend" and preview.overlay.find_child("FriendAvatar",true,false) != null,"Existing GET refresh shows the verified friend's arrival on the host's ready card")
 	reads = api.calls.size()
 	preview.refresh_schedule.request_now(Time.get_ticks_msec())
 	await preview._service_online_refresh()
@@ -221,9 +221,11 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	await preview._service_online_refresh()
 	_check(preview.running and api.calls.size() == reads,"Active gameplay does not poll for friend arrival")
 	preview._show_ready()
+	_check(_button_named(preview,"Stop sharing room") == null,"Once the friend joins, sharing moves into Room options")
+	preview._open_room_options()
 	api.hold_next = true
 	var share: Button = _button_named(preview,"Stop sharing room")
-	_check(share != null,"After a direct share the card offers Stop sharing room")
+	_check(share != null,"After a direct share Room options offers Stop sharing room")
 	if share != null: share.pressed.emit()
 	await process_frame
 	preview._leave()
