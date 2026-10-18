@@ -141,7 +141,8 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app.store_flow._show_full_journey_unlocked()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Full Journey unlocked")
-	app.account_flow.show_hosting_access({"ok":true,"data":{"status":"verified","full_journey":false}})
+	app.settings_flow.show_settings("account")
+	app.account_flow.show_hosting_access(app.settings_flow.detail("hosting_access"),{"ok":true,"data":{"status":"verified","full_journey":false}})
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Introductory hosting")
 	var first: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-a.json"))

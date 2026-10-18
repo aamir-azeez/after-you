@@ -93,8 +93,6 @@ var _whats_new_card_mode := ""
 ## Tests set this to see a link instead of opening the browser.
 var external_link_opener: Callable
 var _bounded_card_scroll: ScrollContainer
-## Holds the scroll area of a bounded card; controls added after it stay fixed below the list.
-var _bounded_card_footer: VBoxContainer
 var _bounded_card_stack: VBoxContainer
 var _journey_picker: ChapterPicker
 ## Full Journey access the open chapter grid was drawn with.
@@ -564,7 +562,6 @@ func _clear_overlay() -> void:
 	replays_flow.cancel_collection_replay()
 	store_view_generation += 1
 	_bounded_card_scroll=null
-	_bounded_card_footer=null
 	_bounded_card_stack=null
 	overlay_shade=null
 	for child in overlay.get_children():
@@ -602,7 +599,6 @@ func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 		var outer := VBoxContainer.new()
 		outer.add_theme_constant_override("separation",14)
 		margin.add_child(outer)
-		_bounded_card_footer=outer
 		_bounded_card_scroll=ScrollContainer.new()
 		_bounded_card_scroll.horizontal_scroll_mode=ScrollContainer.SCROLL_MODE_DISABLED
 		_bounded_card_scroll.follow_focus=true
@@ -621,7 +617,7 @@ func _card(width: float=560.0, bounded: bool=false) -> VBoxContainer:
 func _layout_bounded_card() -> void:
 	if not is_instance_valid(_bounded_card_scroll) or not is_instance_valid(_bounded_card_stack): return
 	# Leave room for the panel padding and an inset from the safe screen edges.
-	_bounded_card_scroll.custom_minimum_size.y=minf(_bounded_card_stack.get_combined_minimum_size().y,maxf(0.0,ui.size.y-100.0-float(_bounded_card_scroll.get_meta("footer_reserve",0.0))))
+	_bounded_card_scroll.custom_minimum_size.y=minf(_bounded_card_stack.get_combined_minimum_size().y,maxf(0.0,ui.size.y-100.0))
 
 func _paragraph(text: String, width: float=480) -> Label:
 	var result := _label(text,19,MUTED)

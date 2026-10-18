@@ -9,7 +9,9 @@ extends TextureRect
 ## step settles it and nothing more is drawn. It runs only while it is in the
 ## tree, and the page frees it with everything else.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
-const IDLE_HZ := 12.0
+const IslandWorld = preload("res://presentation/island_world.gd")
+## The owner's rate for a resting spirit on a card.
+const IDLE_HZ := IslandWorld.IDLE_CARD_HZ
 const PEACH := Color("f4c38d")
 ## The view renders at twice the control's size, so it stays sharp on a phone.
 const RENDER_SCALE := 2.0

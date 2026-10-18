@@ -15,9 +15,9 @@ extends Node
 ##   _load_saved_identity, _invalidate_relay_identity, _await_secret,
 ##   _tester_checks_enabled, _play_store_enabled
 ## - screen: mode, running
-## - settings_flow (flow to flow): showing, show_settings, detail, view_token,
-##   view_current. Its rows table (presentation/settings_rows.gd) calls this
-##   flow's panel_state and inline actions.
+## - settings_flow (flow to flow): view_token, view_current, refresh. Its rows
+##   table (presentation/settings_rows.gd) calls this flow's panel_state and
+##   inline actions, which draw into the box under their row.
 ## - card kit: _card, _label, _paragraph, _button, _back_button, _toast
 ## - node: get_tree (frames and Close After You), add_child (the photo cleanup
 ##   node stays Main's child)
@@ -38,8 +38,6 @@ const Typed = preload("res://services/typed_values.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("9dbeb4")
-## The Settings category this flow's rows live in (settings_rows.gd ACCOUNT).
-const SETTINGS_CATEGORY := "account"
 ## Main's mode on each screen of this flow. "account" is the delete confirmation.
 const MODE_ACCOUNT := "account"
 const MODE_ACCOUNT_LOADING := "account_loading"
@@ -60,6 +58,8 @@ var recovery_acknowledged := false
 var deletion_cleanup_busy := false
 var deletion_photo_cleanup: Node
 var deletion_cache_cleanup: RefCounted
+## True while Check hosting access waits for the server; its row rests meanwhile.
+var hosting_check_busy := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -109,12 +109,6 @@ func retry_saved_identity() -> void:
 	if host.mode==MODE_ACCOUNT_LOADING:
 		_back_to_account()
 
-## The hosting access row's inline box, with Settings opened on Account &
-## recovery first if it is not on show; null when that row is not shown.
-func _hosting_detail() -> VBoxContainer:
-	if not host.settings_flow.showing(SETTINGS_CATEGORY): host.settings_flow.show_settings(SETTINGS_CATEGORY)
-	return host.settings_flow.detail("hosting_access")
-
 static func _fill(detail: VBoxContainer, items: Array) -> void:
 	for child: Node in detail.get_children():
 		detail.remove_child(child)
@@ -122,7 +116,10 @@ static func _fill(detail: VBoxContainer, items: Array) -> void:
 	for item: Control in items: detail.add_child(item)
 	detail.visible = not items.is_empty()
 
-func check_hosting_access() -> void:
+## Check hosting access: asks the server once, and shows its answer in
+## `detail`, the box under the row. One check at a time.
+func check_hosting_access(detail: VBoxContainer) -> void:
+	if hosting_check_busy: return
 	# Checking an existing purchase must not create or replace an identity.
 	if host.identity_restart_required or host.identity_loading or host.identity_busy:
 		host._toast(PlayerCopy.MAIN_3A0D8776E06F)
@@ -130,22 +127,23 @@ func check_hosting_access() -> void:
 	if host.api.player_id.is_empty() or host.api.device_token.is_empty():
 		host._toast(PlayerCopy.MAIN_F64C9883094A)
 		return
-	var detail := _hosting_detail()
-	if detail == null: return
+	if not is_instance_valid(detail): return
 	_fill(detail, [SettingsKit.detail_text(PlayerCopy.SETTINGS_HOSTING_CHECKING, true), SettingsKit.detail_text(PlayerCopy.MAIN_65352AE6EE21)])
 	var view: int = host.settings_flow.view_token()
 	var player_id: String=host.api.player_id
+	hosting_check_busy = true
+	host.settings_flow.refresh()
 	var response: Dictionary=await host.api.request_json(HTTPClient.METHOD_GET,"/v1/entitlement")
+	hosting_check_busy = false
 	# A late response must not pull the player out of another screen or apply
 	# the previous identity's purchase result after account recovery.
-	if not host.settings_flow.view_current(view) or player_id!=host.api.player_id or host.identity_restart_required:
+	if not host.settings_flow.view_current(view) or not is_instance_valid(detail) or player_id!=host.api.player_id or host.identity_restart_required:
 		return
-	show_hosting_access(response)
+	host.settings_flow.refresh()
+	show_hosting_access(detail, response)
 
-## The server's answer, under the hosting access row.
-func show_hosting_access(response: Dictionary) -> void:
-	var detail := _hosting_detail()
-	if detail == null: return
+## The server's answer, in the box under the hosting access row.
+func show_hosting_access(detail: VBoxContainer, response: Dictionary) -> void:
 	var items: Array = []
 	var data: Variant=response.get("data")
 	var verified: bool=response.get("ok",false)==true and data is Dictionary and Typed.equal(data.get("status"), "verified") and data.get("full_journey") is bool

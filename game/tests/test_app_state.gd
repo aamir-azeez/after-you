@@ -635,9 +635,13 @@ func _test_hosting_access(app: Node, api: Node) -> void:
 	app.store_flow.purchase_completed("synthetic-offer","get_offerings",{"current_id":"journey","offerings":[{"id":"journey","packages":[{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly:monthly","price":"€0.99"},{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"€9.99"}]}]})
 	restore=_find_button(app.overlay,"Restore purchases")
 	_check(restore!=null and restore.pressed.is_connected(app.store_flow.restore_purchases),"Fetched offering retains a working restore action after replacing the loading card")
+	# The check answers under its row in Settings > Account & recovery.
+	app.settings_flow.show_settings("account")
+	var hosting_box: VBoxContainer = app.settings_flow.detail("hosting_access")
+	_check(hosting_box != null,"Account & recovery has the hosting access row's answer box")
 	for access: bool in [false,true]:
 		api.responses=[{"ok":true,"data":{"status":"verified","full_journey":access,"environment":"test-store","checked_at":"2026-09-14T00:00:00Z"}}]
-		await app.account_flow.check_hosting_access()
+		await app.account_flow.check_hosting_access(hosting_box)
 		var expected := "Full Journey confirmed" if access else "Introductory hosting"
 		_check(_find_label(app.overlay,expected)!=null,"Verified hosting %s shows the correct server result" % str(access))
 		_check(api.calls[-1].method==HTTPClient.METHOD_GET and api.calls[-1].path=="/v1/entitlement" and api.calls[-1].body.is_empty(),"Hosting check uses the authenticated read endpoint without sending purchase claims")
@@ -652,32 +656,40 @@ func _test_hosting_access(app: Node, api: Node) -> void:
 	]
 	for index: int in range(unknown_responses.size()):
 		api.responses=[unknown_responses[index]]
-		await app.account_flow.check_hosting_access()
+		await app.account_flow.check_hosting_access(hosting_box)
 		_check(_find_label(app.overlay,PlayerCopy.MAIN_618916283742)!=null and _find_label(app.overlay,"Introductory hosting")==null,"Unavailable or malformed hosting result %d remains unknown, not a purchase denial" % index)
 	_check(app.purchases.customer_info==original_entitlement,"Server verification never erases or modifies the SDK purchase entitlement")
 	var before: int=api.calls.size()
 	api.player_id=""
 	api.device_token=""
 	app.identity_read_state=Main.IdentityReadState.MISSING
-	await app.account_flow.check_hosting_access()
+	await app.account_flow.check_hosting_access(hosting_box)
 	_check(api.calls.size()==before,"Hosting check without identity performs no request or anonymous account creation")
 	api.player_id="hosting-player"
-	await app.account_flow.check_hosting_access()
+	await app.account_flow.check_hosting_access(hosting_box)
 	_check(api.calls.size()==before,"Hosting check without device credential is also held")
 	api.device_token="synthetic-hosting-token"
 	app.identity_loading=true
-	await app.account_flow.check_hosting_access()
+	await app.account_flow.check_hosting_access(hosting_box)
 	_check(api.calls.size()==before,"Hosting check waits for an active identity load")
 	app.identity_loading=false
 	app.identity_restart_required=true
-	await app.account_flow.check_hosting_access()
+	await app.account_flow.check_hosting_access(hosting_box)
 	_check(api.calls.size()==before,"Hosting check cannot use a previous identity after recovery")
 	app.identity_restart_required=false
 	var delayed := DelayedHostingApi.new()
 	app.add_child(delayed)
 	app.api=delayed
+	var asked := [0]
+	delayed.during_request=func(): asked[0]+=1
+	app.account_flow.check_hosting_access(hosting_box)
+	_check((app.overlay.find_child("hosting_access",true,false) as Button).disabled,"Check hosting access rests while its answer is on the way")
+	await app.account_flow.check_hosting_access(hosting_box)
+	_check(asked[0]==1,"A second tap while checking sends no second request")
+	for i in range(3): await process_frame
+	_check(not (app.overlay.find_child("hosting_access",true,false) as Button).disabled and _find_label(app.overlay,"Full Journey confirmed")!=null,"Once answered, the row can check again")
 	delayed.during_request=func(): app._show_home()
-	await app.account_flow.check_hosting_access()
+	await app.account_flow.check_hosting_access(hosting_box)
 	_check(app.mode=="home" and _find_label(app.overlay,"Full Journey confirmed")==null,"Late hosting response does not replace a screen the player navigated to")
 	app.api=api
 	delayed.queue_free()
