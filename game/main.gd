@@ -2243,7 +2243,7 @@ func _start_backdrop(shade: ColorRect) -> void:
 
 ## What a still shows: this world through this camera, at this size, scale and
 ## quality. Low and Balanced share a scale, so the quality tells their motes
-## and fireflies apart.
+## and lighting apart.
 func _backdrop_key_for(source: Camera3D) -> Array:
 	var root := get_viewport()
 	return [world.get_instance_id(), source.get_instance_id(), source.global_transform, source.fov, source.size,

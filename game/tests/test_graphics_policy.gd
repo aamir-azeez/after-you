@@ -93,8 +93,10 @@ func _quality_before_load(viewport: SubViewport) -> void:
 		Policy.apply(world, {"graphics_quality": "low"})
 		world.load_level(Registry.definition(key))
 		_check(_fill_matches(world, "low"), key + ": a chapter loaded on Low keeps its look without the bounce light")
-		var lit: Array = world.find_children("*", "OmniLight3D", true, false).filter(func(light: OmniLight3D) -> bool: return light.has_meta("lantern") and light.visible)
-		_check(lit.is_empty(), key + ": lanterns built on Low cast no light")
+		var lanterns: Array = world.find_children("*", "OmniLight3D", true, false).filter(func(light: OmniLight3D) -> bool: return light.has_meta("lantern"))
+		_check(lanterns.is_empty() != (key == Registry.WISHING_WELL) and lanterns.all(func(light: OmniLight3D) -> bool: return not light.visible), key + ": lanterns built on Low cast no light")
+		Policy.apply(world, {"graphics_quality": "balanced"})
+		_check(_fill_matches(world, "balanced") and lanterns.all(func(light: OmniLight3D) -> bool: return light.visible), key + ": Balanced brings back the bounce light and the lantern pools")
 		viewport.remove_child(world)
 		world.free()
 
