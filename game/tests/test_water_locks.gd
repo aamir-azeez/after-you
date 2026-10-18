@@ -4,11 +4,13 @@ extends SceneTree
 ## and match, a wall where water meets open air or a floor elsewhere, a
 ## spillway where two waters always differ, nothing where the sides always
 ## match; doors rise while their sides differ and sink while they match, and
-## rest without work once settled. On Turn of the Tide: the number of pieces
-## each stage gets, doors following the wheels, no water surface or flooded
-## crossing running into a door, no work on idle frames, kept crossings never
-## showing an empty pit, and the definition unchanged. Every other chapter
-## builds no locks.
+## rest without work once settled; a raised door dips while a spirit stands in
+## its mouth and rises once it leaves. On Turn of the Tide: the number of
+## pieces each stage gets, doors following the wheels, no water surface or
+## flooded crossing running into a door, no work on idle frames, kept
+## crossings never showing an empty pit, a kept door dipping for a spirit the
+## same way live, sought and with reduced motion, and the definition
+## unchanged. Every other chapter builds no locks.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const JourneyCatalog = preload("res://core/journey/stage_catalog.gd")
@@ -78,6 +80,7 @@ func _small_plans() -> void:
 	locks.present(level, true)
 	_check(locks.door_states() == ["open"], "The door is down while the two waters match")
 	parent.free()
+	_small_dip(_basins([level, apart], true), level, apart)
 	# Walls only a centimetre above the high water: the door, capped at that
 	# height, still comes to rest while it holds the water.
 	var low_walls := _basins([level, apart], true)
@@ -104,6 +107,36 @@ func _small_plans() -> void:
 	spill.present({"west": 0.3, "east": 0.3}, true)
 	_check(sheet != null and not sheet.visible, "No water falls while both sides stand under the lip")
 	holder.free()
+
+## A raised door dips while a spirit stands in its mouth, easing down in about
+## 0.2 s, and rises again once the spirit leaves; told at once it snaps. A
+## spirit outside the walkway, or at a door that is down, changes nothing.
+func _small_dip(plan: Dictionary, level: Dictionary, apart: Dictionary) -> void:
+	var locks: WaterLocks = WaterLocks.new()
+	var parent := Node3D.new()
+	root.add_child(parent)
+	locks.build(plan, parent)
+	locks.present(apart, true)
+	var door: MeshInstance3D = locks.door_nodes()[0]
+	var inside := PackedVector2Array([Vector2(110, 50)])
+	locks.occupy(PackedVector2Array([Vector2(50, 50)]))
+	_check(locks.door_states() == ["shut"] and not locks.moving(), "A spirit outside the walkway leaves the door up")
+	locks.occupy(inside)
+	_check(locks.door_states() == ["dipped"] and locks.moving(), "A spirit in the mouth sets the raised door dipping")
+	for _frame in range(12): locks.advance(1.0 / 60.0, apart)
+	var shut := float(locks.runs[0].shut)
+	_check(not locks.moving() and not door.visible and door.position.y < shut, "The door is down out of the way within 0.2 s")
+	locks.occupy(PackedVector2Array())
+	_check(locks.door_states() == ["shut"] and locks.moving(), "Once the spirit leaves the door rises")
+	for _frame in range(12): locks.advance(1.0 / 60.0, apart)
+	_check(not locks.moving() and door.visible and is_equal_approx(door.position.y, shut), "The door is back up within 0.2 s")
+	locks.occupy(inside, true)
+	_check(not locks.moving() and not door.visible and door.position.y < shut, "Told at once, the door snaps down")
+	locks.occupy(PackedVector2Array(), true)
+	locks.present(level, true)
+	locks.occupy(inside)
+	_check(locks.door_states() == ["open"] and not locks.moving(), "A spirit at a door that is down changes nothing")
+	parent.free()
 
 # --- Turn of the Tide ---
 
@@ -141,6 +174,7 @@ func _tide() -> void:
 		_every_edge_covered(world, locks, str(stage.id))
 		_kept_crossings(world, locks, sim, stage)
 		_never_empty(world, sim, stage)
+		_kept_door_dips(world, locks, sim, stage)
 		world.free()
 	_check(Canonical.digest(level) == digest, "Building and showing the locks never changes the definition")
 
@@ -245,7 +279,8 @@ func _idle(world: Node3D, locks: WaterLocks, sim: Simulation, label: String) -> 
 	world._advance_water(1.0 / 60.0)
 	_check(locks.frames == settled, "A rested harbour does no lock work on the next frame: " + label)
 
-## Every door stands at its target height, shown while up and hidden while down.
+## Every door stands at its target height, shown while up and hidden while down
+## (open, or dipped for a spirit).
 func _resting(locks: WaterLocks) -> bool:
 	var states := locks.door_states()
 	var nodes := locks.door_nodes()
@@ -253,7 +288,7 @@ func _resting(locks: WaterLocks) -> bool:
 	for index in range(nodes.size()):
 		var door: MeshInstance3D = nodes[index]
 		if states[index] == "shut" and (not door.visible or not is_equal_approx(door.position.y, float(doors[index].shut))): return false
-		if states[index] == "open" and door.visible: return false
+		if states[index] != "shut" and (door.visible or door.position.y >= float(doors[index].shut) - 0.001): return false
 	return true
 
 ## Every change of a wheel that moves water, frame by frame as it is shown:
@@ -416,6 +451,59 @@ func _never_empty(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
 				world.present(state, true)
 				var calm: bool = world._calm[route].visible
 				_check(world._floods[route].visible != calm, "A crossing that can be kept always holds water: %s %s %s kept %s" % [stage.id, tide, route, kept])
+	sim._mechanisms.controls["tide"] = "low"
+	sim._refresh_routes()
+	world.present(sim.snapshot(), true)
+
+## At high water the kept sand bar floods behind its raised doors; a spirit in
+## one of its mouths dips that door (the other stays up) and leaving raises it
+## again, each in about 0.2 s. The same positions shown at once, as a seek or
+## replay does, give the same doors; reduced motion snaps them.
+func _kept_door_dips(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dictionary) -> void:
+	sim._mechanisms.controls["tide"] = "high"
+	sim._refresh_routes()
+	var away: Dictionary = sim.snapshot()
+	away.bridges["sand-1"] = true
+	away.players.p0.x = 1440
+	away.players.p0.z = 0
+	var door_index := -1
+	var index := 0
+	var spot := Vector2.ZERO
+	var r: Array = world._route("sand-1").rect_cm
+	var crossing := Rect2(float(r[0]), float(r[1]), float(r[2] - r[0]), float(r[3] - r[1]))
+	for run: Dictionary in locks.runs:
+		if run.kind != WaterLocks.DOOR: continue
+		if run.mouth == "sand-1" and door_index < 0:
+			door_index = index
+			var middle := (float(run.from) + float(run.to)) * 0.5
+			for step: float in [15.0, -15.0]:
+				var at := Vector2(middle, float(run.line) + step) if run.along_x else Vector2(float(run.line) + step, middle)
+				if crossing.has_point(at): spot = at
+		index += 1
+	var inside := away.duplicate(true)
+	inside.players.p0.x = spot.x
+	inside.players.p0.z = spot.y
+	world.present(away, true)
+	_check(_states_at(locks, "sand-1") == ["shut", "shut"], "The kept sand bar's doors are up at high water: " + str(stage.id))
+	var door: MeshInstance3D = locks.door_nodes()[door_index]
+	world.present(inside, false)
+	_check(locks.door_states()[door_index] == "dipped" and _states_at(locks, "sand-1").count("shut") == 1, "A spirit in the kept sand bar's mouth dips that door alone: %s %s" % [stage.id, _states_at(locks, "sand-1")])
+	for _frame in range(12): world._advance_water(1.0 / 60.0)
+	var dipped_at := door.position.y
+	_check(not locks.moving() and _resting(locks) and not door.visible, "The dipped door is out of the way within 0.2 s: %s (%.3f m)" % [stage.id, door.position.y])
+	world.present(away, true)
+	world.present(inside, true)
+	_check(locks.door_states()[door_index] == "dipped" and is_equal_approx(door.position.y, dipped_at) and _resting(locks), "Shown at once, as a seek or replay does, the spirit's door is the same: " + str(stage.id))
+	world.present(away, false)
+	_check(locks.door_states()[door_index] == "shut", "Leaving the mouth raises the door: " + str(stage.id))
+	for _frame in range(12): world._advance_water(1.0 / 60.0)
+	_check(not locks.moving() and _resting(locks) and door.visible, "The door is back up within 0.2 s: " + str(stage.id))
+	world.reduced_motion = true
+	world.present(inside, false)
+	_check(not locks.moving() and is_equal_approx(door.position.y, dipped_at) and _resting(locks), "With reduced motion the door snaps down: " + str(stage.id))
+	world.present(away, false)
+	_check(not locks.moving() and door.visible and _resting(locks), "With reduced motion the door snaps back up: " + str(stage.id))
+	world.reduced_motion = false
 	sim._mechanisms.controls["tide"] = "low"
 	sim._refresh_routes()
 	world.present(sim.snapshot(), true)

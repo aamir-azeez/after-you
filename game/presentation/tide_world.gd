@@ -130,6 +130,8 @@ var _kept_walled: Array[String] = []
 ## crossing's dry level (just under its deck, or just under its stone tops),
 ## so the pit is never empty.
 var _calm: Dictionary = {}
+## Where the spirits stand (plan cm), refilled each snapshot for the locks.
+var _spirits := PackedVector2Array()
 ## Gated walled crossings: id -> the water that fills them while shut.
 var _floods: Dictionary = {}
 ## What holds the water at each opening in the shown stage, the walls built
@@ -1677,6 +1679,15 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		if _calm.has(id): _calm[id].visible = calm
 	if is_instance_valid(_locks):
 		_locks.present(_lock_levels("target"), immediate or reduced_motion)
+		# A door dips while a spirit stands in its mouth: from the snapshot's
+		# positions, so live play, the memory, a retry and a replay all agree.
+		var players: Dictionary = state.get("players", {})
+		_spirits.resize(players.size())
+		var index := 0
+		for slot: String in players:
+			_spirits[index] = Vector2(float(players[slot].x), float(players[slot].z))
+			index += 1
+		_locks.occupy(_spirits, immediate or reduced_motion)
 		# A door that must rise stands clear of the water shown now at once.
 		if _locks.moving(): _locks.advance(0.0, _lock_levels("shown"))
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)

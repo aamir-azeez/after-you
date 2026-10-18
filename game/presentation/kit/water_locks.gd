@@ -11,7 +11,9 @@ extends Node3D
 ## come from find_runs() (cached per plan), then build() makes the pieces.
 ## present() takes the levels shown and only sets door targets, and returns at
 ## once while they are the same as last time; advance() moves doors while they
-## travel and does nothing once they rest. Walls and spillway stones are plain
+## travel and does nothing once they rest. occupy() takes where the spirits
+## stand: a door that is up dips while one stands in its mouth, so a spirit
+## never walks through it. Walls and spillway stones are plain
 ## leaves under a "WaterLockStone" sibling, which a world folds with its
 ## static scenery (nothing holds it); each opening's doors and posts are one
 ## mesh, and the water sheets, under this node.
@@ -56,6 +58,12 @@ const FREEBOARD := 0.05
 const SINK := 0.08
 ## How fast a door rises or sinks (m a second).
 const TRAVEL := 1.4
+## How fast a door dips for a spirit in its mouth, and rises again once it
+## leaves (m a second): the tallest door (about 0.85 m) in about 0.2 s.
+const DIP_TRAVEL := 5.0
+## A spirit counts as standing in a door's mouth within this far of the door
+## (cm), on the walkway's side.
+const DIP_REACH := 45.0
 ## A door's top never stands less than this above the water it holds, even
 ## while the water and the door are moving.
 const MARGIN := 0.02
@@ -86,7 +94,9 @@ var frames := 0
 var _kinds: Dictionary = {}
 var _heights: Dictionary = {}
 var _seabed := 0.0
-## Per opening: {"run", "door": its MeshInstance3D, "y": target top}
+## Per opening: {"run", "door": its MeshInstance3D, "y": target top, "up":
+## whether the levels want it up, "low": its sunk top, "dipped": whether a
+## spirit stands in its mouth, "easing": whether it travels at DIP_TRAVEL}
 var _doors: Array = []
 ## Per spillway: {"run", "sheet": MeshInstance3D, "low": m, "falling"}
 var _sheets: Array = []
@@ -215,6 +225,8 @@ static func find_runs(plan: Dictionary) -> Array:
 				if unheld == AT_TIMES and not here.is_empty() and not there.is_empty():
 					var wet_side := 1.0 if _holds_water(there, kinds) else -1.0
 					edge.mouth = _mouth_at(middle + (Vector2(wet_side, 0) if across else Vector2(0, wet_side)), plan.mouths)
+					for mouth: Dictionary in plan.mouths:
+						if str(mouth.id) == str(edge.mouth): edge["mouth_rect"] = mouth.rect
 				var kind := _kind(edge, unheld, kinds)
 				edge["kind"] = kind
 				edge["shift"] = _shift(kind, _holds_water(here, kinds), _holds_water(there, kinds), floors[here_index] or floors[there_index])
@@ -449,7 +461,7 @@ func _build_door(run: Dictionary) -> void:
 	# Local +x runs along the run: +x, or +z for a run along z.
 	if not run.along_x: door.rotation.y = -PI / 2.0
 	add_child(door)
-	var entry := {"run": run, "door": door, "y": float(run.shut)}
+	var entry := {"run": run, "door": door, "y": float(run.shut), "up": true, "low": _seabed, "dipped": false, "easing": false}
 	_doors.append(entry)
 	_place_door(entry, float(run.shut))
 
@@ -564,11 +576,9 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 		var run: Dictionary = entry.run
 		var a := _level(str(run.a), levels, _kinds, _heights, _seabed)
 		var b := _level(str(run.b), levels, _kinds, _heights, _seabed)
-		var target := float(run.shut)
-		if not _differs(run, a, b, _kinds, _seabed): target = maxf(minf(a, b) - SINK, _seabed)
-		if is_equal_approx(target, float(entry.y)): continue
-		entry.y = target
-		_moving = true
+		entry.up = _differs(run, a, b, _kinds, _seabed)
+		entry.low = maxf(minf(a, b) - SINK, _seabed)
+		_retarget(entry)
 	for spill: Dictionary in _sheets:
 		var run: Dictionary = spill.run
 		var a := _level(str(run.a), levels, _kinds, _heights, _seabed)
@@ -588,10 +598,47 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 		sheet.scale = Vector3(1, maxf(fall, 0.01), 1)
 	if immediate: _settle()
 
+## Tells the doors where the spirits stand (plan cm): a door that is up dips
+## while a spirit stands in its mouth (inside its walkway, within DIP_REACH of
+## the door), and rises again once it leaves. Only doors that are up are
+## checked, with a squared-distance test. Immediate (pass it for reduced
+## motion) skips the easing.
+func occupy(spirits: PackedVector2Array, immediate: bool = false) -> void:
+	for entry: Dictionary in _doors:
+		var dipped := false
+		if bool(entry.up) and entry.run.has("mouth_rect"):
+			for at: Vector2 in spirits:
+				if _in_mouth(entry.run, at):
+					dipped = true
+					break
+		if dipped == bool(entry.dipped): continue
+		entry.dipped = dipped
+		entry.easing = _retarget(entry)
+	if immediate and _moving: _settle()
+
+static func _in_mouth(run: Dictionary, at: Vector2) -> bool:
+	var r: Array = run.mouth_rect
+	if at.x < float(r[0]) or at.x > float(r[2]) or at.y < float(r[1]) or at.y > float(r[3]): return false
+	var line := float(run.line)
+	var across := (at.y if run.along_x else at.x) - line
+	var along := at.x if run.along_x else at.y
+	var outside := maxf(float(run.from) - along, along - float(run.to))
+	return across * across + maxf(outside, 0.0) * maxf(outside, 0.0) <= DIP_REACH * DIP_REACH
+
+## A door's target from what the levels want and whether a spirit stands in
+## it; whether that target moved.
+func _retarget(entry: Dictionary) -> bool:
+	var target := float(entry.run.shut) if bool(entry.up) and not bool(entry.dipped) else float(entry.low)
+	if is_equal_approx(target, float(entry.y)): return false
+	entry.y = target
+	_moving = true
+	return true
+
 ## Moves every door toward its target, never letting it stand below the
 ## water it holds now: `shown` is each area's level as the water is shown this
 ## frame (as present()'s levels). A door that must rise jumps to just above
 ## that water, and one that must sink waits until its two sides are level.
+## A door dipped for a spirit (occupy()) sinks and rises at DIP_TRAVEL instead.
 ## Returns whether any door still moves. A world calls it only on frames where
 ## its water or a door moves (moving()), so a resting harbour does no work.
 func advance(delta: float, shown: Dictionary) -> bool:
@@ -603,28 +650,36 @@ func advance(delta: float, shown: Dictionary) -> bool:
 		var door: MeshInstance3D = entry.door
 		var top := door.position.y
 		var target := float(entry.y)
-		var next := minf(target, top + step) if target > top else maxf(target, top - step)
-		var a := _level(str(run.a), shown, _kinds, _heights, _seabed)
-		var b := _level(str(run.b), shown, _kinds, _heights, _seabed)
-		# Never above its shut height, which may stand under the margin where
-		# the walls are low, so a held door still comes to rest.
-		next = maxf(next, minf(_held(run, a, b, _kinds, _seabed) + MARGIN, float(run.shut)))
+		var easing := bool(entry.easing)
+		var travel := DIP_TRAVEL * maxf(delta, 0.0) if easing else step
+		var next := minf(target, top + travel) if target > top else maxf(target, top - travel)
+		if not easing and not bool(entry.dipped):
+			var a := _level(str(run.a), shown, _kinds, _heights, _seabed)
+			var b := _level(str(run.b), shown, _kinds, _heights, _seabed)
+			# Never above its shut height, which may stand under the margin where
+			# the walls are low, so a held door still comes to rest. A door dipped
+			# for a spirit, or easing back up after one, is not held.
+			next = maxf(next, minf(_held(run, a, b, _kinds, _seabed) + MARGIN, float(run.shut)))
 		if not is_equal_approx(next, top): _place_door(entry, next)
 		if not is_equal_approx(next, target): still = true
+		elif easing: entry.easing = false
 	_moving = still
 	return still
 
 func _settle() -> void:
-	for entry: Dictionary in _doors: _place_door(entry, float(entry.y))
+	for entry: Dictionary in _doors:
+		_place_door(entry, float(entry.y))
+		entry.easing = false
 	_moving = false
 
 func moving() -> bool:
 	return _moving
 
-## Per door, in build order: "shut" (its target is up) or "open" (sunk).
+## Per door, in build order: "shut" (up), "dipped" (sunk for a spirit in its
+## mouth) or "open" (sunk, its two sides level).
 func door_states() -> Array:
 	var found: Array = []
-	for entry: Dictionary in _doors: found.append("shut" if is_equal_approx(float(entry.y), float(entry.run.shut)) else "open")
+	for entry: Dictionary in _doors: found.append("open" if not bool(entry.up) else "dipped" if bool(entry.dipped) else "shut")
 	return found
 
 ## Per door, in build order: its MeshInstance3D.
