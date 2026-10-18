@@ -24,7 +24,7 @@ const PEACH := Color("f4c38d")
 const MINT := Color("91d6c6")
 ## The outer eye: warm cream. The pupil and strokes: the kit's deep navy
 ## (kit/badges.gd OUTLINE), near black on screen.
-const CREAM := Color("fbf0d8")
+const CREAM := Color("fff7e8")
 const PUPIL := Color("102133")
 const LEAF := Color("5e9e45")
 ## Feet are the body colour, a shade darker.
@@ -64,8 +64,8 @@ const RIM := 0.007
 const PUPIL_LOOK := Vector2(0.010, 0.006)
 
 ## The approved sad pupil (references/Approved-Sad-Pupil-Shape.png), fitted as
-## a radius 1 + sum a_k cos(k angle + p_k) for k = 2..5, a little plumper.
-const BLOB_WAVE := Vector4(0.093, 0.111, 0.022, 0.006)
+## a radius 1 + sum a_k cos(k angle + p_k) for k = 2..5, made plumper.
+const BLOB_WAVE := Vector4(0.078, 0.092, 0.018, 0.005)
 const BLOB_PHASE := Vector4(-1.248, 2.625, -1.181, 2.976)
 
 const _NO_CUT := Vector4(0, 1, 9.0, 0)
@@ -122,13 +122,13 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.outer = Vector4(0.089, 0.093, 0, 0)
 			var p: Vector2 = at.call(-0.002, -0.002)
 			e.pupil = Vector4(0.062, 0.063, p.x, p.y)
-			e.pupil_wave = BLOB_WAVE if index == 0 else Vector4(0.078, 0.098, 0.030, 0.006)
+			e.pupil_wave = BLOB_WAVE if index == 0 else Vector4(0.070, 0.080, 0.024, 0.005)
 			e.pupil_phase = BLOB_PHASE if index == 0 else _turned(BLOB_PHASE, 0.12)
 			if index == 1:
 				var tip: Vector2 = at.call(0.054, -0.077)
 				var lobe := tip + tip.normalized() * 0.006
-				e.tear = Vector4(lobe.x, lobe.y, 0.037, 0)
-				e.tear_pupil = Vector4(tip.x, tip.y, 0.0125, 0.009)
+				e.tear = Vector4(lobe.x, lobe.y, 0.039, 0)
+				e.tear_pupil = Vector4(tip.x, tip.y, 0.015, 0.0105)
 		SURPRISED:
 			# Wide round eyes with small centred pupils.
 			e.outer = Vector4(0.100, 0.104, 0, 0.004)
@@ -156,9 +156,9 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.outer = Vector4(0.084, 0.098, 0, 0)
 			e.outer_wave = Vector4(0.010, 0.006, 0.004, 0)
 			e.outer_phase = calm_phase
-			var p: Vector2 = at.call(-0.003, -0.006)
-			e.pupil = Vector4(0.062, 0.073, p.x, p.y)
-			e.pupil_wave = BLOB_WAVE * (Vector4(0.40, 0.36, 0.4, 0) if index == 0 else Vector4(0.32, 0.40, 0.3, 0))
+			var p: Vector2 = at.call(-0.002, -0.004)
+			e.pupil = Vector4(0.066, 0.078, p.x, p.y)
+			e.pupil_wave = BLOB_WAVE * (Vector4(0.52, 0.5, 0.6, 0) if index == 0 else Vector4(0.42, 0.58, 0.5, 0))
 			e.pupil_phase = BLOB_PHASE if index == 0 else _turned(BLOB_PHASE, -0.5)
 	return e
 

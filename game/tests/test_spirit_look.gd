@@ -65,7 +65,7 @@ func _test_open_eyes() -> void:
 	for index in range(2):
 		var shape := Look.eye_contours(Look.NORMAL, index)
 		var ratio := _area(shape.pupil) / _area(shape.outer)
-		_check(ratio > 0.5 and ratio < 0.75, "Normal eye %d: the pupil fills most of the eye (%.2f)" % [index, ratio])
+		_check(ratio > 0.55 and ratio < 0.82, "Normal eye %d: the pupil fills most of the eye (%.2f)" % [index, ratio])
 	var normal_wave: Vector4 = Look.eye(Look.NORMAL, 0).pupil_wave
 	var sad_wave: Vector4 = Look.eye(Look.SAD, 0).pupil_wave
 	_check(normal_wave.length() > 0.02 and normal_wave.length() < sad_wave.length() * 0.6, "Normal pupils are blobby, but much less than Sad's")
@@ -77,7 +77,7 @@ func _test_open_eyes() -> void:
 	for index in range(2):
 		var sad := Look.eye(Look.SAD, index)
 		_check(sad.outer_wave == Vector4.ZERO and absf(sad.outer.x - sad.outer.y) < 0.01, "Sad eye %d: the main cream outline is smooth and round" % index)
-		_check(sad.pupil_wave.length() > 0.12, "Sad eye %d: the pupil is strongly blobby" % index)
+		_check(sad.pupil_wave.length() > 0.1, "Sad eye %d: the pupil is strongly blobby" % index)
 	_check(Look.eye(Look.SAD, 0).pupil_wave == Look.BLOB_WAVE and Look.eye(Look.SAD, 0).pupil_phase == Look.BLOB_PHASE, "Sad's pupil is the approved blob")
 	# Surprised: small pupils.
 	for index in range(2):
