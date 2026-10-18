@@ -21,6 +21,7 @@ func _check(ok: bool, message: String) -> void:
 func _run() -> void:
 	_policy()
 	_settings()
+	_frame_rate_migration()
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 720)
 	root.add_child(viewport)
@@ -108,5 +109,68 @@ func _settings() -> void:
 	invalid_settings.graphics_quality = 99
 	_check(saved.update_values({"settings": invalid_settings}) and saved.data.settings.graphics_quality == "balanced", "Write normalization cannot retain an invalid quality")
 	_check(Storage.default_settings_envelope_valid({"graphics_quality": "balanced"}) and not Storage.default_settings_envelope_valid({"graphics_quality": "low"}), "Inert chapter envelopes still accept only default preferences")
+	for suffix: String in ["", ".tmp", ".backup"]:
+		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
+
+## The frame rate replaced the Unlimited switch. An older save's switch carries
+## over, wrong types fall back to 60, every write keeps the switch for older
+## builds, and a switch an older build changed later wins on the next load.
+func _frame_rate_migration() -> void:
+	_check(Storage.defaults().settings.frame_rate == "60" and Storage.defaults().settings.unlimited_frame_rate == false, "A new save plays at 60")
+	_check(Policy.play_fps("30") == 30 and Policy.play_fps("60") == 60 and Policy.play_fps("unlimited") == 0, "Each choice has its play rate")
+	for invalid: Variant in [null, 30, 60.0, true, [], {}, "", "120", "Unlimited"]:
+		_check(Policy.frame_rate({"frame_rate": invalid}) == "60", "A saved frame rate of %s reads as 60" % str(invalid))
+	var path := "user://graphics-frame-rate-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
+	# [saved frame_rate (absent when null), saved unlimited_frame_rate (absent when null), loaded frame_rate]
+	var cases: Array = [
+		[null, null, "60"],
+		[null, false, "60"],
+		[null, true, "unlimited"],
+		[null, "x", "60"],
+		[null, 1, "60"],
+		["30", false, "30"],
+		["30", null, "30"],
+		["30", true, "unlimited"],
+		["unlimited", true, "unlimited"],
+		["unlimited", false, "60"],
+		["unlimited", "yes", "unlimited"],
+		["60", true, "unlimited"],
+		[30, null, "60"],
+		[30, true, "unlimited"],
+		["fast", false, "60"],
+		[{}, [], "60"],
+	]
+	for row: Array in cases:
+		var save := Storage.defaults()
+		save.completed = {"first-light": true}
+		save.settings.erase("frame_rate")
+		save.settings.erase("unlimited_frame_rate")
+		if row[0] != null: save.settings.frame_rate = row[0]
+		if row[1] != null: save.settings.unlimited_frame_rate = row[1]
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string(JSON.stringify(save))
+		file.close()
+		var loaded := Storage.new(path)
+		loaded.load_data()
+		var label := "frame_rate %s, unlimited %s" % [str(row[0]), str(row[1])]
+		_check(loaded.data.settings.frame_rate == row[2] and loaded.data.settings.unlimited_frame_rate == (row[2] == "unlimited"), "%s loads as %s" % [label, row[2]])
+		_check(loaded.data.completed == save.completed, "%s keeps progress" % label)
+	var saved := Storage.new(path)
+	saved.load_data()
+	for rate: String in Policy.FRAME_RATES:
+		var settings: Dictionary = saved.data.settings.duplicate(true)
+		settings.frame_rate = rate
+		# A stale switch in memory never overrides the new choice on write.
+		settings.unlimited_frame_rate = rate != "unlimited"
+		_check(saved.update_values({"settings": settings}), "Frame rate %s saves" % rate)
+		var disk: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+		_check(disk is Dictionary and disk.settings.frame_rate == rate and disk.settings.unlimited_frame_rate == (rate == "unlimited"), "Frame rate %s is written with the older builds' switch to match" % rate)
+		var reloaded := Storage.new(path)
+		reloaded.load_data()
+		_check(reloaded.data.settings.frame_rate == rate, "Frame rate %s survives a reload" % rate)
+	var invalid: Dictionary = saved.data.settings.duplicate(true)
+	invalid.frame_rate = 120
+	_check(saved.update_values({"settings": invalid}) and saved.data.settings.frame_rate == "60" and not saved.data.settings.unlimited_frame_rate, "Write normalization cannot keep an invalid frame rate")
+	_check(Storage.default_settings_envelope_valid({"frame_rate": "60"}) and not Storage.default_settings_envelope_valid({"frame_rate": "30"}), "Chapter envelopes may hold only the default frame rate")
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)

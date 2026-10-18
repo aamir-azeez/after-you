@@ -3,7 +3,8 @@ extends Node
 ## scene up to 120 times a second on every screen, menus and waiting cards
 ## included, and ran hot. The current scene (Main or a chapter) says what it
 ## needs through frame_demand():
-##   ACTIVE   play, replays, the completion moment, moving the camera: 60 a second
+##   ACTIVE   play, replays, the completion moment, moving the camera: the
+##            player's frame rate, 60 a second unless they chose otherwise
 ##   CALM     menus, cards, waiting: at most 30 a second, and a frame is drawn
 ##            only when something on screen changed
 ##   LOADING  a chapter's world being built a step per frame: no cap, so the
@@ -13,9 +14,10 @@ extends Node
 ## for a moment after, and every change of demand does the same for a shorter
 ## moment, so taps, scrolls and page changes stay smooth.
 ##
-## With the player's Unlimited frame rate setting on, play and the moments
-## after a touch are not capped (the screen's refresh, 120 on many phones);
-## a menu left alone still draws only when something changes.
+## The player's frame rate (Settings > Graphics: 30, 60 or Unlimited) sets
+## play's rate and the rate for the moments after a touch; Unlimited is the
+## screen's refresh, 120 on many phones. A menu left alone keeps its own cap
+## of 30 and still draws only when something changes.
 ##
 ## Presentation only. Physics stays at 30 ticks a second, and the simulation,
 ## its input and its recordings never depend on how many frames are drawn.
@@ -33,8 +35,9 @@ const CHANGE_WAKE_MSEC := 1000
 ## Headless runs (tests, tools) are left alone: a cap there would only slow
 ## every suite that waits on frames.
 var enabled := DisplayServer.get_name() != "headless"
-## Set from the saved settings by GraphicsPolicy.apply.
-var unlimited := false
+## Play's frames a second (0 = no cap), set from the saved frame rate by
+## GraphicsPolicy.apply.
+var play_fps := ACTIVE_FPS
 var _mobile := OS.has_feature("mobile")
 var _focused := true
 var _touches: Dictionary = {}
@@ -42,11 +45,11 @@ var _wake_until := 0
 var _demand := ""
 
 ## Frame cap (0 = none) and whether to draw only on change, for a demand.
-static func target(demand: String, waking: bool, focused: bool = true, mobile: bool = false, unlimited: bool = false) -> Dictionary:
+static func target(demand: String, waking: bool, focused: bool = true, mobile: bool = false, play: int = ACTIVE_FPS) -> Dictionary:
 	if demand == LOADING: return {"fps": 0, "low": false}
 	if mobile and not focused: return {"fps": AWAY_FPS, "low": true}
 	if demand == CALM and not waking: return {"fps": CALM_FPS, "low": true}
-	return {"fps": 0 if unlimited else ACTIVE_FPS, "low": false}
+	return {"fps": play, "low": false}
 
 func _ready() -> void:
 	process_mode = Node.PROCESS_MODE_ALWAYS
@@ -82,7 +85,7 @@ func _apply() -> void:
 	if demand != _demand:
 		_demand = demand
 		_wake_until = maxi(_wake_until, Time.get_ticks_msec() + CHANGE_WAKE_MSEC)
-	var next := target(demand, waking(), _focused, _mobile, unlimited)
+	var next := target(demand, waking(), _focused, _mobile, play_fps)
 	if Engine.max_fps != next.fps: Engine.max_fps = next.fps
 	if OS.low_processor_usage_mode != next.low: OS.low_processor_usage_mode = next.low
 

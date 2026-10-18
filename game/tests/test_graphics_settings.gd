@@ -44,25 +44,25 @@ func _run() -> void:
 	var frames: Node = root.get_node_or_null("FramePolicy")
 	var unlimited := app.overlay.find_child("UnlimitedFrameRate", true, false) as CheckButton
 	_check(unlimited != null and not unlimited.button_pressed and app.saves.data.settings.unlimited_frame_rate == false, "Unlimited frame rate starts off")
-	_check(frames != null and not frames.unlimited, "Play is capped by default")
+	_check(frames != null and frames.play_fps != 0, "Play is capped by default")
 	_check(viewport.get_visible_rect().encloses(unlimited.get_global_rect()), "The frame rate switch fits the small display")
 	await _click(viewport, unlimited)
 	var reloaded := Save.new(path)
 	reloaded.load_data()
 	_check(unlimited.button_pressed and reloaded.data.settings.unlimited_frame_rate == true, "Turning it on is saved")
-	_check(frames.unlimited, "Turning it on lifts the play cap at once")
+	_check(frames.play_fps == 0, "Turning it on lifts the play cap at once")
 	app.saves.read_only = true
 	await _click(viewport, unlimited)
-	_check(unlimited.button_pressed and frames.unlimited, "A failed save keeps it on, as saved")
+	_check(unlimited.button_pressed and frames.play_fps == 0, "A failed save keeps it on, as saved")
 	app.saves.read_only = false
 	await _click(viewport, unlimited)
 	reloaded = Save.new(path)
 	reloaded.load_data()
-	_check(not unlimited.button_pressed and reloaded.data.settings.unlimited_frame_rate == false and not frames.unlimited, "Turning it off is saved and caps play again")
+	_check(not unlimited.button_pressed and reloaded.data.settings.unlimited_frame_rate == false and frames.play_fps != 0, "Turning it off is saved and caps play again")
 	for invalid: Variant in [null, 1, "true", [], {}]:
 		var settings: Dictionary = Save.defaults().settings
-		settings.unlimited_frame_rate = invalid
-		_check(not load("res://services/graphics_policy.gd").unlimited_frame_rate(settings), "A saved %s is read as off" % str(invalid))
+		settings.frame_rate = invalid
+		_check(load("res://services/graphics_policy.gd").frame_rate(settings) == "60", "A saved %s is read as 60" % str(invalid))
 	await _click(viewport,_button(app,"Back"))
 	_check(app.mode=="settings","Back returns to Settings")
 	await _click(viewport,_button(app,"Graphics"))

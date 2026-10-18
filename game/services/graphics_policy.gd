@@ -39,16 +39,35 @@ static func _short_side(viewport: Viewport) -> int:
 	elif viewport is SubViewport: size = (viewport as SubViewport).size
 	return mini(size.x, size.y)
 
-## The player's choice to let play run at the screen's full refresh rate
-## (services/frame_policy.gd). Off unless saved as exactly true.
-static func unlimited_frame_rate(settings: Dictionary) -> bool:
-	var value: Variant = settings.get("unlimited_frame_rate")
-	return value is bool and value
+## The player's frame rate for play (services/frame_policy.gd): "30", "60" or
+## "unlimited" (the screen's full refresh rate). Menus keep their own cap.
+const FRAME_RATES := ["30", "60", "unlimited"]
+const DEFAULT_FRAME_RATE := "60"
+
+## The saved frame rate, or 60 for anything else.
+static func frame_rate(settings: Dictionary) -> String:
+	var value: Variant = settings.get("frame_rate")
+	return value if value is String and value in FRAME_RATES else DEFAULT_FRAME_RATE
+
+## Frames a second for play at a frame rate; 0 is no cap.
+static func play_fps(rate: String) -> int:
+	return 30 if rate == "30" else 0 if rate == "unlimited" else 60
+
+## The frame rate a loaded save means. Builds before the choice saved only
+## `unlimited_frame_rate`, and they keep writing it next to `frame_rate`, so
+## where the two disagree the older build changed it last: its switch on means
+## Unlimited, and its switch off ends an Unlimited choice (back to 60).
+static func loaded_frame_rate(settings: Dictionary) -> String:
+	var rate := frame_rate(settings)
+	var unlimited: Variant = settings.get("unlimited_frame_rate")
+	if not unlimited is bool: return rate
+	if unlimited: return "unlimited"
+	return DEFAULT_FRAME_RATE if rate == "unlimited" else rate
 
 static func apply(world: Node3D, settings: Dictionary) -> void:
 	if not is_instance_valid(world) or not world.is_node_ready(): return
 	var frames := world.get_tree().root.get_node_or_null("FramePolicy")
-	if frames != null: frames.unlimited = unlimited_frame_rate(settings)
+	if frames != null: frames.play_fps = play_fps(frame_rate(settings))
 	var quality := normalize(settings.get("graphics_quality"))
 	apply_viewport(world.get_viewport(), quality)
 	if world.has_method("apply_graphics_quality"):

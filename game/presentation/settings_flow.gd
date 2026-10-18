@@ -102,7 +102,7 @@ func show_graphics_settings() -> void:
 	unlimited.name = "UnlimitedFrameRate"
 	unlimited.text = "Unlimited frame rate"
 	unlimited.mouse_filter = Control.MOUSE_FILTER_PASS
-	unlimited.button_pressed = GraphicsPolicy.unlimited_frame_rate(host.saves.data.settings)
+	unlimited.button_pressed = GraphicsPolicy.frame_rate(host.saves.data.settings) == "unlimited"
 	unlimited.toggled.connect(func(value: bool): _set_unlimited_frame_rate(value, unlimited))
 	card.add_child(unlimited)
 	card.add_child(host._paragraph("Plays at your screen's full refresh rate. Uses more battery and can warm your phone.",500))
@@ -121,9 +121,9 @@ func _set_graphics_quality(quality: String) -> void:
 func _set_unlimited_frame_rate(value: bool, toggle: CheckButton) -> void:
 	if host.mode != MODE_GRAPHICS: return
 	var next: Dictionary = host.saves.data.settings.duplicate(true)
-	next.unlimited_frame_rate = value
+	next.frame_rate = "unlimited" if value else GraphicsPolicy.DEFAULT_FRAME_RATE
 	if not host.saves.update_values({"settings":next}):
-		toggle.set_pressed_no_signal(GraphicsPolicy.unlimited_frame_rate(host.saves.data.settings))
+		toggle.set_pressed_no_signal(GraphicsPolicy.frame_rate(host.saves.data.settings) == "unlimited")
 		host._toast(PlayerCopy.MAIN_34B82590B663)
 		return
 	host._apply_settings()

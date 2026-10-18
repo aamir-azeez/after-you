@@ -22,7 +22,7 @@ func _init(save_path: String = PATH) -> void:
 	path = save_path
 
 static func defaults() -> Dictionary:
-	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false, "skip_waits": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
+	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false, "frame_rate": GraphicsPolicy.DEFAULT_FRAME_RATE, "skip_waits": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
 
 static func default_settings_envelope_valid(value: Variant) -> bool:
 	# Chapter journals do not own UI preferences. Older envelopes may omit
@@ -109,7 +109,9 @@ func flush() -> bool:
 		return false
 	if candidate.get("settings") is Dictionary:
 		candidate.settings.graphics_quality = GraphicsPolicy.normalize(candidate.settings.get("graphics_quality"))
-		candidate.settings.unlimited_frame_rate = GraphicsPolicy.unlimited_frame_rate(candidate.settings)
+		# frame_rate is the choice; unlimited_frame_rate is kept for older builds.
+		candidate.settings.frame_rate = GraphicsPolicy.frame_rate(candidate.settings)
+		candidate.settings.unlimited_frame_rate = candidate.settings.frame_rate == "unlimited"
 	# Never replace a good backup with a corrupted primary file.
 	var backup := AtomicFile.Backup.COPY if FileAccess.file_exists(path) and _valid(_read_json(path)) else AtomicFile.Backup.NONE
 	# A failed write leaves no complete newer generation behind (unless it is the
@@ -256,7 +258,11 @@ static func _with_defaults(value: Dictionary) -> Dictionary:
 	for key: Variant in saved:
 		if not settings.has(key) or _same_kind(saved[key], settings[key]): settings[key] = saved[key]
 	settings.graphics_quality = GraphicsPolicy.normalize(settings.get("graphics_quality"))
-	settings.unlimited_frame_rate = GraphicsPolicy.unlimited_frame_rate(settings)
+	# A wrong-typed unlimited_frame_rate already fell back to its default above,
+	# so read the older build's switch from the save itself.
+	var legacy := {"frame_rate": settings.frame_rate, "unlimited_frame_rate": saved.get("unlimited_frame_rate")}
+	settings.frame_rate = GraphicsPolicy.loaded_frame_rate(legacy)
+	settings.unlimited_frame_rate = settings.frame_rate == "unlimited"
 	result.settings = settings
 	if not result.get("replays") is Dictionary:
 		result.replays = {}

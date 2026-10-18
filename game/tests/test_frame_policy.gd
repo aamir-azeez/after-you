@@ -40,12 +40,15 @@ func _run() -> void:
 	_check(Frames.target(Frames.ACTIVE, false, false, true) == {"fps": 10, "low": true}, "An unfocused phone draws 10 a second")
 	_check(Frames.target(Frames.ACTIVE, false, false, false) == {"fps": 60, "low": false}, "Desktop focus does not change the rate")
 	_check(Frames.target(Frames.LOADING, false, false, true) == {"fps": 0, "low": false}, "A build under the notification shade still finishes at full speed")
-	# Unlimited frame rate (a player setting): play and touches are not capped,
-	# a menu left alone still draws only on change, an unfocused phone stays low.
-	_check(Frames.target(Frames.ACTIVE, false, true, true, true) == {"fps": 0, "low": false}, "Unlimited: play follows the screen's refresh")
-	_check(Frames.target(Frames.CALM, true, true, true, true) == {"fps": 0, "low": false}, "Unlimited: a touched menu follows the screen's refresh")
-	_check(Frames.target(Frames.CALM, false, true, true, true) == {"fps": 30, "low": true}, "Unlimited: a menu left alone still draws only on change")
-	_check(Frames.target(Frames.ACTIVE, false, false, true, true) == {"fps": 10, "low": true}, "Unlimited: an unfocused phone still drops to 10")
+	# The player's frame rate (Settings > Graphics): it sets play's rate and the
+	# rate after a touch; a menu left alone still draws only on change at 30,
+	# and an unfocused phone stays low.
+	for row: Array in [[30, "30"], [60, "60"], [0, "Unlimited"]]:
+		_check(Frames.target(Frames.ACTIVE, false, true, true, row[0]) == {"fps": row[0], "low": false}, "%s: play runs at the chosen rate" % row[1])
+		_check(Frames.target(Frames.CALM, true, true, true, row[0]) == {"fps": row[0], "low": false}, "%s: a touched menu follows the chosen rate" % row[1])
+		_check(Frames.target(Frames.CALM, false, true, true, row[0]) == {"fps": 30, "low": true}, "%s: a menu left alone keeps its own cap of 30, drawn on change" % row[1])
+		_check(Frames.target(Frames.ACTIVE, false, false, true, row[0]) == {"fps": 10, "low": true}, "%s: an unfocused phone still drops to 10" % row[1])
+		_check(Frames.target(Frames.LOADING, false, true, true, row[0]) == {"fps": 0, "low": false}, "%s: a chapter build stays uncapped" % row[1])
 	# Headless: inert.
 	var autoload: Node = root.get_node_or_null("FramePolicy")
 	_check(autoload != null and not autoload.enabled, "The autoload is present and inert headless")
@@ -106,20 +109,28 @@ func _run() -> void:
 	await _frames(2)
 	_check(Engine.max_fps == 60 and not OS.low_processor_usage_mode, "Focus back restores play's rate")
 	policy._mobile = false
-	policy.unlimited = true
+	policy.play_fps = 0
 	await _frames(2)
 	_check(Engine.max_fps == 0, "Unlimited lifts the play cap live")
-	policy.unlimited = false
+	policy.play_fps = 30
 	await _frames(2)
-	_check(Engine.max_fps == 60, "Turning it off caps play again")
+	_check(Engine.max_fps == 30, "30 caps play at 30 live")
+	policy.play_fps = 60
+	await _frames(2)
+	_check(Engine.max_fps == 60, "60 caps play again")
 	# The saved setting reaches the policy wherever a world is set up, a
 	# chapter included.
 	var world := Node3D.new()
 	root.add_child(world)
-	load("res://services/graphics_policy.gd").apply(world, {"graphics_quality": "balanced", "unlimited_frame_rate": true})
-	_check(autoload.unlimited, "A chapter's saved setting turns unlimited on")
-	load("res://services/graphics_policy.gd").apply(world, {"graphics_quality": "balanced"})
-	_check(not autoload.unlimited, "A setting not saved as true leaves it off")
+	var policy_script: Script = load("res://services/graphics_policy.gd")
+	for row: Array in [["unlimited", 0], ["30", 30], ["60", 60]]:
+		policy_script.apply(world, {"graphics_quality": "balanced", "frame_rate": row[0]})
+		_check(autoload.play_fps == row[1], "A chapter's saved frame rate %s reaches play" % row[0])
+	policy_script.apply(world, {"graphics_quality": "balanced", "frame_rate": "unlimited"})
+	policy_script.apply(world, {"graphics_quality": "balanced"})
+	_check(autoload.play_fps == 60, "No saved frame rate plays at 60")
+	policy_script.apply(world, {"graphics_quality": "balanced", "frame_rate": 30, "unlimited_frame_rate": true})
+	_check(autoload.play_fps == 60, "A wrong-typed frame rate plays at 60; only a loaded save reads the older switch")
 	world.free()
 	current_scene = null
 	await _frames(2)
