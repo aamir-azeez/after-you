@@ -16,6 +16,8 @@ func _initialize() -> void:
 
 func _run() -> void:
 	root.size = Vector2i(VIEWPORT.size)
+	# The screen as the camera sees it (the window may keep a different aspect).
+	var view := root.get_visible_rect()
 	var camera := Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
 	camera.keep_aspect = Camera3D.KEEP_HEIGHT
@@ -23,21 +25,30 @@ func _run() -> void:
 	root.add_child(camera)
 	camera.current = true
 	camera.global_transform = Transform3D(Basis.from_euler(Vector3(deg_to_rad(-35.0), deg_to_rad(45.0), 0.0)), Vector3(20, 18, 20))
+	# The whole chapter: the play view grown to the scene beside the panel, its
+	# middle moved to that scene's middle.
+	var looked_at := camera.global_position - camera.global_basis.z * 30.0
+	var fitted := WaitFraming.whole(camera, 10.0, TARGET, view)
+	_check(is_equal_approx(fitted.size, 10.0 * maxf(view.size.x / TARGET.size.x * 0.82, view.size.y / TARGET.size.y * 0.66)), "The whole view grows to fit the scene beside the panel")
+	var play := WaitFraming.of(camera)
+	WaitFraming.apply(camera, fitted)
+	_check(camera.unproject_position(looked_at).distance_to(TARGET.get_center()) < 1.0, "The whole view's middle sits at the middle of the scene beside the panel")
+	WaitFraming.apply(camera, play)
 	var whole := WaitFraming.of(camera)
 	# Two spirits a step apart: in as far as allowed.
 	var near: Array[Vector3] = [Vector3(1, 0, 0), Vector3(2, 0, 1)]
-	var close := WaitFraming.closer(camera, near, TARGET, VIEWPORT)
+	var close := WaitFraming.closer(camera, near, TARGET, view)
 	_check(not close.is_empty() and is_equal_approx(close.size, whole.size / WaitFraming.MAX_ZOOM) and close.h == 0.0 and close.v == 0.0, "Spirits close together come in to the most zoom: " + str(close.get("size")))
 	_check(_on_target(camera, close, near, TARGET), "The framed spirits sit in the scene beside the panel")
 	# Spirits a little apart: closer than the whole view, but not all the way.
 	var apart: Array[Vector3] = [camera.global_basis.x * -7.0, camera.global_basis.x * 7.0]
-	var middle := WaitFraming.closer(camera, apart, TARGET, VIEWPORT)
+	var middle := WaitFraming.closer(camera, apart, TARGET, view)
 	_check(not middle.is_empty() and middle.size > whole.size / WaitFraming.MAX_ZOOM and middle.size * WaitFraming.MIN_GAIN < whole.size, "Spirits a little apart come in only as far as both fit")
 	_check(_on_target(camera, middle, apart, TARGET), "Both spirits a little apart stay in the scene beside the panel")
 	# Spirits across the chapter: the whole view stays.
 	var far: Array[Vector3] = [Vector3(-30, 0, -30), Vector3(30, 0, 30)]
-	_check(WaitFraming.closer(camera, far, TARGET, VIEWPORT).is_empty(), "Spirits far apart keep the whole-chapter view")
-	_check(WaitFraming.closer(camera, [] as Array[Vector3], TARGET, VIEWPORT).is_empty(), "No spirits keep the whole-chapter view")
+	_check(WaitFraming.closer(camera, far, TARGET, view).is_empty(), "Spirits far apart keep the whole-chapter view")
+	_check(WaitFraming.closer(camera, [] as Array[Vector3], TARGET, view).is_empty(), "No spirits keep the whole-chapter view")
 	# Blending moves from one framing to the other and stops there.
 	_check(WaitFraming.same(WaitFraming.blend(whole, close, 0.0), whole) and WaitFraming.same(WaitFraming.blend(whole, close, 1.0), close), "A blend starts and ends on its framings")
 	var half := WaitFraming.blend(whole, close, 0.5)

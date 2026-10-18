@@ -32,6 +32,13 @@ static func blend(from: Dictionary, to: Dictionary, weight: float) -> Dictionary
 static func same(a: Dictionary, b: Dictionary) -> bool:
 	return a.position.is_equal_approx(b.position) and is_equal_approx(a.size, b.size) and is_equal_approx(a.h, b.h) and is_equal_approx(a.v, b.v)
 
+## The whole chapter in `target` (viewport pixels): the play camera's view,
+## `play_size` tall, grown to fit the scene beside the panel and centred on it.
+## `camera` holds the play camera's transform and offsets.
+static func whole(camera: Camera3D, play_size: float, target: Rect2, viewport: Rect2) -> Dictionary:
+	var size := play_size * maxf(viewport.size.x / target.size.x * 0.82, viewport.size.y / target.size.y * 0.66)
+	return {"position": camera.global_position + _to_target(camera.global_basis, size, target, viewport), "size": size, "h": camera.h_offset, "v": camera.v_offset}
+
 ## The closer framing of `points` in `target` (viewport pixels), for `camera`
 ## as it shows the whole chapter there, or {} to keep that view.
 static func closer(camera: Camera3D, points: Array[Vector3], target: Rect2, viewport: Rect2) -> Dictionary:
@@ -54,9 +61,11 @@ static func closer(camera: Camera3D, points: Array[Vector3], target: Rect2, view
 	if needed * MIN_GAIN >= whole: return {}
 	var size := maxf(needed, whole / MAX_ZOOM)
 	var middle := (low + high) / 2.0
-	var position := centre + basis.x * middle.x + basis.y * middle.y
-	# Put the framed middle at the middle of the scene beside the panel.
+	var position := centre + basis.x * middle.x + basis.y * middle.y + _to_target(basis, size, target, viewport)
+	return {"position": position, "size": size, "h": 0.0, "v": 0.0}
+
+## The camera move that puts the screen's middle at the middle of `target`.
+static func _to_target(basis: Basis, size: float, target: Rect2, viewport: Rect2) -> Vector3:
 	var shift := viewport.get_center() - target.get_center()
 	var units := size / viewport.size.y
-	position += basis.x * shift.x * units - basis.y * shift.y * units
-	return {"position": position, "size": size, "h": 0.0, "v": 0.0}
+	return basis.x * shift.x * units - basis.y * shift.y * units

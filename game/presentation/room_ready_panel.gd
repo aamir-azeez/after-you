@@ -122,8 +122,8 @@ func _add_title_shade() -> void:
 		shade.size = Vector2(view.size.x, solid + SHADE_FADE)
 		gradient.offsets = PackedFloat32Array([0.0, solid / (solid + SHADE_FADE), 1.0])
 		gradient.colors = PackedColorArray([SHADE, SHADE, Color(SHADE, 0.0)])
+	# The panel fills the screen, so a resize moves the scene space too.
 	scene_space.item_rect_changed.connect(fit.call_deferred)
-	get_viewport().size_changed.connect(fit.call_deferred)
 	fit.call_deferred()
 
 func _label(value: String, font_size: int) -> Label:

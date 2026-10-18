@@ -871,11 +871,8 @@ func _frame_ready_world() -> void:
 	camera.h_offset = _room_camera.h_offset
 	camera.v_offset = _room_camera.v_offset
 	var viewport := get_viewport().get_visible_rect()
-	camera.size = float(_room_camera.size) * maxf(viewport.size.x / target.size.x * 0.82,viewport.size.y / target.size.y * 0.66)
-	var shift := viewport.get_center() - target.get_center()
-	var units: float = camera.size / viewport.size.y
-	camera.global_position += camera.global_basis.x * shift.x * units - camera.global_basis.y * shift.y * units
-	var whole := WaitFraming.of(camera)
+	var whole := WaitFraming.whole(camera, float(_room_camera.size), target, viewport)
+	WaitFraming.apply(camera, whole)
 	var goal := WaitFraming.closer(camera, _framing_points(), target, viewport)
 	_room_framed = true
 	_ease_camera(camera, shown if not shown.is_empty() else whole, whole if goal.is_empty() else goal)
@@ -2337,6 +2334,8 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 		if _replay_context.is_empty():
 			_retire_replay()
 			return
+	# A replay from the room panel plays in the play camera.
+	_restore_ready_world()
 	_clear_reaction_view()
 	if not Registry.reset_simulation(sim, chapter_key, definition, str(recording.stage_id), start, source, str(recording.role), recording):
 		_show_error(sim.error)

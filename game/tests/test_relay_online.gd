@@ -752,6 +752,27 @@ func _check_waiting_layout(preview, viewport: SubViewport, context: String) -> v
 	preview._frame_ready_world()
 	_check(preview._room_framed and preview._camera_tween == null,"Reduce motion frames the scene without easing: "+context)
 	preview.settings.reduced_motion = reduced
+	# A redraw (a poll, a share result) keeps the framing on screen.
+	var camera: Camera3D = preview.world.camera
+	var settled: Dictionary = preview.WaitFraming.of(camera)
+	preview._show_ready()
+	await process_frame
+	_check(preview._camera_tween == null and preview.WaitFraming.same(preview.WaitFraming.of(camera),settled),"A redraw keeps the settled framing without easing again: "+context)
+	# A fresh framing eases in, and a redraw during the ease carries on from
+	# what is on screen instead of starting over.
+	preview._restore_ready_world()
+	await process_frame
+	preview._show_ready()
+	await process_frame
+	if preview._camera_tween != null:
+		for frame in range(3): await process_frame
+		var mid: float = camera.size
+		preview._show_ready()
+		await process_frame
+		_check(preview._camera_tween != null and absf(camera.size - mid) < absf(settled.size - mid) and camera.size < mid + 0.01,"A redraw during the ease continues from the camera on screen: "+context)
+	for frame in range(60):
+		if preview._camera_tween == null or not preview._camera_tween.is_running(): break
+		await process_frame
 	var options := _button_named(preview,"Room options")
 	_check(options != null and options.is_visible_in_tree(),"Room options is on the waiting panel: "+context)
 	if options == null: return
