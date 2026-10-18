@@ -1799,7 +1799,9 @@ func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool 
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
 	memory_wait.begin(turn_role, MemoryWait.prior_ticks(prior_recording))
 	if is_instance_valid(world) and world.has_method("set_wait_hints"):
-		world.set_wait_hints(live and online_session != null and turn_role == "b", MemoryWait.prior_ticks(prior_recording))
+		# A memory with no length is unknown (-1): its end is never assumed.
+		var ticks := MemoryWait.prior_ticks(prior_recording)
+		world.set_wait_hints(live and online_session != null and turn_role == "b", ticks if ticks > 0 else -1)
 	_memory_wait_text = ""
 	_update_memory_wait_hud()
 

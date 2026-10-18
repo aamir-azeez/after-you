@@ -76,8 +76,9 @@ var _wait_hints_on := false
 ## then only shown, hidden or reworded:
 ## route id -> {"bubble": LabelBubble, "dashes": MeshInstance3D, "anchor"}.
 var _wait_marks: Dictionary = {}
-## The stage on show, for the hints' anchors.
+## The stage on show, for the hints' anchors, and whether its build is done.
 var _shown_stage: Dictionary = {}
+var _stage_built := false
 ## Step seats (descriptor "seats"): [{"pad", "params"}], params being the
 ## sit pose's ({"seat": global point, "seat_radius"}); and each seat holder's
 ## last snapshot position, so it sits only while still.
@@ -97,14 +98,14 @@ func show_stage(stage: Dictionary) -> void:
 	_seats.clear()
 	_seat_last.clear()
 	_shown_stage = stage
+	_stage_built = false
 	# Before the build awaits: a present meanwhile reads this stage's crossings.
 	_wait_hints.setup(stage, _descriptor(), PlayerCopy.WAIT_HINT_CROSSING)
 	await super.show_stage(stage)
+	_stage_built = true
 	_build_seats(stage)
 	_build_wait_marks()
-	# Lowest on screen first: see _lift_bubbles.
-	var up := LabelBubble.screen_up()
-	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))
+	_sort_bubbles()
 	_placement_due = true
 	var endpoint: Dictionary = stage.get("source_policy", {}).get("endpoint", {})
 	if not endpoint.is_empty():
@@ -112,6 +113,11 @@ func show_stage(stage: Dictionary) -> void:
 		_waiting_ring = ring(float(endpoint.radius_cm)/100.0,CREAM,at+Vector3(0,0.018,0),terrain)
 		_waiting_ring.name = "SourceWaitingRegion"
 		_ownership_mark(str(endpoint.owner_slot),at+Vector3(0,0.025,0),terrain)
+
+## Lowest on screen first: see _lift_bubbles.
+func _sort_bubbles() -> void:
+	var up := LabelBubble.screen_up()
+	_bubbles.sort_custom(func(a: LabelBubble, b: LabelBubble) -> bool: return a.anchor.dot(up) < b.anchor.dot(up))
 
 func _configure_shared_view(view: Dictionary) -> void:
 	# The renderer receives a detached stage view. Native optical dictionaries
@@ -538,6 +544,13 @@ func _descriptor() -> Dictionary:
 func set_wait_hints(on: bool, memory_ticks: int = -1) -> void:
 	_wait_hints_on = on
 	_wait_hints.set_memory_ticks(memory_ticks if on else -1)
+	# Turned on for a stage already built (the turn starts on the stage the
+	# ready card showed): its marks are built now, before any play, and the
+	# scenery the bubbles clear is gathered again with them.
+	if on and _stage_built and _wait_marks.is_empty() and _wait_hints.has_candidates():
+		_build_wait_marks()
+		_sort_bubbles()
+		_sceneries.clear()
 	if not on:
 		_wait_hints.shown = []
 		_show_wait_marks()
@@ -550,10 +563,12 @@ func wait_hints() -> Array:
 func wait_hint_evaluations() -> int:
 	return _wait_hints.evaluations
 
-## Every crossing the stage can hint about gets its bubble (over the live
-## spirit's lever or selector) and dashes now, hidden, so the bubble is placed
-## and cleared like every other and nothing is built mid-play.
+## With hints on, every crossing the stage can hint about gets its bubble
+## (over the live spirit's lever or selector) and dashes, hidden, so the
+## bubble is placed and cleared like every other and nothing is built
+## mid-play. Solo play and replays build none.
 func _build_wait_marks() -> void:
+	if not _wait_hints_on or not _wait_marks.is_empty(): return
 	for candidate: Dictionary in _wait_hints.candidates():
 		var bubble := LabelBubble.new()
 		bubble.build_sentence(terrain, _hint_anchor(str(candidate.anchor)), str(_descriptor().get("wait_hints", {}).get("fallback", "")))
@@ -591,6 +606,12 @@ func _hint_anchor(id: String) -> Vector3:
 		for item: Dictionary in _shown_stage.get(key, []):
 			if str(item.id) == id: return _at(item)+LEVER_TOP
 	return Vector3.ZERO
+
+## The dashes show and hide with their hints: never folded (_static_keep).
+func _static_keep() -> Array:
+	var keep := super._static_keep()
+	for mark: Dictionary in _wait_marks.values(): keep.append(mark.dashes)
+	return keep
 
 ## Soft dashes along a crossing's edges at its deck height: one mesh, shown or
 ## hidden with its hint.

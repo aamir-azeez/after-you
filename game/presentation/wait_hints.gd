@@ -118,6 +118,10 @@ func setup(stage: Dictionary, descriptor: Dictionary, default_crossing: String) 
 	_pad_bits.resize(_pads.size())
 	_apply_start()
 
+## Whether this stage has a crossing that can give a hint.
+func has_candidates() -> bool:
+	return not _candidates.is_empty()
+
 ## Each crossing that can give a hint and the live spirit's lever or selector
 ## its hint stands over: [{"route", "anchor"}].
 func candidates() -> Array:

@@ -14,7 +14,9 @@ extends SceneTree
 ##   crossing, across the scripted first turns of both stages.
 ## - Never in the first turn, nor with hints off; the chapter screen turns
 ##   them on only for a friend's room's second turn being played.
-## - Built hidden with the stage, not processing while hidden.
+## - Built hidden once hints are on (never in solo play or replays), not
+##   processing while hidden, and never folded into the static scenery: a
+##   folded world still shows its hint.
 ## - Worked out again only when what it reads changes: idle frames and
 ##   position-only ticks cost nothing.
 const Registry = preload("res://services/chapter_registry.gd")
@@ -25,6 +27,7 @@ const Tide = preload("res://tests/turn_of_the_tide_witness.gd")
 const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
+const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const KEY := "turn-of-the-tide@1"
@@ -56,6 +59,7 @@ func _run() -> void:
 	_low_memory()
 	_never_only_when_final()
 	_first_turn_and_off()
+	_hint_after_fold()
 	_screen_wiring()
 	_idle_costs_nothing()
 	_check(Canonical.digest(Registry.definition(KEY)) == digest, "Hints never change the definition")
@@ -131,7 +135,7 @@ func _high_memory() -> void:
 	var b := _pair("high")
 	var world := _world(b)
 	var mark: Dictionary = world._wait_marks.get("jetty-3", {})
-	_check(not mark.is_empty() and not mark.bubble.visible and not mark.bubble.is_processing() and not mark.dashes.visible, "The stage builds jetty-3's mark hidden, not processing")
+	_check(not mark.is_empty() and not mark.bubble.visible and not mark.bubble.is_processing() and not mark.dashes.visible, "With hints on, jetty-3's mark is built hidden, not processing")
 	var bubble: Node3D = mark.get("bubble")
 	_play_to(world, b, PULL_TICK)
 	var hints: Array = world.wait_hints()
@@ -262,10 +266,26 @@ func _first_turn_and_off() -> void:
 	_check(world_a.wait_hint_evaluations() > 0 and world_a.wait_hints().is_empty() and not world_a._wait_marks["jetty-3"].bubble.visible, "Hints on, the first turn still shows none")
 	world_a.free()
 	var b := _pair("high")
-	var world := _world(b)
-	world.set_wait_hints(false)
+	var world := _world(b, false)
 	_play_to(world, b, PULL_TICK)
-	_check(world.wait_hints().is_empty() and not world._wait_marks["jetty-3"].bubble.visible, "Hints off (solo play, replays): none show")
+	_check(world.wait_hints().is_empty() and world._wait_marks.is_empty(), "Hints off (solo play, replays): none show, and none are built")
+	world.set_wait_hints(true, MemoryWait.prior_ticks(b._prior))
+	_check(world._wait_marks.has("jetty-3") and world._bubbles.has(world._wait_marks["jetty-3"].bubble), "Turned on for a stage already shown, the marks are built and placed with the rest")
+	world.free()
+
+## A world whose scenery is folded keeps its hint's dashes whole and shows
+## them with the bubble.
+func _hint_after_fold() -> void:
+	var b := _pair("high")
+	var world := _world(b)
+	var dashes: MeshInstance3D = world._wait_marks["jetty-3"].dashes
+	var faces := dashes.mesh.get_faces().size()
+	world._bubbles_placed = true
+	world.fold_over_frames = false
+	world._fold_static_scenery()
+	_check(world.terrain.has_meta(StaticBatch.FOLDED_META), "The scenery folds")
+	_play_to(world, b, PULL_TICK)
+	_check(is_instance_valid(dashes) and dashes.get_parent() == world.terrain and dashes.mesh.get_faces().size() == faces and dashes.visible and world._wait_marks["jetty-3"].bubble.visible, "After the fold the hint shows with its dashes whole")
 	world.free()
 
 ## The chapter screen turns hints on, with the memory's length, only for a
@@ -273,7 +293,8 @@ func _first_turn_and_off() -> void:
 func _screen_wiring() -> void:
 	var prior := {"duration_ticks": 418}
 	var cases := [["a friend's room, second turn", RefCounted.new(), "b", true, [true, 418]],
-		["a friend's room, first turn", RefCounted.new(), "a", true, [false, 0]],
+		["a friend's room, first turn", RefCounted.new(), "a", true, [false, -1]],
+		["a friend's room, a memory with no length", RefCounted.new(), "b", true, [true, -1]],
 		["a friend's room, a replay", RefCounted.new(), "b", false, [false, 418]],
 		["solo play, second turn", null, "b", true, [false, 418]]]
 	for item: Array in cases:
@@ -282,7 +303,7 @@ func _screen_wiring() -> void:
 		preview.world = world
 		preview.settings = {}
 		preview.online_session = item[1]
-		preview._begin_memory_wait(item[2], prior if item[2] == "b" else {}, item[3])
+		preview._begin_memory_wait(item[2], prior if item[0].ends_with("second turn") or item[0].ends_with("replay") else {}, item[3])
 		var asked: Array = world.calls[-1] if not world.calls.is_empty() else []
 		_check(asked.size() == 2 and asked[0] == item[4][0] and (not asked[0] or asked[1] == item[4][1]), "The screen asks for hints %s in %s (%s)" % ["on" if item[4][0] else "off", item[0], str(asked)])
 		preview.online_session = null
@@ -320,7 +341,7 @@ func _pair(a_route: String) -> Simulation:
 	_check(b.reset(level, Tide.SET, checkpoint, a.export_recording(), "b"), "B's turn starts on the %s memory" % a_route)
 	return b
 
-func _world(sim: Simulation) -> Node3D:
+func _world(sim: Simulation, hints: bool = true) -> Node3D:
 	var level := Registry.definition(KEY)
 	var world: Node3D = Registry.world_script(KEY).new()
 	root.add_child(world)
@@ -329,7 +350,7 @@ func _world(sim: Simulation) -> Node3D:
 	world.load_level(level)
 	world.show_stage(level.stages[0])
 	world.present_history(Catalog.initial_checkpoint(level))
-	world.set_wait_hints(sim.role == "b", MemoryWait.prior_ticks(sim._prior))
+	world.set_wait_hints(hints and sim.role == "b", MemoryWait.prior_ticks(sim._prior))
 	return world
 
 ## B's gangway route, shown tick by tick, then idle until `tick`.
