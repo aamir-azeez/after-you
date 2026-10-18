@@ -8,7 +8,8 @@ extends Node3D
 ## would stand over a floor or end against open air, a plain capped wall.
 ##
 ## Everything is placed from the world's water plan, once per stage: the runs
-## come from find_runs() (cached per plan), then build() makes the pieces.
+## come from the stage's bake (load_runs()), or from find_runs() when there is
+## no current bake, cached per plan; then build() makes the pieces.
 ## present() takes the levels shown and only sets door targets, and returns at
 ## once while they are the same as last time; advance() moves doors while they
 ## travel and does nothing once they rest. occupy() takes where the spirits
@@ -138,6 +139,47 @@ static func _width(kind: String) -> float:
 		WALL: return 0.11
 		SPILL: return 0.13
 	return THICKNESS
+
+# --- Baked placement ---
+
+## Where a chapter stage's placement is baked: one JSON file, {"digest",
+## "runs"}, written by test_water_locks_bake from the same find_runs().
+const BAKE_DIR := "res://content/water_locks/"
+## Bake files already found missing or stale, so each logs once.
+static var _unbaked: Dictionary = {}
+
+static func bake_path(chapter_key: String, stage_id: String) -> String:
+	return BAKE_DIR + "%s-%s.json" % [chapter_key, stage_id]
+
+## The runs for `plan`, from its bake at `path` when that bake was made from
+## this very plan, else worked out with find_runs() (logged once in a debug
+## build, for a level whose bake is missing or out of date). Either way the
+## runs are cached for find_runs() and build().
+static func load_runs(plan: Dictionary, path: String) -> Array:
+	var key := plan.hash()
+	if _found.has(key): return _found[key]
+	var baked: Variant = JSON.parse_string(FileAccess.get_file_as_string(path)) if FileAccess.file_exists(path) else null
+	if baked is Dictionary and str(baked.get("digest", "")) == plan_digest(plan) and baked.get("runs") is Array:
+		_found[key] = baked.runs
+		return baked.runs
+	if OS.is_debug_build() and not _unbaked.has(path):
+		_unbaked[path] = true
+		print("Water locks: no current bake at %s; placing from the plan." % path)
+	return find_runs(plan)
+
+## The bake for `plan`: its digest and its runs, as written to a bake file.
+static func bake(plan: Dictionary) -> Dictionary:
+	return {"digest": plan_digest(plan), "runs": find_runs(plan)}
+
+## A digest of everything placement reads from a plan, with the wall boxes
+## rounded to a tenth of a millimetre so it is the same on every platform.
+static func plan_digest(plan: Dictionary) -> String:
+	var walls: Array = []
+	for box: AABB in plan.walls:
+		walls.append([roundi(box.position.x * 10000.0), roundi(box.position.y * 10000.0), roundi(box.position.z * 10000.0), roundi(box.size.x * 10000.0), roundi(box.size.y * 10000.0), roundi(box.size.z * 10000.0)])
+	var shape := plan.duplicate()
+	shape.walls = walls
+	return JSON.stringify(shape, "", true).sha256_text()
 
 # --- Placement ---
 

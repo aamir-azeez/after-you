@@ -1367,11 +1367,11 @@ func _holds_water(wall: MeshInstance3D) -> void:
 	_water_walls.append(wall.transform * wall.get_aabb())
 
 ## Places the doors, spillways and walls from this stage's water, over three
-## build steps: the plan, the runs (cached per plan), then the pieces.
+## build steps: the plan, the runs (from the stage's bake), then the pieces.
 func _build_locks() -> void:
 	var plan := _water_plan()
 	await _build_step()
-	WaterLocks.find_runs(plan)
+	WaterLocks.load_runs(plan, WaterLocks.bake_path(_chapter_key(), displayed_stage_id))
 	await _build_step()
 	_locks = WaterLocks.new()
 	_locks.build(plan, terrain)
