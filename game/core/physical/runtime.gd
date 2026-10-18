@@ -54,7 +54,7 @@ var _comfort_entries: Dictionary = {}
 var _verified_prior_end: Dictionary = {}
 ## The digest of `level`, worked out on first use after a reset (level is set
 ## only by a reset, to its own deep copy, and never changed after): the state
-## hash and the recording read it instead of digesting
+## hash, the recording and the navigation index read it instead of digesting
 ## the whole definition again. "" until first used.
 var _definition_hash := ""
 
@@ -177,19 +177,21 @@ func _move(frame: Dictionary) -> void:
 	if delta == Vector2i.ZERO: return
 	var steps := maxi(absi(delta.x), absi(delta.y))
 	var walked := Vector2i.ZERO
+	var cells := _navigation_cells()
 	for index in range(1, steps + 1):
 		var next := Vector2i(roundi(float(delta.x * index) / steps), roundi(float(delta.y * index) / steps))
 		var unit := next - walked
 		walked = next
-		if _try_move(unit): continue
-		if unit.x != 0: _try_move(Vector2i(unit.x, 0))
-		if unit.y != 0: _try_move(Vector2i(0, unit.y))
+		if _try_move(unit, cells): continue
+		if unit.x != 0: _try_move(Vector2i(unit.x, 0), cells)
+		if unit.y != 0: _try_move(Vector2i(0, unit.y), cells)
 
-func _try_move(delta: Vector2i) -> bool:
+## cells: this definition's floor index (_navigation_cells()), fetched once per move.
+func _try_move(delta: Vector2i, cells: Dictionary) -> bool:
 	var previous: Dictionary = _players[active_slot]
 	var x := int(previous.x) + delta.x
 	var z := int(previous.z) + delta.y
-	var position := Navigation.at(level, _routes, _mechanisms.levers, previous, x, z, active_slot, PLAYER_RADIUS)
+	var position := Navigation.at(level, _routes, _mechanisms.levers, previous, x, z, active_slot, PLAYER_RADIUS, true, cells)
 	if position.is_empty(): return false
 	var pushed: Dictionary = {}
 	for prop: Dictionary in level.get("props", []):
@@ -203,7 +205,7 @@ func _try_move(delta: Vector2i) -> bool:
 			var new_distance := Vector2i(x,z).distance_squared_to(Vector2i(ball.x,ball.z))
 			if old_distance < separation * separation and new_distance > old_distance: continue
 		if not _can_push(ball): return false
-		var moved := Navigation.at(level, _routes, _mechanisms.levers, ball, int(ball.x) + delta.x, int(ball.z) + delta.y, active_slot, int(prop.radius_cm), false)
+		var moved := Navigation.at(level, _routes, _mechanisms.levers, ball, int(ball.x) + delta.x, int(ball.z) + delta.y, active_slot, int(prop.radius_cm), false, cells)
 		if moved.is_empty(): return false
 		var replacement := ball.duplicate(true)
 		replacement.merge(moved, true)
@@ -372,9 +374,10 @@ func _snap_ball(target: Dictionary, prop_id: String) -> bool:
 	var delta := Vector2i(target.position_cm[0], target.position_cm[1]) - origin
 	var count := maxi(absi(delta.x), absi(delta.y))
 	var cursor := ball.duplicate(true)
+	var cells := _navigation_cells()
 	for index in range(0, count + 1):
 		var point := origin + Vector2i(roundi(float(delta.x * index) / maxi(1,count)), roundi(float(delta.y * index) / maxi(1,count)))
-		var position := Navigation.at(level, _routes, _mechanisms.levers, cursor, point.x, point.y, active_slot, int(prop.radius_cm), false)
+		var position := Navigation.at(level, _routes, _mechanisms.levers, cursor, point.x, point.y, active_slot, int(prop.radius_cm), false, cells)
 		if position.is_empty() or position.surface_id != target.surface_id or int(position.height) != int(ball.height): return false
 		cursor.merge(position, true)
 	ball.merge(cursor, true)
@@ -434,7 +437,7 @@ func _outcome() -> Dictionary:
 
 func walkable_at(x: int, z: int, slot: String = "") -> bool:
 	var selected := active_slot if slot.is_empty() else slot
-	return not Navigation.at(level, _routes, _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS).is_empty()
+	return not Navigation.at(level, _routes, _mechanisms.levers, _players[selected], x, z, selected, PLAYER_RADIUS, true, _navigation_cells()).is_empty()
 
 func export_recording() -> Dictionary:
 	if tick == 0 or level.is_empty(): return {}
@@ -449,6 +452,11 @@ func export_recording() -> Dictionary:
 
 func state_hash() -> String:
 	return Canonical.digest(_state_body())
+
+## This definition's floor index (core/cooperative/navigation.gd), shared by
+## every engine on the same definition.
+func _navigation_cells() -> Dictionary:
+	return Navigation.index_for(level, _level_digest())
 
 func _level_digest() -> String:
 	if _definition_hash.is_empty(): _definition_hash = Canonical.digest(level)

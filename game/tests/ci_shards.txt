@@ -139,6 +139,7 @@ long_way_home_v2_world 1
 long_way_home_versions 1
 memory_wait 2
 missing_piece 1
+navigation_index 1
 object_motion_trail 1
 objective_panel 3
 old_story_replays 2
