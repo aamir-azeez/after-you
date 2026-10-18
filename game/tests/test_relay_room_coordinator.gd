@@ -386,7 +386,10 @@ func _identity_boundaries() -> void:
 	var coordinator = await _open(boundary)
 	boundary.wait_response = true
 	var result := {"done": false, "value": true}
+	var sent := boundary.requests.size()
 	_commit_into(coordinator, fixtures["relay-a"], result)
+	# The turn's replay check runs on a worker first; then the request goes out.
+	while boundary.requests.size() == sent and not result.done: await process_frame
 	_check(not coordinator.pending().is_empty(), "Mutation is persisted before its response can be interrupted")
 	boundary.identity.ready = false
 	boundary.release.emit()

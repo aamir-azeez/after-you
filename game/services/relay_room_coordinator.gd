@@ -74,6 +74,17 @@ var _draft_writer: Thread
 var _draft_write_task: RefCounted
 var _draft_write_next: Dictionary = {}
 var _draft_write_generation := -1
+## Turn replay checks already made, by their exact inputs: {key: {checked,
+## derived}} (see _checked_turn). Replaying a long turn took a second or more
+## on this thread, and a review, its Save, the request Save writes and the room
+## the reply returns each checked the same turn again. Only valid checks are kept.
+var _proven_turns: Dictionary = {}
+const PROVEN_TURNS := 8
+## How long the last turn check took here, per replayed tick, so a screen can
+## tell ahead whether a check is worth a wait card (as RelayJourney does).
+var _last_check_usec := 0
+var _last_check_ticks := 0
+const CHECK_USEC_PER_TICK := 1000
 
 class DraftWrite:
 	extends RefCounted
@@ -143,6 +154,7 @@ func invalidate_identity() -> void:
 	_generation += 1
 	_busy = 0
 	_replay_recovering = false
+	_proven_turns.clear()
 	_state = {}
 	_owner = ""
 	_epoch = -1
@@ -174,6 +186,7 @@ func bind_room(room_id: String) -> bool:
 	_scope = "relay-room-v2:" + _owner + ":" + _room
 	_clear_chapter()
 	_state = _empty_state()
+	_proven_turns.clear()
 	_retire_live()
 	_draft_replay_verified = true
 	read_only = false
@@ -444,12 +457,30 @@ func commit(recording: Dictionary) -> bool:
 	if not finish_live_draft_save(): return false
 	if not my_turn() or read_only or _busy != 0:
 		return _error("commit_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_BBE0446F0FDD)
-	var checked := _verify_recording(recording, _state.snapshot)
+	# The turn's replay check (and a second turn's next checkpoint) runs on a
+	# worker unless the review already made it, while the room counts as busy;
+	# the checks below then find it made. Nothing is decided on the worker.
+	var checked: Dictionary = {}
+	var job := turn_check_job(recording)
+	if not job.is_empty():
+		var generation := _generation
+		_serial += 1
+		var proving := _serial
+		_busy = proving
+		var result: Variant = await Reaper.run(turn_check_runner().bind(job), true)
+		if _busy == proving: _busy = 0
+		if generation != _generation: return false
+		if not finish_live_draft_save(): return false
+		if not my_turn() or read_only or _busy != 0:
+			return _error("commit_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_BBE0446F0FDD)
+		# A failed check is not kept, so it is used here rather than made again.
+		if result is Dictionary and adopt_turn_check(job, result): checked = result.checked
+	if checked.is_empty(): checked = _verify_recording(recording, _state.snapshot)
 	if not checked.valid or not checked.get("snapshot", {}).get("can_commit", false):
 		return _error("incomplete_recording", PlayerCopy.RELAY_ROOM_COORDINATOR_D74CA6BA0A5A)
 	var body := {"base_revision": _state.snapshot.revision, "idempotency_key": _new_key(), "branch": _state.snapshot.branch, "recording": recording.duplicate(true)}
 	if recording.role == "b":
-		var derived: Dictionary = _simulation.derive_checkpoint(_level, _state.snapshot.checkpoint, _state.snapshot.recording_a, recording)
+		var derived: Dictionary = _derived_checkpoint(_state.snapshot, recording)
 		if not derived.valid:
 			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
 		body["checkpoint"] = derived.checkpoint
@@ -935,7 +966,7 @@ func _valid_snapshot(value: Variant) -> bool:
 	if not value.recording_a is Dictionary or not Typed.equal(value.a_turn_id, "t%d-%d-a" % [int(value.branch), index]) or not Typed.equal(value.active_role, "b") or not Typed.equal(value.active_player_id, second):
 		return false
 	if not Typed.equal(value.recording_a.get("simulation_version"), value.get("simulation_version", level.simulation_version)): return false
-	var verified: Dictionary = engine.verify_recording(level, value.recording_a, value.checkpoint)
+	var verified: Dictionary = _checked_turn(chapter, value.checkpoint, {}, value.recording_a)
 	return Typed.equal(value.recording_a.get("role"), "a") and verified.valid and verified.get("snapshot", {}).get("can_commit", false)
 
 
@@ -949,8 +980,119 @@ func _verify_recording(recording: Variant, origin: Dictionary) -> Dictionary:
 	var chapter := Registry.resolve(origin)
 	if chapter.is_empty(): return {"valid": false}
 	if not Typed.equal(recording.get("simulation_version"), origin.get("simulation_version", Registry.definition(chapter).simulation_version)): return {"valid": false}
-	var engine := Registry.simulation_script(chapter)
-	return engine.verify_recording(Registry.definition(chapter), recording, origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {})
+	return _checked_turn(chapter, origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {}, recording)
+
+
+## engine.verify_recording(level, recording, checkpoint, prior) for this
+## chapter, made once per exact inputs: a check is a pure replay, so the same
+## inputs give the same answer. A valid one is kept (_proven_turns).
+func _checked_turn(chapter: String, checkpoint: Dictionary, prior: Dictionary, recording: Dictionary) -> Dictionary:
+	var key := _turn_key(chapter, checkpoint, prior, recording)
+	var known: Dictionary = _proven_turns.get(key, {})
+	if not known.is_empty(): return known.checked.duplicate(true)
+	var started := Time.get_ticks_usec()
+	var checked: Dictionary = Registry.simulation_script(chapter).verify_recording(Registry.definition(chapter), recording, checkpoint, prior)
+	_note_check_time(Time.get_ticks_usec() - started, recording, prior)
+	_remember_turn(key, checked, {})
+	return checked
+
+
+## engine.derive_checkpoint for a second turn from `origin`, made once per
+## exact inputs, like _checked_turn.
+func _derived_checkpoint(origin: Dictionary, recording: Dictionary) -> Dictionary:
+	var chapter := Registry.resolve(origin)
+	var prior: Dictionary = origin.recording_a if origin.get("recording_a") is Dictionary else {}
+	var known: Dictionary = _proven_turns.get(_turn_key(chapter, origin.checkpoint, prior, recording), {})
+	if not known.get("derived", {}).is_empty(): return known.derived.duplicate(true)
+	var derived: Dictionary = Registry.simulation_script(chapter).derive_checkpoint(Registry.definition(chapter), origin.checkpoint, origin.recording_a, recording)
+	if not known.is_empty() and derived.get("valid", false): known.derived = derived.duplicate(true)
+	return derived
+
+
+## Every input a turn check reads: the chapter, its starting checkpoint, the
+## partner's first turn ({} for none) and the turn, each by its whole content.
+static func _turn_key(chapter: String, checkpoint: Dictionary, prior: Dictionary, recording: Dictionary) -> String:
+	return "|".join(PackedStringArray([chapter, Canonical.digest(checkpoint), Canonical.digest(prior), Canonical.digest(recording)]))
+
+
+func _remember_turn(key: String, checked: Dictionary, derived: Dictionary) -> void:
+	if not checked.get("valid", false): return
+	_proven_turns.erase(key)
+	_proven_turns[key] = {"checked": checked.duplicate(true), "derived": derived.duplicate(true) if derived.get("valid", false) else {}}
+	while _proven_turns.size() > PROVEN_TURNS: _proven_turns.erase(_proven_turns.keys()[0])
+
+
+func _note_check_time(usec: int, recording: Dictionary, prior: Dictionary) -> void:
+	_last_check_usec = usec
+	_last_check_ticks = int(recording.get("duration_ticks", 0)) + int(prior.get("duration_ticks", 0))
+
+
+## A turn's replay check from this room's snapshot, and for a second turn the
+## checkpoint after it, for a worker (run_turn_check): relay_preview starts it
+## when the turn ends, and commit() runs it when nothing has. {} when it is made
+## already, or when the turn is not this player's to save here (the checks that
+## follow then say why). The job holds private copies only.
+func turn_check_job(recording: Dictionary) -> Dictionary:
+	if not _guard() or read_only or _state.auth_required or _state.snapshot.is_empty() or recording.is_empty(): return {}
+	var origin: Dictionary = _state.snapshot
+	if not _bounded(recording) or not Typed.equal(origin.active_player_id, _owner) or not Typed.equal(recording.get("role"), origin.active_role) or Typed.equal(origin.active_role, "complete"): return {}
+	var chapter := Registry.resolve(origin)
+	if chapter.is_empty() or not Typed.equal(recording.get("simulation_version"), origin.get("simulation_version", Registry.definition(chapter).simulation_version)): return {}
+	var prior: Dictionary = origin.recording_a if origin.recording_a is Dictionary else {}
+	var key := _turn_key(chapter, origin.checkpoint, prior, recording)
+	var second: bool = recording.role == "b"
+	var known: Dictionary = _proven_turns.get(key, {})
+	if not known.is_empty() and (not second or not known.derived.is_empty()): return {}
+	# The checkpoint's proofs are remembered across threads (the room's proof memo).
+	Proofs.prepare_memo(chapter)
+	return {"key": key, "family": Registry.simulation_script(chapter), "level": Registry.definition(chapter), "checkpoint": origin.checkpoint.duplicate(true),
+		"prior": prior.duplicate(true), "recording": recording.duplicate(true), "second": second}
+
+
+## The static worker that runs turn_check_job()'s job.
+func turn_check_runner() -> Callable:
+	return Callable(get_script(), "run_turn_check")
+
+
+## The worker: the same verify_recording, and derive_checkpoint for a second
+## turn, that this coordinator's checks make. Reads only the job.
+static func run_turn_check(job: Dictionary) -> Dictionary:
+	var started := Time.get_ticks_usec()
+	var family: Script = job.family
+	var checked: Dictionary = family.verify_recording(job.level, job.recording, job.checkpoint, job.prior)
+	var derived: Dictionary = {}
+	if job.second and checked.get("valid", false) and checked.get("snapshot", {}).get("can_commit", false):
+		derived = family.derive_checkpoint(job.level, job.checkpoint, job.prior, job.recording)
+	return {"checked": checked, "derived": derived, "usec": Time.get_ticks_usec() - started}
+
+
+## Keeps a worker's check while the room still stands where its job was made
+## (a failed one is never kept). True when it does stand there.
+func adopt_turn_check(job: Dictionary, result: Dictionary) -> bool:
+	if job.is_empty() or not result.get("checked") is Dictionary or not _guard() or _state.snapshot.is_empty(): return false
+	var origin: Dictionary = _state.snapshot
+	var prior: Dictionary = origin.recording_a if origin.recording_a is Dictionary else {}
+	if _turn_key(Registry.resolve(origin), origin.checkpoint, prior, job.recording) != str(job.key): return false
+	_note_check_time(int(result.get("usec", 0)), job.recording, prior)
+	_remember_turn(str(job.key), result.checked, result.get("derived", {}) if result.get("derived") is Dictionary else {})
+	return true
+
+
+## The check relay_preview's review shows for `recording` from this room's
+## snapshot: the same verify_recording it made before, made once.
+func verify_turn(recording: Dictionary) -> Dictionary:
+	if not _guard() or _state.snapshot.is_empty() or Typed.equal(_state.snapshot.active_role, "complete"): return {"valid": false}
+	var origin: Dictionary = _state.snapshot
+	return _checked_turn(Registry.resolve(origin), origin.checkpoint, origin.recording_a if origin.recording_a is Dictionary else {}, recording)
+
+
+## How long checking this turn should take here (the last check's time per
+## replayed tick, a second turn replaying its partner's too).
+func expected_check_usec(recording: Dictionary) -> int:
+	var prior: Variant = _state.get("snapshot", {}).get("recording_a")
+	var ticks := int(recording.get("duration_ticks", 0)) + (int(prior.get("duration_ticks", 0)) if prior is Dictionary and recording.get("role") == "b" else 0)
+	if _last_check_ticks > 0: return int(float(_last_check_usec) / _last_check_ticks * ticks)
+	return ticks * CHECK_USEC_PER_TICK
 
 
 func _valid_recording(recording: Variant, origin: Dictionary) -> bool:
@@ -973,8 +1115,7 @@ func _valid_pending(value: Variant) -> bool:
 		return false
 	if body.recording.role == "a":
 		return true
-	var engine := Registry.simulation_script(Registry.resolve(value.origin))
-	var derived: Dictionary = engine.derive_checkpoint(Registry.definition(Registry.resolve(value.origin)), value.origin.checkpoint, value.origin.recording_a, body.recording)
+	var derived: Dictionary = _derived_checkpoint(value.origin, body.recording)
 	return derived.valid and Typed.same(derived.get("checkpoint", {}), body.checkpoint)
 
 

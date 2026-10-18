@@ -118,6 +118,11 @@ func _run()->void:
 	screen.settings={"sound":false,"haptics":false,"reduced_motion":false,"left_handed":false}
 	root.add_child(screen)
 	await process_frame
+	# The finished room's final scene is set up on a worker behind the wait card.
+	var waited:=0
+	while screen.mode=="turn_wait" and waited<600:
+		await process_frame
+		waited+=1
 	screen.set_physics_process(false);screen.set_process(false);screen.world.set_process(false)
 	_check(screen.mode=="complete" and screen.world.get_script()==Registry.world_script(Registry.FIRST_STEPS),"Actual shared preview dispatches First StepsWorld with verified completed state")
 	var refs:Array=session.replay_photo_turns(1,{"a":fixtures.a,"b":fixtures.b})

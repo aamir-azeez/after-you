@@ -41,6 +41,7 @@ func _run() -> void:
 	_check(Canonical.same(chain.definition, level), "The fixture chain is the registered chapter")
 	await _coordinator_walk()
 	await _fork_and_pairs()
+	await _turn_checks()
 	_refusals()
 	_session_and_photos()
 	_grammars()
@@ -129,6 +130,97 @@ func _fork_and_pairs() -> void:
 	_check(disk.requests.size() == requests, "...before any request is made")
 	disk.responses.append(_ok({"pair_id": "p0-4", "branch": 0, "stage_index": 4, "a": chain.pairs[3].a, "b": chain.pairs[3].b, "checkpoint": chain.checkpoints[5]}))
 	_check((await coordinator.fetch_pair("p0-4")).is_empty(), "A pair with another stage's records is refused")
+
+## A room at stage 6 with the friend's A turn, ready for the host's last B turn.
+func _at_last_turn() -> Array:
+	var made := _coordinator()
+	made[1].responses.append(_ok(_room(5, true, 20)))
+	_check(await made[0].refresh(), "The room stands at stage 6 B")
+	return made
+
+## The last B turn's accepted reply, built from the request it answers.
+func _last_turn_reply(request: Dictionary) -> Dictionary:
+	var body: Dictionary = request.body
+	var receipt := {"schema_version": 2, "room_id": ROOM, "idempotency_key": body.idempotency_key, "request_hash": Coordinator._request_hash("turns", body),
+		"operation": "turns", "accepted_revision": int(body.base_revision) + 1, "branch": 0, "stage_index": 5, "stage_id": level.stages[5].id,
+		"turn_id": "t0-5-b", "recording_hash": body.recording.recording_hash, "pair_id": "p0-5", "checkpoint_hash": body.checkpoint.checkpoint_hash}
+	return _ok({"receipt": receipt, "room": _room(6, false, int(body.base_revision) + 1)})
+
+## A room turn's replay check (and a B turn's next checkpoint) runs on a worker:
+## relay_preview starts it when the turn ends, and Save runs it when nothing has.
+## Its results are exactly the coordinator's own, a check made where the room no
+## longer stands is never kept, and while Save's check runs the room is busy, so
+## no second Save, refresh or stale request can go out.
+func _turn_checks() -> void:
+	var engine: Script = Registry.simulation_script(KEY)
+	var final_b: Dictionary = chain.pairs[5].b
+	var expected_check := var_to_bytes(engine.verify_recording(level, final_b, chain.checkpoints[5], chain.pairs[5].a))
+	var expected_derived := var_to_bytes(engine.derive_checkpoint(level, chain.checkpoints[5], chain.pairs[5].a, final_b))
+	var made := await _at_last_turn()
+	var coordinator: RefCounted = made[0]
+	var disk: RefCounted = made[1]
+	var job: Dictionary = coordinator.turn_check_job(final_b)
+	_check(not job.is_empty() and job.second, "A finished B turn has a check to run")
+	var thread := Thread.new()
+	thread.start(Callable(Coordinator, "run_turn_check").bind(job))
+	var result: Dictionary = thread.wait_to_finish()
+	_check(var_to_bytes(result.checked) == expected_check and var_to_bytes(result.derived) == expected_derived, "The worker's check and checkpoint are exactly the engine's")
+	coordinator.adopt_turn_check(job, result)
+	_check(coordinator.turn_check_job(final_b).is_empty(), "Once taken, nothing is left to check for that turn")
+	_check(var_to_bytes(coordinator.verify_turn(final_b)) == expected_check, "The review's check is the same result")
+	var tampered := final_b.duplicate(true)
+	tampered.duration_ticks = int(tampered.duration_ticks) + 1
+	_check(not coordinator.turn_check_job(tampered).is_empty(), "Other turn bytes are never served a kept check")
+	# A check made for another room state is not kept.
+	var other := await _at_last_turn()
+	var other_job: Dictionary = other[0].turn_check_job(final_b)
+	var kept: int = other[0]._proven_turns.size()
+	other[1].responses.append(_ok(_room(6, false, 21)))
+	_check(await other[0].refresh() and other[0].chapter_complete(), "The room moves on before the check is taken")
+	other[0].adopt_turn_check(other_job, Coordinator.run_turn_check(other_job))
+	_check(other[0]._proven_turns.size() == kept, "A check made where the room no longer stands is not kept")
+	# Save with the check already made sends exactly what the engine derives.
+	var derived_checkpoint: Dictionary = engine.derive_checkpoint(level, chain.checkpoints[5], chain.pairs[5].a, final_b).checkpoint
+	disk.responses.append(_last_turn_reply)
+	_check(await coordinator.commit(final_b), "Save with the check made commits the last B turn")
+	_check(Canonical.same(disk.requests.back().body.checkpoint, derived_checkpoint) and Canonical.same(derived_checkpoint, chain.checkpoints[6]), "...with exactly the derived nested checkpoint")
+	# Save with nothing checked yet: the check runs on a worker and the room is busy meanwhile.
+	made = await _at_last_turn()
+	coordinator = made[0]
+	disk = made[1]
+	var requests: int = disk.requests.size()
+	disk.responses.append(_last_turn_reply)
+	var outcome := {}
+	var save := func() -> void: outcome.value = await coordinator.commit(final_b)
+	save.call()
+	_check(not outcome.has("value") and coordinator.busy() and disk.requests.size() == requests, "Save's check runs on a worker while the room is busy and nothing is sent yet")
+	var second := {}
+	var again := func() -> void: second.value = await coordinator.commit(final_b)
+	again.call()
+	_check(second.get("value", true) == false and coordinator.last_code == "commit_unavailable", "A second Save while the check runs is refused with its reason")
+	_check(not await coordinator.refresh() and disk.requests.size() == requests, "A refresh while the check runs sends nothing")
+	while not outcome.has("value"): await process_frame
+	_check(outcome.value == true and disk.requests.size() == requests + 1 and Canonical.same(disk.requests.back().body.checkpoint, chain.checkpoints[6]), "Then exactly one request goes out, with the nested stage-6 checkpoint")
+	_check(coordinator.chapter_complete() and coordinator.pending().is_empty(), "...and the room completes")
+	# The identity changes while Save's check runs: nothing is sent or saved for it.
+	made = await _at_last_turn()
+	coordinator = made[0]
+	disk = made[1]
+	requests = disk.requests.size()
+	outcome = {}
+	save = func() -> void: outcome.value = await coordinator.commit(final_b)
+	save.call()
+	coordinator.invalidate_identity()
+	while not outcome.has("value"): await process_frame
+	_check(outcome.value == false and disk.requests.size() == requests and coordinator.pending().is_empty(), "An identity change during the check sends and saves nothing")
+	# A turn that fails its check is held as it was, with its reason.
+	made = await _at_last_turn()
+	coordinator = made[0]
+	disk = made[1]
+	requests = disk.requests.size()
+	var broken := final_b.duplicate(true)
+	broken.final_state_hash = "0".repeat(64)
+	_check(not await coordinator.commit(broken) and coordinator.last_code == "incomplete_recording" and disk.requests.size() == requests and coordinator.pending().is_empty() and coordinator.my_turn(), "A turn that fails its check sends nothing and the turn is still the player's")
 
 func _refusals() -> void:
 	var made := _coordinator()

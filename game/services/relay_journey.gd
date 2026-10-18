@@ -532,11 +532,15 @@ func turn_check_job(recording: Dictionary) -> Dictionary:
 func final_scene_job() -> Dictionary:
 	_ensure_loaded()
 	if read_only or not chapter_complete() or _state.pairs.is_empty(): return {}
-	var last: Variant = _state.pairs[-1]
-	var proof: Variant = _checkpoint.get("proof")
+	return final_scene_job_for(_chapter_key, _simulation, _level, _checkpoint, _state.pairs[-1])
+
+## final_scene_job() for any finished chapter: its proven final checkpoint and
+## last pair (a room's coordinator holds the same verified chain).
+static func final_scene_job_for(chapter: String, family: Script, level: Dictionary, final_checkpoint: Dictionary, last: Variant) -> Dictionary:
+	var proof: Variant = final_checkpoint.get("proof")
 	if not last is Dictionary or not proof is Dictionary or not proof.get("checkpoint") is Dictionary: return {}
-	if not Typed.same(proof.get("a"), last.a) or not Typed.same(proof.get("b"), last.b): return {}
-	return {"chapter": _chapter_key, "family": _simulation, "level": _level, "stage": str(last.b.get("stage_id", "")), "checkpoint": proof.checkpoint,
+	if not Typed.same(proof.get("a"), last.get("a")) or not Typed.same(proof.get("b"), last.get("b")) or not last.b is Dictionary: return {}
+	return {"chapter": chapter, "family": family, "level": level, "stage": str(last.b.get("stage_id", "")), "checkpoint": proof.checkpoint,
 		"prior": last.a, "role": "b", "saved": {}, "proven": true, "turn": last.b}
 
 
@@ -549,6 +553,11 @@ static func build_final_scene(job: Dictionary) -> Dictionary:
 	for input: Dictionary in family.expand_recording_inputs(job.turn):
 		simulation.step(input)
 	return {"ok": str(simulation.get("error")).is_empty(), "simulation": simulation}
+
+
+## The static worker that runs turn_check_job()'s job (a room's coordinator has its own).
+func turn_check_runner() -> Callable:
+	return Callable(get_script(), "run_turn_check")
 
 
 ## The worker: the same replay verify_turn makes. Reads only the job.

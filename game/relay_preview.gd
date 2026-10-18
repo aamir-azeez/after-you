@@ -1930,11 +1930,11 @@ func _resume_completion() -> void:
 	hud.visible = true
 
 
-## A solo journey checks the turn from its own proven checkpoint and keeps
-## the result for Save turn; a shared room keeps its own full check.
+## A solo journey checks the turn from its own proven checkpoint, and a room's
+## coordinator from the room's snapshot; each keeps the result for Save turn.
 func _verify_review() -> Dictionary:
 	_finish_turn_check()
-	if online_session == null and journey != null and journey.has_method("verify_turn") and Canonical.same(checkpoint, journey.checkpoint()) and Canonical.same(prior, journey.prior_recording()):
+	if journey != null and journey.has_method("verify_turn") and Canonical.same(checkpoint, journey.checkpoint()) and Canonical.same(prior, journey.prior_recording()):
 		return journey.verify_turn(review)
 	return _simulation.verify_recording(definition, review, checkpoint, prior)
 
@@ -2072,8 +2072,9 @@ func _after_accept() -> void:
 		_after_visible_wait(_show_ready)
 
 
-## Checking a solo turn and setting up the next one replay saved turns on this
-## thread. When the journey's last such work was slow enough to notice, a
+## Checking a turn (solo or a room's) and setting up the next one replay saved
+## turns. When a check is still on its worker, or the journey's last such work
+## was slow enough to notice, a
 ## card saying so is drawn before the screen holds; quick work runs at once.
 ## A screen without frames (backgrounded, or driven directly) runs it at once.
 func _after_visible_wait(work: Callable) -> void:
@@ -2085,7 +2086,7 @@ func _after_visible_wait(work: Callable) -> void:
 	# taken here, as before; a longer one stays on its worker behind the card.
 	if _check_thread != null and journey.expected_check_usec(_check_job.recording) < VISIBLE_WAIT_USEC: _finish_turn_check()
 	var slow: bool = _check_thread != null or prefetch == "running" or (prefetch == "none" and journey.has_method("expected_wait_usec") and journey.expected_wait_usec() >= VISIBLE_WAIT_USEC)
-	if online_session != null or backgrounded or not is_processing() or not slow:
+	if backgrounded or not is_processing() or not slow:
 		work.call()
 		return
 	mode = "turn_wait"
@@ -2154,16 +2155,17 @@ func _take_prefetch() -> RefCounted:
 ## Checks the turn just finished on a worker, so the review that follows (and
 ## its Save) finds the check made. Replaying a whole turn took seconds in one
 ## frame at the end of a long turn; the wait card now stays up meanwhile and
-## the frame keeps drawing. Online turns keep their own check.
+## the frame keeps drawing. A room's coordinator checks its turns the same way.
 func _start_turn_check() -> void:
 	_drop_turn_check()
-	if online_session != null or journey == null or not journey.has_method("turn_check_job") or review.is_empty(): return
+	if journey == null or not journey.has_method("turn_check_job") or review.is_empty(): return
 	var job: Dictionary = journey.turn_check_job(review)
 	if job.is_empty(): return
 	# Joined by _poll_turn_check once it ends, or by the reaper after a leave.
 	Reaper.ensure()
 	var thread := Thread.new()
-	if thread.start(Callable(Journey, "run_turn_check").bind(job)) != OK: return
+	# The journey's own static check and a private job, never a node.
+	if thread.start(journey.turn_check_runner().bind(job)) != OK: return
 	_check_thread = thread
 	_check_job = job
 
@@ -2346,12 +2348,13 @@ func _show_completed() -> void:
 	# A reopened chapter has no live simulation yet. Rebuild its final scene from
 	# the verified recording chain before presenting the completion card.
 	var pairs: Array = _pairs()
-	if not pairs.is_empty() and online_session == null and _holds_final_turn(pairs[-1]):
+	if not pairs.is_empty() and _holds_final_turn(pairs[-1], sim) and _started_final_turn(pairs[-1]):
 		# Right after Save turn the screen's simulation already stands at the end
-		# of the accepted last turn, and the journey holds its proven checkpoint.
+		# of the accepted last turn, and the journey (or the room) holds its proven checkpoint.
+		_scene_built = {}
 		_present_stage_history(definition.stages[-1],journey.checkpoint())
 		world.present(sim.snapshot(), true)
-	elif not pairs.is_empty() and _scene_built.get("ok", false):
+	elif not pairs.is_empty() and _scene_built.get("ok", false) and (online_session == null or _holds_final_turn(pairs[-1], _scene_built.simulation)):
 		# The final turn its worker replayed from the proven checkpoint before it.
 		sim = _scene_built.simulation
 		_scene_built = {}
@@ -2397,9 +2400,16 @@ func _show_completed() -> void:
 ## last stage and only that turn replayed, on a worker behind the wait card.
 ## False when that does not apply; the caller then rebuilds it here as before.
 func _start_final_scene() -> bool:
-	if online_session != null or not _replay_collection.is_empty() or _scene_thread != null or not _scene_built.is_empty(): return false
-	if journey == null or not journey.has_method("final_scene_job") or backgrounded or not is_processing(): return false
-	var job: Dictionary = journey.final_scene_job()
+	if not _replay_collection.is_empty() or _scene_thread != null or not _scene_built.is_empty(): return false
+	if journey == null or backgrounded or not is_processing(): return false
+	var job: Dictionary = {}
+	if online_session == null:
+		if journey.has_method("final_scene_job"): job = journey.final_scene_job()
+	elif journey.chapter_complete():
+		# A room's coordinator holds the same verified chain: its final checkpoint
+		# proves the last pair, so the scene is set up from the checkpoint before it.
+		var pairs: Array = _pairs()
+		if not pairs.is_empty(): job = Journey.final_scene_job_for(chapter_key, _simulation, definition, journey.checkpoint(), pairs[-1])
 	if job.is_empty(): return false
 	# Joined by _poll_final_scene once it ends, or by the reaper after a leave.
 	Reaper.ensure()
@@ -2410,7 +2420,8 @@ func _start_final_scene() -> bool:
 	var card := _card(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, "")
 	for line: Node in card.get_children():
 		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
-	_wait_then = _show_completed
+	# A room is checked again from the top (it may have moved on meanwhile).
+	_wait_then = _show_completed if online_session == null else _show_ready
 	_wait_frames = 0
 	return true
 
@@ -2422,8 +2433,18 @@ func _poll_final_scene() -> void:
 	# A failed setup is rebuilt here the old way; it is never retried.
 	_scene_built = built if built is Dictionary and built.get("ok", false) else {"failed": true}
 
-func _holds_final_turn(last: Dictionary) -> bool:
-	return sim != null and str(sim.get("error")).is_empty() and sim.get("role") == "b" and Canonical.same(sim.export_recording(), last.get("b", {})) and str(journey.checkpoint().get("next_stage_id", "x")).is_empty()
+## True when this screen's turn started where the last pair did: from the
+## checkpoint the final proof was built from, behind the same first turn. A
+## room's snapshot can change under a turn; then the scene is set up anew. A
+## solo journey whose checkpoints hold no proof cannot change under its own
+## screen, and keeps reusing its turn.
+func _started_final_turn(last: Dictionary) -> bool:
+	var proof: Variant = journey.checkpoint().get("proof")
+	if not proof is Dictionary: return online_session == null
+	return Canonical.same(prior, last.get("a", {})) and Canonical.same(checkpoint, proof.get("checkpoint", {}))
+
+func _holds_final_turn(last: Dictionary, simulation: RefCounted) -> bool:
+	return simulation != null and str(simulation.get("error")).is_empty() and simulation.get("role") == "b" and Canonical.same(simulation.export_recording(), last.get("b", {})) and str(journey.checkpoint().get("next_stage_id", "x")).is_empty()
 
 func _choose_local_checkpoint() -> void:
 	if online_session != null: return

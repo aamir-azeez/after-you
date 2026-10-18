@@ -83,6 +83,24 @@ func _chapter(key: String, compare_full: bool) -> void:
 		frames += 1
 	_check(screen.mode == "complete" and frames >= 2 and screen._scene_thread == null, key + " screen: the completion card follows, frames kept drawing (%d)" % frames)
 	_check(var_to_bytes(screen.sim.snapshot()) == var_to_bytes(built.simulation.snapshot()), key + " screen: it shows the final scene the worker built")
+	# Right after Save the screen's own turn is reused, but only when that turn
+	# started where the last pair did. A room's snapshot can change under a
+	# turn: then the worker sets the scene up from the proven checkpoint again.
+	var last: Dictionary = screen.journey.pairs()[-1]
+	var proof: Dictionary = screen.journey.checkpoint().get("proof", {})
+	screen.prior = last.a.duplicate(true)
+	screen.checkpoint = proof.get("checkpoint", {}).duplicate(true)
+	screen._show_completed()
+	_check(screen.mode == "complete" and screen._scene_thread == null, key + " screen: a turn that started at the last pair's checkpoint is reused")
+	screen.checkpoint = Registry.initial_checkpoint(key)
+	screen.sim = built.simulation
+	screen._show_completed()
+	_check(screen.mode == "turn_wait" and screen._scene_thread != null, key + " screen: a turn that started from another checkpoint is not reused; the worker sets the scene up")
+	frames = 0
+	while screen.mode != "complete" and frames < 3000:
+		await process_frame
+		frames += 1
+	_check(screen.mode == "complete" and var_to_bytes(screen.sim.snapshot()) == var_to_bytes(built.simulation.snapshot()), key + " screen: ...and the completion card shows the proven final scene")
 	viewport.queue_free()
 	for frame in range(3): await process_frame
 

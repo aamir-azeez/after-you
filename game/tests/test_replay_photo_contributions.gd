@@ -159,6 +159,12 @@ func _run() -> void:
 	screen.online_session=session
 	screen.settings={"sound":false,"haptics":false,"reduced_motion":true,"left_handed":false}
 	root.add_child(screen)
+	await process_frame
+	# The finished room's final scene is set up on a worker behind the wait card.
+	var waited:=0
+	while screen.mode=="turn_wait" and waited<600:
+		await process_frame
+		waited+=1
 	screen.set_physics_process(false)
 	screen.set_process(false)
 	screen.world.set_process(false)
