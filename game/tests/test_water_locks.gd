@@ -130,6 +130,7 @@ func _tide() -> void:
 		world.present(kept, true)
 		_check(_states_at(locks, "sand-1") == ["open", "open"], "A walkable flooded crossing keeps both its doors down: " + str(stage.id))
 		await _idle(world, locks, sim, str(stage.id))
+		_rise_and_sink(world, locks, sim, stage)
 		world.free()
 	_check(Canonical.digest(level) == digest, "Building and showing the locks never changes the definition")
 
@@ -214,20 +215,23 @@ func _idle(world: Node3D, locks: WaterLocks, sim: Simulation, label: String) -> 
 	for _frame in range(20):
 		world.present(low, false)
 		await process_frame
-	_check(locks.updates == updates and not locks.moving() and not locks.advance(1.0 / 60.0), "Idle frames and repeated snapshots do no lock work: " + label)
+	var frames := locks.frames
+	world._advance_water(1.0 / 60.0)
+	_check(locks.updates == updates and locks.frames == frames and not locks.moving(), "Idle frames and repeated snapshots do no lock work: " + label)
 	sim._mechanisms.controls["tide"] = "high"
 	sim._refresh_routes()
 	var high: Dictionary = sim.snapshot()
 	world.present(high, false)
 	_check(locks.updates == updates + 1 and locks.moving(), "Turning the tide sets doors moving: " + label)
-	locks.advance(1.0 / 60.0)
+	world._advance_water(1.0 / 60.0)
 	world.present(high, true)
 	_check(not locks.moving() and _resting(locks), "A snapshot shown at once snaps travelling doors to their targets: " + label)
 	world.present(low, false)
-	for _frame in range(240): locks.advance(1.0 / 60.0)
+	for _frame in range(240): world._advance_water(1.0 / 60.0)
 	_check(not locks.moving() and _resting(locks), "Doors come to rest on their targets after the tide turns: " + label)
-	var settled := locks.updates
-	_check(not locks.advance(1.0 / 60.0) and locks.updates == settled, "A rested lock does no work on the next frame: " + label)
+	var settled := locks.frames
+	world._advance_water(1.0 / 60.0)
+	_check(locks.frames == settled, "A rested harbour does no lock work on the next frame: " + label)
 
 ## Every door stands at its target height, shown while up and hidden while down.
 func _resting(locks: WaterLocks) -> bool:
@@ -239,6 +243,64 @@ func _resting(locks: WaterLocks) -> bool:
 		if states[index] == "shut" and (not door.visible or not is_equal_approx(door.position.y, target)): return false
 		if states[index] == "open" and door.visible: return false
 	return true
+
+## Every change of a wheel that moves water, frame by frame as it is shown:
+## no door ever stands below the water it holds back, and the doors settle.
+func _rise_and_sink(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dictionary) -> void:
+	var wheels := {"tide": ["low", "half", "high"]}
+	if str(stage.id) == "slack-water": wheels["basin"] = ["shut", "low", "half", "high"]
+	var worst := INF
+	for wheel: String in wheels:
+		for from: String in wheels[wheel]:
+			for to: String in wheels[wheel]:
+				if from == to: continue
+				sim._mechanisms.controls[wheel] = from
+				sim._refresh_routes()
+				world.present(sim.snapshot(), true)
+				sim._mechanisms.controls[wheel] = to
+				sim._refresh_routes()
+				var state: Dictionary = sim.snapshot()
+				world.present(state, false)
+				worst = minf(worst, _clearance(world, locks, state))
+				for _frame in range(240):
+					world._advance_water(1.0 / 60.0)
+					worst = minf(worst, _clearance(world, locks, state))
+				_check(not locks.moving(), "Doors settle after %s turns %s to %s: %s" % [wheel, from, to, stage.id])
+	_check(worst >= 0.0, "No door ever stands below the water it holds, on any turn of a wheel: %s (worst %.3f m)" % [stage.id, worst])
+	sim._mechanisms.controls["tide"] = "low"
+	if wheels.has("basin"): sim._mechanisms.controls["basin"] = "shut"
+	sim._refresh_routes()
+	world.present(sim.snapshot(), true)
+
+## The least height by which any door's top clears the water on its wet side
+## this frame, among doors holding water above the other side; INF if none.
+## A walkway walkable while its water stays over its floor is left open on
+## purpose and not counted.
+func _clearance(world: Node3D, locks: WaterLocks, state: Dictionary) -> float:
+	var shown: Dictionary = world._lock_levels("shown")
+	var target: Dictionary = world._lock_levels("target")
+	var nodes := locks.door_nodes()
+	var least := INF
+	var index := 0
+	for run: Dictionary in locks.runs:
+		if run.kind != WaterLocks.DOOR: continue
+		var door: MeshInstance3D = nodes[index]
+		index += 1
+		for side: String in [str(run.a), str(run.b)]:
+			# A walkable crossing whose water stays over its floor is left open on purpose.
+			var other_side := str(run.b) if side == str(run.a) else str(run.a)
+			if bool(state.bridges.get(run.mouth, false)) and target.has(side) and float(target[side]) > _floor_or_water(world, other_side, target) + WaterLocks.LEVEL: continue
+			if not shown.has(side): continue
+			var water := float(shown[side])
+			var other := _floor_or_water(world, str(run.b) if side == str(run.a) else str(run.a), shown)
+			if water > other + WaterLocks.LEVEL and water > float(run.top) + WaterLocks.LEVEL: least = minf(least, door.position.y - water)
+	return least
+
+func _floor_or_water(world: Node3D, id: String, shown: Dictionary) -> float:
+	if shown.has(id): return float(shown[id])
+	for island: Dictionary in world.chapter_definition.islands:
+		if "island:" + str(island.id) == id: return float(island.height_cm) / 100.0
+	return world.SEABED
 
 # --- Other chapters ---
 

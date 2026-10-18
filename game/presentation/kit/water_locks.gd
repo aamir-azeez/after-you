@@ -57,6 +57,9 @@ const FREEBOARD := 0.05
 const SINK := 0.08
 ## How fast a door rises or sinks (m a second).
 const TRAVEL := 1.4
+## A door's top never stands less than this above the water it holds, even
+## while the water and the door are moving.
+const MARGIN := 0.02
 ## Levels this close count as level; runs shorter than this (cm) are slivers.
 const LEVEL := 0.01
 const SLIVER := 4.0
@@ -79,10 +82,13 @@ var runs: Array = []
 ## How many present() calls had new levels or walkways to work out. A call
 ## with the same ones as the last returns before any work.
 var updates := 0
+## How many frames advance() worked; a resting harbour adds none.
+var frames := 0
 var _kinds: Dictionary = {}
 var _heights: Dictionary = {}
 var _seabed := 0.0
-## Per opening: {"run", "door": its MeshInstance3D, "y": target top}
+## Per opening: {"run", "door": its MeshInstance3D, "y": target top,
+## "walkable": whether its walkway can be walked now with water over its floor}
 var _doors: Array = []
 ## Per spillway: {"run", "sheet": MeshInstance3D, "low": m, "falling"}
 var _sheets: Array = []
@@ -350,13 +356,18 @@ static func _unheld(edge: Dictionary, columns: Dictionary, kinds: Dictionary, se
 ## Whether water on one side stands above the other where nothing holds it,
 ## for these two levels. A pit holds water only above the seabed.
 static func _differs(edge: Dictionary, a: float, b: float, kinds: Dictionary, seabed: float) -> bool:
+	return _held(edge, a, b, kinds, seabed) > -INF
+
+## The surface of the water that stands above the other side with nothing
+## holding it, for these two levels; -INF when none does.
+static func _held(edge: Dictionary, a: float, b: float, kinds: Dictionary, seabed: float) -> float:
 	var kind_a := str(kinds.get(edge.a, ""))
 	var kind_b := str(kinds.get(edge.b, ""))
 	var wet_a := kind_a == "water" or (kind_a == "pit" and a > seabed + LEVEL)
 	var wet_b := kind_b == "water" or (kind_b == "pit" and b > seabed + LEVEL)
-	if not wet_a and not wet_b: return false
+	if not wet_a and not wet_b: return -INF
 	var high := maxf(a if wet_a else seabed, b if wet_b else seabed)
-	return high > minf(a, b) + LEVEL and float(edge.top) < high - LEVEL
+	return high if high > minf(a, b) + LEVEL and float(edge.top) < high - LEVEL else -INF
 
 ## DOOR where a walkway meets an edge whose sides are level at times, SPILL
 ## between two waters that always differ, else WALL.
@@ -429,7 +440,7 @@ func _build_door(run: Dictionary) -> void:
 	# Local +x runs along the run: +x, or +z for a run along z.
 	if not run.along_x: door.rotation.y = -PI / 2.0
 	add_child(door)
-	_doors.append({"run": run, "door": door, "y": float(run.shut)})
+	_doors.append({"run": run, "door": door, "y": float(run.shut), "walkable": false})
 	_place_door(_doors[-1], float(run.shut))
 
 ## A door's top at `top`. A door that rests under the lower side is hidden.
@@ -546,8 +557,12 @@ func present(levels: Dictionary, open: Dictionary = {}, immediate: bool = false)
 		var run: Dictionary = entry.run
 		var a := _level(str(run.a), levels, _kinds, _heights, _seabed)
 		var b := _level(str(run.b), levels, _kinds, _heights, _seabed)
+		var differs := _differs(run, a, b, _kinds, _seabed)
 		var target := float(run.shut)
-		if bool(open.get(run.mouth, false)) or not _differs(run, a, b, _kinds, _seabed):
+		# A walkway walkable while its water still stands over the floor (a kept
+		# crossing) keeps its door down; any other door waits for level water.
+		entry.walkable = bool(open.get(run.mouth, false)) and differs
+		if entry.walkable or not differs:
 			target = maxf(minf(a, b) - SINK, _seabed)
 		if is_equal_approx(target, float(entry.y)): continue
 		entry.y = target
@@ -571,18 +586,28 @@ func present(levels: Dictionary, open: Dictionary = {}, immediate: bool = false)
 		sheet.scale = Vector3(1, maxf(fall, 0.01), 1)
 	if immediate: _settle()
 
-## Moves every travelling door toward its target; returns whether any still
-## moves. Nothing to do (and no allocation) once every door rests.
-func advance(delta: float) -> bool:
-	if not _moving: return false
+## Moves every door toward its target, never letting it stand below the
+## water it holds now: `shown` is each area's level as the water is shown this
+## frame (as present()'s levels). A door that must rise jumps to just above
+## that water, and one that must sink waits until its two sides are level.
+## Returns whether any door still moves. A world calls it only on frames where
+## its water or a door moves (moving()), so a resting harbour does no work.
+func advance(delta: float, shown: Dictionary) -> bool:
+	frames += 1
 	var still := false
 	var step := TRAVEL * maxf(delta, 0.0)
 	for entry: Dictionary in _doors:
+		var run: Dictionary = entry.run
 		var door: MeshInstance3D = entry.door
+		var top := door.position.y
 		var target := float(entry.y)
-		if is_equal_approx(door.position.y, target): continue
-		_place_door(entry, move_toward(door.position.y, target, step))
-		if not is_equal_approx(door.position.y, target): still = true
+		var next := minf(target, top + step) if target > top else maxf(target, top - step)
+		if not bool(entry.walkable):
+			var a := _level(str(run.a), shown, _kinds, _heights, _seabed)
+			var b := _level(str(run.b), shown, _kinds, _heights, _seabed)
+			next = maxf(next, _held(run, a, b, _kinds, _seabed) + MARGIN)
+		if not is_equal_approx(next, top): _place_door(entry, next)
+		if not is_equal_approx(next, target): still = true
 	_moving = still
 	return still
 

@@ -118,10 +118,12 @@ var _walled: Array[String] = []
 ## Gated walled crossings: id -> the water that fills them while shut.
 var _floods: Dictionary = {}
 ## What holds the water at each opening in the shown stage, the walls built
-## to hold water (terrain space) for its plan, and the levels it was last shown.
+## to hold water (terrain space) for its plan, and the levels it reads (where
+## the water is going, where it stands this frame), refilled in place.
 var _locks: WaterLocks
 var _water_walls: Array[AABB] = []
-var _lock_levels_now: Dictionary = {}
+var _lock_targets: Dictionary = {}
+var _lock_shown: Dictionary = {}
 ## Shut crossings stay in view as faint outlines: id -> ghost node.
 var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
@@ -1252,12 +1254,16 @@ func _set_water(name: String, level: float, immediate: bool) -> void:
 
 func _advance_water(delta: float) -> void:
 	_clock += maxf(delta, 0.0)
-	if is_instance_valid(_locks): _locks.advance(delta)
+	var flowing := false
 	for root: Node3D in _water.values():
 		if not is_instance_valid(root): continue
 		var target := float(root.get_meta("target"))
 		var shown := float(root.get_meta("shown"))
-		if not is_equal_approx(shown, target): _show_water(root, move_toward(shown, target, WATER_RATE * maxf(delta, 0.0)))
+		if not is_equal_approx(shown, target):
+			_show_water(root, move_toward(shown, target, WATER_RATE * maxf(delta, 0.0)))
+			flowing = true
+	# The doors move after the water, against the water shown this frame.
+	if is_instance_valid(_locks) and (flowing or _locks.moving()): _locks.advance(delta, _lock_levels("shown"))
 	if not reduced_motion:
 		var harbour: Node3D = _water.get("harbour")
 		if is_instance_valid(harbour): _float_boats(float(harbour.get_meta("shown")))
@@ -1316,15 +1322,18 @@ func _water_plan() -> Dictionary:
 				states.append_array([dry, flooded])
 	return {"areas": areas, "bounds": [-1116, -700, 1884, 700], "mouths": mouths, "walls": _water_walls.duplicate(), "states": states, "seabed": SEABED, "wall_top": PARAPET_TOP}
 
-## The levels shown now, for the locks: each body's target and every flooded
-## crossing at its body's. Refills one dictionary, so a present allocates nothing.
-func _lock_levels() -> Dictionary:
-	for body: String in _water: _lock_levels_now[body] = float(_water[body].get_meta("target"))
+## The levels for the locks, from each body's "target" (where it is going) or
+## "shown" (where it stands this frame) meta: each body's, and every flooded
+## crossing at its body's. Refills one dictionary per meta, so it allocates
+## nothing.
+func _lock_levels(meta: String) -> Dictionary:
+	var levels: Dictionary = _lock_targets if meta == "target" else _lock_shown
+	for body: String in _water: levels[body] = float(_water[body].get_meta(meta))
 	for id: String in _floods:
 		var key := "crossing:" + id
-		if _floods[id].visible: _lock_levels_now[key] = float(_floods[id].get_parent().get_meta("target"))
-		elif _lock_levels_now.has(key): _lock_levels_now.erase(key)
-	return _lock_levels_now
+		if _floods[id].visible: levels[key] = float(_floods[id].get_parent().get_meta(meta))
+		elif levels.has(key): levels.erase(key)
+	return levels
 
 func _build_chamber() -> void:
 	var pit := CHAMBER_PIT
@@ -1592,7 +1601,10 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _floods:
 		var shown: bool = _decks[id].visible if _decks.has(id) else bool(routes.get(id, false))
 		_floods[id].visible = not shown
-	if is_instance_valid(_locks): _locks.present(_lock_levels(), routes, immediate or reduced_motion)
+	if is_instance_valid(_locks):
+		_locks.present(_lock_levels("target"), routes, immediate or reduced_motion)
+		# A door that must rise stands clear of the water shown now at once.
+		if _locks.moving(): _locks.advance(0.0, _lock_levels("shown"))
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
 
 func _lamp(lamp: MeshInstance3D, color: Color, lit: bool) -> void:
