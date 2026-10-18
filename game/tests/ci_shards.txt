@@ -80,6 +80,8 @@ friends_screen 3
 gameplay_comfort 2
 garden_activation 2
 github_access 1
+gl_warmup_coverage 3
+gl_warmup_coverage_journey 2
 gone_room_release 2
 graphics_policy 3
 graphics_settings 3

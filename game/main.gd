@@ -87,6 +87,7 @@ const LighthouseMigration = preload("res://services/lighthouse_migration.gd")
 const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
 const ChapterAccess = preload("res://services/chapter_access.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
+const GlWarmup = preload("res://services/gl_warmup.gd")
 ## What's new: this version's notes have not been opened since an update.
 var _whats_new_unseen := false
 var _whats_new_card: Control
@@ -102,6 +103,8 @@ var _grid_access_drawn := false
 var _chapter_opening: CanvasLayer
 ## Proves saved solo journeys on a worker while Home is idle.
 var _proof_warmup: Node
+## Compiles the chapters' GL programs offscreen while Home is idle, once per install.
+var _gl_warmup: Node
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const INK := Color("193d39")
@@ -309,6 +312,10 @@ func _ready() -> void:
 	_proof_warmup = ProofWarmup.new()
 	_proof_warmup.idle = func() -> bool: return mode == "home" and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	add_child(_proof_warmup)
+	_gl_warmup = GlWarmup.new()
+	_gl_warmup.settings = func() -> Dictionary: return saves.data.settings
+	_gl_warmup.idle = func() -> bool: return mode in ["home", "journey"] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
+	add_child(_gl_warmup)
 	world=World.new()
 	add_child(world)
 	_sync_world_processing()
@@ -936,6 +943,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 	if is_instance_valid(_chapter_opening): return
 	# The chapter's own open proves what the warm-up has not reached yet.
 	if is_instance_valid(_proof_warmup): _proof_warmup.stop()
+	if is_instance_valid(_gl_warmup): _gl_warmup.stop()
 	if _chapter_open_busy():
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return
