@@ -66,6 +66,7 @@ first_steps_preview 1
 first_steps_ui 2
 first_steps_world 3
 fold_present 3
+fold_untouched 1
 frame_policy 3
 friend_nicknames 2
 friend_presence 3

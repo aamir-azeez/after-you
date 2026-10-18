@@ -180,6 +180,12 @@ func _shore(island: Dictionary, color: Color) -> void:
 func _surface_built(_island: Dictionary, _surface: Node3D) -> void:
 	pass
 
+## Floors are held to build their markers and pieces on (_surface_nodes) and
+## never move; only a raised floor fades (_upper_islands, the cutaway). Every
+## other floor's plain pieces fold with the scenery around them.
+func _still_held() -> Array:
+	return super._still_held() + _surface_nodes.values().filter(func(surface: Variant) -> bool: return is_instance_valid(surface) and surface not in _upper_islands)
+
 ## Physical chapters celebrate a completed stage in present(), not the
 ## Lighthouse objective.
 func _present_celebration(_immediate: bool) -> void:

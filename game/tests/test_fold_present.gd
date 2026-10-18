@@ -8,7 +8,8 @@ extends SceneTree
 ## Lighthouse's beams are). After every snapshot each folded world must look
 ## like the unfolded one wherever anything changes: every node the world's
 ## variables name, and everything under them, in the same place, shown or
-## hidden alike, in the same colour and glow. Script errors fail the suite.
+## hidden alike, in the same colour and glow, and every piece the terrain
+## draws the same. Script errors fail the suite.
 const Registry = preload("res://services/chapter_registry.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
@@ -17,6 +18,7 @@ const ReplayGolden = preload("res://tests/test_replay_golden.gd")
 const Light = preload("res://core/lighthouse/borrowed_light.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
+const FoldLook = preload("res://tests/fold_look.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 const DELTA := 1.0 / 60.0
 ## Snapshots shown per stage: the start, then every this many ticks of the
@@ -107,50 +109,9 @@ func _world(key: String, entry: Dictionary) -> Node3D:
 	if world.has_method("present_history"): world.present_history(entry.checkpoint)
 	return world
 
-## Every node the world's variables name: where it is and whether it shows,
-## its plain children (not meshes) the same way, and every piece of geometry
-## drawn under it as world boxes with their colour, glow and visibility. A
-## batch counts as the pieces it draws (StaticBatch.part_boxes), so a fold
-## inside a named container compares equal while the pieces stay put.
-## Engine-numbered names (and their copies' names) differ between worlds, so
-## their numbers are dropped.
+## Every named node, and every piece the terrain draws (tests/fold_look.gd).
 func _named_look(world: Node3D) -> Array:
-	var held: Dictionary = {}
-	StaticBatch._collect_held(world, held)
-	var numbered := RegEx.create_from_string("[@_]([A-Z][A-Za-z0-9]+)[@_][0-9]+")
-	var rows: Array = []
-	for id: int in held:
-		var node := instance_from_id(id) as Node3D
-		if node == null or not is_instance_valid(world.terrain) or not world.terrain.is_ancestor_of(node): continue
-		var path := numbered.sub(str(world.terrain.get_path_to(node)), "@$1", true)
-		rows.append("%s %s %s" % [path, _snap(node.global_transform), str(node.is_visible_in_tree())])
-		var pieces: Array = []
-		for child: Node in [node] + node.find_children("*", "Node3D", true, false):
-			if child is MeshInstance3D:
-				var mesh := child as MeshInstance3D
-				if mesh.mesh == null: continue
-				var look := "%s %s" % [str(mesh.is_visible_in_tree()), _material(mesh)]
-				for box: AABB in StaticBatch.part_boxes(mesh): pieces.append("%s %s" % [_snap_box(box), look])
-			elif child != node:
-				rows.append("%s/%s %s %s" % [path, numbered.sub(str(node.get_path_to(child)), "@$1", true), _snap((child as Node3D).global_transform), str((child as Node3D).is_visible_in_tree())])
-		pieces.sort()
-		rows.append("%s pieces %s" % [path, "; ".join(pieces)])
-	rows.sort()
-	return rows
-
-func _material(mesh: MeshInstance3D) -> String:
-	if not mesh.material_override is StandardMaterial3D: return "-"
-	var material := mesh.material_override as StandardMaterial3D
-	return "%s %s %s %s" % [str(material.albedo_color), str(material.emission_enabled), str(material.emission), str(snappedf(material.emission_energy_multiplier, 0.001))]
-
-func _snap(value: Transform3D) -> String:
-	return "%s %s %s %s" % [_snap_vector(value.basis.x), _snap_vector(value.basis.y), _snap_vector(value.basis.z), _snap_vector(value.origin)]
-
-func _snap_box(box: AABB) -> String:
-	return "%s %s" % [_snap_vector(box.position), _snap_vector(box.end)]
-
-func _snap_vector(value: Vector3) -> String:
-	return "(%.3f,%.3f,%.3f)" % [snappedf(value.x, 0.001) + 0.0, snappedf(value.y, 0.001) + 0.0, snappedf(value.z, 0.001) + 0.0]
+	return FoldLook.look(world)
 
 ## Whether two looks match; on the first mismatch, a few rows of each side.
 func _same(expected: Array, actual: Array, label: String) -> bool:
@@ -199,7 +160,7 @@ func _run() -> void:
 			# Started as the world starts it, then moved on one piece of work
 			# per snapshot, while present() keeps making and changing nodes.
 			stepped.fold_over_frames = true
-			stepped._fold_job = StaticBatch.start(stepped.terrain, [stepped], {"containers": stepped._fold_inside_held(), "keep": stepped._static_keep()})
+			stepped._fold_job = StaticBatch.start(stepped.terrain, [stepped], stepped._fold_options())
 			_check(not stepped._fold_job.is_empty(), name + ": the stepped fold starts")
 			var stepping := true
 			var same_whole := true

@@ -1631,14 +1631,11 @@ func _lift_bubbles() -> void:
 ## Set once the stage's bubbles have been placed: the fold waits for it.
 var _bubbles_placed := false
 
-## Only stone, sand and timber that never change fold: nothing a variable
-## here names, and nothing anywhere under one. Decks are rebuilt and copied
-## for their ghosts at build; water, floods, ghosts, kept marks and masts,
-## boats, sea gates, the spout, wheels, gauges, levers and lamps move, show,
-## hide or glow with the tide; the remembered routes are found by index.
-func _fold_inside_held() -> bool:
-	return false
-
+## Everything that moves, shows, hides or glows with the tide stays whole
+## (_static_keep): crossing decks (rebuilt and copied for their ghosts at
+## build), water, floods, ghosts, kept marks and masts, boats, sea gates, the
+## spout, wheels, gauges, levers and lamps, and the remembered routes (found by
+## index). The island floors fold like every world's (cooperative_world).
 func _folds_static_scenery() -> bool:
 	return _bubbles_placed and super._folds_static_scenery()
 

@@ -15,17 +15,22 @@ extends SceneTree
 ##   the tree freed between steps is skipped.
 ## - On Home the bridge planks with their posts, the plate, the keepsakes and
 ##   the actors stay; the island's static leaves are folded.
+## - With "still", a held node held only to be found keeps its node but its
+##   plain leaves fold with the batches around it; a held or kept node under
+##   it stays, and a still leaf itself stays. plan() names the leaves fold()
+##   folds, and where their batches go, without changing anything.
 ## - Chapter worlds fold their terrain on their first frame (over several
 ##   frames on a chapter screen) and keep what they change later. Turn of the
-##   Tide folds nothing a variable of the world names nor anything under one
-##   (every ancestor is checked), and every tide, basin, chamber, crossing and
-##   ghost shows the same on a folded and an unfolded world. A faded raised
-##   floor fades its batches, and a journey's bubbles weigh the same scenery
-##   once it is folded.
+##   Tide keeps everything the tide moves (its _static_keep) whole, at any
+##   depth, and folds its floors like every world; every tide, basin,
+##   chamber, crossing and ghost shows the same on a folded and an unfolded
+##   world. A faded raised floor fades its batches, and a journey's bubbles
+##   weigh the same scenery once it is folded.
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
+const FoldLook = preload("res://tests/fold_look.gd")
 
 var checks := 0
 var failures := 0
@@ -129,6 +134,7 @@ func _run() -> void:
 	_check(StaticBatch.fold(root, [owner]).folded == 0, "A root is folded once")
 	root.queue_free()
 	await _containers()
+	await _still()
 	await _scripted_and_freed()
 	await _steps()
 	await _home()
@@ -238,6 +244,52 @@ func _containers() -> void:
 	root.add_child(plain_mesh)
 	var own: Array[AABB] = StaticBatch.part_boxes(plain_mesh)
 	_check(own.size() == 1 and own[0] == plain_mesh.global_transform * plain_mesh.get_aabb(), "A plain mesh reports its own box")
+	root.queue_free()
+	await process_frame
+
+## Floors held only to be found fold their plain pieces together at the root;
+## what is held, kept or a lone piece under them stays, and plan() names
+## exactly what fold() then folds, changing nothing itself.
+func _still() -> void:
+	var root := Node3D.new()
+	get_root().add_child(root)
+	var box := BoxMesh.new()
+	box.size = Vector3(0.4, 0.1, 0.4)
+	var floors: Array[Node3D] = []
+	var pieces: Array[MeshInstance3D] = []
+	for f in range(2):
+		var floor_node := Node3D.new()
+		floor_node.position = Vector3(f * 3.0, 0.5 * f, 0)
+		root.add_child(floor_node)
+		floors.append(floor_node)
+		for i in range(2): pieces.append(_leaf(floor_node, box, Color("c4b090"), Vector3(i, 0, 0)))
+	var marker := _leaf(floors[0], box, Color("c4b090"), Vector3(0, 0, 2))
+	var lone := _leaf(floors[0], box, Color("8b7964"), Vector3(0, 0, -2))
+	var moving := Node3D.new()
+	floors[1].add_child(moving)
+	var moving_leaves: Array[MeshInstance3D] = []
+	for i in range(2): moving_leaves.append(_leaf(moving, box, Color("aa9988"), Vector3(0, 1, i)))
+	var kept := Node3D.new()
+	floors[1].add_child(kept)
+	var kept_leaves: Array[MeshInstance3D] = []
+	for i in range(2): kept_leaves.append(_leaf(kept, box, Color("c4b090"), Vector3(2, 0, i)))
+	var owner := Owner.new()
+	owner.held = [floors[0], floors[1], marker, moving, kept]
+	var options := {"containers": true, "keep": [kept], "still": floors}
+	await process_frame
+	var planned: Array = StaticBatch.plan(root, [owner], options)
+	var planned_leaves: Array = planned.map(func(entry: Array) -> Node: return entry[0])
+	var expected: Array = pieces + moving_leaves
+	_check(planned.size() == expected.size() and expected.all(func(leaf: Node) -> bool: return leaf in planned_leaves), "plan() names the floors' pieces and the moving container's leaves (%d)" % planned.size())
+	var where_ok := true
+	for entry: Array in planned: where_ok = where_ok and entry[1] == (moving if entry[0] in moving_leaves else root)
+	_check(where_ok, "plan() puts the floors' pieces at the root and a held container's leaves under it")
+	_check(not root.has_meta(StaticBatch.FOLDED_META) and pieces.all(func(leaf: Node) -> bool: return leaf.is_inside_tree()), "plan() changes nothing")
+	var result: Dictionary = StaticBatch.fold(root, [owner], options)
+	_check(result.folded == 6 and result.batches == 2, "The still floors' pieces fold into one batch and the moving container's into its own (%s)" % str(result))
+	_check(_batches(root).size() == 1 and _batches(moving).size() == 1 and _batches(floors[0]).is_empty() and _batches(floors[1]).is_empty(), "No batch goes under a still floor")
+	for node: Node in [floors[0], floors[1], marker, lone, moving] + kept_leaves:
+		_check(is_instance_valid(node) and node.is_inside_tree(), "Stays its own node under a still floor: " + str(node.name))
 	root.queue_free()
 	await process_frame
 
@@ -426,18 +478,23 @@ func _chapters() -> void:
 	journey.get_parent().queue_free()
 	await process_frame
 
-## Every node a world's variables name, and everything under each.
+## Every node a world's variables name; what it keeps whole; and everything
+## under what it keeps.
 func _under_held(world: Node3D) -> Dictionary:
 	var held: Dictionary = {}
 	StaticBatch._collect_held(world, held)
-	for node: Node in world._static_keep(): held[node.get_instance_id()] = true
+	var kept: Dictionary = {}
+	for node: Node in world._static_keep(): kept[node.get_instance_id()] = true
 	var under: Dictionary = {}
-	for id: int in held:
+	for id: int in kept:
 		var node := instance_from_id(id) as Node
 		if node == null or not world.terrain.is_ancestor_of(node): continue
 		under[id] = true
 		for child: Node in node.find_children("*", "", true, false): under[child.get_instance_id()] = true
-	return {"held": held, "under": under}
+	for id: int in held.keys():
+		var node := instance_from_id(id) as Node
+		if node == null or not world.terrain.is_ancestor_of(node): held.erase(id)
+	return {"held": held, "kept": kept, "kept_under": under}
 
 func _tide_state(sim: RefCounted, controls: Dictionary, bridges: Dictionary = {}, entered: Array = []) -> Dictionary:
 	var state: Dictionary = sim.snapshot().duplicate(true)
@@ -446,29 +503,10 @@ func _tide_state(sim: RefCounted, controls: Dictionary, bridges: Dictionary = {}
 	if not entered.is_empty(): state["route_progress"] = {"entered_routes": entered}
 	return state
 
-## A world's every named node (and its children): where it is, whether it
-## shows, and its colour and glow.
+## A world's every named node and every piece its terrain draws
+## (tests/fold_look.gd).
 func _named_look(world: Node3D) -> Array:
-	var held: Dictionary = {}
-	StaticBatch._collect_held(world, held)
-	var nodes: Array = []
-	for id: int in held:
-		var node := instance_from_id(id) as Node3D
-		if node == null or not world.terrain.is_ancestor_of(node): continue
-		nodes.append(node)
-		for child: Node in node.find_children("*", "Node3D", true, false): nodes.append(child)
-	var rows: Array = []
-	# Engine-numbered names (and their copies' names) differ between two
-	# worlds: drop the numbers.
-	var numbered := RegEx.create_from_string("[@_]([A-Z][A-Za-z0-9]+)[@_][0-9]+")
-	for node: Node3D in nodes:
-		var row := "%s %s %s" % [numbered.sub(str(world.terrain.get_path_to(node)), "@$1", true), str(node.global_transform), str(node.is_visible_in_tree())]
-		if node is MeshInstance3D and (node as MeshInstance3D).material_override is StandardMaterial3D:
-			var material := (node as MeshInstance3D).material_override as StandardMaterial3D
-			row += " %s %s %s" % [str(material.albedo_color), str(material.emission_enabled), str(material.emission_energy_multiplier)]
-		rows.append(row)
-	rows.sort()
-	return rows
+	return FoldLook.look(world)
 
 func _tide() -> void:
 	var Simulation: Script = Registry.simulation_script(Registry.TURN_OF_THE_TIDE)
@@ -485,18 +523,21 @@ func _tide() -> void:
 		var after: int = tide.terrain.find_children("*", "MeshInstance3D", true, false).size()
 		_check(tide.terrain.has_meta(StaticBatch.FOLDED_META) and batches.size() > 10 and after < meshes, "%s folds: %d meshes become %d (%d batches)" % [name, meshes, after, batches.size()])
 		var kept := true
-		for id: int in before.under:
+		for id: int in before.held.keys() + before.kept_under.keys():
 			var node := instance_from_id(id) as Node
 			if node == null or not node.is_inside_tree(): kept = false
-		_check(kept, name + ": every named node and everything under it stays as built")
+		_check(kept, name + ": every named node, and everything under what the tide moves, stays as built")
 		var clear := true
 		for batch: Node in batches:
-			if batch.get_parent() != tide.terrain: clear = false
 			var up := batch.get_parent()
 			while up != null and up != tide.terrain:
-				if before.held.has(up.get_instance_id()): clear = false
+				if before.kept.has(up.get_instance_id()): clear = false
 				up = up.get_parent()
-		_check(clear, name + ": no batch sits under any named node, at any depth")
+		_check(clear, name + ": no batch sits under anything the tide moves, at any depth")
+		var floors := 0
+		for batch: Node in batches:
+			if batch.get_parent() == tide.terrain: floors += 1
+		_check(floors > 10, name + ": the floors' plain pieces fold together at the terrain (%d batches there)" % floors)
 		if index == 0:
 			# A kept node freed before the next fold is skipped, never asked its type.
 			var gone := Node3D.new()

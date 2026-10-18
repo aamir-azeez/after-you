@@ -22,6 +22,13 @@ extends RefCounted
 ## planter whose cylinders give the soil height, a beam whose parts are read
 ## by index) go in "keep": they and everything under them stay as they are.
 ##
+## A held node in "still" is held only to be found (a floor that markers are
+## built on): it never moves, hides, fades or recolours. Its plain leaves fold
+## into the batches around it, like any unheld container's, so floors with a
+## few pieces each share one batch per material instead of one batch each.
+## The node itself, and anything under it that is held, kept or scripted,
+## stays as it is. A held floor that does move or fade is not still.
+##
 ## fold() does it all at once. start() and step() do the same work a few
 ## milliseconds at a time, so a big world folds over several frames without a
 ## hitch; every batch replaces its leaves in one go, so a half-folded world
@@ -39,8 +46,8 @@ const SKIPPED_MATERIAL_PROPERTIES := ["resource_name", "resource_path", "resourc
 static var _material_properties: Dictionary = {}
 
 ## Folds root's static leaves. owners: the objects whose variables name the
-## nodes that change later. options: "containers" (bool) and "keep" (Array of
-## nodes), see above. Returns {"folded": leaves, "batches": meshes}.
+## nodes that change later. options: "containers" (bool), "keep" and "still"
+## (Arrays of nodes), see above. Returns {"folded": leaves, "batches": meshes}.
 static func fold(root: Node3D, owners: Array, options: Dictionary = {}) -> Dictionary:
 	var job := start(root, owners, options)
 	if job.is_empty(): return {"folded": 0, "batches": 0}
@@ -52,18 +59,39 @@ static func fold(root: Node3D, owners: Array, options: Dictionary = {}) -> Dicti
 static func start(root: Node3D, owners: Array, options: Dictionary = {}) -> Dictionary:
 	if not enabled or not is_instance_valid(root) or not root.is_inside_tree() or root.has_meta(FOLDED_META): return {}
 	root.set_meta(FOLDED_META, true)
-	var kept: Dictionary = {}
-	for node: Variant in options.get("keep", []):
-		if is_instance_valid(node) and node is Node: kept[(node as Node).get_instance_id()] = true
+	var kept := _ids(options.get("keep", []))
 	# Only what is there now can fold. A node made while the job runs over
 	# frames (a Lighthouse beam made by present(), say) was made to change.
 	var existing: Dictionary = {}
 	for node: Node in root.find_children("*", "", true, false): existing[node.get_instance_id()] = true
-	var job := {"root": root, "root_id": root.get_instance_id(), "owners": owners.duplicate(), "owner_list": owners.duplicate(), "held": {}, "kept": kept, "containers": bool(options.get("containers", false)),
+	var job := {"root": root, "root_id": root.get_instance_id(), "owners": owners.duplicate(), "owner_list": owners.duplicate(), "held": {}, "kept": kept, "still": _ids(options.get("still", [])), "containers": bool(options.get("containers", false)),
 		"existing": existing, "scripted": [], "rechecked": false,
 		"materials": {}, "bases": [], "scan": [[root, 0]], "walk": [], "seen": {}, "base_index": 0, "key_index": 0, "entry_index": 0, "tool": null, "folded": 0, "batches": 0, "done": false}
 	job.walk.append([root, _base(root, job), 0])
 	return job
+
+## The leaves fold() would fold, each with the node its batch would go under,
+## as [leaf, container]; nothing is changed (root is not even marked folded).
+## For checking that nothing folded is ever changed afterwards.
+static func plan(root: Node3D, owners: Array, options: Dictionary = {}) -> Array:
+	var job := start(root, owners, options)
+	if job.is_empty(): return []
+	root.remove_meta(FOLDED_META)
+	job["plan_only"] = true
+	step(job, 0)
+	var leaves: Array = []
+	for base: Dictionary in job.bases:
+		for key: String in base.order:
+			var group: Array = base.groups[key]
+			if group.size() < 2 or not _group_folds(group, base.node, job): continue
+			for entry: Array in group: leaves.append([entry[0], base.node])
+	return leaves
+
+static func _ids(nodes: Array) -> Dictionary:
+	var ids: Dictionary = {}
+	for node: Variant in nodes:
+		if is_instance_valid(node) and node is Node: ids[(node as Node).get_instance_id()] = true
+	return ids
 
 ## Does up to budget_usec of the job's work (all of it for 0 or less): what
 ## the owners hold, then what scripted nodes under the root hold, then the
@@ -96,6 +124,9 @@ static func step(job: Dictionary, budget_usec: int) -> bool:
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
 		_recheck(job)
+	if job.get("plan_only", false):
+		job.done = true
+		return true
 	while job.base_index < job.bases.size():
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
@@ -140,6 +171,10 @@ static func _walk(job: Dictionary) -> void:
 	job.seen[id] = true
 	if not job.existing.has(id): return
 	if child.get_script() != null or job.kept.has(id): return
+	if job.still.has(id) and child.get_child_count() > 0 and (child.get_class() == "Node3D" or child is MeshInstance3D):
+		# Held only to be found: its plain leaves join the batches around it.
+		if (child as Node3D).visible: job.walk.append([child, base, 0])
+		return
 	if job.held.has(id):
 		# A held container keeps its own node; its plain leaves batch under it.
 		if job.containers and child.get_child_count() > 0 and (child.get_class() == "Node3D" or child is MeshInstance3D):
@@ -184,11 +219,7 @@ static func _build(job: Dictionary) -> void:
 	# Over several frames, a leaf or its container may have gone with a rebuild:
 	# then the whole group stays as it is.
 	var container: Variant = base.node
-	if not is_instance_valid(container) or not (container as Node3D).is_inside_tree(): return
-	var to_base := (container as Node3D).global_transform.affine_inverse()
-	for entry: Array in group:
-		if not is_instance_valid(entry[0]) or not (entry[0] as Node).is_inside_tree() or (entry[0] as Node).is_queued_for_deletion(): return
-		if _guarded(entry[0], container, job) or not (to_base * (entry[0] as Node3D).global_transform).is_equal_approx(entry[1]): return
+	if not _group_folds(group, container, job): return
 	var parts: Array = []
 	for entry: Array in group: parts.append([entry[1], (entry[0] as MeshInstance3D).get_aabb()])
 	var batch := MeshInstance3D.new()
@@ -207,6 +238,18 @@ static func _build(job: Dictionary) -> void:
 		leaf.queue_free()
 	job.folded += group.size()
 	job.batches += 1
+
+## Whether a group still folds now, as a whole: its container and every leaf
+## still in the tree, no leaf (or anything between it and the container) held,
+## kept or scripted, and every leaf where it was found. fold() and plan() both
+## ask this, so a plan names exactly what a fold folds.
+static func _group_folds(group: Array, container: Variant, job: Dictionary) -> bool:
+	if not is_instance_valid(container) or not (container as Node3D).is_inside_tree(): return false
+	var to_base := (container as Node3D).global_transform.affine_inverse()
+	for entry: Array in group:
+		if not is_instance_valid(entry[0]) or not (entry[0] as Node).is_inside_tree() or (entry[0] as Node).is_queued_for_deletion(): return false
+		if _guarded(entry[0], container, job) or not (to_base * (entry[0] as Node3D).global_transform).is_equal_approx(entry[1]): return false
+	return true
 
 ## The world boxes a mesh draws: one per folded leaf for a batch (each as the
 ## leaf's own transformed box), else the mesh's own.
@@ -236,7 +279,9 @@ static func _guarded(leaf: Node, container: Node, job: Dictionary) -> bool:
 	var node := leaf
 	while node != null and node != container:
 		var id := node.get_instance_id()
-		if job.held.has(id) or held_now.has(id) or job.kept.has(id) or node.get_script() != null: return true
+		if job.kept.has(id) or node.get_script() != null: return true
+		# A still node may stand between a leaf and its batch; the leaf itself never.
+		if (job.held.has(id) or held_now.has(id)) and (node == leaf or not job.still.has(id)): return true
 		node = node.get_parent()
 	return false
 

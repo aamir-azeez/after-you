@@ -968,11 +968,17 @@ var _fold_job: Dictionary = {}
 func _static_keep() -> Array:
 	return [garden]
 
-## Whether the plain leaves inside a held container (one the world moves,
-## hides or fades as a whole) may batch under it. A world whose held parts
-## are rebuilt, copied or walked child by child says no.
-func _fold_inside_held() -> bool:
-	return true
+## Held nodes that are held only to be found: they never move, hide, fade or
+## recolour, so their plain leaves fold with the scenery around them
+## (StaticBatch "still"). None here; a world adds the ones it owns.
+func _still_held() -> Array:
+	return []
+
+## How this world's terrain folds (kit/static_batch.gd): every held container's
+## plain leaves batch under it, what _static_keep names stays whole, and what
+## _still_held names folds with the scenery around it.
+func _fold_options() -> Dictionary:
+	return {"containers": true, "keep": _static_keep(), "still": _still_held()}
 
 var _fold_frame := -1
 
@@ -1008,7 +1014,7 @@ func _fold_static_scenery() -> Dictionary:
 		var holder := get_parent()
 		while holder != null and holder.get_script() == null: holder = holder.get_parent()
 		if holder != null: owners.append(holder)
-		_fold_job = StaticBatch.start(terrain, owners, {"containers": _fold_inside_held(), "keep": _static_keep()})
+		_fold_job = StaticBatch.start(terrain, owners, _fold_options())
 		if _fold_job.is_empty(): return {}
 	var job := _fold_job
 	if StaticBatch.step(job, FOLD_FRAME_USEC if fold_over_frames else 0): _fold_job = {}
