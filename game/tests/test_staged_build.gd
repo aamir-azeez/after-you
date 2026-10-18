@@ -150,11 +150,14 @@ func _screen(key: String, saved: bool = false) -> void:
 	_check(staged.building() and staged.mode == "loading", label + ": it waits in loading while its world builds")
 	guard = 0
 	var terrain_id := 0
+	var drawn_half_built := false
 	while (staged.building() or staged.mode == "loading") and guard < 600:
 		await process_frame
 		guard += 1
 		if staged.building() and is_instance_valid(staged.world.terrain): terrain_id = staged.world.terrain.get_instance_id()
+		if staged.world.build_budget_usec > 0 and staged.world.visible: drawn_half_built = true
 	_check(not staged.building() and staged.mode == "ready" and guard >= 1, label + ": the ready card follows the build (%d frames)" % guard)
+	_check(not drawn_half_built and staged.world.visible == direct.world.visible, label + ": the half-built world is never drawn, and shows once whole")
 	_check(staged.world.terrain.get_instance_id() == terrain_id, label + ": the ready card shows the world it built, not a rebuild in one frame")
 	if saved: _check(str(staged.journey.stage_id()) == str(Registry.definition(key).stages[1].id), label + ": it opens on the saved second stage")
 	_check(Canonical.same(staged.sim.snapshot(), direct.sim.snapshot()) and str(staged.sim.get("role")) == str(direct.sim.get("role")), label + ": the same turn, in the same state, as one set up at once")
