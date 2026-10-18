@@ -9,6 +9,7 @@ const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/spirit_look.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
 
 signal stepped
 signal reunion_started
@@ -231,7 +232,8 @@ func pose() -> StringName:
 func play_wake(reduced: bool) -> void:
 	set_pose(SpiritIdle.REST, {}, true)
 	_wake_age=SpiritIdle.WAKE_DURATION if reduced else 0.0
-	_apply_pose(motion_blend)
+	# Awake at once: Normal eyes, widened by the jolt, with no swap.
+	_place(motion_blend)
 
 func waking() -> bool:
 	return _wake_age<SpiritIdle.WAKE_DURATION
@@ -632,23 +634,12 @@ func _apply_reunion_sparkles() -> void:
 
 ## A body part: a shared mesh (spirit_meshes.gd) with a material.
 func _part(shape: Mesh, material: Material, at: Vector3, parent: Node3D) -> MeshInstance3D:
-	var mesh := MeshInstance3D.new()
-	mesh.mesh=shape
-	mesh.material_override=material
-	mesh.position=at
-	parent.add_child(mesh)
-	return mesh
+	return Primitives.mesh_node(shape, material, at, parent)
 
-## One matte material per body colour, shared by every spirit of that colour.
-static var _body_materials: Dictionary = {}
-
+## The kit's shared matte material for a body colour: every spirit of that
+## colour uses the same one (anything that changes it takes a copy first).
 static func _body_material(color: Color) -> StandardMaterial3D:
-	if not _body_materials.has(color):
-		var material := StandardMaterial3D.new()
-		material.albedo_color=color
-		material.roughness=0.9
-		_body_materials[color]=material
-	return _body_materials[color]
+	return Primitives.shared_material(color, 0.9)
 
 func _mesh(shape: Mesh, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	var mesh := MeshInstance3D.new()

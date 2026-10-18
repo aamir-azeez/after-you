@@ -1,7 +1,7 @@
 extends RefCounted
 ## The spirit's body meshes, built once from spirit_look.gd's proportions and
 ## shared by every spirit: a rounded box head, a small bowl torso, a foot and
-## the leaf. Light enough for many spirits on a phone (about 2,000 triangles
+## the leaf. Light enough for many spirits on a phone (about 2,400 triangles
 ## for a whole spirit, fewer than the spheres it replaced), with smooth normals. Each mesh's origin is its part's
 ## pivot: the head's and torso's centres, the foot's centre, the leaf's stalk.
 
@@ -85,8 +85,7 @@ static func _leaf() -> ArrayMesh:
 			var angle := TAU * float(segment) / float(segments)
 			var point := Vector3(cos(angle) * half_width, y, sin(angle) * half_width * Look.LEAF_THICKNESS / Look.LEAF_WIDTH)
 			points.append(point.rotated(Vector3.RIGHT, -Look.LEAF_TIP_BACK))
-	# Unindexed first, so index() joins the seam and the poles and the
-	# generated normals are smooth across them.
+	# Unindexed first, then joined; the generated normals are smooth.
 	var row := segments + 1
 	for ring in range(rings):
 		for segment in range(segments):

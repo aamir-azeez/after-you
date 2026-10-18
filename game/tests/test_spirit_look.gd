@@ -237,15 +237,39 @@ func _test_api_and_placement() -> void:
 	spirit.show_expression(Look.SAD, 2.0)
 	spirit.reset_motion()
 	_check(spirit.expression() == Look.ANGRY and not spirit.face_art.swapping() and spirit.eyes[0].scale.y == 1.0, "A seek places the face at once")
-	# The same steps give the same face, eye for eye.
+	# The same seconds give the same face, eye for eye, however they are split.
 	var twins: Array = []
-	for copy in range(2):
+	for split: Array in [[1.0 / 60.0], [1.0 / 30.0, 1.0 / 120.0, 1.0 / 120.0]]:
 		var twin := Spirit.new()
 		root.add_child(twin)
 		twin.set_expression_role("b")
 		twin.show_expression(Look.SAD, 1.0)
-		for frame in range(100): twin.advance_motion(Vector3.ZERO, 1.0 / 60.0 if frame % 3 else 1.0 / 30.0, false)
+		var t := 0.0
+		var index := 0
+		while t < 1.5 - 0.0000001:
+			var step: float = split[index % split.size()]
+			twin.advance_motion(Vector3.ZERO, step, false)
+			t += step
+			index += 1
 		twins.append(twin)
-	_check(twins[0].face_art.material.get_shader_parameter("eye_at") == twins[1].face_art.material.get_shader_parameter("eye_at") and twins[0].expression() == twins[1].expression(), "The same clock gives the same face")
+	var a: Node3D = twins[0]
+	var b: Node3D = twins[1]
+	_check(a.expression() == b.expression() and a.expression() == Look.NORMAL and not a.face_art.swapping() and not b.face_art.swapping(), "The same seconds give the same face at any frame rate")
+	_check((a.face_art.material.get_shader_parameter(&"eye_squash") as Vector2).is_equal_approx(b.face_art.material.get_shader_parameter(&"eye_squash")) and (a.face_art.material.get_shader_parameter(&"eye_xy") as Vector4).is_equal_approx(b.face_art.material.get_shader_parameter(&"eye_xy")), "and the same eyes")
 	for twin: Node in twins: twin.free()
+	# A swap that lands exactly on the shut moment still finishes.
+	var exact := Spirit.new()
+	root.add_child(exact)
+	exact.set_expression(Look.ANGRY)
+	exact.advance_motion(Vector3.ZERO, exact.face_art.SWAP_CLOSE, false)
+	exact.set_expression(Look.SAD)
+	for _frame in range(30): exact.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+	_check(exact.expression() == Look.SAD and not exact.face_art.swapping(), "A new expression asked for at the shut moment still shows")
+	exact.free()
+	# The shader declares every parameter the look sets.
+	var names: Array = []
+	for uniform: Dictionary in spirit.face_art.material.shader.get_shader_uniform_list(): names.append(str(uniform.name))
+	var declared := true
+	for key: String in spirit.face_art.SHAPE_KEYS + ["eye_xy", "eye_squash", "look_shift", "pupil_rim", "tear_neck_root", "body_color"]: declared = declared and names.has(key)
+	_check(declared, "The face shader declares every parameter the look writes")
 	spirit.free()

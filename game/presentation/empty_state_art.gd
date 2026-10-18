@@ -11,7 +11,7 @@ const Look = preload("res://presentation/spirit_look.gd")
 const PEACH := Look.PEACH
 const MINT := Look.MINT
 ## Ink for the props' fine lines.
-const EYE := Color("24433f")
+const INK := Color("24433f")
 const HEART := Color("f09a94")
 const GOLD := Color("f4d77b")
 const LINE := Color("eceddb")
@@ -27,7 +27,7 @@ const SPIRITS := {"peach": PEACH, "mint": MINT, "memory": Color("f9d9af")}
 const BOX := Vector2(200, 120)
 ## Spirit units per metre of the game's spirit; feet rest on the origin.
 const UNIT := 105.0
-const GROUND := 0.05
+const GROUND := Look.FOOT_REST.y - Look.FOOT_HALF.y
 const HEAD := Vector2(0, -(Look.HEAD_CENTER.y - GROUND) * UNIT)
 ## The head tilts about the top of the torso.
 const NECK := Vector2(0, -(Look.HEAD_CENTER.y - Look.HEAD_HALF.y - GROUND) * UNIT)
@@ -154,9 +154,9 @@ static func outline(ci: CanvasItem, at: Transform2D, pos: Vector2) -> void:
 static func envelope(ci: CanvasItem, at: Transform2D) -> void:
 	var paper := Rect2(-38, -25, 76, 50)
 	fill(ci, at, round_rect(paper, 4.0), PAPER)
-	stroke(ci, at, PackedVector2Array([Vector2(-36, -22), Vector2(0, 4), Vector2(36, -22)]), Color(EYE, 0.35), 2.0)
-	stroke(ci, at, PackedVector2Array([Vector2(-36, 23), Vector2(-10, 2)]), Color(EYE, 0.18), 1.6)
-	stroke(ci, at, PackedVector2Array([Vector2(36, 23), Vector2(10, 2)]), Color(EYE, 0.18), 1.6)
+	stroke(ci, at, PackedVector2Array([Vector2(-36, -22), Vector2(0, 4), Vector2(36, -22)]), Color(INK, 0.35), 2.0)
+	stroke(ci, at, PackedVector2Array([Vector2(-36, 23), Vector2(-10, 2)]), Color(INK, 0.18), 1.6)
+	stroke(ci, at, PackedVector2Array([Vector2(36, 23), Vector2(10, 2)]), Color(INK, 0.18), 1.6)
 	heart(ci, at, Vector2(0, 3), 7.0)
 
 ## The soft rounded island: grass over a rounded earth underside.

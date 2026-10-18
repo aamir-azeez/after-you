@@ -60,6 +60,9 @@ const EYE_X := 0.14
 const EYE_Y := 0.005
 ## The least cream kept between pupil and outer eye, except along a cut.
 const RIM := 0.007
+## Where the tear's dark neck starts, as a fraction of the way from the eye's
+## anchor to the dark tip.
+const TEAR_NECK_ROOT := 0.6
 ## How far a gaze moves the pupil inside its eye (fraction of the gaze, metres).
 const PUPIL_LOOK := Vector2(0.010, 0.006)
 
@@ -211,7 +214,7 @@ static func _eye_contours(expression: StringName, index: int, steps: int) -> Dic
 		var tp: Vector4 = e.tear_pupil
 		var tip := Vector2(tp.x, tp.y)
 		pupil = _union(pupil, _oval(Vector4(tp.z, tp.z, tp.x, tp.y), Vector4.ZERO, Vector4.ZERO, 16))
-		pupil = _union(pupil, _capsule(tip * 0.6, tip, tp.w))
+		pupil = _union(pupil, _capsule(tip * TEAR_NECK_ROOT, tip, tp.w))
 	# The pupil keeps a rim of cream, except where the cut trims both.
 	var inner: Array = []
 	for polygon: PackedVector2Array in outer:

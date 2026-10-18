@@ -11,7 +11,8 @@ const SHADER = preload("res://presentation/spirit_face.gdshader")
 const SWAP_CLOSE := 0.07
 const SWAP_OPEN := 0.11
 const SWAP_DONE := SWAP_CLOSE + SWAP_OPEN
-const _SHAPE_KEYS: Array[String] = ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end"]
+## The shader parameters each expression sets (spirit_look.gd eye()).
+const SHAPE_KEYS: Array[String] = ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end"]
 
 ## Shader parameters per expression, both eyes, built on first use.
 static var _shapes: Dictionary = {}
@@ -21,7 +22,8 @@ var material := ShaderMaterial.new()
 var shown: StringName = Look.NORMAL
 var target: StringName = Look.NORMAL
 var _swap_age := SWAP_DONE
-var _eye_at := PackedVector4Array([Vector4.ZERO, Vector4.ZERO])
+var _eye_xy := Vector4.ZERO
+var _eye_squash := Vector2.ONE
 var _look_shift := Vector2.ZERO
 
 func _init(body: Color) -> void:
@@ -29,8 +31,11 @@ func _init(body: Color) -> void:
 	material.set_shader_parameter("body_color", body)
 	material.set_shader_parameter("cream_color", Look.CREAM)
 	material.set_shader_parameter("pupil_color", Look.PUPIL)
-	material.set_shader_parameter("eye_at", _eye_at)
-	material.set_shader_parameter("look_shift", _look_shift)
+	material.set_shader_parameter(&"eye_xy", _eye_xy)
+	material.set_shader_parameter(&"eye_squash", _eye_squash)
+	material.set_shader_parameter(&"look_shift", _look_shift)
+	material.set_shader_parameter(&"pupil_rim", Look.RIM)
+	material.set_shader_parameter(&"tear_neck_root", Look.TEAR_NECK_ROOT)
 	_upload(shown)
 
 ## Asks for `expression`. With `immediate` it is drawn at once; otherwise the
@@ -47,15 +52,15 @@ func request(expression: StringName, immediate: bool) -> void:
 	target = expression
 	if _swap_age >= SWAP_DONE:
 		if shown != target: _swap_age = 0.0
-	elif _swap_age > SWAP_CLOSE:
+	elif _swap_age >= SWAP_CLOSE:
 		# Reopening: close again from as far open as the eyes are now.
 		_swap_age = SWAP_CLOSE * (1.0 - openness())
 
 func advance(delta: float) -> void:
 	if _swap_age >= SWAP_DONE: return
-	var before := _swap_age
 	_swap_age = minf(SWAP_DONE, _swap_age + maxf(delta, 0.0))
-	if before < SWAP_CLOSE and _swap_age >= SWAP_CLOSE and shown != target:
+	# Shut (or past it) with the wrong shape: swap now.
+	if _swap_age >= SWAP_CLOSE and shown != target:
 		shown = target
 		_upload(shown)
 
@@ -65,34 +70,36 @@ func swapping() -> bool:
 ## 1 open, 0 shut, through a swap.
 func openness() -> float:
 	if _swap_age >= SWAP_DONE: return 1.0
-	if _swap_age < SWAP_CLOSE: return 1.0 - smoothstep(0.0, SWAP_CLOSE, _swap_age)
+	# Closing is linear, so an interrupted reopen closes from where it is.
+	if _swap_age < SWAP_CLOSE: return 1.0 - _swap_age / SWAP_CLOSE
 	return smoothstep(SWAP_CLOSE, SWAP_DONE, _swap_age)
 
 ## Writes where the eyes are (each marker's x, y and its vertical scale, the
-## blink) and the gaze, only when they changed.
+## blink) and the gaze, only when they changed. Plain values: nothing is
+## allocated per frame.
 func place_eyes(eyes: Array[Node3D], look: Vector2) -> void:
-	var changed := false
-	for index in range(2):
-		var marker := eyes[index]
-		var at := Vector4(marker.position.x, marker.position.y, marker.scale.y, 0.0)
-		if at != _eye_at[index]:
-			_eye_at[index] = at
-			changed = true
-	if changed: material.set_shader_parameter("eye_at", _eye_at)
+	var xy := Vector4(eyes[0].position.x, eyes[0].position.y, eyes[1].position.x, eyes[1].position.y)
+	if xy != _eye_xy:
+		_eye_xy = xy
+		material.set_shader_parameter(&"eye_xy", _eye_xy)
+	var squash := Vector2(eyes[0].scale.y, eyes[1].scale.y)
+	if squash != _eye_squash:
+		_eye_squash = squash
+		material.set_shader_parameter(&"eye_squash", _eye_squash)
 	var shift := look * Look.PUPIL_LOOK
 	if shift != _look_shift:
 		_look_shift = shift
-		material.set_shader_parameter("look_shift", _look_shift)
+		material.set_shader_parameter(&"look_shift", _look_shift)
 
 func _upload(expression: StringName) -> void:
 	var shape: Dictionary = _shape(expression)
-	for key: String in _SHAPE_KEYS: material.set_shader_parameter(key, shape[key])
+	for key: String in SHAPE_KEYS: material.set_shader_parameter(key, shape[key])
 
 static func _shape(expression: StringName) -> Dictionary:
 	if not _shapes.has(expression):
 		var left := Look.eye(expression, 0)
 		var right := Look.eye(expression, 1)
 		var shape := {}
-		for key: String in _SHAPE_KEYS: shape[key] = PackedVector4Array([left[key], right[key]])
+		for key: String in SHAPE_KEYS: shape[key] = PackedVector4Array([left[key], right[key]])
 		_shapes[expression] = shape
 	return _shapes[expression]

@@ -12,7 +12,7 @@ extends SceneTree
 ## No tail is ever seen across a spirit. With a spirit on, behind and beside
 ## each control (on the control's own floor), every drawn tail triangle is
 ## tested against every spirit's head and torso, projected on the view plane
-## (spheres as spirit_visual.gd builds them, so circles). Where they meet:
+## (discs that cover them, as journey_world.gd keeps them). Where they meet:
 ##   - a spirit standing no further than HIDES behind the tail's card hides
 ##     the tail there: this is asserted as the occlusion setup (the body is
 ##     depth tested, its tail is drawn on its anchor's upright card: the sink

@@ -17,8 +17,9 @@ const KNOB_RADIUS := 0.09
 ## A spirit's height on screen with its badge, and half its width, in metres.
 const SPIRIT_TOP := 1.75
 const SPIRIT_HALF_WIDTH := 0.42
-## A spirit's head and torso, without the badge (spirit_visual.gd): the
-## height of each sphere's centre over its feet and its radius (metres). On
+## A spirit's head and torso, without the badge (spirit_look.gd): the
+## height of each part's centre over its feet and a radius that covers it
+## (metres, kept from the older, rounder spirit, so a little generous). On
 ## screen each is a disc; a tail must never be seen across either.
 const SPIRIT_HEAD := Vector2(0.57,0.34)
 const SPIRIT_TORSO := Vector2(0.24,0.29)
