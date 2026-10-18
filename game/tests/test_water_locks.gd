@@ -110,7 +110,7 @@ func _small_plans() -> void:
 
 ## A raised door dips while a spirit stands in its mouth, easing down in about
 ## 0.2 s, and rises again once the spirit leaves; told at once it snaps. A
-## spirit outside the walkway, or at a door that is down, changes nothing.
+## spirit away from the mouth, or at a door that is down, changes nothing.
 func _small_dip(plan: Dictionary, level: Dictionary, apart: Dictionary) -> void:
 	var locks: WaterLocks = WaterLocks.new()
 	var parent := Node3D.new()
@@ -120,7 +120,10 @@ func _small_dip(plan: Dictionary, level: Dictionary, apart: Dictionary) -> void:
 	var door: MeshInstance3D = locks.door_nodes()[0]
 	var inside := PackedVector2Array([Vector2(110, 50)])
 	locks.occupy(PackedVector2Array([Vector2(50, 50)]))
-	_check(locks.door_states() == ["shut"] and not locks.moving(), "A spirit outside the walkway leaves the door up")
+	_check(locks.door_states() == ["shut"] and not locks.moving(), "A spirit away from the mouth leaves the door up")
+	locks.occupy(PackedVector2Array([Vector2(90, 50)]), true)
+	_check(locks.door_states() == ["dipped"], "A spirit about to step through the mouth, on either side, dips the door")
+	locks.occupy(PackedVector2Array(), true)
 	locks.occupy(inside)
 	_check(locks.door_states() == ["dipped"] and locks.moving(), "A spirit in the mouth sets the raised door dipping")
 	for _frame in range(12): locks.advance(1.0 / 60.0, apart)
@@ -180,8 +183,9 @@ func _tide() -> void:
 
 func _checkpoint(level: Dictionary, index: int) -> Dictionary:
 	var checkpoint := JourneyCatalog.initial_checkpoint(level)
-	# The sand bar and slipway are kept (entered earlier): walked while flooded.
-	checkpoint.mechanisms.latched_bridges = ["sand-1", "slipway"]
+	# The sand bar, slipway and middle stones are kept (entered earlier): walked
+	# while the water covers them.
+	checkpoint.mechanisms.latched_bridges = ["sand-1", "slipway", "stones-2"]
 	if index == 0: return checkpoint
 	checkpoint.stage_index = index
 	checkpoint.completed_stage_id = str(level.stages[index - 1].id)
@@ -195,7 +199,8 @@ func _locks(world: Node3D) -> WaterLocks:
 	return null
 
 ## At low water every door is down. At high water the stepping stones (open
-## only at half) are flooded above the terraces, so both doors of each are up.
+## only at half) are flooded above the terraces unless kept, so both doors of
+## each are up.
 ## At half the sand bar and slipway (open only at low) are flooded above the
 ## beaches, so theirs are up, and the stones can be walked, so theirs are down.
 func _doors_follow(locks: WaterLocks, state: Dictionary, tide: String, label: String) -> void:
@@ -203,7 +208,7 @@ func _doors_follow(locks: WaterLocks, state: Dictionary, tide: String, label: St
 		"low": _check(not "shut" in locks.door_states(), "Every door is down at low water: " + label)
 		"high":
 			for id: String in ["stones-1", "stones-2", "stones-3"]:
-				_check(_states_at(locks, id) == ["shut", "shut"], "Both doors of a flooded crossing are up: %s %s" % [label, id])
+				if not bool(state.bridges.get(id, false)): _check(_states_at(locks, id) == ["shut", "shut"], "Both doors of a flooded crossing are up: %s %s" % [label, id])
 		"half":
 			for id: String in ["sand-1", "slipway"]:
 				if not bool(state.bridges.get(id, false)): _check(_states_at(locks, id) == ["shut", "shut"], "Both doors of a flooded crossing are up: %s %s" % [label, id])
@@ -292,11 +297,15 @@ func _resting(locks: WaterLocks) -> bool:
 	return true
 
 ## Every change of a wheel that moves water, frame by frame as it is shown:
-## no door ever stands below the water it holds back, and the doors settle.
+## no door ever stands below the water it holds back, and the doors settle. A
+## kept crossing walked while its water heads no deeper than KEPT_DRY_DEPTH
+## never shows water over its walkway, nor a door rising, on the way there.
 func _rise_and_sink(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dictionary) -> void:
 	var wheels := {"tide": ["low", "half", "high"]}
 	if str(stage.id) == "slack-water": wheels["basin"] = ["shut", "low", "half", "high"]
 	var worst := INF
+	var slips: Array[String] = []
+	var tops: Array[float] = []
 	for wheel: String in wheels:
 		for from: String in wheels[wheel]:
 			for to: String in wheels[wheel]:
@@ -307,11 +316,13 @@ func _rise_and_sink(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Di
 				sim._mechanisms.controls[wheel] = to
 				sim._refresh_routes()
 				var state: Dictionary = sim.snapshot()
+				tops = _door_tops(locks)
 				world.present(state, false)
 				worst = minf(worst, _clearance(world, locks))
 				for _frame in range(240):
 					world._advance_water(1.0 / 60.0)
 					worst = minf(worst, _clearance(world, locks))
+					_kept_dry_slips(world, locks, tops, "%s %s>%s" % [wheel, from, to], slips)
 				_check(not locks.moving() and _resting(locks), "Doors settle after %s turns %s to %s: %s" % [wheel, from, to, stage.id])
 				# Turned back while the water is still on its way: still never below it.
 				world.present(sim.snapshot(), true)
@@ -333,10 +344,45 @@ func _rise_and_sink(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Di
 					worst = minf(worst, _clearance(world, locks))
 				_check(not locks.moving() and _resting(locks), "Doors settle after %s turns back from %s to %s mid-flow: %s" % [wheel, to, from, stage.id])
 	_check(worst >= 0.0, "No door ever stands below the water it holds, on any turn of a wheel: %s (worst %.3f m)" % [stage.id, worst])
+	_check(slips.is_empty(), "A kept crossing that reads dry never shows water over it or a door rising while the water moves: %s %s" % [stage.id, slips])
 	sim._mechanisms.controls["tide"] = "low"
 	if wheels.has("basin"): sim._mechanisms.controls["basin"] = "shut"
 	sim._refresh_routes()
 	world.present(sim.snapshot(), true)
+
+## Each door's top this frame, in build order.
+func _door_tops(locks: WaterLocks) -> Array[float]:
+	var tops: Array[float] = []
+	for door: MeshInstance3D in locks.door_nodes(): tops.append(door.position.y)
+	return tops
+
+## Notes, once per crossing and turn, a kept crossing walked while its water
+## heads no deeper than KEPT_DRY_DEPTH that shows water over its walkway, or a
+## door of it rising above the floor it opens onto, this frame; `tops` is last
+## frame's door tops, refreshed.
+func _kept_dry_slips(world: Node3D, locks: WaterLocks, tops: Array[float], label: String, slips: Array[String]) -> void:
+	var nodes := locks.door_nodes()
+	for id: String in world._kept_walled:
+		if not world._decks[id].visible: continue
+		var deck := float(world._low_cm(world._route(id))) / 100.0
+		if float(world._floods[id].get_parent().get_meta("target")) - deck > world.KEPT_DRY_DEPTH: continue
+		var water: MeshInstance3D = world._calm[id] if world._calm[id].visible else world._floods[id]
+		var risen := false
+		var index := 0
+		for run: Dictionary in locks.runs:
+			if run.kind != WaterLocks.DOOR: continue
+			if run.mouth == id and nodes[index].position.y > maxf(tops[index], _mouth_floor(world, run)) + 0.0001: risen = true
+			index += 1
+		var slip := "%s %s" % [label, id]
+		if (_top(water) > deck + 0.001 or risen) and slip not in slips: slips.append(slip)
+	for index in range(nodes.size()): tops[index] = nodes[index].position.y
+
+## The floor a door's walkway opens onto (m): the higher floor beside it.
+func _mouth_floor(world: Node3D, run: Dictionary) -> float:
+	var floor_top := -INF
+	for side: String in [str(run.a), str(run.b)]:
+		if side.begins_with("island:"): floor_top = maxf(floor_top, _floor_or_water(world, side, {}))
+	return floor_top
 
 ## The least height by which any door's top clears the water on its wet side
 ## this frame, among doors holding water above the other side; INF if none.
@@ -458,7 +504,8 @@ func _never_empty(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
 ## At high water the kept sand bar floods behind its raised doors; a spirit in
 ## one of its mouths dips that door (the other stays up) and leaving raises it
 ## again, each in about 0.2 s. The same positions shown at once, as a seek or
-## replay does, give the same doors; reduced motion snaps them.
+## replay does, give the same doors; reduced motion snaps them; the tide rising
+## under a spirit in the mouth never shows its door above the floor.
 func _kept_door_dips(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dictionary) -> void:
 	sim._mechanisms.controls["tide"] = "high"
 	sim._refresh_routes()
@@ -504,6 +551,20 @@ func _kept_door_dips(world: Node3D, locks: WaterLocks, sim: Simulation, stage: D
 	world.present(away, false)
 	_check(not locks.moving() and door.visible and _resting(locks), "With reduced motion the door snaps back up: " + str(stage.id))
 	world.reduced_motion = false
+	# The tide rising under a spirit standing in the mouth never shows the door.
+	sim._mechanisms.controls["tide"] = "low"
+	sim._refresh_routes()
+	var low_inside: Dictionary = sim.snapshot()
+	low_inside.bridges["sand-1"] = true
+	low_inside.players = inside.players.duplicate(true)
+	world.present(low_inside, true)
+	world.present(inside, false)
+	var floor_top := _mouth_floor(world, locks.runs.filter(func(run: Dictionary) -> bool: return run.kind == WaterLocks.DOOR)[door_index])
+	var shown := door.visible and door.position.y > floor_top
+	for _frame in range(240):
+		world._advance_water(1.0 / 60.0)
+		shown = shown or (door.visible and door.position.y > floor_top)
+	_check(not shown and locks.door_states()[door_index] == "dipped", "The tide rising under a spirit in the mouth never shows the door above its floor: " + str(stage.id))
 	sim._mechanisms.controls["tide"] = "low"
 	sim._refresh_routes()
 	world.present(sim.snapshot(), true)

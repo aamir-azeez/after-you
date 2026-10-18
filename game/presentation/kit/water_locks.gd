@@ -62,7 +62,8 @@ const TRAVEL := 1.4
 ## leaves (m a second): the tallest door (about 0.85 m) in about 0.2 s.
 const DIP_TRAVEL := 5.0
 ## A spirit counts as standing in a door's mouth within this far of the door
-## (cm), on the walkway's side.
+## (cm), on either side, so one stepping in or waiting at it never stands in
+## the raised door.
 const DIP_REACH := 45.0
 ## A door's top never stands less than this above the water it holds, even
 ## while the water and the door are moving.
@@ -225,8 +226,6 @@ static func find_runs(plan: Dictionary) -> Array:
 				if unheld == AT_TIMES and not here.is_empty() and not there.is_empty():
 					var wet_side := 1.0 if _holds_water(there, kinds) else -1.0
 					edge.mouth = _mouth_at(middle + (Vector2(wet_side, 0) if across else Vector2(0, wet_side)), plan.mouths)
-					for mouth: Dictionary in plan.mouths:
-						if str(mouth.id) == str(edge.mouth): edge["mouth_rect"] = mouth.rect
 				var kind := _kind(edge, unheld, kinds)
 				edge["kind"] = kind
 				edge["shift"] = _shift(kind, _holds_water(here, kinds), _holds_water(there, kinds), floors[here_index] or floors[there_index])
@@ -599,14 +598,14 @@ func present(levels: Dictionary, immediate: bool = false) -> void:
 	if immediate: _settle()
 
 ## Tells the doors where the spirits stand (plan cm): a door that is up dips
-## while a spirit stands in its mouth (inside its walkway, within DIP_REACH of
-## the door), and rises again once it leaves. Only doors that are up are
-## checked, with a squared-distance test. Immediate (pass it for reduced
-## motion) skips the easing.
+## while a spirit stands in its mouth (within DIP_REACH of the door, either
+## side), and rises again once it leaves. Only doors that are up are checked,
+## with a squared-distance test; call it with each snapshot. Immediate (pass it
+## for reduced motion) skips the easing.
 func occupy(spirits: PackedVector2Array, immediate: bool = false) -> void:
 	for entry: Dictionary in _doors:
 		var dipped := false
-		if bool(entry.up) and entry.run.has("mouth_rect"):
+		if bool(entry.up):
 			for at: Vector2 in spirits:
 				if _in_mouth(entry.run, at):
 					dipped = true
@@ -616,9 +615,8 @@ func occupy(spirits: PackedVector2Array, immediate: bool = false) -> void:
 		entry.easing = _retarget(entry)
 	if immediate and _moving: _settle()
 
+## Whether a point (plan cm) lies within DIP_REACH of a door's run.
 static func _in_mouth(run: Dictionary, at: Vector2) -> bool:
-	var r: Array = run.mouth_rect
-	if at.x < float(r[0]) or at.x > float(r[2]) or at.y < float(r[1]) or at.y > float(r[3]): return false
 	var line := float(run.line)
 	var across := (at.y if run.along_x else at.x) - line
 	var along := at.x if run.along_x else at.y
@@ -675,8 +673,10 @@ func _settle() -> void:
 func moving() -> bool:
 	return _moving
 
-## Per door, in build order: "shut" (up), "dipped" (sunk for a spirit in its
-## mouth) or "open" (sunk, its two sides level).
+## Per door, in build order, from what the levels and spirits want (a door
+## told to sink may still be held up by the water for a moment): "shut" (up),
+## "dipped" (sunk for a spirit in its mouth) or "open" (sunk, its two sides
+## level).
 func door_states() -> Array:
 	var found: Array = []
 	for entry: Dictionary in _doors: found.append("open" if not bool(entry.up) else "dipped" if bool(entry.dipped) else "shut")

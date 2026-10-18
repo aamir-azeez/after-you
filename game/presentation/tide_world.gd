@@ -12,6 +12,8 @@ extends "res://presentation/journey_world.gd"
 const KEPT_DRY_DEPTH := 0.30
 ## How much stone shows above a kept stepping-stone crossing's calm water (m).
 const STONES_SHOWING := 0.04
+## How far any other kept walkway's deck stands above its calm water (m).
+const DECK_SHOWING := 0.12
 ## Doors, spillways and walls at every water opening.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 ## Display heights (metres) for each water value. Low sits below the beaches,
@@ -126,10 +128,14 @@ var _walled: Array[String] = []
 ## open, so walked later even when the tide covers them): shown dry while kept
 ## in shallow water, flooded behind their doors in deep water.
 var _kept_walled: Array[String] = []
-## Kept crossings shown dry: id -> calm water standing in the pit at the
+## Crossings that can be kept: id -> calm water standing in the pit at the
 ## crossing's dry level (just under its deck, or just under its stone tops),
-## so the pit is never empty.
+## shown while it reads dry and the water stands above that level, so the pit
+## is never empty.
 var _calm: Dictionary = {}
+## Crossings that can be kept: id -> whether it reads dry this snapshot (walked,
+## and the water heading no deeper than KEPT_DRY_DEPTH over its deck).
+var _reads_dry: Dictionary = {}
 ## Where the spirits stand (plan cm), refilled each snapshot for the locks.
 var _spirits := PackedVector2Array()
 ## Gated walled crossings: id -> the water that fills them while shut.
@@ -201,6 +207,7 @@ func show_stage(stage: Dictionary) -> void:
 	_history_tide = ""
 	_floods.clear()
 	_calm.clear()
+	_reads_dry.clear()
 	_locks = null
 	_water_walls.clear()
 	_ghosts.clear()
@@ -391,12 +398,26 @@ static func _gate_for_stage(stage: Dictionary, id: String) -> Dictionary:
 		if item.route_id == id: return item
 	return {}
 
+## A crossing that reads dry holds calm water at its dry level while the water
+## shown stands above that level, and the water itself, under its walkway,
+## while it stands lower: decided from the water shown, so a pit never shows
+## water over a walkway that reads dry while the tide drains or fills. Runs on
+## each snapshot and on frames the water flows.
+func _show_calm() -> void:
+	for id: String in _calm:
+		if not _reads_dry.get(id, false):
+			_calm[id].visible = false
+			continue
+		var calm := float(_floods[id].get_parent().get_meta("shown")) > _dry_level(id)
+		_calm[id].visible = calm
+		_floods[id].visible = not calm
+
 ## Where a kept crossing's water stands while it shows dry (m): just under its
 ## stone tops for stepping stones, so they poke out of the water, else just
 ## under its deck, so the walkway reads dry with water beneath it.
 func _dry_level(id: String) -> float:
 	var deck := float(_low_cm(_route(id))) / 100.0
-	return deck - (STONES_SHOWING if DECK_KINDS.get(id, "") == "stones" else 0.12)
+	return deck - (STONES_SHOWING if DECK_KINDS.get(id, "") == "stones" else DECK_SHOWING)
 
 ## Values a predicate needs outright (through "all" only) of one control.
 static func _control_marks(predicate: Dictionary, control: String) -> Array:
@@ -1325,6 +1346,7 @@ func _advance_water(delta: float) -> void:
 		if not is_equal_approx(shown, target):
 			_show_water(root, move_toward(shown, target, WATER_RATE * maxf(delta, 0.0)))
 			flowing = true
+	if flowing: _show_calm()
 	# The doors move after the water, against the water shown this frame.
 	if is_instance_valid(_locks) and (flowing or _locks.moving()): _locks.advance(delta, _lock_levels("shown"))
 	if not reduced_motion:
@@ -1380,21 +1402,26 @@ func _water_plan() -> Dictionary:
 			for chamber: float in (levels.chamber as Dictionary).values():
 				var dry := {"harbour": tide, "sea": sea, "chamber": chamber}
 				var flooded := dry.duplicate()
-				for id: String in flood_bodies: flooded["crossing:" + id] = dry[flood_bodies[id]]
-				states.append_array([dry, flooded])
+				var calm := dry.duplicate()
+				for id: String in flood_bodies:
+					flooded["crossing:" + id] = dry[flood_bodies[id]]
+					if _calm.has(id): calm["crossing:" + id] = minf(dry[flood_bodies[id]], _dry_level(id))
+				states.append_array([dry, flooded, calm])
 	return {"areas": areas, "bounds": [-1116, -700, 1884, 700], "mouths": mouths, "walls": _water_walls.duplicate(), "states": states, "seabed": SEABED, "wall_top": PARAPET_TOP}
 
 ## The levels for the locks, from each body's "target" (where it is going) or
-## "shown" (where it stands this frame) meta: each body's, and every flooded
-## crossing at its body's. Refills one dictionary per meta, so it allocates
+## "shown" (where it stands this frame) meta: each body's, every flooded
+## crossing at its body's, and every crossing that reads dry at its body's but
+## never above its dry level. Refills one dictionary per meta, so it allocates
 ## nothing.
 func _lock_levels(meta: String) -> Dictionary:
 	var levels: Dictionary = _lock_targets if meta == "target" else _lock_shown
 	for body: String in _water: levels[body] = float(_water[body].get_meta(meta))
 	for id: String in _floods:
 		var key := "crossing:" + id
-		if _floods[id].visible: levels[key] = float(_floods[id].get_parent().get_meta(meta))
-		elif _calm.has(id) and _calm[id].visible: levels[key] = _dry_level(id)
+		var level := float(_floods[id].get_parent().get_meta(meta))
+		if _reads_dry.get(id, false): levels[key] = minf(level, _dry_level(id))
+		elif _floods[id].visible: levels[key] = level
 		elif levels.has(key): levels.erase(key)
 	return levels
 
@@ -1663,20 +1690,15 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
 	for id: String in _floods:
 		var shown: bool = _decks[id].visible if _decks.has(id) else bool(routes.get(id, false))
-		var flooded := not shown
-		var calm := false
-		if id in _kept_walled:
-			# A crossing that can be kept always holds water in its pit. Walked
-			# with its water below the dry level, the water stands under it as
-			# outside; walked while the water stands shallow over it, the pit
-			# keeps calm water at its dry level (its walls hold the rest) so it
-			# reads dry; once the water is deep it floods behind its doors.
-			var level := float(_floods[id].get_parent().get_meta("target"))
-			var depth := level - float(_low_cm(_route(id))) / 100.0
-			calm = shown and level > _dry_level(id) and depth <= KEPT_DRY_DEPTH
-			flooded = not calm
-		_floods[id].visible = flooded
-		if _calm.has(id): _calm[id].visible = calm
+		_floods[id].visible = not shown
+		if _calm.has(id):
+			# Walked while its water is heading no deeper than KEPT_DRY_DEPTH over
+			# it, a crossing that can be kept reads dry (its walls hold the rest);
+			# deeper, it floods behind its doors.
+			var depth := float(_floods[id].get_parent().get_meta("target")) - float(_low_cm(_route(id))) / 100.0
+			_reads_dry[id] = shown and depth <= KEPT_DRY_DEPTH
+			_floods[id].visible = not _reads_dry[id]
+	_show_calm()
 	if is_instance_valid(_locks):
 		_locks.present(_lock_levels("target"), immediate or reduced_motion)
 		# A door dips while a spirit stands in its mouth: from the snapshot's
