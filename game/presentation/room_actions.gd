@@ -1,11 +1,16 @@
 extends RefCounted
 ## The in-chapter room's actions: one row per action, and where each room panel
-## state shows it. relay_preview.gd draws a state by walking its slots in order
-## and keeps every widget and handler; this table owns which actions appear,
-## their order, their labels and when they apply.
+## state shows it. relay_preview.gd draws a state by walking its slots in order;
+## this table owns which actions appear, their order, their labels, their
+## handlers and when they apply.
 ##
-## Moving an action is moving its id between two lists of one state in LAYOUT,
-## for example from "turn" to "options" in "waiting_panel".
+## Moving a plain row is moving its id between two lists of one state in
+## LAYOUT, for example from "turn" to "options" in "waiting_panel". A custom row
+## (the invitation code, Share, Room options, Your rooms) brings its own widget
+## and wiring from the screen, so it may sit only in an invite or turn slot.
+## A few looks stay in the screen's code: the wide ready panel's taller Record
+## and icon Share, the invitation code field, and the Notifications heading
+## and hint around Notify.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 
@@ -23,32 +28,38 @@ const TURN_REQUESTS := "Turn requests"
 ##   button: an action_buttons.gd id (its label, icon and look), or
 ##   text: the label of a plain card button, primary: its cream look.
 ##   icon: its icon on the wide room panel (a header action is icon only).
-##   run: the screen's handler method, bind: its arguments.
+##   run: the screen's handler method, bind: its arguments; with_receipt: the
+##   handler also takes the turn receipt the row was drawn for.
+##   custom: the screen builds and wires this row itself (no run).
 ##   when: facts the screen must report true, in order ("!" negates).
-##   group: the Room options group it belongs to ("" when never there).
+##   short: its label on the wide waiting panel.
+##   waiting: how the wide waiting panel places it. "primary" holds the
+##   panel's one cream action while its button shows; "first_free" is cream
+##   when no row above holds it, else outlined; "outlined" always is. The
+##   outlined rows pair up two by two below the others.
 const ACTIONS := {
-	"copy_code": {"text": "Copy invitation code", "icon": preload("res://assets/ui/social/copy.svg"), "run": "_copy_invitation", "when": ["invited", "!joined"], "group": "invite"},
-	"share": {"text": SHARE, "icon": preload("res://assets/ui/social/share-network.svg"), "run": "_share_room_from_card", "when": ["share"], "group": "invite"},
-	"check_saved": {"button": "check_saved", "run": "_online_refresh", "when": ["pending"], "group": "turn"},
-	"keep_held": {"text": PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, "run": "_keep_held_turn", "when": ["held"], "group": "turn"},
-	"notify": {"text": PlayerCopy.MAIN_C4B947AAAE59, "primary": true, "run": "_enable_turn_notifications", "when": ["!pending", "notifications"], "group": "turn"},
-	"resume": {"button": "resume", "run": "_turn_tap", "bind": ["resume"], "when": ["draft"], "group": "turn"},
-	"record": {"button": "record", "run": "_turn_tap", "bind": ["record"], "when": [], "group": "turn"},
-	"refresh": {"button": "refresh", "icon": preload("res://assets/ui/social/arrows-clockwise.svg"), "run": "_online_refresh", "when": ["online", "!pending"], "group": "turn"},
-	"replays": {"button": "replays", "run": "_play_replays", "when": ["online", "watchable"], "group": "turn"},
-	"local_replays": {"button": "replays", "run": "_show_local_replays", "when": ["solo", "watchable"], "group": "turn"},
-	"redo_answer": {"text": REDO_REQUESTED, "run": "_open_redo", "when": ["redo", "redo_accept"], "group": "turn"},
-	"redo": {"text": ASK_FOR_REDO, "run": "_open_redo", "when": ["redo", "!redo_accept"], "group": "turn"},
-	"solo_redo": {"text": PlayerCopy.SOLO_REDO_ACTION, "run": "_confirm_solo_redo", "when": ["solo_redo"], "group": "turn"},
-	"photo": {"text": "Photo for your last contribution", "run": "_offer_recent_photo", "when": ["photo"], "group": "turn"},
-	"checkpoints": {"button": "retry", "run": "_choose_local_checkpoint", "when": ["solo"], "group": "chapter"},
-	"new_room": {"text": "New room", "primary": true, "run": "_create_another_room", "when": ["online"], "group": "chapter"},
-	"restart": {"text": "Restart chapter", "primary": true, "run": "_confirm_restart_chapter", "when": ["restart"], "group": "chapter"},
-	"about": {"text": "About this chapter", "run": "_show_waiting_details", "when": ["about"], "group": "chapter"},
-	"safety": {"text": "Report or block player", "run": "_open_safety", "when": ["safety"], "group": "safety"},
-	"room_options": {"text": "Room options", "run": "_open_room_options", "when": ["options"], "group": ""},
-	"your_rooms": {"text": "Your rooms", "run": "_leave", "when": [], "group": ""},
-	"back": {"button": "back", "run": "_leave", "when": [], "group": ""},
+	"copy_code": {"text": "Copy invitation code", "icon": preload("res://assets/ui/social/copy.svg"), "custom": true, "when": ["invited", "!joined"]},
+	"share": {"text": SHARE, "short": SHARE_SHORT, "icon": preload("res://assets/ui/social/share-network.svg"), "custom": true, "waiting": "first_free", "when": ["share"]},
+	"check_saved": {"button": "check_saved", "run": "_online_refresh", "waiting": "primary", "when": ["pending"]},
+	"keep_held": {"text": PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, "run": "_keep_held_turn", "when": ["held"]},
+	"notify": {"text": PlayerCopy.MAIN_C4B947AAAE59, "primary": true, "run": "_enable_turn_notifications", "waiting": "primary", "when": ["!pending", "notifications"]},
+	"resume": {"button": "resume", "run": "_turn_tap", "bind": ["resume"], "when": ["draft"]},
+	"record": {"button": "record", "run": "_turn_tap", "bind": ["record"], "when": []},
+	"refresh": {"button": "refresh", "icon": preload("res://assets/ui/social/arrows-clockwise.svg"), "run": "_online_refresh", "when": ["online", "!pending"]},
+	"replays": {"button": "replays", "run": "_play_replays", "when": ["online", "watchable"]},
+	"local_replays": {"button": "replays", "run": "_show_local_replays", "when": ["solo", "watchable"]},
+	"redo_answer": {"text": REDO_REQUESTED, "run": "_open_redo", "when": ["redo", "redo_accept"]},
+	"redo": {"text": ASK_FOR_REDO, "run": "_open_redo", "when": ["redo", "!redo_accept"]},
+	"solo_redo": {"text": PlayerCopy.SOLO_REDO_ACTION, "run": "_confirm_solo_redo", "when": ["solo_redo"]},
+	"photo": {"text": "Photo for your last contribution", "run": "_offer_recent_photo", "with_receipt": true, "when": ["photo"]},
+	"checkpoints": {"button": "retry", "run": "_choose_local_checkpoint", "when": ["solo"]},
+	"new_room": {"text": "New room", "primary": true, "run": "_create_another_room", "when": ["online"]},
+	"restart": {"text": "Restart chapter", "primary": true, "run": "_confirm_restart_chapter", "when": ["restart"]},
+	"about": {"text": "About this chapter", "run": "_show_waiting_details", "when": ["about"]},
+	"safety": {"text": "Report or block player", "run": "_open_safety", "when": ["safety"]},
+	"room_options": {"text": "Room options", "custom": true, "waiting": "outlined", "when": ["options"]},
+	"your_rooms": {"text": "Your rooms", "custom": true, "waiting": "first_free", "when": []},
+	"back": {"button": "back", "run": "_leave", "when": []},
 }
 
 ## state: {slot: action ids in screen order}. A state is drawn slot by slot:
@@ -85,22 +96,23 @@ const LAYOUT := {
 ## Cards outside the room panel (pause, review) add these rows when they apply.
 const REDO_ACTIONS := ["redo_answer", "redo", "solo_redo"]
 
-## The ids of one slot of one state that apply now. `fact` answers a fact name
-## with a bool; facts are read in row order and only as far as needed.
+## The ids of one slot of one state that apply now. `fact(name, state)`
+## answers a fact with a bool; facts are read in row order and only as far as
+## needed.
 static func shown(state: String, slot: String, fact: Callable) -> Array[String]:
 	var ids: Array[String] = []
 	for id: String in LAYOUT.get(state, {}).get(slot, []):
-		if applies(id, fact): ids.append(id)
+		if applies(id, fact, state): ids.append(id)
 	return ids
 
-static func applies(id: String, fact: Callable) -> bool:
+static func applies(id: String, fact: Callable, state: String = "") -> bool:
 	for name: String in ACTIONS[id].when:
-		if name.begins_with("!") == bool(fact.call(name.trim_prefix("!"))): return false
+		if name.begins_with("!") == bool(fact.call(name.trim_prefix("!"), state)): return false
 	return true
 
 static func label(id: String, fact: Callable = Callable()) -> String:
 	var row: Dictionary = ACTIONS[id]
-	if id == "redo" and fact.is_valid(): return redo_label(false, fact.call("my_turn"))
+	if id == "redo" and fact.is_valid(): return redo_label(false, fact.call("my_turn", ""))
 	return str(ActionButtons.DEFINITIONS[row.button].label) if row.has("button") else str(row.text)
 
 ## A redo request button's label, for the online room and the legacy room page.

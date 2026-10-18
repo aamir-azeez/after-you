@@ -139,6 +139,10 @@ var notification_offer: Button
 var _waiting_notify_section := false
 var _waiting_notify_offered := false
 var _room_options_modal: Control
+## The room action table state drawn now ("" for any other card), and the mode
+## it was drawn in. Room options act only while both still hold.
+var _room_state := ""
+var _room_state_mode := ""
 var _options_sync_status: Label
 var completion_remaining := 0.0
 var _completion_is_replay := false
@@ -613,11 +617,6 @@ func _show_ready() -> void:
 	# A tap still waiting keeps its label on the redrawn button.
 	if _turn_gate != null and _ready_turn_buttons.has(_turn_gate_action): _turn_gate.follow(_ready_turn_buttons[_turn_gate_action])
 
-## The room action table state drawn now ("" for any other card), and the mode
-## it was drawn in. Room options act only while both still hold.
-var _room_state := ""
-var _room_state_mode := ""
-
 func _set_room_state(state: String) -> void:
 	_room_state = state
 	_room_state_mode = mode if not state.is_empty() else ""
@@ -630,11 +629,16 @@ func _room_state_current() -> bool:
 func _room_facts() -> Callable:
 	return _room_fact.bind({})
 
-func _room_fact(name: String, known: Dictionary) -> bool:
-	if not known.has(name): known[name] = _read_room_fact(name, known)
-	return known[name]
+func _room_fact(name: String, state: String, known: Dictionary) -> bool:
+	# Only "options" depends on the state it is read for. It reads false while
+	# it is being read, so no row can make it read itself.
+	var key := name + ":" + state if name == "options" else name
+	if not known.has(key):
+		known[key] = false
+		known[key] = _read_room_fact(name, state, known)
+	return known[key]
 
-func _read_room_fact(name: String, known: Dictionary) -> bool:
+func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 	match name:
 		"online": return online_session != null
 		"solo": return online_session == null
@@ -657,18 +661,18 @@ func _read_room_fact(name: String, known: Dictionary) -> bool:
 		"photo": return not _recent_photo_receipt().is_empty()
 		"about": return not _waiting_details_stage().is_empty()
 		"safety": return _safety_available()
-		"options": return not RoomActions.shown(_room_state, "options", _room_fact.bind(known)).is_empty()
+		"options": return not RoomActions.shown(state, "options", _room_fact.bind(known)).is_empty()
 	push_error("Unknown room action fact: " + name)
 	return false
 
-## The handler a table row names, with its bound arguments. The photo row keeps
-## the receipt it was drawn for.
+## The handler a plain table row names, with its bound arguments and, for a
+## with_receipt row, the receipt it was drawn for.
 func _room_action_handler(id: String) -> Callable:
 	var row: Dictionary = RoomActions.ACTIONS[id]
 	var run := Callable(self, str(row.run)).bindv(row.get("bind", []))
-	return run.bind(_recent_photo_receipt()) if id == "photo" else run
+	return run.bind(_recent_photo_receipt()) if row.get("with_receipt", false) else run
 
-## A table row as the shared action button or a plain card button.
+## A plain table row as the shared action button or a plain card button.
 func _room_action_button(id: String, facts: Callable, run: Callable = Callable()) -> Button:
 	var row: Dictionary = RoomActions.ACTIONS[id]
 	if not run.is_valid(): run = _room_action_handler(id)
@@ -679,36 +683,52 @@ func _room_action_button(id: String, facts: Callable, run: Callable = Callable()
 func _add_room_actions(parent: Container, state: String, slot: String, facts: Callable) -> void:
 	for id: String in RoomActions.shown(state, slot, facts): _add_room_action(parent, id, facts, slot == "header")
 
-## Adds one table row when it applies. Most rows are one button; the
-## invitation code, Share and notifications bring their own rows, and a header
-## action is an icon.
-func _add_room_action(parent: Container, id: String, facts: Callable = Callable(), icon_only: bool = false) -> void:
+## Adds one table row when it applies and returns its button. Most rows are
+## one button; custom rows and Notify bring their own widgets, and a header
+## action is an icon. `lead` gives a "first_free" row the cream look.
+func _add_room_action(parent: Container, id: String, facts: Callable = Callable(), icon_only: bool = false, lead: bool = false) -> Button:
 	if not facts.is_valid(): facts = _room_facts()
-	if not RoomActions.applies(id, facts): return
+	if not RoomActions.applies(id, facts, _room_state): return null
+	var row: Dictionary = RoomActions.ACTIONS[id]
 	var short_layout: bool = is_instance_valid(_room_ready_panel) and _room_ready_panel.short_layout
+	var label := RoomActions.label(id, facts)
+	if _room_state == "waiting_panel": label = str(row.get("short", label))
+	var button: Button
 	match id:
 		"copy_code":
 			if _room_state == "ready_panel":
 				_add_invitation_code_row(parent, 50 if short_layout else 64, short_layout)
 			elif _room_state == "ready_card":
 				var status := _feedback_label("RelayCopyStatus")
-				var copy := _panel_button(RoomActions.label(id), false)
-				copy.name = "CopyInvitationCode"
-				copy.pressed.connect(_copy_invitation.bind(status))
-				parent.add_child(copy)
+				button = _panel_button(label, false)
+				button.name = "CopyInvitationCode"
+				button.pressed.connect(_copy_invitation.bind(status))
+				parent.add_child(button)
 				parent.add_child(status)
 			else:
 				_add_invitation_code_row(parent, 52)
 		"share":
-			var scope := _label(RoomActions.SHARE_SCOPE, 17)
+			# The waiting panel keeps its Share result line hidden until it has one.
+			var scope := _label("" if _room_state == "waiting_panel" else RoomActions.SHARE_SCOPE, 17)
+			scope.visible = _room_state != "waiting_panel"
 			if _room_state == "ready_panel": scope.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			var share := _add_share_action(parent, RoomActions.SHARE, false, scope)
-			if _room_state == "ready_panel":
-				_room_icon_button(share, RoomActions.ACTIONS[id].icon, RoomActions.SHARE)
-				_style_share(share)
-				ControlTheme.inset_button(share)
-				ControlTheme.center_icon_label(share)
-				share.custom_minimum_size.y = 54 if short_layout else 64
+			button = _add_share_action(parent, label, lead, scope)
+			if button != null and _room_state == "ready_panel":
+				_room_icon_button(button, row.icon, label)
+				_style_share(button)
+				ControlTheme.inset_button(button)
+				ControlTheme.center_icon_label(button)
+				button.custom_minimum_size.y = 54 if short_layout else 64
+		"room_options":
+			button = _panel_button(label, false)
+			button.name = "RoomOptions"
+			button.pressed.connect(_open_room_options.bind(button))
+			parent.add_child(button)
+		"your_rooms":
+			button = _panel_button(label, lead)
+			button.name = "YourRooms"
+			button.pressed.connect(_leave)
+			parent.add_child(button)
 		"notify":
 			var section := _label("Notifications", 17)
 			section.name = "WaitingNotificationsLabel"
@@ -719,16 +739,19 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 			notification_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			parent.add_child(notification_hint)
 			notification_offer = _room_action_button(id, facts)
-			parent.add_child(notification_offer)
+			button = notification_offer
+			parent.add_child(button)
 			update_notification_offer()
 		_:
-			var button := _room_action_button(id, facts)
-			if icon_only: _room_icon_button(button, RoomActions.ACTIONS[id].icon, button.text, true)
+			assert(not row.get("custom", false), "A custom room action needs its own widget: " + id)
+			button = _room_action_button(id, facts)
+			if icon_only: _room_icon_button(button, row.icon, button.text, true)
 			parent.add_child(button)
 			if id in ["resume", "record"]: _ready_turn_buttons[id] = button
 			if id == "record" and _room_state == "ready_panel": button.custom_minimum_size.y = 54 if short_layout else 64
 			# A friend's redo request needs an answer; it is also announced once.
 			if id == "redo_answer": _announce_pending_redo()
+	return button
 
 ## The online replays row: the finished pairs from the first.
 func _play_replays() -> void:
@@ -1010,7 +1033,7 @@ func _show_online_waiting() -> void:
 	# The invitation is only useful until a friend has joined.
 	if not RoomActions.shown(state, "invite", facts).is_empty():
 		_add_room_actions(_group(card, 8) if compact else card, state, "invite", facts)
-	var notify := pending.is_empty() and _notifications_available()
+	var notify := RoomActions.applies("notify", facts, state)
 	if compact or notify:
 		var divider := HSeparator.new()
 		divider.name = "WaitingNotificationsDivider"
@@ -1018,41 +1041,26 @@ func _show_online_waiting() -> void:
 	var actions: VBoxContainer = _group(card, 12) if compact else card
 	notification_hint = null
 	notification_offer = null
-	_waiting_notify_section = compact and notify and pending.is_empty()
+	_waiting_notify_section = compact and notify
 	_waiting_notify_offered = false
 	if not compact:
 		_add_room_actions(card, state, "turn", facts)
 		_add_online_sync_status(card)
 		_add_room_actions(card, state, "more", facts)
 		return
-	# One cream action per panel: Notify, else Share room, else Your rooms.
+	# One cream action per panel, placed by each row's "waiting" field.
 	var primary_taken := false
 	var secondary: Array[Button] = []
 	var share: Button = null
-	var share_status: Label = null
 	for id: String in RoomActions.shown(state, "turn", facts):
-		match id:
-			"share":
-				share_status = _label("", 17)
-				share_status.visible = false
-				share = _add_share_action(actions, RoomActions.SHARE_SHORT, not primary_taken, share_status)
-				if primary_taken: secondary.append(share)
-				primary_taken = true
-			"room_options":
-				var options := _panel_button(RoomActions.label(id), false)
-				options.name = "RoomOptions"
-				options.pressed.connect(_open_room_options.bind(options))
-				secondary.append(options)
-			"your_rooms":
-				var rooms := _panel_button(RoomActions.label(id), not primary_taken)
-				rooms.name = "YourRooms"
-				rooms.pressed.connect(_leave)
-				if primary_taken: secondary.append(rooms)
-				else: actions.add_child(rooms)
-			_:
-				_add_room_action(actions, id, facts)
-		if id == "check_saved": primary_taken = true
-		elif id == "notify": primary_taken = _waiting_notify_offered
+		var place := str(RoomActions.ACTIONS[id].get("waiting", ""))
+		var lead := place == "first_free" and not primary_taken
+		var button := _add_room_action(actions, id, facts, false, lead)
+		if button == null: continue
+		if button.has_meta("status"): share = button
+		if place == "primary" and button.visible: primary_taken = true
+		elif lead: primary_taken = true
+		elif place in ["first_free", "outlined"]: secondary.append(button)
 	for button: Button in secondary:
 		if button.get_parent() != null: button.get_parent().remove_child(button)
 	# Concept 06 pairs the first two outlined actions; any further one is full width.
@@ -1070,6 +1078,7 @@ func _show_online_waiting() -> void:
 		button.custom_minimum_size.y = maxf(button.custom_minimum_size.y, 52)
 	# Share feedback sits directly under the control that holds Share.
 	if share != null:
+		var share_status: Label = share.get_meta("status")
 		var holder: Node = share if share.get_parent() == actions else share.get_parent()
 		actions.move_child(share_status, -1)
 		actions.move_child(share_status, holder.get_index() + 1)

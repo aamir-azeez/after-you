@@ -455,6 +455,7 @@ func _real_ui_flow() -> void:
 	_check(app.soundscape.backgrounded and not preview.soundscape.backgrounded,"Android resume keeps retained parent's audio suspended while child owns sound")
 	_check(not app.world.is_processing(),"Android resume keeps the hidden parent world suspended")
 	_check(preview.journey==app.relay_session.coordinator and preview.mode=="ready","Online presentation uses tested room coordinator instead of solo save")
+	_check(_panel_texts(preview) == ["Copy", "Share current room", "Record"] and _header_texts(preview) == ["[icon] Back", "[icon] Refresh"],"The host's ready panel before the friend joins: Copy, Share current room, Record, with Refresh in the header %s %s" % [str(_panel_texts(preview)), str(_header_texts(preview))])
 	var clipboard := {"calls":0,"text":"unchanged","works":true}
 	preview.clipboard_copy = func(text: String):
 		clipboard.calls += 1
@@ -506,6 +507,7 @@ func _real_ui_flow() -> void:
 	_check(api.calls.size()==manual_calls+1 and api.calls.back().method==HTTPClient.METHOD_GET and api.calls.back().path=="/v2/rooms/"+ROOM,"Manual refresh reads only the active room, without unrelated capability or lobby downloads")
 	_check(preview.online_sync_status != null and preview.online_sync_status.text in _checking_lines(),"Waiting room says it keeps checking for the friend's turn")
 	await _check_waiting_layout(preview,viewport,"host waiting before the friend joins")
+	_check(_panel_texts(preview) == ["Copy", "Notify me when my friend returns", "Share room", "Room options", "Your rooms"],"The host's waiting panel before the friend joins: Copy, Notify, Share room, Room options, Your rooms %s" % [str(_panel_texts(preview))])
 	var waiting_copy: Label = preview.overlay.find_child("RelayCopyStatus",true,false)
 	preview.clipboard_copy = func(_text: String): return true
 	if waiting_copy != null: preview._copy_invitation(waiting_copy)
@@ -749,6 +751,15 @@ func _check_waiting_layout(preview, viewport: SubViewport, context: String) -> v
 	preview._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await process_frame
 	_check(preview.mode=="online_waiting" and not is_instance_valid(preview._room_options_modal),"Android Back closes Room options before leaving the room: "+context)
+
+## The room panel's visible action buttons, top to bottom, as drawn.
+func _panel_texts(preview) -> Array:
+	if not is_instance_valid(preview._room_ready_panel): return []
+	return preview._room_ready_panel.actions.find_children("*","Button",true,false).filter(func(button: Button): return button.is_visible_in_tree()).map(func(button: Button): return button.text if not button.text.is_empty() else "[icon] "+button.accessibility_name)
+
+func _header_texts(preview) -> Array:
+	if not is_instance_valid(preview._room_ready_panel): return []
+	return preview._room_ready_panel.header.find_children("*","Button",true,false).map(func(button: Button): return button.text if not button.text.is_empty() else "[icon] "+button.accessibility_name)
 
 func _visible_buttons(preview) -> Array:
 	return preview.overlay.find_children("*","Button",true,false).filter(func(button: Button): return button.is_visible_in_tree())

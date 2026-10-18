@@ -57,9 +57,12 @@ func _run() -> void:
 	print("ROOM ACTIONS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-## Every action has a label, a handler on the room screen and at least one place.
+## Every action has a label, at least one place, and either a handler on the
+## room screen that takes exactly its bound arguments or a custom widget.
 func _rows() -> void:
 	var screen := Preview.new()
+	var methods := {}
+	for method: Dictionary in screen.get_method_list(): methods[method.name] = method
 	var placed := {}
 	for state: String in RoomActions.LAYOUT:
 		for slot: String in RoomActions.LAYOUT[state]:
@@ -69,14 +72,25 @@ func _rows() -> void:
 		_check(not RoomActions.label(id).is_empty(), "Action has a label: " + id)
 		_check(not row.has("button") or ActionButtons.DEFINITIONS.has(row.button), "A shared button action exists: " + id)
 		_check(row.has("button") != row.has("text"), "Action is either a shared button or a plain labelled button: " + id)
-		_check(screen.has_method(str(row.get("run", ""))), "Action names a handler on the room screen: " + id)
 		_check(placed.has(id), "Action has at least one place: " + id)
-		_check(row.has("when") and row.has("group"), "Action says when it applies and its Room options group: " + id)
+		_check(row.has("when"), "Action says when it applies: " + id)
+		_check(row.get("waiting", "primary") in ["primary", "first_free", "outlined"], "Action has a known waiting panel place: " + id)
+		if row.get("custom", false):
+			_check(not row.has("run") and not row.has("bind"), "A custom action is wired only by the screen: " + id)
+			continue
+		var method: Dictionary = methods.get(str(row.get("run", "")), {})
+		_check(not method.is_empty(), "Action names a handler on the room screen: " + id)
+		if method.is_empty(): continue
+		var takes: int = row.get("bind", []).size() + (1 if row.get("with_receipt", false) else 0)
+		var most: int = method.args.size()
+		var least: int = most - method.default_args.size()
+		_check(takes >= least and takes <= most, "Handler %s takes the %d arguments the row gives it: %s" % [row.run, takes, id])
+	_check(RoomActions.ACTIONS.photo.get("with_receipt", false) and RoomActions.ACTIONS.photo.get("bind", []).is_empty(), "The photo handler takes one argument, the receipt")
 	screen.free()
 
 ## Each state lists today's actions in today's order; no state shows an action
-## twice; Room options rows have a group and keep each group together; header
-## actions have an icon.
+## twice; custom actions sit only in invite or turn slots; header actions are
+## plain rows with an icon.
 func _layout() -> void:
 	_check(RoomActions.LAYOUT == GOLDEN, "Every state's slots are today's placements")
 	for state: String in RoomActions.LAYOUT:
@@ -86,21 +100,15 @@ func _layout() -> void:
 				_check(RoomActions.ACTIONS.has(id), "Placed action exists: %s in %s" % [id, state])
 				_check(not seen.has(id), "A state shows an action once: %s in %s" % [id, state])
 				seen[id] = true
+				if RoomActions.ACTIONS[id].get("custom", false): _check(slot in ["invite", "turn"], "A custom action sits only in an invite or turn slot: %s in %s.%s" % [id, state, slot])
 				if slot == "header": _check(RoomActions.ACTIONS[id].has("icon"), "A header action has an icon: " + id)
-		var groups: Array[String] = []
-		for id: String in RoomActions.LAYOUT[state].get("options", []):
-			var group := str(RoomActions.ACTIONS[id].group)
-			_check(not group.is_empty(), "A Room options action has a group: " + id)
-			if groups.is_empty() or groups[-1] != group:
-				_check(not groups.has(group), "Room options keeps each group together: " + group)
-				groups.append(group)
 	_check(RoomActions.REDO_ACTIONS == ["redo_answer", "redo", "solo_redo"], "Pause and review cards add the three redo rows")
 
 ## Rows apply when their facts hold, read in order and only as far as needed;
 ## each state's slot filters to what the hand-built panel showed.
 func _facts() -> void:
 	var read: Array[String] = []
-	var none := func(name: String) -> bool:
+	var none := func(name: String, _state: String) -> bool:
 		read.append(name)
 		return false
 	_check(RoomActions.shown("ready_card", "turn", none) == ["record", "back"], "With no facts the ready card is Record and Back")
@@ -185,7 +193,7 @@ func _texts(app: Node) -> Array:
 	return app.overlay.find_children("*", "Button", true, false).filter(func(button: Button): return button.is_visible_in_tree()).map(func(button: Button): return button.text)
 
 func _facts_from(values: Dictionary) -> Callable:
-	return func(name: String) -> bool: return values.get(name, false)
+	return func(name: String, _state: String) -> bool: return values.get(name, false)
 
 func _fixture(name: String) -> Dictionary:
 	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))
