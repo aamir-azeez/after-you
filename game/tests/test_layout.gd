@@ -196,7 +196,7 @@ func _check_card_contents(node: Node, screen: Rect2, context: String) -> void:
 	# Check the original visible composition again after restoring every scroll.
 	for index in range(controls.size()):
 		for other in range(index):
-			_check(not _drawn_rect(controls[index]).intersects(_drawn_rect(controls[other])),context+" visible actions do not overlap: "+controls[index].text+" / "+controls[other].text)
+			_check(not _drawn_rect(controls[index]).intersects(_drawn_rect(controls[other])),context+" visible actions do not overlap: %s / %s at %s" % [_named(controls[index]),_named(controls[other]),screen.size])
 
 func _scroll_parents(control: Control) -> Array[ScrollContainer]:
 	var result: Array[ScrollContainer] = []
@@ -210,6 +210,10 @@ func _visible_bounds_inside(control: Control, screen: Rect2) -> bool:
 	if _scroll_parents(control).is_empty(): return screen.encloses(control.get_global_rect())
 	var drawn := _drawn_rect(control)
 	return not drawn.has_area() or screen.encloses(drawn)
+
+## A button's text, or its node name when it shows none (a Settings row).
+func _named(button: Button) -> String:
+	return button.text if not button.text.is_empty() else str(button.name)
 
 func _drawn_rect(control: Control) -> Rect2:
 	var result := control.get_global_rect()

@@ -66,6 +66,8 @@ var _categories: Array[Dictionary] = []
 var _rows: Array[Dictionary] = []
 var _rail: Dictionary = {}
 var _title: Label
+var _head: HBoxContainer
+## The title row's reset, for a category that has one.
 var _reset: Button
 var _list: VBoxContainer
 var _scroll: ScrollContainer
@@ -123,6 +125,7 @@ func view_current(token: int) -> bool:
 
 func _forget() -> void:
 	_page = null
+	_reset = null
 	_live.clear()
 	_rail.clear()
 	_rows.clear()
@@ -240,10 +243,7 @@ func _panel() -> Control:
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	head.add_child(_title)
-	_reset = Kit.reset_button("")
-	_reset.name = "ResetCategory"
-	_reset.pressed.connect(_confirm_reset)
-	head.add_child(_reset)
+	_head = head
 	var title_pad := MarginContainer.new()
 	title_pad.add_theme_constant_override("margin_left", Kit.ROW_PAD)
 	title_pad.add_theme_constant_override("margin_right", Kit.ROW_PAD)
@@ -273,9 +273,15 @@ func _select(id: String, reveal: String = "") -> void:
 	for key: String in _rail: Kit.select_rail_item(_rail[key], key == id)
 	_title.text = str(entry.title)
 	var reset: Dictionary = entry.get("reset", {})
-	_reset.visible = not reset.is_empty()
-	_reset.text = str(reset.get("label", ""))
-	_reset.name = "Reset" + id.capitalize().replace(" ", "")
+	if is_instance_valid(_reset):
+		_head.remove_child(_reset)
+		_reset.queue_free()
+	_reset = null
+	if not reset.is_empty():
+		_reset = Kit.reset_button(str(reset.label))
+		_reset.name = "Reset" + id.capitalize().replace(" ", "")
+		_reset.pressed.connect(_confirm_reset)
+		_head.add_child(_reset)
 	_build_rows(Rows.in_category(_rows, id))
 	if entry.has("on_open"): entry.on_open.call()
 	refresh()
@@ -389,7 +395,7 @@ func refresh() -> void:
 				note.visible = not note.text.is_empty()
 	for id: String in _rail: Kit.set_rail_summary(_rail[id], Rows.summary(Rows.category(_categories, id), _rows, _value))
 	var reset: Dictionary = Rows.category(_categories, _category).get("reset", {})
-	_reset.disabled = reset.is_empty() or _at_defaults(reset.rows)
+	if is_instance_valid(_reset): _reset.disabled = reset.is_empty() or _at_defaults(reset.rows)
 	if _spirit.has_method("set_reduced"): _spirit.set_reduced(bool(host.saves.data.settings.get("reduced_motion", false)))
 
 func _at_defaults(ids: Array) -> bool:

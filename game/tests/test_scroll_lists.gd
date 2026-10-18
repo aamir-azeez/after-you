@@ -210,7 +210,7 @@ func _settings_licenses(app: Node, viewport: SubViewport, expected: Array[String
 		await _settle()
 		var before_scroll := scroll.scroll_vertical
 		await _drag(viewport, rows[2].get_global_rect().get_center(), Vector2(0, -130))
-		var retained := is_instance_valid(scroll) and scroll.is_inside_tree() and scroll.get_instance_id() == list_id and app.mode == "settings"
+		var retained: bool = is_instance_valid(scroll) and scroll.is_inside_tree() and scroll.get_instance_id() == list_id and app.mode == "settings"
 		_check(retained, context + " drag does not launch a row or replace the current menu")
 		if not retained: return
 		_check(scroll.scroll_vertical > before_scroll, context + " viewport drag scrolls over actual row controls")
