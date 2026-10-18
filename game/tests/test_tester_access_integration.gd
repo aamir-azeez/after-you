@@ -184,7 +184,16 @@ func _main_flow() -> void:
 	await process_frame
 	await process_frame
 	var entry := _button(scene, "Tester code")
-	_check(entry != null and entry.get_global_rect().end.y <= 720, "Settings Tester code is reachable at the supported small viewport")
+	# Settings scrolls: scrolled to, the entry must sit wholly inside the
+	# list's visible area, and that area on screen.
+	var scroll: Node = entry.get_parent() if entry != null else null
+	while scroll != null and not scroll is ScrollContainer: scroll = scroll.get_parent()
+	_check(scroll is ScrollContainer, "Settings Tester code sits in the scrolling Settings list")
+	if scroll is ScrollContainer:
+		scroll.ensure_control_visible(entry)
+		await process_frame
+	var reachable: bool = entry != null and scroll is ScrollContainer and scroll.get_global_rect().encloses(entry.get_global_rect()) and scroll.get_global_rect().end.y <= 720
+	_check(reachable, "Settings Tester code is reachable at the supported small viewport")
 	if entry != null: entry.pressed.emit()
 	await process_frame
 	await process_frame
