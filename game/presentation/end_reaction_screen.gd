@@ -102,15 +102,28 @@ static func pop_replay(ctx: Dictionary, runs: Array) -> float:
 		if not Store.is_face(face): continue
 		var actor: Variant = world.actors.get(slot_of(ctx, run))
 		if not actor is Node3D or not (actor as Node3D).is_inside_tree(): continue
-		var camera: Camera3D = world.camera
-		var above := (actor as Node3D).global_position + Vector3(0, 1.5, 0)
-		if camera.is_position_behind(above): continue
-		var at: Vector2 = (hud as Control).get_global_transform_with_canvas().affine_inverse() * camera.unproject_position(above)
-		if EndReactions.pop(hud, at, face, color_of(ctx, run), settings, hold + 0.2) == null: continue
+		var at: Variant = _above(world.camera, actor, hud)
+		if not at is Vector2: continue
+		# The bubble stays over its spirit while the camera settles.
+		var refs := [weakref(world.camera), weakref(actor), weakref(hud)]
+		var follow := func() -> Variant: return _above(refs[0], refs[1], refs[2])
+		if EndReactions.pop(hud, at, face, color_of(ctx, run), settings, hold + 0.2, follow) == null: continue
 		shown += 1
 		var sound := sound_for(ctx, run)
 		if sound.is_valid(): sound.call(face)
 	return hold if shown > 0 else 0.0
+
+## The screen point just above a spirit's head in `hud`, or null when it
+## cannot show (behind the camera, or anything gone). Takes the nodes or
+## weak references to them.
+static func _above(camera_ref: Variant, actor_ref: Variant, hud_ref: Variant) -> Variant:
+	var camera: Variant = camera_ref.get_ref() if camera_ref is WeakRef else camera_ref
+	var actor: Variant = actor_ref.get_ref() if actor_ref is WeakRef else actor_ref
+	var hud: Variant = hud_ref.get_ref() if hud_ref is WeakRef else hud_ref
+	if not camera is Camera3D or not actor is Node3D or not hud is Control or not (actor as Node3D).is_inside_tree() or not (camera as Camera3D).is_inside_tree(): return null
+	var above := (actor as Node3D).global_position + Vector3(0, 1.5, 0)
+	if (camera as Camera3D).is_position_behind(above): return null
+	return (hud as Control).get_global_transform_with_canvas().affine_inverse() * (camera as Camera3D).unproject_position(above)
 
 ## The slot ("p0" or "p1") that played `recording`: its stage's first slot for
 ## a first turn, the other for a second.

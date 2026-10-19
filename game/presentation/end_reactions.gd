@@ -87,10 +87,15 @@ static func attach(container: Node, value: Dictionary) -> Control:
 
 ## A bubble on its own over `parent` at `at` (its tail's tip), popping in and
 ## fading away after `hold` seconds, then freed. For a rewatched turn's end.
-static func pop(parent: Node, at: Vector2, face: String, color: String, settings: Dictionary = {}, hold: float = 1.6) -> Control:
+## `follow`, when given, is Callable() -> Variant: the tip's point each frame
+## while the bubble lives (a spirit the camera still moves past), or null to
+## stay put. Only these short-lived bubbles do anything per frame.
+static func pop(parent: Node, at: Vector2, face: String, color: String, settings: Dictionary = {}, hold: float = 1.6, follow: Callable = Callable()) -> Control:
 	if not is_instance_valid(parent) or not Store.is_face(face): return null
 	var bubble := Bubble.new(face, color)
 	bubble.position = at - Vector2(BUBBLE_SIZE.x * 0.5, BUBBLE_SIZE.y)
+	bubble.follow = follow
+	bubble.set_process(follow.is_valid())
 	parent.add_child(bubble)
 	bubble.show_face(face, not bool(settings.get("reduced_motion", false)))
 	var fade := bubble.create_tween()
@@ -413,6 +418,12 @@ class Bubble extends Control:
 	var face := ""
 	var color := "peach"
 	var tail := TAIL_DOWN
+	var follow: Callable
+	func _ready() -> void:
+		set_process(follow.is_valid())
+	func _process(_delta: float) -> void:
+		var at: Variant = follow.call() if follow.is_valid() else null
+		if at is Vector2: position = (at as Vector2) - Vector2(size.x * 0.5, size.y)
 	func _init(face_id: String, spirit_color: String, factor: float = 1.0) -> void:
 		face = face_id
 		color = spirit_color

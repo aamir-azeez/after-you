@@ -503,6 +503,13 @@ func _screen_glue() -> void:
 	var hold := EndReactionScreen.pop_replay(ctx, [fixtures["garden-b"], fixtures["garden-a"]])
 	_check(hold > 0.0 and hud.get_child_count() == 2 and scape.played.size() == 2, "A rewatched part pops both faces with their sounds and holds a moment")
 	_check(scape.played[0] == ["relay-isles@2", "garden", "b", str(fixtures["garden-b"].recording_hash), "squeeze"], "The same reaction sounds the same in a rewatch")
+	var popped: Control = hud.get_child(0)
+	var before := popped.position
+	world.camera.position += Vector3(2, 0, 0)
+	world.camera.look_at(Vector3(2, 0, 0))
+	await process_frame
+	await process_frame
+	_check(popped.position != before, "A rewatch bubble stays over its spirit while the camera moves")
 	var faceless: Dictionary = fixtures["relay-b"].duplicate(true)
 	faceless.recording_hash = "d".repeat(64)
 	_check(EndReactionScreen.pop_replay(ctx, [faceless, {}]) == 0.0 and hud.get_child_count() == 2, "A part without faces pops nothing and does not hold")
