@@ -9,6 +9,7 @@ import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
 import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, roomInbox } from "./room-inbox";
+import { endReactionsWanted } from "./v2/end-reactions";
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
 import { LIVE_PATH, forwardLiveUpgrade } from "./live";
@@ -111,9 +112,11 @@ export default {
       if (path === "/v1/room-inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
         const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = flags.finishedRoomLeave(env) && request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
+        // The face on the friend's latest turn, only for clients that show it while end reactions are on.
+        const showReactions = flags.endReactions(env) && endReactionsWanted(request);
         const links = flags.roomIndex(env) ? null : await player.listRooms();
-        if (links && links.length <= MAX_ROOM_LINKS) return json(await roomInbox(playerId, env, showClosed, showLeft, links));
-        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request));
+        if (links && links.length <= MAX_ROOM_LINKS) return json(await roomInbox(playerId, env, showClosed, showLeft, links, showReactions));
+        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions);
         return withNext(json(page.body), page.next);
       }
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));

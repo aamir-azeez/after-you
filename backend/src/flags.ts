@@ -64,6 +64,8 @@ export const FLAG_VARS = Object.freeze({
   liveConnection: "LIVE_CONNECTION_ENABLED",
   /** Turn try counts: the capability and GET .../tries. Turns may carry a count whatever the flag. */
   turnTries: "TURN_TRIES_ENABLED",
+  /** End-of-run reactions: the capability, faces on room reads and GET .../end-reactions. Turns may carry a face whatever the flag. */
+  endReactions: "END_REACTIONS_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;

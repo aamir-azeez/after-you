@@ -25,6 +25,7 @@ import { parsePosition } from "./history-room";
 import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
+import { endReactionField, endReactionsWanted } from "./end-reactions";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -96,6 +97,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(pollRedo(request) ? { poll_redo_version: 1 } : {}),
     // Only clients that send and read try counts ask; the flag decides whether they may.
     ...(triesWanted(request) && flags.turnTries(env) ? { turn_tries_version: 1 } : {}),
+    // Only clients that send and show end reactions ask; the flag decides whether they may.
+    ...(endReactionsWanted(request) && flags.endReactions(env) ? { end_reactions_version: 1 } : {}),
     ...liveCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
@@ -203,7 +206,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     throw new ApiError(405, "method_not_allowed");
   }
-  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations|leave|tries)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
+  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations|leave|tries|end-reactions)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
   // Only the caller's own standalone link; Story rooms are version 3 links and are never removed here.
@@ -220,6 +223,13 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
     return json(unwrap(await room.tries(playerId)));
   }
+  if (operation === "end-reactions") {
+    if (!flags.endReactions(env)) throw new ApiError(503, "end_reactions_disabled");
+    if (item || request.method !== "GET") throw new ApiError(405, "method_not_allowed");
+    if (context !== undefined) throw new ApiError(409, "end_reactions_standalone_only");
+    await requireInteraction(env, playerId, "relay", id, context, safetyToken);
+    return json(unwrap(await room.endReactions(playerId)));
+  }
   // DELETE photo bypasses the interaction gate so owners can remove media.
   // It must still negotiate before inspecting recording/photo authority.
   if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
@@ -232,8 +242,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (!operation && request.method === "GET") {
     const known = context === undefined ? knownRoom(request) : undefined;
-    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env), pollRedo(request))
-      : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined);
+    const faces = context === undefined && endReactionsWanted(request) && flags.endReactions(env);
+    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env), pollRedo(request), faces)
+      : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined, faces);
     if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, env, context)) throw new ApiError(409, "campaign_client_required");
     return json(unwrap(snapshot));
   }
@@ -284,7 +295,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);
     const body = object(input);
     exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
-      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : []), ...triesField(body)]);
+      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : []), ...triesField(body), ...endReactionField(body)]);
     const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key, context);
     if (previous.ok) {
       if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation, ...body }))) throw new ApiError(409, "idempotency_key_reused");
@@ -298,5 +309,6 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireRoomHostAccess(room, snapshot.host_id, env);
     await reauthorize(request, playerId, env);
   }
-  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context) : await room.fork(playerId, input, context, await bearerDigest(request))));
+  const faces = context === undefined && endReactionsWanted(request) && flags.endReactions(env);
+  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context, faces) : await room.fork(playerId, input, context, await bearerDigest(request))));
 }

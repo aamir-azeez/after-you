@@ -52,12 +52,12 @@ function stored(row: RoomIndexRow | null): Outcome<RoomInboxProjection> | null {
  * marks `read` are read live and stored, the rest come from their rows, and
  * every entry is built by inboxEntry, as in roomInbox.
  */
-export async function indexedRoomInbox(playerId: string, env: Env, showClosed: boolean, showLeft: boolean, offset: number): Promise<{ body: { schema_version: 1; rooms: RoomInboxEntry[] }; next: number | null }> {
+export async function indexedRoomInbox(playerId: string, env: Env, showClosed: boolean, showLeft: boolean, offset: number, showReactions = false): Promise<{ body: { schema_version: 1; rooms: RoomInboxEntry[] }; next: number | null }> {
   const page = await env.PLAYERS.getByName(playerId).roomIndexPage("inbox", offset);
   const live = await readAndRecord(env, playerId, [...page.rooms.filter(room => room.read).map(room => room.link), ...page.recheck]);
   const blocked = partnerBlocks(env, playerId);
   const entries = await pooled(page.rooms, ROOM_INBOX_CONCURRENCY, room => inboxEntry(room.link,
-    () => room.read ? live.get(room.link.room_id)?.outcome ?? null : stored(room.row), showClosed, showLeft, blocked));
+    () => room.read ? live.get(room.link.room_id)?.outcome ?? null : stored(room.row), showClosed, showLeft, blocked, showReactions));
   return { body: inboxBody(entries), next: page.next };
 }
 

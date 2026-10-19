@@ -53,6 +53,7 @@ const RELAY_READS: Read<V2>[] = [
   ["redo request", room => room.redo(P, { action: "request", source }, HASH)],
   ["history", room => room.history(P)],
   ["tries", room => room.tries(P)],
+  ["end reactions", room => room.endReactions(P)],
 ];
 const LEGACY_READS: Read<V1>[] = [
   ["join", room => room.join(P, CODE)],

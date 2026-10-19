@@ -15,6 +15,7 @@ import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archiv
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { clearTurnTries, parseTries, recordTries, triesField, turnTriesView, type TurnTriesView } from "./turn-tries";
+import { clearEndReactions, endReactionField, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView } from "./end-reactions";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
 import { snapshotResult } from "../snapshot";
 import { erasePlayerPhotos, getPhoto, getPhotoOperation, mutatePhoto, parsePhotoMutation, PHOTO_TURN_PATTERN, type PhotoMutation } from "./photos";
@@ -52,6 +53,8 @@ export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   api_version: 2; invite_code?: string; active_role: "a" | "b" | "complete";
   first_player_id: string | null; active_player_id: string | null; player_slot: Slot;
   stage_id: string; recording_a: RecordingV2 | null; validation: "structural_client_replay_required";
+  /** Only beside a read for a member that asked for end reactions while they are on (end-reactions.ts). */
+  end_reactions?: EndReactionsView;
 };
 export type RoomLobbyV2 = RoomSnapshotV2 | (Omit<TransferredRoom, "invite_code"> & {
   api_version: 2; active_role: "complete";
@@ -61,7 +64,8 @@ export type ReceiptV2 = {
   accepted_revision: number; branch: number; stage_index: number; stage_id: string;
   turn_id: string | null; recording_hash: string | null; pair_id: string | null; checkpoint_hash: string;
 };
-export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 };
+/** `end_reactions` only for a standalone member that asked for them while they are on (end-reactions.ts). */
+export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2; end_reactions?: EndReactionsView };
 /** The revision and branch a polling member already holds (X-AfterYou-Known-Room). */
 export type KnownRoom = { revision: number; branch: number };
 /** The small poll reply when nothing changed since the member's known revision and branch. */
@@ -286,6 +290,13 @@ export class RoomV2 extends DurableObject<Env> {
       player_slot: player === state.host_id ? "p0" : "p1", stage_id: stage?.id ?? "",
       recording_a: state.a_turn_id ? this.turn(state.a_turn_id) : null, validation: "structural_client_replay_required" };
   }
+  private partnerOf(state: { host_id: string; guest_id: string | null }, player: string): string | null {
+    return player === state.host_id ? state.guest_id : state.host_id;
+  }
+  /** A room view with the room's end reactions beside it, when `faces`. */
+  private withFaces(view: RoomSnapshotV2, state: RoomStateV2, player: string, faces: boolean): RoomSnapshotV2 {
+    return faces ? { ...view, end_reactions: endReactionsView(this.ctx.storage, this.partnerOf(state, player)) } : view;
+  }
   private write(state: RoomStateV2): void {
     state.updated_at = new Date().toISOString();
     this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(state));
@@ -313,10 +324,11 @@ export class RoomV2 extends DurableObject<Env> {
     return ok(this.view(state, host));
   }
   /** `history` is what the member's request said about keeping attempts (the router passes it only while offload is on). */
-  snapshot(player: string, context?: CampaignRoomContext, history?: HistorySupport): Promise<Outcome<RoomSnapshotV2>> {
+  /** `faces`: a standalone member read that asked for end reactions (end-reactions.ts) while they are on. */
+  snapshot(player: string, context?: CampaignRoomContext, history?: HistorySupport, faces = false): Promise<Outcome<RoomSnapshotV2>> {
     return this.project(player, context, () => {
       const state = this.polledState(player, context, history);
-      return state.ok ? ok(this.view(state.value, player)) : state;
+      return state.ok ? ok(this.withFaces(this.view(state.value, player), state.value, player, faces && context === undefined)) : state;
     });
   }
   /**
@@ -325,13 +337,14 @@ export class RoomV2 extends DurableObject<Env> {
    * an unchanged room answers with a small reply instead of the full view.
    * With `withRedo`, either reply ends with `redo`: the same state GET /redo reads.
    */
-  snapshotIfChanged(player: string, known: KnownRoom, history?: HistorySupport, withRedo = false): Promise<Outcome<PolledRoomV2>> {
+  snapshotIfChanged(player: string, known: KnownRoom, history?: HistorySupport, withRedo = false, faces = false): Promise<Outcome<PolledRoomV2>> {
     return this.project<PolledRoomV2>(player, undefined, () => {
       const state = this.polledState(player, undefined, history);
       if (!state.ok) return state;
+      // Faces only move with a turn, which moves the revision, so the small reply never needs them.
       const reply: RoomSnapshotV2 | RoomUnchangedV2 = state.value.revision === known.revision && state.value.branch === known.branch
         ? { schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at }
-        : this.view(state.value, player);
+        : this.withFaces(this.view(state.value, player), state.value, player, faces);
       return ok(withRedo ? { ...reply, redo: redoState(this.ctx.storage, this.redoSource(state.value)) } : reply);
     });
   }
@@ -579,12 +592,19 @@ export class RoomV2 extends DurableObject<Env> {
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  async commit(player: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
+  /** `faces`: the reply also carries the room's end reactions (end-reactions.ts), for a standalone member that asked while they are on. */
+  async commit(player: string, value: unknown, context?: CampaignRoomContext, faces = false): Promise<Outcome<MutationV2>> {
+    const outcome = await this.commitTurn(player, value, context);
+    if (!outcome.ok || !faces || context !== undefined) return outcome;
+    const state = this.stored();
+    return state ? ok<MutationV2>({ ...outcome.value, end_reactions: endReactionsView(this.ctx.storage, this.partnerOf(state, player)) }) : outcome;
+  }
+  private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value);
       const raw = object(input.recording);
-      exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : []), ...triesField(input)]);
-      const tries = parseTries(input);
+      exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : []), ...triesField(input), ...endReactionField(input)]);
+      const tries = parseTries(input), face = parseEndReaction(input);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
       const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const bounded = this.read();
@@ -636,6 +656,7 @@ export class RoomV2 extends DurableObject<Env> {
         state.revision++;
         this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", turn_id, player, state.revision, JSON.stringify(recording));
         if (context === undefined) recordTries(this.ctx.storage, turn_id, recording.recording_hash, tries);
+        if (context === undefined) recordEndReaction(this.ctx.storage, turn_id, recording.recording_hash, player, face);
         if (recording.role === "a") state.a_turn_id = turn_id;
         else {
           const pair: PairV2 = { pair_id: pair_id!, branch, stage_index, a: this.turn(state.a_turn_id!), b: recording, checkpoint: checkpoint! };
@@ -732,6 +753,10 @@ export class RoomV2 extends DurableObject<Env> {
       return ok({ pairs, active_pair_ids: state.completed_pair_ids });
     });
   }
+  /** Standalone rooms: every turn's sent face, live, offloaded or replay-transferred alike. */
+  endReactions(player: string): Promise<Outcome<EndReactionsList>> {
+    return this.project(player, undefined, () => this.memberView(player) ? ok(endReactionsList(this.ctx.storage)) : fail(404, "room_not_found"));
+  }
   /** Standalone rooms: every turn's sent try count, live, offloaded or replay-transferred alike. */
   tries(player: string): Promise<Outcome<TurnTriesView>> {
     return this.project(player, undefined, () => this.memberView(player) ? ok(turnTriesView(this.ctx.storage)) : fail(404, "room_not_found"));
@@ -815,6 +840,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearReplayTransfer(this.ctx.storage);
     clearHistory(this.ctx.storage);
     clearTurnTries(this.ctx.storage);
+    clearEndReactions(this.ctx.storage);
     resetRedo(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     // Last, so nothing after it can roll back the drop under the cached answer in room-departure.ts.
@@ -839,6 +865,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (partner === null || departed(this.ctx.storage, partner)) { await this.eraseRoom(); return ok({ left: true }); }
       for (const turn of erasePlayerPhotos(this.ctx.storage, player)) clearDelivery(this.ctx.storage, turn);
       erasePlayerReactions(this.ctx.storage, player);
+      eraseEndReactionsOf(this.ctx.storage, player);
       recordDeparture(this.ctx.storage, player);
       return ok({ left: true });
     }), true, player);
@@ -853,6 +880,6 @@ answerWhileBlank(RoomV2, {
   safetyMembers: async () => roomNotFound(), snapshot: async () => roomNotFound(), snapshotIfChanged: async () => roomNotFound(), lobbySnapshot: async () => roomNotFound(),
   operation: async () => roomNotFound(), collection: async () => roomNotFound(), pairRecording: async () => roomNotFound(), reactions: async () => roomNotFound(),
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
-  redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
+  redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
   campaignDrainCensus: () => absentCensus()
 });
