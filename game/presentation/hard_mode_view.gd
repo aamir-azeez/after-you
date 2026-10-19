@@ -8,8 +8,11 @@ extends RefCounted
 ## band and its buttons. When `ending_extras_provider` is set, every such card
 ## calls it once with (extras, context), where context is
 ## {"kind": "failed" or "complete", "chapter_key", "together", "room_id",
-## "run" (the kept run, services/hard_mode.gd run_record)}. The provider adds
-## whatever it shows (end reactions) to `extras`; it must not keep the card.
+## "run" (the kept run, services/hard_mode.gd run_record), "number" (the
+## room's slip count, 0 solo), "reactions" (Callable() -> the screen's end
+## reaction context)}. The provider adds whatever it shows to `extras`; it must
+## not keep the card. End reactions install it when they load
+## (presentation/end_reaction_screen.gd attach_hard).
 const HardMode = preload("res://services/hard_mode.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const EndingBadge = preload("res://presentation/ending_badge.gd")

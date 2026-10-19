@@ -236,6 +236,15 @@ describe("hard rooms", () => {
     expect(done.status).toBe(409); expect(await errorCode(done)).toBe("hard_run_complete");
   });
 
+  it("carry a turn's end reaction like any room, beside the hard field", async () => {
+    const { host, guest, room } = await hardRoom();
+    const sent = await submit(room, host, firstA, undefined, { end_reaction: "happy", tries: 1 });
+    expect(sent.status).toBe(200);
+    const seen = await (await call(`/v2/rooms/${room.room_id}`, "GET", guest, undefined, { ...ON, END_REACTIONS_ENABLED: "true" }, { "X-AfterYou-End-Reactions": "1" })).json<RoomSnapshotV2>();
+    expect(seen.hard).toBeDefined();
+    expect(seen.end_reactions).toEqual({ schema_version: 1, faces: { [firstA.recording_hash]: "happy" }, partner: "happy" });
+  });
+
   it("cost one request and no more per slip, and nothing more per turn", async () => {
     const { host, guest, room } = await hardRoom();
     const counted = countingEnv(env);

@@ -16,6 +16,7 @@ const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
 const Replays = preload("res://presentation/replays_flow.gd")
 const Preview = preload("res://relay_preview.gd")
 const Journey = preload("res://services/relay_journey.gd")
+const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const HASH_A := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const HASH_B := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
@@ -37,6 +38,7 @@ func _run() -> void:
 	_replays()
 	await _screen_glue()
 	await _solo_screen()
+	await _hard_cards()
 	_clear_default_store()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
@@ -514,6 +516,57 @@ func _screen_glue() -> void:
 	faceless.recording_hash = "d".repeat(64)
 	_check(EndReactionScreen.pop_replay(ctx, [faceless, {}]) == 0.0 and hud.get_child_count() == 2, "A part without faces pops nothing and does not hold")
 	for node: Node in [world, hud, scape]: node.queue_free()
+	await process_frame
+	_clear_default_store()
+
+
+## Hard mode's end cards (presentation/hard_mode_view.gd's hook): your slip's
+## face is kept with its recording here and never sent; the friend's slip and a
+## slip with no recording get a face for the moment; a finished run shows the
+## finish card's faces.
+func _hard_cards() -> void:
+	_clear_default_store()
+	_check(HardModeView.ending_extras_provider.is_valid() and HardModeView.ending_extras_provider.get_method() == &"attach_hard", "Loading reactions installs the hard end card hook")
+	var scape := FakeScape.new()
+	root.add_child(scape)
+	var pairs: Array = []
+	var ctx := {"online": true, "available": true, "room_id": ROOM, "viewer_slot": "p1", "chapter_key": "relay-isles@2", "definition": level,
+		"settings": {"reduced_motion": true}, "soundscape": scape, "pairs": func() -> Array: return pairs, "friend_name": func() -> String: return "Sam"}
+	var reactions := func() -> Dictionary: return ctx
+	var slip: Dictionary = fixtures["relay-b"]
+	var own := {"kind": "failed", "chapter_key": "relay-isles@2", "together": true, "room_id": ROOM, "number": 1, "reactions": reactions,
+		"run": {"id": "c".repeat(32), "by": "you", "role": "b", "stage_index": 0, "slip": {"recording": slip, "checkpoint": {}, "prior": {}}}}
+	var host := _host(Vector2(566, 0))
+	var row = EndReactionScreen.attach_hard(host, own)
+	_check(row != null and is_instance_valid(row.pill) and row.context.note == PlayerCopy.END_REACTIONS_SOLO_NOTE and row.context.color == "mint", "Your slip in a room offers the picker, kept with your replay, in your spirit's colour")
+	row.choose("knocked_out")
+	_check(Store.new().kept(str(slip.recording_hash)) == "knocked_out" and scape.played.back() == ["relay-isles@2", "relay", "b", str(slip.recording_hash), "knocked_out"], "The pick is kept with the slip's recording at once, with the slip's own sound")
+	_check(Store.picked(str(slip.recording_hash)) == "knocked_out", "The card keeps it as its pick")
+	host.queue_free()
+	host = _host(Vector2(566, 0))
+	Store._picks.clear()
+	row = EndReactionScreen.attach_hard(host, own)
+	_check(row.chosen == "knocked_out", "The card drawn again shows the kept face")
+	host.queue_free()
+	var friend := {"kind": "failed", "chapter_key": "relay-isles@2", "together": true, "room_id": ROOM, "number": 2, "reactions": reactions,
+		"run": {"by": "friend", "role": "a", "stage_index": 0, "slip": {}, "number": 2}}
+	host = _host(Vector2(566, 0))
+	row = EndReactionScreen.attach_hard(host, friend)
+	_check(row != null and row.context.note == PlayerCopy.END_REACTIONS_MOMENT_NOTE and row.context.color == "mint" and not str(row.context.run).is_valid_hex_number(), "The friend's slip offers a face for the moment, in this phone's colour")
+	row.choose("sad")
+	_check(Store.new().kept(str(slip.recording_hash)) == "knocked_out" and Store.new().face(str(fixtures["relay-a"].recording_hash)).is_empty(), "A face for the friend's slip is never kept under a recording")
+	host.queue_free()
+	ctx.available = false
+	host = _host(Vector2(566, 0))
+	_check(EndReactionScreen.attach_hard(host, own) == null, "No picker in a room whose server does not take reactions")
+	_check(EndReactionScreen.attach_hard(host, {"kind": "failed", "run": own.run}) == null, "No picker without the screen's context")
+	ctx.available = true
+	Store.new().keep(str(fixtures["garden-b"].recording_hash), "heart")
+	pairs.append({"a": fixtures["garden-a"], "b": fixtures["garden-b"]})
+	ctx.viewer_slot = "p0"
+	row = EndReactionScreen.attach_hard(host, {"kind": "complete", "reactions": reactions, "run": {}, "number": 0})
+	_check(row != null and row.pill == null and row.chosen == "heart", "A finished hard run shows the finish card's faces")
+	for node: Node in [host, scape]: node.queue_free()
 	await process_frame
 	_clear_default_store()
 

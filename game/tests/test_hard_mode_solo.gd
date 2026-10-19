@@ -18,6 +18,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
 const TideSimulation = preload("res://core/journey/simulation.gd")
 const Tide = preload("res://tests/turn_of_the_tide_witness.gd")
+const EndReactionScreen = preload("res://presentation/end_reaction_screen.gd")
+const ReactionStore = preload("res://services/end_reaction_store.gd")
 const KEY := "relay-isles@2"
 const TIDE := "turn-of-the-tide@2"
 var checks := 0
@@ -36,6 +38,7 @@ func _run() -> void:
 	await _pause_and_kill()
 	await _whole_run()
 	await _watch_a_slip()
+	await _slip_reaction()
 	await _drowning()
 	_clear(KEY)
 	_clear(TIDE)
@@ -360,6 +363,32 @@ func _watch_first_turn() -> void:
 		frames += 1
 	_check(viewer.replay_cursor == viewer.replay_frames.size(), "It plays up to the slip")
 	await _close_viewer(viewer)
+
+## The failure card carries end reactions: the face is kept with the slip's
+## recording and found again when the kept run is watched.
+func _slip_reaction() -> void:
+	_fresh()
+	for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(ReactionStore.FILE_PATH + suffix))
+	var app := _screen(EndReactionScreen.attach_hard)
+	await process_frame
+	app._begin()
+	await process_frame
+	_play(app, "relay-a", 3)
+	app._finish()
+	await process_frame
+	var extras: Node = app.overlay.find_child("EndingExtras", true, false)
+	var row: Node = extras.find_child("EndReactions", true, false) if extras != null else null
+	_check(app.mode == "hard_failed" and row != null and is_instance_valid(row.pill) and row.context.note == PlayerCopy.END_REACTIONS_SOLO_NOTE, "The failure card offers end reactions, kept with the replay")
+	if row != null: row.choose("sad")
+	var run: Dictionary = _runs(KEY)[0] if not _runs(KEY).is_empty() else {}
+	var slip_hash := str(run.get("slip", {}).get("recording", {}).get("recording_hash", ""))
+	_check(slip_hash.length() == 64 and ReactionStore.new().kept(slip_hash) == "sad", "The face is kept with the slip's recording")
+	await _close(app)
+	var viewer := await _viewer({"chapter_key": KEY, "kind": "watch", "run": run})
+	_check(viewer.mode == "replay" and not viewer._replay_runs.is_empty() and ReactionStore.new().face(str(viewer._replay_runs[0].get("recording_hash", ""))) == "sad", "Watching the run plays the slip that carries the face, so its end pops it")
+	await _close_viewer(viewer)
+	for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(ReactionStore.FILE_PATH + suffix))
+	ReactionStore._picks.clear()
 
 func _drowning() -> void:
 	_clear(TIDE)

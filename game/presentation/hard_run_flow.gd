@@ -174,9 +174,10 @@ func bare_card() -> VBoxContainer:
 
 ## The end card hook's context (presentation/hard_mode_view.gd). `number` is
 ## the room's count of slips with this one (both phones read the same), 0 solo.
+## `reactions` reads the screen's end reaction context when the hook wants it.
 func context(kind: String, kept: Dictionary, number: int) -> Dictionary:
 	return {"kind": kind, "chapter_key": host.chapter_key, "together": host.hard.together, "room_id": str(host.journey.snapshot().get("room_id", "")) if host.online_session != null else "",
-		"run": kept, "number": number}
+		"run": kept, "number": number, "reactions": Callable(host, "_end_reaction_context")}
 
 ## This phone's failed run's card: who slipped and where, then Watch the
 ## slip (solo), Start again and Back. `ready`: the run could start again
