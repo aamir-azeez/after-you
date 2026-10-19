@@ -48,6 +48,16 @@ func _run() -> void:
 	var tie := Bundle.merge(Bundle.collect(_save({"sound": true}, []), 7, {}, {"relay-journey-v2.json": _journal(2, "a")}), Bundle.collect(_save({"sound": false}, []), 7, {}, {"relay-journey-v2.json": _journal(2, "b")}))
 	_check(tie.settings.values.sound == true and tie.journals["relay-journey-v2.json"].envelope.relay.pairs[0].a.mark == "a", "Exact ties keep the first (this phone's) copy")
 
+	# A replay removed on one phone never comes back from another.
+	var kept_replay := {"a": {"x": 1}, "b": {"y": 2}, "draft": {}}
+	var digest := Bundle.replay_digest(kept_replay)
+	var keeper := Bundle.collect(_save({}, ["first-light"], {"first-light": kept_replay}), 0, {}, {})
+	var remover := Bundle.collect({"settings": {}, "completed": {"first-light": true}, "replays": {}, "removed_replays": {"first-light": {digest: true}}}, 0, {}, {})
+	var joined := Bundle.merge(keeper, remover)
+	_check(not joined.replays.has("first-light") and joined.removed_replays["first-light"].has(digest), "A removal wins over a copy that still has the replay")
+	_check(not Bundle.merge(remover, keeper).replays.has("first-light"), "in either order")
+	_check(Bundle.decode(Bundle.encode(joined)).removed_replays == joined.removed_replays, "Removals survive the slot")
+
 	# Encoding.
 	var bytes := Bundle.encode(merged)
 	_check(bytes.slice(0, 4).get_string_from_ascii() == "AYC1", "Slot bytes start with the format tag")

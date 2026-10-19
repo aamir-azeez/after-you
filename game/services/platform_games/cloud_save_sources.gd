@@ -8,7 +8,9 @@ extends RefCounted
 ## - changes apply only at Home, where no chapter has its journal open;
 ## - a cloud journal fills only a chapter this phone has never started, and only after the
 ##   journal class itself has loaded and checked it from a staging copy, so a bad copy can never
-##   put a chapter on hold; a journal with local progress is never replaced.
+##   put a chapter on hold; a journal with local progress is never replaced. Its unfinished draft
+##   is left behind (it would only be checked when the chapter opens), and a copy that failed the
+##   check is remembered by digest and never checked again.
 const Bundle = preload("res://services/platform_games/cloud_save_bundle.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
@@ -20,7 +22,7 @@ const State = preload("res://services/platform_games/platform_games_state.gd")
 const STAGING := "user://cloud-save-staging"
 const MAX_JOURNAL_BYTES := RelayJourney.MAX_SAVE_BYTES
 ## Checking a cloud journal replays its stages; a run checks at most this many and comes back for the rest.
-const JOURNALS_PER_RUN := 2
+const JOURNALS_PER_RUN := 1
 
 var _host: WeakRef
 var _state: RefCounted
@@ -102,10 +104,13 @@ func collect() -> Dictionary:
 	for name: String in journal_paths: task_paths[name] = journal_paths[name].path
 	var result := {}
 	var task := WorkerThreadPool.add_task(_read_journals.bind(task_paths, result))
+	# Wait on the SceneTree, not Main: Main may be freed meanwhile, and the task is always joined.
+	var tree := Engine.get_main_loop() as SceneTree
 	while not WorkerThreadPool.is_task_completed(task):
-		await host.get_tree().process_frame
+		await tree.process_frame
 	WorkerThreadPool.wait_for_task_completion(task)
-	if not is_instance_valid(host) or not ready(): return {}
+	host = null
+	if _main() == null or not ready(): return {}
 	return Bundle.collect(data, settings_stamp(_values(data.get("settings"))), keepsakes, result)
 
 ## Worker: each journal's envelope as parsed JSON. Reads only; skips anything odd.
@@ -133,12 +138,20 @@ func apply(merged: Dictionary) -> bool:
 		settings_changed = true
 	var completed: Dictionary = data.get("completed", {}).duplicate(true)
 	var replays: Dictionary = data.get("replays", {}).duplicate(true)
+	var removed: Dictionary = data.get("removed_replays", {}).duplicate(true)
+	for id: String in merged.removed_replays:
+		if not id in Levels.IDS: continue
+		var marks: Dictionary = removed.get(id, {}).duplicate(true)
+		for digest: String in merged.removed_replays[id]: marks[digest] = true
+		removed[id] = marks
 	for id: String in merged.completed:
 		if id in Levels.IDS and not completed.has(id): completed[id] = true
 	for id: String in merged.replays:
-		if id in Levels.IDS and not replays.has(id): replays[id] = LocalSave.normalize_attempt(merged.replays[id])
+		if id in Levels.IDS and not replays.has(id) and not removed.get(id, {}).has(Bundle.replay_digest(merged.replays[id])):
+			replays[id] = LocalSave.normalize_attempt(merged.replays[id])
 	if completed != data.get("completed", {}): changes.completed = completed
 	if replays != data.get("replays", {}): changes.replays = replays
+	if removed != data.get("removed_replays", {}): changes.removed_replays = removed
 	if not changes.is_empty() and not host.saves.update_values(changes): return false
 	if settings_changed:
 		_state.set_cloud({"settings_hash": JSON.stringify(_values(changes.settings), "", true).sha256_text(), "settings_stamp": int(merged.settings.stamp)})
@@ -149,12 +162,17 @@ func apply(merged: Dictionary) -> bool:
 ## Writes cloud journals for chapters this phone has never started. False while some remain.
 func _fill_journals(journals: Dictionary) -> bool:
 	var checked := 0
+	var rejected: Array = _state.cloud("rejected_journals", [])
 	for name: String in journals:
 		var target: Dictionary = journal_paths.get(name, {})
 		if target.is_empty() or _exists(target.path): continue
+		var digest := JSON.stringify(journals[name].envelope).sha256_text()
+		if digest in rejected: continue
 		if checked >= JOURNALS_PER_RUN: return false
 		checked += 1
-		_adopt_journal(target, journals[name])
+		if not _adopt_journal(target, journals[name]) and not _exists(target.path):
+			rejected = (rejected + [digest]).slice(-16)
+			_state.set_cloud({"rejected_journals": rejected})
 	return true
 
 static func _exists(path: String) -> bool:
@@ -168,7 +186,9 @@ func _adopt_journal(target: Dictionary, entry: Dictionary) -> bool:
 	DirAccess.make_dir_recursive_absolute(staging)
 	var staged := staging.path_join(str(target.path).get_file())
 	AtomicFile.remove(staged)
-	var text := JSON.stringify(entry.envelope)
+	var envelope: Dictionary = entry.envelope.duplicate(true)
+	if envelope.get("relay") is Dictionary: envelope.relay.draft = {}
+	var text := JSON.stringify(envelope)
 	if text.to_utf8_buffer().size() > MAX_JOURNAL_BYTES or not AtomicFile.write_text(staged, text): return false
 	var journey := RelayJourney.new(staged, null, str(target.chapter))
 	journey.load_data()
