@@ -12,11 +12,16 @@ const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Levels = preload("res://core/levels.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const RelayJourney = preload("res://services/relay_journey.gd")
+const Retained = preload("res://tests/retained_chapter_fixture.gd")
 
 class Slot extends "res://services/platform_games/games_provider.gd":
 	var data := PackedByteArray()
 	var conflicts: Array = []
 	var offline := false
+	var failure := ""
+	## Called while the slot is open, as if the player finished something during the network wait.
+	var during_open: Callable
 	var opens := 0
 	var commits := 0
 	var discards := 0
@@ -28,6 +33,8 @@ class Slot extends "res://services/platform_games/games_provider.gd":
 	func snapshot_open(_name: String) -> Dictionary:
 		opens += 1
 		if offline: return {"ok": false, "code": "offline"}
+		if not failure.is_empty(): return {"ok": false, "code": failure}
+		if during_open.is_valid(): during_open.call()
 		return open_answer()
 	func snapshot_resolve(_handle: String, bytes: PackedByteArray) -> Dictionary:
 		resolves += 1
@@ -45,8 +52,10 @@ class FakeSources extends RefCounted:
 	var bundle: Dictionary
 	var applied: Array = []
 	var is_ready := true
+	var home := true
 	var stamp_value := "s1"
 	func ready() -> bool: return is_ready
+	func at_home() -> bool: return home
 	func stamp() -> String: return stamp_value
 	func collect() -> Dictionary: return bundle.duplicate(true)
 	func apply(merged: Dictionary) -> bool:
@@ -137,6 +146,54 @@ func _run() -> void:
 	now += Sync.DEBOUNCE_MS
 	_check(sync.due(), "and the run is due again later")
 	sources.is_ready = true
+	# Away from Home (a chapter open in Main's place, or a room): no run at all.
+	sources.home = false
+	sync.flush(true)
+	opens = slot.opens
+	var away: Dictionary = await sync.run()
+	_check(not away.ok and slot.opens == opens, "Nothing runs away from Home")
+	sources.home = true
+	now += Sync.DEBOUNCE_MS
+	await sync.run()
+	# Progress made while the slot was open is not marked synced: the run is due again.
+	sources.bundle = Bundle.merge(sources.bundle, _bundle(["two-beats"]))
+	sources.stamp_value = "s3"
+	slot.during_open = func() -> void: sources.stamp_value = "s4"
+	sync.flush()
+	var moving: Dictionary = await sync.run()
+	_check(not moving.ok and moving.code == "changed" and state.cloud("dirty") == true and Bundle.decode(slot.data).completed.has("two-beats"), "A change during the run keeps it due, and what was collected is still written")
+	slot.during_open = Callable()
+	now += Sync.DEBOUNCE_MS
+	_check(sync.due(), "so it runs again after a quiet moment")
+	var caught_up: Dictionary = await sync.run()
+	_check(caught_up.ok and state.cloud("dirty") == false, "and then settles")
+	# Saved Games off in the console (or no iCloud): no retry loop until the next sign-in.
+	slot.failure = "not_configured"
+	sync.flush(true)
+	var off: Dictionary = await sync.run()
+	now += Sync.BACKOFF_CAP_MS
+	_check(not off.ok and not sync.due(), "A setup problem waits for the next sign-in")
+	slot.failure = ""
+	sync.flush(true)
+	_check(sync.due(), "and a sign-in tries again")
+	await sync.run()
+	# Repeated failures back off, capped.
+	slot.offline = true
+	var waits: Array = []
+	for attempt in range(8):
+		sources.stamp_value = "backoff-%d" % attempt
+		sync.flush()
+		var before_ms := now
+		await sync.run()
+		var wait := 0
+		while not sync.due() and wait < Sync.BACKOFF_CAP_MS * 2:
+			now += 1000
+			wait += 1000
+		waits.append(now - before_ms)
+	slot.offline = false
+	_check(waits[1] > waits[0] and waits[-1] <= Sync.BACKOFF_CAP_MS + 1000, "Failures back off and the wait is capped")
+	sync.flush(true)
+	await sync.run()
 
 	# A conflict: this phone, the cloud and the other copy all join; nothing is lost.
 	var slot2 := Slot.new()
@@ -183,6 +240,9 @@ func _run() -> void:
 	DirAccess.remove_absolute(dir)
 	print("PLATFORM GAMES CLOUD: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+func _fixture(folder: String, name: String) -> Dictionary:
+	return JSON.parse_string(FileAccess.get_file_as_string(("res://tests/fixtures/" + folder).path_join(name + ".json")))
 
 class FakeMain extends Node:
 	var saves: RefCounted
@@ -233,6 +293,31 @@ func _sources_apply(dir: String) -> void:
 	host.saves.read_only = true
 	_check(not sources.ready() and (await sources.collect()).is_empty() and not await sources.apply(merged), "A held save is neither read nor written")
 	host.saves.read_only = false
+	# Journals: a real cloud journal for a chapter never started here is adopted and loads clean.
+	var source_path := dir.path_join("source-house.json")
+	_check(Retained.seed(source_path, Registry.HOUSE), "A house journal at its retained rules")
+	var source := RelayJourney.new(source_path, null, Registry.HOUSE)
+	source.load_data()
+	_check(source.accept_recording(_fixture("cooperative", "open-the-house-a")) and source.accept_recording(_fixture("cooperative", "open-the-house-b")), "A real house journal with one finished stage")
+	var house_name := str(Registry.descriptor(Registry.HOUSE).local_path).get_file()
+	var envelope: Variant = JSON.parse_string(FileAccess.get_file_as_string(source_path))
+	var cloud_copy := Bundle.decode(Bundle.encode(Bundle.collect({"settings": {}}, 0, {}, {house_name: envelope})))
+	_check(cloud_copy.journals.has(house_name) and int(cloud_copy.journals[house_name].stages) == 1, "The journal survives the slot's encoding")
+	var house_target := dir.path_join("adopted").path_join(house_name)
+	DirAccess.make_dir_recursive_absolute(dir.path_join("adopted"))
+	sources.journal_paths = {house_name: {"chapter": Registry.HOUSE, "path": house_target}}
+	var started := Time.get_ticks_usec()
+	_check(await sources.apply(Bundle.merge(await sources.collect(), cloud_copy)), "Applying the cloud journal finishes in one run")
+	var elapsed_ms := (Time.get_ticks_usec() - started) / 1000
+	print("PLATFORM GAMES CLOUD: adopting a one-stage house journal took %d ms" % elapsed_ms)
+	var adopted := RelayJourney.new(house_target, null, Registry.HOUSE)
+	adopted.load_data()
+	_check(FileAccess.file_exists(house_target) and not adopted.read_only and adopted.pairs().size() == 1, "The adopted journal loads with its finished stage")
+	adopted = null
+	source = null
+	for folder: String in [dir.path_join("adopted")]:
+		for name: String in DirAccess.get_files_at(folder): DirAccess.remove_absolute(folder.path_join(name))
+		DirAccess.remove_absolute(folder)
 	# Journals: a bad cloud journal never reaches the chapter, and local progress is never replaced.
 	var journal_path := dir.path_join("relay-journey-v2.json")
 	sources.journal_paths = {"relay-journey-v2.json": {"chapter": Registry.RELAY, "path": journal_path}}
@@ -241,6 +326,7 @@ func _sources_apply(dir: String) -> void:
 	await sources.apply(bad)
 	_check(not FileAccess.file_exists(journal_path), "A journal that does not load cleanly is never written")
 	_check(DirAccess.get_files_at(dir.path_join("staging")).is_empty(), "Its staging copy is removed")
+	_check(state.cloud("rejected_journals", []).size() == 1, "and it is remembered, so it is not checked again")
 	FileAccess.open(journal_path, FileAccess.WRITE).store_string("{\"local\":true}")
 	await sources.apply(bad)
 	_check(FileAccess.get_file_as_string(journal_path) == "{\"local\":true}", "A chapter started here is never replaced from the cloud")
