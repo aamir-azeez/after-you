@@ -77,7 +77,9 @@ static func open(parent: Control, entry: Dictionary, see_all: Callable, opener: 
 	return modal
 
 ## The dot on the Home button's corner and the tip under it, until the card opens.
-static func mark_unseen(button: Control, version: String) -> void:
+## `above` puts the tip over the button instead, from its left edge, for a
+## button at the bottom of the screen.
+static func mark_unseen(button: Control, version: String, above: bool = false) -> void:
 	if button.get_node_or_null("WhatsNewDot") != null: return
 	var dot := Panel.new()
 	dot.name = "WhatsNewDot"
@@ -119,6 +121,24 @@ static func mark_unseen(button: Control, version: String) -> void:
 	tip.offset_top = 10.0
 	tip.offset_bottom = 10.0
 	tip.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	if above:
+		# Points down at the button's icon; the tip grows up and to the right.
+		pointer.anchor_left = 0.0
+		pointer.anchor_right = 0.0
+		pointer.anchor_top = 0.0
+		pointer.anchor_bottom = 0.0
+		pointer.offset_left = 18.0
+		pointer.offset_right = 30.0
+		pointer.offset_top = -16.0
+		pointer.offset_bottom = -4.0
+		tip.anchor_left = 0.0
+		tip.anchor_right = 0.0
+		tip.anchor_top = 0.0
+		tip.anchor_bottom = 0.0
+		tip.offset_top = -10.0
+		tip.offset_bottom = -10.0
+		tip.grow_horizontal = Control.GROW_DIRECTION_END
+		tip.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	button.add_child(tip)
 	var words := Label.new()
 	words.text = PlayerCopy.WHATS_NEW_TIP % version

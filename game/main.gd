@@ -112,10 +112,12 @@ var _proof_warmup: Node
 var _gl_warmup: Node
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
-const INK := Color("193d39")
-const CREAM := Color("eceddb")
-const MINT := Color("a6d9c4")
-const MUTED := Color("9dbeb4")
+const UiTokens = preload("res://presentation/ui_tokens.gd")
+const HomeMenu = preload("res://presentation/home_menu.gd")
+const INK := UiTokens.INK
+const CREAM := UiTokens.CREAM
+const MINT := UiTokens.MINT
+const MUTED := UiTokens.MUTED
 const GOLD := Color("f1c48a")
 const COMPLETION_MOMENT_SECONDS := 3.0
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
@@ -657,121 +659,14 @@ func _show_home() -> void:
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors())
 	home_stage.set_hard(hard_states(),HardMode.new().count(hard_together()))
 	overlay.add_child(home_stage)
-	var compact := ui.size.y < 640
-	# Friend-first column, vertically centred in the safe area: as much space above
-	# the eyebrow as below the last button. Short screens tighten the spacing.
-	var stack := VBoxContainer.new()
-	stack.name = "HomeMenu"
-	stack.add_theme_constant_override("separation",14 if compact else 24)
-	overlay.add_child(stack)
-	stack.set_anchors_preset(Control.PRESET_CENTER_LEFT)
-	stack.offset_left = 64
-	stack.offset_right = 64+385
-	stack.offset_top = 0
-	stack.offset_bottom = 0
-	stack.grow_vertical = Control.GROW_DIRECTION_BOTH
-	var heading := VBoxContainer.new()
-	heading.add_theme_constant_override("separation",2 if compact else 6)
-	stack.add_child(heading)
-	heading.add_child(_label(PlayerCopy.MAIN_5DA48958135C,15,MINT))
-	var title := _label("After\nYou",64 if compact else 84,CREAM,true)
-	title.add_theme_constant_override("line_spacing",-14 if compact else -20)
-	heading.add_child(title)
-	heading.add_child(_paragraph(PlayerCopy.MAIN_6A7ECC3FD1B9,385))
-	var actions := VBoxContainer.new()
-	actions.add_theme_constant_override("separation",10 if compact else 14)
-	stack.add_child(actions)
-	# A tap made while the room session is still busy waits on this button (RoomHubFlow.open_from_home).
-	var together := _button("Play with your friend",Callable())
-	together.pressed.connect(room_hub_flow.open_from_home.bind(together))
-	actions.add_child(together)
-	var pair := HBoxContainer.new()
-	pair.add_theme_constant_override("separation",10)
-	actions.add_child(pair)
-	_home_action(pair,"Play Solo",preload("res://assets/ui/social/user.svg"),_show_journey)
-	var friends := _home_action(pair,"Friends",preload("res://assets/ui/social/users.svg"),_show_friends)
-	friends.name = "HomeFriends"
-	friends.tooltip_text = "Friends"
-	friends.accessibility_name = "Friends"
-	_home_action(actions,"Replays",preload("res://assets/ui/play-circle.svg"),replays_flow.show_collection)
-	var invite := _home_action(actions,PlayerCopy.HOME_INVITE,preload("res://assets/ui/social/share-network.svg"),_share_invite_from_home)
-	invite.name = "HomeInvite"
-	invite.tooltip_text = PlayerCopy.INVITE_LINK_SHARE
-	var journey_offer := _button("Full Journey   →",store_flow.show_paywall,false)
-	journey_offer.name = "HomeFullJourney"
-	overlay.add_child(journey_offer)
-	journey_offer.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	journey_offer.offset_left = -238
-	journey_offer.offset_right = -32
-	journey_offer.offset_top = 32
-	journey_offer.offset_bottom = 86
-	journey_offer.visible = not _full_journey_access()
-	# Settings is a square cog beside the offer, or in its corner once owned.
-	var settings := _button("",settings_flow.show_settings,false)
-	settings.name = "HomeSettings"
-	settings.icon = preload("res://assets/ui/social/gear.svg")
-	settings.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	settings.expand_icon = true
-	settings.tooltip_text = "Settings"
-	settings.accessibility_name = "Settings"
-	settings.add_theme_constant_override("icon_max_width",28)
-	_home_icon_colors(settings)
-	overlay.add_child(settings)
-	_fit_icon_button(settings)
-	settings.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	# What's new sits left of the cog, with a dot and a tip until this version's card is opened.
-	var whats_new := _button(PlayerCopy.WHATS_NEW,_open_whats_new_from_home,false)
-	whats_new.name = "HomeWhatsNew"
-	whats_new.icon = preload("res://assets/ui/whats_new/gift.svg")
-	whats_new.add_theme_constant_override("icon_max_width",24)
-	whats_new.add_theme_constant_override("h_separation",10)
-	_home_icon_colors(whats_new)
-	overlay.add_child(whats_new)
-	whats_new.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
-	if _whats_new_unseen: WhatsNewCard.mark_unseen(whats_new,Changelog.current_version())
-	_place_home_settings()
-	journey_offer.visibility_changed.connect(_place_home_settings)
-	home_stage.set_header_actions([journey_offer,settings,whats_new])
-
-## Secondary Home action: outlined, full touch height, icon centred with its label.
-func _home_action(parent: Container, text: String, icon: Texture2D, action: Callable) -> Button:
-	var button := _button(text,action,false)
-	button.icon = icon
-	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	button.add_theme_constant_override("icon_max_width",22)
-	button.add_theme_constant_override("h_separation",10)
-	_home_icon_colors(button)
-	parent.add_child(button)
-	ControlTheme.inset_button(button)
-	ControlTheme.center_icon_label(button)
-	return button
-
-func _home_icon_colors(button: Button) -> void:
-	button.add_theme_color_override("icon_normal_color",CREAM)
-	button.add_theme_color_override("icon_focus_color",CREAM)
-	for state: String in ["hover","pressed","hover_pressed"]:
-		button.add_theme_color_override("icon_"+state+"_color",INK)
-	button.add_theme_color_override("icon_disabled_color",MUTED)
-
-func _place_home_settings() -> void:
-	if not is_instance_valid(overlay): return
-	var settings := overlay.get_node_or_null("HomeSettings") as Control
-	var offer := overlay.get_node_or_null("HomeFullJourney") as Control
-	if settings == null or offer == null: return
-	# Immediately left of the Full Journey offer (same top, 10 apart) while it shows;
-	# in the offer's top-right corner once the Full Journey is owned.
-	var right: float = offer.offset_left-10.0 if offer.visible else offer.offset_right
-	settings.offset_right = right
-	settings.offset_left = right-54.0
-	settings.offset_top = offer.offset_top
-	settings.offset_bottom = offer.offset_top+54.0
-	var whats_new := overlay.get_node_or_null("HomeWhatsNew") as Control
-	if whats_new == null: return
-	var width := ceilf(whats_new.get_combined_minimum_size().x)
-	whats_new.offset_right = settings.offset_left-16.0
-	whats_new.offset_left = whats_new.offset_right-width
-	whats_new.offset_top = settings.offset_top
-	whats_new.offset_bottom = settings.offset_bottom
+	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
+	var menu := HomeMenu.new()
+	overlay.add_child(menu)
+	# A tap made while the room session is still busy waits on the Play button (RoomHubFlow.open_from_home).
+	menu.build({"play":room_hub_flow.open_from_home,"solo":_show_journey,"friends":_show_friends,"replays":replays_flow.show_collection,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
+	menu.journey_offer.visible = not _full_journey_access()
+	if _whats_new_unseen: menu.mark_whats_new_unseen(Changelog.current_version())
+	home_stage.set_header_actions(menu.header_actions())
 
 func _share_invite_from_home() -> void:
 	if mode != "home" or application_backgrounded: return
@@ -1622,13 +1517,13 @@ func _open_whats_new_card(opener: Control = null) -> void:
 	var entries := Changelog.load_entries(Changelog.channel(config))
 	if entries.is_empty() or entries[0].version != Changelog.current_version(): return
 	_remember_whats_new()
-	if is_instance_valid(overlay): WhatsNewCard.clear_unseen(overlay.get_node_or_null("HomeWhatsNew"))
+	if is_instance_valid(overlay): WhatsNewCard.clear_unseen(overlay.find_child("HomeWhatsNew",true,false))
 	var see_all: Callable = _open_release_notes if Changelog.releases_link_offered() else Callable()
 	_whats_new_card = WhatsNewCard.open(ui,entries[0],see_all,opener)
 	_whats_new_card_mode = mode
 
 func _open_whats_new_from_home() -> void:
-	_open_whats_new_card(overlay.get_node_or_null("HomeWhatsNew") as Control)
+	_open_whats_new_card(overlay.find_child("HomeWhatsNew",true,false) as Control)
 
 ## Every release's full notes, on GitHub.
 func _open_release_notes() -> void:

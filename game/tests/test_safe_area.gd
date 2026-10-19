@@ -127,9 +127,10 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 		await _settle_layout()
 		await _check_menu(app.overlay,safe,method)
 		if method == "_show_home":
-			# Friend-first Home column: the cream Play with your friend, then Play Solo
-			# beside Friends, Replays, and Invite your friends; Settings is a cog at the
-			# top right. Full Journey is a separate purchase offer, not navigation.
+			# Layout A: a panel down the left with the cream Play with your friend, then
+			# Play Solo, Friends and Replays rows and Invite your friends; What's new and
+			# the Settings cog share its bottom row. Full Journey is a separate purchase
+			# offer over the island, not navigation.
 			var actions: Array[Button] = []
 			for label: String in ["Play with your friend", "Play Solo", "Friends", "Replays", "Invite your friends"]:
 				var matches := _buttons(app.overlay).filter(func(button: Button) -> bool: return button.text == label)
@@ -140,41 +141,41 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 			var invite: Button = app.overlay.find_child("HomeInvite", true, false)
 			_check(friends != null and friends.is_visible_in_tree() and friends.text == "Friends" and friends.icon != null and friends.accessibility_name == "Friends", "Home keeps the labelled Friends action by its stable name")
 			_check(invite != null and invite.is_visible_in_tree() and invite.icon != null and invite.text == "Invite your friends", "Home offers Invite your friends by its stable name")
-			var cream := actions.filter(func(button: Button) -> bool: return not button.has_theme_stylebox_override("normal"))
+			var cream := actions.filter(func(button: Button) -> bool: return (button.get_theme_stylebox("normal") as StyleBoxFlat).bg_color == Main.CREAM)
 			_check(cream.size() == 1 and actions.size() == 5 and cream[0] == actions[0], "Play with your friend is the only cream primary")
+			var settings: Button = app.overlay.find_child("HomeSettings", true, false)
+			var whats_new: Button = app.overlay.find_child("HomeWhatsNew", true, false)
 			if actions.size() == 5:
 				var rects: Array[Rect2] = []
 				for button: Button in actions: rects.append(button.get_global_rect())
 				for index in range(1, actions.size()):
-					_check(rects[0].end.y <= rects[index].position.y, "Play with your friend leads the Home actions")
-				_check(is_equal_approx(rects[1].position.y, rects[2].position.y) and rects[1].end.x <= rects[2].position.x and rects[2].end.y <= rects[3].position.y and rects[3].end.y <= rects[4].position.y, "Play Solo sits beside Friends, then Replays, then Invite your friends")
-				_check(absf(rects[1].size.x - rects[2].size.x) <= 1.0 and absf(rects[0].size.x - rects[3].size.x) <= 1.0 and absf(rects[3].size.x - rects[4].size.x) <= 1.0, "Half-width pair and full-width rows share the column")
+					_check(rects[index - 1].end.y <= rects[index].position.y + 0.5, "Play with your friend, Play Solo, Friends, Replays, then Invite your friends, top to bottom")
+				_check(absf(rects[0].size.x - rects[1].size.x) <= 1.0 and absf(rects[0].size.x - rects[4].size.x) <= 1.0 and absf(rects[0].position.x - rects[4].position.x) <= 1.0, "Every action shares the column's width")
 				var column := Rect2(rects[0].position, Vector2.ZERO)
 				for rect: Rect2 in rects: column = column.merge(rect)
-				var top: Label = null
-				for label: Label in app.overlay.find_children("*", "Label", true, false):
-					if label.text == PlayerCopy.MAIN_5DA48958135C: top = label
-				_check(top != null, "The Home heading is found for the centring check")
-				if top != null:
-					var above := top.get_global_rect().position.y - safe.position.y
-					var below := safe.end.y - column.end.y
-					_check(absf(above - below) <= 12.0, "The Home column is vertically centred in the safe area (%.0f above, %.0f below)" % [above, below])
-			var settings: Button = app.overlay.find_child("HomeSettings", true, false)
-			var offer: Button = app.overlay.find_child("HomeFullJourney", true, false)
+				_check(column.end.x <= safe.position.x + 480.0 and column.position.x >= safe.position.x, "The column sits inside the menu panel")
+				var wordmark: Label = app.overlay.find_child("HomeWordmark", true, false)
+				_check(wordmark != null and wordmark.get_global_rect().position.y >= safe.position.y and wordmark.get_global_rect().end.y <= rects[0].position.y, "The wordmark heads the column inside the safe area")
+				if wordmark != null and whats_new != null:
+					# Centred in the room above the bottom row.
+					var above := wordmark.get_global_rect().position.y - safe.position.y
+					# The What's new tip, when it shows, takes the room just above the bottom row.
+					var tip := whats_new.get_node_or_null("WhatsNewTip") as Control
+					var below := (tip.get_global_rect().position.y if tip != null else whats_new.get_global_rect().position.y) - column.end.y
+					_check(absf(above - below) <= 40.0, "The Home column is centred above the bottom row (%.0f above, %.0f below)" % [above, below])
+					_check(column.end.y <= whats_new.get_global_rect().position.y, "Invite your friends ends above the bottom row")
 			_check(settings != null and settings.is_visible_in_tree() and settings.text.is_empty() and settings.icon != null and settings.accessibility_name == "Settings" and settings.tooltip_text == "Settings", "Settings is a labelled cog icon")
-			if settings != null and offer != null:
+			if settings != null and whats_new != null:
 				var cog := settings.get_global_rect()
-				_check(cog.size.x >= 54 and cog.size.y >= 54 and safe.encloses(cog), "The cog keeps a full target inside the safe area")
-				if offer.visible:
-					_check(is_equal_approx(cog.position.y, offer.get_global_rect().position.y) and absf(offer.get_global_rect().position.x - cog.end.x - 10.0) <= 0.5, "The cog sits just left of the Full Journey offer")
-				else:
-					_check(absf(cog.end.x - (safe.end.x - 32.0)) <= 0.5, "Without the offer the cog takes the top-right corner")
+				_check(cog.size.x >= 48 and cog.size.y >= 48 and safe.encloses(cog), "The cog keeps a full target inside the safe area")
+				_check(absf(cog.get_center().y - whats_new.get_global_rect().get_center().y) <= 1.0 and cog.position.x > whats_new.get_global_rect().end.x, "The cog sits at the right of What's new in the panel's bottom row")
 				for button: Button in actions:
 					_check(not cog.intersects(button.get_global_rect()), "The cog never overlaps the Home column")
 			if settings != null: actions.append(settings)
+			if whats_new != null: actions.append(whats_new)
 			for index in range(actions.size()):
 				var action_name := actions[index].text if not actions[index].text.is_empty() else str(actions[index].name)
-				_check(actions[index].size.x >= 54 and actions[index].size.y >= 54, "Home keeps a full-size touch target: " + action_name)
+				_check(actions[index].size.x >= 48 and actions[index].size.y >= 48, "Home keeps a full-size touch target: " + action_name)
 				for other in range(index + 1, actions.size()):
 					_check(not actions[index].get_global_rect().intersects(actions[other].get_global_rect()), "Home actions remain distinct without overlap")
 		if is_instance_valid(app.overlay_shade):

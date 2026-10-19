@@ -171,10 +171,10 @@ func _check_home(app: Node, safe: Rect2, visible: Rect2, side: String) -> void:
 	app._show_home()
 	await _frames()
 	_check_content(app.overlay, safe, "Home (%s)" % side)
-	var stage: Control = app.home_stage_view
-	if is_instance_valid(stage) and is_instance_valid(stage._menu_backing):
-		var backing: Rect2 = stage._menu_backing.get_global_rect()
-		_check(is_equal_approx(backing.position.x, visible.position.x) and is_equal_approx(backing.position.y, visible.position.y) and is_equal_approx(backing.size.y, visible.size.y), "Home's menu backing starts at the screen edge, under a %s cutout too" % side)
+	var backing := app.overlay.find_child("HomePanel", true, false) as Control
+	_check(backing != null, "Home has its menu panel (%s)" % side)
+	if backing != null:
+		_same_rect(backing.get_global_rect(), visible, "Home's menu panel starts at the screen edge, under a %s cutout too" % side)
 
 func _check_whats_new(app: Node, safe: Rect2, visible: Rect2, side: String) -> void:
 	app._open_whats_new_card()

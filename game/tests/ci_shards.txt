@@ -95,6 +95,7 @@ home_keepsake_display 1
 home_keepsake_lifecycle 3
 home_keepsake_scan 1
 home_keepsakes 3
+home_menu 2
 home_scene_navigation 1
 home_stage 2
 hosted_chapter 2

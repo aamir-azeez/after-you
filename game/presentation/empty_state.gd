@@ -8,8 +8,9 @@ extends Container
 ## list as usual, which frees it when the first item arrives.
 const Art = preload("res://presentation/empty_state_art.gd")
 const HEADING_FONT = preload("res://assets/fonts/fredoka.ttf")
-const CREAM := Color("eceddb")
-const MUTED := Color("afc6be")
+const UiTokens = preload("res://presentation/ui_tokens.gd")
+const CREAM := UiTokens.CREAM
+const MUTED := UiTokens.SOFT
 const SIDE_GAP := 18.0
 const ROW_GAP := 10.0
 const TEXT_GAP := 6.0

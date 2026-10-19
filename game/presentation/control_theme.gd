@@ -1,7 +1,8 @@
 extends RefCounted
 ## Shared controls for the original islands and authored chapters.
-const INK := Color("193d39")
-const CREAM := Color("eceddb")
+const UiTokens = preload("res://presentation/ui_tokens.gd")
+const INK := UiTokens.INK
+const CREAM := UiTokens.CREAM
 const DANGER_INK := Color("503a37")
 ## The soft warning colour: Back's fill, an alert row's edge, Safety's label.
 const CORAL := Color("e9b3aa")
@@ -9,7 +10,7 @@ const CHECK_ICON := preload("res://assets/ui/check.svg")
 const CHOICE_PANEL := Color("173f39")
 const CHOICE_BORDER := Color("668e7f")
 const CHOICE_HIGHLIGHT := Color("315e53")
-const CHOICE_DISABLED := Color("9aaaa3")
+const CHOICE_DISABLED := UiTokens.DISABLED_TEXT
 const TOUCH_SCROLL_META := "touch_scroll"
 const TouchInput = preload("res://presentation/touch_input.gd")
 const EmptyState = preload("res://presentation/empty_state.gd")
@@ -136,17 +137,17 @@ static func padded(style: StyleBox, horizontal: float = 18.0, vertical: float = 
 
 static func install_buttons(theme: Theme) -> void:
 	for state: String in ["normal","hover","pressed","hover_pressed"]:
-		var color := CREAM if state=="normal" else Color("ffffff") if state=="hover" else Color("a6d9c4")
+		var color := CREAM if state=="normal" else UiTokens.CREAM_HOVER if state=="hover" else UiTokens.MINT
 		theme.set_stylebox(state,"Button",padded(rounded(color)))
 		theme.set_color("font_color" if state=="normal" else "font_"+state+"_color","Button",INK)
-	theme.set_stylebox("disabled","Button",padded(rounded(Color("3e5e55"))))
-	theme.set_color("font_disabled_color","Button",Color("9aaaa3"))
+	theme.set_stylebox("disabled","Button",padded(rounded(UiTokens.DISABLED_FILL)))
+	theme.set_color("font_disabled_color","Button",UiTokens.DISABLED_TEXT)
 	# Focused cream buttons keep dark ink; the engine default is a light colour.
 	theme.set_color("font_focus_color","Button",INK)
-	theme.set_stylebox("focus","Button",padded(rounded(Color.TRANSPARENT,16,Color("a6d9c4"))))
+	theme.set_stylebox("focus","Button",padded(rounded(Color.TRANSPARENT,16,UiTokens.MINT)))
 
 static func secondary(button: Button) -> void:
-	button.add_theme_stylebox_override("normal",padded(rounded(Color("254b45"),14,Color("54766a"))))
+	button.add_theme_stylebox_override("normal",padded(rounded(UiTokens.SECONDARY,14,UiTokens.SECONDARY_BORDER)))
 	button.add_theme_color_override("font_color",CREAM)
 	button.add_theme_color_override("font_focus_color",CREAM)
 	if button is OptionButton: choice_button(button)
@@ -154,7 +155,7 @@ static func secondary(button: Button) -> void:
 static func selected_tab(button: Button) -> void:
 	## The current tab or toggle option: a lighter teal pill. Cream stays
 	## reserved for the screen's primary action.
-	var fill := padded(rounded(Color("3a6b5f"),14))
+	var fill := padded(rounded(UiTokens.SELECTED,14))
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
 		button.add_theme_stylebox_override(state,fill)
 	for key: String in ["font_color","font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color","font_disabled_color","icon_normal_color","icon_disabled_color"]:
@@ -164,34 +165,34 @@ static func plain_tab(button: Button) -> void:
 	## Unselected tabs read as text until chosen.
 	button.add_theme_stylebox_override("normal",padded(rounded(Color.TRANSPARENT,14)))
 	button.add_theme_stylebox_override("hover",padded(rounded(Color(1,1,1,0.06),14)))
-	button.add_theme_stylebox_override("pressed",padded(rounded(Color("3a6b5f"),14)))
-	button.add_theme_stylebox_override("hover_pressed",padded(rounded(Color("3a6b5f"),14)))
-	button.add_theme_color_override("font_color",Color("afc6be"))
+	button.add_theme_stylebox_override("pressed",padded(rounded(UiTokens.SELECTED,14)))
+	button.add_theme_stylebox_override("hover_pressed",padded(rounded(UiTokens.SELECTED,14)))
+	button.add_theme_color_override("font_color",UiTokens.SOFT)
 	for key: String in ["font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color"]:
 		button.add_theme_color_override(key,CREAM)
 
 static func outlined_tab(button: Button) -> void:
 	## An unselected tab that still shows its own edge, so a row of tabs reads
 	## as separate controls; selected_tab keeps the filled look.
-	button.add_theme_stylebox_override("normal",padded(rounded(Color("1b4941"),14,Color("54766a"))))
-	button.add_theme_stylebox_override("hover",padded(rounded(Color("254b45"),14,Color("6f9a8c"))))
-	button.add_theme_stylebox_override("pressed",padded(rounded(Color("3a6b5f"),14)))
-	button.add_theme_stylebox_override("hover_pressed",padded(rounded(Color("3a6b5f"),14)))
-	button.add_theme_color_override("font_color",Color("afc6be"))
+	button.add_theme_stylebox_override("normal",padded(rounded(Color("1b4941"),14,UiTokens.SECONDARY_BORDER)))
+	button.add_theme_stylebox_override("hover",padded(rounded(UiTokens.SECONDARY,14,Color("6f9a8c"))))
+	button.add_theme_stylebox_override("pressed",padded(rounded(UiTokens.SELECTED,14)))
+	button.add_theme_stylebox_override("hover_pressed",padded(rounded(UiTokens.SELECTED,14)))
+	button.add_theme_color_override("font_color",UiTokens.SOFT)
 	for key: String in ["font_hover_color","font_pressed_color","font_hover_pressed_color","font_focus_color"]:
 		button.add_theme_color_override(key,CREAM)
 
 static func choice_button(button: OptionButton) -> void:
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
 		var disabled := state == "disabled"
-		var fill := Color("254b45") if state == "normal" else Color("315e53")
+		var fill := UiTokens.SECONDARY if state == "normal" else Color("315e53")
 		if disabled: fill = Color("203f39")
-		button.add_theme_stylebox_override(state,padded(rounded(fill,14,Color("54766a"))))
-		button.add_theme_color_override("font_color" if state == "normal" else "font_"+state+"_color",Color("9aaaa3") if disabled else CREAM)
+		button.add_theme_stylebox_override(state,padded(rounded(fill,14,UiTokens.SECONDARY_BORDER)))
+		button.add_theme_color_override("font_color" if state == "normal" else "font_"+state+"_color",UiTokens.DISABLED_TEXT if disabled else CREAM)
 	button.add_theme_icon_override("arrow",preload("res://assets/ui/social/chevron-down.svg"))
 	button.add_theme_constant_override("arrow_margin",16)
 	button.add_theme_color_override("font_focus_color",CREAM)
-	button.add_theme_stylebox_override("focus",padded(rounded(Color.TRANSPARENT,14,Color("a6d9c4"))))
+	button.add_theme_stylebox_override("focus",padded(rounded(Color.TRANSPARENT,14,UiTokens.MINT)))
 	# A popup is its own window and does not reliably inherit the page's theme.
 	var menu := button.get_popup()
 	var choices := Theme.new()
@@ -201,7 +202,7 @@ static func choice_button(button: OptionButton) -> void:
 	choices.set_stylebox("hover","PopupMenu",padded(rounded(Color("315e53"),9),8,8))
 	for color_name: String in ["font_color","font_hover_color","font_focus_color"]:
 		choices.set_color(color_name,"PopupMenu",CREAM)
-	choices.set_color("font_disabled_color","PopupMenu",Color("9aaaa3"))
+	choices.set_color("font_disabled_color","PopupMenu",UiTokens.DISABLED_TEXT)
 	choices.set_constant("v_separation","PopupMenu",24)
 	choices.set_constant("h_separation","PopupMenu",12)
 	choices.set_constant("item_start_padding","PopupMenu",8)

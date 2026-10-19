@@ -331,7 +331,7 @@ func _check_layout_clearance() -> void:
 			_check(not world_foot.intersects(floor.grow(0.4)), "%s stays off the spirits' walking area" % id)
 			# Only keepsakes in front of the spirits' island can cover them on screen.
 			if not island.begins_with("behind"): _check(not area.intersects(spirits), "%s never covers the spirits on screen at %s" % [id, size])
-			_check(not area.intersects(box), "%s is not hidden by the keepsake box at %s" % [id, size])
+			_check(not area.intersects(box), "%s is not hidden by the keepsake box at %s (%s vs %s)" % [id, size, area, box])
 			if not terraced: _check(stage._stage_rect().encloses(area), "%s stays in the Home stage at %s (%s in %s)" % [id, size, area, stage._stage_rect()])
 			for other: String in feet:
 				var gap: float = Vector2(origin.x, origin.z).distance_to(feet[other].at) - reach - feet[other].reach

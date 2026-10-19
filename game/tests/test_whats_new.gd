@@ -77,7 +77,7 @@ func _card(app: Node) -> Control:
 	return card if card != null and not card.is_queued_for_deletion() else null
 
 func _pill(app: Node) -> Button:
-	return app.overlay.get_node_or_null("HomeWhatsNew") as Button
+	return app.overlay.find_child("HomeWhatsNew", true, false) as Button
 
 func _marked(pill: Node) -> bool:
 	for name: String in ["WhatsNewDot", "WhatsNewPointer", "WhatsNewTip"]:
@@ -267,19 +267,19 @@ func _layout(size: Vector2i) -> void:
 	app._show_home()
 	for frame: int in range(4): await process_frame
 	var pill := _pill(app)
-	var settings := app.overlay.get_node_or_null("HomeSettings") as Control
+	var settings := app.overlay.find_child("HomeSettings", true, false) as Control
 	var menu := app.overlay.get_node_or_null("HomeMenu") as Control
-	var explore := _button(app.overlay, "Explore")
-	_check(pill != null and settings != null and menu != null, "Home has the What's new button, Settings and its menu at " + str(size))
-	if pill == null or settings == null or menu == null:
+	var invite := app.overlay.find_child("HomeInvite", true, false) as Control
+	_check(pill != null and settings != null and menu != null and invite != null, "Home has the What's new button, Settings and its menu at " + str(size))
+	if pill == null or settings == null or menu == null or invite == null:
 		await _close(made)
 		return
 	var box := pill.get_global_rect()
-	_check(screen.encloses(box) and box.size.y >= 54.0, "The button is on screen at full touch height at " + str(size))
-	_check(is_equal_approx(settings.get_global_rect().position.x - box.end.x, 16.0) and is_equal_approx(box.position.y, settings.get_global_rect().position.y), "The button sits 16 left of Settings, level with it, at " + str(size))
-	_check(not box.intersects(menu.get_global_rect()) and (explore == null or not box.intersects(explore.get_global_rect())), "The button keeps clear of the Home menu and Explore at " + str(size))
+	_check(screen.encloses(box) and box.size.y >= 48.0, "The button is on screen at full touch height at " + str(size))
+	_check(box.end.x < settings.get_global_rect().position.x and absf(box.get_center().y - settings.get_global_rect().get_center().y) <= 1.0, "The button sits left of Settings in the panel's bottom row at " + str(size))
+	_check(menu.is_ancestor_of(pill) and box.position.y >= invite.get_global_rect().end.y, "The button is in the Home menu, under Invite your friends, at " + str(size))
 	var tip := pill.get_node_or_null("WhatsNewTip") as Control
-	_check(tip != null and screen.encloses(tip.get_global_rect()) and tip.get_global_rect().position.y >= box.end.y, "The tip sits on screen under the button at " + str(size))
+	_check(tip != null and screen.encloses(tip.get_global_rect()) and tip.get_global_rect().end.y <= box.position.y and not tip.get_global_rect().intersects(invite.get_global_rect()), "The tip sits on screen over the button, clear of Invite, at " + str(size))
 	_check(tip != null and tip.mouse_filter == Control.MOUSE_FILTER_IGNORE, "The tip never takes a tap")
 	var presses := [0]
 	pill.pressed.connect(func(): presses[0] += 1)

@@ -544,7 +544,6 @@ const LIGHTHOUSE_PREVIEW_2750E557B7DE := "\n\nThis is the most recent interval t
 # Lighthouse chapter — show save problem
 const LIGHTHOUSE_PREVIEW_2C7C82DE5758 := "Your rehearsal has been saved. Check your Full Journey purchase to continue."
 # Home menu — heading / label
-const MAIN_5DA48958135C := "A LITTLE WORLD. TWO DIFFERENT TIMES."
 # Home menu — body text
 const MAIN_6A7ECC3FD1B9 := "Catch something your friend\nthrew yesterday."
 # Home menu — heading / label
@@ -2256,7 +2255,6 @@ const TEXT := {
 	"lighthouse_preview.dc7ede5d9a53": LIGHTHOUSE_PREVIEW_DC7EDE5D9A53,
 	"lighthouse_preview.2750e557b7de": LIGHTHOUSE_PREVIEW_2750E557B7DE,
 	"lighthouse_preview.2c7c82de5758": LIGHTHOUSE_PREVIEW_2C7C82DE5758,
-	"main.5da48958135c": MAIN_5DA48958135C,
 	"main.6a7ecc3fd1b9": MAIN_6A7ECC3FD1B9,
 	"main.73ebec98c7f5": MAIN_73EBEC98C7F5,
 	"main.1db48306b203": MAIN_1DB48306B203,

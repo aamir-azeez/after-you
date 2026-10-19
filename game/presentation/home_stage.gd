@@ -28,16 +28,31 @@ const BRIDGE_RELEASE := 1.6
 ## Keepsake box rows: the browser, a status line and the count (same height in every state).
 const BROWSER_HEIGHT := 50.0
 const BOX_ROW_GAP := 4.0
-const PAGE_FILL := Color("2f5d52")
-const PAGE_BORDER := Color("466e63")
-const PAGE_CHEVRON := Color("eceddb")
+const UiTokens = preload("res://presentation/ui_tokens.gd")
+const PAGE_FILL := UiTokens.PAGE_FILL
+const PAGE_BORDER := UiTokens.PAGE_BORDER
+const PAGE_CHEVRON := UiTokens.CREAM
 const PAGE_CHEVRON_HEIGHT := 22.0
 const VARIANT_ICON := 22.0
 const SOLO_ICON = preload("res://assets/ui/social/user.svg")
 const TOGETHER_ICON = preload("res://assets/ui/social/users.svg")
 ## Variant icons light up in the spirits' colours once that variant is done.
-const SOLO_LIT := Color("f4c38d")
-const TOGETHER_LIT := Color("91d6c6")
+const SOLO_LIT := UiTokens.SOLO
+const TOGETHER_LIT := UiTokens.TOGETHER
+## The keepsake box: up to this wide, and no taller than the status line needs,
+## so it never covers a keepsake standing at the island's front edge. The title
+## is as large as fits on one line (it wraps to two lines at the smallest size).
+const BOX_MAX_WIDTH := 500.0
+const TITLE_SIZES := [25, 22, 20, 18]
+## Explore and Reset view: cream pills with their icons, a full touch height.
+const PILL_HEIGHT := 52.0
+const PILL_GAP := 14.0
+const EXPLORE_ICON = preload("res://assets/ui/social/compass.svg")
+const RESET_ICON = preload("res://assets/ui/social/crosshair-simple.svg")
+const HINT_ICON = preload("res://assets/ui/whats_new/tap.svg")
+const HINT_ICON_SIZE := 22.0
+const HEADING_FONT = preload("res://assets/fonts/fredoka.ttf")
+static var _heading: FontVariation
 const VARIANT_DIM := Color(0.71, 0.84, 0.78, 0.32)
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
@@ -91,7 +106,11 @@ var _page_buttons: Array[Button] = []
 ## Person / two-person icons for the selected keepsake, lit for each variant done.
 var _keepsake_variant_icons: HBoxContainer
 var _hidden_props: Array[Dictionary] = []
-var _menu_backing: TextureRect
+var _hint_icon: TextureRect
+## The hint's text width, measured once per text.
+var _hint_width := {}
+## The keepsake title's font size for the current title and room.
+var _title_fit := {}
 ## Centred panel holding only keepsake content, the same height in every state:
 ## a browser over every island slot (title and variant icons), a line saying
 ## what the selected keepsake still needs, and the collection count. The
@@ -180,18 +199,23 @@ func _ready() -> void:
 		_goals[role] = actor.position
 		_rests[role] = 0.7 if _actors.size()==1 else 1.4
 	_world.home_presentation_owner = get_instance_id()
-	_create_text_backing()
-	_reset = Button.new()
-	_reset.text = "Reset view"
-	_reset.custom_minimum_size = Vector2(116,36)
-	_reset.add_theme_font_size_override("font_size",16)
+	_reset = _pill("HomeResetView", "Reset view", RESET_ICON)
 	_reset.pressed.connect(_reset_view)
 	add_child(_reset)
+	_hint_icon = TextureRect.new()
+	_hint_icon.name = "HomeGestureHintIcon"
+	_hint_icon.texture = HINT_ICON
+	_hint_icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	_hint_icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	_hint_icon.self_modulate = UiTokens.HINT
+	_hint_icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hint_icon.size = Vector2(HINT_ICON_SIZE, HINT_ICON_SIZE)
+	add_child(_hint_icon)
 	_hint = Label.new()
 	_hint.text = PlayerCopy.HOME_STAGE_88876AC2DD42 if PlatformSupport.is_phone() else PlayerCopy.HOME_STAGE_CA9AEFEB7961
 	_hint.name = "HomeGestureHint"
 	_hint.add_theme_font_size_override("font_size",16)
-	_hint.add_theme_color_override("font_color",Color("a6c6b8"))
+	_hint.add_theme_color_override("font_color",UiTokens.HINT)
 	_hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	_hint.vertical_alignment = VERTICAL_ALIGNMENT_BOTTOM
 	_hint.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -213,55 +237,74 @@ func _stage_rect() -> Rect2:
 	var rect := get_global_rect()
 	# Exploring hides the menu, so the whole screen is the stage.
 	if _exploring: return Rect2(rect.position + Vector2(24, 40), Vector2(maxf(100, rect.size.x - 48), maxf(100, rect.size.y - 138)))
-	var left := minf(470.0,rect.size.x*0.52)
+	var left := minf(UiTokens.HOME_STAGE_LEFT,rect.size.x*0.52)
 	return Rect2(rect.position+Vector2(left,40),Vector2(maxf(100,rect.size.x-left-24),maxf(100,rect.size.y-138)))
 
-func _create_text_backing() -> void:
-	# The camera can bring bright terrain beneath the fixed menu and captions.
-	# Fade in a quiet backdrop as the player explores, without blocking gestures.
-	var gradient := Gradient.new()
-	gradient.offsets = PackedFloat32Array([0.0, 0.82, 1.0])
-	gradient.colors = PackedColorArray([Color("123c3c"), Color("123c3c"), Color(0.07,0.24,0.24,0)])
-	var texture := GradientTexture2D.new()
-	texture.gradient = gradient
-	texture.fill_from = Vector2.ZERO
-	texture.fill_to = Vector2.RIGHT
-	_menu_backing = TextureRect.new()
-	_menu_backing.texture = texture
-	_menu_backing.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	add_child(_menu_backing)
+## Home's heading face (Fredoka), as Main and the menu use it.
+static func heading_font() -> FontVariation:
+	if _heading == null:
+		_heading = FontVariation.new()
+		_heading.base_font = HEADING_FONT
+		_heading.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 600.0}
+	return _heading
+
+## A cream pill over the island: its icon, then its label.
+func _pill(node_name: String, text: String, icon: Texture2D) -> Button:
+	var button := Button.new()
+	button.name = node_name
+	button.text = text
+	button.icon = icon
+	button.focus_mode = Control.FOCUS_ALL
+	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
+	button.custom_minimum_size = Vector2(0, PILL_HEIGHT)
+	button.add_theme_font_override("font", heading_font())
+	button.add_theme_font_size_override("font_size", 20)
+	button.add_theme_constant_override("icon_max_width", 24)
+	button.add_theme_constant_override("h_separation", 10)
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+		button.add_theme_color_override("icon_" + state + "_color", UiTokens.INK)
+	return button
+
+## The pill's own width at its full touch height.
+static func _fit_pill(button: Button) -> void:
+	button.size = Vector2(ceilf(button.get_combined_minimum_size().x), PILL_HEIGHT)
 
 func _layout() -> void:
 	if not is_instance_valid(_reset): return
 	var rect := _stage_rect()
-	# The backing is a backdrop: it reaches the screen edges, under a camera
-	# cutout too, though the stage itself sits in the safe area.
-	var screen := get_viewport_rect()
-	var reach := screen.position-global_position
-	_menu_backing.position = reach
-	_menu_backing.size = Vector2(rect.position.x-global_position.x+80-reach.x, screen.size.y)
-	var backing_strength := clampf(maxf((DEFAULT_SIZE-zoom_size)/(DEFAULT_SIZE-MIN_SIZE)*2.0,_exploration.pan.length()*10.0),0,1)
-	_menu_backing.modulate.a = backing_strength
-	_reset.position = rect.position-global_position+Vector2(rect.size.x-116,0)
-	_reset.size = Vector2(116,36)
+	# Explore sits at the island's top left, just right of the menu panel, with
+	# Reset view beside it (beside Back while exploring).
+	var top_left := Vector2(UiTokens.HOME_PANEL_WIDTH + UiTokens.HOME_STAGE_GAP, UiTokens.HOME_TOP)
+	_fit_pill(_reset)
+	_reset.position = top_left
+	if is_instance_valid(_explore_button):
+		_fit_pill(_explore_button)
+		var lead: Button = _explore_back if _exploring else _explore_button
+		if not _exploring: _explore_button.position = top_left
+		_reset.position = Vector2(lead.position.x + lead.size.x + PILL_GAP, lead.position.y + (lead.size.y - PILL_HEIGHT) * 0.5)
 	for action: Control in _header_actions:
 		if not is_instance_valid(action) or not action.is_visible_in_tree(): continue
 		var header := action.get_global_rect()
 		if _reset.get_global_rect().intersects(header.grow(12)):
-			_reset.position = Vector2(header.end.x-116,maxf(rect.position.y,header.end.y+12))-global_position
-	# The gesture hint sits in the footer band (the bottom 64 units), right-aligned;
-	# the keepsake box always ends above that band.
+			_reset.position = Vector2(header.end.x-_reset.size.x,maxf(rect.position.y,header.end.y+12))-global_position
+	# The gesture hint sits in the footer band (the bottom 64 units), right-aligned,
+	# its hand icon just before the words; the keepsake box always ends above that band.
 	var band_left := rect.position.x-global_position.x
 	_hint.position = Vector2(band_left, size.y-64)
 	_hint.size = Vector2(maxf(1, size.x-30-band_left), 50)
+	if not _hint_width.has(_hint.text):
+		_hint_width = {_hint.text: _hint.get_theme_font("font").get_string_size(_hint.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _hint.get_theme_font_size("font_size")).x}
+	var words: float = _hint_width[_hint.text]
+	_hint_icon.position = Vector2(size.x-30-words-10-HINT_ICON_SIZE, size.y-14-_hint.get_line_height()*0.5-HINT_ICON_SIZE*0.5)
 	_reset.visible = not is_equal_approx(zoom_target,_base_size()) or not _view().pan.is_zero_approx()
 	_hint.visible = not _exploring
+	# The icon goes with a one-line hint; a wrapped one shows the words alone.
+	_hint_icon.visible = _hint.visible and words + 10 + HINT_ICON_SIZE <= _hint.size.x
 	if is_instance_valid(_explore_button):
-		_explore_button.position = rect.position-global_position
 		_explore_back.position = Vector2(24, 24)
 		_stick.position = Vector2(24, size.y-_stick.size.y-24)
 	if is_instance_valid(_keepsake_box):
-		var width := clampf(rect.size.x-24, 300, 500)
+		var width := clampf(rect.size.x-24, 300, BOX_MAX_WIDTH)
 		var inner := width-28
 		_keepsake_controls.custom_minimum_size = Vector2(inner, BROWSER_HEIGHT)
 		_keepsake_controls.get_child(0).position = Vector2.ZERO
@@ -270,14 +313,20 @@ func _layout() -> void:
 		_keepsake_controls.get_child(2).size = Vector2(52, BROWSER_HEIGHT)
 		_place_keepsake_heading(inner)
 		_keepsake_count.custom_minimum_size.x = inner
-		_keepsake_status.custom_minimum_size.x = inner
+		var wrap := inner
+		_keepsake_status.custom_minimum_size.x = wrap
 		# One box height for every state: the browser, the tallest status line
 		# (which may wrap) and the count.
 		var count_height := _keepsake_count.get_combined_minimum_size().y
 		var status_font := _keepsake_status.get_theme_font("font")
 		var status_height := 0.0
+		var status_size := _keepsake_status.get_theme_font_size("font_size")
+		var line_height := status_font.get_height(status_size)
 		for line: String in STATUS_LINES:
-			status_height = maxf(status_height, status_font.get_multiline_string_size(line, HORIZONTAL_ALIGNMENT_CENTER, inner, _keepsake_status.get_theme_font_size("font_size")).y)
+			var block := status_font.get_multiline_string_size(line, HORIZONTAL_ALIGNMENT_CENTER, wrap, status_size).y
+			# The label adds its line spacing between wrapped lines.
+			block += maxf(0.0, roundf(block / line_height) - 1.0) * _keepsake_status.get_theme_constant("line_spacing")
+			status_height = maxf(status_height, block)
 		_keepsake_status.custom_minimum_size.y = ceilf(status_height)
 		_keepsake_content.custom_minimum_size.y = ceilf(BROWSER_HEIGHT + status_height + count_height + BOX_ROW_GAP * 2.0)
 		var height := _keepsake_box.get_combined_minimum_size().y
@@ -286,7 +335,8 @@ func _layout() -> void:
 		_keepsake_box.position = Vector2(rect.get_center().x-global_position.x-width*0.5, size.y-70-height)
 
 ## Centres the selected keepsake's title and its variant icons as one group between
-## the paging buttons; a title too long for one line wraps beside the icons.
+## the paging buttons. The title takes the largest of TITLE_SIZES that fits on one
+## line beside the icons; one too long even at the smallest wraps beside them.
 func _place_keepsake_heading(inner: float) -> void:
 	var area := maxf(1, inner-120)
 	var icons := 0
@@ -295,7 +345,18 @@ func _place_keepsake_heading(inner: float) -> void:
 	var icons_width := icons * VARIANT_ICON + maxi(0, icons-1) * _keepsake_variant_icons.get_theme_constant("separation")
 	var gap := 8.0 if icons > 0 else 0.0
 	var font := _keepsake_title.get_theme_font("font")
-	var text_width := ceilf(font.get_string_size(_keepsake_title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _keepsake_title.get_theme_font_size("font_size")).x) + 2.0
+	var room := area-icons_width-gap
+	var key := "%s|%d" % [_keepsake_title.text, roundi(room)]
+	if not _title_fit.has(key):
+		var chosen: int = TITLE_SIZES[-1]
+		for font_size: int in TITLE_SIZES:
+			if ceilf(font.get_string_size(_keepsake_title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x) + 2.0 <= room:
+				chosen = font_size
+				break
+		_title_fit = {key: chosen}
+	var title_size: int = _title_fit[key]
+	if _keepsake_title.get_theme_font_size("font_size") != title_size: _keepsake_title.add_theme_font_size_override("font_size", title_size)
+	var text_width := ceilf(font.get_string_size(_keepsake_title.text, HORIZONTAL_ALIGNMENT_LEFT, -1, title_size).x) + 2.0
 	var title_width := minf(text_width, area-icons_width-gap)
 	var start := 60.0 + (area-(title_width+gap+icons_width))*0.5
 	_keepsake_title.position = Vector2(start, 0)
@@ -321,8 +382,8 @@ func _create_keepsake_box() -> void:
 	# starting a camera gesture, and its buttons still take their own taps.
 	_keepsake_box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	var style := StyleBoxFlat.new()
-	style.bg_color = Color(0.055,0.19,0.20,0.96)
-	style.set_corner_radius_all(16)
+	style.bg_color = UiTokens.BOX
+	style.set_corner_radius_all(18)
 	style.content_margin_left = 14
 	style.content_margin_right = 14
 	style.content_margin_top = 10
@@ -354,8 +415,9 @@ func _create_keepsake_box() -> void:
 			_keepsake_title.clip_text = true
 			_keepsake_title.max_lines_visible = 2
 			_keepsake_title.mouse_filter = Control.MOUSE_FILTER_IGNORE
-			_keepsake_title.add_theme_font_size_override("font_size", 18)
-			_keepsake_title.add_theme_color_override("font_color", Color("eceddb"))
+			_keepsake_title.add_theme_font_override("font", heading_font())
+			_keepsake_title.add_theme_font_size_override("font_size", TITLE_SIZES[0])
+			_keepsake_title.add_theme_color_override("font_color", UiTokens.CREAM)
 			_keepsake_controls.add_child(_keepsake_title)
 	_keepsake_variant_icons = HBoxContainer.new()
 	_keepsake_variant_icons.name = "KeepsakeVariants"
@@ -379,10 +441,11 @@ func _create_keepsake_box() -> void:
 		var hard_mark := HardModeView.mark(mode, HardMode.LOCKED, VARIANT_ICON)
 		hard_mark.visible = false
 		_keepsake_variant_icons.add_child(hard_mark)
-	_keepsake_status = _box_label(15, Color("a6c6b8"), _keepsake_content)
+	_keepsake_status = _box_label(15, UiTokens.HINT, _keepsake_content)
 	_keepsake_status.name = "KeepsakeStatus"
 	_keepsake_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_keepsake_count = _box_label(18, Color("eceddb"), _keepsake_content)
+	_keepsake_status.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	_keepsake_count = _box_label(19, UiTokens.CREAM, _keepsake_content)
 	_keepsake_count.name = "KeepsakeCount"
 	_update_keepsake_labels()
 
@@ -393,7 +456,7 @@ func _page_button(offset: int) -> Button:
 	button.tooltip_text = "Previous keepsake" if offset < 0 else "Next keepsake"
 	button.accessibility_name = button.tooltip_text
 	button.custom_minimum_size = Vector2(52, BROWSER_HEIGHT)
-	var fills := {"normal": PAGE_FILL, "hover": Color("3a6b5f"), "pressed": Color("4a7c6f"), "hover_pressed": Color("4a7c6f"), "disabled": PAGE_FILL}
+	var fills := {"normal": PAGE_FILL, "hover": UiTokens.SELECTED, "pressed": UiTokens.PAGE_PRESSED, "hover_pressed": UiTokens.PAGE_PRESSED, "disabled": PAGE_FILL}
 	for state: String in fills:
 		var style := StyleBoxFlat.new()
 		style.bg_color = fills[state]
@@ -403,7 +466,7 @@ func _page_button(offset: int) -> Button:
 		button.add_theme_stylebox_override(state, style)
 	var ring := StyleBoxFlat.new()
 	ring.bg_color = Color.TRANSPARENT
-	ring.border_color = Color("a6d9c4")
+	ring.border_color = UiTokens.MINT
 	ring.set_border_width_all(2)
 	ring.set_corner_radius_all(14)
 	button.add_theme_stylebox_override("focus", ring)
@@ -486,6 +549,8 @@ func _allowed(point: Vector2) -> bool:
 	if is_instance_valid(_keepsake_box) and _keepsake_box.visible and _keepsake_box.get_global_rect().has_point(point): return false
 	for control: Control in [_explore_button, _explore_back, _stick]:
 		if is_instance_valid(control) and control.is_visible_in_tree() and control.get_global_rect().has_point(point): return false
+	# The menu panel keeps its own presses; only Explore has the whole screen.
+	if not _exploring and point.x < global_position.x + UiTokens.HOME_PANEL_WIDTH: return false
 	return _stage_rect().has_point(point) and not (is_instance_valid(_reset) and _reset.visible and _reset.get_global_rect().has_point(point))
 
 func _input(event: InputEvent) -> void:
@@ -676,11 +741,7 @@ func _frame_camera() -> void:
 
 ## The Explore button, and while exploring a Back button and the joystick.
 func _create_explore_controls() -> void:
-	_explore_button = Button.new()
-	_explore_button.name = "HomeExplore"
-	_explore_button.text = PlayerCopy.HOME_EXPLORE
-	_explore_button.custom_minimum_size = Vector2(124, 48)
-	_explore_button.add_theme_font_size_override("font_size", 18)
+	_explore_button = _pill("HomeExplore", PlayerCopy.HOME_EXPLORE, EXPLORE_ICON)
 	_explore_button.pressed.connect(set_exploring.bind(true))
 	add_child(_explore_button)
 	_explore_back = Button.new()
