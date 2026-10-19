@@ -314,7 +314,7 @@ static func summaries() -> Array[Dictionary]:
 		for key: String in eligible_keys():
 			var kept := _read_runs(key)
 			if not kept.is_empty(): index[key] = _summaries(kept)
-		AtomicFile.write_text(INDEX_PATH, JSON.stringify({"schema_version": VERSION, "chapters": index}, "", false), true)
+		if not index.is_empty(): AtomicFile.write_text(INDEX_PATH, JSON.stringify({"schema_version": VERSION, "chapters": index}, "", false), true)
 	_files.unlock()
 	for key: String in index:
 		if eligible(key): result.append_array(index[key])

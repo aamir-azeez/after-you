@@ -245,15 +245,13 @@ func hide_room(version: int, room_id: String) -> void:
 ## The hub can open before the saved tester code is read; once it is, the
 ## hosting locks are drawn again so a tester never keeps a stale lock.
 ## The host panel's Hard chip: shown only once the server says it hosts hard
-## rooms. A hub opened before the server has said asks it once, then offers
-## the chip again.
-func _offer_hard(hub: Node, asked: bool = false) -> void:
+## rooms, as the relay session or the hub's own capabilities read
+## (services/room_leave_support.gd) last heard.
+func _offer_hard(hub: Node) -> void:
 	if not is_instance_valid(hub): return
 	var session: RefCounted = host.relay_session
-	hub.set_hard(session != null and session.hard_mode_supported(), host.hard_states(), host_hard)
-	if asked or session == null or not session.capabilities.is_empty() or session.busy(): return
-	if not await session.load_capabilities(): return
-	if is_instance_valid(hub) and hub == screen: _offer_hard(hub, true)
+	var hosted: bool = (session != null and session.hard_mode_supported()) or leave_support.hard_offered(host._tester_context())
+	hub.set_hard(hosted, host.hard_states(hosted), host_hard)
 
 func _refresh_together_locks(hub: Node) -> void:
 	if not host._tester_checks_enabled() or (is_instance_valid(host.tester_access) and host.tester_access.cache_checked_context == host._tester_context()): return
@@ -266,10 +264,14 @@ func refresh_when_idle(hub: CanvasLayer) -> void:
 	if not is_instance_valid(hub) or hub != screen: return
 	await hub.refresh()
 	if is_instance_valid(hub) and hub == screen: hub.set_held_request(_held_room_request())
-	if not _lists_finished_room(): return
+	# One capabilities read per identity: for Leave room on a finished room,
+	# and for the Hard chip.
 	var identity: String = host._tester_context()
+	if not _lists_finished_room() and leave_support.known(identity): return
 	await leave_support.read(host.api, identity, func() -> bool: return identity == host._tester_context())
-	if is_instance_valid(hub) and hub == screen: hub.set_leave_finished(_leave_offered())
+	if is_instance_valid(hub) and hub == screen:
+		hub.set_leave_finished(_leave_offered())
+		_offer_hard(hub)
 
 ## Only a list with a confirmed finished server room needs to know about Leave room.
 func _lists_finished_room() -> bool:

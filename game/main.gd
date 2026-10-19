@@ -881,9 +881,10 @@ func _open_hard_chapter(key: String) -> void:
 	else: _open_chapter_preview(ChapterRegistry.solo_scene(key), {}, request)
 
 ## Every chapter's hard marks (HardMode.states); together ones only where
-## the server has said it hosts hard rooms.
-func hard_states() -> Dictionary:
-	return HardMode.new().states(_chapter_marks(), hard_together())
+## the server has said it hosts hard rooms (`together`, or the relay session
+## when null).
+func hard_states(together: Variant = null) -> Dictionary:
+	return HardMode.new().states(_chapter_marks(), hard_together() if together == null else bool(together))
 
 func hard_together() -> bool:
 	return relay_session != null and relay_session.hard_mode_supported()

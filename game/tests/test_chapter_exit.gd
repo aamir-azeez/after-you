@@ -115,8 +115,10 @@ func _leave_during_read(key: String) -> void:
 	await process_frame
 
 ## Requests other than the hub's own inbox read, which opening the hub makes.
+## The room's own calls: not the hub's reads (its inbox, and its one
+## capabilities read per identity for Leave room and the Hard chip).
 func _room_calls(api: FakeApi) -> int:
-	return api.calls.filter(func(call: Dictionary) -> bool: return call.path != "/v1/room-inbox").size()
+	return api.calls.filter(func(call: Dictionary) -> bool: return call.path not in ["/v1/room-inbox", "/v2/capabilities"]).size()
 
 func _leave_during_submission(key: String, lose_reply: bool) -> void:
 	var scene := await _open_case(key)

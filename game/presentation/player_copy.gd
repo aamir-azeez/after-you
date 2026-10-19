@@ -46,7 +46,7 @@ const HARD_CHIP := "Hard"
 const HARD_CHIP_OFF := "Play the whole chapter in one go, with no retries"
 const HARD_CHIP_ON := "Hard is on. One slip and the run starts again"
 # ★ The host panel's line beside the chip, off and on.
-const HARD_HOST_NOTE_OFF := "The whole chapter in one go. No retries."
+const HARD_HOST_NOTE_OFF := "Play the whole chapter in one go, with no retries."
 const HARD_HOST_NOTE_ON := "One slip from either of you and you both start again."
 # ★ The marks beside a chapter's solo and together marks.
 const HARD_MARK_SOLO := "Hard solo"
@@ -89,7 +89,7 @@ const HARD_ROOM_FULL_GUEST := "There's no space here for another hard run. Waiti
 const HARD_NEW_ROOM := "New hard room"
 # ★ A finished hard run (the chapter's title).
 const HARD_COMPLETE_TITLE := "Hard run done"
-const HARD_COMPLETE_BODY := "%s, start to finish, no retries."
+const HARD_COMPLETE_BODY := "%s, start to finish, in one go."
 const HARD_AGAIN := "Play Hard again"
 # ★ Replays, and the room list's tag for a hard room.
 const HARD_REPLAYS_HEADING := "Hard runs"
