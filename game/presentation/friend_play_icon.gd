@@ -32,6 +32,7 @@ var _button: BaseButton
 var _held := false
 var _hovered := false
 var _target := 0.0
+var _leads_label := false
 var _placed_text := ""
 
 func _init() -> void:
@@ -53,18 +54,18 @@ func attach_to(button: BaseButton) -> void:
 	button.button_up.connect(_on_held.bind(false))
 	button.focus_entered.connect(_refresh)
 	button.focus_exited.connect(_refresh)
-	button.gui_input.connect(_on_button_input)
+	button.draw.connect(_on_button_drawn)
 	_refresh()
 
 ## Adds the icon to `button` at LABEL_SIZE, just left of its centred label,
 ## and keeps it there as the button resizes or its text changes.
 func lead_label(button: Button) -> void:
+	_leads_label = true
 	custom_minimum_size = LABEL_SIZE
 	size = LABEL_SIZE
 	button.add_child(self)
 	attach_to(button)
 	button.resized.connect(_place_by_label)
-	button.draw.connect(_follow_label)
 	_place_by_label()
 
 func _on_hover(on: bool) -> void:
@@ -75,13 +76,22 @@ func _on_held(on: bool) -> void:
 	_held = on
 	_refresh()
 
-func _on_button_input(event: InputEvent) -> void:
-	# A finger leaves no pointer behind: once it lifts, the button is no longer
-	# hovered, though the emulated mouse never left it.
+func _input(event: InputEvent) -> void:
+	# A finger leaves no pointer behind: once it lifts, wherever it went down
+	# (a pan over Home that ends on the button), the button is no longer
+	# hovered, though the emulated mouse never left it. Never handled here.
+	if not _hovered: return
 	var lifted: bool = event is InputEventScreenTouch and not event.pressed
 	var mouse := event as InputEventMouseButton
 	if lifted or (mouse != null and not mouse.pressed and mouse.device == InputEvent.DEVICE_ID_EMULATION):
 		_on_hover(false)
+
+## Disabling a button drops its press without button_up, and always redraws it.
+func _on_button_drawn() -> void:
+	if _button.disabled: _held = false
+	_refresh()
+	# The label can change under the icon (Opening… while a save runs).
+	if _leads_label and (_button as Button).text != _placed_text: _place_by_label()
 
 func _refresh() -> void:
 	var want := is_instance_valid(_button) and not _button.disabled and (_held or _hovered or _button.has_focus(true))
@@ -104,9 +114,6 @@ func _process(delta: float) -> void:
 func _draw() -> void:
 	draw_count += 1
 	Art.scene(self, SCENE, Rect2(Vector2.ZERO, size), {"eyes": Look.SQUEEZE if squeezed else Look.HAPPY, "squish": squish})
-
-func _follow_label() -> void:
-	if _button is Button and (_button as Button).text != _placed_text: _place_by_label.call_deferred()
 
 func _place_by_label() -> void:
 	var button := _button as Button

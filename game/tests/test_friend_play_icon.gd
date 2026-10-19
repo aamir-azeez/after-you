@@ -7,6 +7,8 @@ extends SceneTree
 ## nothing on idle frames, and under reduced motion only swaps the eyes.
 
 const FriendPlayIcon = preload("res://presentation/friend_play_icon.gd")
+const Art = preload("res://presentation/empty_state_art.gd")
+const Look = preload("res://presentation/spirit_look.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 
@@ -17,10 +19,13 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
+	_poses()
 	await _rest_and_idle()
 	await _mouse_hover()
 	await _mouse_hold()
 	await _finger_tap()
+	await _pan_ends_on_button()
+	await _disabled_while_held()
 	await _engine_touch()
 	await _keyboard_focus()
 	await _reduced_motion()
@@ -29,6 +34,40 @@ func _run() -> void:
 	print("AFTER YOU FRIEND PLAY ICON: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
+## The scene state reaches the drawing: the squishing spirits take the state's
+## eyes, slide together, tip in and squash about the chin, the heart pops and
+## lifts; rows of the other scenes come back exactly as written.
+func _poses() -> void:
+	var rows: Array = Art.SCENES.friends_squeeze
+	var rest := {"eyes": Look.HAPPY, "squish": 0.0}
+	var held := {"eyes": Look.SQUEEZE, "squish": 1.0}
+	for row: Array in rows:
+		if row[0] != "face": continue
+		var toward: float = row[2].squish
+		var calm := Art.pose(row, rest)
+		var close := Art.pose(row, held)
+		_check(calm.options.eyes == Look.HAPPY and close.options.eyes == Look.SQUEEZE, "%s: happy at rest, squeezed when held" % row[2].color)
+		_check(calm.place.origin.is_equal_approx(row[1]), "%s rests where the scene puts it" % row[2].color)
+		_check(is_equal_approx(close.place.origin.x - calm.place.origin.x, toward * Art.SQUISH_SHIFT), "%s slides %.1f toward the other" % [row[2].color, Art.SQUISH_SHIFT])
+		_check(is_equal_approx(close.options.tilt - calm.options.tilt, toward * Art.SQUISH_TIP), "%s tips further in" % row[2].color)
+		_check(close.place.get_scale().x < calm.place.get_scale().x and close.place.get_scale().y > calm.place.get_scale().y, "%s squashes narrower and taller" % row[2].color)
+		# A face's place is centred on its head; the chin is half a head below.
+		var chin := Vector2(0, Look.HEAD_HALF.y * Art.UNIT)
+		_check(absf((close.place * chin).y - (calm.place * chin).y) < 0.01, "%s keeps its chin level as it squashes" % row[2].color)
+		_check(row[2].eyes == "happy" and not row[2].has("edge"), "The scene row itself is left untouched")
+	var heart: Array = rows[2]
+	var calm_heart := Art.pose(heart, rest)
+	var popped := Art.pose(heart, held)
+	_check(is_equal_approx(popped.size, calm_heart.size * 1.28) and popped.pos.y < calm_heart.pos.y, "The heart pops 28%% bigger and lifts: %.2f to %.2f" % [calm_heart.size, popped.size])
+	for scene_id: String in ["invite", "finished", "friend", "friend_next", "polaroid"]:
+		for row: Array in Art.SCENES[scene_id]:
+			if row[0] in ["spirit", "face"]:
+				var posed := Art.pose(row, held)
+				_check(is_same(posed.options, row[2]) and posed.place == Art._place(row[1], row[2]), "%s: its spirits ignore the squish state" % scene_id)
+			elif row[0] == "heart":
+				var posed := Art.pose(row, held)
+				_check(posed.pos == row[1] and posed.size == row[2], "%s: its heart ignores the squish state" % scene_id)
+
 ## A 1280x720 viewport with a Home-sized button in a column, the icon leading
 ## its label. Returns [viewport, button, icon, presses].
 func _stage(reduced := false) -> Array:
@@ -36,6 +75,11 @@ func _stage(reduced := false) -> Array:
 	viewport.size = Vector2i(1280, 720)
 	viewport.handle_input_locally = true
 	root.add_child(viewport)
+	# A full-screen backdrop that takes touches and drags, as Home's world does.
+	var backdrop := Control.new()
+	backdrop.size = Vector2(1280, 720)
+	backdrop.mouse_filter = Control.MOUSE_FILTER_STOP
+	viewport.add_child(backdrop)
 	var column := VBoxContainer.new()
 	column.position = Vector2(64, 300)
 	column.size = Vector2(385, 54)
@@ -159,6 +203,50 @@ func _finger_tap() -> void:
 	_finger(viewport, at, false)
 	await _frames(1)
 	_check(presses[0] == 2 and not icon.squeezed, "A second tap presses once more and lets go")
+	await _close(made)
+
+## A pan over Home's world that ends with the finger lifting over the button:
+## the touch belongs to the world, yet the emulated pointer ends on the button.
+func _pan_ends_on_button() -> void:
+	var made := await _stage()
+	var viewport: SubViewport = made[0]
+	var button: Button = made[1]
+	var icon: FriendPlayIcon = made[2]
+	var presses: Array = made[3]
+	var at := button.get_global_rect().get_center() + Vector2(0, -160)
+	_finger(viewport, at, true)
+	await _frames(1)
+	for step: int in range(8):
+		at += Vector2(0, 20)
+		_drag(viewport, at, Vector2(0, 20))
+		await _frames(1)
+	_check(icon.squeezed, "The emulated pointer reaches the button during the pan, so the lift below is the stuck case")
+	_finger(viewport, at, false)
+	await _frames(1)
+	_check(presses[0] == 0, "A pan that ends on the button presses nothing")
+	_check(not icon.squeezed, "A pan that lifts over the button leaves it happy")
+	await create_timer(0.35).timeout
+	_check(icon.squish == 0.0 and not icon.is_processing(), "And nothing keeps running after the pan")
+	await _close(made)
+
+## Disabling a held button drops its press with no button_up.
+func _disabled_while_held() -> void:
+	var made := await _stage()
+	var viewport: SubViewport = made[0]
+	var button: Button = made[1]
+	var icon: FriendPlayIcon = made[2]
+	var at := button.get_global_rect().get_center()
+	_finger(viewport, at, true)
+	await _frames(1)
+	_check(icon.squeezed, "Held before disabling")
+	button.disabled = true
+	await _frames(2)
+	_check(not icon.squeezed, "Disabling the held button is happy again")
+	_finger(viewport, at, false)
+	await _frames(1)
+	button.disabled = false
+	await _frames(2)
+	_check(not icon.squeezed, "Enabling it again, untouched, stays happy")
 	await _close(made)
 
 ## The same finger through the engine's own input path: Input turns the touch

@@ -87,35 +87,47 @@ static func scene(ci: CanvasItem, scene_id: String, slot: Rect2, state: Dictiona
 	var s := minf(slot.size.x / box.x, slot.size.y / box.y)
 	var at := Transform2D(0.0, Vector2(s, s), 0.0, slot.get_center())
 	var edge: float = look.get("edge", 0.0) * s
-	var squish := clampf(float(state.get("squish", 0.0)), 0.0, 1.0)
 	for row: Array in SCENES.get(scene_id, []):
 		var pos: Vector2 = row[1]
 		match row[0]:
 			"spirit", "face":
-				var options: Dictionary = row[2]
-				var place := _place(pos, options)
-				if edge > 0.0 or options.has("squish"):
-					options = options.duplicate()
+				var posed := pose(row, state)
+				var options: Dictionary = posed.options
+				if edge > 0.0:
+					if is_same(options, row[2]): options = options.duplicate()
 					options.edge = edge
-				if options.has("squish"):
-					var toward: float = options.squish
-					if state.has("eyes"): options.eyes = state.eyes
-					options.tilt = options.get("tilt", 0.0) + toward * SQUISH_TIP * squish
-					# Squashed about the chin, so the chin stays put.
-					var rise := SQUISH_SQUASH.y * squish * Look.HEAD_HALF.y * UNIT * float(options.get("size", SPIRIT_SIZE))
-					var squash := Vector2(1.0 - SQUISH_SQUASH.x * squish, 1.0 + SQUISH_SQUASH.y * squish)
-					place = _place(pos + Vector2(toward * SQUISH_SHIFT * squish, -rise), options) * Transform2D(0.0, squash, 0.0, Vector2.ZERO)
-				spirit(ci, at * place, options, row[0] == "face")
+				spirit(ci, at * posed.place, options, row[0] == "face")
 			"outline": outline(ci, at, pos)
 			"envelope": envelope(ci, at * Transform2D(row[2], pos))
 			"island": island(ci, at, pos, row[2])
 			"flag": flag(ci, at, pos)
 			"heart":
-				var pop: Dictionary = row[3] if row.size() > 3 else {}
-				heart(ci, at, pos + pop.get("lift", Vector2.ZERO) * squish, row[2] * (1.0 + pop.get("pop", 0.0) * squish), edge)
+				var posed := pose(row, state)
+				heart(ci, at, posed.pos, posed.size, edge)
 			"sparkle": sparkle(ci, at, pos, row[2])
 			"walk": walk(ci, at, pos, row[2])
 			"polaroid": polaroid(ci, at * Transform2D(row[2], Vector2(1.3, 1.3), 0.0, pos))
+
+## Where a spirit or heart row lands for a scene state: {place, options} for a
+## spirit (its transform in scene units, and its options with the state's eyes
+## and squish tilt), {pos, size} for a heart. Rows with no "squish" or "pop"
+## come back as written.
+static func pose(row: Array, state: Dictionary) -> Dictionary:
+	var pos: Vector2 = row[1]
+	var squish := clampf(float(state.get("squish", 0.0)), 0.0, 1.0)
+	if row[0] == "heart":
+		var pop: Dictionary = row[3] if row.size() > 3 else {}
+		return {"pos": pos + pop.get("lift", Vector2.ZERO) * squish, "size": float(row[2]) * (1.0 + pop.get("pop", 0.0) * squish)}
+	var options: Dictionary = row[2]
+	if not options.has("squish"): return {"place": _place(pos, options), "options": options}
+	options = options.duplicate()
+	var toward: float = options.squish
+	if state.has("eyes"): options.eyes = state.eyes
+	options.tilt = options.get("tilt", 0.0) + toward * SQUISH_TIP * squish
+	# Squashed about the chin, so the chin stays put.
+	var rise := SQUISH_SQUASH.y * squish * Look.HEAD_HALF.y * UNIT * float(options.get("size", SPIRIT_SIZE))
+	var squash := Vector2(1.0 - SQUISH_SQUASH.x * squish, 1.0 + SQUISH_SQUASH.y * squish)
+	return {"place": _place(pos + Vector2(toward * SQUISH_SHIFT * squish, -rise), options) * Transform2D(0.0, squash, 0.0, Vector2.ZERO), "options": options}
 
 static func _place(pos: Vector2, options: Dictionary) -> Transform2D:
 	var size: float = options.get("size", SPIRIT_SIZE)
