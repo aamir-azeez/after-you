@@ -8,6 +8,7 @@ const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
 const World = preload("res://presentation/island_world.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
+const ScreenSwitch = preload("res://services/screen_switch.gd")
 const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
 const HardMode = preload("res://services/hard_mode.gd")
@@ -2616,9 +2617,16 @@ func _process(delta: float) -> void:
 			get_viewport().get_texture().get_image().save_png(capture_path)
 			get_tree().quit()
 
+## Home has just opened: its island still folds, or the screen before it is
+## still being freed (services/screen_switch.gd).
+func _home_settling() -> bool:
+	return (is_instance_valid(home_stage_view) and home_stage_view.folding()) or ScreenSwitch.pending_count() > 0
+
 func _service_home_keepsakes(delta: float) -> void:
 	if mode not in ["home","journey"] or application_backgrounded or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening): return
-	if _keepsakes_reconcile_frame >= 0 and Engine.get_process_frames() > _keepsakes_reconcile_frame:
+	# In a frame of its own: after Home's island has folded and the screen
+	# before it has been freed, which both take the first frames.
+	if _keepsakes_reconcile_frame >= 0 and Engine.get_process_frames() > _keepsakes_reconcile_frame and not _home_settling():
 		_keepsakes_reconcile_frame = -1
 		home_keepsakes.reconcile_solo(saves.data.get("replays", {}))
 		if shared_replays != null: home_keepsakes.reconcile_friend(shared_replays)
