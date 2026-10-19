@@ -1,32 +1,14 @@
 {
-	"digest": "057a3edf979555e4135b752b0c3187d5c8ddde1a66775ce33d53ce8190f0f492",
+	"digest": "8c0559dd7ef9ba3b2f7596f20640c7099b36323acb1ecbe47d3e5415150edae5",
 	"runs": [
-		{
-			"a": "island:w-beach",
-			"along_x": false,
-			"b": "crossing:sand-1",
-			"base": -0.03,
-			"ends": [
-				false,
-				false
-			],
-			"from": 288.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "sand-1",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 416.0,
-			"top": -0.7
-		},
 		{
 			"a": "island:w-terrace",
 			"along_x": false,
-			"b": "crossing:stones-1",
+			"b": "harbour",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -64.0,
 			"kind": "door",
@@ -38,60 +20,6 @@
 			"top": -0.7
 		},
 		{
-			"a": "crossing:punt-ferry",
-			"along_x": false,
-			"b": "island:w-beach",
-			"base": -0.03,
-			"ends": [
-				false,
-				false
-			],
-			"from": 288.0,
-			"kind": "door",
-			"line": -512.0,
-			"mouth": "punt-ferry",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 416.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:sea-gate-in",
-			"along_x": false,
-			"b": "island:w-terrace",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": -512.0,
-			"mouth": "sea-gate-in",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "island:sea-chamber",
-			"along_x": false,
-			"b": "crossing:sea-gate-in",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": -576.0,
-			"mouth": "sea-gate-in",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
 			"a": "island:sea-chamber",
 			"along_x": false,
 			"b": "sea",
@@ -115,24 +43,6 @@
 			"mouth": "",
 			"shift": 5.0,
 			"to": 96.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:sea-gate-out",
-			"along_x": false,
-			"b": "island:sea-chamber",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": -640.0,
-			"mouth": "sea-gate-out",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
 			"top": -0.7
 		},
 		{
@@ -162,67 +72,13 @@
 			"top": -0.7
 		},
 		{
-			"a": "island:mole-beach",
-			"along_x": false,
-			"b": "crossing:punt-ferry",
-			"base": -0.03,
-			"ends": [
-				false,
-				false
-			],
-			"from": 288.0,
-			"kind": "door",
-			"line": -704.0,
-			"mouth": "punt-ferry",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 416.0,
-			"top": -0.7
-		},
-		{
-			"a": "island:mole-terrace",
-			"along_x": false,
-			"b": "crossing:sea-gate-out",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": -704.0,
-			"mouth": "sea-gate-out",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:sand-1",
-			"along_x": false,
-			"b": "island:m-beach",
-			"base": -0.03,
-			"ends": [
-				false,
-				false
-			],
-			"from": 288.0,
-			"kind": "door",
-			"line": 0.0,
-			"mouth": "sand-1",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 416.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:stones-1",
+			"a": "harbour",
 			"along_x": false,
 			"b": "island:m-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -64.0,
 			"kind": "door",
@@ -231,34 +87,16 @@
 			"shift": 6.5,
 			"shut": 0.749999988079071,
 			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "island:e-beach",
-			"along_x": false,
-			"b": "crossing:slipway",
-			"base": -0.03,
-			"ends": [
-				false,
-				false
-			],
-			"from": 288.0,
-			"kind": "door",
-			"line": 1152.0,
-			"mouth": "slipway",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 416.0,
 			"top": -0.7
 		},
 		{
 			"a": "island:e-terrace-east",
 			"along_x": false,
-			"b": "crossing:stones-3",
+			"b": "harbour",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -64.0,
 			"kind": "door",
@@ -270,31 +108,13 @@
 			"top": -0.7
 		},
 		{
-			"a": "crossing:slipway",
-			"along_x": false,
-			"b": "island:r-beach",
-			"base": -0.03,
-			"ends": [
-				false,
-				false
-			],
-			"from": 288.0,
-			"kind": "door",
-			"line": 1344.0,
-			"mouth": "slipway",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 416.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:stones-3",
+			"a": "harbour",
 			"along_x": false,
 			"b": "island:r-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -64.0,
 			"kind": "door",
@@ -334,11 +154,11 @@
 		{
 			"a": "island:m-terrace",
 			"along_x": false,
-			"b": "crossing:stones-2",
+			"b": "harbour",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -64.0,
 			"kind": "door",
@@ -350,13 +170,13 @@
 			"top": -0.7
 		},
 		{
-			"a": "crossing:stones-2",
+			"a": "harbour",
 			"along_x": false,
 			"b": "island:e-terrace-west",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -64.0,
 			"kind": "door",
@@ -368,85 +188,31 @@
 			"top": -0.7
 		},
 		{
-			"a": "island:e-terrace-west",
-			"along_x": false,
-			"b": "crossing:lock-west",
+			"a": "harbour",
+			"along_x": true,
+			"b": "island:m-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
-			"from": -64.0,
+			"from": 192.0,
 			"kind": "door",
-			"line": 768.0,
-			"mouth": "lock-west",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:lock-west",
-			"along_x": false,
-			"b": "island:lock-chamber",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 832.0,
-			"mouth": "lock-west",
+			"line": -128.0,
+			"mouth": "race-stage",
 			"shift": 6.5,
 			"shut": 0.749999988079071,
-			"to": 64.0,
+			"to": 256.0,
 			"top": -0.7
 		},
 		{
-			"a": "island:lock-chamber",
-			"along_x": false,
-			"b": "crossing:lock-east",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 928.0,
-			"mouth": "lock-east",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:lock-east",
-			"along_x": false,
-			"b": "island:e-terrace-east",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 992.0,
-			"mouth": "lock-east",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:bar-catwalk",
+			"a": "harbour",
 			"along_x": true,
 			"b": "island:w-terrace",
 			"base": 0.45,
 			"ends": [
 				false,
-				false
+				true
 			],
 			"from": -512.0,
 			"kind": "door",
@@ -458,13 +224,13 @@
 			"top": -0.7
 		},
 		{
-			"a": "crossing:gate-catwalk",
+			"a": "harbour",
 			"along_x": true,
 			"b": "island:w-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -368.0,
 			"kind": "door",
@@ -476,13 +242,13 @@
 			"top": -0.7
 		},
 		{
-			"a": "crossing:gate-post",
+			"a": "harbour",
 			"along_x": true,
 			"b": "island:w-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -296.0,
 			"kind": "door",
@@ -494,31 +260,13 @@
 			"top": -0.7
 		},
 		{
-			"a": "crossing:mole-steps",
-			"along_x": true,
-			"b": "island:mole-terrace",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -912.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "mole-steps",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": -816.0,
-			"top": 0.35999992609024
-		},
-		{
-			"a": "crossing:punt-post",
+			"a": "harbour",
 			"along_x": true,
 			"b": "island:w-terrace",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -440.0,
 			"kind": "door",
@@ -527,24 +275,6 @@
 			"shift": 6.5,
 			"shut": 0.749999988079071,
 			"to": -384.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:race-stage",
-			"along_x": true,
-			"b": "island:m-terrace",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": 192.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "race-stage",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 256.0,
 			"top": -0.7
 		},
 		{
@@ -563,11 +293,11 @@
 		{
 			"a": "island:w-terrace",
 			"along_x": true,
-			"b": "crossing:boom-post",
+			"b": "harbour",
 			"base": 0.45,
 			"ends": [
-				false,
-				false
+				true,
+				true
 			],
 			"from": -296.0,
 			"kind": "door",

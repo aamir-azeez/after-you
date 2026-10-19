@@ -5,15 +5,6 @@ extends "res://presentation/journey_world.gd"
 ## gauges and kept-crossing marks only read the snapshot; nothing here feeds
 ## back into the simulation, a recording or a checkpoint.
 
-## A kept crossing shows dry while the water stands no deeper than this (m)
-## over its deck; deeper, it floods and its doors hold the water. Owner
-## approved; it only has to fall between the half tide over the beach crossings
-## (0.24) and the high tide over them (0.70).
-const KEPT_DRY_DEPTH := 0.30
-## How much stone shows above a kept stepping-stone crossing's calm water (m).
-const STONES_SHOWING := 0.04
-## How far any other kept walkway's deck stands above its calm water (m).
-const DECK_SHOWING := 0.12
 ## Doors, spillways and walls at every water opening.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 ## Display heights (metres) for each water value. Low sits below the beaches,
@@ -122,24 +113,13 @@ var _spout: Node3D
 var _spout_streaks: Array[MeshInstance3D] = []
 var _history_tide := ""
 ## Crossings that may be open while their water stands above the deck: walled
-## and kept out of the water body.
+## and kept out of the water body, a sealed pit that stays dry.
 var _walled: Array[String] = []
 ## Of those, the crossings walled only because they can be kept (entered while
-## open, so walked later even when the tide covers them): shown dry while kept
-## in shallow water, flooded behind their doors in deep water.
+## open, so walked later even when the tide covers them).
 var _kept_walled: Array[String] = []
-## Crossings that can be kept: id -> calm water standing in the pit at the
-## crossing's dry level (just under its deck, or just under its stone tops),
-## shown while it reads dry and the water stands above that level, so the pit
-## is never empty.
-var _calm: Dictionary = {}
-## Crossings that can be kept: id -> whether it reads dry this snapshot (walked,
-## and the water heading no deeper than KEPT_DRY_DEPTH over its deck).
-var _reads_dry: Dictionary = {}
 ## Where the spirits stand (plan cm), refilled each snapshot for the locks.
 var _spirits := PackedVector2Array()
-## Gated walled crossings: id -> the water that fills them while shut.
-var _floods: Dictionary = {}
 ## What holds the water at each opening in the shown stage, the walls built
 ## to hold water (terrain space) for its plan, and the levels it reads (where
 ## the water is going, where it stands this frame), refilled in place.
@@ -209,9 +189,6 @@ func show_stage(stage: Dictionary) -> void:
 	_spout = null
 	_spout_streaks.clear()
 	_history_tide = ""
-	_floods.clear()
-	_calm.clear()
-	_reads_dry.clear()
 	_locks = null
 	_water_walls.clear()
 	_ghosts.clear()
@@ -236,7 +213,7 @@ func show_stage(stage: Dictionary) -> void:
 	await _build_step()
 	await _build_sea_walls()
 	await _build_step()
-	await _build_route_walls(stage)
+	await _build_route_walls()
 	await _build_step()
 	_build_chamber()
 	await _build_step()
@@ -361,6 +338,7 @@ static func _low_cm(route: Dictionary) -> int:
 func _walled_routes(stage: Dictionary) -> Array[String]:
 	var result: Array[String] = []
 	for route: Dictionary in chapter_definition.get("bridges", []) + chapter_definition.get("stairs", []):
+		if _stands_in_water(route): continue
 		var low := _low_cm(route)
 		var body := _body_of(route.rect_cm)
 		if low >= 70 or body.is_empty(): continue
@@ -391,7 +369,7 @@ func _keepable_routes(stage: Dictionary, walled: Array[String]) -> Array[String]
 	var result: Array[String] = []
 	for route: Dictionary in chapter_definition.get("bridges", []):
 		var id := str(route.id)
-		if id in walled or id not in latched: continue
+		if id in walled or id not in latched or _stands_in_water(route): continue
 		var body := _body_of(route.rect_cm)
 		var gate := _gate_for_stage(stage, id)
 		if body.is_empty() or (not gate.is_empty() and gate.get("when", {}).is_empty()): continue
@@ -400,31 +378,16 @@ func _keepable_routes(stage: Dictionary, walled: Array[String]) -> Array[String]
 		if highest > float(_low_cm(route)) / 100.0: result.append(id)
 	return result
 
+## A crossing never walled: stepping stones stand in the channel as plain
+## stones, under water when it rises over them, and a stub (a lever pad, post
+## or catwalk) is a deck in the open water whose mouth the locks' door holds.
+func _stands_in_water(route: Dictionary) -> bool:
+	return _is_stub(route) or DECK_KINDS.get(str(route.id), "") == "stones"
+
 static func _gate_for_stage(stage: Dictionary, id: String) -> Dictionary:
 	for item: Dictionary in stage.get("gates", []):
 		if item.route_id == id: return item
 	return {}
-
-## A crossing that reads dry holds calm water at its dry level while the water
-## shown stands above that level, and the water itself, under its walkway,
-## while it stands lower: decided from the water shown, so a pit never shows
-## water over a walkway that reads dry while the tide drains or fills. Runs on
-## each snapshot and on frames the water flows.
-func _show_calm() -> void:
-	for id: String in _calm:
-		if not _reads_dry.get(id, false):
-			_calm[id].visible = false
-			continue
-		var calm := float(_floods[id].get_parent().get_meta("shown")) > _dry_level(id)
-		_calm[id].visible = calm
-		_floods[id].visible = not calm
-
-## Where a kept crossing's water stands while it shows dry (m): just under its
-## stone tops for stepping stones, so they poke out of the water, else just
-## under its deck, so the walkway reads dry with water beneath it.
-func _dry_level(id: String) -> float:
-	var deck := float(_low_cm(_route(id))) / 100.0
-	return deck - (STONES_SHOWING if DECK_KINDS.get(id, "") == "stones" else DECK_SHOWING)
 
 ## Values a predicate needs outright (through "all" only) of one control.
 static func _control_marks(predicate: Dictionary, control: String) -> Array:
@@ -603,9 +566,10 @@ func _parapet(run: Array, edge: float, outward: float, along_x: bool, height: fl
 func _fender(run: Array, edge: float, outward: float, along_x: bool, height: float, parent: Node3D) -> void:
 	_edge_box(run, edge, outward, along_x, 0.10, height - 0.16, height - 0.03, FENDER, parent, 0.6).name = "QuayFender"
 
-## Walled crossings: masonry along the sides that do not meet their floors, a floor in the dry pit, a plinth under
-## each stair, and for a gated one the water that fills it while it is shut. Await it.
-func _build_route_walls(stage: Dictionary) -> void:
+## Walled crossings: masonry along the sides that do not meet their floors, a
+## floor in the pit and a plinth under each stair. The pit is sealed (walls,
+## and floors at its mouths), so no water ever stands in it. Await it.
+func _build_route_walls() -> void:
 	var root := Node3D.new()
 	root.name = "WalledCrossings"
 	terrain.add_child(root)
@@ -648,27 +612,6 @@ func _build_route_walls(stage: Dictionary) -> void:
 			var plinth := box(Vector3(width - 0.04, top - SEABED, depth - 0.04), WALLS.get(48, STONE).darkened(0.08), center + Vector3(0, (top + SEABED) * 0.5, 0), root)
 			plinth.name = "StairPlinth"
 			_holds_water(plinth)
-		var gate := _gate_for_stage(stage, id)
-		# An always-open crossing never floods; a gated one, or one this stage
-		# leaves shut unless it was kept, fills while shut.
-		if gate.get("when", {}).is_empty() and id not in _kept_walled: continue
-		var body: Node3D = _water.get(_body_of(r))
-		if not is_instance_valid(body): continue
-		var water: MeshInstance3D = body.get_child(0) if body.get_child_count() > 0 else null
-		# Its sides toward the camera stand 3 cm inside the crossing, clear of the
-		# faces of its deck, frame and pit floor.
-		var flood := Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.03, 1.0, depth - 0.03)), water.material_override if water != null else material(WATER), Vector3(center.x - 0.015, -0.5, center.z - 0.015), body)
-		flood.name = "FloodedCrossing_" + id
-		flood.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		flood.visible = false
-		_floods[id] = flood
-		if id in _kept_walled:
-			var dry := _dry_level(id)
-			var calm := Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.03, dry - SEABED, depth - 0.03)), flood.material_override, Vector3(center.x - 0.015, (dry + SEABED) * 0.5, center.z - 0.015), root)
-			calm.name = "CalmCrossing_" + id
-			calm.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-			calm.visible = false
-			_calm[id] = calm
 
 # --- Crossings: decks at their own height ---
 
@@ -749,11 +692,14 @@ func _restyle_deck(route: Dictionary) -> void:
 			# Neighbouring stones, and the end ones and the terraces, never
 			# overlap: their tops share one height.
 			var radius := minf(0.26, minf(lane * 0.5 - 0.02, length / float(count) * 0.5 - 0.01))
+			# Each stone is a column standing on the seabed (a centimetre above it),
+			# so it stands in the channel's water at any level.
+			var column := float(_low_cm(route)) / 100.0 - SEABED - 0.01
 			for index in range(count):
 				var along := (float(index) + 0.5) / float(count) * length - length * 0.5
-				var at := Vector3(along, -0.06, 0) if across_x else Vector3(0, -0.06, along)
-				cylinder(radius, 0.12, STONE.darkened(0.04 * float(index % 2)), at, deck).name = "SteppingStone"
-				cylinder(radius * 0.8, 0.012, STONE.lightened(0.10), at + Vector3(0, 0.062, 0), deck)
+				var at := Vector3(along, -column * 0.5, 0) if across_x else Vector3(0, -column * 0.5, along)
+				cylinder(radius, column, STONE.darkened(0.04 * float(index % 2)), at, deck).name = "SteppingStone"
+				cylinder(radius * 0.8, 0.012, STONE.lightened(0.10), Vector3(at.x, 0.002, at.z), deck)
 		"towpath":
 			box(Vector3(width, 0.10, depth), COPING.darkened(0.08), Vector3(0, -0.05, 0), deck)
 			var flags := int(length / 0.48)
@@ -1364,7 +1310,6 @@ func _advance_water(delta: float) -> void:
 		if not is_equal_approx(shown, target):
 			_show_water(root, move_toward(shown, target, WATER_RATE * maxf(delta, 0.0)))
 			flowing = true
-	if flowing: _show_calm()
 	# The doors move after the water, against the water shown this frame.
 	if is_instance_valid(_locks) and (flowing or _locks.moving()): _locks.advance(delta, _lock_levels("shown"))
 	if not reduced_motion:
@@ -1394,9 +1339,9 @@ func _build_locks() -> void:
 	_locks = WaterLocks.new()
 	_locks.build(plan, terrain)
 
-## This stage's water for the locks kit: every floor, sunken crossing and
-## body of water, the walkways, the walls built to hold water, and every set
-## of levels the wheels can show (each with the gated crossings dry and flooded).
+## This stage's water for the locks kit: every floor, sunken crossing (a pit
+## sealed by its walls, dry in every state) and body of water, the walkways,
+## the walls built to hold water, and every set of levels the wheels can show.
 func _water_plan() -> Dictionary:
 	var areas: Array = []
 	for island: Dictionary in chapter_definition.get("islands", []):
@@ -1408,39 +1353,20 @@ func _water_plan() -> Dictionary:
 	var mouths: Array = []
 	for route: Dictionary in chapter_definition.get("bridges", []) + chapter_definition.get("stairs", []):
 		mouths.append({"id": str(route.id), "rect": route.rect_cm})
-	# Each flooded crossing fills from the body it was built in.
-	var flood_bodies := {}
-	for id: String in _floods:
-		for body: String in _water:
-			if _water[body] == _floods[id].get_parent(): flood_bodies[id] = body
 	var states: Array = []
 	var levels := water_levels()
 	for tide: float in (levels.harbour as Dictionary).values():
 		for sea: float in (levels.sea as Dictionary).values():
 			for chamber: float in (levels.chamber as Dictionary).values():
-				var dry := {"harbour": tide, "sea": sea, "chamber": chamber}
-				var flooded := dry.duplicate()
-				var calm := dry.duplicate()
-				for id: String in flood_bodies:
-					flooded["crossing:" + id] = dry[flood_bodies[id]]
-					if _calm.has(id): calm["crossing:" + id] = minf(dry[flood_bodies[id]], _dry_level(id))
-				states.append_array([dry, flooded, calm])
+				states.append({"harbour": tide, "sea": sea, "chamber": chamber})
 	return {"areas": areas, "bounds": [-1116, -700, 1884, 700], "mouths": mouths, "walls": _water_walls.duplicate(), "states": states, "seabed": SEABED, "wall_top": PARAPET_TOP}
 
 ## The levels for the locks, from each body's "target" (where it is going) or
-## "shown" (where it stands this frame) meta: each body's, every flooded
-## crossing at its body's, and every crossing that reads dry at its body's but
-## never above its dry level. Refills one dictionary per meta, so it allocates
-## nothing.
+## "shown" (where it stands this frame) meta; walled crossings stay dry.
+## Refills one dictionary per meta, so it allocates nothing.
 func _lock_levels(meta: String) -> Dictionary:
 	var levels: Dictionary = _lock_targets if meta == "target" else _lock_shown
 	for body: String in _water: levels[body] = float(_water[body].get_meta(meta))
-	for id: String in _floods:
-		var key := "crossing:" + id
-		var level := float(_floods[id].get_parent().get_meta(meta))
-		if _reads_dry.get(id, false): levels[key] = minf(level, _dry_level(id))
-		elif _floods[id].visible: levels[key] = level
-		elif levels.has(key): levels.erase(key)
 	return levels
 
 func _build_chamber() -> void:
@@ -1706,17 +1632,6 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		for band: MeshInstance3D in _post_marks[id].bands: _glow(band, TEAL, 0.9 if at_value else 0.0)
 	for id: String in _ghosts:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
-	for id: String in _floods:
-		var shown: bool = _decks[id].visible if _decks.has(id) else bool(routes.get(id, false))
-		_floods[id].visible = not shown
-		if _calm.has(id):
-			# Walked while its water is heading no deeper than KEPT_DRY_DEPTH over
-			# it, a crossing that can be kept reads dry (its walls hold the rest);
-			# deeper, it floods behind its doors.
-			var depth := float(_floods[id].get_parent().get_meta("target")) - float(_low_cm(_route(id))) / 100.0
-			_reads_dry[id] = shown and depth <= KEPT_DRY_DEPTH
-			_floods[id].visible = not _reads_dry[id]
-	_show_calm()
 	if is_instance_valid(_locks):
 		_locks.present(_lock_levels("target"), immediate or reduced_motion)
 		# A door dips while a spirit stands in its mouth: from the snapshot's
@@ -1766,7 +1681,7 @@ func _folds_static_scenery() -> bool:
 
 func _static_keep() -> Array:
 	var keep := super._static_keep()
-	for group: Dictionary in [_decks, _memory_markers, _ghosts, _floods, _calm, _water]: keep.append_array(group.values())
+	for group: Dictionary in [_decks, _memory_markers, _ghosts, _water]: keep.append_array(group.values())
 	for mast: Dictionary in _kept_masts: keep.append_array([mast.post, mast.knob, mast.flag])
 	for wheel: Dictionary in _wheels.values(): keep.append(wheel.wheel)
 	for gauge: Dictionary in _gauges.values(): keep.append_array([gauge.post, gauge.icon] + gauge.bands)

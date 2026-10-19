@@ -134,10 +134,11 @@ func _first_stage(level: Dictionary) -> void:
 	_check(_dry_decks(world, level), "No water strip covers an island deck")
 	_walls(world, level, 0)
 	# The first stage can keep only the low crossings it latches; nothing else
-	# is walled for keeping (the sea never moves here, so its crossings stay dry).
+	# is walled for keeping (the sea never moves here, so its crossings stay
+	# dry), and stepping stones stand in the channel unwalled.
 	var kept: Array = world._kept_walled.duplicate()
 	kept.sort()
-	_check(kept == ["sand-1", "slipway", "stones-1", "stones-2", "stones-3"], "Stage one walls exactly the crossings it can keep under water: %s" % [kept])
+	_check(kept == ["sand-1", "slipway"], "Stage one walls exactly the crossings it can keep under water: %s" % [kept])
 	# Shut crossings stay in view as outlines; open ones show their deck.
 	sim._mechanisms.controls.tide = "half"
 	sim._refresh_routes()
@@ -249,17 +250,21 @@ func _second_stage(level: Dictionary) -> void:
 		if tide == "low": _check(is_equal_approx(post.scale.y, 1.0), "Over dry sand the post keeps its height")
 	world.present(state, true)
 	_walls(world, level, 1)
-	for id: String in ["towpath", "boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk", "punt-ferry", "sea-gate-in", "w-steps-low", "mill-steps", "mole-slip"]:
+	for id: String in ["towpath", "punt-ferry", "sea-gate-in", "w-steps-low", "mill-steps", "mole-slip"]:
 		_check(id in world._walled, "Stage two walls %s against the water it can stand open under" % id)
 	# Open only while dry, but they can be kept (entered in this stage or the
 	# first) and walked later under water: walled too, so a kept one can show
 	# dry. The quay-high ones never flood.
 	var kept: Array = world._kept_walled.duplicate()
 	kept.sort()
-	_check(kept == ["race-stage", "sand-1", "sea-gate-out", "slipway", "stones-1", "stones-2", "stones-3"], "Stage two walls exactly the crossings it can keep under water: %s" % [kept])
+	_check(kept == ["sand-1", "sea-gate-out", "slipway"], "Stage two walls exactly the crossings it can keep under water: %s" % [kept])
 	for id: String in ["jetty-1", "boom-jetty"]:
 		_check(id not in world._walled, "Stage two leaves %s in the water: no water reaches its deck" % id)
-	_check(world._floods.has("punt-ferry") and world._floods["punt-ferry"].visible, "The shut punt shows as flooded")
+	# Stepping stones and the lever pads, posts and catwalks stand in the open
+	# water, never walled.
+	for id: String in ["stones-1", "stones-2", "stones-3", "race-stage", "boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk", "beach-catwalk", "quay-catwalk"]:
+		_check(id not in world._walled, "Stage two leaves %s in the open water, unwalled" % id)
+	_check(not world._decks["punt-ferry"].visible and world._ghosts["punt-ferry"].visible, "The shut punt shows its outline in its dry pit")
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
 	# Spirits by the wheels: every bubble rises clear of them, of the gauges and
 	# of each other, as in every chapter.
@@ -344,7 +349,7 @@ func _walls(world: Node3D, level: Dictionary, index: int) -> void:
 	_check(world.terrain.find_children("SeaWall*", "", true, false).size() > 4, "The harbour's channel ends and the sea's reaches end in sea walls")
 	_check(world.terrain.find_children("WaterMark_*", "", true, false).size() > 30, "Walls carry bands at the water marks")
 	for body: Node3D in world._water.values():
-		for rect: Rect2 in _water_rects(body, false):
+		for rect: Rect2 in _water_rects(body):
 			for id: String in world._walled:
 				var r: Array = world._route(id).rect_cm
 				if rect.grow(-0.01).intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)):
@@ -352,8 +357,6 @@ func _walls(world: Node3D, level: Dictionary, index: int) -> void:
 					return
 		var water := body.get_child(0) as MeshInstance3D
 		_check(_windings(water.mesh).keys() == _windings(BoxMesh.new()).keys(), "Stage %d: every face of %s is wound like the engine's own boxes, so it shows from the side it faces" % [index + 1, body.name])
-	for id: String in world._floods:
-		_check(world._floods[id].get_parent() in world._water.values(), "A walled crossing's flood rides its own water: " + id)
 
 ## Within each stage every machine that opens a route has its own crest glyph.
 func _crest_glyphs(level: Dictionary) -> void:
@@ -608,7 +611,7 @@ func _on_screen(world: Node3D, at: Vector3) -> bool:
 
 func _dry_decks(world: Node3D, level: Dictionary) -> bool:
 	for body: Node3D in world._water.values():
-		for rect: Rect2 in _water_rects(body, true):
+		for rect: Rect2 in _water_rects(body):
 			for island: Dictionary in level.islands:
 				var r: Array = island.rect_cm
 				if rect.grow(-0.01).intersects(Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0)): return false
@@ -628,15 +631,10 @@ func _windings(mesh: Mesh) -> Dictionary:
 	return signs
 
 ## Where a body's water stands, seen from above (metres): each upward face of
-## its surface mesh, and each flood box when `floods` is set.
-func _water_rects(body: Node3D, floods: bool) -> Array[Rect2]:
+## its surface mesh.
+func _water_rects(body: Node3D) -> Array[Rect2]:
 	var rects: Array[Rect2] = []
 	for child: MeshInstance3D in body.get_children():
-		if child.mesh is BoxMesh:
-			if not floods: continue
-			var size: Vector3 = (child.mesh as BoxMesh).size
-			rects.append(Rect2(Vector2(child.position.x - size.x * 0.5, child.position.z - size.z * 0.5), Vector2(size.x, size.z)))
-			continue
 		var arrays := child.mesh.surface_get_arrays(0)
 		var points: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]

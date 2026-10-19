@@ -27,7 +27,9 @@ extends Node3D
 ##   "areas": [{"id", "kind": "water" | "pit" | "floor", "rects": [[x0, z0, x1, z1], ...],
 ##             "height" (floor only)}]
 ##       First match wins; a point in no area is open air. A pit is a sunken
-##       crossing that is dry while open and holds water while shut.
+##       crossing closed off by walls: it shows water only at a level a state
+##       gives it (water of its own), and is dry in any state that names none,
+##       so no water stands in a sealed pit.
 ##   "bounds": [x0, z0, x1, z1]   only edges inside this window count
 ##   "mouths": [{"id", "rect"}]    walkways: an edge whose water side lies in one
 ##       gets a door; elsewhere water over a floor gets a wall
