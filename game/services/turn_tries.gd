@@ -14,6 +14,11 @@ extends RefCounted
 ## counts change only on a save, a send or a server read. Every change re-reads
 ## its file first, so screens that each hold one of these never undo each
 ## other's counts.
+##
+## A start is the tap that begins a turn, so its file is written on the next
+## frame instead of in the tap's (a whole small-file write and read-back held
+## the Begin frame 6 to 10 ms on a desktop). Until then every holder reads the
+## waiting counts instead of the file.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const FILE_PATH := "user://turn-tries.json"
@@ -32,6 +37,8 @@ var open_path := ""
 var _open: Dictionary = {}
 var _kept: Dictionary = {}
 var _reads: Dictionary = {}
+## Open counts a start has not written yet, as the file's text by its path.
+static var _soon: Dictionary = {}
 
 func _init(storage_path: String = FILE_PATH) -> void:
 	path = storage_path
@@ -59,7 +66,7 @@ func start(turn_slot: String) -> int:
 	_open.erase(turn_slot)
 	_open[turn_slot] = tries
 	_trim(_open, MAX_OPEN)
-	_save_open()
+	_save_open_soon()
 	return tries
 
 ## The open count of `slot`; 0 before its first start.
@@ -137,7 +144,8 @@ static func _count(value: Variant, least: int) -> bool:
 	return Typed.whole_number(value) and int(value) >= least and int(value) <= MAX_TRIES
 
 func _load_open() -> void:
-	var parsed: Variant = _parse_open(AtomicFile.read_text(open_path, func(text: String) -> bool: return _parse_open(text) != null))
+	var text: String = _soon[open_path] if _soon.has(open_path) else AtomicFile.read_text(open_path, func(saved: String) -> bool: return _parse_open(saved) != null)
+	var parsed: Variant = _parse_open(text)
 	_open = parsed if parsed != null else {}
 
 func _load_kept() -> void:
@@ -170,7 +178,31 @@ static func _parse_kept(text: String) -> Variant:
 	return {"kept": kept, "reads": reads}
 
 func _save_open() -> bool:
-	return AtomicFile.write_text(open_path, JSON.stringify({"schema_version": VERSION, "open": _open}, "", false))
+	# Written now, with whatever a start left waiting (read in by _load_open).
+	_soon.erase(open_path)
+	return AtomicFile.write_text(open_path, _open_text())
+
+func _open_text() -> String:
+	return JSON.stringify({"schema_version": VERSION, "open": _open}, "", false)
+
+## The open counts, written on the next frame. Without a tree they are
+## written now.
+func _save_open_soon() -> void:
+	var tree := Engine.get_main_loop() as SceneTree
+	if tree == null:
+		_save_open()
+		return
+	_soon[open_path] = _open_text()
+	var write := Callable(get_script(), "write_waiting").bind(open_path)
+	if not tree.process_frame.is_connected(write): tree.process_frame.connect(write, CONNECT_ONE_SHOT)
+
+## Writes the open counts a start left waiting for file, if any. Returns
+## false only when a write failed.
+static func write_waiting(file: String) -> bool:
+	if not _soon.has(file): return true
+	var text: String = _soon[file]
+	_soon.erase(file)
+	return AtomicFile.write_text(file, text)
 
 func _save_kept() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "kept": _kept, "reads": _reads}, "", false))

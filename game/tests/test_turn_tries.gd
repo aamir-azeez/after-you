@@ -16,7 +16,7 @@ var _paths: Array[String] = []
 func _run() -> void:
 	for name: String in ["relay-a", "relay-b", "garden-a", "garden-b", "initial-checkpoint", "relay-checkpoint", "final-checkpoint"]:
 		fixtures[name] = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))
-	_service()
+	await _service()
 	await _solo_seams()
 	await _room_send()
 	_replays_pills()
@@ -60,7 +60,11 @@ func _service() -> void:
 	_check(other.count(solo) == 2, "Open counts survive the app closing")
 	other.start(room)
 	_check(tries.start(solo) == 3 and TurnTries.new(path).count(room) == 2, "Two holders of the files never undo each other's counts")
+	_check(not FileAccess.file_exists(tries.open_path) and TurnTries.new(path).count(solo) == 3, "A start writes its counts on the next frame, not in the tap's; every holder reads them meanwhile")
+	await process_frame
 	_check(not FileAccess.file_exists(path) and FileAccess.file_exists(tries.open_path), "Starting a turn writes only the small file of open counts")
+	TurnTries._soon.clear()
+	_check(TurnTries.new(path).count(solo) == 3, "The next frame's write holds the counts")
 	_check(tries.freeze(solo, HASH_B) == 3 and tries.tries(HASH_B) == 3 and tries.count(solo) == 3, "Saving keeps the count under the recording and goes on counting until accepted")
 	tries.close(solo)
 	_check(tries.count(solo) == 0 and tries.start(solo) == 1, "After the turn is saved, the same start begins a new count")
