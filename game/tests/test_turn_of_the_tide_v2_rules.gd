@@ -48,6 +48,7 @@ func _run() -> void:
 	_closing_and_drowning()
 	_memory_drowns(ends.get("low", {}))
 	_memory_steps_onto_shut(ends.get("half", {}))
+	_no_finish_while_closing()
 	_lines()
 	_check(Canonical.digest(Registry.definition(KEY)) == digest, "Playing never changes the definition")
 	print("TURN OF THE TIDE V2 RULES: %d checks, %d failures" % [checks, failures])
@@ -220,6 +221,19 @@ func _memory_steps_onto_shut(half_end: Dictionary) -> void:
 		if b.finished: drown_events = b._events.duplicate()
 	var drowned: Dictionary = b.snapshot().drowned
 	_check(drowned.get("slot") == "p1" and drowned.get("route") == "stones-2" and closed_at >= 0 and int(drowned.tick) >= closed_at + 45 and not drown_events.has("closing:stones-2"), "A memory walking onto a crossing already shut drowns the tick it steps on (%s, closing at %d)" % [str(drowned), closed_at])
+
+## A first turn on its wheel step turns the tide and steps back on while the
+## step closes: Finish is held, says why, and once the step shuts the spirit
+## drowns. No saved end has a spirit on a closing crossing.
+func _no_finish_while_closing() -> void:
+	var a := Simulation.new()
+	a.reset(level, SET, initial, {}, "a")
+	Tide.play(a, Tide.a_routes()["low"])
+	_check(a.can_commit(), "The LOW memory holds its wheel step and could finish")
+	Tide.play(a, [["w", Tide.WHEEL["low"]], Tide.T, ["w", Tide.STEP["low"]]])
+	_check(a._closing.has("wheel-step") and str(a._players.p0.surface_id) == "wheel-step" and not a.can_commit() and a.commit_reason() == Simulation.ON_CLOSING and PlayerCopy.from_canonical(Simulation.ON_CLOSING) == PlayerCopy.JOURNEY_ON_CLOSING, "Back on the closing step, Finish is held and says why (%s)" % a.commit_reason())
+	while not a.finished: a.step({})
+	_check(a.snapshot().drowned.get("route") == "wheel-step" and not a.can_commit(), "The step shuts under it and it drowns")
 
 func _lines() -> void:
 	_check(PlayerCopy.from_canonical(Simulation.DROWNED_YOU) == PlayerCopy.JOURNEY_DROWNED_YOU and PlayerCopy.from_canonical(Simulation.DROWNED_YOU, true) == PlayerCopy.JOURNEY_DROWNED_YOU, "The player's own drowning reads the same online and solo")

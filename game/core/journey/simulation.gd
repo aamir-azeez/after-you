@@ -21,6 +21,8 @@ const TIDE_RULES_VERSION := 10
 ## lines): the player's own spirit, or the memory's.
 const DROWNED_YOU := "Oh no, you drowned! Try again?"
 const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
+## A turn that would end with a spirit on a closing crossing.
+const ON_CLOSING := "Step off the crossing before it shuts."
 var _entry_latches: Dictionary = {}
 ## Tide rules: route id -> the tick its crossing shuts, while it closes.
 var _closing: Dictionary = {}
@@ -134,6 +136,16 @@ func _check_hazards() -> void:
 func _keeps_routes_at_completion() -> bool:
 	return not _tide_rules()
 
+## Tide rules: a turn never ends with a spirit on a crossing that is still
+## closing. The first turn cannot be saved then, and the second runs on until
+## the crossing shuts (and the spirit drowns) or holds again, so every saved
+## end has both spirits on open floor.
+func _on_closing() -> bool:
+	return _tide_rules() and (_closing.has(str(_players.p0.surface_id)) or _closing.has(str(_players.p1.surface_id)))
+
+func _may_complete() -> bool:
+	return not _on_closing()
+
 func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
 		_optics={"segments":[],"signals":{}}
@@ -185,6 +197,7 @@ func _objective_display() -> Dictionary:
 ## their budget says so, instead of the generic "keep the crossing ready".
 func commit_reason() -> String:
 	if not _drowned.is_empty(): return DROWNED_YOU if _drowned.slot == active_slot else DROWNED_FRIEND
+	if _on_closing(): return ON_CLOSING
 	if level.get("id", "") == "turn-of-the-tide" and error.is_empty() and role == "a" and not can_commit() and not _ready_branch.is_empty() and _hold_start >= 0 and _hold_start + source_budget_ticks() >= receiver_deadline():
 		return "Try again with more time left for your partner."
 	return super.commit_reason()
@@ -235,7 +248,7 @@ func source_budget_ticks() -> int:
 	return budget
 
 func can_commit() -> bool:
-	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty(): return false
+	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty() or _on_closing(): return false
 	if role=="b": return complete
 	return not _ready_branch.is_empty() and _hold_start>=0 and _hold_start+source_budget_ticks()<receiver_deadline()
 

@@ -226,9 +226,10 @@ func show_stage(stage: Dictionary) -> void:
 	_ghosts.clear()
 	_boats.clear()
 	_ramps.clear()
+	# Actors outlive a stage: a drowned face goes back before the new one.
+	if not _drowned_slot.is_empty(): _clear_drowned()
 	_drown_ring = null
 	_drown_bubbles.clear()
-	_drowned_slot = ""
 	_kept_masts.clear()
 	_bubbles_placed = false
 	_walled = _walled_routes(stage)

@@ -136,7 +136,7 @@ func step(input: Dictionary = {}) -> Dictionary:
 	if role == "b" and stage.goal_policy.kind == "ball_home": _check_ball_home()
 	tick += 1
 	# Only a hazard (_check_hazards) can have ended the turn before this point.
-	if role == "b" and _objective and tick >= int(_prior.duration_ticks) and not finished:
+	if role == "b" and _objective and tick >= int(_prior.duration_ticks) and not finished and _may_complete():
 		complete = true
 		finished = true
 		if _keeps_routes_at_completion():
@@ -523,6 +523,10 @@ func _reset_mechanics() -> void:
 ## `finished` here. Published rules have none.
 func _check_hazards() -> void:
 	pass
+
+## Whether the stage may complete this tick. Published rules always may.
+func _may_complete() -> bool:
+	return true
 
 ## Whether a completed stage keeps every route open at its end for the stages
 ## after it (latched_bridges). Published rules do.

@@ -296,6 +296,8 @@ const TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO := "Wait until your memory has cross
 const JOURNEY_DROWNED_YOU := "Oh no, you drowned! Try again?"
 const JOURNEY_DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
 const JOURNEY_DROWNED_MEMORY := "Oh no, your memory drowned! Try again?"
+# Finish is held while a spirit stands on a crossing that is closing.
+const JOURNEY_ON_CLOSING := "Step off the crossing before it shuts."
 # The winch's two settings as its lever's bubble names them. The catalog keeps
 # "stowed" and "slip"; the chapter descriptor's "selector_names" maps them.
 const TURN_OF_THE_TIDE_WINCH_STOWED := "Raised"
@@ -2060,6 +2062,7 @@ const TEXT := {
 	"journey.drowned_you": JOURNEY_DROWNED_YOU,
 	"journey.drowned_friend": JOURNEY_DROWNED_FRIEND,
 	"journey.drowned_friend" + SOLO: JOURNEY_DROWNED_MEMORY,
+	"journey.on_closing": JOURNEY_ON_CLOSING,
 	"cooperative.high_summary": COOPERATIVE_HIGH_SUMMARY,
 	"cooperative.rolling_summary": COOPERATIVE_ROLLING_SUMMARY,
 	"cooperative.checkpoint": COOPERATIVE_CHECKPOINT,
@@ -2930,6 +2933,7 @@ const CANONICAL_KEYS := {
 	"Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern.": "turn_of_the_tide_v2.slack_water_b",
 	"Oh no, you drowned! Try again?": "journey.drowned_you",
 	"Oh no, your friend drowned! Try again?": "journey.drowned_friend",
+	"Step off the crossing before it shuts.": "journey.on_closing",
 	"Help your partner reach the loft.": "cooperative.upper_path_a",
 	"Reach the bell above.": "cooperative.upper_path_b",
 	"Open a way through the lower islands.": "cooperative.down_and_around_a",
