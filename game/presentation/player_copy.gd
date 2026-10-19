@@ -15,6 +15,29 @@ const TRY_YOU := "You"
 const TRY_FIRST_TURN := "First turn"
 const TRY_SECOND_TURN := "Second turn"
 
+# End-of-run reactions (presentation/end_reactions.gd). Every line here is new
+# and waits for the owner's approval (★).
+## ★ The split pill's open half, and the faces card's title.
+const END_REACTIONS_REACT := "React"
+const END_REACTIONS_TITLE := "Reactions"
+## ★ Screen reader names: the open half, the quick half (with a face name) and the card's close.
+const END_REACTIONS_CHOOSE := "Choose a reaction"
+const END_REACTIONS_QUICK := "React with %s"
+const END_REACTIONS_CLOSE := "Close reactions"
+## ★ The faces, by id (services/end_reaction_store.gd). The heart is icon only; its name is for screen readers.
+const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
+	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love"}
+## ★ Beside a bubble: your sent face, and the friend's (a name or "A friend").
+const END_REACTIONS_YOU := "You reacted"
+const END_REACTIONS_FRIEND := "%s reacted"
+## ★ Screen reader names for a bubble or a Replays chip: "You reacted: Happy", "Sam reacted: Love".
+const END_REACTIONS_YOU_NAMED := "You reacted: %s"
+const END_REACTIONS_FRIEND_NAMED := "%s reacted: %s"
+## ★ The line under the faces: a room turn, a solo turn, and a turn that is not kept (a drowning).
+const END_REACTIONS_ROOM_NOTE := "Your friend sees it with your turn."
+const END_REACTIONS_SOLO_NOTE := "Kept with your replay."
+const END_REACTIONS_MOMENT_NOTE := "Just for this moment."
+
 # Typed share codes and invite links. FRIEND_CODE_INVALID is the existing add-friend error.
 const FRIEND_CODE_INVALID := "Invalid friend code"
 const FRIEND_CODE_OWN := "This is your own friend code."
