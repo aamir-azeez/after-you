@@ -10,6 +10,9 @@ const World = preload("res://presentation/island_world.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
 const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
+const HardMode = preload("res://services/hard_mode.gd")
+const HardModeView = preload("res://presentation/hard_mode_view.gd")
+const HomeKeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
@@ -97,6 +100,8 @@ var external_link_opener: Callable
 var _bounded_card_scroll: ScrollContainer
 var _bounded_card_stack: VBoxContainer
 var _journey_picker: ChapterPicker
+## Play Solo's Hard chip (services/hard_mode.gd), kept for the session.
+var _journey_hard := false
 ## Full Journey access the open chapter grid was drawn with.
 var _grid_access_drawn := false
 ## The card an open of a chapter waits behind; one open at a time.
@@ -644,6 +649,7 @@ func _show_home() -> void:
 	if shared_replays != null: home_keepsakes.reconcile_friend(shared_replays)
 	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors())
+	home_stage.set_hard(hard_states(),HardMode.new().count())
 	overlay.add_child(home_stage)
 	var compact := ui.size.y < 640
 	# Friend-first column, vertically centred in the safe area: as much space above
@@ -821,17 +827,29 @@ func _show_journey() -> void:
 	var earlier := _button("Earlier islands",_show_earlier_islands,false)
 	ControlTheme.plain_tab(earlier)
 	tabs.add_child(earlier)
+	# Hard: the whole chapter in one go (services/hard_mode.gd).
+	var spacer := Control.new()
+	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	tabs.add_child(spacer)
+	var hard_chip := HardModeView.chip(_journey_hard)
+	hard_chip.toggled.connect(func(on: bool):
+		_journey_hard = on
+		_show_journey())
+	tabs.add_child(hard_chip)
 	outer.add_child(tabs)
 	var picker := ChapterPicker.new()
 	picker.heading_font = title_font
 	picker.available_width = func() -> float: return ui.size.x-44.0
+	picker.hard_mode = HardMode.SOLO
+	picker.hard_states = hard_states()
 	outer.add_child(picker)
 	shell.margin.resized.connect(picker.refit)
 	# The solo-only Lighthouse leads the Full Journey chapters; the picker puts
 	# every free chapter first in registry order.
 	var owned := _full_journey_access()
 	_grid_access_drawn = owned
-	picker.set_entries(_journey_entries(owned),ChapterPicker.picture_for(ui.size.x))
+	picker.set_entries(_journey_entries(owned,_journey_hard),ChapterPicker.picture_for(ui.size.x))
 	picker.chosen.connect(_open_solo_chapter)
 	_journey_picker = picker
 	_refresh_chapter_marks()
@@ -839,6 +857,9 @@ func _show_journey() -> void:
 ## Runs a Play Solo card's play button: the chapter's solo scene, through the
 ## premium gate when the chapter is premium.
 func _open_solo_chapter(key: String) -> void:
+	if _journey_hard and mode == "journey":
+		_open_hard_chapter(key)
+		return
 	if key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE:
 		_open_lighthouse()
 		return
@@ -851,16 +872,43 @@ func _open_solo_chapter(key: String) -> void:
 static func _own_solo_card(key: String) -> bool:
 	return not ChapterRegistry.is_lighthouse(key) and not ChapterRegistry.solo_scene(key).is_empty()
 
+## A solo hard run of the chapter, once it is finished (services/hard_mode.gd).
+func _open_hard_chapter(key: String) -> void:
+	if not HardMode.unlocked(_chapter_marks(), key):
+		_toast(PlayerCopy.HARD_LOCKED_TOAST)
+		return
+	var request := {"chapter_key": key, "kind": "play"}
+	if ChapterRegistry.descriptor(key).premium: _open_premium_chapter(ChapterRegistry.solo_scene(key), {}, request)
+	else: _open_chapter_preview(ChapterRegistry.solo_scene(key), {}, request)
+
+## Every chapter's hard marks (HardMode.states), also under the older key a
+## newer version's keepsake places keep.
+func hard_states() -> Dictionary:
+	var states: Dictionary = HardMode.new().states(_chapter_marks())
+	for alias: String in HomeKeepsakeCatalog.ALIASES:
+		if states.has(alias): states[HomeKeepsakeCatalog.ALIASES[alias]] = states[alias]
+	return states
+
 ## The Chapters page's cards, as given to its picker (which shows free ones
 ## first): the solo-only Lighthouse, then every chapter with its own Solo card.
-func _journey_entries(owned: bool) -> Array[Dictionary]:
+## With hard on: only chapters with hard runs, each locked until finished.
+func _journey_entries(owned: bool, hard: bool = false) -> Array[Dictionary]:
 	var lighthouse := {"key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "title": "Sleeping Lighthouse", "premium": true,
 		"level_key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "mark": "sleeping-lighthouse@1"}
 	var entries: Array[Dictionary] = [lighthouse]
 	for key: String in ChapterRegistry.offered_keys():
 		if _own_solo_card(key): entries.append(ChapterPicker.entry(key))
 	for item: Dictionary in entries: item.locked = item.premium and not owned
-	return entries
+	if not hard: return entries
+	var marks := _chapter_marks()
+	var shown: Array[Dictionary] = []
+	for item: Dictionary in entries:
+		if not HardMode.eligible(str(item.key)): continue
+		var open := HardMode.unlocked(marks, str(item.key))
+		item.locked = not open
+		item.note = PlayerCopy.HARD_OPEN_NOTE if open else PlayerCopy.HARD_LOCKED_NOTE
+		shown.append(item)
+	return shown
 
 ## The chapter the player most likely opens next: the first card the Chapters
 ## page shows, in its order, that is open to them and not yet finished solo;
@@ -920,7 +968,8 @@ static func lighthouse_scene() -> String:
 		return ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2)
 	return LIGHTHOUSE_SCENE
 
-func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> void:
+## hard: a hard open for the scene (HardMode.hand_over), or {}.
+func _open_premium_chapter(scene: String, replay_context: Dictionary = {}, hard: Dictionary = {}) -> void:
 	if _tester_checks_enabled():
 		var view := store_view_generation
 		var lifecycle := lifecycle_generation
@@ -944,7 +993,7 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> vo
 		_toast(PlayerCopy.MAIN_FCB8424B7F88)
 		return
 	if _tester_active():
-		_open_chapter_preview(scene,replay_context)
+		_open_chapter_preview(scene,replay_context,hard)
 		return
 	if not purchases.has_entitlement():
 		store_flow.show_paywall()
@@ -955,9 +1004,9 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}) -> vo
 		# has already failed. This does not grant access from the cached label.
 		store_flow.show_paywall()
 		return
-	_open_chapter_preview(scene,replay_context)
+	_open_chapter_preview(scene,replay_context,hard)
 
-func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> void:
+func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard: Dictionary = {}) -> void:
 	if is_instance_valid(_chapter_opening): return
 	# The chapter's own open proves what the warm-up has not reached yet.
 	if is_instance_valid(_proof_warmup): _proof_warmup.stop()
@@ -986,9 +1035,12 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}) -> vo
 		_toast("Replay could not be opened. Please try again.")
 		return
 	RelayPreview.request_staged_build(scene)
+	# Every open says whether it is a hard one, so none is left for a later open.
+	HardMode.hand_over(hard)
 	_hand_over_tester_check(scene)
 	if opening.change_scene(scene) != OK:
 		RelayPreview.request_staged_build("")
+		HardMode.drop()
 		ChapterAccess.drop_hand_over()
 		opening.cancel()
 		if not replay_context.is_empty(): SoloReplayLaunch.discard()

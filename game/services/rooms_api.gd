@@ -157,6 +157,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	# the capability, a room's faces beside its reads and turn replies, and the
 	# friend's face in the room list. rooms_api takes the faces out of the reply.
 	if end_reaction_path(method, path): headers.append(END_REACTIONS_HEADER)
+	# This build plays hard rooms (services/hard_mode.gd): it may be told of them and join one.
+	if path in ["/v2/capabilities", "/v2/rooms/join"]: headers.append("X-AfterYou-Hard-Mode: 1")
 	# The inbox then reports a room another member closed as "closed".
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# A finished room the other member left then says so (partner_left), for Leave room's confirm step.

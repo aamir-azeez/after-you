@@ -13,6 +13,7 @@ const PhotoLibrary = preload("res://services/turn_photo_library.gd")
 const Safety = preload("res://services/safety_client.gd")
 const AuxiliaryContext = preload("res://services/auxiliary_room_context.gd")
 const RedoClient = preload("res://services/redo_client.gd")
+const HardRoomClient = preload("res://services/hard_room_client.gd")
 const ReplayTransfer = preload("res://services/replay_transfer.gd")
 const HistorySync = preload("res://services/history_sync.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -63,6 +64,7 @@ var photo_library: RefCounted = PhotoLibrary.new()
 var _photo_controllers: Array[WeakRef] = []
 var _safety: RefCounted
 var _redo: RefCounted
+var _hard: RefCounted
 var _redo_read_key := ""
 var _redo_read_result: Dictionary = {}
 var _archived_room_evidence: Dictionary = {}
@@ -90,6 +92,7 @@ func invalidate_identity() -> void:
 	_auxiliary_factory = null
 	if _safety != null: _safety.invalidate()
 	if _redo != null: _redo.invalidate()
+	if _hard != null: _hard.invalidate()
 	_redo_read_key = ""
 	_redo_read_result = {}
 	_generation += 1
@@ -115,7 +118,7 @@ func invalidate_identity() -> void:
 	_retiring_selection = false
 
 func busy() -> bool:
-	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
+	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy) or (_hard != null and _hard.busy)
 
 func redo_client() -> RefCounted:
 	_ready()
@@ -156,6 +159,16 @@ func turn_tries_supported() -> bool:
 ## friend (services/end_reaction_store.gd). Without it, rooms show no reactions.
 func end_reactions_supported() -> bool:
 	return Typed.equal(capabilities.get("end_reactions_version"), 1.0)
+
+## The server hosts hard rooms (services/hard_mode.gd).
+func hard_mode_supported() -> bool:
+	return Typed.equal(capabilities.get("hard_mode_version"), 1.0)
+
+## A hard room's reset and failures reads (services/hard_room_client.gd).
+func hard_client() -> RefCounted:
+	_ready()
+	if _hard == null: _hard = HardRoomClient.new(_api, _identity, _store)
+	return _hard
 
 func history_client() -> RefCounted:
 	if _history == null: _history = HistorySync.new(_history_transport, _history_eligibility, history_store)
@@ -473,11 +486,15 @@ func can_leave_for_legacy() -> bool:
 		return false
 	return _redo_navigation_ready()
 
-func create_room(chapter: String = Registry.RELAY) -> String:
+## `hard`: a hard room (services/hard_mode.gd), only where the server plays them.
+func create_room(chapter: String = Registry.RELAY, hard: bool = false) -> String:
 	if not _can_lobby_mutate():
 		return ""
 	if not supports_creation(chapter):
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_7805B3DE8AEB
+		return ""
+	if hard and not hard_mode_supported():
+		last_error = PlayerCopy.HARD_HOST_UNAVAILABLE
 		return ""
 	if not _index.pending.is_empty():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_8C3AC7311985
@@ -487,6 +504,7 @@ func create_room(chapter: String = Registry.RELAY) -> String:
 	var requested_rules := int(_simulation_versions().get(chapter, Registry.definition(chapter).simulation_version))
 	if requested_rules != int(Registry.definition(chapter).simulation_version):
 		body["simulation_version"] = requested_rules
+	if hard: body["mode"] = "hard"
 	return await _start_lobby("/v2/rooms", body)
 
 func join_room(code: String) -> String:
@@ -1140,7 +1158,9 @@ func _valid_index(value: Dictionary) -> bool:
 	var body: Dictionary = pending.body
 	if pending.path == "/v2/rooms":
 		var optional_pin: bool = body.has("simulation_version")
-		return body.size() == (5 if optional_pin else 4) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Typed.whole_number(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
+		var hard_room: bool = body.has("mode")
+		if hard_room and not Typed.equal(body.mode, "hard"): return false
+		return body.size() == (5 if optional_pin else 4) + int(hard_room) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Typed.whole_number(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
 	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Typed.same(body.supported_simulation_versions, [2, 4, 5]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9, 11]) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
 

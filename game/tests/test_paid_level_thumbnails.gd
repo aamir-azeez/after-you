@@ -6,7 +6,7 @@ const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 class Routes extends Main:
 	var routed: Array = []
 	func _open_lighthouse() -> void: routed.append("lighthouse")
-	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("premium:"+scene)
+	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}, _hard: Dictionary = {}) -> void: routed.append("premium:"+scene)
 	func _new_relay_lobby_flow() -> RelayLobbyFlow: return RoutesLobby.new(self)
 	func _start_practice(index: int) -> void: routed.append("legacy:"+str(index))
 

@@ -86,6 +86,9 @@ gl_warmup_coverage_journey 2
 gone_room_release 2
 graphics_policy 3
 graphics_settings 3
+hard_mode 3
+hard_mode_room 3
+hard_mode_solo 3
 history_store 2
 history_sync 2
 home_keepsake_display 1

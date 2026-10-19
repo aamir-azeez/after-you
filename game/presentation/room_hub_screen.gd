@@ -20,6 +20,8 @@ const FOLD_CLOSED_ICON = preload("res://assets/ui/social/chevron-right.svg")
 const FOLD_OPEN_ICON = preload("res://assets/ui/social/chevron-down.svg")
 const Typed = preload("res://services/typed_values.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
+const HardMode = preload("res://services/hard_mode.gd")
+const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const WARM := Color("f4d77b")
 ## Rooms still in play; closing one ends it for both members.
 const ACTIVE_STATUSES := ["waiting_for_friend","your_turn","waiting_for_their_turn"]
@@ -33,6 +35,8 @@ signal room_open_requested(room: Dictionary, source: Control)
 signal host_requested(chapter_key: String, visibility: String, source: Control)
 signal chapter_picked(chapter_key: String)
 signal visibility_picked(visibility: String)
+## The Hard chip changed (services/hard_mode.gd): host a hard room.
+signal hard_picked(on: bool)
 signal join_code_requested(code: String, source: Control)
 signal friends_requested(source: Control)
 ## A chapter locked until this build accepts a tester code was chosen or hosted.
@@ -72,6 +76,13 @@ var _footer: Label
 var _heading_font: FontVariation
 var _chapter_choice: Button
 var _host_note: Label
+## Hard rooms: shown while the server may host them (unknown counts as maybe;
+## Host then says when it cannot), for a chapter whose hard play is open.
+var _hard_available := false
+var _hard_states: Dictionary = {}
+var _hard_on := false
+var _hard_chip: Button
+var _hard_note: Label
 var _host: Button
 var _selected_key := ""
 var _picker_page: VBoxContainer
@@ -269,6 +280,23 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 		visibility_row.add_child(button)
 		_visibility_buttons[option] = button
 	_style_visibility()
+	var hard_row := HBoxContainer.new()
+	hard_row.name = "HardRow"
+	hard_row.add_theme_constant_override("separation",12)
+	box.add_child(hard_row)
+	_hard_chip = HardModeView.chip(_hard_on)
+	_hard_chip.toggled.connect(func(on: bool):
+		_hard_on = on
+		_update_hard()
+		hard_picked.emit(on))
+	hard_row.add_child(_hard_chip)
+	_hard_note = Label.new()
+	_hard_note.name = "HardNote"
+	_hard_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_hard_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hard_note.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hard_note.add_theme_color_override("font_color",MUTED)
+	hard_row.add_child(_hard_note)
 	# Why the chosen chapter cannot be hosted yet, when a tester code would open it.
 	_host_note = Label.new()
 	_host_note.name = "HostLockNote"
@@ -468,6 +496,8 @@ func _build_picker_page() -> void:
 	picker.back_enabled = true
 	picker.heading_font = _heading_font
 	picker.available_width = _page_width
+	picker.hard_mode = HardMode.TOGETHER if _hard_available else ""
+	picker.hard_states = _hard_states
 	picker.chosen.connect(_choose_chapter)
 	picker.back_requested.connect(close_chapter_picker)
 	_picker_page.add_child(picker)
@@ -561,8 +591,39 @@ func _update_hero() -> void:
 		_host_note.text = str(chapter.get("note","")) if needs_code else ""
 		_host_note.visible = needs_code and not _host_note.text.is_empty()
 		_host.text = "Tester code" if needs_code else "Host a room"
+		_update_hard()
 		# The note changes the column height, so the picture is fitted again.
 		_fit_hero.call_deferred()
+
+## available: the server may host hard rooms (false once it says it does
+## not); states: HardMode.states(); on: the chip as last chosen.
+func set_hard(available: bool, states: Dictionary, on: bool) -> void:
+	_hard_available = available
+	_hard_states = states.duplicate(true)
+	_hard_on = on
+	_update_hard()
+	if is_instance_valid(_picker):
+		_picker.hard_mode = HardMode.TOGETHER if available else ""
+		_picker.refresh_hard(_hard_states)
+
+## Whether Host a room hosts a hard room now.
+func hard_selected() -> bool:
+	return _hard_on and _hard_allowed(_selected_key)
+
+func _hard_allowed(key: String) -> bool:
+	return _hard_available and _hard_states.get(key) is Dictionary and str(_hard_states[key].get(HardMode.TOGETHER, HardMode.LOCKED)) != HardMode.LOCKED
+
+func _update_hard() -> void:
+	if not is_instance_valid(_hard_chip): return
+	var row := _hard_chip.get_parent() as Control
+	var offered := _hard_available and _hard_states.has(_selected_key)
+	row.visible = offered
+	if not offered: return
+	var allowed := _hard_allowed(_selected_key)
+	_hard_chip.disabled = not allowed
+	HardModeView.set_chip(_hard_chip, _hard_on and allowed)
+	_hard_note.text = PlayerCopy.HARD_LOCKED_NOTE if not allowed else PlayerCopy.HARD_CHIP_ON if _hard_on else ""
+	_hard_note.visible = not _hard_note.text.is_empty()
 
 func _render() -> void:
 	if not is_instance_valid(_rooms_list): return

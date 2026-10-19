@@ -6,6 +6,8 @@ const PlatformSupport = preload("res://services/platform_support.gd")
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeDisplay = preload("res://presentation/home_keepsake_display.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const HardMode = preload("res://services/hard_mode.gd")
+const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 ## Explore mode: the gold spirit walks the islands with the joystick and the
@@ -78,6 +80,8 @@ var _reset: Button
 var _header_actions: Array[Control] = []
 var _hint: Label
 var _keepsakes: Array[Dictionary] = []
+var _hard_states: Dictionary = {}
+var _hard_count: Array = []
 var _keepsake_display: Node3D
 var _keepsake_controls: Control
 var _keepsake_title: Label
@@ -364,6 +368,11 @@ func _create_keepsake_box() -> void:
 		icon.self_modulate = VARIANT_DIM
 		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		_keepsake_variant_icons.add_child(icon)
+	# The place's chapter's two hard plays (services/hard_mode.gd), after its own marks.
+	for mode: String in HardMode.MODES:
+		var hard_mark := HardModeView.mark(mode, HardMode.LOCKED, VARIANT_ICON)
+		hard_mark.visible = false
+		_keepsake_variant_icons.add_child(hard_mark)
 	_keepsake_status = _box_label(15, Color("a6c6b8"), _keepsake_content)
 	_keepsake_status.name = "KeepsakeStatus"
 	_keepsake_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -416,6 +425,12 @@ func _box_label(font_size: int, color: Color, parent: Node) -> Label:
 	parent.add_child(label)
 	return label
 
+## Each chapter's hard marks (HardMode.states()) and [done, total] hard plays.
+func set_hard(states: Dictionary, counted: Array) -> void:
+	_hard_states = states.duplicate(true)
+	_hard_count = counted.duplicate()
+	_update_keepsake_labels()
+
 ## Every line the status row can show, for one box height in every state.
 const STATUS_LINES := [PlayerCopy.KEEPSAKE_TEASER, PlayerCopy.KEEPSAKE_TEASER_SOLO_ONLY, PlayerCopy.KEEPSAKE_NEEDS_FRIEND, PlayerCopy.KEEPSAKE_NEEDS_SOLO, PlayerCopy.KEEPSAKE_FINISHED, PlayerCopy.KEEPSAKE_FINISHED_SOLO]
 
@@ -436,6 +451,8 @@ func _update_keepsake_labels() -> void:
 	var earned := mini(KeepsakeCatalog.variant_count(_keepsakes), total)
 	_keepsake_controls.visible = not item.is_empty()
 	_keepsake_count.text = "Keepsakes · %d / %d" % [earned, total]
+	# Hard plays keep their own count beside it.
+	if _hard_count.size() == 2 and int(_hard_count[1]) > 0: _keepsake_count.text += "   " + PlayerCopy.HARD_COUNT % [int(_hard_count[0]), int(_hard_count[1])]
 	_keepsake_status.text = status_line(item) if not item.is_empty() else PlayerCopy.KEEPSAKE_TEASER
 	if item.is_empty(): return
 	_keepsake_title.text = str(item.title)
@@ -444,6 +461,11 @@ func _update_keepsake_labels() -> void:
 	solo.self_modulate = SOLO_LIT if item.get("solo", false) else VARIANT_DIM
 	together.visible = item.get("friend_available", true)
 	together.self_modulate = TOGETHER_LIT if item.get("friend", false) else VARIANT_DIM
+	var hard: Variant = _hard_states.get(str(item.get("chapter_key", "")))
+	for index in range(HardMode.MODES.size()):
+		var hard_mark: Control = _keepsake_variant_icons.get_child(2 + index)
+		hard_mark.visible = hard is Dictionary
+		if hard is Dictionary: hard_mark.set_look(str(hard.get(HardMode.MODES[index], HardMode.LOCKED)))
 	if _keepsake_controls.custom_minimum_size.x > 0:
 		_place_keepsake_heading(_keepsake_controls.custom_minimum_size.x)
 

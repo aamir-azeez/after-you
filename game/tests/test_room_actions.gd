@@ -64,7 +64,7 @@ const GOLDEN := {
 		"more": ["replays", "safety", "photo", "back"],
 	},
 	"complete": {
-		"turn": ["replays", "local_replays", "checkpoints", "new_room", "redo_answer", "redo", "solo_redo", "safety", "photo", "back"],
+		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "redo_answer", "redo", "solo_redo", "safety", "photo", "back"],
 	},
 }
 const PANEL_SLOTS := ["header", "status", "invite", "primary", "turn", "pair", "options"]

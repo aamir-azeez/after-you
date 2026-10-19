@@ -21,6 +21,7 @@ const Frozen = preload("res://services/frozen_simulation.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
+const HardRoomClient = preload("res://services/hard_room_client.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -570,6 +571,23 @@ func archive_held_submission() -> bool:
 	return _persist(next)
 
 
+## A hard room's held turn belongs to a run that started again: it goes,
+## with its draft, and is never kept as a held draft (services/hard_run.gd).
+func drop_held_submission() -> bool:
+	if not finish_live_draft_save(): return false
+	if not _guard() or read_only or _busy != 0 or _state.pending.is_empty() or not _state.pending.held or not _state.snapshot.get("hard") is Dictionary:
+		return _error("pending_unresolved", PlayerCopy.RELAY_ROOM_COORDINATOR_327B5AC5686B)
+	var next := _state.duplicate(true)
+	next.pending = {}
+	next.draft = {}
+	return _persist(next)
+
+## A room the server returned for one of this room's own side requests (a
+## hard room's reset), taken as a refresh would take it.
+func adopt_snapshot(value: Variant) -> bool:
+	return _accept_snapshot(value)
+
+
 func fetch_pair(pair_id: String) -> Dictionary:
 	if not _pattern(pair_id, "^p[0-9]{1,2}-" + RoomStages.DIGIT + "$") or not RoomStages.within(int(pair_id.get_slice("-", 1)), _level):
 		_error("invalid_pair", PlayerCopy.RELAY_ROOM_COORDINATOR_C3C090053E04)
@@ -765,6 +783,9 @@ func _accept_snapshot(value: Variant) -> bool:
 			_clear_error()
 			return true
 	var next := _state.duplicate(true)
+	# A hard room that started again keeps no draft of the old run.
+	if not next.draft.is_empty() and not _same_context(next.draft.origin, value) and value.get("hard") is Dictionary:
+		next.draft = {}
 	if not next.draft.is_empty() and not _same_context(next.draft.origin, value):
 		if not _verify_saved_draft():
 			return false
@@ -966,6 +987,10 @@ func _valid_snapshot(value: Variant) -> bool:
 	var keys := SNAPSHOT_KEYS.duplicate()
 	if value.has("invite_code"):
 		keys.append("invite_code")
+	# A hard room (services/hard_mode.gd) says so, and how its run has gone.
+	if value.has("hard"):
+		keys.append("hard")
+		if not HardRoomClient.valid_view(value.hard, value): return false
 	if value.has("simulation_version"):
 		keys.append("simulation_version")
 		if not _range(value.simulation_version, 1, MAX_SIMULATION_VERSION) or int(value.simulation_version) not in Registry.supported_rules(chapter): return false

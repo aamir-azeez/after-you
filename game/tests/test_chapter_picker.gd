@@ -8,8 +8,8 @@ class Routes extends Main:
 	var routed: Array = []
 	var owned := false
 	func _full_journey_access() -> bool: return owned
-	func _open_chapter_preview(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("free:"+scene)
-	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}) -> void: routed.append("premium:"+scene)
+	func _open_chapter_preview(scene: String, _replay_context: Dictionary = {}, _hard: Dictionary = {}) -> void: routed.append("free:"+scene)
+	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}, _hard: Dictionary = {}) -> void: routed.append("premium:"+scene)
 	func _new_relay_lobby_flow() -> RelayLobbyFlow: return RoutesLobby.new(self)
 	func _show_friends(_report: Callable = Callable()) -> void: routed.append("friends")
 

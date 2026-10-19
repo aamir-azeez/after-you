@@ -52,6 +52,9 @@ const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionScreen = preload("res://presentation/end_reaction_screen.gd")
+const HardMode = preload("res://services/hard_mode.gd")
+const HardRun = preload("res://services/hard_run.gd")
+const HardModeView = preload("res://presentation/hard_mode_view.gd")
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
 const ROOM_CLOSED := "Room closed"
@@ -123,6 +126,8 @@ var turn_tries := TurnTries.new()
 ## The turn a replay plays and its memory, for their reactions at its end.
 var _replay_runs: Array = []
 var _replay_hold := 0
+## This screen's hard run (services/hard_run.gd), or null outside hard mode.
+var hard: RefCounted = null
 var _live_tries := 0
 var _shown_tries := -1
 var _solo_replay_context_error := false
@@ -256,10 +261,13 @@ func _ready() -> void:
 		_solo_replay_only = true
 		_replay_collection = injected.context.accepted_pairs.duplicate(true)
 		replay_pair_index = int(injected.context.selected_stage_index)
+	_claim_hard()
 	var staged: bool = not scene_file_path.is_empty() and _staged_request == scene_file_path and online_session == null
 	_staged_request = ""
 	if online_session == null and not _solo_replay_only and not _solo_replay_context_error:
-		if journey == null or journey.chapter_key() != chapter_key:
+		if _hard_on():
+			journey = Journey.new(HardMode.journal_path(chapter_key), null, chapter_key)
+		elif journey == null or journey.chapter_key() != chapter_key:
 			journey = Journey.new("", null, chapter_key)
 		# A staged open loads every journal on the worker, behind the card: its
 		# read, parse and check held the scene-change frame (tens of ms here).
@@ -530,7 +538,12 @@ func _label(text: String, size: int = 20) -> Label:
 
 
 func _action_button(action_id: String, callback: Callable) -> Button:
-	return controls.button_for(action_id, callback)
+	var button: Button = controls.button_for(action_id, callback)
+	# A hard run never offers a way to play a turn again (services/hard_mode.gd).
+	if _hard_on() and not hard.offers(action_id):
+		button.visible = false
+		button.disabled = true
+	return button
 
 
 func _button(text: String, callback: Callable, primary: bool=true) -> Button:
@@ -595,6 +608,8 @@ func _show_ready() -> void:
 	if _room_gone():
 		_show_room_gone()
 		return
+	# A turn refused after a hard room started again belongs to the old run.
+	if online_session != null and _hard_on() and journey.pending().get("held", false): journey.drop_held_submission()
 	if online_session != null and not journey.pending().is_empty():
 		_show_online_waiting()
 		return
@@ -604,6 +619,7 @@ func _show_ready() -> void:
 		if redo.pending().get("action") == "accept":
 			_show_online_waiting()
 			return
+	if online_session != null and _hard_on() and _hard_room_holds(): return
 	if journey.chapter_complete():
 		_show_completed()
 		return
@@ -620,6 +636,7 @@ func _show_ready() -> void:
 		return
 	world.present(sim.snapshot(), true)
 	var body := _chapter_body(int(checkpoint.stage_index), role, stage)
+	if _hard_on(): body += "\n\n" + PlayerCopy.HARD_READY_NOTE
 	var invited: bool = online_session != null and not online_session.invitation_code().is_empty()
 	var joined: bool = online_session != null and journey.snapshot().get("guest_id") != null
 	if invited and not joined:
@@ -669,6 +686,9 @@ func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 	match name:
 		"online": return online_session != null
 		"solo": return online_session == null
+		"hard": return _hard_on()
+		# A hard run with a saved draft goes on only from it.
+		"resume_only": return _hard_on() and _room_fact("draft", state, known)
 		"invited": return online_session != null and not online_session.invitation_code().is_empty()
 		"joined": return journey.snapshot().get("guest_id") != null
 		"share": return _share_available()
@@ -1079,6 +1099,7 @@ func _show_online_waiting() -> void:
 		_show_room_gone()
 		return
 	mode = "online_waiting"
+	if _hard_on(): _note_hard_slip()
 	var room: Dictionary = journey.snapshot()
 	var pending: Dictionary = journey.pending()
 	if not room.is_empty() and room.stage_index < definition.stages.size():
@@ -1763,17 +1784,24 @@ func _begin() -> void:
 	replay_pair_index = -1
 	# The first start of a turn, each Retry and a restart after a failed ending.
 	_live_tries = turn_tries.start(_tries_slot())
+	if _hard_on() and hard.slipped(_live_tries):
+		_hard_fail("retry", {})
+		return
 	world.present(sim.snapshot(), true)
 	_start_play()
 
 
 ## The turn being played, for its try count (services/turn_tries.gd).
 func _tries_slot() -> String:
-	return TurnTries.slot_for(journey, chapter_key, online_session != null)
+	return TurnTries.slot_for(journey, _tries_chapter(), online_session != null)
+
+## A solo hard run counts its tries apart from the chapter's own.
+func _tries_chapter() -> String:
+	return hard.tries_key(chapter_key) if _hard_on() else chapter_key
 
 ## Taking back a turn or restarting the chapter starts every solo count again.
 func _restart_tries() -> void:
-	turn_tries.restart_solo(chapter_key)
+	turn_tries.restart_solo(_tries_chapter())
 
 func _show_tries() -> void:
 	var tries := _live_tries if mode == "play" else 0
@@ -2234,6 +2262,12 @@ func _verify_review() -> Dictionary:
 func _show_review() -> void:
 	mode = "review"
 	var verified: Dictionary = _verify_review()
+	# A hard run ends on a turn it cannot keep (services/hard_mode.gd).
+	if _hard_on():
+		var reason: String = hard.failure(verified)
+		if not reason.is_empty():
+			_hard_fail(reason, review)
+			return
 	var ending := TurnEndings.of(verified.get("snapshot", {}), online_session == null)
 	if not ending.is_empty():
 		_show_ending_card(ending)
@@ -2632,14 +2666,17 @@ func _play_collection_pair(continue_collection: bool = false) -> void:
 	if replay_pair_index < 0 or replay_pair_index >= pairs.size():
 		_show_error(PlayerCopy.RELAY_PREVIEW_3DB2A54BEB93)
 		return
-	var start: Dictionary = Registry.initial_checkpoint(chapter_key)
-	for index in range(replay_pair_index):
+	var pair: Dictionary = pairs[replay_pair_index]
+	# A pair may carry its own start (a kept hard run's slip); otherwise it
+	# starts where the pairs before it end.
+	var own_start: bool = pair.get("start") is Dictionary
+	var start: Dictionary = pair.start if own_start else Registry.initial_checkpoint(chapter_key)
+	for index in range(0 if own_start else replay_pair_index):
 		var derived: Dictionary = _simulation.derive_checkpoint(definition, start, pairs[index].a, pairs[index].b)
 		if not derived.get("valid", false):
 			_show_error(str(derived.get("error", PlayerCopy.RELAY_PREVIEW_ED3A094D0041)))
 			return
 		start = derived.checkpoint
-	var pair: Dictionary = pairs[replay_pair_index]
 	# Keep the existing subclass admission hook and its three-argument API.
 	# The continuation flag spans only this synchronous call.
 	_continue_replay_context = continue_collection
@@ -2738,6 +2775,9 @@ func _show_completed() -> void:
 		_present_stage_history(definition.stages[-1],start)
 		world.present(sim.snapshot(), true)
 	mode = "complete"
+	if _hard_on():
+		_show_hard_complete()
+		return
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
 	_set_room_state("complete")
 	EndReactionScreen.attach_completed(_end_reaction_context(), card)
@@ -2841,15 +2881,166 @@ func _watch_local_pairs(pairs: Array) -> void:
 	_play_collection_pair()
 
 func _create_another_room() -> void:
-	if online_session == null or mode != "complete": return
+	if online_session == null or mode not in ["complete", "hard_full"]: return
+	var hard_room := _hard_on()
 	mode = "creating_room"
 	_card("New room", PlayerCopy.RELAY_PREVIEW_AE8554BD7C76)
-	var room_id: String = await online_session.create_room(chapter_key)
+	var room_id: String = await online_session.create_room(chapter_key, hard_room)
 	if not is_inside_tree(): return
 	if room_id.is_empty():
 		_show_error(online_session.last_error)
 		return
 	journey = online_session.coordinator
+	_show_ready()
+
+
+# Hard mode (services/hard_mode.gd, services/hard_run.gd). The screen's few
+# seams call in here; the rules and the keeping live in the services.
+
+## A solo hard open (Main's HardMode.hand_over) or a kept run to watch; a room
+## screen's run is a hard run while its room is a hard room.
+func _claim_hard() -> void:
+	# Claimed once: the premium screen claims before its access check.
+	if hard != null: return
+	if online_session != null:
+		hard = HardRun.for_room(online_session)
+		return
+	var request: Dictionary = HardMode.claim(chapter_key)
+	match str(request.get("kind", "")):
+		"play":
+			if not _solo_replay_only and not _solo_replay_context_error: hard = HardRun.solo(chapter_key)
+		"watch":
+			if _solo_replay_only or _solo_replay_context_error: return
+			var pairs: Array = HardMode.watch_pairs(request.get("run", {}))
+			if pairs.is_empty():
+				_solo_replay_context_error = true
+				return
+			_solo_replay_only = true
+			_replay_collection = pairs
+			replay_pair_index = 0
+
+func _hard_on() -> bool:
+	return hard != null and hard.active()
+
+## The turn can never be kept, or was started a second time: the run ends.
+## `slip` is the slipped turn's recording, or {}.
+func _hard_fail(reason: String, slip: Dictionary) -> void:
+	running = false
+	action_pressed = false
+	review = {}
+	_drop_prefetch()
+	if hard.together:
+		var kept: bool = hard.fail_together(reason, slip, turn_tries, _tries_slot(), _waiting_partner_name(journey.snapshot()))
+		_show_hard_failed(kept)
+		if kept: _send_hard_reset()
+	else:
+		_show_hard_failed(hard.fail_solo(journey, turn_tries, reason, slip, chapter_key))
+
+## A card with no title or body line of its own; the hard band heads it.
+func _hard_card() -> VBoxContainer:
+	var card := _card("", "")
+	for line: Node in card.get_children():
+		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
+	return card
+
+func _hard_context(kind: String, run: Dictionary) -> Dictionary:
+	return {"kind": kind, "chapter_key": chapter_key, "together": hard.together, "room_id": str(journey.snapshot().get("room_id", "")) if online_session != null else "", "run": run}
+
+## The failed run's card: who slipped and where, then Start again and Back.
+## `ready`: the run could start again (solo), or its reset is kept (together).
+func _show_hard_failed(ready: bool) -> void:
+	mode = "hard_failed"
+	var run: Dictionary = hard.last_run if not hard.last_run.is_empty() else hard.pending_run()
+	var card := _hard_card()
+	var extras := HardModeView.add_band(card, PlayerCopy.HARD_FAILED_TITLE, HardModeView.failure_line(run), HardModeView.failure_badge(run), title_font, hard.mode())
+	HardModeView.fill_extras(extras, _hard_context(HardMode.FAILED, run))
+	var body := _label(PlayerCopy.HARD_FAILED_BODY, 18)
+	body.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(body)
+	var status := _label("" if ready else PlayerCopy.LIGHTHOUSE_PREVIEW_DC7EDE5D9A53, 17)
+	status.name = "HardResetStatus"
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	card.add_child(status)
+	var again := _button(PlayerCopy.HARD_START_AGAIN, _hard_start_again)
+	again.name = "HardStartAgain"
+	card.add_child(again)
+	card.add_child(_action_button("back", _leave))
+	if hard.together and hard.reset_pending():
+		again.disabled = true
+		status.text = PlayerCopy.HARD_RESET_SENDING
+
+func _hard_start_again() -> void:
+	if mode != "hard_failed" or backgrounded: return
+	if hard.together:
+		if hard.reset_pending():
+			_send_hard_reset()
+			return
+		_show_ready()
+		return
+	# A journal that could not be emptied is emptied now, or stays refused.
+	if not journey.pairs().is_empty() or not journey.prior_recording().is_empty() or journey.has_draft():
+		if not hard.restart_solo(journey, turn_tries, chapter_key):
+			_show_error(journey.last_error if not journey.last_error.is_empty() else PlayerCopy.LIGHTHOUSE_PREVIEW_DC7EDE5D9A53)
+			return
+	_show_ready()
+
+## Sends a hard room's waiting reset and redraws the failed card's status.
+func _send_hard_reset() -> void:
+	var generation := online_request_generation
+	var answer: Dictionary = await hard.send_reset()
+	if not is_inside_tree() or generation != online_request_generation or mode != "hard_failed": return
+	var card: Node = controls.modal_stack if is_instance_valid(controls) else null
+	var again: Button = card.find_child("HardStartAgain", true, false) if is_instance_valid(card) else null
+	var status: Label = card.find_child("HardResetStatus", true, false) if is_instance_valid(card) else null
+	if not is_instance_valid(again) or not is_instance_valid(status): return
+	again.disabled = false
+	status.text = "" if answer.get("ok", false) or answer.get("settled", false) else PlayerCopy.HARD_RESET_WAITING
+	if answer.get("ok", false) or answer.get("settled", false): refresh_schedule.note_activity(Time.get_ticks_msec())
+
+## A hard room's own states before any turn: its reset still to send, or no
+## space left for another run. A friend's slip is noted on the way.
+func _hard_room_holds() -> bool:
+	if hard.reset_pending():
+		_show_hard_failed(true)
+		_send_hard_reset()
+		return true
+	if hard.over():
+		_show_hard_room_full()
+		return true
+	_note_hard_slip()
+	return false
+
+func _show_hard_room_full() -> void:
+	mode = "hard_full"
+	var card := _card(PlayerCopy.HARD_ROOM_FULL_TITLE, PlayerCopy.HARD_ROOM_FULL_BODY)
+	card.add_child(_button(RoomActions.label("new_room"), _create_another_room))
+	card.add_child(_action_button("back", _leave))
+
+## The friend slipped: a note on this card, and their slip kept for Replays.
+func _note_hard_slip() -> void:
+	if not hard.together: return
+	var partner := _waiting_partner_name(journey.snapshot())
+	var note: String = hard.notice(partner)
+	if note.is_empty(): return
+	notification_deferred(note)
+	hard.take_in_failures(partner)
+
+## A finished hard run: its mark, its card and the end card hook.
+func _show_hard_complete() -> void:
+	if hard.together: hard.complete_together()
+	else: hard.complete_solo(journey)
+	var card := _hard_card()
+	var extras := HardModeView.add_band(card, PlayerCopy.HARD_COMPLETE_TITLE, PlayerCopy.HARD_COMPLETE_BODY, {}, title_font, hard.mode())
+	HardModeView.fill_extras(extras, _hard_context(HardMode.COMPLETE, {}))
+	_set_room_state("complete")
+	_add_room_actions(card, "complete", "turn", _room_facts())
+
+## Play Hard again, from a finished solo run.
+func _hard_again() -> void:
+	if mode != "complete" or online_session != null or not _hard_on(): return
+	if not hard.restart_solo(journey, turn_tries, chapter_key):
+		_note_refusal(journey.last_error)
+		return
 	_show_ready()
 
 

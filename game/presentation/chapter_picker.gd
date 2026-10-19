@@ -19,6 +19,8 @@ const LOCKED_PICTURE_SATURATION := 0.3
 const CARD_WIDTH := 460.0
 const CHECK_ICON = preload("res://assets/ui/check.svg")
 const CHOOSER_ICON = preload("res://assets/ui/social/chevron-right.svg")
+const HardMode = preload("res://services/hard_mode.gd")
+const HardModeView = preload("res://presentation/hard_mode_view.gd")
 
 ## A card's square button was pressed. `key` is the entry's key.
 signal chosen(key: String)
@@ -33,6 +35,10 @@ var action_name := "Solo"
 var action_chevron := false
 ## Play Solo leaves Back to its page; a picker opened over another screen closes on it.
 var back_enabled := false
+## The hard mark each card shows after its tick: HardMode.SOLO or TOGETHER,
+## or "" for none; hard_states is HardMode.states() (services/hard_mode.gd).
+var hard_mode := ""
+var hard_states: Dictionary = {}
 var heading_font: Font
 ## Width the grid may use. A two-column grid widens the scroll's own minimum, so
 ## the owning screen measures from something that does not grow with it.
@@ -87,7 +93,7 @@ static func entry(key: String) -> Dictionary:
 ## Builds one card per entry. Nothing is rebuilt when the entries, picture size,
 ## mark and action are unchanged since the last call.
 func set_entries(entries: Array[Dictionary], picture: Vector2) -> void:
-	var signature := hash([entries,picture,variant,action_name,action_chevron])
+	var signature := hash([entries,picture,variant,action_name,action_chevron,hard_mode,hard_states])
 	if signature == _signature and grid.get_child_count() > 0: return
 	_signature = signature
 	for card: Node in grid.get_children():
@@ -120,6 +126,15 @@ func refresh_marks(marks: Dictionary) -> void:
 		if not card.has_meta("surface_complete") or bool(card.get_meta("surface_complete")) != complete:
 			card.set_meta("surface_complete",complete)
 			card.add_theme_stylebox_override("panel",surface(complete,bool(card.get_meta("full_journey_locked",false))))
+
+## Hard marks from HardMode.states(), restyled in place.
+func refresh_hard(states: Dictionary) -> void:
+	hard_states = states.duplicate(true)
+	if hard_mode.is_empty(): return
+	for card: Node in grid.get_children():
+		var state: Variant = states.get(str(card.get_meta("chapter_key","")))
+		var mark := card.find_child("HardMarkSolo" if hard_mode == HardMode.SOLO else "HardMarkTogether",true,false)
+		if mark != null and state is Dictionary: mark.set_look(str(state.get(hard_mode, HardMode.LOCKED)))
 
 ## The card for `key`, if shown.
 func card_for(key: String) -> PanelContainer:
@@ -287,18 +302,27 @@ func _card(item: Dictionary, picture: Vector2) -> PanelContainer:
 	tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tick.visible = false
 	heading.add_child(tick)
+	# The chapter's hard mark (locked, open or done) follows the tick's place.
+	var hard_mark: Control = null
+	if not hard_mode.is_empty() and hard_states.get(key) is Dictionary:
+		hard_mark = HardModeView.mark(hard_mode, str(hard_states[key].get(hard_mode, HardMode.LOCKED)), 24.0)
+		heading.add_child(hard_mark)
+	var reserve := 34.0 + (32.0 if hard_mark != null else 0.0)
 	# Room for the tick is always kept, so a title never reflows when it appears.
 	# A title too long for one line wraps and the tick ends its first line.
 	var place := func():
 		if not is_instance_valid(title): return
 		var text := title.get_theme_font("font").get_string_size(title.text,HORIZONTAL_ALIGNMENT_LEFT,-1,title.get_theme_font_size("font_size")).x
-		var width := minf(ceilf(text)+2.0,maxf(1.0,heading.size.x-34.0))
+		var width := minf(ceilf(text)+2.0,maxf(1.0,heading.size.x-reserve))
 		title.position = Vector2.ZERO
 		title.size = Vector2(width,0)
 		title.size = Vector2(width,title.get_combined_minimum_size().y)
 		var first_line := title.size.y/maxf(1.0,float(title.get_line_count()))
 		tick.position = Vector2(width+10.0,(first_line-24.0)*0.5)
 		tick.size = Vector2(24,24)
+		if is_instance_valid(hard_mark):
+			hard_mark.position = Vector2(width+42.0,(first_line-24.0)*0.5)
+			hard_mark.size = Vector2(24,24)
 		heading.custom_minimum_size.y = title.size.y
 	heading.resized.connect(place)
 	title.minimum_size_changed.connect(func(): place.call_deferred())

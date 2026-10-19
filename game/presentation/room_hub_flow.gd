@@ -64,6 +64,8 @@ var host: Node
 ## Steps is only the default before the first choice.
 var selected_chapter := ChapterRegistry.FIRST_STEPS
 var host_visibility := "friends"
+## The host panel's Hard chip as last chosen (services/hard_mode.gd).
+var host_hard := false
 var screen: CanvasLayer
 var inbox: RefCounted
 ## The hub's taps (Continue, Open, Host, Join, Friends) go through one busy-tap
@@ -171,6 +173,7 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	screen.friends_requested.connect(_open_friends)
 	screen.chapter_picked.connect(func(key: String): selected_chapter = key)
 	screen.visibility_picked.connect(func(value: String): host_visibility = value)
+	screen.hard_picked.connect(func(on: bool): host_hard = on)
 	screen.room_open_requested.connect(_open_room)
 	screen.cards_redrawn.connect(_follow_tap)
 	screen.host_requested.connect(_host_room)
@@ -183,6 +186,7 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	screen.set_leave_finished(_leave_offered())
 	host.add_child(screen)
 	screen.show_notice(notice)
+	_offer_hard(screen)
 	_refresh_together_locks(screen)
 	if refresh: refresh_when_idle(screen)
 
@@ -240,6 +244,14 @@ func hide_room(version: int, room_id: String) -> void:
 
 ## The hub can open before the saved tester code is read; once it is, the
 ## hosting locks are drawn again so a tester never keeps a stale lock.
+## The host panel's Hard chip: hidden once the server says it hosts no hard
+## rooms; before the server has said, Host a room asks it (create_room).
+func _offer_hard(hub: Node) -> void:
+	if not is_instance_valid(hub): return
+	var session: RefCounted = host.relay_session
+	var known: bool = session != null and not session.capabilities.is_empty()
+	hub.set_hard(not known or session.hard_mode_supported(), host.hard_states(), host_hard)
+
 func _refresh_together_locks(hub: Node) -> void:
 	if not host._tester_checks_enabled() or (is_instance_valid(host.tester_access) and host.tester_access.cache_checked_context == host._tester_context()): return
 	await host._load_cached_tester()
@@ -499,15 +511,16 @@ func _host_room(chapter_key: String, visibility: String, source: Control = null)
 		return
 	selected_chapter = chapter_key
 	host_visibility = visibility
-	await _tap(source, PlayerCopy.HUB_OPENING_ROOM, host._room_session_idle, PlayerCopy.MAIN_8184DEB41266, _host_room_now.bind(chapter_key))
+	var hard: bool = is_instance_valid(screen) and screen.hard_selected()
+	await _tap(source, PlayerCopy.HUB_OPENING_ROOM, host._room_session_idle, PlayerCopy.MAIN_8184DEB41266, _host_room_now.bind(chapter_key, hard))
 
-func _host_room_now(chapter_key: String) -> void:
+func _host_room_now(chapter_key: String, hard: bool = false) -> void:
 	_leave()
 	await host.relay_lobby_flow.open_lobby(chapter_key)
 	if host.mode != RelayLobbyFlow.MODE_LOBBY or host.relay_session == null: return
 	var host_key := ChapterRegistry.hosting_key(ChapterRegistry.offered_key(chapter_key),host.relay_session.supports_creation)
 	if host.relay_session.supports_creation(host_key):
-		await host.relay_lobby_flow.lobby_action("create",host_key)
+		await host.relay_lobby_flow.lobby_action("create",host_key,hard)
 	else:
 		host._return_to_room_hub(host.relay_session.last_error if not host.relay_session.last_error.is_empty() else PlayerCopy.MAIN_73FEF220EAF1)
 

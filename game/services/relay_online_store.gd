@@ -118,7 +118,7 @@ func _save_scope_locked(scope: String, value: Dictionary) -> Dictionary:
 
 static func _valid_scope(scope: String) -> bool:
 	var pattern := RegEx.new()
-	pattern.compile("^relay-((room-v2|campaign-v1|campaign-redo-v1|redo-(legacy|relay)-v1):[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}|(lobby-v2|campaign-lobby-v1|campaign-terminal-v1|campaign-admission-terminal-v1):[A-Za-z0-9_-]{22})$")
+	pattern.compile("^relay-((room-v2|campaign-v1|campaign-redo-v1|redo-(legacy|relay)-v1|hard-v1):[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}|(lobby-v2|campaign-lobby-v1|campaign-terminal-v1|campaign-admission-terminal-v1):[A-Za-z0-9_-]{22})$")
 	return scope.length() <= 80 and pattern.search(scope) != null
 
 static func _file_limit(scope: String) -> int:

@@ -16,6 +16,9 @@ func _ready() -> void:
 	if not requires_access:
 		_prepare_chapter()
 		return
+	# A hard open is this screen's whatever access decides (services/hard_mode.gd):
+	# claimed now, so backing out of the access card leaves none behind.
+	_claim_hard()
 	admission = ChapterAccess.new()
 	admission.opened_scene = scene_file_path
 	admission.purchase_service_factory = purchase_service_factory

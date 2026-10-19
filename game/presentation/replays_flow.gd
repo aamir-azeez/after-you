@@ -54,6 +54,8 @@ const TryPill = preload("res://presentation/try_pill.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
 const SLOT_COLORS: Dictionary = preload("res://presentation/spirit_look.gd").SLOT_COLOR_NAMES
+const HardMode = preload("res://services/hard_mode.gd")
+const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
@@ -100,6 +102,7 @@ var solo_replay_visibility: RefCounted = SoloReplayVisibility.new()
 ## Display-only rows of the last finished scan, drawn unplayable at once.
 var solo_replay_index: RefCounted
 var _selected_solo_attempt: Dictionary = {}
+var _hard_entries: Array = []
 var _solo_collection_message := ""
 var _solo_collection_started := false
 ## Solo scan feedback: the bar in the open list, the settled row count drawn
@@ -224,6 +227,9 @@ func show_collection(message: String="") -> void:
 	var kept_scroll: int=host._bounded_card_scroll.scroll_vertical if host.mode == MODE_COLLECTION and is_instance_valid(host._bounded_card_scroll) else 0
 	host.running=false
 	host.room_play=false
+	if host.mode != MODE_COLLECTION:
+		_hard_entries=[]
+		for run: Dictionary in HardMode.all_runs(): _hard_entries.append(hard_entry(run))
 	host.mode=MODE_COLLECTION
 	_solo_collection_message=message
 	_turn_tries=TurnTries.new()
@@ -416,7 +422,19 @@ func _solo_collection_entries() -> Array:
 		attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
 		var checking: bool=rows.any(func(row: Dictionary) -> bool: return row.get("checking",false))
 		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows,"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size(),"checking":checking})
+	# Hard runs kept on this phone, failed ones up to their slip (services/hard_mode.gd),
+	# read once per visit to the list rather than on every scan redraw.
+	entries.append_array(_hard_entries)
 	return entries
+
+## A kept hard run as a Your replays row: which chapter, whose slip and where.
+static func hard_entry(run: Dictionary) -> Dictionary:
+	var chapter_title := str(ChapterRegistry.descriptor(str(run.chapter_key)).get("title", run.chapter_key))
+	var failed: bool = run.kind == HardMode.FAILED
+	var friend := str(run.get("friend", ""))
+	var who := PlayerCopy.HARD_RUN_SOLO if run.mode == HardMode.SOLO else PlayerCopy.HARD_RUN_TOGETHER % (friend if not friend.is_empty() else PlayerCopy.HARD_FRIEND_FALLBACK)
+	return {"family":"hard","key":"hard:"+str(run.id),"title":(PlayerCopy.HARD_RUN_FAILED if failed else PlayerCopy.HARD_RUN_DONE) % chapter_title,
+		"caption":who + (" · " + HardModeView.failure_line(run) if failed else ""),"chapter_key":str(run.chapter_key),"parts":1,"run":run.duplicate(true),"checking":false}
 
 func _select_solo_entry(entries: Array) -> void:
 	# Keep the previewed recording selected across redraws; default to the first
@@ -733,7 +751,8 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 		if wide: show_collection()
 		else: _show_solo_replay_attempt()
 	# A row still being checked opens nothing that could play it.
-	var card := _replay_row_card(str(entry.get("chapter_key","")),str(entry.get("title","Replay")),_solo_part_subtitle(int(entry.get("parts",1))),selected,open,wide or not entry.get("checking",false))
+	var caption := str(entry.caption) if entry.has("caption") else _solo_part_subtitle(int(entry.get("parts",1)))
+	var card := _replay_row_card(str(entry.get("chapter_key","")),str(entry.get("title","Replay")),caption,selected,open,wide or not entry.get("checking",false))
 	var panel: PanelContainer=card.panel
 	var rowbox: HBoxContainer=card.rowbox
 	var play := _solo_watch_button("Play",entry,0,false,true)
@@ -746,6 +765,9 @@ func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Cont
 
 func _fill_solo_preview(preview: VBoxContainer) -> void:
 	var entry := _selected_solo_attempt
+	if entry.get("family")=="hard":
+		_fill_hard_preview(preview,entry)
+		return
 	var parts: int=int(entry.get("parts",1))
 	var part: int=clampi(int(entry.get("part",0)),0,maxi(0,parts-1))
 	var thumbnail: Control = host._replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(0,220),16)
@@ -786,8 +808,40 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 	preview.add_child(secondary)
 	_fit_replay_preview.call_deferred(preview)
 
+## A kept hard run's preview: its chapter, whose slip, and Watch.
+func _fill_hard_preview(preview: VBoxContainer, entry: Dictionary) -> void:
+	var thumbnail: Control = host._replay_preview_thumb(str(entry.get("chapter_key","")),Vector2(0,220),16)
+	preview.add_child(thumbnail)
+	preview.set_meta("thumbnail",thumbnail)
+	preview.add_child(host._label(str(entry.get("title","Replay")),28,CREAM,true))
+	preview.add_child(host._label(str(entry.get("caption","")),17,MUTED))
+	preview.add_child(_solo_watch_button("Watch replay",entry,0,true))
+	_fit_replay_preview.call_deferred(preview)
+
+## Narrow screens: a kept hard run on its own card.
+func _show_hard_run() -> void:
+	host.mode=MODE_SOLO_REPLAY_ATTEMPT
+	var card: VBoxContainer = host._card(740,true)
+	card.add_child(host._label(str(_selected_solo_attempt.get("title","")),34,CREAM,true))
+	card.add_child(host._paragraph(str(_selected_solo_attempt.get("caption","")),600))
+	card.add_child(_solo_watch_button("Watch replay",_selected_solo_attempt,0,true))
+	card.add_child(host._back_button("Back to Solo replays",show_collection,false))
+
+## Opens the run's chapter to watch it (HardMode.hand_over "watch").
+func _launch_hard_run(run: Dictionary) -> void:
+	if host.mode not in [MODE_COLLECTION,MODE_SOLO_REPLAY_ATTEMPT] or not HardMode.watchable(run): return
+	var chapter_key := str(run.get("chapter_key",""))
+	var scene := ChapterRegistry.solo_scene(chapter_key)
+	if scene.is_empty(): return
+	var request := {"chapter_key":chapter_key,"kind":"watch","run":run.duplicate(true)}
+	if ChapterRegistry.descriptor(chapter_key).premium: await host._open_premium_chapter(scene,{},request)
+	else: host._open_chapter_preview(scene,{},request)
+
 func _play_solo_entry(entry: Dictionary, part: int) -> void:
 	if entry.get("checking",false): return
+	if entry.get("family")=="hard":
+		await _launch_hard_run(entry.get("run",{}))
+		return
 	if entry.get("family")=="legacy":
 		var index := int(entry.get("level_index",-1))
 		if index<0 or index>=host.levels.size(): return
@@ -810,6 +864,11 @@ func _solo_watch_button(text: String, entry: Dictionary, part: int, primary: boo
 		var waiting: Button = host._list_button(text,launch,primary) if row else host._button(text,launch,primary)
 		waiting.disabled=true
 		return waiting
+	if entry.get("family")=="hard":
+		var watch := _replay_launch_button(text,launch,primary,row)
+		watch.disabled=not HardMode.watchable(entry.get("run",{}))
+		if watch.disabled: watch.tooltip_text=PlayerCopy.HARD_RUN_NOTHING
+		return watch
 	if entry.get("family")=="chapter": return _replay_launch_button(text,launch,primary,row)
 	return host._list_button(text,launch,primary) if row else host._button(text,launch,primary)
 
@@ -903,6 +962,9 @@ func service_solo_collection() -> void:
 
 func _show_solo_replay_attempt() -> void:
 	if host.mode != MODE_COLLECTION or _selected_solo_attempt.is_empty() or _selected_solo_attempt.get("checking",false): return
+	if _selected_solo_attempt.get("family")=="hard":
+		_show_hard_run()
+		return
 	host.mode=MODE_SOLO_REPLAY_ATTEMPT
 	_turn_tries=TurnTries.new()
 	_faces=EndReactionStore.new()
