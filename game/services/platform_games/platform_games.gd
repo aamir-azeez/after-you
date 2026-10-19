@@ -9,9 +9,11 @@ extends Node
 ##    header, or, on a phone with no identity yet, one cheap probe of the restore route. Until the
 ##    server offers it, the platform SDK is never touched (no sign-in banner, no start-up cost).
 ## 2. A quiet sign-in check (the platform signs in by itself).
-## 3. It links the account to this phone's friend identity, or, on a phone that has no identity
-##    yet (a reinstall), brings the linked identity back. A phone that has its own identity and
-##    meets an account linked elsewhere asks the player which to keep (platform_games_flow.gd).
+## 3. It links the account to this phone's friend identity. On a phone that has no identity yet
+##    (a reinstall, or a second phone), it checks whether the account has a friend code and asks
+##    the player with one tap before bringing it back ("Not now" is not asked again this session;
+##    Settings keeps a way to do it later). A phone that has its own identity and meets an account
+##    linked elsewhere asks which to keep (platform_games_flow.gd).
 ## 4. Cloud save: progress is joined with a Saved Games slot after meaningful moments. It needs a
 ##    signed-in account and the server's offer, not a friend link, so solo players get it too.
 ## Every call is async with a timeout; every failure leaves the game as it was. Main is freed
@@ -40,6 +42,8 @@ const LINK_LINKED := "linked"
 const LINK_CONFLICT := "conflict"
 const LINK_OTHER := "other_account"
 const LINK_RESTORING := "restoring"
+## The account has a friend code and this phone has none: waiting for the player's yes.
+const LINK_OFFER := "offer"
 const LINK_ERROR := "error"
 
 ## The first step waits this long after launch, so it never touches the first frames.
@@ -69,6 +73,8 @@ var _running := false
 var _generation := 0
 ## A pipeline was cut short by Main leaving; the next attach starts again.
 var _interrupted := false
+## The player said "Not now" to bringing a friend code back: not asked again this session.
+var offer_declined := false
 
 ## The service, or null (a tree without the autoload, such as a tool script).
 static func shared(tree: SceneTree) -> Node:
@@ -174,6 +180,10 @@ func linked() -> bool:
 func waiting_for_choice() -> bool:
 	return link_state in [LINK_CONFLICT, LINK_OTHER]
 
+## A friend code is waiting to be brought back, and the player has not said "Not now" this session.
+func offer_pending() -> bool:
+	return link_state == LINK_OFFER and not offer_declined and not busy
+
 ## The platform's name as players know it.
 func display_name() -> String:
 	return PlayerCopy.PLATFORM_GAMES_GAME_CENTER if kind() == GamesProvider.GAME_CENTER else PlayerCopy.PLATFORM_GAMES_PLAY_GAMES
@@ -191,6 +201,7 @@ func status_line() -> String:
 		LINK_LINKED: return PlayerCopy.PLATFORM_GAMES_LINKED
 		LINK_CONFLICT: return PlayerCopy.PLATFORM_GAMES_CONFLICT
 		LINK_OTHER: return PlayerCopy.PLATFORM_GAMES_OTHER_ACCOUNT
+		LINK_OFFER: return PlayerCopy.PLATFORM_GAMES_OFFER_NOTE
 		LINK_CHECKING, LINK_RESTORING: return PlayerCopy.PLATFORM_GAMES_CHECKING
 		LINK_ERROR: return PlayerCopy.PLATFORM_GAMES_OFFLINE if link_code == "offline" else PlayerCopy.PLATFORM_GAMES_TRY_LATER
 	return PlayerCopy.PLATFORM_GAMES_SIGNED_IN
@@ -283,7 +294,7 @@ func _on_account_changed() -> void:
 func _after_sign_in(capability: Dictionary, generation: int) -> void:
 	if _account == null: return
 	if _account.identity_state() == "missing":
-		await _restore_for_new_phone(capability, generation)
+		await _offer_for_new_phone(capability, generation)
 		# Every launch pulls the account's saved games, before any chapter here is started.
 		if generation == _generation and cloud != null: cloud.flush(true)
 		return
@@ -333,12 +344,44 @@ func _link(capability: Dictionary, replace: bool, generation: int) -> void:
 		link_code = str(answer.get("code", "failed"))
 	changed.emit()
 
-## A phone with no friend identity yet (a reinstall): bring the linked one back, asking nothing,
-## since there is nothing here to lose. Uses the build's public web client id (no identity, so
-## no capability read). "No link for this account" is remembered for a day.
-func _restore_for_new_phone(capability: Dictionary, generation: int) -> void:
-	if state.restore_probed(_player_key): return
+## A phone with no friend identity yet: is this account linked to one? Then offer it (the player
+## decides; see accept_offer). Uses the build's public web client id (no identity, so no capability
+## read). "No link for this account" is remembered for a day.
+func _offer_for_new_phone(capability: Dictionary, generation: int) -> void:
+	if state.restore_probed(_player_key) or link_state == LINK_OFFER: return
 	if kind() == GamesProvider.PLAY_GAMES and _web_client_id(capability).is_empty(): return
+	busy = true
+	link_state = LINK_CHECKING
+	changed.emit()
+	var credential: Dictionary = await _credential(capability)
+	if generation != _generation: return
+	var answer: Dictionary = {"ok": false, "code": str(credential.get("code", "unavailable"))}
+	if credential.get("ok", false) and _links != null:
+		answer = await _links.check_restore(kind(), credential.credential)
+		if generation != _generation: return
+	busy = false
+	link_code = ""
+	if answer.get("ok", false) and answer.linked:
+		link_state = LINK_OFFER
+	elif answer.get("ok", false) or int(answer.get("status", 0)) == 404:
+		state.remember_restore_probe(_player_key)
+		link_state = LINK_NONE
+	else:
+		link_state = LINK_ERROR
+		link_code = str(answer.get("code", "failed"))
+	changed.emit()
+
+## The player's yes ("Use it", in the prompt or Settings): bring the linked friend code to this
+## phone. Only this rotates the tokens. A phone that made its own identity meanwhile links instead,
+## which leads to the usual "which friend code should stay" choice.
+func accept_offer() -> void:
+	if busy or link_state != LINK_OFFER or _account == null: return
+	var generation := _generation
+	var capability: Dictionary = state.capability()
+	if _account.identity_state() != "missing":
+		link_state = LINK_NONE
+		await _after_sign_in(capability, generation)
+		return
 	var answer := await _restore(capability, false, generation)
 	if generation != _generation: return
 	if answer.get("ok", false):
@@ -346,12 +389,17 @@ func _restore_for_new_phone(capability: Dictionary, generation: int) -> void:
 		state.forget_capability()
 		await _capability()
 		if generation == _generation and cloud != null: cloud.flush(true)
-	elif int(answer.get("status", 0)) in [401, 404]:
+	elif int(answer.get("status", 0)) == 404:
+		# The link went away meanwhile (unlinked or erased on the other phone).
 		state.remember_restore_probe(_player_key)
 		link_state = LINK_NONE
 		changed.emit()
-		# No link to bring back, but this account's saved games still belong on this phone.
-		if cloud != null: cloud.flush(true)
+
+## "Not now": this phone stays a fresh install, and nothing asks again until the next launch.
+func decline_offer() -> void:
+	if link_state != LINK_OFFER: return
+	offer_declined = true
+	changed.emit()
 
 func _restore(capability: Dictionary, restart: bool, generation: int) -> Dictionary:
 	busy = true

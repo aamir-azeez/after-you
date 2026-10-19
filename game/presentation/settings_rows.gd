@@ -102,7 +102,7 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"inline": account.toggle_recovery_details, "visible_if": func() -> bool: return account.panel_state() == "ready" or (account.panel_state() == "restart" and not host.identity_data.is_empty())},
 		# Play Games on Android, Game Center on iOS: shown only while the server offers it.
 		{"id": "platform_games", "category": ACCOUNT, "kind": ACTION, "label": games.label, "note": games.status_line,
-			"inline": games.toggle_detail, "visible_if": func() -> bool: return games.offered() and account.panel_state() == "ready", "enabled_if": games.enabled},
+			"inline": games.toggle_detail, "visible_if": func() -> bool: return games.offered() and account.panel_state() in ["ready", "missing"], "enabled_if": games.enabled},
 		{"id": "close_app", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CLOSE_APP, "run": func(): host.get_tree().quit(), "visible_if": state.call(["restart"])},
 		{"id": "hosting_access", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_HOSTING_ACCESS, "note": PlayerCopy.SETTINGS_HOSTING_ACCESS_NOTE,
 			"inline": func(detail: VBoxContainer, _row: Control): account.check_hosting_access(detail), "visible_if": state.call(["ready"]),

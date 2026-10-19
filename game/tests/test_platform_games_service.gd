@@ -6,6 +6,26 @@ extends SceneTree
 const Service = preload("res://services/platform_games/platform_games.gd")
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Flow = preload("res://presentation/platform_games_flow.gd")
+
+class FakeSettings extends Node:
+	signal closed
+	var refreshes := 0
+	func refresh() -> void: refreshes += 1
+
+## Just what the flow's prompt needs from Main.
+class FakeHost extends Node:
+	var ui := Control.new()
+	var mode := "home"
+	var settings_flow := FakeSettings.new()
+	var identity_data := {}
+	var toasts: Array = []
+	func _init() -> void:
+		ui.name = "UI"
+		ui.size = Vector2(1280, 720)
+		add_child(ui)
+		add_child(settings_flow)
+	func _toast(text: String) -> void: toasts.append(text)
 
 class FakeProvider extends "res://services/platform_games/games_provider.gd":
 	var auth: Dictionary = {"ok": true, "signed_in": true, "player_key": "a".repeat(64)}
@@ -88,6 +108,46 @@ func _account(api: Node) -> FakeAccount:
 	var account := FakeAccount.new()
 	account.api_node = api
 	return account
+
+## The one-tap prompt as players see it: only at Home, once a session, Not now by any close.
+func _prompt_flow() -> void:
+	var linked := _ok({"schema_version": 1, "provider": "play_games", "linked": true})
+	for answer: String in ["not_now", "use_it"]:
+		var host := FakeHost.new()
+		host.mode = "play"
+		root.add_child(host)
+		var flow: Node = Flow.new(host)
+		host.add_child(flow)
+		var api := FakeApi.new()
+		root.add_child(api)
+		api.answers = {"/v1/platform/restore": [_on(), linked]}
+		var phone := _account(api)
+		phone.identity = "missing"
+		var service := _service(FakeProvider.new(), api, phone, "prompt-" + answer)
+		flow.service = service
+		service.changed.connect(flow._on_changed)
+		await service.start()
+		_check(service.offer_pending() and host.ui.get_node_or_null("PlatformRestoreModal") == null, "No prompt while a chapter or room is on screen")
+		host.mode = "home"
+		await create_timer(1.3).timeout
+		var modal: Node = host.ui.get_node_or_null("PlatformRestoreModal")
+		_check(modal != null, "The prompt appears once Home shows")
+		if modal == null: continue
+		var buttons := [modal.find_child("ModalCancel", true, false), modal.find_child("ModalConfirm", true, false)]
+		_check(buttons[0] is Button and buttons[0].text == PlayerCopy.PLATFORM_GAMES_NOT_NOW and buttons[1].text == PlayerCopy.PLATFORM_GAMES_USE_IT, "It offers Use it and Not now")
+		(buttons[0] if answer == "not_now" else buttons[1]).pressed.emit()
+		for _frame in range(20): await process_frame
+		if answer == "not_now":
+			_check(service.offer_declined and phone.restores.is_empty(), "Not now restores nothing")
+			service.changed.emit()
+			await create_timer(1.3).timeout
+			_check(host.ui.get_node_or_null("PlatformRestoreModal") == null, "and the prompt does not come back this session")
+		else:
+			_check(phone.restores.size() == 1 and service.linked() and not service.offer_declined, "Use it brings the friend code back")
+		service.queue_free()
+		api.queue_free()
+		host.queue_free()
+		await process_frame
 
 func _run() -> void:
 	_root_dir = "user://platform-games-service-test-%d" % Time.get_ticks_usec()
@@ -203,19 +263,43 @@ func _run() -> void:
 	_check(offline.link_state == Service.LINK_ERROR and offline.status_line() == PlayerCopy.PLATFORM_GAMES_OFFLINE, "Offline linking says so and changes nothing")
 	offline.queue_free()
 
-	# A new phone (no identity yet): the linked identity comes back without asking.
+	# A new phone (no identity yet): it checks, then asks with one tap; only "Use it" restores.
 	api.calls.clear()
-	api.answers = {"/v1/platform/restore": [_on()], "/v2/capabilities": [_ok(CAPABILITY)]}
+	var linked_answer := _ok({"schema_version": 1, "provider": "play_games", "linked": true})
+	api.answers = {"/v1/platform/restore": [_on(), linked_answer], "/v2/capabilities": [_ok(CAPABILITY)]}
 	var new_phone := _account(api)
 	new_phone.identity = "missing"
 	var reinstall := _service(FakeProvider.new(), api, new_phone, "reinstall")
 	await reinstall.start()
 	_check(api.calls[0].path == "/v1/platform/restore" and api.calls[0].body == {"provider": "play_games"}, "Without an identity, one proof-less probe tells whether the server offers it")
-	_check(new_phone.restores.size() == 1 and new_phone.restores[0].restart == false, "A phone without an identity restores in place")
+	_check(api.calls[1].body == {"schema_version": 1, "provider": "play_games", "credential": {"server_auth_code": "4/0Asynthetic-code"}, "check": true}, "Then it only checks whether the account has a friend code")
+	_check(reinstall.offer_pending() and new_phone.restores.is_empty() and reinstall.status_line() == PlayerCopy.PLATFORM_GAMES_OFFER_NOTE, "Nothing is restored before the player says yes")
+	await reinstall.accept_offer()
+	_check(new_phone.restores.size() == 1 and new_phone.restores[0].restart == false, "Use it restores in place")
 	_check(reinstall.linked(), "The restored identity counts as linked")
-	_check(api.calls.size() == 2 and api.calls[1].path == "/v2/capabilities", "Once restored, the real capability is read")
+	_check(api.calls.size() == 3 and api.calls[2].path == "/v2/capabilities", "Once restored, the real capability is read")
 	_check(reinstall._cloud_allowed() and reinstall.cloud.due(), "and a cloud pull is due in the same session")
 	reinstall.queue_free()
+	# "Not now": stays a fresh install, not asked again this session, asked again on a later launch.
+	api.answers = {"/v1/platform/restore": [_on(), linked_answer, linked_answer, linked_answer]}
+	var second_phone := _account(api)
+	second_phone.identity = "missing"
+	var second := _service(FakeProvider.new(), api, second_phone, "second-phone")
+	await second.start()
+	second.decline_offer()
+	_check(not second.offer_pending() and second.link_state == Service.LINK_OFFER and second_phone.restores.is_empty(), "Not now leaves the phone as it is and keeps the offer for Settings")
+	await second.start()
+	_check(not second.offer_pending(), "and the same session does not ask again")
+	await second.accept_offer()
+	_check(second_phone.restores.size() == 1 and second.linked(), "Settings can still bring the friend code back later")
+	second.queue_free()
+	api.answers = {"/v1/platform/restore": [_on(), linked_answer]}
+	var next_launch_phone := _account(api)
+	next_launch_phone.identity = "missing"
+	var next_launch := _service(FakeProvider.new(), api, next_launch_phone, "second-phone")
+	await next_launch.start()
+	_check(next_launch.offer_pending(), "A later launch may ask again")
+	next_launch.queue_free()
 	# Probe says off: nothing is asked of the platform.
 	api.answers = {"/v1/platform/restore": [_fail(401, "invalid_auth")]}
 	var off_phone := _account(api)
@@ -225,17 +309,18 @@ func _run() -> void:
 	await off_service.start()
 	_check(off_provider.auth_calls.is_empty() and off_phone.restores.is_empty() and not off_service.offered(), "A server with the feature off keeps the platform untouched")
 	off_service.queue_free()
-	# No link for this account (or the feature off): asked once, then not again for a day.
-	api.answers = {"/v1/platform/restore": [_on()]}
+	# No link for this account: checked once, then not again for a day; no prompt.
+	api.answers = {"/v1/platform/restore": [_on(), _ok({"schema_version": 1, "provider": "play_games", "linked": false})]}
 	var none_phone := _account(api)
 	none_phone.identity = "missing"
-	none_phone.restore_answer = {"ok": false, "status": 404, "code": "platform_link_not_found"}
 	var nothing := _service(FakeProvider.new(), api, none_phone, "nothing")
 	await nothing.start()
+	_check(not nothing.offer_pending() and none_phone.restores.is_empty(), "No friend code on the account: no prompt")
 	_check(nothing._cloud_allowed() and nothing.cloud.due(), "No link to bring back, but the account's saved games still sync (solo progress)")
 	nothing.cloud.stop()
+	var checks_before := api.calls.size()
 	await nothing.start()
-	_check(none_phone.restores.size() == 1 and nothing.link_state == Service.LINK_NONE, "A missing link is remembered so launches do not keep asking")
+	_check(api.calls.size() == checks_before and nothing.link_state == Service.LINK_NONE, "A missing link is remembered so launches do not keep asking")
 	_check(nothing.cloud.due(), "and later launches still pull the saved games")
 	nothing.queue_free()
 	# Without the build's web client id, a new phone does not try.
@@ -245,7 +330,7 @@ func _run() -> void:
 	bare.web_client = ""
 	var bare_service := _service(FakeProvider.new(), api, bare, "bare")
 	await bare_service.start()
-	_check(bare.restores.is_empty(), "No web client id, no restore attempt")
+	_check(bare.restores.is_empty() and not bare_service.offer_pending(), "No web client id, no check and no prompt")
 	_check(bare_service.cloud.due(), "but the saved games are still pulled")
 	bare_service.queue_free()
 	# An identity this phone cannot read is never replaced.
@@ -291,6 +376,8 @@ func _run() -> void:
 	for _frame in range(30): await process_frame
 	_check(changing.link_state == Service.LINK_OTHER, "A different account is checked again and not treated as linked")
 	changing.queue_free()
+
+	await _prompt_flow()
 
 	await process_frame
 	api.queue_free()
