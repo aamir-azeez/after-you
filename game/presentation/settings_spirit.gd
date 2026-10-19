@@ -12,10 +12,13 @@ extends TextureRect
 ## A sideways drag on it turns it (presentation/kit/drag_turn.gd). While a
 ## finger turns it, or it coasts or eases back, it is drawn every frame;
 ## once it rests the idle rate above holds again. `turn.grabbed` fires when a
-## drag starts, for the page's light haptic tick.
+## drag starts, for the page's light haptic tick. While a finger holds it, it
+## squeezes its eyes shut (spirit_look.gd SQUEEZE), and the page draws every
+## frame of the eyes' swap so the change reads.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const DragTurn = preload("res://presentation/kit/drag_turn.gd")
+const Look = preload("res://presentation/spirit_look.gd")
 ## The owner's rate for a resting spirit on a card.
 const IDLE_HZ := IslandWorld.IDLE_CARD_HZ
 const PEACH := Color("f4c38d")
@@ -33,6 +36,9 @@ var _spirit: SpiritVisual
 var _clock := 0.0
 var _reduced := false
 var _settled := false
+var _held := false
+## A face change still to draw (under Reduce motion it swaps at once).
+var _face_due := false
 
 func _init(reduced: bool = false) -> void:
 	name = "SettingsSpirit"
@@ -91,6 +97,7 @@ func set_reduced(reduced: bool) -> void:
 func _gui_input(event: InputEvent) -> void:
 	if not turn.handle_event(event, size.x): return
 	accept_event()
+	_hold_face()
 	if turn.busy(): set_process(true)
 
 func _notification(what: int) -> void:
@@ -104,17 +111,27 @@ func _notification(what: int) -> void:
 func _let_go() -> void:
 	if not turn.dragging(): return
 	turn.release()
+	_hold_face()
 	set_process(true)
 
 func _process(delta: float) -> void:
 	var turned := turn.advance(delta)
-	if _settled and not turned:
+	if _settled and not turned and not _face_due:
 		if not turn.busy(): set_process(false)
 		return
 	_clock += maxf(delta, 0.0)
-	if not turned and _clock < 1.0 / IDLE_HZ: return
+	var face_moving := _face_due or _spirit.face_art.swapping()
+	if not turned and not face_moving and _clock < 1.0 / IDLE_HZ: return
 	_step(_clock)
 	_clock = 0.0
+
+func _hold_face() -> void:
+	var held := turn.dragging()
+	if held == _held: return
+	_held = held
+	_spirit.set_expression(Look.SQUEEZE if held else Look.NORMAL)
+	_face_due = true
+	set_process(true)
 
 func _face() -> void:
 	# advance_motion eases the facing toward its target, so both are written.
@@ -129,3 +146,4 @@ func _step(delta: float) -> void:
 	_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	drawn += 1
 	_settled = _reduced
+	_face_due = false

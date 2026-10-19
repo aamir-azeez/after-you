@@ -11,9 +11,11 @@ extends SceneTree
 ## - The spirit draws every frame only while it turns, and at its idle rate
 ##   (or not at all under Reduce motion) when it rests; it takes the drag over
 ##   its whole rect, past a 48 px target, and lets go when hidden.
+## - Held, it squeezes its eyes shut, and lets them go on release.
 const DragTurn = preload("res://presentation/kit/drag_turn.gd")
 const SettingsSpirit = preload("res://presentation/settings_spirit.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
+const Look = preload("res://presentation/spirit_look.gd")
 
 const DT := 1.0 / 60.0
 const WIDTH := 72.0
@@ -226,6 +228,9 @@ func _spirit_draws() -> void:
 	var idle := _frames(spirit, 60)
 	_check(idle >= hz - 2 and idle <= hz + 1, "Still, it draws at its idle rate: %d in 1 s" % idle)
 	_mouse(spirit, 20.0, true)
+	_check(spirit._spirit.expression_target() == Look.SQUEEZE, "A press squeezes its eyes shut")
+	var swap := _frames(spirit, 15)
+	_check(swap >= 10 and spirit._spirit.expression() == Look.SQUEEZE, "It draws each frame of the eyes' swap: %d" % swap)
 	_check(_frames(spirit, 10) <= 2, "A finger held still draws no more than the idle rate")
 	_motion(spirit, 20.0 + spirit.size.x * 0.3)
 	_check(_frames(spirit, 1) == 1, "A move draws on the next frame")
@@ -241,6 +246,7 @@ func _spirit_draws() -> void:
 	_mouse(spirit, 100.0, false)
 	var coast := _frames(spirit, 30)
 	_check(coast == 30, "Coasting, it draws every frame: %d of 30" % coast)
+	_check(spirit._spirit.expression() == Look.NORMAL, "Let go, its eyes open again")
 	var settle := 0
 	while spirit.turn.busy() and settle < 600:
 		spirit._process(DT)
@@ -266,11 +272,13 @@ func _spirit_reduced() -> void:
 	_check(_frames(spirit, 60) == 0, "and draws nothing")
 	_mouse(spirit, 20.0, true)
 	_check(spirit.is_processing(), "A press wakes it")
-	_check(_frames(spirit, 5) == 0, "A held finger draws nothing")
+	_check(_frames(spirit, 5) == 1 and spirit._spirit.expression() == Look.SQUEEZE, "A press draws once, its eyes squeezed at once")
+	_check(_frames(spirit, 5) == 0, "A held finger then draws nothing")
 	_motion(spirit, 50.0)
 	_check(_frames(spirit, 5) == 1 and not is_equal_approx(_yaw(spirit), rest), "A move draws once and turns it")
 	_mouse(spirit, 50.0, false)
 	_check(_frames(spirit, 5) == 1 and is_equal_approx(_yaw(spirit), rest), "A release draws once, back at its rest facing")
+	_check(spirit._spirit.expression() == Look.NORMAL, "with its eyes open at once")
 	_check(not spirit.is_processing() and _frames(spirit, 60) == 0, "Then it rests and draws nothing")
 	# Reduce motion turned on mid spin sends it home at once.
 	spirit.set_reduced(false)
