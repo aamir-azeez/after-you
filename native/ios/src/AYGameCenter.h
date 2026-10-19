@@ -11,7 +11,8 @@ typedef void (^AYGamesAccountChanged)(NSString *payloadJson);
 /// Game Center with the Android Play Games bridge's contract: the same games_* operations,
 /// payloads and codes, so the shared GDScript provider serves both. The game receives only a
 /// SHA-256 player key, never the Game Center player id; the server verification credential is
-/// Apple's signed identity data (fetchItemsForIdentityVerificationSignature). Saved games use
+/// Apple's signed identity data (fetchItemsForIdentityVerificationSignature). The player's Game
+/// Center alias leaves only when the game asks for it with player_name. Saved games use
 /// GKSavedGame (iCloud). Off unless the build's Info.plist has AYGameCenterEnabled = YES, so a
 /// build without the Game Center capability never shows Game Center UI. Main queue only.
 @interface AYGameCenter : NSObject
@@ -25,6 +26,8 @@ typedef void (^AYGamesAccountChanged)(NSString *payloadJson);
 - (BOOL)available;
 - (void)status:(NSString *)requestId;
 - (void)signIn:(NSString *)requestId;
+/// {"name": alias}. Reads the current state only: never starts sign-in or shows UI.
+- (void)playerName:(NSString *)requestId;
 - (void)credential:(NSString *)requestId;
 - (void)snapshotOpen:(NSString *)name requestId:(NSString *)requestId;
 - (void)snapshotCommit:(NSString *)handle data:(NSString *)base64 description:(NSString *)description requestId:(NSString *)requestId;

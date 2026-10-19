@@ -19,6 +19,8 @@ internal interface GamesClient {
     fun available(): Boolean
     fun authenticate(interactive: Boolean, done: (Boolean?, Int?) -> Unit)
     fun playerId(done: (String?, Int?) -> Unit)
+    /** The Play Games display (gamer) name only; read only for the game's player_name request. */
+    fun playerName(done: (String?, Int?) -> Unit)
     fun serverAuthCode(webClientId: String, done: (String?, Int?) -> Unit)
     fun open(name: String, done: (OpenedSnapshot?, Int?) -> Unit)
     fun resolve(opened: OpenedSnapshot, bytes: ByteArray, done: (OpenedSnapshot?, Int?) -> Unit)
@@ -64,6 +66,14 @@ internal class GooglePlayGamesClient(private val activity: Activity, private val
         if (!ready()) { done(null, 10); return }
         PlayGames.getPlayersClient(activity).currentPlayerId.addOnCompleteListener { result ->
             if (result.isSuccessful && !result.result.isNullOrEmpty()) done(result.result, null) else done(null, status(result.exception))
+        }
+    }
+
+    override fun playerName(done: (String?, Int?) -> Unit) {
+        if (!ready()) { done(null, 10); return }
+        // Only the display name is read from the Player; nothing else on it is kept or passed on.
+        PlayGames.getPlayersClient(activity).currentPlayer.addOnCompleteListener { result ->
+            if (result.isSuccessful) done(result.result?.displayName, null) else done(null, status(result.exception))
         }
     }
 

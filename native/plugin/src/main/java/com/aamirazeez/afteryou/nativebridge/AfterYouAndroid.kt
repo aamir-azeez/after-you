@@ -538,6 +538,7 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     @UsedByGodot fun games_available(): Boolean = games()?.available() ?: false
     @UsedByGodot fun games_status(requestId: String) = gamesCall(requestId, "status") { it.status(requestId) }
     @UsedByGodot fun games_sign_in(requestId: String) = gamesCall(requestId, "sign_in") { it.signIn(requestId) }
+    @UsedByGodot fun games_player_name(requestId: String) = gamesCall(requestId, "player_name") { it.playerName(requestId) }
     @UsedByGodot fun games_credential(webClientId: String, requestId: String) = gamesCall(requestId, "credential") { it.credential(webClientId, requestId) }
     @UsedByGodot fun games_snapshot_open(name: String, requestId: String) = gamesCall(requestId, "snapshot_open") { it.snapshotOpen(name, requestId) }
     @UsedByGodot fun games_snapshot_commit(handle: String, data: String, description: String, requestId: String) = gamesCall(requestId, "snapshot_commit") { it.snapshotCommit(handle, data, description, requestId) }

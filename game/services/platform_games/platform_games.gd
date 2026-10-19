@@ -184,6 +184,13 @@ func waiting_for_choice() -> bool:
 func offer_pending() -> bool:
 	return link_state == LINK_OFFER and not offer_declined and not busy and _account != null and _account.identity_state() == "missing"
 
+## The signed-in player's gamer name, read only now (the player picked "Use my
+## Play Games name" or "Use my Game Center name"): {"ok", "name"} or a code.
+func player_name() -> Dictionary:
+	if provider == null or not provider.available(): return {"ok": false, "code": "unavailable"}
+	if not signed_in(): return {"ok": false, "code": "signed_out"}
+	return await provider.player_name()
+
 ## The platform's name as players know it.
 func display_name() -> String:
 	return PlayerCopy.PLATFORM_GAMES_GAME_CENTER if kind() == GamesProvider.GAME_CENTER else PlayerCopy.PLATFORM_GAMES_PLAY_GAMES

@@ -117,6 +117,7 @@ int main(void) {
 		check([AYGamesPolicy validHandle:handle] && ![handle isEqualToString:[AYGamesPolicy newHandle]] && ![AYGamesPolicy validHandle:@"zz"], @"Slot handles are random 32-hex strings");
 		check([AYGamesPolicy validDescription:@"After You progress"] && ![AYGamesPolicy validDescription:@"line\nbreak"] && ![AYGamesPolicy validDescription:repeat(@"x", 101)], @"Slot descriptions are short plain text");
 		check([AYGamesPolicy decodeSnapshot:@""].length == 0 && [[AYGamesPolicy decodeSnapshot:@"QVlDMQ=="] isEqualToData:[@"AYC1" dataUsingEncoding:NSUTF8StringEncoding]], @"Slot bytes decode from base64");
+		check([AYGamesPolicy validPlayerName:@"Synthetic Player"] && [AYGamesPolicy validPlayerName:repeat(@"x", 64)] && ![AYGamesPolicy validPlayerName:repeat(@"x", 65)] && ![AYGamesPolicy validPlayerName:@""] && ![AYGamesPolicy validPlayerName:nil], @"The Game Center alias is only bounded, 1 to 64 UTF-16 units");
 		check([AYGamesPolicy decodeSnapshot:@"not base64!"] == nil && [AYGamesPolicy decodeSnapshot:repeat(@"A", 4 * 1024 * 1024 + 8)] == nil, @"Bad or oversized slot text is refused");
 
 		printf("AFTER YOU iOS POLICY: %d checks, %d failures\n", checks, failures);

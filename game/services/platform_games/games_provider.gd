@@ -42,6 +42,12 @@ func authenticate(_interactive: bool) -> Dictionary:
 func server_credential(_web_client_id: String) -> Dictionary:
 	return {"ok": false, "code": "unavailable"}
 
+## The signed-in player's gamer name (Play Games display name, Game Center
+## alias): {"ok", "name"}. Asked only when the player picks it as their display
+## name, never during sign-in. The game checks the name against its own rules.
+func player_name() -> Dictionary:
+	return {"ok": false, "code": "unavailable"}
+
 ## Saved Games. open gives {"ok", "handle", "data": PackedByteArray} and, when two copies
 ## disagree, "conflict": {"data": PackedByteArray} (the other copy). resolve answers like open.
 func snapshot_open(_name: String) -> Dictionary:

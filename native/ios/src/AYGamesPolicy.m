@@ -40,6 +40,10 @@
 	return data.length <= [self maxSnapshotBytes] ? data : nil;
 }
 
++ (BOOL)validPlayerName:(nullable NSString *)name {
+	return name.length > 0 && name.length <= 64;
+}
+
 + (NSString *)playerKey:(NSString *)teamPlayerId {
 	NSData *input = [[@"after-you:game_center:" stringByAppendingString:teamPlayerId] dataUsingEncoding:NSUTF8StringEncoding];
 	unsigned char digest[CC_SHA256_DIGEST_LENGTH];

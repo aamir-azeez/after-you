@@ -57,6 +57,17 @@ class PlayGamesPolicyTest {
         assertTrue(PlayGamesPolicy.QUIET_TIMEOUT_MS < 15_000 && PlayGamesPolicy.SNAPSHOT_TIMEOUT_MS < 30_000 && PlayGamesPolicy.SIGN_IN_TIMEOUT_MS < 120_000)
     }
 
+    @Test fun theGamerNameIsOnlyBoundedNotChanged() {
+        assertTrue(PlayGamesPolicy.validPlayerName("Synthetic Player"))
+        assertTrue(PlayGamesPolicy.validPlayerName("x".repeat(64)))
+        assertFalse(PlayGamesPolicy.validPlayerName("x".repeat(65)))
+        assertFalse(PlayGamesPolicy.validPlayerName(""))
+        assertFalse(PlayGamesPolicy.validPlayerName(null))
+        // The limit counts UTF-16 units: 32 emoji are 64 units, 33 are 66.
+        assertTrue(PlayGamesPolicy.validPlayerName("😀".repeat(32)))
+        assertFalse(PlayGamesPolicy.validPlayerName("😀".repeat(33)))
+    }
+
     @Test fun handlesAreRandomBoundedAndTakenOnce() {
         val handle = PlayGamesPolicy.newHandle()
         assertTrue(PlayGamesPolicy.validHandle(handle))

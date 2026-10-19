@@ -6,7 +6,8 @@ import java.security.SecureRandom
 /**
  * Play Games rules with no Android or SDK types, so JVM tests cover them: what configuration
  * turns the feature on, the shapes the bridge accepts, the one-way player key, and how SDK status
- * codes become the few codes the game knows. No platform text or account id ever leaves here.
+ * codes become the few codes the game knows. No account id or Google error text leaves here; the
+ * only platform text that does is the gamer name, and only when the game asks with player_name.
  */
 internal object PlayGamesPolicy {
     private val APP_ID = Regex("[0-9]{6,20}")
@@ -18,6 +19,8 @@ internal object PlayGamesPolicy {
     /** Base64 of the largest slot, plus padding. */
     const val MAX_SNAPSHOT_BASE64 = (MAX_SNAPSHOT_BYTES / 3 + 1) * 4
     const val MAX_DESCRIPTION = 100
+    /** UTF-16 units; the game applies its own display-name rules after this. */
+    const val MAX_PLAYER_NAME = 64
     const val QUIET_TIMEOUT_MS = 14_000L
     const val SIGN_IN_TIMEOUT_MS = 115_000L
     const val SNAPSHOT_TIMEOUT_MS = 28_000L
@@ -29,6 +32,8 @@ internal object PlayGamesPolicy {
     fun validHandle(value: String): Boolean = HANDLE.matches(value)
     fun validDescription(value: String): Boolean = value.length <= MAX_DESCRIPTION && value.none { it.isISOControl() }
     fun validBase64Length(value: String): Boolean = value.length <= MAX_SNAPSHOT_BASE64
+    /** Only a bound on the gamer name; it is passed on unchanged and the game validates it. */
+    fun validPlayerName(value: String?): Boolean = !value.isNullOrEmpty() && value.length <= MAX_PLAYER_NAME
 
     /** A one-way key that tells accounts apart on this phone; the Play Games id itself stays native. */
     fun playerKey(playerId: String): String {

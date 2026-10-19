@@ -198,7 +198,8 @@ void AfterYouIOS::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("games_available"), &AfterYouIOS::games_available);
 	ClassDB::bind_method(D_METHOD("games_status", "request_id"), &AfterYouIOS::games_status);
 	ClassDB::bind_method(D_METHOD("games_sign_in", "request_id"), &AfterYouIOS::games_sign_in);
-	ClassDB::bind_method(D_METHOD("games_credential", "web_client_id", "request_id"), &AfterYouIOS::games_credential);
+	ClassDB::bind_method(D_METHOD("games_player_name", "request_id"), &AfterYouIOS::games_player_name);
+	ClassDB::bind_method(D_METHOD("games_credential","web_client_id", "request_id"), &AfterYouIOS::games_credential);
 	ClassDB::bind_method(D_METHOD("games_snapshot_open", "name", "request_id"), &AfterYouIOS::games_snapshot_open);
 	ClassDB::bind_method(D_METHOD("games_snapshot_commit", "handle", "data", "description", "request_id"), &AfterYouIOS::games_snapshot_commit);
 	ClassDB::bind_method(D_METHOD("games_snapshot_resolve", "handle", "data", "request_id"), &AfterYouIOS::games_snapshot_resolve);
@@ -417,6 +418,10 @@ void AfterYouIOS::games_status(const String &p_request_id) {
 
 void AfterYouIOS::games_sign_in(const String &p_request_id) {
 	[[AYGameCenter shared] signIn:ay_ns(p_request_id)];
+}
+
+void AfterYouIOS::games_player_name(const String &p_request_id) {
+	[[AYGameCenter shared] playerName:ay_ns(p_request_id)];
 }
 
 void AfterYouIOS::games_credential(const String &p_web_client_id, const String &p_request_id) {

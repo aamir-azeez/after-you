@@ -44,6 +44,7 @@ public:
 	bool games_available();
 	void games_status(const godot::String &p_request_id);
 	void games_sign_in(const godot::String &p_request_id);
+	void games_player_name(const godot::String &p_request_id);
 	void games_credential(const godot::String &p_web_client_id, const godot::String &p_request_id);
 	void games_snapshot_open(const godot::String &p_name, const godot::String &p_request_id);
 	void games_snapshot_commit(const godot::String &p_handle, const godot::String &p_data, const godot::String &p_description, const godot::String &p_request_id);

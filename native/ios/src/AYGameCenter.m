@@ -225,6 +225,27 @@
 	[top presentViewController:controller animated:YES completion:nil];
 }
 
+#pragma mark - Gamer name
+
+/// The alias the player chose for Game Center, read only on this request (never during sign-in
+/// or status). It does not install the authenticate handler, so it never starts sign-in or UI.
+- (void)playerName:(NSString *)requestId {
+	if (![self begin:requestId]) {
+		return;
+	}
+	GKLocalPlayer *player = [GKLocalPlayer localPlayer];
+	if (![self available] || !player.isAuthenticated) {
+		[self fail:requestId operation:@"player_name" code:[self available] ? @"signed_out" : @"unavailable"];
+		return;
+	}
+	NSString *alias = player.alias;
+	if (![AYGamesPolicy validPlayerName:alias]) {
+		[self fail:requestId operation:@"player_name" code:@"failed"];
+		return;
+	}
+	[self succeed:requestId operation:@"player_name" payload:@{ @"name" : alias }];
+}
+
 #pragma mark - Server verification
 
 - (void)credential:(NSString *)requestId {

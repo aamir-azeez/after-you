@@ -8,7 +8,8 @@ import org.json.JSONObject
 /**
  * The games_* requests from Godot: one answer per request id (result or error), each with a
  * deadline a little shorter than the game's own, so a late SDK callback never answers twice.
- * Only known codes, a one-way player key, a one-time server auth code and slot bytes leave here.
+ * Only known codes, a one-way player key, a one-time server auth code and slot bytes leave here,
+ * plus the Play Games gamer name, and that only when the game asks for it with player_name.
  */
 internal class PlayGamesBridge(
     private val client: GamesClient,
@@ -68,6 +69,24 @@ internal class PlayGamesBridge(
                 else -> client.playerId { player, playerStatus ->
                     if (player.isNullOrEmpty() || player.length > 256) failStatus(ticket, playerStatus)
                     else success(ticket, JSONObject().put("signed_in", true).put("player_key", PlayGamesPolicy.playerKey(player)))
+                }
+            }
+        }
+    }
+
+    /** The gamer name, read only on this request (never during sign-in or status) and never with UI. */
+    fun playerName(id: String) = call(id, "player_name", PlayGamesPolicy.QUIET_TIMEOUT_MS) { ticket ->
+        if (!client.available()) { fail(ticket, "unavailable"); return@call }
+        client.authenticate(false) { signedIn, status ->
+            when (signedIn) {
+                null -> failStatus(ticket, status)
+                false -> fail(ticket, "signed_out")
+                true -> client.playerName { name, nameStatus ->
+                    when {
+                        name == null -> failStatus(ticket, nameStatus)
+                        !PlayGamesPolicy.validPlayerName(name) -> fail(ticket, "failed")
+                        else -> success(ticket, JSONObject().put("name", name))
+                    }
                 }
             }
         }

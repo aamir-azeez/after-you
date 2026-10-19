@@ -2,10 +2,11 @@ extends "res://services/platform_games/games_provider.gd"
 ## Play Games (Android) and Game Center (iOS) through the app's one native plugin. Both plugins
 ## answer the same games_* methods with the same games_result / games_error signals, so this one
 ## provider serves both; only kind() differs. Payloads are bounded and parsed here; platform
-## account ids never reach GDScript (the plugin sends a one-way player_key instead).
+## account ids never reach GDScript (the plugin sends a one-way player_key instead). The gamer
+## name arrives only from player_name(), which the game asks for when the player picks it.
 const Typed = preload("res://services/typed_values.gd")
 
-const OPERATIONS := ["status", "sign_in", "credential", "snapshot_open", "snapshot_commit", "snapshot_resolve", "snapshot_discard"]
+const OPERATIONS := ["status", "sign_in", "credential", "player_name", "snapshot_open", "snapshot_commit", "snapshot_resolve", "snapshot_discard"]
 ## Quiet checks and server credentials answer in seconds; the plugin gives up a little earlier.
 const QUIET_TIMEOUT_MS := 15000
 ## The sign-in sheet waits for the player.
@@ -100,6 +101,13 @@ func authenticate(interactive: bool) -> Dictionary:
 	if not _last_player_key.is_empty() and _last_player_key != key: account_changed.emit()
 	_last_player_key = key
 	return {"ok": true, "signed_in": true, "player_key": key}
+
+func player_name() -> Dictionary:
+	var answer := await _call("player_name", [], QUIET_TIMEOUT_MS)
+	if not answer.ok: return answer
+	var name: Variant = answer.data.get("name")
+	if not name is String or name.is_empty() or name.length() > 64: return {"ok": false, "code": "failed"}
+	return {"ok": true, "name": name}
 
 func server_credential(web_client_id: String) -> Dictionary:
 	var answer := await _call("credential", [web_client_id], QUIET_TIMEOUT_MS)
