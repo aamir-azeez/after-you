@@ -286,6 +286,10 @@ const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the 
 const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
 const TURN_OF_THE_TIDE_SLACK_HINT_A := "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there."
 const TURN_OF_THE_TIDE_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern."
+# The winch's two settings as its lever's bubble names them. The catalog keeps
+# "stowed" and "slip"; SELECTOR_VALUE_NAMES maps them.
+const TURN_OF_THE_TIDE_WINCH_STOWED := "Raised"
+const TURN_OF_THE_TIDE_WINCH_SLIP := "Lowered"
 # Wait hints (presentation/wait_hints.gd): why a crossing the player has done
 # their part for is still shut, waiting on the friend's memory. {crossing} is
 # the crossing's name from the chapter descriptor, or WAIT_HINT_CROSSING.
@@ -2894,6 +2898,14 @@ const TEXT := {
 	"stage_catalog.d433013be215": STAGE_CATALOG_D433013BE215,
 }
 
+## A selector value's name in its lever's bubble, where it differs from the
+## catalog value. Keyed "<chapter id>.<control id>.<value>"; the bubble shows
+## the name upper-cased. The catalog value itself never changes.
+const SELECTOR_VALUE_NAMES := {
+	"turn-of-the-tide.winch.stowed": TURN_OF_THE_TIDE_WINCH_STOWED,
+	"turn-of-the-tide.winch.slip": TURN_OF_THE_TIDE_WINCH_SLIP,
+}
+
 # Legacy catalog values remain immutable. Only their presentation is overridden.
 const CANONICAL_KEYS := {
 	"Hop down and hold the rope.": "wishing_well.go_on_ahead_a",
@@ -2985,6 +2997,11 @@ static func text(key: String) -> String:
 static func from_canonical(value: String) -> String:
 	var key: String = CANONICAL_KEYS.get(value, "")
 	return text(key) if not key.is_empty() else value
+
+## The name a selector's bubble shows for one of its values: the chapter's own
+## name from SELECTOR_VALUE_NAMES, or the value itself.
+static func selector_value(chapter_id: String, control_id: String, value: String) -> String:
+	return str(SELECTOR_VALUE_NAMES.get("%s.%s.%s" % [chapter_id, control_id, value], value))
 
 # Ordered formatting tokens are part of the call-site contract.
 const FORMAT_TOKENS := {

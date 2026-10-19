@@ -24,6 +24,15 @@ func _initialize() -> void:
 		for stage: Dictionary in catalog.get("stages", []):
 			_check_story(stage)
 		_check(Canonical.digest(catalog) == before, "Reading presentation prose cannot mutate a canonical definition")
+	var selector_values: Array[String] = []
+	for catalog: Dictionary in catalogs:
+		for stage: Dictionary in catalog.get("stages", []):
+			for control: Dictionary in stage.get("controls", []):
+				for value: Variant in control.get("values", []):
+					selector_values.append("%s.%s.%s" % [catalog.get("id", ""), control.id, value])
+	for key: String in Copy.SELECTOR_VALUE_NAMES:
+		_check(key in selector_values, "A selector value name belongs to a real chapter selector value: " + key)
+	_check(Copy.selector_value("turn-of-the-tide", "winch", "slip") == "Lowered" and Copy.selector_value("turn-of-the-tide", "tide", "low") == "low", "A named selector value reads its name; any other value reads itself")
 	var token_pattern := RegEx.new()
 	token_pattern.compile("%(?:[-+0 #]*\\d*(?:\\.\\d+)?)?[sdf]")
 	for key: String in Copy.FORMAT_TOKENS:

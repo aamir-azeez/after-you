@@ -158,11 +158,15 @@ func _build_mirror(control: Dictionary) -> void:
 	_ownership_mark(str(control.owner_slot),at+Vector3(0,0.025,0.35),terrain)
 
 ## One speech bubble per selector, over the lever and pointing down at it,
-## with one pill per value. `labels` keeps one Label3D per value (meta
-## "backing" is its pill) for worlds that restyle a single value.
+## with one pill per value under its PlayerCopy name. `labels` keeps one
+## Label3D per value (meta "backing" is its pill) for worlds that restyle a
+## single value.
 func _build_selector(control: Dictionary) -> void:
 	_build_lever(control)
-	var bubble := _label_bubble(control.values,_selector_anchor(control),terrain,_selector_bubble_shift(control))
+	var names: Array = []
+	for value: Variant in control.values:
+		names.append(PlayerCopy.selector_value(str(chapter_definition.get("id","")),str(control.id),str(value)))
+	var bubble := _label_bubble(control.values,_selector_anchor(control),terrain,_selector_bubble_shift(control),names)
 	_journey_switches[control.id] = {"values":control.values.duplicate(),"labels":bubble.labels,"bubble":bubble}
 	_physical_levers[control.id].name = "RouteSwitch_"+str(control.id)
 	bubble.set_anchor(_knob_top(str(control.id)))
@@ -197,9 +201,9 @@ func _selector_anchor(control: Dictionary) -> Vector3:
 func _selector_bubble_shift(_control: Dictionary) -> float:
 	return 0.0
 
-func _label_bubble(values: Array, at: Vector3, parent: Node3D, shift: float = 0.0) -> LabelBubble:
+func _label_bubble(values: Array, at: Vector3, parent: Node3D, shift: float = 0.0, names: Array = []) -> LabelBubble:
 	var bubble := LabelBubble.new()
-	bubble.build(parent,at,values,shift)
+	bubble.build(parent,at,values,shift,names)
 	if not reduced_motion: bubble.set_bob(true)
 	_bubbles.append(bubble)
 	return bubble

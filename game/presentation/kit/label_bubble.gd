@@ -4,7 +4,7 @@ extends Node3D
 ## one pill per value, so a selector reads as a single choice with the current
 ## value filled and the others dimmed. A single word (a pad's name) uses the
 ## same bubble with no pill. Values are passed raw ("low", "stowed") and shown
-## upper-cased.
+## upper-cased, or under a name the caller gives (PlayerCopy.selector_value).
 ##
 ##   var bubble := LabelBubble.create(terrain, lever_top, ["rose", "moss"], "rose")
 ##   bubble.set_selected("moss")      # every frame is fine: colours only
@@ -220,20 +220,24 @@ var _sink := 0.0
 
 ## A new bubble under parent with its tail's tip at anchor_at (parent space).
 ## options are raw values; selected is a raw value or an index (null: none
-## chosen yet). shift: see build().
-static func create(parent: Node3D, anchor_at: Vector3, options: Array, selected: Variant = null, shift: float = 0.0) -> Node3D:
+## chosen yet). shift and names: see build().
+static func create(parent: Node3D, anchor_at: Vector3, options: Array, selected: Variant = null, shift: float = 0.0, names: Array = []) -> Node3D:
 	var bubble: Node3D = load(SCRIPT_PATH).new()
-	bubble.build(parent, anchor_at, options, shift)
+	bubble.build(parent, anchor_at, options, shift, names)
 	if selected != null: bubble.set_selected(selected)
 	return bubble
 
 ## Builds the bubble under parent with its tail's tip at `at` (parent space).
 ## options: one entry for a plain name, two or more for a selector's choices.
 ## shift moves the body sideways on screen (metres) while the tail keeps
-## pointing at `at`, to clear a nearby prop.
-func build(parent: Node3D, at: Vector3, options: Array, shift: float = 0.0) -> void:
+## pointing at `at`, to clear a nearby prop. names, when given, holds one
+## display name per option, shown upper-cased in its place; `values` and
+## set_selected keep the raw options.
+func build(parent: Node3D, at: Vector3, options: Array, shift: float = 0.0, names: Array = []) -> void:
+	assert(names.is_empty() or names.size() == options.size(), "One display name per option")
 	var shown: Array[String] = []
-	for value: Variant in options: shown.append(str(value).to_upper())
+	for index in range(options.size()):
+		shown.append(str(names[index] if index < names.size() else options[index]).to_upper())
 	_build(parent, at, options, shown, shift)
 
 ## Sentence mode: one sentence in its own case, broken onto two lines when one
