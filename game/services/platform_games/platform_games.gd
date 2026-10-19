@@ -182,7 +182,7 @@ func waiting_for_choice() -> bool:
 
 ## A friend code is waiting to be brought back, and the player has not said "Not now" this session.
 func offer_pending() -> bool:
-	return link_state == LINK_OFFER and not offer_declined and not busy
+	return link_state == LINK_OFFER and not offer_declined and not busy and _account != null and _account.identity_state() == "missing"
 
 ## The platform's name as players know it.
 func display_name() -> String:
@@ -285,6 +285,7 @@ func _on_account_changed() -> void:
 	_player_key = ""
 	link_state = LINK_NONE
 	sign_in = SignIn.SIGNED_OUT
+	offer_declined = false
 	if cloud != null: cloud.stop()
 	changed.emit()
 	if not _running: await start()
@@ -363,6 +364,18 @@ func _offer_for_new_phone(capability: Dictionary, generation: int) -> void:
 	link_code = ""
 	if answer.get("ok", false) and answer.linked:
 		link_state = LINK_OFFER
+		if _account == null: return
+		if _account.identity_state() == "ready":
+			# The player made a friend code meanwhile (opened Rooms): link it, never offer.
+			link_state = LINK_NONE
+			await _reconcile_link(capability, generation)
+			return
+		if await _account.has_pending_restore(kind()):
+			# The player already said yes and the answer was lost: finish that restore.
+			if generation == _generation:
+				changed.emit()
+				await accept_offer()
+			return
 	elif answer.get("ok", false) or int(answer.get("status", 0)) == 404:
 		state.remember_restore_probe(_player_key)
 		link_state = LINK_NONE
@@ -378,10 +391,16 @@ func accept_offer() -> void:
 	if busy or link_state != LINK_OFFER or _account == null: return
 	var generation := _generation
 	var capability: Dictionary = state.capability()
-	if _account.identity_state() != "missing":
-		link_state = LINK_NONE
-		await _after_sign_in(capability, generation)
-		return
+	match _account.identity_state():
+		"ready":
+			link_state = LINK_NONE
+			await _after_sign_in(capability, generation)
+			return
+		"missing": pass
+		_:
+			# A friend code is being made or read right now: keep the offer for a moment later.
+			notice.emit(PlayerCopy.PLATFORM_GAMES_TRY_LATER)
+			return
 	var answer := await _restore(capability, false, generation)
 	if generation != _generation: return
 	if answer.get("ok", false):
@@ -393,7 +412,18 @@ func accept_offer() -> void:
 		# The link went away meanwhile (unlinked or erased on the other phone).
 		state.remember_restore_probe(_player_key)
 		link_state = LINK_NONE
+		notice.emit(PlayerCopy.PLATFORM_GAMES_NO_LINK)
 		changed.emit()
+
+## Settings' Link / Try again: start over, and check this account again even if it had no
+## friend code earlier today (one may have been linked since).
+func retry() -> void:
+	if _running or busy: return
+	if state != null and not state.data.restore_probe.is_empty():
+		state.data.restore_probe = {}
+		state.save()
+	if link_state in [LINK_ERROR, LINK_NONE]: link_state = LINK_NONE
+	await start()
 
 ## "Not now": this phone stays a fresh install, and nothing asks again until the next launch.
 func decline_offer() -> void:
