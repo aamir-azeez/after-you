@@ -16,6 +16,7 @@ const MAX_HISTORY_RESPONSE_BYTES := 4 * 1024 * 1024 + 65536
 ## byte (the history store's startup check). Every /v2 request then says so, and
 ## only then may the server let a room's finished attempts leave it.
 static var history_supported := false
+const END_REACTIONS_HEADER := "X-AfterYou-End-Reactions: 1"
 var base_url := ""
 var player_id := ""
 var device_token := ""
@@ -101,7 +102,13 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	var code := str(server_error.get("code","connection_interrupted")) if server_error is Dictionary else "connection_interrupted"
 	# A route refusing this build as too old: the app asks /v1/app-status again.
 	if status==426 and code=="client_update_required": update_required.emit()
-	return {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code,method,path),"code":code,"retry_after_ms":retry_after_ms(response[2]),"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
+	var result := {"ok":response[0]==HTTPRequest.RESULT_SUCCESS and status>=200 and status<300 and parsed is Dictionary,"status":status,"data":payload,"error":error_message(code,method,path),"code":code,"retry_after_ms":retry_after_ms(response[2]),"retryable":bool(server_error.get("retryable",true)) if server_error is Dictionary else true}
+	# A room's end reactions ride beside its read or turn reply. They leave the
+	# reply here, so the room that is checked and kept is exactly what it was.
+	if payload.has("end_reactions"):
+		result["end_reactions"] = payload["end_reactions"]
+		payload.erase("end_reactions")
+	return result
 
 ## One HTTP exchange: [result, status, headers, body] as HTTPRequest reports
 ## it, or [] when the request could not start. Test transports override this.
@@ -146,6 +153,10 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Live: 1")
 	# This build sends and reads turn try counts (services/turn_tries.gd).
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Turn-Tries: 1")
+	# This build sends and shows end-of-run reactions (services/end_reaction_store.gd):
+	# the capability, a room's faces beside its reads and turn replies, and the
+	# friend's face in the room list. rooms_api takes the faces out of the reply.
+	if end_reaction_path(method, path): headers.append(END_REACTIONS_HEADER)
 	# The inbox then reports a room another member closed as "closed".
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# A finished room the other member left then says so (partner_left), for Leave room's confirm step.
@@ -165,6 +176,15 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	var client := ClientIdentity.header_line()
 	if not client.is_empty(): headers.append(client)
 	return headers
+
+## The requests that ask for end reactions: the capability, a room's read, its
+## turns and the room list.
+static func end_reaction_path(method: int, path: String) -> bool:
+	if path in ["/v2/capabilities", "/v1/room-inbox"]: return true
+	if not path.begins_with("/v2/rooms/"): return false
+	var parts := path.split("/")
+	if parts.size() == 4: return method == HTTPClient.METHOD_GET and parts[3].length() == 22
+	return parts.size() == 5 and method == HTTPClient.METHOD_POST and parts[3].length() == 22 and parts[4] == "turns"
 
 static func response_limit(method: int, path: String) -> int:
 	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/replay-transfer$").search(path) != null: return MAX_REPLAY_TRANSFER_RESPONSE_BYTES

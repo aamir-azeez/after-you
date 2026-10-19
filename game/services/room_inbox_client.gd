@@ -5,6 +5,7 @@ const Presence = preload("res://services/friend_presence.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Typed = preload("res://services/typed_values.gd")
+const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
 const UNAVAILABLE_TITLE := "Unavailable room"
 ## A room taken off the list for good (closed or left), not just hidden: its
@@ -308,7 +309,21 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 		"remote_activity_sequence":int(value.get("remote_activity_sequence",0)),
 		"activity_at":timestamp,
 		"family":str(value.get("family","unknown")),
-	}.merged({"partner_left":true} if value.get("partner_left") == true else {})
+	}.merged({"partner_left":true} if value.get("partner_left") == true else {}).merged(_partner_reaction(value))
+
+## The friend's end-of-run face on their latest turn (presentation only), with
+## their spirit's colour: the host's is peach, the guest's mint. A face this
+## build does not know is left out.
+static func _partner_reaction(value: Dictionary) -> Dictionary:
+	var face: Variant = value.get("partner_reaction")
+	if not EndReactionStore.is_face(face) or not value.get("membership") is Dictionary: return {}
+	return {"partner_reaction": {"face": face, "color": "mint" if value.membership.get("you_are_host") == true else "peach"}}
+
+## How many of the optional keys a room carries: partner_left (true only, to
+## clients that send X-AfterYou-Room-Leave) and partner_reaction (to clients
+## that send X-AfterYou-End-Reactions while the server shows them).
+static func _optional_keys(value: Dictionary) -> int:
+	return int(value.has("partner_left")) + int(value.has("partner_reaction"))
 
 static func room_key(api_version: int, room_id: String) -> String:
 	return str(api_version) + ":" + room_id
@@ -342,8 +357,9 @@ static func valid_page(value: Variant) -> bool:
 	return true
 
 static func valid_server_room(value: Variant) -> bool:
-	# partner_left (true only) comes only to clients that send X-AfterYou-Room-Leave.
-	if not value is Dictionary or value.size() != (10 if value.has("partner_left") else 9) or not Typed.equal(value.get("partner_left",true), true): return false
+	# partner_left (true only) and partner_reaction (a short face id) are optional.
+	if not value is Dictionary or value.size() != 9 + _optional_keys(value) or not Typed.equal(value.get("partner_left",true), true): return false
+	if value.has("partner_reaction") and (not value.partner_reaction is String or value.partner_reaction.length() > 24): return false
 	if not value.get("room_id") is String or not Presence.valid_id(value.room_id): return false
 	if value.get("family") not in ["legacy","relay","story","unknown"]: return false
 	var version: Variant = value.get("api_version")
@@ -367,7 +383,10 @@ static func _nonnegative_integer(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(value) and value >= 0 and value == floor(value)
 
 static func valid_room(value: Variant) -> bool:
-	if not value is Dictionary or value.size() not in ([10,11] if value.has("partner_left") else [9,10]) or not Typed.equal(value.get("partner_left",true), true): return false
+	if not value is Dictionary or value.size() not in [9 + _optional_keys(value), 10 + _optional_keys(value)] or not Typed.equal(value.get("partner_left",true), true): return false
+	if value.has("partner_reaction"):
+		var reaction: Variant = value.partner_reaction
+		if not reaction is Dictionary or reaction.size() != 2 or not EndReactionStore.is_face(reaction.get("face")) or reaction.get("color") not in ["peach","mint"]: return false
 	if not value.get("api_version") is int and not value.get("api_version") is float: return false
 	if value.api_version not in [1,2] or not Presence.valid_id(value.get("room_id")): return false
 	if not value.get("chapter_key") is String or value.chapter_key.is_empty() or value.chapter_key.length() > 80: return false

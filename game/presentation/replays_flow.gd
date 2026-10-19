@@ -51,6 +51,10 @@ const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
+const EndReactionStore = preload("res://services/end_reaction_store.gd")
+const EndReactions = preload("res://presentation/end_reactions.gd")
+## Each spirit's colour, as the world draws them (turn_endings.gd SLOT_COLORS).
+const SLOT_COLORS := {"p0": "peach", "p1": "mint"}
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
@@ -224,6 +228,7 @@ func show_collection(message: String="") -> void:
 	host.mode=MODE_COLLECTION
 	_solo_collection_message=message
 	_turn_tries=TurnTries.new()
+	_faces=EndReactionStore.new()
 	if solo_replays == null: solo_replays=SoloReplayCollection.new()
 	if not _solo_collection_started:
 		_solo_collection_started=solo_replays.begin_scan()
@@ -616,9 +621,10 @@ func _replay_row_card(thumb_key: String, title_text: String, caption_text: Strin
 ## Try counts for the list being drawn (services/turn_tries.gd), read once a draw.
 var _turn_tries: RefCounted
 
-## A part's try pills, one for each of its turns ([who, recording hash]) that
-## took more than one try; null when none did. A first try, and a turn from a
-## build that kept no count, show nothing.
+## A part's pills: a try count for each of its turns ([who, recording hash,
+## spirit colour]) that took more than one try, then each turn's end-of-run
+## face; null when there is neither. A first try, and a turn from a build that
+## kept no count, show no count.
 func _tries_row(turns: Array) -> Control:
 	var pills := _tries_pills(turns)
 	if pills.is_empty(): return null
@@ -640,7 +646,26 @@ func _tries_pills(turns: Array) -> Array[Control]:
 		var pill := TryPill.new(16, true)
 		pill.show_turn(str(turn[0]),tries)
 		pills.append(pill)
+	pills.append_array(_reaction_chips(turns))
 	return pills
+
+## End-of-run faces for the list being drawn (services/end_reaction_store.gd), read once a draw.
+var _faces: RefCounted
+
+## Each turn's end-of-run face as a chip, named by who sent it.
+func _reaction_chips(turns: Array) -> Array[Control]:
+	if _faces == null: _faces = EndReactionStore.new()
+	var chips: Array[Control] = []
+	for turn: Array in turns:
+		var face: String = _faces.kept(str(turn[1]))
+		if face.is_empty(): continue
+		var who := str(turn[0])
+		var own := who in [PlayerCopy.TRY_YOU, PlayerCopy.TRY_FIRST_TURN, PlayerCopy.TRY_SECOND_TURN]
+		var named := EndReactions.face_name(face)
+		var accessible := PlayerCopy.END_REACTIONS_YOU_NAMED % named if own else PlayerCopy.END_REACTIONS_FRIEND_NAMED % [who, named]
+		var chip := EndReactions.chip(face, str(turn[2]) if turn.size() > 2 else "peach", who, accessible)
+		if chip != null: chips.append(chip)
+	return chips
 
 ## A preview's "Part N / M" (or part chips) line with the part's try pills
 ## beside it, so the pills take no height from the art above.
@@ -657,14 +682,30 @@ func _part_line(first: Control, turns: Array) -> Control:
 static func _solo_turns(row: Dictionary) -> Array:
 	var pair: Variant = row.get("pair")
 	if not pair is Dictionary: return []
-	return [[PlayerCopy.TRY_FIRST_TURN, str(Typed.as_dict(pair.get("a")).get("recording_hash",""))], [PlayerCopy.TRY_SECOND_TURN, str(Typed.as_dict(pair.get("b")).get("recording_hash",""))]]
+	# Each turn in its spirit's colour: the stage's first slot plays first.
+	var first := Typed.as_dict(pair.get("a"))
+	var slot := _first_slot(str(row.get("chapter_key","")), str(first.get("stage_id","")))
+	var other := "p1" if slot == "p0" else "p0"
+	return [[PlayerCopy.TRY_FIRST_TURN, str(first.get("recording_hash","")), SLOT_COLORS.get(slot,"peach")], [PlayerCopy.TRY_SECOND_TURN, str(Typed.as_dict(pair.get("b")).get("recording_hash","")), SLOT_COLORS.get(other,"mint")]]
+
+## Each chapter's first slot by stage id, worked out once per chapter: bundled
+## definitions never change while the game runs.
+static var _first_slots: Dictionary = {}
+static func _first_slot(chapter_key: String, stage_id: String) -> String:
+	if not _first_slots.has(chapter_key):
+		var slots := {}
+		for stage: Variant in ChapterRegistry.definition(chapter_key).get("stages",[]):
+			if stage is Dictionary: slots[str(stage.get("id",""))] = str(stage.get("first_player_slot","p0"))
+		_first_slots[chapter_key] = slots
+	return str(_first_slots[chapter_key].get(stage_id,"p0"))
 
 ## A shared part's turns, named by who played them: you or the friend. Only
 ## a part with a count to show looks up its room and chapter.
 func _shared_turns(row: Dictionary) -> Array:
 	var a_hash := str(row.get("a_hash","")); var b_hash := str(row.get("b_hash",""))
 	if _turn_tries == null: _turn_tries = TurnTries.new()
-	if _turn_tries.tries(a_hash) < 2 and _turn_tries.tries(b_hash) < 2: return []
+	if _faces == null: _faces = EndReactionStore.new()
+	if _turn_tries.tries(a_hash) < 2 and _turn_tries.tries(b_hash) < 2 and _faces.kept(a_hash).is_empty() and _faces.kept(b_hash).is_empty(): return []
 	var room := _current_shared_room()
 	if room.get("family") != "chapter": return []
 	var stages: Array = ChapterRegistry.definition(str(room.get("chapter_key",""))).get("stages",[])
@@ -678,7 +719,8 @@ func _shared_turns(row: Dictionary) -> Array:
 static func _turn_owners(first_slot: String, you_host: bool, friend: String, a_hash: String, b_hash: String) -> Array:
 	if first_slot not in ["p0","p1"]: return []
 	var you_first := (first_slot == "p0") == you_host
-	return [[PlayerCopy.TRY_YOU if you_first else friend, a_hash], [friend if you_first else PlayerCopy.TRY_YOU, b_hash]]
+	var second_slot := "p1" if first_slot == "p0" else "p0"
+	return [[PlayerCopy.TRY_YOU if you_first else friend, a_hash, SLOT_COLORS[first_slot]], [friend if you_first else PlayerCopy.TRY_YOU, b_hash, SLOT_COLORS[second_slot]]]
 
 func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Control:
 	# One saved-recording row: real chapter art, a human title, a short "N parts
@@ -864,6 +906,7 @@ func _show_solo_replay_attempt() -> void:
 	if host.mode != MODE_COLLECTION or _selected_solo_attempt.is_empty() or _selected_solo_attempt.get("checking",false): return
 	host.mode=MODE_SOLO_REPLAY_ATTEMPT
 	_turn_tries=TurnTries.new()
+	_faces=EndReactionStore.new()
 	var card: VBoxContainer = host._card(740,true)
 	var legacy: bool = _selected_solo_attempt.get("family")=="legacy"
 	var rows: Array=_selected_solo_attempt.get("rows",[])
@@ -1242,6 +1285,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	var kept_scroll: int=host._bounded_card_scroll.scroll_vertical if host.mode == MODE_SHARED_MEMORIES and _shared_drawn_room == shared_replay_room and is_instance_valid(host._bounded_card_scroll) else 0
 	_shared_drawn_room=shared_replay_room
 	_turn_tries=TurnTries.new()
+	_faces=EndReactionStore.new()
 	var back_text := "Back"
 	var back_callback: Callable = func(): home_requested.emit()
 	var shell := _begin_replay_split("together",back_text,back_callback)

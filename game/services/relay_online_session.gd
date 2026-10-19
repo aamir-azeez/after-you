@@ -152,6 +152,11 @@ func history_mode() -> bool:
 func turn_tries_supported() -> bool:
 	return Typed.equal(capabilities.get("turn_tries_version"), 1.0)
 
+## The server takes an end-of-run reaction with a turn and shows it to the
+## friend (services/end_reaction_store.gd). Without it, rooms show no reactions.
+func end_reactions_supported() -> bool:
+	return Typed.equal(capabilities.get("end_reactions_version"), 1.0)
+
 func history_client() -> RefCounted:
 	if _history == null: _history = HistorySync.new(_history_transport, _history_eligibility, history_store)
 	return _history

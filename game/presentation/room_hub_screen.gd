@@ -19,6 +19,7 @@ const PHONE_ICON = preload("res://assets/ui/room/phone.svg")
 const FOLD_CLOSED_ICON = preload("res://assets/ui/social/chevron-right.svg")
 const FOLD_OPEN_ICON = preload("res://assets/ui/social/chevron-down.svg")
 const Typed = preload("res://services/typed_values.gd")
+const EndReactions = preload("res://presentation/end_reactions.gd")
 const WARM := Color("f4d77b")
 ## Rooms still in play; closing one ends it for both members.
 const ACTIVE_STATUSES := ["waiting_for_friend","your_turn","waiting_for_their_turn"]
@@ -739,7 +740,7 @@ func _add_room_card(room: Dictionary) -> void:
 	meta_label.visible = not meta.is_empty()
 	details.add_child(meta_label)
 	var status := str(room.get("status","unavailable"))
-	details.add_child(_status_chip(status))
+	details.add_child(_status_line(room, status))
 	var action := Button.new()
 	action.text = "Watch replay" if status == "completed" else "Continue" if status == "your_turn" else "Open"
 	action.custom_minimum_size = Vector2(132,50)
@@ -976,6 +977,21 @@ func _ask_remove(room: Dictionary, removal: String, opener: Control) -> void:
 		_modal.close(false)
 		room_remove_requested.emit(room,removal))
 	confirm.grab_focus()
+
+## The status chip, and beside it the friend's end-of-run face on their latest
+## turn when the room list brought one (presentation/end_reactions.gd).
+func _status_line(room: Dictionary, status: String) -> Control:
+	var chip := _status_chip(status)
+	var reaction: Variant = room.get("partner_reaction")
+	if not reaction is Dictionary: return chip
+	var line := HBoxContainer.new()
+	line.name = "StatusLine"
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	line.add_theme_constant_override("separation",10)
+	chip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_child(chip)
+	EndReactions.attach(line, {"friend": {"face": str(reaction.get("face","")), "color": str(reaction.get("color","mint")), "name": _friend(room)}, "compact": true})
+	return line
 
 func _status_chip(status: String) -> PanelContainer:
 	var turn := status == "your_turn"

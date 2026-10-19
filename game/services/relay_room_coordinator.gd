@@ -20,6 +20,7 @@ const Proofs = preload("res://services/journey_proofs.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
+const EndReactionStore = preload("res://services/end_reaction_store.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -425,7 +426,23 @@ func refresh() -> bool:
 			# a finished room keeps its finished scene and replays.
 			if _ordinary_room_gone(status, str(response.get("code", ""))) and _state.draft.is_empty() and _state.pending.is_empty() and str(_state.snapshot.get("active_role", "")) != "complete": _gone = true
 		return _network_error(response)
-	return _accept_snapshot(response.get("data"))
+	var accepted := _accept_snapshot(response.get("data"))
+	if accepted: _note_end_reactions(response)
+	return accepted
+
+
+## The room's end reactions that came beside an accepted read or turn reply
+## (rooms_api.gd takes them out of the room), kept on this phone.
+func _note_end_reactions(response: Dictionary) -> void:
+	if response.get("end_reactions") is Dictionary: EndReactionStore.new().note_room(_room, response.end_reactions)
+
+
+## The face the turn waiting to send carries, or "". A screen shows it fixed:
+## a resend repeats the very same body.
+func pending_reaction() -> String:
+	if _state.is_empty() or _state.pending.is_empty() or not _state.pending.body is Dictionary: return ""
+	var face: Variant = _state.pending.body.get("end_reaction")
+	return face if EndReactionStore.is_face(face) else ""
 
 
 ## A poll names the verified revision and branch it holds, so a room that has
@@ -455,8 +472,10 @@ func _confirm_unchanged(response: Dictionary) -> bool:
 
 
 ## `tries`: how many tries the turn took (services/turn_tries.gd), sent beside
-## the recording when the server reads counts; 0 sends none.
-func commit(recording: Dictionary, tries: int = 0) -> bool:
+## the recording when the server reads counts; 0 sends none. `face`: the
+## player's end-of-run reaction (services/end_reaction_store.gd), sent beside it
+## when the server takes them; "" sends none.
+func commit(recording: Dictionary, tries: int = 0, face: String = "") -> bool:
 	if not finish_live_draft_save(): return false
 	if not my_turn() or read_only or _busy != 0:
 		return _error("commit_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_BBE0446F0FDD)
@@ -488,6 +507,7 @@ func commit(recording: Dictionary, tries: int = 0) -> bool:
 			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
 		body["checkpoint"] = derived.checkpoint
 	if tries > 0: body["tries"] = mini(tries, TurnTries.MAX_TRIES)
+	if EndReactionStore.is_face(face): body["end_reaction"] = face
 	if not _prepare_pending("turns", body):
 		return false
 	return await _send_pending()
@@ -528,7 +548,7 @@ func reconcile() -> bool:
 	if response.get("ignored", false):
 		return false
 	if response.get("ok", false):
-		return _accept_receipt(response.get("data"))
+		return _accept_sent(response)
 	if int(response.get("status", 0)) == 404 and response.get("code") == "operation_not_found" and _pending_guest_join_recovery():
 		return await _recover_guest_join()
 	if int(response.get("status", 0)) == 404 and response.get("code") == "operation_not_found" and not _state.pending.held:
@@ -596,7 +616,7 @@ func _send_pending(recover_guest_join: bool = true) -> bool:
 	if not response.get("ok", false):
 		if response.get("status") == 410 and response.get("code") == "replay_transferred" and recover_replay_operation.is_valid():
 			var recovered := await _recover_transferred_pending()
-			if recovered.get("ok", false): return _accept_receipt(recovered.get("data"))
+			if recovered.get("ok", false): return _accept_sent(recovered)
 			# The original request remains durable. Reconcile can send that exact
 			# body after a definitive missing-receipt result; never rekey here.
 			return _network_error(recovered)
@@ -604,7 +624,19 @@ func _send_pending(recover_guest_join: bool = true) -> bool:
 		if recover_guest_join and int(response.get("status", 0)) == 409 and response.get("code") == "stale_revision" and _pending_guest_join_recovery():
 			return await _recover_guest_join()
 		return false
-	return _accept_receipt(response.get("data"))
+	return _accept_sent(response)
+
+## A sent turn's receipt; once it is accepted, the face the turn carried is kept
+## under its recording, with any faces that came beside the reply.
+func _accept_sent(response: Dictionary) -> bool:
+	var face := pending_reaction()
+	var body: Variant = _state.pending.get("body") if not _state.pending.is_empty() else null
+	var recording_hash := str(body.recording.get("recording_hash", "")) if body is Dictionary and body.get("recording") is Dictionary else ""
+	var accepted := _accept_receipt(response.get("data"))
+	if accepted:
+		if not face.is_empty(): EndReactionStore.new().keep(recording_hash, face)
+		_note_end_reactions(response)
+	return accepted
 
 func _recover_transferred_pending() -> Dictionary:
 	if _replay_recovering or not _guard() or _state.pending.is_empty() or not recover_replay_operation.is_valid(): return {"ok": false, "code": "replay_transferred", "status": 410}
@@ -1113,6 +1145,9 @@ func _valid_pending(value: Variant) -> bool:
 	if Typed.equal(value.operation, "turns") and body.has("tries"):
 		if not Typed.whole_number(body.tries) or int(body.tries) < 1 or int(body.tries) > TurnTries.MAX_TRIES: return false
 		keys.append("tries")
+	if Typed.equal(value.operation, "turns") and body.has("end_reaction"):
+		if not EndReactionStore.is_face(body.end_reaction): return false
+		keys.append("end_reaction")
 	if not _exact(body, keys) or not _token(body.idempotency_key, -1, 80) or body.idempotency_key.length() < 16 or not Typed.equal(body.base_revision, value.origin.revision) or not Typed.equal(body.branch, value.origin.branch) or not Typed.equal(value.request_hash, _request_hash(value.operation, body)):
 		return false
 	if value.operation == "fork":

@@ -51,6 +51,7 @@ const COMPLETION_DURATION := 3.0
 const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
+const EndReactionScreen = preload("res://presentation/end_reaction_screen.gd")
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
 const ROOM_CLOSED := "Room closed"
@@ -119,6 +120,9 @@ var _solo_replay_only := false
 var redo_notice := RedoRequestNotice.new()
 ## Every start of a turn counts a try; the pill shows the live turn's count.
 var turn_tries := TurnTries.new()
+## The turn a replay plays and its memory, for their reactions at its end.
+var _replay_runs: Array = []
+var _replay_hold := 0
 var _live_tries := 0
 var _shown_tries := -1
 var _solo_replay_context_error := false
@@ -1482,7 +1486,9 @@ func _friend_strip(joined: bool, waiting_line: String, avatar_size: float) -> HB
 		return RoomFriendStrip.build("", WAITING_FOR_FRIEND, RoomFriendStrip.line(waiting_line) if not waiting_line.is_empty() else null, title_font, avatar_size)
 	var room: Dictionary = journey.snapshot()
 	var status: Label = _presence_badge() if _presence_available() else RoomFriendStrip.line(FRIEND_JOINED)
-	return RoomFriendStrip.build(_partner_id(room), FriendNicknames.sentence_start(_waiting_partner_name(room)), status, title_font, avatar_size)
+	var strip := RoomFriendStrip.build(_partner_id(room), FriendNicknames.sentence_start(_waiting_partner_name(room)), status, title_font, avatar_size)
+	EndReactionScreen.attach_friend_latest(self, strip)
+	return strip
 
 ## The stage the room panel is on, as its title row says it.
 func _room_stage_title() -> String:
@@ -2179,8 +2185,22 @@ func _begin_completion(from_replay: bool) -> void:
 	finish_button.visible = false
 
 func _finish_replay_playback() -> void:
+	# The rewatched turn's reactions pop above their spirits; a turn that does
+	# not bloom holds on them a moment before going on.
+	var hold := EndReactionScreen.pop_replay(self, _replay_runs)
+	_replay_runs = []
 	if sim.snapshot().get("complete", false): _begin_completion(true)
+	elif hold > 0.0: _hold_replay_end(hold)
 	else: _replay_ended()
+
+## Holds a finished replay still for `seconds`, then ends it, unless the
+## screen moved on meanwhile (paused, left, another replay).
+func _hold_replay_end(seconds: float) -> void:
+	running = false
+	_replay_hold += 1
+	var token := _replay_hold
+	create_tween().tween_callback(func():
+		if token == _replay_hold and mode == "replay" and not running and not backgrounded: _replay_ended()).set_delay(seconds)
 
 func _resume_completion() -> void:
 	if _completion_is_replay and not _replay_ready(): return
@@ -2212,6 +2232,7 @@ func _show_review() -> void:
 	if not can_save:
 		explanation += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))), online_session == null)
 	var card := _card(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5, explanation)
+	EndReactionScreen.attach_ending(self, card, review, true)
 	card.add_child(_action_button("preview", _preview_turn))
 	var save := _action_button("save", _accept)
 	save.disabled = not can_save or (online_session != null and (not online_session.mutations_enabled() or online_session.busy()))
@@ -2255,6 +2276,7 @@ func _show_ending_card(ending: Dictionary) -> void:
 	row.add_child(title)
 	card.add_child(band)
 	card.move_child(band, 0)
+	EndReactionScreen.attach_ending(self, card, review, not sim.has_method("keeps_draft") or sim.keeps_draft())
 	var actions := {"try_again": _retry_review, "preview": _preview_turn, "leave_draft": _leave}
 	for ids: Array in ending.rows:
 		var line := HBoxContainer.new()
@@ -2357,7 +2379,7 @@ func _accept() -> void:
 		var slot := _tries_slot()
 		var tries := turn_tries.freeze(slot, str(review.get("recording_hash", "")))
 		# A first try sends nothing: it shows as a turn without a count does.
-		var accepted: bool = await journey.commit(review, tries if tries > 1 and online_session.turn_tries_supported() else 0)
+		var accepted: bool = await journey.commit(review, tries if tries > 1 and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(self, review))
 		if not is_inside_tree() or generation != online_request_generation:
 			return
 		if not accepted:
@@ -2378,6 +2400,7 @@ func _accept() -> void:
 			_show_save_problem(journey.last_error, "commit")
 			return
 		turn_tries.close(slot)
+		EndReactionScreen.keep_solo(review)
 	_after_accept()
 
 
@@ -2549,6 +2572,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 	mode = "replay"
 	completion_remaining = 0.0
 	_completion_is_replay = false
+	_replay_runs = [recording, source]
 	replay_frames = _simulation.expand_recording_inputs(recording)
 	replay_cursor = 0
 	overlay.visible = false
@@ -2704,6 +2728,7 @@ func _show_completed() -> void:
 	mode = "complete"
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
 	_set_room_state("complete")
+	EndReactionScreen.attach_completed(self, card)
 	_add_room_actions(card, "complete", "turn", _room_facts())
 
 ## True when this screen's simulation finished exactly the accepted turn, so

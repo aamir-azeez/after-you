@@ -56,6 +56,7 @@ deleted_identity_caches 3
 deleted_identity_photo_cleanup 1
 dressing_lint 1
 empty_state 3
+end_reactions 3
 final_scene 2
 finished_last_room 2
 first_bell 2

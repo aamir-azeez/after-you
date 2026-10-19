@@ -17,6 +17,7 @@ const LoadProgress = preload("res://services/replay_load_progress.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
+const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const VERIFIED_PROOF_LIMIT := 256
 static var _verified_proofs: Dictionary = {}
 static var _verified_proof_mutex := Mutex.new()
@@ -28,6 +29,9 @@ var ask_for_attempt: Callable
 ## Whether the server lists a room's turn try counts (its capability); awaited.
 ## Unset reads as no.
 var turn_tries_supported: Callable
+## Whether the server lists a room's end-of-run reactions (its capability);
+## awaited. Unset reads as no.
+var end_reactions_supported: Callable
 var _api: Node
 var _identity: Callable
 var _store: RefCounted
@@ -618,6 +622,7 @@ func refresh_memories(room_key: String) -> Array:
 	var generation := _generation
 	var rows := await _refresh_memory_rows(room_key)
 	if generation == _generation and not rows.is_empty() and _rooms.has(room_key) and _rooms[room_key].family == "chapter": await _refresh_turn_tries(_rooms[room_key], rows)
+	if generation == _generation and not rows.is_empty() and _rooms.has(room_key) and _rooms[room_key].family == "chapter": await _refresh_end_reactions(_rooms[room_key], rows)
 	return rows
 
 func _refresh_memory_rows(room_key: String) -> Array:
@@ -886,10 +891,7 @@ static func _remember_keepsake(entry: Dictionary) -> void:
 ## room is read again only when its parts changed since the last read.
 ## Nothing is said when the read fails; Replays then shows no counts.
 func _refresh_turn_tries(room: Dictionary, rows: Array) -> void:
-	var parts: Array[String] = []
-	for row: Dictionary in rows: parts.append("%s:%s:%s" % [row.get("id", ""), row.get("a_hash", ""), row.get("b_hash", "")])
-	parts.sort()
-	var covered := ",".join(parts).sha256_text()
+	var covered := _parts_covered(rows)
 	var counts := TurnTries.new()
 	if not counts.read_wanted(str(room.room_id), covered): return
 	if not turn_tries_supported.is_valid() or not await turn_tries_supported.call(): return
@@ -897,6 +899,27 @@ func _refresh_turn_tries(room: Dictionary, rows: Array) -> void:
 	var data: Variant = response.get("data") if response.get("ok", false) else null
 	if data is Dictionary and Typed.equal(data.get("schema_version"), 1.0) and data.get("tries") is Dictionary and data.tries.size() <= 128:
 		counts.remember(data.tries, str(room.room_id), covered)
+
+## Both players' end-of-run faces for the room's turns, kept on this phone by
+## recording hash (services/end_reaction_store.gd), read the way try counts
+## are: only with the capability, again only when the room's parts changed,
+## and quietly; Replays then shows the faces it already has.
+func _refresh_end_reactions(room: Dictionary, rows: Array) -> void:
+	var covered := _parts_covered(rows)
+	var faces := EndReactionStore.new()
+	if not faces.read_wanted(str(room.room_id), covered): return
+	if not end_reactions_supported.is_valid() or not await end_reactions_supported.call(): return
+	var response := await _request_get(_room_path(room) + "/end-reactions", str(room.room_id), true)
+	var data: Variant = response.get("data") if response.get("ok", false) else null
+	if data is Dictionary and Typed.equal(data.get("schema_version"), 1.0) and data.get("faces") is Dictionary and data.faces.size() <= EndReactionStore.MAX_LISTED:
+		faces.remember(data.faces, str(room.room_id), covered)
+
+## What a room's parts are, as one short string that changes when a turn is added.
+static func _parts_covered(rows: Array) -> String:
+	var parts: Array[String] = []
+	for row: Dictionary in rows: parts.append("%s:%s:%s" % [row.get("id", ""), row.get("a_hash", ""), row.get("b_hash", "")])
+	parts.sort()
+	return ",".join(parts).sha256_text()
 
 func _request_get(path: String, chapter_room_id: String = "", quiet: bool = false) -> Dictionary:
 	# A room history pass still out goes first; this read takes the next turn in the one request queue.
