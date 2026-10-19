@@ -81,6 +81,10 @@ func _test_round_trip() -> void:
 	app = null
 	stage = null
 	if not await _wait_for_scene("res://relay_preview.tscn"): return
+	# Main's nodes are freed a slice a frame after the change (services/screen_switch.gd).
+	for frame in range(120):
+		if old_world.get_ref() == null and old_stage.get_ref() == null: break
+		await process_frame
 	_check(old_app.get_ref() == null and old_world.get_ref() == null and old_stage.get_ref() == null,
 		"Opening the chapter frees the actual prior Main, World and HomeStage")
 	var chapter: Node = current_scene

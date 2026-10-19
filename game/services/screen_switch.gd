@@ -27,6 +27,8 @@ static var _pending: WeakRef
 
 ## Nodes still to free, deepest last.
 var _queue: Array = []
+## The frame the last nodes were handed over in.
+var _handed_frame := -1
 
 ## The engine's change_scene_to_packed; on success the old screen's nodes are
 ## freed over the next frames instead of at the end of this one.
@@ -64,6 +66,7 @@ static func release(screen: Node) -> void:
 	for child: Node in screen.get_children():
 		screen.remove_child(child)
 		holder._queue.append(child)
+	holder._handed_frame = Engine.get_process_frames()
 	holder.set_process(true)
 
 ## Nodes of old screens not freed yet.
@@ -98,6 +101,9 @@ func _ready() -> void:
 	set_process(not _queue.is_empty())
 
 func _process(_delta: float) -> void:
+	# Never in the frame of the change itself, which has the new screen's
+	# _ready still to run.
+	if Engine.get_process_frames() == _handed_frame: return
 	_free_some(FREE_SLICE_USEC)
 
 ## Frees nodes, children first, for up to budget_usec (all of them for 0).
