@@ -8,6 +8,8 @@ param(
     [string]$AndroidSdk = '',
     [string]$OutputPath = '',
     [string]$FirebaseConfigPath = '',
+    # The public Play Games Services project id (digits). Empty keeps Play Games off in this build.
+    [string]$PlayGamesAppId = '',
     [string]$AppConfigPath = '',
     [string]$SigningKeyPath = '',
     [string]$SigningPasswordPath = '',
@@ -46,6 +48,8 @@ if ($PrivateRoot.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringCo
 . (Join-Path $PSScriptRoot 'android-firebase.ps1')
 $firebaseExpected = Get-AndroidFirebaseResources -Repository $repo -ConfigPath $FirebaseConfigPath
 if ($FirebaseConfigPath) { $FirebaseConfigPath = [IO.Path]::GetFullPath($FirebaseConfigPath) }
+. (Join-Path $PSScriptRoot 'android-play-games.ps1')
+$PlayGamesAppId = Get-AndroidPlayGamesAppId -AppId $PlayGamesAppId
 $artifactName = "After You - $Configuration.$($ExportFormat.ToLowerInvariant())"
 $output = Resolve-AndroidCandidatePath -Repository $repo -PrivateRoot $PrivateRoot -ArtifactName $artifactName -OutputPath $OutputPath -ExportFormat $ExportFormat
 if ($Configuration -eq 'Release' -or $SigningKeyPath -or $SigningPasswordPath -or $SigningAlias -or $ExpectedSignerSha256) {
@@ -97,6 +101,19 @@ $application.SetAttribute('fullBackupOnly', $androidNamespace, 'true') | Out-Nul
 $activity = @($application.SelectNodes('activity')) | Where-Object { $_.GetAttribute('name', $androidNamespace) -eq '.GodotApp' }
 if ($null -eq $activity) { throw 'Unexpected Android template: GodotApp Activity not found.' }
 $activity.SetAttribute('launchMode', $androidNamespace, 'singleTop') | Out-Null
+# Play Games starts when the game first asks (a few seconds after launch), never with the process:
+# the app manifest removes the SDK's start-up provider, whatever order the libraries merge in.
+$toolsNamespace = 'http://schemas.android.com/tools'
+$manifest.DocumentElement.SetAttribute('xmlns:tools', $toolsNamespace) | Out-Null
+$playGamesProvider = 'com.google.android.gms.games.provider.PlayGamesInitProvider'
+$existingProvider = @($application.SelectNodes('provider')) | Where-Object { $_.GetAttribute('name', $androidNamespace) -eq $playGamesProvider }
+if ($null -eq $existingProvider) {
+    $provider = $manifest.CreateElement('provider')
+    $provider.SetAttribute('name', $androidNamespace, $playGamesProvider) | Out-Null
+    $provider.SetAttribute('authorities', $androidNamespace, '${applicationId}.playgamesinitprovider') | Out-Null
+    $provider.SetAttribute('node', $toolsNamespace, 'remove') | Out-Null
+    $application.AppendChild($provider) | Out-Null
+}
 $manifest.Save($manifestPath)
 $networkResource = Join-Path $androidBuild 'res/xml'
 New-Item -ItemType Directory -Path $networkResource -Force | Out-Null
@@ -184,6 +201,7 @@ try {
     try {
         $nativeArguments = @(':plugin:packagePlugin', '--no-daemon', '--console=plain')
         if ($FirebaseConfigPath) { $nativeArguments += "-PafterYouFirebaseConfig=$FirebaseConfigPath" }
+        $nativeArguments += "-PafterYouPlayGamesAppId=$PlayGamesAppId"
         & .\gradlew.bat @nativeArguments
         if ($LASTEXITCODE -ne 0) { throw 'Native plugin build failed.' }
     } finally { Pop-Location }
@@ -251,6 +269,7 @@ try {
     if ($LASTEXITCODE -ne 0 -or $manifestTree -match 'android.intent.category.HOME') { throw 'APK must not register as an Android Home replacement.' }
     if ($manifestTree -notmatch 'com\.aamirazeez\.afteryou\.nativebridge\.AfterYouAndroid') { throw 'APK does not contain the expected native plugin registration.' }
     Assert-AndroidInviteLinkManifest -ManifestTree $manifestTree
+    Assert-AndroidPlayGamesManifest -ManifestTree $manifestTree
     if ($manifestTree -notmatch 'android:usesCleartextTraffic[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK cleartext network restriction was not retained.' }
     if ($manifestTree -notmatch 'android:allowBackup[^\r\n]*\(type 0x12\)0xffffffff') { throw 'APK must allow backup through its own agent.' }
     if ($manifestTree -notmatch 'android:backupAgent[^\r\n]*com\.aamirazeez\.afteryou\.nativebridge\.AfterYouBackupAgent') { throw 'APK does not name the quota-aware backup agent.' }
@@ -262,6 +281,7 @@ try {
     $resources = (& $aapt dump --values resources $inspectionApk) -join "`n"
     if ($LASTEXITCODE -ne 0) { throw 'Could not inspect APK resources.' }
     Assert-AndroidFirebaseApkResources -ResourceDump $resources -Expected $firebaseExpected
+    Assert-AndroidPlayGamesResource -ResourceDump $resources -Expected $PlayGamesAppId
     $networkPathPattern = '(?m)^\s+resource ' + [regex]::Escape($networkIdMatch.Groups[1].Value) + '[^\r\n]*\r?\n\s+\(string8\) "([^"\r\n]+)"'
     $networkPathMatch = [regex]::Match($resources, $networkPathPattern)
     if (!$networkPathMatch.Success) { throw 'Could not resolve APK network security resource.' }
