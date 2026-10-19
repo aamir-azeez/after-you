@@ -7,7 +7,8 @@ const VOID = "#123a3d", CREAM = "#eceddb", INK = "#193d39", INK_SOFT = "#47655e"
 const BODY = "'Nunito','Trebuchet MS',Verdana,Arial,sans-serif";
 const DISPLAY = "'Fredoka','Nunito','Trebuchet MS',Verdana,Arial,sans-serif";
 
-export const WAITLIST_SENDER = "After You <waitlist@aamirazeez.com>";
+/** The From header for a sender address (WAITLIST_FROM); the address is checked before it gets here. */
+export function sender(address: string): string { return `After You <${address}>`; }
 export type Email = { subject: string; html: string; text: string };
 
 function escape(value: string): string {

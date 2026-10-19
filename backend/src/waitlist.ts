@@ -3,7 +3,7 @@ import { flags, type ServerVars } from "./flags";
 import { ApiError, boundedJson, digest, exactKeys, object } from "./protocol";
 import { logWarning } from "./log";
 import { MIN_CONFIRM_SECRET_LENGTH, TOKEN_PATTERN, signConfirmToken, verifyConfirmToken } from "./waitlist-token";
-import { WAITLIST_SENDER, confirmEmail } from "./waitlist-email";
+import { confirmEmail, sender } from "./waitlist-email";
 
 /**
  * The iOS launch waitlist behind the friend link page on aamirazeez.com, with double opt-in.
@@ -39,7 +39,7 @@ const TURNSTILE_TOKEN_PATTERN = /^[\x21-\x7e]{1,2048}$/;
 /** Siteverify codes that mean our setup is wrong, not that the visitor failed. */
 const TURNSTILE_SETUP_ERRORS = ["missing-input-secret", "invalid-input-secret", "bad-request", "internal-error"];
 
-export type WaitlistEnv = Pick<ServerVars, "IOS_WAITLIST_ENABLED" | "RESEND_API_KEY" | "RESEND_SEGMENT_ID" | "TURNSTILE_SECRET_KEY" | "TURNSTILE_SITE_KEY" | "WAITLIST_CONFIRM_SECRET" | "WAITLIST_REPLY_TO">
+export type WaitlistEnv = Pick<ServerVars, "IOS_WAITLIST_ENABLED" | "RESEND_API_KEY" | "RESEND_SEGMENT_ID" | "TURNSTILE_SECRET_KEY" | "TURNSTILE_SITE_KEY" | "WAITLIST_CONFIRM_SECRET" | "WAITLIST_REPLY_TO" | "WAITLIST_FROM">
   & { PUBLIC_LIMITER: RateLimit; WAITLIST_ADDRESS_LIMITER: RateLimit };
 
 const CORS = Object.freeze({ "Access-Control-Allow-Origin": WAITLIST_ORIGIN, Vary: "Origin" });
@@ -66,14 +66,14 @@ export async function routeWaitlist(request: Request, path: string, env: Waitlis
   }
 }
 
-type WaitlistConfig = { siteKey: string; turnstileSecret: string; resendKey: string; segment: string; confirmSecret: string; replyTo: string };
+type WaitlistConfig = { siteKey: string; turnstileSecret: string; resendKey: string; segment: string; confirmSecret: string; replyTo: string; from: string };
 function configured(env: WaitlistEnv): WaitlistConfig {
-  const siteKey = env.TURNSTILE_SITE_KEY ?? "", segment = env.RESEND_SEGMENT_ID ?? "", confirmSecret = env.WAITLIST_CONFIRM_SECRET ?? "", replyTo = env.WAITLIST_REPLY_TO ?? "";
-  if (!SITE_KEY_PATTERN.test(siteKey) || !SEGMENT_PATTERN.test(segment) || confirmSecret.length < MIN_CONFIRM_SECRET_LENGTH || !EMAIL_PATTERN.test(replyTo) || !env.TURNSTILE_SECRET_KEY || !env.RESEND_API_KEY) {
+  const siteKey = env.TURNSTILE_SITE_KEY ?? "", segment = env.RESEND_SEGMENT_ID ?? "", confirmSecret = env.WAITLIST_CONFIRM_SECRET ?? "", replyTo = env.WAITLIST_REPLY_TO ?? "", from = env.WAITLIST_FROM ?? "";
+  if (!SITE_KEY_PATTERN.test(siteKey) || !SEGMENT_PATTERN.test(segment) || confirmSecret.length < MIN_CONFIRM_SECRET_LENGTH || !EMAIL_PATTERN.test(replyTo) || !EMAIL_PATTERN.test(from) || !env.TURNSTILE_SECRET_KEY || !env.RESEND_API_KEY) {
     logWarning("waitlist_unconfigured");
     throw new ApiError(503, "waitlist_unavailable");
   }
-  return { siteKey, segment, confirmSecret, replyTo, turnstileSecret: env.TURNSTILE_SECRET_KEY, resendKey: env.RESEND_API_KEY };
+  return { siteKey, segment, confirmSecret, replyTo, from, turnstileSecret: env.TURNSTILE_SECRET_KEY, resendKey: env.RESEND_API_KEY };
 }
 
 async function signUp(request: Request, ip: string | null, env: WaitlistEnv, config: WaitlistConfig): Promise<Response> {
@@ -173,7 +173,7 @@ async function sendConfirmEmail(email: string, link: string, config: WaitlistCon
   const sent = await upstream("resend", "send", RESEND_URL + "/emails", {
     method: "POST",
     headers: { Authorization: "Bearer " + config.resendKey, "Content-Type": "application/json" },
-    body: JSON.stringify({ from: WAITLIST_SENDER, to: [email], reply_to: config.replyTo, subject: message.subject, html: message.html, text: message.text })
+    body: JSON.stringify({ from: sender(config.from), to: [email], reply_to: config.replyTo, subject: message.subject, html: message.html, text: message.text })
   });
   if (sent.ok) { await sent.body?.cancel(); return; }
   const name = String((await smallJson(sent)).name ?? "");

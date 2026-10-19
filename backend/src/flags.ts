@@ -135,6 +135,8 @@ export type ServerVars = { [V in FlagVar]?: string } & {
   WAITLIST_CONFIRM_SECRET?: string;
   /** The reply-to address on waitlist emails. */
   WAITLIST_REPLY_TO?: string;
+  /** The address waitlist emails come from, on a domain verified in Resend; shown as "After You". */
+  WAITLIST_FROM?: string;
 };
 
 /** The one flag rule, by var name. */

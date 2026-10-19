@@ -10,7 +10,8 @@ const SEGMENT = "68cf69ad-59d6-4b84-8865-72dbc72f1a49";
 const SECRET = "test-confirm-secret-0123456789abcdef-never-real";
 const CONFIG = {
   IOS_WAITLIST_ENABLED: "true", RESEND_API_KEY: "re_test_key_never_real", RESEND_SEGMENT_ID: SEGMENT, TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
-  TURNSTILE_SITE_KEY: "1x00000000000000000000AA", WAITLIST_CONFIRM_SECRET: SECRET, WAITLIST_REPLY_TO: "afteryou-reply@aamirazeez.com"
+  TURNSTILE_SITE_KEY: "1x00000000000000000000AA", WAITLIST_CONFIRM_SECRET: SECRET, WAITLIST_REPLY_TO: "afteryou-reply@aamirazeez.com",
+  WAITLIST_FROM: "waitlist@afteryou.aamirazeez.com"
 };
 const TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 const EMAIL = "Someone.Waiting@Example.com", NORMAL = "someone.waiting@example.com";
@@ -126,7 +127,7 @@ describe("the page's config and CORS", () => {
   });
 
   it("stays closed with 503 until every var and secret is set", async () => {
-    for (const missing of ["RESEND_API_KEY", "RESEND_SEGMENT_ID", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY", "WAITLIST_CONFIRM_SECRET", "WAITLIST_REPLY_TO"]) {
+    for (const missing of ["RESEND_API_KEY", "RESEND_SEGMENT_ID", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY", "WAITLIST_CONFIRM_SECRET", "WAITLIST_REPLY_TO", "WAITLIST_FROM"]) {
       const fetchSpy = upstream();
       for (const [path, method] of [[SIGNUP, "GET"], [SIGNUP, "POST"], [CONFIRM, "POST"]]) {
         const response = await call({ path, method, vars: { [missing]: undefined } });
@@ -138,6 +139,7 @@ describe("the page's config and CORS", () => {
     }
     expect((await call({ method: "GET", vars: { WAITLIST_CONFIRM_SECRET: "x".repeat(31) } })).status).toBe(503);
     expect((await call({ method: "GET", vars: { WAITLIST_REPLY_TO: "not an address" } })).status).toBe(503);
+    expect((await call({ method: "GET", vars: { WAITLIST_FROM: "After You <waitlist@afteryou.aamirazeez.com>" } })).status).toBe(503);
   });
 });
 
@@ -158,7 +160,7 @@ describe("signing up", () => {
     expect(sendInit.signal).toBeInstanceOf(AbortSignal);
     const message = sentEmail(fetchSpy);
     expect(Object.keys(message).sort()).toEqual(["from", "html", "reply_to", "subject", "text", "to"]);
-    expect(message.from).toBe("After You <waitlist@aamirazeez.com>");
+    expect(message.from).toBe("After You <waitlist@afteryou.aamirazeez.com>");
     expect(message.to).toEqual([NORMAL]);
     expect(message.reply_to).toBe(CONFIG.WAITLIST_REPLY_TO);
     expect(message.subject).toBe("Confirm your email for After You on iPhone");
