@@ -24,6 +24,7 @@ import { MAX_ATTEMPT_BYTES } from "./history-blob";
 import { parsePosition } from "./history-room";
 import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { liveCapability } from "../live";
+import { triesField, triesWanted } from "./turn-tries";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -93,6 +94,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     // Only clients that keep attempts ask; everyone else gets the same bytes as before.
     ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: flags.historyOffload(env) } : {}),
     ...(pollRedo(request) ? { poll_redo_version: 1 } : {}),
+    // Only clients that send and read try counts ask; the flag decides whether they may.
+    ...(triesWanted(request) && flags.turnTries(env) ? { turn_tries_version: 1 } : {}),
     ...liveCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
@@ -200,7 +203,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     throw new ApiError(405, "method_not_allowed");
   }
-  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations|leave)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
+  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations|leave|tries)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
   // Only the caller's own standalone link; Story rooms are version 3 links and are never removed here.
@@ -209,6 +212,14 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     return json(await leaveRoom(request, playerId, env, 2, id));
   }
   const context = await campaignRequestContext(request, id);
+  // A disabled flag answers before any room or safety read.
+  if (operation === "tries") {
+    if (!flags.turnTries(env)) throw new ApiError(503, "turn_tries_disabled");
+    if (item || request.method !== "GET") throw new ApiError(405, "method_not_allowed");
+    if (context !== undefined) throw new ApiError(409, "turn_tries_standalone_only");
+    await requireInteraction(env, playerId, "relay", id, context, safetyToken);
+    return json(unwrap(await room.tries(playerId)));
+  }
   // DELETE photo bypasses the interaction gate so owners can remove media.
   // It must still negotiate before inspecting recording/photo authority.
   if (request.method === "DELETE") unwrap(await room.campaignRoomNegotiation(context !== undefined));
@@ -273,7 +284,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);
     const body = object(input);
     exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
-      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : [])]);
+      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : []), ...triesField(body)]);
     const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key, context);
     if (previous.ok) {
       if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation, ...body }))) throw new ApiError(409, "idempotency_key_reused");

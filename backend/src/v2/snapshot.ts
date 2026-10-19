@@ -12,6 +12,7 @@ import { MAX_PHOTOS, MAX_PHOTO_OPERATIONS } from "./photos";
 import { isAlarmMetadataTable, notificationAlarmOwned, notificationTables, resetNotificationRuntime } from "../notification-storage";
 import { REDO_TABLE, redoRuntimeValid, resetRedo } from "../redo-control";
 import { ROOM_INBOX_ACTIVITY, clearRoomInboxActivity } from "../room-inbox-storage";
+import { clearTurnTries, isTurnTriesTable } from "./turn-tries";
 
 import { MAX_ROW_BYTES } from "./row-bound";
 import { nestedProof } from "./checkpoint-chain";
@@ -72,7 +73,7 @@ function schema(storage: DurableObjectStorage): 3 | 4 | 5 | 6 | 7 | 8 | 9 {
   const metadata = storage.sql.exec<{ id: number; schema_version: number }>("SELECT id,schema_version FROM metadata LIMIT 2").toArray();
   need(metadata.length === 1 && metadata[0].id === 1 && [3, 4, 5, 6, 7, 8, 9].includes(metadata[0].schema_version), "unsupported_storage_schema");
   const version = metadata[0].schema_version as 3 | 4 | 5 | 6 | 7 | 8 | 9;
-  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row));
+  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row) && !isTurnTriesTable(row));
   // Operational inbox activity is a known runtime table, but is never exported
   // with recordings, checkpoints, or other gameplay archive data.
   const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...definitions(version), ...notificationTables("RoomV2"), REDO_TABLE, ROOM_INBOX_ACTIVITY].sort((a, b) => a.name.localeCompare(b.name));
@@ -465,6 +466,7 @@ export async function restoreRoomV2(ctx: DurableObjectState, serialized: string,
     await resetNotificationRuntime(ctx.storage, "RoomV2");
     resetRedo(ctx.storage);
     clearRoomInboxActivity(ctx.storage);
+    clearTurnTries(ctx.storage);
   });
   return { restored: true, checksum: archive.checksum.value };
 }

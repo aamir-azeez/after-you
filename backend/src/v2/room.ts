@@ -14,6 +14,7 @@ import { clearHistory, noteHistorySupport, storedAttempts, type AttemptRecord, t
 import { v1Transferred, offloadedCount, stubReleased, acknowledgeAttempt, archived, attemptDownload, checkedUpload, historyView, loadChain, parseAck, parseWant, restoreAttempt, wantAttempt, type HistoryRoom, type HistoryView } from "./history-room";
 import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
+import { clearTurnTries, parseTries, recordTries, triesField, turnTriesView, type TurnTriesView } from "./turn-tries";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
 import { snapshotResult } from "../snapshot";
 import { erasePlayerPhotos, getPhoto, getPhotoOperation, mutatePhoto, parsePhotoMutation, PHOTO_TURN_PATTERN, type PhotoMutation } from "./photos";
@@ -582,7 +583,8 @@ export class RoomV2 extends DurableObject<Env> {
     try {
       const input = object(value);
       const raw = object(input.recording);
-      exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : [])]);
+      exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : []), ...triesField(input)]);
+      const tries = parseTries(input);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
       const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const bounded = this.read();
@@ -633,6 +635,7 @@ export class RoomV2 extends DurableObject<Env> {
         const pair_id = recording.role === "b" ? `p${branch}-${stage_index}` : null;
         state.revision++;
         this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", turn_id, player, state.revision, JSON.stringify(recording));
+        if (context === undefined) recordTries(this.ctx.storage, turn_id, recording.recording_hash, tries);
         if (recording.role === "a") state.a_turn_id = turn_id;
         else {
           const pair: PairV2 = { pair_id: pair_id!, branch, stage_index, a: this.turn(state.a_turn_id!), b: recording, checkpoint: checkpoint! };
@@ -729,6 +732,10 @@ export class RoomV2 extends DurableObject<Env> {
       return ok({ pairs, active_pair_ids: state.completed_pair_ids });
     });
   }
+  /** Standalone rooms: every turn's sent try count, live, offloaded or replay-transferred alike. */
+  tries(player: string): Promise<Outcome<TurnTriesView>> {
+    return this.project(player, undefined, () => this.memberView(player) ? ok(turnTriesView(this.ctx.storage)) : fail(404, "room_not_found"));
+  }
   pairRecording(player: string, id: string, context?: CampaignRoomContext): Promise<Outcome<PairV2>> {
     return this.project(player, context, () => {
       const state = this.read();
@@ -807,6 +814,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearPairReactions(this.ctx.storage);
     clearReplayTransfer(this.ctx.storage);
     clearHistory(this.ctx.storage);
+    clearTurnTries(this.ctx.storage);
     resetRedo(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     // Last, so nothing after it can roll back the drop under the cached answer in room-departure.ts.
@@ -845,6 +853,6 @@ answerWhileBlank(RoomV2, {
   safetyMembers: async () => roomNotFound(), snapshot: async () => roomNotFound(), snapshotIfChanged: async () => roomNotFound(), lobbySnapshot: async () => roomNotFound(),
   operation: async () => roomNotFound(), collection: async () => roomNotFound(), pairRecording: async () => roomNotFound(), reactions: async () => roomNotFound(),
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
-  redo: async () => roomNotFound(), history: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
+  redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
   campaignDrainCensus: () => absentCensus()
 });

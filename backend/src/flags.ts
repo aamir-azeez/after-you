@@ -62,6 +62,8 @@ export const FLAG_VARS = Object.freeze({
   roomIndex: "ROOM_INDEX_ENABLED",
   /** The live socket (GET /v1/live), its capability and the hints room and friend changes send to it. */
   liveConnection: "LIVE_CONNECTION_ENABLED",
+  /** Turn try counts: the capability and GET .../tries. Turns may carry a count whatever the flag. */
+  turnTries: "TURN_TRIES_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;
