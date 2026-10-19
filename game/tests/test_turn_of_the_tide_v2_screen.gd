@@ -155,7 +155,7 @@ func _memory_line(level: Dictionary, initial: Dictionary) -> void:
 	world._process(1.0 / 30.0)
 	_check(screen.mode == "drowning" and world._camera_slot(world._active_player) == "p1" and world._follow_center.is_equal_approx(world._camera_center()) and absf(world._follow_center.x - ghost.x) < absf(live.x - ghost.x) * 0.25, "During the beat the camera frames the drowned memory, at once under Reduce motion (%.2f, memory at %.2f, player at %.2f)" % [world._follow_center.x, ghost.x, live.x])
 	# Back during the beat ends it at once on the card.
-	screen.notification(NOTIFICATION_WM_GO_BACK_REQUEST)
+	screen.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	var title: Node = screen.find_child("EndingTitle", true, false)
 	_check(screen.mode == "review" and title is Label and (title as Label).text == PlayerCopy.JOURNEY_DROWNED_MEMORY, "Back during the beat lands on the card, which solo says: " + PlayerCopy.JOURNEY_DROWNED_MEMORY)
 	_check(not journal.has_draft(), "The drowned memory's turn leaves no draft")
