@@ -12,36 +12,36 @@ const Batch = preload("res://presentation/kit/static_batch.gd")
 
 ## The most materials a chapter stage's built and folded world may use (all
 ## geometry, shown or hidden), about a fifth above what it used when the kit
-## began sharing looks (Turn of the Tide: 322 against 1,936 before).
+## began sharing looks (Turn of the Tide: 309 against 1,936 before).
 const MOST_MATERIALS := {
 	"first-steps@1": [74, 74],
 	"relay-isles@2": [72, 74],
-	"high-and-low@1": [76, 95],
-	"rolling-home@1": [88, 96],
-	"a-house-for-two@1": [88, 104],
-	"conservatory@1": [126, 124],
-	"long-way-home@1": [107, 124],
-	"the-wishing-well@1": [118, 135],
-	"long-way-home@2": [107, 136],
-	"turn-of-the-tide@1": [387, 405],
-	"sleeping-lighthouse@2": [86, 83, 86, 105, 84, 110],
-	"turn-of-the-tide@2": [387, 402],
+	"high-and-low@1": [76, 94],
+	"rolling-home@1": [87, 95],
+	"a-house-for-two@1": [80, 99],
+	"conservatory@1": [119, 117],
+	"long-way-home@1": [106, 122],
+	"the-wishing-well@1": [89, 106],
+	"long-way-home@2": [106, 134],
+	"turn-of-the-tide@1": [371, 382],
+	"sleeping-lighthouse@2": [84, 83, 83, 104, 84, 107],
+	"turn-of-the-tide@2": [371, 382],
 }
 ## Of those, the most that are not the kit's shared looks: materials a world
 ## made itself (water, glass, lamps, plates, spirits and their faces).
 const MOST_OWN := {
 	"first-steps@1": [24, 24],
 	"relay-isles@2": [25, 25],
-	"high-and-low@1": [22, 26],
-	"rolling-home@1": [25, 29],
-	"a-house-for-two@1": [31, 36],
-	"conservatory@1": [50, 47],
-	"long-way-home@1": [43, 46],
-	"the-wishing-well@1": [48, 53],
-	"long-way-home@2": [43, 55],
-	"turn-of-the-tide@1": [247, 260],
-	"sleeping-lighthouse@2": [24, 25, 30, 35, 31, 36],
-	"turn-of-the-tide@2": [247, 258],
+	"high-and-low@1": [19, 24],
+	"rolling-home@1": [23, 28],
+	"a-house-for-two@1": [20, 28],
+	"conservatory@1": [40, 37],
+	"long-way-home@1": [40, 42],
+	"the-wishing-well@1": [18, 23],
+	"long-way-home@2": [40, 52],
+	"turn-of-the-tide@1": [227, 235],
+	"sleeping-lighthouse@2": [18, 22, 25, 30, 29, 31],
+	"turn-of-the-tide@2": [227, 235],
 }
 
 func _suite() -> String:
