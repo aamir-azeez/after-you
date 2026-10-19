@@ -158,6 +158,12 @@ func _check_layout(app: Node, screen: Rect2, safe: Rect2, unseen: bool, context:
 		var offer_rect := offer.get_global_rect()
 		_check(absf(offer_rect.end.x - (safe.end.x - 32.0)) <= 1.0 and absf(offer_rect.position.y - (safe.position.y + 32.0)) <= 1.0 and offer_rect.size.y >= 48.0 and offer.icon != null, "Full Journey sits top right with its arrow: " + context)
 		_check(not offer_rect.intersects(explore_rect), "Full Journey keeps clear of Explore: " + context)
+	# Every keepsake status reads on one line, with room to spare for a phone's
+	# finer text scale, so the box stays low over the island.
+	var status: Label = stage._keepsake_status
+	var status_font := status.get_theme_font("font")
+	for line: String in HomeStage.STATUS_LINES:
+		_check(status_font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, HomeStage.STATUS_SIZE).x * 1.03 <= stage._keepsake_controls.custom_minimum_size.x, "The keepsake status fits one line: %s %s (%.0f in %.0f)" % [line, context, status_font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, HomeStage.STATUS_SIZE).x, stage._keepsake_controls.custom_minimum_size.x])
 	_check(not menu.is_processing() and not menu.is_physics_processing(), "The menu does no per-frame work: " + context)
 	_check(not stage._allowed(menu.play_button.get_global_rect().get_center()) and not stage._allowed(Vector2(panel_end - 4.0, safe.get_center().y)), "Presses on the panel never start a camera gesture: " + context)
 

@@ -43,6 +43,9 @@ const TOGETHER_LIT := UiTokens.TOGETHER
 ## so it never covers a keepsake standing at the island's front edge. The title
 ## is as large as fits on one line (it wraps to two lines at the smallest size).
 const BOX_MAX_WIDTH := 500.0
+## The status line's size: small enough that every line reads on one line in the
+## box at every scale, so the box stays low and clear of the island's front keepsakes.
+const STATUS_SIZE := 14
 const TITLE_SIZES := [25, 22, 20, 18]
 ## Explore and Reset view: cream pills with their icons, a full touch height.
 const PILL_HEIGHT := 52.0
@@ -441,7 +444,7 @@ func _create_keepsake_box() -> void:
 		var hard_mark := HardModeView.mark(mode, HardMode.LOCKED, VARIANT_ICON)
 		hard_mark.visible = false
 		_keepsake_variant_icons.add_child(hard_mark)
-	_keepsake_status = _box_label(15, UiTokens.HINT, _keepsake_content)
+	_keepsake_status = _box_label(STATUS_SIZE, UiTokens.HINT, _keepsake_content)
 	_keepsake_status.name = "KeepsakeStatus"
 	_keepsake_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	_keepsake_status.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
