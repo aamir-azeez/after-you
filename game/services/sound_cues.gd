@@ -72,8 +72,8 @@ const CUES := {
 	"water_rise": {"clip": WATER_SURGE, "range": Vector2(0.0, 2.0), "db": -4.0},
 	"water_fall": {"clip": WATER_SURGE, "range": Vector2(-5.0, -3.0), "db": -5.0},
 	# A crossing has started to close: the water rises over it before it shuts.
-	"crossing_closing": {"clip": WATER_SURGE, "range": Vector2(3.0, 5.0), "db": -3.0},
-	"spirit_drowned": {"clip": WELL_PLUNK, "range": Vector2(-6.0, -4.0)},
+	"crossing_closing": {"clip": WATER_SURGE, "range": Vector2(2.0, 6.0), "db": -3.0},
+	"spirit_drowned": {"clip": WELL_PLUNK, "range": Vector2(-7.0, -3.0)},
 }
 
 ## A spirit's foot contacts: each spirit alternates the clips; the step's

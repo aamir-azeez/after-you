@@ -1611,14 +1611,18 @@ func _show_closing(closing: Dictionary) -> void:
 			elif trim.has_meta("warned"):
 				var edge: Array = trim.get_meta("edge")
 				_glow(trim, edge[0], float(edge[1]))
-	if closing.is_empty(): return
-	var left := INF
-	for id: String in closing: left = minf(left, float(closing[id]))
-	var seconds := maxf(left, 1.0) / 30.0
+	# Water rising past a closing crossing's deck reaches it as the crossing
+	# shuts, then goes on at its usual rate; nothing closing, the usual rate.
 	for root: Node3D in _water.values():
 		if not is_instance_valid(root): continue
-		var distance := absf(float(root.get_meta("target")) - float(root.get_meta("shown")))
-		if distance > 0.001: root.set_meta("rate", distance / seconds)
+		var shown := float(root.get_meta("shown"))
+		var target := float(root.get_meta("target"))
+		var rate := INF
+		for id: String in closing:
+			var deck := float(_route(id).get("height_cm", 0)) / 100.0
+			if shown < deck and deck <= target: rate = minf(rate, (deck - shown) / (maxf(float(closing[id]), 1.0) / 30.0))
+		if rate < INF: root.set_meta("rate", maxf(rate, 0.01))
+		elif root.has_meta("rate"): root.remove_meta("rate")
 
 ## Tide rules: a drowned spirit (snapshot "drowned": {slot, route}) heads under
 ## the water over its crossing, and a ring spreads where it went down.
