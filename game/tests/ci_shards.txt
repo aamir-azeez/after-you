@@ -71,6 +71,7 @@ fold_present 3
 fold_untouched 1
 frame_policy 3
 friend_nicknames 2
+friend_play_icon 3
 friend_presence 3
 friend_presence_ui 1
 friend_room_events_client 2

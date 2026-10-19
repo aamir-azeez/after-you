@@ -61,22 +61,58 @@ const SCENES := {
 	"friend_next": [["face", Vector2(66, 6), {"color": "peach", "eyes": "wide", "look": Vector2(-1, 0), "tilt": -0.3, "size": 1.5}]],
 	"footprints": [["walk", Vector2(0, 8), {"from": Vector2(-0.5, 0.45), "to": Vector2(0.55, -0.4)}]],
 	"polaroid": [["polaroid", Vector2(-10, 4), 0.08], ["heart", Vector2(62, -26), 11.0], ["sparkle", Vector2(66, 26), 7.0]],
+	# The Play with your friend icon: two happy faces cheek to cheek, mint behind,
+	# and a heart. Rows with "squish" or "pop" react to the scene state (scene()).
+	"friends_squeeze": [["face", Vector2(21.5, 7), {"color": "mint", "eyes": "happy", "tilt": -0.18, "size": 0.66, "squish": -1.0}], ["face", Vector2(-21.5, 7), {"color": "peach", "eyes": "happy", "tilt": 0.18, "size": 0.66, "squish": 1.0}], ["heart", Vector2(40, -28), 8.5, {"pop": 0.28, "lift": Vector2(-2, -3)}]],
 }
+## Scenes drawn loose on a light surface rather than in a list picture: their
+## own box, and a thin ink edge (box units) round each spirit and prop so
+## peach, mint and pink hold on cream.
+const SCENE_LOOKS := {"friends_squeeze": {"box": Vector2(120, 96), "edge": 2.8}}
+## A squish (scene state "squish" 0..1) at its fullest, for rows with a
+## "squish" direction (+1 toward +x): each face slides in, tips further toward
+## the other and squashes about its chin. A heart row with "pop" grows by that
+## fraction and moves by "lift".
+const SQUISH_SHIFT := 6.5
+const SQUISH_TIP := 0.07
+const SQUISH_SQUASH := Vector2(0.05, 0.04)
 static var _circle := PackedVector2Array()
 
-## Draws a scene into a slot rect, keeping the scene's aspect.
-static func scene(ci: CanvasItem, scene_id: String, slot: Rect2) -> void:
-	var s := minf(slot.size.x / BOX.x, slot.size.y / BOX.y)
+## Draws a scene into a slot rect, keeping the scene's aspect. State, read by
+## the rows that react: "eyes" (the squishing spirits' expression) and
+## "squish" (0 at rest to 1).
+static func scene(ci: CanvasItem, scene_id: String, slot: Rect2, state: Dictionary = {}) -> void:
+	var look: Dictionary = SCENE_LOOKS.get(scene_id, {})
+	var box: Vector2 = look.get("box", BOX)
+	var s := minf(slot.size.x / box.x, slot.size.y / box.y)
 	var at := Transform2D(0.0, Vector2(s, s), 0.0, slot.get_center())
+	var edge: float = look.get("edge", 0.0) * s
+	var squish := clampf(float(state.get("squish", 0.0)), 0.0, 1.0)
 	for row: Array in SCENES.get(scene_id, []):
 		var pos: Vector2 = row[1]
 		match row[0]:
-			"spirit", "face": spirit(ci, at * _place(pos, row[2]), row[2], row[0] == "face")
+			"spirit", "face":
+				var options: Dictionary = row[2]
+				var place := _place(pos, options)
+				if edge > 0.0 or options.has("squish"):
+					options = options.duplicate()
+					options.edge = edge
+				if options.has("squish"):
+					var toward: float = options.squish
+					if state.has("eyes"): options.eyes = state.eyes
+					options.tilt = options.get("tilt", 0.0) + toward * SQUISH_TIP * squish
+					# Squashed about the chin, so the chin stays put.
+					var rise := SQUISH_SQUASH.y * squish * Look.HEAD_HALF.y * UNIT * float(options.get("size", SPIRIT_SIZE))
+					var squash := Vector2(1.0 - SQUISH_SQUASH.x * squish, 1.0 + SQUISH_SQUASH.y * squish)
+					place = _place(pos + Vector2(toward * SQUISH_SHIFT * squish, -rise), options) * Transform2D(0.0, squash, 0.0, Vector2.ZERO)
+				spirit(ci, at * place, options, row[0] == "face")
 			"outline": outline(ci, at, pos)
 			"envelope": envelope(ci, at * Transform2D(row[2], pos))
 			"island": island(ci, at, pos, row[2])
 			"flag": flag(ci, at, pos)
-			"heart": heart(ci, at, pos, row[2])
+			"heart":
+				var pop: Dictionary = row[3] if row.size() > 3 else {}
+				heart(ci, at, pos + pop.get("lift", Vector2.ZERO) * squish, row[2] * (1.0 + pop.get("pop", 0.0) * squish), edge)
 			"sparkle": sparkle(ci, at, pos, row[2])
 			"walk": walk(ci, at, pos, row[2])
 			"polaroid": polaroid(ci, at * Transform2D(row[2], Vector2(1.3, 1.3), 0.0, pos))
@@ -87,21 +123,27 @@ static func _place(pos: Vector2, options: Dictionary) -> Transform2D:
 
 ## One spirit with its feet at the origin, or only its head centred on the
 ## origin (face). Options: color, alpha, eyes (dot, wide, happy, soft, or any
-## spirit_look expression), look (where the eyes glance), tilt, lean and sit.
+## spirit_look expression), look (where the eyes glance), tilt, lean, sit, and
+## edge (an ink outline this many canvas pixels outside the whole spirit).
 static func spirit(ci: CanvasItem, at: Transform2D, options: Dictionary, face := false) -> void:
 	var color: Color = SPIRITS[options.get("color", "peach")]
 	var alpha: float = options.get("alpha", 1.0)
 	var tilt: float = options.get("tilt", 0.0)
 	var head := at * Transform2D(tilt, Vector2.ZERO) * Transform2D(0.0, -HEAD)
+	# [transform, outline, colour], back to front.
+	var parts: Array = []
 	if not face:
 		var body := at * Transform2D(options.get("lean", 0.0), Vector2.ZERO)
 		head = body * Transform2D(tilt, NECK) * Transform2D(0.0, -NECK)
 		if not options.get("sit", false):
-			for side: float in [-1.0, 1.0]: fill(ci, at, _rounded(_flat(Look.FOOT_REST + Vector3(side * Look.FOOT_SPREAD, 0, 0)), _flat_size(Look.FOOT_HALF), 2.0), Color(color.darkened(Look.FOOT_SHADE + 0.08), alpha))
-		fill(ci, body, _rounded(_flat(Look.TORSO_CENTER), _flat_size(Look.TORSO_HALF), Look.TORSO_POWER), Color(color.darkened(0.04), alpha))
-	var leaf := head * Transform2D(-Look.LEAF_LEAN, _flat(Look.LEAF_PIVOT))
-	fill(ci, leaf, _leaf(), Color(Look.LEAF, alpha))
-	fill(ci, head, _rounded(HEAD, _flat_size(Look.HEAD_HALF), Look.HEAD_POWER), Color(color, alpha))
+			for side: float in [-1.0, 1.0]: parts.append([at, _rounded(_flat(Look.FOOT_REST + Vector3(side * Look.FOOT_SPREAD, 0, 0)), _flat_size(Look.FOOT_HALF), 2.0), color.darkened(Look.FOOT_SHADE + 0.08)])
+		parts.append([body, _rounded(_flat(Look.TORSO_CENTER), _flat_size(Look.TORSO_HALF), Look.TORSO_POWER), color.darkened(0.04)])
+	parts.append([head * Transform2D(-Look.LEAF_LEAN, _flat(Look.LEAF_PIVOT)), _leaf(), Look.LEAF])
+	parts.append([head, _rounded(HEAD, _flat_size(Look.HEAD_HALF), Look.HEAD_POWER), color])
+	var edge: float = options.get("edge", 0.0)
+	if edge > 0.0:
+		for part: Array in parts: edged(ci, part[0], part[1], edge, Color(INK, alpha))
+	for part: Array in parts: fill(ci, part[0], part[1], Color(part[2], alpha))
 	var look: Vector2 = options.get("look", Vector2.ZERO)
 	var name := str(options.get("eyes", "dot"))
 	var expression: StringName = EYES.get(name, StringName(name))
@@ -177,9 +219,14 @@ static func flag(ci: CanvasItem, at: Transform2D, pos: Vector2) -> void:
 	stroke(ci, at, PackedVector2Array([pos, pos + Vector2(0, -56)]), LINE, 2.6)
 	fill(ci, at, PackedVector2Array([pos + Vector2(1, -56), pos + Vector2(26, -48), pos + Vector2(1, -40)]), GOLD)
 
-static func heart(ci: CanvasItem, at: Transform2D, pos: Vector2, size: float) -> void:
-	for side: float in [-1.0, 1.0]: fill(ci, at, ellipse(pos + Vector2(side * 0.5, -0.3) * size, Vector2(0.56, 0.56) * size), HEART)
-	fill(ci, at, PackedVector2Array([pos + Vector2(-1.04, -0.1) * size, pos + Vector2(1.04, -0.1) * size, pos + Vector2(0, 1.0) * size]), HEART)
+## A heart; edge as spirit()'s.
+static func heart(ci: CanvasItem, at: Transform2D, pos: Vector2, size: float, edge := 0.0) -> void:
+	var parts: Array[PackedVector2Array] = []
+	for side: float in [-1.0, 1.0]: parts.append(ellipse(pos + Vector2(side * 0.5, -0.3) * size, Vector2(0.56, 0.56) * size))
+	parts.append(PackedVector2Array([pos + Vector2(-1.04, -0.1) * size, pos + Vector2(1.04, -0.1) * size, pos + Vector2(0, 1.0) * size]))
+	if edge > 0.0:
+		for part: PackedVector2Array in parts: edged(ci, at, part, edge, INK)
+	for part: PackedVector2Array in parts: fill(ci, at, part, HEART)
 
 static func sparkle(ci: CanvasItem, at: Transform2D, pos: Vector2, size: float) -> void:
 	var points := PackedVector2Array()
@@ -300,6 +347,12 @@ static func fill(ci: CanvasItem, at: Transform2D, points: PackedVector2Array, co
 	ci.draw_colored_polygon(placed, color)
 	placed.append(placed[0])
 	ci.draw_polyline(placed, color, 1.0, true)
+
+## A shape grown `edge` canvas pixels, round at the corners: drawn under the
+## shape's own fill, it leaves a thin edge.
+static func edged(ci: CanvasItem, at: Transform2D, points: PackedVector2Array, edge: float, color: Color) -> void:
+	for grown: PackedVector2Array in Geometry2D.offset_polygon(at * points, edge, Geometry2D.JOIN_ROUND):
+		fill(ci, Transform2D.IDENTITY, grown, color)
 
 static func stroke(ci: CanvasItem, at: Transform2D, points: PackedVector2Array, color: Color, width: float) -> void:
 	ci.draw_polyline(at * points, color, maxf(1.0, width * at.get_scale().x), true)
