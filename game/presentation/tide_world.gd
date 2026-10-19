@@ -15,6 +15,14 @@ const SEA_LEVELS := {"shut": -0.06, "low": -0.22, "half": 0.24, "high": 0.70}
 const SEABED := -0.70
 ## Water moves at this many metres a second; one tide step takes about half a second.
 const WATER_RATE := 1.1
+## A winch's ramp: crossing id -> [selector id, the value that lowers it]. The
+## ramp is hinged at the crossing's west end and lies flat in it when lowered,
+## at any water; raised, it stands up out of the water. It follows the
+## snapshot's selector value, so it moves the moment the winch is turned.
+const RAMPS := {"slipway": ["winch", "slip"]}
+## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
+const RAMP_RAISED := 0.95
+const RAMP_RATE := 1.6
 const HARBOUR_REGION := [-512, -480, 1728, 480]
 ## The outer sea: wide past the mole, through the harbour mouth, and a short
 ## reach past each end of the mouth where the sea gates stand. Breakwaters hold
@@ -131,6 +139,8 @@ var _lock_shown: Dictionary = {}
 ## Shut crossings stay in view as faint outlines: id -> ghost node.
 var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
+## RAMPS built for the shown stage: crossing id -> its hinge (Node3D, meta "target").
+var _ramps: Dictionary = {}
 ## Kept-crossing masts, raised with the water that covers their crossing.
 const MAST_CLEARANCE := 0.25
 var _kept_masts: Array[Dictionary] = []
@@ -194,6 +204,7 @@ func show_stage(stage: Dictionary) -> void:
 	_water_walls.clear()
 	_ghosts.clear()
 	_boats.clear()
+	_ramps.clear()
 	_kept_masts.clear()
 	_bubbles_placed = false
 	_walled = _walled_routes(stage)
@@ -228,6 +239,7 @@ func show_stage(stage: Dictionary) -> void:
 	_build_foreshore()
 	await _build_step()
 	_build_boats()
+	_build_ramps()
 	await _build_step()
 	_build_lamplight()
 
@@ -1312,6 +1324,7 @@ func _advance_water(delta: float) -> void:
 		if not is_equal_approx(shown, target):
 			_show_water(root, move_toward(shown, target, WATER_RATE * maxf(delta, 0.0)))
 			flowing = true
+	_swing_ramps(delta)
 	# The doors move after the water, against the water shown this frame.
 	if is_instance_valid(_locks) and (flowing or _locks.moving()): _locks.advance(delta, _lock_levels("shown"))
 	if not reduced_motion:
@@ -1526,6 +1539,46 @@ func _build_boats() -> void:
 		cylinder(0.035, PARAPET_TOP + 0.12 - SEABED, PILE, Vector3(float(spec[0]) / 100.0 + 0.32, (PARAPET_TOP + 0.12 + SEABED) * 0.5, float(spec[1]) / 100.0 - 0.36), terrain).name = "MooringPile"
 		_boats.append(boat)
 
+## Each RAMPS crossing of the definition gets a timber ramp on a hinge at its
+## west end, with a winch drum on two posts beside the hinge. It starts raised;
+## present() sets where it heads.
+func _build_ramps() -> void:
+	for id: String in RAMPS:
+		var route := _route(id)
+		if route.is_empty(): continue
+		var r: Array = route.rect_cm
+		var length := float(r[2] - r[0]) / 100.0
+		var lane := float(r[3] - r[1]) / 100.0
+		var hinge := Node3D.new()
+		hinge.name = "SlipRamp_" + id
+		hinge.position = point([r[0], (r[1] + r[3]) / 2.0]) + Vector3(0, float(route.height_cm) / 100.0 - 0.035, 0)
+		terrain.add_child(hinge)
+		for index in range(6):
+			var along := (float(index) + 0.5) / 6.0 * length
+			box(Vector3(length / 6.0 - 0.012, 0.05, lane - 0.28), TIMBER.lightened(0.08 * float(index % 2)), Vector3(along, 0, 0), hinge)
+		for side in [-1, 1]:
+			box(Vector3(length, 0.06, 0.05), TIMBER.darkened(0.2), Vector3(length * 0.5, 0.02, side * (lane * 0.5 - 0.125)), hinge)
+			cylinder(0.04, 0.42, PILE, Vector3(-0.06, 0.21, side * (lane * 0.5 - 0.06)) + hinge.position, terrain).name = "RampPost"
+		var drum := cylinder(0.07, lane - 0.16, ROPE.darkened(0.15), hinge.position + Vector3(-0.06, 0.36, 0), terrain)
+		drum.name = "RampDrum"
+		drum.rotation.x = PI / 2.0
+		hinge.rotation.z = RAMP_RAISED
+		hinge.set_meta("target", RAMP_RAISED)
+		_ramps[id] = hinge
+
+## Where each ramp heads from the snapshot's controls.
+func _aim_ramps(controls: Dictionary, immediate: bool) -> void:
+	for id: String in _ramps:
+		var hinge: Node3D = _ramps[id]
+		var lowered := str(controls.get(str(RAMPS[id][0]), "")) == str(RAMPS[id][1])
+		hinge.set_meta("target", 0.0 if lowered else RAMP_RAISED)
+		hinge.set_meta("lowered", lowered)
+		if immediate or reduced_motion: hinge.rotation.z = float(hinge.get_meta("target"))
+
+func _swing_ramps(delta: float) -> void:
+	for hinge: Node3D in _ramps.values():
+		if is_instance_valid(hinge): hinge.rotation.z = move_toward(hinge.rotation.z, float(hinge.get_meta("target")), RAMP_RATE * maxf(delta, 0.0))
+
 func _float_boats(level: float) -> void:
 	for boat: Node3D in _boats:
 		if not is_instance_valid(boat): continue
@@ -1589,6 +1642,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		wheel.wheel.set_meta("value", str(controls.get(id, "")))
 		if _physical_levers.has(id): _physical_levers[id].rotation.z = lerpf(0.60, -0.60, t)
 	_follow_knobs()
+	_aim_ramps(controls, immediate)
 	_set_water("harbour", float(HARBOUR_LEVELS.get(tide, HARBOUR_LEVELS.low)), immediate)
 	_set_water("sea", float(SEA_LEVELS.get(basin, SEA_LEVELS.shut)), immediate)
 	_set_water("chamber", float(HARBOUR_LEVELS.get(str(controls.get("chamber", "half")), HARBOUR_LEVELS.half)), immediate)
@@ -1692,6 +1746,7 @@ func _static_keep() -> Array:
 	keep.append_array(_chamber_lamps)
 	keep.append_array(_sea_gates)
 	keep.append_array(_boats)
+	keep.append_array(_ramps.values())
 	keep.append_array(_spout_streaks)
 	keep.append_array(_slack_marks)
 	for marks: Array in _dry_marks.values(): keep.append_array(marks)

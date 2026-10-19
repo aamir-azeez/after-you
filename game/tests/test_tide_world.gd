@@ -77,6 +77,7 @@ func _first_stage(level: Dictionary) -> void:
 	_check(world._wheels.keys() == ["tide"], "Only the three-way tide wheel gets a hand wheel in the first stage")
 	_bubbles(world, level.stages[0])
 	_highlights(world, sim, level.stages[0])
+	_slip_ramp(world, sim)
 	# The first spirit at the tide wheel: its bubble rises clear of it and of the
 	# waiting steps' gauges behind it.
 	var at_wheel: Dictionary = sim.snapshot()
@@ -415,6 +416,37 @@ func _plane_tail(bubble: LabelBubble) -> Vector2:
 	var body: MeshInstance3D = bubble.body
 	var stretch: Variant = body.get_instance_shader_parameter(LabelBubble.STRETCH)
 	return LabelBubble.plane_point(body.global_position) + Vector2(body.scale.z - LabelBubble.TAIL_CODE, (body.scale.y - LabelBubble.TAIL) * 0.5 + LabelBubble.TAIL + (float(stretch) if stretch != null else 0.0))
+
+## The winch's ramp lowers into the slipway the moment the winch is turned,
+## at any water, and stands up again when it is raised; the snapshot's
+## crossings are untouched by it.
+func _slip_ramp(world: Node3D, sim: Simulation) -> void:
+	var hinge: Node3D = world._ramps.get("slipway")
+	_check(hinge != null and hinge.name == "SlipRamp_slipway" and hinge in world._static_keep(), "The slipway has a winch ramp the scenery fold leaves free to move")
+	if hinge == null: return
+	var kept: Dictionary = sim._mechanisms.controls.duplicate()
+	for tide: String in ["low", "high"]:
+		for winch: String in ["stowed", "slip"]:
+			sim._mechanisms.controls.tide = tide
+			sim._mechanisms.controls.winch = winch
+			sim._refresh_routes()
+			var routes: Dictionary = sim.snapshot().bridges.duplicate()
+			world.present(sim.snapshot(), true)
+			var lowered := absf(hinge.rotation.z) < 0.001
+			_check(lowered == (winch == "slip") and Canonical.same(sim.snapshot().bridges, routes), "At %s water the %s winch leaves the ramp %s" % [tide, winch, "lowered" if winch == "slip" else "raised"])
+	# Turned while the world runs, the ramp swings there over a few frames.
+	sim._mechanisms.controls.winch = "stowed"
+	world.reduced_motion = false
+	world.present(sim.snapshot(), false)
+	var start := hinge.rotation.z
+	world._advance_water(0.2)
+	_check(start == 0.0 and hinge.rotation.z > 0.0 and hinge.rotation.z < World.RAMP_RAISED, "A raised winch swings the ramp up over time (%.2f)" % hinge.rotation.z)
+	world._advance_water(5.0)
+	_check(is_equal_approx(hinge.rotation.z, World.RAMP_RAISED), "and it comes to rest raised")
+	world.reduced_motion = true
+	sim._mechanisms.controls = kept
+	sim._refresh_routes()
+	world.present(sim.snapshot(), true)
 
 ## Every selector fills exactly its current value's pill, at every value.
 func _highlights(world: Node3D, sim: Simulation, stage: Dictionary) -> void:
