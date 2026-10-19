@@ -3,15 +3,20 @@ extends Node
 ## Android, Game Center on iOS, none on desktop). Autoloaded as /root/PlatformGames; screens find
 ## it with PlatformGames.shared(tree) and never branch on the platform themselves.
 ##
-## What it does, in order, all off the first frame and never in the way of play:
-## 1. A few seconds after launch, a quiet sign-in check (the platform signs in by itself).
-## 2. When signed in and the server offers the feature (PLAY_GAMES_ENABLED / GAME_CENTER_ENABLED,
-##    read once a day with an opt-in header), it links the account to this phone's friend
-##    identity, or, on a phone that has no identity yet (a reinstall), brings the linked
-##    identity back. A phone that has its own identity and meets an account linked elsewhere
-##    asks the player which to keep (see platform_games_flow.gd).
-## 3. Cloud save: progress is joined with a Saved Games slot after meaningful moments.
-## Every call is async with a timeout; every failure leaves the game as it was.
+## What it does, in order, all off the first frames and never in the way of play:
+## 1. A few seconds after launch it learns whether the server offers the feature
+##    (PLAY_GAMES_ENABLED / GAME_CENTER_ENABLED): the capability read once a day with an opt-in
+##    header, or, on a phone with no identity yet, one cheap probe of the restore route. Until the
+##    server offers it, the platform SDK is never touched (no sign-in banner, no start-up cost).
+## 2. A quiet sign-in check (the platform signs in by itself).
+## 3. It links the account to this phone's friend identity, or, on a phone that has no identity
+##    yet (a reinstall), brings the linked identity back. A phone that has its own identity and
+##    meets an account linked elsewhere asks the player which to keep (platform_games_flow.gd).
+## 4. Cloud save: progress is joined with a Saved Games slot after meaningful moments. It needs a
+##    signed-in account and the server's offer, not a friend link, so solo players get it too.
+## Every call is async with a timeout; every failure leaves the game as it was. Main is freed
+## while a solo chapter is open: detach() abandons work that ran through Main, and the next
+## attach() starts again from the top.
 ##
 ## Achievements and leaderboards: the provider interface has them, nothing uses them yet.
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
@@ -37,7 +42,7 @@ const LINK_OTHER := "other_account"
 const LINK_RESTORING := "restoring"
 const LINK_ERROR := "error"
 
-## The quiet check waits this long after launch, so it never touches the first frames.
+## The first step waits this long after launch, so it never touches the first frames.
 const START_DELAY_MS := 4000
 ## How long the service waits for Main to finish loading an identity before giving up for now.
 const ACCOUNT_WAIT_MS := 60000
@@ -48,6 +53,7 @@ var sign_in := SignIn.UNAVAILABLE
 var sign_in_code := ""
 var link_state := LINK_NONE
 var link_code := ""
+## A link, unlink or restore request is in flight (Settings disables the row).
 var busy := false
 var state: RefCounted
 var cloud: RefCounted
@@ -56,6 +62,13 @@ var _account: RefCounted
 var _links: RefCounted
 var _poll_left := 1.0
 var _autostart := true
+## One start pipeline at a time.
+var _running := false
+## Bumped when work that ran through Main is abandoned (Main left): an older coroutine that
+## wakes up later sees a different number and changes nothing.
+var _generation := 0
+## A pipeline was cut short by Main leaving; the next attach starts again.
+var _interrupted := false
 
 ## The service, or null (a tree without the autoload, such as a tool script).
 static func shared(tree: SceneTree) -> Node:
@@ -84,6 +97,7 @@ func _open_state(path: String) -> void:
 	state = State.new(path)
 	cloud = CloudSync.new(provider, null, state)
 	cloud.description = PlayerCopy.PLATFORM_GAMES_SAVE_DESCRIPTION
+	if _account != null: cloud.set_sources(_account.cloud_sources())
 
 ## Tests: a provider and a state file of their own, and no automatic start.
 func configure(test_provider: RefCounted, state_path: String) -> void:
@@ -97,15 +111,22 @@ func _start_later() -> void:
 	if provider == null: provider = _build_provider()
 	if not provider.available(): return
 	_prepare()
-	if cloud != null and _account != null: cloud.set_sources(_account.cloud_sources())
 	changed.emit()
 	await start()
 
-## The quiet check and everything that follows it. Safe to call again (resume, account change).
+## Offered? then quiet sign-in, link or restore, and a cloud pull. Safe to call again.
 func start() -> void:
-	if busy or provider == null or not provider.available(): return
+	if _running or provider == null or not provider.available() or state == null: return
+	_running = true
+	_interrupted = false
+	var generation := _generation
 	set_process(true)
-	await _authenticate(false)
+	if await _wait_account() and generation == _generation:
+		var capability := await _offer()
+		if generation == _generation and capability.get(kind()) == true:
+			await _authenticate(false, generation)
+			if generation == _generation and signed_in(): await _after_sign_in(capability, generation)
+	if generation == _generation: _running = false
 
 # ---- Main's side ---------------------------------------------------------------------------
 
@@ -117,19 +138,28 @@ func attach(account: RefCounted) -> void:
 	_links = LinkClient.new(account.api())
 	if cloud != null: cloud.set_sources(account.cloud_sources())
 	changed.emit()
+	if _interrupted: start.call_deferred()
 
 func detach(account: RefCounted) -> void:
 	if _account != account: return
 	_account = null
 	_links = null
 	if cloud != null: cloud.set_sources(null)
+	if _running or busy:
+		# Requests that went through Main's api or secure store never answer now.
+		_generation += 1
+		_running = false
+		_interrupted = true
+		busy = false
+		if link_state in [LINK_CHECKING, LINK_RESTORING]: link_state = LINK_NONE
+		changed.emit()
 
 # ---- What screens read ---------------------------------------------------------------------
 
 func kind() -> String:
 	return provider.kind() if provider != null else GamesProvider.NONE
 
-## Whether Settings shows the row: a platform service exists here and the server offers it.
+## Whether the server offers this platform's service (and the platform exists here).
 func offered() -> bool:
 	if provider == null or not provider.available() or state == null: return false
 	var held: Dictionary = state.capability()
@@ -151,11 +181,11 @@ func display_name() -> String:
 ## One short line for Settings.
 func status_line() -> String:
 	match sign_in:
-		SignIn.UNAVAILABLE: return PlayerCopy.PLATFORM_GAMES_UNAVAILABLE
+		SignIn.UNAVAILABLE: return PlayerCopy.PLATFORM_GAMES_SIGNED_OUT if offered() else PlayerCopy.PLATFORM_GAMES_UNAVAILABLE
 		SignIn.CHECKING: return PlayerCopy.PLATFORM_GAMES_CHECKING
 		SignIn.SIGNED_OUT:
 			if sign_in_code == "offline": return PlayerCopy.PLATFORM_GAMES_OFFLINE
-			if sign_in_code == "unavailable": return PlayerCopy.PLATFORM_GAMES_UNAVAILABLE
+			if sign_in_code in ["unavailable", "not_configured"]: return PlayerCopy.PLATFORM_GAMES_UNAVAILABLE
 			return PlayerCopy.PLATFORM_GAMES_SIGNED_OUT
 	match link_state:
 		LINK_LINKED: return PlayerCopy.PLATFORM_GAMES_LINKED
@@ -165,40 +195,7 @@ func status_line() -> String:
 		LINK_ERROR: return PlayerCopy.PLATFORM_GAMES_OFFLINE if link_code == "offline" else PlayerCopy.PLATFORM_GAMES_TRY_LATER
 	return PlayerCopy.PLATFORM_GAMES_SIGNED_IN
 
-# ---- Sign-in -------------------------------------------------------------------------------
-
-## The Settings button: shows the platform's sign-in sheet.
-func sign_in_now() -> void:
-	if busy or provider == null or not provider.available(): return
-	await _authenticate(true)
-
-func _authenticate(interactive: bool) -> void:
-	busy = true
-	sign_in = SignIn.CHECKING
-	changed.emit()
-	var answer: Dictionary = await provider.authenticate(interactive)
-	busy = false
-	if answer.get("ok", false) and answer.get("signed_in", false):
-		sign_in = SignIn.SIGNED_IN
-		sign_in_code = ""
-		_player_key = str(answer.player_key)
-	else:
-		sign_in = SignIn.SIGNED_OUT
-		sign_in_code = "" if answer.get("ok", false) else str(answer.get("code", "failed"))
-		_player_key = ""
-		if link_state != LINK_NONE: link_state = LINK_NONE
-	changed.emit()
-	await _after_auth()
-
-func _on_account_changed() -> void:
-	# Another account signed in: nothing about the old one carries over.
-	_player_key = ""
-	link_state = LINK_NONE
-	sign_in = SignIn.SIGNED_OUT
-	changed.emit()
-	if not busy: await start()
-
-# ---- Linking ---------------------------------------------------------------------------------
+# ---- Offer -----------------------------------------------------------------------------------
 
 func _wait_account() -> bool:
 	var deadline := Time.get_ticks_msec() + ACCOUNT_WAIT_MS
@@ -207,24 +204,32 @@ func _wait_account() -> bool:
 		await get_tree().create_timer(0.5).timeout
 	return false
 
-## After any sign-in answer. Signed out, it still learns whether the server offers the feature,
-## so Settings can show the sign-in button.
-func _after_auth() -> void:
-	if not await _wait_account(): return
-	if _account.identity_state() == "missing":
-		if signed_in(): await _restore_for_new_phone()
-		return
-	if _account.identity_state() != "ready": return
-	var capability := await _capability()
-	if capability.get(kind()) != true or not signed_in(): return
-	await _reconcile_link(capability)
-	if linked() and cloud != null: cloud.flush(true)
+## The server's offer: the capability with an identity, the restore probe without one.
+func _offer() -> Dictionary:
+	if _account == null: return {}
+	match _account.identity_state():
+		"ready": return await _capability()
+		"missing": return await _probe()
+	return {}
 
 func _capability() -> Dictionary:
 	var held: Dictionary = state.capability()
 	if not held.is_empty() or _links == null: return held
 	var answer: Dictionary = await _links.capability()
 	if not answer.get("ok", false): return {}
+	state.remember_capability(answer)
+	changed.emit()
+	return state.capability()
+
+## No identity, so no capability read: the public restore route tells on from off without any
+## platform proof (400 while on, 401 while off) and without a Durable Object request.
+func _probe() -> Dictionary:
+	var held: Dictionary = state.capability()
+	if not held.is_empty() or _links == null: return held
+	var on: Variant = await _links.restore_offered(kind())
+	if not on is bool: return {}
+	var answer := {"ok": true, "play_games": false, "game_center": false, "web_client_id": ""}
+	answer[kind()] = on
 	state.remember_capability(answer)
 	changed.emit()
 	return state.capability()
@@ -236,24 +241,74 @@ func _web_client_id(capability: Dictionary) -> String:
 func _credential(capability: Dictionary) -> Dictionary:
 	return await provider.server_credential(_web_client_id(capability))
 
-func _reconcile_link(capability: Dictionary) -> void:
+# ---- Sign-in ---------------------------------------------------------------------------------
+
+## The Settings button: shows the platform's sign-in sheet.
+func sign_in_now() -> void:
+	if _running or busy or not offered(): return
+	_running = true
+	var generation := _generation
+	await _authenticate(true, generation)
+	if generation == _generation and signed_in(): await _after_sign_in(state.capability(), generation)
+	if generation == _generation: _running = false
+
+func _authenticate(interactive: bool, generation: int) -> void:
+	sign_in = SignIn.CHECKING
+	changed.emit()
+	var answer: Dictionary = await provider.authenticate(interactive)
+	if generation != _generation: return
+	if answer.get("ok", false) and answer.get("signed_in", false):
+		sign_in = SignIn.SIGNED_IN
+		sign_in_code = ""
+		_player_key = str(answer.player_key)
+	else:
+		sign_in = SignIn.SIGNED_OUT
+		sign_in_code = "" if answer.get("ok", false) else str(answer.get("code", "failed"))
+		_player_key = ""
+		link_state = LINK_NONE
+		if cloud != null: cloud.stop()
+	changed.emit()
+
+func _on_account_changed() -> void:
+	# Another account signed in: nothing about the old one carries over.
+	_player_key = ""
+	link_state = LINK_NONE
+	sign_in = SignIn.SIGNED_OUT
+	if cloud != null: cloud.stop()
+	changed.emit()
+	if not _running: await start()
+
+# ---- Linking ---------------------------------------------------------------------------------
+
+func _after_sign_in(capability: Dictionary, generation: int) -> void:
+	if _account == null: return
+	if _account.identity_state() == "missing":
+		await _restore_for_new_phone(capability, generation)
+		return
+	if _account.identity_state() != "ready": return
+	await _reconcile_link(capability, generation)
+	if generation == _generation and cloud != null: cloud.flush(true)
+
+func _reconcile_link(capability: Dictionary, generation: int) -> void:
 	var held: Dictionary = state.link(kind())
 	if held.get("player_key") == _player_key and held.get("player_id") == _account.player_id():
 		link_state = LINK_LINKED
 		changed.emit()
 		return
 	if not held.is_empty(): state.forget_link(kind())
-	await _link(capability, false)
+	await _link(capability, false, generation)
 
-func _link(capability: Dictionary, replace: bool) -> void:
+func _link(capability: Dictionary, replace: bool, generation: int) -> void:
 	busy = true
 	link_state = LINK_CHECKING
 	changed.emit()
 	var player: String = _account.player_id() if _account != null else ""
 	var credential: Dictionary = await _credential(capability)
+	if generation != _generation: return
 	var answer: Dictionary = {"ok": false, "code": str(credential.get("code", "unavailable"))}
-	if credential.get("ok", false) and _links != null:
-		answer = await _links.link(kind(), credential.credential, replace, _account.recovery_code() if _account != null else "")
+	if credential.get("ok", false) and _links != null and _account != null:
+		answer = await _links.link(kind(), credential.credential, replace, _account.recovery_code())
+		if generation != _generation: return
 	busy = false
 	link_code = ""
 	if answer.get("ok", false) and _account != null and _account.player_id() == player:
@@ -270,6 +325,7 @@ func _link(capability: Dictionary, replace: bool) -> void:
 		# The server turned the feature off since we last asked.
 		state.forget_capability()
 		link_state = LINK_NONE
+		if cloud != null: cloud.stop()
 	else:
 		link_state = LINK_ERROR
 		link_code = str(answer.get("code", "failed"))
@@ -277,30 +333,37 @@ func _link(capability: Dictionary, replace: bool) -> void:
 
 ## A phone with no friend identity yet (a reinstall): bring the linked one back, asking nothing,
 ## since there is nothing here to lose. Uses the build's public web client id (no identity, so
-## no capability read); a server with the feature off answers 401 and is asked again tomorrow.
-func _restore_for_new_phone() -> void:
+## no capability read). "No link for this account" is remembered for a day.
+func _restore_for_new_phone(capability: Dictionary, generation: int) -> void:
 	if state.restore_probed(_player_key): return
-	var capability := {"web_client_id": _account.config_web_client_id()}
-	if kind() == GamesProvider.PLAY_GAMES and str(capability.web_client_id).is_empty(): return
-	var answer := await _restore(capability, false)
-	if not answer.get("ok", false) and int(answer.get("status", 0)) in [401, 404]:
+	if kind() == GamesProvider.PLAY_GAMES and _web_client_id(capability).is_empty(): return
+	var answer := await _restore(capability, false, generation)
+	if generation != _generation: return
+	if answer.get("ok", false):
+		# The identity is ready now: read the real capability, then pull the cloud copy.
+		state.forget_capability()
+		await _capability()
+		if generation == _generation and cloud != null: cloud.flush(true)
+	elif int(answer.get("status", 0)) in [401, 404]:
 		state.remember_restore_probe(_player_key)
 		link_state = LINK_NONE
 		changed.emit()
+		# No link to bring back, but this account's saved games still belong on this phone.
+		if cloud != null: cloud.flush(true)
 
-func _restore(capability: Dictionary, restart: bool) -> Dictionary:
+func _restore(capability: Dictionary, restart: bool, generation: int) -> Dictionary:
 	busy = true
 	link_state = LINK_RESTORING
 	changed.emit()
 	var account := _account
 	var get_credential := func() -> Dictionary: return await _credential(capability)
 	var answer: Dictionary = await account.restore_identity(kind(), get_credential, restart)
+	if generation != _generation: return {"ok": false, "code": "abandoned"}
 	busy = false
 	if answer.get("ok", false):
 		state.remember_link(kind(), _player_key, str(answer.player_id))
 		link_state = LINK_LINKED
 		notice.emit(PlayerCopy.PLATFORM_GAMES_RESTORED)
-		if not restart and cloud != null: cloud.flush(true)
 	else:
 		link_state = LINK_ERROR
 		link_code = str(answer.get("code", "failed"))
@@ -311,18 +374,20 @@ func _restore(capability: Dictionary, restart: bool) -> Dictionary:
 ## The link moves here; the other identity stays on the server, reachable by its recovery code.
 func keep_this_phone() -> void:
 	if busy or not waiting_for_choice() or _account == null: return
-	await _link(state.capability(), true)
+	await _link(state.capability(), true, _generation)
 
-## The other choice: use the linked identity. The flow shows this phone's recovery details first.
+## The other choice: use the linked identity. The flow asks for this phone's recovery details first.
 func use_linked_progress() -> void:
 	if busy or link_state != LINK_CONFLICT or _account == null: return
-	await _restore(state.capability(), true)
+	await _restore(state.capability(), true, _generation)
 
 func unlink() -> void:
 	if busy or not linked() or _links == null: return
 	busy = true
 	changed.emit()
+	var generation := _generation
 	var answer: Dictionary = await _links.unlink(kind())
+	if generation != _generation: return
 	busy = false
 	if answer.get("ok", false):
 		state.forget_link(kind())
@@ -342,10 +407,17 @@ func forget_identity() -> void:
 # ---- Cloud save ------------------------------------------------------------------------------
 
 func _cloud_allowed() -> bool:
-	return cloud != null and signed_in() and offered() and linked()
+	return cloud != null and signed_in() and offered()
 
 ## Progress may have changed (a chapter finished, Settings closed): sync after a quiet moment.
 func note_progress() -> void:
+	if _cloud_allowed(): cloud.note()
+	elif signed_in() and state != null and state.capability().is_empty() and not _running and _account != null and _account.identity_state() == "ready":
+		# The daily answer expired in a long session: ask again, then sync.
+		_refresh_offer.call_deferred()
+
+func _refresh_offer() -> void:
+	await _capability()
 	if _cloud_allowed(): cloud.note()
 
 func _process(delta: float) -> void:
@@ -355,9 +427,8 @@ func _process(delta: float) -> void:
 	if _cloud_allowed() and cloud.due(): cloud.poll()
 
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_APPLICATION_PAUSED and _cloud_allowed():
-		cloud.flush()
-		cloud.poll()
+	# The run itself waits for frames, so it finishes on resume; the dirty flag also survives a kill.
+	if what == NOTIFICATION_APPLICATION_PAUSED and _cloud_allowed(): cloud.flush()
 
 ## Achievements and leaderboards are not used yet; these forward to the provider when they are.
 func unlock_achievement(id: String) -> Dictionary:

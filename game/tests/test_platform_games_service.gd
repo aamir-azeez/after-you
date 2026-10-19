@@ -1,7 +1,8 @@
 extends SceneTree
 ## PlatformGames with a fake provider, a fake server and a fake account: every sign-in outcome,
 ## the link rules (first link, held link, conflict, other account, restore on a new phone,
-## the player's choice), the server turning the feature off, and the inert desktop service.
+## the player's choice), the server turning the feature off, Main leaving mid-request, and the
+## inert desktop service. The platform is never asked anything until the server offers it.
 const Service = preload("res://services/platform_games/platform_games.gd")
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -21,9 +22,11 @@ class FakeProvider extends "res://services/platform_games/games_provider.gd":
 		return credential.duplicate(true)
 
 class FakeApi extends Node:
+	signal never
 	var player_id := "p".repeat(22)
 	var answers: Dictionary = {}
 	var calls: Array = []
+	var hang_path := ""
 	func request_json(_method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		calls.append({"path": path, "body": body.duplicate(true)})
 		return await _answer(path)
@@ -32,6 +35,8 @@ class FakeApi extends Node:
 		return await _answer(path)
 	func _answer(path: String) -> Dictionary:
 		await Engine.get_main_loop().process_frame
+		# Main's api freed mid-request: the request never answers.
+		if path == hang_path: await never
 		var queue: Array = answers.get(path, [])
 		return queue.pop_front() if not queue.is_empty() else {"ok": false, "status": 0, "code": "connection_interrupted"}
 
@@ -51,6 +56,7 @@ class FakeAccount extends RefCounted:
 	func restore_identity(provider: String, get_credential: Callable, restart: bool) -> Dictionary:
 		var credential: Dictionary = await get_credential.call()
 		restores.append({"provider": provider, "restart": restart, "credential": credential})
+		if restore_answer.get("ok", false) and not restart: identity = "ready"
 		return restore_answer.duplicate(true)
 
 var checks := 0
@@ -66,6 +72,8 @@ func _check(value: bool, message: String) -> void:
 		push_error(message)
 
 func _ok(data: Dictionary) -> Dictionary: return {"ok": true, "status": 200, "data": data}
+## The restore route's answer to a proof-less probe while the provider is on.
+func _on() -> Dictionary: return {"ok": false, "status": 400, "code": "invalid_platform_request", "data": {}}
 func _fail(status: int, code: String) -> Dictionary: return {"ok": false, "status": status, "code": code, "data": {}}
 const CAPABILITY := {"api_version": 2, "play_games_version": 1, "play_games_web_client_id": "123456789012-servclientabcd.apps.googleusercontent.com"}
 
@@ -182,9 +190,11 @@ func _run() -> void:
 	# The server never offered it.
 	api.calls.clear()
 	api.answers = {"/v2/capabilities": [_ok({"api_version": 2})]}
-	var unoffered := _service(FakeProvider.new(), api, _account(api), "unoffered")
+	var unoffered_provider := FakeProvider.new()
+	var unoffered := _service(unoffered_provider, api, _account(api), "unoffered")
 	await unoffered.start()
 	_check(not unoffered.offered() and api.calls.size() == 1, "Not offered: nothing is linked and no proof is asked for")
+	_check(unoffered_provider.auth_calls.is_empty() and unoffered.status_line() == PlayerCopy.PLATFORM_GAMES_UNAVAILABLE, "Not offered: the platform is never asked to sign in, so no Play Games banner appears")
 	unoffered.queue_free()
 	# Offline link attempt.
 	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)]}
@@ -195,24 +205,39 @@ func _run() -> void:
 
 	# A new phone (no identity yet): the linked identity comes back without asking.
 	api.calls.clear()
+	api.answers = {"/v1/platform/restore": [_on()], "/v2/capabilities": [_ok(CAPABILITY)]}
 	var new_phone := _account(api)
 	new_phone.identity = "missing"
 	var reinstall := _service(FakeProvider.new(), api, new_phone, "reinstall")
 	await reinstall.start()
+	_check(api.calls[0].path == "/v1/platform/restore" and api.calls[0].body == {"provider": "play_games"}, "Without an identity, one proof-less probe tells whether the server offers it")
 	_check(new_phone.restores.size() == 1 and new_phone.restores[0].restart == false, "A phone without an identity restores in place")
-	_check(api.calls.is_empty(), "No capability read is needed without an identity")
 	_check(reinstall.linked(), "The restored identity counts as linked")
+	_check(api.calls.size() == 2 and api.calls[1].path == "/v2/capabilities", "Once restored, the real capability is read")
+	_check(reinstall._cloud_allowed() and reinstall.cloud.due(), "and a cloud pull is due in the same session")
 	reinstall.queue_free()
+	# Probe says off: nothing is asked of the platform.
+	api.answers = {"/v1/platform/restore": [_fail(401, "invalid_auth")]}
+	var off_phone := _account(api)
+	off_phone.identity = "missing"
+	var off_provider := FakeProvider.new()
+	var off_service := _service(off_provider, api, off_phone, "probe-off")
+	await off_service.start()
+	_check(off_provider.auth_calls.is_empty() and off_phone.restores.is_empty() and not off_service.offered(), "A server with the feature off keeps the platform untouched")
+	off_service.queue_free()
 	# No link for this account (or the feature off): asked once, then not again for a day.
+	api.answers = {"/v1/platform/restore": [_on()]}
 	var none_phone := _account(api)
 	none_phone.identity = "missing"
 	none_phone.restore_answer = {"ok": false, "status": 404, "code": "platform_link_not_found"}
 	var nothing := _service(FakeProvider.new(), api, none_phone, "nothing")
 	await nothing.start()
+	_check(nothing._cloud_allowed() and nothing.cloud.due(), "No link to bring back, but the account's saved games still sync (solo progress)")
 	await nothing.start()
 	_check(none_phone.restores.size() == 1 and nothing.link_state == Service.LINK_NONE, "A missing link is remembered so launches do not keep asking")
 	nothing.queue_free()
 	# Without the build's web client id, a new phone does not try.
+	api.answers = {"/v1/platform/restore": [_on()]}
 	var bare := _account(api)
 	bare.identity = "missing"
 	bare.web_client = ""
@@ -228,6 +253,29 @@ func _run() -> void:
 	await blocked_service.start()
 	_check(blocked.restores.is_empty() and api.calls.is_empty(), "An unreadable identity blocks link and restore")
 	blocked_service.queue_free()
+
+	# Main leaves while the link request is in flight (a solo chapter opened): nothing stays stuck.
+	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)]}
+	api.hang_path = "/v1/platform/link"
+	var leaving_account := _account(api)
+	var leaving := _service(FakeProvider.new(), api, leaving_account, "leaving")
+	leaving.start()
+	for _frame in range(10): await process_frame
+	_check(leaving.busy and leaving.link_state == Service.LINK_CHECKING, "The link request is waiting on Main's api")
+	leaving.detach(leaving_account)
+	_check(not leaving.busy and leaving.link_state == Service.LINK_NONE and not leaving._running, "Main leaving releases the service at once")
+	api.hang_path = ""
+	api.answers = {"/v1/platform/link": [_ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": true})]}
+	leaving.attach(leaving_account)
+	for _frame in range(30): await process_frame
+	_check(leaving.linked(), "The next Main start picks the link up again")
+	leaving.queue_free()
+	# Cloud save does not need a friend link: a conflict still syncs the account's saved games.
+	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)], "/v1/platform/link": [_ok({"schema_version": 1, "provider": "play_games", "status": "conflict", "changed": false})]}
+	var unlinked := _service(FakeProvider.new(), api, _account(api), "cloud-unlinked")
+	await unlinked.start()
+	_check(unlinked.link_state == Service.LINK_CONFLICT and unlinked._cloud_allowed(), "Cloud save follows sign-in and the server's offer, not the friend link")
+	unlinked.queue_free()
 
 	# The platform account changes: nothing about the old one carries over.
 	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)], "/v1/platform/link": [_ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": true}), _ok({"schema_version": 1, "provider": "play_games", "status": "other_account", "changed": false})]}

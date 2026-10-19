@@ -53,6 +53,17 @@ func restore(provider: String, credential: Dictionary, pending: Dictionary) -> D
 		return {"ok": false, "code": "invalid_response", "status": 200}
 	return {"ok": true, "player_id": player}
 
+## On a phone with no identity: does the server offer restore for this provider? true, false, or
+## null when it cannot tell (offline, rate limited). One public request, no platform proof, no
+## Durable Object: an incomplete body is refused 400 while the provider is on; the path answers
+## 404 while only the other provider is on and 401 (as before) while both are off.
+func restore_offered(provider: String) -> Variant:
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "/v1/platform/restore", {"provider": provider})
+	var status := int(response.get("status", 0))
+	if status == 400 and str(response.get("code", "")) == "invalid_platform_request": return true
+	if status == 401 or status == 404: return false
+	return null
+
 ## A transport failure (status 0) reads "offline"; otherwise the server's code.
 static func _code(response: Dictionary) -> String:
 	if int(response.get("status", 0)) == 0: return "offline"
