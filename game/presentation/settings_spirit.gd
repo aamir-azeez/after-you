@@ -8,14 +8,26 @@ extends TextureRect
 ## calm Settings page draws that often and no more. Under Reduce motion one
 ## step settles it and nothing more is drawn. It runs only while it is in the
 ## tree, and the page frees it with everything else.
+##
+## A sideways drag on it turns it (presentation/kit/drag_turn.gd). While a
+## finger turns it, or it coasts or eases back, it is drawn every frame;
+## once it rests the idle rate above holds again. `turn.grabbed` fires when a
+## drag starts, for the page's light haptic tick.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
+const DragTurn = preload("res://presentation/kit/drag_turn.gd")
 ## The owner's rate for a resting spirit on a card.
 const IDLE_HZ := IslandWorld.IDLE_CARD_HZ
 const PEACH := Color("f4c38d")
 ## The view renders at twice the control's size, so it stays sharp on a phone.
 const RENDER_SCALE := 2.0
+## A three-quarter view, facing a little toward the title beside it: the
+## facing a turn starts from and returns to.
+const REST_YAW := deg_to_rad(28.0)
 
+var turn := DragTurn.new()
+## How many times the little view has been drawn.
+var drawn := 0
 var _view: SubViewport
 var _spirit: SpiritVisual
 var _clock := 0.0
@@ -25,9 +37,11 @@ var _settled := false
 func _init(reduced: bool = false) -> void:
 	name = "SettingsSpirit"
 	_reduced = reduced
+	turn.reduced = reduced
 	expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# The whole rect takes the drag: at least 54x75, past the 48 px target.
+	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size = Vector2(72, 100)
 
 func _ready() -> void:
@@ -56,9 +70,7 @@ func _ready() -> void:
 	_spirit.ground_ring.visible = false
 	_spirit.ground_shadow.visible = false
 	_spirit.set_expression_role("a")
-	# A three-quarter view, facing a little toward the title beside it.
-	_spirit.facing_target = deg_to_rad(28.0)
-	_spirit.facing.rotation.y = _spirit.facing_target
+	_face()
 	_view.add_child(_spirit)
 	var camera := Camera3D.new()
 	camera.fov = 24.0
@@ -72,20 +84,48 @@ func _ready() -> void:
 func set_reduced(reduced: bool) -> void:
 	if reduced == _reduced: return
 	_reduced = reduced
+	turn.reduced = reduced
 	_settled = false
 	set_process(true)
 
+func _gui_input(event: InputEvent) -> void:
+	if not turn.handle_event(event, size.x): return
+	accept_event()
+	if turn.busy(): set_process(true)
+
+func _notification(what: int) -> void:
+	# A finger lost with the page or the app's focus lets the spirit go.
+	match what:
+		NOTIFICATION_EXIT_TREE, NOTIFICATION_WM_WINDOW_FOCUS_OUT, NOTIFICATION_APPLICATION_FOCUS_OUT:
+			_let_go()
+		NOTIFICATION_VISIBILITY_CHANGED:
+			if not is_visible_in_tree(): _let_go()
+
+func _let_go() -> void:
+	if not turn.dragging(): return
+	turn.release()
+	set_process(true)
+
 func _process(delta: float) -> void:
-	if _settled:
-		set_process(false)
+	var turned := turn.advance(delta)
+	if _settled and not turned:
+		if not turn.busy(): set_process(false)
 		return
 	_clock += maxf(delta, 0.0)
-	if _clock < 1.0 / IDLE_HZ: return
+	if not turned and _clock < 1.0 / IDLE_HZ: return
 	_step(_clock)
 	_clock = 0.0
 
+func _face() -> void:
+	# advance_motion eases the facing toward its target, so both are written.
+	var yaw := wrapf(REST_YAW + turn.offset, -PI, PI)
+	_spirit.facing_target = yaw
+	_spirit.facing.rotation.y = yaw
+
 func _step(delta: float) -> void:
+	_face()
 	# advance_motion ignores a zero step; the first frame poses it at rest.
 	_spirit.advance_motion(Vector3.ZERO, maxf(delta, 0.001), _reduced)
 	_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+	drawn += 1
 	_settled = _reduced

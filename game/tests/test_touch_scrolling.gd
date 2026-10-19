@@ -556,6 +556,38 @@ func _settings_tiles(app: Node, viewport: SubViewport) -> void:
 	_check(tile.button_pressed == was and app.saves.data.settings == saved, "That drag never flips the tile")
 	_check((app.overlay.find_child("SettingsDone", true, false) as Control).get_global_rect() == done and (app.overlay.find_child("category_play", true, false) as Control).get_global_rect() == rail, "Done and the rail stay put while the panel scrolls")
 	await _rest(scroll)
+	await _settings_spirit(app, viewport, scroll)
+
+
+## The header spirit turns under a drag that starts on it, and that drag
+## never scrolls the panel or the rail; a drag that starts on the panel never
+## turns it. The rail and Done still answer afterwards.
+func _settings_spirit(app: Node, viewport: SubViewport, scroll: ScrollContainer) -> void:
+	var spirit := app.overlay.find_child("SettingsSpirit", true, false) as Control
+	var rail := app.overlay.find_child("SettingsRail", true, false) as ScrollContainer
+	_check(spirit != null and rail != null and scroll.scroll_vertical > 0, "The header spirit is on the page and the panel is part way down")
+	if spirit == null or rail == null: return
+	var rows := scroll.scroll_vertical
+	var rail_at := rail.scroll_vertical
+	var tile := scroll.find_child("long_0", true, false) as CheckButton
+	var was := tile.button_pressed
+	var center := spirit.get_global_rect().get_center()
+	await _drag(viewport, center, Vector2(90, 120))
+	_check(not is_zero_approx(spirit.turn.offset), "A touch drag that starts on the spirit turns it")
+	_check(not spirit.turn.dragging(), "and lets go on release")
+	_check(scroll.scroll_vertical == rows and rail.scroll_vertical == rail_at, "That drag scrolls neither the panel nor the rail")
+	_check(tile.button_pressed == was and app.settings_flow.showing("play"), "and acts on nothing else")
+	var turned: float = spirit.turn.offset
+	await _mouse_drag(viewport, center, Vector2(-60, 40))
+	_check(spirit.turn.offset != turned and scroll.scroll_vertical == rows, "A mouse drag on the spirit turns it too, without scrolling")
+	turned = spirit.turn.offset
+	await _drag(viewport, tile.get_global_rect().get_center(), Vector2(120, 110))
+	_check(spirit.turn.offset == turned, "A drag that starts on the panel does not turn the spirit")
+	await _rest(scroll)
+	await _tap(viewport, (app.overlay.find_child("category_everyday", true, false) as Control).get_global_rect().get_center())
+	_check(app.settings_flow.showing("everyday"), "The rail still opens a category after the spirit turns")
+	await _tap(viewport, (app.overlay.find_child("SettingsDone", true, false) as Control).get_global_rect().get_center())
+	_check(not app.settings_flow.is_open(), "Done still leaves Settings")
 
 
 func _licenses(app: Node, viewport: SubViewport) -> void:

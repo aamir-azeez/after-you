@@ -16,7 +16,8 @@ extends Node
 ## through home_requested, and reads Main only through this host contract (read
 ## at call time, so Main or a test can swap a service):
 ## - services: saves, _apply_settings, _play_store_enabled, identity_data, api,
-##   secrets, get_tree, soundscape (tap_haptic: a flipped tile's tick)
+##   secrets, get_tree, soundscape (tap_haptic: a flipped tile's tick and
+##   a turned spirit's)
 ## - screen: mode, running, overlay, ui, _clear_overlay, _back_button, _card,
 ##   _label, _toast
 ## - flows (flow to flow, through the rows table): notification_flow
@@ -186,9 +187,12 @@ func _header(compact: bool) -> Control:
 	header.name = "SettingsHeader"
 	header.add_theme_constant_override("separation", 18)
 	header.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_spirit = Spirit.new(_reduced_motion())
-	if compact: _spirit.custom_minimum_size = Vector2(54, 75)
-	header.add_child(_spirit)
+	var spirit := Spirit.new(_reduced_motion())
+	if compact: spirit.custom_minimum_size = Vector2(54, 75)
+	# Turning the spirit by hand starts with the usual light tick.
+	spirit.turn.grabbed.connect(_tap_haptic)
+	header.add_child(spirit)
+	_spirit = spirit
 	var titles := VBoxContainer.new()
 	titles.alignment = BoxContainer.ALIGNMENT_CENTER
 	titles.add_theme_constant_override("separation", 4)
@@ -438,7 +442,7 @@ func _change(row: Dictionary, value: Variant) -> void:
 	else:
 		if row.has("on_change"): row.on_change.call(value)
 		# A flipped tile answers with the usual light tick (when haptics are on).
-		if row.kind == Rows.TOGGLE and is_instance_valid(host.soundscape): host.soundscape.tap_haptic()
+		if row.kind == Rows.TOGGLE: _tap_haptic()
 	refresh()
 
 ## Puts every row on show, the rail's summaries, the reset and the spirit in
@@ -478,6 +482,10 @@ func refresh() -> void:
 	var reset: Dictionary = Rows.category(_categories, _category).get("reset", {})
 	if is_instance_valid(_reset): _reset.disabled = reset.is_empty() or _at_defaults(reset.rows)
 	if _spirit.has_method("set_reduced"): _spirit.set_reduced(_reduced_motion())
+
+## The light tick, when haptics are on (the soundscape checks).
+func _tap_haptic() -> void:
+	if is_instance_valid(host.soundscape): host.soundscape.tap_haptic()
 
 func _reduced_motion() -> bool:
 	return bool(host.saves.data.settings.get("reduced_motion", false))

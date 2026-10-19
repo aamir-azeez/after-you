@@ -18,6 +18,8 @@ extends SceneTree
 ## - Its rows follow the identity state while it is open.
 ## - Callers land in the right category, and Back goes where Done goes.
 ## - A damaged save still opens with every switch; Always skip waits starts off.
+## - The header spirit turns under a drag with one light tick, follows Reduce
+##   motion, and a tap on it ticks nothing (test_spirit_drag_turn has the rest).
 const Main=preload("res://main.gd")
 const Storage=preload("res://services/local_save.gd")
 const Rows=preload("res://presentation/settings_rows.gd")
@@ -28,6 +30,10 @@ const RoomsApi=preload("res://services/rooms_api.gd")
 const SAVED_SWITCHES := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status","skip_waits"]
 var checks := 0
 var failures := 0
+
+class Ticks extends Node:
+	var count := 0
+	func tap_haptic() -> void: count+=1
 
 func _initialize() -> void:
 	_run.call_deferred()
@@ -135,6 +141,7 @@ func _run() -> void:
 	_rows_table(app)
 	await _fake_row(app)
 	await _tiles(app)
+	await _spirit_turn(app)
 	await _long_page(app)
 	await _summaries(app)
 	await _redo_request_option(app,path)
@@ -254,6 +261,44 @@ func _tiles(app: Node) -> void:
 	await _click(app,tile)
 	await _click(app,reduce)
 	_check(tile.toggle_mode and tile.accessibility_name==PlayerCopy.SETTINGS_SKIP_WAITS,"The tile is one switch that reads out its name and state")
+
+## The header spirit: a drag on it ticks once through the soundscape (which
+## keeps the Haptics switch), a tap does not, and it follows Reduce motion.
+func _spirit_turn(app: Node) -> void:
+	app.settings_flow.show_settings(Flow.EVERYDAY)
+	await _settle()
+	var spirit := _control(app,"SettingsSpirit")
+	_check(spirit != null and spirit.mouse_filter==Control.MOUSE_FILTER_STOP,"The header spirit takes drags")
+	if spirit == null: return
+	var sound: Node = app.soundscape
+	var ticks := Ticks.new()
+	app.soundscape=ticks
+	var viewport: Viewport = app.get_viewport()
+	var start := spirit.get_global_rect().get_center()
+	for step: int in range(5):
+		if step==0 or step==4:
+			var button := InputEventMouseButton.new()
+			button.button_index=MOUSE_BUTTON_LEFT
+			button.pressed=step==0
+			button.position=start+Vector2(step*12,0)
+			viewport.push_input(button,true)
+		else:
+			var motion := InputEventMouseMotion.new()
+			motion.button_mask=MOUSE_BUTTON_MASK_LEFT
+			motion.position=start+Vector2(step*12,0)
+			viewport.push_input(motion,true)
+	await process_frame
+	_check(ticks.count==1 and spirit.turn.offset != 0.0,"A drag turns the spirit with one light tick")
+	_check(app.settings_flow.showing(Flow.EVERYDAY),"and changes nothing on the page")
+	await _click(app,spirit)
+	_check(ticks.count==1,"A tap on the spirit does not tick")
+	app.soundscape=sound
+	ticks.free()
+	var reduce := _control(app,"reduced_motion") as CheckButton
+	await _click(app,reduce)
+	_check(spirit.turn.reduced and spirit.turn.offset==0.0,"Reduce motion reaches the spirit and sends it home")
+	await _click(app,reduce)
+	_check(not spirit.turn.reduced,"and turning it off lets it coast again")
 
 ## A page with more than fits: only the panel scrolls, down; a fade shows
 ## while more is below.
