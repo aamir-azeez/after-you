@@ -1278,8 +1278,12 @@ func _ordinary_redo_available() -> bool:
 
 ## The redo rows on a card outside the room panel (pause, review).
 func _add_redo_action(card: VBoxContainer) -> void:
+	_add_redo_actions_to(card)
+
+## The redo actions this room or journal offers now, into any row or column.
+func _add_redo_actions_to(parent: Container) -> void:
 	var facts := _room_facts()
-	for id: String in RoomActions.REDO_ACTIONS: _add_room_action(card, id, facts)
+	for id: String in RoomActions.REDO_ACTIONS: _add_room_action(parent, id, facts)
 
 ## Whether this online room offers a redo button now. Reading it binds the
 ## room's redo client.
@@ -2219,7 +2223,7 @@ func _show_ending_card(ending: Dictionary) -> void:
 		line.add_theme_constant_override("separation", 10)
 		card.add_child(line)
 		for id: String in ids:
-			if id == "redo": _add_redo_action(line)
+			if id == "redo": _add_redo_actions_to(line)
 			elif actions.has(id): line.add_child(_action_button(id, actions[id]))
 		for button: Node in line.get_children():
 			if button is Control: (button as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
