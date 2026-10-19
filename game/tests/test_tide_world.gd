@@ -201,6 +201,8 @@ func _second_stage(level: Dictionary) -> void:
 	_check(world.terrain.name == "TurnOfTheTide" and world.displayed_stage_id == "slack-water", "The second stage builds")
 	var state: Dictionary = sim.snapshot()
 	world.present(state, true)
+	# The winch is no control here; the LOW history left it on slip.
+	_check(state.controls.winch == "slip" and world._ramps.slipway.rotation.z == 0.0, "In Slack Water the ramp lies where the first stage left the winch")
 	for lever: Dictionary in level.stages[1].levers:
 		_check(absf(world._physical_levers[lever.id].global_position.y - float(lever.height_cm) / 100.0 - 0.20) < 0.01, "A chain, bar, line, pin or key stands at its own stub's height: " + str(lever.id))
 	for id: String in ["boom-post-pad", "gate-post-pad", "punt-post-pad"]:
@@ -425,7 +427,7 @@ func _slip_ramp(world: Node3D, sim: Simulation) -> void:
 	_check(hinge != null and hinge.name == "SlipRamp_slipway" and hinge in world._static_keep(), "The slipway has a winch ramp the scenery fold leaves free to move")
 	if hinge == null: return
 	var kept: Dictionary = sim._mechanisms.controls.duplicate()
-	for tide: String in ["low", "high"]:
+	for tide: String in ["low", "half", "high"]:
 		for winch: String in ["stowed", "slip"]:
 			sim._mechanisms.controls.tide = tide
 			sim._mechanisms.controls.winch = winch
@@ -443,7 +445,11 @@ func _slip_ramp(world: Node3D, sim: Simulation) -> void:
 	_check(start == 0.0 and hinge.rotation.z > 0.0 and hinge.rotation.z < World.RAMP_RAISED, "A raised winch swings the ramp up over time (%.2f)" % hinge.rotation.z)
 	world._advance_water(5.0)
 	_check(is_equal_approx(hinge.rotation.z, World.RAMP_RAISED), "and it comes to rest raised")
+	# Reduce motion: the ramp is where the winch says at once, whatever the call.
 	world.reduced_motion = true
+	sim._mechanisms.controls.winch = "slip"
+	world.present(sim.snapshot(), false)
+	_check(world.reduced_motion and hinge.rotation.z == 0.0, "Under Reduce motion the ramp lowers at once")
 	sim._mechanisms.controls = kept
 	sim._refresh_routes()
 	world.present(sim.snapshot(), true)

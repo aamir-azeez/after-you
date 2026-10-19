@@ -1572,12 +1572,13 @@ func _aim_ramps(controls: Dictionary, immediate: bool) -> void:
 		var hinge: Node3D = _ramps[id]
 		var lowered := str(controls.get(str(RAMPS[id][0]), "")) == str(RAMPS[id][1])
 		hinge.set_meta("target", 0.0 if lowered else RAMP_RAISED)
-		hinge.set_meta("lowered", lowered)
 		if immediate or reduced_motion: hinge.rotation.z = float(hinge.get_meta("target"))
 
 func _swing_ramps(delta: float) -> void:
 	for hinge: Node3D in _ramps.values():
-		if is_instance_valid(hinge): hinge.rotation.z = move_toward(hinge.rotation.z, float(hinge.get_meta("target")), RAMP_RATE * maxf(delta, 0.0))
+		if not is_instance_valid(hinge): continue
+		var target := float(hinge.get_meta("target"))
+		if not is_equal_approx(hinge.rotation.z, target): hinge.rotation.z = move_toward(hinge.rotation.z, target, RAMP_RATE * maxf(delta, 0.0))
 
 func _float_boats(level: float) -> void:
 	for boat: Node3D in _boats:
