@@ -1,4 +1,5 @@
 import { ApiError, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, inviteRoomId, newInvite, object, parseInvite, readBounded, text, unwrap, type Outcome } from "../protocol";
+import { platformCapability } from "../platform-routes";
 import { bytes, json, bearerDigest } from "../http";
 import { flags } from "../flags";
 import { roomLinkVersion, type RoomLink } from "../room-links";
@@ -103,6 +104,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     // Only clients that play hard rooms ask; the flag decides whether they may host one.
     ...(hardWanted(request) && flags.hardMode(env) ? { hard_mode_version: 1 } : {}),
     ...liveCapability(request, env),
+    ...platformCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {

@@ -39,7 +39,9 @@
     "PHOTO_TRANSFER_ENABLED": "false",
     "FINISHED_ROOM_LEAVE_ENABLED": "false",
     "ROOM_INDEX_ENABLED": "false",
-    "LIVE_CONNECTION_ENABLED": "false"
+    "LIVE_CONNECTION_ENABLED": "false",
+    "PLAY_GAMES_ENABLED": "false",
+    "GAME_CENTER_ENABLED": "false"
   },
   "durable_objects": {
     "bindings": [
@@ -68,7 +70,8 @@
       {
         "name": "PHOTO_TRANSFER_BUDGET",
         "class_name": "PhotoTransferBudget"
-      }
+      },
+      { "name": "PLATFORM_LINKS", "class_name": "PlatformLinks" }
     ]
   },
   "migrations": [
@@ -93,7 +96,8 @@
       ]
     },
     { "tag": "play-safety-v1", "new_sqlite_classes": ["SafetyProfile", "SafetyInbox"] },
-    { "tag": "friend-room-events-v1", "new_sqlite_classes": ["FriendRoomEvents"] }
+    { "tag": "friend-room-events-v1", "new_sqlite_classes": ["FriendRoomEvents"] },
+    { "tag": "platform-links-v1", "new_sqlite_classes": ["PlatformLinks"] }
   ],
   "ratelimits": [
     { "name": "TESTER_CODE_LIMITER", "namespace_id": "583705", "simple": { "limit": 5, "period": 60 } },
