@@ -1918,6 +1918,10 @@ func _advance_drown_beat() -> void:
 func _show_ending_beat() -> void:
 	if _ending.is_empty(): return
 	hud.visible = false
+	# Whatever the overlay held before the turn (its intro card) goes first.
+	for child: Node in overlay.get_children():
+		overlay.remove_child(child)
+		child.queue_free()
 	overlay.visible = true
 	var beat := Control.new()
 	beat.name = "EndingBeat"

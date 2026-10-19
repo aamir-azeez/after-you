@@ -27,7 +27,8 @@ func _draw() -> void:
 	draw_circle(center, radius * 0.93, POOL)
 	# The head about 1.25 radii wide, a little low so the water takes its chin.
 	var scale := radius * 0.62 / (Art.Look.HEAD_HALF.x * Art.UNIT)
-	var at := Transform2D(0.0, Vector2(scale, scale), 0.0, center + Vector2(0.0, radius * 0.08) - Art.HEAD * scale)
+	# Drawn as a face alone, the head is centred on the transform's origin.
+	var at := Transform2D(0.0, Vector2(scale, scale), 0.0, center + Vector2(0.0, radius * 0.08))
 	Art.spirit(self, at, {"color": str(_ending.get("color", "peach")), "eyes": str(_ending.get("badge", "dot"))}, true)
 	if bool(_ending.get("water", false)):
 		var level := center.y + radius * 0.30
