@@ -384,11 +384,13 @@ func _check_global_rng() -> void:
 	var probe := Tuned.new()
 	root.add_child(probe)
 	probe.configure({"sound": true, "haptics": false})
+	probe.calling = "birds"
 	for i in range(40):
 		probe.play_footstep()
 		probe.consume_events(["seed_caught", "seed_missed", "seed_landed", "island_bloomed"], false)
 		probe.clock += 7000 * (i % 2)
 		probe.play_reunion()
+		probe._on_call_due()
 	var after: Array[int] = []
 	for i in range(8):
 		after.append(randi())
@@ -403,6 +405,86 @@ func _check_cue_table() -> void:
 	for key: String in SoundCues.LOOPS:
 		var looped := Soundscape._looping(SoundCues.LOOPS[key].clip)
 		_check(looped.loop_mode == AudioStreamWAV.LOOP_FORWARD and looped.loop_end == roundi(looped.get_length() * looped.mix_rate), "Loop %s repeats across its whole length" % key)
+
+## Bird calls: never the same variant twice running, each pitch inside its
+## span and moved from the last, every gap inside the table's range, and the
+## same seed gives the same calls.
+func _check_call_picks() -> void:
+	var spec: Dictionary = SoundCues.CALLS.birds
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5150
+	var last := -1
+	var pitch := Soundscape.NO_PITCH
+	var repeated := 0
+	var outside := 0
+	var still := 0
+	var used := {}
+	var picks: Array = []
+	for i in range(2000):
+		var pick := Soundscape.next_call(spec, rng, last, pitch)
+		if pick.variant == last: repeated += 1
+		if pick.gap < spec.gap.x or pick.gap > spec.gap.y or pick.gain < spec.gain.x or pick.gain > spec.gain.y or pick.pitch < spec.pitch.x - 0.001 or pick.pitch > spec.pitch.y + 0.001: outside += 1
+		if pitch != Soundscape.NO_PITCH and absf(pick.pitch - pitch) < float(spec.min_move) - 0.001: still += 1
+		used[pick.variant] = true
+		last = pick.variant
+		pitch = pick.pitch
+		picks.append(pick)
+	_check(repeated == 0, "Two bird calls in a row never use the same variant")
+	_check(outside == 0, "Every bird call's gap, gain and pitch fall inside the table's spans")
+	_check(still == 0, "Each bird call moves its pitch from the last one")
+	_check(used.size() == spec.variants.size(), "Every bird variant gets its turn")
+	rng.seed = 5150
+	var again := Soundscape.next_call(spec, rng, -1, Soundscape.NO_PITCH)
+	_check(again == picks[0], "The same seed gives the same bird calls")
+	var lone := {"variants": [{"clip": SoundCues.BIRDS_1}], "pitch": Vector2.ZERO, "gain": Vector2.ZERO, "gap": Vector2(1.0, 1.0), "min_move": 0.0}
+	_check(Soundscape.next_call(lone, rng, 0, 0.0).variant == 0, "A set with one variant still sings it")
+
+## Birds sing one call at a time on their own voice, wait out the call and
+## its gap, and stop with the sound, the background or the hidden world.
+func _check_calls() -> void:
+	var probe := _tuned(97)
+	var world := FakeWorld.new()
+	root.add_child(world)
+	var spec: Dictionary = SoundCues.CALLS.birds
+	probe.listen_to(world, "home")
+	_check(probe._call_timer.time_left >= spec.first.x - 0.05 and probe._call_timer.time_left <= spec.first.y, "Home's first bird waits inside its first span")
+	_check(not probe.call_voice.playing, "No bird sings the moment Home shows")
+	var last_stream: AudioStream = null
+	var repeats := 0
+	var gaps_inside := true
+	for i in range(30):
+		probe._on_call_due()
+		var voice := probe.call_voice
+		if voice.stream == last_stream: repeats += 1
+		last_stream = voice.stream
+		var gap := probe._call_timer.wait_time - voice.stream.get_length() / voice.pitch_scale
+		if gap < spec.gap.x - 0.01 or gap > spec.gap.y + 0.01: gaps_inside = false
+	_check(repeats == 0, "Consecutive bird calls on Home never play the same clip")
+	_check(gaps_inside, "Each bird call waits for its own end and then a gap inside the table's range")
+	_check(probe.call_voice.playing and probe.call_voice.volume_db <= float(spec.db) and probe.call_voice.pitch_scale < 1.0, "A bird sings below the table's level and below its recorded pitch")
+	probe._sync_loops()
+	_check(probe.call_voice.playing and not probe._call_timer.is_stopped(), "The regular world check never restarts the birds")
+	world.visible = false
+	probe._sync_loops()
+	_check(probe.calling.is_empty() and probe._call_timer.is_stopped(), "A hidden Home stops its birds")
+	# A long frame of checks before this would fire the timer before the fade's step.
+	await process_frame
+	await create_timer(Soundscape.LOOP_FADE + 0.1).timeout
+	_check(not probe.call_voice.playing, "A bird mid-call fades out when Home hides")
+	world.visible = true
+	probe._sync_loops()
+	_check(probe.calling == "birds" and not probe.call_voice.playing and probe._call_timer.time_left >= spec.first.x - 0.05, "Showing Home again waits before the first bird")
+	probe._on_call_due()
+	probe.configure({"sound": false, "haptics": false})
+	_check(not probe.call_voice.playing and probe._call_timer.is_stopped() and probe.calling.is_empty(), "Sound off silences a bird at once")
+	probe._on_call_due()
+	_check(not probe.call_voice.playing, "No bird sings while sound is off")
+	probe.configure({"sound": true, "haptics": false})
+	probe._on_call_due()
+	probe.set_backgrounded(true)
+	_check(not probe.call_voice.playing and probe._call_timer.is_stopped(), "Backgrounding silences the birds")
+	probe.queue_free()
+	world.queue_free()
 
 ## A bell rings out on its own voice; a hitch's pile of cues is thinned to a
 ## few per frame without changing the pitch of any cue after it.
@@ -436,10 +518,10 @@ func _check_loops() -> void:
 	var world := FakeWorld.new()
 	root.add_child(world)
 	probe.listen_to(world, "home")
-	_check(_loop_playing(probe, "birds"), "Home plays its birds while its world is on screen")
+	_check(probe.calling == "birds" and not probe._call_timer.is_stopped() and _all_loops_silent(probe), "Home sings its bird calls while its world is on screen, on no bed or loop voice")
 	probe.begin_turn("turn-of-the-tide@1", "set-the-tide")
 	await create_timer(0.2).timeout
-	_check(_loop_playing(probe, "water_near") and not _loop_playing(probe, "birds"), "A chapter swaps the bed for its own water")
+	_check(_loop_playing(probe, "water_near") and probe.calling.is_empty() and probe._call_timer.is_stopped(), "A chapter swaps the birds for its own water")
 	world.mechanism_moving.emit("bucket", "bucket", -1)
 	var reel := _loop_voice(probe, "reel")
 	_check(reel != null and is_equal_approx(reel.pitch_scale, 1.0), "A lowering bucket turns the shared reel at its own pitch")
@@ -580,6 +662,8 @@ func _run() -> void:
 	_variation()
 	_check_cue_table()
 	_check_long_voice_and_cap()
+	_check_call_picks()
+	await _check_calls()
 	await _check_loops()
 	_check_reduced_motion()
 	sound.queue_free()

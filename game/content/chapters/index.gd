@@ -45,7 +45,7 @@ const OPTIONAL := {
 	## {selector control id: [its values, low to high]}: controls whose value is
 	## a water level. Turning one plays the water rising or falling.
 	"water_levels": {},
-	## Background loops (services/sound_cues.gd LOOPS) under the shared ambience
+	## Background layers (services/sound_cues.gd LOOPS or CALLS) under the shared ambience
 	## while this chapter's world is on screen.
 	"beds": [],
 	## Why a crossing the live spirit has done its part for is still shut,

@@ -1,4 +1,4 @@
-"""Generate After You's synthesised world cues: bell, well plunk, reel, water and birds.
+"""Generate After You's synthesised world cues: bell, well plunk, reel, water and bird calls.
 
 Run with Python 3.11+, standard library only. No recordings, samples or network:
     python scripts/generate_cues.py            # rebuild every cue, refuse any drift
@@ -27,16 +27,26 @@ PEAK_DBFS = -10.0
 
 # ---- building blocks ----------------------------------------------------------
 class Biquad:
-    """RBJ cookbook filter: "lp", "hp" or "bp" (constant 0 dB peak gain)."""
+    """RBJ cookbook filter: "lp", "hp", "bp" (constant 0 dB peak gain) or
+    "hs", a high shelf of gain_db above freq."""
 
-    def __init__(self, kind: str, freq: float, q: float = 0.707):
-        self.kind, self.q = kind, q
+    def __init__(self, kind: str, freq: float, q: float = 0.707, gain_db: float = 0.0):
+        self.kind, self.q, self.gain_db = kind, q, gain_db
         self.x1 = self.x2 = self.y1 = self.y2 = 0.0
         self.set(freq)
 
     def set(self, freq: float) -> None:
         w = 2 * math.pi * min(freq, RATE * 0.45) / RATE
         cw, alpha = math.cos(w), math.sin(w) / (2 * self.q)
+        if self.kind == "hs":
+            amp = 10 ** (self.gain_db / 40)
+            root = 2 * math.sqrt(amp) * alpha
+            b = (amp * ((amp + 1) + (amp - 1) * cw + root), -2 * amp * ((amp - 1) + (amp + 1) * cw),
+                 amp * ((amp + 1) + (amp - 1) * cw - root))
+            a0 = (amp + 1) - (amp - 1) * cw + root
+            self.b = [x / a0 for x in b]
+            self.a = (2 * ((amp - 1) - (amp + 1) * cw) / a0, ((amp + 1) - (amp - 1) * cw - root) / a0)
+            return
         if self.kind == "lp":
             b = ((1 - cw) / 2, 1 - cw, (1 - cw) / 2)
         elif self.kind == "hp":
@@ -224,35 +234,50 @@ def spout() -> list[float]:
     return seamless(render, 4.0, 0.25)
 
 
-def birds() -> list[float]:
-    """A garden songbird's short whistled phrases and a faint second bird.
-    Every call ends before the loop point, so it repeats without a seam."""
-    seconds = 8.0
-    out, rng = silence(seconds), random.Random(31)
-
-    def note(f0: float, f1: float, dur: float, trill: float = 0.0) -> list[float]:
-        return tone(lambda t: f0 + (f1 - f0) * (t / dur) + (150 * math.sin(2 * math.pi * trill * t) if trill else 0.0),
-                    dur, lambda t: math.sin(math.pi * min(t / dur, 1.0)) ** 1.5, (1.0, 0.08))
-
-    for start in (0.5, 3.3, 5.9):
-        t = start
+def bird_phrases() -> list[list[tuple]]:
+    """The garden songbird the owner chose (preview 03a): three short whistled
+    phrases and a faint second bird's "tsip" triple, as notes
+    (at, f0, f1, dur, trill, gain) from the start of each phrase. The seeded
+    draws run in 03a's order, so every note is 03a's own."""
+    rng, phrases = random.Random(31), []
+    for _ in range(3):
+        notes, t = [], 0.0
         for _ in range(rng.randint(4, 6)):
             dur = rng.uniform(0.06, 0.13)
             f0 = rng.uniform(2700, 4000)
-            overlay(out, note(f0, f0 * rng.choice((0.8, 0.9, 1.15, 1.25)), dur, rng.choice((0.0, 0.0, 38.0))), t, rng.uniform(0.6, 1.0))
+            f1 = f0 * rng.choice((0.8, 0.9, 1.15, 1.25))
+            trill = rng.choice((0.0, 0.0, 38.0))
+            notes.append((t, f0, f1, dur, trill, rng.uniform(0.6, 1.0)))
             t += dur + rng.uniform(0.03, 0.07)
-    for start in (2.2, 7.0):
-        for k in range(3):
-            overlay(out, note(5200, 4300, 0.035), start + k * 0.09, 0.25)
+        phrases.append(notes)
+    phrases.append([(k * 0.09, 5200.0, 4300.0, 0.035, 0.0, 0.25) for k in range(3)])
+    return phrases
+
+
+def bird_call(phrase: int) -> list[float]:
+    """One call of the Home birds, alone: the soundscape spaces the calls out
+    and picks which one sings (game/services/sound_cues.gd CALLS). Softer than
+    03a's loop: a -7 dB shelf above 3 kHz takes the edge off the whistles and
+    the far bird's high "tsip", and 12 ms fades start and end it at zero."""
+    notes = bird_phrases()[phrase]
+    lead, tail = 0.012, 0.16
+
+    def note(f0: float, f1: float, dur: float, trill: float) -> list[float]:
+        return tone(lambda t: f0 + (f1 - f0) * (t / dur) + (150 * math.sin(2 * math.pi * trill * t) if trill else 0.0),
+                    dur, lambda t: math.sin(math.pi * min(t / dur, 1.0)) ** 1.5, (1.0, 0.08))
+
+    out = silence(lead + max(at + dur for at, _f0, _f1, dur, _tr, _g in notes) + tail)
+    for at, f0, f1, dur, trill, gain in notes:
+        overlay(out, note(f0, f1, dur, trill), lead + at, gain)
     # Distance: soften the top and add two faint ground reflections.
-    lp = Biquad("lp", 6500)
-    dry = [lp(s) for s in out]
+    lp, shelf = Biquad("lp", 6500), Biquad("hs", 3000, 0.6, -7.0)
+    dry = [shelf(lp(s)) for s in out]
     wet = dry[:]
     for delay, gain in ((0.031, 0.22), (0.067, 0.12)):
         d = int(delay * RATE)
         for i in range(d, len(wet)):
             wet[i] += gain * dry[i - d]
-    return normalise(wet)
+    return one_shot(wet, 12.0)
 
 
 # File name (in game/assets/audio) -> recipe. Keep in step with sound_cues.gd.
@@ -263,10 +288,13 @@ CUES = {
     "water-lap": water_lap,
     "water-surge": water_surge,
     "spout": spout,
-    "birds": birds,
+    "birds-1": lambda: bird_call(0),
+    "birds-2": lambda: bird_call(1),
+    "birds-3": lambda: bird_call(2),
+    "birds-far": lambda: bird_call(3),
 }
 # Files that loop; scripts/test_cues.py checks their seams.
-LOOPS = ("reel", "water-lap", "spout", "birds")
+LOOPS = ("reel", "water-lap", "spout")
 APPROVED = {
     "bell": "5c538dd5a486f328eb493e6d36d1c8be6b4ed46b6ffdb54881fd2b8d62184f32",
     "well-plunk": "782793645a1bf8d2a5f794666868655be34b5b27b4fe9941c67ba5e43a996fe5",
@@ -274,7 +302,10 @@ APPROVED = {
     "water-lap": "6df818f8b9fd6ed0649932e6e8e8320e2bb025a07fd59c32a6e348a7b5c37cef",
     "water-surge": "285300afaef13c4f5b5c0fea874894f09db4beee577c897007fb95de6ad18138",
     "spout": "d984c4e35b0b6c01028cf2a573fbcce6d9a2700bc24dc126e6e18401b64a267a",
-    "birds": "16b1b6758bf6c085bf330ae2741e725232404bdceda7377bc1b0ed153ced2203",
+    "birds-1": "81d1f24f084dd1790968eed93f0abd911b8556d6427ec6c1f77b9dc9fde6d143",
+    "birds-2": "5ef55ebcc385d8cd192de5ca1a96c31ac1f690300fbdf5575e629f23044ca512",
+    "birds-3": "f274b882c39be16a966323a42cb34e13b233f23a74758af78ab2d50120208b8e",
+    "birds-far": "89632db35b3ff1dd685912bbd7c47ae8c8d39af44a3437abeef4ea1f1014f44b",
 }
 
 

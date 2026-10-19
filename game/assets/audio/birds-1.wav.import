@@ -2,13 +2,13 @@
 
 importer="wav"
 type="AudioStreamWAV"
-uid="uid://s6tkuphls8hi"
-path="res://.godot/imported/birds.wav-b0649c75653f9dc6f532c1ce14d20f14.sample"
+uid="uid://cpmyyf1o6v1aj"
+path="res://.godot/imported/birds-1.wav-601f19a91a6b272b495d778a172e840b.sample"
 
 [deps]
 
-source_file="res://assets/audio/birds.wav"
-dest_files=["res://.godot/imported/birds.wav-b0649c75653f9dc6f532c1ce14d20f14.sample"]
+source_file="res://assets/audio/birds-1.wav"
+dest_files=["res://.godot/imported/birds-1.wav-601f19a91a6b272b495d778a172e840b.sample"]
 
 [params]
 

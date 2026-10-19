@@ -36,7 +36,8 @@ const SECOND_SPIRIT_EVENTS := ["seed_caught", "island_bloomed", "garden_bloomed"
 ## so either spirit's use sounds the same; other events keep the live role.
 
 ## Short-cue voices, loop voices (moving mechanisms) and bed layers. A full pool
-## drops the newest loop instead of cutting one that plays.
+## drops the newest loop instead of cutting one that plays. A place's calls
+## (birds) share one more voice, so two calls never overlap.
 const CUE_VOICES := 5
 const LOOP_VOICES := 3
 const BED_VOICES := 2
@@ -61,7 +62,8 @@ const REUNION: AudioStream = SoundCues.REUNION.clip
 var step_voices: Array[AudioStreamPlayer] = []
 var next_step := 0
 var reunion_voice: AudioStreamPlayer
-# Private generator for Home meetups only; never reads or advances the global RNG.
+# Private generator for Home meetups and ambient calls; never reads or advances
+# the global RNG.
 var variation := RandomNumberGenerator.new()
 var reunion_pitch := NO_PITCH
 # The turn whose events are playing, and its per-spirit identity state.
@@ -93,6 +95,13 @@ var _world: Node3D
 ## The place whose bed plays outside a recorded turn ("home" on Home).
 var idle_place := ""
 var _world_check: Timer
+## The calls (SoundCues.CALLS) of the place on screen, the one voice they sing
+## on, the timer to the next call, and the last call's variant and pitch.
+var call_voice: AudioStreamPlayer
+var calling := ""
+var _call_timer: Timer
+var _last_call := -1
+var _call_pitch := NO_PITCH
 
 func _init() -> void:
 	variation.randomize()
@@ -135,6 +144,12 @@ func _ready() -> void:
 	_world_check.wait_time = WORLD_CHECK_SECONDS
 	_world_check.timeout.connect(_sync_loops)
 	add_child(_world_check)
+	call_voice = AudioStreamPlayer.new()
+	add_child(call_voice)
+	_call_timer = Timer.new()
+	_call_timer.one_shot = true
+	_call_timer.timeout.connect(_on_call_due)
+	add_child(_call_timer)
 	_update_ambience()
 
 ## A looping copy of an imported clip, across its full length.
@@ -348,6 +363,7 @@ func _stop_effects() -> void:
 	if is_instance_valid(long_voice): long_voice.stop()
 	for voice in step_voices:
 		voice.stop()
+	if is_instance_valid(call_voice): call_voice.stop()
 
 ## In a turn the n-th meetup plays a fixed pitch; on Home it is random. Either
 ## way it slides at least REUNION_MIN_MOVE away from the last meetup.
@@ -399,13 +415,17 @@ func _sync_loops() -> void:
 	var audible := sound_enabled and not backgrounded and is_instance_valid(_world) and _world.is_visible_in_tree()
 	var moving := audible and _world.is_processing()
 	var wanted := {}
+	var calls := ""
 	if audible:
-		for loop: String in SoundCues.beds(place()): wanted["bed:" + loop] = {"loop": loop, "pitch": 0.0, "bed": true}
+		for bed: String in SoundCues.beds(place()):
+			if SoundCues.CALLS.has(bed): calls = bed
+			else: wanted["bed:" + bed] = {"loop": bed, "pitch": 0.0, "bed": true}
 	if moving:
 		for id: String in _motions:
 			var motion: Dictionary = SoundCues.MOTION[_motions[id].kind]
 			wanted[id] = {"loop": motion.loop, "pitch": float(motion.pitch) + (float(motion.rise) if int(_motions[id].direction) > 0 else 0.0), "bed": false}
 	var instant := not sound_enabled or backgrounded
+	_set_calls(calls, instant)
 	for id: String in _sounding.keys():
 		if not wanted.has(id): _release(_sounding[id], id, instant)
 	for id: String in wanted:
@@ -426,6 +446,49 @@ func _sync_loops() -> void:
 	if is_instance_valid(_world_check) and _world_check.is_inside_tree():
 		if watch and _world_check.is_stopped(): _world_check.start()
 		elif not watch and not _world_check.is_stopped(): _world_check.stop()
+
+# --- Calls: sparse one-shots over a bed (SoundCues.CALLS) ---------------------
+
+## Starts or stops the place's calls. A new set waits its `first` span before
+## singing; leaving fades a call that is still singing.
+func _set_calls(key: String, instant: bool) -> void:
+	if key == calling: return
+	calling = key
+	if is_instance_valid(_call_timer): _call_timer.stop()
+	if is_instance_valid(call_voice) and call_voice.playing: _release(call_voice, "", instant)
+	_last_call = -1
+	_call_pitch = NO_PITCH
+	if key.is_empty() or not is_instance_valid(_call_timer) or not _call_timer.is_inside_tree(): return
+	var first: Vector2 = SoundCues.CALLS[key].first
+	_call_timer.start(variation.randf_range(first.x, first.y))
+
+## Sings the next call and sets the timer for the one after it.
+func _on_call_due() -> void:
+	if calling.is_empty() or not sound_enabled or backgrounded or not is_instance_valid(call_voice): return
+	var spec: Dictionary = SoundCues.CALLS[calling]
+	var pick := next_call(spec, variation, _last_call, _call_pitch)
+	_last_call = pick.variant
+	_call_pitch = pick.pitch
+	var variant: Dictionary = spec.variants[pick.variant]
+	_kill_fade(call_voice)
+	call_voice.stream = variant.clip
+	call_voice.pitch_scale = semitones_to_pitch(pick.pitch + float(variant.get("pitch", 0.0)))
+	call_voice.volume_db = float(spec.db) + float(variant.get("db", 0.0)) + pick.gain
+	call_voice.play()
+	_call_timer.start(variant.clip.get_length() / call_voice.pitch_scale + pick.gap)
+
+## The next call of a set: a variant other than `last`, a pitch at least
+## min_move from `last_pitch`, a gain, and the quiet gap after it ends. Draws
+## the same four numbers from `rng` every time.
+static func next_call(spec: Dictionary, rng: RandomNumberGenerator, last: int, last_pitch: float) -> Dictionary:
+	var count: int = spec.variants.size()
+	var repeat_free := last >= 0 and last < count and count > 1
+	var variant := rng.randi_range(0, count - (2 if repeat_free else 1))
+	if repeat_free and variant >= last: variant += 1
+	var pitch := spread_pitch(spec.pitch, last_pitch, float(spec.min_move), rng.randf())
+	var gain := rng.randf_range(spec.gain.x, spec.gain.y)
+	var gap := rng.randf_range(spec.gap.x, spec.gap.y)
+	return {"variant": variant, "pitch": pitch, "gain": gain, "gap": gap}
 
 func _free_voice(pool: Array[AudioStreamPlayer]) -> AudioStreamPlayer:
 	for voice: AudioStreamPlayer in pool:

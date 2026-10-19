@@ -1,6 +1,6 @@
 extends RefCounted
 ## Every sound the game plays, as data: cues, footsteps, the meetup greeting,
-## loops and beds, with their levels, pitch spans and haptics. Each sound is
+## loops, calls and beds, with their levels, pitch spans and haptics. Each sound is
 ## one entry here plus its asset; the synthesised assets come from
 ## scripts/generate_cues.py. Which simulation event plays which cue is
 ## services/chapter_sound_map.gd. The soundscape (services/soundscape.gd)
@@ -23,7 +23,10 @@ const WATER_SURGE := preload("res://assets/audio/water-surge.wav")
 const REEL := preload("res://assets/audio/reel.wav")
 const SPOUT := preload("res://assets/audio/spout.wav")
 const WATER_LAP := preload("res://assets/audio/water-lap.wav")
-const BIRDS := preload("res://assets/audio/birds.wav")
+const BIRDS_1 := preload("res://assets/audio/birds-1.wav")
+const BIRDS_2 := preload("res://assets/audio/birds-2.wav")
+const BIRDS_3 := preload("res://assets/audio/birds-3.wav")
+const BIRDS_FAR := preload("res://assets/audio/birds-far.wav")
 const AMBIENCE := preload("res://assets/audio/ambience.wav")
 const FOOTSTEP_1 := preload("res://assets/audio/footstep-1.wav")
 const FOOTSTEP_2 := preload("res://assets/audio/footstep-2.wav")
@@ -87,7 +90,28 @@ const LOOPS := {
 	"spout": {"clip": SPOUT, "db": -24.0},
 	"water_near": {"clip": WATER_LAP, "db": -30.0},
 	"water_far": {"clip": WATER_LAP, "db": -36.0},
-	"birds": {"clip": BIRDS, "db": -30.0},
+}
+
+## Sparse calls over a place's bed: one-shots on the one call voice, never a
+## loop. Each call is a variant other than the last, pitched inside `pitch`
+## (semitones, plus the variant's own "pitch") at least `min_move` from the
+## last call, at `db` plus the variant's "db" plus a gain inside `gain`. The
+## next call waits for this one to end and then a gap inside `gap` (seconds);
+## the first waits inside `first` once the place shows. Calls are ambience,
+## not recorded events, so they draw on the soundscape's private random
+## generator and never touch a turn's cue identities.
+const CALLS := {
+	# The garden songbird the owner chose (03a): its three phrases and the far
+	# bird's tsip. -39 dB keeps each call about 10 dB under the old loop and
+	# the calm bed; the pitch span lowers it into a softer register.
+	"birds": {
+		"variants": [
+			{"clip": BIRDS_1}, {"clip": BIRDS_2}, {"clip": BIRDS_3},
+			{"clip": BIRDS_FAR, "db": -12.0, "pitch": -2.0},
+		],
+		"db": -39.0, "gain": Vector2(-2.0, 0.0), "pitch": Vector2(-4.0, -2.0), "min_move": 0.75,
+		"gap": Vector2(6.0, 14.0), "first": Vector2(2.0, 8.0),
+	},
 }
 
 ## A world mechanism that moves (island_world.gd mechanism_moving) -> its
@@ -102,8 +126,8 @@ const MOTION := {
 	"spout": {"loop": "spout", "pitch": 0.0, "rise": 0.0},
 }
 
-## Background layers under the shared ambience, per place that is not a
-## registered chapter: "home" for the Home island, and the Lighthouse @1. A
+## Background layers under the shared ambience (a LOOPS or a CALLS name), per
+## place that is not a registered chapter: "home" for the Home island, and the Lighthouse @1. A
 ## registered chapter's are its descriptor's "beds" (content/chapters/index.gd).
 ## They play only while that world is on screen.
 const BEDS := {
@@ -111,7 +135,11 @@ const BEDS := {
 	"home": ["birds"],
 }
 
-## The bed loops of a place: a chapter key or "home".
+## True for a name a bed may list: a loop, or a set of calls.
+static func is_bed(name: String) -> bool:
+	return LOOPS.has(name) or CALLS.has(name)
+
+## The bed layers of a place: a chapter key or "home".
 static func beds(place: String) -> Array:
 	var chapter := Index.data(place)
 	return chapter.beds if not chapter.is_empty() else BEDS.get(place, NO_BEDS)
@@ -127,9 +155,28 @@ static func problems() -> Array[String]:
 		if cue.has("gain") and not (cue.gain is Vector2): found.append("Cue %s has a bad gain span" % key)
 	for key: String in LOOPS:
 		if not (LOOPS[key].get("clip") is AudioStreamWAV): found.append("Loop %s has no WAV clip" % key)
+	for key: String in CALLS:
+		found.append_array(call_problems(key, CALLS[key]))
 	for kind: String in MOTION:
 		if not LOOPS.has(MOTION[kind].get("loop", "")): found.append("Motion %s names an unknown loop" % kind)
 	for place: String in BEDS:
-		for loop: String in BEDS[place]:
-			if not LOOPS.has(loop): found.append("Bed %s names an unknown loop %s" % [place, loop])
+		var calls := 0
+		for bed: String in BEDS[place]:
+			if not is_bed(bed): found.append("Bed %s names an unknown loop or calls %s" % [place, bed])
+			if CALLS.has(bed): calls += 1
+		if calls > 1: found.append("Bed %s has more than one set of calls for the one call voice" % place)
+	return found
+
+static func call_problems(key: String, spec: Dictionary) -> Array[String]:
+	var found: Array[String] = []
+	var variants: Variant = spec.get("variants")
+	if not (variants is Array) or variants.size() < 2: found.append("Calls %s need two variants or more" % key)
+	else:
+		for variant: Variant in variants:
+			if not (variant is Dictionary and variant.get("clip") is AudioStreamWAV): found.append("Calls %s have a variant with no WAV clip" % key)
+	for span: String in ["gain", "pitch", "gap", "first"]:
+		if not (spec.get(span) is Vector2) or spec[span].x > spec[span].y: found.append("Calls %s have a bad %s span" % [key, span])
+	if spec.get("gap") is Vector2 and spec.gap.x <= 0.0: found.append("Calls %s need a gap between calls" % key)
+	if not (spec.get("db") is float): found.append("Calls %s have no level" % key)
+	if not (spec.get("min_move") is float) or spec.min_move < 0.0: found.append("Calls %s have no pitch move" % key)
 	return found
