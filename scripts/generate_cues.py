@@ -148,6 +148,16 @@ def bell() -> list[float]:
     return one_shot(out)
 
 
+def pop() -> list[float]:
+    """A soft bubble pop for an end-of-run reaction: a little rounded thump and a
+    quick, gently rising plink, done in under a fifth of a second."""
+    out = silence(0.2)
+    overlay(out, tone(lambda t: 210.0, 0.05, lambda t: soft_onset(t, 0.004) * math.exp(-t / 0.012)), 0.0, 0.3)
+    overlay(out, tone(lambda t: 640.0 * (1.0 + 0.8 * min(t / 0.05, 1.0) ** 1.4), 0.15,
+                      lambda t: soft_onset(t, 0.003) * math.exp(-t / 0.028), (1.0, 0.18)), 0.006, 1.0)
+    return one_shot(out)
+
+
 def well_plunk() -> list[float]:
     """A soft, rounded plunk into the well: low body, one big bubble, two small ones."""
     out = silence(0.6)
@@ -284,6 +294,7 @@ def bird_call(phrase: int) -> list[float]:
 CUES = {
     "bell": bell,
     "well-plunk": well_plunk,
+    "pop": pop,
     "reel": reel,
     "water-lap": water_lap,
     "water-surge": water_surge,
@@ -298,6 +309,7 @@ LOOPS = ("reel", "water-lap", "spout")
 APPROVED = {
     "bell": "5c538dd5a486f328eb493e6d36d1c8be6b4ed46b6ffdb54881fd2b8d62184f32",
     "well-plunk": "782793645a1bf8d2a5f794666868655be34b5b27b4fe9941c67ba5e43a996fe5",
+    "pop": "739a5feaed982e9c3ab5e94ce5f85d311197e8ed7dfdfcd3aa107d957c0bb502",
     "reel": "59c45d1333311996848299081d8d472cf1f7a9cefebe30c58da65eac2811bf09",
     "water-lap": "6df818f8b9fd6ed0649932e6e8e8320e2bb025a07fd59c32a6e348a7b5c37cef",
     "water-surge": "285300afaef13c4f5b5c0fea874894f09db4beee577c897007fb95de6ad18138",

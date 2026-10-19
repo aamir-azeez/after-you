@@ -31,6 +31,7 @@ const AMBIENCE := preload("res://assets/audio/ambience.wav")
 const FOOTSTEP_1 := preload("res://assets/audio/footstep-1.wav")
 const FOOTSTEP_2 := preload("res://assets/audio/footstep-2.wav")
 const GREETING := preload("res://assets/audio/reunion.wav")
+const POP := preload("res://assets/audio/pop.wav")
 
 ## The level every cue plays at (dB), and how far its gain wanders unless its
 ## entry sets "gain".
@@ -83,6 +84,11 @@ const FOOTSTEPS := {"clips": [FOOTSTEP_1, FOOTSTEP_2], "db": -23.0, "gain": Vect
 ## Two spirits meeting: one greeting, each meetup at least `min_move`
 ## semitones from the last inside `range` (random on Home, fixed in a turn).
 const REUNION := {"clip": GREETING, "db": -8.0, "gain": Vector2(-0.75, 0.75), "range": Vector2(-2.0, 7.0), "min_move": 1.5}
+
+## An end-of-run reaction (presentation/end_reactions.gd): a soft pop whose
+## pitch (`range`, semitones) and gain come from the reaction alone, so the
+## same reaction sounds the same picked, on the friend's card and in a rewatch.
+const REACTION := {"clip": POP, "db": -4.0, "gain": Vector2(-0.75, 0.75), "range": Vector2(-2.0, 5.0)}
 
 ## Loops started and stopped by what the world shows. `db` is the player's
 ## own level (not relative), `pitch` a fixed shift; no loop varies its pitch.
@@ -156,6 +162,7 @@ static func problems() -> Array[String]:
 		if not (cue.get("range") is Vector2) or cue.range.x > cue.range.y: found.append("Cue %s has no pitch range" % key)
 		if cue.has("voice") and cue.voice != "long": found.append("Cue %s names an unknown voice" % key)
 		if cue.has("gain") and not (cue.gain is Vector2): found.append("Cue %s has a bad gain span" % key)
+	if not (REACTION.clip is AudioStream) or REACTION.range.x > REACTION.range.y or REACTION.gain.x > REACTION.gain.y: found.append("The reaction pop has a bad clip or span")
 	for key: String in LOOPS:
 		if not (LOOPS[key].get("clip") is AudioStreamWAV): found.append("Loop %s has no WAV clip" % key)
 	for key: String in CALLS:

@@ -386,6 +386,27 @@ func play_reunion() -> void:
 	reunion_voice.volume_db = REUNION_DB + gain
 	reunion_voice.play()
 
+## An end-of-run reaction's pop (presentation/end_reactions.gd). Its pitch and
+## gain come only from `identity` (the run and the face), so the same reaction
+## sounds the same when picked, on the friend's card and in a rewatch. It never
+## advances a turn's cue identities, so no other cue moves.
+func play_reaction(identity: Array) -> void:
+	if not sound_enabled or backgrounded or voices.is_empty() or not _frame_allows_cue(): return
+	var voice := voices[next_voice]
+	next_voice = (next_voice + 1) % voices.size()
+	voice.stream = SoundCues.REACTION.clip
+	voice.pitch_scale = semitones_to_pitch(reaction_pitch(identity))
+	voice.volume_db = CUE_DB + float(SoundCues.REACTION.db) + reaction_gain(identity)
+	voice.play()
+
+static func reaction_pitch(identity: Array) -> float:
+	var span: Vector2 = SoundCues.REACTION.range
+	return lerpf(span.x, span.y, identity_unit(["end_reaction"] + identity + ["step"]))
+
+static func reaction_gain(identity: Array) -> float:
+	var span: Vector2 = SoundCues.REACTION.gain
+	return lerpf(span.x, span.y, identity_unit(["end_reaction"] + identity + ["gain"]))
+
 func stop_reunion() -> void:
 	if is_instance_valid(reunion_voice): reunion_voice.stop()
 
