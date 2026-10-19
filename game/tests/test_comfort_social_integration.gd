@@ -93,7 +93,7 @@ func _exercise() -> void:
 	if not _check(invitation.get("api_version") == 2 and invitation.get("room_id") == room_id and not state.joined,"Friend descriptor is verified without admitting a room member"): return
 	if not _check(await guest.join_room(invitation.invite_code) == room_id,"Friend entry uses the existing durable Session join: " + guest.last_error): return
 	var joins := _calls("/v2/rooms/join",HTTPClient.METHOD_POST,GUEST)
-	_check(joins.size() == 1 and joins[0].body.invite_code == CODE and Canonical.same(joins[0].body.supported_simulation_versions,[2,4,5,6,7,8,9]),"Ordinary join advertises every bundled rules version exactly once")
+	_check(joins.size() == 1 and joins[0].body.invite_code == CODE and Canonical.same(joins[0].body.supported_simulation_versions,[2,4,5,6,7,8,9,10]),"Ordinary join advertises every bundled rules version exactly once")
 	guest = Session.new(guest_api,guest_identity.current,guest_store)
 	_check(guest.room_ids().is_empty(),"Cold recency hints alone never claim authenticated room access")
 	if not _check(await guest.load_lobby(),"Guest reconnect refreshes its authenticated room membership"): return
@@ -188,7 +188,7 @@ func _server(request: Dictionary) -> Dictionary:
 		state.simulation_version = body.get("simulation_version",2)
 		return _ok(_snapshot(owner))
 	# JSON numbers need canonical comparison; Array membership distinguishes floats from ints.
-	if path == "/v2/rooms/join" and post and owner == GUEST and body.get("invite_code") == CODE and Canonical.same(body.get("supported_simulation_versions",[]),[2,4,5,6,7,8,9]):
+	if path == "/v2/rooms/join" and post and owner == GUEST and body.get("invite_code") == CODE and Canonical.same(body.get("supported_simulation_versions",[]),[2,4,5,6,7,8,9,10]):
 		if not state.joined:
 			state.joined = true
 			state.revision += 1

@@ -194,7 +194,7 @@ func _retained_join_intents() -> void:
 			var fresh := Session.new(api,identity.get_value,OnlineTests.MemoryStore.new())
 			_check(await fresh.load_lobby(),"A fresh lobby can start without any server-creatable chapters")
 			await fresh.join_room("A1".repeat(10))
-			_check(Canonical.same(api.calls[-1].body.get("supported_simulation_versions"),[2,4,5,6,7,8,9]),"New join requests advertise all bundled replay versions independently of creation gates")
+			_check(Canonical.same(api.calls[-1].body.get("supported_simulation_versions"),[2,4,5,6,7,8,9,10]),"New join requests advertise all bundled replay versions independently of creation gates")
 		api.queue_free()
 		await process_frame
 

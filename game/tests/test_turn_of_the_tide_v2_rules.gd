@@ -213,14 +213,14 @@ func _memory_steps_onto_shut(half_end: Dictionary) -> void:
 	Tide.play(b, [["w", [Tide.STEP["half"][0], Tide.LANE]], ["d", Tide.WHEEL["half"]]])
 	while not b.finished and int(b._players.p1.x) >= 1100: b.step({})
 	Tide.play(b, [Tide.T])
-	var closed_at := -1
+	# The tide turned this tick: stones-2 shuts at this deadline.
+	var shuts := int(b._closing.get("stones-2", -1))
 	var drown_events: Array = []
 	while not b.finished:
 		b.step({})
-		if b._events.has("closing:stones-2") and closed_at < 0: closed_at = int(b.tick) - 1
 		if b.finished: drown_events = b._events.duplicate()
 	var drowned: Dictionary = b.snapshot().drowned
-	_check(drowned.get("slot") == "p1" and drowned.get("route") == "stones-2" and closed_at >= 0 and int(drowned.tick) >= closed_at + 45 and not drown_events.has("closing:stones-2"), "A memory walking onto a crossing already shut drowns the tick it steps on (%s, closing at %d)" % [str(drowned), closed_at])
+	_check(drowned.get("slot") == "p1" and drowned.get("route") == "stones-2" and shuts > 0 and int(drowned.tick) > shuts and not drown_events.has("closing:stones-2"), "A memory walking onto a crossing already shut drowns the tick it steps on (%s, shut at %d)" % [str(drowned), shuts])
 
 ## A first turn on its wheel step turns the tide and steps back on while the
 ## step closes: Finish is held, says why, and once the step shuts the spirit
