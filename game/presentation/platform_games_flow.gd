@@ -13,6 +13,7 @@ extends Node
 ## code are made here, kept in secure storage before the request, and the server only rotates
 ## to them. A lost answer is retried with the same proposal and a fresh platform proof.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const InGameModal = preload("res://presentation/in_game_modal.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const PlatformGames = preload("res://services/platform_games/platform_games.gd")
@@ -34,6 +35,8 @@ var _detail: WeakRef = weakref(null)
 ## so the friend code this phone leaves behind is never lost.
 var _copied_player := ""
 var _copy_busy := false
+var _offer_modal: Control
+var _offer_retry := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -53,6 +56,7 @@ func attach() -> void:
 	if not platform.notice.is_connected(_on_notice): platform.notice.connect(_on_notice)
 	if host.settings_flow.has_signal("closed") and not host.settings_flow.closed.is_connected(note_progress): host.settings_flow.closed.connect(note_progress)
 	platform.note_progress()
+	_maybe_offer()
 
 func detach() -> void:
 	var platform := games()
@@ -76,6 +80,7 @@ func _on_notice(text: String) -> void:
 func _on_changed() -> void:
 	if host == null or not is_instance_valid(host): return
 	host.settings_flow.refresh()
+	_maybe_offer()
 	var detail: Variant = _detail.get_ref()
 	if detail is VBoxContainer and is_instance_valid(detail) and detail.visible:
 		TouchInput.redraw_when_released(detail, func() -> bool: return is_instance_valid(detail) and detail.visible, func() -> void: _fill(detail))
@@ -85,6 +90,34 @@ func _on_changed() -> void:
 func offered() -> bool:
 	var platform := games()
 	return platform != null and platform.offered()
+
+# ---- "Use your friend code from your other phone?" ----------------------------------------
+
+## One tap before a friend code comes to a phone that has none. Shown only at Home with no other
+## pop-up open (it waits for one), once a session: closing it in any way counts as "Not now".
+func _maybe_offer() -> void:
+	var platform := games()
+	if platform == null or not platform.offer_pending() or is_instance_valid(_offer_modal): return
+	if host.mode != "home" or _modal_open():
+		if not _offer_retry:
+			_offer_retry = true
+			await host.get_tree().create_timer(1.0).timeout
+			_offer_retry = false
+			if is_instance_valid(host): _maybe_offer()
+		return
+	_offer_modal = InGameModal.open(host.ui, "PlatformRestoreModal", PlayerCopy.PLATFORM_GAMES_OFFER_TITLE)
+	var accepted := [false]
+	_offer_modal.add_actions(PlayerCopy.PLATFORM_GAMES_USE_IT, func() -> void:
+		accepted[0] = true
+		_offer_modal.close()
+		platform.accept_offer(), PlayerCopy.PLATFORM_GAMES_NOT_NOW)
+	_offer_modal.closed.connect(func() -> void:
+		if not accepted[0]: platform.decline_offer())
+
+func _modal_open() -> bool:
+	for child: Node in host.ui.get_children():
+		if child.get_script() == InGameModal and not child.is_queued_for_deletion(): return true
+	return false
 
 func label() -> String:
 	var platform := games()
@@ -127,10 +160,13 @@ func _fill(detail: VBoxContainer) -> void:
 	elif platform.link_state == PlatformGames.LINK_OTHER:
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_OTHER_NOTE))
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_HERE, platform.keep_this_phone))
+	elif platform.link_state == PlatformGames.LINK_OFFER:
+		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_OFFER_TITLE, true))
+		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_IT, platform.accept_offer))
 	elif platform.linked():
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_UNLINK_NOTE))
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_UNLINK, platform.unlink))
-	else:
+	elif platform.link_state == PlatformGames.LINK_ERROR:
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_TRY_AGAIN, platform.start))
 	_set_items(detail, items)
 

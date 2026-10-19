@@ -286,6 +286,11 @@ const PLATFORM_GAMES_OTHER_ACCOUNT := "Your friend code is linked to a different
 ## A toast; %s is "Play Games" or "Game Center".
 const PLATFORM_GAMES_CONFLICT_NOTICE := "Your %s account has another friend code. Choose one in Settings."
 const PLATFORM_GAMES_RESTORED := "Your friend code is back."
+## The one-tap question on a phone with no friend code, and in Settings later.
+const PLATFORM_GAMES_OFFER_TITLE := "Use your friend code from your other phone?"
+const PLATFORM_GAMES_USE_IT := "Use it"
+const PLATFORM_GAMES_NOT_NOW := "Not now"
+const PLATFORM_GAMES_OFFER_NOTE := "This account has a friend code from another phone."
 const PLATFORM_GAMES_SIGN_IN := "Sign in"
 const PLATFORM_GAMES_SIGN_IN_NOTE := "Sign in to bring your friend code and progress to a new phone."
 const PLATFORM_GAMES_CHOOSE_TITLE := "Which friend code should stay?"

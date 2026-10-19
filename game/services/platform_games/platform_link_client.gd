@@ -53,6 +53,15 @@ func restore(provider: String, credential: Dictionary, pending: Dictionary) -> D
 		return {"ok": false, "code": "invalid_response", "status": 200}
 	return {"ok": true, "player_id": player}
 
+## Is this account linked to a friend code? {"ok", "linked"}. Verifies the proof and rotates nothing,
+## so the phone can ask the player before restoring.
+func check_restore(provider: String, credential: Dictionary) -> Dictionary:
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "/v1/platform/restore", {"schema_version": 1, "provider": provider, "credential": credential, "check": true})
+	if not response.get("ok", false): return {"ok": false, "code": _code(response), "status": int(response.get("status", 0))}
+	var data: Dictionary = response.data
+	if not Typed.equal(data.get("provider"), provider) or not data.get("linked") is bool: return {"ok": false, "code": "invalid_response", "status": 200}
+	return {"ok": true, "linked": data.linked}
+
 ## On a phone with no identity: does the server offer restore for this provider? true, false, or
 ## null when it cannot tell (offline, rate limited). One public request, no platform proof, no
 ## Durable Object: an incomplete body is refused 400 while the provider is on; the path answers
