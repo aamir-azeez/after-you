@@ -9,6 +9,7 @@ const RelaySimulation = preload("res://core/v2/simulation_v2.gd")
 const RelayCatalog = preload("res://core/v2/stage_catalog.gd")
 const LighthouseCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
 
 var checks := 0
 var failures := 0
@@ -177,14 +178,16 @@ func _test_plain_garden_and_replacement() -> void:
 	var neighbor := petal.get_parent().get_child(1) as MeshInstance3D
 	var other_petal := _first_blossom_petal(other_world)
 	_check(petal.mesh != other_petal.mesh, "Separate worlds keep independent blossom geometry")
-	var petal_material := petal.material_override as StandardMaterial3D
+	# Petals of one colour share the kit's look; a petal recoloured takes its
+	# own copy first (Primitives.own_material), as every world's code does.
 	var neighbor_material := neighbor.material_override as StandardMaterial3D
 	var other_material := other_petal.material_override as StandardMaterial3D
 	var neighbor_color := neighbor_material.albedo_color
 	var other_color := other_material.albedo_color
+	var petal_material := Primitives.own_material(petal)
 	petal_material.albedo_color = Color.MAGENTA
-	_check(neighbor_material.albedo_color == neighbor_color and other_material.albedo_color == other_color,
-		"Changing one blossom petal's material leaves neighboring petals and other worlds unchanged")
+	_check(petal.material_override == petal_material and neighbor_material.albedo_color == neighbor_color and other_material.albedo_color == other_color and Primitives.changed_shared_looks().is_empty(),
+		"Changing one blossom petal's own material leaves neighboring petals, other worlds and the shared look unchanged")
 	other_world.queue_free()
 	# Presentation-boundary truth table is deliberately separate from valid replay evidence.
 	for flags: Array in [[false, true], [true, false], [false, false], [true, true]]:
