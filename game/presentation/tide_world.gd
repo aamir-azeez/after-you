@@ -116,7 +116,8 @@ var _history_tide := ""
 ## and kept out of the water body, a sealed pit that stays dry.
 var _walled: Array[String] = []
 ## Of those, the crossings walled only because they can be kept (entered while
-## open, so walked later even when the tide covers them).
+## open, so walked later even when the tide covers them); kept apart so the
+## tests can pin which crossings latching walls.
 var _kept_walled: Array[String] = []
 ## Where the spirits stand (plan cm), refilled each snapshot for the locks.
 var _spirits := PackedVector2Array()
@@ -334,7 +335,8 @@ static func _low_cm(route: Dictionary) -> int:
 ## Crossings in this stage that can stand open while their water rises above
 ## the deck: every always-open low crossing (stairs, the towpath, the mole
 ## slip), and every gated one whose gate does not tie it to a water value that
-## leaves its deck dry (the posts, catwalks, lock gates, punt and chamber gate).
+## leaves its deck dry (the lock gates, punt and sea gates). Never stepping
+## stones or a stub (_stands_in_water).
 func _walled_routes(stage: Dictionary) -> Array[String]:
 	var result: Array[String] = []
 	for route: Dictionary in chapter_definition.get("bridges", []) + chapter_definition.get("stairs", []):
@@ -355,7 +357,7 @@ func _walled_routes(stage: Dictionary) -> Array[String]:
 ## Crossings that can be kept (entered while open in this stage or an earlier
 ## one, so walked later even when the water covers them) whose deck this
 ## stage's water can stand over, not already walled: walled too, so a kept one
-## can show dry.
+## walked under the water's level stays dry behind its walls.
 func _keepable_routes(stage: Dictionary, walled: Array[String]) -> Array[String]:
 	var latched: Array = []
 	for earlier: Dictionary in chapter_definition.get("stages", []):
@@ -1673,7 +1675,7 @@ var _bubbles_placed := false
 
 ## Everything that moves, shows, hides or glows with the tide stays whole
 ## (_static_keep): crossing decks (rebuilt and copied for their ghosts at
-## build), water, floods, ghosts, kept marks and masts, boats, sea gates, the
+## build), water, ghosts, kept marks and masts, boats, sea gates, the
 ## spout, wheels, gauges, levers and lamps, and the remembered routes (found by
 ## index). The island floors fold like every world's (cooperative_world).
 func _folds_static_scenery() -> bool:
