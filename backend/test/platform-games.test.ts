@@ -202,6 +202,17 @@ describe("Play Games restore", () => {
     expect((await restore("code-x", { device_token: same, recovery_code: same })).status).toBe(400);
     expect((await restore("code-x", { device_token: a.device_token, recovery_code: randomToken() }, "idem-" + "q".repeat(20))).status).toBe(400);
   });
+  it("tells a phone with no identity whether its provider is on, without a proof or a Durable Object", async () => {
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    const probe = (provider: string, vars: Env) => call("/v1/platform/restore", "POST", undefined, { provider }, vars);
+    const counted = countingEnv(PLAY_ON);
+    const on = await probe("play_games", counted.env);
+    expect(on.status).toBe(400); expect(await on.json()).toEqual({ error: { code: "invalid_platform_request", retryable: false } });
+    expect(counted.calls).toEqual([]);
+    expect((await probe("game_center", PLAY_ON)).status).toBe(404);
+    expect((await probe("play_games", env)).status).toBe(401);
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
   it("is rate limited per address on its own bucket", async () => {
     google({ "code-a": "g-player-one" });
     const blocked = { ...PLAY_ON, TESTER_CODE_LIMITER: { limit: async ({ key }: { key: string }) => ({ success: !key.startsWith("platform-ip:") }) } } as unknown as Env;
