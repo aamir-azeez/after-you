@@ -284,6 +284,9 @@ turn_of_the_tide_history 3
 turn_of_the_tide_limits 1
 turn_of_the_tide_presses 1
 turn_of_the_tide_reach 3
+turn_of_the_tide_v2 2
+turn_of_the_tide_v2_rules 2
+turn_of_the_tide_v2_world 2
 turn_of_the_tide_variants_half 3
 turn_of_the_tide_variants_high 3
 turn_of_the_tide_variants_low 2

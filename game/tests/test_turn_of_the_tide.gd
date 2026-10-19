@@ -173,7 +173,8 @@ func _turn_limits(first: Dictionary) -> void:
 	for key: String in CoopCatalog.KEYS: definitions[key] = CoopCatalog.definition(key)
 	for key: String in definitions:
 		var definition: Dictionary = definitions[key]
-		var tide := key == Witness.KEY
+		# Every version of the chapter keeps its longer turns.
+		var tide := str(definition.get("id", "")) == "turn-of-the-tide"
 		_check(definition.has("turn_limits") == tide, "%s %s turn limits" % [key, "sets" if tide else "sets no"])
 		for version: int in [6, 7, 8, 9]:
 			for turn_role: String in ["a", "b"]:

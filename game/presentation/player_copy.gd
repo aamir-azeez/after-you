@@ -286,6 +286,16 @@ const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the 
 const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
 const TURN_OF_THE_TIDE_SLACK_HINT_A := "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there."
 const TURN_OF_THE_TIDE_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern."
+# turn-of-the-tide@2: the second spirit must not turn the tide while the
+# memory still walks home over a crossing. Solo, the memory is the player's own.
+const TURN_OF_THE_TIDE_V2_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Let your friend reach home before you turn the tide, then take the tides in order and light the lantern."
+const TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO := "Fetch the pin, key or line at the mill. Let your memory reach home before you turn the tide, then take the tides in order and light the lantern."
+# A turn that ends with a spirit on a crossing as it shuts (journey tide rules):
+# the player's own spirit, the friend's memory, or in solo play the player's
+# own memory.
+const JOURNEY_DROWNED_YOU := "Oh no, you drowned! Try again?"
+const JOURNEY_DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
+const JOURNEY_DROWNED_MEMORY := "Oh no, your memory drowned! Try again?"
 # The winch's two settings as its lever's bubble names them. The catalog keeps
 # "stowed" and "slip"; the chapter descriptor's "selector_names" maps them.
 const TURN_OF_THE_TIDE_WINCH_STOWED := "Raised"
@@ -2032,6 +2042,10 @@ const COOPERATIVE_KEEP_CROSSING := "Your partner requires the crossing to remain
 const TURN_REQUEST_NOTIFICATIONS := "Also tell me when my friend asks for a redo"
 const TURN_REQUEST_NOTIFICATIONS_NEEDS_TURNS := "Turn on notifications first."
 
+## A TEXT key with this suffix is the solo wording of the key before it: what
+## the line says when the "friend" is the player's own memory.
+const SOLO := ".solo"
+
 const TEXT := {
 	"wishing_well.go_on_ahead_a": WISHING_WELL_AHEAD_HINT_A,
 	"wishing_well.go_on_ahead_b": WISHING_WELL_AHEAD_HINT_B,
@@ -2041,6 +2055,11 @@ const TEXT := {
 	"turn_of_the_tide.set_the_tide_b": TURN_OF_THE_TIDE_SET_HINT_B,
 	"turn_of_the_tide.slack_water_a": TURN_OF_THE_TIDE_SLACK_HINT_A,
 	"turn_of_the_tide.slack_water_b": TURN_OF_THE_TIDE_SLACK_HINT_B,
+	"turn_of_the_tide_v2.slack_water_b": TURN_OF_THE_TIDE_V2_SLACK_HINT_B,
+	"turn_of_the_tide_v2.slack_water_b" + SOLO: TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO,
+	"journey.drowned_you": JOURNEY_DROWNED_YOU,
+	"journey.drowned_friend": JOURNEY_DROWNED_FRIEND,
+	"journey.drowned_friend" + SOLO: JOURNEY_DROWNED_MEMORY,
 	"cooperative.high_summary": COOPERATIVE_HIGH_SUMMARY,
 	"cooperative.rolling_summary": COOPERATIVE_ROLLING_SUMMARY,
 	"cooperative.checkpoint": COOPERATIVE_CHECKPOINT,
@@ -2908,6 +2927,9 @@ const CANONICAL_KEYS := {
 	"Cross when the tide is right and ring the harbour bell.": "turn_of_the_tide.set_the_tide_b",
 	"Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.": "turn_of_the_tide.slack_water_a",
 	"Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern.": "turn_of_the_tide.slack_water_b",
+	"Fetch the pin, key or line at the mill. Let your friend reach home before you turn the tide, then take the tides in order and light the lantern.": "turn_of_the_tide_v2.slack_water_b",
+	"Oh no, you drowned! Try again?": "journey.drowned_you",
+	"Oh no, your friend drowned! Try again?": "journey.drowned_friend",
 	"Help your partner reach the loft.": "cooperative.upper_path_a",
 	"Reach the bell above.": "cooperative.upper_path_b",
 	"Open a way through the lower islands.": "cooperative.down_and_around_a",
@@ -2986,9 +3008,12 @@ static func text(key: String) -> String:
 	assert(TEXT.has(key), "Unknown presentation copy key: " + key)
 	return str(TEXT.get(key, key))
 
-static func from_canonical(value: String) -> String:
+## The editable line for a canonical value. solo: the player's partner is
+## their own memory, so a line with a SOLO wording reads that instead.
+static func from_canonical(value: String, solo: bool = false) -> String:
 	var key: String = CANONICAL_KEYS.get(value, "")
-	return text(key) if not key.is_empty() else value
+	if key.is_empty(): return value
+	return text(key + SOLO) if solo and TEXT.has(key + SOLO) else text(key)
 
 # Ordered formatting tokens are part of the call-site contract.
 const FORMAT_TOKENS := {
