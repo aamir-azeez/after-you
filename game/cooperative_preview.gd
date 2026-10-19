@@ -61,6 +61,8 @@ func _prepare_after_access() -> void:
 
 func _access_changed(state: String, _reason: String) -> void:
 	if _leaving or not is_inside_tree(): return
+	# A staged open's controls may still be due (relay_preview._ready).
+	_finish_ready_due()
 	if state == "granted":
 		if not _prepared:
 			if is_instance_valid(controls): _prepare_after_access()
