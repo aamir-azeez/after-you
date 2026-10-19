@@ -138,7 +138,7 @@ func _sync(sources: RefCounted, stamp: String) -> Dictionary:
 			var next := Bundle.merge(held, other)
 			return {"merged": next, "bytes": Bundle.encode(next)})
 		if resolved.is_empty():
-			# Never resolve over a copy we cannot read: leave the conflict for a newer build.
+			# Never resolve over a copy this build cannot read: leave the conflict for a newer build.
 			await _provider.snapshot_discard(handle)
 			return {"ok": false, "code": "cloud_unreadable"}
 		merged = resolved.merged
