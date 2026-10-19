@@ -10,8 +10,8 @@ extends Control
 ## The Play button has an empty icon slot, HomePlayIcon (PLAY_ICON_SIZE, left in
 ## the pill). set_play_icon() drops a Control into it, and the label moves right
 ## to make room; set_play_icon(null) empties it and the label returns. The icon
-## gets the whole slot and never takes input. If it has follow_button(button),
-## set_play_icon() calls it with the Play button, so the icon can follow hover
+## gets the whole slot and never takes input. If it has attach_to(button) (as
+## presentation/friend_play_icon.gd does), set_play_icon() calls it with the Play button, so the icon can follow hover
 ## and press (mouse_entered/mouse_exited, button_down/button_up).
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
@@ -29,7 +29,7 @@ const PLAY_ICON_SIZE := Vector2(72, 58)
 const PLAY_ICON_LEFT := 10.0
 const PLAY_ICON_GAP := 12.0
 ## set_play_icon() calls this on the icon, if it has it, with the Play button.
-const PLAY_ICON_FOLLOW := "follow_button"
+const PLAY_ICON_FOLLOW := "attach_to"
 ## The Play label's inset when the slot is empty.
 const PLAY_TEXT_INSET := 24.0
 ## Room above What's new for its tip while the notes are unseen.
@@ -39,7 +39,7 @@ const CHEVRON := preload("res://assets/ui/settings/chevron.svg")
 const REGULAR := {"wordmark": 88, "subtitle": 20, "play": 76, "row": 52, "invite": 56, "gaps": [14, 24, 8, 10, 14], "top": 24, "bottom": 16, "play_font": 23, "row_font": 21}
 const COMPACT := {"wordmark": 64, "subtitle": 18, "play": 64, "row": 48, "invite": 52, "gaps": [6, 14, 4, 6, 8], "top": 16, "bottom": 12, "play_font": 21, "row_font": 20}
 ## For a short window (a desktop one, say): every target still 48 high.
-const TIGHT := {"wordmark": 50, "subtitle": 16, "play": 56, "row": 48, "invite": 48, "gaps": [4, 8, 2, 4, 4], "top": 10, "bottom": 8, "play_font": 20, "row_font": 19}
+const TIGHT := {"wordmark": 50, "subtitle": 16, "play": 60, "row": 48, "invite": 48, "gaps": [4, 8, 2, 4, 4], "top": 10, "bottom": 8, "play_font": 20, "row_font": 19}
 ## Largest first; the menu takes the first that fits its height.
 const DENSITIES := {"regular": REGULAR, "compact": COMPACT, "tight": TIGHT}
 

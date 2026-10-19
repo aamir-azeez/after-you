@@ -156,13 +156,15 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 				_check(column.end.x <= safe.position.x + 480.0 and column.position.x >= safe.position.x, "The column sits inside the menu panel")
 				var wordmark: Label = app.overlay.find_child("HomeWordmark", true, false)
 				_check(wordmark != null and wordmark.get_global_rect().position.y >= safe.position.y and wordmark.get_global_rect().end.y <= rects[0].position.y, "The wordmark heads the column inside the safe area")
-				if wordmark != null and whats_new != null:
-					# Centred in the room above the bottom row.
-					var above := wordmark.get_global_rect().position.y - safe.position.y
-					# The What's new tip, when it shows, takes the room just above the bottom row.
-					var tip := whats_new.get_node_or_null("WhatsNewTip") as Control
-					var below := (tip.get_global_rect().position.y if tip != null else whats_new.get_global_rect().position.y) - column.end.y
-					_check(absf(above - below) <= 40.0, "The Home column is centred above the bottom row (%.0f above, %.0f below)" % [above, below])
+				var menu: Control = app.overlay.find_child("HomeMenu", true, false)
+				if wordmark != null and whats_new != null and menu != null:
+					# Centred between the panel's top margin and the bottom row (or the
+					# room kept above it for a long What's new tip).
+					var box: Control = app.overlay.find_child("HomeWordmarkBox", true, false)
+					var room: Control = app.overlay.find_child("HomeTipRoom", true, false)
+					var above: float = box.get_global_rect().position.y - safe.position.y - menu.get_node("HomeMenuMargin").get_theme_constant("margin_top")
+					var below: float = (room.get_global_rect().position.y if room.visible else whats_new.get_global_rect().position.y) - column.end.y
+					_check(absf(above - below) <= 2.0, "The Home column is centred above the bottom row (%.0f above, %.0f below)" % [above, below])
 					_check(column.end.y <= whats_new.get_global_rect().position.y, "Invite your friends ends above the bottom row")
 			_check(settings != null and settings.is_visible_in_tree() and settings.text.is_empty() and settings.icon != null and settings.accessibility_name == "Settings" and settings.tooltip_text == "Settings", "Settings is a labelled cog icon")
 			if settings != null and whats_new != null:

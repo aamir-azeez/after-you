@@ -21,7 +21,7 @@ const INSETS := [Vector4.ZERO, Vector4(96, 0, 0, 0), Vector4(0, 0, 96, 0), Vecto
 class FollowIcon:
 	extends Control
 	var followed: BaseButton
-	func follow_button(button: BaseButton) -> void:
+	func attach_to(button: BaseButton) -> void:
 		followed = button
 
 var checks := 0
