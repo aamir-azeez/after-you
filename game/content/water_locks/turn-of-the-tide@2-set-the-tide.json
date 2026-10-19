@@ -1,5 +1,5 @@
 {
-	"digest": "7049ad7f09717095e7364f645aec295ed4a247cb145b9e5e3250b8be844350bf",
+	"digest": "bf7e751bc1afbc1c883f9cc8d9150c02ada74dc811c861281f03a40a5ecf7960",
 	"runs": [
 		{
 			"a": "island:w-beach",
@@ -238,78 +238,6 @@
 			"kind": "door",
 			"line": 576.0,
 			"mouth": "stones-2",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "island:e-terrace-west",
-			"along_x": false,
-			"b": "crossing:lock-west",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 768.0,
-			"mouth": "lock-west",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:lock-west",
-			"along_x": false,
-			"b": "island:lock-chamber",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 832.0,
-			"mouth": "lock-west",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "island:lock-chamber",
-			"along_x": false,
-			"b": "crossing:lock-east",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 928.0,
-			"mouth": "lock-east",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:lock-east",
-			"along_x": false,
-			"b": "island:e-terrace-east",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 992.0,
-			"mouth": "lock-east",
 			"shift": 6.5,
 			"shut": 0.749999988079071,
 			"to": 64.0,
