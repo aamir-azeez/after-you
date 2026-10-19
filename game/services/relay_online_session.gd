@@ -148,6 +148,10 @@ func _transfer_client() -> RefCounted:
 func history_mode() -> bool:
 	return RoomsApi.history_supported and Typed.equal(capabilities.get("history_version"), 1.0)
 
+## The server keeps a turn's try count beside it and lists a room's counts.
+func turn_tries_supported() -> bool:
+	return Typed.equal(capabilities.get("turn_tries_version"), 1.0)
+
 func history_client() -> RefCounted:
 	if _history == null: _history = HistorySync.new(_history_transport, _history_eligibility, history_store)
 	return _history

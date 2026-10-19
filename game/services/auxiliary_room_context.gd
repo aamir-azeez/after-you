@@ -92,7 +92,7 @@ func _route(binding: Dictionary, value: Dictionary) -> bool:
 	match binding.purpose:
 		"presence": return method == HTTPClient.METHOD_GET and path == root_path+"/presence"
 		"replay":
-			return method == HTTPClient.METHOD_GET and (path == root_path or path == root_path+"/collection" or _suffix(path,root_path+"/pairs/","^p([0-9]|[12][0-9]|3[01])-"+RoomStages.DIGIT+"$"))
+			return method == HTTPClient.METHOD_GET and (path == root_path or path == root_path+"/collection" or path == root_path+"/tries" or _suffix(path,root_path+"/pairs/","^p([0-9]|[12][0-9]|3[01])-"+RoomStages.DIGIT+"$"))
 		"safety":
 			return method == HTTPClient.METHOD_POST and path in ["/v1/safety/block","/v1/safety/report"] and value.body.get("room_family") == "relay" and value.body.get("room_id") == binding.room_id
 		"photo":

@@ -120,7 +120,7 @@ func _json_numbers() -> void:
 	var inbox_headers := Api.capability_headers(HTTPClient.METHOD_GET,"/v1/room-inbox")
 	_check(inbox_headers.has("X-AfterYou-Room-Inbox: 2") and inbox_headers.has("X-AfterYou-Room-Leave: 1"),"The inbox asks for closed rooms and for finished rooms a friend left")
 	_check(not Api.capability_headers(HTTPClient.METHOD_GET,"/v1/friends").has("X-AfterYou-Friend-Events: 2") and Api.capability_headers(HTTPClient.METHOD_GET,"/v1/friends").has("X-AfterYou-Friends: 2"),"Other requests keep their own headers")
-	_check(Api.capability_headers(HTTPClient.METHOD_GET,"/v2/capabilities") == PackedStringArray(["Content-Type: application/json","X-AfterYou-Room-Level: 2","X-AfterYou-Live: 1","X-AfterYou-Client: "+ProjectSettings.get_setting("application/config/version")+" dev"]),"Room-level and live headers are as sent, and the build names itself last")
+	_check(Api.capability_headers(HTTPClient.METHOD_GET,"/v2/capabilities") == PackedStringArray(["Content-Type: application/json","X-AfterYou-Room-Level: 2","X-AfterYou-Live: 1","X-AfterYou-Turn-Tries: 1","X-AfterYou-Client: "+ProjectSettings.get_setting("application/config/version")+" dev"]),"Room-level, live and try-count headers are as sent, and the build names itself last")
 
 ## The iOS registration adds its headers after the capability ones; every other request is unchanged.
 func _extra_headers() -> void:

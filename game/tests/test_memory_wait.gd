@@ -61,6 +61,7 @@ class ControlsStub extends CanvasLayer:
 	func hide_memory_wait() -> void: pass
 	func fast_forward_held() -> bool: return held
 	func dim_stick(_dim: bool) -> void: pass
+	func show_tries(_tries: int) -> void: pass
 
 ## The chapter screen with its save and turn check left out.
 class Preview extends "res://relay_preview.gd":
@@ -117,12 +118,17 @@ class RoomStub extends RefCounted:
 	var coordinator: RefCounted
 	func busy() -> bool: return false
 	func mutations_enabled() -> bool: return true
+	func turn_tries_supported() -> bool: return false
 
 class JourneyStub extends RefCounted:
 	var sends := 0
 	func snapshot() -> Dictionary: return {}
 	func pending() -> Dictionary: return {}
-	func commit(_recording: Dictionary) -> bool:
+	func stage_id() -> String: return ""
+	func role() -> String: return "a"
+	func checkpoint() -> Dictionary: return {}
+	func prior_recording() -> Dictionary: return {}
+	func commit(_recording: Dictionary, _tries: int = 0) -> bool:
 		sends += 1
 		return true
 	func accept_recording(_recording: Dictionary) -> bool:

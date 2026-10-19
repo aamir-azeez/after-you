@@ -49,6 +49,8 @@ func _routes() -> void:
 	var cases := [
 		["replay",HTTPClient.METHOD_POST,path+"/turns",{}],
 		["replay",HTTPClient.METHOD_GET,path+"/pairs/p0-0/trailing",{}],
+		["replay",HTTPClient.METHOD_POST,path+"/tries",{}],
+		["presence",HTTPClient.METHOD_GET,path+"/tries",{}],
 		["photo",HTTPClient.METHOD_GET,path+"/operations/x",{}],
 		["photo",HTTPClient.METHOD_PUT,path+"/photos/t0-0-a",{}],
 		["photo",HTTPClient.METHOD_GET,"/v2/rooms/"+NEXT_ROOM+"/photos/t0-0-a",{}],
@@ -65,6 +67,8 @@ func _routes() -> void:
 		await photo.request(_envelope(path+"/operations/"+key))
 		count += 1
 		_check(c.h.calls.size() == count,"Saved operation keys keep their full supported range")
+	await factory.for_room(ORDINARY,"replay").request(_envelope(path+"/tries"))
+	_check(c.h.calls.size() == count+1 and c.h.calls.back().path == path+"/tries","A replay target reads the room's try counts")
 	c.h.free()
 
 func _paused_safety() -> void:

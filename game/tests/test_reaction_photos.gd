@@ -244,6 +244,7 @@ class PhotoSession:
 	var epoch := 1
 	var created := 0
 	var capabilities: Dictionary = {"photo_uploads_enabled": true}
+	func turn_tries_supported() -> bool: return false
 	func create_photo_controller(_io: Callable) -> RefCounted:
 		created += 1
 		return PhotoController.new()
@@ -270,7 +271,12 @@ class GameCoordinator:
 		return {"kind":"ordinary","room_id":ROOM,"owner":OWNER,"epoch":1}
 	func pending() -> Dictionary:
 		return {}
-	func commit(_review: Dictionary) -> bool:
+	func snapshot() -> Dictionary: return {"room_id": ROOM, "branch": 0}
+	func stage_id() -> String: return ""
+	func role() -> String: return "a"
+	func checkpoint() -> Dictionary: return {}
+	func prior_recording() -> Dictionary: return {}
+	func commit(_review: Dictionary, _tries: int = 0) -> bool:
 		commits += 1
 		return accepted
 	func last_receipt() -> Dictionary:

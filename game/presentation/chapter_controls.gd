@@ -16,6 +16,7 @@ const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const HoldButton = preload("res://presentation/hold_button.gd")
 const MemoryWaitBar = preload("res://presentation/memory_wait_bar.gd")
 const FastForwardBadge = preload("res://presentation/fast_forward_badge.gd")
+const TryPill = preload("res://presentation/try_pill.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -43,6 +44,8 @@ var modal_stack: VBoxContainer
 var reset_view_button: Button
 ## "Waiting for Sam" and the memory still to play, under the chapter title.
 var wait_row: HBoxContainer
+## "Try 3" under the chapter title from the turn's second try on.
+var try_pill: TryPill
 var wait_label: Label
 var wait_bar: MemoryWaitBar
 ## Hold to fast-forward and Skip to end take the action and finish places
@@ -135,10 +138,21 @@ func dim_stick(dim: bool) -> void:
 func fast_forward_held() -> bool:
 	return _memory_wait and fast_forward_button.held()
 
-## The row sits just under the chapter title, however many lines it wraps to.
+## The turn's try count; the pill shows from the second try on.
+func show_tries(tries: int) -> void:
+	try_pill.show_try(tries)
+	_place_wait_row.call_deferred()
+
+## The try pill and then the wait row sit just under the chapter title,
+## however many lines it wraps to.
 func _place_wait_row() -> void:
 	if not is_instance_valid(wait_row) or not is_instance_valid(chapter_label): return
-	wait_row.position = Vector2(chapter_label.position.x, chapter_label.position.y + chapter_label.get_combined_minimum_size().y + 4.0)
+	var below := chapter_label.position.y + chapter_label.get_combined_minimum_size().y + 4.0
+	if is_instance_valid(try_pill):
+		try_pill.position = Vector2(chapter_label.position.x, below + 2.0)
+		try_pill.size = try_pill.get_combined_minimum_size()
+		if try_pill.visible: below += try_pill.size.y + 8.0
+	wait_row.position = Vector2(chapter_label.position.x, below)
 
 func _build_ui() -> void:
 	ui = Control.new()
@@ -174,6 +188,9 @@ func _build_ui() -> void:
 	chapter_label.position = Vector2(36,61)
 	hud.add_child(chapter_label)
 	chapter_label.minimum_size_changed.connect(_fit_chapter_title.call_deferred)
+	try_pill = TryPill.new(17)
+	try_pill.visible = false
+	hud.add_child(try_pill)
 	wait_row = HBoxContainer.new()
 	wait_row.name = "MemoryWait"
 	wait_row.mouse_filter = Control.MOUSE_FILTER_IGNORE

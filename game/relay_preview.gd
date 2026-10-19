@@ -50,6 +50,7 @@ const MUTED := Color("afc7bd")
 const COMPLETION_DURATION := 3.0
 const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const TurnTries = preload("res://services/turn_tries.gd")
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
 const ROOM_CLOSED := "Room closed"
@@ -116,6 +117,10 @@ var replay_pair_index := -1
 var _replay_collection: Array = []
 var _solo_replay_only := false
 var redo_notice := RedoRequestNotice.new()
+## Every start of a turn counts a try; the pill shows the live turn's count.
+var turn_tries := TurnTries.new()
+var _live_tries := 0
+var _shown_tries := -1
 var _solo_replay_context_error := false
 var running := false
 var mode := "ready"
@@ -1344,6 +1349,8 @@ func _restore_paused_draft() -> void:
 	if not _reset_live(true): return
 	var draft: Dictionary = journey.draft()
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
+	# A resumed draft is the same try, after an app restart too.
+	_live_tries = turn_tries.resume(_tries_slot())
 	_fast_forward(draft)
 	_wait().show(sim.snapshot(), true)
 	running = false
@@ -1414,6 +1421,7 @@ func _run_solo_redo(plan: Dictionary, previous_mode: String = "ready") -> void:
 			_return_from_solo_redo(previous_mode)
 			_note_refusal(reason)
 			return
+		_restart_tries()
 		_fresh_live = {}
 		review = {}
 		replay_pair_index = -1
@@ -1747,8 +1755,25 @@ func _begin() -> void:
 		return
 	review = {}
 	replay_pair_index = -1
+	# The first start of a turn, each Retry and a restart after a failed ending.
+	_live_tries = turn_tries.start(_tries_slot())
 	world.present(sim.snapshot(), true)
 	_start_play()
+
+
+## The turn being played, for its try count (services/turn_tries.gd).
+func _tries_slot() -> String:
+	return TurnTries.slot_for(journey, chapter_key, online_session != null)
+
+## Taking back a turn or restarting the chapter starts every solo count again.
+func _restart_tries() -> void:
+	turn_tries.restart_solo(chapter_key)
+
+func _show_tries() -> void:
+	var tries := _live_tries if mode == "play" else 0
+	if tries == _shown_tries: return
+	_shown_tries = tries
+	controls.show_tries(tries)
 
 
 ## Begin and Resume stay live while a room poll (or another room request) is
@@ -1834,6 +1859,8 @@ func _resume_draft() -> void:
 	if not _reset_live(true):
 		return
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
+	# A resumed draft is the same try, after an app restart too.
+	_live_tries = turn_tries.resume(_tries_slot())
 	_fast_forward(draft)
 	_wait().show(sim.snapshot(), true)
 	if sim.finished:
@@ -2078,6 +2105,7 @@ func _skip_memory_wait() -> void:
 
 
 func _update_hud(state: Dictionary) -> void:
+	_show_tries()
 	var index := int(checkpoint.stage_index)
 	var turn := "Replay" if mode=="replay" else "Your first turn" if role=="a" else "Alongside a ghost"
 	var title := "%s · %d / %d · %s" % [chapter.title, index+1, definition.stages.size(), turn]
@@ -2303,6 +2331,7 @@ func _confirm_restart_chapter() -> void:
 	card.add_child(_button("Restart chapter", func():
 		if not current.call(): return
 		if journey.fork_from_stage(0):
+			_restart_tries()
 			_show_ready()
 			return
 		var reason: String = journey.last_error
@@ -2325,12 +2354,16 @@ func _accept() -> void:
 		online_request_generation += 1
 		var generation := online_request_generation
 		_card("Saving your contribution…", PlayerCopy.RELAY_PREVIEW_D30D1660A268)
-		var accepted: bool = await journey.commit(review)
+		var slot := _tries_slot()
+		var tries := turn_tries.freeze(slot, str(review.get("recording_hash", "")))
+		# A first try sends nothing: it shows as a turn without a count does.
+		var accepted: bool = await journey.commit(review, tries if tries > 1 and online_session.turn_tries_supported() else 0)
 		if not is_inside_tree() or generation != online_request_generation:
 			return
 		if not accepted:
 			_show_online_waiting()
 			return
+		turn_tries.close(slot)
 		# A sent turn: the partner's reply is looked for at the base cadence again.
 		refresh_schedule.note_activity(Time.get_ticks_msec())
 		if is_instance_valid(reaction_photos):
@@ -2338,9 +2371,13 @@ func _accept() -> void:
 			# Native Use and even a failed photo request never recommit the turn.
 			reaction_photos.offer(journey.last_receipt(), _after_accept, true)
 			return
-	elif not journey.accept_recording(review):
-		_show_save_problem(journey.last_error, "commit")
-		return
+	else:
+		var slot := _tries_slot()
+		turn_tries.freeze(slot, str(review.get("recording_hash", "")))
+		if not journey.accept_recording(review):
+			_show_save_problem(journey.last_error, "commit")
+			return
+		turn_tries.close(slot)
 	_after_accept()
 
 
@@ -2738,6 +2775,7 @@ func _confirm_local_checkpoint(index: int) -> void:
 	card.add_child(_action_button("retry", func():
 		var done: bool = journey.fork_from_stage(index)
 		var reason: String = journey.last_error
+		if done: _restart_tries()
 		_show_ready()
 		if not done: _note_refusal(reason)))
 	card.add_child(_action_button("cancel", _show_ready))

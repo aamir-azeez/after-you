@@ -16,6 +16,7 @@ const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const LoadProgress = preload("res://services/replay_load_progress.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
+const TurnTries = preload("res://services/turn_tries.gd")
 const VERIFIED_PROOF_LIMIT := 256
 static var _verified_proofs: Dictionary = {}
 static var _verified_proof_mutex := Mutex.new()
@@ -24,6 +25,9 @@ var last_error := ""
 ## phone keeps, or {}; and (room_id, position) -> asks the friend's phone for one.
 var history_pair: Callable
 var ask_for_attempt: Callable
+## Whether the server lists a room's turn try counts (its capability); awaited.
+## Unset reads as no.
+var turn_tries_supported: Callable
 var _api: Node
 var _identity: Callable
 var _store: RefCounted
@@ -611,6 +615,12 @@ static func verify_keepsake_snapshot(source: Dictionary) -> Dictionary:
 	return {"ok": true, "ids": ids}
 
 func refresh_memories(room_key: String) -> Array:
+	var generation := _generation
+	var rows := await _refresh_memory_rows(room_key)
+	if generation == _generation and not rows.is_empty() and _rooms.has(room_key) and _rooms[room_key].family == "chapter": await _refresh_turn_tries(_rooms[room_key], rows)
+	return rows
+
+func _refresh_memory_rows(room_key: String) -> Array:
 	if not _ready_owner() or not _rooms.has(room_key): return []
 	var room: Dictionary = _rooms[room_key]
 	var generation := _generation
@@ -870,7 +880,25 @@ static func _remember_keepsake(entry: Dictionary) -> void:
 	else:
 		Keepsakes.record_friend_prefix(entry.room.chapter_key, int(entry.pair.stage_index) + 1)
 
-func _request_get(path: String, chapter_room_id: String = "") -> Dictionary:
+## Both players' try counts for the room's turns, kept on this phone by
+## recording hash. The server keeps them for every attempt, offloaded or moved
+## to the phones too, so they are read even when the room's list is not. A
+## room is read again only when its parts changed since the last read.
+## Nothing is said when the read fails; Replays then shows no counts.
+func _refresh_turn_tries(room: Dictionary, rows: Array) -> void:
+	var parts: Array[String] = []
+	for row: Dictionary in rows: parts.append("%s:%s:%s" % [row.get("id", ""), row.get("a_hash", ""), row.get("b_hash", "")])
+	parts.sort()
+	var covered := ",".join(parts).sha256_text()
+	var counts := TurnTries.new()
+	if not counts.read_wanted(str(room.room_id), covered): return
+	if not turn_tries_supported.is_valid() or not await turn_tries_supported.call(): return
+	var response := await _request_get(_room_path(room) + "/tries", str(room.room_id), true)
+	var data: Variant = response.get("data") if response.get("ok", false) else null
+	if data is Dictionary and Typed.equal(data.get("schema_version"), 1.0) and data.get("tries") is Dictionary and data.tries.size() <= 128:
+		counts.remember(data.tries, str(room.room_id), covered)
+
+func _request_get(path: String, chapter_room_id: String = "", quiet: bool = false) -> Dictionary:
 	# A room history pass still out goes first; this read takes the next turn in the one request queue.
 	if not _ready_owner() or _busy or _api.player_id != _owner: return {"ok": false}
 	var generation := _generation
@@ -894,7 +922,7 @@ func _request_get(path: String, chapter_room_id: String = "") -> Dictionary:
 	if not owner.get("ready", false) or owner.get("player_id") != _owner or int(owner.get("epoch", -1)) != _epoch:
 		invalidate_identity(); return {"ok": false}
 	if response.get("ignored", false): return _context_hold()
-	if not response.get("ok", false): _error(PlayerCopy.SHARED_REPLAY_COLLECTION_790E8697F4D2)
+	if not response.get("ok", false) and not quiet: _error(PlayerCopy.SHARED_REPLAY_COLLECTION_790E8697F4D2)
 	return response
 
 func _context_hold() -> Dictionary:

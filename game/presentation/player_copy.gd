@@ -7,6 +7,14 @@ const HOME_KEEPSAKES_LOAD_ERROR := "Your keepsakes may not have been loaded. The
 const HOME_KEEPSAKES_RETRY := "Your progress is saved. Home keepsakes will be rechecked next time."
 const SHARED_REPLAY_DELETE_CONFIRM := "Delete this replay from Shared Replays on this phone? Your friend's copy will not be removed. Your room progress and saved photos will remain."
 
+# Try counts (services/turn_tries.gd, presentation/try_pill.gd): the pill in
+# play from the second try on, and one turn's count on a Replays row.
+const TRY_PILL := "Try %d"
+const TRY_COUNT := "%s · %d tries"
+const TRY_YOU := "You"
+const TRY_FIRST_TURN := "First turn"
+const TRY_SECOND_TURN := "Second turn"
+
 # Typed share codes and invite links. FRIEND_CODE_INVALID is the existing add-friend error.
 const FRIEND_CODE_INVALID := "Invalid friend code"
 const FRIEND_CODE_OWN := "This is your own friend code."

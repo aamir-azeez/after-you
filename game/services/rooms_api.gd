@@ -144,6 +144,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Room-Level: 2")
 	# This build can hold the live socket (services/live_connection.gd), so the server may offer it.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Live: 1")
+	# This build sends and reads turn try counts (services/turn_tries.gd).
+	if path == "/v2/capabilities": headers.append("X-AfterYou-Turn-Tries: 1")
 	# The inbox then reports a room another member closed as "closed".
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# A finished room the other member left then says so (partner_left), for Leave room's confirm step.

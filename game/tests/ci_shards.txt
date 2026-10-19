@@ -295,6 +295,8 @@ turn_of_the_tide_ways 2
 turn_photo 3
 turn_photo_library 2
 turn_save_checks 2
+turn_tries 1
+turn_tries_replays 1
 two_promises 1
 update_gate 3
 wait_framing 1

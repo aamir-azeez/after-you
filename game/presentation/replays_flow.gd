@@ -49,6 +49,8 @@ const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
 const Typed = preload("res://services/typed_values.gd")
+const TurnTries = preload("res://services/turn_tries.gd")
+const TryPill = preload("res://presentation/try_pill.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
@@ -221,6 +223,7 @@ func show_collection(message: String="") -> void:
 	host.room_play=false
 	host.mode=MODE_COLLECTION
 	_solo_collection_message=message
+	_turn_tries=TurnTries.new()
 	if solo_replays == null: solo_replays=SoloReplayCollection.new()
 	if not _solo_collection_started:
 		_solo_collection_started=solo_replays.begin_scan()
@@ -547,7 +550,7 @@ func _replay_row_title(title: Button) -> void:
 	for state: String in ["hover","pressed","hover_pressed"]:
 		title.add_theme_color_override("font_"+state+"_color",MINT)
 
-func _replay_row_card(thumb_key: String, title_text: String, caption_text: String, selected: bool, open: Callable, enabled: bool=true) -> Dictionary:
+func _replay_row_card(thumb_key: String, title_text: String, caption_text: String, selected: bool, open: Callable, enabled: bool=true, below: Control=null) -> Dictionary:
 	## Shared Solo/Together replay row. The whole card is one tap target: an
 	## invisible full-card button sits under the art, title and caption, which
 	## let presses through, so the caption, art and padding select the row like
@@ -601,8 +604,81 @@ func _replay_row_card(thumb_key: String, title_text: String, caption_text: Strin
 	caption.add_theme_font_size_override("font_size",17)
 	if selected: caption.add_theme_color_override("font_color",MINT)
 	textcol.add_child(caption)
+	if below != null:
+		var gap := Control.new()
+		gap.custom_minimum_size.y = 6
+		gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		textcol.add_child(gap)
+		textcol.add_child(below)
 	rowbox.add_child(textcol)
 	return {"panel":panel,"rowbox":rowbox,"title":title,"hit":hit}
+
+## Try counts for the list being drawn (services/turn_tries.gd), read once a draw.
+var _turn_tries: RefCounted
+
+## A part's try pills, one for each of its turns ([who, recording hash]) that
+## took more than one try; null when none did. A first try, and a turn from a
+## build that kept no count, show nothing.
+func _tries_row(turns: Array) -> Control:
+	var pills := _tries_pills(turns)
+	if pills.is_empty(): return null
+	var row := HFlowContainer.new()
+	row.name = "TryCounts"
+	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	row.add_theme_constant_override("h_separation",8)
+	row.add_theme_constant_override("v_separation",6)
+	for pill: Control in pills: row.add_child(pill)
+	return row
+
+## The pills alone, to sit in a line beside other controls.
+func _tries_pills(turns: Array) -> Array[Control]:
+	if _turn_tries == null: _turn_tries = TurnTries.new()
+	var pills: Array[Control] = []
+	for turn: Array in turns:
+		var tries: int = _turn_tries.tries(str(turn[1]))
+		if tries < 2: continue
+		var pill := TryPill.new(16, true)
+		pill.show_turn(str(turn[0]),tries)
+		pills.append(pill)
+	return pills
+
+## A preview's "Part N / M" (or part chips) line with the part's try pills
+## beside it, so the pills take no height from the art above.
+func _part_line(first: Control, turns: Array) -> Control:
+	var pills := _tries_pills(turns)
+	if pills.is_empty(): return first
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation",12)
+	line.add_child(first)
+	for pill: Control in pills: line.add_child(pill)
+	return line
+
+## A solo part's turns: both are this player's, first and second.
+static func _solo_turns(row: Dictionary) -> Array:
+	var pair: Variant = row.get("pair")
+	if not pair is Dictionary: return []
+	return [[PlayerCopy.TRY_FIRST_TURN, str(Typed.as_dict(pair.get("a")).get("recording_hash",""))], [PlayerCopy.TRY_SECOND_TURN, str(Typed.as_dict(pair.get("b")).get("recording_hash",""))]]
+
+## A shared part's turns, named by who played them: you or the friend. Only
+## a part with a count to show looks up its room and chapter.
+func _shared_turns(row: Dictionary) -> Array:
+	var a_hash := str(row.get("a_hash","")); var b_hash := str(row.get("b_hash",""))
+	if _turn_tries == null: _turn_tries = TurnTries.new()
+	if _turn_tries.tries(a_hash) < 2 and _turn_tries.tries(b_hash) < 2: return []
+	var room := _current_shared_room()
+	if room.get("family") != "chapter": return []
+	var stages: Array = ChapterRegistry.definition(str(room.get("chapter_key",""))).get("stages",[])
+	var index := int(row.get("stage_index",-1))
+	if index < 0 or index >= stages.size(): return []
+	var you_host: bool = str(room.get("host_id","")) == str(host._relay_identity().player_id)
+	return _turn_owners(str(stages[index].get("first_player_slot","")), you_host, FriendNicknames.sentence_start(_room_partner_name(room)), a_hash, b_hash)
+
+## The stage's first turn is the host's when its first slot is p0, the
+## guest's when it is p1; the second turn is the other player's.
+static func _turn_owners(first_slot: String, you_host: bool, friend: String, a_hash: String, b_hash: String) -> Array:
+	if first_slot not in ["p0","p1"]: return []
+	var you_first := (first_slot == "p0") == you_host
+	return [[PlayerCopy.TRY_YOU if you_first else friend, a_hash], [friend if you_first else PlayerCopy.TRY_YOU, b_hash]]
 
 func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Control:
 	# One saved-recording row: real chapter art, a human title, a short "N parts
@@ -641,9 +717,13 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 		chips.add_theme_constant_override("separation",8)
 		for index in range(parts):
 			chips.add_child(_part_chip("Part %d" % (index+1),index==part,func(selected_index=index): _selected_solo_attempt["part"]=selected_index; show_collection()))
+		var part_rows: Array=entry.get("rows",[])
+		if part<part_rows.size():
+			for pill: Control in _tries_pills(_solo_turns(part_rows[part])): chips.add_child(pill)
 		preview.add_child(chips)
 	else:
-		preview.add_child(host._label("Part %d / %d" % [part+1,parts],17,MUTED))
+		var part_rows: Array=entry.get("rows",[])
+		preview.add_child(_part_line(host._label("Part %d / %d" % [part+1,parts],17,MUTED),_solo_turns(part_rows[part]) if part<part_rows.size() else []))
 	preview.add_child(_solo_watch_button("Watch replay",entry,part,true))
 	var secondary := HBoxContainer.new()
 	secondary.add_theme_constant_override("separation",10)
@@ -783,6 +863,7 @@ func service_solo_collection() -> void:
 func _show_solo_replay_attempt() -> void:
 	if host.mode != MODE_COLLECTION or _selected_solo_attempt.is_empty() or _selected_solo_attempt.get("checking",false): return
 	host.mode=MODE_SOLO_REPLAY_ATTEMPT
+	_turn_tries=TurnTries.new()
 	var card: VBoxContainer = host._card(740,true)
 	var legacy: bool = _selected_solo_attempt.get("family")=="legacy"
 	var rows: Array=_selected_solo_attempt.get("rows",[])
@@ -804,7 +885,20 @@ func _show_solo_replay_attempt() -> void:
 			watch.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 			action_row.add_child(watch)
 			action_row.add_child(_collection_delete_button(func(): _confirm_remove_solo_part(frozen),_part_title(row)))
-			list.add_child(action_row)
+			var tries := _tries_row(_solo_turns(row))
+			if tries == null:
+				list.add_child(action_row)
+				continue
+			# A part's pills sit tight under its button, set in a little.
+			var part_box := VBoxContainer.new()
+			part_box.add_theme_constant_override("separation",4)
+			part_box.add_child(action_row)
+			var inset := MarginContainer.new()
+			inset.add_theme_constant_override("margin_left",12)
+			inset.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			inset.add_child(tries)
+			part_box.add_child(inset)
+			list.add_child(part_box)
 		if rows.is_empty(): list.add_child(host._paragraph("This replay can't be found anymore.",600))
 	card.add_child(host._back_button("Back to Solo replays",show_collection,false))
 
@@ -1147,6 +1241,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	# A redraw of the same room (a checked room arriving) keeps the scroll offset.
 	var kept_scroll: int=host._bounded_card_scroll.scroll_vertical if host.mode == MODE_SHARED_MEMORIES and _shared_drawn_room == shared_replay_room and is_instance_valid(host._bounded_card_scroll) else 0
 	_shared_drawn_room=shared_replay_room
+	_turn_tries=TurnTries.new()
 	var back_text := "Back"
 	var back_callback: Callable = func(): home_requested.emit()
 	var shell := _begin_replay_split("together",back_text,back_callback)
@@ -1235,7 +1330,7 @@ func _shared_memory_row(row: Dictionary, part: int, selected: bool, wide: bool) 
 			if not row.get("cached",false): _save_shared_memory(key,row)
 		else:
 			_open_shared_memory(key,row)
-	var card := _replay_row_card(_shared_room_thumb_key(row),str(row.get("title","Replay")),"Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],selected,open)
+	var card := _replay_row_card(_shared_room_thumb_key(row),str(row.get("title","Replay")),"Part %d · %s" % [part,"Saved offline" if row.get("cached",false) else "Download replay"],selected,open,true,_tries_row(_shared_turns(row)))
 	var panel: PanelContainer=card.panel
 	var rowbox: HBoxContainer=card.rowbox
 	var play := _shared_watch_button("Play",key,row,false,true)
@@ -1272,7 +1367,7 @@ func _fill_shared_preview(preview: VBoxContainer, rows: Array) -> void:
 	preview.add_child(thumbnail)
 	preview.set_meta("thumbnail",thumbnail)
 	preview.add_child(host._label(str(current.get("title","Replay")),28,CREAM,true))
-	preview.add_child(host._label("Part %d / %d" % [_shared_part(current,part),_shared_part_count(rows)],17,MUTED))
+	preview.add_child(_part_line(host._label("Part %d / %d" % [_shared_part(current,part),_shared_part_count(rows)],17,MUTED),_shared_turns(current)))
 	preview.add_child(_shared_watch_button("Watch replay",key,current,true))
 	var secondary := HBoxContainer.new()
 	secondary.add_theme_constant_override("separation",10)

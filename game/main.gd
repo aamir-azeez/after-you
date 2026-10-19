@@ -1925,6 +1925,7 @@ func _write_backup_plan() -> void:
 func _wire_shared_history() -> void:
 	shared_replays.history_pair = _history_pair
 	shared_replays.ask_for_attempt = _ask_for_attempt
+	shared_replays.turn_tries_supported = _turn_tries_supported
 
 func _history_pair(room_id: String, chapter_key: String, pair_id: String) -> Dictionary:
 	ensure_relay_session()
@@ -1934,6 +1935,11 @@ func _ask_for_attempt(room_id: String, position: int) -> void:
 	ensure_relay_session()
 	if relay_session.capabilities.is_empty(): await relay_session.load_capabilities()
 	await relay_session.want_room_attempt(room_id, position)
+
+func _turn_tries_supported() -> bool:
+	ensure_relay_session()
+	if relay_session.capabilities.is_empty(): await relay_session.load_capabilities()
+	return relay_session.turn_tries_supported()
 
 func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	replays_flow.invalidate_identity()

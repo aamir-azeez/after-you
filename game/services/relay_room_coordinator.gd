@@ -19,6 +19,7 @@ const RoomStages = preload("res://services/room_stages.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const Typed = preload("res://services/typed_values.gd")
+const TurnTries = preload("res://services/turn_tries.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
 ## Journal values under comfort rules (8 and up), Turn of the Tide's long turns included.
@@ -453,7 +454,9 @@ func _confirm_unchanged(response: Dictionary) -> bool:
 	return true
 
 
-func commit(recording: Dictionary) -> bool:
+## `tries`: how many tries the turn took (services/turn_tries.gd), sent beside
+## the recording when the server reads counts; 0 sends none.
+func commit(recording: Dictionary, tries: int = 0) -> bool:
 	if not finish_live_draft_save(): return false
 	if not my_turn() or read_only or _busy != 0:
 		return _error("commit_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_BBE0446F0FDD)
@@ -484,6 +487,7 @@ func commit(recording: Dictionary) -> bool:
 		if not derived.valid:
 			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
 		body["checkpoint"] = derived.checkpoint
+	if tries > 0: body["tries"] = mini(tries, TurnTries.MAX_TRIES)
 	if not _prepare_pending("turns", body):
 		return false
 	return await _send_pending()
@@ -1106,6 +1110,9 @@ func _valid_pending(value: Variant) -> bool:
 	var keys := ["base_revision", "idempotency_key", "branch", "recording"] if value.operation == "turns" else ["base_revision", "idempotency_key", "branch", "stage_index"]
 	if Typed.equal(value.operation, "turns") and body.get("recording") is Dictionary and Typed.equal(body.recording.get("role"), "b"):
 		keys.append("checkpoint")
+	if Typed.equal(value.operation, "turns") and body.has("tries"):
+		if not Typed.whole_number(body.tries) or int(body.tries) < 1 or int(body.tries) > TurnTries.MAX_TRIES: return false
+		keys.append("tries")
 	if not _exact(body, keys) or not _token(body.idempotency_key, -1, 80) or body.idempotency_key.length() < 16 or not Typed.equal(body.base_revision, value.origin.revision) or not Typed.equal(body.branch, value.origin.branch) or not Typed.equal(value.request_hash, _request_hash(value.operation, body)):
 		return false
 	if value.operation == "fork":

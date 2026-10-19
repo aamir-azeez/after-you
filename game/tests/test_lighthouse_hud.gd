@@ -23,6 +23,7 @@ class Capture extends CanvasLayer:
 	var calls: Array = []
 	func update_state(title: String, remaining: float, state: Dictionary, interactive: bool) -> void:
 		calls.append({"title": title, "remaining": remaining, "state": state.duplicate(true), "interactive": interactive})
+	func show_tries(_tries: int) -> void: pass
 
 func _initialize() -> void: _run.call_deferred()
 
