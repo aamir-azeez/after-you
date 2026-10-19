@@ -25,8 +25,9 @@ const LINE := Color("a8e0da")
 ## (extras: VBoxContainer, context: Dictionary) -> void; see the header.
 static var ending_extras_provider: Callable
 
-## A small peak: filled in the mode's colour once that hard play is done, an
-## outline while it is open, and an outline with a lock while locked.
+## A small peak: filled in the mode's colour once that hard play is done, a
+## faint outline in it while it is open, and a dim outline with a lock while
+## locked. Menus show only open and done marks.
 class Mark extends Control:
 	var mode := HardMode.SOLO
 	var look := HardMode.LOCKED
@@ -78,7 +79,7 @@ class Mark extends Control:
 		else:
 			var closed := peak.duplicate()
 			closed.append(peak[0])
-			draw_polyline(closed, lit() if look == HardMode.OPEN else DIM, line, true)
+			draw_polyline(closed, Color(lit(), 0.55) if look == HardMode.OPEN else DIM, line, true)
 
 ## One mark, named "HardMarkSolo" or "HardMarkTogether".
 static func mark(mode: String, state: String, side: float = 22.0) -> Mark:

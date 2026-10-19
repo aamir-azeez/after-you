@@ -13,7 +13,9 @@ const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const Replays = preload("res://presentation/replays_flow.gd")
+const HardReplays = preload("res://presentation/hard_replays.gd")
+const HardRunFlow = preload("res://presentation/hard_run_flow.gd")
+const BackupPlan = preload("res://services/backup_plan.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const KEY := "relay-isles@2"
@@ -48,8 +50,9 @@ func _path(label: String) -> String:
 	return path
 
 func _clear_runs() -> void:
-	for key: String in HardMode.eligible_keys():
-		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(HardMode.runs_path(key) + suffix))
+	HardMode.wait_writes()
+	for path: String in HardMode.eligible_keys().map(func(key: String) -> String: return HardMode.runs_path(key)) + [HardMode.INDEX_PATH]:
+		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 
 func _rules() -> void:
 	for id: String in ["retry", "try_again", "restart", "checkpoints", "solo_redo", "redo", "redo_answer"]:
@@ -64,7 +67,9 @@ func _rules() -> void:
 	_check(HardMode.tries_key(KEY) != KEY and HardMode.tries_key(KEY).begins_with(KEY), "A solo hard run counts tries apart from the chapter")
 	var solo: RefCounted = HardRun.solo(KEY, _path("rules-marks"))
 	_check(solo.active() and not solo.together and solo.tries_key(KEY) == HardMode.tries_key(KEY), "A solo run is always hard and counts in its own scope")
-	_check(HardMode.notice_text("Sam", 1) == PlayerCopy.HARD_FRIEND_NOTICE % ["Sam", 2] and HardMode.notice_text("", 0) == PlayerCopy.HARD_FRIEND_NOTICE % [PlayerCopy.HARD_FRIEND_FALLBACK, 1], "The friend's note names them, or says your friend")
+	_check(HardModeView.failure_line({"by": "friend", "friend": "Sam", "reason": "drowned", "stage_index": 1}) == PlayerCopy.HARD_FRIEND_WENT_UNDER % ["Sam", 2] and HardModeView.failure_line({"by": "friend", "friend": "", "reason": "retry", "stage_index": 0}) == PlayerCopy.HARD_FRIEND_STARTED_OVER % [PlayerCopy.HARD_FRIEND_FALLBACK, 1], "The friend's slip names them, or says your friend, and how they slipped")
+	_check(HardRunFlow.failed_body(false, {"slip": {"recording": {"a": 1}}, "pairs": []}) == PlayerCopy.HARD_FAILED_SOLO + " " + PlayerCopy.HARD_FAILED_KEPT_SOLO and HardRunFlow.failed_body(false, {"slip": {}, "pairs": []}) == PlayerCopy.HARD_FAILED_SOLO, "A solo failure says the slip is kept only when there is one to watch")
+	_check(HardRunFlow.failed_body(true, {"by": "you", "slip": {}, "pairs": []}) == PlayerCopy.HARD_FAILED_TOGETHER and HardRunFlow.failed_body(true, {"by": "friend", "slip": {}, "pairs": []}).begins_with(PlayerCopy.HARD_FAILED_TOGETHER), "A room's failure says you both go back")
 
 func _unlocks() -> void:
 	var keys := HardMode.eligible_keys()
@@ -95,6 +100,8 @@ func _unlocks() -> void:
 		var store := HardMode.new(_path("unlock-" + mode))
 		_check(store.state(finished, KEY, HardMode.SOLO) == HardMode.OPEN and store.state(finished, KEY, HardMode.TOGETHER) == HardMode.OPEN, "Both marks read open once unlocked (" + mode + ")")
 		_check(store.state(marks, KEY, HardMode.SOLO) == HardMode.LOCKED, "The marks read locked before")
+		_check(HardMode.any_open(store.states(finished)) and not HardMode.any_open(store.states(marks)), "Menus show hard marks only once one is open")
+		_check(not store.states(finished, false)[KEY].has(HardMode.TOGETHER) and store.count(false)[1] == HardMode.eligible_keys().size(), "Without hard rooms on the server, no together mark or count")
 
 func _marks_store() -> void:
 	var path := _path("marks")
@@ -120,7 +127,8 @@ func _marks_store() -> void:
 
 func _record(kind: String, mode: String, index: int) -> Dictionary:
 	var slip := {"recording": {"recording_hash": "%064d" % index, "role": "a", "stage_id": "relay"}, "checkpoint": {"checkpoint_hash": "c"}, "prior": {}}
-	var run := HardMode.run_record(KEY, mode, kind, "failed_turn" if kind == HardMode.FAILED else "", "you" if kind == HardMode.FAILED else "", index % 3, "a", [], slip if kind == HardMode.FAILED else {})
+	var pairs: Array = [] if kind == HardMode.FAILED else [{"a": {"stage_id": "relay"}, "b": {"stage_id": "relay", "recording_hash": "%064d" % index}}]
+	var run := HardMode.run_record(KEY, mode, kind, "failed_turn" if kind == HardMode.FAILED else "", "you" if kind == HardMode.FAILED else "", index % 3, "a", pairs, slip if kind == HardMode.FAILED else {})
 	run.at = 1000 + index
 	run.id = "run-%s-%s-%d" % [kind, mode, index]
 	return run
@@ -139,8 +147,19 @@ func _archive() -> void:
 	var size := kept.size()
 	HardMode.save_run(_record(HardMode.FAILED, HardMode.SOLO, 7))
 	_check(HardMode.runs(KEY).size() == size, "A run already kept is not kept twice")
-	var all := HardMode.all_runs()
+	var all := HardMode.summaries()
 	_check(all.size() == size and int(all[0].at) >= int(all[-1].at), "Every chapter's runs list newest first")
+	_check(all.all(func(item: Dictionary) -> bool: return not item.has("slip") and not item.has("pairs") and int(item.parts) >= 1), "The list reads summaries, never recordings")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(HardMode.INDEX_PATH))
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(HardMode.INDEX_PATH + ".backup"))
+	_check(HardMode.summaries().size() == size and FileAccess.file_exists(HardMode.INDEX_PATH), "A lost index is built again from the run files")
+	var nothing := _record(HardMode.FAILED, HardMode.SOLO, 90)
+	nothing.slip = {}
+	_check(not HardMode.save_run(nothing), "A run with nothing to watch is not kept")
+	HardMode.keep_run(_record(HardMode.FAILED, HardMode.TOGETHER, 23))
+	HardMode.wait_writes()
+	_check(HardMode.kept_run(KEY, "run-failed-together-23").get("slip", {}).has("recording"), "A run kept on a worker is on disk once its writes are waited for")
+	size = HardMode.runs(KEY).size()
 	var bad := _record(HardMode.FAILED, HardMode.SOLO, 99)
 	bad.reason = "bored"
 	_check(not HardMode.save_run(bad), "A run with an unknown reason is refused")
@@ -169,14 +188,24 @@ func _archive() -> void:
 	run.slip = {}
 	run.pairs = []
 	_check(HardMode.watch_pairs(run).is_empty() and not HardMode.watchable(run), "A slip before the first move has nothing to watch")
-	var entry := Replays.hard_entry(_record(HardMode.FAILED, HardMode.TOGETHER, 5))
-	_check(entry.family == "hard" and entry.title == PlayerCopy.HARD_RUN_FAILED % Registry.descriptor(KEY).title and str(entry.caption).contains(PlayerCopy.HARD_YOU_SLIPPED % 3), "A failed run lists under its chapter, marked as a hard run, with who slipped where")
-	var friend := _record(HardMode.FAILED, HardMode.TOGETHER, 6)
+	var mine := HardMode.summary(_record(HardMode.FAILED, HardMode.TOGETHER, 5))
+	mine.friend = "Sam"
+	_check(HardReplays.title(mine) == PlayerCopy.HARD_RUN_FAILED % Registry.descriptor(KEY).title and HardReplays.caption(mine).begins_with(PlayerCopy.HARD_RUN_TOGETHER % "Sam") and HardReplays.caption(mine).ends_with(PlayerCopy.HARD_YOU_SLIPPED % 3), "A failed run lists under its chapter as a hard run, with who, when and where")
+	var friend := HardMode.summary(_record(HardMode.FAILED, HardMode.TOGETHER, 6))
 	friend.by = "friend"
 	friend.friend = "Sam"
 	friend.reason = "drowned"
-	_check(str(Replays.hard_entry(friend).caption) == PlayerCopy.HARD_RUN_TOGETHER % "Sam" + " · " + PlayerCopy.HARD_FRIEND_WENT_UNDER % ["Sam", 1], "A friend's slip names the friend")
-	_check(Replays.hard_entry(_record(HardMode.COMPLETE, HardMode.SOLO, 7)).title == PlayerCopy.HARD_RUN_DONE % Registry.descriptor(KEY).title, "A finished run says so")
+	var caption := HardReplays.caption(friend)
+	_check(caption.ends_with(PlayerCopy.HARD_FRIEND_WENT_UNDER % ["Sam", 1]) and caption.count("Sam") == 1, "A friend's slip names the friend once: " + caption)
+	_check(HardReplays.title(HardMode.summary(_record(HardMode.COMPLETE, HardMode.SOLO, 7))) == PlayerCopy.HARD_RUN_DONE % Registry.descriptor(KEY).title, "A finished run says so")
+	HardMode.save_run(_record(HardMode.FAILED, HardMode.SOLO, 8))
+	HardMode.save_run(_record(HardMode.FAILED, HardMode.TOGETHER, 9))
+	var solo_rows := HardReplays.runs(HardMode.SOLO)
+	var together_rows := HardReplays.runs(HardMode.TOGETHER)
+	_check(solo_rows.size() == 1 and together_rows.size() == 1 and solo_rows[0].mode == HardMode.SOLO and together_rows[0].mode == HardMode.TOGETHER, "Solo runs list on Solo, runs with a friend on Together")
+	_clear_runs()
+	var plan: Array = BackupPlan.FIXED
+	_check(HardMode.MARKS_PATH.get_file() in plan and HardMode.INDEX_PATH.get_file() in plan, "Android backup keeps the hard marks and the runs' index")
 
 func _hand_off() -> void:
 	HardMode.hand_over({"chapter_key": KEY, "kind": "play"})
@@ -223,12 +252,18 @@ func _room_checks() -> void:
 	_check(not HardRoomClient.valid_view({"schema_version": 1, "failures": 1, "over": false, "last": stranger}, room), "A slip by someone outside the room is refused")
 	_check(not HardRoomClient.valid_view({"schema_version": 1, "failures": 1, "over": "no", "last": last}, room), "A malformed view is refused")
 	var item := last.duplicate()
+	item.number = 3
 	item.slip = {"recording": {"role": "b"}, "checkpoint": {"checkpoint_hash": "c"}, "prior": {"role": "a"}}
-	_check(HardRoomClient.valid_failures({"schema_version": 1, "failures": 3, "list": [item]}, room), "A read of kept failures checks")
+	_check(HardRoomClient.valid_failures({"schema_version": 1, "failures": 3, "list": [item]}, room, 2), "A read of the slips after the ones seen checks")
+	_check(not HardRoomClient.valid_failures({"schema_version": 1, "failures": 3, "list": [item]}, room, 3), "A slip already seen is refused")
+	_check(not HardRoomClient.valid_failures({"schema_version": 1, "failures": 2, "list": [item]}, room), "A slip numbered past the room's count is refused")
+	var first := item.duplicate()
+	first.number = 2
+	_check(not HardRoomClient.valid_failures({"schema_version": 1, "failures": 3, "list": [item, first]}, room), "Slips out of order are refused")
 	item.slip = null
 	_check(HardRoomClient.valid_failures({"schema_version": 1, "failures": 3, "list": [item]}, room), "A failure without a slip checks")
-	_check(not HardRoomClient.valid_failures({"schema_version": 1, "failures": 3, "list": [item, item, item, item, item, item]}, room), "More than five kept failures are refused")
-	var journal := {"schema_version": 1, "owner_player_id": HOST, "room_id": room.room_id, "server_hash": "h", "pending": {}, "seen": 0}
+	_check(not HardRoomClient.valid_failures({"schema_version": 1, "failures": 9, "list": [item, item, item, item, item, item]}, room), "More than five kept failures are refused")
+	var journal := {"schema_version": 1, "owner_player_id": HOST, "room_id": room.room_id, "server_hash": "h", "pending": {}, "seen": 0, "shown": 0}
 	_check(HardRoomClient.valid_journal(journal, HOST, room.room_id, "h"), "An empty reset journal checks")
 	journal.pending = {"base_revision": 3, "branch": 0, "idempotency_key": "k", "reason": "retry", "stage_index": 0, "role": "a"}
 	_check(HardRoomClient.valid_journal(journal, HOST, room.room_id, "h"), "A kept reset checks")
@@ -276,7 +311,8 @@ func _marks_look() -> void:
 	var relay_mark: Variant = picker.card_for(KEY).find_child("HardMarkSolo", true, false)
 	_check(relay_mark != null and relay_mark.look == HardMode.OPEN, "A Play Solo card shows its hard solo mark")
 	var tick: Control = picker.card_for(KEY).find_child("ChapterDone", true, false)
-	_check(relay_mark != null and relay_mark.position.x > tick.position.x + 20.0, "The hard mark sits after the tick's place")
+	_check(relay_mark != null and not tick.visible and absf(relay_mark.position.x - tick.position.x) < 1.0, "With no tick, the hard mark takes the tick's place")
+	_check(picker.card_for("high-and-low@1").find_child("HardMarkSolo", true, false) == null, "A locked hard play shows no mark")
 	picker.refresh_hard({KEY: {"solo": HardMode.DONE, "together": HardMode.LOCKED}})
 	_check(relay_mark.look == HardMode.DONE, "Marks restyle in place")
 	picker.free()

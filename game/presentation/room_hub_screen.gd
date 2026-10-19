@@ -76,8 +76,8 @@ var _footer: Label
 var _heading_font: FontVariation
 var _chapter_choice: Button
 var _host_note: Label
-## Hard rooms: shown while the server may host them (unknown counts as maybe;
-## Host then says when it cannot), for a chapter whose hard play is open.
+## Hard rooms: shown once the server says it hosts them, for a chapter whose
+## hard play is open.
 var _hard_available := false
 var _hard_states: Dictionary = {}
 var _hard_on := false
@@ -595,8 +595,8 @@ func _update_hero() -> void:
 		# The note changes the column height, so the picture is fitted again.
 		_fit_hero.call_deferred()
 
-## available: the server may host hard rooms (false once it says it does
-## not); states: HardMode.states(); on: the chip as last chosen.
+## available: the server hosts hard rooms; states: HardMode.states(); on:
+## the chip as last chosen.
 func set_hard(available: bool, states: Dictionary, on: bool) -> void:
 	_hard_available = available
 	_hard_states = states.duplicate(true)
@@ -622,7 +622,7 @@ func _update_hard() -> void:
 	var allowed := _hard_allowed(_selected_key)
 	_hard_chip.disabled = not allowed
 	HardModeView.set_chip(_hard_chip, _hard_on and allowed)
-	_hard_note.text = PlayerCopy.HARD_LOCKED_NOTE if not allowed else PlayerCopy.HARD_CHIP_ON if _hard_on else ""
+	_hard_note.text = PlayerCopy.HARD_LOCKED_NOTE if not allowed else PlayerCopy.HARD_HOST_NOTE_ON if _hard_on else PlayerCopy.HARD_HOST_NOTE_OFF
 	_hard_note.visible = not _hard_note.text.is_empty()
 
 func _render() -> void:

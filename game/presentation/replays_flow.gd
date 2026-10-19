@@ -48,6 +48,8 @@ const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const SoloReplayCollection = preload("res://services/solo_replay_collection.gd")
 const SoloReplayIndex = preload("res://services/solo_replay_index.gd")
 const SoloReplayVisibility = preload("res://services/solo_replay_visibility.gd")
+const HardMode = preload("res://services/hard_mode.gd")
+const HardReplays = preload("res://presentation/hard_replays.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
@@ -100,6 +102,8 @@ var solo_replay_visibility: RefCounted = SoloReplayVisibility.new()
 ## Display-only rows of the last finished scan, drawn unplayable at once.
 var solo_replay_index: RefCounted
 var _selected_solo_attempt: Dictionary = {}
+## Kept hard runs (presentation/hard_replays.gd) for this visit, by mode.
+var _hard_runs: Dictionary = {}
 var _solo_collection_message := ""
 var _solo_collection_started := false
 ## Solo scan feedback: the bar in the open list, the settled row count drawn
@@ -224,6 +228,7 @@ func show_collection(message: String="") -> void:
 	var kept_scroll: int=host._bounded_card_scroll.scroll_vertical if host.mode == MODE_COLLECTION and is_instance_valid(host._bounded_card_scroll) else 0
 	host.running=false
 	host.room_play=false
+	if host.mode != MODE_COLLECTION: _hard_runs={}
 	host.mode=MODE_COLLECTION
 	_solo_collection_message=message
 	_turn_tries=TurnTries.new()
@@ -265,9 +270,11 @@ func show_collection(message: String="") -> void:
 	var unchecked: bool=not scanning and not solo_replays.last_error.is_empty() and solo_replays.items().is_empty()
 	if unchecked and not entries.is_empty(): left.add_child(host._paragraph(solo_replays.last_error,620))
 	if not _solo_collection_message.is_empty(): left.add_child(host._paragraph(_solo_collection_message,620))
+	var hard := hard_runs(HardMode.SOLO)
+	HardReplays.add_section(self,left,hard)
 	# "Nothing saved" only after a finished scan has found nothing. When nothing
 	# could be checked, replays may exist: the art carries that error instead.
-	if entries.is_empty() and not scanning:
+	if entries.is_empty() and hard.is_empty() and not scanning:
 		ControlTheme.empty_state(left,"replays_solo","" if unchecked else PlayerCopy.EMPTY_SOLO_TITLE,solo_replays.last_error if unchecked else EMPTY_SOLO_COLLECTION,null,wide)
 	if not wide:
 		var refresh: Button = host._button("Refresh saved replays",func(): _solo_collection_started=false; show_collection(),false)
@@ -433,6 +440,21 @@ func _select_solo_entry(entries: Array) -> void:
 			return
 	_selected_solo_attempt=entries[0].duplicate()
 	_selected_solo_attempt["part"]=0
+
+## The kept hard runs of `mode`, read once a visit to the list.
+func hard_runs(mode: String) -> Array:
+	if not _hard_runs.has(mode): _hard_runs[mode]=HardReplays.runs(mode)
+	return _hard_runs[mode]
+
+## Opens a kept hard run's chapter to watch it from `part` (HardMode.hand_over "watch").
+func launch_hard_run(run: Dictionary, part: int) -> void:
+	if host.mode not in [MODE_COLLECTION,MODE_SHARED_REPLAYS,MODE_SHARED_MEMORIES]: return
+	var chapter_key := str(run.get("chapter_key",""))
+	var scene := ChapterRegistry.solo_scene(chapter_key)
+	if scene.is_empty(): return
+	var request := {"chapter_key":chapter_key,"kind":"watch","id":str(run.get("id","")),"part":part}
+	if ChapterRegistry.descriptor(chapter_key).premium: await host._open_premium_chapter(scene,{},request)
+	else: host._open_chapter_preview(scene,{},request)
 
 func _solo_part_subtitle(parts: int) -> String:
 	return "%d %s · Saved offline" % [parts,"part" if parts==1 else "parts"]
@@ -1037,6 +1059,7 @@ func show_shared_replays(wanted: String = "") -> void:
 	# here, and Back leaves to Home like Solo's Back.
 	host.running=false
 	host.room_play=false
+	if host.mode not in [MODE_SHARED_REPLAYS,MODE_SHARED_MEMORIES]: _hard_runs={}
 	host.mode=MODE_SHARED_REPLAYS
 	if not host._relay_identity().ready:
 		var now := Time.get_ticks_msec()
@@ -1204,6 +1227,7 @@ func _draw_shared_replay_empty(message: String="", settled: bool=true) -> void:
 	else:
 		if not status.is_empty(): left.add_child(host._paragraph(status,630))
 		ControlTheme.empty_state(left,"replays_together",PlayerCopy.EMPTY_TOGETHER_TITLE,PlayerCopy.EMPTY_TOGETHER_TEXT,refresh,shell.wide)
+	HardReplays.add_section(self,left,hard_runs(HardMode.TOGETHER))
 	shell.preview_panel.visible=false
 
 func _refresh_shared_replay_rooms() -> void:
@@ -1307,6 +1331,7 @@ func _draw_shared_replay_memories(rows: Array, message: String="") -> void:
 	elif not host.shared_replays.last_error.is_empty(): left.add_child(host._paragraph(host.shared_replays.last_error,650))
 	# The selection hint only makes sense once there is a stage to select.
 	if not rows.is_empty(): left.add_child(host._paragraph(PlayerCopy.MAIN_4CACA12BCD58,650))
+	HardReplays.add_section(self,left,hard_runs(HardMode.TOGETHER))
 	var has_preview: bool=wide and not rows.is_empty() and not _shared_preview_id.is_empty()
 	if not has_preview:
 		var options: Button = host._button("Options",_open_shared_options,false)

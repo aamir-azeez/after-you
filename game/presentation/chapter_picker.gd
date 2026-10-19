@@ -302,9 +302,10 @@ func _card(item: Dictionary, picture: Vector2) -> PanelContainer:
 	tick.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	tick.visible = false
 	heading.add_child(tick)
-	# The chapter's hard mark (locked, open or done) follows the tick's place.
+	# The chapter's hard mark, once open or done, follows the tick (or takes
+	# its place while there is none).
 	var hard_mark: Control = null
-	if not hard_mode.is_empty() and hard_states.get(key) is Dictionary:
+	if not hard_mode.is_empty() and hard_states.get(key) is Dictionary and str(hard_states[key].get(hard_mode, HardMode.LOCKED)) != HardMode.LOCKED:
 		hard_mark = HardModeView.mark(hard_mode, str(hard_states[key].get(hard_mode, HardMode.LOCKED)), 24.0)
 		heading.add_child(hard_mark)
 	var reserve := 34.0 + (32.0 if hard_mark != null else 0.0)
@@ -321,11 +322,12 @@ func _card(item: Dictionary, picture: Vector2) -> PanelContainer:
 		tick.position = Vector2(width+10.0,(first_line-24.0)*0.5)
 		tick.size = Vector2(24,24)
 		if is_instance_valid(hard_mark):
-			hard_mark.position = Vector2(width+42.0,(first_line-24.0)*0.5)
+			hard_mark.position = Vector2(width+(42.0 if tick.visible else 10.0),(first_line-24.0)*0.5)
 			hard_mark.size = Vector2(24,24)
 		heading.custom_minimum_size.y = title.size.y
 	heading.resized.connect(place)
 	title.minimum_size_changed.connect(func(): place.call_deferred())
+	if hard_mark != null: tick.visibility_changed.connect(func(): place.call_deferred())
 	# Locked Full Journey chapters keep their gold marker; owned ones go quiet.
 	# A screen may name why a chapter is locked in "note", in place of the marker.
 	var note := str(item.get("note",""))

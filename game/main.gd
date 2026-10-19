@@ -12,7 +12,6 @@ const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
-const HomeKeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
@@ -649,7 +648,7 @@ func _show_home() -> void:
 	if shared_replays != null: home_keepsakes.reconcile_friend(shared_replays)
 	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors())
-	home_stage.set_hard(hard_states(),HardMode.new().count())
+	home_stage.set_hard(hard_states(),HardMode.new().count(hard_together()))
 	overlay.add_child(home_stage)
 	var compact := ui.size.y < 640
 	# Friend-first column, vertically centred in the safe area: as much space above
@@ -881,13 +880,13 @@ func _open_hard_chapter(key: String) -> void:
 	if ChapterRegistry.descriptor(key).premium: _open_premium_chapter(ChapterRegistry.solo_scene(key), {}, request)
 	else: _open_chapter_preview(ChapterRegistry.solo_scene(key), {}, request)
 
-## Every chapter's hard marks (HardMode.states), also under the older key a
-## newer version's keepsake places keep.
+## Every chapter's hard marks (HardMode.states); together ones only where
+## the server has said it hosts hard rooms.
 func hard_states() -> Dictionary:
-	var states: Dictionary = HardMode.new().states(_chapter_marks())
-	for alias: String in HomeKeepsakeCatalog.ALIASES:
-		if states.has(alias): states[HomeKeepsakeCatalog.ALIASES[alias]] = states[alias]
-	return states
+	return HardMode.new().states(_chapter_marks(), hard_together())
+
+func hard_together() -> bool:
+	return relay_session != null and relay_session.hard_mode_supported()
 
 ## The Chapters page's cards, as given to its picker (which shows free ones
 ## first): the solo-only Lighthouse, then every chapter with its own Solo card.
@@ -899,16 +898,7 @@ func _journey_entries(owned: bool, hard: bool = false) -> Array[Dictionary]:
 	for key: String in ChapterRegistry.offered_keys():
 		if _own_solo_card(key): entries.append(ChapterPicker.entry(key))
 	for item: Dictionary in entries: item.locked = item.premium and not owned
-	if not hard: return entries
-	var marks := _chapter_marks()
-	var shown: Array[Dictionary] = []
-	for item: Dictionary in entries:
-		if not HardMode.eligible(str(item.key)): continue
-		var open := HardMode.unlocked(marks, str(item.key))
-		item.locked = not open
-		item.note = PlayerCopy.HARD_OPEN_NOTE if open else PlayerCopy.HARD_LOCKED_NOTE
-		shown.append(item)
-	return shown
+	return HardMode.picker_entries(entries, _chapter_marks()) if hard else entries
 
 ## The chapter the player most likely opens next: the first card the Chapters
 ## page shows, in its order, that is open to them and not yet finished solo;

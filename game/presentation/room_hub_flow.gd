@@ -244,13 +244,16 @@ func hide_room(version: int, room_id: String) -> void:
 
 ## The hub can open before the saved tester code is read; once it is, the
 ## hosting locks are drawn again so a tester never keeps a stale lock.
-## The host panel's Hard chip: hidden once the server says it hosts no hard
-## rooms; before the server has said, Host a room asks it (create_room).
-func _offer_hard(hub: Node) -> void:
+## The host panel's Hard chip: shown only once the server says it hosts hard
+## rooms. A hub opened before the server has said asks it once, then offers
+## the chip again.
+func _offer_hard(hub: Node, asked: bool = false) -> void:
 	if not is_instance_valid(hub): return
 	var session: RefCounted = host.relay_session
-	var known: bool = session != null and not session.capabilities.is_empty()
-	hub.set_hard(not known or session.hard_mode_supported(), host.hard_states(), host_hard)
+	hub.set_hard(session != null and session.hard_mode_supported(), host.hard_states(), host_hard)
+	if asked or session == null or not session.capabilities.is_empty() or session.busy(): return
+	if not await session.load_capabilities(): return
+	if is_instance_valid(hub) and hub == screen: _offer_hard(hub, true)
 
 func _refresh_together_locks(hub: Node) -> void:
 	if not host._tester_checks_enabled() or (is_instance_valid(host.tester_access) and host.tester_access.cache_checked_context == host._tester_context()): return

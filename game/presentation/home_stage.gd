@@ -451,8 +451,8 @@ func _update_keepsake_labels() -> void:
 	var earned := mini(KeepsakeCatalog.variant_count(_keepsakes), total)
 	_keepsake_controls.visible = not item.is_empty()
 	_keepsake_count.text = "Keepsakes · %d / %d" % [earned, total]
-	# Hard plays keep their own count beside it.
-	if _hard_count.size() == 2 and int(_hard_count[1]) > 0: _keepsake_count.text += "   " + PlayerCopy.HARD_COUNT % [int(_hard_count[0]), int(_hard_count[1])]
+	# Hard plays keep their own count beside it, once one is open.
+	if _hard_count.size() == 2 and int(_hard_count[1]) > 0 and HardMode.any_open(_hard_states): _keepsake_count.text += " · " + PlayerCopy.HARD_COUNT % [int(_hard_count[0]), int(_hard_count[1])]
 	_keepsake_status.text = status_line(item) if not item.is_empty() else PlayerCopy.KEEPSAKE_TEASER
 	if item.is_empty(): return
 	_keepsake_title.text = str(item.title)
@@ -461,11 +461,13 @@ func _update_keepsake_labels() -> void:
 	solo.self_modulate = SOLO_LIT if item.get("solo", false) else VARIANT_DIM
 	together.visible = item.get("friend_available", true)
 	together.self_modulate = TOGETHER_LIT if item.get("friend", false) else VARIANT_DIM
+	# The place's chapter's hard plays, once open or done.
 	var hard: Variant = _hard_states.get(str(item.get("chapter_key", "")))
 	for index in range(HardMode.MODES.size()):
 		var hard_mark: Control = _keepsake_variant_icons.get_child(2 + index)
-		hard_mark.visible = hard is Dictionary
-		if hard is Dictionary: hard_mark.set_look(str(hard.get(HardMode.MODES[index], HardMode.LOCKED)))
+		var look := str(hard.get(HardMode.MODES[index], HardMode.LOCKED)) if hard is Dictionary else HardMode.LOCKED
+		hard_mark.visible = look != HardMode.LOCKED
+		if hard_mark.visible: hard_mark.set_look(look)
 	if _keepsake_controls.custom_minimum_size.x > 0:
 		_place_keepsake_heading(_keepsake_controls.custom_minimum_size.x)
 
