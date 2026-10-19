@@ -39,9 +39,7 @@
     "PHOTO_TRANSFER_ENABLED": "false",
     "FINISHED_ROOM_LEAVE_ENABLED": "false",
     "ROOM_INDEX_ENABLED": "false",
-    "LIVE_CONNECTION_ENABLED": "false",
-    "PLAY_GAMES_ENABLED": "false",
-    "GAME_CENTER_ENABLED": "false"
+    "LIVE_CONNECTION_ENABLED": "false"
   },
   "durable_objects": {
     "bindings": [
