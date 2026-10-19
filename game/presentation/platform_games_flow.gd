@@ -97,8 +97,13 @@ func offered() -> bool:
 ## pop-up open (it waits for one), once a session: closing it in any way counts as "Not now".
 func _maybe_offer() -> void:
 	var platform := games()
-	if platform == null or not platform.offer_pending() or is_instance_valid(_offer_modal): return
-	if host.mode != "home" or _modal_open():
+	if platform == null: return
+	if not platform.offer_pending():
+		# The offer went away (a friend code was made, another account signed in): no stale question.
+		if is_instance_valid(_offer_modal) and platform.link_state != PlatformGames.LINK_OFFER: _offer_modal.close(false)
+		return
+	if is_instance_valid(_offer_modal): return
+	if host.mode != "home" or _modal_open() or is_instance_valid(host.get("_chapter_opening")) or host.get("application_backgrounded") == true:
 		if not _offer_retry:
 			_offer_retry = true
 			await host.get_tree().create_timer(1.0).timeout
@@ -167,7 +172,10 @@ func _fill(detail: VBoxContainer) -> void:
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_UNLINK_NOTE))
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_UNLINK, platform.unlink))
 	elif platform.link_state == PlatformGames.LINK_ERROR:
-		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_TRY_AGAIN, platform.start))
+		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_TRY_AGAIN, platform.retry))
+	elif platform.link_state == PlatformGames.LINK_NONE:
+		# Unlinked, or nothing found earlier: link this phone's friend code, or look for one again.
+		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_LINK if identity_state() == "ready" else PlayerCopy.PLATFORM_GAMES_TRY_AGAIN, platform.retry))
 	_set_items(detail, items)
 
 static func _set_items(detail: VBoxContainer, items: Array) -> void:
@@ -274,6 +282,13 @@ static func _valid_pending(value: Variant, provider: String) -> bool:
 		and RecoveryDetails.field_matches(value.next_device_token, RecoveryDetails.SECRET_PATTERN) and RecoveryDetails.field_matches(value.next_recovery_code, RecoveryDetails.SECRET_PATTERN) \
 		and value.next_device_token != value.next_recovery_code
 
+## The player said yes earlier and the answer was lost: a saved proposal for this provider exists.
+func has_pending_restore(provider: String) -> bool:
+	var read: Dictionary = await host._await_secret(host.secrets.get_secret(PENDING_SECRET))
+	var payload: Variant = read.get("payload")
+	if not read.get("ok", false) or not payload is Dictionary or payload.get("found") != true or not payload.get("value") is String: return false
+	return _valid_pending(JSON.parse_string(payload.value), provider)
+
 func cloud_sources() -> RefCounted:
 	var platform := games()
 	if platform == null or platform.state == null: return null
@@ -308,3 +323,7 @@ class Account extends RefCounted:
 	func cloud_sources() -> RefCounted:
 		var flow := _flow_node()
 		return flow.cloud_sources() if flow != null else null
+	func has_pending_restore(provider: String) -> bool:
+		var flow := _flow_node()
+		if flow == null: return false
+		return await flow.has_pending_restore(provider)

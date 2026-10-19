@@ -17,6 +17,8 @@ class FakeSettings extends Node:
 class FakeHost extends Node:
 	var ui := Control.new()
 	var mode := "home"
+	var _chapter_opening: Node = null
+	var application_backgrounded := false
 	var settings_flow := FakeSettings.new()
 	var identity_data := {}
 	var toasts: Array = []
@@ -67,12 +69,19 @@ class FakeAccount extends RefCounted:
 	var web_client := "123456789012-syntheticclientabc.apps.googleusercontent.com"
 	var restores: Array = []
 	var restore_answer: Dictionary = {"ok": true, "player_id": "q".repeat(22)}
+	var pending_restore := false
+	## The state the identity moves to after the check (the player opened Rooms).
+	var becomes := ""
 	func api() -> Node: return api_node
-	func identity_state() -> String: return identity
+	func identity_state() -> String:
+		# The racing case: the friend code appears once the probe and the check have gone out.
+		if not becomes.is_empty() and api_node.calls.size() >= 2: identity = becomes
+		return identity
 	func player_id() -> String: return player
 	func recovery_code() -> String: return "r".repeat(43)
 	func config_web_client_id() -> String: return web_client
 	func cloud_sources() -> RefCounted: return null
+	func has_pending_restore(_provider: String) -> bool: return pending_restore
 	func restore_identity(provider: String, get_credential: Callable, restart: bool) -> Dictionary:
 		var credential: Dictionary = await get_credential.call()
 		restores.append({"provider": provider, "restart": restart, "credential": credential})
@@ -293,6 +302,35 @@ func _run() -> void:
 	await second.accept_offer()
 	_check(second_phone.restores.size() == 1 and second.linked(), "Settings can still bring the friend code back later")
 	second.queue_free()
+	# A friend code made between the check and the prompt (Rooms opened): it links, it is never offered.
+	api.answers = {"/v1/platform/restore": [_on(), linked_answer], "/v1/platform/link": [_ok({"schema_version": 1, "provider": "play_games", "status": "conflict", "changed": false})]}
+	api.calls.clear()
+	var racing := _account(api)
+	racing.identity = "missing"
+	racing.becomes = "ready"
+	var racing_service := _service(FakeProvider.new(), api, racing, "racing")
+	await racing_service.start()
+	_check(not racing_service.offer_pending() and racing.restores.is_empty() and racing_service.link_state == Service.LINK_CONFLICT, "An identity made meanwhile is linked (here: the usual choice), never offered")
+	racing_service.queue_free()
+	# A yes whose answer was lost: the saved proposal finishes without asking again.
+	api.answers = {"/v1/platform/restore": [_on(), linked_answer]}
+	var resumed := _account(api)
+	resumed.identity = "missing"
+	resumed.pending_restore = true
+	var resumed_service := _service(FakeProvider.new(), api, resumed, "resumed")
+	await resumed_service.start()
+	_check(resumed.restores.size() == 1 and resumed_service.linked(), "A lost yes is finished without a second prompt")
+	resumed_service.queue_free()
+	# Unlinked: Settings can link again, and a retry checks again even after "no link" today.
+	api.answers = {"/v2/capabilities": [_ok(CAPABILITY)], "/v1/platform/link": [_ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": true}), _ok({"schema_version": 1, "provider": "play_games", "status": "linked", "changed": true})], "/v1/platform/unlink": [_ok({"schema_version": 1, "provider": "play_games", "unlinked": true})]}
+	var relinking := _service(FakeProvider.new(), api, _account(api), "relink")
+	await relinking.start()
+	await relinking.unlink()
+	_check(relinking.link_state == Service.LINK_NONE, "Unlinked")
+	await relinking.retry()
+	_check(relinking.linked(), "Link from Settings links again in the same session")
+	relinking.queue_free()
+
 	api.answers = {"/v1/platform/restore": [_on(), linked_answer]}
 	var next_launch_phone := _account(api)
 	next_launch_phone.identity = "missing"

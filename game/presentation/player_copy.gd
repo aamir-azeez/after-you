@@ -291,6 +291,10 @@ const PLATFORM_GAMES_OFFER_TITLE := "Use your friend code from your other phone?
 const PLATFORM_GAMES_USE_IT := "Use it"
 const PLATFORM_GAMES_NOT_NOW := "Not now"
 const PLATFORM_GAMES_OFFER_NOTE := "This account has a friend code from another phone."
+## A Settings button: link this phone's friend code to the signed-in account again.
+const PLATFORM_GAMES_LINK := "Link"
+## A toast: the friend code was unlinked or deleted on the other phone before Use it.
+const PLATFORM_GAMES_NO_LINK := "There's no friend code to bring back now."
 const PLATFORM_GAMES_SIGN_IN := "Sign in"
 const PLATFORM_GAMES_SIGN_IN_NOTE := "Sign in to bring your friend code and progress to a new phone."
 const PLATFORM_GAMES_CHOOSE_TITLE := "Which friend code should stay?"
