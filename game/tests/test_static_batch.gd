@@ -151,10 +151,18 @@ func _home() -> void:
 	while (current_scene == null or current_scene.get("mode") != "home") and guard < 600:
 		await process_frame
 		guard += 1
-	for i in range(5): await process_frame
 	var app: Node = current_scene
 	var world: Node3D = app.world
 	var terrain: Node3D = world.terrain
+	# Home opens with its fold still to do: the island folds over the frames
+	# after, never all in the frame Home is made in.
+	_check(app.home_stage_view.folding() and terrain.find_children("StaticBatch*", "MeshInstance3D", false, false).is_empty(), "Home folds its island over frames, not in the frame it opens in")
+	var frames := 0
+	while app.home_stage_view.folding() and frames < 120:
+		await process_frame
+		frames += 1
+	_check(not app.home_stage_view.folding(), "Home's fold finishes within a few frames (%d)" % frames)
+	for i in range(2): await process_frame
 	_check(terrain.has_meta(StaticBatch.FOLDED_META), "Home folds its island")
 	_check(not terrain.find_children("StaticBatch*", "MeshInstance3D", false, false).is_empty(), "Home has batches")
 	var planks_ok: bool = world.bridge_parts.size() == 9

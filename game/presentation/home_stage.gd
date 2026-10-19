@@ -109,6 +109,10 @@ var _explore_focus := Vector3.ZERO
 var _explore_hidden: Array[CanvasItem] = []
 var _explore_return: Dictionary = {}
 var _greeting_left := 0.0
+## The island's fold while it runs over frames ({} once done).
+var _fold_job: Dictionary = {}
+## The fold's slice of each frame: the kit's slice for a world that runs.
+const FOLD_SLICE_USEC := 3000
 
 func configure(world: Node3D, active: Callable, keepsakes: Array[Dictionary] = []) -> void:
 	_world = world
@@ -198,8 +202,10 @@ func _ready() -> void:
 	_create_keepsake_display()
 	# The island's static geometry draws as a few batches (kit/static_batch.gd);
 	# everything the world, this stage or Main moves, hides or recolours stays
-	# its own node.
-	StaticBatch.fold(_terrain, [_world, self, get_tree().current_scene])
+	# its own node. It folds FOLD_SLICE_USEC a frame from the first frame on
+	# (_process), not all in the frame Home opens in; a half-folded island draws
+	# the same pixels.
+	_fold_job = StaticBatch.start(_terrain, [_world, self, get_tree().current_scene])
 	_layout()
 	_frame_camera()
 
@@ -604,7 +610,12 @@ func _reset_view() -> void:
 	_view().reset_view()
 	zoom_target = _base_size()
 
+## Whether the island is still folding (see _ready).
+func folding() -> bool:
+	return not _fold_job.is_empty()
+
 func _process(delta: float) -> void:
+	if not _fold_job.is_empty() and StaticBatch.step(_fold_job, FOLD_SLICE_USEC): _fold_job = {}
 	if not _is_active():
 		_cancel_gesture()
 		return
@@ -788,6 +799,11 @@ func _notification(what: int) -> void:
 		set_exploring(false)
 
 func _exit_tree() -> void:
+	# The island is marked folded from the start: a fold still running ends
+	# here, so the island never stays half folded once this stage has gone.
+	if not _fold_job.is_empty():
+		StaticBatch.step(_fold_job, 0)
+		_fold_job = {}
 	_cancel_gesture()
 	for node: CanvasItem in _explore_hidden:
 		if is_instance_valid(node): node.visible = true
