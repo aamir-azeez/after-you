@@ -112,7 +112,13 @@ static func spirit(ci: CanvasItem, at: Transform2D, options: Dictionary, face :=
 		var shape: Dictionary = Look.eye_contours(expression, index)
 		for polygon: PackedVector2Array in shape.outer: fill(ci, eye, polygon, Color(Look.CREAM, alpha))
 		for polygon: PackedVector2Array in shape.pupil: fill(ci, eye, polygon, Color(Look.PUPIL, alpha))
-		for line: PackedVector2Array in shape.strokes: ci.draw_polyline(eye * line, Color(Look.PUPIL, alpha), maxf(1.0, shape.width * UNIT * at.get_scale().x), true)
+		var width := maxf(1.0, shape.width * UNIT * at.get_scale().x)
+		for line: PackedVector2Array in shape.strokes:
+			var points := eye * line
+			ci.draw_polyline(points, Color(Look.PUPIL, alpha), width, true)
+			# Round ends, as the face shader draws them.
+			ci.draw_circle(points[0], width * 0.5, Color(Look.PUPIL, alpha), true, -1.0, true)
+			ci.draw_circle(points[points.size() - 1], width * 0.5, Color(Look.PUPIL, alpha), true, -1.0, true)
 
 ## A point of the game's spirit (metres, facing the camera) in spirit units.
 static func _flat(point: Vector3) -> Vector2:

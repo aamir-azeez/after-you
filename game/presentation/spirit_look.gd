@@ -1,5 +1,5 @@
 extends RefCounted
-## The spirits' look, in one place: palette, body proportions and the eight
+## The spirits' look, in one place: palette, body proportions and the nine
 ## eye expressions. SpiritVisual builds its meshes from the proportions
 ## (spirit_meshes.gd) and paints the eyes on the head with spirit_face.gdshader
 ## from eye(); the flat art (empty_state_art.gd) draws the same contours from
@@ -17,7 +17,11 @@ const ANGRY := &"angry"
 const SURPRISED := &"surprised"
 const SLEEPY := &"sleepy"
 const SQUEEZE := &"squeeze"
-const EXPRESSIONS: Array[StringName] = [NORMAL, HAPPY, ANNOYED, SAD, ANGRY, SURPRISED, SLEEPY, SQUEEZE]
+## X X eyes: knocked out, or scared stiff.
+const KNOCKED_OUT := &"knocked_out"
+const EXPRESSIONS: Array[StringName] = [NORMAL, HAPPY, ANNOYED, SAD, ANGRY, SURPRISED, SLEEPY, SQUEEZE, KNOCKED_OUT]
+## The expressions drawn as dark strokes only, with no cream: they never blink.
+const STROKED: Array[StringName] = [SLEEPY, SQUEEZE, KNOCKED_OUT]
 
 ## Player identities (unchanged) and the shared parts.
 const PEACH := Color("f4c38d")
@@ -84,7 +88,9 @@ const _NO_CUT := Vector4(0, 1, 9.0, 0)
 ##   tear        the cream tear lobe: centre x, y, radius (0: none)
 ##   tear_pupil  the dark lobe in it: centre x, y, radius, neck radius
 ##   stroke      strokes: a to b (x, y, x, y); stroke_end: c (x, y), half
-##               width, 1 (strokes only, the shader's copy of mode)
+##               width, and the stroke kind the shader reads (mode is 1 for
+##               both): 0 none, 1 a line a, b, c, 2 a cross: a to b, and c
+##               through the middle of a to b out to c's mirror
 static func eye(expression: StringName, index: int) -> Dictionary:
 	var side := -1.0 if index == 0 else 1.0
 	var e := {"mode": 0, "outer": Vector4(0.085, 0.097, 0, 0), "outer_wave": Vector4.ZERO, "outer_phase": Vector4.ZERO,
@@ -155,6 +161,12 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			var c: Vector2 = at.call(0.052, -0.046)
 			e.stroke = Vector4(a.x, a.y, b.x, b.y)
 			e.stroke_end = Vector4(c.x, c.y, 0.016, 1)
+		KNOCKED_OUT:
+			# Knocked out: a bold X, two crossed strokes, no cream.
+			e.mode = 1
+			var reach := 0.068
+			e.stroke = Vector4(-reach, reach, reach, -reach)
+			e.stroke_end = Vector4(-reach, -reach, 0.024, 2)
 		_:
 			# Normal: a smooth cream oval and a mildly blobby pupil, the two
 			# eyes a little different. Most of the eye is pupil.
@@ -176,7 +188,7 @@ static func leaf_half_width(t: float) -> float:
 
 ## Whether an expression has open eyes (cream and pupil) rather than strokes.
 static func is_open(expression: StringName) -> bool:
-	return expression != SLEEPY and expression != SQUEEZE
+	return not expression in STROKED
 
 static func has(expression: StringName) -> bool:
 	return expression in EXPRESSIONS
@@ -205,8 +217,12 @@ static func _eye_contours(expression: StringName, index: int, steps: int) -> Dic
 	if e.mode == 1:
 		var s: Vector4 = e.stroke
 		var c: Vector4 = e.stroke_end
-		var line := PackedVector2Array([Vector2(s.x, s.y), Vector2(s.z, s.w)])
-		if not Vector2(c.x, c.y).is_equal_approx(Vector2(s.z, s.w)): line.append(Vector2(c.x, c.y))
+		var a := Vector2(s.x, s.y)
+		var b := Vector2(s.z, s.w)
+		var end := Vector2(c.x, c.y)
+		if c.w > 1.5: return {"outer": [], "pupil": [], "strokes": [PackedVector2Array([a, b]), PackedVector2Array([end, a + b - end])], "width": c.z * 2.0}
+		var line := PackedVector2Array([a, b])
+		if not end.is_equal_approx(b): line.append(end)
 		return {"outer": [], "pupil": [], "strokes": [line], "width": c.z * 2.0}
 	var outer: Array = [_oval(e.outer, e.outer_wave, e.outer_phase, steps)]
 	var pupil: Array = [_oval(e.pupil, e.pupil_wave, e.pupil_phase, steps)]

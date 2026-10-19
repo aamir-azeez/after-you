@@ -71,7 +71,10 @@ void fragment() {
 		vec2 q = face_pos.xy - (i == 0 ? eye_xy.xy : eye_xy.zw);
 		q.y /= max(i == 0 ? eye_squash.x : eye_squash.y, 0.02);
 		if (stroke_end[i].w > 0.5) {
-			float d = min(segment(q, stroke[i].xy, stroke[i].zw), segment(q, stroke[i].zw, stroke_end[i].xy)) - stroke_end[i].z;
+			// Kind 1: a line a, b, c. Kind 2: a cross, a to b and c to its
+			// mirror through the middle of a to b.
+			vec2 from = stroke_end[i].w > 1.5 ? stroke[i].xy + stroke[i].zw - stroke_end[i].xy : stroke[i].zw;
+			float d = min(segment(q, stroke[i].xy, stroke[i].zw), segment(q, from, stroke_end[i].xy)) - stroke_end[i].z;
 			color = mix(color, pupil_color, coverage(d) * front);
 		} else {
 			float d_outer = oval(q, outer[i], outer_wave[i], outer_phase[i]);

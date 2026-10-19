@@ -1,6 +1,6 @@
 extends SceneTree
 ## The spirits' shared look (presentation/spirit_look.gd) and the faces that
-## show it: the eight eye shapes' rules, the body's proportions, and which
+## show it: the nine eye shapes' rules, the body's proportions, and which
 ## moments change the face.
 
 const Look = preload("res://presentation/spirit_look.gd")
@@ -20,9 +20,11 @@ func _run() -> void:
 	_test_sad_tear()
 	_test_cuts()
 	_test_strokes()
+	_test_knocked_out()
 	_test_body()
 	_test_triggers()
 	_test_api_and_placement()
+	_test_knocked_out_swaps()
 	print("AFTER YOU SPIRIT LOOK: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -49,7 +51,7 @@ func _anchor(index: int) -> Vector2:
 	return Vector2(-Look.EYE_X if index == 0 else Look.EYE_X, Look.EYE_Y)
 
 func _test_table() -> void:
-	_check(Look.EXPRESSIONS.size() == 8 and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE), "Eight expressions")
+	_check(Look.EXPRESSIONS.size() == 9 and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE) and Look.EXPRESSIONS.has(Look.KNOCKED_OUT) and Look.KNOCKED_OUT == &"knocked_out", "Nine expressions, knocked_out among them")
 	var complete := true
 	for expression: StringName in Look.EXPRESSIONS:
 		for index in range(2):
@@ -151,6 +153,63 @@ func _test_strokes() -> void:
 		var line: PackedVector2Array = Look.eye_contours(Look.SQUEEZE, index).strokes[0]
 		var inward := 1.0 if index == 0 else -1.0
 		_check(line.size() == 3 and (line[1].x - line[0].x) * inward > 0.0 and (line[1].x - line[2].x) * inward > 0.0, "Squeeze eye %d points at the face's middle" % index)
+
+## The shader's stroke distance (spirit_face.gdshader), for one eye's uniforms.
+func _stroke_distance(eye: Dictionary, q: Vector2) -> float:
+	var s: Vector4 = eye.stroke
+	var c: Vector4 = eye.stroke_end
+	var a := Vector2(s.x, s.y)
+	var b := Vector2(s.z, s.w)
+	var end := Vector2(c.x, c.y)
+	var from := a + b - end if c.w > 1.5 else b
+	return minf(q.distance_to(Geometry2D.get_closest_point_to_segment(q, a, b)), q.distance_to(Geometry2D.get_closest_point_to_segment(q, from, end))) - c.z
+
+func _test_knocked_out() -> void:
+	_check(not Look.is_open(Look.KNOCKED_OUT), "Knocked out has no open eyes, so it never blinks")
+	var squeeze_width: float = Look.eye_contours(Look.SQUEEZE, 0).width
+	for index in range(2):
+		var eye := Look.eye(Look.KNOCKED_OUT, index)
+		var shape := Look.eye_contours(Look.KNOCKED_OUT, index)
+		_check(eye.mode == 1 and eye.stroke_end.w == 2.0 and shape.outer.is_empty() and shape.pupil.is_empty() and eye.tear.z == 0.0, "Knocked out eye %d: dark strokes only, no cream" % index)
+		_check(shape.strokes.size() == 2 and shape.strokes[0].size() == 2 and shape.strokes[1].size() == 2, "Knocked out eye %d: two separate strokes" % index)
+		if shape.strokes.size() != 2: continue
+		var one: PackedVector2Array = shape.strokes[0]
+		var two: PackedVector2Array = shape.strokes[1]
+		var crossing: Variant = Geometry2D.segment_intersects_segment(one[0], one[1], two[0], two[1])
+		_check(crossing != null and (crossing as Vector2).length() < 0.005, "Knocked out eye %d: the strokes cross at the eye's anchor" % index)
+		var along_one := (one[1] - one[0]).normalized()
+		var along_two := (two[1] - two[0]).normalized()
+		_check(absf(along_one.dot(along_two)) < 0.1 and absf(one[0].distance_to(one[1]) - two[0].distance_to(two[1])) < 0.002 and absf(along_one.x) > 0.6 and absf(along_one.y) > 0.6, "Knocked out eye %d: an upright X, two equal arms at right angles" % index)
+		var reach := 0.0
+		for line: PackedVector2Array in shape.strokes:
+			for point: Vector2 in line: reach = maxf(reach, maxf(absf(point.x), absf(point.y)))
+		reach += shape.width * 0.5
+		var normal_reach: float = Look.eye(Look.NORMAL, index).outer.x
+		_check(reach > normal_reach * 0.85 and reach < normal_reach * 1.25, "Knocked out eye %d: about as big as an open eye (%.3f against %.3f)" % [index, reach, normal_reach])
+		_check(shape.width > squeeze_width * 1.2, "Knocked out eye %d: bolder strokes than Squeeze" % index)
+		# The shader's own rule draws an X: dark at the middle and the four tips,
+		# face colour between the arms.
+		var r := absf(one[0].x)
+		var dark := true
+		for point: Vector2 in [Vector2.ZERO, Vector2(r, r), Vector2(-r, r), Vector2(r, -r), Vector2(-r, -r)]: dark = dark and _stroke_distance(eye, point) < 0.0
+		var clear := true
+		for point: Vector2 in [Vector2(r, 0), Vector2(-r, 0), Vector2(0, r), Vector2(0, -r)]: clear = clear and _stroke_distance(eye, point) > 0.0
+		_check(dark and clear, "Knocked out eye %d: the shader's strokes draw a crossed X" % index)
+	# The two eyes mirror each other.
+	var mirrored := true
+	var left: Array = Look.eye_contours(Look.KNOCKED_OUT, 0).strokes
+	var right: Array = Look.eye_contours(Look.KNOCKED_OUT, 1).strokes
+	for line: PackedVector2Array in left:
+		for point: Vector2 in line:
+			var found := false
+			for other: PackedVector2Array in right:
+				for candidate: Vector2 in other: found = found or candidate.is_equal_approx(Vector2(-point.x, point.y))
+			mirrored = mirrored and found
+	_check(mirrored, "The two X eyes mirror each other")
+	# The other strokes still draw as before: one line each.
+	_check(Look.eye(Look.SLEEPY, 0).stroke_end.w == 1.0 and Look.eye(Look.SQUEEZE, 1).stroke_end.w == 1.0, "Sleepy and Squeeze stay single lines")
+	var code: String = load("res://presentation/spirit_face.gdshader").code
+	_check(code.contains("stroke_end[i].w > 1.5") and code.contains("stroke[i].xy + stroke[i].zw - stroke_end[i].xy"), "The face shader draws the cross kind as the look describes it")
 
 func _test_body() -> void:
 	var leaf_hue := Look.LEAF.h * 360.0
@@ -273,3 +332,50 @@ func _test_api_and_placement() -> void:
 	for key: String in spirit.face_art.SHAPE_KEYS + ["eye_xy", "eye_squash", "look_shift", "pupil_rim", "tear_neck_root", "body_color"]: declared = declared and names.has(key)
 	_check(declared, "The face shader declares every parameter the look writes")
 	spirit.free()
+
+func _test_knocked_out_swaps() -> void:
+	var spirit := Spirit.new()
+	root.add_child(spirit)
+	spirit.set_expression_role("a")
+	_step(spirit, 0.5)
+	# A swap closes, swaps and reopens onto the X.
+	spirit.set_expression(Look.KNOCKED_OUT)
+	_check(spirit.expression_target() == Look.KNOCKED_OUT and spirit.face_art.swapping(), "Knocked out arrives through the usual swap")
+	_step(spirit, spirit.face_art.SWAP_DONE + 0.05)
+	_check(spirit.expression() == Look.KNOCKED_OUT and not spirit.face_art.swapping(), "set_expression holds Knocked out")
+	# Both eyes get the cross, with the stroke width.
+	var ends: PackedVector4Array = spirit.face_art.material.get_shader_parameter(&"stroke_end")
+	_check(ends.size() == 2 and ends[0].w == 2.0 and ends[1].w == 2.0 and ends[0].z > 0.0 and ends[1].z > 0.0, "Both eyes draw the X")
+	# No blink through a whole blink cycle: the X stays at full height.
+	var still := true
+	for _frame in range(330):
+		spirit.advance_motion(Vector3.ZERO, 1.0 / 60.0, false)
+		still = still and spirit.eyes[0].scale.y == 1.0 and spirit.eyes[1].scale.y == 1.0
+	_check(still, "The X never blinks")
+	# A timed X, then back to the held face.
+	spirit.set_expression(Look.NORMAL, true)
+	_check(spirit.expression() == Look.NORMAL and not spirit.face_art.swapping(), "An immediate change swaps at once")
+	spirit.show_expression(Look.KNOCKED_OUT, 0.6)
+	_step(spirit, 0.4)
+	_check(spirit.expression() == Look.KNOCKED_OUT, "show_expression shows Knocked out for a while")
+	_step(spirit, 0.6)
+	_check(spirit.expression() == Look.NORMAL, "and then the held face comes back")
+	# Immediate: drawn at once.
+	spirit.set_expression(Look.KNOCKED_OUT, true)
+	_check(spirit.expression() == Look.KNOCKED_OUT and not spirit.face_art.swapping() and spirit.eyes[0].scale.y == 1.0, "An immediate Knocked out is drawn at once")
+	# A seek in the middle of a swap places the held X at once.
+	spirit.set_expression(Look.NORMAL, true)
+	spirit.set_expression(Look.KNOCKED_OUT)
+	_step(spirit, 0.03)
+	spirit.reset_motion()
+	_check(spirit.expression() == Look.KNOCKED_OUT and not spirit.face_art.swapping() and spirit.eyes[0].scale.y == 1.0, "A seek mid swap places Knocked out at once")
+	spirit.free()
+	# Reduce motion: the X shows with no swap.
+	var reduced := Spirit.new()
+	root.add_child(reduced)
+	reduced.advance_motion(Vector3.ZERO, 1.0 / 60.0, true)
+	reduced.show_expression(Look.KNOCKED_OUT, 1.0)
+	_check(reduced.expression() == Look.KNOCKED_OUT and not reduced.face_art.swapping(), "Under Reduce motion Knocked out shows without a swap")
+	reduced.advance_motion(Vector3.ZERO, 1.2, true)
+	_check(reduced.expression() == Look.NORMAL and not reduced.face_art.swapping(), "and goes back without one")
+	reduced.free()
