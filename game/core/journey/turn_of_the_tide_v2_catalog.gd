@@ -8,10 +8,13 @@ extends RefCounted
 ## Set the Tide is @1's stage without its entry latches. Slack Water reads the
 ## first stage's crossings and steps through gates of its own, against the
 ## controls and levers the first stage left, so the second spirit still walks
-## home over the crossing its branch opened. Three of its gates change so the
-## ways need no kept crossing: the mole steps read the outer sea, the sea lock
-## lets out when the chamber stands at the sea's level, and the gate catwalk
-## needs only an open sea.
+## home over the crossing its branch opened. Every accepted stage-one end
+## leaves it a way home: the far jetty needs only high water (the gangway may
+## never have been pulled), and the lock's two gates stand open, since the lock
+## wheel sits between them. Three gates change so the ways need no kept
+## crossing: the mole steps read the outer sea, the sea lock lets out when the
+## chamber stands at the sea's level, and the gate catwalk needs only an open
+## sea.
 const Earlier = preload("res://core/journey/turn_of_the_tide_catalog.gd")
 ## How long a closing crossing keeps its floor: 1.5 s, enough to walk off the
 ## longest one from its middle with a second to spare.
@@ -31,20 +34,24 @@ static func definition() -> Dictionary:
 	_replace(gates, "mole-steps", {"all": [{"lever_id": "boom-pin"}, {"control_id": "basin", "value": "half"}]})
 	_replace(gates, "sea-gate-out", {"all": [{"lever_id": "gate-bar"}, {"lever_id": "sea-bar"}, {"lever_id": "sea-key"}, _level_with_sea("chamber")]})
 	_replace(gates, "gate-catwalk", {"any": [{"control_id": "basin", "value": "low"}, {"control_id": "basin", "value": "half"}, {"control_id": "basin", "value": "high"}]})
+	_replace(gates, "lock-west", {})
+	_replace(gates, "lock-east", {})
 	# The first stage's crossings and steps, read against what it left.
 	gates.append_array([
 		{"route_id": "slipway", "when": {"all": [{"control_id": "tide", "value": "low"}, {"control_id": "winch", "value": "slip"}]}},
 		{"route_id": "stones-3", "when": {"all": [{"control_id": "tide", "value": "half"}, {"lever_id": "sluice"}]}},
-		{"route_id": "jetty-3", "when": {"all": [{"control_id": "tide", "value": "high"}, {"lever_id": "gangway"}]}},
+		{"route_id": "jetty-3", "when": {"control_id": "tide", "value": "high"}},
 		{"route_id": "wheel-step", "when": {"all": [{"control_id": "tide", "value": "low"}, {"control_id": "winch", "value": "slip"}, {"lever_id": "sluice"}]}},
 		{"route_id": "quay-step", "when": {"all": [{"control_id": "tide", "value": "half"}, {"lever_id": "sluice"}]}},
 		{"route_id": "bollard-step", "when": {"all": [{"control_id": "tide", "value": "high"}, {"lever_id": "line"}]}}])
 	return level
 
+## The gate for route_id now holds on `when`; {} leaves it always open.
 static func _replace(gates: Array, route_id: String, when: Dictionary) -> void:
 	for gate: Dictionary in gates:
 		if gate.route_id == route_id:
-			gate.when = when
+			if when.is_empty(): gate.erase("when")
+			else: gate.when = when
 			return
 	assert(false, "No gate for " + route_id)
 
