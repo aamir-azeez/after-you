@@ -1106,18 +1106,10 @@
 					}
 				},
 				{
-					"route_id": "lock-west",
-					"when": {
-						"control_id": "lock",
-						"value": "west"
-					}
+					"route_id": "lock-west"
 				},
 				{
-					"route_id": "lock-east",
-					"when": {
-						"control_id": "lock",
-						"value": "east"
-					}
+					"route_id": "lock-east"
 				},
 				{
 					"route_id": "boom-jetty",
@@ -1143,13 +1135,17 @@
 				{
 					"route_id": "mole-steps",
 					"when": {
-						"all": [
+						"any": [
 							{
-								"lever_id": "boom-pin"
-							},
-							{
-								"control_id": "basin",
-								"value": "half"
+								"all": [
+									{
+										"lever_id": "boom-pin"
+									},
+									{
+										"control_id": "basin",
+										"value": "half"
+									}
+								]
 							}
 						]
 					}
@@ -1443,15 +1439,8 @@
 				{
 					"route_id": "jetty-3",
 					"when": {
-						"all": [
-							{
-								"control_id": "tide",
-								"value": "high"
-							},
-							{
-								"lever_id": "gangway"
-							}
-						]
+						"control_id": "tide",
+						"value": "high"
 					}
 				},
 				{
@@ -1516,7 +1505,7 @@
 				"kind": "ring"
 			},
 			"hint_a": "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.",
-			"hint_b": "Fetch the pin, key or line at the mill. Let your friend reach home before you turn the tide, then take the tides in order and light the lantern.",
+			"hint_b": "Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern.",
 			"id": "slack-water",
 			"kind": "choice_pad",
 			"levers": [
@@ -1580,22 +1569,22 @@
 					"id": "boom-pin",
 					"owner_slot": "p0",
 					"position_cm": [
-						320,
+						64,
 						-512
 					],
 					"radius_cm": 28,
-					"surface_id": "bollard-step"
+					"surface_id": "quay-step"
 				},
 				{
 					"height_cm": 96,
 					"id": "sea-key",
 					"owner_slot": "p0",
 					"position_cm": [
-						64,
+						320,
 						-512
 					],
 					"radius_cm": 28,
-					"surface_id": "quay-step"
+					"surface_id": "bollard-step"
 				}
 			],
 			"pressure_pads": [
@@ -1636,7 +1625,7 @@
 			"receiver_action_ticks": 14,
 			"receiver_route_cm": [
 				[
-					64,
+					320,
 					-512
 				],
 				[
@@ -1668,7 +1657,7 @@
 						"receiver_action_ticks": 26,
 						"receiver_route_cm": [
 							[
-								320,
+								64,
 								-512
 							],
 							[
@@ -1699,7 +1688,7 @@
 						"receiver_action_ticks": 14,
 						"receiver_route_cm": [
 							[
-								64,
+								320,
 								-512
 							],
 							[

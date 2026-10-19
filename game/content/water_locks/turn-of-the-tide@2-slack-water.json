@@ -1,5 +1,5 @@
 {
-	"digest": "e37032374946a80429624f198d11c9204462421944bb737ecd1fff27f0497db3",
+	"digest": "36d5190a80f2bec25bbc9ea6723d11de1e5eeabcec0754d3f7639974534cb405",
 	"runs": [
 		{
 			"a": "island:w-beach",
@@ -368,78 +368,6 @@
 			"top": -0.7
 		},
 		{
-			"a": "island:e-terrace-west",
-			"along_x": false,
-			"b": "crossing:lock-west",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 768.0,
-			"mouth": "lock-west",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:lock-west",
-			"along_x": false,
-			"b": "island:lock-chamber",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 832.0,
-			"mouth": "lock-west",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "island:lock-chamber",
-			"along_x": false,
-			"b": "crossing:lock-east",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 928.0,
-			"mouth": "lock-east",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
-			"a": "crossing:lock-east",
-			"along_x": false,
-			"b": "island:e-terrace-east",
-			"base": 0.45,
-			"ends": [
-				false,
-				false
-			],
-			"from": -64.0,
-			"kind": "door",
-			"line": 992.0,
-			"mouth": "lock-east",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 64.0,
-			"top": -0.7
-		},
-		{
 			"a": "crossing:bar-catwalk",
 			"along_x": true,
 			"b": "island:w-terrace",
@@ -494,6 +422,24 @@
 			"top": -0.7
 		},
 		{
+			"a": "crossing:mole-steps",
+			"along_x": true,
+			"b": "island:mole-terrace",
+			"base": 0.45,
+			"ends": [
+				false,
+				false
+			],
+			"from": -912.0,
+			"kind": "door",
+			"line": -128.0,
+			"mouth": "mole-steps",
+			"shift": 6.5,
+			"shut": 0.749999988079071,
+			"to": -816.0,
+			"top": 0.35999992609024
+		},
+		{
 			"a": "crossing:punt-post",
 			"along_x": true,
 			"b": "island:w-terrace",
@@ -527,24 +473,6 @@
 			"shift": 6.5,
 			"shut": 0.749999988079071,
 			"to": 256.0,
-			"top": -0.7
-		},
-		{
-			"a": "sea",
-			"along_x": true,
-			"b": "island:mole-terrace",
-			"base": 0.45,
-			"ends": [
-				true,
-				true
-			],
-			"from": -912.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "mole-steps",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": -816.0,
 			"top": -0.7
 		},
 		{
