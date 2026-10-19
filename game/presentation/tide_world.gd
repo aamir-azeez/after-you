@@ -493,14 +493,21 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 		var outward := -1.0 if side == 0 or side == 2 else 1.0
 		var start := float(r[0] if along_x else r[1]) - 8.0
 		var finish := float(r[2] if along_x else r[3]) + 8.0
+		# Every sample lies on one line beside the edge: only the rectangles
+		# that line crosses can hold a sample, so only their spans along it
+		# are tested (the same strict test as _inside).
+		var line := edge + outward * 6.0
+		var route_rects: Array = []
+		for route: Dictionary in routes: route_rects.append(route.rect_cm)
+		var mouths := _spans_on_line(route_rects, along_x, line)
+		var waters := _spans_on_line([HARBOUR_REGION] + SEA_REGIONS, along_x, line)
+		var dry := _spans_on_line(holes, along_x, line)
 		var runs: Array = []
 		var t := start + 2.0
 		while t <= finish - 2.0:
-			var at: Array = [t, edge + outward * 6.0] if along_x else [edge + outward * 6.0, t]
 			var kind := "dry"
-			for route: Dictionary in routes:
-				if _inside(at, route.rect_cm): kind = "mouth"
-			if kind == "dry" and _wet_at(at, holes): kind = "wall"
+			if _in_spans(t, mouths): kind = "mouth"
+			elif _in_spans(t, waters) and not _in_spans(t, dry): kind = "wall"
 			if runs.is_empty() or runs[-1][2] != kind: runs.append([t - 2.0, t + 2.0, kind])
 			else: runs[-1][1] = t + 2.0
 			t += 4.0
@@ -509,15 +516,21 @@ func _island_parapet_runs(island: Dictionary, holes: Array, routes: Array) -> Ar
 		await _build_step()
 	return walls
 
-func _wet_at(at: Array, holes: Array) -> bool:
-	var regions: Array = [HARBOUR_REGION] + SEA_REGIONS
-	var wet := false
-	for region: Array in regions:
-		if _inside(at, region): wet = true
-	if not wet: return false
-	for hole: Array in holes:
-		if _inside(at, hole): return false
-	return true
+## The spans, along a line of constant z (along_x) or x at `line` cm, of the
+## rectangles [x0, z0, x1, z1] that line passes strictly inside, as [from, to]
+## along it: a point t on the line is inside such a rectangle exactly when
+## from < t < to (as _inside).
+static func _spans_on_line(rects: Array, along_x: bool, line: float) -> Array:
+	var spans: Array = []
+	for rect: Array in rects:
+		if along_x and line > float(rect[1]) and line < float(rect[3]): spans.append([float(rect[0]), float(rect[2])])
+		elif not along_x and line > float(rect[0]) and line < float(rect[2]): spans.append([float(rect[1]), float(rect[3])])
+	return spans
+
+static func _in_spans(t: float, spans: Array) -> bool:
+	for span: Array in spans:
+		if t > span[0] and t < span[1]: return true
+	return false
 
 ## Where a body of water ends in view against open air or the other water (the
 ## harbour's channel ends, the sea gates' reaches, the mouth beside the west
@@ -560,17 +573,18 @@ func _sea_wall_runs(islands: Array) -> Array:
 				var start := float(region[0] if along_x else region[1])
 				var finish := float(region[2] if along_x else region[3])
 				var runs: Array = []
+				# Inside and outside samples each lie on one line beside the edge
+				# (see _spans_on_line): the same tests on the rectangles it crosses.
+				var inner := edge - outward * 2.0
+				var outer := edge + outward * 2.0
+				var wet_in := _spans_on_line(body, along_x, inner)
+				var dry_in := _spans_on_line(holes, along_x, inner)
+				var blocked: Array = _spans_on_line(body, along_x, outer) + _spans_on_line(holes, along_x, outer)
+				# The harbour side builds the wall between the two waters.
+				if body != [HARBOUR_REGION]: blocked += _spans_on_line([HARBOUR_REGION], along_x, outer)
 				var t := start + 2.0
 				while t <= finish - 2.0:
-					var inside: Array = [t, edge - outward * 2.0] if along_x else [edge - outward * 2.0, t]
-					var outside: Array = [t, edge + outward * 2.0] if along_x else [edge + outward * 2.0, t]
-					var wall := _wet(float(inside[0]), float(inside[1]), body, holes)
-					for other: Array in body:
-						if _inside(outside, other): wall = false
-					# The harbour side builds the wall between the two waters.
-					if body != [HARBOUR_REGION] and _inside(outside, HARBOUR_REGION): wall = false
-					for hole: Array in holes:
-						if _inside(outside, hole): wall = false
+					var wall := _in_spans(t, wet_in) and not _in_spans(t, dry_in) and not _in_spans(t, blocked)
 					var view: Array = [t, edge] if along_x else [edge, t]
 					if absf(float(view[0]) - 384.0) > 1500.0 or absf(float(view[1])) > 700.0: wall = false
 					if wall and not runs.is_empty() and float(runs[-1][1]) >= t - 2.0: runs[-1][1] = t + 2.0
