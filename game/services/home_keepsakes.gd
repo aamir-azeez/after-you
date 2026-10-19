@@ -398,6 +398,25 @@ static func _prefix_places(chapter: String, count: int) -> Array[String]:
 	for index in range(count): result.append(places[index])
 	return result
 
+## Every earned mark, for cloud save: {place_id: {"solo": bool, "friend": bool}}.
+func earned_marks() -> Dictionary:
+	_ensure_loaded()
+	return _earned.duplicate(true)
+
+## Marks from a cloud copy. Same checks as an award: unknown places, and friend marks on places
+## that have none, are dropped; marks only ever add. False when the ledger could not be written.
+func adopt_earned(marks: Dictionary) -> bool:
+	_ensure_loaded()
+	if read_only: return false
+	for id: Variant in marks:
+		var mark: Variant = marks[id]
+		if not id is String or not mark is Dictionary: continue
+		var item := Catalog.by_id(id)
+		if item.is_empty(): continue
+		var value := {"solo": mark.get("solo") == true, "friend": mark.get("friend") == true and item.friend_available}
+		if value.solo or value.friend: _merge_mark(_pending_awards, id, value)
+	return _flush_pending()
+
 func _award(ids: Array, variant: String) -> bool:
 	_ensure_loaded()
 	if variant not in ["solo", "friend"]: return false
