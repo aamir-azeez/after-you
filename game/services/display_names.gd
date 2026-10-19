@@ -70,14 +70,20 @@ static func clean(text: String) -> String:
 static func problem(text: String) -> String:
 	var name := clean(text)
 	if name.is_empty() or name.length() > MAX_LENGTH: return "length"
+	var visible := false
 	for i in range(name.length()):
-		if hidden_character(name.unicode_at(i)) or symbol_character(name.unicode_at(i)): return "characters"
-	return ""
+		var code := name.unicode_at(i)
+		if hidden_character(code) or symbol_character(code): return "characters"
+		visible = visible or not (code == 32 or PUNCTUATION.contains(char(code)) or (code >= 0x300 and code <= 0x36f))
+	# Punctuation or accents alone never make a name.
+	return "" if visible else "characters"
 
 ## Control, format, separator and private-use code points: never shown.
 static func hidden_character(code: int) -> bool:
 	if code < 32 or (code >= 127 and code < 160): return true
 	if code == 0x00ad or code == 0x061c or code == 0x180e or code == 0xfeff: return true
+	# Letters that draw nothing: Hangul fillers and the blank Braille cell.
+	if code in [0x115f, 0x1160, 0x3164, 0xffa0, 0x2800]: return true
 	if (code >= 0x200b and code <= 0x200f) or (code >= 0x2028 and code <= 0x202e) or (code >= 0x2060 and code <= 0x206f): return true
 	if (code >= 0xfe00 and code <= 0xfe0f) or (code >= 0xfff0 and code <= 0xfffb): return true
 	if (code >= 0xe000 and code <= 0xf8ff) or code >= 0xf0000 or (code >= 0xe0000 and code <= 0xe0fff): return true

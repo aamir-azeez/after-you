@@ -93,6 +93,9 @@ func _rules() -> void:
 		_check(DisplayNames.problem(bad) == "characters", "A hidden character is refused: " + bad.c_escape())
 	for bad: String in ["<b>Maya</b>", "[color=red]x", "Maya" + char(0x1f600), "a{b}", "50%", "#1", "Maya" + char(0x2665)]:
 		_check(DisplayNames.problem(bad) == "characters", "Symbols and markup are refused: " + bad)
+	for blank: String in [char(0x3164), "Kai" + char(0x3164), char(0x2800), "!?", "...", "-_-", char(0x301) + char(0x302)]:
+		_check(DisplayNames.problem(blank) == "characters", "A name that draws nothing is refused: " + blank.c_escape())
+	_check(DisplayNames.problem("x" + char(0x301)).is_empty() and DisplayNames.problem("Who?").is_empty(), "Accents and punctuation beside a letter pass")
 	_check(DisplayNames.valid_remote("Maya") and not DisplayNames.valid_remote(" Maya") and not DisplayNames.valid_remote("x".repeat(19)) and not DisplayNames.valid_remote(null) and not DisplayNames.valid_remote(4), "A name from the server must already follow the rules")
 	_check(DisplayNames.short("Robin") == "Robin" and DisplayNames.short("a".repeat(20)) == "a".repeat(17) + "…" and DisplayNames.short("abcdef", 4) == "abc…", "The shared cut ends in an ellipsis within the limit")
 
