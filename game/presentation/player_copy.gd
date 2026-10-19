@@ -243,7 +243,7 @@ const SETTINGS_FULL_JOURNEY_NOTE := "The paid chapters and your subscription."
 const SETTINGS_PHOTO_TRANSFER_NOTE := "Move your photos to another phone."
 const SETTINGS_REPORTS_NOTE := "People you reported or blocked."
 const SETTINGS_RECOVER_NOTE := "Use recovery details from another phone."
-const SETTINGS_COMMUNITY_NOTE := "Our community rules and privacy."
+const SETTINGS_COMMUNITY_NOTE := "Community rules and privacy."
 # The rows' labels: the older Settings, Notifications and Account wording, unchanged.
 const SETTINGS_SOUND := "Sound"
 const SETTINGS_SKIP_WAITS := "Always skip waits"
@@ -430,7 +430,7 @@ const LIGHTHOUSE_PREVIEW_0F9E017C15F7 := "Checking your purchase. Your saved lig
 # Lighthouse chapter — access completed
 const LIGHTHOUSE_PREVIEW_96528A1A27D4 := "The Sleeping Lighthouse is part of Full Journey. Go back to the journey to unlock it or restore your purchase."
 # Lighthouse chapter — access failed
-const LIGHTHOUSE_PREVIEW_2485A17DBAB1 := "We were unable to verify your purchase. Check it again, or go back on the journey. Your progress is still saved."
+const LIGHTHOUSE_PREVIEW_2485A17DBAB1 := "Couldn't verify your purchase. Check it again, or go back on the journey. Your progress is still saved."
 # Lighthouse chapter — access changed
 const LIGHTHOUSE_PREVIEW_1453A93A9BD0 := "Full Journey is no longer on. Your rehearsal is retained. Return to the journey and recheck access again or use Restore purchases."
 # Lighthouse chapter — show access hold
@@ -668,7 +668,7 @@ const MAIN_8A2FF5596F1C := "Complete or cancel your purchase in the store dialog
 # Purchase completed — toast / status or error
 const MAIN_A986D201176A := "There is no offer available at the moment from the store."
 # Purchase completed — toast / status or error
-const MAIN_FF5EB2A130CC := "We did not find an active Full Journey subscription or purchase."
+const MAIN_FF5EB2A130CC := "Couldn't find an active Full Journey subscription or purchase."
 # Purchase failed — toast / status or error
 const MAIN_B621C76A2638 := "Purchase cancelled. Nothing changed."
 # Retry saved identity — heading / label
@@ -777,7 +777,7 @@ const MAIN_5DCCD071AE03 := "No Full Journey unlock found for this identity. The 
 # Hosting access result — heading / label
 const MAIN_618916283742 := "The host access is not checked."
 # Hosting access result — body text
-const MAIN_AA2B015D5D95 := "We could not check hosting access. Your order might still be in effect. Wait a few moments and check again."
+const MAIN_AA2B015D5D95 := "Couldn't check hosting access. Your order might still be in effect. Wait a few moments and check again."
 # Recovery details — heading / label
 const MAIN_4E6353EBBDB9 := "Store this in a secure location."
 # Recovery details — body text
@@ -793,7 +793,7 @@ const MAIN_01C351256351 := "Paste your saved recovery information, or enter both
 # Recover identity form — body text
 const MAIN_41C32AF5A224 := "If you paste your information, both fields will be filled. The app does not send anything until you tap Recover identity."
 # Import recovery details — HUD label
-const MAIN_B3DD2F6125BC := "We could not read those recovery details. Copy the entire saved block, or fill in the two fields separately."
+const MAIN_B3DD2F6125BC := "Couldn't read those recovery details. Copy the entire saved block, or fill in the two fields separately."
 # Import recovery details — HUD label
 const MAIN_06D48BA3672C := "Both fields are prepared. Tap Recover identity if you wish to proceed."
 # Recover identity — toast / status or error
@@ -829,7 +829,7 @@ const MAIN_58F37D557118 := "The saved cleanup request could not be matched to th
 # Clear deleted identity — message
 const MAIN_143D1D0DB2C5 := "The encrypted identity needs to be read successfully before device cleanup can proceed."
 # Clear deleted identity — message
-const MAIN_6D018CBB9D68 := "We could not read the saved deletion confirmation. Do not delete the app data and try again."
+const MAIN_6D018CBB9D68 := "Couldn't read the saved deletion confirmation. Do not delete the app data and try again."
 # Clear deleted identity — message
 const MAIN_9C9B9DFD3CC2 := "The server deletion completed, but its cleanup request could not be saved on this device. Retry device cleanup."
 # Clear deleted identity — message
@@ -883,7 +883,7 @@ const MAIN_F4F6AF4420A6 := "This chapter needs a compatible app. Your saved work
 # Notification route — toast / status or error
 const MAIN_571E92F64ED1 := "The chapter service could not be checked. Your saved work is retained."
 # Notification route — toast / status or error
-const MAIN_BE8E691311EE := "We could not open this chapter shared with your friend. Your saved turn is kept."
+const MAIN_BE8E691311EE := "Couldn't open this chapter shared with your friend. Your saved turn is kept."
 # Safety — toast / status or error
 const MAIN_8D6F750820DC := "Wait for the current request before opening community controls."
 # Tester access — body text
@@ -901,7 +901,7 @@ const MAIN_C7E8A28B2803 := "An internet connection is needed for this check. You
 # Request tester access — message
 const MAIN_B7C7E85171CD := "There is no tester access saved for this identity at this time."
 # Request tester access — message
-const MAIN_85B232C00485 := "We could not save or confirm tester access. Check your code and connection. Use Restore tester access to check a previous redemption."
+const MAIN_85B232C00485 := "Couldn't save or confirm tester access. Check your code and connection. Use Restore tester access to check a previous redemption."
 # Relay chapter — ready
 const RELAY_PREVIEW_7D6EECC5B2C3 := "This is a chapter that requires a compatible app. Its recordings have been kept."
 # Relay chapter — show ready
@@ -937,7 +937,7 @@ const RELAY_PREVIEW_87AB91E6F763 := "Invitation code copied. Send it to your fri
 # Relay chapter — online refresh
 const RELAY_PREVIEW_E274B279C9CF := "Checking your shared place…"
 # Relay chapter — online refresh
-const RELAY_PREVIEW_AE8554BD7C76 := "Your turn is saved safely while we check its receipt."
+const RELAY_PREVIEW_AE8554BD7C76 := "Your turn is saved safely while its receipt is checked."
 # Relay chapter — add online sync status
 const RELAY_PREVIEW_7A4E91C6BB33 := "Automatically checking for your friend's turn…"
 # Relay chapter — update online sync status
@@ -967,7 +967,7 @@ const RELAY_PREVIEW_D30D1660A268 := "The request is saved on this device before 
 # Relay chapter — play collection pair
 const RELAY_PREVIEW_3DB2A54BEB93 := "The saved stage is not available. Your recordings are kept."
 # Relay chapter — play collection pair
-const RELAY_PREVIEW_ED3A094D0041 := "We were not able to replay the previous stage."
+const RELAY_PREVIEW_ED3A094D0041 := "Couldn't replay the previous stage."
 # Relay chapter — show completed
 const RELAY_PREVIEW_DA6BA2478FE5 := "The chapter could not be replayed."
 # Relay chapter — show completed
@@ -1729,13 +1729,13 @@ const TURN_NOTIFICATIONS_5015371169FE := "Android notifications are turned off. 
 # Turn notification settings and status — Status or error (reconcile)
 const TURN_NOTIFICATIONS_1DA0D2B61934 := "The notification binding was not secured. Nothing was registered."
 # Turn notification settings and status — Status or error (reconcile)
-const TURN_NOTIFICATIONS_3B300B883B57 := "Android could not prepare notifications. We will retry. Play can be continued."
+const TURN_NOTIFICATIONS_3B300B883B57 := "Android couldn't prepare notifications. Trying again… You can keep playing."
 # Turn notification settings and status — Status or error (reconcile)
 const TURN_NOTIFICATIONS_D05B75D3C933 := "Turn notifications are on for this device."
 # Turn notification settings and status — Status or error (reconcile)
 const TURN_NOTIFICATIONS_F20AF0DE21A8 := "Notifications could not be registered yet. Your room and drafts are unchanged."
 # Turn notification settings and status — Status or error (reconcile)
-const TURN_NOTIFICATIONS_9BF0800B5B39 := "The device token has changed when enabling notifications. We will check it again."
+const TURN_NOTIFICATIONS_9BF0800B5B39 := "The device token changed while turning on notifications. Checking it again…"
 # Turn notification settings and status — Status or error (unregister)
 const TURN_NOTIFICATIONS_A304E7C06EFD := "This device does not have notifications enabled. Service cleanup will attempt to be retried when connected."
 # Turn notification settings and status — Status or error (unregister)
@@ -2118,7 +2118,7 @@ const MAIN_B39BBA0B04B0_IOS := "You need an online identity first. Your existing
 const PURCHASES_49387E2DE82E_IOS := "This build can't make App Store purchases."
 const TURN_NOTIFICATIONS_6B57E7FA9822_IOS := "Checking notification permission…"
 const TURN_NOTIFICATIONS_5015371169FE_IOS := "Notifications are off for After You. Turn them on in Settings, then try again here. Gameplay is unaffected."
-const TURN_NOTIFICATIONS_3B300B883B57_IOS := "Notifications could not be set up. We'll try again, and you can keep playing."
+const TURN_NOTIFICATIONS_3B300B883B57_IOS := "Notifications couldn't be set up. Trying again… You can keep playing."
 # GitHub Test Store build: a purchase opens paid chapters for solo, hosting needs a tester code.
 const HOSTING_NEEDS_TESTER_CODE := "Hosting needs a tester code on this build"
 const COOPERATIVE_UPPER_PATH_A := "Assist your friend to the loft."
