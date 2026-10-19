@@ -14,12 +14,16 @@ extends RefCounted
 ## wheel sits between them. Three gates change so the ways need no kept
 ## crossing: the mole steps read the outer sea, the sea lock lets out when the
 ## chamber stands at the sea's level, and the gate catwalk needs only an open
-## sea.
+## sea. The pin and the key swap steps: the pin hangs on the quay step (low
+## water) and the key on the bollard step (half), so the boom after HIGH no
+## longer starts with its pin underfoot. The mole steps' gate is wrapped in an
+## "any" so the wait hints (presentation/wait_hints.gd) leave it out: its
+## memory term, the outer sea, read as a misleading bubble there.
 const Earlier = preload("res://core/journey/turn_of_the_tide_catalog.gd")
 ## How long a closing crossing keeps its floor: 1.5 s, enough to walk off the
 ## longest one from its middle with a second to spare.
 const CLOSING_TICKS := 45
-const SLACK_HINT_B := "Fetch the pin, key or line at the mill. Let your friend reach home before you turn the tide, then take the tides in order and light the lantern."
+const SLACK_HINT_B := "Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern."
 
 static func definition() -> Dictionary:
 	var level: Dictionary = Earlier.definition()
@@ -31,7 +35,15 @@ static func definition() -> Dictionary:
 	var slack: Dictionary = level.stages[1]
 	slack.hint_b = SLACK_HINT_B
 	var gates: Array = slack.gates
-	_replace(gates, "mole-steps", {"all": [{"lever_id": "boom-pin"}, {"control_id": "basin", "value": "half"}]})
+	_move_lever(slack, "boom-pin", [64, -512], "quay-step")
+	_move_lever(slack, "sea-key", [320, -512], "bollard-step")
+	# The partner's budget starts where each way's first fetch now hangs.
+	for branch: Dictionary in slack.source_policy.branches:
+		match str(branch.id):
+			"boom": branch.receiver_route_cm[0] = [64, -512]
+			"sea-lock": branch.receiver_route_cm[0] = [320, -512]
+		if branch.id == "sea-lock": slack.receiver_route_cm = branch.receiver_route_cm.duplicate(true)
+	_replace(gates, "mole-steps", {"any": [{"all": [{"lever_id": "boom-pin"}, {"control_id": "basin", "value": "half"}]}]})
 	_replace(gates, "sea-gate-out", {"all": [{"lever_id": "gate-bar"}, {"lever_id": "sea-bar"}, {"lever_id": "sea-key"}, _level_with_sea("chamber")]})
 	_replace(gates, "gate-catwalk", {"any": [{"control_id": "basin", "value": "low"}, {"control_id": "basin", "value": "half"}, {"control_id": "basin", "value": "high"}]})
 	_replace(gates, "lock-west", {})
@@ -45,6 +57,14 @@ static func definition() -> Dictionary:
 		{"route_id": "quay-step", "when": {"all": [{"control_id": "tide", "value": "half"}, {"lever_id": "sluice"}]}},
 		{"route_id": "bollard-step", "when": {"all": [{"control_id": "tide", "value": "high"}, {"lever_id": "line"}]}}])
 	return level
+
+static func _move_lever(stage: Dictionary, id: String, at: Array, surface: String) -> void:
+	for lever: Dictionary in stage.levers:
+		if lever.id == id:
+			lever.position_cm = at
+			lever.surface_id = surface
+			return
+	assert(false, "No lever " + id)
 
 ## The gate for route_id now holds on `when`; {} leaves it always open.
 static func _replace(gates: Array, route_id: String, when: Dictionary) -> void:

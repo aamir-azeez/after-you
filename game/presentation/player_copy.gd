@@ -288,8 +288,8 @@ const TURN_OF_THE_TIDE_SLACK_HINT_A := "Some moorings only catch while the sea i
 const TURN_OF_THE_TIDE_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern."
 # turn-of-the-tide@2: the second spirit must not turn the tide while the
 # memory still walks home over a crossing. Solo, the memory is the player's own.
-const TURN_OF_THE_TIDE_V2_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Let your friend reach home before you turn the tide, then take the tides in order and light the lantern."
-const TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO := "Fetch the pin, key or line at the mill. Let your memory reach home before you turn the tide, then take the tides in order and light the lantern."
+const TURN_OF_THE_TIDE_V2_SLACK_HINT_B := "Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern."
+const TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO := "Wait until your memory has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern."
 # A turn that ends with a spirit on a crossing as it shuts (journey tide rules):
 # the player's own spirit, the friend's memory, or in solo play the player's
 # own memory.
@@ -2927,7 +2927,7 @@ const CANONICAL_KEYS := {
 	"Cross when the tide is right and ring the harbour bell.": "turn_of_the_tide.set_the_tide_b",
 	"Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.": "turn_of_the_tide.slack_water_a",
 	"Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern.": "turn_of_the_tide.slack_water_b",
-	"Fetch the pin, key or line at the mill. Let your friend reach home before you turn the tide, then take the tides in order and light the lantern.": "turn_of_the_tide_v2.slack_water_b",
+	"Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern.": "turn_of_the_tide_v2.slack_water_b",
 	"Oh no, you drowned! Try again?": "journey.drowned_you",
 	"Oh no, your friend drowned! Try again?": "journey.drowned_friend",
 	"Help your partner reach the loft.": "cooperative.upper_path_a",

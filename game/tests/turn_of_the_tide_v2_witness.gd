@@ -27,6 +27,9 @@ const SEA_TAIL := [["d",[64,-236]],["w",[64,-116]],["d",[-500,-48]],["u","route:
 ## How far west the memory has to be before the tide may turn: past sand-1,
 ## stones-1 and jetty-1 (x -128..0), its last tide crossings on the way home.
 const HOME_X := -140
+## Where p0 stands to reach the pin (quay step) and the key (bollard step).
+const PIN_STAND := [64,-488]
+const KEY_STAND := [320,-488]
 
 func chapter() -> Dictionary:
 	var level := Registry.definition(KEY)
@@ -44,18 +47,25 @@ func chapter() -> Dictionary:
 	return result
 
 ## Stage 2, p0 for one history and way: wait for the memory, then the way.
+## The pin hangs on the quay step (open at low) and the key on the bollard
+## step (open at half); a p0 that starts on one of them pulls it at once.
 static func p0_way(history: String, way: String) -> Array:
 	var lane: Array = [["w",[Tide.STEP[history][0],Tide.LANE]]]
 	var home: Array = [["?","home"]]
+	var pin: Array = Tide._fetch(PIN_STAND)
+	var key: Array = Tide._fetch(KEY_STAND)
 	match history + "/" + way:
-		"low/boom": return home + [["w",Tide.WHEEL["low"]],T,["d",[Tide.PIN_STAND[0],Tide.LANE]]] + Tide._fetch(Tide.PIN_STAND).slice(1) + [["d",Tide.WHEEL_NE],T] + BOOM_TAIL
-		"half/boom": return home + lane + Tide._fetch(Tide.PIN_STAND) + [["d",Tide.WHEEL_NE],T] + BOOM_TAIL
-		# The pin hangs on p0's own step, and the harbour is already high.
-		"high/boom": return home + [T] + lane + BOOM_TAIL
-		"low/sea-lock": return home + lane + Tide._fetch(Tide.KEY_STAND) + [["d",Tide.WHEEL_NW],T] + SEA_TAIL
-		# The key hangs on p0's own step, and the harbour is already half.
-		"half/sea-lock": return home + [T,["w",[64,-116]]] + SEA_TAIL.slice(2)
-		"high/sea-lock": return home + lane + [["d",Tide.WHEEL_NE],T,["d",[Tide.KEY_STAND[0],Tide.LANE]]] + Tide._fetch(Tide.KEY_STAND).slice(1) + [["d",Tide.WHEEL_NW],T] + SEA_TAIL
+		# Low: the pin first, then the harbour up to high for the jetties.
+		"low/boom": return home + lane + pin + [["d",Tide.WHEEL_NE],T,T] + BOOM_TAIL
+		# Half: the pin hangs on p0's own step.
+		"half/boom": return home + [T] + lane + [["d",Tide.WHEEL_NE],T] + BOOM_TAIL
+		# High: down to low for the pin, then back up to high.
+		"high/boom": return home + lane + [["d",Tide.WHEEL_NE],T] + pin + [["d",Tide.WHEEL_NE],T,T] + BOOM_TAIL
+		# Low: up to half for the key, then in at half.
+		"low/sea-lock": return home + lane + [["d",Tide.WHEEL_NE],T] + key + SEA_TAIL
+		"half/sea-lock": return home + lane + key + SEA_TAIL
+		# High: the key hangs on p0's own step; then round to half.
+		"high/sea-lock": return home + [T] + lane + [["d",Tide.WHEEL_NE],T,T] + SEA_TAIL
 		_: return home + Tide.p0_way(history, way)
 
 ## "?" "home": steps on until the memory is past its last tide crossing.
