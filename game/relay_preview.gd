@@ -311,8 +311,8 @@ func _resume_photo() -> void:
 ## Builds the world a few milliseconds a frame (see staged_build_usec). The
 ## world does not run until it is whole, and is not drawn either: drawing the
 ## half-built world under the card took a growing share of every build frame.
-## It shows, whole, the frame after its build, still behind the card. Back
-## waits for the build to finish.
+## Once whole it shows over a few frames (island_world.reveal_staged), still
+## behind the card. Back waits for the build and the reveal to finish.
 ## It builds the stage the screen opens on. The journal, loading on its
 ## worker, names that stage only once joined, so the build waits for it
 ## behind the card, then builds that stage once.
@@ -331,7 +331,7 @@ func _build_world_staged() -> void:
 		# replays the partner's turn): the same setup the card would run.
 		_start_opening_turn()
 		await world.build_staged(definition, staged_build_usec, _opening_stage_id())
-		world.visible = shown
+		if shown: await world.reveal_staged()
 		# The ready card is built in a frame of its own, not on the build's last.
 		await get_tree().process_frame
 		while _prefetch_thread != null and _prefetch_thread.is_alive() and not _leaving:

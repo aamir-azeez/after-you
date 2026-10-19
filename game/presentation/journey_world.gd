@@ -227,10 +227,14 @@ func _advance_bubbles(delta: float) -> void:
 ## A world shown again (a staged build stays hidden until it is whole) gathers
 ## its scenery again and places its bubbles: while hidden, every mesh read as
 ## no scenery at all.
+## A staged reveal shows the world before its parts (island_world.reveal_staged):
+## its end counts as shown again too.
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_VISIBILITY_CHANGED and is_inside_tree() and is_visible_in_tree():
-		_sceneries.clear()
-		_placement_due = true
+	if what == NOTIFICATION_VISIBILITY_CHANGED and is_inside_tree() and is_visible_in_tree(): _shown_whole()
+
+func _shown_whole() -> void:
+	_sceneries.clear()
+	_placement_due = true
 
 func _frame_camera() -> void:
 	super._frame_camera()

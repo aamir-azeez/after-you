@@ -5,10 +5,13 @@ extends "res://tests/test_world_fingerprint.gd"
 ## - Built staged, every staged chapter's world is the same world, node for
 ##   node (the world fingerprint), as built in one call; it took more than one
 ##   frame, no step of it added more than a few hundred nodes, and the build
-##   does not run the world before it is whole. That
-##   holds for every chapter, opened on its first stage and on its second: a
-##   staged build builds the stage it opens on, and the screen showing that
-##   stage then builds nothing more in one frame.
+##   does not run the world before it is whole. That holds for every chapter,
+##   opened on its first stage and on its second: a staged build builds the
+##   stage it opens on, and the screen showing that stage then builds nothing
+##   more in one frame.
+## - Hidden while it builds, the world then shows over a few frames, a share
+##   of its meshes each (island_world.reveal_staged), all before the ready
+##   card, and ends with every node shown or hidden as built.
 ## - Only Main's one request stages a build: a screen made any other way (every
 ##   harness and test) builds at once, as before.
 ## - The chapter screen waits in "loading" while it builds, then shows its
@@ -23,6 +26,7 @@ extends "res://tests/test_world_fingerprint.gd"
 const Preview = preload("res://relay_preview.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Card = preload("res://presentation/chapter_loading_card.gd")
+const World = preload("res://presentation/island_world.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 
 var directory := ""
@@ -54,6 +58,7 @@ func _run() -> void:
 		await _same_world(key, 0)
 		await _same_world(key, 1)
 		await _revealed_bubbles(key)
+		await _revealed_in_parts(key)
 	await _screen(Registry.CONSERVATORY)
 	await _screen(Registry.WISHING_WELL)
 	await _screen(Registry.WISHING_WELL, true)
@@ -74,7 +79,6 @@ func _run() -> void:
 ## A build's own slice is half the screen's frame, never aiming above 60
 ## frames a second, and follows a lower frame cap.
 func _slice() -> void:
-	var World := preload("res://presentation/island_world.gd")
 	_check(World.frame_budget_usec(60.0, 0) == 8333, "A 60 Hz screen gives the build half its frame")
 	_check(World.frame_budget_usec(120.0, 0) == 8333 and World.frame_budget_usec(144.0, 0) == 8333, "A faster screen still gives it a 60 a second slice")
 	_check(World.frame_budget_usec(-1.0, 0) == 8333, "A screen that reports no rate counts as 60 Hz")
@@ -132,6 +136,47 @@ func _revealed_bubbles(key: String) -> void:
 		same = same and is_equal_approx(revealed._bubbles[index].lean, direct._bubbles[index].lean) and is_equal_approx(revealed._bubbles[index].lift, direct._bubbles[index].lift)
 	_check(same, key + ": its bubbles lean and rise as in a world built at once (%d)" % revealed._bubbles.size())
 	for pair: Array in worlds: pair[0].free()
+
+## Built staged and hidden, as under the card, then shown by reveal_staged: no
+## frame after the first shows more than its share of the meshes for the first
+## time, a big world takes several frames but not many more than
+## REVEAL_FRAMES, and every node ends shown or hidden exactly as built.
+func _revealed_in_parts(key: String) -> void:
+	var definition := Registry.definition(key)
+	var viewport := _viewport()
+	var world: Node3D = Registry.world_script(key).new()
+	_mount(viewport, world, false)
+	world.process_mode = Node.PROCESS_MODE_DISABLED
+	world.visible = false
+	await world.build_staged(definition, 1, str(definition.stages[0].id))
+	var built: Array = []
+	for node: Node in world.find_children("*", "Node3D", true, false): built.append((node as Node3D).visible)
+	var geometry: Array = world.find_children("*", "GeometryInstance3D", true, false)
+	var drawn := 0
+	world.visible = true
+	for mesh: GeometryInstance3D in geometry:
+		if mesh.is_visible_in_tree(): drawn += 1
+	world.visible = false
+	var counts: Array[int] = []
+	var count := func() -> void:
+		var shown := 0
+		for mesh: GeometryInstance3D in geometry:
+			if is_instance_valid(mesh) and mesh.is_visible_in_tree(): shown += 1
+		counts.append(shown)
+	process_frame.connect(count)
+	await world.reveal_staged()
+	process_frame.disconnect(count)
+	count.call()
+	var most := 0
+	for index in range(1, counts.size()): most = maxi(most, counts[index] - counts[index - 1])
+	var after: Array = []
+	for node: Node in world.find_children("*", "Node3D", true, false): after.append((node as Node3D).visible)
+	_check(world.visible and not world.revealing() and after == built, key + ": revealed, every node is shown or hidden as built")
+	var share := World.reveal_share(drawn)
+	_check(most <= share, key + ": no frame after the first shows more than %d meshes for the first time (most %d over %d frames)" % [share, most, counts.size()])
+	_check(counts.size() <= World.REVEAL_FRAMES + 2, key + ": it shows in a few frames (%d of them, %d meshes drawn)" % [counts.size(), drawn])
+	if drawn > 2 * World.REVEAL_LEAST: _check(counts.size() > 1, key + ": a big world shows over several frames (%d meshes drawn, %d frames)" % [drawn, counts.size()])
+	viewport.free()
 
 ## Scenery boxes a journey world gathered for its bubbles, all bubbles together.
 func _scenery_boxes(world: Node3D) -> int:
@@ -228,13 +273,18 @@ func _screen(key: String, saved: bool = false) -> void:
 	guard = 0
 	var terrain_id := 0
 	var drawn_half_built := false
+	var revealed_frames := 0
+	var revealed_late := false
 	while (staged.building() or staged.mode == "loading") and guard < 600:
 		await process_frame
 		guard += 1
 		if staged.building() and is_instance_valid(staged.world.terrain): terrain_id = staged.world.terrain.get_instance_id()
 		if staged.world.build_budget_usec > 0 and staged.world.visible: drawn_half_built = true
+		if staged.world.revealing(): revealed_frames += 1
+		if staged.world.revealing() and not staged.building(): revealed_late = true
 	_check(not staged.building() and staged.mode == "ready" and guard >= 1, label + ": the ready card follows the build (%d frames)" % guard)
 	_check(not drawn_half_built and staged.world.visible == direct.world.visible, label + ": the half-built world is never drawn, and shows once whole")
+	_check(not revealed_late, label + ": it shows its parts while the card still waits (%d frames of them)" % revealed_frames)
 	_check(staged.world.terrain.get_instance_id() == terrain_id, label + ": the ready card shows the world it built, not a rebuild in one frame")
 	if saved: _check(str(staged.journey.stage_id()) == str(Registry.definition(key).stages[1].id), label + ": it opens on the saved second stage")
 	_check(Canonical.same(staged.sim.snapshot(), direct.sim.snapshot()) and str(staged.sim.get("role")) == str(direct.sim.get("role")), label + ": the same turn, in the same state, as one set up at once")

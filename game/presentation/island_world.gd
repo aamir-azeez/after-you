@@ -222,6 +222,80 @@ func build_staged(level: Dictionary, budget_usec: int = 0, opening_stage: String
 	build_budget_usec = 0
 	_opening_stage_id = ""
 
+## A staged world shows over about this many frames (reveal_staged), a share
+## of its meshes, labels and sprites each: drawing a whole chapter for the
+## first time took one frame 16 to 35 ms on a desktop, Turn of the Tide the
+## longest. A world of fewer than REVEAL_LEAST meshes a frame shows sooner.
+const REVEAL_FRAMES := 4
+const REVEAL_LEAST := 100
+var _revealing := false
+
+## The most meshes reveal_staged shows for the first time in one frame, for a
+## world that draws drawn of them.
+static func reveal_share(drawn: int) -> int:
+	return maxi(REVEAL_LEAST, ceili(float(drawn) / REVEAL_FRAMES))
+
+## Shows a world a staged build left hidden, a few parts a frame, so that no
+## frame draws the whole world for the first time. A part is a plain node (no
+## script) shown when the reveal starts, with no more than reveal_share meshes
+## under it, or else its own parts in turn; a node with a script is never
+## hidden itself, only its parts are. The world ends as it was before it was
+## hidden. The caller keeps the world from running meanwhile, as during the
+## build. Await it.
+func reveal_staged() -> void:
+	_revealing = true
+	# Shown and parts hidden again in this frame: nothing draws in between.
+	visible = true
+	var share := reveal_share(_drawn_meshes())
+	var parts: Array[Array] = []
+	_reveal_parts(self, parts, share)
+	for part: Array in parts: (part[0] as Node3D).visible = false
+	# Biggest parts first, each frame filled up with whatever still fits: the
+	# fewest frames. What is never hidden shows with the first.
+	parts.sort_custom(func(a: Array, b: Array) -> bool: return int(a[1]) > int(b[1]))
+	var shown := _drawn_meshes()
+	while not parts.is_empty():
+		var rest: Array[Array] = []
+		for part: Array in parts:
+			if shown > 0 and shown + int(part[1]) > share:
+				rest.append(part)
+				continue
+			if is_instance_valid(part[0]): (part[0] as Node3D).visible = true
+			shown += int(part[1])
+		parts = rest
+		if parts.is_empty() or not is_inside_tree(): break
+		await get_tree().process_frame
+		shown = 0
+	for part: Array in parts:
+		if is_instance_valid(part[0]): (part[0] as Node3D).visible = true
+	_revealing = false
+	_shown_whole()
+
+func _drawn_meshes() -> int:
+	var drawn := 0
+	for mesh: Node in find_children("*", "GeometryInstance3D", true, false):
+		if (mesh as GeometryInstance3D).is_visible_in_tree(): drawn += 1
+	return drawn
+
+## Whether reveal_staged is still showing this world's parts.
+func revealing() -> bool:
+	return _revealing
+
+## The parts under node that reveal_staged hides and shows again, as
+## [node, meshes].
+func _reveal_parts(node: Node, parts: Array[Array], share: int) -> void:
+	for child: Node in node.get_children():
+		if not child is Node3D or not (child as Node3D).visible: continue
+		var meshes := child.find_children("*", "GeometryInstance3D", true, false).size() + (1 if child is GeometryInstance3D else 0)
+		if meshes == 0: continue
+		if child.get_script() == null and meshes <= share: parts.append([child, meshes])
+		else: _reveal_parts(child, parts, share)
+
+## Called once a staged world shows whole (reveal_staged). A world whose
+## presentation reads what is visible reads it again here.
+func _shown_whole() -> void:
+	pass
+
 ## Shows stage as a chapter screen does: through the world's show_stage, except
 ## a stage the last staged build has just built itself, which stays as built.
 func present_stage(stage: Dictionary) -> void:
