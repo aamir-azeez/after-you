@@ -4,7 +4,8 @@ extends Node3D
 ## one pill per value, so a selector reads as a single choice with the current
 ## value filled and the others dimmed. A single word (a pad's name) uses the
 ## same bubble with no pill. Values are passed raw ("low", "stowed") and shown
-## upper-cased, or under a name the caller gives (PlayerCopy.selector_value).
+## upper-cased, or under a name the caller gives (a chapter descriptor's
+## "selector_names").
 ##
 ##   var bubble := LabelBubble.create(terrain, lever_top, ["rose", "moss"], "rose")
 ##   bubble.set_selected("moss")      # every frame is fine: colours only

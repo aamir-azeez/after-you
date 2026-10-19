@@ -158,14 +158,13 @@ func _build_mirror(control: Dictionary) -> void:
 	_ownership_mark(str(control.owner_slot),at+Vector3(0,0.025,0.35),terrain)
 
 ## One speech bubble per selector, over the lever and pointing down at it,
-## with one pill per value under its PlayerCopy name. `labels` keeps one
-## Label3D per value (meta "backing" is its pill) for worlds that restyle a
-## single value.
+## with one pill per value under its name from the descriptor's
+## "selector_names" (else the value). `labels` keeps one Label3D per value
+## (meta "backing" is its pill) for worlds that restyle a single value.
 func _build_selector(control: Dictionary) -> void:
 	_build_lever(control)
-	var names: Array = []
-	for value: Variant in control.values:
-		names.append(PlayerCopy.selector_value(str(chapter_definition.get("id","")),str(control.id),str(value)))
+	var named: Dictionary = _descriptor().get("selector_names",{}).get(str(control.id),{})
+	var names: Array = control.values.map(func(value: Variant) -> String: return str(named.get(str(value),value)))
 	var bubble := _label_bubble(control.values,_selector_anchor(control),terrain,_selector_bubble_shift(control),names)
 	_journey_switches[control.id] = {"values":control.values.duplicate(),"labels":bubble.labels,"bubble":bubble}
 	_physical_levers[control.id].name = "RouteSwitch_"+str(control.id)

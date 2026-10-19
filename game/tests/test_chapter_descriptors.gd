@@ -188,6 +188,15 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 		_check(reasons.has(id) and sides.all(func(side: String) -> bool: return side in reasons[id]), "Wait hint reason %s of %s can be said (%s)" % [id, key, str(reasons.get(id, "never"))])
 	for id: String in hints.get("crossings", {}):
 		_check(id in crossings, "Wait hint crossing %s of %s can be hinted about" % [id, key])
+	for id: String in data.selector_names:
+		var values: Dictionary = {}
+		for stage: Dictionary in level.stages:
+			for control: Dictionary in stage.get("controls", []):
+				if control.get("id") == id and control.get("kind") == "selector":
+					for value: Variant in control.get("values", []): values[str(value)] = true
+		_check(not values.is_empty(), "Selector names %s of %s name a selector of its definition" % [id, key])
+		for value: Variant in data.selector_names[id]:
+			_check(values.has(str(value)) and data.selector_names[id][value] is String and not str(data.selector_names[id][value]).is_empty(), "Selector name %s/%s of %s names one of its values" % [id, value, key])
 	for id: String in data.seats:
 		_check(pads.has(id), "Seat %s of %s is a pressure pad" % [id, key])
 		_check(Props.extent(data.seats[id]).height > 0.05 and not data.seats[id].has("at"), "Seat %s of %s is a prop the kit builds, placed by its pad" % [id, key])

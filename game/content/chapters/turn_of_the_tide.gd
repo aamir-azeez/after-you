@@ -55,5 +55,7 @@ const DATA := {
 	},
 	# The bollard step's own bollard: whoever holds the step sits on it.
 	"seats": {"bollard-pad": {"kind": "bollard", "size": 1.6}},
+	# The winch reads as the slipway it moves.
+	"selector_names": {"winch": {"stowed": PlayerCopy.TURN_OF_THE_TIDE_WINCH_STOWED, "slip": PlayerCopy.TURN_OF_THE_TIDE_WINCH_SLIP}},
 	"server": {"flag": "TURN_OF_THE_TIDE_CHAPTER_ENABLED", "max_branches": 7},
 }

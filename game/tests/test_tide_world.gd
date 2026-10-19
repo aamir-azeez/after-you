@@ -20,7 +20,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const JourneyWorld = preload("res://presentation/journey_world.gd")
-const PlayerCopy = preload("res://presentation/player_copy.gd")
+const ChapterIndex = preload("res://content/chapters/index.gd")
 const STAIRS := ["w-steps-low", "w-steps-high", "mill-steps", "mill-ladder", "east-steps", "boathouse-steps", "rock-steps-low", "rock-steps-high"]
 var checks := 0
 var failures := 0
@@ -390,7 +390,8 @@ func _bubbles(world: Node3D, stage: Dictionary) -> void:
 		var bubble: LabelBubble = world._journey_switches[control.id].bubble
 		bubble.sync()
 		var texts: Array = bubble.labels.map(func(label: Label3D) -> String: return label.text)
-		var names: Array = control.values.map(func(value: String) -> String: return PlayerCopy.selector_value("turn-of-the-tide", str(control.id), value).to_upper())
+		var named: Dictionary = ChapterIndex.data(KEY).selector_names.get(str(control.id), {})
+		var names: Array = control.values.map(func(value: String) -> String: return str(named.get(value, value)).to_upper())
 		_check(bubble.values == control.values and texts == names, "%s names its values in one bubble" % control.id)
 		if control.id == "winch": _check(texts == ["RAISED", "LOWERED"] and bubble.values == ["stowed", "slip"], "The winch bubble says RAISED and LOWERED while the catalog keeps stowed and slip")
 		var knob: Vector3 = world._knob_top(str(control.id))

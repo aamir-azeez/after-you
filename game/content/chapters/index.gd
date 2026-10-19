@@ -56,6 +56,10 @@ const OPTIONAL := {
 	## id: its name}}. Phrases are PlayerCopy constants; {crossing} names the
 	## crossing. {} gives no hints.
 	"wait_hints": {},
+	## {selector control id: {value: name}}: what a selector's bubble calls a
+	## value, shown upper-cased, where it differs from the catalog's own value.
+	## Names are PlayerCopy constants; the catalog value never changes.
+	"selector_names": {},
 	## {pressure pad id: a kit/props.gd spec without "at"}: a seat on the pad,
 	## and whoever holds the pad sits on it while still.
 	"seats": {},
