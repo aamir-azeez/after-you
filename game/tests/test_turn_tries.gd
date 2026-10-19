@@ -20,6 +20,9 @@ func _run() -> void:
 	await _solo_seams()
 	await _room_send()
 	_replays_pills()
+	for frame in range(300):
+		if not _paths.any(func(file: String) -> bool: return TurnTries.writing(file)): break
+		await process_frame
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 	print("Turn tries: %d checks, %d failures" % [checks, failures])
@@ -60,11 +63,13 @@ func _service() -> void:
 	_check(other.count(solo) == 2, "Open counts survive the app closing")
 	other.start(room)
 	_check(tries.start(solo) == 3 and TurnTries.new(path).count(room) == 2, "Two holders of the files never undo each other's counts")
-	_check(not FileAccess.file_exists(tries.open_path) and TurnTries.new(path).count(solo) == 3, "A start writes its counts on the next frame, not in the tap's; every holder reads them meanwhile")
-	await process_frame
-	_check(not FileAccess.file_exists(path) and FileAccess.file_exists(tries.open_path), "Starting a turn writes only the small file of open counts")
-	TurnTries._soon.clear()
-	_check(TurnTries.new(path).count(solo) == 3, "The next frame's write holds the counts")
+	_check(TurnTries.new(path).count(solo) == 3, "Every holder reads a start's counts while its worker writes them")
+	var frames := 0
+	while TurnTries.writing(tries.open_path) and frames < 300:
+		await process_frame
+		frames += 1
+	_check(not TurnTries.writing(tries.open_path) and not FileAccess.file_exists(path) and FileAccess.file_exists(tries.open_path), "Starting a turn writes only the small file of open counts, off the tap's thread")
+	_check(TurnTries.new(path).count(solo) == 3 and TurnTries.new(path).count(room) == 2, "The written file holds the newest counts")
 	_check(tries.freeze(solo, HASH_B) == 3 and tries.tries(HASH_B) == 3 and tries.count(solo) == 3, "Saving keeps the count under the recording and goes on counting until accepted")
 	tries.close(solo)
 	_check(tries.count(solo) == 0 and tries.start(solo) == 1, "After the turn is saved, the same start begins a new count")

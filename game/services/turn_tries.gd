@@ -15,12 +15,15 @@ extends RefCounted
 ## its file first, so screens that each hold one of these never undo each
 ## other's counts.
 ##
-## A start is the tap that begins a turn, so its file is written on the next
-## frame instead of in the tap's (a whole small-file write and read-back held
-## the Begin frame 6 to 10 ms on a desktop). Until then every holder reads the
-## waiting counts instead of the file.
+## The open counts change on taps (Begin, Retry), so their file is written
+## on a worker, never in the tap's frame (a whole small-file write and
+## read-back held the Begin frame 6 to 10 ms on a desktop). One worker at a
+## time writes a file, always the newest counts, and until they are written
+## every holder reads them instead of the file. The kept counts are written as
+## before.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const FILE_PATH := "user://turn-tries.json"
 const VERSION := 1
 const MAX_TRIES := 999
@@ -37,8 +40,11 @@ var open_path := ""
 var _open: Dictionary = {}
 var _kept: Dictionary = {}
 var _reads: Dictionary = {}
-## Open counts a start has not written yet, as the file's text by its path.
+## Open counts not written yet, as the file's text by its path, and the paths
+## a worker is writing. Shared with the workers: only under _lock.
 static var _soon: Dictionary = {}
+static var _writing: Dictionary = {}
+static var _lock := Mutex.new()
 
 func _init(storage_path: String = FILE_PATH) -> void:
 	path = storage_path
@@ -66,7 +72,7 @@ func start(turn_slot: String) -> int:
 	_open.erase(turn_slot)
 	_open[turn_slot] = tries
 	_trim(_open, MAX_OPEN)
-	_save_open_soon()
+	_save_open()
 	return tries
 
 ## The open count of `slot`; 0 before its first start.
@@ -144,7 +150,10 @@ static func _count(value: Variant, least: int) -> bool:
 	return Typed.whole_number(value) and int(value) >= least and int(value) <= MAX_TRIES
 
 func _load_open() -> void:
-	var text: String = _soon[open_path] if _soon.has(open_path) else AtomicFile.read_text(open_path, func(saved: String) -> bool: return _parse_open(saved) != null)
+	_lock.lock()
+	var waiting: Variant = _soon.get(open_path)
+	_lock.unlock()
+	var text: String = waiting if waiting is String else AtomicFile.read_text(open_path, func(saved: String) -> bool: return _parse_open(saved) != null)
 	var parsed: Variant = _parse_open(text)
 	_open = parsed if parsed != null else {}
 
@@ -177,32 +186,48 @@ static func _parse_kept(text: String) -> Variant:
 	_trim(reads, MAX_READS)
 	return {"kept": kept, "reads": reads}
 
-func _save_open() -> bool:
-	# Written now, with whatever a start left waiting (read in by _load_open).
-	_soon.erase(open_path)
-	return AtomicFile.write_text(open_path, _open_text())
+## Hands the open counts to the file's worker (see the top). Without a
+## worker they are written here.
+func _save_open() -> void:
+	_lock.lock()
+	_soon[open_path] = _open_text()
+	var start := not _writing.has(open_path)
+	if start: _writing[open_path] = true
+	_lock.unlock()
+	# A worker still running writes these counts before it ends.
+	if not start: return
+	Reaper.ensure()
+	var thread := Thread.new()
+	if thread.start(Callable(get_script(), "_write_open").bind(open_path)) == OK:
+		Reaper.adopt(thread)
+	else:
+		_write_open(open_path)
 
 func _open_text() -> String:
 	return JSON.stringify({"schema_version": VERSION, "open": _open}, "", false)
 
-## The open counts, written on the next frame. Without a tree they are
-## written now.
-func _save_open_soon() -> void:
-	var tree := Engine.get_main_loop() as SceneTree
-	if tree == null:
-		_save_open()
-		return
-	_soon[open_path] = _open_text()
-	var write := Callable(get_script(), "write_waiting").bind(open_path)
-	if not tree.process_frame.is_connected(write): tree.process_frame.connect(write, CONNECT_ONE_SHOT)
+## The worker: writes the newest waiting counts of file until none are left.
+static func _write_open(file: String) -> void:
+	while true:
+		_lock.lock()
+		var text: Variant = _soon.get(file)
+		if not text is String:
+			_writing.erase(file)
+			_lock.unlock()
+			return
+		_lock.unlock()
+		AtomicFile.write_text(file, text)
+		_lock.lock()
+		# Newer counts handed over meanwhile stay waiting for the next pass.
+		if _soon.get(file) == text: _soon.erase(file)
+		_lock.unlock()
 
-## Writes the open counts a start left waiting for file, if any. Returns
-## false only when a write failed.
-static func write_waiting(file: String) -> bool:
-	if not _soon.has(file): return true
-	var text: String = _soon[file]
-	_soon.erase(file)
-	return AtomicFile.write_text(file, text)
+## Whether open counts of file are still waiting to be written.
+static func writing(file: String) -> bool:
+	_lock.lock()
+	var busy := _writing.has(file) or _soon.has(file)
+	_lock.unlock()
+	return busy
 
 func _save_kept() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "kept": _kept, "reads": _reads}, "", false))
