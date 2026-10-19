@@ -211,9 +211,14 @@ func _faces_card() -> void:
 		var view := Rect2(Vector2.ZERO, Vector2(case[0]))
 		var rect: Rect2 = card.panel_rect()
 		var pill: Rect2 = row.pill.get_global_rect()
-		_check(view.encloses(rect), "The card stays on screen")
-		_check(rect.end.y <= pill.position.y, "It opens above the pill")
-		_check(absf((rect.position.x if case[1] else rect.end.x) - (pill.position.x if case[1] else pill.end.x)) < 1.0, "Its edge lines up with the pill on the hand side")
+		_check(view.encloses(rect) and not rect.intersects(pill), "The card stays on screen and never covers its pill")
+		if case[0].x >= 1560:
+			# On a phone's 720 tall UI it opens beside the pill on the hand side, over the world.
+			_check(rect.end.x <= pill.position.x if case[1] else rect.position.x >= pill.end.x, "It opens beside the pill on the hand side at %s" % str(case[0]))
+			_check(rect.position.y < pill.get_center().y and rect.end.y > pill.get_center().y, "Level with the pill")
+		else:
+			# A window too narrow beside it: above or below, its edge on the pill's edge on the hand side.
+			_check(absf((rect.position.x if case[1] else rect.end.x) - (pill.position.x if case[1] else pill.end.x)) < 1.0, "Its edge lines up with the pill on the hand side")
 		_check(_has_label(card, PlayerCopy.END_REACTIONS_ROOM_NOTE) and _has_label(card, PlayerCopy.END_REACTIONS_TITLE), "Its title and note show")
 		(card.cells["surprised"] as Button).pressed.emit()
 		await process_frame
@@ -392,31 +397,7 @@ func _replays() -> void:
 	for node: Node in [shared, solo, flow]: node.free()
 	_clear_default_store()
 
-## A stand-in chapter screen with the members end_reaction_screen.gd reads.
-class FakeSession extends RefCounted:
-	var supported := true
-	func end_reactions_supported() -> bool: return supported
-
-class FakeJourney extends RefCounted:
-	var room := {}
-	var pending_face := ""
-	func snapshot() -> Dictionary: return room
-	func pending_reaction() -> String: return pending_face
-
-class FakeScreen extends Node:
-	var online_session: Variant = null
-	var journey: Variant = null
-	var settings: Dictionary = {"reduced_motion": true}
-	var soundscape: Variant = null
-	var chapter_key := "relay-isles@2"
-	var definition: Dictionary = {}
-	var prior: Dictionary = {}
-	var world: Variant = null
-	var hud: Variant = null
-	var pairs: Array = []
-	func _pairs() -> Array: return pairs
-	func _waiting_partner_name(_room: Dictionary) -> String: return "Sam"
-
+## What a chapter screen hands end_reaction_screen.gd (relay_preview.gd _end_reaction_context).
 class FakeScape extends Node:
 	var played: Array = []
 	func play_reaction(identity: Array) -> void: played.append(identity)
@@ -437,84 +418,98 @@ class FakeWorld extends Node3D:
 
 func _screen_glue() -> void:
 	_clear_default_store()
-	var screen := FakeScreen.new()
-	screen.definition = level
-	root.add_child(screen)
-	_check(EndReactionScreen.available(screen), "Solo always offers reactions")
-	var session := FakeSession.new()
-	screen.online_session = session
-	session.supported = false
-	_check(not EndReactionScreen.available(screen) and EndReactionScreen.face_to_send(screen, {"recording_hash": HASH_A}).is_empty(), "A room whose server does not take them shows and sends none")
-	var host := _host(Vector2(566, 0))
-	_check(EndReactionScreen.attach_ending(screen, host, fixtures["relay-b"], true) == null, "No picker in such a room")
-	session.supported = true
-	var journey := FakeJourney.new()
-	journey.room = {"room_id": ROOM, "player_slot": "p1"}
-	screen.journey = journey
 	var scape := FakeScape.new()
-	screen.soundscape = scape
-	screen.add_child(scape)
-	screen.prior = fixtures["relay-a"]
+	root.add_child(scape)
+	var pairs: Array = []
+	var ctx := {"online": false, "available": true, "chapter_key": "relay-isles@2", "definition": level, "settings": {"reduced_motion": true},
+		"soundscape": scape, "pairs": func() -> Array: return pairs, "friend_name": func() -> String: return "Sam"}
+	_check(EndReactionScreen.face_to_send(ctx, {"recording_hash": HASH_A}).is_empty(), "Nothing picked sends nothing")
+	ctx.online = true
+	ctx.available = false
+	var host := _host(Vector2(566, 0))
+	_check(EndReactionScreen.attach_ending(ctx, host, fixtures["relay-b"], true) == null, "No picker in a room whose server does not take reactions")
+	Store.pick(str(fixtures["relay-b"].recording_hash), "sad")
+	_check(EndReactionScreen.face_to_send(ctx, fixtures["relay-b"]).is_empty(), "And nothing is sent there")
+	ctx.available = true
+	ctx.room_id = ROOM
+	ctx.viewer_slot = "p1"
+	ctx.prior = fixtures["relay-a"]
 	Store.new().keep(str(fixtures["relay-a"].recording_hash), "happy")
-	var row: Control = EndReactionScreen.attach_ending(screen, host, fixtures["relay-b"], true)
+	var row = EndReactionScreen.attach_ending(ctx, host, fixtures["relay-b"], true)
 	await process_frame
 	await process_frame
 	_check(row != null and row.friend_bubble != null and row.friend_bubble.face == "happy" and is_instance_valid(row.pill), "A second turn's card shows the friend's face on the first turn beside the pill")
 	_check(row.context.note == PlayerCopy.END_REACTIONS_ROOM_NOTE and row.context.color == "mint" and row.friend_bubble.color == "peach", "Its note says the friend sees it, and each face is in its spirit's colour")
 	_check(scape.played.size() == 1 and scape.played[0] == ["relay-isles@2", "relay", "a", str(fixtures["relay-a"].recording_hash), "happy"], "The friend's face pops with its own reaction's sound")
-	row.choose("sad")
-	_check(scape.played.back() == ["relay-isles@2", "relay", "b", str(fixtures["relay-b"].recording_hash), "sad"] and EndReactionScreen.face_to_send(screen, fixtures["relay-b"]) == "sad", "A pick sounds from its own run and is what Save turn sends")
+	row.choose("angry")
+	_check(scape.played.back() == ["relay-isles@2", "relay", "b", str(fixtures["relay-b"].recording_hash), "angry"] and EndReactionScreen.face_to_send(ctx, fixtures["relay-b"]) == "angry", "A pick sounds from its own run and is what Save turn sends")
 	host.queue_free()
 	await process_frame
 	host = _host(Vector2(566, 0))
-	journey.pending_face = "angry"
-	row = EndReactionScreen.attach_ending(screen, host, fixtures["relay-b"], true)
+	ctx.pending = true
+	ctx.pending_face = "angry"
+	row = EndReactionScreen.attach_ending(ctx, host, fixtures["relay-b"], true)
 	_check(row.chosen == "angry" and row.pill == null, "A turn waiting to send shows its face fixed")
-	journey.pending_face = ""
+	ctx.pending_face = ""
+	var bare = EndReactionScreen.attach_ending(ctx, host, fixtures["relay-a"], true)
+	_check(bare == null, "A turn waiting to send without a face offers no picker, since a pick could not go with it")
+	ctx.pending = false
 	host.queue_free()
 	host = _host(Vector2(566, 0))
-	row = EndReactionScreen.attach_ending(screen, host, fixtures["relay-a"], false)
+	row = EndReactionScreen.attach_ending(ctx, host, fixtures["relay-a"], false)
 	_check(row.context.note == PlayerCopy.END_REACTIONS_MOMENT_NOTE and row.friend_bubble == null, "A turn that is not kept says its face is for the moment")
 	host.queue_free()
 	# The chapter's finish: both last faces, the viewer's own by slot.
 	Store.new().keep(str(fixtures["garden-a"].recording_hash), "heart")
 	Store.new().keep(str(fixtures["garden-b"].recording_hash), "squeeze")
-	screen.pairs = [{"a": fixtures["relay-a"], "b": fixtures["relay-b"]}, {"a": fixtures["garden-a"], "b": fixtures["garden-b"]}]
+	pairs.append({"a": fixtures["relay-a"], "b": fixtures["relay-b"]})
+	pairs.append({"a": fixtures["garden-a"], "b": fixtures["garden-b"]})
 	host = _host(Vector2(566, 0))
-	row = EndReactionScreen.attach_completed(screen, host)
+	row = EndReactionScreen.attach_completed(ctx, host)
 	_check(row != null and row.chosen == "heart" and row.friend_bubble.face == "squeeze" and row.pill == null, "The guest starts the garden, so its first face is theirs and the second the friend's")
 	host.queue_free()
-	journey.room = {"room_id": ROOM, "player_slot": "p0"}
+	ctx.viewer_slot = "p0"
 	host = _host(Vector2(566, 0))
-	row = EndReactionScreen.attach_completed(screen, host)
+	row = EndReactionScreen.attach_completed(ctx, host)
 	_check(row.chosen == "squeeze" and row.friend_bubble.face == "heart", "And for the host the other way round")
 	host.queue_free()
-	# The room panel's friend strip shows the friend's latest face.
+	# The room panel's friend strip shows the friend's latest face, still and quiet.
 	Store.new().note_room(ROOM, {"schema_version": 1, "faces": {}, "partner": "sleepy"})
 	var strip := HBoxContainer.new()
 	root.add_child(strip)
-	row = EndReactionScreen.attach_friend_latest(screen, strip)
-	_check(row != null and row.friend_bubble.face == "sleepy" and row.context.compact, "The friend strip shows their latest face, small")
+	# The finish cards' friend faces sound a frame later; let them before listening.
+	await process_frame
+	scape.played.clear()
+	ctx.settings = {"reduced_motion": false}
+	row = EndReactionScreen.attach_friend_latest(ctx, strip)
+	await process_frame
+	await process_frame
+	_check(row != null and row.friend_bubble.face == "sleepy" and row.context.compact and row.friend_bubble.color == "mint", "The friend strip shows their latest face, small, in the guest's colour")
+	_check(row.friend_bubble.scale == Vector2.ONE, "A face in a list does not pop")
+	_check(scape.played.is_empty(), "A face in a list makes no sound")
+	_check(row.store == null, "A face in a list never reads the reactions file")
 	strip.queue_free()
+	ctx.settings = {"reduced_motion": true}
 	# A rewatched turn pops its faces above the spirits.
 	var world := FakeWorld.new()
 	root.add_child(world)
 	var hud := Control.new()
 	hud.size = Vector2(1280, 720)
 	root.add_child(hud)
-	screen.world = world
-	screen.hud = hud
+	ctx.world = world
+	ctx.hud = hud
 	await process_frame
 	scape.played.clear()
-	var hold := EndReactionScreen.pop_replay(screen, [fixtures["garden-b"], fixtures["garden-a"]])
+	var hold := EndReactionScreen.pop_replay(ctx, [fixtures["garden-b"], fixtures["garden-a"]])
 	_check(hold > 0.0 and hud.get_child_count() == 2 and scape.played.size() == 2, "A rewatched part pops both faces with their sounds and holds a moment")
 	_check(scape.played[0] == ["relay-isles@2", "garden", "b", str(fixtures["garden-b"].recording_hash), "squeeze"], "The same reaction sounds the same in a rewatch")
 	var faceless: Dictionary = fixtures["relay-b"].duplicate(true)
 	faceless.recording_hash = "d".repeat(64)
-	_check(EndReactionScreen.pop_replay(screen, [faceless, {}]) == 0.0 and hud.get_child_count() == 2, "A part without faces pops nothing and does not hold")
-	for node: Node in [world, hud, screen]: node.queue_free()
+	_check(EndReactionScreen.pop_replay(ctx, [faceless, {}]) == 0.0 and hud.get_child_count() == 2, "A part without faces pops nothing and does not hold")
+	for node: Node in [world, hud, scape]: node.queue_free()
 	await process_frame
 	_clear_default_store()
+
 
 func _solo_screen() -> void:
 	_clear_default_store()
@@ -546,6 +541,14 @@ func _solo_screen() -> void:
 	app._show_ending_card({"kind": "drowned", "badge": &"knocked_out", "water": true, "rows": [["try_again"]], "line": "Oh no, you drowned! Try again?", "color": "peach"})
 	await process_frame
 	_check(app.overlay.find_child("EndReactions", true, false) != null, "An ending card offers the picker too")
+	# A rewatch holding on its faces goes on even if the app went to the background meanwhile.
+	app.mode = "replay"
+	app.running = false
+	app.backgrounded = true
+	app._hold_replay_end(0.05)
+	await create_timer(0.3).timeout
+	app.backgrounded = false
+	_check(app.mode != "replay", "A rewatch held on its faces ends, backgrounded or not")
 	app.queue_free()
 	await process_frame
 	_clear_default_store()

@@ -1487,7 +1487,7 @@ func _friend_strip(joined: bool, waiting_line: String, avatar_size: float) -> HB
 	var room: Dictionary = journey.snapshot()
 	var status: Label = _presence_badge() if _presence_available() else RoomFriendStrip.line(FRIEND_JOINED)
 	var strip := RoomFriendStrip.build(_partner_id(room), FriendNicknames.sentence_start(_waiting_partner_name(room)), status, title_font, avatar_size)
-	EndReactionScreen.attach_friend_latest(self, strip)
+	EndReactionScreen.attach_friend_latest(_end_reaction_context(), strip)
 	return strip
 
 ## The stage the room panel is on, as its title row says it.
@@ -2187,7 +2187,7 @@ func _begin_completion(from_replay: bool) -> void:
 func _finish_replay_playback() -> void:
 	# The rewatched turn's reactions pop above their spirits; a turn that does
 	# not bloom holds on them a moment before going on.
-	var hold := EndReactionScreen.pop_replay(self, _replay_runs)
+	var hold := EndReactionScreen.pop_replay(_end_reaction_context(), _replay_runs)
 	_replay_runs = []
 	if sim.snapshot().get("complete", false): _begin_completion(true)
 	elif hold > 0.0: _hold_replay_end(hold)
@@ -2200,7 +2200,19 @@ func _hold_replay_end(seconds: float) -> void:
 	_replay_hold += 1
 	var token := _replay_hold
 	create_tween().tween_callback(func():
-		if token == _replay_hold and mode == "replay" and not running and not backgrounded: _replay_ended()).set_delay(seconds)
+		# Backgrounded meanwhile or not, the replay goes on: nothing else would end it.
+		if token == _replay_hold and mode == "replay" and not running: _replay_ended()).set_delay(seconds)
+
+## What end-of-run reactions read of this screen (presentation/end_reaction_screen.gd).
+func _end_reaction_context() -> Dictionary:
+	var online := online_session != null
+	var room: Dictionary = journey.snapshot() if online and journey != null and journey.has_method("snapshot") else {}
+	var pending: bool = online and journey != null and journey.has_method("pending") and not journey.pending().is_empty()
+	return {"online": online, "available": not online or (online_session.has_method("end_reactions_supported") and online_session.end_reactions_supported()),
+		"pending": pending, "pending_face": journey.pending_reaction() if pending and journey.has_method("pending_reaction") else "",
+		"room_id": str(room.get("room_id", "")), "viewer_slot": str(room.get("player_slot", "p0")), "chapter_key": chapter_key, "definition": definition,
+		"prior": prior, "settings": settings, "soundscape": soundscape, "world": world, "hud": hud, "pairs": _pairs,
+		"friend_name": func() -> String: return FriendNicknames.sentence_start(_waiting_partner_name(journey.snapshot())) if online else ""}
 
 func _resume_completion() -> void:
 	if _completion_is_replay and not _replay_ready(): return
@@ -2232,7 +2244,7 @@ func _show_review() -> void:
 	if not can_save:
 		explanation += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))), online_session == null)
 	var card := _card(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5, explanation)
-	EndReactionScreen.attach_ending(self, card, review, true)
+	EndReactionScreen.attach_ending(_end_reaction_context(), card, review, true)
 	card.add_child(_action_button("preview", _preview_turn))
 	var save := _action_button("save", _accept)
 	save.disabled = not can_save or (online_session != null and (not online_session.mutations_enabled() or online_session.busy()))
@@ -2276,7 +2288,7 @@ func _show_ending_card(ending: Dictionary) -> void:
 	row.add_child(title)
 	card.add_child(band)
 	card.move_child(band, 0)
-	EndReactionScreen.attach_ending(self, card, review, not sim.has_method("keeps_draft") or sim.keeps_draft())
+	EndReactionScreen.attach_ending(_end_reaction_context(), card, review, not sim.has_method("keeps_draft") or sim.keeps_draft())
 	var actions := {"try_again": _retry_review, "preview": _preview_turn, "leave_draft": _leave}
 	for ids: Array in ending.rows:
 		var line := HBoxContainer.new()
@@ -2379,7 +2391,7 @@ func _accept() -> void:
 		var slot := _tries_slot()
 		var tries := turn_tries.freeze(slot, str(review.get("recording_hash", "")))
 		# A first try sends nothing: it shows as a turn without a count does.
-		var accepted: bool = await journey.commit(review, tries if tries > 1 and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(self, review))
+		var accepted: bool = await journey.commit(review, tries if tries > 1 and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(_end_reaction_context(), review))
 		if not is_inside_tree() or generation != online_request_generation:
 			return
 		if not accepted:
@@ -2728,7 +2740,7 @@ func _show_completed() -> void:
 	mode = "complete"
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
 	_set_room_state("complete")
-	EndReactionScreen.attach_completed(self, card)
+	EndReactionScreen.attach_completed(_end_reaction_context(), card)
 	_add_room_actions(card, "complete", "turn", _room_facts())
 
 ## True when this screen's simulation finished exactly the accepted turn, so

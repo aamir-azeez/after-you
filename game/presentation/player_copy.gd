@@ -36,7 +36,7 @@ const END_REACTIONS_FRIEND_NAMED := "%s reacted: %s"
 ## ★ The line under the faces: a room turn, a solo turn, and a turn that is not kept (a drowning).
 const END_REACTIONS_ROOM_NOTE := "Your friend sees it with your turn."
 const END_REACTIONS_SOLO_NOTE := "Kept with your replay."
-const END_REACTIONS_MOMENT_NOTE := "Just for this moment."
+const END_REACTIONS_MOMENT_NOTE := "This one isn't saved."
 
 # Typed share codes and invite links. FRIEND_CODE_INVALID is the existing add-friend error.
 const FRIEND_CODE_INVALID := "Invalid friend code"

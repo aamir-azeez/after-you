@@ -17,7 +17,7 @@ const KINDS := {
 	"drowned": {"badge": &"knocked_out", "water": true, "rows": [["try_again"], ["preview", "redo"], ["leave_draft"]], "beat": 30},
 }
 ## Each spirit's colour on a badge, as the world draws them.
-const SLOT_COLORS := {"p0": "peach", "p1": "mint"}
+const SLOT_COLORS: Dictionary = preload("res://presentation/spirit_look.gd").SLOT_COLOR_NAMES
 
 ## The ending a snapshot shows, or {} for the usual review:
 ## {"kind", "slot" (whose spirit), "line" (the editable line), ...KINDS[kind]}.

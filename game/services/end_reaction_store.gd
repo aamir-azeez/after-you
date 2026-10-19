@@ -147,7 +147,12 @@ static func _hash(value: Variant) -> bool:
 	return value is String and value.length() == 64 and value.is_valid_hex_number()
 
 func _load() -> void:
-	var parsed: Variant = _parse(AtomicFile.read_text(path, func(text: String) -> bool: return _parse(text) != null))
+	# The accepted copy is parsed once: its parse is kept from the check.
+	var accepted: Array = [null]
+	var text := AtomicFile.read_text(path, func(candidate: String) -> bool:
+		accepted[0] = _parse(candidate)
+		return accepted[0] != null)
+	var parsed: Variant = accepted[0] if not text.is_empty() else null
 	_kept = parsed.kept if parsed != null else {}
 	_partners = parsed.partners if parsed != null else {}
 	_reads = parsed.reads if parsed != null else {}

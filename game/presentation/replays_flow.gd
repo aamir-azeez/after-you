@@ -53,8 +53,7 @@ const TurnTries = preload("res://services/turn_tries.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
-## Each spirit's colour, as the world draws them (turn_endings.gd SLOT_COLORS).
-const SLOT_COLORS := {"p0": "peach", "p1": "mint"}
+const SLOT_COLORS: Dictionary = preload("res://presentation/spirit_look.gd").SLOT_COLOR_NAMES
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("9dbeb4")
@@ -622,7 +621,7 @@ func _replay_row_card(thumb_key: String, title_text: String, caption_text: Strin
 var _turn_tries: RefCounted
 
 ## A part's pills: a try count for each of its turns ([who, recording hash,
-## spirit colour]) that took more than one try, then each turn's end-of-run
+## spirit colour, the player's own]) that took more than one try, then each turn's end-of-run
 ## face; null when there is neither. A first try, and a turn from a build that
 ## kept no count, show no count.
 func _tries_row(turns: Array) -> Control:
@@ -660,7 +659,7 @@ func _reaction_chips(turns: Array) -> Array[Control]:
 		var face: String = _faces.kept(str(turn[1]))
 		if face.is_empty(): continue
 		var who := str(turn[0])
-		var own := who in [PlayerCopy.TRY_YOU, PlayerCopy.TRY_FIRST_TURN, PlayerCopy.TRY_SECOND_TURN]
+		var own := turn.size() > 3 and bool(turn[3])
 		var named := EndReactions.face_name(face)
 		var accessible := PlayerCopy.END_REACTIONS_YOU_NAMED % named if own else PlayerCopy.END_REACTIONS_FRIEND_NAMED % [who, named]
 		var chip := EndReactions.chip(face, str(turn[2]) if turn.size() > 2 else "peach", who, accessible)
@@ -686,7 +685,7 @@ static func _solo_turns(row: Dictionary) -> Array:
 	var first := Typed.as_dict(pair.get("a"))
 	var slot := _first_slot(str(row.get("chapter_key","")), str(first.get("stage_id","")))
 	var other := "p1" if slot == "p0" else "p0"
-	return [[PlayerCopy.TRY_FIRST_TURN, str(first.get("recording_hash","")), SLOT_COLORS.get(slot,"peach")], [PlayerCopy.TRY_SECOND_TURN, str(Typed.as_dict(pair.get("b")).get("recording_hash","")), SLOT_COLORS.get(other,"mint")]]
+	return [[PlayerCopy.TRY_FIRST_TURN, str(first.get("recording_hash","")), SLOT_COLORS.get(slot,"peach"), true], [PlayerCopy.TRY_SECOND_TURN, str(Typed.as_dict(pair.get("b")).get("recording_hash","")), SLOT_COLORS.get(other,"mint"), true]]
 
 ## Each chapter's first slot by stage id, worked out once per chapter: bundled
 ## definitions never change while the game runs.
@@ -720,7 +719,7 @@ static func _turn_owners(first_slot: String, you_host: bool, friend: String, a_h
 	if first_slot not in ["p0","p1"]: return []
 	var you_first := (first_slot == "p0") == you_host
 	var second_slot := "p1" if first_slot == "p0" else "p0"
-	return [[PlayerCopy.TRY_YOU if you_first else friend, a_hash, SLOT_COLORS[first_slot]], [friend if you_first else PlayerCopy.TRY_YOU, b_hash, SLOT_COLORS[second_slot]]]
+	return [[PlayerCopy.TRY_YOU if you_first else friend, a_hash, SLOT_COLORS[first_slot], you_first], [friend if you_first else PlayerCopy.TRY_YOU, b_hash, SLOT_COLORS[second_slot], not you_first]]
 
 func _solo_collection_row(entry: Dictionary, selected: bool, wide: bool) -> Control:
 	# One saved-recording row: real chapter art, a human title, a short "N parts

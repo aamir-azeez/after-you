@@ -26,6 +26,9 @@ const STROKED: Array[StringName] = [SLEEPY, SQUEEZE, KNOCKED_OUT]
 ## Player identities (unchanged) and the shared parts.
 const PEACH := Color("f4c38d")
 const MINT := Color("91d6c6")
+## Each slot's spirit by colour name (empty_state_art.gd SPIRITS): the host,
+## p0, is peach; the guest, p1, is mint.
+const SLOT_COLOR_NAMES := {"p0": "peach", "p1": "mint"}
 ## The outer eye: warm cream. The pupil and strokes: the kit's deep navy
 ## (kit/badges.gd OUTLINE), near black on screen.
 const CREAM := Color("fff7e8")

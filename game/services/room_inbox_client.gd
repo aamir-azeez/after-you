@@ -6,6 +6,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Typed = preload("res://services/typed_values.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
+const SpiritLook = preload("res://presentation/spirit_look.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
 const UNAVAILABLE_TITLE := "Unavailable room"
 ## A room taken off the list for good (closed or left), not just hidden: its
@@ -312,12 +313,12 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 	}.merged({"partner_left":true} if value.get("partner_left") == true else {}).merged(_partner_reaction(value))
 
 ## The friend's end-of-run face on their latest turn (presentation only), with
-## their spirit's colour: the host's is peach, the guest's mint. A face this
+## their spirit's colour (the host's slot is p0, the guest's p1). A face this
 ## build does not know is left out.
 static func _partner_reaction(value: Dictionary) -> Dictionary:
 	var face: Variant = value.get("partner_reaction")
 	if not EndReactionStore.is_face(face) or not value.get("membership") is Dictionary: return {}
-	return {"partner_reaction": {"face": face, "color": "mint" if value.membership.get("you_are_host") == true else "peach"}}
+	return {"partner_reaction": {"face": face, "color": SpiritLook.SLOT_COLOR_NAMES["p1" if value.membership.get("you_are_host") == true else "p0"]}}
 
 ## How many of the optional keys a room carries: partner_left (true only, to
 ## clients that send X-AfterYou-Room-Leave) and partner_reaction (to clients

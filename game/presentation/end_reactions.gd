@@ -16,8 +16,8 @@ extends HBoxContainer
 ##   color      the player's spirit colour, "peach" or "mint"
 ##   friend     {face, color, name, sound}: the friend's face for this run; it
 ##              pops once, with its own sound (a Callable(face)), when first shown
-##   compact    true: the friend's face small and without its caption, for a
-##              list row or beside a name
+##   compact    true: the friend's face small, still and quiet, without its
+##              caption, for a list row or beside a name
 ##   note       the line under the faces (PlayerCopy.END_REACTIONS_*_NOTE)
 ##   settings   the player's settings: reduced_motion and left_handed are read
 ##   sound      Callable(face): plays the reaction's pop (soundscape.play_reaction)
@@ -38,7 +38,7 @@ const SCRIPT_PATH := "res://presentation/end_reactions.gd"
 const TARGET := 56.0
 const BUBBLE_SIZE := Vector2(68, 62)
 ## A compact bubble's size against BUBBLE_SIZE.
-const COMPACT := 0.65
+const COMPACT := 0.8
 const CELL_SIZE := Vector2(98, 94)
 const POP_SECONDS := 0.28
 ## Taps closer than this make one sound.
@@ -51,6 +51,10 @@ const PICKED_FILL := Color("dcefe6")
 const HEART_FILL := Color("fbe1dc")
 const MUTED_INK := Color("4c6a63")
 const HEART_COLOR := Color("ee8f86")
+## The pill wears the card's secondary look (ControlTheme.secondary), so Save
+## turn stays the one cream action on the card.
+const PILL_FILL := Color("254b45")
+const PILL_BORDER := Color("54766a")
 
 signal picked(face: String)
 
@@ -126,7 +130,9 @@ func setup(value: Dictionary) -> void:
 	name = "EndReactions"
 	mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_theme_constant_override("separation", 12)
-	store = value.get("store") if value.get("store") is RefCounted else Store.new()
+	# Only the pill reads and writes the file; a row that only shows faces never does.
+	if value.get("store") is RefCounted: store = value.get("store")
+	elif can_pick(): store = Store.new()
 	var run := str(value.get("run", ""))
 	var locked := str(value.get("locked", ""))
 	if Store.is_face(locked): chosen = locked
@@ -195,6 +201,8 @@ func _friend_part() -> Control:
 	part.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	part.add_theme_constant_override("separation", 10)
 	friend_bubble = Bubble.new(face, str(friend.get("color", "mint")), COMPACT if bool(context.get("compact", false)) else 1.0)
+	# The tail points at the caption beside it: inward from the row's edge.
+	if not bool(context.get("compact", false)): friend_bubble.tail = Bubble.TAIL_LEFT if left_handed() else Bubble.TAIL_RIGHT
 	var who := str(friend.get("name", ""))
 	var shown := who if not who.is_empty() else PlayerCopy.ROOM_FRIEND
 	friend_bubble.accessibility_name = PlayerCopy.END_REACTIONS_FRIEND_NAMED % [shown, face_name(face)]
@@ -204,9 +212,10 @@ func _friend_part() -> Control:
 		# The face sits at the row's outer edge, its caption toward the middle.
 		var label := _caption(PlayerCopy.END_REACTIONS_FRIEND % shown)
 		for child: Control in [label, friend_bubble] if left_handed() else [friend_bubble, label]: part.add_child(child)
-	# A friend face pops once, with its own sound, the first time a card shows it.
+	# A friend face on a card pops once, with its own sound, the first time a
+	# card shows it; a compact one in a list just shows.
 	var key := "%s|%s|%s" % [str(context.get("run", "")), face, who]
-	var fresh := not _greeted.has(key)
+	var fresh := not bool(context.get("compact", false)) and not _greeted.has(key)
 	if fresh:
 		_greeted[key] = true
 		while _greeted.size() > 64: _greeted.erase(_greeted.keys()[0])
@@ -227,6 +236,8 @@ func _own_part() -> Control:
 	own_slot.custom_minimum_size = BUBBLE_SIZE
 	own_slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	own_bubble = Bubble.new(chosen, _color())
+	# The tail points at the pill (or "You reacted") beside it.
+	own_bubble.tail = Bubble.TAIL_LEFT if left_handed() else Bubble.TAIL_RIGHT
 	own_bubble.visible = Store.is_face(chosen)
 	if own_bubble.visible:
 		own_bubble.accessibility_name = PlayerCopy.END_REACTIONS_YOU_NAMED % face_name(chosen)
@@ -255,7 +266,7 @@ func _pill() -> PanelContainer:
 	pill = PanelContainer.new()
 	pill.name = "ReactPill"
 	pill.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	var look := ControlTheme.rounded(ControlTheme.CREAM, int(TARGET * 0.5), Color(ControlTheme.INK, 0.25))
+	var look := ControlTheme.rounded(PILL_FILL, int(TARGET * 0.5), PILL_BORDER)
 	look.content_margin_left = 4
 	look.content_margin_right = 4
 	pill.add_theme_stylebox_override("panel", look)
@@ -275,7 +286,7 @@ func _pill() -> PanelContainer:
 	quick.pressed.connect(func(): choose(_quick_icon.face))
 	var divider := ColorRect.new()
 	divider.name = "PillDivider"
-	divider.color = Color(ControlTheme.INK, 0.28)
+	divider.color = Color(ControlTheme.CREAM, 0.35)
 	divider.custom_minimum_size = Vector2(2, 30)
 	divider.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	divider.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -311,7 +322,7 @@ func _flat_button(node_name: String) -> Button:
 	button.focus_mode = Control.FOCUS_ALL
 	button.mouse_filter = Control.MOUSE_FILTER_STOP
 	for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
-		button.add_theme_color_override(state, ControlTheme.INK)
+		button.add_theme_color_override(state, ControlTheme.CREAM)
 	var plain := StyleBoxEmpty.new()
 	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]: button.add_theme_stylebox_override(state, plain)
 	return button
@@ -392,11 +403,16 @@ class FaceArt:
 
 
 ## A speech bubble with a face: the spirit's colour lightened toward cream, the
-## kit's ink outline and a tail at the bottom middle. Its pop is a short scale
-## tween on the bubble itself; under Reduce motion it just appears.
+## kit's ink outline inside a thin cream rim (so it holds on the dark cards),
+## and a tail: down at a spirit, or sideways at what it belongs to. Its pop is
+## a short scale tween on the bubble itself; under Reduce motion it just appears.
 class Bubble extends Control:
+	const TAIL_DOWN := 0
+	const TAIL_LEFT := 1
+	const TAIL_RIGHT := 2
 	var face := ""
 	var color := "peach"
+	var tail := TAIL_DOWN
 	func _init(face_id: String, spirit_color: String, factor: float = 1.0) -> void:
 		face = face_id
 		color = spirit_color
@@ -419,13 +435,29 @@ class Bubble extends Control:
 		if not Store.is_face(face): return
 		var tint: Color = Art.SPIRITS.get(color, Art.PEACH).lerp(ControlTheme.CREAM, 0.6)
 		var unit := size.y / BUBBLE_SIZE.y
-		var body := Rect2(Vector2(2, 2), Vector2(size.x - 4.0, size.y - 2.0 - 12.0 * unit))
-		var tail := PackedVector2Array([Vector2(size.x * 0.5 - 8.0 * unit, body.end.y - 1.0), Vector2(size.x * 0.5, size.y - 2.0), Vector2(size.x * 0.5 + 8.0 * unit, body.end.y - 1.0)])
+		var reach := 10.0 * unit
+		var body := Rect2(Vector2(3, 3), size - Vector2(6, 6))
+		var points: PackedVector2Array
+		match tail:
+			TAIL_LEFT:
+				body = Rect2(Vector2(3.0 + reach, 3), size - Vector2(6.0 + reach, 6))
+				var mid := body.get_center().y
+				points = PackedVector2Array([Vector2(body.position.x + 1.0, mid - 7.0 * unit), Vector2(2, mid), Vector2(body.position.x + 1.0, mid + 7.0 * unit)])
+			TAIL_RIGHT:
+				body = Rect2(Vector2(3, 3), size - Vector2(6.0 + reach, 6))
+				var mid := body.get_center().y
+				points = PackedVector2Array([Vector2(body.end.x - 1.0, mid - 7.0 * unit), Vector2(size.x - 2.0, mid), Vector2(body.end.x - 1.0, mid + 7.0 * unit)])
+			_:
+				body = Rect2(Vector2(3, 3), Vector2(size.x - 6.0, size.y - 4.0 - reach))
+				points = PackedVector2Array([Vector2(size.x * 0.5 - 8.0 * unit, body.end.y - 1.0), Vector2(size.x * 0.5, size.y - 2.0), Vector2(size.x * 0.5 + 8.0 * unit, body.end.y - 1.0)])
+		var rim := ControlTheme.rounded(ControlTheme.CREAM, int(19.0 * unit))
+		draw_style_box(rim, body.grow(2.0))
+		draw_polyline(points, ControlTheme.CREAM, 6.0, true)
 		var look := ControlTheme.rounded(tint, int(18.0 * unit), ControlTheme.INK)
 		look.set_border_width_all(2)
 		draw_style_box(look, body)
-		draw_colored_polygon(tail, tint)
-		draw_polyline(tail, ControlTheme.INK, 2.0, true)
+		draw_colored_polygon(points, tint)
+		draw_polyline(points, ControlTheme.INK, 2.0, true)
 		FaceArt.draw_face(self, body.grow(-6.0 * unit), face, color)
 
 
@@ -436,15 +468,19 @@ class Chevron extends Control:
 		size = custom_minimum_size
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
 	func _draw() -> void:
-		draw_polyline(PackedVector2Array([Vector2(1, 9), Vector2(7, 2), Vector2(13, 9)]), ControlTheme.INK, 2.5, true)
+		draw_polyline(PackedVector2Array([Vector2(1, 9), Vector2(7, 2), Vector2(13, 9)]), ControlTheme.CREAM, 2.5, true)
 
 
-## The faces card: a cream card on its own canvas layer over the screen, above
-## the pill (below it when only that fits), its edge on the pill's hand side.
-## A tap outside, Back, the close button or a pick closes it.
+## The faces card: a cream card on its own canvas layer over the screen. It
+## opens beside the pill on the player's hand side, out over the world beside
+## the ending card, so the card's actions stay in view; where that does not fit
+## (a narrow window) it opens above the pill, else below. A tap outside, Back,
+## the close button or a pick closes it.
 class FacesCard extends CanvasLayer:
 	const EDGE := 12.0
 	const POINTER := 9.0
+	## From the pill's outer end past the ending card's own edge.
+	const BESIDE := 30.0
 	var row: Control
 	var anchor: Control
 	var shade: ColorRect
@@ -458,7 +494,8 @@ class FacesCard extends CanvasLayer:
 		anchor = owner_row.pill
 		shade = ColorRect.new()
 		shade.name = "ReactionShade"
-		shade.color = Color(0.02, 0.08, 0.08, 0.28)
+		# Barely dimmed: the pill it came from stays clear.
+		shade.color = Color(0.02, 0.08, 0.08, 0.1)
 		shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 		shade.mouse_filter = Control.MOUSE_FILTER_STOP
 		shade.gui_input.connect(_on_shade_input)
@@ -549,7 +586,8 @@ class FacesCard extends CanvasLayer:
 			var label := Label.new()
 			label.text = FaceArt.face_name(face)
 			label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-			label.add_theme_font_size_override("font_size", 16)
+			# A long name (Knocked out) a size smaller, so it keeps clear of the cell's edge.
+			label.add_theme_font_size_override("font_size", 16 if label.text.length() <= 9 else 14)
 			label.add_theme_color_override("font_color", ControlTheme.INK)
 			label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			box.add_child(label)
@@ -557,8 +595,9 @@ class FacesCard extends CanvasLayer:
 		cells[face] = cell
 		return cell
 
-	## Above the pill whenever it fits, else below, else the roomier side kept
-	## inside; the card's edge lines up with the pill's edge on the hand side.
+	## Beside the pill on the hand side when it fits there, its pointer on the
+	## pill's end; else above the pill whenever it fits, else below, else the
+	## roomier side kept inside, its edge lined up with the pill's on the hand side.
 	func place() -> void:
 		if closing or not is_instance_valid(anchor) or not anchor.is_inside_tree(): return
 		var view := anchor.get_viewport().get_visible_rect()
@@ -567,6 +606,16 @@ class FacesCard extends CanvasLayer:
 		panel.reset_size()
 		var card := panel.get_combined_minimum_size()
 		var left: bool = row.left_handed()
+		var side_x := rect.position.x - BESIDE - card.x if left else rect.end.x + BESIDE
+		if side_x >= view.position.x + EDGE and side_x + card.x <= view.end.x - EDGE and card.y <= view.size.y - 2.0 * EDGE:
+			var side_y := clampf(rect.get_center().y - card.y * 0.5, view.position.y + EDGE, view.end.y - EDGE - card.y)
+			panel.position = Vector2(side_x, side_y)
+			panel.size = card
+			var edge_x := side_x + card.x if left else side_x
+			var tip := rect.position.x - 4.0 if left else rect.end.x + 4.0
+			var mid := clampf(rect.get_center().y, side_y + 24.0, side_y + card.y - 24.0)
+			pointer.polygon = PackedVector2Array([Vector2(edge_x, mid - POINTER), Vector2(edge_x, mid + POINTER), Vector2(tip, rect.get_center().y)])
+			return
 		var x := rect.position.x if left else rect.end.x - card.x
 		x = clampf(x, view.position.x + EDGE, maxf(view.position.x + EDGE, view.end.x - EDGE - card.x))
 		var room_above := rect.position.y - POINTER - view.position.y - EDGE
