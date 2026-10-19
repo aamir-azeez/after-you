@@ -66,6 +66,8 @@ export const FLAG_VARS = Object.freeze({
   turnTries: "TURN_TRIES_ENABLED",
   /** End-of-run reactions: the capability, faces on room reads and GET .../end-reactions. Turns may carry a face whatever the flag. */
   endReactions: "END_REACTIONS_ENABLED",
+  /** Hard rooms: the capability, creating one, and the reset and read routes of rooms that are not hard yet (v2/hard-mode.ts). */
+  hardMode: "HARD_MODE_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;

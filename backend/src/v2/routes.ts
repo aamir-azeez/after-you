@@ -26,6 +26,7 @@ import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
 import { endReactionField, endReactionsWanted } from "./end-reactions";
+import { hardWanted, parseMode } from "./hard-mode";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -99,6 +100,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(triesWanted(request) && flags.turnTries(env) ? { turn_tries_version: 1 } : {}),
     // Only clients that send and show end reactions ask; the flag decides whether they may.
     ...(endReactionsWanted(request) && flags.endReactions(env) ? { end_reactions_version: 1 } : {}),
+    // Only clients that play hard rooms ask; the flag decides whether they may host one.
+    ...(hardWanted(request) && flags.hardMode(env) ? { hard_mode_version: 1 } : {}),
     ...liveCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
@@ -117,7 +120,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (path === "/v2/rooms" && request.method === "POST") {
     requireEnabled(env);
-    const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash", ...(input.simulation_version === undefined ? [] : ["simulation_version"])]);
+    const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash", ...(input.simulation_version === undefined ? [] : ["simulation_version"]), ...(input.mode === undefined ? [] : ["mode"])]);
+    const mode = parseMode(input);
+    if (mode && !flags.hardMode(env)) throw new ApiError(503, "hard_mode_disabled");
     const selected = chapter(input);
     if (input.simulation_version !== undefined && (!Number.isInteger(input.simulation_version) || input.simulation_version === selected.simulation_version || !(selected.supported_simulation_versions ?? []).includes(input.simulation_version as number))) throw new ApiError(422, "unsupported_simulation_version");
     if (!creatable(selected, env)) throw new ApiError(503, "chapter_creation_disabled");
@@ -132,7 +137,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
     const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
     const link = intent.link;
-    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version)));
+    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
     requireEnabled(env);
@@ -143,7 +148,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), roomSettler(env)));
-    const joined = await room.join(playerId, code, versions as number[] | undefined);
+    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request));
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.
@@ -206,7 +211,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     throw new ApiError(405, "method_not_allowed");
   }
-  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations|leave|tries|end-reactions)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
+  const match = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})(?:\/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|reactions|reaction-operations|leave|tries|end-reactions|hard-reset|hard)(?:\/([a-zA-Z0-9_-]{1,80}))?)?$/);
   if (!match) throw new ApiError(404, "not_found");
   const [, id, operation, item] = match, room = env.ROOMS_V2.getByName(id);
   // Only the caller's own standalone link; Story rooms are version 3 links and are never removed here.
@@ -229,6 +234,24 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (context !== undefined) throw new ApiError(409, "end_reactions_standalone_only");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
     return json(unwrap(await room.endReactions(playerId)));
+  }
+  // Hard rooms (v2/hard-mode.ts): a slip's reset and the kept slips. The room
+  // answers 503 for a room that is not hard while the flag is off; one already
+  // hard keeps working, so a flag turned off never strands a run part way.
+  if (operation === "hard-reset" || operation === "hard") {
+    if (item) throw new ApiError(405, "method_not_allowed");
+    if (context !== undefined) throw new ApiError(409, "hard_mode_standalone_only");
+    if (operation === "hard" && request.method !== "GET") throw new ApiError(405, "method_not_allowed");
+    if (operation === "hard-reset" && request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+    await requireInteraction(env, playerId, "relay", id, context, safetyToken);
+    if (operation === "hard") return json(unwrap(await room.hardFailures(playerId, flags.hardMode(env))));
+    requireEnabled(env);
+    // The slip is a turn's recording: a longer chapter's own turn bound applies, as for turns.
+    let resetLimit = MAX_V2_BODY_BYTES;
+    if (Number(request.headers.get("content-length")) > resetLimit) {
+      try { const probe = await room.snapshot(playerId); if (probe.ok) resetLimit = chapter(probe.value).limits?.turn_body_bytes ?? resetLimit; } catch { /* keep the published bound */ }
+    }
+    return json(unwrap(await room.hardReset(playerId, await boundedJson(request, resetLimit), flags.hardMode(env))));
   }
   // DELETE photo bypasses the interaction gate so owners can remove media.
   // It must still negotiate before inspecting recording/photo authority.

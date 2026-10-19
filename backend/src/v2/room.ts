@@ -16,6 +16,7 @@ import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { clearTurnTries, parseTries, recordTries, triesField, turnTriesView, type TurnTriesView } from "./turn-tries";
 import { clearEndReactions, endReactionField, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView } from "./end-reactions";
+import { HardMemo, clearHard, failuresView, initializeHard, parseReset, priorReset, recordFailure, type Failure, type HardFailures, type HardRun, type Slip } from "./hard-mode";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
 import { snapshotResult } from "../snapshot";
 import { erasePlayerPhotos, getPhoto, getPhotoOperation, mutatePhoto, parsePhotoMutation, PHOTO_TURN_PATTERN, type PhotoMutation } from "./photos";
@@ -50,7 +51,7 @@ export type RoomStateV2 = {
   simulation_version?: number;
 };
 export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
-  api_version: 2; invite_code?: string; active_role: "a" | "b" | "complete";
+  api_version: 2; invite_code?: string; hard?: HardRun; active_role: "a" | "b" | "complete";
   first_player_id: string | null; active_player_id: string | null; player_slot: Slot;
   stage_id: string; recording_a: RecordingV2 | null; validation: "structural_client_replay_required";
   /** Only beside a read for a member that asked for end reactions while they are on (end-reactions.ts). */
@@ -89,7 +90,12 @@ export class RoomV2 extends DurableObject<Env> {
   }
   // Binding-only maintenance methods; never exposed by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportRoomV2(this.ctx, sourceCommit)); }
-  restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> { return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
+  restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> {
+    this.hard.forget();
+    return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId));
+  }
+  /** Whether this object holds a hard room (v2/hard-mode.ts); read at most once per object. */
+  private readonly hard = new HardMemo();
   observeCampaignSource(value: unknown) { return campaignSource(this.ctx.storage, value, false); }
   campaignTerminalFact(rootId: string) { return readCampaignRootTerminal(this.ctx.storage, rootId); }
   /** Read-only operator Story drain census (campaign-drain.ts). */
@@ -262,6 +268,7 @@ export class RoomV2 extends DurableObject<Env> {
         if (!state || !this.member(state, player)) return this.unavailable(player);
         const source = this.redoSource(state);
         if (!input) return ok(redoState(this.ctx.storage, source));
+        if (this.hard.run(this.ctx.storage)) return fail(409, "hard_run_no_redo");
         // Only a first request on a standalone room reaches the partner; Story rooms stay excluded.
         const first = !binding && input.action === "request" && source !== null && redoState(this.ctx.storage, source).request === null;
         const result = mutateRedo(this.ctx.storage, source, player, input);
@@ -284,7 +291,8 @@ export class RoomV2 extends DurableObject<Env> {
     const stage = chapter(state).stages[state.stage_index];
     const first = !stage ? null : stage.first_player_slot === "p0" ? state.host_id : state.guest_id;
     const second = !stage ? null : stage.first_player_slot === "p0" ? state.guest_id : state.host_id;
-    return { ...safe, ...(player === state.host_id ? { invite_code } : {}), api_version: 2,
+    const hard = this.hard.run(this.ctx.storage);
+    return { ...safe, ...(player === state.host_id ? { invite_code } : {}), ...(hard ? { hard } : {}), api_version: 2,
       active_role: !stage ? "complete" : state.a_turn_id ? "b" : "a", first_player_id: first,
       active_player_id: !stage ? null : state.a_turn_id ? second : first,
       player_slot: player === state.host_id ? "p0" : "p1", stage_id: stage?.id ?? "",
@@ -301,7 +309,7 @@ export class RoomV2 extends DurableObject<Env> {
     state.updated_at = new Date().toISOString();
     this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(state));
   }
-  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number): Outcome<RoomSnapshotV2> {
+  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard"): Outcome<RoomSnapshotV2> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_initialize_required"); if (boundary) return boundary;
     let selected;
     try { selected = chapter(requestedChapter); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -309,6 +317,7 @@ export class RoomV2 extends DurableObject<Env> {
     const existing = this.read();
     if (existing && !sameChapter(existing, selected.key)) return fail(409, "idempotency_chapter_mismatch");
     if (existing && existing.simulation_version !== simulationVersion) return fail(409, "idempotency_simulation_mismatch");
+    if (existing && (this.hard.run(this.ctx.storage) !== null) !== (mode === "hard")) return fail(409, "idempotency_mode_mismatch");
     if (existing && (existing.host_id !== host || !equalHash(existing.invite_code, invite))) return fail(409, "room_exists");
     // A host who left reads the room as gone, even through their own create retry.
     if (existing) return this.member(existing, host) ? ok(this.view(existing, host)) : fail(410, "room_deleted");
@@ -320,7 +329,10 @@ export class RoomV2 extends DurableObject<Env> {
       ...selected.key, ...(simulationVersion === undefined ? {} : { simulation_version: simulationVersion }), host_id: host, guest_id: null,
       checkpoint: selected.initial(), a_turn_id: null, completed_pair_ids: [], invite_code: invite,
       invite_expires_at: new Date(Date.now() + 7 * 86_400_000).toISOString(), created_at: now, updated_at: now };
-    this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
+      if (mode === "hard") initializeHard(this.ctx.storage, this.hard);
+    });
     return ok(this.view(state, host));
   }
   /** `history` is what the member's request said about keeping attempts (the router passes it only while offload is on). */
@@ -390,7 +402,8 @@ export class RoomV2 extends DurableObject<Env> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_unavailable");
     return boundary && !boundary.ok && boundary.code === "campaign_unavailable" ? fail(503, boundary.code) : boundary;
   }
-  async join(player: string, invite: string, supportedVersions?: number[]): Promise<Outcome<RoomSnapshotV2>> {
+  /** `hardClient`: the joining phone plays hard rooms (X-AfterYou-Hard-Mode). */
+  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.stored();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
@@ -405,6 +418,8 @@ export class RoomV2 extends DurableObject<Env> {
     const selected = chapter(state);
     const requiredVersion = state.simulation_version ?? (selected.require_supported_simulation_on_join ? selected.simulation_version : undefined);
     if (requiredVersion !== undefined && !supportedVersions?.includes(requiredVersion)) return fail(422, "unsupported_simulation_version");
+    // A phone that would offer retries never joins a hard room.
+    if (!hardClient && this.hard.run(this.ctx.storage)) return fail(409, "hard_mode_client_required");
     if (this.member(state, player)) return ok(this.view(state, player));
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
@@ -641,6 +656,9 @@ export class RoomV2 extends DurableObject<Env> {
         if (recording.simulation_version !== (state.simulation_version ?? chapter(state).simulation_version)) return fail(422, "unsupported_simulation_version");
         const current = this.view(state, player);
         if (current.active_player_id !== player || current.active_role !== recording.role) return fail(409, "wrong_turn");
+        // A hard room takes only first tries, and nothing once its run is over.
+        if (current.hard?.over) return fail(409, "hard_run_over");
+        if (current.hard && tries !== undefined && tries > 1) return fail(409, "hard_run_retry");
         if (recording.stage_id !== current.stage_id || recording.checkpoint_hash !== state.checkpoint.checkpoint_hash) return fail(409, "recording_context_mismatch");
         if (!this.capacity() || this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM turns").one().n >= MAX_TURNS) return fail(409, "room_history_full");
         if (recording.role === "a") {
@@ -719,6 +737,8 @@ export class RoomV2 extends DurableObject<Env> {
         }
         if (state.revision !== revision || state.branch !== branch) return fail(409, "stale_revision");
         if (anyDeparture(this.ctx.storage)) return fail(409, "room_member_left");
+        // A hard room goes back only through its own reset.
+        if (this.hard.run(this.ctx.storage)) return fail(409, "hard_run_no_redo");
         if (redoRequestId !== undefined) {
           if (stageIndex !== state.stage_index) return fail(409, "redo_source_changed");
           const consent = consentToRedo(this.ctx.storage, this.redoSource(state), player, redoRequestId); if (!consent.ok) return consent;
@@ -742,6 +762,84 @@ export class RoomV2 extends DurableObject<Env> {
         return ok(saved);
       }), true, campaignRedo ? undefined : player);
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  /**
+   * A hard room's slip (v2/hard-mode.ts): one request, one transaction. The
+   * slipping player, on their turn, sends the room they played on; the room
+   * goes back to its first stage on a new branch (a fork) when it has
+   * anything to undo, or only moves its revision when the slip was the first
+   * turn, and records who slipped with the slip's recording, checkpoint and
+   * first turn. When the room has no space left for a whole new run it keeps
+   * the slip and ends the run (over) instead. A resend answers the same.
+   * `enabled`: the hard mode flag; a room that is not hard says 503 while it
+   * is off, so the route is inert until it is on.
+   */
+  async hardReset(player: string, value: unknown, enabled: boolean): Promise<Outcome<{ room: RoomSnapshotV2; failure: Failure }>> {
+    try {
+      const observed = this.read();
+      if (!observed || !this.member(observed, player)) return this.unavailable(player);
+      if (!this.hard.run(this.ctx.storage)) return fail(enabled ? 409 : 503, enabled ? "not_hard_room" : "hard_mode_disabled");
+      const stages = chapter(observed).stages.length;
+      const input = parseReset(value, stages);
+      const hash = await digest(canonicalJson({ operation: "hard-reset", ...input }));
+      // A slip that does not check is dropped, never the reset: the room must start again.
+      let slipRecording: RecordingV2 | null = null;
+      if (input.slip !== undefined) { try { slipRecording = await recordingV2(input.slip, observed); } catch { slipRecording = null; } }
+      if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
+      return this.indexed(await this.ctx.storage.transaction(async () => {
+        const state = this.read();
+        if (!state || !this.member(state, player)) return this.unavailable(player);
+        const done = priorReset(this.ctx.storage, player, input.idempotency_key, hash);
+        if (done) return ok({ room: this.view(state, player), failure: done });
+        if (state.revision !== input.base_revision || state.branch !== input.branch) return fail(409, "stale_revision");
+        if (anyDeparture(this.ctx.storage)) return fail(409, "room_member_left");
+        const current = this.view(state, player);
+        if (current.active_role === "complete") return fail(409, "hard_run_complete");
+        if (current.hard?.over) return fail(409, "hard_run_over");
+        if (current.active_player_id !== player) return fail(409, "hard_not_your_turn");
+        if (input.stage_index !== state.stage_index || input.role !== current.active_role) return fail(409, "stale_revision");
+        const slip: Slip | null = slipRecording && slipRecording.stage_id === current.stage_id && slipRecording.role === input.role && slipRecording.checkpoint_hash === state.checkpoint.checkpoint_hash
+          ? { recording: slipRecording, checkpoint: state.checkpoint, prior: input.role === "b" && state.a_turn_id ? this.turn(state.a_turn_id) : null } : null;
+        const failure: Failure = { by: player, stage_index: state.stage_index, role: input.role, reason: input.reason, at: new Date().toISOString() };
+        const progress = state.stage_index > 0 || state.a_turn_id !== null;
+        const room = this.hardRunSpace(state);
+        if (progress && room) {
+          state.checkpoint = initialCheckpoint(state);
+          state.completed_pair_ids = []; state.a_turn_id = null; state.stage_index = 0; state.branch++;
+        }
+        state.revision++;
+        this.write(state);
+        recordFailure(this.ctx.storage, this.hard, player, input.idempotency_key, hash, failure, slip, !room);
+        if (progress && room) stubReleased(this.ctx.storage, state);
+        recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
+        clearTurnHints(this.ctx.storage);
+        if (this.notificationsAvailable()) {
+          queueTurnHint(this.ctx.storage, this.env, "relay", state, player);
+          await scheduleGameplayNotifications(this.ctx.storage);
+        }
+        return ok({ room: this.view(state, player), failure });
+      }), true, player);
+    } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  /**
+   * Whether a hard room can hold one more whole run after this one: a branch
+   * to fork to under the room's and chapter's limits, and turns, pairs and
+   * receipts for every stage of it.
+   */
+  private hardRunSpace(state: RoomStateV2): boolean {
+    const count = (table: string) => this.ctx.storage.sql.exec<{ n: number }>(`SELECT COUNT(*) AS n FROM ${table}`).one().n;
+    const stages = chapter(state).stages.length;
+    const held = state.branch + 2 - offloadedCount(this.ctx.storage);
+    return state.branch + 1 < MAX_BRANCHES && held <= Math.min(MAX_BRANCHES, chapter(state).max_branches ?? MAX_BRANCHES) &&
+      count("turns") + 2 * stages <= MAX_TURNS && count("pairs") + stages <= MAX_PAIRS && count("operations") + 2 * stages <= MAX_OPERATIONS;
+  }
+  /** A hard room's kept slips for its members (GET .../hard). */
+  hardFailures(player: string, enabled: boolean): Promise<Outcome<HardFailures>> {
+    return this.project(player, undefined, () => {
+      if (!this.memberView(player)) return fail(404, "room_not_found");
+      const view = failuresView(this.ctx.storage, this.hard);
+      return view ? ok(view) : fail(enabled ? 409 : 503, enabled ? "not_hard_room" : "hard_mode_disabled");
+    });
   }
   collection(player: string, context?: CampaignRoomContext): Promise<Outcome<{ pairs: { pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }[]; active_pair_ids: string[] }>> {
     return this.project(player, context, () => {
@@ -841,6 +939,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearHistory(this.ctx.storage);
     clearTurnTries(this.ctx.storage);
     clearEndReactions(this.ctx.storage);
+    clearHard(this.ctx.storage, this.hard);
     resetRedo(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     // Last, so nothing after it can roll back the drop under the cached answer in room-departure.ts.
@@ -881,5 +980,6 @@ answerWhileBlank(RoomV2, {
   operation: async () => roomNotFound(), collection: async () => roomNotFound(), pairRecording: async () => roomNotFound(), reactions: async () => roomNotFound(),
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
   redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
+  hardReset: async () => roomNotFound(), hardFailures: async () => roomNotFound(),
   campaignDrainCensus: () => absentCensus()
 });
