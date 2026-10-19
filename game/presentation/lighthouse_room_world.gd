@@ -33,6 +33,18 @@ func show_stage(stage: Dictionary) -> void:
 	await super.load_level(native)
 	_as_built_stage = str(stage.get("id", ""))
 	_as_built_state = 0
+	_history_shown = 0
+
+## The checkpoint whose remembered mechanisms the as-built stage shows (its
+## hash, 0 for none): the same checkpoint again keeps them as they are, so a
+## kept stage keeps them folded with its scenery.
+var _history_shown := 0
+
+func present_history(checkpoint: Dictionary) -> void:
+	var asked := checkpoint.hash()
+	if not _as_built_stage.is_empty() and _history_shown == asked and is_instance_valid(_history_root): return
+	super.present_history(checkpoint)
+	_history_shown = asked if not _as_built_stage.is_empty() else 0
 
 func _shows_as_built(stage_id: String) -> bool:
 	return not _as_built_stage.is_empty() and stage_id == _as_built_stage
