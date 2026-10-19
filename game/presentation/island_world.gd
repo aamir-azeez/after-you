@@ -308,10 +308,20 @@ func _regather_scenery() -> void:
 
 ## Shows stage as a chapter screen does: through the world's show_stage, except
 ## a stage the last staged build has just built itself, which stays as built.
+## A world whose show_stage builds a stage again even when it shows it
+## already (the Lighthouse) also keeps a stage it still shows as built.
 func present_stage(stage: Dictionary) -> void:
-	var kept := not _built_stage_id.is_empty() and str(stage.get("id", "")) == _built_stage_id
+	var id := str(stage.get("id", ""))
+	var kept := (not _built_stage_id.is_empty() and id == _built_stage_id) or _shows_as_built(id)
 	_built_stage_id = ""
 	if not kept and has_method("show_stage"): call("show_stage", stage)
+
+## Whether stage_id is the stage this world shows, still as its last build
+## left it: nothing has been presented on it since but one opening state, so
+## building it again and presenting that state would show the same world.
+## Only a world that rebuilds a stage it already shows needs to say so.
+func _shows_as_built(_stage_id: String) -> bool:
+	return false
 
 ## Of a chapter's stages, the one load_level builds: a staged build's opening
 ## stage, else the first; {} for none.

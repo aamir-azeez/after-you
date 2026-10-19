@@ -7,6 +7,12 @@ extends "res://presentation/lighthouse_world.gd"
 
 ## The six-stage chapter this world was given, kept for show_stage lookups.
 var chapter_level: Dictionary = {}
+## The chapter stage show_stage last built, while it is still as built: only
+## one state, presented at once (the ready card's opening state), has been
+## shown on it since. "" once anything else has been presented.
+var _as_built_stage := ""
+## That state's hash (0 before the first).
+var _as_built_state := 0
 
 func load_level(definition: Dictionary) -> void:
 	var stages: Variant = definition.get("stages")
@@ -14,13 +20,30 @@ func load_level(definition: Dictionary) -> void:
 		chapter_level = definition
 		await show_stage(_opening_stage(stages))
 		return
+	_as_built_stage = ""
 	await super.load_level(definition)
 
 ## A chapter stage ({id, native, ...}); the native stage is rebuilt each time,
-## as the solo Lighthouse screen does at every turn.
+## as the solo Lighthouse screen does at every turn, except one the world
+## still shows as built (present_stage keeps it: Begin on the ready card).
 func show_stage(stage: Dictionary) -> void:
+	_as_built_stage = ""
 	var native: Variant = stage.get("native")
-	if native is Dictionary: await super.load_level(native)
+	if not native is Dictionary: return
+	await super.load_level(native)
+	_as_built_stage = str(stage.get("id", ""))
+	_as_built_state = 0
+
+func _shows_as_built(stage_id: String) -> bool:
+	return not _as_built_stage.is_empty() and stage_id == _as_built_stage
+
+func present(state: Dictionary, immediate: bool = false) -> void:
+	# A moving present (play, a replay) or a second, different state ends it.
+	if not _as_built_stage.is_empty():
+		var shown := state.hash()
+		if not immediate or (_as_built_state != 0 and shown != _as_built_state): _as_built_stage = ""
+		else: _as_built_state = shown
+	super.present(state, immediate)
 
 func _fold_key() -> String:
 	return "sleeping-lighthouse@2"
