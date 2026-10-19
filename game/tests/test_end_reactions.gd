@@ -548,13 +548,22 @@ func _hard_cards() -> void:
 	row = EndReactionScreen.attach_hard(host, own)
 	_check(row.chosen == "knocked_out", "The card drawn again shows the kept face")
 	host.queue_free()
+	# A pick this run already had before the slip is kept with it.
+	var earlier: Dictionary = fixtures["garden-a"]
+	Store.pick(str(earlier.recording_hash), "angry")
+	var picked_before: Dictionary = own.duplicate(true)
+	picked_before.run.slip.recording = earlier
+	host = _host(Vector2(566, 0))
+	row = EndReactionScreen.attach_hard(host, picked_before)
+	_check(row.chosen == "angry" and Store.new().kept(str(earlier.recording_hash)) == "angry", "A pick made before the slip shows and is kept with it")
+	host.queue_free()
 	var friend := {"kind": "failed", "chapter_key": "relay-isles@2", "together": true, "room_id": ROOM, "number": 2, "reactions": reactions,
-		"run": {"by": "friend", "role": "a", "stage_index": 0, "slip": {}, "number": 2}}
+		"run": {"by": "friend", "role": "a", "stage_index": 0, "slip": {"recording": fixtures["relay-a"], "checkpoint": {}, "prior": {}}, "number": 2}}
 	host = _host(Vector2(566, 0))
 	row = EndReactionScreen.attach_hard(host, friend)
 	_check(row != null and row.context.note == PlayerCopy.END_REACTIONS_MOMENT_NOTE and row.context.color == "mint" and not str(row.context.run).is_valid_hex_number(), "The friend's slip offers a face for the moment, in this phone's colour")
 	row.choose("sad")
-	_check(Store.new().kept(str(slip.recording_hash)) == "knocked_out" and Store.new().face(str(fixtures["relay-a"].recording_hash)).is_empty(), "A face for the friend's slip is never kept under a recording")
+	_check(Store.new().kept(str(slip.recording_hash)) == "knocked_out" and Store.new().face(str(fixtures["relay-a"].recording_hash)).is_empty(), "A face for the friend's slip is never kept or picked under its recording")
 	host.queue_free()
 	ctx.available = false
 	host = _host(Vector2(566, 0))

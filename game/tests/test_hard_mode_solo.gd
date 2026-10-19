@@ -385,7 +385,15 @@ func _slip_reaction() -> void:
 	_check(slip_hash.length() == 64 and ReactionStore.new().kept(slip_hash) == "sad", "The face is kept with the slip's recording")
 	await _close(app)
 	var viewer := await _viewer({"chapter_key": KEY, "kind": "watch", "run": run})
-	_check(viewer.mode == "replay" and not viewer._replay_runs.is_empty() and ReactionStore.new().face(str(viewer._replay_runs[0].get("recording_hash", ""))) == "sad", "Watching the run plays the slip that carries the face, so its end pops it")
+	_check(viewer.mode == "replay" and not viewer._replay_runs.is_empty() and str(viewer._replay_runs[0].get("recording_hash", "")) == slip_hash, "Watching the run plays the slip that carries the face")
+	var frames := 0
+	while viewer.mode == "replay" and frames < 400 and viewer.replay_cursor < viewer.replay_frames.size():
+		viewer.advance_input({})
+		frames += 1
+	# Out of frames, the next physics step ends the replay.
+	viewer._physics_process(1.0 / 60.0)
+	var popped: Array = viewer.hud.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node.get("face") == "sad")
+	_check(not popped.is_empty(), "The slip's end pops its face over the spirit")
 	await _close_viewer(viewer)
 	for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(ReactionStore.FILE_PATH + suffix))
 	ReactionStore._picks.clear()

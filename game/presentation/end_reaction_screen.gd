@@ -114,8 +114,12 @@ static func attach_hard(extras: Container, hard: Dictionary) -> Control:
 	var on_pick := Callable()
 	if kept:
 		var store := Store.new()
-		# A card drawn again shows the kept face as its pick.
-		if Store.picked(key).is_empty() and Store.is_face(store.kept(key)): Store.pick(key, store.kept(key))
+		# A card drawn again shows the kept face as its pick; a pick this run
+		# already had (a review card before the slip) is kept with it.
+		var face := store.face(key)
+		if Store.is_face(face):
+			if store.kept(key) != face: store.keep(key, face)
+			Store.pick(key, face)
 		on_pick = func(face: String) -> void:
 			Store.new().keep(key, face)
 			Store.pick(key, face)

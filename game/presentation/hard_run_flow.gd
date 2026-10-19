@@ -272,11 +272,14 @@ func send_reset() -> void:
 	var status: Label = card.find_child("HardResetStatus", true, false) if is_instance_valid(card) else null
 	if not is_instance_valid(again) or not is_instance_valid(status): return
 	var done: bool = answer.get("ok", false) or answer.get("settled", false)
-	again.disabled = false
 	status.text = "" if done else PlayerCopy.HARD_RESET_WAITING
 	status.visible = not status.text.is_empty()
 	if answer.get("ok", false): _fill(int(answer.get("number", 0)))
 	if done: host.refresh_schedule.note_activity(Time.get_ticks_msec())
+	# Start again opens a frame later, once the card has settled around its
+	# new lines, so a tap never lands on something that moved under it.
+	await host.get_tree().process_frame
+	if is_instance_valid(again) and host.is_inside_tree() and host.mode == FAILED_MODE: again.disabled = false
 
 ## Reads the friend's slip for Replays. One quiet note when it cannot be read;
 ## it is not tried again on this screen, and no turn waits on it.
