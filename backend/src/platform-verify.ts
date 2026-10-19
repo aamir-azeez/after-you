@@ -34,7 +34,7 @@ async function boundedJsonResponse(response: Response): Promise<unknown> {
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)); } catch { return null; }
 }
 
-/** Google quota answers (403 with one of these reasons) are ours to wait out, never the player's fault. */
+/** Google quota answers (403 with one of these reasons) are the server's to wait out, never the player's fault. */
 const QUOTA_REASONS = new Set(["rateLimitExceeded", "userRateLimitExceeded", "dailyLimitExceeded", "quotaExceeded"]);
 function quotaRefusal(body: unknown): boolean {
   const errors = isObject(body) && isObject(body.error) && Array.isArray(body.error.errors) ? body.error.errors : [];
@@ -54,11 +54,11 @@ export async function verifyPlayGames(code: unknown, env: ServerVars): Promise<V
     const token = await boundedJsonResponse(exchange);
     if (!exchange.ok) {
       logWarning("platform_verify_failed", { provider: "play_games", step: "exchange", status: exchange.status });
-      // Only 400 (invalid_grant: a used, expired or foreign code) is the player's; 401 invalid_client is our config.
+      // Only 400 (invalid_grant: a used, expired or foreign code) is the player's; 401 invalid_client is the server's config.
       return { ok: false, reason: exchange.status === 400 ? "invalid" : "unavailable" };
     }
     if (!isObject(token) || typeof token.access_token !== "string" || !ACCESS_TOKEN.test(token.access_token)) return { ok: false, reason: "unavailable" };
-    // applications/{id}/verify binds the token to this game's Play Games project, not only to our OAuth client.
+    // applications/{id}/verify binds the token to this game's Play Games project, not only to the server's OAuth client.
     const verify = await fetch(`https://games.googleapis.com/games/v1/applications/${config.appId}/verify`, { method: "GET", redirect: "manual",
       signal: AbortSignal.timeout(TIMEOUT_MS), headers: { Authorization: `Bearer ${token.access_token}` } });
     const answer = await boundedJsonResponse(verify);

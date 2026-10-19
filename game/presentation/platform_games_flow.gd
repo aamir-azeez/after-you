@@ -69,7 +69,7 @@ func note_progress() -> void:
 	var platform := games()
 	if platform != null: platform.note_progress()
 
-## The identity was erased: the server dropped its links; drop ours.
+## The identity was erased: the server dropped its links; drop this phone's record too.
 func forget_identity() -> void:
 	var platform := games()
 	if platform != null: platform.forget_identity()

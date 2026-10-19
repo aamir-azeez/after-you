@@ -336,7 +336,7 @@ func _link(capability: Dictionary, replace: bool, generation: int) -> void:
 			_:
 				link_state = LINK_OTHER
 	elif int(answer.get("status", 0)) == 404:
-		# The server turned the feature off since we last asked.
+		# The server turned the feature off since the last capability read.
 		state.forget_capability()
 		link_state = LINK_NONE
 		if cloud != null: cloud.stop()

@@ -232,7 +232,7 @@ func _run() -> void:
 	slot5.conflicts = ["junk".to_utf8_buffer()]
 	var sync5 := _sync(slot5, sources2, State.new(dir.path_join("state5.json")))
 	var junk: Dictionary = await sync5.run()
-	_check(not junk.ok and slot5.resolves == 0 and slot5.commits == 0, "Never resolve a conflict over a copy we cannot read")
+	_check(not junk.ok and slot5.resolves == 0 and slot5.commits == 0, "Never resolve a conflict over a copy this build cannot read")
 
 	await _sources_apply(dir)
 

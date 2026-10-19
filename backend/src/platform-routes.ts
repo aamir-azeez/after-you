@@ -49,7 +49,7 @@ type Proof = { externalHash: string; nonce?: string; nonceExpiresAt: number };
 async function prove(kind: PlatformProvider, credential: unknown, env: ServerVars): Promise<Proof> {
   let verified: Verified, nonce: string | undefined;
   if (kind === "play_games") {
-    // A Play Games auth code is single use at Google, so it needs no nonce of ours.
+    // A Play Games auth code is single use at Google, so it needs no nonce here.
     if (!isObject(credential) || Object.keys(credential).join() !== "server_auth_code") throw new ApiError(400, "invalid_platform_credential");
     verified = await verifyPlayGames(credential.server_auth_code, env);
   } else {

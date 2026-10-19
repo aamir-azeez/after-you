@@ -151,7 +151,7 @@ describe("Play Games linking", () => {
     expect(refused.status).toBe(401); expect(await refused.json()).toEqual({ error: { code: "platform_credential_invalid", retryable: false } });
     const down = await link(a, "down-code-1");
     expect(down.status).toBe(503);
-    // Google refusing our own client (a rotated secret) or rationing quota is never the player's fault.
+    // Google refusing the server's own client (a rotated secret) or rationing quota is never the player's fault.
     vi.restoreAllMocks();
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ error: "invalid_client" }, { status: 401 }));
     expect((await link(a, "code-a")).status).toBe(503);
