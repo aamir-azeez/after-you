@@ -17,6 +17,7 @@ export { FriendRoomEvents } from "./friend-room-events";
 import { friendEventsCapable } from "./friend-room-events";
 import { publicPolicy } from "./public-policy";
 import { appStatus } from "./app-status";
+import { routeWaitlist } from "./waitlist";
 import { requireInteraction, routeSafety } from "./safety-routes";
 import { partnerBlocks } from "./safety";
 import { routeSafetyOperator } from "./safety-operator";
@@ -79,6 +80,8 @@ export default {
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
       // Absent unless STORY_DRAIN_ENABLED is "true": the path then falls through to auth() as before.
       if (path.startsWith(DRAIN_PREFIX) && flags.storyDrain(env)) { await publicLimit(request, env); return json(await routeCampaignDrain(request, path, env)); }
+      // Absent unless IOS_WAITLIST_ENABLED is "true": the path then falls through as before (OPTIONS 405, others to auth()).
+      const waitlist = await routeWaitlist(request, path, env); if (waitlist) return waitlist;
       if (request.method === "OPTIONS") return new Response(null, { status: 405, headers: JSON_HEADERS });
       if (path === "/v1/identity" && request.method === "POST") {
         await publicLimit(request, env); const input = object(await boundedJson(request, 4096)); exactKeys(input, []);

@@ -72,6 +72,8 @@ export const FLAG_VARS = Object.freeze({
   playGames: "PLAY_GAMES_ENABLED",
   /** Game Center identity verification for the same link, unlink and restore routes. */
   gameCenter: "GAME_CENTER_ENABLED",
+  /** The iOS launch waitlist for the friend link page: /v1/waitlist/ios and its confirm route (waitlist.ts). */
+  iosWaitlist: "IOS_WAITLIST_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;
@@ -121,6 +123,18 @@ export type ServerVars = { [V in FlagVar]?: string } & {
   /** Optional: the iOS bundle id Game Center signs; com.aamirazeez.afteryou when unset. */
   GAME_CENTER_BUNDLE_ID?: string;
   SAFETY_OPERATOR_TOKEN?: string;
+  /** Secret. A Resend API key; Resend's only key that can add contacts is full access. */
+  RESEND_API_KEY?: string;
+  /** The Resend segment (formerly audience) that waitlist contacts join. */
+  RESEND_SEGMENT_ID?: string;
+  /** Secret. The Turnstile widget's secret key for siteverify. */
+  TURNSTILE_SECRET_KEY?: string;
+  /** The Turnstile widget's public site key, handed to the link page. */
+  TURNSTILE_SITE_KEY?: string;
+  /** Secret. Signs the waitlist confirm links (waitlist-token.ts); at least 32 characters. */
+  WAITLIST_CONFIRM_SECRET?: string;
+  /** The reply-to address on waitlist emails. */
+  WAITLIST_REPLY_TO?: string;
 };
 
 /** The one flag rule, by var name. */
