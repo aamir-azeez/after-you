@@ -38,6 +38,54 @@ const END_REACTIONS_ROOM_NOTE := "Your friend sees it with your turn."
 const END_REACTIONS_SOLO_NOTE := "Kept with your replay."
 const END_REACTIONS_MOMENT_NOTE := "This one isn't saved."
 
+# Hard mode (services/hard_mode.gd, presentation/hard_mode_view.gd). ★ Every
+# line in this block is new and waits for the owner's approval.
+# ★ The chip that picks hard mode, and its tooltip either way.
+const HARD_CHIP := "Hard"
+const HARD_CHIP_OFF := "Play the whole chapter in one go, with no retries"
+const HARD_CHIP_ON := "Hard is on. One slip and the run starts again"
+# ★ The marks beside a chapter's solo and together marks.
+const HARD_MARK_SOLO := "Hard solo"
+const HARD_MARK_TOGETHER := "Hard with a friend"
+# ★ A chapter card while Hard is on.
+const HARD_LOCKED_NOTE := "Finish this chapter to unlock Hard"
+const HARD_OPEN_NOTE := "Hard · No retries"
+const HARD_LOCKED_TOAST := "Finish this chapter solo or with a friend first. Then Hard opens."
+const HARD_HOST_UNAVAILABLE := "Hard rooms aren't open yet."
+# ★ Home, beside the keepsake count.
+const HARD_COUNT := "Hard · %d / %d"
+# ★ The ready card of a hard run.
+const HARD_READY_NOTE := "Hard run. No retries, so take your time."
+# ★ A failed run's card, and who slipped where (the stage number).
+const HARD_FAILED_TITLE := "Back to the start"
+const HARD_YOU_SLIPPED := "You slipped on stage %d."
+const HARD_YOU_WENT_UNDER := "You went under on stage %d."
+const HARD_YOU_STARTED_OVER := "You started stage %d over."
+const HARD_FRIEND_SLIPPED := "%s slipped on stage %d."
+const HARD_FRIEND_WENT_UNDER := "%s went under on stage %d."
+const HARD_FRIEND_STARTED_OVER := "%s started stage %d over."
+const HARD_FRIEND_FALLBACK := "Your friend"
+const HARD_FAILED_BODY := "Hard runs have no retries, so the run starts again from stage 1. Your slip is saved in Replays."
+const HARD_START_AGAIN := "Start again"
+const HARD_RESET_SENDING := "Letting your friend know…"
+const HARD_RESET_WAITING := "Couldn't reach your friend's room. Start again sends it once you're back online."
+# ★ The waiting friend's note when the other one slipped.
+const HARD_FRIEND_NOTICE := "%s slipped on stage %d. Back to the start together."
+# ★ A hard room with no room left for another run.
+const HARD_ROOM_FULL_TITLE := "This room is full of slips"
+const HARD_ROOM_FULL_BODY := "There's no space here for another hard run. Start a new hard room together. Every slip stays in Replays."
+# ★ A finished hard run.
+const HARD_COMPLETE_TITLE := "Hard run done"
+const HARD_COMPLETE_BODY := "The whole chapter in one go, with no retries."
+const HARD_AGAIN := "Play Hard again"
+# ★ Replays.
+const HARD_REPLAYS_HEADING := "Hard runs"
+const HARD_RUN_FAILED := "%s · Hard run"
+const HARD_RUN_DONE := "%s · Hard run done"
+const HARD_RUN_SOLO := "Solo"
+const HARD_RUN_TOGETHER := "With %s"
+const HARD_RUN_NOTHING := "Nothing to watch: the slip came before the first move."
+
 # Typed share codes and invite links. FRIEND_CODE_INVALID is the existing add-friend error.
 const FRIEND_CODE_INVALID := "Invalid friend code"
 const FRIEND_CODE_OWN := "This is your own friend code."
