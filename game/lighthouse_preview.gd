@@ -18,6 +18,7 @@ const Soundscape = preload("res://services/soundscape.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
+const ScreenSwitch = preload("res://services/screen_switch.gd")
 const SOUND_CHAPTER := "sleeping-lighthouse@1"
 
 var journey: RefCounted = Journey.new()
@@ -798,7 +799,7 @@ func _leave() -> void:
 		_leave_after_load = true
 		_loader.cancel()
 		return
-	get_tree().change_scene_to_file("res://main.tscn")
+	ScreenSwitch.to_home(get_tree())
 
 func _exit_tree() -> void:
 	_tester_generation += 1

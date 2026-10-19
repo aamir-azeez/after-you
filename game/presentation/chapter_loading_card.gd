@@ -22,6 +22,7 @@ const Proofs = preload("res://services/journey_proofs.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Typed = preload("res://services/typed_values.gd")
+const ScreenSwitch = preload("res://services/screen_switch.gd")
 ## The bar's share for the work before the scene change, where it waits while
 ## the chapter builds, and the proof's weight against the scene load.
 const PREPARED := 0.85
@@ -146,15 +147,16 @@ func drawn() -> void:
 func prepare(scene: String, prove_save: bool = true, owner: Object = null) -> void:
 	await _prepare(scene, chapters_for_scene(scene) if prove_save else [], owner.get_instance_id() if owner != null else 0)
 
-## change_scene_to_file for the open, using the scene prepare() loaded.
+## change_scene_to_file for the open, using the scene prepare() loaded. The old
+## screen's nodes are freed over the next frames (services/screen_switch.gd).
 func change_scene(scene: String) -> Error:
 	var tree := get_tree()
 	if is_instance_valid(_bar): _bar.follow(BUILDING)
 	if not _loading.is_empty() and _loading == scene and ResourceLoader.load_threaded_get_status(scene) == ResourceLoader.THREAD_LOAD_LOADED:
 		_loading = ""
 		var packed := ResourceLoader.load_threaded_get(scene) as PackedScene
-		if packed != null: return tree.change_scene_to_packed(packed)
-	return tree.change_scene_to_file(scene)
+		if packed != null: return ScreenSwitch.to_packed(tree, packed)
+	return ScreenSwitch.to_file(tree, scene)
 
 ## The solo chapters a scene opens whose saved journey can be proved ahead.
 static func chapters_for_scene(scene: String) -> Array:

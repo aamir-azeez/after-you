@@ -187,6 +187,7 @@ var _wait_frames := 0
 ## plays it instead of setting up the same turn twice.
 var _fresh_live: Dictionary = {}
 const Reaper = preload("res://services/worker_reaper.gd")
+const ScreenSwitch = preload("res://services/screen_switch.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Typed = preload("res://services/typed_values.gd")
 ## The turn after a solo first turn, set up on a worker while its review card
@@ -445,7 +446,7 @@ func _adopt_migration(converted: Dictionary) -> bool:
 	# Keep playing the unfinished @1 journey in its own screen.
 	_leaving = true
 	mode = "leaving"
-	get_tree().change_scene_to_file(LighthouseMigration.V1_SCENE)
+	ScreenSwitch.to_file(get_tree(), LighthouseMigration.V1_SCENE)
 	return false
 
 
@@ -3010,7 +3011,7 @@ func _leave(allow_unsaved: bool = false) -> void:
 		_clear_reaction_view()
 		closed.emit()
 	else:
-		get_tree().change_scene_to_file("res://main.tscn")
+		ScreenSwitch.to_home(get_tree())
 
 
 func _exit_tree() -> void:
