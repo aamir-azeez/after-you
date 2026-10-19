@@ -265,8 +265,12 @@ func _pill() -> PanelContainer:
 	quick = _flat_button("QuickReact")
 	quick.custom_minimum_size = Vector2(TARGET + 8.0, TARGET)
 	_quick_icon = FaceIcon.new(store.last_face(), _color(), 40.0)
-	_quick_icon.set_anchors_and_offsets_preset(Control.PRESET_CENTER)
-	quick.add_child(_quick_icon)
+	# Centred however the button is sized: a centring box fills it.
+	var centre := CenterContainer.new()
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	centre.add_child(_quick_icon)
+	quick.add_child(centre)
 	_set_quick_face(store.last_face() if not Store.is_face(chosen) else chosen)
 	quick.pressed.connect(func(): choose(_quick_icon.face))
 	var divider := ColorRect.new()
