@@ -336,7 +336,8 @@
 		[self fail:requestId operation:@"snapshot_resolve" code:@"failed"];
 		return;
 	}
-	[[GKLocalPlayer localPlayer] resolveConflictingSavedGames:slot.games withData:data completionHandler:^(NSArray<GKSavedGame *> *_Nullable saved, NSError *_Nullable error) {
+	// Only the two copies the game read and joined; any third comes back as the next conflict.
+	[[GKLocalPlayer localPlayer] resolveConflictingSavedGames:@[ slot.games[0], slot.games[1] ] withData:data completionHandler:^(NSArray<GKSavedGame *> *_Nullable saved, NSError *_Nullable error) {
 		if (error != nil) {
 			[self fail:requestId operation:@"snapshot_resolve" code:[self codeFor:error]];
 			return;
