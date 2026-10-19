@@ -1,5 +1,5 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
-import { JSON_HEADERS, json, result, bearerDigest } from "./http";
+import { JSON_HEADERS, errorResponse, json, result, bearerDigest } from "./http";
 import { flags } from "./flags";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, inviteRoomId, legacySimulationVersion, newInvite, object, parseInvite, randomToken, recording, text, type RoomSnapshot, unwrap } from "./protocol";
 import { entitlement } from "./entitlement";
@@ -261,13 +261,8 @@ export default {
       }
       throw new ApiError(404, "not_found");
     } catch (error) {
-      if (error instanceof ApiError) {
-        const response = json({ error: { code: error.code, retryable: error.status === 429 || error.status === 503 } }, error.status);
-        if (error.status === 429 || error.status === 503) response.headers.set("Retry-After", error.status === 429 ? "60" : "15");
-        return response;
-      }
       // Never log request bodies, credentials, invite codes or upstream error payloads.
-      return json({ error: { code: "service_unavailable", retryable: true } }, 503);
+      return errorResponse(error);
     }
   }
 } satisfies ExportedHandler<Env>;

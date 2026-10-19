@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { normalEmail } from "../src/waitlist";
+import { inboxKey, ipKey, normalEmail } from "../src/waitlist";
 import { CONFIRM_TTL_SECONDS, signConfirmToken, verifyConfirmToken } from "../src/waitlist-token";
 import { confirmEmail } from "../src/waitlist-email";
 
@@ -273,7 +273,7 @@ describe("signing up", () => {
       { siteverify: () => { throw new TypeError("network"); } },
       { send: resendError(401, "validation_error") },
       { send: resendError(403, "validation_error") },
-      { send: resendError(429, "daily_quota_exceeded") },
+      { send: resendError(429, "rate_limit_exceeded") },
       { send: resendError(500, "application_error") },
       { send: () => { throw new TypeError("network"); } }
     ];
@@ -286,47 +286,102 @@ describe("signing up", () => {
       expectCors(response);
       vi.restoreAllMocks();
     }
+    for (const name of ["invalid_from_address", "missing_required_field"]) {
+      upstream({ send: resendError(422, name) });
+      const sender = await call();
+      expect(sender.status, name).toBe(503);
+      vi.restoreAllMocks();
+    }
     upstream({ send: resendError(422, "validation_error") });
     const refused = await call();
     expect(refused.status).toBe(400);
     expect(await errorCode(refused)).toBe("invalid_email");
   });
+
+  it("says plainly when Resend's sending quota is spent", async () => {
+    for (const name of ["daily_quota_exceeded", "monthly_quota_exceeded"]) {
+      upstream({ send: resendError(429, name) });
+      const response = await call();
+      expect(response.status).toBe(503);
+      expect(await response.json()).toEqual({ error: { code: "waitlist_full", retryable: true } });
+      expect(response.headers.get("Retry-After")).toBe("3600");
+      expectCors(response);
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("treats a broken Turnstile setup as our failure, not the visitor's", async () => {
+    for (const code of ["invalid-input-secret", "missing-input-secret", "internal-error", "bad-request"]) {
+      upstream({ siteverify: () => Response.json({ success: false, "error-codes": [code] }) });
+      const response = await call();
+      expect(response.status, code).toBe(503);
+      expect(await errorCode(response)).toBe("waitlist_unavailable");
+      vi.restoreAllMocks();
+    }
+  });
+
+  it("folds the variants of one inbox into one allowance, and never changes where mail goes", async () => {
+    expect(inboxKey("v.ictim+1@gmail.com")).toBe("victim@gmail.com");
+    expect(inboxKey("victim@googlemail.com")).toBe("victim@gmail.com");
+    expect(inboxKey("first.last+ios@example.com")).toBe("first.last@example.com");
+    const fetchSpy = upstream();
+    await call({ body: { schema_version: 1, email: "V.ictim+waitlist@Gmail.com", turnstile_token: TOKEN } });
+    expect(sentEmail(fetchSpy).to).toEqual(["v.ictim+waitlist@gmail.com"]);
+  });
+
+  it("keys IPv6 on its /64 and mapped IPv4 on the IPv4 address", () => {
+    expect(ipKey("2001:db8:85a3:12:8a2e:370:7334:1")).toBe("2001:db8:85a3:12::/64");
+    expect(ipKey("2001:db8:85a3:12::99")).toBe("2001:db8:85a3:12::/64");
+    expect(ipKey("2001:0db8::1")).toBe("2001:db8:0:0::/64");
+    expect(ipKey("::ffff:203.0.113.9")).toBe("203.0.113.9");
+    expect(ipKey("203.0.113.9")).toBe("203.0.113.9");
+    expect(ipKey(null)).toBe("local");
+  });
 });
 
 describe("confirming", () => {
+  const missing = () => resendError(404, "not_found")();
+  const SEGMENT_URL = `https://api.resend.com/contacts/${encodeURIComponent(NORMAL)}/segments/${SEGMENT}`;
   it("adds the contact to the segment only after the tap, from the link the email carried", async () => {
     const fetchSpy = upstream();
     await call();
     const token = linkToken(sentEmail(fetchSpy));
     expect(urls(fetchSpy).some(url => url.includes("/contacts"))).toBe(false);
     vi.restoreAllMocks();
-    const confirmSpy = upstream();
+    // A new address: adding it to the segment finds no contact, so it is created with the segment.
+    const confirmSpy = upstream({ segment: missing });
     const response = await confirmCall(token);
     expect(response.status).toBe(200);
     expectCors(response);
     expect(await response.json()).toEqual({ schema_version: 1, confirmed: true });
-    expect(urls(confirmSpy)).toEqual(["https://api.resend.com/contacts"]);
-    const init = confirmSpy.mock.calls[0][1] as RequestInit;
-    expect(init.method).toBe("POST");
-    expect((init.headers as Record<string, string>).Authorization).toBe("Bearer " + CONFIG.RESEND_API_KEY);
-    expect(JSON.parse(String(init.body))).toEqual({ email: NORMAL, unsubscribed: false, segments: [{ id: SEGMENT }] });
+    expect(urls(confirmSpy)).toEqual([SEGMENT_URL, "https://api.resend.com/contacts"]);
+    const add = confirmSpy.mock.calls[0][1] as RequestInit;
+    expect(add.method).toBe("POST");
+    expect(add.body).toBeUndefined();
+    expect((add.headers as Record<string, string>).Authorization).toBe("Bearer " + CONFIG.RESEND_API_KEY);
+    // The subscription is never set: a new contact starts subscribed, and nothing here can undo an unsubscribe.
+    expect(JSON.parse(String((confirmSpy.mock.calls[1][1] as RequestInit).body))).toEqual({ email: NORMAL, segments: [{ id: SEGMENT }] });
   });
 
-  it("is idempotent and answers an address already listed byte for byte like a new one", async () => {
+  it("is idempotent, and an existing contact gets the same bytes and is never recreated", async () => {
     const token = await signConfirmToken(NORMAL, SECRET, now());
-    upstream();
+    upstream({ segment: missing });
     const fresh = await confirmCall(token);
     vi.restoreAllMocks();
-    for (const status of [400, 409, 422]) {
-      const fetchSpy = upstream({ create: resendError(status, "validation_error") });
+    const cases: [Upstream, string[]][] = [
+      [{}, ["segment"]],
+      [{ segment: missing, create: resendError(409, "x") }, ["segment", "create", "segment"]],
+      [{ segment: missing, create: resendError(422, "validation_error") }, ["segment", "create", "segment"]]
+    ];
+    for (const [answers, steps] of cases) {
+      let segmentCalls = 0;
+      const first = answers.segment;
+      const fetchSpy = upstream({ ...answers, segment: () => (++segmentCalls === 1 && first ? first() : Response.json({ id: SEGMENT })) });
       const again = await confirmCall(token);
       expect(again.status).toBe(fresh.status);
       expect([...again.headers].sort()).toEqual([...fresh.headers].sort());
       expect(await again.text()).toBe(await fresh.clone().text());
-      const [segmentUrl, segmentInit] = fetchSpy.mock.calls[1] as [string, RequestInit];
-      expect(segmentUrl).toBe(`https://api.resend.com/contacts/${encodeURIComponent(NORMAL)}/segments/${SEGMENT}`);
-      expect(segmentInit.method).toBe("POST");
-      expect(segmentInit.body).toBeUndefined();
+      expect(urls(fetchSpy).map(url => url.endsWith("/contacts") ? "create" : "segment")).toEqual(steps);
       vi.restoreAllMocks();
     }
   });
@@ -370,20 +425,37 @@ describe("confirming", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("limits each IP on the confirm path too", async () => {
-    const fetchSpy = upstream();
-    const response = await confirmCall(await signConfirmToken(NORMAL, SECRET, now()), { vars: { PUBLIC_LIMITER: limiter(false) } });
-    expect(response.status).toBe(429);
-    expectCors(response);
+  it("limits each IP, and each inbox once its link checks out", async () => {
+    const token = await signConfirmToken(NORMAL, SECRET, now());
+    let fetchSpy = upstream();
+    const perIp = await confirmCall(token, { vars: { PUBLIC_LIMITER: limiter(false) } });
+    expect(perIp.status).toBe(429);
+    expectCors(perIp);
     expect(fetchSpy).not.toHaveBeenCalled();
+    vi.restoreAllMocks();
+    fetchSpy = upstream();
+    const address = limiter(false);
+    const perInbox = await confirmCall(token, { vars: { WAITLIST_ADDRESS_LIMITER: address } });
+    expect(perInbox.status).toBe(429);
+    expect(fetchSpy).not.toHaveBeenCalled();
+    // Its own bucket, apart from the sign-up one, keyed on a hash.
+    const key = address.limit.mock.calls[0][0].key;
+    expect(key).toMatch(/^[0-9a-f]{64}$/);
+    const signupKey = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode("waitlist-address:" + NORMAL)))].map(b => b.toString(16).padStart(2, "0")).join("");
+    expect(key).not.toBe(signupKey);
+    // A forged link never spends the inbox's allowance.
+    const untouched = limiter();
+    await confirmCall("x".repeat(20) + "." + "A".repeat(43), { vars: { WAITLIST_ADDRESS_LIMITER: untouched } });
+    expect(untouched.limit).not.toHaveBeenCalled();
   });
 
-  it("answers 503 retryable when Resend fails, and never falls back on auth, quota or server errors", async () => {
+  it("answers 503 retryable when Resend fails, and never tries the other call on auth, permission or rate errors", async () => {
     const token = await signConfirmToken(NORMAL, SECRET, now());
     const failures: [Upstream, number][] = [
-      [{ create: resendError(401, "x") }, 1], [{ create: resendError(403, "restricted_api_key") }, 1], [{ create: resendError(429, "rate_limit_exceeded") }, 1],
-      [{ create: resendError(500, "application_error") }, 1], [{ create: () => { throw new TypeError("network"); } }, 1],
-      [{ create: resendError(422, "x"), segment: resendError(404, "not_found") }, 2], [{ create: resendError(409, "x"), segment: resendError(500, "x") }, 2]
+      [{ segment: resendError(401, "x") }, 1], [{ segment: resendError(403, "restricted_api_key") }, 1], [{ segment: resendError(429, "rate_limit_exceeded") }, 1],
+      [{ segment: resendError(500, "application_error") }, 1], [{ segment: () => { throw new TypeError("network"); } }, 1],
+      [{ segment: missing, create: resendError(401, "x") }, 2], [{ segment: missing, create: resendError(500, "x") }, 2],
+      [{ segment: missing, create: resendError(422, "x") }, 3]
     ];
     for (const [answers, calls] of failures) {
       const fetchSpy = upstream(answers);
@@ -426,8 +498,9 @@ describe("privacy", () => {
     const token = await signConfirmToken(NORMAL, SECRET, now());
     const signups: Upstream[] = [{}, { send: resendError(500, "x") }, { send: resendError(422, "x") }, { siteverify: () => new Response("x", { status: 500 }) }, { send: () => { throw new TypeError("network " + EMAIL); } }];
     for (const answers of signups) { upstream(answers); await call(); vi.mocked(globalThis.fetch).mockRestore(); }
-    const confirms: Upstream[] = [{}, { create: resendError(422, "x") }, { create: resendError(422, "x"), segment: resendError(404, "x") }, { create: resendError(401, "x") }];
+    const confirms: Upstream[] = [{}, { segment: resendError(404, "x") }, { segment: resendError(404, "x"), create: resendError(422, "x") }, { segment: resendError(401, "x") }];
     for (const answers of confirms) { upstream(answers); await confirmCall(token); vi.mocked(globalThis.fetch).mockRestore(); }
+    for (const [status, name] of [[429, "daily_quota_exceeded"], [422, "invalid_from_address"], [422, "validation_error"]] as const) { upstream({ send: resendError(status, name) }); await call(); vi.mocked(globalThis.fetch).mockRestore(); }
     await call({ vars: { RESEND_API_KEY: undefined } });
     expect(lines.length).toBeGreaterThan(0);
     const all = lines.join("\n").toLowerCase();
