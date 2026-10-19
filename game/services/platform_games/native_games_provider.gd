@@ -22,6 +22,7 @@ var _tree: SceneTree
 var _pending: Dictionary = {}
 var _results: Dictionary = {}
 var _last_player_key := ""
+var _available: Variant = null
 
 ## native: the plugin singleton (tests pass a fake). kind: PLAY_GAMES or GAME_CENTER.
 func _init(native: Object, provider_kind: String, tree: SceneTree) -> void:
@@ -32,8 +33,11 @@ func _init(native: Object, provider_kind: String, tree: SceneTree) -> void:
 func kind() -> String:
 	return _kind
 
+## Asked once: the plugin knows whether this build has a project id and the platform service.
 func available() -> bool:
-	return _native != null and _connect()
+	if _available == null:
+		_available = _native != null and _connect() and bool(_native.callv("games_available", []))
+	return _available
 
 func _connect() -> bool:
 	if _connected: return true
