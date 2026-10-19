@@ -14,6 +14,7 @@ const Tide = preload("res://tests/turn_of_the_tide_witness.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const World = preload("res://presentation/tide_world.gd")
 const V2 = preload("res://tests/turn_of_the_tide_v2_witness.gd")
+const SpiritLook = preload("res://presentation/spirit_look.gd")
 var checks := 0
 var failures := 0
 var directory := ""
@@ -63,6 +64,15 @@ func _run() -> void:
 	_check(screen.mode == "drowning" and not screen.running, "A drowning ends the turn on the drown beat, not straight on a card")
 	var harbour: Node3D = screen.world._water.harbour
 	_check(screen.world.actor_targets["p1"].y < float(harbour.get_meta("shown")) - 0.4 and is_instance_valid(screen.world._drown_ring), "The drowned spirit heads under the water and a ring spreads")
+	# Bubbles rise from where it went under, the same ones every time, and the
+	# face is the knocked-out one once the shared look has it.
+	var bubbles: Array = screen.world._drown_bubbles
+	var harbour_level := float(screen.world._water.harbour.get_meta("shown"))
+	_check(bubbles.size() == World.DROWN_BUBBLES.size() and bubbles.all(func(bubble: MeshInstance3D) -> bool: return bubble.visible and bubble.position.y > harbour_level), "Bubbles rise from the water where the spirit went under")
+	var heights: Array = bubbles.map(func(bubble: MeshInstance3D) -> float: return bubble.position.y)
+	screen.world._process(1.0 / 30.0)
+	_check(heights != bubbles.map(func(bubble: MeshInstance3D) -> float: return bubble.position.y), "The bubbles move while motion is on")
+	if SpiritLook.has(World.KNOCKED_OUT): _check(screen.world.actors["p1"]._held_expression == World.KNOCKED_OUT, "The drowned spirit wears the knocked-out face")
 	# The world keeps running through the beat: the spirit goes under.
 	var before: float = screen.world.actors["p1"].position.y
 	for _frame in range(screen.DROWN_BEAT_FRAMES):
@@ -70,6 +80,11 @@ func _run() -> void:
 		screen.world._process(1.0 / 30.0)
 	_check(screen.world.actors["p1"].position.y < before - 0.3, "Through the beat the drowned spirit sinks (%.2f to %.2f)" % [before, screen.world.actors["p1"].position.y])
 	_check(screen.mode == "review", "After the beat the review card shows")
+	# A snapshot without the drowning (a retry, a replay seeking back) puts it away.
+	var fresh := Simulation.new()
+	fresh.reset(level, "set-the-tide", initial, first, "b")
+	screen.world.present(fresh.snapshot(), true)
+	_check(not screen.world._drown_ring.visible and screen.world._drown_bubbles.all(func(bubble: MeshInstance3D) -> bool: return not bubble.visible) and screen.world.actors["p1"]._held_expression == SpiritLook.NORMAL and screen.world.camera_focus != "p1", "A turn without the drowning shows none of it")
 	var texts := _texts(screen)
 	print("REVIEW CARD ", texts)
 	_check(_label_with(screen, PlayerCopy.JOURNEY_DROWNED_YOU), "The card says: " + PlayerCopy.JOURNEY_DROWNED_YOU)

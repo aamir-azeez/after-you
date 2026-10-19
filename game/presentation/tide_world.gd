@@ -27,6 +27,15 @@ const RAMP_RATE := 1.6
 ## colour, and a drowned spirit sinks this far under the water it is in.
 const CLOSING_COLOR := Color("f08a5d")
 const DROWN_DEPTH := 0.55
+## A drowned spirit's face (spirit_look.gd), once the shared look has it.
+const KNOCKED_OUT := &"knocked_out"
+const SpiritLook = preload("res://presentation/spirit_look.gd")
+## Bubbles rising where a spirit went under: [x offset, z offset, start phase
+## (0..1 of the rise), radius] in metres. Fixed, so live play and any replay
+## of the same drowning show the same bubbles; Reduce motion holds them still.
+const DROWN_BUBBLES := [[0.10, 0.04, 0.0, 0.045], [-0.09, -0.03, 0.35, 0.035], [0.02, -0.08, 0.7, 0.03], [-0.13, 0.06, 0.15, 0.025]]
+const BUBBLE_RISE := 0.55
+const BUBBLE_SPEED := 0.45
 const HARBOUR_REGION := [-512, -480, 1728, 480]
 ## The outer sea: wide past the mole, through the harbour mouth, and a short
 ## reach past each end of the mouth where the sea gates stand. Breakwaters hold
@@ -145,8 +154,14 @@ var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
 ## RAMPS built for the shown stage: crossing id -> its hinge (Node3D, meta "target").
 var _ramps: Dictionary = {}
-## Tide rules: the ring spreading where a spirit drowned (null until one does).
+## Tide rules: the ring spreading where a spirit drowned and its bubbles,
+## built once on the first drowning and reused; the slot drowned now ("" none);
+## the water surface it went under; how long the bubbles have risen.
 var _drown_ring: MeshInstance3D
+var _drown_bubbles: Array[MeshInstance3D] = []
+var _drowned_slot := ""
+var _drown_surface := 0.0
+var _bubble_age := 0.0
 ## Kept-crossing masts, raised with the water that covers their crossing.
 const MAST_CLEARANCE := 0.25
 var _kept_masts: Array[Dictionary] = []
@@ -212,6 +227,8 @@ func show_stage(stage: Dictionary) -> void:
 	_boats.clear()
 	_ramps.clear()
 	_drown_ring = null
+	_drown_bubbles.clear()
+	_drowned_slot = ""
 	_kept_masts.clear()
 	_bubbles_placed = false
 	_walled = _walled_routes(stage)
@@ -1334,9 +1351,11 @@ func _advance_water(delta: float) -> void:
 			flowing = true
 		elif root.has_meta("rate"): root.remove_meta("rate")
 	_swing_ramps(delta)
-	if is_instance_valid(_drown_ring) and not reduced_motion:
+	if not _drowned_slot.is_empty() and not reduced_motion:
 		var grown := minf(_drown_ring.scale.x + delta * 1.6, 3.0)
 		_drown_ring.scale = Vector3(grown, 1.0, grown)
+		_bubble_age += maxf(delta, 0.0)
+		_rise_bubbles()
 	# The doors move after the water, against the water shown this frame.
 	if is_instance_valid(_locks) and (flowing or _locks.moving()): _locks.advance(delta, _lock_levels("shown"))
 	if not reduced_motion:
@@ -1626,11 +1645,15 @@ func _show_closing(closing: Dictionary) -> void:
 		elif root.has_meta("rate"): root.remove_meta("rate")
 
 ## Tide rules: a drowned spirit (snapshot "drowned": {slot, route}) heads under
-## the water over its crossing, a ring spreads where it went down, and the
-## camera eases over to it (snapping under Reduce motion), so a drowning off
-## screen is seen before the card.
+## the water over its crossing with its knocked-out face, a ring spreads and
+## bubbles rise where it went down, and the camera eases over to it (snapping
+## under Reduce motion), so a drowning off screen is seen before the card. A
+## snapshot without a drowning (a retry, a replay seeking back) puts it all
+## away again.
 func _show_drowned(drowned: Dictionary) -> void:
-	if drowned.is_empty() or not actors.has(str(drowned.get("slot", ""))): return
+	if drowned.is_empty() or not actors.has(str(drowned.get("slot", ""))):
+		if not _drowned_slot.is_empty(): _clear_drowned()
+		return
 	var slot := str(drowned.slot)
 	camera_focus = slot
 	# The water over the crossing it drowned on: the harbour's or the outer sea's.
@@ -1640,9 +1663,40 @@ func _show_drowned(drowned: Dictionary) -> void:
 	var target: Vector3 = actor_targets[slot]
 	target.y = minf(target.y, surface) - DROWN_DEPTH
 	actor_targets[slot] = target
-	if is_instance_valid(_drown_ring): return
-	_drown_ring = cylinder(0.32, 0.01, Color(CREAM, 0.7), Vector3(target.x, surface + 0.02, target.z), terrain)
-	_drown_ring.name = "DrownRing"
+	if _drowned_slot == slot: return
+	_drowned_slot = slot
+	_drown_surface = surface
+	_bubble_age = 0.0
+	if SpiritLook.has(KNOCKED_OUT): (actors[slot] as SpiritVisual).set_expression(KNOCKED_OUT, reduced_motion)
+	if not is_instance_valid(_drown_ring):
+		_drown_ring = cylinder(0.32, 0.01, Color(CREAM, 0.7), Vector3.ZERO, terrain)
+		_drown_ring.name = "DrownRing"
+		for spec: Array in DROWN_BUBBLES:
+			var bubble := sphere(float(spec[3]), Color(CREAM, 0.85), Vector3.ZERO, terrain)
+			bubble.name = "DrownBubble"
+			_drown_bubbles.append(bubble)
+	_drown_ring.position = Vector3(target.x, surface + 0.02, target.z)
+	_drown_ring.scale = Vector3.ONE
+	_drown_ring.visible = true
+	for index in range(_drown_bubbles.size()):
+		var spec: Array = DROWN_BUBBLES[index]
+		_drown_bubbles[index].position = Vector3(target.x + float(spec[0]), 0.0, target.z + float(spec[1]))
+		_drown_bubbles[index].visible = true
+	_rise_bubbles()
+
+## Each bubble climbs BUBBLE_RISE above the water and starts again, from its
+## own phase; still at that phase under Reduce motion.
+func _rise_bubbles() -> void:
+	for index in range(_drown_bubbles.size()):
+		var phase := fmod(float(DROWN_BUBBLES[index][2]) + _bubble_age * BUBBLE_SPEED / BUBBLE_RISE, 1.0)
+		_drown_bubbles[index].position.y = _drown_surface + 0.03 + phase * BUBBLE_RISE
+
+func _clear_drowned() -> void:
+	if actors.has(_drowned_slot): (actors[_drowned_slot] as SpiritVisual).set_expression(SpiritLook.NORMAL, true)
+	if camera_focus == _drowned_slot: camera_focus = ""
+	_drowned_slot = ""
+	if is_instance_valid(_drown_ring): _drown_ring.visible = false
+	for bubble: MeshInstance3D in _drown_bubbles: bubble.visible = false
 
 func _float_boats(level: float) -> void:
 	for boat: Node3D in _boats:
@@ -1815,6 +1869,7 @@ func _static_keep() -> Array:
 	keep.append_array(_boats)
 	keep.append_array(_ramps.values())
 	if is_instance_valid(_drown_ring): keep.append(_drown_ring)
+	keep.append_array(_drown_bubbles)
 	keep.append_array(_spout_streaks)
 	keep.append_array(_slack_marks)
 	for marks: Array in _dry_marks.values(): keep.append_array(marks)
