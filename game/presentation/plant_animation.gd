@@ -15,6 +15,7 @@ const ENABLED := true
 const SCRIPT_PATH := "res://presentation/plant_animation.gd"
 const SeedVisual = preload("res://presentation/seed_visual.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
 const NODE_NAME := "PlantAnimation"
 
 ## Timeline in seconds. Chapter screens hold the finished world for 3 s before
@@ -204,8 +205,8 @@ func _begin(world: Node3D, seed: MeshInstance3D, carrier: Node3D, ground: Dictio
 	world.sphere(r, SEED_BROWN, Vector3.ZERO, _seed).name = "PlantSeedBody"
 	var tip: MeshInstance3D = world.cylinder(r * 0.9, r * 1.8, SEED_TIP, Vector3(0, r * 1.1, 0), _seed)
 	tip.name = "PlantSeedTip"
-	(tip.mesh as CylinderMesh).top_radius = 0.0
-	(tip.mesh as CylinderMesh).radial_segments = 12
+	# A cone of its own, not the shared cylinder the world's helper gives.
+	tip.mesh = Primitives.cylinder_mesh(r * 0.9, r * 1.8, 0.0, 12)
 	for i in range(PUFF_BITS):
 		var bit: MeshInstance3D = world.sphere(0.034 * _unit, PUFF, Vector3.ZERO, self)
 		bit.name = "PlantPuff%d" % i
@@ -217,7 +218,7 @@ func _begin(world: Node3D, seed: MeshInstance3D, carrier: Node3D, ground: Dictio
 		spark.name = "PlantSpark%d" % i
 		spark.visible = false
 		spark.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-		(spark.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		Primitives.own_material(spark).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		_sparks.append(spark)
 	# The bloom is held from this very present: marking it bloomed now keeps the
 	# world's garden presentation (which runs next) from restarting it at zero.

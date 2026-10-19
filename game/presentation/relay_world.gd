@@ -142,7 +142,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 			bridge_visuals[id].position.y = 0.0 if bridge_targets[id] else -0.65
 	for bridge: Dictionary in current_level.bridges:
 		var disk: MeshInstance3D = plate_visuals[bridge.plate_id]
-		(disk.material_override as StandardMaterial3D).albedo_color = Color("f5d990") if bridge_targets[bridge.id] else Color("a18f66")
+		Primitives.own_material(disk).albedo_color = Color("f5d990") if bridge_targets[bridge.id] else Color("a18f66")
 	_present_seed(state.seed, immediate)
 	var garden_complete := bool(state.get("complete", false)) and str(state.get("stage_id", "")) == str(current_level.stages[-1].id)
 	_present_garden(true, garden_complete, immediate)

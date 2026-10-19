@@ -47,6 +47,25 @@ func _check_materials() -> void:
 	var own := Primitives.own_material(one)
 	_check(own != first and not Primitives.is_shared(own) and one.material_override == own and two.material_override == first, "Taking a mesh's own material copies a shared one")
 	_check(Primitives.own_material(one) == own, "A private material is kept")
+	_check(Primitives.changed_shared_materials().is_empty(), "No cached look has changed in place: %s" % [Primitives.changed_shared_materials()])
+	var tint := first.albedo_color
+	first.albedo_color = Color.RED
+	_check(Primitives.changed_shared_materials().size() == 1, "A cached look changed in place is named")
+	first.albedo_color = tint
+	_check(Primitives.changed_shared_materials().is_empty(), "Put back, it is no longer named")
+	# Every world's shape helpers share one cached material per look; one
+	# changed later takes its own copy first.
+	var world: Node3D = LighthouseWorld.new()
+	holder.add_child(world)
+	var a: MeshInstance3D = world.box(Vector3.ONE, Color("8a6b4e"), Vector3.ZERO, holder)
+	var b: MeshInstance3D = world.sphere(0.3, Color("8a6b4e"), Vector3.ZERO, holder)
+	_check(a.material_override == first and b.material_override == first, "A world's shapes of one colour share its cached look")
+	_check(world.material(Color("8a6b4e")) != first, "A world's material() is a new one of the caller's own")
+	world._glow(a, Color.WHITE, 1.0)
+	_check(a.material_override != first and a.material_override.emission_enabled and not first.emission_enabled and b.material_override == first, "Glowing one mesh glows its own copy, never the look")
+	var motes: Array = world.motes
+	_check(not Primitives.is_shared(motes[0].material_override) and motes.all(func(mote: MeshInstance3D) -> bool: return mote.material_override == motes[0].material_override), "The motes share one material of the world's own, which the look tints")
+	_check(Primitives.changed_shared_materials().is_empty(), "Building and glowing changed no cached look: %s" % [Primitives.changed_shared_materials()])
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], []) == [[0, 0, 100, 100]], "No hole keeps the floor whole")
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], [40, 40, 60, 60]).size() == 4, "A hole leaves four floor pieces")
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], [0, 40, 60, 100]).size() == 2, "A hole at an edge leaves only the pieces that exist")

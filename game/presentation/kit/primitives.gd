@@ -1,14 +1,20 @@
 extends RefCounted
 ## World kit: mesh and material helpers shared by every chapter world.
 ##
-## fresh_material() gives each mesh its own material, which presentation code
-## may recolour, glow or fade in place. shared_material() returns one cached
-## material per look for static scenery that nothing ever changes; it carries
-## the SHARED_META flag, and anything that must change it first takes a copy
-## (see own_material()). Never pass a shared material to code that mutates.
+## shared_material() returns one cached material per look (colour, roughness,
+## glow), and every world's shape helpers (island_world.box, sphere, ...) use
+## it, so a world makes one material per look rather than one per mesh: fewer
+## resources to make, upload and fold. A cached material carries the
+## SHARED_META flag and is never changed in place: code that recolours, glows
+## or fades a mesh first takes the mesh's own copy with own_material(), which
+## leaves a material of its own as it is. fresh_material() is a new material
+## for a caller that sets it up itself. changed_shared_materials() names any
+## cached look changed in place since it was made (the tests check it).
 
 const SHARED_META := &"kit_shared_material"
 static var _materials: Dictionary = {}
+## Per cached material (by key): its stored values when it was made.
+static var _material_prints: Dictionary = {}
 static var _meshes: Dictionary = {}
 
 static func fresh_material(color: Color, roughness: float = 0.9) -> StandardMaterial3D:
@@ -31,7 +37,25 @@ static func shared_material(color: Color, roughness: float = 0.9, glow: Color = 
 		cached.emission_energy_multiplier = energy
 	cached.set_meta(SHARED_META, true)
 	_materials[key] = cached
+	_material_prints[key] = _material_print(cached)
 	return cached
+
+## Every stored value of a material (its metadata aside), as bytes.
+static func _material_print(mat: Material) -> PackedByteArray:
+	var values: Array = []
+	for property: Dictionary in mat.get_property_list():
+		var name := str(property.name)
+		if int(property.usage) & PROPERTY_USAGE_STORAGE and not name.begins_with("metadata/") and not name.begins_with("resource_"): values.append([name, mat.get(name)])
+	return var_to_bytes(values)
+
+## The keys of the cached looks whose values changed in place since they
+## were made: none, unless code changed a shared material without
+## own_material().
+static func changed_shared_materials() -> Array[String]:
+	var changed: Array[String] = []
+	for key: String in _materials:
+		if _material_print(_materials[key]) != _material_prints[key]: changed.append(key)
+	return changed
 
 static func is_shared(mat: Material) -> bool:
 	return mat != null and mat.has_meta(SHARED_META)
@@ -105,6 +129,19 @@ static func shared_mesh(kind: String, a: float, b: float = 0.0, c: float = 0.0) 
 	_meshes[key] = cached
 	return cached
 
+## The one cached mesh of mesh's shape (a box, sphere, cylinder, ring or
+## prism of the same parameters), mesh itself the first time. Shared by every
+## mesh of that shape, so it is never resized in place: code that resizes a
+## mesh builds it with its own (box_mesh and the like). Other meshes come back
+## as they are.
+static func cached_shape(mesh: Mesh) -> Mesh:
+	var key := _mesh_key(mesh)
+	if key.is_empty(): return mesh
+	var cached: Mesh = _meshes.get(key)
+	if cached != null: return cached
+	_meshes[key] = mesh
+	return mesh
+
 ## Folds a finished static prop into the caches: each primitive mesh is swapped
 ## for one cached mesh of the same shape, and each plain material (colour and
 ## roughness only) for its shared_material(). Textured, glowing, billboard or
@@ -122,11 +159,11 @@ static func share_static(root: Node) -> void:
 			instance.material_override = shared_material(mat.albedo_color, mat.roughness)
 
 static func _mesh_key(mesh: Mesh) -> String:
-	if mesh is BoxMesh: return "static-box|%s" % [mesh.size]
-	if mesh is SphereMesh: return "static-sphere|%.4f|%.4f|%d|%d" % [mesh.radius, mesh.height, mesh.radial_segments, mesh.rings]
-	if mesh is CylinderMesh: return "static-cylinder|%.4f|%.4f|%.4f|%d" % [mesh.top_radius, mesh.bottom_radius, mesh.height, mesh.radial_segments]
-	if mesh is TorusMesh: return "static-torus|%.4f|%.4f|%d|%d" % [mesh.inner_radius, mesh.outer_radius, mesh.rings, mesh.ring_segments]
-	if mesh is PrismMesh: return "static-prism|%s|%.4f" % [mesh.size, mesh.left_to_right]
+	if mesh is BoxMesh: return "static-box|%.6f|%.6f|%.6f|%d|%d|%d" % [mesh.size.x, mesh.size.y, mesh.size.z, mesh.subdivide_width, mesh.subdivide_height, mesh.subdivide_depth]
+	if mesh is SphereMesh: return "static-sphere|%.6f|%.6f|%d|%d|%s" % [mesh.radius, mesh.height, mesh.radial_segments, mesh.rings, mesh.is_hemisphere]
+	if mesh is CylinderMesh: return "static-cylinder|%.6f|%.6f|%.6f|%d|%d|%s|%s" % [mesh.top_radius, mesh.bottom_radius, mesh.height, mesh.radial_segments, mesh.rings, mesh.cap_top, mesh.cap_bottom]
+	if mesh is TorusMesh: return "static-torus|%.6f|%.6f|%d|%d" % [mesh.inner_radius, mesh.outer_radius, mesh.rings, mesh.ring_segments]
+	if mesh is PrismMesh: return "static-prism|%.6f|%.6f|%.6f|%.6f" % [mesh.size.x, mesh.size.y, mesh.size.z, mesh.left_to_right]
 	return ""
 
 static func _plain(mat: StandardMaterial3D) -> bool:

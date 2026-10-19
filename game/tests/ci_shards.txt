@@ -314,5 +314,6 @@ world_fingerprint_lighthouse 1
 world_fingerprint_lighthouse_v2 2
 world_fingerprint_physical 2
 world_kit 2
+world_looks 1
 your_replay_delete_ui 2
 your_replay_loading 2

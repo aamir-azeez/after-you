@@ -140,7 +140,7 @@ func _house(at: Vector3, lit: bool, size: float) -> void:
 		box(Vector3(0.035,0.46,0.08),CREAM,Vector3(x,0.65,0.66),house)
 
 func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
-	var mat := node.material_override as StandardMaterial3D
+	var mat := Primitives.own_material(node)
 	mat.emission_enabled = energy > 0.0
 	mat.emission = color
 	mat.emission_energy_multiplier = energy

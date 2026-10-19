@@ -114,8 +114,12 @@ func _set_cutaway(node: Node, faded: bool) -> void:
 	if not faded and node is MeshInstance3D and node.material_override is StandardMaterial3D:
 		var material := node.material_override as StandardMaterial3D
 		var alpha := float(node.get_meta("glass_original_alpha",1.0))
-		material.albedo_color.a = alpha
-		material.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA if alpha<0.999 else BaseMaterial3D.TRANSPARENCY_DISABLED
+		var transparency := BaseMaterial3D.TRANSPARENCY_ALPHA if alpha<0.999 else BaseMaterial3D.TRANSPARENCY_DISABLED
+		# A kit material is shared by every mesh of its look: change a copy.
+		if material.albedo_color.a != alpha or material.transparency != transparency:
+			material = Primitives.own_material(node)
+			material.albedo_color.a = alpha
+			material.transparency = transparency
 		node.cast_shadow = int(node.get_meta("glass_original_shadow",GeometryInstance3D.SHADOW_CASTING_SETTING_ON))
 
 func present(state: Dictionary, immediate: bool = false) -> void:

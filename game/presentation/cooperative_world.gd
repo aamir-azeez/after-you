@@ -87,7 +87,8 @@ func show_stage(stage: Dictionary) -> void:
 		band.scale.y = 2.4
 		band.rotation.z = PI / 2.0
 		_physical_balls[prop.id] = ball
-		_ball_materials[prop.id] = ball.material_override
+		# The ball takes its holder's colour in place.
+		_ball_materials[prop.id] = Primitives.own_material(ball)
 		var blur := BallRotationBlur.new()
 		blur.configure(self, ball, float(prop.radius_cm) / 100.0)
 		terrain.add_child(blur)

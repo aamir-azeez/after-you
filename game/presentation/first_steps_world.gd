@@ -177,7 +177,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	lift_target_height = float(state.mechanisms.lift.height_cm) / 100.0
 	if immediate: lift.position.y = lift_target_height
 	for id: String in control_visuals:
-		var mat := control_visuals[id].material_override as StandardMaterial3D
+		var mat := Primitives.own_material(control_visuals[id])
 		var active: bool = bool(state.controls.get(id, false))
 		mat.albedo_color = Color("f5d990") if active else Color("9c9672")
 		mat.emission_enabled = active

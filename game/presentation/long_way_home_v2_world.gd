@@ -95,6 +95,6 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 
 func _light(globe: MeshInstance3D, value: String) -> void:
 	var color: Color = LAMP_COLORS.get(value,LAMP_COLORS.off)
-	(globe.material_override as StandardMaterial3D).albedo_color = color
+	Primitives.own_material(globe).albedo_color = color
 	_glow(globe,color,0.9 if value in ["rose","moss"] else 0.0)
 	globe.set_meta("value",value)

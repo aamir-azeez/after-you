@@ -934,7 +934,7 @@ func _build_lever(lever: Dictionary) -> void:
 	# The housing is warm brass under a timber collar, not grey stone.
 	if terrain.get_child_count() > before:
 		var housing := terrain.get_child(before) as MeshInstance3D
-		if housing != null: (housing.material_override as StandardMaterial3D).albedo_color = BRASS
+		if housing != null: Primitives.own_material(housing).albedo_color = BRASS
 		cylinder(0.19, 0.04, TIMBER, _at(lever) + Vector3(0, 0.19, 0), terrain)
 	if lever.get("kind", "") == "selector": return
 	# Levers toggle, so a lamp beside the handle says plainly whether it is on.
@@ -1715,7 +1715,7 @@ func _build_lamplight() -> void:
 		var foot := point([spec[0], spec[1]]) + Vector3(0, 1.09, 0)
 		var pool := cylinder(0.62, 0.006, Color(1.0, 0.82, 0.5, 0.30), foot + Vector3(0, 0.005, 0), terrain)
 		pool.name = "LampPool"
-		(pool.material_override as StandardMaterial3D).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		Primitives.own_material(pool).shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 		pool.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 		var from := foot + Vector3(0, 1.30, 0)
 		var to := point([spec[2], spec[3]]) + Vector3(0, 1.09 + 0.95, 0)
@@ -1829,7 +1829,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	if is_instance_valid(_bell) and bool(state.get("complete", false)): _glow(_bell, LIGHT_COLOR, 1.6)
 
 func _lamp(lamp: MeshInstance3D, color: Color, lit: bool) -> void:
-	(lamp.material_override as StandardMaterial3D).albedo_color = color if lit else Color("4a4038")
+	Primitives.own_material(lamp).albedo_color = color if lit else Color("4a4038")
 	_glow(lamp, color, 1.2 if lit else 0.0)
 	lamp.set_meta("lit", lit)
 

@@ -33,6 +33,7 @@ const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Light = preload("res://core/lighthouse/borrowed_light.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
+const Primitives = preload("res://presentation/kit/primitives.gd")
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 const LIGHTHOUSE_FIXTURE := "lighthouse/complete-six-v3.json"
@@ -89,6 +90,7 @@ func _run() -> void:
 		_check(not normal.is_empty() and _hashes(normal) == _hashes(again), "World fingerprint is deterministic across fresh worlds: " + key)
 		passes["normal"] = normal
 		passes["reduced"] = _passes(key, true, stages)
+		_check(Primitives.changed_shared_materials().is_empty(), "Every kit look shared between meshes is as it was made after %s's scenarios; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [key, Primitives.changed_shared_materials()])
 		orders[key] = {}
 		for name: String in passes:
 			orders[key][name] = {}

@@ -94,28 +94,34 @@ const CREAM := Color("e9edd6")
 const TEAL := Color("91d6c6")
 const GOLD := Color("f4c38d")
 
-# Thin wrappers over the world kit. Keepsake art and every world call these;
-# each mesh gets its own material, so later recolouring stays local.
+# Thin wrappers over the world kit. Keepsake art and every world call these.
+# material() is a new material of the node's own, for a caller that changes
+# it as it builds. The shape helpers give every mesh of one colour the kit's
+# one cached material for that look (Primitives.shared_material), so a world
+# makes a material per look, not per mesh; code that later recolours, glows
+# or fades a mesh takes the mesh's own copy first (Primitives.own_material).
 func material(color: Color, roughness: float = 0.9) -> StandardMaterial3D:
 	return Primitives.fresh_material(color, roughness)
 
 func mesh_node(mesh: Mesh, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	return Primitives.mesh_node(mesh, material(color), pos, parent)
+	return Primitives.mesh_node(mesh, Primitives.shared_material(color), pos, parent)
 
+# The shape helpers share one cached mesh per shape too (Primitives.cached_shape);
+# code that resizes a mesh in place builds it with its own (Primitives.box_mesh).
 func box(size: Vector3, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	return mesh_node(Primitives.box_mesh(size), color, pos, parent)
+	return mesh_node(Primitives.cached_shape(Primitives.box_mesh(size)), color, pos, parent)
 
 func sphere(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	return mesh_node(_sphere_mesh(radius), color, pos, parent)
+	return mesh_node(Primitives.cached_shape(_sphere_mesh(radius)), color, pos, parent)
 
 func _sphere_mesh(radius: float) -> SphereMesh:
 	return Primitives.sphere_mesh(radius)
 
 func cylinder(radius: float, height: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	return mesh_node(Primitives.cylinder_mesh(radius, height), color, pos, parent)
+	return mesh_node(Primitives.cached_shape(Primitives.cylinder_mesh(radius, height)), color, pos, parent)
 
 func ring(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	return mesh_node(Primitives.ring_mesh(radius), color, pos, parent)
+	return mesh_node(Primitives.cached_shape(Primitives.ring_mesh(radius)), color, pos, parent)
 
 func _ready() -> void:
 	# Every world starts in the day look; later lineages relight it. Colours and
@@ -144,8 +150,11 @@ func _ready() -> void:
 	camera_exploration.camera = camera
 	camera_exploration.reduced_motion = func() -> bool: return reduced_motion
 	add_child(camera_exploration)
+	# The motes share one material of the world's own: the look tints them all
+	# at once (kit/look.gd).
+	var mote_material := material(Color.WHITE)
 	for i in range(32):
-		var node := sphere(0.018 + (i % 3) * 0.008, Color.WHITE, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
+		var node := Primitives.mesh_node(_sphere_mesh(0.018 + (i % 3) * 0.008), mote_material, Vector3(sin(i*2.17)*11, -2+cos(i*1.23)*3,cos(i*0.91)*9), self)
 		motes.append(node)
 	relight("day")
 	get_tree().process_frame.connect(_on_tree_frame)
@@ -782,14 +791,14 @@ func _present_garden(ready: bool, completed: bool, immediate: bool) -> void:
 	for petal: Node3D in garden_petals:
 		petal.rotation.x = petal_angle
 		var leaf := petal.get_node("Leaf") as MeshInstance3D
-		var leaf_material := leaf.material_override as StandardMaterial3D
+		var leaf_material := Primitives.own_material(leaf)
 		leaf_material.albedo_color = Color("e4bb7a") if ready or completed else Color("82927c")
 		leaf_material.emission_enabled = ready or completed
 		leaf_material.emission = Color("ffd398")
 		leaf_material.emission_energy_multiplier = 0.24 if ready or completed else 0.0
 	if is_instance_valid(goal_ring):
 		goal_ring.visible = ready or completed
-		var ring_material := goal_ring.material_override as StandardMaterial3D
+		var ring_material := Primitives.own_material(goal_ring)
 		ring_material.albedo_color = Color("f4cc8e")
 		ring_material.emission_enabled = ready or completed
 		ring_material.emission = Color("ffd398")
@@ -844,9 +853,9 @@ func present(snapshot: Dictionary, immediate: bool=false) -> void:
 		actors[role].visible=not (role=="b" and snapshot.role=="a")
 	_present_seed(snapshot.seed,immediate)
 	bridge_ready=bool(snapshot.bridge_open)
-	(plate.material_override as StandardMaterial3D).albedo_color=Color("f5d990") if snapshot.plate_active else Color("b5a06e")
+	Primitives.own_material(plate).albedo_color=Color("f5d990") if snapshot.plate_active else Color("b5a06e")
 	if is_instance_valid(gate_plate):
-		(gate_plate.material_override as StandardMaterial3D).albedo_color=Color("d5c5fa") if snapshot.get("gate_open",false) else Color("907ea8")
+		Primitives.own_material(gate_plate).albedo_color=Color("d5c5fa") if snapshot.get("gate_open",false) else Color("907ea8")
 	if is_instance_valid(lift):
 		var height := float(snapshot.get("lift_height",0))/100.0
 		lift.position.y=height

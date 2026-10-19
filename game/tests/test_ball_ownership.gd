@@ -22,6 +22,7 @@ func _run() -> void:
 	await _ownership_colors()
 	await _physical_colors()
 	await _extended_hud()
+	_check(preload("res://presentation/kit/primitives.gd").changed_shared_materials().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_materials()])
 	print("BALL OWNERSHIP: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 

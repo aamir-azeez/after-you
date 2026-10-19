@@ -398,10 +398,11 @@ func _shore(island: Dictionary, color: Color) -> void:
 		_shell_triangle(surface, top[index], bottom[next], top[next], face_color)
 		_shell_triangle(surface, bottom[index], center + Vector3(0, -1.62, 0), bottom[next], color.darkened(0.35))
 	surface.generate_normals()
-	var rock := mesh_node(surface.commit(), Color.WHITE, Vector3.ZERO, terrain)
+	var rock_material := material(Color.WHITE)
+	rock_material.vertex_color_use_as_albedo = true
+	rock_material.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var rock := Primitives.mesh_node(surface.commit(), rock_material, Vector3.ZERO, terrain)
 	rock.name = str(island.id) + "LowerRock"
-	(rock.material_override as StandardMaterial3D).vertex_color_use_as_albedo = true
-	(rock.material_override as StandardMaterial3D).cull_mode = BaseMaterial3D.CULL_DISABLED
 	# Edge strips start at the walking surface, clear of the floor's sides.
 	for side in [-1, 1]:
 		box(Vector3(width, 0.0175, 0.035), color.lightened(0.12), center + Vector3(0, 0.00875, side * (depth / 2.0 - 0.018)), terrain)
@@ -679,7 +680,7 @@ func _present_beacon(state: Dictionary) -> void:
 	for id: String in _hold_pad_nodes:
 		var held: bool = state.get("hold_pads", {}).get(id, false)
 		var pad: Dictionary = _hold_pad_nodes[id]
-		(pad.base.material_override as StandardMaterial3D).albedo_color = Color("d2bf8a") if held else Color("70858d")
+		Primitives.own_material(pad.base).albedo_color = Color("d2bf8a") if held else Color("70858d")
 		_glow(pad.rim, LIGHT_COLOR, 0.9 if held else 0.0)
 		pad.base.set_meta("occupied", held)
 	if _beacon.is_empty(): return
@@ -789,7 +790,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 			_glow(selector.dots[marker_index], LIGHT_COLOR, 0.8 if marker_index == index else 0.0)
 	var powered: bool = state.emitter_powered
 	if is_instance_valid(plate):
-		(plate.material_override as StandardMaterial3D).albedo_color = Color("d4b876") if powered else Color("927e5a")
+		Primitives.own_material(plate).albedo_color = Color("d4b876") if powered else Color("927e5a")
 		_glow(_pad_ring, LIGHT_COLOR, 0.8 if powered else 0.0)
 	for id: String in _source_nodes:
 		var emitting := false
@@ -824,8 +825,9 @@ func _present_beams(segments: Array) -> void:
 		var root := Node3D.new()
 		root.name = "OpticalSegment%d" % _beam_roots.size()
 		terrain.add_child(root)
-		var halo := box(Vector3(0.07, 0.07, 1), Color(1.0, 0.85, 0.57, 0.18), Vector3.ZERO, root)
-		var core := box(Vector3(0.022, 0.022, 1), LIGHT_COLOR, Vector3.ZERO, root)
+		# Their own meshes: a beam's length is set on its mesh as it moves.
+		var halo := mesh_node(Primitives.box_mesh(Vector3(0.07, 0.07, 1)), Color(1.0, 0.85, 0.57, 0.18), Vector3.ZERO, root)
+		var core := mesh_node(Primitives.box_mesh(Vector3(0.022, 0.022, 1)), LIGHT_COLOR, Vector3.ZERO, root)
 		_glow(halo, LIGHT_COLOR, 0.8)
 		_glow(core, LIGHT_COLOR, 1.3)
 		for side in [-1, 1]:
@@ -865,6 +867,8 @@ func _bar_between(from: Vector3, to: Vector3, width: float, color: Color, parent
 func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
 	var mat := node.material_override as StandardMaterial3D
 	if mat.emission_enabled == (energy > 0.0) and mat.emission == color and is_equal_approx(mat.emission_energy_multiplier,energy): return
+	# A kit material is shared by every mesh of its look: glow a copy.
+	mat = Primitives.own_material(node)
 	mat.emission_enabled = energy > 0.0
 	mat.emission = color
 	mat.emission_energy_multiplier = energy

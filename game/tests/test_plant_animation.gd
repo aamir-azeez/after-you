@@ -27,6 +27,7 @@ func _run() -> void:
 	await _world_case("First Steps", func() -> Array: return _chapter(Registry.FIRST_STEPS, "first_steps/lift-checkpoint", "first_steps/a-place-to-grow-a", "first_steps/a-place-to-grow-b"))
 	await _world_case("Relay", func() -> Array: return _chapter(Registry.RELAY, "v2/relay-checkpoint", "v2/garden-a", "v2/garden-b"))
 	await _world_case("Earlier Islands", _islands)
+	_check(preload("res://presentation/kit/primitives.gd").changed_shared_materials().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_materials()])
 	print("AFTER YOU PLANT ANIMATION: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

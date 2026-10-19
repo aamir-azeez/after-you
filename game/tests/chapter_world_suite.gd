@@ -32,6 +32,7 @@ func _run() -> void:
 				await _turn(level, evidence, index, role)
 	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)
+	_check(preload("res://presentation/kit/primitives.gd").changed_shared_materials().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_materials()])
 	print("%s WORLD: %d checks, %d failures" % [key.to_upper(), checks, failures])
 	quit(1 if failures else 0)
 

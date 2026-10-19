@@ -3,6 +3,7 @@ extends RefCounted
 ## rounded cream pebble, a short curved stem and one leaf to the side, with a
 ## soft glow around the body. Callers keep their own size, colour states and
 ## emission; only this builder decides the shape.
+const Primitives = preload("res://presentation/kit/primitives.gd")
 const LEAF := Color("a2bd81")
 const WHITE := Color("f6f4ea")
 const META := "seed_visual"
@@ -30,6 +31,8 @@ static func create(world: Node3D, radius: float, color: Color, at: Vector3, pare
 	shape.radial_segments = 16
 	shape.rings = 8
 	var body: MeshInstance3D = world.mesh_node(shape, color, at, parent)
+	# Carried, thrown and planted seeds are tinted and lit in place.
+	Primitives.own_material(body)
 	body.name = "Seed"
 	body.set_meta(META, true)
 	var stem: MeshInstance3D = world.cylinder(STEM.radius * scale, STEM.height * scale, LEAF, STEM.at * scale, body)
