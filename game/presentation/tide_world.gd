@@ -27,7 +27,7 @@ const RAMP_RATE := 1.6
 ## colour, and a drowned spirit sinks this far under the water it is in.
 const CLOSING_COLOR := Color("f08a5d")
 const DROWN_DEPTH := 0.55
-## A drowned spirit's face (spirit_look.gd), once the shared look has it.
+## A drowned spirit's face (spirit_look.gd).
 const KNOCKED_OUT := &"knocked_out"
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 ## Bubbles rising where a spirit went under: [x offset, z offset, start phase
@@ -1671,7 +1671,7 @@ func _show_drowned(drowned: Dictionary) -> void:
 	# A held face, so a replay seek keeps it; a doze would outrank it, so none.
 	var spirit := actors[slot] as SpiritVisual
 	if spirit.pose() == &"doze": spirit.set_pose(&"rest", {}, true)
-	if SpiritLook.has(KNOCKED_OUT): spirit.set_expression(KNOCKED_OUT, reduced_motion)
+	spirit.set_expression(KNOCKED_OUT, reduced_motion)
 	if not is_instance_valid(_drown_ring):
 		_drown_ring = cylinder(0.32, 0.01, Color(CREAM, 0.7), Vector3.ZERO, terrain)
 		_drown_ring.name = "DrownRing"

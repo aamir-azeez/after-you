@@ -68,14 +68,14 @@ func _run() -> void:
 	var harbour: Node3D = screen.world._water.harbour
 	_check(screen.world.actor_targets["p1"].y < float(harbour.get_meta("shown")) - 0.4 and is_instance_valid(screen.world._drown_ring), "The drowned spirit heads under the water and a ring spreads")
 	# Bubbles rise from where it went under, the same ones every time, and the
-	# face is the knocked-out one once the shared look has it.
+	# face is the knocked-out one.
 	var bubbles: Array = screen.world._drown_bubbles
 	var harbour_level := float(screen.world._water.harbour.get_meta("shown"))
 	_check(bubbles.size() == World.DROWN_BUBBLES.size() and bubbles.all(func(bubble: MeshInstance3D) -> bool: return bubble.visible and bubble.position.y > harbour_level), "Bubbles rise from the water where the spirit went under")
 	var heights: Array = bubbles.map(func(bubble: MeshInstance3D) -> float: return bubble.position.y)
 	screen.world._process(1.0 / 30.0)
 	_check(heights != bubbles.map(func(bubble: MeshInstance3D) -> float: return bubble.position.y), "The bubbles move while motion is on")
-	if SpiritLook.has(World.KNOCKED_OUT): _check(screen.world.actors["p1"]._held_expression == World.KNOCKED_OUT, "The drowned spirit wears the knocked-out face")
+	_check(SpiritLook.has(World.KNOCKED_OUT) and screen.world.actors["p1"]._held_expression == World.KNOCKED_OUT, "The drowned spirit wears the knocked-out face")
 	# The world keeps running through the beat: the spirit goes under.
 	var before: float = screen.world.actors["p1"].position.y
 	for _frame in range(screen.DROWN_BEAT_FRAMES):
