@@ -61,6 +61,7 @@ class ControlsStub extends CanvasLayer:
 	var updates := 0
 	func update_state(_title: String, _remaining: float, _state: Dictionary, _live: bool) -> void:
 		updates += 1
+	func show_tries(_tries: int) -> void: pass
 
 func _initialize() -> void:
 	_run.call_deferred()
