@@ -948,7 +948,7 @@ func _build_lever(lever: Dictionary) -> void:
 	# The housing is warm brass under a timber collar, not grey stone.
 	if terrain.get_child_count() > before:
 		var housing := terrain.get_child(before) as MeshInstance3D
-		if housing != null: Primitives.own_material(housing).albedo_color = BRASS
+		if housing != null: housing.material_override = Primitives.shared_material(BRASS)
 		cylinder(0.19, 0.04, TIMBER, _at(lever) + Vector3(0, 0.19, 0), terrain)
 	if lever.get("kind", "") == "selector": return
 	# Levers toggle, so a lamp beside the handle says plainly whether it is on.
