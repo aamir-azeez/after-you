@@ -38,6 +38,9 @@ func _switch() -> void:
 	current_scene = old
 	var parts: Array = old.get_children()
 	var leaf: Node = parts[0].get_child(0)
+	var service := Node.new()
+	old.add_child(service)
+	service.add_child(Timer.new())
 	var next := Node.new()
 	next.name = "NextScreen"
 	var packed := PackedScene.new()
@@ -51,7 +54,10 @@ func _switch() -> void:
 	await process_frame
 	_check(current_scene != null and current_scene.name == "NextScreen", "The new screen enters at the end of the frame, as before")
 	_check(not is_instance_valid(old), "The old screen itself is freed at the end of the frame, as before")
-	_check(is_instance_valid(parts[0]) and is_instance_valid(leaf) and not leaf.is_inside_tree(), "None of its nodes is freed in the frame of the change")
+	_check(is_instance_valid(parts[0]) and is_instance_valid(leaf) and not leaf.is_inside_tree(), "None of its drawn nodes is freed in the frame of the change")
+	_check(not is_instance_valid(service), "Its plain service nodes are freed at the end of that frame, as before")
+	await process_frame
+	_check(ScreenSwitch.pending_count() < 60, "Freeing starts in the frame after the new screen entered")
 	var frames := 0
 	while ScreenSwitch.pending_count() > 0 and frames < 120:
 		await process_frame

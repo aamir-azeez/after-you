@@ -10,8 +10,11 @@ extends Node
 ## before (its _exit_tree, tree_exiting and tree_exited run in the same place),
 ## and the new screen enters at the end of the frame as before. Only the old
 ## screen's nodes, already out of the tree, are handed to this node and freed
-## a slice of each later frame, children before their parents. Nothing out of
-## the tree processes, draws or takes input meanwhile.
+## a slice of each later frame, children before their parents, from the frame
+## after the new screen has entered. Nothing out of the tree processes, draws
+## or takes input meanwhile; the old screen's plain service nodes (neither
+## drawn nor holding drawn nodes) are freed at the end of the frame as before,
+## so none of them still answers a shared signal or timer.
 ##
 ## Home's scene is kept loaded for the session, so going back to Home never
 ## loads and compiles main.tscn again in the frame of the tap.
@@ -27,8 +30,16 @@ static var _pending: WeakRef
 
 ## Nodes still to free, deepest last.
 var _queue: Array = []
-## The frame the last nodes were handed over in.
+## Freeing waits for the new screen: armed once the tree says the scene has
+## changed (after its _ready), and only from a later frame. A change made from
+## input runs before the frame counter moves on, so the counter alone could
+## not tell the change's frame apart.
+var _armed := true
+var _armed_frame := -1
+## The frame of the last hand-over: a change the tree never reports still
+## frees from a few frames on.
 var _handed_frame := -1
+const ARM_FRAMES := 3
 
 ## The engine's change_scene_to_packed; on success the old screen's nodes are
 ## freed over the next frames instead of at the end of this one.
@@ -65,9 +76,21 @@ static func release(screen: Node) -> void:
 	if holder == null: return
 	for child: Node in screen.get_children():
 		screen.remove_child(child)
-		holder._queue.append(child)
+		if _draws(child): holder._queue.append(child)
+		else: child.queue_free()
+	holder._armed = false
 	holder._handed_frame = Engine.get_process_frames()
+	var tree := Engine.get_main_loop() as SceneTree
+	if not tree.scene_changed.is_connected(holder._arm): tree.scene_changed.connect(holder._arm, CONNECT_ONE_SHOT)
 	holder.set_process(true)
+
+## Whether node is drawn or holds drawn nodes: those are the bulk of a
+## screen, freed over frames. Anything else is a small service node.
+static func _draws(node: Node) -> bool:
+	if node is Node3D or node is CanvasItem or node is CanvasLayer: return true
+	for child: Node in node.get_children():
+		if _draws(child): return true
+	return false
 
 ## Nodes of old screens not freed yet.
 static func pending_count() -> int:
@@ -100,10 +123,16 @@ static func _instance(create: bool = true) -> Node:
 func _ready() -> void:
 	set_process(not _queue.is_empty())
 
+func _arm() -> void:
+	_armed = true
+	_armed_frame = Engine.get_process_frames()
+
 func _process(_delta: float) -> void:
 	# Never in the frame of the change itself, which has the new screen's
 	# _ready still to run.
-	if Engine.get_process_frames() == _handed_frame: return
+	var frame := Engine.get_process_frames()
+	if not _armed and frame > _handed_frame + ARM_FRAMES: _arm()
+	if not _armed or frame == _armed_frame: return
 	_free_some(FREE_SLICE_USEC)
 
 ## Frees nodes, children first, for up to budget_usec (all of them for 0).
