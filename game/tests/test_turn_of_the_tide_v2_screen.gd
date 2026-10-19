@@ -20,6 +20,19 @@ const SpiritLook = preload("res://presentation/spirit_look.gd")
 const TurnEndings = preload("res://presentation/turn_endings.gd")
 var checks := 0
 var failures := 0
+
+## Any journey the screen saves through (a room's coordinator or a solo
+## journal): records which save the screen asks for.
+class DraftLog extends RefCounted:
+	var live := 0
+	var cleared := 0
+	var last_error := ""
+	func save_live_draft(_simulation: RefCounted, _periodic: bool = false) -> bool:
+		live += 1
+		return true
+	func save_draft(recording: Dictionary) -> bool:
+		if recording.is_empty(): cleared += 1
+		return true
 var directory := ""
 
 func _initialize() -> void: _run.call_deferred()
@@ -89,6 +102,13 @@ func _run() -> void:
 	_check(screen.mode == "review", "After the beat the ending's card shows")
 	# Nothing of a drowned turn is kept: no draft, no archived attempt.
 	_check(not journal.has_draft() and journal.archived_attempts().is_empty(), "A drowned turn leaves no draft or saved attempt behind")
+	# The screen's one save path clears the draft for any journey, a room's too.
+	var drafts := DraftLog.new()
+	var probe: Node = load(Index.data(KEY).scene).instantiate()
+	probe.journey = drafts
+	probe.sim = b
+	_check(probe._persist_draft("review") and drafts.cleared == 1 and drafts.live == 0, "In a room as solo, a drowned turn's draft is cleared, never saved")
+	probe.free()
 	# A snapshot without the drowning (a retry, a replay seeking back) puts it away.
 	var fresh := Simulation.new()
 	fresh.reset(level, "set-the-tide", initial, first, "b")

@@ -344,9 +344,7 @@ func save_live_draft(simulation: RefCounted, periodic: bool = false) -> bool:
 		return true
 	if not finish_live_draft_save():
 		return false
-	# A turn the rules keep nowhere (a drowning) leaves no draft: the last
-	# autosave of it goes too.
-	if simulation != null and simulation.has_method("keeps_draft") and not simulation.keeps_draft(): return save_draft({})
+
 	_ensure_loaded()
 	if read_only or chapter_complete():
 		return false

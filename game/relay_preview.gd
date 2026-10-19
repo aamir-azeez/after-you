@@ -2109,6 +2109,12 @@ func _request_action() -> void:
 func _persist_draft(after_retry: String = "play", periodic: bool = false) -> bool:
 	if Journey.tick_of(sim) == 0:
 		return true
+	# A turn the rules keep nowhere (a drowning) leaves no draft, in a room or
+	# solo: the last autosave of it goes too.
+	if sim.has_method("keeps_draft") and not sim.keeps_draft():
+		if journey.save_draft({}): return true
+		_show_save_problem(journey.last_error, after_retry)
+		return false
 	var saved: bool = journey.save_live_draft(sim, periodic) if journey.has_method("poll_live_draft_save") else journey.save_live_draft(sim)
 	if saved:
 		return true
