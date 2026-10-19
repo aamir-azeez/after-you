@@ -201,6 +201,7 @@ func show_failed(ready: bool) -> void:
 	if host.hard.together and host.hard.reset_pending():
 		again.disabled = true
 		status.text = PlayerCopy.HARD_RESET_SENDING
+	status.visible = not status.text.is_empty()
 
 ## The friend's slip, on this phone: the same card, once per slip, while the
 ## slip itself is read for Replays.
@@ -272,6 +273,7 @@ func send_reset() -> void:
 	var done: bool = answer.get("ok", false) or answer.get("settled", false)
 	again.disabled = false
 	status.text = "" if done else PlayerCopy.HARD_RESET_WAITING
+	status.visible = not status.text.is_empty()
 	if answer.get("ok", false): _fill(int(answer.get("number", 0)))
 	if done: host.refresh_schedule.note_activity(Time.get_ticks_msec())
 
