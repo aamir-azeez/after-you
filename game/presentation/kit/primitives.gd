@@ -36,8 +36,9 @@ static func fresh_material(color: Color, roughness: float = 0.9) -> StandardMate
 
 ## One cached material per colour, roughness and glow, for unchanging scenery.
 static func shared_material(color: Color, roughness: float = 0.9, glow: Color = Color(0, 0, 0, 0), energy: float = 0.0) -> StandardMaterial3D:
-	# Transparency is part of the look, even for an alpha that rounds to 255.
-	var key := "%s|%d|%.3f|%s|%.3f" % [color.to_html(), int(color.a < 1.0), roughness, glow.to_html(), energy]
+	# The exact values (an Array hashes far faster than formatting a string;
+	# a barely see-through colour is not the opaque look).
+	var key := [color, roughness, glow, energy]
 	var cached: StandardMaterial3D = _materials.get(key)
 	if cached != null: return cached
 	cached = fresh_material(color, roughness)
@@ -74,13 +75,13 @@ static func _material_print(mat: Material) -> PackedByteArray:
 ## None, in a working build.
 static func changed_shared_looks() -> Array[String]:
 	var changed: Array[String] = []
-	for key: String in _materials:
-		if _material_print(_materials[key]) != _material_prints[key]: changed.append(key)
-	for key: String in _shapes:
+	for key: Array in _materials:
+		if _material_print(_materials[key]) != _material_prints[key]: changed.append(str(key))
+	for key: Array in _shapes:
 		var mesh: Variant = (_shapes[key] as WeakRef).get_ref()
-		if mesh != null and _mesh_key(mesh) != key: changed.append(key)
-	for key: String in _meshes:
-		if key.begins_with("static-") and _mesh_key(_meshes[key]) != key: changed.append(key)
+		if mesh != null and _mesh_key(mesh) != key: changed.append(str(key))
+	for key: Variant in _meshes:
+		if key is Array and _mesh_key(_meshes[key]) != key: changed.append(str(key))
 	return changed
 
 static func is_shared(mat: Material) -> bool:
@@ -169,7 +170,7 @@ static func cached_shape(mesh: Mesh) -> Mesh:
 	var live: Variant = ref.get_ref() if ref != null else null
 	if live != null: return live
 	if _shapes.size() >= SHAPES_PRUNE_AT:
-		for gone: String in _shapes.keys().filter(func(name: String) -> bool: return (_shapes[name] as WeakRef).get_ref() == null): _shapes.erase(gone)
+		for gone: Array in _shapes.keys().filter(func(shape: Array) -> bool: return (_shapes[shape] as WeakRef).get_ref() == null): _shapes.erase(gone)
 	_shapes[key] = weakref(mesh)
 	return mesh
 
@@ -189,13 +190,14 @@ static func share_static(root: Node) -> void:
 		if mat != null and not is_shared(mat) and _plain(mat):
 			instance.material_override = shared_material(mat.albedo_color, mat.roughness)
 
-static func _mesh_key(mesh: Mesh) -> String:
-	if mesh is BoxMesh: return "static-box|%.6f|%.6f|%.6f|%d|%d|%d" % [mesh.size.x, mesh.size.y, mesh.size.z, mesh.subdivide_width, mesh.subdivide_height, mesh.subdivide_depth]
-	if mesh is SphereMesh: return "static-sphere|%.6f|%.6f|%d|%d|%s" % [mesh.radius, mesh.height, mesh.radial_segments, mesh.rings, mesh.is_hemisphere]
-	if mesh is CylinderMesh: return "static-cylinder|%.6f|%.6f|%.6f|%d|%d|%s|%s" % [mesh.top_radius, mesh.bottom_radius, mesh.height, mesh.radial_segments, mesh.rings, mesh.cap_top, mesh.cap_bottom]
-	if mesh is TorusMesh: return "static-torus|%.6f|%.6f|%d|%d" % [mesh.inner_radius, mesh.outer_radius, mesh.rings, mesh.ring_segments]
-	if mesh is PrismMesh: return "static-prism|%.6f|%.6f|%.6f|%.6f" % [mesh.size.x, mesh.size.y, mesh.size.z, mesh.left_to_right]
-	return ""
+## A primitive mesh's shape as exact values ([] for any other mesh).
+static func _mesh_key(mesh: Mesh) -> Array:
+	if mesh is BoxMesh: return [&"box", mesh.size, mesh.subdivide_width, mesh.subdivide_height, mesh.subdivide_depth]
+	if mesh is SphereMesh: return [&"sphere", mesh.radius, mesh.height, mesh.radial_segments, mesh.rings, mesh.is_hemisphere]
+	if mesh is CylinderMesh: return [&"cylinder", mesh.top_radius, mesh.bottom_radius, mesh.height, mesh.radial_segments, mesh.rings, mesh.cap_top, mesh.cap_bottom]
+	if mesh is TorusMesh: return [&"torus", mesh.inner_radius, mesh.outer_radius, mesh.rings, mesh.ring_segments]
+	if mesh is PrismMesh: return [&"prism", mesh.size, mesh.left_to_right]
+	return []
 
 static func _plain(mat: StandardMaterial3D) -> bool:
 	return mat.get_class() == "StandardMaterial3D" and mat.albedo_texture == null and not mat.emission_enabled \
