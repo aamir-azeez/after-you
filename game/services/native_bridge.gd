@@ -7,7 +7,7 @@ extends RefCounted
 const ANDROID := "AfterYouAndroid"
 const IOS := "AfterYouIOS"
 ## What the iOS plugin provides. Photo capture is Android only for now.
-const IOS_SERVICES := ["secure_store", "share", "invite_link", "purchases", "notifications"]
+const IOS_SERVICES := ["secure_store", "share", "invite_link", "purchases", "notifications", "games"]
 
 ## The singleton serving this service, or null when the build has none.
 static func singleton(service: String) -> Object:
