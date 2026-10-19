@@ -1053,16 +1053,18 @@ func _folds_static_scenery() -> bool:
 ## one frame; otherwise the fold finishes on its first frame. Over frames it
 ## takes FOLD_FRAME_USEC a frame while the world runs (play), and while it is
 ## held still behind a card (the ready and waiting cards, before the first
-## turn) the same slice of the frame a staged build takes (frame_budget_usec):
-## nothing else moves then, so the fold is done in a few frames instead of
-## running on for seconds after the card.
+## turn) the slice a staged build takes at the screen's own rate
+## (frame_budget_usec, never stretched by the card's lower frame cap): nothing
+## else moves then, so the fold is done in a few frames instead of running on
+## for seconds after the card.
 var fold_over_frames := false
 const FOLD_FRAME_USEC := 3000
 
 ## The slice of this frame the fold takes (microseconds; 0 for all of it).
 func _fold_slice_usec() -> int:
 	if not fold_over_frames: return 0
-	return FOLD_FRAME_USEC if is_processing() else frame_budget_usec()
+	return FOLD_FRAME_USEC if is_processing() else frame_budget_usec(DisplayServer.screen_get_refresh_rate(), 0)
+
 var _fold_job: Dictionary = {}
 
 ## Nodes whose children are looked up or walked one by one after the build;
