@@ -131,14 +131,17 @@ func step(input: Dictionary = {}) -> Dictionary:
 	_refresh_routes()
 	for route_id: String in _routes:
 		if _routes[route_id] and not bool(previous_routes.get(route_id, false)): _events.append("bridge_opened:" + route_id)
+	_check_hazards()
 	if role == "a": _update_source_readiness()
 	if role == "b" and stage.goal_policy.kind == "ball_home": _check_ball_home()
 	tick += 1
-	if role == "b" and _objective and tick >= int(_prior.duration_ticks):
+	# Only a hazard (_check_hazards) can have ended the turn before this point.
+	if role == "b" and _objective and tick >= int(_prior.duration_ticks) and not finished:
 		complete = true
 		finished = true
-		for route_id: String in _routes:
-			if _routes[route_id] and route_id not in _mechanisms.latched_bridges: _mechanisms.latched_bridges.append(route_id)
+		if _keeps_routes_at_completion():
+			for route_id: String in _routes:
+				if _routes[route_id] and route_id not in _mechanisms.latched_bridges: _mechanisms.latched_bridges.append(route_id)
 		_mechanisms.latched_bridges.sort()
 		_events.append("stage_complete")
 	if tick >= duration_limit():
@@ -514,6 +517,17 @@ func _proof_engine() -> RefCounted:
 
 func _reset_mechanics() -> void:
 	pass
+
+## After a tick's routes are final, before readiness and completion: a facade
+## whose rules can end a turn early (a spirit caught on a shut crossing) sets
+## `finished` here. Published rules have none.
+func _check_hazards() -> void:
+	pass
+
+## Whether a completed stage keeps every route open at its end for the stages
+## after it (latched_bridges). Published rules do.
+func _keeps_routes_at_completion() -> bool:
+	return true
 
 func _after_move() -> void:
 	if not _comfort_rules() or role != "b": return

@@ -11,7 +11,21 @@ const COMFORT_VERSION := 8
 ## definition that declares it ("simulation_version": 9) plays it, and it then
 ## plays nothing else; 7 and 8 stay exactly as published.
 const COMFORT_ALIAS_VERSION := 9
+## Tide rules: comfort rules (8 and 9) where nothing stays open because it once
+## was. A crossing whose gate stops holding stays walkable for the
+## definition's "closing_ticks", then shuts; a spirit standing on a shut
+## crossing then drowns and the turn ends there. A completed stage keeps no
+## routes for the next one. Only a definition that pins 10 plays them.
+const TIDE_RULES_VERSION := 10
+## What a drowned turn says (snapshot text; PlayerCopy shows the editable
+## lines): the player's own spirit, or the memory's.
+const DROWNED_YOU := "Oh no, you drowned! Try again?"
+const DROWNED_FRIEND := "Oh no, your friend drowned! Try again?"
 var _entry_latches: Dictionary = {}
+## Tide rules: route id -> the tick its crossing shuts, while it closes.
+var _closing: Dictionary = {}
+## Tide rules: {"slot", "route", "tick"} once a spirit has drowned.
+var _drowned: Dictionary = {}
 var _ready_branch := ""
 var _optics: Dictionary = {"segments":[],"signals":{}}
 
@@ -53,6 +67,7 @@ static func _record_version(record: Dictionary) -> int:
 	if declared is int or declared is float:
 		if declared == COMFORT_VERSION: return COMFORT_VERSION
 		if declared == COMFORT_ALIAS_VERSION: return COMFORT_ALIAS_VERSION
+		if declared == TIDE_RULES_VERSION: return TIDE_RULES_VERSION
 	return CURRENT_SIMULATION_VERSION
 
 static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary = {}) -> int:
@@ -63,6 +78,8 @@ static func _checkpoint_version(checkpoint: Dictionary, definition: Dictionary =
 
 func _reset_mechanics() -> void:
 	_entry_latches = {}
+	_closing = {}
+	_drowned = {}
 	_ready_branch = ""
 	_optics = {"segments":[],"signals":{}}
 
@@ -77,10 +94,45 @@ func _advance_source() -> void:
 
 func _refresh_routes() -> void:
 	_refresh_optics()
+	var was: Dictionary = _routes.duplicate() if _tide_rules() else {}
 	for route: Dictionary in level.get("bridges", []) + level.get("stairs", []):
 		_routes[route.id] = route.id in _mechanisms.latched_bridges or bool(_entry_latches.get(route.id, false))
 	for gate: Dictionary in stage.get("gates", []):
 		_routes[gate.route_id] = bool(_routes.get(gate.route_id, false)) or Seven.predicate(gate.get("when", {}), stage, _players, _mechanisms, _optics.signals)
+	if _tide_rules(): _close_slowly(was)
+
+func _tide_rules() -> bool:
+	return simulation_version >= TIDE_RULES_VERSION
+
+## Tide rules: a crossing that was open and whose gate no longer holds keeps
+## its floor until `closing_ticks` after the tick it started closing, then
+## shuts. Holding again in the meantime, it simply stays open.
+func _close_slowly(was: Dictionary) -> void:
+	for id: String in _routes:
+		if _routes[id]:
+			_closing.erase(id)
+		elif _closing.has(id):
+			if tick < int(_closing[id]): _routes[id] = true
+			else: _closing.erase(id)
+		elif bool(was.get(id, false)) and int(level.get("closing_ticks", 0)) > 0:
+			_closing[id] = tick + int(level.closing_ticks)
+			_routes[id] = true
+			_events.append("closing:" + id)
+
+## Tide rules: a spirit standing on a crossing that is now shut drowns, the
+## player's own or the memory's, and the turn ends.
+func _check_hazards() -> void:
+	if not _tide_rules() or not _drowned.is_empty(): return
+	for slot: String in ["p0", "p1"]:
+		var surface := str(_players[slot].surface_id)
+		if _routes.has(surface) and not bool(_routes[surface]):
+			_drowned = {"slot": slot, "route": surface, "tick": tick}
+			finished = true
+			_events.append("drowned:" + slot)
+			return
+
+func _keeps_routes_at_completion() -> bool:
+	return not _tide_rules()
 
 func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
@@ -132,6 +184,7 @@ func _objective_display() -> Dictionary:
 ## Snapshot text only. A harbour hold that began too late to leave the partner
 ## their budget says so, instead of the generic "keep the crossing ready".
 func commit_reason() -> String:
+	if not _drowned.is_empty(): return DROWNED_YOU if _drowned.slot == active_slot else DROWNED_FRIEND
 	if level.get("id", "") == "turn-of-the-tide" and error.is_empty() and role == "a" and not can_commit() and not _ready_branch.is_empty() and _hold_start >= 0 and _hold_start + source_budget_ticks() >= receiver_deadline():
 		return "Try again with more time left for your partner."
 	return super.commit_reason()
@@ -182,7 +235,7 @@ func source_budget_ticks() -> int:
 	return budget
 
 func can_commit() -> bool:
-	if level.is_empty() or not error.is_empty() or tick==0: return false
+	if level.is_empty() or not error.is_empty() or tick==0 or not _drowned.is_empty(): return false
 	if role=="b": return complete
 	return not _ready_branch.is_empty() and _hold_start>=0 and _hold_start+source_budget_ticks()<receiver_deadline()
 
@@ -193,12 +246,21 @@ func snapshot() -> Dictionary:
 		value.route_progress["entered_routes"]=_sorted_latches()
 		value["source_branch"]=_ready_branch
 		value["optics"]=_optics.duplicate(true)
+		if _tide_rules():
+			# Ticks left before each closing crossing shuts, and who drowned.
+			var closing: Dictionary = {}
+			for id: String in _closing: closing[id] = int(_closing[id]) - tick
+			value.route_progress["closing"]=closing
+			value["drowned"]=_drowned.duplicate()
 	return value
 
 func _state_body() -> Dictionary:
 	var value:=super._state_body()
 	value["entered_routes"]=_sorted_latches()
 	value["source_branch"]=_ready_branch
+	if _tide_rules():
+		value["closing"]=_closing.duplicate()
+		value["drowned"]=_drowned.duplicate()
 	return value
 
 func _sorted_latches() -> Array:
