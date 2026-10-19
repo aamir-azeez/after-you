@@ -135,7 +135,7 @@ func _run() -> void:
 	await _memory_line(level, initial)
 	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)
-	_check(preload("res://presentation/kit/primitives.gd").changed_shared_materials().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_materials()])
+	_check(preload("res://presentation/kit/primitives.gd").changed_shared_looks().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_looks()])
 	print("TURN OF THE TIDE V2 SCREEN: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

@@ -866,6 +866,8 @@ func _bar_between(from: Vector3, to: Vector3, width: float, color: Color, parent
 
 func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
 	var mat := node.material_override as StandardMaterial3D
+	# Unlit already: nothing to change, whatever colour the glow was.
+	if energy <= 0.0 and not mat.emission_enabled: return
 	if mat.emission_enabled == (energy > 0.0) and mat.emission == color and is_equal_approx(mat.emission_energy_multiplier,energy): return
 	# A kit material is shared by every mesh of its look: glow a copy.
 	mat = Primitives.own_material(node)

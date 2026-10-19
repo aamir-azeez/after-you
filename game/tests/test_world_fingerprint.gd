@@ -90,7 +90,7 @@ func _run() -> void:
 		_check(not normal.is_empty() and _hashes(normal) == _hashes(again), "World fingerprint is deterministic across fresh worlds: " + key)
 		passes["normal"] = normal
 		passes["reduced"] = _passes(key, true, stages)
-		_check(Primitives.changed_shared_materials().is_empty(), "Every kit look shared between meshes is as it was made after %s's scenarios; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [key, Primitives.changed_shared_materials()])
+		_check(Primitives.changed_shared_looks().is_empty(), "Every kit look shared between meshes is as it was made after %s's scenarios; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [key, Primitives.changed_shared_looks()])
 		orders[key] = {}
 		for name: String in passes:
 			orders[key][name] = {}

@@ -57,7 +57,7 @@ func _run() -> void:
 	var stages := _snapshots(key)
 	_check(stages.size() == 2, key + ": both stages replay from their fixtures")
 	_passes(key, false, stages)
-	_check(Primitives.changed_shared_materials().is_empty(), key + ": its scenarios change no cached look in place: %s" % [Primitives.changed_shared_materials()])
+	_check(Primitives.changed_shared_looks().is_empty(), key + ": its scenarios change no cached look in place: %s" % [Primitives.changed_shared_looks()])
 	print("WORLD LOOKS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

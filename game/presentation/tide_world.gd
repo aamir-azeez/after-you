@@ -1639,7 +1639,10 @@ func _show_closing(closing: Dictionary) -> void:
 			if trim == null or not trim.has_meta("edge"): continue
 			if closing.has(id):
 				if not trim.has_meta("warned"):
-					trim.material_override = trim.material_override.duplicate()
+					var warned_material := trim.material_override.duplicate()
+					# A copy is never a kit look, whatever it was copied from.
+					warned_material.remove_meta(Primitives.SHARED_META)
+					trim.material_override = warned_material
 					trim.set_meta("warned", true)
 				# Reduce motion: a steady glow instead of a flash.
 				_glow(trim, CLOSING_COLOR, 1.1 if reduced_motion else (1.6 if int(closing[id]) % 10 < 5 else 0.5))

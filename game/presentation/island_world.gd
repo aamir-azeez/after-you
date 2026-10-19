@@ -1060,10 +1060,14 @@ func _folds_static_scenery() -> bool:
 var fold_over_frames := false
 const FOLD_FRAME_USEC := 3000
 
+## The held slice, worked out once per fold (the screen's rate is a native
+## call on a phone).
+var _fold_held_usec := FOLD_FRAME_USEC
+
 ## The slice of this frame the fold takes (microseconds; 0 for all of it).
 func _fold_slice_usec() -> int:
 	if not fold_over_frames: return 0
-	return FOLD_FRAME_USEC if is_processing() else frame_budget_usec(DisplayServer.screen_get_refresh_rate(), 0)
+	return FOLD_FRAME_USEC if is_processing() else _fold_held_usec
 
 var _fold_job: Dictionary = {}
 
@@ -1121,6 +1125,7 @@ func _fold_static_scenery() -> Dictionary:
 		if holder != null: owners.append(holder)
 		_fold_job = StaticBatch.start(terrain, owners, _fold_options())
 		if _fold_job.is_empty(): return {}
+		_fold_held_usec = frame_budget_usec(DisplayServer.screen_get_refresh_rate(), 0)
 	var job := _fold_job
 	if StaticBatch.step(job, _fold_slice_usec()): _fold_job = {}
 	return job

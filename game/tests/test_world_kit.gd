@@ -47,12 +47,19 @@ func _check_materials() -> void:
 	var own := Primitives.own_material(one)
 	_check(own != first and not Primitives.is_shared(own) and one.material_override == own and two.material_override == first, "Taking a mesh's own material copies a shared one")
 	_check(Primitives.own_material(one) == own, "A private material is kept")
-	_check(Primitives.changed_shared_materials().is_empty(), "No cached look has changed in place: %s" % [Primitives.changed_shared_materials()])
+	_check(Primitives.changed_shared_looks().is_empty(), "No cached look has changed in place: %s" % [Primitives.changed_shared_looks()])
 	var tint := first.albedo_color
 	first.albedo_color = Color.RED
-	_check(Primitives.changed_shared_materials().size() == 1, "A cached look changed in place is named")
+	_check(Primitives.changed_shared_looks().size() == 1, "A cached look changed in place is named")
 	first.albedo_color = tint
-	_check(Primitives.changed_shared_materials().is_empty(), "Put back, it is no longer named")
+	_check(Primitives.changed_shared_looks().is_empty(), "Put back, it is no longer named")
+	var shape := Primitives.cached_shape(Primitives.box_mesh(Vector3(0.123, 0.2, 0.3))) as BoxMesh
+	_check(Primitives.cached_shape(Primitives.box_mesh(Vector3(0.123, 0.2, 0.3))) == shape and Primitives.cached_shape(Primitives.box_mesh(Vector3(0.124, 0.2, 0.3))) != shape, "One cached mesh per shape")
+	shape.size.x = 0.5
+	_check(Primitives.changed_shared_looks().size() == 1, "A shared shape resized in place is named")
+	shape.size.x = 0.123
+	_check(Primitives.changed_shared_looks().is_empty(), "Put back, it is no longer named either")
+	_check(Primitives.shared_material(Color(1, 1, 1, 0.999)) != Primitives.shared_material(Color.WHITE), "A look that is barely see-through is not the opaque look")
 	# Every world's shape helpers share one cached material per look; one
 	# changed later takes its own copy first.
 	var world: Node3D = LighthouseWorld.new()
@@ -65,7 +72,7 @@ func _check_materials() -> void:
 	_check(a.material_override != first and a.material_override.emission_enabled and not first.emission_enabled and b.material_override == first, "Glowing one mesh glows its own copy, never the look")
 	var motes: Array = world.motes
 	_check(not Primitives.is_shared(motes[0].material_override) and motes.all(func(mote: MeshInstance3D) -> bool: return mote.material_override == motes[0].material_override), "The motes share one material of the world's own, which the look tints")
-	_check(Primitives.changed_shared_materials().is_empty(), "Building and glowing changed no cached look: %s" % [Primitives.changed_shared_materials()])
+	_check(Primitives.changed_shared_looks().is_empty(), "Building and glowing changed no cached look: %s" % [Primitives.changed_shared_looks()])
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], []) == [[0, 0, 100, 100]], "No hole keeps the floor whole")
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], [40, 40, 60, 60]).size() == 4, "A hole leaves four floor pieces")
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], [0, 40, 60, 100]).size() == 2, "A hole at an edge leaves only the pieces that exist")

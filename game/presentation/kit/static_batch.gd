@@ -320,7 +320,7 @@ static func _key(leaf: MeshInstance3D, xform: Transform3D, materials: Dictionary
 static func _material_key(material: StandardMaterial3D, materials: Dictionary) -> String:
 	var id := material.get_instance_id()
 	if materials.has(id): return materials[id]
-	if Primitives.is_shared(material) and _shared_keys.has(id):
+	if Primitives.is_cached(material) and _shared_keys.has(id):
 		materials[id] = _shared_keys[id]
 		return _shared_keys[id]
 	var kind := material.get_class()
@@ -335,7 +335,7 @@ static func _material_key(material: StandardMaterial3D, materials: Dictionary) -
 	for name: StringName in material.get_meta_list(): values.append([name, material.get_meta(name)])
 	var key := var_to_bytes(values).hex_encode().sha256_text()
 	materials[id] = key
-	if Primitives.is_shared(material): _shared_keys[id] = key
+	if Primitives.is_cached(material): _shared_keys[id] = key
 	return key
 
 ## A rotation times one scale for all axes.

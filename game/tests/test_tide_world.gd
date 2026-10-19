@@ -45,7 +45,7 @@ func _run() -> void:
 		if state.get_node_property_name(0, index) == "chapter_key": key = str(state.get_node_property_value(0, index))
 	_check(key == KEY, "The chapter scene opens Turn of the Tide on the shared chapter screen")
 	_check(Canonical.digest(level) == digest, "Building and presenting the world never changes the definition")
-	_check(preload("res://presentation/kit/primitives.gd").changed_shared_materials().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_materials()])
+	_check(preload("res://presentation/kit/primitives.gd").changed_shared_looks().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_looks()])
 	print("TIDE WORLD: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 

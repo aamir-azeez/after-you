@@ -200,6 +200,6 @@ func _run() -> void:
 			for world: Node3D in [plain, whole, stepped]: world.free()
 		print("fold_present %s: %d ms" % [key, Time.get_ticks_msec() - started])
 	await process_frame
-	_check(preload("res://presentation/kit/primitives.gd").changed_shared_materials().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_materials()])
+	_check(preload("res://presentation/kit/primitives.gd").changed_shared_looks().is_empty(), "Every kit look shared between meshes is as it was made; code that changes a mesh's material takes its own copy (Primitives.own_material): %s" % [preload("res://presentation/kit/primitives.gd").changed_shared_looks()])
 	print("FOLD PRESENT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

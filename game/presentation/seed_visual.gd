@@ -22,7 +22,9 @@ const GLOW_ALPHA := 0.7
 
 ## Returns the seed body. `radius` is its vertical half extent, so a carried,
 ## resting or flying seed sits where the old round seed of that radius sat.
-## The body owns its material; stem, leaf and glow are children with their own.
+## The body owns its material (callers tint and light it); the stem and leaf
+## show the kit's shared looks and are never changed in place; the glow has
+## its own.
 static func create(world: Node3D, radius: float, color: Color, at: Vector3, parent: Node3D) -> MeshInstance3D:
 	var scale := radius / BODY_HALF_HEIGHT
 	var shape := SphereMesh.new()

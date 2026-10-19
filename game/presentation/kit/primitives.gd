@@ -8,14 +8,23 @@ extends RefCounted
 ## SHARED_META flag and is never changed in place: code that recolours, glows
 ## or fades a mesh first takes the mesh's own copy with own_material(), which
 ## leaves a material of its own as it is. fresh_material() is a new material
-## for a caller that sets it up itself. changed_shared_materials() names any
-## cached look changed in place since it was made (the tests check it).
+## for a caller that sets it up itself. The shape helpers share meshes the
+## same way (cached_shape). changed_shared_looks() names any cached material
+## or shape changed in place since it was made (the tests check it).
 
 const SHARED_META := &"kit_shared_material"
 static var _materials: Dictionary = {}
+## The instance ids of the cached materials, for is_cached().
+static var _material_ids: Dictionary = {}
 ## Per cached material (by key): its stored values when it was made.
 static var _material_prints: Dictionary = {}
+## Stored property names per material class, read once (_material_print).
+static var _print_names: Dictionary = {}
 static var _meshes: Dictionary = {}
+## cached_shape's meshes, by shape key, held weakly: a shape lives while a
+## world draws it, and a chapter's one-off wall lengths go with its world.
+static var _shapes: Dictionary = {}
+const SHAPES_PRUNE_AT := 4096
 
 static func fresh_material(color: Color, roughness: float = 0.9) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -27,7 +36,8 @@ static func fresh_material(color: Color, roughness: float = 0.9) -> StandardMate
 
 ## One cached material per colour, roughness and glow, for unchanging scenery.
 static func shared_material(color: Color, roughness: float = 0.9, glow: Color = Color(0, 0, 0, 0), energy: float = 0.0) -> StandardMaterial3D:
-	var key := "%s|%.3f|%s|%.3f" % [color.to_html(), roughness, glow.to_html(), energy]
+	# Transparency is part of the look, even for an alpha that rounds to 255.
+	var key := "%s|%d|%.3f|%s|%.3f" % [color.to_html(), int(color.a < 1.0), roughness, glow.to_html(), energy]
 	var cached: StandardMaterial3D = _materials.get(key)
 	if cached != null: return cached
 	cached = fresh_material(color, roughness)
@@ -37,24 +47,40 @@ static func shared_material(color: Color, roughness: float = 0.9, glow: Color = 
 		cached.emission_energy_multiplier = energy
 	cached.set_meta(SHARED_META, true)
 	_materials[key] = cached
+	_material_ids[cached.get_instance_id()] = true
 	_material_prints[key] = _material_print(cached)
 	return cached
 
+## Whether mat is one of the cached looks themselves (a copy of one is not).
+static func is_cached(mat: Material) -> bool:
+	return mat != null and _material_ids.has(mat.get_instance_id())
+
 ## Every stored value of a material (its metadata aside), as bytes.
 static func _material_print(mat: Material) -> PackedByteArray:
+	var kind := mat.get_class()
+	if not _print_names.has(kind):
+		var names: Array[StringName] = []
+		for property: Dictionary in mat.get_property_list():
+			var name := str(property.name)
+			if int(property.usage) & PROPERTY_USAGE_STORAGE and not name.begins_with("metadata/") and not name.begins_with("resource_"): names.append(StringName(name))
+		_print_names[kind] = names
 	var values: Array = []
-	for property: Dictionary in mat.get_property_list():
-		var name := str(property.name)
-		if int(property.usage) & PROPERTY_USAGE_STORAGE and not name.begins_with("metadata/") and not name.begins_with("resource_"): values.append([name, mat.get(name)])
+	for name: StringName in _print_names[kind]: values.append(mat.get(name))
 	return var_to_bytes(values)
 
-## The keys of the cached looks whose values changed in place since they
-## were made: none, unless code changed a shared material without
-## own_material().
-static func changed_shared_materials() -> Array[String]:
+## The keys of the cached looks changed in place since they were made: a
+## material whose values changed (code changed it without own_material()),
+## or a shared shape resized (code resized it instead of building its own).
+## None, in a working build.
+static func changed_shared_looks() -> Array[String]:
 	var changed: Array[String] = []
 	for key: String in _materials:
 		if _material_print(_materials[key]) != _material_prints[key]: changed.append(key)
+	for key: String in _shapes:
+		var mesh: Variant = (_shapes[key] as WeakRef).get_ref()
+		if mesh != null and _mesh_key(mesh) != key: changed.append(key)
+	for key: String in _meshes:
+		if key.begins_with("static-") and _mesh_key(_meshes[key]) != key: changed.append(key)
 	return changed
 
 static func is_shared(mat: Material) -> bool:
@@ -137,9 +163,14 @@ static func shared_mesh(kind: String, a: float, b: float = 0.0, c: float = 0.0) 
 static func cached_shape(mesh: Mesh) -> Mesh:
 	var key := _mesh_key(mesh)
 	if key.is_empty(): return mesh
-	var cached: Mesh = _meshes.get(key)
-	if cached != null: return cached
-	_meshes[key] = mesh
+	var kept: Mesh = _meshes.get(key)
+	if kept != null: return kept
+	var ref: WeakRef = _shapes.get(key)
+	var live: Variant = ref.get_ref() if ref != null else null
+	if live != null: return live
+	if _shapes.size() >= SHAPES_PRUNE_AT:
+		for gone: String in _shapes.keys().filter(func(name: String) -> bool: return (_shapes[name] as WeakRef).get_ref() == null): _shapes.erase(gone)
+	_shapes[key] = weakref(mesh)
 	return mesh
 
 ## Folds a finished static prop into the caches: each primitive mesh is swapped
