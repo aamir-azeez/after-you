@@ -10,11 +10,14 @@ import homeV2Definition from "./long-way-home-v2.json";
 import homeV2Initial from "./long-way-home-v2-initial.json";
 import tideDefinition from "./turn-of-the-tide.json";
 import tideInitial from "./turn-of-the-tide-initial.json";
+import tideV2Definition from "./turn-of-the-tide-v2.json";
+import tideV2Initial from "./turn-of-the-tide-v2-initial.json";
 
 export const CONSERVATORY_HASH = "fd9fce12c4facd5fd659eedd5a510ea6b0ad796925458ccb73b4b37a893530d5";
 export const LONG_WAY_HOME_HASH = "bce3ddd36386ebb32f011b8d6afe95316992809030ea828b473bbbc3e1c6bb7f";
 export const LONG_WAY_HOME_V2_HASH = "4541bd920062e244f202fbe6ee95363a1f53ae5afc490ad600112af9f01a8c77";
 export const TURN_OF_THE_TIDE_HASH = "3a6d111455aa69e60c440cc6f04a0656292ed9c40b31c66a7f999c85cd2a911a";
+export const TURN_OF_THE_TIDE_V2_HASH = "e15ff1e40da4084ddf291165ea5dea86335c92b388bb3a2fa841c959d1f056a7";
 type Surface = { id: string; rect_cm: number[]; height_cm?: number; owner_slot?: string; axis?: string; from_height_cm?: number; to_height_cm?: number };
 type Marker = { id: string; position_cm: number[]; surface_id: string; height_cm: number; radius_cm: number; owner_slot: string };
 type Predicate = { all?: Predicate[]; any?: Predicate[]; control_id?: string; value?: string; lever_id?: string; pad_id?: string; signal_id?: string };
@@ -45,6 +48,9 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
   // A definition declaring rules 9 or later plays only those; older ones keep 7 and 8.
   const pinned = definition.simulation_version >= 9 ? definition.simulation_version : 0;
   const supported: readonly number[] = pinned ? [pinned] : [7, 8];
+  // Tide rules (10 and later) latch no route: a player may end a stage on a
+  // stub only while one of this stage's gates for it holds on the end state.
+  const tideRules = definition.simulation_version >= 10;
   // Longer turns, when the definition declares them, carry bounds grown to fit.
   const turns = turnLimits(definition), limits = turns ? scaledLimits(turns) : undefined;
   if (limits) checkTurnBounds(limits, maxBranches);
@@ -81,13 +87,14 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
     need(Array.isArray(routes) && routes.every(route => typeof route === "string") && canonicalJson(routes) === canonicalJson([...new Set(routes)].sort()), "checkpoint_mechanism_mismatch");
     const allowed = new Set([...previousRoutes, ...stage.gates.map(gate => gate.route_id)]);
     need(routes.every(route => allowed.has(route)) && previousRoutes.every(route => routes.includes(route)), "checkpoint_mechanism_mismatch");
-    const players = object(c.players); exact(players, ["p0", "p1"]);
+    if (tideRules) need(routes.length === 0, "checkpoint_mechanism_mismatch");
+    const players = object(c.players), stubs: string[] = []; exact(players, ["p0", "p1"]);
     for (const [slot, value] of Object.entries(players)) {
       const p = object(value); exact(p, ["x", "z", "height", "surface_id"]);
       const x = integer(p.x, -10_000, 10_000), z = integer(p.z, -10_000, 10_000), height = integer(p.height, 0, 10_000);
       const surface = [...definition.islands, ...definition.bridges, ...definition.stairs].find(surface => surface.id === p.surface_id);
       need(surface && x >= surface.rect_cm[0] && x <= surface.rect_cm[2] && z >= surface.rect_cm[1] && z <= surface.rect_cm[3] && (!surface.owner_slot || surface.owner_slot === slot), "checkpoint_surface_mismatch");
-      if (!definition.islands.includes(surface)) need(routes.includes(surface.id), "checkpoint_surface_mismatch");
+      if (!definition.islands.includes(surface)) { if (tideRules) stubs.push(surface.id); else need(routes.includes(surface.id), "checkpoint_surface_mismatch"); }
       const axis = surface.axis === "z" ? 1 : 0, coordinate = axis === 0 ? x : z;
       const expectedHeight = surface.from_height_cm === undefined ? surface.height_cm : Math.round(surface.from_height_cm +
         (surface.to_height_cm! - surface.from_height_cm) * (coordinate - surface.rect_cm[axis]) / (surface.rect_cm[axis + 2] - surface.rect_cm[axis]));
@@ -103,13 +110,14 @@ function adapter(definition: Definition, initial: ChapterCheckpoint, definitionH
       if (value.pad_id) { const pad = stage.pressure_pads.find(pad => pad.id === value.pad_id); return !!pad && near(object(players[pad.owner_slot]), pad); }
       return true;
     }
+    for (const id of stubs) need(stage.gates.some(gate => gate.route_id === id && predicate(gate.when)), "checkpoint_surface_mismatch");
     need(near(receiver, stage.goal) && predicate(stage.goal_policy.when), "checkpoint_goal_mismatch");
     const policy = stage.source_policy;
     need(policy.kind === "choice_pad" ? policy.branches!.some(branch => predicate({ pad_id: branch.pad_id })) :
       predicate(policy.when) && (!policy.endpoint || near(source, policy.endpoint)), "checkpoint_source_position_mismatch");
     if (definition.id === "conservatory" && index === 1) need(source.surface_id === "court", "checkpoint_source_position_mismatch");
     if (definition.id === "long-way-home" && index === 1) need(stage.gates.every(gate => routes.includes(gate.route_id)), "checkpoint_mechanism_mismatch");
-    for (const gate of stage.gates) {
+    if (!tideRules) for (const gate of stage.gates) {
       const open = previousRoutes.includes(gate.route_id) || predicate(gate.when);
       need(!open || routes.includes(gate.route_id), "checkpoint_mechanism_mismatch");
       if (!open && !stage.entry_latch_routes.includes(gate.route_id)) need(!routes.includes(gate.route_id), "checkpoint_mechanism_mismatch");
@@ -128,3 +136,7 @@ export const longWayHomeV2 = adapter(homeV2Definition, homeV2Initial, LONG_WAY_H
 /** Free; pinned to rules 9 by its definition, so 0.5.x guests are refused on join.
  * Seven branches keep its widest replay archive and room snapshot under their caps. */
 export const turnOfTheTide: ChapterAdapter = adapter(tideDefinition, tideInitial, TURN_OF_THE_TIDE_HASH, 7);
+/** Free; pinned to tide rules (10) by its definition, so guests whose client never offered 10 are refused on join.
+ * No route latches: a stub a player ends on must be open on the end state.
+ * Seven branches, as @1, keep its widest replay archive and room snapshot under their caps. */
+export const turnOfTheTideV2: ChapterAdapter = adapter(tideV2Definition, tideV2Initial, TURN_OF_THE_TIDE_V2_HASH, 7);

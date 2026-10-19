@@ -88,7 +88,7 @@ describe("version8 comfort proof boundaries", () => {
     expect(() => boundedTurnValue(packet)).not.toThrow();
     expect(() => boundedValue(packet, MAX_V2_BODY_BYTES)).toThrowError(expect.objectContaining({ code: "structure_too_large" }));
     expect(() => boundedValue(packet.checkpoint, MAX_CHECKPOINT_BYTES)).not.toThrow();
-    for (const version of [6, 7, 10]) {
+    for (const version of [6, 7, 11]) {
       packet.recording.simulation_version = version;
       expect(() => boundedTurnValue(packet)).toThrowError(expect.objectContaining({ code: "structure_too_large" }));
     }
@@ -96,6 +96,10 @@ describe("version8 comfort proof boundaries", () => {
     await expect(highAndLow.recording({ ...dense.pairs[0].a, simulation_version: 9 })).rejects.toMatchObject({ code: "unsupported_simulation_version" });
     // Rules 9 are the comfort rules under a join-guarded number: same envelope.
     packet.recording.simulation_version = 9;
+    expect(() => boundedTurnValue(packet)).not.toThrow();
+    // Tide rules (10) build on them too; only a chapter pinned to 10 accepts such a record.
+    await expect(highAndLow.recording({ ...dense.pairs[0].a, simulation_version: 10 })).rejects.toMatchObject({ code: "unsupported_simulation_version" });
+    packet.recording.simulation_version = 10;
     expect(() => boundedTurnValue(packet)).not.toThrow();
     packet.recording.simulation_version = 8;
     packet.recording.role = "a";
