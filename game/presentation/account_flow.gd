@@ -496,6 +496,7 @@ func clear_deleted_identity() -> void:
 		_show_deleted_identity_cleanup(PlayerCopy.MAIN_3820D398892A)
 		return
 	host.identity_data={}
+	host.platform_games_flow.forget_identity()
 	host.friend_nicknames.clear_owner(owner, host.api.base_url)
 	host.identity_read_state=host.IdentityReadState.MISSING
 	host.api.player_id=""

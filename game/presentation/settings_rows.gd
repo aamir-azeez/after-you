@@ -62,6 +62,7 @@ static func categories(host: Node) -> Array[Dictionary]:
 static func rows(host: Node) -> Array[Dictionary]:
 	var notices: Node = host.notification_flow
 	var account: Node = host.account_flow
+	var games: Node = host.platform_games_flow
 	var state := func(names: Array) -> Callable: return func() -> bool: return account.panel_state() in names
 	return [
 		{"id": "sound", "icon": preload("res://assets/ui/settings/sound.svg"), "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_SOUND, "note": PlayerCopy.SETTINGS_SOUND_NOTE, "key": "sound"},
@@ -99,6 +100,9 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "restart_note", "category": ACCOUNT, "kind": INFO, "label": "", "note": PlayerCopy.MAIN_5BC549F4B951, "visible_if": state.call(["restart"])},
 		{"id": "recovery_details", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_RECOVERY_DETAILS, "note": PlayerCopy.SETTINGS_RECOVERY_DETAILS_NOTE,
 			"inline": account.toggle_recovery_details, "visible_if": func() -> bool: return account.panel_state() == "ready" or (account.panel_state() == "restart" and not host.identity_data.is_empty())},
+		# Play Games on Android, Game Center on iOS: shown only while the server offers it.
+		{"id": "platform_games", "category": ACCOUNT, "kind": ACTION, "label": games.label, "note": games.status_line,
+			"inline": games.toggle_detail, "visible_if": func() -> bool: return games.offered() and account.panel_state() == "ready", "enabled_if": games.enabled},
 		{"id": "close_app", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CLOSE_APP, "run": func(): host.get_tree().quit(), "visible_if": state.call(["restart"])},
 		{"id": "hosting_access", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_HOSTING_ACCESS, "note": PlayerCopy.SETTINGS_HOSTING_ACCESS_NOTE,
 			"inline": func(detail: VBoxContainer, _row: Control): account.check_hosting_access(detail), "visible_if": state.call(["ready"]),
