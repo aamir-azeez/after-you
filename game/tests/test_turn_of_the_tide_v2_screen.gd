@@ -13,6 +13,7 @@ const Simulation = preload("res://core/journey/simulation.gd")
 const Tide = preload("res://tests/turn_of_the_tide_witness.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const World = preload("res://presentation/tide_world.gd")
+const V2 = preload("res://tests/turn_of_the_tide_v2_witness.gd")
 var checks := 0
 var failures := 0
 var directory := ""
@@ -40,7 +41,7 @@ func _run() -> void:
 	_check(journal.accept_recording(first), "The memory's turn is accepted: " + journal.last_error)
 	var screen: Node = load(Index.data(KEY).scene).instantiate()
 	screen.journey = journal
-	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true}
+	screen.settings = {"sound": false, "haptics": false, "reduced_motion": false, "assistance": true}
 	root.add_child(screen)
 	screen.set_physics_process(false)
 	screen.set_process(false)
@@ -55,11 +56,19 @@ func _run() -> void:
 			warned = true
 			var edges: Array = screen.world._decks["sand-1"].get_children().filter(func(edge: Node) -> bool: return edge.has_meta("edge"))
 			_check(edges.size() == 2 and edges.all(func(edge: Node) -> bool: return edge.has_meta("warned")), "A closing crossing's edges flash")
+			# The rising harbour is slowed to reach the sand bar's deck as it shuts.
+			var water: Node3D = screen.world._water.harbour
+			_check(water.has_meta("rate") and float(water.get_meta("rate")) < World.WATER_RATE, "The water rising over the closing bar slows to meet its deck as it shuts")
 	_check(warned, "The sand bar closes while the spirit stands on it")
 	_check(screen.mode == "drowning" and not screen.running, "A drowning ends the turn on the drown beat, not straight on a card")
 	var harbour: Node3D = screen.world._water.harbour
 	_check(screen.world.actor_targets["p1"].y < float(harbour.get_meta("shown")) - 0.4 and is_instance_valid(screen.world._drown_ring), "The drowned spirit heads under the water and a ring spreads")
-	for _frame in range(screen.DROWN_BEAT_FRAMES): screen._physics_process(1.0 / 30.0)
+	# The world keeps running through the beat: the spirit goes under.
+	var before: float = screen.world.actors["p1"].position.y
+	for _frame in range(screen.DROWN_BEAT_FRAMES):
+		screen._physics_process(1.0 / 30.0)
+		screen.world._process(1.0 / 30.0)
+	_check(screen.world.actors["p1"].position.y < before - 0.3, "Through the beat the drowned spirit sinks (%.2f to %.2f)" % [before, screen.world.actors["p1"].position.y])
 	_check(screen.mode == "review", "After the beat the review card shows")
 	var texts := _texts(screen)
 	print("REVIEW CARD ", texts)
@@ -75,10 +84,47 @@ func _run() -> void:
 		_check(after.any(func(text: String) -> bool: return text.begins_with("Record your path again") or text.begins_with("Go back to stage") or text == PlayerCopy.SOLO_REDO_FIRST_TURN_TITLE), "Redo my previous turn asks to go back (%s)" % str(after))
 	root.remove_child(screen)
 	screen.free()
+	await _memory_line(level, initial)
 	for filename: String in DirAccess.get_files_at(directory): DirAccess.remove_absolute(directory.path_join(filename))
 	DirAccess.remove_absolute(directory)
 	print("TURN OF THE TIDE V2 SCREEN: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## Solo Slack Water after LOW: turning the tide at once drowns the memory on
+## the slipway, and the card names it as the player's own memory.
+func _memory_line(level: Dictionary, initial: Dictionary) -> void:
+	var one := V2.pair(level, "set-the-tide", initial, Tide.a_routes()["low"], Tide.b_routes()["low"])
+	_check(one.error.is_empty(), "Set the Tide plays through: " + str(one.error))
+	if not one.error.is_empty(): return
+	var p1 := Simulation.new()
+	p1.reset(level, "slack-water", one.checkpoint, {}, "a")
+	Tide.play(p1, Tide.p1_route(one.checkpoint, "sea-lock"))
+	var second: Dictionary = p1.export_recording()
+	var p0 := Simulation.new()
+	p0.reset(level, "slack-water", one.checkpoint, second, "b")
+	Tide.play(p0, [["w", Tide.WHEEL["low"]], ["t"]])
+	while not p0.finished: p0.step({})
+	var journal := Journey.new(directory.path_join("memory.json"), null, KEY)
+	journal.load_data()
+	for recording: Dictionary in [one.a, one.b, second]: _check(journal.accept_recording(recording), "Earlier turns are accepted: " + journal.last_error)
+	var screen: Node = load(Index.data(KEY).scene).instantiate()
+	screen.journey = journal
+	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true}
+	root.add_child(screen)
+	screen.set_physics_process(false)
+	screen.set_process(false)
+	await process_frame
+	screen.world.set_process(false)
+	screen._begin()
+	for frame: Dictionary in Simulation.expand_recording_inputs(p0.export_recording()):
+		if screen.mode != "play": break
+		screen.advance_input(frame)
+	# Back during the beat ends it at once on the card.
+	screen._pause()
+	_check(screen.mode == "review" and _label_with(screen, PlayerCopy.JOURNEY_DROWNED_MEMORY), "Solo, the card says: " + PlayerCopy.JOURNEY_DROWNED_MEMORY)
+	root.remove_child(screen)
+	screen.free()
+	await process_frame
 
 func _texts(screen: Node) -> Array:
 	var out: Array = []

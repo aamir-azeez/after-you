@@ -207,7 +207,9 @@ func in_turn() -> bool:
 
 ## "cause|event" for a simulation event. Bridges are keyed by the bridge itself.
 static func event_source(event: String, live_role: String) -> String:
-	if event.begins_with("bridge_open") or event.begins_with("selector:"): return event + "|" + event
+	# Named by what moved, whoever played it: the same crossing, spirit or control
+	# sounds the same live, in memory, on retry and in replay.
+	if event.begins_with("bridge_open") or event.begins_with("selector:") or event.begins_with("closing:") or event.begins_with("drowned:"): return event + "|" + event
 	if event in FIRST_SPIRIT_EVENTS: return "a|" + event
 	if event in SECOND_SPIRIT_EVENTS: return "b|" + event
 	return live_role + "|" + event

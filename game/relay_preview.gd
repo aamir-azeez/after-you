@@ -1888,16 +1888,25 @@ func advance_input(input: Dictionary) -> void:
 ## A spirit drowned (journey tide rules): the world shows it going under for
 ## DROWN_BEAT_FRAMES physics frames, then the review card says so and offers
 ## Retry, the redo actions, Restart and Leave like any unfinished turn.
+## The draft is saved at the drowned tick first, so a closed app reopens on
+## the card, and the controls stop taking input while the beat shows.
 func _begin_drown_beat() -> void:
 	running = false
 	action_pressed = false
+	if not _persist_draft("review"): return
 	mode = "drowning"
 	_drown_frames = DROWN_BEAT_FRAMES
+	_update_hud(sim.snapshot())
 
 func _advance_drown_beat() -> void:
 	if backgrounded: return
 	_drown_frames -= 1
-	if _drown_frames > 0: return
+	if _drown_frames <= 0: _end_drown_beat()
+
+## Pause, Back and the app going to the background end the beat at once: the
+## card always follows a drowning.
+func _end_drown_beat() -> void:
+	_drown_frames = 0
 	mode = "play"
 	_finish()
 
@@ -2651,6 +2660,9 @@ func _create_another_room() -> void:
 
 
 func _pause() -> void:
+	if mode == "drowning":
+		_end_drown_beat()
+		return
 	if mode == "play" and not _persist_draft():
 		return
 	var previous := mode
@@ -2781,7 +2793,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		elif event.physical_keycode == KEY_ESCAPE:
 			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
-			else: _pause() if running or mode == "bloom" else _leave()
+			else: _pause() if running or mode in ["bloom", "drowning"] else _leave()
 
 
 func _process(delta: float) -> void:
@@ -2808,7 +2820,7 @@ func _process(delta: float) -> void:
 	if (mode == "replay" or (mode == "bloom" and _completion_is_replay)) and not _replay_ready():
 		if is_instance_valid(world): world.set_process(false)
 		return
-	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["play", "replay", "bloom"])
+	if is_instance_valid(world): world.set_process(not backgrounded and mode in ["play", "replay", "bloom", "drowning"])
 	# The ready and waiting cards hold the world still but let its spirits
 	# breathe, a few times a second (island_world.advance_idle).
 	if is_instance_valid(world) and not backgrounded and not _world_covered and mode in ["ready", "online_waiting"] and world.has_method("advance_idle"): world.advance_idle(delta)
@@ -2848,7 +2860,7 @@ func _service_world_cover() -> void:
 func frame_demand() -> String:
 	if _world_building: return Frames.LOADING
 	if mode == "loading": return Frames.ACTIVE
-	if (running and not backgrounded) or mode in ["play", "replay", "bloom", "moment"]: return Frames.ACTIVE
+	if (running and not backgrounded) or mode in ["play", "replay", "bloom", "moment", "drowning"]: return Frames.ACTIVE
 	return Frames.CALM
 
 
@@ -2867,7 +2879,7 @@ func _notification(what: int) -> void:
 		backgrounded = true
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(true)
-		if is_instance_valid(stick) and (running or mode == "bloom"):
+		if is_instance_valid(stick) and (running or mode in ["bloom", "drowning"]):
 			_pause()
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		var was_backgrounded := backgrounded
@@ -2887,7 +2899,7 @@ func _notification(what: int) -> void:
 		if is_instance_valid(stick):
 			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
-			else: _pause() if running or mode == "bloom" else _leave()
+			else: _pause() if running or mode in ["bloom", "drowning"] else _leave()
 
 
 func update_notification_offer() -> void:

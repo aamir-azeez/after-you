@@ -1607,7 +1607,8 @@ func _show_closing(closing: Dictionary) -> void:
 				if not trim.has_meta("warned"):
 					trim.material_override = trim.material_override.duplicate()
 					trim.set_meta("warned", true)
-				_glow(trim, CLOSING_COLOR, 1.6 if int(closing[id]) % 10 < 5 else 0.5)
+				# Reduce motion: a steady glow instead of a flash.
+				_glow(trim, CLOSING_COLOR, 1.1 if reduced_motion else (1.6 if int(closing[id]) % 10 < 5 else 0.5))
 			elif trim.has_meta("warned"):
 				var edge: Array = trim.get_meta("edge")
 				_glow(trim, edge[0], float(edge[1]))
@@ -1629,8 +1630,10 @@ func _show_closing(closing: Dictionary) -> void:
 func _show_drowned(drowned: Dictionary) -> void:
 	if drowned.is_empty() or not actors.has(str(drowned.get("slot", ""))): return
 	var slot := str(drowned.slot)
-	var harbour: Node3D = _water.get("harbour")
-	var surface: float = float(harbour.get_meta("shown")) if is_instance_valid(harbour) else float(actor_targets[slot].y)
+	# The water over the crossing it drowned on: the harbour's or the outer sea's.
+	var body: Node3D = _water.get(_body_of(_route(str(drowned.get("route", ""))).get("rect_cm", [0, 0, 0, 0])))
+	if not is_instance_valid(body): body = _water.get("harbour")
+	var surface: float = float(body.get_meta("shown")) if is_instance_valid(body) else float(actor_targets[slot].y)
 	var target: Vector3 = actor_targets[slot]
 	target.y = minf(target.y, surface) - DROWN_DEPTH
 	actor_targets[slot] = target
