@@ -12,6 +12,7 @@ import { ROOM_DELETION_BATCH, eraseRoomLinks, roomDeletionDispatcher, roomLinkVe
 import { roomLimitReached, roomLinkBound } from "./room-limit";
 import { clearRoomErasure, deletionOrder, dropRoomIndex, recordRoomObservation, removeRoomIndexRow, roomErasureDelay, roomErasurePending, roomIndexCount, roomIndexPage, roomIndexUnsettled, writeRoomErasure, type RoomFamily, type RoomIndexPage, type RoomObservation } from "./room-index";
 import { errorCode, logWarning } from "./log";
+import { PLATFORM_LINKS_OBJECT } from "./platform-links";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
@@ -523,6 +524,30 @@ export class Player extends DurableObject<Env> {
     closeLiveSockets(this.ctx);
     return ok({ player_id: identity.player_id, recovered: true });
   }
+  /**
+   * Binding only: a verified platform games link (platform-routes.ts) stands in for the recovery code.
+   * Same rotation and receipt as recover(): the device proposed both next secrets, and a lost reply
+   * may be retried with the same proposal, which answers the same without rotating again.
+   */
+  restoreLinked(nextDeviceHash: string, nextRecoveryHash: string, requestHash: string): Outcome<{ player_id: string; restored: true }> {
+    const identity = this.identity();
+    if (!identity) return fail(404, "identity_absent");
+    if (identity.state !== "active") return fail(404, "platform_link_not_found");
+    const receipt = identity.recovery_receipt;
+    if (receipt && equalHash(receipt.request_hash, requestHash) && equalHash(identity.device_hash, nextDeviceHash) && equalHash(identity.recovery_hash, nextRecoveryHash)) return ok({ player_id: identity.player_id, restored: true });
+    if (equalHash(nextDeviceHash, nextRecoveryHash) || equalHash(nextDeviceHash, identity.device_hash) || equalHash(nextRecoveryHash, identity.device_hash) || equalHash(nextDeviceHash, identity.recovery_hash) || equalHash(nextRecoveryHash, identity.recovery_hash)) return fail(400, "invalid_rotation");
+    const previous = identity.recovery_hash;
+    identity.device_hash = nextDeviceHash; identity.recovery_hash = nextRecoveryHash;
+    if (identity.social) { identity.social.shared_room = null; identity.social.next_refresh_at = 0; }
+    identity.recovery_receipt = { previous_recovery_hash: previous, request_hash: requestHash };
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+      clearRegistrations(this.ctx.storage);
+      clearPresence(this.ctx.storage);
+    });
+    closeLiveSockets(this.ctx);
+    return ok({ player_id: identity.player_id, restored: true });
+  }
   reserveRoom(key: string, link: RoomLink, settled: readonly string[] = []): Outcome<RoomLink> {
     if (this.identity()?.state !== "active") return fail(401, "identity_unavailable");
     if (!validRoomLink(link)) return fail(400, "invalid_room_link");
@@ -765,6 +790,8 @@ export class Player extends DurableObject<Env> {
     await this.env.FRIEND_ROOM_EVENTS.getByName(owner).clearRecipient(owner);
     await this.env.PHOTO_TRANSFERS.getByName(owner).eraseOwner(owner, this.ctx.id.toString());
     if (!(await this.env.SAFETY_INBOX.getByName("moderation-v1").eraseReporter(owner)).ok) return fail(503, "safety_cleanup_unavailable");
+    // Platform games links (Play Games, Game Center) for this player; a repeat deletes nothing.
+    await this.env.PLATFORM_LINKS.getByName(PLATFORM_LINKS_OBJECT).eraseOwner(owner);
     await this.env.SAFETY_PROFILES.getByName(owner).eraseOwner(owner);
     if (this.identity()?.state !== "deleting" || this.listRooms().length !== 0) return fail(409, "deletion_not_ready");
     this.ctx.storage.transactionSync(() => {
@@ -788,5 +815,7 @@ answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ autho
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined,
+  // A link that outlived its player: the restore route drops it.
+  restoreLinked: () => fail(404, "identity_absent"),
   // No identity, so no socket: a hint is dropped and an upgrade (unreachable past auth()) is refused.
   liveHint: async () => false, fetch: () => liveUnauthorized() });

@@ -68,6 +68,10 @@ export const FLAG_VARS = Object.freeze({
   endReactions: "END_REACTIONS_ENABLED",
   /** Hard rooms: the capability, creating one, and the reset and read routes of rooms that are not hard yet (v2/hard-mode.ts). */
   hardMode: "HARD_MODE_ENABLED",
+  /** Play Games sign-in as a way back to a friend identity (link, unlink, restore) and its capability. */
+  playGames: "PLAY_GAMES_ENABLED",
+  /** Game Center identity verification for the same link, unlink and restore routes. */
+  gameCenter: "GAME_CENTER_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;
@@ -108,6 +112,14 @@ export type ServerVars = { [V in FlagVar]?: string } & {
   /** Firebase service account JSON, parsed in notifications.ts. */
   FCM_SERVICE_ACCOUNT_JSON?: string;
   TESTER_CODE_SHA256?: string;
+  /** Public Play Games Services project (application) id, digits only. */
+  PLAY_GAMES_APP_ID?: string;
+  /** Public OAuth web client id the phone asks Google for a server auth code with. */
+  PLAY_GAMES_WEB_CLIENT_ID?: string;
+  /** Secret: that web client's OAuth client secret, set with wrangler secret put. */
+  PLAY_GAMES_CLIENT_SECRET?: string;
+  /** Optional: the iOS bundle id Game Center signs; com.aamirazeez.afteryou when unset. */
+  GAME_CENTER_BUNDLE_ID?: string;
   SAFETY_OPERATOR_TOKEN?: string;
 };
 

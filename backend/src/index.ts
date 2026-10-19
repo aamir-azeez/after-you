@@ -31,6 +31,8 @@ import { DRAIN_PREFIX, routeCampaignDrain } from "./v2/campaign-drain";
 import { BINDING_PATTERN, registrationPlatform, validNotificationToken } from "./notifications";
 export { PhotoTransfer, PhotoTransferBudget } from "./photo-transfer";
 export { Player } from "./player";
+export { PlatformLinks } from "./platform-links";
+import { routePlatform, routePlatformRestore } from "./platform-routes";
 export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
 
@@ -96,6 +98,8 @@ export default {
         const requestHash = await digest(canonicalJson({ player_id, recovery_code: recovery, idempotency_key, next_device_token: nextDevice, next_recovery_code: nextRecovery }));
         return result(await env.PLAYERS.getByName(player_id).recover(await digest(recovery), await digest(nextDevice), await digest(nextRecovery), requestHash));
       }
+      // Absent unless PLAY_GAMES_ENABLED or GAME_CENTER_ENABLED is "true": the path then falls through to auth() as before.
+      const restored = await routePlatformRestore(request, path, env); if (restored) return restored;
       if (path === "/v1/identity/deletion-ack" && request.method === "POST") {
         await publicLimit(request, env);
         const owner = text(request.headers.get("X-Player-Id"), ID_PATTERN, "invalid_auth");
@@ -107,6 +111,8 @@ export default {
       }
       const { playerId, safetyToken } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
+      // Absent unless a platform games flag is "true": the paths then answer 404 as before.
+      const platform = await routePlatform(request, path, playerId, env); if (platform) return platform;
       // Absent unless LIVE_CONNECTION_ENABLED is "true": the path then answers 404 as before.
       if (path === LIVE_PATH && flags.liveConnection(env)) return await forwardLiveUpgrade(request, player, await bearerDigest(request));
       if (path === "/v1/room-inbox") {
