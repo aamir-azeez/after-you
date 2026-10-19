@@ -10,7 +10,9 @@ import { PLATFORM_LINKS_OBJECT, type PlatformProvider } from "./platform-links";
  * - POST /v1/platform/link    (signed in) link the verified account to the caller, or report a conflict.
  * - POST /v1/platform/unlink  (signed in) remove the caller's link for one provider.
  * - POST /v1/platform/restore (public)    rotate the linked player's credentials to the ones this
- *   device proposes, exactly like recovery with a recovery code (Player.restoreLinked).
+ *   device proposes, exactly like recovery with a recovery code (Player.restoreLinked). With
+ *   `check: true` instead of the proposal it only answers whether the account is linked, so the
+ *   phone can ask the player first; nothing rotates.
  *
  * Each provider is absent unless its flag is "true": the paths then answer as before (404 after
  * auth, 401 for restore). A flag that is on without its config answers 503 platform_unavailable.
@@ -100,10 +102,18 @@ export async function routePlatformRestore(request: Request, path: string, env: 
   if (path !== RESTORE_PATH || request.method !== "POST" || !anyProviderEnabled(env)) return null;
   await limitPublic(request, env);
   const input = object(await boundedJson(request, MAX_BODY));
-  exactKeys(input, ["schema_version", "provider", "credential", "idempotency_key", "next_device_token", "next_recovery_code"]);
+  exactKeys(input, ["schema_version", "provider", "credential", "idempotency_key", "next_device_token", "next_recovery_code", "check"]);
   // Provider first: a phone with no identity learns on (400) from off (404) without any proof.
   const kind = provider(input.provider, env);
   if (input.schema_version !== 1) throw new ApiError(400, "invalid_platform_request");
+  if (input.check !== undefined) {
+    // Ask before restoring: one proof, one indexed read, no rotation and no Player request.
+    if (input.check !== true || Object.keys(input).sort().join() !== "check,credential,provider,schema_version") throw new ApiError(400, "invalid_platform_request");
+    const proof = await prove(kind, input.credential, env);
+    const found = await env.PLATFORM_LINKS.getByName(PLATFORM_LINKS_OBJECT).lookup(kind, proof.externalHash, proof.nonce, proof.nonceExpiresAt);
+    if ("replayed" in found) throw new ApiError(401, "platform_credential_invalid");
+    return json({ schema_version: 1, provider: kind, linked: found.player_id !== null });
+  }
   const idempotency_key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
   const nextDevice = text(input.next_device_token, SECRET_PATTERN), nextRecovery = text(input.next_recovery_code, SECRET_PATTERN);
   // The credential is left out: a retry after a lost reply carries a fresh one-time code.

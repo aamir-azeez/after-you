@@ -194,6 +194,23 @@ describe("Play Games restore", () => {
     expect(await retry.json()).toEqual({ schema_version: 1, provider: "play_games", player_id: a.player_id, restored: true });
     expect((await call("/v1/identity", "GET", { player_id: a.player_id, ...next })).status).toBe(200);
   });
+  it("answers whether an account is linked without rotating anything, so the phone can ask first", async () => {
+    const a = await create(); google({ "code-a": "g-player-one", "code-c": "g-player-one", "code-n": "g-nobody" });
+    await link(a, "code-a");
+    const check = (code: string, vars = PLAY_ON) => call("/v1/platform/restore", "POST", undefined, { schema_version: 1, provider: "play_games", credential: playCredential(code), check: true }, vars);
+    const counted = countingEnv(PLAY_ON);
+    const linked = await meterRows({ links: links() }, () => check("code-c", counted.env));
+    expect(await linked.value.json()).toEqual({ schema_version: 1, provider: "play_games", linked: true });
+    expect(counted.calls).toEqual(["PLATFORM_LINKS.lookup"]);
+    expect(linked.rows.links.written).toBe(0);
+    expect(await (await check("code-n")).json()).toEqual({ schema_version: 1, provider: "play_games", linked: false });
+    // The old device and recovery code still work: nothing rotated.
+    expect((await call("/v1/identity", "GET", a)).status).toBe(200);
+    const mixed = await call("/v1/platform/restore", "POST", undefined, { schema_version: 1, provider: "play_games", credential: playCredential("code-c"), check: true, next_device_token: randomToken() }, PLAY_ON);
+    expect(mixed.status).toBe(400);
+    expect((await call("/v1/platform/restore", "POST", undefined, { schema_version: 1, provider: "play_games", credential: playCredential("code-c"), check: false }, PLAY_ON)).status).toBe(400);
+    expect((await check("code-c", env)).status).toBe(401);
+  });
   it("answers 404 without a link, and refuses an equal or reused proposal", async () => {
     const a = await create(); google({ "code-a": "g-player-one", "code-n": "g-nobody", "code-x": "g-player-one" });
     expect((await restore("code-n", { device_token: randomToken(), recovery_code: randomToken() })).status).toBe(404);
