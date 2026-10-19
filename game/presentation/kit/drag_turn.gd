@@ -77,6 +77,8 @@ func handle_event(event: InputEvent, width: float) -> bool:
 func release() -> void:
 	if not _dragging: return
 	_dragging = false
+	# A tap's wobble never flings it.
+	if not _moved: _velocity = 0.0
 	_idle = 0.0
 	if reduced: _home()
 	else: _velocity = clampf(_velocity, -MAX_SPIN, MAX_SPIN)
