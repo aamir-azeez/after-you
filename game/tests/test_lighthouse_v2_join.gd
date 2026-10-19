@@ -116,15 +116,17 @@ func _join_body(capabilities: Dictionary) -> Dictionary:
 func _join_lists() -> void:
 	var old: Dictionary = await _join_body(_caps(1))
 	var versions: Array = old.get("supported_simulation_versions", [])
-	_check(Canonical.same(versions, [2, 4, 5, 6, 7, 8, 9]) and versions.size() <= 8 and 11 not in versions, "An old server gets today's join list, at most 8 rules and no 11")
+	_check(Canonical.same(versions, [2, 4, 5, 6, 7, 8, 9, 10]) and versions.size() <= 8 and 11 not in versions, "An old server gets today's join list, at most 8 rules, with the tide rules (10) and no 11")
 	var level_two: Dictionary = await _join_body(_caps(2))
-	_check(Canonical.same(level_two.get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 11]), "A room-level-2 server gets the list with rules 11")
+	_check(Canonical.same(level_two.get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10, 11]), "A room-level-2 server gets the list with rules 10 and 11")
 	var tight := _caps(2)
+	tight.max_join_versions = 9
+	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10, 11]), "Nine allowed entries fit the longer list")
 	tight.max_join_versions = 8
-	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 11]), "Eight allowed entries fit the longer list")
+	_check(Canonical.same((await _join_body(tight)).get("supported_simulation_versions"), [2, 4, 5, 6, 7, 8, 9, 10]), "Eight allowed entries keep the short list")
 	var made := _session({})
 	var session: RefCounted = made[0]
-	_check(Canonical.same(session.join_versions(), [2, 4, 5, 6, 7, 8, 9]), "Before any capability answer the list stays today's")
+	_check(Canonical.same(session.join_versions(), [2, 4, 5, 6, 7, 8, 9, 10]), "Before any capability answer the list stays today's")
 	made[1].queue_free()
 
 ## Real HTTP on loopback: the room level header goes only with the capability
