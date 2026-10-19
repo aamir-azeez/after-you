@@ -353,12 +353,12 @@ func _home() -> void:
 		if button.text == "Play with your friend": play = button
 	_check(play != null, "Home shows Play with your friend")
 	if play != null:
-		var icons := play.find_children("*", "Control", false, false).filter(func(child: Node) -> bool: return child.get_script() == FriendPlayIcon)
+		var icons := play.find_children("*", "Control", true, false).filter(func(child: Node) -> bool: return child.get_script() == FriendPlayIcon)
 		_check(icons.size() == 1, "Home's Play with your friend carries one friend icon")
 		_check(play.icon == null, "The drawing is a child, not a tinted Button icon")
 		if icons.size() == 1:
 			var icon: FriendPlayIcon = icons[0]
-			_check(not icon.squeezed and Rect2(Vector2.ZERO, play.size).encloses(Rect2(icon.position, icon.size)), "On Home it rests happy, inside the button")
+			_check(not icon.squeezed and play.get_global_rect().encloses(icon.get_global_rect()), "On Home it rests happy, inside the button")
 			_motion(viewport, play.get_global_rect().get_center())
 			await _frames(1)
 			_check(icon.squeezed, "Hovering Home's button squeezes")

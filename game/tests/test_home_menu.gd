@@ -2,6 +2,7 @@ extends SceneTree
 ## Home's menu component (presentation/home_menu.gd) and the shared colour tokens
 ## (presentation/ui_tokens.gd): layout A at phone sizes, under cutout insets and
 ## with the What's new tip, the Play button's icon slot, and nothing per frame.
+const FriendPlayIcon = preload("res://presentation/friend_play_icon.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const HomeMenu = preload("res://presentation/home_menu.gd")
@@ -177,7 +178,10 @@ func _test_icon_slot(app: Node) -> void:
 	var menu := _menu(app)
 	var play: Button = menu.play_button
 	var slot := play.get_node_or_null("HomePlayIcon") as Control
-	_check(slot != null and slot == menu.play_icon_slot and slot.get_child_count() == 0 and not menu.has_play_icon(), "Play has an empty HomePlayIcon slot")
+	_check(slot != null and slot == menu.play_icon_slot and menu.has_play_icon() and slot.get_child_count() == 1 and slot.get_child(0).get_script() == FriendPlayIcon, "Home puts the friend icon in Play's HomePlayIcon slot")
+	# The rest checks the slot itself, starting empty.
+	menu.set_play_icon(null)
+	await _frames()
 	_check(slot != null and slot.mouse_filter == Control.MOUSE_FILTER_IGNORE and play.get_global_rect().encloses(slot.get_global_rect()) and slot.size == HomeMenu.PLAY_ICON_SIZE, "The slot sits inside the pill and never takes a tap")
 	var empty_left := play.get_theme_stylebox("normal").content_margin_left
 	_check(is_equal_approx(empty_left, HomeMenu.PLAY_TEXT_INSET), "With no icon the label starts near the pill's edge")
