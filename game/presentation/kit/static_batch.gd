@@ -65,7 +65,7 @@ static func start(root: Node3D, owners: Array, options: Dictionary = {}) -> Dict
 	var existing: Dictionary = {}
 	for node: Node in root.find_children("*", "", true, false): existing[node.get_instance_id()] = true
 	var job := {"root": root, "root_id": root.get_instance_id(), "owners": owners.duplicate(), "owner_list": owners.duplicate(), "held": {}, "kept": kept, "still": _ids(options.get("still", [])), "containers": bool(options.get("containers", false)),
-		"existing": existing, "scripted": [], "rechecked": false,
+		"existing": existing, "scripted": [], "holding": [], "rechecked": false,
 		"materials": {}, "bases": [], "scan": [[root, 0]], "walk": [], "seen": {}, "base_index": 0, "key_index": 0, "entry_index": 0, "tool": null, "folded": 0, "batches": 0, "done": false}
 	job.walk.append([root, _base(root, job), 0])
 	return job
@@ -94,9 +94,9 @@ static func _ids(nodes: Array) -> Dictionary:
 	return ids
 
 ## Does up to budget_usec of the job's work (all of it for 0 or less): what
-## the owners hold, then what scripted nodes under the root hold, then the
-## leaves, then one batch at a time. Returns true once the job is finished, or
-## the root has gone.
+## the owners hold, then what scripted nodes under the root hold, a few values
+## at a time, then the leaves, then one batch at a time. Returns true once the
+## job is finished, or the root has gone.
 static func step(job: Dictionary, budget_usec: int) -> bool:
 	if job.done: return true
 	var root: Variant = job.root
@@ -111,11 +111,15 @@ static func step(job: Dictionary, budget_usec: int) -> bool:
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
 		var owner: Variant = job.owners.pop_front()
-		if is_instance_valid(owner) and owner is Object: _collect_held(owner, job.held)
+		if is_instance_valid(owner) and owner is Object: _queue_held(owner, job.held, job)
 	while not job.scan.is_empty():
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
 		_scan(job)
+	while not job.holding.is_empty():
+		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
+		worked = true
+		_hold_some(job)
 	while not job.walk.is_empty():
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
@@ -124,6 +128,10 @@ static func step(job: Dictionary, budget_usec: int) -> bool:
 		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
 		worked = true
 		_recheck(job)
+	while not job.holding.is_empty():
+		if worked and until >= 0 and Time.get_ticks_usec() >= until: return false
+		worked = true
+		_hold_some(job)
 	if job.get("plan_only", false):
 		job.done = true
 		return true
@@ -148,7 +156,7 @@ static func _scan(job: Dictionary) -> void:
 	var child := (found as Node).get_child(index)
 	if child.is_queued_for_deletion(): return
 	if child.get_script() != null:
-		_collect_held(child, job.held)
+		_queue_held(child, job.held, job)
 		job.scripted.append(child)
 	if child.get_child_count() > 0: job.scan.append([child, 0])
 
@@ -262,15 +270,18 @@ static func part_boxes(mesh: MeshInstance3D) -> Array[AABB]:
 		boxes.append((mesh.global_transform * (part[0] as Transform3D)) * (part[1] as AABB))
 	return boxes
 
-## Collects again what the owners and the scripted nodes hold, just before
-## the first batch replaces anything: a job over frames may have started
-## before a screen or world named some of its nodes.
+## Collects again what the owners and the scripted nodes hold, before the
+## first batch replaces anything: a job over frames may have started before a
+## screen or world named some of its nodes. Over frames this look takes a few
+## frames itself, a node named meanwhile in a value it has passed is missed,
+## as one named after it and before a later batch always was; _group_folds
+## still checks every leaf where it was found.
 static func _recheck(job: Dictionary) -> void:
 	job.rechecked = true
 	var held: Dictionary = {}
-	for owner: Variant in job.owner_list + job.scripted:
-		if is_instance_valid(owner) and owner is Object: _collect_held(owner, held)
 	job["held_now"] = held
+	for owner: Variant in job.owner_list + job.scripted:
+		if is_instance_valid(owner) and owner is Object: _queue_held(owner, held, job)
 
 ## Whether a leaf or anything between it and its batch's container is named
 ## by an owner (at the start or now), kept, or carries a script.
@@ -329,21 +340,47 @@ static func _uniform(basis: Basis) -> bool:
 	return absf(unit.x.dot(unit.y)) < 0.0001 and absf(unit.y.dot(unit.z)) < 0.0001 and absf(unit.x.dot(unit.z)) < 0.0001 and basis.determinant() > 0.0
 
 ## Every node an owner's script variables refer to, through arrays and
-## dictionaries (keys too), a few levels deep.
-static func _collect_held(owner: Object, held: Dictionary) -> void:
+## dictionaries (keys too), a few levels deep, goes into held: the variables'
+## values are queued here and looked through by _hold_some, a few at a time,
+## since a world or a screen can name thousands of values. The job itself (a
+## world keeps its fold's job in a variable) is never looked through: its own
+## queue grows while it is read.
+static func _queue_held(owner: Object, held: Dictionary, job: Dictionary) -> void:
 	for property: Dictionary in owner.get_property_list():
 		if not int(property.usage) & PROPERTY_USAGE_SCRIPT_VARIABLE: continue
-		_hold(owner.get(property.name), held, 0)
+		_queue_value(owner.get(property.name), 0, held, job)
 
-static func _hold(value: Variant, held: Dictionary, depth: int) -> void:
-	if depth > 4: return
-	match typeof(value):
-		TYPE_OBJECT:
-			# A variable can still name a node that has since been freed.
-			if is_instance_valid(value) and value is Node: held[(value as Node).get_instance_id()] = true
-		TYPE_ARRAY:
-			for item: Variant in value: _hold(item, held, depth + 1)
-		TYPE_DICTIONARY:
-			for item: Variant in value:
-				_hold(item, held, depth + 1)
-				_hold(value[item], held, depth + 1)
+## Every node owner's script variables refer to, all at once.
+static func _collect_held(owner: Object, held: Dictionary) -> void:
+	var job := {"holding": []}
+	_queue_held(owner, held, job)
+	while not job.holding.is_empty(): _hold_some(job)
+
+## Values one piece of the fold looks through.
+const HOLD_PIECE := 64
+const HOLD_DEPTH := 4
+
+static func _queue_value(value: Variant, depth: int, held: Dictionary, job: Dictionary) -> void:
+	if depth > HOLD_DEPTH: return
+	var kind := typeof(value)
+	if kind == TYPE_DICTIONARY and is_same(value, job): return
+	if kind == TYPE_OBJECT or kind == TYPE_ARRAY or kind == TYPE_DICTIONARY: (job.holding as Array).append([value, depth, held])
+
+static func _hold_some(job: Dictionary) -> void:
+	var holding: Array = job.holding
+	for _piece in range(HOLD_PIECE):
+		if holding.is_empty(): return
+		var item: Array = holding.pop_back()
+		var value: Variant = item[0]
+		var depth: int = item[1]
+		var held: Dictionary = item[2]
+		match typeof(value):
+			TYPE_OBJECT:
+				# A variable can still name a node that has since been freed.
+				if is_instance_valid(value) and value is Node: held[(value as Node).get_instance_id()] = true
+			TYPE_ARRAY:
+				for inner: Variant in value: _queue_value(inner, depth + 1, held, job)
+			TYPE_DICTIONARY:
+				for inner: Variant in value:
+					_queue_value(inner, depth + 1, held, job)
+					_queue_value(value[inner], depth + 1, held, job)

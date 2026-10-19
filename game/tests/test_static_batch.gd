@@ -11,8 +11,10 @@ extends SceneTree
 ##   its space, so moving or hiding the container moves or hides them; a
 ##   "keep" container stays whole. A batch reports its leaves' boxes.
 ## - start() and step() over many small budgets fold exactly what fold()
-##   does; a group whose leaf went meanwhile stays as it was, and a part of
-##   the tree freed between steps is skipped.
+##   does, what owners and scripted nodes hold included (looked through a few
+##   values at a time: nested arrays and dictionaries, keys too, four levels
+##   deep and no deeper); a group whose leaf went meanwhile stays as it was,
+##   and a part of the tree freed between steps is skipped.
 ## - On Home the bridge planks with their posts, the plate, the keepsakes and
 ##   the actors stay; the island's static leaves are folded.
 ## - With "still", a held node held only to be found keeps its node but its
@@ -137,6 +139,7 @@ func _run() -> void:
 	await _still()
 	await _scripted_and_freed()
 	await _steps()
+	await _held_over_steps()
 	await _home()
 	await _chapters()
 	print("STATIC BATCH: %d checks, %d failures" % [checks, failures])
@@ -316,6 +319,50 @@ func _scripted_and_freed() -> void:
 	_check(result.folded == 2 and result.batches == 1, "A freed node in a variable is skipped and the fold goes on (%s)" % str(result))
 	_check(is_instance_valid(named[0]) and named[0].is_inside_tree(), "A leaf a scripted node under the root names stays")
 	root.queue_free()
+	await process_frame
+
+## A tree whose owner and scripted node hold leaves at every depth the fold
+## looks through, among many plain values, and one leaf just past it.
+func _held_tree() -> Dictionary:
+	var root := Node3D.new()
+	get_root().add_child(root)
+	var box := BoxMesh.new()
+	var leaves: Dictionary = {}
+	for name: String in ["deep", "too_deep", "key", "value", "watched", "plain"]:
+		for twin in range(2): leaves[name + str(twin)] = _leaf(root, box, Color("c4b090"), Vector3(leaves.size(), 0, 0))
+	var filler: Array = []
+	for i in range(400): filler.append({"n": i, "list": [i, str(i)]})
+	var owner := Owner.new()
+	owner.held = [filler, [[[leaves.deep0]]], [[[[leaves.too_deep0]]]]]
+	owner.by_name = {leaves.key0: 1, "nested": {"value": leaves.value0}, "filler": filler}
+	var keeper := Node3D.new()
+	var behaviour := GDScript.new()
+	behaviour.source_code = "extends Node3D
+var watched: Array = []
+"
+	behaviour.reload()
+	keeper.set_script(behaviour)
+	root.add_child(keeper)
+	keeper.set("watched", [filler, leaves.watched0])
+	return {"root": root, "owner": owner, "leaves": leaves}
+
+func _held_over_steps() -> void:
+	var whole := _held_tree()
+	var stepped := _held_tree()
+	await process_frame
+	var expected: Dictionary = StaticBatch.fold(whole.root, [whole.owner])
+	var job := StaticBatch.start(stepped.root, [stepped.owner])
+	var calls := 0
+	while not StaticBatch.step(job, 1) and calls < 100000: calls += 1
+	_check(calls > 10, "What the owners hold is looked through over many steps (%d)" % calls)
+	_check(job.folded == expected.folded and job.batches == expected.batches, "Stepped, the fold keeps what fold() keeps (%d leaves, %d batches; fold() %d, %d)" % [job.folded, job.batches, expected.folded, expected.batches])
+	for tree: Dictionary in [whole, stepped]:
+		var leaves: Dictionary = tree.leaves
+		for name: String in ["deep0", "key0", "value0", "watched0"]:
+			_check(is_instance_valid(leaves[name]) and (leaves[name] as Node).is_inside_tree(), "A leaf held as %s stays its own node" % name)
+		for name: String in ["too_deep0", "plain0"]:
+			_check(not is_instance_valid(leaves[name]) or not (leaves[name] as Node).is_inside_tree(), "A leaf named only past four levels (or not at all) folds: " + name)
+		(tree.root as Node).queue_free()
 	await process_frame
 
 func _tree() -> Node3D:
