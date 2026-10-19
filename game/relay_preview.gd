@@ -188,6 +188,7 @@ var _wait_frames := 0
 var _fresh_live: Dictionary = {}
 const Reaper = preload("res://services/worker_reaper.gd")
 const ScreenSwitch = preload("res://services/screen_switch.gd")
+const OpeningCard = preload("res://presentation/chapter_loading_card.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Typed = preload("res://services/typed_values.gd")
 ## The turn after a solo first turn, set up on a worker while its review card
@@ -290,19 +291,22 @@ func _ready() -> void:
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	soundscape.listen_to(world)
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
-	if staged:
-		# Behind the card nothing of this screen shows yet: its controls and
-		# loading card are made at the start of the next frame (before any
-		# step of the build resumes), not in the frame of the scene change.
-		# Anything of this screen that runs earlier (input, its own frame)
-		# makes them first (_finish_ready_due).
+	if staged and OpeningCard.covering():
+		# Main's opening card covers this screen: its controls and loading
+		# card are made at the start of the next frame (before any step of
+		# the build resumes), not in the frame of the scene change; that frame
+		# shows the empty stage under the card. Anything of this screen that
+		# runs earlier (input, its own frame) makes them first
+		# (_finish_ready_due). An open quick enough to show no card makes
+		# them at once, so its own loading card is drawn in this frame.
 		mode = "loading"
 		running = false
 		_controls_due = true
 		get_tree().process_frame.connect(_finish_ready_due, CONNECT_ONE_SHOT)
 		_build_world_staged()
 		return
-	world.load_level(definition)
+	if staged: _build_world_staged()
+	else: world.load_level(definition)
 	_finish_ready()
 
 ## A staged open's controls are still to be made (see _ready).
@@ -3072,7 +3076,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
-	_finish_ready_due()
+	if _controls_due: _finish_ready_due()
 	_service_world_cover()
 	_poll_prefetch()
 	_poll_turn_check()
