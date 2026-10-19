@@ -1,10 +1,12 @@
 extends SceneTree
-## turn-of-the-tide@2's solo scene when a spirit drowns: the turn ends on the
-## world showing it go under for the drown beat, then the review card says
-## "you drowned" and offers Retry, Redo my previous turn and Back with Save
-## turn off, and the redo really asks to go back. While the crossing closes,
-## its edges flash and the water still rising slows to meet the deck as it
-## shuts; after the drowning the spirit heads under the water.
+## turn-of-the-tide@2's solo scene when a spirit drowns. While the crossing
+## closes, its edges flash and the water still rising slows to meet the deck
+## as it shuts. The turn then ends on the world showing the spirit go under
+## (camera, face, ring, bubbles), then the ending's beat (badge and line over
+## the dimmed world), then the drowned card (turn_endings.gd): the line as its
+## title, Retry first, Preview beside Redo my previous turn, Back, and no
+## Save turn. The redo really asks to go back, Back during the beat lands on
+## the card, and nothing of the drowned turn is kept.
 const KEY := "turn-of-the-tide@2"
 const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
@@ -15,6 +17,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const World = preload("res://presentation/tide_world.gd")
 const V2 = preload("res://tests/turn_of_the_tide_v2_witness.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
+const TurnEndings = preload("res://presentation/turn_endings.gd")
 var checks := 0
 var failures := 0
 var directory := ""
@@ -79,7 +82,13 @@ func _run() -> void:
 		screen._physics_process(1.0 / 30.0)
 		screen.world._process(1.0 / 30.0)
 	_check(screen.world.actors["p1"].position.y < before - 0.3, "Through the beat the drowned spirit sinks (%.2f to %.2f)" % [before, screen.world.actors["p1"].position.y])
-	_check(screen.mode == "review", "After the beat the review card shows")
+	# Then the ending's beat: its badge and line over the dimmed world.
+	var beat: Node = screen.find_child("EndingBeat", true, false)
+	_check(screen.mode == "drowning" and beat != null and _label_with(screen, "Oh no, you drowned!"), "After the drowning, the beat shows the line over the dimmed world")
+	for _frame in range(int(TurnEndings.KINDS.drowned.beat)): screen._physics_process(1.0 / 30.0)
+	_check(screen.mode == "review", "After the beat the ending's card shows")
+	# Nothing of a drowned turn is kept: no draft, no archived attempt.
+	_check(not journal.has_draft() and journal.archived_attempts().is_empty(), "A drowned turn leaves no draft or saved attempt behind")
 	# A snapshot without the drowning (a retry, a replay seeking back) puts it away.
 	var fresh := Simulation.new()
 	fresh.reset(level, "set-the-tide", initial, first, "b")
@@ -87,11 +96,15 @@ func _run() -> void:
 	_check(not screen.world._drown_ring.visible and screen.world._drown_bubbles.all(func(bubble: MeshInstance3D) -> bool: return not bubble.visible) and screen.world.actors["p1"]._held_expression == SpiritLook.NORMAL and screen.world.camera_focus != "p1", "A turn without the drowning shows none of it")
 	var texts := _texts(screen)
 	print("REVIEW CARD ", texts)
-	_check(_label_with(screen, PlayerCopy.JOURNEY_DROWNED_YOU), "The card says: " + PlayerCopy.JOURNEY_DROWNED_YOU)
-	for want: String in ["Retry", PlayerCopy.SOLO_REDO_ACTION, "Back"]:
+	var title: Node = screen.find_child("EndingTitle", true, false)
+	_check(title is Label and (title as Label).text == PlayerCopy.JOURNEY_DROWNED_YOU and screen.find_child("EndingBand", true, false) != null, "The card's title is the line, in its band: " + PlayerCopy.JOURNEY_DROWNED_YOU)
+	for want: String in ["Retry", "Preview", PlayerCopy.SOLO_REDO_ACTION, "Back"]:
 		_check(texts.has(want), "The drowned turn's card offers " + want)
-	var save := _button(screen, "Save turn")
-	_check(save != null and save.disabled, "Save turn is off for a drowned turn")
+	var retry := _button(screen, "Retry")
+	_check(retry != null and retry.get_meta("action_id", "") == "try_again", "Retry is the card's primary button")
+	_check(_button(screen, "Save turn") == null and not texts.has(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5), "Save turn and the usual review title are not there")
+	var preview_row: Node = _button(screen, "Preview").get_parent() if _button(screen, "Preview") != null else null
+	_check(preview_row is HBoxContainer and _button(screen, PlayerCopy.SOLO_REDO_ACTION) != null and _button(screen, PlayerCopy.SOLO_REDO_ACTION).get_parent() == preview_row, "Preview and Redo my previous turn sit side by side")
 	var redo := _button(screen, PlayerCopy.SOLO_REDO_ACTION)
 	if redo != null:
 		redo.pressed.emit()
@@ -142,8 +155,10 @@ func _memory_line(level: Dictionary, initial: Dictionary) -> void:
 	world._process(1.0 / 30.0)
 	_check(screen.mode == "drowning" and world._camera_slot(world._active_player) == "p1" and world._follow_center.is_equal_approx(world._camera_center()) and absf(world._follow_center.x - ghost.x) < absf(live.x - ghost.x) * 0.25, "During the beat the camera frames the drowned memory, at once under Reduce motion (%.2f, memory at %.2f, player at %.2f)" % [world._follow_center.x, ghost.x, live.x])
 	# Back during the beat ends it at once on the card.
-	screen._pause()
-	_check(screen.mode == "review" and _label_with(screen, PlayerCopy.JOURNEY_DROWNED_MEMORY), "Solo, the card says: " + PlayerCopy.JOURNEY_DROWNED_MEMORY)
+	screen.notification(NOTIFICATION_WM_GO_BACK_REQUEST)
+	var title: Node = screen.find_child("EndingTitle", true, false)
+	_check(screen.mode == "review" and title is Label and (title as Label).text == PlayerCopy.JOURNEY_DROWNED_MEMORY, "Back during the beat lands on the card, which solo says: " + PlayerCopy.JOURNEY_DROWNED_MEMORY)
+	_check(not journal.has_draft(), "The drowned memory's turn leaves no draft")
 	root.remove_child(screen)
 	screen.free()
 	await process_frame

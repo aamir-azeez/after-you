@@ -24,6 +24,8 @@ const DEFINITIONS := {
 	"continue": {"label": "Continue", "icon": "next", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_C3D6912E5E40},
 	"back": {"label": "Back", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_09F37563336D},
 	"leave_draft": {"label": "Back", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_D37398B29BC6},
+	# A turn ending's card (turn_endings.gd): trying again is the way on.
+	"try_again": {"label": "Retry", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_E434AB682F32},
 	"retry_save": {"label": "Retry save", "icon": "retry", "primary": true, "hint": PlayerCopy.ACTION_BUTTONS_DCBA5AB65E41},
 	"leave_unsaved": {"label": "Leave without saving", "icon": "back", "primary": false, "hint": PlayerCopy.ACTION_BUTTONS_46C4ED81FF3A},
 	"refresh": {"label": "Refresh", "icon": "retry", "primary": false, "hint": "Check for updates."},

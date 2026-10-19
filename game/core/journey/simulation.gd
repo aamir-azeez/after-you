@@ -146,6 +146,11 @@ func _on_closing() -> bool:
 func _may_complete() -> bool:
 	return not _on_closing()
 
+## Whether this turn may be kept anywhere: a draft, a replay or an upload. A
+## drowned turn is not (tide rules); the screen still holds it for Preview.
+func keeps_draft() -> bool:
+	return _drowned.is_empty()
+
 func _refresh_optics() -> void:
 	if not stage.has("optical_field"):
 		_optics={"segments":[],"signals":{}}

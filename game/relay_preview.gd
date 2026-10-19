@@ -42,6 +42,8 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
+const TurnEndings = preload("res://presentation/turn_endings.gd")
+const EndingBadge = preload("res://presentation/ending_badge.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
@@ -162,6 +164,8 @@ const VISIBLE_WAIT_USEC := 150000
 ## How long a drowned spirit is seen going under before the review card.
 const DROWN_BEAT_FRAMES := 45
 var _drown_frames := 0
+## The turn ending being shown (turn_endings.gd), or {}.
+var _ending: Dictionary = {}
 var _wait_then: Callable
 var _wait_frames := 0
 ## The solo live simulation the ready card set up, as it was then. Start turn
@@ -1886,22 +1890,68 @@ func advance_input(input: Dictionary) -> void:
 			_finish()
 
 ## A spirit drowned (journey tide rules): the world shows it going under for
-## DROWN_BEAT_FRAMES physics frames, then the review card says so and offers
-## Retry, the redo actions, Restart and Leave like any unfinished turn.
-## The draft is saved at the drowned tick first, so a closed app reopens on
-## the card, and the controls stop taking input while the beat shows.
+## DROWN_BEAT_FRAMES physics frames, then the ending's beat (turn_endings.gd:
+## its badge and line over the dimmed world, skipped by a tap), then its card.
+## The rules keep no draft of such a turn (the earlier autosave is cleared),
+## and the controls stop taking input while the beat shows.
 func _begin_drown_beat() -> void:
 	running = false
 	action_pressed = false
 	if not _persist_draft("review"): return
 	mode = "drowning"
-	_drown_frames = DROWN_BEAT_FRAMES
+	_ending = TurnEndings.of(sim.snapshot(), online_session == null)
+	_drown_frames = DROWN_BEAT_FRAMES + int(_ending.get("beat", 0))
 	_update_hud(sim.snapshot())
 
 func _advance_drown_beat() -> void:
 	if backgrounded: return
 	_drown_frames -= 1
+	if _drown_frames == int(_ending.get("beat", 0)) and _drown_frames > 0: _show_ending_beat()
 	if _drown_frames <= 0: _end_drown_beat()
+
+## The ending's line, big, under its badge, over the dimmed world. Still; it
+## only fades in, and not under Reduce motion. A tap goes straight on.
+func _show_ending_beat() -> void:
+	if _ending.is_empty(): return
+	hud.visible = false
+	overlay.visible = true
+	var beat := Control.new()
+	beat.name = "EndingBeat"
+	beat.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	beat.mouse_filter = Control.MOUSE_FILTER_STOP
+	beat.gui_input.connect(_ending_beat_input)
+	overlay.add_child(beat)
+	var shade := ColorRect.new()
+	shade.color = Color(0.025, 0.10, 0.10, 0.6)
+	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	beat.add_child(shade)
+	var center := CenterContainer.new()
+	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	beat.add_child(center)
+	var stack := VBoxContainer.new()
+	stack.alignment = BoxContainer.ALIGNMENT_CENTER
+	stack.add_theme_constant_override("separation", 10)
+	center.add_child(stack)
+	var badge := EndingBadge.new()
+	badge.setup(_ending, 230.0)
+	badge.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	stack.add_child(badge)
+	var parts: Array = TurnEndings.line_parts(str(_ending.line))
+	for index in range(2):
+		if str(parts[index]).is_empty(): continue
+		var label: Label = controls._label(str(parts[index]), 60 if index == 0 else 40)
+		label.add_theme_font_override("font", controls.title_font)
+		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		label.add_theme_color_override("font_color", ControlTheme.CREAM if index == 0 else EndingBadge.LINE)
+		stack.add_child(label)
+	if not bool(settings.get("reduced_motion", false)):
+		beat.modulate.a = 0.0
+		create_tween().tween_property(beat, "modulate:a", 1.0, 0.2)
+
+func _ending_beat_input(event: InputEvent) -> void:
+	if (event is InputEventMouseButton or event is InputEventScreenTouch) and event.pressed and mode == "drowning": _end_drown_beat()
 
 ## Pause, Back and the app going to the background end the beat at once: the
 ## card always follows a drowning.
@@ -2110,6 +2160,10 @@ func _verify_review() -> Dictionary:
 func _show_review() -> void:
 	mode = "review"
 	var verified: Dictionary = _verify_review()
+	var ending := TurnEndings.of(verified.get("snapshot", {}), online_session == null)
+	if not ending.is_empty():
+		_show_ending_card(ending)
+		return
 	var can_save := bool(verified.get("valid", false)) and bool(verified.get("snapshot", {}).get("can_commit", false))
 	if can_save: _start_prefetch()
 	var explanation := PlayerCopy.RELAY_PREVIEW_B9074234FC11
@@ -2127,6 +2181,57 @@ func _show_review() -> void:
 	_add_room_action(card, "restart")
 	card.add_child(_action_button("leave_draft", _leave))
 
+
+## A turn ending's card (turn_endings.gd) in place of the usual review: its
+## line is the title in a teal band beside its badge, then its rows of buttons.
+## Nothing on it saves the turn. It slides up into place, at once under
+## Reduce motion.
+func _show_ending_card(ending: Dictionary) -> void:
+	var card := _card("", "")
+	for line: Node in card.get_children():
+		if line is Label and (line as Label).text.is_empty(): (line as Label).visible = false
+	var band := PanelContainer.new()
+	band.name = "EndingBand"
+	var band_style := ControlTheme.rounded(Color("2b6765"), 16)
+	band_style.content_margin_left = 14
+	band_style.content_margin_right = 18
+	band_style.content_margin_top = 12
+	band_style.content_margin_bottom = 12
+	band.add_theme_stylebox_override("panel", band_style)
+	var row := HBoxContainer.new()
+	row.add_theme_constant_override("separation", 16)
+	band.add_child(row)
+	var badge := EndingBadge.new()
+	badge.setup(ending, 118.0)
+	row.add_child(badge)
+	var title: Label = controls._label(str(ending.line), 32)
+	title.name = "EndingTitle"
+	title.add_theme_font_override("font", controls.title_font)
+	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	row.add_child(title)
+	card.add_child(band)
+	card.move_child(band, 0)
+	var actions := {"try_again": _retry_review, "preview": _preview_turn, "leave_draft": _leave}
+	for ids: Array in ending.rows:
+		var line := HBoxContainer.new()
+		line.add_theme_constant_override("separation", 10)
+		card.add_child(line)
+		for id: String in ids:
+			if id == "redo": _add_redo_action(line)
+			elif actions.has(id): line.add_child(_action_button(id, actions[id]))
+		for button: Node in line.get_children():
+			if button is Control: (button as Control).size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		if line.get_child_count() == 0: line.queue_free()
+	var slide: Node = card.get_parent().get_parent().get_parent().get_parent()
+	if slide is CenterContainer and not bool(settings.get("reduced_motion", false)):
+		var holder := slide as CenterContainer
+		holder.position.y = 80.0
+		holder.modulate.a = 0.0
+		var tween := create_tween().set_parallel(true)
+		tween.tween_property(holder, "position:y", 0.0, 0.25).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tween.tween_property(holder, "modulate:a", 1.0, 0.2)
 
 ## From the review card, or (`paused_over`) from the pause card over its Preview.
 func _retry_review(paused_over: String = "") -> void:
