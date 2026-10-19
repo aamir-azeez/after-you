@@ -45,6 +45,7 @@ class FakeAccount extends RefCounted:
 	func api() -> Node: return api_node
 	func identity_state() -> String: return identity
 	func player_id() -> String: return player
+	func recovery_code() -> String: return "r".repeat(43)
 	func config_web_client_id() -> String: return web_client
 	func cloud_sources() -> RefCounted: return null
 	func restore_identity(provider: String, get_credential: Callable, restart: bool) -> Dictionary:
@@ -105,7 +106,7 @@ func _run() -> void:
 	_check(service.signed_in() and service.offered() and service.linked(), "Signed in, offered and linked")
 	_check(api.calls[0].path == "/v2/capabilities" and "X-AfterYou-Platform-Games: 1" in api.calls[0].headers, "The capability is asked for with the opt-in header")
 	_check(provider.credential_calls == [CAPABILITY.play_games_web_client_id], "The server's web client id is used for the auth code")
-	_check(api.calls[1].body == {"schema_version": 1, "provider": "play_games", "credential": {"server_auth_code": "4/0Asynthetic-code"}}, "Link sends only the provider and the platform proof")
+	_check(api.calls[1].body == {"schema_version": 1, "provider": "play_games", "credential": {"server_auth_code": "4/0Asynthetic-code"}, "recovery_code": "r".repeat(43)}, "Link sends the provider, the platform proof and the recovery code that allows a later restore")
 	_check(service.status_line() == PlayerCopy.PLATFORM_GAMES_LINKED, "Settings says linked")
 	# Next launch: the link held on this phone answers without the server.
 	var calls_before := api.calls.size()

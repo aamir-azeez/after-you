@@ -23,8 +23,9 @@ func capability() -> Dictionary:
 	return {"ok": true, "play_games": play, "web_client_id": client if play else "", "game_center": Typed.equal(data.get("game_center_version"), 1)}
 
 ## {"ok", "status": linked | conflict | other_account, "changed"} or {"ok": false, "code"}.
-func link(provider: String, credential: Dictionary, replace: bool) -> Dictionary:
-	var body := {"schema_version": 1, "provider": provider, "credential": credential}
+## The recovery code proves this phone may set up a restore for its identity (a device token alone may not).
+func link(provider: String, credential: Dictionary, replace: bool, recovery_code: String) -> Dictionary:
+	var body := {"schema_version": 1, "provider": provider, "credential": credential, "recovery_code": recovery_code}
 	if replace: body.replace = true
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "/v1/platform/link", body)
 	if not response.get("ok", false): return {"ok": false, "code": _code(response), "status": int(response.get("status", 0))}
