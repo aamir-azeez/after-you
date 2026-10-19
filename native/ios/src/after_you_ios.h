@@ -6,7 +6,7 @@
 
 /// The iOS counterpart of the AfterYouAndroid singleton: the same method names, arguments
 /// and signals for the services iOS has (secure storage, recovery copy, share sheet, invite
-/// links, purchases and notifications), so the GDScript wrappers stay shared.
+/// links, purchases, notifications and Game Center), so the GDScript wrappers stay shared.
 class AfterYouIOS : public godot::Object {
 	GDCLASS(AfterYouIOS, godot::Object)
 
@@ -40,4 +40,13 @@ public:
 	void notification_pending_route(const godot::String &p_request_id);
 	void notification_ack_route(const godot::String &p_event_id, const godot::String &p_request_id);
 	void notification_disable(const godot::String &p_request_id);
+
+	bool games_available();
+	void games_status(const godot::String &p_request_id);
+	void games_sign_in(const godot::String &p_request_id);
+	void games_credential(const godot::String &p_web_client_id, const godot::String &p_request_id);
+	void games_snapshot_open(const godot::String &p_name, const godot::String &p_request_id);
+	void games_snapshot_commit(const godot::String &p_handle, const godot::String &p_data, const godot::String &p_description, const godot::String &p_request_id);
+	void games_snapshot_resolve(const godot::String &p_handle, const godot::String &p_data, const godot::String &p_request_id);
+	void games_snapshot_discard(const godot::String &p_handle, const godot::String &p_request_id);
 };

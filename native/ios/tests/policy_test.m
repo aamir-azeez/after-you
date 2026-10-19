@@ -1,9 +1,10 @@
 // Host test for the platform-independent parts of the iOS plugin: validation rules and the
 // notification ledger. Built and run on the macOS CI runner:
 //   clang -fobjc-arc -fmodules -I native/ios/src native/ios/tests/policy_test.m \
-//     native/ios/src/AYPolicy.m native/ios/src/AYNotificationStore.m -lsqlite3 -o policy_test
+//     native/ios/src/AYPolicy.m native/ios/src/AYNotificationStore.m native/ios/src/AYGamesPolicy.m -lsqlite3 -o policy_test
 #import <Foundation/Foundation.h>
 
+#import "AYGamesPolicy.h"
 #import "AYNotificationStore.h"
 #import "AYPolicy.h"
 
@@ -107,6 +108,16 @@ int main(void) {
 		AYNotificationStore *reopened = [AYNotificationStore openInDirectory:directory];
 		check(reopened != nil && [reopened registration].generation == 3, @"The ledger persists across opens");
 		[[NSFileManager defaultManager] removeItemAtURL:directory error:nil];
+
+		// Game Center: the same request shapes as Android's PlayGamesPolicy, and a one-way key.
+		check([[AYGamesPolicy playerKey:@"T:_synthetic_team_player"] isEqualToString:@"d814ecfc33e4de3163fcacc697464f16a476e0fa6c17ceab191a280c45ed5f51"], @"The Game Center player key is SHA-256 of the prefixed team player id");
+		check(![[AYGamesPolicy playerKey:@"T:_a"] isEqualToString:[AYGamesPolicy playerKey:@"T:_b"]], @"Different players get different keys");
+		check([AYGamesPolicy validSnapshotName:@"after-you-progress"] && ![AYGamesPolicy validSnapshotName:@"../x"] && ![AYGamesPolicy validSnapshotName:repeat(@"a", 65)], @"Saved game names are bounded");
+		NSString *handle = [AYGamesPolicy newHandle];
+		check([AYGamesPolicy validHandle:handle] && ![handle isEqualToString:[AYGamesPolicy newHandle]] && ![AYGamesPolicy validHandle:@"zz"], @"Slot handles are random 32-hex strings");
+		check([AYGamesPolicy validDescription:@"After You progress"] && ![AYGamesPolicy validDescription:@"line\nbreak"] && ![AYGamesPolicy validDescription:repeat(@"x", 101)], @"Slot descriptions are short plain text");
+		check([AYGamesPolicy decodeSnapshot:@""].length == 0 && [[AYGamesPolicy decodeSnapshot:@"QVlDMQ=="] isEqualToData:[@"AYC1" dataUsingEncoding:NSUTF8StringEncoding]], @"Slot bytes decode from base64");
+		check([AYGamesPolicy decodeSnapshot:@"not base64!"] == nil && [AYGamesPolicy decodeSnapshot:repeat(@"A", 4 * 1024 * 1024 + 8)] == nil, @"Bad or oversized slot text is refused");
 
 		printf("AFTER YOU iOS POLICY: %d checks, %d failures\n", checks, failures);
 	}

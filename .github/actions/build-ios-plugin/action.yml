@@ -90,7 +90,7 @@ runs:
       run: |
         set -euo pipefail
         clang -fobjc-arc -fmodules -Wall -I native/ios/src native/ios/tests/policy_test.m \
-          native/ios/src/AYPolicy.m native/ios/src/AYNotificationStore.m -lsqlite3 \
+          native/ios/src/AYPolicy.m native/ios/src/AYNotificationStore.m native/ios/src/AYGamesPolicy.m -lsqlite3 \
           -o "$RUNNER_TEMP/ios-policy-test"
         "$RUNNER_TEMP/ios-policy-test"
 
