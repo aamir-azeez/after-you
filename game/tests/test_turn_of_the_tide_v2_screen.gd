@@ -119,6 +119,13 @@ func _memory_line(level: Dictionary, initial: Dictionary) -> void:
 	for frame: Dictionary in Simulation.expand_recording_inputs(p0.export_recording()):
 		if screen.mode != "play": break
 		screen.advance_input(frame)
+	# The memory drowned off screen: the camera goes to it during the beat.
+	var world: Node3D = screen.world
+	var ghost: Vector3 = world.actors["p1"].position
+	var live: Vector3 = world.actors["p0"].position
+	screen._physics_process(1.0 / 30.0)
+	world._process(1.0 / 30.0)
+	_check(screen.mode == "drowning" and world._camera_slot(world._active_player) == "p1" and absf(world._follow_center.x - clampf(ghost.x, -3.2, 12.0)) < absf(world._follow_center.x - live.x) + 0.01 and absf(world._follow_center.x - clampf(ghost.x, -3.2, 12.0)) < 0.05, "During the beat the camera frames the drowned memory, at once under Reduce motion (%.2f, memory at %.2f)" % [world._follow_center.x, ghost.x])
 	# Back during the beat ends it at once on the card.
 	screen._pause()
 	_check(screen.mode == "review" and _label_with(screen, PlayerCopy.JOURNEY_DROWNED_MEMORY), "Solo, the card says: " + PlayerCopy.JOURNEY_DROWNED_MEMORY)

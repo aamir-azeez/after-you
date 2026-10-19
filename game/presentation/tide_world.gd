@@ -1626,10 +1626,13 @@ func _show_closing(closing: Dictionary) -> void:
 		elif root.has_meta("rate"): root.remove_meta("rate")
 
 ## Tide rules: a drowned spirit (snapshot "drowned": {slot, route}) heads under
-## the water over its crossing, and a ring spreads where it went down.
+## the water over its crossing, a ring spreads where it went down, and the
+## camera eases over to it (snapping under Reduce motion), so a drowning off
+## screen is seen before the card.
 func _show_drowned(drowned: Dictionary) -> void:
 	if drowned.is_empty() or not actors.has(str(drowned.get("slot", ""))): return
 	var slot := str(drowned.slot)
+	camera_focus = slot
 	# The water over the crossing it drowned on: the harbour's or the outer sea's.
 	var body: Node3D = _water.get(_body_of(_route(str(drowned.get("route", ""))).get("rect_cm", [0, 0, 0, 0])))
 	if not is_instance_valid(body): body = _water.get("harbour")
