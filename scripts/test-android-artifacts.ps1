@@ -137,6 +137,49 @@ N: android=http://schemas.android.com/apk/res/android
         Assert-True ($case.Value -cne $inviteTree) ('Invite manifest fixture did not change: ' + $case.Key)
         Assert-Rejected { Assert-AndroidInviteLinkManifest -ManifestTree $case.Value } ('Invite manifest check accepted: ' + $case.Key)
     }
+    # Play Games: APP_ID as a resource reference, no start-up provider, and the build's exact id.
+    . (Join-Path $PSScriptRoot 'android-play-games.ps1')
+    $playMeta = @"
+      E: meta-data (line=60)
+        A: android:name(0x01010003)="com.google.android.gms.games.APP_ID" (Raw: "com.google.android.gms.games.APP_ID")
+        A: android:value(0x01010024)=@0x7f0f0040
+"@
+    $playTree = $inviteTree.TrimEnd() + "`n" + $playMeta
+    Assert-AndroidPlayGamesManifest -ManifestTree $playTree
+    $checked++
+    Assert-AndroidPlayGamesManifest -ManifestTree ($playTree -replace "`n", "`r`n")
+    $checked++
+    $providerLines = @"
+      E: provider (line=70)
+        A: android:name(0x01010003)="com.google.android.gms.games.provider.PlayGamesInitProvider" (Raw: "com.google.android.gms.games.provider.PlayGamesInitProvider")
+        A: android:exported(0x01010010)=(type 0x12)0x0
+"@
+    $brokenPlay = [ordered]@{
+        'Missing APP_ID' = $inviteTree
+        'Duplicate APP_ID' = $playTree.TrimEnd() + "`n" + $playMeta
+        'Literal APP_ID' = $playTree.Replace('A: android:value(0x01010024)=@0x7f0f0040', 'A: android:value(0x01010024)="123456789012" (Raw: "123456789012")')
+        'Start-up provider kept' = $playTree.TrimEnd() + "`n" + $providerLines
+    }
+    foreach ($case in $brokenPlay.GetEnumerator()) {
+        Assert-True ($case.Value -cne $playTree) ('Play Games manifest fixture did not change: ' + $case.Key)
+        Assert-Rejected { Assert-AndroidPlayGamesManifest -ManifestTree $case.Value } ('Play Games manifest check accepted: ' + $case.Key)
+    }
+    $playDump = @"
+Package Groups (1)
+    resource 0x7f0f0040 com.aamirazeez.afteryou:string/game_services_project_id: t=0x03 d=0x00000010 (s=0x0008 r=0x00)
+      (string8) "123456789012"
+"@
+    Assert-AndroidPlayGamesResource -ResourceDump $playDump -Expected '123456789012'
+    $checked++
+    Assert-Rejected { Assert-AndroidPlayGamesResource -ResourceDump $playDump -Expected '' } 'A configured id passed as an unconfigured build.'
+    Assert-AndroidPlayGamesResource -ResourceDump $playDump.Replace('"123456789012"', '""') -Expected ''
+    $checked++
+    Assert-Rejected { Assert-AndroidPlayGamesResource -ResourceDump $playDump.Replace('"123456789012"', '""') -Expected '123456789012' } 'An empty id passed as a configured build.'
+    Assert-Rejected { Assert-AndroidPlayGamesResource -ResourceDump 'Package Groups (1)' -Expected '' } 'A missing id resource passed.'
+    Assert-True ((Get-AndroidPlayGamesAppId -AppId '') -eq '' -and (Get-AndroidPlayGamesAppId -AppId '123456789012') -eq '123456789012') 'Valid Play Games ids were refused.'
+    foreach ($badId in @('abc', ' 123456789012', '12345', '123456789012345678901', '1234567890ab')) {
+        Assert-Rejected { Get-AndroidPlayGamesAppId -AppId $badId } ('Play Games id accepted: ' + $badId)
+    }
     Write-Output "Android candidate path checks passed: $checked"
 } finally {
     $resolvedFixture = [IO.Path]::GetFullPath($fixture)

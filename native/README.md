@@ -8,6 +8,7 @@ This Godot Android v2 plugin connects After You to the official RevenueCat Andro
 | --- | --- |
 | Godot Android library and editor | 4.7.2 stable |
 | RevenueCat Android | 10.15.1 |
+| Play Games Services v2 | 22.1.0 |
 | Android Gradle Plugin | 8.9.2 |
 | Gradle | 8.11.1 |
 | Kotlin | 2.1.20 |
@@ -134,3 +135,10 @@ References: [Godot v2 plugins](https://docs.godotengine.org/en/stable/tutorials/
 The notification source bridge uses Firebase Messaging 25.1.3 with explicit opt-in and Android notification permission. It is unavailable in an APK without complete Firebase Android public resources. It accepts generic typed friend-turn hints, with no names, photos or credentials in notification text. The service can receive background data messages without Godot running; foreground delivery signals an authoritative refresh. Native handling never joins a room or advances gameplay.
 
 See [NOTIFICATIONS.md](NOTIFICATIONS.md) for the eight request APIs, server acknowledgement/binding generation, deferred tap routing and test boundaries. JVM and isolated Android tests cover local policy, request lifecycle and durable notification state; end-to-end Firebase delivery requires a configured device test. Use the explicit private `-FirebaseConfigPath` build option described there; configuration is absent by default. Normal process absence differs from Android force-stop, which requires reopening the app before delivery resumes. Existing camera data, account vaults and simulation stores are unchanged.
+
+
+## Play Games
+
+The plugin wraps Google's `play-services-games-v2` for sign-in, a one-time server auth code and one Saved Games slot. The Play Games project id is public and comes from the build: `scripts/build-android.ps1 -PlayGamesAppId <digits>`, which Gradle receives as `-PafterYouPlayGamesAppId`. Without it the generated `game_services_project_id` is empty and every games call reports `unavailable`. The SDK starts on the game's first games call, a few seconds after launch. The app manifest removes `PlayGamesInitProvider`, so nothing runs at process start, and the build checks the exported APK for this.
+
+Methods take the request id last and answer once through `games_result(request_id, operation, payload_json)` or `games_error(request_id, operation, code)`: `games_available()` (synchronous), `games_status`, `games_sign_in`, `games_credential(web_client_id)`, `games_snapshot_open(name)`, `games_snapshot_resolve(handle, data_base64)`, `games_snapshot_commit(handle, data_base64, description)` and `games_snapshot_discard(handle)`. Codes are `unavailable`, `signed_out`, `cancelled`, `offline`, `timeout`, `busy`, `not_configured` and `failed`; Google's own text never reaches the game. The Play Games player id stays native, and the game receives only a SHA-256 player key. The server auth code goes straight to the After You server, which exchanges it with Google. Snapshots open with manual conflict resolution, and the game merges the copies itself (`game/services/platform_games/`). `PlayGamesPolicyTest` covers the configuration, codes, key and handle rules. Sign-in, the auth code exchange and Saved Games need a device signed in to a tester account on a build linked in Play Console.

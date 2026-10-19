@@ -34,6 +34,9 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     private val photoExecutor = Executors.newSingleThreadExecutor()
     private var optionalPhoto: OptionalPhotoCapture? = null
     private var notificationBridge: NotificationBridge? = null
+    /** Play Games: built on the game's first games_* call, never at startup. */
+    private val gamesExecutor = Executors.newSingleThreadExecutor()
+    private var gamesBridge: PlayGamesBridge? = null
     private val photoClearing = AtomicBoolean(false)
     /** Set from onMainCreate's Activity, so startup recovery never depends on the plugin's activity property. */
     private var photoContext: Context? = null
@@ -117,6 +120,9 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
                 { data -> emitSignal("notification_received", data) },
                 { data -> emitSignal("notification_token_changed", data) })
         }
+        // A recreated Activity gets a new Play Games bridge on the next games_* call.
+        gamesBridge?.close()
+        gamesBridge = null
         InviteLinkRuntime.inbox.attach(linkListener)
         return super.onMainCreate(activity)
     }
@@ -133,7 +139,10 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         SignalInfo("notification_error", String::class.java, String::class.java, String::class.java),
         SignalInfo("notification_received", String::class.java),
         SignalInfo("notification_token_changed", String::class.java),
-        SignalInfo("invite_link_available")
+        SignalInfo("invite_link_available"),
+        SignalInfo("games_result", String::class.java, String::class.java, String::class.java),
+        SignalInfo("games_error", String::class.java, String::class.java, String::class.java),
+        SignalInfo("games_account_changed", String::class.java)
     )
 
     private fun begin(requestId: String): Boolean = requestId.length in 1..128 && pending.add(requestId)
@@ -514,6 +523,27 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
     @UsedByGodot fun notification_ack_route(eventId: String, requestId: String) = notificationCall(requestId, "ack_route") { it.acknowledge(eventId, requestId) }
     @UsedByGodot fun notification_disable(requestId: String) = notificationCall(requestId, "disable") { it.disable(requestId) }
 
+    private fun games(): PlayGamesBridge? {
+        gamesBridge?.let { return it }
+        val host = activity ?: return null
+        return PlayGamesBridge(GooglePlayGamesClient(host, gamesExecutor),
+            { id, operation, data -> emitSignal("games_result", id, operation, data) },
+            { id, operation, code -> emitSignal("games_error", id, operation, code) }).also { gamesBridge = it }
+    }
+    private fun gamesCall(id: String, operation: String, action: (PlayGamesBridge) -> Unit) {
+        val bridge = games()
+        if (bridge == null) emitSignal("games_error", id, operation, "unavailable") else action(bridge)
+    }
+    /** Cheap and synchronous: a Play Games project id in this build and Google Play services present. */
+    @UsedByGodot fun games_available(): Boolean = games()?.available() ?: false
+    @UsedByGodot fun games_status(requestId: String) = gamesCall(requestId, "status") { it.status(requestId) }
+    @UsedByGodot fun games_sign_in(requestId: String) = gamesCall(requestId, "sign_in") { it.signIn(requestId) }
+    @UsedByGodot fun games_credential(webClientId: String, requestId: String) = gamesCall(requestId, "credential") { it.credential(webClientId, requestId) }
+    @UsedByGodot fun games_snapshot_open(name: String, requestId: String) = gamesCall(requestId, "snapshot_open") { it.snapshotOpen(name, requestId) }
+    @UsedByGodot fun games_snapshot_commit(handle: String, data: String, description: String, requestId: String) = gamesCall(requestId, "snapshot_commit") { it.snapshotCommit(handle, data, description, requestId) }
+    @UsedByGodot fun games_snapshot_resolve(handle: String, data: String, requestId: String) = gamesCall(requestId, "snapshot_resolve") { it.snapshotResolve(handle, data, requestId) }
+    @UsedByGodot fun games_snapshot_discard(handle: String, requestId: String) = gamesCall(requestId, "snapshot_discard") { it.snapshotDiscard(handle, requestId) }
+
     override fun onMainRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         notificationBridge?.permissionResult(requestCode, permissions)
         super.onMainRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -536,12 +566,15 @@ class AfterYouAndroid(godot: Godot) : GodotPlugin(godot) {
         linkResumed = false
         notificationBridge?.close()
         notificationBridge = null
+        gamesBridge?.close()
+        gamesBridge = null
         // Never close the camera here: Android may destroy this Activity while the camera is in
         // front, and the photo must come back to the recreated one.
         optionalPhoto?.hostDestroyed()
         optionalPhoto = null
         photoExecutor.shutdown()
         storageExecutor.shutdown()
+        gamesExecutor.shutdown()
         super.onMainDestroy()
     }
 

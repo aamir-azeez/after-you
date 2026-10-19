@@ -26,6 +26,7 @@ dependencies {
     compileOnly("org.godotengine:godot:4.7.2.stable")
     implementation("com.revenuecat.purchases:purchases:10.15.1")
     implementation("com.google.firebase:firebase-messaging:25.1.3") // Messaging only; no Analytics/KTX.
+    implementation("com.google.android.gms:play-services-games-v2:22.1.0") // Play Games sign-in, server auth code and saved games.
     implementation("androidx.core:core:1.8.0") // Explicit floor for temporary photo URI grants; FCM may raise the locked version.
     testImplementation("junit:junit:4.13.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")
@@ -86,6 +87,26 @@ val generateFirebaseResources by tasks.registering {
 }
 android.sourceSets.getByName("main").res.srcDir(firebaseResources)
 tasks.named("preBuild").configure { dependsOn(generateFirebaseResources) }
+
+// The public Play Games Services project id (digits). Always generated, so the manifest's
+// APP_ID reference resolves; an empty value keeps Play Games off in that build.
+val playGamesAppId = providers.gradleProperty("afterYouPlayGamesAppId").orElse("")
+val playGamesResources = layout.buildDirectory.dir("generated/res/afterYouPlayGames/main")
+val generatePlayGamesResources by tasks.registering {
+    inputs.property("afterYouPlayGamesAppId", playGamesAppId)
+    outputs.dir(playGamesResources)
+    doLast {
+        val id = playGamesAppId.get()
+        require(id.isEmpty() || id.matches(Regex("[0-9]{6,20}"))) { "afterYouPlayGamesAppId must be the numeric Play Games project id." }
+        val target = playGamesResources.get().file("values/after_you_play_games.xml").asFile
+        check(target.parentFile.isDirectory || target.parentFile.mkdirs())
+        val line = "\n"
+        target.writeText("<?xml version=\"1.0\" encoding=\"utf-8\"?>" + line + "<resources>" + line +
+            "    <string name=\"game_services_project_id\" translatable=\"false\">$id</string>" + line + "</resources>" + line)
+    }
+}
+android.sourceSets.getByName("main").res.srcDir(playGamesResources)
+tasks.named("preBuild").configure { dependsOn(generatePlayGamesResources) }
 
 tasks.register<Copy>("packagePlugin") {
     dependsOn("assembleDebug", "assembleRelease")
