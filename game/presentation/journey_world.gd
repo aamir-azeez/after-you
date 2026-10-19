@@ -69,8 +69,8 @@ var _placement_due := true
 var placement_passes := 0
 var _waiting_ring: MeshInstance3D
 var _remembered: Node3D
-## Wait hints (wait_hints.gd): off until the screen turns them on for a
-## friend's room turn (set_wait_hints).
+## Wait hints (wait_hints.gd): off until the screen turns them on for a turn
+## played beside a memory (set_wait_hints, WaitHints.wanted).
 var _wait_hints := WaitHints.new()
 var _wait_hints_on := false
 ## Hidden while the screen's fast-forward mark is over the world (hush_wait_hints).
@@ -554,8 +554,8 @@ func _descriptor() -> Dictionary:
 
 # --- Wait hints ---
 
-## Turns wait hints on for the live spirit's turn in a friend's room, with
-## the memory's length in ticks (MemoryWait.prior_ticks), or off.
+## Turns wait hints on for the live spirit's turn beside a memory, with the
+## memory's length in ticks (MemoryWait.prior_ticks), or off.
 func set_wait_hints(on: bool, memory_ticks: int = -1) -> void:
 	_wait_hints_on = on
 	_wait_hints.set_memory_ticks(memory_ticks if on else -1)

@@ -61,6 +61,7 @@ func _run() -> void:
 	_first_turn_and_off()
 	_hint_after_fold()
 	_screen_wiring()
+	_solo_wording()
 	_idle_costs_nothing()
 	_check(Canonical.digest(Registry.definition(KEY)) == digest, "Hints never change the definition")
 	print("WAIT HINTS: %d checks, %d failures" % [checks, failures])
@@ -257,8 +258,8 @@ static func _live_part_done(state: Dictionary, tick: int, route: String, live: A
 		elif term.has("control_id"): mechanisms.controls[term.control_id] = term.value
 	return {"role": "b", "tick": tick, "players": state.players, "mechanisms": mechanisms, "bridges": {route: open}, "finished": false}
 
-## The first turn never hints, and hints that are off (solo play, a replay)
-## show nothing.
+## The first turn never hints, and hints that are off (a replay) show
+## nothing.
 func _first_turn_and_off() -> void:
 	var level := Registry.definition(KEY)
 	var checkpoint := Catalog.initial_checkpoint(level)
@@ -272,7 +273,7 @@ func _first_turn_and_off() -> void:
 	var b := _pair("high")
 	var world := _world(b, false)
 	_play_to(world, b, PULL_TICK)
-	_check(world.wait_hints().is_empty() and world._wait_marks.is_empty(), "Hints off (solo play, replays): none show, and none are built")
+	_check(world.wait_hints().is_empty() and world._wait_marks.is_empty(), "Hints off (replays): none show, and none are built")
 	world.set_wait_hints(true, MemoryWait.prior_ticks(b._prior))
 	_check(world._wait_marks.has("jetty-3") and world._bubbles.has(world._wait_marks["jetty-3"].bubble), "Turned on for a stage already shown, the marks are built and placed with the rest")
 	world.free()
@@ -292,15 +293,18 @@ func _hint_after_fold() -> void:
 	_check(is_instance_valid(dashes) and dashes.get_parent() == world.terrain and dashes.mesh.get_faces().size() == faces and dashes.visible and world._wait_marks["jetty-3"].bubble.visible, "After the fold the hint shows with its dashes whole")
 	world.free()
 
-## The chapter screen turns hints on, with the memory's length, only for a
-## second turn being played in a friend's room.
+## The chapter screen turns hints on, with the memory's length, for a second
+## turn being played beside a memory: a friend's room or solo play alike
+## (WaitHints.wanted), never a first turn or a replay.
 func _screen_wiring() -> void:
 	var prior := {"duration_ticks": 418}
 	var cases := [["a friend's room, second turn", RefCounted.new(), "b", true, [true, 418]],
 		["a friend's room, first turn", RefCounted.new(), "a", true, [false, -1]],
 		["a friend's room, a memory with no length", RefCounted.new(), "b", true, [true, -1]],
 		["a friend's room, a replay", RefCounted.new(), "b", false, [false, 418]],
-		["solo play, second turn", null, "b", true, [false, 418]]]
+		["solo play, second turn", null, "b", true, [true, 418]],
+		["solo play, first turn", null, "a", true, [false, -1]],
+		["solo play, a replay", null, "b", false, [false, 418]]]
 	for item: Array in cases:
 		var preview := Preview.new()
 		var world := HintWorld.new()
@@ -313,6 +317,17 @@ func _screen_wiring() -> void:
 		preview.online_session = null
 		world.free()
 		preview.free()
+
+## Hints show beside the player's own ghost in solo play too, so no chapter's
+## hint names a friend: every phrase reads right whoever left the memory.
+func _solo_wording() -> void:
+	for key: String in ChapterIndex.keys():
+		var hints: Dictionary = ChapterIndex.data(key).get("wait_hints", {})
+		var phrases: Array = [hints.get("fallback", ""), hints.get("never", "")] + hints.get("crossings", {}).values()
+		for reason: Variant in hints.get("reasons", {}).values():
+			phrases.append_array(reason.values() if reason is Dictionary else [reason])
+		for phrase: Variant in phrases:
+			_check(not str(phrase).to_lower().contains("friend"), "%s: a wait hint reads right beside your own ghost (%s)" % [key, str(phrase)])
 
 ## Worked out once per change: idle frames, the same snapshot again and ticks
 ## where only the spirits walk cost no evaluation.

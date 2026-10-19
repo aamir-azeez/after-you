@@ -66,6 +66,12 @@ var _seen_role := ""
 var _seen_over := false
 var _dirty := true
 
+## Whether a chapter screen shows wait hints in a turn: one being played (not
+## a replay) that follows a recorded memory, a friend's in their room or the
+## player's own earlier turn in solo play. The one rule every screen asks.
+static func wanted(live: bool, follows_memory: bool) -> bool:
+	return live and follows_memory
+
 ## The stage being shown and the chapter's descriptor (or any Dictionary with
 ## its "wait_hints" and "water_levels"). default_crossing: what a crossing
 ## with no name of its own is called.

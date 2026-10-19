@@ -41,6 +41,7 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
+const WaitHints = preload("res://presentation/wait_hints.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
 const MUTED := Color("afc7bd")
@@ -1921,8 +1922,8 @@ func _wait() -> RefCounted:
 
 ## The simulation is back at tick zero for `turn_role`, following `prior`.
 ## live: a turn being played, not a replay. A journey world's wait hints
-## show only in this player's second turn of a friend's room, never in solo
-## play or a replay; they know when the memory ends.
+## follow WaitHints.wanted (a second turn played beside a memory, online or
+## solo, never a replay); they know when the memory ends.
 func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool = false) -> void:
 	_wait().reduced_motion = bool(settings.get("reduced_motion", false))
 	memory_wait.auto_skip = MemoryWait.skip_waits(settings)
@@ -1930,7 +1931,7 @@ func _begin_memory_wait(turn_role: String, prior_recording: Variant, live: bool 
 	if is_instance_valid(world) and world.has_method("set_wait_hints"):
 		# A memory with no length is unknown (-1): its end is never assumed.
 		var ticks := MemoryWait.prior_ticks(prior_recording)
-		world.set_wait_hints(live and online_session != null and turn_role == "b", ticks if ticks > 0 else -1)
+		world.set_wait_hints(WaitHints.wanted(live, turn_role == "b"), ticks if ticks > 0 else -1)
 	_memory_wait_text = ""
 	_update_memory_wait_hud()
 
