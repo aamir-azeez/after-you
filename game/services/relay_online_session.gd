@@ -394,7 +394,7 @@ func load_capabilities() -> bool:
 		return false
 	capabilities = data.duplicate(true)
 	_supported_chapters.assign(checked.chapters)
-	var scope := nickname_scope()
+	var scope := _names_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	return true
@@ -1192,8 +1192,15 @@ func safety_client() -> RefCounted:
 
 ## A room partner's display name from a room reply, kept for every screen.
 func _note_partner_name(partner: String, name: Variant) -> void:
-	var scope := nickname_scope()
+	var scope := _names_scope()
 	if not scope.is_empty(): DisplayNames.shared().note_partner(str(scope.server), str(scope.owner), partner, name)
+
+## The server and player that key display names, or {} (an API without a
+## server address, such as a test's, keeps none).
+func _names_scope() -> Dictionary:
+	var server: Variant = _api.get("base_url") if is_instance_valid(_api) else null
+	if not server is String or server.is_empty() or _owner.is_empty(): return {}
+	return {"server": server, "owner": _owner}
 
 ## The server shows display names to this player (services/display_names.gd).
 func display_names_supported() -> bool:

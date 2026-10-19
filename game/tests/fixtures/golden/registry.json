@@ -304,7 +304,7 @@
 			"definition_digest": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
 			"definition_typed_digest": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
 			"descriptor": {
-				"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+				"checkpoint_text": "The lift has a memory of the way up. Your pips remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
 				"checkpoint_title": "A way up, safely kept.",
 				"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
 				"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
@@ -892,7 +892,7 @@
 			"definition_digest": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
 			"definition_typed_digest": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
 			"descriptor": {
-				"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+				"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 				"checkpoint_title": "A little light, well stored.",
 				"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 				"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -1636,7 +1636,7 @@
 			"exact": {
 				"chapters": [
 					{
-						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_text": "The lift has a memory of the way up. Your pips remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
 						"checkpoint_title": "A way up, safely kept.",
 						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
 						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
@@ -1652,7 +1652,7 @@
 						"title": "First Steps"
 					},
 					{
-						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 						"checkpoint_title": "A little light, well stored.",
 						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -1823,7 +1823,7 @@
 			"first_steps_list_float_entries": {
 				"chapters": [
 					{
-						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_text": "The lift has a memory of the way up. Your pips remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
 						"checkpoint_title": "A way up, safely kept.",
 						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
 						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
@@ -1915,7 +1915,7 @@
 			"legacy_relay": {
 				"chapters": [
 					{
-						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 						"checkpoint_title": "A little light, well stored.",
 						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -1937,7 +1937,7 @@
 			"legacy_relay_negotiated": {
 				"chapters": [
 					{
-						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 						"checkpoint_title": "A little light, well stored.",
 						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -1964,7 +1964,7 @@
 			"negotiated_lists": {
 				"chapters": [
 					{
-						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_text": "The lift has a memory of the way up. Your pips remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
 						"checkpoint_title": "A way up, safely kept.",
 						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
 						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
@@ -1980,7 +1980,7 @@
 						"title": "First Steps"
 					},
 					{
-						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 						"checkpoint_title": "A little light, well stored.",
 						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -2151,7 +2151,7 @@
 			"preferred_versions": {
 				"chapters": [
 					{
-						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_text": "The lift has a memory of the way up. Your pips remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
 						"checkpoint_title": "A way up, safely kept.",
 						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
 						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
@@ -2167,7 +2167,7 @@
 						"title": "First Steps"
 					},
 					{
-						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 						"checkpoint_title": "A little light, well stored.",
 						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -2333,7 +2333,7 @@
 			"relay_float_version": {
 				"chapters": [
 					{
-						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 						"checkpoint_title": "A little light, well stored.",
 						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -2380,7 +2380,7 @@
 			"reversed_input": {
 				"chapters": [
 					{
-						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_text": "The lift has a memory of the way up. Your pips remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
 						"checkpoint_title": "A way up, safely kept.",
 						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
 						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
@@ -2396,7 +2396,7 @@
 						"title": "First Steps"
 					},
 					{
-						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 						"checkpoint_title": "A little light, well stored.",
 						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -2582,7 +2582,7 @@
 			"unknown_chapter": {
 				"chapters": [
 					{
-						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_text": "The lift has a memory of the way up. Your pips remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
 						"checkpoint_title": "A way up, safely kept.",
 						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
 						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
@@ -2598,7 +2598,7 @@
 						"title": "First Steps"
 					},
 					{
-						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island.",
+						"checkpoint_text": "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap pips and bring the light to the far island.",
 						"checkpoint_title": "A little light, well stored.",
 						"completion_text": "Three islands are awake. You can now play your two saved stages together as one memory.",
 						"definition_hash": "705b79d266c8acb0b94e7c9955579466654d26492455cca4b6ff27f15684b07b",
@@ -2774,7 +2774,7 @@
 			"unsupported_version_first-steps@1": {
 				"chapters": [
 					{
-						"checkpoint_text": "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
+						"checkpoint_text": "The lift has a memory of the way up. Your pips remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden.",
 						"checkpoint_title": "A way up, safely kept.",
 						"completion_text": "The loft is open and the garden is growing. Your two saved stages can be played as a single memory.",
 						"definition_hash": "72ddc480e0f493c983fb012ce7bfa20a9cb1984ef7263d236c11509a527df85b",
