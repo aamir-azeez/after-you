@@ -1049,10 +1049,20 @@ func _fold_key() -> String:
 func _folds_static_scenery() -> bool:
 	return _fold_key() in STATIC_FOLD_CHAPTERS
 
-## A chapter screen sets this so a big world folds a few milliseconds a frame
-## instead of in one frame; otherwise the fold finishes on its first frame.
+## A chapter screen sets this so a big world folds over frames instead of in
+## one frame; otherwise the fold finishes on its first frame. Over frames it
+## takes FOLD_FRAME_USEC a frame while the world runs (play), and while it is
+## held still behind a card (the ready and waiting cards, before the first
+## turn) the same slice of the frame a staged build takes (frame_budget_usec):
+## nothing else moves then, so the fold is done in a few frames instead of
+## running on for seconds after the card.
 var fold_over_frames := false
 const FOLD_FRAME_USEC := 3000
+
+## The slice of this frame the fold takes (microseconds; 0 for all of it).
+func _fold_slice_usec() -> int:
+	if not fold_over_frames: return 0
+	return FOLD_FRAME_USEC if is_processing() else frame_budget_usec()
 var _fold_job: Dictionary = {}
 
 ## Nodes whose children are looked up or walked one by one after the build;
@@ -1110,7 +1120,7 @@ func _fold_static_scenery() -> Dictionary:
 		_fold_job = StaticBatch.start(terrain, owners, _fold_options())
 		if _fold_job.is_empty(): return {}
 	var job := _fold_job
-	if StaticBatch.step(job, FOLD_FRAME_USEC if fold_over_frames else 0): _fold_job = {}
+	if StaticBatch.step(job, _fold_slice_usec()): _fold_job = {}
 	return job
 
 func _process(delta: float) -> void:
