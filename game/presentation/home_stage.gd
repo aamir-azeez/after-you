@@ -486,14 +486,15 @@ func _base_size() -> float:
 	return EXPLORE_SIZE if _exploring else DEFAULT_SIZE
 
 ## One event through the current mode's controller. A pinch or a trackpad
-## magnify moves the camera with the fingers; wheel steps and Reset view ease in.
+## magnify moves the camera with the fingers, finishing any ease still under
+## way, so it stays in the mode's bounds; wheel steps and Reset view ease in.
 func _gesture(event: InputEvent) -> bool:
 	var before := zoom_target
 	_view().zoom_ratio = zoom_target / _base_size()
 	var handled := _view().handle_event(event)
 	_sync_zoom()
 	if (event is InputEventScreenDrag or event is InputEventMagnifyGesture) and zoom_target != before:
-		zoom_size *= zoom_target / before
+		zoom_size = zoom_target
 	return handled
 
 func _sync_zoom() -> void:

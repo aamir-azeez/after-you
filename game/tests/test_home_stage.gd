@@ -758,6 +758,20 @@ func _test_explore_zoom() -> void:
 	stage._explore_back.pressed.emit()
 	_settle(stage)
 	_check(not stage.is_exploring() and is_equal_approx(stage.zoom_target,home_zoom) and stage._exploration.pan==home_pan and is_equal_approx(camera.size,home_zoom),"Back returns Home's zoom and pan from before Explore")
+	# A gesture straight after a mode change, while the camera still eases,
+	# stays inside the new mode's bounds.
+	stage._zoom(100.0)
+	_settle(stage)
+	stage._explore_button.pressed.emit()
+	_push_magnify(viewport,center,0.6)
+	stage._process(1.0/60.0)
+	_check(stage.zoom_size>=Stage.EXPLORE_MIN_SIZE and stage.zoom_size<=Stage.EXPLORE_MAX_SIZE and camera.size<=Stage.EXPLORE_MAX_SIZE+0.001,"Zooming out just after Explore opens cannot pass Explore's far limit")
+	_push_magnify(viewport,center,3.0)
+	stage._explore_back.pressed.emit()
+	_push_magnify(viewport,center,1.5)
+	stage._process(1.0/60.0)
+	_check(stage.zoom_size>=Stage.MIN_SIZE and stage.zoom_size<=Stage.MAX_SIZE and camera.size>=Stage.MIN_SIZE-0.001,"Zooming in just after Back cannot pass Home's close limit")
+	home_zoom=stage.zoom_target
 	stage._explore_button.pressed.emit()
 	_check(stage.zoom_target==Stage.EXPLORE_SIZE,"Each Explore starts at the close follow")
 	_push_magnify(viewport,center,1.5)
