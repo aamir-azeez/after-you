@@ -517,6 +517,16 @@ static func _recenter_icon_label(button: Button) -> void:
 	var group := icon_width + gap + text_width
 	var min_inset: float = float(button.get_meta("center_icon_label_inset", 16.0))
 	var inset := maxf(min_inset, (button.size.x - group) / 2.0)
+	# A resize that leaves every state's inset as it is changes nothing: no
+	# style is copied again.
+	var settled := true
+	for state: String in ["normal","hover","pressed","hover_pressed","disabled","focus"]:
+		if not button.has_theme_stylebox_override(state): continue
+		var current := button.get_theme_stylebox(state)
+		if current.content_margin_left != inset or current.content_margin_right != inset:
+			settled = false
+			break
+	if settled: return
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled","focus"]:
 		if not button.has_theme_stylebox_override(state): continue
 		var style := button.get_theme_stylebox(state).duplicate() as StyleBox
