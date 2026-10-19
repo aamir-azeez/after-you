@@ -4,7 +4,8 @@ extends "res://tests/test_world_fingerprint.gd"
 ## _build_step), instead of in one frame that froze the card.
 ## - Built staged, every staged chapter's world is the same world, node for
 ##   node (the world fingerprint), as built in one call; it took more than one
-##   frame, and the build does not run the world before it is whole. That
+##   frame, no step of it added more than a few hundred nodes, and the build
+##   does not run the world before it is whole. That
 ##   holds for every chapter, opened on its first stage and on its second: a
 ##   staged build builds the stage it opens on, and the screen showing that
 ##   stage then builds nothing more in one frame.
@@ -25,6 +26,12 @@ const Card = preload("res://presentation/chapter_loading_card.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 
 var directory := ""
+## The most nodes one step of a staged build may add (one frame here, where
+## every _build_step yields). Chapters add up to about 260; the Wishing Well's
+## dressing in one step added 840 and held a desktop frame for 25 ms behind
+## the card. It bounds node work only: a step that makes few nodes with a lot
+## of geometry (Turn of the Tide's water) is not bounded by it.
+const MOST_NODES_PER_STEP := 300
 
 class Builder:
 	extends RefCounted
@@ -141,11 +148,20 @@ func _built(key: String, staged: bool, stage_index: int) -> Dictionary:
 	var world: Node3D = Registry.world_script(key).new()
 	_mount(viewport, world, false)
 	var frames := [0]
-	var count := func() -> void: frames[0] += 1
+	# Nodes added this frame, and the most any one frame added.
+	var added := [0, 0]
+	var count := func() -> void:
+		frames[0] += 1
+		added[1] = maxi(added[1], added[0])
+		added[0] = 0
+	var grow := func(_node: Node) -> void: added[0] += 1
 	process_frame.connect(count)
 	if staged:
 		world.process_mode = Node.PROCESS_MODE_DISABLED
+		node_added.connect(grow)
 		await world.build_staged(definition, 1, str(stage.id))
+		node_added.disconnect(grow)
+		added[1] = maxi(added[1], added[0])
 		world.process_mode = Node.PROCESS_MODE_INHERIT
 	else:
 		world.load_level(definition)
@@ -157,7 +173,7 @@ func _built(key: String, staged: bool, stage_index: int) -> Dictionary:
 	_frames(world, 10)
 	var settled := _fingerprint(world, key, false, "settled")
 	viewport.free()
-	return {"built": built, "settled": settled, "frames": frames[0], "kept": kept}
+	return {"built": built, "settled": settled, "frames": frames[0], "kept": kept, "most_added": added[1]}
 
 func _same_world(key: String, stage_index: int) -> void:
 	var label := "%s stage %d" % [key, stage_index + 1]
@@ -165,6 +181,7 @@ func _same_world(key: String, stage_index: int) -> void:
 	var staged: Dictionary = await _built(key, true, stage_index)
 	_check(direct.frames == 0, label + ": built in one call without a staged budget")
 	_check(staged.frames > 1, label + ": the staged build took several frames (%d)" % staged.frames)
+	_check(staged.most_added <= MOST_NODES_PER_STEP, label + ": no step of the build adds more than %d nodes (most %d)" % [MOST_NODES_PER_STEP, staged.most_added])
 	_check(staged.kept, label + ": showing the stage it opens on builds nothing more")
 	_check(staged.built.hash == direct.built.hash and staged.built.nodes == direct.built.nodes, label + ": the staged world is the same world, node for node (%d nodes)" % direct.built.nodes)
 	_check(staged.settled.hash == direct.settled.hash, label + ": and stays the same once it runs")

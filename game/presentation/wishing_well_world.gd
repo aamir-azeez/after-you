@@ -92,7 +92,8 @@ func show_stage(stage: Dictionary) -> void:
 	terrain.name = "WishingWell"
 	_build_well()
 	_build_winch_house()
-	_dress()
+	await _build_step()
+	await _dress()
 
 func _has_completion_garden(stage_id: String) -> bool:
 	return stage_id == "back-for-you"
@@ -493,6 +494,8 @@ func _set_ladder(amount: float) -> void:
 
 # --- Dressing: visual only, never on a route, never over a spirit or control ---
 
+## In a staged build a few pieces a frame (island_world._build_step): this
+## dressing alone took about 25 ms of one frame on a desktop.
 func _dress() -> void:
 	var props := Node3D.new()
 	props.name = "CliffGardenProps"
@@ -508,6 +511,7 @@ func _dress() -> void:
 		if x > 11.0 and x < 12.2: continue
 		var y := cliff - 0.55 - 0.32 * float(index % 4)
 		box(Vector3(0.34 + 0.08 * float(index % 3), 0.18, 0.03), STONE.lightened(0.06 + 0.04 * float(index % 2)), Vector3(x, y, -0.148), props)
+	await _build_step()
 	# Ivy hangs down the face between the stair hinges, and inside the shaft.
 	for index in range(15):
 		var x := -11.3 + float(index) * 1.55
@@ -515,17 +519,20 @@ func _dress() -> void:
 		_ivy(Vector3(x, cliff - 0.02, -0.15), 0.55 + 0.25 * float(index % 3), props)
 	_ivy(Vector3(11.42, cliff - 0.22, -0.47), 0.9, props)
 	_ivy(Vector3(11.80, cliff - 0.22, -0.47), 0.6, props)
+	await _build_step()
 	# The notch rim keeps a lighter worn edge so the open mouth reads clearly.
 	# Its top stays between the hatch bars and a spirit's ground shadow
 	# (SpiritVisual.SHADOW_TOP).
 	box(Vector3(0.04, 0.03, 0.21), SAND_TRIM, Vector3(11.30, cliff + 0.006, -0.275), props)
 	box(Vector3(0.04, 0.03, 0.21), SAND_TRIM, Vector3(11.90, cliff + 0.006, -0.275), props)
 	box(Vector3(0.64, 0.03, 0.04), SAND_TRIM, Vector3(11.60, cliff + 0.006, -0.38), props)
+	await _build_step()
 	# A planted bank behind the cliff: trees, bushes, a bench and lanterns.
 	box(Vector3(25.12, 0.30, 0.42), STONE, Vector3(-0.24, cliff + 0.15, -2.29), props)
 	box(Vector3(25.10, 0.05, 0.40), MOSS, Vector3(-0.24, cliff + 0.32, -2.29), props)
 	for x: float in [-10.6, -6.4, -2.2, 2.0, 5.6, 9.2]:
 		_tree(Vector3(x, cliff + 0.32, -2.36), 0.9 + 0.12 * absf(sin(x)), props)
+	await _build_step()
 	for index in range(24):
 		var x := -12.4 + float(index) * 1.05
 		var bush := sphere(0.17, LEAF.darkened(0.08 * float(index % 3)), Vector3(x, cliff + 0.42, -2.18), props)
@@ -534,11 +541,13 @@ func _dress() -> void:
 	_bench(Vector3(-4.2, cliff + 0.32, -2.30), props)
 	for at: Vector3 in [Vector3(-8.2, cliff + 0.32, -2.20), Vector3(0.2, cliff + 0.32, -2.20), Vector3(11.0, cliff + 0.32, -2.20)]:
 		_lantern(at, 0.85, true, props)
+	await _build_step()
 	# Low cover on the cliff top: flat, so nothing looks like a new obstacle.
 	for index in range(22):
 		var x := -12.2 + float(index) * 1.1
 		if x > 10.9 and x < 12.4: continue
 		_tuft(Vector3(x, cliff, -1.98 + 0.06 * float(index % 2)), props)
+	await _build_step()
 	# Garden: a low picket fence just past the front edge, with lanterns.
 	var front := 2.95
 	# Rails run just behind the pickets' faces, not level with them.
@@ -548,12 +557,14 @@ func _dress() -> void:
 		box(Vector3(0.05, 0.34, 0.035), Color("efe4c8"), Vector3(-12.76 + float(index) * 0.48, 0.17, front), props)
 	for x: float in [-10.9, -4.9, 1.1, 7.1]:
 		_lantern(Vector3(x, 0.0, front + 0.02), 0.72, absf(x) < 6.0, props)
+	await _build_step()
 	for index in range(40):
 		var x := -12.6 + float(index) * 0.58
 		_tuft(Vector3(x, 0.0, 2.84), props)
 		if index % 3 == 0: _flower_dot(Vector3(x + 0.2, 0.08, 2.82), props)
 		# A grass fringe softens the back edge above the gap.
 		if index % 2 == 0 and absf(x + 12.16) > 0.5 and absf(x - 9.76) > 0.5: _tuft(Vector3(x + 0.1, 0.0, 1.47), props)
+	await _build_step()
 	# Wall-walk: a crenellated back parapet and a low front kerb.
 	box(Vector3(12.48, 0.34, 0.14), STONE, Vector3(21.92, tower + 0.17, -2.15), props)
 	for index in range(26):
@@ -563,6 +574,7 @@ func _dress() -> void:
 		_lantern(Vector3(x, tower + 0.34, -2.15), 0.6, x < 17.0, props)
 	for x: float in [17.2, 18.1, 25.9]:
 		_pot(Vector3(x, tower + 0.34, -2.12), props)
+	await _build_step()
 	# By the winch: a crate stack and a rope coil, clear of the lever.
 	box(Vector3(0.30, 0.28, 0.30), TIMBER.lightened(0.15), Vector3(27.10, tower + 0.14, -1.96), props)
 	box(Vector3(0.22, 0.20, 0.22), TIMBER.lightened(0.25), Vector3(27.12, tower + 0.38, -1.94), props)
