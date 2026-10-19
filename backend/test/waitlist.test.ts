@@ -494,6 +494,21 @@ describe("the confirm link and email", () => {
 });
 
 describe("privacy", () => {
+  it("describes the waitlist on /privacy, whatever the flag, with its own removal contact", async () => {
+    for (const flag of ["true", "false"]) {
+      const response = await worker.fetch(new Request("https://game.test/privacy"), { ...env, IOS_WAITLIST_ENABLED: flag } as unknown as Env);
+      expect(response.status).toBe(200);
+      const page = await response.text();
+      expect(page).toContain("<h2>The iPhone waitlist</h2>");
+      expect(page).toContain("Resend stores the list");
+      expect(page).toContain("Cloudflare Turnstile");
+      expect(page).toContain('<a href="mailto:afteryou-reply@aamirazeez.com">afteryou-reply@aamirazeez.com</a>');
+      expect(page).toContain("We delete the waitlist emails three months after the launch email goes out.");
+      expect(page).toContain("In the game, we do not ask for a name, email, phone number or social-login account.");
+      expect(page).not.toMatch(/\bI('ll| will| delete| keep)\b/);
+    }
+  });
+
   it("logs no email, token, link or key on any path", async () => {
     const lines: string[] = [];
     for (const level of ["log", "info", "warn", "error", "debug"] as const) vi.spyOn(console, level).mockImplementation((...args: unknown[]) => { lines.push(args.map(String).join(" ")); });
