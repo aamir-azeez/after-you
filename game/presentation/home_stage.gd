@@ -11,6 +11,10 @@ const Joystick = preload("res://presentation/joystick.gd")
 ## Explore mode: the gold spirit walks the islands with the joystick and the
 ## camera follows it, closer in. Presentation only; nothing is saved.
 const EXPLORE_SIZE := 9.5
+## Explore's pinch range: close enough to see a spirit's face, out as far as
+## Home's own resting view.
+const EXPLORE_MIN_SIZE := 6.0
+const EXPLORE_MAX_SIZE := DEFAULT_SIZE
 const EXPLORE_SPEED := 2.2
 ## Walking this close to a keepsake (times its size) names it in the box.
 const EXPLORE_NOTICE := 1.15
@@ -59,11 +63,15 @@ var _floor := Rect2()
 var _camera_transform := Transform3D.IDENTITY
 var _camera_size := DEFAULT_SIZE
 var _camera_offsets := Vector2.ZERO
+## Home's view and Explore's close follow each zoom through their own shared
+## gesture controller (camera_exploration.gd). Explore's never pans, since its
+## camera stays on the walking spirit, and Home's view waits untouched for Back.
 var _exploration := CameraExploration.new()
+var _explore_view := CameraExploration.new()
 var _touches: Dictionary:
-	get: return _exploration.touches
+	get: return _view().touches
 var _pinch_span: float:
-	get: return _exploration.pinch_span
+	get: return _view().pinch_span
 var _foreground := true
 var _random := RandomNumberGenerator.new()
 var _reset: Button
@@ -125,6 +133,13 @@ func _ready() -> void:
 	_exploration.maximum_pan = Vector2(0.20, 0.18)
 	_exploration.allowed = _allowed
 	add_child(_exploration)
+	_explore_view.manual = true
+	_explore_view.auto_return = false
+	_explore_view.minimum_zoom = EXPLORE_MIN_SIZE / EXPLORE_SIZE
+	_explore_view.maximum_zoom = EXPLORE_MAX_SIZE / EXPLORE_SIZE
+	_explore_view.maximum_pan = Vector2.ZERO
+	_explore_view.allowed = _allowed
+	add_child(_explore_view)
 	if not is_instance_valid(_world) or not is_instance_valid(_world.camera):
 		return
 	var retained: Dictionary = _retained_view
@@ -229,7 +244,7 @@ func _layout() -> void:
 	var band_left := rect.position.x-global_position.x
 	_hint.position = Vector2(band_left, size.y-64)
 	_hint.size = Vector2(maxf(1, size.x-30-band_left), 50)
-	_reset.visible = not _exploring and (not is_equal_approx(zoom_target,DEFAULT_SIZE) or not _exploration.pan.is_zero_approx())
+	_reset.visible = not is_equal_approx(zoom_target,_base_size()) or not _view().pan.is_zero_approx()
 	_hint.visible = not _exploring
 	if is_instance_valid(_explore_button):
 		_explore_button.position = rect.position-global_position
@@ -448,11 +463,7 @@ func _input(event: InputEvent) -> void:
 		_cancel_gesture()
 		return
 	_track_tap(event)
-	# While exploring the camera follows the spirit, so gestures do not move it.
-	if _exploring: return
-	_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
-	if _exploration.handle_event(event): get_viewport().set_input_as_handled()
-	_sync_zoom()
+	if _gesture(event): get_viewport().set_input_as_handled()
 
 func _gui_input(event: InputEvent) -> void:
 	if not _is_active(): return
@@ -462,25 +473,44 @@ func _gui_input(event: InputEvent) -> void:
 	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT and event.device != CameraExploration.SYNTHETIC_MOUSE:
 		_begin_tap(MOUSE_TAP, event.position + global_position)
 	# GUI events use local positions; the shared controller takes viewport ones.
-	if not _exploring and (event is InputEventMouse or event is InputEventGesture):
+	if event is InputEventMouse or event is InputEventGesture:
 		var screen_event := event.duplicate()
 		screen_event.position += global_position
-		_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
-		if _exploration.handle_event(screen_event): accept_event()
-		_sync_zoom()
+		if _gesture(screen_event): accept_event()
+
+## The gesture controller for the current mode, and the camera size it is relative to.
+func _view() -> CameraExploration:
+	return _explore_view if _exploring else _exploration
+
+func _base_size() -> float:
+	return EXPLORE_SIZE if _exploring else DEFAULT_SIZE
+
+## One event through the current mode's controller. A pinch or a trackpad
+## magnify moves the camera with the fingers; wheel steps and Reset view ease in.
+func _gesture(event: InputEvent) -> bool:
+	var before := zoom_target
+	_view().zoom_ratio = zoom_target / _base_size()
+	var handled := _view().handle_event(event)
+	_sync_zoom()
+	if (event is InputEventScreenDrag or event is InputEventMagnifyGesture) and zoom_target != before:
+		zoom_size *= zoom_target / before
+	return handled
 
 func _sync_zoom() -> void:
-	zoom_target = clampf(_exploration.zoom_ratio * DEFAULT_SIZE, MIN_SIZE, MAX_SIZE)
-	if is_equal_approx(zoom_target, MIN_SIZE): zoom_target = MIN_SIZE
-	if is_equal_approx(zoom_target, MAX_SIZE): zoom_target = MAX_SIZE
+	var low := EXPLORE_MIN_SIZE if _exploring else MIN_SIZE
+	var high := EXPLORE_MAX_SIZE if _exploring else MAX_SIZE
+	zoom_target = clampf(_view().zoom_ratio * _base_size(), low, high)
+	if is_equal_approx(zoom_target, low): zoom_target = low
+	if is_equal_approx(zoom_target, high): zoom_target = high
 
 func _zoom(factor: float) -> void:
-	_exploration.zoom_ratio = zoom_target / DEFAULT_SIZE
-	_exploration.zoom(factor)
+	_view().zoom_ratio = zoom_target / _base_size()
+	_view().zoom(factor)
 	_sync_zoom()
 
 func _cancel_gesture() -> void:
 	_exploration.cancel_gesture()
+	_explore_view.cancel_gesture()
 	_tap = {}
 
 func _begin_tap(index: int, point: Vector2) -> void:
@@ -546,8 +576,8 @@ func _spirit_near(point: Vector2) -> bool:
 	return false
 
 func _reset_view() -> void:
-	_exploration.reset_view()
-	zoom_target = DEFAULT_SIZE
+	_view().reset_view()
+	zoom_target = _base_size()
 
 func _process(delta: float) -> void:
 	if not _is_active():
@@ -562,7 +592,9 @@ func _process(delta: float) -> void:
 		for node: CanvasItem in _explore_hidden:
 			if is_instance_valid(node) and node.visible: node.visible = false
 	_layout()
-	zoom_size = zoom_target if _world.reduced_motion else lerpf(zoom_size,zoom_target,1.0-exp(-12.0*step))
+	# Settled sizes stop changing, so a still camera draws nothing new.
+	if _world.reduced_motion or absf(zoom_size-zoom_target) < 0.001: zoom_size = zoom_target
+	else: zoom_size = lerpf(zoom_size,zoom_target,1.0-exp(-12.0*step))
 	_frame_camera()
 	_world.update_spirit_attention()
 	for role: String in _actors:
@@ -650,7 +682,8 @@ func set_exploring(on: bool) -> void:
 	_exploring = on
 	if on:
 		_explore_return = {"position": actor.position, "zoom_target": zoom_target}
-		_exploration.reset_view()
+		# Every Explore starts at the close follow; Home's own view is kept for Back.
+		_explore_view.reset_view()
 		_explore_hidden.clear()
 		if get_parent() != null:
 			for node: Node in get_parent().get_children():
@@ -739,10 +772,10 @@ func _exit_tree() -> void:
 	for saved_prop: Dictionary in _hidden_props:
 		if is_instance_valid(saved_prop.node): saved_prop.node.visible = saved_prop.visible
 	# Keep normalized exploration, never the already-composed camera transform.
-	# Leaving mid-Explore keeps the zoom from before it, not the close follow.
+	# Leaving mid-Explore keeps Home's view from before it, not the close follow.
 	if _exploring:
 		var before := float(_explore_return.get("zoom_target", DEFAULT_SIZE))
-		_retained_view = {"zoom_target": before, "zoom_size": before, "pan": Vector2.ZERO}
+		_retained_view = {"zoom_target": before, "zoom_size": before, "pan": _exploration.pan}
 	else:
 		_retained_view = {"zoom_target": zoom_target, "zoom_size": zoom_size, "pan": _exploration.pan}
 	_world.home_presentation_owner = 0

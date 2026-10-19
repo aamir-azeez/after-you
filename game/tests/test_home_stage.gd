@@ -29,6 +29,8 @@ func _run() -> void:
 	await _test_spirit_tap()
 	Stage._retained_view.clear()
 	await _test_real_spirit_tap()
+	Stage._retained_view.clear()
+	await _test_explore_zoom()
 	print("AFTER YOU HOME STAGE: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -576,3 +578,199 @@ func _find_button(node: Node, text: String) -> Button:
 		var found := _find_button(child,text)
 		if found!=null: return found
 	return null
+
+func _push_wheel(viewport: SubViewport, point: Vector2, button: MouseButton) -> void:
+	var event := InputEventMouseButton.new()
+	event.position = point
+	event.button_index = button
+	event.pressed = true
+	viewport.push_input(event,true)
+
+func _push_magnify(viewport: SubViewport, point: Vector2, factor: float) -> void:
+	var event := InputEventMagnifyGesture.new()
+	event.position = point
+	event.factor = factor
+	viewport.push_input(event,true)
+
+func _push_click(viewport: SubViewport, point: Vector2) -> void:
+	var motion := InputEventMouseMotion.new()
+	motion.position = point
+	viewport.push_input(motion,true)
+	for down: bool in [true,false]:
+		var event := InputEventMouseButton.new()
+		event.position = point
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = down
+		viewport.push_input(event,true)
+
+func _settle(stage: Control) -> void:
+	for frame in range(120): stage._process(1.0/60.0)
+
+## Explore's close follow zooms with real viewport pinches, a trackpad magnify
+## and the wheel, within its own bounds; it never pans off the walking spirit,
+## and Reset view and Back each return the view they promise.
+func _test_explore_zoom() -> void:
+	var path := "user://home-stage-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
+	var viewport := SubViewport.new()
+	viewport.size=Vector2i(1280,720)
+	viewport.handle_input_locally=true
+	root.add_child(viewport)
+	var app := Main.new()
+	app.saves=Storage.new(path)
+	app.saves.data.settings.sound=false
+	app.saves.data.settings.haptics=false
+	app.saves.flush()
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	await process_frame
+	await process_frame
+	var stage: Control=app.overlay.get_child(0)
+	stage.set_process(false)
+	var camera: Camera3D=app.world.camera
+	# Home's own view before Explore, which Back must give back.
+	stage._zoom(0.8)
+	stage._exploration.pan_pixels(Vector2(60,-40))
+	var home_zoom: float=stage.zoom_target
+	var home_pan: Vector2=stage._exploration.pan
+	stage._explore_button.pressed.emit()
+	_settle(stage)
+	_check(stage.is_exploring() and stage.zoom_target==Stage.EXPLORE_SIZE and is_equal_approx(camera.size,Stage.EXPLORE_SIZE) and not stage._reset.visible,"Explore opens at its close follow with Reset view hidden")
+	var spirit: Node3D=app.world.actors.a
+	var center: Vector2=stage._stage_rect().get_center()
+	var left := center-Vector2(60,0)
+	var right := center+Vector2(60,0)
+	_push_touch(viewport,0,left,true)
+	_push_touch(viewport,1,right,true)
+	_check(stage._touches.size()==2,"Both Explore fingers are admitted through real viewport dispatch")
+	# Spreading while both fingers also drift down: a pinch and a pan together.
+	for step in range(10):
+		var next_left := left+Vector2(-5,3)
+		var next_right := right+Vector2(5,3)
+		_push_drag(viewport,0,left,next_left)
+		_push_drag(viewport,1,right,next_right)
+		left=next_left
+		right=next_right
+	var spread: float=stage.zoom_target
+	_check(spread<Stage.EXPLORE_SIZE and spread>=Stage.EXPLORE_MIN_SIZE,"Spreading two fingers in Explore zooms in")
+	_check(is_equal_approx(stage.zoom_size,spread),"The pinch moves the camera with the fingers, with no easing behind them")
+	stage._process(1.0/60.0)
+	_check(is_equal_approx(camera.size,spread) and stage._reset.is_visible_in_tree(),"The real camera follows the pinch and Reset view appears")
+	_check(stage._explore_view.pan==Vector2.ZERO and stage._exploration.pan==home_pan and stage._stage_rect().grow(-40).has_point(camera.unproject_position(spirit.global_position)),"Finger drift never pans Explore off the spirit or moves Home's own view")
+	# One finger lifts mid-pinch: the other alone cannot zoom.
+	_push_touch(viewport,1,right,false)
+	_push_drag(viewport,0,left,left-Vector2(80,0))
+	left-=Vector2(80,0)
+	_check(stage._touches.size()==1 and stage.zoom_target==spread,"A finger lifting mid-pinch stops the zoom; the other alone does nothing")
+	# A new second finger picks up from where it lands, with no jump.
+	right=center+Vector2(140,0)
+	_push_touch(viewport,1,right,true)
+	_check(stage._touches.size()==2 and stage.zoom_target==spread,"A new second finger rebases the pinch without a jump")
+	for step in range(10):
+		var next_left := left+Vector2(6,0)
+		var next_right := right-Vector2(6,0)
+		_push_drag(viewport,0,left,next_left)
+		_push_drag(viewport,1,right,next_right)
+		left=next_left
+		right=next_right
+	_check(stage.zoom_target>spread,"Pinching two fingers together zooms back out")
+	# Far past both ends: the close and far limits hold exactly.
+	for step in range(40):
+		var next_left := left-Vector2(12,0)
+		var next_right := right+Vector2(12,0)
+		_push_drag(viewport,0,left,next_left)
+		_push_drag(viewport,1,right,next_right)
+		left=next_left
+		right=next_right
+	stage._process(1.0/60.0)
+	_check(stage.zoom_target==Stage.EXPLORE_MIN_SIZE and is_equal_approx(camera.size,Stage.EXPLORE_MIN_SIZE),"Explore cannot zoom in past its close limit")
+	for step in range(80):
+		var next_left := left.move_toward(center,12)
+		var next_right := right.move_toward(center,12)
+		if next_right.x-next_left.x<40: break
+		_push_drag(viewport,0,left,next_left)
+		_push_drag(viewport,1,right,next_right)
+		left=next_left
+		right=next_right
+	stage._process(1.0/60.0)
+	_check(stage.zoom_target==Stage.EXPLORE_MAX_SIZE and is_equal_approx(camera.size,Stage.EXPLORE_MAX_SIZE),"Explore cannot zoom out past Home's resting view")
+	_push_touch(viewport,1,right,false)
+	_push_touch(viewport,0,left,false)
+	_check(stage._touches.is_empty(),"Releasing both fingers ends the pinch")
+	# Reset view, clicked for real, eases back to the close follow.
+	var reset_point: Vector2=stage._reset.get_global_rect().get_center()
+	_check(stage._reset.is_visible_in_tree() and not stage._allowed(reset_point),"Reset view shows in Explore, outside its gesture area")
+	_push_click(viewport,reset_point)
+	_check(stage.zoom_target==Stage.EXPLORE_SIZE,"Reset view in Explore returns to the close follow")
+	_settle(stage)
+	_check(is_equal_approx(camera.size,Stage.EXPLORE_SIZE) and not stage._reset.visible,"The camera settles at Explore's view and Reset view hides again")
+	# Fingers that start on Explore's controls never join a camera gesture.
+	var stick: Control=stage._stick
+	for control: Control in [stick,stage._keepsake_box,stage._explore_back]:
+		var on_ui := control.get_global_rect().get_center()
+		_push_touch(viewport,0,on_ui,true)
+		_push_touch(viewport,1,center,true)
+		_push_drag(viewport,1,center,center+Vector2(90,0))
+		_check(not stage._touches.has(0) and stage.zoom_target==Stage.EXPLORE_SIZE,"A finger starting on %s cannot join a pinch" % control.name)
+		_push_touch(viewport,1,center+Vector2(90,0),false)
+		# Canceled, so Back is not tapped: a real touch release presses it.
+		var lift := InputEventScreenTouch.new()
+		lift.index = 0
+		lift.position = on_ui
+		lift.canceled = true
+		viewport.push_input(lift,true)
+		_check(stage.is_exploring() and stage._touches.is_empty(),"Explore stays open with no finger left tracked")
+	# Walking with the joystick while pinching with two other fingers.
+	var stick_point := stick.get_global_rect().get_center()
+	_push_touch(viewport,0,stick_point,true)
+	_push_drag(viewport,0,stick_point,stick_point+Vector2(40,0))
+	left=center-Vector2(50,0)
+	right=center+Vector2(50,0)
+	_push_touch(viewport,1,left,true)
+	_push_touch(viewport,2,right,true)
+	_push_drag(viewport,1,left,left-Vector2(30,0))
+	_push_drag(viewport,2,right,right+Vector2(30,0))
+	_check(stick.touch_id==0 and stick.value.x>0.5 and stage.zoom_target<Stage.EXPLORE_SIZE,"A pinch works while the joystick is held, and the joystick keeps its finger")
+	for index: int in [2,1,0]: _push_touch(viewport,index,center,false)
+	_check(stick.touch_id==-1 and stage._touches.is_empty(),"Lifting every finger releases the joystick and the pinch")
+	stage._reset_view()
+	_settle(stage)
+	# Desktop: a trackpad magnify follows the gesture at once; wheel steps ease in.
+	_push_magnify(viewport,center,1.25)
+	_check(stage.zoom_target<Stage.EXPLORE_SIZE and is_equal_approx(stage.zoom_size,stage.zoom_target),"A trackpad magnify zooms Explore in with the gesture")
+	_push_magnify(viewport,center,0.6)
+	_check(stage.zoom_target>Stage.EXPLORE_SIZE,"A trackpad magnify zooms Explore out")
+	stage._reset_view()
+	_settle(stage)
+	_push_wheel(viewport,center,MOUSE_BUTTON_WHEEL_UP)
+	var wheel_in: float=stage.zoom_target
+	_check(wheel_in<Stage.EXPLORE_SIZE and stage.zoom_size>wheel_in,"The mouse wheel zooms Explore in, easing toward the step")
+	_settle(stage)
+	_check(is_equal_approx(camera.size,wheel_in) and stage.zoom_size==wheel_in,"A settled wheel step stops changing the camera")
+	for step in range(3): _push_wheel(viewport,center,MOUSE_BUTTON_WHEEL_DOWN)
+	_check(stage.zoom_target>Stage.EXPLORE_SIZE,"The mouse wheel zooms Explore out")
+	app.world.reduced_motion=true
+	_push_wheel(viewport,center,MOUSE_BUTTON_WHEEL_UP)
+	stage._process(1.0/60.0)
+	_check(stage.zoom_size==stage.zoom_target and is_equal_approx(camera.size,stage.zoom_target),"With reduced motion Explore still zooms, without easing")
+	app.world.reduced_motion=false
+	# Back gives Home its own view back; the next Explore starts fresh.
+	stage._explore_back.pressed.emit()
+	_settle(stage)
+	_check(not stage.is_exploring() and is_equal_approx(stage.zoom_target,home_zoom) and stage._exploration.pan==home_pan and is_equal_approx(camera.size,home_zoom),"Back returns Home's zoom and pan from before Explore")
+	stage._explore_button.pressed.emit()
+	_check(stage.zoom_target==Stage.EXPLORE_SIZE,"Each Explore starts at the close follow")
+	_push_magnify(viewport,center,1.5)
+	_check(stage.zoom_target<Stage.EXPLORE_SIZE,"The fresh Explore zooms again")
+	# Home closing mid-Explore keeps Home's view, not Explore's zoom.
+	app.settings_flow.show_settings()
+	app._show_home()
+	await process_frame
+	stage=app.overlay.get_child(0)
+	stage.set_process(false)
+	_check(not stage.is_exploring() and is_equal_approx(stage.zoom_target,home_zoom) and stage._exploration.pan.is_equal_approx(home_pan),"Leaving Home mid-Explore keeps Home's view from before it")
+	viewport.free()
+	await process_frame
+	await create_timer(0.15).timeout
+	for suffix: String in ["",".tmp",".backup"]:
+		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
