@@ -1668,7 +1668,10 @@ func _show_drowned(drowned: Dictionary) -> void:
 	_drowned_slot = slot
 	_drown_surface = surface
 	_bubble_age = 0.0
-	if SpiritLook.has(KNOCKED_OUT): (actors[slot] as SpiritVisual).set_expression(KNOCKED_OUT, reduced_motion)
+	# A held face, so a replay seek keeps it; a doze would outrank it, so none.
+	var spirit := actors[slot] as SpiritVisual
+	if spirit.pose() == &"doze": spirit.set_pose(&"rest", {}, true)
+	if SpiritLook.has(KNOCKED_OUT): spirit.set_expression(KNOCKED_OUT, reduced_motion)
 	if not is_instance_valid(_drown_ring):
 		_drown_ring = cylinder(0.32, 0.01, Color(CREAM, 0.7), Vector3.ZERO, terrain)
 		_drown_ring.name = "DrownRing"
