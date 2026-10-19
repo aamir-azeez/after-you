@@ -233,8 +233,10 @@ func _run() -> void:
 	var nothing := _service(FakeProvider.new(), api, none_phone, "nothing")
 	await nothing.start()
 	_check(nothing._cloud_allowed() and nothing.cloud.due(), "No link to bring back, but the account's saved games still sync (solo progress)")
+	nothing.cloud.stop()
 	await nothing.start()
 	_check(none_phone.restores.size() == 1 and nothing.link_state == Service.LINK_NONE, "A missing link is remembered so launches do not keep asking")
+	_check(nothing.cloud.due(), "and later launches still pull the saved games")
 	nothing.queue_free()
 	# Without the build's web client id, a new phone does not try.
 	api.answers = {"/v1/platform/restore": [_on()]}
@@ -244,6 +246,7 @@ func _run() -> void:
 	var bare_service := _service(FakeProvider.new(), api, bare, "bare")
 	await bare_service.start()
 	_check(bare.restores.is_empty(), "No web client id, no restore attempt")
+	_check(bare_service.cloud.due(), "but the saved games are still pulled")
 	bare_service.queue_free()
 	# An identity this phone cannot read is never replaced.
 	var blocked := _account(api)

@@ -284,6 +284,8 @@ func _after_sign_in(capability: Dictionary, generation: int) -> void:
 	if _account == null: return
 	if _account.identity_state() == "missing":
 		await _restore_for_new_phone(capability, generation)
+		# Every launch pulls the account's saved games, before any chapter here is started.
+		if generation == _generation and cloud != null: cloud.flush(true)
 		return
 	if _account.identity_state() != "ready": return
 	await _reconcile_link(capability, generation)

@@ -285,7 +285,7 @@ const PLATFORM_GAMES_CONFLICT := "Linked to another friend code. Choose one to k
 const PLATFORM_GAMES_OTHER_ACCOUNT := "Your friend code is linked to a different account."
 ## A toast; %s is "Play Games" or "Game Center".
 const PLATFORM_GAMES_CONFLICT_NOTICE := "Your %s account has another friend code. Choose one in Settings."
-const PLATFORM_GAMES_RESTORED := "Welcome back. Your friend code and progress are here."
+const PLATFORM_GAMES_RESTORED := "Your friend code is back."
 const PLATFORM_GAMES_SIGN_IN := "Sign in"
 const PLATFORM_GAMES_SIGN_IN_NOTE := "Sign in to bring your friend code and progress to a new phone."
 const PLATFORM_GAMES_CHOOSE_TITLE := "Which friend code should stay?"
