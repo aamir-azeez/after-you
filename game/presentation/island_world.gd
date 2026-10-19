@@ -225,7 +225,8 @@ func build_staged(level: Dictionary, budget_usec: int = 0, opening_stage: String
 ## A staged world shows over about this many frames (reveal_staged), a share
 ## of its meshes, labels and sprites each: drawing a whole chapter for the
 ## first time took one frame 16 to 35 ms on a desktop, Turn of the Tide the
-## longest. A world of fewer than REVEAL_LEAST meshes a frame shows sooner.
+## longest. A share is never below REVEAL_LEAST meshes, so a small world
+## shows in fewer frames.
 const REVEAL_FRAMES := 4
 const REVEAL_LEAST := 100
 var _revealing := false
@@ -239,8 +240,8 @@ static func reveal_share(drawn: int) -> int:
 ## frame draws the whole world for the first time. A part is a plain node (no
 ## script) shown when the reveal starts, with no more than reveal_share meshes
 ## under it, or else its own parts in turn; a node with a script is never
-## hidden itself, only its parts are. The world ends as it was before it was
-## hidden. The caller keeps the world from running meanwhile, as during the
+## hidden itself, only its parts are. Every node is left shown or hidden as
+## it was before the world was hidden. The caller keeps the world from running meanwhile, as during the
 ## build. Await it.
 func reveal_staged() -> void:
 	_revealing = true
@@ -250,8 +251,8 @@ func reveal_staged() -> void:
 	var parts: Array[Array] = []
 	_reveal_parts(self, parts, share)
 	for part: Array in parts: (part[0] as Node3D).visible = false
-	# Biggest parts first, each frame filled up with whatever still fits: the
-	# fewest frames. What is never hidden shows with the first.
+	# Biggest parts first, each frame filled up with whatever still fits: near
+	# the fewest frames. What is never hidden shows with the first.
 	parts.sort_custom(func(a: Array, b: Array) -> bool: return int(a[1]) > int(b[1]))
 	var shown := _drawn_meshes()
 	while not parts.is_empty():
@@ -269,7 +270,7 @@ func reveal_staged() -> void:
 	for part: Array in parts:
 		if is_instance_valid(part[0]): (part[0] as Node3D).visible = true
 	_revealing = false
-	_shown_whole()
+	_regather_scenery()
 
 func _drawn_meshes() -> int:
 	var drawn := 0
@@ -292,8 +293,8 @@ func _reveal_parts(node: Node, parts: Array[Array], share: int) -> void:
 		else: _reveal_parts(child, parts, share)
 
 ## Called once a staged world shows whole (reveal_staged). A world whose
-## presentation reads what is visible reads it again here.
-func _shown_whole() -> void:
+## presentation reads what is visible (bubble scenery) reads it again here.
+func _regather_scenery() -> void:
 	pass
 
 ## Shows stage as a chapter screen does: through the world's show_stage, except

@@ -140,7 +140,8 @@ func _revealed_bubbles(key: String) -> void:
 ## Built staged and hidden, as under the card, then shown by reveal_staged: no
 ## frame after the first shows more than its share of the meshes for the first
 ## time, a big world takes several frames but not many more than
-## REVEAL_FRAMES, and every node ends shown or hidden exactly as built.
+## REVEAL_FRAMES, the first frame no more than two shares either, and every
+## node is left shown or hidden exactly as built.
 func _revealed_in_parts(key: String) -> void:
 	var definition := Registry.definition(key)
 	var viewport := _viewport()
@@ -175,7 +176,9 @@ func _revealed_in_parts(key: String) -> void:
 	var share := World.reveal_share(drawn)
 	_check(most <= share, key + ": no frame after the first shows more than %d meshes for the first time (most %d over %d frames)" % [share, most, counts.size()])
 	_check(counts.size() <= World.REVEAL_FRAMES + 2, key + ": it shows in a few frames (%d of them, %d meshes drawn)" % [counts.size(), drawn])
-	if drawn > 2 * World.REVEAL_LEAST: _check(counts.size() > 1, key + ": a big world shows over several frames (%d meshes drawn, %d frames)" % [drawn, counts.size()])
+	if drawn > 2 * World.REVEAL_LEAST:
+		_check(counts.size() > 1, key + ": a big world shows over several frames (%d meshes drawn, %d frames)" % [drawn, counts.size()])
+		_check(counts[0] <= 2 * share, key + ": its first frame shows no more than two shares (%d of %d meshes, share %d)" % [counts[0], drawn, share])
 	viewport.free()
 
 ## Scenery boxes a journey world gathered for its bubbles, all bubbles together.
@@ -285,6 +288,7 @@ func _screen(key: String, saved: bool = false) -> void:
 	_check(not staged.building() and staged.mode == "ready" and guard >= 1, label + ": the ready card follows the build (%d frames)" % guard)
 	_check(not drawn_half_built and staged.world.visible == direct.world.visible, label + ": the half-built world is never drawn, and shows once whole")
 	_check(not revealed_late, label + ": it shows its parts while the card still waits (%d frames of them)" % revealed_frames)
+	if key == Registry.TURN_OF_THE_TIDE: _check(revealed_frames >= 1, label + ": a world this big shows over more than one frame (%d frames revealing)" % revealed_frames)
 	_check(staged.world.terrain.get_instance_id() == terrain_id, label + ": the ready card shows the world it built, not a rebuild in one frame")
 	if saved: _check(str(staged.journey.stage_id()) == str(Registry.definition(key).stages[1].id), label + ": it opens on the saved second stage")
 	_check(Canonical.same(staged.sim.snapshot(), direct.sim.snapshot()) and str(staged.sim.get("role")) == str(direct.sim.get("role")), label + ": the same turn, in the same state, as one set up at once")

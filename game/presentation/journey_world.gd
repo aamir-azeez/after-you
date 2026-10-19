@@ -230,9 +230,9 @@ func _advance_bubbles(delta: float) -> void:
 ## A staged reveal shows the world before its parts (island_world.reveal_staged):
 ## its end counts as shown again too.
 func _notification(what: int) -> void:
-	if what == NOTIFICATION_VISIBILITY_CHANGED and is_inside_tree() and is_visible_in_tree(): _shown_whole()
+	if what == NOTIFICATION_VISIBILITY_CHANGED and is_inside_tree() and is_visible_in_tree(): _regather_scenery()
 
-func _shown_whole() -> void:
+func _regather_scenery() -> void:
 	_sceneries.clear()
 	_placement_due = true
 
