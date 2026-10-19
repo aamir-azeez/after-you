@@ -19,6 +19,9 @@ const FastForwardBadge = preload("res://presentation/fast_forward_badge.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
+## Solo play: the partner is the player's own memory, so a line with a solo
+## wording reads that (PlayerCopy.from_canonical).
+var solo := false
 var ui: Control
 var hud: Control
 var overlay: Control
@@ -79,7 +82,7 @@ func update_state(title: String, remaining: float, state: Dictionary, interactiv
 	chapter_label.text = title
 	turn_progress.reduced_motion = bool(settings.get("reduced_motion", false))
 	turn_progress.set_remaining(remaining, float(state.get("duration_ticks", 600)) / 30.0)
-	hint_label.text = PlayerCopy.from_canonical(str(state.get("message", "")))
+	hint_label.text = PlayerCopy.from_canonical(str(state.get("message", "")), solo)
 	var objective: Dictionary = state.get("objective_display", ObjectivePanel.legacy_progress(state, 30.0))
 	objective_panel.show_objective(objective, str(state.get("progress_message", "")))
 	var action: Dictionary = state.get("context_action", {})

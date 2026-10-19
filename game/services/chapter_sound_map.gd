@@ -90,6 +90,10 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 		var cue := event
 		if overrides.has(event): cue = overrides[event]
 		elif event.begins_with("bridge_opened:"): cue = "bridge_opened"
+		# Tide rules: a crossing starts to close under rising water; a spirit
+		# caught on one as it shuts.
+		elif event.begins_with("closing:"): cue = "crossing_closing"
+		elif event.begins_with("drowned:"): cue = "spirit_drowned"
 		elif event == "relay_filled": cue = "garden_opened"
 		elif event == "garden_bloomed": cue = "island_bloomed"
 		elif cooperative and PHYSICAL.has(event): cue = PHYSICAL[event]

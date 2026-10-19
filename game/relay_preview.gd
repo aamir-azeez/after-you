@@ -159,6 +159,9 @@ var _retry_cancel: Callable
 ## Solo work that will hold the screen for a noticeable time waits behind a
 ## card that is drawn first (see _after_visible_wait).
 const VISIBLE_WAIT_USEC := 150000
+## How long a drowned spirit is seen going under before the review card.
+const DROWN_BEAT_FRAMES := 45
+var _drown_frames := 0
 var _wait_then: Callable
 var _wait_frames := 0
 ## The solo live simulation the ready card set up, as it was then. Start turn
@@ -612,7 +615,7 @@ func _show_ready() -> void:
 	var compact: bool = online_session != null and _room_panel_fits()
 	var facts := _room_facts()
 	if compact:
-		var hint := PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]))
+		var hint := PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage)["hint_"+role]), online_session == null)
 		var panel := _ordinary_room_card(title,hint)
 		_set_room_state(RoomActions.panel_state("ready", facts))
 		_add_friend_strip(panel, joined)
@@ -837,7 +840,7 @@ func _enable_turn_notifications() -> void:
 	update_notification_offer()
 
 func _chapter_body(stage_index: int, for_role: String, stage_item: Dictionary) -> String:
-	return Registry.turn_intro(chapter_key, stage_index) + PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage_item)["hint_" + for_role])) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
+	return Registry.turn_intro(chapter_key, stage_index) + PlayerCopy.from_canonical(str(Registry.stage_presentation(chapter_key,stage_item)["hint_" + for_role]), online_session == null) + (PlayerCopy.RELAY_PREVIEW_441E8D9C7D61 if online_session != null else PlayerCopy.RELAY_PREVIEW_DC436BB6F967)
 
 func _turn_title(stage_index: int, for_role: String) -> String:
 	return "%d / %d  ·  %s" % [stage_index + 1, definition.stages.size(), "Leave a path" if for_role == "a" else "Follow the recording"]
@@ -1833,6 +1836,9 @@ func _resume_draft() -> void:
 
 
 func _physics_process(_delta: float) -> void:
+	if mode == "drowning":
+		_advance_drown_beat()
+		return
 	if not running or backgrounded:
 		return
 	var input: Dictionary
@@ -1874,8 +1880,26 @@ func advance_input(input: Dictionary) -> void:
 			_show_final_moment()
 		elif mode == "replay":
 			_finish_replay_playback()
+		elif not state.get("drowned", {}).is_empty():
+			_begin_drown_beat()
 		else:
 			_finish()
+
+## A spirit drowned (journey tide rules): the world shows it going under for
+## DROWN_BEAT_FRAMES physics frames, then the review card says so and offers
+## Retry, the redo actions, Restart and Leave like any unfinished turn.
+func _begin_drown_beat() -> void:
+	running = false
+	action_pressed = false
+	mode = "drowning"
+	_drown_frames = DROWN_BEAT_FRAMES
+
+func _advance_drown_beat() -> void:
+	if backgrounded: return
+	_drown_frames -= 1
+	if _drown_frames > 0: return
+	mode = "play"
+	_finish()
 
 
 ## The lit beacon stays on screen, as in the solo Lighthouse, until the
@@ -2007,6 +2031,7 @@ func _update_hud(state: Dictionary) -> void:
 		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22
 	_update_memory_wait_hud()
+	controls.set("solo", online_session == null)
 	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
 
 func _request_action() -> void:
@@ -2080,7 +2105,7 @@ func _show_review() -> void:
 	if can_save: _start_prefetch()
 	var explanation := PlayerCopy.RELAY_PREVIEW_B9074234FC11
 	if not can_save:
-		explanation += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))))
+		explanation += "\n\n" + PlayerCopy.from_canonical(str(verified.get("snapshot", {}).get("commit_reason", verified.get("error", PlayerCopy.RELAY_PREVIEW_9DDEE52F0B85))), online_session == null)
 	var card := _card(PlayerCopy.RELAY_PREVIEW_93772D9A4DA5, explanation)
 	card.add_child(_action_button("preview", _preview_turn))
 	var save := _action_button("save", _accept)

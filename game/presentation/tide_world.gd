@@ -23,6 +23,10 @@ const RAMPS := {"slipway": ["winch", "slip"]}
 ## How far a raised ramp stands up (radians), and how fast it swings (radians a second).
 const RAMP_RAISED := 0.95
 const RAMP_RATE := 1.6
+## Tide rules (journey simulation.gd): a closing crossing's edges flash this
+## colour, and a drowned spirit sinks this far under the water it is in.
+const CLOSING_COLOR := Color("f08a5d")
+const DROWN_DEPTH := 0.55
 const HARBOUR_REGION := [-512, -480, 1728, 480]
 ## The outer sea: wide past the mole, through the harbour mouth, and a short
 ## reach past each end of the mouth where the sea gates stand. Breakwaters hold
@@ -141,6 +145,8 @@ var _ghosts: Dictionary = {}
 var _boats: Array[Node3D] = []
 ## RAMPS built for the shown stage: crossing id -> its hinge (Node3D, meta "target").
 var _ramps: Dictionary = {}
+## Tide rules: the ring spreading where a spirit drowned (null until one does).
+var _drown_ring: MeshInstance3D
 ## Kept-crossing masts, raised with the water that covers their crossing.
 const MAST_CLEARANCE := 0.25
 var _kept_masts: Array[Dictionary] = []
@@ -205,6 +211,7 @@ func show_stage(stage: Dictionary) -> void:
 	_ghosts.clear()
 	_boats.clear()
 	_ramps.clear()
+	_drown_ring = null
 	_kept_masts.clear()
 	_bubbles_placed = false
 	_walled = _walled_routes(stage)
@@ -743,6 +750,7 @@ func _restyle_deck(route: Dictionary) -> void:
 		var trim := box(Vector3(width, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, depth), GOLD if tide else LIGHT_COLOR, Vector3(0, 0.015, side * (depth / 2.0 - 0.025)) if across_x else Vector3(side * (width / 2.0 - 0.025), 0.015, 0), deck)
 		trim.name = "OpenEdge"
 		_glow(trim, GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65)
+		trim.set_meta("edge", [GOLD if tide else LIGHT_COLOR, 0.9 if tide else 0.65])
 
 ## A shut crossing stays in view as a faint outline at its own height (sunk
 ## under the water when the tide covers it), so the other ways can be read.
@@ -1322,9 +1330,13 @@ func _advance_water(delta: float) -> void:
 		var target := float(root.get_meta("target"))
 		var shown := float(root.get_meta("shown"))
 		if not is_equal_approx(shown, target):
-			_show_water(root, move_toward(shown, target, WATER_RATE * maxf(delta, 0.0)))
+			_show_water(root, move_toward(shown, target, float(root.get_meta("rate", WATER_RATE)) * maxf(delta, 0.0)))
 			flowing = true
+		elif root.has_meta("rate"): root.remove_meta("rate")
 	_swing_ramps(delta)
+	if is_instance_valid(_drown_ring) and not reduced_motion:
+		var grown := minf(_drown_ring.scale.x + delta * 1.6, 3.0)
+		_drown_ring.scale = Vector3(grown, 1.0, grown)
 	# The doors move after the water, against the water shown this frame.
 	if is_instance_valid(_locks) and (flowing or _locks.moving()): _locks.advance(delta, _lock_levels("shown"))
 	if not reduced_motion:
@@ -1580,6 +1592,48 @@ func _swing_ramps(delta: float) -> void:
 		var target := float(hinge.get_meta("target"))
 		if not is_equal_approx(hinge.rotation.z, target): hinge.rotation.z = move_toward(hinge.rotation.z, target, RAMP_RATE * maxf(delta, 0.0))
 
+## Tide rules: while a crossing closes (route id -> ticks left before it
+## shuts, from the snapshot), its edges flash and the water still moving
+## slows to reach its new level as the crossing shuts, so the warning is the
+## water rising over it. Nothing here in rules without closing crossings.
+func _show_closing(closing: Dictionary) -> void:
+	for id: String in _decks:
+		var deck: Node3D = _decks[id]
+		if not is_instance_valid(deck): continue
+		for child: Node in deck.get_children():
+			var trim := child as MeshInstance3D
+			if trim == null or not trim.has_meta("edge"): continue
+			if closing.has(id):
+				if not trim.has_meta("warned"):
+					trim.material_override = trim.material_override.duplicate()
+					trim.set_meta("warned", true)
+				_glow(trim, CLOSING_COLOR, 1.6 if int(closing[id]) % 10 < 5 else 0.5)
+			elif trim.has_meta("warned"):
+				var edge: Array = trim.get_meta("edge")
+				_glow(trim, edge[0], float(edge[1]))
+	if closing.is_empty(): return
+	var left := INF
+	for id: String in closing: left = minf(left, float(closing[id]))
+	var seconds := maxf(left, 1.0) / 30.0
+	for root: Node3D in _water.values():
+		if not is_instance_valid(root): continue
+		var distance := absf(float(root.get_meta("target")) - float(root.get_meta("shown")))
+		if distance > 0.001: root.set_meta("rate", distance / seconds)
+
+## Tide rules: a drowned spirit (snapshot "drowned": {slot, route}) heads under
+## the water over its crossing, and a ring spreads where it went down.
+func _show_drowned(drowned: Dictionary) -> void:
+	if drowned.is_empty() or not actors.has(str(drowned.get("slot", ""))): return
+	var slot := str(drowned.slot)
+	var harbour: Node3D = _water.get("harbour")
+	var surface: float = float(harbour.get_meta("shown")) if is_instance_valid(harbour) else float(actor_targets[slot].y)
+	var target: Vector3 = actor_targets[slot]
+	target.y = minf(target.y, surface) - DROWN_DEPTH
+	actor_targets[slot] = target
+	if is_instance_valid(_drown_ring): return
+	_drown_ring = cylinder(0.32, 0.01, Color(CREAM, 0.7), Vector3(target.x, surface + 0.02, target.z), terrain)
+	_drown_ring.name = "DrownRing"
+
 func _float_boats(level: float) -> void:
 	for boat: Node3D in _boats:
 		if not is_instance_valid(boat): continue
@@ -1689,6 +1743,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		for band: MeshInstance3D in _post_marks[id].bands: _glow(band, TEAL, 0.9 if at_value else 0.0)
 	for id: String in _ghosts:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
+	_show_closing(state.get("route_progress", {}).get("closing", {}))
+	_show_drowned(state.get("drowned", {}))
 	if is_instance_valid(_locks):
 		_locks.present(_lock_levels("target"), immediate or reduced_motion)
 		# A door dips while a spirit stands in its mouth: from the snapshot's
@@ -1748,6 +1804,7 @@ func _static_keep() -> Array:
 	keep.append_array(_sea_gates)
 	keep.append_array(_boats)
 	keep.append_array(_ramps.values())
+	if is_instance_valid(_drown_ring): keep.append(_drown_ring)
 	keep.append_array(_spout_streaks)
 	keep.append_array(_slack_marks)
 	for marks: Array in _dry_marks.values(): keep.append_array(marks)

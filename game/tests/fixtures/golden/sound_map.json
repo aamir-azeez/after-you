@@ -19,7 +19,9 @@
 		"waypoint",
 		"well_plunk",
 		"water_rise",
-		"water_fall"
+		"water_fall",
+		"crossing_closing",
+		"spirit_drowned"
 	],
 	"chapters": {
 		"a-house-for-two@1": {
