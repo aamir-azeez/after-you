@@ -60,6 +60,8 @@ const GAP := 24
 const STACK_BELOW := 640.0
 
 signal home_requested
+## Settings left the screen, by any way out (a moment for cloud save to catch up).
+signal closed
 
 var host: Node
 ## The open page, or empty. Freed with the overlay; see _forget().
@@ -132,6 +134,7 @@ func view_current(token: int) -> bool:
 	return is_open() and token == _view
 
 func _forget() -> void:
+	if _page != null: closed.emit()
 	_page = null
 	_reset = null
 	_fade = null

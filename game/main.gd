@@ -38,6 +38,7 @@ const TurnFlow = preload("res://presentation/turn_flow.gd")
 const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const SettingsFlow = preload("res://presentation/settings_flow.gd")
+const PlatformGamesFlow = preload("res://presentation/platform_games_flow.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -220,6 +221,8 @@ var legacy_room_flow: LegacyRoomFlow = _host_legacy_room_flow()
 var relay_lobby_flow: RelayLobbyFlow = _host_relay_lobby_flow()
 ## Settings: one page of categories, and a licence's text.
 var settings_flow: SettingsFlow = _host_settings_flow()
+## Play Games / Game Center: Settings' row, the progress choice and Main's side of PlatformGames.
+var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -353,6 +356,7 @@ func _ready() -> void:
 		_toast(saves.last_error)
 	if secrets.is_available():
 		_load_saved_identity()
+	platform_games_flow.attach()
 	for arg in OS.get_cmdline_user_args():
 		if arg.begins_with("--capture="):
 			capture_path=arg.trim_prefix("--capture=")
@@ -1761,6 +1765,12 @@ func _new_relay_lobby_flow() -> RelayLobbyFlow:
 	return RelayLobbyFlow.new(self)
 
 ## An internal child, like StoreFlow.
+func _host_platform_games_flow() -> PlatformGamesFlow:
+	var flow := PlatformGamesFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	return flow
+
+## An internal child, like StoreFlow.
 func _host_settings_flow() -> SettingsFlow:
 	var flow := SettingsFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
@@ -2957,6 +2967,7 @@ func _exit_tree() -> void:
 		_world_covered = false
 		get_viewport().disable_3d = false
 	replays_flow.release_workers()
+	platform_games_flow.detach()
 	home_keepsakes.deactivate()
 	# A waiting invite link outlives a scene change (a solo chapter); it never reaches disk.
 	InviteLinkBridge.hold(invite_link_pending, invite_link_expires_ms)
