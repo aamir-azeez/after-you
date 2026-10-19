@@ -274,7 +274,7 @@
 			dispatch_async(dispatch_get_main_queue(), ^{
 				NSString *handle = [AYGamesPolicy newHandle];
 				self.slots[handle] = slot;
-				NSMutableDictionary *payload = [@{ @"handle" : handle, @"data" : [first ?: [NSData data] base64EncodedStringWithOptions:0] } mutableCopy];
+				NSMutableDictionary *payload = [@{ @"handle" : handle, @"data" : [(first ?: [NSData data]) base64EncodedStringWithOptions:0] } mutableCopy];
 				if (other != nil) {
 					payload[@"conflict"] = @{ @"data" : [other base64EncodedStringWithOptions:0] };
 				}
