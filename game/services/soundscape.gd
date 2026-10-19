@@ -450,21 +450,25 @@ func _sync_loops() -> void:
 # --- Calls: sparse one-shots over a bed (SoundCues.CALLS) ---------------------
 
 ## Starts or stops the place's calls. A new set waits its `first` span before
-## singing; leaving fades a call that is still singing.
+## singing; leaving fades a call that is still singing. A set whose timer has
+## stopped (a call was due while its world hid) is armed again.
 func _set_calls(key: String, instant: bool) -> void:
-	if key == calling: return
-	calling = key
-	if is_instance_valid(_call_timer): _call_timer.stop()
-	if is_instance_valid(call_voice) and call_voice.playing: _release(call_voice, "", instant)
-	_last_call = -1
-	_call_pitch = NO_PITCH
-	if key.is_empty() or not is_instance_valid(_call_timer) or not _call_timer.is_inside_tree(): return
+	if not is_instance_valid(_call_timer): return
+	if key == calling and (key.is_empty() or not _call_timer.is_stopped()): return
+	if key != calling:
+		calling = key
+		_call_timer.stop()
+		if is_instance_valid(call_voice) and call_voice.playing: _release(call_voice, "", instant)
+		_last_call = -1
+		_call_pitch = NO_PITCH
+	if key.is_empty() or not _call_timer.is_inside_tree(): return
 	var first: Vector2 = SoundCues.CALLS[key].first
 	_call_timer.start(variation.randf_range(first.x, first.y))
 
 ## Sings the next call and sets the timer for the one after it.
 func _on_call_due() -> void:
 	if calling.is_empty() or not sound_enabled or backgrounded or not is_instance_valid(call_voice): return
+	if not is_instance_valid(_world) or not _world.is_visible_in_tree(): return
 	var spec: Dictionary = SoundCues.CALLS[calling]
 	var pick := next_call(spec, variation, _last_call, _call_pitch)
 	_last_call = pick.variant

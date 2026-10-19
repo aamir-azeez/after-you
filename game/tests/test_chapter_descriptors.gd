@@ -135,8 +135,8 @@ func _chapter(key: String, data: Dictionary) -> void:
 func _sounds(key: String, data: Dictionary, level: Dictionary) -> void:
 	for moment: String in data.sound_cues:
 		_check(SoundCues.CUES.has(data.sound_cues[moment]), "Sound cue %s of %s/%s is a cue in services/sound_cues.gd" % [data.sound_cues[moment], key, moment])
-	for bed: Variant in data.beds:
-		_check(SoundCues.is_bed(str(bed)), "Bed %s of %s is a loop or calls in services/sound_cues.gd" % [bed, key])
+	var bed_problems := SoundCues.bed_problems(data.beds)
+	_check(bed_problems.is_empty(), "Beds of %s are loops or one set of calls in services/sound_cues.gd: %s" % [key, bed_problems])
 	for id: String in data.water_levels:
 		var levels: Variant = data.water_levels[id]
 		var found := 0

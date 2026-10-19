@@ -384,7 +384,9 @@ func _check_global_rng() -> void:
 	var probe := Tuned.new()
 	root.add_child(probe)
 	probe.configure({"sound": true, "haptics": false})
-	probe.calling = "birds"
+	var world := FakeWorld.new()
+	root.add_child(world)
+	probe.listen_to(world, "home")
 	for i in range(40):
 		probe.play_footstep()
 		probe.consume_events(["seed_caught", "seed_missed", "seed_landed", "island_bloomed"], false)
@@ -395,6 +397,7 @@ func _check_global_rng() -> void:
 	for i in range(8):
 		after.append(randi())
 	_check(after == expected, "Audio variation never reads or advances the global random sequence")
+	world.queue_free()
 	probe.queue_free()
 	randomize()
 
@@ -462,8 +465,16 @@ func _check_calls() -> void:
 	_check(repeats == 0, "Consecutive bird calls on Home never play the same clip")
 	_check(gaps_inside, "Each bird call waits for its own end and then a gap inside the table's range")
 	_check(probe.call_voice.playing and probe.call_voice.volume_db <= float(spec.db) and probe.call_voice.pitch_scale < 1.0, "A bird sings below the table's level and below its recorded pitch")
+	var due := probe._call_timer.time_left
 	probe._sync_loops()
-	_check(probe.call_voice.playing and not probe._call_timer.is_stopped(), "The regular world check never restarts the birds")
+	_check(probe.call_voice.playing and is_equal_approx(probe._call_timer.time_left, due), "The regular world check never restarts the birds")
+	probe._call_timer.stop()
+	probe._sync_loops()
+	_check(probe.calling == "birds" and not probe._call_timer.is_stopped(), "The world check arms a set of calls whose timer stopped")
+	probe.begin_turn("turn-of-the-tide@1", "set-the-tide")
+	_check(probe.calling.is_empty() and probe._call_timer.is_stopped(), "A chapter without birds stops them")
+	probe.clear_turn()
+	_check(probe.calling == "birds" and not probe._call_timer.is_stopped(), "Back on Home the birds wait to sing again")
 	world.visible = false
 	probe._sync_loops()
 	_check(probe.calling.is_empty() and probe._call_timer.is_stopped(), "A hidden Home stops its birds")
@@ -480,9 +491,15 @@ func _check_calls() -> void:
 	probe._on_call_due()
 	_check(not probe.call_voice.playing, "No bird sings while sound is off")
 	probe.configure({"sound": true, "haptics": false})
+	_check(probe.calling == "birds" and not probe._call_timer.is_stopped(), "Sound back on lets the birds sing again")
 	probe._on_call_due()
 	probe.set_backgrounded(true)
 	_check(not probe.call_voice.playing and probe._call_timer.is_stopped(), "Backgrounding silences the birds")
+	probe.set_backgrounded(false)
+	_check(probe.calling == "birds" and not probe._call_timer.is_stopped(), "Coming back to the foreground lets the birds sing again")
+	world.visible = false
+	probe._on_call_due()
+	_check(not probe.call_voice.playing, "No bird sings for a world that has hidden before the world check")
 	probe.queue_free()
 	world.queue_free()
 

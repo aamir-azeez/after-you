@@ -159,12 +159,21 @@ static func problems() -> Array[String]:
 		found.append_array(call_problems(key, CALLS[key]))
 	for kind: String in MOTION:
 		if not LOOPS.has(MOTION[kind].get("loop", "")): found.append("Motion %s names an unknown loop" % kind)
+	for key: String in CALLS:
+		if LOOPS.has(key): found.append("%s is both a loop and a set of calls" % key)
 	for place: String in BEDS:
-		var calls := 0
-		for bed: String in BEDS[place]:
-			if not is_bed(bed): found.append("Bed %s names an unknown loop or calls %s" % [place, bed])
-			if CALLS.has(bed): calls += 1
-		if calls > 1: found.append("Bed %s has more than one set of calls for the one call voice" % place)
+		for problem: String in bed_problems(BEDS[place]): found.append("Bed %s: %s" % [place, problem])
+	return found
+
+## Problems with one place's bed list (BEDS or a chapter descriptor's "beds"):
+## every name a loop or calls, and at most one set of calls for the one call voice.
+static func bed_problems(beds: Array) -> Array[String]:
+	var found: Array[String] = []
+	var calls := 0
+	for bed: Variant in beds:
+		if not is_bed(str(bed)): found.append("%s is not a loop or calls" % bed)
+		if CALLS.has(str(bed)): calls += 1
+	if calls > 1: found.append("more than one set of calls")
 	return found
 
 static func call_problems(key: String, spec: Dictionary) -> Array[String]:
