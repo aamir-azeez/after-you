@@ -253,7 +253,7 @@ func _link(capability: Dictionary, replace: bool) -> void:
 	var credential: Dictionary = await _credential(capability)
 	var answer: Dictionary = {"ok": false, "code": str(credential.get("code", "unavailable"))}
 	if credential.get("ok", false) and _links != null:
-		answer = await _links.link(kind(), credential.credential, replace)
+		answer = await _links.link(kind(), credential.credential, replace, _account.recovery_code() if _account != null else "")
 	busy = false
 	link_code = ""
 	if answer.get("ok", false) and _account != null and _account.player_id() == player:

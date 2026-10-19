@@ -30,6 +30,10 @@ var host: Node
 var service: Node
 var _account: Account
 var _detail: WeakRef = weakref(null)
+## The identity whose recovery details this flow saw copied: "Use the linked one" waits for it,
+## so the friend code this phone leaves behind is never lost.
+var _copied_player := ""
+var _copy_busy := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -117,7 +121,9 @@ func _fill(detail: VBoxContainer) -> void:
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_KEEP_THIS, platform.keep_this_phone))
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_USE_LINKED_NOTE))
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_COPY_RECOVERY, _copy_recovery))
-		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_LINKED, platform.use_linked_progress))
+		var use_linked := SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_LINKED, platform.use_linked_progress)
+		use_linked.disabled = not recovery_copied()
+		items.append(use_linked)
 	elif platform.link_state == PlatformGames.LINK_OTHER:
 		items.append(SettingsKit.detail_text(PlayerCopy.PLATFORM_GAMES_OTHER_NOTE))
 		items.append(SettingsKit.detail_button(PlayerCopy.PLATFORM_GAMES_USE_HERE, platform.keep_this_phone))
@@ -135,8 +141,26 @@ static func _set_items(detail: VBoxContainer, items: Array) -> void:
 	for item: Control in items: detail.add_child(item)
 	detail.visible = not items.is_empty()
 
+func recovery_copied() -> bool:
+	return host != null and not _copied_player.is_empty() and _copied_player == str(host.identity_data.get("player_id", ""))
+
+## Copies this phone's recovery details; only a confirmed copy unlocks "Use the linked one".
 func _copy_recovery() -> void:
-	host.account_flow.copy_recovery_details(str(host.identity_data.get("player_id", "")), str(host.identity_data.get("recovery_code", "")))
+	if _copy_busy: return
+	var player := str(host.identity_data.get("player_id", ""))
+	var code := str(host.identity_data.get("recovery_code", ""))
+	if not RecoveryDetails.field_matches(player, RecoveryDetails.ID_PATTERN) or not RecoveryDetails.field_matches(code, RecoveryDetails.SECRET_PATTERN):
+		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
+		return
+	_copy_busy = true
+	var result: Dictionary = await host._await_secret(host.secrets.copy_recovery(player, code))
+	_copy_busy = false
+	if result.get("ok", false) and Typed.equal(result.get("payload", {}).get("copied"), true):
+		_copied_player = player
+		host._toast(PlayerCopy.MAIN_B3745871EB1C)
+		_on_changed()
+	else:
+		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
 
 # ---- Main's side of the service ------------------------------------------------------------
 
@@ -235,6 +259,9 @@ class Account extends RefCounted:
 	func player_id() -> String:
 		var flow := _flow_node()
 		return str(flow.host.api.player_id) if flow != null else ""
+	func recovery_code() -> String:
+		var flow := _flow_node()
+		return str(flow.host.identity_data.get("recovery_code", "")) if flow != null else ""
 	func config_web_client_id() -> String:
 		var flow := _flow_node()
 		return flow.config_web_client_id() if flow != null else ""
