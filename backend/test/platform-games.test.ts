@@ -51,7 +51,7 @@ function google(players: Record<string, string>) {
 const CODE_PREFIX = "4/0Asynthetic-";
 const playCredential = (code: string) => ({ server_auth_code: CODE_PREFIX + code });
 const link = (a: Account, code: string, replace?: boolean, vars = PLAY_ON) =>
-  call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "play_games", credential: playCredential(code), ...(replace === undefined ? {} : { replace }) }, vars);
+  call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "play_games", credential: playCredential(code), recovery_code: a.recovery_code, ...(replace === undefined ? {} : { replace }) }, vars);
 const restore = (code: string, next: { device_token: string; recovery_code: string }, key = "idem-" + "k".repeat(20), vars = PLAY_ON) =>
   call("/v1/platform/restore", "POST", undefined, { schema_version: 1, provider: "play_games", credential: playCredential(code), idempotency_key: key, next_device_token: next.device_token, next_recovery_code: next.recovery_code }, vars);
 
@@ -102,16 +102,27 @@ describe("Play Games linking", () => {
     expect(await again.value.json()).toEqual({ schema_version: 1, provider: "play_games", status: "linked", changed: false });
     expect(again.rows.links.written).toBe(0);
     // A client-supplied player id is refused outright.
-    const forged = await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "play_games", credential: { server_auth_code: CODE_PREFIX + "code-a", player_id: "g-player-two" } }, PLAY_ON);
+    const forged = await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "play_games", credential: { server_auth_code: CODE_PREFIX + "code-a", player_id: "g-player-two" }, recovery_code: a.recovery_code }, PLAY_ON);
     expect(forged.status).toBe(400);
-    expect((await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "play_games", credential: playCredential("code-a"), player_id: "x" }, PLAY_ON)).status).toBe(400);
+    expect((await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "play_games", credential: playCredential("code-a"), recovery_code: a.recovery_code, player_id: "x" }, PLAY_ON)).status).toBe(400);
+  });
+  it("needs the recovery code too, so a device token alone can never set up a restore", async () => {
+    const a = await create(); const { spy } = google({ "code-a": "g-player-one" });
+    const missing = await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "play_games", credential: playCredential("code-a") }, PLAY_ON);
+    expect(missing.status).toBe(400);
+    const wrong = await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "play_games", credential: playCredential("code-a"), recovery_code: randomToken() }, PLAY_ON);
+    expect(wrong.status).toBe(401); expect(await wrong.json()).toEqual({ error: { code: "invalid_recovery", retryable: false } });
+    expect(spy).not.toHaveBeenCalled();
+    expect(await links().linkedProviders(a.player_id)).toEqual([]);
+    const limited = { ...PLAY_ON, TESTER_CODE_LIMITER: { limit: async ({ key }: { key: string }) => ({ success: !key.startsWith("platform-player:") }) } } as unknown as Env;
+    expect((await link(a, "code-a", undefined, limited)).status).toBe(429);
   });
   it("costs one auth call and one link call, writing one row and its index entry on a first link", async () => {
     const a = await create(); google({ "code-a": "g-player-one" });
     const counted = countingEnv(PLAY_ON);
     const metered = await meterRows({ links: links() }, () => link(a, "code-a", undefined, counted.env));
     expect(metered.value.status).toBe(200);
-    expect(counted.calls).toEqual(["PLAYERS.authorize", "PLATFORM_LINKS.link"]);
+    expect(counted.calls).toEqual(["PLAYERS.authorize", "PLAYERS.recoveryMatches", "PLATFORM_LINKS.link"]);
     expect(metered.rows.links.written).toBeLessThanOrEqual(2);
   });
   it("reports a conflict without writing, and moves the link only when the player chose to replace it", async () => {
@@ -140,6 +151,14 @@ describe("Play Games linking", () => {
     expect(refused.status).toBe(401); expect(await refused.json()).toEqual({ error: { code: "platform_credential_invalid", retryable: false } });
     const down = await link(a, "down-code-1");
     expect(down.status).toBe(503);
+    // Google refusing our own client (a rotated secret) or rationing quota is never the player's fault.
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ error: "invalid_client" }, { status: 401 }));
+    expect((await link(a, "code-a")).status).toBe(503);
+    vi.restoreAllMocks();
+    vi.spyOn(globalThis, "fetch").mockImplementation(async input => String(input).startsWith("https://oauth2") ? Response.json({ access_token: "synthetic-access-x".padEnd(20, "x") })
+      : Response.json({ error: { code: 403, errors: [{ reason: "dailyLimitExceeded" }] } }, { status: 403 }));
+    expect((await link(a, "code-a")).status).toBe(503);
     vi.restoreAllMocks();
     vi.spyOn(globalThis, "fetch").mockImplementation(async input => String(input).startsWith("https://oauth2") ? Response.json({ access_token: "synthetic-access-x".padEnd(20, "x") }) : new Response("{}", { status: 403 }));
     expect((await link(a, "code-a")).status).toBe(401);
@@ -238,7 +257,7 @@ async function appleKeys(notAfter?: string) {
 describe("Game Center verification", () => {
   it("accepts only https apple.com certificate URLs", () => {
     expect(gameCenterKeyUrl(KEY_URL)).not.toBeNull();
-    for (const bad of ["http://static.gc.apple.com/a.cer", "https://static.gc.apple.com.evil.test/a.cer", "https://apple.com.evil.test/a.cer", "https://evil.test/apple.com/a.cer",
+    for (const bad of ["http://static.gc.apple.com/public-key/a.cer", "https://static.gc.apple.com/a.cer", "https://other.apple.com/public-key/a.cer", "https://static.gc.apple.com/public-key/../x.cer", "http://static.gc.apple.com/a.cer", "https://static.gc.apple.com.evil.test/a.cer", "https://apple.com.evil.test/a.cer", "https://evil.test/apple.com/a.cer",
       "https://static.gc.apple.com:8443/a.cer", "https://user@static.gc.apple.com/a.cer", "https://static.gc.apple.com/a.cer?x=1", "https://static.gc.apple.com/a.pem", 7])
       expect(gameCenterKeyUrl(bad)).toBeNull();
   });
@@ -264,10 +283,15 @@ describe("Game Center verification", () => {
     const { sign } = await appleKeys();
     const a = await create();
     const credential = await sign("T:_synthetic_team_player");
-    const linked = await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "game_center", credential }, GC_ON);
+    const linked = await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "game_center", credential, recovery_code: a.recovery_code }, GC_ON);
     expect(await linked.json()).toEqual({ schema_version: 1, provider: "game_center", status: "linked", changed: true });
-    const replayed = await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "game_center", credential }, GC_ON);
+    const replayed = await call("/v1/platform/link", "POST", a, { schema_version: 1, provider: "game_center", credential, recovery_code: a.recovery_code }, GC_ON);
     expect(replayed.status).toBe(401);
+    // The same signature spelled differently (no padding) is not a new signature.
+    const respelled = { ...credential, signature: credential.signature.replace(/=+$/, "") };
+    const restoreBody = (cred: unknown) => ({ schema_version: 1, provider: "game_center", credential: cred, idempotency_key: "idem-" + "h".repeat(20), next_device_token: randomToken(), next_recovery_code: randomToken() });
+    if (respelled.signature !== credential.signature) expect((await call("/v1/platform/restore", "POST", undefined, restoreBody(respelled), GC_ON)).status).toBe(401);
+    expect((await call("/v1/platform/restore", "POST", undefined, restoreBody(credential), GC_ON)).status).toBe(401);
     const next = { device_token: randomToken(), recovery_code: randomToken() };
     const restored = await call("/v1/platform/restore", "POST", undefined, { schema_version: 1, provider: "game_center", credential: await sign("T:_synthetic_team_player"),
       idempotency_key: "idem-" + "g".repeat(20), next_device_token: next.device_token, next_recovery_code: next.recovery_code }, GC_ON);

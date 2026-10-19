@@ -127,6 +127,11 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT INTO identity VALUES (1, ?)", JSON.stringify({ player_id: playerId, device_hash: deviceHash, recovery_hash: recoveryHash, state: "active", created_at: new Date().toISOString() } satisfies Identity));
     return ok({ player_id: playerId });
   }
+  /** Binding only: the platform link route's proof that the caller also holds the recovery code. */
+  recoveryMatches(recoveryHash: string): boolean {
+    const identity = this.identity();
+    return identity?.state === "active" && equalHash(identity.recovery_hash, recoveryHash);
+  }
   authorize(deviceHash: string, allowDeleting = false): boolean {
     const identity = this.identity();
     return !!identity && (identity.state === "active" || allowDeleting) && equalHash(identity.device_hash, deviceHash);
@@ -816,6 +821,6 @@ answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ autho
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined,
   // A link that outlived its player: the restore route drops it.
-  restoreLinked: () => fail(404, "identity_absent"),
+  restoreLinked: () => fail(404, "identity_absent"), recoveryMatches: () => false,
   // No identity, so no socket: a hint is dropped and an upgrade (unreachable past auth()) is refused.
   liveHint: async () => false, fetch: () => liveUnauthorized() });
