@@ -130,6 +130,9 @@ var saves := LocalSave.new()
 var home_keepsakes := HomeKeepsakes.new()
 var home_stage_view: Control
 var _keepsake_poll := 0.0
+## The frame Home last asked for its keepsake sources to be checked again, or
+## -1; the check runs on a later frame (see _show_home).
+var _keepsakes_reconcile_frame := -1
 var _keepsake_identity: Dictionary = {}
 var api: Node
 var purchases: Node
@@ -644,8 +647,11 @@ func _show_home() -> void:
 	var home_stage := HomeStage.new()
 	home_stage_view = home_stage
 	home_stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	home_keepsakes.reconcile_solo(saves.data.get("replays", {}))
-	if shared_replays != null: home_keepsakes.reconcile_friend(shared_replays)
+	# Keepsakes already earned (and any award still waiting to be saved) show
+	# at once; the check of their sources, which reads and hashes the saves,
+	# starts on the next frame (_service_home_keepsakes), not in this one.
+	home_keepsakes.advance_backfill(0)
+	_keepsakes_reconcile_frame = Engine.get_process_frames()
 	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors())
 	home_stage.set_hard(hard_states(),HardMode.new().count(hard_together()))
@@ -2612,6 +2618,10 @@ func _process(delta: float) -> void:
 
 func _service_home_keepsakes(delta: float) -> void:
 	if mode not in ["home","journey"] or application_backgrounded or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening): return
+	if _keepsakes_reconcile_frame >= 0 and Engine.get_process_frames() > _keepsakes_reconcile_frame:
+		_keepsakes_reconcile_frame = -1
+		home_keepsakes.reconcile_solo(saves.data.get("replays", {}))
+		if shared_replays != null: home_keepsakes.reconcile_friend(shared_replays)
 	_keepsake_poll += delta
 	if _keepsake_poll < 0.15: return
 	_keepsake_poll = 0.0
