@@ -34,8 +34,12 @@ async function boundedJsonResponse(response: Response): Promise<unknown> {
   try { return JSON.parse(new TextDecoder("utf-8", { fatal: true, ignoreBOM: true }).decode(bytes)); } catch { return null; }
 }
 
-/** 4xx means the code or token was refused; anything else may pass on a retry. */
-const refused = (status: number) => status >= 400 && status < 500 && status !== 408 && status !== 429;
+/** Google quota answers (403 with one of these reasons) are ours to wait out, never the player's fault. */
+const QUOTA_REASONS = new Set(["rateLimitExceeded", "userRateLimitExceeded", "dailyLimitExceeded", "quotaExceeded"]);
+function quotaRefusal(body: unknown): boolean {
+  const errors = isObject(body) && isObject(body.error) && Array.isArray(body.error.errors) ? body.error.errors : [];
+  return errors.some(item => isObject(item) && typeof item.reason === "string" && QUOTA_REASONS.has(item.reason));
+}
 
 /** Exchanges a one-time server auth code, then asks Games which player the token belongs to for this game. */
 export async function verifyPlayGames(code: unknown, env: ServerVars): Promise<Verified> {
@@ -50,7 +54,8 @@ export async function verifyPlayGames(code: unknown, env: ServerVars): Promise<V
     const token = await boundedJsonResponse(exchange);
     if (!exchange.ok) {
       logWarning("platform_verify_failed", { provider: "play_games", step: "exchange", status: exchange.status });
-      return { ok: false, reason: refused(exchange.status) ? "invalid" : "unavailable" };
+      // Only 400 (invalid_grant: a used, expired or foreign code) is the player's; 401 invalid_client is our config.
+      return { ok: false, reason: exchange.status === 400 ? "invalid" : "unavailable" };
     }
     if (!isObject(token) || typeof token.access_token !== "string" || !ACCESS_TOKEN.test(token.access_token)) return { ok: false, reason: "unavailable" };
     // applications/{id}/verify binds the token to this game's Play Games project, not only to our OAuth client.
@@ -59,7 +64,9 @@ export async function verifyPlayGames(code: unknown, env: ServerVars): Promise<V
     const answer = await boundedJsonResponse(verify);
     if (!verify.ok) {
       logWarning("platform_verify_failed", { provider: "play_games", step: "verify", status: verify.status });
-      return { ok: false, reason: refused(verify.status) ? "invalid" : "unavailable" };
+      // 401 and 404, or 403 for another game, refuse the token; a quota 403 or anything else is temporary.
+      const invalid = verify.status === 401 || verify.status === 404 || (verify.status === 403 && !quotaRefusal(answer));
+      return { ok: false, reason: invalid ? "invalid" : "unavailable" };
     }
     if (!isObject(answer) || answer.kind !== "games#applicationVerifyResponse" || typeof answer.player_id !== "string" || !PLAY_PLAYER_ID.test(answer.player_id)) return { ok: false, reason: "unavailable" };
     return { ok: true, external_id: answer.player_id };
@@ -85,15 +92,27 @@ export function gameCenterKeyUrl(raw: unknown): URL | null {
   let url: URL;
   try { url = new URL(raw); } catch { return null; }
   if (url.protocol !== "https:" || url.port !== "" || url.username !== "" || url.password !== "" || url.search !== "" || url.hash !== "") return null;
-  const host = url.hostname.toLowerCase();
-  if (!host.endsWith(".apple.com") || !/^[a-z0-9.-]+$/.test(host)) return null;
-  if (!/^\/[A-Za-z0-9/_.-]{1,200}\.cer$/.test(url.pathname)) return null;
+  // Apple serves Game Center signing certificates from this one host and folder only.
+  if (url.hostname.toLowerCase() !== "static.gc.apple.com") return null;
+  if (!/^\/public-key\/[A-Za-z0-9_.-]{1,100}\.cer$/.test(url.pathname)) return null;
   return url;
 }
 
+/** Canonical base64 only: one byte string has one accepted spelling, so a signature cannot be re-spelled past its nonce. */
 function base64Bytes(value: unknown): Uint8Array | null {
   if (typeof value !== "string" || !BASE64.test(value)) return null;
-  try { return Uint8Array.from(atob(value), char => char.charCodeAt(0)); } catch { return null; }
+  try {
+    const raw = atob(value);
+    if (btoa(raw) !== value) return null;
+    return Uint8Array.from(raw, char => char.charCodeAt(0));
+  } catch { return null; }
+}
+
+/** The one-time key for a Game Center signature: its decoded bytes, whatever their spelling. */
+export function gameCenterNonceSource(credential: unknown): string | null {
+  if (!isObject(credential)) return null;
+  const bytes = base64Bytes(credential.signature);
+  return bytes ? "game_center:" + [...bytes].map(b => b.toString(16).padStart(2, "0")).join("") : null;
 }
 
 /** The exact bytes Apple signs: teamPlayerID, bundle id, timestamp as a big-endian UInt64, then the salt. */

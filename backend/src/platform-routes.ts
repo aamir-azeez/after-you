@@ -1,7 +1,7 @@
 import { ApiError, ID_PATTERN, IDEMPOTENCY_PATTERN, SECRET_PATTERN, boundedJson, canonicalJson, digest, exactKeys, isObject, object, text, unwrap } from "./protocol";
 import { flags, type ServerVars } from "./flags";
 import { json } from "./http";
-import { GAME_CENTER_WINDOW_MS, playGamesConfig, verifyGameCenter, verifyPlayGames, type Verified } from "./platform-verify";
+import { GAME_CENTER_WINDOW_MS, gameCenterNonceSource, playGamesConfig, verifyGameCenter, verifyPlayGames, type Verified } from "./platform-verify";
 import { PLATFORM_LINKS_OBJECT, type PlatformProvider } from "./platform-links";
 
 /**
@@ -52,7 +52,9 @@ async function prove(kind: PlatformProvider, credential: unknown, env: ServerVar
     verified = await verifyPlayGames(credential.server_auth_code, env);
   } else {
     verified = await verifyGameCenter(credential, env);
-    if (verified.ok && isObject(credential)) nonce = await digest("game_center:" + String(credential.signature));
+    const source = verified.ok ? gameCenterNonceSource(credential) : null;
+    if (verified.ok && source === null) throw new ApiError(401, "platform_credential_invalid");
+    if (source !== null) nonce = await digest(source);
   }
   if (!verified.ok) {
     if (verified.reason === "invalid") throw new ApiError(401, "platform_credential_invalid");
@@ -79,9 +81,14 @@ export async function routePlatform(request: Request, path: string, playerId: st
     const kind = provider(input.provider, env);
     return json({ schema_version: 1, provider: kind, unlinked: await links.unlink(kind, playerId) });
   }
-  exactKeys(input, ["schema_version", "provider", "credential", "replace"]);
+  exactKeys(input, ["schema_version", "provider", "credential", "replace", "recovery_code"]);
   if (input.schema_version !== 1 || (input.replace !== undefined && typeof input.replace !== "boolean")) throw new ApiError(400, "invalid_platform_request");
   const kind = provider(input.provider, env);
+  // A link can later rotate this identity's recovery code (restore), so it needs the recovery code too:
+  // a device token alone never gets that power. Checked before any upstream call.
+  const recovery = text(input.recovery_code, SECRET_PATTERN, "invalid_recovery");
+  if (!(await env.TESTER_CODE_LIMITER.limit({ key: "platform-player:" + playerId })).success) throw new ApiError(429, "rate_limited");
+  if (!(await env.PLAYERS.getByName(playerId).recoveryMatches(await digest(recovery)))) throw new ApiError(401, "invalid_recovery");
   const proof = await prove(kind, input.credential, env);
   const answer = await links.link(kind, proof.externalHash, playerId, input.replace === true, proof.nonce, proof.nonceExpiresAt);
   if (answer.status === "replayed") throw new ApiError(401, "platform_credential_invalid");
