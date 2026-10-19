@@ -33,7 +33,7 @@ const PAGE_FILL := UiTokens.PAGE_FILL
 const PAGE_BORDER := UiTokens.PAGE_BORDER
 const PAGE_CHEVRON := UiTokens.CREAM
 const PAGE_CHEVRON_HEIGHT := 22.0
-const VARIANT_ICON := 22.0
+const VARIANT_ICON := 24.0
 const SOLO_ICON = preload("res://assets/ui/social/user.svg")
 const TOGETHER_ICON = preload("res://assets/ui/social/users.svg")
 ## Variant icons light up in the spirits' colours once that variant is done.
@@ -290,15 +290,15 @@ func _layout() -> void:
 		var header := action.get_global_rect()
 		if _reset.get_global_rect().intersects(header.grow(12)):
 			_reset.position = Vector2(header.end.x-_reset.size.x,maxf(rect.position.y,header.end.y+12))-global_position
-	# The gesture hint sits in the footer band (the bottom 64 units), right-aligned,
+	# The gesture hint sits in the footer band (the bottom 68 units, its words 18 up), right-aligned,
 	# its hand icon just before the words; the keepsake box always ends above that band.
 	var band_left := rect.position.x-global_position.x
-	_hint.position = Vector2(band_left, size.y-64)
+	_hint.position = Vector2(band_left, size.y-68)
 	_hint.size = Vector2(maxf(1, size.x-30-band_left), 50)
 	if not _hint_width.has(_hint.text):
 		_hint_width = {_hint.text: _hint.get_theme_font("font").get_string_size(_hint.text, HORIZONTAL_ALIGNMENT_LEFT, -1, _hint.get_theme_font_size("font_size")).x}
 	var words: float = _hint_width[_hint.text]
-	_hint_icon.position = Vector2(size.x-30-words-10-HINT_ICON_SIZE, size.y-14-_hint.get_line_height()*0.5-HINT_ICON_SIZE*0.5)
+	_hint_icon.position = Vector2(size.x-30-words-10-HINT_ICON_SIZE, size.y-18-_hint.get_line_height()*0.5-HINT_ICON_SIZE*0.5)
 	_reset.visible = not is_equal_approx(zoom_target,_base_size()) or not _view().pan.is_zero_approx()
 	_hint.visible = not _exploring
 	# The icon goes with a one-line hint; a wrapped one shows the words alone.
@@ -452,7 +452,7 @@ func _create_keepsake_box() -> void:
 	_keepsake_count.name = "KeepsakeCount"
 	_update_keepsake_labels()
 
-## Secondary-style paging button with a drawn chevron; the 52x50 button is the hit area.
+## Secondary-style paging button with a drawn chevron, as on the menu rows; the 52x50 button is the hit area.
 func _page_button(offset: int) -> Button:
 	var button := Button.new()
 	button.name = "KeepsakePrevious" if offset < 0 else "KeepsakeNext"
@@ -474,13 +474,15 @@ func _page_button(offset: int) -> Button:
 	ring.set_corner_radius_all(14)
 	button.add_theme_stylebox_override("focus", ring)
 	button.draw.connect(func():
+		# The menu rows' chevron (assets/ui/settings/chevron.svg) in a PAGE_CHEVRON_HEIGHT
+		# box: a quarter of the box wide and half of it tall, mirrored for Previous.
 		var middle := button.size * 0.5
-		var half := PAGE_CHEVRON_HEIGHT * 0.5
-		var reach := half * 0.55 * float(offset)
+		var unit := PAGE_CHEVRON_HEIGHT / 24.0
+		var reach := 3.0 * unit * float(offset)
 		button.draw_polyline(PackedVector2Array([
-			middle + Vector2(-reach * 0.5, -half),
-			middle + Vector2(reach * 0.5, 0),
-			middle + Vector2(-reach * 0.5, half)]), PAGE_CHEVRON, 3.0, true))
+			middle + Vector2(-reach, -6.0 * unit),
+			middle + Vector2(reach, 0),
+			middle + Vector2(-reach, 6.0 * unit)]), PAGE_CHEVRON, 2.4, true))
 	button.pressed.connect(func():
 		if not is_instance_valid(_keepsake_display): return
 		_keepsake_display.select_offset(offset)

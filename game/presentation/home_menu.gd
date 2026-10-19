@@ -60,6 +60,9 @@ var _wordmark_box: Control
 var _subtitle: Label
 var _gaps: Array[Control] = []
 var _tip_room: Control
+var _bottom_rule: ColorRect
+## The tip sits beside What's new while it fits there, else above it.
+var _tip_above := false
 var _heading_font: Font
 var _density := ""
 
@@ -110,8 +113,6 @@ func build(actions: Dictionary, heading_font: Font) -> void:
 	_gaps.append(_gap(column))
 	_subtitle = _label(PlayerCopy.MAIN_6A7ECC3FD1B9, UiTokens.MUTED, column)
 	_subtitle.name = "HomeSubtitle"
-	_subtitle.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_subtitle.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
 	_gaps.append(_gap(column))
 	play_button = _play(column)
 	play_button.pressed.connect(actions.play.bind(play_button))
@@ -153,6 +154,7 @@ func build(actions: Dictionary, heading_font: Font) -> void:
 	bottom.add_child(whats_new_button)
 	bottom.add_child(_spacer(true))
 	var bar := ColorRect.new()
+	_bottom_rule = bar
 	bar.name = "HomeBottomRule"
 	bar.color = UiTokens.RULE
 	bar.custom_minimum_size = Vector2(1, 28)
@@ -201,9 +203,11 @@ func has_play_icon() -> bool:
 		if not child.is_queued_for_deletion() and (not child is CanvasItem or (child as CanvasItem).visible): return true
 	return false
 
-## The What's new dot and its tip, above the button, until the card opens.
+## The What's new dot (on the gift) and its tip, until the card opens. The tip
+## sits beside the button, over the bottom row's empty run, while it fits there;
+## a longer one goes above the button, and the column makes room for it.
 func mark_whats_new_unseen(version: String) -> void:
-	WhatsNewCard.mark_unseen(whats_new_button, version, true)
+	WhatsNewCard.mark_unseen(whats_new_button, version, WhatsNewCard.BESIDE)
 	if not whats_new_button.child_exiting_tree.is_connected(_on_mark_leaving):
 		whats_new_button.child_exiting_tree.connect(_on_mark_leaving)
 	_show_tip_room()
@@ -213,7 +217,7 @@ func _on_mark_leaving(_child: Node) -> void:
 
 ## Keeps room for the tip only while it shows.
 func _show_tip_room() -> void:
-	if is_instance_valid(_tip_room): _fit()
+	if is_inside_tree() and is_instance_valid(_tip_room): _fit()
 
 func _tip_showing() -> bool:
 	var tip := whats_new_button.get_node_or_null("WhatsNewTip")
@@ -224,11 +228,22 @@ func header_actions() -> Array[Control]:
 	return [journey_offer, settings_button, whats_new_button]
 
 func _fit() -> void:
-	_tip_room.visible = _tip_showing()
-	# Full sizes when they fit the height, else the first smaller set that does.
-	for density_name: String in DENSITIES:
-		_apply(density_name)
-		if _margin.get_combined_minimum_size().y <= size.y + 0.5: break
+	var tip := whats_new_button.get_node_or_null("WhatsNewTip") as Control if _tip_showing() else null
+	for attempt in range(2):
+		_tip_room.visible = tip != null and _tip_above
+		# Full sizes when they fit the height, else the first smaller set that does.
+		for density_name: String in DENSITIES:
+			_apply(density_name)
+			if _margin.get_combined_minimum_size().y <= size.y + 0.5: break
+		if tip == null: break
+		# Beside: from just after What's new (its own padding gives the gap) to just before the cog.
+		var room := PANEL_WIDTH - BOTTOM_LEFT - RIGHT - whats_new_button.get_combined_minimum_size().x - settings_button.custom_minimum_size.x - 8.0
+		var above := tip.get_combined_minimum_size().x > room
+		if above == _tip_above: break
+		_tip_above = above
+	if tip != null: WhatsNewCard.place_tip(whats_new_button, WhatsNewCard.ABOVE if _tip_above else WhatsNewCard.BESIDE)
+	# The tip beside the button covers the bottom row's rule.
+	_bottom_rule.visible = tip == null or _tip_above
 	# Too short even then (a small desktop window): the tip gives its room back
 	# and sits over the gap above the bottom row, still on screen.
 	if _tip_room.visible and _margin.get_combined_minimum_size().y > size.y + 0.5:
@@ -252,8 +267,9 @@ func _apply(density_name: String) -> void:
 	_wordmark.position = Vector2(0, roundf((line - height) * 0.5))
 	_wordmark.size = _wordmark.get_combined_minimum_size()
 	_subtitle.add_theme_font_size_override("font_size", int(density.subtitle))
-	# Breaks the line after "friend", as the logo lock-up does.
-	_subtitle.custom_minimum_size.x = 16.0 * int(density.subtitle)
+	# The line already breaks after "friend"; its two lines sit 1.4 of the size apart.
+	var body := _subtitle.get_theme_font("font")
+	_subtitle.add_theme_constant_override("line_spacing", roundi(int(density.subtitle) * 1.4 - body.get_height(int(density.subtitle))))
 	for index in range(_gaps.size()): _gaps[index].custom_minimum_size.y = density.gaps[index]
 	play_button.custom_minimum_size.y = density.play
 	play_button.add_theme_font_size_override("font_size", int(density.play_font))

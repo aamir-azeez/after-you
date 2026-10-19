@@ -76,10 +76,16 @@ static func open(parent: Control, entry: Dictionary, see_all: Callable, opener: 
 	modal._trap_focus()
 	return modal
 
+## Where the tip goes: under the button (centred), above it (from its left edge,
+## for a button at the bottom of the screen), or beside it (to its right).
+const BELOW := "below"
+const ABOVE := "above"
+const BESIDE := "beside"
+
 ## The dot on the Home button's corner and the tip under it, until the card opens.
-## `above` puts the tip over the button instead, from its left edge, for a
-## button at the bottom of the screen.
-static func mark_unseen(button: Control, version: String, above: bool = false) -> void:
+## Placed ABOVE or BESIDE, the dot sits on the button's icon instead and the tip
+## is a size smaller; place_tip() moves the tip later.
+static func mark_unseen(button: Control, version: String, placement: String = BELOW) -> void:
 	if button.get_node_or_null("WhatsNewDot") != null: return
 	var dot := Panel.new()
 	dot.name = "WhatsNewDot"
@@ -92,53 +98,32 @@ static func mark_unseen(button: Control, version: String, above: bool = false) -
 	dot.offset_right = 6.0
 	dot.offset_top = -6.0
 	dot.offset_bottom = 8.0
+	if placement != BELOW and button is Button and (button as Button).icon != null:
+		# A badge on the icon's top-right corner.
+		var inset := (button as Button).get_theme_stylebox("normal").content_margin_left
+		var icon_size := float((button as Button).get_theme_constant("icon_max_width"))
+		dot.anchor_left = 0.0
+		dot.anchor_right = 0.0
+		dot.anchor_top = 0.5
+		dot.anchor_bottom = 0.5
+		dot.offset_left = inset + icon_size - 9.0
+		dot.offset_right = dot.offset_left + 14.0
+		dot.offset_top = -icon_size * 0.5 - 5.0
+		dot.offset_bottom = dot.offset_top + 14.0
 	button.add_child(dot)
-	# A small diamond under the button, half covered by the tip, points up at it.
+	# A small diamond, half covered by the tip, points at the button.
 	var pointer := Panel.new()
 	pointer.name = "WhatsNewPointer"
 	pointer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	pointer.add_theme_stylebox_override("panel", ControlTheme.rounded(CREAM, 2))
-	pointer.anchor_left = 0.5
-	pointer.anchor_right = 0.5
-	pointer.anchor_top = 1.0
-	pointer.anchor_bottom = 1.0
-	pointer.offset_left = -6.0
-	pointer.offset_right = 6.0
-	pointer.offset_top = 4.0
-	pointer.offset_bottom = 16.0
 	pointer.pivot_offset = Vector2(6, 6)
 	pointer.rotation_degrees = 45.0
 	button.add_child(pointer)
 	var tip := PanelContainer.new()
 	tip.name = "WhatsNewTip"
 	tip.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tip.add_theme_stylebox_override("panel", ControlTheme.padded(ControlTheme.rounded(CREAM, 12), 14.0, 8.0))
-	# Centred under the button, 10 below its bottom edge.
-	tip.anchor_left = 0.5
-	tip.anchor_right = 0.5
-	tip.anchor_top = 1.0
-	tip.anchor_bottom = 1.0
-	tip.offset_top = 10.0
-	tip.offset_bottom = 10.0
-	tip.grow_horizontal = Control.GROW_DIRECTION_BOTH
-	if above:
-		# Points down at the button's icon; the tip grows up and to the right.
-		pointer.anchor_left = 0.0
-		pointer.anchor_right = 0.0
-		pointer.anchor_top = 0.0
-		pointer.anchor_bottom = 0.0
-		pointer.offset_left = 18.0
-		pointer.offset_right = 30.0
-		pointer.offset_top = -16.0
-		pointer.offset_bottom = -4.0
-		tip.anchor_left = 0.0
-		tip.anchor_right = 0.0
-		tip.anchor_top = 0.0
-		tip.anchor_bottom = 0.0
-		tip.offset_top = -10.0
-		tip.offset_bottom = -10.0
-		tip.grow_horizontal = Control.GROW_DIRECTION_END
-		tip.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	var compact := placement != BELOW
+	tip.add_theme_stylebox_override("panel", ControlTheme.padded(ControlTheme.rounded(CREAM, 12), 10.0 if compact else 14.0, 7.0 if compact else 8.0))
 	button.add_child(tip)
 	var words := Label.new()
 	words.text = PlayerCopy.WHATS_NEW_TIP % version
@@ -147,9 +132,45 @@ static func mark_unseen(button: Control, version: String, above: bool = false) -
 	bold.base_font = preload("res://assets/fonts/nunito.ttf")
 	bold.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 750.0}
 	words.add_theme_font_override("font", bold)
-	words.add_theme_font_size_override("font_size", 16)
+	words.add_theme_font_size_override("font_size", 15 if compact else 16)
 	words.add_theme_color_override("font_color", INK)
 	tip.add_child(words)
+	place_tip(button, placement)
+
+## Moves the tip and its pointer to `placement` (BELOW, ABOVE or BESIDE).
+static func place_tip(button: Control, placement: String) -> void:
+	var pointer := button.get_node_or_null("WhatsNewPointer") as Control
+	var tip := button.get_node_or_null("WhatsNewTip") as Control
+	if pointer == null or tip == null: return
+	tip.grow_horizontal = Control.GROW_DIRECTION_BOTH
+	tip.grow_vertical = Control.GROW_DIRECTION_END
+	match placement:
+		ABOVE:
+			# Points down at the button's icon; the tip grows up and to the right.
+			_anchor(pointer, 0.0, 0.0, Rect2(18.0, -16.0, 12.0, 12.0))
+			_anchor(tip, 0.0, 0.0, Rect2(0.0, -10.0, 0.0, 0.0))
+			tip.grow_horizontal = Control.GROW_DIRECTION_END
+			tip.grow_vertical = Control.GROW_DIRECTION_BEGIN
+		BESIDE:
+			# Points left at the button, level with it; the tip grows to the right.
+			_anchor(pointer, 1.0, 0.5, Rect2(0.0, -6.0, 12.0, 12.0))
+			_anchor(tip, 1.0, 0.5, Rect2(6.0, 0.0, 0.0, 0.0))
+			tip.grow_horizontal = Control.GROW_DIRECTION_END
+			tip.grow_vertical = Control.GROW_DIRECTION_BOTH
+		_:
+			# Centred under the button, 10 below its bottom edge.
+			_anchor(pointer, 0.5, 1.0, Rect2(-6.0, 4.0, 12.0, 12.0))
+			_anchor(tip, 0.5, 1.0, Rect2(0.0, 10.0, 0.0, 0.0))
+
+static func _anchor(control: Control, x: float, y: float, offsets: Rect2) -> void:
+	control.anchor_left = x
+	control.anchor_right = x
+	control.anchor_top = y
+	control.anchor_bottom = y
+	control.offset_left = offsets.position.x
+	control.offset_top = offsets.position.y
+	control.offset_right = offsets.end.x
+	control.offset_bottom = offsets.end.y
 
 ## Clears the dot and the tip once the card has been opened.
 static func clear_unseen(button: Control) -> void:

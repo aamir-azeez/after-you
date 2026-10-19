@@ -279,7 +279,7 @@ func _layout(size: Vector2i) -> void:
 	_check(box.end.x < settings.get_global_rect().position.x and absf(box.get_center().y - settings.get_global_rect().get_center().y) <= 1.0, "The button sits left of Settings in the panel's bottom row at " + str(size))
 	_check(menu.is_ancestor_of(pill) and box.position.y >= invite.get_global_rect().end.y, "The button is in the Home menu, under Invite your friends, at " + str(size))
 	var tip := pill.get_node_or_null("WhatsNewTip") as Control
-	_check(tip != null and screen.encloses(tip.get_global_rect()) and tip.get_global_rect().end.y <= box.position.y and not tip.get_global_rect().intersects(invite.get_global_rect()), "The tip sits on screen over the button, clear of Invite, at " + str(size))
+	_check(tip != null and screen.encloses(tip.get_global_rect()) and tip.get_global_rect().position.x >= box.end.x and not tip.get_global_rect().intersects(invite.get_global_rect()) and not tip.get_global_rect().intersects(settings.get_global_rect()), "The tip sits on screen beside the button, clear of Invite and Settings, at " + str(size))
 	_check(tip != null and tip.mouse_filter == Control.MOUSE_FILTER_IGNORE, "The tip never takes a tap")
 	var presses := [0]
 	pill.pressed.connect(func(): presses[0] += 1)

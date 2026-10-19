@@ -67,6 +67,7 @@ func _run() -> void:
 	app._whats_new_unseen = false
 	app._show_home()
 	await _frames()
+	await _test_tip_clears(app)
 	await _test_icon_slot(app)
 	await _test_actions(app)
 	viewport.free()
@@ -147,7 +148,11 @@ func _check_layout(app: Node, screen: Rect2, safe: Rect2, unseen: bool, context:
 	_check((tip != null) == unseen, "The tip shows only while the notes are unseen: " + context)
 	if tip != null:
 		var tip_rect := tip.get_global_rect()
-		_check(safe.encloses(tip_rect) and tip_rect.end.y <= pill.position.y and not tip_rect.intersects(menu.invite_button.get_global_rect()), "The tip sits above What's new, on screen and clear of Invite: %s %s" % [tip_rect, context])
+		_check(safe.encloses(tip_rect) and tip_rect.end.x <= panel_end and not tip_rect.intersects(menu.invite_button.get_global_rect()) and not tip_rect.intersects(cog), "The tip sits on screen in the panel, clear of Invite and the cog: %s %s" % [tip_rect, context])
+		# Beside What's new it needs no room of its own, so the column stays put.
+		_check(tip_rect.position.x >= pill.end.x and absf(tip_rect.get_center().y - pill.get_center().y) <= 1.0 and not menu.find_child("HomeTipRoom", true, false).visible, "The tip sits beside What's new, level with it: " + context)
+		var dot := menu.whats_new_button.get_node_or_null("WhatsNewDot") as Control
+		_check(dot != null and dot.get_global_rect().get_center().x < pill.position.x + 48.0, "The dot sits on the gift icon: " + context)
 		_check(tip.mouse_filter == Control.MOUSE_FILTER_IGNORE, "The tip never takes a tap: " + context)
 	# Over the island: Explore at the top left, Full Journey at the top right.
 	var stage: Control = app.home_stage_view
@@ -230,3 +235,21 @@ func _test_actions(app: Node) -> void:
 	_check(probe.header_actions() == [probe.journey_offer, probe.settings_button, probe.whats_new_button], "The stage leaves Full Journey, Settings and What's new to their own input")
 	holder.free()
 	_check(is_instance_valid(menu), "Home's own menu is untouched by the probe")
+
+## Opening the card takes the dot and tip away, and the bottom row's rule returns.
+func _test_tip_clears(app: Node) -> void:
+	app._whats_new_unseen = true
+	app._show_home()
+	await _frames()
+	var menu := _menu(app)
+	var pill: Button = menu.whats_new_button
+	var rule := menu.find_child("HomeBottomRule", true, false) as Control
+	_check(pill.get_node_or_null("WhatsNewTip") != null and not rule.visible, "The tip beside What's new covers the bottom row's rule")
+	app._open_whats_new_from_home()
+	await _frames()
+	_check(pill.get_node_or_null("WhatsNewTip") == null and pill.get_node_or_null("WhatsNewDot") == null and rule.visible and not menu.find_child("HomeTipRoom", true, false).visible, "Opening the card clears the marks and brings the rule back")
+	if is_instance_valid(app._whats_new_card): app._whats_new_card.close(false)
+	await _frames()
+	app._whats_new_unseen = false
+	app._show_home()
+	await _frames()
