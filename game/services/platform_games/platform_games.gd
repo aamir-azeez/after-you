@@ -63,17 +63,19 @@ static func shared(tree: SceneTree) -> Node:
 
 func _ready() -> void:
 	set_process(false)
-	if provider == null: provider = _build_provider()
-	if not provider.available():
-		# Desktop, headless suites and builds without the plugin: inert, no files, no network.
-		sign_in = SignIn.UNAVAILABLE
-		return
+	# Desktop, headless suites and builds without the plugin: inert, no files, no network.
+	# A phone build waits START_DELAY_MS before even asking the plugin, so the first frames pay nothing.
+	if provider == null and _native_present() and _autostart: _start_later()
+	elif provider != null and provider.available(): _prepare()
+
+func _native_present() -> bool:
+	return DisplayServer.get_name() != "headless" and NativeBridge.singleton("games") != null
+
+func _prepare() -> void:
 	if state == null: _open_state(State.PATH)
 	if not provider.account_changed.is_connected(_on_account_changed): provider.account_changed.connect(_on_account_changed)
-	if _autostart: _start_later()
 
 func _build_provider() -> RefCounted:
-	if DisplayServer.get_name() == "headless": return GamesProvider.new()
 	var native := NativeBridge.singleton("games")
 	if native == null or not native.has_signal("games_result"): return GamesProvider.new()
 	return NativeProvider.new(native, GamesProvider.GAME_CENTER if PlatformSupport.is_ios() else GamesProvider.PLAY_GAMES, get_tree())
@@ -92,11 +94,16 @@ func configure(test_provider: RefCounted, state_path: String) -> void:
 
 func _start_later() -> void:
 	await get_tree().create_timer(START_DELAY_MS / 1000.0).timeout
+	if provider == null: provider = _build_provider()
+	if not provider.available(): return
+	_prepare()
+	if cloud != null and _account != null: cloud.set_sources(_account.cloud_sources())
+	changed.emit()
 	await start()
 
 ## The quiet check and everything that follows it. Safe to call again (resume, account change).
 func start() -> void:
-	if busy or not provider.available(): return
+	if busy or provider == null or not provider.available(): return
 	set_process(true)
 	await _authenticate(false)
 
@@ -162,7 +169,7 @@ func status_line() -> String:
 
 ## The Settings button: shows the platform's sign-in sheet.
 func sign_in_now() -> void:
-	if busy: return
+	if busy or provider == null or not provider.available(): return
 	await _authenticate(true)
 
 func _authenticate(interactive: bool) -> void:

@@ -52,6 +52,7 @@ class FakeIOS extends Object:
 		var value := pending_link
 		pending_link = ""
 		return value
+	func games_available() -> bool: return true
 	func games_status(request_id: String) -> void:
 		calls.append(["games_status", request_id])
 		games_result.emit.call_deferred(request_id, "status", JSON.stringify({"signed_in": true, "player_key": "f".repeat(64)}))
