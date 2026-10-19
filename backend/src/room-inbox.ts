@@ -59,7 +59,9 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
 }
 
 /**
- * Relay-family projection also selects only small room metadata, never turn or pair data.
+ * Relay-family projection also selects only small room metadata, never turn or pair data,
+ * except that a room which holds end reactions also looks up the other member's latest
+ * turn id for their face (v2/end-reactions.ts partnerFace); other rooms read nothing more.
  * A room whose replay both members saved keeps these fields in its compacted row, so it
  * still reads as the finished chapter rather than an unknown room.
  */
