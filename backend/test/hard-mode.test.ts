@@ -50,7 +50,7 @@ const sendReset = (room: RoomSnapshotV2, account: Account, body: unknown, vars: 
 async function slipped(room: RoomSnapshotV2, account: Account, reason = "failed_turn", slip?: unknown): Promise<Reset> {
   const result = await sendReset(room, account, resetBody(room, reason, slip)); expect(result.status).toBe(200); return result.json<Reset>();
 }
-const kept = async (roomId: string, account: Account, vars: Record<string, string> = ON) => call(`/v2/rooms/${roomId}/hard`, "GET", account, undefined, vars);
+const kept = async (roomId: string, account: Account, vars: Record<string, string> = ON, query = "") => call(`/v2/rooms/${roomId}/hard${query}`, "GET", account, undefined, vars);
 const tables = (roomId: string) => runInDurableObject(env.ROOMS_V2.getByName(roomId), async (_instance, state) =>
   [HARD_RUN.name, HARD_FAILURES.name].filter(name => state.storage.sql.exec(LOOKUP, name).toArray().length > 0));
 
@@ -121,7 +121,7 @@ describe("hard rooms", () => {
       const read = await kept(room.room_id, member); expect(read.status).toBe(200);
       const view = await read.json<HardFailures>();
       expect(view.failures).toBe(1);
-      expect(view.list).toEqual([{ ...failure, slip: { recording: firstB, checkpoint: first.checkpoint, prior: firstA } }]);
+      expect(view.list).toEqual([{ ...failure, number: 1, slip: { recording: firstB, checkpoint: first.checkpoint, prior: firstA } }]);
     }
     // A turn queued against the old run is refused as stale.
     const stale = await submit(first, guest, firstB, middle); expect(stale.status).toBe(409); expect(await errorCode(stale)).toBe("stale_revision");
@@ -169,12 +169,52 @@ describe("hard rooms", () => {
     const more = await sendReset(over, guest, resetBody(over)); expect(more.status).toBe(409); expect(await errorCode(more)).toBe("hard_run_over");
   });
 
+  it("keep a first-turn slip without ending the run, even with no branch left", async () => {
+    const { host, room } = await hardRoom();
+    await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), async (_instance, state) => {
+      const stored = JSON.parse(state.storage.sql.exec<{ data: string }>("SELECT data FROM room WHERE id=1").one().data);
+      stored.branch = 31; stored.revision += 1;
+      state.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(stored));
+    });
+    const full = await (await call(`/v2/rooms/${room.room_id}`, "GET", host)).json<RoomSnapshotV2>();
+    // Nothing to undo needs no branch: the run goes on.
+    const { room: after } = await slipped(full, host, "retry");
+    expect(after.hard).toMatchObject({ failures: 1, over: false });
+    expect(after).toMatchObject({ branch: 31, stage_index: 0 });
+    expect((await played(after, host, firstA)).a_turn_id).toBe("t31-0-a");
+  });
+
+  it("answer a slip only to the room's members, for the turn being played", async () => {
+    const { host, guest, room } = await hardRoom();
+    const stranger = await create();
+    for (const response of [await sendReset(room, stranger, resetBody(room)), await kept(room.room_id, stranger)]) {
+      expect(response.status).toBe(404);
+    }
+    const first = await played(room, host, firstA);
+    for (const body of [{ ...resetBody(first), stage_index: 1 }, { ...resetBody(first), role: "a" }]) {
+      const result = await sendReset(first, guest, body); expect(result.status).toBe(409); expect(await errorCode(result)).toBe("stale_revision");
+    }
+    const odd = await kept(room.room_id, host, ON, "/x"); expect(odd.status).toBe(422); expect(await errorCode(odd)).toBe("invalid_since");
+  });
+
+  it("read only the slips a phone has not seen", async () => {
+    const { host, guest, room } = await hardRoom();
+    let current = room;
+    for (let index = 0; index < 3; index++) current = (await slipped(current, host, "retry")).room;
+    const view = await (await kept(room.room_id, guest, ON, "/2")).json<HardFailures>();
+    expect(view.failures).toBe(3);
+    expect(view.list.map(item => item.number)).toEqual([3]);
+    expect((await (await kept(room.room_id, guest, ON, "/3")).json<HardFailures>()).list).toEqual([]);
+    expect((await (await kept(room.room_id, guest)).json<HardFailures>()).list.map(item => item.number)).toEqual([1, 2, 3]);
+  });
+
   it("keep only the newest slips, however many there are", async () => {
     const { host, room } = await hardRoom();
     let current = room;
     for (let index = 0; index < MAX_KEPT + 3; index++) current = (await slipped(current, host, "retry")).room;
     const view = await (await kept(room.room_id, host)).json<HardFailures>();
     expect(view.failures).toBe(MAX_KEPT + 3); expect(view.list).toHaveLength(MAX_KEPT);
+    expect(view.list.map(item => item.number)).toEqual([4, 5, 6, 7, 8]);
     const rows = await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), async (_instance, state) => state.storage.sql.exec("SELECT COUNT(*) AS n FROM hard_failures").one().n);
     expect(rows).toBe(MAX_KEPT);
   });

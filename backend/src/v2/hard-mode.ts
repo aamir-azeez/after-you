@@ -36,7 +36,11 @@ export type Failure = { by: string; stage_index: number; role: "a" | "b"; reason
 /** A kept slip: the turn's recording, the checkpoint it was played from and its first turn (role b). */
 export type Slip = { recording: unknown; checkpoint: unknown; prior: unknown | null };
 export type HardRun = { schema_version: 1; failures: number; over: boolean; last: Failure | null };
-export type HardFailures = { schema_version: 1; failures: number; list: (Failure & { slip: Slip | null })[] };
+/** A kept slip as read: its number among the room's slips (1 for the first), who slipped and the slip. */
+export type KeptFailure = Failure & { number: number; slip: Slip | null };
+export type HardFailures = { schema_version: 1; failures: number; list: KeptFailure[] };
+/** Bytes of slips one read returns; older slips past it come without their recording. */
+export const READ_SLIP_BYTES = 3_000_000;
 export type ResetInput = { base_revision: number; branch: number; idempotency_key: string; reason: Reason; stage_index: number; role: "a" | "b"; slip?: Record<string, unknown> };
 
 export function hardWanted(request: Request): boolean { return request.headers.get(HARD_MODE_HEADER) === "1"; }
@@ -46,6 +50,13 @@ export function parseMode(body: Record<string, unknown>): "hard" | undefined {
   if (body.mode === undefined) return undefined;
   if (body.mode !== "hard") throw new ApiError(422, "unsupported_room_mode");
   return "hard";
+}
+
+/** GET .../hard/<n>: how many of the room's slips a phone has already seen (0 when absent). */
+export function parseSince(item: string | undefined): number {
+  if (item === undefined) return 0;
+  if (!/^[0-9]{1,9}$/.test(item)) throw new ApiError(422, "invalid_since");
+  return Number(item);
 }
 
 export function parseReset(value: unknown, stages: number): ResetInput {
@@ -106,11 +117,23 @@ export function recordFailure(storage: DurableObjectStorage, memo: HardMemo, pla
   return next;
 }
 
-/** The kept slips, oldest first, with the total ever made. */
-export function failuresView(storage: DurableObjectStorage, memo: HardMemo): HardFailures | null {
+/**
+ * The kept slips after the `since`th, oldest first, with the total ever made.
+ * A row's seq is its slip's number: each reset inserts one row and counts one
+ * failure, and rows are only ever pruned from the oldest end. A phone asks
+ * for what it has not seen, normally one slip; the newest slips keep their
+ * recordings up to READ_SLIP_BYTES, so a read always fits a phone's answer.
+ */
+export function failuresView(storage: DurableObjectStorage, memo: HardMemo, since = 0): HardFailures | null {
   const run = memo.run(storage);
   if (!run) return null;
-  const list = storage.sql.exec<{ data: string }>("SELECT data FROM hard_failures ORDER BY seq LIMIT ?", MAX_KEPT).toArray().map(row => JSON.parse(row.data));
+  const rows = storage.sql.exec<{ seq: number; data: string }>("SELECT seq,data FROM hard_failures WHERE seq>? ORDER BY seq DESC LIMIT ?", since, MAX_KEPT).toArray();
+  let bytes = 0;
+  const list = rows.map(row => {
+    bytes += row.data.length;
+    const item = JSON.parse(row.data) as Failure & { slip: Slip | null };
+    return { ...item, number: row.seq, slip: bytes > READ_SLIP_BYTES ? null : item.slip };
+  }).reverse();
   return { schema_version: 1, failures: run.failures, list };
 }
 

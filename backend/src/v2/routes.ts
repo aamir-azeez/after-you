@@ -26,7 +26,7 @@ import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
 import { endReactionField, endReactionsWanted } from "./end-reactions";
-import { hardWanted, parseMode } from "./hard-mode";
+import { hardWanted, parseMode, parseSince } from "./hard-mode";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -235,16 +235,18 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
     return json(unwrap(await room.endReactions(playerId)));
   }
-  // Hard rooms (v2/hard-mode.ts): a slip's reset and the kept slips. The room
+  // Hard rooms (v2/hard-mode.ts): a slip's reset and the kept slips after the
+  // ones a phone has seen (GET .../hard/<seen>). The room
   // answers 503 for a room that is not hard while the flag is off; one already
   // hard keeps working, so a flag turned off never strands a run part way.
   if (operation === "hard-reset" || operation === "hard") {
-    if (item) throw new ApiError(405, "method_not_allowed");
+    // Only the read names what it has seen: GET .../hard/<n>.
+    if (item && operation !== "hard") throw new ApiError(405, "method_not_allowed");
     if (context !== undefined) throw new ApiError(409, "hard_mode_standalone_only");
     if (operation === "hard" && request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (operation === "hard-reset" && request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
-    if (operation === "hard") return json(unwrap(await room.hardFailures(playerId, flags.hardMode(env))));
+    if (operation === "hard") return json(unwrap(await room.hardFailures(playerId, flags.hardMode(env), parseSince(item))));
     requireEnabled(env);
     // The slip is a turn's recording: a longer chapter's own turn bound applies, as for turns.
     let resetLimit = MAX_V2_BODY_BYTES;

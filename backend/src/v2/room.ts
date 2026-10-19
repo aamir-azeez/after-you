@@ -90,9 +90,10 @@ export class RoomV2 extends DurableObject<Env> {
   }
   // Binding-only maintenance methods; never exposed by the public router.
   exportSnapshot(sourceCommit: string): Promise<Outcome<string>> { return snapshotResult(() => exportRoomV2(this.ctx, sourceCommit)); }
-  restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> {
+  async restoreSnapshot(archive: string, expectedLogicalId: string | null): Promise<Outcome<{ restored: true; checksum: string }>> {
     this.hard.forget();
-    return snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId));
+    try { return await snapshotResult(() => restoreRoomV2(this.ctx, archive, expectedLogicalId)); }
+    finally { this.hard.forget(); }
   }
   /** Whether this object holds a hard room (v2/hard-mode.ts); read at most once per object. */
   private readonly hard = new HardMemo();
@@ -802,14 +803,15 @@ export class RoomV2 extends DurableObject<Env> {
           ? { recording: slipRecording, checkpoint: state.checkpoint, prior: input.role === "b" && state.a_turn_id ? this.turn(state.a_turn_id) : null } : null;
         const failure: Failure = { by: player, stage_index: state.stage_index, role: input.role, reason: input.reason, at: new Date().toISOString() };
         const progress = state.stage_index > 0 || state.a_turn_id !== null;
-        const room = this.hardRunSpace(state);
+        // Only a reset with progress to undo needs a branch; a first-turn slip always fits.
+        const room = !progress || this.hardRunSpace(state);
         if (progress && room) {
           state.checkpoint = initialCheckpoint(state);
           state.completed_pair_ids = []; state.a_turn_id = null; state.stage_index = 0; state.branch++;
         }
         state.revision++;
         this.write(state);
-        recordFailure(this.ctx.storage, this.hard, player, input.idempotency_key, hash, failure, slip, !room);
+        recordFailure(this.ctx.storage, this.hard, player, input.idempotency_key, hash, failure, slip, progress && !room);
         if (progress && room) stubReleased(this.ctx.storage, state);
         recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
         clearTurnHints(this.ctx.storage);
@@ -818,7 +820,8 @@ export class RoomV2 extends DurableObject<Env> {
           await scheduleGameplayNotifications(this.ctx.storage);
         }
         return ok({ room: this.view(state, player), failure });
-      }), true, player);
+      // A reset never reopens a settled room, so the index needs no push (as a turn).
+      }), false, player);
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   /**
@@ -834,10 +837,10 @@ export class RoomV2 extends DurableObject<Env> {
       count("turns") + 2 * stages <= MAX_TURNS && count("pairs") + stages <= MAX_PAIRS && count("operations") + 2 * stages <= MAX_OPERATIONS;
   }
   /** A hard room's kept slips for its members (GET .../hard). */
-  hardFailures(player: string, enabled: boolean): Promise<Outcome<HardFailures>> {
+  hardFailures(player: string, enabled: boolean, since = 0): Promise<Outcome<HardFailures>> {
     return this.project(player, undefined, () => {
       if (!this.memberView(player)) return fail(404, "room_not_found");
-      const view = failuresView(this.ctx.storage, this.hard);
+      const view = failuresView(this.ctx.storage, this.hard, since);
       return view ? ok(view) : fail(enabled ? 409 : 503, enabled ? "not_hard_room" : "hard_mode_disabled");
     });
   }
