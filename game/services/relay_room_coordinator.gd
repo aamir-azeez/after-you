@@ -571,16 +571,30 @@ func archive_held_submission() -> bool:
 	return _persist(next)
 
 
-## A hard room's held turn belongs to a run that started again: it goes,
-## with its draft, and is never kept as a held draft (services/hard_run.gd).
-func drop_held_submission() -> bool:
+## A hard room's held turn that belongs to a run which started again: refused
+## as stale, and the room has since moved past the room it was played on (a
+## new branch, or a slip the room counted since). It goes, with its draft,
+## and is never kept as a held draft (services/hard_run.gd). Every other held
+## turn, a guest join's rebase among them, takes the usual held path. True
+## when it went.
+func drop_stale_hard_turn() -> bool:
+	if not _guard() or read_only or _busy != 0 or _state.pending.is_empty() or not _state.pending.held or _state.pending.error_code != "stale_revision": return false
+	var now: Variant = _state.snapshot.get("hard")
+	var then: Variant = _state.pending.origin.get("hard")
+	if not now is Dictionary or not then is Dictionary or _pending_guest_join_recovery(): return false
+	if int(_state.snapshot.branch) == int(_state.pending.origin.branch) and int(now.failures) <= int(then.failures): return false
 	if not finish_live_draft_save(): return false
-	if not _guard() or read_only or _busy != 0 or _state.pending.is_empty() or not _state.pending.held or not _state.snapshot.get("hard") is Dictionary:
-		return _error("pending_unresolved", PlayerCopy.RELAY_ROOM_COORDINATOR_327B5AC5686B)
 	var next := _state.duplicate(true)
 	next.pending = {}
 	next.draft = {}
 	return _persist(next)
+
+## A hard room's run as its snapshot says ({schema_version, failures, over,
+## last}), or null for any other room; read without copying the room.
+func hard_view() -> Variant:
+	if not _guard() or _state.auth_required: return null
+	var hard: Variant = _state.snapshot.get("hard")
+	return hard.duplicate(true) if hard is Dictionary else null
 
 ## A room the server returned for one of this room's own side requests (a
 ## hard room's reset), taken as a refresh would take it.

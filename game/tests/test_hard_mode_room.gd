@@ -1,11 +1,14 @@
 extends "res://tests/test_relay_room_coordinator.gd"
 ## Hard rooms on the phone (services/hard_room_client.gd, services/hard_run.gd,
-## the coordinator's hard view): the room says it is hard; a slip drops the
-## turn's draft (never a held draft, however many slips), keeps the run and
-## keeps the reset until the server answers it, byte for byte; a turn refused
-## after the room started again goes quietly; the friend reads who slipped
-## once, only after a new failure; a room with no space left says so; the
-## session asks the server for a hard room only where it hosts them.
+## the coordinator's hard view): the room says it is hard; a slip queues its
+## reset first and only then drops the turn's draft (never a held draft,
+## however many slips); the turn's try count stays open until the room takes
+## the reset, so a reset that never lands gives no free retry; the reset is
+## kept until the server answers it, byte for byte; a turn refused after the
+## room started again goes quietly, and only then; the friend shows the slip's
+## card once and reads it once, only after a new failure; a room with no
+## space left says so; the session asks the server for a hard room only where
+## it hosts them.
 const HardMode = preload("res://services/hard_mode.gd")
 const HardRun = preload("res://services/hard_run.gd")
 const HardRoomClient = preload("res://services/hard_room_client.gd")
@@ -30,9 +33,11 @@ class FakeApi extends Node:
 
 class MemoryStore extends RefCounted:
 	var values: Dictionary = {}
+	var broken := false
 	func load_scope(scope: String) -> Dictionary:
 		return {"ok": true, "found": values.has(scope), "value": values.get(scope, {}).duplicate(true)}
 	func save_scope(scope: String, value: Dictionary) -> Dictionary:
+		if broken: return {"ok": false}
 		values[scope] = JSON.parse_string(JSON.stringify(value))
 		return {"ok": true}
 
@@ -56,7 +61,9 @@ func _run() -> void:
 	_session_body()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
-	for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(HardMode.runs_path(KEY) + suffix))
+	HardMode.wait_writes()
+	for path: String in [HardMode.runs_path(KEY), HardMode.INDEX_PATH]:
+		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 	print("Hard mode room: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -124,9 +131,22 @@ func _reset_journal() -> void:
 	api.answers.append({"ok": false, "status": 503, "code": "service_unavailable"})
 	answer = await reloaded.send()
 	_check(not answer.ok and not reloaded.pending().is_empty(), "An outage keeps the reset")
+	api.answers.append({"ok": false, "status": 429, "code": "rate_limited"})
+	answer = await reloaded.send()
+	_check(not answer.ok and not reloaded.pending().is_empty(), "A refusal that passes on its own keeps the reset")
 	api.answers.append({"ok": true, "status": 200, "data": {"room": _snapshot(HOST, 0, false, 7, 2), "failure": _last(HOST)}})
 	answer = await reloaded.send()
 	_check(not answer.ok and not reloaded.pending().is_empty(), "An answer that does not show the reset keeps it")
+	api.answers.append({"ok": false, "status": 422, "code": "invalid_reason"})
+	answer = await reloaded.send()
+	_check(not answer.ok and answer.settled and reloaded.pending().is_empty(), "Any other definite refusal settles the reset rather than holding the room forever")
+	reloaded.queue_reset(_hard(_snapshot(HOST, 0, false, 8, 1), 1, _last(HOST)), "failed_turn", fixtures["relay-a"])
+	var heavy_key := str(reloaded.pending().idempotency_key)
+	api.answers.append({"ok": false, "status": 413, "code": "payload_too_large"})
+	api.answers.append(func(request: Dictionary) -> Dictionary: return _reset_answer(request, _snapshot(HOST, 0, false, 9, 1), 2))
+	answer = await reloaded.send()
+	_check(answer.ok and not api.calls[-1].body.has("slip") and str(api.calls[-1].body.idempotency_key) != heavy_key and reloaded.pending().is_empty(), "A slip too big for the room goes again without it, as a new request")
+	_check(reloaded.shown() == 2 and reloaded.seen() == 2, "This phone's own slip counts as seen and shown")
 	api.player_id = GUEST
 	_check(reloaded.pending().is_empty() and not reloaded.bind(ROOM), "Another identity never sees or sends this player's reset")
 	api.queue_free()
@@ -150,16 +170,31 @@ func _slips_never_held() -> void:
 	stub.coordinator = await _coordinator_with_draft(boundary, _hard(_snapshot(HOST, 0, false, revision)))
 	var run: RefCounted = HardRun.for_room(stub, _path("slips-marks"))
 	_check(run.active() and run.together and run.tries_key(KEY) == KEY, "A hard room's run is hard and counts tries per room")
+	# A reset that cannot be kept changes nothing: the draft stays and the
+	# turn's count stays open, so its next start is still a slip.
+	var first_slot := TurnTries.slot_for(stub.coordinator, KEY, true)
+	tries.start(first_slot)
+	tries.start(first_slot)
+	store.broken = true
+	_check(not run.fail_together("retry", {}, "Sam"), "A reset that cannot be kept says so")
+	_check(not stub.coordinator.draft().is_empty() and tries.count(first_slot) == 2 and not run.reset_pending(), "Nothing is dropped and no count closes before the reset is kept")
+	store.broken = false
+	_check(run.requeue(tries) and run.reset_pending() and stub.coordinator.draft().is_empty(), "Start again queues the owed reset, then drops the draft")
+	api.answers.append({"ok": false, "status": 409, "code": "hard_not_your_turn"})
+	await run.send_reset(tries)
+	_check(not run.reset_pending() and tries.count(first_slot) == 2, "A reset the room refused leaves the slipped turn's count open: no free retry")
+	_check(run.requeue(tries) and run.reset_pending(), "The owed reset can be queued again while that turn is still open")
 	for slip in range(6):
 		var slot := TurnTries.slot_for(stub.coordinator, KEY, true)
 		tries.start(slot)
 		tries.start(slot)
-		_check(run.fail_together("retry", {}, tries, slot, "Sam"), "Slip %d keeps its reset" % slip)
+		if slip > 0: _check(run.fail_together("retry", {}, "Sam"), "Slip %d keeps its reset" % slip)
 		_check(stub.coordinator.draft().is_empty() and stub.coordinator.held_drafts().is_empty(), "Slip %d drops the turn's draft and holds none" % slip)
-		_check(tries.count(slot) == 0 and run.reset_pending(), "Slip %d closes the turn's count and waits for its reset" % slip)
+		_check(tries.count(slot) > 1 and run.reset_pending(), "Slip %d waits for its reset with the turn's count open" % slip)
 		api.answers.append(func(request: Dictionary) -> Dictionary: return _reset_answer(request, _snapshot(HOST, 0, false, request.body.base_revision + 1, request.body.branch + 1 if slip % 2 == 0 else request.body.branch), slip + 1))
-		var answer: Dictionary = await run.send_reset()
-		_check(answer.ok and not run.reset_pending() and int(stub.coordinator.snapshot().hard.failures) == slip + 1, "Slip %d moves the room back to the start" % slip)
+		var answer: Dictionary = await run.send_reset(tries)
+		_check(answer.ok and int(answer.number) == slip + 1 and not run.reset_pending() and int(stub.coordinator.snapshot().hard.failures) == slip + 1, "Slip %d moves the room back to the start" % slip)
+		_check(tries.count(slot) == 0, "Slip %d closes the slipped turn's count once the room took it" % slip)
 		# The next turn is played and abandoned with a draft again.
 		var live: RefCounted = stub.coordinator.create_live_simulation()
 		for index in range(60): live.step({"move_x": 0.0, "move_z": 0.0, "interact": false})
@@ -169,21 +204,39 @@ func _slips_never_held() -> void:
 	var snapshot: Dictionary = stub.coordinator.snapshot()
 	_check(not stub.coordinator.draft().is_empty() and stub.coordinator.adopt_snapshot(_hard(_snapshot(HOST, 0, false, int(snapshot.revision) + 1, int(snapshot.branch) + 1), 7, _last(GUEST))), "A reset from the friend is taken over a draft")
 	_check(stub.coordinator.draft().is_empty() and stub.coordinator.held_drafts().is_empty(), "A hard room's old run leaves no draft and no held draft")
+	HardMode.wait_writes()
 	var kept := HardMode.runs(KEY).filter(func(item: Dictionary) -> bool: return item.mode == HardMode.TOGETHER)
-	_check(kept.size() == HardMode.MAX_FAILED and kept[-1].friend == "Sam" and kept[-1].by == "you", "The phone keeps the newest five failed runs with the friend's name")
+	# Slips with no recording have nothing to watch and are not kept.
+	_check(kept.is_empty(), "A slip with nothing to watch is not kept: %d" % kept.size())
 	api.queue_free()
 
 func _stale_turn_after_reset() -> void:
 	var boundary := Boundary.new()
-	var coordinator = await _open(boundary, _hard(_snapshot(HOST)))
+	var coordinator = await _open(boundary, _hard(_snapshot(HOST, 0, false, 1), 0, null))
 	boundary.responses.append(_error(409, "stale_revision"))
 	_check(not await coordinator.commit(fixtures["relay-a"]) and coordinator.pending().get("held", false), "A turn sent after the room started again is refused and held")
-	_check(coordinator.drop_held_submission() and coordinator.pending().is_empty() and coordinator.held_drafts().is_empty(), "In a hard room it goes quietly, never into the held drafts")
+	_check(not coordinator.drop_stale_hard_turn() and coordinator.pending().get("held", false), "While the room has not moved past it, the held turn stays (no slip is made up)")
+	_check(coordinator.adopt_snapshot(_hard(_snapshot(HOST, 0, false, 3, 1), 1, _last(GUEST))), "The room's reset arrives")
+	_check(coordinator.drop_stale_hard_turn() and coordinator.pending().is_empty() and coordinator.held_drafts().is_empty(), "Once the room started again it goes quietly, never into the held drafts")
+	var refused := Boundary.new()
+	var other = await _open(refused, _hard(_snapshot(HOST, 0, false, 1), 0, null))
+	refused.responses.append(_error(409, "recording_context_mismatch"))
+	await other.commit(fixtures["relay-a"])
+	other.adopt_snapshot(_hard(_snapshot(HOST, 0, false, 3, 1), 1, _last(GUEST)))
+	_check(not other.drop_stale_hard_turn() and not other.pending().is_empty(), "A turn held for any other reason takes the usual held path")
 	var plain := Boundary.new()
 	var ordinary = await _open(plain)
 	plain.responses.append(_error(409, "stale_revision"))
 	await ordinary.commit(fixtures["relay-a"])
-	_check(not ordinary.drop_held_submission() and not ordinary.pending().is_empty(), "An ordinary room keeps its held turn for the player to keep")
+	_check(not ordinary.drop_stale_hard_turn() and not ordinary.pending().is_empty(), "An ordinary room keeps its held turn for the player to keep")
+	# A host's first turn refused because the friend joined is rebased, never dropped.
+	var joining := Boundary.new()
+	var lone := _snapshot(HOST, 0, false, 0)
+	lone.guest_id = null
+	var host_room = await _open(joining, _hard(lone, 0, null))
+	joining.responses.append(_error(409, "stale_revision"))
+	await host_room.commit(fixtures["relay-a"])
+	_check(not host_room.drop_stale_hard_turn() and not host_room.pending().is_empty(), "A guest join's held first turn is left to its rebase")
 
 func _friend_reads_once() -> void:
 	var boundary := Boundary.new()
@@ -196,18 +249,28 @@ func _friend_reads_once() -> void:
 	stub.room_client = HardRoomClient.new(api, guest_identity, MemoryStore.new())
 	stub.coordinator = await _open(boundary, _hard(_snapshot(GUEST, 0, false, 9, 1), 1, _last(HOST, 0, "drowned", "b")))
 	var run: RefCounted = HardRun.for_room(stub, _path("friend-marks"))
-	_check(run.notice("Sam") == PlayerCopy.HARD_FRIEND_NOTICE % ["Sam", 1], "The waiting friend reads who slipped and where")
+	var card: Dictionary = run.friend_slip("Sam")
+	_check(card.get("by") == "friend" and card.get("friend") == "Sam" and card.get("reason") == "drowned" and int(card.get("number", 0)) == 1, "The waiting friend gets the slip's card: who, how, where, and the room's slip number")
+	run.mark_shown(int(card.number))
+	_check(run.friend_slip("Sam").is_empty(), "The card shows once")
 	var slip := {"recording": fixtures["relay-b"], "checkpoint": fixtures["initial-checkpoint"], "prior": fixtures["relay-a"]}
 	var failure := _last(HOST, 0, "drowned", "b")
+	failure.number = 1
 	failure.slip = slip
+	api.answers.append({"ok": false, "status": 0, "code": "connection_interrupted"})
+	var missed: Array = await run.take_in_failures("Sam")
+	_check(missed.is_empty() and run.read_failed and api.calls[-1].path == "/v2/rooms/%s/hard/0" % ROOM, "A read that fails asks for the slips after the ones seen, and says so")
+	_check((await run.take_in_failures("Sam")).is_empty() and api.calls.size() == 1, "A failed read is not tried again on this screen")
+	run.read_failed = false
 	api.answers.append({"ok": true, "status": 200, "data": {"schema_version": 1, "failures": 1, "list": [failure]}})
-	var before := HardMode.runs(KEY).size()
-	_check(await run.take_in_failures("Sam") == 1, "The friend's slip is kept on this phone too")
-	var newest: Dictionary = HardMode.runs(KEY)[-1]
-	_check(before > 0 and newest.by == "friend" and newest.friend == "Sam" and newest.reason == "drowned" and newest.slip.prior.recording_hash == fixtures["relay-a"].recording_hash, "It keeps who slipped, how, and the slip with its memory")
-	_check(run.notice("Sam").is_empty() and await run.take_in_failures("Sam") == 0 and api.calls.size() == 1, "Once read, the slip is neither noted nor read again")
+	var read: Array = await run.take_in_failures("Sam")
+	HardMode.wait_writes()
+	_check(read.size() == 1 and int(read[0].number) == 1, "The friend's slip is read with its number")
+	var newest: Dictionary = HardMode.runs(KEY)[-1] if not HardMode.runs(KEY).is_empty() else {}
+	_check(newest.get("by") == "friend" and newest.friend == "Sam" and newest.reason == "drowned" and newest.slip.prior.recording_hash == fixtures["relay-a"].recording_hash, "It keeps who slipped, how, and the slip with its memory")
+	_check((await run.take_in_failures("Sam")).is_empty() and api.calls.size() == 2, "Once read, the slip is not read again")
 	stub.coordinator.adopt_snapshot(_hard(_snapshot(GUEST, 0, false, 10, 2), 2, _last(GUEST)))
-	_check(run.notice("Sam").is_empty(), "Your own slip is not noted to you")
+	_check(run.friend_slip("Sam").is_empty(), "Your own slip shows no friend's card")
 	api.queue_free()
 
 func _room_full() -> void:

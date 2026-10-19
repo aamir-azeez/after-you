@@ -14,12 +14,18 @@ extends RefCounted
 ## - Marks: which hard plays are done, in their own small file (MARKS_PATH).
 ##   A mark only ever turns on.
 ## - Runs: the last MAX_FAILED failed runs per chapter and mode, and the last
-##   finished solo run, in one file per chapter beside its journal.
+##   finished solo run, in one file per chapter beside its journal, with a
+##   small index of every chapter's runs (INDEX_PATH) for the Replays rows.
+##   A run's recordings are read only to watch it. keep_run() writes on a
+##   worker, so a slip's frame never parses or writes a run file.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const MARKS_PATH := "user://hard-mode-v1.json"
+const INDEX_PATH := "user://hard-runs-v1.json"
+const MAX_INDEX_BYTES := 262144
 const VERSION := 1
 const SOLO := "solo"
 const TOGETHER := "together"
@@ -41,6 +47,9 @@ const MAX_MARKS_BYTES := 16384
 const MAX_STAGES := 64
 
 static var _launch: Dictionary = {}
+## Run files are written on workers (keep_run) and read here; one at a time.
+static var _files := Mutex.new()
+static var _tasks: Array[int] = []
 
 var path := MARKS_PATH
 var _marks: Dictionary = {}
@@ -69,9 +78,6 @@ static func failure(verified: Dictionary) -> String:
 	if not bool(verified.get("valid", false)) or not snapshot is Dictionary or not bool(snapshot.get("can_commit", false)): return "failed_turn"
 	return ""
 
-## The waiting friend's note when the other one slipped on `stage_index`.
-static func notice_text(partner: String, stage_index: int) -> String:
-	return PlayerCopy.HARD_FRIEND_NOTICE % [partner if not partner.is_empty() else PlayerCopy.HARD_FRIEND_FALLBACK, stage_index + 1]
 
 ## The scope a solo hard run counts tries under, apart from the chapter's own.
 static func tries_key(chapter_key: String) -> String:
@@ -103,19 +109,50 @@ func state(marks: Dictionary, chapter_key: String, mode: String) -> String:
 	if completed(chapter_key, mode): return DONE
 	return OPEN if unlocked(marks, chapter_key) else LOCKED
 
-## {chapter_key: {"solo": look, "together": look}} for every eligible chapter.
-func states(marks: Dictionary) -> Dictionary:
+## {chapter_key: {"solo": look, "together": look}} for every eligible chapter,
+## also under the older key a newer version's keepsake places keep. Without
+## `together` (the server hosts no hard rooms, or has not said) a chapter has
+## no together look.
+func states(marks: Dictionary, together: bool = true) -> Dictionary:
 	var result := {}
-	for key: String in eligible_keys(): result[key] = {SOLO: state(marks, key, SOLO), TOGETHER: state(marks, key, TOGETHER)}
+	for key: String in eligible_keys():
+		result[key] = {SOLO: state(marks, key, SOLO)}
+		if together: result[key][TOGETHER] = state(marks, key, TOGETHER)
+	for alias: String in KeepsakeCatalog.ALIASES:
+		if result.has(alias): result[KeepsakeCatalog.ALIASES[alias]] = result[alias]
 	return result
 
-## [done, total] over every eligible chapter's two hard plays.
-func count() -> Array:
+## [done, total] over every eligible chapter's hard plays (solo, and together
+## when `together`).
+func count(together: bool = true) -> Array:
 	var done := 0
 	var keys := eligible_keys()
+	var modes: Array = MODES if together else [SOLO]
 	for key: String in keys:
-		for mode: String in MODES: done += int(completed(key, mode))
-	return [done, keys.size() * MODES.size()]
+		for mode: String in modes: done += int(completed(key, mode))
+	return [done, keys.size() * modes.size()]
+
+## Whether any hard play in `states` (states()) is open or done: until one
+## is, the menus show no hard marks and no count.
+static func any_open(states: Dictionary) -> bool:
+	for key: Variant in states:
+		for look: Variant in states[key].values():
+			if look != LOCKED: return true
+	return false
+
+## Play Solo's cards with Hard on (`entries` as main.gd builds them): only
+## chapters with hard plays, each locked until finished. A Full Journey card
+## the player does not own keeps its own lock and note.
+static func picker_entries(entries: Array[Dictionary], marks: Dictionary) -> Array[Dictionary]:
+	var shown: Array[Dictionary] = []
+	for item: Dictionary in entries:
+		if not eligible(str(item.key)): continue
+		if not item.get("locked", false):
+			var open := unlocked(marks, str(item.key))
+			item.locked = not open
+			item.note = PlayerCopy.HARD_OPEN_NOTE if open else PlayerCopy.HARD_LOCKED_NOTE
+		shown.append(item)
+	return shown
 
 
 # Marks -------------------------------------------------------------------
@@ -208,43 +245,151 @@ static func run_record(chapter_key: String, mode: String, kind: String, reason: 
 	record.id = JSON.stringify([chapter_key, mode, kind, nonce, stage_index, role, room_id, str(slip.get("recording", {}).get("recording_hash", "")), hashes]).sha256_text().left(32)
 	return record
 
+## Keeps a run on a worker (save_run), so the frame that shows a slip never
+## parses or writes a run file. Runs kept this way are on disk once
+## wait_writes() returns.
+static func keep_run(record: Dictionary) -> void:
+	_settle_writes(false)
+	if not valid_run(record) or not watchable(record): return
+	_tasks.append(WorkerThreadPool.add_task(Callable(load("res://services/hard_mode.gd"), "save_run").bind(record.duplicate(true)), false, "Keep a hard run"))
+
+## Waits for every run keep_run() is still writing.
+static func wait_writes() -> void:
+	_settle_writes(true)
+
+static func _settle_writes(all: bool) -> void:
+	var waiting: Array[int] = []
+	for task: int in _tasks:
+		if all or WorkerThreadPool.is_task_completed(task): WorkerThreadPool.wait_for_task_completion(task)
+		else: waiting.append(task)
+	_tasks = waiting
+
 ## Keeps a run: the newest MAX_FAILED failed runs per mode, the newest
 ## finished solo run, and never more than MAX_RUNS_BYTES (oldest go first).
-## A run already kept (its id) is not added twice. True when it is on disk.
+## A run with nothing to watch is not kept, and a run already kept (its id)
+## is not added twice. True when it is on disk. Safe on a worker.
 static func save_run(record: Dictionary) -> bool:
-	if not valid_run(record): return false
+	if not valid_run(record) or not watchable(record): return false
 	var chapter_key := str(record.chapter_key)
 	var target := runs_path(chapter_key)
 	if target.is_empty(): return false
-	var kept: Array = runs(chapter_key)
-	for run: Dictionary in kept:
-		if run.id == record.id: return true
-	kept.append(record.duplicate(true))
-	kept = _bounded(kept)
-	while not kept.is_empty() and _runs_text(chapter_key, kept).to_utf8_buffer().size() > MAX_RUNS_BYTES: kept.remove_at(0)
-	if kept.is_empty(): return false
-	return AtomicFile.write_text(target, _runs_text(chapter_key, kept), true)
+	_files.lock()
+	var kept: Array = _read_runs(chapter_key)
+	var known := kept.any(func(item: Dictionary) -> bool: return item.id == record.id)
+	var saved := known
+	if not known:
+		kept.append(record.duplicate(true))
+		kept = _bounded(kept)
+		while not kept.is_empty() and _runs_text(chapter_key, kept).to_utf8_buffer().size() > MAX_RUNS_BYTES: kept.remove_at(0)
+		saved = not kept.is_empty() and AtomicFile.write_text(target, _runs_text(chapter_key, kept), true)
+	# The index follows the file, also when an earlier write left it behind.
+	if saved: _write_index(chapter_key, kept)
+	_files.unlock()
+	return saved
 
-## The chapter's kept runs, oldest first. A damaged file reads as none.
+## The chapter's kept runs, oldest first, with their recordings. A damaged
+## file reads as none.
 static func runs(chapter_key: String) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	var target := runs_path(chapter_key)
-	if target.is_empty(): return result
-	var text := AtomicFile.read_text(target, func(value: String) -> bool: return _parse_runs(value, chapter_key) != null)
-	var parsed: Variant = _parse_runs(text, chapter_key)
-	if parsed != null: result.assign(parsed)
+	_files.lock()
+	result.assign(_read_runs(chapter_key))
+	_files.unlock()
 	return result
 
-## Every eligible chapter's kept runs, newest first.
-static func all_runs() -> Array[Dictionary]:
+## One kept run with its recordings, to watch it; {} when it is gone.
+static func kept_run(chapter_key: String, id: String) -> Dictionary:
+	for item: Dictionary in runs(chapter_key):
+		if item.id == id: return item
+	return {}
+
+## Every kept run's summary (summary()), newest first, from the small index:
+## no run file is read. An index that is missing or damaged is built again
+## from the run files once.
+static func summaries() -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	for key: String in eligible_keys(): result.append_array(runs(key))
+	_files.lock()
+	var index: Variant = _read_index()
+	if index == null:
+		index = {}
+		for key: String in eligible_keys():
+			var kept := _read_runs(key)
+			if not kept.is_empty(): index[key] = _summaries(kept)
+		AtomicFile.write_text(INDEX_PATH, JSON.stringify({"schema_version": VERSION, "chapters": index}, "", false), true)
+	_files.unlock()
+	for key: String in index:
+		if eligible(key): result.append_array(index[key])
 	result.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return int(a.at) > int(b.at) or (int(a.at) == int(b.at) and str(a.id) > str(b.id)))
 	return result
+
+## A run without its recordings, for a Replays row: its fields but pairs and
+## slip, and "parts", the number of turns pairs a watch plays (watch_pairs).
+static func summary(run: Dictionary) -> Dictionary:
+	var item := run.duplicate()
+	item.erase("pairs")
+	item.erase("slip")
+	item.parts = run.pairs.size() + int(not run.slip.is_empty())
+	return item
+
+static func _summaries(kept: Array) -> Array:
+	var rows: Array = []
+	for item: Dictionary in kept: rows.append(summary(item))
+	return rows
 
 ## Whether a run has anything to watch.
 static func watchable(record: Dictionary) -> bool:
 	return not record.get("pairs", []).is_empty() or not record.get("slip", {}).is_empty()
+
+static func _read_runs(chapter_key: String) -> Array:
+	var target := runs_path(chapter_key)
+	if target.is_empty(): return []
+	# Each candidate is parsed once: the check keeps what it parsed.
+	var parsed: Array = []
+	AtomicFile.read_text(target, func(value: String) -> bool:
+		var runs_read: Variant = _parse_runs(value, chapter_key)
+		if runs_read != null: parsed.append(runs_read)
+		return runs_read != null)
+	return parsed[0] if not parsed.is_empty() else []
+
+static func _read_index() -> Variant:
+	var parsed: Array = []
+	AtomicFile.read_text(INDEX_PATH, func(value: String) -> bool:
+		var index: Variant = _parse_index(value)
+		if index != null: parsed.append(index)
+		return index != null)
+	return parsed[0] if not parsed.is_empty() else null
+
+static func _write_index(chapter_key: String, kept: Array) -> void:
+	var index: Variant = _read_index()
+	var chapters: Dictionary = index if index != null else {}
+	chapters[chapter_key] = _summaries(kept)
+	var text := JSON.stringify({"schema_version": VERSION, "chapters": chapters}, "", false)
+	if text.length() <= MAX_INDEX_BYTES: AtomicFile.write_text(INDEX_PATH, text, true)
+	# Too big to grow: the index goes, and the next read builds it again.
+	else: AtomicFile.remove(INDEX_PATH)
+
+static func _parse_index(text: String) -> Variant:
+	if text.is_empty() or text.length() > MAX_INDEX_BYTES: return null
+	var parser := JSON.new()
+	if parser.parse(text) != OK: return null
+	var value: Variant = parser.data
+	if not value is Dictionary or not Typed.equal(value.get("schema_version"), VERSION) or not value.get("chapters") is Dictionary: return null
+	var chapters := {}
+	for key: Variant in value.chapters:
+		var list: Variant = value.chapters[key]
+		if not key is String or not list is Array: return null
+		var rows: Array = []
+		for item: Variant in list:
+			if not item is Dictionary or not item.get("parts") is float or int(item.parts) < 1 or int(item.parts) > MAX_STAGES + 1: return null
+			var whole: Dictionary = item.duplicate()
+			whole.erase("parts")
+			whole.pairs = []
+			whole.slip = {}
+			if not valid_run(whole) or whole.chapter_key != key: return null
+			var row := _whole_numbers(item)
+			row.parts = int(item.parts)
+			rows.append(row)
+		chapters[key] = rows
+	return chapters
 
 static func _bounded(kept: Array) -> Array:
 	var counts := {}

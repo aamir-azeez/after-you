@@ -46,10 +46,13 @@ func _init(font_size: int = 18, quiet: bool = false) -> void:
 		label.add_theme_font_override("font", bold)
 	row.add_child(label)
 
-## The pill in play: "Try 2" and on, hidden on the first try.
-func show_try(tries: int) -> void:
-	visible = tries > 1
-	if visible: label.text = PlayerCopy.TRY_PILL % tries
+## The pill in play: "Try 2" and on, hidden on the first try. With `text`
+## (a hard run, which has no second try), that line instead, without the
+## retry mark.
+func show_try(tries: int, text: String = "") -> void:
+	_icon.visible = text.is_empty()
+	visible = tries > 1 or not text.is_empty()
+	if visible: label.text = text if not text.is_empty() else PlayerCopy.TRY_PILL % tries
 
 ## A Replays pill for one turn: who played it and how many tries it took.
 func show_turn(who: String, tries: int) -> void:

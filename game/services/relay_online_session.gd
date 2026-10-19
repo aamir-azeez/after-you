@@ -118,7 +118,7 @@ func invalidate_identity() -> void:
 	_retiring_selection = false
 
 func busy() -> bool:
-	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy) or (_hard != null and _hard.busy)
+	return _transfer_busy or (_history != null and _history.busy()) or _retiring_selection or _opening or _busy or (coordinator != null and coordinator.busy()) or (_redo != null and _redo.busy)
 
 func redo_client() -> RefCounted:
 	_ready()

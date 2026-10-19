@@ -3,8 +3,9 @@ extends SceneTree
 ## services/hard_run.gd): no way to play a turn again is offered; a second
 ## start, a turn that cannot be kept or a drowning ends the run, keeps it up
 ## to the slip and starts again from stage 1; pause and an app kill resume the
-## same try; a finished run marks the chapter and shows its end card hook; a
-## kept run plays back up to the slip.
+## same try (a turn's first tick is saved at once); a finished run marks the
+## chapter and shows its end card hook; a kept run plays back from its slip,
+## its earlier stages too.
 const Preview = preload("res://relay_preview.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
@@ -50,7 +51,8 @@ func _path(label: String) -> String:
 	return path
 
 func _clear(key: String) -> void:
-	for path: String in [HardMode.journal_path(key), HardMode.runs_path(key)]:
+	HardMode.wait_writes()
+	for path: String in [HardMode.journal_path(key), HardMode.runs_path(key), HardMode.INDEX_PATH]:
 		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(path + suffix))
 
 var _marks := ""
@@ -113,6 +115,7 @@ func _nothing_to_retry_and_second_start() -> void:
 	await process_frame
 	_check(app.mode == "play" and app._live_tries == 1, "The first start is try 1")
 	_play(app, "relay-a", 12)
+	_check(app.controls.try_pill.visible and app.controls.try_pill.label.text == PlayerCopy.HARD_IN_PLAY % [1, 2], "In play the pill says Hard and the stage, never a try")
 	app._pause()
 	_check(app.mode == "paused" and _button(app.overlay, "Resume") != null and _button(app.overlay, "Back") != null, "Pause offers Resume and Back")
 	_no_retry(app, "The pause card")
@@ -125,7 +128,7 @@ func _nothing_to_retry_and_second_start() -> void:
 	_no_retry(app, "The failure card")
 	_check(app.journey.pairs().is_empty() and app.journey.role() == "a" and not app.journey.has_draft(), "The run starts again from stage 1")
 	_check(app.turn_tries.count(app._tries_slot()) == 0, "The run's open try counts start again")
-	_check(HardMode.runs(KEY).size() == 1 and HardMode.runs(KEY)[0].by == "you", "The failed run is kept")
+	_check(_runs(KEY).size() == 1 and _runs(KEY)[0].by == "you", "The failed run is kept")
 	_button(app.overlay, PlayerCopy.HARD_START_AGAIN).pressed.emit()
 	await process_frame
 	_check(app.mode == "ready", "Start again goes back to the first turn")
@@ -133,6 +136,11 @@ func _nothing_to_retry_and_second_start() -> void:
 	await process_frame
 	_check(app.mode == "play" and app._live_tries == 1, "The new run's first turn is try 1")
 	await _close(app)
+
+## The chapter's kept runs once every write in flight has landed.
+func _runs(key: String) -> Array[Dictionary]:
+	HardMode.wait_writes()
+	return HardMode.runs(key)
 
 func _visible_body(app: Node3D) -> String:
 	var text := ""
@@ -150,7 +158,7 @@ func _failed_turn() -> void:
 	app._finish()
 	await process_frame
 	_check(app.mode == "hard_failed" and app.hard.last_run.reason == "failed_turn", "A turn that cannot be kept ends the run at once, with no review")
-	var run: Dictionary = HardMode.runs(KEY)[0] if not HardMode.runs(KEY).is_empty() else {}
+	var run: Dictionary = _runs(KEY)[0] if not _runs(KEY).is_empty() else {}
 	_check(not run.is_empty() and not run.slip.is_empty() and run.slip.recording.stage_id == "relay" and run.slip.checkpoint.stage_index == 0, "The slipped turn is kept up to the slip")
 	_check(HardMode.watchable(run), "The failed run can be watched")
 	await _close(app)
@@ -175,20 +183,35 @@ func _pause_and_kill() -> void:
 	for index in range(40, inputs.size()): app.advance_input(inputs[index])
 	app._finish()
 	_check(app.mode == "review" and _button(app.overlay, "Save turn") != null, "The resumed turn reaches its review")
+	_check(_visible_body(app).contains(PlayerCopy.HARD_REVIEW_BODY) and not _visible_body(app).contains(PlayerCopy.RELAY_PREVIEW_B9074234FC11), "The review says this turn stays, with no promise of another attempt")
 	_no_retry(app, "The review card")
 	app._accept()
-	_check(app.journey.role() == "b" and HardMode.runs(KEY).is_empty(), "The turn is kept and the run goes on")
-	# A turn started and never saved (killed in its first second) is a retry.
+	_check(app.journey.role() == "b" and _runs(KEY).is_empty(), "The turn is kept and the run goes on")
+	# A turn closed in its first second: its first tick was saved, so it resumes.
 	app._show_ready()
 	app._begin()
 	_play(app, "relay-b", 5)
 	await _close(app)
 	app = _screen()
 	await process_frame
-	_check(not app.journey.has_draft(), "Nothing of the abandoned turn was saved")
+	texts = _visible_texts(app.overlay)
+	_check(app.journey.has_draft() and "Resume" in texts and "Record" not in texts, "A turn's first tick is saved at once, so a closed app offers Resume (%s)" % ", ".join(texts))
+	app._resume_draft()
+	await process_frame
+	_check(app.mode == "play" and app._live_tries == 1, "The early turn resumes as the same try")
+	await _close(app)
+	# Closed before its first tick: nothing was saved, so starting it again is a retry.
+	_fresh()
+	app = _screen()
+	await process_frame
+	app._begin()
+	await _close(app)
+	app = _screen()
+	await process_frame
+	_check(not app.journey.has_draft(), "Nothing of a turn closed before its first tick was saved")
 	app._begin()
 	await process_frame
-	_check(app.mode == "hard_failed" and app.hard.last_run.reason == "retry" and app.journey.pairs().is_empty() and app.journey.role() == "a", "Starting the abandoned turn again ends the run")
+	_check(app.mode == "hard_failed" and app.hard.last_run.reason == "retry" and app.journey.pairs().is_empty() and app.journey.role() == "a", "Starting that turn again ends the run")
 	await _close(app)
 
 func _whole_run() -> void:
@@ -210,10 +233,10 @@ func _whole_run() -> void:
 	_check(HardMode.new(_marks).completed(KEY, HardMode.SOLO) and not HardMode.new(_marks).completed(KEY, HardMode.TOGETHER), "A finished solo run marks Hard solo")
 	_check(app.overlay.find_child("HardBand", true, false) != null and _label_text(app, "HardTitle") == PlayerCopy.HARD_COMPLETE_TITLE, "The finished run has its own card")
 	_check(not seen.is_empty() and seen.all(func(call: Array) -> bool: return call == ["EndingExtras", "complete", false]), "Each finished card hosts the end card hook once (%s)" % str(seen))
-	_check(HardMode.runs(KEY).filter(func(run: Dictionary) -> bool: return run.kind == HardMode.COMPLETE).size() == 1, "The finished run is kept for Replays")
+	_check(_runs(KEY).filter(func(run: Dictionary) -> bool: return run.kind == HardMode.COMPLETE).size() == 1, "The finished run is kept for Replays")
 	_no_retry(app, "The finished card")
 	app._show_ready()
-	_check(HardMode.runs(KEY).size() == 1, "Showing the finished card again keeps the run once")
+	_check(_runs(KEY).size() == 1, "Showing the finished card again keeps the run once")
 	var again := _button(app.overlay, PlayerCopy.HARD_AGAIN)
 	_check(again != null, "The finished card offers Play Hard again")
 	if again != null: again.pressed.emit()
@@ -237,7 +260,7 @@ func _watch_a_slip() -> void:
 	_play(app, "relay-b", 20)
 	app._finish()
 	_check(app.mode == "hard_failed" and app.hard.last_run.role == "b", "A slip on the second turn ends the run")
-	var run: Dictionary = HardMode.runs(KEY)[0]
+	var run: Dictionary = _runs(KEY)[0]
 	await _close(app)
 	HardMode.hand_over({"chapter_key": KEY, "kind": "watch", "run": run})
 	var viewer := Preview.new()
@@ -257,6 +280,8 @@ func _watch_a_slip() -> void:
 	viewer._leaving = true
 	viewer.queue_free()
 	await process_frame
+	await _watch_later_stage()
+	await _watch_first_turn()
 	HardMode.hand_over({"chapter_key": KEY, "kind": "watch", "run": {"pairs": [], "slip": {}}})
 	viewer = Preview.new()
 	viewer.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
@@ -266,6 +291,75 @@ func _watch_a_slip() -> void:
 	viewer._leaving = true
 	viewer.queue_free()
 	await process_frame
+
+func _viewer(request: Dictionary) -> Node3D:
+	HardMode.hand_over(request)
+	var viewer := Preview.new()
+	viewer.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
+	root.add_child(viewer)
+	viewer.set_physics_process(false)
+	viewer.set_process(false)
+	await process_frame
+	return viewer
+
+func _close_viewer(viewer: Node3D) -> void:
+	viewer.set_block_signals(true)
+	viewer._leaving = true
+	viewer.queue_free()
+	await process_frame
+
+## A slip on stage 2: Watch starts at the slip, and the stage before it is
+## still there as an earlier part.
+func _watch_later_stage() -> void:
+	_fresh()
+	var app := _screen()
+	await process_frame
+	for name: String in ["relay-a", "relay-b"]:
+		app._show_ready()
+		app._begin()
+		_play(app, name)
+		app._finish()
+		if app.mode == "bloom": app._show_review()
+		app._accept()
+	app._show_ready()
+	app._begin()
+	_play(app, "garden-a", 3)
+	app._finish()
+	_check(app.mode == "hard_failed" and int(app.hard.last_run.stage_index) == 1, "A slip on stage 2 ends the run: %s %s" % [app.mode, str(app.hard.last_run.get("stage_index", -1))])
+	var run: Dictionary = _runs(KEY)[0] if not _runs(KEY).is_empty() else {}
+	var summary := HardMode.summaries()[0] if not HardMode.summaries().is_empty() else {}
+	_check(int(summary.get("parts", 0)) == 2, "The run lists two parts: stage 1, then the slip")
+	await _close(app)
+	var viewer := await _viewer({"chapter_key": KEY, "kind": "watch", "id": str(run.get("id", ""))})
+	_check(viewer.mode == "replay" and viewer._replay_collection.size() == 2 and viewer.replay_pair_index == 1 and viewer.checkpoint == run.slip.checkpoint, "Watch reads the run by its id and starts at the slip")
+	await _close_viewer(viewer)
+	viewer = await _viewer({"chapter_key": KEY, "kind": "watch", "id": str(run.get("id", "")), "part": 0})
+	_check(viewer.mode == "replay" and viewer.replay_pair_index == 0 and viewer.sim.get("role") == "b", "An earlier part plays from stage 1")
+	await _close_viewer(viewer)
+
+## A slip on the very first turn has no memory beside it, and still plays.
+func _watch_first_turn() -> void:
+	_fresh()
+	var app := _screen()
+	await process_frame
+	app._begin()
+	_play(app, "relay-a", 3)
+	app._finish()
+	var run: Dictionary = _runs(KEY)[0] if not _runs(KEY).is_empty() else {}
+	_check(app.mode == "hard_failed" and not run.is_empty() and run.slip.prior.is_empty(), "A first-turn slip is kept with no memory")
+	_check(_button(app.overlay, PlayerCopy.HARD_WATCH_SLIP) != null, "The failure card offers Watch the slip")
+	_button(app.overlay, PlayerCopy.HARD_WATCH_SLIP).pressed.emit()
+	await process_frame
+	_check(app.mode == "replay" and app.sim.get("role") == "a", "Watch the slip plays it on the spot")
+	await _close(app)
+	var viewer := await _viewer({"chapter_key": KEY, "kind": "watch", "run": run})
+	_check(viewer.mode == "replay" and viewer.sim.get("role") == "a", "A first-turn slip opens from Replays")
+	var frames := 0
+	while viewer.mode == "replay" and frames < 400 and viewer.replay_cursor < viewer.replay_frames.size():
+		viewer.advance_input({})
+		frames += 1
+	_check(viewer.replay_cursor == viewer.replay_frames.size(), "It plays up to the slip")
+	await _close_viewer(viewer)
 
 func _drowning() -> void:
 	_clear(TIDE)
@@ -303,7 +397,7 @@ func _drowning() -> void:
 	await process_frame
 	_check(screen.mode == "hard_failed" and screen.hard.last_run.reason == "drowned", "The drowning ends the hard run")
 	_check(_label_text(screen, "HardLine") == PlayerCopy.HARD_YOU_WENT_UNDER % 1, "The card says you went under")
-	var run: Dictionary = HardMode.runs(TIDE)[0] if not HardMode.runs(TIDE).is_empty() else {}
+	var run: Dictionary = _runs(TIDE)[0] if not _runs(TIDE).is_empty() else {}
 	_check(not run.is_empty() and run.slip.recording.role == "b" and run.slip.prior.recording_hash == first.recording_hash, "The drowned turn is kept only inside the failed run, beside its memory")
 	_check(screen.journey.pairs().is_empty() and screen.journey.role() == "a" and not screen.journey.has_draft(), "The run starts again and no draft of the drowned turn remains")
 	screen.queue_free()

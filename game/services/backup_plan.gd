@@ -4,12 +4,14 @@ extends RefCounted
 ## 1. settings and keepsakes; 2. chapter journals; 3. kept room history (it may be
 ## the only copy anywhere), newest room first; 4. shared replay files (replay
 ## transfer v1 rooms' only full copy), newest first; 5. solo attempt archives,
-## newest first. Never: online room state bound to this device, photo transfers,
+## newest first, then kept hard runs (services/hard_mode.gd), newest first.
+## Never: online room state bound to this device, photo transfers,
 ## safety data, the photo library, temporary or backup generations.
 
 const PLAN := "backup-plan.txt"
 const HEADER := "after-you-backup-plan 1"
-const FIXED := ["journey.json", "home-keepsakes-v1.json", "solo-replay-visibility.json", "friend_nicknames.json"]
+## Hard mode's marks (nothing rebuilds them) and its runs' small index.
+const FIXED := ["journey.json", "home-keepsakes-v1.json", "solo-replay-visibility.json", "friend_nicknames.json", "hard-mode-v1.json", "hard-runs-v1.json"]
 const MAX_ENTRIES := 4096
 const MAX_SHARED_FILE := 20 * 1024 * 1024
 
@@ -32,6 +34,7 @@ static func entries(root: String = "user://") -> Array:
 	var shared: Array = _files(root.path_join("shared-replays")).filter(func(item: String) -> bool: return item.ends_with(".json")).map(func(item: String) -> String: return "shared-replays/" + item)
 	for path: String in _newest(root, shared, ""): _add(result, root, path, MAX_SHARED_FILE)
 	for path: String in _newest(root, names.filter(func(item: String) -> bool: return attempt.search(item) != null), ""): _add(result, root, path)
+	for path: String in _newest(root, names.filter(func(item: String) -> bool: return item.ends_with("-hard-runs.json")), ""): _add(result, root, path)
 	return result.slice(0, MAX_ENTRIES)
 
 static func _files(path: String) -> Array:

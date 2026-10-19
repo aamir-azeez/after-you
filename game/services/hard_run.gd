@@ -4,14 +4,18 @@ extends RefCounted
 ## hard mode) and asks it, at a few seams, what it offers, whether a start or
 ## a finished turn ends the run, and hands it the failure and the finish.
 ##
-## Solo: a failure keeps the run (HardMode.save_run), clears the journal and
+## Solo: a failure keeps the run (HardMode.keep_run), clears the journal and
 ## the run's open try counts, so the next start is stage 1, try 1.
-## Together: a failure keeps the run, drops the room's draft (a slip is never
-## kept as a held draft), closes the turn's try count and queues the room's
-## reset (services/hard_room_client.gd), which the screen sends. The room
-## moves both phones back to stage 1; the friend's phone reads who slipped.
+## Together: a failure keeps the run and queues the room's reset
+## (services/hard_room_client.gd) first; only once the reset is kept does the
+## turn's draft go. The turn's open try count stays open until the room has
+## taken the reset, so a reset that never lands can never give a free retry:
+## a second start of that turn is still a slip. The room moves both phones
+## back to stage 1; the friend's phone shows the same failure card once and
+## reads the slip for Replays.
 const HardMode = preload("res://services/hard_mode.gd")
 const HardRoomClient = preload("res://services/hard_room_client.gd")
+const TurnTries = preload("res://services/turn_tries.gd")
 const Typed = preload("res://services/typed_values.gd")
 
 var chapter_key := ""
@@ -20,6 +24,11 @@ var store: RefCounted
 var session: RefCounted
 ## The run the last failure kept.
 var last_run: Dictionary = {}
+## A failed read of the friend's slips: not tried again on this screen.
+var read_failed := false
+## The slip whose reset this phone owes the room ({reason, slip}), so a reset
+## the room refused as stale can be queued again from the room as it is now.
+var _owed: Dictionary = {}
 
 static func solo(key: String, marks_path: String = HardMode.MARKS_PATH) -> RefCounted:
 	var run: RefCounted = load("res://services/hard_run.gd").new()
@@ -37,7 +46,12 @@ static func for_room(online: RefCounted, marks_path: String = HardMode.MARKS_PAT
 
 ## Whether hard rules apply now: always solo, in a hard room together.
 func active() -> bool:
-	return not together or room().get("hard") is Dictionary
+	return not together or hard_view() is Dictionary
+
+## The room's hard field (HardRoomClient.valid_view), or null; never copies the room.
+func hard_view() -> Variant:
+	if session == null or session.coordinator == null: return null
+	return session.coordinator.hard_view()
 
 func room() -> Dictionary:
 	if session == null or session.coordinator == null: return {}
@@ -45,8 +59,13 @@ func room() -> Dictionary:
 
 ## A hard room whose last reset found no space for another run.
 func over() -> bool:
-	var hard: Variant = room().get("hard")
+	var hard: Variant = hard_view()
 	return together and hard is Dictionary and hard.get("over") is bool and hard.over
+
+## How many slips the room has counted (0 solo).
+func failures() -> int:
+	var hard: Variant = hard_view()
+	return int(hard.failures) if hard is Dictionary else 0
 
 func mode() -> String:
 	return HardMode.TOGETHER if together else HardMode.SOLO
@@ -73,7 +92,7 @@ func fail_solo(journey: RefCounted, tries: RefCounted, reason: String, slip: Dic
 	var kept: Dictionary = {} if recording.is_empty() else {"recording": recording.duplicate(true), "checkpoint": journey.checkpoint(), "prior": journey.prior_recording()}
 	last_run = HardMode.run_record(chapter_key, HardMode.SOLO, HardMode.FAILED, reason, "you", int(journey.checkpoint().get("stage_index", 0)), str(journey.role()), journey.pairs(), kept)
 	# Keeping the slip is for laughs; the restart never waits on it.
-	HardMode.save_run(last_run)
+	HardMode.keep_run(last_run)
 	return restart_solo(journey, tries, screen_key)
 
 ## Starts the solo run again from stage 1: the journal empties and every open
@@ -84,11 +103,16 @@ func restart_solo(journey: RefCounted, tries: RefCounted, screen_key: String) ->
 	tries.restart_solo(tries_key(screen_key))
 	return true
 
+## Whether the solo run is still the one that failed (its journal could not
+## be emptied yet).
+static func solo_left_over(journey: RefCounted) -> bool:
+	return not journey.pairs().is_empty() or not journey.prior_recording().is_empty() or journey.has_draft()
+
 ## A finished solo run: its mark and the run kept for Replays.
 func complete_solo(journey: RefCounted) -> void:
 	store.record(chapter_key, HardMode.SOLO)
 	var pairs: Array = journey.pairs()
-	HardMode.save_run(HardMode.run_record(chapter_key, HardMode.SOLO, HardMode.COMPLETE, "", "", pairs.size(), "", pairs, {}))
+	HardMode.keep_run(HardMode.run_record(chapter_key, HardMode.SOLO, HardMode.COMPLETE, "", "", pairs.size(), "", pairs, {}))
 
 
 # Together --------------------------------------------------------------------
@@ -100,22 +124,32 @@ func client() -> RefCounted:
 	if room_client == null or room_id.is_empty() or not room_client.bind(room_id): return null
 	return room_client
 
-## A slip in a hard room: kept here, the turn's draft and try count dropped,
-## the reset queued. `partner` is the friend's name now. False when the reset
-## could not be kept (the screen says so and offers it again).
-func fail_together(reason: String, slip: Dictionary, tries: RefCounted, slot: String, partner: String) -> bool:
+## A slip in a hard room: kept here and its reset queued, then the turn's
+## draft dropped. `partner` is the friend's name now. False when the reset
+## could not be kept: nothing else changed, so the turn's open count still
+## makes its next start a slip, and Start again queues it again (requeue).
+func fail_together(reason: String, slip: Dictionary, partner: String) -> bool:
 	var current := room()
-	var room_client := client()
-	if current.is_empty() or room_client == null: return false
+	if current.is_empty(): return false
 	var prior: Variant = current.get("recording_a")
 	var kept: Dictionary = {} if slip.is_empty() else {"recording": slip.duplicate(true), "checkpoint": Typed.as_dict(current.get("checkpoint")), "prior": prior.duplicate(true) if prior is Dictionary and str(current.get("active_role")) == "b" else {}}
 	last_run = HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, reason, "you", int(current.get("stage_index", 0)), str(current.get("active_role", "a")), [], kept, partner, str(current.get("room_id", "")))
-	HardMode.save_run(last_run)
+	HardMode.keep_run(last_run)
+	_owed = {"reason": reason, "slip": slip.duplicate(true)}
+	return requeue()
+
+## Queues the owed reset again from the room as it is now, when the turn that
+## slipped is still open (`tries` counts it) and no reset waits. True when a
+## reset waits afterwards.
+func requeue(tries: RefCounted = null) -> bool:
+	var room_client := client()
+	if room_client == null: return false
+	if not room_client.pending().is_empty(): return true
+	if _owed.is_empty() or (tries != null and tries.count(TurnTries.slot_for(session.coordinator, key(), true)) == 0): return false
+	if not room_client.queue_reset(room(), str(_owed.reason), _owed.slip): return false
 	# Never held: a held draft per slip would fill the room's four and stop it.
 	session.coordinator.save_draft({})
-	tries.close(slot)
-	if not room_client.pending().is_empty(): return true
-	return room_client.queue_reset(current, reason, slip)
+	return true
 
 ## A reset still waiting for the server: no turn starts until it lands.
 func reset_pending() -> bool:
@@ -127,48 +161,76 @@ func reset_pending() -> bool:
 func pending_run() -> Dictionary:
 	var room_client := client()
 	var body: Dictionary = room_client.pending() if room_client != null else {}
-	return {"reason": str(body.get("reason", "failed_turn")), "stage_index": int(body.get("stage_index", 0)), "by": "you", "friend": ""}
+	return {"reason": str(body.get("reason", "failed_turn")), "stage_index": int(body.get("stage_index", 0)), "role": str(body.get("role", "a")), "by": "you", "friend": "", "pairs": [], "slip": {}}
 
 ## Sends the waiting reset; on success the room's new snapshot is the
-## coordinator's. {"ok"} or {"ok": false, "settled"} as HardRoomClient.send().
-func send_reset() -> Dictionary:
+## coordinator's and the slipped turn's count closes. A reset the room
+## refused as stale while the slipped turn is still open (a friend joined in
+## between) is queued again from the room read afresh and sent once more.
+## {"ok", "number"} or {"ok": false, "settled"} as HardRoomClient.send().
+func send_reset(tries: RefCounted, again: bool = true) -> Dictionary:
 	var room_client := client()
 	if room_client == null: return {"ok": false, "code": "hard_storage_unavailable"}
+	var slot := TurnTries.slot_for(session.coordinator, key(), true)
 	var answer: Dictionary = await room_client.send()
-	if answer.get("ok", false) and session != null and session.coordinator != null: session.coordinator.adopt_snapshot(answer.room)
+	if answer.get("ok", false):
+		session.coordinator.adopt_snapshot(answer.room)
+		tries.close(slot)
+		_owed = {}
+	elif answer.get("settled", false) and answer.get("code") == "stale_revision" and again and not _owed.is_empty() and tries.count(slot) > 0:
+		if await session.coordinator.refresh() and TurnTries.slot_for(session.coordinator, key(), true) == slot and session.coordinator.my_turn() and requeue(tries):
+			return await send_reset(tries, false)
 	return answer
 
-## The note for a friend's slip this phone has not taken in yet, or "".
-## `partner` is the friend's name now.
-func notice(partner: String) -> String:
-	var current := room()
-	var hard: Variant = current.get("hard")
+## The friend's slip this phone has not shown a card for, as a run for the
+## card ({} when none). `partner` is the friend's name now. This phone's own
+## slips are counted as shown.
+func friend_slip(partner: String) -> Dictionary:
+	var hard: Variant = hard_view()
 	var room_client := client()
-	if not hard is Dictionary or not hard.get("last") is Dictionary or room_client == null or int(hard.failures) <= room_client.seen(): return ""
-	if Typed.equal(hard.last.by, _me(current)): return ""
-	return HardMode.notice_text(partner, int(hard.last.stage_index))
+	if not hard is Dictionary or not hard.get("last") is Dictionary or room_client == null or int(hard.failures) <= room_client.shown(): return {}
+	if Typed.equal(hard.last.by, _me(room())):
+		room_client.mark_shown(int(hard.failures))
+		return {}
+	return {"reason": str(hard.last.reason), "stage_index": int(hard.last.stage_index), "role": str(hard.last.role), "by": "friend", "friend": partner, "pairs": [], "slip": {}, "number": int(hard.failures)}
 
-## Reads the room's failures this phone has not seen and keeps the friend's
-## as runs here. Costs one request, only after a new failure.
-func take_in_failures(partner: String) -> int:
+## The friend's slip card was shown.
+func mark_shown(number: int) -> void:
+	var room_client := client()
+	if room_client != null: room_client.mark_shown(number)
+
+## Reads the room's slips this phone has not seen and keeps the friend's as
+## runs here. One request, only after a new slip, and none again on this
+## screen once a read failed. The kept runs (newest last); [] when none.
+func take_in_failures(partner: String) -> Array:
 	var current := room()
 	var room_client := client()
-	if room_client == null or not current.get("hard") is Dictionary or int(current.hard.failures) <= room_client.seen(): return 0
-	var fresh: Array = await room_client.read_failures(current)
+	if read_failed or room_client == null or not current.get("hard") is Dictionary or int(current.hard.failures) <= room_client.seen(): return []
+	var read: Dictionary = await room_client.read_failures(current)
+	if not read.get("ok", false):
+		read_failed = true
+		return []
 	var me := _me(current)
-	var kept := 0
-	for item: Dictionary in fresh:
+	var kept: Array = []
+	for item: Dictionary in read.list:
 		if Typed.equal(item.by, me): continue
 		var slip: Variant = item.get("slip")
 		var shown: Dictionary = {} if not slip is Dictionary else {"recording": slip.recording, "checkpoint": slip.checkpoint, "prior": slip.prior if slip.get("prior") is Dictionary else {}}
 		var record := HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, str(item.reason), "friend", int(item.stage_index), str(item.role), [], shown, partner, str(current.get("room_id", "")))
 		record.at = int(Time.get_unix_time_from_datetime_string(str(item.at)))
-		if HardMode.save_run(record): kept += 1
+		HardMode.keep_run(record)
+		record.number = int(item.number)
+		kept.append(record)
 	return kept
 
 ## A finished hard room: its mark.
 func complete_together() -> void:
 	store.record(key(), HardMode.TOGETHER)
+
+## Whether this phone made the room (its host).
+func hosting() -> bool:
+	var current := room()
+	return current.get("player_slot") == "p0"
 
 static func _me(current: Dictionary) -> String:
 	return str(current.get("host_id", "")) if current.get("player_slot") == "p0" else str(current.get("guest_id", ""))

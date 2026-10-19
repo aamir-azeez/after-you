@@ -139,8 +139,9 @@ func fast_forward_held() -> bool:
 	return _memory_wait and fast_forward_button.held()
 
 ## The turn's try count; the pill shows from the second try on.
-func show_tries(tries: int) -> void:
-	try_pill.show_try(tries)
+## `text`: a hard run's line in place of the count (presentation/try_pill.gd).
+func show_tries(tries: int, text: String = "") -> void:
+	try_pill.show_try(tries, text)
 	_place_wait_row.call_deferred()
 
 ## The try pill and then the wait row sit just under the chapter title,
