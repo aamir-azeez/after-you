@@ -15,55 +15,53 @@ const TRY_YOU := "You"
 const TRY_FIRST_TURN := "First turn"
 const TRY_SECOND_TURN := "Second turn"
 
-# End-of-run reactions (presentation/end_reactions.gd). Every line here is new
-# and waits for the owner's approval (★).
-## ★ The split pill's open half, and the faces card's title.
+# End-of-run reactions (presentation/end_reactions.gd).
+## The split pill's open half, and the faces card's title.
 const END_REACTIONS_REACT := "React"
 const END_REACTIONS_TITLE := "Reactions"
-## ★ Screen reader names: the open half, the quick half (with a face name) and the card's close.
+## Screen reader names: the open half, the quick half (with a face name) and the card's close.
 const END_REACTIONS_CHOOSE := "Choose a reaction"
 const END_REACTIONS_QUICK := "React with %s"
 const END_REACTIONS_CLOSE := "Close reactions"
-## ★ The faces, by id (services/end_reaction_store.gd). The heart is icon only; its name is for screen readers.
+## The faces, by id (services/end_reaction_store.gd). The heart is icon only; its name is for screen readers.
 const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
 	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love"}
-## ★ Beside a bubble: your sent face, and the friend's (a name or "A friend").
+## Beside a bubble: your sent face, and the friend's (a name or "A friend").
 const END_REACTIONS_YOU := "You reacted"
 const END_REACTIONS_FRIEND := "%s reacted"
-## ★ Screen reader names for a bubble or a Replays chip: "You reacted: Happy", "Sam reacted: Love".
+## Screen reader names for a bubble or a Replays chip: "You reacted: Happy", "Sam reacted: Love".
 const END_REACTIONS_YOU_NAMED := "You reacted: %s"
 const END_REACTIONS_FRIEND_NAMED := "%s reacted: %s"
-## ★ The line under the faces: a room turn, a solo turn, and a turn that is not kept (a drowning).
+## The line under the faces: a room turn, a solo turn, and a turn that is not kept (a drowning).
 const END_REACTIONS_ROOM_NOTE := "Your friend sees it with your turn."
 const END_REACTIONS_SOLO_NOTE := "Kept with your replay."
 const END_REACTIONS_MOMENT_NOTE := "This one isn't saved."
 
 # Hard mode (services/hard_mode.gd, presentation/hard_mode_view.gd,
-# presentation/hard_run_flow.gd). ★ Every line in this block is new and waits
-# for the owner's approval.
-# ★ The chip that picks hard mode, and its tooltip either way.
+# presentation/hard_run_flow.gd).
+# The chip that picks hard mode, and its tooltip either way.
 const HARD_CHIP := "Hard"
 const HARD_CHIP_OFF := "Play the whole chapter in one go, with no retries"
 const HARD_CHIP_ON := "Hard is on. One slip and the run starts again"
-# ★ The host panel's line beside the chip, off and on.
+# The host panel's line beside the chip, off and on.
 const HARD_HOST_NOTE_OFF := "Play the whole chapter in one go, with no retries."
 const HARD_HOST_NOTE_ON := "One slip from either of you and you both start again."
-# ★ The marks beside a chapter's solo and together marks.
+# The marks beside a chapter's solo and together marks.
 const HARD_MARK_SOLO := "Hard solo"
 const HARD_MARK_TOGETHER := "Hard with a friend"
-# ★ A chapter card while Hard is on.
+# A chapter card while Hard is on.
 const HARD_LOCKED_NOTE := "Finish this chapter to unlock Hard"
 const HARD_OPEN_NOTE := "Hard · No retries"
 const HARD_LOCKED_TOAST := "Finish this chapter once, solo or with a friend, to unlock Hard."
 const HARD_HOST_UNAVAILABLE := "Hard rooms aren't open yet."
-# ★ Home, beside the keepsake count.
+# Home, beside the keepsake count.
 const HARD_COUNT := "Hard · %d / %d"
-# ★ The ready card of a hard run, and the pill under the stage line in play.
+# The ready card of a hard run, and the pill under the stage line in play.
 const HARD_READY_NOTE := "Hard run. No retries, so take your time."
 const HARD_IN_PLAY := "Hard · Stage %d of %d"
-# ★ The review card of a hard run, above Save turn.
+# The review card of a hard run, above Save turn.
 const HARD_REVIEW_BODY := "Watch your turn before you save it. There are no retries in Hard, so this one stays."
-# ★ A failed run's card, and who slipped where (the stage number).
+# A failed run's card, and who slipped where (the stage number).
 const HARD_FAILED_TITLE := "Back to the start"
 const HARD_YOU_SLIPPED := "You slipped on stage %d."
 const HARD_YOU_WENT_UNDER := "You went under on stage %d."
@@ -82,16 +80,16 @@ const HARD_RESTART_STUCK := "Couldn't clear this run yet. Tap Start again to try
 const HARD_RESET_SENDING := "Letting your friend know…"
 const HARD_RESET_WAITING := "Couldn't reach your friend just now. Tap Start again once you're back online."
 const HARD_READ_FAILED := "Couldn't fetch your friend's slip, so it won't be in Replays this time."
-# ★ A hard room with no room left for another run: the host, then the friend.
+# A hard room with no room left for another run: the host, then the friend.
 const HARD_ROOM_FULL_TITLE := "This room is full of slips"
 const HARD_ROOM_FULL_BODY := "There's no space here for another hard run. Start a new room for your next try. Your last few slips stay in Replays."
 const HARD_ROOM_FULL_GUEST := "There's no space here for another hard run. Waiting for %s to open a new room."
 const HARD_NEW_ROOM := "New hard room"
-# ★ A finished hard run (the chapter's title).
+# A finished hard run (the chapter's title).
 const HARD_COMPLETE_TITLE := "Hard run done"
 const HARD_COMPLETE_BODY := "%s, start to finish, in one go."
 const HARD_AGAIN := "Play Hard again"
-# ★ Replays, and the room list's tag for a hard room.
+# Replays, and the room list's tag for a hard room.
 const HARD_REPLAYS_HEADING := "Hard runs"
 const HARD_REPLAYS_SUBTITLE := "Slips and finished runs"
 const HARD_RUN_FAILED := "%s · Hard run"
