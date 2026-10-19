@@ -15,7 +15,8 @@ describe("redo read", () => {
   it("checks the device once and refuses a stranger, a blocked pair and a replaced device", async () => {
     const { host, guest, room } = await relayPair(), path = `/v2/rooms/${room.room_id}/redo`;
     await playA(env.ROOMS_V2.getByName(room.room_id), room, CHAINS[0].stages[0], { host: host.player_id, guest: guest.player_id });
-    const authorize = vi.spyOn(Player.prototype, "authorize");
+    // Every device check (authorize, authorizeRoom, authorizeNamed) runs through the one private check.
+    const authorize = vi.spyOn(Player.prototype as unknown as { authorized: (deviceHash: string) => unknown }, "authorized");
     expect(await code(await call(path, "GET", guest))).toBe("200 ok");
     // Was 2: auth() and the room's own re-check.
     expect(authorize).toHaveBeenCalledTimes(1);

@@ -1,10 +1,12 @@
 import { ApiError, HASH_PATTERN, boundedJson, canonicalJson, digest, object, text, unwrap } from "./protocol";
 import type { ServerVars } from "./flags";
 import { requireOperator } from "./operator-auth";
+import { routeDisplayNameOperator } from "./display-names";
 
 /** Separate operator credential; never accepts a player credential or a caller target. */
 export async function routeSafetyOperator(request: Request, path: string, env: Env & ServerVars): Promise<unknown> {
   await requireOperator(request, env);
+  const clearedName = await routeDisplayNameOperator(request, path, env); if (clearedName) return clearedName;
   const inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   if (path === "/operator/safety/reports" && request.method === "GET") return { schema_version: 1, reports: await inbox.listReports() };
   const match = path.match(/^\/operator\/safety\/reports\/([a-f0-9]{64})\/(resolve|remove-photo|block)$/);

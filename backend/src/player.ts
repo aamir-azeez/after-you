@@ -23,10 +23,11 @@ import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEven
 import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
+import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
-type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt; social?: SocialState };
+type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt; social?: SocialState } & DisplayNameFields;
 type FriendPublicationState = { schema_version: 1; epoch_counter: number; current: FriendPublication | null };
 function isPublicationState(value: unknown): value is FriendPublicationState {
   return isObject(value) && Object.keys(value).length === 3 && value.schema_version === 1 && Number.isSafeInteger(value.epoch_counter) && Number(value.epoch_counter) >= 0 &&
@@ -132,19 +133,30 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity();
     return identity?.state === "active" && equalHash(identity.recovery_hash, recoveryHash);
   }
-  authorize(deviceHash: string, allowDeleting = false): boolean {
+  authorize(deviceHash: string, allowDeleting = false): boolean { return this.authorized(deviceHash, allowDeleting) !== null; }
+  /** The identity when `deviceHash` is its current device credential, read once for the check and what rides on it. */
+  private authorized(deviceHash: string, allowDeleting = false): Identity | null {
     const identity = this.identity();
-    return !!identity && (identity.state === "active" || allowDeleting) && equalHash(identity.device_hash, deviceHash);
+    return identity && (identity.state === "active" || allowDeleting) && equalHash(identity.device_hash, deviceHash) ? identity : null;
+  }
+  /**
+   * authorize() plus the player's display name (null when anonymous), from the same identity read.
+   * auth() uses it only on the routes that write the name into a room (display-names.ts namesRoomRoute).
+   */
+  authorizeNamed(deviceHash: string): { authorized: boolean; linked: boolean; display_name?: string | null } {
+    const identity = this.authorized(deviceHash);
+    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null } : { authorized: false, linked: true };
   }
   /**
    * authorize() for a request that names a room, plus whether this player may reach that room:
    * it holds a link to it, or has Story rows (see storyHeld).
    * An authorized answer also carries the player's current safety token (see v2/block-memo.ts).
    */
-  authorizeRoom(deviceHash: string, roomId: string): { authorized: boolean; linked: boolean; safety_token?: string } {
-    if (!this.authorize(deviceHash)) return { authorized: false, linked: false };
+  authorizeRoom(deviceHash: string, roomId: string): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null } {
+    const identity = this.authorized(deviceHash);
+    if (!identity) return { authorized: false, linked: false };
     const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 || this.storyHeld();
-    return { authorized: true, linked, safety_token: this.safetyToken };
+    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null };
   }
   /**
    * Story rooms are not linked one by one, and the Story drain releases a player's v3 links but keeps the
@@ -172,11 +184,12 @@ export class Player extends DurableObject<Env> {
     identity.social = social;
     this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
   }
-  friendList(owner: string, deviceHash: string, refresh = true): Outcome<SocialState> {
+  /** `withName`: the answer is a copy that also carries the owner's display name (never stored with the social state). */
+  friendList(owner: string, deviceHash: string, refresh = true, withName = false): Outcome<SocialState & { display_name?: string | null }> {
     const identity = this.identity();
     if (!identity || identity.state !== "active" || !equalHash(identity.device_hash, deviceHash) || identity.player_id !== owner) return fail(401, "invalid_auth");
     const social = this.social(identity), now = Date.now();
-    if (!refresh) return ok(social);
+    if (!refresh) return ok(withName ? { ...social, display_name: identity.display_name ?? null } : social);
     if (social.next_refresh_at > now) return fail(429, "friends_refresh_limited");
     social.links = social.links.filter(link => link.accepted || link.created_at + FRIEND_REQUEST_TTL_MS > now);
     social.next_refresh_at = now + FRIEND_REFRESH_SECONDS * 1000;
@@ -184,12 +197,30 @@ export class Player extends DurableObject<Env> {
     return ok(social);
   }
   /** Binding only; list callers must also check the opposite edge and blocks. */
-  friendEdge(owner: string, peer: string): FriendEdge | null {
+  /** `withName`: also this player's display name; the friends list shows it only on an accepted row. */
+  friendEdge(owner: string, peer: string, withName = false): FriendEdge | null {
     const identity = this.identity();
     if (!identity || identity.player_id !== owner || identity.state !== "active") return null;
     const social = this.social(identity), link = social.links.find(x => x.player_id === peer);
     if (!link || !link.accepted && link.created_at + FRIEND_REQUEST_TTL_MS <= Date.now()) return null;
-    return { link, shared_room: social.shared_room, presence_expires_at: link.accepted ? this.presenceExpiryForIdentity(identity) : 0 };
+    return { link, shared_room: social.shared_room, presence_expires_at: link.accepted ? this.presenceExpiryForIdentity(identity) : 0,
+      ...(withName ? { display_name: identity.display_name ?? null } : {}) };
+  }
+  /** PUT /v1/profile/name after the router cleaned the name (display-names.ts applyDisplayName). One row write, only on a change. */
+  setDisplayName(owner: string, deviceHash: string, name: string | null, revision: number): DisplayNameOutcome {
+    const identity = this.authorized(deviceHash);
+    if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
+    const { outcome, changed } = applyDisplayName(identity, name, revision, Date.now());
+    if (changed) this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    return outcome;
+  }
+  /** Binding only (operator clear-name): clears the name, locks new ones, and returns the v2 rooms that may hold a copy. */
+  operatorClearDisplayName(owner: string): Outcome<string[]> {
+    const identity = this.identity();
+    if (!identity || identity.player_id !== owner) return fail(404, "identity_absent");
+    clearDisplayNameFields(identity, Date.now());
+    this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    return ok(this.listRooms().filter(link => roomLinkVersion(link) === 2).slice(0, MAX_CLEARED_ROOMS).map(link => link.room_id));
   }
   friendPropose(owner: string, deviceHash: string, peer: string, requestId: string): Outcome<FriendLink> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
@@ -817,6 +848,7 @@ export class Player extends DurableObject<Env> {
 
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
+  authorizeNamed: () => ({ authorized: false, linked: true }), setDisplayName: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"),
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined,

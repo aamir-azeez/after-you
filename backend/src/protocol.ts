@@ -31,8 +31,9 @@ export type RoomState = {
   reactions: Record<string, "love" | "sparkles" | "again">;
 };
 export type RoomSnapshot = Omit<RoomState, "invite_code"> & { invite_code?: string };
+/** `details` are extra fields for the error body (only display-names.ts sets them: retry_after_seconds). */
 export class ApiError extends Error {
-  constructor(public status: number, public code: string) { super(code); }
+  constructor(public status: number, public code: string, public details?: Readonly<Record<string, number>>) { super(code); }
 }
 export const isObject = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null && !Array.isArray(value);
 export function object(value: unknown): Record<string, unknown> {

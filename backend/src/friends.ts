@@ -7,7 +7,8 @@ export const FRIEND_REQUEST_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export type SharedFriendRoom = { api_version: 1 | 2; room_id: string };
 export type FriendLink = { player_id: string; request_id: string; requested_by: string; accepted: boolean; created_at: number };
 export type SocialState = { schema_version: 1; links: FriendLink[]; shared_room: SharedFriendRoom | null; next_refresh_at: number };
-export type FriendEdge = { link: FriendLink; shared_room: SharedFriendRoom | null; presence_expires_at: number };
+/** `display_name` only when the caller asked for it (display-names.ts). */
+export type FriendEdge = { link: FriendLink; shared_room: SharedFriendRoom | null; presence_expires_at: number; display_name?: string | null };
 export type FriendRoomInvite = { room_id: string; invite_code: string };
 export const emptySocial = (): SocialState => ({ schema_version: 1, links: [], shared_room: null, next_refresh_at: 0 });
 const exact = (v: Record<string, unknown>, keys: string[]) => Object.keys(v).length === keys.length && keys.every(k => Object.hasOwn(v, k));

@@ -6,6 +6,7 @@ import { remoteRoomActivity } from "./room-inbox-storage";
 import { departed, isMember } from "./room-departure";
 import { chapter } from "./v2/chapters";
 import { partnerFace, type Face } from "./v2/end-reactions";
+import { partnerNameField, shownName } from "./display-names";
 
 export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_their_turn" | "completed" | "unavailable" | "closed";
 /** Clients from 0.5.2 send this header and understand the "closed" status; older clients validate the status list exactly. */
@@ -21,6 +22,11 @@ export type RoomInboxEntry = {
   partner_left?: true;
   /** Only for clients that send END_REACTIONS_HEADER while end reactions are on: the face on the other member's latest turn. */
   partner_reaction?: Face;
+  /**
+   * Only for clients that send DISPLAY_NAMES_HEADER while display names are on, and then on every
+   * entry: the other member's name as the room holds it, or null (no name, a legacy or Story room, a failed read).
+   */
+  partner_name?: string | null;
 };
 export type RoomInboxProjection = Omit<RoomInboxEntry, "family" | "api_version">;
 
@@ -65,7 +71,8 @@ export function legacyInboxProjection(storage: DurableObjectStorage, player: str
  * A room whose replay both members saved keeps these fields in its compacted row, so it
  * still reads as the finished chapter rather than an unknown room.
  */
-export function relayInboxProjection(storage: DurableObjectStorage, player: string): Outcome<RoomInboxProjection> {
+/** `names` (the display names flag): the projection also carries the other member's stored name, when there is one (display-names.ts). */
+export function relayInboxProjection(storage: DurableObjectStorage, player: string, names = false): Outcome<RoomInboxProjection> {
   const row = storage.sql.exec<{
     room_id: string; revision: number; stage_index: number; level_id: string; level_version: number;
     definition_hash: string; host_id: string; guest_id: string | null; a_turn_id: string | null; updated_at: string;
@@ -87,7 +94,8 @@ export function relayInboxProjection(storage: DurableObjectStorage, player: stri
     room_id: row.room_id, chapter: { id: row.level_id, version: row.level_version },
     membership: { host_id: row.host_id, guest_id: row.guest_id, you_are_host: row.host_id === player },
     status: turnStatus(player, row.guest_id, active), revision: row.revision,
-    remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at, ...partnerLeft(storage, row, player), ...partnerReaction(storage, row, player)
+    remote_activity_sequence: activity.sequence, activity_at: row.updated_at ?? activity.at, ...partnerLeft(storage, row, player), ...partnerReaction(storage, row, player),
+    ...(names ? partnerNameField(storage, player === row.host_id ? row.guest_id : row.host_id) : {})
   });
 }
 
@@ -126,20 +134,22 @@ export type InboxSource = () => Promise<Outcome<RoomInboxProjection> | null> | O
  * Story and unknown links, failed reads and refused reads give the fallback
  * entry (with showClosed, a room another member erased reads "closed"); a room
  * whose pair is blocked in either direction is left out (null). partner_left
- * is kept only with showLeft, and partner_reaction only with showReactions.
+ * is kept only with showLeft, partner_reaction only with showReactions, and with showNames every
+ * entry carries partner_name, checked again against the name rules (an index row may be a day old).
  */
-export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false): Promise<RoomInboxEntry | null> {
+export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false): Promise<RoomInboxEntry | null> {
   const version = roomLinkVersion(link);
-  if (version !== 1 && version !== 2) return fallback(link);
+  const named = (entry: RoomInboxEntry, name: unknown = null): RoomInboxEntry => showNames ? { ...entry, partner_name: shownName(name) } : entry;
+  if (version !== 1 && version !== 2) return named(fallback(link));
   try {
     const result = await source();
-    if (!result) return fallback(link);
-    if (!result.ok) return fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable");
-    const { partner_left, partner_reaction, ...value } = result.value;
+    if (!result) return named(fallback(link));
+    if (!result.ok) return named(fallback(link, showClosed && result.status === 410 ? "closed" : "unavailable"));
+    const { partner_left, partner_reaction, partner_name, ...value } = result.value;
     if (await blocked(value.membership.host_id!, value.membership.guest_id)) return null;
-    return { ...value, family: version === 1 ? "legacy" : "relay", api_version: version, ...(showLeft && partner_left ? { partner_left } : {}),
-      ...(showReactions && partner_reaction !== undefined ? { partner_reaction } : {}) };
-  } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return fallback(link); }
+    return named({ ...value, family: version === 1 ? "legacy" : "relay", api_version: version, ...(showLeft && partner_left ? { partner_left } : {}),
+      ...(showReactions && partner_reaction !== undefined ? { partner_reaction } : {}) }, partner_name);
+  } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return named(fallback(link)); }
 }
 
 /** The inbox body: entries in link order, then a stable sort by activity time, so equal times list as before. */
@@ -158,10 +168,10 @@ export function inboxBody(entries: readonly (RoomInboxEntry | null)[]): { schema
  * passes the links it already read; it sends at most MAX_ROOM_LINKS (room-limit.ts)
  * here, and longer lists or the room index go to room-index-lists.ts.
  */
-export async function roomInbox(playerId: string, env: Env, showClosed = false, showLeft = false, known?: RoomLink[], showReactions = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
+export async function roomInbox(playerId: string, env: Env, showClosed = false, showLeft = false, known?: RoomLink[], showReactions = false, showNames = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
   const links = known ?? await env.PLAYERS.getByName(playerId).listRooms();
   const blocked = partnerBlocks(env, playerId);
   return inboxBody(await pooled(links, ROOM_INBOX_CONCURRENCY, link => inboxEntry(link, () => roomLinkVersion(link) === 1
     ? env.ROOMS.getByName(link.room_id).inboxProjection(playerId)
-    : env.ROOMS_V2.getByName(link.room_id).inboxProjection(playerId), showClosed, showLeft, blocked, showReactions)));
+    : env.ROOMS_V2.getByName(link.room_id).inboxProjection(playerId), showClosed, showLeft, blocked, showReactions, showNames)));
 }

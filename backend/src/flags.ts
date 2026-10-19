@@ -74,6 +74,8 @@ export const FLAG_VARS = Object.freeze({
   gameCenter: "GAME_CENTER_ENABLED",
   /** The iOS launch waitlist for the friend link page: /v1/waitlist/ios and its confirm route (waitlist.ts). */
   iosWaitlist: "IOS_WAITLIST_ENABLED",
+  /** Display names: PUT /v1/profile/name, names on friends pages and room reads, writes into rooms and the capability (display-names.ts). */
+  displayNames: "DISPLAY_NAMES_ENABLED",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;

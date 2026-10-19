@@ -28,6 +28,7 @@ import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
 import { endReactionField, endReactionsWanted } from "./end-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
+import { displayNamesCapability, displayNamesShown } from "../display-names";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -78,8 +79,12 @@ async function reauthorize(request: Request, playerId: string, env: Env): Promis
   if (!await env.PLAYERS.getByName(playerId).authorize(await bearerDigest(request))) throw new ApiError(401, "identity_unavailable");
 }
 
-/** Called only after the shared Player authentication/rate limiter succeeds. */
-export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string): Promise<Response> {
+/**
+ * Called only after the shared Player authentication/rate limiter succeeds. `memberName` is the
+ * caller's display name from auth() while display names are on (null when anonymous), else
+ * undefined; creating, joining and turns pass it into the room call they already make.
+ */
+export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null): Promise<Response> {
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: flags.v2Rooms(env), recording_version: 2, simulation_version: 2,
@@ -105,6 +110,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(hardWanted(request) && flags.hardMode(env) ? { hard_mode_version: 1 } : {}),
     ...liveCapability(request, env),
     ...platformCapability(request, env),
+    ...displayNamesCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -139,7 +145,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
     const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
     const link = intent.link;
-    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode)));
+    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
     requireEnabled(env);
@@ -150,7 +156,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), roomSettler(env)));
-    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request));
+    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName);
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.
@@ -270,8 +276,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (!operation && request.method === "GET") {
     const known = context === undefined ? knownRoom(request) : undefined;
     const faces = context === undefined && endReactionsWanted(request) && flags.endReactions(env);
-    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env), pollRedo(request), faces)
-      : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined, faces);
+    const names = context === undefined && displayNamesShown(request, env);
+    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env), pollRedo(request), faces, names)
+      : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined, faces, names);
     if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, env, context)) throw new ApiError(409, "campaign_client_required");
     return json(unwrap(snapshot));
   }
@@ -337,5 +344,6 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await reauthorize(request, playerId, env);
   }
   const faces = context === undefined && endReactionsWanted(request) && flags.endReactions(env);
-  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context, faces) : await room.fork(playerId, input, context, await bearerDigest(request))));
+  const names = context === undefined && displayNamesShown(request, env);
+  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context, faces, names, memberName) : await room.fork(playerId, input, context, await bearerDigest(request))));
 }

@@ -5,6 +5,7 @@ import { interactionBlocked } from "./safety";
 import { flags } from "./flags";
 import { FRIEND_ALIAS_HEADER, aliasShaped, friendAliasFor, resolveFriendAlias } from "./friend-aliases";
 import { announceToFriends } from "./live";
+import { displayNamesShown, shownName } from "./display-names";
 
 const exact = (v: Record<string, unknown>, keys: string[]) => {
   if (Object.keys(v).length !== keys.length || keys.some(k => !Object.hasOwn(v, k)) || v.schema_version !== 1) throw new ApiError(400, "invalid_friend_request");
@@ -59,6 +60,8 @@ async function sharedInvite(env: Env, host: string, visitor: string, shared: Sha
 export async function routeFriends(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
   const hash = await bearerDigest(request), player = env.PLAYERS.getByName(owner);
   if (path === "/v1/friends" && request.method === "GET") {
+    // Names ride on calls the list already makes: the friend's second edge read and the owner's recheck.
+    const names = displayNamesShown(request, env);
     const social = unwrap(await player.friendList(owner, hash));
     const friends = (await Promise.all(social.links.map(async link => {
       const other = await env.PLAYERS.getByName(link.player_id).friendEdge(link.player_id, owner);
@@ -74,21 +77,22 @@ export async function routeFriends(request: Request, path: string, owner: string
       // Recorded turns can be joined while the host is away. Presence only
       // controls the online indicator; reciprocal consent and sharing grant access.
       const invite = accepted ? await sharedInvite(env, link.player_id, owner, other.shared_room) : null;
-      const latest = await env.PLAYERS.getByName(link.player_id).friendEdge(link.player_id, owner);
+      const latest = await env.PLAYERS.getByName(link.player_id).friendEdge(link.player_id, owner, names);
       if (!latest || !sameFriendLink(link, latest.link, owner) || await interactionBlocked(env, owner, link.player_id)) return null;
       const stillAccepted = link.accepted && latest.link.accepted;
       const remaining = stillAccepted && flags.presence(env) ? Math.max(0, Math.min(90, Math.ceil((latest.presence_expires_at - Date.now()) / 1000))) : 0;
       const stillShared = invite !== null && latest.shared_room?.room_id === invite.room_id && latest.shared_room.api_version === invite.api_version;
       return { player_id: link.player_id, request_id: link.request_id, status: stillAccepted ? "accepted" : link.requested_by === owner ? "outgoing" : "incoming",
-        online: remaining > 0, expires_after_seconds: remaining, join_available: stillAccepted && stillShared };
+        online: remaining > 0, expires_after_seconds: remaining, join_available: stillAccepted && stillShared,
+        ...(names ? { display_name: stillAccepted ? shownName(latest.display_name) : null } : {}) };
     }))).filter(x => x !== null);
     // One batched local recheck replaces twenty same-owner RPCs. It also
     // reauthorizes the device after all peer/room I/O and honors removals.
-    const current = unwrap(await player.friendList(owner, hash, false));
+    const current = unwrap(await player.friendList(owner, hash, false, names));
     const visible = friends.filter(row => current.links.some(link => link.player_id === row.player_id && link.request_id === row.request_id));
     // Only clients that ask get the optional alias; older ones require exactly these five keys.
     const alias = request.headers.get(FRIEND_ALIAS_HEADER) === "2" ? friendAliasFor(env, owner) : undefined;
-    return { schema_version: 1, friend_code: owner, ...(alias ? { friend_alias: alias } : {}), refresh_after_seconds: FRIEND_REFRESH_SECONDS, shared_room: current.shared_room, friends: visible };
+    return { schema_version: 1, friend_code: owner, ...(alias ? { friend_alias: alias } : {}), ...(names ? { display_name: shownName(current.display_name) } : {}), refresh_after_seconds: FRIEND_REFRESH_SECONDS, shared_room: current.shared_room, friends: visible };
   }
   if (path === "/v1/friends/request" && request.method === "POST") {
     const input = object(await boundedJson(request, 1024)); exact(input, ["schema_version", "friend_code"]);

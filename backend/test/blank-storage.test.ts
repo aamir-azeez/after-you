@@ -54,6 +54,7 @@ const RELAY_READS: Read<V2>[] = [
   ["history", room => room.history(P)],
   ["tries", room => room.tries(P)],
   ["end reactions", room => room.endReactions(P)],
+  ["clearMemberName", room => room.clearMemberName(P)],
 ];
 const LEGACY_READS: Read<V1>[] = [
   ["join", room => room.join(P, CODE)],
@@ -72,6 +73,9 @@ const PLAYER_READS: Read<PlayerStub>[] = [
   ["authorize", player => player.authorize(HASH)],
   ["authorize while deleting", player => player.authorize(HASH, true)],
   ["authorizeRoom", player => player.authorizeRoom(HASH, "r".repeat(22))],
+  ["authorizeNamed", player => player.authorizeNamed(HASH)],
+  ["setDisplayName", (player, id) => player.setDisplayName(id, HASH, "Maya", 1)],
+  ["operatorClearDisplayName", (player, id) => player.operatorClearDisplayName(id)],
   ["rotateSafetyToken", player => player.rotateSafetyToken()],
   ["liveHint for a room", player => player.liveHint(P, { kind: "room", room_id: "r".repeat(22), revision: 1 })],
   ["liveHint from a friend", player => player.liveHint(P, { kind: "friends", from: Q, request_id: "q".repeat(22) })],

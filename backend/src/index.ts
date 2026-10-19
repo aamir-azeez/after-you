@@ -10,6 +10,7 @@ import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
 import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, roomInbox } from "./room-inbox";
 import { endReactionsWanted } from "./v2/end-reactions";
+import { DISPLAY_NAME_PATH, displayNamesShown, namesRoomRoute, routeDisplayName } from "./display-names";
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
 import { LIVE_PATH, forwardLiveUpgrade } from "./live";
@@ -43,8 +44,12 @@ export { RoomV2 } from "./v2/room";
  * room object is opened.
  */
 const ROOM_ROUTE = /^\/v[12]\/rooms\/([A-Za-z0-9_-]{22})(?:\/(?!leave(?:\/|$))|$)/;
-/** The authenticated player, and on a room route its current safety token (Player.authorizeRoom). */
-async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string }> {
+/**
+ * The authenticated player, and on a room route its current safety token (Player.authorizeRoom).
+ * While display names are on, a room route, room creation and joining also learn the player's
+ * display name from the same call (`memberName`: a name, or null when anonymous); otherwise undefined.
+ */
+async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string; memberName?: string | null }> {
   const id = request.headers.get("X-Player-Id");
   if (!id || !ID_PATTERN.test(id)) throw new ApiError(401, "invalid_auth");
   const value = request.headers.get("Authorization");
@@ -53,11 +58,12 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   if (!SECRET_PATTERN.test(token)) throw new ApiError(401, "invalid_auth");
   const hash = await digest(token), player = env.PLAYERS.getByName(id), room = ROOM_ROUTE.exec(path)?.[1];
   // The same single Player call either way; a room route also learns whether the room is linked.
-  const access: { authorized: boolean; linked: boolean; safety_token?: string } = room === undefined ? { authorized: await player.authorize(hash, deleting), linked: true } : await player.authorizeRoom(hash, room);
+  const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null } = room !== undefined ? await player.authorizeRoom(hash, room)
+    : namesRoomRoute(request, path, env) ? await player.authorizeNamed(hash) : { authorized: await player.authorize(hash, deleting), linked: true };
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   if (!(await env.PLAYER_LIMITER.limit({ key: id })).success) throw new ApiError(429, "rate_limited");
   if (!access.linked) throw new ApiError(404, "room_not_found");
-  return { playerId: id, safetyToken: access.safety_token };
+  return { playerId: id, safetyToken: access.safety_token, memberName: flags.displayNames(env) ? access.display_name : undefined };
 }
 async function publicLimit(request: Request, env: Env): Promise<void> {
   // Bootstrap has no player identity yet. The edge-provided IP is used only as an ephemeral limiter key.
@@ -112,7 +118,7 @@ export default {
         if (Object.keys(input).length !== 1 || input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
         return result(await env.SAFETY_PROFILES.getByName(owner).acknowledgeDeletion(owner, await digest(authorization.slice(7))));
       }
-      const { playerId, safetyToken } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
+      const { playerId, safetyToken, memberName } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
       // Absent unless a platform games flag is "true": the paths then answer 404 as before.
       const platform = await routePlatform(request, path, playerId, env); if (platform) return platform;
@@ -122,12 +128,13 @@ export default {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
         const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = flags.finishedRoomLeave(env) && request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
         // The face on the friend's latest turn, only for clients that show it while end reactions are on.
-        const showReactions = flags.endReactions(env) && endReactionsWanted(request);
+        const showReactions = flags.endReactions(env) && endReactionsWanted(request), showNames = displayNamesShown(request, env);
         const links = flags.roomIndex(env) ? null : await player.listRooms();
-        if (links && links.length <= MAX_ROOM_LINKS) return json(await roomInbox(playerId, env, showClosed, showLeft, links, showReactions));
-        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions);
+        if (links && links.length <= MAX_ROOM_LINKS) return json(await roomInbox(playerId, env, showClosed, showLeft, links, showReactions, showNames));
+        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames);
         return withNext(json(page.body), page.next);
       }
+      if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
@@ -187,7 +194,7 @@ export default {
         if (!await player.authorize(await bearerDigest(request))) throw new ApiError(401, "invalid_auth");
         return json(checked);
       }
-      if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken);
+      if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken, memberName);
       if (path === "/v1/rooms" && request.method === "GET") {
         const links = flags.roomIndex(env) ? null : await player.listRooms();
         if (!links || links.length > MAX_ROOM_LINKS) { const page = await indexedLegacyRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next); }
