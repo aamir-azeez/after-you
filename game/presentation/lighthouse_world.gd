@@ -862,7 +862,7 @@ func _present_beams(segments: Array) -> void:
 		root.set_meta("terrain_frame", terrain.global_transform)
 
 func _bar_between(from: Vector3, to: Vector3, width: float, color: Color, parent: Node3D) -> MeshInstance3D:
-	return Primitives.bar_between(from, to, width, material(color), parent)
+	return Primitives.bar_between(from, to, width, Primitives.shared_material(color), parent)
 
 func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
 	var mat := node.material_override as StandardMaterial3D
