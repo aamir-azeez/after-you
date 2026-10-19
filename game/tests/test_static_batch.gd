@@ -353,8 +353,11 @@ func _held_over_steps() -> void:
 	var expected: Dictionary = StaticBatch.fold(whole.root, [whole.owner])
 	var job := StaticBatch.start(stepped.root, [stepped.owner])
 	var calls := 0
-	while not StaticBatch.step(job, 1) and calls < 100000: calls += 1
-	_check(calls > 10, "What the owners hold is looked through over many steps (%d)" % calls)
+	var waiting := 0
+	while not StaticBatch.step(job, 1) and calls < 100000:
+		calls += 1
+		if not (job.holding as Array).is_empty(): waiting += 1
+	_check(waiting > 10, "What the owners hold is looked through over many steps (%d of %d)" % [waiting, calls])
 	_check(job.folded == expected.folded and job.batches == expected.batches, "Stepped, the fold keeps what fold() keeps (%d leaves, %d batches; fold() %d, %d)" % [job.folded, job.batches, expected.folded, expected.batches])
 	for tree: Dictionary in [whole, stepped]:
 		var leaves: Dictionary = tree.leaves

@@ -27,10 +27,11 @@ const Canonical = preload("res://core/v2/canonical.gd")
 
 var directory := ""
 ## The most nodes one step of a staged build may add (one frame here, where
-## every _build_step yields). Chapters add up to about 260; the Wishing Well's
-## dressing in one step added 840 and held a desktop frame for 25 ms behind
-## the card. It bounds node work only: a step that makes few nodes with a lot
-## of geometry (Turn of the Tide's water) is not bounded by it.
+## every _build_step yields). Chapters add up to about 260; the Wishing
+## Well's dressing in one step added up to 840 and held a desktop frame for
+## 25 ms behind the card. It bounds node work only: a step that makes few
+## nodes with a lot of geometry (Turn of the Tide's water) is not bounded by
+## it.
 const MOST_NODES_PER_STEP := 300
 
 class Builder:

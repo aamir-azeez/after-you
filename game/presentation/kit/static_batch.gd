@@ -273,9 +273,9 @@ static func part_boxes(mesh: MeshInstance3D) -> Array[AABB]:
 ## Collects again what the owners and the scripted nodes hold, before the
 ## first batch replaces anything: a job over frames may have started before a
 ## screen or world named some of its nodes. Over frames this look takes a few
-## frames itself, a node named meanwhile in a value it has passed is missed,
-## as one named after it and before a later batch always was; _group_folds
-## still checks every leaf where it was found.
+## frames itself. A node named meanwhile in a value it has already passed is
+## missed, as one named after it and before a later batch always was;
+## _group_folds still checks every leaf where it was found.
 static func _recheck(job: Dictionary) -> void:
 	job.rechecked = true
 	var held: Dictionary = {}
@@ -342,9 +342,9 @@ static func _uniform(basis: Basis) -> bool:
 ## Every node an owner's script variables refer to, through arrays and
 ## dictionaries (keys too), a few levels deep, goes into held: the variables'
 ## values are queued here and looked through by _hold_some, a few at a time,
-## since a world or a screen can name thousands of values. The job itself (a
-## world keeps its fold's job in a variable) is never looked through: its own
-## queue grows while it is read.
+## since a world or a screen can name thousands of values. A fold never looks
+## through its own job (a world keeps it in a variable): the job's queue grows
+## while it is read.
 static func _queue_held(owner: Object, held: Dictionary, job: Dictionary) -> void:
 	for property: Dictionary in owner.get_property_list():
 		if not int(property.usage) & PROPERTY_USAGE_SCRIPT_VARIABLE: continue
@@ -358,6 +358,8 @@ static func _collect_held(owner: Object, held: Dictionary) -> void:
 
 ## Values one piece of the fold looks through.
 const HOLD_PIECE := 64
+## How many arrays and dictionaries deep an owner's variables are looked
+## through for nodes.
 const HOLD_DEPTH := 4
 
 static func _queue_value(value: Variant, depth: int, held: Dictionary, job: Dictionary) -> void:
