@@ -101,8 +101,9 @@ export async function routePlatformRestore(request: Request, path: string, env: 
   await limitPublic(request, env);
   const input = object(await boundedJson(request, MAX_BODY));
   exactKeys(input, ["schema_version", "provider", "credential", "idempotency_key", "next_device_token", "next_recovery_code"]);
-  if (input.schema_version !== 1) throw new ApiError(400, "invalid_platform_request");
+  // Provider first: a phone with no identity learns on (400) from off (404) without any proof.
   const kind = provider(input.provider, env);
+  if (input.schema_version !== 1) throw new ApiError(400, "invalid_platform_request");
   const idempotency_key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
   const nextDevice = text(input.next_device_token, SECRET_PATTERN), nextRecovery = text(input.next_recovery_code, SECRET_PATTERN);
   // The credential is left out: a retry after a lost reply carries a fresh one-time code.
