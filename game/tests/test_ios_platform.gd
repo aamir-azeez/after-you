@@ -16,6 +16,7 @@ const NotificationBridge = preload("res://services/turn_notification_bridge.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const Licenses = preload("res://services/licenses.gd")
 const Storage = preload("res://services/local_save.gd")
+const GamesProvider = preload("res://services/platform_games/native_games_provider.gd")
 
 const APP_STORE := {"purchase_mode": "app_store", "entitlement_id": "full_journey_play", "revenuecat_public_key": "appl_synthetic_key"}
 const GOOGLE_PLAY := {"purchase_mode": "google_play", "entitlement_id": "full_journey_play", "revenuecat_public_key": "goog_synthetic_key"}
@@ -39,6 +40,9 @@ class FakeIOS extends Object:
 	signal notification_received(payload_json: String)
 	signal notification_token_changed(payload_json: String)
 	signal invite_link_available
+	signal games_result(request_id: String, operation: String, payload_json: String)
+	signal games_error(request_id: String, operation: String, code: String)
+	signal games_account_changed(payload_json: String)
 	var calls: Array = []
 	var pending_link := ""
 	func secure_put(name: String, value: String, request_id: String) -> void: calls.append(["secure_put", name, value, request_id])
@@ -48,6 +52,12 @@ class FakeIOS extends Object:
 		var value := pending_link
 		pending_link = ""
 		return value
+	func games_status(request_id: String) -> void:
+		calls.append(["games_status", request_id])
+		games_result.emit.call_deferred(request_id, "status", JSON.stringify({"signed_in": true, "player_key": "f".repeat(64)}))
+	func games_credential(web_client_id: String, request_id: String) -> void:
+		calls.append(["games_credential", web_client_id, request_id])
+		games_error.emit.call_deferred(request_id, "credential", "Some platform text that must not reach players")
 	func notification_status(request_id: String) -> void:
 		calls.append(["notification_status", request_id])
 		notification_result.emit.call_deferred(request_id, "status", JSON.stringify({"supported": false, "configured": false}))
@@ -164,9 +174,15 @@ func _native_services() -> void:
 	_check(NativeBridge.singleton("secure_store") == null and not InviteShare.native_share("x"), "A build without a plugin finds none")
 	var fake := FakeIOS.new()
 	Engine.register_singleton(NativeBridge.IOS, fake)
-	for service: String in ["secure_store", "share", "invite_link", "purchases", "notifications"]:
+	for service: String in ["secure_store", "share", "invite_link", "purchases", "notifications", "games"]:
 		_check(NativeBridge.singleton(service) == fake, "The iOS plugin serves " + service)
 	_check(NativeBridge.singleton("photos") == null, "Photo capture stays Android only")
+	# Game Center answers through the same games interface as Play Games.
+	var games := GamesProvider.new(NativeBridge.singleton("games"), "game_center", self)
+	var signed: Dictionary = await games.authenticate(false)
+	_check(games.kind() == "game_center" and signed.get("ok", false) and signed.get("signed_in", false) and signed.get("player_key") == "f".repeat(64), "Game Center sign-in comes back through the shared games methods")
+	var refused: Dictionary = await games.server_credential("")
+	_check(not refused.get("ok", true) and refused.get("code") == "failed", "A native error reaches the game only as a known code")
 
 	var secrets := Secrets.new()
 	root.add_child(secrets)

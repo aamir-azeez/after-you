@@ -19,6 +19,7 @@ config/custom_user_dir_name="AfterYou"
 [autoload]
 VersionBadge="*res://presentation/version_badge.gd"
 FramePolicy="*res://services/frame_policy.gd"
+PlatformGames="*res://services/platform_games/platform_games.gd"
 
 [display]
 window/size/viewport_width=1280

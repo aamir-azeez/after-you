@@ -175,6 +175,9 @@ photo_transfer_client 1
 photo_transfer_screen 2
 physical_runtime 1
 plant_animation 2
+platform_games_bundle 1
+platform_games_cloud 2
+platform_games_service 3
 player_copy 1
 player_copy_render 1
 premium_open_cost 1
