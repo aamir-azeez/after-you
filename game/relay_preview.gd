@@ -290,8 +290,32 @@ func _ready() -> void:
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	soundscape.listen_to(world)
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
-	if staged: _build_world_staged()
-	else: world.load_level(definition)
+	if staged:
+		# Behind the card nothing of this screen shows yet: its controls and
+		# loading card are made at the start of the next frame (before any
+		# step of the build resumes), not in the frame of the scene change.
+		# Anything of this screen that runs earlier (input, its own frame)
+		# makes them first (_finish_ready_due).
+		mode = "loading"
+		running = false
+		_controls_due = true
+		get_tree().process_frame.connect(_finish_ready_due, CONNECT_ONE_SHOT)
+		_build_world_staged()
+		return
+	world.load_level(definition)
+	_finish_ready()
+
+## A staged open's controls are still to be made (see _ready).
+var _controls_due := false
+
+## Makes a staged open's controls and loading card now, if still due.
+func _finish_ready_due() -> void:
+	if not _controls_due or not is_inside_tree(): return
+	_controls_due = false
+	_finish_ready()
+
+## The rest of _ready: the controls, then the first view or the loading card.
+func _finish_ready() -> void:
 	_build_ui()
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	world.camera_exploration.frame_applied.connect(_position_replay_photos)
@@ -350,6 +374,7 @@ func _build_world_staged() -> void:
 	world.visible = false
 	while _journal_loader != null and not _leaving:
 		await get_tree().process_frame
+		_finish_ready_due()
 		# Joined here as soon as it ends, not a frame later from _process.
 		if mode == "loading": _poll_journal_load()
 	if not _leaving and not _leave_after_build:
@@ -3047,6 +3072,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	_finish_ready_due()
 	_service_world_cover()
 	_poll_prefetch()
 	_poll_turn_check()
@@ -3146,6 +3172,7 @@ func _notification(what: int) -> void:
 		if what == NOTIFICATION_WM_GO_BACK_REQUEST and mode == "room_details":
 			_show_ready()
 			return
+		_finish_ready_due()
 		if is_instance_valid(stick):
 			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
