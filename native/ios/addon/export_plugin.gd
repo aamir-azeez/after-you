@@ -28,7 +28,10 @@ class AfterYouIOSExport extends EditorExportPlugin:
 
 	func _export_begin(_features: PackedStringArray, _is_debug: bool, _path: String, _flags: int) -> void:
 		# Keychain, notification center and the local notification ledger.
-		add_apple_embedded_platform_linker_flags("-framework Security -framework UserNotifications -lsqlite3")
+		add_apple_embedded_platform_linker_flags("-framework Security -framework UserNotifications -lsqlite3 -framework GameKit")
+		# Game Center stays off (no sign-in UI) until the build declares the capability.
+		if game_center_configured():
+			add_apple_embedded_platform_plist_content("<key>AYGameCenterEnabled</key>\n<true/>\n")
 		if store_configured() and DirAccess.dir_exists_absolute(ROOT + "sdk/RevenueCat.xcframework"):
 			add_apple_embedded_platform_embedded_framework(ROOT + "sdk/RevenueCat.xcframework")
 		if push_configured():
@@ -45,6 +48,11 @@ class AfterYouIOSExport extends EditorExportPlugin:
 		var config: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://app_config.json"))
 		if not config is Dictionary: return false
 		return str(config.get("purchase_mode", "")) in ["app_store", "test_store"] and not str(config.get("revenuecat_public_key", "")).is_empty()
+
+	## app_config.json "game_center_enabled": true, set only once the App ID has the Game Center capability.
+	static func game_center_configured() -> bool:
+		var config: Variant = JSON.parse_string(FileAccess.get_file_as_string("res://app_config.json"))
+		return config is Dictionary and config.get("game_center_enabled") == true
 
 	static func push_configured() -> bool:
 		if not FileAccess.file_exists(ROOT + "config/GoogleService-Info.plist"): return false

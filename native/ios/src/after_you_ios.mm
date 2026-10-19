@@ -5,6 +5,7 @@
 #import <UIKit/UIKit.h>
 
 #import "AYAppHooks.h"
+#import "AYGameCenter.h"
 #import "AYKeychainStore.h"
 #import "AYNotifications.h"
 #import "AYPolicy.h"
@@ -123,6 +124,26 @@ AfterYouIOS::AfterYouIOS() {
 				}
 			}];
 
+	AYGameCenter *games = [AYGameCenter shared];
+	games.presenter = ^UIViewController * {
+		return ay_top_controller();
+	};
+	[games attachResult:^(NSString *request_id, NSString *operation, NSString *payload) {
+		if (ay_instance) {
+			ay_instance->emit_signal("games_result", ay_gd(request_id), ay_gd(operation), ay_gd(payload));
+		}
+	}
+			error:^(NSString *request_id, NSString *operation, NSString *code) {
+				if (ay_instance) {
+					ay_instance->emit_signal("games_error", ay_gd(request_id), ay_gd(operation), ay_gd(code));
+				}
+			}
+			accountChanged:^(NSString *payload) {
+				if (ay_instance) {
+					ay_instance->emit_signal("games_account_changed", ay_gd(payload));
+				}
+			}];
+
 	NSNotificationCenter *center = [NSNotificationCenter defaultCenter];
 	ay_observers = [NSMutableArray array];
 	[ay_observers addObject:[center addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:[NSOperationQueue mainQueue] usingBlock:^(NSNotification *note) {
@@ -146,6 +167,8 @@ AfterYouIOS::~AfterYouIOS() {
 	[AYInviteLinkInbox shared].listener = nil;
 	[[AYPurchases shared] detach];
 	[[AYNotifications shared] detach];
+	[[AYGameCenter shared] detach];
+	[AYGameCenter shared].presenter = nil;
 	if (ay_instance == this) {
 		ay_instance = nullptr;
 	}
@@ -172,6 +195,14 @@ void AfterYouIOS::_bind_methods() {
 	ClassDB::bind_method(D_METHOD("notification_pending_route", "request_id"), &AfterYouIOS::notification_pending_route);
 	ClassDB::bind_method(D_METHOD("notification_ack_route", "event_id", "request_id"), &AfterYouIOS::notification_ack_route);
 	ClassDB::bind_method(D_METHOD("notification_disable", "request_id"), &AfterYouIOS::notification_disable);
+	ClassDB::bind_method(D_METHOD("games_available"), &AfterYouIOS::games_available);
+	ClassDB::bind_method(D_METHOD("games_status", "request_id"), &AfterYouIOS::games_status);
+	ClassDB::bind_method(D_METHOD("games_sign_in", "request_id"), &AfterYouIOS::games_sign_in);
+	ClassDB::bind_method(D_METHOD("games_credential", "web_client_id", "request_id"), &AfterYouIOS::games_credential);
+	ClassDB::bind_method(D_METHOD("games_snapshot_open", "name", "request_id"), &AfterYouIOS::games_snapshot_open);
+	ClassDB::bind_method(D_METHOD("games_snapshot_commit", "handle", "data", "description", "request_id"), &AfterYouIOS::games_snapshot_commit);
+	ClassDB::bind_method(D_METHOD("games_snapshot_resolve", "handle", "data", "request_id"), &AfterYouIOS::games_snapshot_resolve);
+	ClassDB::bind_method(D_METHOD("games_snapshot_discard", "handle", "request_id"), &AfterYouIOS::games_snapshot_discard);
 
 	PropertyInfo id_info(Variant::STRING, "request_id");
 	PropertyInfo operation_info(Variant::STRING, "operation");
@@ -187,6 +218,9 @@ void AfterYouIOS::_bind_methods() {
 	ADD_SIGNAL(MethodInfo("notification_received", payload_info));
 	ADD_SIGNAL(MethodInfo("notification_token_changed", payload_info));
 	ADD_SIGNAL(MethodInfo("invite_link_available"));
+	ADD_SIGNAL(MethodInfo("games_result", id_info, operation_info, payload_info));
+	ADD_SIGNAL(MethodInfo("games_error", id_info, operation_info, code_info));
+	ADD_SIGNAL(MethodInfo("games_account_changed", payload_info));
 }
 
 // MARK: Secure storage
@@ -369,4 +403,39 @@ void AfterYouIOS::notification_ack_route(const String &p_event_id, const String 
 
 void AfterYouIOS::notification_disable(const String &p_request_id) {
 	[[AYNotifications shared] disable:ay_ns(p_request_id)];
+}
+
+// MARK: Game Center (same games_* contract as Android's Play Games)
+
+bool AfterYouIOS::games_available() {
+	return [[AYGameCenter shared] available];
+}
+
+void AfterYouIOS::games_status(const String &p_request_id) {
+	[[AYGameCenter shared] status:ay_ns(p_request_id)];
+}
+
+void AfterYouIOS::games_sign_in(const String &p_request_id) {
+	[[AYGameCenter shared] signIn:ay_ns(p_request_id)];
+}
+
+void AfterYouIOS::games_credential(const String &p_web_client_id, const String &p_request_id) {
+	// Game Center needs no web client id; the argument keeps the method shared with Android.
+	[[AYGameCenter shared] credential:ay_ns(p_request_id)];
+}
+
+void AfterYouIOS::games_snapshot_open(const String &p_name, const String &p_request_id) {
+	[[AYGameCenter shared] snapshotOpen:ay_ns(p_name) requestId:ay_ns(p_request_id)];
+}
+
+void AfterYouIOS::games_snapshot_commit(const String &p_handle, const String &p_data, const String &p_description, const String &p_request_id) {
+	[[AYGameCenter shared] snapshotCommit:ay_ns(p_handle) data:ay_ns(p_data) description:ay_ns(p_description) requestId:ay_ns(p_request_id)];
+}
+
+void AfterYouIOS::games_snapshot_resolve(const String &p_handle, const String &p_data, const String &p_request_id) {
+	[[AYGameCenter shared] snapshotResolve:ay_ns(p_handle) data:ay_ns(p_data) requestId:ay_ns(p_request_id)];
+}
+
+void AfterYouIOS::games_snapshot_discard(const String &p_handle, const String &p_request_id) {
+	[[AYGameCenter shared] snapshotDiscard:ay_ns(p_handle) requestId:ay_ns(p_request_id)];
 }
