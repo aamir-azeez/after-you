@@ -20,6 +20,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 ## Every rules version this build can replay, for a server that allows at most
 ## 8 entries (every server before room level 2): 10 = the tide rules of
 ## turn-of-the-tide@2. Saved joins keep their exact body: each array ever sent
@@ -393,6 +394,8 @@ func load_capabilities() -> bool:
 		return false
 	capabilities = data.duplicate(true)
 	_supported_chapters.assign(checked.chapters)
+	var scope := nickname_scope()
+	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	return true
 
@@ -648,6 +651,7 @@ func _ordinary_coordinator() -> RefCounted:
 	var result := Coordinator.new(transport,_store.load_scope,_store.save_scope,_identity,Callable(),background_writer)
 	result.supported_simulation_versions = _simulation_versions()
 	result.accepted_pair_cache = accepted_pair_cache
+	result.partner_name_sink = _note_partner_name
 	result.restore_replay_transfer = restore_complete_replay
 	result.recover_replay_operation = recover_transferred_operation
 	return result
@@ -1185,6 +1189,15 @@ func safety_client() -> RefCounted:
 	_ready()
 	if _safety == null: _safety = Safety.new(_api, _identity, null, Callable(), auxiliary_context_factory())
 	return _safety
+
+## A room partner's display name from a room reply, kept for every screen.
+func _note_partner_name(partner: String, name: Variant) -> void:
+	var scope := nickname_scope()
+	if not scope.is_empty(): DisplayNames.shared().note_partner(str(scope.server), str(scope.owner), partner, name)
+
+## The server shows display names to this player (services/display_names.gd).
+func display_names_supported() -> bool:
+	return Typed.equal(capabilities.get("display_names_version"), 1.0)
 
 func nickname_scope() -> Dictionary:
 	## Server and owner that key this device's local friend nicknames.

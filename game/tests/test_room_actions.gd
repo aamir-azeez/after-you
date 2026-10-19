@@ -22,7 +22,7 @@ const GOLDEN := {
 		"primary": ["resume", "record"],
 		"turn": ["redo_answer"],
 		"pair": ["room_options"],
-		"options": ["share", "redo_answer", "redo", "replays", "photo", "about", "safety"],
+		"options": ["share", "redo_answer", "redo", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"ready_panel_invite": {
 		"header": ["refresh"],
@@ -37,7 +37,7 @@ const GOLDEN := {
 		"primary": ["notify"],
 		"turn": ["redo_answer"],
 		"pair": ["room_options", "your_rooms"],
-		"options": ["share", "notify", "redo_answer", "redo", "replays", "photo", "about", "safety"],
+		"options": ["share", "notify", "redo_answer", "redo", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"waiting_panel_invite": {
 		"header": ["refresh"],
@@ -52,19 +52,19 @@ const GOLDEN := {
 		"primary": ["check_saved"],
 		"turn": ["keep_held"],
 		"pair": ["room_options", "your_rooms"],
-		"options": ["copy_code", "share", "replays", "about", "safety"],
+		"options": ["copy_code", "share", "replays", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
-		"turn": ["resume", "record", "refresh", "local_replays", "restart", "redo_answer", "redo", "solo_redo", "safety", "photo", "back"],
+		"turn": ["resume", "record", "refresh", "local_replays", "restart", "redo_answer", "redo", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"waiting_card": {
 		"invite": ["copy_code"],
 		"turn": ["check_saved", "keep_held", "alerts", "notify", "redo_answer", "redo", "refresh", "share"],
-		"more": ["replays", "safety", "photo", "back"],
+		"more": ["replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"complete": {
-		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "redo_answer", "redo", "solo_redo", "safety", "photo", "back"],
+		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "redo_answer", "redo", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 }
 const PANEL_SLOTS := ["header", "status", "invite", "primary", "turn", "pair", "options"]
@@ -155,7 +155,8 @@ func _layout() -> void:
 				if slot == "header": _check(row.has("icon"), "A header action has an icon: " + id)
 		_check(panel == state.contains("_panel"), "Panel states are named as panels: " + state)
 	var sections: Array = RoomActions.SECTIONS.keys()
-	_check(sections == ["invite", "turns", "chapter", "safety"] and RoomActions.SECTIONS.values().all(func(section: Dictionary): return section.column in [0, 1] and not str(section.title).is_empty()), "Room options has its four sections, each in a column")
+	_check(sections == ["invite", "turns", "partner", "chapter", "safety"] and RoomActions.SECTIONS.values().all(func(section: Dictionary): return section.column in [0, 1] and not str(section.title).is_empty()), "Room options has its five sections, each in a column")
+	_check(RoomActions.SECTIONS.partner.title == "Room partner" and RoomActions.ACTIONS.add_friend.section == "partner" and RoomActions.ACTIONS.friend_requested.section == "partner", "Add friend and Request sent sit under Room partner")
 	_check([RoomActions.SECTIONS.invite.title, RoomActions.SECTIONS.turns.title, RoomActions.SECTIONS.chapter.title, RoomActions.SECTIONS.safety.title] == ["Invite", "Turns", "Chapter", "Safety"], "The owner's section headings")
 	_check(RoomActions.SECTIONS.safety.get("danger", false) and RoomActions.SECTIONS.values().filter(func(section: Dictionary): return section.get("danger", false)).size() == 1, "Only Safety is drawn in the warning colour")
 	_check(RoomActions.REDO_ACTIONS == ["redo_answer", "redo", "solo_redo"], "Pause and review cards add the three redo rows")
@@ -205,6 +206,16 @@ func _facts() -> void:
 	_check(columns == [[{"section": "invite", "ids": ["share"]}, {"section": "chapter", "ids": ["about"]}], [{"section": "turns", "ids": ["notify", "redo", "replays", "photo"]}, {"section": "safety", "ids": ["safety"]}]], "Room options puts Invite and Chapter on the left, Turns and Safety on the right: " + str(columns))
 	_check(RoomActions.shown("waiting_card", "turn", waiting) == ["notify", "redo", "refresh", "share"], "The narrow waiting card keeps redo and Refresh in its list")
 	_check(RoomActions.shown("waiting_card", "more", waiting) == ["replays", "safety", "photo", "back"], "The narrow waiting card ends with Replays, Report, Photo and Back")
+	# A partner who is not a friend: Add friend under Room partner, on the left;
+	# once sent, Request sent in its place. Never in solo play.
+	var addable := _facts_from({"online": true, "joined": true, "notifications": true, "share": true, "redo": true, "watchable": true, "photo": true, "about": true, "safety": true, "options": true, "partner_addable": true})
+	_check(RoomActions.shown("waiting_panel", "options", addable) == ["share", "notify", "redo", "replays", "photo", "add_friend", "about", "safety"], "A partner who is not a friend: Room options offers Add friend")
+	_check(RoomActions.option_columns("waiting_panel", addable)[0] == [{"section": "invite", "ids": ["share"]}, {"section": "partner", "ids": ["add_friend"]}, {"section": "chapter", "ids": ["about"]}], "Add friend sits under Room partner in the left column")
+	var requested := _facts_from({"online": true, "joined": true, "my_turn": true, "about": true, "safety": true, "options": true, "partner_requested": true})
+	_check(RoomActions.shown("ready_panel", "options", requested) == ["friend_requested", "about", "safety"], "Once sent, Request sent takes its place")
+	_check(RoomActions.shown("waiting_card", "more", addable) == ["replays", "add_friend", "safety", "photo", "back"], "The narrow waiting card offers it too")
+	_check(RoomActions.shown("complete", "turn", _facts_from({"online": true, "partner_addable": true})) == ["new_room", "add_friend", "back"], "and the finished chapter's card")
+	_check(not RoomActions.shown("complete", "turn", _facts_from({"solo": true, "partner_addable": true})).has("add_friend"), "Solo play never offers it")
 	var before_join := _facts_from({"online": true, "invited": true, "notifications": true, "share": true, "photo": true, "about": true, "options": true})
 	_check(RoomActions.panel_state("waiting", before_join) == "waiting_panel_invite", "A host waiting before the friend joins is the waiting invite column")
 	_check(RoomActions.shown("waiting_panel_invite", "invite", before_join) == ["copy_code"] and RoomActions.shown("waiting_panel_invite", "primary", before_join) == ["share"], "Before the friend joins, the code and a cream Share")

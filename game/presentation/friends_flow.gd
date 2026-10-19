@@ -64,6 +64,8 @@ func open(from_home: bool) -> void:
 	screen.client = client
 	screen.event_client = events
 	screen.nickname_store = host.friend_nicknames
+	screen.name_chip = host.display_name_flow.chip
+	if not client.page_read.is_connected(_page_read): client.page_read.connect(_page_read)
 	screen.notification_transport = host.turn_notifications
 	screen.live = host.live_connection
 	screen.hosting_view_ready.connect(hosting_view_ready.emit)
@@ -81,6 +83,15 @@ func open(from_home: bool) -> void:
 	screen.open_requested.connect(_return_to_room)
 	screen.join_requested.connect(_join)
 	host.add_child(screen)
+
+## A friends list read while Friends is up: display names may have just come
+## on (the chip appears and the first-run prompt opens once), and a name
+## waiting to be sent goes.
+func _page_read() -> void:
+	host.display_name_flow.flush()
+	if not is_open(): return
+	screen.show_name_chip()
+	host.display_name_flow.maybe_ask(screen.page_root())
 
 ## Whether Friends is up.
 func is_open() -> bool:

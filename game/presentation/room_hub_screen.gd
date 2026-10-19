@@ -15,6 +15,8 @@ const REMOVE_ICON = preload("res://assets/ui/social/trash.svg")
 const MENU_ICON = preload("res://assets/ui/room/dots.svg")
 const HIDE_ICON = preload("res://assets/ui/room/eye-off.svg")
 const LEAVE_ICON = preload("res://assets/ui/room/door-exit.svg")
+const ADD_FRIEND_ICON = preload("res://assets/ui/social/plus.svg")
+const REQUESTED_ICON = preload("res://assets/ui/check.svg")
 const PHONE_ICON = preload("res://assets/ui/room/phone.svg")
 const FOLD_CLOSED_ICON = preload("res://assets/ui/social/chevron-right.svg")
 const FOLD_OPEN_ICON = preload("res://assets/ui/social/chevron-down.svg")
@@ -51,6 +53,8 @@ signal retry_requested(kind: String)
 signal room_remove_requested(room: Dictionary, action: String)
 ## Show again on a room in the Hidden rooms section.
 signal room_show_requested(room: Dictionary)
+## "Add friend" picked on a finished room's menu: the room and its partner's id.
+signal add_friend_requested(room: Dictionary, partner: String)
 ## The room cards were rebuilt (a refresh landed); a tap still waiting moves its
 ## label onto the new copy of its control (room_action).
 signal cards_redrawn
@@ -58,6 +62,9 @@ signal cards_redrawn
 var client: RefCounted
 var chapters: Array[Dictionary] = []
 var display_name: Callable
+## (room: Dictionary) -> {"state": PartnerFriends state, "partner": id}: whether
+## a finished room's menu offers to add its partner as a friend.
+var partner_friend: Callable
 var thumbnail_for: Callable
 ## ChapterCompletion.chapters() for the friend marks on the chapter picker.
 var completion_marks: Dictionary = {}
@@ -864,6 +871,10 @@ func _menu_rows(room: Dictionary) -> Array[Dictionary]:
 	var rows: Array[Dictionary] = [{"id": "hide", "title": PlayerCopy.ROOM_HIDE, "detail": PlayerCopy.ROOM_HIDE_DETAIL, "icon": HIDE_ICON}]
 	if _leave_finished and int(room.get("api_version",0)) in [1,2] and client != null and client.has_method("confirmed") and client.confirmed(room):
 		rows.append({"id": "leave_finished", "title": PlayerCopy.ROOM_LEAVE, "detail": PlayerCopy.ROOM_LEAVE_DETAIL, "icon": LEAVE_ICON, "tone": "danger"})
+	var partner: Dictionary = partner_friend.call(room) if partner_friend.is_valid() else {}
+	match str(partner.get("state", "")):
+		"addable": rows.insert(0, {"id": "add_friend", "title": PlayerCopy.ROOM_ADD_FRIEND, "detail": PlayerCopy.ROOM_ADD_FRIEND_DETAIL, "icon": ADD_FRIEND_ICON})
+		"requested": rows.insert(0, {"id": "friend_requested", "title": PlayerCopy.ROOM_FRIEND_REQUESTED, "detail": "", "icon": REQUESTED_ICON})
 	return rows
 
 func _menu_ids(room: Dictionary) -> Array:
@@ -904,7 +915,12 @@ func open_room_menu(room: Dictionary, button: Control, keyboard: bool = false) -
 	_menu.closed.connect(_render,CONNECT_DEFERRED)
 	_menu.chosen.connect(func(id: String):
 		if id == "hide": room_remove_requested.emit(room,"hide")
-		elif id == "leave_finished": _ask_leave(room,button))
+		elif id == "leave_finished": _ask_leave(room,button)
+		elif id == "add_friend": add_friend_requested.emit(room, str((partner_friend.call(room) if partner_friend.is_valid() else {}).get("partner", ""))))
+
+## The screen's root control, which in-game pop-ups cover.
+func page_root() -> Control:
+	return _root
 
 ## The open menu, for tests and captures; null when none is open.
 func room_menu() -> CanvasLayer:

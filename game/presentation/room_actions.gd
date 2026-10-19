@@ -65,6 +65,10 @@ const ACTIONS := {
 	"hard_again": {"text": PlayerCopy.HARD_AGAIN, "primary": true, "run": "_hard_again", "when": ["hard", "solo"]},
 	"new_room": {"text": "New room", "primary": true, "run": "_create_another_room", "when": ["online"]},
 	"restart": {"text": "Restart chapter", "primary": true, "run": "_confirm_restart_chapter", "when": ["!hard", "restart"]},
+	# A room partner who is not a friend yet: the ordinary friend request
+	# (services/partner_friends.gd), then "Request sent" until they answer.
+	"add_friend": {"text": PlayerCopy.ROOM_ADD_FRIEND, "icon": preload("res://assets/ui/social/plus.svg"), "section": "partner", "run": "_add_partner_friend", "when": ["online", "partner_addable"]},
+	"friend_requested": {"text": PlayerCopy.ROOM_FRIEND_REQUESTED, "icon": preload("res://assets/ui/check.svg"), "section": "partner", "run": "_partner_friend_requested", "when": ["online", "partner_requested"]},
 	"about": {"text": "About this chapter", "icon": preload("res://assets/ui/social/info.svg"), "section": "chapter", "run": "_show_waiting_details", "when": ["about"]},
 	"safety": {"text": "Report or block player", "icon": preload("res://assets/ui/room/flag.svg"), "section": "safety", "run": "_open_safety", "when": ["safety"]},
 	"room_options": {"text": "Room options", "icon": preload("res://assets/ui/room/dots.svg"), "widget": "_add_room_options_button", "when": ["options"]},
@@ -77,6 +81,7 @@ const ACTIONS := {
 const SECTIONS := {
 	"invite": {"title": PlayerCopy.ROOM_OPTIONS_INVITE, "column": 0},
 	"turns": {"title": PlayerCopy.ROOM_OPTIONS_TURNS, "column": 1},
+	"partner": {"title": PlayerCopy.ROOM_OPTIONS_PARTNER, "column": 0},
 	"chapter": {"title": PlayerCopy.ROOM_OPTIONS_CHAPTER, "column": 0},
 	"safety": {"title": PlayerCopy.ROOM_OPTIONS_SAFETY, "column": 1, "danger": true},
 }
@@ -115,7 +120,7 @@ const LAYOUT := {
 		"primary": ["resume", "record"],
 		"turn": ["redo_answer"],
 		"pair": ["room_options"],
-		"options": ["share", "redo_answer", "redo", "replays", "photo", "about", "safety"],
+		"options": ["share", "redo_answer", "redo", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"ready_panel_invite": {
 		"header": ["refresh"],
@@ -130,7 +135,7 @@ const LAYOUT := {
 		"primary": ["notify"],
 		"turn": ["redo_answer"],
 		"pair": ["room_options", "your_rooms"],
-		"options": ["share", "notify", "redo_answer", "redo", "replays", "photo", "about", "safety"],
+		"options": ["share", "notify", "redo_answer", "redo", "replays", "photo", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"waiting_panel_invite": {
 		"header": ["refresh"],
@@ -145,19 +150,19 @@ const LAYOUT := {
 		"primary": ["check_saved"],
 		"turn": ["keep_held"],
 		"pair": ["room_options", "your_rooms"],
-		"options": ["copy_code", "share", "replays", "about", "safety"],
+		"options": ["copy_code", "share", "replays", "add_friend", "friend_requested", "about", "safety"],
 	},
 	"ready_card": {
 		"invite": ["copy_code_button", "share"],
-		"turn": ["resume", "record", "refresh", "local_replays", "restart", "redo_answer", "redo", "solo_redo", "safety", "photo", "back"],
+		"turn": ["resume", "record", "refresh", "local_replays", "restart", "redo_answer", "redo", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"waiting_card": {
 		"invite": ["copy_code"],
 		"turn": ["check_saved", "keep_held", "alerts", "notify", "redo_answer", "redo", "refresh", "share"],
-		"more": ["replays", "safety", "photo", "back"],
+		"more": ["replays", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 	"complete": {
-		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "redo_answer", "redo", "solo_redo", "safety", "photo", "back"],
+		"turn": ["hard_again", "replays", "local_replays", "checkpoints", "new_room", "redo_answer", "redo", "solo_redo", "add_friend", "friend_requested", "safety", "photo", "back"],
 	},
 }
 

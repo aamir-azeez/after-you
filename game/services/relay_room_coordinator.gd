@@ -47,6 +47,9 @@ var last_code := ""
 var read_only := false
 var supported_simulation_versions: Dictionary = {}
 var accepted_pair_cache: Callable
+## (partner_id: String, name: Variant) -> void: the room partner's display name
+## that came beside an accepted read or turn reply (null when they have none).
+var partner_name_sink: Callable
 var restore_replay_transfer: Callable
 var recover_replay_operation: Callable
 var _replay_recovering := false
@@ -428,7 +431,9 @@ func refresh() -> bool:
 			if _ordinary_room_gone(status, str(response.get("code", ""))) and _state.draft.is_empty() and _state.pending.is_empty() and str(_state.snapshot.get("active_role", "")) != "complete": _gone = true
 		return _network_error(response)
 	var accepted := _accept_snapshot(response.get("data"))
-	if accepted: _note_end_reactions(response)
+	if accepted:
+		_note_end_reactions(response)
+		_note_partner_name(response)
 	return accepted
 
 
@@ -436,6 +441,15 @@ func refresh() -> bool:
 ## (rooms_api.gd takes them out of the room), kept on this phone.
 func _note_end_reactions(response: Dictionary) -> void:
 	if response.get("end_reactions") is Dictionary: EndReactionStore.new().note_room(_room, response.end_reactions)
+
+
+## The room partner's display name that came beside an accepted reply
+## (rooms_api.gd takes it out of the room), for the names this phone keeps.
+func _note_partner_name(response: Dictionary) -> void:
+	if not response.has("partner_name") or not partner_name_sink.is_valid() or _state.is_empty(): return
+	var snapshot: Dictionary = _state.snapshot
+	var partner: Variant = snapshot.get("guest_id") if snapshot.get("host_id") == _owner else snapshot.get("host_id")
+	if partner is String and not partner.is_empty(): partner_name_sink.call(partner, response.partner_name)
 
 
 ## The face the turn waiting to send carries, or "". A screen shows it fixed:
@@ -668,6 +682,7 @@ func _accept_sent(response: Dictionary) -> bool:
 	if accepted:
 		if not face.is_empty(): EndReactionStore.new().keep(recording_hash, face)
 		_note_end_reactions(response)
+		_note_partner_name(response)
 	return accepted
 
 func _recover_transferred_pending() -> Dictionary:

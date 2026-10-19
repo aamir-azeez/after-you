@@ -2,6 +2,7 @@ extends RefCounted
 ## Device-local friend labels. Entries are separated by the API server and identity owner.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 const MAX_LENGTH := 32
 const FILE_PATH := "user://friend_nicknames.json"
 const VERSION := 1
@@ -23,10 +24,14 @@ func nickname(server: String, owner: String, friend: String) -> String:
 const FALLBACK := "a friend"
 
 ## The single friend-label resolver. Returns this device's nickname when set,
-## otherwise the supplied fallback, otherwise "a friend". Reuse this everywhere
-## a friend is named so hub, room, Friends and replay screens stay consistent.
+## otherwise the name the player chose for themselves (or their anonymous name
+## while the server shows names; services/display_names.gd), otherwise the
+## supplied fallback, otherwise "a friend". Reuse this everywhere a friend or
+## room partner is named so hub, room, Friends and replay screens stay consistent.
 func display_name(server: String, owner: String, friend: String, fallback: String = "") -> String:
 	var name := nickname(server, owner, friend)
+	if not name.is_empty(): return name
+	name = DisplayNames.shared().shown(server, owner, friend)
 	if not name.is_empty(): return name
 	return fallback if not fallback.is_empty() else FALLBACK
 

@@ -26,10 +26,10 @@ static func title(run: Dictionary) -> String:
 ## slipped on stage 1." A friend's own slip names them once.
 static func caption(run: Dictionary) -> String:
 	var parts: Array[String] = []
-	var friend := str(run.get("friend", ""))
+	var friend := HardModeView.friend_of(run)
 	var by_friend: bool = run.kind == HardMode.FAILED and str(run.get("by", "")) == "friend"
 	if run.mode == HardMode.SOLO: parts.append(PlayerCopy.HARD_RUN_SOLO)
-	elif not by_friend: parts.append(PlayerCopy.HARD_RUN_TOGETHER % (friend if not friend.is_empty() else PlayerCopy.HARD_FRIEND_FALLBACK))
+	elif not by_friend: parts.append(PlayerCopy.HARD_RUN_TOGETHER % friend)
 	var when := WhenLabel.text(int(run.at))
 	if not when.is_empty(): parts.append(when)
 	if run.kind == HardMode.FAILED: parts.append(HardModeView.failure_line(run))

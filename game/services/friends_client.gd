@@ -5,12 +5,17 @@ const Api = preload("res://services/rooms_api.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Typed = preload("res://services/typed_values.gd")
+const DisplayNames = preload("res://services/display_names.gd")
+const FriendRoster = preload("res://services/friend_roster.gd")
 const REFRESH_MS := 60000
 const MIN_REFRESH_MS := 30000
 const JOIN_COOLDOWN_MS := 3000
 ## A live hint's early read comes no sooner than this after the last read; the
 ## server grants the same early read when it sends the hint.
 const LIVE_FLOOR_MS := 3000
+## A list read succeeded and its page is kept (display names and the roster
+## have taken it in).
+signal page_read
 var busy := false
 var last_error := ""
 ## The server's error code for the last failed request, e.g. "room_not_found".
@@ -124,7 +129,17 @@ func refresh(manual: bool = false) -> bool:
 	if _hinted_mid_read:
 		_hinted_mid_read = false
 		_next_refresh = mini(_next_refresh, _last_read_at + LIVE_FLOOR_MS)
+	_take_page()
+	page_read.emit()
 	return true
+
+## Hands the kept page to the stores that outlive this client: the names
+## friends chose and who is already a friend (for rooms and the room list).
+func _take_page() -> void:
+	var server := str(_binding.get("base_url",""))
+	var owner := str(_binding.get("player_id",""))
+	DisplayNames.shared().take_friends_page(server,owner,_page)
+	FriendRoster.shared().take_page(server,owner,_page)
 
 ## The short news line between two list pages: a new friend request, a room a
 ## friend made available, or both; "" when nothing new. Friends and the live
@@ -229,6 +244,8 @@ func _mutation(method: int, path: String, body: Dictionary) -> bool:
 			if index >= 0: _page.friends[index] = row
 			elif _page.friends.size() < 20: _page.friends.append(row)
 			else: _page = {}
+		if path == "/v1/friends/request": FriendRoster.shared().note_request(str(_binding.get("base_url","")),str(_binding.get("player_id","")),str(data.player_id))
+	if not _page.is_empty(): FriendRoster.shared().take_page(str(_binding.get("base_url","")),str(_binding.get("player_id","")),_page)
 	return true
 
 func _bind() -> bool:
@@ -265,6 +282,10 @@ func _request(method: int, path: String, body: Dictionary = {}) -> Dictionary:
 		last_error = "Friend unavailable" if code in ["friend_unavailable","friend_not_found","player_blocked"] else "Room unavailable" if code in ["friend_room_unavailable","friend_not_joinable","room_full"] else "Friends unavailable"
 	return response
 
+## A display name as the wire carries it: null or a short string.
+static func _name_shape(value: Variant) -> bool:
+	return value == null or (value is String and value.length() <= 64)
+
 static func _row(value: Dictionary) -> bool:
 	return Presence.valid_id(value.get("player_id")) and Presence.valid_id(value.get("request_id"))
 
@@ -280,15 +301,20 @@ static func same_room(left: Variant, right: Variant) -> bool:
 	return _room(left) and _room(right) and left.api_version == right.api_version and left.room_id == right.room_id
 
 static func valid_page(value: Variant, owner: String) -> bool:
-	# friend_alias is the only optional key: the player's short name, sent when the request asks for it.
+	# Optional keys, each only when the request asks for it: friend_alias (the
+	# player's short name) and display_name (the player's own chosen name, and
+	# each friend's on their row; services/display_names.gd). A name is only
+	# checked for shape here: one that breaks the name rules is ignored later,
+	# never a reason to refuse the page.
 	if value is Dictionary and value.has("friend_alias") and not ShareCodes.is_alias(value.friend_alias): return false
-	if not value is Dictionary or value.size() != (6 if value.has("friend_alias") else 5) or not value.has("shared_room") or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("friend_code"), owner) or not value.get("friends") is Array or value.friends.size() > 20: return false
+	if value is Dictionary and value.has("display_name") and not _name_shape(value.display_name): return false
+	if not value is Dictionary or value.size() != 5 + int(value.has("friend_alias")) + int(value.has("display_name")) or not value.has("shared_room") or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("friend_code"), owner) or not value.get("friends") is Array or value.friends.size() > 20: return false
 	var refresh: Variant = value.get("refresh_after_seconds")
 	if not (refresh is int or refresh is float) or not is_finite(refresh) or refresh < 30 or refresh > 3600 or refresh != floor(refresh): return false
 	if value.get("shared_room") != null and not _room(value.shared_room): return false
 	var peers := {}
 	for row: Variant in value.friends:
-		if not row is Dictionary or row.size() != 6 or not _row(row) or row.player_id == owner or peers.has(row.player_id) or row.get("status") not in ["incoming","outgoing","accepted"] or not row.get("online") is bool or not row.get("join_available") is bool: return false
+		if not row is Dictionary or row.size() != 6 + int(row.has("display_name")) or (row.has("display_name") and not _name_shape(row.display_name)) or not _row(row) or row.player_id == owner or peers.has(row.player_id) or row.get("status") not in ["incoming","outgoing","accepted"] or not row.get("online") is bool or not row.get("join_available") is bool: return false
 		var ttl: Variant = row.get("expires_after_seconds")
 		if not (ttl is int or ttl is float) or not is_finite(ttl) or ttl < 0 or ttl > 90 or ttl != floor(ttl): return false
 		if row.online != (ttl > 0) or ((row.online or row.join_available) and row.status != "accepted"): return false

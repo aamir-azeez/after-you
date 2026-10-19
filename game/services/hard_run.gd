@@ -128,12 +128,12 @@ func client() -> RefCounted:
 ## draft dropped. `partner` is the friend's name now. False when the reset
 ## could not be kept: nothing else changed, so the turn's open count still
 ## makes its next start a slip, and Start again queues it again (requeue).
-func fail_together(reason: String, slip: Dictionary, partner: String) -> bool:
+func fail_together(reason: String, slip: Dictionary, partner: String, partner_id: String = "") -> bool:
 	var current := room()
 	if current.is_empty(): return false
 	var prior: Variant = current.get("recording_a")
 	var kept: Dictionary = {} if slip.is_empty() else {"recording": slip.duplicate(true), "checkpoint": Typed.as_dict(current.get("checkpoint")), "prior": prior.duplicate(true) if prior is Dictionary and str(current.get("active_role")) == "b" else {}}
-	last_run = HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, reason, "you", int(current.get("stage_index", 0)), str(current.get("active_role", "a")), [], kept, partner, str(current.get("room_id", "")))
+	last_run = HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, reason, "you", int(current.get("stage_index", 0)), str(current.get("active_role", "a")), [], kept, partner, str(current.get("room_id", "")), partner_id)
 	HardMode.keep_run(last_run)
 	_owed = {"reason": reason, "slip": slip.duplicate(true)}
 	return requeue()
@@ -183,16 +183,16 @@ func send_reset(tries: RefCounted, again: bool = true) -> Dictionary:
 	return answer
 
 ## The friend's slip this phone has not shown a card for, as a run for the
-## card ({} when none). `partner` is the friend's name now. This phone's own
-## slips are counted as shown.
-func friend_slip(partner: String) -> Dictionary:
+## card ({} when none). `partner` is the friend's name now and `partner_id`
+## their player id. This phone's own slips are counted as shown.
+func friend_slip(partner: String, partner_id: String = "") -> Dictionary:
 	var hard: Variant = hard_view()
 	var room_client := client()
 	if not hard is Dictionary or not hard.get("last") is Dictionary or room_client == null or int(hard.failures) <= room_client.shown(): return {}
 	if Typed.equal(hard.last.by, _me(room())):
 		room_client.mark_shown(int(hard.failures))
 		return {}
-	return {"reason": str(hard.last.reason), "stage_index": int(hard.last.stage_index), "role": str(hard.last.role), "by": "friend", "friend": partner, "pairs": [], "slip": {}, "number": int(hard.failures)}
+	return {"reason": str(hard.last.reason), "stage_index": int(hard.last.stage_index), "role": str(hard.last.role), "by": "friend", "friend": partner, "pairs": [], "slip": {}, "number": int(hard.failures)}.merged({"friend_id": partner_id} if HardMode._player_id(partner_id) else {})
 
 ## The friend's slip card was shown.
 func mark_shown(number: int) -> void:
@@ -202,7 +202,7 @@ func mark_shown(number: int) -> void:
 ## Reads the room's slips this phone has not seen and keeps the friend's as
 ## runs here. One request, only after a new slip, and none again on this
 ## screen once a read failed. The kept runs (newest last); [] when none.
-func take_in_failures(partner: String) -> Array:
+func take_in_failures(partner: String, partner_id: String = "") -> Array:
 	var current := room()
 	var room_client := client()
 	if read_failed or room_client == null or not current.get("hard") is Dictionary or int(current.hard.failures) <= room_client.seen(): return []
@@ -216,7 +216,7 @@ func take_in_failures(partner: String) -> Array:
 		if Typed.equal(item.by, me): continue
 		var slip: Variant = item.get("slip")
 		var shown: Dictionary = {} if not slip is Dictionary else {"recording": slip.recording, "checkpoint": slip.checkpoint, "prior": slip.prior if slip.get("prior") is Dictionary else {}}
-		var record := HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, str(item.reason), "friend", int(item.stage_index), str(item.role), [], shown, partner, str(current.get("room_id", "")))
+		var record := HardMode.run_record(key(), HardMode.TOGETHER, HardMode.FAILED, str(item.reason), "friend", int(item.stage_index), str(item.role), [], shown, partner, str(current.get("room_id", "")), partner_id)
 		record.at = int(Time.get_unix_time_from_datetime_string(str(item.at)))
 		HardMode.keep_run(record)
 		record.number = int(item.number)

@@ -3,6 +3,58 @@ extends RefCounted
 ## Never replace strings inside canonical catalogs or recording/checkpoint data.
 const PlatformSupport = preload("res://services/platform_support.gd")
 
+# The player characters' name in running text, lowercase. Every line that
+# names them is built from these two, so a rename is one edit here.
+const CREATURE := "pip"
+const CREATURES := "pips"
+
+# Display names (services/display_names.gd, presentation/display_name_prompt.gd).
+const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
+const DISPLAY_NAME_ASK_NOTE := "Your friends and room partners see it on your rooms and replays."
+## The prompt's title when it is opened from Friends to change the name.
+const DISPLAY_NAME_EDIT_TITLE := "Your name"
+const DISPLAY_NAME_FIELD := "Name"
+const DISPLAY_NAME_COUNTER := "%d / %d"
+const DISPLAY_NAME_ANONYMOUS := "Keep me anonymous"
+## %s is the anonymous name, such as "Kite 41".
+const DISPLAY_NAME_ANONYMOUS_NOTE := "Others see you as %s."
+const DISPLAY_NAME_PLAY_GAMES := "Use my Play Games name"
+const DISPLAY_NAME_GAME_CENTER := "Use my Game Center name"
+## Under the platform choice before it is picked: the name is read only then.
+const DISPLAY_NAME_PLATFORM_NOTE := "Copied once when you pick it."
+const DISPLAY_NAME_PLATFORM_READING := "Getting your name…"
+const DISPLAY_NAME_PLATFORM_FAILED := "That name didn't come through. Type one instead."
+const DISPLAY_NAME_NOT_NOW := "Not now"
+const DISPLAY_NAME_SAVE := "Save"
+const DISPLAY_NAME_SAVING := "Saving…"
+## The Friends header: the small label over the name, and its button.
+const DISPLAY_NAME_SECTION := "Your name"
+const DISPLAY_NAME_CHANGE := "Change"
+const DISPLAY_NAME_CHANGE_FOR := "Change your name, now %s"
+## Under the name in the Friends header while it waits to be sent, or after the
+## server said no (the reason is said once, as a pop-up).
+const DISPLAY_NAME_PENDING := "Sends when you're online"
+const DISPLAY_NAME_NOT_SAVED := "Not saved. Tap Change."
+## Why a name can't be used: the phone's own checks, then the server's codes.
+const DISPLAY_NAME_ERRORS := {
+	"length": "Use 1 to 18 characters.",
+	"characters": "Use letters, numbers and spaces.",
+	"invalid_display_name": "Use letters, numbers and spaces.",
+	"display_name_refused": "That name isn't allowed. Try another.",
+	"display_name_limited": "You've changed your name a few times today. Try again tomorrow.",
+	"display_name_locked": "You can't set a name right now. You can still stay anonymous.",
+}
+## Under a friend's nickname on their Friends row: the name they chose.
+const DISPLAY_NAME_GOES_BY := "Goes by %s"
+
+# A room partner who is not a friend yet (presentation/room_actions.gd and the
+# finished room's menu on the room list).
+const ROOM_ADD_FRIEND := "Add friend"
+const ROOM_ADD_FRIEND_DETAIL := "Send a friend request"
+const ROOM_FRIEND_REQUESTED := "Request sent"
+const ROOM_ADD_FRIEND_SENT := "Friend request sent to %s."
+const ROOM_ADD_FRIEND_FAILED := "Couldn't send the request. Try again in a moment."
+
 const HOME_KEEPSAKES_LOAD_ERROR := "Your keepsakes may not have been loaded. The saved file is unchanged."
 const HOME_KEEPSAKES_RETRY := "Your progress is saved. Home keepsakes will be rechecked next time."
 const SHARED_REPLAY_DELETE_CONFIRM := "Delete this replay from Shared Replays on this phone? Your friend's copy will not be removed. Your room progress and saved photos will remain."
@@ -310,7 +362,7 @@ const PLATFORM_GAMES_UNLINK := "Unlink"
 const PLATFORM_GAMES_TRY_AGAIN := "Try again"
 # Optional turn photo card (the polaroid). The camera, the photo and sending it to the turn.
 const PHOTO_ASK_TITLE := "Add a photo to this turn?"
-const PHOTO_ASK_LINE := "Your friend sees it above your spirit when they watch the replay."
+const PHOTO_ASK_LINE := "Your friend sees it above your " + CREATURE + " when they watch the replay."
 const PHOTO_READY_TITLE := "That one is a keeper"
 const PHOTO_READY_LINE := "It goes with your turn when you send it."
 const PHOTO_RECOVERED_TITLE := "Your photo is still here"
@@ -318,7 +370,7 @@ const PHOTO_RECOVERED_LINE := "After You closed while the camera was open. Your 
 const PHOTO_MISSING_TITLE := "Your photo didn't come back"
 const PHOTO_MISSING_LINE := "After You closed while the camera was open. Your turn is saved. Want to take the photo again?"
 const PHOTO_SENT_TITLE := "Photo sent"
-const PHOTO_SENT_LINE := "Your friend sees it above your spirit when they watch the replay."
+const PHOTO_SENT_LINE := "Your friend sees it above your " + CREATURE + " when they watch the replay."
 const PHOTO_PENDING_TITLE := "Photo not confirmed yet"
 const PHOTO_PENDING_LINE := "Your turn is saved. Check whether the photo reached your friend."
 const PHOTO_SAVED_TITLE := "Your turn is saved"
@@ -360,6 +412,7 @@ const ROOM_OPTIONS_INVITE := "Invite"
 const ROOM_OPTIONS_TURNS := "Turns"
 const ROOM_OPTIONS_CHAPTER := "Chapter"
 const ROOM_OPTIONS_SAFETY := "Safety"
+const ROOM_OPTIONS_PARTNER := "Room partner"
 # Solo chapters: take back the last saved turn, one turn per tap.
 const SOLO_REDO_ACTION := "Redo my previous turn"
 const SOLO_REDO_FIRST_TURN_TITLE := "Record your path again?"
@@ -1321,9 +1374,9 @@ const CHAPTER_REGISTRY_6C521D717CA5 := "A way up, safely kept."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
 const CHAPTER_REGISTRY_94722E207A11 := "A little light, well stored."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
-const CHAPTER_REGISTRY_DA6530899780 := "The lift has a memory of the way up. Your spirits remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden."
+const CHAPTER_REGISTRY_DA6530899780 := "The lift has a memory of the way up. Your " + CREATURES + " remain in the same place.\n\nNext: switch roles, drop the seed down, then open the garden."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
-const CHAPTER_REGISTRY_2ED96CFB54FE := "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: exchange spirits and bring the light to the far island."
+const CHAPTER_REGISTRY_2ED96CFB54FE := "The relay will remember your seed and the first bridge will remain open. You may leave here and come back later.\n\nNext: swap " + CREATURES + " and bring the light to the far island."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)
 const CHAPTER_REGISTRY_6DF48F693FD6 := "The loft is open and the garden is growing. Your two saved stages can be played as a single memory."
 # Chapter selection, checkpoint and completion copy — Chapter description or verification message (descriptor)

@@ -40,6 +40,8 @@ const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const SettingsFlow = preload("res://presentation/settings_flow.gd")
 const PlatformGamesFlow = preload("res://presentation/platform_games_flow.gd")
+const DisplayNameFlow = preload("res://presentation/display_name_flow.gd")
+const PartnerFriends = preload("res://services/partner_friends.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -230,6 +232,10 @@ var relay_lobby_flow: RelayLobbyFlow = _host_relay_lobby_flow()
 var settings_flow: SettingsFlow = _host_settings_flow()
 ## Play Games / Game Center: Settings' row, the progress choice and Main's side of PlatformGames.
 var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
+## Display names: the first-run prompt, the prompt from Friends and the Friends header chip.
+var display_name_flow: DisplayNameFlow = _host_display_name_flow()
+## Adding a room partner as a friend (room options and the room list's menu).
+var partner_friends: RefCounted = PartnerFriends.new(_names_scope, _friends_client)
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -287,6 +293,8 @@ func _ready() -> void:
 	SoloReplayLaunch.discard()
 	saves.load_data()
 	saves.start_fresh_if_unreadable()
+	# Kept hard runs name their friend as this phone names them now.
+	HardModeView.friend_name = _friend_display_name
 	_decide_whats_new()
 	home_keepsakes.load_data()
 	home_keepsakes.activate()
@@ -1675,6 +1683,17 @@ func _host_platform_games_flow() -> PlatformGamesFlow:
 	return flow
 
 ## An internal child, like StoreFlow.
+func _host_display_name_flow() -> DisplayNameFlow:
+	var flow := DisplayNameFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	return flow
+
+## The server and player that key the names and friends this phone keeps, or {}.
+func _names_scope() -> Dictionary:
+	if api == null or not _relay_identity().ready: return {}
+	return {"server": str(api.base_url), "owner": str(api.player_id)}
+
+## An internal child, like StoreFlow.
 func _host_settings_flow() -> SettingsFlow:
 	var flow := SettingsFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
@@ -2003,6 +2022,7 @@ func _enter_online_relay() -> void:
 	relay_child.enable_turn_notifications = notification_flow.enable
 	relay_child.share_current_room = room_sharing.share
 	relay_child.room_share_state = room_sharing.view
+	relay_child.partner_friends = partner_friends
 	relay_child.closed.connect(_leave_online_relay)
 	add_child(relay_child)
 	_sync_presence()

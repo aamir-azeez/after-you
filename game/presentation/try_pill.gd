@@ -6,10 +6,11 @@ extends PanelContainer
 ## Presentation only; the counts come from services/turn_tries.gd.
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 const ICON := preload("res://assets/ui/retry.svg")
 const MUTED := Color("9dbeb4")
-## A long nickname is cut so one pill never runs past its row.
-const MAX_NAME := 18
+## A long name is cut so one pill never runs past its row.
+const MAX_NAME := DisplayNames.MAX_LENGTH
 
 var label: Label
 var _icon: TextureRect
@@ -57,5 +58,4 @@ func show_try(tries: int, text: String = "") -> void:
 ## A Replays pill for one turn: who played it and how many tries it took.
 func show_turn(who: String, tries: int) -> void:
 	visible = tries > 1
-	var shown := who if who.length() <= MAX_NAME else who.left(MAX_NAME - 1).strip_edges() + "…"
-	label.text = PlayerCopy.TRY_COUNT % [shown, tries]
+	label.text = PlayerCopy.TRY_COUNT % [DisplayNames.short(who, MAX_NAME), tries]

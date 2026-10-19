@@ -6,6 +6,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Typed = preload("res://services/typed_values.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const CACHE_PATH := "user://room-inbox-cache.cfg"
 const UNAVAILABLE_TITLE := "Unavailable room"
@@ -295,6 +296,7 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 	for key: String in ["host_id","guest_id"]:
 		var member: Variant = membership.get(key)
 		if member is String and not member.is_empty(): members.append(member)
+	_note_partner_name(value, membership)
 	var timestamp := 0
 	var activity: Variant = value.get("activity_at")
 	if activity is String and not activity.is_empty():
@@ -320,11 +322,19 @@ static func _partner_reaction(value: Dictionary) -> Dictionary:
 	if not EndReactionStore.is_face(face) or not value.get("membership") is Dictionary: return {}
 	return {"partner_reaction": {"face": face, "color": SpiritLook.SLOT_COLOR_NAMES["p1" if value.membership.get("you_are_host") == true else "p0"]}}
 
+## The room partner's display name an entry carries (to clients that send
+## X-AfterYou-Display-Names while the server shows names), kept for every screen.
+func _note_partner_name(value: Dictionary, membership: Dictionary) -> void:
+	if not value.has("partner_name") or _binding.is_empty(): return
+	var partner: Variant = membership.get("guest_id") if membership.get("you_are_host") == true else membership.get("host_id")
+	if partner is String and partner != _binding.player_id: DisplayNames.shared().note_partner(str(_binding.server), str(_binding.player_id), partner, value.partner_name)
+
 ## How many of the optional keys a room carries: partner_left (true only, to
-## clients that send X-AfterYou-Room-Leave) and partner_reaction (to clients
-## that send X-AfterYou-End-Reactions while the server shows them).
+## clients that send X-AfterYou-Room-Leave), partner_reaction (to clients that
+## send X-AfterYou-End-Reactions while the server shows them) and partner_name
+## (to clients that send X-AfterYou-Display-Names while the server shows them).
 static func _optional_keys(value: Dictionary) -> int:
-	return int(value.has("partner_left")) + int(value.has("partner_reaction"))
+	return int(value.has("partner_left")) + int(value.has("partner_reaction")) + int(value.has("partner_name"))
 
 static func room_key(api_version: int, room_id: String) -> String:
 	return str(api_version) + ":" + room_id
@@ -361,6 +371,8 @@ static func valid_server_room(value: Variant) -> bool:
 	# partner_left (true only) and partner_reaction (a short face id) are optional.
 	if not value is Dictionary or value.size() != 9 + _optional_keys(value) or not Typed.equal(value.get("partner_left",true), true): return false
 	if value.has("partner_reaction") and (not value.partner_reaction is String or value.partner_reaction.length() > 24): return false
+	# A name is only checked for shape; one that breaks the name rules is ignored later.
+	if value.has("partner_name") and value.partner_name != null and (not value.partner_name is String or value.partner_name.length() > 64): return false
 	if not value.get("room_id") is String or not Presence.valid_id(value.room_id): return false
 	if value.get("family") not in ["legacy","relay","story","unknown"]: return false
 	var version: Variant = value.get("api_version")

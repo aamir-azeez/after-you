@@ -3,6 +3,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ClientIdentity = preload("res://services/client_identity.gd")
 const RequestQueue = preload("res://services/request_queue.gd")
 const Typed = preload("res://services/typed_values.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 ## One bounded request at a time, in the order asked (services/request_queue.gd).
 ## Callers retain draft/idempotency state.
 const MAX_RESPONSE_BYTES := 4194304
@@ -108,6 +109,10 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	if payload.has("end_reactions"):
 		result["end_reactions"] = payload["end_reactions"]
 		payload.erase("end_reactions")
+	# So does the room partner's display name (services/display_names.gd).
+	if payload.has("partner_name"):
+		result["partner_name"] = payload["partner_name"]
+		payload.erase("partner_name")
 	return result
 
 ## One HTTP exchange: [result, status, headers, body] as HTTPRequest reports
@@ -157,6 +162,11 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	# the capability, a room's faces beside its reads and turn replies, and the
 	# friend's face in the room list. rooms_api takes the faces out of the reply.
 	if end_reaction_path(method, path): headers.append(END_REACTIONS_HEADER)
+	# This build shows display names (services/display_names.gd): the capability,
+	# a room partner's name beside the same room reads, turn replies and the room
+	# list, and friends' names on the friends list. The partner's name leaves the
+	# room reply here too.
+	if end_reaction_path(method, path) or (method == HTTPClient.METHOD_GET and path == "/v1/friends"): headers.append(DisplayNames.HEADER)
 	# This build plays hard rooms (services/hard_mode.gd): it may be told of them and join one.
 	if path in ["/v2/capabilities", "/v2/rooms/join"]: headers.append("X-AfterYou-Hard-Mode: 1")
 	# The inbox then reports a room another member closed as "closed".

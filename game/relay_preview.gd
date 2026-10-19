@@ -40,6 +40,7 @@ const FRAMING_EASE := 0.6
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const PartnerFriends = preload("res://services/partner_friends.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const WaitHints = preload("res://presentation/wait_hints.gd")
 const TurnEndings = preload("res://presentation/turn_endings.gd")
@@ -146,6 +147,9 @@ var enable_turn_notifications: Callable
 var share_current_room: Callable
 ## Main's view of this room's sharing: {"shared": bool, "busy": bool}.
 var room_share_state: Callable
+## services/partner_friends.gd: whether this room offers to add its partner as
+## a friend, and the request. Main sets it; without it nothing is offered.
+var partner_friends: RefCounted
 var _sharing_room := false
 var _room_ready_panel: Control
 ## Notes from outside the room (a friend's room is ready, a tapped notification
@@ -741,6 +745,8 @@ func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 		"photo": return not _recent_photo_receipt().is_empty()
 		"about": return not _waiting_details_stage().is_empty()
 		"safety": return _safety_available()
+		"partner_addable": return _partner_friend_state() == PartnerFriends.ADDABLE
+		"partner_requested": return _partner_friend_state() == PartnerFriends.REQUESTED
 		"options": return not RoomActions.shown(state, "options", _room_fact.bind(known)).is_empty()
 	push_error("Unknown room action fact: " + name)
 	return false
@@ -3232,6 +3238,24 @@ func _show_deferred_notes() -> void:
 ## The safety row on a card outside the room panel (pause).
 func _add_safety_action(card: VBoxContainer) -> void:
 	_add_room_action(card, "safety")
+
+## This room's partner as services/partner_friends.gd sees them: "" (nothing to
+## offer), ADDABLE or REQUESTED. Read from what this phone keeps, never the network.
+func _partner_friend_state() -> String:
+	if partner_friends == null or online_session == null: return PartnerFriends.HIDDEN
+	var room: Dictionary = journey.snapshot()
+	return partner_friends.state(_partner_id(room), "relay", str(room.get("room_id", "")))
+
+## Add friend: the ordinary friend request to this room's partner.
+func _add_partner_friend() -> void:
+	if _partner_friend_state() != PartnerFriends.ADDABLE: return
+	var partner := _partner_id(journey.snapshot())
+	var name := FriendNicknames.sentence_start(_waiting_partner_name(journey.snapshot()))
+	if await partner_friends.send(partner): notification_deferred(PlayerCopy.ROOM_ADD_FRIEND_SENT % name)
+	else: notification_deferred(PlayerCopy.ROOM_ADD_FRIEND_FAILED)
+
+func _partner_friend_requested() -> void:
+	notification_deferred(PlayerCopy.ROOM_FRIEND_REQUESTED)
 
 func _safety_available() -> bool:
 	return online_session != null and online_session.has_method("safety_context") and not online_session.safety_context().is_empty()

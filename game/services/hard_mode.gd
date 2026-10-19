@@ -232,11 +232,13 @@ static func clear_journal(journey: RefCounted) -> bool:
 ## A run as kept: {id, mode, kind, reason, by ("you", "friend" or "" when
 ## finished), friend (their name then), chapter_key, stage_index, role, at,
 ## room_id, pairs (the stages done before, solo), slip ({} or {recording,
-## checkpoint, prior})}.
-static func run_record(chapter_key: String, mode: String, kind: String, reason: String, by: String, stage_index: int, role: String, pairs: Array, slip: Dictionary, friend: String = "", room_id: String = "") -> Dictionary:
+## checkpoint, prior})}, and friend_id (their player id) when the room had a
+## friend, so screens name them as they are called now (hard_mode_view.gd).
+static func run_record(chapter_key: String, mode: String, kind: String, reason: String, by: String, stage_index: int, role: String, pairs: Array, slip: Dictionary, friend: String = "", room_id: String = "", friend_id: String = "") -> Dictionary:
 	var at := int(Time.get_unix_time_from_system())
 	var record := {"id": "", "mode": mode, "kind": kind, "reason": reason, "by": by, "friend": friend.left(64), "chapter_key": chapter_key,
 		"stage_index": stage_index, "role": role, "at": at, "room_id": room_id, "pairs": pairs.duplicate(true), "slip": slip.duplicate(true)}
+	if _player_id(friend_id): record.friend_id = friend_id
 	# A finished run is the same run whenever its card shows again; each
 	# failure is its own, even two in the same second.
 	var hashes: Array = []
@@ -419,7 +421,7 @@ static func _parse_runs(text: String, chapter_key: String) -> Variant:
 ## The shape every kept run has. Recordings and checkpoints are checked again
 ## by the chapter screen's own replay when one is watched.
 static func valid_run(run: Dictionary) -> bool:
-	if run.size() != 13 or not run.get("id") is String or run.id.is_empty() or run.id.length() > 64: return false
+	if run.size() != 13 + int(run.has("friend_id")) or (run.has("friend_id") and not _player_id(run.friend_id)) or not run.get("id") is String or run.id.is_empty() or run.id.length() > 64: return false
 	if run.get("mode") not in MODES or run.get("kind") not in [FAILED, COMPLETE] or not run.get("chapter_key") is String or run.chapter_key.is_empty(): return false
 	if run.kind == FAILED and (run.get("reason") not in REASONS or run.get("by") not in ["you", "friend"]): return false
 	if run.kind == COMPLETE and (not Typed.equal(run.get("reason"), "") or not Typed.equal(run.get("by"), "")): return false
@@ -430,6 +432,9 @@ static func valid_run(run: Dictionary) -> bool:
 		if not pair is Dictionary or pair.size() != 2 or not pair.get("a") is Dictionary or not pair.get("b") is Dictionary: return false
 	var slip: Dictionary = run.slip
 	return slip.is_empty() or (slip.size() == 3 and slip.get("recording") is Dictionary and not slip.recording.is_empty() and slip.get("checkpoint") is Dictionary and not slip.checkpoint.is_empty() and slip.get("prior") is Dictionary)
+
+static func _player_id(value: Variant) -> bool:
+	return value is String and value.length() == 22 and RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(value) != null
 
 static func _whole_numbers(run: Dictionary) -> Dictionary:
 	var copy := run.duplicate(true)

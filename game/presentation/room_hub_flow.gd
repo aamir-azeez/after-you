@@ -44,6 +44,7 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const SharedReplays = preload("res://services/shared_replay_collection.gd")
 const Purchases = preload("res://services/purchases.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const PartnerFriends = preload("res://services/partner_friends.gd")
 const Typed = preload("res://services/typed_values.gd")
 const CREAM := Color("eceddb")
 ## Main's mode while the hub (or its no-service card) is up.
@@ -148,6 +149,8 @@ func open_from_home(source: Control) -> void:
 		show_rooms,
 		func() -> bool: return host.mode == "home",
 		func() -> void: host._toast(PlayerCopy.ROOMS_API_DA75E6F7A674))
+	# The first time with names on, the name prompt opens over the room list.
+	if is_instance_valid(screen): host.display_name_flow.maybe_ask(screen.page_root())
 
 ## Builds the hub without the entry checks of show_rooms; every room flow
 ## returns here. A notice, such as why a room could not be opened, shows above
@@ -168,6 +171,8 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	screen.set_chapters(together_chapters())
 	screen.completion_marks = host._chapter_marks()
 	screen.display_name = _member_name
+	screen.partner_friend = _partner_friend
+	screen.add_friend_requested.connect(_add_partner_friend)
 	screen.thumbnail_for = func(key: String) -> String: return ChapterThumbnailCatalog.path(key)
 	screen.closed.connect(close)
 	screen.friends_requested.connect(_open_friends)
@@ -428,6 +433,22 @@ func _history_chapter(summary: Dictionary) -> String:
 
 ## A Your rooms card's member line: the friend's name opens the line, and the
 ## player is left out.
+## Whether a finished room's menu offers to add its partner as a friend
+## (services/partner_friends.gd): {"state", "partner"}.
+func _partner_friend(room: Dictionary) -> Dictionary:
+	var partner := ""
+	for member: Variant in room.get("member_ids", []):
+		if str(member) != str(host.api.player_id): partner = str(member)
+	var family := str(room.get("family", ""))
+	return {"state": host.partner_friends.state(partner, family if family in ["legacy", "relay"] else "", str(room.get("room_id", ""))), "partner": partner}
+
+## Add friend from a finished room's menu: the ordinary friend request.
+func _add_partner_friend(room: Dictionary, partner: String) -> void:
+	if _partner_friend(room).get("state") != PartnerFriends.ADDABLE: return
+	var name := _member_name(partner)
+	if await host.partner_friends.send(partner): host._toast(PlayerCopy.ROOM_ADD_FRIEND_SENT % name)
+	else: host._toast(PlayerCopy.ROOM_ADD_FRIEND_FAILED)
+
 func _member_name(member: String) -> String:
 	if member == str(host.api.player_id): return ""
 	return FriendNicknames.sentence_start(host._friend_display_name(member))

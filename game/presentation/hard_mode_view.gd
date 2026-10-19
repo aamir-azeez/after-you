@@ -17,6 +17,8 @@ const HardMode = preload("res://services/hard_mode.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const EndingBadge = preload("res://presentation/ending_badge.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 const LOCK_ICON = preload("res://assets/ui/social/lock.svg")
 ## The solo and together marks' lit colours (home_stage.gd).
 const SOLO_LIT := Color("f4c38d")
@@ -27,6 +29,10 @@ const LINE := Color("a8e0da")
 
 ## (extras: VBoxContainer, context: Dictionary) -> void; see the header.
 static var ending_extras_provider: Callable
+## (player_id: String) -> String: the name this phone shows for a friend now
+## (Main sets it to its one resolver). A run that kept its friend's id is named
+## through it, so a rename or a new nickname shows on old runs too.
+static var friend_name: Callable
 
 ## A small peak: filled in the mode's colour once that hard play is done, a
 ## faint outline in it while it is open, and a dim outline with a lock while
@@ -177,12 +183,22 @@ static func fill_extras(extras: VBoxContainer, context: Dictionary) -> void:
 static func failure_line(run: Dictionary) -> String:
 	var stage := int(run.get("stage_index", 0)) + 1
 	var by_friend := str(run.get("by", "")) == "friend"
-	var friend := str(run.get("friend", ""))
-	if friend.is_empty(): friend = PlayerCopy.HARD_FRIEND_FALLBACK
+	var friend := friend_of(run)
 	match str(run.get("reason", "")):
 		"drowned": return PlayerCopy.HARD_FRIEND_WENT_UNDER % [friend, stage] if by_friend else PlayerCopy.HARD_YOU_WENT_UNDER % stage
 		"retry": return PlayerCopy.HARD_FRIEND_STARTED_OVER % [friend, stage] if by_friend else PlayerCopy.HARD_YOU_STARTED_OVER % stage
 	return PlayerCopy.HARD_FRIEND_SLIPPED % [friend, stage] if by_friend else PlayerCopy.HARD_YOU_SLIPPED % stage
+
+## The friend a run was played with, as this phone names them now: through
+## friend_name when the run kept their id, else the name kept with the run.
+## Never empty, and never a lowercase "a friend" at the start of a line.
+static func friend_of(run: Dictionary) -> String:
+	var name := str(run.get("friend", ""))
+	var id := str(run.get("friend_id", ""))
+	if not id.is_empty() and friend_name.is_valid(): name = str(friend_name.call(id))
+	name = name.strip_edges()
+	if name.is_empty() or name == FriendNicknames.FALLBACK: return PlayerCopy.HARD_FRIEND_FALLBACK
+	return DisplayNames.short(name)
 
 ## The face on a failed run's band: the spirit that slipped, knocked out,
 ## half under water when the tide took it.

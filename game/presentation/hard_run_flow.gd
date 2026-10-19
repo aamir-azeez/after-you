@@ -131,7 +131,8 @@ func holds() -> bool:
 	if host.hard.over():
 		show_room_full()
 		return true
-	var slip: Dictionary = host.hard.friend_slip(host._waiting_partner_name(host.journey.snapshot()))
+	var room: Dictionary = host.journey.snapshot()
+	var slip: Dictionary = host.hard.friend_slip(host._waiting_partner_name(room), host._partner_id(room))
 	if slip.is_empty(): return false
 	show_friend_failed(slip)
 	return true
@@ -159,7 +160,8 @@ func fail(reason: String, slip: Dictionary) -> void:
 	host.review = {}
 	host._drop_prefetch()
 	if host.hard.together:
-		var kept: bool = host.hard.fail_together(reason, slip, host._waiting_partner_name(host.journey.snapshot()))
+		var room: Dictionary = host.journey.snapshot()
+		var kept: bool = host.hard.fail_together(reason, slip, host._waiting_partner_name(room), host._partner_id(room))
 		show_failed(kept)
 		if kept: send_reset()
 	else:
@@ -215,7 +217,7 @@ func show_friend_failed(slip: Dictionary) -> void:
 	_extras_run = slip
 	_fill(int(slip.number))
 	host.hard.mark_shown(int(slip.number))
-	_take_in(str(slip.friend))
+	_take_in(str(slip.friend), str(slip.get("friend_id", "")))
 
 func _failed_card(kept: Dictionary) -> VBoxContainer:
 	host.mode = FAILED_MODE
@@ -283,8 +285,8 @@ func send_reset() -> void:
 
 ## Reads the friend's slip for Replays. One quiet note when it cannot be read;
 ## it is not tried again on this screen, and no turn waits on it.
-func _take_in(partner: String) -> void:
-	await host.hard.take_in_failures(partner)
+func _take_in(partner: String, partner_id: String) -> void:
+	await host.hard.take_in_failures(partner, partner_id)
 	if host.hard.read_failed and not _read_note_shown and host.is_inside_tree():
 		_read_note_shown = true
 		host.notification_deferred(PlayerCopy.HARD_READ_FAILED)

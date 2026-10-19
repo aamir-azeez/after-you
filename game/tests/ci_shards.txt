@@ -54,6 +54,8 @@ cutout_full_bleed 3
 damaged_save 1
 deleted_identity_caches 3
 deleted_identity_photo_cleanup 1
+display_name_prompt 3
+display_names 3
 dressing_lint 1
 empty_state 3
 end_reactions 3

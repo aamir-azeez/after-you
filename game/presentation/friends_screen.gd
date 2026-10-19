@@ -3,6 +3,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const FriendsClient = preload("res://services/friends_client.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 const PlayerAvatar = preload("res://presentation/player_avatar.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
@@ -110,6 +111,10 @@ var _utility_columns: BoxContainer
 var _utility_slots: Array[MarginContainer] = []
 var _utility_rows: Array = []
 var _title: Label
+## () -> Control or null: the Display name chip for the header
+## (display_name_flow.gd chip), asked again once a list read turns names on.
+var name_chip: Callable
+var _name_chip: Control
 var _heading_font: FontVariation
 var _scroll: ScrollContainer
 var _nicknames: RefCounted
@@ -167,6 +172,7 @@ func _ready() -> void:
 	_title = _label("Friends",54,refresh_row)
 	_title.add_theme_font_override("font",_heading_font)
 	_title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	show_name_chip()
 	_countdown = Label.new()
 	_countdown.add_theme_color_override("font_color",MUTED)
 	_refresh_button = _icon_button(REFRESH_ICON,"Refresh",func(): _refresh(true),true,refresh_row)
@@ -710,6 +716,17 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 		opener.append(rename)
 		rename.accessibility_name = "Edit nickname for %s" % shown
 		rename.add_theme_constant_override("icon_max_width",20)
+		# Under a nickname, the name the friend chose for themselves, so the
+		# player still knows who it is.
+		var chosen: String = DisplayNames.shared().chosen(str(_context.get("base_url","")),str(_context.get("player_id","")),str(peer.player_id))
+		if not chosen.is_empty() and chosen != shown:
+			var goes_by := _label(PlayerCopy.DISPLAY_NAME_GOES_BY % DisplayNames.short(chosen),15 if _compact else 17,name_row)
+			goes_by.name = "FriendGoesBy"
+			goes_by.autowrap_mode = TextServer.AUTOWRAP_OFF
+			goes_by.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+			goes_by.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			goes_by.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+			goes_by.add_theme_color_override("font_color",MUTED)
 	# The real friend code stays on its own line so a local nickname never hides
 	# the identifier players share and compare.
 	# Codes fade at a clipped end (names keep their ellipsis); a tap copies the full code.
@@ -787,6 +804,19 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 		else: _secondary(notify)
 		_notify_buttons.append(notify)
 		_icon_button(REMOVE_ICON,"Remove friend",func(): _remove = peer.duplicate(true); _render(),not _busy,actions)
+
+## Adds the Display name chip beside the title once names are on (no-op after).
+func show_name_chip() -> void:
+	if is_instance_valid(_name_chip) or not name_chip.is_valid() or not is_instance_valid(_title): return
+	var made: Variant = name_chip.call()
+	if not made is Control: return
+	_name_chip = made
+	_title.get_parent().add_child(_name_chip)
+	_title.get_parent().move_child(_name_chip, _title.get_index() + 1)
+
+## The screen's root control, which in-game pop-ups cover.
+func page_root() -> Control:
+	return _root
 
 func _display_name(player_id: String) -> String:
 	if _nicknames == null: return FriendNicknames.FALLBACK
