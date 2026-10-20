@@ -282,6 +282,7 @@ staged_build 3
 static_batch 3
 step_seats 2
 store_loading_feedback 3
+string_line_breaks 3
 subclass_statics 3
 subscription_access 1
 tap_reliability 3

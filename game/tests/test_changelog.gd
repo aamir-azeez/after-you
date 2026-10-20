@@ -362,8 +362,7 @@ func _broken(name: String) -> String:
 		"extra paragraph key": first.paragraphs[0].bold = true
 		"empty text": first.paragraphs[0].text = ""
 		"too long": first.paragraphs[0].text = "a".repeat(Changelog.MAX_PARAGRAPH_CHARS + 1)
-		"line break": first.paragraphs[0].text = "One.
-Two."
+		"line break": first.paragraphs[0].text = "One.\nTwo."
 		"unknown channel": first.paragraphs[2].channels = ["web"]
 		"empty channels": first.paragraphs[2].channels = []
 		"repeated channel": first.paragraphs[2].channels = ["github", "github"]

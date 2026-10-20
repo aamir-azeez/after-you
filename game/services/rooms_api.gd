@@ -75,9 +75,7 @@ func _same_identity(still: Callable) -> Callable:
 ## Reads that would send the very same request share one turn; writes never do.
 static func _read_key(method: int, path: String, headers: PackedStringArray, kind: String = "json") -> String:
 	if method != HTTPClient.METHOD_GET: return ""
-	return kind+" "+path+"
-"+"
-".join(headers)
+	return kind+" "+path+"\n"+"\n".join(headers)
 
 static func _refused(code: String, method: int = HTTPClient.METHOD_GET, path: String = "") -> Dictionary:
 	var full := code == RequestQueue.FULL

@@ -650,8 +650,7 @@ func _render() -> void:
 	_draw_room_cards(filtered,list_status)
 	# A tap's reason sits above the list's own state line, never in place of it.
 	var list_state := ("Displaying saved rooms when offline" if not rooms.is_empty() else str(state.get("error",""))) if state.get("stale",true) else ""
-	_notice.text = "
-".join([_message, list_state].filter(func(line: String) -> bool: return not line.is_empty()))
+	_notice.text = "\n".join([_message, list_state].filter(func(line: String) -> bool: return not line.is_empty()))
 	_notice.visible = not _notice.text.is_empty()
 	_right_column.visible = true
 	var active_count := 0

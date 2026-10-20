@@ -84,8 +84,7 @@ func _run() -> void:
 	var by_name := _leaf(root, box, Color("c4b090"), Vector3(7, 0, 0))
 	var scripted := Node3D.new()
 	var behaviour := GDScript.new()
-	behaviour.source_code = "extends Node3D
-"
+	behaviour.source_code = "extends Node3D\n"
 	behaviour.reload()
 	scripted.set_script(behaviour)
 	root.add_child(scripted)
@@ -345,9 +344,7 @@ func _held_tree() -> Dictionary:
 	owner.by_name = {leaves.key0: 1, "nested": {"value": leaves.value0}, "filler": filler}
 	var keeper := Node3D.new()
 	var behaviour := GDScript.new()
-	behaviour.source_code = "extends Node3D
-var watched: Array = []
-"
+	behaviour.source_code = "extends Node3D\nvar watched: Array = []\n"
 	behaviour.reload()
 	keeper.set_script(behaviour)
 	root.add_child(keeper)
