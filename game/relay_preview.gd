@@ -2231,7 +2231,7 @@ func _update_hud(state: Dictionary) -> void:
 		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22
 	display = _name_goal_place(display)
-	if world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(mode == "play")
+	if is_instance_valid(world) and world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(mode == "play")
 	_update_memory_wait_hud()
 	controls.set("solo", online_session == null)
 	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
