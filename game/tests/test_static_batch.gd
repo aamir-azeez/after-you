@@ -480,7 +480,12 @@ func _reuse() -> void:
 		var drawn := _drawn(c[i].mesh, Transform3D.IDENTITY)
 		drawn_moved = drawn.size() > 0 and not _same(drawn, _drawn(a[i].mesh, Transform3D.IDENTITY))
 	_check(a.size() == c.size() and fresh == 1 and drawn_moved, "Only the group with a moved leaf builds a batch of its own, drawing the leaf where it now is (%d fresh)" % fresh)
-	_check(StaticBatch._kept_vertices <= StaticBatch.KEPT_VERTICES, "The kept batches stay within their vertex bound")
+	var counted := 0
+	for kept: ArrayMesh in StaticBatch._kept_batches.values(): counted += kept.surface_get_array_len(0)
+	_check(StaticBatch._kept_vertices == counted and counted <= StaticBatch.KEPT_VERTICES, "The kept batches stay within their vertex bound, counted exactly (%d)" % counted)
+	var signature: Variant = StaticBatch._kept_batches.keys()[0]
+	var kept_first: ArrayMesh = StaticBatch._kept_batches[signature]
+	_check(StaticBatch._keep_batch(signature, ArrayMesh.new()) == kept_first and StaticBatch._kept_vertices == counted, "A batch built twice at once is kept once")
 	for root: Node3D in [first, again, moved]: root.queue_free()
 	await process_frame
 

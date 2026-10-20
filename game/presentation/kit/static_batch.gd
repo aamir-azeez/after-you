@@ -53,7 +53,8 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 ## transform. A world built again from the same definition (a chapter opened
 ## again, Home on every return) folds into the same groups, so its batches
 ## reuse these instead of appending every leaf again. A kept mesh is never
-## changed in place. The oldest go once the kept batches pass KEPT_VERTICES.
+## changed in place. The least lately used go once the kept batches pass
+## KEPT_VERTICES.
 static var _kept_batches: Dictionary = {}
 static var _kept_vertices := 0
 const KEPT_VERTICES := 400000
@@ -233,7 +234,11 @@ static func _build(job: Dictionary) -> void:
 		# A group folded before this session takes the batch it made then.
 		job.signature = _signature(base.order[job.key_index], group, job)
 		job.reused = _kept_batches.get(job.signature) if job.signature != null else null
-		if job.reused != null: job.entry_index = group.size()
+		if job.reused != null:
+			job.entry_index = group.size()
+			# Used again: the last to go (Home's island is reused on every return).
+			_kept_batches.erase(job.signature)
+			_kept_batches[job.signature] = job.reused
 		else: job.tool = SurfaceTool.new()
 	if job.entry_index < group.size():
 		var entry: Array = group[job.entry_index]
@@ -305,16 +310,20 @@ static func _shape(mesh: Mesh, job: Dictionary) -> Variant:
 	shapes[id] = shape
 	return shape
 
-## Keeps a new batch mesh for its signature (none when it has none), the
-## oldest kept going first past KEPT_VERTICES. Returns the mesh.
+## Keeps a new batch mesh for its signature (none when it has none), the least
+## lately used going first past KEPT_VERTICES. Returns the kept mesh: one two
+## folds at once both built is kept once.
 static func _keep_batch(signature: Variant, mesh: ArrayMesh) -> ArrayMesh:
-	if signature == null or mesh == null or mesh.get_surface_count() != 1: return mesh
+	if signature == null: return mesh
+	if _kept_batches.has(signature): return _kept_batches[signature]
+	if mesh == null or mesh.get_surface_count() != 1: return mesh
 	var vertices := mesh.surface_get_array_len(0)
 	if vertices > KEPT_VERTICES: return mesh
-	while _kept_vertices + vertices > KEPT_VERTICES and not _kept_batches.is_empty():
-		var oldest: Variant = _kept_batches.keys()[0]
-		_kept_vertices -= (_kept_batches[oldest] as ArrayMesh).surface_get_array_len(0)
-		_kept_batches.erase(oldest)
+	if _kept_vertices + vertices > KEPT_VERTICES:
+		for oldest: Variant in _kept_batches.keys():
+			_kept_vertices -= (_kept_batches[oldest] as ArrayMesh).surface_get_array_len(0)
+			_kept_batches.erase(oldest)
+			if _kept_vertices + vertices <= KEPT_VERTICES: break
 	_kept_batches[signature] = mesh
 	_kept_vertices += vertices
 	return mesh
