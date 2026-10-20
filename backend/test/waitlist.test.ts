@@ -525,7 +525,7 @@ describe("privacy", () => {
       expect(page).toContain("Resend stores the list");
       expect(page).toContain("Cloudflare Turnstile");
       expect(page).toContain('<a href="mailto:afteryou-reply@aamirazeez.com">afteryou-reply@aamirazeez.com</a>');
-      expect(page).toContain("We delete the waitlist emails three months after the launch email goes out.");
+      expect(page).not.toContain("three months");
       expect(page).toContain("In the game, we do not ask for your email address or phone number. A display name is optional, and so is signing in to Google Play Games or Game Center.");
       expect(page).toContain("After You keeps a one-way code made from your Play Games or Game Center player ID next to your online identity.");
       expect(page).toContain("the After You server never receives it. Unlinking in Settings, or deleting your online identity, removes the code.");
