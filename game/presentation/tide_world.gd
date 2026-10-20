@@ -8,8 +8,9 @@ extends "res://presentation/journey_world.gd"
 ## Doors, spillways and walls at every water opening.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 ## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
-## which both stages share: worked out once per definition, then reused.
-const WallLayouts = preload("res://presentation/tide_wall_layouts.gd")
+## which both stages share, and each water surface only on its rectangles:
+## worked out once per definition, then reused (kit/definition_geometry.gd).
+const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.gd")
 ## Display heights (metres) for each water value. Low sits below the beaches,
 ## half between beach and terrace, high between terrace and quay.
 const HARBOUR_LEVELS := {"low": -0.22, "half": 0.24, "high": 0.70}
@@ -463,17 +464,16 @@ func _build_parapets() -> void:
 func _wall_layout() -> Dictionary:
 	var islands: Array = chapter_definition.get("islands", [])
 	var routes: Array = chapter_definition.get("bridges", []) + chapter_definition.get("stairs", [])
-	var key := [islands, routes].hash()
-	if not WallLayouts.layouts.has(key):
-		var holes := _parapet_holes(islands)
-		var walls: Array = []
-		for island: Dictionary in islands:
-			walls.append_array(await _island_parapet_runs(island, holes, routes))
-			await _build_step()
-		var sea_walls: Array = await _sea_wall_runs(islands)
+	var key := [&"tide_wall_layout", islands, routes]
+	if DefinitionGeometry.has(key): return DefinitionGeometry.kept(key)
+	var holes := _parapet_holes(islands)
+	var walls: Array = []
+	for island: Dictionary in islands:
+		walls.append_array(await _island_parapet_runs(island, holes, routes))
 		await _build_step()
-		if not WallLayouts.layouts.has(key): WallLayouts.layouts[key] = {"parapets": walls, "sea_walls": sea_walls}
-	return WallLayouts.layouts[key]
+	var sea_walls: Array = await _sea_wall_runs(islands)
+	await _build_step()
+	return DefinitionGeometry.keep(key, {"parapets": walls, "sea_walls": sea_walls})
 
 func _parapet_holes(islands: Array) -> Array:
 	var holes: Array = [CHAMBER_PIT]
@@ -1202,11 +1202,31 @@ func _build_slack_mark(route: Dictionary) -> void:
 ## each island and walled crossing, and of the end of the body: inside the
 ## wall that holds the water back, or behind the sea wall past it, and never
 ## on a wall's inner face, where the two would fight over the same pixels.
-## A staged build gets the frame back between grid lines. Await it.
+## Await it.
 func _water_body(name: String, regions: Array, islands: Array, excluded: Array, color: Color, level: float) -> Node3D:
 	var holes: Array = []
 	for rect: Array in excluded + islands.map(func(island: Dictionary) -> Array: return island.rect_cm):
 		holes.append([int(rect[0]) - WATER_INSET, int(rect[1]) - WATER_INSET, rect[2], rect[3]])
+	var key := [&"tide_water_surface", regions, holes]
+	if not DefinitionGeometry.has(key): DefinitionGeometry.keep(key, await _water_surface(regions, holes))
+	var mesh: Mesh = DefinitionGeometry.kept(key)
+	var root := Node3D.new()
+	root.name = name
+	terrain.add_child(root)
+	if mesh != null:
+		var surface := Primitives.fresh_material(color, 0.35)
+		# Labels, faded floors and the spout draw over the water, never under it.
+		surface.render_priority = -2
+		var water := Primitives.mesh_node(mesh, surface, Vector3.ZERO, root)
+		water.name = "Water"
+		water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_water_entry(root, level)
+	return root
+
+## The mesh of a water body's surface and outer sides (see _water_body), or
+## null when it has no face: the same for the same rectangles, so it is kept
+## per definition. A staged build gets the frame back between grid lines. Await it.
+func _water_surface(regions: Array, holes: Array) -> Mesh:
 	var xs: Array = []
 	var zs: Array = []
 	for rect: Array in regions + holes:
@@ -1274,18 +1294,7 @@ func _water_body(name: String, regions: Array, islands: Array, excluded: Array, 
 					faces += 1
 				start = cell
 				facing = side
-	var root := Node3D.new()
-	root.name = name
-	terrain.add_child(root)
-	if faces > 0:
-		var surface := Primitives.fresh_material(color, 0.35)
-		# Labels, faded floors and the spout draw over the water, never under it.
-		surface.render_priority = -2
-		var water := Primitives.mesh_node(shape.commit(), surface, Vector3.ZERO, root)
-		water.name = "Water"
-		water.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
-	_water_entry(root, level)
-	return root
+	return shape.commit() if faces > 0 else null
 
 ## One flat quad of water, its corners in order round it, wound to face along
 ## `normal` (Godot draws a triangle a, b, c whose (a - c) x (a - b) faces the eye).
