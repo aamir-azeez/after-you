@@ -17,7 +17,7 @@ const MAX_ENTRIES := 12
 const MAX_PARAGRAPHS := 8
 const MAX_PARAGRAPH_CHARS := 700
 const MAX_FILE_BYTES := 65536
-const MAX_HIGHLIGHTS := 4
+const MAX_HIGHLIGHTS := 8
 const MAX_HIGHLIGHT_CHARS := 60
 ## Icons a highlight can use: assets/ui/whats_new/<name>.svg.
 const ICONS := ["spark", "leaf", "tap", "link", "sun", "people", "home", "bell", "play", "picture", "star", "key"]

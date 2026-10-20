@@ -54,7 +54,8 @@ static func open(parent: Control, entry: Dictionary, see_all: Callable, opener: 
 	_gap(modal.content, 12.0)
 	var list := VBoxContainer.new()
 	list.name = "WhatsNewHighlights"
-	list.add_theme_constant_override("separation", 16)
+	# A long list (a big release) sits a little tighter so it still fits a 720 high screen.
+	list.add_theme_constant_override("separation", 16 if entry.highlights.size() <= 4 else 10)
 	modal.content.add_child(list)
 	for item: Dictionary in entry.highlights:
 		var row := HBoxContainer.new()
