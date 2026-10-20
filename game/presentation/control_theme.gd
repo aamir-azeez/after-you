@@ -473,6 +473,12 @@ static func danger(button: Button, icon: Texture2D = null) -> void:
 		center_icon_label(button, inset)
 
 static func inset_button(button: Button, horizontal: float = 16, vertical: float = 8) -> void:
+	# Off the tree a button's states it has no override for read Godot's own
+	# styles, not After You's theme: copied then, a tapped button (touch keeps
+	# hover) showed the engine's grey box under the theme's dark ink.
+	if not button.is_inside_tree():
+		button.tree_entered.connect(inset_button.bind(button, horizontal, vertical), CONNECT_ONE_SHOT)
+		return
 	for state: String in ["normal","hover","pressed","hover_pressed","disabled"]:
 		var style := button.get_theme_stylebox(state).duplicate() as StyleBox
 		style.content_margin_left = horizontal
