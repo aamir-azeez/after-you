@@ -4,7 +4,7 @@ extends VBoxContainer
 ## date; tapping it opens that version's highlights under it, in the card's look,
 ## built the first time the row opens. See all changes, where a build links the
 ## full notes, ends the list. The card builds this only when the list is opened.
-const WhatsNewCard = preload("res://presentation/whats_new_card.gd")
+const Kit = preload("res://presentation/whats_new_kit.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const PhotoDate = preload("res://presentation/photo_date.gd")
@@ -86,7 +86,7 @@ func _row(entry: Dictionary) -> VBoxContainer:
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 		var look := ControlTheme.rounded(ROW if state == "normal" else ROW_HOVER, 14)
-		if state == "focus": look = ControlTheme.rounded(Color.TRANSPARENT, 14, WhatsNewCard.CREAM)
+		if state == "focus": look = ControlTheme.rounded(Color.TRANSPARENT, 14, Kit.CREAM)
 		button.add_theme_stylebox_override(state, look)
 	holder.add_child(button)
 	var line := HBoxContainer.new()
@@ -96,7 +96,7 @@ func _row(entry: Dictionary) -> VBoxContainer:
 	line.offset_right = -16.0
 	line.add_theme_constant_override("separation", 12)
 	button.add_child(line)
-	var title := _label(version, 21, WhatsNewCard.TEXT)
+	var title := _label(version, 21, Kit.TEXT)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	line.add_child(title)
 	line.add_child(_label(date, 17, MUTED))
@@ -107,7 +107,7 @@ func _row(entry: Dictionary) -> VBoxContainer:
 	chevron.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	chevron.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	chevron.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	chevron.self_modulate = WhatsNewCard.ICON_TINT
+	chevron.self_modulate = Kit.ICON_TINT
 	chevron.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_child(chevron)
 	button.pressed.connect(_toggle.bind(holder, entry.highlights, chevron))
@@ -133,7 +133,7 @@ func _toggle(holder: VBoxContainer, highlights: Array, chevron: TextureRect) -> 
 		indent.add_theme_constant_override("margin_left", 18)
 		indent.add_theme_constant_override("margin_right", 16)
 		indent.add_theme_constant_override("margin_bottom", 6)
-		indent.add_child(WhatsNewCard.highlight_list(highlights))
+		indent.add_child(Kit.highlight_list(highlights))
 		holder.add_child(indent)
 		details = indent
 	else:

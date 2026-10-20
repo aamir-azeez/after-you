@@ -14,6 +14,11 @@ const MUTED := Color("afc6be")
 signal closed
 
 var content: VBoxContainer
+## The heading row (titles, then Close), its title, and its subtitle (null when
+## opened without one). A card may add to the row or change the words.
+var header: HBoxContainer
+var title_label: Label
+var subtitle_label: Label
 ## Asked first by Back (Android Back and Escape): true when the card took a step
 ## back inside itself and stays open. Close always closes.
 var back_step: Callable
@@ -67,18 +72,19 @@ func _build(heading: String, subtitle: String) -> void:
 	content = VBoxContainer.new()
 	content.add_theme_constant_override("separation",10)
 	_panel.add_child(content)
-	var header := HBoxContainer.new()
+	header = HBoxContainer.new()
 	header.add_theme_constant_override("separation",12)
 	content.add_child(header)
 	var titles := VBoxContainer.new()
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	titles.add_theme_constant_override("separation",2)
 	header.add_child(titles)
-	var title := label(heading,26,titles)
-	title.add_theme_font_override("font",heading_font)
-	title.autowrap_mode = TextServer.AUTOWRAP_OFF
+	title_label = label(heading,26,titles)
+	title_label.add_theme_font_override("font",heading_font)
+	title_label.autowrap_mode = TextServer.AUTOWRAP_OFF
 	if not subtitle.is_empty():
-		label(subtitle,17,titles).add_theme_color_override("font_color",MUTED)
+		subtitle_label = label(subtitle,17,titles)
+		subtitle_label.add_theme_color_override("font_color",MUTED)
 	var close_button := Button.new()
 	close_button.name = "ModalClose"
 	close_button.icon = CLOSE_ICON
@@ -136,7 +142,7 @@ func add_actions(primary_label: String, primary: Callable, cancel_label: String 
 	confirm.pressed.connect(primary)
 	if destructive: ThemeRules.danger(confirm)
 	footer.add_child(confirm)
-	_trap_focus()
+	refresh_focus_order()
 	return confirm
 
 ## Back: a step inside the card when it has one, otherwise close.
@@ -145,8 +151,9 @@ func go_back() -> void:
 	if back_step.is_valid() and back_step.call(): return
 	close()
 
-func _trap_focus() -> void:
-	# Keep keyboard focus inside the modal, on the controls that show.
+## Keeps keyboard focus inside the modal, on the controls that show. A card that
+## adds, shows or hides buttons calls it again.
+func refresh_focus_order() -> void:
 	var order: Array[Control] = []
 	for control: Control in find_children("*","Control",true,false):
 		if (control is LineEdit or control is Button) and control.is_visible_in_tree(): order.append(control)

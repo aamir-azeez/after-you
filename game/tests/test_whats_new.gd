@@ -246,7 +246,7 @@ func _ios_card() -> void:
 		var got := card.find_child("WhatsNewGotIt", true, false) as Control
 		var more := card.find_child("WhatsNewEarlier", true, false) as Control
 		_check(got != null and more != null and got.get_parent() == more.get_parent() and got.get_parent().get_child_count() == 2, "The iOS card has the same footer as every build: Earlier versions and Got it")
-		WhatsNewCard.show_earlier(card, func() -> Array: return Changelog.earlier_entries(_all_entries()), Callable())
+		WhatsNewCard.show_earlier(card, func() -> Array: return Changelog.earlier_entries(Changelog.current_version()), Callable())
 		await _settle()
 		_check(card.find_child("WhatsNewEarlierList", true, false) != null, "iOS builds have Earlier versions")
 		_check(card.find_child("WhatsNewSeeAll", true, false) == null, "iOS builds don't link to the GitHub releases, on the card or in the list")
@@ -362,8 +362,10 @@ func _earlier_versions() -> void:
 	var view := card.find_child("WhatsNewEarlierList", true, false) as Control
 	var body := card.find_child("WhatsNewCardBody", true, false) as Control
 	_check(presses[0] == 1 and view != null and view.is_visible_in_tree() and not body.visible, "A wobbling tap on Earlier versions turns the card into the list once")
-	_check(_has_label(card, PlayerCopy.WHATS_NEW_EARLIER_TITLE) and not (card.find_child("WhatsNewTitles", true, false).get_child(1) as Control).visible, "The list has its own title and no version line")
-	var earlier := Changelog.earlier_entries(_all_entries())
+	_check(card.title_label.text == PlayerCopy.WHATS_NEW_EARLIER_TITLE and not card.subtitle_label.visible, "The list has its own title and no version line")
+	var back := card.find_child("WhatsNewBack", true, false) as Button
+	_check(back != null and not back.has_focus(true) and not more.has_focus(true), "A tap draws no focus ring on the back arrow")
+	var earlier := Changelog.earlier_entries(Changelog.current_version())
 	var rows := _rows(card)
 	_check(not earlier.is_empty() and rows.size() == earlier.size(), "The list has a row for every earlier version (%d)" % rows.size())
 	var ordered := rows.size() == earlier.size()
@@ -408,10 +410,10 @@ func _earlier_versions() -> void:
 	_check(details != null and not details.visible and _details(first) == details, "A second tap closes the row and keeps what it built")
 	await _tap(made[0], first.get_global_rect().get_center(), WOBBLE)
 	_check(details.visible, "A third tap opens it again")
-	var back := card.find_child("WhatsNewBack", true, false) as Button
 	_check(back != null and back.is_visible_in_tree() and card.find_child("WhatsNewGift", true, false).visible == false, "The list has a back arrow where the gift was")
 	await _tap(made[0], back.get_global_rect().get_center(), WOBBLE)
 	_check(_card(app) == card and body.visible and not view.visible and _has_label(card, PlayerCopy.WHATS_NEW_VERSION % Changelog.current_version()) and not back.visible, "A wobbling tap on the back arrow returns to the card")
+	_check(not more.has_focus(true), "A tap back draws no focus ring on Earlier versions")
 	await _tap(made[0], more.get_global_rect().get_center(), WOBBLE)
 	_check(card.find_children("WhatsNewEarlierList", "", true, false).size() == 1 and view.visible and details.visible, "Opening the list again reuses it, with the open row still open")
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
@@ -455,13 +457,13 @@ func _broken_archive() -> void:
 	var made := await _boot(_storage())
 	var app: Node = made[1]
 	var entries := _all_entries()
-	var card := WhatsNewCard.open(app.ui, entries[0], func() -> Array: return Changelog.earlier_entries(entries, path), Callable())
+	var card := WhatsNewCard.open(app.ui, entries[0], func() -> Array: return Changelog.earlier_entries(entries[0].version, Changelog.PATH, path), Callable())
 	await _settle()
 	var lines := 0
 	for item: Dictionary in entries[0].highlights:
 		if _has_label(card, str(item.text)): lines += 1
 	_check(lines == entries[0].highlights.size(), "With a broken archive the card still lists this version's highlights")
-	WhatsNewCard.show_earlier(card, func() -> Array: return Changelog.earlier_entries(entries, path), Callable())
+	WhatsNewCard.show_earlier(card, func() -> Array: return Changelog.earlier_entries(entries[0].version, Changelog.PATH, path), Callable())
 	await _settle()
 	_check(_rows(card).size() == entries.size() - 1, "With a broken archive the list keeps the file's earlier versions")
 	card.close(false)

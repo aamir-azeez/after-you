@@ -58,10 +58,14 @@ static func channel(config: Dictionary) -> String:
 ## Entries for one build: [{"version", "date", "highlights": [{"icon", "text"}],
 ## "paragraphs": [String]}], newest first.
 static func load_entries(build_channel: String, path: String = PATH) -> Array:
+	return for_channel(load_file(path), build_channel)
+
+## The file's validated entries for every build (see parse()).
+static func load_file(path: String = PATH) -> Array:
 	if not FileAccess.file_exists(path): return []
 	var bytes := FileAccess.get_file_as_bytes(path)
 	if bytes.is_empty() or bytes.size() > MAX_FILE_BYTES: return []
-	return for_channel(parse(bytes.get_string_from_utf8()), build_channel)
+	return parse(bytes.get_string_from_utf8())
 
 ## The validated entries of a changelog file, or [] when any rule is broken.
 static func parse(text: String) -> Array:
@@ -107,18 +111,21 @@ static func load_archive(path: String = ARCHIVE_PATH) -> Array:
 static func has_earlier(entries: Array, archive_path: String = ARCHIVE_PATH) -> bool:
 	return entries.size() > 1 or FileAccess.file_exists(archive_path)
 
-## Every version before `entries[0]` (a build's load_entries()), newest first, as
-## [{"version", "date", "highlights"}]: the rest of the file, then the archive.
-## The archive joins only when its newest version is older than the file's oldest,
-## so the list never repeats a version or goes out of order.
-static func earlier_entries(entries: Array, archive_path: String = ARCHIVE_PATH) -> Array:
+## Every version older than `current`, newest first, as [{"version", "date",
+## "highlights"}]: the file's, then the archive's. Highlights show on every build,
+## so a version is listed even where none of its paragraphs is. The archive joins
+## only when its newest version is older than the file's oldest listed one, so the
+## list never repeats a version or goes out of order.
+static func earlier_entries(current: String, path: String = PATH, archive_path: String = ARCHIVE_PATH) -> Array:
 	var result: Array = []
-	for index: int in range(1, entries.size()):
-		var entry: Dictionary = entries[index]
-		result.append({"version": entry.version, "date": entry.date, "highlights": entry.highlights.duplicate(true)})
-	if entries.is_empty(): return result
+	if not VersionOrder.valid(current): return result
+	var oldest := current
+	for entry: Dictionary in load_file(path):
+		if VersionOrder.compare(entry.version, current) >= 0: continue
+		result.append({"version": entry.version, "date": entry.date, "highlights": entry.highlights})
+		oldest = entry.version
 	var archive := load_archive(archive_path)
-	if not archive.is_empty() and VersionOrder.compare(archive[0].version, str(entries[-1].version)) < 0:
+	if not archive.is_empty() and VersionOrder.compare(archive[0].version, oldest) < 0:
 		result.append_array(archive)
 	return result
 

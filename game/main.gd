@@ -1535,7 +1535,7 @@ func _open_whats_new_card(opener: Control = null) -> void:
 	if is_instance_valid(overlay): WhatsNewCard.clear_unseen(overlay.find_child("HomeWhatsNew",true,false))
 	var see_all: Callable = _open_release_notes if Changelog.releases_link_offered() else Callable()
 	# Earlier versions reads the archive only when the player opens that list.
-	var earlier: Callable = (func() -> Array: return Changelog.earlier_entries(entries)) if Changelog.has_earlier(entries) else Callable()
+	var earlier: Callable = (func() -> Array: return Changelog.earlier_entries(entries[0].version)) if Changelog.has_earlier(entries) else Callable()
 	_whats_new_card = WhatsNewCard.open(ui,entries[0],earlier,see_all,opener)
 	_whats_new_card_mode = mode
 

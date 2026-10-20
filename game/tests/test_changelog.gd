@@ -184,7 +184,7 @@ func _continuity() -> void:
 		var older := versions[index]
 		_check(VersionOrder.compare(older, newer) < 0, "Versions run newest first without repeats: %s then %s" % [newer, older])
 		_check(_follows(older, newer), "%s comes right after %s. A release that drops the file's oldest entry moves its version, date and highlights to the top of content/changelog_archive.json" % [newer, older])
-	var chain := Changelog.earlier_entries(Changelog.load_entries(Changelog.GITHUB))
+	var chain := Changelog.earlier_entries(Changelog.current_version())
 	var listed: Array[String] = []
 	for entry: Dictionary in chain: listed.append(str(entry.version))
 	_check(listed == versions.slice(1), "Earlier versions lists every version before this one, newest first")
@@ -205,34 +205,41 @@ func _follows(older: String, newer: String) -> bool:
 ## Earlier versions on small files: the rest of the file, then an archive that
 ## fits below it. A missing, broken or overlapping archive leaves the file's rows.
 func _earlier() -> void:
-	var entries := Changelog.for_channel(Changelog.parse(JSON.stringify(_sample())), Changelog.GITHUB)
-	var path := "user://changelog-archive-test-%s.json" % Crypto.new().generate_random_bytes(6).hex_encode()
+	var stamp := Crypto.new().generate_random_bytes(6).hex_encode()
+	var file := "user://changelog-file-test-%s.json" % stamp
+	var path := "user://changelog-archive-test-%s.json" % stamp
 	var missing := "res://content/missing-archive.json"
+	_write(file, JSON.stringify(_sample()))
 	var file_rows := [{"version": "0.6.9", "date": "2026-10-30", "highlights": [{"icon": "sun", "text": "Older line"}]}]
-	_check(Changelog.earlier_entries(entries, missing) == file_rows, "Without an archive, Earlier versions lists the rest of the file")
+	_check(Changelog.earlier_entries("0.7.0", file, missing) == file_rows, "Without an archive, Earlier versions lists the rest of the file")
+	_check(Changelog.earlier_entries("0.6.9", file, missing) == [], "The oldest version has nothing before it")
+	_check(Changelog.earlier_entries("bad", file, missing) == [], "A garbled current version lists nothing")
+	var entries := Changelog.load_entries(Changelog.GITHUB, file)
 	_check(Changelog.has_earlier(entries, missing), "A file with two versions has earlier ones")
 	_check(not Changelog.has_earlier(entries.slice(0, 1), missing), "One version and no archive has none")
-	_check(Changelog.earlier_entries([]) == [], "No entries list nothing")
 	_write(path, JSON.stringify(_archive_sample()))
-	var joined := Changelog.earlier_entries(entries, path)
+	var joined := Changelog.earlier_entries("0.7.0", file, path)
 	_check(joined.size() == 3 and joined[0].version == "0.6.9" and joined[1].version == "0.6.8" and joined[2].version == "0.6.7", "The archive follows the file, newest first")
 	_check(Changelog.has_earlier(entries.slice(0, 1), path), "An archive alone counts as earlier versions")
 	_write(path, "{")
-	_check(Changelog.earlier_entries(entries, path) == file_rows, "A broken archive leaves only the file's rows")
+	_check(Changelog.earlier_entries("0.7.0", file, path) == file_rows, "A broken archive leaves only the file's rows")
 	var overlap := _archive_sample()
 	overlap.entries[0].version = "0.6.9"
 	_write(path, JSON.stringify(overlap))
-	_check(Changelog.earlier_entries(entries, path) == file_rows, "An archive that repeats the file's oldest version is left out")
+	_check(Changelog.earlier_entries("0.7.0", file, path) == file_rows, "An archive that repeats the file's oldest version is left out")
 	overlap.entries[0].version = "0.7.5"
 	overlap.entries[1].version = "0.7.4"
 	_write(path, JSON.stringify(overlap))
-	_check(Changelog.earlier_entries(entries, path) == file_rows, "An archive newer than the file's oldest version is left out")
+	_check(Changelog.earlier_entries("0.7.0", file, path) == file_rows, "An archive newer than the file's oldest version is left out")
 	_write(path, "x".repeat(Changelog.MAX_ARCHIVE_BYTES + 1))
 	_check(Changelog.load_archive(path).is_empty(), "An archive over its size limit loads as no entries")
+	# A version whose paragraphs are all for one build still lists on every build.
+	var narrow := _sample()
+	narrow.entries[1].paragraphs = [{"text": "GitHub only.", "channels": ["github"]}]
+	_write(file, JSON.stringify(narrow))
+	_check(Changelog.load_entries(Changelog.PLAY, file).size() == 1 and Changelog.earlier_entries("0.7.0", file, missing) == file_rows, "A version with no Play paragraphs still lists under Earlier versions")
 	DirAccess.remove_absolute(path)
-	var rows := Changelog.earlier_entries(entries, missing)
-	rows[0].highlights[0].text = "Changed"
-	_check(entries[1].highlights[0].text == "Older line", "Earlier versions hands over copies")
+	DirAccess.remove_absolute(file)
 
 func _write(path: String, text: String) -> void:
 	var file := FileAccess.open(path, FileAccess.WRITE)
