@@ -81,6 +81,7 @@ friends_client 1
 friends_first_open 2
 friends_navigation 2
 friends_screen 3
+full_screen_bleed 3
 gameplay_comfort 2
 garden_activation 2
 github_access 1
@@ -109,6 +110,7 @@ house 3
 house_world 2
 hub_exits 2
 hud_efficiency 1
+inset_button 3
 intro_comfort 1
 invite_links 2
 ios_platform 3
