@@ -1,5 +1,5 @@
 {
   "schema_version": 1,
-  "comment": "Words for anonymous display names (services/display_names.gd). Append only: changing or reordering a word renames every anonymous player.",
+  "comment": "Words for anonymous display names (services/display_names.gd). Never edit: adding, changing or reordering a word renames anonymous players.",
   "words": ["Lantern", "Tide", "Harbour", "Kite", "Seedling", "Pebble", "Beacon", "Well", "Mill", "Moss", "Ferry", "Lighthouse", "Bell", "Ladder", "Garden", "Bridge", "Island", "Lever", "Rope", "Compass", "Anchor", "Sprout", "Meadow", "Willow"]
 }

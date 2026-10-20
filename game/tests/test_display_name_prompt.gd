@@ -59,6 +59,7 @@ class Host extends Node:
 	var toasts: Array = []
 	var soundscape: Node = null
 	func _relay_identity() -> Dictionary: return {"ready": true, "player_id": api.player_id, "epoch": 1}
+	func _names_scope() -> Dictionary: return {"server": str(api.base_url), "owner": str(api.player_id)}
 	func _toast(text: String) -> void: toasts.append(text)
 
 class Inbox extends RefCounted:
@@ -83,6 +84,7 @@ func _run() -> void:
 	viewport.add_child(page)
 	await _prompt()
 	await _platform_and_save()
+	await _empty_save()
 	await _edit_mode()
 	await _flow()
 	await _friends()
@@ -272,6 +274,15 @@ func _platform_and_save() -> void:
 	await _click(modal.find_child("ModalCancel", true, false))
 	_check(not is_instance_valid(modal), "Not now closes it")
 
+func _empty_save() -> void:
+	var saved: Array = []
+	var modal := await _open({"own": {"choice": "", "name": ""}, "anonymous": "Kite 41", "platform": "",
+		"save": func(choice: String, name: String) -> Dictionary: saved.append([choice, name]); return {"closed": true}})
+	var prompt := _prompt_node(modal)
+	await _click(prompt.save_button)
+	await _frames(2)
+	_check(saved == [["anonymous", ""]] and not is_instance_valid(modal), "Save with nothing typed keeps the anonymous name the tag shows")
+
 func _edit_mode() -> void:
 	var modal := await _open({"edit": true, "own": {"choice": "anonymous", "name": ""}, "anonymous": "Kite 41", "platform": "", "save": func(_c: String, _n: String) -> Dictionary: return {"closed": true}})
 	var prompt := _prompt_node(modal)
@@ -297,7 +308,7 @@ func _flow() -> void:
 		sent.append(body)
 		await process_frame
 		return {"ok": true, "data": {"schema_version": 1, "display_name": body.display_name, "revision": body.revision}}
-	flow.client = DisplayNameClient.new(api, host._relay_identity, transport, store)
+	flow.client = DisplayNameClient.new(api, host._names_scope, transport, store)
 	flow.client.settled.connect(flow._settled)
 	_check(not flow.maybe_ask(page) and flow.chip() == null, "Names off: no prompt and no chip")
 	store.set_enabled(BASE, ME, true)
@@ -306,7 +317,13 @@ func _flow() -> void:
 	var modal: Control = page.find_child("DisplayNameModal", true, false)
 	_check(modal != null, "over the screen that opened it")
 	await _click(modal.find_child("ModalCancel", true, false))
+	_check(host.toasts.is_empty(), "Closed over Friends, where the name chip shows, it says nothing more")
 	_check(not flow.maybe_ask(page), "Once asked, it never opens by itself again")
+	flow._open(page, false, null, true)
+	await _frames(3)
+	await _click(page.find_child("DisplayNameModal", true, false).find_child("ModalCancel", true, false))
+	_check(host.toasts == [PlayerCopy.DISPLAY_NAME_LATER_HINT], "Closed over the room list with nothing saved, it says where to find the name later")
+	host.toasts.clear()
 	var chip: Control = flow.chip()
 	page.add_child(chip)
 	chip.position = Vector2(40, 20)

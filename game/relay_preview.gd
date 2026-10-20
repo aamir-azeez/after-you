@@ -3250,9 +3250,10 @@ func _partner_friend_state() -> String:
 func _add_partner_friend() -> void:
 	if _partner_friend_state() != PartnerFriends.ADDABLE: return
 	var partner := _partner_id(journey.snapshot())
-	var name := FriendNicknames.sentence_start(_waiting_partner_name(journey.snapshot()))
-	if await partner_friends.send(partner): notification_deferred(PlayerCopy.ROOM_ADD_FRIEND_SENT % name)
-	else: notification_deferred(PlayerCopy.ROOM_ADD_FRIEND_FAILED)
+	var line := PlayerCopy.add_friend_sent(_waiting_partner_name(journey.snapshot()))
+	var sent: bool = await partner_friends.send(partner)
+	if not is_inside_tree(): return
+	notification_deferred(line if sent else PlayerCopy.ROOM_ADD_FRIEND_FAILED)
 
 func _partner_friend_requested() -> void:
 	notification_deferred(PlayerCopy.ROOM_FRIEND_REQUESTED)

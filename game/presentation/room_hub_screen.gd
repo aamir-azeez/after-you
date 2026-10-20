@@ -873,8 +873,8 @@ func _menu_rows(room: Dictionary) -> Array[Dictionary]:
 		rows.append({"id": "leave_finished", "title": PlayerCopy.ROOM_LEAVE, "detail": PlayerCopy.ROOM_LEAVE_DETAIL, "icon": LEAVE_ICON, "tone": "danger"})
 	var partner: Dictionary = partner_friend.call(room) if partner_friend.is_valid() else {}
 	match str(partner.get("state", "")):
-		"addable": rows.insert(0, {"id": "add_friend", "title": PlayerCopy.ROOM_ADD_FRIEND, "detail": PlayerCopy.ROOM_ADD_FRIEND_DETAIL, "icon": ADD_FRIEND_ICON})
-		"requested": rows.insert(0, {"id": "friend_requested", "title": PlayerCopy.ROOM_FRIEND_REQUESTED, "detail": "", "icon": REQUESTED_ICON})
+		"addable": rows.insert(0, {"id": "add_friend", "title": PlayerCopy.ROOM_ADD_FRIEND, "detail": PlayerCopy.ROOM_ADD_FRIEND_DETAIL % _friend(room), "icon": ADD_FRIEND_ICON})
+		"requested": rows.insert(0, {"id": "friend_requested", "title": PlayerCopy.ROOM_FRIEND_REQUESTED, "detail": PlayerCopy.ROOM_FRIEND_REQUESTED_DETAIL % _friend(room), "icon": REQUESTED_ICON, "tone": "muted"})
 	return rows
 
 func _menu_ids(room: Dictionary) -> Array:

@@ -23,6 +23,8 @@ extends Node
 ##   legacy_room_flow (open_room, join_room), relay_lobby_flow (open_lobby,
 ##   lobby_action, join_room)
 ## - card kit: _card, _label, _paragraph, _list_button, _back_button
+## - names and friends: display_name_flow (maybe_ask, the first-run name prompt),
+##   partner_friends (Add friend on a finished room's menu)
 ## - node: add_child (the hub layer stays Main's child)
 ## Main asks is_open() and drives the hub through go_back(), redraw_chapters()
 ## and refresh(). It calls release() when another screen replaces the hub, and
@@ -150,7 +152,7 @@ func open_from_home(source: Control) -> void:
 		func() -> bool: return host.mode == "home",
 		func() -> void: host._toast(PlayerCopy.ROOMS_API_DA75E6F7A674))
 	# The first time with names on, the name prompt opens over the room list.
-	if is_instance_valid(screen): host.display_name_flow.maybe_ask(screen.page_root())
+	if is_instance_valid(screen): host.display_name_flow.maybe_ask(screen.page_root(), true)
 
 ## Builds the hub without the entry checks of show_rooms; every room flow
 ## returns here. A notice, such as why a room could not be opened, shows above
@@ -434,7 +436,7 @@ func _history_chapter(summary: Dictionary) -> String:
 ## A Your rooms card's member line: the friend's name opens the line, and the
 ## player is left out.
 ## Whether a finished room's menu offers to add its partner as a friend
-## (services/partner_friends.gd): {"state", "partner"}.
+## (services/partner_friends.gd, Main's partner_friends): {"state", "partner"}.
 func _partner_friend(room: Dictionary) -> Dictionary:
 	var partner := ""
 	for member: Variant in room.get("member_ids", []):
@@ -445,9 +447,8 @@ func _partner_friend(room: Dictionary) -> Dictionary:
 ## Add friend from a finished room's menu: the ordinary friend request.
 func _add_partner_friend(room: Dictionary, partner: String) -> void:
 	if _partner_friend(room).get("state") != PartnerFriends.ADDABLE: return
-	var name := _member_name(partner)
-	if await host.partner_friends.send(partner): host._toast(PlayerCopy.ROOM_ADD_FRIEND_SENT % name)
-	else: host._toast(PlayerCopy.ROOM_ADD_FRIEND_FAILED)
+	var line := PlayerCopy.add_friend_sent(host._friend_display_name(partner))
+	host._toast(line if await host.partner_friends.send(partner) else PlayerCopy.ROOM_ADD_FRIEND_FAILED)
 
 func _member_name(member: String) -> String:
 	if member == str(host.api.player_id): return ""

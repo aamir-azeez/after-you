@@ -11,8 +11,8 @@ extends Node
 ## if this phone has not yet heard that names are on, it waits for a later visit.
 ##
 ## Main hosts it as a child and it reads Main only through this host contract
-## (read at call time): api, _relay_identity, saves (reduced motion),
-## _toast, soundscape (the pip's grab tick), and the PlatformGames autoload.
+## (read at call time): api, _names_scope, saves (reduced motion), _toast,
+## soundscape (the pip's grab tick), and the PlatformGames autoload.
 const DisplayNames = preload("res://services/display_names.gd")
 const DisplayNameClient = preload("res://services/display_name_client.gd")
 const Prompt = preload("res://presentation/display_name_prompt.gd")
@@ -34,14 +34,13 @@ func _init(main: Node = null) -> void:
 
 func _client() -> RefCounted:
 	if client == null:
-		client = DisplayNameClient.new(host.api, host._relay_identity)
+		client = DisplayNameClient.new(host.api, host._names_scope)
 		client.settled.connect(_settled)
 	return client
 
-## {server, owner} of the signed-in player, or {}.
+## {server, owner} of the signed-in player, or {} (Main's one source).
 func scope() -> Dictionary:
-	if host == null or host.api == null or not host._relay_identity().get("ready", false): return {}
-	return {"server": str(host.api.base_url), "owner": str(host.api.player_id)}
+	return host._names_scope() if host != null else {}
 
 func enabled() -> bool:
 	var current := scope()
@@ -49,13 +48,13 @@ func enabled() -> bool:
 
 ## The first-run prompt over `parent`, once per player, when names are on and
 ## the player has not chosen yet. True when it opened.
-func maybe_ask(parent: Control) -> bool:
+func maybe_ask(parent: Control, hint_later: bool = false) -> bool:
 	if not enabled() or prompt_open() or not is_instance_valid(parent) or not parent.is_inside_tree(): return false
 	var current := scope()
 	var own: Dictionary = DisplayNames.shared().own(current.server, current.owner)
 	if not str(own.choice).is_empty() or own.asked: return false
 	DisplayNames.shared().mark_asked(current.server, current.owner)
-	_open(parent, false, null)
+	_open(parent, false, null, hint_later)
 	return true
 
 ## The prompt opened to change the name (the Friends chip's Change).
@@ -66,7 +65,9 @@ func edit(parent: Control, opener: Control = null) -> void:
 func prompt_open() -> bool:
 	return _prompt != null and _prompt.get_ref() != null
 
-func _open(parent: Control, editing: bool, opener: Control) -> void:
+## hint_later: closing it with nothing saved says where to find it (when it
+## opened somewhere other than Friends, whose header shows the name).
+func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = false) -> void:
 	var current := scope()
 	var names: RefCounted = DisplayNames.shared()
 	var context := {
@@ -78,6 +79,7 @@ func _open(parent: Control, editing: bool, opener: Control) -> void:
 		"save": _save,
 		"reduced_motion": bool(host.saves.data.settings.get("reduced_motion", false)) if host.saves != null else false,
 		"haptic": func() -> void: if is_instance_valid(host.get("soundscape")): host.soundscape.tap_haptic(),
+		"dismissed": func() -> void: if hint_later and host.has_method("_toast"): host._toast(PlayerCopy.DISPLAY_NAME_LATER_HINT),
 	}
 	var modal: Control = Prompt.open(parent, context, opener)
 	_prompt = weakref(modal)

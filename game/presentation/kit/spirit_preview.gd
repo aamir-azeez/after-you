@@ -28,7 +28,8 @@ const PEACH := Color("f4c38d")
 const RENDER_SCALE := 2.0
 ## A three-quarter view: the facing a turn starts from and returns to.
 const REST_YAW := deg_to_rad(28.0)
-## The smallest preview: at least 54x75 takes the drag, past the 48 px target.
+## The usual size: at least 54x75 takes the drag, past the 48 px target. A
+## small preview beside a label (the Friends name chip) may ask for less.
 const MIN_SIZE := Vector2(72, 100)
 
 var turn := DragTurn.new()
@@ -55,7 +56,7 @@ func _init(reduced: bool = false, color: Color = PEACH, size_at_least: Vector2 =
 	stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
 	# The whole rect takes the drag.
 	mouse_filter = Control.MOUSE_FILTER_STOP
-	custom_minimum_size = Vector2(maxf(size_at_least.x, MIN_SIZE.x), maxf(size_at_least.y, MIN_SIZE.y))
+	custom_minimum_size = size_at_least
 
 func _ready() -> void:
 	_view = SubViewport.new()

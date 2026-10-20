@@ -2,6 +2,12 @@ extends RefCounted
 ## Editable presentation copy. Stable keys are independent of puzzle versions.
 ## Never replace strings inside canonical catalogs or recording/checkpoint data.
 const PlatformSupport = preload("res://services/platform_support.gd")
+const FriendNicknames = preload("res://services/friend_nicknames.gd")
+
+## "Friend request sent to Maya." for a room partner's name, or the line with
+## no name when this phone has none to give (the "a friend" fallback).
+static func add_friend_sent(name: String) -> String:
+	return ROOM_ADD_FRIEND_SENT_PLAIN if name.strip_edges().is_empty() or name == FriendNicknames.FALLBACK else ROOM_ADD_FRIEND_SENT % name
 
 # The player characters' name in running text, lowercase. Every line that
 # names them is built from these two, so a rename is one edit here.
@@ -10,7 +16,7 @@ const CREATURES := "pips"
 
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
-const DISPLAY_NAME_ASK_NOTE := "Your friends and room partners see it on your rooms and replays."
+const DISPLAY_NAME_ASK_NOTE := "Friends and room partners see it on rooms and replays."
 ## The prompt's title when it is opened from Friends to change the name.
 const DISPLAY_NAME_EDIT_TITLE := "Your name"
 const DISPLAY_NAME_FIELD := "Name"
@@ -21,10 +27,13 @@ const DISPLAY_NAME_ANONYMOUS_NOTE := "Others see you as %s."
 const DISPLAY_NAME_PLAY_GAMES := "Use my Play Games name"
 const DISPLAY_NAME_GAME_CENTER := "Use my Game Center name"
 ## Under the platform choice before it is picked: the name is read only then.
-const DISPLAY_NAME_PLATFORM_NOTE := "Copied once when you pick it."
+const DISPLAY_NAME_PLATFORM_NOTE := "Read only if you pick this."
 const DISPLAY_NAME_PLATFORM_READING := "Getting your name…"
 const DISPLAY_NAME_PLATFORM_FAILED := "That name didn't come through. Type one instead."
 const DISPLAY_NAME_NOT_NOW := "Not now"
+const DISPLAY_NAME_CANCEL := "Cancel"
+## After the first-run prompt is closed without a name: where to find it later.
+const DISPLAY_NAME_LATER_HINT := "You can change your name in Friends."
 const DISPLAY_NAME_SAVE := "Save"
 const DISPLAY_NAME_SAVING := "Saving…"
 ## The Friends header: the small label over the name, and its button.
@@ -33,7 +42,7 @@ const DISPLAY_NAME_CHANGE := "Change"
 const DISPLAY_NAME_CHANGE_FOR := "Change your name, now %s"
 ## Under the name in the Friends header while it waits to be sent, or after the
 ## server said no (the reason is said once, as a pop-up).
-const DISPLAY_NAME_PENDING := "Sends when you're online"
+const DISPLAY_NAME_PENDING := "Not sent yet"
 const DISPLAY_NAME_NOT_SAVED := "Not saved. Tap Change."
 ## Why a name can't be used: the phone's own checks, then the server's codes.
 const DISPLAY_NAME_ERRORS := {
@@ -50,9 +59,12 @@ const DISPLAY_NAME_GOES_BY := "Goes by %s"
 # A room partner who is not a friend yet (presentation/room_actions.gd and the
 # finished room's menu on the room list).
 const ROOM_ADD_FRIEND := "Add friend"
-const ROOM_ADD_FRIEND_DETAIL := "Send a friend request"
+## %s is the partner's name.
+const ROOM_ADD_FRIEND_DETAIL := "Send %s a friend request"
+const ROOM_FRIEND_REQUESTED_DETAIL := "Waiting for %s to say yes"
 const ROOM_FRIEND_REQUESTED := "Request sent"
 const ROOM_ADD_FRIEND_SENT := "Friend request sent to %s."
+const ROOM_ADD_FRIEND_SENT_PLAIN := "Friend request sent."
 const ROOM_ADD_FRIEND_FAILED := "Couldn't send the request. Try again in a moment."
 
 const HOME_KEEPSAKES_LOAD_ERROR := "Your keepsakes may not have been loaded. The saved file is unchanged."

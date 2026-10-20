@@ -8,7 +8,7 @@ extends CanvasLayer
 ## only when the menu was opened from the keyboard or keys are used after a tap.
 ##
 ## Rows are {id, title, detail, icon, tone}; tone "danger" draws the row in
-## soft pink. Picking a row closes the menu, then emits chosen(id).
+## soft pink, "muted" in the quiet grey of a row that only informs. Picking a row closes the menu, then emits chosen(id).
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
@@ -81,7 +81,7 @@ func _row(entry: Dictionary) -> Button:
 	row.accessibility_name = str(entry.get("title",""))
 	row.accessibility_description = str(entry.get("detail",""))
 	row.mouse_filter = Control.MOUSE_FILTER_STOP
-	var tint: Color = DANGER_TEXT if entry.get("tone") == "danger" else CREAM
+	var tint: Color = DANGER_TEXT if entry.get("tone") == "danger" else MUTED if entry.get("tone") == "muted" else CREAM
 	var box := HBoxContainer.new()
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_theme_constant_override("separation",14)

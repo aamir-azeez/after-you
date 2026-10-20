@@ -8,6 +8,7 @@ extends RefCounted
 ## One shared instance (shared()) backs every screen; tests make their own.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 const PATH := "user://friend_roster.json"
 const VERSION := 1
 const STATUSES := ["accepted", "outgoing", "incoming"]
@@ -32,7 +33,7 @@ func _init(storage_path: String = PATH) -> void:
 	_load()
 
 static func _key(server: String, owner: String) -> String:
-	return server.strip_edges().trim_suffix("/") + "|" + owner
+	return DisplayNames.scope_key(server, owner)
 
 ## A player's status with this player: accepted, outgoing, incoming or "".
 func status(server: String, owner: String, player: String) -> String:

@@ -11,7 +11,7 @@ extends RefCounted
 const PLAN := "backup-plan.txt"
 const HEADER := "after-you-backup-plan 1"
 ## Hard mode's marks (nothing rebuilds them) and its runs' small index.
-const FIXED := ["journey.json", "home-keepsakes-v1.json", "solo-replay-visibility.json", "friend_nicknames.json", "hard-mode-v1.json", "hard-runs-v1.json"]
+const FIXED := ["journey.json", "home-keepsakes-v1.json", "solo-replay-visibility.json", "friend_nicknames.json", "display_names.json", "hard-mode-v1.json", "hard-runs-v1.json"]
 const MAX_ENTRIES := 4096
 const MAX_SHARED_FILE := 20 * 1024 * 1024
 

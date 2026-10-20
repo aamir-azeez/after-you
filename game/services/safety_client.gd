@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Store = preload("res://services/safety_store.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Typed = preload("res://services/typed_values.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 const TERMS_VERSION := "2026-09-16"
 const PATHS := ["/privacy", "/account-deletion", "/community-rules"]
 var busy := false
@@ -200,6 +201,8 @@ func block(room: Dictionary) -> bool:
 	var next := _state.duplicate(true)
 	if room.peer_id not in next.blocked_players: next.blocked_players.append(room.peer_id)
 	next.blocked_rooms[room.room_family + ":" + room.room_id] = room.peer_id
+	# A blocked player's chosen name is no longer kept on this phone.
+	DisplayNames.shared().forget(str(_api.base_url) if is_instance_valid(_api) else "", _owner, room.peer_id)
 	return _finish(ticket, _persist(next))
 
 func unblock(player: String) -> bool:

@@ -18,6 +18,8 @@ extends Node
 ##   legacy_room_flow (open_room, join_room), relay_lobby_flow (open_lobby,
 ##   lobby_action)
 ## - pop-up: notification_flow (friends_notice), which shows the screen's lines
+## - names: display_name_flow (chip, flush, maybe_ask), for the header chip and
+##   the first-run name prompt
 ## - node: add_child (the Friends layer stays Main's child)
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link(). refresh() calls the screen's private

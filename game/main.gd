@@ -1827,8 +1827,10 @@ func forget_removed_room(version: int, room_id: String) -> void:
 		if active_room.get("room_id") == room_id: active_room = {}
 
 func _friend_display_name(friend: String) -> String:
-	## One place to turn a friend's player id into the name shown on screen:
-	## their local nickname when set, otherwise "a friend". Never the raw id.
+	## One place to turn a friend's or room partner's player id into the name
+	## shown on screen (FriendNicknames.display_name): their local nickname, then
+	## the name they chose, then their anonymous name while names are on, else
+	## "a friend". Never the raw id.
 	if friend.is_empty(): return ""
 	if friend_nicknames == null: return FriendNicknames.FALLBACK
 	return friend_nicknames.display_name(str(api.base_url),str(api.player_id),friend)

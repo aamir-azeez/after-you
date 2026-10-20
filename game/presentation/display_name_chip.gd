@@ -26,7 +26,8 @@ func _init(reduced_motion: bool = false) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 10)
 	add_child(row)
-	preview = SpiritPreview.new(reduced_motion, SpiritPreview.PEACH, Vector2(44, 62))
+	# Small enough that the chip is no taller than the title beside it.
+	preview = SpiritPreview.new(reduced_motion, SpiritPreview.PEACH, Vector2(42, 56))
 	preview.name = "DisplayNameChipPip"
 	row.add_child(preview)
 	var words := VBoxContainer.new()
@@ -44,7 +45,10 @@ func _init(reduced_motion: bool = false) -> void:
 	words.add_child(name_label)
 	status_label = Label.new()
 	status_label.name = "DisplayNameChipStatus"
-	status_label.add_theme_font_size_override("font_size", 13)
+	status_label.add_theme_font_size_override("font_size", 15)
+	# Clipped, so the line never widens the chip when it appears.
+	status_label.clip_text = true
+	status_label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	status_label.visible = false
 	words.add_child(status_label)
 	change_button = Button.new()

@@ -19,7 +19,8 @@ extends Node
 ##   platform (String): the platform row's label, or "" for none;
 ##   read_platform (Callable () -> {"ok", "name"}): awaited when that row is picked;
 ##   save (Callable (choice, name) -> {"closed": bool, "code": String}): awaited on Save;
-##   reduced_motion (bool), haptic (Callable, optional): the pip's grab tick.
+##   reduced_motion (bool), haptic (Callable, optional): the pip's grab tick;
+##   dismissed (Callable, optional): called when the card closes with nothing saved.
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -48,6 +49,7 @@ var _context: Dictionary = {}
 var _choice := "typed"
 var _platform_name := ""
 var _busy := false
+var _saved := false
 
 ## Opens the prompt over `parent` and returns the modal (InGameModal).
 static func open(parent: Control, context: Dictionary, opener: Control = null) -> Control:
@@ -72,7 +74,8 @@ func _build(card: Control) -> void:
 	body.add_theme_constant_override("separation", 22)
 	modal.content.add_child(body)
 	var art := VBoxContainer.new()
-	art.add_theme_constant_override("separation", 2)
+	# The preview frames the pip with room above its leaf; the tag sits into it.
+	art.add_theme_constant_override("separation", -26)
 	art.alignment = BoxContainer.ALIGNMENT_CENTER
 	body.add_child(art)
 	art.add_child(_tag())
@@ -104,7 +107,9 @@ func _build(card: Control) -> void:
 		platform_row = _row(column, "DisplayNamePlatform", platform_label, PlayerCopy.DISPLAY_NAME_PLATFORM_NOTE)
 		_platform_note = platform_row.find_child("Note", true, false)
 		platform_row.pressed.connect(_pick_platform)
-	save_button = modal.add_actions(PlayerCopy.DISPLAY_NAME_SAVE, _save, PlayerCopy.DISPLAY_NAME_NOT_NOW if not _context.get("edit", false) else "Cancel")
+	save_button = modal.add_actions(PlayerCopy.DISPLAY_NAME_SAVE, _save, PlayerCopy.DISPLAY_NAME_NOT_NOW if not _context.get("edit", false) else PlayerCopy.DISPLAY_NAME_CANCEL)
+	var dismissed: Variant = _context.get("dismissed")
+	if dismissed is Callable and dismissed.is_valid(): modal.closed.connect(func() -> void: if not _saved: dismissed.call())
 	save_button.name = "DisplayNameSave"
 	var cancel: Button = modal.find_child("ModalCancel", true, false)
 	# Nothing is lost by closing, so the way out is quiet, not the coral warning.
@@ -129,6 +134,11 @@ func _tag() -> Control:
 	var style := ThemeRules.rounded(TAG_FILL, 20, TAG_INK)
 	style.set_border_width_all(2)
 	holder.add_theme_stylebox_override("panel", ThemeRules.padded(style, 16.0, 4.0))
+	var bubble := VBoxContainer.new()
+	bubble.name = "DisplayNameTagBubble"
+	bubble.add_theme_constant_override("separation", -2)
+	bubble.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	bubble.z_index = 1
 	tag = Label.new()
 	tag.name = "DisplayNameTagText"
 	tag.add_theme_font_override("font", NUNITO)
@@ -136,7 +146,12 @@ func _tag() -> Control:
 	tag.add_theme_color_override("font_color", TAG_INK)
 	tag.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	holder.add_child(tag)
-	return holder
+	bubble.add_child(holder)
+	var tail := Tail.new()
+	tail.custom_minimum_size = Vector2(22, 12)
+	tail.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	bubble.add_child(tail)
+	return bubble
 
 func _field() -> LineEdit:
 	field = LineEdit.new()
@@ -232,8 +247,8 @@ func _pick_platform() -> void:
 	_busy = true
 	_platform_note.text = PlayerCopy.DISPLAY_NAME_PLATFORM_READING
 	var answer: Variant = await reader.call()
+	if not is_inside_tree(): return
 	_busy = false
-	if not is_instance_valid(modal): return
 	var name := DisplayNames.clean(str(answer.get("name", ""))) if answer is Dictionary and answer.get("ok", false) else ""
 	if name.is_empty():
 		_platform_note.text = PlayerCopy.DISPLAY_NAME_PLATFORM_FAILED
@@ -255,6 +270,7 @@ func _show() -> void:
 	_counter.text = PlayerCopy.DISPLAY_NAME_COUNTER % [typed.length(), DisplayNames.MAX_LENGTH]
 	_counter.add_theme_color_override("font_color", ERROR if typed.length() > DisplayNames.MAX_LENGTH else MUTED)
 	field.modulate.a = 1.0 if _choice == "typed" else 0.55
+	_counter.modulate.a = field.modulate.a
 	var anonymous := str(_context.get("anonymous", ""))
 	match _choice:
 		"anonymous": tag.text = anonymous
@@ -277,6 +293,9 @@ func _mark(row: Button, on: bool) -> void:
 func _save() -> void:
 	if _busy or not is_instance_valid(modal): return
 	var name := ""
+	# Nothing typed and nothing picked: the tag already shows the anonymous
+	# name, so Save keeps that.
+	if _choice == "typed" and DisplayNames.clean(field.text).is_empty(): _choice = "anonymous"
 	match _choice:
 		"typed":
 			name = DisplayNames.clean(field.text)
@@ -294,14 +313,24 @@ func _save() -> void:
 	save_button.disabled = true
 	save_button.text = PlayerCopy.DISPLAY_NAME_SAVING
 	var answer: Variant = await save.call(_choice, name)
-	if not is_instance_valid(modal): return
+	# The card was closed while it waited (the prompt is the card's child).
+	if not is_inside_tree(): return
 	_busy = false
 	save_button.disabled = false
 	save_button.text = PlayerCopy.DISPLAY_NAME_SAVE
 	if answer is Dictionary and not answer.get("closed", true):
 		_error.text = str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), PlayerCopy.DISPLAY_NAME_ERRORS.characters))
+		_show()
 		return
+	_saved = true
 	modal.close()
+
+## The tag's tail, pointing down at the pip.
+class Tail extends Control:
+	func _draw() -> void:
+		var w := size.x
+		draw_colored_polygon(PackedVector2Array([Vector2(0, 0), Vector2(w, 0), Vector2(w * 0.5, size.y)]), TAG_INK)
+		draw_colored_polygon(PackedVector2Array([Vector2(3, 0), Vector2(w - 3, 0), Vector2(w * 0.5, size.y - 3.5)]), TAG_FILL)
 
 ## The radio dot of a choice row.
 class Dot extends Control:

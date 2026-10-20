@@ -47,7 +47,7 @@ var last_code := ""
 var read_only := false
 var supported_simulation_versions: Dictionary = {}
 var accepted_pair_cache: Callable
-## (partner_id: String, name: Variant) -> void: the room partner's display name
+## (partner_id: String, name: Variant, room_id: String) -> void: the room partner's display name
 ## that came beside an accepted read or turn reply (null when they have none).
 var partner_name_sink: Callable
 var restore_replay_transfer: Callable
@@ -449,7 +449,7 @@ func _note_partner_name(response: Dictionary) -> void:
 	if not response.has("partner_name") or not partner_name_sink.is_valid() or _state.is_empty(): return
 	var snapshot: Dictionary = _state.snapshot
 	var partner: Variant = snapshot.get("guest_id") if snapshot.get("host_id") == _owner else snapshot.get("host_id")
-	if partner is String and not partner.is_empty(): partner_name_sink.call(partner, response.partner_name)
+	if partner is String and not partner.is_empty(): partner_name_sink.call(partner, response.partner_name, _room)
 
 
 ## The face the turn waiting to send carries, or "". A screen shows it fixed:

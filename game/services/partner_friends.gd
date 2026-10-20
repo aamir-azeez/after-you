@@ -38,10 +38,12 @@ func state(peer: String, family: String = "", room: String = "") -> String:
 	var current: Dictionary = scope.call() if scope.is_valid() else {}
 	if current.is_empty() or not Presence.valid_id(peer) or peer == current.owner: return HIDDEN
 	if not family.is_empty():
-		if not safety.partner_allowed(str(current.owner), family, room, peer): return HIDDEN
-		# A report about this room waiting to be sent.
+		# One read of the safety record: a blocked partner or room, or a report
+		# about this room waiting to be sent.
 		var record: Dictionary = safety.read(str(current.owner))
-		if record.get("ok", false) and record.value.pending.get("room_id") == room: return HIDDEN
+		if not record.get("ok", false) or SafetyStore.suppressed_rooms.has(str(current.owner) + ":" + family + ":" + room): return HIDDEN
+		var kept: Dictionary = record.value
+		if kept.blocked_rooms.has(family + ":" + room) or peer in kept.blocked_players or kept.pending.get("room_id") == room: return HIDDEN
 	match roster.status(str(current.server), str(current.owner), peer):
 		"outgoing": return REQUESTED
 		"accepted", "incoming": return HIDDEN

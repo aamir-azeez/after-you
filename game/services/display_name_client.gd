@@ -17,23 +17,24 @@ signal settled(answer: Dictionary)
 
 var names: RefCounted
 var _api: Node
-var _identity: Callable
+## () -> {server, owner} of the signed-in player, or {} (Main's _names_scope).
+var _scope: Callable
 var _transport: Callable
 var _sending := false
 
 ## transport(method, path, body) -> response, for tests; else the API's queue.
-func _init(api: Node, identity: Callable, transport: Callable = Callable(), store: RefCounted = null) -> void:
+func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), store: RefCounted = null) -> void:
 	_api = api
-	_identity = identity
+	_scope = scope_source
 	_transport = transport
 	names = store if store != null else DisplayNames.shared()
 
-## {server, owner} of the signed-in player, or {}.
+## {server, owner} of the signed-in player while the server shows names, or {}:
+## with names off nothing is sent (a send would only spend a request on a 503).
 func scope() -> Dictionary:
-	var value: Variant = _identity.call() if _identity.is_valid() else null
-	if not value is Dictionary or value.get("ready") != true or not Presence.valid_id(value.get("player_id")): return {}
-	if not is_instance_valid(_api) or _api.player_id != value.player_id or str(_api.device_token).is_empty(): return {}
-	return {"server": str(_api.base_url), "owner": str(value.player_id)}
+	var value: Variant = _scope.call() if _scope.is_valid() else null
+	if not value is Dictionary or value.is_empty() or not Presence.valid_id(value.get("owner")): return {}
+	return value if names.enabled(str(value.server), str(value.owner)) else {}
 
 func sending() -> bool:
 	return _sending

@@ -24,6 +24,8 @@ const HEADER := "X-AfterYou-Display-Names: 1"
 const MAX_LENGTH := 18
 ## Other players' names kept per scope; the oldest room names go first.
 const MAX_NAMES := 200
+## A name kept from a room and not seen again for this long is no longer shown.
+const ROOM_NAME_DAYS := 30
 ## typed: a name the player typed; anonymous: no name, friends see the
 ## generated one; platform: the Play Games or Game Center name, copied once.
 const CHOICES := ["typed", "anonymous", "platform"]
@@ -70,6 +72,8 @@ static func clean(text: String) -> String:
 static func problem(text: String) -> String:
 	var name := clean(text)
 	if name.is_empty() or name.length() > MAX_LENGTH: return "length"
+	# A mark at the start would sit on the text before the name.
+	if name.unicode_at(0) >= 0x300 and name.unicode_at(0) <= 0x36f: return "characters"
 	var visible := false
 	for i in range(name.length()):
 		var code := name.unicode_at(i)
@@ -84,6 +88,8 @@ static func hidden_character(code: int) -> bool:
 	if code == 0x00ad or code == 0x061c or code == 0x180e or code == 0xfeff: return true
 	# Letters that draw nothing: Hangul fillers and the blank Braille cell.
 	if code in [0x115f, 0x1160, 0x3164, 0xffa0, 0x2800]: return true
+	# Marks that draw nothing or enclose the text around them.
+	if code in [0x034f, 0x17b4, 0x17b5, 0x0488, 0x0489] or (code >= 0x180b and code <= 0x180f) or (code >= 0x20dd and code <= 0x20e4) or (code >= 0xe0100 and code <= 0xe01ef): return true
 	if (code >= 0x200b and code <= 0x200f) or (code >= 0x2028 and code <= 0x202e) or (code >= 0x2060 and code <= 0x206f): return true
 	if (code >= 0xfe00 and code <= 0xfe0f) or (code >= 0xfff0 and code <= 0xfffb): return true
 	if (code >= 0xe000 and code <= 0xf8ff) or code >= 0xf0000 or (code >= 0xe0000 and code <= 0xe0fff): return true
@@ -96,6 +102,7 @@ static func symbol_character(code: int) -> bool:
 		return not (character == " " or (code >= 48 and code <= 57) or (code >= 65 and code <= 90) or (code >= 97 and code <= 122) or PUNCTUATION.contains(character))
 	if code == 0x2019: return false
 	if (code >= 0x2190 and code <= 0x2bff) or (code >= 0x1f000 and code <= 0x1faff) or (code >= 0x2000 and code <= 0x206f): return true
+	if (code >= 0x20a0 and code <= 0x20ff) or (code >= 0x2100 and code <= 0x214f) or (code >= 0xa2 and code <= 0xa5): return true
 	return code in [0xa9, 0xae, 0xd7, 0xf7, 0xb0, 0xa7, 0xb6, 0xa6, 0xac, 0xb1]
 
 ## A name another player sent: a string the rules allow, unchanged by clean().
@@ -139,8 +146,10 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 		_scopes[key] = {"enabled": false, "own": _blank_own(), "names": {}}
 	return _scopes[key]
 
+## confirmed: the name the server last confirmed ("" for none), shown while a
+## newer choice is refused.
 static func _blank_own() -> Dictionary:
-	return {"choice": "", "name": "", "revision": 0, "state": "", "code": "", "asked": false}
+	return {"choice": "", "name": "", "revision": 0, "state": "", "code": "", "asked": false, "confirmed": ""}
 
 ## Whether the server shows names to this player (the friends list or the
 ## capabilities said so last time). Prompts and anonymous names wait for it.
@@ -165,7 +174,8 @@ func own(server: String, owner: String) -> Dictionary:
 ## the anonymous one.
 func own_shown(server: String, owner: String) -> String:
 	var mine := own(server, owner)
-	if mine.choice in ["typed", "platform"] and not str(mine.name).is_empty() and mine.state != REFUSED: return str(mine.name)
+	if mine.state == REFUSED: return str(mine.confirmed) if not str(mine.confirmed).is_empty() else anonymous_name(owner)
+	if mine.choice in ["typed", "platform"] and not str(mine.name).is_empty(): return str(mine.name)
 	return anonymous_name(owner)
 
 ## Records a new choice, waiting to be sent. Returns the record, or {} for a
@@ -204,6 +214,7 @@ func settle(server: String, owner: String, revision: int, answer: Dictionary) ->
 			mine.name = ""
 		mine.state = SYNCED
 		mine.code = ""
+		mine.confirmed = str(mine.name)
 	else:
 		mine.state = REFUSED
 		mine.code = str(answer.get("code", ""))
@@ -231,6 +242,7 @@ func adopt(server: String, owner: String, name: Variant) -> void:
 	mine.state = SYNCED
 	mine.code = ""
 	mine.asked = true
+	mine.confirmed = str(mine.name)
 	_save()
 
 ## The first-run prompt was shown (once per player).
@@ -242,10 +254,13 @@ func mark_asked(server: String, owner: String) -> void:
 
 # --- Other players' names -----------------------------------------------
 
-## The name a friend or room partner chose, or "".
+## The name a friend or room partner chose, or "". A name kept from a room
+## goes quiet after ROOM_NAME_DAYS without being seen again.
 func chosen(server: String, owner: String, player: String) -> String:
 	var entry: Variant = _scope(server, owner).get("names", {}).get(player)
-	return str(entry.name) if entry is Dictionary else ""
+	if not entry is Dictionary: return ""
+	if entry.from == "room" and _now() - int(entry.at) > ROOM_NAME_DAYS * 86400: return ""
+	return str(entry.name)
 
 ## The name to show for another player when this phone has no nickname for
 ## them: their chosen name, or their anonymous name while names are on, else "".
@@ -271,25 +286,38 @@ func take_friends_page(server: String, owner: String, page: Dictionary) -> void:
 	adopt(server, owner, page.get("display_name"))
 	_save()
 
-## A room partner's name from a room reply or the room list. null (anonymous)
-## forgets what was kept.
-func note_partner(server: String, owner: String, player: String, name: Variant) -> void:
+## A room partner's name from one room's reply or its room list entry. A
+## friend's name comes only from the friends list, so a room never changes or
+## erases it. For anyone else the name is kept with the room it came from:
+## null from that same room (they went anonymous, or the room lost the name)
+## forgets it, while null from another room (one from before names, say) is no news.
+func note_partner(server: String, owner: String, player: String, name: Variant, room: String = "") -> void:
 	if player.is_empty() or player == owner: return
 	var scope := _scope(server, owner, true)
 	if scope.is_empty(): return
-	scope.enabled = true
+	if not bool(scope.enabled):
+		scope.enabled = true
+		_save()
 	var names: Dictionary = scope.names
 	var before: Variant = names.get(player)
+	if before is Dictionary and before.from == "friend": return
 	if name is String and valid_remote(name):
-		if before is Dictionary and before.name == name: return
-		names[player] = {"name": name, "from": before.get("from", "room") if before is Dictionary else "room", "at": _now()}
+		# The same name again only refreshes when the kept one is a day old, so
+		# ordinary reads do not rewrite the file.
+		if before is Dictionary and before.name == name and before.get("room", "") == room and _now() - int(before.at) < 86400: return
+		names[player] = {"name": name, "from": "room", "room": room, "at": _now()}
 		_trim(names)
 	elif name == null:
-		if before == null: return
+		if not before is Dictionary or before.get("room", "") != room: return
 		names.erase(player)
 	else:
 		return
 	_save()
+
+## Forgets a player's name everywhere it was kept (they were blocked or reported).
+func forget(server: String, owner: String, player: String) -> void:
+	var names: Dictionary = _scope(server, owner).get("names", {})
+	if names.erase(player): _save()
 
 static func _trim(names: Dictionary) -> void:
 	if names.size() <= MAX_NAMES: return
@@ -322,15 +350,16 @@ func _load() -> void:
 		var mine: Variant = value.get("own")
 		if mine is Dictionary and mine.get("choice", "") in CHOICES + [""] and mine.get("state", "") in ["", PENDING, SYNCED, REFUSED]:
 			var name: Variant = mine.get("name", "")
+			var confirmed: Variant = mine.get("confirmed", "")
 			if name is String and (name.is_empty() or valid_remote(name)):
 				scope.own = {"choice": mine.choice, "name": name, "revision": Typed.as_int(mine.get("revision"), 0), "state": mine.state,
-					"code": str(mine.get("code", "")).left(40), "asked": mine.get("asked") == true}
+					"code": str(mine.get("code", "")).left(40), "asked": mine.get("asked") == true, "confirmed": confirmed if confirmed is String and valid_remote(confirmed) else ""}
 		var names: Variant = value.get("names")
 		if names is Dictionary:
 			for player: Variant in names:
 				var entry: Variant = names[player]
 				if player is String and entry is Dictionary and valid_remote(entry.get("name")) and entry.get("from") in ["friend", "room"]:
-					scope.names[player] = {"name": entry.name, "from": entry.from, "at": Typed.as_int(entry.get("at"), 0)}
+					scope.names[player] = {"name": entry.name, "from": entry.from, "room": str(entry.get("room", "")).left(24), "at": Typed.as_int(entry.get("at"), 0)}
 		_scopes[key] = scope
 
 func _save() -> bool:

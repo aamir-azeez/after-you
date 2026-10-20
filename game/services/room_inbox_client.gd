@@ -327,7 +327,7 @@ static func _partner_reaction(value: Dictionary) -> Dictionary:
 func _note_partner_name(value: Dictionary, membership: Dictionary) -> void:
 	if not value.has("partner_name") or _binding.is_empty(): return
 	var partner: Variant = membership.get("guest_id") if membership.get("you_are_host") == true else membership.get("host_id")
-	if partner is String and partner != _binding.player_id: DisplayNames.shared().note_partner(str(_binding.server), str(_binding.player_id), partner, value.partner_name)
+	if partner is String and partner != _binding.player_id: DisplayNames.shared().note_partner(str(_binding.server), str(_binding.player_id), partner, value.partner_name, str(value.get("room_id", "")))
 
 ## How many of the optional keys a room carries: partner_left (true only, to
 ## clients that send X-AfterYou-Room-Leave), partner_reaction (to clients that
