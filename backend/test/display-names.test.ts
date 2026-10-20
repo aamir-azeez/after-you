@@ -8,7 +8,7 @@ import { LIVE_PATH } from "../src/live";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { PortableSnapshot } from "../src/snapshot";
-import { DISPLAY_NAMES_HEADER, DISPLAY_NAME_LOCK_MS, DISPLAY_NAME_WINDOW_MS, MEMBER_NAMES, MAX_DISPLAY_NAME_CHANGES, blockedName, cleanDisplayName, shownName } from "../src/display-names";
+import { DISPLAY_NAMES_HEADER, FRIEND_LINK_MAX_AGE, FRIEND_LINK_ORIGIN, DISPLAY_NAME_LOCK_MS, DISPLAY_NAME_WINDOW_MS, MEMBER_NAMES, MAX_DISPLAY_NAME_CHANGES, blockedName, cleanDisplayName, shownName } from "../src/display-names";
 import { countingEnv, meterRows } from "./meter";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
@@ -159,6 +159,8 @@ describe("display name rules", () => {
       "Maya$", "Maya@", "\u00a9", "\u2122", "x\u0301\u0302\u0303", "x".repeat(300)];
     for (const name of refused) expect(cleanDisplayName(name), JSON.stringify(name)).toEqual({ ok: false, code: "invalid_display_name" });
     for (const input of [null, undefined, 7, ["Maya"], { name: "Maya" }]) expect(cleanDisplayName(input)).toEqual({ ok: false, code: "invalid_display_name" });
+    // Enclosing marks, a mark at the start, and marks that draw nothing.
+    for (const name of ["x\u20dd", "x\u0489", "\u0301abc", "a\ufe0fb", "a\u034fb", "a\u180bb", "a\u{e0100}b", "a\u17b4b"]) expect(cleanDisplayName(name), JSON.stringify(name)).toEqual({ ok: false, code: "invalid_display_name" });
     // Names that draw nothing: Hangul fillers, the blank Braille cell, or marks and punctuation with no letter or digit.
     for (const name of ["\u3164", "\uffa0x".slice(0, 1), "\u115f\u1160", "\u2800\u2800", "Kai\u3164", "\u0301\u0302", "!?", "...", "-_-"]) expect(cleanDisplayName(name), JSON.stringify(name)).toEqual({ ok: false, code: "invalid_display_name" });
   });
@@ -170,7 +172,8 @@ describe("display name rules", () => {
   });
 
   it("refuse block-listed names through case, marks, swaps and spacing, and pass words that only contain them", () => {
-    for (const name of ["N1gger", "n i g g e r", "F4GGOT", "Kike", "Spic Lord", "Hitler", "KKK fan", "Sieg Heil", "Nazi", "c00n", "P\u00e1k\u00ed", "big_slut", "kys"]) {
+    for (const name of ["N1gger", "n i g g e r", "F4GGOT", "Kike", "Spic Lord", "Hitler", "KKK fan", "Sieg Heil", "Nazi", "c00n", "P\u00e1k\u00ed", "big_slut", "kys",
+      "Nazi!", "Hitler!", "Kys!", "Rape!", "Nazi0", "N a z i", "n.a.z.i", "n\u0430zi", "h\u0456tler", "sluuut"]) {
       expect(blockedName(name), name).toBe(true);
       expect(cleanDisplayName(name), name).toEqual({ ok: false, code: "display_name_refused" });
     }
@@ -219,7 +222,10 @@ describe("PUT /v1/profile/name", () => {
     expect(await failure(await setName(account, "Kai\u200b"))).toEqual({ status: 400, body: { error: { code: "invalid_display_name", retryable: false } } });
     expect(await failure(await setName(account, "Hitler"))).toEqual({ status: 422, body: { error: { code: "display_name_refused", retryable: false } } });
     expect((await identityOf(account))?.display_name).toBe("Maya");
-    expect((await setName(account, "Kai", Number.MAX_SAFE_INTEGER)).status).toBe(200);
+    // A revision more than a day ahead of the server's clock would make every later change stale.
+    expect(await failure(await setName(account, "Kai", Number.MAX_SAFE_INTEGER))).toEqual({ status: 400, body: { error: { code: "invalid_display_name", retryable: false } } });
+    expect(await failure(await setName(account, "Kai", Date.now() + 2 * 86_400_000))).toEqual({ status: 400, body: { error: { code: "invalid_display_name", retryable: false } } });
+    expect((await setName(account, "Kai", Date.now() + 3_600_000)).status).toBe(200);
   });
 
   it("never lets a late or repeated revision undo a newer change", async () => {
@@ -357,7 +363,7 @@ describe("room partner names", () => {
   it("come from create, join and turns, and ride beside full room reads and turn replies", async () => {
     const host = await named("Maya"), guest = await named("Kai");
     const current = await room(host, guest);
-    expect(await memberRows(current.room_id)).toEqual([{ player_id: host.player_id, display_name: "Maya" }, { player_id: guest.player_id, display_name: "Kai" }].sort((x, y) => x.player_id.localeCompare(y.player_id)));
+    expect(await memberRows(current.room_id)).toEqual([{ player_id: host.player_id, display_name: "Maya" }, { player_id: guest.player_id, display_name: "Kai" }].sort((x, y) => (x.player_id < y.player_id ? -1 : 1)));
     const seen = await (await read(current.room_id, guest)).json<RoomSnapshotV2>();
     expect(seen.partner_name).toBe("Maya");
     const { partner_name: _name, ...rest } = seen; void _name;
@@ -376,7 +382,7 @@ describe("room partner names", () => {
     expect(Object.keys(small).sort()).toEqual(["branch", "revision", "schema_version", "unchanged", "updated_at"]);
   });
 
-  it("follow a rename or going anonymous at that member's next turn, with no fan-out before it", async () => {
+  it("follow a rename at that member's next turn, and leave every room at once when they go anonymous", async () => {
     const host = await named("Maya"), guest = await named("Kai");
     const current = await room(host, guest);
     const first = await turn(current, host, firstA);
@@ -385,9 +391,12 @@ describe("room partner names", () => {
     const second = await turn(first.room, guest, firstB, middle);
     expect((await (await read(current.room_id, host)).json<RoomSnapshotV2>()).partner_name).toBe("Kai Two");
     expect((await setName(guest, null)).status).toBe(200);
-    await turn(second.room, guest, secondA);
     expect((await (await read(current.room_id, host)).json<RoomSnapshotV2>()).partner_name).toBeNull();
     expect(await memberRows(current.room_id)).toEqual([{ player_id: host.player_id, display_name: "Maya" }]);
+    await turn(second.room, guest, secondA);
+    expect((await (await read(current.room_id, host)).json<RoomSnapshotV2>()).partner_name).toBeNull();
+    // Already anonymous: a second null clears nothing more and reaches no room.
+    expect((await setName(guest, null)).status).toBe(200);
   });
 
   it("write nothing while the flag is off, and a room without names keeps its storage", async () => {
@@ -564,5 +573,74 @@ describe("a friend request to a room partner", () => {
     expect(await social(partner)).toBe(await social(stranger));
     // A friend request sends no push: nothing left the runtime.
     expect(fetches).not.toHaveBeenCalled();
+  });
+});
+
+describe("friend link page name", () => {
+  const link = (code: string, vars: Record<string, string | undefined> = ON, base: Env = env) => call(`/v1/friend-link/${code}/name`, "GET", undefined, undefined, vars, { Origin: FRIEND_LINK_ORIGIN }, base);
+  const answer = async (response: Response) => ({ status: response.status, body: await response.json<Record<string, unknown>>() });
+  const none = { status: 200, body: { schema_version: 1, display_name: null } };
+
+  it("answers only the chosen name, for the owner's site, kept briefly", async () => {
+    const maya = await named("Maya");
+    const response = await link(maya.player_id);
+    expect(await answer(response.clone())).toEqual({ status: 200, body: { schema_version: 1, display_name: "Maya" } });
+    expect(response.headers.get("Access-Control-Allow-Origin")).toBe("https://aamirazeez.com");
+    expect(response.headers.get("Cache-Control")).toBe(`public, max-age=${FRIEND_LINK_MAX_AGE}`);
+    expect(response.headers.get("Content-Type")).toBe("application/json; charset=utf-8");
+    expect(Object.keys((await answer(await link(maya.player_id))).body)).toEqual(["schema_version", "display_name"]);
+  });
+
+  it("looks the same for an unknown code, an anonymous player, no identity and the flag off", async () => {
+    const quiet = await named(null), hidden = await named("Kai");
+    expect(await answer(await link(quiet.player_id))).toEqual(none);
+    expect(await answer(await link(randomToken(16)))).toEqual(none);
+    expect(await answer(await link("nobodyhere"))).toEqual(none);
+    expect(await answer(await link(hidden.player_id, OFF))).toEqual(none);
+    expect(await answer(await link(hidden.player_id, {}))).toEqual(none);
+    // A Player nobody made stores nothing for the lookup.
+    const stranger = randomToken(16);
+    await link(stranger);
+    expect(await runInDurableObject(env.PLAYERS.getByName(stranger), async (_, state) => state.storage.sql.exec("SELECT name FROM sqlite_master WHERE type='table'").toArray().length)).toBe(0);
+  });
+
+  it("never answers the anonymous name: a player who went anonymous reads as none", async () => {
+    const account = await named("Robin");
+    expect((await setName(account, null)).status).toBe(200);
+    expect(await answer(await link(account.player_id))).toEqual(none);
+  });
+
+  it("resolves a short name through FRIEND_ALIASES as Add friend does", async () => {
+    const owner = await named("Ash");
+    const aliases = { ...ON, FRIEND_ALIASES: JSON.stringify({ ashtest: owner.player_id }) };
+    expect(await answer(await link("ashtest", aliases))).toEqual({ status: 200, body: { schema_version: 1, display_name: "Ash" } });
+    expect(await answer(await link("AshTest", aliases))).toEqual({ status: 200, body: { schema_version: 1, display_name: "Ash" } });
+    expect(await answer(await link("ashtest", ON))).toEqual(none);
+  });
+
+  it("costs at most one Player read, and none once kept or with the flag off", async () => {
+    const lee = await named("Lee");
+    const first = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...ON } as unknown as Env);
+    await link(lee.player_id, ON, first.env);
+    expect(first.calls).toEqual(["PLAYERS.publicDisplayName"]);
+    const second = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...ON } as unknown as Env);
+    expect((await answer(await link(lee.player_id, ON, second.env))).body.display_name).toBe("Lee");
+    expect(second.calls).toEqual([]);
+    const off = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...OFF } as unknown as Env);
+    await link(lee.player_id, OFF, off.env);
+    expect(off.calls).toEqual([]);
+  });
+
+  it("refuses other methods and shapes, and is limited per address", async () => {
+    const zoe = await named("Zoe");
+    expect((await call(`/v1/friend-link/${zoe.player_id}/name`, "POST", undefined, {}, ON)).status).not.toBe(200);
+    expect((await call(`/v1/friend-link/${"x".repeat(40)}/name`, "GET", undefined, undefined, ON)).status).not.toBe(200);
+    expect((await call(`/v1/friend-link/${zoe.player_id}`, "GET", undefined, undefined, ON)).status).not.toBe(200);
+    let limited = false;
+    for (let i = 0; i < 40 && !limited; i++) {
+      const response = await worker.fetch(new Request(`https://names.test/v1/friend-link/${zoe.player_id}/name`, { headers: { "CF-Connecting-IP": "198.18.99.1" } }), { ...env, ...ON } as unknown as Env);
+      limited = response.status === 429;
+    }
+    expect(limited).toBe(true);
   });
 });

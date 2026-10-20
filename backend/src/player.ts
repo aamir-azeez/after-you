@@ -210,9 +210,17 @@ export class Player extends DurableObject<Env> {
   setDisplayName(owner: string, deviceHash: string, name: string | null, revision: number): DisplayNameOutcome {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
+    const named = identity.display_name !== undefined;
     const { outcome, changed } = applyDisplayName(identity, name, revision, Date.now());
     if (changed) this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    // A name that just went: the v2 rooms that may hold a copy, for the route to clear.
+    if (changed && named && identity.display_name === undefined && outcome.ok) return { ...outcome, cleared_rooms: this.listRooms().filter(link => roomLinkVersion(link) === 2).slice(0, MAX_CLEARED_ROOMS).map(link => link.room_id) };
     return outcome;
+  }
+  /** Binding only (the friend link page): the active identity's stored name, or null. Nothing else leaves. */
+  publicDisplayName(owner: string): string | null {
+    const identity = this.identity();
+    return identity && identity.player_id === owner && identity.state === "active" ? identity.display_name ?? null : null;
   }
   /** Binding only (operator clear-name): clears the name, locks new ones, and returns the v2 rooms that may hold a copy. */
   operatorClearDisplayName(owner: string): Outcome<string[]> {
@@ -848,7 +856,7 @@ export class Player extends DurableObject<Env> {
 
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
-  authorizeNamed: () => ({ authorized: false, linked: true }), setDisplayName: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"),
+  authorizeNamed: () => ({ authorized: false, linked: true }), setDisplayName: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined,

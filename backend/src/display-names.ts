@@ -3,6 +3,7 @@ import { ApiError, ID_PATTERN, boundedJson, isObject, unwrap, type Outcome } fro
 import { bearerDigest } from "./http";
 import { flags, type ServerVars } from "./flags";
 import { ROOM_INBOX_CONCURRENCY, pooled } from "./room-inbox";
+import { resolveFriendAlias } from "./friend-aliases";
 
 /**
  * Display names: an optional name a player picks for friends and room partners.
@@ -23,6 +24,8 @@ export const MAX_DISPLAY_NAME_LENGTH = 18;
 /** Non-null changes allowed in any rolling DISPLAY_NAME_WINDOW_MS. Clearing to anonymous is never counted. */
 export const MAX_DISPLAY_NAME_CHANGES = 5;
 export const DISPLAY_NAME_WINDOW_MS = 24 * 3_600_000;
+/** How far ahead of the server's clock a revision may be (phones send milliseconds since 1970). */
+export const MAX_REVISION_AHEAD_MS = 24 * 3_600_000;
 /** How long an operator clear refuses new names. */
 export const DISPLAY_NAME_LOCK_MS = 7 * 24 * 3_600_000;
 /** Rooms one operator clear reaches: the admission bound for room links (room-limit.ts MAX_INDEXED_ROOM_LINKS). */
@@ -31,8 +34,12 @@ export const MAX_CLEARED_ROOMS = 500;
 // ---- Rules ----
 
 export type CleanedName = { ok: true; name: string } | { ok: false; code: "invalid_display_name" | "display_name_refused" };
-/** Letters, marks, numbers, space separators and . ' - _ ! ? (ASCII apostrophe and U+2019). Everything else is refused. */
-const ALLOWED = /^[\p{L}\p{M}\p{N}\p{Zs}.'\-_!?\u2019]$/u;
+/** Letters, non-enclosing marks, numbers, space separators and . ' - _ ! ? (ASCII apostrophe and U+2019). Everything else is refused. */
+const ALLOWED = /^[\p{L}\p{Mn}\p{Mc}\p{N}\p{Zs}.'\-_!?\u2019]$/u;
+/** Marks that draw nothing: variation selectors, the grapheme joiner, Khmer inherent vowels and Mongolian selectors. */
+const INVISIBLE_MARKS = /[\u034F\u17B4\u17B5\u180B-\u180F\uFE00-\uFE0F\u{E0100}-\u{E01EF}]/u;
+/** A mark at the start would sit on the text before the name on screen. */
+const LEADING_MARK = /^\p{M}/u;
 const MARK_RUN = /\p{M}{3,}/u;
 /** Longest raw input looked at; anything longer could never clean to 18 code points of allowed text plus spacing. */
 const MAX_RAW_UNITS = 256;
@@ -56,7 +63,7 @@ function formedName(input: unknown): string | null {
   for (const point of composed) if (!ALLOWED.test(point)) return null;
   const name = composed.replace(/\p{Zs}+/gu, " ").trim();
   const length = [...name].length;
-  if (length < 1 || length > MAX_DISPLAY_NAME_LENGTH || MARK_RUN.test(name) || BLANK_LETTERS.test(name) || !VISIBLE.test(name)) return null;
+  if (length < 1 || length > MAX_DISPLAY_NAME_LENGTH || MARK_RUN.test(name) || BLANK_LETTERS.test(name) || INVISIBLE_MARKS.test(name) || LEADING_MARK.test(name) || !VISIBLE.test(name)) return null;
   return name;
 }
 
@@ -66,19 +73,53 @@ const BLANK_LETTERS = /[\u115F\u1160\u3164\uFFA0\u2800]/u;
 const VISIBLE = /[\p{L}\p{N}]/u;
 
 const SWAPS: Readonly<Record<string, string>> = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s", "!": "i" };
+/** Cyrillic and Greek letters that look like Latin ones (a small subset of Unicode's confusables). */
+const LOOKALIKES: Readonly<Record<string, string>> = {
+  "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p", "\u0441": "c", "\u0443": "y", "\u0445": "x", "\u0456": "i", "\u0458": "j", "\u0455": "s",
+  "\u043a": "k", "\u043c": "m", "\u0442": "t", "\u043d": "h", "\u0432": "b", "\u0501": "d", "\u0261": "g", "\u04bb": "h",
+  "\u03b1": "a", "\u03b5": "e", "\u03bf": "o", "\u03c1": "p", "\u03c4": "t", "\u03c5": "u", "\u03bd": "v", "\u03ba": "k", "\u03b9": "i", "\u03c7": "x"
+};
 const BLOCKED_WORDS = new Set<string>(blocklist.words);
 const BLOCKED_SUBSTRINGS: readonly string[] = blocklist.substrings;
 
-/** Lowercase, compatibility-decomposed with marks removed, and common digit and symbol swaps applied. */
-export function foldDisplayName(name: string): string {
-  return [...name.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "")].map(point => SWAPS[point] ?? point).join("");
+/** Lowercase, compatibility-decomposed with marks removed, and lookalike letters made Latin. */
+function plainFold(name: string): string {
+  return [...name.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "")].map(point => LOOKALIKES[point] ?? point).join("");
 }
 
-/** `substrings` match anywhere once spaces and punctuation are gone; `words` match whole tokens only. */
+/** The plain fold with common digit and symbol swaps applied ("n4z1" reads "nazi"). */
+export function foldDisplayName(name: string): string {
+  return [...plainFold(name)].map(point => SWAPS[point] ?? point).join("");
+}
+
+/** A word's repeated letters made single ("fuuuck"), for the word list only. */
+const squeeze = (word: string): string => word.replace(/(\p{L})\1+/gu, "$1");
+
+/** Word tokens: letters only, with runs of single letters ("n a z i", "n.a.z.i") joined into one. */
+function tokens(folded: string): string[] {
+  const parts = folded.split(/[^\p{L}]+/u).filter(part => part.length > 0), out: string[] = [];
+  let run = "";
+  for (const part of parts) {
+    if ([...part].length === 1) { run += part; continue; }
+    if (run.length > 0) { out.push(run); run = ""; }
+    out.push(part);
+  }
+  if (run.length > 0) out.push(run);
+  return out;
+}
+
+/**
+ * Checked on the name as typed and with digit and symbol swaps, so "Nazi!" (swapped "nazii") is
+ * still caught by its plain word. `substrings` match anywhere once spaces and punctuation are gone;
+ * `words` match a whole token, the whole name run together, or either with repeated letters made single.
+ */
 export function blockedName(name: string): boolean {
-  const folded = foldDisplayName(name), joined = folded.replace(/[^\p{L}\p{N}]/gu, "");
-  if (BLOCKED_SUBSTRINGS.some(entry => joined.includes(entry))) return true;
-  return folded.split(/[^\p{L}]+/u).some(token => BLOCKED_WORDS.has(token));
+  for (const folded of [plainFold(name), foldDisplayName(name)]) {
+    const joined = folded.replace(/[^\p{L}\p{N}]/gu, "");
+    if (BLOCKED_SUBSTRINGS.some(entry => joined.includes(entry))) return true;
+    for (const word of [joined, ...tokens(folded)]) if (BLOCKED_WORDS.has(word) || BLOCKED_WORDS.has(squeeze(word))) return true;
+  }
+  return false;
 }
 
 /** A stored name as it may be served: unchanged when it still passes every rule, otherwise null. */
@@ -92,19 +133,26 @@ export function shownName(value: unknown): string | null {
 export type DisplayNameFields = { display_name?: string; display_name_changes?: number[]; display_name_rev?: number; display_name_locked_until?: number };
 export const DISPLAY_NAME_KEYS = ["display_name", "display_name_changes", "display_name_rev", "display_name_locked_until"] as const;
 export type DisplayNameState = { schema_version: 1; display_name: string | null; revision: number };
-export type DisplayNameOutcome = Outcome<DisplayNameState> | { ok: false; status: 429; code: "display_name_limited"; retry_after_seconds: number };
+export type DisplayNameOutcome = Outcome<DisplayNameState> | { ok: true; value: DisplayNameState; cleared_rooms: string[] } | { ok: false; status: 429; code: "display_name_limited"; retry_after_seconds: number };
 
 const safeTime = (value: unknown): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
 /** The snapshot check for the optional keys that are present. */
 export function validDisplayNameFields(value: Record<string, unknown>): boolean {
-  // A stored name the block list has since refused is still well formed; serving re-checks it.
-  if (Object.hasOwn(value, "display_name") && (typeof value.display_name !== "string" || formedName(value.display_name) !== value.display_name)) return false;
+  // Shape only, not the name rules: a later change to the rules must never stop an export or a
+  // restore of a name stored under the old ones. Serving checks every rule again (shownName).
+  if (Object.hasOwn(value, "display_name") && !storableName(value.display_name)) return false;
   if (Object.hasOwn(value, "display_name_changes")) {
     const changes = value.display_name_changes;
     if (!Array.isArray(changes) || changes.length > MAX_DISPLAY_NAME_CHANGES || !changes.every(safeTime)) return false;
   }
   if (Object.hasOwn(value, "display_name_rev") && !(safeTime(value.display_name_rev) && value.display_name_rev >= 1)) return false;
   return !Object.hasOwn(value, "display_name_locked_until") || safeTime(value.display_name_locked_until);
+}
+/** A stored name's shape: 1 to 18 code points with no control, format, surrogate, private-use or unassigned ones. */
+function storableName(value: unknown): boolean {
+  if (typeof value !== "string") return false;
+  const length = [...value].length;
+  return length >= 1 && length <= MAX_DISPLAY_NAME_LENGTH && !/[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}]/u.test(value);
 }
 export const hasDisplayNameFields = (value: Record<string, unknown>): boolean => DISPLAY_NAME_KEYS.some(key => Object.hasOwn(value, key));
 
@@ -120,7 +168,8 @@ function state(fields: DisplayNameFields): DisplayNameState {
  */
 export function applyDisplayName(fields: DisplayNameFields, name: string | null, revision: number, now: number): { outcome: DisplayNameOutcome; changed: boolean } {
   if (name !== null && shownName(name) !== name) return { outcome: { ok: false, status: 400, code: "invalid_display_name" }, changed: false };
-  if (!Number.isSafeInteger(revision) || revision < 1) return { outcome: { ok: false, status: 400, code: "invalid_display_name" }, changed: false };
+  // Phones send milliseconds since 1970; one far in the future would make every later change stale.
+  if (!Number.isSafeInteger(revision) || revision < 1 || revision > now + MAX_REVISION_AHEAD_MS) return { outcome: { ok: false, status: 400, code: "invalid_display_name" }, changed: false };
   if (revision <= (fields.display_name_rev ?? 0)) return { outcome: { ok: true, value: state(fields) }, changed: false };
   if (name !== null && name !== (fields.display_name ?? null)) {
     if ((fields.display_name_locked_until ?? 0) > now) return { outcome: { ok: false, status: 403, code: "display_name_locked" }, changed: false };
@@ -249,7 +298,61 @@ export async function routeDisplayName(request: Request, playerId: string, env: 
   }
   const outcome = await env.PLAYERS.getByName(playerId).setDisplayName(playerId, await bearerDigest(request), cleaned, revision);
   if (!outcome.ok && "retry_after_seconds" in outcome) throw new ApiError(429, outcome.code, { retry_after_seconds: outcome.retry_after_seconds });
-  return unwrap(outcome);
+  // Going anonymous takes the name out of the player's rooms now, not at their next turn there.
+  // It happens at most once per named set, so the 5-a-day limit bounds it. Best effort: a room
+  // missed here drops the name at the player's next turn in it.
+  if (outcome.ok && "cleared_rooms" in outcome && Array.isArray(outcome.cleared_rooms)) await clearRooms(env, playerId, outcome.cleared_rooms);
+  const answer = unwrap(outcome);
+  return { schema_version: answer.schema_version, display_name: answer.display_name, revision: answer.revision };
+}
+
+/** Deletes the player's row in each room, four at a time; true for each room reached. */
+async function clearRooms(env: Env, player: string, rooms: readonly string[]): Promise<boolean[]> {
+  return pooled(rooms, ROOM_INBOX_CONCURRENCY, async roomId => {
+    try { await env.ROOMS_V2.getByName(roomId).clearMemberName(player); return true; } catch { return false; }
+  });
+}
+
+// ---- Friend link page (public, read-only) ----
+
+/** The one page that may read a name: the friend link page on the owner's site. */
+export const FRIEND_LINK_ORIGIN = "https://aamirazeez.com";
+/** Seconds a browser, and this worker's edge cache, may keep an answer. */
+export const FRIEND_LINK_MAX_AGE = 300;
+const FRIEND_LINK_PATH = /^\/v1\/friend-link\/([A-Za-z0-9_-]{1,32})\/name$/;
+const FRIEND_LINK_HEADERS = Object.freeze({
+  "Cache-Control": `public, max-age=${FRIEND_LINK_MAX_AGE}`, "Access-Control-Allow-Origin": FRIEND_LINK_ORIGIN, "Vary": "Origin",
+  "X-Content-Type-Options": "nosniff", "Content-Type": "application/json; charset=utf-8"
+});
+
+/** The friend id or short name in a GET /v1/friend-link/<code>/name path, or null for any other path. */
+export function friendLinkCode(path: string): string | null {
+  return FRIEND_LINK_PATH.exec(path)?.[1] ?? null;
+}
+
+function friendLinkAnswer(name: string | null): Response {
+  return new Response(JSON.stringify({ schema_version: 1, display_name: name }), { status: 200, headers: FRIEND_LINK_HEADERS });
+}
+
+/**
+ * GET /v1/friend-link/<friend id or short name>/name, for the friend link page's headline. It
+ * answers only a chosen display name, or null. An unknown code, a deleted or never-made identity, an
+ * anonymous player, a removed name and the flag off all answer the same null, so the page cannot tell
+ * them apart. A short name resolves through FRIEND_ALIASES as an Add friend does. At most one Player
+ * read, which stores nothing for an id nobody created; answers are kept for FRIEND_LINK_MAX_AGE.
+ */
+export async function routeFriendLinkName(request: Request, code: string, env: Env): Promise<Response> {
+  if (!flags.displayNames(env)) return friendLinkAnswer(null);
+  const id = ID_PATTERN.test(code) ? code : resolveFriendAlias(env, code);
+  if (id === null) return friendLinkAnswer(null);
+  // Keyed by the resolved id, so a short name and its long code share one entry.
+  const key = new Request(`${new URL(request.url).origin}/__friend-link-name/${id}`);
+  const cache = typeof caches === "undefined" ? null : caches.default;
+  const kept = cache ? await cache.match(key).catch(() => undefined) : undefined;
+  if (kept) return new Response(kept.body, { status: 200, headers: FRIEND_LINK_HEADERS });
+  const answer = friendLinkAnswer(shownName(await env.PLAYERS.getByName(id).publicDisplayName(id)));
+  if (cache) await cache.put(key, answer.clone()).catch(() => undefined);
+  return answer;
 }
 
 const OPERATOR_PATH = /^\/operator\/safety\/players\/([A-Za-z0-9_-]{22})\/clear-name$/;
@@ -267,9 +370,7 @@ export async function routeDisplayNameOperator(request: Request, path: string, e
   if (!isObject(input) || Object.keys(input).length !== 1 || input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
   const player = match[1];
   const rooms = unwrap(await env.PLAYERS.getByName(player).operatorClearDisplayName(player));
-  const reached = await pooled(rooms, ROOM_INBOX_CONCURRENCY, async roomId => {
-    try { await env.ROOMS_V2.getByName(roomId).clearMemberName(player); return true; } catch { return false; }
-  });
+  const reached = await clearRooms(env, player, rooms);
   if (reached.some(done => !done)) throw new ApiError(503, "display_name_clear_incomplete");
   return { schema_version: 1, cleared: true, rooms: rooms.length };
 }

@@ -10,7 +10,7 @@ import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
 import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, roomInbox } from "./room-inbox";
 import { endReactionsWanted } from "./v2/end-reactions";
-import { DISPLAY_NAME_PATH, displayNamesShown, namesRoomRoute, routeDisplayName } from "./display-names";
+import { DISPLAY_NAME_PATH, displayNamesShown, friendLinkCode, namesRoomRoute, routeDisplayName, routeFriendLinkName } from "./display-names";
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
 import { LIVE_PATH, forwardLiveUpgrade } from "./live";
@@ -81,6 +81,9 @@ export default {
       const policy = publicPolicy(request); if (policy) return policy;
       if (url.search) throw new ApiError(400, "query_not_supported");
       if (path === "/health" && request.method === "GET") return json({ status: "ok", api_version: 1, environment: env.ENVIRONMENT });
+      // The friend link page's headline name: public, read-only, limited per address.
+      const linkCode = friendLinkCode(path);
+      if (linkCode !== null && request.method === "GET") { await publicLimit(request, env); return await routeFriendLinkName(request, linkCode, env); }
       // Absent unless UPDATE_GATE_ENABLED is "true": the path then falls through to auth() as before.
       if (path === "/v1/app-status" && request.method === "GET" && flags.updateGate(env)) { await publicLimit(request, env); return json(appStatus(request, env)); }
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
