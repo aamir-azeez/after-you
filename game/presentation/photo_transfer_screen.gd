@@ -50,6 +50,8 @@ func _ready() -> void:
 	background.color = Color("123936")
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(background)
+	# Under a camera cutout too, like every full-screen dim (SafeArea.bleed).
+	SafeArea.bleed(background)
 	_margin = MarginContainer.new()
 	_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	add_child(_margin)

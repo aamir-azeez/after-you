@@ -31,6 +31,8 @@ func _ready() -> void:
 	shade.color = Color("123936")
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(shade)
+	# Under a camera cutout too, like every full-screen dim (SafeArea.bleed).
+	SafeArea.bleed(shade)
 	_margin = MarginContainer.new()
 	_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(_margin)

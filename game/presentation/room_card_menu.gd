@@ -9,6 +9,7 @@ extends CanvasLayer
 ##
 ## Rows are {id, title, detail, icon, tone}; tone "danger" draws the row in
 ## soft pink, "muted" in the quiet grey of a row that only informs. Picking a row closes the menu, then emits chosen(id).
+const SafeArea = preload("res://presentation/safe_area.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
@@ -51,6 +52,8 @@ func _build(entries: Array[Dictionary], font: Font) -> void:
 	shade.theme = _theme(font)
 	shade.gui_input.connect(_on_shade_input)
 	add_child(shade)
+	# Under a camera cutout too, like every full-screen dim (SafeArea.bleed).
+	SafeArea.bleed(shade)
 	panel = PanelContainer.new()
 	panel.name = "RoomMenuPanel"
 	panel.add_theme_stylebox_override("panel",ThemeRules.padded(ThemeRules.rounded(ThemeRules.CHOICE_PANEL,14,ThemeRules.CHOICE_BORDER),8,8))

@@ -29,6 +29,7 @@ extends HBoxContainer
 ## the bubble and ends with it, and the faces card is on its own canvas layer
 ## under the pill, closed when the pill leaves the tree. Under Reduce motion a
 ## bubble just appears and stays still.
+const SafeArea = preload("res://presentation/safe_area.gd")
 const Store = preload("res://services/end_reaction_store.gd")
 const Art = preload("res://presentation/empty_state_art.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
@@ -511,6 +512,8 @@ class FacesCard extends CanvasLayer:
 		shade.mouse_filter = Control.MOUSE_FILTER_STOP
 		shade.gui_input.connect(_on_shade_input)
 		add_child(shade)
+		# Under a camera cutout too, like every full-screen dim (SafeArea.bleed).
+		SafeArea.bleed(shade)
 		panel = PanelContainer.new()
 		panel.name = "ReactionCard"
 		var look := ControlTheme.rounded(PAPER, 22, Color(ControlTheme.INK, 0.18))

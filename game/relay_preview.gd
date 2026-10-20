@@ -1,4 +1,5 @@
 extends Node3D
+const SafeArea = preload("res://presentation/safe_area.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## The same chapter presentation can use local practice or a retained online owner.
 signal closed
@@ -2066,6 +2067,8 @@ func _show_ending_beat() -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	beat.add_child(shade)
+	# Under a camera cutout too, like every full-screen dim (SafeArea.bleed).
+	SafeArea.bleed(shade)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE

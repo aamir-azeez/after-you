@@ -15,6 +15,7 @@ extends CanvasLayer
 ## loaded and its save remembered; only that build (its world and first turn,
 ## node work that must stay on the main thread) still holds one frame, with
 ## the bar parked near the end.
+const SafeArea = preload("res://presentation/safe_area.gd")
 const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
@@ -361,6 +362,8 @@ func _build(reduced_motion: bool) -> void:
 	shade.mouse_filter = Control.MOUSE_FILTER_STOP
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(shade)
+	# Under a camera cutout too, like every full-screen dim (SafeArea.bleed).
+	SafeArea.bleed(shade)
 	var center := CenterContainer.new()
 	center.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
