@@ -491,6 +491,23 @@ describe("the confirm link and email", () => {
     expect(message.html).toContain("Yes, add me");
     expect(message.html).not.toMatch(/[–—]/);
   });
+
+  it("keeps the light look in dark mode clients", () => {
+    const { html } = confirmEmail("https://aamirazeez.com/after-you/waitlist/confirm/#t=x");
+    expect(html).toContain('<meta name="color-scheme" content="light dark">');
+    expect(html).toContain("@media (prefers-color-scheme:dark)");
+    expect(html).toContain("[data-ogsc] .t-ink");
+    expect(html).toContain('<body class="body"');
+    for (const surface of ["bg-page", "bg-card", "bg-button"]) {
+      expect(html).toMatch(new RegExp(`u \\+ \\.body \\.${surface}\\{background-image:linear-gradient\\(`));
+    }
+    expect(html).toContain("u + .body .lk-text{background-color:#000000;color:#ffffff!important;mix-blend-mode:difference}");
+    // Pins live only in Gmail's style block, so a Gmail that drops it shows the plain flip, not dark text on a pinned card.
+    expect(html).not.toMatch(/style="[^"]*background-image/);
+    expect(html.match(/class="lk-text"/g)?.length).toBe(7);
+    expect(html).toContain('email-spirits-v2.png" width="240" height="132" alt="');
+    expect(html).not.toContain(">After You</td>");
+  });
 });
 
 describe("privacy", () => {
