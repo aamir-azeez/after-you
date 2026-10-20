@@ -20,6 +20,7 @@ const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Solo = preload("res://services/solo_replay_collection.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
+const CloudSync = preload("res://services/platform_games/cloud_save_sync.gd")
 
 var checks := 0
 var failures := 0
@@ -70,6 +71,15 @@ func _run() -> void:
 	coordinator._prove_room_ahead({"ok": true, "data": _late_room()})
 	coordinator = null
 	_check(await Reaper.run(Callable(get_script(), "_sum").bind(2, 3)) == 5, "An awaited worker hands its result back to a caller still there")
+	# A cloud save join (a lambda over its own copies) still running when the
+	# app closes mid-sync. As a bare pool task it crashed every such exit.
+	var pending := Reaper.pending_count()
+	var copy := {"joined": true}
+	CloudSync._offload(func() -> Dictionary:
+		OS.delay_msec(2500)
+		return copy)
+	_check(Reaper.pending_count() == pending + 1, "A cloud save worker belongs to the reaper from its start")
+	await process_frame
 	_check(held.is_alive(), "A next-turn setup is still running at quit")
 	print("WORKER QUIT: %d checks, %d failures" % [checks, failures])
 	# Both owners leave the tree during quit; the reaper joins their workers.

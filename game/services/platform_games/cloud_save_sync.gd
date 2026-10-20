@@ -14,6 +14,7 @@ extends RefCounted
 ## read (a newer app) is left untouched, so an older build never overwrites it. Progress made
 ## while a run waits on the network is not marked synced: the run is due again.
 const Bundle = preload("res://services/platform_games/cloud_save_bundle.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 
 const SLOT := "after-you-progress"
 const DEBOUNCE_MS := 20000
@@ -40,6 +41,8 @@ func _init(provider: RefCounted, sources: RefCounted, state: RefCounted) -> void
 	_sources = sources
 	_state = state
 	Bundle.warm()
+	# Workers start later; the reaper is in the tree before any can be running at quit.
+	Reaper.ensure()
 
 func set_sources(sources: RefCounted) -> void:
 	_sources = sources
@@ -103,15 +106,11 @@ func _later(code: String, delay_ms: int) -> Dictionary:
 	return {"ok": false, "code": code}
 
 ## Runs `work` on a worker thread and waits for it frame by frame (the SceneTree, not Main, which
-## may be freed meanwhile). The work touches only its own copies.
+## may be freed meanwhile). The work touches only its own copies. The shared reaper owns the
+## worker, so an app closing mid-sync joins it before scripts are freed; a pool task still
+## running a lambda at quit crashed the exit.
 static func _offload(work: Callable) -> Variant:
-	var box := {}
-	var task := WorkerThreadPool.add_task(func() -> void: box.value = work.call())
-	var tree := Engine.get_main_loop() as SceneTree
-	while not WorkerThreadPool.is_task_completed(task):
-		await tree.process_frame
-	WorkerThreadPool.wait_for_task_completion(task)
-	return box.get("value")
+	return await Reaper.run(work, true)
 
 func _sync(sources: RefCounted, stamp: String) -> Dictionary:
 	var local: Dictionary = await sources.collect()
