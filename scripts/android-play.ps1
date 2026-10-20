@@ -22,6 +22,11 @@ function Get-AndroidBuildConfig {
         $config = Get-Content -LiteralPath $path -Raw | ConvertFrom-Json
         $names = @($config.PSObject.Properties.Name | Sort-Object)
         $expected = @('api_base_url', 'entitlement_id', 'purchase_mode', 'revenuecat_public_key')
+        # Optional: the public Play Games OAuth web client id (a phone with no identity restores with it).
+        if ($names -ccontains 'play_games_web_client_id') {
+            if ($config.play_games_web_client_id -isnot [string] -or $config.play_games_web_client_id -cnotmatch '^[0-9]{6,20}-[a-z0-9]{8,64}\.apps\.googleusercontent\.com$') { throw 'Invalid Play Games client.' }
+            $expected = @($expected + 'play_games_web_client_id' | Sort-Object)
+        }
         if (($names -join ',') -cne ($expected -join ',')) { throw 'Invalid fields.' }
         foreach ($name in $expected) { if ($config.$name -isnot [string]) { throw 'Invalid type.' } }
         if ($config.api_base_url -cnotmatch '^https://[a-z0-9.-]+(?::443)?$') { throw 'Invalid endpoint.' }

@@ -111,6 +111,20 @@ try {
         Write-Config $candidate
         Reject { Get-AndroidBuildConfig -Repository $repository -ConfigPath $configPath -Configuration Debug -ExportFormat APK } 'Mismatched or malformed Test Store configuration accepted.'
     }
+    $client = '123456789012-synthetic0client.apps.googleusercontent.com'
+    foreach ($base in @($play, $testStore)) {
+        $candidate = $base.Clone()
+        $candidate.play_games_web_client_id = $client
+        Write-Config $candidate
+        $kind = if ($base.purchase_mode -ceq 'google_play') { $arguments } else { @{Repository=$repository; ConfigPath=$configPath; Configuration='Debug'; ExportFormat='APK'} }
+        $withClient = Get-AndroidBuildConfig @kind
+        Assert-Check ($withClient.play_games_web_client_id -ceq $client) 'Configuration with a Play Games web client rejected.'
+        foreach ($invalid in @('', 'synthetic', '123456789012-synthetic0client.apps.googleusercontent.com.evil', '123-short.apps.googleusercontent.com', 'https://123456789012-synthetic0client.apps.googleusercontent.com', 17)) {
+            $candidate.play_games_web_client_id = $invalid
+            Write-Config $candidate
+            Reject { Get-AndroidBuildConfig @kind } 'Malformed Play Games web client accepted.'
+        }
+    }
     [IO.File]::WriteAllText($configPath, '{ malformed synthetic input')
     Reject { Get-AndroidBuildConfig @arguments } 'Malformed JSON accepted.'
     $keyPath = Join-Path $fixture 'existing.keystore'
