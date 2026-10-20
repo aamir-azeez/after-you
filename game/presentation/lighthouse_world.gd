@@ -431,23 +431,7 @@ func _build_bridge(definition: Dictionary) -> void:
 	var high: float = span[1]
 	var length := high - low
 	var middle := (low + high) * 0.5
-	# Warm chapters lay plank decks; the plain look keeps its pale glass deck.
-	var timber := str(dressing.get("bridges", "")) == "timber"
-	var plank := Props.TIMBER_LIGHT if timber else Color("bdc9c1")
-	var seam := Props.TIMBER_DARK if timber else Color("637886")
-	for index in range(8):
-		var offset := low + (index + 0.5) * length / 8.0
-		var size := Vector3(length / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, length / 8.0)
-		var at := Vector3(offset, -0.05, 0) if across_x else Vector3(0, -0.05, offset)
-		box(size, plank.darkened(0.05 * float(index % 2)) if timber else plank, at, _deck)
-		var seam_size := Vector3(0.016, 0.005, depth - 0.06) if across_x else Vector3(width - 0.06, 0.005, 0.016)
-		var seam_at := Vector3(offset + length / 16.0 - 0.012, 0.003, 0) if across_x else Vector3(0, 0.003, offset + length / 16.0 - 0.012)
-		box(seam_size, seam, seam_at, _deck)
-	for side in [-1, 1]:
-		var trim_size := Vector3(length, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, length)
-		var trim_at := Vector3(middle, 0.015, side * (depth / 2.0 - 0.025)) if across_x else Vector3(side * (width / 2.0 - 0.025), 0.015, middle)
-		var trim := box(trim_size, LIGHT_COLOR, trim_at, _deck)
-		_glow(trim, LIGHT_COLOR, 0.65)
+	_lay_deck(definition, _deck, width, depth, across_x, low, high)
 	var memories := Node3D.new()
 	memories.name = "RememberedFootsteps"
 	_deck.add_child(memories)
@@ -460,6 +444,32 @@ func _build_bridge(definition: Dictionary) -> void:
 	memories.visible = false
 	_memory_markers[definition.id] = memories
 	_deck.visible = false
+
+## Lays a crossing's deck under `deck` (a crossing width by depth metres
+## across x and z), before its remembered-footsteps marker: eight planks with seams and a lit
+## edge each side over the open span low..high (deck-local metres along the
+## crossing). A world that lays its own decks overrides it, so no planks are
+## made only to be freed.
+func _lay_deck(_definition: Dictionary, deck: Node3D, width: float, depth: float, across_x: bool, low: float, high: float) -> void:
+	var length := high - low
+	var middle := (low + high) * 0.5
+	# Warm chapters lay plank decks; the plain look keeps its pale glass deck.
+	var timber := str(dressing.get("bridges", "")) == "timber"
+	var plank := Props.TIMBER_LIGHT if timber else Color("bdc9c1")
+	var seam := Props.TIMBER_DARK if timber else Color("637886")
+	for index in range(8):
+		var offset := low + (index + 0.5) * length / 8.0
+		var board := Vector3(length / 8.0, 0.10, depth) if across_x else Vector3(width, 0.10, length / 8.0)
+		var at := Vector3(offset, -0.05, 0) if across_x else Vector3(0, -0.05, offset)
+		box(board, plank.darkened(0.05 * float(index % 2)) if timber else plank, at, deck)
+		var seam_size := Vector3(0.016, 0.005, depth - 0.06) if across_x else Vector3(width - 0.06, 0.005, 0.016)
+		var seam_at := Vector3(offset + length / 16.0 - 0.012, 0.003, 0) if across_x else Vector3(0, 0.003, offset + length / 16.0 - 0.012)
+		box(seam_size, seam, seam_at, deck)
+	for side in [-1, 1]:
+		var trim_size := Vector3(length, 0.025, 0.035) if across_x else Vector3(0.035, 0.025, length)
+		var trim_at := Vector3(middle, 0.015, side * (depth / 2.0 - 0.025)) if across_x else Vector3(side * (width / 2.0 - 0.025), 0.015, middle)
+		var trim := box(trim_size, LIGHT_COLOR, trim_at, deck)
+		_glow(trim, LIGHT_COLOR, 0.65)
 
 ## The part of a route's crossing axis (deck-local metres, from its centre)
 ## not already covered by a floor at the route's height.

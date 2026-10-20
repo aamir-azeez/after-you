@@ -714,6 +714,10 @@ func _gate_for(route_id: String) -> Dictionary:
 		if gate.route_id == route_id: return gate
 	return {}
 
+## Tide lays every deck itself (_restyle_deck), after its footprints marker.
+func _lay_deck(_definition: Dictionary, _deck_node: Node3D, _width: float, _depth: float, _across_x: bool, _low: float, _high: float) -> void:
+	pass
+
 ## Each crossing in its own build: a rippled sand hump, round stepping stones,
 ## piled timber, a rope-railed gangway, flagged towpath stones or a punt. The
 ## long edges glow while the crossing is open, in gold where the tide opens it.
@@ -721,11 +725,7 @@ func _restyle_deck(route: Dictionary) -> void:
 	var id := str(route.id)
 	var deck: Node3D = _decks.get(id)
 	if deck == null: return
-	var memories: Node3D = _memory_markers.get(id)
-	for child: Node in deck.get_children():
-		if child == memories: continue
-		deck.remove_child(child)
-		child.free()
+	# The deck holds only its footprints marker here (_lay_deck lays nothing).
 	var r: Array = route.rect_cm
 	var width := float(r[2] - r[0]) / 100.0
 	var depth := float(r[3] - r[1]) / 100.0
