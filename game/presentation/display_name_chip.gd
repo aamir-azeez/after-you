@@ -32,6 +32,8 @@ func _init(reduced_motion: bool = false) -> void:
 	row.add_child(preview)
 	var words := VBoxContainer.new()
 	words.add_theme_constant_override("separation", -2)
+	# Wide enough for the status line under a short name, so it never cuts.
+	words.custom_minimum_size.x = 96
 	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(words)
 	var small := Label.new()
