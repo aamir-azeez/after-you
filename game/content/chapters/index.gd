@@ -27,7 +27,8 @@ const OPTIONAL := {
 	"superseded_by": "",
 	## The earlier version whose keepsake places this one earns.
 	"version_of": "",
-	## Journey stages' {stage_id: {title, hint_a, hint_b}}.
+	## Journey stages' {stage_id: {title, hint_a, hint_b}}, and optionally
+	## goal_a or goal_b: where that turn ends, shown on the goal card.
 	"stage_copy": {},
 	## The text above a turn's hint, one per stage in stage order; a stage past
 	## the list has none.
@@ -63,6 +64,11 @@ const OPTIONAL := {
 	## {pressure pad id: a kit/props.gd spec without "at"}: a seat on the pad,
 	## and whoever holds the pad sits on it while still.
 	"seats": {},
+	## true marks where each turn ends for the live spirit
+	## (presentation/kit/goal_beacon.gd): a beacon on each end spot, a pointer
+	## at the screen's edge while they are all off screen, and a glance at the
+	## nearest when a turn's first try starts with it off screen.
+	"goal_beacon": false,
 }
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
 

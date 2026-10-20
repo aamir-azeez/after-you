@@ -119,7 +119,10 @@ func _chapter(key: String, data: Dictionary) -> void:
 	_check(data.turn_intro.size() <= stage_ids.size() and data.turn_intro.all(func(text: Variant) -> bool: return text is String), "Turn intro is text for stages the chapter has: " + key)
 	for stage_id: String in data.stage_copy:
 		_check(stage_id in stage_ids and family.stage_hud == "stage_copy", "Stage copy names a stage its family shows: %s/%s" % [key, stage_id])
-		_same(_sorted(data.stage_copy[stage_id].keys()), ["hint_a", "hint_b", "title"], "Stage copy has a title and two hints: %s/%s" % [key, stage_id])
+		var copy_keys: Array = data.stage_copy[stage_id].keys().filter(func(field: String) -> bool: return field not in ["goal_a", "goal_b"])
+		_same(_sorted(copy_keys), ["hint_a", "hint_b", "title"], "Stage copy has a title and two hints (and may name a goal place): %s/%s" % [key, stage_id])
+		for field: String in ["goal_a", "goal_b"]:
+			if data.stage_copy[stage_id].has(field): _check(data.stage_copy[stage_id][field] is String and not str(data.stage_copy[stage_id][field]).is_empty(), "A goal place is text: %s/%s %s" % [key, stage_id, field])
 	for field: String in data.copy:
 		_check(field in ["title", "summary", "completion", "checkpoint_title", "checkpoint_text"], "Copy field %s of %s is known" % [field, key])
 	for place: Dictionary in data.keepsakes:

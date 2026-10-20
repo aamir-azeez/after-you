@@ -131,6 +131,8 @@ var _replay_hold := 0
 var hard: RefCounted = null
 var hard_flow: RefCounted = HardRunFlow.new(self)
 var _live_tries := 0
+## Whether the turn waits on its opening glance at its goal (_glance_at_goal).
+var _glancing := false
 var _shown_pill := ""
 var _solo_replay_context_error := false
 var running := false
@@ -603,6 +605,8 @@ func _photo_overlay() -> Control:
 	return overlay
 
 func _plain_card(title: String, body: String) -> VBoxContainer:
+	_end_glance()
+	if is_instance_valid(world) and world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(false)
 	_restore_ready_world()
 	_close_room_options()
 	_room_ready_panel = null
@@ -1826,6 +1830,7 @@ func _begin() -> void:
 	if hard_flow.slipped_on_start(_live_tries): return
 	world.present(sim.snapshot(), true)
 	_start_play()
+	_glance_at_goal()
 
 
 ## The turn being played, for its try count (services/turn_tries.gd).
@@ -1927,6 +1932,26 @@ func _start_play() -> void:
 	_update_hud(sim.snapshot())
 
 
+## A turn's first try glances at its goal when the goal starts off screen
+## (the world's goal beacon, presentation/kit/goal_beacon.gd): the camera eases
+## there and back on the world's clock while the turn waits, so no tick passes
+## and the recording, the timer and any memory start as they would without it.
+## Any touch, stick or key skips it, and that input still counts; Reduce
+## motion never shows it. Only _begin starts one, so a resumed draft and a
+## replay never do, and any card ends it.
+func _glance_at_goal() -> void:
+	_glancing = false
+	if _live_tries != 1 or bool(settings.get("reduced_motion", false)) or not world.has_method("glance_at_goal"): return
+	_glancing = float(world.glance_at_goal()) > 0.0
+
+func _end_glance() -> void:
+	_glancing = false
+	if is_instance_valid(world) and world.has_method("end_glance"): world.end_glance()
+
+func _input(event: InputEvent) -> void:
+	if _glancing and (event is InputEventScreenTouch or event is InputEventMouseButton or event is InputEventKey) and event.is_pressed(): _end_glance()
+
+
 func _resume_draft() -> void:
 	if _room_context_lost: return
 	if online_session != null and online_session.busy(): return
@@ -1953,6 +1978,9 @@ func _physics_process(_delta: float) -> void:
 		return
 	if not running or backgrounded:
 		return
+	if _glancing:
+		if world.glancing() and stick.value == Vector2.ZERO and not action_pressed: return
+		_end_glance()
 	var input: Dictionary
 	if mode == "replay":
 		if not _replay_ready(): return
@@ -2202,9 +2230,22 @@ func _update_hud(state: Dictionary) -> void:
 	if mode == "play" and Registry.is_cooperative(chapter_key) and role == "a" and state.get("can_commit",false):
 		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22
+	display = _name_goal_place(display)
+	if world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(mode == "play")
 	_update_memory_wait_hud()
 	controls.set("solo", online_session == null)
 	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
+
+## A stage_copy chapter may name where a turn ends ("goal_a", "goal_b"): the
+## goal card shows it under its count.
+func _name_goal_place(display: Dictionary) -> Dictionary:
+	if Registry.stage_hud(chapter_key) != "stage_copy" or not display.get("objective_display") is Dictionary: return display
+	var place := str(Registry.stage_presentation(chapter_key, definition.stages[int(checkpoint.stage_index)]).get("goal_" + str(display.get("role", role)), ""))
+	if place.is_empty(): return display
+	var named := display.duplicate()
+	named.objective_display = display.objective_display.duplicate()
+	named.objective_display.detail = place
+	return named
 
 func _request_action() -> void:
 	if running and not backgrounded and mode=="play" and sim.context_action().get("enabled",false):

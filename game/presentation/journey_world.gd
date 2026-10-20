@@ -87,8 +87,6 @@ var _stage_built := false
 ## last snapshot position, so it sits only while still.
 var _seats: Array = []
 var _seat_last: Dictionary = {}
-## Tests may stand in a descriptor; otherwise the chapter's own.
-var descriptor_override: Dictionary = {}
 
 func show_stage(stage: Dictionary) -> void:
 	if str(stage.get("id", "")) == displayed_stage_id: return
@@ -547,13 +545,9 @@ func _should_cutaway(raised: Node3D, state: Dictionary) -> bool:
 
 func _camera_center() -> Vector3:
 	var target := super._camera_center()
-	if not _completion_view: target.z = clampf(actors[_camera_slot(_active_player)].position.z,-1.1,2.0)
+	if not _completion_view: target.z = clampf(_focus_point().z,-1.1,2.0)
 	target.y = 0.45
 	return target
-
-## This chapter's descriptor (content/chapters/index.gd), or the test's.
-func _descriptor() -> Dictionary:
-	return descriptor_override if not descriptor_override.is_empty() else ChapterIndex.data(_chapter_key())
 
 # --- Wait hints ---
 

@@ -483,6 +483,8 @@ const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide to open a way for your partn
 const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the harbour bell."
 const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
 const TURN_OF_THE_TIDE_SLACK_HINT_A := "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there."
+# The goal card under "Crossing ready" in Slack Water's first turn: where it ends.
+const TURN_OF_THE_TIDE_SLACK_GOAL_A := "Wait on a post by the sea wheel."
 const TURN_OF_THE_TIDE_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern."
 # turn-of-the-tide@2: the second spirit must not turn the tide while the
 # memory still walks home over a crossing. Solo, the memory is the player's own.

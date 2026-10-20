@@ -4,6 +4,11 @@ extends "res://presentation/lighthouse_world.gd"
 const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
+const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
+## The opening glance at the goal (glance_at_goal): this long easing there and
+## looking, then this long easing back to the spirit.
+const GLANCE_TO := 1.6
+const GLANCE_BACK := 0.6
 var chapter_definition: Dictionary = {}
 var displayed_stage_id := ""
 var _physical_pads: Dictionary = {}
@@ -19,6 +24,12 @@ var _active_player := "p0"
 var _follow_center := Vector3.ZERO
 var _follow_size := 9.2
 var _completion_view := false
+## Where the live spirit's turn ends (descriptor "goal_beacon"), or null.
+var _goal_beacon: GoalBeacon
+var _glance_left := 0.0
+var _glance_target := Vector3.ZERO
+## Tests may stand in a descriptor; otherwise the chapter's own.
+var descriptor_override: Dictionary = {}
 
 func load_level(definition: Dictionary) -> void:
 	chapter_definition = definition.duplicate(true)
@@ -33,6 +44,8 @@ func show_stage(stage: Dictionary) -> void:
 	if view.is_empty(): return
 	displayed_stage_id = stage_id
 	_completion_view = false
+	_goal_beacon = null
+	_glance_left = 0.0
 	_physical_pads.clear()
 	_physical_levers.clear()
 	_physical_balls.clear()
@@ -124,6 +137,7 @@ func show_stage(stage: Dictionary) -> void:
 		# Dashes inside the open shaft make its landing legible from above.
 		for index in range(3): sphere(0.035, CREAM, center + Vector3(0, height * float(index + 1) / 4.0, 0), terrain)
 	_build_gate_links(view)
+	_build_goal_beacon(view)
 	await _build_step()
 	if _has_completion_garden(stage_id):
 		garden = Node3D.new()
@@ -138,6 +152,57 @@ func show_stage(stage: Dictionary) -> void:
 		goal_ring = null
 		_create_garden()
 	if is_instance_valid(camera_exploration): camera_exploration.maximum_pan = Vector2(1.2, 0.4)
+
+## This chapter's descriptor (content/chapters/index.gd), or the test's.
+func _descriptor() -> Dictionary:
+	return descriptor_override if not descriptor_override.is_empty() else ChapterIndex.data(_chapter_key())
+
+## The descriptor's "goal_beacon" marks where each turn of the stage ends
+## (kit/goal_beacon.gd), built hidden: the screen shows it in live play.
+func _build_goal_beacon(view: Dictionary) -> void:
+	if not bool(_descriptor().get("goal_beacon", false)): return
+	var spots: Dictionary = {}
+	for role: String in ["a", "b"]:
+		var slot := str(view.first_player_slot) if role == "a" else ("p0" if str(view.first_player_slot) == "p1" else "p1")
+		spots[role] = GoalBeacon.spots_of(view, role).map(func(entity: Dictionary) -> Dictionary:
+			return {"at": _at(entity), "surface": str(entity.get("surface_id", "")), "slot": str(entity.get("owner_slot", slot))})
+	_goal_beacon = GoalBeacon.new()
+	terrain.add_child(_goal_beacon)
+	_goal_beacon.build(spots, {"p0": GOLD, "p1": TEAL})
+	_goal_beacon.set_reduced_motion(reduced_motion)
+
+## The screen shows the beacon only while a live turn plays.
+func set_goal_beacon_live(on: bool) -> void:
+	if is_instance_valid(_goal_beacon): _goal_beacon.set_live(on)
+
+## Starts the turn's opening glance when the goal is off screen: the follow
+## camera eases to the nearest end spot, looks, and eases back, on this
+## world's clock (glancing()). Returns its length in seconds, or 0 when there
+## is nothing to glance at, the camera does not follow, or motion is reduced.
+func glance_at_goal() -> float:
+	if reduced_motion or not _uses_scrolling_camera() or not is_instance_valid(_goal_beacon) or not _goal_beacon.shown() or not is_instance_valid(camera) or not actors.has(_active_player): return 0.0
+	if _goal_beacon.on_screen(camera): return 0.0
+	_glance_target = to_local(_goal_beacon.glance_point(actors[_active_player].global_position))
+	_glance_left = GLANCE_TO + GLANCE_BACK
+	return _glance_left
+
+func glancing() -> bool:
+	return _glance_left > 0.0
+
+func end_glance() -> void:
+	_glance_left = 0.0
+
+## What the follow camera centres on: the live spirit, or the goal while the
+## opening glance looks at it.
+func _focus_point() -> Vector3:
+	if _glance_left > GLANCE_BACK: return _glance_target
+	return actors[_camera_slot(_active_player)].position
+
+## The beacon shows and hides with play and changes nothing, so it never folds.
+func _static_keep() -> Array:
+	var keep := super._static_keep()
+	if is_instance_valid(_goal_beacon): keep.append(_goal_beacon)
+	return keep
 
 func _configure_shared_view(view: Dictionary) -> void:
 	view["optics"] = {"emitters": [], "receivers": []}
@@ -455,6 +520,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _stair_gates: _stair_gates[id].visible = not state.get("bridges", {}).get(id, false)
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)
+	if is_instance_valid(_goal_beacon): _goal_beacon.present(state)
 	if immediate:
 		if actors.has(_active_player): _follow_center = _camera_center()
 		_follow_size = 10.6 if _completion_view else 9.2
@@ -467,7 +533,7 @@ func _below_raised(raised: Node3D, player: Dictionary) -> bool:
 	return Cutaway.below_raised(raised, player)
 
 func _camera_center() -> Vector3:
-	var target: Vector3 = actors[_camera_slot(_active_player)].position
+	var target := _focus_point()
 	if _completion_view:
 		var left := target.x
 		var right := target.x
@@ -486,11 +552,16 @@ func _advance_camera(delta: float) -> void:
 	if _uses_scrolling_camera():
 		# Authored framing advances once per rendered frame. Snapshot delivery
 		# and pinch zoom must never feed back into the follow state.
-		var weight := 1.0 if reduced_motion else 1.0 - exp(-8.0 * maxf(delta, 0.0))
+		var rate := 8.0
+		if _glance_left > 0.0:
+			_glance_left = maxf(_glance_left - delta, 0.0)
+			rate = 3.5 if _glance_left > GLANCE_BACK else 6.0
+		var weight := 1.0 if reduced_motion else 1.0 - exp(-rate * maxf(delta, 0.0))
 		if actors.has(_active_player): _follow_center = _follow_center.lerp(_camera_center(), weight)
 		_follow_size = lerpf(_follow_size, 10.6 if _completion_view else 9.2, weight)
 		_follow_motes()
 	_frame_camera()
+	if is_instance_valid(_goal_beacon): _goal_beacon.follow(camera)
 
 ## Motes are authored around the origin; a scrolling camera carries them along
 ## so the far end of a long chapter keeps its drifting specks. Each mote keeps

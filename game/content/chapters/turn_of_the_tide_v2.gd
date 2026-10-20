@@ -24,11 +24,14 @@ const DATA := {
 		"slack-water": {
 			"title": PlayerCopy.TURN_OF_THE_TIDE_SLACK_TITLE,
 			"hint_a": PlayerCopy.TURN_OF_THE_TIDE_SLACK_HINT_A,
+			"goal_a": PlayerCopy.TURN_OF_THE_TIDE_SLACK_GOAL_A,
 			"hint_b": PlayerCopy.TURN_OF_THE_TIDE_V2_SLACK_HINT_B,
 		},
 	},
 	"thumbnail": "res://assets/chapter_thumbnails/turn-of-the-tide.png",
 	"dressing": "res://content/dressing/turn_of_the_tide.gd",
+	# Each turn's end spots (the steps, posts, bell and lantern) carry a beacon.
+	"goal_beacon": true,
 	"water_levels": {"tide": ["low", "half", "high"], "basin": ["shut", "low", "half", "high"], "chamber": ["low", "half", "high"]},
 	"beds": ["water_near"],
 	# Only what a crossing here can wait on (test_chapter_descriptors checks):
