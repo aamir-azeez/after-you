@@ -48,6 +48,17 @@ static var _material_properties: Dictionary = {}
 ## out once per run: a cached look is never changed in place.
 static var _shared_keys: Dictionary = {}
 const Primitives = preload("res://presentation/kit/primitives.gd")
+## Batch meshes already built this session, by everything that makes one: the
+## group's key and, per leaf in order, its shape's stored values and its
+## transform. A world built again from the same definition (a chapter opened
+## again, Home on every return) folds into the same groups, so its batches
+## reuse these instead of appending every leaf again. A kept mesh is never
+## changed in place. The oldest go once the kept batches pass KEPT_VERTICES.
+static var _kept_batches: Dictionary = {}
+static var _kept_vertices := 0
+const KEPT_VERTICES := 400000
+## Stored property names per mesh class, read once (_shape).
+static var _shape_properties: Dictionary = {}
 
 ## Folds root's static leaves. owners: the objects whose variables name the
 ## nodes that change later. options: "containers" (bool), "keep" and "still"
@@ -70,7 +81,7 @@ static func start(root: Node3D, owners: Array, options: Dictionary = {}) -> Dict
 	for node: Node in root.find_children("*", "", true, false): existing[node.get_instance_id()] = true
 	var job := {"root": root, "root_id": root.get_instance_id(), "owners": owners.duplicate(), "owner_list": owners.duplicate(), "held": {}, "kept": kept, "still": _ids(options.get("still", [])), "containers": bool(options.get("containers", false)),
 		"existing": existing, "scripted": [], "holding": [], "rechecked": false,
-		"materials": {}, "bases": [], "scan": [[root, 0]], "walk": [], "seen": {}, "base_index": 0, "key_index": 0, "entry_index": 0, "tool": null, "folded": 0, "batches": 0, "done": false}
+		"materials": {}, "shapes": {}, "bases": [], "scan": [[root, 0]], "walk": [], "seen": {}, "base_index": 0, "key_index": 0, "entry_index": 0, "tool": null, "signature": null, "reused": null, "folded": 0, "batches": 0, "done": false}
 	job.walk.append([root, _base(root, job), 0])
 	return job
 
@@ -218,14 +229,23 @@ static func _build(job: Dictionary) -> void:
 	if group.size() < 2:
 		job.key_index += 1
 		return
-	if job.tool == null: job.tool = SurfaceTool.new()
+	if job.tool == null and job.reused == null:
+		# A group folded before this session takes the batch it made then.
+		job.signature = _signature(base.order[job.key_index], group, job)
+		job.reused = _kept_batches.get(job.signature) if job.signature != null else null
+		if job.reused != null: job.entry_index = group.size()
+		else: job.tool = SurfaceTool.new()
 	if job.entry_index < group.size():
 		var entry: Array = group[job.entry_index]
 		job.entry_index += 1
 		if is_instance_valid(entry[0]): (job.tool as SurfaceTool).append_from((entry[0] as MeshInstance3D).mesh, 0, entry[1])
 		return
 	var tool: SurfaceTool = job.tool
+	var reused: Mesh = job.reused
+	var signature: Variant = job.signature
 	job.tool = null
+	job.reused = null
+	job.signature = null
 	job.entry_index = 0
 	job.key_index += 1
 	# Over several frames, a leaf or its container may have gone with a rebuild:
@@ -236,7 +256,7 @@ static func _build(job: Dictionary) -> void:
 	for entry: Array in group: parts.append([entry[1], (entry[0] as MeshInstance3D).get_aabb()])
 	var batch := MeshInstance3D.new()
 	batch.name = "StaticBatch%d" % job.batches
-	batch.mesh = tool.commit()
+	batch.mesh = reused if reused != null else _keep_batch(signature, tool.commit())
 	var first: MeshInstance3D = group[0][0]
 	batch.material_override = first.material_override
 	batch.cast_shadow = first.cast_shadow
@@ -250,6 +270,54 @@ static func _build(job: Dictionary) -> void:
 		leaf.queue_free()
 	job.folded += group.size()
 	job.batches += 1
+
+## Everything a group's batch is made from, as exact values: its key, and per
+## leaf its shape (_shape) and transform. null when a leaf has gone or its
+## shape cannot be told by value; that group is built afresh and not kept.
+static func _signature(key: String, group: Array, job: Dictionary) -> Variant:
+	var signature: Array = [key]
+	for entry: Array in group:
+		if not is_instance_valid(entry[0]): return null
+		var shape: Variant = _shape((entry[0] as MeshInstance3D).mesh, job)
+		if shape == null: return null
+		signature.append(shape)
+		signature.append(entry[1])
+	return signature
+
+## A primitive mesh's class and every stored value (what its surface is made
+## from), once per mesh in a fold; null for any other mesh.
+static func _shape(mesh: Mesh, job: Dictionary) -> Variant:
+	var id := mesh.get_instance_id()
+	var shapes: Dictionary = job.shapes
+	if shapes.has(id): return shapes[id]
+	var shape: Variant = null
+	if mesh is PrimitiveMesh and mesh.get_class() in PRIMITIVES:
+		var kind := mesh.get_class()
+		if not _shape_properties.has(kind):
+			var names: Array[StringName] = []
+			for property: Dictionary in mesh.get_property_list():
+				var name := str(property.name)
+				if int(property.usage) & PROPERTY_USAGE_STORAGE and not name in SKIPPED_MATERIAL_PROPERTIES and not name.begins_with("metadata/"): names.append(StringName(name))
+			_shape_properties[kind] = names
+		var values: Array = [kind]
+		for name: StringName in _shape_properties[kind]: values.append(mesh.get(name))
+		shape = values
+	shapes[id] = shape
+	return shape
+
+## Keeps a new batch mesh for its signature (none when it has none), the
+## oldest kept going first past KEPT_VERTICES. Returns the mesh.
+static func _keep_batch(signature: Variant, mesh: ArrayMesh) -> ArrayMesh:
+	if signature == null or mesh == null or mesh.get_surface_count() != 1: return mesh
+	var vertices := mesh.surface_get_array_len(0)
+	if vertices > KEPT_VERTICES: return mesh
+	while _kept_vertices + vertices > KEPT_VERTICES and not _kept_batches.is_empty():
+		var oldest: Variant = _kept_batches.keys()[0]
+		_kept_vertices -= (_kept_batches[oldest] as ArrayMesh).surface_get_array_len(0)
+		_kept_batches.erase(oldest)
+	_kept_batches[signature] = mesh
+	_kept_vertices += vertices
+	return mesh
 
 ## Whether a group still folds now, as a whole: its container and every leaf
 ## still in the tree, no leaf (or anything between it and the container) held,

@@ -138,6 +138,7 @@ func _run() -> void:
 	await _still()
 	await _scripted_and_freed()
 	await _steps()
+	await _reuse()
 	await _held_over_steps()
 	await _home()
 	await _chapters()
@@ -448,6 +449,40 @@ func _steps() -> void:
 	lost.queue_free()
 	await process_frame
 	_check(StaticBatch.step(orphan, 0), "A job whose root has gone ends")
+
+## A world built again folds into the same groups: their batches reuse the
+## meshes the first fold made this session, and a group that changed builds
+## its own.
+func _reuse() -> void:
+	var first := _tree()
+	var again := _tree()
+	var moved := _tree()
+	var shifted: MeshInstance3D = moved.find_children("*", "MeshInstance3D", true, false)[0]
+	shifted.position += Vector3(0, 0, 0.5)
+	await process_frame
+	StaticBatch.fold(first, [])
+	StaticBatch.fold(again, [])
+	StaticBatch.fold(moved, [])
+	var a: Array = _batches(first)
+	var b: Array = _batches(again)
+	var c: Array = _batches(moved)
+	var reused := a.size() == b.size() and not a.is_empty()
+	for i in range(mini(a.size(), b.size())): reused = reused and is_same(a[i].mesh, b[i].mesh)
+	_check(reused, "The same tree folded again reuses every batch mesh (%d batches)" % b.size())
+	var same := a.size() == b.size()
+	for i in range(mini(a.size(), b.size())): same = same and _same(_drawn(a[i].mesh, Transform3D.IDENTITY), _drawn(b[i].mesh, Transform3D.IDENTITY))
+	_check(same, "A reused batch draws the same triangles")
+	var fresh := 0
+	var drawn_moved := false
+	for i in range(mini(a.size(), c.size())):
+		if is_same(a[i].mesh, c[i].mesh): continue
+		fresh += 1
+		var drawn := _drawn(c[i].mesh, Transform3D.IDENTITY)
+		drawn_moved = drawn.size() > 0 and not _same(drawn, _drawn(a[i].mesh, Transform3D.IDENTITY))
+	_check(a.size() == c.size() and fresh == 1 and drawn_moved, "Only the group with a moved leaf builds a batch of its own, drawing the leaf where it now is (%d fresh)" % fresh)
+	_check(StaticBatch._kept_vertices <= StaticBatch.KEPT_VERTICES, "The kept batches stay within their vertex bound")
+	for root: Node3D in [first, again, moved]: root.queue_free()
+	await process_frame
 
 func _world(key: String) -> Node3D:
 	var viewport := SubViewport.new()
