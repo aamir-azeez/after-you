@@ -306,6 +306,9 @@ Android Software Development Kit License — https://developer.android.com/studi
 com.google.android.gms:play-services-cloud-messaging:17.4.0
 Android Software Development Kit License — https://developer.android.com/studio/terms.html
 
+com.google.android.gms:play-services-games-v2:22.1.0
+Android Software Development Kit License — https://developer.android.com/studio/terms.html
+
 com.google.android.gms:play-services-stats:17.0.2
 Android Software Development Kit License — https://developer.android.com/studio/terms.html
 
