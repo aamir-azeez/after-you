@@ -85,10 +85,10 @@ func _on_error(id: String, operation: String, code: String) -> void:
 func _on_account_changed(_payload_json: String) -> void:
 	account_changed.emit()
 
-static var _patterns: Dictionary = {}
+## No static cache: this script extends another, and a static var here crashed the exit
+## (see test_subclass_statics.gd). It runs only on a native answer, never per frame.
 static func _matches(text: String, pattern: String) -> bool:
-	if not _patterns.has(pattern): _patterns[pattern] = RegEx.create_from_string(pattern)
-	return (_patterns[pattern] as RegEx).search(text) != null
+	return RegEx.create_from_string(pattern).search(text) != null
 
 func authenticate(interactive: bool) -> Dictionary:
 	var answer := await _call("sign_in" if interactive else "status", [], SIGN_IN_TIMEOUT_MS if interactive else QUIET_TIMEOUT_MS)
