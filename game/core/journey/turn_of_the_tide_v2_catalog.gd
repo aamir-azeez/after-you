@@ -19,10 +19,20 @@ extends RefCounted
 ## longer starts with its pin underfoot. The mole steps' gate is wrapped in an
 ## "any" so the wait hints (presentation/wait_hints.gd) leave it out: its
 ## memory term, the outer sea, read as a misleading bubble there.
+##
+## Slack Water ends in one row in front of the sea wheel: the three posts
+## stand side by side on the west terrace's south edge, the side that faces
+## the camera, from west to east the sea lock's (low), the boom's (half) and
+## the punt's (high), the order of the sea's own marks. On the north edge they
+## stood among the bar catwalks, under the sea wheel's bubble and behind its
+## hand wheel. The catwalks keep their places. Every gate is @1's (or as above).
 const Earlier = preload("res://core/journey/turn_of_the_tide_catalog.gd")
 ## How long a closing crossing keeps its floor: 1.5 s, enough to walk off the
 ## longest one from its middle with a second to spare.
 const CLOSING_TICKS := 45
+## Slack Water's posts: route id -> its new rectangle, and its pad -> its new spot.
+const ROW_ROUTES := {"gate-post": [-440, 128, -384, 192], "boom-post": [-368, 128, -312, 192], "punt-post": [-296, 128, -240, 192]}
+const ROW_PADS := {"gate-post-pad": [-412, 160], "boom-post-pad": [-340, 160], "punt-post-pad": [-268, 160]}
 const SLACK_HINT_B := "Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern."
 
 static func definition() -> Dictionary:
@@ -37,6 +47,10 @@ static func definition() -> Dictionary:
 	var gates: Array = slack.gates
 	_move_lever(slack, "boom-pin", [64, -512], "quay-step")
 	_move_lever(slack, "sea-key", [320, -512], "bollard-step")
+	for route: Dictionary in level.bridges:
+		if ROW_ROUTES.has(route.id): route.rect_cm = ROW_ROUTES[route.id].duplicate()
+	for pad: Dictionary in slack.pressure_pads:
+		if ROW_PADS.has(pad.id): pad.position_cm = ROW_PADS[pad.id].duplicate()
 	# The partner's budget starts where each way's first fetch now hangs.
 	for branch: Dictionary in slack.source_policy.branches:
 		match str(branch.id):

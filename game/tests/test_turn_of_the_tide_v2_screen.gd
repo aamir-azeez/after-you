@@ -147,7 +147,7 @@ func _memory_line(level: Dictionary, initial: Dictionary) -> void:
 	if not one.error.is_empty(): return
 	var p1 := Simulation.new()
 	p1.reset(level, "slack-water", one.checkpoint, {}, "a")
-	Tide.play(p1, Tide.p1_route(one.checkpoint, "sea-lock"))
+	Tide.play(p1, V2.p1_route(one.checkpoint, "sea-lock"))
 	var second: Dictionary = p1.export_recording()
 	var p0 := Simulation.new()
 	p0.reset(level, "slack-water", one.checkpoint, second, "b")

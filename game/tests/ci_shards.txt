@@ -297,6 +297,9 @@ turn_of_the_tide_limits 1
 turn_of_the_tide_presses 1
 turn_of_the_tide_reach 3
 turn_of_the_tide_v2 2
+turn_of_the_tide_v2_cells_half 2
+turn_of_the_tide_v2_cells_high 1
+turn_of_the_tide_v2_cells_low 1
 turn_of_the_tide_v2_rules 2
 turn_of_the_tide_v2_screen 3
 turn_of_the_tide_v2_world 2

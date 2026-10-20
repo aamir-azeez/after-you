@@ -25,8 +25,9 @@ const ENVELOPE_KEYS := ["version", "generation", "settings", "attempts", "comple
 const RETIRED_DEFINITIONS := {
 	"turn-of-the-tide@1": ["cbeb3d7753ac621ef30f99100af15149d15d8f5918df90b6996e4ce4b52d5ce7", "dfa00916f4022cbd3c5d677c5f6a61fcacb2256251ce62953404232a871d279a",
 		"338e5b4a8b156734ab1b4237dd343fa3d7e95088d62fb61810bc793bd9e28560", "ed891de13f452b91a502414864910228a6513accef53f90160013bb393193f68"],
-	# The settled-source @2 built from main on 2026-10-17 and removed the same day.
-	"turn-of-the-tide@2": ["df0c4209c74b93d547cc5cdc8ca049944f810fbce42dccc6e57e305122de390c"],
+	# The settled-source @2 built from main on 2026-10-17 and removed the same day,
+	# and the tide-rules @2 before Slack Water's posts moved into one row (2026-10-19).
+	"turn-of-the-tide@2": ["df0c4209c74b93d547cc5cdc8ca049944f810fbce42dccc6e57e305122de390c", "e15ff1e40da4084ddf291165ea5dea86335c92b388bb3a2fa841c959d1f056a7"],
 }
 
 var last_error := ""

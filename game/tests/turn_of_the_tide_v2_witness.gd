@@ -35,7 +35,7 @@ func chapter() -> Dictionary:
 	var level := Registry.definition(KEY)
 	var checkpoint := Registry.initial_checkpoint(KEY)
 	var result := {"definition": level, "checkpoints": [checkpoint], "pairs": [], "error": ""}
-	var routes := [[Tide.a_routes()["low"], Tide.b_routes()["low"]], [Tide.p1_home("low") + Tide.p1_way("low", "sea-lock"), p0_way("low", "sea-lock")]]
+	var routes := [[Tide.a_routes()["low"], Tide.b_routes()["low"]], [Tide.p1_home("low") + p1_way("low", "sea-lock"), p0_way("low", "sea-lock")]]
 	for index in range(level.stages.size()):
 		var played := pair(level, str(level.stages[index].id), checkpoint, routes[index][0], routes[index][1])
 		if not played.error.is_empty():
@@ -45,6 +45,74 @@ func chapter() -> Dictionary:
 		checkpoint = played.checkpoint
 		result.checkpoints.append(checkpoint)
 	return result
+
+## Stage 2, p1. The posts stand in one row on the west terrace's south edge
+## (the v2 catalog's ROW_*); the bar catwalks, chains and basin wheel are
+## @1's. Stands 2 cm inside each reach radius (levers 28, post pads 16), each
+## stub entered straight from the terrace front in front of it (z -112 north,
+## 116 south). The way home is @1's.
+const GATE_BAR_FRONT := [-328,-112]
+const POSTS := {"sea-lock": [-416,148], "boom": [-344,148], "punt": [-272,148]}
+
+static func _sea(from: String, to: String) -> Array:
+	return [["d",Tide.BASIN_STAND]] + Tide._taps(Tide.sea_presses(from, to))
+
+static func _gate_bar() -> Array:
+	return [["d",GATE_BAR_FRONT],["w",Tide.GATE_BAR],T,["w",GATE_BAR_FRONT]]
+
+static func _sea_bar() -> Array:
+	return Tide._sea_bar()
+
+static func _post(way: String) -> Array:
+	return [["d",[POSTS[way][0],116]],["w",POSTS[way]]]
+
+## The beach chain from wherever the way comes down to the beach front, and
+## back up the west steps to the terrace.
+static func _beach_chain(down: Array) -> Array:
+	return down + [["w",Tide.BEACH_CHAIN],T,["w",[Tide.BEACH_CHAIN[0],116]]]
+
+## The quay chain from a stand on its lane, and back down to the terrace.
+static func _quay_chain(lane: Array) -> Array:
+	return lane + [["w",Tide.QUAY_CHAIN],T] + Tide.QUAY_DOWN
+
+## p1's plan per cell, in @1's order: the shut-sea moorings before the sea
+## first turns, the gate bar at slack (the sea at the history's tide), then
+## the way's mark and its post.
+static func p1_way(tide: String, way: String) -> Array:
+	match tide + "/" + way:
+		"low/boom": return _beach_chain([["w",[Tide.BEACH_CHAIN[0],388]]]) + _sea("shut","low") + _gate_bar() + _sea("low","half") + _post(way)
+		"low/sea-lock": return [["w",[-164,388]],["w",[-164,116]]] + _sea_bar() + _sea("shut","low") + _gate_bar() + _post(way)
+		"low/punt": return _quay_chain([["w",[Tide.QUAY_CHAIN[0],388]]]) + _sea_bar() + _sea("shut","high") + _post(way)
+		"half/boom": return _beach_chain([["w",[-140,40]],["d",[Tide.BEACH_CHAIN[0],64]]]) + _sea("shut","half") + _gate_bar() + _post(way)
+		"half/sea-lock": return [["w",[-140,40]]] + _sea("shut","half") + _gate_bar() + _sea("half","shut") + _sea_bar() + _sea("shut","low") + _post(way)
+		"half/punt": return _quay_chain([["w",[-100,40]],["d",[Tide.QUAY_CHAIN[0],-40]]]) + _sea_bar() + _sea("shut","high") + _post(way)
+		"high/boom": return _beach_chain([["w",[Tide.BEACH_CHAIN[0],-304]]]) + _sea("shut","high") + _gate_bar() + _sea("high","half") + _post(way)
+		"high/sea-lock": return [["w",[-180,-304]]] + Tide.QUAY_DOWN.slice(1) + _sea_bar() + _sea("shut","high") + _gate_bar() + _sea("high","low") + _post(way)
+		"high/punt": return _quay_chain([["d",[1276,-400]],["w",[Tide.QUAY_CHAIN[0],-400]]]) + _sea_bar() + _sea("shut","high") + _post(way)
+	return []
+
+## The wrong order: the sea wheel turned before any mooring (shut to the
+## history's tide), then the cheapest recovery, as in @1
+## (Tide.p1_way_sea_first). The probes mark where a mooring is found flooded.
+static func p1_way_sea_first(tide: String, way: String) -> Array:
+	var terrace: Array = {"low": [["w",[-164,388]],["w",[-164,116]]], "half": [["w",[-140,40]]], "high": [["w",[-180,-304]]] + Tide.QUAY_DOWN.slice(1)}[tide]
+	match way:
+		"boom": return terrace + _sea("shut",tide) + _gate_bar() + [["?","catwalk-shut"]] + _sea(tide,"shut") + _beach_chain([["d",[Tide.BEACH_CHAIN[0],116]]]) + _sea("shut","half") + _post(way)
+		"sea-lock": return terrace + _sea("shut",tide) + _gate_bar() + [["?","bar-shut"]] + _sea(tide,"shut") + _sea_bar() + _sea("shut","low") + _post(way)
+	return terrace + _sea("shut","low") + [["?","bar-shut"]] + _quay_chain([["d",[Tide.QUAY_CHAIN[0],-119]]]) + _sea("low","shut") + _sea_bar() + _sea("shut","high") + _post(way)
+
+## Every mooring made fast (beach chain, quay chain and sea bar while the sea
+## is shut, the gate bar at slack), then the way's mark and its post.
+static func p1_all_chains(tide: String, way: String) -> Array:
+	var chains: Array = [["w",Tide.BEACH_CHAIN],T,["w",[Tide.QUAY_CHAIN[0],-468]],["w",Tide.QUAY_CHAIN],T] + Tide.QUAY_DOWN
+	if tide == "high": chains = [["w",Tide.QUAY_CHAIN],T,["w",[Tide.BEACH_CHAIN[0],-468]],["w",Tide.BEACH_CHAIN],T,["w",[Tide.BEACH_CHAIN[0],116]]]
+	var down: Array = {"low": [["w",[Tide.BEACH_CHAIN[0],388]]], "half": [["w",[-140,40]],["d",[Tide.BEACH_CHAIN[0],64]]], "high": [["w",[Tide.QUAY_CHAIN[0],-304]]]}[tide]
+	return down + chains + _sea_bar() + _sea("shut",tide) + _gate_bar() + ([] if Tide.WAY_SEA[way] == tide else _sea(tide, Tide.WAY_SEA[way])) + _post(way)
+
+## p1's whole Slack Water turn after any stage-one end state.
+static func p1_route(checkpoint: Dictionary, way: String) -> Array:
+	var tide := str(checkpoint.mechanisms.controls.tide)
+	return Tide.p1_home(tide) + p1_way(tide, way)
 
 ## Stage 2, p0 for one history and way: wait for the memory, then the way.
 ## The pin hangs on the quay step (open at low) and the key on the bollard

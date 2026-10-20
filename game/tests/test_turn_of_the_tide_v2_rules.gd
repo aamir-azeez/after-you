@@ -4,8 +4,7 @@ extends SceneTree
 ## - the definition pins rules 10, keeps no crossing on entry and closes in
 ##   `closing_ticks`; @1 still plays rules 9 with none of it;
 ## - every Set the Tide pair of @1 still finishes (V2.BROKEN_PAIRS lists any that do not);
-## - all nine Slack Water cells finish from the three stage-one ends, and no
-##   checkpoint keeps a route;
+## - the nine Slack Water cells play in turn_of_the_tide_v2_cells.gd (one suite per history);
 ## - every Slack Water start pose stands on open floor at its first tick, in
 ##   either turn, and from every accepted stage-one end the bell terrace has a
 ##   way home to the west bank under Slack Water's gates (also after a HIGH end
@@ -43,7 +42,6 @@ func _run() -> void:
 	_definition()
 	var ends := _stage_one()
 	_starts(ends)
-	_stage_two(ends)
 	_high_without_gangway()
 	_closing_and_drowning()
 	_memory_drowns(ends.get("low", {}))
@@ -114,7 +112,7 @@ func _high_without_gangway() -> void:
 	var end: Dictionary = played.checkpoint
 	_check(end.mechanisms.controls.tide == "high" and not end.mechanisms.levers.get("gangway", false), "That end is high water with the gangway never pulled")
 	_way_home(end, "a HIGH end without the gangway")
-	var slack := V2.pair(level, SLACK, end, Tide.p1_route(end, "punt"), V2.p0_way("high", "punt"))
+	var slack := V2.pair(level, SLACK, end, V2.p1_route(end, "punt"), V2.p0_way("high", "punt"))
 	_check(slack.error.is_empty(), "Slack Water's punt still finishes after that end: " + str(slack.error))
 
 ## Each stage-one end's Slack Water start: both spirits stand on open floor,
@@ -131,19 +129,11 @@ func _starts(ends: Dictionary) -> void:
 		# The second turn too, beside a recorded first one.
 		var p1 := Simulation.new()
 		p1.reset(level, SLACK, ends[history], {}, "a")
-		Tide.play(p1, Tide.p1_route(ends[history], "punt"))
+		Tide.play(p1, V2.p1_route(ends[history], "punt"))
 		var b := Simulation.new()
 		_check(p1.can_commit() and b.reset(level, SLACK, ends[history], p1.export_recording(), "b"), "After %s, the second turn starts beside its memory" % history)
 		b.step({})
 		_check(b.snapshot().drowned.is_empty() and not b.finished, "After %s, the second turn's first tick drowns nobody" % history)
-
-func _stage_two(ends: Dictionary) -> void:
-	for history: String in ends:
-		for way: String in ["boom", "sea-lock", "punt"]:
-			var played := V2.pair(level, SLACK, ends[history], Tide.p1_route(ends[history], way), V2.p0_way(history, way))
-			_check(played.error.is_empty(), "Slack Water %s/%s finishes on the tide rules: %s" % [history, way, played.error])
-			if played.error.is_empty():
-				_check(played.checkpoint.mechanisms.latched_bridges.is_empty() and played.checkpoint.stage_index == 2, "%s/%s ends the chapter keeping no route" % [history, way])
 
 ## Stage one, the LOW memory turning the tide while the second spirit stands
 ## on the sand bar.
@@ -187,7 +177,7 @@ func _memory_drowns(low_end: Dictionary) -> void:
 		return
 	var a := Simulation.new()
 	a.reset(level, SLACK, low_end, {}, "a")
-	Tide.play(a, Tide.p1_route(low_end, "sea-lock"))
+	Tide.play(a, V2.p1_route(low_end, "sea-lock"))
 	_check(a.can_commit(), "The memory's Slack Water turn commits")
 	var first: Dictionary = a.export_recording()
 	var b := Simulation.new()
@@ -206,7 +196,7 @@ func _memory_steps_onto_shut(half_end: Dictionary) -> void:
 		return
 	var a := Simulation.new()
 	a.reset(level, SLACK, half_end, {}, "a")
-	Tide.play(a, Tide.p1_route(half_end, "punt"))
+	Tide.play(a, V2.p1_route(half_end, "punt"))
 	var first: Dictionary = a.export_recording()
 	var b := Simulation.new()
 	b.reset(level, SLACK, half_end, first, "b")

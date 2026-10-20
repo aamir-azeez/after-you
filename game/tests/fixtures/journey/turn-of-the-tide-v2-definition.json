@@ -279,10 +279,10 @@
 			"id": "punt-post",
 			"owner_slot": "p1",
 			"rect_cm": [
-				-440,
-				-192,
-				-384,
-				-128
+				-296,
+				128,
+				-240,
+				192
 			],
 			"to_surface": "punt-post"
 		},
@@ -305,10 +305,10 @@
 			"id": "gate-post",
 			"owner_slot": "p1",
 			"rect_cm": [
-				-296,
-				-192,
-				-240,
-				-128
+				-440,
+				128,
+				-384,
+				192
 			],
 			"to_surface": "gate-post"
 		},
@@ -318,9 +318,9 @@
 			"id": "boom-post",
 			"owner_slot": "p1",
 			"rect_cm": [
-				-296,
+				-368,
 				128,
-				-240,
+				-312,
 				192
 			],
 			"to_surface": "boom-post"
@@ -1593,7 +1593,7 @@
 					"id": "boom-post-pad",
 					"owner_slot": "p1",
 					"position_cm": [
-						-268,
+						-340,
 						160
 					],
 					"radius_cm": 16,
@@ -1604,8 +1604,8 @@
 					"id": "gate-post-pad",
 					"owner_slot": "p1",
 					"position_cm": [
-						-268,
-						-160
+						-412,
+						160
 					],
 					"radius_cm": 16,
 					"surface_id": "gate-post"
@@ -1615,8 +1615,8 @@
 					"id": "punt-post-pad",
 					"owner_slot": "p1",
 					"position_cm": [
-						-412,
-						-160
+						-268,
+						160
 					],
 					"radius_cm": 16,
 					"surface_id": "punt-post"
