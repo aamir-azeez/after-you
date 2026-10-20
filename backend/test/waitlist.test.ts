@@ -492,19 +492,24 @@ describe("the confirm link and email", () => {
     expect(message.html).not.toMatch(/[–—]/);
   });
 
-  it("keeps the light look in dark mode clients", () => {
+  it("stays light all the way through, so dark mode flips it as one", () => {
     const { html } = confirmEmail("https://aamirazeez.com/after-you/waitlist/confirm/#t=x");
+    const brightness = (hex: string) => {
+      const n = parseInt(hex.slice(1), 16);
+      return 0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255);
+    };
+    const inline = html.split("</head>")[1];
+    const backgrounds = [...inline.matchAll(/(?:background-color:|bgcolor=")(#[0-9a-f]{6})/g)].map(m => m[1]);
+    const texts = [...inline.matchAll(/[^-]color:(#[0-9a-f]{6})/g)].map(m => m[1]);
+    expect(backgrounds.length).toBeGreaterThan(4);
+    expect(texts.length).toBeGreaterThan(4);
+    // Gmail on Android darkens a background above 205 and lightens text below 150; anything between is left as is.
+    for (const color of backgrounds) expect(brightness(color)).toBeGreaterThan(210);
+    for (const color of texts) expect(brightness(color)).toBeLessThan(140);
+    expect(html).not.toMatch(/mix-blend-mode|background-image|u \+ \.body/);
     expect(html).toContain('<meta name="color-scheme" content="light dark">');
     expect(html).toContain("@media (prefers-color-scheme:dark)");
-    expect(html).toContain("[data-ogsc] .t-ink");
-    expect(html).toContain('<body class="body"');
-    for (const surface of ["bg-page", "bg-card", "bg-button"]) {
-      expect(html).toMatch(new RegExp(`u \\+ \\.body \\.${surface}\\{background-image:linear-gradient\\(`));
-    }
-    expect(html).toContain("u + .body .lk-text{background-color:#000000;color:#ffffff!important;mix-blend-mode:difference}");
-    // Pins live only in Gmail's style block, so a Gmail that drops it shows the plain flip, not dark text on a pinned card.
-    expect(html).not.toMatch(/style="[^"]*background-image/);
-    expect(html.match(/class="lk-text"/g)?.length).toBe(7);
+    expect(html).toContain("[data-ogsb] .bg-card");
     expect(html).toContain('email-spirits-v2.png" width="240" height="132" alt="');
     expect(html).not.toContain(">After You</td>");
   });
