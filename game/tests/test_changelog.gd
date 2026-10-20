@@ -2,7 +2,8 @@ extends SceneTree
 ## The release notes that ship with the app: every version has its entry, the
 ## file stays plain and in bounds, highlights stay short and fit every build,
 ## each build sees only its own paragraphs, and the launch decision that marks an
-## update's notes as unseen.
+## update's notes as unseen. The archive of older versions keeps every version
+## ever shipped: the file plus the archive run unbroken back to the first one.
 const Changelog = preload("res://services/changelog.gd")
 const VersionOrder = preload("res://services/version_order.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
@@ -18,6 +19,9 @@ func _initialize() -> void:
 	for mode: Variant in [[1], {"x": 1}, true, 1]:
 		_check(Changelog.channel({"purchase_mode": mode}) == Changelog.GITHUB, "A configuration with a wrongly typed purchase mode reads as the GitHub build")
 	_highlights()
+	_archive()
+	_continuity()
+	_earlier()
 	_malformed()
 	_decide()
 	_export()
@@ -109,9 +113,23 @@ func _sample() -> Dictionary:
 
 func _highlights() -> void:
 	var raw := Changelog.parse(FileAccess.get_file_as_string(Changelog.PATH))
-	# Highlights show on every build, so they never name a store, a platform or a test build.
+	_highlight_rules(raw)
+	_highlight_rules(Changelog.load_archive())
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	var ios := Changelog.for_channel(raw, Changelog.APP_STORE)
+	PlatformSupport.override_platform = ""
+	var play := Changelog.for_channel(raw, Changelog.PLAY)
+	_check(not raw.is_empty() and ios[0].highlights == raw[0].highlights and play[0].highlights == raw[0].highlights, "Every build shows the same highlights")
+	var sample := Changelog.for_channel(Changelog.parse(JSON.stringify(_sample())), Changelog.GITHUB)
+	_check(sample[0].highlights == [{"icon": "spark", "text": "First line"}, {"icon": "leaf", "text": "Second line"}], "The loader hands over the highlights and their icons in order")
+	for name: String in Changelog.ICONS + ["gift"]:
+		_check(ResourceLoader.exists("res://assets/ui/whats_new/%s.svg" % name), "The What's new icon ships: " + name)
+
+## Highlights show on every build, so they never name a store, a platform or a
+## test build; the archived ones keep the same rules.
+func _highlight_rules(entries: Array) -> void:
 	var banned := ["Test Store", "tester", "APK", "RevenueCat", "Android", "Google Play", "Play Store", "iOS", "iPhone", "App Store", "GitHub"]
-	for entry: Dictionary in raw:
+	for entry: Dictionary in entries:
 		var lines: Array = entry.highlights
 		_check(lines.size() >= 1 and lines.size() <= Changelog.MAX_HIGHLIGHTS, "%s has one to %d highlights" % [entry.version, Changelog.MAX_HIGHLIGHTS])
 		var seen := {}
@@ -128,15 +146,132 @@ func _highlights() -> void:
 				_check(not line.containsn(word), "A highlight never mentions %s: %s" % [word, where])
 			_check(not seen.has(line), "Highlights don't repeat: " + where)
 			seen[line] = true
-	PlatformSupport.override_platform = PlatformSupport.IOS
-	var ios := Changelog.for_channel(raw, Changelog.APP_STORE)
-	PlatformSupport.override_platform = ""
-	var play := Changelog.for_channel(raw, Changelog.PLAY)
-	_check(not raw.is_empty() and ios[0].highlights == raw[0].highlights and play[0].highlights == raw[0].highlights, "Every build shows the same highlights")
-	var sample := Changelog.for_channel(Changelog.parse(JSON.stringify(_sample())), Changelog.GITHUB)
-	_check(sample[0].highlights == [{"icon": "spark", "text": "First line"}, {"icon": "leaf", "text": "Second line"}], "The loader hands over the highlights and their icons in order")
-	for name: String in Changelog.ICONS + ["gift"]:
-		_check(ResourceLoader.exists("res://assets/ui/whats_new/%s.svg" % name), "The What's new icon ships: " + name)
+
+## The first version that ever had notes in the app, and the versions that were
+## never released (no tag, no build). A version skipped from now on is added here
+## on purpose.
+const FIRST_VERSION := "0.4.16"
+const NEVER_RELEASED := ["0.4.17"]
+
+func _archive() -> void:
+	var bytes := FileAccess.get_file_as_bytes(Changelog.ARCHIVE_PATH)
+	_check(not bytes.is_empty() and bytes.size() <= Changelog.MAX_ARCHIVE_BYTES, "The shipped archive exists and stays under its size limit")
+	var archive := Changelog.parse_archive(bytes.get_string_from_utf8())
+	_check(not archive.is_empty(), "The shipped archive passes its strict loader")
+	_check(archive == Changelog.load_archive(), "The archive loads from its own path")
+	_check(Changelog.parse_archive(JSON.stringify({"schema_version": 1, "entries": []})) == [], "An empty archive is valid and lists nothing")
+	_check(not Changelog.parse_archive(JSON.stringify(_archive_sample())).is_empty(), "The sample archive is valid")
+	for name: String in ARCHIVE_BROKEN:
+		_check(Changelog.parse_archive(_broken_archive(name)).is_empty(), "A broken archive loads as no entries: " + name)
+	_check(Changelog.load_archive("res://content/missing-archive.json").is_empty(), "A missing archive loads as no entries")
+
+## The newest file and the archive together hold every version back to the first,
+## newest first with no repeats, and a version leaves the file only into the
+## archive: each step down the list is the release right before it.
+func _continuity() -> void:
+	var file := Changelog.parse(FileAccess.get_file_as_string(Changelog.PATH))
+	var archive := Changelog.load_archive()
+	_check(not file.is_empty(), "The file is there to join to the archive")
+	if file.is_empty(): return
+	var versions: Array[String] = []
+	for entry: Dictionary in file + archive: versions.append(str(entry.version))
+	_check(versions[-1] == FIRST_VERSION, "Every version back to %s stays listed; the oldest is %s" % [FIRST_VERSION, versions[-1]])
+	if not archive.is_empty():
+		_check(file.size() == Changelog.MAX_ENTRIES, "The archive takes versions only from a full file (%d of %d)" % [file.size(), Changelog.MAX_ENTRIES])
+		_check(VersionOrder.compare(archive[0].version, file[-1].version) < 0, "The archive starts below the file's oldest version")
+	for index: int in range(1, versions.size()):
+		var newer := versions[index - 1]
+		var older := versions[index]
+		_check(VersionOrder.compare(older, newer) < 0, "Versions run newest first without repeats: %s then %s" % [newer, older])
+		_check(_follows(older, newer), "%s comes right after %s. A release that drops the file's oldest entry moves its version, date and highlights to the top of content/changelog_archive.json" % [newer, older])
+	var chain := Changelog.earlier_entries(Changelog.load_entries(Changelog.GITHUB))
+	var listed: Array[String] = []
+	for entry: Dictionary in chain: listed.append(str(entry.version))
+	_check(listed == versions.slice(1), "Earlier versions lists every version before this one, newest first")
+
+## True when `newer` is the release right after `older`: the next patch, minor or
+## major, stepping over versions that were never released.
+func _follows(older: String, newer: String) -> bool:
+	var b := VersionOrder.parse(newer)
+	var step := older
+	for guard: int in range(NEVER_RELEASED.size() + 1):
+		var a := VersionOrder.parse(step)
+		if a.is_empty() or b.is_empty(): return false
+		if b == [a[0], a[1], a[2] + 1] or b == [a[0], a[1] + 1, 0] or b == [a[0] + 1, 0, 0]: return true
+		step = "%d.%d.%d" % [a[0], a[1], a[2] + 1]
+		if step not in NEVER_RELEASED: return false
+	return false
+
+## Earlier versions on small files: the rest of the file, then an archive that
+## fits below it. A missing, broken or overlapping archive leaves the file's rows.
+func _earlier() -> void:
+	var entries := Changelog.for_channel(Changelog.parse(JSON.stringify(_sample())), Changelog.GITHUB)
+	var path := "user://changelog-archive-test-%s.json" % Crypto.new().generate_random_bytes(6).hex_encode()
+	var missing := "res://content/missing-archive.json"
+	var file_rows := [{"version": "0.6.9", "date": "2026-10-30", "highlights": [{"icon": "sun", "text": "Older line"}]}]
+	_check(Changelog.earlier_entries(entries, missing) == file_rows, "Without an archive, Earlier versions lists the rest of the file")
+	_check(Changelog.has_earlier(entries, missing), "A file with two versions has earlier ones")
+	_check(not Changelog.has_earlier(entries.slice(0, 1), missing), "One version and no archive has none")
+	_check(Changelog.earlier_entries([]) == [], "No entries list nothing")
+	_write(path, JSON.stringify(_archive_sample()))
+	var joined := Changelog.earlier_entries(entries, path)
+	_check(joined.size() == 3 and joined[0].version == "0.6.9" and joined[1].version == "0.6.8" and joined[2].version == "0.6.7", "The archive follows the file, newest first")
+	_check(Changelog.has_earlier(entries.slice(0, 1), path), "An archive alone counts as earlier versions")
+	_write(path, "{")
+	_check(Changelog.earlier_entries(entries, path) == file_rows, "A broken archive leaves only the file's rows")
+	var overlap := _archive_sample()
+	overlap.entries[0].version = "0.6.9"
+	_write(path, JSON.stringify(overlap))
+	_check(Changelog.earlier_entries(entries, path) == file_rows, "An archive that repeats the file's oldest version is left out")
+	overlap.entries[0].version = "0.7.5"
+	overlap.entries[1].version = "0.7.4"
+	_write(path, JSON.stringify(overlap))
+	_check(Changelog.earlier_entries(entries, path) == file_rows, "An archive newer than the file's oldest version is left out")
+	_write(path, "x".repeat(Changelog.MAX_ARCHIVE_BYTES + 1))
+	_check(Changelog.load_archive(path).is_empty(), "An archive over its size limit loads as no entries")
+	DirAccess.remove_absolute(path)
+	var rows := Changelog.earlier_entries(entries, missing)
+	rows[0].highlights[0].text = "Changed"
+	_check(entries[1].highlights[0].text == "Older line", "Earlier versions hands over copies")
+
+func _write(path: String, text: String) -> void:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(text)
+	file.close()
+
+func _archive_sample() -> Dictionary:
+	return {"schema_version": 1, "entries": [
+		{"version": "0.6.8", "date": "2026-10-20", "highlights": [{"icon": "star", "text": "Archived line"}]},
+		{"version": "0.6.7", "date": "2026-10-19", "highlights": [{"icon": "leaf", "text": "Oldest line"}, {"icon": "tap", "text": "Another line"}]},
+	]}
+
+const ARCHIVE_BROKEN := ["not JSON", "not an object", "extra top-level key", "wrong schema", "entries not a list", "too many versions", "entry not an object", "paragraphs kept", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "no highlights", "unknown icon", "long highlight", "highlight line break"]
+
+func _broken_archive(name: String) -> String:
+	var d := _archive_sample()
+	var first: Dictionary = d.entries[0]
+	match name:
+		"not JSON": return "{"
+		"not an object": return "[]"
+		"extra top-level key": d.extra = 1
+		"wrong schema": d.schema_version = 2
+		"entries not a list": d.entries = {}
+		"too many versions":
+			d.entries.clear()
+			for i: int in range(Changelog.MAX_ARCHIVE_ENTRIES + 1):
+				d.entries.append({"version": "0.%d.0" % (2000 - i), "date": "2026-10-01", "highlights": [{"icon": "spark", "text": "One"}]})
+		"entry not an object": d.entries[1] = "0.6.7"
+		"paragraphs kept": first.paragraphs = [{"text": "One."}]
+		"missing date": first.erase("date")
+		"bad date": first.date = "Oct 1"
+		"bad version": first.version = "0.6"
+		"unsorted": d.entries.reverse()
+		"duplicate version": d.entries[1].version = "0.6.8"
+		"no highlights": first.highlights = []
+		"unknown icon": first.highlights[0].icon = "rocket"
+		"long highlight": first.highlights[0].text = "a".repeat(Changelog.MAX_HIGHLIGHT_CHARS + 1)
+		"highlight line break": first.highlights[0].text = "One\nTwo"
+	return JSON.stringify(d)
 
 const BROKEN := ["missing highlights", "no highlights", "too many highlights", "long highlight", "highlight not text", "empty highlight", "highlight line break", "unknown icon", "highlight extra key", "highlight without icon", "not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions"]
 
@@ -215,9 +350,10 @@ func _export() -> void:
 			found += 1
 			var include := str(presets.get_value(section, "include_filter", ""))
 			var exclude := str(presets.get_value(section, "exclude_filter", ""))
-			var path := Changelog.PATH.trim_prefix("res://")
-			_check(_matches(include, path), "%s exports include %s" % [presets.get_value(section, "platform"), path])
-			_check(not _matches(exclude, path), "%s exports do not exclude %s" % [presets.get_value(section, "platform"), path])
+			for shipped: String in [Changelog.PATH, Changelog.ARCHIVE_PATH]:
+				var path := shipped.trim_prefix("res://")
+				_check(_matches(include, path), "%s exports include %s" % [presets.get_value(section, "platform"), path])
+				_check(not _matches(exclude, path), "%s exports do not exclude %s" % [presets.get_value(section, "platform"), path])
 	_check(found >= 2, "Both the Android and iOS presets were checked")
 	var android_exclude := str(presets.get_value("preset.0", "exclude_filter", ""))
 	for kept_out: String in ["tests/test_changelog.gd", "content/campaigns/a-place-for-two-v1.json", "content/compatibility/a-place-for-two-definition-v1.json"]:

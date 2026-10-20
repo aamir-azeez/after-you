@@ -247,12 +247,18 @@ const KEEPSAKE_FINISHED := "Finished solo and with a friend."
 const KEEPSAKE_FINISHED_SOLO := "Finished solo."
 # What's new: the Home button and Settings row, the card's version line, its link
 # to every release's notes, its close button, and the tip under the Home button
-# after an update.
+# after an update. Earlier versions opens the list of every version before this
+# one; each row shows its version line and its date (day, short month, year), and
+# the list's back arrow returns to the card.
 const WHATS_NEW := "What's new"
 const WHATS_NEW_VERSION := "Version %s"
 const WHATS_NEW_SEE_ALL := "See all changes"
 const WHATS_NEW_GOT_IT := "Got it"
 const WHATS_NEW_TIP := "Version %s is here"
+const WHATS_NEW_EARLIER := "Earlier versions"
+const WHATS_NEW_EARLIER_TITLE := "Earlier versions"
+const WHATS_NEW_DATE := "%d %s %d"
+const WHATS_NEW_BACK := "Back to What's new"
 # Home explore mode: walk a spirit around the islands, then go back.
 const HOME_EXPLORE := "Explore"
 const HOME_EXPLORE_BACK := "Back"

@@ -555,12 +555,13 @@ func _back_on_screen() -> void:
 			button.pressed.emit()
 			return
 
-## Closes the topmost card Main opened over a screen (InGameModal), if any.
+## Android Back on the topmost card Main opened over a screen (InGameModal), if
+## any: a step back inside the card, or closing it.
 func _close_top_modal() -> bool:
 	for index in range(ui.get_child_count()-1,-1,-1):
 		var child := ui.get_child(index)
 		if child.get_script() == InGameModal and not child.is_queued_for_deletion():
-			child.close()
+			child.go_back()
 			return true
 	return false
 
@@ -1533,7 +1534,9 @@ func _open_whats_new_card(opener: Control = null) -> void:
 	_remember_whats_new()
 	if is_instance_valid(overlay): WhatsNewCard.clear_unseen(overlay.find_child("HomeWhatsNew",true,false))
 	var see_all: Callable = _open_release_notes if Changelog.releases_link_offered() else Callable()
-	_whats_new_card = WhatsNewCard.open(ui,entries[0],see_all,opener)
+	# Earlier versions reads the archive only when the player opens that list.
+	var earlier: Callable = (func() -> Array: return Changelog.earlier_entries(entries)) if Changelog.has_earlier(entries) else Callable()
+	_whats_new_card = WhatsNewCard.open(ui,entries[0],earlier,see_all,opener)
 	_whats_new_card_mode = mode
 
 func _open_whats_new_from_home() -> void:

@@ -14,6 +14,9 @@ const MUTED := Color("afc6be")
 signal closed
 
 var content: VBoxContainer
+## Asked first by Back (Android Back and Escape): true when the card took a step
+## back inside itself and stays open. Close always closes.
+var back_step: Callable
 var heading_font: FontVariation
 var _panel: PanelContainer
 var _center: CenterContainer
@@ -136,11 +139,17 @@ func add_actions(primary_label: String, primary: Callable, cancel_label: String 
 	_trap_focus()
 	return confirm
 
+## Back: a step inside the card when it has one, otherwise close.
+func go_back() -> void:
+	if _closing: return
+	if back_step.is_valid() and back_step.call(): return
+	close()
+
 func _trap_focus() -> void:
-	# Keep keyboard focus inside the modal.
+	# Keep keyboard focus inside the modal, on the controls that show.
 	var order: Array[Control] = []
 	for control: Control in find_children("*","Control",true,false):
-		if control is LineEdit or control is Button: order.append(control)
+		if (control is LineEdit or control is Button) and control.is_visible_in_tree(): order.append(control)
 	for index in range(order.size()):
 		order[index].focus_next = order[index].get_path_to(order[(index + 1) % order.size()])
 		order[index].focus_previous = order[index].get_path_to(order[(index - 1 + order.size()) % order.size()])
@@ -157,7 +166,7 @@ func close(restore_focus: bool = true) -> void:
 func _input(event: InputEvent) -> void:
 	if not _closing and event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
-		close()
+		go_back()
 
 func _process(_delta: float) -> void:
 	# Android's on-screen keyboard covers the bottom of the window; lift the

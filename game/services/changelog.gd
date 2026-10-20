@@ -6,12 +6,20 @@ extends RefCounted
 ## may carry iOS wording ("ios_text"; empty hides it on iOS). Any file that breaks
 ## the rules below loads as no entries, so a screen shows nothing rather than a
 ## broken list.
+##
+## The file keeps the newest MAX_ENTRIES versions. A release that adds a version to
+## a full file moves the oldest entry's version, date and highlights to the top of
+## content/changelog_archive.json, so What's new can still list every version ever
+## shipped under Earlier versions. The archive holds highlights only, is read only
+## when that list opens, and has its own rules: when it breaks, the list shows this
+## file's versions alone and the card is untouched.
 const PlatformSupport = preload("res://services/platform_support.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const VersionOrder = preload("res://services/version_order.gd")
 const Typed = preload("res://services/typed_values.gd")
 
 const PATH := "res://content/changelog.json"
+const ARCHIVE_PATH := "res://content/changelog_archive.json"
 const SCHEMA_VERSION := 1
 const MAX_ENTRIES := 12
 const MAX_PARAGRAPHS := 8
@@ -19,6 +27,9 @@ const MAX_PARAGRAPH_CHARS := 700
 const MAX_FILE_BYTES := 65536
 const MAX_HIGHLIGHTS := 8
 const MAX_HIGHLIGHT_CHARS := 60
+## Bounds for the archive: room for years of releases, still a small read.
+const MAX_ARCHIVE_ENTRIES := 500
+const MAX_ARCHIVE_BYTES := 262144
 ## Icons a highlight can use: assets/ui/whats_new/<name>.svg.
 const ICONS := ["spark", "leaf", "tap", "link", "sun", "people", "home", "bell", "play", "picture", "star", "key"]
 ## Every version's full notes. iOS builds don't link here: the GitHub pages talk
@@ -68,6 +79,49 @@ static func parse(text: String) -> Array:
 		previous = entry.version
 	return entries.duplicate(true)
 
+## The archive's validated entries, [{"version", "date", "highlights"}] newest
+## first, or [] when any rule is broken. An empty archive is valid.
+static func parse_archive(text: String) -> Array:
+	var parser := JSON.new()
+	if parser.parse(text) != OK: return []
+	var root: Variant = parser.data
+	if not root is Dictionary or not _exact_keys(root, ["schema_version", "entries"], []): return []
+	if not _whole_number(root.schema_version) or int(root.schema_version) != SCHEMA_VERSION: return []
+	var entries: Variant = root.entries
+	if not entries is Array or entries.size() > MAX_ARCHIVE_ENTRIES: return []
+	var previous := ""
+	for entry: Variant in entries:
+		if not entry is Dictionary or not _exact_keys(entry, ["version", "date", "highlights"], []): return []
+		if not _valid_heading(entry) or not _valid_highlights(entry.highlights): return []
+		if not previous.is_empty() and VersionOrder.compare(entry.version, previous) >= 0: return []
+		previous = entry.version
+	return entries.duplicate(true)
+
+static func load_archive(path: String = ARCHIVE_PATH) -> Array:
+	if not FileAccess.file_exists(path): return []
+	var bytes := FileAccess.get_file_as_bytes(path)
+	if bytes.is_empty() or bytes.size() > MAX_ARCHIVE_BYTES: return []
+	return parse_archive(bytes.get_string_from_utf8())
+
+## Whether What's new has versions before `entries[0]` to list.
+static func has_earlier(entries: Array, archive_path: String = ARCHIVE_PATH) -> bool:
+	return entries.size() > 1 or FileAccess.file_exists(archive_path)
+
+## Every version before `entries[0]` (a build's load_entries()), newest first, as
+## [{"version", "date", "highlights"}]: the rest of the file, then the archive.
+## The archive joins only when its newest version is older than the file's oldest,
+## so the list never repeats a version or goes out of order.
+static func earlier_entries(entries: Array, archive_path: String = ARCHIVE_PATH) -> Array:
+	var result: Array = []
+	for index: int in range(1, entries.size()):
+		var entry: Dictionary = entries[index]
+		result.append({"version": entry.version, "date": entry.date, "highlights": entry.highlights.duplicate(true)})
+	if entries.is_empty(): return result
+	var archive := load_archive(archive_path)
+	if not archive.is_empty() and VersionOrder.compare(archive[0].version, str(entries[-1].version)) < 0:
+		result.append_array(archive)
+	return result
+
 ## Keeps the paragraphs meant for this build, in this platform's wording.
 static func for_channel(entries: Array, build_channel: String) -> Array:
 	var result: Array = []
@@ -100,16 +154,7 @@ static func decide(saved: Variant, save_existed: bool, read_only: bool, current:
 
 static func _valid_entry(entry: Variant) -> bool:
 	if not entry is Dictionary or not _exact_keys(entry, ["version", "date", "highlights", "paragraphs"], []): return false
-	if not VersionOrder.valid(entry.version) or not entry.date is String: return false
-	var date := RegEx.create_from_string("^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
-	if date.search(entry.date) == null: return false
-	var highlights: Variant = entry.highlights
-	if not highlights is Array or highlights.is_empty() or highlights.size() > MAX_HIGHLIGHTS: return false
-	for highlight: Variant in highlights:
-		if not highlight is Dictionary or not _exact_keys(highlight, ["icon", "text"], []): return false
-		if not highlight.icon is String or highlight.icon not in ICONS: return false
-		var line: Variant = highlight.text
-		if not _plain_text(line) or line.is_empty() or line.length() > MAX_HIGHLIGHT_CHARS: return false
+	if not _valid_heading(entry) or not _valid_highlights(entry.highlights): return false
 	var paragraphs: Variant = entry.paragraphs
 	if not paragraphs is Array or paragraphs.is_empty() or paragraphs.size() > MAX_PARAGRAPHS: return false
 	for paragraph: Variant in paragraphs:
@@ -123,6 +168,22 @@ static func _valid_entry(entry: Variant) -> bool:
 			for value: Variant in channels:
 				if not value is String or value not in CHANNELS or seen.has(value): return false
 				seen[value] = true
+	return true
+
+## A version name and a YYYY-MM-DD date.
+static func _valid_heading(entry: Dictionary) -> bool:
+	if not VersionOrder.valid(entry.version) or not entry.date is String: return false
+	return RegEx.create_from_string("^[0-9]{4}-[0-9]{2}-[0-9]{2}$").search(entry.date) != null
+
+## One to MAX_HIGHLIGHTS short plain lines, each with a known icon. The file and
+## the archive share these rules.
+static func _valid_highlights(highlights: Variant) -> bool:
+	if not highlights is Array or highlights.is_empty() or highlights.size() > MAX_HIGHLIGHTS: return false
+	for highlight: Variant in highlights:
+		if not highlight is Dictionary or not _exact_keys(highlight, ["icon", "text"], []): return false
+		if not highlight.icon is String or highlight.icon not in ICONS: return false
+		var line: Variant = highlight.text
+		if not _plain_text(line) or line.is_empty() or line.length() > MAX_HIGHLIGHT_CHARS: return false
 	return true
 
 static func _plain_text(value: Variant) -> bool:
