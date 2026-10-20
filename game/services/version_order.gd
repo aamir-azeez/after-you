@@ -3,6 +3,8 @@ extends RefCounted
 ## One comparer for every feature that asks "is this version newer".
 ##
 ## parse/valid/compare read plain names only (the changelog's entries).
+## parse_listed/compare_listed also read the early preview builds that only the
+## changelog archive lists (0.2.0-preview9).
 ## parse_release/compare_release also read a pre-release (0.6.2-rc.1), the way the
 ## required-update gate and the server (backend/src/app-status.ts) do; the vectors
 ## both sides check are in tests/fixtures/update_gate/versions.json.
@@ -13,6 +15,7 @@ const MAX_RELEASE_LENGTH := 40
 
 static var _pattern: RegEx
 static var _release_pattern: RegEx
+static var _listed_pattern: RegEx
 
 ## The three numbers of a plain major.minor.patch name, or [] when it is not one.
 static func parse(value: Variant) -> Array[int]:
@@ -39,6 +42,31 @@ static func compare(a: String, b: String) -> int:
 	for index: int in range(3):
 		if left[index] != right[index]: return -1 if left[index] < right[index] else 1
 	return 0
+
+## A plain name or a preview of one, exactly x.y.z-previewN with N from 1:
+## [major, minor, patch, N], where N is 0 for a plain name; [] for anything else.
+static func parse_listed(value: Variant) -> Array[int]:
+	var parts: Array[int] = []
+	if not value is String: return parts
+	if _listed_pattern == null:
+		_listed_pattern = RegEx.create_from_string("^%s\\.%s\\.%s(?:-preview([1-9][0-9]{0,3}))?$" % [NUMBER, NUMBER, NUMBER])
+	var found := _listed_pattern.search(value)
+	if found == null: return parts
+	for index: int in range(1, 5):
+		parts.append(int(found.get_string(index)))
+	return parts
+
+## compare() for parse_listed names: a preview is older than its release, and
+## previews of one release run by their number. An invalid name compares equal.
+static func compare_listed(a: String, b: String) -> int:
+	var left := parse_listed(a)
+	var right := parse_listed(b)
+	if left.is_empty() or right.is_empty(): return 0
+	for index: int in range(3):
+		if left[index] != right[index]: return -1 if left[index] < right[index] else 1
+	if left[3] == right[3]: return 0
+	if left[3] == 0 or right[3] == 0: return 1 if left[3] == 0 else -1
+	return -1 if left[3] < right[3] else 1
 
 ## A semantic version without build metadata: {"core": [major, minor, patch],
 ## "pre": [identifiers]}, or {} for anything else. A numeric pre-release identifier

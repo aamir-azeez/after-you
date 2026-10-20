@@ -9,6 +9,7 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const PhotoDate = preload("res://presentation/photo_date.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const VersionOrder = preload("res://services/version_order.gd")
 const CLOSED_ICON = preload("res://assets/ui/social/chevron-right.svg")
 const OPEN_ICON = preload("res://assets/ui/social/chevron-down.svg")
 const ROW := Color("24534b")
@@ -63,6 +64,14 @@ func fit(limit: float) -> void:
 func _refit() -> void:
 	_scroll.custom_minimum_size.y = minf(_rows.get_combined_minimum_size().y, _limit)
 
+## A row's version line: "Version 0.4.16", or "Version 0.2.0 preview 9" for an
+## early preview build (0.2.0-preview9).
+static func version_text(version: String) -> String:
+	var parts := VersionOrder.parse_listed(version)
+	if parts.size() == 4 and parts[3] > 0:
+		return PlayerCopy.WHATS_NEW_VERSION_PREVIEW % ["%d.%d.%d" % [parts[0], parts[1], parts[2]], parts[3]]
+	return PlayerCopy.WHATS_NEW_VERSION % version
+
 ## "16 Oct 2026" from "2026-10-16", read from the text itself so no time zone can
 ## move the day.
 static func date_text(date: String) -> String:
@@ -76,7 +85,7 @@ func _row(entry: Dictionary) -> VBoxContainer:
 	var holder := VBoxContainer.new()
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.add_theme_constant_override("separation", 12)
-	var version := PlayerCopy.WHATS_NEW_VERSION % str(entry.version)
+	var version := version_text(str(entry.version))
 	var date := date_text(str(entry.date))
 	var button := Button.new()
 	button.name = "WhatsNewVersionRow"

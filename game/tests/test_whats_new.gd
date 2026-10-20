@@ -371,9 +371,14 @@ func _earlier_versions() -> void:
 	var ordered := rows.size() == earlier.size()
 	for index: int in range(mini(rows.size(), earlier.size())):
 		var entry: Dictionary = earlier[index]
-		if not _has_label(rows[index], PlayerCopy.WHATS_NEW_VERSION % entry.version) or not _has_label(rows[index], WhatsNewHistory.date_text(entry.date)): ordered = false
+		if not _has_label(rows[index], WhatsNewHistory.version_text(entry.version)) or not _has_label(rows[index], WhatsNewHistory.date_text(entry.date)): ordered = false
 	_check(ordered, "Rows show each version and its date, newest first")
-	_check(not earlier.is_empty() and earlier[-1].version == "0.4.16" and _has_label(rows[-1], "Version 0.4.16") and _has_label(rows[-1], "8 Oct 2026"), "The list reaches back to the first version with notes, 0.4.16 on 8 Oct 2026")
+	_check(not earlier.is_empty() and earlier[-1].version == "0.1.3" and _has_label(rows[-1], "Version 0.1.3") and _has_label(rows[-1], "14 Sep 2026"), "The list reaches back to the first release, 0.1.3 on 14 Sep 2026")
+	var preview := -1
+	for index: int in range(earlier.size()):
+		if earlier[index].version == "0.2.0-preview9": preview = index
+	_check(preview >= 0 and preview < rows.size() and _has_label(rows[preview], "Version 0.2.0 preview 9") and _has_label(rows[preview], "15 Sep 2026"), "A preview build has its own row: Version 0.2.0 preview 9")
+	_check(WhatsNewHistory.version_text("0.2.0-preview9") == PlayerCopy.WHATS_NEW_VERSION_PREVIEW % ["0.2.0", 9] and WhatsNewHistory.version_text("0.4.16") == PlayerCopy.WHATS_NEW_VERSION % "0.4.16", "Row lines come from the player copy")
 	var built := 0
 	for row: Button in rows:
 		if _details(row) != null: built += 1

@@ -10,6 +10,156 @@
       "version": "0.4.16",
       "date": "2026-10-08",
       "highlights": [{"icon": "sun", "text": "Seeds and balls blur a little as they move"}]
+    },
+    {
+      "version": "0.4.15",
+      "date": "2026-09-30",
+      "highlights": [{"icon": "key", "text": "Full Journey no longer hangs on the loading screen"}, {"icon": "people", "text": "Friends shows a clear way to host a room"}, {"icon": "tap", "text": "Store errors stay visible, and Retry keeps the latest offer"}]
+    },
+    {
+      "version": "0.4.14",
+      "date": "2026-09-30",
+      "highlights": [{"icon": "home", "text": "Friends sits next to Play with a friend on Home"}, {"icon": "people", "text": "Friends have avatars and clearer buttons"}, {"icon": "picture", "text": "Hosting shows a bigger level preview"}, {"icon": "play", "text": "Your replays shows a progress bar while it gets ready"}]
+    },
+    {
+      "version": "0.4.13",
+      "date": "2026-09-30",
+      "highlights": [{"icon": "play", "text": "Saved shared replays reopen faster"}, {"icon": "tap", "text": "Delete a saved replay from this phone"}]
+    },
+    {
+      "version": "0.4.12",
+      "date": "2026-09-29",
+      "highlights": [{"icon": "link", "text": "Your first turn still saves if a friend joins during it"}, {"icon": "play", "text": "Saved shared replays play without a connection"}, {"icon": "people", "text": "Share a room straight from the room screen"}, {"icon": "picture", "text": "Photo frames fit the photo's shape"}]
+    },
+    {
+      "version": "0.4.11",
+      "date": "2026-09-29",
+      "highlights": [{"icon": "sun", "text": "Lighthouse hints leave more for you to work out"}, {"icon": "spark", "text": "Shorter, clearer turn messages"}]
+    },
+    {
+      "version": "0.4.10",
+      "date": "2026-09-28",
+      "highlights": [{"icon": "tap", "text": "First Light's first hint makes room for your controls"}, {"icon": "people", "text": "Hints show the steps for whoever's turn it is"}, {"icon": "play", "text": "Saved replays show the right ending message"}]
+    },
+    {
+      "version": "0.4.9",
+      "date": "2026-09-28",
+      "highlights": [{"icon": "leaf", "text": "Room lists, gardens and replays do less work"}]
+    },
+    {
+      "version": "0.4.8",
+      "date": "2026-09-28",
+      "highlights": [{"icon": "leaf", "text": "Less work in the background while you play"}]
+    },
+    {
+      "version": "0.4.7",
+      "date": "2026-09-28",
+      "highlights": [{"icon": "sun", "text": "Pick Low, Balanced or High graphics"}, {"icon": "people", "text": "Reopen a room from Recent online rooms"}]
+    },
+    {
+      "version": "0.4.5",
+      "date": "2026-09-27",
+      "highlights": [{"icon": "link", "text": "Join rooms and add friends by code"}, {"icon": "tap", "text": "Ask your partner to redo a turn"}, {"icon": "spark", "text": "Balls snap into circles and show who holds them"}, {"icon": "star", "text": "Separate marks for solo and together finishes"}]
+    },
+    {
+      "version": "0.4.4",
+      "date": "2026-09-27",
+      "highlights": [{"icon": "play", "text": "Watch gameplay previews of Full Journey chapters"}]
+    },
+    {
+      "version": "0.4.3",
+      "date": "2026-09-27",
+      "highlights": [{"icon": "spark", "text": "Two new chapters: Conservatory and Long Way Home"}, {"icon": "star", "text": "Four new keepsakes for Home"}]
+    },
+    {
+      "version": "0.4.2",
+      "date": "2026-09-27",
+      "highlights": [{"icon": "home", "text": "A House for Two, with a workshop, a loft and a sunroom"}]
+    },
+    {
+      "version": "0.4.1",
+      "date": "2026-09-27",
+      "highlights": [{"icon": "star", "text": "Keepsakes on Home show what you've collected"}, {"icon": "people", "text": "Separate keepsakes for solo and friend finishes"}]
+    },
+    {
+      "version": "0.4.0",
+      "date": "2026-09-27",
+      "highlights": [{"icon": "spark", "text": "Two new chapters: High and Low and Rolling Home"}, {"icon": "tap", "text": "Puzzles with stairs, hatches, levers and a ball"}, {"icon": "leaf", "text": "The garden bloom shows in replays"}]
+    },
+    {
+      "version": "0.3.2",
+      "date": "2026-09-25",
+      "highlights": [{"icon": "bell", "text": "Spirits greet each other with a soft sound"}, {"icon": "spark", "text": "The hop and sparkles repeat each time they meet again"}]
+    },
+    {
+      "version": "0.3.1",
+      "date": "2026-09-17",
+      "highlights": [{"icon": "tap", "text": "Step off a pad and back on without losing progress"}, {"icon": "play", "text": "Play a stage again in a finished chapter"}, {"icon": "spark", "text": "Little sparkles when the spirits meet again"}, {"icon": "bell", "text": "Footsteps are a little louder"}]
+    },
+    {
+      "version": "0.3.0",
+      "date": "2026-09-17",
+      "highlights": [{"icon": "tap", "text": "Pinch to zoom, and pan with two fingers"}]
+    },
+    {
+      "version": "0.2.6",
+      "date": "2026-09-17",
+      "highlights": [{"icon": "spark", "text": "Clearer menu labels with matching icons"}, {"icon": "tap", "text": "Retry save keeps your recording and tries again"}, {"icon": "bell", "text": "Softer, rounder footsteps"}]
+    },
+    {
+      "version": "0.2.5",
+      "date": "2026-09-17",
+      "highlights": [{"icon": "people", "text": "See when your friend has After You open"}, {"icon": "key", "text": "Choose whether to share your online status"}]
+    },
+    {
+      "version": "0.2.4",
+      "date": "2026-09-17",
+      "highlights": [{"icon": "tap", "text": "Back leaves shared rooms even while they're busy"}, {"icon": "key", "text": "The store comes back after you reconnect"}, {"icon": "spark", "text": "A failed save can be tried again"}, {"icon": "picture", "text": "One unreadable photo no longer hides the rest"}]
+    },
+    {
+      "version": "0.2.3",
+      "date": "2026-09-16",
+      "highlights": [{"icon": "people", "text": "Report a room or photo, or block a partner"}, {"icon": "picture", "text": "Read the community rules before you share photos"}, {"icon": "tap", "text": "Account controls fit shorter screens"}]
+    },
+    {
+      "version": "0.2.1",
+      "date": "2026-09-15",
+      "highlights": [{"icon": "picture", "text": "Photos you keep or receive stay on your phone"}, {"icon": "link", "text": "Move your photos to a new phone with Photo transfer"}, {"icon": "play", "text": "Shared replays have their own place on Home"}]
+    },
+    {
+      "version": "0.2.0-preview9",
+      "date": "2026-09-15",
+      "highlights": [{"icon": "spark", "text": "The version number shows in the top corner"}, {"icon": "picture", "text": "Startup shows the After You artwork"}]
+    },
+    {
+      "version": "0.2.0-preview8",
+      "date": "2026-09-15",
+      "highlights": [{"icon": "key", "text": "Full Journey unlocks all six Sleeping Lighthouse stages"}, {"icon": "tap", "text": "Restore purchases if you've bought before"}]
+    },
+    {
+      "version": "0.2.0-preview6",
+      "date": "2026-09-15",
+      "highlights": [{"icon": "spark", "text": "New chapter: First Steps, two puzzles for two"}, {"icon": "bell", "text": "Get a notification when a friend leaves a turn"}, {"icon": "picture", "text": "Each turn can carry its own photo"}, {"icon": "home", "text": "Spirits wander on Home, and you can pinch to zoom"}]
+    },
+    {
+      "version": "0.2.0-preview5",
+      "date": "2026-09-14",
+      "highlights": [{"icon": "picture", "text": "Add a photo to your turn for your friend to see"}, {"icon": "spark", "text": "Spirits are shorter, with bigger heads and a bouncy walk"}, {"icon": "sun", "text": "Try the six-stage Sleeping Lighthouse solo"}, {"icon": "link", "text": "Rooms refresh on their own"}]
+    },
+    {
+      "version": "0.2.0-preview3",
+      "date": "2026-09-14",
+      "highlights": [{"icon": "link", "text": "Play Relay Isles online with a friend"}, {"icon": "people", "text": "Leave your turn and come back later for the next stage"}, {"icon": "play", "text": "Both of you can watch the combined replay"}]
+    },
+    {
+      "version": "0.2.0-preview2",
+      "date": "2026-09-14",
+      "highlights": [{"icon": "spark", "text": "Relay Isles, a two-stage chapter to practise solo"}, {"icon": "star", "text": "Relay Isles saves checkpoints as you go"}, {"icon": "tap", "text": "Left-handed touch controls work properly"}]
+    },
+    {
+      "version": "0.1.3",
+      "date": "2026-09-14",
+      "highlights": [{"icon": "play", "text": "The moving lift and its replays look better"}, {"icon": "tap", "text": "Swiping a list no longer opens an item"}]
     }
   ]
 }

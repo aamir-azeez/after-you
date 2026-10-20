@@ -12,7 +12,9 @@ extends RefCounted
 ## content/changelog_archive.json, so What's new can still list every version ever
 ## shipped under Earlier versions. The archive holds highlights only, is read only
 ## when that list opens, and has its own rules: when it breaks, the list shows this
-## file's versions alone and the card is untouched.
+## file's versions alone and the card is untouched. Only the archive may name an
+## early preview build (0.2.0-preview9, see VersionOrder.parse_listed); this file
+## takes plain versions only.
 const PlatformSupport = preload("res://services/platform_support.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const VersionOrder = preload("res://services/version_order.gd")
@@ -96,8 +98,8 @@ static func parse_archive(text: String) -> Array:
 	var previous := ""
 	for entry: Variant in entries:
 		if not entry is Dictionary or not _exact_keys(entry, ["version", "date", "highlights"], []): return []
-		if not _valid_heading(entry) or not _valid_highlights(entry.highlights): return []
-		if not previous.is_empty() and VersionOrder.compare(entry.version, previous) >= 0: return []
+		if not _valid_heading(entry, true) or not _valid_highlights(entry.highlights): return []
+		if not previous.is_empty() and VersionOrder.compare_listed(entry.version, previous) >= 0: return []
 		previous = entry.version
 	return entries.duplicate(true)
 
@@ -125,7 +127,7 @@ static func earlier_entries(current: String, path: String = PATH, archive_path: 
 		result.append({"version": entry.version, "date": entry.date, "highlights": entry.highlights})
 		oldest = entry.version
 	var archive := load_archive(archive_path)
-	if not archive.is_empty() and VersionOrder.compare(archive[0].version, oldest) < 0:
+	if not archive.is_empty() and VersionOrder.compare_listed(archive[0].version, oldest) < 0:
 		result.append_array(archive)
 	return result
 
@@ -177,9 +179,11 @@ static func _valid_entry(entry: Variant) -> bool:
 				seen[value] = true
 	return true
 
-## A version name and a YYYY-MM-DD date.
-static func _valid_heading(entry: Dictionary) -> bool:
-	if not VersionOrder.valid(entry.version) or not entry.date is String: return false
+## A version name and a YYYY-MM-DD date. Only the archive passes `previews`, so it
+## alone may name a preview build.
+static func _valid_heading(entry: Dictionary, previews: bool = false) -> bool:
+	var version: Array[int] = VersionOrder.parse_listed(entry.version) if previews else VersionOrder.parse(entry.version)
+	if version.is_empty() or not entry.date is String: return false
 	return RegEx.create_from_string("^[0-9]{4}-[0-9]{2}-[0-9]{2}$").search(entry.date) != null
 
 ## One to MAX_HIGHLIGHTS short plain lines, each with a known icon. The file and

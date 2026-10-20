@@ -20,6 +20,7 @@ func _initialize() -> void:
 		_check(Changelog.channel({"purchase_mode": mode}) == Changelog.GITHUB, "A configuration with a wrongly typed purchase mode reads as the GitHub build")
 	_highlights()
 	_archive()
+	_listed_versions()
 	_continuity()
 	_earlier()
 	_malformed()
@@ -147,11 +148,12 @@ func _highlight_rules(entries: Array) -> void:
 			_check(not seen.has(line), "Highlights don't repeat: " + where)
 			seen[line] = true
 
-## The first version that ever had notes in the app, and the versions that were
-## never released (no tag, no build). A version skipped from now on is added here
-## on purpose.
-const FIRST_VERSION := "0.4.16"
-const NEVER_RELEASED := ["0.4.17"]
+## The first published release, and the versions that never had a published
+## release: 0.1.0 to 0.1.2 came before it, 0.2.0 shipped only as previews (1, 4
+## and 7 unpublished), and 0.4.6 was a Story build that was never released. A
+## version skipped from now on is added here on purpose.
+const FIRST_VERSION := "0.1.3"
+const NEVER_RELEASED := ["0.1.0", "0.1.1", "0.1.2", "0.2.0-preview1", "0.2.0-preview4", "0.2.0-preview7", "0.2.0", "0.2.2", "0.4.6", "0.4.17"]
 
 func _archive() -> void:
 	var bytes := FileAccess.get_file_as_bytes(Changelog.ARCHIVE_PATH)
@@ -161,9 +163,25 @@ func _archive() -> void:
 	_check(archive == Changelog.load_archive(), "The archive loads from its own path")
 	_check(Changelog.parse_archive(JSON.stringify({"schema_version": 1, "entries": []})) == [], "An empty archive is valid and lists nothing")
 	_check(not Changelog.parse_archive(JSON.stringify(_archive_sample())).is_empty(), "The sample archive is valid")
+	var previews := _archive_sample()
+	previews.entries.insert(1, {"version": "0.6.8-preview10", "date": "2026-10-19", "highlights": [{"icon": "spark", "text": "Tenth preview"}]})
+	previews.entries.insert(2, {"version": "0.6.8-preview9", "date": "2026-10-19", "highlights": [{"icon": "spark", "text": "Ninth preview"}]})
+	_check(Changelog.parse_archive(JSON.stringify(previews)).size() == 4, "The archive lists preview builds below their release, by number")
 	for name: String in ARCHIVE_BROKEN:
 		_check(Changelog.parse_archive(_broken_archive(name)).is_empty(), "A broken archive loads as no entries: " + name)
 	_check(Changelog.load_archive("res://content/missing-archive.json").is_empty(), "A missing archive loads as no entries")
+
+## Archive names: a plain version or exactly x.y.z-previewN, a preview older than
+## its release and previews ordered by number. The plain comparer is unchanged.
+func _listed_versions() -> void:
+	_check(VersionOrder.parse_listed("0.2.0-preview9") == [0, 2, 0, 9] and VersionOrder.parse_listed("0.4.16") == [0, 4, 16, 0], "A preview reads as its release and its number")
+	for bad: Variant in ["0.2.0-preview0", "0.2.0-preview01", "0.2.0-preview", "0.2.0-Preview2", "0.2.0-preview-2", "0.2.0-rc.1", "0.2.0-preview2.1", "0.2", "", 2]:
+		_check(VersionOrder.parse_listed(bad).is_empty(), "Only exact preview names read: " + str(bad))
+	_check(VersionOrder.compare_listed("0.2.0-preview9", "0.2.0-preview10") < 0, "Preview 9 is older than preview 10")
+	_check(VersionOrder.compare_listed("0.2.0-preview9", "0.2.0") < 0 and VersionOrder.compare_listed("0.2.0", "0.2.0-preview9") > 0, "A preview is older than its release")
+	_check(VersionOrder.compare_listed("0.1.3", "0.2.0-preview2") < 0 and VersionOrder.compare_listed("0.2.0-preview9", "0.2.1") < 0, "A preview sits between the versions around its release")
+	_check(VersionOrder.compare_listed("0.2.0-preview3", "0.2.0-preview3") == 0 and VersionOrder.compare_listed("0.4.16", "0.4.15") > 0, "Equal and plain names compare as before")
+	_check(not VersionOrder.valid("0.2.0-preview9") and VersionOrder.compare("0.2.0-preview9", "0.1.3") == 0, "The plain comparer still reads plain names only")
 
 ## The newest file and the archive together hold every version back to the first,
 ## newest first with no repeats, and a version leaves the file only into the
@@ -178,29 +196,46 @@ func _continuity() -> void:
 	_check(versions[-1] == FIRST_VERSION, "Every version back to %s stays listed; the oldest is %s" % [FIRST_VERSION, versions[-1]])
 	if not archive.is_empty():
 		_check(file.size() == Changelog.MAX_ENTRIES, "The archive takes versions only from a full file (%d of %d)" % [file.size(), Changelog.MAX_ENTRIES])
-		_check(VersionOrder.compare(archive[0].version, file[-1].version) < 0, "The archive starts below the file's oldest version")
+		_check(VersionOrder.compare_listed(archive[0].version, file[-1].version) < 0, "The archive starts below the file's oldest version")
+	for version: String in versions:
+		_check(version not in NEVER_RELEASED, "A version listed as never released is not in the list: " + version)
 	for index: int in range(1, versions.size()):
 		var newer := versions[index - 1]
 		var older := versions[index]
-		_check(VersionOrder.compare(older, newer) < 0, "Versions run newest first without repeats: %s then %s" % [newer, older])
+		_check(VersionOrder.compare_listed(older, newer) < 0, "Versions run newest first without repeats: %s then %s" % [newer, older])
 		_check(_follows(older, newer), "%s comes right after %s. A release that drops the file's oldest entry moves its version, date and highlights to the top of content/changelog_archive.json" % [newer, older])
 	var chain := Changelog.earlier_entries(Changelog.current_version())
 	var listed: Array[String] = []
 	for entry: Dictionary in chain: listed.append(str(entry.version))
 	_check(listed == versions.slice(1), "Earlier versions lists every version before this one, newest first")
 
-## True when `newer` is the release right after `older`: the next patch, minor or
-## major, stepping over versions that were never released.
+## True when `newer` is the release right after `older`, stepping over versions
+## that were never released. After x.y.z comes the next patch, minor or major, or
+## the first preview of one; after a preview comes the next preview or its release.
 func _follows(older: String, newer: String) -> bool:
-	var b := VersionOrder.parse(newer)
-	var step := older
+	var frontier: Array[String] = [older]
 	for guard: int in range(NEVER_RELEASED.size() + 1):
-		var a := VersionOrder.parse(step)
-		if a.is_empty() or b.is_empty(): return false
-		if b == [a[0], a[1], a[2] + 1] or b == [a[0], a[1] + 1, 0] or b == [a[0] + 1, 0, 0]: return true
-		step = "%d.%d.%d" % [a[0], a[1], a[2] + 1]
-		if step not in NEVER_RELEASED: return false
+		var skipped: Array[String] = []
+		for step: String in frontier:
+			for next: String in _next_versions(step):
+				if next == newer: return true
+				if next in NEVER_RELEASED and next not in skipped: skipped.append(next)
+		if skipped.is_empty(): return false
+		frontier = skipped
 	return false
+
+func _next_versions(version: String) -> Array[String]:
+	var v := VersionOrder.parse_listed(version)
+	var result: Array[String] = []
+	if v.is_empty(): return result
+	if v[3] > 0:
+		result.append("%d.%d.%d-preview%d" % [v[0], v[1], v[2], v[3] + 1])
+		result.append("%d.%d.%d" % [v[0], v[1], v[2]])
+		return result
+	for release: String in ["%d.%d.%d" % [v[0], v[1], v[2] + 1], "%d.%d.0" % [v[0], v[1] + 1], "%d.0.0" % [v[0] + 1]]:
+		result.append(release)
+		result.append(release + "-preview1")
+	return result
 
 ## Earlier versions on small files: the rest of the file, then an archive that
 ## fits below it. A missing, broken or overlapping archive leaves the file's rows.
@@ -252,7 +287,7 @@ func _archive_sample() -> Dictionary:
 		{"version": "0.6.7", "date": "2026-10-19", "highlights": [{"icon": "leaf", "text": "Oldest line"}, {"icon": "tap", "text": "Another line"}]},
 	]}
 
-const ARCHIVE_BROKEN := ["not JSON", "not an object", "extra top-level key", "wrong schema", "entries not a list", "too many versions", "entry not an object", "paragraphs kept", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "no highlights", "unknown icon", "long highlight", "highlight line break"]
+const ARCHIVE_BROKEN := ["not JSON", "not an object", "extra top-level key", "wrong schema", "entries not a list", "too many versions", "entry not an object", "paragraphs kept", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "no highlights", "unknown icon", "long highlight", "highlight line break", "preview zero", "preview leading zero", "preview without number", "capital preview", "other prerelease", "preview above its release", "previews unsorted"]
 
 func _broken_archive(name: String) -> String:
 	var d := _archive_sample()
@@ -278,9 +313,18 @@ func _broken_archive(name: String) -> String:
 		"unknown icon": first.highlights[0].icon = "rocket"
 		"long highlight": first.highlights[0].text = "a".repeat(Changelog.MAX_HIGHLIGHT_CHARS + 1)
 		"highlight line break": first.highlights[0].text = "One\nTwo"
+		"preview zero": d.entries[1].version = "0.6.7-preview0"
+		"preview leading zero": d.entries[1].version = "0.6.7-preview01"
+		"preview without number": d.entries[1].version = "0.6.7-preview"
+		"capital preview": d.entries[1].version = "0.6.7-Preview2"
+		"other prerelease": d.entries[1].version = "0.6.7-rc.1"
+		"preview above its release": first.version = "0.6.7-preview1"
+		"previews unsorted":
+			first.version = "0.6.7-preview9"
+			d.entries[1].version = "0.6.7-preview10"
 	return JSON.stringify(d)
 
-const BROKEN := ["missing highlights", "no highlights", "too many highlights", "long highlight", "highlight not text", "empty highlight", "highlight line break", "unknown icon", "highlight extra key", "highlight without icon", "not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions"]
+const BROKEN := ["missing highlights", "no highlights", "too many highlights", "long highlight", "highlight not text", "empty highlight", "highlight line break", "unknown icon", "highlight extra key", "highlight without icon", "not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions", "preview version"]
 
 func _malformed() -> void:
 	_check(not Changelog.parse(JSON.stringify(_sample())).is_empty(), "The sample file is valid")
@@ -311,6 +355,7 @@ func _broken(name: String) -> String:
 		"missing date": first.erase("date")
 		"bad date": first.date = "Oct 1"
 		"bad version": first.version = "0.7"
+		"preview version": first.version = "0.7.0-preview1"
 		"unsorted": d.entries.reverse()
 		"duplicate version": d.entries[1].version = "0.7.0"
 		"wrong paragraph type": first.paragraphs[0] = "Both."

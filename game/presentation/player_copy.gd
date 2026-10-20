@@ -249,9 +249,11 @@ const KEEPSAKE_FINISHED_SOLO := "Finished solo."
 # to every release's notes, its close button, and the tip under the Home button
 # after an update. Earlier versions opens the list of every version before this
 # one; each row shows its version line and its date (day, short month, year), and
-# the list's back arrow returns to the card.
+# the list's back arrow returns to the card. An early preview build has its own
+# row: "Version 0.2.0 preview 9".
 const WHATS_NEW := "What's new"
 const WHATS_NEW_VERSION := "Version %s"
+const WHATS_NEW_VERSION_PREVIEW := "Version %s preview %d"
 const WHATS_NEW_SEE_ALL := "See all changes"
 const WHATS_NEW_GOT_IT := "Got it"
 const WHATS_NEW_TIP := "Version %s is here"
