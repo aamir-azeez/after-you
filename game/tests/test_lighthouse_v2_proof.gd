@@ -144,7 +144,7 @@ func _final_checks() -> void:
 	var t0 := Time.get_ticks_msec()
 	var roundtrip: Variant = JSON.parse_string(JSON.stringify(final))
 	_check(roundtrip is Dictionary and Room.verify_checkpoint(level, roundtrip).valid, "the final checkpoint verifies cold after a JSON round trip")
-	print("LIGHTHOUSE_V2 cold full verify of checkpoint 6: %d ms, %d pair replays" % [Time.get_ticks_msec() - t0, RoomProof.pair_replays])
+	print("LIGHTHOUSE_V2 cold full verify of checkpoint 6: %d ms, %d pair replays" % [Time.get_ticks_msec() - t0, RoomProof.Memo.pair_replays])
 	for index in range(1, 7):
 		var room_cp: Dictionary = checkpoints[index]
 		var solo_cp: Dictionary = fixture.checkpoints[index]
@@ -228,19 +228,19 @@ func _memo_checks() -> void:
 	for i in range(7, cases.size()):
 		_check(not _memo_has(cases[i][1]), "a refusal is never remembered: %s" % cases[i][0])
 	RoomProof.clear_memo()
-	_check(Room.verify_checkpoint(level, checkpoints[6]).valid and RoomProof.pair_replays == 6, "a cold stage-6 check replays six pairs (%d)" % RoomProof.pair_replays)
-	var before := RoomProof.pair_replays
-	_check(Room.verify_checkpoint(level, checkpoints[6]).valid and RoomProof.pair_replays == before, "a repeated check replays nothing")
+	_check(Room.verify_checkpoint(level, checkpoints[6]).valid and RoomProof.Memo.pair_replays == 6, "a cold stage-6 check replays six pairs (%d)" % RoomProof.Memo.pair_replays)
+	var before: int = RoomProof.Memo.pair_replays
+	_check(Room.verify_checkpoint(level, checkpoints[6]).valid and RoomProof.Memo.pair_replays == before, "a repeated check replays nothing")
 	RoomProof.clear_memo()
 	_check(Room.verify_checkpoint(level, checkpoints[5]).valid, "checkpoint 5 verifies")
-	before = RoomProof.pair_replays
-	_check(Room.verify_checkpoint(level, checkpoints[6]).valid and RoomProof.pair_replays - before == 1, "after checkpoint 5, checkpoint 6 costs one pair (%d)" % [RoomProof.pair_replays - before])
+	before = RoomProof.Memo.pair_replays
+	_check(Room.verify_checkpoint(level, checkpoints[6]).valid and RoomProof.Memo.pair_replays - before == 1, "after checkpoint 5, checkpoint 6 costs one pair (%d)" % [RoomProof.Memo.pair_replays - before])
 	var roundtrip: Variant = JSON.parse_string(JSON.stringify(checkpoints[6]))
-	before = RoomProof.pair_replays
-	_check(Room.verify_checkpoint(level, roundtrip).valid and RoomProof.pair_replays == before, "a JSON round trip of a verified checkpoint is a memo hit")
-	before = RoomProof.pair_replays
+	before = RoomProof.Memo.pair_replays
+	_check(Room.verify_checkpoint(level, roundtrip).valid and RoomProof.Memo.pair_replays == before, "a JSON round trip of a verified checkpoint is a memo hit")
+	before = RoomProof.Memo.pair_replays
 	var receiver := Room.new()
-	_check(receiver.reset(level, level.stages[5].id, checkpoints[5], chain[5].a, "b") and RoomProof.pair_replays == before, "B's reset on a verified stage-6 checkpoint replays no pair")
+	_check(receiver.reset(level, level.stages[5].id, checkpoints[5], chain[5].a, "b") and RoomProof.Memo.pair_replays == before, "B's reset on a verified stage-6 checkpoint replays no pair")
 	var mutated: Dictionary = checkpoints[6].duplicate(true)
 	mutated.proof.checkpoint.proof.a.actions[0].action = not bool(mutated.proof.checkpoint.proof.a.actions[0].action)
 	_check(not Room.verify_checkpoint(level, mutated).valid, "a changed byte inside a remembered ancestor is checked again and refused")
@@ -254,7 +254,7 @@ func _index_checks() -> void:
 	_check(exported.keys.size() == 7 and exported.stamp == RoomProof.stamp(), "the memo exports its keys under the current stamp")
 	RoomProof.clear_memo()
 	_check(RoomProof.import_memo(exported) == 7 and RoomProof.memo_size() == 7, "an export imports back")
-	_check(Room.verify_checkpoint(level, checkpoints[6]).valid and RoomProof.pair_replays == 0, "imported keys spare every pair replay")
+	_check(Room.verify_checkpoint(level, checkpoints[6]).valid and RoomProof.Memo.pair_replays == 0, "imported keys spare every pair replay")
 	RoomProof.clear_memo()
 	var stale := exported.duplicate(true)
 	stale.stamp = "sleeping-lighthouse@2|11|0|old"

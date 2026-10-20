@@ -7,6 +7,9 @@ extends "res://presentation/journey_world.gd"
 
 ## Doors, spillways and walls at every water opening.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
+## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
+## which both stages share: worked out once per definition, then reused.
+const WallLayouts = preload("res://presentation/tide_wall_layouts.gd")
 ## Display heights (metres) for each water value. Low sits below the beaches,
 ## half between beach and terrace, high between terrace and quay.
 const HARBOUR_LEVELS := {"low": -0.22, "half": 0.24, "high": 0.70}
@@ -178,9 +181,6 @@ var _scenery_mark_count := 0
 ## The most _clear_scenery had to climb any bubble this frame (metres): the
 ## shared placement already clears the scenery, so normally 0.
 var scenery_backstop := 0.0
-## Parapet and sea-wall runs depend only on the chapter's floors and crossings,
-## which both stages share: worked out once per definition, then reused.
-static var _wall_layouts: Dictionary = {}
 ## Wall layout samples (4 cm apart) worked out between two build steps.
 const WALL_SAMPLES_PER_STEP := 48
 ## Water grid lines worked out between two build steps.
@@ -464,7 +464,7 @@ func _wall_layout() -> Dictionary:
 	var islands: Array = chapter_definition.get("islands", [])
 	var routes: Array = chapter_definition.get("bridges", []) + chapter_definition.get("stairs", [])
 	var key := [islands, routes].hash()
-	if not _wall_layouts.has(key):
+	if not WallLayouts.layouts.has(key):
 		var holes := _parapet_holes(islands)
 		var walls: Array = []
 		for island: Dictionary in islands:
@@ -472,8 +472,8 @@ func _wall_layout() -> Dictionary:
 			await _build_step()
 		var sea_walls: Array = await _sea_wall_runs(islands)
 		await _build_step()
-		if not _wall_layouts.has(key): _wall_layouts[key] = {"parapets": walls, "sea_walls": sea_walls}
-	return _wall_layouts[key]
+		if not WallLayouts.layouts.has(key): WallLayouts.layouts[key] = {"parapets": walls, "sea_walls": sea_walls}
+	return WallLayouts.layouts[key]
 
 func _parapet_holes(islands: Array) -> Array:
 	var holes: Array = [CHAMBER_PIT]

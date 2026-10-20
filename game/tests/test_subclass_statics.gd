@@ -12,14 +12,9 @@ extends SceneTree
 ##
 ## Inner classes are not scanned; the crash was only shown with top-level scripts.
 
-## Older subclasses that keep static caches. They were not seen crashing, but they
-## have the same shape; each leaves this list once its cache moves.
-const KNOWN := {
-	"res://core/lighthouse/room_proof.gd": true,
-	"res://presentation/ball_rotation_blur.gd": true,
-	"res://presentation/seed_motion_trail.gd": true,
-	"res://presentation/tide_world.gd": true,
-}
+## Subclass scripts allowed a static var. Empty: every cache lives in a script
+## that extends an engine class.
+const KNOWN := {}
 
 var checks := 0
 var failures := 0

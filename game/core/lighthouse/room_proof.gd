@@ -5,6 +5,7 @@ extends "res://core/physical/two_pair_proof.gd"
 ## checkpoint that nests it costs one pair. The shared proof stays untouched.
 ## Only positive results are kept. Keys are digests of the complete checkpoint
 ## (proof included), never a caller's checkpoint_hash.
+const Memo = preload("res://core/lighthouse/room_proof_memo.gd")
 const Catalog = preload("res://core/lighthouse/room_catalog.gd")
 ## Bump when anything a verification depends on changes (engine, facade,
 ## catalog or this proof); a persisted index with another stamp is ignored.
@@ -13,10 +14,6 @@ const MEMO_LIMIT := 512
 const INDEX_MAX_BYTES := 131072
 const INDEX_SCHEMA := 1
 
-static var _memo: Dictionary = {}
-static var _memo_mutex := Mutex.new()
-## Pair replays run by this proof since the last clear; for tests and timing.
-static var pair_replays := 0
 
 func _init(factory: Script) -> void:
 	super(Catalog, factory, Catalog.RULES, Catalog.SCHEMA)
@@ -31,37 +28,37 @@ func _verify_checkpoint(definition: Dictionary, checkpoint: Dictionary, depth: i
 	return result
 
 func _verify_pair(definition: Dictionary, previous: Dictionary, first: Dictionary, second: Dictionary) -> Dictionary:
-	_memo_mutex.lock()
-	pair_replays += 1
-	_memo_mutex.unlock()
+	Memo.mutex.lock()
+	Memo.pair_replays += 1
+	Memo.mutex.unlock()
 	return super._verify_pair(definition, previous, first, second)
 
 static func _known(key: String) -> bool:
-	_memo_mutex.lock()
-	var found := _memo.has(key)
+	Memo.mutex.lock()
+	var found := Memo.memo.has(key)
 	if found:
-		_memo.erase(key)
-		_memo[key] = true
-	_memo_mutex.unlock()
+		Memo.memo.erase(key)
+		Memo.memo[key] = true
+	Memo.mutex.unlock()
 	return found
 
 static func _remember(key: String) -> void:
-	_memo_mutex.lock()
-	_memo.erase(key)
-	_memo[key] = true
-	while _memo.size() > MEMO_LIMIT: _memo.erase(_memo.keys()[0])
-	_memo_mutex.unlock()
+	Memo.mutex.lock()
+	Memo.memo.erase(key)
+	Memo.memo[key] = true
+	while Memo.memo.size() > MEMO_LIMIT: Memo.memo.erase(Memo.memo.keys()[0])
+	Memo.mutex.unlock()
 
 static func clear_memo() -> void:
-	_memo_mutex.lock()
-	_memo.clear()
-	pair_replays = 0
-	_memo_mutex.unlock()
+	Memo.mutex.lock()
+	Memo.memo.clear()
+	Memo.pair_replays = 0
+	Memo.mutex.unlock()
 
 static func memo_size() -> int:
-	_memo_mutex.lock()
-	var size := _memo.size()
-	_memo_mutex.unlock()
+	Memo.mutex.lock()
+	var size := Memo.memo.size()
+	Memo.mutex.unlock()
 	return size
 
 ## Rules, verifier, chapter hash and Godot version: another of any of them
@@ -72,9 +69,9 @@ static func stamp() -> String:
 
 ## The memo as plain data, oldest first, for a caller to persist.
 static func export_memo() -> Dictionary:
-	_memo_mutex.lock()
-	var keys: Array = _memo.keys()
-	_memo_mutex.unlock()
+	Memo.mutex.lock()
+	var keys: Array = Memo.memo.keys()
+	Memo.mutex.unlock()
 	return {"schema_version": INDEX_SCHEMA, "stamp": stamp(), "keys": keys}
 
 ## Trusts exported keys only under the current stamp. Anything malformed is
@@ -85,13 +82,13 @@ static func import_memo(value: Variant) -> int:
 	for key: Variant in value.keys:
 		if not (key is String and key.length() == 64 and key.is_valid_hex_number(false)): return 0
 	var added := 0
-	_memo_mutex.lock()
+	Memo.mutex.lock()
 	for key: String in value.keys:
-		if not _memo.has(key): added += 1
-		_memo.erase(key)
-		_memo[key] = true
-	while _memo.size() > MEMO_LIMIT: _memo.erase(_memo.keys()[0])
-	_memo_mutex.unlock()
+		if not Memo.memo.has(key): added += 1
+		Memo.memo.erase(key)
+		Memo.memo[key] = true
+	while Memo.memo.size() > MEMO_LIMIT: Memo.memo.erase(Memo.memo.keys()[0])
+	Memo.mutex.unlock()
 	return added
 
 static func load_index(path: String) -> int:

@@ -60,7 +60,7 @@ func _memo_restart() -> void:
 	# Rooms and replays verify whole checkpoints (the solo journal keeps its own
 	# per-save proof); one full check remembers every nested checkpoint.
 	RoomProof.clear_memo()
-	_check(Registry.simulation_script(KEY).verify_checkpoint(Registry.definition(KEY), chain.checkpoints[6]).valid and RoomProof.pair_replays >= 6, "A first full check replays all six stages")
+	_check(Registry.simulation_script(KEY).verify_checkpoint(Registry.definition(KEY), chain.checkpoints[6]).valid and RoomProof.Memo.pair_replays >= 6, "A first full check replays all six stages")
 	Proofs.save_memo(KEY)
 	_check(FileAccess.file_exists(memo) and RoomProof.memo_size() > 0, "Verified Lighthouse checkpoints are kept on disk")
 	RoomProof.clear_memo()
@@ -68,8 +68,8 @@ func _memo_restart() -> void:
 	Proofs.prepare_memo(KEY)
 	var kept := RoomProof.memo_size()
 	_check(kept > 0, "A restart reads them back (%d)" % kept)
-	var before := RoomProof.pair_replays
-	_check(Registry.simulation_script(KEY).verify_checkpoint(Registry.definition(KEY), chain.checkpoints[6]).valid and RoomProof.pair_replays == before, "The final checkpoint then verifies without replaying a stage")
+	var before: int = RoomProof.Memo.pair_replays
+	_check(Registry.simulation_script(KEY).verify_checkpoint(Registry.definition(KEY), chain.checkpoints[6]).valid and RoomProof.Memo.pair_replays == before, "The final checkpoint then verifies without replaying a stage")
 	Proofs.prepare_memo(Registry.TURN_OF_THE_TIDE)
 	_check(RoomProof.memo_size() == kept, "Other chapters leave the Lighthouse memo alone")
 

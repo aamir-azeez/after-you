@@ -2,6 +2,7 @@ extends "res://presentation/object_motion_trail.gd"
 ## A short exposure of the rendered flight path, rather than a velocity pointer.
 ## The tube mesh is built once and shared; its shader places each ring from the
 ## recent flight history, so a frame only uploads that history.
+const Cache = preload("res://presentation/motion_trail_cache.gd")
 const PATH_SHADER = preload("res://presentation/seed_motion_trail.gdshader")
 const MAX_POINTS := 64
 const SIDES := 8
@@ -15,12 +16,11 @@ var _material: ShaderMaterial
 var _path_a := PackedVector4Array()
 var _path_b := PackedVector4Array()
 var _use_b := false
-static var _tube_mesh: ArrayMesh
 
 ## Rings of SIDES vertices for every history sample, joined into one tube.
 ## Faces wind clockwise seen from outside, Godot's front face.
 static func tube_mesh() -> ArrayMesh:
-	if _tube_mesh != null: return _tube_mesh
+	if Cache.tube_mesh != null: return Cache.tube_mesh
 	var vertices := PackedVector3Array()
 	var normals := PackedVector3Array()
 	var uvs := PackedVector2Array()
@@ -43,9 +43,9 @@ static func tube_mesh() -> ArrayMesh:
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_TEX_UV] = uvs
 	arrays[Mesh.ARRAY_INDEX] = indices
-	_tube_mesh = ArrayMesh.new()
-	_tube_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
-	return _tube_mesh
+	Cache.tube_mesh = ArrayMesh.new()
+	Cache.tube_mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES, arrays)
+	return Cache.tube_mesh
 
 func _ready() -> void:
 	_mesh = MeshInstance3D.new()

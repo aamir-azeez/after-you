@@ -3,6 +3,7 @@ extends "res://presentation/object_motion_trail.gd"
 ## The ball shows its band smeared across the exposure, and the raised band
 ## fades by how much of the exposure it still covers. Every ball and band share
 ## one material each; each instance sets its own colour, axis and angle.
+const Cache = preload("res://presentation/motion_trail_cache.gd")
 const SPIN_SHADER = preload("res://presentation/ball_rotation_blur.gdshader")
 const BAND_SHADER = preload("res://presentation/ball_band_blur.gdshader")
 const BALL_COLOR := &"ball_color"
@@ -17,16 +18,14 @@ var _ball: GeometryInstance3D
 var _original_material: Material
 var _original_band_material: Material
 var _spinning := false
-static var _spin_material: ShaderMaterial
-static var _band_material: ShaderMaterial
 
 static func spin_material() -> ShaderMaterial:
-	if _spin_material == null: _spin_material = _shared(SPIN_SHADER)
-	return _spin_material
+	if Cache.spin_material == null: Cache.spin_material = _shared(SPIN_SHADER)
+	return Cache.spin_material
 
 static func band_material() -> ShaderMaterial:
-	if _band_material == null: _band_material = _shared(BAND_SHADER)
-	return _band_material
+	if Cache.band_material == null: Cache.band_material = _shared(BAND_SHADER)
+	return Cache.band_material
 
 static func _shared(shader: Shader) -> ShaderMaterial:
 	var material := ShaderMaterial.new()

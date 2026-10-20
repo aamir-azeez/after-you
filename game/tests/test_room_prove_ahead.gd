@@ -30,13 +30,13 @@ func _run() -> void:
 	var frames := [0]
 	var count := func() -> void: frames[0] += 1
 	process_frame.connect(count)
-	var before := RoomProof.pair_replays
+	var before: int = RoomProof.Memo.pair_replays
 	await coordinator._prove_room_ahead({"ok": true, "data": room})
 	process_frame.disconnect(count)
-	_check(RoomProof.pair_replays > before and frames[0] >= 1, "The worker proved the chain while frames kept drawing (%d frames, %d pairs)" % [frames[0], RoomProof.pair_replays - before])
-	before = RoomProof.pair_replays
+	_check(RoomProof.Memo.pair_replays > before and frames[0] >= 1, "The worker proved the chain while frames kept drawing (%d frames, %d pairs)" % [frames[0], RoomProof.Memo.pair_replays - before])
+	before = RoomProof.Memo.pair_replays
 	var checked: Dictionary = engine.verify_checkpoint(level, chain.checkpoints[5])
-	_check(checked.get("valid", false) and RoomProof.pair_replays == before, "The main-thread check that follows replays no pair")
+	_check(checked.get("valid", false) and RoomProof.Memo.pair_replays == before, "The main-thread check that follows replays no pair")
 	frames[0] = 0
 	process_frame.connect(count)
 	await coordinator._prove_room_ahead({"ok": true, "data": {"room": room.merged({"checkpoint": chain.checkpoints[1]}, true)}})
