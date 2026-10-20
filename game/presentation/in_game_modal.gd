@@ -156,10 +156,18 @@ func go_back() -> void:
 func refresh_focus_order() -> void:
 	var order: Array[Control] = []
 	for control: Control in find_children("*","Control",true,false):
-		if (control is LineEdit or control is Button) and control.is_visible_in_tree(): order.append(control)
+		if (control is LineEdit or control is Button) and _shown_in_card(control): order.append(control)
 	for index in range(order.size()):
 		order[index].focus_next = order[index].get_path_to(order[(index + 1) % order.size()])
 		order[index].focus_previous = order[index].get_path_to(order[(index - 1 + order.size()) % order.size()])
+
+## Visible within this card, whatever the screen behind it shows.
+func _shown_in_card(control: Control) -> bool:
+	var node: Node = control
+	while node != null and node != self:
+		if node is CanvasItem and not (node as CanvasItem).visible: return false
+		node = node.get_parent()
+	return true
 
 func close(restore_focus: bool = true) -> void:
 	if _closing: return
