@@ -251,6 +251,7 @@ scrolling_camera 1
 seed_spin 3
 seed_timer_bar 2
 seed_visual 2
+session_release 3
 settings 1
 share_codes 2
 shared_photo_fetch 2

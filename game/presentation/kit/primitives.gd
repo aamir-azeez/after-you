@@ -12,6 +12,7 @@ extends RefCounted
 ## same way (cached_shape). changed_shared_looks() names any cached material
 ## or shape changed in place since it was made (the tests check it).
 
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const SHARED_META := &"kit_shared_material"
 static var _materials: Dictionary = {}
 ## The instance ids of the cached materials, for is_cached().
@@ -50,7 +51,17 @@ static func shared_material(color: Color, roughness: float = 0.9, glow: Color = 
 	_materials[key] = cached
 	_material_ids[cached.get_instance_id()] = true
 	_material_prints[key] = _material_print(cached)
+	# Kept looks go before the engine frees its material shaders, not when this script is freed.
+	SessionRelease.on_exit(Callable(load("res://presentation/kit/primitives.gd"), "release_cached"))
 	return cached
+
+## Lets go of every kept look and mesh (SessionRelease calls this at shutdown).
+static func release_cached() -> void:
+	_materials.clear()
+	_material_ids.clear()
+	_material_prints.clear()
+	_meshes.clear()
+	_shapes.clear()
 
 ## Whether mat is one of the cached looks themselves (a copy of one is not).
 static func is_cached(mat: Material) -> bool:

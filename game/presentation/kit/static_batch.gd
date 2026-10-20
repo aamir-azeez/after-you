@@ -48,6 +48,7 @@ static var _material_properties: Dictionary = {}
 ## out once per run: a cached look is never changed in place.
 static var _shared_keys: Dictionary = {}
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
 ## Batch meshes already built this session, by everything that makes one: the
 ## group's key and, per leaf in order, its shape's stored values and its
 ## transform. A world built again from the same definition (a chapter opened
@@ -326,7 +327,14 @@ static func _keep_batch(signature: Variant, mesh: ArrayMesh) -> ArrayMesh:
 			if _kept_vertices + vertices <= KEPT_VERTICES: break
 	_kept_batches[signature] = mesh
 	_kept_vertices += vertices
+	# Kept meshes go before the renderer stops, not when this script is freed.
+	SessionRelease.on_exit(Callable(load("res://presentation/kit/static_batch.gd"), "release_kept"))
 	return mesh
+
+## Lets go of every kept batch (SessionRelease calls this at shutdown).
+static func release_kept() -> void:
+	_kept_batches.clear()
+	_kept_vertices = 0
 
 ## Whether a group still folds now, as a whole: its container and every leaf
 ## still in the tree, no leaf (or anything between it and the container) held,

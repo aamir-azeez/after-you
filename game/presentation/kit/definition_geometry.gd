@@ -9,6 +9,7 @@ extends RefCounted
 ## led by a name for what is kept. The kit lives in a script that extends an
 ## engine class: a static var in a subclass of a project script can crash the
 ## exit (tests/test_subclass_statics.gd).
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
 static var _kept: Dictionary = {}
 
 ## Whether a value is kept for key.
@@ -22,5 +23,12 @@ static func kept(key: Array) -> Variant:
 ## Keeps value for key unless one is kept already, and returns the kept one, so
 ## two builds that worked it out at once both end up with the same value.
 static func keep(key: Array, value: Variant) -> Variant:
-	if not _kept.has(key): _kept[key] = value
+	if not _kept.has(key):
+		_kept[key] = value
+		# Kept meshes go before the renderer stops, not when this script is freed.
+		SessionRelease.on_exit(Callable(load("res://presentation/kit/definition_geometry.gd"), "release"))
 	return _kept[key]
+
+## Lets go of everything kept (SessionRelease calls this at shutdown).
+static func release() -> void:
+	_kept.clear()
