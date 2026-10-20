@@ -66,8 +66,7 @@ func _friends(app: Node, api: FakeApi) -> void:
 	_check(tab.text==tab_text,"The tapped control reads as usual again once its flow ends")
 	var state: Dictionary = hub.client.view()
 	var list_state: String = ("Displaying saved rooms when offline" if not state.get("rooms",[]).is_empty() else str(state.get("error",""))) if state.get("stale",true) else ""
-	_check(hub._notice.text == "
-".join([Copy.MAIN_5BC549F4B951, list_state].filter(func(line: String) -> bool: return not line.is_empty())),"The reason sits above the hub's own list line, never in place of it: '%s'" % hub._notice.text)
+	_check(hub._notice.text == "\n".join([Copy.MAIN_5BC549F4B951, list_state].filter(func(line: String) -> bool: return not line.is_empty())),"The reason sits above the hub's own list line, never in place of it: '%s'" % hub._notice.text)
 	app.identity_restart_required=false
 	# A saved legacy turn refuses Friends by opening it: with no saved room to
 	# show, its held screen, whose Back keeps it and returns to the hub.
