@@ -27,6 +27,7 @@ const CHECKPOINTS := {
 	"turn-of-the-tide@1": ["journey/set-the-tide-checkpoint.json", "journey/turn-of-the-tide-final-checkpoint.json"],
 	# "file#n" names checkpoint n of a chain bundle.
 	"sleeping-lighthouse@2": ["lighthouse/v2-chain.json#3", "lighthouse/v2-chain.json#6"],
+	"turn-of-the-tide@2": ["journey/turn-of-the-tide-v2-set-the-tide-checkpoint.json", "journey/turn-of-the-tide-v2-final-checkpoint.json"],
 }
 var checks := 0
 var failures := 0

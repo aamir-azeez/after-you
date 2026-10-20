@@ -386,6 +386,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -432,6 +440,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -895,6 +991,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"seed_landed",
@@ -1310,6 +1418,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -1356,6 +1472,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -1819,6 +2023,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"seed_landed",
@@ -2234,6 +2450,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -2280,6 +2504,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -2743,6 +3055,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"drop",
@@ -3158,6 +3482,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -3204,6 +3536,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -3667,6 +4087,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"seed_landed",
@@ -4082,6 +4514,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -4128,6 +4568,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -4591,6 +5119,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"seed_landed",
@@ -5006,6 +5546,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -5052,6 +5600,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -5515,6 +6151,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"seed_landed",
@@ -5930,6 +6578,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -5976,6 +6632,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -6439,6 +7183,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"drop",
@@ -6854,6 +7610,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -6900,6 +7664,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -7363,6 +8215,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"seed_landed",
@@ -7610,6 +8474,10 @@
 					"audible": [],
 					"cues": []
 				},
+				"bridge_opened:stones-3": {
+					"audible": [],
+					"cues": []
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [],
 					"cues": []
@@ -7631,6 +8499,50 @@
 					"cues": []
 				},
 				"bridge_opened:workshop-return": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:bar-catwalk": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:beach-catwalk": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:jetty-1": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:jetty-2": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:race-stage": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:sand-1": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:sea-gate-in": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:slipway": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:stones-1": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:stones-2": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:wheel-step": {
 					"audible": [],
 					"cues": []
 				},
@@ -8104,6 +9016,10 @@
 					"audible": [],
 					"cues": []
 				},
+				"bridge_opened:stones-3": {
+					"audible": [],
+					"cues": []
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [],
 					"cues": []
@@ -8125,6 +9041,50 @@
 					"cues": []
 				},
 				"bridge_opened:workshop-return": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:bar-catwalk": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:beach-catwalk": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:jetty-1": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:jetty-2": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:race-stage": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:sand-1": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:sea-gate-in": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:slipway": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:stones-1": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:stones-2": {
+					"audible": [],
+					"cues": []
+				},
+				"closing:wheel-step": {
 					"audible": [],
 					"cues": []
 				},
@@ -8766,6 +9726,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -8812,6 +9780,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -9275,6 +10331,18 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"well_plunk",
@@ -9690,6 +10758,14 @@
 						"bridge_opened"
 					]
 				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
 				"bridge_opened:sunroom-entry": {
 					"audible": [
 						true
@@ -9736,6 +10812,94 @@
 					],
 					"cues": [
 						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
 					]
 				},
 				"court_activated": {
@@ -10199,6 +11363,1050 @@
 				"bridge_opened",
 				"bridge_opened",
 				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"court_activated",
+				"crossed_bridge",
+				"seed_landed",
+				"emitter_off",
+				"emitter_on",
+				"island_bloomed",
+				"garden_opened",
+				"seed_caught",
+				"handoff_offered",
+				"island_bloomed",
+				"lens_available",
+				"lens_fitted",
+				"lens_offered",
+				"lens_taken",
+				"lever_pulled",
+				"lift_arrived",
+				"lift_boarded",
+				"lift_ready",
+				"loft_opened",
+				"mirror_rotated",
+				"path_kept",
+				"receivers_joined",
+				"garden_opened",
+				"rest_reached",
+				"route_selected",
+				"seed_caught",
+				"seed_landed",
+				"seed_missed",
+				"seed_taken",
+				"seed_thrown",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"switch_set",
+				"source_aligned",
+				"island_bloomed",
+				"tower_anchored",
+				"tower_reached",
+				"turn_finished",
+				"unknown-probe-event"
+			]
+		},
+		"turn-of-the-tide@2": {
+			"single": {
+				"beacon_lit": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"beacon_lit"
+					]
+				},
+				"bell": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bell_rung"
+					]
+				},
+				"bridge_closed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_closed"
+					]
+				},
+				"bridge_open": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"bridge_open"
+					]
+				},
+				"bridge_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:blue-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:bollard-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:boom-jetty": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:boom-post": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:cliff-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:court-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:far-home": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:friend-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-arch": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:garden-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:gate-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:gate-post": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:high-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:home-shortcut": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:loft-stairs": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:long-stair": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-causeway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:lower-hall-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:middle-far": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:mole-steps": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:near-crossing": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:porch-door": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:probe-route": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:punt-ferry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:punt-post": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:quay-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:red-passage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:relay-east": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:room-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sea-gate-out": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:shore-middle": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:stones-3": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:sunroom-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:well-ladder": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:west-relay": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-entry": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"bridge_opened:workshop-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"bridge_opened"
+					]
+				},
+				"closing:bar-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:beach-catwalk": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:jetty-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:race-stage": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sand-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:sea-gate-in": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:slipway": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-1": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:stones-2": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"closing:wheel-step": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"crossing_closing"
+					]
+				},
+				"court_activated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"court_activated"
+					]
+				},
+				"crossed_bridge": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"crossed_bridge"
+					]
+				},
+				"drop": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"emitter_off": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_off"
+					]
+				},
+				"emitter_on": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"emitter_on"
+					]
+				},
+				"garden_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"garden_opened": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"handoff_claim": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"handoff_offer": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"handoff_offered"
+					]
+				},
+				"island_bloomed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"lens_available": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_available"
+					]
+				},
+				"lens_fitted": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_fitted"
+					]
+				},
+				"lens_offered": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_offered"
+					]
+				},
+				"lens_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lens_taken"
+					]
+				},
+				"lever": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lever_pulled"
+					]
+				},
+				"lift_arrived": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_arrived"
+					]
+				},
+				"lift_boarded": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"lift_boarded"
+					]
+				},
+				"lift_ready": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"lift_ready"
+					]
+				},
+				"loft_opened": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"loft_opened"
+					]
+				},
+				"mirror_rotated": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"mirror_rotated"
+					]
+				},
+				"path_kept": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"path_kept"
+					]
+				},
+				"receivers_joined": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"receivers_joined"
+					]
+				},
+				"relay_filled": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"garden_opened"
+					]
+				},
+				"rest_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"rest_reached"
+					]
+				},
+				"route_selected": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"route_selected"
+					]
+				},
+				"seed_caught": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_caught"
+					]
+				},
+				"seed_landed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_landed"
+					]
+				},
+				"seed_missed": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_missed"
+					]
+				},
+				"seed_taken": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"seed_taken"
+					]
+				},
+				"seed_thrown": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"seed_thrown"
+					]
+				},
+				"selector:basin": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:chamber": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:court-fork": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:crossing-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:final-mirror": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:garden-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:hall-lamp": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:high-return": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:path-selector": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:porch-shutter": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:probe-selector": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:return-selector": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:tide": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:walk-gate": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"selector:winch": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"switch_set"
+					]
+				},
+				"source_aligned": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"source_aligned"
+					]
+				},
+				"stage_complete": {
+					"audible": [
+						true
+					],
+					"cues": [
+						"island_bloomed"
+					]
+				},
+				"tower_anchored": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_anchored"
+					]
+				},
+				"tower_reached": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"tower_reached"
+					]
+				},
+				"turn_finished": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"turn_finished"
+					]
+				},
+				"unknown-probe-event": {
+					"audible": [
+						false
+					],
+					"cues": [
+						"unknown-probe-event"
+					]
+				}
+			},
+			"together": [
+				"beacon_lit",
+				"bell_rung",
+				"bridge_closed",
+				"bridge_open",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"bridge_opened",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
+				"crossing_closing",
 				"court_activated",
 				"crossed_bridge",
 				"seed_landed",
@@ -10299,12 +12507,24 @@
 		"bridge_opened:slipway",
 		"bridge_opened:stones-1",
 		"bridge_opened:stones-2",
+		"bridge_opened:stones-3",
 		"bridge_opened:sunroom-entry",
 		"bridge_opened:well-ladder",
 		"bridge_opened:west-relay",
 		"bridge_opened:wheel-step",
 		"bridge_opened:workshop-entry",
 		"bridge_opened:workshop-return",
+		"closing:bar-catwalk",
+		"closing:beach-catwalk",
+		"closing:jetty-1",
+		"closing:jetty-2",
+		"closing:race-stage",
+		"closing:sand-1",
+		"closing:sea-gate-in",
+		"closing:slipway",
+		"closing:stones-1",
+		"closing:stones-2",
+		"closing:wheel-step",
 		"court_activated",
 		"crossed_bridge",
 		"drop",

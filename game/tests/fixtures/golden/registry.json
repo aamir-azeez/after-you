@@ -1519,7 +1519,7 @@
 				"turn-of-the-tide/set-the-tide",
 				"turn-of-the-tide/slack-water"
 			],
-			"offered_key": "turn-of-the-tide@1",
+			"offered_key": "turn-of-the-tide@2",
 			"paid_entry": {},
 			"preferred_rules": [
 				9,
@@ -1620,6 +1620,140 @@
 			"supported_rules_text": "[9]",
 			"thumbnail": {
 				"key": "turn-of-the-tide@1",
+				"solo_only": false,
+				"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
+			},
+			"world_script": "res://presentation/tide_world.gd"
+		},
+		"turn-of-the-tide@2": {
+			"definition_digest": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+			"definition_typed_digest": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+			"descriptor": {
+				"checkpoint_text": "Your friend can carry on from here.",
+				"checkpoint_title": "A path kept",
+				"completion_text": "The harbour lantern is alight.",
+				"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+				"key": "turn-of-the-tide@2",
+				"level_id": "turn-of-the-tide",
+				"level_version": 2,
+				"local_path": "user://turn-of-the-tide-journey-v2.json",
+				"premium": false,
+				"recording_version": 7,
+				"simulation_version": 10,
+				"stage_count": 2,
+				"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+				"title": "Turn of the Tide"
+			},
+			"initial_checkpoint_hash": "f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9",
+			"initial_checkpoint_typed_digest": "d62ef293290ff568b5182593aa078d4b204461c6175087cd02eaef4167f308cc",
+			"is_cooperative": true,
+			"is_journey": true,
+			"keepsake_local_path": "user://turn-of-the-tide-journey-v2.json",
+			"keepsake_places": [
+				"turn-of-the-tide/set-the-tide",
+				"turn-of-the-tide/slack-water"
+			],
+			"offered_key": "turn-of-the-tide@2",
+			"paid_entry": {},
+			"preferred_rules": [
+				10,
+				"int"
+			],
+			"previous_checkpoint": {
+				"both_fields": "d62ef293290ff568b5182593aa078d4b204461c6175087cd02eaef4167f308cc",
+				"final": {
+					"fixture": "journey/turn-of-the-tide-v2-final-checkpoint.json",
+					"fixture_hash": "af4c69fd6fbe70076a8f9e137ad5062334c151a5fe4cf9749ec38f9a5baa59f3",
+					"previous_hash": "ad879abc4b90c1f263fa2e02453de08e96b4987aeb83283e27186e148fee00c3",
+					"previous_stage_index": "f:1.000000",
+					"previous_typed_digest": "c16bf3d171aa9297ab98b5cc5041b045db0922ff3e5147b8a8ffb3b150b0e5b2"
+				},
+				"initial": {},
+				"mid": {
+					"fixture": "journey/turn-of-the-tide-v2-set-the-tide-checkpoint.json",
+					"fixture_hash": "ad879abc4b90c1f263fa2e02453de08e96b4987aeb83283e27186e148fee00c3",
+					"previous_hash": "f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9",
+					"previous_stage_index": "f:0.000000",
+					"previous_typed_digest": "eb5ee021ef31a4a29b62fd3a3bb38882e910887507170bd809dffe42c73d4c9b"
+				},
+				"no_proof": {}
+			},
+			"reset_simulation": {
+				"default": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 10,
+					"state_hash": "41e30ad7e95eb877bf77dfb63d77c9421b0aadf462c74cf2b71c8777e0203d4c"
+				},
+				"recording_1": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				},
+				"recording_10": {
+					"error": "",
+					"ok": true,
+					"simulation_version": 10,
+					"state_hash": "41e30ad7e95eb877bf77dfb63d77c9421b0aadf462c74cf2b71c8777e0203d4c"
+				},
+				"recording_99": {
+					"error": "Unsupported recording version.",
+					"ok": false,
+					"simulation_version": 7,
+					"state_hash": ""
+				}
+			},
+			"resolve": {
+				"descriptor": "turn-of-the-tide@2",
+				"float_version": "turn-of-the-tide@2",
+				"other_version": "",
+				"tampered_hash": "",
+				"triple": "turn-of-the-tide@2"
+			},
+			"scene": {
+				"exists": true,
+				"packed": true,
+				"properties": {
+					"chapter_key": "turn-of-the-tide@2",
+					"script": "res://cooperative_preview.gd"
+				},
+				"root_name": "TurnOfTheTideV2",
+				"root_type": "Node3D"
+			},
+			"simulation_script": "res://core/journey/simulation.gd",
+			"solo_replay_stamp": "[10]",
+			"solo_scene": "res://turn_of_the_tide_v2.tscn",
+			"stage_ids": [
+				"set-the-tide",
+				"slack-water"
+			],
+			"stage_presentation": {
+				"set-the-tide": {
+					"hint_a": "Turn the tide to open a way for your partner, then wait on a step by the wheel.",
+					"hint_b": "Cross when the tide is right and ring the harbour bell.",
+					"is_authored_stage": false,
+					"title": "Set the Tide",
+					"typed_digest": "727aec8b8383b284a119bc7680967f7fb20731415913ab5e8eacdbd9d7a34632"
+				},
+				"slack-water": {
+					"hint_a": "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.",
+					"hint_b": "Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern.",
+					"is_authored_stage": false,
+					"title": "Slack Water",
+					"typed_digest": "dd0bda3412c8eb8e915c927fe7fe69691cd9411728dae3d395ac47c4535b62cc"
+				}
+			},
+			"story_illustration": false,
+			"supported_rules": [
+				[
+					10,
+					"int"
+				]
+			],
+			"supported_rules_text": "[10]",
+			"thumbnail": {
+				"key": "turn-of-the-tide@2",
 				"solo_only": false,
 				"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
 			},
@@ -1810,6 +1944,22 @@
 						"stage_count": 6,
 						"summary": "A dark lighthouse stands across the water.",
 						"title": "Sleeping Lighthouse"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"key": "turn-of-the-tide@2",
+						"level_id": "turn-of-the-tide",
+						"level_version": 2,
+						"local_path": "user://turn-of-the-tide-journey-v2.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 10,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -1908,6 +2058,11 @@
 				"valid": false
 			},
 			"flipped_premium_turn-of-the-tide@1": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
+			"flipped_premium_turn-of-the-tide@2": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
@@ -2138,6 +2293,22 @@
 						"stage_count": 6,
 						"summary": "A dark lighthouse stands across the water.",
 						"title": "Sleeping Lighthouse"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"key": "turn-of-the-tide@2",
+						"level_id": "turn-of-the-tide",
+						"level_version": 2,
+						"local_path": "user://turn-of-the-tide-journey-v2.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 10,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -2325,6 +2496,22 @@
 						"stage_count": 6,
 						"summary": "A dark lighthouse stands across the water.",
 						"title": "Sleeping Lighthouse"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"key": "turn-of-the-tide@2",
+						"level_id": "turn-of-the-tide",
+						"level_version": 2,
+						"local_path": "user://turn-of-the-tide-journey-v2.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 10,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -2554,6 +2741,22 @@
 						"stage_count": 6,
 						"summary": "A dark lighthouse stands across the water.",
 						"title": "Sleeping Lighthouse"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"key": "turn-of-the-tide@2",
+						"level_id": "turn-of-the-tide",
+						"level_version": 2,
+						"local_path": "user://turn-of-the-tide-journey-v2.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 10,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -2756,6 +2959,22 @@
 						"stage_count": 6,
 						"summary": "A dark lighthouse stands across the water.",
 						"title": "Sleeping Lighthouse"
+					},
+					{
+						"checkpoint_text": "Your friend can carry on from here.",
+						"checkpoint_title": "A path kept",
+						"completion_text": "The harbour lantern is alight.",
+						"definition_hash": "1f88aabb592fbf14640b50dd0644755d6afe522cae39d844524ac68b491f0a43",
+						"key": "turn-of-the-tide@2",
+						"level_id": "turn-of-the-tide",
+						"level_version": 2,
+						"local_path": "user://turn-of-the-tide-journey-v2.json",
+						"premium": false,
+						"recording_version": 7,
+						"simulation_version": 10,
+						"stage_count": 2,
+						"summary": "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across.",
+						"title": "Turn of the Tide"
 					}
 				],
 				"error": "",
@@ -2833,6 +3052,11 @@
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
 			},
+			"unsupported_version_turn-of-the-tide@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
+			},
 			"wrong_recording_version_a-house-for-two@1": {
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
@@ -2887,6 +3111,11 @@
 				"chapters": [],
 				"error": "The chapter version or access policy of the service is not supported.",
 				"valid": false
+			},
+			"wrong_recording_version_turn-of-the-tide@2": {
+				"chapters": [],
+				"error": "The chapter version or access policy of the service is not supported.",
+				"valid": false
 			}
 		},
 		"keepsakes": {
@@ -2901,7 +3130,8 @@
 				"long-way-home@1",
 				"the-wishing-well@1",
 				"long-way-home@2",
-				"turn-of-the-tide@1"
+				"turn-of-the-tide@1",
+				"turn-of-the-tide@2"
 			],
 			"lighthouse_local_path": "user://lighthouse-journey-v3.json",
 			"rows": [
@@ -3174,7 +3404,8 @@
 			"the-wishing-well@1",
 			"long-way-home@2",
 			"turn-of-the-tide@1",
-			"sleeping-lighthouse@2"
+			"sleeping-lighthouse@2",
+			"turn-of-the-tide@2"
 		],
 		"lighthouse_key": {
 			"definition": {},
@@ -3200,8 +3431,8 @@
 			"conservatory@1",
 			"the-wishing-well@1",
 			"long-way-home@2",
-			"turn-of-the-tide@1",
-			"sleeping-lighthouse@2"
+			"sleeping-lighthouse@2",
+			"turn-of-the-tide@2"
 		],
 		"paid_levels": [
 			"sleeping-lighthouse",
@@ -3341,6 +3572,11 @@
 					"key": "turn-of-the-tide@1",
 					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
+				},
+				"turn-of-the-tide@2": {
+					"key": "turn-of-the-tide@2",
+					"solo_only": false,
+					"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
 				}
 			},
 			"keys": [
@@ -3356,6 +3592,7 @@
 				"long-way-home@2",
 				"turn-of-the-tide@1",
 				"sleeping-lighthouse@2",
+				"turn-of-the-tide@2",
 				"legacy-first-light",
 				"legacy-long-way-home",
 				"legacy-patient-garden",

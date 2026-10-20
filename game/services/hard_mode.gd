@@ -87,10 +87,11 @@ static func tries_key(chapter_key: String) -> String:
 # Chapters and unlocks ----------------------------------------------------
 
 ## Whether a chapter has hard plays: every offered chapter with its own solo
-## screen. The Lighthouse (its own card and migration) and the earlier
-## islands have none.
+## screen, and every earlier version of one, which a room is still hosted at
+## while the server cannot create the offered one (Registry.hosting_key). The
+## Lighthouse (its own card and migration) and the earlier islands have none.
 static func eligible(chapter_key: String) -> bool:
-	return chapter_key in Registry.offered_keys() and not Registry.solo_scene(chapter_key).is_empty() and not Registry.is_lighthouse(chapter_key)
+	return Registry.offered_key(chapter_key) in Registry.offered_keys() and not Registry.solo_scene(chapter_key).is_empty() and not Registry.is_lighthouse(chapter_key)
 
 static func eligible_keys() -> Array[String]:
 	var keys: Array[String] = []
@@ -193,7 +194,11 @@ static func _parse_marks(text: String) -> Variant:
 	for key: Variant in value.marks:
 		var mark: Variant = value.marks[key]
 		if not key is String or key.length() > 64 or not mark is Dictionary: continue
-		marks[key] = {SOLO: _true(mark.get(SOLO)), TOGETHER: _true(mark.get(TOGETHER))}
+		# A mark kept under a version since superseded counts for the offered
+		# one, where record() keeps marks.
+		var offered := Registry.offered_key(key)
+		var had: Dictionary = marks.get(offered, {SOLO: false, TOGETHER: false})
+		marks[offered] = {SOLO: had[SOLO] or _true(mark.get(SOLO)), TOGETHER: had[TOGETHER] or _true(mark.get(TOGETHER))}
 	return marks
 
 
@@ -313,7 +318,8 @@ static func summaries() -> Array[Dictionary]:
 	var index: Variant = _read_index()
 	if index == null:
 		index = {}
-		for key: String in eligible_keys():
+		for key: String in Registry.keys():
+			if not eligible(key): continue
 			var kept := _read_runs(key)
 			if not kept.is_empty(): index[key] = _summaries(kept)
 		if not index.is_empty(): AtomicFile.write_text(INDEX_PATH, JSON.stringify({"schema_version": VERSION, "chapters": index}, "", false), true)

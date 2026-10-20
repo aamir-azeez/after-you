@@ -308,6 +308,7 @@ turn_of_the_tide_v2_world 2
 turn_of_the_tide_variants_half 3
 turn_of_the_tide_variants_high 3
 turn_of_the_tide_variants_low 2
+turn_of_the_tide_versions 1
 turn_of_the_tide_ways 2
 turn_photo 3
 turn_photo_library 2
@@ -332,6 +333,7 @@ world_fingerprint_journey 1
 world_fingerprint_lighthouse 1
 world_fingerprint_lighthouse_v2 2
 world_fingerprint_physical 2
+world_fingerprint_tide_v2 3
 world_kit 2
 world_looks 1
 your_replay_delete_ui 2

@@ -9,7 +9,6 @@ const DATA := {
 	"scene": "res://turn_of_the_tide_v2.tscn",
 	"local_path": "user://turn-of-the-tide-journey-v2.json",
 	"version_of": "turn-of-the-tide@1",
-	"released": false,
 	"copy": {
 		"title": PlayerCopy.TURN_OF_THE_TIDE_TITLE,
 		"summary": PlayerCopy.TURN_OF_THE_TIDE_SUMMARY,

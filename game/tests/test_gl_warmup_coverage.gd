@@ -29,7 +29,7 @@ func _suite() -> String:
 ## Which world fingerprint suites' chapters each coverage suite walks.
 const SPLIT := {
 	"gl_warmup_coverage": ["world_fingerprint", "world_fingerprint_lighthouse", "world_fingerprint_lighthouse_v2"],
-	"gl_warmup_coverage_journey": ["world_fingerprint_physical", "world_fingerprint_journey"],
+	"gl_warmup_coverage_journey": ["world_fingerprint_physical", "world_fingerprint_journey", "world_fingerprint_tide_v2"],
 }
 
 ## The world fingerprint suites whose chapters this suite walks.

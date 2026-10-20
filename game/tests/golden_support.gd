@@ -27,7 +27,7 @@ const WRITE_ARGUMENT := "--write-golden"
 const WRITE_ENV := "AFTER_YOU_WRITE_GOLDEN"
 
 ## Chapters whose registry outputs, replays, worlds and sounds are pinned.
-const GOLDEN_KEYS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2", "turn-of-the-tide@1", "sleeping-lighthouse@2"]
+const GOLDEN_KEYS: Array[String] = ["first-steps@1", "relay-isles@2", "high-and-low@1", "rolling-home@1", "a-house-for-two@1", "conservatory@1", "long-way-home@1", "the-wishing-well@1", "long-way-home@2", "turn-of-the-tide@1", "sleeping-lighthouse@2", "turn-of-the-tide@2"]
 ## Registered chapters not pinned yet: the unreleased ones (released: false in
 ## their descriptor), so the goldens ignore a chapter in development. It moves
 ## to GOLDEN_KEYS when it ships: add its fixture chain to test_replay_golden.gd

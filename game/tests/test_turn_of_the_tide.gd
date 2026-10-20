@@ -79,12 +79,14 @@ func _definition() -> void:
 func _registry() -> void:
 	var key: String = Registry.TURN_OF_THE_TIDE
 	_check(key == Witness.KEY and key in Registry.keys() and Registry.keys().find(key) == Registry.keys().find(Registry.LONG_WAY_HOME_V2) + 1, "The chapter is registered right after long-way-home@2")
-	_check(key not in Registry.UNRELEASED and key in Registry.offered_keys() and Registry.offered_keys().find(key) == Registry.offered_keys().find(Registry.LONG_WAY_HOME_V2) + 1 and Registry.offered_key(key) == key, "The chapter is offered")
+	# @2 is offered in its place (test_turn_of_the_tide_versions.gd).
+	var offered_key := Registry.offered_key(key)
+	_check(key not in Registry.UNRELEASED and key not in Registry.offered_keys() and offered_key == "turn-of-the-tide@2" and offered_key in Registry.offered_keys(), "The chapter is offered as its @2")
 	# Solo lists free chapters first in registry order, so the tide follows the well.
 	var free: Array[String] = []
 	for offered: String in Registry.offered_keys():
 		if not Registry.descriptor(offered).premium: free.append(offered)
-	_check(free.find(key) == free.find(Registry.WISHING_WELL) + 1 and free[-1] == key, "Among the free chapters it comes straight after The Wishing Well")
+	_check(free.find(offered_key) == free.find(Registry.WISHING_WELL) + 1 and free[-1] == offered_key, "Among the free chapters it comes straight after The Wishing Well")
 	_check(Registry.is_journey(key) and Registry.is_cooperative(key) and Registry.simulation_script(key) == Simulation, "It plays on the journey facade")
 	_check(Registry.supported_rules(key) == [9] and Registry.preferred_rules(key) == 9, "The registry supports exactly rules 9")
 	var descriptor := Registry.descriptor(key)

@@ -1406,6 +1406,206 @@
 				"tower_anchored",
 				"tower_reached"
 			]
+		},
+		"turn-of-the-tide@2": {
+			"chains": {
+				"rules10": {
+					"final_checkpoint_hash": "af4c69fd6fbe70076a8f9e137ad5062334c151a5fe4cf9749ec38f9a5baa59f3",
+					"final_typed_digest": "6f0f28e38dfdf1a7a01dacd0f2cf4e26817e1f432171e141c94a618dc29d2b2f",
+					"initial_checkpoint_hash": "f04821b57f741e692fa350265b24d41d27037026209f8c16f7ef70d4546712e9",
+					"stages": [
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 458,
+								"event_counts": {
+									"bridge_opened:jetty-1": 1,
+									"bridge_opened:jetty-2": 1,
+									"bridge_opened:sand-1": 1,
+									"bridge_opened:slipway": 1,
+									"bridge_opened:stones-1": 1,
+									"bridge_opened:stones-2": 1,
+									"bridge_opened:wheel-step": 1,
+									"closing:jetty-1": 1,
+									"closing:jetty-2": 1,
+									"closing:sand-1": 1,
+									"closing:stones-1": 1,
+									"closing:stones-2": 1,
+									"lever": 1,
+									"selector:tide": 3,
+									"selector:winch": 1
+								},
+								"events_digest": "756c5cd059dfa8df9441f07729149b9298a7cbe4a4f6f78c8d2e8a3f37ea4cd2",
+								"exact_reexport": true,
+								"final_snapshot_digest": "9bb1d4b3007c0693e69499cabfb1906614f602e94292f178a4a19ca38d4e5440",
+								"final_snapshot_typed_digest": "ced3b2897d9fbb6fb9fe4ebf03dbea96ee014ce28a5c5806c34296ce50799157",
+								"final_state_hash": "3e901c8e77585607d9ec2fb5b57350a1c0b29f730ddcefded5fd8fb5997cf76a",
+								"finished": false,
+								"fixture_recording_hash": "4314adeb6b99a8c8c31fec05e3fb1326aa5200d80c5e09ffa736baa4bfb19fbf",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "4314adeb6b99a8c8c31fec05e3fb1326aa5200d80c5e09ffa736baa4bfb19fbf",
+								"replay_checks": 16,
+								"simulation_version": 10
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 580,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:jetty-1": 1,
+									"bridge_opened:jetty-2": 1,
+									"bridge_opened:sand-1": 1,
+									"bridge_opened:slipway": 1,
+									"bridge_opened:stones-1": 1,
+									"bridge_opened:stones-2": 1,
+									"bridge_opened:wheel-step": 1,
+									"closing:jetty-1": 1,
+									"closing:jetty-2": 1,
+									"closing:sand-1": 1,
+									"closing:stones-1": 1,
+									"closing:stones-2": 1,
+									"drop": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "bfdb74357fc995ddf900b1ba0eb8a7b5948c26fa69cd8b82c350dda194bc6036",
+								"exact_reexport": true,
+								"final_snapshot_digest": "7aa0e119dcd2b9994e3009d647076740dd95ad190ee3ced5ca1fae7149330110",
+								"final_snapshot_typed_digest": "e4fe1ce606f207d9ac566db1cd841380ca20b920cbac4fc5e4a0c489c923499c",
+								"final_state_hash": "2184d3b483c18817cb7bef584121af53f60ee8c7f18ea0474288f8449ae946ef",
+								"finished": true,
+								"fixture_recording_hash": "18235534a57ea23fd8ab81de11a7049afdf921a19e31e63f1c718ece078ab296",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "18235534a57ea23fd8ab81de11a7049afdf921a19e31e63f1c718ece078ab296",
+								"replay_checks": 20,
+								"simulation_version": 10
+							},
+							"checkpoint_hash": "ad879abc4b90c1f263fa2e02453de08e96b4987aeb83283e27186e148fee00c3",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 1,
+							"next_stage_id": "slack-water",
+							"stage_id": "set-the-tide"
+						},
+						{
+							"a": {
+								"can_commit": true,
+								"completed": false,
+								"duration_ticks": 399,
+								"event_counts": {
+									"bridge_opened:gate-catwalk": 1,
+									"bridge_opened:gate-post": 1,
+									"closing:bar-catwalk": 1,
+									"closing:beach-catwalk": 1,
+									"lever": 2,
+									"selector:basin": 1
+								},
+								"events_digest": "0832cef1e60025398ba2f9d42d8fe531c54995af5202b7d368d682fa8a8c9222",
+								"exact_reexport": true,
+								"final_snapshot_digest": "3ef2ddfbdc6741bbde729c8ecad3b3956c499e21c3003536946040753c0bd93f",
+								"final_snapshot_typed_digest": "53df157a873c62a9a558f49ef5795e3899e66a7d44f78baeaacd0f6316358346",
+								"final_state_hash": "59355daf65275ddb180f284e16128f8fe9dd24b162ff2624e49f8a0be7f2f829",
+								"finished": false,
+								"fixture_recording_hash": "ab743ca74a2e903ddffc6e8330f4586c84a737e197bc4e693db04cab03e74309",
+								"outcome": {
+									"objective_complete": false,
+									"source_ready": true
+								},
+								"recording_hash": "ab743ca74a2e903ddffc6e8330f4586c84a737e197bc4e693db04cab03e74309",
+								"replay_checks": 14,
+								"simulation_version": 10
+							},
+							"b": {
+								"can_commit": true,
+								"completed": true,
+								"duration_ticks": 469,
+								"event_counts": {
+									"bell": 1,
+									"bridge_opened:bollard-step": 1,
+									"bridge_opened:gate-catwalk": 1,
+									"bridge_opened:gate-post": 1,
+									"bridge_opened:sea-gate-in": 1,
+									"bridge_opened:sea-gate-out": 1,
+									"bridge_opened:stones-1": 1,
+									"bridge_opened:stones-2": 1,
+									"bridge_opened:stones-3": 1,
+									"closing:bar-catwalk": 1,
+									"closing:beach-catwalk": 1,
+									"closing:race-stage": 1,
+									"closing:sand-1": 1,
+									"closing:sea-gate-in": 1,
+									"closing:slipway": 1,
+									"closing:wheel-step": 1,
+									"lever": 1,
+									"selector:chamber": 2,
+									"selector:tide": 1,
+									"stage_complete": 1
+								},
+								"events_digest": "be10244fe58656791fc940027b93c2703d308cf89d6b52142f0c2c06a22fb657",
+								"exact_reexport": true,
+								"final_snapshot_digest": "2c2dd7bee3f5646123b82c72a40d8e15645e0637fe238735a8190b68f9fa07ea",
+								"final_snapshot_typed_digest": "207c117aee888561cae8404ee4741f6b7d13a35db1a9cc3bbf725cc34ea64dae",
+								"final_state_hash": "17c25d4a13d191eff0b7907c9c0a3f19c8423dd243428e30aad863265a16f8c8",
+								"finished": true,
+								"fixture_recording_hash": "e45e4569a0267ac42ffa1480d9fe8ff29d3f6ce868ffa6f23d91823bbc6f0b65",
+								"outcome": {
+									"objective_complete": true,
+									"source_ready": true
+								},
+								"recording_hash": "e45e4569a0267ac42ffa1480d9fe8ff29d3f6ce868ffa6f23d91823bbc6f0b65",
+								"replay_checks": 16,
+								"simulation_version": 10
+							},
+							"checkpoint_hash": "af4c69fd6fbe70076a8f9e137ad5062334c151a5fe4cf9749ec38f9a5baa59f3",
+							"checkpoint_matches_fixture": true,
+							"checkpoint_stage_index": 2,
+							"next_stage_id": "",
+							"stage_id": "slack-water"
+						}
+					]
+				}
+			},
+			"engine": "res://core/journey/simulation.gd",
+			"events": [
+				"bell",
+				"bridge_opened:bollard-step",
+				"bridge_opened:gate-catwalk",
+				"bridge_opened:gate-post",
+				"bridge_opened:jetty-1",
+				"bridge_opened:jetty-2",
+				"bridge_opened:sand-1",
+				"bridge_opened:sea-gate-in",
+				"bridge_opened:sea-gate-out",
+				"bridge_opened:slipway",
+				"bridge_opened:stones-1",
+				"bridge_opened:stones-2",
+				"bridge_opened:stones-3",
+				"bridge_opened:wheel-step",
+				"closing:bar-catwalk",
+				"closing:beach-catwalk",
+				"closing:jetty-1",
+				"closing:jetty-2",
+				"closing:race-stage",
+				"closing:sand-1",
+				"closing:sea-gate-in",
+				"closing:slipway",
+				"closing:stones-1",
+				"closing:stones-2",
+				"closing:wheel-step",
+				"drop",
+				"lever",
+				"selector:basin",
+				"selector:chamber",
+				"selector:tide",
+				"selector:winch",
+				"stage_complete"
+			]
 		}
 	}
 }
