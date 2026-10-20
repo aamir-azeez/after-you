@@ -879,7 +879,13 @@ func _glow(node: MeshInstance3D, color: Color, energy: float) -> void:
 	# Unlit already: nothing to change, whatever colour the glow was.
 	if energy <= 0.0 and not mat.emission_enabled: return
 	if mat.emission_enabled == (energy > 0.0) and mat.emission == color and is_equal_approx(mat.emission_energy_multiplier,energy): return
-	# A kit material is shared by every mesh of its look: glow a copy.
+	# An unlit kit look lights as the kit's glowing look of the same colour,
+	# which holds exactly the values a lit copy would: meshes that glow alike
+	# share one material instead of a copy each.
+	if energy > 0.0 and not mat.emission_enabled and Primitives.is_cached(mat):
+		node.material_override = Primitives.shared_material(mat.albedo_color, mat.roughness, color, energy)
+		return
+	# A kit material is shared by every mesh of its look: change a copy.
 	mat = Primitives.own_material(node)
 	mat.emission_enabled = energy > 0.0
 	mat.emission = color

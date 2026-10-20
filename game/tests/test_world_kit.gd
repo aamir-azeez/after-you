@@ -70,6 +70,11 @@ func _check_materials() -> void:
 	_check(world.material(Color("8a6b4e")) != first, "A world's material() is a new one of the caller's own")
 	world._glow(a, Color.WHITE, 1.0)
 	_check(a.material_override != first and a.material_override.emission_enabled and not first.emission_enabled and b.material_override == first, "Glowing one mesh glows its own copy, never the look")
+	_check(a.material_override == Primitives.shared_material(first.albedo_color, first.roughness, Color.WHITE, 1.0), "A lit look is the kit's glowing look of its colour, shared by every mesh that glows alike")
+	world._glow(b, Color.WHITE, 1.0)
+	_check(b.material_override == a.material_override, "Two meshes of one look lit alike share one material")
+	world._glow(a, Color.WHITE, 0.0)
+	_check(not a.material_override.emission_enabled and not Primitives.is_shared(a.material_override) and b.material_override.emission_enabled, "Put out, a mesh takes its own copy; the glowing look stays lit for the rest")
 	var motes: Array = world.motes
 	_check(not Primitives.is_shared(motes[0].material_override) and motes.all(func(mote: MeshInstance3D) -> bool: return mote.material_override == motes[0].material_override), "The motes share one material of the world's own, which the look tints")
 	_check(Primitives.changed_shared_looks().is_empty(), "Building and glowing changed no cached look: %s" % [Primitives.changed_shared_looks()])
