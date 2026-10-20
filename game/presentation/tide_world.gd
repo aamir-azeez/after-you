@@ -676,28 +676,21 @@ func _build_bridge(definition: Dictionary) -> void:
 	for index in range(before, terrain.get_child_count()): built.append(terrain.get_child(index))
 	# The shared deck builder places every deck at the ground; lift all it made.
 	for node: Node in built: (node as Node3D).position.y += float(definition.get("height_cm", 0)) / 100.0
-	# Built in order: the deck, an ownership mark at each end for an owned
-	# route, then the pulley post, pulley, rope and weight.
-	var unused: Array[Node] = []
-	if not str(definition.get("owner_slot", "")).is_empty() and built.size() >= 3 and (_is_stub(definition) or _gate_for(id).is_empty()):
-		# A stub shows its owner on its own pads and levers; a route this stage
-		# never gates needs no ownership mark at all.
-		unused.append_array(built.slice(1, 3))
-	if _weights.has(id) and built.size() >= 4 and built[-1] == _weights[id]:
-		if _quiet_route(definition):
-			# Tide crossings carry a gauge and stubs their own marks instead.
-			unused.append_array(built.slice(built.size() - 4))
-			_weights.erase(id)
-		else:
-			_weights[id].set_meta("rest_y", _weights[id].position.y)
-	for node: Node in unused:
-		terrain.remove_child(node)
-		node.free()
+	if _weights.has(id): _weights[id].set_meta("rest_y", _weights[id].position.y)
 	_restyle_deck(definition)
 	_kept_pennant(definition)
 	if id.begins_with("jetty") or id == "boom-jetty": _piles(definition)
 	if _is_stub(definition): _stub_frame(definition)
 	else: _ghost(definition)
+
+## A stub shows its owner on its own pads and levers; a route this stage never
+## gates needs no ownership mark at all.
+func _marks_route_owner(route: Dictionary) -> bool:
+	return not (_is_stub(route) or _gate_for(str(route.id)).is_empty())
+
+## Tide crossings carry a gauge and stubs their own marks instead of a pulley.
+func _hangs_pulley(route: Dictionary) -> bool:
+	return not _quiet_route(route)
 
 ## A route that never needs the pulley: a stub, a tide crossing, or one this
 ## stage leaves closed or always open.

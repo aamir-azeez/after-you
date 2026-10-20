@@ -314,9 +314,10 @@ func _build_bridge(definition: Dictionary) -> void:
 	var rect: Array = definition.rect_cm
 	var owner := str(definition.get("owner_slot", ""))
 	var at := point([rect[0], (rect[1] + rect[3]) * 0.5])
-	if not owner.is_empty():
+	if not owner.is_empty() and _marks_route_owner(definition):
 		_ownership_mark(owner, at + Vector3(-0.18, ROUTE_MARK_LIFT, 0), terrain)
 		_ownership_mark(owner, point([rect[2] + 18, (rect[1] + rect[3]) * 0.5]) + Vector3(0, ROUTE_MARK_LIFT, 0), terrain)
+	if not _hangs_pulley(definition): return
 	# A fixed pulley and suspended weight show where a missing crossing goes.
 	var post := at + Vector3(0.05, 0, float(rect[3] - rect[1]) / 200.0 + 0.15)
 	box(Vector3(0.10, 1.1, 0.1), Color("9e9180"), post + Vector3(0, 0.55, 0), terrain)
@@ -327,6 +328,17 @@ func _build_bridge(definition: Dictionary) -> void:
 	var weight := box(Vector3(0.22, 0.32, 0.22), Props.STONE_DARK if warm else Color("748998"), post + Vector3(0.14, 0.45, 0), terrain)
 	_weights[definition.id] = weight
 	weight.set_meta("rest_y", weight.position.y)
+
+## Whether an owned crossing gets an ownership mark at each end. A world that
+## shows its owner some other way says no, so no mark is made only to be freed.
+func _marks_route_owner(_definition: Dictionary) -> bool:
+	return true
+
+## Whether a crossing gets the fixed pulley and suspended weight that show
+## where a missing crossing goes (they are _weights). A world that shows it
+## some other way says no.
+func _hangs_pulley(_definition: Dictionary) -> bool:
+	return true
 
 func _build_stair(stair: Dictionary) -> void:
 	var r: Array = stair.rect_cm
