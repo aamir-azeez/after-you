@@ -8,8 +8,11 @@ const Typed = preload("res://services/typed_values.gd")
 
 const PATH := "user://platform-games-v1.json"
 const MAX_BYTES := 8192
-## The server's answer is read again after this long (a flag flip reaches phones within a day).
+## An "on" answer is read again after this long (switching the feature off reaches phones within a day).
 const CAPABILITY_TTL_MS := 24 * 3600 * 1000
+## An "off" answer is read again much sooner, so switching the feature on reaches a phone on its
+## next launch instead of a day later.
+const OFF_CAPABILITY_TTL_MS := 15 * 60 * 1000
 ## After "no link for this account", a phone without an identity asks again after this long.
 const RESTORE_PROBE_TTL_MS := 24 * 3600 * 1000
 
@@ -48,10 +51,13 @@ func save() -> bool:
 static func now_ms() -> int:
 	return int(Time.get_unix_time_from_system() * 1000.0)
 
-## The server's last answer, or {} when it is missing or older than a day.
+## The server's last answer, or {} when it is missing or too old: a day for "on", a quarter
+## of an hour for "off".
 func capability(now: int = now_ms()) -> Dictionary:
 	var held: Dictionary = data.capability
-	if not Typed.whole_number(held.get("checked_ms")) or now - int(held.checked_ms) > CAPABILITY_TTL_MS or now < int(held.checked_ms): return {}
+	if not Typed.whole_number(held.get("checked_ms")) or now < int(held.checked_ms): return {}
+	var on: bool = held.get("play_games") == true or held.get("game_center") == true
+	if now - int(held.checked_ms) > (CAPABILITY_TTL_MS if on else OFF_CAPABILITY_TTL_MS): return {}
 	return held
 
 func remember_capability(answer: Dictionary, now: int = now_ms()) -> void:

@@ -90,6 +90,16 @@ func _run() -> void:
 	DirAccess.make_dir_recursive_absolute(dir)
 	var state: RefCounted = State.new(dir.path_join("state.json"))
 
+	# The server's answer: "off" is asked again within a quarter of an hour, "on" after a day.
+	var t0 := 1_800_000_000_000
+	state.remember_capability({"play_games": false, "game_center": false}, t0)
+	_check(not state.capability(t0 + 60_000).is_empty(), "An off answer holds for a minute")
+	_check(state.capability(t0 + State.OFF_CAPABILITY_TTL_MS + 1).is_empty(), "An off answer is asked again after a quarter of an hour, so a switch turned on reaches the next launch")
+	state.remember_capability({"play_games": true, "web_client_id": "665737720520-abcdefgh.apps.googleusercontent.com"}, t0)
+	_check(not state.capability(t0 + State.OFF_CAPABILITY_TTL_MS + 1).is_empty(), "An on answer holds past a quarter of an hour")
+	_check(state.capability(t0 + State.CAPABILITY_TTL_MS + 1).is_empty(), "An on answer is asked again after a day")
+	state.forget_capability()
+
 	# Debounce: a note waits for a quiet moment; flush runs at once.
 	var slot := Slot.new()
 	var sources := FakeSources.new()
