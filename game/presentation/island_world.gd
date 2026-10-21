@@ -22,6 +22,8 @@ const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
 const Props = preload("res://presentation/kit/props.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
+## Every world camera writes its size through this (tall screens keep the authored width).
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
 var _motion_quality := "balanced"
 ## The kit/look.gd preset the world shows, lit again when the quality changes.
 var _look := "day"
@@ -141,7 +143,7 @@ func _ready() -> void:
 	add_child(bounce)
 	camera = Camera3D.new()
 	camera.projection = Camera3D.PROJECTION_ORTHOGONAL
-	camera.size = 14.4
+	camera.size = ViewFit.viewport(14.4, self)
 	camera.position = Vector3(10,13,15)
 	add_child(camera)
 	camera.look_at(Vector3.ZERO)
@@ -1228,7 +1230,7 @@ func note_motion(kind: String, id: String, direction: int, animated: bool = true
 func _advance_camera(delta: float) -> void:
 	if is_instance_valid(camera) and not (home_view and home_presentation_owner!=0):
 		var desired_size := 15.7 if home_view else 14.4
-		camera.size=lerpf(camera.size,desired_size,delta*2)
+		camera.size=lerpf(camera.size,ViewFit.viewport(desired_size,self),delta*2)
 		var center := Vector3(-2.5,0,0) if home_view else Vector3(0,0,0)
 		camera.h_offset=lerpf(camera.h_offset,center.x,delta*2)
 

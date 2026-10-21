@@ -29,6 +29,7 @@ const BRIDGE_RELEASE := 1.6
 const BROWSER_HEIGHT := 50.0
 const BOX_ROW_GAP := 4.0
 const UiTokens = preload("res://presentation/ui_tokens.gd")
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const PAGE_FILL := UiTokens.PAGE_FILL
 const PAGE_BORDER := UiTokens.PAGE_BORDER
 const PAGE_CHEVRON := UiTokens.CREAM
@@ -237,7 +238,10 @@ func _ready() -> void:
 	_frame_camera()
 
 func _stage_rect() -> Rect2:
-	var rect := get_global_rect()
+	return _stage_in(get_global_rect())
+
+## The stage within `rect` (this screen's rect, or the authored frame).
+func _stage_in(rect: Rect2) -> Rect2:
 	# Exploring hides the menu, so the whole screen is the stage.
 	if _exploring: return Rect2(rect.position + Vector2(24, 40), Vector2(maxf(100, rect.size.x - 48), maxf(100, rect.size.y - 138)))
 	var left := minf(UiTokens.HOME_STAGE_LEFT,rect.size.x*0.52)
@@ -735,14 +739,19 @@ func _frame_camera() -> void:
 	if _exploring: focus = _explore_focus + Vector3(0, 0.35, 0)
 	camera.global_transform = _camera_transform
 	camera.global_position += _world.global_basis*focus
-	camera.size = zoom_size
-	# KEEP_HEIGHT is the existing orthographic camera mode. Offsets place the
-	# world in the clear right-side stage at every supported landscape width.
-	var units_per_pixel := zoom_size/maxf(viewport.size.y,1)
+	# KEEP_HEIGHT is the existing orthographic camera mode. A taller screen
+	# grows the size until the stage shows the island as wide as the authored
+	# frame's stage does (kit/view_fit.gd); a phone keeps zoom_size itself.
+	var authored := _stage_in(Rect2(Vector2.ZERO, ViewFit.BASE))
+	var fit := ViewFit.fit(1.0, rect.size.x/maxf(viewport.size.y,1), authored.size.x/ViewFit.BASE.y)
+	camera.size = zoom_size*fit
+	# Offsets place the world in the clear right-side stage at every supported
+	# landscape width.
+	var units_per_pixel := camera.size/maxf(viewport.size.y,1)
 	var offset := rect.get_center()-viewport.get_center()
 	camera.h_offset = -offset.x*units_per_pixel
 	camera.v_offset = offset.y*units_per_pixel
-	if not _exploring: _exploration.apply_pan(camera, DEFAULT_SIZE)
+	if not _exploring: _exploration.apply_pan(camera, DEFAULT_SIZE*fit)
 
 ## The Explore button, and while exploring a Back button and the joystick.
 func _create_explore_controls() -> void:

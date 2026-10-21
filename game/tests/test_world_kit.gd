@@ -7,6 +7,7 @@ const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
+const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 var checks := 0
@@ -28,6 +29,7 @@ func _run() -> void:
 	_check_label_bubbles()
 	_check_looks()
 	_check_follow_angle()
+	_check_view_fit()
 	print("WORLD KIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -156,7 +158,25 @@ func _check_follow_angle() -> void:
 	world._frame_camera()
 	_check(world._follows_view() and is_equal_approx(world.camera.size, world.FOLLOW_SIZE), "Later Lighthouse stages follow the active spirit")
 	_check(world.camera.global_basis.is_equal_approx(fitted), "Following never changes the camera angle or the stick mapping")
+	# A taller screen keeps the authored width in view; a phone keeps the size.
+	viewport.size = Vector2i(1280, 960)
+	world._frame_camera()
+	_check(is_equal_approx(world.camera.size, world.FOLLOW_SIZE * 960.0 / 720.0), "A 4:3 tablet follows with the 16:9 width in view")
+	viewport.size = Vector2i(1560, 720)
+	world._frame_camera()
+	_check(is_equal_approx(world.camera.size, world.FOLLOW_SIZE), "A phone keeps the authored follow size")
 	viewport.free()
+
+## One rule for every world camera (kit/view_fit.gd): grow only when narrower than 16:9.
+func _check_view_fit() -> void:
+	_check(ViewFit.fit(14.4, 16.0 / 9.0) == 14.4 and ViewFit.fit(14.4, 2340.0 / 1080.0) == 14.4, "16:9 and a phone keep the authored size exactly")
+	_check(is_equal_approx(ViewFit.fit(12.0, 4.0 / 3.0), 16.0) and is_equal_approx(ViewFit.fit(12.0, 1.6), 12.0 * 16.0 / 9.0 / 1.6), "4:3 and 16:10 grow until the 16:9 width shows")
+	_check(is_equal_approx(ViewFit.fit(10.0, 0.5), 10.0 * 16.0 / 9.0 / 0.5), "A portrait split screen still keeps the width (no aspect floor)")
+	for bad: float in [0.0, -1.0, NAN]:
+		_check(ViewFit.fit(9.2, bad) == 9.2, "An empty view keeps the authored size (%s)" % bad)
+	var loose := Node.new()
+	_check(ViewFit.viewport(9.2, loose) == 9.2, "A world outside the tree keeps the authored size")
+	loose.free()
 
 ## One speech bubble for every lever, switch and place: raw values shown
 ## upper-cased, the chosen value filled, shared body pieces, own pills.

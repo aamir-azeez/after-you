@@ -110,7 +110,7 @@ func load_level(definition: Dictionary) -> void:
 		box(Vector3(0.06, 0.025, 0.13), CREAM, Vector3(cos(angle) * 0.83, 0.03, sin(angle) * 0.83), landing_marker).rotation.y = -angle
 	camera.position = Vector3(8, 14, 19)
 	camera.look_at(Vector3.ZERO)
-	camera.size = 12.0
+	camera.size = ViewFit.viewport(12.0, self)
 	camera.h_offset = 0.0
 
 
@@ -163,5 +163,5 @@ func _process(delta: float) -> void:
 		var target_y := 0.0 if bridge_targets[id] else -0.65
 		bridge_visuals[id].position.y = lerpf(bridge_visuals[id].position.y, target_y, weight)
 	if is_instance_valid(camera):
-		camera.size = 12.0
+		camera.size = ViewFit.viewport(12.0, self)
 		camera.h_offset = 0.0

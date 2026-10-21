@@ -31,6 +31,8 @@ func _run() -> void:
 	await _test_real_spirit_tap()
 	Stage._retained_view.clear()
 	await _test_explore_zoom()
+	Stage._retained_view.clear()
+	await _test_tall_screen()
 	print("AFTER YOU HOME STAGE: %d checks, %d failures" % [checks,failures])
 	quit(1 if failures else 0)
 
@@ -788,3 +790,33 @@ func _test_explore_zoom() -> void:
 	await create_timer(0.15).timeout
 	for suffix: String in ["",".tmp",".backup"]:
 		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
+
+## A 4:3 tablet keeps the base width and grows taller: Home grows its camera so
+## the stage shows the island as wide as at 16:9, centred on the same stage, and
+## the 16:9 and phone frames keep zoom_size itself.
+func _test_tall_screen() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280,720)
+	root.add_child(viewport)
+	var world := World.new()
+	viewport.add_child(world)
+	world.set_process(false)
+	world.load_level(Levels.get_level("first-light"))
+	var stage := Stage.new()
+	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stage.configure(world,func() -> bool: return true)
+	viewport.add_child(stage)
+	stage.set_process(false)
+	for size: Vector2i in [Vector2i(1280,720),Vector2i(1560,720),Vector2i(1280,960),Vector2i(1280,800)]:
+		viewport.size = size
+		await process_frame
+		await process_frame
+		stage._frame_camera()
+		var rect: Rect2 = stage._stage_rect()
+		var across: float = world.camera.size*rect.size.x/float(size.y)
+		if size.x*9 >= size.y*16:
+			_check(is_equal_approx(world.camera.size,stage.zoom_size),"Home keeps its authored camera size at %s" % size)
+		else:
+			_check(world.camera.size>stage.zoom_size and is_equal_approx(across,stage.zoom_size*(1280.0-470.0-24.0)/720.0),"A tall screen shows the island as wide as 16:9 does at %s" % size)
+		_check(is_equal_approx(world.camera.h_offset,-(rect.get_center().x-float(size.x)*0.5)*world.camera.size/float(size.y)),"The island stays centred on the stage at %s" % size)
+	viewport.free()

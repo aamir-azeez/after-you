@@ -121,7 +121,7 @@ func load_level(definition: Dictionary) -> void:
 		box(Vector3(0.06, 0.025, 0.13), CREAM, Vector3(cos(angle) * 0.82, 0.03, sin(angle) * 0.82), landing_marker).rotation.y = -angle
 	camera.position = Vector3(8, 12, 18)
 	camera.look_at(Vector3(0, 0.9, 0))
-	camera.size = 11.8
+	camera.size = ViewFit.viewport(11.8, self)
 	camera.h_offset = 0.0
 	_present_garden(false, false, true)
 
@@ -211,5 +211,5 @@ func _process(delta: float) -> void:
 		note_motion("lift", "lift", (1 if travel > 0.0 else -1) if absf(travel) > LIFT_SETTLED else 0)
 		lift.position.y = lerpf(lift.position.y, lift_target_height, minf(delta * 14.0, 1.0))
 	if is_instance_valid(camera):
-		camera.size = 11.8
+		camera.size = ViewFit.viewport(11.8, self)
 		camera.h_offset = 0.0

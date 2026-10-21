@@ -911,7 +911,7 @@ func _frame_camera() -> void:
 		camera.position = _follow_point + Vector3(3, 13, 10)
 		camera.look_at(to_global(_follow_point))
 		camera.keep_aspect = Camera3D.KEEP_HEIGHT
-		camera.size = FOLLOW_SIZE
+		camera.size = ViewFit.viewport(FOLLOW_SIZE, self)
 		camera.h_offset = 0.0
 		camera.v_offset = 0.0
 		return
