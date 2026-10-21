@@ -50,6 +50,8 @@ func _run() -> void:
 
 	var shelf := Shelf.new()
 	shelf.idle = func() -> bool: return false
+	# A long fade, so a slow frame cannot finish it before it is checked.
+	shelf.fade_seconds = 1.0
 	root.add_child(shelf)
 	var first := _picture(paths[1])
 	holder.add_child(first)
@@ -94,9 +96,10 @@ func _run() -> void:
 
 	# Warming ahead while Home is idle.
 	var warm := Shelf.new()
-	var state := {"idle": false, "paused": false}
+	var state := {"idle": false, "paused": false, "playing": false}
 	warm.idle = func() -> bool: return state.idle
 	warm.paused = func() -> bool: return state.paused
+	warm.playing = func() -> bool: return state.playing
 	warm.warm_paths = func() -> Array: return [paths[6], paths[7]]
 	warm.idle_seconds = 0.05
 	root.add_child(warm)
@@ -108,10 +111,20 @@ func _run() -> void:
 	_check(not warm.keeps(paths[6]) and _gone_from_loader(paths[6]), "Nothing starts while a chapter opens")
 	state.paused = false
 	_check(await _until(func() -> bool: return warm.keeps(paths[6]) and warm.keeps(paths[7])), "Idle Home loads the page's pictures ahead")
-	_check(await _until(func() -> bool: return not warm.is_processing()), "and the shelf rests once they are in")
 	var warmed := _picture(paths[7])
 	holder.add_child(warmed)
 	_check(warmed.texture != null and warmed.modulate.a == 1.0, "A card for a warmed picture shows it on its first frame")
+
+	# A world playing inside the owner (an online chapter): every picture goes.
+	state.playing = true
+	_check(await _until(func() -> bool: return not warm.keeps(paths[6]) and not warm.keeps(paths[7])), "While a chapter plays inside Main, the shelf keeps no picture")
+	var during := _picture(paths[6])
+	holder.add_child(during)
+	await create_timer(0.15).timeout
+	_check(during.texture == null and _gone_from_loader(paths[6]), "and loads none")
+	state.playing = false
+	_check(await _until(func() -> bool: return during.texture != null), "A card that waited through it fills once play ends")
+	_check(await _until(func() -> bool: return warm.keeps(paths[7])), "and idle Home warms the page again")
 
 	holder.free()
 	warm.free()

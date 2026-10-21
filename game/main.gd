@@ -343,6 +343,7 @@ func _ready() -> void:
 	var thumbnails := ThumbnailShelf.new()
 	thumbnails.idle = func() -> bool: return mode == "home" and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	thumbnails.paused = func() -> bool: return application_backgrounded or is_instance_valid(_chapter_opening)
+	thumbnails.playing = func() -> bool: return is_instance_valid(relay_child) or is_instance_valid(shared_replay_child)
 	thumbnails.warm_paths = _journey_thumbnail_paths
 	add_child(thumbnails)
 	world=World.new()

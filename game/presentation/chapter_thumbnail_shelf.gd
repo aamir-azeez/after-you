@@ -9,10 +9,12 @@ extends Node
 ##   meanwhile, so nothing moves.
 ## - While Home is idle (idle()), the pictures warm_paths() names are loaded
 ##   ahead, so the page opens filled even right after a chapter.
-## - Main owns it, so its pictures go with Main when a chapter opens: none is
-##   held while a chapter plays, and no static var holds a texture. It keeps
-##   only pictures cards asked for or warm_paths() named, one per picker card
-##   (about 3.7 MB each), as the open page itself held them.
+## - Main owns it, so its pictures go with Main when a chapter opens, and it
+##   lets them go while a world plays inside Main (playing(): an online
+##   chapter, a shared replay): none is held while a chapter plays, and no
+##   static var holds a texture. It keeps only pictures cards asked for or
+##   warm_paths() named, one per picker card (about 3.7 MB each), as the open
+##   page itself held them.
 ## - With no shelf in the tree (tests, tools), fill() loads at once, as before.
 const GROUP := "chapter_thumbnail_shelf"
 const IDLE_SECONDS := 0.5
@@ -24,9 +26,13 @@ var idle: Callable
 ## True while no load may start (a chapter opening, the app in the
 ## background); set by the owner.
 var paused: Callable
+## True while a world plays inside the owner; the shelf lets its pictures go
+## and starts none. Set by the owner.
+var playing: Callable
 ## The pictures the Chapters page shows, in its order; set by the owner.
 var warm_paths: Callable
 var idle_seconds := IDLE_SECONDS
+var fade_seconds := FADE_SECONDS
 
 ## Path to Texture2D for every picture loaded so far.
 var _kept: Dictionary = {}
@@ -83,6 +89,9 @@ func _process(delta: float) -> void:
 		_poll()
 		# The next one starts in the same frame its predecessor arrives.
 		if not _loading.is_empty(): return
+	if playing.is_valid() and playing.call():
+		if _warmed or not _kept.is_empty(): release()
+		return
 	if paused.is_valid() and paused.call():
 		_idle_for = 0.0
 		return
@@ -91,7 +100,16 @@ func _process(delta: float) -> void:
 		if _idle_for >= idle_seconds: _warm()
 	if not _wanted.is_empty(): _start(_wanted.pop_front())
 	elif not _ahead.is_empty(): _start(_ahead.pop_front())
-	elif _warmed: set_process(false)
+	# Holding pictures, it keeps watching playing(); holding none, it rests.
+	elif _warmed and _kept.is_empty(): set_process(false)
+
+## Lets every kept picture go and stops warming; the next idle Home warms
+## again. Cards still waiting keep their place in line.
+func release() -> void:
+	_kept.clear()
+	_ahead.clear()
+	_warmed = false
+	_idle_for = 0.0
 
 func _warm() -> void:
 	_warmed = true
@@ -129,7 +147,7 @@ func _arrive(path: String, texture: Texture2D) -> void:
 		rect.texture = texture
 		if texture == null or not rect.is_inside_tree(): continue
 		rect.modulate.a = 0.0
-		rect.create_tween().tween_property(rect, "modulate:a", 1.0, FADE_SECONDS)
+		rect.create_tween().tween_property(rect, "modulate:a", 1.0, fade_seconds)
 	_waiting.erase(path)
 
 func _exit_tree() -> void:

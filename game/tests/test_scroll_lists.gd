@@ -624,13 +624,12 @@ func _settle() -> void:
 static func _unfilled_pictures(node: Node) -> int:
 	return node.find_children("LevelPicture","TextureRect",true,false).filter(func(picture: TextureRect) -> bool: return picture.texture == null).size()
 
-## Waits a frame at a time, at most max_frames, while a card picture under node
-## is still loading off the main thread; returns how many are still empty.
-func _await_pictures(node: Node, max_frames: int = 300) -> int:
-	var frames := 0
-	while _unfilled_pictures(node) > 0 and frames < max_frames:
+## Waits a frame at a time, at most ten seconds, while a card picture under
+## node is still loading off the main thread; returns how many are still empty.
+func _await_pictures(node: Node) -> int:
+	var deadline := Time.get_ticks_msec() + 10000
+	while _unfilled_pictures(node) > 0 and Time.get_ticks_msec() < deadline:
 		await process_frame
-		frames += 1
 	return _unfilled_pictures(node)
 
 
