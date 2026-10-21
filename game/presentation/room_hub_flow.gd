@@ -13,7 +13,7 @@ extends Node
 ## - services: api, relay_session, shared_replays, tester_access, live_connection (read once, in _ready)
 ## - identity and access: _relay_identity, _ensure_identity, _tester_context,
 ##   _tester_checks_enabled, _load_cached_tester, _hosting_lock_reason,
-##   _online_gated, _friend_display_name, _chapter_marks
+##   _paid_content_hidden, _online_gated, _friend_display_name, _chapter_marks
 ## - screen: mode, running, ui, overlay, store_view_generation, lifecycle_generation,
 ##   application_backgrounded, _toast
 ## - room flow: active_room, _relay_available,
@@ -361,14 +361,18 @@ func _retry(kind: String) -> void:
 ## and hosts through hosting_key; once the server's chapters are known, a
 ## chapter it cannot create at any version is tagged unavailable online.
 ## Locks follow hosting access, which a Test Store purchase alone does not give.
+## A build that sells nothing lists only the free chapters to host; joining a
+## friend's room by code is unchanged.
 func together_chapters() -> Array[Dictionary]:
 	var reason: String = host._hosting_lock_reason()
+	var free_only: bool = host._paid_content_hidden()
 	var known: bool = host.relay_session != null and not host.relay_session.capabilities.is_empty()
 	var result: Array[Dictionary] = []
 	for offered: String in ChapterRegistry.offered_keys():
+		var item := ChapterPicker.entry(offered)
+		if free_only and item.premium: continue
 		var tag := ""
 		if known and not host.relay_session.supports_creation(ChapterRegistry.hosting_key(offered,host.relay_session.supports_creation)): tag = " · unavailable online"
-		var item := ChapterPicker.entry(offered)
 		item.locked = item.premium and not reason.is_empty()
 		item.tag = tag
 		if item.locked:

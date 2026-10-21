@@ -54,7 +54,7 @@ static func categories(host: Node) -> Array[Dictionary]:
 			"reset": {"rows": ["graphics_quality", "frame_rate"], "label": PlayerCopy.SETTINGS_RESET_GRAPHICS, "confirm": PlayerCopy.SETTINGS_RESET_GRAPHICS_CONFIRM}},
 		{"id": FRIENDS, "title": PlayerCopy.SETTINGS_FRIENDS, "icon": preload("res://assets/ui/whats_new/people.svg"), "summary_rows": ["turn_notifications"],
 			"on_open": func(): host.notification_flow.reconcile()},
-		{"id": ACCOUNT, "title": PlayerCopy.SETTINGS_ACCOUNT, "icon": preload("res://assets/ui/settings/user.svg"), "summary": PlayerCopy.SETTINGS_ACCOUNT_SUMMARY},
+		{"id": ACCOUNT, "title": PlayerCopy.SETTINGS_ACCOUNT, "icon": preload("res://assets/ui/settings/user.svg"), "summary": PlayerCopy.SETTINGS_ACCOUNT_SUMMARY_FREE if host._paid_content_hidden() else PlayerCopy.SETTINGS_ACCOUNT_SUMMARY},
 		{"id": ABOUT, "title": PlayerCopy.SETTINGS_ABOUT, "icon": preload("res://assets/ui/settings/info.svg"), "summary": PlayerCopy.SETTINGS_ABOUT_SUMMARY},
 	]
 
@@ -105,7 +105,8 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"inline": games.toggle_detail, "visible_if": func() -> bool: return games.offered() and account.panel_state() in ["ready", "missing"], "enabled_if": games.enabled},
 		{"id": "close_app", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CLOSE_APP, "run": func(): host.get_tree().quit(), "visible_if": state.call(["restart"])},
 		{"id": "hosting_access", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_HOSTING_ACCESS, "note": PlayerCopy.SETTINGS_HOSTING_ACCESS_NOTE,
-			"inline": func(detail: VBoxContainer, _row: Control): account.check_hosting_access(detail), "visible_if": state.call(["ready"]),
+			"inline": func(detail: VBoxContainer, _row: Control): account.check_hosting_access(detail),
+			"visible_if": func() -> bool: return account.panel_state() == "ready" and not host._paid_content_hidden(),
 			"enabled_if": func() -> bool: return not account.hosting_check_busy},
 		{"id": "restore_purchases", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_RESTORE, "note": PlayerCopy.SETTINGS_RESTORE_NOTE,
 			"run": host.store_flow.restore_purchases, "visible_if": func() -> bool: return account.panel_state() == "ready" and host._play_store_enabled()},

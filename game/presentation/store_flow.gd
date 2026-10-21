@@ -79,7 +79,7 @@ func show_paywall(manual_store: bool = false) -> void:
 		return
 	var key := str(host.config.get("revenuecat_public_key",""))
 	if key.is_empty() or not host.purchases.is_available():
-		card.add_child(host._paragraph(PlayerCopy.MAIN_FC1F8BAE026C,600))
+		card.add_child(host._paragraph(Purchases.store_unavailable_text(host.config,PlayerCopy.MAIN_FC1F8BAE026C),600))
 	else:
 		card.add_child(host._paragraph(PlayerCopy.MAIN_DD823B20A782,600))
 		_load_store.call_deferred()

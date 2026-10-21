@@ -6,6 +6,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const InboxClient = preload("res://services/room_inbox_client.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
+const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const Purchases = preload("res://services/purchases.gd")
@@ -1082,6 +1083,8 @@ func _part_line(room: Dictionary) -> String:
 	var total := 0
 	for chapter: Dictionary in chapters:
 		if str(chapter.get("key","")) == str(room.get("chapter_key","")): total = int(chapter.get("stage_count",0))
+	# A joined room's chapter may be one this build does not list for hosting.
+	if total <= 0 and str(room.get("chapter_key","")) in ChapterRegistry.offered_keys(): total = int(ChapterPicker.entry(str(room.get("chapter_key",""))).stage_count)
 	var part: int = Typed.as_int(room.get("part"))
 	if part <= 0 and room.has("stage_index"): part = Typed.as_int(room.get("stage_index")) + 1
 	if total <= 0: total = Typed.as_int(room.get("stage_count"))

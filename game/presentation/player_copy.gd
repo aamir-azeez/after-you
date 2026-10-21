@@ -285,6 +285,8 @@ const SETTINGS_FRIENDS := "Friends & notifications"
 const SETTINGS_NOTIFICATIONS := "Notifications"
 const SETTINGS_ACCOUNT := "Account & recovery"
 const SETTINGS_ACCOUNT_SUMMARY := "Codes, purchases & storage"
+## The same summary in an iOS build that sells nothing (Purchases.paid_content_hidden).
+const SETTINGS_ACCOUNT_SUMMARY_FREE := "Codes & storage"
 const SETTINGS_ABOUT := "About"
 const SETTINGS_ABOUT_SUMMARY := "Privacy, updates & licenses"
 const SETTINGS_SOUND_NOTE := "Game audio"

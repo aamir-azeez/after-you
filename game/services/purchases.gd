@@ -58,6 +58,15 @@ static func store_enabled(configuration: Dictionary) -> bool:
 	if Typed.equal(mode, "app_store"): return Typed.equal(entitlement, "full_journey_play") and PlatformSupport.is_ios()
 	return Typed.equal(mode, "test_store") and Typed.equal(entitlement, "full_journey")
 
+## The one rule every paid-content surface asks: true only on iOS while this build sells
+## nothing (no App Store or Test Store configuration, or no store key). App Review rejects
+## locked content that can't be bought, so such a build lists only the free chapters. It
+## reads the configuration alone, so a screen never redraws mid-session. Android, desktop
+## and iOS with a store are unchanged. Joining a friend's room is not a paid surface.
+static func paid_content_hidden(configuration: Dictionary) -> bool:
+	if not PlatformSupport.is_ios(): return false
+	return not store_enabled(configuration) or str(configuration.get("revenuecat_public_key", "")).is_empty()
+
 ## Where a subscriber manages the subscription, or "" when the store has no such page.
 static func subscriptions_url(configuration: Dictionary) -> String:
 	if not store_enabled(configuration): return ""
@@ -230,7 +239,12 @@ func _request(operation: String, arguments: Array, force: bool = false) -> Strin
 	return id
 
 func _store_disabled(id: String, operation: String) -> void:
-	_on_error(id, operation, "store_disabled", PlayerCopy.for_platform("Google Play", PlayerCopy.MAIN_FC1F8BAE026C), false)
+	_on_error(id, operation, "store_disabled", store_unavailable_text(_configuration, "Google Play"), false)
+
+## What a build that can't sell says about it. A free-chapters-only iOS build reuses its
+## App Store wording, never the old free-chapter list; every other build says `elsewhere`.
+static func store_unavailable_text(configuration: Dictionary, elsewhere: String) -> String:
+	return PlayerCopy.PURCHASES_49387E2DE82E_IOS if paid_content_hidden(configuration) else elsewhere
 
 func _unavailable(id: String, operation: String) -> void:
 	_on_error(id, operation, "android_required", PlayerCopy.for_platform(PlayerCopy.PURCHASES_49387E2DE82E, PlayerCopy.PURCHASES_49387E2DE82E_IOS), false)

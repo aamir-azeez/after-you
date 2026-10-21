@@ -686,7 +686,7 @@ func _show_home() -> void:
 	# A tap made while the room session is still busy waits on the Play button (RoomHubFlow.open_from_home).
 	menu.build({"play":room_hub_flow.open_from_home,"solo":_show_journey,"friends":_show_friends,"replays":replays_flow.show_collection,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
 	menu.set_play_icon(FriendPlayIcon.new())
-	menu.journey_offer.visible = not _full_journey_access()
+	menu.journey_offer.visible = _full_journey_offered()
 	if _whats_new_unseen: menu.mark_whats_new_unseen(Changelog.current_version())
 	home_stage.set_header_actions(menu.header_actions())
 
@@ -816,12 +816,14 @@ func hard_together() -> bool:
 ## The Chapters page's cards, as given to its picker (which shows free ones
 ## first): the solo-only Lighthouse, then every chapter with its own Solo card.
 ## With hard on: only chapters with hard runs, each locked until finished.
+## A build that sells nothing lists the free chapters alone (_paid_content_hidden).
 func _journey_entries(owned: bool, hard: bool = false) -> Array[Dictionary]:
 	var lighthouse := {"key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "title": "Sleeping Lighthouse", "premium": true,
 		"level_key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "mark": "sleeping-lighthouse@1"}
 	var entries: Array[Dictionary] = [lighthouse]
 	for key: String in ChapterRegistry.offered_keys():
 		if _own_solo_card(key): entries.append(ChapterPicker.entry(key))
+	if _paid_content_hidden(): entries = entries.filter(func(item: Dictionary) -> bool: return not item.premium)
 	for item: Dictionary in entries: item.locked = item.premium and not owned
 	return HardMode.picker_entries(entries, _chapter_marks()) if hard else entries
 
@@ -852,6 +854,9 @@ func _refresh_chapter_marks() -> void:
 	if mode != "journey" or not is_instance_valid(_journey_picker): return
 	_journey_picker.refresh_marks(_chapter_marks())
 
+## The earlier islands anyone can play; the rest need Full Journey.
+const FREE_ISLANDS := 3
+
 func _show_earlier_islands() -> void:
 	running=false
 	mode="earlier_islands"
@@ -859,9 +864,11 @@ func _show_earlier_islands() -> void:
 	var card := _card(800)
 	card.add_child(_label("Earlier islands.",34,CREAM,true))
 	card.add_child(_paragraph(PlayerCopy.MAIN_042C89C38B20,710))
-	var list := _scroll_list(card)
-	list.get_parent().custom_minimum_size.y = 340
-	for index in range(levels.size()):
+	# A build that sells nothing lists the free islands alone, which fit without a scroll.
+	var free_only := _paid_content_hidden()
+	var list := _scroll_list(card,not free_only)
+	if not free_only: list.get_parent().custom_minimum_size.y = 340
+	for index in range(FREE_ISLANDS if free_only else levels.size()):
 		var level: Dictionary=levels[index]
 		var locked: bool = index>=3 and not _full_journey_access()
 		var complete: bool = saves.data.completed.has(level.id)
@@ -1335,7 +1342,7 @@ func _show_celebration() -> void:
 	for reaction in ["Beautiful!","We did it!","Again soon"]:
 		row.add_child(_button(reaction,func(): _react(reaction),false))
 	card.add_child(row)
-	if level_index<7:
+	if level_index<7 and (room_play or level_index+1<FREE_ISLANDS or not _paid_content_hidden()):
 		card.add_child(_button("Next island",_next_island))
 	card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
 	card.add_child(_action_button("back",_show_home))
@@ -2593,7 +2600,7 @@ func _service_home_keepsakes(delta: float) -> void:
 	elif is_instance_valid(home_stage_view):
 		home_stage_view.set_keepsakes(home_keepsakes.earned_descriptors())
 		var offer := overlay.get_node_or_null("HomeFullJourney") as Button
-		if offer != null: offer.visible = not _full_journey_access()
+		if offer != null: offer.visible = _full_journey_offered()
 
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
@@ -2855,6 +2862,16 @@ func _tester_active() -> bool:
 
 func _full_journey_access() -> bool:
 	return _tester_active() or purchases.has_entitlement()
+
+## True on an iOS build that sells nothing: every paid surface (chapter cards,
+## earlier islands, the Full Journey offer, hosting access) is left out, never
+## shown locked. The one rule is Purchases.paid_content_hidden.
+func _paid_content_hidden() -> bool:
+	return Purchases.paid_content_hidden(config)
+
+## Home's Full Journey offer: shown while there is something to unlock and buy.
+func _full_journey_offered() -> bool:
+	return not _full_journey_access() and not _paid_content_hidden()
 
 ## Paid gates wait on the one saved tester receipt read for this identity.
 func _load_cached_tester() -> void:
