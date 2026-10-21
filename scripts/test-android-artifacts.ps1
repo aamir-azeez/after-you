@@ -137,6 +137,24 @@ N: android=http://schemas.android.com/apk/res/android
         Assert-True ($case.Value -cne $inviteTree) ('Invite manifest fixture did not change: ' + $case.Key)
         Assert-Rejected { Assert-AndroidInviteLinkManifest -ManifestTree $case.Value } ('Invite manifest check accepted: ' + $case.Key)
     }
+    # Sensor landscape on the game Activity, as aapt prints screenOrientation 6.
+    $gameLine = 'A: android:name(0x01010003)="com.godot.game.GodotApp" (Raw: "com.godot.game.GodotApp")'
+    $sensorTree = $inviteTree.Replace($gameLine, $gameLine + "`n        A: android:screenOrientation(0x0101001e)=(type 0x10)0x6")
+    Assert-True ($sensorTree -cne $inviteTree) 'Sensor landscape fixture did not change.'
+    Assert-AndroidSensorLandscape -ManifestTree $sensorTree
+    $checked++
+    Assert-AndroidSensorLandscape -ManifestTree ($sensorTree -replace "`n", "`r`n")
+    $checked++
+    $brokenOrientation = [ordered]@{
+        'No orientation' = $inviteTree
+        'Fixed landscape' = $sensorTree.Replace('(type 0x10)0x6', '(type 0x10)0x0')
+        'Reverse landscape only' = $sensorTree.Replace('(type 0x10)0x6', '(type 0x10)0x8')
+        'Other Activity' = $sensorTree.Replace('"com.godot.game.GodotApp" (Raw: "com.godot.game.GodotApp")', '"com.godot.game.OtherApp" (Raw: "com.godot.game.OtherApp")')
+    }
+    foreach ($case in $brokenOrientation.GetEnumerator()) {
+        Assert-True ($case.Value -cne $sensorTree) ('Orientation fixture did not change: ' + $case.Key)
+        Assert-Rejected { Assert-AndroidSensorLandscape -ManifestTree $case.Value } ('Orientation check accepted: ' + $case.Key)
+    }
     # Play Games: APP_ID as a resource reference, no start-up provider, and the build's exact id.
     . (Join-Path $PSScriptRoot 'android-play-games.ps1')
     $playMeta = @"

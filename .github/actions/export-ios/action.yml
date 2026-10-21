@@ -106,5 +106,30 @@ runs:
         plutil -p "$plist"
         grep -E 'PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|TARGETED_DEVICE_FAMILY|CODE_SIGN_STYLE' \
           "$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj" | sort -u || true
+        # Sensor landscape (project.godot): both landscape sides on iPhone and on iPad, never
+        # portrait. iPad runs full screen, with no multitasking resize.
+        for key in UISupportedInterfaceOrientations 'UISupportedInterfaceOrientations~ipad'; do
+          sides="$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist" 2>/dev/null)" || { echo "::error::$key is absent"; exit 1; }
+          for side in UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight; do
+            if ! grep -q "$side" <<<"$sides"; then
+              echo "::error::$key lacks $side"
+              exit 1
+            fi
+          done
+          if grep -q Portrait <<<"$sides"; then
+            echo "::error::$key allows portrait"
+            exit 1
+          fi
+        done
+        if [ "$(/usr/libexec/PlistBuddy -c 'Print :UIRequiresFullScreen' "$plist" 2>/dev/null)" != true ]; then
+          echo "::error::UIRequiresFullScreen must stay true"
+          exit 1
+        fi
+        # targeted_device_family=2 in the preset: iPhone (1) and iPad (2) in every build setting.
+        families="$(grep -E 'TARGETED_DEVICE_FAMILY' "$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj" || true)"
+        if [ -z "$families" ] || grep -vqE 'TARGETED_DEVICE_FAMILY = "?1,2"?;' <<<"$families"; then
+          echo "::error::The Xcode project must target iPhone and iPad (1,2): $families"
+          exit 1
+        fi
         find "$IOS_EXPORT" -maxdepth 2 -path '*.xcframework/Info.plist' -print -exec plutil -p {} \;
         xcodebuild -list -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj"

@@ -85,6 +85,14 @@ func _test_export_preset() -> void:
 		var attributes: Variant = presets.get_value(section + ".options", "gradle_build/custom_theme_attributes", {})
 		found = attributes is Dictionary and attributes.get("android:windowLayoutInDisplayCutoutMode") == "shortEdges" and attributes.get("[splash]android:windowLayoutInDisplayCutoutMode") == "shortEdges"
 	_check(found, "The Android preset lets the window draw into short-edge cutouts in both themes")
+	# Both landscape sides on every device (the owner's choice), so the cutout
+	# can sit on either edge; the iOS app runs on iPhone and iPad, full screen.
+	_check(int(ProjectSettings.get_setting("display/window/handheld/orientation")) == DisplayServer.SCREEN_SENSOR_LANDSCAPE, "The app turns to either landscape side (sensor landscape)")
+	var ios := false
+	for section: String in presets.get_sections():
+		if section.ends_with(".options") or str(presets.get_value(section, "platform", "")) != "iOS": continue
+		ios = int(presets.get_value(section + ".options", "application/targeted_device_family", -1)) == 2
+	_check(ios, "The iOS preset targets iPhone and iPad")
 
 ## A backdrop under an inset parent keeps covering the viewport when the inset
 ## grows, swaps sides at the same width (a 180 degree flip) or disappears, and its
@@ -128,9 +136,25 @@ func _test_watch() -> void:
 	screen.propagate_notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
 	await process_frame
 	_check(calls[0] == 2, "Returning to the foreground relays out the screen (a cutout can move without a resize)")
+	# A half turn moves the cutout to the other edge with no size change and no
+	# event; the poll Main runs twice a second notices it.
+	var native := root.get_screen_transform() * root.get_visible_rect()
+	SafeArea.simulate(Rect2(native.position + Vector2(INSET, 0), native.size - Vector2(INSET, 0)))
+	SafeArea.poll(self)
+	_check(calls[0] == 3, "A cutout that appears relays out the screen")
+	_check(not SafeArea.poll(self) and calls[0] == 3, "An unchanged safe rect relays out nothing")
+	SafeArea.simulate(Rect2(native.position, native.size - Vector2(INSET, 0)))
+	_check(SafeArea.poll(self) and calls[0] == 4, "A half turn that moves the cutout to the other edge relays out the screen")
+	SafeArea.simulate(Rect2())
+	SafeArea.poll(self)
+	_check(calls[0] == 5, "Clearing the cutout relays out the screen")
 	screen.free()
 	root.size_changed.emit()
-	_check(calls[0] == 2, "A freed screen is not called again")
+	SafeArea.simulate(Rect2(native.position, native.size - Vector2(INSET, 0)))
+	SafeArea.poll(self)
+	SafeArea.simulate(Rect2())
+	SafeArea.poll(self)
+	_check(calls[0] == 5, "A freed screen is not called again")
 
 func _test_screens() -> void:
 	var path := "user://cutout-full-bleed-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"

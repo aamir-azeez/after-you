@@ -270,6 +270,7 @@ try {
     if ($manifestTree -notmatch 'com\.aamirazeez\.afteryou\.nativebridge\.AfterYouAndroid') { throw 'APK does not contain the expected native plugin registration.' }
     Assert-AndroidInviteLinkManifest -ManifestTree $manifestTree
     Assert-AndroidPlayGamesManifest -ManifestTree $manifestTree
+    Assert-AndroidSensorLandscape -ManifestTree $manifestTree
     if ($manifestTree -notmatch 'android:usesCleartextTraffic[^\r\n]*\(type 0x12\)0x0\s') { throw 'APK cleartext network restriction was not retained.' }
     if ($manifestTree -notmatch 'android:allowBackup[^\r\n]*\(type 0x12\)0xffffffff') { throw 'APK must allow backup through its own agent.' }
     if ($manifestTree -notmatch 'android:backupAgent[^\r\n]*com\.aamirazeez\.afteryou\.nativebridge\.AfterYouBackupAgent') { throw 'APK does not name the quota-aware backup agent.' }

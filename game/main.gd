@@ -363,6 +363,7 @@ func _ready() -> void:
 	_build_ui()
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	SafeArea.watch(self,_refresh_safe_area)
+	SafeArea.follow_turns(self)
 	_refresh_safe_area()
 	_refresh_safe_area.call_deferred()
 	_apply_settings()

@@ -11,6 +11,10 @@ const Watch = preload("res://presentation/safe_area_watch.gd")
 ## Tests and captures: a native safe rectangle to use instead of the display's.
 ## While set, the safe area applies on desktop too. Rect2() clears it.
 static var _simulated := Rect2()
+## The native safe rectangle at the last poll (follow_turns).
+static var _seen := Rect2()
+## How often a phone reads its safe rectangle again (follow_turns).
+const TURN_POLL_SECONDS := 0.5
 
 static func simulate(native_safe: Rect2) -> void:
 	_simulated = native_safe
@@ -23,8 +27,34 @@ static func applies() -> bool:
 static func rect(viewport: Viewport) -> Rect2:
 	var visible := viewport.get_visible_rect()
 	if not applies(): return visible
-	var native := _simulated if _simulated.has_area() else Rect2(DisplayServer.get_display_safe_area())
-	return viewport_rect(native, viewport.get_screen_transform(), visible)
+	return viewport_rect(native(), viewport.get_screen_transform(), visible)
+
+## The native safe rectangle in screen pixels, or Rect2() where none applies.
+static func native() -> Rect2:
+	if not applies(): return Rect2()
+	return _simulated if _simulated.has_area() else Rect2(DisplayServer.get_display_safe_area())
+
+## Both landscape sides are allowed (sensor landscape). A half turn keeps the
+## screen size and sends no event, yet moves the cutout to the other edge, so
+## `host` (Main, which lasts the whole session) reads the safe rectangle again
+## twice a second and every watched screen relays out when it moved.
+static func follow_turns(host: Node) -> void:
+	_seen = native()
+	var timer := Timer.new()
+	timer.name = "SafeAreaTurns"
+	timer.wait_time = TURN_POLL_SECONDS
+	timer.autostart = true
+	timer.timeout.connect(func() -> void: poll(timer.get_tree()))
+	host.add_child(timer, false, Node.INTERNAL_MODE_BACK)
+
+## Relays out every watched screen (watch) when the native safe rectangle
+## moved since the last poll. Returns whether it moved.
+static func poll(tree: SceneTree) -> bool:
+	var now := native()
+	if now == _seen: return false
+	_seen = now
+	tree.call_group(Watch.GROUP, "relayout_now")
+	return true
 
 static func viewport_rect(screen_safe: Rect2, screen_transform: Transform2D, viewport: Rect2) -> Rect2:
 	if not screen_safe.is_finite() or not screen_transform.is_finite() or not screen_safe.has_area() or is_zero_approx(screen_transform.determinant()):

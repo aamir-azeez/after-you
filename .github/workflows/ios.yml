@@ -153,12 +153,18 @@ jobs:
             exit 1
           fi
           for key in CFBundleIdentifier CFBundleDisplayName CFBundleShortVersionString CFBundleVersion \
-            MinimumOSVersion UIDeviceFamily UISupportedInterfaceOrientations UIRequiresFullScreen \
+            MinimumOSVersion UIDeviceFamily UISupportedInterfaceOrientations UISupportedInterfaceOrientations~ipad UIRequiresFullScreen \
             ITSAppUsesNonExemptEncryption NSCameraUsageDescription NSMicrophoneUsageDescription \
             NSPhotoLibraryUsageDescription; do
             printf '%s: ' "$key"
             /usr/libexec/PlistBuddy -c "Print :$key" "$app/Info.plist" 2>/dev/null || echo "(absent)"
           done | tee "$IOS_LOGS/app-identity.txt"
+          # The built app runs on iPhone (1) and iPad (2).
+          family="$(/usr/libexec/PlistBuddy -c 'Print :UIDeviceFamily' "$app/Info.plist")"
+          if ! grep -qxE ' *1' <<<"$family" || ! grep -qxE ' *2' <<<"$family"; then
+            echo "::error::UIDeviceFamily must hold 1 and 2, not $family"
+            exit 1
+          fi
           # The executable must be arm64 code for the iOS (device) platform.
           lipo -info "$app/$executable" | tee -a "$IOS_LOGS/app-identity.txt"
           xcrun vtool -show-build "$app/$executable" | tee -a "$IOS_LOGS/app-identity.txt"

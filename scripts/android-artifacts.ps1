@@ -72,6 +72,16 @@ function Assert-AndroidInviteLinkManifest {
     if ($verified.Count -ne 1 -or $webLinks.Count -ne 2) { throw 'No other component may claim web links or App Link verification.' }
 }
 
+# Sensor landscape (project.godot): the game Activity turns to either landscape side.
+function Assert-AndroidSensorLandscape {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][string]$ManifestTree)
+    $manifest = ConvertFrom-AndroidXmlTree -Tree $ManifestTree
+    $game = @(Get-AndroidXmlElements $manifest 'activity' | Where-Object { $_.Attributes['name'] -eq 'com.godot.game.GodotApp' })
+    # 6 is sensorLandscape in the platform's screenOrientation values.
+    if ($game.Count -ne 1 -or $game[0].Attributes['screenOrientation'] -cne '(type 0x10)0x6') { throw 'The game Activity must use sensorLandscape.' }
+}
+
 function Resolve-AndroidCandidatePath {
     [CmdletBinding()]
     param(
