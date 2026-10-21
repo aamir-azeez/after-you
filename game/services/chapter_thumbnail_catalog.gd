@@ -42,11 +42,15 @@ static func path(key: String) -> String:
 	var chapter := Index.data(key)
 	return str(chapter.thumbnail) if not chapter.is_empty() else str(OTHER_THUMBNAILS.get(key, ""))
 
-static func texture(key: String) -> Texture2D:
+## Whether key has a bundled picture, without loading it.
+static func has_picture(key: String) -> bool:
 	var resource_path := path(key)
-	if resource_path.is_empty() or not ResourceLoader.exists(resource_path):
+	return not resource_path.is_empty() and ResourceLoader.exists(resource_path)
+
+static func texture(key: String) -> Texture2D:
+	if not has_picture(key):
 		return null
-	return load(resource_path) as Texture2D
+	return load(path(key)) as Texture2D
 
 static func entry(key: String) -> Dictionary:
 	var resource_path := path(key)

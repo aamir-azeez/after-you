@@ -1373,7 +1373,7 @@ func _add_shared_room_selector(left: VBoxContainer) -> void:
 func _shared_room_thumb_key(row: Dictionary = {}) -> String:
 	var room := _current_shared_room()
 	var key := str(room.get("chapter_key","")) if not room.is_empty() else ""
-	if not key.is_empty() and ChapterThumbnailCatalog.texture(key) != null: return key
+	if not key.is_empty() and ChapterThumbnailCatalog.has_picture(key): return key
 	# Earlier-island rooms: match the part to its island for a real picture.
 	var title := str(row.get("title",""))
 	for level: Dictionary in host.levels:

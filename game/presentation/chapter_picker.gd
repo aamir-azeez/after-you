@@ -180,17 +180,18 @@ static func locked_picture_material() -> ShaderMaterial:
 ## of a thin sliver. The art runs edge to edge and the frame's rounded corners
 ## clip it. The picture is loaded here, from the thumbnail catalog.
 static func thumbnail(key: String, min_size: Vector2, radius: int) -> Control:
-	var frame := _frame(min_size, radius)
+	var frame := picture_frame(min_size, radius)
 	(frame.get_child(0) as TextureRect).texture = Thumbnails.texture(key)
 	return frame
 
 ## The frame with its picture still empty: its own dark fill shows until the
-## picture is set, at the same size, so setting it later moves nothing.
-static func _frame(min_size: Vector2, radius: int) -> PanelContainer:
+## picture is set, at the same size, so setting it later moves nothing. Its
+## picture is its only child. Square frames (radius 0) skip the rounded clip.
+static func picture_frame(min_size: Vector2, radius: int) -> PanelContainer:
 	var frame := PanelContainer.new()
 	frame.custom_minimum_size = min_size
 	frame.clip_contents = true
-	frame.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
+	if radius > 0: frame.clip_children = CanvasItem.CLIP_CHILDREN_AND_DRAW
 	if min_size.x > 0: frame.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if not _thumb_masks.has(radius):
@@ -275,7 +276,7 @@ func _card(item: Dictionary, picture: Vector2) -> PanelContainer:
 	content.add_child(line)
 	# The picture comes from the shelf Main keeps: at once when it holds it,
 	# else loaded off the main thread and filled in (chapter_thumbnail_shelf.gd).
-	var frame := _frame(picture,12)
+	var frame := picture_frame(picture,12)
 	frame.get_child(0).name = "LevelPicture"
 	ThumbnailShelf.fill(frame.get_child(0) as TextureRect,Thumbnails.path(key))
 	if locked:

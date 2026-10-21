@@ -1,7 +1,7 @@
 extends Node
-## Loads the chapter pictures picker cards show on the loader's threads and
-## keeps them while Main is up, so opening the Chapters page never decodes a
-## 1280x720 picture in a frame.
+## Loads the chapter pictures picker cards and the room hub show on the
+## loader's threads and keeps them while Main is up, so opening the Chapters
+## page or the room hub never decodes a 1280x720 picture in a frame.
 ##
 ## - A card asks through fill(): a picture already kept is set at once, so the
 ##   card draws filled; any other is loaded off the main thread, one at a time,
@@ -13,8 +13,8 @@ extends Node
 ##   lets them go while a world plays inside Main (playing(): an online
 ##   chapter, a shared replay): none is held while a chapter plays, and no
 ##   static var holds a texture. It keeps only pictures cards asked for or
-##   warm_paths() named, one per picker card (about 3.7 MB each), as the open
-##   page itself held them.
+##   warm_paths() named, at most one per chapter picture in the catalog (about
+##   3.7 MB each), as the open Chapters page itself held them.
 ## - With no shelf in the tree (tests, tools), fill() loads at once, as before.
 const GROUP := "chapter_thumbnail_shelf"
 const IDLE_SECONDS := 0.5
@@ -60,7 +60,8 @@ static func fill(rect: TextureRect, path: String) -> void:
 	else: rect.tree_entered.connect(func(): _fill_in_tree(rect, path), CONNECT_ONE_SHOT)
 
 static func _fill_in_tree(rect: TextureRect, path: String) -> void:
-	if not is_instance_valid(rect) or rect.texture != null: return
+	# A rect given another path before it entered the tree shows only that one.
+	if not is_instance_valid(rect) or rect.texture != null or str(rect.get_meta(PATH_META, "")) != path: return
 	var shelf := rect.get_tree().get_first_node_in_group(GROUP)
 	if shelf == null: rect.texture = load(path) as Texture2D
 	else: shelf.want(rect, path)

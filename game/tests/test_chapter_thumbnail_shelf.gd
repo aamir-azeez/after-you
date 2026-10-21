@@ -2,9 +2,11 @@ extends SceneTree
 ## The chapter thumbnail shelf (presentation/chapter_thumbnail_shelf.gd): a
 ## card's picture loads off the main thread and fills in, a kept one shows at
 ## once, idle Home warms the page's pictures ahead, and nothing is left on the
-## loader when a card or the shelf goes.
+## loader when a card or the shelf goes. The room hub's pictures come
+## through it the same way.
 const Shelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Catalog = preload("res://services/chapter_thumbnail_catalog.gd")
+const Hub = preload("res://presentation/room_hub_screen.gd")
 
 var checks := 0
 var failures := 0
@@ -125,6 +127,35 @@ func _run() -> void:
 	state.playing = false
 	_check(await _until(func() -> bool: return during.texture != null), "A card that waited through it fills once play ends")
 	_check(await _until(func() -> bool: return warm.keeps(paths[7])), "and idle Home warms the page again")
+
+	# The room hub's hero and room card pictures, through the same shelf.
+	var keys := Catalog.keys()
+	_check(Catalog.has_picture(keys[0]) and not Catalog.has_picture("no-such-chapter"), "The catalog says which chapters have a picture without loading one")
+	warm.fade_seconds = 1.0
+	var hub := Hub.new()
+	hub.thumbnail_for = func(key: String) -> String: return Catalog.path(key)
+	var offered: Array[Dictionary] = [{"key": keys[0], "title": "First"}, {"key": keys[1], "title": "Second"}, {"key": "no-such-chapter", "title": "Bare"}]
+	hub.set_chapters(offered)
+	root.add_child(hub)
+	_check(hub._hero.texture == null and warm.busy(), "The hub never loads its picture in the frame it opens")
+	_check(await _until(func() -> bool: return hub._hero.texture != null), "The hub's picture arrives from the loader's threads")
+	_check(hub._hero.modulate.a < 1.0 and hub._hero.texture == warm._kept.get(paths[0]), "and fades in, as a card's does")
+	hub._selected_key = keys[1]
+	hub._update_hero()
+	hub._selected_key = "no-such-chapter"
+	hub._update_hero()
+	_check(await _until(func() -> bool: return not warm.busy()), "The last chapter's picture finishes loading")
+	_check(hub._hero.texture == null, "but never shows on a chapter with none")
+	hub._selected_key = keys[0]
+	hub._update_hero()
+	_check(hub._hero.texture == warm._kept.get(paths[0]), "A kept picture shows on the hub at once")
+	var card_picture: Control = hub._room_picture(keys[2], Vector2(154, 96))
+	_check(hub._room_picture("no-such-chapter", Vector2(154, 96)) == null, "A room for a chapter with no picture gets no frame")
+	holder.add_child(card_picture)
+	var card_image := card_picture.get_child(0) as TextureRect
+	_check(card_image.texture == null, "A room card never loads its picture in the frame it joins")
+	_check(await _until(func() -> bool: return card_image.texture != null), "and it fills in through the shelf")
+	hub.free()
 
 	holder.free()
 	warm.free()

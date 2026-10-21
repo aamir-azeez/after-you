@@ -6,6 +6,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const InboxClient = preload("res://services/room_inbox_client.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
+const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
@@ -256,16 +257,17 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 	title.add_theme_font_override("font",heading_font)
 	title.add_theme_font_size_override("font_size",28)
 	box.add_child(title)
-	_hero = TextureRect.new()
+	# The picker's square dark frame shows until the picture arrives. The
+	# picture inside sets the height, so _fit_hero can still shrink it.
+	var hero_frame := ChapterPicker.picture_frame(Vector2.ZERO,0)
+	hero_frame.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_hero = hero_frame.get_child(0) as TextureRect
 	_hero.custom_minimum_size = Vector2(0,150)
 	# Keep the chapter picture at a steady 2.4:1 so the whole island arrangement
 	# stays visible instead of a thin, cropped strip of scenery.
 	_hero.resized.connect(_fit_hero)
 	_right_scroll.resized.connect(_fit_hero)
-	_hero.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-	_hero.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-	_hero.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	box.add_child(_hero)
+	box.add_child(hero_frame)
 	_hero_title = Label.new()
 	_hero_title.add_theme_font_override("font",heading_font)
 	_hero_title.add_theme_font_size_override("font_size",24)
@@ -598,9 +600,7 @@ func _update_hero() -> void:
 	var chapter: Dictionary = chapters[maxi(0,_chapter_index(_selected_key))]
 	_hero_title.text = str(chapter.get("title",chapter.get("key","Chapter")))
 	_chapter_choice.text = _hero_title.text
-	var texture: Variant = thumbnail_for.call(str(chapter.get("key",""))) if thumbnail_for.is_valid() else _catalog_thumbnail(str(chapter.get("key","")))
-	if texture is String: texture = load(texture) if not (texture as String).is_empty() else null
-	_hero.texture = texture if texture is Texture2D else null
+	_show_hero_picture(_thumbnail(str(chapter.get("key",""))))
 	if is_instance_valid(_host):
 		var needs_code := _needs_tester_code(str(chapter.get("key","")))
 		_host_note.text = str(chapter.get("note","")) if needs_code else ""
@@ -766,15 +766,8 @@ func _add_room_card(room: Dictionary) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",12)
 	card.add_child(row)
-	var texture: Variant = thumbnail_for.call(str(room.chapter_key)) if thumbnail_for.is_valid() else _catalog_thumbnail(str(room.chapter_key))
-	if texture is String: texture = load(texture)
-	if texture is Texture2D:
-		var image := TextureRect.new()
-		image.texture = texture
-		image.custom_minimum_size = Vector2(154,96)
-		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		row.add_child(image)
+	var picture := _room_picture(str(room.chapter_key),Vector2(154,96))
+	if picture != null: row.add_child(picture)
 	var details := VBoxContainer.new()
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1011,15 +1004,8 @@ func _add_hidden_card(room: Dictionary) -> void:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation",12)
 	card.add_child(row)
-	var texture: Variant = thumbnail_for.call(str(room.chapter_key)) if thumbnail_for.is_valid() else _catalog_thumbnail(str(room.chapter_key))
-	if texture is String: texture = load(texture)
-	if texture is Texture2D:
-		var image := TextureRect.new()
-		image.texture = texture
-		image.custom_minimum_size = Vector2(104,64)
-		image.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		image.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
-		row.add_child(image)
+	var picture := _room_picture(str(room.chapter_key),Vector2(104,64))
+	if picture != null: row.add_child(picture)
 	var details := VBoxContainer.new()
 	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	details.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -1109,6 +1095,36 @@ func _catalog_thumbnail(chapter_key: String) -> Variant:
 	var script: Script = load("res://services/chapter_thumbnail_catalog.gd")
 	if script == null: return null
 	return script.path(chapter_key)
+
+## The picture thumbnail_for names for chapter_key: a path, or a texture a
+## caller gives directly.
+func _thumbnail(chapter_key: String) -> Variant:
+	return thumbnail_for.call(chapter_key) if thumbnail_for.is_valid() else _catalog_thumbnail(chapter_key)
+
+## Shows picture on the hero as the picker cards show theirs: a texture at
+## once, a path through Main's shelf (at once when kept, else loaded off the
+## main thread and faded in). The same path again leaves the hero as it is.
+func _show_hero_picture(picture: Variant) -> void:
+	var path := str(picture) if picture is String else ""
+	if not path.is_empty() and str(_hero.get_meta(ThumbnailShelf.PATH_META,"")) == path: return
+	# A picture still on its way for the last chapter never shows on this one.
+	_hero.set_meta(ThumbnailShelf.PATH_META,path)
+	_hero.texture = picture if picture is Texture2D else null
+	ThumbnailShelf.fill(_hero,path)
+
+## A room card's chapter picture in the picker's square dark frame, filled as
+## the picker cards are; null when the chapter has no picture.
+func _room_picture(chapter_key: String, min_size: Vector2) -> Control:
+	var picture: Variant = _thumbnail(chapter_key)
+	var path := str(picture) if picture is String else ""
+	if not picture is Texture2D and (path.is_empty() or not ResourceLoader.exists(path)): return null
+	var frame := ChapterPicker.picture_frame(min_size,0)
+	# As tall as the card's row, as the picture was before it had a frame.
+	frame.size_flags_vertical = Control.SIZE_FILL
+	var image := frame.get_child(0) as TextureRect
+	if picture is Texture2D: image.texture = picture
+	else: ThumbnailShelf.fill(image,path)
+	return frame
 
 func _request_host() -> void:
 	if _needs_tester_code(_selected_key): tester_code_requested.emit()
