@@ -140,6 +140,7 @@ func _cards(node: Node) -> Array[Control]:
 
 func _picture_drag(app: Node, viewport: SubViewport, scroll: ScrollContainer, card: Control) -> void:
 	scroll.ensure_control_visible(card); await _settle()
+	await _await_pictures(card)
 	var picture := card.find_child("LevelPicture",true,false) as TextureRect
 	_check(picture!=null and picture.texture!=null and picture.mouse_filter==Control.MOUSE_FILTER_IGNORE,"Thumbnail loads as a non-interactive static picture")
 	var before: int=app.routed.size()

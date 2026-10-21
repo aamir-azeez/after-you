@@ -620,6 +620,19 @@ func _settle() -> void:
 	await process_frame
 	await process_frame
 
+## Chapter card pictures under node still waiting for their texture.
+static func _unfilled_pictures(node: Node) -> int:
+	return node.find_children("LevelPicture","TextureRect",true,false).filter(func(picture: TextureRect) -> bool: return picture.texture == null).size()
+
+## Waits a frame at a time, at most max_frames, while a card picture under node
+## is still loading off the main thread; returns how many are still empty.
+func _await_pictures(node: Node, max_frames: int = 300) -> int:
+	var frames := 0
+	while _unfilled_pictures(node) > 0 and frames < max_frames:
+		await process_frame
+		frames += 1
+	return _unfilled_pictures(node)
+
 
 func _check(condition: bool, description: String) -> void:
 	checks += 1

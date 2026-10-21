@@ -5,6 +5,7 @@ extends ScrollContainer
 ## owns the picker decides what the button does through `chosen`.
 const PlaySquare = preload("res://presentation/play_square.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
+const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -177,8 +178,15 @@ static func locked_picture_material() -> ShaderMaterial:
 
 ## A steady framed chapter picture that keeps a full 16:9/2:1 cover crop instead
 ## of a thin sliver. The art runs edge to edge and the frame's rounded corners
-## clip it. Textures come from the thumbnail catalog's cached resources.
+## clip it. The picture is loaded here, from the thumbnail catalog.
 static func thumbnail(key: String, min_size: Vector2, radius: int) -> Control:
+	var frame := _frame(min_size, radius)
+	(frame.get_child(0) as TextureRect).texture = Thumbnails.texture(key)
+	return frame
+
+## The frame with its picture still empty: its own dark fill shows until the
+## picture is set, at the same size, so setting it later moves nothing.
+static func _frame(min_size: Vector2, radius: int) -> PanelContainer:
 	var frame := PanelContainer.new()
 	frame.custom_minimum_size = min_size
 	frame.clip_contents = true
@@ -193,7 +201,6 @@ static func thumbnail(key: String, min_size: Vector2, radius: int) -> Control:
 		_thumb_masks[radius] = mask
 	frame.add_theme_stylebox_override("panel",_thumb_masks[radius])
 	var picture := TextureRect.new()
-	picture.texture = Thumbnails.texture(key)
 	picture.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	picture.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_COVERED
 	picture.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -266,8 +273,11 @@ func _card(item: Dictionary, picture: Vector2) -> PanelContainer:
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_theme_constant_override("separation",16)
 	content.add_child(line)
-	var frame := thumbnail(key,picture,12)
+	# The picture comes from the shelf Main keeps: at once when it holds it,
+	# else loaded off the main thread and filled in (chapter_thumbnail_shelf.gd).
+	var frame := _frame(picture,12)
 	frame.get_child(0).name = "LevelPicture"
+	ThumbnailShelf.fill(frame.get_child(0) as TextureRect,Thumbnails.path(key))
 	if locked:
 		var art := frame.get_child(0) as CanvasItem
 		art.self_modulate = LOCKED_PICTURE_TINT

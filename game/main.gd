@@ -63,6 +63,7 @@ const SCREEN_BACK := &"screen_back"
 const Changelog = preload("res://services/changelog.gd")
 const WhatsNewCard = preload("res://presentation/whats_new_card.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
+const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const PresenceBadge = preload("res://presentation/friend_presence_badge.gd")
 const Toast = preload("res://presentation/toast.gd")
 const FriendPlayIcon = preload("res://presentation/friend_play_icon.gd")
@@ -339,6 +340,11 @@ func _ready() -> void:
 	_gl_warmup.next_chapter = _next_solo_chapter
 	_gl_warmup.idle = func() -> bool: return mode in ["home", "journey"] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	add_child(_gl_warmup)
+	var thumbnails := ThumbnailShelf.new()
+	thumbnails.idle = func() -> bool: return mode == "home" and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
+	thumbnails.paused = func() -> bool: return application_backgrounded or is_instance_valid(_chapter_opening)
+	thumbnails.warm_paths = _journey_thumbnail_paths
+	add_child(thumbnails)
 	world=World.new()
 	add_child(world)
 	_sync_world_processing()
@@ -817,6 +823,14 @@ func _journey_entries(owned: bool, hard: bool = false) -> Array[Dictionary]:
 		if _own_solo_card(key): entries.append(ChapterPicker.entry(key))
 	for item: Dictionary in entries: item.locked = item.premium and not owned
 	return HardMode.picker_entries(entries, _chapter_marks()) if hard else entries
+
+## The Chapters page's pictures in its card order, which the thumbnail shelf
+## loads ahead while Home is idle.
+func _journey_thumbnail_paths() -> Array[String]:
+	var paths: Array[String] = []
+	for item: Dictionary in ChapterPicker.shown_order(_journey_entries(_full_journey_access())):
+		paths.append(ChapterThumbnailCatalog.path(str(item.key)))
+	return paths
 
 ## The chapter the player most likely opens next: the first card the Chapters
 ## page shows, in its order, that is open to them and not yet finished solo;

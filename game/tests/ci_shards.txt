@@ -38,6 +38,7 @@ chapter_picker 1
 chapter_registry 2
 chapter_settings_compatibility 3
 chapter_thumbnail_catalog 3
+chapter_thumbnail_shelf 3
 choice_buttons 3
 ci_shards 2
 comfort_bounds 2

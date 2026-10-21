@@ -174,11 +174,21 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		app.home_keepsakes._earned[id]={"solo":true,"friend":false}
 	for id: String in KeepsakeCatalog.chapter_places(Chapters.RELAY):
 		app.home_keepsakes._earned[id]={"solo":false,"friend":true}
+	var context := " at "+str(viewport.size)
+	var shelf: Node = app.find_child("ChapterThumbnailShelf",false,false)
+	var kept: bool = shelf != null and app._journey_thumbnail_paths().all(func(path: String) -> bool: return shelf.keeps(path))
+	_check(kept or viewport.size == Vector2i(1280,720),"Pictures the page showed stay kept for its next visit"+context)
 	app._show_journey()
+	# The page never loads a picture in its own frame: one Home already keeps
+	# shows at once, any other fills in from the loader's threads.
+	_check(not kept or _unfilled_pictures(app.overlay) == 0,"With every picture kept, the page shows them all on its first frame"+context)
+	_check(await _await_pictures(app.overlay) == 0,"Every card's picture fills in"+context)
+	var pictures: Array[String] = []
+	for picture: Node in app.overlay.find_children("LevelPicture","TextureRect",true,false): pictures.append(str(picture.get_meta("thumbnail_path","")))
+	_check(pictures == app._journey_thumbnail_paths(),"Idle Home warms exactly the page's pictures, in card order"+context)
 	await _settle()
 	var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]
 	await _picker_structure(app,viewport,scroll)
-	var context := " at "+str(viewport.size)
 	_check(scroll.get_script() == preload("res://presentation/chapter_picker.gd"),"Play Solo uses the chapter picker shared with Play with a friend")
 	# A square play button is the only control per chapter: it opens the chapter solo.
 	# Playing together starts from Play with your friend, so nothing else is offered.
