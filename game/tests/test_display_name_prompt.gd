@@ -430,6 +430,18 @@ func _platform_follows() -> void:
 	await _click(prompt.platform_row)
 	await _frames(3)
 	_check(games.reads == 2 and prompt.choice() == "platform", "Signed in again, the name is read again (the account may differ)")
+	# Another account during one press: signed out, then in, before the release.
+	at = prompt.platform_row.get_global_rect().get_center()
+	_mouse(at, true)
+	await _frames(1)
+	games.on = false
+	games.changed.emit()
+	games.on = true
+	games.changed.emit()
+	await _frames(1)
+	_mouse(at, false)
+	await _frames(2)
+	_check(prompt.platform_row != null and prompt._platform_name.is_empty() and prompt.choice() == "typed" and prompt.tag.text == "Robin", "A sign-out and sign-in during one press still drop the old account's name")
 	modal.close()
 	await _frames(3)
 	_check(games.changed.get_connections().is_empty(), "Closed, the card stops listening")

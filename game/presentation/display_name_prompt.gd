@@ -58,9 +58,12 @@ var _platform_note: Label
 ## The rows' column, and the platform row's label as shown ("" for none).
 var _column: VBoxContainer
 var _platform_label := ""
-## A platform change held back until the pressed button is let go.
+## A platform change held back until the pressed button is let go, and whether
+## a sign-out came while it waited.
 var _platform_waiting := false
+var _platform_held: BaseButton = null
 var _platform_pending := ""
+var _platform_drop_pending := false
 var _context: Dictionary = {}
 var _choice := "typed"
 var _platform_name := ""
@@ -256,31 +259,49 @@ func _platform_changed() -> void:
 ## the anonymous row. Focus and the choice stay put; only a platform choice
 ## whose row goes falls back to the typed name. A change that lands while a
 ## finger is down on the card waits for its release: the rows shift, and the
-## release would miss the button it pressed.
+## release would miss the button it pressed. A sign-out seen while it waits
+## still drops the old account's name, even if a sign-in follows before the release.
 func set_platform(label: String) -> void:
 	if not is_instance_valid(modal): return
-	if _platform_waiting:
-		_platform_pending = label
-		return
-	if label == _platform_label: return
+	if label == _platform_label and not _platform_waiting: return
 	var held := TouchInput.held_button(modal)
 	if held != null:
-		_platform_waiting = true
+		if label.is_empty(): _platform_drop_pending = true
 		_platform_pending = label
-		held.button_up.connect(_platform_released, CONNECT_ONE_SHOT | CONNECT_DEFERRED)
+		_wait_for_release(held)
 		return
-	if label.is_empty(): _drop_platform()
-	elif platform_row == null: _add_platform(label)
-	else:
-		(platform_row.find_child("Title", true, false) as Label).text = label
-		platform_row.accessibility_name = label
-		_platform_label = label
+	_stop_waiting()
+	if _platform_drop_pending or label.is_empty(): _drop_platform()
+	_platform_drop_pending = false
+	if not label.is_empty():
+		if platform_row == null: _add_platform(label)
+		else:
+			(platform_row.find_child("Title", true, false) as Label).text = label
+			platform_row.accessibility_name = label
+			_platform_label = label
 	_show()
 	modal.refresh_focus_order()
 
-func _platform_released() -> void:
+## The held button's release, or anything that ends its press without one
+## (focus taken by another card, hidden, removed), applies the waiting change.
+func _wait_for_release(held: BaseButton) -> void:
+	if _platform_held == held: return
+	_stop_waiting()
+	_platform_held = held
+	_platform_waiting = true
+	for ended: Signal in [held.button_up, held.focus_exited, held.visibility_changed, held.tree_exiting]:
+		ended.connect(_platform_released, CONNECT_DEFERRED)
+
+func _stop_waiting() -> void:
 	_platform_waiting = false
-	set_platform(_platform_pending)
+	var held := _platform_held
+	_platform_held = null
+	if not is_instance_valid(held): return
+	for ended: Signal in [held.button_up, held.focus_exited, held.visibility_changed, held.tree_exiting]:
+		if ended.is_connected(_platform_released): ended.disconnect(_platform_released)
+
+func _platform_released() -> void:
+	if _platform_waiting: set_platform(_platform_pending)
 
 func _add_platform(label: String) -> void:
 	platform_row = _row(_column, "DisplayNamePlatform", label, PlayerCopy.DISPLAY_NAME_PLATFORM_NOTE)
