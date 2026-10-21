@@ -35,6 +35,17 @@ inputs:
       the App ID capability and the apple-app-site-association file online (owner steps).
     required: false
     default: "false"
+  game-center:
+    description: >
+      "true" turns on the preset's Game Center entitlement in the copy. Signed builds only.
+    required: false
+    default: "false"
+  icloud-container:
+    description: >
+      iCloud container (iCloud.<bundle id>) for the iCloud Documents entitlement. Empty leaves
+      iCloud out. Signed builds only; the App ID must have the container assigned.
+    required: false
+    default: ""
 
 runs:
   using: composite
@@ -124,6 +135,8 @@ runs:
         APP_CONFIG_BASE64: ${{ inputs.app-config-base64 }}
         STORE_CONFIG: ${{ inputs.store-config }}
         UNIVERSAL_LINKS: ${{ inputs.universal-links }}
+        GAME_CENTER: ${{ inputs.game-center }}
+        ICLOUD_CONTAINER: ${{ inputs.icloud-container }}
       run: |
         set -euo pipefail
         rm -rf "$GAME_COPY"
@@ -184,12 +197,27 @@ runs:
             if options.count(push_off) != 1:
                 raise SystemExit("iOS preset must keep push notifications disabled in Git")
             options = options.replace(push_off, 'entitlements/push_notifications="Production"\n')
+        if os.environ["GAME_CENTER"] == "true":
+            center_off = 'entitlements/game_center=false\n'
+            if options.count(center_off) != 1:
+                raise SystemExit("iOS preset must keep Game Center off in Git")
+            options = options.replace(center_off, 'entitlements/game_center=true\n')
+        additional = []
         if os.environ["UNIVERSAL_LINKS"] == "true":
-            links_off = 'entitlements/additional=""\n'
-            if options.count(links_off) != 1:
+            additional.append("<key>com.apple.developer.associated-domains</key><array><string>applinks:aamirazeez.com</string></array>")
+        container = os.environ["ICLOUD_CONTAINER"]
+        if container:
+            if container != f"iCloud.{bundle.group(1)}":
+                raise SystemExit("iCloud container must be iCloud.<bundle identifier>")
+            additional.append(
+                f"<key>com.apple.developer.icloud-container-identifiers</key><array><string>{container}</string></array>"
+                "<key>com.apple.developer.icloud-services</key><array><string>CloudDocuments</string></array>"
+                f"<key>com.apple.developer.ubiquity-container-identifiers</key><array><string>{container}</string></array>")
+        if additional:
+            entitlements_off = 'entitlements/additional=""\n'
+            if options.count(entitlements_off) != 1:
                 raise SystemExit("iOS preset must keep additional entitlements empty in Git")
-            domains = "<key>com.apple.developer.associated-domains</key><array><string>applinks:aamirazeez.com</string></array>"
-            options = options.replace(links_off, f'entitlements/additional="{domains}"\n')
+            options = options.replace(entitlements_off, 'entitlements/additional="' + "".join(additional) + '"\n')
         text = text[:start] + options + text[end:]
         if addon.is_dir():
             store = config.get("purchase_mode") in ("app_store", "test_store") and bool(config.get("revenuecat_public_key"))

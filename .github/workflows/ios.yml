@@ -348,20 +348,18 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------------------
-  # Phase 2: signed device build and TestFlight upload. DISABLED, and unverified, until the
-  # Apple Developer account, the App Store Connect app record and an API key exist and the
-  # owner has added these repository secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID,
-  # ASC_KEY_P8_BASE64. Optional: IOS_APP_CONFIG_BASE64 (store mode and RevenueCat key) and
-  # IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 (push). To enable: replace `if: ${{ false }}` with
-  # `if: github.event_name == 'workflow_dispatch'` and add `environment: app-store` (with
-  # required reviewers) so a branch push can never use the signing key unattended.
+  # Phase 2: signed App Store build and TestFlight upload. Manual runs only, so a branch push
+  # never uses the signing key. Repository secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID,
+  # ASC_KEY_P8_BASE64 (team key with the Admin role, for cloud-managed signing). Optional:
+  # IOS_APP_CONFIG_BASE64 (store mode and RevenueCat key) and
+  # IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 (push). Start a new run for every upload; a re-run
+  # keeps the run number, so App Store Connect would refuse the repeated build number.
   # ---------------------------------------------------------------------------------------
   testflight:
-    name: Signed build and TestFlight upload (phase 2, disabled)
-    if: ${{ false }}
-    needs: device
+    name: Signed build and TestFlight upload
+    if: github.event_name == 'workflow_dispatch'
     runs-on: macos-26
-    timeout-minutes: 90
+    timeout-minutes: 120
     defaults:
       run:
         shell: bash
@@ -369,6 +367,9 @@ jobs:
       APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
       ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
       ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      # CFBundleVersion is the run number plus this offset, so it only ever goes up.
+      IOS_BUILD_NUMBER_OFFSET: "100"
+      ICLOUD_CONTAINER: iCloud.com.aamirazeez.afteryou
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
@@ -390,26 +391,43 @@ jobs:
           team-id: ${{ secrets.APPLE_TEAM_ID }}
           live-services: "true"
           # Optional private app_config.json with purchase_mode "app_store" and the appl_ key.
-          # Without it the build is tester-only, like a GitHub Android build without a store.
+          # Without it the build keeps purchase_mode "tester_only" with no key: on iOS the store
+          # is off and Tester code is hidden in release builds, so nothing can be bought.
           app-config-base64: ${{ secrets.IOS_APP_CONFIG_BASE64 }}
-          # OWNER STEP (phase 4): set to "true" once the Team ID is known, the App ID has the
-          # Associated Domains capability, and apple-app-site-association is live on
+          # OWNER STEP (phase 4): set to "true" once apple-app-site-association is live on
           # aamirazeez.com (see claude-20261011\ios\site-upload). The plugin already handles links.
           universal-links: "false"
+          game-center: "true"
+          icloud-container: ${{ env.ICLOUD_CONTAINER }}
 
-      - name: Set the build number
+      - name: Set the version, build number and signing identity
         run: |
           set -euo pipefail
-          # App Store Connect needs a new CFBundleVersion for every upload.
           python3 - <<'PY'
-          import os
+          import os, re
           from pathlib import Path
-          path = Path(os.environ["GAME_COPY"]) / "export_presets.cfg"
+          root = Path(os.environ["GAME_COPY"])
+          project = (root / "project.godot").read_text(encoding="utf-8")
+          version = re.search(r'^config/version="([0-9]+\.[0-9]+\.[0-9]+)"$', project, re.M)
+          if not version:
+              raise SystemExit("project.godot has no x.y.z config/version")
+          build = int(os.environ["GITHUB_RUN_NUMBER"]) + int(os.environ["IOS_BUILD_NUMBER_OFFSET"])
+          path = root / "export_presets.cfg"
           text = path.read_text(encoding="utf-8")
-          old = 'application/version=""\n'
-          if text.count(old) != 1:
-              raise SystemExit("Expected one empty application/version in the iOS preset")
-          path.write_text(text.replace(old, f'application/version="{os.environ["GITHUB_RUN_NUMBER"]}"\n'), encoding="utf-8")
+          # Automatic signing archives with a development identity; the App Store export
+          # re-signs with the cloud-managed distribution certificate.
+          for old, new in (
+              ('application/version=""\n', f'application/version="{build}"\n'),
+              ('application/short_version=""\n', f'application/short_version="{version.group(1)}"\n'),
+              ('application/code_sign_identity_release=""\n', 'application/code_sign_identity_release="Apple Development"\n'),
+          ):
+              if text.count(old) != 1:
+                  raise SystemExit(f"Expected one {old.strip()} in the iOS preset")
+              text = text.replace(old, new)
+          path.write_text(text, encoding="utf-8")
+          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
+              env.write(f"IOS_BUILD_NUMBER={build}\nIOS_SHORT_VERSION={version.group(1)}\n")
+          print(f"Version {version.group(1)}, build {build}")
           PY
 
       - name: Export a release Xcode project
@@ -418,6 +436,14 @@ jobs:
           configuration: release
           output-dir: ${{ runner.temp }}/ios-release
 
+      - name: Show the release signing settings
+        run: |
+          set -euo pipefail
+          pbx="$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj"
+          grep -q 'libafteryou_ios.ios.template_release.xcframework' "$pbx"
+          grep -E 'CODE_SIGN_IDENTITY|CODE_SIGN_STYLE|DEVELOPMENT_TEAM|CODE_SIGN_ENTITLEMENTS|PROVISIONING_PROFILE' "$pbx" | sort -u
+          find "$IOS_EXPORT" -maxdepth 2 -name '*.entitlements' -print -exec cat {} \; | tee "$IOS_LOGS/project-entitlements.txt"
+
       - name: Write the App Store Connect key for this job only
         env:
           ASC_KEY_P8_BASE64: ${{ secrets.ASC_KEY_P8_BASE64 }}
@@ -425,14 +451,10 @@ jobs:
           set -euo pipefail
           umask 077
           mkdir -p "$RUNNER_TEMP/asc"
-          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
-          python3 - <<'PY'
-          import json, os
-          from pathlib import Path
-          folder = Path(os.environ["RUNNER_TEMP"]) / "asc"
-          key = (folder / f"AuthKey_{os.environ['ASC_KEY_ID']}.p8").read_text(encoding="utf-8")
-          (folder / "api_key.json").write_text(json.dumps({"key_id": os.environ["ASC_KEY_ID"], "issuer_id": os.environ["ASC_ISSUER_ID"], "key": key, "in_house": False}), encoding="utf-8")
-          PY
+          key="$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_KEY_P8_BASE64" | base64 --decode > "$key"
+          chmod 600 "$key"
+          grep -q 'BEGIN PRIVATE KEY' "$key" || { echo "::error::ASC_KEY_P8_BASE64 does not decode to a .p8 key"; exit 1; }
 
       - name: Archive and export with cloud-managed signing
         run: |
@@ -443,34 +465,85 @@ jobs:
             -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj" -scheme "$EXPORT_NAME" -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/$EXPORT_NAME.xcarchive" \
             "${auth[@]}" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
-            > "$IOS_LOGS/archive.log" 2>&1 || { tail -80 "$IOS_LOGS/archive.log"; exit 1; }
+            > "$IOS_LOGS/archive.log" 2>&1 || { grep -E 'error:|\*\* ARCHIVE' "$IOS_LOGS/archive.log" | tail -40 || true; tail -80 "$IOS_LOGS/archive.log"; exit 1; }
+          tail -3 "$IOS_LOGS/archive.log"
+          grep -iE 'certificate|provisioning profile' "$IOS_LOGS/archive.log" | sort -u | head -20 || true
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
           <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
           <plist version="1.0"><dict>
             <key>method</key><string>app-store-connect</string>
+            <key>destination</key><string>export</string>
             <key>teamID</key><string>${APPLE_TEAM_ID}</string>
             <key>signingStyle</key><string>automatic</string>
+            <key>manageAppVersionAndBuildNumber</key><false/>
             <key>uploadSymbols</key><true/>
           </dict></plist>
           PLIST
           xcodebuild -exportArchive -archivePath "$RUNNER_TEMP/$EXPORT_NAME.xcarchive" \
             -exportPath "$RUNNER_TEMP/ipa" -exportOptionsPlist "$RUNNER_TEMP/ExportOptions.plist" "${auth[@]}" \
-            > "$IOS_LOGS/export-archive.log" 2>&1 || { tail -80 "$IOS_LOGS/export-archive.log"; exit 1; }
-          shasum -a 256 "$RUNNER_TEMP/ipa/$EXPORT_NAME.ipa" | tee "$IOS_LOGS/ipa.sha256"
+            > "$IOS_LOGS/export-archive.log" 2>&1 || { grep -E 'error' "$IOS_LOGS/export-archive.log" | tail -40 || true; tail -80 "$IOS_LOGS/export-archive.log"; exit 1; }
+          tail -3 "$IOS_LOGS/export-archive.log"
+          ls -la "$RUNNER_TEMP/ipa"
 
-      - name: Upload to TestFlight with fastlane
+      - name: Check the signed app
+        env:
+          PUSH_CONFIGURED: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 != '' }}
         run: |
           set -euo pipefail
-          fastlane --version
-          fastlane pilot upload \
-            --ipa "$RUNNER_TEMP/ipa/$EXPORT_NAME.ipa" \
-            --api_key_path "$RUNNER_TEMP/asc/api_key.json" \
-            --skip_waiting_for_build_processing true
+          ipa="$RUNNER_TEMP/ipa/$EXPORT_NAME.ipa"
+          test -f "$ipa"
+          shasum -a 256 "$ipa" | tee "$IOS_LOGS/ipa.sha256"
+          rm -rf "$RUNNER_TEMP/ipa-check"
+          ditto -x -k "$ipa" "$RUNNER_TEMP/ipa-check"
+          app="$(find "$RUNNER_TEMP/ipa-check/Payload" -maxdepth 1 -name '*.app' | head -1)"
+          test -d "$app"
+          plist="$app/Info.plist"
+          {
+            for key in CFBundleIdentifier CFBundleDisplayName CFBundleShortVersionString CFBundleVersion ITSAppUsesNonExemptEncryption; do
+              printf '%s: %s\n' "$key" "$(/usr/libexec/PlistBuddy -c "Print :$key" "$plist" 2>/dev/null || echo '(absent)')"
+            done
+            codesign -dv "$app" 2>&1 | grep -E '^(Authority|TeamIdentifier|Identifier)=' || true
+          } | tee "$IOS_LOGS/signed-app.txt"
+          codesign -d --entitlements - --xml "$app" 2>/dev/null > "$RUNNER_TEMP/entitlements.plist"
+          plutil -p "$RUNNER_TEMP/entitlements.plist" | tee "$IOS_LOGS/signed-entitlements.txt"
+          ent() { /usr/libexec/PlistBuddy -c "Print :$1" "$RUNNER_TEMP/entitlements.plist" 2>/dev/null || true; }
+          fail=0
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$plist")" = "$BUNDLE_ID" ] || { echo "::error::Wrong bundle ID"; fail=1; }
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$plist")" = "$IOS_BUILD_NUMBER" ] || { echo "::error::CFBundleVersion is not $IOS_BUILD_NUMBER"; fail=1; }
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")" = "$IOS_SHORT_VERSION" ] || { echo "::error::Short version is not $IOS_SHORT_VERSION"; fail=1; }
+          [ "$(/usr/libexec/PlistBuddy -c 'Print :ITSAppUsesNonExemptEncryption' "$plist" 2>/dev/null)" = "false" ] || { echo "::error::ITSAppUsesNonExemptEncryption must be false"; fail=1; }
+          [ "$(ent com.apple.developer.game-center)" = "true" ] || { echo "::error::Game Center entitlement missing"; fail=1; }
+          ent com.apple.developer.icloud-container-identifiers | grep -q "$ICLOUD_CONTAINER" || { echo "::error::iCloud container entitlement missing"; fail=1; }
+          ent com.apple.developer.icloud-services | grep -q 'CloudDocuments' || { echo "::error::iCloud Documents entitlement missing"; fail=1; }
+          if [ "$PUSH_CONFIGURED" = "true" ]; then
+            [ "$(ent aps-environment)" = "production" ] || { echo "::error::aps-environment is not production"; fail=1; }
+          fi
+          [ "$(ent get-task-allow)" != "true" ] || { echo "::error::A distribution build must not allow debugging"; fail=1; }
+          exit $fail
+
+      - name: Upload to App Store Connect
+        timeout-minutes: 30
+        run: |
+          set -euo pipefail
+          # altool ships with the pinned Xcode and reads AuthKey_<id>.p8 from this folder.
+          export API_PRIVATE_KEYS_DIR="$RUNNER_TEMP/asc"
+          xcrun altool --help 2>&1 | grep -iE 'apiKey|apiIssuer|p8|private' | head -10 || true
+          set +e
+          xcrun altool --upload-app -f "$RUNNER_TEMP/ipa/$EXPORT_NAME.ipa" -t ios \
+            --apiKey "$ASC_KEY_ID" --apiIssuer "$ASC_ISSUER_ID" --output-format normal \
+            2>&1 | tee "$IOS_LOGS/upload.log"
+          status=${PIPESTATUS[0]}
+          set -e
+          if [ "$status" -ne 0 ] || grep -qiE 'ERROR ITMS|Failed to upload|UPLOAD FAILED' "$IOS_LOGS/upload.log"; then
+            echo "::error::The upload to App Store Connect failed (exit $status)"
+            exit 1
+          fi
+          echo "Uploaded $IOS_SHORT_VERSION ($IOS_BUILD_NUMBER); App Store Connect processes it before TestFlight shows it."
 
       - name: Remove the App Store Connect key
         if: always()
-        run: rm -rf "$RUNNER_TEMP/asc"
+        run: rm -rf "$RUNNER_TEMP/asc" "$RUNNER_TEMP/ipa-check" "$RUNNER_TEMP/entitlements.plist"
 
       - name: Upload signing logs
         if: always()
