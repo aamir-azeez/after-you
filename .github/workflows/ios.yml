@@ -5,6 +5,11 @@ name: iOS build
 # then, pushing a branch named ios/... runs it. Not on tags, so Android releases stay Linux-only.
 on:
   workflow_dispatch:
+    inputs:
+      testflight:
+        description: Run only the signed build and TestFlight upload (skips the unsigned checks)
+        type: boolean
+        default: false
   push:
     branches: ["ios/**"]
 
@@ -36,6 +41,8 @@ env:
 jobs:
   device:
     name: iOS device build (unsigned, arm64, ${{ matrix.services }})
+    # A manual TestFlight run skips the unsigned checks; pushes always run them.
+    if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.testflight) }}
     # Standard arm64 runner: free on a public repository. Never use -large or -xlarge.
     runs-on: macos-26
     timeout-minutes: 90
@@ -348,7 +355,8 @@ jobs:
           if-no-files-found: ignore
 
   # ---------------------------------------------------------------------------------------
-  # Phase 2: signed App Store build and TestFlight upload. Manual runs only, so a branch push
+  # Phase 2: signed App Store build and TestFlight upload. Manual runs with the testflight
+  # input only (gh workflow run ios.yml --ref <branch> -f testflight=true), so a branch push
   # never uses the signing key. Repository secrets: APPLE_TEAM_ID, ASC_KEY_ID, ASC_ISSUER_ID,
   # ASC_KEY_P8_BASE64 (team key with the Admin role, for cloud-managed signing). Optional:
   # IOS_APP_CONFIG_BASE64 (store mode and RevenueCat key) and
@@ -357,7 +365,7 @@ jobs:
   # ---------------------------------------------------------------------------------------
   testflight:
     name: Signed build and TestFlight upload
-    if: github.event_name == 'workflow_dispatch'
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.testflight }}
     runs-on: macos-26
     timeout-minutes: 120
     defaults:
@@ -382,6 +390,7 @@ jobs:
         uses: ./.github/actions/build-ios-plugin
         with:
           target: template_release
+          cache: "true"
           # Optional. Without it push stays off and Firebase is left out of the build.
           firebase-plist-base64: ${{ secrets.IOS_GOOGLE_SERVICE_INFO_PLIST_BASE64 }}
 

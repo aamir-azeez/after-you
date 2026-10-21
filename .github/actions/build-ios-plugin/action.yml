@@ -23,6 +23,13 @@ inputs:
       The app treats it as unconfigured at run time. Never combine with a real plist.
     required: false
     default: "false"
+  cache:
+    description: >
+      "true" reuses a compiled plugin from an earlier run when its sources, godot-cpp, the
+      RevenueCat headers, Xcode and the target are all unchanged. The unsigned checks leave
+      it off so they always compile.
+    required: false
+    default: "false"
 
 runs:
   using: composite
@@ -94,7 +101,16 @@ runs:
           -o "$RUNNER_TEMP/ios-policy-test"
         "$RUNNER_TEMP/ios-policy-test"
 
+    - name: Restore a compiled plugin
+      id: plugin-cache
+      if: inputs.cache == 'true'
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/ios-plugin-build/libafteryou_ios.ios.${{ inputs.target }}.xcframework
+        key: ios-plugin-${{ inputs.target }}-${{ env.GODOT_CPP_COMMIT }}-${{ env.REVENUECAT_IOS_SHA256 }}-${{ env.XCODE_APP }}-${{ hashFiles('native/ios/SConstruct', 'native/ios/build_profile.json', 'native/ios/src/**', '.github/actions/build-ios-plugin/action.yml') }}
+
     - name: Compile the plugin for device and Simulator
+      if: steps.plugin-cache.outputs.cache-hit != 'true'
       shell: bash
       env:
         TARGET: ${{ inputs.target }}
@@ -135,6 +151,13 @@ runs:
         xcodebuild -create-xcframework \
           -library "$out/device/libafteryou_ios.a" -library "$out/simulator/libafteryou_ios.a" \
           -output "$out/libafteryou_ios.ios.$TARGET.xcframework"
+
+    - name: Save the compiled plugin
+      if: inputs.cache == 'true' && steps.plugin-cache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+      with:
+        path: ${{ runner.temp }}/ios-plugin-build/libafteryou_ios.ios.${{ inputs.target }}.xcframework
+        key: ${{ steps.plugin-cache.outputs.cache-primary-key }}
 
     - name: Stage the addon
       shell: bash
