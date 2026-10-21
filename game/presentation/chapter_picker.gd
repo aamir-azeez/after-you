@@ -6,6 +6,7 @@ extends ScrollContainer
 const PlaySquare = preload("res://presentation/play_square.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const CREAM := Color("eceddb")
 const MINT := Color("a6d9c4")
@@ -174,7 +175,13 @@ static func locked_picture_material() -> ShaderMaterial:
 		_locked_material = ShaderMaterial.new()
 		_locked_material.shader = shader
 		_locked_material.set_shader_parameter("saturation",LOCKED_PICTURE_SATURATION)
+		# The shader is a GPU resource: let it go before the renderer stops.
+		SessionRelease.on_exit(Callable(load("res://presentation/chapter_picker.gd"), "release_cached"))
 	return _locked_material
+
+## Lets go of the kept locked picture look (SessionRelease calls this at shutdown).
+static func release_cached() -> void:
+	_locked_material = null
 
 ## A steady framed chapter picture that keeps a full 16:9/2:1 cover crop instead
 ## of a thin sliver. The art runs edge to edge and the frame's rounded corners
