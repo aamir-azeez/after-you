@@ -21,6 +21,8 @@ const Frozen = preload("res://services/frozen_simulation.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
+const RunReactionStore = preload("res://services/run_reaction_store.gd")
+const RunReactionTrack = preload("res://services/run_reaction_track.gd")
 const HardRoomClient = preload("res://services/hard_room_client.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
@@ -438,9 +440,11 @@ func refresh() -> bool:
 
 
 ## The room's end reactions that came beside an accepted read or turn reply
-## (rooms_api.gd takes them out of the room), kept on this phone.
+## (rooms_api.gd takes them out of the room), kept on this phone, and with them
+## the friend's latest reactions made during a run.
 func _note_end_reactions(response: Dictionary) -> void:
 	if response.get("end_reactions") is Dictionary: EndReactionStore.new().note_room(_room, response.end_reactions)
+	if response.get("run_reactions") is Dictionary: RunReactionStore.new().note(response.run_reactions)
 
 
 ## The room partner's display name that came beside an accepted reply
@@ -489,8 +493,10 @@ func _confirm_unchanged(response: Dictionary) -> bool:
 ## `tries`: how many tries the turn took (services/turn_tries.gd), sent beside
 ## the recording when the server reads counts; 0 sends none. `face`: the
 ## player's end-of-run reaction (services/end_reaction_store.gd), sent beside it
-## when the server takes them; "" sends none.
-func commit(recording: Dictionary, tries: int = 0, face: String = "") -> bool:
+## when the server takes them; "" sends none. `track`: the reactions made during
+## the run (services/run_reaction_track.gd), sent beside it when the caller knows
+## the server takes them; [] sends none.
+func commit(recording: Dictionary, tries: int = 0, face: String = "", track: Array = []) -> bool:
 	if not finish_live_draft_save(): return false
 	if not my_turn() or read_only or _busy != 0:
 		return _error("commit_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_BBE0446F0FDD)
@@ -523,6 +529,8 @@ func commit(recording: Dictionary, tries: int = 0, face: String = "") -> bool:
 		body["checkpoint"] = derived.checkpoint
 	if tries > 0: body["tries"] = mini(tries, TurnTries.MAX_TRIES)
 	if EndReactionStore.is_face(face): body["end_reaction"] = face
+	var reactions := RunReactionTrack.parse(track, int(recording.get("duration_ticks", 0)))
+	if not reactions.is_empty(): body["run_reactions"] = reactions
 	if not _prepare_pending("turns", body):
 		return false
 	return await _send_pending()
@@ -681,6 +689,7 @@ func _accept_sent(response: Dictionary) -> bool:
 	var accepted := _accept_receipt(response.get("data"))
 	if accepted:
 		if not face.is_empty(): EndReactionStore.new().keep(recording_hash, face)
+		if body is Dictionary and body.get("run_reactions") is Array: RunReactionStore.new().keep(recording_hash, body.run_reactions)
 		_note_end_reactions(response)
 		_note_partner_name(response)
 	return accepted
@@ -1202,6 +1211,9 @@ func _valid_pending(value: Variant) -> bool:
 	if Typed.equal(value.operation, "turns") and body.has("end_reaction"):
 		if not EndReactionStore.is_face(body.end_reaction): return false
 		keys.append("end_reaction")
+	if Typed.equal(value.operation, "turns") and body.has("run_reactions"):
+		if not body.recording is Dictionary or RunReactionTrack.parse(body.run_reactions, int(body.recording.get("duration_ticks", 0))).is_empty(): return false
+		keys.append("run_reactions")
 	if not _exact(body, keys) or not _token(body.idempotency_key, -1, 80) or body.idempotency_key.length() < 16 or not Typed.equal(body.base_revision, value.origin.revision) or not Typed.equal(body.branch, value.origin.branch) or not Typed.equal(value.request_hash, _request_hash(value.operation, body)):
 		return false
 	if value.operation == "fork":

@@ -18,6 +18,7 @@ const MAX_HISTORY_RESPONSE_BYTES := 4 * 1024 * 1024 + 65536
 ## only then may the server let a room's finished attempts leave it.
 static var history_supported := false
 const END_REACTIONS_HEADER := "X-AfterYou-End-Reactions: 1"
+const RUN_REACTIONS_HEADER := "X-AfterYou-Run-Reactions: 1"
 var base_url := ""
 var player_id := ""
 var device_token := ""
@@ -107,6 +108,10 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	if payload.has("end_reactions"):
 		result["end_reactions"] = payload["end_reactions"]
 		payload.erase("end_reactions")
+	# So do the friend's reactions made during a run (services/run_reaction_store.gd).
+	if payload.has("run_reactions"):
+		result["run_reactions"] = payload["run_reactions"]
+		payload.erase("run_reactions")
 	# So does the room partner's display name (services/display_names.gd).
 	if payload.has("partner_name"):
 		result["partner_name"] = payload["partner_name"]
@@ -165,6 +170,10 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	# list, and friends' names on the friends list. The partner's name leaves the
 	# room reply here too.
 	if end_reaction_path(method, path) or (method == HTTPClient.METHOD_GET and path == "/v1/friends"): headers.append(DisplayNames.HEADER)
+	# This build sends and plays reactions made during a run (services/run_reaction_track.gd):
+	# the capability, the friend's track beside a room's reads and turn replies,
+	# and every track beside the end reactions list.
+	if run_reaction_path(method, path): headers.append(RUN_REACTIONS_HEADER)
 	# This build plays hard rooms (services/hard_mode.gd): it may be told of them and join one.
 	if path in ["/v2/capabilities", "/v2/rooms/join"]: headers.append("X-AfterYou-Hard-Mode: 1")
 	# The inbox then reports a room another member closed as "closed".
@@ -195,6 +204,14 @@ static func end_reaction_path(method: int, path: String) -> bool:
 	var parts := path.split("/")
 	if parts.size() == 4: return method == HTTPClient.METHOD_GET and parts[3].length() == 22
 	return parts.size() == 5 and method == HTTPClient.METHOD_POST and parts[3].length() == 22 and parts[4] == "turns"
+
+## The requests that ask for run reactions: the capability, a room's read and
+## turns (as end_reaction_path, without the room list) and its end reactions list.
+static func run_reaction_path(method: int, path: String) -> bool:
+	if path == "/v1/room-inbox": return false
+	if end_reaction_path(method, path): return true
+	var parts := path.split("/")
+	return method == HTTPClient.METHOD_GET and path.begins_with("/v2/rooms/") and parts.size() == 5 and parts[3].length() == 22 and parts[4] == "end-reactions"
 
 static func response_limit(method: int, path: String) -> int:
 	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/replay-transfer$").search(path) != null: return MAX_REPLAY_TRANSFER_RESPONSE_BYTES

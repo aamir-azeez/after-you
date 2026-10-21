@@ -407,6 +407,31 @@ static func reaction_gain(identity: Array) -> float:
 	var span: Vector2 = SoundCues.REACTION.gain
 	return lerpf(span.x, span.y, identity_unit(["end_reaction"] + identity + ["gain"]))
 
+## A reaction made during a run (presentation/run_reaction_player.gd): the same
+## pop, its pitch and gain from the turn being played, the spirit's slot, the
+## reaction's index in its recorded track and its face. Neighbouring reactions of
+## one track never share a pitch, and that walk reads only the track, so a
+## reaction sounds the same live, as the friend's memory, on retry and in a replay.
+## It never advances a turn's cue identities.
+func play_run_reaction(slot: String, track: Array, index: int) -> void:
+	if index < 0 or index >= track.size() or not sound_enabled or backgrounded or voices.is_empty() or not _frame_allows_cue(): return
+	var voice := voices[next_voice]
+	next_voice = (next_voice + 1) % voices.size()
+	voice.stream = SoundCues.REACTION.clip
+	voice.pitch_scale = semitones_to_pitch(run_reaction_pitch(turn_chapter, turn_stage, slot, track, index))
+	var span: Vector2 = SoundCues.REACTION.gain
+	voice.volume_db = CUE_DB + float(SoundCues.REACTION.db) + lerpf(span.x, span.y, identity_unit(_run_reaction_id(turn_chapter, turn_stage, slot, track, index) + ["gain"]))
+	voice.play()
+
+static func run_reaction_pitch(chapter: String, stage: String, slot: String, track: Array, index: int) -> float:
+	var pitch := NO_PITCH
+	for step in range(index + 1):
+		pitch = spread_pitch(SoundCues.REACTION.range, pitch, CUE_MIN_MOVE, identity_unit(_run_reaction_id(chapter, stage, slot, track, step) + ["step"]))
+	return pitch
+
+static func _run_reaction_id(chapter: String, stage: String, slot: String, track: Array, index: int) -> Array:
+	return ["run_reaction", chapter, stage, slot, index, str(track[index].get("id", ""))]
+
 func stop_reunion() -> void:
 	if is_instance_valid(reunion_voice): reunion_voice.stop()
 

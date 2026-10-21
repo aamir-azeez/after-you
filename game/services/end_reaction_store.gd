@@ -16,17 +16,12 @@ extends RefCounted
 ## never undo each other's faces.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
-const Look = preload("res://presentation/spirit_look.gd")
+const Catalog = preload("res://services/reaction_catalog.gd")
 const FILE_PATH := "user://end-reactions.json"
 const VERSION := 1
-## The faces, in the picker's order (design 4's order with Knocked out in
-## Normal's place), then the heart. Ids are the server's (backend
-## src/v2/end-reactions.ts) and never change: rooms and files keep them.
-const FACES: Array[String] = ["happy", "squeeze", "surprised", "sad", "annoyed", "angry", "sleepy", "knocked_out", "heart"]
-const HEART := "heart"
-## The spirit expression each face draws (spirit_look.gd); the heart has none.
-const EXPRESSIONS := {"happy": Look.HAPPY, "squeeze": Look.SQUEEZE, "surprised": Look.SURPRISED, "sad": Look.SAD,
-	"annoyed": Look.ANNOYED, "angry": Look.ANGRY, "sleepy": Look.SLEEPY, "knocked_out": Look.KNOCKED_OUT}
+## The faces and the heart: the shared catalog's (services/reaction_catalog.gd).
+const FACES: Array[String] = Catalog.FACES
+const HEART := Catalog.HEART
 const DEFAULT_FACE := "happy"
 const MAX_KEPT := 1024
 const MAX_ROOMS := 128
@@ -47,11 +42,11 @@ func _init(storage_path: String = FILE_PATH) -> void:
 	_load()
 
 static func is_face(value: Variant) -> bool:
-	return value is String and value in FACES
+	return Catalog.is_face(value)
 
 ## The spirit expression a face draws, or &"" for the heart.
 static func expression(face: String) -> StringName:
-	return EXPRESSIONS.get(face, &"")
+	return Catalog.expression(face)
 
 ## A run's pick made on an ending card, before it is sent or saved.
 static func pick(run: String, face: String) -> void:

@@ -58,7 +58,7 @@ func _clear_default_store() -> void:
 
 func _catalog() -> void:
 	_check(Store.FACES.size() == 9 and Store.FACES[-1] == Store.HEART and Store.FACES[0] == "happy", "Eight faces then the heart, Happy first")
-	_check(Store.EXPRESSIONS.size() == 8 and not Store.EXPRESSIONS.values().has(Look.NORMAL) and Store.EXPRESSIONS.knocked_out == Look.KNOCKED_OUT, "Every face is a real spirit expression, Knocked out in, Normal out")
+	_check(Store.Catalog.EXPRESSIONS.size() == 8 and not Store.Catalog.EXPRESSIONS.values().has(Look.NORMAL) and Store.Catalog.EXPRESSIONS.knocked_out == Look.KNOCKED_OUT, "Every face is a real spirit expression, Knocked out in, Normal out")
 	for face: String in Store.FACES:
 		_check(not EndReactions.face_name(face).is_empty(), "%s has a name for screen readers" % face)
 		if face != Store.HEART: _check(Look.has(Store.expression(face)), "%s draws the spirit's own %s" % [face, Store.expression(face)])

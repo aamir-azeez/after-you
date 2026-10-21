@@ -87,7 +87,7 @@ const END_REACTIONS_TITLE := "Reactions"
 const END_REACTIONS_CHOOSE := "Choose a reaction"
 const END_REACTIONS_QUICK := "React with %s"
 const END_REACTIONS_CLOSE := "Close reactions"
-## The faces, by id (services/end_reaction_store.gd). The heart is icon only; its name is for screen readers.
+## The faces, by id (services/reaction_catalog.gd). The heart is icon only; its name is for screen readers.
 const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
 	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love"}
 ## Beside a bubble: your sent face, and the friend's (a name or "A friend").
@@ -100,6 +100,8 @@ const END_REACTIONS_FRIEND_NAMED := "%s reacted: %s"
 const END_REACTIONS_ROOM_NOTE := "Your friend sees it with your turn."
 const END_REACTIONS_SOLO_NOTE := "Kept with your replay."
 const END_REACTIONS_MOMENT_NOTE := "This one isn't saved."
+## Over a reaction the friend made during their turn, as their memory makes it (presentation/run_reaction_player.gd).
+const RUN_REACTIONS_MEMORY := "From their turn"
 
 # Hard mode (services/hard_mode.gd, presentation/hard_mode_view.gd,
 # presentation/hard_run_flow.gd).

@@ -101,11 +101,13 @@ class ChoiceList extends CanvasLayer:
 		var row := row_for(index)
 		if row != null: scroll.scroll_vertical = int(row.position.y)
 
-static func hint_bounds(ui_width: float, left_handed: bool) -> Rect2:
+## `docked`: the width of a control docked beside the buttons, toward the
+## middle (ChapterControls.dock_beside_finish), kept clear too.
+static func hint_bounds(ui_width: float, left_handed: bool, docked: float = 0.0) -> Rect2:
 	# Reserve the full joystick touch area and both action buttons, not just
 	# their artwork. These margins cover either existing control layout.
-	var left := 258.0 if left_handed else 218.0
-	var right := ui_width - (218.0 if left_handed else 258.0)
+	var left := (258.0 + docked) if left_handed else 218.0
+	var right := ui_width - (218.0 if left_handed else 258.0 + docked)
 	var width := minf(680.0, maxf(120.0, right - left))
 	return Rect2((left + right - width) / 2.0, -94, width, 78)
 

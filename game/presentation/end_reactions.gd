@@ -87,13 +87,16 @@ static func attach(container: Node, value: Dictionary) -> Control:
 	return row
 
 ## A bubble on its own over `parent` at `at` (its tail's tip), popping in and
-## fading away after `hold` seconds, then freed. For a rewatched turn's end.
+## fading away after `hold` seconds, then freed. For a rewatched turn's end and
+## a reaction made during a run (presentation/run_reaction_player.gd).
 ## `follow`, when given, is Callable() -> Variant: the tip's point each frame
 ## while the bubble lives (a spirit the camera still moves past), or null to
-## stay put. Only these short-lived bubbles do anything per frame.
-static func pop(parent: Node, at: Vector2, face: String, color: String, settings: Dictionary = {}, hold: float = 1.6, follow: Callable = Callable()) -> Control:
+## stay put. Only these short-lived bubbles do anything per frame. `caption`, when
+## given, is a small line over the bubble (PlayerCopy.RUN_REACTIONS_MEMORY).
+static func pop(parent: Node, at: Vector2, face: String, color: String, settings: Dictionary = {}, hold: float = 1.6, follow: Callable = Callable(), caption: String = "") -> Control:
 	if not is_instance_valid(parent) or not Store.is_face(face): return null
 	var bubble := Bubble.new(face, color)
+	if not caption.is_empty(): bubble.add_child(_bubble_caption(caption))
 	bubble.position = at - Vector2(BUBBLE_SIZE.x * 0.5, BUBBLE_SIZE.y)
 	bubble.follow = follow
 	bubble.set_process(follow.is_valid())
@@ -104,6 +107,33 @@ static func pop(parent: Node, at: Vector2, face: String, color: String, settings
 	fade.tween_property(bubble, "modulate:a", 0.0, 0.3)
 	fade.tween_callback(bubble.queue_free)
 	return bubble
+
+static func _bubble_caption(text: String) -> Label:
+	var label := Label.new()
+	label.name = "BubbleCaption"
+	label.text = text
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", 15)
+	label.add_theme_color_override("font_color", ControlTheme.CREAM)
+	label.add_theme_color_override("font_outline_color", ControlTheme.INK)
+	label.add_theme_constant_override("outline_size", 6)
+	# Centred over the bubble, whatever its width.
+	label.position = Vector2(BUBBLE_SIZE.x * 0.5 - 80.0, -24.0)
+	label.size = Vector2(160, 22)
+	return label
+
+## The screen point `height` metres above a spirit, in `hud`'s space, or null
+## when it cannot show (behind the camera, or anything gone). Takes the nodes
+## or weak references to them, so a follow callable can hold it.
+static func point_above(camera_ref: Variant, actor_ref: Variant, hud_ref: Variant, height: float = 1.5) -> Variant:
+	var camera: Variant = camera_ref.get_ref() if camera_ref is WeakRef else camera_ref
+	var actor: Variant = actor_ref.get_ref() if actor_ref is WeakRef else actor_ref
+	var hud: Variant = hud_ref.get_ref() if hud_ref is WeakRef else hud_ref
+	if not camera is Camera3D or not actor is Node3D or not hud is Control or not (actor as Node3D).is_inside_tree() or not (camera as Camera3D).is_inside_tree(): return null
+	var point := (actor as Node3D).global_position + Vector3(0, height, 0)
+	if (camera as Camera3D).is_position_behind(point): return null
+	return (hud as Control).get_global_transform_with_canvas().affine_inverse() * (camera as Camera3D).unproject_position(point)
 
 ## A quiet pill for a list row (Replays): the face and who sent it, like the
 ## try count pills beside it. `accessible` is its screen reader name.
@@ -405,7 +435,7 @@ class FaceArt:
 		ci.draw_polyline(points, fill.darkened(0.2), maxf(1.0, radius * 0.06), true)
 
 	static func face_name(face: String) -> String:
-		return str(PlayerCopy.END_REACTION_NAMES.get(face, ""))
+		return Store.Catalog.face_name(face)
 
 
 ## A speech bubble with a face: the spirit's colour lightened toward cream, the
@@ -488,6 +518,16 @@ class Chevron extends Control:
 ## the ending card, so the card's actions stay in view; where that does not fit
 ## (a narrow window) it opens above the pill, else below. A tap outside, Back,
 ## the close button or a pick closes it.
+##
+## Its owner is the row above, or any node with the same parts: `pill` (the
+## anchor), `opener`, `chosen`, `context` (its "note"), `choose(face)`,
+## `left_handed()` and `_color()`. build()'s options, both optional:
+##   modal  false: nothing under the card is dimmed or blocked, so play goes on
+##          (the joystick, the action button); a tap the screen's controls do
+##          not take closes it and still reaches the world
+##   away   true: never beside the pill, only above it (else below), its edge
+##          lined up with the pill's on the hand side, so it opens inward and
+##          keeps clear of the controls beside the pill
 class FacesCard extends CanvasLayer:
 	const EDGE := 12.0
 	const POINTER := 9.0
@@ -500,17 +540,22 @@ class FacesCard extends CanvasLayer:
 	var pointer: Polygon2D
 	var cells: Dictionary = {}
 	var closing := false
+	var modal := true
+	var away := false
 
-	func build(owner_row: Control) -> void:
+	func build(owner_row: Control, options: Dictionary = {}) -> void:
 		row = owner_row
 		anchor = owner_row.pill
+		modal = bool(options.get("modal", true))
+		away = bool(options.get("away", false))
 		shade = ColorRect.new()
 		shade.name = "ReactionShade"
-		# Barely dimmed: the pill it came from stays clear.
-		shade.color = Color(0.02, 0.08, 0.08, 0.1)
+		# Barely dimmed: the pill it came from stays clear. Not dimmed at all,
+		# and never in the way, while play goes on under it.
+		shade.color = Color(0.02, 0.08, 0.08, 0.1) if modal else Color(0, 0, 0, 0)
 		shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		shade.mouse_filter = Control.MOUSE_FILTER_STOP
-		shade.gui_input.connect(_on_shade_input)
+		shade.mouse_filter = Control.MOUSE_FILTER_STOP if modal else Control.MOUSE_FILTER_IGNORE
+		if modal: shade.gui_input.connect(_on_shade_input)
 		add_child(shade)
 		# Under a camera cutout too, like every full-screen dim (SafeArea.bleed).
 		SafeArea.bleed(shade)
@@ -621,7 +666,7 @@ class FacesCard extends CanvasLayer:
 		var card := panel.get_combined_minimum_size()
 		var left: bool = row.left_handed()
 		var side_x := rect.position.x - BESIDE - card.x if left else rect.end.x + BESIDE
-		if side_x >= view.position.x + EDGE and side_x + card.x <= view.end.x - EDGE and card.y <= view.size.y - 2.0 * EDGE:
+		if not away and side_x >= view.position.x + EDGE and side_x + card.x <= view.end.x - EDGE and card.y <= view.size.y - 2.0 * EDGE:
 			var side_y := clampf(rect.get_center().y - card.y * 0.5, view.position.y + EDGE, view.end.y - EDGE - card.y)
 			panel.position = Vector2(side_x, side_y)
 			panel.size = card
@@ -663,6 +708,14 @@ class FacesCard extends CanvasLayer:
 		if not closing and event.is_action_pressed("ui_cancel"):
 			get_viewport().set_input_as_handled()
 			close()
+
+	## While play goes on under it: a press no control took (the world) closes
+	## it, and the press still goes on to the world.
+	func _unhandled_input(event: InputEvent) -> void:
+		if modal or closing: return
+		var touch := event as InputEventScreenTouch
+		var click := event as InputEventMouseButton
+		if (touch != null and touch.pressed) or (click != null and click.pressed and click.button_index == MOUSE_BUTTON_LEFT): close()
 
 	func _on_shade_input(event: InputEvent) -> void:
 		var click := event as InputEventMouseButton

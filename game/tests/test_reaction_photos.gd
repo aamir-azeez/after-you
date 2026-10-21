@@ -276,7 +276,7 @@ class GameCoordinator:
 	func role() -> String: return "a"
 	func checkpoint() -> Dictionary: return {}
 	func prior_recording() -> Dictionary: return {}
-	func commit(_review: Dictionary, _tries: int = 0, _face: String = "") -> bool:
+	func commit(_review: Dictionary, _tries: int = 0, _face: String = "", _track: Array = []) -> bool:
 		commits += 1
 		return accepted
 	func last_receipt() -> Dictionary:

@@ -128,7 +128,7 @@ class JourneyStub extends RefCounted:
 	func role() -> String: return "a"
 	func checkpoint() -> Dictionary: return {}
 	func prior_recording() -> Dictionary: return {}
-	func commit(_recording: Dictionary, _tries: int = 0, _face: String = "") -> bool:
+	func commit(_recording: Dictionary, _tries: int = 0, _face: String = "", _track: Array = []) -> bool:
 		sends += 1
 		return true
 	func accept_recording(_recording: Dictionary) -> bool:

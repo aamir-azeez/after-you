@@ -54,6 +54,10 @@ const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionScreen = preload("res://presentation/end_reaction_screen.gd")
+const RunReactions = preload("res://presentation/run_reactions.gd")
+const RunReactionPlayer = preload("res://presentation/run_reaction_player.gd")
+const RunReactionStore = preload("res://services/run_reaction_store.gd")
+const SpiritLook = preload("res://presentation/spirit_look.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardRunFlow = preload("res://presentation/hard_run_flow.gd")
 # Short status labels for the shared waiting panel (concept 06).
@@ -101,6 +105,11 @@ var soundscape: Node
 var controls: CanvasLayer
 ## The wait for the friend's memory at the end of a second turn.
 var memory_wait := MemoryWait.new()
+## Reactions during a run: the React pill and what records and shows them.
+var run_reactions: Button
+var run_player := RunReactionPlayer.new()
+## The finished turn's own reactions, kept with it when it is saved or sent.
+var _review_track: Array = []
 var ui: Control
 var refresh_schedule := RefreshClock.new()
 var online_sync_status: Label
@@ -521,6 +530,11 @@ func _build_ui() -> void:
 	controls.action_requested.connect(_request_action)
 	controls.finish_requested.connect(_finish)
 	controls.skip_wait_requested.connect(_skip_memory_wait)
+	run_reactions = RunReactions.new()
+	run_reactions.settings = settings
+	run_reactions.visible = false
+	controls.dock_beside_finish(run_reactions, RunReactions.SIZE)
+	run_reactions.reacted.connect(_react_in_run)
 	if is_instance_valid(friend_presence) and online_session != null:
 		presence_hud = _presence_badge()
 		hud.add_child(presence_hud)
@@ -1898,6 +1912,7 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	_fresh_live = _live_fingerprint(sim) if not resume_draft and online_session == null and journey.has_method("is_live_simulation") else {}
 	_begin_sound_turn()
 	_begin_memory_wait(journey.role(), journey.prior_recording(), true)
+	_begin_run_reactions(true, {}, journey.prior_recording())
 	# A family with no catch to assist (the Lighthouse) always records false.
 	sim.catch_assistance = bool(settings.get("assistance", true)) and Registry.catch_assistance(chapter_key)
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
@@ -2013,6 +2028,7 @@ func advance_input(input: Dictionary) -> void:
 	var state: Dictionary = sim.step(input)
 	if mode == "replay": replay_cursor += 1
 	_wait().step(state, _turn_sounds(state), mode == "play")
+	_run_player().step(int(state.tick))
 	_update_hud(state)
 	if mode == "play" and (int(state.tick) % 30 == 0 or hard_flow.saves_tick(int(state.tick))) and not state.finished and not _persist_draft("play", true):
 		return
@@ -2115,6 +2131,7 @@ func _show_final_moment() -> void:
 	action_pressed = false
 	mode = "moment"
 	controls.show_moment("back" if _moment_replay else "review")
+	_update_run_pill(Journey.tick_of(sim))
 
 func _continue_final_moment() -> void:
 	mode = "replay" if _moment_replay else "play"
@@ -2238,6 +2255,7 @@ func _update_hud(state: Dictionary) -> void:
 	_update_memory_wait_hud()
 	controls.set("solo", online_session == null)
 	controls.update_state(title,(int(state.get("duration_ticks", 600))-int(state.tick))/30.0,display,mode=="play")
+	_update_run_pill(int(state.tick))
 
 ## A stage_copy chapter may name where a turn ends ("goal_a", "goal_b"): the
 ## goal card shows it under its count.
@@ -2275,7 +2293,7 @@ func _finish() -> void:
 	if mode == "moment":
 		_continue_final_moment()
 		return
-	review = sim.export_recording()
+	_take_review()
 	if review.is_empty():
 		_show_ready()
 		return
@@ -2291,6 +2309,7 @@ func _finish() -> void:
 func _begin_completion(from_replay: bool) -> void:
 	running = false
 	mode = "bloom"
+	_update_run_pill(Journey.tick_of(sim))
 	_completion_is_replay = from_replay
 	completion_remaining = COMPLETION_DURATION
 	hint_label.text = PlayerCopy.RELAY_PREVIEW_AFC92040F3DB
@@ -2328,6 +2347,59 @@ func _end_reaction_context() -> Dictionary:
 		"room_id": str(room.get("room_id", "")), "viewer_slot": str(room.get("player_slot", "p0")), "chapter_key": chapter_key, "definition": definition,
 		"prior": prior, "settings": settings, "soundscape": soundscape, "world": world, "hud": hud, "pairs": _pairs,
 		"friend_name": func() -> String: return FriendNicknames.sentence_start(_waiting_partner_name(journey.snapshot())) if online else ""}
+
+## The played turn's recording, and the reactions made during it, which go with it.
+func _take_review() -> void:
+	review = sim.export_recording()
+	_review_track = run_player.live.track()
+
+## Reactions during a run (presentation/run_reaction_player.gd): a turn starts
+## on tick zero. `live`: the player plays it (their spirit can react); else
+## `recording` is replayed. The memory alongside (`source`) plays its own track
+## too, captioned as the friend's in a room.
+func _begin_run_reactions(live: bool, recording: Dictionary, source: Variant) -> void:
+	var player := _run_player()
+	if live:
+		_review_track = []
+		player.begin(str(sim.snapshot().get("active_slot", "")) if _run_reactions_available() else "")
+	else:
+		player.begin()
+	if not _run_reactions_available(): return
+	var store := RunReactionStore.new()
+	if not live: player.play(recording, _track_of(store, recording))
+	if source is Dictionary and not source.is_empty():
+		player.play(source, _track_of(store, source), PlayerCopy.RUN_REACTIONS_MEMORY if live and online_session != null else "")
+	if is_instance_valid(run_reactions): run_reactions.color = str(SpiritLook.SLOT_COLOR_NAMES.get(player.live_slot, "peach"))
+
+## A recording's track: kept on this phone, or the finished turn's own while it waits to be saved.
+func _track_of(store: RefCounted, recording: Dictionary) -> Array:
+	var recording_hash := str(recording.get("recording_hash", ""))
+	if not review.is_empty() and recording_hash == str(review.get("recording_hash", "")) and not _review_track.is_empty(): return _review_track
+	return store.track(recording_hash)
+
+func _run_player() -> RefCounted:
+	run_player.world = world
+	run_player.hud = hud
+	run_player.soundscape = soundscape
+	run_player.settings = settings
+	return run_player
+
+## Solo always; in a room only while its server takes them (run_reactions_supported).
+func _run_reactions_available() -> bool:
+	return online_session == null or (online_session.has_method("run_reactions_supported") and online_session.run_reactions_supported())
+
+## The pill shows while a turn is played live, with its cooldown on this tick.
+func _update_run_pill(tick: int) -> void:
+	if not is_instance_valid(run_reactions): return
+	var shown: bool = mode == "play" and not run_player.live_slot.is_empty()
+	if run_reactions.visible != shown: run_reactions.visible = shown
+	if shown: run_reactions.show_cooldown(run_player.live.cooldown(tick), run_player.live.full())
+
+## The player tapped a face: their spirit makes it now, recorded on this tick.
+func _react_in_run(face: String) -> void:
+	if not running or backgrounded or mode != "play": return
+	var tick := Journey.tick_of(sim)
+	if run_player.react(tick, face): _update_run_pill(tick)
 
 func _resume_completion() -> void:
 	if _completion_is_replay and not _replay_ready(): return
@@ -2508,7 +2580,7 @@ func _accept() -> void:
 		var slot := _tries_slot()
 		var tries := turn_tries.freeze(slot, str(review.get("recording_hash", "")))
 		# A first try sends nothing: it shows as a turn without a count does.
-		var accepted: bool = await journey.commit(review, tries if tries > 1 and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(_end_reaction_context(), review))
+		var accepted: bool = await journey.commit(review, tries if tries > 1 and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(_end_reaction_context(), review), _review_track if _run_reactions_available() else [])
 		if not is_inside_tree() or generation != online_request_generation:
 			return
 		if not accepted:
@@ -2530,6 +2602,7 @@ func _accept() -> void:
 			return
 		turn_tries.close(slot)
 		EndReactionScreen.keep_solo(review)
+		RunReactionStore.new().keep(str(review.get("recording_hash", "")), _review_track)
 	_after_accept()
 
 
@@ -2693,6 +2766,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 		return
 	_begin_sound_turn()
 	_begin_memory_wait(str(recording.role), source)
+	_begin_run_reactions(false, recording, source)
 	sim.catch_assistance = bool(recording.get("catch_assistance", true))
 	checkpoint = start
 	for item: Dictionary in definition.stages:
@@ -3046,7 +3120,7 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 			_accept()
 		elif _persist_draft(after_retry):
 			if after_retry == "review" or sim.finished:
-				review = sim.export_recording()
+				_take_review()
 				_show_review()
 			else:
 				_start_play()
@@ -3225,6 +3299,9 @@ func _notification(what: int) -> void:
 		# Back from the chapter details returns to the room panel it came from.
 		if what == NOTIFICATION_WM_GO_BACK_REQUEST and mode == "room_details":
 			_show_ready()
+			return
+		if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_instance_valid(run_reactions) and run_reactions.faces_open():
+			run_reactions.close_faces()
 			return
 		_finish_ready_due()
 		if is_instance_valid(stick):

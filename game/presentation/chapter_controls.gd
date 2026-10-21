@@ -57,6 +57,10 @@ var skip_wait_button: Button
 var fast_forward_badge: FastForwardBadge
 var _memory_wait := false
 var _view_world: Node
+## The room a control docked beside Finish takes (dock_beside_finish).
+var _docked_width := 0.0
+## A docked control keeps this far from the buttons.
+const DOCK_GAP := 20.0
 
 func _ready() -> void:
 	_build_ui()
@@ -287,6 +291,17 @@ func _build_ui() -> void:
 	ui.add_child(overlay)
 
 
+## Docks `control` (`size` big) on the bottom row beside Finish, toward the
+## middle of the screen: left of it, or right of it in the left-handed layout,
+## DOCK_GAP away, so it never covers the action button, Finish or the wait's
+## buttons in their places. The hint line keeps clear of it. One control at most.
+func dock_beside_finish(control: Control, size: Vector2) -> void:
+	_docked_width = size.x + DOCK_GAP
+	hud.add_child(control)
+	if settings.get("left_handed", false): _anchor_rect(control, Control.PRESET_BOTTOM_LEFT, Rect2(28.0 + 210.0 + DOCK_GAP, -100, size.x, size.y))
+	else: _anchor_rect(control, Control.PRESET_BOTTOM_RIGHT, Rect2(-240.0 - DOCK_GAP - size.x, -100, size.x, size.y))
+	_resize()
+
 ## The chapter world whose pinch-and-pan view the Reset view chip restores.
 func watch_view(world: Node) -> void:
 	_view_world = world
@@ -315,7 +330,7 @@ func _resize() -> void:
 		return
 	SafeArea.inset(ui, SafeArea.rect(get_viewport()))
 	if is_instance_valid(hint_label):
-		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, ControlTheme.hint_bounds(ui.size.x, bool(settings.get("left_handed", false))))
+		_anchor_rect(hint_label, Control.PRESET_BOTTOM_LEFT, ControlTheme.hint_bounds(ui.size.x, bool(settings.get("left_handed", false)), _docked_width))
 	if is_instance_valid(chapter_label):
 		# Long stage names wrap in the title column instead of covering the
 		# timer and progress text in the centre of the display.

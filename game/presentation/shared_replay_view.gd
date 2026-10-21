@@ -23,8 +23,12 @@ const Badges = preload("res://presentation/kit/badges.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const Typed = preload("res://services/typed_values.gd")
 const COMPLETION_DURATION := 3.0
+const RunReactionPlayer = preload("res://presentation/run_reaction_player.gd")
+const RunReactionStore = preload("res://services/run_reaction_store.gd")
 ## The wait at the end of the watched second turn: the doze and the ring.
 var memory_wait := MemoryWait.new()
+## Both turns' reactions made during the run (presentation/run_reaction_player.gd).
+var run_player := RunReactionPlayer.new()
 var entry: Dictionary = {}
 var sequence: Array = []
 var _part_index := 0
@@ -179,6 +183,10 @@ func _prepare_replay() -> void:
 	memory_wait.soundscape = soundscape
 	memory_wait.reduced_motion = bool(settings.get("reduced_motion", false))
 	memory_wait.present_state = func(state: Dictionary, immediate: bool) -> void: world.present(_labelled(state), immediate)
+	run_player.world = world
+	run_player.hud = controls.hud
+	run_player.soundscape = soundscape
+	run_player.settings = settings
 	if entry.room.family == "chapter":
 		_photos = ReadSession.new(api, identity)
 		_photos.photo_context_factory = context_factory
@@ -249,6 +257,11 @@ func _start_part() -> void:
 		soundscape.begin_turn(Soundscape.ISLANDS_CHAPTER, str(Levels.get_level(pair.level_id).get("id", "")))
 	sim.catch_assistance = bool(pair.b.get("catch_assistance", true))
 	memory_wait.begin("b", MemoryWait.prior_ticks(pair.a))
+	# Both turns' reactions made during the run, at their ticks (a chapter's recordings name their spirit).
+	run_player.begin()
+	var tracks := RunReactionStore.new()
+	for recording: Variant in [pair.b, pair.a]:
+		if recording is Dictionary: run_player.play(recording, tracks.track(str(recording.get("recording_hash", ""))))
 	cursor = 0
 	_tick_time = 0.0
 	memory_wait.show(sim.snapshot(), true)
@@ -282,6 +295,7 @@ func _physics_process(delta: float) -> void:
 		var snapshot: Dictionary = sim.step(_frames[cursor])
 		cursor += 1
 		memory_wait.step(snapshot, _cues(snapshot), false)
+		run_player.step(int(snapshot.get("tick", cursor)))
 		_update_hud(snapshot)
 		if cursor >= _frames.size(): _finished()
 

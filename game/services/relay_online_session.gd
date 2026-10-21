@@ -161,6 +161,12 @@ func turn_tries_supported() -> bool:
 func end_reactions_supported() -> bool:
 	return Typed.equal(capabilities.get("end_reactions_version"), 1.0)
 
+## The server takes a turn's reactions made during the run and plays them on
+## the friend's memory (services/run_reaction_track.gd). Without it, a room
+## turn shows no React pill and sends no track.
+func run_reactions_supported() -> bool:
+	return Typed.equal(capabilities.get("run_reactions_version"), 1.0)
+
 ## The server hosts hard rooms (services/hard_mode.gd).
 func hard_mode_supported() -> bool:
 	return Typed.equal(capabilities.get("hard_mode_version"), 1.0)

@@ -18,6 +18,7 @@ const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
+const RunReactionStore = preload("res://services/run_reaction_store.gd")
 const VERIFIED_PROOF_LIMIT := 256
 static var _verified_proofs: Dictionary = {}
 static var _verified_proof_mutex := Mutex.new()
@@ -903,7 +904,9 @@ func _refresh_turn_tries(room: Dictionary, rows: Array) -> void:
 ## Both players' end-of-run faces for the room's turns, kept on this phone by
 ## recording hash (services/end_reaction_store.gd), read the way try counts
 ## are: only with the capability, again only when the room's parts changed,
-## and quietly; Replays then shows the faces it already has.
+## and quietly; Replays then shows the faces it already has. The same read
+## brings every turn's reactions made during the run, when the server has them
+## (services/run_reaction_store.gd), so a replay plays them.
 func _refresh_end_reactions(room: Dictionary, rows: Array) -> void:
 	var covered := _parts_covered(rows)
 	var faces := EndReactionStore.new()
@@ -912,6 +915,8 @@ func _refresh_end_reactions(room: Dictionary, rows: Array) -> void:
 	var response := await _request_get(_room_path(room) + "/end-reactions", str(room.room_id), true)
 	var data: Variant = response.get("data") if response.get("ok", false) else null
 	if data is Dictionary and Typed.equal(data.get("schema_version"), 1.0) and data.get("faces") is Dictionary and data.faces.size() <= EndReactionStore.MAX_LISTED:
+		# rooms_api.gd takes them out of the reply, beside it.
+		RunReactionStore.new().note(response.get("run_reactions"))
 		faces.remember(data.faces, str(room.room_id), covered)
 
 ## What a room's parts are, as one short string that changes when a turn is added.
