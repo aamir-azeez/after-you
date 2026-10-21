@@ -72,14 +72,21 @@ func _run() -> void:
 	_check(baseline.free_cards > 0 and baseline.islands == 8 and baseline.home_offer and baseline.hosting_row and baseline.next_island, "Earlier islands, the Full Journey offer, hosting access and Next island are all there")
 	_check(baseline.together_paid > 0 and baseline.together_locked == baseline.together_paid, "Play with your friend lists the paid chapters locked")
 	_check(baseline.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY, "Account keeps its purchases summary")
+	_check(baseline.store_rows == [false, false], "A desktop build without a store has no Full Journey or Restore row")
+	baseline.erase("store_rows")
 
-	# Android and iOS with a store show exactly the same.
+	# Android and iOS with a store show exactly the same; their store rows show.
 	for case: Array in [[PlatformSupport.ANDROID, TESTER_ONLY], [PlatformSupport.ANDROID, GOOGLE_PLAY], [PlatformSupport.IOS, APP_STORE], [PlatformSupport.IOS, TEST_STORE]]:
 		var seen: Dictionary = await _surfaces(app, case[0], case[1])
+		var with_store: bool = Purchases.store_enabled(case[1])
+		_check(seen.store_rows == [with_store, with_store], "%s with %s shows Full Journey and Restore only with a store" % [case[0], case[1].purchase_mode])
+		seen.erase("store_rows")
 		_check(seen == baseline, "%s with %s shows what it showed before: %s" % [case[0], case[1].purchase_mode, _differences(seen, baseline)])
 	PlatformSupport.override_platform = PlatformSupport.ANDROID
 	app.config.merge(TESTER_ONLY, true)
-	_check(await _store_text(app) == "Google Play", "Android without a store keeps its store message")
+	_check(await _store_reply(app) == ["store_disabled", "Google Play"], "Android without a store keeps its store message")
+	app.config.merge({"purchase_mode": "google_play", "entitlement_id": "full_journey_play", "revenuecat_public_key": ""}, true)
+	_check(await _paywall_says(app, PlayerCopy.MAIN_FC1F8BAE026C), "Android's store card without a key keeps its text")
 	PlatformSupport.override_platform = ""
 
 	# iOS with purchases off: the free chapters alone.
@@ -92,10 +99,22 @@ func _run() -> void:
 		_check(free.together_paid == 0 and free.together_locked == 0 and free.together_free == baseline.together_free, "Play with your friend lists only the free chapters, none locked" + label)
 		_check(free.islands == 3 and not free.island_scroll, "Earlier islands lists the three free islands with no empty scroll space" + label)
 		_check(not free.home_offer, "Home has no Full Journey button" + label)
-		_check(not free.hosting_row, "Settings has no Check hosting access row" + label)
+		_check(not free.hosting_row and free.store_rows == [false, false], "Settings has no Check hosting access, Full Journey or Restore purchases row" + label)
 		_check(free.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY_FREE, "Account's summary drops purchases" + label)
 		_check(not free.next_island and free.next_island_free, "Finishing island 3 offers no Next island into a paid one; earlier islands still lead on" + label)
-		_check(await _store_text(app) == PlayerCopy.PURCHASES_49387E2DE82E_IOS, "A store request explains itself without the old free-chapter list" + label)
+		var reply: Array = await _store_reply(app)
+		_check(reply == [("store_disabled" if not Purchases.store_enabled(config) else "android_required"), PlayerCopy.PURCHASES_49387E2DE82E_IOS], "A store request explains itself without the old free-chapter list" + label)
+		# Only a store mode without a key reaches the card's own unavailable line.
+		var card_text: bool = await _paywall_says(app, PlayerCopy.PURCHASES_49387E2DE82E_IOS)
+		var old_text: bool = await _paywall_says(app, PlayerCopy.MAIN_FC1F8BAE026C)
+		_check(card_text == Purchases.store_enabled(config) and not old_text, "The store card, if ever reached, drops the old free-chapter list too" + label)
+		app._journey_hard = true
+		app._show_journey()
+		await _settle()
+		var hard_grid: GridContainer = app.overlay.find_child("JourneyChapters", true, false) as GridContainer
+		_check(hard_grid != null and hard_grid.get_children().all(func(card: Node) -> bool: return not str(card.name).begins_with("PaidLevel_")), "Hard in Play Solo lists no paid chapter either" + label)
+		app._journey_hard = false
+
 
 	# A friend's paid room joined from a free-only build keeps its part count.
 	PlatformSupport.override_platform = PlatformSupport.IOS
@@ -173,6 +192,12 @@ func _surfaces(app: Node, platform: String, config: Dictionary) -> Dictionary:
 	var category: Node = app.overlay.find_child("category_" + SettingsRows.ACCOUNT, true, false)
 	var summary: Label = category.find_child("Summary", true, false) as Label if category != null else null
 	seen.summary = summary.text if summary != null else ""
+	# Full Journey and Restore purchases follow the store; _store_rows() says when they show.
+	var store_rows: Array[bool] = []
+	for id: String in ["full_journey", "restore_purchases"]:
+		var row: Control = app.overlay.find_child(id, true, false) as Control
+		store_rows.append(row != null and row.is_visible_in_tree())
+	seen.store_rows = store_rows
 	app.api.player_id = ""
 	seen.next_island = await _offers_next_island(app, 2)
 	seen.next_island_free = await _offers_next_island(app, 1)
@@ -181,18 +206,29 @@ func _surfaces(app: Node, platform: String, config: Dictionary) -> Dictionary:
 	PlatformSupport.override_release = false
 	return seen
 
-## The message a store request gets in this build, as a player would read it.
-func _store_text(app: Node) -> String:
+## The error code and message a store request gets in this build.
+func _store_reply(app: Node) -> Array:
 	var errors: Array = []
 	var probe := Purchases.new()
 	probe._configuration = app.config.duplicate()
 	app.add_child(probe)
-	probe.failed.connect(func(_id, _operation, _code, text, _cancelled): errors.append(text))
+	probe.failed.connect(func(_id, _operation, code, text, _cancelled): errors.append([code, text]))
 	probe.purchase("default", "$rc_monthly")
 	await process_frame
 	await process_frame
 	probe.queue_free()
-	return str(errors[0]) if not errors.is_empty() else ""
+	return errors[0] if not errors.is_empty() else []
+
+## Whether the Full Journey store card shows `text`, as when a guest's replay reaches it.
+func _paywall_says(app: Node, text: String) -> bool:
+	app.store_flow.show_paywall()
+	await _settle()
+	var found := false
+	for label: Label in app.overlay.find_children("*", "Label", true, false):
+		if label.text == text and not label.is_queued_for_deletion(): found = true
+	app._show_home()
+	await _settle()
+	return found
 
 ## Whether the solo celebration after earlier island `index` offers Next island.
 func _offers_next_island(app: Node, index: int) -> bool:

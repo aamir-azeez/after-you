@@ -127,7 +127,7 @@ func _platform_copy() -> void:
 			_check(PlayerCopy.for_platform(pair[0], pair[1]) == expected, "Platform copy for %s picks the right text: %s" % [platform if not platform.is_empty() else "desktop", expected.left(40)])
 	PlatformSupport.override_platform = ""
 	var ios_texts: Array = pairs.map(func(pair: Array) -> String: return pair[1])
-	ios_texts.append_array([PlayerCopy.MAIN_C93C27D9AB17_NO_TESTER, PlayerCopy.SUBSCRIPTION_TERMS_OF_USE, PlayerCopy.SETTINGS_ACCOUNT_SUMMARY_FREE])
+	ios_texts.append_array([PlayerCopy.MAIN_FC1F8BAE026C, PlayerCopy.MAIN_C93C27D9AB17_NO_TESTER, PlayerCopy.SUBSCRIPTION_TERMS_OF_USE, PlayerCopy.SETTINGS_ACCOUNT_SUMMARY_FREE])
 	for text: String in ios_texts:
 		_check(not text.is_empty(), "iOS copy is never empty")
 		for word: String in PLATFORM_WORDS:

@@ -854,9 +854,6 @@ func _refresh_chapter_marks() -> void:
 	if mode != "journey" or not is_instance_valid(_journey_picker): return
 	_journey_picker.refresh_marks(_chapter_marks())
 
-## The earlier islands anyone can play; the rest need Full Journey.
-const FREE_ISLANDS := 3
-
 func _show_earlier_islands() -> void:
 	running=false
 	mode="earlier_islands"
@@ -868,8 +865,9 @@ func _show_earlier_islands() -> void:
 	var free_only := _paid_content_hidden()
 	var list := _scroll_list(card,not free_only)
 	if not free_only: list.get_parent().custom_minimum_size.y = 340
-	for index in range(FREE_ISLANDS if free_only else levels.size()):
+	for index in range(levels.size()):
 		var level: Dictionary=levels[index]
+		if free_only and bool(level.get("premium",false)): continue
 		var locked: bool = index>=3 and not _full_journey_access()
 		var complete: bool = saves.data.completed.has(level.id)
 		var text := "%02d  %s%s%s" % [index+1,level.title,"  ·  Full Journey" if locked else "","  ✓" if complete else ""]
@@ -1342,7 +1340,7 @@ func _show_celebration() -> void:
 	for reaction in ["Beautiful!","We did it!","Again soon"]:
 		row.add_child(_button(reaction,func(): _react(reaction),false))
 	card.add_child(row)
-	if level_index<7 and (room_play or level_index+1<FREE_ISLANDS or not _paid_content_hidden()):
+	if level_index<7 and (room_play or not bool(levels[level_index+1].get("premium",false)) or not _paid_content_hidden()):
 		card.add_child(_button("Next island",_next_island))
 	card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
 	card.add_child(_action_button("back",_show_home))

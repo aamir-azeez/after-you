@@ -109,12 +109,12 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"visible_if": func() -> bool: return account.panel_state() == "ready" and not host._paid_content_hidden(),
 			"enabled_if": func() -> bool: return not account.hosting_check_busy},
 		{"id": "restore_purchases", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_RESTORE, "note": PlayerCopy.SETTINGS_RESTORE_NOTE,
-			"run": host.store_flow.restore_purchases, "visible_if": func() -> bool: return account.panel_state() == "ready" and host._play_store_enabled()},
+			"run": host.store_flow.restore_purchases, "visible_if": func() -> bool: return account.panel_state() == "ready" and host._play_store_enabled() and not host._paid_content_hidden()},
 		{"id": "tester_code", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_TESTER, "note": PlayerCopy.SETTINGS_TESTER_NOTE,
 			"open": host.store_flow.show_tester_access, "visible_if": func() -> bool: return PlatformSupport.tester_code_offered()},
 		# Subscribers reach Manage subscription and Restore here once Home hides the offer.
 		{"id": "full_journey", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_FULL_JOURNEY, "note": PlayerCopy.SETTINGS_FULL_JOURNEY_NOTE,
-			"open": host.store_flow.show_store_from_settings, "visible_if": host._play_store_enabled},
+			"open": host.store_flow.show_store_from_settings, "visible_if": func() -> bool: return host._play_store_enabled() and not host._paid_content_hidden()},
 		{"id": "photo_transfer", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_PHOTO_TRANSFER, "note": PlayerCopy.SETTINGS_PHOTO_TRANSFER_NOTE,
 			"open": account.open_photo_transfer, "visible_if": state.call(["ready"])},
 		# Room history is never removed automatically, so show what it takes.
