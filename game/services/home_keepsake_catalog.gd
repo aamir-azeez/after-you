@@ -4,6 +4,7 @@ extends RefCounted
 ## content/chapters/); this file adds the entries that are not registered
 ## chapters and works out the browse order.
 const Index = preload("res://content/chapters/index.gd")
+const Levels = preload("res://core/levels.gd")
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## The earlier islands' places, first in browse order.
 const EARLIER_ROWS := [
@@ -79,21 +80,48 @@ static func lighthouse_together() -> bool:
 	return not load("res://services/chapter_registry.gd").UNRELEASED.has("sleeping-lighthouse@2")
 
 ## Collectable variants: every place solo, plus together where a friend variant exists.
-static func variant_total() -> int:
+## `free_only` (a build that sells nothing) counts the free places alone.
+static func variant_total(free_only: bool = false) -> int:
 	var total := 0
-	for item: Dictionary in all(): total += 2 if item.friend_available else 1
+	for item: Dictionary in all():
+		if free_only and paid(item): continue
+		total += 2 if item.friend_available else 1
 	return total
 
-## Earned variants in descriptors carrying solo/friend marks.
-static func variant_count(earned: Array) -> int:
+## Earned variants in descriptors carrying solo/friend marks; `free_only` as above.
+static func variant_count(earned: Array, free_only: bool = false) -> int:
 	var count := 0
 	for item: Variant in earned:
 		if not item is Dictionary: continue
 		var place := by_id(str(item.get("id", "")))
-		if place.is_empty(): continue
+		if place.is_empty() or (free_only and paid(place)): continue
 		if item.get("solo", false) == true: count += 1
 		if item.get("friend", false) == true and place.friend_available: count += 1
 	return count
+
+## Whether a place is paid content: an earlier island marked premium (core/levels.gd)
+## or a place of a premium chapter (its registry descriptor). A key Home knows only
+## by an older version (the Lighthouse @1) asks the registered version that earns
+## its places.
+static func paid(item: Dictionary) -> bool:
+	if item.family == "earlier": return bool(Levels.get_level(str(item.stage_id)).get("premium", false))
+	return item.chapter_key in _paid_chapters()
+
+## Premium chapter keys of CHAPTERS, worked out on first ask and kept: descriptors
+## digest whole definitions. Loaded, not preloaded, as in lighthouse_together().
+static var _paid_keys: Array = []
+static var _paid_known := false
+
+static func _paid_chapters() -> Array:
+	if _paid_known: return _paid_keys
+	var registry: GDScript = load("res://services/chapter_registry.gd")
+	var result: Array = []
+	for key: String in CHAPTERS:
+		var sources: Array = [key] if key in Index.keys() else ALIASES.keys().filter(func(newer: String) -> bool: return ALIASES[newer] == key)
+		if sources.any(func(source: String) -> bool: return bool(registry.descriptor(source).get("premium", false))): result.append(key)
+	_paid_keys = result
+	_paid_known = true
+	return _paid_keys
 
 static func by_id(id: String) -> Dictionary:
 	for item: Dictionary in all():

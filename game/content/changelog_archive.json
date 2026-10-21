@@ -14,7 +14,7 @@
     {
       "version": "0.4.15",
       "date": "2026-09-30",
-      "highlights": [{"icon": "key", "text": "Full Journey no longer hangs on the loading screen"}, {"icon": "people", "text": "Friends shows a clear way to host a room"}, {"icon": "tap", "text": "Store errors stay visible, and Retry keeps the latest offer"}]
+      "highlights": [{"icon": "key", "text": "Full Journey no longer hangs on the loading screen", "paid": true}, {"icon": "people", "text": "Friends shows a clear way to host a room"}, {"icon": "tap", "text": "Store errors stay visible, and Retry keeps the latest offer", "paid": true}]
     },
     {
       "version": "0.4.14",
@@ -34,7 +34,7 @@
     {
       "version": "0.4.11",
       "date": "2026-09-29",
-      "highlights": [{"icon": "sun", "text": "Lighthouse hints leave more for you to work out"}, {"icon": "spark", "text": "Shorter, clearer turn messages"}]
+      "highlights": [{"icon": "sun", "text": "Lighthouse hints leave more for you to work out", "paid": true}, {"icon": "spark", "text": "Shorter, clearer turn messages"}]
     },
     {
       "version": "0.4.10",
@@ -64,17 +64,17 @@
     {
       "version": "0.4.4",
       "date": "2026-09-27",
-      "highlights": [{"icon": "play", "text": "Watch gameplay previews of Full Journey chapters"}]
+      "highlights": [{"icon": "play", "text": "Watch gameplay previews of Full Journey chapters", "paid": true}]
     },
     {
       "version": "0.4.3",
       "date": "2026-09-27",
-      "highlights": [{"icon": "spark", "text": "Two new chapters: Conservatory and Long Way Home"}, {"icon": "star", "text": "Four new keepsakes for Home"}]
+      "highlights": [{"icon": "spark", "text": "Two new chapters: Conservatory and Long Way Home", "paid": true}, {"icon": "star", "text": "Four new keepsakes for Home", "paid": true}]
     },
     {
       "version": "0.4.2",
       "date": "2026-09-27",
-      "highlights": [{"icon": "home", "text": "A House for Two, with a workshop, a loft and a sunroom"}]
+      "highlights": [{"icon": "home", "text": "A House for Two, with a workshop, a loft and a sunroom", "paid": true}]
     },
     {
       "version": "0.4.1",
@@ -84,7 +84,7 @@
     {
       "version": "0.4.0",
       "date": "2026-09-27",
-      "highlights": [{"icon": "spark", "text": "Two new chapters: High and Low and Rolling Home"}, {"icon": "tap", "text": "Puzzles with stairs, hatches, levers and a ball"}, {"icon": "leaf", "text": "The garden bloom shows in replays"}]
+      "highlights": [{"icon": "spark", "text": "Two new chapters: High and Low and Rolling Home", "paid": true}, {"icon": "tap", "text": "Puzzles with stairs, hatches, levers and a ball"}, {"icon": "leaf", "text": "The garden bloom shows in replays"}]
     },
     {
       "version": "0.3.2",
@@ -114,7 +114,7 @@
     {
       "version": "0.2.4",
       "date": "2026-09-17",
-      "highlights": [{"icon": "tap", "text": "Back leaves shared rooms even while they're busy"}, {"icon": "key", "text": "The store comes back after you reconnect"}, {"icon": "spark", "text": "A failed save can be tried again"}, {"icon": "picture", "text": "One unreadable photo no longer hides the rest"}]
+      "highlights": [{"icon": "tap", "text": "Back leaves shared rooms even while they're busy"}, {"icon": "key", "text": "The store comes back after you reconnect", "paid": true}, {"icon": "spark", "text": "A failed save can be tried again"}, {"icon": "picture", "text": "One unreadable photo no longer hides the rest"}]
     },
     {
       "version": "0.2.3",
@@ -134,7 +134,7 @@
     {
       "version": "0.2.0-preview8",
       "date": "2026-09-15",
-      "highlights": [{"icon": "key", "text": "Full Journey unlocks all six Sleeping Lighthouse stages"}, {"icon": "tap", "text": "Restore purchases if you've bought before"}]
+      "highlights": [{"icon": "key", "text": "Full Journey unlocks all six Sleeping Lighthouse stages", "paid": true}, {"icon": "tap", "text": "Restore purchases if you've bought before", "paid": true}]
     },
     {
       "version": "0.2.0-preview6",
@@ -144,7 +144,7 @@
     {
       "version": "0.2.0-preview5",
       "date": "2026-09-14",
-      "highlights": [{"icon": "picture", "text": "Add a photo to your turn for your friend to see"}, {"icon": "spark", "text": "Spirits are shorter, with bigger heads and a bouncy walk"}, {"icon": "sun", "text": "Try the six-stage Sleeping Lighthouse solo"}, {"icon": "link", "text": "Rooms refresh on their own"}]
+      "highlights": [{"icon": "picture", "text": "Add a photo to your turn for your friend to see"}, {"icon": "spark", "text": "Spirits are shorter, with bigger heads and a bouncy walk"}, {"icon": "sun", "text": "Try the six-stage Sleeping Lighthouse solo", "paid": true}, {"icon": "link", "text": "Rooms refresh on their own"}]
     },
     {
       "version": "0.2.0-preview3",

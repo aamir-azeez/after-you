@@ -677,8 +677,9 @@ func _show_home() -> void:
 	home_keepsakes.advance_backfill(0)
 	_keepsakes_reconcile_frame = Engine.get_process_frames()
 	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
-	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors())
-	home_stage.set_hard(hard_states(),HardMode.new().count(hard_together()))
+	# A build that sells nothing counts and shows the free chapters' keepsakes alone.
+	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors(),_paid_content_hidden())
+	home_stage.set_hard(hard_states(),HardMode.new().count(hard_together(),_paid_content_hidden()))
 	overlay.add_child(home_stage)
 	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
 	var menu := HomeMenu.new()
@@ -1549,13 +1550,15 @@ func _service_whats_new() -> void:
 ## opens on its own.
 func _open_whats_new_card(opener: Control = null) -> void:
 	if mode not in ["home", SettingsFlow.MODE_SETTINGS] or is_instance_valid(_whats_new_card): return
-	var entries := Changelog.load_entries(Changelog.channel(config))
+	# A build that sells nothing leaves out the lines about Full Journey (Changelog.without_paid).
+	var paid_hidden := _paid_content_hidden()
+	var entries := Changelog.load_entries(Changelog.channel(config),Changelog.PATH,paid_hidden)
 	if entries.is_empty() or entries[0].version != Changelog.current_version(): return
 	_remember_whats_new()
 	if is_instance_valid(overlay): WhatsNewCard.clear_unseen(overlay.find_child("HomeWhatsNew",true,false))
 	var see_all: Callable = _open_release_notes if Changelog.releases_link_offered() else Callable()
 	# Earlier versions reads the archive only when the player opens that list.
-	var earlier: Callable = (func() -> Array: return Changelog.earlier_entries(entries[0].version)) if Changelog.has_earlier(entries) else Callable()
+	var earlier: Callable = (func() -> Array: return Changelog.earlier_entries(entries[0].version,Changelog.PATH,Changelog.ARCHIVE_PATH,paid_hidden)) if Changelog.has_earlier(entries) else Callable()
 	_whats_new_card = WhatsNewCard.open(ui,entries[0],earlier,see_all,opener)
 	_whats_new_card_mode = mode
 

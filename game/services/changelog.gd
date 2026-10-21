@@ -3,7 +3,10 @@ extends RefCounted
 ## scripts/release-notes.ps1 prints the GitHub release text from the same file.
 ## Each version has a few one-line highlights, each with an icon, that every build
 ## shows on the What's new card, and paragraphs for the GitHub release text. A paragraph may name the builds it belongs to ("channels") and
-## may carry iOS wording ("ios_text"; empty hides it on iOS). Any file that breaks
+## may carry iOS wording ("ios_text"; empty hides it on iOS). A highlight or paragraph
+## about Full Journey, the store or a paid chapter carries "paid": true, and a build
+## that hides paid content (Purchases.paid_content_hidden) leaves it out (without_paid).
+## Any file that breaks
 ## the rules below loads as no entries, so a screen shows nothing rather than a
 ## broken list.
 ##
@@ -58,9 +61,9 @@ static func channel(config: Dictionary) -> String:
 	return PLAY if Typed.equal(config.get("purchase_mode"), "google_play") else GITHUB
 
 ## Entries for one build: [{"version", "date", "highlights": [{"icon", "text"}],
-## "paragraphs": [String]}], newest first.
-static func load_entries(build_channel: String, path: String = PATH) -> Array:
-	return for_channel(load_file(path), build_channel)
+## "paragraphs": [String]}], newest first. `paid_hidden` leaves out paid lines.
+static func load_entries(build_channel: String, path: String = PATH, paid_hidden: bool = false) -> Array:
+	return for_channel(without_paid(load_file(path), paid_hidden), build_channel)
 
 ## The file's validated entries for every build (see parse()).
 static func load_file(path: String = PATH) -> Array:
@@ -118,7 +121,8 @@ static func has_earlier(entries: Array, archive_path: String = ARCHIVE_PATH) -> 
 ## so a version is listed even where none of its paragraphs is. The archive joins
 ## only when its newest version is older than the file's oldest listed one, so the
 ## list never repeats a version or goes out of order.
-static func earlier_entries(current: String, path: String = PATH, archive_path: String = ARCHIVE_PATH) -> Array:
+## `paid_hidden` leaves out paid highlights, and a version left with none.
+static func earlier_entries(current: String, path: String = PATH, archive_path: String = ARCHIVE_PATH, paid_hidden: bool = false) -> Array:
 	var result: Array = []
 	if not VersionOrder.valid(current): return result
 	var oldest := current
@@ -129,6 +133,20 @@ static func earlier_entries(current: String, path: String = PATH, archive_path: 
 	var archive := load_archive(archive_path)
 	if not archive.is_empty() and VersionOrder.compare_listed(archive[0].version, oldest) < 0:
 		result.append_array(archive)
+	return without_paid(result, paid_hidden)
+
+## The one place paid lines leave: with `paid_hidden`, every highlight and paragraph
+## marked "paid" is dropped, and so is a version left with no highlights. Without
+## it, `entries` come back unchanged.
+static func without_paid(entries: Array, paid_hidden: bool) -> Array:
+	if not paid_hidden: return entries
+	var unpaid := func(line: Dictionary) -> bool: return not line.get("paid", false)
+	var result: Array = []
+	for entry: Dictionary in entries:
+		var kept := entry.duplicate(true)
+		kept.highlights = kept.highlights.filter(unpaid)
+		if kept.has("paragraphs"): kept.paragraphs = kept.paragraphs.filter(unpaid)
+		if not kept.highlights.is_empty(): result.append(kept)
 	return result
 
 ## Keeps the paragraphs meant for this build, in this platform's wording.
@@ -167,8 +185,8 @@ static func _valid_entry(entry: Variant) -> bool:
 	var paragraphs: Variant = entry.paragraphs
 	if not paragraphs is Array or paragraphs.is_empty() or paragraphs.size() > MAX_PARAGRAPHS: return false
 	for paragraph: Variant in paragraphs:
-		if not paragraph is Dictionary or not _exact_keys(paragraph, ["text"], ["channels", "ios_text"]): return false
-		if not _plain_text(paragraph.text) or paragraph.text.is_empty(): return false
+		if not paragraph is Dictionary or not _exact_keys(paragraph, ["text"], ["channels", "ios_text", "paid"]): return false
+		if not _plain_text(paragraph.text) or paragraph.text.is_empty() or not _valid_paid(paragraph): return false
 		if paragraph.has("ios_text") and not _plain_text(paragraph.ios_text): return false
 		if paragraph.has("channels"):
 			var channels: Variant = paragraph.channels
@@ -191,11 +209,15 @@ static func _valid_heading(entry: Dictionary, previews: bool = false) -> bool:
 static func _valid_highlights(highlights: Variant) -> bool:
 	if not highlights is Array or highlights.is_empty() or highlights.size() > MAX_HIGHLIGHTS: return false
 	for highlight: Variant in highlights:
-		if not highlight is Dictionary or not _exact_keys(highlight, ["icon", "text"], []): return false
+		if not highlight is Dictionary or not _exact_keys(highlight, ["icon", "text"], ["paid"]) or not _valid_paid(highlight): return false
 		if not highlight.icon is String or highlight.icon not in ICONS: return false
 		var line: Variant = highlight.text
 		if not _plain_text(line) or line.is_empty() or line.length() > MAX_HIGHLIGHT_CHARS: return false
 	return true
+
+## "paid", when there, is true: a line about Full Journey, the store or a paid chapter.
+static func _valid_paid(line: Dictionary) -> bool:
+	return not line.has("paid") or Typed.equal(line.paid, true)
 
 static func _plain_text(value: Variant) -> bool:
 	return value is String and value.length() <= MAX_PARAGRAPH_CHARS and not "\n" in value and value.strip_edges() == value

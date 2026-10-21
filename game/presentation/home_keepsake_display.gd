@@ -96,14 +96,15 @@ static func state_of(place: Dictionary, earned: Dictionary) -> String:
 	if friend: return "friend"
 	return "none"
 
-func configure(world: Node3D, items: Array[Dictionary]) -> void:
+## `free_only`: a build that sells nothing stands the free places alone (Catalog.paid).
+func configure(world: Node3D, items: Array[Dictionary], free_only: bool = false) -> void:
 	_world = world
 	name = "HomeKeepsakes"
 	_order.clear()
 	_places.clear()
 	for id: String in Slots.ids():
 		var place := Catalog.by_id(id)
-		if place.is_empty(): continue
+		if place.is_empty() or (free_only and Catalog.paid(place)): continue
 		_order.append(id)
 		_places[id] = place
 	_build_ground()

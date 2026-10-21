@@ -102,6 +102,8 @@ var _keepsakes: Array[Dictionary] = []
 var _hard_states: Dictionary = {}
 var _hard_count: Array = []
 var _keepsake_display: Node3D
+## Only the free chapters' keepsakes (configure()).
+var _free_only := false
 var _keepsake_controls: Control
 var _keepsake_title: Label
 ## Previous / next paging. Hidden while exploring: the camera follows the spirit
@@ -137,10 +139,13 @@ var _fold_job: Dictionary = {}
 ## The fold's slice of each frame: the kit's slice for a world that runs.
 const FOLD_SLICE_USEC := 3000
 
-func configure(world: Node3D, active: Callable, keepsakes: Array[Dictionary] = []) -> void:
+## `free_only`: a build that sells nothing (Purchases.paid_content_hidden) shows and
+## counts the free chapters' keepsakes alone.
+func configure(world: Node3D, active: Callable, keepsakes: Array[Dictionary] = [], free_only: bool = false) -> void:
 	_world = world
 	_active = active
 	_keepsakes = keepsakes.duplicate(true)
+	_free_only = free_only
 
 func set_keepsakes(items: Array[Dictionary]) -> void:
 	if _keepsakes == items: return
@@ -375,7 +380,7 @@ func _create_keepsake_display() -> void:
 	if not is_instance_valid(_terrain): return
 	_keepsake_display = KeepsakeDisplay.new()
 	_terrain.add_child(_keepsake_display)
-	_keepsake_display.configure(_world, _keepsakes)
+	_keepsake_display.configure(_world, _keepsakes, _free_only)
 	for prop: Variant in [_world.garden, _world.goal_ring, _world.seed, _world.landing_marker, _world.keepsake_landmark]:
 		if is_instance_valid(prop):
 			_hidden_props.append({"node":prop,"visible":prop.visible})
@@ -525,8 +530,8 @@ func _update_keepsake_labels() -> void:
 	if not is_instance_valid(_keepsake_box): return
 	var item: Dictionary = _keepsake_display.selected_item() if is_instance_valid(_keepsake_display) else {}
 	# Progress counts variants (solo, and together where it exists), not places.
-	var total := KeepsakeCatalog.variant_total()
-	var earned := mini(KeepsakeCatalog.variant_count(_keepsakes), total)
+	var total := KeepsakeCatalog.variant_total(_free_only)
+	var earned := mini(KeepsakeCatalog.variant_count(_keepsakes, _free_only), total)
 	_keepsake_controls.visible = not item.is_empty()
 	_keepsake_count.text = "Keepsakes · %d / %d" % [earned, total]
 	# Hard plays keep their own count beside it, once one is open.

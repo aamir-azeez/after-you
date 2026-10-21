@@ -124,10 +124,12 @@ func states(marks: Dictionary, together: bool = true) -> Dictionary:
 	return result
 
 ## [done, total] over every eligible chapter's hard plays (solo, and together
-## when `together`).
-func count(together: bool = true) -> Array:
+## when `together`). `free_only` (a build that sells nothing) counts the free
+## chapters alone.
+func count(together: bool = true, free_only: bool = false) -> Array:
 	var done := 0
 	var keys := eligible_keys()
+	if free_only: keys = keys.filter(func(key: String) -> bool: return not Registry.descriptor(key).premium)
 	var modes: Array = MODES if together else [SOLO]
 	for key: String in keys:
 		for mode: String in modes: done += int(completed(key, mode))
