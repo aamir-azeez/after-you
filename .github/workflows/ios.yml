@@ -461,12 +461,19 @@ jobs:
           set -euo pipefail
           key="$RUNNER_TEMP/asc/AuthKey_${ASC_KEY_ID}.p8"
           auth=(-allowProvisioningUpdates -authenticationKeyPath "$key" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
+          # The team has no registered devices, so Apple cannot make the development profile an
+          # automatically signed archive needs. The archive is signed ad hoc instead, which keeps
+          # the entitlements in the binary; the App Store export below re-signs everything with
+          # the cloud-managed distribution certificate and an App Store profile (no devices).
           xcodebuild archive \
             -project "$IOS_EXPORT/$EXPORT_NAME.xcodeproj" -scheme "$EXPORT_NAME" -configuration Release \
             -destination 'generic/platform=iOS' -archivePath "$RUNNER_TEMP/$EXPORT_NAME.xcarchive" \
-            "${auth[@]}" DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Automatic \
+            DEVELOPMENT_TEAM="$APPLE_TEAM_ID" CODE_SIGN_STYLE=Manual CODE_SIGN_IDENTITY=- \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES PROVISIONING_PROFILE_SPECIFIER="" PROVISIONING_PROFILE="" \
             > "$IOS_LOGS/archive.log" 2>&1 || { grep -E 'error:|\*\* ARCHIVE' "$IOS_LOGS/archive.log" | tail -40 || true; tail -80 "$IOS_LOGS/archive.log"; exit 1; }
           tail -3 "$IOS_LOGS/archive.log"
+          archived="$RUNNER_TEMP/$EXPORT_NAME.xcarchive/Products/Applications/$EXPORT_NAME.app"
+          codesign -d --entitlements - --xml "$archived" 2>/dev/null | plutil -p - | tee "$IOS_LOGS/archive-entitlements.txt" || true
           grep -iE 'certificate|provisioning profile' "$IOS_LOGS/archive.log" | sort -u | head -20 || true
           cat > "$RUNNER_TEMP/ExportOptions.plist" <<PLIST
           <?xml version="1.0" encoding="UTF-8"?>
