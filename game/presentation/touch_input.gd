@@ -52,11 +52,16 @@ static func apply(scroll: ScrollContainer) -> void:
 ## a button that leaves the tree drops its press and the new copy never saw it.
 ## Toggle buttons report their toggle state instead, so they are not counted.
 static func press_held(node: Node) -> bool:
-	if not is_instance_valid(node) or not node.is_inside_tree(): return false
+	return held_button(node) != null
+
+## The button inside `node` that a finger or mouse is pressing now, or null. A
+## change that would move it can wait for that button's button_up.
+static func held_button(node: Node) -> BaseButton:
+	if not is_instance_valid(node) or not node.is_inside_tree(): return null
 	for found: Node in node.find_children("*", "BaseButton", true, false):
 		var button := found as BaseButton
-		if not button.toggle_mode and button.is_pressed() and button.is_visible_in_tree(): return true
-	return false
+		if not button.toggle_mode and button.is_pressed() and button.is_visible_in_tree(): return button
+	return null
 
 ## Waits until no finger or mouse is pressing a button inside `node`, for at
 ## most `limit_ms` so a poll can never stall behind a lost release. Returns at

@@ -10,6 +10,8 @@ extends SceneTree
 ## - the flow: the first-run prompt opens once, only while names are on, the
 ##   Friends header chip shows the name and where it stands, and Change opens
 ##   the prompt to change it;
+## - a prompt opened before Play Games signed in gains its row when the sign-in
+##   lands and loses it on sign-out, without taking focus, the choice or a tap;
 ## - Friends shows a friend's chosen name and, under a nickname, "Goes by";
 ## - a finished room's menu offers Add friend for a partner who is not a friend
 ##   and sends the ordinary request; hard mode names a friend as they are now.
@@ -62,6 +64,19 @@ class Host extends Node:
 	func _names_scope() -> Dictionary: return {"server": str(api.base_url), "owner": str(api.player_id)}
 	func _toast(text: String) -> void: toasts.append(text)
 
+## Stands in for the PlatformGames autoload: offered and signed in together.
+class Games extends Node:
+	signal changed
+	var on := false
+	var reads := 0
+	func offered() -> bool: return on
+	func signed_in() -> bool: return on
+	func kind() -> String: return "play_games"
+	func player_name() -> Dictionary:
+		reads += 1
+		await get_tree().process_frame
+		return {"ok": true, "name": "RobinPlays"}
+
 class Inbox extends RefCounted:
 	var rooms: Array = []
 	func view() -> Dictionary: return {"rooms": rooms, "stale": false, "error": ""}
@@ -87,6 +102,7 @@ func _run() -> void:
 	await _empty_save()
 	await _edit_mode()
 	await _flow()
+	await _platform_follows()
 	await _friends()
 	await _hub_menu()
 	_hard_names()
@@ -349,6 +365,75 @@ func _flow() -> void:
 	flow._settled({"ok": false, "code": "display_name_refused"})
 	_check(chip.status_label.text == PlayerCopy.DISPLAY_NAME_NOT_SAVED and host.toasts.back() == PlayerCopy.DISPLAY_NAME_ERRORS.display_name_refused, "A refusal after the card closed shows on the chip and is said once")
 	chip.queue_free()
+	host.queue_free()
+	await _frames(2)
+	DisplayNames.use_shared(null)
+
+## Play Games signs in a few seconds after launch, often after the first-run
+## prompt opened: the open card follows it.
+func _platform_follows() -> void:
+	var store: RefCounted = DisplayNames.new(_path("follow"))
+	DisplayNames.use_shared(store)
+	store.set_enabled(BASE, ME, true)
+	var api := Api.new()
+	var host := Host.new()
+	host.api = api
+	host.add_child(api)
+	root.add_child(host)
+	var flow := Flow.new(host)
+	host.add_child(flow)
+	flow.client = DisplayNameClient.new(api, host._names_scope, func(_m: int, _p: String, _b: Dictionary) -> Dictionary: return {"ok": false, "code": "offline"}, store)
+	var games := Games.new()
+	root.add_child(games)
+	flow.games = games
+	_check(flow.maybe_ask(page), "Names on, not yet signed in: the first-run prompt opens")
+	await _frames(3)
+	var modal: Control = page.find_child("DisplayNameModal", true, false)
+	var prompt := _prompt_node(modal)
+	_check(prompt.platform_row == null, "Opened before the sign-in: no platform row yet")
+	_check(games.changed.get_connections().size() == 1, "and the card listens to the platform while it is open")
+	await _type("Robin")
+	await _click(prompt.anonymous_row)
+	var focused: bool = prompt.anonymous_row.has_focus()
+	games.on = true
+	games.changed.emit()
+	await _frames(2)
+	_check(prompt.platform_row != null and _has_label(prompt.platform_row, PlayerCopy.DISPLAY_NAME_PLAY_GAMES), "The sign-in lands: Use my Play Games name appears")
+	_check(prompt.platform_row != null and prompt.platform_row.get_index() == prompt.anonymous_row.get_index() + 1, "right under Keep me anonymous")
+	_check(prompt.choice() == "anonymous" and prompt.anonymous_row.has_focus() == focused, "without taking the choice or focus")
+	_check(prompt.anonymous_row.get_node_or_null(prompt.anonymous_row.focus_next) == prompt.platform_row, "and it joins the focus order")
+	games.changed.emit()
+	await _frames(1)
+	_check(modal.find_children("DisplayNamePlatform", "Button", true, false).size() == 1, "Another change with the same state adds nothing")
+	await _click(prompt.platform_row)
+	await _frames(3)
+	_check(games.reads == 1 and prompt.choice() == "platform" and prompt.tag.text == "RobinPlays", "The new row takes the first tap and reads the name once")
+	games.on = false
+	games.changed.emit()
+	await _frames(2)
+	_check(prompt.platform_row == null and modal.find_child("DisplayNamePlatform", true, false) == null, "Signed out: the row goes")
+	_check(prompt.choice() == "typed" and prompt.field.text == "Robin" and prompt.tag.text == "Robin", "and the platform choice falls back to the typed name: " + prompt.tag.text)
+	var after: Node = prompt.anonymous_row.get_node_or_null(prompt.anonymous_row.focus_next)
+	_check(after != null and after.name != "DisplayNamePlatform", "The focus order skips the row that went")
+	# A change that lands while a finger is down waits for the release.
+	var at: Vector2 = prompt.anonymous_row.get_global_rect().get_center()
+	_mouse(at, true)
+	await _frames(1)
+	games.on = true
+	games.changed.emit()
+	await _frames(1)
+	_check(prompt.platform_row == null, "A sign-in while a finger is down on the card waits")
+	_mouse(at, false)
+	await _frames(2)
+	_check(prompt.choice() == "anonymous", "so the press still lands on the row it started on")
+	_check(prompt.platform_row != null and prompt.platform_row.get_index() == prompt.anonymous_row.get_index() + 1, "and the row comes on the release")
+	await _click(prompt.platform_row)
+	await _frames(3)
+	_check(games.reads == 2 and prompt.choice() == "platform", "Signed in again, the name is read again (the account may differ)")
+	modal.close()
+	await _frames(3)
+	_check(games.changed.get_connections().is_empty(), "Closed, the card stops listening")
+	games.queue_free()
 	host.queue_free()
 	await _frames(2)
 	DisplayNames.use_shared(null)

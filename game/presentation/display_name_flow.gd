@@ -12,7 +12,9 @@ extends Node
 ##
 ## Main hosts it as a child and it reads Main only through this host contract
 ## (read at call time): api, _names_scope, saves (reduced motion), _toast,
-## soundscape (the pip's grab tick), and the PlatformGames autoload.
+## soundscape (the pip's grab tick), and the PlatformGames autoload (its state
+## read when the prompt opens and followed through its changed signal while the
+## prompt is open, since Play Games signs in a few seconds after launch).
 const DisplayNames = preload("res://services/display_names.gd")
 const DisplayNameClient = preload("res://services/display_name_client.gd")
 const Prompt = preload("res://presentation/display_name_prompt.gd")
@@ -28,6 +30,8 @@ var host: Node
 var client: RefCounted
 var _chips: Array[WeakRef] = []
 var _prompt: WeakRef = null
+## Tests: a stand-in for the PlatformGames autoload.
+var games: Node = null
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -70,11 +74,13 @@ func prompt_open() -> bool:
 func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = false) -> void:
 	var current := scope()
 	var names: RefCounted = DisplayNames.shared()
+	var platform := _games()
 	var context := {
 		"edit": editing,
 		"own": names.own(current.server, current.owner),
 		"anonymous": DisplayNames.anonymous_name(current.owner),
-		"platform": _platform_label(),
+		"platform": _platform_label,
+		"platform_changed": Signal(platform, &"changed") if platform != null and platform.has_signal(&"changed") else Signal(),
 		"read_platform": _read_platform,
 		"save": _save,
 		"reduced_motion": bool(host.saves.data.settings.get("reduced_motion", false)) if host.saves != null else false,
@@ -120,14 +126,19 @@ func _refresh_chips() -> void:
 ## The platform row's label when Play Games or Game Center is offered and
 ## signed in, else "".
 func _platform_label() -> String:
-	var games: Node = PlatformGames.shared(get_tree()) if is_inside_tree() else null
-	if games == null or not games.offered() or not games.signed_in(): return ""
-	return PlayerCopy.DISPLAY_NAME_GAME_CENTER if games.kind() == GamesProvider.GAME_CENTER else PlayerCopy.DISPLAY_NAME_PLAY_GAMES
+	var platform := _games()
+	if platform == null or not platform.offered() or not platform.signed_in(): return ""
+	return PlayerCopy.DISPLAY_NAME_GAME_CENTER if platform.kind() == GamesProvider.GAME_CENTER else PlayerCopy.DISPLAY_NAME_PLAY_GAMES
 
 func _read_platform() -> Dictionary:
-	var games: Node = PlatformGames.shared(get_tree()) if is_inside_tree() else null
-	if games == null: return {"ok": false, "code": "unavailable"}
-	return await games.player_name()
+	var platform := _games()
+	if platform == null: return {"ok": false, "code": "unavailable"}
+	return await platform.player_name()
+
+## The PlatformGames service, or null (no autoload, or this node is out of the tree).
+func _games() -> Node:
+	if is_instance_valid(games): return games
+	return PlatformGames.shared(get_tree()) if is_inside_tree() else null
 
 ## The prompt's Save: kept on this phone at once, then sent, waiting a moment
 ## for the answer so a refusal shows on the card. A send that takes longer goes

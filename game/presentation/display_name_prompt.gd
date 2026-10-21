@@ -8,15 +8,24 @@ extends Node
 ## - type a name (1 to 18 characters; the counter and the error line say what
 ##   the rules want; services/display_names.gd);
 ## - "Keep me anonymous": others see the anonymous name made from the player id;
-## - "Use my Play Games name" / "Use my Game Center name": shown only when the
+## - "Use my Play Games name" / "Use my Game Center name": shown only while the
 ##   platform is signed in. The name is read from the platform only when this
 ##   row is picked, then copied once through the same rules.
+##
+## The platform row follows the platform while the card is open: a sign-in that
+## finishes after the card opened adds the row under the anonymous one, and a
+## sign-out takes it away (a platform choice falls back to the typed name, which
+## may be empty). Neither moves focus or the choice; a change that lands while a
+## finger is down on the card waits for the release, so that tap still counts.
 ##
 ## The prompt keeps no state of its own beyond the open card. `context`:
 ##   edit (bool): opened from Friends to change the name (its own title);
 ##   own (Dictionary): DisplayNames.own() for this player;
 ##   anonymous (String): this player's anonymous name;
-##   platform (String): the platform row's label, or "" for none;
+##   platform (Callable () -> String, or String): the platform row's label now,
+##     or "" for none; asked when the card opens and on every platform_changed;
+##   platform_changed (Signal, optional): the platform's state changed. The card
+##     listens only while it is open (the connection goes with it);
 ##   read_platform (Callable () -> {"ok", "name"}): awaited when that row is picked;
 ##   save (Callable (choice, name) -> {"closed": bool, "code": String}): awaited on Save;
 ##   reduced_motion (bool), haptic (Callable, optional): the pip's grab tick;
@@ -26,6 +35,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const SpiritPreview = preload("res://presentation/kit/spirit_preview.gd")
+const TouchInput = preload("res://presentation/touch_input.gd")
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
 ## The tag above the pip: the world badge's cream and ink (kit/badges.gd).
 const TAG_FILL := Color("e9edd6")
@@ -45,6 +55,12 @@ var platform_row: Button
 var _counter: Label
 var _error: Label
 var _platform_note: Label
+## The rows' column, and the platform row's label as shown ("" for none).
+var _column: VBoxContainer
+var _platform_label := ""
+## A platform change held back until the pressed button is let go.
+var _platform_waiting := false
+var _platform_pending := ""
 var _context: Dictionary = {}
 var _choice := "typed"
 var _platform_name := ""
@@ -85,7 +101,8 @@ func _build(card: Control) -> void:
 	var haptic: Variant = _context.get("haptic")
 	if haptic is Callable and haptic.is_valid(): preview.turn.grabbed.connect(haptic)
 	art.add_child(preview)
-	var column := VBoxContainer.new()
+	_column = VBoxContainer.new()
+	var column := _column
 	column.add_theme_constant_override("separation", 10)
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -102,11 +119,11 @@ func _build(card: Control) -> void:
 	_counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	anonymous_row = _row(column, "DisplayNameAnonymous", PlayerCopy.DISPLAY_NAME_ANONYMOUS, PlayerCopy.DISPLAY_NAME_ANONYMOUS_NOTE % str(_context.get("anonymous", "")))
 	anonymous_row.pressed.connect(_pick.bind("anonymous"))
-	var platform_label := str(_context.get("platform", ""))
-	if not platform_label.is_empty():
-		platform_row = _row(column, "DisplayNamePlatform", platform_label, PlayerCopy.DISPLAY_NAME_PLATFORM_NOTE)
-		_platform_note = platform_row.find_child("Note", true, false)
-		platform_row.pressed.connect(_pick_platform)
+	var platform_label := _platform_now()
+	if not platform_label.is_empty(): _add_platform(platform_label)
+	var follow: Variant = _context.get("platform_changed")
+	# A method of this node, not a lambda: the connection is dropped when the card is freed.
+	if follow is Signal and not (follow as Signal).is_null(): (follow as Signal).connect(_platform_changed)
 	save_button = modal.add_actions(PlayerCopy.DISPLAY_NAME_SAVE, _save, PlayerCopy.DISPLAY_NAME_NOT_NOW if not _context.get("edit", false) else PlayerCopy.DISPLAY_NAME_CANCEL)
 	var dismissed: Variant = _context.get("dismissed")
 	if dismissed is Callable and dismissed.is_valid(): modal.closed.connect(func() -> void: if not _saved: dismissed.call())
@@ -214,6 +231,7 @@ func _row(parent: Node, node_name: String, title: String, note: String) -> Butto
 	words.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_child(words)
 	var head := Label.new()
+	head.name = "Title"
 	head.text = title
 	head.add_theme_font_size_override("font_size", 20)
 	head.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -222,6 +240,68 @@ func _row(parent: Node, node_name: String, title: String, note: String) -> Butto
 	small.name = "Note"
 	small.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return row
+
+# --- The platform row, following the platform ----------------------------------
+
+## The platform row's label as the platform stands now ("" for none).
+func _platform_now() -> String:
+	var source: Variant = _context.get("platform", "")
+	if source is Callable: return str((source as Callable).call()) if (source as Callable).is_valid() else ""
+	return str(source)
+
+func _platform_changed() -> void:
+	set_platform(_platform_now())
+
+## Shows the platform row with `label`, or takes it away for "", in place under
+## the anonymous row. Focus and the choice stay put; only a platform choice
+## whose row goes falls back to the typed name. A change that lands while a
+## finger is down on the card waits for its release: the rows shift, and the
+## release would miss the button it pressed.
+func set_platform(label: String) -> void:
+	if not is_instance_valid(modal): return
+	if _platform_waiting:
+		_platform_pending = label
+		return
+	if label == _platform_label: return
+	var held := TouchInput.held_button(modal)
+	if held != null:
+		_platform_waiting = true
+		_platform_pending = label
+		held.button_up.connect(_platform_released, CONNECT_ONE_SHOT | CONNECT_DEFERRED)
+		return
+	if label.is_empty(): _drop_platform()
+	elif platform_row == null: _add_platform(label)
+	else:
+		(platform_row.find_child("Title", true, false) as Label).text = label
+		platform_row.accessibility_name = label
+		_platform_label = label
+	_show()
+	modal.refresh_focus_order()
+
+func _platform_released() -> void:
+	_platform_waiting = false
+	set_platform(_platform_pending)
+
+func _add_platform(label: String) -> void:
+	platform_row = _row(_column, "DisplayNamePlatform", label, PlayerCopy.DISPLAY_NAME_PLATFORM_NOTE)
+	_column.move_child(platform_row, anonymous_row.get_index() + 1)
+	_platform_note = platform_row.find_child("Note", true, false)
+	platform_row.pressed.connect(_pick_platform)
+	_platform_label = label
+
+func _drop_platform() -> void:
+	if platform_row == null: return
+	var row := platform_row
+	if row.has_focus(): anonymous_row.grab_focus()
+	# Out of the card now, so the focus order never reaches it again.
+	_column.remove_child(row)
+	row.queue_free()
+	platform_row = null
+	_platform_note = null
+	_platform_label = ""
+	# The account may be a different one when it signs in again.
+	_platform_name = ""
+	if _choice == "platform": _choice = "typed"
 
 func _typed(_text: String) -> void:
 	_choice = "typed"
@@ -245,10 +325,13 @@ func _pick_platform() -> void:
 	var reader: Variant = _context.get("read_platform")
 	if not reader is Callable or not reader.is_valid(): return
 	_busy = true
+	var row := platform_row
 	_platform_note.text = PlayerCopy.DISPLAY_NAME_PLATFORM_READING
 	var answer: Variant = await reader.call()
 	if not is_inside_tree(): return
 	_busy = false
+	# Signed out while it read: the row is gone and the answer is dropped.
+	if platform_row != row: return
 	var name := DisplayNames.clean(str(answer.get("name", ""))) if answer is Dictionary and answer.get("ok", false) else ""
 	if name.is_empty():
 		_platform_note.text = PlayerCopy.DISPLAY_NAME_PLATFORM_FAILED
