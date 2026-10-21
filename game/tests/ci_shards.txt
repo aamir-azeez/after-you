@@ -114,6 +114,7 @@ hud_efficiency 1
 inset_button 3
 intro_comfort 1
 invite_links 2
+ios_free_chapters 3
 ios_platform 3
 journey_corrections 1
 journey_proofs 2
