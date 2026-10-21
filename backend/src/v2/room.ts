@@ -16,6 +16,7 @@ import type { ChapterKey } from "./chapter-types";
 import { initializeRoomV2Schema } from "./storage-schema";
 import { clearTurnTries, parseTries, recordTries, triesField, turnTriesView, type TurnTriesView } from "./turn-tries";
 import { clearEndReactions, endReactionField, endReactionsList, endReactionsView, eraseEndReactionsOf, parseEndReaction, recordEndReaction, type EndReactionsList, type EndReactionsView } from "./end-reactions";
+import { clearRunReactions, eraseRunReactionsOf, parseRunReactions, partnerTrack, recordRunReactions, runReactionField, runReactionsView, withinTurn, type RunReactionsView } from "./run-reactions";
 import { HardMemo, clearHard, failuresView, initializeHard, parseReset, priorReset, recordFailure, type Failure, type HardFailures, type HardRun, type Slip } from "./hard-mode";
 import { exportRoomV2, restoreRoomV2 } from "./snapshot";
 import { snapshotResult } from "../snapshot";
@@ -59,6 +60,8 @@ export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   end_reactions?: EndReactionsView;
   /** Only beside a full read for a member that asked for names while they are on (display-names.ts): the other member's name or null. */
   partner_name?: string | null;
+  /** Only beside a read for a member that asked for run reactions while they are on (run-reactions.ts): the track of the partner's latest turn, when it has one. */
+  run_reactions?: RunReactionsView;
 };
 export type RoomLobbyV2 = RoomSnapshotV2 | (Omit<TransferredRoom, "invite_code"> & {
   api_version: 2; active_role: "complete";
@@ -69,8 +72,15 @@ export type ReceiptV2 = {
   turn_id: string | null; recording_hash: string | null; pair_id: string | null; checkpoint_hash: string;
 };
 /** `end_reactions` only for a standalone member that asked for them while they are on (end-reactions.ts). */
-/** `partner_name` likewise for display names (display-names.ts). */
-export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2; end_reactions?: EndReactionsView; partner_name?: string | null };
+/** `partner_name` likewise for display names (display-names.ts), and `run_reactions` for run reactions (run-reactions.ts). */
+export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 } & BesideFields;
+/**
+ * What a standalone member's read or turn reply carries beside the room, each
+ * only when the member asked for it while it is on: the room's end reactions
+ * (`faces`), the partner's name (`names`) and the run reactions on the partner's latest turn (`tracks`).
+ */
+export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean };
+type BesideFields = { end_reactions?: EndReactionsView; partner_name?: string | null; run_reactions?: RunReactionsView };
 /** The revision and branch a polling member already holds (X-AfterYou-Known-Room). */
 export type KnownRoom = { revision: number; branch: number };
 /** The small poll reply when nothing changed since the member's known revision and branch. */
@@ -308,14 +318,15 @@ export class RoomV2 extends DurableObject<Env> {
   private partnerOf(state: { host_id: string; guest_id: string | null }, player: string): string | null {
     return player === state.host_id ? state.guest_id : state.host_id;
   }
-  /** A room view with the room's end reactions beside it, when `faces`, and the partner's name, when `names`. */
-  private withFaces(view: RoomSnapshotV2, state: RoomStateV2, player: string, faces: boolean, names = false): RoomSnapshotV2 {
-    return faces || names ? { ...view, ...this.beside(state, player, faces, names) } : view;
+  /** A room view with what the member asked for beside it (Beside). */
+  private withBeside(view: RoomSnapshotV2, state: RoomStateV2, player: string, wanted: Beside): RoomSnapshotV2 {
+    return wanted.faces || wanted.names || wanted.tracks ? { ...view, ...this.beside(state, player, wanted) } : view;
   }
   /** The optional fields a room read or a turn reply carries beside the room. */
-  private beside(state: { host_id: string; guest_id: string | null }, player: string, faces: boolean, names: boolean): { end_reactions?: EndReactionsView; partner_name?: string | null } {
+  private beside(state: { host_id: string; guest_id: string | null }, player: string, wanted: Beside): BesideFields {
     const partner = this.partnerOf(state, player);
-    return { ...(faces ? { end_reactions: endReactionsView(this.ctx.storage, partner) } : {}), ...(names ? { partner_name: memberName(this.ctx.storage, partner) } : {}) };
+    return { ...(wanted.faces ? { end_reactions: endReactionsView(this.ctx.storage, partner) } : {}), ...(wanted.names ? { partner_name: memberName(this.ctx.storage, partner) } : {}),
+      ...(wanted.tracks ? { run_reactions: partnerTrack(this.ctx.storage, partner) } : {}) };
   }
   private write(state: RoomStateV2): void {
     state.updated_at = new Date().toISOString();
@@ -350,11 +361,11 @@ export class RoomV2 extends DurableObject<Env> {
     return ok(this.view(state, host));
   }
   /** `history` is what the member's request said about keeping attempts (the router passes it only while offload is on). */
-  /** `faces`: a standalone member read that asked for end reactions (end-reactions.ts) while they are on; `names` likewise for display names. */
-  snapshot(player: string, context?: CampaignRoomContext, history?: HistorySupport, faces = false, names = false): Promise<Outcome<RoomSnapshotV2>> {
+  /** `beside`: what a standalone member read asked for beside the room (Beside); a Story read gets none. */
+  snapshot(player: string, context?: CampaignRoomContext, history?: HistorySupport, beside: Beside = {}): Promise<Outcome<RoomSnapshotV2>> {
     return this.project(player, context, () => {
       const state = this.polledState(player, context, history);
-      return state.ok ? ok(this.withFaces(this.view(state.value, player), state.value, player, faces && context === undefined, names && context === undefined)) : state;
+      return state.ok ? ok(this.withBeside(this.view(state.value, player), state.value, player, context === undefined ? beside : {})) : state;
     });
   }
   /**
@@ -363,14 +374,14 @@ export class RoomV2 extends DurableObject<Env> {
    * an unchanged room answers with a small reply instead of the full view.
    * With `withRedo`, either reply ends with `redo`: the same state GET /redo reads.
    */
-  snapshotIfChanged(player: string, known: KnownRoom, history?: HistorySupport, withRedo = false, faces = false, names = false): Promise<Outcome<PolledRoomV2>> {
+  snapshotIfChanged(player: string, known: KnownRoom, history?: HistorySupport, withRedo = false, beside: Beside = {}): Promise<Outcome<PolledRoomV2>> {
     return this.project<PolledRoomV2>(player, undefined, () => {
       const state = this.polledState(player, undefined, history);
       if (!state.ok) return state;
-      // Faces only move with a turn, which moves the revision, so the small reply never needs them; names are left out of it too.
+      // Faces and tracks only move with a turn, which moves the revision, so the small reply never needs them; names are left out of it too.
       const reply: RoomSnapshotV2 | RoomUnchangedV2 = state.value.revision === known.revision && state.value.branch === known.branch
         ? { schema_version: 1, unchanged: true, revision: state.value.revision, branch: state.value.branch, updated_at: state.value.updated_at }
-        : this.withFaces(this.view(state.value, player), state.value, player, faces, names);
+        : this.withBeside(this.view(state.value, player), state.value, player, beside);
       return ok(withRedo ? { ...reply, redo: redoState(this.ctx.storage, this.redoSource(state.value)) } : reply);
     });
   }
@@ -623,21 +634,21 @@ export class RoomV2 extends DurableObject<Env> {
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   /**
-   * `faces`: the reply also carries the room's end reactions (end-reactions.ts), for a standalone member that asked while they are on;
-   * `names` likewise the partner's name. `name`: the member's own display name, stored with an accepted standalone turn (display-names.ts).
+   * `beside`: what the reply carries beside the room for a standalone member (Beside).
+   * `name`: the member's own display name, stored with an accepted standalone turn (display-names.ts).
    */
-  async commit(player: string, value: unknown, context?: CampaignRoomContext, faces = false, names = false, name?: string | null): Promise<Outcome<MutationV2>> {
+  async commit(player: string, value: unknown, context?: CampaignRoomContext, beside: Beside = {}, name?: string | null): Promise<Outcome<MutationV2>> {
     const outcome = await this.commitTurn(player, value, context, name);
-    if (!outcome.ok || !(faces || names) || context !== undefined) return outcome;
+    if (!outcome.ok || !(beside.faces || beside.names || beside.tracks) || context !== undefined) return outcome;
     const state = this.stored();
-    return state ? ok<MutationV2>({ ...outcome.value, ...this.beside(state, player, faces, names) }) : outcome;
+    return state ? ok<MutationV2>({ ...outcome.value, ...this.beside(state, player, beside) }) : outcome;
   }
   private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext, name?: string | null): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value);
       const raw = object(input.recording);
-      exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : []), ...triesField(input), ...endReactionField(input)]);
-      const tries = parseTries(input), face = parseEndReaction(input);
+      exact(input, ["base_revision", "idempotency_key", "branch", "recording", ...(raw.role === "b" ? ["checkpoint"] : []), ...triesField(input), ...endReactionField(input), ...runReactionField(input)]);
+      const tries = parseTries(input), face = parseEndReaction(input), track = parseRunReactions(input);
       const revision = integer(input.base_revision, 0, Number.MAX_SAFE_INTEGER), branch = integer(input.branch, 0, MAX_BRANCHES - 1);
       const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
       const bounded = this.read();
@@ -647,6 +658,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
       if (recording.simulation_version !== (observed.simulation_version ?? chapter(observed).simulation_version)) return fail(422, "unsupported_simulation_version");
+      withinTurn(track, recording.duration_ticks);
       const retryAccess = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
       const retryGuard = campaignHttpAccessGuard(this.ctx.storage, retryAccess); if (retryGuard) return retryGuard;
       const currentRetry = this.read();
@@ -693,6 +705,7 @@ export class RoomV2 extends DurableObject<Env> {
         this.ctx.storage.sql.exec("INSERT INTO turns VALUES (?,?,?,?)", turn_id, player, state.revision, JSON.stringify(recording));
         if (context === undefined) recordTries(this.ctx.storage, turn_id, recording.recording_hash, tries);
         if (context === undefined) recordEndReaction(this.ctx.storage, turn_id, recording.recording_hash, player, face);
+        if (context === undefined) recordRunReactions(this.ctx.storage, turn_id, recording.recording_hash, player, track);
         if (context === undefined) recordMemberName(this.ctx.storage, player, name);
         if (recording.role === "a") state.a_turn_id = turn_id;
         else {
@@ -872,9 +885,10 @@ export class RoomV2 extends DurableObject<Env> {
       return ok({ pairs, active_pair_ids: state.completed_pair_ids });
     });
   }
-  /** Standalone rooms: every turn's sent face, live, offloaded or replay-transferred alike. */
-  endReactions(player: string): Promise<Outcome<EndReactionsList>> {
-    return this.project(player, undefined, () => this.memberView(player) ? ok(endReactionsList(this.ctx.storage)) : fail(404, "room_not_found"));
+  /** Standalone rooms: every turn's sent face, live, offloaded or replay-transferred alike, and with `tracks` every turn's run reactions beside them. */
+  endReactions(player: string, tracks = false): Promise<Outcome<EndReactionsList & { run_reactions?: RunReactionsView }>> {
+    return this.project(player, undefined, () => this.memberView(player)
+      ? ok({ ...endReactionsList(this.ctx.storage), ...(tracks ? { run_reactions: runReactionsView(this.ctx.storage) } : {}) }) : fail(404, "room_not_found"));
   }
   /** Standalone rooms: every turn's sent try count, live, offloaded or replay-transferred alike. */
   tries(player: string): Promise<Outcome<TurnTriesView>> {
@@ -960,6 +974,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearHistory(this.ctx.storage);
     clearTurnTries(this.ctx.storage);
     clearEndReactions(this.ctx.storage);
+    clearRunReactions(this.ctx.storage);
     clearMemberNames(this.ctx.storage);
     clearHard(this.ctx.storage, this.hard);
     resetRedo(this.ctx.storage);
@@ -987,6 +1002,7 @@ export class RoomV2 extends DurableObject<Env> {
       for (const turn of erasePlayerPhotos(this.ctx.storage, player)) clearDelivery(this.ctx.storage, turn);
       erasePlayerReactions(this.ctx.storage, player);
       eraseEndReactionsOf(this.ctx.storage, player);
+      eraseRunReactionsOf(this.ctx.storage, player);
       eraseMemberName(this.ctx.storage, player);
       recordDeparture(this.ctx.storage, player);
       return ok({ left: true });

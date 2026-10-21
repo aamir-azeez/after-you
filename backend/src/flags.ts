@@ -66,6 +66,8 @@ export const FLAG_VARS = Object.freeze({
   turnTries: "TURN_TRIES_ENABLED",
   /** End-of-run reactions: the capability, faces on room reads and GET .../end-reactions. Turns may carry a face whatever the flag. */
   endReactions: "END_REACTIONS_ENABLED",
+  /** Reactions during a run (v2/run-reactions.ts): the capability, the friend's tracks on room reads, turn replies and the end reactions list. Turns may carry a track whatever the flag. Replays read every track through the end reactions list, so they also need endReactions on. */
+  inRunReactions: "IN_RUN_REACTIONS_ENABLED",
   /** Hard rooms: the capability, creating one, and the reset and read routes of rooms that are not hard yet (v2/hard-mode.ts). */
   hardMode: "HARD_MODE_ENABLED",
   /** Play Games sign-in as a way back to a friend identity (link, unlink, restore) and its capability. */

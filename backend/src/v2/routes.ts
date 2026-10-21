@@ -9,7 +9,7 @@ import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import { MAX_ROOM_STAGES } from "./chapter-types";
 import { stageWithin } from "./room-stage";
-import type { KnownRoom, PolledRoomV2, RoomLobbyV2 } from "./room";
+import type { Beside, KnownRoom, PolledRoomV2, RoomLobbyV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
@@ -27,6 +27,7 @@ import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
 import { endReactionField, endReactionsWanted } from "./end-reactions";
+import { runReactionField, runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
 
@@ -70,6 +71,11 @@ export function knownRoom(request: Request): KnownRoom | undefined {
  */
 export const POLL_REDO_HEADER = "X-AfterYou-Poll-Redo";
 function pollRedo(request: Request): boolean { return request.headers.get(POLL_REDO_HEADER) === "1"; }
+/** What a standalone room read or turn reply carries beside the room: each part the client asked for while it is on. A Story request gets none. */
+function besideWanted(request: Request, env: Env, context: unknown): Beside {
+  if (context !== undefined) return {};
+  return { faces: endReactionsWanted(request) && flags.endReactions(env), names: displayNamesShown(request, env), tracks: runReactionsWanted(request) && flags.inRunReactions(env) };
+}
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
 export const MAX_JOIN_VERSIONS = 16;
@@ -106,6 +112,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(triesWanted(request) && flags.turnTries(env) ? { turn_tries_version: 1 } : {}),
     // Only clients that send and show end reactions ask; the flag decides whether they may.
     ...(endReactionsWanted(request) && flags.endReactions(env) ? { end_reactions_version: 1 } : {}),
+    // Only clients that send and play run reactions ask; the flag decides whether they may.
+    ...(runReactionsWanted(request) && flags.inRunReactions(env) ? { run_reactions_version: 1 } : {}),
     // Only clients that play hard rooms ask; the flag decides whether they may host one.
     ...(hardWanted(request) && flags.hardMode(env) ? { hard_mode_version: 1 } : {}),
     ...liveCapability(request, env),
@@ -241,7 +249,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (item || request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (context !== undefined) throw new ApiError(409, "end_reactions_standalone_only");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
-    return json(unwrap(await room.endReactions(playerId)));
+    return json(unwrap(await room.endReactions(playerId, runReactionsWanted(request) && flags.inRunReactions(env))));
   }
   // Hard rooms (v2/hard-mode.ts): a slip's reset and the kept slips after the
   // ones a phone has seen (GET .../hard/<seen>). The room
@@ -275,10 +283,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (!operation && request.method === "GET") {
     const known = context === undefined ? knownRoom(request) : undefined;
-    const faces = context === undefined && endReactionsWanted(request) && flags.endReactions(env);
-    const names = context === undefined && displayNamesShown(request, env);
-    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env), pollRedo(request), faces, names)
-      : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined, faces, names);
+    const beside = besideWanted(request, env, context);
+    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env), pollRedo(request), beside)
+      : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined, beside);
     if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, env, context)) throw new ApiError(409, "campaign_client_required");
     return json(unwrap(snapshot));
   }
@@ -329,7 +336,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);
     const body = object(input);
     exact(body, operation === "fork" ? ["base_revision", "idempotency_key", "branch", "stage_index", ...(body.redo_request_id === undefined ? [] : ["redo_request_id"])] :
-      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : []), ...triesField(body), ...endReactionField(body)]);
+      ["base_revision", "idempotency_key", "branch", "recording", ...(object(body.recording).role === "b" ? ["checkpoint"] : []), ...triesField(body), ...endReactionField(body), ...runReactionField(body)]);
     const key = text(body.idempotency_key, IDEMPOTENCY_PATTERN), previous = await room.operation(playerId, key, context);
     if (previous.ok) {
       if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation, ...body }))) throw new ApiError(409, "idempotency_key_reused");
@@ -343,7 +350,5 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireRoomHostAccess(room, snapshot.host_id, env);
     await reauthorize(request, playerId, env);
   }
-  const faces = context === undefined && endReactionsWanted(request) && flags.endReactions(env);
-  const names = context === undefined && displayNamesShown(request, env);
-  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context, faces, names, memberName) : await room.fork(playerId, input, context, await bearerDigest(request))));
+  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context, besideWanted(request, env, context), memberName) : await room.fork(playerId, input, context, await bearerDigest(request))));
 }

@@ -54,6 +54,8 @@ const RELAY_READS: Read<V2>[] = [
   ["history", room => room.history(P)],
   ["tries", room => room.tries(P)],
   ["end reactions", room => room.endReactions(P)],
+  ["end reactions with run reactions", room => room.endReactions(P, true)],
+  ["snapshot with everything beside it", room => room.snapshot(P, undefined, undefined, { faces: true, names: true, tracks: true })],
   ["clearMemberName", room => room.clearMemberName(P)],
 ];
 const LEGACY_READS: Read<V1>[] = [
