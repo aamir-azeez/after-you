@@ -159,8 +159,12 @@ func _build_page() -> void:
 	var frame := MarginContainer.new()
 	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var compact: bool = host.overlay.size.y < 640.0
-	for side: Array in [["left", MARGIN_X], ["right", MARGIN_X], ["top", 16 if compact else 30], ["bottom", 14 if compact else 36]]:
+	var height: float = host.overlay.size.y
+	var compact: bool = height < 640.0
+	# A tall screen centres a page of a phone's height (SafeArea.PAGE_HEIGHT).
+	var top := SafeArea.centred(height, SafeArea.PAGE_HEIGHT, 16 if compact else 30)
+	var bottom := SafeArea.centred(height, SafeArea.PAGE_HEIGHT, 14 if compact else 36)
+	for side: Array in [["left", MARGIN_X], ["right", MARGIN_X], ["top", top], ["bottom", bottom]]:
 		frame.add_theme_constant_override("margin_" + side[0], side[1])
 	page.add_child(frame)
 	var column := VBoxContainer.new()

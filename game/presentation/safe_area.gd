@@ -48,6 +48,16 @@ static func pad(margin: MarginContainer, full: Rect2, safe: Rect2, left: int, to
 	margin.add_theme_constant_override("margin_right", int(full.end.x - safe.end.x) + right)
 	margin.add_theme_constant_override("margin_bottom", int(full.end.y - safe.end.y) + bottom)
 
+## The tallest a page grows: the phone's height. A taller screen (a 4:3 or
+## 16:10 tablet) centres a page block this tall instead of stretching its
+## panels, as a wide screen centres a page no wider than the page allows.
+const PAGE_HEIGHT := 720.0
+
+## Spacing on each side that centres content no longer than `cap` along
+## `length` (a page's width or height), never less than `minimum`.
+static func centred(length: float, cap: float, minimum: int) -> int:
+	return maxi(minimum, int((length - cap) * 0.5))
+
 ## Keeps a backdrop (page background, dimming scrim) covering the whole visible
 ## viewport even inside an inset parent, and refits it whenever an ancestor or
 ## the viewport changes. Event-driven; nothing runs per frame.

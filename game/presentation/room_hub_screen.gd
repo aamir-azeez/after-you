@@ -435,8 +435,12 @@ func _layout_safe_area() -> void:
 	_stacked = stacked
 	_body.vertical = stacked
 	_body.add_theme_constant_override("separation",12 if compact else 22)
-	var side := maxi(18,int((safe.size.x-1480)*0.5))
-	SafeArea.pad(_margin,rect,safe,side,12,side,12)
+	var side := SafeArea.centred(safe.size.x,1480,18)
+	# The hub keeps a phone's height on a tall screen; the chapter picker
+	# shares this margin and keeps the full height for more rows.
+	var picking := is_instance_valid(_picker_page) and _picker_page.visible
+	var tall := 12 if picking else SafeArea.centred(safe.size.y,SafeArea.PAGE_HEIGHT,12)
+	SafeArea.pad(_margin,rect,safe,side,tall,side,tall)
 	if is_instance_valid(_picker): _picker.refit()
 
 func set_client(value: RefCounted) -> void:
@@ -466,6 +470,7 @@ func open_chapter_picker() -> void:
 	if not is_instance_valid(_picker_page): _build_picker_page()
 	_layout.visible = false
 	_picker_page.visible = true
+	_layout_safe_area()
 	_fill_picker()
 	_picker.reveal(_selected_key)
 
@@ -475,6 +480,7 @@ func close_chapter_picker() -> void:
 	var focus := get_viewport().gui_get_focus_owner()
 	_picker_page.visible = false
 	_layout.visible = true
+	_layout_safe_area()
 	if focus != null and _picker_page.is_ancestor_of(focus): _chapter_choice.grab_focus()
 
 func _build_picker_page() -> void:

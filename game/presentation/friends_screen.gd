@@ -212,9 +212,10 @@ func _layout() -> void:
 	_compact = compact
 	_stacked = stacked
 	_narrow = narrow
-	var side := maxi(20,int((safe.size.x-1192)*0.5))
+	var side := SafeArea.centred(safe.size.x,1192,20)
+	var tall := SafeArea.centred(safe.size.y,SafeArea.PAGE_HEIGHT,16 if compact else 20)
 	_safe_width = safe.size.x - side * 2
-	SafeArea.pad(_margin,rect,safe,side,16 if compact else 20,side,16 if compact else 20)
+	SafeArea.pad(_margin,rect,safe,side,tall,side,tall)
 	_title.add_theme_font_size_override("font_size",38 if compact else 54)
 	_countdown.add_theme_font_size_override("font_size",16 if compact else 20)
 	_countdown.visible = not narrow
