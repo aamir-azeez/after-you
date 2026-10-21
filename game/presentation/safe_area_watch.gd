@@ -6,11 +6,13 @@ extends Node
 ## Never per frame.
 const NAME := "SafeAreaWatch"
 const GROUP := &"safe_area_watch"
+const SafeArea = preload("res://presentation/safe_area.gd")
 
 var relayout: Callable
 
 func _enter_tree() -> void:
 	add_to_group(GROUP)
+	SafeArea.follow_turns(get_tree())
 	if not get_viewport().size_changed.is_connected(_changed): get_viewport().size_changed.connect(_changed)
 
 func _exit_tree() -> void:

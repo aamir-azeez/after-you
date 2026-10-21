@@ -15,6 +15,7 @@ static var _simulated := Rect2()
 static var _seen := Rect2()
 ## How often a phone reads its safe rectangle again (follow_turns).
 const TURN_POLL_SECONDS := 0.5
+const TURNS_META := &"safe_area_turns"
 
 static func simulate(native_safe: Rect2) -> void:
 	_simulated = native_safe
@@ -36,16 +37,21 @@ static func native() -> Rect2:
 
 ## Both landscape sides are allowed (sensor landscape). A half turn keeps the
 ## screen size and sends no event, yet moves the cutout to the other edge, so
-## `host` (Main, which lasts the whole session) reads the safe rectangle again
-## twice a second and every watched screen relays out when it moved.
-static func follow_turns(host: Node) -> void:
+## one timer under the tree's root (it outlives every scene change, solo
+## chapters included) reads the safe rectangle again twice a second and every
+## watched screen relays out when it moved. The first watcher installs it.
+static func follow_turns(tree: SceneTree) -> void:
+	var root := tree.root
+	if root.has_meta(TURNS_META): return
+	root.set_meta(TURNS_META, true)
 	_seen = native()
 	var timer := Timer.new()
 	timer.name = "SafeAreaTurns"
 	timer.wait_time = TURN_POLL_SECONDS
 	timer.autostart = true
 	timer.timeout.connect(func() -> void: poll(timer.get_tree()))
-	host.add_child(timer, false, Node.INTERNAL_MODE_BACK)
+	# The root may be busy adding the very screen that asked.
+	root.add_child.call_deferred(timer, false, Node.INTERNAL_MODE_BACK)
 
 ## Relays out every watched screen (watch) when the native safe rectangle
 ## moved since the last poll. Returns whether it moved.

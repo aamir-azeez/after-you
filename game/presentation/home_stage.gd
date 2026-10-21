@@ -743,11 +743,13 @@ func _frame_camera() -> void:
 	# grows the size until the stage shows the island as wide as the authored
 	# frame's stage does (kit/view_fit.gd); a phone keeps zoom_size itself.
 	var authored := _stage_in(Rect2(Vector2.ZERO, ViewFit.BASE))
-	var fit := ViewFit.fit(1.0, rect.size.x/maxf(viewport.size.y,1), authored.size.x/ViewFit.BASE.y)
+	# Measured on the whole screen: a cutout inset never zooms a 16:9 phone out.
+	var whole := _stage_in(Rect2(Vector2.ZERO, viewport.size))
+	var fit := ViewFit.fit(1.0, whole.size.x/maxf(viewport.size.y,1), authored.size.x/ViewFit.BASE.y)
 	camera.size = zoom_size*fit
 	# Offsets place the world in the clear right-side stage at every supported
 	# landscape width.
-	var units_per_pixel := camera.size/maxf(viewport.size.y,1)
+	var units_per_pixel := zoom_size*fit/maxf(viewport.size.y,1)
 	var offset := rect.get_center()-viewport.get_center()
 	camera.h_offset = -offset.x*units_per_pixel
 	camera.v_offset = offset.y*units_per_pixel

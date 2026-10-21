@@ -137,7 +137,9 @@ func _test_watch() -> void:
 	await process_frame
 	_check(calls[0] == 2, "Returning to the foreground relays out the screen (a cutout can move without a resize)")
 	# A half turn moves the cutout to the other edge with no size change and no
-	# event; the poll Main runs twice a second notices it.
+	# event; the root poll the first watcher installed notices it.
+	await process_frame
+	_check(root.get_children(true).filter(func(node: Node) -> bool: return node.name == "SafeAreaTurns").size() == 1, "One session poll lives under the root, outside every scene")
 	var native := root.get_screen_transform() * root.get_visible_rect()
 	SafeArea.simulate(Rect2(native.position + Vector2(INSET, 0), native.size - Vector2(INSET, 0)))
 	SafeArea.poll(self)

@@ -819,4 +819,11 @@ func _test_tall_screen() -> void:
 		else:
 			_check(world.camera.size>stage.zoom_size and is_equal_approx(across,stage.zoom_size*(1280.0-470.0-24.0)/720.0),"A tall screen shows the island as wide as 16:9 does at %s" % size)
 		_check(is_equal_approx(world.camera.h_offset,-(rect.get_center().x-float(size.x)*0.5)*world.camera.size/float(size.y)),"The island stays centred on the stage at %s" % size)
+	# A cutout inset on a 16:9 phone narrows the stage but never zooms Home out.
+	viewport.size = Vector2i(1280,720)
+	stage.offset_left = 44
+	await process_frame
+	await process_frame
+	stage._frame_camera()
+	_check(is_equal_approx(world.camera.size,stage.zoom_size),"A side inset at 16:9 keeps Home's authored camera size")
 	viewport.free()

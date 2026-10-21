@@ -159,14 +159,11 @@ func _build_page() -> void:
 	var frame := MarginContainer.new()
 	frame.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	frame.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	var height: float = host.overlay.size.y
-	var compact: bool = height < 640.0
-	# A tall screen centres a page of a phone's height (SafeArea.PAGE_HEIGHT).
-	var top := SafeArea.centred(height, SafeArea.PAGE_HEIGHT, 16 if compact else 30)
-	var bottom := SafeArea.centred(height, SafeArea.PAGE_HEIGHT, 14 if compact else 36)
-	for side: Array in [["left", MARGIN_X], ["right", MARGIN_X], ["top", top], ["bottom", bottom]]:
-		frame.add_theme_constant_override("margin_" + side[0], side[1])
+	var compact: bool = host.overlay.size.y < 640.0
+	_fit_frame(frame, compact)
 	page.add_child(frame)
+	# A window that changes size (split screen, freeform) centres the page again.
+	SafeArea.watch(page, func() -> void: _fit_frame.call_deferred(frame, compact))
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 16 if compact else 30)
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -188,6 +185,16 @@ func _build_page() -> void:
 	column.add_child(footer)
 	host.overlay.add_child(page)
 	_page = page
+
+## The page's margins. A tall screen centres a page of a phone's height
+## (SafeArea.PAGE_HEIGHT); a phone keeps the usual spacing.
+func _fit_frame(frame: MarginContainer, compact: bool) -> void:
+	if not is_instance_valid(frame) or not is_instance_valid(host) or not is_instance_valid(host.overlay): return
+	var height: float = host.overlay.size.y
+	var top := SafeArea.centred(height, SafeArea.PAGE_HEIGHT, 16 if compact else 30)
+	var bottom := SafeArea.centred(height, SafeArea.PAGE_HEIGHT, 14 if compact else 36)
+	for side: Array in [["left", MARGIN_X], ["right", MARGIN_X], ["top", top], ["bottom", bottom]]:
+		frame.add_theme_constant_override("margin_" + side[0], side[1])
 
 func _header(compact: bool) -> Control:
 	var header := HBoxContainer.new()
