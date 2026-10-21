@@ -5,7 +5,7 @@ extends RefCounted
 ## shows on the What's new card, and paragraphs for the GitHub release text. A paragraph may name the builds it belongs to ("channels") and
 ## may carry iOS wording ("ios_text"; empty hides it on iOS). A highlight or paragraph
 ## about Full Journey, the store or a paid chapter carries "paid": true, and a build
-## that hides paid content (Purchases.paid_content_hidden) leaves it out (without_paid).
+## that hides paid content (Purchases.paid_content_hidden) leaves it out (hides_line).
 ## Any file that breaks
 ## the rules below loads as no entries, so a screen shows nothing rather than a
 ## broken list.
@@ -63,7 +63,7 @@ static func channel(config: Dictionary) -> String:
 ## Entries for one build: [{"version", "date", "highlights": [{"icon", "text"}],
 ## "paragraphs": [String]}], newest first. `paid_hidden` leaves out paid lines.
 static func load_entries(build_channel: String, path: String = PATH, paid_hidden: bool = false) -> Array:
-	return for_channel(without_paid(load_file(path), paid_hidden), build_channel)
+	return without_paid(for_channel(load_file(path), build_channel, paid_hidden), paid_hidden)
 
 ## The file's validated entries for every build (see parse()).
 static func load_file(path: String = PATH) -> Array:
@@ -135,30 +135,37 @@ static func earlier_entries(current: String, path: String = PATH, archive_path: 
 		result.append_array(archive)
 	return without_paid(result, paid_hidden)
 
-## The one place paid lines leave: with `paid_hidden`, every highlight and paragraph
-## marked "paid" is dropped, and so is a version left with no highlights. Without
-## it, `entries` come back unchanged.
+## The one rule for paid lines: with `paid_hidden`, a highlight or paragraph marked
+## "paid" is left out.
+static func hides_line(line: Dictionary, paid_hidden: bool) -> bool:
+	return paid_hidden and line.get("paid", false) == true
+
+## Entries without their paid highlights (hides_line), and without a version left
+## with none. Without `paid_hidden`, `entries` come back unchanged.
 static func without_paid(entries: Array, paid_hidden: bool) -> Array:
 	if not paid_hidden: return entries
-	var unpaid := func(line: Dictionary) -> bool: return not line.get("paid", false)
 	var result: Array = []
 	for entry: Dictionary in entries:
 		var kept := entry.duplicate(true)
-		kept.highlights = kept.highlights.filter(unpaid)
-		if kept.has("paragraphs"): kept.paragraphs = kept.paragraphs.filter(unpaid)
+		kept.highlights = kept.highlights.filter(func(line: Dictionary) -> bool: return not hides_line(line, true))
 		if not kept.highlights.is_empty(): result.append(kept)
 	return result
 
-## Keeps the paragraphs meant for this build, in this platform's wording.
-static func for_channel(entries: Array, build_channel: String) -> Array:
+## Keeps the paragraphs meant for this build, in this platform's wording. A version
+## lists when this build has a paragraph for it; `paid_hidden` then leaves out its
+## paid paragraphs (hides_line), so the card still opens on its highlights.
+static func for_channel(entries: Array, build_channel: String, paid_hidden: bool = false) -> Array:
 	var result: Array = []
 	for entry: Dictionary in entries:
 		var texts: Array[String] = []
+		var listed := false
 		for paragraph: Dictionary in entry.paragraphs:
 			if paragraph.has("channels") and build_channel not in paragraph.channels: continue
 			var text := PlayerCopy.for_platform(paragraph.text, str(paragraph.get("ios_text", paragraph.text)))
-			if not text.is_empty(): texts.append(text)
-		if not texts.is_empty():
+			if text.is_empty(): continue
+			listed = true
+			if not hides_line(paragraph, paid_hidden): texts.append(text)
+		if listed:
 			result.append({"version": entry.version, "date": entry.date, "highlights": entry.highlights.duplicate(true), "paragraphs": texts})
 	return result
 

@@ -273,6 +273,19 @@ func _earlier() -> void:
 	narrow.entries[1].paragraphs = [{"text": "GitHub only.", "channels": ["github"]}]
 	_write(file, JSON.stringify(narrow))
 	_check(Changelog.load_entries(Changelog.PLAY, file).size() == 1 and Changelog.earlier_entries("0.7.0", file, missing) == file_rows, "A version with no Play paragraphs still lists under Earlier versions")
+	# A build that hides paid content (paid_hidden) leaves out paid lines, never a
+	# version's card while a free highlight is left.
+	var paid := _sample()
+	paid.entries[0].highlights[1].paid = true
+	for paragraph: Dictionary in paid.entries[0].paragraphs: paragraph.paid = true
+	paid.entries[1].highlights[0].paid = true
+	_write(file, JSON.stringify(paid))
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	var free := Changelog.load_entries(Changelog.APP_STORE, file, true)
+	_check(free.size() == 1 and free[0].version == "0.7.0" and free[0].highlights == [{"icon": "spark", "text": "First line"}] and free[0].paragraphs.is_empty(), "With every paragraph paid, this version still opens on its free highlights")
+	_check(Changelog.load_entries(Changelog.APP_STORE, file).size() == 2 and Changelog.load_entries(Changelog.APP_STORE, file)[0].paragraphs == ["Both.", "iOS words."], "Without the rule paid lines stay")
+	PlatformSupport.override_platform = ""
+	_check(Changelog.earlier_entries("0.7.0", file, missing, true) == [] and Changelog.earlier_entries("0.7.0", file, missing).size() == 1, "A version left with no free highlight is not listed")
 	DirAccess.remove_absolute(path)
 	DirAccess.remove_absolute(file)
 
@@ -287,7 +300,7 @@ func _archive_sample() -> Dictionary:
 		{"version": "0.6.7", "date": "2026-10-19", "highlights": [{"icon": "leaf", "text": "Oldest line"}, {"icon": "tap", "text": "Another line"}]},
 	]}
 
-const ARCHIVE_BROKEN := ["not JSON", "not an object", "extra top-level key", "wrong schema", "entries not a list", "too many versions", "entry not an object", "paragraphs kept", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "no highlights", "unknown icon", "long highlight", "highlight line break", "preview zero", "preview leading zero", "preview without number", "capital preview", "other prerelease", "preview above its release", "previews unsorted"]
+const ARCHIVE_BROKEN := ["not JSON", "not an object", "extra top-level key", "wrong schema", "entries not a list", "too many versions", "entry not an object", "paragraphs kept", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "no highlights", "unknown icon", "long highlight", "highlight line break", "preview zero", "preview leading zero", "preview without number", "capital preview", "other prerelease", "preview above its release", "previews unsorted", "paid not true"]
 
 func _broken_archive(name: String) -> String:
 	var d := _archive_sample()
@@ -310,6 +323,7 @@ func _broken_archive(name: String) -> String:
 		"unsorted": d.entries.reverse()
 		"duplicate version": d.entries[1].version = "0.6.8"
 		"no highlights": first.highlights = []
+		"paid not true": first.highlights[0].paid = false
 		"unknown icon": first.highlights[0].icon = "rocket"
 		"long highlight": first.highlights[0].text = "a".repeat(Changelog.MAX_HIGHLIGHT_CHARS + 1)
 		"highlight line break": first.highlights[0].text = "One\nTwo"
@@ -324,7 +338,7 @@ func _broken_archive(name: String) -> String:
 			d.entries[1].version = "0.6.7-preview10"
 	return JSON.stringify(d)
 
-const BROKEN := ["missing highlights", "no highlights", "too many highlights", "long highlight", "highlight not text", "empty highlight", "highlight line break", "unknown icon", "highlight extra key", "highlight without icon", "not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions", "preview version"]
+const BROKEN := ["missing highlights", "no highlights", "too many highlights", "long highlight", "highlight not text", "empty highlight", "highlight line break", "unknown icon", "highlight extra key", "highlight without icon", "not JSON", "extra top-level key", "wrong schema", "no entries", "extra entry key", "missing date", "bad date", "bad version", "unsorted", "duplicate version", "wrong paragraph type", "extra paragraph key", "empty text", "too long", "line break", "unknown channel", "empty channels", "repeated channel", "too many paragraphs", "too many versions", "preview version", "highlight paid not true", "paragraph paid not true"]
 
 func _malformed() -> void:
 	_check(not Changelog.parse(JSON.stringify(_sample())).is_empty(), "The sample file is valid")
@@ -348,6 +362,8 @@ func _broken(name: String) -> String:
 		"unknown icon": first.highlights[0].icon = "rocket"
 		"highlight extra key": first.highlights[0].bold = true
 		"highlight without icon": first.highlights[0].erase("icon")
+		"highlight paid not true": first.highlights[0].paid = false
+		"paragraph paid not true": first.paragraphs[0].paid = "yes"
 		"extra top-level key": d.extra = 1
 		"wrong schema": d.schema_version = 2
 		"no entries": d.entries = []

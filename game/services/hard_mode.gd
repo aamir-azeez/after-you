@@ -113,10 +113,11 @@ func state(marks: Dictionary, chapter_key: String, mode: String) -> String:
 ## {chapter_key: {"solo": look, "together": look}} for every eligible chapter,
 ## also under the older key a newer version's keepsake places keep. Without
 ## `together` (the server hosts no hard rooms, or has not said) a chapter has
-## no together look.
-func states(marks: Dictionary, together: bool = true) -> Dictionary:
+## no together look. `free_only` as in count().
+func states(marks: Dictionary, together: bool = true, free_only: bool = false) -> Dictionary:
 	var result := {}
 	for key: String in eligible_keys():
+		if free_only and not _free(key): continue
 		result[key] = {SOLO: state(marks, key, SOLO)}
 		if together: result[key][TOGETHER] = state(marks, key, TOGETHER)
 	for alias: String in KeepsakeCatalog.ALIASES:
@@ -129,11 +130,15 @@ func states(marks: Dictionary, together: bool = true) -> Dictionary:
 func count(together: bool = true, free_only: bool = false) -> Array:
 	var done := 0
 	var keys := eligible_keys()
-	if free_only: keys = keys.filter(func(key: String) -> bool: return not Registry.descriptor(key).premium)
+	if free_only: keys = keys.filter(_free)
 	var modes: Array = MODES if together else [SOLO]
 	for key: String in keys:
 		for mode: String in modes: done += int(completed(key, mode))
 	return [done, keys.size() * modes.size()]
+
+## Whether a chapter is free to play (no Full Journey).
+static func _free(key: String) -> bool:
+	return not bool(Registry.descriptor(key).get("premium", false))
 
 ## Whether any hard play in `states` (states()) is open or done: until one
 ## is, the menus show no hard marks and no count.

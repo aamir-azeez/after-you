@@ -199,12 +199,14 @@ func _paid_lines() -> void:
 	var archive := Changelog.load_archive()
 	var paid_highlights: Array[String] = []
 	var paid_paragraphs: Array[String] = []
-	for entry: Dictionary in entries + archive:
+	for entry: Dictionary in entries:
 		for line: Dictionary in entry.highlights:
 			if line.get("paid", false): paid_highlights.append(line.text)
-		for paragraph: Dictionary in entry.get("paragraphs", []):
+		for paragraph: Dictionary in entry.paragraphs:
 			if paragraph.get("paid", false): paid_paragraphs.append(paragraph.text)
-	_check(not entries.is_empty() and not archive.is_empty() and paid_highlights.size() > 0 and paid_paragraphs.size() > 0, "Both files load with paid lines flagged")
+	# The archive's paid highlights are checked on Earlier versions, in _surfaces().
+	_check(not archive.filter(func(entry: Dictionary) -> bool: return entry.highlights.any(func(line: Dictionary) -> bool: return line.get("paid", false))).is_empty(), "The archive loads with paid highlights flagged")
+	_check(paid_highlights.size() > 0 and paid_paragraphs.size() > 0, "The file loads with paid lines flagged")
 	for channel: String in Changelog.CHANNELS:
 		for platform: String in ["", PlatformSupport.ANDROID, PlatformSupport.IOS]:
 			PlatformSupport.override_platform = platform

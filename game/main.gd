@@ -679,7 +679,8 @@ func _show_home() -> void:
 	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
 	# A build that sells nothing counts and shows the free chapters' keepsakes alone.
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors(),_paid_content_hidden())
-	home_stage.set_hard(hard_states(),HardMode.new().count(hard_together(),_paid_content_hidden()))
+	var hard := HardMode.new()
+	home_stage.set_hard(hard.states(_chapter_marks(),hard_together(),_paid_content_hidden()),hard.count(hard_together(),_paid_content_hidden()))
 	overlay.add_child(home_stage)
 	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
 	var menu := HomeMenu.new()
