@@ -23,6 +23,7 @@ const JourneyWorld = preload("res://presentation/journey_world.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
 const StandSpot = preload("res://presentation/kit/stand_spot.gd")
 const SpotChecks = preload("res://tests/stand_spot_checks.gd")
+const Seven = preload("res://core/journey/seven_mechanisms.gd")
 const STAIRS := ["w-steps-low", "w-steps-high", "mill-steps", "mill-ladder", "east-steps", "boathouse-steps", "rock-steps-low", "rock-steps-high"]
 var checks := 0
 var failures := 0
@@ -41,6 +42,7 @@ func _run() -> void:
 	_dressing(level)
 	_keepsakes()
 	_sound(level)
+	_open_crossings_dry()
 	var scene: PackedScene = load("res://turn_of_the_tide.tscn")
 	var state := scene.get_state()
 	var key := ""
@@ -280,13 +282,17 @@ func _second_stage(level: Dictionary) -> void:
 	# dry. The quay-high ones never flood.
 	var kept: Array = world._kept_walled.duplicate()
 	kept.sort()
-	_check(kept == ["sand-1", "sea-gate-out", "slipway"], "Stage two walls exactly the crossings it can keep under water: %s" % [kept])
+	_check(kept == ["race-stage", "sand-1", "sea-gate-out", "slipway"], "Stage two walls exactly the crossings it can keep under water: %s" % [kept])
 	for id: String in ["jetty-1", "boom-jetty"]:
 		_check(id not in world._walled, "Stage two leaves %s in the water: no water reaches its deck" % id)
-	# Stepping stones and the lever pads, posts and catwalks stand in the open
-	# water, never walled.
-	for id: String in ["stones-1", "stones-2", "stones-3", "race-stage", "boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk", "beach-catwalk", "quay-catwalk"]:
+	# Stepping stones, and the stubs open only over dry water or standing above
+	# every water, stand in the open water, never walled.
+	for id: String in ["stones-1", "stones-2", "stones-3", "beach-catwalk", "quay-catwalk"]:
 		_check(id not in world._walled, "Stage two leaves %s in the open water, unwalled" % id)
+	# The posts and the gate and bar catwalks read the sea, not the tide: open
+	# at high tide over terrace-high decks, so walled dry like any crossing.
+	for id: String in ["boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk"]:
+		_check(id in world._walled, "Stage two walls %s, open whatever the tide" % id)
 	_check(not world._decks["punt-ferry"].visible and world._ghosts["punt-ferry"].visible, "The shut punt shows its outline in its dry pit")
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
 	# Spirits by the wheels: every bubble rises clear of them, of the gauges and
@@ -380,6 +386,71 @@ func _walls(world: Node3D, level: Dictionary, index: int) -> void:
 					return
 		var water := body.get_child(0) as MeshInstance3D
 		_check(_windings(water.mesh).keys() == _windings(BoxMesh.new()).keys(), "Stage %d: every face of %s is wound like the engine's own boxes, so it shows from the side it faces" % [index + 1, body.name])
+
+## In both versions, a crossing that a stage's gate can hold open while its
+## water (the harbour's at the tide, the outer sea's at the sea's value) stands
+## above its deck is dry: no water surface lies over it, so a spirit the rules
+## keep safe there never stands in the water. Gates are read by the journey
+## rules themselves (seven_mechanisms) at every value of the stage's wheels,
+## with every lever pulled and each spirit on any of its pads or on none, so a
+## moved or regated crossing is caught whatever the world walls. Kept crossings
+## (open because entered earlier) are the kept-crossing checks' business.
+func _open_crossings_dry() -> void:
+	for key: String in ["turn-of-the-tide@1", "turn-of-the-tide@2"]:
+		var level: Dictionary = Registry.definition(key)
+		var checkpoint := JourneyCatalog.initial_checkpoint(level)
+		for index in range(level.stages.size()):
+			var stage: Dictionary = level.stages[index]
+			var under := _open_under_water(level, stage, checkpoint.mechanisms.controls)
+			if str(stage.id) == "slack-water":
+				for id: String in ["boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk"]:
+					_check(id in under, "%s: the rules can hold %s open under the high tide" % [key, id])
+			var world := _world(level, index, checkpoint)
+			var rects: Array[Rect2] = []
+			for body: Node3D in world._water.values(): rects.append_array(_water_rects(body))
+			for id: String in under:
+				var r: Array = world._route(id).rect_cm
+				var deck := Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0).grow(-0.01)
+				_check(not rects.any(func(rect: Rect2) -> bool: return rect.intersects(deck)), "%s %s: %s can stand open under its water, so no water lies over it" % [key, stage.id, id])
+			world.free()
+
+## The gated crossings of `stage` that some state of its wheels, levers and
+## pads holds open while their water stands above their lowest deck.
+func _open_under_water(level: Dictionary, stage: Dictionary, initial: Dictionary) -> Array[String]:
+	var combos: Array = [initial.duplicate()]
+	for control: Dictionary in stage.get("controls", []):
+		var grown: Array = []
+		for combo: Dictionary in combos:
+			for value: String in control.values:
+				var next: Dictionary = combo.duplicate()
+				next[control.id] = value
+				grown.append(next)
+		combos = grown
+	var levers := {}
+	for lever: Dictionary in stage.get("levers", []): levers[lever.id] = true
+	var nowhere := {"x": 100000, "z": 100000, "height": -1, "surface_id": ""}
+	var spots := {"p0": [nowhere], "p1": [nowhere]}
+	for pad: Dictionary in stage.get("pressure_pads", []):
+		spots[pad.owner_slot].append({"x": pad.position_cm[0], "z": pad.position_cm[1], "height": int(pad.height_cm), "surface_id": pad.surface_id})
+	var routes := {}
+	for route: Dictionary in level.bridges + level.get("stairs", []): routes[route.id] = route
+	var found: Array[String] = []
+	for gate: Dictionary in stage.gates:
+		var id := str(gate.route_id)
+		var body := World._body_of(routes[id].rect_cm)
+		if id in found or body.is_empty(): continue
+		var deck := float(World._low_cm(routes[id])) / 100.0
+		for controls: Dictionary in combos:
+			var water: float = World.HARBOUR_LEVELS[controls.tide] if body == "harbour" else World.SEA_LEVELS[controls.get("basin", "shut")]
+			if water <= deck: continue
+			var open := false
+			for a: Dictionary in spots.p0:
+				for b: Dictionary in spots.p1:
+					open = open or Seven.predicate(gate.get("when", {}), stage, {"p0": a, "p1": b}, {"controls": controls, "levers": levers})
+			if open:
+				found.append(id)
+				break
+	return found
 
 ## Within each stage every machine that opens a route has its own crest glyph.
 func _crest_glyphs(level: Dictionary) -> void:

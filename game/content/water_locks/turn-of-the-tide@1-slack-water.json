@@ -1,5 +1,5 @@
 {
-	"digest": "8c0559dd7ef9ba3b2f7596f20640c7099b36323acb1ecbe47d3e5415150edae5",
+	"digest": "82b7e3051facf43c4d64a61269d71882a4a9cc158f5e1b0acdd59ac599230346",
 	"runs": [
 		{
 			"a": "island:w-terrace",
@@ -188,96 +188,6 @@
 			"top": -0.7
 		},
 		{
-			"a": "harbour",
-			"along_x": true,
-			"b": "island:m-terrace",
-			"base": 0.45,
-			"ends": [
-				true,
-				true
-			],
-			"from": 192.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "race-stage",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": 256.0,
-			"top": -0.7
-		},
-		{
-			"a": "harbour",
-			"along_x": true,
-			"b": "island:w-terrace",
-			"base": 0.45,
-			"ends": [
-				false,
-				true
-			],
-			"from": -512.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "bar-catwalk",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": -456.0,
-			"top": -0.7
-		},
-		{
-			"a": "harbour",
-			"along_x": true,
-			"b": "island:w-terrace",
-			"base": 0.45,
-			"ends": [
-				true,
-				true
-			],
-			"from": -368.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "gate-catwalk",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": -312.0,
-			"top": -0.7
-		},
-		{
-			"a": "harbour",
-			"along_x": true,
-			"b": "island:w-terrace",
-			"base": 0.45,
-			"ends": [
-				true,
-				true
-			],
-			"from": -296.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "gate-post",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": -240.0,
-			"top": -0.7
-		},
-		{
-			"a": "harbour",
-			"along_x": true,
-			"b": "island:w-terrace",
-			"base": 0.45,
-			"ends": [
-				true,
-				true
-			],
-			"from": -440.0,
-			"kind": "door",
-			"line": -128.0,
-			"mouth": "punt-post",
-			"shift": 6.5,
-			"shut": 0.749999988079071,
-			"to": -384.0,
-			"top": -0.7
-		},
-		{
 			"a": "chamber",
 			"along_x": true,
 			"b": "island:sea-chamber",
@@ -288,24 +198,6 @@
 			"mouth": "",
 			"shift": -5.0,
 			"to": -576.0,
-			"top": -0.7
-		},
-		{
-			"a": "island:w-terrace",
-			"along_x": true,
-			"b": "harbour",
-			"base": 0.45,
-			"ends": [
-				true,
-				true
-			],
-			"from": -296.0,
-			"kind": "door",
-			"line": 128.0,
-			"mouth": "boom-post",
-			"shift": -6.5,
-			"shut": 0.749999988079071,
-			"to": -240.0,
 			"top": -0.7
 		},
 		{

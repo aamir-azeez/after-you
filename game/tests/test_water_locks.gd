@@ -8,8 +8,8 @@ extends SceneTree
 ## its mouth and rises once it leaves. On Turn of the Tide: the number of
 ## pieces each stage gets, doors following the wheels, no water surface running
 ## into a door, no work on idle frames, every walled crossing a sealed pit that
-## never holds water, stepping stones and lever pads unwalled in the open
-## water, a door dipping for a spirit the same way live, sought and with
+## never holds water, stepping stones and the lever pads open only over dry
+## water unwalled in the open water, a door dipping for a spirit the same way live, sought and with
 ## reduced motion (and never for a walkway nobody may walk), and the definition
 ## unchanged. Every other chapter builds no locks.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
@@ -22,7 +22,7 @@ const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const KEY := "turn-of-the-tide@1"
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## Pieces per Turn of the Tide stage: {kind: count}.
-const TIDE_PIECES := {"set-the-tide": {"door": 14, "wall": 4}, "slack-water": {"door": 12, "wall": 10}}
+const TIDE_PIECES := {"set-the-tide": {"door": 14, "wall": 4}, "slack-water": {"door": 6, "wall": 10}}
 var checks := 0
 var failures := 0
 
@@ -442,13 +442,21 @@ func _sealed_pits(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dict
 	_check(wet == 0, "No water ever stands in a sealed pit: %s (%d)" % [stage.id, wet])
 	_reset(world, sim, stage)
 
-## Stepping stones and stubs (lever pads, posts, catwalks) are never walled:
-## they stand in the open channel, its water all round them.
+## Stepping stones are never walled, nor a stub (lever pad, post or catwalk)
+## whose gate opens it only over dry water: they stand in the open channel, its
+## water all round them. The posts and the gate and bar catwalks read the sea,
+## not the tide, so Slack Water can hold them open at high tide over their
+## terrace-high decks, and the race stage can be kept (entered at low tide) and
+## walked at high: those are walled dry like any crossing.
 func _in_open_water(world: Node3D, stage: Dictionary) -> void:
+	var walled_stubs: Array = world._walled.filter(func(id: String) -> bool: return world._is_stub(world._route(id)))
+	walled_stubs.sort()
+	var expected: Array = ["bar-catwalk", "boom-post", "gate-catwalk", "gate-post", "punt-post", "race-stage"] if str(stage.id) == "slack-water" else []
+	_check(walled_stubs == expected, "Only the stubs open under their water are walled: %s %s" % [stage.id, walled_stubs])
 	for route: Dictionary in world.chapter_definition.bridges:
 		var id := str(route.id)
 		var r: Array = route.rect_cm
-		if not (world._is_stub(route) or world.DECK_KINDS.get(id, "") == "stones") or world._gate_for_stage(stage, id).is_empty() or world._body_of(r).is_empty(): continue
+		if not (world._is_stub(route) or world.DECK_KINDS.get(id, "") == "stones") or id in expected or world._gate_for_stage(stage, id).is_empty() or world._body_of(r).is_empty(): continue
 		var area: Array[Rect2] = [Rect2(float(r[0]) / 100.0, float(r[1]) / 100.0, float(r[2] - r[0]) / 100.0, float(r[3] - r[1]) / 100.0).grow(-0.01)]
 		_check(id not in world._walled and _water_over(world, area) > 0, "%s stands unwalled in the open water: %s" % [id, stage.id])
 
@@ -541,9 +549,9 @@ func _walled_sides(world: Node3D, route: String) -> bool:
 		if not held: return false
 	return true
 
-## A lever catwalk that cannot be walked (the sea not level with the tide) at
-## high water: its raised door stays up for a spirit waiting on the terrace at
-## its mouth, and stays in view.
+## A crossing that cannot be walked at high water (the west stepping stones,
+## open only at half tide and not kept here): its raised doors stay up for a
+## spirit waiting on the terrace at its mouth, and stay in view.
 func _unwalkable_mouth() -> void:
 	var level := Registry.definition(KEY)
 	var world: Node3D = Registry.world_script(KEY).new()
@@ -560,12 +568,12 @@ func _unwalkable_mouth() -> void:
 	sim._mechanisms.controls["basin"] = "shut"
 	sim._refresh_routes()
 	var state: Dictionary = sim.snapshot()
-	state.players.p1.x = -340
-	state.players.p1.z = -113
+	state.players.p1.x = -140
+	state.players.p1.z = 0
 	world.present(state, true)
-	var doors := _states_at(locks, "gate-catwalk")
+	var doors := _states_at(locks, "stones-1")
 	var shown := locks.door_nodes().filter(func(door: MeshInstance3D) -> bool: return door.visible).size()
-	_check(not bool(state.bridges["gate-catwalk"]) and doors == ["shut"] and shown == locks.door_states().count("shut"), "A catwalk nobody may walk keeps its raised door up for a spirit at its mouth: %s" % [doors])
+	_check(not bool(state.bridges["stones-1"]) and not doors.is_empty() and doors.all(func(door: String) -> bool: return door == "shut") and shown == locks.door_states().count("shut"), "A crossing nobody may walk keeps its raised doors up for a spirit at its mouth: %s" % [doors])
 	world.free()
 
 # --- Other chapters ---

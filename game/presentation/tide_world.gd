@@ -373,8 +373,9 @@ static func _low_cm(route: Dictionary) -> int:
 ## Crossings in this stage that can stand open while their water rises above
 ## the deck: every always-open low crossing (stairs, the towpath, the mole
 ## slip), and every gated one whose gate does not tie it to a water value that
-## leaves its deck dry (the lock gates, punt and sea gates). Never stepping
-## stones or a stub (_stands_in_water).
+## leaves its deck dry (the lock gates, punt and sea gates, and the posts and
+## catwalks that read the sea but not the tide). Never stepping stones
+## (_stands_in_water).
 func _walled_routes(stage: Dictionary) -> Array[String]:
 	var result: Array[String] = []
 	for route: Dictionary in chapter_definition.get("bridges", []) + chapter_definition.get("stairs", []):
@@ -419,10 +420,13 @@ func _keepable_routes(stage: Dictionary, walled: Array[String]) -> Array[String]
 	return result
 
 ## A crossing never walled: stepping stones stand in the channel as plain
-## stones, under water when it rises over them, and a stub (a lever pad, post
-## or catwalk) is a deck in the open water whose mouth the locks' door holds.
+## stones, under water when it rises over them. A stub (a lever pad, post or
+## catwalk) stands in the open water too, its mouth held by the locks' door,
+## while its gate opens it only over dry water; one a stage can hold open under
+## its water is walled like any crossing (_walled_routes), so a spirit the
+## rules keep safe on it never stands in the water.
 func _stands_in_water(route: Dictionary) -> bool:
-	return _is_stub(route) or DECK_KINDS.get(str(route.id), "") == "stones"
+	return DECK_KINDS.get(str(route.id), "") == "stones"
 
 static func _gate_for_stage(stage: Dictionary, id: String) -> Dictionary:
 	for item: Dictionary in stage.get("gates", []):
