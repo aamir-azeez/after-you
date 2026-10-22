@@ -16,8 +16,9 @@ const HEART := "heart"
 ## only, draws none.
 const EXPRESSIONS := {"happy": Look.HAPPY, "squeeze": Look.SQUEEZE, "surprised": Look.SURPRISED, "sad": Look.SAD,
 	"annoyed": Look.ANNOYED, "angry": Look.ANGRY, "sleepy": Look.SLEEPY, "knocked_out": Look.KNOCKED_OUT}
-## The face a spirit makes for the heart while it shows over it.
-const HEART_EXPRESSION := Look.HAPPY
+## The face a spirit makes for the heart while it shows over it: ^ ^ with
+## pink cheeks, its own 3D face (the picker and bubbles draw the heart icon).
+const HEART_EXPRESSION := Look.JOY
 
 static func is_face(value: Variant) -> bool:
 	return value is String and value in FACES

@@ -12,7 +12,7 @@ const SWAP_CLOSE := 0.07
 const SWAP_OPEN := 0.11
 const SWAP_DONE := SWAP_CLOSE + SWAP_OPEN
 ## The shader parameters each expression sets (spirit_look.gd eye()).
-const SHAPE_KEYS: Array[String] = ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end"]
+const SHAPE_KEYS: Array[String] = ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end", "blush"]
 
 ## Shader parameters per expression, both eyes, built on first use.
 static var _shapes: Dictionary = {}
@@ -31,6 +31,9 @@ func _init(body: Color) -> void:
 	material.set_shader_parameter("body_color", body)
 	material.set_shader_parameter("cream_color", Look.CREAM)
 	material.set_shader_parameter("pupil_color", Look.PUPIL)
+	material.set_shader_parameter(&"blush_color", Look.BLUSH)
+	material.set_shader_parameter(&"blush_strength", Look.BLUSH_STRENGTH)
+	material.set_shader_parameter(&"blush_soft", Look.BLUSH_SOFT)
 	material.set_shader_parameter(&"eye_xy", _eye_xy)
 	material.set_shader_parameter(&"eye_squash", _eye_squash)
 	material.set_shader_parameter(&"look_shift", _look_shift)

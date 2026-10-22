@@ -1,5 +1,5 @@
 extends RefCounted
-## The spirits' look, in one place: palette, body proportions and the nine
+## The spirits' look, in one place: palette, body proportions and the ten
 ## eye expressions. SpiritVisual builds its meshes from the proportions
 ## (spirit_meshes.gd) and paints the eyes on the head with spirit_face.gdshader
 ## from eye(); the flat art (empty_state_art.gd) draws the same contours from
@@ -19,9 +19,13 @@ const SLEEPY := &"sleepy"
 const SQUEEZE := &"squeeze"
 ## X X eyes: knocked out, or scared stiff.
 const KNOCKED_OUT := &"knocked_out"
-const EXPRESSIONS: Array[StringName] = [NORMAL, HAPPY, ANNOYED, SAD, ANGRY, SURPRISED, SLEEPY, SQUEEZE, KNOCKED_OUT]
+## ^ ^ closed smiling eyes with pink cheeks: the face a spirit makes as it
+## sends the heart reaction (services/reaction_catalog.gd HEART_EXPRESSION).
+## The 3D face only; no flat icon draws it.
+const JOY := &"joy"
+const EXPRESSIONS: Array[StringName] = [NORMAL, HAPPY, ANNOYED, SAD, ANGRY, SURPRISED, SLEEPY, SQUEEZE, KNOCKED_OUT, JOY]
 ## The expressions drawn as dark strokes only, with no cream: they never blink.
-const STROKED: Array[StringName] = [SLEEPY, SQUEEZE, KNOCKED_OUT]
+const STROKED: Array[StringName] = [SLEEPY, SQUEEZE, KNOCKED_OUT, JOY]
 
 ## Player identities (unchanged) and the shared parts.
 const PEACH := Color("f4c38d")
@@ -34,6 +38,11 @@ const SLOT_COLOR_NAMES := {"p0": "peach", "p1": "mint"}
 const CREAM := Color("fff7e8")
 const PUPIL := Color("102133")
 const LEAF := Color("5e9e45")
+## Joy's cheeks: a soft pink, mixed over the body (peach or mint) this much,
+## with a soft edge this wide (metres).
+const BLUSH := Color("f38e9b")
+const BLUSH_STRENGTH := 0.85
+const BLUSH_SOFT := 0.010
 ## Feet are the body colour, a shade darker.
 const FOOT_SHADE := 0.06
 
@@ -92,13 +101,17 @@ const _NO_CUT := Vector4(0, 1, 9.0, 0)
 ##   tear_pupil  the dark lobe in it: centre x, y, radius, neck radius
 ##   stroke      strokes: a to b (x, y, x, y); stroke_end: c (x, y), half
 ##               width, and the stroke kind the shader reads (mode is 1 for
-##               both): 0 none, 1 a line a, b, c, 2 a cross: a to b, and c
-##               through the middle of a to b out to c's mirror
+##               all): 0 none, 1 a line a, b, c, 2 a cross: a to b, and c
+##               through the middle of a to b out to c's mirror, 3 an arc
+##               bowed upward: stroke is its centre x, y, radius and half
+##               sweep (radians either side of straight up); c is unused
+##   blush       a soft pink cheek: radii x, y and centre offset x, y (0: none)
 static func eye(expression: StringName, index: int) -> Dictionary:
 	var side := -1.0 if index == 0 else 1.0
 	var e := {"mode": 0, "outer": Vector4(0.085, 0.097, 0, 0), "outer_wave": Vector4.ZERO, "outer_phase": Vector4.ZERO,
 		"pupil": Vector4(0.066, 0.077, 0, 0), "pupil_wave": Vector4.ZERO, "pupil_phase": Vector4.ZERO,
-		"cut": _NO_CUT, "tear": Vector4.ZERO, "tear_pupil": Vector4.ZERO, "stroke": Vector4.ZERO, "stroke_end": Vector4.ZERO}
+		"cut": _NO_CUT, "tear": Vector4.ZERO, "tear_pupil": Vector4.ZERO, "stroke": Vector4.ZERO, "stroke_end": Vector4.ZERO,
+		"blush": Vector4.ZERO}
 	# u: outward from the face's middle, so the two eyes face each other.
 	var at := func(u: float, y: float) -> Vector2: return Vector2(u * side, y)
 	var calm_phase := Vector4(0.6, 2.1, 4.0, 0) if index == 0 else Vector4(2.4, 0.7, 1.3, 0)
@@ -170,6 +183,14 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			var reach := 0.068
 			e.stroke = Vector4(-reach, reach, reach, -reach)
 			e.stroke_end = Vector4(-reach, -reach, 0.024, 2)
+		JOY:
+			# ^ ^: a bold arc bowed upward, no cream, and a soft pink cheek
+			# under each, a little toward the face's edge.
+			e.mode = 1
+			e.stroke = Vector4(0, -0.034, 0.062, 1.2)
+			e.stroke_end = Vector4(0, 0, 0.019, 3)
+			var cheek: Vector2 = at.call(0.050, -0.088)
+			e.blush = Vector4(0.050, 0.032, cheek.x, cheek.y)
 		_:
 			# Normal: a smooth cream oval and a mildly blobby pupil, the two
 			# eyes a little different. Most of the eye is pupil.
@@ -206,7 +227,8 @@ static func wave_radius(wave: Vector4, phase: Vector4, angle: float) -> float:
 
 ## One eye's outline polygons in face space (relative to its anchor), for flat
 ## drawing: {"outer": cream polygons, "pupil": dark polygons, "strokes": dark
-## polylines, "width": stroke width}. Polygons are Arrays of PackedVector2Array.
+## polylines, "width": stroke width}, and "blush" (pink cheek polygons) only
+## for a look with cheeks. Polygons are Arrays of PackedVector2Array.
 ## The shapes are the shader's, joined with plain unions where the shader blends.
 static func eye_contours(expression: StringName, index: int, steps: int = 48) -> Dictionary:
 	var key := "%s/%d/%d" % [expression, index, steps]
@@ -223,6 +245,11 @@ static func _eye_contours(expression: StringName, index: int, steps: int) -> Dic
 		var a := Vector2(s.x, s.y)
 		var b := Vector2(s.z, s.w)
 		var end := Vector2(c.x, c.y)
+		if c.w > 2.5:
+			var bl: Vector4 = e.blush
+			var arc := {"outer": [], "pupil": [], "strokes": [_arc(s, 16)], "width": c.z * 2.0}
+			if bl.x > 0.0: arc.blush = [_oval(bl, Vector4.ZERO, Vector4.ZERO, 32)]
+			return arc
 		if c.w > 1.5: return {"outer": [], "pupil": [], "strokes": [PackedVector2Array([a, b]), PackedVector2Array([end, a + b - end])], "width": c.z * 2.0}
 		var line := PackedVector2Array([a, b])
 		if not end.is_equal_approx(b): line.append(end)
@@ -253,6 +280,14 @@ static func _oval(shape: Vector4, wave: Vector4, phase: Vector4, steps: int) -> 
 		var angle := TAU * float(step) / float(steps)
 		var r := wave_radius(wave, phase, angle)
 		points.append(Vector2(shape.z + cos(angle) * shape.x * r, shape.w + sin(angle) * shape.y * r))
+	return points
+
+## An arc bowed upward (stroke kind 3): centre x, y, radius, half sweep.
+static func _arc(arc: Vector4, steps: int) -> PackedVector2Array:
+	var points := PackedVector2Array()
+	for step in range(steps + 1):
+		var angle := PI * 0.5 + arc.w - 2.0 * arc.w * float(step) / float(steps)
+		points.append(Vector2(arc.x, arc.y) + Vector2(cos(angle), sin(angle)) * arc.z)
 	return points
 
 static func _capsule(a: Vector2, b: Vector2, radius: float) -> PackedVector2Array:

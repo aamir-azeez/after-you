@@ -1,12 +1,19 @@
 extends SceneTree
 ## The spirits' shared look (presentation/spirit_look.gd) and the faces that
-## show it: the nine eye shapes' rules, the body's proportions, and which
+## show it: the ten eye shapes' rules, the body's proportions, and which
 ## moments change the face.
 
 const Look = preload("res://presentation/spirit_look.gd")
 const Spirit = preload("res://presentation/spirit_visual.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 const Idle = preload("res://presentation/spirit_idle.gd")
+const Art = preload("res://presentation/empty_state_art.gd")
+const Faces = preload("res://services/reaction_catalog.gd")
+const Icon = preload("res://presentation/friend_play_icon.gd")
+## The flat outlines of the nine looks the icons draw (eye_contours()), as on
+## origin/main 1ee75731 before Joy: picker cells, the Play with your friend
+## icon, empty states and badges must keep exactly these faces.
+const ICON_FACES_MD5 := "42db19ac3ea69aa2400c60d8c002ed69"
 
 var checks := 0
 var failures := 0
@@ -21,6 +28,8 @@ func _run() -> void:
 	_test_cuts()
 	_test_strokes()
 	_test_knocked_out()
+	_test_joy()
+	_test_icon_faces_pinned()
 	_test_body()
 	_test_triggers()
 	_test_api_and_placement()
@@ -51,12 +60,12 @@ func _anchor(index: int) -> Vector2:
 	return Vector2(-Look.EYE_X if index == 0 else Look.EYE_X, Look.EYE_Y)
 
 func _test_table() -> void:
-	_check(Look.EXPRESSIONS.size() == 9 and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE) and Look.EXPRESSIONS.has(Look.KNOCKED_OUT) and Look.KNOCKED_OUT == &"knocked_out", "Nine expressions, knocked_out among them")
+	_check(Look.EXPRESSIONS.size() == 10 and Look.EXPRESSIONS.has(Look.NORMAL) and Look.EXPRESSIONS.has(Look.SQUEEZE) and Look.EXPRESSIONS.has(Look.KNOCKED_OUT) and Look.KNOCKED_OUT == &"knocked_out" and Look.EXPRESSIONS.has(Look.JOY) and Look.JOY == &"joy", "Ten expressions, knocked_out and joy among them")
 	var complete := true
 	for expression: StringName in Look.EXPRESSIONS:
 		for index in range(2):
 			var eye := Look.eye(expression, index)
-			for key: String in ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end"]:
+			for key: String in ["outer", "outer_wave", "outer_phase", "pupil", "pupil_wave", "pupil_phase", "cut", "tear", "tear_pupil", "stroke", "stroke_end", "blush"]:
 				complete = complete and eye.get(key) is Vector4
 			# The shader reads the mode from stroke_end.w.
 			complete = complete and (eye.stroke_end.w > 0.5) == (eye.mode == 1) and (eye.mode == 1) == (not Look.is_open(expression))
@@ -158,6 +167,12 @@ func _test_strokes() -> void:
 func _stroke_distance(eye: Dictionary, q: Vector2) -> float:
 	var s: Vector4 = eye.stroke
 	var c: Vector4 = eye.stroke_end
+	if c.w > 2.5:
+		# The arc: the shader's sdArc, mirrored about the arc's own vertical.
+		var p := q - Vector2(s.x, s.y)
+		p.x = absf(p.x)
+		var sc := Vector2(sin(s.w), cos(s.w))
+		return (p.distance_to(sc * s.z) if sc.y * p.x > sc.x * p.y else absf(p.length() - s.z)) - c.z
 	var a := Vector2(s.x, s.y)
 	var b := Vector2(s.z, s.w)
 	var end := Vector2(c.x, c.y)
@@ -210,6 +225,114 @@ func _test_knocked_out() -> void:
 	_check(Look.eye(Look.SLEEPY, 0).stroke_end.w == 1.0 and Look.eye(Look.SQUEEZE, 1).stroke_end.w == 1.0, "Sleepy and Squeeze stay single lines")
 	var code: String = load("res://presentation/spirit_face.gdshader").code
 	_check(code.contains("stroke_end[i].w > 1.5") and code.contains("stroke[i].xy + stroke[i].zw - stroke_end[i].xy"), "The face shader draws the cross kind as the look describes it")
+
+## Joy, the face a spirit makes as it sends the heart: closed ^ ^ arcs bowed
+## upward, no cream, and a soft pink cheek under each.
+func _test_joy() -> void:
+	_check(not Look.is_open(Look.JOY) and Look.JOY in Look.STROKED, "Joy's eyes are closed arcs, so they never blink")
+	var normal_reach: float = Look.eye(Look.NORMAL, 0).outer.x
+	for index in range(2):
+		var eye := Look.eye(Look.JOY, index)
+		var shape := Look.eye_contours(Look.JOY, index)
+		_check(eye.mode == 1 and eye.stroke_end.w == 3.0 and shape.outer.is_empty() and shape.pupil.is_empty() and shape.strokes.size() == 1, "Joy eye %d: one dark arc, no cream" % index)
+		if shape.strokes.size() != 1: continue
+		var line: PackedVector2Array = shape.strokes[0]
+		var top := -INF
+		for point: Vector2 in line: top = maxf(top, point.y)
+		var middle := line[line.size() >> 1]
+		_check(line.size() >= 9 and absf(middle.y - top) < 0.001 and top - line[0].y > 0.03 and top - line[line.size() - 1].y > 0.03, "Joy eye %d bows upward: highest in the middle, both ends well below" % index)
+		_check(absf(line[0].x + line[line.size() - 1].x) < 0.001 and absf(line[0].y - line[line.size() - 1].y) < 0.001, "Joy eye %d is an even arc, its ends level" % index)
+		var reach: float = absf(line[0].x) + shape.width * 0.5
+		_check(reach > normal_reach * 0.75 and reach < normal_reach * 1.25 and shape.width > Look.eye_contours(Look.SQUEEZE, index).width, "Joy eye %d: about as wide as an open eye, a bold stroke (%.3f against %.3f)" % [index, reach, normal_reach])
+		# The shader's own rule: dark along the arc's top and at its ends, face
+		# colour inside it, above it and below it.
+		var arc: Vector4 = eye.stroke
+		var centre := Vector2(arc.x, arc.y)
+		var dark := _stroke_distance(eye, centre + Vector2(0, arc.z)) < 0.0 and _stroke_distance(eye, line[0]) < 0.0
+		var clear := _stroke_distance(eye, centre) > 0.0 and _stroke_distance(eye, centre + Vector2(0, arc.z + eye.stroke_end.z * 2.0)) > 0.0 and _stroke_distance(eye, centre + Vector2(0, -arc.z)) > 0.0
+		_check(dark and clear, "Joy eye %d: the shader draws the same arc" % index)
+		# The cheek: below the arc, toward the face's edge, and on the face.
+		var cheek: Vector4 = eye.blush
+		var outward := -1.0 if index == 0 else 1.0
+		var lowest: float = minf(line[0].y, line[line.size() - 1].y) - shape.width * 0.5
+		_check(cheek.x > 0.0 and cheek.y > 0.0 and cheek.w + cheek.y < lowest and cheek.z * outward > 0.0, "Joy eye %d: a cheek sits under the arc, a little toward the face's edge" % index)
+		var blush: Array = shape.get("blush", [])
+		_check(blush.size() == 1 and absf(_area(blush) - PI * cheek.x * cheek.y) < PI * cheek.x * cheek.y * 0.05, "Joy eye %d: its outline lists the same cheek" % index)
+		var on_face := true
+		for point: Vector2 in _points(blush):
+			var at := point + _anchor(index)
+			on_face = on_face and pow(absf(at.x / Look.HEAD_HALF.x), Look.HEAD_POWER) + pow(absf(at.y / Look.HEAD_HALF.y), Look.HEAD_POWER) < 0.75
+		_check(on_face, "Joy eye %d: the cheek stays on the face" % index)
+	var left := Look.eye(Look.JOY, 0)
+	var right := Look.eye(Look.JOY, 1)
+	_check(left.blush == Vector4(right.blush.x, right.blush.y, -right.blush.z, right.blush.w) and left.stroke == right.stroke, "The two Joy eyes and cheeks mirror each other")
+	_check(Look.BLUSH.r > Look.BLUSH.g + 0.15 and Look.BLUSH.r > Look.BLUSH.b + 0.15 and Look.BLUSH.get_luminance() > 0.55 and Look.BLUSH_STRENGTH > 0.5 and Look.BLUSH_SOFT > 0.0, "The cheeks are a soft light pink")
+	var only_joy := true
+	for expression: StringName in Look.EXPRESSIONS:
+		if expression == Look.JOY: continue
+		for index in range(2): only_joy = only_joy and Look.eye(expression, index).blush == Vector4.ZERO and not Look.eye_contours(expression, index).has("blush")
+	_check(only_joy, "Only Joy has cheeks")
+	var code: String = load("res://presentation/spirit_face.gdshader").code
+	_check(code.contains("stroke_end[i].w > 2.5") and code.contains("blush[i].x > 0.0"), "The face shader draws the arc kind and the cheeks as the look describes them")
+	# On a spirit: Joy uploads its arcs and cheeks, and a change of face clears
+	# the cheeks.
+	var spirit := Spirit.new(Look.MINT)
+	root.add_child(spirit)
+	spirit.set_expression(Look.JOY, true)
+	var cheeks: PackedVector4Array = spirit.face_art.material.get_shader_parameter(&"blush")
+	var kinds: PackedVector4Array = spirit.face_art.material.get_shader_parameter(&"stroke_end")
+	_check(cheeks.size() == 2 and cheeks[0].x > 0.0 and cheeks[1].x > 0.0 and kinds[0].w == 3.0 and kinds[1].w == 3.0 and spirit.face_art.material.get_shader_parameter(&"blush_color") == Look.BLUSH, "A joyful spirit draws both arcs and both cheeks")
+	spirit.set_expression(Look.HAPPY, true)
+	cheeks = spirit.face_art.material.get_shader_parameter(&"blush")
+	kinds = spirit.face_art.material.get_shader_parameter(&"stroke_end")
+	_check(cheeks[0] == Vector4.ZERO and cheeks[1] == Vector4.ZERO and kinds[0].w == 0.0, "Happy, after it, has open eyes and no cheeks")
+	spirit.free()
+
+## One line per look and eye: what its flat outline draws, rounded so the
+## same shapes give the same text on any machine.
+func _icon_faces() -> String:
+	var lines: PackedStringArray = []
+	for expression: StringName in [Look.NORMAL, Look.HAPPY, Look.ANNOYED, Look.SAD, Look.ANGRY, Look.SURPRISED, Look.SLEEPY, Look.SQUEEZE, Look.KNOCKED_OUT]:
+		for index in range(2):
+			var shape := Look.eye_contours(expression, index)
+			var keys: Array = shape.keys()
+			keys.sort()
+			var row := "%s/%d %s w%s" % [expression, index, ",".join(PackedStringArray(keys)), _n(shape.width)]
+			for part: String in ["outer", "pupil"]:
+				var box := Rect2()
+				var count := 0
+				for polygon: PackedVector2Array in shape[part]:
+					for point: Vector2 in polygon:
+						box = Rect2(point, Vector2.ZERO) if count == 0 else box.expand(point)
+						count += 1
+				row += " %s %d a%s [%s %s %s %s]" % [part, shape[part].size(), _n(_area(shape[part]), 5), _n(box.position.x), _n(box.position.y), _n(box.end.x), _n(box.end.y)]
+			for line: PackedVector2Array in shape.strokes:
+				row += " line"
+				for point: Vector2 in line: row += " %s,%s" % [_n(point.x), _n(point.y)]
+			lines.append(row)
+	return "\n".join(lines)
+
+## A number rounded to `digits` places, with no "-0" for a value that rounds
+## to zero, so tiny differences between machines print the same.
+func _n(value: float, digits: int = 4) -> String:
+	var text := String.num(value, digits)
+	return "0" if float(text) == 0.0 else text
+
+## The icons keep their faces: Joy is the 3D heart face only.
+func _test_icon_faces_pinned() -> void:
+	var faces := _icon_faces()
+	_check(faces.md5_text() == ICON_FACES_MD5, "The nine flat faces the icons draw are unchanged (md5 %s)" % faces.md5_text())
+	if faces.md5_text() != ICON_FACES_MD5: print(faces)
+	_check(Look.is_open(Look.HAPPY) and Look.eye(Look.HAPPY, 0).mode == 0 and Look.eye(Look.HAPPY, 0).blush == Vector4.ZERO, "Happy keeps its open eyes, with no cheeks")
+	# No icon draws Joy: the picker's faces, the flat art's eye names and scenes.
+	_check(not Faces.EXPRESSIONS.values().has(Look.JOY) and Faces.expression(Faces.HEART) == &"", "The picker never draws Joy: the heart there is its icon")
+	var drawn_joy := Art.EYES.values().has(Look.JOY)
+	for scene: String in Art.SCENES:
+		for row: Array in Art.SCENES[scene]:
+			if row.size() > 2 and row[2] is Dictionary: drawn_joy = drawn_joy or StringName(str(row[2].get("eyes", ""))) == Look.JOY
+	_check(not drawn_joy, "No empty state or icon scene draws Joy")
+	var icon_code: String = (Icon as Script).source_code
+	_check(icon_code.contains("Look.SQUEEZE if squeezed else Look.HAPPY") and not icon_code.contains("JOY"), "The Play with your friend icon is still Happy at rest and Squeeze when pressed")
 
 func _test_body() -> void:
 	var leaf_hue := Look.LEAF.h * 360.0

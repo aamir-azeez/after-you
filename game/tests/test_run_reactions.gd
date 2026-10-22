@@ -61,7 +61,8 @@ func _catalog() -> void:
 	_check(Faces.FACES.size() == 9 and not Faces.FACES.has("normal") and Faces.FACES.has("knocked_out"), "Eight faces with Knocked out in Normal's place, and the heart")
 	for face: String in Faces.FACES:
 		_check(Look.has(Faces.spirit_expression(face)) and not Faces.face_name(face).is_empty(), "%s gives its spirit a real face and has a name" % face)
-	_check(Faces.expression(Faces.HEART) == &"" and Faces.spirit_expression(Faces.HEART) == Look.HAPPY, "The heart is an icon only, and its spirit looks happy")
+	_check(Faces.expression(Faces.HEART) == &"" and Faces.spirit_expression(Faces.HEART) == Look.JOY and Faces.HEART_EXPRESSION == Look.JOY, "The heart is an icon only, and its spirit makes the ^ ^ Joy face")
+	_check(Faces.spirit_expression("happy") == Look.HAPPY and Faces.expression("happy") == Look.HAPPY, "The Happy reaction still makes the Happy face")
 
 func _track() -> void:
 	var track := Track.new()

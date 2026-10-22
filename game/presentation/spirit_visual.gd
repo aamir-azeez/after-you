@@ -1,7 +1,7 @@
 extends Node3D
 ## Presentation-only gait. The world supplies rendered displacement, never input
 ## or recording events, so the same animation works for players and saved ghosts.
-## The body and the nine eye expressions come from spirit_look.gd; the eyes
+## The body and the eye expressions come from spirit_look.gd; the eyes
 ## are painted on the head (spirit_face.gd).
 
 const SpiritIdle = preload("res://presentation/spirit_idle.gd")
@@ -257,8 +257,8 @@ func set_celebration(completed: bool, immediate: bool = false, reduced: bool = f
 		reunion_age = REUNION_DURATION
 		_clear_reunion_sparkles()
 
-## The face's resting expression (spirit_look.gd: NORMAL, HAPPY, ANNOYED, SAD,
-## ANGRY, SURPRISED, SLEEPY, SQUEEZE, KNOCKED_OUT), kept until changed. A timed
+## The face's resting expression (spirit_look.gd EXPRESSIONS), kept until
+## changed. A timed
 ## expression (show_expression) and a doze show over it. The eyes close, swap
 ## and reopen as the spirit advances; `immediate` swaps at once (a placement). Presentation
 ## only: a caller that wants the same face in a replay derives it from
