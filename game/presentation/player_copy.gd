@@ -877,6 +877,8 @@ const MAIN_F890477C65DE := "Your identity is anonymous. Android keeps device cre
 const MAIN_93BF3A28C6F9 := "An identity recovery is saved on this device. Complete that request before you use online rooms."
 # Account and recovery — body text
 const MAIN_3E50EF2B7ECB := "Your saved identity has not been read successfully. It will be preserved. Please check again or use your recovery code below."
+## The same note while the saved recovery could not be read, so Recover is hidden.
+const UNREAD_CHECK_AGAIN := "Your saved identity has not been read successfully. It will be preserved. Please check again."
 # Account and recovery — body text
 const MAIN_570EC629872D := "Creating or recovering an online identity requires two things: an Android build and a connection to the service."
 # Check hosting access — toast / status or error

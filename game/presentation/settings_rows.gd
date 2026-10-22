@@ -124,7 +124,8 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "safety_reports", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_REPORTS, "note": PlayerCopy.SETTINGS_REPORTS_NOTE,
 			"open": account.open_safety, "visible_if": state.call(["ready"])},
 		{"id": "create_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CREATE_IDENTITY, "run": account.create_identity, "visible_if": state.call(["missing"])},
-		{"id": "unread_note", "category": ACCOUNT, "kind": INFO, "label": "", "note": PlayerCopy.MAIN_3E50EF2B7ECB, "visible_if": state.call(["unread"])},
+		{"id": "unread_note", "category": ACCOUNT, "kind": INFO, "label": "", "visible_if": state.call(["unread"]),
+			"note": func() -> String: return PlayerCopy.MAIN_3E50EF2B7ECB if account.recovery_start_allowed() else PlayerCopy.UNREAD_CHECK_AGAIN},
 		{"id": "check_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CHECK_IDENTITY, "run": account.retry_saved_identity, "visible_if": state.call(["unread"])},
 		# A saved recovery the server refused for good, or one it could never accept
 		# (then reading again finds the same one): the way out without a code.
@@ -134,7 +135,7 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "offline_note", "category": ACCOUNT, "kind": INFO, "label": "", "visible_if": state.call(["offline"]),
 			"note": PlayerCopy.for_platform(PlayerCopy.MAIN_570EC629872D, PlayerCopy.MAIN_570EC629872D_IOS)},
 		{"id": "recover_identity", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_RECOVER, "note": PlayerCopy.SETTINGS_RECOVER_NOTE,
-			"open": account.show_recovery_form, "visible_if": func() -> bool: return account.panel_state() in ["ready", "missing", "unread"] and host.api.configured() and host.secrets.is_available()},
+			"open": account.show_recovery_form, "visible_if": func() -> bool: return account.panel_state() in ["ready", "missing", "unread"] and host.api.configured() and host.secrets.is_available() and account.recovery_start_allowed()},
 		{"id": "delete_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_DELETE_IDENTITY, "danger": true,
 			"run": func(): account.confirm_delete_identity(), "visible_if": state.call(["ready"])},
 

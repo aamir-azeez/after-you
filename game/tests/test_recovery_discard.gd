@@ -106,6 +106,7 @@ func _run() -> void:
 	await _test_failed_removal_keeps_everything(app,api,storage)
 	await _test_unsent_proposal(app,api,storage)
 	await _test_unusable_saved_request(app,api,storage)
+	await _test_failed_pending_read(app,api,storage)
 	app.queue_free()
 	await process_frame
 	for suffix: String in ["", ".tmp", ".backup"]:
@@ -115,14 +116,15 @@ func _run() -> void:
 	quit(1 if failures>0 else 0)
 
 ## A new session: memory starts empty and only secure storage carries over.
-func _restart(app: Node, api: Node, storage: StatefulSecrets, values: Dictionary) -> void:
+func _restart(app: Node, api: Node, storage: StatefulSecrets, values: Dictionary, read_fails := false) -> void:
 	storage.values=values.duplicate(true)
 	storage.calls.clear()
 	storage.fail_write_names=[]
 	storage.fail_remove=false
-	storage.fail_read=false
+	storage.fail_read=read_fails
 	app.pending_recovery={}
 	app.pending_recovery_unusable=false
+	app.recovery_read_failed=false
 	app.account_flow.recovery_replace_allowed=false
 	app.account_flow.recovery_unsent=false
 	app.account_flow.recovery_stored_refused=false
@@ -301,6 +303,43 @@ func _test_unusable_saved_request(app: Node, api: Node, storage: StatefulSecrets
 	app._load_saved_identity()
 	while app.identity_loading: await process_frame
 	_check(app.identity_read_state==Main.IdentityReadState.FAILED and not app.pending_recovery_unusable and not app.account_flow.can_discard_recovery(),"An unreadable store offers Check saved identity, not Stop")
+
+## A saved recovery read that fails for a moment may hide an unanswered request
+## holding the only new credentials: nothing may start a recovery over it.
+func _test_failed_pending_read(app: Node, api: Node, storage: StatefulSecrets) -> void:
+	await _restart(app,api,storage,{})
+	await app.account_flow.recover_identity(LOST_PLAYER,LOST_CODE)
+	var unanswered: String=storage.values.recovery_pending
+	var own := JSON.stringify({"player_id":"own-player","device_token":"own-synthetic-device-token","recovery_code":"own-synthetic-code"})
+	await _restart(app,api,storage,{"recovery_pending":unanswered,"player_identity":own},true)
+	_check(app.identity_read_state==Main.IdentityReadState.FAILED and app.recovery_read_failed and app.pending_recovery.is_empty() and not app.account_flow.recovery_start_allowed(),"A failed saved recovery read blocks a new recovery")
+	app.settings_flow.show_settings("account")
+	_check(_find_button(app.overlay,PlayerCopy.SETTINGS_RECOVER)==null and _find_button(app.overlay,PlayerCopy.SETTINGS_CHECK_IDENTITY)!=null and _find_button(app.overlay,PlayerCopy.RECOVERY_DISCARD)==null,"Settings hides Recover and offers Check saved identity")
+	_check(_find_label(app.overlay,PlayerCopy.UNREAD_CHECK_AGAIN)!=null and _find_label(app.overlay,PlayerCopy.MAIN_3E50EF2B7ECB)==null,"The note asks to check again without pointing to a hidden Recover row")
+	storage.calls.clear()
+	app.toast.text=""
+	await app.account_flow.recover_identity(LOST_PLAYER,OTHER_CODE)
+	_check(api.calls.is_empty() and storage.calls.is_empty() and storage.values.recovery_pending==unanswered and app.pending_recovery.is_empty() and app.toast.text==PlayerCopy.MAIN_45D3B02F91EE,"A direct recovery call cannot overwrite the unseen saved request")
+	app.account_flow.confirm_discard_recovery()
+	await app.account_flow.discard_pending_recovery()
+	_check(storage.calls.is_empty() and storage.values.recovery_pending==unanswered and storage.values.player_identity==own,"A plain storage error never removes or replaces anything")
+	storage.fail_read=false
+	await app.account_flow.retry_saved_identity()
+	_check(not app.recovery_read_failed and app.identity_read_state==Main.IdentityReadState.RECOVERY_PENDING and JSON.stringify(app.pending_recovery)==JSON.stringify(JSON.parse_string(unanswered)),"Checking again finds the saved request and it waits for its answer")
+	app.settings_flow.show_settings("account")
+	_check(_find_button(app.overlay,PlayerCopy.SETTINGS_FINISH_RECOVERY)!=null and _find_button(app.overlay,PlayerCopy.RECOVERY_DISCARD)==null,"The found request offers Finish identity recovery, not Stop")
+
+	# With nothing saved, a later successful read brings Recover back.
+	await _restart(app,api,storage,{},true)
+	_check(app.recovery_read_failed and not app.account_flow.recovery_start_allowed(),"A failed read with nothing saved still blocks recovery until checked")
+	storage.fail_read=false
+	await app.account_flow.retry_saved_identity()
+	_check(not app.recovery_read_failed and app.identity_read_state==Main.IdentityReadState.MISSING and app.account_flow.recovery_start_allowed(),"A read that finds nothing restores normal behaviour")
+	app.settings_flow.show_settings("account")
+	_check(_find_button(app.overlay,PlayerCopy.SETTINGS_RECOVER)!=null and _find_label(app.overlay,PlayerCopy.UNREAD_CHECK_AGAIN)==null,"Settings offers Recover again")
+	api.responses=[REFUSED]
+	await app.account_flow.recover_identity(LOST_PLAYER,LOST_CODE)
+	_check(api.calls.size()==1 and storage.values.has("recovery_pending"),"A recovery can start again after the read succeeds")
 
 func _find_label(node: Node, text: String) -> Label:
 	if node is Label and node.text==text: return node

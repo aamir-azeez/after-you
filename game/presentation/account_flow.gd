@@ -13,7 +13,8 @@ extends Node
 ##   Settings' button)
 ## - identity: IdentityReadState, identity_read_state, identity_data,
 ##   identity_loading, identity_busy, identity_restart_required,
-##   pending_recovery, pending_recovery_unusable, deleted_identity_owner, _ensure_identity,
+##   pending_recovery, pending_recovery_unusable, recovery_read_failed,
+##   deleted_identity_owner, _ensure_identity,
 ##   _load_saved_identity, _invalidate_relay_identity, _await_secret,
 ##   _tester_checks_enabled, _play_store_enabled
 ## - screen: mode, running
@@ -291,8 +292,13 @@ func import_recovery_details(text: String, player: LineEdit, code: LineEdit, sta
 	code.release_focus()
 	status.text=PlayerCopy.MAIN_06D48BA3672C
 
+## A new recovery may start only once the saved recovery read has answered:
+## an unseen saved request could be the only copy of new credentials.
+func recovery_start_allowed() -> bool:
+	return not host.identity_loading and not host.recovery_read_failed
+
 func recover_identity(player: String, code: String) -> void:
-	if host.identity_loading:
+	if not recovery_start_allowed():
 		host._toast(PlayerCopy.MAIN_45D3B02F91EE)
 		return
 	if host.identity_busy:

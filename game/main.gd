@@ -203,6 +203,10 @@ var pending_recovery: Dictionary = {}
 ## A saved recovery request was found but is not one the server could accept
 ## (malformed or from an older format). Settings offers to remove it.
 var pending_recovery_unusable := false
+## The saved recovery request could not be read this time, so one may still
+## wait in storage unseen. No new recovery may start (it would overwrite that
+## request) until a read finds it or definitively finds none.
+var recovery_read_failed := false
 var capture_path := ""
 var capture_frames := 0
 var ui_theme: Theme
@@ -1798,6 +1802,7 @@ func _load_saved_identity() -> void:
 	identity_read_state=IdentityReadState.LOADING
 	identity_loading=true
 	pending_recovery_unusable=false
+	recovery_read_failed=false
 	# A saved rotation takes precedence over possibly revoked device credentials.
 	recovery_read_request=secrets.get_secret("recovery_pending")
 
@@ -1821,6 +1826,8 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 				# The server accepts only the formats valid_pending checks, so
 				# this request never rotated anything and holds no live credentials.
 				pending_recovery_unusable=true
+		else:
+			recovery_read_failed=true
 	elif id==identity_request and operation=="get":
 		identity_loading=false
 		# Only an explicit not-found response permits a new identity. Failed
@@ -1849,6 +1856,7 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 func _secret_failed(id: String, _operation: String, code: String) -> void:
 	secret_results[id]={"ok":false,"code":code}
 	if id==identity_request or id==recovery_read_request:
+		if id==recovery_read_request: recovery_read_failed=true
 		identity_loading=false
 		identity_read_state=IdentityReadState.FAILED
 		secret_results.erase(id)
