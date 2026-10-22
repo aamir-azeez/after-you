@@ -49,6 +49,7 @@ extends Node3D
 ## only when it changes.
 
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
 ## Letters stay at 30 px: worlds that restyle pills scale pixel_size from it.
 const FONT_SIZE := 30
 const PIXEL_SIZE := 0.0092
@@ -191,6 +192,8 @@ void fragment() {
 }
 """
 
+## Kept for the session; they go before the renderer stops (release_cached),
+## not when this script is freed.
 static var _font: FontVariation
 static var _pill_texture: ImageTexture
 static var _body_mesh: QuadMesh
@@ -615,7 +618,20 @@ static func shared_font() -> FontVariation:
 		_font = FontVariation.new()
 		_font.base_font = NUNITO
 		_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 800.0}
+		_release_at_exit()
 	return _font
+
+## Lets go of the kept font, pill texture, body mesh and body looks
+## (SessionRelease calls this at shutdown).
+static func release_cached() -> void:
+	_font = null
+	_pill_texture = null
+	_body_mesh = null
+	_shaders.clear()
+	_bodies.clear()
+
+static func _release_at_exit() -> void:
+	SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
 
 ## One of four shared body materials: cream or deep teal, and drawn over
 ## scenery or depth tested. Over-scenery bodies sit just under the
@@ -643,6 +659,7 @@ static func body_material(light_text: bool, over: bool) -> ShaderMaterial:
 	cached.set_shader_parameter("neck", NECK)
 	cached.render_priority = 2 if over else 0
 	_bodies[key] = cached
+	_release_at_exit()
 	return cached
 
 static func _shared_body_mesh() -> QuadMesh:
@@ -651,6 +668,7 @@ static func _shared_body_mesh() -> QuadMesh:
 		_body_mesh.size = Vector2.ONE
 		# Four rows: the body's top and straight edge, the tail's neck and tip.
 		_body_mesh.subdivide_depth = 2
+		_release_at_exit()
 	return _body_mesh
 
 ## A pill's own material over the shared rounded texture.
@@ -680,4 +698,5 @@ static func pill_texture() -> ImageTexture:
 			image.set_pixel(x, y, Color(1, 1, 1, clampf(0.5 - d, 0.0, 1.0)))
 	image.generate_mipmaps()
 	_pill_texture = ImageTexture.create_from_image(image)
+	_release_at_exit()
 	return _pill_texture

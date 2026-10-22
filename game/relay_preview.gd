@@ -22,6 +22,7 @@ const Soundscape = preload("res://services/soundscape.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const LighthouseHud = preload("res://presentation/lighthouse_hud.gd")
 const JournalLoader = preload("res://services/lighthouse_loader.gd")
+const WorldPrewarm = preload("res://services/world_prewarm.gd")
 const LighthouseMigration = preload("res://services/lighthouse_migration.gd")
 const ReactionPhotos = preload("res://presentation/reaction_photo_flow.gd")
 const ReactionStrip = preload("res://presentation/reaction_photo_strip.gd")
@@ -402,6 +403,9 @@ func _build_world_staged() -> void:
 		# replays the partner's turn): the same setup the card would run.
 		_start_opening_turn()
 		await world.build_staged(definition, staged_build_usec, _opening_stage_id())
+		# A Home warm-up of this stage would only build it again (world_prewarm.gd).
+		var built: Variant = world.get("_built_stage_id")
+		if built is String: WorldPrewarm.note_built(chapter_key, built)
 		if shown: await world.reveal_staged()
 		# The ready card is built in a frame of its own, not on the build's last.
 		await get_tree().process_frame

@@ -347,6 +347,7 @@ func _ready() -> void:
 	_world_prewarm = WorldPrewarm.new()
 	_world_prewarm.settings = func() -> Dictionary: return saves.data.settings
 	_world_prewarm.chapters = _openable_chapters
+	_world_prewarm.away = func() -> bool: return is_instance_valid(relay_child) or is_instance_valid(shared_replay_child)
 	_world_prewarm.idle = func() -> bool: return mode in ["home", "journey"] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and _keepsakes_reconcile_frame < 0 and not _home_settling() and not (is_instance_valid(_gl_warmup) and _gl_warmup.running())
 	add_child(_world_prewarm)
 	var thumbnails := ThumbnailShelf.new()

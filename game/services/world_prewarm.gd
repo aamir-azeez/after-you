@@ -13,7 +13,11 @@ extends Node
 ## - Starts once idle() has held with no touch, click or key for IDLE_SECONDS.
 ##   It builds a slice of BUILD_SLICE_USEC each frame, then folds the same way:
 ##   any input, a busy or backgrounded app or a chapter opening pauses it
-##   between slices, and a later idle Home goes on where it stopped.
+##   between slices, and a later idle Home goes on where it stopped. Once
+##   away() holds (a room or a shared replay opens under Home, which stays),
+##   a world still unfinished is let go, so it never stays beside one; a later
+##   idle Home starts it again. A chapter built for real counts as warm
+##   (note_built).
 ## - The world stands in a SubViewport of its own that never draws, so its
 ##   camera, light and environment touch nothing on screen. Once folded it
 ##   leaves the tree and is freed a slice a frame (services/screen_switch.gd).
@@ -45,6 +49,9 @@ static var _warmed: Dictionary = {}
 var idle: Callable
 ## The saved settings now, for the graphics quality the chapter builds with.
 var settings: Callable
+## True once the player has gone somewhere that keeps Home alive beneath it
+## (a room, a shared replay); set by the owner.
+var away: Callable
 ## The registry keys the player can open now, most likely first; set by the owner.
 var chapters: Callable
 var enabled := DisplayServer.get_name() != "headless"
@@ -72,6 +79,10 @@ var _visit_done := false
 ## Chapter and stage pairs warmed this run, for tests.
 static func warmed() -> Array:
 	return _warmed.keys()
+
+## A chapter screen built stage_id of key itself: its caches are as warm.
+static func note_built(key: String, stage_id: String) -> void:
+	if not key.is_empty() and not stage_id.is_empty(): _warmed["%s|%s" % [key, stage_id]] = true
 
 ## Forgets what this run warmed (tests).
 static func forget() -> void:
@@ -110,6 +121,7 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	if _reader != null and not _reader.is_alive(): _take_stage()
+	if is_instance_valid(_view) and away.is_valid() and away.call(): _drop()
 	if not enabled or _visit_done or _backgrounded or not idle.is_valid() or not idle.call():
 		_idle_for = 0.0
 		return
@@ -156,10 +168,10 @@ func _choose() -> void:
 
 ## Joins the reader and picks the stage; a stage warmed already ends here.
 func _take_stage() -> void:
-	var read: Dictionary = _reader.wait_to_finish()
+	var read: Variant = _reader.wait_to_finish()
 	_reader = null
-	_definition = read.definition
-	var pairs: int = read.pairs
+	_definition = read.get("definition", {}) if read is Dictionary else {}
+	var pairs: int = int(read.get("pairs", 0)) if read is Dictionary else 0
 	var stages: Array = _definition.get("stages", [])
 	var stage: Dictionary = stages[clampi(pairs, 0, stages.size() - 1)] if not stages.is_empty() else {}
 	if stage.is_empty() or _warmed.has(_warmed_key(_key, stage)):
@@ -220,6 +232,18 @@ func _start_fold() -> void:
 ## Done: this chapter and stage are warm, and the world goes, a slice a frame.
 func _close() -> void:
 	_warmed[_warmed_key(_key, _stage)] = true
+	_let_go()
+
+## Lets an unfinished world go (see away); this chapter is looked at again.
+func _drop() -> void:
+	_looked.erase(_key)
+	if not _candidates.has(_key): _candidates.push_front(_key)
+	_visit_done = false
+	_let_go()
+
+## The world goes, a slice a frame (services/screen_switch.gd).
+func _let_go() -> void:
+	_building = false
 	_key = ""
 	_definition = {}
 	_stage = {}

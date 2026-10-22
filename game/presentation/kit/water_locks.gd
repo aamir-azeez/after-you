@@ -38,6 +38,8 @@ extends Node3D
 ##       pit missing from a state is dry
 ##   "seabed", "wall_top"          the water floor and the height walls reach
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const SCRIPT_PATH := "res://presentation/kit/water_locks.gd"
 const DOOR := "door"
 const SPILL := "spill"
 const WALL := "wall"
@@ -81,6 +83,8 @@ const AT_TIMES := 1
 const ALWAYS := 2
 ## Runs cached per plan: the same chapter stage always finds the same runs.
 static var _found: Dictionary = {}
+## Opening meshes and the door look, kept for the session; they go before
+## the renderer stops (release_cached), not when this script is freed.
 static var _opening_meshes: Dictionary = {}
 static var _door_material_cache: StandardMaterial3D
 
@@ -525,7 +529,14 @@ static func _door_material() -> StandardMaterial3D:
 		_door_material_cache = StandardMaterial3D.new()
 		_door_material_cache.vertex_color_use_as_albedo = true
 		_door_material_cache.roughness = 0.9
+		SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
 	return _door_material_cache
+
+## Lets go of the kept opening meshes and door look (SessionRelease calls
+## this at shutdown).
+static func release_cached() -> void:
+	_opening_meshes.clear()
+	_door_material_cache = null
 
 ## One opening (top at y 0, hanging down `height`, centred on x 0 along x):
 ## `count` doors with soft plank grooves, a rounded timber top rail and a
@@ -553,6 +564,7 @@ static func _opening_mesh(length: float, count: int, posts: PackedFloat32Array, 
 		_box(tool, Vector3(POST + CAP_OVERHANG, 0.035, POST + CAP_OVERHANG), Vector3(x, POST_RISE + 0.0175, 0), COPING)
 	var mesh := tool.commit()
 	_opening_meshes[key] = mesh
+	SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
 	return mesh
 
 ## A half-round cap along x on top of the door, ends closed.

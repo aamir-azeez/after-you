@@ -7,7 +7,10 @@ extends "res://tests/test_world_fingerprint.gd"
 ## - The warm-up's world stands in a view of its own that never draws: the
 ##   screen's camera is unchanged, and once done nothing of it is left.
 ## - Only while idle: a paused warm-up builds nothing more, and a warm-up
-##   freed mid-build (Home leaving) never builds on and leaves nothing.
+##   freed mid-build (Home leaving) never builds on and leaves nothing. Away
+##   (a room open under Home) it lets an unfinished world go and starts it
+##   again later. A stage a chapter screen built counts as warm.
+## - Its batches leave room in the kept batches for Home's island.
 ## - The stage is the one the solo save opens on.
 const WorldPrewarm = preload("res://services/world_prewarm.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
@@ -58,6 +61,7 @@ func _run() -> void:
 	var kept_batches := StaticBatch._kept_batches.size()
 	var kept_geometry := DefinitionGeometry._kept.size()
 	_check(kept_batches > 0 and kept_geometry > 0, "It leaves batches and geometry kept (%d, %d)" % [kept_batches, kept_geometry])
+	_check(StaticBatch._kept_vertices * 2 < StaticBatch.KEPT_VERTICES, "Its batches take under half of the kept vertices, leaving Home's island kept (%d of %d)" % [StaticBatch._kept_vertices, StaticBatch.KEPT_VERTICES])
 	# The chapter's first view after the warm-up.
 	var warm := _first_view(stages[0])
 	_check(warm.print.hash == cold.print.hash and warm.print.nodes == cold.print.nodes, "A world built after the warm-up is the same as one built cold (%s, %s)" % [str(warm.print.hash).substr(0, 12), str(cold.print.hash).substr(0, 12)])
@@ -71,7 +75,16 @@ func _run() -> void:
 		await process_frame
 		_check(not again.running(), "A stage warmed this run is not built again")
 	again.queue_free()
+	WorldPrewarm.forget()
+	WorldPrewarm.note_built(KEY, "set-the-tide")
+	var built := _prewarm(func() -> bool: return true)
+	home.add_child(built)
+	for i in range(30):
+		await process_frame
+		_check(not built.running(), "A stage a chapter screen built is not warmed again")
+	built.queue_free()
 	await _paused_and_left()
+	await _away()
 	stage3d.queue_free()
 	home.queue_free()
 	await process_frame
@@ -115,6 +128,39 @@ func _paused_and_left() -> void:
 		guard += 1
 	_check(not is_instance_valid(world) and not is_instance_valid(prewarm), "...and is freed with Home over the next frames (%d)" % guard)
 	_check(not WorldPrewarm.warmed().has(KEY + "|set-the-tide"), "A warm-up that never finished warms nothing")
+
+## Away (a room opened under Home), an unfinished world is let go at once and
+## nothing counts as warm; back at Home the warm-up starts it again.
+func _away() -> void:
+	WorldPrewarm.forget()
+	_forget_caches()
+	var away := [false]
+	var home := Node.new()
+	root.add_child(home)
+	var prewarm := _prewarm(func() -> bool: return not away[0])
+	prewarm.away = func() -> bool: return away[0]
+	home.add_child(prewarm)
+	var guard := 0
+	while guard < 2000 and not (prewarm.building() and _world_nodes(prewarm) > 200):
+		await process_frame
+		guard += 1
+	var world: Node3D = prewarm._world
+	away[0] = true
+	await process_frame
+	_check(not prewarm.running() and not prewarm.building(), "Away, the unfinished world is let go")
+	guard = 0
+	while guard < 600 and is_instance_valid(world):
+		await process_frame
+		guard += 1
+	_check(not is_instance_valid(world) and prewarm.get_child_count() == 0 and not WorldPrewarm.warmed().has(KEY + "|set-the-tide"), "...freed over the next frames, warming nothing (%d)" % guard)
+	away[0] = false
+	guard = 0
+	while guard < 2000 and not WorldPrewarm.warmed().has(KEY + "|set-the-tide"):
+		await process_frame
+		guard += 1
+	_check(WorldPrewarm.warmed().has(KEY + "|set-the-tide"), "Back at Home it builds that stage again and finishes (%d frames)" % guard)
+	home.queue_free()
+	for i in range(3): await process_frame
 
 ## The stage the solo save opens on: one played pair per finished stage.
 func _saved_stage() -> void:
