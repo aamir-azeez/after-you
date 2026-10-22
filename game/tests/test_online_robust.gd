@@ -1,9 +1,10 @@
 extends "res://tests/test_online_scenarios.gd"
-## Room moments that used to strand a player: the app paused while Host or a
+## Room moments that used to strand a player: a room read that lands while the
+## phone is unfocused or in the background, and the app paused while Host or a
 ## friend's Join waits for its reply.
 
 func scenarios() -> Array[Callable]:
-	return [_pause_while_hosting, _pause_while_joining_from_friends]
+	return [_read_lands_unfocused.bind(false), _read_lands_unfocused.bind(true), _pause_while_hosting, _pause_while_joining_from_friends]
 
 func suite_name() -> String:
 	return "Online robustness"
@@ -15,6 +16,41 @@ func _until(condition: Callable, limit_ms: int = 10000) -> bool:
 		if condition.call(): return true
 		await h.frames(1)
 	return condition.call()
+
+## The guest waits for the host's last turn. The read that would show the
+## finished room is out when the guest pulls down the notification shade
+## (focus only) or switches away (paused); its reply lands then. Back in
+## front, the guest's card shows the room finished, not the wait.
+func _read_lands_unfocused(paused: bool) -> void:
+	await _begin("last turn read lands while " + ("paused" if paused else "unfocused"))
+	var room: String = await h.hosted_and_joined()
+	await h.step("host takes stage 1 A", func(): await h.take_turn(host))
+	await h.step("guest notices", func(): h.nudge(guest))
+	await h.step("guest takes stage 1 B", func(): await h.take_turn(guest))
+	await h.step("guest takes stage 2 A", func(): await h.take_turn(guest))
+	# The guest reads nothing more until this test asks.
+	guest.child().refresh_schedule._due += 600000
+	await h.step("host notices", func(): h.nudge(host))
+	await h.step("host takes the last turn", func(): await h.take_turn(host))
+	h.check(h.server.room_state(room) == "complete", "the room finished on the server")
+	h.check(guest.child().mode == "online_waiting", "the guest still shows the waiting card before reading")
+	guest.api.faults.append({"path": "/v2/rooms/" + room, "method": HTTPClient.METHOD_GET, "kind": "hold"})
+	h.nudge(guest)
+	h.check(await _until(func() -> bool: return guest.api.held > 0), "the guest's room read is out")
+	if paused: guest.background()
+	else: guest.viewport.propagate_notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	await h.frames(4)
+	guest.api.release_held()
+	# The reply is checked (on a worker) and kept while the phone is away.
+	h.check(await _until(func() -> bool: return guest.api.held == 0 and not guest.app.relay_session.busy() and guest.child().journey.chapter_complete()), "the read lands while the phone is away")
+	await h.frames(6)
+	if paused: guest.foreground()
+	else: guest.viewport.propagate_notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	await h.step("a few seconds pass", func(): h.elapse(guest))
+	await h.step("a few more seconds pass", func(): h.elapse(guest))
+	var child: Node = guest.child()
+	h.check(child != null and child.mode == "complete", "the guest's card shows the finished room, not the wait (at %s)" % [child.mode if child != null else "none"])
+	await h.finish()
 
 ## Host a Friends room, and the app goes to the background before the reply
 ## lands. Back in front, the room opens and is shared with friends.

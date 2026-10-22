@@ -649,6 +649,7 @@ func _presence_badge() -> Label:
 
 
 func _show_ready() -> void:
+	_owed_redraw_context = ""
 	if _journal_loader != null or _world_building:
 		_show_journal_loading()
 		return
@@ -1768,6 +1769,11 @@ func _service_online_refresh() -> void:
 	if is_instance_valid(reaction_photos) and reaction_photos.active: return
 	var now := Time.get_ticks_msec()
 	var context := _online_refresh_context()
+	# A read that found a change while the card could not be redrawn: the next
+	# read compares with what that one kept, so the card is redrawn now.
+	if _owed_redraw_context == context and not online_session.busy() and not online_session.photo_request_busy() and not TouchInput.press_held(controls):
+		_show_ready()
+		return
 	refresh_schedule.bind(context,now,_room_poll_interval_ms())
 	_update_online_sync_status(now)
 	if online_refresh_queued:
@@ -1804,11 +1810,24 @@ func _service_online_refresh() -> void:
 	# A turn whose receipt is still being checked never waits any longer.
 	var changed: bool = unconfirmed or poll_changed(journey,before,before_my_turn,saved_pending,succeeded,redo_changed)
 	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)),changed)
-	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
+	var shown_changed := poll_changed(journey,before,before_my_turn,saved_pending,succeeded,redo_changed)
+	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
+		_owe_redraw(source,context,shown_changed)
+		return
 	# A tap that began during the read finishes on the card it started on.
 	await TouchInput.until_released(controls)
-	if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]): return
-	if poll_changed(journey,before,before_my_turn,saved_pending,succeeded,redo_changed): _show_ready()
+	if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
+		_owe_redraw(source,context,shown_changed)
+		return
+	if shown_changed: _show_ready()
+
+## A room read changed what the card shows but landed while the card could not
+## be redrawn (the phone unfocused or away, a sheet over it). The redraw waits
+## for the next service pass on this same room.
+var _owed_redraw_context := ""
+
+func _owe_redraw(source: RefCounted, context: String, changed: bool) -> void:
+	if changed and is_inside_tree() and mode in ["ready","online_waiting","complete"] and journey == source and online_session != null and context == _online_refresh_context(): _owed_redraw_context = context
 
 ## True when a room poll found something the room card shows: the turn moved
 ## to or from this phone, the unsent turn changed, the room is gone, or the
