@@ -583,6 +583,7 @@ func _join_code(code: String) -> void:
 			# join; the visible invitation field remains a single mutating call.
 			_leave()
 			await host.relay_lobby_flow.join_room(code)
+			host._settle_room_flow()
 			return
 		message(str(response.get("error","Invitation unavailable")))
 		return
@@ -595,3 +596,6 @@ func _join_code(code: String) -> void:
 		await host.relay_lobby_flow.join_room(code)
 	else:
 		await host.legacy_room_flow.join_room(code)
+	# A join that stopped short (refused, or not allowed now) brings the hub
+	# back with its reason; one that opened a room leaves it be.
+	host._settle_room_flow()

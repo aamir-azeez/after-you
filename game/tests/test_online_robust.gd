@@ -1,11 +1,11 @@
 extends "res://tests/test_online_scenarios.gd"
 ## Room moments that used to strand a player: a room read that lands while the
 ## phone is unfocused or in the background, New room on a finished room while
-## a room read is out, and the app paused while Host or a friend's Join waits
-## for its reply.
+## a room read is out, the app paused while Host or a friend's Join waits for
+## its reply, and an earlier-island invitation code the server refuses.
 
 func scenarios() -> Array[Callable]:
-	return [_read_lands_unfocused.bind(false), _read_lands_unfocused.bind(true), _new_room_during_read, _pause_while_hosting, _pause_while_joining_from_friends]
+	return [_read_lands_unfocused.bind(false), _read_lands_unfocused.bind(true), _new_room_during_read, _pause_while_hosting, _pause_while_joining_from_friends, _earlier_island_join_refused]
 
 func suite_name() -> String:
 	return "Online robustness"
@@ -118,4 +118,18 @@ func _pause_while_joining_from_friends() -> void:
 	await h.step("a moment passes", func(): pass)
 	h.check(guest.app.mode != "relay_rooms", "the guest is not left on the room progress card")
 	h.check(h.current_room(guest) == room and not room.is_empty(), "the guest is in the friend's room")
+	await h.finish()
+
+## An earlier-island invitation code typed on the hub whose join the server
+## refuses: the player stays on the hub with the reason, never on a screen
+## with no hub behind a stale Home.
+func _earlier_island_join_refused() -> void:
+	await _begin("earlier-island join refused")
+	var code := "B1B1B1B1B1B1B1B1B1B1"
+	h.server.legacy_invites[code] = [410, "invite_expired"]
+	await h.step("guest opens the hub", func(): h.open_hub(guest))
+	await h.step("guest joins with an expired earlier-island code", func(): h.join_room(guest, "room-" + code), [guest])
+	h.check(guest.hub() != null and guest.hub().visible, "the guest is still on the hub (at %s)" % guest.where())
+	h.check(guest.hub() != null and not guest.hub()._message.is_empty(), "the hub says why the join failed")
+	h.check(guest.api.requests.any(func(entry: Dictionary) -> bool: return entry.path == "/v1/rooms/join"), "the earlier-island join was asked for")
 	await h.finish()

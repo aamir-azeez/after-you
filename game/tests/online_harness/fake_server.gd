@@ -70,6 +70,9 @@ var mutations_enabled := true
 ## LEGACY_TRANSFERRED_ROOM_UNBLOCK on the live Worker (off unless "true").
 var legacy_transferred_unblock := false
 var players: Dictionary = {}
+## Earlier-island (v1) invitation codes the resolver knows, code -> [status,
+## error code] that their join answers. Only refusals are modelled.
+var legacy_invites: Dictionary = {}
 var rooms: Dictionary = {}
 ## Every request, in arrival order: {player, method, path, status, code}.
 var requests: Array[Dictionary] = []
@@ -173,6 +176,9 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	if path == "/v2/rooms/join": return _join(player, body)
 	if path == "/v1/room-inbox": return _inbox(player, headers)
 	if path == "/v1/invitations/resolve": return _resolve(body)
+	if path == "/v1/rooms/join" and legacy_invites.has(normalize_invite(body.get("invite_code"))):
+		var refusal: Array = legacy_invites[normalize_invite(body.get("invite_code"))]
+		return _fail(int(refusal[0]), str(refusal[1]))
 	if path == "/v1/friends" and method == HTTPClient.METHOD_GET:
 		return _ok({"schema_version": 1, "friend_code": player, "refresh_after_seconds": 30, "shared_room": record.get("shared_room"), "friends": _friend_rows(player)})
 	if path == "/v1/friends/share": return _share(player, body)
@@ -583,6 +589,7 @@ func _resolve(body: Dictionary) -> Dictionary:
 	if code.is_empty(): return _fail(400, "invalid_invite")
 	var room: Variant = rooms.get(("v2:" + code).sha256_text().substr(0, 22))
 	if room is Dictionary: return _ok({"schema_version": 1, "family": "relay", "api_version": 2})
+	if legacy_invites.has(code): return _ok({"schema_version": 1, "family": "legacy", "api_version": 1})
 	return _fail(404, "invite_not_found")
 
 func _share(player: String, body: Dictionary) -> Dictionary:
