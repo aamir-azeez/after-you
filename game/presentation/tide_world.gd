@@ -11,6 +11,8 @@ const WaterLocks = preload("res://presentation/kit/water_locks.gd")
 ## which both stages share, and each water surface only on its rectangles:
 ## worked out once per definition, then reused (kit/definition_geometry.gd).
 const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.gd")
+## Walls that fade while a spirit stands behind them.
+const WallFade = preload("res://presentation/kit/wall_fade.gd")
 ## Display heights (metres) for each water value. Low sits below the beaches,
 ## half between beach and terrace, high between terrace and quay.
 const HARBOUR_LEVELS := {"low": -0.22, "half": 0.24, "high": 0.70}
@@ -145,7 +147,8 @@ var _walled: Array[String] = []
 ## open, so walked later even when the tide covers them); kept apart so the
 ## tests can pin which crossings latching walls.
 var _kept_walled: Array[String] = []
-## Where the spirits stand (plan cm), refilled each snapshot for the locks.
+## Where the spirits stand (plan cm), refilled each snapshot for the locks
+## and the wall fade.
 var _spirits := PackedVector2Array()
 ## What holds the water at each opening in the shown stage, the walls built
 ## to hold water (terrain space) for its plan, and the levels it reads (where
@@ -161,6 +164,8 @@ var _ghosts: Dictionary = {}
 ## "body" (that water's root), "water" (its name in _water), "key" (its pit's
 ## area id in the locks' plan)}.
 var _floods: Dictionary = {}
+## Clears the walls in front of a spirit on a walled stub (_build_route_walls).
+var _wall_fade: WallFade
 var _boats: Array[Node3D] = []
 ## RAMPS built for the shown stage: crossing id -> its hinge (Node3D, meta "target").
 var _ramps: Dictionary = {}
@@ -232,6 +237,7 @@ func show_stage(stage: Dictionary) -> void:
 	_water_walls.clear()
 	_ghosts.clear()
 	_floods.clear()
+	_wall_fade = WallFade.new()
 	_boats.clear()
 	_ramps.clear()
 	# Actors outlive a stage: a drowned face goes back before the new one.
@@ -643,6 +649,7 @@ func _build_route_walls() -> void:
 		var route := _route(id)
 		var r: Array = route.rect_cm
 		var floors: Array = []
+		var front: Array = []
 		for surface: Variant in [route.get("from_surface", ""), route.get("to_surface", "")]:
 			if str(surface) == id: continue
 			for item: Dictionary in chapter_definition.get("islands", []) + chapter_definition.get("bridges", []):
@@ -667,12 +674,24 @@ func _build_route_walls() -> void:
 			_holds_water(wall)
 			_holds_water(coping)
 			var size := (wall.mesh as BoxMesh).size
+			var before := root.get_child_count()
 			_mark_bands(wall.position, Vector2(size.x, size.z), SEABED, PARAPET_TOP, root, 0.0, 0 if along_x else 1)
+			# The sides toward the camera (east and south) stand in front of a
+			# spirit on a walled stub: those fade while one stands there.
+			if outward > 0.0 and _is_stub(route):
+				var nodes: Array = [wall, coping]
+				for index in range(before, root.get_child_count()): nodes.append(root.get_child(index))
+				front.append_array(nodes)
 		var center := point([(r[0] + r[2]) * 0.5, (r[1] + r[3]) * 0.5])
 		var width := float(r[2] - r[0]) / 100.0
 		var depth := float(r[3] - r[1]) / 100.0
 		box(Vector3(width, 0.04, depth), STONE_DARK.darkened(0.2), center + Vector3(0, SEABED + 0.02, 0), root).name = "PitFloor"
-		if _is_stub(route): _build_flood(id, route, center, width, depth)
+		if _is_stub(route):
+			_build_flood(id, route, center, width, depth)
+			# A spirit on it stands below its coping: the walls toward the camera
+			# fade while one stands there. A wall across the gap to a neighbour
+			# never hides it from the follow camera's height.
+			_wall_fade.add(r, front)
 		if route.has("axis"):
 			var top := float(_low_cm(route)) / 100.0 - 0.12
 			var plinth := box(Vector3(width - 0.04, top - SEABED, depth - 0.04), WALLS.get(48, STONE).darkened(0.08), center + Vector3(0, (top + SEABED) * 0.5, 0), root)
@@ -1418,6 +1437,7 @@ func _advance_water(delta: float) -> void:
 		_rise_bubbles()
 	# The doors move after the water, against the water shown this frame.
 	if is_instance_valid(_locks) and (flowing or _locks.moving()): _locks.advance(delta, _lock_levels("shown"))
+	if _wall_fade != null and _wall_fade.moving(): _wall_fade.advance(delta)
 	if not reduced_motion:
 		var harbour: Node3D = _water.get("harbour")
 		if is_instance_valid(harbour): _float_boats(float(harbour.get_meta("shown")))
@@ -1888,16 +1908,18 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		_floods[id].node.visible = not (_decks.has(id) and _decks[id].visible)
 	_show_closing(state.get("route_progress", {}).get("closing", {}))
 	_show_drowned(state.get("drowned", {}))
+	# Where the spirits stand, from the snapshot's positions, so live play, the
+	# memory, a retry and a replay all agree: a door dips while one stands in
+	# its mouth, and the walls in front of one on a walled stub fade.
+	var players: Dictionary = state.get("players", {})
+	_spirits.resize(players.size())
+	var index := 0
+	for slot: String in players:
+		_spirits[index] = Vector2(float(players[slot].x), float(players[slot].z))
+		index += 1
+	if _wall_fade != null: _wall_fade.occupy(_spirits, immediate or reduced_motion)
 	if is_instance_valid(_locks):
 		_locks.present(_lock_levels("target"), immediate or reduced_motion)
-		# A door dips while a spirit stands in its mouth: from the snapshot's
-		# positions, so live play, the memory, a retry and a replay all agree.
-		var players: Dictionary = state.get("players", {})
-		_spirits.resize(players.size())
-		var index := 0
-		for slot: String in players:
-			_spirits[index] = Vector2(float(players[slot].x), float(players[slot].z))
-			index += 1
 		_locks.occupy(_spirits, routes, immediate or reduced_motion)
 		# A door that must rise stands clear of the water shown now at once.
 		if _locks.moving(): _locks.advance(0.0, _lock_levels("shown"))
@@ -1939,6 +1961,7 @@ func _static_keep() -> Array:
 	var keep := super._static_keep()
 	for group: Dictionary in [_decks, _memory_markers, _ghosts, _water]: keep.append_array(group.values())
 	for flood: Dictionary in _floods.values(): keep.append(flood.node)
+	if _wall_fade != null: keep.append_array(_wall_fade.meshes())
 	for mast: Dictionary in _kept_masts: keep.append_array([mast.post, mast.knob, mast.flag])
 	for wheel: Dictionary in _wheels.values(): keep.append(wheel.wheel)
 	for gauge: Dictionary in _gauges.values(): keep.append_array([gauge.post, gauge.icon] + gauge.bands)

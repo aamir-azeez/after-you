@@ -8,6 +8,7 @@ const Badges = preload("res://presentation/kit/badges.gd")
 const Look = preload("res://presentation/kit/look.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
+const WallFade = preload("res://presentation/kit/wall_fade.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 var checks := 0
@@ -30,8 +31,38 @@ func _run() -> void:
 	_check_looks()
 	_check_follow_angle()
 	_check_view_fit()
+	_check_wall_fade()
 	print("WORLD KIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## A wall in front of a spot fades while a spirit stands in it, eased over
+## frames or snapped, and comes back solid and opaque with its own shadow once
+## the spot is empty; a shared look is copied first, never changed in place; a
+## wall serving two spots shows the fainter.
+func _check_wall_fade() -> void:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	var look := Primitives.shared_material(Color("b8a283"))
+	var wall := Primitives.mesh_node(Primitives.box_mesh(Vector3.ONE), look, Vector3.ZERO, holder)
+	var side := Primitives.mesh_node(Primitives.box_mesh(Vector3.ONE), look, Vector3.ZERO, holder)
+	side.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	var fade := WallFade.new()
+	fade.add([0, 0, 50, 50], [wall, side])
+	fade.add([60, 0, 110, 50], [side])
+	_check(wall.material_override != look and not Primitives.is_shared(wall.material_override) and Primitives.changed_shared_looks().is_empty(), "A faded wall takes its own copy of a shared look")
+	var inside := PackedVector2Array([Vector2(25, 25)])
+	var away := PackedVector2Array([Vector2(500, 500)])
+	fade.occupy(inside)
+	_check(fade.moving() and fade.faded_spots() == 1 and wall.material_override.albedo_color.a == 1.0, "A spirit in a spot starts its walls fading, eased")
+	for frame in range(30): fade.advance(1.0 / 60.0)
+	var material: StandardMaterial3D = wall.material_override
+	_check(not fade.moving() and is_equal_approx(material.albedo_color.a, WallFade.FADED_ALPHA) and material.transparency == BaseMaterial3D.TRANSPARENCY_ALPHA and wall.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "Half a second later the wall in front has faded")
+	_check(is_equal_approx(side.material_override.albedo_color.a, WallFade.FADED_ALPHA), "A wall shared with an empty spot shows the fainter one")
+	fade.occupy(away, true)
+	_check(not fade.moving() and material.albedo_color.a == 1.0 and material.transparency == BaseMaterial3D.TRANSPARENCY_DISABLED and wall.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_ON and side.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "Snapped back, the walls are solid and opaque with their own shadows")
+	fade.occupy(PackedVector2Array([Vector2(80, 25)]), true)
+	_check(material.albedo_color.a == 1.0 and is_equal_approx(side.material_override.albedo_color.a, WallFade.FADED_ALPHA), "Only the walls of the occupied spot fade")
+	holder.free()
 
 func _check_materials() -> void:
 	var first := Primitives.shared_material(Color("8a6b4e"))

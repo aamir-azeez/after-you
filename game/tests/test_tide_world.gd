@@ -294,6 +294,20 @@ func _second_stage(level: Dictionary) -> void:
 	# any crossing.
 	for id: String in ["boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk"]:
 		_check(id in world._walled, "Stage two walls %s, open whatever the tide" % id)
+	# A spirit on a walled post sees past the walls in front of it: they fade
+	# while it stands there (from the snapshot, so a replay agrees) and come
+	# back once it leaves.
+	# The boom post's south and east walls face the camera; the gate post's
+	# mouth does, so only its east wall stands in front.
+	world.present(_players(state, "p1", -268, 160, 48), true)
+	var faded := _faded_walls(world)
+	_check(world._wall_fade.faded_spots() == 1 and faded.size() == 2 and faded.all(func(wall: Node3D) -> bool: return str(wall.name).begins_with("CrossingWall_boom-post") and (wall.position.z > 1.92 or wall.position.x > -2.40)), "A spirit on the boom post fades exactly its south and east walls: %s" % [faded])
+	world.present(_players(state, "p1", -268, -160, 48), true)
+	faded = _faded_walls(world)
+	_check(faded.size() == 1 and str(faded[0].name).begins_with("CrossingWall_gate-post") and faded[0].position.x > -2.40, "A spirit on the gate post, mouth toward the camera, fades only its east wall: %s" % [faded])
+	world.present(_players(state, "p1", -268, -40, 48), true)
+	_check(world._wall_fade.faded_spots() == 0 and _faded_walls(world).is_empty() and world._wall_fade.meshes().all(func(mesh: MeshInstance3D) -> bool: return mesh.material_override.albedo_color.a == 1.0), "They come back once it steps off")
+	world.present(state, true)
 	_check(not world._decks["punt-ferry"].visible and world._ghosts["punt-ferry"].visible, "The shut punt shows its outline in its dry pit")
 	_check(world.terrain.find_child("KeySign_sea-gate-out", true, false) != null, "The sea gate out shows a large key sign")
 	# Spirits by the wheels: every bubble rises clear of them, of the gauges and
@@ -409,6 +423,12 @@ func _open_crossings_dry() -> void:
 				for id: String in ["boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk"]:
 					_check(id in under, "%s: the rules can hold %s open under the high tide" % [key, id])
 			var world := _world(level, index, checkpoint)
+			if str(stage.id) == "set-the-tide": _check(world._wall_fade._spots.is_empty(), "%s: no walls fade in the first stage, which walls no post or catwalk" % key)
+			if key == "turn-of-the-tide@2" and str(stage.id) == "slack-water":
+				# The live row: the punt post, east end, fades its own south and east walls.
+				world._wall_fade.occupy(PackedVector2Array([Vector2(-268, 160)]), true)
+				var faded := _faded_walls(world)
+				_check(faded.size() == 2 and faded.all(func(wall: Node3D) -> bool: return str(wall.name).begins_with("CrossingWall_punt-post") and (wall.position.z > 1.92 or wall.position.x > -2.40)), "@2: a spirit on the punt post fades exactly its south and east walls: %s" % [faded])
 			var rects: Array[Rect2] = []
 			for body: Node3D in world._water.values(): rects.append_array(_water_rects(body))
 			for id: String in under:
@@ -416,6 +436,10 @@ func _open_crossings_dry() -> void:
 				var deck := Rect2(Vector2(float(r[0]), float(r[1])) / 100.0, Vector2(float(r[2] - r[0]), float(r[3] - r[1])) / 100.0).grow(-0.01)
 				_check(not rects.any(func(rect: Rect2) -> bool: return rect.intersects(deck)), "%s %s: %s can stand open under its water, so no water lies over it" % [key, stage.id, id])
 			world.free()
+
+## The crossing walls the wall fade shows faded now.
+func _faded_walls(world: Node3D) -> Array:
+	return world._wall_fade.meshes().filter(func(mesh: MeshInstance3D) -> bool: return str(mesh.name).begins_with("CrossingWall_") and mesh.material_override.albedo_color.a < 1.0)
 
 ## The gated crossings of stage `index` that some state of the wheels and
 ## levers of it and the stages before it, and of its pads, holds open while
