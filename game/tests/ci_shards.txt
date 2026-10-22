@@ -82,6 +82,7 @@ friends_client 1
 friends_first_open 2
 friends_navigation 2
 friends_screen 3
+friends_screen_robust 1
 full_screen_bleed 3
 gameplay_comfort 2
 garden_activation 2

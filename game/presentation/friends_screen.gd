@@ -244,7 +244,10 @@ func _process(_delta: float) -> void:
 func _notification(what: int) -> void:
 	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT]: _foreground = false
 	elif what in [NOTIFICATION_APPLICATION_RESUMED,NOTIFICATION_APPLICATION_FOCUS_IN]: _foreground = true
-	elif what == NOTIFICATION_WM_GO_BACK_REQUEST: close()
+	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
+		# Back closes an open pop-up first, as its own Back would, then the page.
+		if is_instance_valid(_modal) and not _modal.is_queued_for_deletion(): _modal.go_back()
+		else: close()
 	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT,NOTIFICATION_APPLICATION_RESUMED,NOTIFICATION_APPLICATION_FOCUS_IN]: _update_countdowns()
 
 func _update_countdowns() -> void:
@@ -1098,6 +1101,10 @@ func _refresh(manual: bool = false) -> void:
 	if _drawn_from() != _render_signature: _render_when_free()
 	else: _update_countdowns()
 	if refreshed and social_loaded and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
+	_run_kept()
+
+## Runs the tap kept while a read was out (_keep_for_after_refresh).
+func _run_kept() -> void:
 	var kept := _after_refresh
 	_after_refresh = Callable()
 	if kept.is_valid() and _current() and _foreground and not _busy: kept.call()
@@ -1137,12 +1144,18 @@ func hosting_hint() -> void:
 	if now < _hint_next_ms: return
 	_hint_next_ms = now + 10000
 	_busy = true
+	# A tap made while this read is out is kept, as during a list refresh.
+	_refreshing = true
 	var social: Dictionary = await event_client.inbox()
-	if not _current(): return
+	if not _current():
+		_refreshing = false
+		return
 	_busy = false
+	_refreshing = false
 	if social.get("ok",false): _apply_social(social.data)
 	_render_when_free()
 	if social.get("ok",false) and _foreground: hosting_view_ready.emit(_social_events.duplicate(true))
+	_run_kept()
 
 ## Hands a line to the pop-up; an empty line says nothing.
 func _say(text: String, news: bool = false) -> void:

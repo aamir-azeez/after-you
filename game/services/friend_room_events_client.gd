@@ -22,6 +22,9 @@ var _generation := 0
 ## Last known hosting alerts for this identity, peer id -> true. A reopened
 ## Friends page starts from this instead of waiting for the next inbox read.
 var _preferences: Dictionary = {}
+## Hosting events this identity acknowledged, event id -> true. The server
+## drops an event on its first acknowledgement, so a redraw sends no more.
+var _acknowledged: Dictionary = {}
 
 func _init(api: Node, identity: Callable, transport: Callable = Callable()) -> void:
 	_api = api
@@ -44,6 +47,7 @@ func invalidate() -> void:
 	_pending_room = {}
 	_pending_owed_at = 0
 	_preferences = {}
+	_acknowledged = {}
 	busy = false
 	last_error = ""
 
@@ -127,9 +131,12 @@ func hosting_preferences() -> Dictionary:
 ## Acknowledge only after the corresponding event was actually rendered.
 func acknowledge_rendered(event: Variant) -> bool:
 	if not valid_event(event) or not _bind(): return false
+	if _acknowledged.has(str(event.event_id)): return true
 	var response: Dictionary = await _request(HTTPClient.METHOD_POST,"/v1/friends/"+str(event.player_id)+"/notifications",{
 		"schema_version":1,"request_id":event.request_id,"action":"ack","event_id":event.event_id})
-	return response.get("ok",false) and valid_ack_response(response.get("data"),str(event.request_id))
+	var acknowledged: bool = response.get("ok",false) and valid_ack_response(response.get("data"),str(event.request_id))
+	if acknowledged: _acknowledged[str(event.event_id)] = true
+	return acknowledged
 
 func set_hosting_alert(friend: Variant, enabled: bool) -> bool:
 	if not valid_friend(friend) or not _bind(): return false
@@ -150,11 +157,13 @@ func _bind() -> bool:
 		_pending_room = {}
 		_pending_owed_at = 0
 		_preferences = {}
+		_acknowledged = {}
 		return false
 	if current != _binding:
 		_generation += 1
 		_binding = current
 		_preferences = {}
+		_acknowledged = {}
 		busy = false
 		last_error = ""
 		_load_pending()
