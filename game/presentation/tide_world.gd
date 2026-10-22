@@ -996,8 +996,9 @@ static func _wheel_angle(index: int, count: int) -> float:
 func _build_lever(lever: Dictionary) -> void:
 	var before := terrain.get_child_count()
 	super._build_lever(lever)
-	# The housing is warm brass under a timber collar, not grey stone.
-	if terrain.get_child_count() > before:
+	# The housing is warm brass under a timber collar, not grey stone; a lever
+	# with a look (a winch, a bolt) stands on its own base.
+	if terrain.get_child_count() > before and not _lever_looks.has(lever.id):
 		var housing := terrain.get_child(before) as MeshInstance3D
 		if housing != null: housing.material_override = Primitives.shared_material(BRASS)
 		cylinder(0.19, 0.04, TIMBER, _at(lever) + Vector3(0, 0.19, 0), terrain)

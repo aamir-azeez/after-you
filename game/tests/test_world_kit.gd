@@ -9,6 +9,7 @@ const Look = preload("res://presentation/kit/look.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const WallFade = preload("res://presentation/kit/wall_fade.gd")
+const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 var checks := 0
@@ -32,6 +33,7 @@ func _run() -> void:
 	_check_follow_angle()
 	_check_view_fit()
 	_check_wall_fade()
+	_check_lever_looks()
 	print("WORLD KIT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -63,6 +65,59 @@ func _check_wall_fade() -> void:
 	fade.occupy(PackedVector2Array([Vector2(80, 25)]), true)
 	_check(material.albedo_color.a == 1.0 and is_equal_approx(side.material_override.albedo_color.a, WallFade.FADED_ALPHA), "Only the walls of the occupied spot fade")
 	holder.free()
+
+## Each lever look stands inside its lever's reach, east no further than the
+## plain housing; its anchor's knob point sits on its top; a pull eases over
+## PULL_SECONDS to the same pose a snapped pull shows (so a replay agrees),
+## and a release comes back to the same pose it was built in.
+func _check_lever_looks() -> void:
+	var holder := Node3D.new()
+	root.add_child(holder)
+	for kind: String in LeverLooks.KINDS:
+		var look: RefCounted = LeverLooks.build(kind, Vector3(1, 0.5, 2), Color.RED, holder)
+		var built := _look_pose(look)
+		var top := _look_top(look)
+		_check(_look_inside(look), "The %s look stays inside its lever's reach" % kind)
+		# journey_world._knob_top: the anchor's knob centre plus KNOB_RADIUS.
+		var tail: float = look.anchor.position.y + 0.4 + 0.09 - look.root.position.y
+		_check(absf(tail - top) < 0.03, "The %s look's anchor puts a bubble's tail on its top (%.3f, %.3f)" % [kind, tail, top])
+		look.set_pulled(true)
+		_check(look.moving() and look.shown() == 0.0, "A pull eases from where the %s look stands" % kind)
+		for frame in range(int(ceil(LeverLooks.PULL_SECONDS * 60.0)) + 1): look.advance(1.0 / 60.0)
+		var eased := _look_pose(look)
+		_check(not look.moving() and look.shown() == 1.0 and eased != built, "The %s look's pull plays out and rests pulled" % kind)
+		var snapped: RefCounted = LeverLooks.build(kind, Vector3(1, 0.5, 2), Color.RED, holder)
+		snapped.set_pulled(true, true)
+		_check(_look_pose(snapped) == eased, "An eased and a snapped %s pull end in the same pose" % kind)
+		_check(_look_inside(snapped), "Pulled, the %s look still stays inside its lever's reach" % kind)
+		look.set_pulled(false, true)
+		_check(_look_pose(look) == built, "Let go, the %s look is back as it was built" % kind)
+	holder.free()
+
+## Every mesh of a look inside REACH of its spot, east no further than
+## EAST_SIDE, and nothing below its floor.
+func _look_inside(look: RefCounted) -> bool:
+	for node: Node in look.root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		var box: AABB = look.root.global_transform.affine_inverse() * mesh.global_transform * mesh.get_aabb()
+		if box.position.x < -LeverLooks.REACH - 0.001 or box.end.x > LeverLooks.EAST_SIDE + 0.001 or absf(box.position.z) > LeverLooks.REACH or absf(box.end.z) > LeverLooks.REACH or box.position.y < -0.001: return false
+	return true
+
+## The top of a look's meshes above its spot.
+func _look_top(look: RefCounted) -> float:
+	var top := -INF
+	for node: Node in look.root.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		top = maxf(top, (look.root.global_transform.affine_inverse() * mesh.global_transform * mesh.get_aabb()).end.y)
+	return top
+
+## Every mesh's transform under a look, rounded to 0.1 mm.
+func _look_pose(look: RefCounted) -> Array:
+	var pose: Array = []
+	for node: Node in look.root.find_children("*", "MeshInstance3D", true, false):
+		var t: Transform3D = (node as MeshInstance3D).global_transform
+		for v: Vector3 in [t.basis.x, t.basis.y, t.basis.z, t.origin]: pose.append(Vector3i((v * 10000.0).round()))
+	return pose
 
 func _check_materials() -> void:
 	var first := Primitives.shared_material(Color("8a6b4e"))

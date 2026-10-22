@@ -200,6 +200,13 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 		_check(not values.is_empty(), "Selector names %s of %s name a selector of its definition" % [id, key])
 		for value: Variant in data.selector_names[id]:
 			_check(values.has(str(value)) and data.selector_names[id][value] is String and not str(data.selector_names[id][value]).is_empty(), "Selector name %s/%s of %s names one of its values" % [id, value, key])
+	var levers: Dictionary = {}
+	for stage: Dictionary in level.stages:
+		for lever: Dictionary in stage.get("levers", []): levers[str(lever.id)] = true
+	for id: String in data.lever_looks:
+		_check(levers.has(id) and str(data.lever_looks[id]) in preload("res://presentation/kit/lever_looks.gd").KINDS, "Lever look %s of %s is a known look on one of its levers" % [id, key])
+	for id: String in data.lever_actions:
+		_check(levers.has(id) and data.lever_actions[id] is String and not str(data.lever_actions[id]).is_empty(), "Lever action %s of %s names a lever with words" % [id, key])
 	for id: String in data.seats:
 		_check(pads.has(id), "Seat %s of %s is a pressure pad" % [id, key])
 		_check(Props.extent(data.seats[id]).height > 0.05 and not data.seats[id].has("at"), "Seat %s of %s is a prop the kit builds, placed by its pad" % [id, key])

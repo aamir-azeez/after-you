@@ -519,6 +519,9 @@ const TURN_OF_THE_TIDE_WINCH_SLIP := "Lowered"
 # the crossing's name from the chapter descriptor, or WAIT_HINT_CROSSING.
 const WAIT_HINT_CROSSING := "crossing"
 const TURN_OF_THE_TIDE_CROSSING_JETTY := "jetty"
+# The action button at Slack Water's chain winches and bar bolts (descriptor "lever_actions").
+const TURN_OF_THE_TIDE_PULL_CHAIN := "Pull chain"
+const TURN_OF_THE_TIDE_PULL_BAR := "Pull bar"
 const TURN_OF_THE_TIDE_WAIT_BOLLARD_STEP := "This {crossing} won't budge till someone's holding the bollard step…"
 const TURN_OF_THE_TIDE_WAIT_TIDE_LOW := "Hmm, the water's not high enough for this {crossing} yet…"
 const TURN_OF_THE_TIDE_WAIT_BAR := "The gate's not barred yet, so it won't swing…"

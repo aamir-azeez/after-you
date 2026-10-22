@@ -6,6 +6,8 @@ const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
 const StandSpot = preload("res://presentation/kit/stand_spot.gd")
+## A lever's look (a winch, a bolt) where the descriptor's "lever_looks" names one.
+const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
 ## looking, then this long easing back to the spirit.
 const GLANCE_TO := 1.6
@@ -17,6 +19,9 @@ var _physical_pads: Dictionary = {}
 ## "stand_spots"; _physical_pads holds the spot's rim.
 var _stand_spots: Dictionary = {}
 var _physical_levers: Dictionary = {}
+## Levers built with a look: id -> its LeverLooks. Their _physical_levers entry
+## is the look's anchor, which never tilts.
+var _lever_looks: Dictionary = {}
 var _physical_balls: Dictionary = {}
 var _ball_trails: Dictionary = {}
 var _ball_materials: Dictionary = {}
@@ -53,6 +58,7 @@ func show_stage(stage: Dictionary) -> void:
 	_physical_pads.clear()
 	_stand_spots.clear()
 	_physical_levers.clear()
+	_lever_looks.clear()
 	_physical_balls.clear()
 	_ball_trails.clear()
 	_ball_materials.clear()
@@ -213,6 +219,8 @@ func _focus_point() -> Vector3:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	if is_instance_valid(_goal_beacon): keep.append(_goal_beacon)
+	# The parts of a look a pull moves stay whole; its frame folds.
+	for look: RefCounted in _lever_looks.values(): keep.append_array(look.moving_parts())
 	return keep
 
 func _configure_shared_view(view: Dictionary) -> void:
@@ -425,6 +433,13 @@ func _build_stand_spot(pad: Dictionary, at: Vector3, color: Color) -> void:
 
 func _build_lever(lever: Dictionary) -> void:
 	var at := _at(lever)
+	var look_kind := str(_descriptor().get("lever_looks", {}).get(str(lever.id), ""))
+	if look_kind in LeverLooks.KINDS:
+		var look := LeverLooks.build(look_kind, at, GOLD if lever.owner_slot == "p0" else TEAL, terrain)
+		_lever_looks[lever.id] = look
+		_physical_levers[lever.id] = look.anchor
+		_ownership_mark(str(lever.owner_slot), at + Vector3(0, 0.025, 0.33), terrain)
+		return
 	cylinder(0.18, 0.2, Color("728788"), at + Vector3(0, 0.1, 0), terrain)
 	var pivot := Node3D.new()
 	pivot.position = at + Vector3(0, 0.2, 0)
@@ -560,7 +575,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		trail.tint = material.albedo_color
 		trail.set_motion_allowed(str(prop.get("status", "")) == "free" and str(prop.get("socket_id", "")).is_empty(), immediate)
 	for id: String in _physical_levers:
-		_physical_levers[id].rotation.z = -0.6 if state.get("levers", {}).get(id, false) else 0.6
+		if _lever_looks.has(id): _lever_looks[id].set_pulled(bool(state.get("levers", {}).get(id, false)), immediate or reduced_motion)
+		else: _physical_levers[id].rotation.z = -0.6 if state.get("levers", {}).get(id, false) else 0.6
 	for id: String in _hatches: _hatches[id].visible = not state.get("levers", {}).get(id, false)
 	for id: String in _physical_pads:
 		var pressed: bool = state.get("hold_pads", {}).get(id, false)
@@ -598,6 +614,8 @@ func _camera_center() -> Vector3:
 	return target
 
 func _advance_camera(delta: float) -> void:
+	for id: String in _lever_looks:
+		if _lever_looks[id].moving(): _lever_looks[id].advance(delta)
 	if _uses_scrolling_camera():
 		# Authored framing advances once per rendered frame. Snapshot delivery
 		# and pinch zoom must never feed back into the follow state.

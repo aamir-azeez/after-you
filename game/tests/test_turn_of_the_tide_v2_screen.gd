@@ -39,6 +39,7 @@ func _initialize() -> void: _run.call_deferred()
 
 func _run() -> void:
 	root.size = Vector2i(1280, 720)
+	_lever_words()
 	directory = "user://tide-v2-screen-" + Crypto.new().generate_random_bytes(6).hex_encode()
 	DirAccess.make_dir_recursive_absolute(directory)
 	var level := Registry.definition(KEY)
@@ -183,6 +184,20 @@ func _memory_line(level: Dictionary, initial: Dictionary) -> void:
 	root.remove_child(screen)
 	screen.free()
 	await process_frame
+
+## The action button names what the pip pulls at Slack Water's chains and
+## bars (descriptor "lever_actions"); every other lever, and every other
+## action, keeps the simulation's words, which never change.
+func _lever_words() -> void:
+	var screen: Node = load("res://relay_preview.gd").new()
+	screen.chapter_key = KEY
+	var words := func(kind: String, target: String) -> String:
+		var display: Dictionary = {"context_action": {"id": kind, "label": "Pull lever" if kind == "lever" else "Light lantern", "enabled": true, "target_id": target}}
+		return str(screen._name_lever_action(display).context_action.label)
+	_check(words.call("lever", "boom-chain") == PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN and words.call("lever", "punt-chain") == "Pull chain", "At a chain the button says Pull chain")
+	_check(words.call("lever", "gate-bar") == PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR and words.call("lever", "sea-bar") == "Pull bar", "At a bar the button says Pull bar")
+	_check(words.call("lever", "boom-pin") == "Pull lever" and words.call("lever", "punt-line") == "Pull lever" and words.call("ring", "harbour-lantern") == "Light lantern", "Every other lever and action keeps its words")
+	screen.free()
 
 func _texts(screen: Node) -> Array:
 	var out: Array = []

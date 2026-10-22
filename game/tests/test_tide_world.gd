@@ -225,7 +225,20 @@ func _second_stage(level: Dictionary) -> void:
 	# The winch is no control here; the LOW history left it on slip.
 	_check(state.controls.winch == "slip" and world._ramps.slipway.rotation.z == 0.0, "In Slack Water the ramp lies where the first stage left the winch")
 	for lever: Dictionary in level.stages[1].levers:
-		_check(absf(world._physical_levers[lever.id].global_position.y - float(lever.height_cm) / 100.0 - 0.20) < 0.01, "A chain, bar, line, pin or key stands at its own stub's height: " + str(lever.id))
+		var lift: float = preload("res://presentation/kit/lever_looks.gd").ANCHOR_Y if world._lever_looks.has(lever.id) else 0.20
+		_check(absf(world._physical_levers[lever.id].global_position.y - float(lever.height_cm) / 100.0 - lift) < 0.01, "A chain, bar, line, pin or key stands at its own stub's height: " + str(lever.id))
+	# The chains are hand winches and the bars sliding bolts (descriptor
+	# "lever_looks"); every other lever keeps its handle. A look shows the
+	# snapshot's lever, pulled or not.
+	var looks := {}
+	for id: String in world._lever_looks: looks[id] = world._lever_looks[id].kind
+	_check(looks == {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt"}, "The chains wind on winches and the bars slide as bolts: %s" % [looks])
+	var pulled := state.duplicate(true)
+	pulled.levers = {"boom-chain": true, "gate-bar": true}
+	world.present(pulled, true)
+	_check(world._lever_looks["boom-chain"].shown() == 1.0 and world._lever_looks["gate-bar"].shown() == 1.0 and world._lever_looks["punt-chain"].shown() == 0.0 and world._lever_looks["sea-bar"].shown() == 0.0, "Each look shows its own lever's state")
+	world.present(state, true)
+	_check(world._lever_looks["boom-chain"].shown() == 0.0, "Let go in the snapshot, a look is let go")
 	for id: String in ["boom-post-pad", "gate-post-pad", "punt-post-pad"]:
 		_check(absf(world._physical_pads[id].global_position.y - 0.48 - StandSpot.RIM_LIFT) < 0.01, "A post pad sits on its raised post: " + id)
 	for problem: String in SpotChecks.shapes(world, level.stages[1]) + SpotChecks.beacon_rings(world, level.stages[1]) + SpotChecks.held(world, level.stages[1], state): _check(false, problem)

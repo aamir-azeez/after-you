@@ -1,4 +1,5 @@
 extends Node3D
+const ChapterIndex = preload("res://content/chapters/index.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## The same chapter presentation can use local practice or a retained online owner.
@@ -2277,6 +2278,7 @@ func _update_hud(state: Dictionary) -> void:
 		display = state.duplicate()
 		display.message = PlayerCopy.MAIN_1AAC5BE95E22
 	display = _name_goal_place(display)
+	display = _name_lever_action(display)
 	if is_instance_valid(world) and world.has_method("set_goal_beacon_live"): world.set_goal_beacon_live(mode == "play")
 	_update_memory_wait_hud()
 	controls.set("solo", online_session == null)
@@ -2292,6 +2294,18 @@ func _name_goal_place(display: Dictionary) -> Dictionary:
 	var named := display.duplicate()
 	named.objective_display = display.objective_display.duplicate()
 	named.objective_display.detail = place
+	return named
+
+## The action button's words at a lever the descriptor names (a chain, a bar);
+## any other action keeps the simulation's own.
+func _name_lever_action(display: Dictionary) -> Dictionary:
+	var action: Variant = display.get("context_action")
+	if not action is Dictionary or str(action.get("id", "")) != "lever": return display
+	var label := str(ChapterIndex.data(chapter_key).get("lever_actions", {}).get(str(action.get("target_id", "")), ""))
+	if label.is_empty(): return display
+	var named := display.duplicate()
+	named.context_action = (action as Dictionary).duplicate()
+	named.context_action.label = label
 	return named
 
 func _request_action() -> void:

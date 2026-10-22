@@ -65,6 +65,12 @@ const OPTIONAL := {
 	## value, shown upper-cased, where it differs from the catalog's own value.
 	## Names are PlayerCopy constants; the catalog value never changes.
 	"selector_names": {},
+	## {lever id: a presentation/kit/lever_looks.gd kind ("winch", "bolt")}:
+	## the lever drawn as that machine instead of the plain handle. Visual only.
+	"lever_looks": {},
+	## {lever id: the action button's words at that lever}, where they differ
+	## from the simulation's own ("Pull lever"). PlayerCopy constants.
+	"lever_actions": {},
 	## {pressure pad id: a kit/props.gd spec without "at"}: a seat on the pad,
 	## and whoever holds the pad sits on it while still.
 	"seats": {},
