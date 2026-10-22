@@ -138,17 +138,18 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     requireEnabled(env);
     const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash", ...(input.simulation_version === undefined ? [] : ["simulation_version"]), ...(input.mode === undefined ? [] : ["mode"])]);
     const mode = parseMode(input);
-    if (mode && !flags.hardMode(env)) throw new ApiError(503, "hard_mode_disabled");
     const selected = chapter(input);
     if (input.simulation_version !== undefined && (!Number.isInteger(input.simulation_version) || input.simulation_version === selected.simulation_version || !(selected.supported_simulation_versions ?? []).includes(input.simulation_version as number))) throw new ApiError(422, "unsupported_simulation_version");
-    if (!creatable(selected, env)) throw new ApiError(503, "chapter_creation_disabled");
     const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
-    if (selected.premium) {
-      // A retained intent is already admitted. A lost creation response must not
-      // require another purchase check or lose its original invite/room link.
-      const previous = unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined));
-      if (!previous) { await requireHostAccess(playerId, env); await reauthorize(request, playerId, env); }
-    }
+    // A retained intent is already admitted. A create whose reply was lost gets
+    // its room again from it, even once its chapter or hard mode was switched
+    // off, and without another purchase check. The intent is read only when a
+    // check below would otherwise refuse or charge.
+    const hardOff = Boolean(mode) && !flags.hardMode(env), chapterOff = !creatable(selected, env);
+    const previous = hardOff || chapterOff || selected.premium ? unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined)) : null;
+    if (hardOff && !previous) throw new ApiError(503, "hard_mode_disabled");
+    if (chapterOff && !previous) throw new ApiError(503, "chapter_creation_disabled");
+    if (selected.premium && !previous) { await requireHostAccess(playerId, env); await reauthorize(request, playerId, env); }
     const invite_code = newInvite();
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
     const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
