@@ -1,6 +1,6 @@
 extends SceneTree
 ## The field being typed in shows large above the on screen keyboard
-## (presentation/keyboard_focus.gd), with a simulated keyboard height:
+## (presentation/kit/keyboard_lift.gd), with a simulated keyboard height:
 ## - no copy on desktop, and no tick while no field has focus;
 ## - it shows centred in the space above the keyboard, titled by the field;
 ## - the copy follows the field (typing, text set in code, caret, max length,
@@ -9,7 +9,7 @@ extends SceneTree
 ##   and focus moving on all take it away; the tap that opened it does not;
 ## - a screen change or a rebuilt page while it shows leaves nothing stuck;
 ## - the display name prompt and the Friends code field, as built by the game.
-const KeyboardFocus = preload("res://presentation/keyboard_focus.gd")
+const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const Prompt = preload("res://presentation/display_name_prompt.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -49,14 +49,9 @@ func _run() -> void:
 	viewport.handle_input_locally = true
 	root.add_child(viewport)
 	page = _page()
-	layer = KeyboardFocus.install(viewport)
-	_check(KeyboardFocus.install(viewport) == layer, "A second install returns the same layer")
-	await _frames(2)
-	_check(layer.is_inside_tree() and layer.get_parent() == viewport and layer.layer == KeyboardFocus.LAYER, "The layer sits in the viewport above the screens")
-	var shade: ColorRect = layer.find_child("KeyboardFocusShade", true, false)
-	_check(shade != null and shade.get_node_or_null(NodePath(FullBleed.NAME)) != null, "Its dim reaches every screen edge (SafeArea.bleed)")
 	_units()
 	await _desktop()
+	await _first_layer()
 	await _shows_centred()
 	await _follows_field()
 	await _submit_and_close()
@@ -64,11 +59,12 @@ func _run() -> void:
 	await _screen_changes()
 	await _name_prompt()
 	await _friend_code()
-	KeyboardFocus.simulate(-1.0)
+	await _robust()
+	KeyboardLift.simulate(-1.0)
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
-	print("AFTER YOU KEYBOARD FOCUS: %d checks, %d failures" % [checks, failures])
+	print("AFTER YOU KEYBOARD LIFT: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
 # --- Helpers -------------------------------------------------------------------
@@ -82,24 +78,31 @@ func _page() -> Control:
 func _field(title: String = "", parent: Control = null) -> LineEdit:
 	var field := LineEdit.new()
 	field.placeholder_text = title
+	KeyboardLift.attach(field)
 	field.position = Vector2(80, 600)
 	field.size = Vector2(400, 48)
 	(parent if parent != null else page).add_child(field)
 	return field
 
 func _copy() -> Control:
-	return layer.find_child("KeyboardFocusField", true, false)
+	return layer.find_child("KeyboardLiftField", true, false)
 
 func _title() -> Label:
-	return layer.find_child("KeyboardFocusTitle", true, false)
+	return layer.find_child("KeyboardLiftTitle", true, false)
 
 func _note() -> Label:
-	return layer.find_child("KeyboardFocusNote", true, false)
+	return layer.find_child("KeyboardLiftNote", true, false)
 
 func _timer_running() -> bool:
-	for child: Node in layer.get_children():
-		if child is Timer: return not (child as Timer).is_stopped()
-	return false
+	return layer.ticking()
+
+## How many of the layer's handlers listen to `field`.
+func _listening(field: LineEdit) -> int:
+	var count := 0
+	for source: Signal in [field.text_changed, field.focus_exited, field.visibility_changed, field.tree_exiting]:
+		for connection: Dictionary in source.get_connections():
+			if (connection.callable as Callable).get_object() == layer: count += 1
+	return count
 
 func _mouse(at: Vector2, pressed: bool) -> void:
 	var event := InputEventMouseButton.new()
@@ -144,30 +147,59 @@ func _clear_page() -> void:
 # --- Cases ---------------------------------------------------------------------
 
 func _units() -> void:
-	_check(is_equal_approx(KeyboardFocus.cover_units(1188.0, 2160.0, 720.0), 396.0), "Keyboard pixels become canvas units through the window height")
-	_check(KeyboardFocus.cover_units(0.0, 2160.0, 720.0) == 0.0 and KeyboardFocus.cover_units(500.0, 0.0, 720.0) == 0.0, "No keyboard or no window is no cover")
-	_check(KeyboardFocus.cover_units(5000.0, 2160.0, 720.0) == 720.0, "The cover never passes the screen")
+	_check(is_equal_approx(KeyboardLift.cover_units(1188.0, 2160.0, 720.0), 396.0), "Keyboard pixels become canvas units through the window height")
+	_check(KeyboardLift.cover_units(0.0, 2160.0, 720.0) == 0.0 and KeyboardLift.cover_units(500.0, 0.0, 720.0) == 0.0, "No keyboard or no window is no cover")
+	_check(KeyboardLift.cover_units(5000.0, 2160.0, 720.0) == 720.0, "The cover never passes the screen")
 
 func _desktop() -> void:
-	KeyboardFocus.simulate(-1.0)
-	_check(not KeyboardFocus.watching(), "A desktop build does not watch for an on screen keyboard")
+	KeyboardLift.simulate(-1.0)
+	_check(not KeyboardLift.watching(), "A desktop build does not watch for an on screen keyboard")
 	var field := _field("Invitation code")
+	_check(KeyboardLift.attached(field) and KeyboardLift.attach(field) == field, "attach returns the field, and a second call is harmless")
 	field.grab_focus()
 	await _frames(3)
-	_check(field.has_focus() and not layer.showing() and not _timer_running(), "A desktop field takes focus with nothing over it and no tick")
-	_check(not layer.poll() and not layer.showing(), "A poll on desktop shows nothing")
+	_check(field.has_focus() and KeyboardLift.layer_of(viewport) == null, "On desktop an attached field takes focus and nothing is made at all")
 	field.release_focus()
 	await _clear_page()
 
+## The layer is made when the first attached field takes focus with a keyboard.
+func _first_layer() -> void:
+	KeyboardLift.simulate(KEYBOARD)
+	var plain := LineEdit.new()
+	page.add_child(plain)
+	plain.grab_focus()
+	await _frames(2)
+	_check(KeyboardLift.layer_of(viewport) == null, "A field that is not attached makes nothing")
+	var field := _field("Invitation code")
+	field.grab_focus()
+	await _frames(2)
+	layer = KeyboardLift.layer_of(viewport)
+	_check(layer != null and layer.is_inside_tree() and layer.get_parent() == viewport and layer.layer == KeyboardLift.LAYER, "The first attached field makes one layer in its viewport, above the screens")
+	if layer == null:
+		push_error("No layer; stopping")
+		quit(1)
+		return
+	_check(layer.showing() and layer.target() == field, "and it shows as soon as it arrives")
+	var shade: ColorRect = layer.find_child("KeyboardLiftShade", true, false)
+	_check(shade != null and shade.get_node_or_null(NodePath(FullBleed.NAME)) != null and shade.mouse_filter == Control.MOUSE_FILTER_IGNORE, "Its dim reaches every screen edge (SafeArea.bleed) and only draws")
+	field.release_focus()
+	await _clear_page()
+	var other := _field("Tester code")
+	other.grab_focus()
+	await _frames(2)
+	_check(KeyboardLift.layer_of(viewport) == layer and layer.showing(), "The next field uses the same layer")
+	other.release_focus()
+	await _clear_page()
+
 func _shows_centred() -> void:
-	KeyboardFocus.simulate(KEYBOARD)
+	KeyboardLift.simulate(KEYBOARD)
 	var field := _field("Invitation code")
 	_check(not _timer_running(), "With a keyboard simulated, no tick runs until a field has focus")
 	field.grab_focus()
 	await _frames(3)
 	_check(layer.showing() and layer.target() == field, "A field taking focus with the keyboard up shows large")
 	_check(_timer_running(), "and a light tick follows it while it has focus")
-	var panel: Control = layer.find_child("KeyboardFocusPanel", true, false)
+	var panel: Control = layer.find_child("KeyboardLiftPanel", true, false)
 	var box := panel.get_global_rect()
 	var free := Rect2(0, 0, SIZE.x, SIZE.y - KEYBOARD)
 	_check(free.encloses(box), "The card fits above the keyboard: %s in %s" % [box, free])
@@ -184,7 +216,7 @@ func _shows_centred() -> void:
 
 func _follows_field() -> void:
 	var field := _field()
-	KeyboardFocus.describe(field, "Nickname")
+	KeyboardLift.attach(field, "Nickname")
 	field.placeholder_text = "Pip"
 	field.max_length = 6
 	field.grab_focus()
@@ -212,7 +244,7 @@ func _follows_field() -> void:
 	var note := Label.new()
 	note.text = "4 / 6"
 	page.add_child(note)
-	KeyboardFocus.describe(field, "Nickname", note)
+	KeyboardLift.attach(field, "Nickname", note)
 	layer.poll()
 	_check(_note().visible and _note().text == "4 / 6", "A named note shows under the field")
 	note.text = "Too long"
@@ -235,12 +267,12 @@ func _submit_and_close() -> void:
 	await _key(KEY_ENTER)
 	_check(submitted == ["abc"], "Enter submits through the field once: %s" % [submitted])
 	# The keyboard closes on Enter or Back; the field may keep focus.
-	KeyboardFocus.simulate(0.0)
+	KeyboardLift.simulate(0.0)
 	await _frames(1)
 	_check(not layer.poll() and not layer.showing(), "The keyboard closing takes the copy away")
 	_check(_timer_running() == field.has_focus(), "The tick keeps watching only while the field keeps focus")
 	if not field.has_focus(): field.grab_focus()
-	KeyboardFocus.simulate(KEYBOARD)
+	KeyboardLift.simulate(KEYBOARD)
 	_check(layer.poll() and layer.showing(), "Tapping the field again (the keyboard back up) shows it again")
 	# A press on the dim closes the keyboard.
 	_mouse(Vector2(20, 20), true)
@@ -327,10 +359,10 @@ func _screen_changes() -> void:
 	await _frames(2)
 	_check(layer.showing() and layer.target() == second, "and it stays")
 	# The keyboard closing in the middle of a change.
-	KeyboardFocus.simulate(0.0)
+	KeyboardLift.simulate(0.0)
 	second.queue_free()
 	await _frames(2)
-	KeyboardFocus.simulate(KEYBOARD)
+	KeyboardLift.simulate(KEYBOARD)
 	_check(not layer.poll() and not layer.showing(), "Nothing is stuck after the keyboard and the page go together")
 	await _clear_page()
 
@@ -380,7 +412,7 @@ func _friend_code() -> void:
 		FriendRoster.use_shared(null)
 		return
 	var own: LineEdit = screen.find_child("OwnFriendCode", true, false)
-	_check(own != null and not KeyboardFocus.eligible(own), "The player's own code (read only) never shows large")
+	_check(own != null and not KeyboardLift.eligible(own), "The player's own code (read only) never shows large")
 	field.grab_focus()
 	await _frames(2)
 	_check(layer.showing() and _title().text == "Friend code", "The friend code field shows large under its own label: " + _title().text)
@@ -404,3 +436,61 @@ func _check(condition: bool, message: String) -> void:
 	if not condition:
 		failures += 1
 		push_error(message)
+
+func _robust() -> void:
+	KeyboardLift.simulate(KEYBOARD)
+	var a := _field("Identity")
+	var b := _field("Recovery code")
+	b.position.y = 660
+	# Focus given twice listens once.
+	a.grab_focus()
+	a.grab_focus()
+	await _frames(1)
+	_check(layer.showing() and _listening(a) == 4, "Focus given twice listens once: %d" % _listening(a))
+	# Quick switching between two fields.
+	b.grab_focus()
+	a.grab_focus()
+	b.grab_focus()
+	_check(layer.showing() and layer.target() == b and _title().text == "Recovery code", "Quick switching ends on the last field at once")
+	_check(_listening(a) == 0 and _listening(b) == 4, "and only it is listened to: %d / %d" % [_listening(a), _listening(b)])
+	var focus_links := 0
+	for connection: Dictionary in viewport.gui_focus_changed.get_connections():
+		if (connection.callable as Callable).get_object() == layer: focus_links += 1
+	_check(focus_links == 1, "The layer listens to the viewport's focus once")
+	# Focus let go in code: gone at once, not at the next tick.
+	b.release_focus()
+	_check(not layer.showing() and layer.target() == null and _listening(b) == 0, "Focus let go takes the copy away at once")
+	_check(not layer.poll() and not layer.ticking(), "and stops the tick")
+	# A field hidden while it shows.
+	a.grab_focus()
+	await _frames(1)
+	_check(layer.showing(), "Shows again")
+	a.visible = false
+	_check(not layer.showing(), "A field hidden while it shows takes the copy away at once")
+	a.visible = true
+	# The app paused and resumed with the field still focused.
+	a.grab_focus()
+	await _frames(1)
+	_check(layer.showing(), "Shows before the pause")
+	layer.notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	_check(not layer.showing() and not layer.poll(), "Pausing the app takes it away and it stays away")
+	layer.notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	_check(layer.showing(), "Resuming with the field and keyboard still there brings it back")
+	layer.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	_check(not layer.showing(), "The app losing focus takes it away")
+	KeyboardLift.simulate(0.0)
+	layer.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	_check(not layer.showing(), "Coming back with the keyboard gone leaves it away")
+	KeyboardLift.simulate(KEYBOARD)
+	_check(layer.poll(), "and the keyboard coming back up shows it")
+	# The system Back button closes the keyboard; the field keeps focus.
+	KeyboardLift.simulate(0.0)
+	_check(not layer.poll() and not layer.showing() and a.has_focus() and layer.ticking(), "Back closing the keyboard takes it away while the field keeps focus")
+	KeyboardLift.simulate(KEYBOARD)
+	_check(layer.poll(), "and the keyboard back up shows it again")
+	# A field freed outright while it shows.
+	a.free()
+	_check(not layer.showing() and layer.target() == null, "A field freed outright takes the copy with it")
+	await _frames(1)
+	_check(not layer.poll() and not layer.ticking(), "and nothing keeps ticking")
+	await _clear_page()

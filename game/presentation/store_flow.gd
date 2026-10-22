@@ -24,6 +24,7 @@ const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Typed = preload("res://services/typed_values.gd")
+const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
 ## Main's mode while a store card is up, including the locked-hosting page.
@@ -486,6 +487,7 @@ func _tester_form(message: String = "") -> void:
 	field.secret = true
 	field.max_length = 128
 	field.custom_minimum_size.y = 52
+	KeyboardLift.attach(field)
 	card.add_child(field)
 	var submit: Button = host._button("Redeem tester code",func(): _submit_tester_code(field))
 	submit.disabled = not host._relay_identity().ready or tester_action_pending

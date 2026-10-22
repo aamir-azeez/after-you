@@ -7,6 +7,7 @@ extends Control
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const CLOSE_ICON = preload("res://assets/ui/social/x.svg")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
@@ -186,9 +187,7 @@ func _input(event: InputEvent) -> void:
 func _process(_delta: float) -> void:
 	# Android's on-screen keyboard covers the bottom of the window; lift the
 	# panel so a field and its buttons stay visible while typing.
-	var keyboard := float(DisplayServer.virtual_keyboard_get_height())
-	var window := float(DisplayServer.window_get_size().y)
-	var lift := -(keyboard * get_viewport_rect().size.y / window) if keyboard > 0.0 and window > 0.0 else 0.0
+	var lift := -KeyboardLift.cover(get_viewport())
 	# Tapping Save takes focus from the field and closes the keyboard; the
 	# panel holds still until the finger lifts, or the release would miss.
 	if lift != _center.offset_bottom and not TouchInput.press_held(self): _center.offset_bottom = lift

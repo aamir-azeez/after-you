@@ -40,6 +40,7 @@ const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const FriendRoster = preload("res://services/friend_roster.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
+const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("9dbeb4")
 ## Main's mode on each screen of this flow. "account" is the delete confirmation.
@@ -253,6 +254,8 @@ func show_recovery_form() -> void:
 	code.placeholder_text="Recovery code"
 	code.secret=true
 	code.custom_minimum_size.y=48
+	KeyboardLift.attach(player)
+	KeyboardLift.attach(code)
 	var status: Label = host._paragraph(PlayerCopy.MAIN_41C32AF5A224)
 	status.name="RecoveryImportStatus"
 	card.add_child(host._button("Paste recovery details",func(): import_recovery_details(DisplayServer.clipboard_get(),player,code,status),false))

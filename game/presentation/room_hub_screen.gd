@@ -11,6 +11,7 @@ const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const Purchases = preload("res://services/purchases.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const RoomCardMenu = preload("res://presentation/room_card_menu.gd")
 const REMOVE_ICON = preload("res://assets/ui/social/trash.svg")
@@ -334,6 +335,7 @@ func _build_host_panel(heading_font: FontVariation) -> void:
 		var field_style := ThemeRules.padded(ThemeRules.rounded(Color("112c29"),12,Color("a6d9c4") if field_state == "focus" else Color("466e63")),16.0,10.0)
 		_join_code.add_theme_stylebox_override(field_state,field_style)
 	_join_code.custom_minimum_size.y = 50
+	KeyboardLift.attach(_join_code)
 	_join_code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	join_row.add_child(_join_code)
 	_join = Button.new()
