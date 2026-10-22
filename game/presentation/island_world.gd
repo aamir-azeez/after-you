@@ -334,11 +334,21 @@ func _opening_stage(stages: Array) -> Dictionary:
 	if build_budget_usec > 0: _built_stage_id = str(chosen.get("id", ""))
 	return chosen
 
-## In a staged build, waits one frame once the budget is spent. Await it.
+## A staged build paced by its owner instead of the tree's frames
+## (services/world_prewarm.gd): once the budget is spent each _build_step
+## waits for the owner's next build_tick, in or out of the tree. An owner that
+## stops ticking and frees the world leaves the build where it was: a world
+## freed while it waits on its own signal is never resumed.
+signal build_tick
+var paced_build := false
+
+## In a staged build, waits one frame (or, paced, one build_tick) once the
+## budget is spent. Await it.
 func _build_step() -> void:
-	if build_budget_usec <= 0 or not is_inside_tree(): return
+	if build_budget_usec <= 0 or (not paced_build and not is_inside_tree()): return
 	if Time.get_ticks_usec() - _build_mark < build_budget_usec: return
-	await get_tree().process_frame
+	if paced_build: await build_tick
+	else: await get_tree().process_frame
 	_build_mark = Time.get_ticks_usec()
 
 func load_level(level: Dictionary) -> void:

@@ -8,6 +8,7 @@ const DATA := {
 	"world": "res://presentation/tide_world.gd",
 	"scene": "res://turn_of_the_tide_v2.tscn",
 	"local_path": "user://turn-of-the-tide-journey-v2.json",
+	"prewarm_world": true,
 	"version_of": "turn-of-the-tide@1",
 	"copy": {
 		"title": PlayerCopy.TURN_OF_THE_TIDE_TITLE,

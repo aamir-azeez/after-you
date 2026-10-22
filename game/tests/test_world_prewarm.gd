@@ -1,0 +1,169 @@
+extends "res://tests/test_world_fingerprint.gd"
+## services/world_prewarm.gd builds a heavy chapter's world unseen while Home
+## is idle, so the chapter's first open finds its geometry and batches made.
+## - A chapter built after a warm-up is the same, node for node, as one built
+##   cold (the world fingerprint of its first view), and makes no batch or
+##   definition geometry again: every one is the warm-up's.
+## - The warm-up's world stands in a view of its own that never draws: the
+##   screen's camera is unchanged, and once done nothing of it is left.
+## - Only while idle: a paused warm-up builds nothing more, and a warm-up
+##   freed mid-build (Home leaving) never builds on and leaves nothing.
+## - The stage is the one the solo save opens on.
+const WorldPrewarm = preload("res://services/world_prewarm.gd")
+const StaticBatch = preload("res://presentation/kit/static_batch.gd")
+const DefinitionGeometry = preload("res://presentation/kit/definition_geometry.gd")
+const ScreenSwitch = preload("res://services/screen_switch.gd")
+const KEY := "turn-of-the-tide@2"
+
+func _suite() -> String:
+	return "world_prewarm"
+
+func _run() -> void:
+	await process_frame
+	var stages := _snapshots(KEY)
+	if not _check(stages.size() == 2, "Turn of the Tide has its two fixture stages"):
+		quit(1)
+		return
+	_saved_stage()
+	# Cold: nothing kept.
+	_forget_caches()
+	var cold := _first_view(stages[0])
+	_check(cold.batches > 0 and cold.geometry > 0, "A cold build makes its batches and geometry (%d, %d)" % [cold.batches, cold.geometry])
+	_forget_caches()
+	# The warm-up, idle at once, under a node that stands for Home.
+	var home := Node.new()
+	root.add_child(home)
+	var camera := Camera3D.new()
+	var stage3d := Node3D.new()
+	root.add_child(stage3d)
+	stage3d.add_child(camera)
+	camera.current = true
+	var prewarm := _prewarm(func() -> bool: return true)
+	home.add_child(prewarm)
+	var frames := 0
+	var seen_world := false
+	var camera_kept := true
+	while frames < 5000 and not WorldPrewarm.warmed().has(KEY + "|set-the-tide"):
+		await process_frame
+		frames += 1
+		seen_world = seen_world or prewarm.running()
+		camera_kept = camera_kept and root.get_camera_3d() == camera
+	_check(WorldPrewarm.warmed().has(KEY + "|set-the-tide"), "The warm-up builds and folds the first stage while idle (%d frames)" % frames)
+	_check(seen_world and camera_kept, "Its world never takes the screen's camera")
+	var guard := 0
+	while guard < 600 and ScreenSwitch.pending_count() > 0:
+		await process_frame
+		guard += 1
+	_check(not prewarm.running() and prewarm.get_child_count() == 0 and ScreenSwitch.pending_count() == 0, "Once done, nothing of its world is left (%d frames)" % guard)
+	var kept_batches := StaticBatch._kept_batches.size()
+	var kept_geometry := DefinitionGeometry._kept.size()
+	_check(kept_batches > 0 and kept_geometry > 0, "It leaves batches and geometry kept (%d, %d)" % [kept_batches, kept_geometry])
+	# The chapter's first view after the warm-up.
+	var warm := _first_view(stages[0])
+	_check(warm.print.hash == cold.print.hash and warm.print.nodes == cold.print.nodes, "A world built after the warm-up is the same as one built cold (%s, %s)" % [str(warm.print.hash).substr(0, 12), str(cold.print.hash).substr(0, 12)])
+	_check(StaticBatch._kept_batches.size() == kept_batches and DefinitionGeometry._kept.size() == kept_geometry, "...and makes no batch or geometry again (%d -> %d, %d -> %d)" % [kept_batches, StaticBatch._kept_batches.size(), kept_geometry, DefinitionGeometry._kept.size()])
+	_check(Primitives.changed_shared_looks().is_empty(), "The warm-up changes no shared look: %s" % [Primitives.changed_shared_looks()])
+	# A second visit finds the stage warm and builds nothing.
+	prewarm.queue_free()
+	var again := _prewarm(func() -> bool: return true)
+	home.add_child(again)
+	for i in range(30):
+		await process_frame
+		_check(not again.running(), "A stage warmed this run is not built again")
+	again.queue_free()
+	await _paused_and_left()
+	stage3d.queue_free()
+	home.queue_free()
+	await process_frame
+	print("%s: %d checks, %d failures" % [_suite().to_upper().replace("_", " "), checks, failures])
+	quit(1 if failures else 0)
+
+## Paused, a warm-up builds nothing more; freed mid-build with its screen
+## (Home's nodes handed to the screen switch), it never builds on.
+func _paused_and_left() -> void:
+	WorldPrewarm.forget()
+	_forget_caches()
+	var idle := [true]
+	var home := Node.new()
+	root.add_child(home)
+	var prewarm := _prewarm(func() -> bool: return idle[0])
+	home.add_child(prewarm)
+	var guard := 0
+	while guard < 2000 and not (prewarm.building() and _world_nodes(prewarm) > 200):
+		await process_frame
+		guard += 1
+	_check(prewarm.building(), "A warm-up is caught mid-build (%d nodes)" % _world_nodes(prewarm))
+	idle[0] = false
+	var held := _world_nodes(prewarm)
+	for i in range(20): await process_frame
+	_check(prewarm.building() and _world_nodes(prewarm) == held, "Paused, it builds nothing more (%d, %d)" % [held, _world_nodes(prewarm)])
+	idle[0] = true
+	for i in range(5): await process_frame
+	_check(_world_nodes(prewarm) > held, "Idle again, it goes on where it stopped")
+	var world: Node3D = prewarm._world
+	var built := _world_nodes(prewarm)
+	# Home leaves: its nodes go to the screen switch, freed over frames.
+	root.remove_child(home)
+	var bin := Node.new()
+	bin.add_child(home)
+	ScreenSwitch.release(bin)
+	bin.free()
+	_check(is_instance_valid(world) and _count(world) >= built, "Leaving, the world is not built on in that frame")
+	guard = 0
+	while guard < 600 and (is_instance_valid(world) or is_instance_valid(prewarm)):
+		await process_frame
+		guard += 1
+	_check(not is_instance_valid(world) and not is_instance_valid(prewarm), "...and is freed with Home over the next frames (%d)" % guard)
+	_check(not WorldPrewarm.warmed().has(KEY + "|set-the-tide"), "A warm-up that never finished warms nothing")
+
+## The stage the solo save opens on: one played pair per finished stage.
+func _saved_stage() -> void:
+	var path := "user://world-prewarm-test.json"
+	_check(WorldPrewarm._saved_pairs(path) == 0, "No save warms the first stage")
+	for pairs: int in [1, 2]:
+		var relay := {"pairs": []}
+		for i in range(pairs): relay.pairs.append({"a": {}, "b": {}})
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string(JSON.stringify({"relay": relay}))
+		file.close()
+		_check(WorldPrewarm._saved_pairs(path) == pairs, "A save with %d finished stages reads %d" % [pairs, pairs])
+	var broken := FileAccess.open(path, FileAccess.WRITE)
+	broken.store_string("{")
+	broken.close()
+	_check(WorldPrewarm._saved_pairs(path) == 0, "An unreadable save warms the first stage")
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
+
+func _prewarm(idle: Callable) -> Node:
+	var prewarm: Node = WorldPrewarm.new()
+	prewarm.enabled = true
+	prewarm.idle_seconds = 0.0
+	prewarm.idle = idle
+	prewarm.chapters = func() -> Array[String]: return [KEY]
+	prewarm.settings = func() -> Dictionary: return {"graphics_quality": "balanced"}
+	return prewarm
+
+func _world_nodes(prewarm: Node) -> int:
+	var world: Variant = prewarm.get("_world")
+	return _count(world) if is_instance_valid(world) else -1
+
+func _count(node: Node) -> int:
+	return node.find_children("*", "", true, false).size()
+
+func _forget_caches() -> void:
+	DefinitionGeometry.release()
+	StaticBatch.release_kept()
+
+## The chapter's first view as a chapter screen shows it (history, the first
+## turn's start, its frames, which fold the scenery), fingerprinted, with how
+## many batches and geometry values are kept after it.
+func _first_view(entry: Dictionary) -> Dictionary:
+	var viewport := _viewport()
+	var world: Node3D = Registry.world_script(KEY).new()
+	_mount(viewport, world, false)
+	world.load_level(Registry.definition(KEY))
+	_history(world, entry.stage, entry.checkpoint)
+	world.present(entry.a_start.duplicate(true), true)
+	_frames(world, 30)
+	var result := {"print": _fingerprint(world, KEY, false, "prewarm"), "batches": StaticBatch._kept_batches.size(), "geometry": DefinitionGeometry._kept.size()}
+	viewport.free()
+	return result

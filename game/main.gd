@@ -96,6 +96,7 @@ const ChapterLoadingCard = preload("res://presentation/chapter_loading_card.gd")
 const ChapterAccess = preload("res://services/chapter_access.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 const GlWarmup = preload("res://services/gl_warmup.gd")
+const WorldPrewarm = preload("res://services/world_prewarm.gd")
 ## What's new: this version's notes have not been opened since an update.
 var _whats_new_unseen := false
 var _whats_new_card: Control
@@ -115,6 +116,7 @@ var _chapter_opening: CanvasLayer
 var _proof_warmup: Node
 ## Compiles the chapters' GL programs offscreen while Home is idle, once per install.
 var _gl_warmup: Node
+var _world_prewarm: Node
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
@@ -340,6 +342,13 @@ func _ready() -> void:
 	_gl_warmup.next_chapter = _next_solo_chapter
 	_gl_warmup.idle = func() -> bool: return mode in ["home", "journey"] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	add_child(_gl_warmup)
+	# Heavy chapter worlds, built unseen once Home has settled and nothing
+	# else warms (services/world_prewarm.gd).
+	_world_prewarm = WorldPrewarm.new()
+	_world_prewarm.settings = func() -> Dictionary: return saves.data.settings
+	_world_prewarm.chapters = _openable_chapters
+	_world_prewarm.idle = func() -> bool: return mode in ["home", "journey"] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and _keepsakes_reconcile_frame < 0 and not _home_settling() and not (is_instance_valid(_gl_warmup) and _gl_warmup.running())
+	add_child(_world_prewarm)
 	var thumbnails := ThumbnailShelf.new()
 	thumbnails.idle = func() -> bool: return mode == "home" and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	thumbnails.paused = func() -> bool: return application_backgrounded or is_instance_valid(_chapter_opening)
@@ -849,6 +858,16 @@ func _next_solo_chapter() -> String:
 		return ChapterRegistry.LIGHTHOUSE_V2 if lighthouse_scene() == ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2) else str(item.mark)
 	return ""
 
+## Every chapter the player can open from the Chapters page now, the one they
+## most likely open next first (services/world_prewarm.gd).
+func _openable_chapters() -> Array[String]:
+	var result: Array[String] = []
+	var next := _next_solo_chapter()
+	if not next.is_empty(): result.append(next)
+	for item: Dictionary in ChapterPicker.shown_order(_journey_entries(_full_journey_access())):
+		if not bool(item.locked) and not str(item.key) in result: result.append(str(item.key))
+	return result
+
 func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
 
@@ -941,6 +960,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard:
 	# The chapter's own open proves what the warm-up has not reached yet.
 	if is_instance_valid(_proof_warmup): _proof_warmup.stop()
 	if is_instance_valid(_gl_warmup): _gl_warmup.stop()
+	if is_instance_valid(_world_prewarm): _world_prewarm.stop()
 	if _chapter_open_busy():
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return

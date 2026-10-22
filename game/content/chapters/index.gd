@@ -39,6 +39,10 @@ const OPTIONAL := {
 	"dressing": "",
 	## Fold the world's static scenery into a few batches.
 	"fold_static": true,
+	## Build the world once, unseen, while the player is idle at Home, so its
+	## first open in a session finds its geometry and batches made
+	## (services/world_prewarm.gd). Only for worlds whose build is heavy.
+	"prewarm_world": false,
 	## {event or snapshot moment: cue}: this chapter's cue over the family's, by
 	## a cue name of services/sound_cues.gd CUES. "prop_fitted" is a prop fitted
 	## into its socket, a moment only the snapshot shows.
