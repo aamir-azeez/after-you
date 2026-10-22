@@ -19,6 +19,7 @@ const PlatformSupport = preload("res://services/platform_support.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const KeyboardFocus = preload("res://presentation/keyboard_focus.gd")
 const LocalSave = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
@@ -360,6 +361,8 @@ func _ready() -> void:
 	_build_theme()
 	# Before any list exists: lists wait for a finger's slop before scrolling.
 	TouchInput.install(get_viewport())
+	# Every field typed in shows large above the on screen keyboard.
+	KeyboardFocus.install(get_viewport())
 	_build_ui()
 	world.configure_camera_exploration(_camera_exploration_active, _camera_exploration_allowed)
 	SafeArea.watch(self,_refresh_safe_area)

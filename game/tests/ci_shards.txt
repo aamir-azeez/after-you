@@ -121,6 +121,7 @@ journey_proofs 2
 journey_seven 3
 journey_world 2
 keepsake_leave 1
+keyboard_focus 1
 label_bubble_tails 1
 late_ball 2
 layout 3

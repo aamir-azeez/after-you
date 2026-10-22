@@ -36,6 +36,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const SpiritPreview = preload("res://presentation/kit/spirit_preview.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const KeyboardFocus = preload("res://presentation/keyboard_focus.gd")
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
 ## The tag above the pip: the world badge's cream and ink (kit/badges.gd).
 const TAG_FILL := Color("e9edd6")
@@ -120,6 +121,8 @@ func _build(card: Control) -> void:
 	_counter = _small("", MUTED, under)
 	_counter.name = "DisplayNameCounter"
 	_counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	# Above the on screen keyboard the field shows under the card's question, with its counter.
+	KeyboardFocus.describe(field, modal.title_label.text, _counter)
 	anonymous_row = _row(column, "DisplayNameAnonymous", PlayerCopy.DISPLAY_NAME_ANONYMOUS, PlayerCopy.DISPLAY_NAME_ANONYMOUS_NOTE % str(_context.get("anonymous", "")))
 	anonymous_row.pressed.connect(_pick.bind("anonymous"))
 	var platform_label := _platform_now()

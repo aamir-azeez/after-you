@@ -20,6 +20,7 @@ const InviteShare = preload("res://services/invite_share.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const KeyboardFocus = preload("res://presentation/keyboard_focus.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const INK := Color("123936")
@@ -519,7 +520,7 @@ func _render() -> void:
 	var add_column := VBoxContainer.new()
 	add_column.add_theme_constant_override("separation",10)
 	_utility_slots[1].add_child(add_column)
-	_label("Friend code",20,add_column)
+	var code_label := _label("Friend code",20,add_column)
 	var add_row := BoxContainer.new()
 	add_row.name = "AddFriendRow"
 	add_row.vertical = _narrow
@@ -539,6 +540,7 @@ func _render() -> void:
 	_field_style(field)
 	field.text_changed.connect(func(value: String): _code = value)
 	field.text_submitted.connect(func(_value: String): _act("add"))
+	KeyboardFocus.describe(field,code_label.text)
 	add_row.add_child(field)
 	if restore_input and not _busy:
 		field.grab_focus()
@@ -917,6 +919,7 @@ func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
 	var count := func(text: String): counter.text = "%d / %d" % [text.length(),FriendNicknames.MAX_LENGTH]
 	count.call(field.text)
 	field.text_changed.connect(count)
+	KeyboardFocus.describe(field,field_label.text,counter)
 	_modal.add_actions("Save",func(): _save_nickname(server,owner,friend,field.text))
 	field.text_submitted.connect(func(text: String): _save_nickname(server,owner,friend,text))
 	field.grab_focus()
