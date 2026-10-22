@@ -16,8 +16,10 @@ extends CanvasLayer
 ##
 ## Nothing runs while no field has focus. While one has, a tick ten times a
 ## second reads the keyboard height. A desktop has no on screen keyboard and
-## nothing shows. A press on the dim closes the keyboard: the field lets go of
-## focus. A field that leaves the tree (a screen change, a rebuilt page) takes
+## nothing shows. A press outside the card closes the keyboard (the field lets
+## go of focus) and still reaches what it landed on, so a Save or Join button
+## showing through the dim works on the first tap. A tap on the large copy
+## moves the caret there. A field that leaves the tree (a screen change, a rebuilt page) takes
 ## the copy away at once; a field that takes its place brings it back.
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
@@ -136,11 +138,11 @@ func _build() -> void:
 	add_child(page)
 	var shade := ColorRect.new()
 	shade.name = "KeyboardFocusShade"
-	shade.color = Color(0.02, 0.08, 0.08, 0.82)
+	shade.color = Color(0.02, 0.08, 0.08, 0.72)
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	shade.mouse_filter = Control.MOUSE_FILTER_STOP
+	# Draws only: a press outside the card goes on to the page (_input).
+	shade.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	SafeArea.bleed(shade)
-	shade.gui_input.connect(_shade_input)
 	page.add_child(shade)
 	_area = Control.new()
 	_area.name = "KeyboardFocusArea"
@@ -178,6 +180,7 @@ func _build() -> void:
 	column.add_child(box)
 	_copy = LargeField.new()
 	_copy.name = "KeyboardFocusField"
+	_copy.gui_input.connect(_copy_input)
 	box.add_child(_copy)
 	_note = Label.new()
 	_note.name = "KeyboardFocusNote"
@@ -254,13 +257,29 @@ func _show(field: LineEdit, covered: float) -> void:
 func _hide() -> void:
 	visible = false
 
-func _shade_input(event: InputEvent) -> void:
-	var press := (event is InputEventMouseButton and (event as InputEventMouseButton).pressed and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT) or (event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed)
-	if not press or not visible: return
-	get_viewport().set_input_as_handled()
+static func _press(event: InputEvent) -> bool:
+	if event is InputEventMouseButton: return (event as InputEventMouseButton).pressed and (event as InputEventMouseButton).button_index == MOUSE_BUTTON_LEFT
+	return event is InputEventScreenTouch and (event as InputEventScreenTouch).pressed
+
+## A press outside the card closes the keyboard and is not used up: the same
+## press reaches the button, field or page under it. On Android one tap comes
+## as an emulated mouse press and a touch; the first closes, the second finds
+## nothing showing.
+func _input(event: InputEvent) -> void:
+	if not visible or not _press(event): return
+	if _panel.get_global_rect().has_point((event as InputEventMouseButton).position if event is InputEventMouseButton else (event as InputEventScreenTouch).position): return
 	var field := target()
-	if field != null and field.has_focus(): field.release_focus()
 	_hide()
+	if field != null and field.has_focus(): field.release_focus()
+
+## A tap on the large copy puts the field's caret there.
+func _copy_input(event: InputEvent) -> void:
+	if not _press(event) or not event is InputEventMouseButton: return
+	var field := target()
+	if field == null: return
+	field.caret_column = _copy.column_at((event as InputEventMouseButton).position.x)
+	field.deselect()
+	poll()
 
 static func _set_offsets(control: Control, edges: Vector4) -> void:
 	if edges.is_equal_approx(Vector4(control.offset_left, control.offset_top, control.offset_right, control.offset_bottom)): return
@@ -281,10 +300,11 @@ class LargeField extends Control:
 	var selection := Vector2i(-1, -1)
 	var _font: Font
 	var _colors: Array[Color] = []
+	var _scroll := 0.0
 
 	func _init() -> void:
 		clip_contents = true
-		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		mouse_filter = Control.MOUSE_FILTER_STOP
 		size_flags_horizontal = Control.SIZE_EXPAND_FILL
 
 	func show_field(field: LineEdit, text_size: int) -> void:
@@ -319,12 +339,25 @@ class LargeField extends Control:
 		# Keep the caret in view, a little in from the right edge.
 		var room := 6.0
 		var scroll := clampf(at - size.x + room, 0.0, maxf(0.0, full - size.x + room))
+		_scroll = scroll
 		if selection.x >= 0:
 			var from := _width(shown_text.left(selection.x)) - scroll
 			var to := _width(shown_text.left(selection.y)) - scroll
 			draw_rect(Rect2(from, top, to - from, line), _colors[3])
 		draw_string(_font, Vector2(-scroll, baseline), shown_text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size, _colors[0])
 		draw_rect(Rect2(at - scroll, top, 3.0, line), _colors[2])
+
+	## The column nearest `x` (this control's own units) as last drawn.
+	func column_at(x: float) -> int:
+		if _font == null or shown_text.is_empty(): return 0
+		var best := 0
+		var gap := INF
+		for column in range(shown_text.length() + 1):
+			var off := absf(_width(shown_text.left(column)) - _scroll - x)
+			if off < gap:
+				gap = off
+				best = column
+		return best
 
 	func _width(text: String) -> float:
 		return _font.get_string_size(text, HORIZONTAL_ALIGNMENT_LEFT, -1, font_size).x

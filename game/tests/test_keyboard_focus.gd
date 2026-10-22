@@ -249,14 +249,34 @@ func _submit_and_close() -> void:
 	_mouse(Vector2(20, 20), false)
 	await _frames(1)
 	_check(field.text == "abc" and not layer.poll() and not _timer_running(), "The text stays and the tick stops")
-	# Focus moving to a button takes it away.
+	# A button showing through the dim (a lifted card's Save) works on the first tap.
 	var button := Button.new()
-	button.position = Vector2(600, 600)
+	button.position = Vector2(600, 40)
 	button.size = Vector2(120, 48)
+	var pressed := [0]
+	button.pressed.connect(func() -> void: pressed[0] += 1)
 	page.add_child(button)
 	field.grab_focus()
 	await _frames(1)
 	_check(layer.showing(), "Back in the field it shows")
+	var spot := button.get_global_rect().get_center()
+	_mouse(spot, true)
+	await _frames(1)
+	_check(not layer.showing() and not field.has_focus(), "A press on a button under the dim closes the keyboard")
+	_mouse(spot, false)
+	await _frames(1)
+	_check(pressed[0] == 1, "and the same tap presses it: %d" % pressed[0])
+	# A tap on the large copy moves the field's caret.
+	field.grab_focus()
+	field.caret_column = 3
+	await _frames(1)
+	_check(layer.showing() and _copy().caret == 3, "The copy shows the caret at the end")
+	var copy_rect := _copy().get_global_rect()
+	_mouse(Vector2(copy_rect.position.x + 1.0, copy_rect.get_center().y), true)
+	_mouse(Vector2(copy_rect.position.x + 1.0, copy_rect.get_center().y), false)
+	await _frames(1)
+	_check(layer.showing() and field.has_focus() and field.caret_column == 0 and _copy().caret == 0, "A tap at the copy's start puts the caret there: %d" % field.caret_column)
+	# Focus moving to a button takes it away.
 	button.grab_focus()
 	await _frames(1)
 	_check(not layer.showing() and not _timer_running(), "Focus on a button takes it away")
