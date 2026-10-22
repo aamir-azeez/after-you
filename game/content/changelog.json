@@ -2,6 +2,18 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.1",
+      "date": "2026-10-22",
+      "highlights": [{"icon": "people", "text": "React during your turn, and your friend sees it"}, {"icon": "picture", "text": "Play on a tablet, either side up in landscape"}, {"icon": "tap", "text": "What you type shows large above the keyboard"}, {"icon": "leaf", "text": "Chapter pictures load smoothly in rooms and Replays"}, {"icon": "star", "text": "Earlier versions lists every release"}, {"icon": "key", "text": "A stricter filter for names and nicknames"}],
+      "paragraphs": [
+        {"text": "While you play a turn, React sits beside Finish. Tap it and pick a face, and your pip makes that face for a moment, with a small bubble and a sound. Your reactions stay with your turn. In a room, your friend sees each one at the moment you made it while they watch your memory, and they play again in Replays. A turn holds up to 20 reactions, at least 3 seconds apart."},
+        {"text": "After You fits tablets now. You can turn your phone or tablet either way in landscape, and the game turns with it. On a screen squarer than a phone's, such as a 4:3 or 16:10 tablet, chapters and Home show the whole width of the scene, and Friends, Play with a friend and Settings stay centred at a phone's height.", "ios_text": "After You runs on iPad now. You can turn your iPhone or iPad either way in landscape, and the game turns with it. On the iPad's squarer screen, chapters and Home show the whole width of the scene, and Friends, Play with a friend and Settings stay centred at a phone's height."},
+        {"text": "Chapter pictures in Play Solo, Play with a friend and Replays now load in the background, so those pages open and scroll without stalling. Earlier versions in What's new lists every release back to 0.1.3."},
+        {"text": "When you type a name or a code, a large copy of the field shows above the on screen keyboard, so you can see what you type. Tap the large field to move the cursor. A tap anywhere else closes it and works on the page as usual. The filter for pip names and friend nicknames is stricter. It catches rude words split up with spaces or dots or spelled with numbers, and real words that only look close to one still pass. If Play Games sign in finishes after the name prompt opens, the prompt now offers your Play Games name.", "ios_text": "When you type a name or a code, a large copy of the field shows above the on screen keyboard, so you can see what you type. Tap the large field to move the cursor. A tap anywhere else closes it and works on the page as usual. The filter for pip names and friend nicknames is stricter. It catches rude words split up with spaces or dots or spelled with numbers, and real words that only look close to one still pass."},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.0",
       "date": "2026-10-20",
       "highlights": [{"icon": "star", "text": "Hard mode: play a whole chapter with no retries"}, {"icon": "home", "text": "A new Home, and the spirits are pips now"}, {"icon": "leaf", "text": "Chapters and screens open much faster"}, {"icon": "link", "text": "Rooms and Friends update almost at once"}, {"icon": "people", "text": "Give your pip a name, and add room partners as friends"}, {"icon": "spark", "text": "Turn of the Tide is harder, and the water rises"}, {"icon": "tap", "text": "See your tries and react when a run ends"}, {"icon": "sun", "text": "Settings is one page, with a 30 or 60 fps choice"}],
@@ -139,16 +151,6 @@
         {"text": "Play with a friend is one page now. Rooms you host or join stay listed after you restart the app, rooms with new activity are marked and shown first, and a finished room opens straight to its replay. Paid chapters explain the one-time purchase before you host and say that a friend can join for free.", "paid": true},
         {"text": "On the Friends page you can share your friend code through WhatsApp, Messages or any other app. You can give each friend a nickname that stays on your device, and each friend's code shows under their name."},
         {"text": "Buttons are padded and easier to read, Back is the same soft coral everywhere, the nickname editor is a proper in-game window, and the room hub shows the right chapter names and pictures."},
-        {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.4.19",
-      "date": "2026-10-09",
-      "highlights": [{"icon": "play", "text": "Solo replays play again"}, {"icon": "picture", "text": "Replays has Solo and Together tabs"}, {"icon": "tap", "text": "Ask for a redo in online rooms"}],
-      "paragraphs": [
-        {"text": "Solo replays play again. Every turn you finished on your own, in any chapter including Sleeping Lighthouse, plays back without touching your saves. Replays has Solo and Together tabs with chapter pictures."},
-        {"text": "The app opens with one splash image on the teal background instead of two different ones. Create and Join on the Play together page show without scrolling, room panels scroll instead of cutting off buttons, and Back and Delete are a soft coral. In online rooms you can ask for a redo from Pause or after a failed attempt."},
         {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
       ]
     }

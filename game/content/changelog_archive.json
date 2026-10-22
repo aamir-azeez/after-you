@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.4.19",
+      "date": "2026-10-09",
+      "highlights": [{"icon": "play", "text": "Solo replays play again"}, {"icon": "picture", "text": "Replays has Solo and Together tabs"}, {"icon": "tap", "text": "Ask for a redo in online rooms"}]
+    },
+    {
       "version": "0.4.18",
       "date": "2026-10-09",
       "highlights": [{"icon": "spark", "text": "A new icon and startup artwork"}]
