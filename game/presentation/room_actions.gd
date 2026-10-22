@@ -63,7 +63,7 @@ const ACTIONS := {
 	"checkpoints": {"button": "retry", "run": "_choose_local_checkpoint", "when": ["!hard", "solo"]},
 	# A finished solo hard run starts again from its first stage (services/hard_mode.gd).
 	"hard_again": {"text": PlayerCopy.HARD_AGAIN, "primary": true, "run": "_hard_again", "when": ["hard", "solo"]},
-	"new_room": {"text": "New room", "primary": true, "run": "_create_another_room", "when": ["online"]},
+	"new_room": {"text": "New room", "primary": true, "run": "_create_another_room", "drawn": "_track_new_room_button", "when": ["online"]},
 	"restart": {"text": "Restart chapter", "primary": true, "run": "_confirm_restart_chapter", "when": ["!hard", "restart"]},
 	# A room partner who is not a friend yet: the ordinary friend request
 	# (services/partner_friends.gd), then "Request sent" until they answer.

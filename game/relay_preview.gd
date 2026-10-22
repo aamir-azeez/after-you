@@ -3058,7 +3058,29 @@ func _watch_local_pairs(pairs: Array) -> void:
 	replay_pair_index = 0
 	_play_collection_pair()
 
+## New room waits in a busy-tap gate, as Begin does, while the finished card's
+## room read is out: a room cannot be made while the session is busy, and the
+## tap used to land on an error card saying online play was unavailable.
+var _new_room_gate: BusyTapGate
+var _new_room_button: Button
+
+## A tap still waiting keeps its label on the redrawn New room.
+func _track_new_room_button(button: Button) -> void:
+	_new_room_button = button
+	if _new_room_gate != null: _new_room_gate.follow(button)
+
 func _create_another_room() -> void:
+	if online_session == null or mode not in ["complete", "hard_full"]: return
+	if _new_room_gate == null: _new_room_gate = BusyTapGate.new(controls)
+	var finished := mode
+	# Hard mode's room-full card draws its own New room, untracked.
+	var tapped: Button = _new_room_button if is_instance_valid(_new_room_button) and mode == "complete" else null
+	await _new_room_gate.tap(tapped, PlayerCopy.ROOM_CHECKING,
+		func() -> bool: return online_session == null or not online_session.busy(),
+		_create_room_now,
+		func() -> bool: return mode == finished and not _leaving and online_session != null)
+
+func _create_room_now() -> void:
 	if online_session == null or mode not in ["complete", "hard_full"]: return
 	var hard_room := _hard_on()
 	mode = "creating_room"

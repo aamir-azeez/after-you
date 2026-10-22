@@ -1,10 +1,11 @@
 extends "res://tests/test_online_scenarios.gd"
 ## Room moments that used to strand a player: a room read that lands while the
-## phone is unfocused or in the background, and the app paused while Host or a
-## friend's Join waits for its reply.
+## phone is unfocused or in the background, New room on a finished room while
+## a room read is out, and the app paused while Host or a friend's Join waits
+## for its reply.
 
 func scenarios() -> Array[Callable]:
-	return [_read_lands_unfocused.bind(false), _read_lands_unfocused.bind(true), _pause_while_hosting, _pause_while_joining_from_friends]
+	return [_read_lands_unfocused.bind(false), _read_lands_unfocused.bind(true), _new_room_during_read, _pause_while_hosting, _pause_while_joining_from_friends]
 
 func suite_name() -> String:
 	return "Online robustness"
@@ -50,6 +51,29 @@ func _read_lands_unfocused(paused: bool) -> void:
 	await h.step("a few more seconds pass", func(): h.elapse(guest))
 	var child: Node = guest.child()
 	h.check(child != null and child.mode == "complete", "the guest's card shows the finished room, not the wait (at %s)" % [child.mode if child != null else "none"])
+	await h.finish()
+
+## New room on a finished room's card, tapped while that card's room read is
+## out, waits for the read and opens the new room instead of an error.
+func _new_room_during_read() -> void:
+	await _begin("new room while the finished room is read")
+	var room: String = await h.hosted_and_joined()
+	await h.play_out(room)
+	var device: Node = host if h.current_room(host) == room and host.child().mode == "complete" else guest
+	h.check(device.child() != null and device.child().mode == "complete", "a player is on the finished room's card")
+	var before: int = h.server.rooms.size()
+	device.api.faults.append({"path": "/v2/rooms/" + room, "method": HTTPClient.METHOD_GET, "kind": "hold"})
+	h.nudge(device)
+	h.check(await _until(func() -> bool: return device.api.held > 0), "the finished room's read is out")
+	h.check(h.press(device, "New room"), "New room can be tapped")
+	await h.frames(6)
+	h.check(device.button("Checking room…") != null and device.button("New room") == null, "New room says it is checking the room while the read is out")
+	device.api.release_held()
+	await h.step("the read lands", func(): pass)
+	var child: Node = device.child()
+	h.check(child != null and child.mode != "error", "no error card replaces the finished room (at %s)" % [device.where()])
+	h.check(h.server.rooms.size() == before + 1, "exactly one new room is made")
+	h.check(child != null and h.current_room(device) != room and not h.current_room(device).is_empty(), "the player is in the new room")
 	await h.finish()
 
 ## Host a Friends room, and the app goes to the background before the reply
