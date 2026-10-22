@@ -2391,7 +2391,8 @@ func _resume_application() -> void:
 	_sync_world_processing()
 	store_flow.resume_purchase_access()
 	if is_instance_valid(soundscape):
-		soundscape.set_backgrounded(is_instance_valid(relay_child))
+		# A full-screen child that muted Home (a room, a Together replay, Photo transfer) keeps it muted.
+		soundscape.set_backgrounded(is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child))
 	lifecycle_generation+=1
 	foreground_response={}
 	foreground_refresh_queued=true
