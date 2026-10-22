@@ -1603,11 +1603,11 @@
 					"typed_digest": "727aec8b8383b284a119bc7680967f7fb20731415913ab5e8eacdbd9d7a34632"
 				},
 				"slack-water": {
-					"hint_a": "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.",
+					"hint_a": "Some chains and bars can only be reached while the sea is shut, so pull those first. Then open the sea, pull the rest, set it to your post's mark and wait there.",
 					"hint_b": "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern.",
 					"is_authored_stage": false,
 					"title": "Slack Water",
-					"typed_digest": "518548962827af29db331b4cc94b0798d5532bf866294f9d43031e6d4edec5a9"
+					"typed_digest": "5f5d5f1ed069f1101e6cdfa7b16b0d50e50ba70c61a809f957efe1c07b4f97ff"
 				}
 			},
 			"story_illustration": false,
@@ -1737,11 +1737,11 @@
 					"typed_digest": "727aec8b8383b284a119bc7680967f7fb20731415913ab5e8eacdbd9d7a34632"
 				},
 				"slack-water": {
-					"hint_a": "Some moorings only catch while the sea is shut, so do those first. Then turn the sea, moor the rest, set your post's mark and wait there.",
+					"hint_a": "Some chains and bars can only be reached while the sea is shut, so pull those first. Then open the sea, pull the rest, set it to your post's mark and wait there.",
 					"hint_b": "Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern.",
 					"is_authored_stage": false,
 					"title": "Slack Water",
-					"typed_digest": "dd0bda3412c8eb8e915c927fe7fe69691cd9411728dae3d395ac47c4535b62cc"
+					"typed_digest": "05ccdfa4381d4215befd1fb0530462018cd8f1cc495d439c3a6aded1002e7915"
 				}
 			},
 			"story_illustration": false,

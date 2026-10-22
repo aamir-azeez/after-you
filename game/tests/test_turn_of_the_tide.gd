@@ -21,6 +21,7 @@ const Catalog = preload("res://core/journey/stage_catalog.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Witness = preload("res://tests/turn_of_the_tide_witness.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const CoopCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const Runtime = preload("res://core/physical/runtime.gd")
 const Journey = preload("res://services/relay_journey.gd")
@@ -98,7 +99,8 @@ func _registry() -> void:
 	_check(Registry.solo_scene(key) == "res://turn_of_the_tide.tscn", "The solo scene path")
 	for stage: Dictionary in level.stages:
 		var shown := Registry.stage_presentation(key, stage)
-		_check(shown.title == stage.title and shown.hint_a == stage.hint_a and shown.hint_b == stage.hint_b, "Stage presentation for " + stage.id)
+		# The catalog's hashed prose stays; the player reads its editable copy.
+		_check(shown.title == stage.title and shown.hint_a == PlayerCopy.from_canonical(stage.hint_a) and shown.hint_b == PlayerCopy.from_canonical(stage.hint_b), "Stage presentation for " + stage.id)
 
 func _stage_one() -> Dictionary:
 	var probe := func(name: String, sim: RefCounted) -> void:
