@@ -927,7 +927,7 @@ func _edit_nickname(peer: Dictionary, opener: Control = null) -> void:
 
 func _save_nickname(server: String, owner: String, friend: String, text: String) -> void:
 	if not is_instance_valid(_modal) or not _current(): return
-	if not _nicknames.set_nickname(server,owner,friend,text): _say("Nickname could not be saved")
+	if not _nicknames.set_nickname(server,owner,friend,text): _say(str(PlayerCopy.DISPLAY_NAME_ERRORS.display_name_refused) if FriendNicknames.refused(text) else "Nickname could not be saved")
 	_close_modal(false)
 	_render()
 

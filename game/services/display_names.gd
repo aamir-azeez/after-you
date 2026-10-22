@@ -14,6 +14,7 @@ extends RefCounted
 ## path of their choosing and may install it with use_shared().
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
+const NameFilter = preload("res://services/name_filter.gd")
 
 const PATH := "user://display_names.json"
 const WORDS_PATH := "res://content/anonymous_names.json"
@@ -67,10 +68,17 @@ static func clean(text: String) -> String:
 	return joined
 
 ## What is wrong with a name this phone can tell: "" when nothing, "length"
-## (empty or over MAX_LENGTH) or "characters". Letters of every script pass;
-## the server refuses the rest (symbols, emoji, the block list).
+## (empty or over MAX_LENGTH), "characters", or "display_name_refused" (the
+## word list, services/name_filter.gd, the same one the server runs). Letters
+## of every script pass; the server refuses the rest (symbols, emoji).
 static func problem(text: String) -> String:
 	var name := clean(text)
+	var wrong := _form_problem(name)
+	if not wrong.is_empty(): return wrong
+	return "display_name_refused" if NameFilter.blocked(name) else ""
+
+## problem() without the word list.
+static func _form_problem(name: String) -> String:
 	if name.is_empty() or name.length() > MAX_LENGTH: return "length"
 	# A mark at the start would sit on the text before the name.
 	if name.unicode_at(0) >= 0x300 and name.unicode_at(0) <= 0x36f: return "characters"
@@ -108,6 +116,12 @@ static func symbol_character(code: int) -> bool:
 ## A name another player sent: a string the rules allow, unchanged by clean().
 static func valid_remote(value: Variant) -> bool:
 	return value is String and value == clean(value) and problem(value).is_empty()
+
+## A kept own name: the rules without the word list, so a name the list came to
+## refuse after the server confirmed it stays in the file. The server shows it
+## to no one and the next friends list makes this phone anonymous.
+static func _well_formed(value: Variant) -> bool:
+	return value is String and value == clean(value) and _form_problem(value).is_empty()
 
 ## A name cut to fit a line: at most `limit` characters, ending in "…".
 static func short(name: String, limit: int = MAX_LENGTH) -> String:
@@ -351,9 +365,9 @@ func _load() -> void:
 		if mine is Dictionary and mine.get("choice", "") in CHOICES + [""] and mine.get("state", "") in ["", PENDING, SYNCED, REFUSED]:
 			var name: Variant = mine.get("name", "")
 			var confirmed: Variant = mine.get("confirmed", "")
-			if name is String and (name.is_empty() or valid_remote(name)):
+			if name is String and (name.is_empty() or _well_formed(name)):
 				scope.own = {"choice": mine.choice, "name": name, "revision": Typed.as_int(mine.get("revision"), 0), "state": mine.state,
-					"code": str(mine.get("code", "")).left(40), "asked": mine.get("asked") == true, "confirmed": confirmed if confirmed is String and valid_remote(confirmed) else ""}
+					"code": str(mine.get("code", "")).left(40), "asked": mine.get("asked") == true, "confirmed": confirmed if confirmed is String and _well_formed(confirmed) else ""}
 		var names: Variant = value.get("names")
 		if names is Dictionary:
 			for player: Variant in names:

@@ -3,6 +3,7 @@ extends RefCounted
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
+const NameFilter = preload("res://services/name_filter.gd")
 const MAX_LENGTH := 32
 const FILE_PATH := "user://friend_nicknames.json"
 const VERSION := 1
@@ -16,7 +17,8 @@ func _init(storage_path: String = FILE_PATH) -> void:
 func nickname(server: String, owner: String, friend: String) -> String:
 	for entry: Dictionary in _entries:
 		if entry.server == server and entry.owner == owner and entry.friend == friend:
-			return str(entry.nickname)
+			# One the word list came to refuse stays in the file but is not shown.
+			return "" if NameFilter.blocked(entry.nickname) else str(entry.nickname)
 	return ""
 
 ## What a friend is called when this player has given them no nickname. Players
@@ -43,7 +45,7 @@ static func sentence_start(name: String) -> String:
 func set_nickname(server: String, owner: String, friend: String, value: String) -> bool:
 	if server.strip_edges().is_empty() or owner.is_empty() or friend.is_empty(): return false
 	var nickname := value.strip_edges()
-	if not _valid_nickname(nickname): return false
+	if not _valid_nickname(nickname) or refused(nickname): return false
 	var remaining: Array[Dictionary] = []
 	for entry: Dictionary in _entries:
 		if entry.server != server or entry.owner != owner or entry.friend != friend: remaining.append(entry)
@@ -70,6 +72,10 @@ func clear_owner(owner: String, server: String = "") -> void:
 	if changed:
 		_entries = remaining
 		_save()
+
+## Whether the word list (services/name_filter.gd) refuses a nickname.
+static func refused(value: String) -> bool:
+	return NameFilter.blocked(value.strip_edges())
 
 static func _valid_nickname(value: String) -> bool:
 	if value.length() > MAX_LENGTH: return false

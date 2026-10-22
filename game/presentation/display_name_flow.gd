@@ -146,7 +146,9 @@ func _games() -> Node:
 func _save(choice: String, name: String) -> Dictionary:
 	var current := scope()
 	if current.is_empty(): return {"closed": true}
-	if DisplayNames.shared().choose(current.server, current.owner, choice, name).is_empty(): return {"closed": false, "code": "characters"}
+	if DisplayNames.shared().choose(current.server, current.owner, choice, name).is_empty():
+		var wrong := DisplayNames.problem(name) if choice != "anonymous" else ""
+		return {"closed": false, "code": wrong if not wrong.is_empty() else "characters"}
 	_refresh_chips()
 	var answer: Dictionary = await _client().send(DisplayNameClient.SAVE_WAIT_MS)
 	_refresh_chips()

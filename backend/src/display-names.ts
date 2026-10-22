@@ -1,9 +1,11 @@
-import blocklist from "./data/display-name-blocklist.json";
 import { ApiError, ID_PATTERN, boundedJson, isObject, unwrap, type Outcome } from "./protocol";
 import { bearerDigest } from "./http";
 import { flags, type ServerVars } from "./flags";
 import { ROOM_INBOX_CONCURRENCY, pooled } from "./room-inbox";
 import { resolveFriendAlias } from "./friend-aliases";
+import { blockedName } from "./name-filter";
+
+export { blockedName };
 
 /**
  * Display names: an optional name a player picks for friends and room partners.
@@ -71,56 +73,6 @@ function formedName(input: unknown): string | null {
 const BLANK_LETTERS = /[\u115F\u1160\u3164\uFFA0\u2800]/u;
 /** A name needs at least one letter or digit, so marks or punctuation alone never make one. */
 const VISIBLE = /[\p{L}\p{N}]/u;
-
-const SWAPS: Readonly<Record<string, string>> = { "0": "o", "1": "i", "3": "e", "4": "a", "5": "s", "7": "t", "@": "a", "$": "s", "!": "i" };
-/** Cyrillic and Greek letters that look like Latin ones (a small subset of Unicode's confusables). */
-const LOOKALIKES: Readonly<Record<string, string>> = {
-  "\u0430": "a", "\u0435": "e", "\u043e": "o", "\u0440": "p", "\u0441": "c", "\u0443": "y", "\u0445": "x", "\u0456": "i", "\u0458": "j", "\u0455": "s",
-  "\u043a": "k", "\u043c": "m", "\u0442": "t", "\u043d": "h", "\u0432": "b", "\u0501": "d", "\u0261": "g", "\u04bb": "h",
-  "\u03b1": "a", "\u03b5": "e", "\u03bf": "o", "\u03c1": "p", "\u03c4": "t", "\u03c5": "u", "\u03bd": "v", "\u03ba": "k", "\u03b9": "i", "\u03c7": "x"
-};
-const BLOCKED_WORDS = new Set<string>(blocklist.words);
-const BLOCKED_SUBSTRINGS: readonly string[] = blocklist.substrings;
-
-/** Lowercase, compatibility-decomposed with marks removed, and lookalike letters made Latin. */
-function plainFold(name: string): string {
-  return [...name.toLowerCase().normalize("NFKD").replace(/\p{M}/gu, "")].map(point => LOOKALIKES[point] ?? point).join("");
-}
-
-/** The plain fold with common digit and symbol swaps applied ("n4z1" reads "nazi"). */
-export function foldDisplayName(name: string): string {
-  return [...plainFold(name)].map(point => SWAPS[point] ?? point).join("");
-}
-
-/** A word's repeated letters made single ("fuuuck"), for the word list only. */
-const squeeze = (word: string): string => word.replace(/(\p{L})\1+/gu, "$1");
-
-/** Word tokens: letters only, with runs of single letters ("n a z i", "n.a.z.i") joined into one. */
-function tokens(folded: string): string[] {
-  const parts = folded.split(/[^\p{L}]+/u).filter(part => part.length > 0), out: string[] = [];
-  let run = "";
-  for (const part of parts) {
-    if ([...part].length === 1) { run += part; continue; }
-    if (run.length > 0) { out.push(run); run = ""; }
-    out.push(part);
-  }
-  if (run.length > 0) out.push(run);
-  return out;
-}
-
-/**
- * Checked on the name as typed and with digit and symbol swaps, so "Nazi!" (swapped "nazii") is
- * still caught by its plain word. `substrings` match anywhere once spaces and punctuation are gone;
- * `words` match a whole token, the whole name run together, or either with repeated letters made single.
- */
-export function blockedName(name: string): boolean {
-  for (const folded of [plainFold(name), foldDisplayName(name)]) {
-    const joined = folded.replace(/[^\p{L}\p{N}]/gu, "");
-    if (BLOCKED_SUBSTRINGS.some(entry => joined.includes(entry))) return true;
-    for (const word of [joined, ...tokens(folded)]) if (BLOCKED_WORDS.has(word) || BLOCKED_WORDS.has(squeeze(word))) return true;
-  }
-  return false;
-}
 
 /** A stored name as it may be served: unchanged when it still passes every rule, otherwise null. */
 export function shownName(value: unknown): string | null {
