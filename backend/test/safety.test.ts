@@ -41,6 +41,13 @@ describe("public policies and authenticated safety", () => {
     }
     expect((await call("/v1/safety/config")).status).toBe(401);
   });
+  it("covers iPhone on the deletion page and keeps the Android wording", async () => {
+    const body = await (await call("/account-deletion")).text();
+    expect(body).toContain("Delete identity and shared rooms. The iPhone app has the same steps.</p>");
+    expect(body).toContain("It requests removal of your RevenueCat customer information.");
+    expect(body).toContain("It does not refund a content purchase or erase Google Play's transaction records. The iPhone edition has no in-app purchases yet.</p>");
+    expect(body.replace(/<title>[^<]*<\/title>/, "")).not.toMatch(new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]"));
+  });
   it("requires explicit exact rules acceptance and preserves its first date across retry/eviction", async () => {
     const a = await create(); const config = await (await call("/v1/safety/config", "GET", a)).json();
     expect(config).toEqual({ schema_version: 1, enforced: true, terms_version: TERMS_VERSION, privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" });
