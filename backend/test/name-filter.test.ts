@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import blocklist from "../../game/content/display_name_blocklist.json";
 import anonymous from "../../game/content/anonymous_names.json";
 import vectors from "../../game/tests/fixtures/display_names/name_filter_vectors.json";
-import { blockEntries, blockedName, foldName, runPattern } from "../src/name-filter";
+import { MAX_INPUT, blockEntries, blockedName, foldName, runPattern } from "../src/name-filter";
 import { cleanDisplayName } from "../src/display-names";
 
 // The game runs the same checks on the same files (game/tests/test_name_filter.gd).
@@ -27,8 +27,10 @@ function disguises(entry: string): string[] {
     letters.join("-"),
     letters.map(c => c + c).join(""),
     letters.map(c => "aeiouy".includes(c) ? c + "́" : c).join(""),
-    map({ o: "0", i: "1", e: "3", a: "4", s: "5", t: "7", b: "8", g: "9" }),
-    map({ o: "0", l: "1", e: "3", a: "4", s: "$" }),
+    // Swaps are read only in a run that holds a letter, so the first letter stays.
+    letters[0] + map({ o: "0", i: "1", e: "3", a: "4", s: "5", t: "7", b: "8", g: "9" }).slice(1),
+    // The alternate swaps are never read at the end of a run, so the last letter stays.
+    map({ o: "0", l: "1", e: "3", a: "4", s: "$" }).slice(0, -1) + letters[letters.length - 1],
     map(look),
     letters.map(full).join(""),
     letters.map(bold).join(""),
@@ -49,7 +51,12 @@ describe("display name word filter", () => {
     for (const entry of entries) expect(entry).toMatch(/^[a-z0-9]+$/);
     // A substring inside another entry makes that entry pointless.
     for (const part of blockEntries("substrings")) for (const entry of entries) if (entry !== part) expect(entry.includes(part), `${part} in ${entry}`).toBe(false);
-    for (const word of blocklist.allowed_words) expect(new RegExp(`^(?:${blockEntries("words").map(runPattern).join("|")})$`).test(word), word).toBe(true);
+    // An allowed word is one an entry would otherwise catch.
+    const words = new RegExp(`^(?:${blockEntries("words").map(runPattern).join("|")})$`);
+    const inside = new RegExp(blockEntries("substrings").map(runPattern).join("|"));
+    for (const word of blocklist.allowed_words) expect(words.test(word) || inside.test(word), word).toBe(true);
+    // The swaps only read runs of letters, digits and these symbols.
+    for (const key of [...Object.keys(blocklist.folding.swaps), ...Object.keys(blocklist.folding.alternate_swaps)]) expect(key, key).toMatch(/^[0-9@$!]$/);
   });
 
   it("matches runs of a letter that many times or more", () => {
@@ -72,6 +79,17 @@ describe("display name word filter", () => {
 
   it("folds names the same way the game does", () => {
     for (const { input, plain } of vectors.folds) expect(foldName(input), JSON.stringify(input)).toBe(plain);
+  });
+
+  it("never fails on empty, long or odd input, and hidden characters never get a word through", () => {
+    expect(blockedName("")).toBe(false);
+    expect(blockedName("a".repeat(MAX_INPUT))).toBe(false);
+    expect(blockedName("a".repeat(MAX_INPUT + 1))).toBe(true);
+    expect(blockedName("́‏‮\ud800￿")).toBe(false);
+    for (const hidden of ["​", "‌", "‍", "‎", "‏", "⁠", "‮", "﻿", "­", "́", "͏"]) {
+      expect(blockedName(`pu${hidden}ssy`), JSON.stringify(hidden)).toBe(true);
+      expect(blockedName(`ni${hidden}gger`), JSON.stringify(hidden)).toBe(true);
+    }
   });
 
   it("passes every anonymous name", () => {

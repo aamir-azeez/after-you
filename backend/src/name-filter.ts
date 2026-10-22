@@ -9,11 +9,20 @@ import blocklist from "../../game/content/display_name_blocklist.json";
  *   where a lowercase letter meets a capital ("BigName"), lowercase, then lookalike letters
  *   made Latin. The game folds the same way, step for step.
  * - Three readings: the fold, the fold with digit and symbol swaps ("sh1t"), and the fold with
- *   the alternate swaps ("1" read as "l").
- * - `substrings` match anywhere once spaces and punctuation are gone; `words` match one whole
- *   word, the whole name run together, or a run of single letters ("n a z i") joined.
+ *   the alternate swaps ("1" read as "l"). Swaps apply only to a run of letters, digits and
+ *   swap symbols that holds a letter ("Room 455" keeps its number), and the alternate swaps
+ *   never apply at the end of that run ("Ana1" is not read with an "l").
+ * - Parts: the reading split at anything that is not a letter or digit, with runs of single
+ *   characters ("n a z i", "n.a.z.i") joined into one part.
+ * - `substrings` match anywhere inside one part, or exactly a run of whole parts ("pu ssy"),
+ *   so a match never starts or ends inside a neighbouring word ("Rabbit Chaser").
+ * - `words` match one whole word (letters only) or the whole name's letters run together.
+ * - `allowed_words` are real words a part may be although an entry would catch it.
  * - A run of one letter in an entry matches that many or more ("fuuuck"), never fewer, so
  *   "nigger" never matches "Niger".
+ * - Cost: the patterns are built once; a check is a few linear passes over a name of at most
+ *   MAX_INPUT code points, and part runs are at most MAX_SPAN parts long. Every entry
+ *   pattern is a chain of runs of different characters, so matching cannot backtrack badly.
  */
 type Kind = "substrings" | "words";
 type BlockList = {
@@ -22,6 +31,10 @@ type BlockList = {
   categories: Record<string, Record<Kind, string[]>>;
 };
 const LIST = blocklist as BlockList;
+/** Longer input is refused unread. Names are 18 code points and nicknames 32. */
+export const MAX_INPUT = 256;
+/** The most parts one substring match may span. */
+export const MAX_SPAN = 8;
 
 /** Every entry of one kind, across categories. */
 export const blockEntries = (kind: Kind): string[] => Object.values(LIST.categories).flatMap(category => category[kind]);
@@ -31,11 +44,15 @@ export function runPattern(entry: string): string {
   return entry.replace(/(.)\1*/g, run => run.length === 1 ? `${run[0]}+` : `${run[0]}{${run.length},}`);
 }
 
-const SUBSTRINGS = new RegExp(blockEntries("substrings").map(runPattern).join("|"), "u");
-const WORDS = new RegExp(`^(?:${blockEntries("words").map(runPattern).join("|")})$`, "u");
+const alternation = (kind: Kind): string => blockEntries(kind).map(runPattern).join("|");
+const SUBSTRING_INSIDE = new RegExp(alternation("substrings"), "u");
+const SUBSTRING_WHOLE = new RegExp(`^(?:${alternation("substrings")})$`, "u");
+const WORD_WHOLE = new RegExp(`^(?:${alternation("words")})$`, "u");
 const ALLOWED_WORDS = new Set(LIST.allowed_words);
 const SWAPS = LIST.folding.swaps;
 const ALTERNATE = { ...SWAPS, ...LIST.folding.alternate_swaps };
+/** A run the swaps read: letters, digits and the swap symbols (every swap key is a digit or one of these). */
+const SWAP_RUN = /[\p{L}\p{N}@$!]+/gu;
 const LOOKALIKES = LIST.folding.lookalikes;
 
 const mapped = (text: string, table: Record<string, string>): string => [...text].map(point => table[point] ?? point).join("");
@@ -46,11 +63,22 @@ export function foldName(name: string): string {
   return mapped(bare, LOOKALIKES);
 }
 
-/** Word tokens: letters only, with runs of single letters ("n a z i", "n.a.z.i") joined into one. */
-function tokens(folded: string): string[] {
+/** A reading with swaps: only runs that hold a letter, and the alternate swaps never at a run's end. */
+function swapped(folded: string, table: Record<string, string>): string {
+  return folded.replace(SWAP_RUN, run => {
+    if (!/\p{L}/u.test(run)) return run;
+    const points = [...run];
+    let end = points.length;
+    while (end > 0 && Object.hasOwn(LIST.folding.alternate_swaps, points[end - 1])) end--;
+    return points.map((point, i) => (i < end ? table : SWAPS)[point] ?? point).join("");
+  });
+}
+
+/** The text split at `split`, with runs of single characters joined into one part. */
+function parts(folded: string, split: RegExp): string[] {
   const out: string[] = [];
   let run = "";
-  for (const part of folded.split(/[^\p{L}]+/u)) {
+  for (const part of folded.split(split)) {
     if (part.length === 0) continue;
     if ([...part].length === 1) { run += part; continue; }
     if (run.length > 0) { out.push(run); run = ""; }
@@ -60,14 +88,26 @@ function tokens(folded: string): string[] {
   return out;
 }
 
-const wordHit = (word: string): boolean => WORDS.test(word) && !ALLOWED_WORDS.has(word);
+const wordHit = (word: string): boolean => WORD_WHOLE.test(word) && !ALLOWED_WORDS.has(word);
+
+function readingBlocked(folded: string): boolean {
+  const words = parts(folded, /[^\p{L}]+/u);
+  if (words.some(wordHit) || wordHit(words.join(""))) return true;
+  const pieces = parts(folded, /[^\p{L}\p{N}]+/u);
+  for (let i = 0; i < pieces.length; i++) {
+    if (!ALLOWED_WORDS.has(pieces[i]) && SUBSTRING_INSIDE.test(pieces[i])) return true;
+    let span = pieces[i];
+    for (let j = i + 1; j < pieces.length && j - i < MAX_SPAN; j++) {
+      span += pieces[j];
+      if (SUBSTRING_WHOLE.test(span)) return true;
+    }
+  }
+  return false;
+}
 
 /** Whether the list refuses a name. */
 export function blockedName(name: string): boolean {
+  if ([...name].length > MAX_INPUT) return true;
   const plain = foldName(name);
-  for (const folded of [plain, mapped(plain, SWAPS), mapped(plain, ALTERNATE)]) {
-    const joined = folded.replace(/[^\p{L}\p{N}]/gu, "");
-    if (SUBSTRINGS.test(joined) || wordHit(joined) || tokens(folded).some(wordHit)) return true;
-  }
-  return false;
+  return [plain, swapped(plain, SWAPS), swapped(plain, ALTERNATE)].some(readingBlocked);
 }

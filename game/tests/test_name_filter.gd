@@ -9,7 +9,9 @@ extends SceneTree
 ## - display names: the phone's check says "display_name_refused", names from
 ##   others are ignored, and a kept own name the list came to refuse stays;
 ## - nicknames: a refused one is not saved, and one saved before is kept in the
-##   file but not shown.
+##   file but not shown;
+## - odd input: empty, past the limit, marks and hidden characters alone, and
+##   hidden characters inside a word.
 const NameFilter = preload("res://services/name_filter.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
@@ -35,6 +37,7 @@ func _run() -> void:
 	_anonymous()
 	_display_names()
 	_nicknames()
+	_odd_input()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -92,8 +95,10 @@ func _disguises(entry: String) -> PackedStringArray:
 		"-".join(spaced),
 		doubled,
 		accented,
-		_mapped(entry, {"o": "0", "i": "1", "e": "3", "a": "4", "s": "5", "t": "7", "b": "8", "g": "9"}),
-		_mapped(entry, {"o": "0", "l": "1", "e": "3", "a": "4", "s": "$"}),
+		# Swaps are read only in a run that holds a letter, so the first letter stays.
+		entry.left(1) + _mapped(entry.substr(1), {"o": "0", "i": "1", "e": "3", "a": "4", "s": "5", "t": "7", "b": "8", "g": "9"}),
+		# The alternate swaps are never read at the end of a run, so the last letter stays.
+		_mapped(entry.left(-1), {"o": "0", "l": "1", "e": "3", "a": "4", "s": "$"}) + entry.right(1),
 		_mapped(entry, look),
 		wide,
 		bold,
@@ -150,6 +155,17 @@ func _nicknames() -> void:
 	nicknames = FriendNicknames.new(path)
 	_check(nicknames.nickname(SERVER, ME, MAYA).is_empty(), "A kept nickname the list came to refuse is not shown")
 	_check(FileAccess.get_file_as_string(path).contains("Bitch"), "but it stays in the file")
+
+func _odd_input() -> void:
+	_check(not NameFilter.blocked("") and NameFilter.fold("").is_empty(), "An empty name is fine")
+	_check(not NameFilter.blocked("a".repeat(NameFilter.MAX_INPUT)) and NameFilter.blocked("a".repeat(NameFilter.MAX_INPUT + 1)), "Input past the limit is refused unread")
+	_check(not NameFilter.blocked(char(0x301) + char(0x200f) + char(0x202e) + char(0xffff)), "Marks and hidden characters alone are fine")
+	for hidden: int in [0x200b, 0x200c, 0x200d, 0x200e, 0x200f, 0x2060, 0x202e, 0xfeff, 0xad, 0x301, 0x34f]:
+		_check(NameFilter.blocked("pu" + char(hidden) + "ssy") and NameFilter.blocked("ni" + char(hidden) + "gger"), "A hidden character gets no word through: %x" % hidden)
+	var swap_key := RegEx.create_from_string("^[0-9@$!]$")
+	var folding: Dictionary = _json("res://content/display_name_blocklist.json").folding
+	for key: String in folding.swaps.keys() + folding.alternate_swaps.keys():
+		_check(swap_key.search(key) != null, "A swap key is a digit or @ $ !: " + key)
 
 func _mapped(text: String, table: Dictionary) -> String:
 	var out := ""

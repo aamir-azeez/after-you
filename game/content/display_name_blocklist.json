@@ -1,6 +1,6 @@
 {
  "schema_version": 2,
- "comment": "The display name and nickname word filter, read by the game (services/name_filter.gd) and the server (backend/src/name-filter.ts). Entries are lowercase a to z or digits. A run of one letter in an entry also matches a longer run. Substrings match anywhere in the name with spaces and punctuation removed; words match one whole word or the whole name. allowed_words are real names a word entry would otherwise catch. Both test suites check every entry and game/tests/fixtures/display_names/name_filter_vectors.json.",
+ "comment": "The display name and nickname word filter, read by the game (services/name_filter.gd) and the server (backend/src/name-filter.ts). Entries are lowercase a to z or digits. A run of one letter in an entry also matches a longer run. Substrings match inside one word or exactly a run of whole words; words match one whole word or the whole name. allowed_words are real words an entry would otherwise catch. Swap keys are digits or one of @ $ !. Both test suites check every entry and game/tests/fixtures/display_names/name_filter_vectors.json.",
  "folding": {
   "swaps": {
    "0": "o",
@@ -56,7 +56,13 @@
   }
  },
  "allowed_words": [
-  "jaap"
+  "jaap",
+  "japp",
+  "kyss",
+  "snigger",
+  "sniggered",
+  "sniggering",
+  "sniggers"
  ],
  "categories": {
   "sexual": {
@@ -93,6 +99,7 @@
     "gangbang",
     "handjob",
     "horseshit",
+    "incest",
     "jerkoff",
     "jizz",
     "knobhead",
@@ -121,7 +128,9 @@
     "anus",
     "arse",
     "ass",
+    "assclown",
     "asses",
+    "asshat",
     "bastard",
     "bastards",
     "bellend",
@@ -141,6 +150,7 @@
     "cocks",
     "cum",
     "cunt",
+    "cuntface",
     "cunts",
     "cunty",
     "fck",
@@ -155,7 +165,6 @@
     "fukker",
     "fuks",
     "fuq",
-    "incest",
     "kunt",
     "kunts",
     "milf",
@@ -165,6 +174,7 @@
     "paedo",
     "paedos",
     "pedo",
+    "pedobear",
     "pedos",
     "penis",
     "penises",
@@ -187,6 +197,7 @@
     "scrotum",
     "shit",
     "shite",
+    "shitlord",
     "shits",
     "shitty",
     "shyt",
@@ -205,6 +216,7 @@
     "tosser",
     "twat",
     "twats",
+    "twatwaffle",
     "vagina",
     "vaginas",
     "vulva",
@@ -234,6 +246,7 @@
     "pickaninny",
     "porchmonkey",
     "raghead",
+    "redskin",
     "slanteye",
     "spearchucker",
     "towelhead",
@@ -278,8 +291,6 @@
     "pakis",
     "pikey",
     "pikeys",
-    "redskin",
-    "redskins",
     "spic",
     "spick",
     "spics",
@@ -335,7 +346,9 @@
    ]
   },
   "ableist": {
-   "substrings": [],
+   "substrings": [
+    "retard"
+   ],
    "words": [
     "cripple",
     "cripples",
@@ -343,9 +356,6 @@
     "midgets",
     "mongoloid",
     "mongoloids",
-    "retard",
-    "retarded",
-    "retards",
     "spastic",
     "spastics",
     "spaz",
@@ -357,10 +367,9 @@
   "hate_violence": {
    "substrings": [
     "1488",
-    "adolfhitler",
     "christkiller",
     "gaschamber",
-    "heilhitler",
+    "hitler",
     "killalljews",
     "killurself",
     "killyourself",
@@ -369,7 +378,6 @@
     "whitepower"
    ],
    "words": [
-    "hitler",
     "kys",
     "nazi",
     "nazis"
