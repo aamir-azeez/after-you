@@ -295,7 +295,7 @@ func import_recovery_details(text: String, player: LineEdit, code: LineEdit, sta
 ## A new recovery may start only once the saved recovery read has answered:
 ## an unseen saved request could be the only copy of new credentials.
 func recovery_start_allowed() -> bool:
-	return not host.identity_loading and not host.recovery_read_failed
+	return not host.identity_loading and not host.recovery_read_failed and host.identity_read_state!=host.IdentityReadState.UNCHECKED
 
 func recover_identity(player: String, code: String) -> void:
 	if not recovery_start_allowed():

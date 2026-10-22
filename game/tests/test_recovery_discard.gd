@@ -31,6 +31,8 @@ class StatefulSecrets:
 	var fail_write_names: Array = []
 	var fail_remove := false
 	var fail_read := false
+	## The read answers, but with a shape that is neither found nor not found.
+	var odd_read := false
 	func is_available() -> bool:
 		return true
 	func get_secret(name: String) -> String:
@@ -38,6 +40,9 @@ class StatefulSecrets:
 		calls.append({"operation":"get","name":name})
 		if fail_read:
 			_fail.call_deferred(id,"get")
+			return id
+		if odd_read:
+			_emit.call_deferred(id,"get",{"found":true,"value":null})
 			return id
 		var payload := {"found":true,"value":values[name]} if values.has(name) else {"found":false,"value":null}
 		_emit.call_deferred(id,"get",payload)
@@ -122,6 +127,7 @@ func _restart(app: Node, api: Node, storage: StatefulSecrets, values: Dictionary
 	storage.fail_write_names=[]
 	storage.fail_remove=false
 	storage.fail_read=read_fails
+	storage.odd_read=false
 	app.pending_recovery={}
 	app.pending_recovery_unusable=false
 	app.recovery_read_failed=false
@@ -328,6 +334,25 @@ func _test_failed_pending_read(app: Node, api: Node, storage: StatefulSecrets) -
 	_check(not app.recovery_read_failed and app.identity_read_state==Main.IdentityReadState.RECOVERY_PENDING and JSON.stringify(app.pending_recovery)==JSON.stringify(JSON.parse_string(unanswered)),"Checking again finds the saved request and it waits for its answer")
 	app.settings_flow.show_settings("account")
 	_check(_find_button(app.overlay,PlayerCopy.SETTINGS_FINISH_RECOVERY)!=null and _find_button(app.overlay,PlayerCopy.RECOVERY_DISCARD)==null,"The found request offers Finish identity recovery, not Stop")
+
+	# An answer of the wrong shape counts as a failed read too.
+	await _restart(app,api,storage,{"recovery_pending":unanswered})
+	app.pending_recovery={}
+	app.identity_restart_required=false
+	storage.odd_read=true
+	app._load_saved_identity()
+	while app.identity_loading: await process_frame
+	await app.account_flow.recover_identity(LOST_PLAYER,OTHER_CODE)
+	_check(app.recovery_read_failed and not app.account_flow.recovery_start_allowed() and api.calls.is_empty() and storage.values.recovery_pending==unanswered,"An unexpected read answer blocks a new recovery and keeps the saved request")
+
+	# Before any read has run, nothing may start a recovery either.
+	await _restart(app,api,storage,{"recovery_pending":unanswered})
+	app.pending_recovery={}
+	app.identity_restart_required=false
+	app.identity_read_state=Main.IdentityReadState.UNCHECKED
+	storage.calls.clear()
+	await app.account_flow.recover_identity(LOST_PLAYER,OTHER_CODE)
+	_check(not app.account_flow.recovery_start_allowed() and api.calls.is_empty() and storage.calls.is_empty() and storage.values.recovery_pending==unanswered,"An unchecked device cannot start a recovery over an unread request")
 
 	# With nothing saved, a later successful read brings Recover back.
 	await _restart(app,api,storage,{},true)

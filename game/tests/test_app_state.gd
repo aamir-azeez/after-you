@@ -700,7 +700,9 @@ func _reset_recovery_case(app: Node, api: Node, storage: TestSecrets) -> void:
 	app.identity_restart_required=false
 	app.identity_busy=false
 	app.identity_loading=false
-	app.identity_read_state=Main.IdentityReadState.UNCHECKED
+	# A finished read that found no saved recovery: a new one may start.
+	app.identity_read_state=Main.IdentityReadState.FAILED
+	app.recovery_read_failed=false
 	app.identity_request=""
 	app.recovery_read_request=""
 	app.identity_data={}
