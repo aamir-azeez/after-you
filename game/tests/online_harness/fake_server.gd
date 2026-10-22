@@ -176,6 +176,8 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	if path == "/v1/friends" and method == HTTPClient.METHOD_GET:
 		return _ok({"schema_version": 1, "friend_code": player, "refresh_after_seconds": 30, "shared_room": record.get("shared_room"), "friends": _friend_rows(player)})
 	if path == "/v1/friends/share": return _share(player, body)
+	var friend_join := RegEx.create_from_string("^/v1/friends/([A-Za-z0-9_-]{22})/join$").search(path)
+	if friend_join != null and method == HTTPClient.METHOD_POST: return _friend_join(player, friend_join.get_string(1))
 	if path == "/v1/social/inbox": return _ok({"schema_version": 1, "available": false, "events": [], "preferences": []})
 	# queued counts the friends alerted (social-routes.ts), as the client checks.
 	if path == "/v1/social/publication": return _fail(409, "friend_room_not_shared") if record.get("shared_room") == null else _ok({"schema_version": 1, "publication_epoch": 1, "queued": 0})
@@ -619,6 +621,15 @@ func befriend(a: String, b: String) -> void:
 	for pair: Array in [[a, b], [b, a]]:
 		if not players[pair[0]].has("friends"): players[pair[0]]["friends"] = {}
 		players[pair[0]].friends[pair[1]] = request
+
+## POST /v1/friends/<id>/join (friends-routes.ts): a friend's shared open room
+## hands over its invitation code, which the phone then joins with.
+func _friend_join(player: String, other: String) -> Dictionary:
+	if not players[player].get("friends", {}).has(other) or not players.has(other): return _fail(404, "friend_not_found")
+	var shared: Variant = players[other].get("shared_room")
+	var room: Variant = rooms.get(str(shared.room_id)) if shared is Dictionary else null
+	if not room is Dictionary or room.deleted or room.transferred or room.host_id != other: return _fail(409, "friend_not_joinable")
+	return _ok({"schema_version": 1, "api_version": 2, "room_id": room.room_id, "invite_code": room.invite_code})
 
 ## DELETE /v1/identity (room-links.ts:18-48): every room is erased for the partner.
 func _erase_identity(player: String) -> Dictionary:

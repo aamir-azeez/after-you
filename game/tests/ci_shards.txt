@@ -170,6 +170,7 @@ online_random 1
 online_random_extra 1
 online_random_more 3
 online_replay_authority 1
+online_robust 3
 online_scenarios 1
 online_scenarios_edges 1
 online_scenarios_more 3

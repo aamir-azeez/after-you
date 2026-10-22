@@ -173,10 +173,10 @@ func _join(descriptor: Dictionary) -> void:
 		if host.relay_session != null and (room_id in host.relay_session.room_ids() or (host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("room_id") == room_id)):
 			host.relay_lobby_flow.lobby_action("open",room_id)
 		else:
-			var lifecycle: int = host.lifecycle_generation
 			var identity: String = host._tester_context()
+			# The lobby's own check carries the join over a pause and resume.
 			var current: bool = await host.relay_lobby_flow.open_lobby()
-			if not current or lifecycle != host.lifecycle_generation or host.application_backgrounded or identity != host._tester_context(): return
+			if not current or host.application_backgrounded or identity != host._tester_context(): return
 			if room_id in host.relay_session.room_ids(): host.relay_lobby_flow.lobby_action("open",room_id)
 			else: host.relay_lobby_flow.lobby_action("join",str(descriptor.get("invite_code","")))
 	elif descriptor.get("api_version") == 1:

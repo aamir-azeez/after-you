@@ -69,10 +69,26 @@ func _check_rooms(chapter: String) -> void:
 	draw_progress(PlayerCopy.MAIN_07713E9CC81E)
 	var context: Dictionary = host._friends_route_context()
 	var loaded: bool = await host.relay_session.load_lobby()
-	if generation != _menu_generation or not host._friends_route_current(context):
+	if not await _step_current(generation, context):
 		return
 	# The caller continues from this progress card; a failed check returns to the hub.
 	if not loaded: host._return_to_room_hub(host.relay_session.last_error)
+
+## True when a lobby step that waited may go on: its card is still the screen
+## for the same player. A pause and resume on the way leave it current, since
+## the server has done the step: the step waits for the app to be in front and
+## then goes on, so a Host or Join is never left on this card. Back, another
+## screen or a new identity still stop it.
+func _step_current(generation: int, context: Dictionary) -> bool:
+	var asked := context.duplicate()
+	asked.erase("lifecycle")
+	while generation == _menu_generation and is_instance_valid(host) and host.is_inside_tree():
+		var now: Dictionary = host._friends_route_context()
+		now.erase("lifecycle")
+		if now != asked or not host._relay_identity().ready: return false
+		if not host.application_backgrounded: return true
+		await host.get_tree().process_frame
+	return false
 
 ## The short wait while a room is checked, created, joined or opened. Back,
 ## Escape and Android Back return to the hub, as the old lobby's Back did.
@@ -100,14 +116,14 @@ func lobby_action(action: String, value: String = "", hard: bool = false) -> voi
 	# chapters, and a room opened without them cannot save a turn.
 	if host.relay_session.capabilities.is_empty():
 		var loaded: bool = await host.relay_session.load_lobby()
-		if generation != _menu_generation or not host._friends_route_current(context): return
+		if not await _step_current(generation, context): return
 		if not loaded:
 			host._return_to_room_hub(host.relay_session.last_error)
 			return
 		# The list can drop the last room's proof. Checking it again here lets
 		# this same tap go on, or releases a last room that is gone.
 		var checked: bool = await host._prepare_ordinary_navigation()
-		if generation != _menu_generation or not host._friends_route_current(context): return
+		if not await _step_current(generation, context): return
 		if not checked:
 			host._settle_room_flow()
 			return
@@ -120,7 +136,7 @@ func lobby_action(action: String, value: String = "", hard: bool = false) -> voi
 			await host.relay_session.open_room(value)
 			if host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("room_id", "") == value:
 				room_id = value
-	if generation != _menu_generation or not host._friends_route_current(context):
+	if not await _step_current(generation, context):
 		return
 	if room_id.is_empty():
 		host._return_to_room_hub(host.relay_session.last_error)
