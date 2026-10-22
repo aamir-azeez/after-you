@@ -83,6 +83,7 @@ func _run() -> void:
 	_platform_helper()
 	_platform_copy()
 	_store_rules()
+	_privacy_manifest()
 	_licenses()
 	await _native_services()
 	await _paywall_and_settings()
@@ -157,6 +158,20 @@ func _store_rules() -> void:
 	_check(Purchases.subscriptions_url(APP_STORE) == "https://apps.apple.com/account/subscriptions" and Purchases.subscriptions_url(GOOGLE_PLAY).is_empty(), "App Store subscribers manage in the App Store")
 	_check(not Purchases.review_candidate(app_payload, APP_STORE), "The Play reviewer path does not apply on iOS")
 	PlatformSupport.override_platform = ""
+
+## The App Privacy label lists purchase history only for a store build. Git keeps it
+## undeclared and CI (setup-godot-ios) turns it on with a store key; photos stay declared.
+func _privacy_manifest() -> void:
+	var presets := ConfigFile.new()
+	_check(presets.load("res://export_presets.cfg") == OK, "The export presets load")
+	var options := ""
+	for section: String in presets.get_sections():
+		if not section.ends_with(".options") and str(presets.get_value(section, "platform", "")) == "iOS": options = section + ".options"
+	_check(not options.is_empty(), "The iOS preset exists")
+	for data: String in ["user_id", "device_id", "photos_or_videos", "gameplay_content", "other_user_content", "purchase_history"]:
+		var key := "privacy/collected_data/%s/" % data
+		_check(presets.get_value(options, key + "collected", null) == (data != "purchase_history"), "The iOS preset declares %s: %s" % [data, data != "purchase_history"])
+		_check(presets.get_value(options, key + "linked_to_user", null) == true and presets.get_value(options, key + "used_for_tracking", null) == false and presets.get_value(options, key + "collection_purposes", null) == 2, "The iOS preset keeps %s linked, untracked and for app functionality" % data)
 
 func _licenses() -> void:
 	var desktop_titles: Array = Licenses.entries().map(func(entry: Dictionary) -> String: return entry.title)

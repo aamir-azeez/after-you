@@ -2,7 +2,8 @@ name: Set up Godot for iOS export
 description: >
   Installs the pinned Godot 4.7.2 macOS editor and its iOS export template (both
   checksum-verified and cached), prepares an isolated copy of the game for the iOS
-  preset, and imports it. Sets GODOT, GAME_COPY, BUNDLE_ID and IOS_LOGS for later steps.
+  preset, and imports it. Sets GODOT, GAME_COPY, BUNDLE_ID, IOS_LOGS and
+  IOS_PURCHASE_HISTORY for later steps.
 
 inputs:
   team-id:
@@ -169,6 +170,9 @@ runs:
             config["api_base_url"] = ""
         config_path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
         print("Store mode for this build:", config.get("purchase_mode"))
+        # RevenueCat links only with a store mode and its key. The free build has neither, and
+        # its App Privacy label says it collects no purchase history.
+        store = config.get("purchase_mode") in ("app_store", "test_store") and bool(config.get("revenuecat_public_key"))
 
         presets_path = root / "export_presets.cfg"
         text = presets_path.read_text(encoding="utf-8").replace("\r\n", "\n")
@@ -202,6 +206,13 @@ runs:
             if options.count(center_off) != 1:
                 raise SystemExit("iOS preset must keep Game Center off in Git")
             options = options.replace(center_off, 'entitlements/game_center=true\n')
+        # The privacy manifest declares purchase history only for a store build.
+        if store:
+            purchases_off = 'privacy/collected_data/purchase_history/collected=false\n'
+            if options.count(purchases_off) != 1:
+                raise SystemExit("iOS preset must keep purchase history undeclared in Git")
+            options = options.replace(purchases_off, 'privacy/collected_data/purchase_history/collected=true\n')
+        print("Privacy manifest declares purchase history:", store)
         additional = []
         if os.environ["UNIVERSAL_LINKS"] == "true":
             additional.append("<key>com.apple.developer.associated-domains</key><array><string>applinks:aamirazeez.com</string></array>")
@@ -220,7 +231,6 @@ runs:
             options = options.replace(entitlements_off, 'entitlements/additional="' + "".join(additional) + '"\n')
         text = text[:start] + options + text[end:]
         if addon.is_dir():
-            store = config.get("purchase_mode") in ("app_store", "test_store") and bool(config.get("revenuecat_public_key"))
             if not store:
                 # The export plugin leaves RevenueCat out, so its notice goes too.
                 (addon / "licenses" / "RevenueCat-iOS-MIT.txt").unlink(missing_ok=True)
@@ -248,6 +258,7 @@ runs:
         presets_path.write_text(text, encoding="utf-8")
         with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
             env.write(f"BUNDLE_ID={bundle.group(1)}\n")
+            env.write(f"IOS_PURCHASE_HISTORY={'true' if store else 'false'}\n")
         print(f"Bundle ID from the iOS preset: {bundle.group(1)}")
         PY
 

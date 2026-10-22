@@ -103,6 +103,38 @@ runs:
         plutil -lint "$manifest"
         plutil -p "$manifest"
         cp "$manifest" "$IOS_LOGS/"
+        # The manifest must match the App Privacy label: purchase history only in a store build
+        # (setup-godot-ios sets IOS_PURCHASE_HISTORY). Only the app's own manifest is read;
+        # RevenueCat's framework carries its own.
+        python3 - "$manifest" <<'PY'
+        import os, plistlib, sys
+
+        def fail(message):
+            print("::error::" + message)
+            sys.exit(1)
+
+        flag = os.environ.get("IOS_PURCHASE_HISTORY", "")
+        if flag not in ("true", "false"):
+            fail("IOS_PURCHASE_HISTORY is not set; run setup-godot-ios first")
+        with open(sys.argv[1], "rb") as handle:
+            manifest = plistlib.load(handle)
+        if manifest.get("NSPrivacyTracking") is not False:
+            fail("PrivacyInfo.xcprivacy must declare NSPrivacyTracking false")
+        entries = manifest.get("NSPrivacyCollectedDataTypes", [])
+        declared = sorted(entry.get("NSPrivacyCollectedDataType", "") for entry in entries)
+        expected = ["NSPrivacyCollectedDataType" + name for name in ("UserID", "DeviceID", "PhotosorVideos", "GameplayContent", "OtherUserContent")]
+        if flag == "true":
+            expected.append("NSPrivacyCollectedDataTypePurchaseHistory")
+        if declared != sorted(expected):
+            fail(f"PrivacyInfo.xcprivacy declares {declared}, expected {sorted(expected)}")
+        # Every type is linked to the player, never used for tracking, and only for app functionality.
+        for entry in entries:
+            if (entry.get("NSPrivacyCollectedDataTypeLinked") is not True
+                    or entry.get("NSPrivacyCollectedDataTypeTracking") is not False
+                    or entry.get("NSPrivacyCollectedDataTypePurposes") != ["NSPrivacyCollectedDataTypePurposeAppFunctionality"]):
+                fail(f"PrivacyInfo.xcprivacy changed the details of {entry.get('NSPrivacyCollectedDataType')}")
+        print("Privacy manifest data types match the store mode:", ", ".join(declared))
+        PY
         plutil -p "$plist"
         grep -E 'PRODUCT_BUNDLE_IDENTIFIER|IPHONEOS_DEPLOYMENT_TARGET|TARGETED_DEVICE_FAMILY|CODE_SIGN_STYLE' \
           "$IOS_EXPORT/$EXPORT_NAME.xcodeproj/project.pbxproj" | sort -u || true
