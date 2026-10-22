@@ -138,7 +138,8 @@ var _spout: Node3D
 var _spout_streaks: Array[MeshInstance3D] = []
 var _history_tide := ""
 ## Crossings that may be open while their water stands above the deck: walled
-## and kept out of the water body, a sealed pit that stays dry.
+## and kept out of the water body, a sealed pit that stays dry (a walled stub
+## floods while shut, _floods).
 var _walled: Array[String] = []
 ## Of those, the crossings walled only because they can be kept (entered while
 ## open, so walked later even when the tide covers them); kept apart so the
@@ -155,6 +156,11 @@ var _lock_targets: Dictionary = {}
 var _lock_shown: Dictionary = {}
 ## Shut crossings stay in view as faint outlines: id -> ghost node.
 var _ghosts: Dictionary = {}
+## Walled stubs read covered while shut: id -> {"node" (its flood: a unit box
+## of the water it sits in, stretched from the seabed to that water's level),
+## "body" (that water's root), "water" (its name in _water), "key" (its pit's
+## area id in the locks' plan)}.
+var _floods: Dictionary = {}
 var _boats: Array[Node3D] = []
 ## RAMPS built for the shown stage: crossing id -> its hinge (Node3D, meta "target").
 var _ramps: Dictionary = {}
@@ -225,6 +231,7 @@ func show_stage(stage: Dictionary) -> void:
 	_locks = null
 	_water_walls.clear()
 	_ghosts.clear()
+	_floods.clear()
 	_boats.clear()
 	_ramps.clear()
 	# Actors outlive a stage: a drowned face goes back before the new one.
@@ -625,7 +632,8 @@ func _fender(run: Array, edge: float, outward: float, along_x: bool, height: flo
 
 ## Walled crossings: masonry along the sides that do not meet their floors, a
 ## floor in the pit and a plinth under each stair. The pit is sealed (walls,
-## and floors at its mouths), so no water ever stands in it. Await it.
+## and floors at its mouths), so the water round it never stands in it; only a
+## walled stub fills, with its own flood while shut (_build_flood). Await it.
 func _build_route_walls() -> void:
 	var root := Node3D.new()
 	root.name = "WalledCrossings"
@@ -664,11 +672,38 @@ func _build_route_walls() -> void:
 		var width := float(r[2] - r[0]) / 100.0
 		var depth := float(r[3] - r[1]) / 100.0
 		box(Vector3(width, 0.04, depth), STONE_DARK.darkened(0.2), center + Vector3(0, SEABED + 0.02, 0), root).name = "PitFloor"
+		if _is_stub(route): _build_flood(id, route, center, width, depth)
 		if route.has("axis"):
 			var top := float(_low_cm(route)) / 100.0 - 0.12
 			var plinth := box(Vector3(width - 0.04, top - SEABED, depth - 0.04), WALLS.get(48, STONE).darkened(0.08), center + Vector3(0, (top + SEABED) * 0.5, 0), root)
 			plinth.name = "StairPlinth"
 			_holds_water(plinth)
+
+## A walled stub (a post or catwalk) still reads covered while its gate is
+## shut, as it did standing in the open water: its pit fills to the level of
+## the water round it, and empties while it is open (present). The locks' plan
+## gives its pit that water while flooded, so a door at its mouth holds the
+## flood off the floor beside it, as one held the open water there before.
+func _build_flood(id: String, route: Dictionary, center: Vector3, width: float, depth: float) -> void:
+	var body: Node3D = _water.get(_body_of(route.rect_cm))
+	if not is_instance_valid(body): return
+	var water := body.get_node_or_null("Water") as MeshInstance3D
+	var flood := Node3D.new()
+	flood.name = "FloodedStub_" + id
+	flood.position = Vector3(center.x, 0, center.z)
+	flood.visible = false
+	terrain.add_child(flood)
+	# Its sides toward the camera stand 3 cm inside the pit, clear of the faces
+	# of its frame and pit floor.
+	var fill := Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.03, 1.0, depth - 0.03)), water.material_override if water != null else material(WATER), Vector3(-0.015, -0.5, -0.015), flood)
+	fill.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	_floods[id] = {"node": flood, "body": body, "water": _body_of(route.rect_cm), "key": "crossing:" + id}
+	_fill(_floods[id], float(body.get_meta("shown")))
+
+## Stretches a flood from the seabed to its water's `level`, as _show_water does a body.
+static func _fill(flood: Dictionary, level: float) -> void:
+	(flood.node as Node3D).position.y = level
+	(flood.node as Node3D).scale.y = maxf(level - SEABED, 0.02)
 
 # --- Crossings: decks at their own height ---
 
@@ -1331,6 +1366,8 @@ func _show_water(root: Node3D, level: float) -> void:
 	root.position.y = level
 	root.scale.y = maxf(level - SEABED, 0.02)
 	if root == _water.get("harbour"): _float_boats(level)
+	for id: String in _floods:
+		if _floods[id].body == root: _fill(_floods[id], level)
 	for mast: Dictionary in _kept_masts:
 		if root == _water.get(mast.body): _raise_mast(mast, level)
 
@@ -1409,7 +1446,8 @@ func _build_locks() -> void:
 	_locks.build(plan, terrain)
 
 ## This stage's water for the locks kit: every floor, sunken crossing (a pit
-## sealed by its walls, dry in every state) and body of water, the walkways,
+## sealed by its walls, dry in every state but a walled stub's, flooded with
+## its water in a copy of each) and body of water, the walkways,
 ## the walls built to hold water, and every set of levels the wheels can show.
 func _water_plan() -> Dictionary:
 	var areas: Array = []
@@ -1427,15 +1465,25 @@ func _water_plan() -> Dictionary:
 	for tide: float in (levels.harbour as Dictionary).values():
 		for sea: float in (levels.sea as Dictionary).values():
 			for chamber: float in (levels.chamber as Dictionary).values():
-				states.append({"harbour": tide, "sea": sea, "chamber": chamber})
+				var dry := {"harbour": tide, "sea": sea, "chamber": chamber}
+				states.append(dry)
+				# The same levels with every walled stub shut and flooded.
+				if _floods.is_empty(): continue
+				var flooded := dry.duplicate()
+				for id: String in _floods: flooded[_floods[id].key] = dry[_floods[id].water]
+				states.append(flooded)
 	return {"areas": areas, "bounds": [-1116, -700, 1884, 700], "mouths": mouths, "walls": _water_walls.duplicate(), "states": states, "seabed": SEABED, "wall_top": PARAPET_TOP}
 
 ## The levels for the locks, from each body's "target" (where it is going) or
-## "shown" (where it stands this frame) meta; walled crossings stay dry.
-## Refills one dictionary per meta, so it allocates nothing.
+## "shown" (where it stands this frame) meta; a flooded walled stub stands at
+## its water's, a dry one at the seabed (dry to the locks), every other walled
+## crossing stays dry. Refills one dictionary per meta with the same keys in
+## the same order, so it allocates nothing and equal levels hash the same.
 func _lock_levels(meta: String) -> Dictionary:
 	var levels: Dictionary = _lock_targets if meta == "target" else _lock_shown
 	for body: String in _water: levels[body] = float(_water[body].get_meta(meta))
+	for id: String in _floods:
+		levels[_floods[id].key] = levels[_floods[id].water] if (_floods[id].node as Node3D).visible else SEABED
 	return levels
 
 func _build_chamber() -> void:
@@ -1836,6 +1884,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		for band: MeshInstance3D in _post_marks[id].bands: _glow(band, TEAL, 0.9 if at_value else 0.0)
 	for id: String in _ghosts:
 		if is_instance_valid(_ghosts[id]) and _decks.has(id): _ghosts[id].visible = not _decks[id].visible
+	for id: String in _floods:
+		_floods[id].node.visible = not (_decks.has(id) and _decks[id].visible)
 	_show_closing(state.get("route_progress", {}).get("closing", {}))
 	_show_drowned(state.get("drowned", {}))
 	if is_instance_valid(_locks):
@@ -1879,7 +1929,7 @@ var _bubbles_placed := false
 
 ## Everything that moves, shows, hides or glows with the tide stays whole
 ## (_static_keep): crossing decks (rebuilt and copied for their ghosts at
-## build), water, ghosts, kept marks and masts, boats, sea gates, the
+## build), water, walled stubs' floods, ghosts, kept marks and masts, boats, sea gates, the
 ## spout, wheels, gauges, levers and lamps, and the remembered routes (found by
 ## index). The island floors fold like every world's (cooperative_world).
 func _folds_static_scenery() -> bool:
@@ -1888,6 +1938,7 @@ func _folds_static_scenery() -> bool:
 func _static_keep() -> Array:
 	var keep := super._static_keep()
 	for group: Dictionary in [_decks, _memory_markers, _ghosts, _water]: keep.append_array(group.values())
+	for flood: Dictionary in _floods.values(): keep.append(flood.node)
 	for mast: Dictionary in _kept_masts: keep.append_array([mast.post, mast.knob, mast.flag])
 	for wheel: Dictionary in _wheels.values(): keep.append(wheel.wheel)
 	for gauge: Dictionary in _gauges.values(): keep.append_array([gauge.post, gauge.icon] + gauge.bands)

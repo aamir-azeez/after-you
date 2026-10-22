@@ -1,5 +1,5 @@
 {
-	"digest": "82b7e3051facf43c4d64a61269d71882a4a9cc158f5e1b0acdd59ac599230346",
+	"digest": "4cde3e1ccbdf5b8f9f30ae861042e47f4f9a3bca71149d599a02100fa791243b",
 	"runs": [
 		{
 			"a": "island:w-terrace",
@@ -188,6 +188,96 @@
 			"top": -0.7
 		},
 		{
+			"a": "crossing:bar-catwalk",
+			"along_x": true,
+			"b": "island:w-terrace",
+			"base": 0.45,
+			"ends": [
+				false,
+				false
+			],
+			"from": -512.0,
+			"kind": "door",
+			"line": -128.0,
+			"mouth": "bar-catwalk",
+			"shift": 6.5,
+			"shut": 0.749999988079071,
+			"to": -456.0,
+			"top": -0.7
+		},
+		{
+			"a": "crossing:gate-catwalk",
+			"along_x": true,
+			"b": "island:w-terrace",
+			"base": 0.45,
+			"ends": [
+				false,
+				false
+			],
+			"from": -368.0,
+			"kind": "door",
+			"line": -128.0,
+			"mouth": "gate-catwalk",
+			"shift": 6.5,
+			"shut": 0.749999988079071,
+			"to": -312.0,
+			"top": -0.7
+		},
+		{
+			"a": "crossing:gate-post",
+			"along_x": true,
+			"b": "island:w-terrace",
+			"base": 0.45,
+			"ends": [
+				false,
+				false
+			],
+			"from": -296.0,
+			"kind": "door",
+			"line": -128.0,
+			"mouth": "gate-post",
+			"shift": 6.5,
+			"shut": 0.749999988079071,
+			"to": -240.0,
+			"top": -0.7
+		},
+		{
+			"a": "crossing:punt-post",
+			"along_x": true,
+			"b": "island:w-terrace",
+			"base": 0.45,
+			"ends": [
+				false,
+				false
+			],
+			"from": -440.0,
+			"kind": "door",
+			"line": -128.0,
+			"mouth": "punt-post",
+			"shift": 6.5,
+			"shut": 0.749999988079071,
+			"to": -384.0,
+			"top": -0.7
+		},
+		{
+			"a": "crossing:race-stage",
+			"along_x": true,
+			"b": "island:m-terrace",
+			"base": 0.45,
+			"ends": [
+				false,
+				false
+			],
+			"from": 192.0,
+			"kind": "door",
+			"line": -128.0,
+			"mouth": "race-stage",
+			"shift": 6.5,
+			"shut": 0.749999988079071,
+			"to": 256.0,
+			"top": -0.7
+		},
+		{
 			"a": "chamber",
 			"along_x": true,
 			"b": "island:sea-chamber",
@@ -198,6 +288,24 @@
 			"mouth": "",
 			"shift": -5.0,
 			"to": -576.0,
+			"top": -0.7
+		},
+		{
+			"a": "island:w-terrace",
+			"along_x": true,
+			"b": "crossing:boom-post",
+			"base": 0.45,
+			"ends": [
+				false,
+				false
+			],
+			"from": -296.0,
+			"kind": "door",
+			"line": 128.0,
+			"mouth": "boom-post",
+			"shift": -6.5,
+			"shut": 0.749999988079071,
+			"to": -240.0,
 			"top": -0.7
 		},
 		{

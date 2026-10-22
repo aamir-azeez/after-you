@@ -22,7 +22,7 @@ const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const KEY := "turn-of-the-tide@1"
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## Pieces per Turn of the Tide stage: {kind: count}.
-const TIDE_PIECES := {"set-the-tide": {"door": 14, "wall": 4}, "slack-water": {"door": 6, "wall": 10}}
+const TIDE_PIECES := {"set-the-tide": {"door": 14, "wall": 4}, "slack-water": {"door": 12, "wall": 10}}
 var checks := 0
 var failures := 0
 
@@ -182,6 +182,7 @@ func _tide() -> void:
 		_every_edge_covered(world, locks, str(stage.id))
 		_sealed_pits(world, locks, sim, stage)
 		_in_open_water(world, stage)
+		_covered_stubs(world, locks, sim, stage)
 		_kept_door_dips(world, locks, sim, stage)
 		world.free()
 	_check(Canonical.digest(level) == digest, "Building and showing the locks never changes the definition")
@@ -206,7 +207,8 @@ func _locks(world: Node3D) -> WaterLocks:
 ## At low water every door is down. At high water the water stands over the
 ## terraces, so both doors of each set of stepping stones are up, kept or not;
 ## at half the stones can be walked, so theirs are down. A walled crossing is a
-## sealed pit and has no door at all.
+## sealed pit and has no door at all, but a walled stub, which floods while
+## shut, has one at its mouth.
 func _doors_follow(world: Node3D, locks: WaterLocks, tide: String, label: String) -> void:
 	match tide:
 		"low": _check(not "shut" in locks.door_states(), "Every door is down at low water: " + label)
@@ -217,7 +219,8 @@ func _doors_follow(world: Node3D, locks: WaterLocks, tide: String, label: String
 			for id: String in ["stones-1", "stones-2", "stones-3"]:
 				_check(_states_at(locks, id) == ["open", "open"], "Stepping stones above the water have their doors down: %s %s" % [label, id])
 	for id: String in world._walled:
-		_check(_states_at(locks, id).is_empty(), "A walled crossing is sealed and has no door: %s %s" % [label, id])
+		if id in world._floods: _check(_states_at(locks, id).size() == 1, "A walled stub has one door, at its mouth: %s %s" % [label, id])
+		else: _check(_states_at(locks, id).is_empty(), "A walled crossing is sealed and has no door: %s %s" % [label, id])
 
 ## The door states of the openings onto one walkway, in build order.
 func _states_at(locks: WaterLocks, mouth: String) -> Array:
@@ -408,8 +411,10 @@ func _every_edge_covered(world: Node3D, locks: WaterLocks, label: String) -> voi
 
 ## Every walled crossing is a sealed pit: walled along each side no floor
 ## meets, never given water of its own by the plan, never touched by a lock
-## piece, and with no water in it at any level of any wheel, open or shut,
-## while the water stands or moves.
+## piece (a walled stub, which floods while shut, has a door at its mouth and
+## its flood in the plan), and with no body's water in it at any level of any
+## wheel, open or shut, while the water stands or moves. An open stub (not a
+## catwalk shown by the remembered tide) never shows its flood.
 func _sealed_pits(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dictionary) -> void:
 	var pits: Array[Rect2] = []
 	for id: String in world._walled:
@@ -420,9 +425,10 @@ func _sealed_pits(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dict
 	var named := 0
 	for state: Dictionary in plan.states:
 		for key: String in state:
-			if key.begins_with("crossing:"): named += 1
+			if key.begins_with("crossing:") and key.trim_prefix("crossing:") not in world._floods: named += 1
 	_check(named == 0, "No state gives a sealed pit water of its own: " + str(stage.id))
-	var touching := locks.runs.filter(func(run: Dictionary) -> bool: return str(run.a).begins_with("crossing:") or str(run.b).begins_with("crossing:"))
+	var sealed := func(area: String) -> bool: return area.begins_with("crossing:") and area.trim_prefix("crossing:") not in world._floods
+	var touching := locks.runs.filter(func(run: Dictionary) -> bool: return sealed.call(str(run.a)) or sealed.call(str(run.b)))
 	_check(touching.is_empty(), "No lock piece stands at a sealed pit: %s %d" % [stage.id, touching.size()])
 	var wet := 0
 	var wheels := _wheels(stage)
@@ -439,6 +445,9 @@ func _sealed_pits(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dict
 					wet += _water_over(world, pits)
 					for body: Node3D in world._water.values():
 						wet += body.get_children().filter(func(child: Node) -> bool: return child.name != "Water" and child is MeshInstance3D and (child as MeshInstance3D).visible).size()
+					if open:
+						for id: String in world._floods:
+							if id not in world._catwalks and world._floods[id].node.visible: wet += 1
 	_check(wet == 0, "No water ever stands in a sealed pit: %s (%d)" % [stage.id, wet])
 	_reset(world, sim, stage)
 
@@ -549,6 +558,29 @@ func _walled_sides(world: Node3D, route: String) -> bool:
 			if near and spans: held = true
 		if not held: return false
 	return true
+
+## A walled stub still reads covered while its gate is shut: at high tide with
+## the sea at LOW and every bar and chain pulled, the gate post (its mark) is
+## open, dry, with no flood and its door down; the boom and punt posts are shut,
+## flooded to the tide's level with their doors up holding it off the terrace.
+## At low tide a shut post's flood stands at the low water, its door down.
+func _covered_stubs(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dictionary) -> void:
+	if str(stage.id) != "slack-water": return
+	for lever: String in ["gate-bar", "sea-bar", "boom-chain", "punt-chain"]: sim._mechanisms.levers[lever] = true
+	sim._mechanisms.controls["basin"] = "low"
+	for tide: String in ["high", "low"]:
+		sim._mechanisms.controls["tide"] = tide
+		sim._refresh_routes()
+		var state: Dictionary = sim.snapshot()
+		world.present(state, true)
+		var level: float = world.HARBOUR_LEVELS[tide]
+		_check(bool(state.bridges["gate-post"]) and not world._floods["gate-post"].node.visible and _states_at(locks, "gate-post") == ["open"], "The open post stands dry, its door down: " + tide)
+		for id: String in ["boom-post", "punt-post"]:
+			var flood: Node3D = world._floods[id].node
+			_check(not bool(state.bridges[id]) and flood.visible and is_equal_approx(flood.position.y, level), "A shut post is flooded to the water's level: %s %s" % [id, tide])
+			_check(_states_at(locks, id) == (["shut"] if tide == "high" else ["open"]), "A shut post's door holds its flood off the terrace only above it: %s %s %s" % [id, tide, _states_at(locks, id)])
+	for lever: String in ["gate-bar", "sea-bar", "boom-chain", "punt-chain"]: sim._mechanisms.levers.erase(lever)
+	_reset(world, sim, stage)
 
 ## A crossing that cannot be walked at high water (the west stepping stones,
 ## open only at half tide and not kept here): its raised doors stay up for a
