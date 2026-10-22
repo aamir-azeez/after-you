@@ -139,7 +139,7 @@ N: android=http://schemas.android.com/apk/res/android
     }
     # Sensor landscape on the game Activity, as aapt prints screenOrientation 6.
     $gameLine = 'A: android:name(0x01010003)="com.godot.game.GodotApp" (Raw: "com.godot.game.GodotApp")'
-    $sensorTree = $inviteTree.Replace($gameLine, $gameLine + "`n        A: android:screenOrientation(0x0101001e)=(type 0x10)0x6")
+    $sensorTree = $inviteTree.Replace($gameLine, $gameLine + "`n        A: android:screenOrientation(0x0101001e)=(type 0x10)0xb")
     Assert-True ($sensorTree -cne $inviteTree) 'Sensor landscape fixture did not change.'
     Assert-AndroidSensorLandscape -ManifestTree $sensorTree
     $checked++
@@ -147,8 +147,8 @@ N: android=http://schemas.android.com/apk/res/android
     $checked++
     $brokenOrientation = [ordered]@{
         'No orientation' = $inviteTree
-        'Fixed landscape' = $sensorTree.Replace('(type 0x10)0x6', '(type 0x10)0x0')
-        'Reverse landscape only' = $sensorTree.Replace('(type 0x10)0x6', '(type 0x10)0x8')
+        'Fixed landscape' = $sensorTree.Replace('(type 0x10)0xb', '(type 0x10)0x0')
+        'Reverse landscape only' = $sensorTree.Replace('(type 0x10)0xb', '(type 0x10)0x8')
         'Other Activity' = $sensorTree.Replace('"com.godot.game.GodotApp" (Raw: "com.godot.game.GodotApp")', '"com.godot.game.OtherApp" (Raw: "com.godot.game.OtherApp")')
     }
     foreach ($case in $brokenOrientation.GetEnumerator()) {

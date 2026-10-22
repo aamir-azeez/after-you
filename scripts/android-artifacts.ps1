@@ -78,8 +78,8 @@ function Assert-AndroidSensorLandscape {
     param([Parameter(Mandatory)][string]$ManifestTree)
     $manifest = ConvertFrom-AndroidXmlTree -Tree $ManifestTree
     $game = @(Get-AndroidXmlElements $manifest 'activity' | Where-Object { $_.Attributes['name'] -eq 'com.godot.game.GodotApp' })
-    # 6 is sensorLandscape in the platform's screenOrientation values.
-    if ($game.Count -ne 1 -or $game[0].Attributes['screenOrientation'] -cne '(type 0x10)0x6') { throw 'The game Activity must use sensorLandscape.' }
+    # Godot exports its sensor landscape setting as userLandscape (11): either landscape side, honouring the rotation lock.
+    if ($game.Count -ne 1 -or $game[0].Attributes['screenOrientation'] -cne '(type 0x10)0xb') { throw 'The game Activity must use userLandscape.' }
 }
 
 function Resolve-AndroidCandidatePath {
