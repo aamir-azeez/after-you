@@ -3194,6 +3194,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		if event.physical_keycode == KEY_SPACE and mode == "play":
 			_request_action()
 		elif event.physical_keycode == KEY_ESCAPE:
+			if _photo_back(): return
 			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			else: _pause() if running or mode in ["bloom", "drowning"] else _leave()
@@ -3268,6 +3269,12 @@ func frame_demand() -> String:
 	return Frames.CALM
 
 
+## Back on the optional photo card is answered by the card and never leaves the room: the
+## turn is already saved, and leaving here used to drop the player out of the room.
+func _photo_back() -> bool:
+	return mode == "photo" and is_instance_valid(reaction_photos) and reaction_photos.back()
+
+
 ## Godot runs `_notification` at every script level, base first, so a subclass
 ## never calls it again through super. A subclass that is not ready for this
 ## screen's lifecycle handling (cooperative access still checking) says so here.
@@ -3303,6 +3310,7 @@ func _notification(what: int) -> void:
 		if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_instance_valid(run_reactions) and run_reactions.faces_open():
 			run_reactions.close_faces()
 			return
+		if what == NOTIFICATION_WM_GO_BACK_REQUEST and _photo_back(): return
 		_finish_ready_due()
 		if is_instance_valid(stick):
 			if mode in ["confirm_retry", "confirm_restart_chapter", "confirm_solo_redo"]:

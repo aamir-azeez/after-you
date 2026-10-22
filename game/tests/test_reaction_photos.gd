@@ -288,6 +288,10 @@ class Offer:
 	var offers := 0
 	var continuation: Callable
 	var resumes: Array[String] = []
+	var backs := 0
+	func back() -> bool:
+		backs += 1
+		return active
 	func offer(_receipt: Dictionary, callback: Callable, _automatic: bool = false, _resume: Dictionary = {}) -> void:
 		offers += 1
 		active = true
@@ -371,6 +375,8 @@ func _run() -> void:
 	await _frame_fit()
 	await _strip()
 	await _accepted_hook()
+	await _back_on_card()
+	await _back_in_room()
 	_session_references()
 	print("After You reaction photo presentation: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -815,6 +821,74 @@ func _accepted_hook() -> void:
 	_check(preview.photo_loads == 1 and preview.running and preview.mode == "replay", "return after remove/replace reloads current thumbnails without resetting replay")
 	preview.identity_invalidated()
 	_check(not offer.active, "existing main identity hook invalidates child photo flow")
+	preview.queue_free()
+	await process_frame
+
+## Android Back or Esc on the photo card answers the card the way its own secondary button does.
+func _back_on_card() -> void:
+	var host := Host.new()
+	root.add_child(host)
+	var capture := Capture.new()
+	capture.bytes = _synthetic()
+	capture.metadata = _metadata(capture.bytes)
+	var controller := PhotoController.new()
+	controller.bytes = capture.bytes
+	var flow := Flow.new()
+	flow.capture_override = capture
+	flow.controller_override = controller
+	flow.resume_store = _resume_store()
+	flow.configure(host, PhotoSession.new())
+	host.add_child(flow)
+	_check(not flow.back(), "Back is not the photo card's while no card is open")
+	var before := continuations
+	await flow.offer(_receipt(), _continued)
+	_check(flow.back() and not flow.active and continuations == before + 1 and controller.uploads == 0, "Back on the first card is Skip: the game goes on and nothing is sent")
+	await flow.offer(_receipt(), _continued)
+	flow._open_camera()
+	capture.kept.emit(flow._capture_request, capture.metadata)
+	for _i: int in 3: await process_frame
+	_check(host.has_button(Copy.PHOTO_SEND), "A kept photo waits with Send with turn")
+	_check(flow.back() and not flow.active and continuations == before + 2 and controller.uploads == 0 and controller.selection().photo_id == PHOTO, "Back on the kept photo is Not now: the photo stays with the turn, unsent")
+	await flow.offer(_receipt(), _continued)
+	controller.metadata = {"sha256": HASH}
+	flow._show_card()
+	flow._confirm_delete()
+	_check(host.has_button("PhotoRemoveConfirm"), "The remove question is open")
+	_check(flow.back() and flow.active and controller.deletes == 0 and host.has_button("PhotoRemove") and not host.has_button("PhotoRemoveConfirm"), "Back on the remove question keeps the photo and returns to the card")
+	flow._terms_screen = CanvasLayer.new()
+	flow.add_child(flow._terms_screen)
+	var shown: Control = host.card
+	_check(flow.back() and flow.active and host.card == shown and continuations == before + 2, "Back over the photo rules screen is left to that screen")
+	flow._terms_screen.free()
+	flow._continue()
+	controller.metadata = {}
+	host.queue_free()
+	await process_frame
+
+## Back in the room while the photo card is open stays in the room.
+func _back_in_room() -> void:
+	var preview := TestPreview.new()
+	preview.set_process(false)
+	preview.set_physics_process(false)
+	var offer := Offer.new()
+	preview.online_session = PhotoSession.new()
+	preview.journey = GameCoordinator.new()
+	preview.reaction_photos = offer
+	preview.add_child(offer)
+	root.add_child(preview)
+	var left: Array[bool] = []
+	preview.closed.connect(func(): left.append(true))
+	preview.mode = "photo"
+	offer.active = true
+	preview.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	_check(offer.backs == 1 and left.is_empty() and not preview._leaving, "Android Back on the photo card goes to the card, not out of the room")
+	var escape := InputEventKey.new()
+	escape.physical_keycode = KEY_ESCAPE
+	escape.pressed = true
+	preview._unhandled_key_input(escape)
+	_check(offer.backs == 2 and left.is_empty() and not preview._leaving, "Esc on the photo card goes to the card, not out of the room")
+	preview.mode = "ready"
+	_check(not preview._photo_back() and offer.backs == 2, "Outside the photo card Back keeps its usual meaning")
 	preview.queue_free()
 	await process_frame
 

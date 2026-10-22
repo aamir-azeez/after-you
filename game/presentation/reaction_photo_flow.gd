@@ -42,6 +42,8 @@ var _open_diagnostic: Dictionary = {}
 var _last_logged_diagnostic := ""
 var _checking_rules := false
 var _terms_screen: CanvasLayer
+## What Android Back or Esc does on the card shown now: its own way on, never leaving the room.
+var _back_action := Callable()
 
 func last_open_diagnostic() -> Dictionary:
 	return _safe_diagnostic(_open_diagnostic)
@@ -318,6 +320,7 @@ func _add_retake(card: Control, uploads: bool) -> void:
 	if retake.disabled: retake.tooltip_text = PlayerCopy.REACTION_PHOTO_FLOW_E4147F1F1B98
 
 func _card(title: String, line: String) -> Control:
+	_back_action = _continue
 	var root: Control = _host._photo_overlay()
 	var card: Control = Polaroid.new()
 	card.reduced_motion = reduced_motion.is_valid() and reduced_motion.call() == true
@@ -394,8 +397,9 @@ func _open_camera() -> void:
 	var target := _capture_target.duplicate(true)
 	var store := resume_store
 	# Only this explicit button starts the camera. Which turn it is for is saved first, so a
-	# photo taken while Android closes After You comes back to this turn.
-	_capture_request = _capture.capture(func(request: String): store.begin(owner, target, request))
+	# photo taken while Android closes After You comes back to this turn. If that cannot be
+	# saved the camera stays closed and the card says the photo could not be prepared.
+	_capture_request = _capture.capture(func(request: String) -> bool: return store.begin(owner, target, request))
 
 func _kept(request: String, metadata: Dictionary) -> void:
 	if not active or request != _capture_request:
@@ -504,6 +508,7 @@ func _confirm_delete() -> void:
 	card.show_photo(controller.image_bytes())
 	card.add_primary(PlayerCopy.PHOTO_REMOVE, _delete, "", "PhotoRemoveConfirm")
 	card.add_secondary(PlayerCopy.PHOTO_KEEP, _show_card, "PhotoKeep")
+	_back_action = _show_card
 
 func _delete() -> void:
 	if not active or controller.busy():
@@ -513,6 +518,19 @@ func _delete() -> void:
 	var removed: bool = await controller.delete_photo()
 	if _current(generation):
 		_show_card(PlayerCopy.PHOTO_REMOVED if removed else controller.last_error)
+
+## Android Back or Esc while the photo card is open. The card answers it the way its own
+## secondary button does (Skip, Not now, Keep playing, or back from Remove), so the player
+## stays in the room with the saved turn. The rules screen over the card closes itself.
+## False when no photo card is open.
+func back() -> bool:
+	if is_instance_valid(_terms_screen):
+		return true
+	if not active:
+		return false
+	if _back_action.is_valid(): _back_action.call()
+	else: _continue()
+	return true
 
 func _continue() -> void:
 	if not active:
@@ -532,6 +550,7 @@ func invalidate() -> void:
 		_terms_screen.client.invalidate()
 		_terms_screen.queue_free()
 	_terms_screen = null
+	_back_action = Callable()
 	active = false
 	_capture_request = ""
 	_capture_context = {}
