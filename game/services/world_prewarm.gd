@@ -121,8 +121,9 @@ func _exit_tree() -> void:
 
 func _process(delta: float) -> void:
 	if _reader != null and not _reader.is_alive(): _take_stage()
-	if is_instance_valid(_view) and away.is_valid() and away.call(): _drop()
-	if not enabled or _visit_done or _backgrounded or not idle.is_valid() or not idle.call():
+	var gone: bool = away.is_valid() and away.call()
+	if is_instance_valid(_view) and gone: _drop()
+	if not enabled or _visit_done or _backgrounded or gone or not idle.is_valid() or not idle.call():
 		_idle_for = 0.0
 		return
 	_idle_for += delta
