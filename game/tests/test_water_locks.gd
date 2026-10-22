@@ -8,8 +8,8 @@ extends SceneTree
 ## its mouth and rises once it leaves. On Turn of the Tide: the number of
 ## pieces each stage gets, doors following the wheels, no water surface running
 ## into a door, no work on idle frames, every walled crossing a sealed pit that
-## never holds water, stepping stones and the lever pads open only over dry
-## water unwalled in the open water, a door dipping for a spirit the same way live, sought and with
+## never holds water, stepping stones unwalled in the open water and exactly
+## the lever stubs open under their water walled, a door dipping for a spirit the same way live, sought and with
 ## reduced motion (and never for a walkway nobody may walk), and the definition
 ## unchanged. Every other chapter builds no locks.
 const WaterLocks = preload("res://presentation/kit/water_locks.gd")
@@ -444,8 +444,9 @@ func _sealed_pits(world: Node3D, locks: WaterLocks, sim: Simulation, stage: Dict
 
 ## Stepping stones are never walled, nor a stub (lever pad, post or catwalk)
 ## whose gate opens it only over dry water: they stand in the open channel, its
-## water all round them. The posts and the gate and bar catwalks read the sea,
-## not the tide, so Slack Water can hold them open at high tide over their
+## water all round them. The posts and the gate and bar catwalks have gates
+## that tie them to no tide value, so Slack Water can hold them open at high
+## tide over their
 ## terrace-high decks, and the race stage can be kept (entered at low tide) and
 ## walked at high: those are walled dry like any crossing.
 func _in_open_water(world: Node3D, stage: Dictionary) -> void:

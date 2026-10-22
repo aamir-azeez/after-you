@@ -289,8 +289,9 @@ func _second_stage(level: Dictionary) -> void:
 	# every water, stand in the open water, never walled.
 	for id: String in ["stones-1", "stones-2", "stones-3", "beach-catwalk", "quay-catwalk"]:
 		_check(id not in world._walled, "Stage two leaves %s in the open water, unwalled" % id)
-	# The posts and the gate and bar catwalks read the sea, not the tide: open
-	# at high tide over terrace-high decks, so walled dry like any crossing.
+	# The posts and the gate and bar catwalks have gates that tie them to no
+	# tide value: open at high tide over terrace-high decks, so walled dry like
+	# any crossing.
 	for id: String in ["boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk"]:
 		_check(id in world._walled, "Stage two walls %s, open whatever the tide" % id)
 	_check(not world._decks["punt-ferry"].visible and world._ghosts["punt-ferry"].visible, "The shut punt shows its outline in its dry pit")
@@ -391,8 +392,10 @@ func _walls(world: Node3D, level: Dictionary, index: int) -> void:
 ## water (the harbour's at the tide, the outer sea's at the sea's value) stands
 ## above its deck is dry: no water surface lies over it, so a spirit the rules
 ## keep safe there never stands in the water. Gates are read by the journey
-## rules themselves (seven_mechanisms) at every value of the stage's wheels,
-## with every lever pulled and each spirit on any of its pads or on none, so a
+## rules themselves (seven_mechanisms) at every value of the wheels of this
+## stage and the ones before it (a later stage reads what an earlier one
+## left), with every such lever pulled and each spirit on any of this stage's
+## pads or on none, so a
 ## moved or regated crossing is caught whatever the world walls. Kept crossings
 ## (open because entered earlier) are the kept-crossing checks' business.
 func _open_crossings_dry() -> void:
@@ -401,7 +404,7 @@ func _open_crossings_dry() -> void:
 		var checkpoint := JourneyCatalog.initial_checkpoint(level)
 		for index in range(level.stages.size()):
 			var stage: Dictionary = level.stages[index]
-			var under := _open_under_water(level, stage, checkpoint.mechanisms.controls)
+			var under := _open_under_water(level, index, checkpoint.mechanisms.controls)
 			if str(stage.id) == "slack-water":
 				for id: String in ["boom-post", "gate-post", "punt-post", "gate-catwalk", "bar-catwalk"]:
 					_check(id in under, "%s: the rules can hold %s open under the high tide" % [key, id])
@@ -414,20 +417,25 @@ func _open_crossings_dry() -> void:
 				_check(not rects.any(func(rect: Rect2) -> bool: return rect.intersects(deck)), "%s %s: %s can stand open under its water, so no water lies over it" % [key, stage.id, id])
 			world.free()
 
-## The gated crossings of `stage` that some state of its wheels, levers and
-## pads holds open while their water stands above their lowest deck.
-func _open_under_water(level: Dictionary, stage: Dictionary, initial: Dictionary) -> Array[String]:
+## The gated crossings of stage `index` that some state of the wheels and
+## levers of it and the stages before it, and of its pads, holds open while
+## their water stands above their lowest deck.
+func _open_under_water(level: Dictionary, index: int, initial: Dictionary) -> Array[String]:
+	var stage: Dictionary = level.stages[index]
+	var wheels := {}
+	var levers := {}
+	for earlier: Dictionary in level.stages.slice(0, index + 1):
+		for control: Dictionary in earlier.get("controls", []): wheels[control.id] = control.values
+		for lever: Dictionary in earlier.get("levers", []): levers[lever.id] = true
 	var combos: Array = [initial.duplicate()]
-	for control: Dictionary in stage.get("controls", []):
+	for wheel: String in wheels:
 		var grown: Array = []
 		for combo: Dictionary in combos:
-			for value: String in control.values:
+			for value: String in wheels[wheel]:
 				var next: Dictionary = combo.duplicate()
-				next[control.id] = value
+				next[wheel] = value
 				grown.append(next)
 		combos = grown
-	var levers := {}
-	for lever: Dictionary in stage.get("levers", []): levers[lever.id] = true
 	var nowhere := {"x": 100000, "z": 100000, "height": -1, "surface_id": ""}
 	var spots := {"p0": [nowhere], "p1": [nowhere]}
 	for pad: Dictionary in stage.get("pressure_pads", []):

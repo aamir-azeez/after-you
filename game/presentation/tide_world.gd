@@ -374,7 +374,7 @@ static func _low_cm(route: Dictionary) -> int:
 ## the deck: every always-open low crossing (stairs, the towpath, the mole
 ## slip), and every gated one whose gate does not tie it to a water value that
 ## leaves its deck dry (the lock gates, punt and sea gates, and the posts and
-## catwalks that read the sea but not the tide). Never stepping stones
+## catwalks whose gates tie them to no tide value). Never stepping stones
 ## (_stands_in_water).
 func _walled_routes(stage: Dictionary) -> Array[String]:
 	var result: Array[String] = []
@@ -1154,7 +1154,9 @@ func _build_gauge(route: Dictionary, values: Array) -> void:
 		at = point([r[2] + 12, (r[1] + r[3]) * 0.5])
 		top = maxf(float(route.from_height_cm), float(route.to_height_cm)) / 100.0 + 0.90
 	elif _is_stub(route):
-		at = point([r[2] + 10, r[3] + 10]) if _route_anchor(route).z > float(r[3]) / 100.0 else point([r[2] + 10, r[1] - 10])
+		# Past the coping's corner when the stub is walled, else beside its deck.
+		var out := 17 if str(route.id) in _walled else 10
+		at = point([r[2] + out, r[3] + 10]) if _route_anchor(route).z > float(r[3]) / 100.0 else point([r[2] + out, r[1] - 10])
 		base = float(route.height_cm) / 100.0
 		top = base + 0.85
 	var post := Node3D.new()
