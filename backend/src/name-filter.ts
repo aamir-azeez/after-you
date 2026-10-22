@@ -14,8 +14,9 @@ import blocklist from "../../game/content/display_name_blocklist.json";
  *   never apply at the end of that run ("Ana1" is not read with an "l").
  * - Parts: the reading split at anything that is not a letter or digit, with runs of single
  *   characters ("n a z i", "n.a.z.i") joined into one part.
- * - `substrings` match anywhere inside one part, or exactly a run of whole parts ("pu ssy"),
- *   so a match never starts or ends inside a neighbouring word ("Rabbit Chaser").
+ * - `substrings` match anywhere inside one part, or a run of whole parts ("pu ssy") that is the
+ *   entry plus at most one of `span_endings` ("pu ssies"), so a match never starts inside a
+ *   neighbouring word ("Rabbit Chaser") or runs on into one ("Who Reads").
  * - `words` match one whole word (letters only) or the whole name's letters run together.
  * - `allowed_words` are real words a part may be although an entry would catch it.
  * - A run of one letter in an entry matches that many or more ("fuuuck"), never fewer, so
@@ -28,6 +29,7 @@ type Kind = "substrings" | "words";
 type BlockList = {
   folding: { swaps: Record<string, string>; alternate_swaps: Record<string, string>; lookalikes: Record<string, string> };
   allowed_words: string[];
+  span_endings: string[];
   categories: Record<string, Record<Kind, string[]>>;
 };
 const LIST = blocklist as BlockList;
@@ -46,7 +48,7 @@ export function runPattern(entry: string): string {
 
 const alternation = (kind: Kind): string => blockEntries(kind).map(runPattern).join("|");
 const SUBSTRING_INSIDE = new RegExp(alternation("substrings"), "u");
-const SUBSTRING_WHOLE = new RegExp(`^(?:${alternation("substrings")})$`, "u");
+const SUBSTRING_WHOLE = new RegExp(`^(?:${alternation("substrings")})(?:${LIST.span_endings.join("|")})?$`, "u");
 const WORD_WHOLE = new RegExp(`^(?:${alternation("words")})$`, "u");
 const ALLOWED_WORDS = new Set(LIST.allowed_words);
 const SWAPS = LIST.folding.swaps;
@@ -63,15 +65,32 @@ export function foldName(name: string): string {
   return mapped(bare, LOOKALIKES);
 }
 
-/** A reading with swaps: only runs that hold a letter, and the alternate swaps never at a run's end. */
+/**
+ * A reading with swaps. Runs of one character in a row ("N 1 G", "5.H.1.T") count as one run, as
+ * parts do. A run is swapped only when it holds a letter, and the alternate swaps never apply at its end.
+ */
 function swapped(folded: string, table: Record<string, string>): string {
-  return folded.replace(SWAP_RUN, run => {
-    if (!/\p{L}/u.test(run)) return run;
-    const points = [...run];
+  const runs = [...folded.matchAll(SWAP_RUN)];
+  const mappedRuns: string[] = [];
+  for (let i = 0; i < runs.length;) {
+    let j = i + 1;
+    if ([...runs[i][0]].length === 1) while (j < runs.length && [...runs[j][0]].length === 1) j++;
+    const group = runs.slice(i, j).map(run => run[0]);
+    const points = [...group.join("")];
     let end = points.length;
     while (end > 0 && Object.hasOwn(LIST.folding.alternate_swaps, points[end - 1])) end--;
-    return points.map((point, i) => (i < end ? table : SWAPS)[point] ?? point).join("");
-  });
+    const letter = /\p{L}/u.test(group.join(""));
+    let at = 0;
+    for (const run of group) {
+      const length = [...run].length;
+      mappedRuns.push(letter ? points.slice(at, at + length).map((point, k) => (at + k < end ? table : SWAPS)[point] ?? point).join("") : run);
+      at += length;
+    }
+    i = j;
+  }
+  let out = "", from = 0;
+  runs.forEach((run, i) => { out += folded.slice(from, run.index) + mappedRuns[i]; from = run.index + run[0].length; });
+  return out + folded.slice(from);
 }
 
 /** The text split at `split`, with runs of single characters joined into one part. */

@@ -14,8 +14,9 @@ extends RefCounted
 ##   that run ("Ana1" is not read with an "l").
 ## - Parts: the reading split at anything that is not a letter or digit, with
 ##   runs of single characters ("n a z i", "n.a.z.i") joined into one part.
-## - Substrings match anywhere inside one part, or exactly a run of whole parts
-##   ("pu ssy"), so a match never starts or ends inside a neighbouring word.
+## - Substrings match anywhere inside one part, or a run of whole parts ("pu
+##   ssy") that is the entry plus at most one of span_endings ("pu ssies"), so
+##   a match never starts inside a neighbouring word or runs on into one.
 ## - Words match one whole word (letters only) or the whole name's letters.
 ## - allowed_words are real words a part may be although an entry catches it.
 ## - A run of one letter in an entry matches that many or more ("fuuuck"),
@@ -107,7 +108,9 @@ static func _load_list() -> bool:
 	for word: Variant in parsed.get("allowed_words", []): _allowed[str(word)] = true
 	var substrings := "|".join(_patterns(entries("substrings")))
 	_substring_inside = RegEx.create_from_string(substrings)
-	_substring_whole = RegEx.create_from_string("^(?:%s)$" % substrings)
+	var endings := PackedStringArray()
+	for ending: Variant in parsed.get("span_endings", []): endings.append(str(ending))
+	_substring_whole = RegEx.create_from_string("^(?:%s)(?:%s)?$" % [substrings, "|".join(endings)])
 	_word_whole = RegEx.create_from_string("^(?:%s)$" % "|".join(_patterns(entries("words"))))
 	return true
 
@@ -121,22 +124,39 @@ static func _mapped(text: String, table: Dictionary) -> String:
 	for point: String in text: out += str(table.get(point, point))
 	return out
 
-## A reading with swaps: only runs that hold a letter, and the alternate swaps
-## never at a run's end.
+## A reading with swaps. Runs of one character in a row ("N 1 G", "5.H.1.T")
+## count as one run, as parts do. A run is swapped only when it holds a
+## letter, and the alternate swaps never apply at its end.
 static func _swapped(folded: String, table: Dictionary) -> String:
+	var runs := _swap_run.search_all(folded)
+	var mapped_runs := PackedStringArray()
+	var i := 0
+	while i < runs.size():
+		var j := i + 1
+		if runs[i].get_string().length() == 1:
+			while j < runs.size() and runs[j].get_string().length() == 1: j += 1
+		var group := ""
+		for k in range(i, j): group += runs[k].get_string()
+		var end := group.length()
+		while end > 0 and _alternate_only.has(group[end - 1]): end -= 1
+		var letter := _letter.search(group) != null
+		var at := 0
+		for k in range(i, j):
+			var run := runs[k].get_string()
+			if not letter:
+				mapped_runs.append(run)
+			else:
+				var mapped := ""
+				for n in range(run.length()): mapped += str((table if at + n < end else _swaps).get(run[n], run[n]))
+				mapped_runs.append(mapped)
+			at += run.length()
+		i = j
 	var out := ""
-	var at := 0
-	for found: RegExMatch in _swap_run.search_all(folded):
-		out += folded.substr(at, found.get_start() - at)
-		var run := found.get_string()
-		at = found.get_end()
-		if _letter.search(run) == null:
-			out += run
-			continue
-		var end := run.length()
-		while end > 0 and _alternate_only.has(run[end - 1]): end -= 1
-		for i in range(run.length()): out += str((table if i < end else _swaps).get(run[i], run[i]))
-	return out + folded.substr(at)
+	var taken := 0
+	for k in range(runs.size()):
+		out += folded.substr(taken, runs[k].get_start() - taken) + mapped_runs[k]
+		taken = runs[k].get_end()
+	return out + folded.substr(taken)
 
 ## The text split at `split`, with runs of single characters joined into one.
 static func _parts(folded: String, split: RegEx) -> PackedStringArray:

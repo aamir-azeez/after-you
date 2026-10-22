@@ -18,6 +18,8 @@ function disguises(entry: string): string[] {
   for (const [from, to] of Object.entries(lookalikes)) if (to.length === 1 && !(to in look)) look[to] = from;
   const full = (c: string) => /[a-z]/.test(c) ? String.fromCodePoint(0xff41 + c.charCodeAt(0) - 97) : /[0-9]/.test(c) ? String.fromCodePoint(0xff10 + c.charCodeAt(0) - 48) : c;
   const bold = (c: string) => /[a-z]/.test(c) ? String.fromCodePoint(0x1d400 + c.charCodeAt(0) - 97) : /[0-9]/.test(c) ? String.fromCodePoint(0x1d7ce + c.charCodeAt(0) - 48) : c;
+  // Swaps are read only in a run that holds a letter, so the first letter stays.
+  const leet = letters[0] + map({ o: "0", i: "1", e: "3", a: "4", s: "5", t: "7", b: "8", g: "9" }).slice(1);
   return [
     entry,
     entry.toUpperCase(),
@@ -27,8 +29,9 @@ function disguises(entry: string): string[] {
     letters.join("-"),
     letters.map(c => c + c).join(""),
     letters.map(c => "aeiouy".includes(c) ? c + "́" : c).join(""),
-    // Swaps are read only in a run that holds a letter, so the first letter stays.
-    letters[0] + map({ o: "0", i: "1", e: "3", a: "4", s: "5", t: "7", b: "8", g: "9" }).slice(1),
+    leet,
+    [...leet].join(" "),
+    [...leet].join("."),
     // The alternate swaps are never read at the end of a run, so the last letter stays.
     map({ o: "0", l: "1", e: "3", a: "4", s: "$" }).slice(0, -1) + letters[letters.length - 1],
     map(look),
@@ -57,6 +60,7 @@ describe("display name word filter", () => {
     for (const word of blocklist.allowed_words) expect(words.test(word) || inside.test(word), word).toBe(true);
     // The swaps only read runs of letters, digits and these symbols.
     for (const key of [...Object.keys(blocklist.folding.swaps), ...Object.keys(blocklist.folding.alternate_swaps)]) expect(key, key).toMatch(/^[0-9@$!]$/);
+    for (const ending of blocklist.span_endings) expect(ending, ending).toMatch(/^[a-z]+$/);
   });
 
   it("matches runs of a letter that many times or more", () => {

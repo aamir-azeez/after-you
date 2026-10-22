@@ -86,6 +86,8 @@ func _disguises(entry: String) -> PackedStringArray:
 		else:
 			wide += char(0xff10 + code - 48)
 			bold += char(0x1d7ce + code - 48)
+	# Swaps are read only in a run that holds a letter, so the first letter stays.
+	var leet := entry.left(1) + _mapped(entry.substr(1), {"o": "0", "i": "1", "e": "3", "a": "4", "s": "5", "t": "7", "b": "8", "g": "9"})
 	return PackedStringArray([
 		entry,
 		entry.to_upper(),
@@ -95,8 +97,9 @@ func _disguises(entry: String) -> PackedStringArray:
 		"-".join(spaced),
 		doubled,
 		accented,
-		# Swaps are read only in a run that holds a letter, so the first letter stays.
-		entry.left(1) + _mapped(entry.substr(1), {"o": "0", "i": "1", "e": "3", "a": "4", "s": "5", "t": "7", "b": "8", "g": "9"}),
+		leet,
+		" ".join(_letters(leet)),
+		".".join(_letters(leet)),
 		# The alternate swaps are never read at the end of a run, so the last letter stays.
 		_mapped(entry.left(-1), {"o": "0", "l": "1", "e": "3", "a": "4", "s": "$"}) + entry.right(1),
 		_mapped(entry, look),
@@ -166,6 +169,14 @@ func _odd_input() -> void:
 	var folding: Dictionary = _json("res://content/display_name_blocklist.json").folding
 	for key: String in folding.swaps.keys() + folding.alternate_swaps.keys():
 		_check(swap_key.search(key) != null, "A swap key is a digit or @ $ !: " + key)
+	var lowercase := RegEx.create_from_string("^[a-z]+$")
+	for ending: String in _json("res://content/display_name_blocklist.json").span_endings:
+		_check(lowercase.search(ending) != null, "A span ending is lowercase a to z: " + ending)
+
+func _letters(text: String) -> PackedStringArray:
+	var out := PackedStringArray()
+	for c: String in text: out.append(c)
+	return out
 
 func _mapped(text: String, table: Dictionary) -> String:
 	var out := ""

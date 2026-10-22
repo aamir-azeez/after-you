@@ -1,6 +1,6 @@
 {
  "schema_version": 2,
- "comment": "The display name and nickname word filter, read by the game (services/name_filter.gd) and the server (backend/src/name-filter.ts). Entries are lowercase a to z or digits. A run of one letter in an entry also matches a longer run. Substrings match inside one word or exactly a run of whole words; words match one whole word or the whole name. allowed_words are real words an entry would otherwise catch. Swap keys are digits or one of @ $ !. Both test suites check every entry and game/tests/fixtures/display_names/name_filter_vectors.json.",
+ "comment": "The display name and nickname word filter, read by the game (services/name_filter.gd) and the server (backend/src/name-filter.ts). Entries are lowercase a to z or digits. A run of one letter in an entry also matches a longer run. Substrings match inside one word, or a run of whole words that is the entry plus at most one span ending; words match one whole word or the whole name. allowed_words are real words an entry would otherwise catch. Swap keys are digits or one of @ $ !. Both test suites check every entry and game/tests/fixtures/display_names/name_filter_vectors.json.",
  "folding": {
   "swaps": {
    "0": "o",
@@ -63,6 +63,19 @@
   "sniggered",
   "sniggering",
   "sniggers"
+ ],
+ "span_endings": [
+  "s",
+  "es",
+  "ed",
+  "er",
+  "ers",
+  "ing",
+  "in",
+  "y",
+  "ie",
+  "ies",
+  "z"
  ],
  "categories": {
   "sexual": {
