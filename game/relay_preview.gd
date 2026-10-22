@@ -1413,7 +1413,10 @@ func _open_redo() -> void:
 			# Reconcile the accepted fork before exposing any saved recording
 			# controls. The old dependent draft stays durable until that succeeds.
 			if not backgrounded and not online_session.busy(): _online_refresh()
-			else:
+			# A read that could not start (the server asked to wait, or the
+			# session is busy) waits on the waiting card, which reads the room
+			# when it may.
+			if mode == "redo_requests":
 				mode = "online_waiting"
 				_show_online_waiting()
 				online_refresh_queued = true

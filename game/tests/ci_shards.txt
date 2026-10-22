@@ -207,6 +207,7 @@ recovery_details 1
 recovery_discard 1
 recovery_import 3
 redo_client 3
+redo_cooldown 3
 redo_navigation 2
 redo_probe_guard 1
 redo_session 1
