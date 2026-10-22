@@ -585,8 +585,7 @@ func archive_held_submission() -> bool:
 		return _error("pending_unresolved", PlayerCopy.RELAY_ROOM_COORDINATOR_327B5AC5686B)
 	var next := _state.duplicate(true)
 	if next.pending.operation == "turns":
-		if next.held_drafts.size() >= MAX_HELD:
-			return _error("local_history_full", PlayerCopy.RELAY_ROOM_COORDINATOR_FAB1AD642186)
+		_make_room_for_held(next)
 		next.held_drafts.append({"origin": next.pending.origin.duplicate(true), "recording": next.pending.body.recording.duplicate(true)})
 	next.pending = {}
 	next.draft = {}
@@ -827,8 +826,7 @@ func _accept_snapshot(value: Variant) -> bool:
 	if not next.draft.is_empty() and not _same_context(next.draft.origin, value):
 		if not _verify_saved_draft():
 			return false
-		if next.held_drafts.size() >= MAX_HELD:
-			return _error("local_history_full", PlayerCopy.RELAY_ROOM_COORDINATOR_AE7565BFF4DD)
+		_make_room_for_held(next)
 		next.held_drafts.append(next.draft.duplicate(true))
 		next.draft = {}
 	next.snapshot = value.duplicate(true)
@@ -943,6 +941,12 @@ static func _room_gone_response(status: int, code: String) -> bool:
 func _ordinary_room_gone(status: int, code: String) -> bool:
 	return _room_gone_response(status, code)
 
+## The phone keeps the MAX_HELD newest old turns of a room. One more lets the
+## oldest go, so a room whose friend asked for many redos still takes its new
+## state and still keeps a refused turn; a full list used to stop both.
+static func _make_room_for_held(next: Dictionary) -> void:
+	while next.held_drafts.size() >= MAX_HELD: next.held_drafts.pop_front()
+
 ## True once a turn this phone sent (or was about to send) found the room gone.
 func room_gone() -> bool:
 	return _guard() and _gone
@@ -954,7 +958,7 @@ func _settle_gone_room(code: String) -> bool:
 	if _state.pending.is_empty(): return false
 	var next := _state.duplicate(true)
 	if next.pending.operation == "turns":
-		if next.held_drafts.size() >= MAX_HELD: next.held_drafts.pop_front()
+		_make_room_for_held(next)
 		next.held_drafts.append({"origin": next.pending.origin.duplicate(true), "recording": next.pending.body.recording.duplicate(true)})
 	next.pending = {}
 	if not _persist(next): return false

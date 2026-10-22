@@ -235,6 +235,7 @@ room_auto_share 2
 room_card_menu 1
 room_error_copy 2
 room_gone_poll 3
+room_held_drafts 3
 room_hub_activity 1
 room_hub_block 2
 room_inbox_client 1
