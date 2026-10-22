@@ -189,7 +189,13 @@ func confirmed(room: Dictionary) -> bool:
 ## it, such as the friend replaying, brings it back.
 func hide(room: Dictionary) -> void:
 	if not _bind(): return
-	_hidden[room_key(int(room.get("api_version",0)),str(room.get("room_id","")))] = maxi(0,int(room.get("remote_activity_sequence",0)))
+	var key := room_key(int(room.get("api_version",0)),str(room.get("room_id","")))
+	# The room as the list has it now: a card drawn before a later read holds
+	# an older count, and hiding at that count let the newer activity show it.
+	var sequence := int(room.get("remote_activity_sequence",0))
+	for row: Dictionary in _rooms:
+		if room_key(int(row.api_version),str(row.room_id)) == key: sequence = maxi(sequence,int(row.get("remote_activity_sequence",0)))
+	_hidden[key] = maxi(0,sequence)
 	_save()
 
 ## Drops a room the server has closed or no longer links to this player.
