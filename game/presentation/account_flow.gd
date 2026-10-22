@@ -13,7 +13,7 @@ extends Node
 ##   Settings' button)
 ## - identity: IdentityReadState, identity_read_state, identity_data,
 ##   identity_loading, identity_busy, identity_restart_required,
-##   pending_recovery, deleted_identity_owner, _ensure_identity,
+##   pending_recovery, pending_recovery_unusable, deleted_identity_owner, _ensure_identity,
 ##   _load_saved_identity, _invalidate_relay_identity, _await_secret,
 ##   _tester_checks_enabled, _play_store_enabled
 ## - screen: mode, running
@@ -49,6 +49,8 @@ const MODE_ACCOUNT_LOADING := "account_loading"
 const MODE_RECOVERY_DETAILS := "recovery_details"
 const MODE_RECOVERY_FORM := "recovery_form"
 const MODE_RECOVERY := "recovery"
+## The warning before a saved recovery is stopped, and the stop itself.
+const MODE_RECOVERY_DISCARD := "recovery_discard"
 const MODE_IDENTITY_DELETING := "identity_deleting"
 const MODE_ACCOUNT_CLEANUP := "account_cleanup"
 
@@ -60,6 +62,9 @@ var host: Node
 var recovery_replace_allowed := false
 var recovery_copy_busy := false
 var recovery_acknowledged := false
+## The in-memory proposal was made in this session and has not been sent yet.
+var recovery_unsent := false
+var recovery_discard_busy := false
 var deletion_cleanup_busy := false
 var deletion_photo_cleanup: Node
 var deletion_cache_cleanup: RefCounted
@@ -306,6 +311,10 @@ func recover_identity(player: String, code: String) -> void:
 	recovery_acknowledged=false
 	host.pending_recovery={"schema_version":1,"request":{"player_id":player,"recovery_code":code,"idempotency_key":RoomsApi.new_key(),"next_device_token":RecoveryDetails.new_secret(),"next_recovery_code":RecoveryDetails.new_secret()}}
 	recovery_replace_allowed=false
+	recovery_unsent=true
+	# Storing this proposal replaces an unusable saved one; if storing fails,
+	# the next read finds the unusable one again.
+	host.pending_recovery_unusable=false
 	await resume_pending_recovery()
 
 func resume_pending_recovery() -> void:
@@ -325,6 +334,9 @@ func resume_pending_recovery() -> void:
 		_show_pending_recovery(PlayerCopy.MAIN_189E8206D026)
 		return
 	var request: Dictionary=host.pending_recovery.request.duplicate(true)
+	# From here the server may rotate to these credentials even if no answer
+	# arrives, so only its definitive refusal lets the player drop them.
+	recovery_unsent=false
 	var response: Dictionary=await host.api.request_json(HTTPClient.METHOD_POST,"/v1/identity/recover",request)
 	var data: Variant=response.get("data")
 	if not response.get("ok",false) or not data is Dictionary or not data.get("recovered") is bool or data.recovered!=true or not Typed.equal(data.get("player_id"), request.player_id):
@@ -345,6 +357,81 @@ func _show_pending_recovery(message: String) -> void:
 	card.add_child(host._button("Retry saved recovery",resume_pending_recovery))
 	if recovery_replace_allowed:
 		card.add_child(host._button("Use a different recovery code",show_recovery_form,false))
+	if can_discard_recovery():
+		card.add_child(host._button(PlayerCopy.RECOVERY_DISCARD,confirm_discard_recovery,false))
+	card.add_child(host._back_button("Back to account",_back_to_account,false))
+
+## True when the saved recovery can be dropped without losing an identity: the
+## server refused it for good (bad or used code, deleted identity, different
+## proposal), it never left this device, or it was saved in a form the server
+## never accepts. A request sent without an answer may already have rotated
+## the identity, and then it holds the only copy of the new credentials, so
+## only Retry is offered for it.
+func can_discard_recovery() -> bool:
+	if recovery_acknowledged or host.identity_busy or host.identity_loading or recovery_discard_busy: return false
+	if not host.pending_recovery.is_empty(): return recovery_replace_allowed or recovery_unsent
+	return host.pending_recovery_unusable
+
+## Warns once that the identity being recovered keeps its rooms and friends.
+func confirm_discard_recovery() -> void:
+	if not can_discard_recovery(): return
+	host.running=false
+	host.mode=MODE_RECOVERY_DISCARD
+	var card: VBoxContainer = host._card()
+	card.add_child(host._label(PlayerCopy.RECOVERY_DISCARD_TITLE,30,CREAM,true))
+	card.add_child(host._paragraph(PlayerCopy.RECOVERY_DISCARD_WARNING))
+	card.add_child(host._button(PlayerCopy.RECOVERY_DISCARD_CONFIRM,discard_pending_recovery))
+	card.add_child(host._back_button("Back",_back_to_account,false))
+
+## Removes the saved recovery from secure storage first; only then forgets it
+## here and reads this device's identity again as a fresh start would: its own
+## identity if it has one, otherwise a new anonymous identity. A failed removal
+## changes nothing and can be tried again.
+func discard_pending_recovery() -> void:
+	if not can_discard_recovery(): return
+	recovery_discard_busy=true
+	host.identity_busy=true
+	host.mode=MODE_RECOVERY_DISCARD
+	var card: VBoxContainer = host._card()
+	card.add_child(host._label(PlayerCopy.MAIN_199D5695599E,30,CREAM,true))
+	# The stored request is known dead when the server refused it or it cannot
+	# be read as one. An unsent proposal was not confirmed as stored, so
+	# storage keeps what it held before, and the reload below finds that again.
+	if host.pending_recovery.is_empty() or recovery_replace_allowed:
+		var removed: Dictionary=await host._await_secret(host.secrets.remove_secret("recovery_pending"))
+		if not removed.get("ok",false) or not removed.get("payload") is Dictionary or not Typed.equal(removed.payload.get("removed"), true):
+			host.identity_busy=false
+			recovery_discard_busy=false
+			_show_discard_failure()
+			return
+	host.identity_busy=false
+	host.pending_recovery={}
+	host.pending_recovery_unusable=false
+	recovery_replace_allowed=false
+	recovery_unsent=false
+	recovery_acknowledged=false
+	# Nothing changed on the server, so no restart is needed. The reload works
+	# out again whether one is (an unfinished deletion keeps its own hold).
+	host.identity_restart_required=false
+	host.identity_data={}
+	host.api.player_id=""
+	host.api.device_token=""
+	host.identity_read_state=host.IdentityReadState.UNCHECKED
+	host._load_saved_identity()
+	var deadline := Time.get_ticks_msec()+10000
+	while host.identity_loading and Time.get_ticks_msec()<deadline:
+		await host.get_tree().process_frame
+	if host.identity_read_state==host.IdentityReadState.MISSING:
+		await host._ensure_identity()
+	recovery_discard_busy=false
+	if host.mode==MODE_RECOVERY_DISCARD: _back_to_account()
+
+func _show_discard_failure() -> void:
+	host.mode=MODE_RECOVERY
+	var card: VBoxContainer = host._card()
+	card.add_child(host._label("Recovery is waiting.",32,CREAM,true))
+	card.add_child(host._paragraph(PlayerCopy.RECOVERY_DISCARD_FAILED))
+	card.add_child(host._button(PlayerCopy.RECOVERY_DISCARD_CONFIRM,discard_pending_recovery))
 	card.add_child(host._back_button("Back to account",_back_to_account,false))
 
 func persist_recovered_identity() -> void:

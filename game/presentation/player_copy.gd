@@ -928,6 +928,15 @@ const MAIN_189E8206D026 := "The request was not stored securely, so no request w
 const MAIN_BDE96F64E602 := "The recovery code is no longer valid. Use a current recovery code, or retry the saved request."
 # Resume pending recovery — message
 const MAIN_3A8CB7C5D89F := "Recovery was not confirmed yet. Retry the same saved request; its new credentials are kept safely on this device."
+# Stop a saved recovery that cannot finish (account_flow.confirm_discard_recovery):
+# the button that opens the warning, the warning, its confirm button, a failed
+# removal, and the Settings note for a saved request that cannot be read.
+const RECOVERY_DISCARD := "Stop this recovery"
+const RECOVERY_DISCARD_TITLE := "Stop this recovery?"
+const RECOVERY_DISCARD_WARNING := "Rooms and friends stay with the identity you tried to recover, and a current recovery code can still bring it back later. This device goes back to its own identity, or gets a new anonymous one if it has none."
+const RECOVERY_DISCARD_CONFIRM := "Stop recovery"
+const RECOVERY_DISCARD_FAILED := "This device could not remove the saved recovery request. Try again."
+const RECOVERY_DISCARD_UNUSABLE_NOTE := "The recovery request saved on this device can't be finished."
 # Recovery storage failure — heading / label
 const MAIN_4156CE133C4E := "Leave this recovery window open."
 # Recovery storage failure — body text

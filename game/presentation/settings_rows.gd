@@ -126,6 +126,11 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "create_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CREATE_IDENTITY, "run": account.create_identity, "visible_if": state.call(["missing"])},
 		{"id": "unread_note", "category": ACCOUNT, "kind": INFO, "label": "", "note": PlayerCopy.MAIN_3E50EF2B7ECB, "visible_if": state.call(["unread"])},
 		{"id": "check_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CHECK_IDENTITY, "run": account.retry_saved_identity, "visible_if": state.call(["unread"])},
+		# A saved recovery the server refused for good, or one it could never accept
+		# (then reading again finds the same one): the way out without a code.
+		{"id": "discard_recovery", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.RECOVERY_DISCARD,
+			"note": func() -> String: return PlayerCopy.RECOVERY_DISCARD_UNUSABLE_NOTE if account.panel_state() == "unread" else "",
+			"run": account.confirm_discard_recovery, "visible_if": func() -> bool: return account.panel_state() in ["pending", "unread"] and account.can_discard_recovery()},
 		{"id": "offline_note", "category": ACCOUNT, "kind": INFO, "label": "", "visible_if": state.call(["offline"]),
 			"note": PlayerCopy.for_platform(PlayerCopy.MAIN_570EC629872D, PlayerCopy.MAIN_570EC629872D_IOS)},
 		{"id": "recover_identity", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_RECOVER, "note": PlayerCopy.SETTINGS_RECOVER_NOTE,

@@ -200,6 +200,9 @@ var room_play := false
 var identity_request := ""
 var recovery_read_request := ""
 var pending_recovery: Dictionary = {}
+## A saved recovery request was found but is not one the server could accept
+## (malformed or from an older format). Settings offers to remove it.
+var pending_recovery_unusable := false
 var capture_path := ""
 var capture_frames := 0
 var ui_theme: Theme
@@ -1794,6 +1797,7 @@ func _load_saved_identity() -> void:
 	_invalidate_relay_identity(false)
 	identity_read_state=IdentityReadState.LOADING
 	identity_loading=true
+	pending_recovery_unusable=false
 	# A saved rotation takes precedence over possibly revoked device credentials.
 	recovery_read_request=secrets.get_secret("recovery_pending")
 
@@ -1813,6 +1817,10 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 				identity_read_state=IdentityReadState.RECOVERY_PENDING
 				identity_restart_required=true
 				_toast(PlayerCopy.MAIN_B3B03D36065F)
+			else:
+				# The server accepts only the formats valid_pending checks, so
+				# this request never rotated anything and holds no live credentials.
+				pending_recovery_unusable=true
 	elif id==identity_request and operation=="get":
 		identity_loading=false
 		# Only an explicit not-found response permits a new identity. Failed
