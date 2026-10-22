@@ -64,6 +64,7 @@ func is_busy() -> bool:
 
 ## before_open(request_id) runs before the native camera request is sent, so a caller can
 ## persist which turn this capture belongs to before the camera can take over the screen.
+## When it returns false that record could not be saved, and the camera does not open.
 func capture(before_open: Callable = Callable()) -> String:
 	if is_busy():
 		return _reject("capture", "photo_busy")
@@ -143,7 +144,10 @@ func _request(operation: String, target: String = "", before_open: Callable = Ca
 		_on_error.call_deferred(id, operation, "photo_bridge_unavailable")
 		return id
 	if before_open.is_valid():
-		before_open.call(id)
+		var saved: Variant = before_open.call(id)
+		if saved is bool and not saved:
+			_on_error.call_deferred(id, operation, "photo_unavailable")
+			return id
 	_native.callv("photo_" + operation, [id] if operation in ["capture", "clear", "recovered"] else [target, id])
 	return id
 
