@@ -64,6 +64,9 @@ var recovery_copy_busy := false
 var recovery_acknowledged := false
 ## The in-memory proposal was made in this session and has not been sent yet.
 var recovery_unsent := false
+## Secure storage holds a request the server refused for good (or a later
+## proposal that was never sent). Cleared once a new proposal is stored.
+var recovery_stored_refused := false
 var recovery_discard_busy := false
 var deletion_cleanup_busy := false
 var deletion_photo_cleanup: Node
@@ -333,6 +336,7 @@ func resume_pending_recovery() -> void:
 		host.identity_busy=false
 		_show_pending_recovery(PlayerCopy.MAIN_189E8206D026)
 		return
+	recovery_stored_refused=false
 	var request: Dictionary=host.pending_recovery.request.duplicate(true)
 	# From here the server may rotate to these credentials even if no answer
 	# arrives, so only its definitive refusal lets the player drop them.
@@ -342,6 +346,7 @@ func resume_pending_recovery() -> void:
 	if not response.get("ok",false) or not data is Dictionary or not data.get("recovered") is bool or data.recovered!=true or not Typed.equal(data.get("player_id"), request.player_id):
 		host.identity_busy=false
 		recovery_replace_allowed=(response.get("status")==401 and response.get("code")=="invalid_recovery") or (response.get("status")==409 and response.get("code")=="recovery_request_mismatch")
+		recovery_stored_refused=recovery_replace_allowed
 		_show_pending_recovery(PlayerCopy.MAIN_BDE96F64E602 if recovery_replace_allowed else PlayerCopy.MAIN_3A8CB7C5D89F)
 		return
 	recovery_acknowledged=true
@@ -396,8 +401,9 @@ func discard_pending_recovery() -> void:
 	card.add_child(host._label(PlayerCopy.MAIN_199D5695599E,30,CREAM,true))
 	# The stored request is known dead when the server refused it or it cannot
 	# be read as one. An unsent proposal was not confirmed as stored, so
-	# storage keeps what it held before, and the reload below finds that again.
-	if host.pending_recovery.is_empty() or recovery_replace_allowed:
+	# storage still holds the earlier request: removed if it was refused,
+	# otherwise kept for the reload below to find again.
+	if host.pending_recovery.is_empty() or recovery_stored_refused:
 		var removed: Dictionary=await host._await_secret(host.secrets.remove_secret("recovery_pending"))
 		if not removed.get("ok",false) or not removed.get("payload") is Dictionary or not Typed.equal(removed.payload.get("removed"), true):
 			host.identity_busy=false
@@ -409,6 +415,7 @@ func discard_pending_recovery() -> void:
 	host.pending_recovery_unusable=false
 	recovery_replace_allowed=false
 	recovery_unsent=false
+	recovery_stored_refused=false
 	recovery_acknowledged=false
 	# Nothing changed on the server, so no restart is needed. The reload works
 	# out again whether one is (an unfinished deletion keeps its own hold).

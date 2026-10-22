@@ -933,7 +933,7 @@ const MAIN_3A8CB7C5D89F := "Recovery was not confirmed yet. Retry the same saved
 # removal, and the Settings note for a saved request that cannot be read.
 const RECOVERY_DISCARD := "Stop this recovery"
 const RECOVERY_DISCARD_TITLE := "Stop this recovery?"
-const RECOVERY_DISCARD_WARNING := "Rooms and friends stay with the identity you tried to recover, and a current recovery code can still bring it back later. This device goes back to its own identity, or gets a new anonymous one if it has none."
+const RECOVERY_DISCARD_WARNING := "If the identity you tried to recover still exists, it keeps its rooms and friends, and its current recovery code can still bring it back. This device then checks its own saved identity again, or starts a new anonymous one if it has none."
 const RECOVERY_DISCARD_CONFIRM := "Stop recovery"
 const RECOVERY_DISCARD_FAILED := "This device could not remove the saved recovery request. Try again."
 const RECOVERY_DISCARD_UNUSABLE_NOTE := "The recovery request saved on this device can't be finished."

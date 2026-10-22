@@ -125,6 +125,7 @@ func _restart(app: Node, api: Node, storage: StatefulSecrets, values: Dictionary
 	app.pending_recovery_unusable=false
 	app.account_flow.recovery_replace_allowed=false
 	app.account_flow.recovery_unsent=false
+	app.account_flow.recovery_stored_refused=false
 	app.account_flow.recovery_acknowledged=false
 	app.account_flow.recovery_discard_busy=false
 	app.identity_restart_required=false
@@ -247,7 +248,7 @@ func _test_unsent_proposal(app: Node, api: Node, storage: StatefulSecrets) -> vo
 	await app.account_flow.discard_pending_recovery()
 	_check(app.pending_recovery.is_empty() and not storage.removed("recovery_pending") and api.player_id==NEW_PLAYER,"Stopping an unsent proposal leaves storage as it was and starts a new identity")
 
-	# An older refused request still in storage comes back and is handled on its own.
+	# A refused request still in storage under an unsent replacement goes too.
 	var refused := {"schema_version":1,"request":{"player_id":LOST_PLAYER,"recovery_code":LOST_CODE,"idempotency_key":"older-request-key-0001","next_device_token":"D".repeat(43),"next_recovery_code":"E".repeat(43)}}
 	await _restart(app,api,storage,{"recovery_pending":JSON.stringify(refused)})
 	api.responses=[REFUSED]
@@ -256,8 +257,23 @@ func _test_unsent_proposal(app: Node, api: Node, storage: StatefulSecrets) -> vo
 	await app.account_flow.recover_identity(LOST_PLAYER,OTHER_CODE)
 	_check(api.calls.size()==1 and JSON.parse_string(storage.values.recovery_pending)==JSON.parse_string(JSON.stringify(refused)) and app.account_flow.can_discard_recovery(),"A replacement that could not be stored can be stopped")
 	storage.fail_write_names=[]
+	api.responses=[_new_identity()]
 	await app.account_flow.discard_pending_recovery()
-	_check(app.identity_read_state==Main.IdentityReadState.RECOVERY_PENDING and app.pending_recovery==JSON.parse_string(JSON.stringify(refused)) and not app.account_flow.can_discard_recovery(),"The older stored request is found again and waits for its own answer")
+	_check(not storage.values.has("recovery_pending") and app.pending_recovery.is_empty() and api.player_id==NEW_PLAYER and app.identity_read_state==Main.IdentityReadState.LOADED,"Stopping removes the refused request under the unsent replacement")
+	await _restart(app,api,storage,storage.values)
+	_check(app.pending_recovery.is_empty() and api.player_id==NEW_PLAYER,"The refused request stays gone after a restart")
+
+	# An unsent replacement over an unanswered request never removes that request.
+	await _restart(app,api,storage,{})
+	await app.account_flow.recover_identity(LOST_PLAYER,LOST_CODE)
+	var unanswered: String=storage.values.recovery_pending
+	await _restart(app,api,storage,storage.values)
+	app.account_flow.recovery_replace_allowed=true
+	storage.fail_write_names=["recovery_pending"]
+	await app.account_flow.recover_identity(LOST_PLAYER,OTHER_CODE)
+	storage.fail_write_names=[]
+	await app.account_flow.discard_pending_recovery()
+	_check(storage.values.get("recovery_pending")==unanswered and not storage.removed("recovery_pending") and app.identity_read_state==Main.IdentityReadState.RECOVERY_PENDING,"Only a refused stored request is removed; an unanswered one is found again")
 
 func _test_unusable_saved_request(app: Node, api: Node, storage: StatefulSecrets) -> void:
 	await _restart(app,api,storage,{"recovery_pending":"{ unusable saved request"})
