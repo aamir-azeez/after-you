@@ -56,7 +56,10 @@ static func blocked(name: String) -> bool:
 	if not _answers.has(name):
 		if _answers.size() >= MAX_ANSWERS: _answers.clear()
 		var plain := fold(name)
-		_answers[name] = _reading_blocked(plain) or _reading_blocked(_swapped(plain, _swaps)) or _reading_blocked(_swapped(plain, _alternate))
+		var swapped := _swapped(plain, _swaps)
+		var alternate := _swapped(plain, _alternate)
+		# A reading the same as one already checked (no digits or symbols) is not checked again.
+		_answers[name] = _reading_blocked(plain) or (swapped != plain and _reading_blocked(swapped)) or (alternate != plain and alternate != swapped and _reading_blocked(alternate))
 	return _answers[name]
 
 ## The plain fold, before any digit or symbol swap.

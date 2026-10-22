@@ -105,9 +105,18 @@ function readingBlocked(folded: string): boolean {
   return false;
 }
 
-/** Whether the list refuses a name. */
+/** Answers kept for the names seen most recently in this isolate; a friends list asks for the same names again. */
+const answers = new Map<string, boolean>();
+const MAX_ANSWERS = 512;
+
+/** Whether the list refuses a name. A reading the same as one already checked (no digits or symbols) is not checked again. */
 export function blockedName(name: string): boolean {
   if ([...name].length > MAX_INPUT) return true;
+  const known = answers.get(name);
+  if (known !== undefined) return known;
   const plain = foldName(name);
-  return [plain, swapped(plain, SWAPS), swapped(plain, ALTERNATE)].some(readingBlocked);
+  const answer = [...new Set([plain, swapped(plain, SWAPS), swapped(plain, ALTERNATE)])].some(readingBlocked);
+  if (answers.size >= MAX_ANSWERS) answers.clear();
+  answers.set(name, answer);
+  return answer;
 }
