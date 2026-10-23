@@ -35,6 +35,7 @@ const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const ScreenSwitch = preload("res://services/screen_switch.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
+const HeldPresses = preload("res://services/held_presses.gd")
 
 const IDLE_SECONDS := 1.5
 ## The wall time each idle frame gives the build, and then the fold.
@@ -58,6 +59,7 @@ var enabled := DisplayServer.get_name() != "headless"
 var idle_seconds := IDLE_SECONDS
 
 var _idle_for := 0.0
+var _presses := HeldPresses.new()
 var _backgrounded := false
 ## The chapter being warmed, its definition and stage once read, and the
 ## worker reading them.
@@ -102,12 +104,14 @@ func stop() -> void:
 
 ## Any touch, click or key: the player is not idle.
 func _input(event: InputEvent) -> void:
+	_presses.track(event)
 	if event is InputEventMouseMotion and (event as InputEventMouseMotion).button_mask == 0: return
 	_idle_for = 0.0
 
 func _notification(what: int) -> void:
 	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		_backgrounded = true
+		_presses.clear()
 		stop()
 	elif what == NOTIFICATION_APPLICATION_RESUMED or what == NOTIFICATION_APPLICATION_FOCUS_IN:
 		_backgrounded = false
@@ -123,7 +127,8 @@ func _process(delta: float) -> void:
 	if _reader != null and not _reader.is_alive(): _take_stage()
 	var gone: bool = away.is_valid() and away.call()
 	if is_instance_valid(_view) and gone: _drop()
-	if not enabled or _visit_done or _backgrounded or gone or not idle.is_valid() or not idle.call():
+	# A finger held still (an Explore stick, a pinch) is not idle either.
+	if not enabled or _visit_done or _backgrounded or gone or _presses.any() or not idle.is_valid() or not idle.call():
 		_idle_for = 0.0
 		return
 	_idle_for += delta

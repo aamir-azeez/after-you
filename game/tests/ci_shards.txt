@@ -105,6 +105,7 @@ home_keepsakes 3
 home_menu 2
 home_scene_navigation 1
 home_stage 2
+home_warmup_held_touch 1
 hosted_chapter 2
 hosting_locked 3
 hosting_notification_preferences 2

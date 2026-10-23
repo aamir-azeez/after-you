@@ -30,6 +30,7 @@ const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
+const HeldPresses = preload("res://services/held_presses.gd")
 
 const IDLE_SECONDS := 1.0
 const STAMP_PATH := "user://gl-warmup-v1.json"
@@ -96,6 +97,7 @@ var next_chapter: Callable
 var enabled := DisplayServer.get_name() != "headless"
 var idle_seconds := IDLE_SECONDS
 var _idle_for := 0.0
+var _presses := HeldPresses.new()
 var _view: SubViewport
 var _items: Array = []
 var _lit: MeshInstance3D
@@ -124,13 +126,18 @@ func _exit_tree() -> void:
 
 ## Any touch, click or key: the player is not idle.
 func _input(event: InputEvent) -> void:
+	_presses.track(event)
 	if event is InputEventMouseMotion and (event as InputEventMouseMotion).button_mask == 0: return
 	_idle_for = 0.0
 	if running(): stop()
 
+func _notification(what: int) -> void:
+	if what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT: _presses.clear()
+
 func _process(delta: float) -> void:
 	if not enabled or _done: return
-	if not idle.is_valid() or not idle.call():
+	# A finger held still (an Explore stick, a pinch) is not idle either.
+	if not idle.is_valid() or not idle.call() or _presses.any():
 		if running(): stop()
 		_idle_for = 0.0
 		return
