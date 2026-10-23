@@ -57,6 +57,7 @@ func _wide(paths: Dictionary) -> void:
 	app._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	_check(app.mode == ReplaysFlow.MODE_COLLECTION and _parts(app) == 2, "Android Back cancels too")
 	# Remove part 1; part 2 is left and still plays from the chapter's start.
+	var removed: Dictionary = app.replays_flow._selected_solo_attempt.rows[0]
 	_delete_icon(app.overlay).pressed.emit()
 	var confirm := _button(app.overlay, "Remove")
 	if confirm != null: confirm.pressed.emit()
@@ -68,6 +69,16 @@ func _wide(paths: Dictionary) -> void:
 		await _frames(3)
 	var context: Dictionary = app.opened[-1].context if not app.opened.is_empty() else {}
 	_check(int(context.get("selected_stage_index", -1)) == 1 and context.get("accepted_pairs", []).size() == 2, "It opens part 2 with the removed part 1 still before it: " + str(context.get("selected_stage_index", "nothing opened")))
+	# Retrying from part 2's checkpoint keeps the whole attempt as an archive,
+	# which lists part 1 again under another key: it stays removed there too.
+	var journey := Journey.new(str(paths[Registry.RELAY]), null, Registry.RELAY)
+	journey.load_data()
+	_check(journey.fork_from_stage(1), "A retry from part 2 keeps the attempt as an archive")
+	await _rescan(app, paths)
+	var listed: Array = []
+	for entry: Dictionary in app.replays_flow._solo_collection_entries():
+		for row: Dictionary in entry.get("rows", []): listed.append(row)
+	_check(listed.size() == 1 and not listed.any(func(row: Dictionary) -> bool: return row.get("content_id") == removed.get("content_id")), "The removed part 1 is not listed again after the retry (%d rows)" % listed.size())
 	viewport.queue_free()
 	await process_frame
 
@@ -110,9 +121,13 @@ func _app(viewport: SubViewport, paths: Dictionary, name: String) -> Node:
 	app.application_backgrounded = false
 	app.replays_flow.solo_replay_index = Index.new(directory + "/index-%s.json" % name)
 	app.replays_flow.solo_replay_visibility = Visibility.new(directory + "/visibility-%s.json" % name)
+	await process_frame
+	await _rescan(app, paths)
+	return app
+
+func _rescan(app: Node, paths: Dictionary) -> void:
 	app.replays_flow.solo_replays = Solo.new(paths, "")
 	app.replays_flow._solo_collection_started = false
-	await process_frame
 	app.replays_flow.show_collection()
 	var guard := 0
 	while (app.replays_flow.solo_replays.scan_pending() or app.replays_flow._solo_collection_dirty) and guard < 6000:
@@ -122,7 +137,6 @@ func _app(viewport: SubViewport, paths: Dictionary, name: String) -> Node:
 		await process_frame
 	app.replays_flow.show_collection()
 	await _frames(2)
-	return app
 
 func _parts(app: Node) -> int:
 	return int(app.replays_flow._selected_solo_attempt.get("parts", 0))
