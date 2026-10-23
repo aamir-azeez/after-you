@@ -2791,9 +2791,12 @@ func _preview_turn() -> void:
 
 
 func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary) -> void:
-	if _room_context_lost or backgrounded or _leaving: return
+	# A solo replay due while the app is away (its staged open ends, or its
+	# next part follows) starts paused: nothing would start it again later.
+	var start_paused := backgrounded and online_session == null
+	if _room_context_lost or (backgrounded and not start_paused) or _leaving: return
 	if _continue_replay_context:
-		if not _replay_ready(): return
+		if not start_paused and not _replay_ready(): return
 	else:
 		_replay_context = {}
 	if online_session != null and not _continue_replay_context:
@@ -2829,6 +2832,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 	world.present(sim.snapshot(), true)
 	_update_hud(sim.snapshot())
 	running = true
+	if start_paused: _pause()
 
 
 func _replay_ready() -> bool:

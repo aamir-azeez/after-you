@@ -227,6 +227,7 @@ replay_golden_physical 1
 replay_loading_feedback 3
 replay_photo_contributions 2
 replay_row_taps 3
+replay_start_while_away 3
 replay_transfer 1
 replay_transfer_delivery 2
 replay_transfer_session 2
