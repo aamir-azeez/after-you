@@ -293,9 +293,11 @@ func _make_valve(knob: Color, marks: Array) -> void:
 	_disc(0.042, 0.04, knob.darkened(0.15), Vector3.ZERO, _wheel)
 	# The arrow from the hub out past the rim, toward the value; its head in
 	# the owner's colour, and a handle knob on the rim to turn it by.
-	var arrow := _box(Vector3(0.036, 0.016, 0.20), CREAM, Vector3(0, 0.022, -0.10), _wheel)
+	# It runs out past the rim onto the dark dial, where it reads against the
+	# light spokes and touches the mark it points at.
+	var arrow := _box(Vector3(0.044, 0.016, 0.21), CREAM, Vector3(0, 0.024, -0.105), _wheel)
 	arrow.name = "WheelPointer"
-	var head := _box(Vector3(0.048, 0.018, 0.048), knob, Vector3(0, 0.026, -0.20), _wheel)
+	var head := _box(Vector3(0.05, 0.018, 0.05), knob, Vector3(0, 0.028, -0.212), _wheel)
 	head.rotation.y = PI / 4.0
 	_ball(0.03, knob.lightened(0.15), Vector3(0.19, 0.03, 0.0), _wheel)
 	# The sign's post and bracket, behind and east of the wheel.
