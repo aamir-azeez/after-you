@@ -141,20 +141,21 @@ func _make_winch(knob: Color) -> void:
 	for x: float in [-0.14, 0.11]:
 		_box(Vector3(0.05, 0.60, 0.07), TIMBER_DARK, Vector3(x, 0.30, 0), root)
 		_box(Vector3(0.07, 0.03, 0.09), BRASS, Vector3(x, 0.615, 0), root)
-	_rod(0.016, 0.33, IRON, Vector3(DRUM_X, DRUM_Y, 0), root)
+	# Every face stands a centimetre or more off its neighbours' (the dressing
+	# lint's coplanar rule): the axle ends inside the east post and the crank.
+	_rod(0.016, 0.30, IRON, Vector3(DRUM_X - 0.005, DRUM_Y, 0), root)
 	_drum = Node3D.new()
 	_drum.position = Vector3(DRUM_X, DRUM_Y, 0)
 	root.add_child(_drum)
-	for x: float in [-0.09, 0.09]:
-		_rod(0.085, 0.018, IRON, Vector3(x, 0, 0), _drum)
-		# A brass stud on each flange shows the drum turning.
-		_box(Vector3(0.024, 0.026, 0.026), BRASS, Vector3(x * 1.12, 0.06, 0), _drum)
+	for x: float in [-0.07, 0.07]: _rod(0.085, 0.018, IRON, Vector3(x, 0, 0), _drum)
+	# A brass stud on the east flange shows the drum turning.
+	_box(Vector3(0.024, 0.026, 0.026), BRASS, Vector3(0.095, 0.06, 0), _drum)
 	# The chain wound on the drum: a coil of unit radius, scaled across the
 	# axle (never along it) as it fills, banded where the turns lie.
 	_coil = Node3D.new()
 	_drum.add_child(_coil)
-	_rod(1.0, 0.16, IRON_LIGHT, Vector3.ZERO, _coil)
-	for index in range(4): _rod(1.07, 0.014, IRON, Vector3(-0.06 + float(index) * 0.04, 0, 0), _coil)
+	_rod(1.0, 0.11, IRON_LIGHT, Vector3.ZERO, _coil)
+	for index in range(4): _rod(1.07, 0.012, IRON, Vector3(-0.04 + float(index) * 0.0267, 0, 0), _coil)
 	_crank = Node3D.new()
 	_crank.position = Vector3(-0.18, DRUM_Y, 0)
 	root.add_child(_crank)
@@ -170,7 +171,7 @@ func _make_winch(knob: Color) -> void:
 func _make_bolt(knob: Color) -> void:
 	_box(Vector3(0.36, 0.44, 0.18), TIMBER, Vector3(-0.04, 0.22, 0), root)
 	_box(Vector3(0.40, 0.03, 0.22), TIMBER_LIGHT, Vector3(-0.04, 0.455, 0), root)
-	for x: float in [-0.18, 0.10]: _box(Vector3(0.03, 0.40, 0.012), IRON, Vector3(x, 0.22, 0.094), root)
+	for x: float in [-0.14, 0.08]: _box(Vector3(0.03, 0.40, 0.012), IRON, Vector3(x, 0.22, 0.094), root)
 	# Two staples the bolt lies in, west of where its knob travels.
 	for x: float in [-0.14, -0.05]:
 		for z: float in [-0.045, 0.045]: _box(Vector3(0.025, 0.08, 0.02), IRON, Vector3(x, 0.50, z), root)
