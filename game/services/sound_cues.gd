@@ -40,6 +40,7 @@ const VALVE := preload("res://assets/audio/valve.wav")
 ## entry sets "gain".
 const CUE_DB := -8.0
 const CUE_GAIN := Vector2(-1.0, 1.0)
+const DEFAULT_PRIORITY := 1
 
 ## One-shot cues of a recorded turn. Each event's pitch slides inside `range`
 ## (semitones) from the event's identity, so it sounds the same live, as the
@@ -49,6 +50,10 @@ const CUE_GAIN := Vector2(-1.0, 1.0)
 ##   voice:     "long" for a ringing tail that a burst of short cues must not
 ##              cut; everything else shares the short-cue voices
 ##   haptic_ms: a live press vibrates the phone this long
+##   priority:  which cues a tick with more cues than voices keeps first
+##              (soundscape choose_cues): 3 the water and a stage's big
+##              moments, 2 a spirit's own action, default 1 (DEFAULT_PRIORITY)
+##              what follows from them (bridges, crossings, landings)
 ## Tonal cues sit around the C-major ambience bed and favour upward shifts that
 ## small phone speakers still reproduce. A miss never rises above its source
 ## pitch, and a catch never falls below it.
@@ -56,36 +61,36 @@ const CUES := {
 	"bridge_opened": {"clip": BRIDGE, "range": Vector2(0.0, 5.0)},
 	"garden_opened": {"clip": READY, "range": Vector2(-3.0, 2.0)},
 	"lift_ready": {"clip": READY, "range": Vector2(-3.0, 2.0)},
-	"seed_thrown": {"clip": THROW, "range": Vector2(-2.0, 4.0)},
+	"seed_thrown": {"clip": THROW, "range": Vector2(-2.0, 4.0), "priority": 2},
 	"seed_landed": {"clip": LAND, "range": Vector2(0.0, 7.0)},
 	# A miss is never louder than its source.
 	"seed_missed": {"clip": MISS, "range": Vector2(-3.0, 0.0), "gain": Vector2(-1.0, 0.0)},
-	"seed_caught": {"clip": CATCH, "range": Vector2(0.0, 5.0), "haptic_ms": 35},
-	"island_bloomed": {"clip": BLOOM, "range": Vector2(0.0, 7.0), "haptic_ms": 85},
-	"bell_rung": {"clip": BELL, "range": Vector2(0.0, 4.0), "voice": "long"},
-	"lever_pulled": {"clip": CATCH, "range": Vector2(-5.0, -2.0)},
-	"switch_set": {"clip": CATCH, "range": Vector2(2.0, 5.0)},
-	"handoff_offered": {"clip": THROW, "range": Vector2(-2.0, 2.0)},
+	"seed_caught": {"clip": CATCH, "range": Vector2(0.0, 5.0), "haptic_ms": 35, "priority": 2},
+	"island_bloomed": {"clip": BLOOM, "range": Vector2(0.0, 7.0), "haptic_ms": 85, "priority": 3},
+	"bell_rung": {"clip": BELL, "range": Vector2(0.0, 4.0), "voice": "long", "priority": 3},
+	"lever_pulled": {"clip": CATCH, "range": Vector2(-5.0, -2.0), "priority": 2},
+	"switch_set": {"clip": CATCH, "range": Vector2(2.0, 5.0), "priority": 2},
+	"handoff_offered": {"clip": THROW, "range": Vector2(-2.0, 2.0), "priority": 2},
 	# The Lighthouse tower bell: the same bell, a fourth or so lower.
-	"tower_bell": {"clip": BELL, "range": Vector2(-5.0, -3.0), "voice": "long"},
+	"tower_bell": {"clip": BELL, "range": Vector2(-5.0, -3.0), "voice": "long", "priority": 3},
 	"bridge_closed": {"clip": BRIDGE, "range": Vector2(-5.0, -2.0), "db": -4.0},
 	"ball_home": {"clip": READY, "range": Vector2(0.0, 3.0)},
 	"receivers_joined": {"clip": READY, "range": Vector2(5.0, 9.0), "db": -2.0},
 	"waypoint": {"clip": READY, "range": Vector2(-5.0, -1.0), "db": -10.0},
 	"well_plunk": {"clip": WELL_PLUNK, "range": Vector2(-1.0, 1.0)},
-	"water_rise": {"clip": WATER_SURGE, "range": Vector2(0.0, 2.0), "db": -4.0},
-	"water_fall": {"clip": WATER_SURGE, "range": Vector2(-5.0, -3.0), "db": -5.0},
+	"water_rise": {"clip": WATER_SURGE, "range": Vector2(0.0, 2.0), "db": -4.0, "priority": 3},
+	"water_fall": {"clip": WATER_SURGE, "range": Vector2(-5.0, -3.0), "db": -5.0, "priority": 3},
 	# A crossing has started to close: the water rises over it before it shuts.
 	"crossing_closing": {"clip": WATER_SURGE, "range": Vector2(2.0, 6.0), "db": -3.0},
-	"spirit_drowned": {"clip": WELL_PLUNK, "range": Vector2(-7.0, -3.0)},
+	"spirit_drowned": {"clip": WELL_PLUNK, "range": Vector2(-7.0, -3.0), "priority": 3},
 	# Controls drawn as machines (LOOK_CUES): a winch's pawl ticking as the chain
 	# winds, lower as it pays out; a bolt sliding home into its catch, lower as it
 	# draws back; a valve wheel's iron creak to its value.
-	"winch_wound": {"clip": WINCH, "range": Vector2(-1.5, 1.5)},
-	"winch_unwound": {"clip": WINCH, "range": Vector2(-4.5, -2.5)},
-	"bolt_shot": {"clip": BOLT, "range": Vector2(-1.0, 1.5)},
-	"bolt_drawn": {"clip": BOLT, "range": Vector2(-4.0, -2.0)},
-	"valve_turned": {"clip": VALVE, "range": Vector2(-1.5, 1.5), "db": -1.0},
+	"winch_wound": {"clip": WINCH, "range": Vector2(-1.5, 1.5), "priority": 2},
+	"winch_unwound": {"clip": WINCH, "range": Vector2(-4.5, -2.5), "priority": 2},
+	"bolt_shot": {"clip": BOLT, "range": Vector2(-1.0, 1.5), "priority": 2},
+	"bolt_drawn": {"clip": BOLT, "range": Vector2(-4.0, -2.0), "priority": 2},
+	"valve_turned": {"clip": VALVE, "range": Vector2(-1.5, 1.5), "db": -1.0, "priority": 2},
 }
 
 ## A lever or selector drawn as a presentation/kit/lever_looks.gd kind (a
@@ -165,6 +170,10 @@ const BEDS := {
 	"home": ["birds"],
 }
 
+## Which cues a crowded tick keeps first (CUES "priority").
+static func priority(key: String) -> int:
+	return int(CUES[key].get("priority", DEFAULT_PRIORITY)) if CUES.has(key) else DEFAULT_PRIORITY
+
 ## The cue of a control drawn as `look` (LOOK_CUES), else `fallback`.
 ## `released`: a lever let go rather than pulled.
 static func look_cue(look: String, fallback: String, released: bool = false) -> String:
@@ -189,6 +198,7 @@ static func problems() -> Array[String]:
 		if not (cue.get("range") is Vector2) or cue.range.x > cue.range.y: found.append("Cue %s has no pitch range" % key)
 		if cue.has("voice") and cue.voice != "long": found.append("Cue %s names an unknown voice" % key)
 		if cue.has("gain") and not (cue.gain is Vector2): found.append("Cue %s has a bad gain span" % key)
+		if cue.has("priority") and not (cue.priority is int and cue.priority >= DEFAULT_PRIORITY): found.append("Cue %s has a bad priority" % key)
 	for look: String in LOOK_CUES:
 		var pair: Variant = LOOK_CUES[look]
 		if not (pair is Array and pair.size() == 2 and CUES.has(pair[0]) and CUES.has(pair[1])): found.append("Look %s needs a pulled and a let-go cue" % look)
