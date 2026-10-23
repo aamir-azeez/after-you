@@ -13,7 +13,6 @@ const Journey = preload("res://services/relay_journey.gd")
 const World = preload("res://presentation/relay_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
-const TouchInput = preload("res://presentation/touch_input.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 const LegacySave = preload("res://services/local_save.gd")
@@ -63,6 +62,7 @@ const RunReactionStore = preload("res://services/run_reaction_store.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardRunFlow = preload("res://presentation/hard_run_flow.gd")
+const RoomRefreshFlow = preload("res://presentation/room_refresh_flow.gd")
 # Short status labels for the shared waiting panel (concept 06).
 const WAITING_FOR_FRIEND := "Waiting for friend"
 const ROOM_CLOSED := "Room closed"
@@ -86,17 +86,14 @@ var live_connection: Node:
 	set(value):
 		live_connection = value
 		if is_instance_valid(value):
-			value.room_changed.connect(_on_live_room_changed)
-			value.missed_hints.connect(_live_caught_up)
-## A hint is waiting for its read, which runs even where the page does not poll.
-var _live_read_queued := false
+			value.room_changed.connect(refresh_flow.on_live_room_changed)
+			value.missed_hints.connect(refresh_flow.live_caught_up)
 var presence_hud: Label
 var _safety_screen: CanvasLayer
 var _redo_screen: CanvasLayer
 var _safety_photos: Array = []
 var online_refresh_queued := false
 var online_request_generation := 0
-var _suspended_manual_refresh: Dictionary = {}
 var reaction_photos_enabled := ReactionPhotos.FEATURE_ENABLED
 var reaction_photos: Node
 var reaction_strip: Control
@@ -143,6 +140,7 @@ var _replay_hold := 0
 ## and how the screen shows it (presentation/hard_run_flow.gd).
 var hard: RefCounted = null
 var hard_flow: RefCounted = HardRunFlow.new(self)
+var refresh_flow: RefCounted = RoomRefreshFlow.new(self)
 var _live_tries := 0
 ## A start whose try is still to be counted, at its first tick (see _begin).
 var _try_due := false
@@ -660,7 +658,7 @@ func _presence_badge() -> Label:
 
 
 func _show_ready() -> void:
-	_owed_redraw_context = ""
+	refresh_flow.forget_owed_redraw()
 	if _journal_loader != null or _world_building:
 		_show_journal_loading()
 		return
@@ -1211,7 +1209,7 @@ func _show_online_waiting() -> void:
 	var facts := _room_facts()
 	_add_room_actions(card, "waiting_card", "invite", facts)
 	_add_room_actions(card, "waiting_card", "turn", facts)
-	_add_online_sync_status(card)
+	refresh_flow.add_sync_status(card)
 	_add_room_actions(card, "waiting_card", "more", facts)
 
 ## Concept 04 and 05: the friend strip, then what happened and whose turn is
@@ -1235,7 +1233,7 @@ func _show_waiting_panel(room: Dictionary, heading: String, subline: String, who
 	RoomPageBuilder.waiting_lines(top, subline if partner_present or not saved else "", whose, notices)
 	_add_room_actions(top, _room_state, "status", facts)
 	_add_room_panel_actions(card, facts)
-	_add_online_sync_status(card, true)
+	refresh_flow.add_sync_status(card, true)
 	online_sync_status.add_theme_color_override("font_color", MUTED)
 	online_sync_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	online_sync_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -1609,177 +1607,19 @@ static func _copy_with_display_server(code: String) -> bool:
 	return DisplayServer.clipboard_get() == code
 
 
+## Room reads live in presentation/room_refresh_flow.gd. Its room actions,
+## _process and tests call these names on the screen.
 func _online_refresh() -> void:
-	if online_session == null or online_session.busy() or running or _room_context_lost:
-		return
-	var now := Time.get_ticks_msec()
-	refresh_schedule.bind(_online_refresh_context(), now, _room_poll_interval_ms())
-	refresh_schedule.request_now(now)
-	var ticket := refresh_schedule.begin_if_due(now, not backgrounded, online_session.busy())
-	if ticket.is_empty():
-		_update_online_sync_status(now)
-		return
-	mode = "online_request"
-	online_request_generation += 1
-	var generation := online_request_generation
-	_suspended_manual_refresh.clear()
-	_card(PlayerCopy.RELAY_PREVIEW_E274B279C9CF, PlayerCopy.RELAY_PREVIEW_AE8554BD7C76)
-	var source: RefCounted = journey
-	var context := _online_refresh_context()
-	var reconciling: bool = not journey.pending().is_empty()
-	if not _online_refresh_is_current(generation,source,context,["online_request"]):
-		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
-		_remember_suspended_manual_refresh(generation,source,context)
-		return
-	# The explicit action keeps the exact saved direction. It does not infer a
-	# new contribution.
-	if reconciling:
-		await journey.reconcile()
-	else:
-		await journey.refresh()
-	var result: Dictionary = {} if reconciling else journey.last_refresh_result()
-	if journey.last_error.is_empty(): await _refresh_redo()
-	refresh_schedule.complete(ticket, Time.get_ticks_msec(), journey.last_error.is_empty(), int(result.get("retry_after_ms", 0)), bool(result.get("terminal", false)))
-	if _online_refresh_is_current(generation,source,context,["online_request"]):
-		online_last_checked_ms = Time.get_ticks_msec() if journey.last_error.is_empty() else online_last_checked_ms
-		_show_ready()
-	else:
-		_remember_suspended_manual_refresh(generation,source,context)
-
-func _remember_suspended_manual_refresh(generation: int, source: RefCounted, context: String) -> void:
-	if backgrounded and is_inside_tree() and mode == "online_request" and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not _leaving and not _room_context_lost:
-		_suspended_manual_refresh = {"generation":generation,"context":context}
-
-func _online_refresh_is_current(generation: int, source: RefCounted, context: String, allowed_modes: Array) -> bool:
-	return is_inside_tree() and generation == online_request_generation and journey == source and online_session != null and context == _online_refresh_context() and not backgrounded and not running and not _leaving and not _room_context_lost and mode in allowed_modes and not is_instance_valid(_safety_screen) and not (is_instance_valid(reaction_photos) and reaction_photos.active) and not online_session.photo_request_busy()
-
-func _room_poll_interval_ms() -> int:
-	return live_connection.poll_interval_ms(RefreshClock.ROOM_INTERVAL_MS) if is_instance_valid(live_connection) else RefreshClock.ROOM_INTERVAL_MS
-
-func _on_live_room_changed(room_id: String, seq: int) -> void:
-	if online_session == null or room_id != online_session.last_room(): return
-	# Reads are ordered inside the room: a hint older than the room this page holds is already shown.
-	var held := int(journey.snapshot().get("revision", -1))
-	if held >= 0 and seq < held: return
-	_live_hint()
-
-func _live_hint() -> void:
-	if online_session == null or _leaving: return
-	if refresh_schedule.hint(Time.get_ticks_msec()): _live_read_queued = true
-
-## Hints were missed since `since_ms`; a resume read that began after it already covers them.
-func _live_caught_up(since_ms: int) -> void:
-	if online_session == null or _leaving: return
-	if refresh_schedule.hint(Time.get_ticks_msec(), since_ms): _live_read_queued = true
-
-func _online_refresh_context() -> String:
-	return str(journey.get_instance_id()) + ":" + str(online_session.last_room())
-
-func _add_online_sync_status(card: VBoxContainer, only_when_delayed: bool = false) -> void:
-	online_sync_status = _label(PlayerCopy.RELAY_PREVIEW_7A4E91C6BB33, 16)
-	online_sync_status.name = "RoomSyncStatus"
-	# The side panel keeps the routine cadence in Room options and shows only delays.
-	if only_when_delayed: online_sync_status.set_meta("only_when_delayed", true)
-	card.add_child(online_sync_status)
-	_update_online_sync_status(Time.get_ticks_msec())
-
-func _update_online_sync_status(now: int) -> void:
-	if not is_instance_valid(online_sync_status): return
-	var text := PlayerCopy.RELAY_PREVIEW_AE39B1E4A9F7
-	var terminal: bool = refresh_schedule.stopped() and journey.last_refresh_result().get("terminal", false)
-	if terminal:
-		text = PlayerCopy.RELAY_PREVIEW_9D001B9A783F
-	elif refresh_schedule.busy():
-		text = PlayerCopy.RELAY_PREVIEW_8E35E137EA15
-	elif not journey.last_error.is_empty():
-		text = PlayerCopy.RELAY_PREVIEW_EF61644814DA % maxi(1, ceili(float(refresh_schedule.next_due_ms() - now) / 1000.0))
-	elif online_last_checked_ms >= 0:
-		text = PlayerCopy.RELAY_PREVIEW_F85672E29DEB
-	online_sync_status.text = text
-	if online_sync_status.has_meta("only_when_delayed"):
-		online_sync_status.visible = terminal or not journey.last_error.is_empty()
+	await refresh_flow.manual()
 
 func _service_online_refresh() -> void:
-	if online_session==null or backgrounded or running or _sharing_room or _room_context_lost or not is_inside_tree(): return
-	# A manual read may finish while backgrounded. Rebuild its stable card only
-	# after foreground returns, then leave all retry traffic on the GET-only path.
-	if not _suspended_manual_refresh.is_empty():
-		if online_session.busy() or journey.busy() or refresh_schedule.busy(): return
-		var saved := _suspended_manual_refresh
-		_suspended_manual_refresh = {}
-		if saved.generation == online_request_generation and saved.context == _online_refresh_context() and mode == "online_request":
-			_show_ready()
-			online_refresh_queued = true
-	if mode not in ["ready","online_waiting","complete"] or is_instance_valid(_safety_screen): return
-	if is_instance_valid(reaction_photos) and reaction_photos.active: return
-	var now := Time.get_ticks_msec()
-	var context := _online_refresh_context()
-	# A read that found a change while the card could not be redrawn: the next
-	# read compares with what that one kept, so the card is redrawn now.
-	if _owed_redraw_context == context and not online_session.busy() and not online_session.photo_request_busy() and not TouchInput.press_held(controls):
-		_show_ready()
-		return
-	refresh_schedule.bind(context,now,_room_poll_interval_ms())
-	_update_online_sync_status(now)
-	if online_refresh_queued:
-		refresh_schedule.request_now(now)
-		online_refresh_queued=false
-	elif mode=="ready" and journey.snapshot().get("guest_id") != null and not _live_read_queued:
-		# The existing GET scheduler observes a friend's arrival before Begin.
-		# Once joined, ready cards and active play do not keep polling.
-		return
-	# A poll disables and redraws this card's buttons, so it never starts while
-	# a finger is pressing one; it runs on the first frame after the release.
-	if now >= refresh_schedule.next_due_ms() and TouchInput.press_held(controls): return
-	var ticket: Dictionary=refresh_schedule.begin_if_due(now,true,online_session.busy())
-	if ticket.is_empty(): return
-	_live_read_queued = false
-	var generation := online_request_generation
-	var source: RefCounted = journey
-	var saved_pending: Dictionary = journey.pending()
-	var before: Dictionary=journey.snapshot()
-	var before_my_turn: bool = journey.my_turn()
-	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
-		refresh_schedule.complete(ticket,Time.get_ticks_msec(),false)
-		return
-	# A saved turn whose receipt never arrived is checked on the same schedule:
-	# reconcile() first asks the server for the turn's receipt and resends the
-	# identical request (same key, same bytes) only when the server says it
-	# never got it, so a retry can never make a second turn. A turn the room
-	# definitively refused (held) is never resent here; the player decides.
-	var unconfirmed: bool = not saved_pending.is_empty() and not saved_pending.get("held", false)
-	var succeeded: bool=await journey.reconcile() if unconfirmed else await journey.refresh()
-	var redo_changed := await _refresh_redo() if succeeded else false
-	if succeeded: online_last_checked_ms = Time.get_ticks_msec()
-	var refresh_result: Dictionary=journey.last_refresh_result()
-	# A turn whose receipt is still being checked never waits any longer.
-	var changed: bool = unconfirmed or poll_changed(journey,before,before_my_turn,saved_pending,succeeded,redo_changed)
-	refresh_schedule.complete(ticket,Time.get_ticks_msec(),succeeded,int(refresh_result.get("retry_after_ms",0)),bool(refresh_result.get("terminal",false)),changed)
-	var shown_changed := poll_changed(journey,before,before_my_turn,saved_pending,succeeded,redo_changed)
-	if not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
-		_owe_redraw(source,context,shown_changed)
-		return
-	# A tap that began during the read finishes on the card it started on.
-	await TouchInput.until_released(controls)
-	if not is_inside_tree() or not _online_refresh_is_current(generation,source,context,["ready","online_waiting","complete"]):
-		_owe_redraw(source,context,shown_changed)
-		return
-	if shown_changed: _show_ready()
+	await refresh_flow.service()
 
-## A room read changed what the card shows but landed while the card could not
-## be redrawn (the phone unfocused or away, a sheet over it). The redraw waits
-## for the next service pass on this same room.
-var _owed_redraw_context := ""
+func _online_refresh_context() -> String:
+	return refresh_flow.context()
 
-func _owe_redraw(source: RefCounted, context: String, changed: bool) -> void:
-	if changed and is_inside_tree() and mode in ["ready","online_waiting","complete"] and journey == source and online_session != null and context == _online_refresh_context(): _owed_redraw_context = context
-
-## True when a room poll found something the room card shows: the turn moved
-## to or from this phone, the unsent turn changed, the room is gone, or the
-## room or its turn requests changed. The card is redrawn then, and the next
-## poll comes at the base cadence; a poll that found nothing waits longer.
 static func poll_changed(source: RefCounted, before: Dictionary, before_my_turn: bool, saved_pending: Dictionary, succeeded: bool, redo_changed: bool) -> bool:
-	return before_my_turn != source.my_turn() or saved_pending != source.pending() or (source.has_method("room_gone") and source.room_gone()) or succeeded and (before != source.snapshot() or redo_changed)
+	return RoomRefreshFlow.poll_changed(source, before, before_my_turn, saved_pending, succeeded, redo_changed)
 
 
 func identity_invalidated() -> void:
