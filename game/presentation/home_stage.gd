@@ -74,6 +74,9 @@ var zoom_target := DEFAULT_SIZE
 var zoom_size := DEFAULT_SIZE
 var _world: Node3D
 var _active: Callable
+## True while a card open over Home takes the input (set by the owner); the
+## island then starts no pinch, pan or wheel zoom, and still animates.
+var input_blocked: Callable
 var _terrain: Node3D
 var _camera: Camera3D
 var _actors: Dictionary = {}
@@ -568,7 +571,7 @@ func _allowed(point: Vector2) -> bool:
 	return _stage_rect().has_point(point) and not (is_instance_valid(_reset) and _reset.visible and _reset.get_global_rect().has_point(point))
 
 func _input(event: InputEvent) -> void:
-	if not _is_active():
+	if not _is_active() or (input_blocked.is_valid() and input_blocked.call()):
 		_cancel_gesture()
 		return
 	_track_tap(event)

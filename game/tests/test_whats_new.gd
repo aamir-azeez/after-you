@@ -36,6 +36,7 @@ func _run() -> void:
 	await _release_link()
 	await _ios_card()
 	await _earlier_versions()
+	await _wheel_over_card()
 	await _broken_archive()
 	await _card_rules()
 	for size: Vector2i in SIZES:
@@ -341,6 +342,41 @@ func _rows(card: Node) -> Array[Button]:
 
 func _details(row: Control) -> Control:
 	return row.get_parent().get_node_or_null("WhatsNewVersionHighlights") as Control
+
+## A mouse wheel over the open card scrolls the card's list, never the island
+## behind it.
+func _wheel_over_card() -> void:
+	var made := await _boot(_storage({Changelog.SAVE_KEY: "0.6.0"}), Vector2i(1280, 720), true)
+	var app: Node = made[1]
+	app._show_home()
+	await _settle()
+	app._open_whats_new_card()
+	await _settle()
+	var card := _card(app)
+	var more := card.find_child("WhatsNewEarlier", true, false) as Button if card != null else null
+	if more != null: more.pressed.emit()
+	await _settle()
+	var scroll := card.find_child("WhatsNewEarlierScroll", true, false) as ScrollContainer if card != null else null
+	_check(scroll != null and is_instance_valid(app.home_stage_view), "Earlier versions is open over Home")
+	if scroll == null or not is_instance_valid(app.home_stage_view):
+		await _close(made)
+		return
+	var rect := scroll.get_global_rect()
+	var at := Vector2(rect.end.x - 24.0, rect.get_center().y)
+	var zoom: float = app.home_stage_view.zoom_target
+	for step: int in range(3):
+		for pressed: bool in [true, false]:
+			var wheel := InputEventMouseButton.new()
+			wheel.position = at
+			wheel.global_position = at
+			wheel.button_index = MOUSE_BUTTON_WHEEL_DOWN
+			wheel.pressed = pressed
+			(made[0] as Viewport).push_input(wheel, true)
+		await process_frame
+	await _settle()
+	_check(is_equal_approx(app.home_stage_view.zoom_target, zoom), "The island behind the card does not zoom (%.2f -> %.2f)" % [zoom, app.home_stage_view.zoom_target])
+	_check(scroll.scroll_vertical > 0, "The card's list scrolls instead")
+	await _close(made)
 
 func _earlier_versions() -> void:
 	var made := await _boot(_storage({Changelog.SAVE_KEY: "0.6.0"}), Vector2i(1280, 720), true)

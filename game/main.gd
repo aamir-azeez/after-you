@@ -584,12 +584,17 @@ func _back_on_screen() -> void:
 ## Android Back on the topmost card Main opened over a screen (InGameModal), if
 ## any: a step back inside the card, or closing it.
 func _close_top_modal() -> bool:
+	var modal := _top_modal()
+	if modal == null: return false
+	modal.go_back()
+	return true
+
+## The topmost card open over the screen (InGameModal), or null.
+func _top_modal() -> Node:
 	for index in range(ui.get_child_count()-1,-1,-1):
 		var child := ui.get_child(index)
-		if child.get_script() == InGameModal and not child.is_queued_for_deletion():
-			child.go_back()
-			return true
-	return false
+		if child.get_script() == InGameModal and not child.is_queued_for_deletion(): return child
+	return null
 
 func _list_button(text: String, callback: Callable, primary: bool=true) -> Button:
 	var button := _button(text,callback,primary)
@@ -698,6 +703,8 @@ func _show_home() -> void:
 	var home_active := func() -> bool: return mode=="home" and not application_backgrounded and not is_instance_valid(relay_child)
 	# A build that sells nothing counts and shows the free chapters' keepsakes alone.
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors(),_paid_content_hidden())
+	# A card over Home (What's new) keeps its wheel and pinch for itself.
+	home_stage.input_blocked = func() -> bool: return _top_modal() != null
 	var hard := HardMode.new()
 	home_stage.set_hard(hard.states(_chapter_marks(),hard_together(),_paid_content_hidden()),hard.count(hard_together(),_paid_content_hidden()))
 	overlay.add_child(home_stage)
