@@ -143,6 +143,9 @@ var _replay_hold := 0
 var hard: RefCounted = null
 var hard_flow: RefCounted = HardRunFlow.new(self)
 var _live_tries := 0
+## A start whose try is still to be counted, at its first tick (see _begin).
+var _try_due := false
+var _try_slot := ""
 ## Whether the turn waits on its opening glance at its goal (_glance_at_goal).
 var _glancing := false
 var _shown_pill := ""
@@ -1449,6 +1452,7 @@ func _restore_paused_draft() -> void:
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
 	# A resumed draft is the same try, after an app restart too.
 	_live_tries = turn_tries.resume(_tries_slot())
+	_try_due = false
 	_fast_forward(draft)
 	_wait().show(sim.snapshot(), true)
 	running = false
@@ -1874,7 +1878,15 @@ func _begin() -> void:
 	review = {}
 	replay_pair_index = -1
 	# The first start of a turn, each Retry and a restart after a failed ending.
-	_live_tries = turn_tries.start(_tries_slot())
+	# A turn's first start is counted at its first tick (advance_input): one
+	# stopped before it (a pause, Back or the app sent away during the glance
+	# at the goal) is not a try, so a hard run goes on from it. Every later
+	# start counts at once.
+	# The slot is taken once here: building it copies the turn's recordings.
+	_try_slot = _tries_slot()
+	_live_tries = turn_tries.next(_try_slot)
+	_try_due = _live_tries == 1
+	if not _try_due: _live_tries = turn_tries.start(_try_slot)
 	if hard_flow.slipped_on_start(_live_tries): return
 	world.present(sim.snapshot(), true)
 	_start_play()
@@ -2012,6 +2024,7 @@ func _resume_draft() -> void:
 	sim.catch_assistance = bool(draft.get("catch_assistance", true))
 	# A resumed draft is the same try, after an app restart too.
 	_live_tries = turn_tries.resume(_tries_slot())
+	_try_due = false
 	_fast_forward(draft)
 	_wait().show(sim.snapshot(), true)
 	if sim.finished:
@@ -2060,6 +2073,9 @@ func advance_input(input: Dictionary) -> void:
 	# Both touch/keyboard input and input-driven QA use this single tick path.
 	var state: Dictionary = sim.step(input)
 	if mode == "replay": replay_cursor += 1
+	if mode == "play" and _try_due:
+		_try_due = false
+		_live_tries = turn_tries.start(_try_slot)
 	_wait().step(state, _turn_sounds(state), mode == "play")
 	_run_player().step(int(state.tick))
 	_update_hud(state)

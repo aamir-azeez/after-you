@@ -203,7 +203,9 @@ func _pause_and_kill() -> void:
 	await process_frame
 	_check(app.mode == "play" and app._live_tries == 1, "The early turn resumes as the same try")
 	await _close(app)
-	# Closed before its first tick: nothing was saved, so starting it again is a retry.
+	# Stopped before its first tick (closed, or paused then Back, during the
+	# glance at the goal): the run has not started, so starting again is the
+	# same first try and the run goes on.
 	_fresh()
 	app = _screen()
 	await process_frame
@@ -214,7 +216,20 @@ func _pause_and_kill() -> void:
 	_check(not app.journey.has_draft(), "Nothing of a turn closed before its first tick was saved")
 	app._begin()
 	await process_frame
-	_check(app.mode == "hard_failed" and app.hard.last_run.reason == "retry" and app.journey.pairs().is_empty() and app.journey.role() == "a", "Starting that turn again ends the run")
+	_check(app.mode == "play" and app._live_tries == 1 and app.hard.last_run.is_empty(), "Starting that turn again is still its first try and the run goes on")
+	app._pause()
+	_check(app.mode == "paused", "A pause during the glance shows the pause card")
+	await _close(app)
+	app = _screen()
+	await process_frame
+	app._begin()
+	await process_frame
+	_check(app.mode == "play" and app._live_tries == 1, "Paused then left before its first tick: the same first try again")
+	# Once a tick is played the try counts: starting again is a retry.
+	_play(app, "relay-a", 1)
+	app._begin()
+	await process_frame
+	_check(app.mode == "hard_failed" and app.hard.last_run.reason == "retry" and app.journey.pairs().is_empty(), "A start after the first tick still ends the run")
 	await _close(app)
 
 func _whole_run() -> void:

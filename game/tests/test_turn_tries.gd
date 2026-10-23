@@ -154,6 +154,13 @@ func _solo_seams() -> void:
 	app._begin()
 	await process_frame
 	_check(app._live_tries == 1 and not _pill(app).visible, "The next turn starts again at try 1")
+	# Paused before its first tick (during the glance at the goal), the first
+	# start is not counted: a Retry from there is still try 1.
+	app._pause()
+	_press(app, "Retry")
+	await process_frame
+	_check(app._live_tries == 1 and app.turn_tries.count(app._tries_slot()) == 0, "A first start stopped before its first tick is not a try")
+	app.advance_input(inputs[0])
 	app._pause()
 	_press(app, "Retry")
 	await process_frame

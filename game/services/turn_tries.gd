@@ -75,6 +75,11 @@ func start(turn_slot: String) -> int:
 	_save_open()
 	return tries
 
+## The try the next start of `slot` would be on; nothing is counted.
+func next(turn_slot: String) -> int:
+	_load_open()
+	return mini(count(turn_slot) + 1, MAX_TRIES)
+
 ## The open count of `slot`; 0 before its first start.
 func count(turn_slot: String) -> int:
 	return int(_open.get(turn_slot, 0))
