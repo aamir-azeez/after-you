@@ -238,6 +238,7 @@ restart_chapter_ui 1
 resume_child_sound 1
 review_access 1
 rolling_offer 3
+room_action_hooks 3
 room_actions 1
 room_auto_share 2
 room_card_menu 1
