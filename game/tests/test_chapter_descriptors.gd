@@ -210,6 +210,13 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 	for id: String in data.lever_looks:
 		var look := str(data.lever_looks[id])
 		_check((levers.has(id) and look in looks.LEVER_KINDS) or (selectors.has(id) and look in looks.SELECTOR_KINDS), "Look %s of %s suits its lever or selector: %s" % [id, key, look])
+	# Turn of the Tide's water wheels are valves: no three- or four-way
+	# selector there is left with a plain lever.
+	if str(data.world).ends_with("tide_world.gd"):
+		for stage: Dictionary in level.stages:
+			for control: Dictionary in stage.get("controls", []):
+				if control.get("kind") == "selector" and control.get("values", []).size() >= 3:
+					_check(str(data.lever_looks.get(control.id, "")) == "valve", "The %s wheel of %s is a valve" % [control.id, key])
 	for id: String in data.lever_actions:
 		_check(levers.has(id) and data.lever_actions[id] is String and not str(data.lever_actions[id]).is_empty(), "Lever action %s of %s names a lever with words" % [id, key])
 	for id: String in data.seats:

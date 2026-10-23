@@ -1,6 +1,7 @@
 extends RefCounted
-## World kit: a lever prop's look. A chapter descriptor's "lever_looks" names
-## one for a lever id; a lever without one keeps the plain handle and knob.
+## World kit: a lever or selector prop's look. A chapter descriptor's
+## "lever_looks" names one for a lever or selector id; a control without one
+## keeps the plain handle and knob.
 ##
 ##   "winch": a hand winch. A crank on a timber frame turns an iron drum; the
 ##       chain runs off the drum down through a hawse ring in the sill. Pulled,
@@ -9,11 +10,11 @@ extends RefCounted
 ##   "bolt": a sliding bolt. A round iron bolt with a knob lies in two staples
 ##       on a timber block. Pulled, it slides home into the iron catch; let go,
 ##       it draws back.
-##   "valve": a valve wheel for a selector. A flat wheel on a cast-iron
-##       pedestal over a dial plate whose marks name its values; the wheel's
-##       arrow turns to the value chosen (set_value). A short post behind it
-##       holds a sign plate the world fills (sign_point), clear of a spirit
-##       standing at the wheel.
+##   "valve": a valve wheel for a selector. A flat wheel on a tall cast-iron
+##       pedestal, over a spirit's head so one standing at it never hides it,
+##       above a dial plate whose marks (outside the rim) name its values; the
+##       wheel's arrow turns to the value chosen (set_value). A post behind it
+##       holds a sign plate the world fills (sign_point), higher still.
 ##
 ##   var look := LeverLooks.build("winch", at, knob_color, terrain)
 ##   look.anchor                        # the point a bubble's tail follows
@@ -21,20 +22,20 @@ extends RefCounted
 ##   look.set_value(index, immediate)   # each snapshot (a valve)
 ##   if look.moving(): look.advance(delta)   # each frame
 ##
-## A look stands on the lever's own spot, inside its reach (REACH of its
-## centre every way, inside the lever's 28 cm interaction radius) and on its
-## east side no further than the plain lever's housing (EAST_SIDE), so a lamp
-## or mark a world stands beside a lever stays clear. It only shows the
-## snapshot's lever state: pulled or not. The pose eases toward it over
-## PULL_SECONDS (an immediate call, for a seek, a retry or reduced motion,
-## snaps), and every part's place follows from that one value, so live play,
-## the memory and a replay show the same thing. The accents (a knob, a
-## valve's rim, hub and arrow head) take the colour the world passes, its
-## owner's. Shapes and colours come from
-## the kit's shared caches (Primitives, released through SessionRelease);
-## nothing here keeps a static of its own, and no frame allocates.
+## A look stands on its control's own spot, inside its reach (REACH of its
+## centre every way, inside the 28 cm interaction radius); a lever's look keeps
+## its east side no further than the plain lever's housing (EAST_SIDE), so a
+## lamp or mark a world stands beside a lever stays clear. It only shows the
+## snapshot's state: a lever pulled or not, eased over PULL_SECONDS; a
+## selector's value, its arrow turning at VALVE_RATE. An immediate call (a
+## seek, a retry, reduced motion) snaps, and so does a valve's first value,
+## and every part's place follows from that one value, so live play, the
+## memory and a replay show the same thing. The accents (a knob, a valve's
+## rim, hub and arrow head) take the colour the world passes, its owner's.
+## Shapes and colours come from the kit's shared caches (Primitives, released
+## through SessionRelease); nothing here keeps a static of its own, and no
+## frame allocates.
 const Primitives = preload("res://presentation/kit/primitives.gd")
-const KINDS := ["winch", "bolt", "valve"]
 ## Looks a lever takes, and looks a selector takes.
 const LEVER_KINDS := ["winch", "bolt"]
 const SELECTOR_KINDS := ["valve"]
@@ -44,11 +45,11 @@ const REACH := 0.26
 const EAST_SIDE := 0.16
 ## How long a pull or a release takes (s).
 const PULL_SECONDS := 0.45
-## The anchor stands this high: anchor + (0, 0.4, 0) is the plain lever's
-## knob centre, and a bubble's tail lands KNOB_RADIUS (0.09) above that, on
-## the look's top (TOPS).
-const ANCHOR_Y := 0.14
-const TOPS := {"winch": 0.63, "bolt": 0.63, "valve": 0.93}
+## Where a bubble's tail lands on each look (its top on its axis, m over its
+## spot), and how far over its anchor that is: journey_world's knob point
+## (KNOB 0.4 over the anchor) plus KNOB_RADIUS (0.09). anchor_lift() stands
+## the anchor that far under the top.
+const TOPS := {"winch": 0.63, "bolt": 0.63, "valve": 0.97}
 const KNOB_REACH := 0.49
 const TIMBER := Color("7a5d45")
 const TIMBER_DARK := Color("5f4a38")
@@ -67,14 +68,15 @@ const LINKS := 7
 ## Bolt: its centre drawn back and slid home (x, m).
 const BOLT_BACK := 0.02
 const BOLT_HOME := -0.10
-## Valve: its wheel's height (over a spirit's head, so one standing at the
-## valve never hides it), the sweep of its marks either side of straight back
-## (radians, the first value west), how fast its arrow turns (radians a
-## second) and the sign plate's centre (behind it, east of its post).
-const VALVE_Y := 0.87
+## Valve: its wheel's height (over a spirit's head, about 0.85, so one
+## standing at the valve never hides it), the sweep of its marks either side
+## of straight back (radians, the first value west), how fast its arrow turns
+## (radians a second) and the sign plate's centre (behind the wheel, just in
+## front of its post).
+const VALVE_Y := 0.94
 const VALVE_SWEEP := 0.95
 const VALVE_RATE := 3.0
-const SIGN_AT := Vector3(0.10, 1.10, -0.19)
+const SIGN_AT := Vector3(0.10, 1.16, -0.19)
 
 var kind := ""
 var root: Node3D
@@ -88,8 +90,11 @@ var _links: Array[MeshInstance3D] = []
 var _bolt: Node3D
 var _wheel: Node3D
 var _count := 1
+## Whether a valve has shown a value yet: its first snaps, never sweeping in
+## from a value it never had.
+var _placed := false
 
-## The look `kind` (one of KINDS) on the spot `at` (terrain space) under
+## The look `kind` (LEVER_KINDS or SELECTOR_KINDS) on the spot `at` (terrain space) under
 ## `parent`, its knob in `knob` (the owner's colour). Shown let go.
 ## A valve takes `marks`: per value, how many bands mark it on the dial (0: a
 ## bar), first value west.
@@ -115,7 +120,8 @@ func set_pulled(pulled: bool, immediate: bool = false) -> void:
 func set_value(index: int, immediate: bool = false) -> void:
 	if kind != "valve" or index < 0: return
 	_target = value_angle(index, _count)
-	if immediate:
+	if immediate or not _placed:
+		_placed = true
 		_shown = _target
 		_pose()
 
@@ -242,10 +248,11 @@ func _make_bolt(knob: Color) -> void:
 	_box(Vector3(0.02, 0.07, 0.02), IRON, Vector3(0.09, 0.04, 0), _bolt)
 	_ball(0.036, knob, Vector3(0.09, 0.085, 0), _bolt)
 
-## A cast-iron pedestal on a round foot, brass at its foot and its neck, four
-## brass bolt heads on the foot; a dial plate with cream marks for the values;
-## a five-spoked wheel with a rim, hub, knob and arrow head in the owner's
-## colour; and behind it a short timber post with a bracket for the sign.
+## A tall cast-iron pedestal on a round foot, brass at its foot and its neck,
+## four brass bolt heads on the foot; a dial plate with cream marks for the
+## values round its edge, outside the rim; a five-spoked wheel with a rim,
+## hub, knob and arrow head in the owner's colour; and behind it a timber post
+## with a brass bracket for the sign.
 func _make_valve(knob: Color, marks: Array) -> void:
 	_count = maxi(marks.size(), 1)
 	_disc(0.17, 0.05, IRON, Vector3(0, 0.025, 0), root)
@@ -253,43 +260,44 @@ func _make_valve(knob: Color, marks: Array) -> void:
 	for index in range(4):
 		var turn := PI / 4.0 + float(index) * PI / 2.0
 		_box(Vector3(0.026, 0.016, 0.026), BRASS, Vector3(sin(turn), 0, cos(turn)) * 0.142 + Vector3(0, 0.057, 0), root)
-	_disc(0.05, 0.70, IRON, Vector3(0, 0.424, 0), root, 0.04)
-	_disc(0.066, 0.026, BRASS, Vector3(0, 0.785, 0), root)
-	# The dial: a dark iron plate with a cream mark per value round its back edge.
-	_disc(0.25, 0.018, IRON, Vector3(0, 0.809, 0), root, -1.0, 16)
+	_disc(0.05, 0.776, IRON, Vector3(0, 0.462, 0), root, 0.04)
+	_disc(0.066, 0.026, BRASS, Vector3(0, 0.86, 0), root)
+	# The dial: a dark iron plate with a cream mark per value round its back
+	# edge, outside the wheel's rim so the rim never hides one.
+	_disc(0.25, 0.018, IRON, Vector3(0, 0.88, 0), root, -1.0, 16)
 	for index in range(_count):
 		var turn := value_angle(index, _count)
 		var bands := int(marks[index]) if index < marks.size() else 1
 		var along := Vector3(-sin(turn), 0, -cos(turn))
 		var across := Vector3(-along.z, 0, along.x)
-		var at := along * 0.205 + Vector3(0, 0.824, 0)
+		var at := along * 0.218 + Vector3(0, 0.895, 0)
 		if bands <= 0:
 			var bar := _box(Vector3(0.07, 0.014, 0.02), CREAM, at, root)
 			bar.rotation.y = turn
 		for band in range(bands):
-			var tick := _box(Vector3(0.016, 0.014, 0.05), CREAM, at + across * (float(band) - float(bands - 1) * 0.5) * 0.03, root)
+			var tick := _box(Vector3(0.016, 0.014, 0.04), CREAM, at + across * (float(band) - float(bands - 1) * 0.5) * 0.03, root)
 			tick.rotation.y = turn
 	_wheel = Node3D.new()
 	_wheel.name = "ValveWheel"
 	_wheel.position = Vector3(0, VALVE_Y, 0)
 	root.add_child(_wheel)
-	var rim := Primitives.mesh_node(Primitives.cached_shape(_ring_mesh(0.19, 0.022)), Primitives.shared_material(knob), Vector3.ZERO, _wheel)
+	var rim := Primitives.mesh_node(Primitives.cached_shape(_ring_mesh(0.16, 0.02)), Primitives.shared_material(knob), Vector3.ZERO, _wheel)
 	rim.name = "ValveRim"
 	for spoke in range(5):
 		var turn := float(spoke) * TAU / 5.0 + PI / 5.0
-		var bar := _box(Vector3(0.026, 0.02, 0.17), IRON, Vector3(sin(turn), 0, cos(turn)) * 0.095, _wheel)
+		var bar := _box(Vector3(0.026, 0.02, 0.14), IRON, Vector3(sin(turn), 0, cos(turn)) * 0.08, _wheel)
 		bar.rotation.y = turn
 	_disc(0.042, 0.04, knob.darkened(0.15), Vector3.ZERO, _wheel)
 	# The arrow from the hub out past the rim, toward the value; its head in
 	# the owner's colour, and a handle knob on the rim to turn it by.
-	var arrow := _box(Vector3(0.034, 0.016, 0.20), CREAM, Vector3(0, 0.022, -0.10), _wheel)
+	var arrow := _box(Vector3(0.034, 0.016, 0.17), CREAM, Vector3(0, 0.022, -0.085), _wheel)
 	arrow.name = "WheelPointer"
-	var head := _box(Vector3(0.05, 0.018, 0.05), knob, Vector3(0, 0.026, -0.205), _wheel)
+	var head := _box(Vector3(0.045, 0.018, 0.045), knob, Vector3(0, 0.026, -0.17), _wheel)
 	head.rotation.y = PI / 4.0
-	_ball(0.03, knob.lightened(0.15), Vector3(0.19, 0.03, 0.0), _wheel)
+	_ball(0.028, knob.lightened(0.15), Vector3(0.16, 0.03, 0.0), _wheel)
 	# The sign's post and bracket, behind and east of the wheel.
-	_box(Vector3(0.04, 1.06, 0.04), TIMBER_DARK, Vector3(SIGN_AT.x, 0.53, SIGN_AT.z - 0.035), root)
-	_box(Vector3(0.05, 0.03, 0.06), BRASS, Vector3(SIGN_AT.x, 1.073, SIGN_AT.z - 0.035), root)
+	_box(Vector3(0.04, 1.12, 0.04), TIMBER_DARK, Vector3(SIGN_AT.x, 0.56, SIGN_AT.z - 0.035), root)
+	_box(Vector3(0.05, 0.03, 0.06), BRASS, Vector3(SIGN_AT.x, 1.133, SIGN_AT.z - 0.035), root)
 
 ## A cylinder standing up (top radius `top` when given).
 static func _disc(radius: float, height: float, color: Color, at: Vector3, parent: Node3D, top: float = -1.0, sides: int = 12) -> MeshInstance3D:

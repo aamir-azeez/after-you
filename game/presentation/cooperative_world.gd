@@ -19,8 +19,8 @@ var _physical_pads: Dictionary = {}
 ## "stand_spots"; _physical_pads holds the spot's rim.
 var _stand_spots: Dictionary = {}
 var _physical_levers: Dictionary = {}
-## Levers built with a look: id -> its LeverLooks. Their _physical_levers entry
-## is the look's anchor, which never tilts.
+## Levers and selectors built with a look: id -> its LeverLooks. Their
+## _physical_levers entry is the look's anchor, which never tilts.
 var _lever_looks: Dictionary = {}
 var _physical_balls: Dictionary = {}
 var _ball_trails: Dictionary = {}
@@ -432,9 +432,9 @@ func _build_stand_spot(pad: Dictionary, at: Vector3, color: Color) -> void:
 	_stand_spots[pad.id] = spot
 
 ## A valve look's dial marks for a selector (kit/lever_looks.gd): per value,
-## how many bands; none by default.
-func _look_marks(_control: Dictionary) -> Array:
-	return []
+## how many bands; one each by default.
+func _look_marks(control: Dictionary) -> Array:
+	return Array(control.get("values", [])).map(func(_value: Variant) -> int: return 1)
 
 func _build_lever(lever: Dictionary) -> void:
 	var at := _at(lever)

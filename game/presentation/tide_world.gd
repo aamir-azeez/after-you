@@ -83,21 +83,20 @@ const CAMERA_X := Vector2(-9.6, 17.28)
 const CAMERA_Z := Vector2(-5.44, 5.44)
 ## Dark sign plates: the water signs, the key sign and the gauge waves' outline.
 const CHIP_DARK := Color("102133")
-const WHEEL_SWEEP := 0.95
-## The hand wheel stands beside the standing point, clear of the spirit and its badge.
-const WHEEL_OFFSET := Vector3(0.62, 1.0, -0.42)
-## A valve's water sign, scaled from the hand wheel's.
+## A valve's water sign, scaled from the full-size sign (a 0.34 m plate).
 const VALVE_SIGN_SCALE := 0.8
+## A valve's mark for bubbles (_mark_scenery): half its dial's width (m).
+const VALVE_MARK_REACH := 0.25
 ## Every selector's speech bubble points at its lever, like every chapter's.
 ## A wheel's bubble sits this far sideways on screen (metres; the kit clamps a
-## shift to the farthest its tail still meets the body), clear of its hand
-## wheel: the tide's and the chamber's to the left; the sea's centred, so once
+## shift to the farthest its tail still meets the body), clear of its valve's
+## sign: the tide's and the chamber's to the left; the sea's centred, so once
 ## it has risen over the gate-bar and sea-bar levers it stays clear of jetty-1's
 ## gauge, with or without a spirit at its lever. Whatever a bubble would still
 ## cover, it rises over (_clear_scenery); its tail stays on its lever.
 const BUBBLE_SHIFTS := {"tide": -4.0, "chamber": -4.0, "basin": 0.1}
-## A bubble rises over a gauge's head, a hand wheel, another lever's knob or a
-## pad once it covers more than this share of it (the share the journey worlds
+## A bubble rises over a gauge's head, another control's valve, another
+## lever's knob or a pad once it covers more than this share of it (the share the journey worlds
 ## allow over a spirit).
 const SCENERY_COVER := 0.10
 ## Each water wheel's tint, for its rim, dial and water sign.
@@ -917,13 +916,11 @@ func _piles(route: Dictionary) -> void:
 # --- Wheels and levers ---
 
 ## Every selector names its values in the shared speech bubble over its lever
-## (journey_world). Three- and four-way wheels also get a spoked hand wheel
-## whose needle shows the value, tinted with the water the wheel moves.
+## (journey_world). The three- and four-way water wheels are valves
+## (descriptor "lever_looks"), the control itself.
 func _build_selector(control: Dictionary) -> void:
 	super._build_selector(control)
-	if control.values.size() < 3: return
-	if _lever_looks.has(control.id): _register_valve(control)
-	else: _build_wheel(control)
+	if control.values.size() >= 3 and _lever_looks.has(control.id): _register_valve(control)
 
 ## A water wheel drawn as a valve (descriptor "lever_looks"): the valve is the
 ## control, on its own spot, and turns itself; it carries the water's sign on
@@ -943,7 +940,7 @@ func _look_marks(control: Dictionary) -> Array:
 func _selector_bubble_shift(control: Dictionary) -> float:
 	return float(BUBBLE_SHIFTS.get(control.id, 0.0))
 
-## A small upright sign on a hand wheel's post: a wave for the harbour tide, a
+## A small upright sign on a valve's post: a wave for the harbour tide, a
 ## pair of gate leaves for the sea, a walled basin for the chamber.
 func _water_icon(id: String, at: Vector3, tint: Color) -> Node3D:
 	var icon := Node3D.new()
@@ -963,55 +960,6 @@ func _water_icon(id: String, at: Vector3, tint: Color) -> Node3D:
 			box(Vector3(0.23, 0.03, 0.02), tint, Vector3(0, -0.10, 0.0), icon)
 			box(Vector3(0.17, 0.07, 0.02), tint.lightened(0.2), Vector3(0, -0.05, 0.005), icon)
 	return icon
-
-func _build_wheel(control: Dictionary) -> void:
-	var color := GOLD if control.owner_slot == "p0" else TEAL
-	var tint: Color = WHEEL_WATER.get(control.id, color)
-	var values: Array = control.values
-	# Beside and above the standing point, so neither a spirit at the wheel nor
-	# its badge hides it.
-	var center := _at(control) + WHEEL_OFFSET
-	box(Vector3(0.07, 0.80, 0.07), TIMBER, center + Vector3(0, -0.44, -0.06), terrain)
-	if WHEEL_WATER.has(control.id): _water_icon(str(control.id), center + Vector3(0, -0.56, -0.01), tint)
-	# The dial plate: one notch per value, with 1, 2 or 3 bands for low, half and
-	# high (the tide gauges use the same bands) and a bar for a shut sea, on a
-	# disc in the colour of the water the wheel moves.
-	var dial := Node3D.new()
-	dial.name = "WheelDial_" + str(control.id)
-	dial.position = center + Vector3(0, 0, -0.05)
-	terrain.add_child(dial)
-	var disc := cylinder(0.30, 0.02, tint.darkened(0.35), Vector3(0, 0, -0.02), dial)
-	disc.rotation.x = PI / 2.0
-	for index in range(values.size()):
-		var angle := _wheel_angle(index, values.size())
-		var mark := Vector3(-sin(angle), cos(angle), 0) * 0.36
-		var bands := TIDE_VALUES.find(str(values[index])) + 1
-		if bands == 0:
-			box(Vector3(0.10, 0.025, 0.02), CREAM, mark, dial).rotation.z = angle
-		for band in range(bands):
-			var tick := box(Vector3(0.022, 0.08, 0.02), CREAM, mark + Vector3(-sin(angle + PI / 2.0), cos(angle + PI / 2.0), 0) * (float(band) - float(bands - 1) * 0.5) * 0.04, dial)
-			tick.rotation.z = angle
-	var wheel := Node3D.new()
-	wheel.name = "HandWheel_" + str(control.id)
-	wheel.position = center
-	terrain.add_child(wheel)
-	var rim := ring(0.24, color, Vector3.ZERO, wheel)
-	rim.rotation.x = PI / 2.0
-	var inner := ring(0.19, tint, Vector3.ZERO, wheel)
-	inner.rotation.x = PI / 2.0
-	inner.scale = Vector3(1, 0.6, 1)
-	for spoke in range(4):
-		var bar := box(Vector3(0.025, 0.46, 0.025), TIMBER.lightened(0.15), Vector3.ZERO, wheel)
-		bar.rotation.z = float(spoke) * PI / 4.0
-	sphere(0.05, color.darkened(0.2), Vector3.ZERO, wheel)
-	# A long cream needle from the hub to past the rim points at the value.
-	var pointer := box(Vector3(0.04, 0.30, 0.03), CREAM, Vector3(0, 0.15, 0.03), wheel)
-	pointer.name = "WheelPointer"
-	_glow(pointer, CREAM, 0.3)
-	_wheels[control.id] = {"wheel": wheel, "values": values.duplicate()}
-
-static func _wheel_angle(index: int, count: int) -> float:
-	return lerpf(WHEEL_SWEEP, -WHEEL_SWEEP, float(index) / float(maxi(count - 1, 1)))
 
 func _build_lever(lever: Dictionary) -> void:
 	var before := terrain.get_child_count()
@@ -1874,13 +1822,8 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		var wheel: Dictionary = _wheels[id]
 		var chosen: int = wheel.values.find(controls.get(id, ""))
 		if chosen < 0: continue
+		# The valve turned itself with the journey switches.
 		wheel.wheel.set_meta("value", str(controls.get(id, "")))
-		# A valve turned itself with the journey switches; the old hand wheel
-		# turns here, beside its tilting lever.
-		if _lever_looks.has(id): continue
-		var t := float(chosen) / float(maxi(wheel.values.size() - 1, 1))
-		wheel.wheel.rotation.z = _wheel_angle(chosen, wheel.values.size())
-		if _physical_levers.has(id): _physical_levers[id].rotation.z = lerpf(0.60, -0.60, t)
 	_follow_knobs()
 	_aim_ramps(controls, immediate)
 	_set_water("harbour", float(HARBOUR_LEVELS.get(tide, HARBOUR_LEVELS.low)), immediate)
@@ -2008,7 +1951,7 @@ func _static_keep() -> Array:
 
 ## The shared placement's scenery rule (journey_world._scenery_need), counted
 ## in every place it tries for a bubble, straight up or leaning aside: how much
-## further a bubble at `rect` climbs to leave every gauge's head, hand wheel,
+## further a bubble at `rect` climbs to leave every gauge's head, valve,
 ## other lever's knob and pad in view.
 func _scenery_need(rect: Rect2, bubble: LabelBubble) -> float:
 	var rise := LabelBubble.screen_up().y
@@ -2034,7 +1977,7 @@ func _mark_climb(rect: Rect2, climb: float, own: String, rise: float) -> float:
 
 ## The backstop: every bubble, as the shared placement left it, keeps
 ## climbing by the same rule over what it would still cover (a tide gauge's
-## waves and bands, any hand wheel, another lever's knob or a pad) and the
+## waves and bands, another control's valve, another lever's knob or a pad) and the
 ## bubbles placed below it; scenery_backstop records the most it climbed. Its
 ## tail stays on its lever. Lowest on screen first, from the current state
 ## alone, so a frame never depends on the last; like the journey lift it is
@@ -2077,15 +2020,15 @@ func _bubble_owner(bubble: LabelBubble) -> String:
 	return ""
 
 ## What a bubble must not cover, on the journey view plane (metres, y down),
-## with the control each belongs to: every gauge's head, every hand wheel, every
-## lever's knob and every pad.
+## with the control each belongs to: every gauge's head, every valve (its
+## own bubble may stand over it), every lever's knob and every pad.
 func _mark_scenery() -> void:
 	_scenery_mark_count = 0
 	for id: String in _gauges: _add_mark(_gauge_head(_gauges[id]), "")
 	for id: String in _wheels:
 		var hub := LabelBubble.plane_point((_wheels[id].wheel as Node3D).global_position)
-		var reach := Vector2(0.36, 0.36 * LabelBubble.screen_up().y)
-		_add_mark(Rect2(hub - reach, reach * 2.0), "")
+		var reach := Vector2(VALVE_MARK_REACH, VALVE_MARK_REACH * LabelBubble.screen_up().y)
+		_add_mark(Rect2(hub - reach, reach * 2.0), id)
 	for id: String in _physical_levers:
 		var knob := LabelBubble.plane_point((_physical_levers[id] as Node3D).global_transform * Vector3(0, 0.4, 0))
 		_add_mark(Rect2(knob - Vector2.ONE * 0.09, Vector2.ONE * 0.18), id)

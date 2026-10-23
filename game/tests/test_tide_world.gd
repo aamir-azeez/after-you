@@ -169,9 +169,14 @@ func _first_stage(level: Dictionary) -> void:
 	var valve: RefCounted = world._lever_looks.tide
 	_check(valve.kind == "valve" and absf(hand.global_position.x - 1.92) < 0.001 and absf(hand.global_position.z + 3.52) < 0.001, "The tide valve turns on the control's own spot")
 	_check(world.terrain.find_child("HandWheel_tide", false, false) == null and world.terrain.find_child("WheelDial_tide", false, false) == null and world._physical_levers.tide.get_child_count() == 0, "No lever handle and no hand wheel beside it")
-	_check(hand.find_child("WheelPointer", false, false) is MeshInstance3D and (hand.find_child("WheelPointer", false, false).mesh as BoxMesh).size.z >= 0.18, "The valve's arrow is a long bar")
+	_check(hand.find_child("WheelPointer", false, false) is MeshInstance3D and (hand.find_child("WheelPointer", false, false).mesh as BoxMesh).size.z >= 0.15, "The valve's arrow is a long bar")
 	var sign: Node3D = world.terrain.find_child("WaterIcon_tide", false, false)
 	_check(sign != null and sign.position.distance_to(valve.sign_point()) < 0.001 and sign.position.y - hand.global_position.y > 0.15 and sign.position.z < hand.global_position.z and world.terrain.find_children("ChipRowWater*", "", false, false).is_empty(), "The tide valve carries the harbour's wave sign up behind it")
+	var sign_box := AABB()
+	for node: Node in sign.find_children("*", "MeshInstance3D", true, false):
+		var piece: AABB = (node as MeshInstance3D).global_transform * (node as MeshInstance3D).get_aabb()
+		sign_box = piece if sign_box.size == Vector3.ZERO else sign_box.merge(piece)
+	_check(absf(sign_box.position.x - 1.92) <= 0.26 and absf(sign_box.end.x - 1.92) <= 0.26 and absf(sign_box.position.z + 3.52) <= 0.26 and absf(sign_box.end.z + 3.52) <= 0.26, "The valve's sign stays inside the control's reach")
 	var blue: Array = []
 	for node: Node in valve.root.find_children("*", "MeshInstance3D", true, false):
 		var colour: Color = ((node as MeshInstance3D).material_override as StandardMaterial3D).albedo_color
@@ -237,7 +242,7 @@ func _second_stage(level: Dictionary) -> void:
 	# The winch is no control here; the LOW history left it on slip.
 	_check(state.controls.winch == "slip" and world._ramps.slipway.rotation.z == 0.0, "In Slack Water the ramp lies where the first stage left the winch")
 	for lever: Dictionary in level.stages[1].levers:
-		var lift: float = preload("res://presentation/kit/lever_looks.gd").ANCHOR_Y if world._lever_looks.has(lever.id) else 0.20
+		var lift: float = world._lever_looks[lever.id].anchor_lift() if world._lever_looks.has(lever.id) else 0.20
 		_check(absf(world._physical_levers[lever.id].global_position.y - float(lever.height_cm) / 100.0 - lift) < 0.01, "A chain, bar, line, pin or key stands at its own stub's height: " + str(lever.id))
 	# The chains are hand winches and the bars sliding bolts (descriptor
 	# "lever_looks"); every other lever keeps its handle. A look shows the
@@ -359,7 +364,7 @@ func _second_stage(level: Dictionary) -> void:
 	spirit_at_lever.players.p1 = {"x": -312, "z": -64, "height": 48, "surface_id": "w-terrace"}
 	world.present(spirit_at_lever, true)
 	world._frame_camera()
-	_check(is_equal_approx(world._journey_switches["tide"].bubble.lift, without), "A spirit at the sea wheel never pushes the tide bubble off its lever (%.2f, %.2f)" % [world._journey_switches["tide"].bubble.lift, without])
+	_check(world._journey_switches["tide"].bubble.lift == 0.0 and without == 0.0, "A spirit at the sea wheel never pushes the tide bubble off its lever (%.2f, %.2f)" % [world._journey_switches["tide"].bubble.lift, without])
 	var chip: Label3D = world._journey_switches["basin"].labels[0]
 	_check(not chip.no_depth_test and not (chip.get_meta("backing").material_override as StandardMaterial3D).no_depth_test, "Bubbles stand in the scene like every chapter's, not drawn over it")
 	# The outer sea, its gates and the mouth lamps follow the basin.
@@ -642,7 +647,7 @@ func _lifted_clear(world: Node3D, label: String) -> void:
 		marks["gauge " + id] = Rect2(foot.x - tall * float(icon.text.length()) * 0.25, foot.y - tall * 0.8, tall * float(icon.text.length()) * 0.5, low - foot.y + tall * 0.8)
 	for id: String in world._wheels:
 		var hub := LabelBubble.plane_point(world._wheels[id].wheel.global_position)
-		var reach := Vector2(0.36, 0.36 * LabelBubble.screen_up().y)
+		var reach := Vector2(World.VALVE_MARK_REACH, World.VALVE_MARK_REACH * LabelBubble.screen_up().y)
 		marks["wheel " + id] = Rect2(hub - reach, reach * 2.0)
 	for id: String in world._physical_levers:
 		var knob := LabelBubble.plane_point((world._physical_levers[id] as Node3D).global_transform * Vector3(0, 0.4, 0))
@@ -659,7 +664,7 @@ func _lifted_clear(world: Node3D, label: String) -> void:
 		var body := Rect2(rect.position, rect.size - Vector2(0, LabelBubble.TAIL))
 		_check(_bubble_cover(world, ids[i]) <= JourneyWorld.SPIRIT_COVER + 0.001, "%s: the %s bubble clears every spirit" % [label, ids[i]])
 		for name: String in marks:
-			if name == "knob " + str(ids[i]): continue
+			if name == "knob " + str(ids[i]) or name == "wheel " + str(ids[i]): continue
 			var mark: Rect2 = marks[name]
 			var share := body.intersection(mark).get_area() / mark.get_area()
 			_check(share <= SCENERY_SHARE, "%s: the %s bubble leaves %s in view (covers %.2f)" % [label, ids[i], name, share])

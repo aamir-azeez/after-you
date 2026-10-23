@@ -10,6 +10,7 @@ const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const ViewFit = preload("res://presentation/kit/view_fit.gd")
 const WallFade = preload("res://presentation/kit/wall_fade.gd")
 const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
+const JourneyWorld = preload("res://presentation/journey_world.gd")
 const LighthouseWorld = preload("res://presentation/lighthouse_world.gd")
 const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 var checks := 0
@@ -96,17 +97,21 @@ func _check_lever_looks() -> void:
 	# turn for a value, a pull ignored, its sign spot up behind it.
 	var valve: RefCounted = LeverLooks.build("valve", Vector3(1, 0.5, 2), Color.RED, holder, [0, 1, 2, 3])
 	_check(_look_inside(valve, LeverLooks.REACH), "The valve stays inside its selector's reach")
-	var wheel_top := -INF
-	for node: Node in valve.wheel().find_children("*", "MeshInstance3D", true, false):
-		var mesh := node as MeshInstance3D
-		wheel_top = maxf(wheel_top, (valve.root.global_transform.affine_inverse() * mesh.global_transform * mesh.get_aabb()).end.y)
+	# The tail lands on the wheel's axis: the top of its arrow and hub there.
+	var pointer: MeshInstance3D = valve.wheel().find_child("WheelPointer", false, false)
+	var wheel_top: float = (valve.root.global_transform.affine_inverse() * pointer.global_transform * pointer.get_aabb()).end.y
+	_check(is_equal_approx(LeverLooks.KNOB_REACH, JourneyWorld.KNOB.y + JourneyWorld.KNOB_RADIUS), "A look's tail point is journey_world's knob point")
 	_check(absf(valve.anchor.position.y + 0.49 - valve.root.position.y - wheel_top) < 0.03, "The valve's anchor puts a bubble's tail on its wheel (%.3f, %.3f)" % [valve.anchor.position.y + 0.49 - valve.root.position.y, wheel_top])
 	var ticks: Array = valve.root.find_children("*", "MeshInstance3D", false, false).filter(func(node: Node) -> bool: return ((node as MeshInstance3D).material_override as StandardMaterial3D).albedo_color == LeverLooks.CREAM)
 	_check(ticks.size() == 0 + 1 + 2 + 3 + 1, "The dial marks a bar for the first value and one, two, three bands for the rest (%d)" % ticks.size())
+	valve.set_value(1)
+	_check(not valve.moving() and is_equal_approx(valve.wheel().rotation.y, LeverLooks.value_angle(1, 4)), "A valve's first value snaps, never sweeping in")
 	valve.set_value(3)
+	_check(valve.moving(), "A later value eases")
 	for frame in range(60): valve.advance(1.0 / 60.0)
 	var eased := _look_pose(valve)
 	var snapped: RefCounted = LeverLooks.build("valve", Vector3(1, 0.5, 2), Color.RED, holder, [0, 1, 2, 3])
+	snapped.set_value(0)
 	snapped.set_value(3, true)
 	_check(not valve.moving() and is_equal_approx(valve.wheel().rotation.y, -LeverLooks.VALVE_SWEEP) and _look_pose(snapped) == eased, "The valve's arrow turns to the last value, eased or snapped alike")
 	valve.set_pulled(true, true)
