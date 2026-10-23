@@ -257,7 +257,7 @@ func _ios_card() -> void:
 func _card_rules() -> void:
 	var made := await _boot(_storage())
 	var app: Node = made[1]
-	app._show_journey()
+	app.journey_flow.show_journey()
 	app._open_whats_new_card()
 	await _settle()
 	_check(_card(app) == null, "The card only opens from Home or Settings")
@@ -270,7 +270,7 @@ func _card_rules() -> void:
 		if str(child.name).begins_with("WhatsNewCard") and not child.is_queued_for_deletion(): cards += 1
 	_check(cards == 1, "Opening twice still shows one card")
 	# A screen change from outside, such as a notification, takes the card away.
-	app._show_journey()
+	app.journey_flow.show_journey()
 	app._service_whats_new()
 	await _settle()
 	_check(_card(app) == null, "Leaving the screen that opened it closes the card")

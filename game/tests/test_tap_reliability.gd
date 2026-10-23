@@ -543,14 +543,14 @@ func _home() -> void:
 		_check(count[0] == 1 and app.mode != "home", "A wobbling tap on Home's %s acts once" % label)
 	# Play Solo: the store reports on every launch and resume, mostly with
 	# nothing new. A card under a finger must survive that report.
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _settle()
 	await _settle()
-	var picker: ScrollContainer = app._journey_picker
+	var picker: ScrollContainer = app.journey_flow.picker
 	var open: Button = null
 	if picker != null:
 		open = (picker.grid.get_child(0) as Control).find_child("ChapterOpen", true, false) as Button
-		if picker.chosen.is_connected(app._open_solo_chapter): picker.chosen.disconnect(app._open_solo_chapter)
+		if picker.chosen.is_connected(app.journey_flow.open_solo_chapter): picker.chosen.disconnect(app.journey_flow.open_solo_chapter)
 	_check(open != null, "Play Solo shows a chapter card")
 	if open != null:
 		var opens := [0]

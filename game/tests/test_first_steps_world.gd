@@ -103,7 +103,7 @@ func _chooser() -> void:
 	root.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await process_frame
 	var buttons := _buttons(app.overlay)
 	var chooser_buttons: Array = app.overlay.find_children("*","Button",true,false)

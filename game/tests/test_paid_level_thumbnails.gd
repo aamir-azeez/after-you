@@ -62,7 +62,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _paid_journey(app: Node, viewport: SubViewport) -> void:
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _settle()
 	var scroll := app.overlay.find_children("*","ScrollContainer",true,false)[0] as ScrollContainer
 	var cards := _cards(scroll)
@@ -96,7 +96,7 @@ func _paid_journey(app: Node, viewport: SubViewport) -> void:
 	_check(_fixed_back(app,viewport,"Back"),"Journey Back remains outside and below the scroll body")
 
 func _paid_earlier(app: Node, viewport: SubViewport) -> void:
-	app._show_earlier_islands()
+	app.journey_flow.show_earlier_islands()
 	await _settle()
 	var scroll := app.overlay.find_children("*","ScrollContainer",true,false)[0] as ScrollContainer
 	_check(_cards(scroll).size()==5 and _rows(scroll).size()==8,"Earlier islands keeps three free and all five paid entries")

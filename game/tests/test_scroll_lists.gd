@@ -221,7 +221,7 @@ func _settings_licenses(app: Node, viewport: SubViewport, expected: Array[String
 
 
 func _journey_rows(app: Node, viewport: SubViewport, can_drag: bool) -> void:
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _settle()
 	var lists: Array[Node] = app.overlay.find_children("*", "ScrollContainer", true, false)
 	_check(lists.size() == 1, "Journey chapters use one bounded list at small landscape size")

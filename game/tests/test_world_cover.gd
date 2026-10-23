@@ -58,7 +58,7 @@ func _run() -> void:
 		await _frames(2)
 		_check(not viewport.disable_3d and app.world.is_processing(), "Closing %s brings the world back" % script_path.get_file())
 	# A full page behind the 0.9 shade.
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _frames(4)
 	_check(app.mode == "journey" and app._backdrop_shade_id == app.overlay_shade.get_instance_id(), "A page shade asks for one still of the world")
 	_check(not is_instance_valid(app._backdrop_view), "The still's render is released once taken")
@@ -99,12 +99,12 @@ func _redrawn_pages(app: Node, viewport: Viewport) -> void:
 	app.child_entered_tree.connect(count_views)
 	# Headless renders no image; stand in a small one for the readback.
 	app.backdrop_reader = func(_view: SubViewport) -> Image: return Image.create(8, 8, false, Image.FORMAT_RGBA8)
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _frames(4)
 	_check(app._backdrop_ready and viewport.disable_3d and not app.world.is_processing() and app.overlay.find_child("FrozenWorld", true, false) != null, "A page shows the still and stops the live world")
 	var stayed := true
 	for redraw in range(2):
-		app._show_journey()
+		app.journey_flow.show_journey()
 		for frame in range(4):
 			await process_frame
 			stayed = stayed and viewport.disable_3d and app._backdrop_ready
@@ -113,18 +113,18 @@ func _redrawn_pages(app: Node, viewport: Viewport) -> void:
 	_check(views.size() == 1 and is_equal_approx(float(views[0]), 0.6) and smoothing[0] == Viewport.MSAA_2X, "The still renders at the live world's 3D scale and antialiasing")
 	_check(app.overlay.find_children("FrozenWorld", "", true, false).size() == 1 and not is_instance_valid(app._backdrop_view), "The redrawn page has one still and no render left behind")
 	app.world.camera.global_position += Vector3(0.5, 0, 0)
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _frames(4)
 	_check(views.size() == 2 and app._backdrop_ready, "A moved camera takes a new still")
 	# Every quality keeps the 3D scale on most phones. High to Balanced changes
 	# only antialiasing, and Balanced to Low only the effects it leaves out.
 	viewport.msaa_3d = Viewport.MSAA_DISABLED
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _frames(4)
 	_check(views.size() == 3 and smoothing[2] == Viewport.MSAA_DISABLED, "A changed antialiasing takes a new still")
 	var quality: Variant = app.saves.data.settings.get("graphics_quality")
 	app.saves.data.settings.graphics_quality = "low" if quality != "low" else "balanced"
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _frames(4)
 	_check(views.size() == 4 and is_equal_approx(float(views[3]), 0.6), "A changed quality at the same scale takes a new still")
 	app.saves.data.settings.graphics_quality = quality

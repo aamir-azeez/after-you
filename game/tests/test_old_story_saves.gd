@@ -43,7 +43,7 @@ func _run() -> void:
 	store.values["relay-campaign-admission-terminal-v1:"+GUEST]={"schema_version":1,"receipts":[]}
 	var story_files: Dictionary=store.values.duplicate(true)
 	app.relay_session=Session.new(api,app._relay_identity,store)
-	app._show_journey()
+	app.journey_flow.show_journey()
 	_check(_button_named(app,"Story")==null,"The chapter picker has no Story entry")
 	# Its own server address keeps this run's saved hub list apart from other runs.
 	api.base_url="https://old-story-saves-"+path.get_file().get_basename()+".invalid"

@@ -498,7 +498,7 @@ func _test_identity_reads(app: Node, api: Node, storage: TestSecrets) -> void:
 
 func _test_live_entitlement(app: Node) -> void:
 	app.purchases.customer_info={}
-	app._show_earlier_islands()
+	app.journey_flow.show_earlier_islands()
 	var locked_label: String="04  "+str(Levels.get_level(3).title)+"  ·  Full Journey"
 	var unlocked_label: String="04  "+str(Levels.get_level(3).title)
 	var button := _find_button(app.overlay,locked_label)
@@ -506,7 +506,7 @@ func _test_live_entitlement(app: Node) -> void:
 	button.pressed.emit()
 	_check(app.mode=="ready" and app.level_index==3,"Existing journey button checks current entitlement instead of captured lock")
 	app.purchases.customer_info={}
-	app._show_earlier_islands()
+	app.journey_flow.show_earlier_islands()
 	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}))
 	await process_frame
 	_check(app.mode=="earlier_islands" and _find_button(app.overlay,unlocked_label)!=null and _find_button(app.overlay,locked_label)==null,"Asynchronous customer info refreshes visible earlier-island lock labels without leaving that panel")
@@ -534,7 +534,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	app.api.device_token = TEST_DEVICE_TOKEN
 	app.store_flow.store_owner = TEST_SAVED_PLAYER
 	var saved: Dictionary = app.saves.data.duplicate(true)
-	app._show_journey()
+	app.journey_flow.show_journey()
 	# The chooser card names the chapter once and its play button opens it solo;
 	# its visible Full Journey line stays gold while the chapter is locked.
 	var lighthouse_card: Node = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
@@ -564,12 +564,12 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	_check(_find_button(app.overlay,"Enter the Lighthouse") != null and _find_button(app.overlay,"Subscribe · €9.99 a year") == null,"SDK entitlement replaces checkout with the Lighthouse entry action")
 	app.store_flow._buy_full_journey(yearly)
 	_check(probe.buys.size() == 2,"Already entitled users are never sent to another purchase")
-	app._show_journey()
+	app.journey_flow.show_journey()
 	lighthouse_card = app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false)
 	marker = lighthouse_card.find_child("ChapterAccess",true,false) if lighthouse_card != null else null
 	_check(lighthouse_card != null and _card_target(lighthouse_card) != null and marker != null and not marker.get_meta("full_journey_locked",true) and marker.get_theme_color("font_color") != app.GOLD,"Owned Lighthouse has no locked marker")
 	probe.active = false
-	app._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
+	app.journey_flow.open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	_check(app.mode == "paywall","A previously unlocked entry checks entitlement again after revocation")
 	app.identity_loading = true
 	app.store_flow.restore_purchases()
@@ -598,7 +598,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	_check(app.mode == "home","A late checkout result does not pull the player into another screen")
 	app.identity_loading = true
 	app.store_flow.restore_purchases()
-	app._show_journey()
+	app.journey_flow.show_journey()
 	app.identity_loading = false
 	await process_frame
 	_check(probe.restores == 2 and not app.store_flow.store_action_pending,"Leaving a pending identity wait cancels the unstarted Restore")
@@ -611,7 +611,7 @@ func _test_lighthouse_paywall(app: Node) -> void:
 	_check(not app.store_flow.restore_requested and not app.store_flow.store_action_pending and probe.restores == 2,"Leaving during configuration also cancels the queued Restore")
 	app._show_home()
 	app.identity_restart_required = true
-	app._open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
+	app.journey_flow.open_solo_chapter(Thumbnails.SLEEPING_LIGHTHOUSE)
 	_check(app.mode == "home","Recovery/restart hold prevents using the previous identity's unlock")
 	_check(app.saves.data == saved,"Viewing, cancelling, restoring and holding purchases never changes recorded gameplay")
 	app.identity_restart_required = false

@@ -138,12 +138,12 @@ func _run() -> void:
 		var card_text: bool = await _paywall_says(app, PlayerCopy.PURCHASES_49387E2DE82E_IOS)
 		var old_text: bool = await _paywall_says(app, PlayerCopy.MAIN_FC1F8BAE026C)
 		_check(card_text == Purchases.store_enabled(config) and not old_text, "The store card, if ever reached, drops the old free-chapter list too" + label)
-		app._journey_hard = true
-		app._show_journey()
+		app.journey_flow.hard = true
+		app.journey_flow.show_journey()
 		await _settle()
 		var hard_grid: GridContainer = app.overlay.find_child("JourneyChapters", true, false) as GridContainer
 		_check(hard_grid != null and hard_grid.get_children().all(func(card: Node) -> bool: return not str(card.name).begins_with("PaidLevel_")), "Hard in Play Solo lists no paid chapter either" + label)
-		app._journey_hard = false
+		app.journey_flow.hard = false
 
 
 	# A friend's paid room joined from a free-only build keeps its part count.
@@ -285,8 +285,8 @@ func _surfaces(app: Node, platform: String, config: Dictionary) -> Dictionary:
 	app.config.merge(config, true)
 	app.api.player_id = ""
 	var seen := {}
-	app._journey_hard = false
-	app._show_journey()
+	app.journey_flow.hard = false
+	app.journey_flow.show_journey()
 	await _settle()
 	var grid: GridContainer = app.overlay.find_child("JourneyChapters", true, false) as GridContainer
 	var cards: Array = grid.get_children() if grid != null else []
@@ -301,7 +301,7 @@ func _surfaces(app: Node, platform: String, config: Dictionary) -> Dictionary:
 	seen.together_paid = together.filter(func(item: Dictionary) -> bool: return item.premium).size()
 	seen.together_free = together.size() - seen.together_paid
 	seen.together_locked = together.filter(func(item: Dictionary) -> bool: return item.locked).size()
-	app._show_earlier_islands()
+	app.journey_flow.show_earlier_islands()
 	await _settle()
 	seen.islands = _buttons_starting(app.overlay, ["01  ", "02  ", "03  ", "04  ", "05  ", "06  ", "07  ", "08  "])
 	seen.island_scroll = _island_row(app.overlay) != null and _scroll_of(_island_row(app.overlay)) != null

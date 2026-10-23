@@ -35,7 +35,7 @@ func _navigate(key: String) -> void:
 	app.purchases.customer_info = {}
 	var item := Registry.descriptor(key)
 	var solo_label := str(item.title) + " · Solo" + (" · Full Journey" if item.premium else "")
-	app._show_journey()
+	app.journey_flow.show_journey()
 	var solo := _chapter_solo(app,key)
 	_check(solo != null,"Journey exposes the authored chapter: " + key)
 	if solo == null: return
@@ -55,7 +55,7 @@ func _navigate(key: String) -> void:
 		app.store_flow.store_owner = app.api.player_id
 		app.store_flow.store_configured = true
 		app.purchases.customer_info = {"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}
-		app._show_journey()
+		app.journey_flow.show_journey()
 		_chapter_solo(app,key).pressed.emit()
 	app = null
 	if not await _wait_for_scene(Registry.solo_scene(key)): return

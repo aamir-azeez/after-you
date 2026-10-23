@@ -122,8 +122,8 @@ func _test_controls(app: Node, safe: Rect2, physical_size: Vector2i) -> void:
 		_check(app.hint_label.get_line_count()==app.hint_label.get_visible_line_count(),"Every line of the wrapped First Light instruction remains visible")
 
 func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
-	for method: String in ["_show_home","_show_journey","show_settings","show_collection"]:
-		(app.replays_flow if method == "show_collection" else app.settings_flow if method == "show_settings" else app).call(method)
+	for method: String in ["_show_home","show_journey","show_settings","show_collection"]:
+		(app.replays_flow if method == "show_collection" else app.settings_flow if method == "show_settings" else app.journey_flow if method == "show_journey" else app).call(method)
 		await _settle_layout()
 		await _check_menu(app.overlay,safe,method)
 		if method == "_show_home":

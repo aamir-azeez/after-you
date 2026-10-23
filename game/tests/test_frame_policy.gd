@@ -170,7 +170,7 @@ func _run() -> void:
 		guard += 1
 	var app: Node = current_scene
 	_check(app != null and app.frame_demand() == Frames.CALM, "Home is calm")
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _frames(2)
 	_check(app.frame_demand() == Frames.CALM, "A page is calm")
 	app._show_home()

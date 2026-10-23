@@ -41,6 +41,7 @@ const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const SettingsFlow = preload("res://presentation/settings_flow.gd")
 const PlatformGamesFlow = preload("res://presentation/platform_games_flow.gd")
 const DisplayNameFlow = preload("res://presentation/display_name_flow.gd")
+const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
@@ -81,7 +82,7 @@ const INVITE_LINK_ATTEMPTS := 3
 # Invite links open Friends by themselves only from these modes, and only when idle.
 const INVITE_LINK_MODES := ["home", RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS]
 ## Screens a tapped notification may leave to open its room (Friends too, for a hosting alert).
-const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, LegacyRoomFlow.MODE_ROOM, "journey", "earlier_islands", ReplaysFlow.MODE_COLLECTION, "saved", RelayLobbyFlow.MODE_LOBBY]
+const NOTIFICATION_ROUTE_MODES := ["home", RoomHubFlow.MODE_ROOMS, LegacyRoomFlow.MODE_ROOM, JourneyFlow.MODE_JOURNEY, JourneyFlow.MODE_EARLIER_ISLANDS, ReplaysFlow.MODE_COLLECTION, "saved", RelayLobbyFlow.MODE_LOBBY]
 const ObjectivePanel = preload("res://presentation/objective_panel.gd")
 const SeedTimerBar = preload("res://presentation/seed_timer_bar.gd")
 const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd")
@@ -105,11 +106,6 @@ var _whats_new_card_mode := ""
 var external_link_opener: Callable
 var _bounded_card_scroll: ScrollContainer
 var _bounded_card_stack: VBoxContainer
-var _journey_picker: ChapterPicker
-## Play Solo's Hard chip (services/hard_mode.gd), kept for the session.
-var _journey_hard := false
-## Full Journey access the open chapter grid was drawn with.
-var _grid_access_drawn := false
 ## The card an open of a chapter waits behind; one open at a time.
 var _chapter_opening: CanvasLayer
 ## Proves saved solo journeys on a worker while Home is idle.
@@ -244,6 +240,8 @@ var settings_flow: SettingsFlow = _host_settings_flow()
 var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
 ## Display names: the first-run prompt, the prompt from Friends and the Friends header chip.
 var display_name_flow: DisplayNameFlow = _host_display_name_flow()
+## Play Solo: the Chapters page, Earlier islands and which chapter a card opens.
+var journey_flow: JourneyFlow = _host_journey_flow()
 ## Adding a room partner as a friend (room options and the room list's menu).
 var partner_friends: RefCounted = PartnerFriends.new(_names_scope, _friends_client)
 var store_view_generation := 0
@@ -346,22 +344,22 @@ func _ready() -> void:
 	add_child(_proof_warmup)
 	_gl_warmup = GlWarmup.new()
 	_gl_warmup.settings = func() -> Dictionary: return saves.data.settings
-	_gl_warmup.next_chapter = _next_solo_chapter
-	_gl_warmup.idle = func() -> bool: return mode in ["home", "journey"] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
+	_gl_warmup.next_chapter = journey_flow.next_solo_chapter
+	_gl_warmup.idle = func() -> bool: return mode in ["home", JourneyFlow.MODE_JOURNEY] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	add_child(_gl_warmup)
 	# Heavy chapter worlds, built unseen once Home has settled and nothing
 	# else warms (services/world_prewarm.gd).
 	_world_prewarm = WorldPrewarm.new()
 	_world_prewarm.settings = func() -> Dictionary: return saves.data.settings
-	_world_prewarm.chapters = _openable_chapters
+	_world_prewarm.chapters = journey_flow.openable_chapters
 	_world_prewarm.away = func() -> bool: return is_instance_valid(relay_child) or is_instance_valid(shared_replay_child)
-	_world_prewarm.idle = func() -> bool: return mode in ["home", "journey"] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and _keepsakes_reconcile_frame < 0 and not _home_settling() and not (is_instance_valid(_gl_warmup) and _gl_warmup.running())
+	_world_prewarm.idle = func() -> bool: return mode in ["home", JourneyFlow.MODE_JOURNEY] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and _keepsakes_reconcile_frame < 0 and not _home_settling() and not (is_instance_valid(_gl_warmup) and _gl_warmup.running())
 	add_child(_world_prewarm)
 	var thumbnails := ThumbnailShelf.new()
 	thumbnails.idle = func() -> bool: return mode == "home" and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	thumbnails.paused = func() -> bool: return application_backgrounded or is_instance_valid(_chapter_opening)
 	thumbnails.playing = func() -> bool: return is_instance_valid(relay_child) or is_instance_valid(shared_replay_child)
-	thumbnails.warm_paths = _journey_thumbnail_paths
+	thumbnails.warm_paths = journey_flow.thumbnail_paths
 	add_child(thumbnails)
 	world=World.new()
 	add_child(world)
@@ -712,7 +710,7 @@ func _show_home() -> void:
 	var menu := HomeMenu.new()
 	overlay.add_child(menu)
 	# A tap made while the room session is still busy waits on the Play button (RoomHubFlow.open_from_home).
-	menu.build({"play":room_hub_flow.open_from_home,"solo":_show_journey,"friends":_show_friends,"replays":replays_flow.show_collection,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
+	menu.build({"play":room_hub_flow.open_from_home,"solo":journey_flow.show_journey,"friends":_show_friends,"replays":replays_flow.show_collection,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
 	menu.set_play_icon(FriendPlayIcon.new())
 	menu.journey_offer.visible = _full_journey_offered()
 	if _whats_new_unseen: menu.mark_whats_new_unseen(Changelog.current_version())
@@ -764,74 +762,6 @@ func _screen_shell(title: String, back_callback: Callable) -> Dictionary:
 ## Locked Full Journey art is dimmed and desaturated by the shared chapter picker.
 const LOCKED_PICTURE_TINT := ChapterPicker.LOCKED_PICTURE_TINT
 
-func _show_journey() -> void:
-	running = false
-	mode = "journey"
-	var shell := _screen_shell("Your journey",_show_home)
-	var outer: VBoxContainer = shell.outer
-	var tabs := HBoxContainer.new()
-	tabs.add_theme_constant_override("separation",10)
-	var chapters_tab := _button("Chapters",_show_journey,false)
-	chapters_tab.disabled = true
-	ControlTheme.selected_tab(chapters_tab)
-	tabs.add_child(chapters_tab)
-	var earlier := _button("Earlier islands",_show_earlier_islands,false)
-	ControlTheme.plain_tab(earlier)
-	tabs.add_child(earlier)
-	# Hard: the whole chapter in one go (services/hard_mode.gd).
-	var spacer := Control.new()
-	spacer.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	spacer.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	tabs.add_child(spacer)
-	var hard_chip := HardModeView.chip(_journey_hard)
-	hard_chip.toggled.connect(func(on: bool):
-		_journey_hard = on
-		_show_journey())
-	tabs.add_child(hard_chip)
-	outer.add_child(tabs)
-	var picker := ChapterPicker.new()
-	picker.heading_font = title_font
-	picker.available_width = func() -> float: return ui.size.x-44.0
-	picker.hard_mode = HardMode.SOLO
-	picker.hard_states = hard_states()
-	outer.add_child(picker)
-	shell.margin.resized.connect(picker.refit)
-	# The solo-only Lighthouse leads the Full Journey chapters; the picker puts
-	# every free chapter first in registry order.
-	var owned := _full_journey_access()
-	_grid_access_drawn = owned
-	picker.set_entries(_journey_entries(owned,_journey_hard),ChapterPicker.picture_for(ui.size.x))
-	picker.chosen.connect(_open_solo_chapter)
-	_journey_picker = picker
-	_refresh_chapter_marks()
-
-## Runs a Play Solo card's play button: the chapter's solo scene, through the
-## premium gate when the chapter is premium.
-func _open_solo_chapter(key: String) -> void:
-	if _journey_hard and mode == "journey":
-		_open_hard_chapter(key)
-		return
-	if key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE:
-		_open_lighthouse()
-		return
-	if not _own_solo_card(key): return
-	if ChapterRegistry.descriptor(key).premium: _open_premium_chapter(ChapterRegistry.solo_scene(key))
-	else: _open_chapter_preview(ChapterRegistry.solo_scene(key))
-
-## Every chapter has its own Solo card except the Lighthouse's, which the
-## Lighthouse card opens (lighthouse_scene()).
-static func _own_solo_card(key: String) -> bool:
-	return not ChapterRegistry.is_lighthouse(key) and not ChapterRegistry.solo_scene(key).is_empty()
-
-## A solo hard run of the chapter, once it is finished (services/hard_mode.gd).
-func _open_hard_chapter(key: String) -> void:
-	if not HardMode.unlocked(_chapter_marks(), key):
-		_toast(PlayerCopy.HARD_LOCKED_TOAST)
-		return
-	var request := {"chapter_key": key, "kind": "play"}
-	if ChapterRegistry.descriptor(key).premium: _open_premium_chapter(ChapterRegistry.solo_scene(key), {}, request)
-	else: _open_chapter_preview(ChapterRegistry.solo_scene(key), {}, request)
-
 ## Every chapter's hard marks (HardMode.states); together ones only where
 ## the server has said it hosts hard rooms (`together`, or the relay session
 ## when null).
@@ -841,86 +771,8 @@ func hard_states(together: Variant = null) -> Dictionary:
 func hard_together() -> bool:
 	return relay_session != null and relay_session.hard_mode_supported()
 
-## The Chapters page's cards, as given to its picker (which shows free ones
-## first): the solo-only Lighthouse, then every chapter with its own Solo card.
-## With hard on: only chapters with hard runs, each locked until finished.
-## A build that sells nothing lists the free chapters alone (_paid_content_hidden).
-func _journey_entries(owned: bool, hard: bool = false) -> Array[Dictionary]:
-	var lighthouse := {"key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "title": "Sleeping Lighthouse", "premium": true,
-		"level_key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "mark": "sleeping-lighthouse@1"}
-	var entries: Array[Dictionary] = [lighthouse]
-	for key: String in ChapterRegistry.offered_keys():
-		if _own_solo_card(key): entries.append(ChapterPicker.entry(key))
-	if _paid_content_hidden(): entries = entries.filter(func(item: Dictionary) -> bool: return not item.premium)
-	for item: Dictionary in entries: item.locked = item.premium and not owned
-	return HardMode.picker_entries(entries, _chapter_marks()) if hard else entries
-
-## The Chapters page's pictures in its card order, which the thumbnail shelf
-## loads ahead while Home is idle.
-func _journey_thumbnail_paths() -> Array[String]:
-	var paths: Array[String] = []
-	for item: Dictionary in ChapterPicker.shown_order(_journey_entries(_full_journey_access())):
-		paths.append(ChapterThumbnailCatalog.path(str(item.key)))
-	return paths
-
-## The chapter the player most likely opens next: the first card the Chapters
-## page shows, in its order, that is open to them and not yet finished solo;
-## "" once every one is.
-func _next_solo_chapter() -> String:
-	var marks := _chapter_marks()
-	for item: Dictionary in ChapterPicker.shown_order(_journey_entries(_full_journey_access())):
-		if bool(item.locked) or bool(marks.get(str(item.mark), {}).get("solo", false)): continue
-		if str(item.key) != ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE: return str(item.key)
-		# The Lighthouse card opens @2 once it is offered, else @1.
-		return ChapterRegistry.LIGHTHOUSE_V2 if lighthouse_scene() == ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2) else str(item.mark)
-	return ""
-
-## Every chapter the player can open from the Chapters page now, the one they
-## most likely open next first (services/world_prewarm.gd).
-func _openable_chapters() -> Array[String]:
-	var result: Array[String] = []
-	var next := _next_solo_chapter()
-	if not next.is_empty(): result.append(next)
-	for item: Dictionary in ChapterPicker.shown_order(_journey_entries(_full_journey_access())):
-		if not bool(item.locked) and not str(item.key) in result: result.append(str(item.key))
-	return result
-
 func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
-
-func _refresh_chapter_marks() -> void:
-	if mode != "journey" or not is_instance_valid(_journey_picker): return
-	_journey_picker.refresh_marks(_chapter_marks())
-
-func _show_earlier_islands() -> void:
-	running=false
-	mode="earlier_islands"
-	_grid_access_drawn = _full_journey_access()
-	var card := _card(800)
-	card.add_child(_label("Earlier islands.",34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_042C89C38B20,710))
-	# A build that sells nothing lists the free islands alone, which fit without a scroll.
-	var free_only := _paid_content_hidden()
-	var list := _scroll_list(card,not free_only)
-	if not free_only: list.get_parent().custom_minimum_size.y = 340
-	for index in range(levels.size()):
-		var level: Dictionary=levels[index]
-		if free_only and bool(level.get("premium",false)): continue
-		var locked: bool = index>=3 and not _full_journey_access()
-		var complete: bool = saves.data.completed.has(level.id)
-		var text := "%02d  %s%s%s" % [index+1,level.title,"  ·  Full Journey" if locked else "","  ✓" if complete else ""]
-		var button := _button(text,func(): _start_practice(index),false)
-		button.custom_minimum_size.y=65
-		button.mouse_filter=Control.MOUSE_FILTER_PASS
-		button.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART
-		button.add_theme_font_size_override("font_size",18)
-		if index>=3:
-			var actions := VBoxContainer.new()
-			actions.add_child(button)
-			list.add_child(PaidThumbnails.row("legacy-"+str(level.id),actions,false))
-		else:
-			list.add_child(button)
-	card.add_child(_back_button("Back to chapters",_show_journey,false))
 
 const LIGHTHOUSE_SCENE := "res://lighthouse_preview.tscn"
 
@@ -1049,7 +901,7 @@ func _start_practice(index: int) -> void:
 		card.add_child(_paragraph(PlayerCopy.MAIN_CCB173FD54CF))
 		card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
 		card.add_child(_button("Start a fresh attempt",_confirm_restart_attempt,false))
-		card.add_child(_action_button("back",_show_journey))
+		card.add_child(_action_button("back",journey_flow.show_journey))
 		return
 	_prepare_turn()
 
@@ -1069,7 +921,7 @@ func _prepare_turn() -> void:
 	var ruleset := TurnState.simulation_version(attempt, role, active_room if room_play else {}, false)
 	if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role,ruleset):
 		_toast(sim.error)
-		_show_journey()
+		journey_flow.show_journey()
 		return
 	_begin_sound_turn()
 	sim.catch_assistance=bool(saves.data.settings.get("assistance",true))
@@ -1089,7 +941,7 @@ func _prepare_turn() -> void:
 	if draft.get("role","")==role and int(draft.get("duration_ticks",0))>0:
 		card.add_child(_action_button("resume",func(): _resume_draft(draft)))
 	card.add_child(_action_button("record",_begin_turn))
-	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else _show_journey))
+	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else journey_flow.show_journey))
 
 ## The simulation is back at tick zero: its cues restart their identities.
 func _begin_sound_turn() -> void:
@@ -1268,7 +1120,7 @@ func _show_review() -> void:
 		card.add_child(_action_button("save",_commit_turn))
 	if not already_saved:
 		card.add_child(_action_button("retry",_retry_review))
-	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else _show_journey))
+	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else journey_flow.show_journey))
 
 ## From the review card, or (`paused_over`) from the pause card over its Preview.
 func _retry_review(paused_over: String = "") -> void:
@@ -1637,7 +1489,7 @@ func _host_store_flow() -> StoreFlow:
 	var flow := StoreFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.settings_requested.connect(func(): settings_flow.show_settings(SettingsFlow.ACCOUNT))
-	flow.chapters_requested.connect(_show_journey)
+	flow.chapters_requested.connect(func(): journey_flow.show_journey())
 	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
 	flow.lighthouse_requested.connect(_open_lighthouse)
 	flow.google_play_requested.connect(_open_google_play)
@@ -1680,7 +1532,7 @@ func _host_room_hub_flow() -> RoomHubFlow:
 	var flow := RoomHubFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.home_requested.connect(_show_home)
-	flow.journey_requested.connect(_show_journey)
+	flow.journey_requested.connect(func(): journey_flow.show_journey())
 	flow.hosting_locked_requested.connect(func(chapter_key: String): store_flow.show_hosting_locked(chapter_key))
 	flow.tester_access_requested.connect(func(): store_flow.show_tester_access())
 	flow.shared_replay_requested.connect(func(room_id: String): replays_flow.open_shared_replay_room(room_id))
@@ -1752,6 +1604,12 @@ func _host_display_name_flow() -> DisplayNameFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
 
+## An internal child, like StoreFlow.
+func _host_journey_flow() -> JourneyFlow:
+	var flow := JourneyFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	return flow
+
 ## The server and player that key the names and friends this phone keeps, or {}.
 func _names_scope() -> Dictionary:
 	if api == null or not _relay_identity().ready: return {}
@@ -1795,12 +1653,8 @@ func _customer_info_changed(_payload: Dictionary) -> void:
 	# store reports on every launch and resume, mostly with nothing new, and a
 	# redraw frees the card under a finger, so only a change in access redraws,
 	# after any tap in progress.
-	if mode in ["journey","earlier_islands"]:
-		if _full_journey_access() == _grid_access_drawn: return
-		await TouchInput.redraw_when_released(overlay,func() -> bool: return mode in ["journey","earlier_islands"] and _full_journey_access() != _grid_access_drawn,
-			func() -> void:
-				if mode=="journey": _show_journey()
-				else: _show_earlier_islands())
+	if mode in [JourneyFlow.MODE_JOURNEY,JourneyFlow.MODE_EARLIER_ISLANDS]:
+		await journey_flow.access_changed()
 	elif mode==RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open():
 		room_hub_flow.redraw_chapters()
 
@@ -2370,7 +2224,7 @@ func _place_still(shade: ColorRect, texture: Texture2D) -> void:
 func _foreground_refresh_safe() -> bool:
 	# A paused rehearsal is still active work. Do not swap its source recording,
 	# revision or review screen behind the player's back.
-	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home",RoomHubFlow.MODE_ROOMS,LegacyRoomFlow.MODE_ROOM,"journey",ReplaysFlow.MODE_COLLECTION,SettingsFlow.MODE_SETTINGS,"saved"]
+	return not is_instance_valid(relay_child) and not application_backgrounded and not running and not submission_in_flight and mode in ["home",RoomHubFlow.MODE_ROOMS,LegacyRoomFlow.MODE_ROOM,JourneyFlow.MODE_JOURNEY,ReplaysFlow.MODE_COLLECTION,SettingsFlow.MODE_SETTINGS,"saved"]
 
 func _background_application() -> void:
 	if application_backgrounded:
@@ -2485,7 +2339,7 @@ func _open_update_target() -> void:
 
 func _play_solo_from_update_gate() -> void:
 	update_gate_dismissed = true
-	_show_journey()
+	journey_flow.show_journey()
 
 ## A route refused this build as too old: ask again, at most once a minute.
 func _on_update_required() -> void:
@@ -2630,7 +2484,7 @@ func _home_settling() -> bool:
 	return (is_instance_valid(home_stage_view) and home_stage_view.folding()) or ScreenSwitch.pending_count() > 0
 
 func _service_home_keepsakes(delta: float) -> void:
-	if mode not in ["home","journey"] or application_backgrounded or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening): return
+	if mode not in ["home",JourneyFlow.MODE_JOURNEY] or application_backgrounded or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening): return
 	# In a frame of its own: after Home's island has folded and the screen
 	# before it has been freed, which both take the first frames.
 	if _keepsakes_reconcile_frame >= 0 and Engine.get_process_frames() > _keepsakes_reconcile_frame and not _home_settling():
@@ -2648,8 +2502,8 @@ func _service_home_keepsakes(delta: float) -> void:
 		# its full proof on the home thread; verification is queued by the service.
 		home_keepsakes.reconcile_friend(shared_replays)
 	if home_keepsakes.backfill_pending(): home_keepsakes.advance_backfill(1)
-	if mode == "journey":
-		_refresh_chapter_marks()
+	if mode == JourneyFlow.MODE_JOURNEY:
+		journey_flow.refresh_marks()
 	elif is_instance_valid(home_stage_view):
 		home_stage_view.set_keepsakes(home_keepsakes.earned_descriptors())
 		var offer := overlay.get_node_or_null("HomeFullJourney") as Button

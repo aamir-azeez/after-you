@@ -380,7 +380,7 @@ func _waiting_link_outlives_main() -> void:
 	_check(current_scene.invite_link_pending.is_empty(),"A fresh Main starts with no link")
 	if not await _scene_is("res://main.tscn"): return
 	var app: Node = current_scene
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _frames(2)
 	app._invite_link_received({"ok":true,"type":ShareCodes.FRIEND,"id":PEER})
 	_check(app.invite_link_pending == PEER,"A link waits while Play Solo is open")

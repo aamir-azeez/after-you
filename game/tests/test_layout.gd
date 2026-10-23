@@ -128,7 +128,7 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 		_check(screen.encloses(button.get_global_rect()) and not button.get_global_rect().intersects(hint.get_global_rect()),"Home action stays visible without overlapping the hint: "+(button.text if not button.text.is_empty() else str(button.name)))
 	var box: Control=app.home_stage_view._keepsake_box
 	_check(box!=null and box.is_visible_in_tree() and screen.encloses(box.get_global_rect()) and not box.get_global_rect().intersects(hint.get_global_rect()),"The keepsake box stays on screen, clear of the hint at %s" % viewport.size)
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Journey")
 	app.settings_flow.show_settings()

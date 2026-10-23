@@ -176,16 +176,16 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		app.home_keepsakes._earned[id]={"solo":false,"friend":true}
 	var context := " at "+str(viewport.size)
 	var shelf: Node = app.find_child("ChapterThumbnailShelf",false,false)
-	var kept: bool = shelf != null and app._journey_thumbnail_paths().all(func(path: String) -> bool: return shelf.keeps(path))
+	var kept: bool = shelf != null and app.journey_flow.thumbnail_paths().all(func(path: String) -> bool: return shelf.keeps(path))
 	_check(kept or viewport.size == Vector2i(1280,720),"Pictures the page showed stay kept for its next visit"+context)
-	app._show_journey()
+	app.journey_flow.show_journey()
 	# The page never loads a picture in its own frame: one Home already keeps
 	# shows at once, any other fills in from the loader's threads.
 	_check(not kept or _unfilled_pictures(app.overlay) == 0,"With every picture kept, the page shows them all on its first frame"+context)
 	_check(await _await_pictures(app.overlay) == 0,"Every card's picture fills in"+context)
 	var pictures: Array[String] = []
 	for picture: Node in app.overlay.find_children("LevelPicture","TextureRect",true,false): pictures.append(str(picture.get_meta("thumbnail_path","")))
-	_check(pictures == app._journey_thumbnail_paths(),"Idle Home warms exactly the page's pictures, in card order"+context)
+	_check(pictures == app.journey_flow.thumbnail_paths(),"Idle Home warms exactly the page's pictures, in card order"+context)
 	await _settle()
 	var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]
 	await _picker_structure(app,viewport,scroll)
@@ -300,7 +300,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		_check(tick != null and tick.visible==(key in [Chapters.FIRST_STEPS,Chapters.RELAY]),"A completed backfill updates ticks without reopening the picker: "+key)
 	_check(relay_title != null and relay_title.get_global_rect().is_equal_approx(untouched),"A tick appearing never reflows its title")
 	for card: Control in cards: (card.find_child("LevelTitle",true,false) as Label).add_theme_font_size_override("font_size",34)
-	app._refresh_chapter_marks()
+	app.journey_flow.refresh_marks()
 	await _settle()
 	await _settle()
 	var shown := 0
@@ -318,7 +318,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	_check(shown==2,"Both completed chapters keep their tick at the larger text size")
 	# Owning the Full Journey removes every locked treatment when the journey redraws.
 	app.owned=true
-	app._show_journey()
+	app.journey_flow.show_journey()
 	await _settle()
 	for card: Control in app.overlay.find_children("PaidLevel_*","PanelContainer",true,false):
 		var open := card.find_child("ChapterOpen",true,false) as Button
@@ -337,7 +337,7 @@ func _peek_heights(app: Node, viewport: SubViewport) -> void:
 	var screen := Rect2(Vector2.ZERO,Vector2(viewport.size))
 	for trim: float in [0.0,40.0,80.0,100.0,120.0,160.0]:
 		app._apply_safe_area(Rect2(Vector2(0,trim*0.5),Vector2(viewport.size.x,viewport.size.y-trim)))
-		app._show_journey()
+		app.journey_flow.show_journey()
 		await _settle()
 		await _settle()
 		var scroll: ScrollContainer=app.overlay.find_children("*","ScrollContainer",true,false)[0]

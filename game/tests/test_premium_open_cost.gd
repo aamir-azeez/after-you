@@ -93,7 +93,7 @@ func _tester_open() -> void:
 	var app := await _home()
 	if app == null: return
 	_check(app._tester_active(), "Fixture: Main read the saved tester grant at startup")
-	var opened := await _measure(func(): app._open_solo_chapter(CHAPTER))
+	var opened := await _measure(func(): app.journey_flow.open_solo_chapter(CHAPTER))
 	var screen: Node = current_scene
 	_check(opened.ready and screen.admission.is_granted() and screen.admission.reason == "tester", "The tester's chapter opens to its ready card through tester admission")
 	_check(_same(opened, OPEN_COST), "One tester open costs %s (pinned %s)" % [_cost(opened), OPEN_COST])
@@ -108,7 +108,7 @@ func _cold_tap() -> void:
 	_check(app.tester_access.cache_checking, "Fixture: Home is still reading the saved receipt")
 	var cards: Array = []
 	var opened := await _measure(func():
-		app._open_solo_chapter(CHAPTER)
+		app.journey_flow.open_solo_chapter(CHAPTER)
 		var card: Node = root.get_node_or_null("ChapterLoadingCard")
 		cards.append(card != null and card.visible))
 	_check(cards == [true], "The tap puts the opening card up at once, before the receipt read ends")
