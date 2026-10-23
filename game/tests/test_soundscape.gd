@@ -518,10 +518,25 @@ func _check_long_voice_and_cap() -> void:
 	capped.begin_turn("relay-isles@2", "relay")
 	free.begin_turn("relay-isles@2", "relay")
 	var burst: Array = []
-	for i in range(Soundscape.MAX_CUES_PER_FRAME + 4): burst.append("bridge_opened")
+	for key: String in SoundCues.CUES:
+		if burst.size() < Soundscape.MAX_CUES_PER_FRAME + 4 and SoundCues.CUES[key].get("voice", "") != "long": burst.append(key)
 	capped.consume_turn_events(burst, [], false)
 	free.consume_turn_events(burst, [], false)
 	_check(capped.next_voice == Soundscape.MAX_CUES_PER_FRAME % Soundscape.CUE_VOICES, "One frame plays at most MAX_CUES_PER_FRAME cues")
+	var kept := Soundscape.choose_cues(burst, Soundscape.MAX_CUES_PER_FRAME)
+	var ranked := true
+	for index in range(burst.size()):
+		for other in range(burst.size()):
+			if kept[index] == 0 and kept[other] == 1: ranked = ranked and SoundCues.priority(burst[other]) >= SoundCues.priority(burst[index])
+	_check(Array(kept).count(1) == Soundscape.MAX_CUES_PER_FRAME and ranked, "A crowded frame keeps its highest-priority cues: " + str(kept))
+	_check(Soundscape.choose_cues(["bridge_opened", "bridge_opened", "bridge_opened"], 2) == PackedByteArray([1, 0, 0]), "Repeats of one cue in a crowded frame sound once, as the first")
+	_check(Soundscape.choose_cues(["bridge_opened", "water_rise"], 0) == PackedByteArray([0, 0]), "A frame a hitch already filled plays nothing more")
+	var repeated := _tuned(71)
+	repeated.max_cues_per_frame = 2
+	repeated.consume_events(["bridge_opened", "bridge_opened", "bridge_opened"], false)
+	repeated.consume_events(["seed_landed"], false)
+	_check(repeated.next_voice == 2, "Merged repeats leave the frame's room for the next cue")
+	repeated.queue_free()
 	# The next frame's cue sounds as if nothing had been dropped.
 	capped._cue_frame = -1
 	capped.consume_turn_events(["seed_caught"], [], false)
@@ -529,6 +544,78 @@ func _check_long_voice_and_cap() -> void:
 	_check(is_equal_approx(_last_cue(capped).pitch_scale, _last_cue(free).pitch_scale), "Cues dropped in a hitch still count, so later pitches stay the same")
 	capped.queue_free()
 	free.queue_free()
+
+## Turn of the Tide's busiest pinned ticks (tests/fixtures/golden/sound_trace.json,
+## turn-of-the-tide@2): six, seven and ten cues in one tick, more than the cue
+## voices. Every kind of cue still sounds once, the water and the valve always,
+## each at exactly the pitch and gain its identity gives it, the same in any
+## fresh soundscape (live, memory, retry or replay).
+const BUSY_TICKS := [
+	[["crossing_closing", "closing:stones-1"], ["crossing_closing", "closing:stones-2"], ["bridge_opened", "bridge_opened:jetty-1"],
+		["bridge_opened", "bridge_opened:jetty-2"], ["valve_turned", "selector:tide"], ["water_rise", "water:tide|water"]],
+	[["crossing_closing", "closing:jetty-1"], ["crossing_closing", "closing:jetty-2"], ["bridge_opened", "bridge_opened:sand-1"],
+		["bridge_opened", "bridge_opened:slipway"], ["bridge_opened", "bridge_opened:wheel-step"], ["valve_turned", "selector:tide"],
+		["water_fall", "water:tide|water"]],
+	[["crossing_closing", "closing:sand-1"], ["crossing_closing", "closing:slipway"], ["crossing_closing", "closing:wheel-step"],
+		["crossing_closing", "closing:race-stage"], ["bridge_opened", "bridge_opened:stones-1"], ["bridge_opened", "bridge_opened:stones-2"],
+		["bridge_opened", "bridge_opened:stones-3"], ["bridge_opened", "bridge_opened:bollard-step"], ["valve_turned", "selector:tide"],
+		["water_rise", "water:tide|water"]],
+]
+
+func _check_busy_ticks() -> void:
+	for tick: Array in BUSY_TICKS:
+		var keys: Array = []
+		var sources: Array = []
+		for cue: Array in tick:
+			keys.append(cue[0])
+			sources.append(cue[1] if str(cue[1]).contains("|") else cue[1] + "|" + cue[1])
+		# What each cue's identity gives it, one cue per frame so nothing is capped.
+		var free := _tuned(91)
+		free.begin_turn("turn-of-the-tide@2", "set-the-tide")
+		var owed := {}
+		for index in range(keys.size()):
+			free.consume_turn_events([keys[index]], [sources[index]], true)
+			if not owed.has(keys[index]): owed[keys[index]] = _voice_sound(_last_cue(free))
+		free.queue_free()
+		var expected: Array = owed.values()
+		expected.sort()
+		var heard: Array = []
+		for run in range(2):
+			var capped := _tuned(92 + run)
+			capped.max_cues_per_frame = Soundscape.MAX_CUES_PER_FRAME
+			capped.begin_turn("turn-of-the-tide@2", "set-the-tide")
+			capped.consume_turn_events(keys, sources, run == 0)
+			var sounding: Array = []
+			for voice: AudioStreamPlayer in capped.voices + [capped.long_voice]:
+				if voice.playing: sounding.append(_voice_sound(voice))
+			sounding.sort()
+			heard.append(sounding)
+			capped.queue_free()
+		_check(heard[0] == expected, "A busy tick of %d cues plays each kind once at its own pitch, the water and the valve included: %s vs %s" % [keys.size(), heard[0], expected])
+		_check(heard[0] == heard[1], "A busy tick sounds the same in a fresh soundscape, live or replayed")
+	# A crowded tick whose first cue waits for the memory (memory_wait.gd): the
+	# held cue takes no place, the rest are chosen, and the held ones are
+	# chosen again when they sound.
+	var waiting := _tuned(95)
+	waiting.max_cues_per_frame = 2
+	waiting.consume_turn_events(["bridge_opened", "seed_landed", "bridge_closed", "water_rise"], [], false, PackedInt32Array([0]))
+	_check(_sounding(waiting) == [SoundCues.LAND.resource_path, SoundCues.WATER_SURGE.resource_path] and waiting.held_cue_count() == 1, "A crowded tick's held cue takes no place; the water and the first other cue sound: " + str(_sounding(waiting)))
+	waiting.queue_free()
+	var held := _tuned(96)
+	held.consume_turn_events(["bridge_opened", "bridge_opened", "water_rise"], [], false, PackedInt32Array([0, 1, 2]))
+	held.max_cues_per_frame = 1
+	_check(held.release_held_cues() == 3 and _sounding(held) == [SoundCues.WATER_SURGE.resource_path], "Held cues released into a crowded frame keep the water first: " + str(_sounding(held)))
+	held.queue_free()
+
+static func _sounding(probe: Tuned) -> Array:
+	var paths: Array = []
+	for voice: AudioStreamPlayer in probe.voices:
+		if voice.playing: paths.append(voice.stream.resource_path)
+	paths.sort()
+	return paths
+
+static func _voice_sound(voice: AudioStreamPlayer) -> Array:
+	return [voice.stream.resource_path, snappedf(voice.pitch_scale, 0.00001), snappedf(voice.volume_db, 0.0001)]
 
 func _check_loops() -> void:
 	var probe := _tuned(83)
@@ -679,6 +766,7 @@ func _run() -> void:
 	_variation()
 	_check_cue_table()
 	_check_long_voice_and_cap()
+	_check_busy_ticks()
 	_check_call_picks()
 	await _check_calls()
 	await _check_loops()

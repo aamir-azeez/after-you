@@ -43,7 +43,8 @@ const LOOP_VOICES := 3
 const BED_VOICES := 2
 ## More cues than this in one rendered frame (a hitch that ran several
 ## simulation ticks at once) are counted but not played, so they never stack
-## and never take a voice another cue started in the same frame.
+## and never take a voice another cue started in the same frame. A tick with
+## more cues than the frame has room for chooses which sound (choose_cues).
 const MAX_CUES_PER_FRAME := CUE_VOICES
 ## Loops and beds fade in and out instead of clicking.
 const LOOP_FADE := 0.15
@@ -83,6 +84,11 @@ var long_voice: AudioStreamPlayer
 var max_cues_per_frame := MAX_CUES_PER_FRAME
 var _cue_frame := -1
 var _frame_cues := 0
+## A batch with more cues than its frame has room for: per cue that would play,
+## 1 sounds and 0 is counted but silent (choose_cues). Empty: every cue takes
+## the next free place in the frame, in order.
+var _plan := PackedByteArray()
+var _plan_at := 0
 ## Loop players, and the looping copy of each LOOPS clip (built once).
 var loop_voices: Array[AudioStreamPlayer] = []
 var bed_voices: Array[AudioStreamPlayer] = []
@@ -237,7 +243,12 @@ func note_turn_events(events: Array, sources: Array, hold: PackedInt32Array = Pa
 func release_held_cues() -> int:
 	var held := _held_cues.duplicate()
 	_held_cues.clear()
+	if _crowded(held.size()):
+		var keys: Array = []
+		for cue: Dictionary in held: keys.append(str(cue.key))
+		_plan_cues(keys)
 	for cue: Dictionary in held: _play_cue(str(cue.key), float(cue.step), float(cue.gain), bool(cue.live))
+	_plan.clear()
 	return held.size()
 
 func drop_held_cues() -> void:
@@ -248,6 +259,7 @@ func held_cue_count() -> int:
 
 func consume_events(events: Array, live_play: bool) -> void:
 	var sources := _sources
+	_plan_batch(events)
 	for index in range(events.size()):
 		var event: Variant = events[index]
 		var key := str(event)
@@ -259,11 +271,62 @@ func consume_events(events: Array, live_play: bool) -> void:
 			_held_cues.append({"key": key, "step": cue.step, "gain": cue.gain, "live": live_play})
 			continue
 		_play_cue(key, float(cue.step), float(cue.gain), live_play)
+	_plan.clear()
+
+## Plans a batch whose cues (not held) outnumber the room left in this frame.
+## Only such a batch allocates; any other leaves the plan empty.
+func _plan_batch(events: Array) -> void:
+	var count := 0
+	for index in range(events.size()):
+		if CLIPS.has(str(events[index])) and not index in _hold: count += 1
+	if not _crowded(count): return
+	var keys: Array = []
+	for index in range(events.size()):
+		if CLIPS.has(str(events[index])) and not index in _hold: keys.append(str(events[index]))
+	_plan_cues(keys)
+
+## True when `count` cues would sound and this frame has some room, but not
+## for them all. A full frame needs no plan: every cue is counted but silent.
+func _crowded(count: int) -> bool:
+	if count < 2 or max_cues_per_frame <= 0 or not sound_enabled or backgrounded or voices.is_empty(): return false
+	_roll_frame()
+	var room := max_cues_per_frame - _frame_cues
+	return room > 0 and count > room
+
+func _plan_cues(keys: Array) -> void:
+	_plan = choose_cues(keys, maxi(0, max_cues_per_frame - _frame_cues))
+	_plan_at = 0
+
+## Which of a tick's cues (`keys`, in order) sound when only `room` can: each
+## cue once (repeats of a cue merge into its first), then the highest priority
+## (sound_cues.gd), earlier first among equals. 1 sounds, 0 is counted but
+## silent. It reads only the keys and the room, so a tick chooses the same
+## live, as the memory, on a retry and in a replay.
+static func choose_cues(keys: Array, room: int) -> PackedByteArray:
+	var plan := PackedByteArray()
+	plan.resize(keys.size())
+	plan.fill(0)
+	var firsts: Array[int] = []
+	var seen := {}
+	for index in range(keys.size()):
+		if seen.has(keys[index]): continue
+		seen[keys[index]] = true
+		firsts.append(index)
+	var level := SoundCues.DEFAULT_PRIORITY
+	for index: int in firsts: level = maxi(level, SoundCues.priority(str(keys[index])))
+	var left := room
+	while left > 0 and level >= SoundCues.DEFAULT_PRIORITY:
+		for index: int in firsts:
+			if left > 0 and SoundCues.priority(str(keys[index])) == level:
+				plan[index] = 1
+				left -= 1
+		level -= 1
+	return plan
 
 func _play_cue(key: String, step: float, gain: float, live_play: bool) -> void:
 	if backgrounded:
 		return
-	if sound_enabled and not voices.is_empty() and _frame_allows_cue():
+	if sound_enabled and not voices.is_empty() and _cue_allowed():
 		var cue: Dictionary = SoundCues.CUES[key]
 		var voice: AudioStreamPlayer = long_voice if cue.get("voice", "") == "long" else voices[next_voice]
 		voice.stream = cue.clip
@@ -274,15 +337,28 @@ func _play_cue(key: String, step: float, gain: float, live_play: bool) -> void:
 	var haptic := int(SoundCues.CUES[key].get("haptic_ms", 0))
 	if live_play and haptics_enabled and haptic > 0: _emit_haptic(haptic)
 
+## A planned batch's cue sounds if the plan chose it; any other takes the
+## frame's next free place.
+func _cue_allowed() -> bool:
+	if _plan.is_empty(): return _frame_allows_cue()
+	var take := _plan_at < _plan.size() and _plan[_plan_at] == 1
+	_plan_at += 1
+	if take: _frame_cues += 1
+	return take
+
 ## True for the first max_cues_per_frame cues of this rendered frame.
 func _frame_allows_cue() -> bool:
+	_roll_frame()
+	if max_cues_per_frame > 0 and _frame_cues >= max_cues_per_frame: return false
+	_frame_cues += 1
+	return true
+
+## Starts counting a new rendered frame's cues.
+func _roll_frame() -> void:
 	var frame := Engine.get_process_frames()
 	if frame != _cue_frame:
 		_cue_frame = frame
 		_frame_cues = 0
-	if max_cues_per_frame > 0 and _frame_cues >= max_cues_per_frame: return false
-	_frame_cues += 1
-	return true
 
 static func semitones_to_pitch(semitones: float) -> float:
 	return pow(2.0, semitones / 12.0)
