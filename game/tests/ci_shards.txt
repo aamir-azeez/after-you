@@ -179,6 +179,7 @@ online_scenarios_edges 1
 online_scenarios_more 3
 optional_photo_capture 1
 paid_level_thumbnails 3
+paid_replay_after_background 3
 part_verify_worker 2
 periodic_room_save 2
 photo_date 2

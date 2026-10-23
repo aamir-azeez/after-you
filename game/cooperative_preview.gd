@@ -71,6 +71,13 @@ func _access_changed(state: String, _reason: String) -> void:
 			_show_save_problem(journey.last_error, "review" if _held_mode in ["review", "bloom"] else "play")
 		elif _held_mode in ["review", "bloom"] and not review.is_empty():
 			_show_review()
+		elif _solo_replay_only:
+			# A replay from Your replays (or a kept hard run) opened no chapter
+			# journal, so it has no ready card: it waits on its pause card, or
+			# goes on from its end (its bloom, or its next part or way out).
+			if _completion_is_replay and sim.finished: _show_paused("bloom")
+			elif replay_cursor >= replay_frames.size(): _replay_ended()
+			else: _show_paused("replay")
 		else:
 			_show_ready()
 		return
