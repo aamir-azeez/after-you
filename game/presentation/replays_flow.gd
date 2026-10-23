@@ -406,14 +406,18 @@ func _solo_collection_entries() -> Array:
 		var pending: Dictionary=solo_replays.pending_chapters()
 		for row: Dictionary in solo_replay_index.rows():
 			if pending.has(str(row.chapter_key)): scanned.append(row)
+	# A removed part is not listed, but a later part still plays from it.
 	var groups: Dictionary={}
+	var every_row: Dictionary={}
 	for row: Dictionary in scanned:
-		if solo_replay_visibility.is_hidden(row): continue
 		var group_key := str(row.get("chapter_key",""))+":"+str(row.get("attempt_id",row.get("source_id","")))
+		if not every_row.has(group_key): every_row[group_key]=[]
+		every_row[group_key].append(row)
+		if solo_replay_visibility.is_hidden(row): continue
 		if not groups.has(group_key): groups[group_key]=[]
 		groups[group_key].append(row)
 	var ordered_groups: Array=[]
-	for group_key: String in groups: ordered_groups.append({"key":group_key,"rows":groups[group_key]})
+	for group_key: String in groups: ordered_groups.append({"key":group_key,"rows":groups[group_key],"playback_rows":every_row[group_key]})
 	ordered_groups.sort_custom(func(a: Dictionary,b: Dictionary) -> bool: return str(a.key)<str(b.key))
 	var attempt_numbers: Dictionary={}
 	for item: Dictionary in ordered_groups:
@@ -422,7 +426,7 @@ func _solo_collection_entries() -> Array:
 		var chapter_key := str(rows[0].chapter_key)
 		attempt_numbers[chapter_key]=int(attempt_numbers.get(chapter_key,0))+1
 		var checking: bool=rows.any(func(row: Dictionary) -> bool: return row.get("checking",false))
-		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows,"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size(),"checking":checking})
+		entries.append({"family":"chapter","key":"chapter:"+str(item.key),"rows":rows,"playback_rows":item.playback_rows,"title":"%s · Attempt %d" % [str(rows[0].chapter_title),int(attempt_numbers[chapter_key])],"chapter_key":chapter_key,"parts":rows.size(),"checking":checking})
 	return entries
 
 func _select_solo_entry(entries: Array) -> void:
@@ -924,7 +928,8 @@ func service_solo_collection() -> void:
 	_refresh_solo_collection()
 
 func _show_solo_replay_attempt() -> void:
-	if host.mode != MODE_COLLECTION or _selected_solo_attempt.is_empty() or _selected_solo_attempt.get("checking",false): return
+	# From the list, or back from removing one of its parts.
+	if host.mode not in [MODE_COLLECTION,MODE_CONFIRM_DELETE] or _selected_solo_attempt.is_empty() or _selected_solo_attempt.get("checking",false): return
 	host.mode=MODE_SOLO_REPLAY_ATTEMPT
 	_turn_tries=TurnTries.new()
 	_faces=EndReactionStore.new()
@@ -990,7 +995,7 @@ func _part_title(row: Dictionary) -> String:
 func _launch_modern_solo_replay(selected: Dictionary) -> void:
 	if host.mode not in [MODE_COLLECTION,MODE_SOLO_REPLAY_ATTEMPT] or _selected_solo_attempt.get("family")!="chapter" or _selected_solo_attempt.get("checking",false) or not selected.has("pair"): return
 	var chapter_key := str(selected.get("chapter_key",""))
-	var context := _solo_replay_context_from_rows(chapter_key,_selected_solo_attempt.get("rows",[]),selected)
+	var context := _solo_replay_context_from_rows(chapter_key,_selected_solo_attempt.get("playback_rows",[]),selected)
 	if context.is_empty(): return
 	var lighthouse := chapter_key == SoloReplayCollection.LIGHTHOUSE_KEY
 	var scene: String = host.LIGHTHOUSE_SCENE if lighthouse else ChapterRegistry.solo_scene(chapter_key)
@@ -1001,7 +1006,9 @@ func _launch_modern_solo_replay(selected: Dictionary) -> void:
 		host._open_chapter_preview(scene,context)
 
 func _confirm_remove_solo_part(row: Dictionary) -> void:
-	if host.mode!=MODE_SOLO_REPLAY_ATTEMPT or solo_replay_visibility.is_hidden(row): return
+	# From a part list (narrow) or the list's preview card (wide).
+	if host.mode not in [MODE_COLLECTION,MODE_SOLO_REPLAY_ATTEMPT] or solo_replay_visibility.is_hidden(row): return
+	var from_parts: bool=host.mode==MODE_SOLO_REPLAY_ATTEMPT
 	host.mode=MODE_CONFIRM_DELETE
 	var card: VBoxContainer = host._card(700)
 	card.add_child(host._label("Remove this replay?",32,CREAM,true))
@@ -1011,7 +1018,12 @@ func _confirm_remove_solo_part(row: Dictionary) -> void:
 		if host.mode!=MODE_CONFIRM_DELETE or host.application_backgrounded: return
 		var okay: bool=solo_replay_visibility.hide(row)
 		show_collection("Replay removed" if okay else solo_replay_visibility.last_error),false))
-	card.add_child(host._back_button("Cancel",func(): _show_solo_replay_attempt(),false))
+	# Cancel and Android Back return to where the icon was.
+	host._retry_cancel = func():
+		if host.mode!=MODE_CONFIRM_DELETE: return
+		if from_parts: _show_solo_replay_attempt()
+		else: show_collection()
+	card.add_child(host._back_button("Cancel",host._retry_cancel,false))
 
 func _collection_delete_button(callback: Callable, title: String) -> Button:
 	var remove: Button = host._list_button("",callback,false)

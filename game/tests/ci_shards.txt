@@ -282,6 +282,7 @@ solo_redo 3
 solo_redo_ui 3
 solo_replay_collection 1
 solo_replay_launch 1
+solo_replay_remove_part 2
 solo_replay_scene_context 3
 solo_replay_visibility 3
 sound_map 2
