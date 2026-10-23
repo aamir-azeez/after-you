@@ -18,6 +18,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
 const TideSimulation = preload("res://core/journey/simulation.gd")
 const Tide = preload("res://tests/turn_of_the_tide_witness.gd")
+const TideV2 = preload("res://tests/turn_of_the_tide_v2_witness.gd")
 const EndReactionScreen = preload("res://presentation/end_reaction_screen.gd")
 const ReactionStore = preload("res://services/end_reaction_store.gd")
 const KEY := "relay-isles@2"
@@ -40,6 +41,7 @@ func _run() -> void:
 	await _watch_a_slip()
 	await _slip_reaction()
 	await _drowning()
+	await _goal_glance()
 	_clear(KEY)
 	_clear(TIDE)
 	for path: String in _paths:
@@ -141,6 +143,65 @@ func _nothing_to_retry_and_second_start() -> void:
 	await _close(app)
 
 ## The chapter's kept runs once every write in flight has landed.
+## A real glance at the goal (motion on, physics running) on Turn of the
+## Tide @2's second stage, whose posts start off screen: a pause during it
+## then Resume, or a pause, close and Record again, goes on as the same first
+## try and the turn's clock starts.
+func _goal_glance() -> void:
+	var key := TIDE
+	_marks = _path("glance-marks")
+	_counts = _path("glance-counts")
+	_seed_tide_stage_one()
+	var app := _glance_screen(key)
+	await process_frame
+	app._begin()
+	_check(app._glancing and app.mode == "play", "The first try opens with the glance at the goal")
+	for frame in range(5): await process_frame
+	app._pause()
+	_check(app.mode == "paused" and app.sim.tick == 0, "A pause during the glance shows the pause card before any tick")
+	var resume: Button = null
+	for node: Node in app.overlay.find_children("*", "Button", true, false):
+		if (node as Button).text == "Resume" and (node as Button).is_visible_in_tree(): resume = node
+	if resume != null: resume.pressed.emit()
+	_check(await _ticks(app), "Resume finishes the glance and the turn's clock starts (tick %d)" % app.sim.tick)
+	_check(app._live_tries == 1 and app.hard.last_run.is_empty(), "...as the same first try")
+	await _close(app)
+	_seed_tide_stage_one()
+	app = _glance_screen(key)
+	await process_frame
+	app._begin()
+	app._pause()
+	await _close(app)
+	app = _glance_screen(key)
+	await process_frame
+	app._begin()
+	_check(app.mode == "play" and app._live_tries == 1 and app._glancing, "Closed during the glance, Record starts the same first try with a new glance")
+	_check(await _ticks(app) and app.hard.last_run.is_empty(), "...and its clock starts (tick %d)" % app.sim.tick)
+	await _close(app)
+
+## A hard Tide run with its first stage played, waiting on stage two's first turn.
+func _seed_tide_stage_one() -> void:
+	_clear(TIDE)
+	var level := Registry.definition(TIDE)
+	var one: Dictionary = TideV2.pair(level, "set-the-tide", Registry.initial_checkpoint(TIDE), Tide.a_routes()["low"], Tide.b_routes()["low"])
+	var journal := Journey.new(HardMode.journal_path(TIDE), null, TIDE)
+	journal.load_data()
+	_check(one.get("error", "x").is_empty() and journal.accept_recording(one.a) and journal.accept_recording(one.b), "A hard Tide run has its first stage: " + journal.last_error)
+
+func _glance_screen(key: String) -> Node:
+	var app: Node = load(Index.data(key).scene).instantiate()
+	app.hard = HardRun.solo(key, _marks)
+	app.turn_tries = TurnTries.new(_counts)
+	app.settings = {"sound": false, "haptics": false, "reduced_motion": false, "assistance": true, "left_handed": false}
+	root.add_child(app)
+	return app
+
+## Waits up to five seconds for the turn's first tick through the physics path.
+func _ticks(app: Node) -> bool:
+	var deadline := Time.get_ticks_msec() + 5000
+	while is_instance_valid(app) and app.sim.tick < 1 and Time.get_ticks_msec() < deadline: await process_frame
+	return is_instance_valid(app) and app.sim.tick >= 1 and app.mode == "play"
+
 func _runs(key: String) -> Array[Dictionary]:
 	HardMode.wait_writes()
 	return HardMode.runs(key)
