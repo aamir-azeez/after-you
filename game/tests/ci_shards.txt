@@ -140,6 +140,7 @@ lighthouse_hud 2
 lighthouse_journey 3
 lighthouse_loader 3
 lighthouse_loading 3
+lighthouse_migration_write_failure 3
 lighthouse_preview 2
 lighthouse_v2_join 1
 lighthouse_v2_proof 1

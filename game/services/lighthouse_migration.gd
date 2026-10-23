@@ -77,12 +77,19 @@ static func _turn(level: Dictionary, checkpoint: Dictionary, native: Dictionary,
 ## Writes a converted journey into an empty @2 journal (loaded, no turns).
 ## Every structural and version rule of the journal still runs.
 static func adopt(journey: RefCounted, converted: Dictionary) -> bool:
-	if converted.get("status") != "converted" or journey == null or journey.read_only or not journey.pairs().is_empty() or not journey.prior_recording().is_empty(): return false
+	return carry(journey, converted) == "adopted"
+
+## adopt() that says why not: "adopted"; "refused" (the journal takes no
+## converted journey); "unsaved" (it would, but its write failed, so the
+## carry-over is to be tried again, never remembered as not converting).
+static func carry(journey: RefCounted, converted: Dictionary) -> String:
+	if converted.get("status") != "converted" or journey == null or journey.read_only or not journey.pairs().is_empty() or not journey.prior_recording().is_empty(): return "refused"
 	var state: Dictionary = journey._empty_state()
 	state.pairs = converted.pairs.duplicate(true)
 	state.a = converted.a.duplicate(true)
 	var verdict: Dictionary = journey._validate_state(state, {"pairs": state.pairs.size(), "checkpoint": converted.checkpoint, "a_verified": true})
-	return verdict.get("valid", false) and journey._write_verified_state(state, verdict.checkpoint)
+	if not verdict.get("valid", false): return "refused"
+	return "adopted" if journey._write_verified_state(state, verdict.checkpoint) else "unsaved"
 
 ## Keeps a conversion that did not happen against this exact @1 save:
 ## "fallback" (keep playing @1) or "fresh" (start @2 anew).

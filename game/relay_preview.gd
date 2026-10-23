@@ -482,11 +482,17 @@ func _poll_journal_load() -> void:
 	if prepared is Dictionary and not _adopt_migration(prepared): return
 	_show_ready()
 
-## False when this screen hands over to the solo @1 screen instead.
+## False when this screen hands over to the solo @1 screen instead, or shows
+## that the carried-over journey could not be saved.
 func _adopt_migration(converted: Dictionary) -> bool:
 	match str(converted.get("status", "")):
 		"converted":
-			if LighthouseMigration.adopt(journey, converted): return true
+			match LighthouseMigration.carry(journey, converted):
+				"adopted": return true
+				"unsaved":
+					# Nothing is remembered: the next open converts it again.
+					_show_error(journey.last_error)
+					return false
 			LighthouseMigration.remember("fallback" if not converted.get("complete", false) else "fresh")
 		"fallback":
 			LighthouseMigration.remember("fallback" if not converted.get("complete", false) else "fresh")
