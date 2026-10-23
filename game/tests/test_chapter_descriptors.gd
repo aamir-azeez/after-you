@@ -201,10 +201,15 @@ func _wait_hints(key: String, data: Dictionary, level: Dictionary) -> void:
 		for value: Variant in data.selector_names[id]:
 			_check(values.has(str(value)) and data.selector_names[id][value] is String and not str(data.selector_names[id][value]).is_empty(), "Selector name %s/%s of %s names one of its values" % [id, value, key])
 	var levers: Dictionary = {}
+	var selectors: Dictionary = {}
 	for stage: Dictionary in level.stages:
 		for lever: Dictionary in stage.get("levers", []): levers[str(lever.id)] = true
+		for control: Dictionary in stage.get("controls", []):
+			if control.get("kind") == "selector": selectors[str(control.id)] = true
+	var looks := preload("res://presentation/kit/lever_looks.gd")
 	for id: String in data.lever_looks:
-		_check(levers.has(id) and str(data.lever_looks[id]) in preload("res://presentation/kit/lever_looks.gd").KINDS, "Lever look %s of %s is a known look on one of its levers" % [id, key])
+		var look := str(data.lever_looks[id])
+		_check((levers.has(id) and look in looks.LEVER_KINDS) or (selectors.has(id) and look in looks.SELECTOR_KINDS), "Look %s of %s suits its lever or selector: %s" % [id, key, look])
 	for id: String in data.lever_actions:
 		_check(levers.has(id) and data.lever_actions[id] is String and not str(data.lever_actions[id]).is_empty(), "Lever action %s of %s names a lever with words" % [id, key])
 	for id: String in data.seats:

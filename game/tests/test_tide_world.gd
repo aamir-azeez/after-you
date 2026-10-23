@@ -113,7 +113,7 @@ func _first_stage(level: Dictionary) -> void:
 		var frozen := Canonical.digest(current)
 		world.present(current, true)
 		_check(Canonical.digest(current) == frozen, "Presenting leaves the snapshot unchanged at " + value)
-		angles.append(world._wheels.tide.wheel.rotation.z)
+		angles.append(world._wheels.tide.wheel.rotation.y)
 		_check(world._wheels.tide.wheel.get_meta("value") == value, "The tide wheel's pointer shows " + value)
 		levels[value] = world._water.harbour.position.y
 		_check(is_equal_approx(world._water.harbour.position.y, World.HARBOUR_LEVELS[value]), "Harbour water stands at the " + value + " level")
@@ -161,11 +161,23 @@ func _first_stage(level: Dictionary) -> void:
 	_check(chips[0].modulate.a < 0.5 and chips[2].modulate.a < 0.5 and (chips[0].get_meta("backing").material_override as StandardMaterial3D).albedo_color.a == 0.0, "The other tide values fade back")
 	bubble.sync()
 	_check(bubble.body.material_override == LabelBubble.body_material(false, false) and is_equal_approx(chips[0].pixel_size, LabelBubble.PIXEL_SIZE), "The tide wheel uses the shared cream bubble with dark letters")
+	# The tide wheel is the control: a valve on the wheel's own spot, no lever
+	# handle and no hand wheel beside it, its arrow a long bar, the harbour's
+	# wave sign on the post behind it, and no water blue on the first spirit's
+	# (orange) valve but that sign.
 	var hand: Node3D = world._wheels.tide.wheel
-	_check(hand.position.x - 1.92 > 0.5, "The hand wheel stands beside the standing point, not behind the spirit")
-	_check(hand.find_child("WheelPointer", false, false) is MeshInstance3D and (hand.find_child("WheelPointer", false, false).mesh as BoxMesh).size.y >= 0.3, "The wheel's needle is a long bar")
+	var valve: RefCounted = world._lever_looks.tide
+	_check(valve.kind == "valve" and absf(hand.global_position.x - 1.92) < 0.001 and absf(hand.global_position.z + 3.52) < 0.001, "The tide valve turns on the control's own spot")
+	_check(world.terrain.find_child("HandWheel_tide", false, false) == null and world.terrain.find_child("WheelDial_tide", false, false) == null and world._physical_levers.tide.get_child_count() == 0, "No lever handle and no hand wheel beside it")
+	_check(hand.find_child("WheelPointer", false, false) is MeshInstance3D and (hand.find_child("WheelPointer", false, false).mesh as BoxMesh).size.z >= 0.18, "The valve's arrow is a long bar")
 	var sign: Node3D = world.terrain.find_child("WaterIcon_tide", false, false)
-	_check(sign != null and sign.position.distance_to(hand.position) < 0.7 and world.terrain.find_children("ChipRowWater*", "", false, false).is_empty(), "The tide wheel carries the harbour's wave sign on its post")
+	_check(sign != null and sign.position.distance_to(valve.sign_point()) < 0.001 and sign.position.y - hand.global_position.y > 0.15 and sign.position.z < hand.global_position.z and world.terrain.find_children("ChipRowWater*", "", false, false).is_empty(), "The tide valve carries the harbour's wave sign up behind it")
+	var blue: Array = []
+	for node: Node in valve.root.find_children("*", "MeshInstance3D", true, false):
+		var colour: Color = ((node as MeshInstance3D).material_override as StandardMaterial3D).albedo_color
+		for tint: Color in World.WHEEL_WATER.values():
+			if colour.is_equal_approx(tint) or colour.is_equal_approx(tint.darkened(0.35)): blue.append(node.name)
+	_check(blue.is_empty() and (valve.wheel().find_child("ValveRim", false, false).material_override as StandardMaterial3D).albedo_color == world.GOLD, "The first spirit's valve is in its own gold, no water blue on it: %s" % [blue])
 	for id: String in world._gauges:
 		_check(world._gauges[id].icon is Label3D and world._gauges[id].icon.fixed_size and world._gauges[id].bands[0].mesh.top_radius >= 0.1, "A gauge carries large bands and a wave sign that keeps its size: " + id)
 	# Boats ride the harbour.
@@ -232,7 +244,7 @@ func _second_stage(level: Dictionary) -> void:
 	# snapshot's lever, pulled or not.
 	var looks := {}
 	for id: String in world._lever_looks: looks[id] = world._lever_looks[id].kind
-	_check(looks == {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt"}, "The chains wind on winches and the bars slide as bolts: %s" % [looks])
+	_check(looks == {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve"}, "The chains wind on winches, the bars slide as bolts and the water wheels are valves: %s" % [looks])
 	var pulled := state.duplicate(true)
 	pulled.levers = {"boom-chain": true, "gate-bar": true}
 	world.present(pulled, true)
@@ -336,12 +348,18 @@ func _second_stage(level: Dictionary) -> void:
 		world._frame_camera()
 		_check(_bubble_cover(world, "basin") <= JourneyWorld.SPIRIT_COVER + 0.001, "The sea wheel's bubble rises clear of a spirit at %s (covers %.2f)" % [spot[4], _bubble_cover(world, "basin")])
 		_lifted_clear(world, "slack-water, %s at %s" % [spot[0], spot[4]])
+	# The tide bubble may rise over the sea valve itself (scenery), but a spirit
+	# at the sea valve never pushes it further.
 	var spirit_at_lever: Dictionary = sim.snapshot()
 	spirit_at_lever.players = spirit_at_lever.players.duplicate(true)
+	spirit_at_lever.players.p1 = {"x": -312, "z": 40, "height": 48, "surface_id": "w-terrace"}
+	world.present(spirit_at_lever, true)
+	world._frame_camera()
+	var without: float = world._journey_switches["tide"].bubble.lift
 	spirit_at_lever.players.p1 = {"x": -312, "z": -64, "height": 48, "surface_id": "w-terrace"}
 	world.present(spirit_at_lever, true)
 	world._frame_camera()
-	_check(world._journey_switches["tide"].bubble.lift == 0.0, "A spirit at the sea wheel never pushes the tide bubble off its lever")
+	_check(is_equal_approx(world._journey_switches["tide"].bubble.lift, without), "A spirit at the sea wheel never pushes the tide bubble off its lever (%.2f, %.2f)" % [world._journey_switches["tide"].bubble.lift, without])
 	var chip: Label3D = world._journey_switches["basin"].labels[0]
 	_check(not chip.no_depth_test and not (chip.get_meta("backing").material_override as StandardMaterial3D).no_depth_test, "Bubbles stand in the scene like every chapter's, not drawn over it")
 	# The outer sea, its gates and the mouth lamps follow the basin.

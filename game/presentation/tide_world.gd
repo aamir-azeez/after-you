@@ -86,6 +86,8 @@ const CHIP_DARK := Color("102133")
 const WHEEL_SWEEP := 0.95
 ## The hand wheel stands beside the standing point, clear of the spirit and its badge.
 const WHEEL_OFFSET := Vector3(0.62, 1.0, -0.42)
+## A valve's water sign, scaled from the hand wheel's.
+const VALVE_SIGN_SCALE := 0.8
 ## Every selector's speech bubble points at its lever, like every chapter's.
 ## A wheel's bubble sits this far sideways on screen (metres; the kit clamps a
 ## shift to the farthest its tail still meets the body), clear of its hand
@@ -919,14 +921,31 @@ func _piles(route: Dictionary) -> void:
 ## whose needle shows the value, tinted with the water the wheel moves.
 func _build_selector(control: Dictionary) -> void:
 	super._build_selector(control)
-	if control.values.size() >= 3: _build_wheel(control)
+	if control.values.size() < 3: return
+	if _lever_looks.has(control.id): _register_valve(control)
+	else: _build_wheel(control)
+
+## A water wheel drawn as a valve (descriptor "lever_looks"): the valve is the
+## control, on its own spot, and turns itself; it carries the water's sign on
+## the post behind it, small enough to stay clear of a spirit at the wheel.
+func _register_valve(control: Dictionary) -> void:
+	var look: RefCounted = _lever_looks[control.id]
+	_wheels[control.id] = {"wheel": look.wheel(), "values": control.values.duplicate()}
+	if WHEEL_WATER.has(control.id):
+		var sign := _water_icon(str(control.id), look.sign_point(), WHEEL_WATER[control.id])
+		sign.scale = Vector3.ONE * VALVE_SIGN_SCALE
+
+## A valve's dial: one band for low, two for half, three for high, a bar for
+## a shut sea (the tide gauges' bands).
+func _look_marks(control: Dictionary) -> Array:
+	return control.get("values", []).map(func(value: Variant) -> int: return TIDE_VALUES.find(str(value)) + 1)
 
 func _selector_bubble_shift(control: Dictionary) -> float:
 	return float(BUBBLE_SHIFTS.get(control.id, 0.0))
 
 ## A small upright sign on a hand wheel's post: a wave for the harbour tide, a
 ## pair of gate leaves for the sea, a walled basin for the chamber.
-func _water_icon(id: String, at: Vector3, tint: Color) -> void:
+func _water_icon(id: String, at: Vector3, tint: Color) -> Node3D:
 	var icon := Node3D.new()
 	icon.name = "WaterIcon_" + id
 	icon.position = at
@@ -943,6 +962,7 @@ func _water_icon(id: String, at: Vector3, tint: Color) -> void:
 			for side in [-1, 1]: box(Vector3(0.03, 0.20, 0.02), tint, Vector3(side * 0.10, 0.0, 0.0), icon)
 			box(Vector3(0.23, 0.03, 0.02), tint, Vector3(0, -0.10, 0.0), icon)
 			box(Vector3(0.17, 0.07, 0.02), tint.lightened(0.2), Vector3(0, -0.05, 0.005), icon)
+	return icon
 
 func _build_wheel(control: Dictionary) -> void:
 	var color := GOLD if control.owner_slot == "p0" else TEAL
@@ -1854,9 +1874,12 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 		var wheel: Dictionary = _wheels[id]
 		var chosen: int = wheel.values.find(controls.get(id, ""))
 		if chosen < 0: continue
+		wheel.wheel.set_meta("value", str(controls.get(id, "")))
+		# A valve turned itself with the journey switches; the old hand wheel
+		# turns here, beside its tilting lever.
+		if _lever_looks.has(id): continue
 		var t := float(chosen) / float(maxi(wheel.values.size() - 1, 1))
 		wheel.wheel.rotation.z = _wheel_angle(chosen, wheel.values.size())
-		wheel.wheel.set_meta("value", str(controls.get(id, "")))
 		if _physical_levers.has(id): _physical_levers[id].rotation.z = lerpf(0.60, -0.60, t)
 	_follow_knobs()
 	_aim_ramps(controls, immediate)

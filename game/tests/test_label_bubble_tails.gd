@@ -220,7 +220,9 @@ func _foot(world: Node3D, bubble: LabelBubble) -> Vector3:
 	return bubble.anchor
 
 ## Every selector's tail lands on its own lever's knob, on its top, at every
-## value the lever tilts to: the knob found as the lever's sphere.
+## value the lever tilts to: the knob found as the lever's sphere. A selector
+## drawn as a look (a valve) has no knob; its tail lands on the look's top,
+## the anchor's knob point, at every value.
 func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> void:
 	for id: String in world._journey_switches:
 		var bubble: LabelBubble = world._journey_switches[id].bubble
@@ -230,9 +232,15 @@ func _knobs(world: Node3D, state: Dictionary, bubbles: Array, label: String) -> 
 			turned.controls[id] = value
 			world.present(turned, true)
 			_frames(world, 2)
-			var knob := _knob(world._physical_levers[id])
-			if not _check(knob != null, "%s: the %s lever has a knob" % [label, id]): continue
-			var top: Vector3 = world.terrain.to_local(knob.global_position) + Vector3(0, (knob.mesh as SphereMesh).radius * knob.global_basis.y.length(), 0)
+			var top: Vector3
+			if world._lever_looks.has(id):
+				var look: RefCounted = world._lever_looks[id]
+				top = look.anchor.position + Vector3(0, look.KNOB_REACH, 0)
+				_check(absf(top.y - look.root.position.y - float(look.TOPS[look.kind])) < 0.001, "%s: the %s look's tail point is its top" % [label, id])
+			else:
+				var knob := _knob(world._physical_levers[id])
+				if not _check(knob != null, "%s: the %s lever has a knob" % [label, id]): continue
+				top = world.terrain.to_local(knob.global_position) + Vector3(0, (knob.mesh as SphereMesh).radius * knob.global_basis.y.length(), 0)
 			_check(bubble.anchor.distance_to(top) < 0.001, "%s: the %s tail lands on the top of its lever's knob at %s (anchor %s, knob top %s)" % [label, id, value, bubble.anchor, top])
 			_tips(bubbles, "%s, %s at %s" % [label, id, value])
 	world.present(state, true)

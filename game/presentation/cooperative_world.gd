@@ -431,11 +431,16 @@ func _build_stand_spot(pad: Dictionary, at: Vector3, color: Color) -> void:
 	_physical_pads[pad.id] = spot.rim
 	_stand_spots[pad.id] = spot
 
+## A valve look's dial marks for a selector (kit/lever_looks.gd): per value,
+## how many bands; none by default.
+func _look_marks(_control: Dictionary) -> Array:
+	return []
+
 func _build_lever(lever: Dictionary) -> void:
 	var at := _at(lever)
 	var look_kind := str(_descriptor().get("lever_looks", {}).get(str(lever.id), ""))
-	if look_kind in LeverLooks.KINDS:
-		var look := LeverLooks.build(look_kind, at, GOLD if lever.owner_slot == "p0" else TEAL, terrain)
+	if look_kind in (LeverLooks.SELECTOR_KINDS if str(lever.get("kind", "")) == "selector" else LeverLooks.LEVER_KINDS):
+		var look := LeverLooks.build(look_kind, at, GOLD if lever.owner_slot == "p0" else TEAL, terrain, _look_marks(lever))
 		_lever_looks[lever.id] = look
 		_physical_levers[lever.id] = look.anchor
 		_ownership_mark(str(lever.owner_slot), at + Vector3(0, 0.025, 0.33), terrain)

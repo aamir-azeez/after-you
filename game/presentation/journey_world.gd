@@ -529,7 +529,9 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _journey_switches:
 		var switch: Dictionary = _journey_switches[id]
 		var chosen: int = switch.values.find(state.get("controls",{}).get(id,""))
-		_physical_levers[id].rotation.z = -0.60 if chosen == 0 else 0.60
+		# A selector drawn as a look (a valve) turns itself; its anchor never tilts.
+		if _lever_looks.has(id): _lever_looks[id].set_value(chosen, immediate or reduced_motion)
+		else: _physical_levers[id].rotation.z = -0.60 if chosen == 0 else 0.60
 		(switch.bubble as LabelBubble).highlight(chosen)
 	_follow_knobs()
 	if is_instance_valid(_waiting_ring): _glow(_waiting_ring,CREAM,0.6 if state.get("can_commit",false) else 0.0)
