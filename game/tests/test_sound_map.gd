@@ -15,6 +15,9 @@ const LightCatalog = preload("res://core/lighthouse/stage_catalog.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const ReplayGolden = preload("res://tests/test_replay_golden.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
+const SoundCues = preload("res://services/sound_cues.gd")
+const Index = preload("res://content/chapters/index.gd")
+const LeverLooks = preload("res://presentation/kit/lever_looks.gd")
 const GOLDEN := "sound_map.json"
 const LIGHTHOUSE := "sleeping-lighthouse@1"
 ## Every event name the engines under game/core append, with probes for the
@@ -80,6 +83,8 @@ func _run() -> void:
 		table[key] = _chapter(key, events)
 	table[LIGHTHOUSE] = _lighthouse(events)
 	_check_known_fields()
+	_check_look_cues()
+	_check_look_identity()
 	var result := Golden.check(GOLDEN, {"events": events, "chapters": table, "audible_cues": Soundscape.CLIPS.keys()})
 	for message: String in result.messages:
 		push_error(message)
@@ -96,6 +101,73 @@ func _check_known_fields() -> void:
 	var seen := ChapterSoundMap.remember(start)
 	var sounds := ChapterSoundMap.cues("high-and-low@1", {"role": "a", "controls": {"probe": "down"}, "events": ["selector:probe"]}, seen)
 	_check(sounds.cues == ["switch_set"] and sounds.sources == ["selector:probe|selector:probe"], "A switch in a chapter that does not diff controls still sounds: " + str(sounds))
+
+## A control drawn as a machine (descriptor "lever_looks") plays its look's
+## cue in every chapter that names one, from the change (a selector from its
+## event too), under the control's own identity; one with no look keeps the
+## shared lever and switch cues.
+func _check_look_cues() -> void:
+	var kinds: Array = LeverLooks.LEVER_KINDS + LeverLooks.SELECTOR_KINDS
+	_check(kinds.size() == SoundCues.LOOK_CUES.size() and kinds.all(func(kind): return SoundCues.LOOK_CUES.has(kind)), "Every lever look has its own cues and no cue names a look that does not exist")
+	var looked := 0
+	for key: String in Golden.GOLDEN_KEYS:
+		var chapter := Index.data(key)
+		var looks: Dictionary = chapter.get("lever_looks", {})
+		if looks.is_empty() or not Registry.is_cooperative(key): continue
+		for id: String in looks:
+			var kind := str(looks[id])
+			var pair: Array = SoundCues.LOOK_CUES[kind]
+			looked += 1
+			if kind in LeverLooks.LEVER_KINDS:
+				var seen := ChapterSoundMap.remember({"role": "a", "levers": {id: false}, "events": []})
+				var pulled := ChapterSoundMap.cues(key, {"role": "a", "levers": {id: true}, "events": ["lever"]}, seen)
+				var let_go := ChapterSoundMap.cues(key, {"role": "b", "levers": {id: false}, "events": []}, seen)
+				var source := "lever:%s|lever:%s" % [id, id]
+				_check(pulled.cues == [pair[0]] and pulled.sources == [source], "A %s pulled plays its own cue under its own name: %s %s %s" % [kind, key, id, pulled])
+				_check(let_go.cues == [pair[1]] and let_go.sources == [source], "A %s let go (here the memory's) plays its let-go cue: %s %s %s" % [kind, key, id, let_go])
+			else:
+				var water: Dictionary = chapter.get("water_levels", {})
+				var levels: Array = water.get(id, ["one", "two"])
+				var seen := ChapterSoundMap.remember({"role": "a", "controls": {id: levels[0]}, "events": []})
+				var turned := ChapterSoundMap.cues(key, {"role": "a", "controls": {id: levels[1]}, "events": ["selector:" + id]}, seen)
+				var expected: Array = [pair[0], "water_rise"] if water.has(id) else [pair[0]]
+				_check(turned.cues == expected and turned.sources[0] == "selector:%s|selector:%s" % [id, id], "A %s turned plays its own cue, and its water still moves: %s %s %s" % [kind, key, id, turned])
+				var event_only := ChapterSoundMap.cues(key, {"role": "b", "events": ["selector:" + id]})
+				_check(event_only.cues == [pair[0]] and event_only.sources == turned.sources.slice(0, 1), "A %s heard from its event alone plays the same cue and identity: %s %s" % [kind, key, id])
+	_check(looked > 0, "Some pinned chapter draws a control as a machine")
+	# Turn of the Tide's sluice lever and slipway winch have no look.
+	var plain_seen := ChapterSoundMap.remember({"role": "a", "levers": {"sluice": false}, "controls": {"winch": "stowed"}, "events": []})
+	var plain := ChapterSoundMap.cues("turn-of-the-tide@1", {"role": "a", "levers": {"sluice": true}, "controls": {"winch": "slip"}, "events": []}, plain_seen)
+	_check(plain.cues == ["lever_pulled", "switch_set"], "A control with no look keeps the shared lever and switch cues: " + str(plain))
+
+## The same look cue under the same identity sounds the same stream, pitch and
+## gain in two fresh soundscapes: live, as the memory, on a retry, in a replay.
+func _check_look_identity() -> void:
+	var names: Array = []
+	for kind: String in SoundCues.LOOK_CUES:
+		for cue: String in SoundCues.LOOK_CUES[kind]:
+			if cue not in names: names.append(cue)
+	var heard: Array = []
+	for run in range(2):
+		var sound: Node = Soundscape.new()
+		root.add_child(sound)
+		sound.configure({"sound": true, "haptics": false})
+		sound.max_cues_per_frame = 0
+		sound.variation.seed = 1 + run * 99
+		sound.begin_turn("turn-of-the-tide@2", "slack-water")
+		var trace: Array = []
+		for cue: String in names:
+			for ordinal in range(2):
+				sound.consume_turn_events([cue], ["lever:probe|lever:probe"], run == 0)
+				var voice: AudioStreamPlayer = sound.voices[(sound.next_voice + sound.voices.size() - 1) % sound.voices.size()]
+				trace.append([cue, voice.stream, snappedf(voice.pitch_scale, 0.00001), snappedf(voice.volume_db, 0.0001)])
+		heard.append(trace)
+		sound.free()
+	var own_clips := true
+	for item: Array in heard[0]: own_clips = own_clips and item[1] == SoundCues.CUES[item[0]].clip and item[1] != SoundCues.CATCH
+	_check(own_clips, "Each look cue plays its own clip, not the shared lever click")
+	_check(heard[0] == heard[1], "The same look cue and identity give the same stream, pitch and gain in a fresh soundscape")
+	_check(heard[0][0][2] != heard[0][1][2], "A look's next pull under the same name moves its pitch")
 
 func _events() -> Array:
 	var names: Dictionary = {}

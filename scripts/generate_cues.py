@@ -1,4 +1,5 @@
-"""Generate After You's synthesised world cues: bell, well plunk, reel, water and bird calls.
+"""Generate After You's synthesised world cues: bell, well plunk, reel, water, bird calls
+and the hand-worked controls (winch, bolt, valve).
 
 Run with Python 3.11+, standard library only. No recordings, samples or network:
     python scripts/generate_cues.py            # rebuild every cue, refuse any drift
@@ -244,6 +245,94 @@ def spout() -> list[float]:
     return seamless(render, 4.0, 0.25)
 
 
+def ratchet_click(seed: int) -> list[float]:
+    """One pawl tick: the reel's click (a 2.2 kHz snap over an 850 Hz body)."""
+    bp, body = Biquad("bp", 2200, 3.0), Biquad("bp", 850, 6.0)
+    return [(bp(x) + 0.8 * body(x)) * math.exp(-i / RATE / 0.0025) for i, x in enumerate(noise(0.012, seed))]
+
+
+def iron_tink(freq: float, seed: int, decay: float = 0.012) -> list[float]:
+    """A small iron link touching its neighbour: a short ring at freq."""
+    ring = Biquad("bp", freq, 12.0)
+    return [ring(x) * math.exp(-i / RATE / decay) for i, x in enumerate(noise(0.05, seed))]
+
+
+def thunk(freq: float, seconds: float, decay: float) -> list[float]:
+    """A soft, rounded knock of timber or iron on timber."""
+    return tone(lambda t: freq * (1.0 - 0.15 * min(t / seconds, 1.0)), seconds,
+                lambda t: soft_onset(t, 0.003) * math.exp(-t / decay), (1.0, 0.3))
+
+
+def mellow(samples: list[float], cutoff: float = 5000.0) -> list[float]:
+    """Takes the edge off for small speakers: a low-pass and a -6 dB shelf over 3 kHz."""
+    lp, shelf = Biquad("lp", cutoff), Biquad("hs", 3000, 0.6, -6.0)
+    return [shelf(lp(s)) for s in samples]
+
+
+def winch() -> list[float]:
+    """A hand winch wound a turn and a half: five pawl ticks over the ratchet,
+    slowing a little as the chain comes taut, a few links rattling over the
+    drum and a soft drum thump under the first tick."""
+    out, rng = silence(0.4), random.Random(101)
+    overlay(out, thunk(120.0, 0.08, 0.02), 0.0, 0.35)
+    at = 0.012
+    for n in range(5):
+        overlay(out, ratchet_click(102 + n), at, rng.uniform(0.75, 1.0))
+        at += 0.058 + 0.008 * n
+    for n in range(9):
+        overlay(out, iron_tink(rng.uniform(2600, 3900), 110 + n), rng.uniform(0.03, 0.33), rng.uniform(0.10, 0.22))
+    # The chain's rasp across the hawse, under everything.
+    rasp, bp = noise(0.32, 120), Biquad("bp", 1500, 1.2)
+    overlay(out, [0.06 * bp(x) * math.sin(math.pi * i / len(rasp)) for i, x in enumerate(rasp)], 0.03)
+    return one_shot(mellow(out))
+
+
+def bolt() -> list[float]:
+    """A round iron bolt slid through its staples: a short dry scrape that
+    rises as it runs, then a soft clunk into the catch and a faint iron ring."""
+    out = silence(0.3)
+    scrape, bp, rng = noise(0.2, 131), Biquad("bp", 900, 1.4), random.Random(132)
+    grain = [rng.uniform(0.6, 1.0) for _ in range(40)]
+    slide = []
+    for i, x in enumerate(scrape):
+        u = i / len(scrape)
+        bp.set(900 + 700 * u)
+        # Friction catches and lets go in small grains as the bolt runs.
+        slide.append(bp(x) * math.sin(math.pi * min(u / 0.25, 1.0) / 2) * (0.5 + 0.5 * u) * grain[int(u * 39.999)])
+    overlay(out, slide, 0.0, 0.45)
+    overlay(out, thunk(135.0, 0.12, 0.028), 0.19, 1.0)
+    click, cbp = noise(0.01, 133), Biquad("bp", 700, 2.0)
+    overlay(out, [cbp(x) * math.exp(-i / RATE / 0.002) for i, x in enumerate(click)], 0.19, 0.9)
+    overlay(out, iron_tink(1900.0, 134, 0.035), 0.192, 0.12)
+    return one_shot(mellow(out, 4500.0))
+
+
+def valve() -> list[float]:
+    """An iron valve wheel turned: the spindle creaks round (stick-slip ticks
+    ringing its iron housing, the ring gliding up as it turns), easing as it
+    reaches the value, then a gentle stop on the mark."""
+    out, rng = silence(0.35), random.Random(141)
+    body, body2 = Biquad("bp", 480, 14.0), Biquad("bp", 1250, 16.0)
+    creak = [0.0] * int(0.26 * RATE)
+    t = 0.0
+    while t < 0.25:
+        i = int(t * RATE)
+        if i < len(creak):
+            creak[i] += rng.uniform(0.5, 1.0)
+        # The spindle sticks less often as the turn slows to the value.
+        t += 1.0 / rng.uniform(48.0, 60.0) * (1.0 + 0.7 * t / 0.25)
+    for i, x in enumerate(creak):
+        u = i / len(creak)
+        body.set(480 + 80 * u)
+        env = math.sin(math.pi * min(u / 0.2, 1.0) / 2) * (1.0 - 0.5 * u)
+        creak[i] = env * (body(x) + 0.45 * body2(x))
+    # A lone tick through a narrow ring is faint: bring the creak up to lead.
+    overlay(out, creak, 0.0, 0.75 / max(abs(s) for s in creak))
+    overlay(out, thunk(110.0, 0.09, 0.022), 0.255, 0.6)
+    overlay(out, iron_tink(1600.0, 142, 0.02), 0.257, 0.08)
+    return one_shot(mellow(out, 3500.0))
+
+
 def bird_phrases() -> list[list[tuple]]:
     """The garden songbird the owner chose (preview 03a): three short whistled
     phrases and a faint second bird's "tsip" triple, as notes
@@ -303,6 +392,9 @@ CUES = {
     "birds-2": lambda: bird_call(1),
     "birds-3": lambda: bird_call(2),
     "birds-far": lambda: bird_call(3),
+    "winch": winch,
+    "bolt": bolt,
+    "valve": valve,
 }
 # Files that loop; scripts/test_cues.py checks their seams.
 LOOPS = ("reel", "water-lap", "spout")
@@ -318,6 +410,9 @@ APPROVED = {
     "birds-2": "5ef55ebcc385d8cd192de5ca1a96c31ac1f690300fbdf5575e629f23044ca512",
     "birds-3": "f274b882c39be16a966323a42cb34e13b233f23a74758af78ab2d50120208b8e",
     "birds-far": "89632db35b3ff1dd685912bbd7c47ae8c8d39af44a3437abeef4ea1f1014f44b",
+    "winch": "992c7263e17ef9705e868812df3c544bba8cc8247056ea60e3a1f2aa5be87c05",
+    "bolt": "4b4b5e911025c3caa88d1e139ad48d1a428d89801a4f063e08387114ae939213",
+    "valve": "681bb260ad66a8c40ef773085af9832030e1508fadd31e840e67b5374002ba55",
 }
 
 
@@ -348,7 +443,7 @@ def main() -> None:
     for name in args.only or CUES:
         data = render(name)
         digest = hashlib.sha256(data).hexdigest()
-        if digest != APPROVED[name] and not args.accept:
+        if digest != APPROVED.get(name) and not args.accept:
             drift.append(f"    \"{name}\": \"{digest}\",")
             continue
         (args.output_dir / f"{name}.wav").write_bytes(data)
