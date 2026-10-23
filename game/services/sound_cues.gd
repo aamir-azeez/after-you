@@ -32,6 +32,9 @@ const FOOTSTEP_1 := preload("res://assets/audio/footstep-1.wav")
 const FOOTSTEP_2 := preload("res://assets/audio/footstep-2.wav")
 const GREETING := preload("res://assets/audio/reunion.wav")
 const POP := preload("res://assets/audio/pop.wav")
+const WINCH := preload("res://assets/audio/winch.wav")
+const BOLT := preload("res://assets/audio/bolt.wav")
+const VALVE := preload("res://assets/audio/valve.wav")
 
 ## The level every cue plays at (dB), and how far its gain wanders unless its
 ## entry sets "gain".
@@ -75,6 +78,24 @@ const CUES := {
 	# A crossing has started to close: the water rises over it before it shuts.
 	"crossing_closing": {"clip": WATER_SURGE, "range": Vector2(2.0, 6.0), "db": -3.0},
 	"spirit_drowned": {"clip": WELL_PLUNK, "range": Vector2(-7.0, -3.0)},
+	# Controls drawn as machines (LOOK_CUES): a winch's pawl ticking as the chain
+	# winds, lower as it pays out; a bolt sliding home into its catch, lower as it
+	# draws back; a valve wheel's iron creak to its value.
+	"winch_wound": {"clip": WINCH, "range": Vector2(-1.5, 1.5)},
+	"winch_unwound": {"clip": WINCH, "range": Vector2(-4.5, -2.5)},
+	"bolt_shot": {"clip": BOLT, "range": Vector2(-1.0, 1.5)},
+	"bolt_drawn": {"clip": BOLT, "range": Vector2(-4.0, -2.0)},
+	"valve_turned": {"clip": VALVE, "range": Vector2(-1.5, 1.5), "db": -1.0},
+}
+
+## A lever or selector drawn as a presentation/kit/lever_looks.gd kind (a
+## chapter descriptor's "lever_looks") -> its cues: [pulled or set, let go].
+## Any control with that look sounds like it; a control with no look keeps the
+## shared lever and switch cues.
+const LOOK_CUES := {
+	"winch": ["winch_wound", "winch_unwound"],
+	"bolt": ["bolt_shot", "bolt_drawn"],
+	"valve": ["valve_turned", "valve_turned"],
 }
 
 ## A spirit's foot contacts: each spirit alternates the clips; the step's
@@ -144,6 +165,12 @@ const BEDS := {
 	"home": ["birds"],
 }
 
+## The cue of a control drawn as `look` (LOOK_CUES), else `fallback`.
+## `released`: a lever let go rather than pulled.
+static func look_cue(look: String, fallback: String, released: bool = false) -> String:
+	if not LOOK_CUES.has(look): return fallback
+	return str(LOOK_CUES[look][1 if released else 0])
+
 ## True for a name a bed may list: a loop, or a set of calls.
 static func is_bed(name: String) -> bool:
 	return LOOPS.has(name) or CALLS.has(name)
@@ -162,6 +189,9 @@ static func problems() -> Array[String]:
 		if not (cue.get("range") is Vector2) or cue.range.x > cue.range.y: found.append("Cue %s has no pitch range" % key)
 		if cue.has("voice") and cue.voice != "long": found.append("Cue %s names an unknown voice" % key)
 		if cue.has("gain") and not (cue.gain is Vector2): found.append("Cue %s has a bad gain span" % key)
+	for look: String in LOOK_CUES:
+		var pair: Variant = LOOK_CUES[look]
+		if not (pair is Array and pair.size() == 2 and CUES.has(pair[0]) and CUES.has(pair[1])): found.append("Look %s needs a pulled and a let-go cue" % look)
 	if not (REACTION.clip is AudioStream) or REACTION.range.x > REACTION.range.y or REACTION.gain.x > REACTION.gain.y: found.append("The reaction pop has a bad clip or span")
 	for key: String in LOOPS:
 		if not (LOOPS[key].get("clip") is AudioStreamWAV): found.append("Loop %s has no WAV clip" % key)

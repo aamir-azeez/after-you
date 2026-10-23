@@ -21,7 +21,12 @@
 		"water_rise",
 		"water_fall",
 		"crossing_closing",
-		"spirit_drowned"
+		"spirit_drowned",
+		"winch_wound",
+		"winch_unwound",
+		"bolt_shot",
+		"bolt_drawn",
+		"valve_turned"
 	],
 	"chapters": {
 		"a-house-for-two@1": {
@@ -11147,7 +11152,7 @@
 						true
 					],
 					"cues": [
-						"switch_set"
+						"valve_turned"
 					]
 				},
 				"selector:chamber": {
@@ -11155,7 +11160,7 @@
 						true
 					],
 					"cues": [
-						"switch_set"
+						"valve_turned"
 					]
 				},
 				"selector:court-fork": {
@@ -11243,7 +11248,7 @@
 						true
 					],
 					"cues": [
-						"switch_set"
+						"valve_turned"
 					]
 				},
 				"selector:walk-gate": {
@@ -11405,6 +11410,8 @@
 				"seed_missed",
 				"seed_taken",
 				"seed_thrown",
+				"valve_turned",
+				"valve_turned",
 				"switch_set",
 				"switch_set",
 				"switch_set",
@@ -11415,9 +11422,7 @@
 				"switch_set",
 				"switch_set",
 				"switch_set",
-				"switch_set",
-				"switch_set",
-				"switch_set",
+				"valve_turned",
 				"switch_set",
 				"switch_set",
 				"source_aligned",
@@ -12179,7 +12184,7 @@
 						true
 					],
 					"cues": [
-						"switch_set"
+						"valve_turned"
 					]
 				},
 				"selector:chamber": {
@@ -12187,7 +12192,7 @@
 						true
 					],
 					"cues": [
-						"switch_set"
+						"valve_turned"
 					]
 				},
 				"selector:court-fork": {
@@ -12275,7 +12280,7 @@
 						true
 					],
 					"cues": [
-						"switch_set"
+						"valve_turned"
 					]
 				},
 				"selector:walk-gate": {
@@ -12437,6 +12442,8 @@
 				"seed_missed",
 				"seed_taken",
 				"seed_thrown",
+				"valve_turned",
+				"valve_turned",
 				"switch_set",
 				"switch_set",
 				"switch_set",
@@ -12447,9 +12454,7 @@
 				"switch_set",
 				"switch_set",
 				"switch_set",
-				"switch_set",
-				"switch_set",
-				"switch_set",
+				"valve_turned",
 				"switch_set",
 				"switch_set",
 				"source_aligned",

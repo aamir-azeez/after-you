@@ -736,7 +736,7 @@ func _sound(level: Dictionary) -> void:
 	# Journey keys already map the spout and the wheels; checked once registered.
 	if Registry.is_journey(KEY):
 		var mapped := SoundMap.cues(KEY, {"events": ["drop", "selector:tide", "selector:basin"], "role": "b"})
-		_check(mapped.cues == ["seed_landed", "switch_set", "switch_set"] and mapped.sources[1] != mapped.sources[2], "The spout lands with a thud and each wheel turns with its own switch cue")
+		_check(mapped.cues == ["seed_landed", "valve_turned", "valve_turned"] and mapped.sources[1] != mapped.sources[2], "The spout lands with a thud and each valve turns with its own cue identity")
 
 ## While the second spirit waits for its friend's memory (memory_wait.gd), the
 ## harbour camera follows the memory, as every chapter's does; otherwise it

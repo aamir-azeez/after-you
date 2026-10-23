@@ -18,6 +18,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 ## (content/chapters/index.gd).
 const Index = preload("res://content/chapters/index.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+## A control drawn as a machine (descriptor "lever_looks") plays its look's cue.
+const SoundCues = preload("res://services/sound_cues.gd")
 ## Read for its walking step only: a tick walks at most MOVE_PER_TICK 1 cm
 ## steps, and the engine calls a fall of more than 2 cm in one step a drop.
 const Runtime = preload("res://core/physical/runtime.gd")
@@ -82,6 +84,7 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 	if events.is_empty() and levers.is_empty() and controls.is_empty() and props.is_empty() and closed.is_empty() and not ghost_drop: return NO_CUES
 	var chapter := Index.data(chapter_key)
 	var overrides: Dictionary = chapter.get("sound_cues", NO_TABLE)
+	var looks: Dictionary = chapter.get("lever_looks", NO_TABLE)
 	var out := {"cues": [], "sources": []}
 	for event: String in events:
 		# Lever and switch cues come from the change itself, named by the object.
@@ -97,13 +100,15 @@ static func cues(chapter_key: String, state: Dictionary, seen: Dictionary = {}) 
 		elif event == "relay_filled": cue = "garden_opened"
 		elif event == "garden_bloomed": cue = "island_bloomed"
 		elif cooperative and PHYSICAL.has(event): cue = PHYSICAL[event]
-		elif cooperative and event.begins_with("selector:"): cue = "switch_set"
+		elif cooperative and event.begins_with("selector:"): cue = SoundCues.look_cue(str(looks.get(event.trim_prefix("selector:"), "")), "switch_set")
 		elif chapter_key == Registry.FIRST_STEPS and FIRST_STEPS.has(event): cue = FIRST_STEPS[event]
 		_add(out, cue, Soundscape.event_source(event, role))
-	for id: String in levers: _add(out, "lever_pulled", "lever:%s|lever:%s" % [id, id])
+	for id: String in levers:
+		var released := not bool(state.levers[id])
+		_add(out, SoundCues.look_cue(str(looks.get(id, "")), "lever_pulled", released), "lever:%s|lever:%s" % [id, id])
 	var water_moved := false
 	for id: String in controls:
-		_add(out, "switch_set", "selector:%s|selector:%s" % [id, id])
+		_add(out, SoundCues.look_cue(str(looks.get(id, "")), "switch_set"), "selector:%s|selector:%s" % [id, id])
 		var levels: Array = chapter.get("water_levels", NO_TABLE).get(id, NONE)
 		if not levels.is_empty():
 			var rising := levels.find(str(state.controls[id])) > levels.find(str(seen.previous_controls.get(id, "")))
