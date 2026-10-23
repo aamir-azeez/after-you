@@ -785,11 +785,55 @@ func _read_room_fact(name: String, state: String, known: Dictionary) -> bool:
 	push_error("Unknown room action fact: " + name)
 	return false
 
-## The handler a plain table row names, with its bound arguments and, for a
+## Each RoomActions row's hooks on this screen, by id:
+##   run: a plain row's handler; the row's bind and with_receipt give its
+##   arguments.
+##   widget: builds and wires a widget row. It takes (parent, id, facts, look)
+##   and returns the row's button, if any.
+##   option: wires a widget row's Room options row, taking the row and the id;
+##   without one a row runs its run hook once the sheet closes.
+##   drawn: told about the row's button once it is drawn.
+## Method references, not names, so renaming or moving a handler is a parse
+## error. They still call by name, so a subclass's override answers.
+var _room_hooks: Dictionary = {}
+func _room_action_hooks() -> Dictionary:
+	if not _room_hooks.is_empty(): return _room_hooks
+	_room_hooks = {
+		"copy_code": {"widget": _add_invitation_code_row, "option": _wire_copy_code_option},
+		"copy_code_button": {"widget": _add_copy_code_button},
+		"share": {"widget": _add_share_row, "option": _wire_share_option},
+		"check_saved": {"run": _online_refresh},
+		"keep_held": {"run": _keep_held_turn},
+		"alerts": {"widget": _add_alerts_status},
+		"notify": {"run": _enable_turn_notifications, "drawn": _track_notify_offer},
+		"resume": {"run": _turn_tap, "drawn": _track_turn_button},
+		"record": {"run": _turn_tap, "drawn": _track_turn_button},
+		"refresh": {"run": _online_refresh},
+		"replays": {"run": _play_replays},
+		"local_replays": {"run": _show_local_replays},
+		"redo_answer": {"run": _open_redo, "drawn": _announce_pending_redo},
+		"redo": {"run": _open_redo},
+		"solo_redo": {"run": _confirm_solo_redo},
+		"photo": {"run": _offer_recent_photo},
+		"checkpoints": {"run": _choose_local_checkpoint},
+		"hard_again": {"run": _hard_again},
+		"new_room": {"run": _create_another_room, "drawn": _track_new_room_button},
+		"restart": {"run": _confirm_restart_chapter},
+		"add_friend": {"run": _add_partner_friend},
+		"friend_requested": {"run": _partner_friend_requested},
+		"about": {"run": _show_waiting_details},
+		"safety": {"run": _open_safety},
+		"room_options": {"widget": _add_room_options_button},
+		"your_rooms": {"run": _leave},
+		"back": {"run": _leave},
+	}
+	return _room_hooks
+
+## A plain table row's handler, with its bound arguments and, for a
 ## with_receipt row, the receipt it was drawn for.
 func _room_action_handler(id: String) -> Callable:
 	var row: Dictionary = RoomActions.ACTIONS[id]
-	var run := Callable(self, str(row.run)).bindv(row.get("bind", []))
+	var run: Callable = _room_action_hooks()[id].run.bindv(row.get("bind", []))
 	return run.bind(_recent_photo_receipt()) if row.get("with_receipt", false) else run
 
 ## A plain table row as the shared action button or a plain card button.
@@ -823,12 +867,13 @@ func _add_room_panel_actions(card: VBoxContainer, facts: Callable) -> void:
 	_add_room_actions(_room_ready_panel.header, state, "header", facts)
 
 ## Adds one table row when it applies, drawn in `look` (RoomActions.look), and
-## returns its button. A plain row is one button; a widget row is built by the
-## screen method it names.
+## returns its button. A plain row is one button; a widget row is built by its
+## widget hook (_room_action_hooks).
 func _add_room_action(parent: Container, id: String, facts: Callable = Callable(), look: Dictionary = {}) -> Button:
 	if not facts.is_valid(): facts = _room_facts()
 	if not RoomActions.applies(id, facts, _room_state): return null
 	var row: Dictionary = RoomActions.ACTIONS[id]
+	var hooks: Dictionary = _room_action_hooks()[id]
 	if look.get("heading", false) and row.get("heading", false):
 		var divider := HSeparator.new()
 		divider.name = "RoomRowDivider"
@@ -838,8 +883,8 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 		heading.add_theme_color_override("font_color", CREAM)
 		parent.add_child(heading)
 	var button: Button
-	if row.has("widget"):
-		button = call(str(row.widget), parent, id, facts, look)
+	if hooks.has("widget"):
+		button = hooks.widget.call(parent, id, facts, look)
 	else:
 		button = _room_action_button(id, facts, look.get("cream", false))
 		parent.add_child(button)
@@ -849,10 +894,10 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 	if look.get("icon", false) and row.get("alert", false): _alert_outline(button)
 	if look.has("height"): button.custom_minimum_size.y = look.height
 	if look.get("fill", false): button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	if row.has("drawn"): call(str(row.drawn), button)
+	if hooks.has("drawn"): hooks.drawn.call(button)
 	return button
 
-## Widget rows (RoomActions "widget"): each takes (parent, id, facts, look).
+## Widget rows (widget hooks): each takes (parent, id, facts, look).
 
 ## The narrow card's Copy invitation code button and its result line.
 func _add_copy_code_button(parent: Container, id: String, _facts: Callable, _look: Dictionary) -> Button:
@@ -895,7 +940,7 @@ func _add_alerts_status(parent: Container, _id: String, _facts: Callable, _look:
 	update_notification_offer()
 	return null
 
-## Drawn hooks (RoomActions "drawn"): each takes the row's button.
+## Drawn hooks: each takes the row's button.
 
 ## A tap still waiting keeps its label on the redrawn Record or Resume.
 func _track_turn_button(button: Button) -> void:
@@ -1324,17 +1369,17 @@ func _open_room_options(opener: Control = null) -> void:
 			for id: String in group.ids:
 				_wire_room_option(sheet.row(side, RoomActions.icon(id), RoomActions.label(id, facts), section.get("danger", false)), id)
 
-## A Room options row runs its action once the sheet closes, unless the table
-## names the screen method that wires it (RoomActions "option").
+## A Room options row runs its action once the sheet closes, unless the row
+## has an option hook that wires it.
 func _wire_room_option(row: Button, id: String) -> void:
-	var data: Dictionary = RoomActions.ACTIONS[id]
-	if data.has("option"):
-		call(str(data.option), row, id)
+	var hooks: Dictionary = _room_action_hooks()[id]
+	if hooks.has("option"):
+		hooks.option.call(row, id)
 		return
-	assert(not data.has("widget"), "A widget room action needs its own Room options row: " + id)
+	assert(not hooks.has("widget"), "A widget room action needs its own Room options row: " + id)
 	row.pressed.connect(_room_option.bind(_room_action_handler(id)))
 
-## Option rows (RoomActions "option"): each takes the sheet row and the id, and
+## Option rows (option hooks): each takes the sheet row and the id, and
 ## answers in place on the row's second line.
 
 func _wire_copy_code_option(row: Button, _id: String) -> void:

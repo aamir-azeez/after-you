@@ -2,17 +2,18 @@ extends RefCounted
 ## The in-chapter room's actions: one row per action, and where each room panel
 ## state shows it. relay_preview.gd draws a state by walking its slots in order;
 ## this table owns which actions appear, their order, their labels, their
-## icons, their Room options section, their handlers, when they apply and how
-## each slot draws them (LOOKS).
+## icons, their Room options section, when they apply and how each slot draws
+## them (LOOKS). The screen's _room_action_hooks() holds each row's handler, as
+## method references, so renaming a handler is a parse error.
 ##
 ## Moving a plain row is moving its id between two lists of one state in
 ## LAYOUT, for example from "turn" to "options" in "waiting_panel". Room options
 ## lists every row of a state's options slot that applies, grouped by its
 ## section, so a row may also sit in a panel slot of the same state.
 ## A widget row (the invitation code field or button, Share, Turn alerts' status
-## line, Room options) names the screen method that builds and wires it. In Room
-## options the invitation code and Share answer on their own row, so they name
-## the screen method that wires that row.
+## line, Room options) has a screen hook that builds and wires it. In Room
+## options the invitation code and Share answer on their own row, so they also
+## have a hook that wires that row.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 
@@ -31,49 +32,44 @@ const TURN_REQUESTS := "Turn requests"
 ##   icon: its icon on the wide room panel and in Room options (a header action
 ##   is icon only); a shared button brings its own.
 ##   section: its Room options group (SECTIONS); a row in an options slot has one.
-##   run: the screen's handler method, bind: its arguments; with_receipt: the
-##   handler also takes the turn receipt the row was drawn for.
-##   widget: the screen method that builds and wires this row (no run). It
-##   takes (parent, id, facts, look) and returns the row's button, if any.
-##   option: the screen method that wires its Room options row, taking the row
-##   and the id; without one the row runs `run` once the sheet closes.
-##   drawn: a screen method told about the row's button once it is drawn.
+##   bind: the arguments its handler (the screen's run hook) takes;
+##   with_receipt: the handler also takes the turn receipt the row was drawn for.
 ##   line: a line under the row where its slot's look shows lines.
 ##   alert: on the panel, a coral edge while the row waits for an answer.
 ##   heading: where its slot's look shows headings, its label heads it, above
 ##   a divider.
 ##   when: facts the screen must report true, in order ("!" negates).
 const ACTIONS := {
-	"copy_code": {"text": "Copy invitation code", "icon": preload("res://assets/ui/social/copy.svg"), "section": "invite", "widget": "_add_invitation_code_row", "option": "_wire_copy_code_option", "when": ["invited", "!joined"]},
-	"copy_code_button": {"text": "Copy invitation code", "widget": "_add_copy_code_button", "when": ["invited", "!joined"]},
-	"share": {"text": SHARE, "icon": preload("res://assets/ui/social/share-network.svg"), "line": SHARE_SCOPE, "section": "invite", "widget": "_add_share_row", "option": "_wire_share_option", "when": ["share"]},
-	"check_saved": {"button": "check_saved", "run": "_online_refresh", "when": ["pending"]},
-	"keep_held": {"text": PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, "run": "_keep_held_turn", "when": ["held"]},
-	"alerts": {"text": "Notifications", "heading": true, "widget": "_add_alerts_status", "when": ["!pending", "alerts"]},
-	"notify": {"text": PlayerCopy.MAIN_C4B947AAAE59, "primary": true, "icon": preload("res://assets/ui/whats_new/bell.svg"), "section": "turns", "run": "_enable_turn_notifications", "drawn": "_track_notify_offer", "when": ["!pending", "notifications"]},
-	"resume": {"button": "resume", "run": "_turn_tap", "bind": ["resume"], "drawn": "_track_turn_button", "when": ["draft"]},
-	"record": {"button": "record", "run": "_turn_tap", "bind": ["record"], "drawn": "_track_turn_button", "when": ["!resume_only"]},
-	"refresh": {"button": "refresh", "icon": preload("res://assets/ui/social/arrows-clockwise.svg"), "run": "_online_refresh", "when": ["online", "!pending"]},
-	"replays": {"button": "replays", "section": "turns", "run": "_play_replays", "when": ["online", "watchable"]},
-	"local_replays": {"button": "replays", "run": "_show_local_replays", "when": ["solo", "watchable"]},
-	"redo_answer": {"text": REDO_REQUESTED, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "alert": true, "run": "_open_redo", "drawn": "_announce_pending_redo", "when": ["!hard", "redo", "redo_accept"]},
-	"redo": {"text": ASK_FOR_REDO, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "run": "_open_redo", "when": ["!hard", "redo", "!redo_accept"]},
-	"solo_redo": {"text": PlayerCopy.SOLO_REDO_ACTION, "run": "_confirm_solo_redo", "when": ["!hard", "solo_redo"]},
-	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "run": "_offer_recent_photo", "with_receipt": true, "when": ["photo"]},
-	"checkpoints": {"button": "retry", "run": "_choose_local_checkpoint", "when": ["!hard", "solo"]},
+	"copy_code": {"text": "Copy invitation code", "icon": preload("res://assets/ui/social/copy.svg"), "section": "invite", "when": ["invited", "!joined"]},
+	"copy_code_button": {"text": "Copy invitation code", "when": ["invited", "!joined"]},
+	"share": {"text": SHARE, "icon": preload("res://assets/ui/social/share-network.svg"), "line": SHARE_SCOPE, "section": "invite", "when": ["share"]},
+	"check_saved": {"button": "check_saved", "when": ["pending"]},
+	"keep_held": {"text": PlayerCopy.RELAY_PREVIEW_D4FF2D8D4CDF, "when": ["held"]},
+	"alerts": {"text": "Notifications", "heading": true, "when": ["!pending", "alerts"]},
+	"notify": {"text": PlayerCopy.MAIN_C4B947AAAE59, "primary": true, "icon": preload("res://assets/ui/whats_new/bell.svg"), "section": "turns", "when": ["!pending", "notifications"]},
+	"resume": {"button": "resume", "bind": ["resume"], "when": ["draft"]},
+	"record": {"button": "record", "bind": ["record"], "when": ["!resume_only"]},
+	"refresh": {"button": "refresh", "icon": preload("res://assets/ui/social/arrows-clockwise.svg"), "when": ["online", "!pending"]},
+	"replays": {"button": "replays", "section": "turns", "when": ["online", "watchable"]},
+	"local_replays": {"button": "replays", "when": ["solo", "watchable"]},
+	"redo_answer": {"text": REDO_REQUESTED, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "alert": true, "when": ["!hard", "redo", "redo_accept"]},
+	"redo": {"text": ASK_FOR_REDO, "icon": preload("res://assets/ui/retry.svg"), "section": "turns", "when": ["!hard", "redo", "!redo_accept"]},
+	"solo_redo": {"text": PlayerCopy.SOLO_REDO_ACTION, "when": ["!hard", "solo_redo"]},
+	"photo": {"text": "Photo for your last contribution", "icon": preload("res://assets/ui/room/camera.svg"), "section": "turns", "with_receipt": true, "when": ["photo"]},
+	"checkpoints": {"button": "retry", "when": ["!hard", "solo"]},
 	# A finished solo hard run starts again from its first stage (services/hard_mode.gd).
-	"hard_again": {"text": PlayerCopy.HARD_AGAIN, "primary": true, "run": "_hard_again", "when": ["hard", "solo"]},
-	"new_room": {"text": "New room", "primary": true, "run": "_create_another_room", "drawn": "_track_new_room_button", "when": ["online"]},
-	"restart": {"text": "Restart chapter", "primary": true, "run": "_confirm_restart_chapter", "when": ["!hard", "restart"]},
+	"hard_again": {"text": PlayerCopy.HARD_AGAIN, "primary": true, "when": ["hard", "solo"]},
+	"new_room": {"text": "New room", "primary": true, "when": ["online"]},
+	"restart": {"text": "Restart chapter", "primary": true, "when": ["!hard", "restart"]},
 	# A room partner who is not a friend yet: the ordinary friend request
 	# (services/partner_friends.gd), then "Request sent" until they answer.
-	"add_friend": {"text": PlayerCopy.ROOM_ADD_FRIEND, "icon": preload("res://assets/ui/social/plus.svg"), "section": "partner", "run": "_add_partner_friend", "when": ["online", "partner_addable"]},
-	"friend_requested": {"text": PlayerCopy.ROOM_FRIEND_REQUESTED, "icon": preload("res://assets/ui/check.svg"), "section": "partner", "run": "_partner_friend_requested", "when": ["online", "partner_requested"]},
-	"about": {"text": "About this chapter", "icon": preload("res://assets/ui/social/info.svg"), "section": "chapter", "run": "_show_waiting_details", "when": ["about"]},
-	"safety": {"text": "Report or block player", "icon": preload("res://assets/ui/room/flag.svg"), "section": "safety", "run": "_open_safety", "when": ["safety"]},
-	"room_options": {"text": "Room options", "icon": preload("res://assets/ui/room/dots.svg"), "widget": "_add_room_options_button", "when": ["options"]},
-	"your_rooms": {"text": "Your rooms", "icon": preload("res://assets/ui/room/door-exit.svg"), "run": "_leave", "when": []},
-	"back": {"button": "back", "run": "_leave", "when": []},
+	"add_friend": {"text": PlayerCopy.ROOM_ADD_FRIEND, "icon": preload("res://assets/ui/social/plus.svg"), "section": "partner", "when": ["online", "partner_addable"]},
+	"friend_requested": {"text": PlayerCopy.ROOM_FRIEND_REQUESTED, "icon": preload("res://assets/ui/check.svg"), "section": "partner", "when": ["online", "partner_requested"]},
+	"about": {"text": "About this chapter", "icon": preload("res://assets/ui/social/info.svg"), "section": "chapter", "when": ["about"]},
+	"safety": {"text": "Report or block player", "icon": preload("res://assets/ui/room/flag.svg"), "section": "safety", "when": ["safety"]},
+	"room_options": {"text": "Room options", "icon": preload("res://assets/ui/room/dots.svg"), "when": ["options"]},
+	"your_rooms": {"text": "Your rooms", "icon": preload("res://assets/ui/room/door-exit.svg"), "when": []},
+	"back": {"button": "back", "when": []},
 }
 
 ## Room options groups, in order: the heading and the sheet column each sits

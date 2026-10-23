@@ -1,13 +1,12 @@
 extends SceneTree
 ## The room action table (presentation/room_actions.gd): every action has a
-## label, a handler and a place; each panel state is one column of the owner's
+## label and a place (test_room_action_hooks.gd checks its handler); each panel state is one column of the owner's
 ## mapping (2026-10-18) and each card state lists today's actions in today's
 ## order; Room options groups rows by section; and the solo chapter's cards
 ## draw exactly what the table says.
 const RoomActions = preload("res://presentation/room_actions.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const Preview = preload("res://relay_preview.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
@@ -91,12 +90,8 @@ func _run() -> void:
 	print("ROOM ACTIONS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-## Every action has a label, at least one place, and either a handler on the
-## room screen that takes exactly its bound arguments or a custom widget.
+## Every action has a label and at least one place.
 func _rows() -> void:
-	var screen := Preview.new()
-	var methods := {}
-	for method: Dictionary in screen.get_method_list(): methods[method.name] = method
 	var placed := {}
 	for state: String in RoomActions.LAYOUT:
 		for slot: String in RoomActions.LAYOUT[state]:
@@ -109,26 +104,7 @@ func _rows() -> void:
 		_check(placed.has(id), "Action has at least one place: " + id)
 		_check(row.has("when"), "Action says when it applies: " + id)
 		_check(not row.has("section") or RoomActions.SECTIONS.has(row.section), "A row's Room options section exists: " + id)
-		if row.has("drawn"):
-			var hook: Dictionary = methods.get(str(row.drawn), {})
-			_check(not hook.is_empty() and hook.args.size() - hook.default_args.size() <= 1 and hook.args.size() >= 1, "A drawn hook on the room screen takes the row's button: " + id)
-		if row.has("widget"):
-			_check(not row.has("run") and not row.has("bind"), "A widget row is wired only by its widget: " + id)
-			var widget: Dictionary = methods.get(str(row.widget), {})
-			_check(not widget.is_empty() and widget.args.size() == 4, "A widget row names a room screen builder taking parent, id, facts and look: " + id)
-			if row.has("option"):
-				var option: Dictionary = methods.get(str(row.option), {})
-				_check(not option.is_empty() and option.args.size() == 2, "An option row names a room screen method taking the sheet row and the id: " + id)
-			continue
-		var method: Dictionary = methods.get(str(row.get("run", "")), {})
-		_check(not method.is_empty(), "Action names a handler on the room screen: " + id)
-		if method.is_empty(): continue
-		var takes: int = row.get("bind", []).size() + (1 if row.get("with_receipt", false) else 0)
-		var most: int = method.args.size()
-		var least: int = most - method.default_args.size()
-		_check(takes >= least and takes <= most, "Handler %s takes the %d arguments the row gives it: %s" % [row.run, takes, id])
 	_check(RoomActions.ACTIONS.photo.get("with_receipt", false) and RoomActions.ACTIONS.photo.get("bind", []).is_empty(), "The photo handler takes one argument, the receipt")
-	screen.free()
 
 ## Each state lists today's actions in today's order; no state shows an action
 ## twice; custom actions sit only in invite or turn slots; header actions are
@@ -149,7 +125,6 @@ func _layout() -> void:
 					seen[id] = true
 				if slot == "options":
 					_check(row.has("section") and RoomActions.icon(id) != null, "A Room options row has a section and an icon: %s in %s" % [id, state])
-					_check(not row.has("widget") or row.has("option"), "A widget row in Room options names how its sheet row is wired: " + id)
 				elif panel:
 					_check(RoomActions.LOOKS.has(slot), "A panel slot has a look: %s.%s" % [state, slot])
 				if slot == "header": _check(row.has("icon"), "A header action has an icon: " + id)

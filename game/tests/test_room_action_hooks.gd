@@ -1,8 +1,9 @@
 extends SceneTree
 ## Every room action (presentation/room_actions.gd) resolves on every screen
-## that draws room actions: a plain row's handler takes the arguments the row
-## gives it, a widget row's builder, Room options wiring and drawn hook exist
-## with their arguments, and nothing else hosts room actions unchecked.
+## that draws room actions (its _room_action_hooks): a plain row's handler takes
+## the arguments the row gives it, a widget row's builder, Room options wiring
+## and drawn hook exist with their arguments, a subclass's override answers,
+## and nothing else hosts room actions unchecked.
 const RoomActions = preload("res://presentation/room_actions.gd")
 ## The screens that draw room actions: relay_preview.gd and every script that
 ## extends it. lighthouse_preview.gd (Lighthouse @1) draws its own cards.
@@ -18,6 +19,7 @@ func _initialize() -> void:
 func _run() -> void:
 	_hosts()
 	for path: String in HOSTS: _resolves(path)
+	_override_answers()
 	print("ROOM ACTION HOOKS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -54,16 +56,9 @@ func _scripts(dir: String) -> Array[String]:
 		found.append_array(_scripts(dir.path_join(sub)))
 	return found
 
-## Each row's hooks on `screen`, by kind, as the table names them.
+## Each row's hooks on `screen`, by kind.
 func _hooks(screen: Object) -> Dictionary:
-	var hooks := {}
-	for id: String in RoomActions.ACTIONS:
-		var row: Dictionary = RoomActions.ACTIONS[id]
-		var entry := {}
-		for kind: String in KINDS:
-			if row.has(kind): entry[kind] = Callable(screen, StringName(str(row[kind])))
-		hooks[id] = entry
-	return hooks
+	return screen._room_action_hooks()
 
 func _resolves(path: String) -> void:
 	var screen: Object = load(path).new()
@@ -72,6 +67,9 @@ func _resolves(path: String) -> void:
 	for method: Dictionary in screen.get_method_list():
 		if not methods.has(method.name): methods[method.name] = method
 	var hooks := _hooks(screen)
+	for id: String in hooks:
+		_check(RoomActions.ACTIONS.has(id), "A hook belongs to a room action: %s on %s" % [id, path.get_file()])
+		_check(hooks[id].keys().all(func(kind: String): return kind in KINDS), "A hook is run, widget, option or drawn: %s on %s" % [id, path.get_file()])
 	var in_options := {}
 	for state: String in RoomActions.LAYOUT:
 		for id: String in RoomActions.LAYOUT[state].get("options", []): in_options[id] = true
@@ -92,6 +90,16 @@ func _resolves(path: String) -> void:
 			var least: int = most - method.default_args.size()
 			var takes: int = {"widget": 4, "option": 2, "drawn": 1}.get(kind, row.get("bind", []).size() + (1 if row.get("with_receipt", false) else 0))
 			_check(takes >= least and takes <= most, "The %s hook %s takes the %d arguments it is given: %s" % [kind, callable.get_method(), takes, where])
+	screen.free()
+
+## A subclass's override of a handler is what the row runs.
+func _override_answers() -> void:
+	var subclass := GDScript.new()
+	subclass.source_code = "extends \"res://relay_preview.gd\"\nvar answered := \"\"\nfunc _show_local_replays() -> void:\n\tanswered = \"override\"\n"
+	_check(subclass.reload() == OK, "A room screen subclass compiles")
+	var screen: Object = subclass.new()
+	screen._room_action_handler("local_replays").call()
+	_check(screen.answered == "override", "A row runs the subclass's override of its handler")
 	screen.free()
 
 func _check(condition: bool, description: String) -> void:
