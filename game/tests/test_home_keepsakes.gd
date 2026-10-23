@@ -127,7 +127,11 @@ func _run() -> void:
 	_write(prefix + "-corrupt.json", "{broken")
 	var corrupt := _keepsakes(prefix + "-corrupt.json")
 	corrupt.load_data()
-	_check(corrupt.read_only and FileAccess.get_file_as_string(prefix + "-corrupt.json") == "{broken", "Unrecoverable corrupt primary preserved")
+	# With no copy that parses the ledger starts over (its places are earned
+	# again from their sources) and keeps the bytes aside, as the main save does.
+	var aside := prefix + "-corrupt.json" + Save.UNREADABLE + "{broken".sha256_text() + ".json"
+	_check(not corrupt.read_only and not FileAccess.file_exists(prefix + "-corrupt.json") and FileAccess.get_file_as_string(aside) == "{broken", "An unreadable ledger with no other copy starts over and keeps its bytes aside")
+	_check(corrupt._award(["earlier/first-light"], "solo") and _mark(_keepsakes(prefix + "-corrupt.json"), "earlier/first-light", "solo"), "...and earns places again")
 	var recovery_path := prefix + "-recover.json"
 	DirAccess.copy_absolute(prefix + ".json", recovery_path + ".backup")
 	_write(recovery_path, "{interrupted")

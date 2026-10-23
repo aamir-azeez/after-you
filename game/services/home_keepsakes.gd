@@ -132,6 +132,9 @@ func load_data() -> void:
 			_hold(LOAD_ERROR)
 			return
 	_storage.load_data()
+	# No copy parses: the ledger starts over, its copies kept aside as the
+	# main save does, and its places are earned again from their sources.
+	if _storage.read_only and _storage.start_fresh_if_unreadable(): unreadable.clear()
 	if _storage.read_only:
 		_hold(LOAD_ERROR)
 		return
