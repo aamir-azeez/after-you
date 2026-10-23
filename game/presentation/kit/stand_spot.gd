@@ -17,9 +17,12 @@ extends Node3D
 ## of them through SessionRelease); set_held() swaps between two cached looks
 ## and moves this node, and only when the held state changes.
 const Primitives = preload("res://presentation/kit/primitives.gd")
-## The disc's top stays under a spirit's ground shadow (SpiritVisual.SHADOW_TOP),
-## so a spirit standing on the spot casts its shadow on the disc.
-const DISC_HEIGHT := 0.015
+## The disc's top and the mark's top stack between a crossing's remembered
+## footsteps (tops 0.0135 above its deck, lighthouse_world) and a spirit's
+## ground shadow (SpiritVisual.SHADOW_TOP, 0.02425), each at least 3 mm
+## (test_dressing_lint COPLANAR) from the next, so nothing z-fights and a
+## spirit standing on the spot casts its shadow on the disc.
+const DISC_HEIGHT := 0.0172
 ## The rim's tube is this thick (its outer edge is the pad's radius) and its
 ## centre this high above the floor, so it stands proud of the disc.
 const RIM_WIDTH := 0.045
@@ -41,7 +44,7 @@ const MARK_SIDE := 0.11
 const MARK_RING := 0.08
 const MARK_RING_TUBE := 0.03
 const MARK_CLEAR := 0.02
-const MARK_TOP := 0.0235
+const MARK_TOP := 0.0207
 const MARK_THICKNESS := 0.012
 ## A held spot sinks this far and its disc glows `light` at this energy.
 const PRESS_DEPTH := 0.012
