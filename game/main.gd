@@ -2452,6 +2452,10 @@ func _service_update_gate() -> void:
 	for child: Node in ui.get_children():
 		if child.get_script() == InGameModal: return
 	if TouchInput.press_held(overlay): return
+	# Nor is a walk or pinch on the island in Explore cut short: the screen
+	# shows once the player leaves Explore. Online entries still ask
+	# _online_gated, which shows it at once.
+	if is_instance_valid(home_stage_view) and home_stage_view.is_exploring(): return
 	_show_update_gate()
 
 func _show_update_gate() -> void:
