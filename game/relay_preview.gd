@@ -37,6 +37,7 @@ const RoomReadyPanel = preload("res://presentation/room_ready_panel.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
 const RoomFriendStrip = preload("res://presentation/room_friend_strip.gd")
 const RoomOptionsSheet = preload("res://presentation/room_options_sheet.gd")
+const RoomPageBuilder = preload("res://presentation/room_page_builder.gd")
 const WaitFraming = preload("res://presentation/wait_framing.gd")
 ## Seconds the room panel's camera takes to ease into a new framing.
 const FRAMING_EASE := 0.6
@@ -852,7 +853,7 @@ func _add_room_actions(parent: Container, state: String, slot: String, facts: Ca
 ## cream rows, the outlined rows, then the last line's rows side by side.
 func _add_room_panel_actions(card: VBoxContainer, facts: Callable) -> void:
 	var state := _room_state
-	if not RoomActions.shown(state, "invite", facts).is_empty(): _add_room_actions(_group(card, 8), state, "invite", facts)
+	if not RoomActions.shown(state, "invite", facts).is_empty(): _add_room_actions(RoomPageBuilder.group(card, 8), state, "invite", facts)
 	# The divider sets the turn's actions apart; an invitation that leads the
 	# panel's actions (a cream Share) stays one block with the code above it.
 	var primary := RoomActions.shown(state, "primary", facts)
@@ -889,9 +890,9 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 		button = _room_action_button(id, facts, look.get("cream", false))
 		parent.add_child(button)
 	if button == null: return null
-	if look.get("icon_only", false): _room_icon_button(button, row.icon, button.text, true)
-	elif look.get("icon", false): _panel_row_look(button, RoomActions.icon(id), look.get("cream", false) or row.get("primary", false))
-	if look.get("icon", false) and row.get("alert", false): _alert_outline(button)
+	if look.get("icon_only", false): RoomPageBuilder.icon_button(button, row.icon, button.text, true)
+	elif look.get("icon", false): RoomPageBuilder.panel_row_look(button, RoomActions.icon(id), look.get("cream", false) or row.get("primary", false))
+	if look.get("icon", false) and row.get("alert", false): RoomPageBuilder.alert_outline(button)
 	if look.has("height"): button.custom_minimum_size.y = look.height
 	if look.get("fill", false): button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	if hooks.has("drawn"): hooks.drawn.call(button)
@@ -901,8 +902,8 @@ func _add_room_action(parent: Container, id: String, facts: Callable = Callable(
 
 ## The narrow card's Copy invitation code button and its result line.
 func _add_copy_code_button(parent: Container, id: String, _facts: Callable, _look: Dictionary) -> Button:
-	var status := _feedback_label("RelayCopyStatus")
-	var button := _panel_button(RoomActions.label(id), false)
+	var status := RoomPageBuilder.feedback_label("RelayCopyStatus")
+	var button := RoomPageBuilder.panel_button(RoomActions.label(id), false)
 	button.name = "CopyInvitationCode"
 	button.pressed.connect(_copy_invitation.bind(status))
 	parent.add_child(button)
@@ -911,7 +912,7 @@ func _add_copy_code_button(parent: Container, id: String, _facts: Callable, _loo
 
 ## Share and its result line, which shows the row's line where the look has lines.
 func _add_share_row(parent: Container, id: String, _facts: Callable, look: Dictionary) -> Button:
-	var share := _panel_button(RoomActions.label(id), look.get("cream", false))
+	var share := RoomPageBuilder.panel_button(RoomActions.label(id), look.get("cream", false))
 	parent.add_child(share)
 	var lined: bool = look.get("line", false)
 	var status := _label(str(RoomActions.ACTIONS[id].line) if lined else "", 17)
@@ -921,7 +922,7 @@ func _add_share_row(parent: Container, id: String, _facts: Callable, look: Dicti
 	return share
 
 func _add_room_options_button(parent: Container, id: String, _facts: Callable, _look: Dictionary) -> Button:
-	var button := _panel_button(RoomActions.label(id), false)
+	var button := RoomPageBuilder.panel_button(RoomActions.label(id), false)
 	button.name = "RoomOptions"
 	button.pressed.connect(_open_room_options.bind(button))
 	parent.add_child(button)
@@ -949,28 +950,6 @@ func _track_turn_button(button: Button) -> void:
 func _track_notify_offer(button: Button) -> void:
 	notification_offer = button
 	update_notification_offer()
-
-## A coral edge on a panel row that waits for this player's answer.
-func _alert_outline(button: Button) -> void:
-	var style := button.get_theme_stylebox("normal").duplicate() as StyleBoxFlat
-	if style == null: return
-	style.border_color = ControlTheme.CORAL
-	style.set_border_width_all(2)
-	button.add_theme_stylebox_override("normal", style)
-
-## A panel row's icon beside its centred label, inked like the label.
-func _panel_row_look(button: Button, texture: Texture2D, cream: bool) -> void:
-	if button.icon == null and texture != null:
-		button.icon = texture
-		button.expand_icon = false
-		button.add_theme_constant_override("icon_max_width", 22)
-		button.add_theme_constant_override("h_separation", 10)
-		var ink := ControlTheme.INK if cream else CREAM
-		for state: String in ["normal", "focus"]: button.add_theme_color_override("icon_" + state + "_color", ink)
-		for state: String in ["hover", "pressed", "hover_pressed"]: button.add_theme_color_override("icon_" + state + "_color", ControlTheme.INK)
-	if button.icon != null:
-		ControlTheme.inset_button(button)
-		ControlTheme.center_icon_label(button)
 
 ## The online replays row: the finished pairs from the first.
 func _play_replays() -> void:
@@ -1076,21 +1055,6 @@ func _restore_ready_world() -> void:
 	_room_framed = false
 	_room_camera.clear()
 
-func _room_icon_button(button: Button, texture: Texture2D, accessible: String, icon_only: bool = false) -> void:
-	button.icon = texture
-	button.expand_icon = true
-	button.icon_alignment = HORIZONTAL_ALIGNMENT_CENTER if icon_only else HORIZONTAL_ALIGNMENT_LEFT
-	button.add_theme_constant_override("icon_max_width",28)
-	button.add_theme_color_override("icon_normal_color",CREAM)
-	button.add_theme_color_override("icon_hover_color",Color("193d39"))
-	button.tooltip_text = accessible
-	button.accessibility_name = accessible
-	if icon_only:
-		button.text = ""
-		button.custom_minimum_size = Vector2(48,48)
-		button.size_flags_horizontal = Control.SIZE_SHRINK_END
-
-
 func _add_room_status_chip(card: VBoxContainer, fixed_text: String = "") -> PanelContainer:
 	# One pill for the room's status: fixed text when the room snapshot already
 	# knows it, otherwise the live presence label.
@@ -1172,23 +1136,6 @@ func _show_waiting_details() -> void:
 	details.add_child(_action_button("back", _show_ready))
 
 
-func _group(parent: VBoxContainer, separation: int) -> VBoxContainer:
-	var group := VBoxContainer.new()
-	group.add_theme_constant_override("separation", separation)
-	parent.add_child(group)
-	return group
-
-
-func _panel_button(text: String, primary: bool) -> Button:
-	# Same as the shared card button; the caller connects once the node exists.
-	var button := Button.new()
-	button.text = text
-	button.custom_minimum_size.y = 50
-	button.mouse_filter = Control.MOUSE_FILTER_PASS
-	if not primary: ControlTheme.secondary(button)
-	return button
-
-
 func _share_available() -> bool:
 	return online_session != null and not online_session.invitation_code().is_empty() and share_current_room.is_valid()
 
@@ -1259,7 +1206,7 @@ func _show_online_waiting() -> void:
 	if heading == whose: card.get_child(0).name = "WaitingPartnerLine"
 	var chip: PanelContainer = _add_room_status_chip(card, chip_text) if joined or not chip_text.is_empty() else null
 	if chip != null: card.move_child(chip, 0)
-	_add_waiting_lines(card, subline, whose, notices)
+	RoomPageBuilder.waiting_lines(card, subline, whose, notices)
 	_set_room_state("waiting_card")
 	var facts := _room_facts()
 	_add_room_actions(card, "waiting_card", "invite", facts)
@@ -1273,7 +1220,7 @@ func _show_waiting_panel(room: Dictionary, heading: String, subline: String, who
 	var card := _ordinary_room_card(_room_stage_title(), "")
 	var facts := _room_facts()
 	_set_room_state(RoomActions.panel_state("waiting", facts))
-	var top := _group(card, 4)
+	var top := RoomPageBuilder.group(card, 4)
 	# Before a friend arrives the strip says so, and carries the saved turn.
 	_add_friend_strip(top, room.get("guest_id") != null, WAITING_TURN_SAVED if saved and not partner_present else "")
 	if partner_present:
@@ -1285,25 +1232,13 @@ func _show_waiting_panel(room: Dictionary, heading: String, subline: String, who
 		title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 		if heading == whose: title.name = "WaitingPartnerLine"
 		top.add_child(title)
-	_add_waiting_lines(top, subline if partner_present or not saved else "", whose, notices)
+	RoomPageBuilder.waiting_lines(top, subline if partner_present or not saved else "", whose, notices)
 	_add_room_actions(top, _room_state, "status", facts)
 	_add_room_panel_actions(card, facts)
 	_add_online_sync_status(card, true)
 	online_sync_status.add_theme_color_override("font_color", MUTED)
 	online_sync_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	online_sync_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-
-## The waiting heading's muted lines: the sub-line, then any notices.
-func _add_waiting_lines(parent: VBoxContainer, subline: String, whose: String, notices: PackedStringArray) -> void:
-	var lines: Array[String] = []
-	if not subline.is_empty(): lines.append(subline)
-	lines.append_array(notices)
-	for text: String in lines:
-		var line := _label(text, 18 if text == subline else 16)
-		if text == subline: line.name = "WaitingPartnerLine" if subline == whose else "WaitingSubline"
-		line.add_theme_color_override("font_color", MUTED)
-		line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		parent.add_child(line)
 
 ## Share sends the room to all friends; its result replaces the status text,
 ## which otherwise reads `status`'s idle text.
@@ -1346,7 +1281,7 @@ func _style_share(share: Button, message: String = "") -> void:
 	share.disabled = _sharing_room or state.get("busy", false) or online_session.busy()
 	var status: Variant = share.get_meta("status", null)
 	if status is Label and is_instance_valid(status):
-		_set_feedback(status, message if not message.is_empty() else RoomActions.SHARED if shared else str(status.get_meta("idle_text", "")))
+		RoomPageBuilder.set_feedback(status, message if not message.is_empty() else RoomActions.SHARED if shared else str(status.get_meta("idle_text", "")))
 
 
 func _open_room_options(opener: Control = null) -> void:
@@ -1640,59 +1575,10 @@ func _room_stage_title() -> String:
 	if room.is_empty() or int(room.get("stage_index", definition.stages.size())) >= definition.stages.size(): return ""
 	return _turn_title(int(room.stage_index), "a" if _viewer_is_first(room) else "b")
 
-## The invitation code field with a labelled Copy as tall as the field, like
-## the Friends screen.
+## The invitation code row (RoomPageBuilder.invitation_code_row).
 func _add_invitation_code_row(card: Container, _id: String, _facts: Callable, look: Dictionary) -> Button:
-	var field_height: int = look.get("field", 52)
-	card.add_child(_label("Invitation code",17))
-	var row := HBoxContainer.new()
-	row.name = "InvitationCodeRow"
-	row.add_theme_constant_override("separation",8)
-	card.add_child(row)
-	var code := LineEdit.new()
-	code.text = ShareCodes.display(ShareCodes.ROOM, online_session.invitation_code())
-	# The typed room-<code> is longer than the bare code; never clip it.
-	code.expand_to_text_length = true
-	code.editable = false
-	code.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	code.custom_minimum_size.y = field_height
-	code.add_theme_font_size_override("font_size",look.get("field_font", 20))
-	code.add_theme_color_override("font_uneditable_color",CREAM)
-	# Same field look as the Friends code fields.
-	var field_style := ControlTheme.rounded(Color("14312f"),12,Color("466e63"))
-	field_style.content_margin_left = 16
-	field_style.content_margin_right = 16
-	for state: String in ["normal","read_only"]: code.add_theme_stylebox_override(state,field_style)
-	code.add_theme_stylebox_override("focus",ControlTheme.rounded(Color.TRANSPARENT,12,Color("a6d9c4")))
-	code.tooltip_text = "Invitation code"
-	row.add_child(code)
-	var status := _feedback_label("RelayCopyStatus")
-	var copy := _panel_button("Copy",false)
-	copy.name = "CopyInvitationCode"
-	copy.pressed.connect(_copy_invitation.bind(status))
-	_room_icon_button(copy,RoomActions.ACTIONS.copy_code.icon,RoomActions.label("copy_code"))
-	# A fixed 24-unit icon: an expanded icon shrank to nothing beside the centred label.
-	copy.expand_icon = false
-	copy.add_theme_constant_override("icon_max_width",24)
-	copy.custom_minimum_size = Vector2(look.get("copy_width", 140),field_height)
-	ControlTheme.inset_button(copy)
-	ControlTheme.center_icon_label(copy)
-	row.add_child(copy)
-	card.add_child(status)
+	RoomPageBuilder.invitation_code_row(card, ShareCodes.display(ShareCodes.ROOM, online_session.invitation_code()), look, _copy_invitation)
 	return null
-
-func _feedback_label(label_name: String) -> Label:
-	# Hidden until a result arrives; _set_feedback shows it with its text.
-	var status := _label("",17)
-	status.name = label_name
-	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	status.visible = false
-	return status
-
-func _set_feedback(status: Label, text: String) -> void:
-	if not is_instance_valid(status): return
-	status.text = text
-	status.visible = not text.is_empty()
 
 func _share_room_from_card(button: Button, status: Label) -> void:
 	if _sharing_room or backgrounded or running or _leaving or _room_context_lost or online_session == null or online_session.busy() or not share_current_room.is_valid() or not is_instance_valid(button) or not button.is_inside_tree(): return
@@ -1712,9 +1598,9 @@ func _copy_invitation(status: Label) -> void:
 	# Copy the typed room-<code>; joining accepts it and strips the prefix.
 	var code: String = ShareCodes.format(ShareCodes.ROOM, online_session.invitation_code()) if online_session != null else ""
 	if code.is_empty() or not clipboard_copy.is_valid() or clipboard_copy.call(code) != true:
-		_set_feedback(status, PlayerCopy.RELAY_PREVIEW_6D5192F38DBE)
+		RoomPageBuilder.set_feedback(status, PlayerCopy.RELAY_PREVIEW_6D5192F38DBE)
 		return
-	_set_feedback(status, PlayerCopy.RELAY_PREVIEW_87AB91E6F763)
+	RoomPageBuilder.set_feedback(status, PlayerCopy.RELAY_PREVIEW_87AB91E6F763)
 
 static func _copy_with_display_server(code: String) -> bool:
 	if not DisplayServer.has_feature(DisplayServer.FEATURE_CLIPBOARD):
