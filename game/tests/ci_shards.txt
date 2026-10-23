@@ -340,6 +340,7 @@ unreadable_chapter_journal 3
 update_gate 3
 wait_framing 1
 wait_hints 2
+watch_all_parts 3
 water_locks 3
 water_locks_bake 1
 welcome_light 2

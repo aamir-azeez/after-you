@@ -87,7 +87,7 @@ func _ready() -> void:
 		_solo_replay_only = true
 		_solo_replay_context = injected.context
 		_replay_collection = _solo_replay_context.accepted_pairs.duplicate(true)
-		collection_index = int(_solo_replay_context.selected_stage_index)
+		collection_index = int(_solo_replay_context.get("start_stage_index", _solo_replay_context.selected_stage_index))
 	if settings.is_empty():
 		var saved := LocalSave.new()
 		saved.load_data()

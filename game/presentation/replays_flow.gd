@@ -795,7 +795,7 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 	var secondary := HBoxContainer.new()
 	secondary.add_theme_constant_override("separation",10)
 	if parts>1:
-		var watch_all := _solo_watch_button("Watch all parts",entry,parts-1,false)
+		var watch_all := _solo_watch_button("Watch all parts",entry,parts-1,false,false,true)
 		watch_all.size_flags_horizontal=Control.SIZE_EXPAND_FILL
 		secondary.add_child(watch_all)
 	var options: Button = host._button("Options",_open_solo_options,false)
@@ -812,7 +812,8 @@ func _fill_solo_preview(preview: VBoxContainer) -> void:
 	preview.add_child(secondary)
 	_fit_replay_preview.call_deferred(preview)
 
-func _play_solo_entry(entry: Dictionary, part: int) -> void:
+## `from_first`: play every listed part from the first, ending with `part`.
+func _play_solo_entry(entry: Dictionary, part: int, from_first: bool = false) -> void:
 	if entry.get("checking",false): return
 	if entry.get("family")=="legacy":
 		var index := int(entry.get("level_index",-1))
@@ -826,12 +827,12 @@ func _play_solo_entry(entry: Dictionary, part: int) -> void:
 		var chosen := clampi(part,0,rows.size()-1)
 		_selected_solo_attempt=entry.duplicate(true)
 		_selected_solo_attempt["part"]=chosen
-		await _launch_modern_solo_replay(rows[chosen])
+		await _launch_modern_solo_replay(rows[chosen],int(rows[0].get("stage_index",0)) if from_first else -1)
 
-func _solo_watch_button(text: String, entry: Dictionary, part: int, primary: bool, row: bool=false) -> Button:
+func _solo_watch_button(text: String, entry: Dictionary, part: int, primary: bool, row: bool=false, from_first: bool=false) -> Button:
 	## Chapter replays open another scene, so their wait shows before it loads.
 	## Earlier-island replays open their own loading card at once.
-	var launch := func(): await _play_solo_entry(entry,part)
+	var launch := func(): await _play_solo_entry(entry,part,from_first)
 	if entry.get("checking",false):
 		var waiting: Button = host._list_button(text,launch,primary) if row else host._button(text,launch,primary)
 		waiting.disabled=true
@@ -992,11 +993,14 @@ func _part_title(row: Dictionary) -> String:
 	if title == title.to_lower() and not title.contains(" "): return title.replace("-"," ").replace("_"," ").capitalize()
 	return title
 
-func _launch_modern_solo_replay(selected: Dictionary) -> void:
+## `start`: the part playback starts from (>= 0), playing on to `selected`;
+## otherwise `selected` alone.
+func _launch_modern_solo_replay(selected: Dictionary, start: int = -1) -> void:
 	if host.mode not in [MODE_COLLECTION,MODE_SOLO_REPLAY_ATTEMPT] or _selected_solo_attempt.get("family")!="chapter" or _selected_solo_attempt.get("checking",false) or not selected.has("pair"): return
 	var chapter_key := str(selected.get("chapter_key",""))
 	var context := _solo_replay_context_from_rows(chapter_key,_selected_solo_attempt.get("playback_rows",[]),selected)
 	if context.is_empty(): return
+	if start >= 0 and start <= int(context.selected_stage_index): context["start_stage_index"] = start
 	var lighthouse := chapter_key == SoloReplayCollection.LIGHTHOUSE_KEY
 	var scene: String = host.LIGHTHOUSE_SCENE if lighthouse else ChapterRegistry.solo_scene(chapter_key)
 	if scene.is_empty(): return

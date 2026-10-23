@@ -56,6 +56,9 @@ static func _read(path: String, rules: Dictionary) -> Dictionary:
 	var visibility_key: Variant = context.get("visibility_key")
 	var stage_ids: Array = rules.get("stage_ids", [])
 	if not (stage_index is int or stage_index is float) or not is_finite(float(stage_index)) or float(stage_index) != floor(float(stage_index)): return failed
+	# Optional: the part playback starts from ("Watch all parts"), at most the selected one.
+	var start: Variant = context.get("start_stage_index", stage_index)
+	if not (start is int or start is float) or not is_finite(float(start)) or float(start) != floor(float(start)) or float(start) < 0.0 or float(start) > float(stage_index): return failed
 	if not visibility_key is String or str(visibility_key).is_empty() or str(visibility_key).length() > 512: return failed
 	if not pairs is Array or pairs.size() != int(stage_index) + 1 or pairs.size() > stage_ids.size() or pairs.is_empty(): return failed
 	for index in range(pairs.size()):

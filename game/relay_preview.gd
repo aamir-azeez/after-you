@@ -281,7 +281,7 @@ func _ready() -> void:
 	elif injected.get("status") == "consumed":
 		_solo_replay_only = true
 		_replay_collection = injected.context.accepted_pairs.duplicate(true)
-		replay_pair_index = int(injected.context.selected_stage_index)
+		replay_pair_index = int(injected.context.get("start_stage_index", injected.context.selected_stage_index))
 	_claim_hard()
 	var staged: bool = not scene_file_path.is_empty() and _staged_request == scene_file_path and online_session == null
 	_staged_request = ""
