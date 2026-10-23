@@ -539,6 +539,8 @@ func _label(text: String, font_size: int=20, color: Color=CREAM, title: bool=fal
 func _action_button(action_id: String, callback: Callable) -> Button:
 	var button := ActionButtons.create(action_id,callback)
 	button.custom_minimum_size.y=54
+	# A card's Back is its way back for Android Back too.
+	if action_id == "back": _mark_screen_back(button)
 	return button
 
 func _button(text: String, callback: Callable, primary: bool=true) -> Button:
@@ -2654,6 +2656,9 @@ func _notification(what: int) -> void:
 	elif what==NOTIFICATION_APPLICATION_RESUMED:
 		if is_instance_valid(turn_notifications): turn_notifications.queue_reconcile()
 		_resume_application()
+	elif what==NOTIFICATION_APPLICATION_FOCUS_OUT and running:
+		# A notification shade or another app over a turn pauses it, as in a chapter.
+		_pause()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		# The update screen has no Back: the player updates or picks Play Solo.
 		if account_flow.holds_back() or mode == "update_gate": return

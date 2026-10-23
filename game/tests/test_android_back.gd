@@ -34,12 +34,15 @@ func _run() -> void:
 		"earlier islands": app._show_earlier_islands,
 		"replays": app.replays_flow.show_collection,
 		"graphics": app.settings_flow.show_graphics_settings,
+		"earlier island ready card": app._start_practice.bind(0),
+		"earlier island pause card": func(): app._start_practice(0); app._begin_turn(); app._pause(),
 	}
 	for name: String in screens:
 		await _same_as_on_screen(name, screens[name])
 	await _unmarked_cancel()
 	await _modal_first()
 	await _home_stays()
+	await _practice_focus_out()
 	viewport.queue_free()
 	await process_frame
 	for suffix: String in ["", ".tmp", ".backup"]:
@@ -104,6 +107,19 @@ func _home_stays() -> void:
 	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await process_frame
 	_check(app.mode == "home", "Android Back on Home stays on Home")
+
+## A notification shade or another app over an Earlier islands turn pauses it,
+## as it does in a chapter: the turn's clock stops and the pause card shows.
+func _practice_focus_out() -> void:
+	await _open(app._start_practice.bind(0))
+	app._begin_turn()
+	_check(app.running and app.mode == "play", "An Earlier islands turn is playing")
+	app.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
+	await process_frame
+	_check(not app.running and app.mode == "paused", "Focus leaving the app pauses it (%s, running %s)" % [app.mode, app.running])
+	app.notification(Node.NOTIFICATION_APPLICATION_FOCUS_IN)
+	await process_frame
+	_check(not app.running and app.mode == "paused", "...and it waits on the pause card when focus comes back")
 
 func _check(value: bool, message: String) -> void:
 	checks += 1
