@@ -4,7 +4,9 @@ extends Node3D
 ## builds it for each stage and feeds it the snapshot and the camera.
 ##
 ## Each end spot gets a beacon: a ring on the floor, a mast with a lamp and a
-## pennant in the spirit's colour. A spot whose floor is open now (its
+## pennant in the spirit's colour. On a pad drawn as a stand spot
+## (kit/stand_spot.gd) the ring breathes inside the spot, never past where the
+## pad counts. A spot whose floor is open now (its
 ## crossing's gate holds, or it stands on an island) has its lamp lit warm and
 ## its ring breathing; one still shut stands grey and still with its lamp out,
 ## so the beacon also says which spot is ready. Within NEAR_CM of a beacon the
@@ -35,6 +37,13 @@ const LAMP_LIT := Color("ffc96b")
 const LAMP_OUT := Color("6a645a")
 ## Within this many cm of a spot, the live spirit's beacon shows only its ring.
 const NEAR_CM := 100
+## The floor ring's radius (its tube's centre line), and how far it breathes
+## outward (goal_beacon.gdshader, part 1: the mesh grows to 1 + BREATH).
+const RING_RADIUS := 0.30
+const BREATH := 0.12
+## Inside a stand spot the ring keeps this clear of the spot's edge at its
+## widest, inside the spot's rim (StandSpot.RIM_WIDTH).
+const INSIDE_CLEAR := 0.05
 ## A beacon's pieces, in build order.
 enum {RING, MAST_PIECE, LAMP, PENNANT}
 ## The pointer keeps inside this share of the screen: clear of the title (top
@@ -44,7 +53,9 @@ const POINTER_RADIUS := 30.0
 ## A spot counts as on screen when its lamp is this far inside the view (px).
 const ON_SCREEN_MARGIN := 24.0
 
-## The spots by role: {"a": [{"at": Vector3, "surface": String, "slot": String}], "b": [...]}.
+## The spots by role: {"a": [{"at": Vector3, "surface": String, "slot": String}], "b": [...]};
+## a spot on a stand spot also has "inside", the spot's radius in metres, and
+## "ring": false when a seat fills the spot and leaves its ring no room.
 var _spots: Dictionary = {}
 ## {slot: Color}, the spirits' colours.
 var _colors: Dictionary = {}
@@ -84,7 +95,9 @@ static func spots_of(stage: Dictionary, role: String) -> Array:
 
 ## Builds both roles' beacons, hidden. The beacon stands at its parent's
 ## origin. `spots`: {role: [{"at": the floor point in the parent's space,
-## "surface": the floor's id, "slot": the spirit's slot}]}; `colors`: {slot: Color}.
+## "surface": the floor's id, "slot": the spirit's slot, and on a stand spot
+## "inside": its radius in metres, and "ring": false for no floor ring}]};
+## `colors`: {slot: Color}.
 func build(spots: Dictionary, colors: Dictionary) -> void:
 	name = "GoalBeacon"
 	_spots = spots
@@ -114,7 +127,7 @@ func _beacon(spot: Dictionary, color: Color) -> Dictionary:
 	var materials: Array[ShaderMaterial] = []
 	var tints: Array[Color] = []
 	# RING, MAST_PIECE, LAMP, PENNANT: [shader part, mesh, position, tint].
-	for piece: Array in [[1, Primitives.ring_mesh(0.30), Vector3(0, 0.035, 0), color],
+	for piece: Array in [[1, ring_mesh(float(spot.get("inside", 0.0))), Vector3(0, ring_lift(float(spot.get("inside", 0.0))), 0), color],
 			[0, Primitives.cylinder_mesh(0.022, MAST_HEIGHT), Vector3(0, MAST_HEIGHT * 0.5, 0), MAST],
 			[3, Primitives.sphere_mesh(0.085), Vector3(0, MAST_HEIGHT + 0.06, 0), LAMP_LIT],
 			[2, Primitives.box_mesh(Vector3(0.34, 0.20, 0.012)), Vector3(0.19, MAST_HEIGHT - 0.16, 0), color]]:
@@ -130,7 +143,23 @@ func _beacon(spot: Dictionary, color: Color) -> Dictionary:
 		nodes.append(node)
 		materials.append(look)
 		tints.append(piece[3])
-	return {"root": root, "nodes": nodes, "materials": materials, "tints": tints}
+	if not bool(spot.get("ring", true)): nodes[RING].visible = false
+	return {"root": root, "nodes": nodes, "materials": materials, "tints": tints, "ring": bool(spot.get("ring", true))}
+
+## The floor ring: RING_RADIUS, or on a stand spot of radius `inside` one
+## whose outer edge stays INSIDE_CLEAR inside it at its widest breath.
+static func ring_mesh(inside: float) -> TorusMesh:
+	if inside <= 0.0: return Primitives.ring_mesh(RING_RADIUS)
+	var shape := TorusMesh.new()
+	shape.outer_radius = (inside - INSIDE_CLEAR) / (1.0 + BREATH)
+	shape.inner_radius = shape.outer_radius - 0.03
+	shape.rings = 24
+	shape.ring_segments = 8
+	return shape
+
+## The floor ring's height: over a stand spot's disc and mark, under its rim's top.
+static func ring_lift(inside: float) -> float:
+	return 0.035 if inside <= 0.0 else 0.045
 
 ## Shows the beacons only while the screen plays a live turn.
 func set_live(on: bool) -> void:
@@ -182,7 +211,7 @@ func present(state: Dictionary) -> void:
 				var look: ShaderMaterial = beacon.materials[piece]
 				look.set_shader_parameter("tint", tint)
 				look.set_shader_parameter("motion", 1.0 if open[index] and not _reduced else 0.0)
-				(beacon.nodes[piece] as Node3D).visible = piece == RING or not near[index]
+				(beacon.nodes[piece] as Node3D).visible = bool(beacon.ring) if piece == RING else not near[index]
 	if not shown: _pointer.visible = false
 
 ## Places the pointer for `camera`; returns at once when nothing it reads has

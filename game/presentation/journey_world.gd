@@ -669,6 +669,9 @@ func _wait_dashes(route_id: String) -> MeshInstance3D:
 
 # --- Step seats ---
 
+func _seated(pad_id: String) -> bool:
+	return _descriptor().get("seats", {}).has(pad_id)
+
 ## A seat prop on each pad the descriptor's "seats" names
 ## ({pad id: a kit/props.gd spec without "at"}).
 func _build_seats(stage: Dictionary) -> void:

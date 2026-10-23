@@ -187,6 +187,25 @@ func _opt_in() -> void:
 	world.free()
 	for other: String in ChapterIndex.keys():
 		if not other.begins_with("turn-of-the-tide"): _check(not ChapterIndex.data(other).goal_beacon, "%s leaves the beacon off" % other)
+	# Without stand spots a pad's beacon keeps the full ring; with them (the
+	# chapter's own descriptor) its ring breathes inside the spot.
+	for stand: bool in [false, true]:
+		descriptor = ChapterIndex.data(key).duplicate(true)
+		descriptor.stand_spots = stand
+		world = Registry.world_script(key).new()
+		world.descriptor_override = descriptor
+		root.add_child(world)
+		world.reduced_motion = true
+		world.set_process(false)
+		world.load_level(level)
+		world.show_stage(level.stages[0])
+		var rings: Array = world._goal_beacon._beacons.a.map(func(beacon: Dictionary) -> float: return ((beacon.nodes[GoalBeacon.RING] as MeshInstance3D).mesh as TorusMesh).outer_radius)
+		var widest := 0.0
+		for outer: float in rings: widest = maxf(widest, outer * (1.0 + GoalBeacon.BREATH))
+		if stand: _check(rings.size() == 3 and widest <= 0.20 - 0.045, "With stand spots each step's beacon ring breathes inside its 20 cm pad: %s" % [rings])
+		if stand: _check(world._goal_beacon._beacons.a.map(func(beacon: Dictionary) -> bool: return beacon.ring) == [true, true, false], "With stand spots the bollard step's seat takes its beacon's ring; the other steps keep theirs")
+		else: _check(rings.size() == 3 and rings.all(func(outer: float) -> bool: return is_equal_approx(outer, GoalBeacon.RING_RADIUS + 0.025)), "Without stand spots each step's beacon keeps its full ring: %s" % [rings])
+		world.free()
 
 func _stage_one(key: String, level: Dictionary, initial: Dictionary) -> Dictionary:
 	var one: Dictionary = V2.pair(level, "set-the-tide", initial, Tide.a_routes()["low"], Tide.b_routes()["low"]) if key.ends_with("@2") \

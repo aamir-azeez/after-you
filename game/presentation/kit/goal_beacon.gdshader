@@ -15,6 +15,7 @@ uniform float span = 0.34;
 void vertex() {
 	float t = TIME * motion;
 	if (part == 1) {
+		// 0.12 is goal_beacon.gd BREATH: a ring inside a stand spot is sized by it.
 		VERTEX.xz *= 1.0 + 0.12 * motion * (0.5 + 0.5 * sin(t * 2.6));
 	} else if (part == 2) {
 		float along = clamp((VERTEX.x - hoist) / span, 0.0, 1.0);

@@ -5,6 +5,7 @@ const CooperativeCatalog = preload("res://core/cooperative/stage_catalog.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
 const Cutaway = preload("res://presentation/kit/cutaway.gd")
 const GoalBeacon = preload("res://presentation/kit/goal_beacon.gd")
+const StandSpot = preload("res://presentation/kit/stand_spot.gd")
 ## The opening glance at the goal (glance_at_goal): this long easing there and
 ## looking, then this long easing back to the spirit.
 const GLANCE_TO := 1.6
@@ -12,6 +13,9 @@ const GLANCE_BACK := 0.6
 var chapter_definition: Dictionary = {}
 var displayed_stage_id := ""
 var _physical_pads: Dictionary = {}
+## Pressure pad id -> its StandSpot, in a chapter whose descriptor has
+## "stand_spots"; _physical_pads holds the spot's rim.
+var _stand_spots: Dictionary = {}
 var _physical_levers: Dictionary = {}
 var _physical_balls: Dictionary = {}
 var _ball_trails: Dictionary = {}
@@ -47,6 +51,7 @@ func show_stage(stage: Dictionary) -> void:
 	_goal_beacon = null
 	_glance_left = 0.0
 	_physical_pads.clear()
+	_stand_spots.clear()
 	_physical_levers.clear()
 	_physical_balls.clear()
 	_ball_trails.clear()
@@ -165,7 +170,13 @@ func _build_goal_beacon(view: Dictionary) -> void:
 	for role: String in ["a", "b"]:
 		var slot := str(view.first_player_slot) if role == "a" else ("p0" if str(view.first_player_slot) == "p1" else "p1")
 		spots[role] = GoalBeacon.spots_of(view, role).map(func(entity: Dictionary) -> Dictionary:
-			return {"at": _at(entity), "surface": str(entity.get("surface_id", "")), "slot": str(entity.get("owner_slot", slot))})
+			var spot := {"at": _at(entity), "surface": str(entity.get("surface_id", "")), "slot": str(entity.get("owner_slot", slot))}
+			# On a stand spot the beacon's ring breathes inside the spot; a seat
+			# on the spot leaves it no room, and the spot and seat mark it.
+			if _wears_stand_spot(view, entity):
+				spot["inside"] = float(entity.radius_cm) / 100.0
+				if _seated(str(entity.id)): spot["ring"] = false
+			return spot)
 	_goal_beacon = GoalBeacon.new()
 	terrain.add_child(_goal_beacon)
 	_goal_beacon.build(spots, {"p0": GOLD, "p1": TEAL})
@@ -377,15 +388,40 @@ func _stair_frame(r: Array, from_height: float, rise: float, along_x: bool) -> v
 		var top := foot.lerp(head, t)
 		Primitives.mesh_node(Primitives.shared_mesh("box", 0.035, 0.62, 0.035), Primitives.shared_material(Props.TIMBER_DARK), top - Vector3(0, 0.31, 0), terrain)
 
+## Whether `entity` is one of the stage's pressure pads and the chapter
+## marks them with stand spots (descriptor "stand_spots").
+func _wears_stand_spot(view: Dictionary, entity: Dictionary) -> bool:
+	if not bool(_descriptor().get("stand_spots", false)): return false
+	for pad: Dictionary in view.get("pressure_pads", []):
+		if pad.id == entity.get("id"): return true
+	return false
+
+## Whether a seat prop stands on pad `pad_id` (journey_world's "seats").
+func _seated(_pad_id: String) -> bool:
+	return false
+
 func _build_physical_pad(pad: Dictionary, heavy: bool) -> void:
 	var at := _at(pad)
 	var color := GOLD if heavy or pad.get("owner_slot", "") == "p0" else TEAL
+	if not heavy and bool(_descriptor().get("stand_spots", false)):
+		_build_stand_spot(pad, at, color)
+		return
 	cylinder(float(pad.radius_cm) / 100.0, 0.055, color.darkened(0.25), at + Vector3(0, 0.025, 0), terrain)
 	var outline := ring(float(pad.radius_cm) / 100.0, color, at + Vector3(0, 0.065, 0), terrain)
 	_physical_pads[pad.id] = outline
 	if heavy:
 		ring(0.16, CREAM, at + Vector3(0, 0.06, 0), terrain)
 	else: _ownership_mark(str(pad.owner_slot), at + Vector3(0, 0.06, 0), terrain)
+
+## A pressure pad drawn as a stand spot (kit/stand_spot.gd): exactly the pad's
+## radius, with the owner's mark on its disc.
+func _build_stand_spot(pad: Dictionary, at: Vector3, color: Color) -> void:
+	var spot := StandSpot.new()
+	terrain.add_child(spot)
+	spot.build(at, float(pad.radius_cm) / 100.0, str(pad.owner_slot), color, LIGHT_COLOR)
+	spot.name = "StandSpot_" + str(pad.id)
+	_physical_pads[pad.id] = spot.rim
+	_stand_spots[pad.id] = spot
 
 func _build_lever(lever: Dictionary) -> void:
 	var at := _at(lever)
@@ -529,6 +565,7 @@ func present(state: Dictionary, immediate: bool = false) -> void:
 	for id: String in _physical_pads:
 		var pressed: bool = state.get("hold_pads", {}).get(id, false)
 		_glow(_physical_pads[id], LIGHT_COLOR, 1.0 if pressed else 0.0)
+		if _stand_spots.has(id): _stand_spots[id].set_held(pressed)
 	for id: String in _stair_gates: _stair_gates[id].visible = not state.get("bridges", {}).get(id, false)
 	for id: String in _weights:
 		_weights[id].position.y = float(_weights[id].get_meta("rest_y")) - (0.7 if state.get("bridges", {}).get(id, false) else 0.0)

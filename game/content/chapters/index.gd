@@ -73,6 +73,11 @@ const OPTIONAL := {
 	## at the screen's edge while they are all off screen, and a glance at the
 	## nearest when a turn's first try starts with it off screen.
 	"goal_beacon": false,
+	## true draws each pressure pad as a stand spot
+	## (presentation/kit/stand_spot.gd): a bright disc exactly the pad's
+	## radius_cm with a firm rim, lit and pressed while the pad is held, so a
+	## step or post wider than its pad shows exactly where a spirit counts.
+	"stand_spots": false,
 }
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
 

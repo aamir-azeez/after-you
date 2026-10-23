@@ -1988,7 +1988,8 @@ func _mark_scenery() -> void:
 	for id: String in _physical_pads:
 		var pad := _physical_pads[id] as MeshInstance3D
 		var radius: float = (pad.mesh as TorusMesh).outer_radius if pad.mesh is TorusMesh else 0.2
-		var at := LabelBubble.plane_point(pad.global_position)
+		# A stand spot sinks while held; its pad marks where it stands free.
+		var at := LabelBubble.plane_point(_stand_spots[id].rest_rim() if _stand_spots.has(id) else pad.global_position)
 		_add_mark(Rect2(at - Vector2(radius, radius * 0.8), Vector2(radius * 2.0, radius * 1.6)), "")
 
 func _add_mark(mark: Rect2, owner: String) -> void:

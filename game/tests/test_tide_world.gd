@@ -21,6 +21,8 @@ const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const JourneyWorld = preload("res://presentation/journey_world.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
+const StandSpot = preload("res://presentation/kit/stand_spot.gd")
+const SpotChecks = preload("res://tests/stand_spot_checks.gd")
 const STAIRS := ["w-steps-low", "w-steps-high", "mill-steps", "mill-ladder", "east-steps", "boathouse-steps", "rock-steps-low", "rock-steps-high"]
 var checks := 0
 var failures := 0
@@ -34,6 +36,7 @@ func _run() -> void:
 	await _first_stage(level)
 	_memory_camera(level)
 	await _second_stage(level)
+	await _plain_pads(level)
 	_crest_glyphs(level)
 	_dressing(level)
 	_keepsakes()
@@ -60,7 +63,9 @@ func _first_stage(level: Dictionary) -> void:
 	for route: Dictionary in level.bridges:
 		_check(world._decks.has(route.id) and is_equal_approx(world._decks[route.id].position.y, float(route.height_cm) / 100.0), "Crossing deck stands at its height, not on the ground: " + str(route.id))
 	for pad: Dictionary in level.stages[0].pressure_pads:
-		_check(absf(world._physical_pads[pad.id].global_position.y - 1.025) < 0.01, "A waiting-step pad sits on its raised step: " + str(pad.id))
+		_check(absf(world._physical_pads[pad.id].global_position.y - 0.96 - StandSpot.RIM_LIFT) < 0.01, "A waiting-step pad sits on its raised step: " + str(pad.id))
+	for problem: String in SpotChecks.shapes(world, level.stages[0]) + SpotChecks.beacon_rings(world, level.stages[0]): _check(false, problem)
+	_check(SpotChecks.held(world, level.stages[0], state).is_empty(), "No step's spot shows held while nobody stands on it")
 	_check(world._weights.keys() == ["lock-west", "lock-east"] and absf(world._weights["lock-west"].get_meta("rest_y") - 0.93) < 0.01, "Only the lock gates keep a pulley, lifted to the terrace")
 	for route: Dictionary in level.bridges:
 		if route.to_surface != route.id: continue
@@ -187,8 +192,21 @@ func _first_stage(level: Dictionary) -> void:
 		world.actors["p0"].position = Vector3(float(case[0]) / 100.0, 0, float(case[1]) / 100.0)
 		var center: Vector3 = world._camera_center()
 		_check(is_equal_approx(center.x, case[2]) and is_equal_approx(center.z, case[3]), "Camera centre clamps to the harbour: %s" % str(case))
+	# On the wheel step's edge, outside its pad, the pad does not count and its
+	# spot stays free; on the spot it counts, and the spot lights and sinks.
+	sim._players.p0 = {"x": 214, "z": -494, "height": 96, "surface_id": "wheel-step"}
+	var edge: Dictionary = sim.snapshot()
+	world.present(edge, true)
+	_check(not edge.hold_pads["wheel-step-pad"], "A spirit on the wheel step's edge is outside its pad")
+	for problem: String in SpotChecks.held(world, level.stages[0], edge): _check(false, problem)
 	sim._players.p0 = {"x": 192, "z": -512, "height": 96, "surface_id": "wheel-step"}
-	world.present(sim.snapshot(), true)
+	var centre: Dictionary = sim.snapshot()
+	world.present(centre, true)
+	_check(centre.hold_pads["wheel-step-pad"], "A spirit on the wheel step's spot holds its pad")
+	for problem: String in SpotChecks.held(world, level.stages[0], centre): _check(false, problem)
+	world.present(edge, true)
+	for problem: String in SpotChecks.held(world, level.stages[0], edge): _check(false, problem)
+	world.present(centre, true)
 	for pad: Dictionary in level.stages[0].pressure_pads:
 		_check(_on_screen(world, world._physical_pads[pad.id].global_position), "All three waiting steps are framed from the wheel step: " + str(pad.id))
 	_check(_textures(world), "Every first-stage mesh has geometry and a material")
@@ -207,7 +225,8 @@ func _second_stage(level: Dictionary) -> void:
 	for lever: Dictionary in level.stages[1].levers:
 		_check(absf(world._physical_levers[lever.id].global_position.y - float(lever.height_cm) / 100.0 - 0.20) < 0.01, "A chain, bar, line, pin or key stands at its own stub's height: " + str(lever.id))
 	for id: String in ["boom-post-pad", "gate-post-pad", "punt-post-pad"]:
-		_check(absf(world._physical_pads[id].global_position.y - 0.545) < 0.01, "A post pad sits on its raised post: " + id)
+		_check(absf(world._physical_pads[id].global_position.y - 0.48 - StandSpot.RIM_LIFT) < 0.01, "A post pad sits on its raised post: " + id)
+	for problem: String in SpotChecks.shapes(world, level.stages[1]) + SpotChecks.beacon_rings(world, level.stages[1]) + SpotChecks.held(world, level.stages[1], state): _check(false, problem)
 	_check(world._wheels.size() == 3 and world._wheels.has("tide") and world._wheels.has("chamber") and world._wheels.has("basin"), "Tide, chamber and sea get hand wheels; the lock stays two-way")
 	for id: String in world._journey_switches:
 		for label: Label3D in world._journey_switches[id].labels:
@@ -595,6 +614,26 @@ func _memory_camera(level: Dictionary) -> void:
 	_check(is_equal_approx(live.x, -3.0) and is_equal_approx(waiting.x, 2.0) and is_equal_approx(waiting.z, -3.0), "The harbour camera follows the memory while the spirit waits, and the live spirit otherwise")
 	_check(is_equal_approx(world._camera_center().x, -3.0), "After the wait the camera follows the live spirit again")
 	world.free()
+
+## Without the descriptor's "stand_spots" a pad keeps the shared plain look
+## (a dark disc and a ring centred on its radius): the spots are this
+## chapter's own.
+func _plain_pads(level: Dictionary) -> void:
+	var world: Node3D = World.new()
+	var descriptor: Dictionary = ChapterIndex.data(KEY).duplicate(true)
+	descriptor.stand_spots = false
+	world.descriptor_override = descriptor
+	root.add_child(world)
+	world.reduced_motion = true
+	world.set_process(false)
+	world.load_level(level)
+	world.show_stage(level.stages[0])
+	_check(world._stand_spots.is_empty() and world.terrain.find_children("StandSpot*", "", true, false).is_empty(), "Without stand_spots no pad wears a stand spot")
+	for pad: Dictionary in level.stages[0].pressure_pads:
+		var ring := (world._physical_pads[pad.id] as MeshInstance3D).mesh as TorusMesh
+		_check(ring != null and is_equal_approx(ring.outer_radius, float(pad.radius_cm) / 100.0 + 0.025), "Without stand_spots a pad keeps its plain ring: " + str(pad.id))
+	world.queue_free()
+	await process_frame
 
 func _sim(level: Dictionary, stage_id: String, checkpoint: Dictionary) -> Simulation:
 	# A trusted reset opens the turn without the proof's catalog check; every

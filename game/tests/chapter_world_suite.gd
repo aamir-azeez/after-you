@@ -59,11 +59,17 @@ func _turn(level: Dictionary, evidence: Dictionary, index: int, role: String) ->
 	for frame: Dictionary in Registry.simulation_script(key).expand_recording_inputs(evidence.pairs[index][role]):
 		screen.advance_input(frame)
 	_check(screen.sim.can_commit(), "The recorded inputs stay committable through the controls: %s/%s" % [id, role])
+	_turn_played(screen, level.stages[index], role)
 	_check(Canonical.digest(screen.sim.level) == definition_hash, "Presentation never changes the definition")
 	if role == "b" and index == level.stages.size() - 1: _check(screen.sim.complete, "The last turn completes the chapter")
 	root.remove_child(screen)
 	screen.free()
 	await process_frame
+
+## A chapter's own checks once a turn's recorded inputs have played through
+## `screen` (its world and sim as the turn left them). None by default.
+func _turn_played(_screen: Node, _stage: Dictionary, _role: String) -> void:
+	pass
 
 func _check(okay: bool, label: String) -> void:
 	checks += 1
