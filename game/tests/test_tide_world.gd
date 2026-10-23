@@ -176,7 +176,10 @@ func _first_stage(level: Dictionary) -> void:
 	for node: Node in sign.find_children("*", "MeshInstance3D", true, false):
 		var piece: AABB = (node as MeshInstance3D).global_transform * (node as MeshInstance3D).get_aabb()
 		sign_box = piece if sign_box.size == Vector3.ZERO else sign_box.merge(piece)
-	_check(absf(sign_box.position.x - 1.92) <= 0.26 and absf(sign_box.end.x - 1.92) <= 0.26 and absf(sign_box.position.z + 3.52) <= 0.26 and absf(sign_box.end.z + 3.52) <= 0.26, "The valve's sign stays inside the control's reach")
+	var reach: float = valve.REACH
+	_check(absf(sign_box.position.x - 1.92) <= reach and absf(sign_box.end.x - 1.92) <= reach and absf(sign_box.position.z + 3.52) <= reach and absf(sign_box.end.z + 3.52) <= reach, "The valve's sign stays inside the control's reach")
+	var spoke: MeshInstance3D = valve.wheel().find_child("ValveSpoke", false, false)
+	_check(spoke != null and (spoke.material_override as StandardMaterial3D).albedo_color.get_luminance() - valve.IRON.get_luminance() > 0.3, "The valve's spokes stand out light against its dark dial")
 	var blue: Array = []
 	for node: Node in valve.root.find_children("*", "MeshInstance3D", true, false):
 		var colour: Color = ((node as MeshInstance3D).material_override as StandardMaterial3D).albedo_color

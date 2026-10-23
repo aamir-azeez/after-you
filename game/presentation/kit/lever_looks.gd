@@ -23,7 +23,7 @@ extends RefCounted
 ##   if look.moving(): look.advance(delta)   # each frame
 ##
 ## A look stands on its control's own spot, inside its reach (REACH of its
-## centre every way, inside the 28 cm interaction radius); a lever's look keeps
+## centre every way, the 28 cm interaction radius); a lever's look keeps
 ## its east side no further than the plain lever's housing (EAST_SIDE), so a
 ## lamp or mark a world stands beside a lever stays clear. It only shows the
 ## snapshot's state: a lever pulled or not, eased over PULL_SECONDS; a
@@ -39,9 +39,10 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 ## Looks a lever takes, and looks a selector takes.
 const LEVER_KINDS := ["winch", "bolt"]
 const SELECTOR_KINDS := ["valve"]
-## How far a look reaches from its spot (m), every way, and a lever's look
-## east (+x), where a world may stand a lamp beside it.
-const REACH := 0.26
+## How far a look reaches from its spot (m), every way (the 28 cm interaction
+## radius), and a lever's look east (+x), where a world may stand a lamp
+## beside it.
+const REACH := 0.28
 const EAST_SIDE := 0.16
 ## How long a pull or a release takes (s).
 const PULL_SECONDS := 0.45
@@ -251,8 +252,9 @@ func _make_bolt(knob: Color) -> void:
 ## A tall cast-iron pedestal on a round foot, brass at its foot and its neck,
 ## four brass bolt heads on the foot; a dial plate with cream marks for the
 ## values round its edge, outside the rim; a five-spoked wheel with a rim,
-## hub, knob and arrow head in the owner's colour; and behind it a timber post
-## with a brass bracket for the sign.
+## hub, knob and arrow head in the owner's colour and spokes in a touch lighter
+## shade of it, clear against the dark dial; and behind it a timber post with
+## a brass bracket for the sign.
 func _make_valve(knob: Color, marks: Array) -> void:
 	_count = maxi(marks.size(), 1)
 	_disc(0.17, 0.05, IRON, Vector3(0, 0.025, 0), root)
@@ -264,37 +266,38 @@ func _make_valve(knob: Color, marks: Array) -> void:
 	_disc(0.066, 0.026, BRASS, Vector3(0, 0.86, 0), root)
 	# The dial: a dark iron plate with a cream mark per value round its back
 	# edge, outside the wheel's rim so the rim never hides one.
-	_disc(0.25, 0.018, IRON, Vector3(0, 0.88, 0), root, -1.0, 16)
+	_disc(0.275, 0.018, IRON, Vector3(0, 0.88, 0), root, -1.0, 16)
 	for index in range(_count):
 		var turn := value_angle(index, _count)
 		var bands := int(marks[index]) if index < marks.size() else 1
 		var along := Vector3(-sin(turn), 0, -cos(turn))
 		var across := Vector3(-along.z, 0, along.x)
-		var at := along * 0.218 + Vector3(0, 0.895, 0)
+		var at := along * 0.235 + Vector3(0, 0.895, 0)
 		if bands <= 0:
 			var bar := _box(Vector3(0.07, 0.014, 0.02), CREAM, at, root)
 			bar.rotation.y = turn
 		for band in range(bands):
-			var tick := _box(Vector3(0.016, 0.014, 0.04), CREAM, at + across * (float(band) - float(bands - 1) * 0.5) * 0.03, root)
+			var tick := _box(Vector3(0.016, 0.014, 0.032), CREAM, at + across * (float(band) - float(bands - 1) * 0.5) * 0.03, root)
 			tick.rotation.y = turn
 	_wheel = Node3D.new()
 	_wheel.name = "ValveWheel"
 	_wheel.position = Vector3(0, VALVE_Y, 0)
 	root.add_child(_wheel)
-	var rim := Primitives.mesh_node(Primitives.cached_shape(_ring_mesh(0.16, 0.02)), Primitives.shared_material(knob), Vector3.ZERO, _wheel)
+	var rim := Primitives.mesh_node(Primitives.cached_shape(_ring_mesh(0.19, 0.021)), Primitives.shared_material(knob), Vector3.ZERO, _wheel)
 	rim.name = "ValveRim"
 	for spoke in range(5):
 		var turn := float(spoke) * TAU / 5.0 + PI / 5.0
-		var bar := _box(Vector3(0.026, 0.02, 0.14), IRON, Vector3(sin(turn), 0, cos(turn)) * 0.08, _wheel)
+		var bar := _box(Vector3(0.028, 0.02, 0.17), knob.lightened(0.1), Vector3(sin(turn), 0, cos(turn)) * 0.095, _wheel)
 		bar.rotation.y = turn
+		bar.name = "ValveSpoke"
 	_disc(0.042, 0.04, knob.darkened(0.15), Vector3.ZERO, _wheel)
 	# The arrow from the hub out past the rim, toward the value; its head in
 	# the owner's colour, and a handle knob on the rim to turn it by.
-	var arrow := _box(Vector3(0.034, 0.016, 0.17), CREAM, Vector3(0, 0.022, -0.085), _wheel)
+	var arrow := _box(Vector3(0.036, 0.016, 0.20), CREAM, Vector3(0, 0.022, -0.10), _wheel)
 	arrow.name = "WheelPointer"
-	var head := _box(Vector3(0.045, 0.018, 0.045), knob, Vector3(0, 0.026, -0.17), _wheel)
+	var head := _box(Vector3(0.048, 0.018, 0.048), knob, Vector3(0, 0.026, -0.20), _wheel)
 	head.rotation.y = PI / 4.0
-	_ball(0.028, knob.lightened(0.15), Vector3(0.16, 0.03, 0.0), _wheel)
+	_ball(0.03, knob.lightened(0.15), Vector3(0.19, 0.03, 0.0), _wheel)
 	# The sign's post and bracket, behind and east of the wheel.
 	_box(Vector3(0.04, 1.12, 0.04), TIMBER_DARK, Vector3(SIGN_AT.x, 0.56, SIGN_AT.z - 0.035), root)
 	_box(Vector3(0.05, 0.03, 0.06), BRASS, Vector3(SIGN_AT.x, 1.133, SIGN_AT.z - 0.035), root)

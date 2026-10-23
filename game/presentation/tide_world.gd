@@ -86,7 +86,7 @@ const CHIP_DARK := Color("102133")
 ## A valve's water sign, scaled from the full-size sign (a 0.34 m plate).
 const VALVE_SIGN_SCALE := 0.8
 ## A valve's mark for bubbles (_mark_scenery): half its dial's width (m).
-const VALVE_MARK_REACH := 0.25
+const VALVE_MARK_REACH := 0.275
 ## Every selector's speech bubble points at its lever, like every chapter's.
 ## A wheel's bubble sits this far sideways on screen (metres; the kit clamps a
 ## shift to the farthest its tail still meets the body), clear of its valve's
