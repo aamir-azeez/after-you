@@ -155,6 +155,8 @@ func load_data() -> void:
 		for candidate: String in AtomicFile.read_candidates(_path):
 			any_existing = any_existing or FileAccess.file_exists(candidate)
 	_storage.load_data()
+	if _background_drafts and _storage.loaded_from.is_empty() and _start_fresh(unreadable):
+		return
 	if _storage.read_only:
 		_hold(str(_storage.last_error))
 		return
@@ -847,6 +849,26 @@ func _envelope_valid(value: Dictionary) -> bool:
 		if value.has(reserved) and (not value[reserved] is Dictionary or not value[reserved].is_empty()):
 			return false
 	return not value.has("settings") or Storage.default_settings_envelope_valid(value.settings)
+
+
+## When no copy of this journal parses (a write cut off on its first save
+## leaves an empty or half file, or only a half new copy), each copy is renamed
+## aside as the main save does (LocalSave.UNREADABLE), the primary last, and
+## the chapter starts over with the started-fresh note. Only a journal that
+## owns its storage calls this. False when there is nothing to do or a copy
+## could not move; the journal is then held as before.
+func _start_fresh(unreadable: Array[String]) -> bool:
+	if unreadable.is_empty(): return false
+	for candidate: String in AtomicFile.read_candidates(_path):
+		if FileAccess.file_exists(candidate) and candidate not in unreadable: return false
+	var copies := unreadable.duplicate()
+	copies.reverse()
+	for candidate: String in copies:
+		if not AtomicFile.move_aside(candidate, candidate + Storage.UNREADABLE, FileAccess.get_sha256(candidate)): return false
+	_storage.load_data()
+	if _storage.read_only or not _storage.loaded_from.is_empty(): return false
+	last_error = PlayerCopy.LOCAL_SAVE_STARTED_FRESH
+	return true
 
 
 func _preserve_unreadable(candidate: String) -> bool:

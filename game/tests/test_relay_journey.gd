@@ -204,7 +204,7 @@ func _untrusted_saves() -> void:
 	good.load_data()
 	good.accept_recording(first_pair.a)
 	var template: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(template_path))
-	for scenario: String in ["future_nested", "future_envelope", "unknown_field", "false_a", "reordered_pair", "invalid_draft", "foreign_data", "string_version", "list_version", "list_role", "number_level", "invalid_json"]:
+	for scenario: String in ["future_nested", "future_envelope", "unknown_field", "false_a", "reordered_pair", "invalid_draft", "foreign_data", "string_version", "list_version", "list_role", "number_level"]:
 		var path := _path(scenario)
 		var data: Dictionary = template.duplicate(true)
 		match scenario:
@@ -221,7 +221,7 @@ func _untrusted_saves() -> void:
 			"list_version": data.version = [1]
 			"list_role": data.relay.a.role = [1]
 			"number_level": data.relay.level_id = 7
-		var bytes := "{broken" if scenario == "invalid_json" else JSON.stringify(data)
+		var bytes := JSON.stringify(data)
 		_write(path, bytes)
 		var journey := Journey.new(path)
 		journey.load_data()
@@ -229,6 +229,13 @@ func _untrusted_saves() -> void:
 		_check(journey.checkpoint().is_empty() and journey.draft().is_empty() and journey.pairs().is_empty(), scenario + " is not used as playable state")
 		_check(not journey.save_draft(first_pair.a) and not journey.accept_recording(first_pair.a), scenario + " cannot be overwritten by a new turn")
 		_check(FileAccess.get_file_as_string(path) == bytes, scenario + " original bytes remain unchanged")
+	# A journal with no copy that parses starts over, its bytes kept aside
+	# (test_unreadable_chapter_journal.gd).
+	var broken := _path("invalid_json")
+	_write(broken, "{broken")
+	var restarted := Journey.new(broken)
+	restarted.load_data()
+	_check(not restarted.read_only and restarted.pairs().is_empty() and not FileAccess.file_exists(broken), "invalid_json starts over and moves its bytes aside")
 	# A readable backup must not silently replace unknown future primary data.
 	var future_path := _path("future_with_backup")
 	var future: Dictionary = template.duplicate(true)
