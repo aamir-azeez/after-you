@@ -10,7 +10,11 @@ extends "res://tests/test_world_fingerprint.gd"
 ##   freed mid-build (Home leaving) never builds on and leaves nothing. Away
 ##   (a room open under Home) it lets an unfinished world go and starts it
 ##   again later. A stage a chapter screen built counts as warm.
-## - Its batches leave room in the kept batches for Home's island.
+## - Its batches leave room in the kept batches for Home's island, for every
+##   chapter whose descriptor asks for the warm-up.
+## - At most one chapter a visit: the first of chapters() not warm yet. A
+##   stage warm already does not use up the visit; the next visit warms the
+##   next chapter.
 ## - The stage is the one the solo save opens on.
 const WorldPrewarm = preload("res://services/world_prewarm.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
@@ -85,6 +89,8 @@ func _run() -> void:
 	built.queue_free()
 	await _paused_and_left()
 	await _away()
+	await _one_a_visit()
+	await _flagged_budgets()
 	stage3d.queue_free()
 	home.queue_free()
 	await process_frame
@@ -162,6 +168,68 @@ func _away() -> void:
 	home.queue_free()
 	for i in range(3): await process_frame
 
+## Two chapters to warm, the first most likely next: one idle visit warms
+## the first only and starts nothing more; the next visit warms the second. A
+## stage a chapter screen built already does not use up a visit.
+func _one_a_visit() -> void:
+	var first := "first-steps@1"
+	var first_warm := first + "|" + str(Registry.definition(first).stages[0].id)
+	var tide_warm := KEY + "|set-the-tide"
+	var both: Array[String] = [first, KEY]
+	WorldPrewarm.forget()
+	_forget_caches()
+	var home := Node.new()
+	root.add_child(home)
+	var visit := _prewarm(func() -> bool: return true, both)
+	home.add_child(visit)
+	await _until_warm(first_warm)
+	var started := false
+	for i in range(300):
+		await process_frame
+		started = started or visit.running()
+	_check(WorldPrewarm.warmed() == [first_warm] and not started, "One idle visit warms the most likely chapter only, and starts no other (%s)" % [WorldPrewarm.warmed()])
+	visit.queue_free()
+	var next := _prewarm(func() -> bool: return true, both)
+	home.add_child(next)
+	await _until_warm(tide_warm)
+	_check(WorldPrewarm.warmed().has(tide_warm), "The next visit warms the next chapter")
+	next.queue_free()
+	WorldPrewarm.forget()
+	_forget_caches()
+	WorldPrewarm.note_built(first, first_warm.get_slice("|", 1))
+	var built := _prewarm(func() -> bool: return true, both)
+	home.add_child(built)
+	await _until_warm(tide_warm)
+	_check(WorldPrewarm.warmed().has(tide_warm), "A chapter warm already does not use up the visit: the next one warms")
+	home.queue_free()
+	for i in range(3): await process_frame
+
+## Every offered chapter whose descriptor asks for the warm-up (Turn of the
+## Tide, checked above, aside): warmed alone, its batches take under half of
+## the kept vertices, leaving Home's island kept.
+func _flagged_budgets() -> void:
+	_check(WorldPrewarm.flagged(KEY), "Turn of the Tide asks for the warm-up")
+	for key: String in Registry.offered_keys():
+		if key == KEY or not WorldPrewarm.flagged(key): continue
+		WorldPrewarm.forget()
+		_forget_caches()
+		var home := Node.new()
+		root.add_child(home)
+		var only: Array[String] = [key]
+		home.add_child(_prewarm(func() -> bool: return true, only))
+		var warm := key + "|" + str(Registry.definition(key).stages[0].id)
+		await _until_warm(warm)
+		_check(WorldPrewarm.warmed().has(warm), "%s warms" % key)
+		_check(StaticBatch._kept_vertices * 2 < StaticBatch.KEPT_VERTICES, "%s's batches take under half of the kept vertices (%d of %d)" % [key, StaticBatch._kept_vertices, StaticBatch.KEPT_VERTICES])
+		home.queue_free()
+		for i in range(3): await process_frame
+
+func _until_warm(pair: String) -> void:
+	var guard := 0
+	while guard < 5000 and not WorldPrewarm.warmed().has(pair):
+		await process_frame
+		guard += 1
+
 ## The stage the solo save opens on: one played pair per finished stage.
 func _saved_stage() -> void:
 	var path := "user://world-prewarm-test.json"
@@ -179,12 +247,13 @@ func _saved_stage() -> void:
 	_check(WorldPrewarm._saved_pairs(path) == 0, "An unreadable save warms the first stage")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))
 
-func _prewarm(idle: Callable) -> Node:
+func _prewarm(idle: Callable, keys: Array[String] = [KEY]) -> Node:
 	var prewarm: Node = WorldPrewarm.new()
 	prewarm.enabled = true
 	prewarm.idle_seconds = 0.0
 	prewarm.idle = idle
-	prewarm.chapters = func() -> Array[String]: return [KEY]
+	prewarm.chapters = func() -> Array[String]: return keys
+	prewarm.wants = func(key: String) -> bool: return key in keys
 	prewarm.settings = func() -> Dictionary: return {"graphics_quality": "balanced"}
 	return prewarm
 

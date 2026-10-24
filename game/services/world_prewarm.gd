@@ -10,6 +10,10 @@ extends Node
 ##   chapters() offers (unlocked), and only once per chapter and stage a run.
 ##   The stage is the one the solo save opens on, read on a worker (never
 ##   written); an unreadable save warms the first stage.
+## - At most one chapter a visit to Home: the first of chapters() (the one
+##   most likely opened next first) whose stage is not warm yet. A stage warm
+##   already, or a world let go unfinished (away), does not count. So Home's
+##   idle work stays one world's build and fold a visit.
 ## - Starts once idle() has held with no touch, click or key for IDLE_SECONDS.
 ##   It builds a slice of BUILD_SLICE_USEC each frame, then folds the same way:
 ##   any input, a busy or backgrounded app or a chapter opening pauses it
@@ -55,6 +59,9 @@ var settings: Callable
 var away: Callable
 ## The registry keys the player can open now, most likely first; set by the owner.
 var chapters: Callable
+## Whether a chapter's world is warmed at all; its descriptor's
+## "prewarm_world" (flagged) unless a test sets another.
+var wants: Callable = flagged
 var enabled := DisplayServer.get_name() != "headless"
 var idle_seconds := IDLE_SECONDS
 
@@ -77,6 +84,10 @@ var _looked: Dictionary = {}
 var _candidates: Array[String] = []
 var _asked := false
 var _visit_done := false
+
+## Whether key's descriptor asks for the warm-up ("prewarm_world").
+static func flagged(key: String) -> bool:
+	return bool(ChapterIndex.data(key).get("prewarm_world", false))
 
 ## Chapter and stage pairs warmed this run, for tests.
 static func warmed() -> Array:
@@ -156,7 +167,7 @@ func _choose() -> void:
 	if not _asked and chapters.is_valid():
 		_asked = true
 		for key: String in chapters.call():
-			if bool(ChapterIndex.data(key).get("prewarm_world", false)) and not _candidates.has(key): _candidates.append(key)
+			if bool(wants.call(key)) and not _candidates.has(key): _candidates.append(key)
 	while not _candidates.is_empty():
 		var key: String = _candidates.pop_front()
 		if _looked.has(key): continue
@@ -236,8 +247,10 @@ func _start_fold() -> void:
 	if _fold.is_empty(): _close()
 
 ## Done: this chapter and stage are warm, and the world goes, a slice a frame.
+## That is this visit's one chapter.
 func _close() -> void:
 	_warmed[_warmed_key(_key, _stage)] = true
+	_visit_done = true
 	_let_go()
 
 ## Lets an unfinished world go (see away); this chapter is looked at again.
