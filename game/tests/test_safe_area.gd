@@ -197,7 +197,7 @@ func _test_menus(app: Node, safe: Rect2, viewport: Rect2) -> void:
 	app.collection_preview=false
 	app.attempt={"a":{},"b":{},"draft":{}}
 	app.review_recording=first
-	app._show_review()
+	app.earlier_islands_flow.show_review()
 	await _settle_layout()
 	await _check_menu(app.overlay,safe,"Saved-turn review")
 	_same_rect(app.overlay_shade.get_global_rect(),viewport,"Review backdrop still covers the entire native content area")

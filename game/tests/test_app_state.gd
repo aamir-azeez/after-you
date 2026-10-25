@@ -311,14 +311,14 @@ func _test_main_lifecycle() -> void:
 	app.current_level=Levels.get_level(0)
 	app.level_index=0
 	app.attempt={"a":first.duplicate(true),"b":second.duplicate(true),"draft":{}}
-	app._preview(second,true)
+	app.earlier_islands_flow.preview(second,true)
 	if not await _wait_for_collection_preview(app):
 		app.queue_free()
 		await process_frame
 		return
 	app._physics_process(1.0/30.0)
 	var paused_tick: int=app.sim.tick
-	app._pause()
+	app.earlier_islands_flow.pause()
 	app._physics_process(1.0/30.0)
 	_check(app.mode=="paused" and app.sim.tick==paused_tick,"Preview pause freezes simulation")
 	_check(_find_button(app.overlay,"Retry")==null,"A saved replay's pause offers no Retry: there is no turn to retry")
@@ -327,35 +327,35 @@ func _test_main_lifecycle() -> void:
 	_check(app.mode=="preview" and app.running,"Resume restores preview mode rather than starting a live turn")
 	for _i: int in range(601):
 		app._physics_process(1.0/30.0)
-	app._advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
+	app.earlier_islands_flow.advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
 	_check(app.mode=="collection" and app.collection_preview,"Completed collection preview retains read-only origin")
 	_check(_find_button(app.overlay,"Save turn")==null,"Collection preview does not offer a second commitment")
 	var generation: int=app.saves.data.generation
-	app._commit_turn()
+	app.earlier_islands_flow.commit_turn()
 	_check(app.saves.data.generation==generation,"Direct duplicate collection commitment does not write a save")
-	app._preview(second,true)
+	app.earlier_islands_flow.preview(second,true)
 	if not await _wait_for_collection_preview(app):
 		app.queue_free()
 		await process_frame
 		return
 	for _i: int in range(601):
 		app._physics_process(1.0/30.0)
-	app._advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
+	app.earlier_islands_flow.advance_completion_moment(Main.COMPLETION_MOMENT_SECONDS + 0.1)
 	_check(app.mode=="collection","Repeated previews remain read-only")
 	app.attempt={"a":{},"b":{},"draft":{}}
 	app.role="a"
-	app._prepare_turn()
+	app.earlier_islands_flow.prepare_turn()
 	var invalid := first.duplicate(true)
 	invalid.final_state_hash="0".repeat(64)
-	app._resume_draft(invalid)
+	app.earlier_islands_flow.resume_draft(invalid)
 	_check(app.mode=="ready" and not app.running and app.sim.tick==0,"Invalid draft cannot silently start playback or live input")
-	app._resume_draft(first)
+	app.earlier_islands_flow.resume_draft(first)
 	_check(app.mode=="review" and not app.running,"Finished rehearsal resumes into review rather than a frozen live turn")
 	# Pause while watching this turn back (Preview): the review card's Retry is there too.
-	app._preview(app.review_recording)
+	app.earlier_islands_flow.preview(app.review_recording)
 	app._physics_process(1.0/30.0)
 	var preview_tick: int=app.sim.tick
-	app._pause()
+	app.earlier_islands_flow.pause()
 	var preview_retry := _find_button(app.overlay,"Retry")
 	_check(app.mode=="paused" and preview_retry!=null,"Pausing a Preview of this turn offers Retry")
 	if preview_retry!=null:
@@ -368,7 +368,7 @@ func _test_main_lifecycle() -> void:
 		_check(app.mode=="ready" and not app.running and app.sim.tick==0,"Retry from a paused Preview sets this turn up again")
 	app.role="b"
 	app.attempt={"a":invalid,"b":{},"draft":{}}
-	app._prepare_turn()
+	app.earlier_islands_flow.prepare_turn()
 	_check(app.mode=="journey" and not app.running,"Invalid earlier source fails setup without continuing the old simulation")
 	await _test_main_pending(app)
 	app.queue_free()
@@ -515,7 +515,7 @@ func _test_live_entitlement(app: Node) -> void:
 	button.pressed.emit()
 	_check(app.mode=="paywall","Existing unlocked button also checks entitlement loss before opening premium island")
 	app._start_practice(0)
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	app._physics_process(1.0/30.0)
 	var tick: int=app.sim.tick
 	app.purchases._on_customer_info(JSON.stringify({"schema_version":1,"mode":"google_play","entitlements":{"full_journey_play":{"active":true,"store":"PLAY_STORE","product_id":"after_you_full_journey"}}}))

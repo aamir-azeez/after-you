@@ -367,7 +367,7 @@ func _offers_next_island(app: Node, index: int) -> bool:
 	app.room_play = false
 	app.level_index = index
 	app.current_level = app.levels[index]
-	app._show_celebration()
+	app.earlier_islands_flow.show_celebration()
 	await _settle()
 	return _button(app.overlay, "Next island") != null
 

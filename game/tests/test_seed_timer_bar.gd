@@ -189,7 +189,7 @@ func _check_islands() -> void:
 		sim.reset(level, {}, "a", LegacySimulation.COMFORT_SIMULATION_VERSION)
 		for i in range(45): sim.step(IDLE)
 		var state: Dictionary = sim.snapshot()
-		app._update_hud(state)
+		app.earlier_islands_flow.update_hud(state)
 		var remaining := maxi(0, int(state.duration_ticks) - int(state.tick)) / 30.0
 		_check(bar.label.text == SeedTimerBar.format_remaining(remaining) and is_equal_approx(bar.max_value, int(state.duration_ticks) / 30.0) and is_equal_approx(bar.value, int(state.tick) / 30.0), "The earlier islands timer shows the remaining seconds (%s)" % bar.label.text)
 	viewport.free()

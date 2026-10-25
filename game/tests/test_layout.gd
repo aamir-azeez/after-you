@@ -155,12 +155,12 @@ func _test_menu_layouts(app: Node, viewport: SubViewport) -> void:
 	app.collection_preview=false
 	app.attempt={"a":{},"b":{},"draft":{}}
 	app.review_recording=first
-	app._show_review()
+	app.earlier_islands_flow.show_review()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"First-turn review")
 	app.attempt={"a":first,"b":{},"draft":{}}
 	app.review_recording=second
-	app._show_review()
+	app.earlier_islands_flow.show_review()
 	await process_frame
 	await _check_card_contents(app.overlay,screen,"Completed-island review")
 	app._start_practice(0)

@@ -30,7 +30,8 @@ func _run() -> void:
 	_check(variant.from_canonical("An unknown presentation value") == "An unknown presentation value", "An unmapped value passes through without invented wording")
 	var objective_script := _consumer("objective", "res://presentation/objective_panel.gd", variant_path)
 	var controls_script := _consumer("controls", "res://presentation/chapter_controls.gd", variant_path, objective_script.resource_path)
-	var main_script := _consumer("main", "res://main.gd", variant_path, objective_script.resource_path)
+	var islands_script := _consumer("islands", "res://presentation/earlier_islands_flow.gd", variant_path, objective_script.resource_path)
+	var main_script := _consumer("main", "res://main.gd", variant_path, objective_script.resource_path, islands_script.resource_path)
 	var lighthouse_script := _consumer("lighthouse", "res://lighthouse_preview.gd", variant_path)
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 720)
@@ -57,7 +58,7 @@ func _run() -> void:
 	var layer: CanvasLayer = app.get_child(0)
 	app.remove_child(layer)
 	viewport.add_child(layer)
-	app._update_hud(state)
+	app.earlier_islands_flow.update_hud(state)
 	_check(app.hint_label.text == hint, "The actual Earlier Islands HUD displays an overridden canonical message")
 	_check(app.interact_button.text == hint and app.interact_button.tooltip_text == reason, "Action label and reason render through the same boundary")
 	_check(Canonical.digest(state) == before, "Earlier Islands rendering leaves snapshot bytes unchanged")
@@ -100,7 +101,7 @@ func _override(source: String, original: String, replacement: String) -> String:
 	_check(pattern.search(source) != null, "The mapped presentation constant exists")
 	return pattern.sub(source, "const " + symbol + " := " + JSON.stringify(replacement))
 
-func _consumer(label: String, resource: String, variant_path: String, objective_path: String = "") -> Script:
+func _consumer(label: String, resource: String, variant_path: String, objective_path: String = "", islands_path: String = "") -> Script:
 	var source := FileAccess.get_file_as_string(resource)
 	var token := 'preload("res://presentation/player_copy.gd")'
 	_check(source.contains(token), "The real presentation consumer explicitly imports its copy catalog")
@@ -109,6 +110,11 @@ func _consumer(label: String, resource: String, variant_path: String, objective_
 		var objective_token := 'preload("res://presentation/objective_panel.gd")'
 		_check(source.contains(objective_token), "The real HUD consumer imports the shared objective panel")
 		source = source.replace(objective_token, 'preload("' + objective_path + '")')
+	if not islands_path.is_empty():
+		# Main draws the Earlier islands HUD through its EarlierIslandsFlow.
+		var islands_token := 'preload("res://presentation/earlier_islands_flow.gd")'
+		_check(source.contains(islands_token), "Main imports the Earlier islands flow that draws its HUD")
+		source = source.replace(islands_token, 'preload("' + islands_path + '")')
 	return load(_write_script(label, source))
 
 func _write_script(label: String, source: String) -> String:

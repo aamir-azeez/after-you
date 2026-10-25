@@ -163,7 +163,7 @@ func _test_visible_completion_presentation() -> void:
 	app.role="b"
 	app.attempt={"a":first.duplicate(true),"b":{},"draft":{}}
 	var second: Dictionary=JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/first-light-b.json"))
-	app._preview(second)
+	app.earlier_islands_flow.preview(second)
 	# Drive the established replay fixture to completion, then let only the
 	# World's real process callbacks run. Main services and simulation stay off.
 	for _frame in range(app.replay_frames.size()+1):
@@ -202,8 +202,8 @@ func _test_background_rehearsal() -> void:
 	app.level_index=0
 	app.role="a"
 	app.attempt={"a":{},"b":{},"draft":{}}
-	app._prepare_turn()
-	app._begin_turn()
+	app.earlier_islands_flow.prepare_turn()
+	app.earlier_islands_flow.begin_turn()
 	for _i: int in range(12):
 		app._physics_process(1.0/30.0)
 	app.action_pressed=true
@@ -221,7 +221,7 @@ func _test_background_rehearsal() -> void:
 	continue_button.pressed.emit()
 	await app._service_foreground_refresh()
 	_check(app.mode=="play" and api.calls.is_empty() and app.foreground_refresh_queued,"Refresh remains queued after player continues recording")
-	app._pause()
+	app.earlier_islands_flow.pause()
 	# Play with a friend now waits for a ready online identity, so use Home as the safe menu.
 	app._show_home()
 	await app._service_foreground_refresh()

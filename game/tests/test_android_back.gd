@@ -35,7 +35,7 @@ func _run() -> void:
 		"replays": app.replays_flow.show_collection,
 		"graphics": app.settings_flow.show_graphics_settings,
 		"earlier island ready card": app._start_practice.bind(0),
-		"earlier island pause card": func(): app._start_practice(0); app._begin_turn(); app._pause(),
+		"earlier island pause card": func(): app._start_practice(0); app.earlier_islands_flow.begin_turn(); app.earlier_islands_flow.pause(),
 	}
 	for name: String in screens:
 		await _same_as_on_screen(name, screens[name])
@@ -112,7 +112,7 @@ func _home_stays() -> void:
 ## as it does in a chapter: the turn's clock stops and the pause card shows.
 func _practice_focus_out() -> void:
 	await _open(app._start_practice.bind(0))
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	_check(app.running and app.mode == "play", "An Earlier islands turn is playing")
 	app.notification(Node.NOTIFICATION_APPLICATION_FOCUS_OUT)
 	await process_frame

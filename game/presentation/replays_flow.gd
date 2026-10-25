@@ -15,9 +15,9 @@ extends Node
 ##   supersede_foreground_refresh, _retry_cancel, ui, overlay,
 ##   overlay_shade, _clear_overlay, _bounded_card_scroll,
 ##   _bounded_card_stack, _set_world_visible, soundscape, title_font
-## - play: levels, current_level, attempt, preview_saved_attempt,
-##   _activate_preview, _room_simulation_version, relay_child, LIGHTHOUSE_SCENE,
-##   _open_chapter_preview, _open_premium_chapter
+## - play: levels, current_level, attempt, earlier_islands_flow
+##   (preview_saved_attempt, activate_preview), _room_simulation_version,
+##   relay_child, LIGHTHOUSE_SCENE, _open_chapter_preview, _open_premium_chapter
 ## - Together viewer: shared_replay_child (this flow adds it to Main and removes it)
 ## - card kit: _card, _label, _paragraph, _button, _list_button, _back_button,
 ##   _scroll_list, _style, _fit_icon_button, _replay_preview_thumb, _toast
@@ -205,7 +205,7 @@ func service_collection_replay() -> void:
 			if not result.get("ok",false):
 				show_collection(PlayerCopy.MAIN_CD2F00E32FC5+str(result.get("error","")))
 				return
-			host._activate_preview(finished.recording,true,result)
+			host.earlier_islands_flow.activate_preview(finished.recording,true,result)
 			return
 	if _collection_replay_job.is_empty(): return
 	if not _collection_replay_current(_collection_replay_job):
@@ -820,7 +820,7 @@ func _play_solo_entry(entry: Dictionary, part: int, from_first: bool = false) ->
 		if index<0 or index>=host.levels.size(): return
 		var selected: Dictionary=entry.get("attempt",{}).duplicate(true)
 		if selected.get("b",{}).is_empty(): return
-		host.preview_saved_attempt(index,selected)
+		host.earlier_islands_flow.preview_saved_attempt(index,selected)
 	else:
 		var rows: Array=entry.get("rows",[])
 		if rows.is_empty(): return
@@ -944,7 +944,7 @@ func _show_solo_replay_attempt() -> void:
 		var legacy_index := int(_selected_solo_attempt.level_index)
 		var selected: Dictionary=_selected_solo_attempt.attempt.duplicate(true)
 		list.add_child(host._paragraph("Solo · Accepted part",600))
-		list.add_child(host._button("Watch replay",func(): host.preview_saved_attempt(legacy_index,selected),true))
+		list.add_child(host._button("Watch replay",func(): host.earlier_islands_flow.preview_saved_attempt(legacy_index,selected),true))
 		list.add_child(host._button("Remove from this device",func(): _confirm_delete_collection_replay(legacy_index,selected),false))
 	else:
 		for row: Dictionary in rows:

@@ -75,8 +75,8 @@ func _successful_retry() -> void:
 	app.current_level=Levels.get_level(0)
 	app.attempt={"a":first,"b":{},"draft":second}
 	app.role="b"
-	app._prepare_turn()
-	app._resume_draft(second)
+	app.earlier_islands_flow.prepare_turn()
+	app.earlier_islands_flow.resume_draft(second)
 	_check(app.mode=="review" and app.sim.complete,"Actual completed native B reaches review")
 	var tick: int=app.sim.tick
 	var original := FileAccess.get_file_as_bytes(path)

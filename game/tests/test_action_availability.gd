@@ -132,9 +132,9 @@ func _test_hud_and_inputs() -> void:
 	app.objective_panel._ready()
 	app.sim.reset(Levels.get_level("first-light"))
 	app.interact_button.disabled = false
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	_check(app.interact_button.disabled and app.finish_button.disabled, "Begin updates action and Finish availability immediately before the first tick")
-	app._request_context_action()
+	app.earlier_islands_flow.request_context_action()
 	_check(not app.action_pressed, "A disabled button callback cannot queue a hidden action")
 	var key := InputEventKey.new()
 	key.physical_keycode = KEY_SPACE
@@ -142,19 +142,19 @@ func _test_hud_and_inputs() -> void:
 	app._unhandled_key_input(key)
 	_check(not app.action_pressed, "Space uses the same availability guard as touch")
 	_walk(app.sim, app.sim.level.plate)
-	app._update_hud(app.sim.snapshot())
+	app.earlier_islands_flow.update_hud(app.sim.snapshot())
 	_check(not app.interact_button.disabled and app.interact_button.text == "Throw seed", "HUD enables the actual reachable context action")
 	app._unhandled_key_input(key)
 	_check(app.action_pressed, "An available keyboard action is accepted")
 	app.sim.step({"interact": app.action_pressed})
 	app.action_pressed = false
-	app._update_hud(app.sim.snapshot())
+	app.earlier_islands_flow.update_hud(app.sim.snapshot())
 	_check(app.interact_button.disabled and not app.finish_button.disabled, "After a successful throw, action grays out while Finish becomes available")
 	app.running = false
 	app.mode = "paused"
-	app._update_hud(app.sim.snapshot())
+	app.earlier_islands_flow.update_hud(app.sim.snapshot())
 	_check(app.finish_button.disabled, "A paused turn does not leave a clickable Finish action")
-	app._request_context_action()
+	app.earlier_islands_flow.request_context_action()
 	_check(not app.action_pressed, "A paused callback does not record an action")
 	app.free()
 

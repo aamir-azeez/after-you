@@ -312,7 +312,7 @@ func _screen() -> void:
 	# An answer arriving during a solo turn waits: the turn is never interrupted.
 	app._start_practice(0)
 	await _settle()
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	await _settle()
 	var in_turn: String = app.mode
 	await _gate(app, transport, _required())
@@ -345,7 +345,7 @@ func _screen() -> void:
 	# Solo play while gated.
 	app._start_practice(0)
 	await _settle()
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	await _settle()
 	_check(app.running and app.mode == "play", "A solo chapter starts while gated")
 	app._show_home()

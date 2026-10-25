@@ -93,7 +93,7 @@ func _prepare() -> void:
 	app.saves.update_values({"attempts":{},"completed":{},"replays":{},"room":{}},["room_draft","pending_turn"])
 	app.saves.completed_save_modes.clear()
 	api.calls.clear()
-	app._prepare_turn()
+	app.earlier_islands_flow.prepare_turn()
 
 func _feed(frame: Dictionary) -> void:
 	var right: Vector3=app.world.camera.global_basis.x
@@ -106,17 +106,17 @@ func _feed(frame: Dictionary) -> void:
 	app._physics_process(1.0/30.0)
 
 func _finish_live() -> void:
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	for frame: Dictionary in frames:
 		_feed(frame)
 
 func _finish_preview() -> void:
-	app._preview(second)
+	app.earlier_islands_flow.preview(second)
 	for _i: int in range(frames.size()+1):
 		app._physics_process(1.0/30.0)
 
 func _finish_collection_preview() -> bool:
-	app._preview(second,true)
+	app.earlier_islands_flow.preview(second,true)
 	var deadline := Time.get_ticks_msec()+10000
 	# Processing is disabled in this fixture; join and adopt the loaded replay
 	# without advancing the completion timer or unrelated app services.
@@ -156,7 +156,7 @@ func _test_live_completion() -> void:
 	app.stick.value=Vector2.ONE
 	app.action_pressed=true
 	app._physics_process(20.0)
-	app._commit_turn()
+	app.earlier_islands_flow.commit_turn()
 	_check(app.sim.tick==tick and app.sim.state_hash()==state and app.saves.data.generation==generation,"Late inputs and a direct commit request cannot advance or commit the bloom mode")
 	app._process(0.7)
 	_check(app.mode=="completion" and not app.overlay.visible,"The first fraction of the bloom remains visible without review")
@@ -214,11 +214,11 @@ func _test_cancelled_countdown() -> void:
 	_check(app.mode=="home" and app.completion_time_left==0.0,"Leaving for Home cancels the pending review")
 	_prepare()
 	_finish_preview()
-	app._prepare_turn()
+	app.earlier_islands_flow.prepare_turn()
 	app._process(20.0)
 	_check(app.mode=="ready" and app.completion_time_left==0.0 and app.sim.tick==0,"A new rehearsal is not replaced by the preceding completion's review")
 	_finish_preview()
-	app._preview(second)
+	app.earlier_islands_flow.preview(second)
 	app._process(20.0)
 	_check(app.mode=="preview" and app.completion_time_left==0.0 and app.running and app.sim.tick==0,"A new replay cancels the old countdown without advancing its simulation")
 
@@ -234,31 +234,31 @@ func _test_collection() -> void:
 	_check(app.mode=="collection" and _button(app.overlay,"Save turn")==null,"Collection review contains no action to recommit the old recording")
 	_check(_has_text(app.overlay,PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D) and not _has_text(app.overlay,PlayerCopy.MAIN_32A4E00F108C),"An earned replay describes already-saved contributions without promising an unavailable Save action")
 	_check(_button(app.overlay,"Replay")!=null and _button(app.overlay,"Back")!=null and _button(app.overlay,"Retry")==null,"Earned replay completion retains its read-only Replay and Back actions")
-	app._commit_turn()
+	app.earlier_islands_flow.commit_turn()
 	if not await _finish_collection_preview(): return
-	app._pause()
+	app.earlier_islands_flow.pause()
 	_check(app.mode=="collection" and FileAccess.get_file_as_string(path)==before and api.calls.is_empty(),"Repeated collection playback and explicit skipping remain read-only")
 
 func _test_noncompletion() -> void:
 	_prepare()
 	app.role="a"
 	app.attempt={"a":{},"b":{},"draft":{}}
-	app._preview(first)
+	app.earlier_islands_flow.preview(first)
 	for _i: int in range(int(first.duration_ticks)+1):
 		app._physics_process(1.0/30.0)
 	_check(app.mode=="review" and app.completion_time_left==0.0 and not app.sim.complete,"First-player handoff review does not wait for an island bloom")
 	_prepare()
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	for _i: int in range(601):
 		app._physics_process(1.0/30.0)
 	_check(app.mode=="review" and app.completion_time_left==0.0 and not app.sim.complete,"Missed handoff reaches retry review immediately")
 	_prepare()
-	app._resume_draft(second)
+	app.earlier_islands_flow.resume_draft(second)
 	_check(app.mode=="review" and app.completion_time_left==0.0,"Restoring an already finished local draft opens review directly")
 
 func _test_failed_save() -> void:
 	_prepare()
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	for frame: Dictionary in frames.slice(0,frames.size()-1):
 		_feed(frame)
 	var before := FileAccess.get_file_as_string(path)

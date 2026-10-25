@@ -189,7 +189,7 @@ func _block_with_room_draft(app: Node, api: FakeApi) -> void:
 	play.pressed.emit()
 	await _frames(2)
 	# The ready card's Begin, then a moment of play.
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	for _tick in range(4): app._physics_process(1.0/60.0)
 	# Back pauses the turn, which saves its draft; the pause card's back goes Home.
 	app.notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)

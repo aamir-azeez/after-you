@@ -42,6 +42,7 @@ const SettingsFlow = preload("res://presentation/settings_flow.gd")
 const PlatformGamesFlow = preload("res://presentation/platform_games_flow.gd")
 const DisplayNameFlow = preload("res://presentation/display_name_flow.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
+const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
@@ -124,7 +125,7 @@ const CREAM := UiTokens.CREAM
 const MINT := UiTokens.MINT
 const MUTED := UiTokens.MUTED
 const GOLD := Color("f1c48a")
-const COMPLETION_MOMENT_SECONDS := 3.0
+const COMPLETION_MOMENT_SECONDS := EarlierIslandsFlow.COMPLETION_MOMENT_SECONDS
 enum IdentityReadState { UNCHECKED, LOADING, MISSING, LOADED, FAILED, RECOVERY_PENDING }
 
 var world: Node3D
@@ -244,6 +245,8 @@ var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
 var display_name_flow: DisplayNameFlow = _host_display_name_flow()
 ## Play Solo: the Chapters page, Earlier islands and which chapter a card opens.
 var journey_flow: JourneyFlow = _host_journey_flow()
+## Playing an earlier island, solo or in a legacy room (presentation/earlier_islands_flow.gd).
+var earlier_islands_flow: EarlierIslandsFlow = _host_earlier_islands_flow()
 ## Adding a room partner as a friend (room options and the room list's menu).
 var partner_friends: RefCounted = PartnerFriends.new(_names_scope, _friends_client)
 var store_view_generation := 0
@@ -461,7 +464,7 @@ func _build_ui() -> void:
 	role_label=_label("",18,MUTED)
 	role_label.position=Vector2(36,61)
 	hud.add_child(role_label)
-	var menu_button := _action_button("pause",_pause)
+	var menu_button := _action_button("pause",earlier_islands_flow.pause)
 	menu_button.set_anchors_and_offsets_preset(Control.PRESET_TOP_RIGHT)
 	menu_button.position=Vector2(-168,24)
 	menu_button.size=Vector2(132,54)
@@ -494,12 +497,12 @@ func _build_ui() -> void:
 	stick.position=Vector2(12,-210)
 	stick.size=Vector2(Joystick.HIT_SIZE,Joystick.HIT_SIZE)
 	hud.add_child(stick)
-	interact_button=_button("Throw seed",_request_context_action)
+	interact_button=_button("Throw seed",earlier_islands_flow.request_context_action)
 	interact_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	interact_button.position=Vector2(-232,-168)
 	interact_button.size=Vector2(195,72)
 	hud.add_child(interact_button)
-	finish_button=_action_button("finish",_finish_recording)
+	finish_button=_action_button("finish",earlier_islands_flow.finish_recording)
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	finish_button.position=Vector2(-247,-87)
 	finish_button.size=Vector2(210,54)
@@ -882,194 +885,14 @@ func _chapter_open_busy() -> bool:
 static func _write_solo_replay_context(context: Dictionary) -> bool:
 	return SoloReplayLaunch.write(context)
 
+## Opens an earlier island (EarlierIslandsFlow.start_practice): JourneyFlow's
+## Earlier islands list and the flow's Next island and Cancel reach it here.
 func _start_practice(index: int) -> void:
-	if index >= 3 and _tester_checks_enabled():
-		var view := store_view_generation
-		var lifecycle := lifecycle_generation
-		var context := _tester_context()
-		await _load_cached_tester()
-		if application_backgrounded or view != store_view_generation or lifecycle != lifecycle_generation or context != _tester_context(): return
-	if submission_in_flight:
-		_toast(PlayerCopy.MAIN_996946E90346)
-		return
-	if index<0 or index>=levels.size():
-		return
-	if index>=3 and not _full_journey_access():
-		store_flow.show_paywall()
-		return
-	room_play=false
-	collection_preview=false
-	level_index=index
-	current_level=levels[index]
-	attempt=saves.attempt(current_level.id)
-	role="b" if not attempt.get("a",{}).is_empty() else "a"
-	if not attempt.get("b",{}).is_empty():
-		mode="completed_attempt"
-		var card := _card()
-		card.add_child(_label(PlayerCopy.MAIN_0984B81F14AB,34,CREAM,true))
-		card.add_child(_paragraph(PlayerCopy.MAIN_CCB173FD54CF))
-		card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
-		card.add_child(_button("Start a fresh attempt",_confirm_restart_attempt,false))
-		card.add_child(_action_button("back",journey_flow.show_journey))
-		return
-	_prepare_turn()
+	await earlier_islands_flow.start_practice(index)
 
-func _prepare_turn() -> void:
-	if submission_in_flight:
-		_toast(PlayerCopy.MAIN_996946E90346)
-		return
-	running=false
-	mode="ready"
-	collection_preview=false
-	review_recording={}
-	action_pressed=false
-	stick.release()
-	attempt=LocalSave.normalize_attempt(attempt)
-	world.home_view=false
-	world.load_level(current_level)
-	var ruleset := TurnState.simulation_version(attempt, role, active_room if room_play else {}, false)
-	if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role,ruleset):
-		_toast(sim.error)
-		journey_flow.show_journey()
-		return
-	_begin_sound_turn()
-	sim.catch_assistance=bool(saves.data.settings.get("assistance",true))
-	world.present(sim.snapshot(),true)
-	hud.visible=true
-	role_label.text="%02d / %s  ·  %s" % [level_index+1,current_level.title,"Your first turn" if role=="a" else "Alongside a ghost"]
-	interact_button.text="Throw seed" if role=="a" else "Plant seed"
-	finish_button.visible=role=="a"
-	stick.visible=true
-	interact_button.visible=true
-	_update_hud(sim.snapshot())
-	var card := _card()
-	card.add_child(_label("Leave a moment." if role=="a" else PlayerCopy.MAIN_408402D8E83C,34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.from_canonical(str(current_level.get("hint_"+role,"")))))
-	card.add_child(_paragraph(PlayerCopy.MAIN_0141427332B8))
-	var draft: Dictionary=attempt.get("draft",{})
-	if draft.get("role","")==role and int(draft.get("duration_ticks",0))>0:
-		card.add_child(_action_button("resume",func(): _resume_draft(draft)))
-	card.add_child(_action_button("record",_begin_turn))
-	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else journey_flow.show_journey))
-
-## The simulation is back at tick zero: its cues restart their identities.
-func _begin_sound_turn() -> void:
-	soundscape.begin_turn(Soundscape.ISLANDS_CHAPTER,str(current_level.get("id","")))
-
-func _sound_sources(state: Dictionary) -> Array:
-	var sources: Array=[]
-	for event: Variant in state.get("events",[]): sources.append(Soundscape.event_source(str(event),role))
-	return sources
-
-func _begin_turn() -> void:
-	if application_backgrounded or submission_in_flight:
-		return
-	_close_overlay()
-	mode="play"
-	running=true
-	action_pressed=false
-	stick.release()
-	_update_hud(sim.snapshot())
-
-func _resume_draft(draft: Dictionary) -> void:
-	var check: Dictionary=TurnState.review(current_level,draft,attempt,_room_simulation_version())
-	if not check.valid or draft.get("role","")!=role:
-		_toast(PlayerCopy.MAIN_EA192FA7B9B0+str(check.get("error","")))
-		return
-	sim.catch_assistance=bool(draft.get("catch_assistance",true))
-	if not sim.reset(current_level,attempt.a if role=="b" else {},role,int(draft.simulation_version)):
-		_toast(sim.error)
-		return
-	_begin_sound_turn()
-	for input in Simulation.expand_recording_inputs(draft):
-		var state: Dictionary=sim.step(input)
-		soundscape.note_turn_events(state.events,_sound_sources(state))
-	world.present(sim.snapshot(),true)
-	if sim.finished:
-		review_recording=draft.duplicate(true)
-		_show_review()
-		return
-	_begin_turn()
-
-func _physics_process(_delta: float) -> void:
-	if not running:
-		return
-	var input: Dictionary={}
-	if mode=="preview":
-		if replay_index>=replay_frames.size():
-			running=false
-			_show_review()
-			return
-		input=replay_frames[replay_index]
-		replay_index+=1
-	else:
-		var movement: Vector2=stick.value
-		var keyboard := Vector2(float(Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT))-float(Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT)),float(Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN))-float(Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP)))
-		if keyboard.length()>0:
-			movement=keyboard.limit_length()
-		# Screen-relative input follows the fixed camera's horizontal axes.
-		var right: Vector3=world.camera.global_basis.x
-		var forward: Vector3=world.camera.global_basis.z
-		var world_move := (Vector3(right.x,0,right.z).normalized()*movement.x + Vector3(forward.x,0,forward.z).normalized()*movement.y).limit_length()
-		input={"move_x":world_move.x,"move_z":world_move.z,"interact":action_pressed}
-		action_pressed=false
-	var previous_tick: int=sim.tick
-	var state: Dictionary=sim.step(input)
-	if int(state.tick)!=previous_tick:
-		soundscape.consume_turn_events(state.events,_sound_sources(state),mode=="play")
-	world.present(state)
-	_update_hud(state)
-	if mode=="play" and sim.tick%30==0 and not state.finished:
-		if not _save_draft():
-			_toast(saves.last_error)
-	if state.finished:
-		running=false
-		var draft_saved := true
-		if mode=="play":
-			review_recording=sim.export_recording()
-			draft_saved=_save_draft()
-			if not draft_saved:
-				_toast(saves.last_error)
-		if state.complete and draft_saved:
-			_begin_completion_moment()
-		else:
-			_show_review()
-
-func _begin_completion_moment() -> void:
-	# The live draft is already durable; replay leaves its saved source untouched.
-	# Keep presentation alive without another simulation step or delayed callback.
-	running=false
-	mode="completion"
-	completion_time_left=COMPLETION_MOMENT_SECONDS
-	action_pressed=false
-	stick.release()
-	stick.visible=false
-	interact_button.visible=false
-	finish_button.visible=false
-	_close_overlay()
-
-func _advance_completion_moment(delta: float) -> void:
-	if mode!="completion" or application_backgrounded:
-		return
-	completion_time_left=maxf(0.0,completion_time_left-delta)
-	if completion_time_left<=0.0:
-		_show_review()
-
-func _update_hud(state: Dictionary) -> void:
-	progress.reduced_motion=bool(saves.data.settings.get("reduced_motion",false))
-	progress.set_remaining(maxi(0,int(state.duration_ticks)-int(state.tick))/30.0,int(state.duration_ticks)/30.0)
-	objective_panel.show_objective(ObjectivePanel.legacy_progress(state,30.0))
-	hint_label.text=PlayerCopy.from_canonical(str(state.message))
-	var interactive := mode=="play" and running and not application_backgrounded
-	finish_button.disabled=not interactive or not bool(state.get("can_commit",false))
-	var action: Dictionary=state.get("context_action",{})
-	interact_button.text=PlayerCopy.from_canonical(str(action.get("label","Interact")))
-	interact_button.disabled=not interactive or not bool(action.get("enabled",false))
-	interact_button.tooltip_text=PlayerCopy.from_canonical(str(action.get("reason","")))
-
-func _request_context_action() -> void:
-	if mode=="play" and running and not application_backgrounded and sim.context_action().get("enabled",false):
-		action_pressed=true
+## The open earlier-island turn or Preview steps in Main's physics callback.
+func _physics_process(delta: float) -> void:
+	earlier_islands_flow.physics_step(delta)
 
 func _unhandled_key_input(event: InputEvent) -> void:
 	if legacy_room_flow.redo_open():
@@ -1081,7 +904,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		if event.physical_keycode==KEY_SPACE and mode=="play" and running:
-			_request_context_action()
+			earlier_islands_flow.request_context_action()
 		if event.physical_keycode==KEY_ESCAPE:
 			if account_flow.holds_back() or mode == "update_gate":
 				get_viewport().set_input_as_handled()
@@ -1091,159 +914,7 @@ func _unhandled_key_input(event: InputEvent) -> void:
 				if _retry_cancel.is_valid(): _retry_cancel.call()
 			elif mode == RelayLobbyFlow.MODE_LOBBY: _return_to_room_hub()
 			elif mode == RoomHubFlow.MODE_ROOMS and room_hub_flow.is_open(): room_hub_flow.go_back()
-			else: _pause() if running or mode=="completion" else _show_home()
-
-func _save_draft() -> bool:
-	if mode!="play" or sim.tick==0:
-		return true
-	attempt["draft"]=sim.export_recording()
-	if room_play:
-		return saves.update_values({"room_draft":{"room_id":active_room.get("room_id",""),"revision":active_room.get("revision",-1),"attempt":attempt.duplicate(true)}})
-	return saves.save_attempt(current_level.id,attempt)
-
-func _finish_recording() -> void:
-	if mode!="play" or not running or not sim.can_commit():
-		return
-	running=false
-	review_recording=sim.export_recording()
-	_save_draft()
-	_show_review()
-
-func _show_review() -> void:
-	running=false
-	stick.release()
-	var check: Dictionary=TurnState.review(current_level,review_recording,attempt,_room_simulation_version())
-	var valid: bool=check.valid and check.can_commit
-	var complete: bool = valid and bool(review_recording.get("completed",false))
-	mode=ReplaysFlow.MODE_COLLECTION if collection_preview else "review"
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_CBFD9EB78DBC if complete else (PlayerCopy.MAIN_6F96DCC47A05 if valid else "Another little try?"),32,CREAM,true))
-	var description := PlayerCopy.MAIN_32A4E00F108C if complete else (PlayerCopy.MAIN_92F966458583 if valid else PlayerCopy.MAIN_A01274C34177)
-	if complete and collection_preview:
-		description=PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D
-	card.add_child(_paragraph(description))
-	if not review_recording.is_empty():
-		card.add_child(_action_button("replay" if collection_preview else "preview",func(): _preview(review_recording,collection_preview)))
-	var already_saved := collection_preview
-	if valid and not already_saved:
-		card.add_child(_action_button("save",_commit_turn))
-	if not already_saved:
-		card.add_child(_action_button("retry",_retry_review))
-	card.add_child(_action_button("back",room_hub_flow.show_rooms if room_play else journey_flow.show_journey))
-
-## From the review card, or (`paused_over`) from the pause card over its Preview.
-func _retry_review(paused_over: String = "") -> void:
-	var from_pause := mode == "paused" and _previewing_review(paused_over)
-	if (mode != "review" and not from_pause) or application_backgrounded or submission_in_flight: return
-	var checked: Dictionary = TurnState.review(current_level,review_recording,attempt,_room_simulation_version())
-	if not checked.valid or not checked.can_commit or not bool(review_recording.get("completed",false)):
-		_prepare_turn()
-		return
-	var recording := review_recording.duplicate(true)
-	var saved_attempt := attempt.duplicate(true)
-	var room := active_room.duplicate(true)
-	var was_room_play := room_play
-	var recorded_role := role
-	var level_id := str(current_level.id)
-	var identity := _relay_identity()
-	mode = "confirm_retry"
-	var card := _card()
-	card.add_child(_label(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA,32,CREAM,true))
-	var card_reference: WeakRef = weakref(card)
-	var current := func() -> bool:
-		var current_card: Variant = card_reference.get_ref()
-		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_retry" and not application_backgrounded and not submission_in_flight and room_play == was_room_play and role == recorded_role and str(current_level.id) == level_id and review_recording == recording and attempt == saved_attempt and active_room == room and _relay_identity() == identity
-	card.add_child(_action_button("retry",func():
-		if current.call(): _prepare_turn()))
-	_retry_cancel = func():
-		if not current.call(): return
-		if from_pause: _show_paused(paused_over)
-		else: _show_review()
-	card.add_child(_action_button("cancel",_retry_cancel))
-
-## Plays an earlier island's saved attempt from Your replays.
-func preview_saved_attempt(index: int, saved: Dictionary) -> void:
-	level_index=index
-	current_level=levels[index]
-	attempt=saved.duplicate(true)
-	_preview(saved.b,true)
-
-func _preview(recording: Dictionary, collection: bool=false) -> void:
-	if collection and not room_play:
-		replays_flow.begin_collection_replay(recording)
-		return
-	var check: Dictionary=TurnState.review(current_level,recording,attempt,_room_simulation_version())
-	if not check.valid:
-		_toast(PlayerCopy.MAIN_CD2F00E32FC5+str(check.get("error","")))
-		return
-	_activate_preview(recording,collection)
-
-func _activate_preview(recording: Dictionary, collection: bool, prepared: Dictionary = {}) -> void:
-	review_recording=recording.duplicate(true)
-	role=str(recording.role)
-	world.load_level(current_level)
-	world.home_view=false
-	if prepared.is_empty():
-		sim.catch_assistance=bool(recording.get("catch_assistance",true))
-		if not sim.reset(current_level,attempt.get("a",{}) if role=="b" else {},role,int(recording.simulation_version)):
-			_toast(sim.error)
-			return
-		replay_frames=Simulation.expand_recording_inputs(recording)
-	else:
-		sim=prepared.simulation
-		replay_frames=prepared.frames
-	_begin_sound_turn()
-	replay_index=0
-	mode="preview"
-	collection_preview=collection
-	_close_overlay()
-	hud.visible=true
-	stick.visible=false
-	interact_button.visible=false
-	finish_button.visible=false
-	role_label.text=current_level.title+"  ·  Your shared replay"
-	running=true
-
-func _commit_turn() -> void:
-	if mode!="review" or collection_preview:
-		return
-	var check: Dictionary=TurnState.review(current_level,review_recording,attempt,_room_simulation_version())
-	if not check.valid or not check.can_commit:
-		_toast(PlayerCopy.MAIN_C4E0C9A50B65+str(check.get("error","")))
-		return
-	if room_play:
-		await turn_flow.commit_online()
-		return
-	var committed := attempt.duplicate(true)
-	committed[role]=review_recording.duplicate(true)
-	committed["draft"]={}
-	if not saves.save_attempt(current_level.id,committed,role=="b"):
-		_toast(PlayerCopy.MAIN_1A6455ED3E4B)
-		return
-	if role == "b": HomeKeepsakes.record_legacy_solo(current_level.id)
-	attempt=committed
-	mode="saved"
-	if role=="a":
-		role="b"
-		_prepare_turn()
-	else:
-		_show_celebration()
-
-func _show_celebration() -> void:
-	mode="saved"
-	var card := _card()
-	card.add_child(_label(PlayerCopy.MAIN_754724C78F04,34,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_A74DFEBB0414))
-	if room_play:
-		_add_room_reaction_summary(card, active_room)
-	var row := HBoxContainer.new()
-	for reaction in ["Beautiful!","We did it!","Again soon"]:
-		row.add_child(_button(reaction,func(): _react(reaction),false))
-	card.add_child(row)
-	if level_index<7 and (room_play or not bool(levels[level_index+1].get("premium",false)) or not _paid_content_hidden()):
-		card.add_child(_button("Next island",_next_island))
-	card.add_child(_action_button("replay",func(): _preview(attempt.b,true)))
-	card.add_child(_action_button("back",_show_home))
+			else: earlier_islands_flow.pause() if running or mode=="completion" else _show_home()
 
 func _react(reaction: String) -> void:
 	var code := RoomReactions.code_for_label(reaction)
@@ -1308,81 +979,6 @@ func _notice_room_reactions(previous: Dictionary, incoming: Dictionary) -> void:
 	var notice := RoomReactions.new_partner_notice(previous, incoming, str(api.player_id), room_reaction_notices)
 	if not notice.is_empty():
 		_toast(notice)
-
-func _next_island() -> void:
-	if room_play:
-		await legacy_room_flow.advance_room()
-	elif level_index+1>=3 and not _full_journey_access():
-		store_flow.show_paywall()
-	else:
-		_start_practice(mini(level_index+1,7))
-
-func _confirm_restart_attempt() -> void:
-	if room_play or application_backgrounded or submission_in_flight: return
-	var saved_attempt := attempt.duplicate(true)
-	var index := level_index
-	mode = "confirm_restart"
-	var card := _card()
-	card.add_child(_label(PlayerCopy.LIGHTHOUSE_PREVIEW_E1352BA6D9BA,32,CREAM,true))
-	var card_reference: WeakRef = weakref(card)
-	var current := func() -> bool:
-		var current_card: Variant = card_reference.get_ref()
-		return is_instance_valid(current_card) and current_card.is_inside_tree() and mode == "confirm_restart" and not application_backgrounded and not submission_in_flight and not room_play and level_index == index and attempt == saved_attempt and saves.attempt(str(current_level.id)) == saved_attempt
-	card.add_child(_action_button("retry",func():
-		if current.call(): _restart_attempt()))
-	_retry_cancel = func():
-		if current.call(): _start_practice(index)
-	card.add_child(_action_button("cancel",_retry_cancel))
-
-func _restart_attempt() -> void:
-	if room_play:
-		await legacy_room_flow.fork_room()
-		return
-	var old_data: Dictionary=saves.data.duplicate(true)
-	if not attempt.get("a",{}).is_empty():
-		var archive: Array=saves.data.get("attempt_archive",[])
-		archive.append({"level_id":current_level.id,"attempt":attempt.duplicate(true)})
-		saves.data["attempt_archive"]=archive
-	var fresh := {"a":{},"b":{},"draft":{}}
-	if not saves.save_attempt(current_level.id,fresh):
-		saves.data=old_data
-		_toast(saves.last_error)
-		return
-	attempt=fresh
-	role="a"
-	_prepare_turn()
-
-func _pause() -> void:
-	if mode=="completion":
-		_show_review()
-		return
-	if mode not in ["play","preview"] or not running:
-		return
-	var previous_mode := mode
-	running=false
-	stick.release()
-	action_pressed=false
-	var draft_saved := _save_draft()
-	_show_paused(previous_mode,draft_saved)
-
-## The pause card over `previous_mode` ("play" or "preview").
-func _show_paused(previous_mode: String, draft_saved: bool=true) -> void:
-	mode="paused"
-	soundscape.stop_reunion()
-	var card := _card()
-	card.add_child(_label("There’s no hurry.",36,CREAM,true))
-	card.add_child(_paragraph(PlayerCopy.MAIN_1A19AF19EDB1 if previous_mode=="preview" else (PlayerCopy.MAIN_9E4FF2796D8F if draft_saved else PlayerCopy.MAIN_359B02B14B2E)))
-	card.add_child(_action_button("resume",func(): mode=previous_mode; _close_overlay(); running=true))
-	if previous_mode=="play":
-		card.add_child(_action_button("retry",_prepare_turn))
-	elif _previewing_review(previous_mode):
-		# A Preview from the review card keeps that card's Retry; its Cancel comes back here.
-		card.add_child(_action_button("retry",_retry_review.bind(previous_mode)))
-	card.add_child(_action_button("back",_show_home))
-
-## Watching this turn back from its review card (Preview), as against a saved replay.
-func _previewing_review(previous_mode: String) -> bool:
-	return previous_mode=="preview" and not collection_preview and not review_recording.is_empty()
 
 func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Control:
 	# One framed picture for every chapter view; the chapter picker owns it.
@@ -1616,6 +1212,12 @@ func _host_display_name_flow() -> DisplayNameFlow:
 ## An internal child, like StoreFlow.
 func _host_journey_flow() -> JourneyFlow:
 	var flow := JourneyFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	return flow
+
+## An internal child, like JourneyFlow.
+func _host_earlier_islands_flow() -> EarlierIslandsFlow:
+	var flow := EarlierIslandsFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
 
@@ -2047,14 +1649,14 @@ func _start_room_turn() -> void:
 	var local: Dictionary=saves.data.get("room_draft",{})
 	if local.get("room_id","")==active_room.room_id and int(local.get("revision",-1))==int(active_room.revision):
 		attempt.draft=local.get("attempt",{}).get("draft",{})
-	_prepare_turn()
+	earlier_islands_flow.prepare_turn()
 
 func _watch_room_replay() -> void:
 	room_play=true
 	level_index=int(active_room.level_index)
 	current_level=Levels.get_level(str(active_room.level_id))
 	attempt=LocalSave.normalize_attempt(active_room.get("recordings",{}))
-	_preview(attempt.b,true)
+	earlier_islands_flow.preview(attempt.b,true)
 
 ## Legacy room writes (a turn, its check, Next island, a fork, a reaction) run
 ## one at a time: submission_in_flight holds while one is out, so a second tap
@@ -2248,11 +1850,11 @@ func _background_application() -> void:
 	if is_instance_valid(stick):
 		stick.release()
 	if running:
-		_pause()
+		earlier_islands_flow.pause()
 	else:
 		# Covers the narrow interval between finishing a live turn and presenting
 		# review. Preview and menu modes do not create or overwrite drafts.
-		_save_draft()
+		earlier_islands_flow.save_draft()
 
 func _resume_application() -> void:
 	# Android may deliver more than one resume/focus notification. A single
@@ -2470,7 +2072,7 @@ func _process(delta: float) -> void:
 	_service_home_keepsakes(delta)
 	_sync_presence()
 	_sync_live()
-	_advance_completion_moment(delta)
+	earlier_islands_flow.advance_completion_moment(delta)
 	_service_foreground_refresh()
 	if is_instance_valid(turn_notifications):
 		turn_notifications.service(Time.get_ticks_msec(), not application_backgrounded, not submission_in_flight and not foreground_refresh_running and not running and (relay_session == null or not relay_session.busy()))
@@ -2532,7 +2134,7 @@ func _notification(what: int) -> void:
 		_resume_application()
 	elif what==NOTIFICATION_APPLICATION_FOCUS_OUT and running:
 		# A notification shade or another app over a turn pauses it, as in a chapter.
-		_pause()
+		earlier_islands_flow.pause()
 	elif what==NOTIFICATION_WM_GO_BACK_REQUEST:
 		# The update screen has no Back: the player updates or picks Play Solo.
 		if account_flow.holds_back() or mode == "update_gate": return
@@ -2544,7 +2146,7 @@ func _notification(what: int) -> void:
 		# Together replays: Android Back goes where their on-screen Back goes.
 		elif mode in [ReplaysFlow.MODE_SHARED_REPLAYS, ReplaysFlow.MODE_SHARED_MEMORIES] and not is_instance_valid(shared_replay_child): _show_home()
 		elif running or mode=="completion":
-			_pause()
+			earlier_islands_flow.pause()
 		elif mode==SettingsFlow.MODE_LICENSE_TEXT:
 			settings_flow.show_licenses()
 		elif mode == StoreFlow.MODE_TESTER_ACCESS:
@@ -2559,8 +2161,8 @@ func _notification(what: int) -> void:
 		else:
 			_back_on_screen()
 	if what==NOTIFICATION_WM_CLOSE_REQUEST:
-		if not _save_draft():
-			_pause()
+		if not earlier_islands_flow.save_draft():
+			earlier_islands_flow.pause()
 			_toast(PlayerCopy.MAIN_A3FDAA4A9D35)
 			return
 		get_tree().quit()

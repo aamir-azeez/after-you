@@ -96,7 +96,7 @@ func _prepare() -> void:
 	app.room_play=false
 	sound.deliveries.clear()
 	sound.pulses.clear()
-	app._prepare_turn()
+	app.earlier_islands_flow.prepare_turn()
 
 func _events() -> Array:
 	var events: Array=[]
@@ -106,7 +106,7 @@ func _events() -> Array:
 
 func _test_preview_delivery() -> void:
 	_prepare()
-	app._preview(second,true)
+	app.earlier_islands_flow.preview(second,true)
 	_check(sound.deliveries.is_empty(),"Preparing a replay does not replay setup or verification events")
 	var deadline := Time.get_ticks_msec()+10000
 	while (app.replays_flow._collection_replay_worker != null or not app.replays_flow._collection_replay_job.is_empty()) and Time.get_ticks_msec() < deadline:
@@ -134,7 +134,7 @@ func _test_preview_delivery() -> void:
 	_check(sound.deliveries.size()==before,"A finished simulation snapshot cannot replay its final audio event")
 
 func _play_live(inputs: Array) -> void:
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	var right: Vector3=app.world.camera.global_basis.x
 	var forward: Vector3=app.world.camera.global_basis.z
 	right=Vector3(right.x,0,right.z).normalized()
@@ -153,7 +153,7 @@ func _test_recorded_pitches() -> void:
 	_prepare()
 	app.role="a"
 	app.attempt={"a":{},"b":{},"draft":{}}
-	app._prepare_turn()
+	app.earlier_islands_flow.prepare_turn()
 	sound.played.clear()
 	_play_live(Simulation.expand_recording_inputs(first))
 	var thrown := _played("seed_thrown")
@@ -173,7 +173,7 @@ func _test_recorded_pitches() -> void:
 	_check(sound.played==live_b,"Retrying the turn reproduces every cue pitch and gain")
 	_prepare()
 	sound.played.clear()
-	app._preview(second)
+	app.earlier_islands_flow.preview(second)
 	for _i: int in range(frames.size()+2):
 		app._physics_process(1.0/30.0)
 	_check(app.mode!="play" and sound.played==live_b,"Replaying the recorded turn plays the pitches of the live turn")
@@ -181,7 +181,7 @@ func _test_recorded_pitches() -> void:
 
 func _test_home_after_turn() -> void:
 	_prepare()
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	_check(sound.in_turn(),"A turn names its chapter and stage for the sound identities")
 	app._show_home()
 	_check(not sound.in_turn(),"Returning Home leaves the recorded turn")
@@ -197,21 +197,21 @@ func _test_live_delivery() -> void:
 
 func _test_draft_reconstruction() -> void:
 	_prepare()
-	app._resume_draft(second)
+	app.earlier_islands_flow.resume_draft(second)
 	_check(app.mode=="review" and sound.deliveries.is_empty() and sound.pulses.is_empty(),"Completed draft reconstruction is silent despite historic catch and bloom events")
 	var partial := Simulation.new()
 	partial.reset(Levels.get_level(0),first,"b")
 	for frame: Dictionary in frames.slice(0,40):
 		partial.step(frame)
 	_prepare()
-	app._resume_draft(partial.export_recording())
+	app.earlier_islands_flow.resume_draft(partial.export_recording())
 	_check(app.running and app.sim.tick==40 and sound.deliveries.is_empty(),"Partial draft fast-forward is silent and resumes at its saved tick")
 	app._physics_process(1.0/30.0)
 	_check(sound.deliveries.size()==1,"Only the first new tick after reconstruction reaches the sound service")
 
 func _test_footstep_delivery() -> void:
 	_prepare()
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	var before := sound.next_step
 	var state_before := JSON.stringify(app.sim.snapshot())
 	var contacts := 0
@@ -253,7 +253,7 @@ func _test_home_reunion() -> void:
 
 func _test_reunion_delivery() -> void:
 	_prepare()
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 	var before_state := JSON.stringify(app.sim.snapshot())
 	for playback: String in ["play","preview"]:
 		app.mode=playback
@@ -264,13 +264,13 @@ func _test_reunion_delivery() -> void:
 			_check(sound.greetings==before+encounter+1 and sound.reunion_voice.playing,"Earlier-island player and ghost share one reunion greeting in "+playback)
 		for frame in range(90): app.world._process(1.0/60.0)
 		_check(sound.greetings==before+3,"Remaining together does not repeat earlier-island reunion audio")
-	app._pause()
+	app.earlier_islands_flow.pause()
 	_check(not sound.reunion_voice.playing,"Pausing an earlier-island replay stops reunion audio")
 	var before := sound.greetings
 	ReunionAudio.approach(app.world)
 	_check(sound.greetings==before,"Paused earlier-island playback suppresses reunion requests")
 	_check(JSON.stringify(app.sim.snapshot())==before_state,"Reunion audio cannot alter an earlier-island recording")
-	app._begin_turn()
+	app.earlier_islands_flow.begin_turn()
 
 func _test_background() -> void:
 	sound.transitions.clear()
