@@ -842,12 +842,16 @@ func _ghost(route: Dictionary) -> void:
 	var id := str(route.id)
 	var deck: Node3D = _decks.get(id)
 	if deck == null: return
+	# The outline leaves out the remembered-footsteps marker (footprints and
+	# pennant): it is set aside while the deck is copied, not copied and freed.
+	var memories := deck.find_child("RememberedFootsteps", false, false)
+	var memories_at := memories.get_index() if memories != null else -1
+	if memories != null: deck.remove_child(memories)
 	var ghost := deck.duplicate() as Node3D
-	ghost.name = "ShutCrossing_" + id
-	var memories := ghost.find_child("RememberedFootsteps", false, false)
 	if memories != null:
-		ghost.remove_child(memories)
-		memories.free()
+		deck.add_child(memories)
+		deck.move_child(memories, memories_at)
+	ghost.name = "ShutCrossing_" + id
 	var faint := Primitives.fresh_material(Color(CREAM, 0.30))
 	faint.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	faint.render_priority = -3

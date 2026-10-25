@@ -111,7 +111,7 @@ func mesh_node(mesh: Mesh, color: Color, pos: Vector3, parent: Node3D) -> MeshIn
 # The shape helpers share one cached mesh per shape too (Primitives.cached_shape);
 # code that resizes a mesh in place builds it with its own (Primitives.box_mesh).
 func box(size: Vector3, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
-	return mesh_node(Primitives.cached_shape(Primitives.box_mesh(size)), color, pos, parent)
+	return mesh_node(Primitives.cached_box(size), color, pos, parent)
 
 func sphere(radius: float, color: Color, pos: Vector3, parent: Node3D) -> MeshInstance3D:
 	return mesh_node(Primitives.cached_shape(_sphere_mesh(radius)), color, pos, parent)

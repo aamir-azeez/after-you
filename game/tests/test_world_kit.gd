@@ -173,6 +173,7 @@ func _check_materials() -> void:
 	_check(Primitives.changed_shared_looks().size() == 1, "A shared shape resized in place is named")
 	shape.size.x = 0.123
 	_check(Primitives.changed_shared_looks().is_empty(), "Put back, it is no longer named either")
+	_check_kept_shapes()
 	_check(Primitives.shared_material(Color(1, 1, 1, 0.999)) != Primitives.shared_material(Color.WHITE), "A look that is barely see-through is not the opaque look")
 	# Every world's shape helpers share one cached material per look; one
 	# changed later takes its own copy first.
@@ -196,6 +197,25 @@ func _check_materials() -> void:
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], [40, 40, 60, 60]).size() == 4, "A hole leaves four floor pieces")
 	_check(Primitives.rect_minus_hole([0, 0, 100, 100], [0, 40, 60, 100]).size() == 2, "A hole at an edge leaves only the pieces that exist")
 	holder.free()
+
+## A box asked for by size is the shape cached_shape keeps for that box; a
+## shape outlives the world that drew it (a chapter opened again finds it
+## made), the oldest go once more than KEPT_SHAPES are kept, and one still
+## drawn is found and kept again.
+func _check_kept_shapes() -> void:
+	var size := Vector3(0.317, 0.071, 0.229)
+	var box := Primitives.cached_box(size)
+	_check(box is BoxMesh and (box as BoxMesh).size == size and Primitives.cached_box(size) == box and Primitives.cached_shape(Primitives.box_mesh(size)) == box, "A box asked for by size is the one cached box of that shape")
+	var made := Primitives.cached_shape(Primitives.cylinder_mesh(0.0371, 0.29))
+	var made_id := made.get_instance_id()
+	made = null
+	_check(is_instance_valid(instance_from_id(made_id)) and Primitives.cached_shape(Primitives.cylinder_mesh(0.0371, 0.29)).get_instance_id() == made_id, "A shape no world draws any more is still kept")
+	var drawn := Primitives.cached_box(Vector3(0.413, 0.5, 0.5))
+	for index in range(Primitives.KEPT_SHAPES): Primitives.cached_box(Vector3(0.001 * float(index + 1), 0.613, 0.5))
+	_check(Primitives._kept_shapes.size() <= Primitives.KEPT_SHAPES, "No more than KEPT_SHAPES shapes are kept (%d)" % Primitives._kept_shapes.size())
+	_check(not Primitives._kept_shapes.has([&"box", Vector3(0.317, 0.071, 0.229), 0, 0, 0]), "Past the bound the oldest go first")
+	_check(Primitives.cached_box(Vector3(0.413, 0.5, 0.5)) == drawn and Primitives._kept_shapes.has([&"box", Vector3(0.413, 0.5, 0.5), 0, 0, 0]), "A shape still drawn is found and kept again")
+	_check(Primitives.changed_shared_looks().is_empty(), "Keeping shapes changed none of them: %s" % [Primitives.changed_shared_looks()])
 
 func _check_cutaway() -> void:
 	var shared := Primitives.shared_material(Color("6f8b66"))

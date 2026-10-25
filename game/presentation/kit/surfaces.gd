@@ -2,6 +2,9 @@ extends RefCounted
 ## World kit: warm ground styles for a walkable island. The visible top is
 ## exactly the authored rectangle at the parent's height; trims and the rock
 ## below stay outside or under it, so nothing new looks walkable.
+## Every piece but the rock is one of the kit's cached boxes (nothing resizes
+## a floor), so a chapter opened again makes none of them again (while the
+## kit keeps them, Primitives.KEPT_SHAPES).
 
 const Primitives = preload("res://presentation/kit/primitives.gd")
 
@@ -38,32 +41,32 @@ static func build(island: Dictionary, style_name: String, parent: Node3D, with_r
 	var width := float(r[2] - r[0]) / 100.0
 	var depth := float(r[3] - r[1]) / 100.0
 	var center := Vector3(float(r[0] + r[2]) / 200.0, 0, float(r[1] + r[3]) / 200.0)
-	var floor := Primitives.mesh_node(Primitives.box_mesh(Vector3(width, 0.20, depth)), Primitives.shared_material(style.top), center + Vector3(0, -0.10, 0), parent)
+	var floor := Primitives.mesh_node(Primitives.cached_box(Vector3(width, 0.20, depth)), Primitives.shared_material(style.top), center + Vector3(0, -0.10, 0), parent)
 	floor.name = str(island.id) + "Floor"
 	# A soft lip just outside the rectangle, a little below the walking surface.
-	Primitives.mesh_node(Primitives.box_mesh(Vector3(width + 0.10, 0.12, depth + 0.10)), Primitives.shared_material(style.skirt), center + Vector3(0, -0.085, 0), parent)
-	Primitives.mesh_node(Primitives.box_mesh(Vector3(width + 0.04, 0.12, depth + 0.04)), Primitives.shared_material(style.band), center + Vector3(0, -0.24, 0), parent)
+	Primitives.mesh_node(Primitives.cached_box(Vector3(width + 0.10, 0.12, depth + 0.10)), Primitives.shared_material(style.skirt), center + Vector3(0, -0.085, 0), parent)
+	Primitives.mesh_node(Primitives.cached_box(Vector3(width + 0.04, 0.12, depth + 0.04)), Primitives.shared_material(style.band), center + Vector3(0, -0.24, 0), parent)
 	# Trims start at the walking surface, so their outer faces never share the
 	# floor's sides (coplanar faces flicker as the camera moves).
 	for side in [-1, 1]:
-		Primitives.mesh_node(Primitives.box_mesh(Vector3(width, 0.014, 0.04)), Primitives.shared_material(style.trim), center + Vector3(0, 0.007, side * (depth / 2.0 - 0.02)), parent)
-		Primitives.mesh_node(Primitives.box_mesh(Vector3(0.04, 0.014, depth)), Primitives.shared_material(style.trim), center + Vector3(side * (width / 2.0 - 0.02), 0.007, 0), parent)
+		Primitives.mesh_node(Primitives.cached_box(Vector3(width, 0.014, 0.04)), Primitives.shared_material(style.trim), center + Vector3(0, 0.007, side * (depth / 2.0 - 0.02)), parent)
+		Primitives.mesh_node(Primitives.cached_box(Vector3(0.04, 0.014, depth)), Primitives.shared_material(style.trim), center + Vector3(side * (width / 2.0 - 0.02), 0.007, 0), parent)
 	var lines := str(style.lines)
 	if lines.contains("x"):
 		var spacing := float(style.spacing)
 		var x := -width / 2.0 + spacing
 		while x < width / 2.0 - 0.05:
-			Primitives.mesh_node(Primitives.box_mesh(Vector3(0.012, 0.006, depth - 0.06)), Primitives.shared_material(style.line), center + Vector3(x, 0.003, 0), parent)
+			Primitives.mesh_node(Primitives.cached_box(Vector3(0.012, 0.006, depth - 0.06)), Primitives.shared_material(style.line), center + Vector3(x, 0.003, 0), parent)
 			x += spacing
 	if lines.contains("z"):
 		var spacing := float(style.spacing)
 		var z := -depth / 2.0 + spacing
 		while z < depth / 2.0 - 0.05:
-			Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.06, 0.006, 0.012)), Primitives.shared_material(style.line), center + Vector3(0, 0.003, z), parent)
+			Primitives.mesh_node(Primitives.cached_box(Vector3(width - 0.06, 0.006, 0.012)), Primitives.shared_material(style.line), center + Vector3(0, 0.003, z), parent)
 			z += spacing
 	if not with_rock or style.get("rockless", false):
 		for z_side in [-1, 1]:
-			Primitives.mesh_node(Primitives.box_mesh(Vector3(width - 0.1, 0.16, 0.12)), Primitives.shared_material(style.skirt), center + Vector3(0, -0.36, z_side * (depth / 2.0 - 0.3)), parent)
+			Primitives.mesh_node(Primitives.cached_box(Vector3(width - 0.1, 0.16, 0.12)), Primitives.shared_material(style.skirt), center + Vector3(0, -0.36, z_side * (depth / 2.0 - 0.3)), parent)
 		return
 	var rock := lower_rock(center, width, depth, style.rock)
 	rock.name = str(island.id) + "LowerRock"

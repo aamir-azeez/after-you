@@ -23,9 +23,17 @@ static var _material_prints: Dictionary = {}
 static var _print_names: Dictionary = {}
 static var _meshes: Dictionary = {}
 ## cached_shape's meshes, by shape key, held weakly: a shape lives while a
-## world draws it, and a chapter's one-off wall lengths go with its world.
+## world draws it, or while it is one of the _kept_shapes.
 static var _shapes: Dictionary = {}
 const SHAPES_PRUNE_AT := 4096
+## The last KEPT_SHAPES shapes cached_shape made (or found again while still
+## drawn), also held for the session, oldest first, so a chapter opened again
+## finds its one-off wall lengths still made instead of making and uploading
+## each again: Turn of the Tide's repeat open made about 250 of them. Every
+## offered chapter together makes about 600 (about 41,000 vertices), so the
+## bound only matters in a very long session; past it the oldest go first.
+static var _kept_shapes: Dictionary = {}
+const KEPT_SHAPES := 1024
 
 static func fresh_material(color: Color, roughness: float = 0.9) -> StandardMaterial3D:
 	var mat := StandardMaterial3D.new()
@@ -62,6 +70,7 @@ static func release_cached() -> void:
 	_material_prints.clear()
 	_meshes.clear()
 	_shapes.clear()
+	_kept_shapes.clear()
 
 ## Whether mat is one of the cached looks themselves (a copy of one is not).
 static func is_cached(mat: Material) -> bool:
@@ -175,15 +184,37 @@ static func shared_mesh(kind: String, a: float, b: float = 0.0, c: float = 0.0) 
 static func cached_shape(mesh: Mesh) -> Mesh:
 	var key := _mesh_key(mesh)
 	if key.is_empty(): return mesh
-	var kept: Mesh = _meshes.get(key)
-	if kept != null: return kept
-	var ref: WeakRef = _shapes.get(key)
-	var live: Variant = ref.get_ref() if ref != null else null
-	if live != null: return live
+	var found := _shape(key)
+	if found != null: return found
 	if _shapes.size() >= SHAPES_PRUNE_AT:
 		for gone: Array in _shapes.keys().filter(func(shape: Array) -> bool: return (_shapes[shape] as WeakRef).get_ref() == null): _shapes.erase(gone)
 	_shapes[key] = weakref(mesh)
+	_keep_shape(key, mesh)
 	return mesh
+
+## cached_shape(box_mesh(size)), without making a box first when its shape is
+## cached already: worlds ask for thousands of boxes an open, nearly all of
+## them cached.
+static func cached_box(size: Vector3) -> Mesh:
+	var found := _shape([&"box", size, 0, 0, 0])
+	return found if found != null else cached_shape(box_mesh(size))
+
+## The cached mesh of a shape key, or null.
+static func _shape(key: Array) -> Mesh:
+	var kept: Mesh = _meshes.get(key)
+	if kept == null: kept = _kept_shapes.get(key)
+	if kept != null: return kept
+	var ref: WeakRef = _shapes.get(key)
+	var live: Mesh = ref.get_ref() if ref != null else null
+	# Still drawn but no longer kept (past the bound): kept again.
+	if live != null: _keep_shape(key, live)
+	return live
+
+static func _keep_shape(key: Array, mesh: Mesh) -> void:
+	if _kept_shapes.size() >= KEPT_SHAPES: _kept_shapes.erase(_kept_shapes.keys()[0])
+	_kept_shapes[key] = mesh
+	# Kept shapes go before the renderer stops, not when this script is freed.
+	SessionRelease.on_exit(Callable(load("res://presentation/kit/primitives.gd"), "release_cached"))
 
 ## Folds a finished static prop into the caches: each primitive mesh is swapped
 ## for one cached mesh of the same shape, and each plain material (colour and
@@ -216,9 +247,10 @@ static func _plain(mat: StandardMaterial3D) -> bool:
 		and mat.metallic == 0.0 and mat.render_priority == 0 and not mat.no_depth_test \
 		and mat.transparency == (BaseMaterial3D.TRANSPARENCY_ALPHA if mat.albedo_color.a < 1.0 else BaseMaterial3D.TRANSPARENCY_DISABLED)
 
-## A bar of square section from one point to another, in parent space.
+## A bar of square section from one point to another, in parent space. Its box
+## is the cached one of its size (cached_box): a bar is never resized.
 static func bar_between(from: Vector3, to: Vector3, mesh_width: float, mat: Material, parent: Node3D) -> MeshInstance3D:
-	var bar := mesh_node(box_mesh(Vector3(mesh_width, mesh_width, from.distance_to(to))), mat, (from + to) / 2.0, parent)
+	var bar := mesh_node(cached_box(Vector3(mesh_width, mesh_width, from.distance_to(to))), mat, (from + to) / 2.0, parent)
 	if bar.is_inside_tree(): bar.look_at(parent.to_global(to), Vector3.UP)
 	else: bar.basis = Basis.looking_at(to - from, Vector3.UP)
 	return bar

@@ -21,6 +21,7 @@ func _run() -> void:
 	await process_frame
 	var look := Primitives.shared_material(Color(0.3, 0.6, 0.9), 0.8, Color(1, 0.9, 0.6), 1.5)
 	DefinitionGeometry.keep(["session-release-test"], {"value": 1})
+	var shape := Primitives.cached_box(Vector3(0.271, 0.31, 0.43))
 	var body := LabelBubble.body_material(false, false)
 	var door := WaterLocks._door_material()
 	await process_frame
@@ -32,6 +33,7 @@ func _run() -> void:
 	_check(root.get_children().filter(func(child: Node) -> bool: return child.name == SessionRelease.NODE_NAME).size() == 1, "Registering again adds no second node")
 	SessionRelease.release_all()
 	_check(not Primitives.is_cached(look) and not DefinitionGeometry.has(["session-release-test"]), "Release lets go of the kept looks and geometry")
+	_check(shape != null and Primitives._kept_shapes.is_empty(), "Release lets go of the kept shapes")
 	_check(body != null and LabelBubble._bodies.is_empty() and LabelBubble._shaders.is_empty(), "Release lets go of the bubbles' kept body looks")
 	_check(door != null and WaterLocks._door_material_cache == null and WaterLocks._opening_meshes.is_empty(), "Release lets go of the water locks' kept door look and meshes")
 	print("SESSION RELEASE: %d checks, %d failures" % [checks, failures])
