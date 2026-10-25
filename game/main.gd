@@ -98,6 +98,7 @@ const ChapterAccess = preload("res://services/chapter_access.gd")
 const ProofWarmup = preload("res://services/journey_proof_warmup.gd")
 const GlWarmup = preload("res://services/gl_warmup.gd")
 const WorldPrewarm = preload("res://services/world_prewarm.gd")
+const ScenePrewarm = preload("res://services/scene_prewarm.gd")
 ## What's new: this version's notes have not been opened since an update.
 var _whats_new_unseen := false
 var _whats_new_card: Control
@@ -113,6 +114,7 @@ var _proof_warmup: Node
 ## Compiles the chapters' GL programs offscreen while Home is idle, once per install.
 var _gl_warmup: Node
 var _world_prewarm: Node
+var _scene_prewarm: Node
 const Safety = preload("res://services/safety_client.gd")
 const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
@@ -347,13 +349,19 @@ func _ready() -> void:
 	_gl_warmup.next_chapter = journey_flow.next_solo_chapter
 	_gl_warmup.idle = func() -> bool: return mode in ["home", JourneyFlow.MODE_JOURNEY] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
 	add_child(_gl_warmup)
+	# The chapter screen scripts Home never loads, on a worker once Home has
+	# settled (services/scene_prewarm.gd).
+	_scene_prewarm = ScenePrewarm.new()
+	_scene_prewarm.chapters = journey_flow.openable_chapters
+	_scene_prewarm.idle = func() -> bool: return mode in ["home", JourneyFlow.MODE_JOURNEY] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and _keepsakes_reconcile_frame < 0 and not _home_settling() and not (is_instance_valid(_gl_warmup) and _gl_warmup.running())
+	add_child(_scene_prewarm)
 	# Heavy chapter worlds, built unseen once Home has settled and nothing
 	# else warms (services/world_prewarm.gd).
 	_world_prewarm = WorldPrewarm.new()
 	_world_prewarm.settings = func() -> Dictionary: return saves.data.settings
 	_world_prewarm.chapters = journey_flow.openable_chapters
 	_world_prewarm.away = func() -> bool: return is_instance_valid(relay_child) or is_instance_valid(shared_replay_child)
-	_world_prewarm.idle = func() -> bool: return mode in ["home", JourneyFlow.MODE_JOURNEY] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and _keepsakes_reconcile_frame < 0 and not _home_settling() and not (is_instance_valid(_gl_warmup) and _gl_warmup.running())
+	_world_prewarm.idle = func() -> bool: return mode in ["home", JourneyFlow.MODE_JOURNEY] and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening) and _keepsakes_reconcile_frame < 0 and not _home_settling() and not (is_instance_valid(_gl_warmup) and _gl_warmup.running()) and not (is_instance_valid(_scene_prewarm) and _scene_prewarm.running())
 	add_child(_world_prewarm)
 	var thumbnails := ThumbnailShelf.new()
 	thumbnails.idle = func() -> bool: return mode == "home" and not application_backgrounded and not is_instance_valid(relay_child) and not is_instance_valid(_chapter_opening)
@@ -830,6 +838,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard:
 	if is_instance_valid(_proof_warmup): _proof_warmup.stop()
 	if is_instance_valid(_gl_warmup): _gl_warmup.stop()
 	if is_instance_valid(_world_prewarm): _world_prewarm.stop()
+	if is_instance_valid(_scene_prewarm): _scene_prewarm.stop()
 	if _chapter_open_busy():
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return

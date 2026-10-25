@@ -263,6 +263,7 @@ safe_area 3
 safety_client 2
 safety_photos 2
 safety_screen 3
+scene_prewarm 3
 screen_frames 3
 scroll_lists 3
 scrolling_camera 1
