@@ -34,6 +34,8 @@ func _check(value: bool, message: String) -> bool:
 	return value
 
 func _run() -> void:
+	# The items are not released yet; these suites wear them all.
+	Outfit.show_unreleased = true
 	await _live()
 	await _still_shares_one_render()
 	await _still_one_a_frame()

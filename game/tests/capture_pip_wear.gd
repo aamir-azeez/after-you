@@ -31,6 +31,7 @@ func _run() -> void:
 		quit(1)
 		return
 	DirAccess.make_dir_recursive_absolute(_out)
+	Outfit.show_unreleased = true
 	var items: Array[String] = ["plain"]
 	for id: String in Catalog.ids():
 		if not Catalog.art(id).is_empty(): items.append(id)

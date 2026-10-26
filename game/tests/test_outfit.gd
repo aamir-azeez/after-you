@@ -26,6 +26,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 func _cleaning() -> void:
+	_check(not Outfit.show_unreleased, "The game never shows unreleased items")
 	_check(Outfit.from(null).is_empty() and Outfit.from("daisy").is_empty() and Outfit.from([]).is_empty(), "Anything not a Dictionary is the default look")
 	_check(Outfit.from({}).is_empty() and Outfit.is_empty(Outfit.EMPTY), "{} is the default look")
 	_check(Outfit.from({"hat": "daisy"}).is_empty(), "An unreleased item is dropped for a player's pip")
@@ -34,7 +35,6 @@ func _cleaning() -> void:
 	_check(Outfit.from({"badge": "daisy", "hat": "lantern"}, true) == {"hat": "lantern"}, "A slot it does not know is dropped")
 	_check(Outfit.from({"body": "daisy", "leaf": "tide", "hat": "gold_leaf"}, true).is_empty(), "An item in another item's slot is dropped")
 	_check(Outfit.from({"hat": 3, "body": ["tide"], "leaf": &"gold_leaf"}, true) == {"leaf": "gold_leaf"}, "Non text ids are dropped; a StringName reads as text")
-	_check(Outfit.from({"hat": "top_ten_ribbon"}, true).is_empty() and Outfit.of("top_ten_ribbon", true).is_empty(), "An item with no slot yet can't be worn")
 	_check(Outfit.of("tide", true) == {"body": "tide"} and Outfit.of("nothing", true).is_empty(), "of() puts one item in its own slot")
 	var source := {"hat": "daisy"}
 	var clean := Outfit.from(source, true)

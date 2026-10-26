@@ -176,12 +176,12 @@ func _init(color: Color=Look.PEACH) -> void:
 	_build_reunion_sparkles()
 	reset_motion()
 
-## Dresses the spirit in `outfit` (services/outfit.gd; unknown ids are
-## dropped), taking off what it wore. The default look, {}, adds no node.
+## Dresses the spirit in `outfit` (services/outfit.gd; unknown and unreleased
+## ids are dropped), taking off what it wore. The default look, {}, adds no node.
 ## Presentation only: no recording, simulation or hash reads it. It shows from
 ## the next advance_motion.
 func wear(outfit: Dictionary) -> void:
-	var clean := Outfit.from(outfit, true)
+	var clean := Outfit.from(outfit)
 	if _wearing != null:
 		if Outfit.digest(clean) == Outfit.digest(_wearing.outfit): return
 		_wearing.undress()

@@ -6,14 +6,20 @@ extends RefCounted
 ##
 ## from() is the only way in: it keeps one item per known slot, and drops a
 ## slot it does not know, an id that is unknown, worn in another slot or not
-## released (unless asked to keep unreleased ones), and anything not a String.
+## released, and anything not a String. SpiritVisual.wear() cleans every
+## outfit this way, so no pip ever shows an unreleased item, whatever source
+## its outfit came from.
 ## digest() is a short stable key for caches (kit/pip_snapshots.gd).
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 
 const EMPTY := {}
 
-## A clean outfit from any value. With `unreleased`, items not offered yet are
-## kept (the art tools and tests); a player's pip never passes it.
+## Development and tests only (tests/capture_pip_wear.gd, the pip suites):
+## true lets unreleased items be worn everywhere. Never set by the game.
+static var show_unreleased := false
+
+## A clean outfit from any value. With `unreleased` (or show_unreleased),
+## items not offered yet are kept.
 static func from(value: Variant, unreleased: bool = false) -> Dictionary:
 	var result: Dictionary = {}
 	if not value is Dictionary: return result
@@ -22,7 +28,7 @@ static func from(value: Variant, unreleased: bool = false) -> Dictionary:
 		if not id is String and not id is StringName: continue
 		var key := str(id)
 		if Catalog.slot(key) != slot: continue
-		if not unreleased and not Catalog.released(key): continue
+		if not unreleased and not show_unreleased and not Catalog.released(key): continue
 		result[slot] = key
 	return result
 
