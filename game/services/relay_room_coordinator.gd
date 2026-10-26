@@ -52,6 +52,9 @@ var accepted_pair_cache: Callable
 ## (partner_id: String, name: Variant, room_id: String) -> void: the room partner's display name
 ## that came beside an accepted read or turn reply (null when they have none).
 var partner_name_sink: Callable
+## (room_id: String, recording_hash: String, pollen: Variant) -> void: an accepted turn's Pollen
+## credit that came beside its reply (null when none came, as after a reconcile).
+var pollen_sink: Callable
 var restore_replay_transfer: Callable
 var recover_replay_operation: Callable
 var _replay_recovering := false
@@ -684,6 +687,7 @@ func _send_pending(recover_guest_join: bool = true) -> bool:
 func _accept_sent(response: Dictionary) -> bool:
 	var face := pending_reaction()
 	var body: Variant = _state.pending.get("body") if not _state.pending.is_empty() else null
+	var turn: bool = not _state.pending.is_empty() and _state.pending.get("operation") == "turns"
 	var recording_hash := str(body.recording.get("recording_hash", "")) if body is Dictionary and body.get("recording") is Dictionary else ""
 	var accepted := _accept_receipt(response.get("data"))
 	if accepted:
@@ -691,6 +695,8 @@ func _accept_sent(response: Dictionary) -> bool:
 		if body is Dictionary and body.get("run_reactions") is Array: RunReactionStore.new().keep(recording_hash, body.run_reactions)
 		_note_end_reactions(response)
 		_note_partner_name(response)
+		# The turn's Pollen credit (rooms_api.gd takes it out of the reply), or none to claim later.
+		if turn and not recording_hash.is_empty() and pollen_sink.is_valid(): pollen_sink.call(_room, recording_hash, response.get("pollen"))
 	return accepted
 
 func _recover_transferred_pending() -> Dictionary:

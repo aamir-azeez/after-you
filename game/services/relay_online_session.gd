@@ -21,6 +21,7 @@ const ShareCodes = preload("res://services/share_codes.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
 ## Every rules version this build can replay, for a server that allows at most
 ## 8 entries (every server before room level 2): 10 = the tide rules of
 ## turn-of-the-tide@2. Saved joins keep their exact body: each array ever sent
@@ -38,6 +39,8 @@ class RedoStorage:
 	func write(scope: String, value: Dictionary) -> bool: return journal.save_scope(scope,value).get("ok",false)
 var coordinator: RefCounted
 var accepted_pair_cache: Callable
+## () -> void: sends Pollen claims that wait (Main's PollenClient.flush), once capabilities say Pollen is on.
+var pollen_flush: Callable
 var replay_archive_cache: Callable
 ## (room facts, pairs) -> bool: adds parts of attempts this phone keeps to Replays.
 var replay_history_cache: Callable
@@ -402,6 +405,8 @@ func load_capabilities() -> bool:
 	_supported_chapters.assign(checked.chapters)
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
+	if not scope.is_empty(): PollenWallet.shared().set_enabled(str(scope.server), str(scope.owner), pollen_supported())
+	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	return true
 
@@ -658,6 +663,7 @@ func _ordinary_coordinator() -> RefCounted:
 	result.supported_simulation_versions = _simulation_versions()
 	result.accepted_pair_cache = accepted_pair_cache
 	result.partner_name_sink = _note_partner_name
+	result.pollen_sink = _note_pollen
 	result.restore_replay_transfer = restore_complete_replay
 	result.recover_replay_operation = recover_transferred_operation
 	return result
@@ -1200,6 +1206,20 @@ func safety_client() -> RefCounted:
 func _note_partner_name(partner: String, name: Variant, room: String) -> void:
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().note_partner(str(scope.server), str(scope.owner), partner, name, room)
+
+## An accepted turn's Pollen credit: a confirmed receipt is kept for its results
+## line; a turn whose credit did not come back confirmed waits to be claimed
+## (services/pollen_client.gd). Nothing while the server has Pollen off.
+func _note_pollen(room: String, recording_hash: String, pollen: Variant) -> void:
+	var scope := nickname_scope()
+	var store: RefCounted = PollenWallet.shared()
+	if scope.is_empty() or not store.enabled(str(scope.server), str(scope.owner)): return
+	if store.note_receipt(str(scope.server), str(scope.owner), room, recording_hash, pollen): return
+	store.queue_claim(str(scope.server), str(scope.owner), room, recording_hash)
+
+## The server pays Pollen for turns (services/pollen_wallet.gd).
+func pollen_supported() -> bool:
+	return Typed.equal(capabilities.get("pollen_version"), 1.0)
 
 ## The server shows display names to this player (services/display_names.gd).
 func display_names_supported() -> bool:

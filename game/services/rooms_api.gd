@@ -4,6 +4,7 @@ const ClientIdentity = preload("res://services/client_identity.gd")
 const RequestQueue = preload("res://services/request_queue.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
 ## One bounded request at a time, in the order asked (services/request_queue.gd).
 ## Callers retain draft/idempotency state.
 const MAX_RESPONSE_BYTES := 4194304
@@ -116,6 +117,10 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	if payload.has("partner_name"):
 		result["partner_name"] = payload["partner_name"]
 		payload.erase("partner_name")
+	# So does a turn's Pollen credit (services/pollen_wallet.gd).
+	if payload.has("pollen"):
+		result["pollen"] = payload["pollen"]
+		payload.erase("pollen")
 	return result
 
 ## One HTTP exchange: [result, status, headers, body] as HTTPRequest reports
@@ -176,6 +181,9 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if run_reaction_path(method, path): headers.append(RUN_REACTIONS_HEADER)
 	# This build plays hard rooms (services/hard_mode.gd): it may be told of them and join one.
 	if path in ["/v2/capabilities", "/v2/rooms/join"]: headers.append("X-AfterYou-Hard-Mode: 1")
+	# This build keeps Pollen (services/pollen_wallet.gd): the capability, and a turn's
+	# credit beside its reply. rooms_api takes the credit out of the reply.
+	if pollen_path(method, path): headers.append(PollenWallet.HEADER)
 	# The inbox then reports a room another member closed as "closed".
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# A finished room the other member left then says so (partner_left), for Leave room's confirm step.
@@ -212,6 +220,12 @@ static func run_reaction_path(method: int, path: String) -> bool:
 	if end_reaction_path(method, path): return true
 	var parts := path.split("/")
 	return method == HTTPClient.METHOD_GET and path.begins_with("/v2/rooms/") and parts.size() == 5 and parts[3].length() == 22 and parts[4] == "end-reactions"
+
+## The requests that ask for Pollen: the capability and a room's turns.
+static func pollen_path(method: int, path: String) -> bool:
+	if path == "/v2/capabilities": return method == HTTPClient.METHOD_GET
+	var parts := path.split("/")
+	return method == HTTPClient.METHOD_POST and path.begins_with("/v2/rooms/") and parts.size() == 5 and parts[3].length() == 22 and parts[4] == "turns"
 
 static func response_limit(method: int, path: String) -> int:
 	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/replay-transfer$").search(path) != null: return MAX_REPLAY_TRANSFER_RESPONSE_BYTES

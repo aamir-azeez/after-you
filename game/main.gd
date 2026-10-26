@@ -44,6 +44,7 @@ const DisplayNameFlow = preload("res://presentation/display_name_flow.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
+const PollenClient = preload("res://services/pollen_client.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -249,6 +250,9 @@ var journey_flow: JourneyFlow = _host_journey_flow()
 var earlier_islands_flow: EarlierIslandsFlow = _host_earlier_islands_flow()
 ## Adding a room partner as a friend (room options and the room list's menu).
 var partner_friends: RefCounted = PartnerFriends.new(_names_scope, _friends_client)
+## Sends Pollen claims that wait and reads the wallet when this phone has none
+## (services/pollen_client.gd): when the server's capabilities are read, and on resume.
+var pollen_client: RefCounted
 var store_view_generation := 0
 var identity_restart_required := false
 var application_backgrounded := false
@@ -323,6 +327,7 @@ func _ready() -> void:
 	api=RoomsApi.new()
 	api.base_url=str(config.get("api_base_url",""))
 	add_child(api)
+	pollen_client=PollenClient.new(api,_names_scope)
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.
 	if NativeFiles.durable_available(): RoomsApi.history_supported = HistoryStore.new().self_test()
@@ -1419,6 +1424,7 @@ func _new_relay_session() -> RefCounted:
 	_wire_shared_history()
 	var session := RelayOnline.new(api,_relay_identity)
 	session.accepted_pair_cache = shared_replays.cache_accepted_receipt
+	if pollen_client != null: session.pollen_flush = pollen_client.flush
 	session.replay_archive_cache = shared_replays.cache_transferred_entries
 	session.replay_history_cache = shared_replays.cache_history_pairs
 	return session
@@ -1862,6 +1868,7 @@ func _resume_application() -> void:
 	foreground_response={}
 	foreground_refresh_queued=true
 	if app_status != null and app_status.due(): _check_app_status()
+	if pollen_client != null: pollen_client.flush()
 	# Do not resume the simulation automatically. The player explicitly presses
 	# Continue on the pause card, keeping the recording clock under their control.
 
