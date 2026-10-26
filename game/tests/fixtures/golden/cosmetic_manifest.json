@@ -1,0 +1,109 @@
+{
+	"ids": [
+		"daisy",
+		"seashell",
+		"straw_hat",
+		"tide",
+		"lantern",
+		"lighthouse_lamp",
+		"gold_leaf",
+		"every_hard",
+		"top_ten_ribbon"
+	],
+	"items": {
+		"daisy": {
+			"id": "daisy",
+			"price": 1000,
+			"released": false,
+			"slot": "hat",
+			"sold": true,
+			"tier": "common",
+			"unlock": ""
+		},
+		"every_hard": {
+			"id": "every_hard",
+			"price": 0,
+			"released": false,
+			"slot": "leaf",
+			"sold": false,
+			"tier": "earned",
+			"unlock": ""
+		},
+		"gold_leaf": {
+			"id": "gold_leaf",
+			"price": 0,
+			"released": false,
+			"slot": "leaf",
+			"sold": false,
+			"tier": "earned",
+			"unlock": ""
+		},
+		"lantern": {
+			"id": "lantern",
+			"price": 50000,
+			"released": false,
+			"slot": "hat",
+			"sold": true,
+			"tier": "epic",
+			"unlock": ""
+		},
+		"lighthouse_lamp": {
+			"id": "lighthouse_lamp",
+			"price": 100000,
+			"released": false,
+			"slot": "hat",
+			"sold": true,
+			"tier": "special",
+			"unlock": "sleeping-lighthouse"
+		},
+		"seashell": {
+			"id": "seashell",
+			"price": 1000,
+			"released": false,
+			"slot": "hat",
+			"sold": true,
+			"tier": "common",
+			"unlock": ""
+		},
+		"straw_hat": {
+			"id": "straw_hat",
+			"price": 5000,
+			"released": false,
+			"slot": "hat",
+			"sold": true,
+			"tier": "uncommon",
+			"unlock": ""
+		},
+		"tide": {
+			"id": "tide",
+			"price": 20000,
+			"released": false,
+			"slot": "body",
+			"sold": true,
+			"tier": "rare",
+			"unlock": ""
+		},
+		"top_ten_ribbon": {
+			"id": "top_ten_ribbon",
+			"price": 0,
+			"released": false,
+			"slot": "",
+			"sold": false,
+			"tier": "earned",
+			"unlock": ""
+		}
+	},
+	"slots": [
+		"hat",
+		"body",
+		"leaf"
+	],
+	"tier_prices": {
+		"common": 1000,
+		"earned": 0,
+		"epic": 50000,
+		"rare": 20000,
+		"special": 100000,
+		"uncommon": 5000
+	}
+}

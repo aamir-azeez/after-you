@@ -50,6 +50,8 @@ completion_moment 2
 cooperative 1
 cooperative_admission 3
 cooperative_integration 1
+cosmetic_catalog 1
+cosmetic_manifest 3
 cumulative_holds 1
 cutout_full_bleed 3
 damaged_save 1
@@ -178,6 +180,7 @@ online_scenarios 1
 online_scenarios_edges 1
 online_scenarios_more 3
 optional_photo_capture 1
+outfit 3
 paid_level_thumbnails 3
 paid_replay_after_background 3
 part_verify_worker 2
@@ -191,6 +194,8 @@ photo_resume_after_restart 2
 photo_transfer_client 1
 photo_transfer_screen 2
 physical_runtime 1
+pip_avatar 1
+pip_outfit 3
 plant_animation 2
 platform_games_bundle 1
 platform_games_cloud 2
