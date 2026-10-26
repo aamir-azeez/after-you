@@ -85,6 +85,10 @@ const OPTIONAL := {
 	## radius_cm with a firm rim, lit and pressed while the pad is held, so a
 	## step or post wider than its pad shows exactly where a spirit counts.
 	"stand_spots": false,
+	## [script, static method]: the scene a Solo card opens instead of "scene"
+	## while an earlier version's journey still continues in its own screen,
+	## or "" when none does (the Lighthouse @1: services/lighthouse_migration.gd).
+	"continues_earlier": [],
 }
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
 

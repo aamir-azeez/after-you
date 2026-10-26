@@ -12,7 +12,6 @@ func _initialize() -> void:
 	var found := Catalog.keys()
 	assert(found == expected, "Thumbnail catalog covers Lighthouse, all registry chapters, and the selectable earlier islands")
 	assert(Catalog.entry("unknown-chapter").is_empty(), "Unknown chapters have no thumbnail entry")
-	assert(Catalog.entry("sleeping-lighthouse").solo_only == not (Registry.LIGHTHOUSE_V2 in Registry.offered_keys()), "Sleeping Lighthouse is solo-only until its six-stage chapter is offered")
 	for key: String in expected:
 		var item := Catalog.entry(key)
 		assert(not item.is_empty(), "Entry exists: " + key)

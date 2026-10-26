@@ -145,7 +145,6 @@
 			"supported_rules_text": "[6, 8]",
 			"thumbnail": {
 				"key": "a-house-for-two@1",
-				"solo_only": false,
 				"texture": "res://assets/paid_levels/a-house-for-two.png"
 			},
 			"world_script": "res://presentation/house_world.gd"
@@ -295,7 +294,6 @@
 			"supported_rules_text": "[7, 8]",
 			"thumbnail": {
 				"key": "conservatory@1",
-				"solo_only": false,
 				"texture": "res://assets/paid_levels/conservatory.png"
 			},
 			"world_script": "res://presentation/conservatory_world.gd"
@@ -449,7 +447,6 @@
 			"supported_rules_text": "[4, 5, 8]",
 			"thumbnail": {
 				"key": "first-steps@1",
-				"solo_only": false,
 				"texture": "res://assets/chapter_thumbnails/first-steps.png"
 			},
 			"world_script": "res://presentation/first_steps_world.gd"
@@ -593,7 +590,6 @@
 			"supported_rules_text": "[6, 8]",
 			"thumbnail": {
 				"key": "high-and-low@1",
-				"solo_only": false,
 				"texture": "res://assets/chapter_thumbnails/high-and-low.png"
 			},
 			"world_script": "res://presentation/cooperative_world.gd"
@@ -743,7 +739,6 @@
 			"supported_rules_text": "[7, 8]",
 			"thumbnail": {
 				"key": "long-way-home@1",
-				"solo_only": false,
 				"texture": "res://assets/paid_levels/long-way-home.png"
 			},
 			"world_script": "res://presentation/long_way_home_world.gd"
@@ -883,7 +878,6 @@
 			"supported_rules_text": "[9]",
 			"thumbnail": {
 				"key": "long-way-home@2",
-				"solo_only": false,
 				"texture": "res://assets/paid_levels/long-way-home.png"
 			},
 			"world_script": "res://presentation/long_way_home_v2_world.gd"
@@ -1026,7 +1020,6 @@
 			"supported_rules_text": "[2, 8]",
 			"thumbnail": {
 				"key": "relay-isles@2",
-				"solo_only": false,
 				"texture": "res://assets/chapter_thumbnails/relay-isles.png"
 			},
 			"world_script": "res://presentation/relay_world.gd"
@@ -1176,7 +1169,6 @@
 			"supported_rules_text": "[6, 8]",
 			"thumbnail": {
 				"key": "rolling-home@1",
-				"solo_only": false,
 				"texture": "res://assets/paid_levels/rolling-home.png"
 			},
 			"world_script": "res://presentation/cooperative_world.gd"
@@ -1352,7 +1344,6 @@
 			"supported_rules_text": "[11]",
 			"thumbnail": {
 				"key": "sleeping-lighthouse@2",
-				"solo_only": false,
 				"texture": "res://assets/paid_levels/sleeping-lighthouse.png"
 			},
 			"world_script": "res://presentation/lighthouse_room_world.gd"
@@ -1486,7 +1477,6 @@
 			"supported_rules_text": "[9]",
 			"thumbnail": {
 				"key": "the-wishing-well@1",
-				"solo_only": false,
 				"texture": "res://assets/chapter_thumbnails/the-wishing-well.png"
 			},
 			"world_script": "res://presentation/wishing_well_world.gd"
@@ -1620,7 +1610,6 @@
 			"supported_rules_text": "[9]",
 			"thumbnail": {
 				"key": "turn-of-the-tide@1",
-				"solo_only": false,
 				"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
 			},
 			"world_script": "res://presentation/tide_world.gd"
@@ -1754,7 +1743,6 @@
 			"supported_rules_text": "[10]",
 			"thumbnail": {
 				"key": "turn-of-the-tide@2",
-				"solo_only": false,
 				"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
 			},
 			"world_script": "res://presentation/tide_world.gd"
@@ -3475,107 +3463,86 @@
 			"entries": {
 				"a-house-for-two@1": {
 					"key": "a-house-for-two@1",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/a-house-for-two.png"
 				},
 				"conservatory@1": {
 					"key": "conservatory@1",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/conservatory.png"
 				},
 				"first-steps@1": {
 					"key": "first-steps@1",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/first-steps.png"
 				},
 				"high-and-low@1": {
 					"key": "high-and-low@1",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/high-and-low.png"
 				},
 				"legacy-across-the-blue": {
 					"key": "legacy-across-the-blue",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/legacy-across-the-blue.png"
 				},
 				"legacy-after-you": {
 					"key": "legacy-after-you",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/legacy-after-you.png"
 				},
 				"legacy-first-light": {
 					"key": "legacy-first-light",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/legacy-first-light.png"
 				},
 				"legacy-lantern-crossing": {
 					"key": "legacy-lantern-crossing",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/legacy-lantern-crossing.png"
 				},
 				"legacy-long-way-home": {
 					"key": "legacy-long-way-home",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/legacy-long-way-home.png"
 				},
 				"legacy-patient-garden": {
 					"key": "legacy-patient-garden",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/legacy-patient-garden.png"
 				},
 				"legacy-rising-together": {
 					"key": "legacy-rising-together",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/legacy-rising-together.png"
 				},
 				"legacy-two-beats": {
 					"key": "legacy-two-beats",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/legacy-two-beats.png"
 				},
 				"long-way-home@1": {
 					"key": "long-way-home@1",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/long-way-home.png"
 				},
 				"long-way-home@2": {
 					"key": "long-way-home@2",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/long-way-home.png"
 				},
 				"relay-isles@2": {
 					"key": "relay-isles@2",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/relay-isles.png"
 				},
 				"rolling-home@1": {
 					"key": "rolling-home@1",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/rolling-home.png"
 				},
 				"sleeping-lighthouse": {
 					"key": "sleeping-lighthouse",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/sleeping-lighthouse.png"
 				},
 				"sleeping-lighthouse@2": {
 					"key": "sleeping-lighthouse@2",
-					"solo_only": false,
 					"texture": "res://assets/paid_levels/sleeping-lighthouse.png"
 				},
 				"the-wishing-well@1": {
 					"key": "the-wishing-well@1",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/the-wishing-well.png"
 				},
 				"turn-of-the-tide@1": {
 					"key": "turn-of-the-tide@1",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
 				},
 				"turn-of-the-tide@2": {
 					"key": "turn-of-the-tide@2",
-					"solo_only": false,
 					"texture": "res://assets/chapter_thumbnails/turn-of-the-tide.png"
 				}
 			},

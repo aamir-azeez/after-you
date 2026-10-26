@@ -31,6 +31,11 @@ static func plan(v1_path: String = V1_PATH, v2_path: String = "", marker_path: S
 		"fresh": return "v2"
 	return "migrate"
 
+## The @1 screen while an unfinished @1 journey continues there, else "" (the
+## @2 descriptor's continues_earlier, read by ChapterRegistry.open_scene).
+static func continuing_scene() -> String:
+	return V1_SCENE if plan() == "v1" else ""
+
 ## Converts the @1 journey: {status: "converted", pairs, a, checkpoint,
 ## complete} or {status: "fallback", complete} or {status: "empty"}.
 static func convert_v1(v1_path: String = V1_PATH) -> Dictionary:

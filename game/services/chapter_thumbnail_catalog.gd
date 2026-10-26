@@ -4,7 +4,6 @@ const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
 
 const SLEEPING_LIGHTHOUSE := "sleeping-lighthouse"
-const SOLO_ONLY_KEYS := [SLEEPING_LIGHTHOUSE]
 const LEGACY_KEYS := [
 	"legacy-rising-together",
 	"legacy-across-the-blue",
@@ -56,6 +55,4 @@ static func entry(key: String) -> Dictionary:
 	var resource_path := path(key)
 	if resource_path.is_empty():
 		return {}
-	# The Lighthouse can be played together once its six-stage chapter is offered.
-	var solo_only: bool = key in SOLO_ONLY_KEYS and not (key == SLEEPING_LIGHTHOUSE and ChapterRegistry.LIGHTHOUSE_V2 in ChapterRegistry.offered_keys())
-	return {"key": key, "texture": resource_path, "solo_only": solo_only}
+	return {"key": key, "texture": resource_path}

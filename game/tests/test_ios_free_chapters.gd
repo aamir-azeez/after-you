@@ -79,8 +79,8 @@ func _run() -> void:
 	var baseline: Dictionary = await _surfaces(app, "", TESTER_ONLY)
 	var paid_cards := 0
 	for key: String in Registry.offered_keys():
-		if Registry.descriptor(key).premium and not Registry.is_lighthouse(key): paid_cards += 1
-	_check(baseline.paid_cards == paid_cards + 1 and baseline.locked_cards == baseline.paid_cards, "Play Solo lists every paid chapter, and the Lighthouse, locked")
+		if Registry.descriptor(key).premium: paid_cards += 1
+	_check(baseline.paid_cards == paid_cards and baseline.locked_cards == baseline.paid_cards, "Play Solo lists every paid chapter locked")
 	_check(baseline.free_cards > 0 and baseline.islands == 8 and baseline.home_offer and baseline.hosting_row and baseline.next_island, "Earlier islands, the Full Journey offer, hosting access and Next island are all there")
 	_check(baseline.together_paid > 0 and baseline.together_locked == baseline.together_paid, "Play with your friend lists the paid chapters locked")
 	_check(baseline.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY, "Account keeps its purchases summary")

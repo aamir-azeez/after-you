@@ -11,10 +11,10 @@ extends Node
 ## contract (read at call time, so Main or a test can swap a service or
 ## override an entry point):
 ## - services: saves, levels, title_font, hard_states, _chapter_marks,
-##   _full_journey_access, _paid_content_hidden, lighthouse_scene
+##   _full_journey_access, _paid_content_hidden
 ## - screen: mode, running, ui, overlay, _screen_shell, _card, _scroll_list,
 ##   _button, _back_button, _label, _paragraph, _toast, _show_home
-## - chapter opens: _open_lighthouse, _open_premium_chapter,
+## - chapter opens: _open_premium_chapter,
 ##   _open_chapter_preview, _start_practice (an earlier island)
 ## Main opens it through show_journey() (Home's Play Solo, StoreFlow's and
 ## RoomHubFlow's journey requests, the update screen's Play Solo and an earlier
@@ -77,8 +77,7 @@ func show_journey() -> void:
 	chapter_picker.hard_states = host.hard_states()
 	outer.add_child(chapter_picker)
 	shell.margin.resized.connect(chapter_picker.refit)
-	# The solo-only Lighthouse leads the Full Journey chapters; the picker puts
-	# every free chapter first in registry order.
+	# The picker puts every free chapter first, each part in registry order.
 	var owned: bool = host._full_journey_access()
 	_grid_access_drawn = owned
 	chapter_picker.set_entries(entries(owned,hard),ChapterPicker.picture_for(host.ui.size.x))
@@ -92,17 +91,13 @@ func open_solo_chapter(key: String) -> void:
 	if hard and host.mode == MODE_JOURNEY:
 		_open_hard_chapter(key)
 		return
-	if key == ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE:
-		host._open_lighthouse()
-		return
 	if not own_solo_card(key): return
-	if ChapterRegistry.descriptor(key).premium: host._open_premium_chapter(ChapterRegistry.solo_scene(key))
-	else: host._open_chapter_preview(ChapterRegistry.solo_scene(key))
+	if ChapterRegistry.descriptor(key).premium: host._open_premium_chapter(ChapterRegistry.open_scene(key))
+	else: host._open_chapter_preview(ChapterRegistry.open_scene(key))
 
-## Every chapter has its own Solo card except the Lighthouse's, which the
-## Lighthouse card opens (Main.lighthouse_scene()).
+## Every chapter with a solo screen has its own Solo card.
 static func own_solo_card(key: String) -> bool:
-	return not ChapterRegistry.is_lighthouse(key) and not ChapterRegistry.solo_scene(key).is_empty()
+	return not ChapterRegistry.solo_scene(key).is_empty()
 
 ## A solo hard run of the chapter, once it is finished (services/hard_mode.gd).
 func _open_hard_chapter(key: String) -> void:
@@ -114,13 +109,11 @@ func _open_hard_chapter(key: String) -> void:
 	else: host._open_chapter_preview(ChapterRegistry.solo_scene(key), {}, request)
 
 ## The Chapters page's cards, as given to its picker (which shows free ones
-## first): the solo-only Lighthouse, then every chapter with its own Solo card.
+## first): every chapter with its own Solo card, in registry order.
 ## With hard on: only chapters with hard runs, each locked until finished.
 ## A build that sells nothing lists the free chapters alone (Main._paid_content_hidden).
 func entries(owned: bool, hard_on: bool = false) -> Array[Dictionary]:
-	var lighthouse := {"key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "title": "Sleeping Lighthouse", "premium": true,
-		"level_key": ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE, "mark": "sleeping-lighthouse@1"}
-	var result: Array[Dictionary] = [lighthouse]
+	var result: Array[Dictionary] = []
 	for key: String in ChapterRegistry.offered_keys():
 		if own_solo_card(key): result.append(ChapterPicker.entry(key))
 	if host._paid_content_hidden(): result = result.filter(func(item: Dictionary) -> bool: return not item.premium)
@@ -141,10 +134,7 @@ func thumbnail_paths() -> Array[String]:
 func next_solo_chapter() -> String:
 	var marks: Dictionary = host._chapter_marks()
 	for item: Dictionary in ChapterPicker.shown_order(entries(host._full_journey_access())):
-		if bool(item.locked) or bool(marks.get(str(item.mark), {}).get("solo", false)): continue
-		if str(item.key) != ChapterThumbnailCatalog.SLEEPING_LIGHTHOUSE: return str(item.key)
-		# The Lighthouse card opens @2 once it is offered, else @1.
-		return ChapterRegistry.LIGHTHOUSE_V2 if host.lighthouse_scene() == ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2) else str(item.mark)
+		if not bool(item.locked) and not bool(marks.get(str(item.mark), {}).get("solo", false)): return str(item.key)
 	return ""
 
 ## Every chapter the player can open from the Chapters page now, the one they

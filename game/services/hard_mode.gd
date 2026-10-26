@@ -89,9 +89,9 @@ static func tries_key(chapter_key: String) -> String:
 ## Whether a chapter has hard plays: every offered chapter with its own solo
 ## screen, and every earlier version of one, which a room is still hosted at
 ## while the server cannot create the offered one (Registry.hosting_key). The
-## Lighthouse (its own card and migration) and the earlier islands have none.
+## earlier islands have none.
 static func eligible(chapter_key: String) -> bool:
-	return Registry.offered_key(chapter_key) in Registry.offered_keys() and not Registry.solo_scene(chapter_key).is_empty() and not Registry.is_lighthouse(chapter_key)
+	return Registry.offered_key(chapter_key) in Registry.offered_keys() and not Registry.solo_scene(chapter_key).is_empty()
 
 static func eligible_keys() -> Array[String]:
 	var keys: Array[String] = []

@@ -463,9 +463,10 @@ func _show_journal_loading() -> void:
 	card.add_child(_action_button("back", _leave))
 
 ## Work the journal worker does first: the Lighthouse carries an unconverted
-## solo @1 journey into @2 the first time @2 opens (lighthouse_migration.gd).
+## solo @1 journey into @2 the first time @2 opens (lighthouse_migration.gd),
+## never into a hard run's own journal.
 func _journal_preparation() -> Callable:
-	if Registry.is_lighthouse(chapter_key) and LighthouseMigration.plan() == "migrate": return Callable(LighthouseMigration, "convert_v1")
+	if Registry.is_lighthouse(chapter_key) and not _hard_on() and LighthouseMigration.plan() == "migrate": return Callable(LighthouseMigration, "convert_v1")
 	return Callable()
 
 ## Joins the journal worker once it ends; the journal is used only after that.

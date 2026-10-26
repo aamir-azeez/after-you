@@ -53,18 +53,16 @@ func _run() -> void:
 	print("CHAPTER PICKER: %d checks, %d failures"%[checks,failures])
 	quit(1 if failures else 0)
 
-## Offered chapters with their own Solo card; the Lighthouse card stands for sleeping-lighthouse@2.
-## Where a card's play button goes: its chapter's solo scene, through the
-## premium gate for a premium chapter. The Lighthouse card opens
-## lighthouse_scene() through the gate.
+## Where a card's play button goes: the scene its chapter opens
+## (Chapters.open_scene), through the premium gate for a premium chapter.
 static func _route(card_key: String) -> String:
-	if card_key == "sleeping-lighthouse": return "premium:"+Main.lighthouse_scene()
-	return ("premium:" if Chapters.descriptor(card_key).premium else "free:")+Chapters.solo_scene(card_key)
+	return ("premium:" if Chapters.descriptor(card_key).premium else "free:")+Chapters.open_scene(card_key)
 
+## Offered chapters, each with its own Solo card.
 static func _solo_keys() -> Array[String]:
 	var result: Array[String] = []
 	for key: String in Chapters.offered_keys():
-		if not Chapters.is_lighthouse(key): result.append(key)
+		if not Chapters.solo_scene(key).is_empty(): result.append(key)
 	return result
 
 func _test_completion() -> void:
@@ -196,7 +194,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	_check(not buttons.any(func(button: Button) -> bool: return not button.text.is_empty() or button.get_meta("completion_variant","")!="solo"),"Play Solo cards carry no separate Solo or Together buttons")
 	var grid: GridContainer=scroll.find_child("JourneyChapters",true,false)
 	var cards: Array = grid.get_children() if grid != null else []
-	_check(buttons.size()==cards.size() and cards.size()==_solo_keys().size()+1,"Every chapter card, including Lighthouse, has exactly one play button")
+	_check(buttons.size()==cards.size() and cards.size()==_solo_keys().size(),"Every chapter card has exactly one play button")
 	var grabber := scroll.get_v_scroll_bar().get_theme_stylebox("grabber") as StyleBoxFlat
 	var gutter: MarginContainer = scroll.find_child("JourneyGutter",true,false)
 	_check(gutter != null and gutter.get_theme_constant("margin_right")>=12 and grabber != null and grabber.bg_color==Color("466e63"),"The journey list keeps a right gutter and its scroll bar uses the card border colour")
@@ -207,7 +205,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 		_check(right <= bar.get_global_rect().position.x - 11.5,"Cards end at least 12 units before the scroll bar (%.1f, bar at %.1f)%s" % [right,bar.get_global_rect().position.x,context])
 	for card: Control in cards:
 		var key := str(card.get_meta("chapter_key",""))
-		var mark := KeepsakeCatalog.LIGHTHOUSE if key=="sleeping-lighthouse" else key
+		var mark := key
 		var targets: Array[Node]=card.find_children("*","Button",true,false)
 		_check(targets.size()==1,"One tap target per card: "+key)
 		if targets.size()!=1: continue
@@ -328,7 +326,7 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	var before_owned: int=app.routed.size()
 	var owned_open := app.overlay.find_child("PaidLevel_sleeping_lighthouse",true,false).find_child("ChapterOpen",true,false) as Button
 	owned_open.pressed.emit()
-	_check(app.routed.size()==before_owned+1 and app.routed[-1]==_route("sleeping-lighthouse"),"An owned chapter's play button keeps its callback")
+	_check(app.routed.size()==before_owned+1 and app.routed[-1]==_route(Chapters.LIGHTHOUSE_V2),"An owned chapter's play button keeps its callback")
 	app.owned=false
 
 func _peek_heights(app: Node, viewport: SubViewport) -> void:
@@ -374,7 +372,6 @@ func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer
 	var expected: Array[String] = []
 	for key: String in _solo_keys():
 		if not Chapters.descriptor(key).premium: expected.append(key)
-	expected.append("sleeping-lighthouse")
 	for key: String in _solo_keys():
 		if Chapters.descriptor(key).premium: expected.append(key)
 	var order: Array[String] = []
@@ -385,7 +382,7 @@ func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer
 	if grid == null: return
 	for card: Control in grid.get_children():
 		var key := str(card.get_meta("chapter_key",""))
-		var premium: bool = key == "sleeping-lighthouse" or Chapters.descriptor(key).premium
+		var premium: bool = Chapters.descriptor(key).premium
 		var picture := card.find_child("LevelPicture",true,false) as TextureRect
 		_check(picture != null and picture.texture != null and picture.mouse_filter == Control.MOUSE_FILTER_IGNORE,"Every chapter card shows its picture: "+key)
 		var title := card.find_child("LevelTitle",true,false) as Label

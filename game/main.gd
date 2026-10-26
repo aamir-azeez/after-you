@@ -785,17 +785,8 @@ func hard_together() -> bool:
 func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
 
-const LIGHTHOUSE_SCENE := "res://lighthouse_preview.tscn"
-
-## The Lighthouse card plays sleeping-lighthouse@2 once it is offered. An
-## unfinished @1 journey that could not be carried over continues in @1.
-func _open_lighthouse() -> void:
-	await _open_premium_chapter(lighthouse_scene())
-
-static func lighthouse_scene() -> String:
-	if ChapterRegistry.LIGHTHOUSE_V2 in ChapterRegistry.offered_keys() and LighthouseMigration.plan() != "v1":
-		return ChapterRegistry.solo_scene(ChapterRegistry.LIGHTHOUSE_V2)
-	return LIGHTHOUSE_SCENE
+## The @1 Lighthouse screen, where its earlier replays play.
+const LIGHTHOUSE_SCENE := LighthouseMigration.V1_SCENE
 
 ## hard: a hard open for the scene (HardMode.hand_over), or {}.
 func _open_premium_chapter(scene: String, replay_context: Dictionary = {}, hard: Dictionary = {}) -> void:
@@ -1096,7 +1087,7 @@ func _host_store_flow() -> StoreFlow:
 	flow.settings_requested.connect(func(): settings_flow.show_settings(SettingsFlow.ACCOUNT))
 	flow.chapters_requested.connect(func(): journey_flow.show_journey())
 	flow.rooms_requested.connect(func(): room_hub_flow.show_rooms())
-	flow.lighthouse_requested.connect(_open_lighthouse)
+	flow.lighthouse_requested.connect(func(): journey_flow.open_solo_chapter(ChapterRegistry.LIGHTHOUSE_V2))
 	flow.google_play_requested.connect(_open_google_play)
 	return flow
 

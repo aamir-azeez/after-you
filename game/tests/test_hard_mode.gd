@@ -74,8 +74,8 @@ func _rules() -> void:
 func _unlocks() -> void:
 	var keys := HardMode.eligible_keys()
 	_check(keys.size() >= 8 and KEY in keys, "Every offered chapter with its own solo screen has hard plays (%d)" % keys.size())
-	for key: String in keys: _check(not Registry.is_lighthouse(key) and key in Registry.offered_keys(), key + " is an offered chapter that is not the Lighthouse")
-	_check(not HardMode.eligible("sleeping-lighthouse@2") and not HardMode.eligible("earlier") and not HardMode.eligible(""), "The Lighthouse and earlier islands have no hard plays")
+	for key: String in keys: _check(key in Registry.offered_keys(), key + " is an offered chapter")
+	_check(HardMode.eligible(Registry.LIGHTHOUSE_V2) and not HardMode.eligible("earlier") and not HardMode.eligible(""), "The Lighthouse has hard plays; the earlier islands have none")
 	var none: Array[Dictionary] = []
 	var marks := ChapterCompletion.chapters(none)
 	_check(not HardMode.unlocked(marks, KEY), "Hard stays locked before the chapter is finished")

@@ -1,18 +1,17 @@
 extends SceneTree
 ## sleeping-lighthouse@2 taking over the Lighthouse card: a solo @1 journey is
 ## carried over on first open (or kept in @1 when it cannot be), @2 progress
-## earns the same six keepsake places, and the together keepsakes, the paid
-## gallery's "Together" and the picture's solo-only mark follow the chapter's
-## release. Recordings are the frozen @1 fixtures (rules 3).
+## earns the same six keepsake places, and the together keepsakes and the paid
+## gallery's "Together" follow the chapter's release. A hard run never carries
+## the @1 journey. Recordings are the frozen @1 fixtures (rules 3).
 const Registry = preload("res://services/chapter_registry.gd")
 const Migration = preload("res://services/lighthouse_migration.gd")
 const V1Journey = preload("res://services/lighthouse_journey.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
-const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const PaidCatalog = preload("res://services/paid_level_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
-const Main = preload("res://main.gd")
+const HardMode = preload("res://services/hard_mode.gd")
 const KEY := Registry.LIGHTHOUSE_V2
 var checks := 0
 var failures := 0
@@ -27,6 +26,7 @@ func _run() -> void:
 	_keepsakes_and_flags()
 	_conversion()
 	_plans()
+	await _hard_screen()
 	await _screen()
 	await _fallback_screen()
 	print("LIGHTHOUSE V2 RELEASE: %d checks, %d failures" % [checks, failures])
@@ -39,7 +39,7 @@ func _keepsakes_and_flags() -> void:
 	var lighthouse_rows := KeepsakeCatalog.all().filter(func(item: Dictionary) -> bool: return item.chapter_key == KeepsakeCatalog.LIGHTHOUSE)
 	_check(lighthouse_rows.size() == 6 and lighthouse_rows.all(func(item: Dictionary) -> bool: return item.friend_available == released), "The Lighthouse's together keepsakes follow its release (%s)" % released)
 	_check(KeepsakeCatalog.variant_total() == (64 if released else 58), "Keepsake variants: %d" % KeepsakeCatalog.variant_total())
-	_check(Thumbnails.entry(Thumbnails.SLEEPING_LIGHTHOUSE).solo_only == not released and PaidCatalog.entry("sleeping-lighthouse").together == released, "The gallery says Together exactly when it can be played together")
+	_check(PaidCatalog.entry("sleeping-lighthouse").together == released, "The gallery says Together exactly when it can be played together")
 
 ## Writes an @1 journal of the first `pairs` frozen stages and, optionally, the next A.
 func _v1(path: String, pairs: int, with_a: bool) -> void:
@@ -109,6 +109,23 @@ func _wait_mode(scene: Node, modes: Array, seconds: float = 60.0) -> bool:
 	while is_instance_valid(scene) and scene.mode not in modes and Time.get_ticks_msec() < deadline: await process_frame
 	return is_instance_valid(scene) and scene.mode in modes
 
+## A hard run never takes the @1 journey: it plays from the first stage in its
+## own journal, and the carry-over waits for the next ordinary open.
+func _hard_screen() -> void:
+	var v2 := str(Registry.descriptor(KEY).local_path)
+	var hard := HardMode.journal_path(KEY)
+	for path: String in [v2, hard, Migration.MARKER_PATH]: _remove(path)
+	_v1(Migration.V1_PATH, 3, true)
+	HardMode.hand_over({"chapter_key": KEY, "kind": "play"})
+	var scene := _open()
+	_check(await _wait_mode(scene, ["ready"]) and scene._hard_on(), "A hard Lighthouse run opens")
+	_check(scene.journey.pairs().is_empty() and scene.journey.prior_recording().is_empty(), "The hard run starts empty, not from the @1 journey")
+	_check(Migration.plan() == "migrate", "The @1 journey still carries over on the next ordinary open")
+	scene.queue_free()
+	await process_frame
+	HardMode.wait_writes()
+	for path: String in [hard, HardMode.runs_path(KEY), HardMode.INDEX_PATH]: _remove(path)
+
 ## The real first open: the @1 save in its own place, no @2 save yet.
 func _screen() -> void:
 	var v2 := str(Registry.descriptor(KEY).local_path)
@@ -121,7 +138,7 @@ func _screen() -> void:
 	_check(await _wait_mode(scene, ["ready"]), "The screen opens at the carried-over turn")
 	_check(scene.journey.pairs().size() == 3 and scene.journey.role() == "b", "Three stages and the waiting A are in @2")
 	_check(Migration.plan() == "v2", "Later opens go straight to @2")
-	_check(Main.lighthouse_scene() == (Registry.solo_scene(KEY) if KEY in Registry.offered_keys() else Migration.V1_SCENE), "The Solo Lighthouse card opens @2 once it is offered")
+	_check(Registry.open_scene(KEY) == Registry.solo_scene(KEY), "The Lighthouse's Solo card opens @2")
 	scene.queue_free()
 	await process_frame
 	_remove(v2)
@@ -135,7 +152,7 @@ func _fallback_screen() -> void:
 	_v1(Migration.V1_PATH, 3, false)
 	_check(not scene._adopt_migration({"status": "fallback", "complete": false}) and scene.mode == "leaving", "A journey that does not convert hands over to the @1 screen")
 	_check(Migration.plan() == "v1", "...and the @1 screen is what the card opens next")
-	_check(Main.lighthouse_scene() == Migration.V1_SCENE, "The Solo card opens the @1 screen for it")
+	_check(Registry.open_scene(KEY) == Migration.V1_SCENE, "The Solo card opens the @1 screen for it")
 	for i in range(4): await process_frame
 	_check(current_scene != null and current_scene.scene_file_path == Migration.V1_SCENE, "The @1 screen is now showing")
 	if current_scene != null:

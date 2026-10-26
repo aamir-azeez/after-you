@@ -76,6 +76,14 @@ static func is_lighthouse(key: String) -> bool:
 static func solo_scene(key: String) -> String:
 	return str(_chapter(key).get("scene", ""))
 
+## The scene a Solo card opens: the solo scene, or an earlier version's own
+## screen while a journey there still continues (a descriptor's
+## continues_earlier). Loaded, not preloaded: the named script reads this one.
+static func open_scene(key: String) -> String:
+	var source: Array = _chapter(key).get("continues_earlier", [])
+	var earlier := "" if source.is_empty() else str(load(source[0]).call(source[1]))
+	return earlier if not earlier.is_empty() else solo_scene(key)
+
 static func definition(key: String) -> Dictionary:
 	var source: Array = _chapter(key).get("definition", [])
 	if source.is_empty(): return {}
