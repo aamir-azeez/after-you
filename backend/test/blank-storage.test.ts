@@ -57,6 +57,8 @@ const RELAY_READS: Read<V2>[] = [
   ["end reactions with run reactions", room => room.endReactions(P, true)],
   ["snapshot with everything beside it", room => room.snapshot(P, undefined, undefined, { faces: true, names: true, tracks: true })],
   ["clearMemberName", room => room.clearMemberName(P)],
+  ["pollenTurnFacts", room => room.pollenTurnFacts(P, HASH)],
+  ["pollenClearFacts", room => room.pollenClearFacts(P)],
 ];
 const LEGACY_READS: Read<V1>[] = [
   ["join", room => room.join(P, CODE)],
@@ -79,6 +81,15 @@ const PLAYER_READS: Read<PlayerStub>[] = [
   ["setDisplayName", (player, id) => player.setDisplayName(id, HASH, "Maya", 1)],
   ["operatorClearDisplayName", (player, id) => player.operatorClearDisplayName(id)],
   ["rotateSafetyToken", player => player.rotateSafetyToken()],
+  ["authorize noting a Full Journey end", player => player.authorize(HASH, false, Date.now() + 86_400_000)],
+  ["authorizeRoom for a turn while Pollen is on", player => player.authorizeRoom(HASH, "r".repeat(22), true)],
+  ["authorizeNamed while Pollen is on", player => player.authorizeNamed(HASH, true)],
+  ["authorizeWallet", player => player.authorizeWallet(HASH, "wallet")],
+  ["authorizeWallet for history", player => player.authorizeWallet(HASH, "history")],
+  ["creditTurn", (player, id) => player.creditTurn(id, { schema_version: 1 })],
+  ["creditTogetherClear", (player, id) => player.creditTogetherClear(id, "first-steps", true, 10)],
+  ["creditSoloClear", (player, id) => player.creditSoloClear(id, "first-steps", false)],
+  ["creditSoloClear for a paid chapter", (player, id) => player.creditSoloClear(id, "rolling-home", true)],
   ["liveHint for a room", player => player.liveHint(P, { kind: "room", room_id: "r".repeat(22), revision: 1 })],
   ["liveHint from a friend", player => player.liveHint(P, { kind: "friends", from: Q, request_id: "q".repeat(22) })],
 ];

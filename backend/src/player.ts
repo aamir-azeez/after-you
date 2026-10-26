@@ -24,6 +24,8 @@ import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
+import { boostPercent } from "./pollen/earn";
+import { creditClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
@@ -133,7 +135,15 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity();
     return identity?.state === "active" && equalHash(identity.recovery_hash, recoveryHash);
   }
-  authorize(deviceHash: string, allowDeleting = false): boolean { return this.authorized(deviceHash, allowDeleting) !== null; }
+  /**
+   * `fullJourneyUntil`: the Full Journey end RevenueCat just reported for this player (0 for none), which
+   * the route passes only while Pollen earning is on; an authorized call notes it (pollen/wallet.ts).
+   */
+  authorize(deviceHash: string, allowDeleting = false, fullJourneyUntil?: number): boolean {
+    const identity = this.authorized(deviceHash, allowDeleting);
+    if (identity && identity.state === "active" && fullJourneyUntil !== undefined) noteFullJourney(this.ctx.storage, fullJourneyUntil, Date.now());
+    return identity !== null;
+  }
   /** The identity when `deviceHash` is its current device credential, read once for the check and what rides on it. */
   private authorized(deviceHash: string, allowDeleting = false): Identity | null {
     const identity = this.identity();
@@ -142,21 +152,54 @@ export class Player extends DurableObject<Env> {
   /**
    * authorize() plus the player's display name (null when anonymous), from the same identity read.
    * auth() uses it only on the routes that write the name into a room (display-names.ts namesRoomRoute).
+   * `pollen`: also the player's Full Journey end (fj_until), for routes that write it into a room while Pollen earning is on.
    */
-  authorizeNamed(deviceHash: string): { authorized: boolean; linked: boolean; display_name?: string | null } {
+  authorizeNamed(deviceHash: string, pollen = false): { authorized: boolean; linked: boolean; display_name?: string | null; fj_until?: number } {
     const identity = this.authorized(deviceHash);
-    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null } : { authorized: false, linked: true };
+    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}) } : { authorized: false, linked: true };
   }
   /**
    * authorize() for a request that names a room, plus whether this player may reach that room:
    * it holds a link to it, or has Story rows (see storyHeld).
-   * An authorized answer also carries the player's current safety token (see v2/block-memo.ts).
+   * An authorized answer also carries the player's current safety token (see v2/block-memo.ts), and with
+   * `pollen` (a turn while Pollen earning is on) the player's Full Journey end.
    */
-  authorizeRoom(deviceHash: string, roomId: string): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null } {
+  authorizeRoom(deviceHash: string, roomId: string, pollen = false): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number } {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: false };
     const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 || this.storyHeld();
-    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null };
+    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}) };
+  }
+  /** authorize() plus the wallet or its history (GET /v1/pollen and /v1/pollen/history), from one call. */
+  authorizeWallet(deviceHash: string, view: "wallet" | "history"): { authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView } {
+    const identity = this.authorized(deviceHash);
+    if (!identity) return { authorized: false, linked: true };
+    return { authorized: true, linked: true, pollen: view === "wallet" ? walletView(this.ctx.storage, Date.now()) : historyView(this.ctx.storage) };
+  }
+  private pollenActive(owner: string): () => boolean {
+    return () => { const identity = this.identity(); return identity?.state === "active" && identity.player_id === owner; };
+  }
+  /** Binding only: credits one accepted turn from the facts its room froze (pollen/wallet.ts creditTurn). */
+  creditTurn(owner: string, facts: unknown): Promise<Outcome<PollenReceipt>> {
+    if (!this.pollenActive(owner)()) return Promise.resolve(fail(404, "identity_absent"));
+    return creditTurn(this.ctx.storage, this.env, owner, facts, Date.now(), this.pollenActive(owner));
+  }
+  /**
+   * Binding only: a first clear made together, from the facts of the turn that finished the chapter.
+   * The room's boost is the same for both members, so the partner's clear uses the frozen percent.
+   */
+  creditTogetherClear(owner: string, levelId: string, hard: boolean, boost: number): Outcome<PollenReceipt> {
+    return creditClear(this.ctx.storage, { level_id: levelId, hard, boost_percent: boost }, Date.now(), this.pollenActive(owner));
+  }
+  /**
+   * Binding only: a solo first clear the app claims. A paid chapter needs Full Journey (the stored
+   * fj_until; no provider call), and a subscriber's room of one gets one subscriber's boost.
+   */
+  creditSoloClear(owner: string, levelId: string, premium: boolean): Outcome<PollenReceipt> {
+    if (!this.pollenActive(owner)()) return fail(404, "identity_absent");
+    const now = Date.now(), subscriber = fullJourneyUntil(this.ctx.storage) > now;
+    if (premium && !subscriber) return fail(403, "full_journey_required");
+    return creditClear(this.ctx.storage, { level_id: levelId, hard: false, boost_percent: boostPercent(Number(subscriber)) }, now, this.pollenActive(owner));
   }
   /**
    * Story rooms are not linked one by one, and the Story drain releases a player's v3 links but keeps the
@@ -848,6 +891,7 @@ export class Player extends DurableObject<Env> {
       clearRegistrations(this.ctx.storage);
       clearPresence(this.ctx.storage);
       dropRoomIndex(this.ctx.storage);
+      dropWallet(this.ctx.storage);
     });
     await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner);
     return ok({ deleted: true });
@@ -856,7 +900,8 @@ export class Player extends DurableObject<Env> {
 
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
-  authorizeNamed: () => ({ authorized: false, linked: true }), setDisplayName: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
+  authorizeNamed: () => ({ authorized: false, linked: true }), authorizeWallet: () => ({ authorized: false, linked: true }),
+  creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined,

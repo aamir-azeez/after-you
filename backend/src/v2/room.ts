@@ -44,6 +44,7 @@ import { UnblockedPairMemo } from "./block-memo";
 import { observeRoom, pushRoomIndex } from "../room-index-sync";
 import { announceRoomChange, liveRecipient, liveRoomHint, type LiveHint, type LiveRoomMembers } from "../live";
 import { clearMemberNames, eraseMemberName, memberName, recordMemberName } from "../display-names";
+import { clearPollenRoom, completionFacts, erasePollenOf, recordMember, recordTurnFacts, turnFacts, type PollenMember, type TurnFacts } from "../pollen/turn-facts";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -74,6 +75,8 @@ export type ReceiptV2 = {
 /** `end_reactions` only for a standalone member that asked for them while they are on (end-reactions.ts). */
 /** `partner_name` likewise for display names (display-names.ts), and `run_reactions` for run reactions (run-reactions.ts). */
 export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 } & BesideFields;
+/** A standalone turn committed with a PollenMember also returns its frozen facts; the Worker takes them out before replying (pollen/routes.ts). */
+export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts };
 /**
  * What a standalone member's read or turn reply carries beside the room, each
  * only when the member asked for it while it is on: the room's end reactions
@@ -332,8 +335,11 @@ export class RoomV2 extends DurableObject<Env> {
     state.updated_at = new Date().toISOString();
     this.ctx.storage.sql.exec("UPDATE room SET data=? WHERE id=1", JSON.stringify(state));
   }
-  /** `name`: the host's display name while names are on (display-names.ts recordMemberName); undefined writes nothing. */
-  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard", name?: string | null): Outcome<RoomSnapshotV2> {
+  /**
+   * `name`: the host's display name while names are on (display-names.ts recordMemberName); undefined writes nothing.
+   * `pollen`: the host's Full Journey end while Pollen earning is on (pollen/turn-facts.ts recordMember); undefined writes nothing.
+   */
+  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard", name?: string | null, pollen?: PollenMember): Outcome<RoomSnapshotV2> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_initialize_required"); if (boundary) return boundary;
     let selected;
     try { selected = chapter(requestedChapter); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -357,6 +363,7 @@ export class RoomV2 extends DurableObject<Env> {
       this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
       if (mode === "hard") initializeHard(this.ctx.storage, this.hard);
       recordMemberName(this.ctx.storage, host, name);
+      recordMember(this.ctx.storage, host, pollen);
     });
     return ok(this.view(state, host));
   }
@@ -427,8 +434,8 @@ export class RoomV2 extends DurableObject<Env> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_unavailable");
     return boundary && !boundary.ok && boundary.code === "campaign_unavailable" ? fail(503, boundary.code) : boundary;
   }
-  /** `hardClient`: the joining phone plays hard rooms (X-AfterYou-Hard-Mode). `name`: as in initialize, for a member who joins or returns. */
-  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false, name?: string | null): Promise<Outcome<RoomSnapshotV2>> {
+  /** `hardClient`: the joining phone plays hard rooms (X-AfterYou-Hard-Mode). `name` and `pollen`: as in initialize, for a member who joins or returns. */
+  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false, name?: string | null, pollen?: PollenMember): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.stored();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
@@ -445,11 +452,12 @@ export class RoomV2 extends DurableObject<Env> {
     if (requiredVersion !== undefined && !supportedVersions?.includes(requiredVersion)) return fail(422, "unsupported_simulation_version");
     // A phone that would offer retries never joins a hard room.
     if (!hardClient && this.hard.run(this.ctx.storage)) return fail(409, "hard_mode_client_required");
-    if (this.member(state, player)) { recordMemberName(this.ctx.storage, player, name); return ok(this.view(state, player)); }
+    if (this.member(state, player)) { recordMemberName(this.ctx.storage, player, name); recordMember(this.ctx.storage, player, pollen); return ok(this.view(state, player)); }
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     state.guest_id = player; state.revision++; this.write(state);
     recordMemberName(this.ctx.storage, player, name);
+    recordMember(this.ctx.storage, player, pollen);
     recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
     if (state.a_turn_id) queueTurnHint(this.ctx.storage, this.env, "relay", state, state.host_id, player);
     await scheduleGameplayNotifications(this.ctx.storage);
@@ -636,14 +644,20 @@ export class RoomV2 extends DurableObject<Env> {
   /**
    * `beside`: what the reply carries beside the room for a standalone member (Beside).
    * `name`: the member's own display name, stored with an accepted standalone turn (display-names.ts).
+   * `pollen`: the member's Full Journey end while Pollen earning is on. An accepted standalone turn then
+   * freezes its facts (pollen/turn-facts.ts), and the outcome carries them as `pollen_facts`, for a
+   * retried commit too. Undefined writes and returns nothing more.
    */
-  async commit(player: string, value: unknown, context?: CampaignRoomContext, beside: Beside = {}, name?: string | null): Promise<Outcome<MutationV2>> {
-    const outcome = await this.commitTurn(player, value, context, name);
-    if (!outcome.ok || !(beside.faces || beside.names || beside.tracks) || context !== undefined) return outcome;
+  async commit(player: string, value: unknown, context?: CampaignRoomContext, beside: Beside = {}, name?: string | null, pollen?: PollenMember): Promise<Outcome<CommittedV2>> {
+    const outcome = await this.commitTurn(player, value, context, name, pollen);
+    if (!outcome.ok || context !== undefined) return outcome;
+    const facts = pollen !== undefined && outcome.value.receipt.recording_hash ? turnFacts(this.ctx.storage, outcome.value.receipt.recording_hash) : null;
+    const extra = facts?.player_id === player ? { pollen_facts: facts } : {};
+    if (!(beside.faces || beside.names || beside.tracks)) return facts ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
     const state = this.stored();
-    return state ? ok<MutationV2>({ ...outcome.value, ...this.beside(state, player, beside) }) : outcome;
+    return state ? ok<CommittedV2>({ ...outcome.value, ...this.beside(state, player, beside), ...extra }) : outcome;
   }
-  private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext, name?: string | null): Promise<Outcome<MutationV2>> {
+  private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext, name?: string | null, pollen?: PollenMember): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value);
       const raw = object(input.recording);
@@ -712,6 +726,12 @@ export class RoomV2 extends DurableObject<Env> {
           const pair: PairV2 = { pair_id: pair_id!, branch, stage_index, a: this.turn(state.a_turn_id!), b: recording, checkpoint: checkpoint! };
           this.ctx.storage.sql.exec("INSERT INTO pairs VALUES (?,?)", pair_id, JSON.stringify(pair));
           state.completed_pair_ids.push(pair_id!); state.checkpoint = checkpoint!; state.stage_index++; state.a_turn_id = null;
+        }
+        if (context === undefined && pollen !== undefined) {
+          recordMember(this.ctx.storage, player, pollen);
+          recordTurnFacts(this.ctx.storage, { room_id: state.room_id, recording_hash: recording.recording_hash, turn_id, player, partner: this.partnerOf(state, player),
+            host: player === state.host_id, level_id: state.level_id, stage_id, role: recording.role, ticks: recording.duration_ticks, tries,
+            premium: chapter(state).premium, hard: Boolean(current.hard), complete: recording.role === "b" && state.stage_index >= chapter(state).stages.length, accepted_at: Date.now() });
         }
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
@@ -976,6 +996,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearEndReactions(this.ctx.storage);
     clearRunReactions(this.ctx.storage);
     clearMemberNames(this.ctx.storage);
+    clearPollenRoom(this.ctx.storage);
     clearHard(this.ctx.storage, this.hard);
     resetRedo(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
@@ -1004,9 +1025,27 @@ export class RoomV2 extends DurableObject<Env> {
       eraseEndReactionsOf(this.ctx.storage, player);
       eraseRunReactionsOf(this.ctx.storage, player);
       eraseMemberName(this.ctx.storage, player);
+      erasePollenOf(this.ctx.storage, player);
       recordDeparture(this.ctx.storage, player);
       return ok({ left: true });
     }), true, player);
+  }
+  /**
+   * Binding only (POST /v1/pollen/turn-claims): the frozen facts of one of `player`'s accepted turns.
+   * Read only; facts outlive replay transfer and history offload, which never touch them.
+   */
+  pollenTurnFacts(player: string, recordingHash: string): Outcome<TurnFacts> {
+    const facts = turnFacts(this.ctx.storage, recordingHash);
+    return facts && facts.player_id === player ? ok(facts) : fail(404, "pollen_turn_not_found");
+  }
+  /**
+   * Binding only (POST /v1/pollen/clear-claims): the facts of the turn that finished this room's chapter,
+   * for a member of the room. Read only.
+   */
+  pollenClearFacts(player: string): Outcome<TurnFacts> {
+    const state = this.stored() ?? transferredRoom(this.ctx.storage);
+    const facts = state && this.member(state, player) ? completionFacts(this.ctx.storage) : null;
+    return facts ? ok(facts) : fail(404, "pollen_clear_not_found");
   }
   /**
    * Binding only (operator clear-name): deletes `player`'s stored name. When a row went and the room
@@ -1031,5 +1070,6 @@ answerWhileBlank(RoomV2, {
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
   redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
   hardReset: async () => roomNotFound(), hardFailures: async () => roomNotFound(), clearMemberName: () => false,
+  pollenTurnFacts: () => fail(404, "pollen_turn_not_found"), pollenClearFacts: () => fail(404, "pollen_clear_not_found"),
   campaignDrainCensus: () => absentCensus()
 });

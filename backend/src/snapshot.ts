@@ -12,6 +12,7 @@ import { REDO_TABLE, redoRuntimeValid, resetRedo } from "./redo-control";
 import { ROOM_INBOX_ACTIVITY, clearRoomInboxActivity } from "./room-inbox-storage";
 import { dropRoomIndex, isRoomIndexTable } from "./room-index";
 import { DISPLAY_NAME_KEYS, hasDisplayNameFields, validDisplayNameFields } from "./display-names";
+import { isPollenPlayerTable } from "./pollen/wallet";
 
 export const MAX_SNAPSHOT_BYTES = 24 * 1024 * 1024;
 export const MAX_SNAPSHOT_ROW_BYTES = 256 * 1024;
@@ -222,6 +223,9 @@ export function currentSnapshotSchema(storage: DurableObjectStorage, kind: Objec
   // gameplay rows retain their format. A Player's room index tables are
   // rebuilt from the rooms, so they are accepted only in their exact form.
   const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row) && !(kind === "Player" && isRoomIndexTable(row)));
+  // A Pollen wallet is the only copy of a balance: no snapshot format carries it yet, so a Player
+  // that has one is refused by name rather than exported without it.
+  requireValue(!(kind === "Player" && found.some(isPollenPlayerTable)), "pollen_snapshot_unsupported");
   // Room inbox sequences are operational metadata. They are accepted as part
   // of the runtime schema but intentionally excluded from portable snapshots.
   const expected = [...TABLES[kind], ...notificationTables(kind), ...(kind === "Player" ? PRESENCE_TABLES : [REDO_TABLE, ROOM_INBOX_ACTIVITY])].sort((a, b) => a.name.localeCompare(b.name));
