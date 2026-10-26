@@ -189,18 +189,29 @@ export function creditClear(storage: DurableObjectStorage, claim: ClearClaim, no
   });
 }
 
-/** The player's Full Journey end as last noted (0 for none). */
-export function fullJourneyUntil(storage: DurableObjectStorage): number { return stored(storage)?.fj_until ?? 0; }
+/**
+ * The player's Full Journey end as last noted (0 for none). It rides on the identity checks of
+ * turns, creates and joins, so a wallet that fails its check reads as none here rather than
+ * stopping play; its credits still stop until it is looked at.
+ */
+export function fullJourneyUntil(storage: DurableObjectStorage): number {
+  try { return stored(storage)?.fj_until ?? 0; } catch { return 0; }
+}
 
-/** Notes the Full Journey end RevenueCat reported. Writes only on a change, and never makes a wallet just to store 0. */
+/**
+ * Notes the Full Journey end RevenueCat reported. Writes only on a change, never makes a wallet just
+ * to store 0, and never stops the identity check it rides on.
+ */
 export function noteFullJourney(storage: DurableObjectStorage, until: number, now: number, rates: Rates = RATES): void {
   if (!count(until, 0, MAX_TIME) || fullJourneyUntil(storage) === until || (until === 0 && !present(storage))) return;
-  storage.transactionSync(() => {
-    ensureTables(storage);
-    const wallet = current(storage, now, rates);
-    wallet.fj_until = until;
-    save(storage, wallet, now, rates);
-  });
+  try {
+    storage.transactionSync(() => {
+      ensureTables(storage);
+      const wallet = current(storage, now, rates);
+      wallet.fj_until = until;
+      save(storage, wallet, now, rates);
+    });
+  } catch { /* an unreadable wallet keeps its old value */ }
 }
 
 /** GET /v1/pollen. Read only: a refill that is due shows without being written. */

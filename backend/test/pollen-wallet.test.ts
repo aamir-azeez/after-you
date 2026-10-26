@@ -168,6 +168,17 @@ describe("the Pollen wallet", () => {
       expect(fullJourneyUntil(storage)).toBe(0);
     });
   });
+  it("stops crediting a wallet that fails its check, without stopping play or replacing it", async () => {
+    serial += 100;
+    await inPlayer(async storage => {
+      noteFullJourney(storage, MONDAY + DAY, MONDAY);
+      storage.sql.exec("UPDATE pollen_wallet SET data=? WHERE id=1", JSON.stringify({ schema_version: 1, balance: -5 }));
+      expect(fullJourneyUntil(storage)).toBe(0);
+      expect(() => noteFullJourney(storage, MONDAY + 2 * DAY, MONDAY)).not.toThrow();
+      await expect(credit(storage, facts())).rejects.toThrow("unsupported_pollen_wallet");
+      expect(storage.sql.exec<{ data: string }>("SELECT data FROM pollen_wallet").one().data).toContain("-5");
+    });
+  });
   it("lists the newest paid claims as history", async () => {
     serial += 100;
     await inPlayer(async storage => {
