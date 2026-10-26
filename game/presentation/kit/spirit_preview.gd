@@ -1,9 +1,8 @@
 extends TextureRect
-## A pip on its own: the real SpiritVisual in a small world of its own,
-## resting with its idle (breath, leaf sway, a glance now and then;
-## presentation/spirit_idle.gd). Settings shows one in its header
-## (settings_spirit.gd), the display name prompt and the Friends name chip
-## show one each (display_name_prompt.gd).
+## A live pip on its own: the real SpiritVisual in a small world of its own
+## (kit/pip_stage.gd), wearing `outfit`, resting with its idle (breath, leaf
+## sway, a glance now and then; presentation/spirit_idle.gd). Screens use it
+## through kit/pip_avatar.gd, which also draws still pips.
 ##
 ## Like the ready and waiting cards (island_world.advance_idle) its pose is
 ## written IDLE_HZ times a second and the little view is drawn only then, so a
@@ -18,6 +17,7 @@ extends TextureRect
 ## eyes shut (spirit_look.gd SQUEEZE), and every frame of the eyes' swap is
 ## drawn so the change reads.
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
+const Stage = preload("res://presentation/kit/pip_stage.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const DragTurn = preload("res://presentation/kit/drag_turn.gd")
 const Look = preload("res://presentation/spirit_look.gd")
@@ -37,8 +37,12 @@ var turn := DragTurn.new()
 var drawn := 0
 ## The facing it rests in (radians); a preview may face another way.
 var rest_yaw := REST_YAW
+## What the pip wears (services/outfit.gd); set before it enters the tree, or
+## change it with wear().
+var outfit: Dictionary = {}
 var _view: SubViewport
 var _spirit: SpiritVisual
+var _camera: Camera3D
 var _color := PEACH
 var _clock := 0.0
 var _reduced := false
@@ -67,32 +71,18 @@ func _ready() -> void:
 	_view.msaa_3d = Viewport.MSAA_4X
 	_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(_view)
-	var environment := Environment.new()
-	environment.background_mode = Environment.BG_CLEAR_COLOR
-	environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.ambient_light_color = Color("ffe6c8")
-	environment.ambient_light_energy = 0.42
-	var world := WorldEnvironment.new()
-	world.environment = environment
-	_view.add_child(world)
-	var sun := DirectionalLight3D.new()
-	sun.light_energy = 0.8
-	sun.light_color = Color("ffeedd")
-	sun.rotation = Vector3(deg_to_rad(-38.0), deg_to_rad(28.0), 0.0)
-	_view.add_child(sun)
-	_spirit = SpiritVisual.new(_color)
-	_spirit.ground_ring.visible = false
-	_spirit.ground_shadow.visible = false
-	_spirit.set_expression_role("a")
+	_spirit = Stage.pip(_color, outfit)
 	_face()
-	_view.add_child(_spirit)
-	var camera := Camera3D.new()
-	camera.fov = 24.0
-	camera.position = Vector3(0.0, 0.66, 2.45)
-	camera.look_at_from_position(camera.position, Vector3(0.0, 0.53, 0.0))
-	_view.add_child(camera)
-	camera.current = true
+	_camera = Stage.build(_view, _spirit, outfit)
 	texture = _view.get_texture()
+	_step(0.0)
+
+## Dresses the pip in `worn` and draws it once.
+func wear(worn: Dictionary) -> void:
+	outfit = worn.duplicate()
+	if _spirit == null: return
+	_spirit.wear(outfit)
+	Stage.frame(_camera, outfit)
 	_step(0.0)
 
 func set_reduced(reduced: bool) -> void:
