@@ -26,8 +26,9 @@ extends Node
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
-## A pip's face with the Tide body cosmetic (presentation/pip_wear/tide.gd).
+## A pip's face and torso with the Tide body cosmetic (presentation/pip_wear/tide.gd).
 const SPIRIT_FACE_TIDE = preload("res://presentation/spirit_face_tide.gdshader")
+const SPIRIT_BODY_TIDE = preload("res://presentation/spirit_body_tide.gdshader")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
@@ -205,7 +206,7 @@ static func order(first: String) -> Array:
 
 ## Every ShaderMaterial shader the worlds draw (the last: worn cosmetics).
 static func shaders() -> Array[Shader]:
-	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE]
+	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE, SPIRIT_BODY_TIDE]
 
 ## A material with exactly that key (a small white texture for each texture).
 static func material_for(key: Dictionary) -> StandardMaterial3D:
