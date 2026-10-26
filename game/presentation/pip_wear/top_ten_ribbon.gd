@@ -10,8 +10,8 @@ const GOLD := Color("e9b949")
 ## Head space: where the rosette is pinned (the upper front corner, inside the
 ## head's outline in every view) and how it faces: mostly forward,
 ## so the three-quarter views see its face.
-const AT := Vector3(0.235, 0.205, 0.215)
-const TURN := Vector3(-0.35, 0.4, -0.15)
+const AT := Vector3(0.2, 0.215, 0.225)
+const TURN := Vector3(-0.45, 0.3, -0.15)
 const FOLDS := 10
 const FOLD_REACH := 0.042
 const FOLD_SIZE := Vector3(0.026, 0.017, 0.012)
