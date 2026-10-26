@@ -10,6 +10,8 @@ const Look = preload("res://presentation/spirit_look.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const PipOutfit = preload("res://presentation/pip_outfit.gd")
+const Outfit = preload("res://services/outfit.gd")
 
 signal stepped
 signal reunion_started
@@ -123,6 +125,11 @@ var _doze_zs: Array[Label3D] = []
 var _eyes_closed := 0.0
 ## Set while a placement poses the spirit: the face swaps without animating.
 var _placing := false
+## What the spirit wears (presentation/pip_outfit.gd), or null for the default
+## look, which adds nothing at all.
+var _wearing: RefCounted = null
+## How much higher the leaf sits while an item lifts it.
+var _leaf_lift := Vector3.ZERO
 
 func _init(color: Color=Look.PEACH) -> void:
 	facing.name="Facing"
@@ -168,6 +175,25 @@ func _init(color: Color=Look.PEACH) -> void:
 	ground_ring=_mesh(ring_mesh,color,Vector3(0,0.035,0),self)
 	_build_reunion_sparkles()
 	reset_motion()
+
+## Dresses the spirit in `outfit` (services/outfit.gd; unknown ids are
+## dropped), taking off what it wore. The default look, {}, adds no node.
+## Presentation only: no recording, simulation or hash reads it. It shows from
+## the next advance_motion.
+func wear(outfit: Dictionary) -> void:
+	var clean := Outfit.from(outfit, true)
+	if _wearing != null:
+		if Outfit.digest(clean) == Outfit.digest(_wearing.outfit): return
+		_wearing.undress()
+		_wearing = null
+	_leaf_lift = Vector3.ZERO
+	if clean.is_empty(): return
+	_wearing = PipOutfit.dress(self, clean)
+	_leaf_lift = Vector3(0, _wearing.leaf_lift, 0)
+
+## What the spirit wears ({} for the default look).
+func outfit() -> Dictionary:
+	return _wearing.outfit.duplicate() if _wearing != null else {}
 
 func reset_motion() -> void:
 	# A replay seek or level reset is a placement, not a giant walking step.
@@ -339,6 +365,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	_reduced_motion=reduced_motion
 	_reaction_age=minf(_reaction_duration,_reaction_age+delta)
 	face_art.advance(delta)
+	if _wearing!=null: _wearing.advance(delta,reduced_motion)
 	throw_age=minf(THROW_DURATION,throw_age+delta)
 	release_age=minf(RELEASE_SETTLE_DURATION,release_age+delta)
 	reunion_age=minf(REUNION_DURATION,reunion_age+delta)
@@ -469,7 +496,7 @@ func _apply_pose(amount: float) -> void:
 	face.position=HEAD_CENTER+rise
 	head.rotation=Vector3(0,rest.head_yaw,tilt)
 	face.rotation=Vector3(0,rest.head_yaw,tilt)
-	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.BACK,tilt)*(SPROUT_REST-HEAD_CENTER)
+	sprout.position=HEAD_CENTER+rise+Basis(Vector3.UP,rest.head_yaw)*Basis(Vector3.BACK,tilt)*(SPROUT_REST+_leaf_lift-HEAD_CENTER)
 	sprout.rotation=Vector3(0,rest.head_yaw,SPROUT_LEAN+tilt+step*0.05*amount+settle*0.45+rest.sprout_roll)
 	# A glance adds to the eyes' attention, up to the reach that attention has:
 	# glancing toward a partner off to one side turns the head, not the eyes.

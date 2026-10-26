@@ -21,6 +21,13 @@ static func foot() -> ArrayMesh:
 static func leaf() -> ArrayMesh:
 	return _cached("leaf", _leaf)
 
+## Where the head's surface is in `direction` from its centre (head space),
+## and the surface's outward normal there: for setting things on the head.
+static func head_surface(direction: Vector3) -> Array[Vector3]:
+	var unit := direction.normalized()
+	var point := unit * _reach(unit, Look.HEAD_HALF, Look.HEAD_POWER)
+	return [point, _normal(point, Look.HEAD_HALF, Look.HEAD_POWER)]
+
 static func _cached(key: String, build: Callable) -> ArrayMesh:
 	if not _cache.has(key): _cache[key] = build.call()
 	return _cache[key]
