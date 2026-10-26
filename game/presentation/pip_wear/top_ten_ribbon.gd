@@ -7,10 +7,11 @@ const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const BLUE := Color("4f7fc4")
 const BLUE_LIGHT := Color("6b95d3")
 const GOLD := Color("e9b949")
-## Head space: where the rosette is pinned, and how it faces: mostly forward,
+## Head space: where the rosette is pinned (the upper front corner, inside the
+## head's outline in every view) and how it faces: mostly forward,
 ## so the three-quarter views see its face.
-const AT := Vector3(0.29, 0.15, 0.22)
-const TURN := Vector3(0.0, 0.45, -0.15)
+const AT := Vector3(0.235, 0.205, 0.215)
+const TURN := Vector3(-0.35, 0.4, -0.15)
 const FOLDS := 10
 const FOLD_REACH := 0.042
 const FOLD_SIZE := Vector3(0.026, 0.017, 0.012)
