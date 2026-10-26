@@ -174,6 +174,10 @@ describe("Pollen from turns", () => {
         // The boost is worked out on the unboosted amount, never on a bloom.
         expect(paid, `${hostPays} ${guestPays}`).toMatchObject({ amount: 89, boost_percent: percent, boost: Math.floor((89 * percent * 2 + 100) / 200) });
         expect(paid.total).toBe(bloomed(paid));
+        // Whose Full Journey it was, from the turn player's side, for the results line.
+        const mine = reply === hostTurn ? hostPays : guestPays, theirs = reply === hostTurn ? guestPays : hostPays;
+        if (percent > 0) expect(paid.boost_from).toEqual([...(mine ? ["you"] : []), ...(theirs ? ["partner"] : [])]);
+        else expect(paid).not.toHaveProperty("boost_from");
       }
     }
   });

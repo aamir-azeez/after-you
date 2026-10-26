@@ -30,7 +30,8 @@ export type WalletState = {
   schema_version: 1; balance: number; earned: number; bank: number; week: number;
   weeks: Record<string, WeekState>; fj_until: number; pruned_day: number;
 };
-export type TurnLine = TurnPrice & { reason?: "repeat" | "bank_empty" };
+/** `reason`: why a turn paid the after-bank rate. `boost_from`: whose Full Journey boosted it, from the turn player's side. */
+export type TurnLine = TurnPrice & { reason?: "repeat" | "bank_empty"; boost_from?: ("you" | "partner")[] };
 export type ClearLine = { kind: "clear" | "hardclear"; level_id: string } & ClearPrice;
 /** What a credit answers, and what the turn reply's `pollen` field carries. */
 export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[] };
@@ -153,7 +154,9 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     const repeat = state.slots.includes(slot), bank = !repeat && wallet.bank > 0, tailIndex = state.tail;
     if (bank) { wallet.bank--; state.slots.push(slot); }
     else if (state.tail < tailLength(rates)) state.tail++;
-    const turn: TurnLine = { ...price({ facts, bank, tail_index: tailIndex, bloom: roll.multiplier }, rates), ...(bank ? {} : { reason: repeat ? "repeat" as const : "bank_empty" as const }) };
+    const priced = price({ facts, bank, tail_index: tailIndex, bloom: roll.multiplier }, rates);
+    const boostFrom = [...(facts.subscriber ? ["you" as const] : []), ...(facts.partner_subscriber ? ["partner" as const] : [])];
+    const turn: TurnLine = { ...priced, ...(bank ? {} : { reason: repeat ? "repeat" as const : "bank_empty" as const }), ...(priced.boost_percent > 0 ? { boost_from: boostFrom } : {}) };
     ensureTables(storage);
     const clears = facts.complete ? payClears(storage, { level_id: facts.level_id, hard: facts.hard && facts.together, boost_percent: facts.boost_percent }, now, rates) : [];
     if (!bank && turn.total === 0 && clears.length === 0) return zero(turn);
