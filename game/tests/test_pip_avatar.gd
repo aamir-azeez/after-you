@@ -77,6 +77,12 @@ func _live() -> void:
 	_check(idle >= hz - 2 and idle <= hz + 1, "With a moving lamp it still draws at the idle rate: %d in 1 s" % idle)
 	pip.wear({})
 	_check(is_equal_approx(camera.position.distance_to(Stage.LOOK_AT), near), "Taken off, the view comes back")
+	Outfit.show_unreleased = false
+	pip.wear({"hat": "lighthouse_lamp"})
+	_check(pip._spirit._wearing == null and is_equal_approx(camera.position.distance_to(Stage.LOOK_AT), near), "An item the pip can't wear never moves the view")
+	_check(Snapshots.key(Look.PEACH, {"hat": "lighthouse_lamp"}, Vector2i(10, 10), 0.0) == Snapshots.key(Look.PEACH, {}, Vector2i(10, 10), 0.0), "nor makes a second still picture")
+	Outfit.show_unreleased = true
+	pip.wear({})
 	pip.queue_free()
 	await process_frame
 

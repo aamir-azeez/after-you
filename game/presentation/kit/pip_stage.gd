@@ -49,9 +49,10 @@ static func pip(color: Color, outfit: Dictionary) -> SpiritVisual:
 	made.wear(outfit)
 	return made
 
-## Points the camera at the pip, pulled back for a tall outfit.
+## Points the camera at the pip, pulled back for a tall outfit (as the pip
+## wears it: cleaned, so an item it can't wear never moves the camera).
 static func frame(camera: Camera3D, outfit: Dictionary) -> void:
-	if not Outfit.tall(outfit):
+	if not Outfit.tall(Outfit.from(outfit)):
 		camera.look_at_from_position(CAMERA_AT, LOOK_AT)
 		return
 	var target := LOOK_AT + Vector3(0, TALL_LIFT, 0)

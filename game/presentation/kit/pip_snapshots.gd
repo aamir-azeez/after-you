@@ -50,9 +50,10 @@ var _drawn := false
 var _idle := 0.0
 var _headless := DisplayServer.get_name() == "headless"
 
-## The cache key for a pip: colour, outfit, pixel size and facing.
+## The cache key for a pip: colour, outfit as the pip wears it (cleaned, so
+## an item it can't wear never makes a second picture), pixel size and facing.
 static func key(color: Color, outfit: Dictionary, size: Vector2i, yaw: float) -> String:
-	return "%s|%s|%dx%d|%.4f" % [color.to_html(), Outfit.digest(outfit), size.x, size.y, yaw]
+	return "%s|%s|%dx%d|%.4f" % [color.to_html(), Outfit.digest(Outfit.from(outfit)), size.x, size.y, yaw]
 
 ## The pip's texture now if it is drawn, else null, and `done(key, texture)`
 ## is called once it is.
@@ -66,7 +67,7 @@ static func request(color: Color, outfit: Dictionary, size: Vector2i, yaw: float
 		return found
 	if not _waiters.has(id):
 		_waiters[id] = []
-		_specs[id] = {"key": id, "color": color, "outfit": outfit.duplicate(), "size": size, "yaw": yaw}
+		_specs[id] = {"key": id, "color": color, "outfit": Outfit.from(outfit), "size": size, "yaw": yaw}
 		_queue.append(id)
 	_waiters[id].append(done)
 	_renderer()
