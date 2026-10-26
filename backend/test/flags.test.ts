@@ -7,7 +7,8 @@ vi.mock("../src/v2/campaign-production", () => ({
   requireCampaignProduction: () => { if (!production.on) throw new Error("campaign_unavailable"); }
 }));
 
-import { FLAG_VARS, commaList, flags, flagOn, type FlagName, type FlagVar, type ServerVars } from "../src/flags";
+import { FLAG_VARS, commaList, featureNames, flags, flagOn, type FlagName, type FlagVar, type ServerVars } from "../src/flags";
+import { KEY_LABELS, KEY_SALT, MIN_SECRET_LENGTH, derivedKey, hmac, pollenSecret } from "../src/pollen/keys";
 import { productList, reviewer } from "../src/play-entitlement";
 import { MAX_JOIN_VERSIONS, routeV2 } from "../src/v2/routes";
 import { advertisedChapters } from "../src/v2/chapters";
@@ -52,6 +53,90 @@ describe("flags", () => {
   });
   it("reads the configured worker env, whose vars all default off", () => {
     for (const [name] of ROWS) expect(flags[name](env), name).toBe(false);
+    expect(Object.hasOwn(env, "FEATURES"), "FEATURES stays a deploy var, not a wrangler.jsonc one").toBe(false);
+  });
+});
+
+describe("FEATURES", () => {
+  it("turns on exactly the flags it lists, whatever their own vars say", () => {
+    for (const [set, variable] of ROWS) {
+      for (const own of [undefined, "false", "", "TRUE"]) {
+        const vars = loose({ FEATURES: variable, [variable]: own });
+        for (const [name, other] of ROWS) {
+          expect(flags[name](vars), `${name} with FEATURES=${variable} and own ${JSON.stringify(own)}`).toBe(name === set);
+          expect(flagOn(vars, other)).toBe(name === set);
+        }
+      }
+    }
+  });
+  it("adds to the dedicated vars, so either one turns a flag on", () => {
+    const vars = loose({ FEATURES: "PRESENCE_ENABLED", V2_ROOMS_ENABLED: "true" });
+    expect(flags.presence(vars)).toBe(true);
+    expect(flags.v2Rooms(vars)).toBe(true);
+    expect(flags.hardMode(vars)).toBe(false);
+  });
+  it("trims items, matches case exactly and ignores unknown names and empty items", () => {
+    const vars = loose({ FEATURES: " V2_ROOMS_ENABLED ,,hard_mode_enabled, NOT_A_FLAG,\tPOLLEN_EARN\n, HARD_MODE_ENABLED_X,displayNames" });
+    expect(ROWS.filter(([name]) => flags[name](vars)).map(([name]) => name).sort()).toEqual(["pollenEarn", "v2Rooms"]);
+    expect([...featureNames("NOT_A_FLAG, also_not")]).toEqual([]);
+  });
+  it("reads nothing from a FEATURES value that is not a string or is empty", () => {
+    for (const raw of [undefined, null, "", " , ", 1, true, ["V2_ROOMS_ENABLED"], { V2_ROOMS_ENABLED: true }]) {
+      expect(featureNames(raw).size, JSON.stringify(raw)).toBe(0);
+      for (const [name] of ROWS) expect(flags[name](loose({ FEATURES: raw })), `${name} ${JSON.stringify(raw)}`).toBe(false);
+    }
+  });
+  it("reads a changed value at once, and every flag from one value at a time", () => {
+    const first = loose({ FEATURES: "V2_ROOMS_ENABLED" }), second = loose({ FEATURES: "HARD_MODE_ENABLED" });
+    for (let round = 0; round < 3; round++) {
+      expect([flags.v2Rooms(first), flags.hardMode(first), flags.v2Rooms(second), flags.hardMode(second)]).toEqual([true, false, false, true]);
+    }
+    // A FEATURES string built from FLAG_VARS turns every flag on: the deploy note pastes one made this way.
+    const all = loose({ FEATURES: Object.values(FLAG_VARS).join(",") });
+    for (const [name] of ROWS) expect(flags[name](all), name).toBe(true);
+  });
+  it("defaults POLLEN_EARN off, and reads it from FEATURES", () => {
+    expect(FLAG_VARS.pollenEarn).toBe("POLLEN_EARN");
+    expect(flags.pollenEarn(env)).toBe(false);
+    expect(flags.pollenEarn(loose({ FEATURES: "POLLEN_EARN" }))).toBe(true);
+  });
+});
+
+// Vectors made outside the worker with Node's crypto.hkdfSync and createHmac (a different
+// implementation from WebCrypto), from a synthetic secret used nowhere else.
+const TEST_SECRET = "synthetic-pollen-secret-for-tests-only-0001";
+const VECTORS: readonly [string, string, string][] = [
+  [KEY_LABELS.bloom, "pollen-bloom-v1|AAAAAAAAAAAAAAAAAAAAAA|2026-W44|first-steps|first-path|a", "b8b4c5419bfb79c9657e4d16bee23b310d655b239d294dcbcd363b8e76a07bd6"],
+  [KEY_LABELS.bloom, "pollen-bloom-v1|AAAAAAAAAAAAAAAAAAAAAA|2026-W53|relay-isles|second-path|b", "e1b17c225ec3e19bf2f248966ae2983e97a1d5fa616a747e2aff8f320f25035d"]
+];
+const hex = (bytes: Uint8Array) => [...bytes].map(byte => byte.toString(16).padStart(2, "0")).join("");
+
+describe("POLLEN_SECRET key derivation", () => {
+  it("derives HKDF-SHA256 keys that sign as Node's implementation does", async () => {
+    expect(KEY_SALT).toBe("after-you-pollen-keys-v1");
+    for (const [label, message, expected] of VECTORS) expect(hex(await hmac((await derivedKey({ POLLEN_SECRET: TEST_SECRET }, label as typeof KEY_LABELS.bloom))!, message)), message).toBe(expected);
+  });
+  it("gives each label and each secret its own key", async () => {
+    const message = VECTORS[0][1], signed = new Set<string>();
+    for (const label of Object.values(KEY_LABELS)) signed.add(hex(await hmac((await derivedKey({ POLLEN_SECRET: TEST_SECRET }, label))!, message)));
+    expect(signed.size).toBe(Object.values(KEY_LABELS).length);
+    const other = await derivedKey({ POLLEN_SECRET: TEST_SECRET.replace("0001", "0002") }, KEY_LABELS.bloom);
+    expect(hex(await hmac(other!, message))).not.toBe(VECTORS[0][2]);
+  });
+  it("derives nothing while the secret is unset or shorter than the minimum", () => {
+    for (const secret of [undefined, "", "x".repeat(MIN_SECRET_LENGTH - 1)]) {
+      expect(pollenSecret({ POLLEN_SECRET: secret })).toBeNull();
+      expect(derivedKey({ POLLEN_SECRET: secret }, KEY_LABELS.bloom)).toBeNull();
+    }
+    expect(pollenSecret({ POLLEN_SECRET: "x".repeat(MIN_SECRET_LENGTH) })).toBe("x".repeat(MIN_SECRET_LENGTH));
+    expect(pollenSecret(env)).toBeNull();
+  });
+  it("derives each key once per secret and label", async () => {
+    const spy = vi.spyOn(crypto.subtle, "deriveBits");
+    const secret = TEST_SECRET.replace("0001", "0003");
+    await derivedKey({ POLLEN_SECRET: secret }, KEY_LABELS.bloom); await derivedKey({ POLLEN_SECRET: secret }, KEY_LABELS.bloom);
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });
 

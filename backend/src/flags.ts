@@ -1,9 +1,14 @@
 /**
  * Every deploy var the worker reads, and one accessor per feature flag.
  *
- * A flag is on only when String(var) is exactly "true". Absent, "false", "TRUE",
- * "1", "" and any other value are off. (A boolean true, as tests pass it, also
- * reads on, because String(true) is "true".)
+ * A flag is on when String(var) is exactly "true", or when its var name is an
+ * item of the comma-separated FEATURES var (see featureNames). Absent, "false",
+ * "TRUE", "1", "" and any other value of the dedicated var are off. (A boolean
+ * true, as tests pass it, also reads on, because String(true) is "true".)
+ *
+ * FEATURES folds flags into one var to free var slots: a flag listed there is on
+ * whatever its dedicated var says, so turning a folded flag off means taking it
+ * out of FEATURES. A flag added after the fold (POLLEN_EARN) lives only there.
  */
 export const FLAG_VARS = Object.freeze({
   /** Friend presence (online dots and the presence endpoints). */
@@ -78,6 +83,8 @@ export const FLAG_VARS = Object.freeze({
   iosWaitlist: "IOS_WAITLIST_ENABLED",
   /** Display names: PUT /v1/profile/name, names on friends pages and room reads, writes into rooms and the capability (display-names.ts). */
   displayNames: "DISPLAY_NAMES_ENABLED",
+  /** Pollen earned from accepted turns and first clears, the wallet routes and the turn reply field (pollen/). Set only through FEATURES. */
+  pollenEarn: "POLLEN_EARN",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;
@@ -89,6 +96,10 @@ export type FlagVar = typeof FLAG_VARS[FlagName];
  * all assignable to it without a cast.
  */
 export type ServerVars = { [V in FlagVar]?: string } & {
+  /** Comma list of FlagVar names that are on (featureNames). Unknown names are ignored. */
+  FEATURES?: string;
+  /** Secret. The Pollen root key: HKDF in pollen/keys.ts derives the bloom keys from it; at least 32 characters. */
+  POLLEN_SECRET?: string;
   ENVIRONMENT?: string;
   REVENUECAT_VERIFICATION_MODE?: string;
   REVENUECAT_API_VERSION?: string;
@@ -143,12 +154,26 @@ export type ServerVars = { [V in FlagVar]?: string } & {
   WAITLIST_FROM?: string;
 };
 
-/** The one flag rule, by var name. */
-export function flagOn(env: ServerVars, name: FlagVar): boolean { return String(env[name]) === "true"; }
+/** The one flag rule, by var name: its own var is exactly "true", or FEATURES lists it. */
+export function flagOn(env: ServerVars, name: FlagVar): boolean { return String(env[name]) === "true" || featureNames(env.FEATURES).has(name); }
 
 /** A comma-separated var as trimmed, non-empty items. Unset gives []. */
 export function commaList(raw: string | undefined): string[] {
   return (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
+}
+
+const KNOWN_VARS: ReadonlySet<string> = new Set(Object.values(FLAG_VARS));
+/** The last FEATURES value read and its names, so a request parses it once, not once per flag. */
+let lastFeatures: { raw: unknown; names: ReadonlySet<FlagVar> } = { raw: undefined, names: new Set() };
+/**
+ * The flags a FEATURES value turns on: its comma-separated items, trimmed, that exactly
+ * match a FlagVar (case counts). Unknown items and a value that is not a string turn nothing on.
+ */
+export function featureNames(raw: unknown): ReadonlySet<FlagVar> {
+  if (raw === lastFeatures.raw) return lastFeatures.names;
+  const names = new Set(typeof raw === "string" ? commaList(raw).filter(item => KNOWN_VARS.has(item)) as FlagVar[] : []);
+  lastFeatures = { raw, names };
+  return names;
 }
 
 /** One accessor per flag: `flags.v2Rooms(env)`. */
