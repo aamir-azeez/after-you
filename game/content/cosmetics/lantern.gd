@@ -7,4 +7,6 @@ const DATA := {
 	"tier": "epic",
 	"name": PlayerCopy.COSMETIC_LANTERN,
 	"art": "res://presentation/pip_wear/lantern.gd",
+	## Its stalk arcs above the head.
+	"tall": true,
 }
