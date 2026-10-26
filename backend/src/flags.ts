@@ -85,6 +85,8 @@ export const FLAG_VARS = Object.freeze({
   displayNames: "DISPLAY_NAMES_ENABLED",
   /** Pollen earned from accepted turns and first clears, the wallet routes and the turn reply field (pollen/). Set only through FEATURES. */
   pollenEarn: "POLLEN_EARN",
+  /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. Set only through FEATURES. */
+  leaderboards: "LEADERBOARDS",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;

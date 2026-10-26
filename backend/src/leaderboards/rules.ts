@@ -1,0 +1,45 @@
+/**
+ * The leaderboard rules as numbers and one ordering. Pure: no storage, no env.
+ *
+ * One board per chapter version ("Fastest pair"). A run's time is the sum of
+ * the game ticks of every turn on its finishing branch. Faster first; equal
+ * ticks go to the run whose last turn the server accepted earlier.
+ */
+
+/** Places that rank and earn the Top 10 ribbon. */
+export const TOP_PLACES = 10;
+/** Ranked entries kept below the top 10, so a struck run lets the next one move up. */
+export const KEPT_RANKED = TOP_PLACES + 3;
+/** Runs waiting for the replay check or a person, per board. */
+export const MAX_WAITING = 24;
+/** A time below this share of the developers' best waits for a person. */
+export const FLOOR_RATIO = 0.8;
+/** A new first this much faster than the old first, or more, waits for a person. */
+export const WIDE_MARGIN_RATIO = 0.85;
+/** Both accounts at least this old when the run finished. */
+export const MIN_ACCOUNT_AGE_MS = 7 * 86_400_000;
+/** Each player has turns alongside at least this many different partners. */
+export const MIN_PARTNERS = 2;
+/** Distinct reporters kept per entry. */
+export const MAX_REPORTERS = 32;
+
+export type Timed = { ticks: number; finished_ms: number; entry_id: string };
+
+/** Negative when `a` ranks above `b`. The entry id only breaks a same-millisecond tie, so the order is total. */
+export function compareRuns(a: Timed, b: Timed): number {
+  return a.ticks - b.ticks || a.finished_ms - b.finished_ms || (a.entry_id < b.entry_id ? -1 : a.entry_id > b.entry_id ? 1 : 0);
+}
+
+/** Whether `ticks` beats every other time strictly; a run that only ties for first earns no Gold leaf. */
+export function strictlyFirst(ticks: number, others: readonly { ticks: number }[]): boolean {
+  return others.every(other => ticks < other.ticks);
+}
+
+/** Why a passed run still waits for a person, given the developers' best (null when unknown) and the current first's ticks. */
+export function holdsFor(ticks: number, developerBest: number | null, firstTicks: number | null): string[] {
+  const holds: string[] = [];
+  if (developerBest === null) holds.push("no_developer_best");
+  else if (ticks < FLOOR_RATIO * developerBest) holds.push("below_floor");
+  if (firstTicks !== null && ticks < WIDE_MARGIN_RATIO * firstTicks) holds.push("wide_margin");
+  return holds;
+}
