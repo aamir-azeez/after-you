@@ -90,6 +90,27 @@ const TRY_YOU := "You"
 const TRY_FIRST_TURN := "First turn"
 const TRY_SECOND_TURN := "Second turn"
 
+# Pollen after a turn (presentation/pollen_result_line.gd). Plain words; the
+# numbers come from the server's receipt.
+const POLLEN_EARNED := "+%d Pollen"
+## A skill bonus line: the bonuses by name, then their total percent ("First try and gold pace: +40%").
+const POLLEN_BONUS := "%s: +%d%%"
+const POLLEN_FIRST_TRY := "First try"
+const POLLEN_GOLD_PACE := "gold pace"
+const POLLEN_SILVER_PACE := "silver pace"
+const POLLEN_HARD := "Hard"
+const POLLEN_AND := " and "
+## The room boost and whose Full Journey it came from ("Maya has Full Journey: +10%").
+const POLLEN_BOOST_PARTNER := "%s has Full Journey: +%d%%"
+const POLLEN_BOOST_YOU := "You have Full Journey: +%d%%"
+const POLLEN_BOOST_BOTH := "You and %s have Full Journey: +%d%%"
+const POLLEN_BOOST_FRIEND := "Your friend"
+const POLLEN_BLOOM := "A lucky bloom: ×%d"
+const POLLEN_REPEAT := "You played this part already this week, so it pays a little."
+const POLLEN_BANK_EMPTY := "Your full pay turns this week are used up, so it pays a little."
+const POLLEN_FIRST_CLEAR := "First clear: +%d"
+const POLLEN_FIRST_HARD_CLEAR := "First Hard clear: +%d"
+
 # End-of-run reactions (presentation/end_reactions.gd).
 ## The split pill's open half, and the faces card's title.
 const END_REACTIONS_REACT := "React"

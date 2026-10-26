@@ -211,6 +211,7 @@ const ScreenSwitch = preload("res://services/screen_switch.gd")
 const OpeningCard = preload("res://presentation/chapter_loading_card.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Typed = preload("res://services/typed_values.gd")
+const PollenResultLine = preload("res://presentation/pollen_result_line.gd")
 ## The turn after a solo first turn, set up on a worker while its review card
 ## is up, so Save turn need not replay that turn again on this thread. Joined
 ## in _process once it ends, before use; leaving hands it to the reaper.
@@ -1090,6 +1091,15 @@ func _waiting_partner_name(room: Dictionary) -> String:
 	return names.display_name(str(scope.server), str(scope.owner), id)
 
 
+## The Pollen the viewer's latest turn in this room earned, once the server
+## confirmed it (presentation/pollen_result_line.gd decides whether it shows).
+func _add_pollen_line(parent: Container) -> void:
+	if online_session == null or not online_session.has_method("nickname_scope"): return
+	var receipt: Dictionary = journey.last_receipt()
+	var line := PollenResultLine.build(online_session.nickname_scope(), str(receipt.get("room_id", "")), str(receipt.get("recording_hash", "")), _waiting_partner_name(journey.snapshot()), MUTED)
+	if line != null: parent.add_child(line)
+
+
 ## The other player's id: the viewer's slot is p0 when they host, p1 when they joined.
 func _partner_id(room: Dictionary) -> String:
 	var partner: Variant = room.get("guest_id") if room.get("player_slot") == "p0" else room.get("host_id")
@@ -1206,6 +1216,7 @@ func _show_online_waiting() -> void:
 	var chip: PanelContainer = _add_room_status_chip(card, chip_text) if joined or not chip_text.is_empty() else null
 	if chip != null: card.move_child(chip, 0)
 	RoomPageBuilder.waiting_lines(card, subline, whose, notices)
+	if saved: _add_pollen_line(card)
 	_set_room_state("waiting_card")
 	var facts := _room_facts()
 	_add_room_actions(card, "waiting_card", "invite", facts)
@@ -1232,6 +1243,7 @@ func _show_waiting_panel(room: Dictionary, heading: String, subline: String, who
 		if heading == whose: title.name = "WaitingPartnerLine"
 		top.add_child(title)
 	RoomPageBuilder.waiting_lines(top, subline if partner_present or not saved else "", whose, notices)
+	if saved: _add_pollen_line(top)
 	_add_room_actions(top, _room_state, "status", facts)
 	_add_room_panel_actions(card, facts)
 	refresh_flow.add_sync_status(card, true)
@@ -2444,6 +2456,7 @@ func _after_accept() -> void:
 	if role == "b" and not journey.chapter_complete():
 		mode = "checkpoint"
 		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
+		_add_pollen_line(card)
 		card.add_child(_action_button("continue", func(): _after_visible_wait(_show_ready)))
 		_add_room_action(card, "solo_redo")
 		card.add_child(_action_button("back", _leave))
