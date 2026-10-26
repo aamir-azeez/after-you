@@ -120,7 +120,7 @@ func _chooser() -> void:
 	var lighthouse_buttons: Array = lighthouse.find_children("*","Button",true,false) if lighthouse != null else []
 	_check(lighthouse != null and lighthouse.find_child("LevelTitle",true,false).text=="Sleeping Lighthouse"
 		and lighthouse_buttons.size()==1 and lighthouse.is_ancestor_of(lighthouse_buttons[0]) and lighthouse_buttons[0].text.is_empty()
-		and lighthouse_buttons[0].get_meta("completion_chapter","")=="sleeping-lighthouse@1" and lighthouse_buttons[0].get_meta("completion_variant","")=="solo"
+		and lighthouse_buttons[0].get_meta("completion_chapter","")==Registry.LIGHTHOUSE_V2 and lighthouse_buttons[0].get_meta("completion_variant","")=="solo"
 		and lighthouse.find_child("ChapterAccess",true,false).text=="Full Journey" and lighthouse.find_child("ChapterAccess",true,false).get_meta("full_journey_locked",false),
 		"Lighthouse remains nearby, explicitly solo and marked as Full Journey")
 	_check(buttons.has("Earlier islands") and not buttons.has("01  First Light"),"Old easy grid is secondary instead of pretending the intro is merely another preview")
