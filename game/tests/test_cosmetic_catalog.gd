@@ -72,15 +72,14 @@ func _rules() -> void:
 	var expect := {
 		"daisy": ["hat", "common"], "seashell": ["hat", "common"], "straw_hat": ["hat", "uncommon"],
 		"tide": ["body", "rare"], "lantern": ["hat", "epic"], "lighthouse_lamp": ["hat", "special"],
-		"gold_leaf": ["leaf", "earned"], "every_hard": ["leaf", "earned"], "top_ten_ribbon": ["", "earned"],
+		"gold_leaf": ["leaf", "earned"], "every_hard": ["leaf", "earned"], "top_ten_ribbon": ["hat", "earned"],
 	}
 	_check(Array(Catalog.ids()) == expect.keys(), "The approved items, in shop order: %s" % [Catalog.ids()])
 	for id: String in expect:
 		_check(Catalog.slot(id) == expect[id][0] and str(Catalog.item(id).tier) == expect[id][1], "%s is a %s %s" % [id, expect[id][1], expect[id][0]])
 	_check(Catalog.item("lighthouse_lamp").unlock == "sleeping-lighthouse" and Catalog.tall("lighthouse_lamp"), "The Lighthouse lamp opens after Sleeping Lighthouse and pulls the view back")
 	_check(is_equal_approx(Catalog.leaf_lift("straw_hat"), 0.075), "The Straw hat lifts the leaf 7.5 cm through its brim")
-	_check(Catalog.art("every_hard").is_empty() and Catalog.art("top_ten_ribbon").is_empty(), "Every Hard and the Top 10 ribbon wait for their art")
-	_check(Catalog.slot("top_ten_ribbon") == "", "The Top 10 ribbon has no slot until the owner places it")
+	for id: String in Catalog.ids(): _check(not Catalog.art(id).is_empty() and not Catalog.slot(id).is_empty(), "%s has its art and its slot" % id)
 
 func _phase_one() -> void:
 	# Phase 1 ships the catalog unreleased: only the default look shows.
