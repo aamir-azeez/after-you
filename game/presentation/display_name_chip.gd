@@ -1,13 +1,13 @@
 extends PanelContainer
-## The Display name section in the Friends header: the player's pip (the same
-## 3D preview as Settings and the prompt), "YOUR NAME" over the name others
+## The Display name section in the Friends header: the player's own pip (a
+## still kit/pip_avatar.gd, drawn once by the shared renderer), "YOUR NAME" over the name others
 ## see, a quiet line while it waits to be sent or after the server said no,
 ## and Change, which opens the prompt to change it. display_name_flow.gd builds
 ## it and calls show_name() whenever the name changes.
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DisplayNames = preload("res://services/display_names.gd")
-const SpiritPreview = preload("res://presentation/kit/spirit_preview.gd")
+const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const PENCIL_ICON = preload("res://assets/ui/social/pencil-simple.svg")
 const MUTED := Color("afc6be")
 const ERROR := Color("f2b8ae")
@@ -27,7 +27,7 @@ func _init(reduced_motion: bool = false) -> void:
 	row.add_theme_constant_override("separation", 10)
 	add_child(row)
 	# Small enough that the chip is no taller than the title beside it.
-	preview = SpiritPreview.new(reduced_motion, SpiritPreview.PEACH, Vector2(42, 56))
+	preview = PipAvatar.new(reduced_motion, PipAvatar.PEACH, Vector2(42, 56), true, true)
 	preview.name = "DisplayNameChipPip"
 	row.add_child(preview)
 	var words := VBoxContainer.new()

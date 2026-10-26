@@ -345,7 +345,7 @@ func _flow() -> void:
 	chip.position = Vector2(40, 20)
 	await _frames(3)
 	_check(chip.name_label.text == DisplayNames.anonymous_name(ME) and not chip.status_label.visible, "The chip shows the anonymous name until a name is chosen")
-	_check(chip.preview.get_class() == "TextureRect" and chip.preview.find_child("SpiritView", true, false) != null, "and the same 3D pip")
+	_check(chip.preview.get_class() == "TextureRect" and chip.preview.still and chip.preview.own and chip.preview.find_child("SpiritView", true, false) == null, "and the player's own pip, drawn still by the shared renderer")
 	await _click(chip.change_button)
 	await _frames(3)
 	modal = page.find_child("DisplayNameModal", true, false)

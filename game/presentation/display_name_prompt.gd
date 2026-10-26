@@ -1,7 +1,7 @@
 extends Node
 ## The display name prompt (layout A): the in-game modal with the player's pip
-## beside the field. The pip is the real 3D one (presentation/kit/
-## spirit_preview.gd): drag to spin it, hold to squeeze it. A name tag above it
+## beside the field. The pip is the player's own, live (presentation/kit/
+## pip_avatar.gd): drag to spin it, hold to squeeze it. A name tag above it
 ## shows what others will see as the choice changes.
 ##
 ## Three choices, all on one card:
@@ -34,7 +34,7 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const DisplayNames = preload("res://services/display_names.gd")
-const SpiritPreview = preload("res://presentation/kit/spirit_preview.gd")
+const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
@@ -99,7 +99,8 @@ func _build(card: Control) -> void:
 	art.alignment = BoxContainer.ALIGNMENT_CENTER
 	body.add_child(art)
 	art.add_child(_tag())
-	preview = SpiritPreview.new(bool(_context.get("reduced_motion", false)), SpiritPreview.PEACH, PIP_SIZE)
+	# The player's own pip, live.
+	preview = PipAvatar.new(bool(_context.get("reduced_motion", false)), PipAvatar.PEACH, PIP_SIZE, false, true)
 	preview.name = "DisplayNamePip"
 	preview.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var haptic: Variant = _context.get("haptic")
