@@ -47,6 +47,8 @@ func _check(value: bool, message: String) -> bool:
 	return value
 
 func _run() -> void:
+	# The items are not released yet; these suites wear them all.
+	Outfit.show_unreleased = true
 	_default_look()
 	_each_item()
 	_combinations()
@@ -109,6 +111,10 @@ func _default_look() -> void:
 	spirit.wear(Outfit.EMPTY)
 	spirit.wear({"hat": "nothing", "badge": "daisy"})
 	_check(spirit._wearing == null and spirit.outfit().is_empty(), "The default look wears nothing")
+	Outfit.show_unreleased = false
+	spirit.wear({"hat": "daisy", "body": "tide"})
+	_check(spirit._wearing == null, "A pip never wears an item that is not released, whatever its outfit says")
+	Outfit.show_unreleased = true
 	_check(spirit.find_children("*", "", true, false).size() == count and _state(spirit) == before, "and adds no node and changes nothing")
 	spirit.advance_motion(Vector3.ZERO, DT, false)
 	var plain := _spirit()
@@ -203,11 +209,14 @@ func _leaf() -> void:
 	straw.free()
 	plain.free()
 
-## Solid parts only (no glow sprite, beam or sparkles), in head space.
-func _solid_points(spirit: Node3D) -> PackedVector3Array:
+## Solid parts only (no glow sprite, beam or sparkles), in head space: the
+## outfit's, and with `leaf` the pip's own leaf (an item may lift or swap it).
+func _solid_points(spirit: Node3D, leaf: bool = false) -> PackedVector3Array:
 	var points := PackedVector3Array()
 	var to_head: Transform3D = spirit.head.global_transform.affine_inverse()
-	for mesh: MeshInstance3D in _meshes(spirit._wearing.nodes()):
+	var meshes := _meshes(spirit._wearing.nodes())
+	if leaf: meshes.append(spirit.sprout)
+	for mesh: MeshInstance3D in meshes:
 		if mesh.name in ["Halo", "Beam", "Stars"]: continue
 		var place := to_head * mesh.global_transform
 		for surface in range(mesh.mesh.get_surface_count()):
@@ -217,33 +226,47 @@ func _solid_points(spirit: Node3D) -> PackedVector3Array:
 func _inside_head(point: Vector3) -> float:
 	return pow(absf(point.x / Look.HEAD_HALF.x), Look.HEAD_POWER) + pow(absf(point.y / Look.HEAD_HALF.y), Look.HEAD_POWER) + pow(absf(point.z / Look.HEAD_HALF.z), Look.HEAD_POWER)
 
-func _placement() -> void:
+## Each hat and leaf item alone, and a lifting hat with each leaf item.
+func _placed_outfits() -> Array[Dictionary]:
+	var outfits: Array[Dictionary] = []
 	for id: String in Catalog.ids():
-		if Catalog.art(id).is_empty() or Catalog.slot(id) == "body": continue
+		if Catalog.slot(id) in ["hat", "leaf"]: outfits.append(Outfit.of(id, true))
+		if Catalog.slot(id) == "leaf": outfits.append(Outfit.from({"hat": "straw_hat", "leaf": id}, true))
+	return outfits
+
+func _placement() -> void:
+	for outfit: Dictionary in _placed_outfits():
+		var label := Outfit.digest(outfit)
 		var spirit := _spirit()
 		spirit.carrying_seed = true
-		spirit.wear(Outfit.of(id, true))
+		spirit.wear(outfit)
 		spirit.advance_motion(Vector3.ZERO, 0.001, true)
 		var points := _solid_points(spirit)
 		var near_eye := 0
-		var in_seed := 0
-		var to_global: Transform3D = spirit.head.global_transform
-		var seed: Vector3 = spirit.carry_anchor_position()
 		for point: Vector3 in points:
 			for side: float in [-1.0, 1.0]:
 				if point.z > 0.0 and Vector2(point.x - side * Look.EYE_X, point.y - Look.EYE_Y).length() < EYE_CLEAR: near_eye += 1
-			if (to_global * point - spirit.global_position).distance_to(seed) < spirit.carried_radius: in_seed += 1
-		_check(not points.is_empty() or Catalog.slot(id) != "hat", "%s has solid parts to check" % id)
-		_check(near_eye == 0, "%s never covers the eyes: %d points" % [id, near_eye])
-		_check(in_seed == 0, "%s stays under a carried seed: %d points" % [id, in_seed])
-		if id == "daisy":
+		_check(not points.is_empty() or not outfit.has("hat"), "%s has solid parts to check" % label)
+		_check(near_eye == 0, "%s never covers the eyes: %d points" % [label, near_eye])
+		# The usual seed and the Lighthouse's wider lens (lighthouse_world.gd).
+		var to_global: Transform3D = spirit.head.global_transform
+		var with_leaf := _solid_points(spirit, true)
+		for radius: float in [0.13, 0.25]:
+			spirit.carried_radius = radius
+			var seed: Vector3 = spirit.carry_anchor_position()
+			var in_seed := 0
+			for point: Vector3 in with_leaf:
+				if (to_global * point - spirit.global_position).distance_to(seed) < radius: in_seed += 1
+			_check(in_seed == 0, "%s and the leaf stay under a carried seed of radius %.2f: %d points" % [label, radius, in_seed])
+		if outfit.get("hat") == "daisy":
 			var inside := 0
 			for point: Vector3 in points: if _inside_head(point) < 1.0: inside += 1
 			_check(inside == 0, "The daisy sits on the head's curve, never in it: %d points inside" % inside)
-		for halo: Node in (spirit.find_children("Halo", "MeshInstance3D", true, false) if Catalog.slot(id) == "hat" else []):
-			var centre: Vector3 = spirit.head.global_transform.affine_inverse() * (halo as Node3D).global_position
-			_check(_inside_head(centre) > 1.0, "%s's glow sits outside the head, on the lamp" % id)
-			_check(((halo as MeshInstance3D).mesh as QuadMesh).size.x <= 0.25, "%s's glow is small enough not to wash over the head" % id)
+		if outfit.has("hat") and not outfit.has("leaf"):
+			for halo: Node in spirit.find_children("Halo", "MeshInstance3D", true, false):
+				var centre: Vector3 = spirit.head.global_transform.affine_inverse() * (halo as Node3D).global_position
+				_check(_inside_head(centre) > 1.0, "%s's glow sits outside the head, on the lamp" % label)
+				_check(((halo as MeshInstance3D).mesh as QuadMesh).size.x <= 0.25, "%s's glow is small enough not to wash over the head" % label)
 		spirit.free()
 
 ## A body item may change the body's shape: the same pose, carry point and
