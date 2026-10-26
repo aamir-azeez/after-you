@@ -28,3 +28,25 @@ export const TABLES: Record<ObjectKind, readonly TableDefinition[]> = {
 export function initializeSchema(storage: DurableObjectStorage, kind: ObjectKind): void {
   for (const table of TABLES[kind]) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
 }
+
+/**
+ * Tables an object creates on first use, never in initializeSchema, so an object that never uses
+ * them stores nothing more than before. Each has a fixed schema and a row bound its writer keeps.
+ */
+export type LazyTable = { name: string; schema: string; maxRows: number };
+/** Player: the Pollen wallet (pollen/wallet.ts). Turn claims older than the prune window go before a new one lands. */
+export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([
+  { name: "pollen_wallet", schema: "CREATE TABLE pollen_wallet (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)", maxRows: 1 },
+  // 6 kept weeks x (36 bank turns + 100 paying after-bank turns), plus first clears of every chapter twice.
+  { name: "pollen_claims", schema: "CREATE TABLE pollen_claims (claim_key TEXT PRIMARY KEY, kind TEXT NOT NULL, amount INTEGER NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL) WITHOUT ROWID", maxRows: 1024 }
+]);
+/** RoomV2: frozen Pollen facts per accepted turn and each member's Full Journey end (pollen/turn-facts.ts). */
+export const POLLEN_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
+  // One row per accepted turn, as the turns table (MAX_TURNS); the oldest go first past it.
+  { name: "pollen_turn_facts", schema: "CREATE TABLE pollen_turn_facts (recording_hash TEXT PRIMARY KEY, player_id TEXT NOT NULL, accepted_at INTEGER NOT NULL, data TEXT NOT NULL) WITHOUT ROWID", maxRows: 128 },
+  { name: "pollen_members", schema: "CREATE TABLE pollen_members (player_id TEXT PRIMARY KEY, fj_until INTEGER NOT NULL) WITHOUT ROWID", maxRows: 2 }
+]);
+/** Whether a sqlite_master row is one of `tables` in its exact form. */
+export function isLazyTable(tables: readonly LazyTable[], row: { name: string; sql: string }): boolean {
+  return tables.some(table => table.name === row.name && table.schema === row.sql);
+}

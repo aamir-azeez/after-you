@@ -1,0 +1,29 @@
+{
+  "schema_version": 1,
+  "tiers": {
+    "short": { "base": 89, "first_clear": 1200, "blooms": true },
+    "long": { "base": 148, "first_clear": 2000, "blooms": true },
+    "paid": { "base": 166, "first_clear": 2000, "blooms": false },
+    "finale": { "base": 207, "first_clear": 2500, "blooms": false }
+  },
+  "chapters": {
+    "relay-isles": "short",
+    "first-steps": "short",
+    "high-and-low": "short",
+    "the-wishing-well": "short",
+    "turn-of-the-tide": "long",
+    "rolling-home": "paid",
+    "a-house-for-two": "paid",
+    "conservatory": "paid",
+    "long-way-home": "finale",
+    "sleeping-lighthouse": "finale"
+  },
+  "guest_paid_tier": "paid",
+  "bonus_percent": { "first_try": 25, "gold_pace": 15, "silver_pace": 5, "hard": 50 },
+  "boost_percent_per_subscriber": 10,
+  "bank": { "start": 12, "refill": 12, "cap": 36 },
+  "tail": [ { "pay": 10, "turns": 36 }, { "pay": 1, "turns": 64 } ],
+  "blooms": { "modulus": 10000, "triple_below": 200, "double_below": 1000 },
+  "pace": { "gold_percent": 120, "silver_percent": 150, "floor_percent": 80, "best_ticks": {} },
+  "claims": { "turn_claim_days": 28, "turn_prune_days": 35, "weeks_kept": 6 }
+}
