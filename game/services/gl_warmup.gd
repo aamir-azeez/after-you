@@ -26,6 +26,8 @@ extends Node
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
+## A pip's face with the Tide body cosmetic (presentation/pip_wear/tide.gd).
+const SPIRIT_FACE_TIDE = preload("res://presentation/spirit_face_tide.gdshader")
 const ObjectMotionTrail = preload("res://presentation/object_motion_trail.gd")
 const SeedMotionTrail = preload("res://presentation/seed_motion_trail.gd")
 const BallRotationBlur = preload("res://presentation/ball_rotation_blur.gd")
@@ -55,6 +57,9 @@ const MATERIALS: Array[Dictionary] = [
 	{"vertex_color_use_as_albedo": true},
 	{"cull_mode": BaseMaterial3D.CULL_DISABLED, "vertex_color_use_as_albedo": true},
 	{"cull_mode": BaseMaterial3D.CULL_DISABLED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA, "vertex_color_use_as_albedo": true},
+	# Pip cosmetics (presentation/kit/pip_wear_kit.gd): a glow sprite and a beam.
+	{"albedo_texture": true, "billboard_mode": BaseMaterial3D.BILLBOARD_ENABLED, "blend_mode": BaseMaterial3D.BLEND_MODE_ADD, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA},
+	{"blend_mode": BaseMaterial3D.BLEND_MODE_ADD, "cull_mode": BaseMaterial3D.CULL_DISABLED, "shading_mode": BaseMaterial3D.SHADING_MODE_UNSHADED, "transparency": BaseMaterial3D.TRANSPARENCY_ALPHA, "vertex_color_use_as_albedo": true},
 ]
 ## Which listed keys each chapter draws: "m" indices into MATERIALS, "s" into
 ## shaders(), "l" into LABELS. Kept by tests/test_gl_warmup_coverage.gd.
@@ -198,9 +203,9 @@ static func order(first: String) -> Array:
 			if [kind, index] not in result: result.append([kind, index])
 	return result
 
-## Every ShaderMaterial shader the worlds draw.
+## Every ShaderMaterial shader the worlds draw (the last: worn cosmetics).
 static func shaders() -> Array[Shader]:
-	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER]
+	return [SpiritFace.SHADER, LabelBubble.body_material(false, false).shader, LabelBubble.body_material(false, true).shader, ObjectMotionTrail.SOFT_SHADER, SeedMotionTrail.PATH_SHADER, BallRotationBlur.SPIN_SHADER, BallRotationBlur.BAND_SHADER, GoalBeacon.SHADER, SPIRIT_FACE_TIDE]
 
 ## A material with exactly that key (a small white texture for each texture).
 static func material_for(key: Dictionary) -> StandardMaterial3D:
