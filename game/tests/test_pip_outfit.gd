@@ -22,6 +22,8 @@ const Look = preload("res://presentation/spirit_look.gd")
 const Idle = preload("res://presentation/spirit_idle.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const Stage = preload("res://presentation/kit/pip_stage.gd")
+const Preview = preload("res://presentation/kit/spirit_preview.gd")
 const PLACEHOLDER_BODY = preload("res://tests/fixtures/pip_wear_placeholder_body.gd")
 
 ## The board's budget per item.
@@ -32,6 +34,10 @@ const MAX_TRIANGLES := 640
 const EYE_CLEAR := 0.11
 const FACE_PARAMS := ["body_color", "cream_color", "pupil_color", "blush_color", "blush_strength", "blush_soft", "eye_xy", "eye_squash", "look_shift", "pupil_rim", "tear_neck_root"]
 const DT := 1.0 / 60.0
+## Hats seated on the head's surface: no part of them is inside the head.
+const SEATED := ["daisy", "top_ten_ribbon"]
+## The pip views' control sizes (Settings, the name page, the Friends chip).
+const VIEWS := [Vector2(72, 100), Vector2(180, 236), Vector2(42, 56)]
 
 var checks := 0
 var failures := 0
@@ -54,6 +60,7 @@ func _run() -> void:
 	_combinations()
 	_leaf()
 	_placement()
+	_in_frame()
 	_body_shape()
 	_animation()
 	_released()
@@ -258,16 +265,42 @@ func _placement() -> void:
 			for point: Vector3 in with_leaf:
 				if (to_global * point - spirit.global_position).distance_to(seed) < radius: in_seed += 1
 			_check(in_seed == 0, "%s and the leaf stay under a carried seed of radius %.2f: %d points" % [label, radius, in_seed])
-		if outfit.get("hat") == "daisy":
+		if outfit.get("hat") in SEATED:
 			var inside := 0
 			for point: Vector3 in points: if _inside_head(point) < 1.0: inside += 1
-			_check(inside == 0, "The daisy sits on the head's curve, never in it: %d points inside" % inside)
+			_check(inside == 0, "%s sits on the head's curve, never in it: %d points inside" % [label, inside])
 		if outfit.has("hat") and not outfit.has("leaf"):
 			for halo: Node in spirit.find_children("Halo", "MeshInstance3D", true, false):
 				var centre: Vector3 = spirit.head.global_transform.affine_inverse() * (halo as Node3D).global_position
 				_check(_inside_head(centre) > 1.0, "%s's glow sits outside the head, on the lamp" % label)
 				_check(((halo as MeshInstance3D).mesh as QuadMesh).size.x <= 0.25, "%s's glow is small enough not to wash over the head" % label)
 		spirit.free()
+
+## Every item's solid parts and sparkles stay inside every pip view, pulled
+## back or not (kit/pip_stage.gd). A glow sprite and a beam may run out.
+func _in_frame() -> void:
+	for id: String in Catalog.ids():
+		var outfit := Outfit.of(id, true)
+		for size: Vector2 in VIEWS:
+			var view := SubViewport.new()
+			view.size = Vector2i(size * 2.0)
+			view.own_world_3d = true
+			root.add_child(view)
+			var pip := Stage.pip(Look.PEACH, outfit)
+			pip.facing_target = Preview.REST_YAW
+			pip.facing.rotation.y = Preview.REST_YAW
+			var camera := Stage.build(view, pip, outfit)
+			pip.advance_motion(Vector3.ZERO, 0.001, true)
+			var outside := 0
+			var points: Array[Vector3] = []
+			if pip._wearing != null:
+				var from_head: Transform3D = pip.head.global_transform
+				for point: Vector3 in _solid_points(pip, true): points.append(from_head * point)
+				for stars: Node in pip.find_children("Stars", "MeshInstance3D", true, false): points.append((stars as Node3D).global_position)
+			for point: Vector3 in points:
+				if not camera.is_position_in_frustum(point): outside += 1
+			_check(outside == 0, "%s stays inside the %dx%d view: %d points outside" % [id, size.x, size.y, outside])
+			view.free()
 
 ## A body item may change the body's shape: the same pose, carry point and
 ## steps as a plain pip, and the head never replaced.
