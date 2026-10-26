@@ -56,6 +56,7 @@ const WORLD_TEXT_PENDING := []
 const QUAD_USES := {
 	"res://presentation/seed_visual.gd": "the seed's soft glow halo",
 	"res://presentation/home_keepsake_display.gd": "the keepsake slot marks",
+	"res://presentation/kit/pip_wear_kit.gd": "a pip cosmetic's soft glow sprite",
 }## Chapters still being built in another session: reported, never failed.
 const ADVISORY_KEYS := []
 var checks := 0
