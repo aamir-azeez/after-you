@@ -32,6 +32,8 @@ import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
 import { checkedWithEnd, creditCommitted, pollenCapability } from "../pollen/routes";
 import type { PollenMember } from "../pollen/turn-facts";
+import { leaderboardsCapability } from "../leaderboards/routes";
+import { postFinishedRun } from "../leaderboards/submit";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -124,6 +126,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...platformCapability(request, env),
     ...displayNamesCapability(request, env),
     ...pollenCapability(request, env),
+    ...leaderboardsCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -352,7 +355,10 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       if (previous.value.receipt.request_hash !== await digest(canonicalJson({ operation, ...body }))) throw new ApiError(409, "idempotency_key_reused");
       // Hashing may yield after the first receipt projection. Campaign access
       // must still be current at the final read, including original device.
-      return json(context ? unwrap(await room.operation(playerId, key, context)) : previous.value);
+      if (context) return json(unwrap(await room.operation(playerId, key, context)));
+      // A retried final turn posts its run again; the board answers "known" when the first post arrived.
+      if (operation === "turns") await postFinishedRun(env, previous.value, context);
+      return json(previous.value);
     }
     if (previous.code !== "operation_not_found") unwrap(previous);
     if (storyGuard) unwrap(storyGuard);
@@ -365,5 +371,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request))));
   // Story rooms never earn; a standalone turn with `pollen` freezes its facts and is credited once.
   const committed = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined));
+  // A turn that finished a together run that might place goes to its board (leaderboards/submit.ts); the reply is unchanged.
+  await postFinishedRun(env, committed, context);
   return json(await creditCommitted(request, env, playerId, committed));
 }

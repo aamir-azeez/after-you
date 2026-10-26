@@ -40,6 +40,11 @@ export { PlatformLinks } from "./platform-links";
 import { routePlatform, routePlatformRestore } from "./platform-routes";
 export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
+export { LeaderboardBoard } from "./leaderboards/board";
+export { LeaderboardMember } from "./leaderboards/member";
+import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
+import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
+import { forgetLeaderboardPlayer } from "./leaderboards/members";
 
 /**
  * Every route under a room id except leave, which is already a quiet success for a room the caller has
@@ -94,6 +99,9 @@ export default {
       // Absent unless UPDATE_GATE_ENABLED is "true": the path then falls through to auth() as before.
       if (path === "/v1/app-status" && request.method === "GET" && flags.updateGate(env)) { await publicLimit(request, env); return json(appStatus(request, env)); }
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
+      if (path.startsWith(LEADERBOARD_OPERATOR_PREFIX)) { await publicLimit(request, env); return json(await routeLeaderboardOperator(request, path, env)); }
+      // Absent unless LEADERBOARDS_ENABLED is "true": a board read is public and cached, so it needs no Player request.
+      const board = await routeLeaderboardRead(request, path, env); if (board) return board;
       // Absent unless STORY_DRAIN_ENABLED is "true": the path then falls through to auth() as before.
       if (path.startsWith(DRAIN_PREFIX) && flags.storyDrain(env)) { await publicLimit(request, env); return json(await routeCampaignDrain(request, path, env)); }
       // Absent unless IOS_WAITLIST_ENABLED is "true": the path then falls through as before (OPTIONS 405, others to auth()).
@@ -146,6 +154,7 @@ export default {
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
       if (pollenRoute(path, env)) return json(await routePollen(request, path, playerId, env, pollenView));
+      const leaderboards = await routeLeaderboards(request, path, playerId, env); if (leaderboards !== null) return json(leaderboards);
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
@@ -193,6 +202,8 @@ export default {
       if (path === "/v1/identity" && request.method === "DELETE") {
         if (await env.SAFETY_PROFILES.getByName(playerId).deletionReceipt(playerId, await bearerDigest(request))) return json({ deleted: true });
         const deviceHash = await bearerDigest(request);
+        // The player's leaderboard settings and every board that holds their runs forget them first; a retried deletion runs it again.
+        await forgetLeaderboardPlayer(env, playerId);
         const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host),
           (link, id) => deleteCampaignIdentityLink(player, {
             erase: (owner, roomId, allocation) => env.ROOMS_V2.getByName(roomId).eraseCampaignRoot(owner, roomId, allocation),

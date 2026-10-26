@@ -2,6 +2,7 @@ import { ApiError, ID_PATTERN, boundedJson, isObject, unwrap, type Outcome } fro
 import { bearerDigest } from "./http";
 import { flags, type ServerVars } from "./flags";
 import { ROOM_INBOX_CONCURRENCY, pooled } from "./room-inbox";
+import { syncMemberName } from "./leaderboards/members";
 import { resolveFriendAlias } from "./friend-aliases";
 import { blockedName } from "./name-filter";
 
@@ -255,6 +256,8 @@ export async function routeDisplayName(request: Request, playerId: string, env: 
   // missed here drops the name at the player's next turn in it.
   if (outcome.ok && "cleared_rooms" in outcome && Array.isArray(outcome.cleared_rooms)) await clearRooms(env, playerId, outcome.cleared_rooms);
   const answer = unwrap(outcome);
+  // Boards that show this player's name take the new one (leaderboards/members.ts); best effort, like the rooms.
+  if (flags.leaderboards(env)) await syncMemberName(env, playerId).catch(() => undefined);
   return { schema_version: answer.schema_version, display_name: answer.display_name, revision: answer.revision };
 }
 
@@ -323,6 +326,8 @@ export async function routeDisplayNameOperator(request: Request, path: string, e
   const player = match[1];
   const rooms = unwrap(await env.PLAYERS.getByName(player).operatorClearDisplayName(player));
   const reached = await clearRooms(env, player, rooms);
-  if (reached.some(done => !done)) throw new ApiError(503, "display_name_clear_incomplete");
+  // Boards drop the name too, whatever the leaderboards flag says; a failure asks for the repeat this route allows.
+  const boards = await syncMemberName(env, player).then(() => true, () => false);
+  if (reached.some(done => !done) || !boards) throw new ApiError(503, "display_name_clear_incomplete");
   return { schema_version: 1, cleared: true, rooms: rooms.length };
 }

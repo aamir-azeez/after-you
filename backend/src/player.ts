@@ -1,4 +1,5 @@
 import { DurableObject } from "cloudflare:workers";
+import { playerStanding, type Standing } from "./leaderboards/standing";
 import { answerWhileBlank, openLazyStorage } from "./lazy-storage";
 import { flags } from "./flags";
 import { ApiError, ID_PATTERN, equalHash, fail, isObject, ok, randomToken, type Outcome } from "./protocol";
@@ -261,6 +262,8 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity();
     return identity && identity.player_id === owner && identity.state === "active" ? identity.display_name ?? null : null;
   }
+  /** Binding only (leaderboards/standing.ts): account age, shown name and partners for the ranking check. Reads only. */
+  leaderboardStanding(): Standing | null { return playerStanding(this.ctx.storage, this.identity()); }
   /** Binding only (operator clear-name): clears the name, locks new ones, and returns the v2 rooms that may hold a copy. */
   operatorClearDisplayName(owner: string): Outcome<string[]> {
     const identity = this.identity();
@@ -900,7 +903,7 @@ answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ autho
   creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
-  deletingWith: () => false, noteRoomIndex: () => undefined,
+  deletingWith: () => false, noteRoomIndex: () => undefined, leaderboardStanding: () => null,
   // A link that outlived its player: the restore route drops it.
   restoreLinked: () => fail(404, "identity_absent"), recoveryMatches: () => false,
   // No identity, so no socket: a hint is dropped and an upgrade (unreachable past auth()) is refused.

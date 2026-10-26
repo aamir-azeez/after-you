@@ -28,7 +28,7 @@ export async function meterRows<T>(stubs: Record<string, DurableObjectStub>, wor
   } finally { for (const undo of restore) await undo(); }
 }
 
-const NAMESPACES = ["PLAYERS", "ROOMS", "ROOMS_V2", "SAFETY_PROFILES", "PLATFORM_LINKS"] as const;
+const NAMESPACES = ["PLAYERS", "ROOMS", "ROOMS_V2", "SAFETY_PROFILES", "PLATFORM_LINKS", "LEADERBOARD_BOARDS", "LEADERBOARD_MEMBERS"] as const;
 /**
  * A copy of `base` whose Durable Object stubs count every RPC the Worker makes, by method name.
  * Calls one object makes to another inside the runtime use the runtime's own bindings and are not counted.

@@ -66,7 +66,9 @@
         "name": "PHOTO_TRANSFER_BUDGET",
         "class_name": "PhotoTransferBudget"
       },
-      { "name": "PLATFORM_LINKS", "class_name": "PlatformLinks" }
+      { "name": "PLATFORM_LINKS", "class_name": "PlatformLinks" },
+      { "name": "LEADERBOARD_BOARDS", "class_name": "LeaderboardBoard" },
+      { "name": "LEADERBOARD_MEMBERS", "class_name": "LeaderboardMember" }
     ]
   },
   "migrations": [
@@ -92,7 +94,8 @@
     },
     { "tag": "play-safety-v1", "new_sqlite_classes": ["SafetyProfile", "SafetyInbox"] },
     { "tag": "friend-room-events-v1", "new_sqlite_classes": ["FriendRoomEvents"] },
-    { "tag": "platform-links-v1", "new_sqlite_classes": ["PlatformLinks"] }
+    { "tag": "platform-links-v1", "new_sqlite_classes": ["PlatformLinks"] },
+    { "tag": "leaderboards-v1", "new_sqlite_classes": ["LeaderboardBoard", "LeaderboardMember"] }
   ],
   "ratelimits": [
     { "name": "TESTER_CODE_LIMITER", "namespace_id": "583705", "simple": { "limit": 5, "period": 60 } },
