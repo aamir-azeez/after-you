@@ -14,6 +14,17 @@ static func add_friend_sent(name: String) -> String:
 const CREATURE := "pip"
 const CREATURES := "pips"
 
+# Pip cosmetics (content/cosmetics/): each item's name.
+const COSMETIC_DAISY := "Daisy"
+const COSMETIC_SEASHELL := "Seashell"
+const COSMETIC_STRAW_HAT := "Straw hat"
+const COSMETIC_LANTERN := "Lantern"
+const COSMETIC_LIGHTHOUSE_LAMP := "Lighthouse lamp"
+const COSMETIC_TIDE := "Tide"
+const COSMETIC_GOLD_LEAF := "Gold leaf"
+const COSMETIC_EVERY_HARD := "Every Hard"
+const COSMETIC_TOP_TEN_RIBBON := "Top 10 ribbon"
+
 # Display names (services/display_names.gd, presentation/display_name_prompt.gd).
 const DISPLAY_NAME_ASK := "What's the name of your " + CREATURE + "?"
 const DISPLAY_NAME_ASK_NOTE := "Friends and room partners see it on rooms and replays."
