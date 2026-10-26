@@ -10,6 +10,7 @@ const DATA := {
 	"local_path": "user://sleeping-lighthouse-journey-v2.json",
 	"version_of": "sleeping-lighthouse@1",
 	"continues_earlier": ["res://services/lighthouse_migration.gd", "continuing_scene"],
+	"leads_picker": true,
 	"copy": {
 		"summary": PlayerCopy.LIGHTHOUSE_PREVIEW_D440E74DF0F5,
 		"completion": PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED,

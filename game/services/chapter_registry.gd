@@ -76,6 +76,10 @@ static func is_lighthouse(key: String) -> bool:
 static func solo_scene(key: String) -> String:
 	return str(_chapter(key).get("scene", ""))
 
+## Whether the pickers list the chapter first among its kind (a descriptor's leads_picker).
+static func leads_picker(key: String) -> bool:
+	return bool(_chapter(key).get("leads_picker", false))
+
 ## The scene a Solo card opens: the solo scene, or an earlier version's own
 ## screen while a journey there still continues (a descriptor's
 ## continues_earlier). Loaded, not preloaded: the named script reads this one.

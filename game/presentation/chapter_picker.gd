@@ -105,13 +105,15 @@ func set_entries(entries: Array[Dictionary], picture: Vector2) -> void:
 	for item: Dictionary in shown_order(entries): grid.add_child(_card(item,picture))
 	_fit()
 
-## The entries in the order their cards show: free chapters lead in the order
-## given; every Full Journey chapter follows, in the order given.
+## The entries in the order their cards show: free chapters lead; every Full
+## Journey chapter follows. Within each, chapters that lead the pickers
+## (Registry.leads_picker) come first, then the rest, each in the order given.
 static func shown_order(entries: Array[Dictionary]) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
 	for premium: bool in [false, true]:
-		for item: Dictionary in entries:
-			if bool(item.get("premium",false)) == premium: result.append(item)
+		for leads: bool in [true, false]:
+			for item: Dictionary in entries:
+				if bool(item.get("premium",false)) == premium and Registry.leads_picker(str(item.get("key",""))) == leads: result.append(item)
 	return result
 
 ## Completion ticks and the done tint from ChapterCompletion.chapters(); cards are

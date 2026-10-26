@@ -372,12 +372,13 @@ func _picker_structure(app: Node, viewport: SubViewport, scroll: ScrollContainer
 	var expected: Array[String] = []
 	for key: String in _solo_keys():
 		if not Chapters.descriptor(key).premium: expected.append(key)
+	expected.append(Chapters.LIGHTHOUSE_V2)
 	for key: String in _solo_keys():
-		if Chapters.descriptor(key).premium: expected.append(key)
+		if Chapters.descriptor(key).premium and key != Chapters.LIGHTHOUSE_V2: expected.append(key)
 	var order: Array[String] = []
 	if grid != null:
 		for card: Control in grid.get_children(): order.append(str(card.get_meta("chapter_key","")))
-	_check(order == expected,"Free chapters come first, then every Full Journey chapter in registry order"+context)
+	_check(order == expected,"Free chapters come first, then the Lighthouse leads every other Full Journey chapter in registry order"+context)
 	_check(grid != null and grid.columns == (2 if viewport.size.x >= 1280 else 1),"Chapters fill two columns on a landscape phone and one on a narrow screen"+context)
 	if grid == null: return
 	for card: Control in grid.get_children():

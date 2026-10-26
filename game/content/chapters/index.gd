@@ -89,6 +89,9 @@ const OPTIONAL := {
 	## while an earlier version's journey still continues in its own screen,
 	## or "" when none does (the Lighthouse @1: services/lighthouse_migration.gd).
 	"continues_earlier": [],
+	## true lists the chapter first among its kind (free or Full Journey) in
+	## every chapter picker. The registry order above is published, so it stays.
+	"leads_picker": false,
 }
 const REQUIRED := ["key", "family", "definition", "world", "scene", "local_path", "copy", "thumbnail", "server"]
 
