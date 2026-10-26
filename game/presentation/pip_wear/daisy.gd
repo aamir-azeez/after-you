@@ -1,8 +1,8 @@
 extends RefCounted
-## Daisy (hat): a white daisy with a small leaf, tucked in at the top of the
-## head on the side away from the leaf. Each petal sits on the head's own
-## curved surface, so none dips into the head; it stays clear of the eyes and
-## under a carried seed. One baked mesh, one draw call.
+## Daisy (hat): a flower and a small leaf on the head's upper corner across
+## from the leaf. Each part is placed on the head's surface (spirit_meshes
+## head_surface), clear of the eyes and a carried seed. One baked mesh, one
+## draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 

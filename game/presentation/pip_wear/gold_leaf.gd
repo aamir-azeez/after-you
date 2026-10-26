@@ -1,8 +1,8 @@
 extends RefCounted
-## Gold leaf (leaf): the leaf a little bigger and gold, with three small
-## sparkles and a soft glow beside it that twinkle at the idle rate. The
+## Gold leaf (leaf): the leaf drawn a little bigger and gold, with three
+## sparkles and a glow sprite beside it that twinkle at the idle rate. The
 ## sparkles and glow hang from the leaf, so they sway, turn and hide with it.
-## Draw calls: the leaf's own, the sparkles and the glow.
+## Draw calls: the leaf's own, the sparkles, the glow.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")

@@ -1,7 +1,7 @@
 extends RefCounted
-## Straw hat (hat): a flat straw sun hat with a coral band and a ribbon tail.
-## The leaf pokes up through the brim (its descriptor's "leaf_lift"). One
-## baked mesh, one draw call.
+## Straw hat (hat): brim, crown, band and ribbon tail on the head. The leaf
+## sits higher while it is worn (descriptor "leaf_lift"). One baked mesh, one
+## draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const STRAW := Color("e9cd8c")

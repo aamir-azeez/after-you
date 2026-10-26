@@ -1,10 +1,8 @@
 extends RefCounted
-## Lantern (hat): a curled stalk beside the leaf holds a little orange paper
-## lantern whose soft glow makes the pip easy to find in the darker chapters.
-## It hangs from the leaf, so it sways with it, clear of the eyes and the
-## carried seed. The glow is the paper's own (emissive) plus one small soft
-## sprite that sits on the lantern's outer side, so it never washes over the
-## head. Draw calls: the stalk and trim, the paper, the glow.
+## Lantern (hat): a stalk and a paper lantern hanging beside the leaf, under
+## the leaf so it sways with it, clear of the eyes and a carried seed. The
+## glow is the paper's emission plus one small sprite on the lantern's outer
+## side, away from the head. Draw calls: stalk and trim, paper, glow.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const GREEN := Color("5e9e45")

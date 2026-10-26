@@ -1,7 +1,6 @@
 extends RefCounted
-## Every Hard (leaf, earned): a little cap of snow on the leaf's tip, like the
-## Hard mark's peak. It hangs from the leaf, so it sways and hides with it.
-## One baked mesh, one draw call.
+## Every Hard (leaf, earned): a snow cap on the leaf's tip. It hangs from the
+## leaf. One baked mesh, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const SNOW := Color("f6f9ff")

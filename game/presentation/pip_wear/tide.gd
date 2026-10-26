@@ -1,11 +1,9 @@
 extends RefCounted
-## Tide (body): colour only, no new geometry. Two wavy lines of foam run round
-## the head, above and below the eyes, and under the low line the pip turns a
-## deeper shade of its own colour, as if it went paddling, with one more wavy
-## line of foam round the lower body. The head through the face shader's Tide
-## variant (spirit_face_tide.gdshader), the torso through
-## spirit_body_tide.gdshader, the feet through their material. The waves move
-## at the idle rate.
+## Tide (body): colour only, no geometry. The head through the face shader's
+## Tide variant (spirit_face_tide.gdshader: two foam lines, a deeper shade
+## below the low one), the torso through spirit_body_tide.gdshader (the deeper
+## shade and one foam line), the feet through a deeper material. The waves
+## move at the idle rate.
 const Primitives = preload("res://presentation/kit/primitives.gd")
 
 const SHADER = preload("res://presentation/spirit_face_tide.gdshader")

@@ -1,6 +1,6 @@
 extends RefCounted
-## Seashell (hat): a pink scallop clipped on beside the leaf: five ribs in a
-## cupped fan over a hinge with two little ears. One baked mesh, one draw call.
+## Seashell (hat): a scallop on the head's upper corner beside the leaf, five
+## ribs over a hinge. One baked mesh, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const RIB := Color("ea8a76")

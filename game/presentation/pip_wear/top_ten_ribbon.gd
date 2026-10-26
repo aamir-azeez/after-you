@@ -1,7 +1,7 @@
 extends RefCounted
-## Top 10 ribbon (hat, earned): a small blue prize rosette with a gold middle
-## and two tails, pinned at the head's front corner across from the leaf,
-## clear of the eyes. One baked mesh, one draw call.
+## Top 10 ribbon (hat, earned): a rosette with a gold middle and two tails
+## on the head's upper front corner across from the leaf, clear of the eyes.
+## One baked mesh, one draw call.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const BLUE := Color("4f7fc4")

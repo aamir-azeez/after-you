@@ -1,10 +1,9 @@
 extends RefCounted
-## Lighthouse lamp (hat, Special): a tiny lamp room in the lighthouse's slate
-## and brass, worn on the head across from the leaf, with a faint beam and a
-## light that slowly brightens and dims like the lighthouse breathing in its
-## sleep. The glow is the glass's own (emissive) plus one small soft sprite on
-## the lamp's outer side, so it never washes over the head. Draw calls: the
-## lamp, the glass, the glow, the beam. It moves at the idle rate.
+## Lighthouse lamp (hat, Special): a small slate and brass lamp on the head's
+## upper corner across from the leaf, with a faint beam. The glass's emission,
+## the glow sprite and the beam brighten and dim slowly at the idle rate. The
+## glow sprite sits on the lamp's outer side, away from the head. Draw calls:
+## lamp, glass, glow, beam.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const SLATE_DARK := Color("536979")
