@@ -1,6 +1,6 @@
 import { isObject } from "./protocol";
 import type { ServerVars } from "./flags";
-import { PRODUCT_PATTERN, productList, revenuecatRequest, reviewer, type PlayEntitlementConfig, type ProviderResult } from "./play-entitlement";
+import { PRODUCT_PATTERN, grantEnd, productList, revenuecatRequest, reviewer, type PlayEntitlementConfig, type ProviderResult } from "./play-entitlement";
 
 /**
  * Play plus App Store hosting check. entitlement.ts selects it only when
@@ -44,7 +44,8 @@ function subscribed(items: unknown[], store: "play_store" | "app_store", product
 }
 
 /** This policy is selected by server configuration, never a caller header. */
-export async function storeEntitlement(playerId: string, config: StoreEntitlementConfig): Promise<StoreEntitlementResult> {
+/** `onGrant`: as in entitlement.ts, the end of the first active Full Journey entitlement (Play's lookup, then the App Store's). */
+export async function storeEntitlement(playerId: string, config: StoreEntitlementConfig, onGrant?: (until: number) => void): Promise<StoreEntitlementResult> {
   if (!config.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(config.REVENUECAT_PROJECT_ID ?? "")) return { full_journey: false, status: "unconfigured" };
   const key = config.REVENUECAT_SECRET_KEY;
   const playLookup = config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID ?? "";
@@ -71,6 +72,11 @@ export async function storeEntitlement(playerId: string, config: StoreEntitlemen
   };
   const playGrant = grant(playLookup);
   const appGrant = grant(appLookup);
+  if (onGrant && active.ok) {
+    const lookup = playGrant === "active" ? playLookup : appGrant === "active" ? appLookup : null;
+    const entry = lookup === null ? undefined : active.items.find(item => isObject(item) && item.entitlement_id === lookup);
+    if (isObject(entry)) onGrant(grantEnd(entry.expires_at));
+  }
   // Without any Full Journey grant the host is plainly unpaid, whatever a store's product settings say.
   if (playGrant !== "active" && appGrant !== "active") return combine([playGrant, appGrant], playerId);
 

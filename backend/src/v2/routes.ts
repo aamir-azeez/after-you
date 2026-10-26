@@ -30,6 +30,8 @@ import { endReactionField, endReactionsWanted } from "./end-reactions";
 import { runReactionField, runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
+import { creditCommitted, paidUntil, pollenCapability } from "../pollen/routes";
+import type { PollenMember } from "../pollen/turn-facts";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -80,17 +82,19 @@ function roomLevel(request: Request): number { return request.headers.get("X-Aft
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
 export const MAX_JOIN_VERSIONS = 16;
 function requireEnabled(env: Env): void { if (!flags.v2Rooms(env)) throw new ApiError(503, "v2_mutations_disabled"); }
-async function reauthorize(request: Request, playerId: string, env: Env): Promise<void> {
+/** `fullJourneyUntil`: a Full Journey end the provider check just reported for this player, noted with the same call (pollen/routes.ts paidUntil). */
+async function reauthorize(request: Request, playerId: string, env: Env, fullJourneyUntil?: number): Promise<void> {
   // Provider I/O yields; recovery/deletion must revoke the old device before a new mutation.
-  if (!await env.PLAYERS.getByName(playerId).authorize(await bearerDigest(request))) throw new ApiError(401, "identity_unavailable");
+  if (!await env.PLAYERS.getByName(playerId).authorize(await bearerDigest(request), false, fullJourneyUntil)) throw new ApiError(401, "identity_unavailable");
 }
 
 /**
  * Called only after the shared Player authentication/rate limiter succeeds. `memberName` is the
  * caller's display name from auth() while display names are on (null when anonymous), else
  * undefined; creating, joining and turns pass it into the room call they already make.
+ * `pollen` is likewise the caller's Full Journey end while Pollen earning is on (pollen/routes.ts).
  */
-export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null): Promise<Response> {
+export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember): Promise<Response> {
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: flags.v2Rooms(env), recording_version: 2, simulation_version: 2,
@@ -119,6 +123,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...liveCapability(request, env),
     ...platformCapability(request, env),
     ...displayNamesCapability(request, env),
+    ...pollenCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -149,12 +154,18 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const previous = hardOff || chapterOff || selected.premium ? unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined)) : null;
     if (hardOff && !previous) throw new ApiError(503, "hard_mode_disabled");
     if (chapterOff && !previous) throw new ApiError(503, "chapter_creation_disabled");
-    if (selected.premium && !previous) { await requireHostAccess(playerId, env); await reauthorize(request, playerId, env); }
+    if (selected.premium && !previous) {
+      let until: number | undefined;
+      const access = await requireHostAccess(playerId, env, value => { until = value; });
+      const fresh = pollen === undefined ? undefined : paidUntil(access, until);
+      if (fresh !== undefined) pollen = { fj_until: fresh };
+      await reauthorize(request, playerId, env, fresh);
+    }
     const invite_code = newInvite();
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
     const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
     const link = intent.link;
-    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName)));
+    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
     requireEnabled(env);
@@ -165,7 +176,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), roomSettler(env)));
-    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName);
+    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName, pollen);
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.
@@ -348,8 +359,15 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (previous.code !== "operation_not_found") unwrap(previous);
     if (storyGuard) unwrap(storyGuard);
     // Access belongs to the room's host even when the guest is taking this turn.
-    await requireRoomHostAccess(room, snapshot.host_id, env);
-    await reauthorize(request, playerId, env);
+    let until: number | undefined;
+    const access = await requireRoomHostAccess(room, snapshot.host_id, env, value => { until = value; });
+    // Only the host's own answer is theirs to note, on the call this turn already makes.
+    const fresh = pollen === undefined || access === null || playerId !== snapshot.host_id ? undefined : paidUntil(access, until);
+    if (fresh !== undefined) pollen = { fj_until: fresh };
+    await reauthorize(request, playerId, env, fresh);
   }
-  return json(unwrap(operation === "turns" ? await room.commit(playerId, input, context, besideWanted(request, env, context), memberName) : await room.fork(playerId, input, context, await bearerDigest(request))));
+  if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request))));
+  // Story rooms never earn; a standalone turn with `pollen` freezes its facts and is credited once.
+  const committed = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined));
+  return json(await creditCommitted(request, env, playerId, committed));
 }

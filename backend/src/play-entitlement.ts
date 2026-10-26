@@ -15,6 +15,10 @@ export function reviewer(config: Pick<ServerVars, "REVENUECAT_REVIEWER_IDS">, pl
   const reviewers = commaList(config.REVENUECAT_REVIEWER_IDS);
   return reviewers.length <= 16 && reviewers.every(value => /^[A-Za-z0-9_-]{22}$/.test(value)) && reviewers.includes(playerId);
 }
+/** An active entitlement's end in ms: its expiry, or the latest Date for one with none (a lifetime unlock). */
+export function grantEnd(expiry: unknown): number {
+  return typeof expiry === "number" && Number.isSafeInteger(expiry) && expiry > 0 ? Math.min(expiry, 8_640_000_000_000_000) : 8_640_000_000_000_000;
+}
 /** Subscription states RevenueCat reports as still paid for, including the billing grace period. */
 const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 export type ProviderResult = { ok: true; status: number; value: unknown } | { ok: false; reason: string };
@@ -36,7 +40,8 @@ export async function revenuecatRequest(url: string, key: string, method = "GET"
 }
 
 /** This policy is selected by server configuration, never a caller header. */
-export async function playEntitlement(playerId: string, config: PlayEntitlementConfig): Promise<{ full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription"; entitlement?: "full_journey_play"; player_id?: string }> {
+/** `onGrant`: as in entitlement.ts, the active entitlement's end once it is found active. */
+export async function playEntitlement(playerId: string, config: PlayEntitlementConfig, onGrant?: (until: number) => void): Promise<{ full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription"; entitlement?: "full_journey_play"; player_id?: string }> {
   const environment = config.REVENUECAT_PLAY_ENVIRONMENT ?? "production";
   if (!config.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(config.REVENUECAT_PROJECT_ID ?? "") ||
       !/^entl[A-Za-z0-9_-]+$/.test(config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID ?? "") ||
@@ -55,6 +60,7 @@ export async function playEntitlement(playerId: string, config: PlayEntitlementC
   const grant = list.items.find(entry => isObject(entry) && entry.entitlement_id === config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID);
   if (!isObject(grant)) return { full_journey: false, status: list.next_page ? "unavailable" : "verified", ...(list.next_page ? { reason: "provider_incomplete_list" } : {}) };
   if (!(grant.expires_at === null || (typeof grant.expires_at === "number" && Number.isFinite(grant.expires_at) && grant.expires_at > Date.now()))) return { full_journey: false, status: "verified" };
+  onGrant?.(grantEnd(grant.expires_at));
   // Review access is an actual provider entitlement plus an operator-managed
   // exact identity allowlist. The allowlist alone never grants access.
   if (reviewer(config, playerId)) return { full_journey: true, status: "verified", access_source: "review_grant", entitlement: "full_journey_play", player_id: playerId };

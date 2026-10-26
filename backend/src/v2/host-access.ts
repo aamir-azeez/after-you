@@ -22,10 +22,11 @@ export function hostAccessRefusal(access: Entitlement): ApiError | null {
   return access.status === "verified" ? new ApiError(402, "host_unlock_required") : new ApiError(503, "entitlement_unavailable");
 }
 
-/** A direct provider check for the host, used wherever no room memo applies. */
-export async function requireHostAccess(hostId: string, env: Env): Promise<void> {
-  const refusal = hostAccessRefusal(await entitlement(hostId, env));
+/** A direct provider check for the host, used wherever no room memo applies. Answers the admitting check; `onGrant` as in entitlement(). */
+export async function requireHostAccess(hostId: string, env: Env, onGrant?: (until: number) => void): Promise<Entitlement> {
+  const access = await entitlement(hostId, env, onGrant), refusal = hostAccessRefusal(access);
   if (refusal) throw refusal;
+  return access;
 }
 
 /**
@@ -44,17 +45,20 @@ export type RoomHostAccess = {
   rememberHostAccess(host: string, verified: boolean): Promise<void>;
 };
 
-/** Same 402/503 answers as requireHostAccess; only the number of provider calls changes. */
-export async function requireRoomHostAccess(room: RoomHostAccess, hostId: string, env: Env): Promise<void> {
+/**
+ * Same 402/503 answers as requireHostAccess; only the number of provider calls changes. Answers the
+ * provider check that admitted the turn, or null when the room's memo (or the outage grace) did.
+ */
+export async function requireRoomHostAccess(room: RoomHostAccess, hostId: string, env: Env, onGrant?: (until: number) => void): Promise<Entitlement | null> {
   const age = await room.hostAccessAge(hostId);
-  if (age !== null && age < HOST_ACCESS_FRESH_MS) return;
-  const access = await entitlement(hostId, env), refusal = hostAccessRefusal(access);
+  if (age !== null && age < HOST_ACCESS_FRESH_MS) return null;
+  const access = await entitlement(hostId, env, onGrant), refusal = hostAccessRefusal(access);
   if (!refusal) {
     // Tester grants are read from the host's own record each time, so revoking one stays immediate.
     if (access.access_source !== "tester_grant") await room.rememberHostAccess(hostId, true);
-    return;
+    return access;
   }
   if (access.status === "verified") { if (age !== null) await room.rememberHostAccess(hostId, false); }
-  else if (access.status === "unavailable" && age !== null && age < HOST_ACCESS_OUTAGE_GRACE_MS) return;
+  else if (access.status === "unavailable" && age !== null && age < HOST_ACCESS_OUTAGE_GRACE_MS) return null;
   throw refusal;
 }

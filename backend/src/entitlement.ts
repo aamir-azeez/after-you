@@ -1,6 +1,6 @@
 import { isObject, readBounded } from "./protocol";
 import { flags, type ServerVars } from "./flags";
-import { playEntitlement } from "./play-entitlement";
+import { grantEnd, playEntitlement } from "./play-entitlement";
 import { storeEntitlement, type StoreEntitlementConfig } from "./store-entitlement";
 
 export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
@@ -15,14 +15,19 @@ export function makeProviderRequest(endpoint: string, key: string): Request {
     signal: AbortSignal.timeout(8000), redirect: "manual"
   });
 }
-export async function entitlement(playerId: string, env: RevenueCatConfiguration): Promise<Entitlement> {
+/**
+ * `onGrant`, when given, hears the end of the Full Journey entitlement RevenueCat reported active
+ * (ms; null ends, a lifetime unlock, as 8.64e15), before any later admission step. The answer itself
+ * never carries it, so every reply stays as it was. Pollen's room boost reads it (pollen/routes.ts paidUntil).
+ */
+export async function entitlement(playerId: string, env: RevenueCatConfiguration, onGrant?: (until: number) => void): Promise<Entitlement> {
   const base = { full_journey: false, environment: env.ENVIRONMENT, checked_at: new Date().toISOString() };
   if (env.PLAYERS) {
     const grant = await env.PLAYERS.getByName(playerId).storedTesterGrant(playerId);
     if (grant) return { ...base, full_journey: true, status: "verified", access_source: "tester_grant", entitlement: "full_journey", player_id: playerId };
   }
   if (env.REVENUECAT_VERIFICATION_MODE === "play_store")
-    return { ...base, ...(flags.appStoreEntitlements(env) ? await storeEntitlement(playerId, env) : await playEntitlement(playerId, env)) };
+    return { ...base, ...(flags.appStoreEntitlements(env) ? await storeEntitlement(playerId, env, onGrant) : await playEntitlement(playerId, env, onGrant)) };
   if (env.REVENUECAT_VERIFICATION_MODE && env.REVENUECAT_VERIFICATION_MODE !== "demo") return { ...base, status: "unconfigured" };
   if (!env.REVENUECAT_SECRET_KEY) return { ...base, status: "unconfigured" };
   const v2 = env.REVENUECAT_API_VERSION === "2";
@@ -44,7 +49,9 @@ export async function entitlement(playerId: string, env: RevenueCatConfiguration
       const entry = data.items.find(item => isObject(item) && item.entitlement_id === env.REVENUECAT_ENTITLEMENT_LOOKUP_ID);
       if (!isObject(entry)) return { ...base, status: data.next_page ? "unavailable" : "verified" };
       const expiry = entry.expires_at;
-      return { ...base, full_journey: expiry === null || (typeof expiry === "number" && Number.isFinite(expiry) && expiry > Date.now()), status: "verified" };
+      const active = expiry === null || (typeof expiry === "number" && Number.isFinite(expiry) && expiry > Date.now());
+      if (active) onGrant?.(grantEnd(expiry));
+      return { ...base, full_journey: active, status: "verified" };
     }
     if (!isObject(data) || !isObject(data.subscriber) || !isObject(data.subscriber.entitlements)) return { ...base, status: "unavailable", reason: "provider_invalid_subscriber" };
     const entry = data.subscriber.entitlements[env.REVENUECAT_ENTITLEMENT];
@@ -53,6 +60,7 @@ export async function entitlement(playerId: string, env: RevenueCatConfiguration
     const expiry = entry.expires_date;
     const active = Number.isFinite(purchaseTime) && purchaseTime <= Date.now() &&
       (expiry === null || (typeof expiry === "string" && Date.parse(expiry) > Date.now()));
+    if (active) onGrant?.(grantEnd(expiry === null ? null : Date.parse(expiry as string)));
     return { ...base, full_journey: active, status: "verified" };
   } catch { return { ...base, status: "unavailable", reason: "provider_request_or_decode_failed" }; }
 }
