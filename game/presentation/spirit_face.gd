@@ -26,8 +26,23 @@ var _eye_xy := Vector4.ZERO
 var _eye_squash := Vector2.ONE
 var _look_shift := Vector2.ZERO
 
-func _init(body: Color) -> void:
+## The body colour the face is drawn in.
+var body: Color
+
+func _init(body_color: Color) -> void:
+	body = body_color
 	material.shader = SHADER
+	_upload_all()
+
+## Draws the face with `shader` (SHADER, or a body cosmetic's variant of it,
+## which takes the same parameters) and sends every parameter again, so the
+## eyes stand exactly as they did. extra: the variant's own parameters.
+func set_shader(shader: Shader, extra: Dictionary = {}) -> void:
+	material.shader = shader
+	_upload_all()
+	for key: String in extra: material.set_shader_parameter(key, extra[key])
+
+func _upload_all() -> void:
 	material.set_shader_parameter("body_color", body)
 	material.set_shader_parameter("cream_color", Look.CREAM)
 	material.set_shader_parameter("pupil_color", Look.PUPIL)

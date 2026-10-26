@@ -163,7 +163,7 @@ func _test_strokes() -> void:
 		var inward := 1.0 if index == 0 else -1.0
 		_check(line.size() == 3 and (line[1].x - line[0].x) * inward > 0.0 and (line[1].x - line[2].x) * inward > 0.0, "Squeeze eye %d points at the face's middle" % index)
 
-## The shader's stroke distance (spirit_face.gdshader), for one eye's uniforms.
+## The shader's stroke distance (spirit_face.gdshaderinc), for one eye's uniforms.
 func _stroke_distance(eye: Dictionary, q: Vector2) -> float:
 	var s: Vector4 = eye.stroke
 	var c: Vector4 = eye.stroke_end
@@ -223,7 +223,7 @@ func _test_knocked_out() -> void:
 	_check(mirrored, "The two X eyes mirror each other")
 	# The other strokes still draw as before: one line each.
 	_check(Look.eye(Look.SLEEPY, 0).stroke_end.w == 1.0 and Look.eye(Look.SQUEEZE, 1).stroke_end.w == 1.0, "Sleepy and Squeeze stay single lines")
-	var code: String = load("res://presentation/spirit_face.gdshader").code
+	var code: String = load("res://presentation/spirit_face.gdshaderinc").code
 	_check(code.contains("stroke_end[i].w > 1.5") and code.contains("stroke[i].xy + stroke[i].zw - stroke_end[i].xy"), "The face shader draws the cross kind as the look describes it")
 
 ## Joy, the face a spirit makes as it sends the heart: closed ^ ^ arcs bowed
@@ -272,7 +272,7 @@ func _test_joy() -> void:
 		if expression == Look.JOY: continue
 		for index in range(2): only_joy = only_joy and Look.eye(expression, index).blush == Vector4.ZERO and not Look.eye_contours(expression, index).has("blush")
 	_check(only_joy, "Only Joy has cheeks")
-	var code: String = load("res://presentation/spirit_face.gdshader").code
+	var code: String = load("res://presentation/spirit_face.gdshaderinc").code
 	_check(code.contains("stroke_end[i].w > 2.5") and code.contains("blush[i].x > 0.0"), "The face shader draws the arc kind and the cheeks as the look describes them")
 	# On a spirit: Joy uploads its arcs and cheeks, and a change of face clears
 	# the cheeks.
