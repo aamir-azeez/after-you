@@ -28,6 +28,12 @@ static func head_surface(direction: Vector3) -> Array[Vector3]:
 	var point := unit * _reach(unit, Look.HEAD_HALF, Look.HEAD_POWER)
 	return [point, _normal(point, Look.HEAD_HALF, Look.HEAD_POWER)]
 
+## Where `point` (head space) lies against the head's surface: below 1
+## inside, 1 on it, above 1 outside.
+static func head_level(point: Vector3) -> float:
+	var half := Look.HEAD_HALF
+	return pow(absf(point.x / half.x), Look.HEAD_POWER) + pow(absf(point.y / half.y), Look.HEAD_POWER) + pow(absf(point.z / half.z), Look.HEAD_POWER)
+
 static func _cached(key: String, build: Callable) -> ArrayMesh:
 	if not _cache.has(key): _cache[key] = build.call()
 	return _cache[key]

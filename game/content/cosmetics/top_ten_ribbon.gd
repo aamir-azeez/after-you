@@ -7,5 +7,7 @@ const DATA := {
 	"tier": "earned",
 	"name": PlayerCopy.COSMETIC_TOP_TEN_RIBBON,
 	"art": "res://presentation/pip_wear/top_ten_ribbon.gd",
+	## The views pull back so the whole rosette shows.
+	"tall": true,
 	## A together run in a chapter board's all time top 10.
 }
