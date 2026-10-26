@@ -9,4 +9,5 @@ const DATA := {
 	"art": "res://presentation/pip_wear/straw_hat.gd",
 	## The leaf pokes up through the brim.
 	"leaf_lift": 0.075,
+	"tall": true,
 }
