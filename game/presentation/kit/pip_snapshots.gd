@@ -7,7 +7,8 @@ extends Node
 ## - request() answers at once from the cache, or queues the pip and calls
 ##   back when it is drawn. Requests for a pip already queued wait on the same
 ##   render: ten matching pips cost one.
-## - It draws at most one pip a frame, and skips a queued pip nobody waits for
+## - It draws at most one pip a frame (one finishes and the next starts in the
+##   same frame), and skips a queued pip nobody waits for
 ##   any more (a row scrolled away and freed).
 ## - The renderer is a node made under the root on the first request; with
 ##   nothing left to draw for IDLE_SECONDS it frees itself and its viewport.
@@ -23,8 +24,8 @@ const NODE_NAME := "PipSnapshots"
 
 const CACHE_SIZE := 64
 const IDLE_SECONDS := 2.0
-## A render with no frame drawn after this many frames is taken as it is
-## (no GPU, or a frame the system skipped).
+## A render with no frame drawn after this many frames is asked for again,
+## or, with no GPU, taken as a blank.
 const DRAW_WAIT_FRAMES := 3
 
 ## Drawn textures by key, oldest first.
@@ -47,6 +48,7 @@ var _drawing := ""
 var _waited := 0
 var _drawn := false
 var _idle := 0.0
+var _headless := DisplayServer.get_name() == "headless"
 
 ## The cache key for a pip: colour, outfit, pixel size and facing.
 static func key(color: Color, outfit: Dictionary, size: Vector2i, yaw: float) -> String:
@@ -103,8 +105,13 @@ static func _renderer() -> void:
 func _process(delta: float) -> void:
 	if not _drawing.is_empty():
 		_waited += 1
-		if _drawn or _waited >= DRAW_WAIT_FRAMES: _finish()
-		return
+		if not _drawn and _waited < DRAW_WAIT_FRAMES: return
+		if not _drawn and not _headless:
+			# A frame the system skipped: draw it again rather than keep a blank.
+			_waited = 0
+			_view.render_target_update_mode = SubViewport.UPDATE_ONCE
+			return
+		_finish()
 	var next := _next()
 	if next.is_empty():
 		_idle += delta
@@ -163,7 +170,7 @@ func _on_drawn() -> void:
 	if not _drawing.is_empty(): _drawn = true
 
 func _finish() -> void:
-	var image: Image = _view.get_texture().get_image() if is_instance_valid(_view) else null
+	var image: Image = _view.get_texture().get_image() if is_instance_valid(_view) and not _headless else null
 	var size: Vector2i = _specs[_drawing].size
 	if image == null or image.is_empty(): image = Image.create(maxi(size.x, 1), maxi(size.y, 1), false, Image.FORMAT_RGBA8)
 	_store(_drawing, ImageTexture.create_from_image(image))

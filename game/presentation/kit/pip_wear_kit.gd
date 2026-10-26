@@ -268,7 +268,7 @@ class Parts:
 
 	## Any primitive's triangles, placed by `frame` in the current frame.
 	func add(shape: Mesh, color: Color, frame: Transform3D) -> void:
-		var arrays := shape.get_mesh_arrays()
+		var arrays: Array = shape.surface_get_arrays(0)
 		var vertices: PackedVector3Array = arrays[Mesh.ARRAY_VERTEX]
 		var normals: PackedVector3Array = arrays[Mesh.ARRAY_NORMAL]
 		var indices: PackedInt32Array = arrays[Mesh.ARRAY_INDEX]

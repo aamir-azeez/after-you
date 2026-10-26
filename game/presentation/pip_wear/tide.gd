@@ -16,7 +16,7 @@ static func wear(look: RefCounted) -> void:
 	look.set_material(look.torso(), Primitives.shared_material(deep, 0.9))
 	var feet := Primitives.shared_material(deep.darkened(0.08), 0.9)
 	for foot: Node3D in look.feet(): look.set_material(look.foot_mesh(foot), feet)
-	look.animate(func(seconds: float) -> void: look.set_face_parameter(&"skin_phase", seconds * WAVE_SPEED))
+	look.animate(func(worn: RefCounted, seconds: float) -> void: worn.set_face_parameter(&"skin_phase", seconds * WAVE_SPEED))
 
 ## A shade deeper in the same hue: each channel raised to a power, so peach
 ## turns a warmer apricot and mint a deeper sea green, never brown or grey.

@@ -48,7 +48,7 @@ static func wear(look: RefCounted) -> void:
 	look.attach(head, beam)
 	var glow_material: StandardMaterial3D = glow.material_override
 	var beam_material: StandardMaterial3D = beam.material_override
-	look.animate(func(seconds: float) -> void:
+	look.animate(func(_worn: RefCounted, seconds: float) -> void:
 		var breath := 0.5 - 0.5 * cos(seconds * TAU / BREATH)
 		glass_material.emission_energy_multiplier = GLASS_ENERGY * (0.7 + 0.3 * breath)
 		glow_material.albedo_color.a = GLOW_STRENGTH * (0.6 + 0.4 * breath)

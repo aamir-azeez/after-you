@@ -33,7 +33,7 @@ static func wear(look: RefCounted) -> void:
 	glow.position = GLOW_AT
 	look.attach(follow, glow)
 	var material: StandardMaterial3D = glow.material_override
-	look.animate(func(seconds: float) -> void:
+	look.animate(func(_worn: RefCounted, seconds: float) -> void:
 		var twinkle := 0.5 + 0.5 * sin(seconds * TAU / TWINKLE)
 		stars.scale = Vector3.ONE * (0.85 + 0.3 * twinkle)
 		material.albedo_color.a = GLOW_STRENGTH * (0.75 + 0.25 * twinkle))

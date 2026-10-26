@@ -19,7 +19,8 @@ extends RefCounted
 ## - set_face(shader, extra): the head's own colours from a variant of the
 ##   face shader (spirit_face.gdshaderinc); the eyes and cheeks stay drawn by
 ##   the shared body of that shader.
-## - animate(step): step(seconds) poses the item's moving parts. It runs at the
+## - animate(step): step(look, seconds) poses the item's moving parts (look is
+##   this object, passed in so a step never holds it). It runs at the
 ##   idle card rate (ANIMATION_HZ) of the pip's own clock, so a replay, a still
 ##   snapshot and a live preview show the same thing at the same moment; under
 ##   Reduce motion it holds the first pose.
@@ -155,10 +156,11 @@ func advance(delta: float, reduced: bool) -> void:
 	_pose(_clock)
 
 func _pose(seconds: float) -> void:
-	var tick := floori(seconds * ANIMATION_HZ)
+	# A hair over, so a clock summed from many small steps lands on its tick.
+	var tick := floori(seconds * ANIMATION_HZ + 0.0001)
 	if tick == _tick: return
 	_tick = tick
-	for step: Callable in _steps: step.call(float(tick) / ANIMATION_HZ)
+	for step: Callable in _steps: step.call(self, float(tick) / ANIMATION_HZ)
 
 ## The nodes this outfit added (tests).
 func nodes() -> Array[Node]:
