@@ -20,19 +20,23 @@ import { DAY_MS, RATES, type Rates } from "./rates";
  *   grace period, an account hold or a tester or review grant (grant-provider.ts has its own status
  *   filter for that; the hosting check admits trials and testers). A due date with no cover while a
  *   subscription is in grace, on hold or about to renew waits; with none of those the anchor lapses,
- *   and the next paid cover starts a new anchor with the same count.
- * - A subscription new to this identity joins only after the global PollenClaims check (claims.ts).
- *   One that came from another identity (a store restore transfer) gives cover only from a month
- *   after it was seen to move, so the month in progress is never paid to both.
+ *   and the next paid cover starts a new anchor with the same count. A paid period that starts after
+ *   a gap in cover (a resume from a pause or an account hold) restarts that subscription's cover, so
+ *   the months in between are never paid (when a read saw the hold); the month that ends in recovery
+ *   is paid at the recovery.
+ * - Every read that may pay asks the global PollenClaims check (claims.ts) about each listed
+ *   subscription. One that came to this identity from another (a store restore transfer), or came
+ *   back after it moved away, gives cover only from a month after that move, so a month is never
+ *   paid to both identities, however often it moves.
  * - A refund: a subscription that ended before the end of the period it was paid through, with no
- *   other subscription carrying on from there (a plan switch), takes back each instalment it paid in
- *   that period and moves the count back by one for each.
+ *   other subscription already running from that end (a plan switch), takes back each instalment it
+ *   paid in that period and moves the count back by one for each.
  */
 export const SWITCH_GAP_MS = DAY_MS;
+/** A plan switch: the new subscription started this close to (or before) the old one's early end. A rebuy after a refund starts later. */
+export const CARRY_GAP_MS = 5 * 60_000;
 /** An end this much before the period's recorded end reads as a refund, not a store's rounding. */
 export const REFUND_MARGIN_MS = DAY_MS;
-/** A known subscription is claimed again when the last complete read is this old (it may have moved and come back). */
-export const RECLAIM_AFTER_MS = 35 * DAY_MS;
 /** With nothing to watch while a Full Journey end is noted (a lifetime unlock, another store), look again at most daily. */
 export const RETRY_MS = DAY_MS;
 /** Instalments one read may pay (catch-up after a long absence); the rest come on the next read. */
@@ -42,10 +46,16 @@ export const MAX_SUBS = 8;
 const MAX_TIME = 8_640_000_000_000_000;
 
 export type GrantStatus = "paid" | "trial" | "grace" | "hold" | "ended";
-/** One subscription as grant-provider.ts reads it. `access_until`: the end of its access while it gives any, else 0. */
-export type GrantSub = { id: string; status: GrantStatus; period_start: number; period_end: number; ends_at: number; renews: boolean; access_until: number };
-/** What this identity knows of a subscription: its cover runs [from, through); `claimed_at` is the PollenClaims answer's `since`. */
-export type SubRecord = { from: number; through: number; claimed_at: number };
+/**
+ * One subscription as grant-provider.ts reads it. `started_at`: when it first started (RevenueCat
+ * starts_at); `access_until`: the end of its access while it gives any, else 0.
+ */
+export type GrantSub = { id: string; status: GrantStatus; started_at: number; period_start: number; period_end: number; ends_at: number; renews: boolean; access_until: number };
+/**
+ * What this identity knows of a subscription: its cover runs [from, through); `claimed_at` is the
+ * PollenClaims answer's `since`; `held`: a read saw it paused or on hold since its last paid period.
+ */
+export type SubRecord = { from: number; through: number; claimed_at: number; held: boolean };
 export type GrantState = {
   schema_version: 1;
   /** Instalments ever paid to this identity, net of refunds. */
@@ -63,7 +73,14 @@ export type GrantState = {
   checked_at: number;
   /** The Lifetime thank-you was settled (paid, or refused as moved). */
   lifetime: boolean;
+  /** The newest instalment paid (or the Lifetime thank-you), for the wallet read: no ledger scan. */
+  latest: { key: string; amount: number; at: number } | null;
 };
+/**
+ * PollenClaims' answer for one subscription: `self` while it never moved to this identity from another
+ * (this identity was its first holder); `since`: when this identity became its holder. Both stay the
+ * same on every repeat, so a retried read plans the same.
+ */
 export type ClaimAnswer = { self: boolean; since: number };
 /** A paid instalment, as the ledger keeps it. */
 export type Instalment = { key: string; anchor: number; n: number; due: number; amount: number; step: number; sub: string };
@@ -91,17 +108,22 @@ export function anniversary(anchor: number, k: number): number {
 export const grantKey = (anchor: number, n: number) => `grant:${anchor}:${n}`;
 export const refundKey = (anchor: number, n: number) => `grantrefund:${anchor}:${n}`;
 export const LIFETIME_KEY = "grant:lifetime";
+/** PollenClaims keys: RevenueCat's subscription id, kept through renewals, and the Lifetime purchase id. */
+export const subscriptionClaimKey = (id: string) => `sub:${id}`;
+export const purchaseClaimKey = (id: string) => `purchase:${id}`;
 
 export function emptyGrant(): GrantState {
-  return { schema_version: 1, months: 0, anchor: 0, next: 0, live: false, lapsed_at: 0, renews: false, subs: {}, recheck_at: 0, retry_at: 0, checked_at: 0, lifetime: false };
+  return { schema_version: 1, months: 0, anchor: 0, next: 0, live: false, lapsed_at: 0, renews: false, subs: {}, recheck_at: 0, retry_at: 0, checked_at: 0, lifetime: false, latest: null };
 }
 
 export function validGrant(value: unknown): value is GrantState {
-  if (!isObject(value) || Object.keys(value).length !== 12 || value.schema_version !== 1) return false;
+  if (!isObject(value) || Object.keys(value).length !== 13 || value.schema_version !== 1) return false;
+  const latest = value.latest;
+  if (latest !== null && !(isObject(latest) && Object.keys(latest).length === 3 && typeof latest.key === "string" && /^grant:/.test(latest.key) && count(latest.amount, 1) && count(latest.at))) return false;
   if (!count(value.months, 0, 100_000) || !count(value.anchor) || !count(value.next, 0, 100_000) || typeof value.live !== "boolean" || !count(value.lapsed_at)) return false;
   if (typeof value.renews !== "boolean" || !count(value.recheck_at) || !count(value.retry_at) || !count(value.checked_at) || typeof value.lifetime !== "boolean") return false;
   if (!isObject(value.subs) || Object.keys(value.subs).length > MAX_SUBS) return false;
-  return Object.entries(value.subs).every(([id, sub]) => SUB_ID_PATTERN.test(id) && isObject(sub) && Object.keys(sub).length === 3 && count(sub.from) && count(sub.through) && count(sub.claimed_at));
+  return Object.entries(value.subs).every(([id, sub]) => SUB_ID_PATTERN.test(id) && isObject(sub) && Object.keys(sub).length === 4 && count(sub.from) && count(sub.through) && count(sub.claimed_at) && typeof sub.held === "boolean");
 }
 
 /**
@@ -122,12 +144,12 @@ export function grantDue(state: GrantState | null, fjUntil: number, now: number)
 const coverEnd = (state: GrantState) => Object.values(state.subs).reduce((end, sub) => Math.max(end, sub.through), 0);
 
 /**
- * The subscriptions a read needs the PollenClaims answer for: a paid one new to this identity, and,
- * when the last complete read is older than RECLAIM_AFTER_MS, every known one still listed.
+ * The subscriptions a read needs the PollenClaims answer for: each listed one that can give cover
+ * (paid, or a known one that ended and may still owe catch-up). Reads happen only when something is
+ * due, so this is about one PollenClaims request per subscriber per month (one request holds them all).
  */
-export function claimsNeeded(state: GrantState | null, subs: readonly GrantSub[], now: number): string[] {
-  const stale = state !== null && now - state.checked_at > RECLAIM_AFTER_MS;
-  return subs.filter(sub => state?.subs[sub.id] ? stale && (sub.status === "paid" || sub.status === "ended") : sub.status === "paid").map(sub => sub.id);
+export function claimsNeeded(state: GrantState | null, subs: readonly GrantSub[]): string[] {
+  return subs.filter(sub => sub.status === "paid" || (sub.status === "ended" && state?.subs[sub.id])).map(sub => sub.id);
 }
 
 /**
@@ -139,19 +161,24 @@ export function claimsNeeded(state: GrantState | null, subs: readonly GrantSub[]
 export function planGrant(prev: GrantState | null, subs: readonly GrantSub[], claims: Readonly<Record<string, ClaimAnswer>>, now: number,
   paidBy: (sub: string, from: number, to: number) => PaidInstalment[], lifetime: { claim: ClaimAnswer } | null = null, rates: Rates = RATES): GrantPlan {
   const state: GrantState = structuredClone(prev ?? emptyGrant());
-  // Cover from a subscription that moved here starts a month after the move was seen.
-  const moved = anniversary(now, 1);
-  // 1. What each subscription covers for this identity.
+  // 1. What each subscription covers for this identity. Cover from a subscription that moved here
+  // starts a month after the move (the claim's `since`), so the same answer on a retry plans the same.
   for (const sub of subs) {
     const known = state.subs[sub.id], claim = claims[sub.id];
     if (!known) {
       if (sub.status !== "paid" || !claim) continue;
-      state.subs[sub.id] = { from: claim.self ? sub.period_start : Math.max(sub.period_start, moved), through: paidTo(sub), claimed_at: claim.since };
+      state.subs[sub.id] = { from: claim.self ? sub.period_start : Math.max(sub.period_start, anniversary(claim.since, 1)), through: paidTo(sub), claimed_at: claim.since, held: false };
       continue;
     }
-    // Claimed again after a long gap: one that moved away and back in between covers only from a month on.
-    if (claim && (!claim.self || claim.since > known.claimed_at)) { known.from = Math.max(known.from, moved); known.claimed_at = claim.since; }
-    if (sub.status === "paid") known.through = Math.max(known.through, paidTo(sub));
+    // It moved away and came back since this identity last held it: cover only from a month after it came back.
+    if (claim && claim.since !== known.claimed_at) { known.from = Math.max(known.from, anniversary(claim.since, 1)); known.claimed_at = claim.since; }
+    if (sub.status === "hold") known.held = true;
+    if (sub.status !== "paid") continue;
+    // A resume from a pause or a hold that a read saw: the months in the gap are never covered. (A gap
+    // with no hold seen is a plan renewed while nobody read: those months are caught up.)
+    if (known.held && sub.period_start > known.through + SWITCH_GAP_MS) known.from = Math.max(known.from, sub.period_start);
+    known.held = false;
+    known.through = Math.max(known.through, paidTo(sub));
   }
   // Cover counts only from a subscription this read still lists for this App User ID: one moved away pays here no more.
   const listed = new Set(subs.map(sub => sub.id));
@@ -162,7 +189,8 @@ export function planGrant(prev: GrantState | null, subs: readonly GrantSub[], cl
     const known = state.subs[sub.id];
     if (!known || sub.status !== "ended") continue;
     const early = sub.ends_at + REFUND_MARGIN_MS < known.through;
-    const carried = covers().some(([id, other]) => id !== sub.id && other.from <= sub.ends_at + SWITCH_GAP_MS && other.through > sub.ends_at);
+    // A switch starts its new subscription at (or before) the old one's end; a rebuy after a refund starts later.
+    const carried = subs.some(other => other.id !== sub.id && state.subs[other.id] && other.started_at <= sub.ends_at + CARRY_GAP_MS && state.subs[other.id].through > sub.ends_at);
     if (early && !carried) {
       for (const paid of paidBy(sub.id, sub.period_start, known.through)) {
         refunds.push({ key: refundKey(paid.anchor, paid.n), refunds: paid.key, amount: paid.amount, sub: sub.id });

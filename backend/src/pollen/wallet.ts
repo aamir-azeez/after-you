@@ -327,10 +327,14 @@ export function applyLedger(storage: DurableObjectStorage, entries: readonly Led
   save(storage, wallet, now, rates);
   return fresh;
 }
-/** The ledger lines of one kind, newest first, with what each kept (for refunds and the grant's wallet line). */
-export function ledgerLines(storage: DurableObjectStorage, kind: string, limit = 64): { key: string; amount: number; at: number; detail: Record<string, unknown> }[] {
-  if (!present(storage)) return [];
-  return storage.sql.exec<{ claim_key: string; amount: number; created_at: number; data: string }>("SELECT claim_key,amount,created_at,data FROM pollen_claims WHERE kind=? ORDER BY created_at DESC, claim_key DESC LIMIT ?", kind, limit).toArray()
+/**
+ * The ledger lines whose key starts with `prefix` ("grant:"), read as a range of the primary key so
+ * no other line is scanned (for refunds of the grant).
+ */
+export function ledgerLines(storage: DurableObjectStorage, prefix: string, limit = 64): { key: string; amount: number; at: number; detail: Record<string, unknown> }[] {
+  if (!present(storage) || prefix.length === 0) return [];
+  const end = prefix.slice(0, -1) + String.fromCharCode(prefix.charCodeAt(prefix.length - 1) + 1);
+  return storage.sql.exec<{ claim_key: string; amount: number; created_at: number; data: string }>("SELECT claim_key,amount,created_at,data FROM pollen_claims WHERE claim_key>=? AND claim_key<? LIMIT ?", prefix, end, limit).toArray()
     .map(row => ({ key: row.claim_key, amount: row.amount, at: row.created_at, detail: (JSON.parse(row.data) as StoredClaim).detail ?? {} }));
 }
 /** Whether a ledger key is taken. */

@@ -1,8 +1,7 @@
 import { POLLEN_GRANT_TABLES } from "../storage-schema";
 import { RATES, type Rates } from "./rates";
-import { LIFETIME_KEY, anniversary, claimsNeeded, grantDue, ladder, planGrant, refundKey, validGrant, type ClaimAnswer, type GrantState, type PaidInstalment } from "./grant";
+import { LIFETIME_KEY, anniversary, claimsNeeded, grantDue, ladder, planGrant, purchaseClaimKey, refundKey, subscriptionClaimKey, validGrant, type ClaimAnswer, type GrantState, type PaidInstalment } from "./grant";
 import { applyLedger, fullJourneyUntil, inLedger, ledgerLines, noteFullJourney, type LedgerEntry } from "./wallet";
-import { purchaseClaimKey, subscriptionClaimKey } from "./claims";
 import type { GrantRead } from "./grant-provider";
 
 /**
@@ -11,8 +10,8 @@ import type { GrantRead } from "./grant-provider";
  *
  * 1. A date check on the stored state (grant.ts grantDue). Nothing is due: nothing else happens, no
  *    provider call and no write. A player who never subscribed has no state and no Full Journey end.
- * 2. Due: one RevenueCat read from inside this call (an outbound subrequest, not a DO request), and,
- *    for a subscription new to this identity, one PollenClaims request (claims.ts).
+ * 2. Due: one RevenueCat read from inside this call (an outbound subrequest, not a DO request), and
+ *    one PollenClaims request (claims.ts) for the listed subscriptions that can give cover.
  * 3. After those awaits, one synchronous transaction plans again from the state as stored now (another
  *    read may have paid in between), pays each instalment by its `grant:<anchor>:<n>` key through the
  *    wallet's ledger, takes back refunded ones, and saves the state. Two overlapping reads pay once.
@@ -65,7 +64,7 @@ function saveGrant(storage: DurableObjectStorage, state: GrantState): void {
 
 /** The instalments a subscription paid with due dates in [from, to) that no refund took back yet. */
 function paidBy(storage: DurableObjectStorage) {
-  return (sub: string, from: number, to: number): PaidInstalment[] => ledgerLines(storage, "grant", 512).flatMap(line => {
+  return (sub: string, from: number, to: number): PaidInstalment[] => ledgerLines(storage, "grant:", 512).flatMap(line => {
     const { anchor, n, due } = line.detail as { anchor?: unknown; n?: unknown; due?: unknown };
     if (line.detail.sub !== sub || typeof anchor !== "number" || typeof n !== "number" || typeof due !== "number" || due < from || due >= to || inLedger(storage, refundKey(anchor, n))) return [];
     return [{ key: line.key, amount: line.amount, anchor, n, due, sub }];
@@ -82,14 +81,15 @@ export async function settleGrant(storage: DurableObjectStorage, now: number, ac
   if (!grantDue(before, fjUntil, now)) return "not_due";
   const read = await deps.read(fjUntil >= LIFETIME_END && !before?.lifetime);
   if (!read.ok) { paused.set(storage, now + OUTAGE_PAUSE_MS); return "unavailable"; }
-  const keys = [...claimsNeeded(before, read.subs, now).map(subscriptionClaimKey), ...(read.lifetime && !before?.lifetime ? [purchaseClaimKey(read.lifetime.id)] : [])];
+  const keys = [...claimsNeeded(before, read.subs).map(subscriptionClaimKey), ...(read.lifetime && !before?.lifetime ? [purchaseClaimKey(read.lifetime.id)] : [])];
   const answers = keys.length ? await deps.claim(keys) : {};
   if (answers === null) { paused.set(storage, now + OUTAGE_PAUSE_MS); return "unavailable"; }
   const subClaims = Object.fromEntries(read.subs.filter(sub => answers[subscriptionClaimKey(sub.id)]).map(sub => [sub.id, answers[subscriptionClaimKey(sub.id)]]));
   const lifetimeClaim = read.lifetime ? answers[purchaseClaimKey(read.lifetime.id)] : undefined;
-  let waiting = false;
+  let waiting = false, alive = false;
   storage.transactionSync(() => {
     if (!active()) return;
+    alive = true;
     // Planned again from the state as stored now: what an overlapping read paid is never paid twice.
     const fresh = storedGrant(storage);
     const plan = planGrant(fresh, read.subs, subClaims, now, paidBy(storage), lifetimeClaim ? { claim: lifetimeClaim } : null, rates);
@@ -98,10 +98,13 @@ export async function settleGrant(storage: DurableObjectStorage, now: number, ac
       ...plan.pay.map(paid => ({ key: paid.key, kind: "grant", amount: paid.amount, detail: { anchor: paid.anchor, n: paid.n, due: paid.due, step: paid.step, sub: paid.sub } })),
       ...(plan.lifetime > 0 ? [{ key: LIFETIME_KEY, kind: "grant", amount: plan.lifetime, detail: { lifetime: true } }] : [])
     ];
-    applyLedger(storage, entries, now, rates);
+    const paid = applyLedger(storage, entries, now, rates).filter(entry => entry.amount > 0);
+    if (paid.length) plan.state.latest = { key: paid[paid.length - 1].key, amount: paid[paid.length - 1].amount, at: now };
     saveGrant(storage, plan.state);
     waiting = plan.state.live && anniversary(plan.state.anchor, plan.state.next) <= now;
   });
+  // An erasure that finished during the awaits leaves nothing to note on.
+  if (!alive) return "settled";
   if (waiting) paused.set(storage, now + WAIT_PAUSE_MS);
   // The read also refreshes the Full Journey end the room boost uses, but only ever later: a gift or
   // another entitlement this read does not count must not end a boost (refunds move it back in Phase 6).
@@ -114,9 +117,8 @@ export async function settleGrant(storage: DurableObjectStorage, now: number, ac
 export function grantView(storage: DurableObjectStorage, rates: Rates = RATES): GrantView | undefined {
   try {
     const state = storedGrant(storage);
-    if (state === null || (state.months === 0 && !state.lifetime)) return undefined;
-    const latest = ledgerLines(storage, "grant", 1)[0];
-    return { ...ladder(state, rates), ...(latest ? { latest: { key: latest.key, amount: latest.amount, at: latest.at } } : {}) };
+    if (state === null || state.latest === null) return undefined;
+    return { ...ladder(state, rates), latest: state.latest };
   } catch { return undefined; }
 }
 

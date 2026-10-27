@@ -50,7 +50,7 @@ export function grantSub(item: unknown, store: Store): GrantSub | null {
   if (start === null || typeof item.status !== "string") return null;
   const periodEnd = time(item.current_period_ends_at), endsAt = time(item.ends_at), end = Math.max(start, periodEnd ?? endsAt ?? start);
   const status: GrantStatus = item.status === "active" ? (item.gives_access === true ? "paid" : "hold") : STATUS[item.status] ?? "hold";
-  return { id: item.id, status, period_start: start, period_end: end, ends_at: Math.max(start, endsAt ?? end),
+  return { id: item.id, status, started_at: Math.min(start, time(item.starts_at) ?? start), period_start: start, period_end: end, ends_at: Math.max(start, endsAt ?? end),
     renews: item.auto_renewal_status !== "will_not_renew" && item.auto_renewal_status !== "will_pause",
     access_until: item.gives_access === true ? Math.max(end, endsAt ?? 0) : 0 };
 }

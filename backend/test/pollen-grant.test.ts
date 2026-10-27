@@ -17,24 +17,25 @@ import { countingEnv, meterRows } from "./meter";
 const DAY = 86_400_000, HOUR = 3_600_000;
 const at = (year: number, month: number, day: number, hour = 10) => Date.UTC(year, month - 1, day, hour);
 const iso = (ms: number) => new Date(ms).toISOString().slice(0, 10);
-const paid = (id: string, from: number, to: number, extra: Partial<GrantSub> = {}): GrantSub => ({ id, status: "paid", period_start: from, period_end: to, ends_at: to, renews: true, access_until: to, ...extra });
-const ended = (id: string, from: number, to: number, endsAt = to): GrantSub => ({ id, status: "ended", period_start: from, period_end: to, ends_at: endsAt, renews: false, access_until: 0 });
-const status = (id: string, kind: GrantSub["status"], from: number, to: number): GrantSub => ({ id, status: kind, period_start: from, period_end: to, ends_at: to, renews: true, access_until: kind === "hold" ? 0 : to });
+const paid = (id: string, from: number, to: number, extra: Partial<GrantSub> = {}): GrantSub => ({ id, status: "paid", started_at: from, period_start: from, period_end: to, ends_at: to, renews: true, access_until: to, ...extra });
+const ended = (id: string, from: number, to: number, endsAt = to, started = from): GrantSub => ({ id, status: "ended", started_at: started, period_start: from, period_end: to, ends_at: endsAt, renews: false, access_until: 0 });
+const status = (id: string, kind: GrantSub["status"], from: number, to: number): GrantSub => ({ id, status: kind, started_at: from, period_start: from, period_end: to, ends_at: to, renews: true, access_until: kind === "hold" ? 0 : to });
 
 /** One identity's grant, read after read, with the PollenClaims rules over a shared map of holders. */
 class Identity {
   state: GrantState | null = null;
   ledger: Instalment[] = [];
   refunded = new Set<string>();
-  constructor(private readonly holders: Map<string, { holder: string; since: number }>, private readonly name: string) {}
+  constructor(private readonly holders: Map<string, { holder: string; since: number; moved: boolean }>, private readonly name: string) {}
+  /** PollenClaims' rules (claims.ts), over a map shared by every identity. */
   private claim(id: string, now: number): ClaimAnswer {
     const row = this.holders.get(id);
-    if (row?.holder === this.name) return { self: true, since: row.since };
-    this.holders.set(id, { holder: this.name, since: now });
+    if (row?.holder === this.name) return { self: !row.moved, since: row.since };
+    this.holders.set(id, { holder: this.name, since: now, moved: !!row });
     return { self: !row, since: now };
   }
   read(subs: GrantSub[], now: number) {
-    const claims = Object.fromEntries(claimsNeeded(this.state, subs, now).map(id => [id, this.claim(id, now)]));
+    const claims = Object.fromEntries(claimsNeeded(this.state, subs).map(id => [id, this.claim(id, now)]));
     const plan = planGrant(this.state, subs, claims, now, (sub, from, to) => this.ledger
       .filter(each => each.sub === sub && each.due >= from && each.due < to && !this.refunded.has(each.key)).map(({ key, amount, anchor, n, due }) => ({ key, amount, anchor, n, due, sub })));
     for (const each of plan.pay) if (!this.ledger.some(other => other.key === each.key)) this.ledger.push(each);
@@ -131,7 +132,7 @@ describe("grant instalments", () => {
     expect(player.read([ended("m", ann(1), ann(2), refundAt), paid("n", back, anniversary(back, 1))], back + HOUR).pay.map(each => each.amount)).toEqual([4750]);
   });
   it("never pays a moved subscription's month twice: the new holder starts a month after the move, the old one stops", () => {
-    const holders = new Map<string, { holder: string; since: number }>();
+    const holders = new Map<string, { holder: string; since: number; moved: boolean }>();
     const first = new Identity(holders, "first"), second = new Identity(holders, "second");
     const anchor = at(2026, 6, 1), year = anniversary(anchor, 12);
     first.read([paid("s", anchor, year)], anchor + HOUR);
@@ -144,6 +145,60 @@ describe("grant instalments", () => {
     const later = second.read([paid("s", anchor, year)], anniversary(moveAt, 1) + HOUR);
     expect(later.pay.map(each => [each.anchor, each.amount])).toEqual([[anniversary(moveAt, 1), 4500]]);
     expect(first.ledger.length + second.ledger.length).toBe(2);
+  });
+  it("never pays one store month to two identities when a subscription is restored back and forth", () => {
+    const holders = new Map<string, { holder: string; since: number; moved: boolean }>();
+    const first = new Identity(holders, "first"), second = new Identity(holders, "second");
+    const t0 = at(2026, 6, 1), ann = (k: number) => anniversary(t0, k), sub = (k: number) => paid("s", ann(k), ann(k + 1));
+    first.read([sub(0)], t0 + HOUR);
+    second.read([sub(0)], t0 + DAY);
+    // Back to the first a day before its next due date, then to the second again just after it.
+    first.read([sub(1)], ann(1) + HOUR - 2 * DAY + 1);
+    const back = first.read([sub(1)], ann(1) + HOUR);
+    expect(back.pay).toEqual([]);
+    const again = second.read([sub(1)], ann(1) + 12 * HOUR);
+    expect(again.pay).toEqual([]);
+    // Over three months only the months each one held from a month on are paid, never one store month twice.
+    for (const k of [2, 3]) { first.read([], ann(k) + HOUR); second.read([sub(k)], ann(k) + 13 * HOUR); }
+    const dues = [...first.ledger, ...second.ledger].map(each => each.due).sort((a, b) => a - b);
+    expect(first.ledger.map(each => iso(each.due))).toEqual(["2026-06-01"]);
+    for (let index = 1; index < dues.length; index++) expect(dues[index] - dues[index - 1]).toBeGreaterThanOrEqual(28 * DAY);
+  });
+  it("plans the same on a retry: a moved subscription's answer never turns into the first holder's", () => {
+    const holders = new Map<string, { holder: string; since: number; moved: boolean }>();
+    const first = new Identity(holders, "first"), anchor = at(2026, 6, 1), year = anniversary(anchor, 12);
+    first.read([paid("s", anchor, year)], anchor + HOUR);
+    const lost = new Identity(holders, "second"), moveAt = anchor + 10 * DAY;
+    lost.read([paid("s", anchor, year)], moveAt);
+    // The first read's save was lost: a fresh identity state asks again and still waits a month.
+    const retry = new Identity(holders, "second");
+    expect(retry.read([paid("s", anchor, year)], moveAt + HOUR).pay).toEqual([]);
+    expect(retry.state!.subs.s.from).toBe(anniversary(moveAt, 1));
+  });
+  it("pays no month while paused or on hold, and the month that ends in recovery at the recovery", () => {
+    const player = fresh(), anchor = at(2026, 1, 5), ann = (k: number) => anniversary(anchor, k);
+    player.read([paid("m", ann(0), ann(1))], ann(0) + HOUR);
+    player.read([paid("m", ann(1), ann(2))], ann(1) + HOUR);
+    expect(player.read([status("m", "hold", ann(2), ann(3))], ann(2) + HOUR).pay).toEqual([]);
+    expect(player.read([status("m", "hold", ann(2), ann(3))], ann(3) + HOUR).pay).toEqual([]);
+    const resume = at(2026, 4, 20);
+    const resumed = player.read([paid("m", resume, anniversary(resume, 1))], resume + HOUR);
+    expect(resumed.pay.map(each => [each.anchor, each.amount])).toEqual([[resume, 5000]]);
+    expect(player.state!.months).toBe(3);
+  });
+  it("still catches up a monthly plan that renewed while nobody read it", () => {
+    const player = fresh(), anchor = at(2026, 1, 5), ann = (k: number) => anniversary(anchor, k);
+    player.read([paid("m", ann(0), ann(1))], ann(0) + HOUR);
+    const late = player.read([paid("m", ann(3), ann(4))], ann(3) + HOUR);
+    expect(late.pay.map(each => each.n)).toEqual([2, 3, 4]);
+  });
+  it("takes back a refunded month even when a new plan is bought soon after: only a switch carries on", () => {
+    const player = fresh(), anchor = at(2026, 1, 5), ann = (k: number) => anniversary(anchor, k);
+    player.read([paid("a", ann(0), ann(1))], ann(0) + HOUR);
+    const refundAt = ann(0) + 3 * DAY, rebuy = refundAt + 2 * HOUR;
+    const read = player.read([ended("a", ann(0), ann(1), refundAt), paid("b", rebuy, anniversary(rebuy, 1))], rebuy + HOUR);
+    expect(read.refunds.map(each => each.refunds)).toEqual([`grant:${anchor}:1`]);
+    expect(player.state!.months).toBe(0);
   });
   it("pays the Lifetime thank-you once, and only to the identity that first held the purchase", () => {
     expect(planGrant(null, [], {}, at(2026, 1, 1), () => [], { claim: { self: true, since: 1 } }).lifetime).toBe(4500);
@@ -159,7 +214,7 @@ describe("when the grant reads RevenueCat", () => {
     expect(grantDue(null, 0, now)).toBe(false);
     expect(grantDue(null, now - DAY, now)).toBe(false);
     expect(grantDue(null, now + DAY, now)).toBe(true);
-    const live: GrantState = { ...emptyGrant(), anchor: at(2026, 6, 1), next: 1, live: true, renews: true, months: 1, subs: { m: { from: at(2026, 6, 1), through: at(2026, 7, 1), claimed_at: 1 } } };
+    const live: GrantState = { ...emptyGrant(), anchor: at(2026, 6, 1), next: 1, live: true, renews: true, months: 1, subs: { m: { from: at(2026, 6, 1), through: at(2026, 7, 1), claimed_at: 1, held: false } } };
     expect(grantDue(live, at(2026, 7, 1), now)).toBe(false);
     expect(grantDue(live, at(2026, 7, 1), at(2026, 7, 1, 11))).toBe(true);
     // A cancelled plan stops after its paid period.
@@ -210,6 +265,8 @@ const monthly = (start = DUE - HOUR): GrantSub => paid("sub_settle", start, anni
 async function inPlayer<T>(work: (storage: DurableObjectStorage) => Promise<T>): Promise<T> {
   return runInDurableObject(env.PLAYERS.getByName("grant-" + serial), async (_, state) => work(state.storage));
 }
+/** The test env with the Pollen secret PollenClaims derives its holder key from. */
+const keyed = () => ({ ...env, POLLEN_SECRET: "synthetic-pollen-secret-for-tests-only-0001" }) as unknown as Env;
 const self = async (keys: string[]) => Object.fromEntries(keys.map(key => [key, { self: true, since: DUE }]));
 
 describe("settling the grant in the Player", () => {
@@ -261,7 +318,7 @@ describe("settling the grant in the Player", () => {
   });
   it("is refused by PollenClaims for a subscription another identity holds", async () => {
     const holder = "H".repeat(22), mover = "M".repeat(22), sub = monthly();
-    const deps = (player: string): GrantDeps => ({ read: async () => ({ ok: true, subs: [sub], lifetime: null }), claim: keys => claimFor(env, player, keys, DUE) });
+    const deps = (player: string): GrantDeps => ({ read: async () => ({ ok: true, subs: [sub], lifetime: null }), claim: keys => claimFor(keyed(), player, keys, DUE) });
     serial++;
     await inPlayer(async storage => { noteFullJourney(storage, DUE + 20 * DAY, DUE); await settleGrant(storage, DUE, () => true, deps(holder)); expect(walletView(storage, DUE).balance).toBe(4500); });
     serial++;
@@ -271,7 +328,11 @@ describe("settling the grant in the Player", () => {
       expect(walletView(storage, DUE).balance).toBe(0);
       expect(storedGrant(storage)!.subs.sub_settle.from).toBe(anniversary(DUE, 1));
     });
-    // The holder record names nobody: only a hash of the player id is kept.
+    // Asked again (a retry after a lost save), the mover still gets a moved answer with the same time.
+    const twice = [await claimFor(keyed(), mover, ["sub:sub_settle"], DUE + HOUR), await claimFor(keyed(), mover, ["sub:sub_settle"], DUE + 2 * HOUR)];
+    expect(twice[0]).toEqual(twice[1]);
+    expect(twice[0]!["sub:sub_settle"].self).toBe(false);
+    // The holder record names nobody: only a keyed hash of the player id is kept.
     const rows = await runInDurableObject(env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT), async (_, state) => state.storage.sql.exec<{ holder: string }>("SELECT holder FROM pollen_claims_held").toArray());
     expect(rows).toHaveLength(1);
     expect(rows[0].holder).toMatch(/^[a-f0-9]{64}$/);
@@ -321,7 +382,7 @@ describe("the grant through the wallet read", () => {
     const player = await create();
     expect(await (await call("/v2/capabilities", "GET", player)).json()).toMatchObject({ pollen_version: 1, pollen_grant_version: 1 });
   });
-  it("pays an instalment on auth's own Player call: one PollenClaims request for a new subscription, then none a month later", async () => {
+  it("pays an instalment on auth's own Player call: one PollenClaims request a month, writing only for a new subscription", async () => {
     const player = await create(), start = Date.now() - HOUR;
     items = [subscription(start)];
     await subscribe(player, anniversary(start, 1));
@@ -335,13 +396,14 @@ describe("the grant through the wallet read", () => {
     const again = await meterRows(stubs, async () => (await call("/v1/pollen", "GET", player)).json<Wallet>());
     expect(providerCalls).toBe(1);
     expect(again.rows.player.written + again.rows.claims.written + again.rows.claims.read).toBe(0);
-    // A month on, renewed: one provider read, no PollenClaims request.
+    // A month on, renewed: one provider read and one PollenClaims read that writes nothing.
     offset = anniversary(start, 1) - start + HOUR;
     items = [subscription(anniversary(start, 1))];
     const month = await meterRows(stubs, async () => (await call("/v1/pollen", "GET", player)).json<Wallet>());
     expect(month.value).toMatchObject({ balance: 4500 + 4750, grant: { months: 2, next: 5000 } });
     expect(providerCalls).toBe(2);
-    expect(month.rows.claims.read + month.rows.claims.written).toBe(0);
+    expect(month.rows.claims.written).toBe(0);
+    expect(month.rows.claims.read).toBeGreaterThan(0);
     console.log("grant rows", JSON.stringify({ first: first.rows, again: again.rows, month: month.rows }));
     // First: claim row, wallet row, grant row (plus the tables); PollenClaims: one holder row.
     expect(first.rows.claims.written).toBeGreaterThanOrEqual(1);

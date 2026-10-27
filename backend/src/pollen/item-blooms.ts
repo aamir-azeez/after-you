@@ -28,6 +28,9 @@ export type ItemBloomRoll = { roll: number; pick: number; tier: string | null };
 /** What a drop gave: an item, or its tier's price when nothing in the tier is left to drop. */
 export type ItemBloom = { tier: string; roll: number } & ({ item_id: string } | { pollen: number });
 
+// Every tier a roll can drop pays its catalogue price when nothing is left to drop, so each needs one.
+for (const step of RATES.item_blooms.tiers) if (!((CATALOG.tier_prices[step.tier] ?? 0) > 0)) throw new Error("invalid_item_bloom_tier: " + step.tier);
+
 const u32 = (bytes: Uint8Array, at: number) => ((bytes[at] << 24) >>> 0) + (bytes[at + 1] << 16) + (bytes[at + 2] << 8) + bytes[at + 3];
 
 export function itemBloomMessage(slot: BloomSlot): string {

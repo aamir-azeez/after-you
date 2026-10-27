@@ -14,6 +14,8 @@ export const KEY_LABELS = Object.freeze({
   bloom: "pollen-bloom-v1",
   /** Item blooms (pollen/item-blooms.ts). */
   itemBloom: "item-bloom-v1",
+  /** The holder of a store purchase in PollenClaims (pollen/claims.ts), so no row there names a player. */
+  claims: "pollen-claims-v1",
   /** The RevenueCat webhook token (Phase 6). Reserved; nothing derives it yet. */
   webhook: "revenuecat-webhook-v1"
 } as const);
