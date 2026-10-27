@@ -10,4 +10,8 @@ The pinned package is used for bounded JPEG validation. Synthetic tests also use
 
 Source and license provenance: [jpeg-js repository](https://github.com/jpeg-js/jpeg-js), installed npm package `jpeg-js@0.4.4` (`LICENSE`, `lib/decoder.js`, `lib/encoder.js` and `README.md`), and [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0.txt).
 
+## Name filter word lists
+
+Some entries in the display name filter list, `game/content/display_name_blocklist.json`, were taken and adapted from three MIT-licensed word lists: [profanity-list](https://github.com/dsojevic/profanity-list) (Copyright (c) 2021 David Sojevic), [cuss](https://github.com/words/cuss) (Copyright (c) 2016 Titus Wormer) and [obscenity](https://github.com/jo3-l/obscenity) (Copyright © 2025 Joseph Liu). The Worker bundles that list. The exact notices are in [game/assets/licenses/name-filter-word-lists-MIT.txt](../game/assets/licenses/name-filter-word-lists-MIT.txt).
+
 These backend dependency notices are separate from the native Android app's in-app license catalog.
