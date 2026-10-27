@@ -55,6 +55,8 @@ var partner_name_sink: Callable
 ## (room_id: String, recording_hash: String, pollen: Variant) -> void: an accepted turn's Pollen
 ## credit that came beside its reply (null when none came, as after a reconcile).
 var pollen_sink: Callable
+## (room_id: String) -> void: this player saw the room's chapter finished (a read of a finished room).
+var pollen_finished_sink: Callable
 var restore_replay_transfer: Callable
 var recover_replay_operation: Callable
 var _replay_recovering := false
@@ -439,6 +441,8 @@ func refresh() -> bool:
 	if accepted:
 		_note_end_reactions(response)
 		_note_partner_name(response)
+		# A finished room: its first clear waits to be claimed, unless this player's own turn finished it.
+		if chapter_complete() and pollen_finished_sink.is_valid(): pollen_finished_sink.call(_room)
 	return accepted
 
 
@@ -696,7 +700,7 @@ func _accept_sent(response: Dictionary) -> bool:
 		_note_end_reactions(response)
 		_note_partner_name(response)
 		# The turn's Pollen credit (rooms_api.gd takes it out of the reply), or none to claim later.
-		if turn and not recording_hash.is_empty() and pollen_sink.is_valid(): pollen_sink.call(_room, recording_hash, response.get("pollen"))
+		if turn and not recording_hash.is_empty() and pollen_sink.is_valid(): pollen_sink.call(_room, recording_hash, response.get("pollen"), chapter_complete())
 	return accepted
 
 func _recover_transferred_pending() -> Dictionary:

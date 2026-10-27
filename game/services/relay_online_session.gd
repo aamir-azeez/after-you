@@ -664,6 +664,7 @@ func _ordinary_coordinator() -> RefCounted:
 	result.accepted_pair_cache = accepted_pair_cache
 	result.partner_name_sink = _note_partner_name
 	result.pollen_sink = _note_pollen
+	result.pollen_finished_sink = _note_finished_room
 	result.restore_replay_transfer = restore_complete_replay
 	result.recover_replay_operation = recover_transferred_operation
 	return result
@@ -1210,12 +1211,23 @@ func _note_partner_name(partner: String, name: Variant, room: String) -> void:
 ## An accepted turn's Pollen credit: a confirmed receipt is kept for its results
 ## line; a turn whose credit did not come back confirmed waits to be claimed
 ## (services/pollen_client.gd). Nothing while the server has Pollen off.
-func _note_pollen(room: String, recording_hash: String, pollen: Variant) -> void:
+## The turn that finished a chapter pays this player's first clears with it (its
+## receipt, or its claim), so that room never needs a clear claim of its own.
+func _note_pollen(room: String, recording_hash: String, pollen: Variant, finished: bool = false) -> void:
 	var scope := nickname_scope()
 	var store: RefCounted = PollenWallet.shared()
 	if scope.is_empty() or not store.enabled(str(scope.server), str(scope.owner)): return
+	if finished: store.mark_cleared(str(scope.server), str(scope.owner), "room:" + room)
 	if store.note_receipt(str(scope.server), str(scope.owner), room, recording_hash, pollen): return
 	store.queue_claim(str(scope.server), str(scope.owner), room, recording_hash)
+
+## A room this player saw finished by the other player: its first clear waits to be claimed,
+## so a partner credit that did not land when the chapter finished is recovered.
+func _note_finished_room(room: String) -> void:
+	var scope := nickname_scope()
+	var store: RefCounted = PollenWallet.shared()
+	if scope.is_empty() or not store.enabled(str(scope.server), str(scope.owner)): return
+	if store.queue_clear(str(scope.server), str(scope.owner), "room:" + room) and pollen_flush.is_valid(): pollen_flush.call()
 
 ## The server pays Pollen for turns (services/pollen_wallet.gd).
 func pollen_supported() -> bool:

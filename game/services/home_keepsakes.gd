@@ -160,6 +160,16 @@ func earned_descriptors() -> Array[Dictionary]:
 		result.append(item)
 	return result
 
+## Level ids of chapters whose every place this player has earned solo: the chapters
+## finished solo, for their Pollen first clears (services/pollen_client.gd).
+func solo_finished_levels() -> Array[String]:
+	_ensure_loaded()
+	var levels: Array[String] = []
+	for chapter: String in Catalog.CHAPTERS:
+		var level := chapter.get_slice("@", 0)
+		if not level in levels and _chapter_earned(chapter, "solo"): levels.append(level)
+	return levels
+
 func reconcile_solo(legacy_replays: Dictionary = {}) -> bool:
 	_ensure_loaded()
 	if read_only: return false

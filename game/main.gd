@@ -328,6 +328,7 @@ func _ready() -> void:
 	api.base_url=str(config.get("api_base_url",""))
 	add_child(api)
 	pollen_client=PollenClient.new(api,_names_scope)
+	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.
 	if NativeFiles.durable_available(): RoomsApi.history_supported = HistoryStore.new().self_test()
