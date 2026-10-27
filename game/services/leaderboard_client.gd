@@ -5,8 +5,9 @@ extends RefCounted
 ##   VIEW_KEEP_MS, so moving between chapters asks the server once each.
 ## - the name choice ("Show my name on leaderboards", off by default): kept on
 ##   the phone and sent with PUT /v1/leaderboards/me. A choice the server has
-##   not taken yet stays pending and goes again on the next sync(); with
-##   nothing pending, sync() reads the server's, so a reinstall shows it right.
+##   not taken yet stays pending and goes again on the next sync(). With
+##   nothing pending, sync() reads the server's once per install (so a
+##   reinstall shows it right) and otherwise asks nothing.
 ## - report(): POST .../entries/<entry>/report.
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
@@ -21,7 +22,7 @@ var _api: Node
 var _owner: String
 var _choice_path := CHOICE_PATH
 var _views: Dictionary = {}
-## {show, pending} for this player.
+## {show, pending, synced} for this player.
 var _choice: Dictionary = {}
 
 static var _shared: RefCounted
@@ -54,23 +55,24 @@ func show_name() -> bool:
 
 ## Saves the choice on the phone at once and sends it; true when kept.
 func set_show_name(show: bool) -> bool:
-	_choice = {"show": show, "pending": true}
+	_choice = {"show": show, "pending": true, "synced": bool(_choice.get("synced", false))}
 	var kept := _write_choice()
 	sync()
 	return kept
 
-## Sends a pending choice, or reads the server's when none is pending.
+## Sends a pending choice, or reads the server's when this install never has.
 func sync() -> void:
 	if _owner.is_empty(): return
 	var sending: Dictionary = _choice.duplicate()
 	var response: Dictionary
 	if sending.get("pending", false): response = await _api.request_json(HTTPClient.METHOD_PUT, ME, {"schema_version": 1, "show_name": bool(sending.show)})
-	else: response = await _api.request_json(HTTPClient.METHOD_GET, ME)
+	elif not sending.get("synced", false): response = await _api.request_json(HTTPClient.METHOD_GET, ME)
+	else: return
 	var data: Variant = response.get("data")
 	if not response.get("ok", false) or not data is Dictionary or not data.get("show_name") is bool: return
 	# A newer choice made while this one was out stays pending.
 	if _choice.get("pending", false) and _choice.show != sending.get("show"): return
-	_choice = {"show": data.show_name, "pending": false}
+	_choice = {"show": data.show_name, "pending": false, "synced": true}
 	_write_choice()
 
 ## {ok} for a report of a ranked run.
@@ -100,8 +102,9 @@ static func _entry(value: Variant) -> bool:
 func _read_choice() -> Dictionary:
 	var text := AtomicFile.read_text(_choice_path)
 	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
-	if parsed is Dictionary and parsed.get(_owner) is Dictionary and parsed[_owner].get("show") is bool and parsed[_owner].get("pending") is bool: return parsed[_owner].duplicate()
-	return {"show": false, "pending": false}
+	if parsed is Dictionary and parsed.get(_owner) is Dictionary and parsed[_owner].get("show") is bool and parsed[_owner].get("pending") is bool:
+		return {"show": parsed[_owner].show, "pending": parsed[_owner].pending, "synced": parsed[_owner].get("synced", false) == true}
+	return {"show": false, "pending": false, "synced": false}
 
 func _write_choice() -> bool:
 	if _owner.is_empty(): return false

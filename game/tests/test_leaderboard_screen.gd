@@ -103,6 +103,9 @@ func _choice() -> void:
 	api.requests.clear()
 	await again.sync()
 	_check(api.requests.size() == 1 and api.requests[0][0] == "PUT" and api.requests[0][2] == {"schema_version": 1, "show_name": false}, "the pending choice goes on the next sync: %s" % [api.requests])
+	api.requests.clear()
+	await again.sync()
+	_check(api.requests.is_empty(), "once taken and read, a sync asks nothing: %s" % [api.requests])
 	api.queue_free()
 
 func _screen() -> void:
