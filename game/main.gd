@@ -48,6 +48,7 @@ const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
 const PollenClient = preload("res://services/pollen_client.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrantCard = preload("res://presentation/pollen_grant_card.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
@@ -342,6 +343,8 @@ func _ready() -> void:
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
 	# Only a phone with Full Journey reads the wallet for the monthly grant; each flush may bring a card.
 	pollen_client.subscribed=_full_journey_access
+	# An item bloom's item is owned at once in the wardrobe.
+	PollenWallet.shared().item_dropped.connect(Wardrobe.shared().note_drop)
 	pollen_client.settled.connect(func() -> void: grant_card_check=true)
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.

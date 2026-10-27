@@ -23,7 +23,6 @@ extends RefCounted
 ## then asks the server for the wallet again, so nothing is lost.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
-const Wardrobe = preload("res://services/wardrobe.gd")
 
 const PATH := "user://pollen_wallet.json"
 const VERSION := 1
@@ -44,6 +43,10 @@ const BLOOM_TIERS := ["common", "uncommon", "rare", "epic", "special"]
 const ITEM_PATTERN := "^[a-z0-9_]{1,40}$"
 const ROOM_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const HASH_PATTERN := "^[a-f0-9]{64}$"
+
+## A confirmed receipt brought an item bloom's item: it is owned now (Main
+## connects it to services/wardrobe.gd note_drop, so the wardrobe shows it at once).
+signal item_dropped(server: String, owner: String, item_id: String)
 
 static var _shared: RefCounted = null
 static var _room := RegEx.create_from_string(ROOM_PATTERN)
@@ -202,7 +205,7 @@ func note_receipt(server: String, owner: String, room_id: String, recording_hash
 	if not (scope.wallet as Dictionary).is_empty(): scope.wallet.balance = kept.balance
 	_save()
 	# An item bloom's item is owned now: the wardrobe shows it without asking again.
-	if kept.has("item_bloom") and kept.item_bloom.has("item_id"): Wardrobe.shared().note_drop(server, owner, kept.item_bloom.item_id)
+	if kept.has("item_bloom") and kept.item_bloom.has("item_id"): item_dropped.emit(server, owner, str(kept.item_bloom.item_id))
 	return true
 
 ## The kept receipt for one of this player's turns, or {}.

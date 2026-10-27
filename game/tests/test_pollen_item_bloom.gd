@@ -102,6 +102,7 @@ func _owned_at_once() -> void:
 	var wardrobe := Wardrobe.new(_path("owned"))
 	Wardrobe.use_shared(wardrobe)
 	var store := PollenWallet.new(_path("owned-wallet"))
+	store.item_dropped.connect(wardrobe.note_drop)
 	store.set_enabled(SERVER, ME, true)
 	wardrobe.set_enabled(SERVER, ME, true)
 	wardrobe.note_view(SERVER, ME, {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "bank": 12.0, "name_price": 0.0,
