@@ -68,6 +68,7 @@ static func _receipt(earned: float = 98.0, balance: float = 98.0, extra: Diction
 func _receipts() -> void:
 	var good := PollenWallet.checked_receipt(_receipt())
 	_check(not good.is_empty() and good.earned is int and good.turn.amount is int and good.turn.bloom == 1, "A receipt is kept with whole numbers")
+	_check(PollenWallet.checked_receipt(_receipt(10.0, 10.0, {"reason": "late"})).turn.reason == "late", "A late turn's reason is kept")
 	for broken: Dictionary in [{"bloom": 4.0}, {"bloom": 1.5}, {"bonuses": ["luck"]}, {"kind": "jackpot"}, {"total": -1.0}, {"boost_percent": 101.0}, {"reason": "streak"}, {"boost_from": ["stranger"]}]:
 		_check(PollenWallet.checked_receipt(_receipt(98.0, 98.0, broken)).is_empty(), "A turn line with %s is refused" % JSON.stringify(broken))
 	var wrong := _receipt()
@@ -182,9 +183,11 @@ func _result_line() -> void:
 	_check(ResultLine.lines(PollenWallet.checked_receipt(_receipt(98.0, 98.0, {"bonuses": []})), "a friend")[1] == "Your friend has Full Journey: +10%", "A friend with no name reads plainly")
 	var repeat := PollenWallet.checked_receipt(_receipt(10.0, 10.0, {"kind": "after_bank", "bonuses": [], "bonus_percent": 0.0, "amount": 10.0, "boost_percent": 0.0, "boost": 0.0, "boost_from": [], "reason": "repeat"}))
 	_check(ResultLine.lines(repeat, "") == PackedStringArray(["+10 Pollen", PlayerCopy.POLLEN_REPEAT]), "A repeat says why it pays a little")
+	repeat.turn.reason = "late"
+	_check(ResultLine.lines(repeat, "") == PackedStringArray(["+10 Pollen", PlayerCopy.POLLEN_LATE]), "So does a turn from an earlier week")
 	var hard := PollenWallet.checked_receipt(_receipt(311.0, 311.0, {"bonuses": ["hard"], "bonus_percent": 50.0, "boost_percent": 0.0, "boost": 0.0, "boost_from": []}))
 	_check(ResultLine.lines(hard, "") == PackedStringArray(["+311 Pollen", "Hard: +50%"]), "Hard has its own words")
-	for line: String in [PlayerCopy.POLLEN_REPEAT, PlayerCopy.POLLEN_BANK_EMPTY, PlayerCopy.POLLEN_BLOOM, PlayerCopy.POLLEN_BOOST_BOTH, PlayerCopy.POLLEN_FIRST_CLEAR]:
+	for line: String in [PlayerCopy.POLLEN_REPEAT, PlayerCopy.POLLEN_BANK_EMPTY, PlayerCopy.POLLEN_LATE, PlayerCopy.POLLEN_BLOOM, PlayerCopy.POLLEN_BOOST_BOTH, PlayerCopy.POLLEN_FIRST_CLEAR]:
 		_check(not line.contains("-") and not line.contains("—") and not line.contains("–"), "No dashes: " + line)
 	_check(ResultLine.lines({}, "Maya").is_empty(), "No receipt, no line")
 	# The line itself: only while the server has Pollen on, never on a build that hides paid content.

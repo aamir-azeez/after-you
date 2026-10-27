@@ -87,7 +87,7 @@ static func checked_receipt(value: Variant) -> Dictionary:
 		var bonuses: Variant = turn.get("bonuses")
 		if not bonuses is Array or bonuses.size() > BONUSES.size() or bonuses.any(func(bonus: Variant) -> bool: return not bonus in BONUSES): return {}
 		var reason: Variant = turn.get("reason", "")
-		if not reason in ["", "repeat", "bank_empty"]: return {}
+		if not reason in ["", "repeat", "bank_empty", "late"]: return {}
 		var from: Variant = turn.get("boost_from", [])
 		if not from is Array or from.size() > 2 or from.any(func(who: Variant) -> bool: return not who in ["you", "partner"]): return {}
 		kept["turn"] = {"kind": turn.kind, "amount": Typed.as_int(turn.amount), "total": Typed.as_int(turn.total), "bonuses": bonuses.duplicate(),
@@ -181,14 +181,19 @@ func claims(server: String, owner: String, limit: int = MAX_CLAIMS, now_ms: int 
 	return kept.slice(0, limit).map(func(entry: Dictionary) -> Dictionary: return {"room_id": entry.room_id, "recording_hash": entry.recording_hash})
 
 ## The server's answer to one claim: credited keeps the receipt, refused lets
-## the claim go for good, anything else keeps it for the next send.
+## the claim go for good, anything else keeps it for the next send, behind the
+## others, so one the server cannot pay yet never holds up newer ones.
 func settle_claim(server: String, owner: String, room_id: String, recording_hash: String, answer: Variant) -> void:
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not answer is Dictionary: return
 	if answer.get("status") == "credited" and note_receipt(server, owner, room_id, recording_hash, answer.get("receipt")): return
 	if answer.get("status") == "refused" or answer.get("status") == "credited":
 		_drop_claim(scope, room_id, recording_hash)
-		_save()
+	else:
+		var waiting: Array = scope.claims.filter(func(entry: Dictionary) -> bool: return entry.room_id == room_id and entry.recording_hash == recording_hash)
+		_drop_claim(scope, room_id, recording_hash)
+		scope.claims.append_array(waiting)
+	_save()
 
 func _drop_claim(scope: Dictionary, room_id: String, recording_hash: String) -> void:
 	scope.claims = scope.claims.filter(func(entry: Dictionary) -> bool: return entry.room_id != room_id or entry.recording_hash != recording_hash)

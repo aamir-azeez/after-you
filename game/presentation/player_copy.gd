@@ -108,6 +108,7 @@ const POLLEN_BOOST_FRIEND := "Your friend"
 const POLLEN_BLOOM := "A lucky bloom: ×%d"
 const POLLEN_REPEAT := "You played this part already this week, so it pays a little."
 const POLLEN_BANK_EMPTY := "Your full pay turns this week are used up, so it pays a little."
+const POLLEN_LATE := "This turn was from an earlier week, so it pays a little."
 const POLLEN_FIRST_CLEAR := "First clear: +%d"
 const POLLEN_FIRST_HARD_CLEAR := "First Hard clear: +%d"
 

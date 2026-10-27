@@ -52,6 +52,7 @@ static func lines(receipt: Dictionary, partner: String) -> PackedStringArray:
 		match str(turn.get("reason", "")):
 			"repeat": out.append(PlayerCopy.POLLEN_REPEAT)
 			"bank_empty": out.append(PlayerCopy.POLLEN_BANK_EMPTY)
+			"late": out.append(PlayerCopy.POLLEN_LATE)
 	for clear: Dictionary in receipt.get("clears", []):
 		out.append((PlayerCopy.POLLEN_FIRST_HARD_CLEAR if clear.get("kind") == "hardclear" else PlayerCopy.POLLEN_FIRST_CLEAR) % int(clear.get("total", 0)))
 	return out

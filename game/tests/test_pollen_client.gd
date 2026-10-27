@@ -192,6 +192,18 @@ func _bounded() -> void:
 	await _settle(t.client)
 	_check(t.fake.sent.size() == 1 and t.store.claims(t.api.base_url, ME).size() == 1, "A flush where nothing moved stops after one request")
 	t.api.queue_free()
+	# A claim the server cannot pay yet goes behind the others, so newer ones are tried next time.
+	var r := _setup()
+	r.store.note_wallet(r.api.base_url, ME, {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "bank": 12.0})
+	for n in range(1, 6): r.store.queue_claim(r.api.base_url, ME, ROOM, _hash(n))
+	var held := func(body: Dictionary) -> Dictionary:
+		return {"ok": true, "data": {"schema_version": 1.0, "results": body.claims.map(func(claim: Dictionary) -> Dictionary: return {"room_id": claim.room_id, "recording_hash": claim.recording_hash, "status": "retry"})}}
+	r.fake.replies = [held]
+	r.client.flush()
+	await _settle(r.client)
+	var order: Array = r.store.claims(r.api.base_url, ME).map(func(entry: Dictionary) -> String: return entry.recording_hash)
+	_check(order == [_hash(5), _hash(1), _hash(2), _hash(3), _hash(4)], "Claims the server could not pay yet go behind the one it has not seen")
+	r.api.queue_free()
 
 func _identity_change() -> void:
 	var t := _setup()
