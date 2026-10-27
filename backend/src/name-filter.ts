@@ -21,7 +21,8 @@ import blocklist from "../../game/content/display_name_blocklist.json";
  * - `allowed_words` are real words a part may be although an entry would catch it.
  * - A run of one letter in an entry matches that many or more ("fuuuck"), never fewer, so
  *   "nigger" never matches "Niger".
- * - Cost: the patterns are built once; a check is a few linear passes over a name of at most
+ * - Cost: the patterns are built, compiled and warmed once when the module loads, so a request
+ *   never pays the first-use compile; a check is a few linear passes over a name of at most
  *   MAX_INPUT code points, and part runs are at most MAX_SPAN parts long. Every entry
  *   pattern is a chain of runs of different characters, so matching cannot backtrack badly.
  */
@@ -56,6 +57,9 @@ const ALTERNATE = { ...SWAPS, ...LIST.folding.alternate_swaps };
 /** A run the swaps read: letters, digits and the swap symbols (every swap key is a digit or one of these). */
 const SWAP_RUN = /[\p{L}\p{N}@$!]+/gu;
 const LOOKALIKES = LIST.folding.lookalikes;
+// V8 compiles a pattern on its first use and again when it tiers up, which for these long
+// alternations costs more than a request's CPU allowance. Startup has its own, larger one.
+for (let pass = 0; pass < 2; pass++) for (const pattern of [SUBSTRING_INSIDE, SUBSTRING_WHOLE, WORD_WHOLE]) pattern.test("lantern");
 
 const mapped = (text: string, table: Record<string, string>): string => [...text].map(point => table[point] ?? point).join("");
 
