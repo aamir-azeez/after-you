@@ -35,6 +35,8 @@ var host: Node
 var client: RefCounted
 var _chips: Array[WeakRef] = []
 var _prompt: WeakRef = null
+## The name change price the open prompt shows ({} for none), fixed when it opened, so Save records that very price.
+var _prompt_price: Dictionary = {}
 ## Tests: a stand-in for the PlatformGames autoload.
 var games: Node = null
 
@@ -91,7 +93,7 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 		"reduced_motion": bool(host.saves.data.settings.get("reduced_motion", false)) if host.saves != null else false,
 		"haptic": func() -> void: if is_instance_valid(host.get("soundscape")): host.soundscape.tap_haptic(),
 		"dismissed": func() -> void: if hint_later and host.has_method("_toast"): host._toast(PlayerCopy.DISPLAY_NAME_LATER_HINT),
-		"price": name_price(current),
+		"price": _price_for_prompt(current),
 	}
 	var modal: Control = Prompt.open(parent, context, opener)
 	_prompt = weakref(modal)
@@ -105,6 +107,10 @@ static func name_price(current: Dictionary) -> Dictionary:
 	var price: int = Wardrobe.shared().name_price(str(current.server), str(current.owner))
 	var wallet: Dictionary = PollenWallet.shared().wallet(str(current.server), str(current.owner))
 	return {} if price < 0 or wallet.is_empty() else {"price": price, "balance": int(wallet.balance)}
+
+func _price_for_prompt(current: Dictionary) -> Dictionary:
+	_prompt_price = name_price(current)
+	return _prompt_price
 
 ## The Friends header's Display name chip, or null while names are off.
 func chip() -> Control:
@@ -161,7 +167,7 @@ func _save(choice: String, name: String) -> Dictionary:
 	var current := scope()
 	if current.is_empty(): return {"closed": true}
 	var own: Dictionary = DisplayNames.shared().own(current.server, current.owner)
-	var shown := Prompt.choice_cost(name_price(current), own, choice, name)
+	var shown := Prompt.choice_cost(_prompt_price, own, choice, name)
 	if DisplayNames.shared().choose(current.server, current.owner, choice, name).is_empty():
 		var wrong := DisplayNames.problem(name) if choice != "anonymous" else ""
 		return {"closed": false, "code": wrong if not wrong.is_empty() else "characters"}

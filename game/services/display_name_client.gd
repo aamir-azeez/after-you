@@ -78,7 +78,7 @@ func _start(context: Dictionary) -> void:
 	var body := {"schema_version": 1, "display_name": null if mine.choice == "anonymous" else str(mine.name), "revision": revision}
 	# While the shop is on, a name carries the change price shown beside Save for this choice (0 when
 	# none was shown), so the server refuses rather than charges a price the player never saw.
-	if mine.choice != "anonymous" and Wardrobe.shared().name_price(str(context.server), str(context.owner)) >= 0: body["pollen_price"] = int(_shown.get(revision, 0))
+	if mine.choice != "anonymous" and Wardrobe.shared().enabled(str(context.server), str(context.owner)): body["pollen_price"] = int(_shown.get(revision, 0))
 	var response: Dictionary = await _request(body)
 	_sending = false
 	if scope() != context: return
