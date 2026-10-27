@@ -192,6 +192,29 @@ describe("grant instalments", () => {
     expect(resumed.pay.map(each => [each.anchor, each.amount])).toEqual([[resume, 5000]]);
     expect(player.state!.months).toBe(3);
   });
+  it("pays no paused month even when nobody read during the pause: a resume restarts off the anniversaries", () => {
+    const player = fresh(), anchor = at(2026, 1, 5), ann = (k: number) => anniversary(anchor, k);
+    player.read([paid("m", ann(0), ann(1))], ann(0) + HOUR);
+    const resume = at(2026, 4, 20);
+    const resumed = player.read([paid("m", resume, anniversary(resume, 1))], resume + HOUR);
+    expect(resumed.pay.map(each => [each.anchor, each.amount])).toEqual([[resume, 4750]]);
+    expect(player.state!.months).toBe(2);
+  });
+  it("keeps reading a plan on hold at its due dates, so a recovery is seen", () => {
+    const player = fresh(), anchor = at(2026, 1, 5), ann = (k: number) => anniversary(anchor, k);
+    player.read([paid("m", ann(0), ann(1))], ann(0) + HOUR);
+    const held = player.read([status("m", "hold", ann(1), ann(2))], ann(1) + HOUR);
+    expect(held.state.renews).toBe(true);
+    expect(grantDue(held.state, 0, ann(1) + 2 * DAY)).toBe(true);
+  });
+  it("is no plan switch when the other plan was bought days before the refunded one ended", () => {
+    const player = fresh(), anchor = at(2026, 1, 5), ann = (k: number) => anniversary(anchor, k);
+    const other = ann(0) + 2 * DAY;
+    player.read([paid("a", ann(0), ann(1)), paid("b", other, anniversary(other, 1))], other + HOUR);
+    const refundAt = ann(0) + 6 * DAY;
+    const read = player.read([ended("a", ann(0), ann(1), refundAt), paid("b", other, anniversary(other, 1))], refundAt + HOUR);
+    expect(read.refunds.map(each => each.refunds)).toEqual([`grant:${anchor}:1`]);
+  });
   it("still catches up a monthly plan that renewed while nobody read it", () => {
     const player = fresh(), anchor = at(2026, 1, 5), ann = (k: number) => anniversary(anchor, k);
     player.read([paid("m", ann(0), ann(1))], ann(0) + HOUR);

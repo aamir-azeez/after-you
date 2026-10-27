@@ -33,7 +33,7 @@ import { DAY_MS, RATES, type Rates } from "./rates";
  *   paid in that period and moves the count back by one for each.
  */
 export const SWITCH_GAP_MS = DAY_MS;
-/** A plan switch: the new subscription started this close to (or before) the old one's early end. A rebuy after a refund starts later. */
+/** A plan switch: the new subscription started this close to the old one's early end, before or after. A rebuy after a refund starts later; a second plan bought earlier is not a switch. */
 export const CARRY_GAP_MS = 5 * 60_000;
 /** An end this much before the period's recorded end reads as a refund, not a store's rounding. */
 export const REFUND_MARGIN_MS = DAY_MS;
@@ -113,6 +113,13 @@ export function latestAnniversary(start: number, now: number): number {
   return anniversary(start, k);
 }
 
+/** Whether `at` falls within SWITCH_GAP_MS of a monthly anniversary of `base`. */
+export function onAnniversary(base: number, at: number): boolean {
+  const near = latestAnniversary(base, at);
+  return at - near <= SWITCH_GAP_MS || anniversary(base, monthsBetween(base, near) + 1) - at <= SWITCH_GAP_MS;
+}
+const monthsBetween = (from: number, to: number) => (new Date(to).getUTCFullYear() - new Date(from).getUTCFullYear()) * 12 + new Date(to).getUTCMonth() - new Date(from).getUTCMonth();
+
 export const grantKey = (anchor: number, n: number) => `grant:${anchor}:${n}`;
 export const refundKey = (anchor: number, n: number) => `grantrefund:${anchor}:${n}`;
 export const LIFETIME_KEY = "grant:lifetime";
@@ -157,8 +164,11 @@ const coverEnd = (state: GrantState) => Object.values(state.subs).reduce((end, s
  * due, so this is about one PollenClaims request per subscriber per month (one request holds them all).
  */
 export function claimsNeeded(state: GrantState | null, subs: readonly GrantSub[]): string[] {
-  return subs.filter(sub => sub.status === "paid" || (sub.status === "ended" && state?.subs[sub.id])).map(sub => sub.id);
+  const paid = subs.filter(sub => sub.status === "paid"), ended = subs.filter(sub => sub.status === "ended" && state?.subs[sub.id]);
+  // Paid ones first; one request holds at most MAX_CLAIMED (claims.ts MAX_CLAIM_KEYS less the Lifetime purchase).
+  return [...paid, ...ended].slice(0, MAX_CLAIMED).map(sub => sub.id);
 }
+export const MAX_CLAIMED = 15;
 
 /**
  * One read's outcome: the new state, the instalments to pay, the refunds to take back, and the
@@ -185,9 +195,11 @@ export function planGrant(prev: GrantState | null, subs: readonly GrantSub[], cl
     if (claim && claim.since !== known.claimed_at) { known.from = Math.max(known.from, anniversary(claim.since, 1)); known.claimed_at = claim.since; }
     if (sub.status === "hold") known.held = true;
     if (sub.status !== "paid") continue;
-    // A resume from a pause or a hold that a read saw: the months in the gap are never covered. (A gap
-    // with no hold seen is a plan renewed while nobody read: those months are caught up.)
-    if (known.held && sub.period_start > known.through + SWITCH_GAP_MS) known.from = Math.max(known.from, sub.period_start);
+    // A gap in cover that a read saw on hold, or whose new period does not start on a monthly
+    // anniversary of the last paid end (a resume from a pause or a recovered hold restarts the cycle):
+    // the months in the gap are never covered. A plan renewed while nobody read stays on its
+    // anniversaries, so those months are caught up.
+    if (sub.period_start > known.through + SWITCH_GAP_MS && (known.held || !onAnniversary(known.through, sub.period_start))) known.from = Math.max(known.from, sub.period_start);
     known.held = false;
     known.through = Math.max(known.through, paidTo(sub));
   }
@@ -201,7 +213,7 @@ export function planGrant(prev: GrantState | null, subs: readonly GrantSub[], cl
     if (!known || sub.status !== "ended") continue;
     const early = sub.ends_at + REFUND_MARGIN_MS < known.through;
     // A switch starts its new subscription at (or before) the old one's end; a rebuy after a refund starts later.
-    const carried = subs.some(other => other.id !== sub.id && state.subs[other.id] && other.started_at <= sub.ends_at + CARRY_GAP_MS && state.subs[other.id].through > sub.ends_at);
+    const carried = subs.some(other => other.id !== sub.id && state.subs[other.id] && Math.abs(other.started_at - sub.ends_at) <= CARRY_GAP_MS && state.subs[other.id].through > sub.ends_at);
     if (early && !carried) {
       for (const paid of paidBy(sub.id, sub.period_start, known.through)) {
         refunds.push({ key: refundKey(paid.anchor, paid.n), refunds: paid.key, amount: paid.amount, sub: sub.id });
@@ -239,8 +251,8 @@ export function planGrant(prev: GrantState | null, subs: readonly GrantSub[], cl
   // 4. The Lifetime thank-you, once: paid only to the identity that first claimed the purchase.
   let thanks = 0;
   if (lifetime && !state.lifetime) { state.lifetime = true; thanks = lifetime.claim.self ? rates.grant.lifetime_thanks : 0; }
-  // 5. What to watch next.
-  state.renews = subs.some(sub => state.subs[sub.id] && sub.status === "paid" && sub.renews);
+  // 5. What to watch next. A plan in grace or on hold may still recover, so its due dates stay worth a read.
+  state.renews = subs.some(sub => state.subs[sub.id] && ((sub.status === "paid" && sub.renews) || sub.status === "grace" || sub.status === "hold"));
   const watch = [...subs.filter(sub => sub.status === "trial").map(sub => sub.period_end), ...Object.values(state.subs).filter(sub => sub.from > now).map(sub => sub.from)];
   state.recheck_at = watch.length ? Math.min(...watch) : 0;
   // With no live anchor, nothing new is looked for before what is being watched (or a day): a noted end alone is not news.
