@@ -18,8 +18,8 @@ export type RewardGrant = { player_id: string; reward: LeaderboardReward; board:
 
 export interface RewardSink {
   grant(player: string, reward: LeaderboardReward, board: string, entryId: string): void;
-  /** Takes back every grant whose source is this entry (a struck run). */
-  revokeEntry(entryId: string): void;
+  /** Takes back every grant whose source is this entry (a struck run); returns how many went. */
+  revokeEntry(entryId: string): number;
   /** Drops a player's grants (account erasure). */
   forgetPlayer(player: string): void;
   /** A player's live grants from this board. */
@@ -34,7 +34,7 @@ export class BoardRewardLedger implements RewardSink {
   grant(player: string, reward: LeaderboardReward, board: string, entryId: string): void {
     this.storage.sql.exec("INSERT OR IGNORE INTO lb_grants VALUES (?,?,?,?,?,?)", `${reward}:${board}:${entryId}:${player}`, player, reward, board, entryId, Date.now());
   }
-  revokeEntry(entryId: string): void { this.storage.sql.exec("DELETE FROM lb_grants WHERE entry_id=?", entryId); }
+  revokeEntry(entryId: string): number { return this.storage.sql.exec("DELETE FROM lb_grants WHERE entry_id=?", entryId).rowsWritten; }
   forgetPlayer(player: string): void { this.storage.sql.exec("DELETE FROM lb_grants WHERE player_id=?", player); }
   rewardsFor(player: string): RewardGrant[] {
     return this.storage.sql.exec<RewardGrant>("SELECT player_id,reward,board,entry_id,granted_at FROM lb_grants WHERE player_id=? ORDER BY granted_at", player).toArray();

@@ -83,6 +83,26 @@ export function removeRoomIndexRow(storage: DurableObjectStorage, roomId: string
   orMissing(() => storage.sql.exec("DELETE FROM room_index WHERE room_id=?", roomId), null);
 }
 
+/**
+ * How many different partners `player` has in rooms whose last projection here
+ * reached `minRevision`, counting up to `limit`. Rooms the index never saw do
+ * not count, and a Player without the index reads 0 (leaderboards/standing.ts).
+ */
+export function indexedPartners(storage: DurableObjectStorage, player: string, minRevision: number, limit: number): number {
+  const partners = new Set<string>();
+  const rows = orMissing(() => storage.sql.exec<{ entry: string }>("SELECT entry FROM room_index WHERE entry IS NOT NULL").toArray(), []);
+  for (const row of rows) {
+    if (partners.size >= limit) break;
+    let outcome: Outcome<RoomInboxProjection>;
+    try { outcome = JSON.parse(row.entry) as Outcome<RoomInboxProjection>; } catch { continue; }
+    if (!outcome.ok || typeof outcome.value.revision !== "number" || outcome.value.revision < minRevision) continue;
+    const { host_id: host, guest_id: guest } = outcome.value.membership;
+    const partner = host === player ? guest : guest === player ? host : null;
+    if (typeof partner === "string" && partner !== player) partners.add(partner);
+  }
+  return partners.size;
+}
+
 const indexed = (version: number) => version === 1 || version === 2;
 /** A projection, 404 or 410 says something lasting; a throw or any other refusal does not. */
 const lasting = (outcome: Outcome<RoomInboxProjection>) => outcome.ok || outcome.status === 404 || outcome.status === 410;

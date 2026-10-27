@@ -3,7 +3,7 @@ import { canonicalJson, digest } from "../protocol";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import type { ChapterKey } from "../v2/chapter-types";
 import { BoardRewardLedger, REWARD_LEDGER_SCHEMA, type RewardGrant, type RewardSink } from "./rewards";
-import { KEPT_RANKED, MAX_REPORTERS, MAX_WAITING, TOP_PLACES, compareRuns, holdsFor, strictlyFirst } from "./rules";
+import { KEPT_RANKED, MAX_CHECKED, MAX_REPORTERS, MAX_REVIEW, MAX_UNCHECKED, REVIEW_REASONS, TOP_PLACES, compareRuns, holdsFor, strictlyFirst } from "./rules";
 import type { LeaderboardRun } from "./run";
 import { emptyView, type BoardRow, type BoardView } from "./view";
 
@@ -22,8 +22,10 @@ import { emptyView, type BoardRow, type BoardView } from "./view";
  * calls are safe: a verdict names the proof hash it checked and is ignored
  * when the entry has moved on.
  */
-export type SubmitStatus = "checking" | "known" | "not_placed" | "busy";
-export type Member = { id: string | null; show: boolean; name: string | null };
+export type SubmitStatus = "checking" | "known" | "not_placed" | "busy" | "crowded" | "ineligible";
+/** `rev`: the member's settings revision (member.ts) the name choice came from; an older one never overwrites it. */
+export type Member = { id: string | null; show: boolean; name: string | null; rev?: number };
+export type MemberChoice = { show: boolean; name: string | null; rev: number };
 type EntryData = {
   finished_at: string; chapter: ChapterKey; simulation_version: number; members: [Member, Member];
   eligible: boolean | null; holds: string[]; reports: string[]; gold: boolean; submitted_at: number;
@@ -34,7 +36,7 @@ export type StandingWork = { entry_id: string; members: (string | null)[]; finis
 /** `checkpoint` is the stored JSON text, passed on unparsed so the Worker spends no CPU on it. */
 export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; checkpoint: string };
 export type PendingWork = { standing: StandingWork[]; replay: ReplayWork[] };
-export type StandingResult = { entry_id: string; eligible: boolean; reason: string; members: [{ show: boolean; name: string | null }, { show: boolean; name: string | null }] };
+export type StandingResult = { entry_id: string; eligible: boolean; reason: string; members: MemberChoice[] };
 export type Verdict = { entry_id: string; proof_hash: string; valid: boolean; measured_ticks: number; reason: string };
 export type RankedNote = { entry_id: string; members: string[] };
 export type ReviewItem = { entry_id: string; state: string; rank: number | null; ticks: number; finished_at: string; holds: string[]; reports: number };
@@ -61,8 +63,12 @@ export class LeaderboardBoard extends DurableObject<Env> {
     ctx.blockConcurrencyWhile(async () => openLazyStorage(this, ctx.storage, "lb_entries", () => { for (const sql of SCHEMA) ctx.storage.sql.exec(sql); }));
   }
 
-  /** Takes a finished run that might place. Returns what became of it and the board as anyone sees it now. */
-  async submit(board: string, run: LeaderboardRun): Promise<{ status: SubmitStatus; view: BoardView }> {
+  /**
+   * Takes a finished run that might place. Returns what became of it and the
+   * board as anyone sees it now. `checked`: the account check, run by the
+   * poster only after this board answered "crowded" (submit.ts).
+   */
+  async submit(board: string, run: LeaderboardRun, checked?: StandingResult): Promise<{ status: SubmitStatus; view: BoardView }> {
     const serialized = canonicalJson(run.checkpoint);
     const proofHash = await digest(serialized);
     const status = this.ctx.storage.transactionSync((): SubmitStatus => {
@@ -76,16 +82,23 @@ export class LeaderboardBoard extends DurableObject<Env> {
       if (mine.some(entry => compareRuns(entry, timed) <= 0)) return "not_placed";
       const others = ranked.filter(entry => entry.pair_key !== run.pair_key);
       if (others.length >= TOP_PLACES && compareRuns(timed, others[TOP_PLACES - 1]) > 0) return "not_placed";
-      for (const older of mine) if (older.state !== "ranked") this.drop(older.entry_id, "superseded");
-      const waiting = this.entries().filter(entry => entry.state !== "ranked").sort(compareRuns);
-      if (waiting.length >= MAX_WAITING) {
-        const slowest = waiting[waiting.length - 1];
-        if (compareRuns(timed, slowest) > 0) return "busy";
-        this.drop(slowest.entry_id, "crowded");
+      if (checked && (!checked.eligible || checked.entry_id !== run.entry_id)) return "ineligible";
+      const waiting = all.filter(entry => entry.state === "checking" && entry.pair_key !== run.pair_key);
+      if (!checked) {
+        // Unchecked runs never push anyone out; the poster checks the accounts and posts again.
+        if (waiting.filter(entry => entry.data.eligible === null).length >= MAX_UNCHECKED) return "crowded";
+      } else {
+        const pool = waiting.filter(entry => entry.data.eligible === true).sort(compareRuns);
+        if (pool.length >= MAX_CHECKED) {
+          if (compareRuns(timed, pool[pool.length - 1]) > 0) return "busy";
+          this.drop(pool[pool.length - 1].entry_id, "crowded");
+        }
       }
-      const data: EntryData = { finished_at: run.finished_at, chapter: run.chapter, simulation_version: run.simulation_version,
-        members: [{ id: run.members[0], show: false, name: null }, { id: run.members[1], show: false, name: null }],
-        eligible: null, holds: [], reports: [], gold: false, submitted_at: Date.now() };
+      for (const older of mine) if (older.state !== "ranked") this.drop(older.entry_id, "superseded");
+      const members: [Member, Member] = [{ id: run.members[0], show: false, name: null }, { id: run.members[1], show: false, name: null }];
+      if (checked) members.forEach((member, index) => choose(member, checked.members[index]));
+      const data: EntryData = { finished_at: run.finished_at, chapter: run.chapter, simulation_version: run.simulation_version, members,
+        eligible: checked ? true : null, holds: [], reports: [], gold: false, submitted_at: Date.now() };
       this.ctx.storage.sql.exec("INSERT INTO lb_entries VALUES (?,?,?,?,?,?)", run.entry_id, run.pair_key, "checking", run.ticks, run.finished_ms, JSON.stringify(data));
       this.ctx.storage.sql.exec("INSERT INTO lb_proofs VALUES (?,?,?)", run.entry_id, proofHash, serialized);
       return "checking";
@@ -125,7 +138,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
         if (!entry || entry.state !== "checking" || entry.data.eligible !== null) continue;
         if (!result.eligible) { this.drop(entry.entry_id, "ineligible"); continue; }
         entry.data.eligible = true;
-        entry.data.members.forEach((member, index) => { member.show = result.members[index].show; member.name = result.members[index].show ? result.members[index].name : null; });
+        entry.data.members.forEach((member, index) => choose(member, result.members[index]));
         this.save(entry);
       }
     });
@@ -146,11 +159,12 @@ export class LeaderboardBoard extends DurableObject<Env> {
         const entry = this.entry(verdict.entry_id);
         const proof = this.ctx.storage.sql.exec<{ proof_hash: string }>("SELECT proof_hash FROM lb_proofs WHERE entry_id=?", verdict.entry_id).toArray()[0];
         if (!entry || entry.state !== "checking" || entry.data.eligible !== true || !proof || proof.proof_hash !== verdict.proof_hash) continue;
+        // The job could not judge it (its build lacks the chapter, or the check broke): a person looks.
+        if (!verdict.valid && REVIEW_REASONS.includes(verdict.reason)) { this.toReview(entry, [verdict.reason]); continue; }
         if (!verdict.valid || verdict.measured_ticks !== entry.ticks) { this.drop(entry.entry_id, "failed"); continue; }
-        this.ctx.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", entry.entry_id);
         const first = this.ranked().find(item => item.pair_key !== entry.pair_key);
-        entry.data.holds = holdsFor(entry.ticks, developerBest, first ? first.ticks : null);
-        if (entry.data.holds.length) { entry.state = "review"; this.save(entry); continue; }
+        const holds = holdsFor(entry.ticks, developerBest, first ? first.ticks : null);
+        if (holds.length) { this.toReview(entry, holds); continue; }
         const note = this.rank(board, entry);
         if (note) ranked.push(note);
       }
@@ -180,9 +194,10 @@ export class LeaderboardBoard extends DurableObject<Env> {
     let done = false;
     const promoted: RankedNote[] = [];
     this.ctx.storage.transactionSync(() => {
-      if (!this.entry(entryId)) return;
-      done = true;
-      this.rewards.revokeEntry(entryId);
+      // A run already gone (superseded, pushed out) still loses what it earned.
+      const revoked = this.rewards.revokeEntry(entryId) > 0, present = this.entry(entryId) !== null;
+      done = revoked || present || this.outcome(entryId);
+      if (!done) return;
       this.drop(entryId, "struck");
       const ranked = this.ranked();
       ranked.slice(0, TOP_PLACES).forEach((entry, index) => { if (this.award(board, entry, index, ranked)) promoted.push(noteOf(entry)); });
@@ -209,15 +224,13 @@ export class LeaderboardBoard extends DurableObject<Env> {
   }
 
   /** A player's name choice and current display name, on every run of theirs here. Returns how many runs changed and the board now. */
-  setMember(board: string, player: string, show: boolean, name: string | null): { changed: number; view: BoardView } {
+  setMember(board: string, player: string, show: boolean, name: string | null, rev: number): { changed: number; view: BoardView } {
     const changed = this.ctx.storage.transactionSync(() => {
       let count = 0;
       for (const entry of this.entries()) {
         let touched = false;
         for (const member of entry.data.members) {
-          if (member.id !== player) continue;
-          const next = { show, name: show ? name : null };
-          if (member.show !== next.show || member.name !== next.name) { member.show = next.show; member.name = next.name; touched = true; }
+          if (member.id === player && choose(member, { show, name, rev })) touched = true;
         }
         if (touched) { this.save(entry); count++; }
       }
@@ -236,6 +249,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
         if (entry.state !== "ranked") { this.drop(entry.entry_id, "forgotten"); continue; }
         for (const member of entry.data.members) if (member.id === player) { member.id = null; member.show = false; member.name = null; }
         this.save(entry);
+        // The pair key was a hash of both ids; a random one keeps the row without them.
+        this.ctx.storage.sql.exec("UPDATE lb_entries SET pair_key=? WHERE entry_id=?", crypto.randomUUID(), entry.entry_id);
       }
       this.rewards.forgetPlayer(player);
       return count;
@@ -248,13 +263,17 @@ export class LeaderboardBoard extends DurableObject<Env> {
 
   /** Ranks a run that passed every check, inside the caller's transaction. Null when it no longer reaches the top 10. */
   private rank(board: string, entry: Entry): RankedNote | null {
+    this.ctx.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", entry.entry_id);
+    const older = this.ranked().filter(item => item.pair_key === entry.pair_key);
+    const place = [...this.ranked().filter(item => item.pair_key !== entry.pair_key), entry].sort(compareRuns).findIndex(item => item.entry_id === entry.entry_id);
+    // Out of the top 10 now: it goes, and the pair keeps any run it already had.
+    if (place >= TOP_PLACES) { this.drop(entry.entry_id, "not_placed"); return null; }
     entry.state = "ranked";
     this.save(entry);
     // The pair's older ranked run gives way; it keeps what it earned.
-    for (const older of this.entries()) if (older.state === "ranked" && older.pair_key === entry.pair_key && older.entry_id !== entry.entry_id) this.drop(older.entry_id, "superseded");
+    for (const item of older) this.drop(item.entry_id, "superseded");
     const ranked = this.ranked();
     const index = ranked.findIndex(item => item.entry_id === entry.entry_id);
-    if (index < 0 || index >= TOP_PLACES) { this.drop(entry.entry_id, "not_placed"); return null; }
     this.award(board, entry, index, ranked);
     for (const below of ranked.slice(KEPT_RANKED)) this.drop(below.entry_id, "pushed_out");
     return noteOf(entry);
@@ -271,6 +290,19 @@ export class LeaderboardBoard extends DurableObject<Env> {
       for (const member of members) this.rewards.grant(member, "gold_leaf", board, entry.entry_id);
     }
     return true;
+  }
+
+  /** Sends a run to a person, its proof dropped. A full review list gives up its slowest run for a faster one. */
+  private toReview(entry: Entry, holds: string[]): void {
+    this.ctx.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", entry.entry_id);
+    const pool = this.entries().filter(item => item.state === "review").sort(compareRuns);
+    if (pool.length >= MAX_REVIEW) {
+      if (compareRuns(entry, pool[pool.length - 1]) > 0) { this.drop(entry.entry_id, "review_full"); return; }
+      this.drop(pool[pool.length - 1].entry_id, "review_full");
+    }
+    entry.state = "review";
+    entry.data.holds = holds;
+    this.save(entry);
   }
 
   private entries(): Entry[] {
@@ -292,6 +324,15 @@ export class LeaderboardBoard extends DurableObject<Env> {
     this.ctx.storage.sql.exec("INSERT OR REPLACE INTO lb_outcomes VALUES (?,?,?)", id, outcome, Date.now());
     this.ctx.storage.sql.exec("DELETE FROM lb_outcomes WHERE entry_id IN (SELECT entry_id FROM lb_outcomes ORDER BY at DESC, entry_id LIMIT -1 OFFSET ?)", MAX_OUTCOMES);
   }
+}
+
+/** Applies a name choice unless the member already holds a newer one. Returns whether anything changed. */
+function choose(member: Member, choice: MemberChoice): boolean {
+  if (member.rev !== undefined && choice.rev < member.rev) return false;
+  const next = { show: choice.show, name: choice.show ? choice.name : null, rev: choice.rev };
+  const changed = member.show !== next.show || member.name !== next.name || member.rev !== next.rev;
+  Object.assign(member, next);
+  return changed;
 }
 
 /** Both names, only when both players chose to show theirs. */

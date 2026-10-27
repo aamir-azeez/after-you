@@ -2,9 +2,10 @@ import { ApiError, boundedJson, isObject, text } from "../protocol";
 import { JSON_HEADERS, json } from "../http";
 import { flags } from "../flags";
 import { boardKeys, developerBest, knownBoard } from "./boards";
-import { MAX_REPLAY_CHARS, type PendingWork, type StandingResult, type StandingWork, type Verdict } from "./board";
+import { MAX_REPLAY_CHARS, type PendingWork, type Verdict } from "./board";
 import { leaderboardCaller } from "./job-token";
-import { eligible } from "./standing";
+import { checkRun } from "./eligibility";
+import { pooled } from "../room-inbox";
 import { storeView } from "./view-cache";
 
 /**
@@ -21,6 +22,9 @@ export const OPERATOR_PREFIX = "/operator/leaderboards/";
 /** Replay work handed out per pending call, by checkpoint length, across all boards. */
 export const MAX_PENDING_CHARS = 4_000_000;
 const MAX_VERDICTS = 64;
+/** Account checks per pending call, across boards, four at a time (each is up to 4 requests). */
+const MAX_STANDINGS = 16;
+const STANDING_CONCURRENCY = 4;
 const ENTRY = /^[a-f0-9]{32}$/, HASH = /^[a-f0-9]{64}$/;
 
 export async function routeLeaderboardOperator(request: Request, path: string, env: Env): Promise<Response> {
@@ -39,20 +43,26 @@ export async function routeLeaderboardOperator(request: Request, path: string, e
 }
 
 /**
- * One request per board, plus for each new run one Player and one Member
- * request per member, then one more board request. Each entry is written as
- * JSON text around its stored checkpoint text, which is never parsed here:
- * a Worker on the Free plan has 10 ms of CPU per request.
+ * One request per board, plus up to MAX_STANDINGS account checks (eligibility.ts)
+ * and one more request for each board that had any. The boards are visited
+ * from a starting point that moves each hour, so a board with large proofs
+ * never starves the rest. Each entry is written as JSON text around its stored
+ * checkpoint text, which is never parsed here: a Worker on the Free plan has
+ * 10 ms of CPU per request.
  */
 async function pending(env: Env): Promise<string[]> {
   const entries: string[] = [];
-  let budget = MAX_PENDING_CHARS;
-  for (const board of boardKeys()) {
-    if (budget <= 0) break;
+  const keys = boardKeys(), start = Math.floor(Date.now() / 3_600_000) % keys.length;
+  let budget = MAX_PENDING_CHARS, checks = MAX_STANDINGS;
+  for (let step = 0; step < keys.length; step++) {
+    const board = keys[(start + step) % keys.length];
     const stub = env.LEADERBOARD_BOARDS.getByName(board);
-    let work: PendingWork = await stub.pendingWork(Math.min(budget, MAX_REPLAY_CHARS));
-    if (work.standing.length) {
-      const checked = await stub.standings(board, await Promise.all(work.standing.map(item => standing(env, board, item))), Math.min(budget, MAX_REPLAY_CHARS));
+    let work: PendingWork = await stub.pendingWork(Math.max(0, Math.min(budget, MAX_REPLAY_CHARS)));
+    const due = work.standing.slice(0, checks);
+    if (due.length) {
+      checks -= due.length;
+      const results = await pooled(due, STANDING_CONCURRENCY, item => checkRun(env, board, item.entry_id, item.members, item.finished_ms));
+      const checked = await stub.standings(board, results, Math.max(0, Math.min(budget, MAX_REPLAY_CHARS)));
       await storeView(checked.view);
       work = checked.work;
     }
@@ -63,20 +73,6 @@ async function pending(env: Env): Promise<string[]> {
     }
   }
   return entries;
-}
-
-/** Both members' account check and name choice. Noting the board first means a later name change reaches it. */
-async function standing(env: Env, board: string, item: StandingWork): Promise<StandingResult> {
-  const members = await Promise.all(item.members.map(async id => {
-    if (id === null) return { ok: false, show: false, name: null };
-    // A player with no identity (erased) is never written to again.
-    const player = await env.PLAYERS.getByName(id).leaderboardStanding();
-    if (!player) return { ok: false, show: false, name: null };
-    const settings = await env.LEADERBOARD_MEMBERS.getByName(id).noteBoard(board);
-    return { ok: eligible(player, item.finished_ms), show: settings.show_name, name: player.display_name };
-  }));
-  const ok = members.length === 2 && members.every(member => member.ok);
-  return { entry_id: item.entry_id, eligible: ok, reason: ok ? "" : "ineligible", members: [{ show: members[0].show, name: members[0].name }, { show: members[1].show, name: members[1].name }] };
 }
 
 function parseVerdicts(value: unknown): Map<string, Verdict[]> {

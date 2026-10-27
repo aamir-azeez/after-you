@@ -202,8 +202,10 @@ export default {
       if (path === "/v1/identity" && request.method === "DELETE") {
         if (await env.SAFETY_PROFILES.getByName(playerId).deletionReceipt(playerId, await bearerDigest(request))) return json({ deleted: true });
         const deviceHash = await bearerDigest(request);
-        // The player's leaderboard settings and every board that holds their runs forget them first; a retried deletion runs it again.
-        await forgetLeaderboardPlayer(env, playerId);
+        // Every leaderboard forgets the player first; a retried deletion runs it again. While leaderboards
+        // are off a failure here never holds up the deletion.
+        if (flags.leaderboards(env)) await forgetLeaderboardPlayer(env, playerId);
+        else await forgetLeaderboardPlayer(env, playerId).catch(() => undefined);
         const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host),
           (link, id) => deleteCampaignIdentityLink(player, {
             erase: (owner, roomId, allocation) => env.ROOMS_V2.getByName(roomId).eraseCampaignRoot(owner, roomId, allocation),

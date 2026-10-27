@@ -10,8 +10,19 @@
 export const TOP_PLACES = 10;
 /** Ranked entries kept below the top 10, so a struck run lets the next one move up. */
 export const KEPT_RANKED = TOP_PLACES + 3;
-/** Runs waiting for the replay check or a person, per board. */
-export const MAX_WAITING = 24;
+/**
+ * Runs waiting, per board, in three pools so one kind can never crowd out another:
+ * - unchecked: posted, account check not run yet. A full pool never evicts; the
+ *   post runs the account check itself first (submit.ts), so new accounts posting
+ *   fakes cannot push out players who qualify;
+ * - checked: qualified and waiting for the replay; a faster run evicts the slowest;
+ * - review: passed and waiting for a person; a faster run evicts the slowest.
+ */
+export const MAX_UNCHECKED = 16;
+export const MAX_CHECKED = 24;
+export const MAX_REVIEW = 48;
+/** Verdicts that send a run to a person instead of dropping it: the job could not judge it. */
+export const REVIEW_REASONS: readonly string[] = ["replay_error", "no_verdict", "unknown_chapter"];
 /** A time below this share of the developers' best waits for a person. */
 export const FLOOR_RATIO = 0.8;
 /** A new first this much faster than the old first, or more, waits for a person. */
