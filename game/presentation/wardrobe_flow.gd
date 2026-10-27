@@ -138,16 +138,17 @@ func model() -> Dictionary:
 	var owned: Array = view.get("items", [])
 	var look: Dictionary = view.get("look", {})
 	var unlocked: Array = view.get("unlocked", [])
+	var prices: Dictionary = view.get("prices", {})
 	var items: Array = []
 	var by_tier := {}
 	for id: String in Catalog.ids():
 		var mine := id in owned
-		# The server's catalogue decides what shows: offered items, and earned ones once owned.
-		if not mine and not id in view.get("offered", []): continue
-		if Catalog.slot(id).is_empty(): continue
+		# The server's catalogue decides what shows: what it sells, and anything owned (earned items too).
 		var sold: bool = Catalog.sold(id) and id in view.get("offered", [])
+		if not mine and not sold: continue
+		if Catalog.slot(id).is_empty(): continue
 		var unlock := Catalog.unlock(id)
-		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": Catalog.price(id),
+		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": int(prices.get(id, Catalog.price(id))),
 			"owned": mine, "worn": look.get(Catalog.slot(id)) == id, "sold": sold, "locked": not mine and not unlock.is_empty() and not id in unlocked,
 			"unlock_name": _chapter_name(unlock)}
 		items.append(entry)

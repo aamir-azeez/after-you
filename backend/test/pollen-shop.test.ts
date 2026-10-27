@@ -78,7 +78,8 @@ describe("the shop flag", () => {
     const player = await create();
     const view = await wallet(player);
     expect(view.wardrobe).toEqual({ items: [], packs: [], look: {}, look_revision: 0,
-      offered: ["daisy", "seashell", "straw_hat", "tide", "lantern", "lighthouse_lamp", "gold_leaf", "every_hard", "top_ten_ribbon"], offered_packs: [], sets: {}, unlocked: [] });
+      offered: ["daisy", "seashell", "straw_hat", "tide", "lantern", "lighthouse_lamp", "gold_leaf", "every_hard", "top_ten_ribbon"],
+      prices: { daisy: 1000, seashell: 1000, straw_hat: 5000, tide: 20000, lantern: 50000, lighthouse_lamp: 100000 }, offered_packs: [], pack_price: 5000, sets: {}, unlocked: [] });
     expect(view.name_price).toBe(0);
     await clear(player, "sleeping-lighthouse");
     expect((await wallet(player)).wardrobe.unlocked).toEqual(["lighthouse_lamp"]);
@@ -233,6 +234,19 @@ describe("the name change price", () => {
     for (const name of ["One", "Two"]) expect((await rename(player, name, ++revision)).status).toBe(200);
     const old = await rename(player, "Three", ++revision);
     expect(old.status).toBe(403); expect(await old.json()).toMatchObject({ error: { code: "display_name_locked" } });
+    expect((await wallet(player)).balance).toBe(5000);
+  });
+  it("answers a lock or the daily limit before any price", async () => {
+    const player = await create(); await fund(player, 5000);
+    let revision = Date.now() - 60_000;
+    for (const name of ["One", "Two"]) expect((await rename(player, name, ++revision, 0)).status).toBe(200);
+    await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => {
+      const identity = JSON.parse(state.storage.sql.exec<{ data: string }>("SELECT data FROM identity").one().data) as Record<string, unknown>;
+      identity.display_name_locked_until = Date.now() + DAY;
+      state.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    });
+    const locked = await rename(player, "Three", ++revision, 0);
+    expect(locked.status).toBe(403); expect(await locked.json()).toMatchObject({ error: { code: "display_name_locked" } });
     expect((await wallet(player)).balance).toBe(5000);
   });
   it("stays free while the shop is off, and counts nothing", async () => {

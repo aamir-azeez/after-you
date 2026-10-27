@@ -14,7 +14,7 @@ import { CATALOG, isDefaultLook, lookText, validLook, type Catalog, type Look } 
  *   that accepts the turn. A replay draws each turn in its own look, whatever either player wears now.
  *   Replay transfer and attempt history never touch it, so a replay that comes back keeps its looks.
  * Operator snapshots leave both out (like member names); the full room erase drops them; a member
- * who leaves a finished room takes their member_looks row (their turns' looks stay with the turns).
+ * who leaves a finished room takes their member_looks row and their turns' looks, as their reactions go.
  */
 const [MEMBERS, TURNS] = LOOKS_ROOM_TABLES;
 export const MAX_TURN_LOOKS = TURNS.maxRows;
@@ -88,6 +88,12 @@ export function turnLooks(storage: DurableObjectStorage, player?: string | null,
 export function eraseMemberLook(storage: DurableObjectStorage, player: string): boolean {
   if (!present(storage, MEMBERS.name)) return false;
   return storage.sql.exec("DELETE FROM member_looks WHERE player_id=?", player).rowsWritten > 0;
+}
+
+/** A member leaving a finished room: the looks of their turns go too, as their reactions do. */
+export function eraseTurnLooksOf(storage: DurableObjectStorage, player: string): number {
+  if (!present(storage, TURNS.name)) return 0;
+  return storage.sql.exec("DELETE FROM turn_looks WHERE player_id=?", player).rowsWritten;
 }
 
 /** For the full room erase and a snapshot restore. */

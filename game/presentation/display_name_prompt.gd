@@ -404,10 +404,11 @@ func _show() -> void:
 
 ## What saving the choice now costs: 0 for anonymous, the name already set, or a free change.
 func cost() -> int:
-	var price: Dictionary = _context.get("price", {})
-	if price.is_empty() or _choice == "anonymous": return 0
-	var name := _platform_name if _choice == "platform" else DisplayNames.clean(field.text)
-	var own: Dictionary = _context.get("own", {})
+	return choice_cost(_context.get("price", {}), _context.get("own", {}), _choice, _platform_name if _choice == "platform" else DisplayNames.clean(field.text))
+
+## The same rule for a choice saved: `price` and `own` as in the context.
+static func choice_cost(price: Dictionary, own: Dictionary, choice: String, name: String) -> int:
+	if price.is_empty() or choice == "anonymous": return 0
 	if name.is_empty() or (name == str(own.get("name", "")) and str(own.get("choice", "")) != "anonymous"): return 0
 	return maxi(0, int(price.get("price", 0)))
 

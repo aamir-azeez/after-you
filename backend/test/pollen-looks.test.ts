@@ -130,14 +130,14 @@ describe("looks in rooms", () => {
     const secondBase = await meterRows({ room: stub }, async () => turn(base.value.room, guest, firstB, middle, OFF));
     expect(second.rows.room.written - secondBase.rows.room.written).toBe(1);
   });
-  it("lets a member who leaves a finished room take their look, while their turns keep theirs", async () => {
+  it("lets a member who leaves a finished room take their look and their turns' looks", async () => {
     const host = await create(), guest = await create();
     await wear(host, { hat: "daisy" });
     let current = await room(host, guest);
     current = (await turn(current, host, firstA)).room; current = (await turn(current, guest, firstB, middle)).room;
     current = (await turn(current, guest, secondA)).room; current = (await turn(current, host, secondB, final)).room;
     expect((await call(`/v2/rooms/${current.room_id}/leave`, "POST", host, { schema_version: 1, leave_finished: true }, { ...ON, FINISHED_ROOM_LEAVE_ENABLED: "true" })).status).toBe(200);
-    expect(await read(current, guest, { ...ON, FINISHED_ROOM_LEAVE_ENABLED: "true" })).toMatchObject({ partner_look: {}, turn_looks: { [firstA.recording_hash]: { hat: "daisy" } } });
+    expect(await read(current, guest, { ...ON, FINISHED_ROOM_LEAVE_ENABLED: "true" })).toMatchObject({ partner_look: {}, turn_looks: {} });
     expect(await runInDurableObject(env.ROOMS_V2.getByName(current.room_id), async (_, state) => state.storage.sql.exec("SELECT player_id FROM member_looks").toArray())).toEqual([]);
   });
   it("drops every look with the room", async () => {

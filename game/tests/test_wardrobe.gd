@@ -66,6 +66,7 @@ func _run() -> void:
 	await _client_retries()
 	await _client_one_at_a_time()
 	await _client_stale()
+	await _name_price()
 	Catalog.set_offered([])
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
@@ -192,3 +193,32 @@ func _client_stale() -> void:
 	var off: RefCounted = WardrobeClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, t.fake.call_it, Wardrobe.new(_path("off")), t.wallet)
 	t.fake.sent.clear()
 	_check((await off.buy("item", "daisy", 1000)).code == "pollen_shop_disabled" and t.fake.sent.is_empty(), "Nothing is sent while the server has the shop off")
+
+## A name change carries the price the prompt showed for that very choice, or 0, never a price read later.
+func _name_price() -> void:
+	var DisplayNames: GDScript = load("res://services/display_names.gd")
+	var DisplayNameClient: GDScript = load("res://services/display_name_client.gd")
+	var store: RefCounted = Wardrobe.new(_path("names-wardrobe"))
+	Wardrobe.use_shared(store)
+	store.set_enabled(SERVER, ME, true)
+	store.note_view(SERVER, ME, answer([], {}, 0, 5000, 1000))
+	var names: RefCounted = DisplayNames.new(_path("names"))
+	names.set_enabled(SERVER, ME, true)
+	var fake := Fake.new()
+	fake.tree = self
+	fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "display_name": "Robin", "revision": 1.0}}, {"ok": false, "status": 409, "code": "name_change_price"}]
+	var client: RefCounted = DisplayNameClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, fake.call_it, names)
+	var chosen: Dictionary = names.choose(SERVER, ME, "typed", "Robin")
+	client.note_shown_price(int(chosen.revision), 1000)
+	client.flush()
+	for i in range(4): await process_frame
+	_check(fake.sent.size() == 1 and fake.sent[0].body.get("pollen_price") == 1000, "A name carries the price shown for it")
+	names.choose(SERVER, ME, "typed", "Robin Sky")
+	client.flush()
+	for i in range(4): await process_frame
+	_check(fake.sent.size() == 2 and fake.sent[1].body.get("pollen_price") == 0, "A choice no price was shown for sends 0, so the server refuses instead of charging")
+	names.choose(SERVER, ME, "anonymous", "")
+	client.flush()
+	for i in range(4): await process_frame
+	_check(fake.sent.size() == 3 and not fake.sent[2].body.has("pollen_price"), "Going anonymous carries no price")
+	Wardrobe.use_shared(null)

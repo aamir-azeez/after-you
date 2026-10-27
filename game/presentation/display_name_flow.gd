@@ -160,9 +160,12 @@ func _games() -> Node:
 func _save(choice: String, name: String) -> Dictionary:
 	var current := scope()
 	if current.is_empty(): return {"closed": true}
+	var own: Dictionary = DisplayNames.shared().own(current.server, current.owner)
+	var shown := Prompt.choice_cost(name_price(current), own, choice, name)
 	if DisplayNames.shared().choose(current.server, current.owner, choice, name).is_empty():
 		var wrong := DisplayNames.problem(name) if choice != "anonymous" else ""
 		return {"closed": false, "code": wrong if not wrong.is_empty() else "characters"}
+	_client().note_shown_price(int(DisplayNames.shared().own(current.server, current.owner).revision), shown)
 	_refresh_chips()
 	var answer: Dictionary = await _client().send(DisplayNameClient.SAVE_WAIT_MS)
 	_refresh_chips()
@@ -172,9 +175,10 @@ func _save(choice: String, name: String) -> Dictionary:
 ## A send that came back after its card closed: a refusal is said once.
 func _settled(answer: Dictionary) -> void:
 	_refresh_chips()
-	# A saved change may have spent Pollen or used the free change: read the wardrobe again.
+	# A saved change may have spent Pollen or used the free change, and a price refusal means
+	# the price shown was out of date: read the wardrobe again.
 	var wardrobe: Variant = host.get("wardrobe_flow") if host != null else null
-	if answer.get("ok", false) and wardrobe is Object and is_instance_valid(wardrobe) and wardrobe.has_method("refresh"): wardrobe.refresh()
+	if (answer.get("ok", false) or str(answer.get("code", "")) in ["pollen_short", "name_change_price"]) and wardrobe is Object and is_instance_valid(wardrobe) and wardrobe.has_method("refresh"): wardrobe.refresh()
 	if answer.get("ok", false) or prompt_open(): return
 	var line := str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), ""))
 	if not line.is_empty() and host.has_method("_toast"): host._toast(line)

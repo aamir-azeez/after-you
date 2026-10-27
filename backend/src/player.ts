@@ -288,6 +288,9 @@ export class Player extends DurableObject<Env> {
     // A repeated or older revision only answers the state (applyDisplayName), so it is never charged.
     const cost = pricing && revision > (identity.display_name_rev ?? 0) ? namePrice(identity, name, now) : 0;
     if (cost > 0) {
+      // A change the rules refuse anyway (a lock, the daily limit) answers that refusal, never a price one.
+      const trial = applyDisplayName({ ...identity }, name, revision, now);
+      if (!trial.outcome.ok) return trial.outcome;
       if (pricing!.shown === undefined) return fail(403, "display_name_locked");
       if (pricing!.shown !== cost) return fail(409, "name_change_price");
       if (walletBalance(this.ctx.storage, now) < cost) return fail(402, "pollen_short");

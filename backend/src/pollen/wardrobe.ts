@@ -1,6 +1,6 @@
 import { HASH_PATTERN, IDEMPOTENCY_PATTERN, equalHash, fail, isObject, ok, type Outcome } from "../protocol";
 import { POLLEN_SHOP_TABLES, isLazyTable } from "../storage-schema";
-import { CATALOG, isDefaultLook, offeredItems, offeredPacks, offeredSets, setPieces, validLook, type Catalog, type Look } from "./catalog";
+import { CATALOG, isDefaultLook, itemPrice, offeredItems, offeredPacks, offeredSets, setPieces, sold, validLook, type Catalog, type Look } from "./catalog";
 import { charge, quote, type SpendRequest } from "./spend";
 import { chapterCleared, payFromWallet, walletBalance } from "./wallet";
 
@@ -25,10 +25,13 @@ export type OpKey = { key: string; hash: string };
 export type SpendReceipt = { schema_version: 1; op: "spend"; kind: SpendRequest["kind"]; id: string; pieces: string[]; cost: number; balance: number };
 export type LookState = { schema_version: 1; look: Look; revision: number };
 export type EquipReceipt = LookState & { op: "equip" };
-/** What GET /v1/pollen adds while the shop is on. `offered` and `sets` come from the server's catalogue, which decides what is sold. */
+/**
+ * What GET /v1/pollen adds while the shop is on. `offered`, `prices`, `sets` and `pack_price` come from the
+ * server's catalogue, which decides what is sold and for how much, so a phone shows the price the spend checks.
+ */
 export type WardrobeView = {
   items: string[]; packs: string[]; look: Look; look_revision: number;
-  offered: string[]; offered_packs: string[]; sets: Record<string, string[]>; unlocked: string[];
+  offered: string[]; prices: Record<string, number>; offered_packs: string[]; pack_price: number; sets: Record<string, string[]>; unlocked: string[];
 };
 
 const [ITEMS, OPS] = POLLEN_SHOP_TABLES;
@@ -146,7 +149,9 @@ export function wardrobeView(storage: DurableObjectStorage, catalog: Catalog = C
   const sets = Object.fromEntries(offeredSets(catalog).map(set => [set, setPieces(set, catalog)]));
   const unlocked = offeredItems(catalog).filter(id => catalog.items[id].unlock !== "" && chapterCleared(storage, catalog.items[id].unlock));
   return { items: [...items].filter(([, kind]) => kind === "item").map(([id]) => id).sort(), packs: [...items].filter(([, kind]) => kind === "pack").map(([id]) => id).sort(),
-    look: look.look, look_revision: look.revision, offered: offeredItems(catalog), offered_packs: offeredPacks(catalog), sets, unlocked };
+    look: look.look, look_revision: look.revision, offered: offeredItems(catalog),
+    prices: Object.fromEntries(offeredItems(catalog).filter(id => sold(id, catalog)).map(id => [id, itemPrice(id, catalog)])),
+    offered_packs: offeredPacks(catalog), pack_price: catalog.pack_price, sets, unlocked };
 }
 
 /** Account erasure: owned items, receipts and the look go. */

@@ -45,7 +45,7 @@ import { observeRoom, pushRoomIndex } from "../room-index-sync";
 import { announceRoomChange, liveRecipient, liveRoomHint, type LiveHint, type LiveRoomMembers } from "../live";
 import { clearMemberNames, eraseMemberName, memberName, recordMemberName } from "../display-names";
 import { clearPollenRoom, completionFacts, recordMember, recordTurnFacts, turnFacts, type PollenMember, type TurnFacts } from "../pollen/turn-facts";
-import { clearLooks, eraseMemberLook, memberLook, recordMemberLook, recordTurnLook, turnLooks } from "../pollen/room-looks";
+import { clearLooks, eraseMemberLook, eraseTurnLooksOf, memberLook, recordMemberLook, recordTurnLook, turnLooks } from "../pollen/room-looks";
 import type { Look } from "../pollen/catalog";
 
 export type RoomStateV2 = {
@@ -1042,6 +1042,7 @@ export class RoomV2 extends DurableObject<Env> {
       eraseRunReactionsOf(this.ctx.storage, player);
       eraseMemberName(this.ctx.storage, player);
       eraseMemberLook(this.ctx.storage, player);
+      eraseTurnLooksOf(this.ctx.storage, player);
       recordDeparture(this.ctx.storage, player);
       return ok({ left: true });
     }), true, player);

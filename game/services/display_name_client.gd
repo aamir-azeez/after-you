@@ -24,6 +24,9 @@ var _api: Node
 var _scope: Callable
 var _transport: Callable
 var _sending := false
+## The name change price the prompt showed for a choice, by its revision. A send carries the price
+## shown for its own choice, or 0, so it never pays a price the player did not see.
+var _shown := {}
 
 ## transport(method, path, body) -> response, for tests; else the API's queue.
 func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), store: RefCounted = null) -> void:
@@ -58,6 +61,10 @@ func send(wait_ms: int = SAVE_WAIT_MS) -> Dictionary:
 	if int(now.revision) != int(mine.revision) or now.state == DisplayNames.PENDING: return {"done": false}
 	return {"done": true, "ok": now.state == DisplayNames.SYNCED, "code": str(now.code)}
 
+## The price the prompt showed beside Save for the choice at `revision`.
+func note_shown_price(revision: int, price: int) -> void:
+	_shown = {revision: maxi(0, price)}
+
 ## Sends a choice still waiting, without waiting for it (after a friends read).
 func flush() -> void:
 	var context := scope()
@@ -69,9 +76,9 @@ func _start(context: Dictionary) -> void:
 	var mine: Dictionary = names.own(context.server, context.owner)
 	var revision := int(mine.revision)
 	var body := {"schema_version": 1, "display_name": null if mine.choice == "anonymous" else str(mine.name), "revision": revision}
-	# While the shop is on, a name carries the change price the phone shows beside Save (services/wardrobe.gd).
-	var price: int = Wardrobe.shared().name_price(str(context.server), str(context.owner))
-	if mine.choice != "anonymous" and price >= 0: body["pollen_price"] = price
+	# While the shop is on, a name carries the change price shown beside Save for this choice (0 when
+	# none was shown), so the server refuses rather than charges a price the player never saw.
+	if mine.choice != "anonymous" and Wardrobe.shared().name_price(str(context.server), str(context.owner)) >= 0: body["pollen_price"] = int(_shown.get(revision, 0))
 	var response: Dictionary = await _request(body)
 	_sending = false
 	if scope() != context: return

@@ -6,7 +6,7 @@ import raw from "./catalog.json";
  * holds every item, this file checks it once at module load. A tier sets an item's price; no item
  * stores its own. `released` here, not the game's own copy, decides what can be bought, so the
  * owner offers an item by changing this file and turning POLLEN_SHOP on.
- * test/pollen-catalog.test.ts pins every item's facts except `released` to the game's
+ * test/spend.test.ts pins every item's facts except `released` to the game's
  * game/tests/fixtures/golden/cosmetic_manifest.json.
  *
  * - items: the pip cosmetics, keyed by id; each worn in one slot. An "earned" tier is never sold.

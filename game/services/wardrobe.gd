@@ -88,12 +88,18 @@ static func checked_view(value: Variant) -> Dictionary:
 	if not part.get("look") is Dictionary or not part.get("sets") is Dictionary: return {}
 	var look := checked_look(part.look)
 	if look.size() != (part.look as Dictionary).size(): return {}
+	# The server's prices for what it sells: what a confirm card shows and a spend checks.
+	var prices := {}
+	var sent: Variant = part.get("prices", {})
+	if sent is Dictionary:
+		for id: Variant in sent:
+			if valid_id(id) and Typed.whole_number(sent[id]) and float(sent[id]) > 0.0: prices[id] = Typed.as_int(sent[id])
 	var sets := {}
 	for set_id: Variant in part.sets:
 		var pieces := _ids(part.sets[set_id])
 		if valid_id(set_id) and not pieces.is_empty() and pieces.size() <= MAX_SET_PIECES: sets[set_id] = pieces
 	return {"items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
-		"offered": _ids(part.offered), "offered_packs": _ids(part.offered_packs), "sets": sets, "unlocked": _ids(part.unlocked),
+		"offered": _ids(part.offered), "prices": prices, "offered_packs": _ids(part.offered_packs), "pack_price": Typed.as_int(part.get("pack_price"), 0), "sets": sets, "unlocked": _ids(part.unlocked),
 		"name_price": Typed.as_int(value.name_price)}
 
 # --- Scopes ----------------------------------------------------------------
