@@ -47,7 +47,8 @@ export function validTurnFacts(value: unknown): value is TurnFacts {
     typeof value.level_id === "string" && /^[a-z0-9-]{1,64}$/.test(value.level_id) && typeof value.stage_id === "string" && /^[a-z0-9-]{1,64}$/.test(value.stage_id) &&
     (value.role === "a" || value.role === "b") && count(value.ticks) && (value.tries === null || count(value.tries, 1, 999)) &&
     bool(value.premium) && bool(value.hard) && bool(value.host) && bool(value.together) && bool(value.complete) && bool(value.subscriber) && bool(value.partner_subscriber) &&
-    value.boost_percent === boostPercent(Number(value.subscriber) + Number(value.partner_subscriber));
+    // Frozen at acceptance: a later change of the per-subscriber rate never makes old facts invalid.
+    count(value.boost_percent, 0, 100) && (value.boost_percent > 0) === (value.subscriber || value.partner_subscriber);
 }
 
 /** A member value from the Player: a Full Journey end in ms, 0 for none. */
@@ -113,11 +114,10 @@ export function recordTurnFacts(storage: DurableObjectStorage, turn: AcceptedTur
   return facts;
 }
 
+/** A stored row's facts, or null: reading facts never throws, so it can never fail an accepted turn's reply. */
 function parsed(row: { data: string } | undefined): TurnFacts | null {
   if (!row) return null;
-  const value: unknown = JSON.parse(row.data);
-  if (!validTurnFacts(value)) throw new Error("unsupported_pollen_facts");
-  return value;
+  try { const value: unknown = JSON.parse(row.data); return validTurnFacts(value) ? value : null; } catch { return null; }
 }
 
 /** The frozen facts of one turn, or null. A room without the table reads nothing. */
@@ -132,15 +132,11 @@ export function completionFacts(storage: DurableObjectStorage): TurnFacts | null
   return parsed(storage.sql.exec<{ data: string }>("SELECT data FROM pollen_turn_facts WHERE json_extract(data,'$.complete')=1 ORDER BY accepted_at DESC LIMIT 1").toArray()[0]);
 }
 
-/** A member leaving or erased: their facts and their copy go. True when a row went. */
-export function erasePollenOf(storage: DurableObjectStorage, player: string): boolean {
-  let removed = false;
-  if (present(storage, FACTS.name)) removed = storage.sql.exec("DELETE FROM pollen_turn_facts WHERE player_id=?", player).rowsWritten > 0;
-  if (present(storage, MEMBERS.name)) removed = storage.sql.exec("DELETE FROM pollen_members WHERE player_id=?", player).rowsWritten > 0 || removed;
-  return removed;
-}
-
-/** For the full room erase and a snapshot restore. */
+/**
+ * For the full room erase (which every account erasure of a member runs) and a snapshot restore.
+ * A member who leaves a finished room keeps their rows, as the room keeps their turns, so a turn
+ * whose credit did not land can still be claimed.
+ */
 export function clearPollenRoom(storage: DurableObjectStorage): void {
   storage.sql.exec("DROP TABLE IF EXISTS pollen_turn_facts");
   storage.sql.exec("DROP TABLE IF EXISTS pollen_members");

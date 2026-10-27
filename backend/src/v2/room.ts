@@ -44,7 +44,7 @@ import { UnblockedPairMemo } from "./block-memo";
 import { observeRoom, pushRoomIndex } from "../room-index-sync";
 import { announceRoomChange, liveRecipient, liveRoomHint, type LiveHint, type LiveRoomMembers } from "../live";
 import { clearMemberNames, eraseMemberName, memberName, recordMemberName } from "../display-names";
-import { clearPollenRoom, completionFacts, erasePollenOf, recordMember, recordTurnFacts, turnFacts, type PollenMember, type TurnFacts } from "../pollen/turn-facts";
+import { clearPollenRoom, completionFacts, recordMember, recordTurnFacts, turnFacts, type PollenMember, type TurnFacts } from "../pollen/turn-facts";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -1025,7 +1025,6 @@ export class RoomV2 extends DurableObject<Env> {
       eraseEndReactionsOf(this.ctx.storage, player);
       eraseRunReactionsOf(this.ctx.storage, player);
       eraseMemberName(this.ctx.storage, player);
-      erasePollenOf(this.ctx.storage, player);
       recordDeparture(this.ctx.storage, player);
       return ok({ left: true });
     }), true, player);
