@@ -134,7 +134,7 @@ func _test_save_generations() -> void:
 	var path := _temporary_path()
 	var store := Storage.new(path)
 	store.load_data()
-	_check(not store.data.settings.assistance and not store.read_only,"Missing save starts with complete defaults, Forgiving catches off")
+	_check(store.fresh and store.data.settings.assistance and not store.read_only and Storage.NEW_PLAYER_SETTINGS.assistance == false,"Missing save starts with complete defaults and is marked fresh for the new player settings")
 	_check(store.save_attempt("first-light",{"a":first,"b":second,"draft":{}},true),"Completed attempt persisted")
 	var saved := store.attempt("first-light")
 	saved.a.actions[0].x=999

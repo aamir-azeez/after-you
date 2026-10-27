@@ -309,6 +309,7 @@ func _ready() -> void:
 	# A replay open that never reached its chapter leaves nothing behind.
 	SoloReplayLaunch.discard()
 	saves.load_data()
+	if saves.fresh: saves.data.settings.merge(LocalSave.NEW_PLAYER_SETTINGS, true)
 	saves.start_fresh_if_unreadable()
 	# Kept hard runs name their friend as this phone names them now.
 	HardModeView.friend_name = _friend_display_name

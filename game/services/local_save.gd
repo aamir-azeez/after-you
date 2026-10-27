@@ -14,6 +14,8 @@ var path := PATH
 var last_error := ""
 var read_only := false
 var loaded_from := ""
+## True after load_data found no copy of the file at all: a brand new install.
+var fresh := false
 ## Set by load_data when the file exists and every copy of it opened but none
 ## parses as JSON.
 var _unreadable := false
@@ -24,9 +26,10 @@ func _init(save_path: String = PATH) -> void:
 static func defaults() -> Dictionary:
 	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false, "frame_rate": GraphicsPolicy.DEFAULT_FRAME_RATE, "skip_waits": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
 
-## Settings a brand new install starts with, over defaults(). defaults() stays
-## as it was, because chapter journals and older apps check saved envelopes
-## against it; an existing save keeps whatever it holds.
+## Settings a brand new install starts with, over defaults(), applied by Main
+## to the main save only when it was `fresh`. defaults() stays as it was,
+## because chapter journals (which use this class too) and older apps check
+## saved envelopes against it; an existing save keeps whatever it holds.
 const NEW_PLAYER_SETTINGS := {"assistance": false}
 
 static func default_settings_envelope_valid(value: Variant) -> bool:
@@ -70,8 +73,7 @@ func load_data() -> void:
 			data = _with_defaults(value)
 			loaded_from = candidate
 			best_generation = generation
-	if existing == 0:
-		data.settings.merge(NEW_PLAYER_SETTINGS, true)
+	fresh = existing == 0
 	if loaded_from != path and not loaded_from.is_empty() and not read_only:
 		last_error = PlayerCopy.LOCAL_SAVE_27DCFA34F3AD
 	elif loaded_from.is_empty() and FileAccess.file_exists(path) and not read_only:
