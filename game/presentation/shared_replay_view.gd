@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal closed
 const Collection = preload("res://services/shared_replay_collection.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const SlotLooks = preload("res://presentation/slot_looks.gd")
 const RoomStages = preload("res://services/room_stages.gd")
 const LegacySimulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
@@ -238,6 +239,8 @@ func _start_part() -> void:
 	completion_remaining = 0.0
 	_paused_completion = false
 	var pair: Dictionary = entry.pair
+	# Each turn plays in the look it was played in (presentation/slot_looks.gd).
+	if world.has_method("wear_slots"): world.wear_slots(SlotLooks.replay([pair.get("a"), pair.get("b")]))
 	if entry.room.family == "chapter":
 		var engine: Script = Registry.simulation_script(entry.room.chapter_key)
 		sim = engine.new()

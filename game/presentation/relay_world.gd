@@ -90,7 +90,7 @@ func load_level(definition: Dictionary) -> void:
 		socket_visuals[item.id] = socket
 		await _build_step()
 	for slot: String in ["p0", "p1"]:
-		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL)
+		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL, slot)
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO

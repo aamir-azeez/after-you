@@ -8,6 +8,7 @@ extends RefCounted
 ## capabilities are read) and on every resume. Nothing is sent while the server
 ## has not said Pollen earning is on.
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const CLAIMS_PATH := "/v1/pollen/turn-claims"
 const CLEARS_PATH := "/v1/pollen/clear-claims"
@@ -22,6 +23,8 @@ const MAX_REQUESTS := 4
 signal settled
 
 var wallet: RefCounted
+## The wardrobe kept from the same wallet read while the shop is on (services/wardrobe.gd).
+var wardrobe: RefCounted
 var _api: Node
 ## () -> {server, owner} of the signed-in player, or {}.
 var _scope: Callable
@@ -37,6 +40,7 @@ func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), 
 	_scope = scope_source
 	_transport = transport
 	wallet = store if store != null else PollenWallet.shared()
+	wardrobe = Wardrobe.shared()
 
 ## {server, owner} while the server has said Pollen earning is on, else {}.
 func scope() -> Dictionary:
@@ -75,14 +79,19 @@ func _run() -> void:
 			var answer: Dictionary = await _request(HTTPClient.METHOD_POST, CLEARS_PATH, {"schema_version": 1, "claims": clears.map(func(entry: Dictionary) -> Dictionary: return entry.claim)})
 			if scope() != context or not _settle_clears(context, clears, answer): break
 			continue
-		# A phone with no wallet (a new install, or a file that could not be read) asks for it.
-		if wallet.wallet(context.server, context.owner).is_empty():
+		# A phone with no wallet (a new install, or a file that could not be read) asks for it,
+		# and so does one with no wardrobe while the shop is on: the same read carries both.
+		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_missing(context):
 			requests += 1
 			var read: Dictionary = await _request(HTTPClient.METHOD_GET, WALLET_PATH, {})
 			if scope() != context or not read.get("ok", false) or not wallet.note_wallet(context.server, context.owner, read.get("data")): break
+			if wardrobe != null: wardrobe.note_view(context.server, context.owner, read.get("data"))
 		if not _again: break
 	_sending = false
 	settled.emit()
+
+func _wardrobe_missing(context: Dictionary) -> bool:
+	return wardrobe != null and wardrobe.enabled(context.server, context.owner) and wardrobe.view(context.server, context.owner).is_empty()
 
 ## Records each claim's answer; false when the request itself failed (sent again later).
 func _settle_claims(context: Dictionary, batch: Array, response: Dictionary) -> bool:

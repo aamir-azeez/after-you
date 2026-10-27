@@ -29,10 +29,14 @@ extends Node
 ##   read_platform (Callable () -> {"ok", "name"}): awaited when that row is picked;
 ##   save (Callable (choice, name) -> {"closed": bool, "code": String}): awaited on Save;
 ##   reduced_motion (bool), haptic (Callable, optional): the pip's grab tick;
-##   dismissed (Callable, optional): called when the card closes with nothing saved.
+##   dismissed (Callable, optional): called when the card closes with nothing saved;
+##   price (Dictionary, optional): {price, balance} while the shop is on. A change
+##     to another name then says its price on Save and in a note, and Save waits
+##     while the balance is short. Staying anonymous and keeping the name are free.
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PollenMoney = preload("res://services/pollen_money.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
@@ -56,6 +60,7 @@ var platform_row: Button
 var _counter: Label
 var _error: Label
 var _platform_note: Label
+var _price_note: Label
 ## The rows' column, and the platform row's label as shown ("" for none).
 var _column: VBoxContainer
 var _platform_label := ""
@@ -131,6 +136,10 @@ func _build(card: Control) -> void:
 	var follow: Variant = _context.get("platform_changed")
 	# A method of this node, not a lambda: the connection is dropped when the card is freed.
 	if follow is Signal and not (follow as Signal).is_null(): (follow as Signal).connect(_platform_changed)
+	_price_note = _small("", MUTED, column)
+	_price_note.name = "DisplayNamePrice"
+	_price_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_price_note.visible = false
 	save_button = modal.add_actions(PlayerCopy.DISPLAY_NAME_SAVE, _save, PlayerCopy.DISPLAY_NAME_NOT_NOW if not _context.get("edit", false) else PlayerCopy.DISPLAY_NAME_CANCEL)
 	var dismissed: Variant = _context.get("dismissed")
 	if dismissed is Callable and dismissed.is_valid(): modal.closed.connect(func() -> void: if not _saved: dismissed.call())
@@ -391,6 +400,30 @@ func _show() -> void:
 	if platform_row != null:
 		_mark(platform_row, _choice == "platform")
 		if not _platform_name.is_empty() and not _busy: _platform_note.text = _platform_name
+	_show_price()
+
+## What saving the choice now costs: 0 for anonymous, the name already set, or a free change.
+func cost() -> int:
+	var price: Dictionary = _context.get("price", {})
+	if price.is_empty() or _choice == "anonymous": return 0
+	var name := _platform_name if _choice == "platform" else DisplayNames.clean(field.text)
+	var own: Dictionary = _context.get("own", {})
+	if name.is_empty() or (name == str(own.get("name", "")) and str(own.get("choice", "")) != "anonymous"): return 0
+	return maxi(0, int(price.get("price", 0)))
+
+## Save's label and the price note for the choice now.
+func _show_price() -> void:
+	if save_button == null or _price_note == null or _busy: return
+	var amount := cost()
+	var short := amount - int((_context.get("price", {}) as Dictionary).get("balance", 0))
+	save_button.text = _save_label()
+	save_button.disabled = amount > 0 and short > 0
+	_price_note.visible = amount > 0
+	if amount > 0: _price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_SHORT % PollenMoney.grouped(short) if short > 0 else PlayerCopy.DISPLAY_NAME_PRICE_NOTE % [PollenMoney.grouped(amount), PollenMoney.about(amount)]
+
+func _save_label() -> String:
+	var amount := cost()
+	return PlayerCopy.DISPLAY_NAME_SAVE_PRICED % PollenMoney.grouped(amount) if amount > 0 else PlayerCopy.DISPLAY_NAME_SAVE
 
 func _mark(row: Button, on: bool) -> void:
 	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
@@ -427,7 +460,7 @@ func _save() -> void:
 	if not is_inside_tree(): return
 	_busy = false
 	save_button.disabled = false
-	save_button.text = PlayerCopy.DISPLAY_NAME_SAVE
+	save_button.text = _save_label()
 	if answer is Dictionary and not answer.get("closed", true):
 		_error.text = str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), PlayerCopy.DISPLAY_NAME_ERRORS.characters))
 		_show()

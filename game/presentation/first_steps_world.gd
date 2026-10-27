@@ -101,7 +101,7 @@ func load_level(definition: Dictionary) -> void:
 		bell_ring = ring(float(goal.radius_cm) / 100.0, CREAM, Vector3(0, 0.04, 0), loft_bell)
 	await _build_step()
 	for slot: String in ["p0", "p1"]:
-		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL)
+		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL, slot)
 		terrain.add_child(spirit)
 		actors[slot] = spirit
 		actor_targets[slot] = Vector3.ZERO

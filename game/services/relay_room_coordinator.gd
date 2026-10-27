@@ -57,6 +57,11 @@ var partner_name_sink: Callable
 var pollen_sink: Callable
 ## (room_id: String) -> void: this player saw the room's chapter finished (a read of a finished room).
 var pollen_finished_sink: Callable
+## (partner_id: String, look: Variant) -> void: the room partner's look that came beside an
+## accepted read or turn reply (rooms_api.gd keeps turns' own looks itself).
+var partner_look_sink: Callable
+## (recording_hash: String) -> void: this player's own turn was accepted, to keep the look it was played in.
+var own_turn_look_sink: Callable
 var restore_replay_transfer: Callable
 var recover_replay_operation: Callable
 var _replay_recovering := false
@@ -441,6 +446,7 @@ func refresh() -> bool:
 	if accepted:
 		_note_end_reactions(response)
 		_note_partner_name(response)
+		_note_partner_look(response)
 		# A finished room: its first clear waits to be claimed, unless this player's own turn finished it.
 		if chapter_complete() and pollen_finished_sink.is_valid(): pollen_finished_sink.call(_room)
 	return accepted
@@ -461,6 +467,14 @@ func _note_partner_name(response: Dictionary) -> void:
 	var snapshot: Dictionary = _state.snapshot
 	var partner: Variant = snapshot.get("guest_id") if snapshot.get("host_id") == _owner else snapshot.get("host_id")
 	if partner is String and not partner.is_empty(): partner_name_sink.call(partner, response.partner_name, _room)
+
+
+## The room partner's look that came beside an accepted reply (rooms_api.gd takes it out of the room).
+func _note_partner_look(response: Dictionary) -> void:
+	if not response.has("partner_look") or not partner_look_sink.is_valid() or _state.is_empty(): return
+	var snapshot: Dictionary = _state.snapshot
+	var partner: Variant = snapshot.get("guest_id") if snapshot.get("host_id") == _owner else snapshot.get("host_id")
+	if partner is String and not partner.is_empty(): partner_look_sink.call(partner, response.partner_look)
 
 
 ## The face the turn waiting to send carries, or "". A screen shows it fixed:
@@ -699,6 +713,8 @@ func _accept_sent(response: Dictionary) -> bool:
 		if body is Dictionary and body.get("run_reactions") is Array: RunReactionStore.new().keep(recording_hash, body.run_reactions)
 		_note_end_reactions(response)
 		_note_partner_name(response)
+		_note_partner_look(response)
+		if turn and not recording_hash.is_empty() and own_turn_look_sink.is_valid(): own_turn_look_sink.call(recording_hash)
 		# The turn's Pollen credit (rooms_api.gd takes it out of the reply), or none to claim later.
 		if turn and not recording_hash.is_empty() and pollen_sink.is_valid(): pollen_sink.call(_room, recording_hash, response.get("pollen"), chapter_complete())
 	return accepted

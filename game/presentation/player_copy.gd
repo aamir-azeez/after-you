@@ -63,7 +63,13 @@ const DISPLAY_NAME_ERRORS := {
 	"display_name_refused": "That name isn't allowed. Try another.",
 	"display_name_limited": "You've changed your name a few times today. Try again tomorrow.",
 	"display_name_locked": "You can't set a name right now. You can still stay anonymous.",
+	"pollen_short": "You need more Pollen for this change. Staying anonymous is always free.",
+	"name_change_price": "The price of a name change just changed. Check it and save again.",
 }
+## The name change price (POLLEN-RULES.md "Prices"): Save says what the change costs.
+const DISPLAY_NAME_SAVE_PRICED := "Save for %s Pollen"
+const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change costs %s Pollen (about %s)."
+const DISPLAY_NAME_PRICE_SHORT := "You need %s more Pollen to change your name. Staying anonymous is always free."
 ## Under a friend's nickname on their Friends row: the name they chose.
 const DISPLAY_NAME_GOES_BY := "Goes by %s"
 
@@ -111,6 +117,60 @@ const POLLEN_BANK_EMPTY := "Your full pay turns this week are used up, so it pay
 const POLLEN_LATE := "This turn was from an earlier week, so it pays a little."
 const POLLEN_FIRST_CLEAR := "First clear: +%d"
 const POLLEN_FIRST_HARD_CLEAR := "First Hard clear: +%d"
+
+# The wardrobe (presentation/wardrobe_flow.gd, wardrobe_page.gd, wardrobe_sheets.gd).
+# Amounts come in grouped ("24,000") and money as "$0.20" (services/pollen_money.gd).
+const WARDROBE_OPEN := "Wardrobe"
+const WARDROBE_TITLE := "Wardrobe"
+const WARDROBE_BACK := "Back"
+## Under the picked item's name: its slot and tier ("Hat, Common").
+const WARDROBE_FACTS := "%s, %s"
+const WARDROBE_NOTE := "Looks only. Friends see what your pip wears."
+const WARDROBE_BALANCE := "%s Pollen"
+const WARDROBE_FEATURED := "Featured this week"
+const WARDROBE_ALL := "All items"
+const WARDROBE_OWNED := "Owned"
+const WARDROBE_TIERS := {"common": "Common", "uncommon": "Uncommon", "rare": "Rare", "epic": "Epic", "special": "Special", "earned": "Earned"}
+const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf"}
+const WARDROBE_PRICE := "%s Pollen"
+const WARDROBE_ABOUT := "about %s"
+const WARDROBE_BUY := "Buy for %s"
+const WARDROBE_WEAR := "Wear"
+const WARDROBE_TAKE_OFF := "Take off"
+const WARDROBE_WEARING := "Wearing"
+const WARDROBE_OWNED_TAG := "Yours"
+const WARDROBE_LOCKED := "Opens in the shop after you clear %s."
+const WARDROBE_EARNED := "Earned by playing. Never for sale."
+const WARDROBE_SET := "%s set"
+const WARDROBE_SET_PRICE := "The pieces you're missing, together: %s Pollen"
+const WARDROBE_NOTHING_OWNED := "Things you buy or earn show here."
+const WARDROBE_LOADING := "Opening your wardrobe…"
+const WARDROBE_OFFLINE := "The wardrobe isn't reachable right now. Try again in a moment."
+const WARDROBE_TRY_AGAIN := "Try again"
+const WARDROBE_CONFIRM_TITLE := "Buy %s?"
+const WARDROBE_CONFIRM_NOTE := "Looks only, and it stays on your pip."
+const WARDROBE_YOU_HAVE := "You have"
+const WARDROBE_COST_LINE := "%s (about %s)"
+const WARDROBE_LEFT := "You'll have left"
+## The cost on the confirm card, with a minus sign (U+2212), never a dash.
+const WARDROBE_MINUS := "−%s"
+const WARDROBE_SHORT_TITLE := "Not enough Pollen yet"
+const WARDROBE_SHORT_NOTE := "%s costs %s Pollen. You have %s."
+const WARDROBE_SHORT_NEED := "You need %s more."
+const WARDROBE_SHORT_EARN := "Keep playing with friends to earn more."
+const WARDROBE_CLOSE := "Close"
+const WARDROBE_BOUGHT := "%s is yours."
+const WARDROBE_ERRORS := {
+	"pollen_short": "You need more Pollen for this.",
+	"pollen_price_changed": "The price changed. Take another look before you buy.",
+	"already_owned": "You have this already.",
+	"not_owned": "Buy this first, then wear it.",
+	"pollen_locked": "This opens after you clear its chapter.",
+	"pollen_blocked": "Spending is paused while your Pollen is below zero.",
+	"not_for_sale": "This isn't for sale.",
+	"busy": "One moment, the last change is still saving.",
+}
+const WARDROBE_ERROR := "That didn't go through. Try again."
 
 # End-of-run reactions (presentation/end_reactions.gd).
 ## The split pill's open half, and the faces card's title.

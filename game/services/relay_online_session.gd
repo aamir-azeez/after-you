@@ -22,6 +22,9 @@ const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
+const OwnLook = preload("res://services/own_look.gd")
 ## Every rules version this build can replay, for a server that allows at most
 ## 8 entries (every server before room level 2): 10 = the tide rules of
 ## turn-of-the-tide@2. Saved joins keep their exact body: each array ever sent
@@ -406,6 +409,7 @@ func load_capabilities() -> bool:
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_enabled(str(scope.server), str(scope.owner), pollen_supported())
+	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), shop_supported())
 	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	return true
@@ -664,6 +668,8 @@ func _ordinary_coordinator() -> RefCounted:
 	result.accepted_pair_cache = accepted_pair_cache
 	result.partner_name_sink = _note_partner_name
 	result.pollen_sink = _note_pollen
+	result.partner_look_sink = _note_partner_look
+	result.own_turn_look_sink = _note_own_turn_look
 	result.pollen_finished_sink = _note_finished_room
 	result.restore_replay_transfer = restore_complete_replay
 	result.recover_replay_operation = recover_transferred_operation
@@ -1228,6 +1234,18 @@ func _note_finished_room(room: String) -> void:
 	var store: RefCounted = PollenWallet.shared()
 	if scope.is_empty() or not store.enabled(str(scope.server), str(scope.owner)): return
 	if store.queue_clear(str(scope.server), str(scope.owner), "room:" + room) and pollen_flush.is_valid(): pollen_flush.call()
+
+## The room partner's look (services/turn_looks.gd), for their pip in this room.
+func _note_partner_look(partner: String, look: Variant) -> void:
+	TurnLooks.shared().note_member(partner, look)
+
+## This player's own accepted turn keeps the look it was played in, for its replays.
+func _note_own_turn_look(recording_hash: String) -> void:
+	TurnLooks.shared().note_turn(recording_hash, OwnLook.outfit())
+
+## The server has the wardrobe open: spending Pollen and wearing items (services/wardrobe.gd).
+func shop_supported() -> bool:
+	return pollen_supported() and Typed.equal(capabilities.get("pollen_shop_version"), 1.0)
 
 ## The server pays Pollen for turns (services/pollen_wallet.gd).
 func pollen_supported() -> bool:

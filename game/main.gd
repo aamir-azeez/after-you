@@ -41,6 +41,8 @@ const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const SettingsFlow = preload("res://presentation/settings_flow.gd")
 const PlatformGamesFlow = preload("res://presentation/platform_games_flow.gd")
 const DisplayNameFlow = preload("res://presentation/display_name_flow.gd")
+const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
@@ -244,6 +246,8 @@ var settings_flow: SettingsFlow = _host_settings_flow()
 var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
 ## Display names: the first-run prompt, the prompt from Friends and the Friends header chip.
 var display_name_flow: DisplayNameFlow = _host_display_name_flow()
+## The Wardrobe: buying and wearing pip cosmetics with Pollen, opened from Settings.
+var wardrobe_flow: WardrobeFlow = _host_wardrobe_flow()
 ## Play Solo: the Chapters page, Earlier islands and which chapter a card opens.
 var journey_flow: JourneyFlow = _host_journey_flow()
 ## Playing an earlier island, solo or in a legacy room (presentation/earlier_islands_flow.gd).
@@ -329,6 +333,8 @@ func _ready() -> void:
 	api.base_url=str(config.get("api_base_url",""))
 	add_child(api)
 	pollen_client=PollenClient.new(api,_names_scope)
+	# The player's own look follows the signed-in player (services/own_look.gd).
+	Wardrobe.shared().scope_source=_names_scope
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.
@@ -1205,6 +1211,13 @@ func _host_platform_games_flow() -> PlatformGamesFlow:
 func _host_display_name_flow() -> DisplayNameFlow:
 	var flow := DisplayNameFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	return flow
+
+## An internal child, like StoreFlow. Its Back returns to Settings, where it opens.
+func _host_wardrobe_flow() -> WardrobeFlow:
+	var flow := WardrobeFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.back_requested.connect(func(): settings_flow.show_settings())
 	return flow
 
 ## An internal child, like StoreFlow.

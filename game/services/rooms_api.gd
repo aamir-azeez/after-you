@@ -5,6 +5,7 @@ const RequestQueue = preload("res://services/request_queue.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
 ## One bounded request at a time, in the order asked (services/request_queue.gd).
 ## Callers retain draft/idempotency state.
 const MAX_RESPONSE_BYTES := 4194304
@@ -20,6 +21,8 @@ const MAX_HISTORY_RESPONSE_BYTES := 4 * 1024 * 1024 + 65536
 static var history_supported := false
 const END_REACTIONS_HEADER := "X-AfterYou-End-Reactions: 1"
 const RUN_REACTIONS_HEADER := "X-AfterYou-Run-Reactions: 1"
+## This build draws each player's look (backend src/pollen/looks-routes.ts).
+const LOOKS_HEADER := "X-AfterYou-Looks: 1"
 var base_url := ""
 var player_id := ""
 var device_token := ""
@@ -121,6 +124,15 @@ func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String 
 	if payload.has("pollen"):
 		result["pollen"] = payload["pollen"]
 		payload.erase("pollen")
+	# So do looks: the partner's look for the room (the coordinator's looks sink),
+	# and turns' own looks, kept here for every reply that carries them, room
+	# reads, turn replies and replay transfers alike (services/turn_looks.gd).
+	if payload.has("partner_look"):
+		result["partner_look"] = payload["partner_look"]
+		payload.erase("partner_look")
+	if payload.has("turn_looks"):
+		if result.ok: TurnLooks.shared().note_turns(payload["turn_looks"])
+		payload.erase("turn_looks")
 	return result
 
 ## One HTTP exchange: [result, status, headers, body] as HTTPRequest reports
@@ -186,6 +198,10 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	# This build keeps Pollen (services/pollen_wallet.gd): the capability, and a turn's
 	# credit beside its reply. rooms_api takes the credit out of the reply.
 	if pollen_path(method, path): headers.append(PollenWallet.HEADER)
+	# This build draws each player's look: the capability, the partner's look and
+	# turns' looks beside a room's reads and turns, and every turn's look beside a
+	# replay transfer. rooms_api takes the looks out of the reply.
+	if looks_path(method, path): headers.append(LOOKS_HEADER)
 	# The inbox then reports a room another member closed as "closed".
 	if path == "/v1/room-inbox": headers.append("X-AfterYou-Room-Inbox: 2")
 	# A finished room the other member left then says so (partner_left), for Leave room's confirm step.
@@ -228,6 +244,14 @@ static func pollen_path(method: int, path: String) -> bool:
 	if path == "/v2/capabilities": return method == HTTPClient.METHOD_GET
 	var parts := path.split("/")
 	return method == HTTPClient.METHOD_POST and path.begins_with("/v2/rooms/") and parts.size() == 5 and parts[3].length() == 22 and parts[4] == "turns"
+
+## The requests that ask for looks: the capability, a room's read and turns (as
+## end_reaction_path, without the room list) and a replay transfer's download.
+static func looks_path(method: int, path: String) -> bool:
+	if path == "/v1/room-inbox": return false
+	if end_reaction_path(method, path): return true
+	var parts := path.split("/")
+	return method == HTTPClient.METHOD_GET and path.begins_with("/v2/rooms/") and parts.size() == 5 and parts[3].length() == 22 and parts[4] == "replay-transfer"
 
 static func response_limit(method: int, path: String) -> int:
 	if method == HTTPClient.METHOD_GET and RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/replay-transfer$").search(path) != null: return MAX_REPLAY_TRANSFER_RESPONSE_BYTES

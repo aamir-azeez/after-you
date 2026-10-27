@@ -158,7 +158,7 @@ func load_level(definition: Dictionary) -> void:
 	for receiver: Dictionary in definition.optics.receivers:
 		_build_receiver_cable(receiver, definition.bridges)
 	for slot: String in ["p0", "p1"]:
-		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL)
+		var spirit := _create_spirit(GOLD if slot == "p0" else TEAL, slot)
 		# Later-stage positions are supplied by the verified checkpoint in
 		# present(), rather than invented starting coordinates in the view.
 		spirit.position = point(definition.starts[slot]) if definition.has("starts") else Vector3.ZERO

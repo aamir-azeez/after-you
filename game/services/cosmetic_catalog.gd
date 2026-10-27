@@ -26,8 +26,32 @@ static func slot(id: String) -> String:
 	var value := str(Index.data(id).get("slot", ""))
 	return value if value in Index.SLOTS else ""
 
+## Item ids the server's catalogue offers (services/wardrobe.gd sets them from
+## the wallet read): the server decides what is released, so an item this
+## build knows shows once the server offers it, whatever its shipped flag says.
+static var _offered: Dictionary = {}
+
+## Whether the item is released: shipped as released, or offered by the server.
 static func released(id: String) -> bool:
-	return bool(Index.data(id).get("released", false))
+	return bool(Index.data(id).get("released", false)) or (_offered.has(id) and has(id))
+
+## Takes the server's offered ids ([] clears them).
+static func set_offered(ids: Array) -> void:
+	_offered = {}
+	for id: Variant in ids:
+		if id is String: _offered[id] = true
+
+## The tier name ("common" ... "special", "earned"), or "".
+static func tier(id: String) -> String:
+	return str(Index.data(id).get("tier", ""))
+
+## The level id a Special waits for, or "".
+static func unlock(id: String) -> String:
+	return str(Index.data(id).get("unlock", ""))
+
+## The item's PlayerCopy name, or "".
+static func display_name(id: String) -> String:
+	return str(Index.data(id).get("name", ""))
 
 ## Pollen it costs, from its tier: 0 for an earned item or an unknown one.
 static func price(id: String) -> int:

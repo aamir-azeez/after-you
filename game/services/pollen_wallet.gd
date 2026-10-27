@@ -141,6 +141,16 @@ func note_wallet(server: String, owner: String, value: Variant) -> bool:
 		_save()
 	return true
 
+## A balance the server confirmed after a spend (services/wardrobe_client.gd).
+## Earned and bank are only ever taken from a wallet answer.
+func note_balance(server: String, owner: String, balance: Variant) -> bool:
+	var scope := _scope(server, owner)
+	if scope.is_empty() or (scope.wallet as Dictionary).is_empty() or not _count(balance): return false
+	if int(scope.wallet.balance) != Typed.as_int(balance):
+		scope.wallet.balance = Typed.as_int(balance)
+		_save()
+	return true
+
 ## A confirmed receipt for one turn: kept for its results line, its claim goes,
 ## and the balance follows it.
 func note_receipt(server: String, owner: String, room_id: String, recording_hash: String, value: Variant) -> bool:

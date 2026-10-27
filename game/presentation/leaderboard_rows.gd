@@ -4,14 +4,18 @@ extends RefCounted
 ## that earned it, the time and, on another pair's run, Report.
 ##
 ## Pips are kit/pip_avatar.gd in still mode: one shared offscreen render per
-## look, never a live view per row. Boards carry no outfits yet (the cosmetics
-## phase adds them), so a pair shows the worlds' two pips by slot, gold and
-## teal; "Your best" shows this player's own pip beside a teal one.
+## look, never a live view per row. Boards carry no outfits: a board is one
+## public, cached answer for every reader, and looks are seen only by room
+## members. So a pair shows the worlds' two pips by slot, gold and teal, and
+## "Your best" shows this player's own pip (in their own look) beside a teal
+## one. The hook for looks on boards: a row's `looks` (two outfits, in slot
+## order) dresses its pips, once leaderboard_client keeps that field.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
+const Outfit = preload("res://services/outfit.gd")
 const LEAF_ICON = preload("res://assets/ui/whats_new/leaf.svg")
 ## The worlds' pips by slot (presentation/island_world.gd GOLD and TEAL).
 const FIRST_PIP := Color("f4c38d")
@@ -28,7 +32,7 @@ static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool)
 	var box := _row(MINE_FILL if mine else ROW_FILL)
 	var line: HBoxContainer = box.get_child(0)
 	_rank(line, str(int(row.rank)), compact)
-	_pips(line, false)
+	_pips(line, false, row.get("looks", []))
 	_name(line, title, compact)
 	if row.get("gold_leaf", false): line.add_child(_gold_leaf(compact))
 	_time(line, Runs.time_text(int(row.ticks)), compact)
@@ -69,12 +73,15 @@ static func _rank(line: HBoxContainer, text: String, compact: bool) -> void:
 	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	line.add_child(label)
 
-static func _pips(line: HBoxContainer, own_first: bool) -> void:
+## `looks`: the pair's outfits in slot order, when a board carries them (none does yet).
+static func _pips(line: HBoxContainer, own_first: bool, looks: Variant = []) -> void:
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", -8)
 	pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	pair.add_child(PipAvatar.new(true, FIRST_PIP, PIP_SIZE, true, own_first))
-	pair.add_child(PipAvatar.new(true, SECOND_PIP, PIP_SIZE, true))
+	var pips := [PipAvatar.new(true, FIRST_PIP, PIP_SIZE, true, own_first), PipAvatar.new(true, SECOND_PIP, PIP_SIZE, true)]
+	for index in range(pips.size()):
+		if looks is Array and index < looks.size() and not (own_first and index == 0): pips[index].outfit = Outfit.from(looks[index])
+		pair.add_child(pips[index])
 	line.add_child(pair)
 
 static func _name(line: HBoxContainer, text: String, compact: bool) -> void:

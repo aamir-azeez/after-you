@@ -6,11 +6,14 @@ extends RefCounted
 const DisplayNames = preload("res://services/display_names.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const Typed = preload("res://services/typed_values.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
 const PATH := "/v1/profile/name"
 ## How long Save waits for the server before it closes and sends later.
 const SAVE_WAIT_MS := 2000
 ## Codes that refuse the name itself. Any other failure is sent again later.
-const REFUSALS := ["invalid_display_name", "display_name_refused", "display_name_limited", "display_name_locked"]
+## pollen_short and name_change_price come only while the shop is on: the change costs Pollen
+## (backend src/pollen/name-price.ts) and the balance is short, or the price is not the one sent.
+const REFUSALS := ["invalid_display_name", "display_name_refused", "display_name_limited", "display_name_locked", "pollen_short", "name_change_price"]
 
 ## A send came back: {"ok", "code"} as DisplayNames recorded it.
 signal settled(answer: Dictionary)
@@ -66,6 +69,9 @@ func _start(context: Dictionary) -> void:
 	var mine: Dictionary = names.own(context.server, context.owner)
 	var revision := int(mine.revision)
 	var body := {"schema_version": 1, "display_name": null if mine.choice == "anonymous" else str(mine.name), "revision": revision}
+	# While the shop is on, a name carries the change price the phone shows beside Save (services/wardrobe.gd).
+	var price: int = Wardrobe.shared().name_price(str(context.server), str(context.owner))
+	if mine.choice != "anonymous" and price >= 0: body["pollen_price"] = price
 	var response: Dictionary = await _request(body)
 	_sending = false
 	if scope() != context: return

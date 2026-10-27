@@ -6,6 +6,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal closed
 
 const Registry = preload("res://services/chapter_registry.gd")
+const SlotLooks = preload("res://presentation/slot_looks.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
@@ -1100,6 +1101,17 @@ func _add_pollen_line(parent: Container) -> void:
 	if line != null: parent.add_child(line)
 
 
+## Each slot's pip in its own player's look (presentation/slot_looks.gd). A live
+## turn and the waiting view dress the viewer in their own look and the partner
+## in theirs, with `recordings` that play in the turn in their own turn's look; a
+## replay (`replay`) dresses each slot in its recording's look only. Solo play
+## has no room, so its pips keep the default look.
+func _dress(recordings: Array, replay: bool = false) -> void:
+	if not is_instance_valid(world) or not world.has_method("wear_slots"): return
+	var room: Dictionary = journey.snapshot() if online_session != null and journey != null and journey.has_method("snapshot") else {}
+	world.wear_slots(SlotLooks.replay(recordings) if replay else SlotLooks.live(room, recordings))
+
+
 ## The other player's id: the viewer's slot is p0 when they host, p1 when they joined.
 func _partner_id(room: Dictionary) -> String:
 	var partner: Variant = room.get("guest_id") if room.get("player_slot") == "p0" else room.get("host_id")
@@ -1178,6 +1190,7 @@ func _show_online_waiting() -> void:
 		var display_sim: RefCounted = _simulation.new()
 		var first: Dictionary = room.recording_a if room.recording_a is Dictionary else {}
 		if display_sim.reset(definition,room.stage_id,room.checkpoint,first,room.active_role):
+			_dress([first])
 			_present_stage_history(_simulation.stage_by_id(definition,room.stage_id),room.checkpoint)
 			var display: Dictionary = display_sim.snapshot()
 			# The verified room identifies the viewer; the simulation still owns
@@ -1744,6 +1757,7 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	_begin_run_reactions(true, {}, journey.prior_recording())
 	# A family with no catch to assist (the Lighthouse) always records false.
 	sim.catch_assistance = bool(settings.get("assistance", true)) and Registry.catch_assistance(chapter_key)
+	_dress([journey.prior_recording()])
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
 	return true
 
@@ -2619,6 +2633,7 @@ func _start_replay(recording: Dictionary, start: Dictionary, source: Dictionary)
 	_begin_run_reactions(false, recording, source)
 	sim.catch_assistance = bool(recording.get("catch_assistance", true))
 	checkpoint = start
+	_dress([recording, source], true)
 	for item: Dictionary in definition.stages:
 		if str(item.id) == str(recording.stage_id):
 			_present_stage_history(item,start)
@@ -2751,6 +2766,7 @@ func _show_completed() -> void:
 	# A reopened chapter has no live simulation yet. Rebuild its final scene from
 	# the verified recording chain before presenting the completion card.
 	var pairs: Array = _pairs()
+	if not pairs.is_empty(): _dress([pairs[-1].get("a"), pairs[-1].get("b")], true)
 	if not pairs.is_empty() and _holds_final_turn(pairs[-1], sim) and _started_final_turn(pairs[-1]):
 		# Right after Save turn the screen's simulation already stands at the end
 		# of the accepted last turn, and the journey (or the room) holds its proven checkpoint.

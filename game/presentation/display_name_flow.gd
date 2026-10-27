@@ -15,6 +15,9 @@ extends Node
 ## soundscape (the pip's grab tick), and the PlatformGames autoload (its state
 ## read when the prompt opens and followed through its changed signal while the
 ## prompt is open, since Play Games signs in a few seconds after launch).
+## While the shop is on, the prompt shows the name change price from the
+## wardrobe and wallet this phone keeps, and a saved change asks wardrobe_flow
+## (refresh) to read them again.
 const DisplayNames = preload("res://services/display_names.gd")
 const DisplayNameClient = preload("res://services/display_name_client.gd")
 const Prompt = preload("res://presentation/display_name_prompt.gd")
@@ -22,6 +25,8 @@ const Chip = preload("res://presentation/display_name_chip.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PlatformGames = preload("res://services/platform_games/platform_games.gd")
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
 
 ## The player's own name or where it stands changed (chips redraw).
 signal changed
@@ -86,11 +91,20 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 		"reduced_motion": bool(host.saves.data.settings.get("reduced_motion", false)) if host.saves != null else false,
 		"haptic": func() -> void: if is_instance_valid(host.get("soundscape")): host.soundscape.tap_haptic(),
 		"dismissed": func() -> void: if hint_later and host.has_method("_toast"): host._toast(PlayerCopy.DISPLAY_NAME_LATER_HINT),
+		"price": name_price(current),
 	}
 	var modal: Control = Prompt.open(parent, context, opener)
 	_prompt = weakref(modal)
 	# Flush a send that waited from an earlier visit.
 	_client().flush()
+
+## What the next name change costs and the balance it comes from, as the prompt
+## shows them ({} while the shop is off or this phone has not heard the price).
+static func name_price(current: Dictionary) -> Dictionary:
+	if current.is_empty(): return {}
+	var price: int = Wardrobe.shared().name_price(str(current.server), str(current.owner))
+	var wallet: Dictionary = PollenWallet.shared().wallet(str(current.server), str(current.owner))
+	return {} if price < 0 or wallet.is_empty() else {"price": price, "balance": int(wallet.balance)}
 
 ## The Friends header's Display name chip, or null while names are off.
 func chip() -> Control:
@@ -158,6 +172,9 @@ func _save(choice: String, name: String) -> Dictionary:
 ## A send that came back after its card closed: a refusal is said once.
 func _settled(answer: Dictionary) -> void:
 	_refresh_chips()
+	# A saved change may have spent Pollen or used the free change: read the wardrobe again.
+	var wardrobe: Variant = host.get("wardrobe_flow") if host != null else null
+	if answer.get("ok", false) and wardrobe is Object and is_instance_valid(wardrobe) and wardrobe.has_method("refresh"): wardrobe.refresh()
 	if answer.get("ok", false) or prompt_open(): return
 	var line := str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), ""))
 	if not line.is_empty() and host.has_method("_toast"): host._toast(line)

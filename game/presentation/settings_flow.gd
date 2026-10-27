@@ -25,7 +25,8 @@ extends Node
 ##   turn_requests_on, set_turn_requests, turn_off), account_flow (panel_state,
 ##   identity_unread and the Account & recovery actions), store_flow
 ##   (restore_purchases, show_tester_access, show_store_from_settings),
-##   _open_safety, _open_whats_new_card
+##   _open_safety, _open_whats_new_card, and wardrobe_flow when Main has it
+##   (available, show_wardrobe: the header's Wardrobe button beside the pip)
 ## Main opens it through show_settings(category) (the Home cog, Safety's return,
 ## Photo transfer's return, Android Back from a licence or Tester code, and the
 ## settings_requested signals of StoreFlow and AccountFlow, which land on
@@ -224,7 +225,20 @@ func _header(compact: bool) -> Control:
 	var corner := MarginContainer.new()
 	corner.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	corner.add_theme_constant_override("margin_top", 0 if compact else 18)
-	corner.add_child(done)
+	var wardrobe: Variant = host.get("wardrobe_flow")
+	if wardrobe is Object and is_instance_valid(wardrobe) and wardrobe.available():
+		var actions := HBoxContainer.new()
+		actions.add_theme_constant_override("separation", 10)
+		var open := Button.new()
+		open.name = "SettingsWardrobe"
+		open.text = PlayerCopy.WARDROBE_OPEN
+		open.custom_minimum_size.y = done.custom_minimum_size.y
+		open.pressed.connect(wardrobe.show_wardrobe)
+		actions.add_child(open)
+		actions.add_child(done)
+		corner.add_child(actions)
+	else:
+		corner.add_child(done)
 	header.add_child(corner)
 	Kit.style_done(done)
 	done.size_flags_vertical = Control.SIZE_SHRINK_BEGIN if not compact else Control.SIZE_SHRINK_CENTER
