@@ -35,6 +35,7 @@ func _run() -> void:
 	_receipts()
 	_claims()
 	_results()
+	_clears()
 	_scopes_and_file()
 	_damaged_file()
 	_rooms_api()
@@ -123,6 +124,25 @@ func _results() -> void:
 	for n in range(10, 20): store.note_receipt(SERVER, ME, ROOM, _hash(n), _receipt())
 	_check(store.result_for(SERVER, ME, ROOM, _hash(7)).is_empty() and not store.result_for(SERVER, ME, ROOM, _hash(19)).is_empty(), "Only the newest results are kept")
 	_check(store.result_for(SERVER, ME, "QQQQQQQQQQQQQQQQQQQQQQ", _hash(19)).is_empty(), "A result belongs to its room")
+
+func _clears() -> void:
+	var path := _path("clears")
+	var store: RefCounted = PollenWallet.new(path)
+	_check(store.queue_clear(SERVER, ME, "room:" + ROOM) and store.queue_clear(SERVER, ME, "level:first-steps"), "A room seen finished and a chapter finished solo wait to be claimed")
+	_check(not store.queue_clear(SERVER, ME, "room:" + ROOM), "once")
+	_check(not store.queue_clear(SERVER, ME, "room:short") and not store.queue_clear(SERVER, ME, "level:Bad Level") and not store.queue_clear(SERVER, ME, "prize:x"), "Only a room id or a chapter id")
+	_check(store.clear_claims(SERVER, ME) == [{"key": "room:" + ROOM, "claim": {"room_id": ROOM}}, {"key": "level:first-steps", "claim": {"level_id": "first-steps"}}], "Each goes as the route takes it")
+	store.settle_clear(SERVER, ME, "room:" + ROOM, {"status": "retry"})
+	_check(store.clear_claims(SERVER, ME)[0].key == "level:first-steps", "A clear the server cannot settle yet goes behind the others")
+	store.settle_clear(SERVER, ME, "level:first-steps", {"status": "credited", "receipt": _receipt(1200.0, 1200.0)})
+	store.settle_clear(SERVER, ME, "room:" + ROOM, {"status": "refused", "code": "pollen_clear_not_found"})
+	_check(store.clear_claims(SERVER, ME).is_empty() and store.cleared(SERVER, ME, "level:first-steps") and store.cleared(SERVER, ME, "room:" + ROOM), "Credited and refused are settled")
+	_check(not store.queue_clear(SERVER, ME, "level:first-steps"), "and never sent again")
+	store.mark_cleared(SERVER, ME, "room:QQQQQQQQQQQQQQQQQQQQQQ")
+	_check(not store.queue_clear(SERVER, ME, "room:QQQQQQQQQQQQQQQQQQQQQQ"), "A room this player's own turn finished needs no clear claim")
+	store.queue_clear(SERVER, ME, "level:high-and-low")
+	var again: RefCounted = PollenWallet.new(path)
+	_check(again.clear_claims(SERVER, ME).size() == 1 and again.cleared(SERVER, ME, "level:first-steps") and not again.queue_clear(SERVER, ME, "level:first-steps"), "Waiting and settled clears survive a restart")
 
 func _scopes_and_file() -> void:
 	var path := _path("reload")

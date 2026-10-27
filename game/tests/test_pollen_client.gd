@@ -54,6 +54,7 @@ func _run() -> void:
 	await _wallet_read()
 	await _bounded()
 	await _identity_change()
+	await _first_clears()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -215,6 +216,44 @@ func _identity_change() -> void:
 	t.who.owner = OTHER
 	await _settle(t.client)
 	_check(t.store.result_for(t.api.base_url, ME, ROOM, _hash(1)).is_empty() and t.store.claims(t.api.base_url, ME).size() == 1, "An answer that comes back after the player changed is not recorded")
+	t.api.queue_free()
+
+## The clear-claims route's answer: each claim credited with `earned`.
+static func _clears_credited(earned: int) -> Callable:
+	return func(body: Dictionary) -> Dictionary:
+		var results: Array = []
+		for claim: Dictionary in body.claims:
+			var answer := claim.duplicate()
+			answer.merge({"status": "credited", "receipt": {"schema_version": 1.0, "earned": float(earned), "balance": float(earned), "clears": []}})
+			results.append(answer)
+		return {"ok": true, "data": {"schema_version": 1.0, "results": results}}
+
+func _first_clears() -> void:
+	var t := _setup()
+	t.store.note_wallet(t.api.base_url, ME, {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "bank": 12.0})
+	var solo: Array = ["first-steps", "high-and-low"]
+	t.client.solo_levels = func() -> Array: return solo
+	t.store.queue_clear(t.api.base_url, ME, "room:" + ROOM)
+	t.store.queue_claim(t.api.base_url, ME, ROOM, _hash(1))
+	# Offline: everything waits, in order, and nothing is lost.
+	t.fake.replies = [{"ok": false, "status": 0, "code": "connection_interrupted"}]
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 1 and t.store.clear_claims(t.api.base_url, ME).size() == 1 and t.store.claims(t.api.base_url, ME).size() == 1, "Offline, turn claims and first clears wait")
+	t.fake.replies = [_credited(89), _clears_credited(1200)]
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 3 and t.fake.sent[1].path == "/v1/pollen/turn-claims" and t.fake.sent[2].path == "/v1/pollen/clear-claims", "Turn claims go first, then first clears")
+	_check(t.fake.sent[2].body == {"schema_version": 1, "claims": [{"room_id": ROOM}, {"level_id": "first-steps"}, {"level_id": "high-and-low"}]}, "A finished room and the chapters finished solo go as the route takes them")
+	_check(t.store.clear_claims(t.api.base_url, ME).is_empty() and t.store.cleared(t.api.base_url, ME, "room:" + ROOM) and t.store.cleared(t.api.base_url, ME, "level:high-and-low"), "Confirmed first clears are settled")
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 3, "and never sent again, though the keepsakes still show them")
+	solo.append("rolling-home")
+	t.fake.replies = [{"ok": true, "data": {"schema_version": 1.0, "results": [{"level_id": "rolling-home", "status": "retry"}]}}]
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 4 and t.store.clear_claims(t.api.base_url, ME).size() == 1, "A newly finished chapter is claimed; a server pause keeps it")
 	t.api.queue_free()
 
 func _check(condition: bool, message: String) -> void:

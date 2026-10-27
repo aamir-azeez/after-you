@@ -10,7 +10,11 @@ extends RefCounted
 ## - claims: accepted turns whose credit did not come back confirmed, to send
 ##   to POST /v1/pollen/turn-claims (services/pollen_client.gd). The server
 ##   pays each turn once, so sending one twice is harmless;
-## - results: the newest confirmed turn receipts, for the results line.
+## - results: the newest confirmed turn receipts, for the results line;
+## - clears: first clears waiting to be claimed (POST /v1/pollen/clear-claims):
+##   "room:<room_id>" for a room this player saw finished together, and
+##   "level:<level_id>" for a chapter finished solo. Each is sent until the
+##   server confirms it, then remembered in `cleared` so it is never sent again.
 ##
 ## Every value read from the file or a server reply is checked; anything that
 ## fails is dropped. A file that cannot be read reads as empty, and the client
@@ -27,6 +31,10 @@ const MAX_CLAIMS := 32
 ## The server refuses a claim for a turn older than this (rates.json turn_claim_days).
 const CLAIM_DAYS := 28
 const MAX_RESULTS := 8
+## First clears waiting, and first clears already settled (remembered so they are not sent again).
+const MAX_CLEARS := 32
+const MAX_CLEARED := 256
+const LEVEL_PATTERN := "^[a-z0-9-]{1,64}$"
 const BONUSES := ["first_try", "gold_pace", "silver_pace", "hard"]
 const ROOM_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const HASH_PATTERN := "^[a-f0-9]{64}$"
@@ -34,6 +42,7 @@ const HASH_PATTERN := "^[a-f0-9]{64}$"
 static var _shared: RefCounted = null
 static var _room := RegEx.create_from_string(ROOM_PATTERN)
 static var _hash := RegEx.create_from_string(HASH_PATTERN)
+static var _level := RegEx.create_from_string(LEVEL_PATTERN)
 
 var path := PATH
 var _scopes: Dictionary = {}
@@ -105,7 +114,7 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 	var key := scope_key(server, owner)
 	if not _scopes.has(key):
 		if not create: return {}
-		_scopes[key] = {"enabled": false, "wallet": {}, "claims": [], "results": []}
+		_scopes[key] = {"enabled": false, "wallet": {}, "claims": [], "results": [], "clears": [], "cleared": []}
 	return _scopes[key]
 
 ## Whether the server said Pollen earning is on for this player.
@@ -195,6 +204,64 @@ func settle_claim(server: String, owner: String, room_id: String, recording_hash
 		scope.claims.append_array(waiting)
 	_save()
 
+# --- First clears ------------------------------------------------------------
+
+## A first clear's key: "room:<room_id>" (finished together) or "level:<level_id>" (finished solo).
+static func valid_clear(key: Variant) -> bool:
+	if not key is String: return false
+	if key.begins_with("room:"): return valid_room(key.substr(5))
+	return key.begins_with("level:") and _level.search(key.substr(6)) != null
+
+## Queues a first clear to claim, unless it waits already or the server settled it.
+func queue_clear(server: String, owner: String, key: String) -> bool:
+	if not valid_clear(key): return false
+	var scope := _scope(server, owner, true)
+	if scope.is_empty() or key in scope.cleared or key in scope.clears: return false
+	scope.clears.append(key)
+	scope.clears = scope.clears.slice(maxi(0, scope.clears.size() - MAX_CLEARS))
+	_save()
+	return true
+
+## A first clear this player's own turn claim already carries (the turn that finished the
+## chapter pays its clears with it): never sent as a clear claim of its own.
+func mark_cleared(server: String, owner: String, key: String) -> void:
+	if not valid_clear(key): return
+	var scope := _scope(server, owner, true)
+	if scope.is_empty() or key in scope.cleared: return
+	scope.clears.erase(key)
+	_remember_cleared(scope, key)
+	_save()
+
+## Up to `limit` waiting first clears, as {key, claim} with the claim as the route takes it.
+func clear_claims(server: String, owner: String, limit: int = MAX_CLEARS) -> Array:
+	var scope := _scope(server, owner)
+	if scope.is_empty(): return []
+	return scope.clears.slice(0, limit).map(func(key: String) -> Dictionary:
+		return {"key": key, "claim": {"room_id": key.substr(5)} if key.begins_with("room:") else {"level_id": key.substr(6)}})
+
+## The server's answer to one first clear: credited or refused settles it for good (a refusal
+## is final: no facts for the room, an unknown chapter, or no Full Journey for a paid one);
+## anything else keeps it for the next send, behind the others.
+func settle_clear(server: String, owner: String, key: String, answer: Variant) -> void:
+	var scope := _scope(server, owner)
+	if scope.is_empty() or not answer is Dictionary or not key in scope.clears: return
+	scope.clears.erase(key)
+	if answer.get("status") in ["credited", "refused"]:
+		_remember_cleared(scope, key)
+		var receipt := checked_receipt(answer.get("receipt"))
+		if not receipt.is_empty() and not (scope.wallet as Dictionary).is_empty(): scope.wallet.balance = receipt.balance
+	else:
+		scope.clears.append(key)
+	_save()
+
+## Whether a first clear is settled (tests and the client's queueing).
+func cleared(server: String, owner: String, key: String) -> bool:
+	return key in _scope(server, owner).get("cleared", [])
+
+func _remember_cleared(scope: Dictionary, key: String) -> void:
+	scope.cleared.append(key)
+	scope.cleared = scope.cleared.slice(maxi(0, scope.cleared.size() - MAX_CLEARED))
+
 func _drop_claim(scope: Dictionary, room_id: String, recording_hash: String) -> void:
 	scope.claims = scope.claims.filter(func(entry: Dictionary) -> bool: return entry.room_id != room_id or entry.recording_hash != recording_hash)
 
@@ -214,7 +281,13 @@ func _load() -> void:
 	for key: Variant in parsed.scopes:
 		var value: Variant = parsed.scopes[key]
 		if not key is String or not key.contains("|") or not value is Dictionary: continue
-		var scope := {"enabled": value.get("enabled") == true, "wallet": {}, "claims": [], "results": []}
+		var scope := {"enabled": value.get("enabled") == true, "wallet": {}, "claims": [], "results": [], "clears": [], "cleared": []}
+		for list: String in ["clears", "cleared"]:
+			if value.get(list) is Array:
+				for entry: Variant in value[list]:
+					if valid_clear(entry) and not entry in scope[list]: scope[list].append(entry)
+		scope.clears = scope.clears.slice(maxi(0, scope.clears.size() - MAX_CLEARS))
+		scope.cleared = scope.cleared.slice(maxi(0, scope.cleared.size() - MAX_CLEARED))
 		var kept_wallet: Variant = value.get("wallet")
 		if kept_wallet is Dictionary and not kept_wallet.is_empty(): scope.wallet = checked_wallet(kept_wallet.merged({"schema_version": 1}))
 		if value.get("claims") is Array:
