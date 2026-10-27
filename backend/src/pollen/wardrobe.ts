@@ -86,7 +86,7 @@ function priorOp<T>(storage: DurableObjectStorage, op: OpKey): Outcome<T> | null
 function saveOp(storage: DurableObjectStorage, op: OpKey, now: number, receipt: unknown): void {
   storage.sql.exec("INSERT INTO pollen_ops (op_key,request_hash,created_at,data) VALUES (?,?,?,?)", op.key, op.hash, now, JSON.stringify(receipt));
   // Only the newest MAX_OPS stay: a key older than that is a new request, which can never charge twice (nothing owned is sold again).
-  storage.sql.exec("DELETE FROM pollen_ops WHERE rowid <= (SELECT rowid FROM pollen_ops ORDER BY rowid DESC LIMIT 1 OFFSET ?)", MAX_OPS);
+  storage.sql.exec("DELETE FROM pollen_ops WHERE op_key IN (SELECT op_key FROM pollen_ops ORDER BY created_at DESC, op_key DESC LIMIT -1 OFFSET ?)", MAX_OPS);
 }
 export function validOpKey(op: OpKey): boolean { return IDEMPOTENCY_PATTERN.test(op.key) && HASH_PATTERN.test(op.hash); }
 

@@ -48,7 +48,7 @@ export const POLLEN_WALLET_TABLES: readonly LazyTable[] = Object.freeze([
  */
 export const POLLEN_SHOP_TABLES: readonly LazyTable[] = Object.freeze([
   { name: "pollen_items", schema: "CREATE TABLE pollen_items (item_id TEXT PRIMARY KEY, kind TEXT NOT NULL, source TEXT NOT NULL, acquired_at INTEGER NOT NULL) WITHOUT ROWID", maxRows: 512 },
-  { name: "pollen_ops", schema: "CREATE TABLE pollen_ops (op_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL)", maxRows: 64 },
+  { name: "pollen_ops", schema: "CREATE TABLE pollen_ops (op_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL) WITHOUT ROWID", maxRows: 64 },
   { name: "pollen_look", schema: "CREATE TABLE pollen_look (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)", maxRows: 1 }
 ]);
 /** Every Pollen table a Player may hold: account erasure drops them all, and snapshots refuse a Player that has any. */
@@ -63,11 +63,11 @@ export const POLLEN_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
  * RoomV2: looks (pollen/room-looks.ts), made by the first look that is not the default.
  * - member_looks: each member's look as their Player last reported it on create, join or a turn.
  * - turn_looks: the look a turn was played in, keyed by its recording hash; one row per accepted
- *   turn at most (the turns bound), and only for a look that is not the default.
+ *   turn at most, so the room's own turns bound (128) bounds it, and only for a look that is not the default.
  */
 export const LOOKS_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
   { name: "member_looks", schema: "CREATE TABLE member_looks (player_id TEXT PRIMARY KEY, look TEXT NOT NULL) WITHOUT ROWID", maxRows: 2 },
-  { name: "turn_looks", schema: "CREATE TABLE turn_looks (recording_hash TEXT PRIMARY KEY, player_id TEXT NOT NULL, look TEXT NOT NULL)", maxRows: 128 }
+  { name: "turn_looks", schema: "CREATE TABLE turn_looks (recording_hash TEXT PRIMARY KEY, player_id TEXT NOT NULL, look TEXT NOT NULL) WITHOUT ROWID", maxRows: 128 }
 ]);
 /** Whether a sqlite_master row is one of `tables` in its exact form. */
 export function isLazyTable(tables: readonly LazyTable[], row: { name: string; sql: string }): boolean {

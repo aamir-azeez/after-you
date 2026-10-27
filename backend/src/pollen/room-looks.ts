@@ -63,12 +63,11 @@ export function recordMemberLook(storage: DurableObjectStorage, player: string, 
   storage.sql.exec("INSERT OR REPLACE INTO member_looks VALUES (?,?)", player, text);
 }
 
-/** The look of one accepted turn, inside its commit; only a look that is not the default is written. Past the bound the oldest go. */
+/** The look of one accepted turn, inside its commit; only a look that is not the default is written. One row per accepted turn, so the room's turn bound bounds it. */
 export function recordTurnLook(storage: DurableObjectStorage, recordingHash: string, player: string, look: Look | undefined, catalog: Catalog = CATALOG): void {
   if (look === undefined || isDefaultLook(look) || !validLook(look, catalog) || !HASH_PATTERN.test(recordingHash) || !ID_PATTERN.test(player)) return;
   create(storage, TURNS);
   storage.sql.exec("INSERT OR IGNORE INTO turn_looks VALUES (?,?,?)", recordingHash, player, lookText(look, catalog));
-  storage.sql.exec("DELETE FROM turn_looks WHERE rowid <= (SELECT rowid FROM turn_looks ORDER BY rowid DESC LIMIT 1 OFFSET ?)", MAX_TURN_LOOKS);
 }
 
 /**
@@ -78,8 +77,8 @@ export function recordTurnLook(storage: DurableObjectStorage, recordingHash: str
 export function turnLooks(storage: DurableObjectStorage, player?: string | null, catalog: Catalog = CATALOG): Record<string, Look> {
   if (player === null || !present(storage, TURNS.name)) return {};
   const rows = player === undefined
-    ? storage.sql.exec<{ recording_hash: string; look: string }>("SELECT recording_hash,look FROM turn_looks ORDER BY rowid LIMIT ?", MAX_TURN_LOOKS).toArray()
-    : storage.sql.exec<{ recording_hash: string; look: string }>("SELECT recording_hash,look FROM turn_looks WHERE player_id=? ORDER BY rowid LIMIT ?", player, MAX_TURN_LOOKS).toArray();
+    ? storage.sql.exec<{ recording_hash: string; look: string }>("SELECT recording_hash,look FROM turn_looks LIMIT ?", MAX_TURN_LOOKS).toArray()
+    : storage.sql.exec<{ recording_hash: string; look: string }>("SELECT recording_hash,look FROM turn_looks WHERE player_id=? LIMIT ?", player, MAX_TURN_LOOKS).toArray();
   const result: Record<string, Look> = {};
   for (const row of rows) { const look = parsed(row.look, catalog); if (!isDefaultLook(look)) result[row.recording_hash] = look; }
   return result;

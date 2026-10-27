@@ -146,8 +146,8 @@ describe("spending", () => {
     expect(metered.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenSpend"]);
     const stub = env.PLAYERS.getByName(player.player_id);
     const rows = await meterRows({ player: stub }, async () => expect((await spend(player, spendBody("seashell", 1000))).status).toBe(200));
-    // The wallet row, the item and the receipt (with its key index).
-    expect(rows.rows.player.written).toBe(4);
+    // The wallet row, the item and the receipt.
+    expect(rows.rows.player.written).toBe(3);
     const read = await counted("/v1/pollen", "GET", player, undefined);
     expect(read.calls).toEqual(["PLAYERS.authorizeWallet"]);
   });
@@ -189,8 +189,8 @@ describe("wearing", () => {
     expect(metered.response.status).toBe(200);
     expect(metered.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenEquip"]);
     const rows = await meterRows({ player: env.PLAYERS.getByName(player.player_id) }, async () => expect((await equip(player, equipBody({}, Date.now() + 1000))).status).toBe(200));
-    // The look row and the receipt (with its key index).
-    expect(rows.rows.player.written).toBe(3);
+    // The look row and the receipt.
+    expect(rows.rows.player.written).toBe(2);
   });
   it("goes with the account", async () => {
     const player = await create(); await fund(player, 1000);
