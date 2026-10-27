@@ -336,7 +336,7 @@ func _waiting_viewers() -> void:
 		if opened:
 			var preview := Preview.new()
 			preview.online_session = session
-			preview.settings = {"sound":false,"haptics":false,"reduced_motion":true}
+			preview.settings = {"sound":false,"haptics":false,"reduced_motion":true,"assistance":true}
 			root.add_child(preview)
 			preview.set_process(false)
 			preview.set_physics_process(false)
@@ -405,6 +405,8 @@ func _real_ui_flow() -> void:
 	var path := "user://relay-online-ui-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
 	cleanup_paths.append(path)
 	app.saves = Save.new(path)
+	app.saves.data.settings.assistance = true
+	app.saves.flush()
 	viewport.add_child(app)
 	app.set_process(false)
 	app.set_physics_process(false)

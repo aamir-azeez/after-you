@@ -46,6 +46,7 @@ func _run() -> void:
 	app.saves=SaveProbe.new(path)
 	app.saves.data.settings.sound=false
 	app.saves.data.settings.haptics=false
+	app.saves.data.settings.assistance=true
 	app.saves.flush()
 	root.add_child(app)
 	app.set_process(false)
@@ -317,7 +318,7 @@ func _test_chapter_replays() -> void:
 		var preview := ChapterPreview.new()
 		preview.chapter_key = key
 		preview.journey = journal
-		preview.settings = {"sound": false, "haptics": false, "reduced_motion": false}
+		preview.settings = {"sound": false, "haptics": false, "reduced_motion": false, "assistance": true}
 		root.add_child(preview)
 		preview.set_process(false)
 		preview.set_physics_process(false)

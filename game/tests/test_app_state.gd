@@ -134,7 +134,7 @@ func _test_save_generations() -> void:
 	var path := _temporary_path()
 	var store := Storage.new(path)
 	store.load_data()
-	_check(store.data.settings.assistance and not store.read_only,"Missing save starts with complete defaults")
+	_check(not store.data.settings.assistance and not store.read_only,"Missing save starts with complete defaults, Forgiving catches off")
 	_check(store.save_attempt("first-light",{"a":first,"b":second,"draft":{}},true),"Completed attempt persisted")
 	var saved := store.attempt("first-light")
 	saved.a.actions[0].x=999
@@ -172,7 +172,7 @@ func _test_save_generations() -> void:
 	_write(old_path,{"version":1,"settings":{"sound":false},"attempts":{},"completed":{},"room":{}})
 	var old := Storage.new(old_path)
 	old.load_data()
-	_check(not old.data.settings.sound and old.data.settings.assistance,"Older partial settings gain defaults without losing preferences")
+	_check(not old.data.settings.sound and not old.data.settings.assistance,"Older partial settings gain defaults without losing preferences")
 	var unavailable := Storage.new("user://missing-test-parent-"+Crypto.new().generate_random_bytes(8).hex_encode()+"/journey.json")
 	_check(not unavailable.save_attempt("first-light",{"a":first},true),"Unwritable save reports failure")
 	_check(unavailable.data.attempts.is_empty() and unavailable.data.completed.is_empty(),"Failed transaction rolls back in-memory commitment")
