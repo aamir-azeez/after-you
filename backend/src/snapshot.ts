@@ -222,16 +222,25 @@ export function currentSnapshotSchema(storage: DurableObjectStorage, kind: Objec
   // notification/presence/redo and room-inbox operational tables are excluded;
   // gameplay rows retain their format. A Player's room index tables are
   // rebuilt from the rooms, so they are accepted only in their exact form.
-  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row) && !(kind === "Player" && isRoomIndexTable(row)));
-  // A Pollen wallet is the only copy of a balance: no snapshot format carries it yet, so a Player
-  // that has one is refused by name rather than exported without it.
-  requireValue(!(kind === "Player" && found.some(isPollenPlayerTable)), "pollen_snapshot_unsupported");
+  // A Player's Pollen tables are accepted in their exact form here (campaign checks read this
+  // schema too); export and restore refuse a Player that has them (pollenRefused).
+  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row) && !(kind === "Player" && (isRoomIndexTable(row) || isPollenPlayerTable(row))));
   // Room inbox sequences are operational metadata. They are accepted as part
   // of the runtime schema but intentionally excluded from portable snapshots.
   const expected = [...TABLES[kind], ...notificationTables(kind), ...(kind === "Player" ? PRESENCE_TABLES : [REDO_TABLE, ROOM_INBOX_ACTIVITY])].sort((a, b) => a.name.localeCompare(b.name));
   requireValue(found.length === expected.length && found.every((row, i) => row.name === expected[i].name && row.sql === expected[i].schema), "unsupported_storage_schema");
   requireValue([...storage.kv.list({ limit: 1 })].length === 0, "unsupported_storage_kv");
   if (kind === "Room") requireValue(redoRuntimeValid(storage), "unsupported_redo_state");
+}
+
+/**
+ * A Pollen wallet is the only copy of a balance and no snapshot format carries it yet, so a Player
+ * that has one is refused by name rather than exported without it or restored over it.
+ */
+function pollenRefused(storage: DurableObjectStorage, kind: ObjectKind): void {
+  if (kind !== "Player") return;
+  const tables = storage.sql.exec<{ name: string; sql: string }>("SELECT name, sql FROM sqlite_master WHERE type='table'").toArray();
+  requireValue(!tables.some(isPollenPlayerTable), "pollen_snapshot_unsupported");
 }
 
 function bounded(value: string): void {
@@ -245,6 +254,7 @@ export async function exportSnapshot(ctx: DurableObjectState, kind: ObjectKind, 
   const alarm = await ctx.storage.getAlarm();
   const payload = ctx.storage.transactionSync((): SnapshotPayload => {
     currentSnapshotSchema(ctx.storage, kind);
+    pollenRefused(ctx.storage, kind);
     requireValue(notificationAlarmOwned(ctx.storage, kind, kind === "Player" ? null : alarm) && (kind !== "Player" || presenceAlarmOwned(ctx.storage, alarm)), "unsupported_storage_alarm");
     const copied = TABLES[kind].map(definition => ({ name: definition.name, schema: definition.schema, columns: definition.columns, rows: ctx.storage.sql.exec(definition.select).toArray() }));
     const checked = tables(copied, kind);
@@ -299,6 +309,7 @@ export async function restoreSnapshot(ctx: DurableObjectState, kind: ObjectKind,
     const alarm = await ctx.storage.getAlarm();
     if(kind==="Player")requireValue(!campaignRows(TABLES.Player.filter(def=>def.name==="rooms" || def.name==="creations").map(def=>({name:def.name,rows:ctx.storage.sql.exec(def.select).toArray() as Row[]}))),"campaign_restore_unsupported");
     currentSnapshotSchema(ctx.storage, kind);
+    pollenRefused(ctx.storage, kind);
     requireValue(notificationAlarmOwned(ctx.storage, kind, kind === "Player" ? null : alarm) && (kind !== "Player" || presenceAlarmOwned(ctx.storage, alarm)), "unsupported_storage_alarm");
     for (const definition of TABLES[kind]) requireValue(ctx.storage.sql.exec(definition.select).toArray().length === 0, "snapshot_target_not_empty");
     for (const [index, definition] of TABLES[kind].entries()) {

@@ -8,6 +8,7 @@ import { POLLEN_HEADER } from "../src/pollen/routes";
 import { noteFullJourney, type PollenReceipt, type WalletView } from "../src/pollen/wallet";
 import { POLLEN_PLAYER_TABLES, POLLEN_ROOM_TABLES } from "../src/storage-schema";
 import { countingEnv, meterRows } from "./meter";
+import { currentSnapshotSchema } from "../src/snapshot";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -153,11 +154,15 @@ describe("Pollen from turns", () => {
     const stolen = await (await call("/v1/pollen/turn-claims", "POST", guest, claim)).json<{ results: { status: string; code?: string }[] }>();
     expect(stolen.results).toEqual([{ ...claim.claims[0], status: "refused", code: "pollen_turn_not_found" }]);
   });
-  it("leaves the turn pending while POLLEN_SECRET is missing on the Player", async () => {
+  it("does nothing at all while the flag is on but POLLEN_SECRET is missing", async () => {
     const host = await create(), guest = await create();
     delete shared.POLLEN_SECRET;
-    const reply = await turn(await room(host, guest), host, firstA);
-    expect(reply.pollen).toEqual({ schema_version: 1, pending: true });
+    const current = await room(host, guest, { FEATURES: "POLLEN_EARN" });
+    const sent = await counted(`/v2/rooms/${current.room_id}/turns`, "POST", host, turnBody(current, firstA), { FEATURES: "POLLEN_EARN" });
+    expect(sent.response.status).toBe(200);
+    expect(sent.calls).not.toContain("PLAYERS.creditTurn");
+    expect(await sent.response.json()).not.toHaveProperty("pollen");
+    expect(await tableNames(env.ROOMS_V2.getByName(current.room_id))).toEqual([]);
   });
   it("boosts both players 10% for each Full Journey member, frozen at each turn", async () => {
     const cases: [boolean, boolean, number][] = [[false, false, 0], [true, false, 10], [false, true, 10], [true, true, 20]];
@@ -233,13 +238,23 @@ describe("Pollen from turns", () => {
     expect(history.calls).toEqual(["PLAYERS.authorizeWallet"]);
     expect(await history.response.json()).toMatchObject({ schema_version: 1, entries: [{ kind: "turn", amount: paid, level_id: "relay-isles", stage_id: "relay", role: "a" }] });
   });
-  it("answers 503 on every Pollen route while the flag is off, before reading the body", async () => {
+  it("answers every Pollen route 404 as before while the flag is off, before reading the body", async () => {
     const host = await create();
     for (const [path, method] of [["/v1/pollen", "GET"], ["/v1/pollen/history", "GET"], ["/v1/pollen/turn-claims", "POST"], ["/v1/pollen/clear-claims", "POST"]]) {
       const response = await counted(path, method, host, method === "POST" ? "not json" : undefined, OFF);
-      expect(response.response.status, path).toBe(503);
+      expect(response.response.status, path).toBe(404);
       expect(response.calls).toEqual(["PLAYERS.authorize"]);
     }
+  });
+  it("never fails a turn or a claim over a stored facts row it cannot read", async () => {
+    const host = await create(), guest = await create();
+    const current = await room(host, guest);
+    const first = await turn(current, host, firstA);
+    await runInDurableObject(env.ROOMS_V2.getByName(current.room_id), async (_, state) => { state.storage.sql.exec("UPDATE pollen_turn_facts SET data='{\"schema_version\":9}'"); });
+    const facts = await env.ROOMS_V2.getByName(current.room_id).pollenTurnFacts(host.player_id, first.receipt.recording_hash!);
+    expect(facts).toEqual({ ok: false, status: 404, code: "pollen_turn_not_found" });
+    const next = await turn(first.room, guest, firstB, middle);
+    expect(next.room.revision).toBe(first.room.revision + 1);
   });
   it("costs the measured rows per turn, retry and claim", async () => {
     const host = await create(), guest = await create();
@@ -278,6 +293,8 @@ describe("Pollen storage", () => {
     const commit = "a".repeat(40);
     expect((await env.ROOMS_V2.getByName(current.room_id).exportSnapshot(commit)).ok).toBe(true);
     expect(await env.PLAYERS.getByName(host.player_id).exportSnapshot(commit)).toEqual({ ok: false, status: 400, code: "pollen_snapshot_unsupported" });
+    // The runtime schema check (campaign capture, identity deletion scope) still accepts the wallet.
+    await runInDurableObject(env.PLAYERS.getByName(host.player_id), async (_, state) => { expect(() => currentSnapshotSchema(state.storage, "Player")).not.toThrow(); });
     expect((await env.PLAYERS.getByName(guest.player_id).exportSnapshot(commit)).ok).toBe(true);
   });
   it("erases the wallet with the account", async () => {
