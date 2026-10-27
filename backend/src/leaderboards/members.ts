@@ -35,6 +35,13 @@ export async function syncMemberName(env: Env, playerId: string, show?: boolean)
  * a run still waiting for its account check is on no list yet.
  * Requests: 1 (Member) + 1 per board (12 today).
  */
+/** forgetLeaderboardPlayer only for a player whose member record ever changed; anyone else costs one read and stores nothing. */
+export async function forgetLeaderboardPlayerIfKnown(env: Env, playerId: string): Promise<void> {
+  const state = await env.LEADERBOARD_MEMBERS.getByName(playerId).read();
+  if (state.erased || (state.revision === 0 && state.boards.length === 0)) return;
+  await forgetLeaderboardPlayer(env, playerId);
+}
+
 export async function forgetLeaderboardPlayer(env: Env, playerId: string): Promise<void> {
   await env.LEADERBOARD_MEMBERS.getByName(playerId).forget();
   await pooled([...boardKeys()], BOARD_CONCURRENCY, async board => {

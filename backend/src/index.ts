@@ -44,7 +44,7 @@ export { LeaderboardBoard } from "./leaderboards/board";
 export { LeaderboardMember } from "./leaderboards/member";
 import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
 import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
-import { forgetLeaderboardPlayer } from "./leaderboards/members";
+import { forgetLeaderboardPlayer, forgetLeaderboardPlayerIfKnown } from "./leaderboards/members";
 
 /**
  * Every route under a room id except leave, which is already a quiet success for a room the caller has
@@ -203,9 +203,10 @@ export default {
         if (await env.SAFETY_PROFILES.getByName(playerId).deletionReceipt(playerId, await bearerDigest(request))) return json({ deleted: true });
         const deviceHash = await bearerDigest(request);
         // Every leaderboard forgets the player first; a retried deletion runs it again. While leaderboards
-        // are off a failure here never holds up the deletion.
+        // are off only a player who ever touched them is forgotten (a blank member's read stores nothing),
+        // and a failure here never holds up the deletion.
         if (flags.leaderboards(env)) await forgetLeaderboardPlayer(env, playerId);
-        else await forgetLeaderboardPlayer(env, playerId).catch(() => undefined);
+        else await forgetLeaderboardPlayerIfKnown(env, playerId).catch(() => undefined);
         const dispatcher = roomDeletionDispatcher(env.ROOMS, (link, id) => env.ROOMS_V2.getByName(link.room_id).eraseForPlayer(id, link.host),
           (link, id) => deleteCampaignIdentityLink(player, {
             erase: (owner, roomId, allocation) => env.ROOMS_V2.getByName(roomId).eraseCampaignRoot(owner, roomId, allocation),

@@ -216,6 +216,12 @@ describe("posting finished runs", () => {
     expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual([]);
     expect((await call(`/v1/leaderboards/${RELAY_BOARD}`, "GET", undefined, undefined, OFF)).status).toBe(401);
   });
+  it("while off, deletes an account that never touched leaderboards with one read and stores nothing", async () => {
+    const account = await create(), meter = countingEnv(configured(OFF));
+    expect((await call("/v1/identity", "DELETE", account, undefined, OFF, {}, meter.env)).status).toBe(200);
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_MEMBERS.read"]);
+    expect(await env.LEADERBOARD_MEMBERS.getByName(account.player_id).read()).toEqual({ schema_version: 1, show_name: false, boards: [], revision: 0 });
+  });
   it("skips the board when the cached board already holds ten faster runs", async () => {
     for (let index = 0; index < TOP_PLACES; index++) await rankDirect(await run(10 + index, 1000 + index));
     await view(); // caches the full board
