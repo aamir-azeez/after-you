@@ -1,0 +1,103 @@
+name: Leaderboard replay check
+
+# Hourly: fetches the together runs waiting on a leaderboard, replays every turn
+# with its chapter's own verifier in headless Godot, and posts the verdicts.
+# It does nothing until the repository secret LEADERBOARD_JOB_TOKEN exists, and
+# nothing while the server has leaderboards off. It never runs on a fork or on
+# a pull request.
+on:
+  schedule:
+    - cron: "23 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: leaderboard-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    name: Replay waiting runs
+    if: github.repository == 'aamir-azeez/after-you'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    env:
+      LEADERBOARD_JOB_TOKEN: ${{ secrets.LEADERBOARD_JOB_TOKEN }}
+      GODOT_VERSION: "4.7.2-stable"
+      # Official release asset digest, the same pin as verify.yml.
+      GODOT_SHA256: "cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4"
+      GODOT_SILENCE_ROOT_WARNING: "1"
+    steps:
+      - name: Stop unless the job credential is set
+        id: gate
+        run: |
+          if [ -z "$LEADERBOARD_JOB_TOKEN" ]; then
+            echo "LEADERBOARD_JOB_TOKEN is not set; nothing to do."
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+      # Official actions/checkout v6.1.0 and actions/setup-node v6.5.0, pinned to commits as in verify.yml.
+      - if: steps.gate.outputs.ready == 'true'
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - if: steps.gate.outputs.ready == 'true'
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38
+        with:
+          node-version: "24.16.0"
+      - name: Fetch the runs waiting for the check
+        id: pull
+        if: steps.gate.outputs.ready == 'true'
+        run: |
+          set -euo pipefail
+          base="$(python3 -c 'import json; print(json.load(open("game/app_config.json"))["api_base_url"])')"
+          echo "base=$base" >> "$GITHUB_OUTPUT"
+          node backend/scripts/leaderboard-check.mjs pull "$base" "$RUNNER_TEMP/pending.json"
+          count="$(python3 -c 'import json, sys; print(len(json.load(open(sys.argv[1]))["entries"]))' "$RUNNER_TEMP/pending.json")"
+          echo "count=$count" >> "$GITHUB_OUTPUT"
+      - name: Download and verify the pinned native engine
+        if: steps.gate.outputs.ready == 'true' && steps.pull.outputs.count != '0'
+        run: |
+          set -euo pipefail
+          archive="Godot_v${GODOT_VERSION}_linux.x86_64.zip"
+          curl --fail --location --retry 2 --connect-timeout 15 --max-time 180 \
+            "https://github.com/godotengine/godot-builds/releases/download/${GODOT_VERSION}/${archive}" \
+            --output "$RUNNER_TEMP/$archive"
+          printf '%s  %s\n' "$GODOT_SHA256" "$RUNNER_TEMP/$archive" | sha256sum --check --strict
+          mkdir -p "$RUNNER_TEMP/godot"
+          unzip -q "$RUNNER_TEMP/$archive" -d "$RUNNER_TEMP/godot"
+          chmod +x "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}_linux.x86_64"
+          printf 'GODOT=%s\n' "$RUNNER_TEMP/godot/Godot_v${GODOT_VERSION}_linux.x86_64" >> "$GITHUB_ENV"
+      - name: Replay every waiting run
+        if: steps.gate.outputs.ready == 'true' && steps.pull.outputs.count != '0'
+        run: |
+          set -euo pipefail
+          cp -a game "$RUNNER_TEMP/after-you-game"
+          # The check makes no request; the copy gets no service address either.
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          path = Path(os.environ["RUNNER_TEMP"]) / "after-you-game" / "app_config.json"
+          config = json.loads(path.read_text(encoding="utf-8"))
+          config["api_base_url"] = ""
+          config["revenuecat_public_key"] = ""
+          path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+          PY
+          XDG_DATA_HOME="$RUNNER_TEMP/godot-import" timeout 180s "$GODOT" --headless \
+            --path "$RUNNER_TEMP/after-you-game" --editor --import --quit
+          XDG_DATA_HOME="$RUNNER_TEMP/godot-state" timeout 1200s "$GODOT" --headless \
+            --path "$RUNNER_TEMP/after-you-game" --script "res://tests/leaderboard_replay_job.gd" \
+            -- "$RUNNER_TEMP/pending.json" "$RUNNER_TEMP/verdicts.json" 2>&1 | tee "$RUNNER_TEMP/check.log"
+          if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed' "$RUNNER_TEMP/check.log"; then exit 1; fi
+          test -s "$RUNNER_TEMP/verdicts.json"
+      - name: Post the verdicts
+        if: steps.gate.outputs.ready == 'true' && steps.pull.outputs.count != '0'
+        env:
+          BASE: ${{ steps.pull.outputs.base }}
+        run: node backend/scripts/leaderboard-check.mjs push "$BASE" "$RUNNER_TEMP/verdicts.json"
