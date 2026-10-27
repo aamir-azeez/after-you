@@ -22,6 +22,7 @@ const RoomStages = preload("res://services/room_stages.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const PollenGrant = preload("res://services/pollen_grant.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const OwnLook = preload("res://services/own_look.gd")
@@ -410,6 +411,8 @@ func load_capabilities() -> bool:
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_enabled(str(scope.server), str(scope.owner), pollen_supported())
 	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), shop_supported())
+	if not scope.is_empty(): PollenWallet.shared().set_item_blooms(str(scope.server), str(scope.owner), item_blooms_supported())
+	if not scope.is_empty(): PollenGrant.shared().set_enabled(str(scope.server), str(scope.owner), grant_supported())
 	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	return true
@@ -1250,6 +1253,14 @@ func shop_supported() -> bool:
 ## The server pays Pollen for turns (services/pollen_wallet.gd).
 func pollen_supported() -> bool:
 	return Typed.equal(capabilities.get("pollen_version"), 1.0)
+
+## Free chapter turns may drop a shop item (the receipt's item_bloom).
+func item_blooms_supported() -> bool:
+	return pollen_supported() and Typed.equal(capabilities.get("pollen_item_blooms_version"), 1.0)
+
+## Full Journey pays monthly Pollen on the wallet read (services/pollen_grant.gd).
+func grant_supported() -> bool:
+	return pollen_supported() and Typed.equal(capabilities.get("pollen_grant_version"), 1.0)
 
 ## The server shows display names to this player (services/display_names.gd).
 func display_names_supported() -> bool:

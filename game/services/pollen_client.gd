@@ -7,7 +7,11 @@ extends RefCounted
 ## runs goes once that one returns. Main flushes at launch (once the server's
 ## capabilities are read) and on every resume. Nothing is sent while the server
 ## has not said Pollen earning is on.
+## While the monthly grant is on, a phone that has Full Journey also reads the
+## wallet at most every GRANT_READ_MS: the server pays an instalment that is due
+## inside that read (services/pollen_grant.gd keeps what it says).
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const PollenGrant = preload("res://services/pollen_grant.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const CLAIMS_PATH := "/v1/pollen/turn-claims"
@@ -18,6 +22,9 @@ const PER_REQUEST := 4
 ## Requests one flush may make, so a server that keeps answering "retry" costs
 ## a few requests, not a loop.
 const MAX_REQUESTS := 4
+## How often a Full Journey phone reads the wallet for the monthly grant (memory
+## only, so each launch reads once). A free player's phone never reads for it.
+const GRANT_READ_MS := 6 * 3600 * 1000
 
 ## A flush finished; the wallet or a result may have changed.
 signal settled
@@ -25,6 +32,12 @@ signal settled
 var wallet: RefCounted
 ## The wardrobe kept from the same wallet read while the shop is on (services/wardrobe.gd).
 var wardrobe: RefCounted
+## The monthly grant kept from the same wallet read while it is on (services/pollen_grant.gd).
+var grant: RefCounted
+## () -> bool: whether this phone holds Full Journey (Main's cached entitlement).
+var subscribed: Callable
+## Scope key -> Time.get_ticks_msec() of the last wallet read made for the grant.
+var _grant_read_at: Dictionary = {}
 var _api: Node
 ## () -> {server, owner} of the signed-in player, or {}.
 var _scope: Callable
@@ -41,6 +54,7 @@ func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), 
 	_transport = transport
 	wallet = store if store != null else PollenWallet.shared()
 	wardrobe = Wardrobe.shared()
+	grant = PollenGrant.shared()
 
 ## {server, owner} while the server has said Pollen earning is on, else {}.
 func scope() -> Dictionary:
@@ -81,14 +95,26 @@ func _run() -> void:
 			continue
 		# A phone with no wallet (a new install, or a file that could not be read) asks for it,
 		# and so does one with no wardrobe while the shop is on: the same read carries both.
-		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_missing(context):
+		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_missing(context) or _grant_due(context):
 			requests += 1
+			if _grant_wanted(context): _grant_read_at[PollenWallet.scope_key(context.server, context.owner)] = Time.get_ticks_msec()
 			var read: Dictionary = await _request(HTTPClient.METHOD_GET, WALLET_PATH, {})
 			if scope() != context or not read.get("ok", false) or not wallet.note_wallet(context.server, context.owner, read.get("data")): break
 			if wardrobe != null: wardrobe.note_view(context.server, context.owner, read.get("data"))
+			if grant != null: grant.note_view(context.server, context.owner, read.get("data"))
 		if not _again: break
 	_sending = false
 	settled.emit()
+
+## A Full Journey phone while the grant is on.
+func _grant_wanted(context: Dictionary) -> bool:
+	return grant != null and grant.enabled(context.server, context.owner) and subscribed.is_valid() and bool(subscribed.call())
+
+## The grant wants a wallet read: none yet this launch, or the last one is GRANT_READ_MS old.
+func _grant_due(context: Dictionary) -> bool:
+	if not _grant_wanted(context): return false
+	var key := PollenWallet.scope_key(context.server, context.owner)
+	return not _grant_read_at.has(key) or Time.get_ticks_msec() - int(_grant_read_at[key]) >= GRANT_READ_MS
 
 func _wardrobe_missing(context: Dictionary) -> bool:
 	return wardrobe != null and wardrobe.enabled(context.server, context.owner) and wardrobe.view(context.server, context.owner).is_empty()

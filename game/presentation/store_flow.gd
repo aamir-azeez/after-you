@@ -25,6 +25,9 @@ const PlatformSupport = preload("res://services/platform_support.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Typed = preload("res://services/typed_values.gd")
 const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
+const Benefits = preload("res://presentation/full_journey_benefits.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
+const PollenGrant = preload("res://services/pollen_grant.gd")
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
 ## Main's mode while a store card is up, including the locked-hosting page.
@@ -134,11 +137,20 @@ func _full_journey_card() -> VBoxContainer:
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
 	columns.add_child(column)
 	column.add_child(host._label("Full Journey",32,CREAM,true))
-	column.add_child(host._paragraph(PlayerCopy.SUBSCRIPTION_PURPOSE,0))
-	column.add_child(host._paragraph(PlayerCopy.COOPERATIVE_HOST_ACCESS,0))
+	for line: String in _benefit_lines():
+		column.add_child(host._paragraph(line,0))
 	if Typed.equal(host.config.get("purchase_mode"), "test_store"):
 		column.add_child(host._paragraph(PlayerCopy.MAIN_38EAC523F08C,0))
 	return column
+
+## What the subscription brings, chapters first (presentation/full_journey_benefits.gd).
+## The Pollen lines follow what the server last said for the signed-in player.
+func _benefit_lines() -> PackedStringArray:
+	var scope: Dictionary = host._names_scope() if host.has_method("_names_scope") else {}
+	if scope.is_empty(): return Benefits.lines(false, false)
+	var server := str(scope.server)
+	var owner := str(scope.owner)
+	return Benefits.lines(PollenWallet.shared().enabled(server, owner), PollenGrant.shared().enabled(server, owner), int(PollenGrant.shared().ladder(server, owner).get("next", 0)))
 
 ## The one subscription offer used by the store card and locked hosting: each
 ## store package with its store price and period, the renewal terms, Restore

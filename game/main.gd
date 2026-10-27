@@ -47,6 +47,8 @@ const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
 const PollenClient = preload("res://services/pollen_client.gd")
+const PollenGrant = preload("res://services/pollen_grant.gd")
+const PollenGrantCard = preload("res://presentation/pollen_grant_card.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -107,6 +109,8 @@ const ScenePrewarm = preload("res://services/scene_prewarm.gd")
 var _whats_new_unseen := false
 var _whats_new_card: Control
 var _whats_new_card_mode := ""
+## A Pollen flush finished: Home looks once for a monthly Pollen card to show (presentation/pollen_grant_card.gd).
+var grant_card_check := false
 ## Tests set this to see a link instead of opening the browser.
 var external_link_opener: Callable
 var _bounded_card_scroll: ScrollContainer
@@ -336,6 +340,9 @@ func _ready() -> void:
 	# The player's own look follows the signed-in player (services/own_look.gd).
 	Wardrobe.shared().scope_source=_names_scope
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
+	# Only a phone with Full Journey reads the wallet for the monthly grant; each flush may bring a card.
+	pollen_client.subscribed=_full_journey_access
+	pollen_client.settled.connect(func() -> void: grant_card_check=true)
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.
 	if NativeFiles.durable_available(): RoomsApi.history_supported = HistoryStore.new().self_test()
@@ -1936,6 +1943,21 @@ func _service_update_gate() -> void:
 	if is_instance_valid(home_stage_view) and home_stage_view.is_exploring(): return
 	_show_update_gate()
 
+## "Your monthly Pollen arrived", once per instalment, on Home only and only
+## when nothing else is up: never over a turn, a card or a held finger.
+func _service_grant_card() -> void:
+	if not grant_card_check or mode != "home" or application_backgrounded or running or _paid_content_hidden(): return
+	if is_instance_valid(_whats_new_card) or _update_gate_active() or TouchInput.press_held(overlay): return
+	for child: Node in ui.get_children():
+		if child.get_script() == InGameModal: return
+	grant_card_check=false
+	var scope := _names_scope()
+	if scope.is_empty(): return
+	var card: Dictionary = PollenGrant.shared().pending(str(scope.server),str(scope.owner))
+	if card.is_empty(): return
+	PollenGrant.shared().mark_shown(str(scope.server),str(scope.owner),str(card.key))
+	PollenGrantCard.open(ui,card)
+
 func _show_update_gate() -> void:
 	running=false
 	room_play=false
@@ -2094,6 +2116,7 @@ func _process(delta: float) -> void:
 	notification_flow.service_friends()
 	_service_whats_new()
 	_service_update_gate()
+	_service_grant_card()
 	_service_photo_resume()
 	if not capture_path.is_empty():
 		capture_frames+=1
