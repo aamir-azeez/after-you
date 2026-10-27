@@ -7,6 +7,7 @@ const Store = preload("res://services/shared_replay_store.gd")
 const OnlineStore = preload("res://services/relay_online_store.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const LeaderboardRuns = preload("res://services/leaderboard_runs.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Levels = preload("res://core/levels.gd")
 const LegacySimulation = preload("res://core/simulation.gd")
@@ -727,6 +728,8 @@ func _remember_room(snapshot: Dictionary, family: String, verified: bool = false
 	if not Typed.same(next, _rooms) and not _store.save_scope(_scope("index"), {"schema_version": 1, "owner": _owner, "rooms": next}): return _error(PlayerCopy.SHARED_REPLAY_COLLECTION_E2EA0728968C)
 	_rooms = next
 	_remember_time(key, snapshot)
+	# A finished together run, for the leaderboard screen's "Your best" (services/leaderboard_runs.gd).
+	if family == "chapter": LeaderboardRuns.note(_owner, snapshot, room.chapter_key)
 	if not cache_pairs: return true
 	if family == "legacy":
 		_cache_legacy(snapshot, room)

@@ -1237,6 +1237,10 @@ func pollen_supported() -> bool:
 func display_names_supported() -> bool:
 	return Typed.equal(capabilities.get("display_names_version"), 1.0)
 
+## The server has leaderboards open for this build (backend src/leaderboards/routes.ts).
+func leaderboards_supported() -> bool:
+	return Typed.equal(capabilities.get("leaderboards_version"), 1.0)
+
 func nickname_scope() -> Dictionary:
 	## Server and owner that key this device's local friend nicknames and the
 	## display names it keeps; {} without a server address (a test's API).
