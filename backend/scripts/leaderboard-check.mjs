@@ -1,14 +1,18 @@
 #!/usr/bin/env node
 // The leaderboard replay job's network steps (.github/workflows/leaderboard-check.yml).
 //   node scripts/leaderboard-check.mjs pull <base-url> <pending.json>
-//   node scripts/leaderboard-check.mjs push <base-url> <verdicts.json>
+//   node scripts/leaderboard-check.mjs push <base-url> <verdicts.json> <pending.json>
 // The credential comes only from the LEADERBOARD_JOB_TOKEN environment variable
 // and is never printed. pull exits 0 and writes no entries when the server says
 // leaderboards are off (503 leaderboards_disabled), so the job then does nothing.
-// Godot (tests/leaderboard_replay_job.gd) does the checking in between.
+// Godot (tests/leaderboard_replay_job.gd) does the checking in between. It
+// writes its verdicts file after every run, in the pending order; when it
+// stopped early, push sends the first run without a verdict to a person
+// ("no_verdict") and leaves the rest for the next hour, so one run that
+// crashes the engine can never stall the job.
 import { readFile, writeFile } from "node:fs/promises";
 
-const [mode, base, file] = process.argv.slice(2);
+const [mode, base, file, pendingFile] = process.argv.slice(2);
 const token = process.env.LEADERBOARD_JOB_TOKEN ?? "";
 if (!["pull", "push"].includes(mode) || !/^https:\/\/[a-z0-9.-]+$/.test(base ?? "") || !file) {
   console.error("usage: leaderboard-check.mjs pull|push https://<worker host> <file>");
@@ -41,8 +45,18 @@ if (mode === "pull") {
   await writeFile(file, JSON.stringify(answer.body));
   console.log(`Runs to check: ${answer.body.entries.length}`);
 } else {
-  const verdicts = JSON.parse(await readFile(file, "utf8"));
-  if (verdicts?.schema_version !== 1 || !Array.isArray(verdicts.verdicts)) { console.error("verdicts file is malformed"); process.exit(1); }
+  let verdicts;
+  try { verdicts = JSON.parse(await readFile(file, "utf8")); } catch { verdicts = null; }
+  if (verdicts?.schema_version !== 1 || !Array.isArray(verdicts.verdicts)) { console.error("verdicts file is missing or malformed"); process.exit(1); }
+  if (pendingFile) {
+    const pending = JSON.parse(await readFile(pendingFile, "utf8"));
+    const done = new Set(verdicts.verdicts.map(item => item.entry_id));
+    const stalled = (pending.entries ?? []).find(entry => !done.has(entry.entry_id));
+    if (stalled) {
+      verdicts.verdicts.push({ board: stalled.board, entry_id: stalled.entry_id, proof_hash: stalled.proof_hash, valid: false, measured_ticks: 0, reason: "no_verdict" });
+      console.log("The check stopped early; the run it stopped on goes to a person.");
+    }
+  }
   for (let start = 0; start < verdicts.verdicts.length; start += 64) {
     const answer = await post("verdicts", { schema_version: 1, verdicts: verdicts.verdicts.slice(start, start + 64) });
     if (answer.status !== 200) { console.error(`verdicts: HTTP ${answer.status} ${answer.body?.error?.code ?? ""}`); process.exit(1); }

@@ -4,6 +4,10 @@ extends SceneTree
 ## Reads the pending runs backend/scripts/leaderboard-check.mjs fetched,
 ## checks each with tests/leaderboard_replay_check.gd and writes the verdicts
 ## for that script to post. It holds no credential and makes no request.
+## The verdicts file is written again after every run, so a run that crashes
+## the engine leaves the verdicts before it; the post step then sends that run
+## to a person and the rest wait for the next hour. A check that breaks part
+## way gives "replay_error" (a person looks), never a pass.
 ## Exit 0 when every run got a verdict (passed or not), 1 when the input or
 ## output file could not be used.
 const Check = preload("res://tests/leaderboard_replay_check.gd")
@@ -22,16 +26,26 @@ func _run() -> void:
 		quit(1)
 		return
 	var verdicts: Array = []
-	for entry: Variant in parsed.entries:
-		if not entry is Dictionary: continue
-		var verdict := Check.verdict(entry)
-		verdicts.append(verdict)
-		print("leaderboard check %s %s: %s %d %s" % [verdict.board, verdict.entry_id, "pass" if verdict.valid else "fail", verdict.measured_ticks, verdict.reason])
-	var file := FileAccess.open(paths[1], FileAccess.WRITE)
-	if file == null:
-		push_error("verdicts file is not writable")
+	if not _write(paths[1], verdicts):
 		quit(1)
 		return
+	for entry: Variant in parsed.entries:
+		if not entry is Dictionary: continue
+		var verdict: Variant = Check.verdict(entry)
+		if not verdict is Dictionary or verdict.size() != 6:
+			verdict = {"board": str(entry.get("board", "")), "entry_id": str(entry.get("entry_id", "")), "proof_hash": str(entry.get("proof_hash", "")), "valid": false, "measured_ticks": 0, "reason": "replay_error"}
+		verdicts.append(verdict)
+		print("leaderboard check %s %s: %s %d %s" % [verdict.board, verdict.entry_id, "pass" if verdict.valid else "fail", verdict.measured_ticks, verdict.reason])
+		if not _write(paths[1], verdicts):
+			quit(1)
+			return
+	quit(0)
+
+func _write(path: String, verdicts: Array) -> bool:
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	if file == null:
+		push_error("verdicts file is not writable")
+		return false
 	file.store_string(JSON.stringify({"schema_version": 1, "verdicts": verdicts}))
 	file.close()
-	quit(0)
+	return true

@@ -27,7 +27,6 @@ jobs:
       run:
         shell: bash
     env:
-      LEADERBOARD_JOB_TOKEN: ${{ secrets.LEADERBOARD_JOB_TOKEN }}
       GODOT_VERSION: "4.7.2-stable"
       # Official release asset digest, the same pin as verify.yml.
       GODOT_SHA256: "cadd3204e728a35d3f13adb7fd0d7902636b79f6b95c40c265eb73b6c35329e4"
@@ -35,6 +34,8 @@ jobs:
     steps:
       - name: Stop unless the job credential is set
         id: gate
+        env:
+          LEADERBOARD_JOB_TOKEN: ${{ secrets.LEADERBOARD_JOB_TOKEN }}
         run: |
           if [ -z "$LEADERBOARD_JOB_TOKEN" ]; then
             echo "LEADERBOARD_JOB_TOKEN is not set; nothing to do."
@@ -54,6 +55,8 @@ jobs:
       - name: Fetch the runs waiting for the check
         id: pull
         if: steps.gate.outputs.ready == 'true'
+        env:
+          LEADERBOARD_JOB_TOKEN: ${{ secrets.LEADERBOARD_JOB_TOKEN }}
         run: |
           set -euo pipefail
           base="$(python3 -c 'import json; print(json.load(open("game/app_config.json"))["api_base_url"])')"
@@ -93,11 +96,13 @@ jobs:
             --path "$RUNNER_TEMP/after-you-game" --editor --import --quit
           XDG_DATA_HOME="$RUNNER_TEMP/godot-state" timeout 1200s "$GODOT" --headless \
             --path "$RUNNER_TEMP/after-you-game" --script "res://tests/leaderboard_replay_job.gd" \
-            -- "$RUNNER_TEMP/pending.json" "$RUNNER_TEMP/verdicts.json" 2>&1 | tee "$RUNNER_TEMP/check.log"
-          if grep -Eq 'SCRIPT ERROR|Parse Error|Compilation failed' "$RUNNER_TEMP/check.log"; then exit 1; fi
-          test -s "$RUNNER_TEMP/verdicts.json"
+            -- "$RUNNER_TEMP/pending.json" "$RUNNER_TEMP/verdicts.json" 2>&1 | tee "$RUNNER_TEMP/check.log" || true
+          # The verdicts file is rewritten after every run, so a crash or a timeout still
+          # leaves the verdicts made so far. A check that never compiled posts nothing.
+          if grep -Eq 'Parse Error|Compilation failed' "$RUNNER_TEMP/check.log"; then rm -f "$RUNNER_TEMP/verdicts.json"; exit 1; fi
       - name: Post the verdicts
         if: steps.gate.outputs.ready == 'true' && steps.pull.outputs.count != '0'
         env:
           BASE: ${{ steps.pull.outputs.base }}
-        run: node backend/scripts/leaderboard-check.mjs push "$BASE" "$RUNNER_TEMP/verdicts.json"
+          LEADERBOARD_JOB_TOKEN: ${{ secrets.LEADERBOARD_JOB_TOKEN }}
+        run: node backend/scripts/leaderboard-check.mjs push "$BASE" "$RUNNER_TEMP/verdicts.json" "$RUNNER_TEMP/pending.json"
