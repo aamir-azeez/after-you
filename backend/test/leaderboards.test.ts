@@ -8,7 +8,7 @@ import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { boardKey, boardKeys, developerBest } from "../src/leaderboards/boards";
 import { DEVELOPER_BESTS } from "../src/leaderboards/developer-bests";
 import { JOB_TOKEN_LABEL, deriveJobToken } from "../src/leaderboards/job-token";
-import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_WAITING } from "../src/leaderboards/rules";
+import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED } from "../src/leaderboards/rules";
 import { entryId, finishedRun, pairKey, runTicks, type LeaderboardRun } from "../src/leaderboards/run";
 import { eligible, type Standing } from "../src/leaderboards/standing";
 import { forgetViews } from "../src/leaderboards/view-cache";
@@ -112,7 +112,7 @@ async function run(ticks: number, finished_ms: number, members: [string, string]
 async function rankDirect(entry: LeaderboardRun, best: number | null = 1) {
   const stub = board();
   await stub.submit(RELAY_BOARD, entry);
-  await stub.standings(RELAY_BOARD, [{ entry_id: entry.entry_id, eligible: true, reason: "", members: [{ show: false, name: null }, { show: false, name: null }] }]);
+  await stub.standings(RELAY_BOARD, [{ entry_id: entry.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
   const work = await stub.pendingWork();
   const mine = work.replay.find(item => item.entry_id === entry.entry_id)!;
   return stub.verdicts(RELAY_BOARD, [{ entry_id: entry.entry_id, proof_hash: mine.proof_hash, valid: true, measured_ticks: entry.ticks, reason: "" }], best);
@@ -184,6 +184,19 @@ describe("posting finished runs", () => {
     expect(counted.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual([]);
     void early;
   });
+  it("checks the accounts itself when the board's unchecked runs are full, so new accounts cannot crowd out real players", async () => {
+    for (let index = 0; index < MAX_UNCHECKED; index++) await board().submit(RELAY_BOARD, await run(5, 5000 + index));
+    const newcomers = await almostDone();
+    expect((await newcomers.last()).status).toBe(200);
+    const host = await create(), guest = await create();
+    await season(host); await season(guest);
+    const real = await almostDone(host, guest), meter = countingEnv(configured(ON));
+    expect((await real.last(ON, meter.env)).status).toBe(200);
+    console.log(`final turn on a crowded board: ${meter.calls.filter(name => name.startsWith("LEADERBOARD") || name === "PLAYERS.leaderboardStanding").join(", ")}`);
+    const replay = (await board().pendingWork()).replay.map(item => item.entry_id);
+    expect(replay).toEqual([await entryId(real.room.room_id, real.room.branch)]);
+    expect((await board().view(RELAY_BOARD)).checking).not.toContain(await entryId(newcomers.room.room_id, newcomers.room.branch));
+  });
   it("answers a retried final turn as known, so the run is posted once", async () => {
     const played = await almostDone();
     expect((await played.last()).status).toBe(200);
@@ -240,7 +253,7 @@ describe("board ordering", () => {
     let shown = await board().view(RELAY_BOARD);
     expect(shown.top.map(row => row.entry_id)).toEqual([later.entry_id]);
     expect(shown.top[0].gold_leaf).toBe(true);
-    await board().standings(RELAY_BOARD, [{ entry_id: earlier.entry_id, eligible: true, reason: "", members: [{ show: false, name: null }, { show: false, name: null }] }]);
+    await board().standings(RELAY_BOARD, [{ entry_id: earlier.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
     const work = await board().pendingWork();
     await board().verdicts(RELAY_BOARD, [{ entry_id: earlier.entry_id, proof_hash: work.replay[0].proof_hash, valid: true, measured_ticks: 90, reason: "" }], 1);
     shown = await board().view(RELAY_BOARD);
@@ -253,7 +266,7 @@ describe("board ordering", () => {
     const late = await run(100, 2000), early = await run(100, 1000);
     await board().submit(RELAY_BOARD, early);
     await rankDirect(late);
-    await board().standings(RELAY_BOARD, [{ entry_id: early.entry_id, eligible: true, reason: "", members: [{ show: false, name: null }, { show: false, name: null }] }]);
+    await board().standings(RELAY_BOARD, [{ entry_id: early.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
     const work = await board().pendingWork();
     await board().verdicts(RELAY_BOARD, [{ entry_id: early.entry_id, proof_hash: work.replay[0].proof_hash, valid: true, measured_ticks: 100, reason: "" }], 1);
     const shown = await board().view(RELAY_BOARD);
@@ -273,19 +286,44 @@ describe("board ordering", () => {
     // The slower run's ribbon stays.
     expect((await board().rewardsFor(pair[0])).filter(grant => grant.entry_id === slow.entry_id).map(grant => grant.reward)).toContain("top10_ribbon");
   });
-  it("refuses a run ten faster runs beat, and keeps the waiting list bounded", async () => {
+  it("refuses a run ten faster runs beat", async () => {
     for (let index = 0; index < TOP_PLACES; index++) await rankDirect(await run(10 + index, 1000 + index));
     expect((await board().submit(RELAY_BOARD, await run(20, 1))).status).toBe("not_placed");
-    for (let index = 0; index < MAX_WAITING; index++) expect((await board().submit(RELAY_BOARD, await run(5, 5000 + index))).status).toBe("checking");
-    expect((await board().submit(RELAY_BOARD, await run(6, 1))).status).toBe("busy");
-    expect((await board().submit(RELAY_BOARD, await run(4, 1))).status).toBe("checking");
-    expect((await board().view(RELAY_BOARD)).checking).toHaveLength(MAX_WAITING);
+  });
+  it("never lets unchecked runs push anyone out, and takes a checked run past them", async () => {
+    for (let index = 0; index < MAX_UNCHECKED; index++) expect((await board().submit(RELAY_BOARD, await run(5, 5000 + index))).status).toBe("checking");
+    const real = await run(50, 1);
+    expect((await board().submit(RELAY_BOARD, real)).status).toBe("crowded");
+    const checked = { entry_id: real.entry_id, eligible: true, reason: "", members: [{ show: true, name: "Ada", rev: 1 }, { show: false, name: null, rev: 1 }] };
+    expect((await board().submit(RELAY_BOARD, real, { ...checked, eligible: false })).status).toBe("ineligible");
+    expect((await board().submit(RELAY_BOARD, real, checked)).status).toBe("checking");
+    expect((await board().pendingWork()).replay.map(item => item.entry_id)).toEqual([real.entry_id]);
+    // The checked pool keeps its fastest runs.
+    for (let index = 1; index < MAX_CHECKED; index++) { const entry = await run(60 + index, 1); expect((await board().submit(RELAY_BOARD, entry, { ...checked, entry_id: entry.entry_id })).status).toBe("checking"); }
+    const slow = await run(500, 1);
+    expect((await board().submit(RELAY_BOARD, slow, { ...checked, entry_id: slow.entry_id })).status).toBe("busy");
+    const quick = await run(40, 1);
+    expect((await board().submit(RELAY_BOARD, quick, { ...checked, entry_id: quick.entry_id })).status).toBe("checking");
+    expect((await board().pendingWork()).replay).toHaveLength(MAX_CHECKED);
+  });
+  it("sends a run the job could not judge to a person, and never writes an older name choice over a newer one", async () => {
+    const entry = await run(100, 1000);
+    await board().submit(RELAY_BOARD, entry);
+    await board().setMember(RELAY_BOARD, entry.members[0], false, null, 5);
+    await board().standings(RELAY_BOARD, [{ entry_id: entry.entry_id, eligible: true, reason: "", members: [{ show: true, name: "Ada", rev: 3 }, { show: true, name: "Bo", rev: 3 }] }]);
+    await runInDurableObject(board(), async (_, ctx) => {
+      const data = JSON.parse(String(ctx.storage.sql.exec("SELECT data FROM lb_entries").one().data));
+      expect(data.members.map((member: { show: boolean; name: string | null }) => [member.show, member.name])).toEqual([[false, null], [true, "Bo"]]);
+    });
+    const work = await board().pendingWork();
+    await board().verdicts(RELAY_BOARD, [{ entry_id: entry.entry_id, proof_hash: work.replay[0].proof_hash, valid: false, measured_ticks: 0, reason: "replay_error" }], 1);
+    expect((await board().reviewList()).map(item => [item.entry_id, item.holds])).toEqual([[entry.entry_id, ["replay_error"]]]);
   });
   it("drops a failed replay or a time that does not match, and ignores a verdict on another proof", async () => {
     const fake = await run(100, 1000), wrong = await run(100, 1001);
     for (const entry of [fake, wrong]) {
       await board().submit(RELAY_BOARD, entry);
-      await board().standings(RELAY_BOARD, [{ entry_id: entry.entry_id, eligible: true, reason: "", members: [{ show: false, name: null }, { show: false, name: null }] }]);
+      await board().standings(RELAY_BOARD, [{ entry_id: entry.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
     }
     const work = await board().pendingWork();
     const hash = (id: string) => work.replay.find(item => item.entry_id === id)!.proof_hash;
@@ -324,11 +362,21 @@ describe("board ordering", () => {
     review = await board().reviewList();
     expect(review).toEqual([]);
   });
+  it("takes the rewards of a struck run even after the pair's faster run replaced it", async () => {
+    const pair: [string, string] = ["s".repeat(22), "t".repeat(22)];
+    const fake = await run(100, 1000, pair), faster = await run(90, 2000, pair);
+    await rankDirect(fake);
+    await rankDirect(faster);
+    expect((await board().rewardsFor(pair[0])).filter(grant => grant.entry_id === fake.entry_id)).not.toEqual([]);
+    expect((await board().strike(RELAY_BOARD, fake.entry_id)).done).toBe(true);
+    expect((await board().rewardsFor(pair[0])).filter(grant => grant.entry_id === fake.entry_id)).toEqual([]);
+    expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id)).toEqual([faster.entry_id]);
+  });
   it("gives the Gold leaf to a run a strike leaves strictly first", async () => {
     const fake = await run(100, 2000), tied = await run(100, 1000);
     await board().submit(RELAY_BOARD, tied);
     await rankDirect(fake);
-    await board().standings(RELAY_BOARD, [{ entry_id: tied.entry_id, eligible: true, reason: "", members: [{ show: false, name: null }, { show: false, name: null }] }]);
+    await board().standings(RELAY_BOARD, [{ entry_id: tied.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
     const work = await board().pendingWork();
     await board().verdicts(RELAY_BOARD, [{ entry_id: tied.entry_id, proof_hash: work.replay[0].proof_hash, valid: true, measured_ticks: 100, reason: "" }], 1);
     expect((await board().rewardsFor(tied.members[0])).map(grant => grant.reward)).toEqual(["top10_ribbon"]);
