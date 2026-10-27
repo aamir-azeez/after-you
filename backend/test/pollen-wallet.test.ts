@@ -121,6 +121,13 @@ describe("the Pollen wallet", () => {
       expect(walletView(storage, MONDAY).bank).toBe(22);
     });
   });
+  it("keeps the bank turn of a turn accepted just before Monday and credited just after", async () => {
+    serial += 100;
+    await inPlayer(async storage => {
+      const sunday = MONDAY - 9 * 3_600_000 - 1000;
+      expect(value(await credit(storage, facts({}, sunday), sunday + 2000)).turn!.kind).toBe("bank");
+    });
+  });
   it("starts every bank at 12 with the first pay, however long ago a Full Journey end was noted", async () => {
     serial += 100;
     await inPlayer(async storage => {

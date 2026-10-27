@@ -50,6 +50,8 @@ export type ClearClaim = { level_id: string; hard: boolean; boost_percent: numbe
 const [WALLET, CLAIMS] = POLLEN_PLAYER_TABLES;
 export const MAX_CLAIMS = CLAIMS.maxRows;
 export const HISTORY_LIMIT = 50;
+/** A turn credited this soon after acceptance is never late, so a turn accepted just before Monday 00:00 UTC keeps its bank turn. */
+export const LATE_GRACE_MS = 3_600_000;
 const MAX_SLOTS = 128;
 const MAX_TIME = 8_640_000_000_000_000;
 
@@ -162,7 +164,7 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     if (chapterTier(facts.level_id, rates) === null) return zero(price({ facts, bank: false, tail_index: 0, bloom: 1 }, rates));
     const week = String(weekIndex(facts.accepted_at)), slot = `${facts.level_id}|${facts.stage_id}|${facts.role}`;
     const state: WeekState = wallet.weeks[week] ?? { slots: [], tail: 0 };
-    const repeat = state.slots.includes(slot), late = Number(week) < weekIndex(now), bank = !repeat && !late && wallet.bank > 0, tailIndex = state.tail;
+    const repeat = state.slots.includes(slot), late = Number(week) < weekIndex(now) && now - facts.accepted_at > LATE_GRACE_MS, bank = !repeat && !late && wallet.bank > 0, tailIndex = state.tail;
     if (bank) { wallet.bank--; state.slots.push(slot); }
     else if (state.tail < tailLength(rates)) state.tail++;
     const priced = price({ facts, bank, tail_index: tailIndex, bloom: roll.multiplier }, rates);
