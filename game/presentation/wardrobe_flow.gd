@@ -49,9 +49,8 @@ func _init(main: Node = null) -> void:
 	host = main
 
 func _client() -> RefCounted:
-	if client == null:
-		client = WardrobeClient.new(host.api, host._names_scope)
-		client.changed.connect(_redraw)
+	if client == null: client = WardrobeClient.new(host.api, host._names_scope)
+	if not client.changed.is_connected(_redraw): client.changed.connect(_redraw)
 	return client
 
 ## Whether Settings may offer the Wardrobe: the server has the shop on for this
@@ -146,7 +145,7 @@ func model() -> Dictionary:
 		# The server's catalogue decides what shows: offered items, and earned ones once owned.
 		if not mine and not id in view.get("offered", []): continue
 		if Catalog.slot(id).is_empty(): continue
-		var sold := Catalog.sold(id) and id in view.get("offered", [])
+		var sold: bool = Catalog.sold(id) and id in view.get("offered", [])
 		var unlock := Catalog.unlock(id)
 		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": Catalog.price(id),
 			"owned": mine, "worn": look.get(Catalog.slot(id)) == id, "sold": sold, "locked": not mine and not unlock.is_empty() and not id in unlocked,

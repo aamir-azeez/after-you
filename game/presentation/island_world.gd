@@ -658,14 +658,14 @@ var slot_looks: Dictionary = {}
 ## Dresses each slot's pip now and on every later stage. A slot left out wears the default look.
 func wear_slots(looks: Dictionary) -> void:
 	slot_looks = looks.duplicate(true)
-	for slot: Variant in actors:
-		var actor: Variant = actors[slot]
-		if actor is Node3D and is_instance_valid(actor) and actor.has_method("wear"): actor.wear(slot_looks.get(slot, {}))
+	for slot_id: Variant in actors:
+		var actor: Variant = actors[slot_id]
+		if is_instance_valid(actor) and actor is Node3D and actor.has_method("wear"): actor.wear(slot_looks.get(slot_id, {}))
 
-## A pip for `slot` (p0 or p1; "" for one that belongs to no room slot), in its slot's look.
-func _create_spirit(color: Color, slot: String = "") -> Node3D:
+## A pip for `slot_id` (p0 or p1; "" for one that belongs to no room slot), in its slot's look.
+func _create_spirit(color: Color, slot_id: String = "") -> Node3D:
 	var spirit := SpiritVisual.new(color)
-	if slot_looks.has(slot): spirit.wear(slot_looks[slot])
+	if slot_looks.has(slot_id): spirit.wear(slot_looks[slot_id])
 	spirit.stepped.connect(func():
 		# Name the spirit by its slot so each one keeps its own step sounds.
 		var slot: Variant = actors.find_key(spirit)

@@ -62,6 +62,7 @@ display_names 3
 dressing_lint 1
 empty_state 3
 end_reactions 3
+featured_shelf 1
 final_scene 2
 finished_last_room 2
 first_bell 2
@@ -322,6 +323,7 @@ tide_world 1
 toast 3
 touch_scrolling 2
 turn_check_worker 3
+turn_looks 2
 turn_notification_bridge 3
 turn_notifications 2
 turn_of_the_tide 2
@@ -353,6 +355,8 @@ unreadable_chapter_journal 3
 update_gate 3
 wait_framing 1
 wait_hints 2
+wardrobe 3
+wardrobe_flow 1
 watch_all_parts 3
 water_locks 3
 water_locks_bake 1
@@ -372,5 +376,6 @@ world_fingerprint_tide_v2 3
 world_kit 2
 world_looks 1
 world_prewarm 2
+world_slot_looks 2
 your_replay_delete_ui 2
 your_replay_loading 2
