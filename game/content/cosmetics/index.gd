@@ -31,6 +31,10 @@ const OPTIONAL := {
 	## Metres the leaf sits higher while the item is worn (it pokes up through
 	## a hat's brim).
 	"leaf_lift": 0.0,
+	## The set the item belongs to (lower case letters, digits and "_"), or "".
+	## Buying a set's missing pieces together costs less
+	## (backend/src/pollen/spend.ts).
+	"set": "",
 }
 const REQUIRED := ["id", "slot", "tier", "name", "art"]
 

@@ -36,6 +36,7 @@ func _run() -> void:
 			"sold": Catalog.sold(id),
 			"released": Catalog.released(id),
 			"unlock": str(data.unlock),
+			"set": str(data.set),
 		}
 	var result := Golden.check(GOLDEN, {"ids": Catalog.ids(), "slots": Catalog.slots(), "tier_prices": Index.TIER_PRICES, "items": items})
 	for message: String in result.messages:

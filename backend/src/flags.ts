@@ -85,6 +85,10 @@ export const FLAG_VARS = Object.freeze({
   displayNames: "DISPLAY_NAMES_ENABLED",
   /** Pollen earned from accepted turns and first clears, the wallet routes and the turn reply field (pollen/). Set only through FEATURES. */
   pollenEarn: "POLLEN_EARN",
+  /** The wardrobe (pollen/spend.ts, pollen/wardrobe.ts): spending and wearing, owned items on the wallet read, and the name change price. Needs POLLEN_EARN. Set only through FEATURES. */
+  pollenShop: "POLLEN_SHOP",
+  /** Looks in rooms (pollen/room-looks.ts): each member's look and each turn's look, served to phones that send X-AfterYou-Looks. Set only through FEATURES. */
+  pollenLooks: "POLLEN_LOOKS",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. Set only through FEATURES. */
   leaderboards: "LEADERBOARDS",
 } as const);

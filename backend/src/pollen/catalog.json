@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "slots": ["hat", "body", "leaf"],
+  "tier_prices": { "common": 1000, "uncommon": 5000, "rare": 20000, "epic": 50000, "special": 100000, "earned": 0 },
+  "set_discount_percent": 15,
+  "set_round_down": 100,
+  "set_min_missing": 2,
+  "pack_price": 5000,
+  "items": {
+    "daisy": { "slot": "hat", "tier": "common", "unlock": "", "set": "", "released": true },
+    "seashell": { "slot": "hat", "tier": "common", "unlock": "", "set": "", "released": true },
+    "straw_hat": { "slot": "hat", "tier": "uncommon", "unlock": "", "set": "", "released": true },
+    "tide": { "slot": "body", "tier": "rare", "unlock": "", "set": "", "released": true },
+    "lantern": { "slot": "hat", "tier": "epic", "unlock": "", "set": "", "released": true },
+    "lighthouse_lamp": { "slot": "hat", "tier": "special", "unlock": "sleeping-lighthouse", "set": "", "released": true },
+    "gold_leaf": { "slot": "leaf", "tier": "earned", "unlock": "", "set": "", "released": true },
+    "every_hard": { "slot": "leaf", "tier": "earned", "unlock": "", "set": "", "released": true },
+    "top_ten_ribbon": { "slot": "hat", "tier": "earned", "unlock": "", "set": "", "released": true }
+  },
+  "packs": {}
+}
