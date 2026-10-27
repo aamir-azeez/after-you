@@ -105,6 +105,14 @@ export function anniversary(anchor: number, k: number): number {
   return Date.UTC(year, month, Math.min(at.getUTCDate(), last), at.getUTCHours(), at.getUTCMinutes(), at.getUTCSeconds(), at.getUTCMilliseconds());
 }
 
+/** The latest monthly anniversary of `start` on or before `now` (`start` itself when `now` is before its first). */
+export function latestAnniversary(start: number, now: number): number {
+  const from = new Date(start), to = new Date(now);
+  let k = Math.max(0, (to.getUTCFullYear() - from.getUTCFullYear()) * 12 + to.getUTCMonth() - from.getUTCMonth());
+  while (k > 0 && anniversary(start, k) > now) k--;
+  return anniversary(start, k);
+}
+
 export const grantKey = (anchor: number, n: number) => `grant:${anchor}:${n}`;
 export const refundKey = (anchor: number, n: number) => `grantrefund:${anchor}:${n}`;
 export const LIFETIME_KEY = "grant:lifetime";
@@ -167,7 +175,10 @@ export function planGrant(prev: GrantState | null, subs: readonly GrantSub[], cl
     const known = state.subs[sub.id], claim = claims[sub.id];
     if (!known) {
       if (sub.status !== "paid" || !claim) continue;
-      state.subs[sub.id] = { from: claim.self ? sub.period_start : Math.max(sub.period_start, anniversary(claim.since, 1)), through: paidTo(sub), claimed_at: claim.since, held: false };
+      // First seen: cover from its latest monthly anniversary, so a yearly plan seen months in starts with
+      // one instalment, never a lump of the months before anyone looked.
+      const seen = latestAnniversary(sub.period_start, now);
+      state.subs[sub.id] = { from: claim.self ? seen : Math.max(seen, anniversary(claim.since, 1)), through: paidTo(sub), claimed_at: claim.since, held: false };
       continue;
     }
     // It moved away and came back since this identity last held it: cover only from a month after it came back.

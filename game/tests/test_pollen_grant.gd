@@ -147,6 +147,11 @@ func _settle(client: RefCounted) -> void:
 
 func _client_reads() -> void:
 	var t := _setup(true, true)
+	t.fake.replies = [{"ok": false, "code": "connection_interrupted"}]
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 1, "An offline read counts for nothing")
+	t.fake.sent.clear()
 	t.fake.replies = [{"ok": true, "data": _answer(1, 4750, "grant:1790000000000:1", 4500)}]
 	t.client.flush()
 	await _settle(t.client)

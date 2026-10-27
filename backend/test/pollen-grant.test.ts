@@ -81,6 +81,12 @@ describe("grant instalments", () => {
     expect(late.pay.map(each => [each.n, each.amount])).toEqual([[2, 4750], [3, 5000], [4, 5250]]);
     expect(player.read([paid("y", anchor, year)], anniversary(anchor, 3) + 2 * HOUR).pay).toEqual([]);
   });
+  it("starts a yearly plan first seen months in at its latest anniversary: one instalment, never a lump", () => {
+    const player = fresh(), start = at(2026, 1, 31), year = anniversary(start, 12), seen = anniversary(start, 7) + 3 * DAY;
+    const first = player.read([paid("y", start, year)], seen);
+    expect(first.pay.map(each => [iso(each.due), each.amount])).toEqual([["2026-08-31", 4500]]);
+    expect(player.read([paid("y", start, year)], anniversary(start, 8) + HOUR).pay.map(each => [iso(each.due), each.amount])).toEqual([["2026-09-30", 4750]]);
+  });
   it("pays nothing in a trial, grace or hold, counts none of those months, and pays a recovered month on recovery", () => {
     const player = fresh(), start = at(2026, 5, 1), trialEnd = start + 7 * DAY;
     const trial = player.read([status("t", "trial", start, trialEnd)], start + HOUR);

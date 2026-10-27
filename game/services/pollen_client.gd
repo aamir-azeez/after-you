@@ -97,9 +97,10 @@ func _run() -> void:
 		# and so does one with no wardrobe while the shop is on: the same read carries both.
 		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_missing(context) or _grant_due(context):
 			requests += 1
-			if _grant_wanted(context): _grant_read_at[PollenWallet.scope_key(context.server, context.owner)] = Time.get_ticks_msec()
 			var read: Dictionary = await _request(HTTPClient.METHOD_GET, WALLET_PATH, {})
 			if scope() != context or not read.get("ok", false) or not wallet.note_wallet(context.server, context.owner, read.get("data")): break
+			# Only an answered read counts for the grant: an offline launch tries again on the next flush.
+			if _grant_wanted(context): _grant_read_at[PollenWallet.scope_key(context.server, context.owner)] = Time.get_ticks_msec()
 			if wardrobe != null: wardrobe.note_view(context.server, context.owner, read.get("data"))
 			if grant != null: grant.note_view(context.server, context.owner, read.get("data"))
 		if not _again: break
