@@ -15,7 +15,7 @@ import { storeView } from "./view-cache";
  * - verdicts (job or operator): the replay results;
  * - review-list and review (operator only): runs waiting for a person or
  *   reported, and a person's approve, reject or strike.
- * While LEADERBOARDS_ENABLED is off every route answers 503 leaderboards_disabled,
+ * While LEADERBOARDS is off (not in FEATURES) every route answers 503 leaderboards_disabled,
  * which the job reads as nothing to do.
  */
 export const OPERATOR_PREFIX = "/operator/leaderboards/";

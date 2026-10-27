@@ -7,7 +7,7 @@ import { cachedView, storeView } from "./view-cache";
 
 /**
  * The phone's leaderboard routes, all absent (falling through to 404) while
- * LEADERBOARDS_ENABLED is off:
+ * LEADERBOARDS is off (not in FEATURES):
  * - GET /v1/leaderboards/<board>: the board anyone sees, before auth() so a
  *   cached answer costs no Durable Object request at all;
  * - GET and PUT /v1/leaderboards/me: the "Show my name on leaderboards" choice;

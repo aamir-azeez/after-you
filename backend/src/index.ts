@@ -100,7 +100,7 @@ export default {
       if (path === "/v1/app-status" && request.method === "GET" && flags.updateGate(env)) { await publicLimit(request, env); return json(appStatus(request, env)); }
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
       if (path.startsWith(LEADERBOARD_OPERATOR_PREFIX)) { await publicLimit(request, env); return await routeLeaderboardOperator(request, path, env); }
-      // Absent unless LEADERBOARDS_ENABLED is "true": a board read is public and cached, so it needs no Player request.
+      // Absent unless FEATURES lists LEADERBOARDS: a board read is public and cached, so it needs no Player request.
       const board = await routeLeaderboardRead(request, path, env); if (board) return board;
       // Absent unless STORY_DRAIN_ENABLED is "true": the path then falls through to auth() as before.
       if (path.startsWith(DRAIN_PREFIX) && flags.storyDrain(env)) { await publicLimit(request, env); return json(await routeCampaignDrain(request, path, env)); }

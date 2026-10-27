@@ -24,8 +24,8 @@ import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
 // Synthetic identities only: every account here is made by POST /v1/identity in the test runtime.
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const OPERATOR = "o".repeat(43);
-const ON = { V2_ROOMS_ENABLED: "true", LEADERBOARDS_ENABLED: "true", DISPLAY_NAMES_ENABLED: "true", SAFETY_OPERATOR_TOKEN: OPERATOR };
-const OFF = { ...ON, LEADERBOARDS_ENABLED: "false" };
+const ON = { V2_ROOMS_ENABLED: "true", FEATURES: "LEADERBOARDS", DISPLAY_NAMES_ENABLED: "true", SAFETY_OPERATOR_TOKEN: OPERATOR };
+const OFF = { ...ON, FEATURES: "" };
 const RELAY_BOARD = "relay-isles@2";
 const RELAY_TICKS = [firstA, firstB, secondA, secondB].reduce((sum, turn) => sum + turn.duration_ticks, 0);
 const DAY = 86_400_000;
