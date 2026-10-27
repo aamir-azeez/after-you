@@ -1,7 +1,7 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
-import { earningOn, shopOn } from "./features";
+import { earningOn, grantOn, itemBloomsOn, shopOn } from "./features";
 import { ITEM_ID_PATTERN } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
@@ -28,6 +28,10 @@ export const SPEND_PATH = "/v1/pollen/spend";
 export const EQUIP_PATH = "/v1/pollen/equip";
 /** The capability version of the shop (spend, equip, the wardrobe on the wallet read and the name change price). */
 export const SHOP_VERSION = 1;
+/** The capability version of item blooms (the receipt's `item_bloom`), so a phone publishes their odds only while they drop. */
+export const ITEM_BLOOMS_VERSION = 1;
+/** The capability version of the monthly grant (the wallet read's `grant`), so a phone shows it only while it pays. */
+export const GRANT_VERSION = 1;
 /** Claims one request may carry; each costs a Room read and a Player credit. */
 export const MAX_CLAIMS_PER_REQUEST = 4;
 /** A Full Journey with no end (a lifetime unlock): the latest time a Date holds. */
@@ -40,9 +44,10 @@ export function pollenWanted(request: Request): boolean { return request.headers
 /** Earning works only with the flag on and a usable POLLEN_SECRET (no turn is paid without its bloom roll). */
 export function pollenEarning(env: ServerVars): boolean { return earningOn(env); }
 /** The capability field for GET /v2/capabilities: empty unless the client asked while earning works. */
-export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_shop_version?: number } {
+export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number } {
   if (!pollenWanted(request) || !pollenEarning(env)) return {};
-  return { pollen_version: POLLEN_VERSION, ...(shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}) };
+  return { pollen_version: POLLEN_VERSION, ...(shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
+    ...(itemBloomsOn(env) ? { pollen_item_blooms_version: ITEM_BLOOMS_VERSION } : {}), ...(grantOn(env) ? { pollen_grant_version: GRANT_VERSION } : {}) };
 }
 
 const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;

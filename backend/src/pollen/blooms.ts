@@ -12,7 +12,7 @@ import type { ServerVars } from "../flags";
  * triple_below is x3, below double_below x2. The key is HKDF("pollen-bloom-v1") of POLLEN_SECRET
  * (keys.ts). The roll is stored with the credit, so it can be checked later.
  *
- * Item blooms (Phase 4) are a second, independent roll with their own label (KEY_LABELS.itemBloom)
+ * Item blooms (item-blooms.ts) are a second, independent roll with their own label (KEY_LABELS.itemBloom)
  * and their own message prefix "item-bloom-v1|"; they belong beside this one, inside the same credit.
  */
 export type BloomMultiplier = 1 | 2 | 3;

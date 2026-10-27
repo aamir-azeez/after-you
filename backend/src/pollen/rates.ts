@@ -25,6 +25,11 @@ export type Rates = {
   /** A bloom roll is HMAC bytes 0..3 (big-endian) mod `modulus`: below `triple_below` pays x3, below `double_below` x2. */
   blooms: { modulus: number; triple_below: number; double_below: number };
   /**
+   * Item blooms (pollen/item-blooms.ts): a roll is HMAC bytes 0..3 (big-endian) mod `modulus`; the first
+   * tier whose cumulative `below` is above the roll drops, rarest first. A roll at or above the last `below` drops nothing.
+   */
+  item_blooms: { modulus: number; tiers: readonly { tier: string; below: number }[] };
+  /**
    * Estimated pace: Gold at or under best x gold_percent%, Silver at or under best x silver_percent%,
    * nothing under best x floor_percent%. `best_ticks` is keyed "level_id|stage_id|role"; a stage
    * with no entry has no pace bonus.
@@ -50,6 +55,9 @@ export function checkedRates(value: unknown): Rates {
   if (!Array.isArray(rates.tail) || !rates.tail.every(step => count(step.pay) && count(step.turns, 1))) fail("tail");
   const blooms = rates.blooms;
   if (!count(blooms?.modulus, 1) || !count(blooms.triple_below) || !count(blooms.double_below) || blooms.triple_below > blooms.double_below || blooms.double_below > blooms.modulus) fail("blooms");
+  const items = rates.item_blooms;
+  if (!count(items?.modulus, 1) || !Array.isArray(items.tiers) || !items.tiers.every((step, index) => typeof step?.tier === "string" && /^[a-z]{1,16}$/.test(step.tier) &&
+    count(step.below, 1) && step.below <= items.modulus && (index === 0 || step.below > items.tiers[index - 1].below)) || new Set(items.tiers.map(step => step.tier)).size !== items.tiers.length) fail("item_blooms");
   const pace = rates.pace;
   if (!count(pace?.gold_percent, 1) || !count(pace.silver_percent, 1) || !count(pace.floor_percent) || pace.gold_percent > pace.silver_percent || pace.floor_percent > pace.gold_percent) fail("pace");
   for (const [stage, ticks] of Object.entries(pace.best_ticks ?? {})) if (!/^[a-z0-9-]+\|[a-z0-9-]+\|[ab]$/.test(stage) || !count(ticks, 1)) fail("pace " + stage);

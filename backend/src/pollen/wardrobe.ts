@@ -9,8 +9,9 @@ import { chapterCleared, payFromWallet, walletBalance } from "./wallet";
  * receipts that make spending and wearing safe to send again (POLLEN_SHOP).
  *
  * Storage (storage-schema.ts POLLEN_SHOP_TABLES), made by the first purchase or look:
- * - pollen_items: owned items and reaction packs. Nothing owned is sold again (spend.ts), so a
- *   purchase can never charge twice for one thing, whatever arrives late or twice.
+ * - pollen_items: owned items and reaction packs, bought or dropped by an item bloom (source "bloom").
+ *   Nothing owned is sold again (spend.ts), so a purchase can never charge twice for one thing,
+ *   whatever arrives late or twice.
  * - pollen_ops: the newest MAX_OPS receipts, keyed by the phone's idempotency key, with the hash of
  *   the request that made each (the Worker's digest of its canonical body, as room operations).
  *   The same key and body answers the stored receipt and changes nothing; the same key with
@@ -58,6 +59,16 @@ function ensureTables(storage: DurableObjectStorage): void {
 function owned(storage: DurableObjectStorage): Map<string, string> {
   if (!present(storage)) return new Map();
   return new Map(storage.sql.exec<{ item_id: string; kind: string }>("SELECT item_id,kind FROM pollen_items LIMIT ?", ITEMS.maxRows).toArray().map(row => [row.item_id, row.kind]));
+}
+
+/** The item ids the player owns (not packs): what an item bloom may no longer drop. Read inside the credit's transaction. */
+export function ownedItemIds(storage: DurableObjectStorage): ReadonlySet<string> {
+  return new Set([...owned(storage)].filter(([, kind]) => kind === "item").map(([id]) => id));
+}
+/** Owns an item an item bloom dropped, inside the credit's transaction (pollen/item-blooms.ts). Never one already owned. */
+export function addDroppedItem(storage: DurableObjectStorage, itemId: string, now: number): void {
+  ensureTables(storage);
+  storage.sql.exec("INSERT INTO pollen_items VALUES (?,?,?,?)", itemId, "item", "bloom", now);
 }
 
 function storedLook(storage: DurableObjectStorage, catalog: Catalog = CATALOG): LookState {

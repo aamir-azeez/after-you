@@ -12,7 +12,7 @@ import type { ServerVars } from "../flags";
 export const KEY_LABELS = Object.freeze({
   /** Lucky blooms on bank turns (pollen/blooms.ts). */
   bloom: "pollen-bloom-v1",
-  /** Item blooms (Phase 4). Reserved; nothing derives it yet. */
+  /** Item blooms (pollen/item-blooms.ts). */
   itemBloom: "item-bloom-v1",
   /** The RevenueCat webhook token (Phase 6). Reserved; nothing derives it yet. */
   webhook: "revenuecat-webhook-v1"

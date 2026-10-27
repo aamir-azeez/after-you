@@ -26,7 +26,9 @@ import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } 
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
-import { dropWardrobe, equip, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
+import { addDroppedItem, dropWardrobe, equip, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
+import { itemBloomsOn } from "./pollen/features";
+import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice } from "./pollen/name-price";
 import type { Look } from "./pollen/catalog";
 import type { SpendRequest } from "./pollen/spend";
@@ -207,10 +209,14 @@ export class Player extends DurableObject<Env> {
   private pollenActive(owner: string): () => boolean {
     return () => { const identity = this.identity(); return identity?.state === "active" && identity.player_id === owner; };
   }
-  /** Binding only: credits one accepted turn from the facts its room froze (pollen/wallet.ts creditTurn). */
+  /**
+   * Binding only: credits one accepted turn from the facts its room froze (pollen/wallet.ts creditTurn).
+   * While item blooms are on, the credit may also drop an item into the wardrobe (pollen/item-blooms.ts).
+   */
   creditTurn(owner: string, facts: unknown): Promise<Outcome<PollenReceipt>> {
     if (!this.pollenActive(owner)()) return Promise.resolve(fail(404, "identity_absent"));
-    return creditTurn(this.ctx.storage, this.env, owner, facts, Date.now(), this.pollenActive(owner));
+    return creditTurn(this.ctx.storage, this.env, owner, facts, Date.now(), this.pollenActive(owner), RATES,
+      itemBloomsOn(this.env) ? { owned: ownedItemIds, give: addDroppedItem } : undefined);
   }
   /**
    * Binding only: a first clear made together, from the facts of the turn that finished the chapter.

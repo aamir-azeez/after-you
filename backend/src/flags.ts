@@ -89,6 +89,10 @@ export const FLAG_VARS = Object.freeze({
   pollenShop: "POLLEN_SHOP",
   /** Looks in rooms (pollen/room-looks.ts): each member's look and each turn's look, served to phones that send X-AfterYou-Looks. Set only through FEATURES. */
   pollenLooks: "POLLEN_LOOKS",
+  /** Item blooms (pollen/item-blooms.ts): the second roll on a free-chapter bank turn may drop a shop item. Needs POLLEN_SHOP. Set only through FEATURES. */
+  pollenItemBlooms: "POLLEN_ITEM_BLOOMS",
+  /** The Full Journey monthly grant (pollen/grant.ts): instalments on the wallet read and the PollenClaims check. Needs POLLEN_EARN. Set only through FEATURES. */
+  pollenGrant: "POLLEN_GRANT",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. Set only through FEATURES. */
   leaderboards: "LEADERBOARDS",
 } as const);

@@ -3,8 +3,9 @@ import type { ServerVars } from "../flags";
 import { POLLEN_PLAYER_TABLES, POLLEN_WALLET_TABLES, isLazyTable } from "../storage-schema";
 import { DAY_MS, RATES, chapterTier, tailLength, type Rates } from "./rates";
 import { weekIndex } from "./week";
-import { boostPercent, clearPrice, price, type ClearPrice, type TurnPrice } from "./earn";
+import { bloomEligible, boostPercent, clearPrice, price, type ClearPrice, type TurnPrice } from "./earn";
 import { bloomRoll } from "./blooms";
+import { itemBloomRoll, resolveItemBloom, type ItemBloom, type ItemDrops } from "./item-blooms";
 import { validTurnFacts } from "./turn-facts";
 
 /**
@@ -24,7 +25,8 @@ import { validTurnFacts } from "./turn-facts";
  *   a turn of the current week spends the bank).
  *
  * Every check and write of one credit happens in one synchronous transaction, after the only
- * await (the bloom roll), so two credits of the same key can never both pay.
+ * awaits (the two bloom rolls), so two credits of the same key can never both pay, and an item
+ * bloom is owned in the same transaction as the claim that records it, or not at all.
  */
 export type WeekState = { slots: string[]; tail: number };
 export type WalletState = {
@@ -40,8 +42,12 @@ export type WalletState = {
  */
 export type TurnLine = TurnPrice & { reason?: "repeat" | "bank_empty" | "late"; boost_from?: ("you" | "partner")[] };
 export type ClearLine = { kind: "clear" | "hardclear"; level_id: string } & ClearPrice;
-/** What a credit answers, and what the turn reply's `pollen` field carries. */
-export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[] };
+/**
+ * What a credit answers, and what the turn reply's `pollen` field carries. `item_bloom`: what an item
+ * bloom gave (an item, or its tier's price), only on a turn that dropped one; its Pollen is in `earned`
+ * but never in the turn's own total, and is never boosted.
+ */
+export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[]; item_bloom?: ItemBloom };
 export type WalletView = { schema_version: 1; balance: number; earned: number; bank: number };
 export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string };
 export type HistoryView = { schema_version: 1; entries: HistoryEntry[] };
@@ -148,12 +154,17 @@ const total = (lines: readonly { total: number }[]) => lines.reduce((sum, line) 
 /**
  * Credits one accepted turn from its frozen facts, once per claim key. `active` re-checks the
  * identity inside the transaction (a deletion may start during the bloom roll).
+ * `drops` (only while item blooms are on): a bank turn in a free chapter also rolls for an item.
+ * The roll is the weekly slot's, like the lucky bloom's, so a retry or a later claim of the same
+ * turn finds its receipt and rolls nothing new.
  */
-export async function creditTurn(storage: DurableObjectStorage, env: ServerVars, owner: string, facts: unknown, now: number, active: () => boolean, rates: Rates = RATES): Promise<Outcome<PollenReceipt>> {
+export async function creditTurn(storage: DurableObjectStorage, env: ServerVars, owner: string, facts: unknown, now: number, active: () => boolean, rates: Rates = RATES, drops?: ItemDrops): Promise<Outcome<PollenReceipt>> {
   if (!validTurnFacts(facts)) return fail(400, "invalid_pollen_facts");
   if (facts.player_id !== owner) return fail(403, "pollen_claim_refused");
-  const roll = await bloomRoll(env, { player_id: owner, week: facts.week, level_id: facts.level_id, stage_id: facts.stage_id, role: facts.role }, rates);
-  if (roll === null) return fail(503, "pollen_unconfigured");
+  const slot = { player_id: owner, week: facts.week, level_id: facts.level_id, stage_id: facts.stage_id, role: facts.role };
+  const mayDrop = drops !== undefined && bloomEligible(facts, rates);
+  const [roll, itemRoll] = await Promise.all([bloomRoll(env, slot, rates), mayDrop ? itemBloomRoll(env, slot, rates) : null]);
+  if (roll === null || (mayDrop && itemRoll === null)) return fail(503, "pollen_unconfigured");
   return storage.transactionSync((): Outcome<PollenReceipt> => {
     if (!active()) return fail(404, "identity_absent");
     const key = turnClaimKey(facts.room_id, facts.recording_hash);
@@ -178,13 +189,19 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     const clears = facts.complete ? payClears(storage, { level_id: facts.level_id, hard: facts.hard && facts.together, boost_percent: facts.boost_percent }, now, rates) : [];
     if (!bank && turn.total === 0 && clears.length === 0) return zero(turn);
     prune(storage, wallet, now, rates);
-    const earned = turn.total + total(clears);
-    if (turn.total > 0 || bank) insertClaim(storage, key, "turn", turn.total, now, { schema_version: 1, earned, turn, clears },
-      { room_id: facts.room_id, week: facts.week, level_id: facts.level_id, stage_id: facts.stage_id, role: facts.role, roll: roll.roll });
+    // Only a bank turn rolls for an item: never an after-bank, repeat or late turn.
+    const item = bank && drops && itemRoll?.tier ? resolveItemBloom(itemRoll, drops.owned(storage), drops.catalog) : null;
+    if (item && "item_id" in item) drops!.give(storage, item.item_id, now);
+    const itemPollen = item && "pollen" in item ? item.pollen : 0;
+    const earned = turn.total + total(clears) + itemPollen;
+    const receipt: Omit<PollenReceipt, "balance"> = { schema_version: 1, earned, turn, clears, ...(item ? { item_bloom: item } : {}) };
+    if (turn.total > 0 || bank) insertClaim(storage, key, "turn", turn.total + itemPollen, now, receipt,
+      { room_id: facts.room_id, week: facts.week, level_id: facts.level_id, stage_id: facts.stage_id, role: facts.role, roll: roll.roll,
+        ...(itemRoll ? { item_roll: itemRoll.roll } : {}), ...(item ? { item_tier: item.tier, ...("item_id" in item ? { item_id: item.item_id } : { item_pollen: item.pollen }) } : {}) });
     wallet.weeks[week] = state;
     wallet.balance += earned; wallet.earned += earned;
     save(storage, wallet, now, rates);
-    return ok({ schema_version: 1, earned, balance: wallet.balance, turn, clears });
+    return ok({ ...receipt, balance: wallet.balance });
   });
 }
 
