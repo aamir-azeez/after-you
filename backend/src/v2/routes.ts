@@ -30,7 +30,7 @@ import { endReactionField, endReactionsWanted } from "./end-reactions";
 import { runReactionField, runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
-import { creditCommitted, paidUntil, pollenCapability } from "../pollen/routes";
+import { checkedWithEnd, creditCommitted, pollenCapability } from "../pollen/routes";
 import type { PollenMember } from "../pollen/turn-facts";
 
 /** A raw body of at most `max` bytes. */
@@ -155,11 +155,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (hardOff && !previous) throw new ApiError(503, "hard_mode_disabled");
     if (chapterOff && !previous) throw new ApiError(503, "chapter_creation_disabled");
     if (selected.premium && !previous) {
-      let until: number | undefined;
-      const access = await requireHostAccess(playerId, env, value => { until = value; });
-      const fresh = pollen === undefined ? undefined : paidUntil(access, until);
-      if (fresh !== undefined) pollen = { fj_until: fresh };
-      await reauthorize(request, playerId, env, fresh);
+      const { until } = await checkedWithEnd(onGrant => requireHostAccess(playerId, env, onGrant), pollen !== undefined);
+      if (until !== undefined) pollen = { fj_until: until };
+      await reauthorize(request, playerId, env, until);
     }
     const invite_code = newInvite();
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
@@ -359,12 +357,10 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (previous.code !== "operation_not_found") unwrap(previous);
     if (storyGuard) unwrap(storyGuard);
     // Access belongs to the room's host even when the guest is taking this turn.
-    let until: number | undefined;
-    const access = await requireRoomHostAccess(room, snapshot.host_id, env, value => { until = value; });
     // Only the host's own answer is theirs to note, on the call this turn already makes.
-    const fresh = pollen === undefined || access === null || playerId !== snapshot.host_id ? undefined : paidUntil(access, until);
-    if (fresh !== undefined) pollen = { fj_until: fresh };
-    await reauthorize(request, playerId, env, fresh);
+    const { until } = await checkedWithEnd(onGrant => requireRoomHostAccess(room, snapshot.host_id, env, onGrant), pollen !== undefined && playerId === snapshot.host_id);
+    if (until !== undefined) pollen = { fj_until: until };
+    await reauthorize(request, playerId, env, until);
   }
   if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request))));
   // Story rooms never earn; a standalone turn with `pollen` freezes its facts and is credited once.

@@ -14,7 +14,7 @@ import { DISPLAY_NAME_PATH, displayNamesShown, friendLinkCode, namesRoomRoute, r
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
 import { LIVE_PATH, forwardLiveUpgrade } from "./live";
-import { POLLEN_PATH, paidUntil, pollenAuthView, pollenMember, pollenMemberRoute, pollenTurnRoute, routePollen } from "./pollen/routes";
+import { paidUntil, pollenAuthView, pollenEarning, pollenRoute, pollenMember, pollenMemberRoute, pollenTurnRoute, routePollen } from "./pollen/routes";
 import type { PollenMember } from "./pollen/turn-facts";
 import type { HistoryView, WalletView } from "./pollen/wallet";
 export { FriendRoomEvents } from "./friend-room-events";
@@ -145,7 +145,7 @@ export default {
         return withNext(json(page.body), page.next);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
-      if (path === POLLEN_PATH || path.startsWith(POLLEN_PATH + "/")) return json(await routePollen(request, path, playerId, env, pollenView));
+      if (pollenRoute(path, env)) return json(await routePollen(request, path, playerId, env, pollenView));
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
@@ -203,8 +203,8 @@ export default {
       if (path === "/v1/entitlement" && request.method === "GET") {
         // While Pollen earning is on, the Full Journey end this check reports is noted by the authorize call it already makes.
         let until: number | undefined;
-        const checked = await entitlement(playerId, env, flags.pollenEarn(env) ? value => { until = value; } : undefined);
-        if (!await player.authorize(await bearerDigest(request), false, flags.pollenEarn(env) ? paidUntil(checked, until) : undefined)) throw new ApiError(401, "invalid_auth");
+        const checked = await entitlement(playerId, env, pollenEarning(env) ? value => { until = value; } : undefined);
+        if (!await player.authorize(await bearerDigest(request), false, pollenEarning(env) ? paidUntil(checked, until) : undefined)) throw new ApiError(401, "invalid_auth");
         return json(checked);
       }
       if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken, memberName, pollen);

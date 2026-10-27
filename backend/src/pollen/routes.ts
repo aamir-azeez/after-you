@@ -41,20 +41,35 @@ export function pollenCapability(request: Request, env: ServerVars): { pollen_ve
 const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;
 /** A standalone turn POST while the flag is on: auth() then reads the player's Full Journey end with the room check. */
 export function pollenTurnRoute(request: Request, path: string, env: ServerVars): boolean {
-  return request.method === "POST" && TURN_ROUTE.test(path) && flags.pollenEarn(env);
+  return request.method === "POST" && TURN_ROUTE.test(path) && pollenEarning(env);
 }
 /** Create and join while the flag is on: auth() reads the Full Journey end with the device check, to copy into the room. */
 export function pollenMemberRoute(request: Request, path: string, env: ServerVars): boolean {
-  return request.method === "POST" && (path === "/v2/rooms" || path === "/v2/rooms/join") && flags.pollenEarn(env);
+  return request.method === "POST" && (path === "/v2/rooms" || path === "/v2/rooms/join") && pollenEarning(env);
 }
 /** The wallet reads, whose answer auth() takes from its own Player call; null for any other route. */
 export function pollenAuthView(request: Request, path: string, env: ServerVars): "wallet" | "history" | null {
-  if (request.method !== "GET" || !flags.pollenEarn(env)) return null;
+  if (request.method !== "GET" || !pollenEarning(env)) return null;
   return path === POLLEN_PATH ? "wallet" : path === POLLEN_HISTORY_PATH ? "history" : null;
 }
 /** The member value a Player answer carries, when it carries one. */
 export function pollenMember(answer: { fj_until?: number }): PollenMember | undefined {
   return typeof answer.fj_until === "number" ? { fj_until: answer.fj_until } : undefined;
+}
+
+/** Whether a path is a Pollen route: only while earning works; otherwise it falls through to 404 as before. */
+export function pollenRoute(path: string, env: ServerVars): boolean {
+  return (path === POLLEN_PATH || path.startsWith(POLLEN_PATH + "/")) && pollenEarning(env);
+}
+
+/**
+ * Runs a provider check and answers it with the Full Journey end to note for the checked player
+ * (paidUntil), or undefined when `wanted` is false (earning is off, or the check was another player's).
+ */
+export async function checkedWithEnd<T extends Entitlement | null>(check: (onGrant: (until: number) => void) => Promise<T>, wanted: boolean): Promise<{ access: T; until: number | undefined }> {
+  let until: number | undefined;
+  const access = await check(value => { until = value; });
+  return { access, until: wanted && access !== null ? paidUntil(access, until) : undefined };
 }
 
 /**
@@ -121,7 +136,7 @@ function chapterLevel(levelId: string): { premium: boolean } | null {
  * Each claim answers credited (with its receipt), refused (with a code; final) or retry.
  */
 export async function routePollen(request: Request, path: string, playerId: string, env: Env, view?: WalletView | HistoryView): Promise<unknown> {
-  if (!flags.pollenEarn(env)) throw new ApiError(503, "pollen_disabled");
+  if (!pollenEarning(env)) throw new ApiError(503, "pollen_disabled");
   if (path === POLLEN_PATH || path === POLLEN_HISTORY_PATH) {
     if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (!view) throw new ApiError(503, "pollen_unavailable");
