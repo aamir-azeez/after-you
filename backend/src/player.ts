@@ -25,7 +25,11 @@ import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
-import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
+import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
+import { dropWardrobe, equip, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
+import { countNameSet, namePrice, nextNamePrice } from "./pollen/name-price";
+import type { Look } from "./pollen/catalog";
+import type { SpendRequest } from "./pollen/spend";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
@@ -154,9 +158,13 @@ export class Player extends DurableObject<Env> {
    * auth() uses it only on the routes that write the name into a room (display-names.ts namesRoomRoute).
    * `pollen`: also the player's Full Journey end (fj_until), for routes that write it into a room while Pollen earning is on.
    */
-  authorizeNamed(deviceHash: string, pollen = false): { authorized: boolean; linked: boolean; display_name?: string | null; fj_until?: number } {
+  authorizeNamed(deviceHash: string, pollen = false, looks = false): { authorized: boolean; linked: boolean; display_name?: string | null; fj_until?: number; look?: Look } {
     const identity = this.authorized(deviceHash);
-    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}) } : { authorized: false, linked: true };
+    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}), ...this.lookField(looks) } : { authorized: false, linked: true };
+  }
+  /** `look`: the look the player wears (pollen/wardrobe.ts), only for routes that write it into a room while looks are on. */
+  private lookField(looks: boolean): { look?: Look } {
+    return looks ? { look: wornLook(this.ctx.storage) } : {};
   }
   /**
    * authorize() for a request that names a room, plus whether this player may reach that room:
@@ -164,17 +172,37 @@ export class Player extends DurableObject<Env> {
    * An authorized answer also carries the player's current safety token (see v2/block-memo.ts), and with
    * `pollen` (a turn while Pollen earning is on) the player's Full Journey end.
    */
-  authorizeRoom(deviceHash: string, roomId: string, pollen = false): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number } {
+  authorizeRoom(deviceHash: string, roomId: string, pollen = false, looks = false): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; look?: Look } {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: false };
     const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 || this.storyHeld();
-    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}) };
+    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}), ...this.lookField(looks) };
   }
-  /** authorize() plus the wallet or its history (GET /v1/pollen and /v1/pollen/history), from one call. */
-  authorizeWallet(deviceHash: string, view: "wallet" | "history"): { authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView } {
+  /**
+   * authorize() plus the wallet or its history (GET /v1/pollen and /v1/pollen/history), from one call.
+   * With `shop` (the shop is on) the wallet also carries the wardrobe and the next name change price.
+   */
+  authorizeWallet(deviceHash: string, view: "wallet" | "history", shop = false): { authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { wardrobe: WardrobeView; name_price: number }) } {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
-    return { authorized: true, linked: true, pollen: view === "wallet" ? walletView(this.ctx.storage, Date.now()) : historyView(this.ctx.storage) };
+    if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage) };
+    const now = Date.now(), wallet = walletView(this.ctx.storage, now);
+    return { authorized: true, linked: true, pollen: shop ? { ...wallet, wardrobe: wardrobeView(this.ctx.storage), name_price: nextNamePrice(identity, now) } : wallet };
+  }
+  /**
+   * Binding only: one purchase (POST /v1/pollen/spend, pollen/wardrobe.ts spend). The device is checked
+   * again here, in the call that spends, so a recovery that replaced it can never be spent through.
+   */
+  pollenSpend(owner: string, deviceHash: string, op: OpKey, request: SpendRequest, expected: number): Outcome<SpendReceipt> {
+    const identity = this.authorized(deviceHash);
+    if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
+    return spend(this.ctx.storage, op, request, expected, Date.now(), this.pollenActive(owner));
+  }
+  /** Binding only: wears a look (POST /v1/pollen/equip, pollen/wardrobe.ts equip). */
+  pollenEquip(owner: string, deviceHash: string, op: OpKey, look: unknown, revision: number): Outcome<EquipReceipt> {
+    const identity = this.authorized(deviceHash);
+    if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
+    return equip(this.ctx.storage, op, look, revision, Date.now(), this.pollenActive(owner));
   }
   private pollenActive(owner: string): () => boolean {
     return () => { const identity = this.identity(); return identity?.state === "active" && identity.player_id === owner; };
@@ -246,16 +274,33 @@ export class Player extends DurableObject<Env> {
     return { link, shared_room: social.shared_room, presence_expires_at: link.accepted ? this.presenceExpiryForIdentity(identity) : 0,
       ...(withName ? { display_name: identity.display_name ?? null } : {}) };
   }
-  /** PUT /v1/profile/name after the router cleaned the name (display-names.ts applyDisplayName). One row write, only on a change. */
-  setDisplayName(owner: string, deviceHash: string, name: string | null, revision: number): DisplayNameOutcome {
+  /**
+   * PUT /v1/profile/name after the router cleaned the name (display-names.ts applyDisplayName). One row write, only on a change.
+   * `pricing` (only while the shop is on): a change may cost Pollen (pollen/name-price.ts), charged in the same transaction
+   * as the change. `shown` is the price the phone showed; one that differs is refused, and a phone that never shows a price
+   * (an older app) is refused a paid change with display_name_locked, a code it already settles on.
+   */
+  setDisplayName(owner: string, deviceHash: string, name: string | null, revision: number, pricing?: { shown?: number }): DisplayNameOutcome {
+    return this.ctx.storage.transactionSync((): DisplayNameOutcome => {
     const identity = this.authorized(deviceHash);
     if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
-    const named = identity.display_name !== undefined;
-    const { outcome, changed } = applyDisplayName(identity, name, revision, Date.now());
+    const named = identity.display_name !== undefined, now = Date.now(), before = { ...identity };
+    // A repeated or older revision only answers the state (applyDisplayName), so it is never charged.
+    const cost = pricing && revision > (identity.display_name_rev ?? 0) ? namePrice(identity, name, now) : 0;
+    if (cost > 0) {
+      if (pricing!.shown === undefined) return fail(403, "display_name_locked");
+      if (pricing!.shown !== cost) return fail(409, "name_change_price");
+      if (walletBalance(this.ctx.storage, now) < cost) return fail(402, "pollen_short");
+    }
+    const { outcome, changed } = applyDisplayName(identity, name, revision, now);
+    const renamed = changed && outcome.ok && name !== null && name !== (before.display_name ?? null);
+    if (renamed && pricing) countNameSet(identity, before);
+    if (renamed && cost > 0 && payFromWallet(this.ctx.storage, cost, now) === null) throw new Error("pollen_name_charge_failed");
     if (changed) this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
     // A name that just went: the v2 rooms that may hold a copy, for the route to clear.
     if (changed && named && identity.display_name === undefined && outcome.ok) return { ...outcome, cleared_rooms: this.listRooms().filter(link => roomLinkVersion(link) === 2).slice(0, MAX_CLEARED_ROOMS).map(link => link.room_id) };
     return outcome;
+    });
   }
   /** Binding only (the friend link page): the active identity's stored name, or null. Nothing else leaves. */
   publicDisplayName(owner: string): string | null {
@@ -891,6 +936,7 @@ export class Player extends DurableObject<Env> {
       clearPresence(this.ctx.storage);
       dropRoomIndex(this.ctx.storage);
       dropWallet(this.ctx.storage);
+      dropWardrobe(this.ctx.storage);
     });
     await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner);
     return ok({ deleted: true });
@@ -900,7 +946,7 @@ export class Player extends DurableObject<Env> {
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
   authorizeNamed: () => ({ authorized: false, linked: true }), authorizeWallet: () => ({ authorized: false, linked: true }),
-  creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
+  creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), pollenSpend: () => fail(401, "invalid_auth"), pollenEquip: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined, leaderboardStanding: () => null,

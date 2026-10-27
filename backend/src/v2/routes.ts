@@ -32,6 +32,8 @@ import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
 import { checkedWithEnd, creditCommitted, pollenCapability } from "../pollen/routes";
 import type { PollenMember } from "../pollen/turn-facts";
+import type { Look } from "../pollen/catalog";
+import { looksCapability, looksShown } from "../pollen/looks-routes";
 import { leaderboardsCapability } from "../leaderboards/routes";
 import { postFinishedRun } from "../leaderboards/submit";
 
@@ -78,7 +80,7 @@ function pollRedo(request: Request): boolean { return request.headers.get(POLL_R
 /** What a standalone room read or turn reply carries beside the room: each part the client asked for while it is on. A Story request gets none. */
 function besideWanted(request: Request, env: Env, context: unknown): Beside {
   if (context !== undefined) return {};
-  return { faces: endReactionsWanted(request) && flags.endReactions(env), names: displayNamesShown(request, env), tracks: runReactionsWanted(request) && flags.inRunReactions(env) };
+  return { faces: endReactionsWanted(request) && flags.endReactions(env), names: displayNamesShown(request, env), tracks: runReactionsWanted(request) && flags.inRunReactions(env), looks: looksShown(request, env) };
 }
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
@@ -94,9 +96,10 @@ async function reauthorize(request: Request, playerId: string, env: Env, fullJou
  * Called only after the shared Player authentication/rate limiter succeeds. `memberName` is the
  * caller's display name from auth() while display names are on (null when anonymous), else
  * undefined; creating, joining and turns pass it into the room call they already make.
- * `pollen` is likewise the caller's Full Journey end while Pollen earning is on (pollen/routes.ts).
+ * `pollen` is likewise the caller's Full Journey end while Pollen earning is on (pollen/routes.ts),
+ * and `look` the look the caller wears while looks are on (pollen/looks-routes.ts).
  */
-export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember): Promise<Response> {
+export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember, look?: Look): Promise<Response> {
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: flags.v2Rooms(env), recording_version: 2, simulation_version: 2,
@@ -126,6 +129,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...platformCapability(request, env),
     ...displayNamesCapability(request, env),
     ...pollenCapability(request, env),
+    ...looksCapability(request, env),
     ...leaderboardsCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
@@ -166,7 +170,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
     const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
     const link = intent.link;
-    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen)));
+    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen, look)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
     requireEnabled(env);
@@ -177,7 +181,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), roomSettler(env)));
-    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName, pollen);
+    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName, pollen, look);
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.
@@ -193,7 +197,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "replay_transfer_standalone_only");
     await requireInteraction(env, playerId, "relay", roomId, undefined, safetyToken);
     if (request.method === "GET" && !key && (!action || action === "manifest")) return json(unwrap(await target.replayTransfer(playerId, !action,
-      flags.replayTransfer(env))));
+      flags.replayTransfer(env), looksShown(request, env))));
     if (request.method === "GET" && action === "operations" && key) return json(unwrap(await target.replayTransferOperation(playerId, text(key, IDEMPOTENCY_PATTERN))));
     if (request.method === "POST" && !key && (action === "ack" || action === "restore")) {
       if (action === "ack" && !flags.replayTransfer(env)) throw new ApiError(503, "replay_transfer_disabled");
@@ -370,7 +374,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request))));
   // Story rooms never earn; a standalone turn with `pollen` freezes its facts and is credited once.
-  const committed = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined));
+  const committed = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
   // A turn that finished a together run that might place goes to its board (leaderboards/submit.ts); the reply is unchanged.
   await postFinishedRun(env, committed, context);
   return json(await creditCommitted(request, env, playerId, committed));

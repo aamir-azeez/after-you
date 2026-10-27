@@ -6,7 +6,7 @@ import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { noteFullJourney, type PollenReceipt, type WalletView } from "../src/pollen/wallet";
-import { POLLEN_PLAYER_TABLES, POLLEN_ROOM_TABLES } from "../src/storage-schema";
+import { POLLEN_WALLET_TABLES, POLLEN_ROOM_TABLES } from "../src/storage-schema";
 import { countingEnv, meterRows } from "./meter";
 import { currentSnapshotSchema } from "../src/snapshot";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -338,7 +338,7 @@ describe("Pollen storage", () => {
   it("erases the wallet with the account", async () => {
     const player = await create();
     expect((await call("/v1/pollen/clear-claims", "POST", player, { schema_version: 1, claims: [{ level_id: "first-steps" }] })).status).toBe(200);
-    expect(await tableNames(env.PLAYERS.getByName(player.player_id))).toEqual(POLLEN_PLAYER_TABLES.map(table => table.name).sort());
+    expect(await tableNames(env.PLAYERS.getByName(player.player_id))).toEqual(POLLEN_WALLET_TABLES.map(table => table.name).sort());
     expect((await call("/v1/identity", "DELETE", player)).status).toBe(200);
     expect(await tableNames(env.PLAYERS.getByName(player.player_id))).toEqual([]);
     expect((await call("/v1/pollen", "GET", player)).status).toBe(401);

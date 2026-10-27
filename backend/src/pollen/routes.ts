@@ -1,9 +1,11 @@
-import { ApiError, HASH_PATTERN, ID_PATTERN, boundedJson, isObject, type Outcome } from "../protocol";
-import { flags, type ServerVars } from "../flags";
+import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
+import type { ServerVars } from "../flags";
+import { bearerDigest } from "../http";
+import { earningOn, shopOn } from "./features";
+import { ITEM_ID_PATTERN } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
-import { pollenSecret } from "./keys";
 import type { PollenMember, TurnFacts } from "./turn-facts";
 import type { HistoryView, PollenReceipt, WalletView } from "./wallet";
 
@@ -22,6 +24,10 @@ export const POLLEN_PATH = "/v1/pollen";
 export const POLLEN_HISTORY_PATH = "/v1/pollen/history";
 export const TURN_CLAIMS_PATH = "/v1/pollen/turn-claims";
 export const CLEAR_CLAIMS_PATH = "/v1/pollen/clear-claims";
+export const SPEND_PATH = "/v1/pollen/spend";
+export const EQUIP_PATH = "/v1/pollen/equip";
+/** The capability version of the shop (spend, equip, the wardrobe on the wallet read and the name change price). */
+export const SHOP_VERSION = 1;
 /** Claims one request may carry; each costs a Room read and a Player credit. */
 export const MAX_CLAIMS_PER_REQUEST = 4;
 /** A Full Journey with no end (a lifetime unlock): the latest time a Date holds. */
@@ -32,10 +38,11 @@ export type PollenReply = PollenReceipt | { schema_version: 1; pending: true };
 
 export function pollenWanted(request: Request): boolean { return request.headers.get(POLLEN_HEADER) === "1"; }
 /** Earning works only with the flag on and a usable POLLEN_SECRET (no turn is paid without its bloom roll). */
-export function pollenEarning(env: ServerVars): boolean { return flags.pollenEarn(env) && pollenSecret(env) !== null; }
+export function pollenEarning(env: ServerVars): boolean { return earningOn(env); }
 /** The capability field for GET /v2/capabilities: empty unless the client asked while earning works. */
-export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number } {
-  return pollenWanted(request) && pollenEarning(env) ? { pollen_version: POLLEN_VERSION } : {};
+export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_shop_version?: number } {
+  if (!pollenWanted(request) || !pollenEarning(env)) return {};
+  return { pollen_version: POLLEN_VERSION, ...(shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}) };
 }
 
 const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;
@@ -47,7 +54,7 @@ export function pollenTurnRoute(request: Request, path: string, env: ServerVars)
 export function pollenMemberRoute(request: Request, path: string, env: ServerVars): boolean {
   return request.method === "POST" && (path === "/v2/rooms" || path === "/v2/rooms/join") && pollenEarning(env);
 }
-/** The wallet reads, whose answer auth() takes from its own Player call; null for any other route. */
+/** The wallet reads, whose answer auth() takes from its own Player call; null for any other route. While the shop is on, the wallet read also carries the wardrobe. */
 export function pollenAuthView(request: Request, path: string, env: ServerVars): "wallet" | "history" | null {
   if (request.method !== "GET" || !pollenEarning(env)) return null;
   return path === POLLEN_PATH ? "wallet" : path === POLLEN_HISTORY_PATH ? "history" : null;
@@ -142,6 +149,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
     if (!view) throw new ApiError(503, "pollen_unavailable");
     return view;
   }
+  if (path === SPEND_PATH || path === EQUIP_PATH) return routeWardrobe(request, path, playerId, env);
   if (path !== TURN_CLAIMS_PATH && path !== CLEAR_CLAIMS_PATH) throw new ApiError(404, "not_found");
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const player = env.PLAYERS.getByName(playerId), results: (ClaimResult & Record<string, unknown>)[] = [];
@@ -172,4 +180,30 @@ export async function routePollen(request: Request, path: string, playerId: stri
     }
   }
   return { schema_version: 1, results };
+}
+
+const SPEND_KINDS = ["item", "set", "pack"] as const;
+/**
+ * POST /v1/pollen/spend and /equip (POLLEN_SHOP), after auth(). The body is hashed here, as room
+ * operations are, so the Player's spend or equip runs in one synchronous transaction.
+ * - spend {schema_version: 1, idempotency_key, kind: "item" | "set" | "pack", id, expected_cost}:
+ *   `expected_cost` is what the confirm sheet showed (spend.ts charge).
+ * - equip {schema_version: 1, idempotency_key, revision, look}: `look` is the whole look to wear.
+ * Cost: one Player request beside auth()'s own.
+ */
+async function routeWardrobe(request: Request, path: string, playerId: string, env: Env): Promise<unknown> {
+  if (!shopOn(env)) throw new ApiError(503, "pollen_shop_disabled");
+  if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
+  const input = await boundedJson(request, 1024), spend = path === SPEND_PATH, code = spend ? "invalid_pollen_spend" : "invalid_pollen_equip";
+  const fields = spend ? ["schema_version", "idempotency_key", "kind", "id", "expected_cost"] : ["schema_version", "idempotency_key", "revision", "look"];
+  if (!isObject(input) || !only(input, fields) || input.schema_version !== 1 || typeof input.idempotency_key !== "string" || !IDEMPOTENCY_PATTERN.test(input.idempotency_key)) throw new ApiError(400, code);
+  const op = { key: input.idempotency_key, hash: await digest(canonicalJson({ operation: spend ? "spend" : "equip", ...input })) };
+  const player = env.PLAYERS.getByName(playerId), device = await bearerDigest(request);
+  if (spend) {
+    if (!SPEND_KINDS.includes(input.kind as typeof SPEND_KINDS[number]) || typeof input.id !== "string" || !ITEM_ID_PATTERN.test(input.id) ||
+      typeof input.expected_cost !== "number" || !Number.isSafeInteger(input.expected_cost) || input.expected_cost < 0) throw new ApiError(400, code);
+    return unwrap(await player.pollenSpend(playerId, device, op, { kind: input.kind as typeof SPEND_KINDS[number], id: input.id }, input.expected_cost));
+  }
+  if (typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1 || !isObject(input.look)) throw new ApiError(400, code);
+  return unwrap(await player.pollenEquip(playerId, device, op, input.look, input.revision));
 }

@@ -1,6 +1,6 @@
 import { fail, isObject, ok, type Outcome } from "../protocol";
 import type { ServerVars } from "../flags";
-import { POLLEN_PLAYER_TABLES, isLazyTable } from "../storage-schema";
+import { POLLEN_PLAYER_TABLES, POLLEN_WALLET_TABLES, isLazyTable } from "../storage-schema";
 import { DAY_MS, RATES, chapterTier, tailLength, type Rates } from "./rates";
 import { weekIndex } from "./week";
 import { boostPercent, clearPrice, price, type ClearPrice, type TurnPrice } from "./earn";
@@ -48,7 +48,7 @@ export type HistoryView = { schema_version: 1; entries: HistoryEntry[] };
 /** A first clear to pay: from the turn that finished a chapter together, or claimed by the app for a solo clear. */
 export type ClearClaim = { level_id: string; hard: boolean; boost_percent: number };
 
-const [WALLET, CLAIMS] = POLLEN_PLAYER_TABLES;
+const [WALLET, CLAIMS] = POLLEN_WALLET_TABLES;
 export const MAX_CLAIMS = CLAIMS.maxRows;
 export const HISTORY_LIMIT = 50;
 /** A turn credited this soon after acceptance is never late, so a turn accepted just before Monday 00:00 UTC keeps its bank turn. */
@@ -72,7 +72,7 @@ function present(storage: DurableObjectStorage): boolean {
 }
 function ensureTables(storage: DurableObjectStorage): void {
   if (present(storage)) return;
-  for (const table of POLLEN_PLAYER_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+  for (const table of POLLEN_WALLET_TABLES) storage.sql.exec(table.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
   known.delete(storage);
 }
 
@@ -260,9 +260,33 @@ export function historyView(storage: DurableObjectStorage): HistoryView {
   return { schema_version: 1, entries };
 }
 
-/** Account erasure: the wallet and every claim go. A Player that never earned has nothing to drop. */
+/** The balance as of `now` (0 for a player who never earned). The caller owns the transaction. */
+export function walletBalance(storage: DurableObjectStorage, now: number, rates: Rates = RATES): number {
+  return current(storage, now, rates).balance;
+}
+
+/**
+ * Takes `amount` from the balance, inside the caller's transaction, after the caller priced and
+ * checked the spend (spend.ts charge). Lifetime earned is unchanged. Never takes the balance
+ * below zero; the balance it leaves, or null when it would.
+ */
+export function payFromWallet(storage: DurableObjectStorage, amount: number, now: number, rates: Rates = RATES): number | null {
+  const wallet = current(storage, now, rates);
+  if (!count(amount, 1) || wallet.balance < amount) return null;
+  wallet.balance -= amount;
+  ensureTables(storage);
+  save(storage, wallet, now, rates);
+  return wallet.balance;
+}
+
+/** Whether the player's first clear of a chapter (any version) is on record: what unlocks a Special. */
+export function chapterCleared(storage: DurableObjectStorage, levelId: string): boolean {
+  return present(storage) && claimed(storage, clearClaimKey("clear", levelId)) !== null;
+}
+
+/** Account erasure: the wallet and every claim go (wardrobe.ts drops the rest). A Player that never earned has nothing to drop. */
 export function dropWallet(storage: DurableObjectStorage): void {
-  for (const table of POLLEN_PLAYER_TABLES) storage.sql.exec(`DROP TABLE IF EXISTS ${table.name}`);
+  for (const table of POLLEN_WALLET_TABLES) storage.sql.exec(`DROP TABLE IF EXISTS ${table.name}`);
   known.delete(storage);
 }
 

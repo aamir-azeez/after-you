@@ -45,6 +45,8 @@ import { observeRoom, pushRoomIndex } from "../room-index-sync";
 import { announceRoomChange, liveRecipient, liveRoomHint, type LiveHint, type LiveRoomMembers } from "../live";
 import { clearMemberNames, eraseMemberName, memberName, recordMemberName } from "../display-names";
 import { clearPollenRoom, completionFacts, recordMember, recordTurnFacts, turnFacts, type PollenMember, type TurnFacts } from "../pollen/turn-facts";
+import { clearLooks, eraseMemberLook, memberLook, recordMemberLook, recordTurnLook, turnLooks } from "../pollen/room-looks";
+import type { Look } from "../pollen/catalog";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -63,6 +65,9 @@ export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   partner_name?: string | null;
   /** Only beside a read for a member that asked for run reactions while they are on (run-reactions.ts): the track of the partner's latest turn, when it has one. */
   run_reactions?: RunReactionsView;
+  /** Only beside a read for a member that asked for looks while they are on (pollen/room-looks.ts): the partner's look and the looks of their turns. */
+  partner_look?: Look;
+  turn_looks?: Record<string, Look>;
 };
 export type RoomLobbyV2 = RoomSnapshotV2 | (Omit<TransferredRoom, "invite_code"> & {
   api_version: 2; active_role: "complete";
@@ -82,8 +87,8 @@ export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts };
  * only when the member asked for it while it is on: the room's end reactions
  * (`faces`), the partner's name (`names`) and the run reactions on the partner's latest turn (`tracks`).
  */
-export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean };
-type BesideFields = { end_reactions?: EndReactionsView; partner_name?: string | null; run_reactions?: RunReactionsView };
+export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean; looks?: boolean };
+type BesideFields = { end_reactions?: EndReactionsView; partner_name?: string | null; run_reactions?: RunReactionsView; partner_look?: Look; turn_looks?: Record<string, Look> };
 /** The revision and branch a polling member already holds (X-AfterYou-Known-Room). */
 export type KnownRoom = { revision: number; branch: number };
 /** The small poll reply when nothing changed since the member's known revision and branch. */
@@ -323,13 +328,14 @@ export class RoomV2 extends DurableObject<Env> {
   }
   /** A room view with what the member asked for beside it (Beside). */
   private withBeside(view: RoomSnapshotV2, state: RoomStateV2, player: string, wanted: Beside): RoomSnapshotV2 {
-    return wanted.faces || wanted.names || wanted.tracks ? { ...view, ...this.beside(state, player, wanted) } : view;
+    return wanted.faces || wanted.names || wanted.tracks || wanted.looks ? { ...view, ...this.beside(state, player, wanted) } : view;
   }
   /** The optional fields a room read or a turn reply carries beside the room. */
   private beside(state: { host_id: string; guest_id: string | null }, player: string, wanted: Beside): BesideFields {
     const partner = this.partnerOf(state, player);
     return { ...(wanted.faces ? { end_reactions: endReactionsView(this.ctx.storage, partner) } : {}), ...(wanted.names ? { partner_name: memberName(this.ctx.storage, partner) } : {}),
-      ...(wanted.tracks ? { run_reactions: partnerTrack(this.ctx.storage, partner) } : {}) };
+      ...(wanted.tracks ? { run_reactions: partnerTrack(this.ctx.storage, partner) } : {}),
+      ...(wanted.looks ? { partner_look: memberLook(this.ctx.storage, partner), turn_looks: turnLooks(this.ctx.storage, partner) } : {}) };
   }
   private write(state: RoomStateV2): void {
     state.updated_at = new Date().toISOString();
@@ -338,8 +344,9 @@ export class RoomV2 extends DurableObject<Env> {
   /**
    * `name`: the host's display name while names are on (display-names.ts recordMemberName); undefined writes nothing.
    * `pollen`: the host's Full Journey end while Pollen earning is on (pollen/turn-facts.ts recordMember); undefined writes nothing.
+   * `look`: the host's look while looks are on (pollen/room-looks.ts recordMemberLook); undefined writes nothing.
    */
-  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard", name?: string | null, pollen?: PollenMember): Outcome<RoomSnapshotV2> {
+  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard", name?: string | null, pollen?: PollenMember, look?: Look): Outcome<RoomSnapshotV2> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_initialize_required"); if (boundary) return boundary;
     let selected;
     try { selected = chapter(requestedChapter); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -364,6 +371,7 @@ export class RoomV2 extends DurableObject<Env> {
       if (mode === "hard") initializeHard(this.ctx.storage, this.hard);
       recordMemberName(this.ctx.storage, host, name);
       recordMember(this.ctx.storage, host, pollen);
+      recordMemberLook(this.ctx.storage, host, look);
     });
     return ok(this.view(state, host));
   }
@@ -434,8 +442,8 @@ export class RoomV2 extends DurableObject<Env> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_unavailable");
     return boundary && !boundary.ok && boundary.code === "campaign_unavailable" ? fail(503, boundary.code) : boundary;
   }
-  /** `hardClient`: the joining phone plays hard rooms (X-AfterYou-Hard-Mode). `name` and `pollen`: as in initialize, for a member who joins or returns. */
-  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false, name?: string | null, pollen?: PollenMember): Promise<Outcome<RoomSnapshotV2>> {
+  /** `hardClient`: the joining phone plays hard rooms (X-AfterYou-Hard-Mode). `name`, `pollen` and `look`: as in initialize, for a member who joins or returns. */
+  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false, name?: string | null, pollen?: PollenMember, look?: Look): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.stored();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
@@ -452,12 +460,13 @@ export class RoomV2 extends DurableObject<Env> {
     if (requiredVersion !== undefined && !supportedVersions?.includes(requiredVersion)) return fail(422, "unsupported_simulation_version");
     // A phone that would offer retries never joins a hard room.
     if (!hardClient && this.hard.run(this.ctx.storage)) return fail(409, "hard_mode_client_required");
-    if (this.member(state, player)) { recordMemberName(this.ctx.storage, player, name); recordMember(this.ctx.storage, player, pollen); return ok(this.view(state, player)); }
+    if (this.member(state, player)) { recordMemberName(this.ctx.storage, player, name); recordMember(this.ctx.storage, player, pollen); recordMemberLook(this.ctx.storage, player, look); return ok(this.view(state, player)); }
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     state.guest_id = player; state.revision++; this.write(state);
     recordMemberName(this.ctx.storage, player, name);
     recordMember(this.ctx.storage, player, pollen);
+    recordMemberLook(this.ctx.storage, player, look);
     recordRemoteRoomActivity(this.ctx.storage, player, state.host_id, state.guest_id);
     if (state.a_turn_id) queueTurnHint(this.ctx.storage, this.env, "relay", state, state.host_id, player);
     await scheduleGameplayNotifications(this.ctx.storage);
@@ -488,7 +497,8 @@ export class RoomV2 extends DurableObject<Env> {
   private capacity(): boolean {
     return this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM operations").one().n < MAX_OPERATIONS;
   }
-  async replayTransfer(player: string, includeArchive = true, allowPrepare = true): Promise<Outcome<ReplayTransfer & { archive: ReplayArchive | null }>> {
+  /** `looks`: also every turn's look by recording hash, beside the archive and never in it (the archive's hash is unchanged; pollen/room-looks.ts). */
+  async replayTransfer(player: string, includeArchive = true, allowPrepare = true, looks = false): Promise<Outcome<ReplayTransfer & { archive: ReplayArchive | null; turn_looks?: Record<string, Look> }>> {
     try {
       const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
       // A v1 archive needs every row; once attempt history has offloaded one, only history can bring it back.
@@ -498,7 +508,7 @@ export class RoomV2 extends DurableObject<Env> {
       const state = this.read();
       if (!state) {
         const archived = transferredRoom(this.ctx.storage), value = readReplayTransfer(this.ctx.storage);
-        return archived && this.member(archived, player) && value?.transferred ? ok({ ...value, archive: null }) : this.unavailable(player);
+        return archived && this.member(archived, player) && value?.transferred ? ok({ ...value, archive: null, ...this.transferLooks(looks) }) : this.unavailable(player);
       }
       if (!this.member(state, player)) return fail(404, "room_not_found");
       if (!allowPrepare && !readReplayTransfer(this.ctx.storage)) return fail(503, "replay_transfer_disabled");
@@ -510,9 +520,12 @@ export class RoomV2 extends DurableObject<Env> {
         const prior = readReplayTransfer(this.ctx.storage);
         if (!allowPrepare && (!prior || prior.transferred || canonicalJson(prior.manifest) !== canonicalJson(factsForArchive(archive, prior.manifest.epoch, archiveHash)))) return fail(503, "replay_transfer_disabled");
         const value = allowPrepare ? prepareReplayTransfer(this.ctx.storage, archive, archiveHash) : prior!;
-        return ok({ ...value, archive: includeArchive ? archive : null });
+        return ok({ ...value, archive: includeArchive ? archive : null, ...this.transferLooks(looks) });
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
+  }
+  private transferLooks(looks: boolean): { turn_looks?: Record<string, Look> } {
+    return looks ? { turn_looks: turnLooks(this.ctx.storage) } : {};
   }
   async acknowledgeReplayTransfer(player: string, input: unknown): Promise<Outcome<ReplayTransfer>> {
     try {
@@ -647,17 +660,18 @@ export class RoomV2 extends DurableObject<Env> {
    * `pollen`: the member's Full Journey end while Pollen earning is on. An accepted standalone turn then
    * freezes its facts (pollen/turn-facts.ts), and the outcome carries them as `pollen_facts`, for a
    * retried commit too. Undefined writes and returns nothing more.
+   * `look`: the member's look while looks are on, kept as theirs and as this turn's own look (pollen/room-looks.ts).
    */
-  async commit(player: string, value: unknown, context?: CampaignRoomContext, beside: Beside = {}, name?: string | null, pollen?: PollenMember): Promise<Outcome<CommittedV2>> {
-    const outcome = await this.commitTurn(player, value, context, name, pollen);
+  async commit(player: string, value: unknown, context?: CampaignRoomContext, beside: Beside = {}, name?: string | null, pollen?: PollenMember, look?: Look): Promise<Outcome<CommittedV2>> {
+    const outcome = await this.commitTurn(player, value, context, name, pollen, look);
     if (!outcome.ok || context !== undefined) return outcome;
     const facts = pollen !== undefined && outcome.value.receipt.recording_hash ? turnFacts(this.ctx.storage, outcome.value.receipt.recording_hash) : null;
     const extra = facts?.player_id === player ? { pollen_facts: facts } : {};
-    if (!(beside.faces || beside.names || beside.tracks)) return facts ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
+    if (!(beside.faces || beside.names || beside.tracks || beside.looks)) return facts ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
     const state = this.stored();
     return state ? ok<CommittedV2>({ ...outcome.value, ...this.beside(state, player, beside), ...extra }) : outcome;
   }
-  private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext, name?: string | null, pollen?: PollenMember): Promise<Outcome<MutationV2>> {
+  private async commitTurn(player: string, value: unknown, context?: CampaignRoomContext, name?: string | null, pollen?: PollenMember, look?: Look): Promise<Outcome<MutationV2>> {
     try {
       const input = object(value);
       const raw = object(input.recording);
@@ -721,6 +735,7 @@ export class RoomV2 extends DurableObject<Env> {
         if (context === undefined) recordEndReaction(this.ctx.storage, turn_id, recording.recording_hash, player, face);
         if (context === undefined) recordRunReactions(this.ctx.storage, turn_id, recording.recording_hash, player, track);
         if (context === undefined) recordMemberName(this.ctx.storage, player, name);
+        if (context === undefined) { recordMemberLook(this.ctx.storage, player, look); recordTurnLook(this.ctx.storage, recording.recording_hash, player, look); }
         if (recording.role === "a") state.a_turn_id = turn_id;
         else {
           const pair: PairV2 = { pair_id: pair_id!, branch, stage_index, a: this.turn(state.a_turn_id!), b: recording, checkpoint: checkpoint! };
@@ -997,6 +1012,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearRunReactions(this.ctx.storage);
     clearMemberNames(this.ctx.storage);
     clearPollenRoom(this.ctx.storage);
+    clearLooks(this.ctx.storage);
     clearHard(this.ctx.storage, this.hard);
     resetRedo(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
@@ -1025,6 +1041,7 @@ export class RoomV2 extends DurableObject<Env> {
       eraseEndReactionsOf(this.ctx.storage, player);
       eraseRunReactionsOf(this.ctx.storage, player);
       eraseMemberName(this.ctx.storage, player);
+      eraseMemberLook(this.ctx.storage, player);
       recordDeparture(this.ctx.storage, player);
       return ok({ left: true });
     }), true, player);

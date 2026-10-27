@@ -5,6 +5,7 @@ import { ROOM_INBOX_CONCURRENCY, pooled } from "./room-inbox";
 import { syncMemberName } from "./leaderboards/members";
 import { resolveFriendAlias } from "./friend-aliases";
 import { blockedName } from "./name-filter";
+import { shopOn } from "./pollen/features";
 
 export { blockedName };
 
@@ -82,9 +83,12 @@ export function shownName(value: unknown): string | null {
 
 // ---- Identity storage (Player) ----
 
-/** Optional keys on the Player identity JSON. `display_name_changes` holds the times of non-null sets inside the window. */
-export type DisplayNameFields = { display_name?: string; display_name_changes?: number[]; display_name_rev?: number; display_name_locked_until?: number };
-export const DISPLAY_NAME_KEYS = ["display_name", "display_name_changes", "display_name_rev", "display_name_locked_until"] as const;
+/**
+ * Optional keys on the Player identity JSON. `display_name_changes` holds the times of non-null sets inside the window.
+ * `display_name_sets` counts names set while the shop was on, up to 2, for the name change price (pollen/name-price.ts).
+ */
+export type DisplayNameFields = { display_name?: string; display_name_changes?: number[]; display_name_rev?: number; display_name_locked_until?: number; display_name_sets?: number };
+export const DISPLAY_NAME_KEYS = ["display_name", "display_name_changes", "display_name_rev", "display_name_locked_until", "display_name_sets"] as const;
 export type DisplayNameState = { schema_version: 1; display_name: string | null; revision: number };
 export type DisplayNameOutcome = Outcome<DisplayNameState> | { ok: true; value: DisplayNameState; cleared_rooms: string[] } | { ok: false; status: 429; code: "display_name_limited"; retry_after_seconds: number };
 
@@ -99,6 +103,7 @@ export function validDisplayNameFields(value: Record<string, unknown>): boolean 
     if (!Array.isArray(changes) || changes.length > MAX_DISPLAY_NAME_CHANGES || !changes.every(safeTime)) return false;
   }
   if (Object.hasOwn(value, "display_name_rev") && !(safeTime(value.display_name_rev) && value.display_name_rev >= 1)) return false;
+  if (Object.hasOwn(value, "display_name_sets") && !(value.display_name_sets === 1 || value.display_name_sets === 2)) return false;
   return !Object.hasOwn(value, "display_name_locked_until") || safeTime(value.display_name_locked_until);
 }
 /** A stored name's shape: 1 to 18 code points with no control, format, surrogate, private-use or unassigned ones. */
@@ -229,27 +234,35 @@ export function namesRoomRoute(request: Request, path: string, env: ServerVars):
   return request.method === "POST" && (path === "/v2/rooms" || path === "/v2/rooms/join") && flags.displayNames(env);
 }
 
-/** The PUT body: exactly schema_version 1, display_name (string or null) and revision (safe integer >= 1). Any other shape is 400 invalid_display_name. */
-function parseRequest(input: unknown): { name: string | null; revision: number } {
-  if (!isObject(input) || Object.keys(input).length !== 3 || input.schema_version !== 1 || !Object.hasOwn(input, "display_name") ||
-    (input.display_name !== null && typeof input.display_name !== "string") || typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1) {
+/**
+ * The PUT body: exactly schema_version 1, display_name (string or null) and revision (safe integer >= 1),
+ * and optionally pollen_price: the name change price the phone showed beside Save (a client that knows
+ * the shop sends it). Any other shape is 400 invalid_display_name.
+ */
+function parseRequest(input: unknown): { name: string | null; revision: number; shown?: number } {
+  const priced = isObject(input) && Object.hasOwn(input, "pollen_price");
+  if (!isObject(input) || Object.keys(input).length !== 3 + Number(priced) || input.schema_version !== 1 || !Object.hasOwn(input, "display_name") ||
+    (input.display_name !== null && typeof input.display_name !== "string") || typeof input.revision !== "number" || !Number.isSafeInteger(input.revision) || input.revision < 1 ||
+    priced && !(typeof input.pollen_price === "number" && Number.isSafeInteger(input.pollen_price) && input.pollen_price >= 0)) {
     throw new ApiError(400, "invalid_display_name");
   }
-  return { name: input.display_name as string | null, revision: input.revision };
+  return { name: input.display_name as string | null, revision: input.revision, ...(priced ? { shown: input.pollen_price as number } : {}) };
 }
 
 /** PUT /v1/profile/name, after auth(). The flag is checked before the body or the Player is read. */
 export async function routeDisplayName(request: Request, playerId: string, env: Env): Promise<DisplayNameState> {
   if (!flags.displayNames(env)) throw new ApiError(503, "display_names_disabled");
   if (request.method !== "PUT") throw new ApiError(405, "method_not_allowed");
-  const { name, revision } = parseRequest(await boundedJson(request, 1024));
+  const { name, revision, shown } = parseRequest(await boundedJson(request, 1024));
   let cleaned: string | null = null;
   if (name !== null) {
     const result = cleanDisplayName(name);
     if (!result.ok) throw new ApiError(result.code === "display_name_refused" ? 422 : 400, result.code);
     cleaned = result.name;
   }
-  const outcome = await env.PLAYERS.getByName(playerId).setDisplayName(playerId, await bearerDigest(request), cleaned, revision);
+  // While the shop is on, a change may cost Pollen (pollen/name-price.ts); the Player charges it with the change.
+  const pricing = shopOn(env) ? { shown } : undefined;
+  const outcome = await env.PLAYERS.getByName(playerId).setDisplayName(playerId, await bearerDigest(request), cleaned, revision, pricing);
   if (!outcome.ok && "retry_after_seconds" in outcome) throw new ApiError(429, outcome.code, { retry_after_seconds: outcome.retry_after_seconds });
   // Going anonymous takes the name out of the player's rooms now, not at their next turn there.
   // It happens at most once per named set, so the 5-a-day limit bounds it. Best effort: a room
