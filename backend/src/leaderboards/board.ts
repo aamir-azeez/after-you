@@ -30,8 +30,9 @@ type EntryData = {
 };
 type EntryRow = { entry_id: string; pair_key: string; state: "checking" | "review" | "ranked"; ticks: number; finished_ms: number; data: string };
 type Entry = Omit<EntryRow, "data"> & { data: EntryData };
-export type StandingWork = { entry_id: string; members: [string | null, string | null]; finished_ms: number };
-export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; checkpoint: unknown };
+export type StandingWork = { entry_id: string; members: (string | null)[]; finished_ms: number };
+/** `checkpoint` is the stored JSON text, passed on unparsed so the Worker spends no CPU on it. */
+export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; checkpoint: string };
 export type PendingWork = { standing: StandingWork[]; replay: ReplayWork[] };
 export type StandingResult = { entry_id: string; eligible: boolean; reason: string; members: [{ show: boolean; name: string | null }, { show: boolean; name: string | null }] };
 export type Verdict = { entry_id: string; proof_hash: string; valid: boolean; measured_ticks: number; reason: string };
@@ -41,7 +42,7 @@ export type ReviewItem = { entry_id: string; state: string; rank: number | null;
 /** A stored final checkpoint is at most this long (SQLite keeps a value under 2 MB). */
 export const MAX_PROOF_CHARS = 1_900_000;
 /** Replay work handed out per call, by checkpoint length. */
-export const MAX_REPLAY_CHARS = 6_000_000;
+export const MAX_REPLAY_CHARS = 4_000_000;
 /** Tombstones kept, newest first. */
 const MAX_OUTCOMES = 512;
 
@@ -111,13 +112,13 @@ export class LeaderboardBoard extends DurableObject<Env> {
       const proof = this.ctx.storage.sql.exec<{ proof_hash: string; checkpoint: string }>("SELECT proof_hash,checkpoint FROM lb_proofs WHERE entry_id=?", entry.entry_id).toArray()[0];
       if (!proof || chars + proof.checkpoint.length > maxChars) continue;
       chars += proof.checkpoint.length;
-      replay.push({ entry_id: entry.entry_id, chapter: entry.data.chapter, simulation_version: entry.data.simulation_version, ticks: entry.ticks, proof_hash: proof.proof_hash, checkpoint: JSON.parse(proof.checkpoint) });
+      replay.push({ entry_id: entry.entry_id, chapter: entry.data.chapter, simulation_version: entry.data.simulation_version, ticks: entry.ticks, proof_hash: proof.proof_hash, checkpoint: proof.checkpoint });
     }
     return { standing, replay };
   }
 
-  /** Account check results. An ineligible run is dropped; an eligible one keeps each member's name choice. Returns the work left. */
-  standings(results: StandingResult[], maxChars = MAX_REPLAY_CHARS): PendingWork {
+  /** Account check results. An ineligible run is dropped; an eligible one keeps each member's name choice. Returns the work left and the board now. */
+  standings(board: string, results: StandingResult[], maxChars = MAX_REPLAY_CHARS): { work: PendingWork; view: BoardView } {
     this.ctx.storage.transactionSync(() => {
       for (const result of results) {
         const entry = this.entry(result.entry_id);
@@ -128,7 +129,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
         this.save(entry);
       }
     });
-    return this.pendingWork(maxChars);
+    return { work: this.pendingWork(maxChars), view: this.view(board) };
   }
 
   /**
@@ -304,7 +305,7 @@ function noteOf(entry: Entry): RankedNote {
 
 // A board nobody posted to answers reads as an empty board and stores nothing.
 answerWhileBlank(LeaderboardBoard, {
-  view: (board: string) => emptyView(board), pendingWork: () => ({ standing: [], replay: [] }), standings: () => ({ standing: [], replay: [] }),
+  view: (board: string) => emptyView(board), pendingWork: () => ({ standing: [], replay: [] }), standings: (board: string) => ({ work: { standing: [], replay: [] }, view: emptyView(board) }),
   verdicts: (board: string) => ({ ranked: [], view: emptyView(board) }), review: (board: string) => ({ done: false, ranked: null, view: emptyView(board) }),
   strike: (board: string) => ({ done: false, promoted: [], view: emptyView(board) }), report: () => null, reviewList: () => [],
   setMember: (board: string) => ({ changed: 0, view: emptyView(board) }), forget: (board: string) => ({ changed: 0, view: emptyView(board) }), rewardsFor: () => []

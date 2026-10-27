@@ -1,7 +1,8 @@
 import { ApiError, boundedJson, isObject, text } from "../protocol";
+import { JSON_HEADERS, json } from "../http";
 import { flags } from "../flags";
 import { boardKeys, developerBest, knownBoard } from "./boards";
-import { MAX_REPLAY_CHARS, type PendingWork, type ReplayWork, type StandingResult, type StandingWork, type Verdict } from "./board";
+import { MAX_REPLAY_CHARS, type PendingWork, type StandingResult, type StandingWork, type Verdict } from "./board";
 import { leaderboardCaller } from "./job-token";
 import { eligible } from "./standing";
 import { storeView } from "./view-cache";
@@ -18,37 +19,48 @@ import { storeView } from "./view-cache";
  */
 export const OPERATOR_PREFIX = "/operator/leaderboards/";
 /** Replay work handed out per pending call, by checkpoint length, across all boards. */
-export const MAX_PENDING_CHARS = 8_000_000;
+export const MAX_PENDING_CHARS = 4_000_000;
 const MAX_VERDICTS = 64;
 const ENTRY = /^[a-f0-9]{32}$/, HASH = /^[a-f0-9]{64}$/;
 
-export type PendingEntry = ReplayWork & { board: string };
-
-export async function routeLeaderboardOperator(request: Request, path: string, env: Env): Promise<unknown> {
+export async function routeLeaderboardOperator(request: Request, path: string, env: Env): Promise<Response> {
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const caller = await leaderboardCaller(request, env);
   if (!flags.leaderboards(env)) throw new ApiError(503, "leaderboards_disabled");
   const input = await boundedJson(request, 256 * 1024);
   if (!isObject(input) || input.schema_version !== 1) throw new ApiError(400, "invalid_leaderboard_request");
   const action = path.slice(OPERATOR_PREFIX.length);
-  if (action === "pending") return { schema_version: 1, entries: await pending(env) };
-  if (action === "verdicts") return { schema_version: 1, ...(await verdicts(env, input.verdicts)) };
+  if (action === "pending") return new Response(`{"schema_version":1,"entries":[${(await pending(env)).join(",")}]}`, { headers: JSON_HEADERS });
+  if (action === "verdicts") return json({ schema_version: 1, ...(await verdicts(env, input.verdicts)) });
   if (caller !== "operator") throw new ApiError(403, "operator_required");
-  if (action === "review-list") return { schema_version: 1, boards: await reviewList(env) };
-  if (action === "review") return { schema_version: 1, ...(await review(env, input)) };
+  if (action === "review-list") return json({ schema_version: 1, boards: await reviewList(env) });
+  if (action === "review") return json({ schema_version: 1, ...(await review(env, input)) });
   throw new ApiError(404, "not_found");
 }
 
-/** One request per board, plus for each new run one Member and one Player request per member, then one more board request. */
-async function pending(env: Env): Promise<PendingEntry[]> {
-  const entries: PendingEntry[] = [];
+/**
+ * One request per board, plus for each new run one Player and one Member
+ * request per member, then one more board request. Each entry is written as
+ * JSON text around its stored checkpoint text, which is never parsed here:
+ * a Worker on the Free plan has 10 ms of CPU per request.
+ */
+async function pending(env: Env): Promise<string[]> {
+  const entries: string[] = [];
   let budget = MAX_PENDING_CHARS;
   for (const board of boardKeys()) {
     if (budget <= 0) break;
     const stub = env.LEADERBOARD_BOARDS.getByName(board);
     let work: PendingWork = await stub.pendingWork(Math.min(budget, MAX_REPLAY_CHARS));
-    if (work.standing.length) work = await stub.standings(await Promise.all(work.standing.map(item => standing(env, board, item))), Math.min(budget, MAX_REPLAY_CHARS));
-    for (const item of work.replay) { entries.push({ ...item, board }); budget -= JSON.stringify(item.checkpoint).length; }
+    if (work.standing.length) {
+      const checked = await stub.standings(board, await Promise.all(work.standing.map(item => standing(env, board, item))), Math.min(budget, MAX_REPLAY_CHARS));
+      await storeView(checked.view);
+      work = checked.work;
+    }
+    for (const item of work.replay) {
+      const { checkpoint, ...facts } = item;
+      entries.push(JSON.stringify({ board, ...facts }).slice(0, -1) + `,"checkpoint":${checkpoint}}`);
+      budget -= checkpoint.length;
+    }
   }
   return entries;
 }
