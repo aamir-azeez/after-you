@@ -22,7 +22,12 @@ func _init(save_path: String = PATH) -> void:
 	path = save_path
 
 static func defaults() -> Dictionary:
-	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": false, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false, "frame_rate": GraphicsPolicy.DEFAULT_FRAME_RATE, "skip_waits": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
+	return {"version": 1, "generation": 0, "settings": {"sound": true, "haptics": true, "reduced_motion": false, "assistance": true, "left_handed": false, "photo_prompts": true, "turn_notifications": false, "turn_request_notifications": false, "share_online_status": true, "graphics_quality": GraphicsPolicy.DEFAULT_QUALITY, "unlimited_frame_rate": false, "frame_rate": GraphicsPolicy.DEFAULT_FRAME_RATE, "skip_waits": false}, "attempts": {}, "completed": {}, "replays": {}, "room": {}}
+
+## Settings a brand new install starts with, over defaults(). defaults() stays
+## as it was, because chapter journals and older apps check saved envelopes
+## against it; an existing save keeps whatever it holds.
+const NEW_PLAYER_SETTINGS := {"assistance": false}
 
 static func default_settings_envelope_valid(value: Variant) -> bool:
 	# Chapter journals do not own UI preferences. Older envelopes may omit
@@ -65,6 +70,8 @@ func load_data() -> void:
 			data = _with_defaults(value)
 			loaded_from = candidate
 			best_generation = generation
+	if existing == 0:
+		data.settings.merge(NEW_PLAYER_SETTINGS, true)
 	if loaded_from != path and not loaded_from.is_empty() and not read_only:
 		last_error = PlayerCopy.LOCAL_SAVE_27DCFA34F3AD
 	elif loaded_from.is_empty() and FileAccess.file_exists(path) and not read_only:

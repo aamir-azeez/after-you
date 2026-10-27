@@ -1743,7 +1743,7 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	_begin_memory_wait(journey.role(), journey.prior_recording(), true)
 	_begin_run_reactions(true, {}, journey.prior_recording())
 	# A family with no catch to assist (the Lighthouse) always records false.
-	sim.catch_assistance = bool(settings.get("assistance", false)) and Registry.catch_assistance(chapter_key)
+	sim.catch_assistance = bool(settings.get("assistance", true)) and Registry.catch_assistance(chapter_key)
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
 	return true
 

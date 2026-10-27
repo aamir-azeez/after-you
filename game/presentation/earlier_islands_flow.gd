@@ -99,7 +99,7 @@ func prepare_turn() -> void:
 		host.journey_flow.show_journey()
 		return
 	_begin_sound_turn()
-	host.sim.catch_assistance=bool(host.saves.data.settings.get("assistance",false))
+	host.sim.catch_assistance=bool(host.saves.data.settings.get("assistance",true))
 	host.world.present(host.sim.snapshot(),true)
 	host.hud.visible=true
 	host.role_label.text="%02d / %s  ·  %s" % [host.level_index+1,host.current_level.title,"Your first turn" if host.role=="a" else "Alongside a ghost"]

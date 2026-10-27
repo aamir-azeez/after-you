@@ -68,6 +68,7 @@ func _open_case(key: String) -> Dictionary:
 	app.saves.data.settings.sound = false
 	app.saves.data.settings.haptics = false
 	app.saves.data.settings.reduced_motion = true
+	app.saves.data.settings.assistance = true
 	app.room_hub_flow.selected_chapter = key
 	var store := MemoryStore.new()
 	var session := Session.new(api, app._relay_identity, store)

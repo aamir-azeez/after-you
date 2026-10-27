@@ -58,6 +58,8 @@ func boot() -> void:
 	app = Main.new()
 	app.saves = Save.new(save_path)
 	app.saves.data.settings.sound = false
+	app.saves.data.settings.assistance = true
+	if not FileAccess.file_exists(save_path): app.saves.flush()
 	viewport.add_child(app)
 	app.api.queue_free()
 	api = DeviceApi.new()
