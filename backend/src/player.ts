@@ -24,8 +24,7 @@ import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
-import { boostPercent } from "./pollen/earn";
-import { creditClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
+import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
@@ -196,10 +195,7 @@ export class Player extends DurableObject<Env> {
    * fj_until; no provider call), and a subscriber's room of one gets one subscriber's boost.
    */
   creditSoloClear(owner: string, levelId: string, premium: boolean): Outcome<PollenReceipt> {
-    if (!this.pollenActive(owner)()) return fail(404, "identity_absent");
-    const now = Date.now(), subscriber = fullJourneyUntil(this.ctx.storage) > now;
-    if (premium && !subscriber) return fail(403, "full_journey_required");
-    return creditClear(this.ctx.storage, { level_id: levelId, hard: false, boost_percent: boostPercent(Number(subscriber)) }, now, this.pollenActive(owner));
+    return creditSoloClear(this.ctx.storage, levelId, premium, Date.now(), this.pollenActive(owner));
   }
   /**
    * Story rooms are not linked one by one, and the Story drain releases a player's v3 links but keeps the

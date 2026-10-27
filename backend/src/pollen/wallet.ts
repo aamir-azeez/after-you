@@ -31,7 +31,13 @@ export type WalletState = {
   weeks: Record<string, WeekState>; fj_until: number; pruned_day: number;
 };
 /** `reason`: why a turn paid the after-bank rate. `boost_from`: whose Full Journey boosted it, from the turn player's side. */
-export type TurnLine = TurnPrice & { reason?: "repeat" | "bank_empty"; boost_from?: ("you" | "partner")[] };
+/**
+ * `reason`: why a turn paid the after-bank rate: its slot was paid this week already (repeat), the
+ * bank was empty, or the turn is from an earlier week (late: only a turn of the current week spends
+ * the current bank, so no week's turns move onto a later bank). `boost_from`: whose Full Journey
+ * boosted it, from the turn player's side.
+ */
+export type TurnLine = TurnPrice & { reason?: "repeat" | "bank_empty" | "late"; boost_from?: ("you" | "partner")[] };
 export type ClearLine = { kind: "clear" | "hardclear"; level_id: string } & ClearPrice;
 /** What a credit answers, and what the turn reply's `pollen` field carries. */
 export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[] };
@@ -85,10 +91,15 @@ function stored(storage: DurableObjectStorage): WalletState | null {
   return value;
 }
 
-/** The wallet as of `now`: a new one starts with the starting bank; each Monday since the last touch refills it. */
+/**
+ * The wallet as of `now`. Until it has been paid anything (a wallet made only to note a Full Journey
+ * end), it holds the starting bank this week, so every player starts with the same 12; after that,
+ * each Monday since the last touch refills it.
+ */
 function current(storage: DurableObjectStorage, now: number, rates: Rates = RATES): WalletState {
   const week = weekIndex(now);
   const wallet = stored(storage) ?? { schema_version: 1, balance: 0, earned: 0, bank: rates.bank.start, week, weeks: {}, fj_until: 0, pruned_day: 0 };
+  if (wallet.earned === 0) { wallet.bank = rates.bank.start; wallet.week = week; }
   if (week > wallet.week) { wallet.bank = Math.min(rates.bank.cap, wallet.bank + rates.bank.refill * (week - wallet.week)); wallet.week = week; }
   return wallet;
 }
@@ -151,12 +162,12 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     if (chapterTier(facts.level_id, rates) === null) return zero(price({ facts, bank: false, tail_index: 0, bloom: 1 }, rates));
     const week = String(weekIndex(facts.accepted_at)), slot = `${facts.level_id}|${facts.stage_id}|${facts.role}`;
     const state: WeekState = wallet.weeks[week] ?? { slots: [], tail: 0 };
-    const repeat = state.slots.includes(slot), bank = !repeat && wallet.bank > 0, tailIndex = state.tail;
+    const repeat = state.slots.includes(slot), late = Number(week) < weekIndex(now), bank = !repeat && !late && wallet.bank > 0, tailIndex = state.tail;
     if (bank) { wallet.bank--; state.slots.push(slot); }
     else if (state.tail < tailLength(rates)) state.tail++;
     const priced = price({ facts, bank, tail_index: tailIndex, bloom: roll.multiplier }, rates);
     const boostFrom = [...(facts.subscriber ? ["you" as const] : []), ...(facts.partner_subscriber ? ["partner" as const] : [])];
-    const turn: TurnLine = { ...priced, ...(bank ? {} : { reason: repeat ? "repeat" as const : "bank_empty" as const }), ...(priced.boost_percent > 0 ? { boost_from: boostFrom } : {}) };
+    const turn: TurnLine = { ...priced, ...(bank ? {} : { reason: repeat ? "repeat" as const : late ? "late" as const : "bank_empty" as const }), ...(priced.boost_percent > 0 ? { boost_from: boostFrom } : {}) };
     ensureTables(storage);
     const clears = facts.complete ? payClears(storage, { level_id: facts.level_id, hard: facts.hard && facts.together, boost_percent: facts.boost_percent }, now, rates) : [];
     if (!bank && turn.total === 0 && clears.length === 0) return zero(turn);
@@ -187,6 +198,17 @@ export function creditClear(storage: DurableObjectStorage, claim: ClearClaim, no
     save(storage, wallet, now, rates);
     return ok({ schema_version: 1, earned, balance: wallet.balance, clears });
   });
+}
+
+/**
+ * A solo first clear the app claims. A paid chapter needs Full Journey (the stored end; no provider
+ * call), and a subscriber's room of one gets one subscriber's boost. Hard is never paid solo.
+ */
+export function creditSoloClear(storage: DurableObjectStorage, levelId: string, premium: boolean, now: number, active: () => boolean, rates: Rates = RATES): Outcome<PollenReceipt> {
+  if (!active()) return fail(404, "identity_absent");
+  const subscriber = fullJourneyUntil(storage) > now;
+  if (premium && !subscriber) return fail(403, "full_journey_required");
+  return creditClear(storage, { level_id: levelId, hard: false, boost_percent: boostPercent(Number(subscriber), rates) }, now, active, rates);
 }
 
 /**

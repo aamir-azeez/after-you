@@ -108,7 +108,7 @@ describe("the Pollen wallet", () => {
       expect(walletView(storage, MONDAY).balance).toBe(0);
     });
   });
-  it("prices a late claim by its own week's slots and today's bank", async () => {
+  it("prices a late claim by its own week's slots, and never on this week's bank", async () => {
     serial += 100;
     await inPlayer(async storage => {
       const lastWeek = MONDAY - 7 * DAY;
@@ -116,6 +116,19 @@ describe("the Pollen wallet", () => {
       // The same slot this week is new; the same slot last week is a repeat.
       expect(value(await credit(storage, facts())).turn!.kind).toBe("bank");
       expect(value(await credit(storage, facts({}, lastWeek + DAY), MONDAY)).turn).toMatchObject({ kind: "after_bank", reason: "repeat" });
+      // A new slot of last week claimed today pays the after-bank rate, so no week's turns move onto a later bank.
+      expect(value(await credit(storage, facts(slots[3], lastWeek + DAY), MONDAY)).turn).toMatchObject({ kind: "after_bank", reason: "late", total: 10 });
+      expect(walletView(storage, MONDAY).bank).toBe(22);
+    });
+  });
+  it("starts every bank at 12 with the first pay, however long ago a Full Journey end was noted", async () => {
+    serial += 100;
+    await inPlayer(async storage => {
+      noteFullJourney(storage, MONDAY + 60 * DAY, MONDAY - 28 * DAY);
+      expect(walletView(storage, MONDAY).bank).toBe(12);
+      value(await credit(storage, facts()));
+      expect(walletView(storage, MONDAY).bank).toBe(11);
+      expect(walletView(storage, MONDAY + 7 * DAY).bank).toBe(23);
     });
   });
   it("pays bloom and boost lines from the facts", async () => {
