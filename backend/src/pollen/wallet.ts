@@ -19,8 +19,9 @@ import { validTurnFacts } from "./turn-facts";
  *     turn:<room_id>:<recording_hash>   an accepted turn (pruned after turn_prune_days)
  *     clear:<level_id>                  a chapter's first clear, together or solo (kept)
  *     hardclear:<level_id>              a chapter's first Hard clear together (kept)
- *   A turn that pays nothing (the week's after-bank turns are used up) writes no row: pricing it
- *   again gives 0 again, because a week's after-bank count only grows.
+ *   A turn that pays nothing writes no row: a turn played before the guest joined (never paid, by its
+ *   frozen facts), or one whose week's after-bank turns are used up (that count only grows, and only
+ *   a turn of the current week spends the bank).
  *
  * Every check and write of one credit happens in one synchronous transaction, after the only
  * await (the bloom roll), so two credits of the same key can never both pay.
@@ -159,6 +160,9 @@ export async function creditTurn(storage: DurableObjectStorage, env: ServerVars,
     const prior = present(storage) ? claimed(storage, key) : null;
     if (prior) return ok({ ...prior.receipt, balance: stored(storage)?.balance ?? 0 });
     if (now - facts.accepted_at > rates.claims.turn_claim_days * DAY_MS) return fail(410, "pollen_claim_expired");
+    // Only a turn with a friend earns: a host's turn committed before the guest joined pays nothing,
+    // now or on any later claim (the room froze `together` with the turn), and writes nothing.
+    if (!facts.together) return ok({ schema_version: 1, earned: 0, balance: stored(storage)?.balance ?? 0, clears: [] });
     const wallet = current(storage, now, rates);
     const zero = (turn: TurnLine): Outcome<PollenReceipt> => ok({ schema_version: 1, earned: 0, balance: wallet.balance, turn, clears: [] });
     if (chapterTier(facts.level_id, rates) === null) return zero(price({ facts, bank: false, tail_index: 0, bloom: 1 }, rates));

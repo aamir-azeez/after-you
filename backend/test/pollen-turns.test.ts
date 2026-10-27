@@ -102,6 +102,22 @@ describe("Pollen from turns", () => {
     expect(await tableNames(env.ROOMS_V2.getByName(off.room_id))).toEqual([]);
     expect((await tableNames(env.ROOMS_V2.getByName(on.room_id)))).toEqual(["pollen_turn_facts"]);
   });
+  it("pays a host's turn only once a friend has joined, also on a later claim", async () => {
+    const host = await create(), guest = await create();
+    const made = await call("/v2/rooms", "POST", host, { idempotency_key: key(), level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH });
+    const created = await made.json<RoomSnapshotV2>();
+    const alone = await turn(created, host, firstA);
+    expect(alone.room.guest_id).toBeNull();
+    expect(alone.pollen).toEqual({ schema_version: 1, earned: 0, balance: 0, clears: [] });
+    const claim = { schema_version: 1, claims: [{ room_id: alone.room.room_id, recording_hash: firstA.recording_hash }] };
+    const claimed = await (await call("/v1/pollen/turn-claims", "POST", host, claim)).json<{ results: { status: string; receipt?: PollenReceipt }[] }>();
+    expect(claimed.results).toMatchObject([{ status: "credited", receipt: { earned: 0 } }]);
+    expect(await wallet(host)).toMatchObject({ balance: 0, bank: 12 });
+    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: created.invite_code });
+    expect(joined.status).toBe(200);
+    const together = await turn(await joined.json<RoomSnapshotV2>(), guest, firstB, middle);
+    expect(receipt(together).turn).toMatchObject({ kind: "bank", amount: 89 });
+  });
   it("credits without the header too, and keeps the reply as it was for that phone", async () => {
     const host = await create(), guest = await create();
     const current = await room(host, guest);

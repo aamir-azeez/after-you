@@ -95,6 +95,18 @@ describe("the Pollen wallet", () => {
       expect(walletView(storage, MONDAY).balance).toBe(200);
     });
   });
+  it("pays nothing, and writes nothing, for a turn played before a friend joined", async () => {
+    serial += 100;
+    await inPlayer(async storage => {
+      const alone = facts({ together: false });
+      expect(value(await credit(storage, alone))).toEqual({ schema_version: 1, earned: 0, balance: 0, clears: [] });
+      expect(storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='pollen_claims'").toArray()).toEqual([]);
+      expect(value(await credit(storage, alone, MONDAY + DAY)).earned).toBe(0);
+      // Its slot and the bank are untouched: the same slot with a friend pays full rate.
+      expect(value(await credit(storage, facts())).turn).toMatchObject({ kind: "bank", total: 89 });
+      expect(value(await credit(storage, facts({ together: false, complete: true, role: "b" }))).clears).toEqual([]);
+    });
+  });
   it("refuses another player's facts, broken facts, and facts older than 28 days", async () => {
     serial += 100;
     await inPlayer(async storage => {
@@ -159,9 +171,9 @@ describe("the Pollen wallet", () => {
       expect(value(creditClear(storage, { level_id: "long-way-home", hard: false, boost_percent: 20 }, MONDAY, () => true))).toMatchObject({ earned: 3000, clears: [{ kind: "clear", total: 3000 }] });
       expect(value(creditClear(storage, { level_id: "long-way-home", hard: false, boost_percent: 20 }, MONDAY, () => true)).earned).toBe(0);
       expect(creditClear(storage, { level_id: "unknown", hard: false, boost_percent: 0 }, MONDAY, () => true)).toEqual({ ok: false, status: 422, code: "unsupported_chapter" });
-      // A solo hard clear is never paid, and a finish played alone pays the clear only.
+      // A Hard finish pays the Hard clear only together; a finish with nobody in the room pays nothing.
       const alone = value(await credit(storage, facts({ level_id: "high-and-low", complete: true, hard: true, together: false })));
-      expect(alone.clears.map(line => line.kind)).toEqual(["clear"]);
+      expect([alone.earned, alone.clears]).toEqual([0, []]);
     });
   });
   it("prunes turn claims after 35 days, keeps clears, and stays under its row bound", async () => {
