@@ -87,7 +87,8 @@ func _receipts() -> void:
 	no_turn.erase("turn")
 	_check(not PollenWallet.checked_receipt(no_turn).is_empty(), "A clear's receipt has no turn line")
 	_check(PollenWallet.checked_wallet({"schema_version": 1.0, "balance": 10.0, "earned": 12.0, "bank": 3.0}) == {"balance": 10, "earned": 12, "bank": 3}, "A wallet answer is kept")
-	_check(PollenWallet.checked_wallet({"schema_version": 1.0, "balance": -1.0, "earned": 0.0, "bank": 0.0}).is_empty() and PollenWallet.checked_wallet({"balance": 1.0}).is_empty(), "A broken one is not")
+	_check(PollenWallet.checked_wallet({"schema_version": 1.0, "balance": 1.5, "earned": 0.0, "bank": 0.0}).is_empty() and PollenWallet.checked_wallet({"balance": 1.0}).is_empty(), "A broken one is not")
+	_check(PollenWallet.checked_wallet({"schema_version": 1.0, "balance": -4750.0, "earned": 4500.0, "bank": 0.0}) == {"balance": -4750, "earned": 4500, "bank": 0}, "A balance a refund took below zero is kept")
 
 func _claims() -> void:
 	var store := _store()
@@ -161,7 +162,7 @@ func _scopes_and_file() -> void:
 	var key := PollenWallet.scope_key(SERVER, ME)
 	parsed.scopes[key].results[0].receipt.turn.bloom = 9
 	parsed.scopes[key].claims.append({"room_id": "bad", "recording_hash": _hash(5), "at": 1})
-	parsed.scopes[key].wallet.balance = -5
+	parsed.scopes[key].wallet.balance = 2.5
 	var file := FileAccess.open(path, FileAccess.WRITE)
 	file.store_string(JSON.stringify(parsed))
 	file.close()

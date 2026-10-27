@@ -156,6 +156,18 @@ func note_spend(server: String, owner: String, receipt: Variant) -> bool:
 	_announce(server, owner)
 	return true
 
+## An item an item bloom dropped, from a confirmed turn receipt: owned now, so
+## the wardrobe shows it without reading the wallet again. Nothing before the
+## first wardrobe read; that read carries it anyway.
+func note_drop(server: String, owner: String, item_id: Variant) -> bool:
+	var scope := _scope(server, owner)
+	if scope.is_empty() or (scope.view as Dictionary).is_empty() or not valid_id(item_id) or item_id in scope.view.items: return false
+	scope.view.items.append(item_id)
+	scope.view.items.sort()
+	_save()
+	_announce(server, owner)
+	return true
+
 ## A look the server confirmed (POST /v1/pollen/equip). An older revision never replaces a newer one.
 func note_look(server: String, owner: String, receipt: Variant) -> bool:
 	var scope := _scope(server, owner)

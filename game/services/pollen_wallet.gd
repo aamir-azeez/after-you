@@ -6,6 +6,8 @@ extends RefCounted
 ## Kept per server and player (a scope), in one small file written whole with
 ## AtomicFile:
 ## - enabled: the server said Pollen earning is on (its capabilities);
+## - item_blooms: the server said item blooms drop (its capabilities), so Help
+##   publishes their odds;
 ## - wallet: the last confirmed balance, lifetime earned and bank, or {};
 ## - claims: accepted turns whose credit did not come back confirmed, to send
 ##   to POST /v1/pollen/turn-claims (services/pollen_client.gd). The server
@@ -21,6 +23,7 @@ extends RefCounted
 ## then asks the server for the wallet again, so nothing is lost.
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
 
 const PATH := "user://pollen_wallet.json"
 const VERSION := 1
@@ -36,6 +39,9 @@ const MAX_CLEARS := 32
 const MAX_CLEARED := 256
 const LEVEL_PATTERN := "^[a-z0-9-]{1,64}$"
 const BONUSES := ["first_try", "gold_pace", "silver_pace", "hard"]
+## Item bloom tiers (backend rates.json item_blooms); an earned item never drops.
+const BLOOM_TIERS := ["common", "uncommon", "rare", "epic", "special"]
+const ITEM_PATTERN := "^[a-z0-9_]{1,40}$"
 const ROOM_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const HASH_PATTERN := "^[a-f0-9]{64}$"
 
@@ -43,6 +49,7 @@ static var _shared: RefCounted = null
 static var _room := RegEx.create_from_string(ROOM_PATTERN)
 static var _hash := RegEx.create_from_string(HASH_PATTERN)
 static var _level := RegEx.create_from_string(LEVEL_PATTERN)
+static var _item := RegEx.create_from_string(ITEM_PATTERN)
 
 var path := PATH
 var _scopes: Dictionary = {}
@@ -64,6 +71,10 @@ func _init(storage_path: String = PATH) -> void:
 static func _count(value: Variant, top: int = 9007199254740991) -> bool:
 	return Typed.whole_number(value) and float(value) >= 0.0 and float(value) <= float(top)
 
+## A balance: a whole number, below zero only after a refund took back what it paid.
+static func _balance(value: Variant) -> bool:
+	return Typed.whole_number(value) and absf(float(value)) <= 9007199254740991.0
+
 static func valid_room(value: Variant) -> bool:
 	return value is String and _room.search(value) != null
 
@@ -73,14 +84,15 @@ static func valid_hash(value: Variant) -> bool:
 ## A wallet answer (GET /v1/pollen) as kept: whole numbers only.
 static func checked_wallet(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1): return {}
-	for field: String in ["balance", "earned", "bank"]:
+	if not _balance(value.get("balance")): return {}
+	for field: String in ["earned", "bank"]:
 		if not _count(value.get(field)): return {}
 	return {"balance": Typed.as_int(value.balance), "earned": Typed.as_int(value.earned), "bank": Typed.as_int(value.bank)}
 
 ## A turn credit's receipt (the turn reply's `pollen`, or a claim's) as kept,
 ## or {} when any part of it is not the contract's.
 static func checked_receipt(value: Variant) -> Dictionary:
-	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not _count(value.get("earned")) or not _count(value.get("balance")): return {}
+	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not _count(value.get("earned")) or not _balance(value.get("balance")): return {}
 	var clears: Variant = value.get("clears")
 	if not clears is Array or clears.size() > 4: return {}
 	var kept := {"earned": Typed.as_int(value.earned), "balance": Typed.as_int(value.balance), "clears": []}
@@ -102,7 +114,20 @@ static func checked_receipt(value: Variant) -> Dictionary:
 		kept["turn"] = {"kind": turn.kind, "amount": Typed.as_int(turn.amount), "total": Typed.as_int(turn.total), "bonuses": bonuses.duplicate(),
 			"bonus_percent": Typed.as_int(turn.bonus_percent), "bloom": Typed.as_int(turn.bloom), "bloom_extra": Typed.as_int(turn.bloom_extra),
 			"boost_percent": Typed.as_int(turn.boost_percent), "boost": Typed.as_int(turn.boost), "reason": reason, "boost_from": from.duplicate()}
+	if value.has("item_bloom"):
+		var bloom := checked_item_bloom(value.item_bloom)
+		if bloom.is_empty(): return {}
+		kept["item_bloom"] = bloom
 	return kept
+
+## An item bloom as kept: {tier, item_id} for a dropped item, or {tier, pollen}
+## when the player owned every item of that tier; {} when it is not the contract's.
+static func checked_item_bloom(value: Variant) -> Dictionary:
+	if not value is Dictionary or not value.get("tier") in BLOOM_TIERS: return {}
+	var item: Variant = value.get("item_id")
+	if item is String and _item.search(item) != null and not value.has("pollen"): return {"tier": value.tier, "item_id": item}
+	if not value.has("item_id") and _count(value.get("pollen")) and int(value.pollen) > 0: return {"tier": value.tier, "pollen": Typed.as_int(value.pollen)}
+	return {}
 
 # --- Scopes ----------------------------------------------------------------
 
@@ -114,7 +139,7 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 	var key := scope_key(server, owner)
 	if not _scopes.has(key):
 		if not create: return {}
-		_scopes[key] = {"enabled": false, "wallet": {}, "claims": [], "results": [], "clears": [], "cleared": []}
+		_scopes[key] = {"enabled": false, "item_blooms": false, "wallet": {}, "claims": [], "results": [], "clears": [], "cleared": []}
 	return _scopes[key]
 
 ## Whether the server said Pollen earning is on for this player.
@@ -125,6 +150,17 @@ func set_enabled(server: String, owner: String, on: bool) -> void:
 	var scope := _scope(server, owner, on)
 	if scope.is_empty() or bool(scope.enabled) == on: return
 	scope.enabled = on
+	_save()
+
+## Whether the server said item blooms drop for this player (Help shows their odds then).
+func item_blooms(server: String, owner: String) -> bool:
+	var scope := _scope(server, owner)
+	return not scope.is_empty() and bool(scope.enabled) and bool(scope.get("item_blooms", false))
+
+func set_item_blooms(server: String, owner: String, on: bool) -> void:
+	var scope := _scope(server, owner, on)
+	if scope.is_empty() or bool(scope.get("item_blooms", false)) == on: return
+	scope.item_blooms = on
 	_save()
 
 ## The last confirmed wallet ({} until the server has said).
@@ -145,7 +181,7 @@ func note_wallet(server: String, owner: String, value: Variant) -> bool:
 ## Earned and bank are only ever taken from a wallet answer.
 func note_balance(server: String, owner: String, balance: Variant) -> bool:
 	var scope := _scope(server, owner)
-	if scope.is_empty() or (scope.wallet as Dictionary).is_empty() or not _count(balance): return false
+	if scope.is_empty() or (scope.wallet as Dictionary).is_empty() or not _balance(balance): return false
 	if int(scope.wallet.balance) != Typed.as_int(balance):
 		scope.wallet.balance = Typed.as_int(balance)
 		_save()
@@ -165,6 +201,8 @@ func note_receipt(server: String, owner: String, room_id: String, recording_hash
 	# taken from a wallet answer, so a phone that has none asks for one.
 	if not (scope.wallet as Dictionary).is_empty(): scope.wallet.balance = kept.balance
 	_save()
+	# An item bloom's item is owned now: the wardrobe shows it without asking again.
+	if kept.has("item_bloom") and kept.item_bloom.has("item_id"): Wardrobe.shared().note_drop(server, owner, kept.item_bloom.item_id)
 	return true
 
 ## The kept receipt for one of this player's turns, or {}.
@@ -291,7 +329,7 @@ func _load() -> void:
 	for key: Variant in parsed.scopes:
 		var value: Variant = parsed.scopes[key]
 		if not key is String or not key.contains("|") or not value is Dictionary: continue
-		var scope := {"enabled": value.get("enabled") == true, "wallet": {}, "claims": [], "results": [], "clears": [], "cleared": []}
+		var scope := {"enabled": value.get("enabled") == true, "item_blooms": value.get("item_blooms") == true, "wallet": {}, "claims": [], "results": [], "clears": [], "cleared": []}
 		for list: String in ["clears", "cleared"]:
 			if value.get(list) is Array:
 				for entry: Variant in value[list]:

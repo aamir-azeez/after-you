@@ -176,7 +176,7 @@ func _wallet_read() -> void:
 	await _settle(t.client)
 	_check(t.fake.sent.size() == 1, "Once kept, it is not asked for again on every flush")
 	var broken := _setup()
-	broken.fake.replies = [{"ok": true, "data": {"schema_version": 1.0, "balance": -3.0, "earned": 0.0, "bank": 0.0}}]
+	broken.fake.replies = [{"ok": true, "data": {"schema_version": 1.0, "balance": 2.5, "earned": 0.0, "bank": 0.0}}]
 	broken.client.flush()
 	await _settle(broken.client)
 	_check(broken.store.wallet(broken.api.base_url, ME).is_empty(), "A broken wallet answer is not kept")

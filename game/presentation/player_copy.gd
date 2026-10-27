@@ -117,6 +117,25 @@ const POLLEN_BANK_EMPTY := "Your full pay turns this week are used up, so it pay
 const POLLEN_LATE := "This turn was from an earlier week, so it pays a little."
 const POLLEN_FIRST_CLEAR := "First clear: +%d"
 const POLLEN_FIRST_HARD_CLEAR := "First Hard clear: +%d"
+## An item bloom, beside the player's own pip wearing the new item ("A lucky bloom: a new Daisy!").
+const POLLEN_ITEM_BLOOM := "A lucky bloom: a new %s!"
+## An item bloom when the player has every item it could bring: that item's Pollen price instead.
+const POLLEN_ITEM_BLOOM_POLLEN := "A lucky bloom: +%s Pollen"
+## The item name when this build does not know the item yet.
+const POLLEN_ITEM_BLOOM_UNKNOWN := "item for your pip"
+
+# The monthly Full Journey Pollen (presentation/pollen_grant_card.gd). Amounts come in grouped.
+const POLLEN_GRANT_TITLE := "Your monthly Pollen arrived"
+const POLLEN_GRANT_AMOUNT := "+%s Pollen from Full Journey"
+## The loyalty ladder under it ("Next month: 4,750 · Top step: 12,000").
+const POLLEN_GRANT_LADDER := "Next month: %s · Top step: %s"
+const POLLEN_GRANT_OK := "Got it"
+
+# Help: the published bloom odds (presentation/pollen_odds.gd, a Settings About row).
+const POLLEN_ODDS_TITLE := "Lucky blooms"
+const POLLEN_ODDS := "A full pay turn with a friend in a free chapter can bloom. In every 100 of those turns, 8 pay double and 2 pay triple."
+const POLLEN_ODDS_ITEMS := "The same turns can also bring a new item. In every 1,000,000 turns: Special 2, Epic 160, Rare 1,600, Uncommon 2,500 and Common 5,000. If you have every item it could bring, you get that item's Pollen price instead."
+const POLLEN_ODDS_PAID := "Paid chapters never bloom, and Full Journey never changes these odds."
 
 # The wardrobe (presentation/wardrobe_flow.gd, wardrobe_page.gd, wardrobe_sheets.gd).
 # Amounts come in grouped ("24,000") and money as "$0.20" (services/pollen_money.gd).
@@ -2347,6 +2366,9 @@ const COOPERATIVE_COMPLETION := "Your progress is saved."
 const COOPERATIVE_HOST_ACCESS := "Full Journey is only required for the host.\nA friend may join by invitation."
 # Full Journey subscription offer, shared by the store card and locked hosting.
 const SUBSCRIPTION_PURPOSE := "Full Journey is a subscription that pays for hosting and server costs. It unlocks every paid chapter for solo play and for hosting a friend."
+## The Full Journey card's Pollen lines, after the chapters (presentation/full_journey_benefits.gd).
+const FULL_JOURNEY_ROOM_BOOST := "Every room you play in earns 10% more Pollen, for you and your friend."
+const FULL_JOURNEY_GRANT := "%s Pollen a month, growing every month you stay."
 const SUBSCRIPTION_MONTHLY := "Subscribe · %s a month"
 const SUBSCRIPTION_YEARLY := "Subscribe · %s a year"
 const SUBSCRIPTION_TERMS_PLAY := "It renews automatically until you cancel. You can cancel any time in Google Play under Payments & subscriptions, and Full Journey stays unlocked until the end of the period you paid for."

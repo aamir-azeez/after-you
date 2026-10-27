@@ -30,6 +30,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const HistoryStore = preload("res://services/history_store.gd")
 const Changelog = preload("res://services/changelog.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
+const PollenOdds = preload("res://presentation/pollen_odds.gd")
 
 const EVERYDAY := "everyday"
 const PLAY := "play"
@@ -148,6 +149,8 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "community", "category": ABOUT, "kind": LINK, "label": PlayerCopy.SETTINGS_COMMUNITY, "note": PlayerCopy.SETTINGS_COMMUNITY_NOTE, "open": func(): host._open_safety()},
 		{"id": "whats_new", "category": ABOUT, "kind": LINK, "label": PlayerCopy.WHATS_NEW, "note": PlayerCopy.WHATS_NEW_VERSION % Changelog.current_version(),
 			"open": func(): host._open_whats_new_card()},
+		{"id": "pollen_odds", "category": ABOUT, "kind": INFO, "label": PlayerCopy.POLLEN_ODDS_TITLE, "note": func() -> String: return PollenOdds.note(host._names_scope()),
+			"visible_if": func() -> bool: return PollenOdds.shown(host._names_scope(), host._paid_content_hidden())},
 		{"id": "licenses", "category": ABOUT, "kind": INFO, "label": PlayerCopy.SETTINGS_LICENSES, "note": PlayerCopy.MAIN_0A022EF54291, "expand": func() -> Array: return license_rows(host)},
 	]
 

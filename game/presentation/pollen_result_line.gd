@@ -2,7 +2,9 @@ extends RefCounted
 ## The Pollen line after a turn (POLLEN-RULES.md "On screen"): what the turn
 ## earned, its skill bonus, the room's Full Journey boost and whose it was,
 ## and a small flower beside a lucky bloom. Kept small and quiet: no reel, no
-## countdown, nothing to buy, and pace only as words after the turn.
+## countdown, nothing to buy, and pace only as words after the turn. An item
+## bloom shows the new item on the player's own still pip ("A lucky bloom: a new
+## Daisy!"), with the same small words as any other line: no reveal, no fanfare.
 ##
 ## It is drawn only from a receipt the server confirmed (services/pollen_wallet.gd),
 ## only while the server says Pollen earning is on, and never on a build that
@@ -11,8 +13,15 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const Purchases = preload("res://services/purchases.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
+const Outfit = preload("res://services/outfit.gd")
+const OwnLook = preload("res://services/own_look.gd")
+const PollenMoney = preload("res://services/pollen_money.gd")
+const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 
 const FONT_SIZE := 18
+## The still pip beside an item bloom.
+const PIP_SIZE := Vector2(42, 56)
 
 ## Read once: the build's configuration never changes while the app runs.
 static var _hidden := -1
@@ -27,7 +36,8 @@ static func set_hidden_for_tests(value: int) -> void:
 
 ## The lines for one receipt, top to bottom. `partner` is the friend's name as
 ## the room shows it ("" when unknown). Bloom lines start with "*", where the
-## flower goes.
+## flower goes; an item bloom's line starts with "@<item id>|", where the
+## player's own pip wearing that item goes.
 static func lines(receipt: Dictionary, partner: String) -> PackedStringArray:
 	var out := PackedStringArray()
 	if receipt.is_empty(): return out
@@ -53,9 +63,24 @@ static func lines(receipt: Dictionary, partner: String) -> PackedStringArray:
 			"repeat": out.append(PlayerCopy.POLLEN_REPEAT)
 			"bank_empty": out.append(PlayerCopy.POLLEN_BANK_EMPTY)
 			"late": out.append(PlayerCopy.POLLEN_LATE)
+	var item: Dictionary = receipt.get("item_bloom", {})
+	if item.has("item_id"):
+		var named := Catalog.display_name(str(item.item_id))
+		out.append("@%s|%s" % [item.item_id, PlayerCopy.POLLEN_ITEM_BLOOM % (named if not named.is_empty() else PlayerCopy.POLLEN_ITEM_BLOOM_UNKNOWN)])
+	elif item.has("pollen"):
+		out.append("*" + PlayerCopy.POLLEN_ITEM_BLOOM_POLLEN % PollenMoney.grouped(int(item.pollen)))
 	for clear: Dictionary in receipt.get("clears", []):
 		out.append((PlayerCopy.POLLEN_FIRST_HARD_CLEAR if clear.get("kind") == "hardclear" else PlayerCopy.POLLEN_FIRST_CLEAR) % int(clear.get("total", 0)))
 	return out
+
+## The player's own pip at rest, wearing the item an item bloom brought: a still
+## texture from the shared renderer, never a live view of its own.
+static func dropped_pip(item_id: String) -> Control:
+	var pip := PipAvatar.new(true, OwnLook.color(), PIP_SIZE, true)
+	pip.name = "PollenItemBloomPip"
+	pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	pip.wear(Outfit.of(item_id, true))
+	return pip
 
 ## The line for one of the viewer's turns in a room, or null when there is
 ## nothing to show. `scope` is {server, owner} of the signed-in player.
@@ -76,6 +101,9 @@ static func build(scope: Dictionary, room_id: String, recording_hash: String, pa
 		if line.begins_with("*"):
 			row.add_child(Flower.new())
 			line = line.substr(1)
+		elif line.begins_with("@") and line.contains("|"):
+			row.add_child(dropped_pip(line.substr(1, line.find("|") - 1)))
+			line = line.substr(line.find("|") + 1)
 		var label := Label.new()
 		label.text = line
 		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
