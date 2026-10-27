@@ -16,7 +16,9 @@ import type { HistoryView, PollenReceipt, WalletView } from "./wallet";
  *
  * Cost on the Free plan: one Player request (creditTurn) after each accepted standalone turn, one
  * more to the partner's Player on the turn that finishes a chapter together, and none on reads:
- * GET /v1/pollen and its history ride on auth()'s own Player call (authorizeWallet).
+ * GET /v1/pollen and its history ride on auth()'s own Player call (authorizeWallet). While the grant
+ * is on, that call itself reads RevenueCat when an instalment is due (a subrequest, about once a month
+ * per subscriber) and asks PollenClaims once per subscription new to the player (grant-settle.ts).
  */
 export const POLLEN_HEADER = "X-AfterYou-Pollen";
 export const POLLEN_VERSION = 1;

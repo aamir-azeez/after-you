@@ -20,9 +20,13 @@ import { validTurnFacts } from "./turn-facts";
  *     turn:<room_id>:<recording_hash>   an accepted turn (pruned after turn_prune_days)
  *     clear:<level_id>                  a chapter's first clear, together or solo (kept)
  *     hardclear:<level_id>              a chapter's first Hard clear together (kept)
+ *     grant:<anchor>:<n>, grant:lifetime, grantrefund:<anchor>:<n>
+ *                                       the monthly grant and its refunds (grant-settle.ts; kept)
  *   A turn that pays nothing writes no row: a turn played before the guest joined (never paid, by its
  *   frozen facts), or one whose week's after-bank turns are used up (that count only grows, and only
  *   a turn of the current week spends the bank).
+ * The balance may go below zero only by a refund taking back what it paid (POLLEN-RULES.md "Refunds"):
+ * spending then stops (spend.ts) and earning repays it first. Lifetime earned never goes down.
  *
  * Every check and write of one credit happens in one synchronous transaction, after the only
  * awaits (the two bloom rolls), so two credits of the same key can never both pay, and an item
@@ -84,7 +88,7 @@ function ensureTables(storage: DurableObjectStorage): void {
 
 export function validWallet(value: unknown, rates: Rates = RATES): value is WalletState {
   if (!isObject(value) || Object.keys(value).length !== 8 || value.schema_version !== 1) return false;
-  if (!count(value.balance) || !count(value.earned) || !count(value.bank, 0, rates.bank.cap) || !count(value.week) || !count(value.fj_until, 0, MAX_TIME) || !count(value.pruned_day)) return false;
+  if (!(typeof value.balance === "number" && Number.isSafeInteger(value.balance)) || !count(value.earned) || !count(value.bank, 0, rates.bank.cap) || !count(value.week) || !count(value.fj_until, 0, MAX_TIME) || !count(value.pruned_day)) return false;
   if (!isObject(value.weeks) || Object.keys(value.weeks).length > rates.claims.weeks_kept + 1) return false;
   return Object.entries(value.weeks).every(([week, state]) => /^[0-9]{1,7}$/.test(week) && isObject(state) && Object.keys(state).length === 2 &&
     Array.isArray(state.slots) && state.slots.length <= MAX_SLOTS && state.slots.every(slot => typeof slot === "string" && slot.length <= 160) && count(state.tail, 0, tailLength(rates)));
@@ -300,6 +304,37 @@ export function payFromWallet(storage: DurableObjectStorage, amount: number, now
 export function chapterCleared(storage: DurableObjectStorage, levelId: string): boolean {
   return present(storage) && claimed(storage, clearClaimKey("clear", levelId)) !== null;
 }
+
+/**
+ * One line of the ledger that is not a turn or a clear (the monthly grant, its refunds): its claim key,
+ * kind, signed amount and what to keep for checking it later.
+ */
+export type LedgerEntry = { key: string; kind: string; amount: number; detail: Record<string, unknown> };
+/**
+ * Pays (or, for a negative amount, takes back) each entry whose key is not in the ledger yet, inside
+ * the caller's transaction; an entry already there changes nothing. The entries it applied.
+ */
+export function applyLedger(storage: DurableObjectStorage, entries: readonly LedgerEntry[], now: number, rates: Rates = RATES): LedgerEntry[] {
+  const fresh = entries.filter(entry => !inLedger(storage, entry.key));
+  if (fresh.length === 0) return [];
+  ensureTables(storage);
+  const wallet = current(storage, now, rates);
+  for (const entry of fresh) {
+    insertClaim(storage, entry.key, entry.kind, entry.amount, now, { schema_version: 1, earned: Math.max(0, entry.amount), clears: [] }, entry.detail);
+    wallet.balance += entry.amount;
+    if (entry.amount > 0) wallet.earned += entry.amount;
+  }
+  save(storage, wallet, now, rates);
+  return fresh;
+}
+/** The ledger lines of one kind, newest first, with what each kept (for refunds and the grant's wallet line). */
+export function ledgerLines(storage: DurableObjectStorage, kind: string, limit = 64): { key: string; amount: number; at: number; detail: Record<string, unknown> }[] {
+  if (!present(storage)) return [];
+  return storage.sql.exec<{ claim_key: string; amount: number; created_at: number; data: string }>("SELECT claim_key,amount,created_at,data FROM pollen_claims WHERE kind=? ORDER BY created_at DESC, claim_key DESC LIMIT ?", kind, limit).toArray()
+    .map(row => ({ key: row.claim_key, amount: row.amount, at: row.created_at, detail: (JSON.parse(row.data) as StoredClaim).detail ?? {} }));
+}
+/** Whether a ledger key is taken. */
+export function inLedger(storage: DurableObjectStorage, key: string): boolean { return present(storage) && claimed(storage, key) !== null; }
 
 /** Account erasure: the wallet and every claim go (wardrobe.ts drops the rest). A Player that never earned has nothing to drop. */
 export function dropWallet(storage: DurableObjectStorage): void {

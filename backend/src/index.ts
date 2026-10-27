@@ -45,6 +45,7 @@ export { Room } from "./room";
 export { RoomV2 } from "./v2/room";
 export { LeaderboardBoard } from "./leaderboards/board";
 export { LeaderboardMember } from "./leaderboards/member";
+export { PollenClaims } from "./pollen/claims";
 import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
 import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
 import { forgetLeaderboardPlayer, forgetLeaderboardPlayerIfKnown } from "./leaderboards/members";

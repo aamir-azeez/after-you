@@ -51,8 +51,16 @@ export const POLLEN_SHOP_TABLES: readonly LazyTable[] = Object.freeze([
   { name: "pollen_ops", schema: "CREATE TABLE pollen_ops (op_key TEXT PRIMARY KEY, request_hash TEXT NOT NULL, created_at INTEGER NOT NULL, data TEXT NOT NULL) WITHOUT ROWID", maxRows: 64 },
   { name: "pollen_look", schema: "CREATE TABLE pollen_look (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)", maxRows: 1 }
 ]);
+/**
+ * Player: the Full Journey monthly grant (pollen/grant-settle.ts), made by the first read that finds a
+ * subscription to watch, never for a player who never subscribed. One row: the loyalty count, the
+ * anchor and the subscriptions it knows. Its instalments are ledger rows in pollen_claims.
+ */
+export const POLLEN_GRANT_TABLES: readonly LazyTable[] = Object.freeze([
+  { name: "pollen_grant", schema: "CREATE TABLE pollen_grant (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)", maxRows: 1 }
+]);
 /** Every Pollen table a Player may hold: account erasure drops them all, and snapshots refuse a Player that has any. */
-export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([...POLLEN_WALLET_TABLES, ...POLLEN_SHOP_TABLES]);
+export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([...POLLEN_WALLET_TABLES, ...POLLEN_SHOP_TABLES, ...POLLEN_GRANT_TABLES]);
 /** RoomV2: frozen Pollen facts per accepted turn and each member's Full Journey end (pollen/turn-facts.ts). */
 export const POLLEN_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
   // One row per accepted turn, as the turns table (MAX_TURNS); the oldest go first past it.

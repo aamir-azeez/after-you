@@ -27,7 +27,10 @@ import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESS
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
-import { itemBloomsOn } from "./pollen/features";
+import { grantOn, itemBloomsOn } from "./pollen/features";
+import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/grant-settle";
+import { readGrant } from "./pollen/grant-provider";
+import { claimFor } from "./pollen/claims";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice } from "./pollen/name-price";
 import type { Look } from "./pollen/catalog";
@@ -183,13 +186,32 @@ export class Player extends DurableObject<Env> {
   /**
    * authorize() plus the wallet or its history (GET /v1/pollen and /v1/pollen/history), from one call.
    * With `shop` (the shop is on) the wallet also carries the wardrobe and the next name change price.
+   * While the grant is on, the wallet read first pays any monthly instalment that is due (pollen/grant-settle.ts)
+   * and carries the player's `grant` ladder once they have one.
    */
-  authorizeWallet(deviceHash: string, view: "wallet" | "history", shop = false): { authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { wardrobe: WardrobeView; name_price: number }) } {
+  async authorizeWallet(deviceHash: string, view: "wallet" | "history", shop = false): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage) };
-    const now = Date.now(), wallet = walletView(this.ctx.storage, now);
-    return { authorized: true, linked: true, pollen: shop ? { ...wallet, wardrobe: wardrobeView(this.ctx.storage), name_price: nextNamePrice(identity, now) } : wallet };
+    const grant = grantOn(this.env);
+    if (grant) {
+      await this.settleGrant(identity.player_id);
+      // A recovery may have replaced the device while the provider answered.
+      if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
+    }
+    const now = Date.now(), wallet = walletView(this.ctx.storage, now), ladder = grant ? grantView(this.ctx.storage) : undefined;
+    const read = ladder ? { ...wallet, grant: ladder } : wallet;
+    return { authorized: true, linked: true, pollen: shop ? { ...read, wardrobe: wardrobeView(this.ctx.storage), name_price: nextNamePrice(identity, now) } : read };
+  }
+  /** The monthly grant check (pollen/grant-settle.ts); a failure never stops the wallet read it rides on. */
+  private async settleGrant(owner: string): Promise<void> {
+    const now = Date.now();
+    try {
+      await settleGrant(this.ctx.storage, now, this.pollenActive(owner), {
+        read: lifetime => readGrant(owner, this.env, lifetime),
+        claim: keys => claimFor(this.env, owner, keys, now)
+      });
+    } catch (error) { logWarning("pollen_grant_failed", { reason: errorCode(error) }); }
   }
   /**
    * Binding only: one purchase (POST /v1/pollen/spend, pollen/wardrobe.ts spend). The device is checked
@@ -946,6 +968,7 @@ export class Player extends DurableObject<Env> {
       dropRoomIndex(this.ctx.storage);
       dropWallet(this.ctx.storage);
       dropWardrobe(this.ctx.storage);
+      dropGrant(this.ctx.storage);
     });
     await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner);
     return ok({ deleted: true });
@@ -954,7 +977,7 @@ export class Player extends DurableObject<Env> {
 
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
-  authorizeNamed: () => ({ authorized: false, linked: true }), authorizeWallet: () => ({ authorized: false, linked: true }),
+  authorizeNamed: () => ({ authorized: false, linked: true }), authorizeWallet: async () => ({ authorized: false, linked: true }),
   creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), pollenSpend: () => fail(401, "invalid_auth"), pollenEquip: () => fail(401, "invalid_auth"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),

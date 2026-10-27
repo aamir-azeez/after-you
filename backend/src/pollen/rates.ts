@@ -30,6 +30,11 @@ export type Rates = {
    */
   item_blooms: { modulus: number; tiers: readonly { tier: string; below: number }[] };
   /**
+   * The Full Journey monthly grant (pollen/grant.ts): month n of a subscription pays
+   * min(first + step x (n - 1), top). `lifetime_thanks`: the one-off thank-you for the old Lifetime unlock.
+   */
+  grant: { first: number; step: number; top: number; lifetime_thanks: number };
+  /**
    * Estimated pace: Gold at or under best x gold_percent%, Silver at or under best x silver_percent%,
    * nothing under best x floor_percent%. `best_ticks` is keyed "level_id|stage_id|role"; a stage
    * with no entry has no pace bonus.
@@ -58,6 +63,8 @@ export function checkedRates(value: unknown): Rates {
   const items = rates.item_blooms;
   if (!count(items?.modulus, 1) || !Array.isArray(items.tiers) || !items.tiers.every((step, index) => typeof step?.tier === "string" && /^[a-z]{1,16}$/.test(step.tier) &&
     count(step.below, 1) && step.below <= items.modulus && (index === 0 || step.below > items.tiers[index - 1].below)) || new Set(items.tiers.map(step => step.tier)).size !== items.tiers.length) fail("item_blooms");
+  const grant = rates.grant;
+  if (!count(grant?.first, 1) || !count(grant.step) || !count(grant.top, 1) || grant.top < grant.first || !count(grant.lifetime_thanks)) fail("grant");
   const pace = rates.pace;
   if (!count(pace?.gold_percent, 1) || !count(pace.silver_percent, 1) || !count(pace.floor_percent) || pace.gold_percent > pace.silver_percent || pace.floor_percent > pace.gold_percent) fail("pace");
   for (const [stage, ticks] of Object.entries(pace.best_ticks ?? {})) if (!/^[a-z0-9-]+\|[a-z0-9-]+\|[ab]$/.test(stage) || !count(ticks, 1)) fail("pace " + stage);
