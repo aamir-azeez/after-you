@@ -12,6 +12,7 @@ const REMOVE_ICON = preload("res://assets/ui/social/minus-circle.svg")
 const SHARE_ICON = preload("res://assets/ui/social/share-network.svg")
 const ADD_ICON = preload("res://assets/ui/social/plus.svg")
 const USERS_ICON = preload("res://assets/ui/social/users.svg")
+const LEADERBOARD_ICON = preload("res://assets/ui/whats_new/star.svg")
 const PENCIL_ICON = preload("res://assets/ui/social/pencil-simple.svg")
 const CHECK_ICON = preload("res://assets/ui/check.svg")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
@@ -49,6 +50,8 @@ signal closed
 signal host_requested
 signal open_requested
 signal join_requested(descriptor: Dictionary)
+## Leaderboards was tapped (shown only while the server has them open).
+signal leaderboards_requested
 ## A short line for the app's pop-up (presentation/toast.gd): an error, a result
 ## or `news` (a friend request, a room made available). The page never draws
 ## it, so nothing on the page moves for one.
@@ -125,6 +128,9 @@ var _notification_preferences: Dictionary = {}
 var _events_supported := false
 var _event_ack_pending := false
 var _modal: Control
+var _leaderboards_button: Button
+## A page opened over this one (presentation/leaderboard_screen.gd); Back closes it first.
+var _overlay: CanvasLayer
 ## One validated invite-link friend ID waiting for confirmation; never sent without a tap.
 var _link_id := ""
 ## Clipboard and system share outputs; tests replace them.
@@ -178,6 +184,8 @@ func _ready() -> void:
 	show_name_chip()
 	_countdown = Label.new()
 	_countdown.add_theme_color_override("font_color",MUTED)
+	_leaderboards_button = _icon_button(LEADERBOARD_ICON,PlayerCopy.LEADERBOARDS,_open_leaderboards,true,refresh_row)
+	_leaderboards_button.visible = false
 	_refresh_button = _icon_button(REFRESH_ICON,"Refresh",func(): _refresh(true),true,refresh_row)
 	refresh_row.add_child(_countdown)
 	_scroll = ScrollContainer.new()
@@ -246,7 +254,8 @@ func _notification(what: int) -> void:
 	elif what in [NOTIFICATION_APPLICATION_RESUMED,NOTIFICATION_APPLICATION_FOCUS_IN]: _foreground = true
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST:
 		# Back closes an open pop-up first, as its own Back would, then the page.
-		if is_instance_valid(_modal) and not _modal.is_queued_for_deletion(): _modal.go_back()
+		if is_instance_valid(_overlay) and not _overlay.is_queued_for_deletion(): _overlay.go_back()
+		elif is_instance_valid(_modal) and not _modal.is_queued_for_deletion(): _modal.go_back()
 		else: close()
 	if what in [NOTIFICATION_APPLICATION_PAUSED,NOTIFICATION_APPLICATION_FOCUS_OUT,NOTIFICATION_APPLICATION_RESUMED,NOTIFICATION_APPLICATION_FOCUS_IN]: _update_countdowns()
 
@@ -1191,6 +1200,19 @@ func _act(action: String, peer: Dictionary = {}) -> void:
 		join_requested.emit(descriptor)
 		close()
 	else: _render()
+
+## Shows the Leaderboards button once the server says they are open.
+func show_leaderboards(available: bool) -> void:
+	if is_instance_valid(_leaderboards_button): _leaderboards_button.visible = available
+
+func _open_leaderboards() -> void:
+	if _current() and not is_instance_valid(_overlay): leaderboards_requested.emit()
+
+## Opens a page over this one; it closes with this page, and Back reaches it first.
+func open_overlay(page: CanvasLayer) -> void:
+	if is_instance_valid(_overlay): _overlay.close()
+	_overlay = page
+	add_child(page)
 
 func close() -> void:
 	if not _alive: return

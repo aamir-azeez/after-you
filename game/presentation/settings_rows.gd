@@ -29,6 +29,7 @@ const Licenses = preload("res://services/licenses.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const HistoryStore = preload("res://services/history_store.gd")
 const Changelog = preload("res://services/changelog.gd")
+const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 
 const EVERYDAY := "everyday"
 const PLAY := "play"
@@ -80,6 +81,11 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"options": [["30", PlayerCopy.SETTINGS_FPS_30], ["60", PlayerCopy.SETTINGS_FPS_60], ["unlimited", PlayerCopy.SETTINGS_FPS_UNLIMITED]]},
 
 		{"id": "share_online_status", "icon": preload("res://assets/ui/whats_new/people.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ONLINE_STATUS, "note": PlayerCopy.SETTINGS_ONLINE_STATUS_NOTE, "key": "share_online_status"},
+		# Shown while the server has leaderboards open (presentation/leaderboard_screen.gd); off by default.
+		{"id": "leaderboard_name", "icon": preload("res://assets/ui/whats_new/star.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_LEADERBOARD_NAME, "note": PlayerCopy.SETTINGS_LEADERBOARD_NAME_NOTE,
+			"get": func() -> bool: return LeaderboardClient.shared(host.api, str(host.api.player_id)).show_name(),
+			"set": func(on: bool) -> bool: return LeaderboardClient.shared(host.api, str(host.api.player_id)).set_show_name(on),
+			"visible_if": func() -> bool: return host.relay_session != null and host.relay_session.leaderboards_supported() and not str(host.api.player_id).is_empty()},
 		{"id": "notifications_about", "category": FRIENDS, "kind": INFO, "label": PlayerCopy.SETTINGS_NOTIFICATIONS,
 			"note": PlayerCopy.for_platform(PlayerCopy.MAIN_EF43E19393E4, PlayerCopy.MAIN_EF43E19393E4_IOS)},
 		{"id": "turn_notifications", "icon": preload("res://assets/ui/whats_new/bell.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.MAIN_C4B947AAAE59, "note": notices.status_line,

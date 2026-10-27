@@ -21,10 +21,15 @@ extends Node
 ## - names: display_name_flow (chip, flush, maybe_ask), for the header chip and
 ##   the first-run name prompt
 ## - node: add_child (the Friends layer stays Main's child)
+## - leaderboards: ensure_relay_session, relay_session (capabilities), api
+##   (player_id), _paid_content_hidden, for the page opened over Friends
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link(). refresh() calls the screen's private
 ## _refresh, as Main's alert routing did.
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
+const LeaderboardScreen = preload("res://presentation/leaderboard_screen.gd")
+const LeaderboardClient = preload("res://services/leaderboard_client.gd")
+const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Typed = preload("res://services/typed_values.gd")
 ## Main's mode while Friends is up.
@@ -84,7 +89,30 @@ func open(from_home: bool) -> void:
 	screen.host_requested.connect(_host)
 	screen.open_requested.connect(_return_to_room)
 	screen.join_requested.connect(_join)
+	screen.leaderboards_requested.connect(_open_leaderboards)
 	host.add_child(screen)
+	_offer_leaderboards(screen)
+
+## Shows Friends' Leaderboards button once the server's capabilities say they
+## are open, reading them first when this session has not yet.
+func _offer_leaderboards(page: CanvasLayer) -> void:
+	host.ensure_relay_session()
+	var session: RefCounted = host.relay_session
+	if session.capabilities.is_empty(): await session.load_capabilities()
+	if not is_instance_valid(page) or page != screen: return
+	page.show_leaderboards(session.leaderboards_supported())
+	# The name choice as the server keeps it, so Settings shows it right after a reinstall.
+	if session.leaderboards_supported(): LeaderboardClient.shared(host.api, str(host.api.player_id)).sync()
+
+## Leaderboards, over Friends.
+func _open_leaderboards() -> void:
+	if not is_open() or host.application_backgrounded: return
+	var board := LeaderboardScreen.new()
+	board.client = LeaderboardClient.shared(host.api, str(host.api.player_id))
+	board.player_id = str(host.api.player_id)
+	board.chapter_filter = func(key: String) -> bool: return not (host._paid_content_hidden() and bool(Registry.descriptor(key).get("premium", false)))
+	board.notice.connect(host.notification_flow.friends_notice)
+	screen.open_overlay(board)
 
 ## A friends list read while Friends is up: display names may have just come
 ## on (the chip appears and the first-run prompt opens once), and a name
