@@ -230,6 +230,28 @@ describe("Pollen from turns", () => {
     const again = await (await call("/v1/pollen/clear-claims", "POST", guest, { schema_version: 1, claims: [{ room_id: current.room_id }] })).json<{ results: { status: string; receipt?: PollenReceipt }[] }>();
     expect(again.results).toMatchObject([{ room_id: current.room_id, status: "credited", receipt: { earned: 0, balance: earned.guest + 1320 } }]);
   });
+  it("recovers a partner's first clear the finishing turn could not pay, by that partner's own room claim", async () => {
+    const host = await create(), guest = await create();
+    let current = await room(host, guest);
+    for (const [account, recording, checkpoint] of [[host, firstA, undefined], [guest, firstB, middle], [guest, secondA, undefined]] as const) current = (await turn(current, account, recording, checkpoint)).room;
+    const failing = { ...env, PLAYERS: new Proxy(env.PLAYERS, { get(target, name) {
+      if (name !== "getByName") { const value = Reflect.get(target, name); return typeof value === "function" ? value.bind(target) : value; }
+      return (id: string) => new Proxy(target.getByName(id), { get(stub, method) {
+        if (method === "creditTogetherClear") return () => Promise.reject(new Error("player_unreachable"));
+        const value = Reflect.get(stub, method);
+        return typeof method !== "string" || typeof value !== "function" ? value : (...args: unknown[]) => (stub as unknown as Record<string, (...a: unknown[]) => unknown>)[method](...args);
+      } });
+    } }) } as unknown as Env;
+    const finish = await call(`/v2/rooms/${current.room_id}/turns`, "POST", host, turnBody(current, secondB, final), ON, ASK, failing);
+    expect(finish.status).toBe(200);
+    expect(receipt(await finish.json<Reply>()).clears.map(line => line.kind)).toEqual(["clear"]);
+    const before = (await wallet(guest)).balance;
+    const claimed = await (await call("/v1/pollen/clear-claims", "POST", guest, { schema_version: 1, claims: [{ room_id: current.room_id }] })).json<{ results: { status: string; receipt?: PollenReceipt }[] }>();
+    expect(claimed.results).toMatchObject([{ status: "credited", receipt: { earned: 1200, clears: [{ kind: "clear", total: 1200 }] } }]);
+    expect((await wallet(guest)).balance).toBe(before + 1200);
+    const again = await (await call("/v1/pollen/clear-claims", "POST", guest, { schema_version: 1, claims: [{ room_id: current.room_id }] })).json<{ results: { status: string; receipt?: PollenReceipt }[] }>();
+    expect(again.results[0].receipt!.earned).toBe(0);
+  });
   it("pays a solo first clear the app claims once, and a paid chapter's only with Full Journey", async () => {
     const free = await create(), member = await create();
     await subscribe(member);
