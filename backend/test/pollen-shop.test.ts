@@ -168,7 +168,7 @@ describe("wearing", () => {
     expect(await (await equip(player, body)).json()).toEqual(receipt);
     expect((await equip(player, { ...body, look: {} })).status).toBe(409);
     expect((await wallet(player)).wardrobe).toMatchObject({ look: { hat: "daisy", body: "tide" }, look_revision: body.revision });
-    for (const look of [{ body: "daisy" }, { hat: "nothing" }, { shoe: "daisy" }]) expect((await equip(player, equipBody(look))).status, JSON.stringify(look)).toBe(400);
+    for (const look of [{ body: "daisy" }, { hat: "nothing" }, { shoe: "daisy" }] as Record<string, string>[]) expect((await equip(player, equipBody(look))).status, JSON.stringify(look)).toBe(400);
   });
   it("never lets an older equip that arrives late undo a newer one", async () => {
     const player = await create(); await fund(player, 2000);
