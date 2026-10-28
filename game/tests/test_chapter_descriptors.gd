@@ -277,7 +277,8 @@ func _home() -> void:
 		if key != LEGACY_LIGHTHOUSE: _same(Keepsakes.local_path(key), Index.data(key).local_path, "A browsed chapter's Home save is its solo save: " + key)
 	_home_keepsakes()
 
-## Each level id has exactly one home_keepsake, on its offered version, with a
+## Each level id has exactly one home_keepsake, on the version nothing
+## supersedes (the offered one, or a new chapter not released yet), with a
 ## builder that loads and builds, a Home island, copy and known sounds.
 func _home_keepsakes() -> void:
 	var levels: Dictionary = {}
@@ -287,7 +288,7 @@ func _home_keepsakes() -> void:
 		if not levels.has(level): levels[level] = []
 		if keepsake.is_empty(): continue
 		levels[level].append(key)
-		_check(key in Registry.offered_keys(), "A keepsake lives on its chapter's offered version: " + key)
+		_check(not Registry.SUPERSEDED.has(key), "A keepsake lives on the version nothing supersedes: move %s's home_keepsake to %s" % [key, Registry.SUPERSEDED.get(key, "")])
 		_same(_sorted(keepsake.keys()), ["builder", "copy", "island", "slot", "sounds"], "home_keepsake fields of " + key)
 		_check(ResourceLoader.exists(str(keepsake.get("builder"))) and load(str(keepsake.builder)).new().has_method("build"), "The keepsake builder of %s loads: %s" % [key, keepsake.get("builder")])
 		_check(keepsake.get("island") in ["left", "right"], "The keepsake of %s names a Home island" % key)

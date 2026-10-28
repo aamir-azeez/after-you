@@ -10,12 +10,18 @@ test_chapter_descriptors refuses for a released chapter.
 
 --version-of makes the next version of a registered chapter. Its catalog reads
 the earlier definition and gives it the new version on rules 9; the world, the
-thumbnail, the copy and the Home places stay the earlier version's, and the
-earlier version's descriptor is left as it is.
+thumbnail, the copy, the Home places and the Home keepsake stay the earlier
+version's, and the earlier version's descriptor is left as it is. A chapter
+has exactly one Home keepsake, on the version nothing supersedes: releasing
+the new version (superseded_by on the earlier one) moves the earlier
+descriptor's "home_keepsake" to it, and test_chapter_descriptors says so.
 
-Home places get no slot here: an unreleased chapter is not on Home, and
-test_home_keepsake_display fails a released chapter whose places have no row
-in presentation/home_keepsake_slots.gd.
+A new chapter gets its Home keepsake: the descriptor's "home_keepsake" field,
+a placeholder builder in game/presentation/keepsakes/ (from
+chapter_templates/keepsake.gd.tmpl) and "TODO copy" names for it. Its slot is
+the middle of its island, where another keepsake stands: an unreleased chapter
+is not on Home, and test_home_keepsake_layer fails a released one until its
+slot is moved clear.
 
 Nothing is written when any file to create already exists, any shared entry is
 already there, a stage id is already used in game/core, or a fixture the
@@ -265,6 +271,8 @@ def add_copy(plan: Plan, const: str, title: str, key: str, stage_copy: bool) -> 
         if stage_copy:
             block.append(f'const {const}_STAGE_{stage}_HINT_A := "TODO copy: {title}, stage {stage}, first turn"')
             block.append(f'const {const}_STAGE_{stage}_HINT_B := "TODO copy: {title}, stage {stage}, second turn"')
+    for name in KEEPSAKE_COPY:
+        block.append(f'const {const}_KEEPSAKE_{name} := "TODO copy: {title} keepsake {name.lower()}"')
     copy = plan.text(relative)
     plan.insert(relative, len(copy.lines), block)
 
@@ -301,8 +309,29 @@ def descriptor(values: dict[str, str], stage_copy: bool) -> str:
     lines.append('\t"keepsakes": [')
     for number, stage in enumerate(stages, 1):
         lines.append(f'\t\t{{"stage_id": "{stage}", "title": PlayerCopy.{v["CONST"]}_STAGE_{number}_TITLE}},')
-    lines += ["\t],", f'\t"server": {{"flag": "{v["FLAG"]}", "max_branches": 32}},', "}", ""]
+    lines.append("\t],")
+    lines += home_keepsake(v)
+    lines += [f'\t"server": {{"flag": "{v["FLAG"]}", "max_branches": 32}},', "}", ""]
     return "\n".join(lines)
+
+
+# The cues a placeholder keepsake plays, one per beat (services/sound_cues.gd CUES).
+KEEPSAKE_SOUNDS = {"base": "garden_opened", "together": "lift_ready", "hard": "bell_rung", "top": "island_bloomed"}
+KEEPSAKE_COPY = ("NAME", "ACTION", "TOGETHER", "HARD", "TOP")
+
+
+def home_keepsake(v: dict[str, str]) -> list[str]:
+    """The descriptor's home_keepsake field (content/chapters/index.gd): the
+    placeholder builder, the middle of the chapter's island, its copy and sounds."""
+    sounds = ", ".join(f'"{beat}": "{cue}"' for beat, cue in KEEPSAKE_SOUNDS.items())
+    lines = ["\t# The chapter's keepsake on Home (presentation/keepsakes/).", '\t"home_keepsake": {',
+             f'\t\t"builder": "{v["KEEPSAKE_RES"]}",',
+             f'\t\t"island": "{"left" if v["PREMIUM"] == "true" else "right"}",',
+             '\t\t"slot": [0.0, 0.0],',
+             '\t\t"copy": {']
+    lines += [f'\t\t\t"{name.lower()}": PlayerCopy.{v["CONST"]}_KEEPSAKE_{name},' for name in KEEPSAKE_COPY]
+    lines += ["\t\t},", f'\t\t"sounds": {{{sounds}}},', "\t},"]
+    return lines
 
 
 def version_descriptor(earlier: Path, values: dict[str, str]) -> str:
@@ -332,7 +361,7 @@ def version_descriptor(earlier: Path, values: dict[str, str]) -> str:
     out += [line for line in head.split("\n")[2:] if line]
     out.append("const DATA := {")
     for name, lines in entries:
-        if name in ("keepsakes", "superseded_by", "version_of", "released"):
+        if name in ("keepsakes", "home_keepsake", "superseded_by", "version_of", "released"):
             continue
         if name in replaced:
             lines = [replaced[name]]
@@ -386,6 +415,7 @@ def scaffold(args: argparse.Namespace, root: Path) -> Plan:
         "CATALOG_RES": f"res://core/{family}/{stem}_catalog.gd", "SCENE_RES": f"res://{stem}.tscn",
         "WORLD_RES": f"res://presentation/{stem}_world.gd", "THUMBNAIL_RES": f"res://assets/chapter_thumbnails/{level_id}.png",
         "LOCAL_PATH": local_path, "WITNESS_FILE": f"{stem}_witness.gd", "WORLD_BASE": config["world_base"],
+        "KEEPSAKE_RES": f"res://presentation/keepsakes/{stem}.gd",
     }
     families = (root / "game/services/chapter_families.gd").read_text(encoding="utf-8")
     row = re.search(r'^\t"' + re.escape(family) + r'": \{(.*?)\n(?=\t[^\t]|\})', families, re.M | re.S)
@@ -430,6 +460,7 @@ def scaffold(args: argparse.Namespace, root: Path) -> Plan:
         plan.create(f"game/presentation/{stem}_world.gd", template("world.gd.tmpl", values))
         plan.create(f"game/assets/chapter_thumbnails/{level_id}.png", (TEMPLATES / "placeholder-thumbnail.png").read_bytes())
         plan.create(f"game/tests/{stem}_witness.gd", template("witness.gd.tmpl", values))
+        plan.create(f"game/presentation/keepsakes/{stem}.gd", template("keepsake.gd.tmpl", values))
     plan.create(f"game/{stem}.tscn", template("scene.tscn.tmpl", values))
     plan.create(f"game/tests/test_{stem}.gd", template("test_chapter.gd.tmpl", values))
     plan.create(f"game/tests/test_{stem}_world.gd", template("test_chapter_world.gd.tmpl", values))

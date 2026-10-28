@@ -11,6 +11,7 @@ const Builder = preload("res://presentation/keepsakes/keepsake_builder.gd")
 const GlWarmup = preload("res://services/gl_warmup.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const Index = preload("res://content/chapters/index.gd")
 const MAX_PARTS := 50
 const MAX_TRIANGLES := 3500
 const MAX_MOVING := 6
@@ -32,7 +33,7 @@ func _run() -> void:
 	var warm: Array = GlWarmup.MATERIALS.map(func(key: Dictionary) -> Dictionary: return key)
 	var all_parts := 0
 	var all_triangles := 0
-	for entry: Dictionary in States.entries():
+	for entry: Dictionary in _every_keepsake():
 		var builder: RefCounted = load(str(entry.keepsake.builder)).new()
 		_check(builder is Builder, "%s's builder extends keepsake_builder.gd" % entry.id)
 		for flags in range(16):
@@ -75,6 +76,18 @@ func _run() -> void:
 	stage.free()
 	print("KEEPSAKE PROPS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## Home's keepsakes, then any registered chapter's not on Home yet (a new
+## chapter not released), held to the same budget before it ships.
+func _every_keepsake() -> Array:
+	var result: Array = States.entries().duplicate()
+	var seen: Array = result.map(func(entry: Dictionary) -> String: return entry.id)
+	for key: String in Index.keys():
+		var level := key.get_slice("@", 0)
+		if seen.has(level) or Index.data(key).home_keepsake.is_empty(): continue
+		seen.append(level)
+		result.append({"id": level, "keepsake": Index.data(key).home_keepsake, "hard": true, "together": true})
+	return result
 
 func _count(node: Node) -> Array:
 	var parts := 0

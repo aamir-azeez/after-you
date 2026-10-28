@@ -1,0 +1,50 @@
+extends "res://presentation/keepsakes/keepsake_builder.gd"
+## {{TITLE}}'s keepsake on Home: a placeholder from scripts/new_chapter.py, a
+## plinth with a ball that hops when tapped, with the together piece beside it,
+## the Hard footing under it and the gold top above. Replace the shapes with
+## the chapter's own small working thing before it is released.
+const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+
+func build(root: Node3D, state: Dictionary) -> Dictionary:
+	if state.get("hard", false): P.footing(root, 0.9, 0.74)
+	var body := P.body(root, state)
+	P.cyl(body, 0.3, 0.2, P.STONE, Vector3(0, 0.1, 0), 0.32)
+	P.ring(body, 0.3, 0.04, P.CREAM, Vector3(0, 0.2, 0))
+	var ball := P.pivot(body, Vector3(0, 0.32, 0), "Ball")
+	P.sph(ball, 0.12, P.PEACH, Vector3.ZERO)
+	var parts := {"ball": ball}
+	if state.get("together", false):
+		P.cyl(root, 0.12, 0.06, P.STONE_LIGHT, P.BESIDE + Vector3(0, 0.03, 0))
+		var friend := P.pivot(root, P.BESIDE + Vector3(0, 0.15, 0), "FriendBall")
+		P.sph(friend, 0.09, P.MINT, Vector3.ZERO)
+		parts.friend = friend
+	if state.get("top", false):
+		var top := P.pivot(body, Vector3(0, 0.62, 0), "GoldTop")
+		top.scale = Vector3.ONE * P.TOP_SCALE
+		P.node(top, P.low_sphere(0.05), P.gold(), Vector3.ZERO)
+		P.node(top, P.torus(0.08, 0.02), P.gold(), Vector3.ZERO, Vector3(PI / 2, 0, 0))
+		parts.top = top
+	return parts
+
+func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) -> void:
+	var sounds: Dictionary = state.get("sounds", {})
+	var ball: Node3D = parts.ball
+	match beat:
+		"base":
+			anim.move(ball, "position:y", 0.62, 0.0, 0.5, Tween.TRANS_QUAD, Tween.EASE_OUT)
+			anim.move(ball, "position:y", 0.32, 0.6, 0.5, Tween.TRANS_BOUNCE, Tween.EASE_OUT)
+			anim.sound(str(sounds.get("base", "")), 0.0)
+		"together":
+			var friend: Node3D = parts.friend
+			anim.move(friend, "position:y", friend.position.y + 0.25, 0.0, 0.3)
+			anim.move(friend, "position:y", friend.position.y, 0.35, 0.3)
+			anim.sound(str(sounds.get("together", "")), 0.0)
+		"hard":
+			anim.move(ball, "position:y", 0.8, 0.0, 0.3)
+			anim.move(ball, "position:y", 0.32, 0.35, 0.3)
+			anim.sound(str(sounds.get("hard", "")), 0.0)
+		"top":
+			var top: Node3D = parts.top
+			anim.move(top, "rotation:y", TAU, 0.0, 0.6)
+			brighten(anim, top, 0.0)
+			anim.sound(str(sounds.get("top", "")), 0.0)

@@ -56,7 +56,7 @@ SHARED = {
     "backend/wrangler.jsonc", "backend/src/flags.ts",
 }
 EXISTING_SUITES = ["chapter_descriptors", "chapter_manifest", "chapter_registry", "registry_golden", "chapter_thumbnail_catalog", "ci_shards",
-                   "home_keepsake_display", "scrolling_camera", "fold_present", "lighthouse_v2_release"]
+                   "home_keepsake_layer", "home_keepsake_states", "keepsake_props", "scrolling_camera", "fold_present", "lighthouse_v2_release"]
 FAILURE_TEXT = re.compile(r"SCRIPT ERROR|Parse Error|Compilation failed|being destroyed without its completion")
 IGNORED = shutil.ignore_patterns("android", "node_modules", ".wrangler", "__pycache__")
 # The service settings CI blanks before any suite runs (verify.yml).
@@ -126,6 +126,13 @@ def check_scaffold(repo: Path, before: dict[str, bytes]) -> list[str]:
     check(shard_names == sorted(set(shard_names)), "ci_shards.txt stays sorted with one line per suite")
     for suite in suites:
         check(f"\n{suite} " in after["game/tests/ci_shards.txt"].decode("utf-8").replace("\r\n", "\n"), f"ci_shards.txt lists {suite}")
+    # One Home keepsake per chapter: a new chapter brings its own builder, a new version keeps the earlier one's.
+    for key, args in RUNS:
+        stem = key.split("@")[0].replace("-", "_") + ("" if key.endswith("@1") else "_v" + key.split("@")[1])
+        text = after.get(f"game/content/chapters/{stem}.gd", b"").decode("utf-8")
+        new = "--version-of" not in args
+        check(('"home_keepsake": {' in text) == new and (f"game/presentation/keepsakes/{stem}.gd" in after) == new,
+              f"{key}: {'its own Home keepsake and builder' if new else 'no Home keepsake of its own'}")
     descriptors = (ROOT / "game/tests/test_chapter_descriptors.gd").read_text(encoding="utf-8")
     placeholder = hashlib.sha256((Path(__file__).resolve().parent / "chapter_templates/placeholder-thumbnail.png").read_bytes()).hexdigest()
     check(f'PLACEHOLDER_THUMBNAIL_SHA256 := "{placeholder}"' in descriptors, "test_chapter_descriptors.gd knows the placeholder thumbnail")
