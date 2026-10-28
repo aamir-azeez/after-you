@@ -224,10 +224,10 @@ func _reduced() -> void:
 
 func _reduced_fade() -> void:
 	var made: Control = Celebration.open(_parent, _placing(2), true)
-	var started := Time.get_ticks_msec()
 	await _settle(made)
-	var took := (Time.get_ticks_msec() - started) / 1000.0
-	_check(is_equal_approx(made.modulate.a, 1.0) and took >= 0.15 and took < 0.6 and made._pose == Celebration.pose(made.tier, made.seconds()), "Reduce motion is a fade of about 0.2 s into the final pose: %.2f s" % took)
+	# Its own clock: under load one frame's step can be long.
+	var took: float = made.elapsed()
+	_check(is_equal_approx(made.modulate.a, 1.0) and took >= Celebration.REDUCED_FADE and took < 0.6 and made._pose == Celebration.pose(made.tier, made.seconds()), "Reduce motion is a fade of about 0.2 s into the final pose: %.2f s" % took)
 	made.close()
 	await process_frame
 
