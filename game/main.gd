@@ -50,6 +50,7 @@ const PollenClient = preload("res://services/pollen_client.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrantCard = preload("res://presentation/pollen_grant_card.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -1949,7 +1950,7 @@ func _service_update_gate() -> void:
 ## "Your monthly Pollen arrived", once per instalment, on Home only and only
 ## when nothing else is up: never over a turn, a card or a held finger.
 func _service_grant_card() -> void:
-	if not grant_card_check or mode != "home" or application_backgrounded or running or _paid_content_hidden(): return
+	if not grant_card_check or mode != "home" or application_backgrounded or running or not PollenSurfaces.shared().full_journey_visible(): return
 	if is_instance_valid(_whats_new_card) or _update_gate_active() or TouchInput.press_held(overlay): return
 	for child: Node in ui.get_children():
 		if child.get_script() == InGameModal: return

@@ -15,6 +15,7 @@ extends SceneTree
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const ResultLine = preload("res://presentation/pollen_result_line.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 # Synthetic ids only.
@@ -44,7 +45,7 @@ func _run() -> void:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	PollenWallet.use_shared(null)
-	ResultLine.set_hidden_for_tests(-1)
+	PollenSurfaces.set_shared_for_tests(null)
 	print("AFTER YOU POLLEN WALLET: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -199,6 +200,7 @@ func _result_line() -> void:
 	_check(ResultLine.lines(receipt, "Maya") == PackedStringArray(["+98 Pollen", "First try: +25%", "Maya has Full Journey: +10%"]), "Earned, the skill bonus and whose Full Journey boosted it")
 	var both := PollenWallet.checked_receipt(_receipt(286.0, 286.0, {"bonuses": ["first_try", "gold_pace"], "bonus_percent": 40.0, "bloom": 2.0, "bloom_extra": 125.0, "boost_percent": 20.0, "boost_from": ["you", "partner"]}))
 	_check(ResultLine.lines(both, "Maya") == PackedStringArray(["+286 Pollen", "First try and gold pace: +40%", "*A lucky bloom: ×2", "You and Maya have Full Journey: +20%"]), "A bloom gets its flower; two members' boost names both")
+	_check(ResultLine.lines(both, "Maya", false) == PackedStringArray(["+286 Pollen", "First try and gold pace: +40%", "*A lucky bloom: ×2"]), "A build that names no Full Journey leaves out the boost line, not the amount")
 	var mine := PollenWallet.checked_receipt(_receipt(98.0, 98.0, {"boost_from": ["you"], "bonuses": []}))
 	_check(ResultLine.lines(mine, "Maya") == PackedStringArray(["+98 Pollen", "You have Full Journey: +10%"]), "Your own Full Journey says so")
 	_check(ResultLine.lines(PollenWallet.checked_receipt(_receipt(98.0, 98.0, {"bonuses": []})), "a friend")[1] == "Your friend has Full Journey: +10%", "A friend with no name reads plainly")
@@ -211,20 +213,24 @@ func _result_line() -> void:
 	for line: String in [PlayerCopy.POLLEN_REPEAT, PlayerCopy.POLLEN_BANK_EMPTY, PlayerCopy.POLLEN_LATE, PlayerCopy.POLLEN_BLOOM, PlayerCopy.POLLEN_BOOST_BOTH, PlayerCopy.POLLEN_FIRST_CLEAR]:
 		_check(not line.contains("-") and not line.contains("—") and not line.contains("–"), "No dashes: " + line)
 	_check(ResultLine.lines({}, "Maya").is_empty(), "No receipt, no line")
-	# The line itself: only while the server has Pollen on, never on a build that hides paid content.
+	# The line itself: only while the server has Pollen on, on every build (a build that sells nothing earns too).
 	var store := _store()
 	store.note_receipt(SERVER, ME, ROOM, _hash(90), _receipt(196.0, 196.0, {"bloom": 2.0, "bloom_extra": 89.0}))
 	var scope := {"server": SERVER, "owner": ME}
-	ResultLine.set_hidden_for_tests(0)
+	PollenSurfaces.set_shared_for_tests(true)
 	_check(ResultLine.build(scope, ROOM, _hash(90), "Maya", Color.WHITE, store) == null, "Nothing while Pollen is off")
 	store.set_enabled(SERVER, ME, true)
 	var line: Control = ResultLine.build(scope, ROOM, _hash(90), "Maya", Color.WHITE, store)
 	_check(line != null and line.find_child("PollenBloomFlower", true, false) != null, "On, the line shows, with a flower for the bloom")
 	if line != null: line.free()
 	_check(ResultLine.build(scope, ROOM, _hash(91), "Maya", Color.WHITE, store) == null and ResultLine.build({}, ROOM, _hash(90), "Maya", Color.WHITE, store) == null, "Nothing for another turn or without a player")
-	ResultLine.set_hidden_for_tests(1)
-	_check(ResultLine.build(scope, ROOM, _hash(90), "Maya", Color.WHITE, store) == null, "Nothing on a build that hides paid content")
-	ResultLine.set_hidden_for_tests(-1)
+	PollenSurfaces.set_shared_for_tests(false)
+	line = ResultLine.build(scope, ROOM, _hash(90), "Maya", Color.WHITE, store)
+	_check(line != null and line.find_child("PollenBloomFlower", true, false) != null, "A build that sells nothing shows the line too")
+	var words: Array = [] if line == null else line.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	_check("+196 Pollen" in words and not words.any(func(text: String) -> bool: return text.contains("Full Journey")), "with what the turn earned and no Full Journey: " + str(words))
+	if line != null: line.free()
+	PollenSurfaces.set_shared_for_tests(null)
 
 func _check(condition: bool, message: String) -> void:
 	checks += 1

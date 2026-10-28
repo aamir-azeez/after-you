@@ -7,8 +7,9 @@ extends Control
 ## A view only. presentation/wardrobe_flow.gd builds the model and answers the
 ## signals; render(model) redraws everything from it. The model:
 ##   balance (int, -1 while unknown), status (String: a loading or offline line,
-##   or ""), retry (bool: show Try again), tab ("all" or "owned"), selected (id
-##   or ""), preview (the look the big pip wears), featured (Array of ids), and
+##   or ""), retry (bool: show Try again), shop (bool: the build shows the
+##   shop; without it the tabs are hidden and only owned items come in), tab
+##   ("all" or "owned"), selected (id or ""), preview (the look the big pip wears), featured (Array of ids), and
 ##   items: Array of {id, name, tier, slot, price, owned, worn, locked,
 ##   unlock_name, sold}, in shop order.
 ## Item cards draw still pips (kit/pip_avatar.gd still mode), so a long list
@@ -46,6 +47,7 @@ var _name: Label
 var _facts: Label
 var _note: Label
 var _tabs := {}
+var _tab_row: HBoxContainer
 var _featured: HFlowContainer
 var _featured_title: Label
 var _grid: HFlowContainer
@@ -137,7 +139,9 @@ func _shop_panel() -> Control:
 	column.add_theme_constant_override("separation", 10)
 	panel.add_child(column)
 	var tabs := HBoxContainer.new()
+	tabs.name = "WardrobeTabs"
 	tabs.add_theme_constant_override("separation", 8)
+	_tab_row = tabs
 	for tab: Array in [["all", PlayerCopy.WARDROBE_ALL], ["owned", PlayerCopy.WARDROBE_OWNED]]:
 		var button := Button.new()
 		button.name = "WardrobeTab_" + tab[0]
@@ -190,6 +194,8 @@ func render(model: Dictionary) -> void:
 	_status.text = status
 	_status.visible = not status.is_empty()
 	_retry.visible = bool(model.get("retry", false))
+	var shop := bool(model.get("shop", true))
+	_tab_row.visible = shop
 	var tab := str(model.get("tab", "all"))
 	for key: String in _tabs:
 		if key == tab: ThemeRules.selected_tab(_tabs[key])
@@ -202,7 +208,7 @@ func render(model: Dictionary) -> void:
 	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return tab == "all" or bool(entry.owned))
 	_fill(_grid, shown)
 	if tab == "owned" and shown.is_empty() and status.is_empty():
-		_status.text = PlayerCopy.WARDROBE_NOTHING_OWNED
+		_status.text = PlayerCopy.WARDROBE_NOTHING_OWNED if shop else PlayerCopy.WARDROBE_NOTHING_EARNED
 		_status.visible = true
 	_show_selected(by_id.get(str(model.get("selected", "")), {}))
 	if preview.has_method("wear"): preview.wear(model.get("preview", {}))

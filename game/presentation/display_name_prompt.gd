@@ -30,9 +30,12 @@ extends Node
 ##   save (Callable (choice, name) -> {"closed": bool, "code": String}): awaited on Save;
 ##   reduced_motion (bool), haptic (Callable, optional): the pip's grab tick;
 ##   dismissed (Callable, optional): called when the card closes with nothing saved;
-##   price (Dictionary, optional): {price, balance} while the shop is on. A change
-##     to another name then says its price on Save and in a note, and Save waits
-##     while the balance is short. Staying anonymous and keeping the name are free.
+##   price (Dictionary, optional): {price, balance, shown} while the shop is on. A
+##     change to another name then says its price on Save and in a note, and Save
+##     waits while the balance is short. Staying anonymous and keeping the name are
+##     free. `shown` false (a build that shows no price, services/pollen_surfaces.gd)
+##     names no price: a change that would cost waits, with a note that the free
+##     change is used.
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -412,19 +415,32 @@ static func choice_cost(price: Dictionary, own: Dictionary, choice: String, name
 	if name.is_empty() or (name == str(own.get("name", "")) and str(own.get("choice", "")) != "anonymous"): return 0
 	return maxi(0, int(price.get("price", 0)))
 
+## Whether this build names the change price (the context's price `shown`).
+func _price_shown() -> bool:
+	return bool((_context.get("price", {}) as Dictionary).get("shown", true))
+
+## Whether the price holds Save back: the change costs and the balance is short,
+## or the change costs on a build that shows no price.
+func _price_blocks() -> bool:
+	var amount := cost()
+	return amount > 0 and (not _price_shown() or amount > int((_context.get("price", {}) as Dictionary).get("balance", 0)))
+
 ## Save's label and the price note for the choice now.
 func _show_price() -> void:
 	if save_button == null or _price_note == null or _busy: return
 	var amount := cost()
 	var short := amount - int((_context.get("price", {}) as Dictionary).get("balance", 0))
 	save_button.text = _save_label()
-	save_button.disabled = amount > 0 and short > 0
+	save_button.disabled = _price_blocks()
 	_price_note.visible = amount > 0
-	if amount > 0: _price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_SHORT % PollenMoney.grouped(short) if short > 0 else PlayerCopy.DISPLAY_NAME_PRICE_NOTE % [PollenMoney.grouped(amount), PollenMoney.about(amount)]
+	if amount <= 0: return
+	if not _price_shown(): _price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_HIDDEN
+	elif short > 0: _price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_SHORT % PollenMoney.grouped(short)
+	else: _price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_NOTE % [PollenMoney.grouped(amount), PollenMoney.about(amount)]
 
 func _save_label() -> String:
 	var amount := cost()
-	return PlayerCopy.DISPLAY_NAME_SAVE_PRICED % PollenMoney.grouped(amount) if amount > 0 else PlayerCopy.DISPLAY_NAME_SAVE
+	return PlayerCopy.DISPLAY_NAME_SAVE_PRICED % PollenMoney.grouped(amount) if amount > 0 and _price_shown() else PlayerCopy.DISPLAY_NAME_SAVE
 
 func _mark(row: Button, on: bool) -> void:
 	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
@@ -435,7 +451,8 @@ func _mark(row: Button, on: bool) -> void:
 	row.set_pressed_no_signal(on)
 
 func _save() -> void:
-	if _busy or not is_instance_valid(modal): return
+	# Enter in the field saves too, so the price rule is asked here as well as on the button.
+	if _busy or not is_instance_valid(modal) or _price_blocks(): return
 	var name := ""
 	# Nothing typed and nothing picked: the tag already shows the anonymous
 	# name, so Save keeps that.
@@ -460,8 +477,7 @@ func _save() -> void:
 	# The card was closed while it waited (the prompt is the card's child).
 	if not is_inside_tree(): return
 	_busy = false
-	save_button.disabled = false
-	save_button.text = _save_label()
+	_show_price()
 	if answer is Dictionary and not answer.get("closed", true):
 		_error.text = str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), PlayerCopy.DISPLAY_NAME_ERRORS.characters))
 		_show()

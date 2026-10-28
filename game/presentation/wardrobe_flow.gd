@@ -6,15 +6,17 @@ extends Node
 ##
 ## Main hosts it as a child and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
-## - services: api, _names_scope, saves (reduced motion), _paid_content_hidden
+## - services: api, _names_scope, saves (reduced motion)
 ## - screen: mode, running, overlay (the page's parent), ui (the cards' parent),
 ##   _clear_overlay, _toast, and _mark_screen_back when Main has it (Android Back)
 ## It asks Main to leave through back_requested. Settings opens it with
 ## show_wardrobe() when available(), and the display name flow calls refresh()
 ## after a saved change.
 ##
-## Never shown on a build that hides paid content (Purchases.paid_content_hidden):
-## that build still earns, and its balance waits on the server.
+## What the build shows comes from services/pollen_surfaces.gd. A build without
+## the shop (iOS selling nothing) opens the Wardrobe only to wear what the player
+## owns, earned items and item bloom drops, with the balance: no All items tab,
+## no shelf of the week, no price and no Buy.
 ## Hooks for later phases: reaction packs (owned `packs`, the server's
 ## `offered_packs`) and sets (`sets`) are kept by services/wardrobe.gd and
 ## priced by the server, but no pack or set exists yet, so the page lists
@@ -29,6 +31,7 @@ const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Page = preload("res://presentation/wardrobe_page.gd")
 const Sheets = preload("res://presentation/wardrobe_sheets.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 
 const MODE_WARDROBE := "wardrobe"
 
@@ -36,6 +39,8 @@ signal back_requested
 
 var host: Node
 var client: RefCounted
+## What this build shows (services/pollen_surfaces.gd); tests set their own.
+var surfaces: RefCounted
 var _page: Page
 var _sheet: WeakRef = null
 var _tab := "all"
@@ -53,10 +58,14 @@ func _client() -> RefCounted:
 	if not client.changed.is_connected(_redraw): client.changed.connect(_redraw)
 	return client
 
+func _surfaces() -> RefCounted:
+	if surfaces == null: surfaces = PollenSurfaces.shared()
+	return surfaces
+
 ## Whether Settings may offer the Wardrobe: the server has the shop on for this
-## player and the build shows paid content.
+## player and the build shows the Wardrobe.
 func available() -> bool:
-	if host == null or (host.has_method("_paid_content_hidden") and host._paid_content_hidden()): return false
+	if host == null or not _surfaces().wardrobe_visible(): return false
 	return not _client().scope().is_empty()
 
 func is_open() -> bool:
@@ -76,7 +85,7 @@ func show_wardrobe() -> void:
 	_page.retry_pressed.connect(refresh)
 	host.overlay.add_child(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
-	_tab = "all"
+	_tab = _allowed_tab("all")
 	_selected = ""
 	_status = PlayerCopy.WARDROBE_LOADING if _view().is_empty() else ""
 	_retry = false
@@ -94,8 +103,13 @@ func refresh() -> void:
 	_redraw()
 
 func set_tab(tab: String) -> void:
-	_tab = tab if tab in ["all", "owned"] else "all"
+	_tab = _allowed_tab(tab)
 	_redraw()
+
+## Without the shop there is only Owned.
+func _allowed_tab(tab: String) -> String:
+	if not _surfaces().shop_visible(): return "owned"
+	return tab if tab in ["all", "owned"] else "all"
 
 func select(id: String) -> void:
 	_selected = id if Catalog.has(id) else ""
@@ -108,7 +122,7 @@ func act(id: String) -> void:
 	if bool(entry.owned):
 		await _wear(entry)
 		return
-	if not bool(entry.sold) or bool(entry.locked): return
+	if not bool(entry.sold) or bool(entry.locked) or not _surfaces().shop_visible(): return
 	var balance := _balance()
 	_close_sheet()
 	var parent: Control = host.ui
@@ -119,6 +133,7 @@ func act(id: String) -> void:
 ## The confirm card's Buy: sends the purchase at the cost the card showed.
 func confirm_buy(id: String, cost: int) -> void:
 	_close_sheet()
+	if not _surfaces().shop_visible(): return
 	var answer: Dictionary = await _client().buy("item", id, cost)
 	if answer.get("ok", false): _toast(PlayerCopy.WARDROBE_BOUGHT % Catalog.display_name(id))
 	else: _toast(str(PlayerCopy.WARDROBE_ERRORS.get(str(answer.get("code", "")), PlayerCopy.WARDROBE_ERROR)))
@@ -133,7 +148,9 @@ func _wear(entry: Dictionary) -> void:
 	_redraw()
 
 ## The page's model (presentation/wardrobe_page.gd), from the kept wardrobe and wallet.
+## Without the shop it lists only what the player owns, with no price.
 func model() -> Dictionary:
+	var shop: bool = _surfaces().shop_visible()
 	var view := _view()
 	var owned: Array = view.get("items", [])
 	var look: Dictionary = view.get("look", {})
@@ -144,11 +161,11 @@ func model() -> Dictionary:
 	for id: String in Catalog.ids():
 		var mine := id in owned
 		# The server's catalogue decides what shows: what it sells, and anything owned (earned items too).
-		var sold: bool = Catalog.sold(id) and id in view.get("offered", [])
+		var sold: bool = shop and Catalog.sold(id) and id in view.get("offered", [])
 		if not mine and not sold: continue
 		if Catalog.slot(id).is_empty(): continue
 		var unlock := Catalog.unlock(id)
-		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": int(prices.get(id, Catalog.price(id))),
+		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": int(prices.get(id, Catalog.price(id))) if shop else 0,
 			"owned": mine, "worn": look.get(Catalog.slot(id)) == id, "sold": sold, "locked": not mine and not unlock.is_empty() and not id in unlocked,
 			"unlock_name": _chapter_name(unlock)}
 		items.append(entry)
@@ -156,8 +173,9 @@ func model() -> Dictionary:
 	var preview := Outfit.from(look)
 	var picked := _entry_in(items, _selected)
 	if not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
-	return {"balance": _balance(), "status": _status, "retry": _retry, "tab": _tab, "selected": _selected, "preview": Outfit.from(preview),
-		"featured": FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier).map(func(slot: Dictionary) -> String: return slot.id), "items": items}
+	var featured: Array = FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier).map(func(slot: Dictionary) -> String: return slot.id) if shop else []
+	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "status": _status, "retry": _retry, "shop": shop, "tab": _tab, "selected": _selected,
+		"preview": Outfit.from(preview), "featured": featured, "items": items}
 
 func _redraw() -> void:
 	if is_open(): _page.render(model())

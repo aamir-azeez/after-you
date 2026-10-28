@@ -70,6 +70,8 @@ const DISPLAY_NAME_ERRORS := {
 const DISPLAY_NAME_SAVE_PRICED := "Save for %s Pollen"
 const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change costs %s Pollen (about %s)."
 const DISPLAY_NAME_PRICE_SHORT := "You need %s more Pollen to change your name. Staying anonymous is always free."
+## The same place on a build that shows no price (services/pollen_surfaces.gd): a change that costs waits.
+const DISPLAY_NAME_PRICE_HIDDEN := "Your free change is used. Staying anonymous is always free."
 ## Under a friend's nickname on their Friends row: the name they chose.
 const DISPLAY_NAME_GOES_BY := "Goes by %s"
 
@@ -163,6 +165,8 @@ const WARDROBE_EARNED := "Earned by playing. Never for sale."
 const WARDROBE_SET := "%s set"
 const WARDROBE_SET_PRICE := "The pieces you're missing, together: %s Pollen"
 const WARDROBE_NOTHING_OWNED := "Things you buy or earn show here."
+## The same on a build without the shop (services/pollen_surfaces.gd).
+const WARDROBE_NOTHING_EARNED := "Things you earn show here."
 const WARDROBE_LOADING := "Opening your wardrobe…"
 const WARDROBE_OFFLINE := "The wardrobe isn't reachable right now. Try again in a moment."
 const WARDROBE_TRY_AGAIN := "Try again"

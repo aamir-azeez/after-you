@@ -3,7 +3,8 @@ extends RefCounted
 ## instalment the server paid (services/pollen_grant.gd pending()). It says what
 ## arrived and the loyalty ladder: what next month pays and the top step. Plain
 ## and quiet: no countdown, no "don't lose" wording, nothing to buy, and never
-## on a build that hides paid content.
+## on a build that names no Full Journey (services/pollen_surfaces.gd
+## full_journey_visible, asked by Main).
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")

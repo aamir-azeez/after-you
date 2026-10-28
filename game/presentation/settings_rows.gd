@@ -150,7 +150,7 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "whats_new", "category": ABOUT, "kind": LINK, "label": PlayerCopy.WHATS_NEW, "note": PlayerCopy.WHATS_NEW_VERSION % Changelog.current_version(),
 			"open": func(): host._open_whats_new_card()},
 		{"id": "pollen_odds", "category": ABOUT, "kind": INFO, "label": PlayerCopy.POLLEN_ODDS_TITLE, "note": func() -> String: return PollenOdds.note(host._names_scope()),
-			"visible_if": func() -> bool: return PollenOdds.shown(host._names_scope(), host._paid_content_hidden())},
+			"visible_if": func() -> bool: return PollenOdds.shown(host._names_scope())},
 		{"id": "licenses", "category": ABOUT, "kind": INFO, "label": PlayerCopy.SETTINGS_LICENSES, "note": PlayerCopy.MAIN_0A022EF54291, "expand": func() -> Array: return license_rows(host)},
 	]
 

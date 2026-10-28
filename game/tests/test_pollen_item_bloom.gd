@@ -8,12 +8,14 @@ extends SceneTree
 ##   flower; no dashes;
 ## - the dropped item is owned in the wardrobe at once;
 ## - Help publishes the odds, the item odds only while the server says item
-##   blooms drop, and nothing on a build that hides paid content.
+##   blooms drop, on every build; a build that sells nothing leaves out the
+##   sentence that names Full Journey.
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const ResultLine = preload("res://presentation/pollen_result_line.gd")
 const PollenOdds = preload("res://presentation/pollen_odds.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 
 # Synthetic ids only.
 const SERVER := "https://pollen.example.test"
@@ -38,7 +40,7 @@ func _run() -> void:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	PollenWallet.use_shared(null)
 	Wardrobe.use_shared(null)
-	ResultLine.set_hidden_for_tests(-1)
+	PollenSurfaces.set_shared_for_tests(null)
 	print("AFTER YOU POLLEN ITEM BLOOM: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -83,7 +85,7 @@ func _built_line() -> void:
 	Wardrobe.use_shared(wardrobe)
 	store.set_enabled(SERVER, ME, true)
 	store.note_receipt(SERVER, ME, ROOM, _hash(1), _receipt({"tier": "common", "roll": 5000.0, "item_id": "daisy"}))
-	ResultLine.set_hidden_for_tests(0)
+	PollenSurfaces.set_shared_for_tests(true)
 	var line: Control = ResultLine.build({"server": SERVER, "owner": ME}, ROOM, _hash(1), "Maya", Color.WHITE, store)
 	_check(line != null, "The line shows for a drop")
 	if line == null: return
@@ -115,10 +117,15 @@ func _owned_at_once() -> void:
 func _odds() -> void:
 	var store := PollenWallet.new(_path("odds"))
 	var scope := {"server": SERVER, "owner": ME}
-	_check(not PollenOdds.shown(scope, false, store), "No odds while Pollen is off")
+	PollenSurfaces.set_shared_for_tests(true)
+	_check(not PollenOdds.shown(scope, store), "No odds while Pollen is off")
 	store.set_enabled(SERVER, ME, true)
-	_check(PollenOdds.shown(scope, false, store) and not PollenOdds.shown(scope, true, store) and not PollenOdds.shown({}, false, store), "Shown with Pollen on, never on a build that hides paid content")
+	_check(PollenOdds.shown(scope, store) and not PollenOdds.shown({}, store), "Shown with Pollen on, only for a signed in player")
 	_check(PollenOdds.note(scope, store) == PlayerCopy.POLLEN_ODDS + " " + PlayerCopy.POLLEN_ODDS_PAID, "Lucky bloom odds only while items do not drop")
+	PollenSurfaces.set_shared_for_tests(false)
+	_check(PollenOdds.shown(scope, store), "A build that sells nothing publishes the odds too")
+	_check(PollenOdds.note(scope, store) == PlayerCopy.POLLEN_ODDS, "There without the sentence that names Full Journey")
+	PollenSurfaces.set_shared_for_tests(true)
 	store.set_item_blooms(SERVER, ME, true)
 	var note := PollenOdds.note(scope, store)
 	_check(note.contains("8 pay double and 2 pay triple") and note.contains("Special 2, Epic 160, Rare 1,600, Uncommon 2,500 and Common 5,000"), "Item odds are published while they drop: " + note)

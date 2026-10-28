@@ -7,11 +7,12 @@ extends RefCounted
 ## Daisy!"), with the same small words as any other line: no reveal, no fanfare.
 ##
 ## It is drawn only from a receipt the server confirmed (services/pollen_wallet.gd),
-## only while the server says Pollen earning is on, and never on a build that
-## hides paid content (Purchases.paid_content_hidden), which still earns.
+## only while the server says Pollen earning is on and the build shows earning
+## (services/pollen_surfaces.gd). A build that names no Full Journey leaves out
+## the boost lines; the amount still counts the boost.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
-const Purchases = preload("res://services/purchases.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 const Outfit = preload("res://services/outfit.gd")
@@ -23,22 +24,12 @@ const FONT_SIZE := 18
 ## The still pip beside an item bloom.
 const PIP_SIZE := Vector2(42, 56)
 
-## Read once: the build's configuration never changes while the app runs.
-static var _hidden := -1
-
-static func paid_content_hidden() -> bool:
-	if _hidden < 0: _hidden = 1 if Purchases.paid_content_hidden(Purchases.read_configuration()) else 0
-	return _hidden == 1
-
-## Tests set what this build hides (true or false), or -1 to read the configuration again.
-static func set_hidden_for_tests(value: int) -> void:
-	_hidden = value
-
 ## The lines for one receipt, top to bottom. `partner` is the friend's name as
 ## the room shows it ("" when unknown). Bloom lines start with "*", where the
 ## flower goes; an item bloom's line starts with "@<item id>|", where the
-## player's own pip wearing that item goes.
-static func lines(receipt: Dictionary, partner: String) -> PackedStringArray:
+## player's own pip wearing that item goes. Without `full_journey` the boost
+## lines, which name Full Journey, are left out.
+static func lines(receipt: Dictionary, partner: String, full_journey: bool = true) -> PackedStringArray:
 	var out := PackedStringArray()
 	if receipt.is_empty(): return out
 	var turn: Dictionary = receipt.get("turn", {})
@@ -52,7 +43,7 @@ static func lines(receipt: Dictionary, partner: String) -> PackedStringArray:
 			out.append(PlayerCopy.POLLEN_BONUS % [joined.left(1).to_upper() + joined.substr(1), int(turn.bonus_percent)])
 		if int(turn.get("bloom", 1)) > 1: out.append("*" + PlayerCopy.POLLEN_BLOOM % int(turn.bloom))
 		var percent := int(turn.get("boost_percent", 0))
-		if percent > 0:
+		if percent > 0 and full_journey:
 			var from: Array = turn.get("boost_from", [])
 			# A friend with no name the room knows reads "Your friend" first in a line and "your friend" after "You and".
 			var named := not partner.is_empty() and partner != FriendNicknames.FALLBACK
@@ -85,10 +76,11 @@ static func dropped_pip(item_id: String) -> Control:
 ## The line for one of the viewer's turns in a room, or null when there is
 ## nothing to show. `scope` is {server, owner} of the signed-in player.
 static func build(scope: Dictionary, room_id: String, recording_hash: String, partner: String, color: Color, store: RefCounted = null) -> Control:
-	if paid_content_hidden() or scope.is_empty(): return null
+	var surfaces: RefCounted = PollenSurfaces.shared()
+	if not surfaces.earning_visible() or scope.is_empty(): return null
 	var wallet: RefCounted = store if store != null else PollenWallet.shared()
 	if not wallet.enabled(str(scope.server), str(scope.owner)): return null
-	var text := lines(wallet.result_for(str(scope.server), str(scope.owner), room_id, recording_hash), partner)
+	var text := lines(wallet.result_for(str(scope.server), str(scope.owner), room_id, recording_hash), partner, surfaces.full_journey_visible())
 	if text.is_empty(): return null
 	var box := VBoxContainer.new()
 	box.name = "PollenResultLine"

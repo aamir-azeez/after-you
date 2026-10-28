@@ -1,21 +1,24 @@
 extends SceneTree
 ## The Wardrobe on screen (presentation/wardrobe_flow.gd, wardrobe_page.gd,
 ## wardrobe_sheets.gd) with a stand-in host and a fake transport:
-## - it opens only while the server has the shop on, and never on a build that
-##   hides paid content;
+## - it opens only while the server has the shop on, on every build;
 ## - the page lists what the server sells, with the shelf of the week;
 ## - Buy opens the confirm card (balance, cost with its about line, what is
 ##   left) and only its Buy sends, at the cost the card showed;
 ## - a short balance opens the short card and sends nothing; a Special that is
 ##   not unlocked cannot be bought;
 ## - Wear and Take off send the whole look;
-## - Back asks the host to leave.
+## - Back asks the host to leave;
+## - a build without the shop (services/pollen_surfaces.gd, iOS selling
+##   nothing) lists only what the player owns, with the balance, and Wear and
+##   Take off; no All items tab, no shelf, no price, and nothing is bought.
 const Flow = preload("res://presentation/wardrobe_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -31,14 +34,12 @@ class Host extends Node:
 	var running := true
 	var overlay: Control
 	var ui: Control
-	var hidden := false
 	var toasts: Array = []
 	var scope := {}
 	func _names_scope() -> Dictionary: return scope
 	func _clear_overlay() -> void:
 		for child: Node in overlay.get_children(): child.queue_free()
 	func _toast(text: String) -> void: toasts.append(text)
-	func _paid_content_hidden() -> bool: return hidden
 
 class Fake extends RefCounted:
 	var tree: SceneTree
@@ -91,6 +92,7 @@ func _setup(on: bool = true) -> Dictionary:
 	host.add_child(flow)
 	flow.client = WardrobeClient.new(null, host._names_scope, fake.call_it, store, wallet)
 	flow.week = 3
+	flow.surfaces = PollenSurfaces.new(true)
 	# The shared wardrobe releases what the server offers (services/wardrobe.gd); the flow here uses its own store.
 	preload("res://services/cosmetic_catalog.gd").set_offered(["daisy", "seashell", "straw_hat", "tide", "lantern", "lighthouse_lamp"])
 	if on:
@@ -102,6 +104,7 @@ func _run() -> void:
 	await _gates()
 	await _buying()
 	await _wearing()
+	await _owned_only()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -115,8 +118,8 @@ func _gates() -> void:
 	off.flow.show_wardrobe()
 	_check(off.host.overlay.get_child_count() == 0 and off.fake.sent.is_empty(), "Opening it then shows and sends nothing")
 	var hidden := _setup()
-	hidden.host.hidden = true
-	_check(not hidden.flow.available(), "No Wardrobe on a build that hides paid content")
+	hidden.flow.surfaces = PollenSurfaces.new(false)
+	_check(hidden.flow.available(), "A build that sells nothing still has the Wardrobe")
 	off.host.queue_free()
 	hidden.host.queue_free()
 	await _frames(2)
@@ -181,6 +184,50 @@ func _wearing() -> void:
 	_check(t.host.overlay.find_child("WardrobeCard_lantern", true, false) == null and t.host.overlay.find_child("WardrobeCard_tide", true, false) != null, "Owned lists only what the player has")
 	t.host.queue_free()
 	await _frames(2)
+
+## The same wardrobe on both builds: the one that sells shows the shop, the one that sells nothing only what is owned.
+func _owned_only() -> void:
+	for sells: bool in [true, false]:
+		var t := _setup()
+		t.flow.surfaces = PollenSurfaces.new(sells)
+		t.store.note_view(SERVER, ME, _answer(["daisy"], {}, 3000).data)
+		t.wallet.note_wallet(SERVER, ME, _answer([], {}, 3000).data)
+		t.fake.replies = [_answer(["daisy"], {}, 3000)]
+		t.flow.show_wardrobe()
+		await _frames()
+		var model: Dictionary = t.flow.model()
+		var page: Node = t.host.overlay
+		var tabs: Control = page.find_child("WardrobeTabs", true, false)
+		var shelf: Control = page.find_child("WardrobeFeatured", true, false)
+		var balance: Label = page.find_child("WardrobeBalance", true, false)
+		_check(t.flow.available() and balance != null and balance.text == PlayerCopy.WARDROBE_BALANCE % "3,000", "%s: the Wardrobe opens with the balance" % _build(sells))
+		if sells:
+			_check(model.shop and model.tab == "all" and model.items.size() == 6 and tabs.visible and shelf.visible, "Selling: the tabs, the shelf and every item")
+			_check(page.find_child("WardrobeCard_tide", true, false) != null and PlayerCopy.WARDROBE_PRICE % "20,000" in _texts(page), "Selling: an item on sale shows its price")
+		else:
+			_check(not model.shop and model.tab == "owned" and model.featured.is_empty() and model.items.map(func(entry: Dictionary) -> String: return entry.id) == ["daisy"], "Selling nothing: only the owned item, no shelf")
+			_check(not tabs.visible and not shelf.visible and page.find_child("WardrobeCard_tide", true, false) == null, "Selling nothing: no tabs, no shelf, no item on sale")
+			_check(not _texts(page).any(func(text: String) -> bool: return text.contains("$") or (text.contains("Pollen") and text != balance.text)), "Selling nothing: no price anywhere: " + str(_texts(page)))
+			t.flow.set_tab("all")
+			_check(t.flow.model().tab == "owned", "Selling nothing: All items cannot be chosen")
+			var sent: int = t.fake.sent.size()
+			await t.flow.act("tide")
+			t.flow.confirm_buy("tide", 20000)
+			await _frames()
+			_check(t.fake.sent.size() == sent and t.host.ui.get_child_count() == 0, "Selling nothing: an item on sale is never bought and no card opens")
+			t.flow.select("daisy")
+			_check((page.find_child("WardrobeAction", true, false) as Button).text == PlayerCopy.WARDROBE_WEAR, "Selling nothing: an owned item offers Wear")
+			t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "equip", "look": {"hat": "daisy"}, "revision": 9.0e12}}]
+			await t.flow.act("daisy")
+			_check(t.fake.sent[-1].path == "/v1/pollen/equip" and t.fake.sent[-1].body.look == {"hat": "daisy"}, "Selling nothing: Wear sends the look")
+			t.store.note_view(SERVER, ME, _answer([], {}, 3000).data)
+			t.flow._redraw()
+			_check(PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(page) and not PlayerCopy.WARDROBE_NOTHING_OWNED in _texts(page), "Selling nothing: an empty Wardrobe never mentions buying")
+		t.host.queue_free()
+		await _frames(2)
+
+static func _build(sells: bool) -> String:
+	return "Selling" if sells else "Selling nothing"
 
 static func _texts(node: Node) -> Array:
 	var out: Array = []

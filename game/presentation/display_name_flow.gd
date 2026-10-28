@@ -27,6 +27,7 @@ const PlatformGames = preload("res://services/platform_games/platform_games.gd")
 const GamesProvider = preload("res://services/platform_games/games_provider.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 
 ## The player's own name or where it stands changed (chips redraw).
 signal changed
@@ -102,11 +103,12 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 
 ## What the next name change costs and the balance it comes from, as the prompt
 ## shows them ({} while the shop is off or this phone has not heard the price).
+## `shown` is false on a build that shows no price (services/pollen_surfaces.gd).
 static func name_price(current: Dictionary) -> Dictionary:
 	if current.is_empty(): return {}
 	var price: int = Wardrobe.shared().name_price(str(current.server), str(current.owner))
 	var wallet: Dictionary = PollenWallet.shared().wallet(str(current.server), str(current.owner))
-	return {} if price < 0 or wallet.is_empty() else {"price": price, "balance": int(wallet.balance)}
+	return {} if price < 0 or wallet.is_empty() else {"price": price, "balance": int(wallet.balance), "shown": PollenSurfaces.shared().shop_visible()}
 
 func _price_for_prompt(current: Dictionary) -> Dictionary:
 	_prompt_price = name_price(current)
