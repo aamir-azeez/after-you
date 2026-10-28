@@ -54,6 +54,14 @@ static func button(label: String, action: Callable, primary: bool = true, height
 	if action.is_valid(): made.pressed.connect(action)
 	return made
 
+## Puts `texture` on `made` at a fixed size, at its right end unless `left`.
+static func icon_on(made: Button, texture: Texture2D, left: bool = false, width: int = 24) -> void:
+	made.icon = texture
+	made.expand_icon = true
+	made.icon_alignment = HORIZONTAL_ALIGNMENT_LEFT if left else HORIZONTAL_ALIGNMENT_RIGHT
+	made.add_theme_constant_override("icon_max_width", width)
+	made.add_theme_constant_override("h_separation", 14)
+
 ## A small rounded label: mint for "Your turn", glass for anything else.
 static func pill(value: String, lit: bool, font_size: int = 17) -> PanelContainer:
 	var box := PanelContainer.new()
@@ -90,6 +98,10 @@ static func picture(key: String, frame_size: Vector2, radius: int = 12) -> Panel
 	var frame := ChapterPicker.picture_frame(frame_size, radius)
 	ThumbnailShelf.fill(frame.get_child(0) as TextureRect, Thumbnails.path(key))
 	return frame
+
+## Step dots no wider than `width`: a long chapter's dots shrink, down to 8 pixels.
+static func dots_within(done: int, total: int, width: float, largest: float = 24.0) -> Control:
+	return dots(done, total, clampf(width / maxf(1.0, total * 1.45), 8.0, largest))
 
 static func dots(done: int, total: int, dot: float = 16.0) -> Control:
 	var row := Dots.new()

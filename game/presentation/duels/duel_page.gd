@@ -114,7 +114,7 @@ func _side_card(index: int) -> Control:
 	rule.custom_minimum_size.x = 1
 	row.add_child(rule)
 	var right := VBoxContainer.new()
-	right.custom_minimum_size.x = 250 if compact else 290
+	right.custom_minimum_size.x = 230 if compact else 270
 	right.alignment = BoxContainer.ALIGNMENT_CENTER
 	right.add_theme_constant_override("separation", 6)
 	row.add_child(right)
@@ -124,7 +124,7 @@ func _side_card(index: int) -> Control:
 	pill.custom_minimum_size.x = 230
 	right.add_child(pill)
 	var steps := DuelModel.steps(view, index)
-	right.add_child(Kit.dots(steps.x, steps.y, 24.0))
+	right.add_child(Kit.dots_within(steps.x, steps.y, right.custom_minimum_size.x - 10.0))
 	var count := Kit.text(PlayerCopy.DUEL_STEPS % [steps.x, steps.y], 19, UiTokens.SOFT)
 	count.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	right.add_child(count)
@@ -163,16 +163,14 @@ func _render_card() -> void:
 	if not own.finished:
 		var play := Kit.button(PlayerCopy.DUEL_PLAY_TURN if mine_now else PlayerCopy.DUEL_VIEW_TURNS, Callable(), mine_now, 70 if not compact else 60)
 		play.name = "DuelPlay"
-		play.icon = ARROW_ICON
-		play.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		Kit.icon_on(play, ARROW_ICON, false, 30)
 		play.add_theme_font_size_override("font_size", 28 if mine_now else 24)
 		play.pressed.connect(func(): play_requested.emit(view, play))
 		_card.add_child(play)
 		if mine_now:
 			var turns := Kit.button(PlayerCopy.DUEL_VIEW_TURNS, Callable(), false, 60)
 			turns.name = "DuelViewTurns"
-			turns.icon = ARROW_ICON
-			turns.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+			Kit.icon_on(turns, ARROW_ICON, false, 26)
 			turns.pressed.connect(func(): play_requested.emit(view, turns))
 			_card.add_child(turns)
 		var leave := Button.new()

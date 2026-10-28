@@ -49,9 +49,7 @@ func subtitle_text() -> String: return PlayerCopy.DUELS_SUBTITLE
 func header_action() -> Control:
 	var start := Kit.button(PlayerCopy.DUELS_START, func(): start_requested.emit())
 	start.name = "DuelsStart"
-	start.icon = ARROW_ICON
-	start.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
-	start.expand_icon = false
+	Kit.icon_on(start, ARROW_ICON)
 	start.custom_minimum_size = Vector2(260, 56)
 	return start
 
@@ -76,6 +74,7 @@ func go_back() -> void:
 func open_overlay(page: CanvasLayer) -> void:
 	if Kit.showing(_overlay): _overlay.close()
 	_overlay = page
+	page.set("stack_layer", layer + 1)
 	page.closed.connect(func() -> void: if alive(): refresh_requested.emit())
 	add_child(page)
 
@@ -206,8 +205,7 @@ func _render_party() -> void:
 	var party_button := Kit.button(PlayerCopy.DUELS_PARTY, func(): party_requested.emit(), false, 56)
 	party_button.name = "DuelsPartyButton"
 	party_button.custom_minimum_size.x = 200
-	party_button.icon = preload("res://assets/ui/settings/chevron.svg")
-	party_button.icon_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	Kit.icon_on(party_button, preload("res://assets/ui/settings/chevron.svg"), false, 20)
 	line.add_child(party_button)
 
 func _named_pip(label: String, color: Color, own: bool) -> Control:
@@ -307,7 +305,7 @@ func _lane(view: Dictionary, index: int) -> Control:
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	column.add_child(pips)
 	var steps := DuelModel.steps(view, index)
-	column.add_child(Kit.dots(steps.x, steps.y, 10.0))
+	column.add_child(Kit.dots_within(steps.x, steps.y, TILE_WIDTH * 0.5 - 24.0, 10.0))
 	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 24, UiTokens.CREAM, true)
 	time.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(time)

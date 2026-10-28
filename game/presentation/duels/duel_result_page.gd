@@ -39,7 +39,7 @@ func _build() -> void:
 	_column = VBoxContainer.new()
 	_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_column.alignment = BoxContainer.ALIGNMENT_CENTER
-	_column.add_theme_constant_override("separation", 14)
+	_column.add_theme_constant_override("separation", 10)
 	body.add_child(_column)
 	_render()
 
@@ -48,11 +48,11 @@ func _render() -> void:
 	if view.is_empty(): return
 	var key := str(view.chapter)
 	set_title("", "")
-	var title := Kit.text(DuelModel.result_title(view, name_of), 58 if not compact else 46, UiTokens.CREAM, true)
+	var title := Kit.text(DuelModel.result_title(view, name_of), 50 if not compact else 42, UiTokens.CREAM, true)
 	title.name = "DuelResultHeadline"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_column.add_child(title)
-	var chapter := Kit.text(RoomChapterTitle.title(key, str(Registry.descriptor(key).get("title", key))), 28, UiTokens.SOFT, true)
+	var chapter := Kit.text(RoomChapterTitle.title(key, str(Registry.descriptor(key).get("title", key))), 24, UiTokens.SOFT, true)
 	chapter.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_column.add_child(chapter)
 	var cards := HBoxContainer.new()
@@ -65,7 +65,7 @@ func _render() -> void:
 	_column.add_child(cards)
 	var line := DuelModel.result_line(view)
 	if not line.is_empty():
-		var gap := Kit.text(line, 26, UiTokens.SOFT, true)
+		var gap := Kit.text(line, 22, UiTokens.SOFT, true)
 		gap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_column.add_child(gap)
 	var paid := DuelModel.pay_lines(pay, win_bonus, show_boost)
@@ -74,16 +74,16 @@ func _render() -> void:
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_theme_constant_override("separation", 22)
 	if str(view.sides[view.mine].get("room_id", "")) != "":
-		var watch := Kit.button(PlayerCopy.DUEL_WATCH, Callable(), false, 64)
+		var watch := Kit.button(PlayerCopy.DUEL_WATCH, Callable(), false, 56)
 		watch.name = "DuelWatch"
-		watch.icon = PLAY_ICON
+		Kit.icon_on(watch, PLAY_ICON, true, 34)
 		watch.custom_minimum_size.x = 400
 		watch.pressed.connect(func(): watch_requested.emit(view, watch))
 		buttons.add_child(watch)
-	var back := Kit.button(PlayerCopy.DUEL_BACK_TO_DUELS, close, true, 64)
+	var back := Kit.button(PlayerCopy.DUEL_BACK_TO_DUELS, close, true, 56)
 	back.name = "DuelBackToDuels"
 	back.custom_minimum_size.x = 400
-	back.add_theme_font_size_override("font_size", 26)
+	back.add_theme_font_size_override("font_size", 24)
 	buttons.add_child(back)
 	_column.add_child(buttons)
 
@@ -103,34 +103,34 @@ func _card(index: int, won: bool) -> Control:
 	column.add_child(head)
 	var middle := HBoxContainer.new()
 	middle.add_theme_constant_override("separation", 14)
-	var pips := Kit.pips(Vector2(78, 92), index == view.mine)
+	var pips := Kit.pips(Vector2(62, 74), index == view.mine)
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	middle.add_child(pips)
-	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 64 if not compact else 52, UiTokens.CREAM, true)
+	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 54 if not compact else 46, UiTokens.CREAM, true)
 	time.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	time.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	middle.add_child(time)
 	column.add_child(middle)
 	var steps := DuelModel.steps(view, index)
-	column.add_child(Kit.dots(steps.x, steps.y, 22.0))
+	column.add_child(Kit.dots_within(steps.x, steps.y, 340.0, 22.0))
 	return card
 
 ## The cream Pollen earned card: each line and the total.
 func _pollen(paid: Dictionary) -> Control:
-	var card := Kit.panel("DuelPollen", UiTokens.CREAM, Color.TRANSPARENT, 22, 24.0)
+	var card := Kit.panel("DuelPollen", UiTokens.CREAM, Color.TRANSPARENT, 22, 18.0)
 	card.custom_minimum_size.x = 560
 	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 4)
+	column.add_theme_constant_override("separation", 0)
 	card.add_child(column)
-	column.add_child(Kit.text(PlayerCopy.DUEL_POLLEN_EARNED, 30, UiTokens.INK, true))
+	column.add_child(Kit.text(PlayerCopy.DUEL_POLLEN_EARNED, 26, UiTokens.INK, true))
 	for item: Array in paid.lines:
-		column.add_child(_line(str(item[0]), ("+" if column.get_child_count() > 1 else "") + PollenMoney.grouped(int(item[1])), 21, false))
+		column.add_child(_line(str(item[0]), ("+" if column.get_child_count() > 1 else "") + PollenMoney.grouped(int(item[1])), 19, false))
 	var rule := ColorRect.new()
 	rule.color = Color(UiTokens.INK, 0.35)
 	rule.custom_minimum_size.y = 1
 	column.add_child(rule)
-	column.add_child(_line(PlayerCopy.DUEL_PAY_TOTAL, PollenMoney.grouped(int(paid.total)), 30, true))
+	column.add_child(_line(PlayerCopy.DUEL_PAY_TOTAL, PollenMoney.grouped(int(paid.total)), 26, true))
 	return card
 
 func _line(label: String, amount: String, font_size: int, total: bool) -> Control:

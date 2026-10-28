@@ -64,15 +64,15 @@ func _chapter_row(key: String, ghost: Dictionary) -> Control:
 	line.add_theme_constant_override("separation", 14)
 	card.add_child(line)
 	line.add_child(Kit.picture(key, Vector2(150, 84), 10))
-	var title := Kit.text(RoomChapterTitle.title(key, str(Registry.descriptor(key).get("title", key))), 22, UiTokens.CREAM, true)
-	title.custom_minimum_size.x = 240
-	title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
-	line.add_child(title)
+	var column := VBoxContainer.new()
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.alignment = BoxContainer.ALIGNMENT_CENTER
+	column.add_theme_constant_override("separation", 6)
+	line.add_child(column)
+	column.add_child(Kit.text(RoomChapterTitle.title(key, str(Registry.descriptor(key).get("title", key))), 22, UiTokens.CREAM, true))
 	var options := HBoxContainer.new()
-	options.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	options.alignment = BoxContainer.ALIGNMENT_END
 	options.add_theme_constant_override("separation", 10)
-	line.add_child(options)
+	column.add_child(options)
 	if int(ghost.get("developer", -1)) > 0: options.add_child(_option(key, PlayerCopy.DUELS_GHOST_DEVELOPERS, int(ghost.developer), "developer", null))
 	for row: Dictionary in ghost.get("top", []):
 		var ordinals := PlayerCopy.LEADERBOARD_ORDINALS
@@ -82,7 +82,7 @@ func _chapter_row(key: String, ghost: Dictionary) -> Control:
 	return card
 
 func _option(key: String, label: String, ticks: int, source: String, entry_id: Variant) -> Control:
-	var button := Kit.button("%s  %s" % [label, DuelModel.time_text(ticks)], Callable(), false, 52)
+	var button := Kit.button("%s  %s" % [label, DuelModel.time_text(ticks)], Callable(), false, 48)
 	button.name = "Race_" + source + ("_" + str(entry_id).left(6) if entry_id != null else "")
 	button.custom_minimum_size.x = 190
 	button.pressed.connect(func(): race_requested.emit(key, source, entry_id, button))
