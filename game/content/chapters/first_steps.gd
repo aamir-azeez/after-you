@@ -24,7 +24,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/bell_lift.gd",
 		"island": "right",
-		"slot": [-1.4, 1.8],
+		"slot": [-1.3, 1.4],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_BELL_LIFT_NAME,
 			"action": PlayerCopy.KEEPSAKE_BELL_LIFT_ACTION,

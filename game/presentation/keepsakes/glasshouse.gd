@@ -10,8 +10,6 @@ const CLOSED := 0.588
 ## The flower at rest: a closed bud.
 const BUD := 0.4
 
-static var _walls: ArrayMesh
-
 func build(root: Node3D, state: Dictionary) -> Dictionary:
 	if state.get("hard", false): P.footing(root, 0.96, 0.72)
 	var body := P.body(root, state)
@@ -64,21 +62,13 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		parts.sun = sun
 	return parts
 
-## The four see-through walls, merged into one mesh once per session.
+## The four see-through walls as one merged mesh: one draw.
+const WALLS := [[Vector3(0.76, 0.48, 0.01), Vector3(0, 0.33, 0.26)], [Vector3(0.76, 0.48, 0.01), Vector3(0, 0.33, -0.26)], [Vector3(0.01, 0.48, 0.5), Vector3(-0.39, 0.33, 0)], [Vector3(0.01, 0.48, 0.5), Vector3(0.39, 0.33, 0)]]
+
 static func _walls_node(body: Node3D) -> MeshInstance3D:
-	if _walls == null:
-		var tool := SurfaceTool.new()
-		tool.begin(Mesh.PRIMITIVE_TRIANGLES)
-		for wall: Array in [[Vector3(0.76, 0.48, 0.01), Vector3(0, 0.33, 0.26)], [Vector3(0.76, 0.48, 0.01), Vector3(0, 0.33, -0.26)], [Vector3(0.01, 0.48, 0.5), Vector3(-0.39, 0.33, 0)], [Vector3(0.01, 0.48, 0.5), Vector3(0.39, 0.33, 0)]]:
-			tool.append_from(P.Primitives.box_mesh(wall[0]), 0, Transform3D(Basis.IDENTITY, wall[1]))
-		_walls = tool.commit()
-		P.SessionRelease.on_exit(Callable(load("res://presentation/keepsakes/glasshouse.gd"), "release_cached"))
-	var part := P.Primitives.mesh_node(_walls, _glass(), Vector3.ZERO, body)
+	var part := P.Primitives.mesh_node(P.merged_boxes("glasshouse-walls", WALLS), _glass(), Vector3.ZERO, body)
 	part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	return part
-
-static func release_cached() -> void:
-	_walls = null
 
 static func _glass() -> Material:
 	return P.clear(P.GLASS, 0.3)

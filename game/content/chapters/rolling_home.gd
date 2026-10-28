@@ -24,7 +24,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/rolling_ball.gd",
 		"island": "left",
-		"slot": [1.0, -1.6],
+		"slot": [0.0, -1.3],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_ROLLING_BALL_NAME,
 			"action": PlayerCopy.KEEPSAKE_ROLLING_BALL_ACTION,

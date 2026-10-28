@@ -147,6 +147,18 @@ static func torus(radius: float, thick: float) -> Mesh:
 	_keep(key, shape)
 	return shape
 
+## Boxes ([size, middle] each) merged into one mesh, made once per `key`: see-
+## through parts that would each be a draw of their own.
+static func merged_boxes(key: String, boxes: Array) -> Mesh:
+	var cached: Mesh = _tori.get("merged|" + key)
+	if cached != null: return cached
+	var tool := SurfaceTool.new()
+	tool.begin(Mesh.PRIMITIVE_TRIANGLES)
+	for item: Array in boxes: tool.append_from(Primitives.box_mesh(item[0]), 0, Transform3D(Basis.IDENTITY, item[1]))
+	var mesh := tool.commit()
+	_keep("merged|" + key, mesh)
+	return mesh
+
 static func _keep(key: String, mesh: Mesh) -> void:
 	_tori[key] = mesh
 	SessionRelease.on_exit(Callable(load("res://presentation/keepsakes/keepsake_parts.gd"), "release_cached"))

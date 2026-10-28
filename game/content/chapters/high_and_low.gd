@@ -22,7 +22,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/up_and_down_steps.gd",
 		"island": "right",
-		"slot": [0.0, -1.2],
+		"slot": [0.1, -1.2],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_STEPS_NAME,
 			"action": PlayerCopy.KEEPSAKE_STEPS_ACTION,

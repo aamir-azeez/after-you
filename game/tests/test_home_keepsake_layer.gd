@@ -464,7 +464,7 @@ func _check_explore() -> void:
 		_check(always_solid and never_inside, "The spirit never walks off the islands or into a keepsake" + context)
 		stick.value = Vector2.ZERO
 		var well: Transform3D = layer.slot_transform("the-wishing-well")
-		spirit.position = well * Vector3(0, 0, 0.75)
+		spirit.position = well * Vector3(-0.2, 0, 0.55)
 		stage._process(1.0 / 30.0)
 		var action: Button = stage._explore_action
 		_check(layer.selected_item().id == "the-wishing-well" and stage._keepsake_title.text == PlayerCopy.KEEPSAKE_WISHING_WELL_NAME, "Walking up to a keepsake names it" + context)

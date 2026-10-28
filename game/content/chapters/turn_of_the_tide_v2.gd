@@ -71,7 +71,7 @@ const DATA := {
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/tide_pool.gd",
 		"island": "right",
-		"slot": [0.9, -0.6],
+		"slot": [0.9, 0.7],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_TIDE_POOL_NAME,
 			"action": PlayerCopy.KEEPSAKE_TIDE_POOL_ACTION,

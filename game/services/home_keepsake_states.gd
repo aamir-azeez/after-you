@@ -32,7 +32,7 @@ const EARLIER := "earlier"
 const EARLIER_KEEPSAKE := {
 	"builder": "res://presentation/keepsakes/lantern_line.gd",
 	"island": "right",
-	"slot": [0.9, 2.1],
+	"slot": [0.8, 2.0],
 	"copy": {
 		"name": PlayerCopy.KEEPSAKE_LANTERN_LINE_NAME,
 		"action": PlayerCopy.KEEPSAKE_LANTERN_LINE_ACTION,
