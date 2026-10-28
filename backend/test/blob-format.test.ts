@@ -25,6 +25,7 @@ const HASH_NAMES = /\b\w*(?:recording|checkpoint)\w*hash\w*\b|\b\w*Hash\b/gi;
 /** file (under src/) -> [lines flagged, why that raw use stays]. */
 const RAW_ALLOWED: Record<string, [number, string]> = {
   "leaderboards/board.ts": [2, "lb_proofs keeps a waiting run's checkpoint raw until its verdict, for the replay job to splice unparsed; lb_replays stores the tagged body encodeBlob made"],
+  "duels/store.ts": [1, "duel_proofs keeps a finished duel run's checkpoint raw until its verdict, as lb_proofs does, for the same replay job to splice unparsed"],
   "leaderboards/operator.ts": [1, "the replay job's pending list splices each waiting proof's stored text without parsing it (10 ms CPU on the Free plan)"],
   "room.ts": [4, "legacy v1 room state, read and written whole"],
   "storage-schema.ts": [1, "operator snapshot export and import of v1 tables as plain rows"],
