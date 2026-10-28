@@ -193,7 +193,13 @@ func _joining() -> void:
 	var line := Unlocks.join_header(newcomer)
 	_check(line.begins_with(Unlocks.JOIN_HEADER + ": "), "The join line is the header the room reads")
 	var levels := _levels(newcomer)
-	_check(levels == [Registry.FIRST_STEPS.get_slice("@", 0)], "A new player's join names First Steps alone: %s" % line)
+	# Chapters outside the chain (one not released yet) are never gated.
+	var outside: Array = [Registry.FIRST_STEPS.get_slice("@", 0)]
+	for key: String in Registry.keys():
+		if Unlocks.chain_key(key).is_empty() and not key.get_slice("@", 0) in outside: outside.append(key.get_slice("@", 0))
+	_check(levels == outside, "A new player's join names First Steps and nothing else of the chain: %s" % line)
+	for key: String in Registry.keys():
+		_check(Unlocks.chain_key(key).is_empty() or Unlocks.chain_key(key).get_slice("@", 0) == key.get_slice("@", 0), "%s answers as its own chapter's offered version" % key)
 	_check(Unlocks.open(Registry.FIRST_STEPS, newcomer) and Unlocks.open(Registry.FIRST_STEPS, veteran), "A new player and a veteran can both play First Steps together")
 	_check(Unlocks.open(chain[2], veteran) and not Unlocks.open(chain[2], newcomer), "Only the veteran has the third chapter")
 	_check(not chain[2].get_slice("@", 0) in levels and chain[2].get_slice("@", 0) in _levels(veteran), "So a room for it refuses the new player and takes the veteran")

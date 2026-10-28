@@ -40,8 +40,6 @@ const JOIN_REFUSAL := "chapter_not_open"
 ## Worked out on first ask, then only read.
 static var _chain: Array[String] = []
 static var _premium: Dictionary = {}
-## Any registered or older key -> the chain key it counts for.
-static var _counts_for: Dictionary = {}
 ## Chain key -> every key whose journals count for it.
 static var _sources: Dictionary = {}
 ## Level id (a key before "@", how keepsakes join a chapter) -> chain key.
@@ -52,11 +50,12 @@ static func chain() -> Array[String]:
 	_build()
 	return _chain.duplicate()
 
-## The chain key `key` counts for: itself, the newer version offered in its
-## place, or the version whose places it earns; "" when outside the chain.
+## The chain key `key` counts for: the offered version of its chapter, joined
+## by level id as keepsakes join them, so every version (older, superseded or
+## not yet released) answers as the offered one; "" when outside the chain.
 static func chain_key(key: String) -> String:
 	_build()
-	return str(_counts_for.get(key, ""))
+	return str(_by_level.get(key.get_slice("@", 0), ""))
 
 ## What the gate answers from, built once per draw. `earned` and `hard` are
 ## the marks Home's keepsakes read (HomeKeepsakes.earned_descriptors() and
@@ -169,22 +168,15 @@ static func _build() -> void:
 		premium[key] = bool(Registry.descriptor(key).get("premium", false))
 	var ordered: Array[String] = []
 	ordered.assign(Registry.picker_order(offered, func(key: String) -> int: return Registry.picker_rank(key, premium[key])))
-	var counts := {}
 	var sources := {}
 	var by_level := {}
 	for key: String in ordered:
-		counts[key] = key
-		sources[key] = [key]
+		sources[key] = []
 		by_level[key.get_slice("@", 0)] = key
-	for key: String in Index.keys():
-		var counted := Registry.offered_key(key)
-		if not sources.has(counted): continue
-		for source: String in [key, str(Index.data(key).version_of)]:
-			if source.is_empty() or counts.has(source): continue
-			counts[source] = counted
-			sources[counted].append(source)
+	for key: String in Index.keys() + Catalog.OTHER_CHAPTERS.keys():
+		var counted := str(by_level.get(key.get_slice("@", 0), ""))
+		if not counted.is_empty() and not key in sources[counted]: sources[counted].append(key)
 	_premium = premium
-	_counts_for = counts
 	_sources = sources
 	_by_level = by_level
 	_chain = ordered
