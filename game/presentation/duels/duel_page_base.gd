@@ -17,6 +17,8 @@ signal closed
 ## A short line for the app's pop-up (presentation/toast.gd).
 signal notice(text: String, news: bool)
 
+## The layer this page draws on; a page opened over another draws one above it.
+var stack_layer := 61
 var root: Control
 var body: Control
 var compact := false
@@ -28,7 +30,7 @@ var _alive := true
 var _modal: Control
 
 func _ready() -> void:
-	layer = 61
+	layer = stack_layer
 	root = Control.new()
 	root.name = page_name()
 	root.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
@@ -62,7 +64,6 @@ func _ready() -> void:
 	_header.add_child(back)
 	_title = Kit.text(title_text(), 50, UiTokens.CREAM, true)
 	_title.name = page_name() + "Title"
-	_title.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	_header.add_child(_title)
 	_subtitle = Kit.text(subtitle_text(), 22, UiTokens.SOFT)
 	_subtitle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
