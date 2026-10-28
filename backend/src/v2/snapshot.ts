@@ -15,6 +15,7 @@ import { ROOM_INBOX_ACTIVITY, clearRoomInboxActivity } from "../room-inbox-stora
 import { clearTurnTries, isTurnTriesTable } from "./turn-tries";
 import { clearPollenRoom, isPollenRoomTable } from "../pollen/turn-facts";
 import { clearLooks, isLooksRoomTable } from "../pollen/room-looks";
+import { clearDuelLink, isDuelRoomTable } from "../duels/room-link";
 import { clearEndReactions, isEndReactionsTable } from "./end-reactions";
 import { clearRunReactions, isRunReactionsTable } from "./run-reactions";
 import { clearHard, isHardTable } from "./hard-mode";
@@ -80,7 +81,7 @@ function schema(storage: DurableObjectStorage): 3 | 4 | 5 | 6 | 7 | 8 | 9 {
   const metadata = storage.sql.exec<{ id: number; schema_version: number }>("SELECT id,schema_version FROM metadata LIMIT 2").toArray();
   need(metadata.length === 1 && metadata[0].id === 1 && [3, 4, 5, 6, 7, 8, 9].includes(metadata[0].schema_version), "unsupported_storage_schema");
   const version = metadata[0].schema_version as 3 | 4 | 5 | 6 | 7 | 8 | 9;
-  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row) && !isTurnTriesTable(row) && !isEndReactionsTable(row) && !isRunReactionsTable(row) && !isMemberNamesTable(row) && !isHardTable(row) && !isPollenRoomTable(row) && !isLooksRoomTable(row));
+  const found = storage.sql.exec<{ name: string; sql: string }>("SELECT name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name != '_cf_KV' ORDER BY name").toArray().filter(row => !isAlarmMetadataTable(row) && !isTurnTriesTable(row) && !isEndReactionsTable(row) && !isRunReactionsTable(row) && !isMemberNamesTable(row) && !isHardTable(row) && !isPollenRoomTable(row) && !isLooksRoomTable(row) && !isDuelRoomTable(row));
   // Operational inbox activity is a known runtime table, but is never exported
   // with recordings, checkpoints, or other gameplay archive data.
   const expected = [{ name: "metadata", schema: METADATA_SCHEMA }, ...definitions(version), ...notificationTables("RoomV2"), REDO_TABLE, ROOM_INBOX_ACTIVITY].sort((a, b) => a.name.localeCompare(b.name));
@@ -479,6 +480,7 @@ export async function restoreRoomV2(ctx: DurableObjectState, serialized: string,
     clearMemberNames(ctx.storage);
     clearPollenRoom(ctx.storage);
     clearLooks(ctx.storage);
+    clearDuelLink(ctx.storage);
     clearHard(ctx.storage);
   });
   return { restored: true, checksum: archive.checksum.value };

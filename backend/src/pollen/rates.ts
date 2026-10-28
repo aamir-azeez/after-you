@@ -18,6 +18,12 @@ export type Rates = {
   bonus_percent: { first_try: number; gold_pace: number; silver_pace: number; hard: number };
   /** Each Full Journey member of a room adds this much for both players. */
   boost_percent_per_subscriber: number;
+  /**
+   * Friend duels (POLLEN-RULES.md "Duels and ghost races"): a duel bank turn adds turn_percent of its
+   * base plus bonuses, worked out together with the room boost and rounded once; each player of the
+   * winning pair gets win_bonus, at most wins_per_week counted wins a week, once a week per opposing pair.
+   */
+  duels: { turn_percent: number; win_bonus: number; wins_per_week: number };
   /** Full-rate turns: a new wallet starts with `start`, gains `refill` each Monday (UTC) and holds at most `cap`. */
   bank: { start: number; refill: number; cap: number };
   /** After the bank: `pay` for each of the next `turns` turns in a week, step by step, then 0. */
@@ -56,6 +62,7 @@ export function checkedRates(value: unknown): Rates {
   if (!rates.tiers[rates.guest_paid_tier]) fail("guest_paid_tier");
   if (!Object.values(rates.bonus_percent ?? {}).every(percent => count(percent))) fail("bonus_percent");
   if (!count(rates.boost_percent_per_subscriber)) fail("boost");
+  if (!count(rates.duels?.turn_percent) || !count(rates.duels.win_bonus) || !count(rates.duels.wins_per_week, 1)) fail("duels");
   if (!count(rates.bank?.start) || !count(rates.bank?.refill) || !count(rates.bank?.cap, 1) || rates.bank.start > rates.bank.cap) fail("bank");
   if (!Array.isArray(rates.tail) || !rates.tail.every(step => count(step.pay) && count(step.turns, 1))) fail("tail");
   const blooms = rates.blooms;

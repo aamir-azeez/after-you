@@ -21,6 +21,7 @@
   "guest_paid_tier": "paid",
   "bonus_percent": { "first_try": 25, "gold_pace": 15, "silver_pace": 5, "hard": 50 },
   "boost_percent_per_subscriber": 10,
+  "duels": { "turn_percent": 50, "win_bonus": 250, "wins_per_week": 3 },
   "bank": { "start": 12, "refill": 12, "cap": 36 },
   "tail": [ { "pay": 10, "turns": 36 }, { "pay": 1, "turns": 64 } ],
   "blooms": { "modulus": 10000, "triple_below": 200, "double_below": 1000 },

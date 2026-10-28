@@ -3,6 +3,7 @@ import { pooled } from "../room-inbox";
 import { boardKeys } from "./boards";
 import type { MemberState } from "./member";
 import { storeView } from "./view-cache";
+import { forgetDuelParty } from "../duels/erase";
 
 /**
  * A player's name on the boards that hold a run of theirs. Names show only
@@ -50,10 +51,12 @@ export async function forgetLeaderboardPlayerIfKnown(env: Env, playerId: string)
  * account check already under way cannot add them back), then every board
  * forgets them: their waiting runs go, their ranked runs keep only the pair's
  * time, with no replay, their rewards there go. Every board, not only the listed ones, since
- * a run still waiting for its account check is on no list yet.
- * Requests: 1 (Member) + 1 per board (12 today).
+ * a run still waiting for its account check is on no list yet. Duels go the same way: their
+ * party first (duels/erase.ts), then each board ends their open duels and drops their ids.
+ * Requests: 1 (Member) + 1 per board (12 today), plus the party's (at most 11).
  */
 export async function forgetLeaderboardPlayer(env: Env, playerId: string): Promise<void> {
+  await forgetDuelParty(env, playerId);
   await env.LEADERBOARD_MEMBERS.getByName(playerId).forget();
   await pooled([...boardKeys()], BOARD_CONCURRENCY, async board => {
     const answer = await env.LEADERBOARD_BOARDS.getByName(board).forget(board, playerId);

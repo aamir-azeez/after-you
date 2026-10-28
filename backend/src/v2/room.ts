@@ -49,6 +49,7 @@ import { clearLooks, eraseMemberLook, eraseTurnLooksOf, memberLook, recordMember
 import type { Look } from "../pollen/catalog";
 import { pairLooks, type PairLooks } from "../leaderboards/run-looks";
 import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
+import { clearDuelLink, duelJoinAllowed, duelLink, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -85,8 +86,9 @@ export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 } & BesideFi
 /**
  * A standalone turn committed with a PollenMember also returns its frozen facts; the Worker takes them out before replying (pollen/routes.ts).
  * A standalone turn that finishes the room while looks are on returns both members' looks for its leaderboard post (leaderboards/run-looks.ts), also taken out.
+ * A duel room's turn also returns its duel (duels/room-link.ts), which the Worker takes out likewise (duels/turn-hook.ts).
  */
-export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?: PairLooks };
+export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?: PairLooks; duel_link?: DuelLink };
 /**
  * What a standalone member's read or turn reply carries beside the room, each
  * only when the member asked for it (names and looks also while their flags are on): the room's end reactions
@@ -353,8 +355,9 @@ export class RoomV2 extends DurableObject<Env> {
    * `name`: the host's display name while names are on (display-names.ts recordMemberName); undefined writes nothing.
    * `pollen`: the host's Full Journey end while Pollen earning is on (pollen/turn-facts.ts recordMember); undefined writes nothing.
    * `look`: the host's look while looks are on (pollen/room-looks.ts recordMemberLook); undefined writes nothing.
+   * `duel`: the duel this room is made for (duels/room-link.ts); a retry must name the same one.
    */
-  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard", name?: string | null, pollen?: PollenMember, look?: Look): Outcome<RoomSnapshotV2> {
+  initialize(roomId: string, host: string, invite: string, requestedChapter: ChapterKey = RELAY_KEY, simulationVersion?: number, mode?: "hard", name?: string | null, pollen?: PollenMember, look?: Look, duel?: DuelLink): Outcome<RoomSnapshotV2> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_initialize_required"); if (boundary) return boundary;
     let selected;
     try { selected = chapter(requestedChapter); } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -363,6 +366,8 @@ export class RoomV2 extends DurableObject<Env> {
     if (existing && !sameChapter(existing, selected.key)) return fail(409, "idempotency_chapter_mismatch");
     if (existing && existing.simulation_version !== simulationVersion) return fail(409, "idempotency_simulation_mismatch");
     if (existing && (this.hard.run(this.ctx.storage) !== null) !== (mode === "hard")) return fail(409, "idempotency_mode_mismatch");
+    if (duel && (mode === "hard" || !duel.members.includes(host))) return fail(422, "invalid_duel_room");
+    if (existing && !sameDuelLink(duelLink(this.ctx.storage), duel)) return fail(409, "idempotency_duel_mismatch");
     if (existing && (existing.host_id !== host || !equalHash(existing.invite_code, invite))) return fail(409, "room_exists");
     // A host who left reads the room as gone, even through their own create retry.
     if (existing) return this.member(existing, host) ? ok(this.view(existing, host)) : fail(410, "room_deleted");
@@ -377,6 +382,7 @@ export class RoomV2 extends DurableObject<Env> {
     this.ctx.storage.transactionSync(() => {
       this.ctx.storage.sql.exec("INSERT INTO room VALUES (1,?)", JSON.stringify(state));
       if (mode === "hard") initializeHard(this.ctx.storage, this.hard);
+      if (duel) recordDuelLink(this.ctx.storage, duel);
       recordMemberName(this.ctx.storage, host, name);
       recordMember(this.ctx.storage, host, pollen);
       recordMemberLook(this.ctx.storage, host, look);
@@ -473,6 +479,7 @@ export class RoomV2 extends DurableObject<Env> {
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
     if (!chapterOpen(state.level_id, open)) return fail(403, CHAPTER_NOT_OPEN);
+    if (!duelJoinAllowed(duelLink(this.ctx.storage), player)) return fail(403, "duel_pair_only");
     state.guest_id = player; state.revision++; this.write(state);
     recordMemberName(this.ctx.storage, player, name);
     recordMember(this.ctx.storage, player, pollen);
@@ -673,8 +680,10 @@ export class RoomV2 extends DurableObject<Env> {
     if (!outcome.ok || context !== undefined) return outcome;
     const facts = pollen !== undefined && outcome.value.receipt.recording_hash ? turnFacts(this.ctx.storage, outcome.value.receipt.recording_hash) : null;
     const finished = outcome.value.room;
+    const link = duelLink(this.ctx.storage);
     const extra = { ...(facts?.player_id === player ? { pollen_facts: facts } : {}),
-      ...(look !== undefined && finished.active_role === "complete" ? { board_looks: pairLooks(this.ctx.storage, finished.host_id, finished.guest_id) } : {}) };
+      ...(look !== undefined && finished.active_role === "complete" ? { board_looks: pairLooks(this.ctx.storage, finished.host_id, finished.guest_id) } : {}),
+      ...(link ? { duel_link: link } : {}) };
     if (!(beside.faces || beside.names || beside.tracks || beside.looks)) return Object.keys(extra).length ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
     const state = this.stored();
     return state ? ok<CommittedV2>({ ...outcome.value, ...this.beside(state, player, beside), ...extra }) : outcome;
@@ -754,7 +763,8 @@ export class RoomV2 extends DurableObject<Env> {
           recordMember(this.ctx.storage, player, pollen);
           recordTurnFacts(this.ctx.storage, { room_id: state.room_id, recording_hash: recording.recording_hash, turn_id, player, partner: this.partnerOf(state, player),
             host: player === state.host_id, level_id: state.level_id, stage_id, role: recording.role, ticks: recording.duration_ticks, tries,
-            premium: chapter(state).premium, hard: Boolean(current.hard), complete: recording.role === "b" && state.stage_index >= chapter(state).stages.length, accepted_at: Date.now() });
+            premium: chapter(state).premium, hard: Boolean(current.hard), complete: recording.role === "b" && state.stage_index >= chapter(state).stages.length, accepted_at: Date.now(),
+            duel: duelLink(this.ctx.storage)?.kind === "friend" });
         }
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
@@ -1022,6 +1032,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearMemberNames(this.ctx.storage);
     clearPollenRoom(this.ctx.storage);
     clearLooks(this.ctx.storage);
+    clearDuelLink(this.ctx.storage);
     clearHard(this.ctx.storage, this.hard);
     resetRedo(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
@@ -1060,6 +1071,8 @@ export class RoomV2 extends DurableObject<Env> {
    * Binding only (POST /v1/pollen/turn-claims): the frozen facts of one of `player`'s accepted turns.
    * Read only; facts outlive replay transfer and history offload, which never touch them.
    */
+  /** The duel this room plays for, or null (duels/room-link.ts); a retried premium turn's hook asks it. */
+  duelLinkOf(): DuelLink | null { return duelLink(this.ctx.storage); }
   pollenTurnFacts(player: string, recordingHash: string): Outcome<TurnFacts> {
     const facts = turnFacts(this.ctx.storage, recordingHash);
     return facts && facts.player_id === player ? ok(facts) : fail(404, "pollen_turn_not_found");
@@ -1095,7 +1108,7 @@ answerWhileBlank(RoomV2, {
   operation: async () => roomNotFound(), collection: async () => roomNotFound(), pairRecording: async () => roomNotFound(), reactions: async () => roomNotFound(),
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
   redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
-  hardReset: async () => roomNotFound(), hardFailures: async () => roomNotFound(), clearMemberName: () => false,
+  hardReset: async () => roomNotFound(), hardFailures: async () => roomNotFound(), clearMemberName: () => false, duelLinkOf: () => null,
   pollenTurnFacts: () => fail(404, "pollen_turn_not_found"), pollenClearFacts: () => fail(404, "pollen_clear_not_found"),
   campaignDrainCensus: () => absentCensus()
 });

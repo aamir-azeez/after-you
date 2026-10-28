@@ -216,7 +216,7 @@ export function claimRoom(duel: Duel, player: string, proposal: { room_id: strin
   if (index < 0) return fail(403, "duel_not_yours");
   settle(duel, now);
   if (duel.status !== "running") return fail(409, "duel_not_running");
-  const side = duel.sides[index]!;
+  const side = duel.sides[index as 0 | 1]!;
   if (side.left) return fail(409, "duel_left");
   const stale = side.room !== null && side.room.host !== player && side.revision === 0 && roomAbsent && now - side.room.claimed_ms >= ROOM_CLAIM_TAKEOVER_MS;
   if (side.room === null || stale) {
@@ -270,7 +270,7 @@ export function leave(duel: Duel, player: string, now: number): Outcome<Duel> {
   settle(duel, now);
   if (duel.status === "challenged") return decline(duel, player, now);
   if (isFinal(duel)) return ok(duel);
-  const side = duel.sides[index]!;
+  const side = duel.sides[index as 0 | 1]!;
   if (side.finished_ms !== null) return fail(409, "duel_finished_for_you");
   if (!side.left) {
     side.left = true;
@@ -330,7 +330,7 @@ export function viewFor(duel: Duel, viewer: string): DuelView | null {
   const outcome = !result ? null : result.winner === null ? (result.reason === "draw" ? "draw" : "none") : result.winner === mine ? "won" : "lost";
   return {
     schema_version: 1, duel_id: duel.duel_id, kind: duel.kind, board: duel.board, status: duel.status, steps: duel.steps,
-    created_ms: duel.created_ms, accepted_ms: duel.accepted_ms, updated_ms: duel.updated_ms, mine,
+    created_ms: duel.created_ms, accepted_ms: duel.accepted_ms, updated_ms: duel.updated_ms, mine: mine as 0 | 1,
     sides: [sideView(duel.sides[0], 0), duel.sides[1] ? sideView(duel.sides[1], 1) : null], ghost: duel.ghost,
     result: result && outcome ? { outcome, reason: result.reason, margin_ticks: result.margin_ticks, decided_ms: result.decided_ms } : null,
     eligible: duel.eligible
