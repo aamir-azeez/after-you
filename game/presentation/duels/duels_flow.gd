@@ -56,7 +56,7 @@ func is_open() -> bool:
 ## are on. Home asks the server nothing for it: the next Home after any online
 ## screen read them shows the row.
 func offer(menu: Control) -> void:
-	if is_instance_valid(menu) and menu.has_method("show_duels"): menu.show_duels(supported())
+	if menu != null and is_instance_valid(menu) and menu.has_method("show_duels"): menu.show_duels(supported())
 
 func supported() -> bool:
 	return host.relay_session != null and host.relay_session.duels_supported()
@@ -142,7 +142,7 @@ func _open_chapters() -> Array:
 
 func _toast_failure(answer: Dictionary) -> void:
 	var code := str(answer.get("code", ""))
-	host._toast(PlayerCopy.DUELS_LIMIT if code == "duel_limit_reached" else PlayerCopy.DUELS_NO_PAIRS if code == "opponent_party_required" else PlayerCopy.DUELS_NO_PARTY if code == "party_required" else PlayerCopy.DUELS_ACTION_FAILED)
+	host._toast(PlayerCopy.DUELS_LIMIT if code == "duel_limit_reached" else PlayerCopy.DUELS_FRIEND_NO_PARTNER if code == "opponent_party_required" else PlayerCopy.DUELS_NO_PARTY if code == "party_required" else PlayerCopy.DUELS_ACTION_FAILED)
 
 func _open_party() -> void:
 	if not is_open(): return
