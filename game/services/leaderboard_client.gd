@@ -2,7 +2,9 @@ extends RefCounted
 ## The leaderboard requests (backend src/leaderboards/routes.ts) through the
 ## app's one request queue (services/rooms_api.gd request_json):
 ## - board(): GET /v1/leaderboards/<board>, the board anyone sees. Kept here for
-##   VIEW_KEEP_MS, so moving between chapters asks the server once each.
+##   VIEW_KEEP_MS, so moving between chapters asks the server once each. Every
+##   board read from the server goes to services/leaderboard_placings.gd,
+##   which notes this player's runs it confirms in the top 10.
 ## - the name choice ("Show my name on leaderboards", off by default): kept on
 ##   the phone and sent with PUT /v1/leaderboards/me. A choice the server has
 ##   not taken yet stays pending and goes again on the next sync(). With
@@ -16,6 +18,7 @@ const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const LeaderboardReplay = preload("res://services/leaderboard_replay.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
+const Placings = preload("res://services/leaderboard_placings.gd")
 const PREFIX := "/v1/leaderboards/"
 const ME := "/v1/leaderboards/me"
 const VIEW_KEEP_MS := 60_000
@@ -52,6 +55,7 @@ func board(key: String, fresh: bool = false) -> Dictionary:
 	var view := valid_view(response.get("data"), key)
 	if view.is_empty(): return {"ok": false, "code": "invalid_board"}
 	_views[key] = {"at": Time.get_ticks_msec(), "view": view}
+	Placings.shared().learn(_owner, key, view)
 	return {"ok": true, "view": view}
 
 ## Whether this player chose to show their name (the phone's copy).

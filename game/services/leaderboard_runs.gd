@@ -8,7 +8,10 @@ extends RefCounted
 ## room and the branch it finished on, so only the two members can find it.
 ## Its time is the sum of every turn's ticks on that branch, read from the
 ## room's final checkpoint, which nests every pair. A run with catch assistance
-## on any turn is kept but marked, since it never ranks.
+## on any turn is kept but marked, since it never ranks. Its `partner` is the
+## other member's player id ("" for runs kept before it was), so a celebration
+## (presentation/leaderboard_celebration.gd) can dress their pip in the look
+## services/turn_looks.gd last heard for them.
 ##
 ## services/shared_replay_collection.gd calls note() for every chapter room it
 ## remembers; only a finished one is kept. One small file per phone, newest
@@ -16,6 +19,7 @@ extends RefCounted
 const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
 const PATH := "user://leaderboard-runs.json"
 const MAX_RUNS := 128
 const TICK_RATE := 30
@@ -35,6 +39,12 @@ static func use_path(path: String) -> void:
 static func board_key(chapter_key: String) -> String:
 	var known := Registry.descriptor(chapter_key)
 	return "" if known.is_empty() else "%s@%d" % [known.level_id, int(known.level_version)]
+
+## The chapter a board ranks: the offered chapter version with that board, or "".
+static func chapter_of(board: String) -> String:
+	for key: String in Registry.offered_keys():
+		if board_key(key) == board: return key
+	return ""
 
 ## The run's id on its board (32 hex characters).
 static func entry_id(room_id: String, branch: int) -> String:
@@ -67,10 +77,11 @@ static func note(owner: String, snapshot: Dictionary, chapter_key: String) -> vo
 	var time := run_time(chapter_key, snapshot.checkpoint)
 	if board.is_empty() or time.is_empty(): return
 	var id := entry_id(snapshot.room_id, int(snapshot.branch))
+	var partner: Variant = snapshot.guest_id if snapshot.get("host_id") == owner else snapshot.get("host_id")
 	var mine: Array = runs_of(owner)
 	for run: Dictionary in mine:
 		if run.entry_id == id: return
-	mine.append({"board": board, "entry_id": id, "ticks": int(time.ticks), "assisted": bool(time.assisted), "finished_at": str(snapshot.get("updated_at", ""))})
+	mine.append({"board": board, "entry_id": id, "ticks": int(time.ticks), "assisted": bool(time.assisted), "finished_at": str(snapshot.get("updated_at", "")), "partner": partner if TurnLooks.valid_player(partner) else ""})
 	while mine.size() > MAX_RUNS: mine.pop_front()
 	_data[owner] = mine
 	AtomicFile.write_text(_path, JSON.stringify({"schema_version": 1, "players": _data}))
@@ -106,5 +117,5 @@ static func _load() -> void:
 		var kept: Array = []
 		for run: Variant in list:
 			if run is Dictionary and run.get("board") is String and run.get("entry_id") is String and str(run.entry_id).length() == 32 and Typed.whole_number(run.get("ticks")) and run.get("assisted") is bool:
-				kept.append({"board": run.board, "entry_id": run.entry_id, "ticks": int(run.ticks), "assisted": run.assisted, "finished_at": str(run.get("finished_at", ""))})
+				kept.append({"board": run.board, "entry_id": run.entry_id, "ticks": int(run.ticks), "assisted": run.assisted, "finished_at": str(run.get("finished_at", "")), "partner": run.partner if TurnLooks.valid_player(run.get("partner")) else ""})
 		_data[owner] = kept.slice(maxi(kept.size() - MAX_RUNS, 0))
