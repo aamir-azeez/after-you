@@ -74,7 +74,7 @@ class HostLobby extends RelayLobbyFlow:
 		await host.relay_session.load_lobby()
 		# The token never moves here, so a caller that checks it stops, as before.
 		return false
-	func lobby_action(action: String, value: String = "", _hard: bool = false) -> void: host.actions.append([action, value])
+	func lobby_action(action: String, value: String = "", _hard: bool = false, _duel: Dictionary = {}) -> void: host.actions.append([action, value])
 
 func _chooser() -> void:
 	var viewport := SubViewport.new()
