@@ -260,7 +260,7 @@ func _together(scene: App, store: FakeStore, premium: String) -> void:
 func _chain(scene: App, store: FakeStore) -> void:
 	var chain := Unlocks.chain()
 	scene.config.merge(GOOGLE_PLAY, true)
-	scene.unlocks = Unlocks.progress({}, {}, false)
+	scene.unlocks = Unlocks.progress([], {}, {}, false)
 	var reason := Unlocks.reason(chain[1], scene.unlocks)
 	var entries := {}
 	for entry: Dictionary in scene.room_hub_flow.together_chapters(): entries[entry.key] = entry
@@ -315,8 +315,7 @@ func _chain(scene: App, store: FakeStore) -> void:
 		await process_frame
 		_check(scene.mode == "journey", "Which opens the Chapters page")
 	scene.real = false
-	scene.unlocks = UnlockFixture.finished_through(Unlocks.opens_after(lighthouse))
-	scene.unlocks = Unlocks.progress(scene.unlocks, {}, true)
+	scene.unlocks = Unlocks.progress(UnlockFixture.cleared_through(Unlocks.opens_after(lighthouse)), {}, {}, true)
 	scene.store_flow._show_full_journey_unlocked()
 	await process_frame
 	_check(_button(scene, "Enter the Lighthouse") != null, "Once the Lighthouse is reached the card enters it")

@@ -57,6 +57,9 @@ SHARED = {
 }
 EXISTING_SUITES = ["chapter_descriptors", "chapter_manifest", "chapter_registry", "registry_golden", "chapter_thumbnail_catalog", "ci_shards",
                    "home_keepsake_layer", "home_keepsake_states", "keepsake_props", "scrolling_camera", "fold_present", "lighthouse_v2_release"]
+# The chapter unlock chain reads every offered chapter and its keepsake, so a
+# new chapter must keep the chain whole (services/chapter_unlocks.gd).
+EXISTING_SUITES += ["chapter_unlocks"]
 FAILURE_TEXT = re.compile(r"SCRIPT ERROR|Parse Error|Compilation failed|being destroyed without its completion")
 IGNORED = shutil.ignore_patterns("android", "node_modules", ".wrangler", "__pycache__")
 # The service settings CI blanks before any suite runs (verify.yml).

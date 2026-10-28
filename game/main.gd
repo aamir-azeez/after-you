@@ -827,11 +827,11 @@ func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
 
 ## What the chapter unlock gate answers from (services/chapter_unlocks.gd):
-## the marks, the chapters already played or in a room, and Full Journey
-## access. Built once per draw, never per card.
+## the marks Home's keepsakes read, the chapters already played or in a room,
+## and Full Journey access. Built once per draw, never per card.
 func _chapter_unlocks() -> Dictionary:
 	var rooms := _known_rooms()
-	return ChapterUnlocks.progress(_chapter_marks(), ChapterUnlocks.touched(home_keepsakes.earned_descriptors(), rooms.chapters), _full_journey_access(), rooms.finished)
+	return ChapterUnlocks.progress(home_keepsakes.earned_descriptors(), HardMode.new().marks(), ChapterUnlocks.touched(rooms.chapters), _full_journey_access(), rooms.finished)
 
 ## The rooms this phone knows, as chapter keys: {"chapters": every room's,
 ## "finished": finished rooms'}. From the online session's rooms, the room

@@ -8,12 +8,16 @@ extends RefCounted
 ##   the pickers show them (Registry.picker_rank): free chapters first, then
 ##   the Full Journey with the Sleeping Lighthouse leading.
 ## - First Steps is always open. A chapter opens once the chapter before it
-##   is finished in any mode (FINISH_MODES, or a finished room for it). A
-##   finish further along opens every chapter before it too, so the rule is
-##   one comparison against the furthest finished chapter (the frontier).
-## - A chapter the player has already been in stays open: a place earned there,
-##   its journal on this phone, or a room for it (touched()). Being in one does
-##   not open the next.
+##   is cleared. A clear is what earns the chapter's keepsake on Home, read
+##   through the same view (services/home_keepsake_states.gd "base"): every
+##   stage solo or every stage with a friend, or either Hard mark. A finished
+##   room the keepsake ledger has not taken yet, and a duel's clear, count too
+##   (progress() `finished_elsewhere`). A clear further along opens every
+##   chapter before it, so the rule is one comparison against the furthest
+##   cleared chapter (the frontier).
+## - A chapter the player has already been in stays open: its keepsake started
+##   (a stage mark), its journal on this phone, or a room for it (touched()).
+##   Being in one does not open the next.
 ## - reached() is the chain alone. Play Solo and Host a room ask it and keep
 ##   their own Full Journey lock, store and tester code routing. A join asks
 ##   it too: the host's Full Journey covers the guest, as it always has.
@@ -25,10 +29,8 @@ extends RefCounted
 const Registry = preload("res://services/chapter_registry.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
+const KeepsakeStates = preload("res://services/home_keepsake_states.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-## The completion marks whose finish advances the chain: ChapterCompletion's
-## "solo" and "friend", and a duel's own mark once duels keep one.
-const FINISH_MODES := ["solo", "friend", "duel"]
 ## The request header a join carries: the level ids open to the joiner. The
 ## room refuses a guest whose list leaves out its chapter (backend v2 room
 ## join, chapter_not_open). A server without the check ignores it.
@@ -40,8 +42,10 @@ static var _chain: Array[String] = []
 static var _premium: Dictionary = {}
 ## Any registered or older key -> the chain key it counts for.
 static var _counts_for: Dictionary = {}
-## Chain key -> every key whose marks and journals count for it.
+## Chain key -> every key whose journals count for it.
 static var _sources: Dictionary = {}
+## Level id (a key before "@", how keepsakes join a chapter) -> chain key.
+static var _by_level: Dictionary = {}
 
 ## The chain in order. A copy.
 static func chain() -> Array[String]:
@@ -54,33 +58,29 @@ static func chain_key(key: String) -> String:
 	_build()
 	return str(_counts_for.get(key, ""))
 
-## What the gate answers from. `marks` is ChapterCompletion.chapters(...),
-## `touched` is touched(...) (chapters the player has already been in),
-## `full_journey` whether the player has the Full Journey and `finished_rooms`
-## the chapter keys of finished rooms the player was in, which count before
-## this phone has taken the room's places (a partner's last turn).
-static func progress(marks: Dictionary, touched_keys: Dictionary = {}, full_journey: bool = false, finished_rooms: Array = []) -> Dictionary:
+## What the gate answers from, built once per draw. `earned` and `hard` are
+## the marks Home's keepsakes read (HomeKeepsakes.earned_descriptors() and
+## HardMode.marks()); `touched_keys` is touched(...) (chapters the player has
+## already been in); `full_journey` whether the player has the Full Journey;
+## `finished_elsewhere` chapter keys cleared where the keepsake marks do not
+## show it yet: a finished room whose places this phone has not taken (a
+## partner's last turn), and a duel's clear.
+static func progress(earned: Array, hard: Dictionary = {}, touched_keys: Dictionary = {}, full_journey: bool = false, finished_elsewhere: Array = []) -> Dictionary:
 	_build()
 	var frontier := -1
-	for index in _chain.size():
-		if finished(marks, _chain[index]): frontier = index
-	for key: Variant in finished_rooms:
-		frontier = maxi(frontier, _chain.find(chain_key(str(key))))
 	var opened := {}
+	var states: Dictionary = KeepsakeStates.states(KeepsakeStates.entries(false), earned, hard, true)
+	for item: Dictionary in states.items:
+		var counted := str(_by_level.get(item.id, ""))
+		if counted.is_empty(): continue
+		if item.base: frontier = maxi(frontier, _chain.find(counted))
+		if item.base or item.look == "started": opened[counted] = true
+	for key: Variant in finished_elsewhere:
+		frontier = maxi(frontier, _chain.find(chain_key(str(key))))
 	for key: Variant in touched_keys:
 		var counted := chain_key(str(key))
 		if not counted.is_empty(): opened[counted] = true
 	return {"frontier": frontier, "touched": opened, "full_journey": full_journey}
-
-## Whether the chapter is finished in any mode, under any key that counts for it.
-static func finished(marks: Dictionary, key: String) -> bool:
-	_build()
-	for source: String in _sources.get(chain_key(key), [key]):
-		var mark: Variant = marks.get(source)
-		if not mark is Dictionary: continue
-		for mode: String in FINISH_MODES:
-			if mark.get(mode) is bool and mark[mode]: return true
-	return false
 
 ## Whether the chain has reached the chapter for this player. Full Journey is
 ## not asked here.
@@ -122,14 +122,12 @@ static func opens_after(key: String) -> String:
 static func title(key: String) -> String:
 	return str(Registry.descriptor(key).get("title", key))
 
-## Chapters the player has already been in, keyed by chain key: a place earned
-## there in any mode (`earned`, HomeKeepsakes.earned_descriptors()), a room for
-## it (`room_chapters`, chapter keys) or its journal on this phone.
-static func touched(earned: Array, room_chapters: Array = []) -> Dictionary:
+## Chapters the player has already been in, outside the keepsake marks
+## (progress() reads those), keyed by chain key: a room for it
+## (`room_chapters`, chapter keys) or its journal on this phone.
+static func touched(room_chapters: Array = []) -> Dictionary:
 	_build()
 	var result := {}
-	for item: Variant in earned:
-		if item is Dictionary: result[chain_key(str(item.get("chapter_key", "")))] = true
 	for key: Variant in room_chapters: result[chain_key(str(key))] = true
 	for key: String in _chain:
 		if result.has(key): continue
@@ -173,9 +171,11 @@ static func _build() -> void:
 	ordered.assign(Registry.picker_order(offered, func(key: String) -> int: return Registry.picker_rank(key, premium[key])))
 	var counts := {}
 	var sources := {}
+	var by_level := {}
 	for key: String in ordered:
 		counts[key] = key
 		sources[key] = [key]
+		by_level[key.get_slice("@", 0)] = key
 	for key: String in Index.keys():
 		var counted := Registry.offered_key(key)
 		if not sources.has(counted): continue
@@ -186,4 +186,5 @@ static func _build() -> void:
 	_premium = premium
 	_counts_for = counts
 	_sources = sources
+	_by_level = by_level
 	_chain = ordered

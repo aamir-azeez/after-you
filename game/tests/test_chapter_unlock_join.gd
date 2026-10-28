@@ -65,8 +65,8 @@ func _check(value: bool, message: String) -> bool:
 
 func _run() -> void:
 	var chain := Unlocks.chain()
-	var newcomer := Unlocks.progress({}, {}, false)
-	var veteran := Unlocks.progress(Fixture.finished_through(chain[-1], "friend"), {}, true)
+	var newcomer := Unlocks.progress([], {}, {}, false)
+	var veteran := Unlocks.progress(Fixture.cleared_through(chain[-1], "friend"), {}, {}, true)
 	# A new player invited to a room for the second chapter.
 	var api := FakeApi.new()
 	root.add_child(api)
@@ -80,7 +80,7 @@ func _run() -> void:
 	_check(session.pending_lobby().is_empty(), "The refusal is final and never holds other rooms")
 	_check("-" not in PlayerCopy.CHAPTER_JOIN_NOT_REACHED and "—" not in PlayerCopy.CHAPTER_JOIN_NOT_REACHED, "The refusal has no dashes")
 	# Played First Steps together: the second chapter's room now takes them.
-	var after_first := Unlocks.progress(Fixture.finished_through(chain[0], "friend"), {}, false)
+	var after_first := Unlocks.progress(Fixture.cleared(chain[0], "friend"), {}, {}, false)
 	session.join_unlocks = func() -> Dictionary: return after_first
 	await session.join_room("room-" + CODE)
 	_check(session.last_error != PlayerCopy.CHAPTER_JOIN_NOT_REACHED % Unlocks.title(chain[1]) and api.joins.size() == 2, "After First Steps with a friend the next chapter's room is not refused for the chapter")
