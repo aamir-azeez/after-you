@@ -61,6 +61,9 @@ const DATA := {
 		{"kind": "bollard", "at": [12, -216], "surface": "m-quay"}, {"kind": "bollard", "at": [372, -216], "surface": "m-quay"},
 		{"kind": "bollard", "at": [588, -216], "surface": "e-quay"}, {"kind": "bollard", "at": [1140, -216], "surface": "e-quay"},
 		{"kind": "bollard", "at": [1356, -216], "surface": "r-quay"}, {"kind": "bollard", "at": [1716, -216], "surface": "r-quay"},
+		# The bollard step's own bollard, on the mill quay's back fender beside the
+		# step: whoever holds the step stands on its spot, clear of it.
+		{"kind": "bollard", "at": [266, -490], "surface": "m-quay"},
 		# Ivy down the quay faces.
 		{"kind": "ivy", "at": [-760, -213], "surface": "mole-quay", "length": 50}, {"kind": "ivy", "at": [-440, -213], "surface": "w-quay", "length": 45},
 		{"kind": "ivy", "at": [-300, -213], "surface": "w-quay", "length": 55}, {"kind": "ivy", "at": [230, -213], "surface": "m-quay", "length": 50},

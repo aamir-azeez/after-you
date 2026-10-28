@@ -188,10 +188,13 @@ func _opt_in() -> void:
 	for other: String in ChapterIndex.keys():
 		if not other.begins_with("turn-of-the-tide"): _check(not ChapterIndex.data(other).goal_beacon, "%s leaves the beacon off" % other)
 	# Without stand spots a pad's beacon keeps the full ring; with them (the
-	# chapter's own descriptor) its ring breathes inside the spot.
-	for stand: bool in [false, true]:
+	# chapter's own descriptor) its ring breathes inside the spot, and a seat on
+	# a spot (a stand-in seating the bollard step) leaves that beacon no ring.
+	for look: String in ["plain", "stand", "seated"]:
+		var stand := look != "plain"
 		descriptor = ChapterIndex.data(key).duplicate(true)
 		descriptor.stand_spots = stand
+		if look == "seated": descriptor.seats = {"bollard-pad": {"kind": "bollard", "size": 1.6}}
 		world = Registry.world_script(key).new()
 		world.descriptor_override = descriptor
 		root.add_child(world)
@@ -203,8 +206,10 @@ func _opt_in() -> void:
 		var widest := 0.0
 		for outer: float in rings: widest = maxf(widest, outer * (1.0 + GoalBeacon.BREATH))
 		if stand: _check(rings.size() == 3 and widest <= 0.20 - 0.045, "With stand spots each step's beacon ring breathes inside its 20 cm pad: %s" % [rings])
-		if stand: _check(world._goal_beacon._beacons.a.map(func(beacon: Dictionary) -> bool: return beacon.ring) == [true, true, false], "With stand spots the bollard step's seat takes its beacon's ring; the other steps keep theirs")
-		else: _check(rings.size() == 3 and rings.all(func(outer: float) -> bool: return is_equal_approx(outer, GoalBeacon.RING_RADIUS + 0.025)), "Without stand spots each step's beacon keeps its full ring: %s" % [rings])
+		var shown: Array = world._goal_beacon._beacons.a.map(func(beacon: Dictionary) -> bool: return beacon.ring)
+		if look == "stand": _check(shown == [true, true, true], "With stand spots every step keeps its beacon's ring, the bollard step's too: nobody sits there")
+		if look == "seated": _check(shown == [true, true, false], "A seat on the bollard step's spot takes its beacon's ring; the other steps keep theirs")
+		if not stand: _check(rings.size() == 3 and rings.all(func(outer: float) -> bool: return is_equal_approx(outer, GoalBeacon.RING_RADIUS + 0.025)), "Without stand spots each step's beacon keeps its full ring: %s" % [rings])
 		world.free()
 
 func _stage_one(key: String, level: Dictionary, initial: Dictionary) -> Dictionary:

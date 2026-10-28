@@ -60,8 +60,6 @@ const DATA := {
 			"boom-jetty": PlayerCopy.TURN_OF_THE_TIDE_CROSSING_JETTY,
 		},
 	},
-	# The bollard step's own bollard: whoever holds the step sits on it.
-	"seats": {"bollard-pad": {"kind": "bollard", "size": 1.6}},
 	# The winch reads as the slipway it moves.
 	"selector_names": {"winch": {"stowed": PlayerCopy.TURN_OF_THE_TIDE_WINCH_STOWED, "slip": PlayerCopy.TURN_OF_THE_TIDE_WINCH_SLIP}},
 	# Slack Water's chains wind onto hand winches and its bars are sliding

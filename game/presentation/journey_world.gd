@@ -695,8 +695,8 @@ func _build_seats(stage: Dictionary) -> void:
 
 ## Whoever holds a seat's pad sits on it while standing still, and stands
 ## the moment its snapshot moves. A dozing spirit (memory wait) keeps its
-## doze: only the live spirit dozes, and in Turn of the Tide every seat is the
-## first spirit's, so a seat holder never dozes. A chapter that seats the
+## doze: only the live spirit dozes, so a chapter whose seats are all the
+## first spirit's never sees a seat holder doze. A chapter that seats the
 ## live spirit would see it doze inside its seat.
 func _present_seats(state: Dictionary, immediate: bool) -> void:
 	if _seats.is_empty() or not state.has("players"): return
