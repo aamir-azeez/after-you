@@ -80,9 +80,17 @@ static func note(owner: String, snapshot: Dictionary, chapter_key: String) -> vo
 	var partner: Variant = snapshot.guest_id if snapshot.get("host_id") == owner else snapshot.get("host_id")
 	var mine: Array = runs_of(owner)
 	for run: Dictionary in mine:
-		if run.entry_id == id: return
+		if run.entry_id != id: continue
+		# A run kept before partners were: it learns its partner once.
+		if run.partner.is_empty() and TurnLooks.valid_player(partner):
+			run.partner = partner
+			_save(owner, mine)
+		return
 	mine.append({"board": board, "entry_id": id, "ticks": int(time.ticks), "assisted": bool(time.assisted), "finished_at": str(snapshot.get("updated_at", "")), "partner": partner if TurnLooks.valid_player(partner) else ""})
 	while mine.size() > MAX_RUNS: mine.pop_front()
+	_save(owner, mine)
+
+static func _save(owner: String, mine: Array) -> void:
 	_data[owner] = mine
 	AtomicFile.write_text(_path, JSON.stringify({"schema_version": 1, "players": _data}))
 

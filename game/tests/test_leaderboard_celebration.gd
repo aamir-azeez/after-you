@@ -19,6 +19,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
+const InGameModal = preload("res://presentation/in_game_modal.gd")
 const OWNER := "OOOOOOOOOOOOOOOOOOOOOO"
 const PARTNER := "GGGGGGGGGGGGGGGGGGGGGG"
 const BOARD := "sleeping-lighthouse@2"
@@ -56,6 +57,14 @@ class FakeSession extends RefCounted:
 	var open := true
 	func leaderboards_supported() -> bool: return open
 
+## Friends' page, as far as its flow opens a page over it.
+class FakeFriends extends CanvasLayer:
+	var overlay: CanvasLayer
+	func open_overlay(page: CanvasLayer) -> void:
+		overlay = page
+		add_child(page)
+	func close() -> void: queue_free()
+
 func _run() -> void:
 	for path: String in [RUNS_PATH, PLACINGS_PATH, LOOKS_PATH, CHOICE_PATH, SAVE_PATH]: _clear(path)
 	_write_runs()
@@ -70,6 +79,7 @@ func _run() -> void:
 	await _reduced()
 	await _gold()
 	Engine.time_scale = 1.0
+	await _reduced_fade()
 	await _show_once()
 	await _screen()
 	await _home()
@@ -203,7 +213,6 @@ func _reduced() -> void:
 	_check(made.settled() and made._pose == Celebration.pose(made.tier, made.seconds()), "Reduce motion starts in the final pose")
 	_check(made.modulate.a < 1.0, "and fades in")
 	await _settle(made)
-	_check(is_equal_approx(made.modulate.a, 1.0) and made.elapsed() < 0.5, "a short fade of about 0.2 s: %.2f" % made.elapsed())
 	made.go_back()
 	_check(made.is_queued_for_deletion(), "Back leaves it")
 	await process_frame
@@ -211,6 +220,15 @@ func _reduced() -> void:
 	await process_frame
 	_check(gold._spirits.all(func(spirit: Node3D) -> bool: return spirit.sprout.material_override == GoldLeaf.material()), "Reduce motion shows the gold leaves already in place")
 	gold.close()
+	await process_frame
+
+func _reduced_fade() -> void:
+	var made: Control = Celebration.open(_parent, _placing(2), true)
+	var started := Time.get_ticks_msec()
+	await _settle(made)
+	var took := (Time.get_ticks_msec() - started) / 1000.0
+	_check(is_equal_approx(made.modulate.a, 1.0) and took >= 0.15 and took < 0.6 and made._pose == Celebration.pose(made.tier, made.seconds()), "Reduce motion is a fade of about 0.2 s into the final pose: %.2f s" % took)
+	made.close()
 	await process_frame
 
 func _gold() -> void:
@@ -294,9 +312,12 @@ func _screen() -> void:
 	_check(is_instance_valid(passed) and passed.modulate.a == 1.0, "over about 0.4 s")
 	celebration = screen.find_child(Celebration.NODE_NAME, true, false)
 	_check(celebration != null and celebration.placing.entry_id == NEWEST, "and its celebration shows once it is confirmed")
-	celebration.close()
-	screen.close()
+	screen.go_back()
 	await process_frame
+	_check(is_instance_valid(screen) and not screen.is_queued_for_deletion(), "Back takes the celebration first")
+	screen.go_back()
+	await process_frame
+	_check(not is_instance_valid(screen) or screen.is_queued_for_deletion(), "then the page")
 	# An empty board.
 	api.replies[path] = {"ok": true, "data": {"schema_version": 1, "board": BOARD, "top": [], "checking": []}}
 	var empty := _open_screen(api)
@@ -350,14 +371,36 @@ func _home() -> void:
 	app._service_leaderboard_celebration()
 	_check(not Celebration.showing(app.ui), "nothing while the server has leaderboards off")
 	session.open = true
+	var card := InGameModal.open(app.ui, "SomeCard", "A card")
+	app._service_leaderboard_celebration()
+	_check(not Celebration.showing(app.ui), "a card on Home is read and closed first")
+	card.close()
+	await process_frame
 	app._service_leaderboard_celebration()
 	var shown: Control = app.ui.find_child(Celebration.NODE_NAME, false, false)
 	_check(shown != null and shown.tier == Placings.SECOND and app._top_modal() == shown, "Home celebrates a confirmed place, as its top card")
+	_check(shown != null and shown.view_board.is_connected(app._view_leaderboard), "its View board leads to the board")
+	app.mode = "rooms"
+	app._service_leaderboard_celebration()
+	await process_frame
+	_check(not Celebration.showing(app.ui), "leaving Home another way takes the celebration with it")
+	app.mode = "home"
+	app._service_leaderboard_celebration()
+	_check(not Celebration.showing(app.ui), "shown once")
+	Placings.shared().learn(OWNER, BOARD, _view([_row(1, SECOND, 6400)]))
+	app._service_leaderboard_celebration()
+	_check(Celebration.showing(app.ui), "the next placing waits its turn")
 	app._close_top_modal()
 	await process_frame
 	_check(not Celebration.showing(app.ui), "Back leaves it")
-	app._service_leaderboard_celebration()
-	_check(not Celebration.showing(app.ui), "shown once")
+	# View board from Home: Friends' leaderboards, open on the placing's chapter.
+	var friends := FakeFriends.new()
+	app.add_child(friends)
+	app.friends_flow.screen = friends
+	app.saves.data.settings.reduced_motion = true
+	await app._view_leaderboard(BOARD)
+	_check(friends.overlay != null and friends.overlay.chapter_key == Registry.LIGHTHOUSE_V2 and friends.overlay._selected == Registry.LIGHTHOUSE_V2, "View board opens the board on its chapter")
+	_check(friends.overlay != null and friends.overlay.reduced_motion, "the board takes the player's Reduce motion")
 	viewport.queue_free()
 	await _frames(5)
 

@@ -4,8 +4,8 @@ extends SceneTree
 ## presentation/leaderboard_celebration.gd, still and live pips), with a fake
 ## board transport and example names and times. tests/ is never exported, so
 ## no player build has it. Needs a GPU (a rendered, not headless, run) at
-## 1280x720:
-##   godot --path game --resolution 1280x720 --script res://tests/capture_leaderboard.gd -- --out=<dir>
+## 1280x720, from a copy of the game whose window starts off screen:
+##   godot --path <copy> --position -20000,-20000 --resolution 1280x720 --script res://tests/capture_leaderboard.gd -- --out=<dir>
 ## Writes <dir>/leaderboard-board.png, leaderboard-board-empty.png, and
 ## celebration-<tier>-motion.png and celebration-<tier>.png for each tier, plus
 ## celebration-third-reduced.png (Reduce motion's final pose).

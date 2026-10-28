@@ -41,6 +41,7 @@ const Placings = preload("res://services/leaderboard_placings.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
+const EmptyStateArt = preload("res://presentation/empty_state_art.gd")
 const SPREAD_SHADER = preload("res://presentation/leaderboard_gold_spread.gdshader")
 
 ## The celebration's group: Home's cards wait while one is up.
@@ -66,6 +67,9 @@ const BRONZE_DARK := Color("8f5536")
 const SILVER := Color("d3ded9")
 const SILVER_RIM := Color("9fb5ad")
 const STAR_COUNT := 26
+## Seconds into first place when each leaf becomes the Gold leaf cosmetic: the
+## glint's brightest moment (pose() glint).
+const HANDOVER := 1.55
 ## The second place arch's height, in stage heights from the pair's floor.
 const ARCH_RISE := 0.9
 
@@ -263,27 +267,28 @@ func _step(seconds_in: float) -> void:
 		_ribbon.position = Vector3(0.0, RIBBON_Y + 0.2 * (1.0 - settle), 0.15)
 		_ribbon.rotation.z = lerpf(0.5, 0.14, settle)
 		_ribbon.scale = Vector3.ONE * RIBBON_SCALE * maxf(settle, 0.001)
-	if _gold: _spread(float(_pose.gold), float(_pose.glint))
+	if _gold: _spread(float(_pose.gold), float(_pose.glint), seconds_in >= HANDOVER or _done)
 	for layer: Control in [_back, _front, _mark]:
 		if is_instance_valid(layer): layer.queue_redraw()
 
-## The leaves' gold at `amount` of the spread: the spread material until it is
-## whole, then the Gold leaf cosmetic itself, with one soft glint.
-func _spread(amount: float, glint: float) -> void:
-	if amount < 1.0:
+## The leaves' gold at `amount` of the spread: the spread material, and from
+## `worn` (the glint at its brightest, so the cosmetic's own sparkles come in
+## under it rather than popping) the Gold leaf cosmetic itself.
+func _spread(amount: float, glint: float, worn: bool) -> void:
+	for halo: MeshInstance3D in _glints:
+		halo.visible = glint > 0.0
+		(halo.material_override as StandardMaterial3D).albedo_color.a = GoldLeaf.GLOW_STRENGTH * 1.5 * glint
+	if not worn:
 		for material: ShaderMaterial in _spreads:
 			material.set_shader_parameter("progress", amount)
 			material.set_shader_parameter("glint", glint)
 		return
-	if _dressed.is_empty():
-		for spirit: Node3D in _spirits:
-			var look: RefCounted = PipOutfit.dress(spirit, {})
-			look.apply_art(GoldLeaf)
-			_dressed.append(look)
-		_spreads.clear()
-	for halo: MeshInstance3D in _glints:
-		halo.visible = glint > 0.0
-		(halo.material_override as StandardMaterial3D).albedo_color.a = GoldLeaf.GLOW_STRENGTH * 1.5 * glint
+	if not _dressed.is_empty(): return
+	for spirit: Node3D in _spirits:
+		var look: RefCounted = PipOutfit.dress(spirit, {})
+		look.apply_art(GoldLeaf)
+		_dressed.append(look)
+	_spreads.clear()
 
 func _draw_view() -> void:
 	if is_instance_valid(_view): _view.render_target_update_mode = SubViewport.UPDATE_ONCE
@@ -620,11 +625,7 @@ static func _sparkle(canvas: CanvasItem, at: Vector2, radius: float, ink: Color)
 	canvas.draw_colored_polygon(points, ink)
 
 static func _ellipse(canvas: CanvasItem, at: Vector2, radii: Vector2, ink: Color) -> void:
-	var points := PackedVector2Array()
-	for index in range(40):
-		var a := TAU * float(index) / 40.0
-		points.append(at + Vector2(cos(a) * radii.x, sin(a) * radii.y))
-	canvas.draw_colored_polygon(points, ink)
+	canvas.draw_colored_polygon(EmptyStateArt.ellipse(at, radii), ink)
 
 ## Part of an ellipse from `from` to `to` degrees (0 right, 90 up).
 static func _arc(canvas: CanvasItem, at: Vector2, radii: Vector2, from: float, to: float, ink: Color, width: float) -> void:

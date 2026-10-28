@@ -116,6 +116,8 @@ var _whats_new_card: Control
 var _whats_new_card_mode := ""
 ## A Pollen flush finished: Home looks once for a monthly Pollen card to show (presentation/pollen_grant_card.gd).
 var grant_card_check := false
+## The leaderboard celebration Home opened, while it is up.
+var _home_celebration: Control
 ## Tests set this to see a link instead of opening the browser.
 var external_link_opener: Callable
 var _bounded_card_scroll: ScrollContainer
@@ -1949,23 +1951,25 @@ func _request_update_gate() -> void:
 ## any other screen is never interrupted; the screen waits for Home, and for a finger
 ## on a Home button to lift so that tap is not lost.
 func _service_update_gate() -> void:
-	if update_gate_dismissed or mode != "home" or not _update_gate_active(): return
-	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or friends_flow.is_open() or room_hub_flow.is_open(): return
-	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open(): return
-	# A card on Home (What's new, a confirmation, a celebration) is read and closed first.
-	if is_instance_valid(_whats_new_card) or _top_modal() != null: return
-	if TouchInput.press_held(overlay): return
-	# Nor is a walk or pinch on the island in Explore cut short: the screen
-	# shows once the player leaves Explore. Online entries still ask
-	# _online_gated, which shows it at once.
-	if is_instance_valid(home_stage_view) and home_stage_view.is_exploring(): return
+	if update_gate_dismissed or not _update_gate_active() or not _home_free_for_card(): return
 	_show_update_gate()
+
+## Whether Home is free for a screen or card to come up of its own accord (the
+## update screen, the Pollen card, a leaderboard celebration): Home is up with
+## nothing over it, no turn, chapter or other screen, no card (What's new, a
+## confirmation, a celebration) waiting to be read and closed, no finger held on
+## a Home button, and no walk or pinch on the island in Explore. Online entries
+## still ask _online_gated, which shows the update screen at once.
+func _home_free_for_card() -> bool:
+	if mode != "home" or application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or friends_flow.is_open() or room_hub_flow.is_open(): return false
+	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open(): return false
+	if is_instance_valid(_whats_new_card) or _top_modal() != null or TouchInput.press_held(overlay): return false
+	return not (is_instance_valid(home_stage_view) and home_stage_view.is_exploring())
 
 ## "Your monthly Pollen arrived", once per instalment, on Home only and only
 ## when nothing else is up: never over a turn, a card or a held finger.
 func _service_grant_card() -> void:
-	if not grant_card_check or mode != "home" or application_backgrounded or running or not _grant_card_allowed(): return
-	if is_instance_valid(_whats_new_card) or _update_gate_active() or TouchInput.press_held(overlay) or _top_modal() != null: return
+	if not grant_card_check or not _grant_card_allowed() or _update_gate_active() or not _home_free_for_card(): return
 	grant_card_check=false
 	var scope := _names_scope()
 	if scope.is_empty(): return
@@ -1978,18 +1982,17 @@ func _service_grant_card() -> void:
 ## (services/leaderboard_placings.gd) is celebrated once on Home, when Home is
 ## free: never over a turn, a chapter, another screen or card, or a held
 ## finger, and only while the server has leaderboards on. On the board itself
-## the leaderboard screen celebrates it.
+## the leaderboard screen celebrates it. Home left another way (a notification,
+## a link) takes the celebration with it: it was already marked shown.
 func _service_leaderboard_celebration() -> void:
-	if mode != "home" or application_backgrounded or running or api == null: return
+	if is_instance_valid(_home_celebration) and (mode != "home" or not ui.visible): _home_celebration.close()
+	if api == null or is_instance_valid(_home_celebration): return
 	var owner := str(api.player_id)
 	if owner.is_empty() or not LeaderboardPlacings.shared().has_pending(owner): return
 	if relay_session == null or not relay_session.leaderboards_supported(): return
-	if is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen): return
-	if friends_flow.is_open() or room_hub_flow.is_open() or legacy_room_flow.redo_open() or _home_settling(): return
-	if is_instance_valid(_whats_new_card) or _update_gate_active() or TouchInput.press_held(overlay) or _top_modal() != null: return
-	if is_instance_valid(home_stage_view) and home_stage_view.is_exploring(): return
-	var shown := LeaderboardCelebration.show_next(ui, owner, bool(saves.data.settings.get("reduced_motion", false)))
-	if shown != null: shown.view_board.connect(_view_leaderboard)
+	if _home_settling() or _update_gate_active() or not _home_free_for_card(): return
+	_home_celebration = LeaderboardCelebration.show_next(ui, owner, bool(saves.data.settings.get("reduced_motion", false)))
+	if _home_celebration != null: _home_celebration.view_board.connect(_view_leaderboard)
 
 ## A celebration's View board on Home: Friends' leaderboards, on that board's chapter.
 func _view_leaderboard(board: String) -> void:

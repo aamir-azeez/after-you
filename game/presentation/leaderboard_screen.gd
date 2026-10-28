@@ -418,6 +418,7 @@ func _watch(row: Dictionary) -> void:
 	if not answer.get("ok", false):
 		_replay_state = ""
 		notice.emit(PlayerCopy.LEADERBOARD_REPLAY_FAILED, false)
+		_celebrate()
 		return
 	_replay_state = "watching"
 	visible = false
@@ -439,6 +440,7 @@ func _ask_report(board: String, entry_id: String) -> void:
 		_report(board, entry_id)
 	var send: Button = _modal.add_actions(PlayerCopy.LEADERBOARD_REPORT_SEND, confirm, PlayerCopy.LEADERBOARD_REPORT_CANCEL)
 	send.grab_focus()
+	_modal.closed.connect(_celebrate.call_deferred)
 
 func _report(board: String, entry_id: String) -> void:
 	var answer: Dictionary = await client.report(board, entry_id)
