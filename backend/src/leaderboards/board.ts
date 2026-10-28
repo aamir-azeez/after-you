@@ -7,6 +7,9 @@ import { BoardRewardLedger, REWARD_LEDGER_SCHEMA, openRewardSync, type RewardDel
 import { KEPT_RANKED, MAX_CHECKED, MAX_REPLAY_BYTES, MAX_REPORTERS, MAX_REVIEW, MAX_UNCHECKED, REVIEW_REASONS, TOP_PLACES, compareRuns, holdsFor, strictlyFirst } from "./rules";
 import type { LeaderboardRun } from "./run";
 import { emptyView, type BoardRow, type BoardView } from "./view";
+import { fail, type Outcome } from "../protocol";
+import { DuelStore, type DuelAction, type DuelReplayWork, type FinishProof } from "../duels/store";
+import type { Duel, ProgressNote, SideRoom } from "../duels/model";
 
 /**
  * One chapter version's board, one Durable Object named by its board key.
@@ -25,6 +28,11 @@ import { emptyView, type BoardRow, type BoardView } from "./view";
  * Every write is one synchronous transaction, so out-of-order and repeated
  * calls are safe: a verdict names the proof hash it checked and is ignored
  * when the entry has moved on.
+ *
+ * The chapter version's duels live here too, in their own tables
+ * (duels/store.ts). Their finished runs go to the same replay job: pending
+ * work lists them after the board's own (once each, when a run is both), and
+ * every verdict is offered to both.
  */
 export type SubmitStatus = "checking" | "known" | "not_placed" | "busy" | "crowded" | "ineligible";
 /** `rev`: the member's settings revision (member.ts) the name choice came from; an older one never overwrites it. */
@@ -40,7 +48,7 @@ export type StandingWork = { entry_id: string; members: (string | null)[]; finis
 /** `checkpoint` is the stored JSON text, passed on unparsed so the Worker spends no CPU on it. */
 export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; checkpoint: string };
 /** `rewards`: players whose earned items this board changed, only when asked for (rewards.ts). */
-export type PendingWork = { standing: StandingWork[]; replay: ReplayWork[]; rewards?: RewardDelivery[] };
+export type PendingWork = { standing: StandingWork[]; replay: (ReplayWork | DuelReplayWork)[]; rewards?: RewardDelivery[] };
 export type StandingResult = { entry_id: string; eligible: boolean; reason: string; members: MemberChoice[] };
 export type Verdict = { entry_id: string; proof_hash: string; valid: boolean; measured_ticks: number; reason: string };
 export type RankedNote = { entry_id: string; members: string[] };
@@ -65,9 +73,11 @@ const SCHEMA = [
 
 export class LeaderboardBoard extends DurableObject<Env> {
   private readonly rewards: RewardSink & BoardRewardLedger;
+  private readonly duels: DuelStore;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.rewards = new BoardRewardLedger(ctx.storage);
+    this.duels = new DuelStore(ctx.storage);
     ctx.blockConcurrencyWhile(async () => openLazyStorage(this, ctx.storage, "lb_entries", () => { for (const sql of SCHEMA) ctx.storage.sql.exec(sql); openRewardSync(ctx.storage); }));
   }
 
@@ -146,6 +156,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
       chars += proof.checkpoint.length;
       replay.push({ entry_id: entry.entry_id, chapter: entry.data.chapter, simulation_version: entry.data.simulation_version, ticks: entry.ticks, proof_hash: proof.proof_hash, checkpoint: proof.checkpoint });
     }
+    // A duel run the board hands out too goes once; its verdict reaches both.
+    replay.push(...this.duels.pending(Math.max(0, maxChars - chars), new Set(replay.map(item => item.entry_id))));
     return rewardLimit > 0 ? { standing, replay, rewards: this.rewards.deliveries(rewardLimit) } : { standing, replay };
   }
 
@@ -186,7 +198,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * kept as its replay only once the run ranks or waits, and only when the
    * proof it came from is still the one the verdict checked.
    */
-  async verdicts(board: string, verdicts: Verdict[], developerBest: number | null, rewardLimit = 0): Promise<{ ranked: RankedNote[]; view: BoardView; rewards?: RewardDelivery[] }> {
+  async verdicts(board: string, verdicts: Verdict[], developerBest: number | null, rewardLimit = 0): Promise<{ ranked: RankedNote[]; view: BoardView; rewards?: RewardDelivery[]; duels?: string[] }> {
     const ranked: RankedNote[] = [], replays = await this.encodeKeepable(verdicts);
     this.ctx.storage.transactionSync(() => {
       for (const verdict of verdicts) {
@@ -204,8 +216,18 @@ export class LeaderboardBoard extends DurableObject<Env> {
         if (note) ranked.push(note);
       }
     });
-    return { ranked, view: this.view(board), ...this.rewardsAsked(rewardLimit) };
+    const duels = this.duels.verdicts(verdicts, Date.now());
+    return { ranked, view: this.view(board), ...this.rewardsAsked(rewardLimit), ...(duels.length ? { duels } : {}) };
   }
+
+  /** A new duel or ghost race on this chapter version (duels/store.ts create); null while the board is full of open ones. */
+  duelCreate(duel: Duel): Duel | null { return this.duels.create(duel, Date.now()); }
+  /** The duels named, settled to now. Unknown ids are left out. */
+  duelRead(ids: string[]): Duel[] { return this.duels.read(ids, Date.now()); }
+  /** A player's accept, Not now, leave or room claim on one duel. */
+  duelAct(duelId: string, action: DuelAction): Outcome<{ duel: Duel; room?: SideRoom }> { return this.duels.act(duelId, action, Date.now()); }
+  /** A turn accepted in one of the duel's rooms; the finishing turn of a friend run brings its final checkpoint. */
+  duelProgress(duelId: string, note: ProgressNote, proof?: FinishProof): Promise<Outcome<Duel>> { return this.duels.progress(duelId, note, Date.now(), proof); }
 
   /** A person's answer on a run waiting for review: approve ranks it, reject drops it. */
   review(board: string, entryId: string, approve: boolean, rewardLimit = 0): { done: boolean; ranked: RankedNote | null; view: BoardView; rewards?: RewardDelivery[] } {
@@ -289,7 +311,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
         this.ctx.storage.sql.exec("UPDATE lb_entries SET pair_key=? WHERE entry_id=?", crypto.randomUUID(), entry.entry_id);
       }
       this.rewards.forgetPlayer(player);
-      return count;
+      return count + this.duels.forgetPlayer(player, Date.now());
     });
     return { changed, view: this.view(board) };
   }
@@ -421,5 +443,6 @@ answerWhileBlank(LeaderboardBoard, {
   view: (board: string) => emptyView(board), replay: (board: string) => ({ replay: null, view: emptyView(board) }), pendingWork: () => ({ standing: [], replay: [] }), standings: (board: string) => ({ work: { standing: [], replay: [] }, view: emptyView(board) }),
   verdicts: async (board: string) => ({ ranked: [], view: emptyView(board) }), review: (board: string) => ({ done: false, ranked: null, view: emptyView(board) }),
   strike: (board: string) => ({ done: false, promoted: [], view: emptyView(board) }), report: () => null, reviewList: () => [], rewardsDelivered: () => undefined,
-  setMember: (board: string) => ({ changed: 0, view: emptyView(board) }), forget: (board: string) => ({ changed: 0, view: emptyView(board) }), rewardsFor: () => []
+  setMember: (board: string) => ({ changed: 0, view: emptyView(board) }), forget: (board: string) => ({ changed: 0, view: emptyView(board) }), rewardsFor: () => [],
+  duelRead: () => [], duelAct: () => fail(404, "duel_not_found"), duelProgress: async () => fail(404, "duel_not_found")
 });

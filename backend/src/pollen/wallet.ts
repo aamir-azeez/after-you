@@ -129,7 +129,7 @@ function save(storage: DurableObjectStorage, wallet: WalletState, now: number, r
 function prune(storage: DurableObjectStorage, wallet: WalletState, now: number, rates: Rates = RATES): void {
   const day = Math.floor(now / DAY_MS);
   if (wallet.pruned_day === day) return;
-  storage.sql.exec("DELETE FROM pollen_claims WHERE kind='turn' AND created_at<?", now - rates.claims.turn_prune_days * DAY_MS);
+  storage.sql.exec("DELETE FROM pollen_claims WHERE kind IN ('turn','duelwin') AND created_at<?", now - rates.claims.turn_prune_days * DAY_MS);
   wallet.pruned_day = day;
 }
 

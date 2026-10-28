@@ -84,6 +84,13 @@ export const LOOKS_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
   { name: "member_looks", schema: "CREATE TABLE member_looks (player_id TEXT PRIMARY KEY, look TEXT NOT NULL) WITHOUT ROWID", maxRows: 2 },
   { name: "turn_looks", schema: "CREATE TABLE turn_looks (recording_hash TEXT PRIMARY KEY, player_id TEXT NOT NULL, look TEXT NOT NULL) WITHOUT ROWID", maxRows: 128 }
 ]);
+/**
+ * RoomV2: the duel this room plays for (duels/room-link.ts), one row written when a duel's room is
+ * made, never for any other room.
+ */
+export const DUEL_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
+  { name: "duel_link", schema: "CREATE TABLE duel_link (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)", maxRows: 1 }
+]);
 /** Whether a sqlite_master row is one of `tables` in its exact form. */
 export function isLazyTable(tables: readonly LazyTable[], row: { name: string; sql: string }): boolean {
   return tables.some(table => table.name === row.name && table.schema === row.sql);
