@@ -56,6 +56,7 @@ class FakeApi extends Node:
 class FakeSession extends RefCounted:
 	var open := true
 	func leaderboards_supported() -> bool: return open
+	func duels_supported() -> bool: return false
 
 ## Friends' page, as far as its flow opens a page over it.
 class FakeFriends extends CanvasLayer:
@@ -289,7 +290,7 @@ func _screen() -> void:
 	_check(own != null and not board.is_ancestor_of(own) and _has_text(own, "8") and _has_text(own, Runs.time_text(6300)) and own.find_child("LeaderboardWatch", true, false) != null, "Your best is pinned under the list with its place, time and Watch")
 	var checking: Control = screen.find_child("LeaderboardChecking", true, false)
 	_check(checking.visible and _has_text(checking, PlayerCopy.LEADERBOARD_RUN_CHECKING) and _has_text(checking, Runs.time_text(6000)), "the run being checked shows its time")
-	_check(not Screen.duels_share_boards and screen.find_child("LeaderboardSharedNote", true, false) == null, "no duel note while duels are off")
+	_check(_has_text(screen.find_child("LeaderboardSharedNote", true, false), PlayerCopy.LEADERBOARD_SHARED_BOARD), "normal and duel runs share the board while duels are on")
 	var cards: Array = screen.find_child("LeaderboardChapters", true, false).find_children("Chapter_*", "Button", true, false)
 	_check(not cards.is_empty() and cards.all(func(card: Node) -> bool: return (card.find_children("*", "TextureRect", true, false)[0] as TextureRect).texture != null), "each chapter shows its capture")
 	var pips: Array = board.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
@@ -320,19 +321,21 @@ func _screen() -> void:
 	_check(not is_instance_valid(screen) or screen.is_queued_for_deletion(), "then the page")
 	# An empty board.
 	api.replies[path] = {"ok": true, "data": {"schema_version": 1, "board": BOARD, "top": [], "checking": []}}
-	var empty := _open_screen(api)
+	var empty := _open_screen(api, false)
 	await _frames(10)
 	var empty_board: Node = empty.find_child("LeaderboardBoard", true, false)
 	_check(empty_board.find_child("LeaderboardRow1", true, false) == null and _has_text(empty_board, PlayerCopy.LEADERBOARD_EMPTY) and not empty.find_child("LeaderboardChecking", true, false).visible, "an empty board says so")
 	_check(empty.find_child(Celebration.NODE_NAME, true, false) == null, "nothing to celebrate on an empty board")
+	_check(empty.find_child("LeaderboardSharedNote", true, false) == null, "the note that duel runs share the board waits until duels are on")
 	empty.close()
 	api.queue_free()
 	await process_frame
 	_clear(PLACINGS_PATH)
 	Placings.use_shared(Placings.new(PLACINGS_PATH))
 
-func _open_screen(api: Node) -> CanvasLayer:
+func _open_screen(api: Node, duels: bool = true) -> CanvasLayer:
 	var screen := Screen.new()
+	screen.duels_on = duels
 	# A fresh client per page: the shared one keeps boards for a minute.
 	screen.client = Client.new(api, OWNER, CHOICE_PATH)
 	screen.player_id = OWNER

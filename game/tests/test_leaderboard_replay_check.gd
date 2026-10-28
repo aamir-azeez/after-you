@@ -46,6 +46,11 @@ func _run() -> void:
 	var relay_final: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/final-checkpoint.json"))
 	var assisted := Check.check(_as_received(_entry(Registry.RELAY, relay_final, 588)))
 	_check(not assisted.valid and assisted.reason == "assisted_run", "a run with catch assistance on never ranks: %s" % assisted)
+	var duel_entry := _entry(Registry.RELAY, relay_final, 588)
+	duel_entry["duel"] = true
+	var duel := Check.check(_as_received(duel_entry))
+	_check(duel.valid and duel.measured_ticks == 588, "a duel's run may have assisted turns and is still replayed and measured: %s" % duel)
+	_check(Check.verdict(_as_received(duel_entry)).keys().size() == 6, "a duel's verdict has the same six keys")
 
 	var unknown := _entry(lighthouse, final, ticks)
 	unknown.chapter.definition_hash = "0".repeat(64)

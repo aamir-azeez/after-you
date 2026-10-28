@@ -41,9 +41,6 @@ const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
 const INFO_ICON = preload("res://assets/ui/social/info.svg")
-## Whether the page says normal and duel runs share a board. Off until duels
-## ship; the duels work turns it on behind its own flag.
-static var duels_share_boards := false
 const BACKGROUND := Color("123936")
 const PANEL_FILL := Color("163f3b")
 const PANEL_EDGE := Color("2d5a53")
@@ -69,6 +66,8 @@ var chapter_key := ""
 var reduced_motion := false
 ## (cue: String) -> void: plays a celebration's tier sound (Main's soundscape).
 var play_cue: Callable
+## Whether the server has duels on: the note that duel runs share the board shows only then.
+var duels_on := false
 
 var _root: Control
 var _margin: MarginContainer
@@ -250,7 +249,7 @@ func _build_body() -> void:
 	(column if _stacked else rail_column).add_child(_side)
 	_checking_card = _checking()
 	_side.add_child(_checking_card)
-	if duels_share_boards: _side.add_child(_shared_note())
+	if duels_on: _side.add_child(_shared_note())
 	_render_chapters()
 	_render_board()
 
