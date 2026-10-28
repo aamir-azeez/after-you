@@ -14,6 +14,7 @@ import type { BoardView } from "./view";
  */
 export const VIEW_TTL_MS = 120_000;
 const MAX_MEMORY = 64;
+const STORED_AT = "X-Stored-At";
 const memory = new Map<string, { at: number; view: BoardView }>();
 
 function cacheUrl(board: string): string { return `https://leaderboards.after-you.invalid/v1/${encodeURIComponent(board)}`; }
@@ -29,9 +30,12 @@ export async function cachedView(board: string, now = Date.now()): Promise<Board
   try {
     const hit = await cache.match(cacheUrl(board));
     if (!hit) return null;
+    // Kept from when it was stored, so a copy read back never lives past VIEW_TTL_MS.
+    const at = Number(hit.headers.get(STORED_AT));
+    if (!Number.isFinite(at) || now - at >= VIEW_TTL_MS) return null;
     const view = await hit.json<BoardView>();
     if (view?.schema_version !== 1 || view.board !== board) return null;
-    remember(board, view, now);
+    remember(board, view, at);
     return view;
   } catch { return null; }
 }
@@ -41,7 +45,7 @@ export async function storeView(view: BoardView, now = Date.now()): Promise<void
   const cache = cacheApi();
   if (!cache) return;
   try {
-    await cache.put(cacheUrl(view.board), new Response(JSON.stringify(view), { headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${VIEW_TTL_MS / 1000}` } }));
+    await cache.put(cacheUrl(view.board), new Response(JSON.stringify(view), { headers: { "Content-Type": "application/json", "Cache-Control": `public, max-age=${VIEW_TTL_MS / 1000}`, [STORED_AT]: String(now) } }));
   } catch { /* the memory copy still serves */ }
 }
 

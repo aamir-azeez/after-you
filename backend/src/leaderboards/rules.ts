@@ -16,10 +16,12 @@ export const KEPT_RANKED = TOP_PLACES + 3;
  * plus the SHA-256 of the canonical bytes). A run pushed below place 10,
  * struck, dropped or played by an erased account loses it; a run waiting for
  * a person keeps it until their answer. So the server holds about 120 replays
- * (10 on each of 12 boards) plus at most MAX_REVIEW waiting per board, which
- * is usually none. A final checkpoint is typically 12 to 35 KB of JSON and
- * deflates to a fraction of that; an encoded replay above this many bytes is
- * not kept (its run still ranks, with no Watch).
+ * (10 on each of 12 boards), plus one for each run waiting for a person: at
+ * most MAX_REVIEW (48) a board, usually none. A final checkpoint is typically
+ * 12 to 35 KB of JSON and deflates to about a quarter of that; an encoded
+ * replay above this many bytes is not kept (its run still ranks, with no
+ * Watch). Worst case 12 x (10 + 48) x 360 KB, about 250 MB; typical well
+ * under 1 MB in all.
  */
 export const MAX_REPLAY_BYTES = 360 * 1024;
 /**

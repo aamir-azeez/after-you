@@ -11,10 +11,10 @@ import { JOB_TOKEN_LABEL, deriveJobToken } from "../src/leaderboards/job-token";
 import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED, MAX_REPLAY_BYTES } from "../src/leaderboards/rules";
 import { entryId, finishedRun, pairKey, runTicks, type LeaderboardRun } from "../src/leaderboards/run";
 import { eligible, type Standing } from "../src/leaderboards/standing";
-import { forgetViews } from "../src/leaderboards/view-cache";
+import { VIEW_TTL_MS, cachedView, forgetViews, storeView } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
 import { bytesDigest, decodeBlob, ENCODING_DEFLATE } from "../src/blob-codec";
-import type { BoardView } from "../src/leaderboards/view";
+import { emptyView, type BoardView } from "../src/leaderboards/view";
 import { countingEnv, meterAllRows, meterRows } from "./meter";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
@@ -580,6 +580,25 @@ describe("kept replays", () => {
     await board().review(RELAY_BOARD, held.entry_id, true);
     await board().review(RELAY_BOARD, refused.entry_id, false);
     expect((await kept()).sort()).toEqual([first.entry_id, held.entry_id].sort());
+  });
+  it("keeps the replay of a run the job could not judge while a person looks, and of nothing it drops", async () => {
+    const unjudged = await run(100, 1000), mismatched = await run(101, 1001);
+    for (const entry of [unjudged, mismatched]) {
+      await board().submit(RELAY_BOARD, entry);
+      await board().standings(RELAY_BOARD, [{ entry_id: entry.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
+    }
+    const work = await board().pendingWork(), hash = (id: string) => work.replay.find(item => item.entry_id === id)!.proof_hash;
+    await board().verdicts(RELAY_BOARD, [{ entry_id: unjudged.entry_id, proof_hash: hash(unjudged.entry_id), valid: false, measured_ticks: 0, reason: "unknown_chapter" },
+      { entry_id: mismatched.entry_id, proof_hash: hash(mismatched.entry_id), valid: true, measured_ticks: 99, reason: "" }], 1);
+    expect(await kept()).toEqual([unjudged.entry_id]);
+    await board().review(RELAY_BOARD, unjudged.entry_id, true);
+    expect((await board().view(RELAY_BOARD)).top).toMatchObject([{ entry_id: unjudged.entry_id, replay_hash: hash(unjudged.entry_id) }]);
+  });
+  it("never serves a board view from the data centre cache past its time", async () => {
+    const stored = Date.now();
+    await storeView(emptyView(RELAY_BOARD), stored);
+    expect(await cachedView(RELAY_BOARD, stored + 1000)).not.toBeNull();
+    expect(await cachedView(RELAY_BOARD, stored + VIEW_TTL_MS + 1)).toBeNull();
   });
   it("deletes the replay of a struck run and of a run its pair's faster run replaced", async () => {
     const pair: [string, string] = ["u".repeat(22), "v".repeat(22)];

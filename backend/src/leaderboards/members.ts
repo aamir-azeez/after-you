@@ -27,14 +27,6 @@ export async function syncMemberName(env: Env, playerId: string, show?: boolean)
   return state;
 }
 
-/**
- * Account erasure: the player's settings keep only an erased mark (so an
- * account check already under way cannot add them back), then every board
- * forgets them: their waiting runs go, their ranked runs keep only the pair's
- * time, their rewards there go. Every board, not only the listed ones, since
- * a run still waiting for its account check is on no list yet.
- * Requests: 1 (Member) + 1 per board (12 today).
- */
 /** Whether a member record ever changed: a blank one shows no name and is on no board. */
 function known(state: MemberState): boolean { return !state.erased && (state.revision > 0 || state.boards.length > 0); }
 
@@ -53,6 +45,14 @@ export async function forgetLeaderboardPlayerIfKnown(env: Env, playerId: string)
   if (known(await env.LEADERBOARD_MEMBERS.getByName(playerId).read())) await forgetLeaderboardPlayer(env, playerId);
 }
 
+/**
+ * Account erasure: the player's settings keep only an erased mark (so an
+ * account check already under way cannot add them back), then every board
+ * forgets them: their waiting runs go, their ranked runs keep only the pair's
+ * time, with no replay, their rewards there go. Every board, not only the listed ones, since
+ * a run still waiting for its account check is on no list yet.
+ * Requests: 1 (Member) + 1 per board (12 today).
+ */
 export async function forgetLeaderboardPlayer(env: Env, playerId: string): Promise<void> {
   await env.LEADERBOARD_MEMBERS.getByName(playerId).forget();
   await pooled([...boardKeys()], BOARD_CONCURRENCY, async board => {

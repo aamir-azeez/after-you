@@ -167,25 +167,26 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * (rules.ts holdsFor, against `developerBest`, null when unknown), else ranks
    * at once. Returns the runs that ranked.
    *
-   * A passed run's checkpoint is encoded first (compression is async, so it
-   * cannot run inside the transaction) and kept as its replay only when the
+   * The checkpoint of a run that may rank or wait for a person is encoded
+   * first (compression is async, so it cannot run inside the transaction) and
+   * kept as its replay only once the run ranks or waits, and only when the
    * proof it came from is still the one the verdict checked.
    */
   async verdicts(board: string, verdicts: Verdict[], developerBest: number | null): Promise<{ ranked: RankedNote[]; view: BoardView }> {
-    const ranked: RankedNote[] = [], replays = await this.encodePassed(verdicts);
+    const ranked: RankedNote[] = [], replays = await this.encodeKeepable(verdicts);
     this.ctx.storage.transactionSync(() => {
       for (const verdict of verdicts) {
         const entry = this.entry(verdict.entry_id);
         const proof = this.ctx.storage.sql.exec<{ proof_hash: string }>("SELECT proof_hash FROM lb_proofs WHERE entry_id=?", verdict.entry_id).toArray()[0];
         if (!entry || entry.state !== "checking" || entry.data.eligible !== true || !proof || proof.proof_hash !== verdict.proof_hash) continue;
+        const encoded = replays.get(entry.entry_id), replay = encoded?.proof_hash === proof.proof_hash ? encoded : undefined;
         // The job could not judge it (its build lacks the chapter, or the check broke): a person looks.
-        if (!verdict.valid && REVIEW_REASONS.includes(verdict.reason)) { this.toReview(entry, [verdict.reason]); continue; }
+        if (!verdict.valid && REVIEW_REASONS.includes(verdict.reason)) { this.toReview(entry, [verdict.reason], replay); continue; }
         if (!verdict.valid || verdict.measured_ticks !== entry.ticks) { this.drop(entry.entry_id, "failed"); continue; }
         const first = this.ranked().find(item => item.pair_key !== entry.pair_key);
-        const holds = holdsFor(entry.ticks, developerBest, first ? first.ticks : null), replay = replays.get(entry.entry_id);
-        if (replay?.proof_hash === proof.proof_hash) this.keepReplay(entry.entry_id, replay);
-        if (holds.length) { this.toReview(entry, holds); continue; }
-        const note = this.rank(board, entry);
+        const holds = holdsFor(entry.ticks, developerBest, first ? first.ticks : null);
+        if (holds.length) { this.toReview(entry, holds, replay); continue; }
+        const note = this.rank(board, entry, replay);
         if (note) ranked.push(note);
       }
     });
@@ -282,8 +283,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   /** The cosmetics phase's read of what a player earned here (rewards.ts). */
   rewardsFor(player: string): RewardGrant[] { return this.rewards.rewardsFor(player); }
 
-  /** Ranks a run that passed every check, inside the caller's transaction. Null when it no longer reaches the top 10. */
-  private rank(board: string, entry: Entry): RankedNote | null {
+  /** Ranks a run that passed every check, inside the caller's transaction, keeping `replay` when given. Null when it no longer reaches the top 10. */
+  private rank(board: string, entry: Entry, replay?: KeptReplay): RankedNote | null {
     this.ctx.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", entry.entry_id);
     const older = this.ranked().filter(item => item.pair_key === entry.pair_key);
     const place = [...this.ranked().filter(item => item.pair_key !== entry.pair_key), entry].sort(compareRuns).findIndex(item => item.entry_id === entry.entry_id);
@@ -291,6 +292,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
     if (place >= TOP_PLACES) { this.drop(entry.entry_id, "not_placed"); return null; }
     entry.state = "ranked";
     this.save(entry);
+    if (replay) this.keepReplay(entry.entry_id, replay);
     // The pair's older ranked run gives way; it keeps what it earned.
     for (const item of older) this.drop(item.entry_id, "superseded");
     const ranked = this.ranked();
@@ -315,8 +317,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
     return true;
   }
 
-  /** Sends a run to a person, its raw proof dropped (a passed run's replay stays in lb_replays). A full review list gives up its slowest run for a faster one. */
-  private toReview(entry: Entry, holds: string[]): void {
+  /** Sends a run to a person, its raw proof dropped and `replay`, when given, kept until their answer. A full review list gives up its slowest run for a faster one. */
+  private toReview(entry: Entry, holds: string[], replay?: KeptReplay): void {
     this.ctx.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", entry.entry_id);
     const pool = this.entries().filter(item => item.state === "review").sort(compareRuns);
     if (pool.length >= MAX_REVIEW) {
@@ -326,13 +328,23 @@ export class LeaderboardBoard extends DurableObject<Env> {
     entry.state = "review";
     entry.data.holds = holds;
     this.save(entry);
+    if (replay) this.keepReplay(entry.entry_id, replay);
   }
 
-  /** The tagged replay of each passed verdict whose stored proof it checked, at most MAX_REPLAY_BYTES each; read before the transaction. */
-  private async encodePassed(verdicts: Verdict[]): Promise<Map<string, KeptReplay>> {
-    const result = new Map<string, KeptReplay>();
+  /**
+   * The tagged replay, at most MAX_REPLAY_BYTES, of each verdict that may keep
+   * one: a waiting run whose stored proof it checked, that passed with its
+   * claimed time or goes to a person, and that ten ranked runs do not all beat.
+   * Read before the transaction, which checks all of it again.
+   */
+  private async encodeKeepable(verdicts: Verdict[]): Promise<Map<string, KeptReplay>> {
+    const result = new Map<string, KeptReplay>(), ranked = this.ranked();
     for (const verdict of verdicts) {
-      if (!verdict.valid) continue;
+      const entry = this.entry(verdict.entry_id);
+      if (!entry || entry.state !== "checking" || entry.data.eligible !== true) continue;
+      if (verdict.valid ? verdict.measured_ticks !== entry.ticks : !REVIEW_REASONS.includes(verdict.reason)) continue;
+      const others = ranked.filter(item => item.pair_key !== entry.pair_key);
+      if (others.length >= TOP_PLACES && compareRuns(entry, others[TOP_PLACES - 1]) > 0) continue;
       const proof = this.ctx.storage.sql.exec<{ proof_hash: string; checkpoint: string }>("SELECT proof_hash,checkpoint FROM lb_proofs WHERE entry_id=?", verdict.entry_id).toArray()[0];
       if (!proof || proof.proof_hash !== verdict.proof_hash) continue;
       const bytes = new TextEncoder().encode(proof.checkpoint), body = await encodeBlob(bytes);
