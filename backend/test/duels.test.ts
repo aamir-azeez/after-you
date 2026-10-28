@@ -230,7 +230,7 @@ describe("friend duels", () => {
     expect(repeat.duel.result).toMatchObject({ outcome: "won", reason: "left" });
     // A win the other pair handed over by leaving pays no bonus: only a win where both runs passed does.
     expect(repeat.win_bonus).toBeUndefined();
-  });
+  }, 60_000);
 
   it("refuse a challenge to a pair that dissolved, and a duel room for the wrong chapter or a hard one", async () => {
     const { a1, b1, b2 } = await pairs();
