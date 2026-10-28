@@ -75,7 +75,7 @@ func _render_friends() -> void:
 	Kit.clear(_friend_list)
 	for friend: Dictionary in friends:
 		_friend_list.add_child(_choice("Pair_" + str(friend.id).left(6), str(friend.name), friend.id == _friend, func(): _pick_friend(friend.id), Kit.pips(Vector2(30, 40))))
-	if friends.is_empty(): _friend_list.add_child(Kit.wrapped(PlayerCopy.DUELS_NO_PAIRS, 18))
+	if friends.is_empty(): _friend_list.add_child(Kit.wrapped(PlayerCopy.DUELS_PARTY_NO_FRIENDS, 18))
 	_update_send()
 
 func _render_chapters() -> void:

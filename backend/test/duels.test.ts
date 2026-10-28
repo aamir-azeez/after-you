@@ -291,6 +291,17 @@ describe("friend duels", () => {
   });
 });
 
+describe("duel erasure", () => {
+  it("reaches a party even while duels and leaderboards are off", async () => {
+    const [a, b] = await Promise.all([create(), create()]);
+    await befriend(a, b);
+    await partner(a, b);
+    expect((await call("/v1/identity", "DELETE", a, undefined, { V2_ROOMS_ENABLED: "true", FEATURES: "" })).status).toBe(200);
+    const left = await env.LEADERBOARD_MEMBERS.getByName(b.player_id).partyRead(Date.now());
+    expect(left.partner).toBeNull();
+  });
+});
+
 describe("ghost races", () => {
   it("race a recorded time and are decided the moment the pair finishes, paying like normal turns", async () => {
     const { a1, a2 } = await pairs();

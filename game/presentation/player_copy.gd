@@ -625,7 +625,7 @@ const DUELS_PARTY_NO_FRIENDS := "Add a friend first. Friends you add show here."
 ## Starting a duel.
 const DUELS_PICK_PAIR := "Pick a pair"
 const DUELS_PICK_CHAPTER := "Pick a chapter"
-const DUELS_NO_PAIRS := "None of your friends has a duel partner yet."
+const DUELS_FRIEND_NO_PARTNER := "That friend has no duel partner yet."
 const DUELS_SEND := "Send challenge"
 const DUELS_SENT := "Challenge sent."
 ## Racing a recording.

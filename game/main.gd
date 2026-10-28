@@ -548,7 +548,7 @@ func _build_ui() -> void:
 	toast=Toast.new()
 	toast.theme=ui_theme
 	toast.reduced_motion=func() -> bool: return bool(saves.data.settings.get("reduced_motion",false))
-	toast.in_header=friends_flow.is_open
+	toast.in_header=func() -> bool: return friends_flow.is_open() or duels_flow.is_open()
 	add_child(toast)
 
 func _refresh_safe_area() -> void:
@@ -2245,6 +2245,8 @@ func _service_home_keepsakes(delta: float) -> void:
 		if [FileAccess.get_modified_time(HardMode.MARKS_PATH), hard_together()] != _home_hard_stamp: _set_home_hard(home_stage_view)
 		var offer := overlay.get_node_or_null("HomeFullJourney") as Button
 		if offer != null: offer.visible = _full_journey_offered()
+		# The Duels row follows whatever capabilities this session has read since Home opened; it asks nothing itself.
+		duels_flow.offer(overlay.get_node_or_null("HomeMenu"))
 
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
