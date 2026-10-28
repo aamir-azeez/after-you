@@ -17,7 +17,7 @@ import { LIVE_PATH, forwardLiveUpgrade } from "./live";
 import { paidUntil, pollenAuthView, pollenEarning, pollenRoute, pollenMember, pollenMemberRoute, pollenTurnRoute, routePollen } from "./pollen/routes";
 import type { PollenMember } from "./pollen/turn-facts";
 import type { HistoryView, WalletView } from "./pollen/wallet";
-import { shopOn } from "./pollen/features";
+import { wardrobeMode } from "./pollen/features";
 import { looksMemberRoute, memberLookOf } from "./pollen/looks-routes";
 import type { Look } from "./pollen/catalog";
 export { FriendRoomEvents } from "./friend-room-events";
@@ -75,7 +75,7 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   // The same single Player call either way; a room route also learns whether the room is linked.
   const memberRoute = pollenMemberRoute(request, path, env), view = pollenAuthView(request, path, env), looks = looksMemberRoute(request, path, env);
   const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks)
-    : namesRoomRoute(request, path, env) || memberRoute || looks ? await player.authorizeNamed(hash, memberRoute, looks) : view !== null ? await player.authorizeWallet(hash, view, shopOn(env))
+    : namesRoomRoute(request, path, env) || memberRoute || looks ? await player.authorizeNamed(hash, memberRoute, looks) : view !== null ? await player.authorizeWallet(hash, view, wardrobeMode(env))
     : { authorized: await player.authorize(hash, deleting), linked: true };
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   if (!(await env.PLAYER_LIMITER.limit({ key: id })).success) throw new ApiError(429, "rate_limited");

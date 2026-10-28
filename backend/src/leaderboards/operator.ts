@@ -7,11 +7,15 @@ import { leaderboardCaller } from "./job-token";
 import { checkRun } from "./eligibility";
 import { pooled } from "../room-inbox";
 import { storeView } from "./view-cache";
+import { deliverRewards } from "./reward-delivery";
+import { wardrobeOn } from "../pollen/features";
 
 /**
  * The replay job's and the owner's routes under /operator/leaderboards/, all POST:
  * - pending (job or operator): runs the account check on new runs, then hands
- *   out runs to replay with their stored final checkpoints;
+ *   out runs to replay with their stored final checkpoints. While POLLEN_WARDROBE
+ *   is on it also delivers earned items to players whose board rewards changed
+ *   (reward-delivery.ts);
  * - verdicts (job or operator): the replay results;
  * - review-list and review (operator only): runs waiting for a person or
  *   reported, and a person's approve, reject or strike.
@@ -25,6 +29,8 @@ const MAX_VERDICTS = 64;
 /** Account checks per pending call, across boards, four at a time (each is up to 4 requests). */
 const MAX_STANDINGS = 16;
 const STANDING_CONCURRENCY = 4;
+/** Players handed their board rewards per pending call, across boards; each is one Player request. */
+const MAX_REWARD_DELIVERIES = 16;
 const ENTRY = /^[a-f0-9]{32}$/, HASH = /^[a-f0-9]{64}$/;
 
 export async function routeLeaderboardOperator(request: Request, path: string, env: Env): Promise<Response> {
@@ -44,7 +50,8 @@ export async function routeLeaderboardOperator(request: Request, path: string, e
 
 /**
  * One request per board, plus up to MAX_STANDINGS account checks (eligibility.ts)
- * and one more request for each board that had any. The boards are visited
+ * and one more request for each board that had any. While the wardrobe is on, up to
+ * MAX_REWARD_DELIVERIES Player requests more, and one board request for each board that delivered any. The boards are visited
  * from a starting point that moves each hour, so a board with large proofs
  * never starves the rest. Each entry is written as JSON text around its stored
  * checkpoint text, which is never parsed here: a Worker on the Free plan has
@@ -53,11 +60,15 @@ export async function routeLeaderboardOperator(request: Request, path: string, e
 async function pending(env: Env): Promise<string[]> {
   const entries: string[] = [];
   const keys = boardKeys(), start = Math.floor(Date.now() / 3_600_000) % keys.length;
-  let budget = MAX_PENDING_CHARS, checks = MAX_STANDINGS;
+  let budget = MAX_PENDING_CHARS, checks = MAX_STANDINGS, deliveries = wardrobeOn(env) ? MAX_REWARD_DELIVERIES : 0;
   for (let step = 0; step < keys.length; step++) {
     const board = keys[(start + step) % keys.length];
     const stub = env.LEADERBOARD_BOARDS.getByName(board);
-    let work: PendingWork = await stub.pendingWork(Math.max(0, Math.min(budget, MAX_REPLAY_CHARS)));
+    let work: PendingWork = await stub.pendingWork(Math.max(0, Math.min(budget, MAX_REPLAY_CHARS)), deliveries);
+    if (work.rewards?.length) {
+      deliveries -= work.rewards.length;
+      await deliverRewards(env, board, stub, work.rewards);
+    }
     const due = work.standing.slice(0, checks);
     if (due.length) {
       checks -= due.length;

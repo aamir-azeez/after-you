@@ -3,7 +3,7 @@ import { canonicalJson, digest } from "../protocol";
 import { encodeBlob } from "../blob-codec";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import type { ChapterKey } from "../v2/chapter-types";
-import { BoardRewardLedger, REWARD_LEDGER_SCHEMA, type RewardGrant, type RewardSink } from "./rewards";
+import { BoardRewardLedger, REWARD_LEDGER_SCHEMA, openRewardSync, type RewardDelivery, type RewardGrant, type RewardSink } from "./rewards";
 import { KEPT_RANKED, MAX_CHECKED, MAX_REPLAY_BYTES, MAX_REPORTERS, MAX_REVIEW, MAX_UNCHECKED, REVIEW_REASONS, TOP_PLACES, compareRuns, holdsFor, strictlyFirst } from "./rules";
 import type { LeaderboardRun } from "./run";
 import { emptyView, type BoardRow, type BoardView } from "./view";
@@ -39,7 +39,8 @@ type Entry = Omit<EntryRow, "data"> & { data: EntryData };
 export type StandingWork = { entry_id: string; members: (string | null)[]; finished_ms: number };
 /** `checkpoint` is the stored JSON text, passed on unparsed so the Worker spends no CPU on it. */
 export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; checkpoint: string };
-export type PendingWork = { standing: StandingWork[]; replay: ReplayWork[] };
+/** `rewards`: players whose earned items this board changed, only when asked for (rewards.ts). */
+export type PendingWork = { standing: StandingWork[]; replay: ReplayWork[]; rewards?: RewardDelivery[] };
 export type StandingResult = { entry_id: string; eligible: boolean; reason: string; members: MemberChoice[] };
 export type Verdict = { entry_id: string; proof_hash: string; valid: boolean; measured_ticks: number; reason: string };
 export type RankedNote = { entry_id: string; members: string[] };
@@ -67,7 +68,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.rewards = new BoardRewardLedger(ctx.storage);
-    ctx.blockConcurrencyWhile(async () => openLazyStorage(this, ctx.storage, "lb_entries", () => { for (const sql of SCHEMA) ctx.storage.sql.exec(sql); }));
+    ctx.blockConcurrencyWhile(async () => openLazyStorage(this, ctx.storage, "lb_entries", () => { for (const sql of SCHEMA) ctx.storage.sql.exec(sql); openRewardSync(ctx.storage); }));
   }
 
   /**
@@ -131,8 +132,11 @@ export class LeaderboardBoard extends DurableObject<Env> {
     return { replay: kept ? { proof_hash: kept.proof_hash, byte_length: kept.byte_length, body: new Uint8Array(kept.body) } : null, view };
   }
 
-  /** What the replay job still has to do here: account checks first, then replays of eligible runs. */
-  pendingWork(maxChars = MAX_REPLAY_CHARS): PendingWork {
+  /**
+   * What the replay job still has to do here: account checks first, then replays of eligible runs, and with
+   * `rewardLimit` up to that many players whose earned items to deliver (rewards.ts deliveries).
+   */
+  pendingWork(maxChars = MAX_REPLAY_CHARS, rewardLimit = 0): PendingWork {
     const standing: StandingWork[] = [], replay: ReplayWork[] = [];
     let chars = 0;
     for (const entry of this.entries().filter(item => item.state === "checking").sort(compareRuns)) {
@@ -142,7 +146,12 @@ export class LeaderboardBoard extends DurableObject<Env> {
       chars += proof.checkpoint.length;
       replay.push({ entry_id: entry.entry_id, chapter: entry.data.chapter, simulation_version: entry.data.simulation_version, ticks: entry.ticks, proof_hash: proof.proof_hash, checkpoint: proof.checkpoint });
     }
-    return { standing, replay };
+    return rewardLimit > 0 ? { standing, replay, rewards: this.rewards.deliveries(rewardLimit) } : { standing, replay };
+  }
+
+  /** The deliveries the players' own Players answered: each mark goes unless a newer change came since (rewards.ts delivered). */
+  rewardsDelivered(done: { player_id: string; seq: number }[]): void {
+    this.ctx.storage.transactionSync(() => this.rewards.delivered(done));
   }
 
   /** Account check results. An ineligible run is dropped; an eligible one keeps each member's name choice. Returns the work left and the board now. */
@@ -280,7 +289,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
     return { changed, view: this.view(board) };
   }
 
-  /** The cosmetics phase's read of what a player earned here (rewards.ts). */
+  /** What a player earned here (rewards.ts). */
   rewardsFor(player: string): RewardGrant[] { return this.rewards.rewardsFor(player); }
 
   /** Ranks a run that passed every check, inside the caller's transaction, keeping `replay` when given. Null when it no longer reaches the top 10. */
@@ -406,6 +415,6 @@ function noteOf(entry: Entry): RankedNote {
 answerWhileBlank(LeaderboardBoard, {
   view: (board: string) => emptyView(board), replay: (board: string) => ({ replay: null, view: emptyView(board) }), pendingWork: () => ({ standing: [], replay: [] }), standings: (board: string) => ({ work: { standing: [], replay: [] }, view: emptyView(board) }),
   verdicts: async (board: string) => ({ ranked: [], view: emptyView(board) }), review: (board: string) => ({ done: false, ranked: null, view: emptyView(board) }),
-  strike: (board: string) => ({ done: false, promoted: [], view: emptyView(board) }), report: () => null, reviewList: () => [],
+  strike: (board: string) => ({ done: false, promoted: [], view: emptyView(board) }), report: () => null, reviewList: () => [], rewardsDelivered: () => undefined,
   setMember: (board: string) => ({ changed: 0, view: emptyView(board) }), forget: (board: string) => ({ changed: 0, view: emptyView(board) }), rewardsFor: () => []
 });

@@ -7,6 +7,7 @@ import { bloomEligible, boostPercent, clearPrice, price, type ClearPrice, type T
 import { bloomRoll } from "./blooms";
 import { itemBloomRoll, resolveItemBloom, type ItemBloom, type ItemDrops } from "./item-blooms";
 import { validTurnFacts } from "./turn-facts";
+import { noteEveryHard } from "./earned";
 
 /**
  * The Pollen wallet, in the player's own Player Durable Object: the only real balance. Phones keep
@@ -19,7 +20,8 @@ import { validTurnFacts } from "./turn-facts";
  *   answers its first receipt and changes nothing.
  *     turn:<room_id>:<recording_hash>   an accepted turn (pruned after turn_prune_days)
  *     clear:<level_id>                  a chapter's first clear, together or solo (kept)
- *     hardclear:<level_id>              a chapter's first Hard clear together (kept)
+ *     hardclear:<level_id>              a chapter's first Hard clear together (kept); once every chapter
+ *                                       Every Hard asks for has one, the player earns it (earned.ts)
  *     grant:<anchor>:<n>, grant:lifetime, grantrefund:<anchor>:<n>
  *                                       the monthly grant and its refunds (grant-settle.ts; kept)
  *   A turn that pays nothing writes no row: a turn played before the guest joined (never paid, by its
@@ -150,6 +152,7 @@ function payClears(storage: DurableObjectStorage, claim: ClearClaim, now: number
     insertClaim(storage, key, kind, cost.total, now, { schema_version: 1, earned: cost.total, clears: [line] }, { level_id: claim.level_id });
     lines.push(line);
   }
+  if (lines.some(line => line.kind === "hardclear")) noteEveryHard(storage, level => claimed(storage, clearClaimKey("hardclear", level)) !== null, now);
   return lines;
 }
 

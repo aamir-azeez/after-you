@@ -14,7 +14,7 @@ import { countingEnv, meterRows } from "./meter";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type ShopWallet = WalletView & { wardrobe: WardrobeView; name_price: number };
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
-const SHOP = { FEATURES: "POLLEN_EARN,POLLEN_SHOP", POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
+const SHOP = { FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP", POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
 const EARN_ONLY = { FEATURES: "POLLEN_EARN", POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
 const ASK = { [POLLEN_HEADER]: "1" };
 const DAY = 86_400_000;

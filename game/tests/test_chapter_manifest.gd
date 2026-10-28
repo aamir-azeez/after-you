@@ -11,6 +11,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Index = preload("res://content/chapters/index.gd")
 const Families = preload("res://services/chapter_families.gd")
+const HardMode = preload("res://services/hard_mode.gd")
 const GOLDEN := "chapter_manifest.json"
 ## A chapter's fixtures are <family fixture_dir>/<level_id>[-v<version>]-definition.json
 ## and -initial-checkpoint.json; these chapters predate that naming.
@@ -75,6 +76,8 @@ func _row(key: String) -> Dictionary:
 		"initial_checkpoint_hash": str(initial.get("checkpoint_hash", "")),
 		"flag": str(server.flag),
 		"max_branches": int(server.max_branches),
+		## Whether the game offers Hard on it: the server's Every Hard list (backend/src/pollen/earned.ts) is pinned to these.
+		"hard": HardMode.eligible(key),
 		"definition_fixture": fixtures[0],
 		"initial_fixture": fixtures[1],
 	}

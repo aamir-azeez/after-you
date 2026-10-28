@@ -1,7 +1,7 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
-import { earningOn, grantOn, itemBloomsOn, shopOn } from "./features";
+import { earningOn, grantOn, itemBloomsOn, shopOn, wardrobeOn } from "./features";
 import { ITEM_ID_PATTERN } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
@@ -28,7 +28,9 @@ export const TURN_CLAIMS_PATH = "/v1/pollen/turn-claims";
 export const CLEAR_CLAIMS_PATH = "/v1/pollen/clear-claims";
 export const SPEND_PATH = "/v1/pollen/spend";
 export const EQUIP_PATH = "/v1/pollen/equip";
-/** The capability version of the shop (spend, equip, the wardrobe on the wallet read and the name change price). */
+/** The capability version of the wardrobe (equip, owned items and the look on the wallet read, earned items). */
+export const WARDROBE_VERSION = 1;
+/** The capability version of the shop (spend, prices and the catalogue on the wallet read, and the name change price). Always sent with the wardrobe's. */
 export const SHOP_VERSION = 1;
 /** The capability version of item blooms (the receipt's `item_bloom`), so a phone publishes their odds only while they drop. */
 export const ITEM_BLOOMS_VERSION = 1;
@@ -46,9 +48,9 @@ export function pollenWanted(request: Request): boolean { return request.headers
 /** Earning works only with the flag on and a usable POLLEN_SECRET (no turn is paid without its bloom roll). */
 export function pollenEarning(env: ServerVars): boolean { return earningOn(env); }
 /** The capability field for GET /v2/capabilities: empty unless the client asked while earning works. */
-export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number } {
+export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number } {
   if (!pollenWanted(request) || !pollenEarning(env)) return {};
-  return { pollen_version: POLLEN_VERSION, ...(shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
+  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION } : {}), ...(shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
     ...(itemBloomsOn(env) ? { pollen_item_blooms_version: ITEM_BLOOMS_VERSION } : {}), ...(grantOn(env) ? { pollen_grant_version: GRANT_VERSION } : {}) };
 }
 
@@ -61,7 +63,7 @@ export function pollenTurnRoute(request: Request, path: string, env: ServerVars)
 export function pollenMemberRoute(request: Request, path: string, env: ServerVars): boolean {
   return request.method === "POST" && (path === "/v2/rooms" || path === "/v2/rooms/join") && pollenEarning(env);
 }
-/** The wallet reads, whose answer auth() takes from its own Player call; null for any other route. While the shop is on, the wallet read also carries the wardrobe. */
+/** The wallet reads, whose answer auth() takes from its own Player call; null for any other route. While the wardrobe is on, the wallet read also carries it (features.ts wardrobeMode). */
 export function pollenAuthView(request: Request, path: string, env: ServerVars): "wallet" | "history" | null {
   if (request.method !== "GET" || !pollenEarning(env)) return null;
   return path === POLLEN_PATH ? "wallet" : path === POLLEN_HISTORY_PATH ? "history" : null;
@@ -191,7 +193,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
 
 const SPEND_KINDS = ["item", "set", "pack"] as const;
 /**
- * POST /v1/pollen/spend and /equip (POLLEN_SHOP), after auth(). The body is hashed here, as room
+ * POST /v1/pollen/equip (POLLEN_WARDROBE) and /spend (POLLEN_SHOP), after auth(). The body is hashed here, as room
  * operations are, so the Player's spend or equip runs in one synchronous transaction.
  * - spend {schema_version: 1, idempotency_key, kind: "item" | "set" | "pack", id, expected_cost}:
  *   `expected_cost` is what the confirm sheet showed (spend.ts charge).
@@ -199,9 +201,10 @@ const SPEND_KINDS = ["item", "set", "pack"] as const;
  * Cost: one Player request beside auth()'s own.
  */
 async function routeWardrobe(request: Request, path: string, playerId: string, env: Env): Promise<unknown> {
-  if (!shopOn(env)) throw new ApiError(503, "pollen_shop_disabled");
+  const spend = path === SPEND_PATH;
+  if (spend ? !shopOn(env) : !wardrobeOn(env)) throw new ApiError(503, spend ? "pollen_shop_disabled" : "pollen_wardrobe_disabled");
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
-  const input = await boundedJson(request, 1024), spend = path === SPEND_PATH, code = spend ? "invalid_pollen_spend" : "invalid_pollen_equip";
+  const input = await boundedJson(request, 1024), code = spend ? "invalid_pollen_spend" : "invalid_pollen_equip";
   const fields = spend ? ["schema_version", "idempotency_key", "kind", "id", "expected_cost"] : ["schema_version", "idempotency_key", "revision", "look"];
   if (!isObject(input) || !only(input, fields) || input.schema_version !== 1 || typeof input.idempotency_key !== "string" || !IDEMPOTENCY_PATTERN.test(input.idempotency_key)) throw new ApiError(400, code);
   const op = { key: input.idempotency_key, hash: await digest(canonicalJson({ operation: spend ? "spend" : "equip", ...input })) };

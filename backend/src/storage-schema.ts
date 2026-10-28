@@ -59,8 +59,15 @@ export const POLLEN_SHOP_TABLES: readonly LazyTable[] = Object.freeze([
 export const POLLEN_GRANT_TABLES: readonly LazyTable[] = Object.freeze([
   { name: "pollen_grant", schema: "CREATE TABLE pollen_grant (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)", maxRows: 1 }
 ]);
+/**
+ * Player: earned items (pollen/earned.ts), made by the first one, never for a player who earned none.
+ * One row per source: each leaderboard that gave the player something, and Every Hard.
+ */
+export const POLLEN_EARNED_TABLES: readonly LazyTable[] = Object.freeze([
+  { name: "pollen_earned", schema: "CREATE TABLE pollen_earned (source TEXT PRIMARY KEY, items TEXT NOT NULL, seq INTEGER NOT NULL, earned_at INTEGER NOT NULL) WITHOUT ROWID", maxRows: 64 }
+]);
 /** Every Pollen table a Player may hold: account erasure drops them all, and snapshots refuse a Player that has any. */
-export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([...POLLEN_WALLET_TABLES, ...POLLEN_SHOP_TABLES, ...POLLEN_GRANT_TABLES]);
+export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([...POLLEN_WALLET_TABLES, ...POLLEN_SHOP_TABLES, ...POLLEN_GRANT_TABLES, ...POLLEN_EARNED_TABLES]);
 /** RoomV2: frozen Pollen facts per accepted turn and each member's Full Journey end (pollen/turn-facts.ts). */
 export const POLLEN_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
   // One row per accepted turn, as the turns table (MAX_TURNS); the oldest go first past it.

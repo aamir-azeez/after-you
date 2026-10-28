@@ -194,9 +194,9 @@ describe("an item bloom in the turn credit", () => {
 
 describe("the item bloom flag", () => {
   it("is on only with POLLEN_ITEM_BLOOMS, the shop and earning", () => {
-    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_SHOP,POLLEN_ITEM_BLOOMS", ...SECRET })).toBe(true);
+    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP,POLLEN_ITEM_BLOOMS", ...SECRET })).toBe(true);
     expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_ITEM_BLOOMS", ...SECRET })).toBe(false);
-    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_SHOP", ...SECRET })).toBe(false);
-    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_SHOP,POLLEN_ITEM_BLOOMS" })).toBe(false);
+    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP", ...SECRET })).toBe(false);
+    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP,POLLEN_ITEM_BLOOMS" })).toBe(false);
   });
 });

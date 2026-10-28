@@ -3,10 +3,13 @@ import { POLLEN_SHOP_TABLES, isLazyTable } from "../storage-schema";
 import { CATALOG, isDefaultLook, itemPrice, offeredItems, offeredPacks, offeredSets, setPieces, sold, validLook, type Catalog, type Look } from "./catalog";
 import { charge, quote, type SpendRequest } from "./spend";
 import { chapterCleared, payFromWallet, walletBalance } from "./wallet";
+import { boardSource, earnedItems, setEarned } from "./earned";
 
 /**
  * The wardrobe, in the player's own Player Durable Object: what they own, what they wear, and the
- * receipts that make spending and wearing safe to send again (POLLEN_SHOP).
+ * receipts that make spending and wearing safe to send again. Wearing and the owned items need
+ * POLLEN_WARDROBE; spending and the catalogue's prices need POLLEN_SHOP (features.ts).
+ * Earned items (earned.ts) are owned too, beside what was bought or dropped.
  *
  * Storage (storage-schema.ts POLLEN_SHOP_TABLES), made by the first purchase or look:
  * - pollen_items: owned items and reaction packs, bought or dropped by an item bloom (source "bloom").
@@ -27,13 +30,16 @@ export type SpendReceipt = { schema_version: 1; op: "spend"; kind: SpendRequest[
 export type LookState = { schema_version: 1; look: Look; revision: number };
 export type EquipReceipt = LookState & { op: "equip" };
 /**
- * What GET /v1/pollen adds while the shop is on. `offered`, `prices`, `sets` and `pack_price` come from the
- * server's catalogue, which decides what is sold and for how much, so a phone shows the price the spend checks.
+ * What GET /v1/pollen adds while the wardrobe is on: what is owned (bought, dropped or earned) and worn,
+ * and `offered`, the items the server releases (sold or earned), which a phone may draw.
  */
-export type WardrobeView = {
-  items: string[]; packs: string[]; look: Look; look_revision: number;
-  offered: string[]; prices: Record<string, number>; offered_packs: string[]; pack_price: number; sets: Record<string, string[]>; unlocked: string[];
-};
+export type OwnedView = { items: string[]; packs: string[]; look: Look; look_revision: number; offered: string[] };
+/**
+ * What it adds beside that while the shop is on. `prices`, `sets` and `pack_price` come from the server's
+ * catalogue, which decides what is sold and for how much, so a phone shows the price the spend checks.
+ */
+export type ShopView = { prices: Record<string, number>; offered_packs: string[]; pack_price: number; sets: Record<string, string[]>; unlocked: string[] };
+export type WardrobeView = OwnedView & ShopView;
 
 const [ITEMS, OPS] = POLLEN_SHOP_TABLES;
 export const MAX_OPS = OPS.maxRows;
@@ -56,9 +62,11 @@ function ensureTables(storage: DurableObjectStorage): void {
   known.delete(storage);
 }
 
+/** Owned item and pack ids by kind: what was bought or dropped, and every earned item. */
 function owned(storage: DurableObjectStorage): Map<string, string> {
-  if (!present(storage)) return new Map();
-  return new Map(storage.sql.exec<{ item_id: string; kind: string }>("SELECT item_id,kind FROM pollen_items LIMIT ?", ITEMS.maxRows).toArray().map(row => [row.item_id, row.kind]));
+  const result = present(storage) ? new Map(storage.sql.exec<{ item_id: string; kind: string }>("SELECT item_id,kind FROM pollen_items LIMIT ?", ITEMS.maxRows).toArray().map(row => [row.item_id, row.kind])) : new Map<string, string>();
+  for (const id of earnedItems(storage)) result.set(id, "item");
+  return result;
 }
 
 /** The item ids the player owns (not packs): what an item bloom may no longer drop. Read inside the credit's transaction. */
@@ -154,14 +162,31 @@ export function equip(storage: DurableObjectStorage, op: OpKey, look: unknown, r
   });
 }
 
-/** GET /v1/pollen's wardrobe part. Read only. */
-export function wardrobeView(storage: DurableObjectStorage, catalog: Catalog = CATALOG): WardrobeView {
+/**
+ * What a leaderboard gives the player now (earned.ts board source), delivered whole by the replay job.
+ * An item no source gives any more comes off the look in the same transaction, at the same revision.
+ * `active` re-checks the identity inside the transaction. Answers whether anything changed.
+ */
+export function noteBoardRewards(storage: DurableObjectStorage, board: string, items: readonly string[], seq: number, now: number, active: () => boolean, catalog: Catalog = CATALOG): Outcome<{ changed: boolean }> {
+  return storage.transactionSync((): Outcome<{ changed: boolean }> => {
+    if (!active()) return fail(404, "identity_absent");
+    if (!setEarned(storage, boardSource(board), items, seq, now)) return ok({ changed: false });
+    const current = storedLook(storage, catalog), mine = owned(storage);
+    const kept = Object.fromEntries(Object.entries(current.look).filter(([, id]) => mine.get(id) === "item"));
+    if (Object.keys(kept).length !== Object.keys(current.look).length) storage.sql.exec("INSERT OR REPLACE INTO pollen_look VALUES (1,?)", JSON.stringify({ ...current, look: kept } satisfies LookState));
+    return ok({ changed: true });
+  });
+}
+
+/** GET /v1/pollen's wardrobe part: what is owned and worn, and with `shop` what is sold and for how much. Read only. */
+export function wardrobeView(storage: DurableObjectStorage, shop: boolean, catalog: Catalog = CATALOG): OwnedView | WardrobeView {
   const items = owned(storage), look = storedLook(storage, catalog);
+  const base: OwnedView = { items: [...items].filter(([, kind]) => kind === "item").map(([id]) => id).sort(), packs: [...items].filter(([, kind]) => kind === "pack").map(([id]) => id).sort(),
+    look: look.look, look_revision: look.revision, offered: offeredItems(catalog) };
+  if (!shop) return base;
   const sets = Object.fromEntries(offeredSets(catalog).map(set => [set, setPieces(set, catalog)]));
   const unlocked = offeredItems(catalog).filter(id => catalog.items[id].unlock !== "" && chapterCleared(storage, catalog.items[id].unlock));
-  return { items: [...items].filter(([, kind]) => kind === "item").map(([id]) => id).sort(), packs: [...items].filter(([, kind]) => kind === "pack").map(([id]) => id).sort(),
-    look: look.look, look_revision: look.revision, offered: offeredItems(catalog),
-    prices: Object.fromEntries(offeredItems(catalog).filter(id => sold(id, catalog)).map(id => [id, itemPrice(id, catalog)])),
+  return { ...base, prices: Object.fromEntries(offeredItems(catalog).filter(id => sold(id, catalog)).map(id => [id, itemPrice(id, catalog)])),
     offered_packs: offeredPacks(catalog), pack_price: catalog.pack_price, sets, unlocked };
 }
 
