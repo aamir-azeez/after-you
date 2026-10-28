@@ -645,9 +645,11 @@ const DEFINITIVE_LOBBY_REFUSALS := {
 	402: ["host_unlock_required"],
 	403: ["player_blocked", ChapterUnlocks.JOIN_REFUSAL, "duel_pair_only"],
 	404: ["invite_not_found", "duel_not_found"],
-	409: ["room_full", "room_limit_reached", "room_version_conflict", "room_exists", "idempotency_chapter_mismatch", "idempotency_simulation_mismatch", "idempotency_version_mismatch", "duel_room_taken", "duel_not_running", "idempotency_duel_mismatch"],
+	409: ["room_full", "room_limit_reached", "room_version_conflict", "room_exists", "idempotency_chapter_mismatch", "idempotency_simulation_mismatch", "idempotency_version_mismatch", "duel_room_taken", "duel_not_running", "duel_left", "idempotency_duel_mismatch"],
 	410: ["invite_expired", "replay_transferred", "room_deleted"],
 	422: ["unsupported_chapter", "unsupported_simulation_version", "invalid_duel_room", "duel_chapter_mismatch"],
+	# Duels switched off: a duel's room is never made, so the create must not wait for it.
+	503: ["duels_disabled"],
 }
 
 static func _definitive_refusal(response: Dictionary) -> bool:

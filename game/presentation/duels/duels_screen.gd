@@ -59,7 +59,7 @@ func opened() -> void:
 	_gate = BusyTapGate.new(root)
 	_timer = Timer.new()
 	_timer.wait_time = REFRESH_SECONDS
-	_timer.timeout.connect(func() -> void: if _foreground and not Kit.showing(_overlay): refresh_requested.emit())
+	_timer.timeout.connect(func() -> void: if _foreground and not Kit.showing(_overlay) and _waiting_on_others(): refresh_requested.emit())
 	add_child(_timer)
 	_timer.start()
 
@@ -81,6 +81,12 @@ func open_overlay(page: CanvasLayer) -> void:
 
 func overlay() -> CanvasLayer:
 	return _overlay if Kit.showing(_overlay) else null
+
+## Whether anything on the lobby can change without this player: a running duel or a challenge. Only then does the lobby read again on its own.
+func _waiting_on_others() -> bool:
+	if _lobby.is_empty(): return true
+	if not _lobby.party.invites_in.is_empty() or _lobby.party.invite_out != null: return true
+	return _lobby.duels.any(func(view: Dictionary) -> bool: return view.status in ["running", "challenged"])
 
 ## The flow's answer: a lobby (services/duels_client.gd valid_lobby), or {} with `failed`.
 func show_lobby(lobby: Dictionary, failed: bool = false) -> void:

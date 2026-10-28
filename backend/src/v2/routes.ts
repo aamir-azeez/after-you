@@ -180,7 +180,10 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
     const link = intent.link;
     // Both members of a pair may open their duel at once: the first room claimed is the pair's, and the other phone joins it.
-    if (duel && !(await claimDuelRoom(env, playerId, duel, link.room_id, link.invite_code)).ok) { await player.removeRoom(link.room_id, 2); throw new ApiError(409, "duel_room_taken"); }
+    if (duel) {
+      const claimed = await claimDuelRoom(env, playerId, duel, link.room_id, link.invite_code);
+      if (!claimed.ok) { await player.removeRoom(link.room_id, 2); throw new ApiError(claimed.status, claimed.code); }
+    }
     return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen, look, duel)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {

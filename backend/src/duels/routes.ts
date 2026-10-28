@@ -11,7 +11,7 @@ import { CHAPTERS, creatable } from "../v2/chapters";
 import { blankSide, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type SideRoom } from "./model";
 import type { DuelAction, FinishProof } from "./store";
 import { mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
-import { MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, RESULT_SHOWN_MS } from "./rules";
+import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, RESULT_SHOWN_MS } from "./rules";
 import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 
@@ -118,7 +118,8 @@ function openFor(duels: readonly Duel[], key: string, kind: Duel["kind"]): numbe
  */
 async function winBonus(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<DuelWinAnswer | null> {
   const mine = sideOf(duel, player);
-  if (!pollenEarning(env) || duel.kind !== "friend" || duel.status !== "decided" || duel.result?.winner !== mine || duel.eligible !== true) return null;
+  // Only a win where both runs passed the replay check pays (POLLEN-RULES.md): never one the other pair left or failed.
+  if (!pollenEarning(env) || duel.kind !== "friend" || duel.status !== "decided" || duel.result?.winner !== mine || duel.result.reason !== "faster" || duel.eligible !== true) return null;
   if (!force && settled.includes(duel.duel_id)) return null;
   const other = duel.sides[1 - mine]!;
   try {
@@ -136,7 +137,8 @@ async function lobby(env: Env, player: string, now: number): Promise<unknown> {
   const stale = duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS).map(duel => duel.duel_id);
   const shown = duels.filter(duel => !stale.includes(duel.duel_id));
   const settled: string[] = [];
-  for (const duel of shown) if (await winBonus(env, player, duel, pair.state.settled)) settled.push(duel.duel_id);
+  // Every won duel is paid before its pointer goes, so a winner who stays away a while still gets it.
+  for (const duel of duels) if (await winBonus(env, player, duel, pair.state.settled)) settled.push(duel.duel_id);
   const ops: PartyOp[] = [];
   if (missing.length || stale.length) ops.push({ kind: "drop_duels", ids: [...missing, ...stale] });
   if (settled.length) ops.push({ kind: "settle_wins", ids: settled });
@@ -205,6 +207,8 @@ async function challenge(env: Env, player: string, input: unknown, now: number):
   const friend = playerId(body.friend), key = boardOf(body.board), row = chapterRow(key);
   if (!creatable(row.adapter, env)) throw new ApiError(503, "chapter_creation_disabled");
   const duelId = (await digest(`after-you duel v1\n${player}\n${body.idempotency_key}`)).slice(0, 32);
+  // Friends first, so nobody can ask about a stranger's party.
+  if (!await friends(env, player, friend)) throw new ApiError(403, "duel_friends_only");
   const mine = await pairOf(env, player, now);
   // A retried challenge answers the duel it made.
   const held = mine.state.duels.find(ref => ref.duel_id === duelId);
@@ -214,7 +218,8 @@ async function challenge(env: Env, player: string, input: unknown, now: number):
   if (!theirs.intact || !theirs.partner) throw new ApiError(409, "opponent_party_required");
   const a = [player, mine.partner] as [string, string], b = [friend, theirs.partner] as [string, string];
   if (a.some(id => b.includes(id))) throw new ApiError(409, "same_party");
-  if (!await friends(env, player, friend)) throw new ApiError(403, "duel_friends_only");
+  // A pair already holding many recent duels takes no more, so its open ones never drop off its list.
+  if (theirs.state.duels.filter(ref => now - ref.at < CHALLENGE_TTL_MS).length >= MAX_RECENT_DUELS) throw new ApiError(409, "opponent_busy");
   const [aKey, bKey] = await Promise.all([pairKey(...a), pairKey(...b)]);
   const { duels } = await duelsOf(env, mine.state.duels);
   if (openFor(duels, aKey, "friend") >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
@@ -249,7 +254,8 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number):
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
     const top = view.top.find(item => item.entry_id === body.entry_id);
     if (!top) throw new ApiError(404, "ghost_not_found");
-    ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: top.names };
+    // Names stay on the board, where erasure reaches them; the race keeps only the place and time.
+    ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: null };
   }
   const a = [player, mine.partner] as [string, string], aKey = await pairKey(...a);
   const { duels } = await duelsOf(env, mine.state.duels);
@@ -372,13 +378,15 @@ export async function prepareDuelRoom(env: Env, player: string, ask: DuelRoomAsk
  */
 export async function claimDuelRoom(env: Env, player: string, link: DuelLink, roomId: string, invite: string): Promise<Outcome<true>> {
   const stub = duelsAt(env, link.board);
-  let claim = unwrap(await stub.act(link.duel_id, { kind: "claim", player, room_id: roomId, invite_code: invite, room_absent: false }));
-  if (claim.room?.room_id === roomId) return ok(true);
-  // A claim whose room never appeared may pass to this player after a while.
-  const held = claim.room?.room_id;
+  let claim = await stub.act(link.duel_id, { kind: "claim", player, room_id: roomId, invite_code: invite, room_absent: false });
+  if (!claim.ok) return claim;
+  if (claim.value.room?.room_id === roomId) return ok(true);
+  // A claim whose room never appeared may pass on after a while.
+  const held = claim.value.room?.room_id;
   if (held && (await env.ROOMS_V2.getByName(held).duelLinkOf()) === null) {
-    claim = unwrap(await stub.act(link.duel_id, { kind: "claim", player, room_id: roomId, invite_code: invite, room_absent: true }));
-    if (claim.room?.room_id === roomId) return ok(true);
+    claim = await stub.act(link.duel_id, { kind: "claim", player, room_id: roomId, invite_code: invite, room_absent: true });
+    if (!claim.ok) return claim;
+    if (claim.value.room?.room_id === roomId) return ok(true);
   }
   return { ok: false, status: 409, code: "duel_room_taken" };
 }

@@ -31,22 +31,37 @@ export async function pairKey(a: string, b: string): Promise<string> {
   return digest(PAIR_DOMAIN + [a, b].sort().join("\n"));
 }
 
-/** Ticks of every turn on the finishing branch, or null when the chain is not a whole, unassisted run. */
-export function runTicks(checkpoint: CheckpointV2, stages: number): { ticks: number; simulation_version: number } | null {
-  let current: CheckpointV2 = checkpoint, ticks = 0, simulation = -1;
-  if (current.stage_index !== stages) return null;
-  for (let index = stages; index > 0; index--) {
+/**
+ * Every turn on the branch that reached `checkpoint`, walked back through its
+ * nested proofs to the start: the ticks added up, whether any turn had catch
+ * assistance, and whether every turn ran the same simulation version. Null
+ * when the chain is broken or a turn's ticks are not whole. The board ranks a
+ * whole unassisted run (runTicks); a duel times any run, assisted or not,
+ * finished or not (duels/ticks.ts).
+ */
+export function walkRun(checkpoint: CheckpointV2): { ticks: number; assisted: boolean; simulation_version: number; mixed: boolean } | null {
+  let current: CheckpointV2 = checkpoint, ticks = 0, simulation = -1, assisted = false, mixed = false;
+  if (!Number.isSafeInteger(checkpoint.stage_index) || checkpoint.stage_index < 0) return null;
+  for (let index = checkpoint.stage_index; index > 0; index--) {
     const proof = nestedProof(current);
     if (!proof || current.stage_index !== index) return null;
     for (const turn of [proof.a, proof.b]) {
-      if (turn.catch_assistance !== false || !Number.isSafeInteger(turn.duration_ticks) || turn.duration_ticks < 1) return null;
+      if (!Number.isSafeInteger(turn.duration_ticks) || turn.duration_ticks < 1) return null;
+      if (turn.catch_assistance !== false) assisted = true;
       if (simulation === -1) simulation = turn.simulation_version;
-      if (turn.simulation_version !== simulation) return null;
+      if (turn.simulation_version !== simulation) mixed = true;
       ticks += turn.duration_ticks;
     }
     current = proof.previous;
   }
-  return current.stage_index === 0 && Number.isSafeInteger(ticks) ? { ticks, simulation_version: simulation } : null;
+  return current.stage_index === 0 && Number.isSafeInteger(ticks) ? { ticks, assisted, simulation_version: simulation, mixed } : null;
+}
+
+/** Ticks of every turn on the finishing branch, or null when the chain is not a whole, unassisted run. */
+export function runTicks(checkpoint: CheckpointV2, stages: number): { ticks: number; simulation_version: number } | null {
+  if (checkpoint.stage_index !== stages) return null;
+  const walked = walkRun(checkpoint);
+  return walked && !walked.assisted && !walked.mixed ? { ticks: walked.ticks, simulation_version: walked.simulation_version } : null;
 }
 
 /**

@@ -209,7 +209,7 @@ export function decline(duel: Duel, player: string, now: number): Outcome<Duel> 
  * The first member of a side to open the duel claims its room with the room
  * they are about to create; everyone after gets that room, to join. A claim
  * whose room never appeared (`roomAbsent`, checked by the caller) passes to
- * the partner after ROOM_CLAIM_TAKEOVER_MS. Answers the side's room.
+ * either member after ROOM_CLAIM_TAKEOVER_MS. Answers the side's room.
  */
 export function claimRoom(duel: Duel, player: string, proposal: { room_id: string; invite_code: string }, now: number, roomAbsent = false): Outcome<SideRoom> {
   const index = sideOf(duel, player);
@@ -218,7 +218,7 @@ export function claimRoom(duel: Duel, player: string, proposal: { room_id: strin
   if (duel.status !== "running") return fail(409, "duel_not_running");
   const side = duel.sides[index as 0 | 1]!;
   if (side.left) return fail(409, "duel_left");
-  const stale = side.room !== null && side.room.host !== player && side.revision === 0 && roomAbsent && now - side.room.claimed_ms >= ROOM_CLAIM_TAKEOVER_MS;
+  const stale = side.room !== null && side.room.room_id !== proposal.room_id && side.revision === 0 && roomAbsent && now - side.room.claimed_ms >= ROOM_CLAIM_TAKEOVER_MS;
   if (side.room === null || stale) {
     side.room = { room_id: proposal.room_id, invite_code: proposal.invite_code, host: player, claimed_ms: now };
     duel.updated_ms = now;
@@ -236,7 +236,8 @@ export function progress(duel: Duel, note: ProgressNote, now: number): Outcome<{
   const index = duel.sides.findIndex(side => side?.room?.room_id === note.room_id);
   if (index < 0) return fail(404, "duel_room_unknown");
   const side = duel.sides[index]!;
-  if (duel.status !== "running" || side.finished_ms !== null || note.revision <= side.revision) return ok({ finished: false });
+  // A pair that left hands the duel over: its room's later turns change nothing here.
+  if (duel.status !== "running" || side.left || side.finished_ms !== null || note.revision <= side.revision) return ok({ finished: false });
   Object.assign(side, { revision: note.revision, steps: Math.min(note.steps, duel.steps), ticks: note.ticks, assisted: note.assisted, turn: note.complete ? null : note.turn, last_ms: note.at_ms });
   if (note.complete) {
     side.finished_ms = note.at_ms;

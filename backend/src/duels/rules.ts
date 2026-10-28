@@ -22,8 +22,10 @@ export const ROOM_CLAIM_TAKEOVER_MS = 120_000;
 export const PARTY_INVITE_TTL_MS = 7 * 86_400_000;
 /** Party invites a player may hold at once; the oldest goes past it. */
 export const MAX_PARTY_INVITES = 8;
-/** Duel pointers kept per player; finished ones go first past it. */
+/** Duel pointers kept per player, the oldest going first past it. MAX_RECENT_DUELS keeps the open ones well inside it. */
 export const MAX_MEMBER_DUELS = 24;
+/** A player holding this many duels started in the last CHALLENGE_TTL_MS takes no new challenge. */
+export const MAX_RECENT_DUELS = 12;
 /** A decided duel stays on the lobby this long, as a result tile. */
 export const RESULT_SHOWN_MS = 7 * 86_400_000;
 /** Raw duel runs waiting for the replay check, per board: a friend duel's run is checked before its win counts. */

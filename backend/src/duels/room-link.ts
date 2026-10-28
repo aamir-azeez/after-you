@@ -10,14 +10,16 @@ import { DUEL_ROOM_TABLES, isLazyTable } from "../storage-schema";
  * room; a duel room is otherwise an ordinary room. Only the pair's two
  * members may ever be in it: a join by anyone else is refused.
  */
-export type DuelLink = { schema_version: 1; duel_id: string; board: string; kind: "friend" | "ghost"; side: 0 | 1; members: string[] };
+/** `done`: the room has finished its run once; turns after that (a redo) are ordinary turns and pay no duel premium. */
+export type DuelLink = { schema_version: 1; duel_id: string; board: string; kind: "friend" | "ghost"; side: 0 | 1; members: string[]; done?: true };
 const [TABLE] = DUEL_ROOM_TABLES;
 const DUEL_ID = /^[a-f0-9]{32}$/;
 const BOARD = /^[a-z0-9-]{1,48}@[1-9][0-9]{0,3}$/;
 
 export function validDuelLink(value: unknown): value is DuelLink {
   const link = value as DuelLink;
-  return typeof value === "object" && value !== null && Object.keys(value).length === 6 && link.schema_version === 1 && typeof link.duel_id === "string" && DUEL_ID.test(link.duel_id) &&
+  const keys = typeof value === "object" && value !== null ? Object.keys(value).length : 0;
+  return keys === 6 + Number(link?.done === true) && link.schema_version === 1 && typeof link.duel_id === "string" && DUEL_ID.test(link.duel_id) &&
     typeof link.board === "string" && BOARD.test(link.board) && (link.kind === "friend" || link.kind === "ghost") && (link.side === 0 || link.side === 1) &&
     Array.isArray(link.members) && link.members.length === 2 && link.members.every(id => typeof id === "string" && ID_PATTERN.test(id)) && link.members[0] !== link.members[1];
 }
@@ -45,6 +47,19 @@ export function recordDuelLink(storage: DurableObjectStorage, link: DuelLink): v
   storage.sql.exec(TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
   storage.sql.exec("INSERT OR REPLACE INTO duel_link VALUES (1,?)", JSON.stringify(link));
   memo.delete(storage);
+}
+
+/** Inside the commit that finished the room's run: later turns are no longer duel turns. */
+export function markDuelDone(storage: DurableObjectStorage): void {
+  const link = duelLink(storage);
+  if (!link || link.done) return;
+  storage.sql.exec("UPDATE duel_link SET data=? WHERE id=1", JSON.stringify({ ...link, done: true }));
+  memo.delete(storage);
+}
+
+/** Whether a turn in this room pays the friend duel premium: a friend duel's room until its run first finished. */
+export function duelPremium(link: DuelLink | null): boolean {
+  return link?.kind === "friend" && !link.done;
 }
 
 /** Whether a retried create names the same duel as the room holds (both null for an ordinary room). */

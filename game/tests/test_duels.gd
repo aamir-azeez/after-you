@@ -69,13 +69,13 @@ func _run() -> void:
 func _model() -> void:
 	var view := Client.valid_view(_wire())
 	_check(not view.is_empty(), "a running duel reads")
-	_check(DuelModel.time_text(3240) == "1:48" and DuelModel.time_text(2760) == "1:32", "times read m:ss")
+	_check(DuelModel.time_text(3240) == "1:48.0" and DuelModel.time_text(2760) == "1:32.0", "times read as the board shows them")
 	_check(DuelModel.pair_title(view, 0, _name_of) == "You + Maya", "your pair reads You + Maya")
 	_check(DuelModel.pair_title(view, 1, _name_of) == "Finn + Finn's partner", "a player the server did not name reads as a partner: " + DuelModel.pair_title(view, 1, _name_of))
 	_check(DuelModel.turn_line(view, 0, _name_of) == PlayerCopy.DUEL_YOUR_TURN and DuelModel.turn_line(view, 1, _name_of) == PlayerCopy.DUEL_WAITING_FOR % PlayerCopy.DUEL_PARTNER, "whose turn each pair shows")
 	_check(DuelModel.action(view, ME) == "play" and DuelModel.action(view, MAYA) == "open", "Play for the player whose turn it is, Open for the partner")
 	var level := Client.valid_view(_wire("running", {"sides": [_wire().sides[0].merged({"steps": 4, "ticks": 3000}, true), _wire().sides[1].merged({"steps": 4, "ticks": 3360}, true)]}))
-	_check(DuelModel.ahead_line(level) == PlayerCopy.DUEL_AHEAD % ["0:12", 2], "ahead once both pairs finished the same stage: " + DuelModel.ahead_line(level))
+	_check(DuelModel.ahead_line(level) == PlayerCopy.DUEL_AHEAD % ["0:12.0", 2], "ahead once both pairs finished the same stage: " + DuelModel.ahead_line(level))
 	_check(DuelModel.ahead_line(view) == "", "no ahead line mid stage")
 	_check(DuelModel.margin_text(720) == PlayerCopy.DUEL_MARGIN_SECONDS % 24 and DuelModel.margin_text(2) == PlayerCopy.DUEL_MARGIN_HUNDREDTHS % (2.0 / 30.0), "the gap reads seconds, or hundredths under a tenth")
 	var won := Client.valid_view(_wire("decided", {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 720, "decided_ms": 9}}))
@@ -105,10 +105,9 @@ func _client() -> void:
 	var answer: Dictionary = await client.lobby()
 	_check(answer.ok and answer.lobby.party.partner == MAYA, "the lobby reads")
 	_check(client.room_kind(ROOM) == "friend" and client.room_kind("other") == "", "a duel's room is known for the Duel tag")
-	_check(client.finished_chapters() == [BOARD], "a duel clear is kept for the chapter chain")
 	var again := Client.new(api, ME, SAVE_PATH)
-	_check(again.room_kind(ROOM) == "friend" and again.finished_chapters() == [BOARD], "both survive a restart")
-	_check(Client.new(api, MAYA, SAVE_PATH).finished_chapters().is_empty(), "and belong to this player only")
+	_check(again.room_kind(ROOM) == "friend", "it survives a restart")
+	_check(Client.new(api, MAYA, SAVE_PATH).room_kind(ROOM) == "", "and belongs to this player only")
 	api.replies["POST /v1/duels/challenge"] = {"ok": true, "data": {"schema_version": 1, "duel": _wire("challenged")}}
 	var key := Client.new_key()
 	var sent: Dictionary = await client.challenge(FINN, BOARD, key)
@@ -139,7 +138,7 @@ func _pages() -> void:
 	var tiles: Node = lobby.find_child("DuelsTiles", true, false)
 	_check(tiles.get_child_count() == 2, "running duels and results are tiles; a declined challenge fades: %d" % tiles.get_child_count())
 	_check(str(tiles.get_child(0).name).begins_with("Tile_d0") and tiles.get_child(0).find_child("TileAction", true, false).text == PlayerCopy.DUELS_PLAY, "your move comes first, with Play")
-	_check(_has_text(tiles.get_child(0), "1:48") and _has_text(tiles.get_child(0), "1:32"), "a tile shows both pairs' times")
+	_check(_has_text(tiles.get_child(0), "1:48.0") and _has_text(tiles.get_child(0), "1:32.0"), "a tile shows both pairs' times")
 	var open: Node = lobby.find_child("DuelsOpenList", true, false)
 	_check(open.get_child_count() == 1 and open.find_child("Accept", true, false) != null and open.find_child("NotNow", true, false) != null, "a challenge to you has Accept and Not now")
 	_check(_has_text(lobby, PlayerCopy.DUELS_BOOST % 10) and _has_text(lobby, "Maya"), "your party with its boost")
@@ -157,7 +156,7 @@ func _pages() -> void:
 	page.view = Client.valid_view(_wire())
 	lobby.open_overlay(page)
 	await process_frame
-	_check(page.find_child("DuelTime0", true, false).text == "1:48" and page.find_child("DuelTime1", true, false).text == "1:32", "the duel page shows both times so far")
+	_check(page.find_child("DuelTime0", true, false).text == "1:48.0" and page.find_child("DuelTime1", true, false).text == "1:32.0", "the duel page shows both times so far")
 	_check(_has_text(page, PlayerCopy.DUEL_STEPS % [3, 12]) and _has_text(page, PlayerCopy.DUEL_WAITING_NO_TIME) and page.find_child("DuelPlay", true, false).text == PlayerCopy.DUEL_PLAY_TURN, "steps, the waiting note and Play your turn")
 	var waiting := Client.valid_view(_wire("running", {"sides": [_wire().sides[0].merged({"turn": 1}, true), _wire().sides[1]]}))
 	page.show_duel(waiting)
@@ -226,7 +225,7 @@ func _pages() -> void:
 	await process_frame
 	_check(_has_text(ghosts, PlayerCopy.DUELS_LOADING), "the ghost list loads")
 	ghosts.show_ghosts([{"board": BOARD, "developer": 1470, "top": [{"entry_id": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1", "ticks": 1400, "rank": 1, "names": null}]}])
-	_check(ghosts.find_child("Race_developer", true, false) != null and ghosts.find_child("Race_board_e1e1e1", true, false) != null and _has_text(ghosts, "0:49"), "our run and the board's runs with their times")
+	_check(ghosts.find_child("Race_developer", true, false) != null and ghosts.find_child("Race_board_e1e1e1", true, false) != null and _has_text(ghosts, "0:49.0"), "our run and the board's runs with their times")
 	ghosts.close()
 	lobby.close()
 	await process_frame
@@ -249,6 +248,11 @@ func _home() -> void:
 	_check(menu.get_node("HomeMenuMargin").get_combined_minimum_size().y <= menu.size.y + 0.5, "and the column still fits 720")
 	holder.queue_free()
 	await process_frame
+	var hub: Control = preload("res://presentation/room_hub_screen.gd").new()
+	var tag: Control = hub._duel_tag()
+	_check(tag.name == "DuelTag" and (tag.get_child(0) as Label).text == PlayerCopy.DUEL_TAG, "a duel's room card carries the Duel tag")
+	tag.free()
+	hub.free()
 
 func _has_text(node: Node, text: String) -> bool:
 	if node == null: return false

@@ -841,11 +841,10 @@ func _chapter_unlocks() -> Dictionary:
 	if home_keepsakes.read_only or home_keepsakes.backfill_pending(): return ChapterUnlocks.unsettled(_full_journey_access())
 	var earned := home_keepsakes.earned_descriptors()
 	var rooms: Dictionary = room_hub_flow.known_rooms()
-	# A duel's clear counts too (services/duels_client.gd finished_chapters).
-	var finished: Array = rooms.finished + duels_flow.finished_chapters()
-	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access(), hash(finished)]
+	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access()]
 	if _unlocks_kept.size() == 2 and _unlocks_kept[0] == stamp: return _unlocks_kept[1]
-	var progress := ChapterUnlocks.progress(earned, HardMode.new().marks(), ChapterUnlocks.touched(rooms.chapters), stamp[3], finished)
+	# A duel's room is an ordinary room, so a duel's clear is among rooms.finished.
+	var progress := ChapterUnlocks.progress(earned, HardMode.new().marks(), ChapterUnlocks.touched(rooms.chapters), stamp[3], rooms.finished)
 	_unlocks_kept = [stamp, progress]
 	return progress
 

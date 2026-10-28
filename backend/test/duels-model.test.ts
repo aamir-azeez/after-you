@@ -10,6 +10,7 @@ import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
 import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
 import type { CheckpointV2, RecordingV2 } from "../src/v2/protocol";
 import { price } from "../src/pollen/earn";
+import { duelPremium, validDuelLink } from "../src/duels/room-link";
 import { validTurnFacts } from "../src/pollen/turn-facts";
 import { isoWeek } from "../src/pollen/week";
 
@@ -101,6 +102,8 @@ describe("duel state machine", () => {
     expect(claimRoom(duel, A2, { room_id: "rb", invite_code: "ib" }, T0 + ROOM_CLAIM_TAKEOVER_MS - 1, true)).toMatchObject({ ok: true, value: { room_id: "ra" } });
     expect(claimRoom(duel, A2, { room_id: "rb", invite_code: "ib" }, T0 + ROOM_CLAIM_TAKEOVER_MS, false)).toMatchObject({ ok: true, value: { room_id: "ra" } });
     expect(claimRoom(duel, A2, { room_id: "rb", invite_code: "ib" }, T0 + ROOM_CLAIM_TAKEOVER_MS, true)).toMatchObject({ ok: true, value: { room_id: "rb", host: A2 } });
+    // The claimer may take its own absent claim back too, with a new room.
+    expect(claimRoom(duel, A2, { room_id: "rc", invite_code: "ic" }, T0 + 2 * ROOM_CLAIM_TAKEOVER_MS, true)).toMatchObject({ ok: true, value: { room_id: "rc", host: A2 } });
   });
 
   it("progress takes only newer revisions, so repeats and late notes never move a time back", () => {
@@ -167,6 +170,13 @@ describe("duel state machine", () => {
     // Leaving again, or after the end, changes nothing.
     expect(leave(duel, B1, T0 + 50).ok).toBe(true);
     expect(duel.result!.winner).toBe(0);
+  });
+
+  it("a pair that left changes nothing more, even if its room plays on", () => {
+    const duel = running();
+    leave(duel, B1, T0 + 1);
+    progress(duel, note("rb", 9, 100, true), T0 + 2);
+    expect(duel.sides[1]).toMatchObject({ left: true, finished_ms: null, ticks: 0 });
   });
 
   it("leave is turned off once your own pair finished, and both pairs leaving ends it unfinished", () => {
@@ -287,6 +297,15 @@ describe("duel time", () => {
 });
 
 describe("duel pay", () => {
+  it("pays the premium in a friend duel's room until its run first finishes, never in a ghost race", () => {
+    const link = { schema_version: 1 as const, duel_id: "d".repeat(32), board: "relay-isles@2", kind: "friend" as const, side: 0 as const, members: [A1, A2] };
+    expect(duelPremium(link)).toBe(true);
+    expect(duelPremium({ ...link, done: true })).toBe(false);
+    expect(duelPremium({ ...link, kind: "ghost" })).toBe(false);
+    expect(duelPremium(null)).toBe(false);
+    expect(validDuelLink({ ...link, done: true })).toBe(true);
+    expect(validDuelLink({ ...link, done: false })).toBe(false);
+  });
   // POLLEN-RULES.md's worked example: a short-chapter bank turn of base 89 with a first try (111).
   const facts = { level_id: "first-steps", stage_id: "s1", role: "a" as const, ticks: 10, tries: 1, premium: false, hard: false, host: true, subscriber: false };
   it("adds half again on base and bonuses, worked out with the room boost and rounded once", () => {

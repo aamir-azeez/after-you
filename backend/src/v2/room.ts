@@ -48,7 +48,7 @@ import { clearPollenRoom, completionFacts, recordMember, recordTurnFacts, turnFa
 import { clearLooks, eraseMemberLook, eraseTurnLooksOf, memberLook, recordMemberLook, recordTurnLook, turnLooks } from "../pollen/room-looks";
 import type { Look } from "../pollen/catalog";
 import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
-import { clearDuelLink, duelJoinAllowed, duelLink, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
+import { clearDuelLink, duelJoinAllowed, duelLink, duelPremium, markDuelDone, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -758,8 +758,10 @@ export class RoomV2 extends DurableObject<Env> {
           recordTurnFacts(this.ctx.storage, { room_id: state.room_id, recording_hash: recording.recording_hash, turn_id, player, partner: this.partnerOf(state, player),
             host: player === state.host_id, level_id: state.level_id, stage_id, role: recording.role, ticks: recording.duration_ticks, tries,
             premium: chapter(state).premium, hard: Boolean(current.hard), complete: recording.role === "b" && state.stage_index >= chapter(state).stages.length, accepted_at: Date.now(),
-            duel: duelLink(this.ctx.storage)?.kind === "friend" });
+            duel: duelPremium(duelLink(this.ctx.storage)) });
         }
+        // A duel room's run is over for the duel once it first finishes (duels/room-link.ts).
+        if (recording.role === "b" && state.stage_index >= chapter(state).stages.length) markDuelDone(this.ctx.storage);
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
         const saved = this.saveReceipt(state, player, receipt);
