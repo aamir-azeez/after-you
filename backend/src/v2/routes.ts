@@ -29,6 +29,7 @@ import { triesField, triesWanted } from "./turn-tries";
 import { endReactionField, endReactionsWanted } from "./end-reactions";
 import { runReactionField, runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
+import { openChapters } from "./chapter-unlocks";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
 import { checkedWithEnd, creditCommitted, pollenCapability } from "../pollen/routes";
 import type { PollenMember } from "../pollen/turn-facts";
@@ -177,11 +178,11 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const input = object(await boundedJson(request, 4096)); exact(input, ["invite_code", ...(input.supported_simulation_versions === undefined ? [] : ["supported_simulation_versions"])]);
     const versions = input.supported_simulation_versions;
     if (versions !== undefined && (!Array.isArray(versions) || !versions.length || versions.length > MAX_JOIN_VERSIONS || versions.some(version => !Number.isInteger(version) || version < 1) || new Set(versions).size !== versions.length)) throw new ApiError(422, "unsupported_simulation_version");
-    const code = parseInvite(input.invite_code);
+    const code = parseInvite(input.invite_code), open = openChapters(request);
     const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
     unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), roomSettler(env)));
-    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName, pollen, look);
+    const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName, pollen, look, open);
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
     // deleted identity newly attached to someone else's room.

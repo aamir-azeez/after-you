@@ -4,6 +4,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Store = preload("res://services/relay_online_store.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -48,6 +49,10 @@ var pollen_flush: Callable
 var replay_archive_cache: Callable
 ## (room facts, pairs) -> bool: adds parts of attempts this phone keeps to Replays.
 var replay_history_cache: Callable
+## Main's unlock progress (services/chapter_unlocks.gd), read when a join is
+## sent: the join carries the chapters open to this player, and a refusal for
+## a chapter past them names the one to ask the friend to host instead.
+var join_unlocks: Callable
 var last_error := ""
 var capabilities: Dictionary = {}
 var _supported_chapters: Array[Dictionary] = []
@@ -562,7 +567,9 @@ func retry_lobby() -> String:
 	if not _can_lobby_mutate() or _index.pending.is_empty():
 		return ""
 	var request: Dictionary = _index.pending.duplicate(true)
-	var response := await _call(HTTPClient.METHOD_POST, request.path, request.body)
+	var unlocks: Dictionary = join_unlocks.call() if request.path == "/v2/rooms/join" and join_unlocks.is_valid() else {}
+	var headers := PackedStringArray() if unlocks.is_empty() else PackedStringArray([ChapterUnlocks.join_header(unlocks)])
+	var response := await _call(HTTPClient.METHOD_POST, request.path, request.body, headers)
 	if not response.get("ok", false):
 		# A definitive refusal settles the request: the server joined or created
 		# nothing for it now, and a retry of the same request cannot succeed.
@@ -580,6 +587,7 @@ func retry_lobby() -> String:
 			if not _write_index(next): return ""
 		_failure(response)
 		if request.path == "/v2/rooms" and int(response.get("status", 0)) == 402 and response.get("code") == "host_unlock_required": last_error = PlayerCopy.SHARED_HOST_CREATE_ACCESS
+		if not unlocks.is_empty() and int(response.get("status", 0)) == 403 and response.get("code") == ChapterUnlocks.JOIN_REFUSAL: last_error = ChapterUnlocks.join_refusal(unlocks)
 		return ""
 	var room: Variant = response.get("data")
 	if not room is Dictionary or not _id(room.get("room_id")):
@@ -609,7 +617,7 @@ func retry_lobby() -> String:
 const DEFINITIVE_LOBBY_REFUSALS := {
 	400: ["invalid_invite", "unexpected_fields", "invalid_field"],
 	402: ["host_unlock_required"],
-	403: ["player_blocked"],
+	403: ["player_blocked", "chapter_not_open"],
 	404: ["invite_not_found"],
 	409: ["room_full", "room_limit_reached", "room_version_conflict", "room_exists", "idempotency_chapter_mismatch", "idempotency_simulation_mismatch", "idempotency_version_mismatch"],
 	410: ["invite_expired", "replay_transferred", "room_deleted"],

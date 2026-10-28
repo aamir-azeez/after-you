@@ -3,11 +3,21 @@ const Completion = preload("res://presentation/chapter_completion.gd")
 const Keepsakes = preload("res://services/home_keepsakes.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
+const Unlocks = preload("res://services/chapter_unlocks.gd")
+const UnlockFixture = preload("res://tests/unlock_fixture.gd")
 
 class Routes extends Main:
 	var routed: Array = []
+	var toasts: Array[String] = []
 	var owned := false
+	## The unlock progress the pages draw with: every chapter already played,
+	## unless a test sets its own (services/chapter_unlocks.gd).
+	var unlocks: Variant = null
 	func _full_journey_access() -> bool: return owned
+	func _chapter_unlocks() -> Dictionary: return UnlockFixture.all_played(owned) if unlocks == null else unlocks
+	## The progress Main itself works out from this player's marks and journals.
+	func real_unlocks() -> Dictionary: return super._chapter_unlocks()
+	func _toast(text: String) -> void: toasts.append(text)
 	func _open_chapter_preview(scene: String, _replay_context: Dictionary = {}, _hard: Dictionary = {}) -> void: routed.append("free:"+scene)
 	func _open_premium_chapter(scene: String, _replay_context: Dictionary = {}, _hard: Dictionary = {}) -> void: routed.append("premium:"+scene)
 	func _new_relay_lobby_flow() -> RelayLobbyFlow: return RoutesLobby.new(self)
@@ -42,7 +52,9 @@ func _run() -> void:
 		viewport.size=size
 		await _home_offer(app,viewport)
 		await _picker(app,viewport)
-		if size==Vector2i(1280,720): await _peek_heights(app,viewport)
+		if size==Vector2i(1280,720):
+			await _peek_heights(app,viewport)
+			await _locked_chain(app,viewport)
 	_check(FileAccess.get_file_as_string(path)==saved,"Menu visits and route clicks preserve the gameplay save")
 	viewport.queue_free()
 	await _settle()
@@ -328,6 +340,39 @@ func _picker(app: Node, viewport: SubViewport) -> void:
 	owned_open.pressed.emit()
 	_check(app.routed.size()==before_owned+1 and app.routed[-1]==_route(Chapters.LIGHTHOUSE_V2),"An owned chapter's play button keeps its callback")
 	app.owned=false
+
+## A chapter the chain has not reached: its card shows the lock and says which
+## chapter opens it, a tap says so too and opens nothing, and the idle warm
+## ups leave it alone. Uses the player's real progress: First Steps and Relay
+## Isles finished, so the next chapter is open and the one after is not.
+func _locked_chain(app: Node, viewport: SubViewport) -> void:
+	app.owned = true
+	app.unlocks = app.real_unlocks()
+	var chain := Unlocks.chain()
+	var open_key := chain[2]
+	var locked_key := chain[3]
+	_check(Unlocks.reached(open_key,app.unlocks) and not Unlocks.reached(locked_key,app.unlocks),"Two finished chapters open the third and not the fourth")
+	app.journey_flow.show_journey()
+	await _settle()
+	var picker: ScrollContainer = app.journey_flow.picker
+	var card: Control = picker.card_for(locked_key)
+	var open: Button = card.find_child("ChapterOpen",true,false) if card != null else null
+	var note: Label = card.find_child("ChapterAccess",true,false) if card != null else null
+	var reason := Unlocks.reason(locked_key,app.unlocks,true)
+	_check(open != null and open.locked and card.get_meta("full_journey_locked",false),"A chapter not reached yet shows a lock")
+	_check(note != null and note.text == reason and reason == PlayerCopy.CHAPTER_LOCKED_NOTE % Unlocks.title(open_key),"Its card says which chapter opens it: "+(note.text if note != null else ""))
+	_check(open != null and reason in str(open.accessibility_name),"Its button names the reason")
+	var reached: Button = picker.card_for(open_key).find_child("ChapterOpen",true,false)
+	_check(not reached.locked,"The next chapter is open")
+	picker.ensure_control_visible(card)
+	await _settle()
+	var before: int = app.routed.size()
+	_pointer(viewport,open.get_global_rect().get_center(),true)
+	_pointer(viewport,open.get_global_rect().get_center(),false)
+	_check(app.routed.size() == before and not app.toasts.is_empty() and app.toasts[-1] == Unlocks.reason(locked_key,app.unlocks),"A tap on it opens nothing and says which chapter opens it")
+	var warmed: Array[String] = app.journey_flow.openable_chapters()
+	_check(not locked_key in warmed and open_key in warmed and app.journey_flow.next_solo_chapter() == open_key,"Idle warm ups take the next open chapter and never a locked one")
+	app.unlocks = null
 
 func _peek_heights(app: Node, viewport: SubViewport) -> void:
 	# Safe areas of any height keep part of the next row in view without

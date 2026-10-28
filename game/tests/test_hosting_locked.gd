@@ -11,6 +11,8 @@ const Storage = preload("res://services/local_save.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Hub = preload("res://presentation/room_hub_screen.gd")
+const Unlocks = preload("res://services/chapter_unlocks.gd")
+const UnlockFixture = preload("res://tests/unlock_fixture.gd")
 const TEST_STORE := {"purchase_mode": "test_store", "entitlement_id": "full_journey"}
 const GOOGLE_PLAY := {"purchase_mode": "google_play", "entitlement_id": "full_journey_play"}
 
@@ -28,7 +30,11 @@ class FakeStore extends Purchases:
 ## Main with the accepted tester code and account readiness set by the test.
 class App extends Main:
 	var tester := false
+	## Every chapter already played unless a test sets its own progress
+	## (services/chapter_unlocks.gd).
+	var unlocks: Variant = null
 	func _tester_active() -> bool: return tester
+	func _chapter_unlocks() -> Dictionary: return UnlockFixture.all_played() if unlocks == null else unlocks
 	func _relay_identity() -> Dictionary: return {"ready": true, "player_id": "P".repeat(22), "epoch": 1}
 
 func _initialize() -> void: _run.call_deferred()
@@ -153,6 +159,7 @@ func _run() -> void:
 	_check(_text(scene, PlayerCopy.MAIN_FAD34E850ED9) and not _text(scene, PlayerCopy.HOSTING_NEEDS_TESTER_CODE) and _find(scene, "HostingLockedTester") != null, "Without a Test Store purchase locked hosting keeps the earlier text")
 
 	await _together(scene, store, premium)
+	await _chain(scene)
 
 	root.remove_child(scene)
 	scene.queue_free()
@@ -249,6 +256,45 @@ func _together(scene: App, store: FakeStore, premium: String) -> void:
 				scene.room_hub_flow.screen = null
 				await process_frame
 	scene.tester = false
+
+## Play with a friend for a new player: First Steps alone is open to host; a
+## later chapter's card shows its lock and reason, is never chosen, and
+## hosting it is refused with the reason. A remembered locked choice falls
+## back to First Steps. Joins carry the same progress.
+func _chain(scene: App) -> void:
+	var chain := Unlocks.chain()
+	scene.config.merge(GOOGLE_PLAY, true)
+	scene.unlocks = Unlocks.progress({}, {}, false)
+	var reason := Unlocks.reason(chain[1], scene.unlocks)
+	var entries := {}
+	for entry: Dictionary in scene.room_hub_flow.together_chapters(): entries[entry.key] = entry
+	_check(not entries[chain[0]].get("locked", false) and str(entries[chain[0]].get("unlock_reason", "")).is_empty(), "A new player can host First Steps")
+	_check(entries[chain[1]].locked and entries[chain[1]].unlock_reason == reason and entries[chain[1]].note == Unlocks.reason(chain[1], scene.unlocks, true), "The next chapter is locked with its reason")
+	scene.room_hub_flow.selected_chapter = chain[2]
+	scene._show_home()
+	scene.room_hub_flow.open_hub("", false)
+	var hub: Hub = scene.room_hub_flow.screen
+	for i in range(2): await process_frame
+	_check(hub.selected_key() == chain[0], "A remembered chapter that is not open falls back to First Steps")
+	hub.open_chapter_picker()
+	await process_frame
+	var card: Control = hub._picker.card_for(chain[1])
+	var open := card.find_child("ChapterOpen", true, false) as Button
+	var access := card.find_child("ChapterAccess", true, false) as Label
+	_check(open.locked and access.text == entries[chain[1]].note and access.get_theme_color("font_color") == hub._picker.GOLD, "The host picker's card shows the lock and the reason")
+	open.pressed.emit()
+	await process_frame
+	_check(hub.selected_key() == chain[0] and not hub._picker_page.visible and hub._message == reason, "Choosing it keeps First Steps and the hub says why")
+	scene.room_hub_flow._host_room(chain[1], "friends")
+	await process_frame
+	_check(is_instance_valid(scene.room_hub_flow.screen) and scene.mode == "rooms" and hub._message == reason, "Hosting it is refused on the hub with the reason")
+	scene.ensure_relay_session()
+	_check(scene.relay_session.join_unlocks.is_valid() and scene.relay_session.join_unlocks.call() == scene.unlocks, "Joins carry this player's unlock progress")
+	_check(not chain[1].get_slice("@", 0) in Unlocks.join_header(scene.relay_session.join_unlocks.call()), "So a room past First Steps refuses this player")
+	scene.unlocks = null
+	hub.queue_free()
+	scene.room_hub_flow.screen = null
+	await process_frame
 
 func _path(label: String) -> String:
 	var result := "user://test-%s-%d.json" % [label, Time.get_ticks_usec()]

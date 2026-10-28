@@ -11,7 +11,7 @@ extends Node
 ## contract (read at call time, so Main or a test can swap a service or
 ## override an entry point):
 ## - services: saves, levels, title_font, hard_states, _chapter_marks,
-##   _full_journey_access, _paid_content_hidden
+##   _chapter_unlocks, _full_journey_access, _paid_content_hidden
 ## - screen: mode, running, ui, overlay, _screen_shell, _card, _scroll_list,
 ##   _button, _back_button, _label, _paragraph, _toast, _show_home
 ## - chapter opens: _open_premium_chapter,
@@ -23,6 +23,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
+const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
@@ -86,8 +87,13 @@ func show_journey() -> void:
 	refresh_marks()
 
 ## Runs a Play Solo card's play button: the chapter's solo scene, through the
-## premium gate when the chapter is premium.
+## premium gate when the chapter is premium. A chapter the chain has not
+## reached says which chapter opens it (services/chapter_unlocks.gd).
 func open_solo_chapter(key: String) -> void:
+	var unlocks: Dictionary = host._chapter_unlocks()
+	if not ChapterUnlocks.reached(key, unlocks):
+		host._toast(ChapterUnlocks.reason(key, unlocks))
+		return
 	if hard and host.mode == MODE_JOURNEY:
 		_open_hard_chapter(key)
 		return
@@ -109,7 +115,9 @@ func _open_hard_chapter(key: String) -> void:
 	else: host._open_chapter_preview(ChapterRegistry.solo_scene(key), {}, request)
 
 ## The Chapters page's cards, as given to its picker (which shows free ones
-## first): every chapter with its own Solo card, in registry order.
+## first): every chapter with its own Solo card, in registry order. A chapter
+## the chain has not reached is locked with its reason as the card's note; a
+## Full Journey one the player does not own keeps the Full Journey lock.
 ## With hard on: only chapters with hard runs, each locked until finished.
 ## A build that sells nothing lists the free chapters alone (Main._paid_content_hidden).
 func entries(owned: bool, hard_on: bool = false) -> Array[Dictionary]:
@@ -117,7 +125,12 @@ func entries(owned: bool, hard_on: bool = false) -> Array[Dictionary]:
 	for key: String in ChapterRegistry.offered_keys():
 		if own_solo_card(key): result.append(ChapterPicker.entry(key))
 	if host._paid_content_hidden(): result = result.filter(func(item: Dictionary) -> bool: return not item.premium)
-	for item: Dictionary in result: item.locked = item.premium and not owned
+	var unlocks: Dictionary = host._chapter_unlocks()
+	for item: Dictionary in result:
+		item.locked = item.premium and not owned
+		if not ChapterUnlocks.reached(str(item.key), unlocks):
+			item.locked = true
+			item.note = ChapterUnlocks.reason(str(item.key), unlocks, true)
 	return HardMode.picker_entries(result, host._chapter_marks()) if hard_on else result
 
 ## The Chapters page's pictures in its card order, which the thumbnail shelf
@@ -131,19 +144,22 @@ func thumbnail_paths() -> Array[String]:
 ## The chapter the player most likely opens next: the first card the Chapters
 ## page shows, in its order, that is open to them and not yet finished solo;
 ## "" once every one is.
-func next_solo_chapter() -> String:
+## `shown` is the page's cards in order, when the caller has them already.
+func next_solo_chapter(shown: Array[Dictionary] = []) -> String:
 	var marks: Dictionary = host._chapter_marks()
-	for item: Dictionary in ChapterPicker.shown_order(entries(host._full_journey_access())):
+	for item: Dictionary in shown if not shown.is_empty() else ChapterPicker.shown_order(entries(host._full_journey_access())):
 		if not bool(item.locked) and not bool(marks.get(str(item.mark), {}).get("solo", false)): return str(item.key)
 	return ""
 
 ## Every chapter the player can open from the Chapters page now, the one they
-## most likely open next first (services/world_prewarm.gd).
+## most likely open next first (services/world_prewarm.gd). Locked chapters,
+## Full Journey or not yet reached, are never warmed.
 func openable_chapters() -> Array[String]:
 	var result: Array[String] = []
-	var next := next_solo_chapter()
+	var shown := ChapterPicker.shown_order(entries(host._full_journey_access()))
+	var next := next_solo_chapter(shown)
 	if not next.is_empty(): result.append(next)
-	for item: Dictionary in ChapterPicker.shown_order(entries(host._full_journey_access())):
+	for item: Dictionary in shown:
 		if not bool(item.locked) and not str(item.key) in result: result.append(str(item.key))
 	return result
 

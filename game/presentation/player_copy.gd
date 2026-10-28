@@ -238,6 +238,14 @@ const HARD_LOCKED_NOTE := "Finish this chapter to unlock Hard"
 const HARD_OPEN_NOTE := "Hard · No retries"
 const HARD_LOCKED_TOAST := "Finish this chapter once, solo or with a friend, to unlock Hard."
 const HARD_HOST_UNAVAILABLE := "Hard rooms aren't open yet."
+# Chapter unlocks (services/chapter_unlocks.gd): a locked chapter's card, and
+# the line a tap on it shows. %s is the chapter before it.
+const CHAPTER_LOCKED_NOTE := "Finish %s to open this chapter"
+const CHAPTER_LOCKED := "Finish %s to open this chapter."
+const CHAPTER_LOCKED_FULL_JOURNEY := "This chapter is part of the Full Journey."
+# A join refused because the room's chapter is past this player's. %s is the
+# chapter they can play next, which the friend can host for them.
+const CHAPTER_JOIN_NOT_REACHED := "This room is for a chapter you haven't reached yet. Ask your friend to host %s so you can play it together."
 # Home, beside the keepsake count.
 const HARD_COUNT := "Hard · %d / %d"
 # The ready card of a hard run, and the pill under the stage line in play.

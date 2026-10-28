@@ -47,6 +47,7 @@ import { clearMemberNames, eraseMemberName, memberName, recordMemberName } from 
 import { clearPollenRoom, completionFacts, recordMember, recordTurnFacts, turnFacts, type PollenMember, type TurnFacts } from "../pollen/turn-facts";
 import { clearLooks, eraseMemberLook, eraseTurnLooksOf, memberLook, recordMemberLook, recordTurnLook, turnLooks } from "../pollen/room-looks";
 import type { Look } from "../pollen/catalog";
+import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -442,8 +443,9 @@ export class RoomV2 extends DurableObject<Env> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_unavailable");
     return boundary && !boundary.ok && boundary.code === "campaign_unavailable" ? fail(503, boundary.code) : boundary;
   }
-  /** `hardClient`: the joining phone plays hard rooms (X-AfterYou-Hard-Mode). `name`, `pollen` and `look`: as in initialize, for a member who joins or returns. */
-  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false, name?: string | null, pollen?: PollenMember, look?: Look): Promise<Outcome<RoomSnapshotV2>> {
+  /** `hardClient`: the joining phone plays hard rooms (X-AfterYou-Hard-Mode). `name`, `pollen` and `look`: as in initialize, for a member who joins or returns.
+   * `open`: the level ids the joining phone has open (chapter-unlocks.ts); a new guest whose list leaves out this room's chapter is refused. */
+  async join(player: string, invite: string, supportedVersions?: number[], hardClient = false, name?: string | null, pollen?: PollenMember, look?: Look, open?: string[]): Promise<Outcome<RoomSnapshotV2>> {
     const boundary = campaignBoundaryGuard(this.ctx.storage, "campaign_join_required"); if (boundary) return boundary;
     const observed = this.stored();
     if (observed && equalHash(observed.invite_code, invite) && player !== observed.host_id && await interactionBlocked(this.env, observed.host_id, player)) return fail(403, "player_blocked");
@@ -463,6 +465,7 @@ export class RoomV2 extends DurableObject<Env> {
     if (this.member(state, player)) { recordMemberName(this.ctx.storage, player, name); recordMember(this.ctx.storage, player, pollen); recordMemberLook(this.ctx.storage, player, look); return ok(this.view(state, player)); }
     if (Date.parse(state.invite_expires_at) < Date.now()) return fail(410, "invite_expired");
     if (state.guest_id) return fail(409, "room_full");
+    if (!chapterOpen(state.level_id, open)) return fail(403, CHAPTER_NOT_OPEN);
     state.guest_id = player; state.revision++; this.write(state);
     recordMemberName(this.ctx.storage, player, name);
     recordMember(this.ctx.storage, player, pollen);

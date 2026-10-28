@@ -11,6 +11,7 @@ const HomeStage = preload("res://presentation/home_stage.gd")
 const ScreenSwitch = preload("res://services/screen_switch.gd")
 const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
+const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const Joystick = preload("res://presentation/joystick.gd")
@@ -824,6 +825,26 @@ func hard_together() -> bool:
 func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
 
+## What the chapter unlock gate answers from (services/chapter_unlocks.gd):
+## the marks, the chapters already played or in a room, and Full Journey
+## access. Built once per draw, never per card.
+func _chapter_unlocks() -> Dictionary:
+	return ChapterUnlocks.progress(_chapter_marks(), ChapterUnlocks.touched(home_keepsakes.earned_descriptors(), _room_chapter_keys()), _full_journey_access())
+
+## The chapters of the rooms this phone knows: the online session's, the room
+## list's while the hub is up, and finished rooms with a saved replay.
+func _room_chapter_keys() -> Array:
+	var keys: Array = []
+	if relay_session != null:
+		for room_id: Variant in relay_session.room_ids(): keys.append(relay_session.room_chapter(str(room_id)))
+	if room_hub_flow != null and room_hub_flow.inbox != null:
+		for room: Variant in room_hub_flow.inbox.view().get("rooms", []):
+			if room is Dictionary: keys.append(str(room.get("chapter_key", "")))
+	if shared_replays != null:
+		for room: Variant in shared_replays.rooms():
+			if room is Dictionary: keys.append(str(room.get("chapter_key", "")))
+	return keys
+
 ## The @1 Lighthouse screen, where its earlier replays play.
 const LIGHTHOUSE_SCENE := LighthouseMigration.V1_SCENE
 
@@ -1464,6 +1485,8 @@ func _new_relay_session() -> RefCounted:
 	if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
 	_wire_shared_history()
 	var session := RelayOnline.new(api,_relay_identity)
+	# A join carries the chapters open to this player (services/chapter_unlocks.gd).
+	session.join_unlocks = _chapter_unlocks
 	session.accepted_pair_cache = shared_replays.cache_accepted_receipt
 	if pollen_client != null: session.pollen_flush = pollen_client.flush
 	session.replay_archive_cache = shared_replays.cache_transferred_entries

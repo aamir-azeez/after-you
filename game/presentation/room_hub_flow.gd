@@ -13,7 +13,8 @@ extends Node
 ## - services: api, relay_session, shared_replays, tester_access, live_connection (read once, in _ready)
 ## - identity and access: _relay_identity, _ensure_identity, _tester_context,
 ##   _tester_checks_enabled, _load_cached_tester, _hosting_lock_reason,
-##   _paid_content_hidden, _online_gated, _friend_display_name, _chapter_marks
+##   _paid_content_hidden, _online_gated, _friend_display_name, _chapter_marks,
+##   _chapter_unlocks
 ## - screen: mode, running, ui, overlay, store_view_generation, lifecycle_generation,
 ##   application_backgrounded, _toast
 ## - room flow: active_room, _relay_available,
@@ -38,6 +39,7 @@ const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 const RoomHubScreen = preload("res://presentation/room_hub_screen.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
+const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomInboxClient = preload("res://services/room_inbox_client.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -362,11 +364,14 @@ func _retry(kind: String) -> void:
 ## chapter it cannot create at any version is tagged unavailable online.
 ## Locks follow hosting access, which a Test Store purchase alone does not give.
 ## A build that sells nothing lists only the free chapters to host; joining a
-## friend's room by code is unchanged.
+## friend's room by code is unchanged. A chapter the chain has not reached
+## (services/chapter_unlocks.gd) is locked with its reason ("unlock_reason"),
+## ahead of any hosting lock: it cannot be chosen until it opens.
 func together_chapters() -> Array[Dictionary]:
 	var reason: String = host._hosting_lock_reason()
 	var free_only: bool = host._paid_content_hidden()
 	var known: bool = host.relay_session != null and not host.relay_session.capabilities.is_empty()
+	var unlocks: Dictionary = host._chapter_unlocks()
 	var result: Array[Dictionary] = []
 	for offered: String in ChapterRegistry.offered_keys():
 		var item := ChapterPicker.entry(offered)
@@ -375,7 +380,11 @@ func together_chapters() -> Array[Dictionary]:
 		if known and not host.relay_session.supports_creation(ChapterRegistry.hosting_key(offered,host.relay_session.supports_creation)): tag = " · unavailable online"
 		item.locked = item.premium and not reason.is_empty()
 		item.tag = tag
-		if item.locked:
+		if not ChapterUnlocks.reached(offered, unlocks):
+			item.locked = true
+			item.note = ChapterUnlocks.reason(offered, unlocks, true)
+			item.unlock_reason = ChapterUnlocks.reason(offered, unlocks)
+		elif item.locked:
 			item.lock_reason = reason
 			# Owned through the Test Store: the card says the code is what is missing.
 			if reason == Purchases.HOSTING_NEEDS_TESTER_CODE: item.note = PlayerCopy.HOSTING_NEEDS_TESTER_CODE
@@ -530,6 +539,10 @@ func _open_room_now(room: Dictionary) -> void:
 
 func _host_room(chapter_key: String, visibility: String, source: Control = null) -> void:
 	if host.mode != MODE_ROOMS or not host._relay_identity().ready: return
+	var unlocks: Dictionary = host._chapter_unlocks()
+	if not ChapterUnlocks.reached(chapter_key, unlocks):
+		message(ChapterUnlocks.reason(chapter_key, unlocks))
+		return
 	var reason: String = host._hosting_lock_reason()
 	if ChapterRegistry.descriptor(chapter_key).get("premium",false) and not reason.is_empty():
 		if reason == Purchases.HOSTING_NEEDS_TESTER_CODE:

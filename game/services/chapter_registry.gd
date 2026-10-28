@@ -80,6 +80,13 @@ static func solo_scene(key: String) -> String:
 static func leads_picker(key: String) -> bool:
 	return bool(_chapter(key).get("leads_picker", false))
 
+## Where a chapter sits in every picker, lowest first: free chapters lead and
+## Full Journey ones follow; within each, chapters that lead the pickers come
+## first. Equal ranks keep the order given. The pickers (ChapterPicker.shown_order)
+## and the unlock chain (services/chapter_unlocks.gd) both sort by this.
+static func picker_rank(key: String, premium: bool) -> int:
+	return int(premium) * 2 + int(not leads_picker(key))
+
 ## The scene a Solo card opens: the solo scene, or an earlier version's own
 ## screen while a journey there still continues (a descriptor's
 ## continues_earlier). Loaded, not preloaded: the named script reads this one.

@@ -454,13 +454,20 @@ func set_client(value: RefCounted) -> void:
 
 func set_chapters(value: Array[Dictionary]) -> void:
 	chapters = value.duplicate(true)
-	# Keep the current choice while it is still offered.
-	if _chapter_index(_selected_key) < 0: _selected_key = str(chapters[0].get("key","")) if not chapters.is_empty() else ""
+	# Keep the current choice while it is still offered and open; otherwise
+	# the first open chapter (First Steps is always open).
+	if _chapter_index(_selected_key) < 0 or not _unlock_reason(_selected_key).is_empty():
+		_selected_key = str(chapters[0].get("key","")) if not chapters.is_empty() else ""
+		for chapter: Dictionary in chapters:
+			if str(chapter.get("unlock_reason","")).is_empty():
+				_selected_key = str(chapter.get("key",""))
+				break
 	_update_hero()
 	if is_instance_valid(_picker) and _picker_page.visible: _fill_picker()
 
 ## The player's last choice, kept by Main across hub rebuilds. Call before
-## set_chapters; a chapter no longer offered falls back to the first one.
+## set_chapters; a chapter no longer offered, or not open, falls back to the
+## first open one.
 func restore_choice(key: String, visibility: String) -> void:
 	_selected_key = key
 	_visibility = "invitation_only" if visibility == "invitation_only" else "friends"
@@ -534,6 +541,11 @@ func _fill_picker() -> void:
 
 func _choose_chapter(key: String) -> void:
 	if _chapter_index(key) < 0: return
+	# A chapter the player has not reached stays unchosen; the hub says why.
+	if not _unlock_reason(key).is_empty():
+		close_chapter_picker()
+		show_notice(_unlock_reason(key))
+		return
 	if _needs_tester_code(key):
 		close_chapter_picker()
 		tester_code_requested.emit()
@@ -542,6 +554,11 @@ func _choose_chapter(key: String) -> void:
 	_update_hero()
 	chapter_picked.emit(key)
 	close_chapter_picker()
+
+## Why `key` cannot be hosted yet (services/chapter_unlocks.gd), "" when it can.
+func _unlock_reason(key: String) -> String:
+	var index := _chapter_index(key)
+	return str(chapters[index].get("unlock_reason","")) if index >= 0 else ""
 
 ## True when hosting `key` waits only for a tester code on this build.
 func _needs_tester_code(key: String) -> bool:
