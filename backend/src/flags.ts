@@ -8,34 +8,44 @@
  *
  * FEATURES folds flags into one var to free var slots: a flag listed there is on
  * whatever its dedicated var says, so turning a folded flag off means taking it
- * out of FEATURES. A flag added after the fold (POLLEN_EARN) lives only there.
+ * out of FEATURES. A row whose doc ends "Set only through FEATURES." has no var of
+ * its own in production: FEATURES is its one switch. That marker is the list the
+ * deploy tools and tests read; every new flag carries it.
  */
 export const FLAG_VARS = Object.freeze({
-  /** Friend presence (online dots and the presence endpoints). */
+  /** Friend presence (online dots and the presence endpoints). Set only through FEATURES. */
   presence: "PRESENCE_ENABLED",
-  /** Tester-code redemption. */
+  /** Tester-code redemption. Set only through FEATURES. */
   testerAccess: "TESTER_ACCESS_ENABLED",
-  /** Safety terms acceptance before interaction and photo routes. */
+  /** Safety terms acceptance before interaction and photo routes. Set only through FEATURES. */
   safetyEnforcement: "SAFETY_ENFORCEMENT_ENABLED",
-  /** RevenueCat customer deletion during account erasure. */
+  /** RevenueCat customer deletion during account erasure. Set only through FEATURES. */
   revenuecatDeletion: "REVENUECAT_DELETION_ENABLED",
-  /** Turn, redo and friend-room push notifications. */
+  /** Turn, redo and friend-room push notifications. Set only through FEATURES. */
   notifications: "NOTIFICATIONS_ENABLED",
   /** APNs alerts for iOS registrations. Off sends every token the data-only message. */
   iosPush: "IOS_PUSH_ENABLED",
-  /** Friend room events (hosting alerts and their inbox). */
+  /** Friend room events (hosting alerts and their inbox). Set only through FEATURES. */
   friendRoomEvents: "FRIEND_ROOM_EVENTS_ENABLED",
-  /** Relay (v2) room mutations. */
+  /** Relay (v2) room mutations. Set only through FEATURES. */
   v2Rooms: "V2_ROOMS_ENABLED",
-  /** Chapter creation flags, read through the CHAPTERS table in v2/chapters.ts. */
+  /** Creating First Steps rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   firstStepsChapter: "FIRST_STEPS_ENABLED",
+  /** Creating High and Low and Rolling Home rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   coopChapters: "COOP_CHAPTERS_ENABLED",
+  /** Creating A House for Two rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   houseChapter: "HOUSE_CHAPTER_ENABLED",
+  /** Creating Conservatory and Long Way Home rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   journeyChapters: "JOURNEY_CHAPTERS_ENABLED",
+  /** Creating The Wishing Well rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   wishingWellChapter: "WISHING_WELL_CHAPTER_ENABLED",
+  /** Creating Long Way Home @2 rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   longWayHomeV2Chapter: "LONG_WAY_HOME_V2_CHAPTER_ENABLED",
+  /** Creating Turn of the Tide rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   turnOfTheTideChapter: "TURN_OF_THE_TIDE_CHAPTER_ENABLED",
+  /** Creating Sleeping Lighthouse @2 rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   lighthouseV2Chapter: "LIGHTHOUSE_V2_CHAPTER_ENABLED",
+  /** Creating Turn of the Tide @2 rooms, read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */
   turnOfTheTideV2Chapter: "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED",
   /** Campaign creation and its capability. */
   campaignCreation: "CAMPAIGN_CREATION_ENABLED",
@@ -43,45 +53,45 @@ export const FLAG_VARS = Object.freeze({
   campaignMutations: "CAMPAIGN_MUTATIONS_ENABLED",
   /** The operator-only Story data count and erase routes under /operator/story/. */
   storyDrain: "STORY_DRAIN_ENABLED",
-  /** Relay photo uploads (also needs v2Rooms). */
+  /** Relay photo uploads (also needs v2Rooms). Set only through FEATURES. */
   relayPhotos: "RELAY_PHOTOS_ENABLED",
-  /** Preset pair reactions (also needs v2Rooms). */
+  /** Preset pair reactions (also needs v2Rooms). Set only through FEATURES. */
   presetReactions: "PRESET_REACTIONS_ENABLED",
-  /** Relay photo delivery acknowledgements. */
+  /** Relay photo delivery acknowledgements. Set only through FEATURES. */
   photoDelivery: "PHOTO_DELIVERY_ENABLED",
-  /** Account photo transfer uploads. */
+  /** Account photo transfer uploads. Set only through FEATURES. */
   photoTransfer: "PHOTO_TRANSFER_ENABLED",
-  /** Replay transfer acknowledgements and its capability version. */
+  /** Replay transfer acknowledgements and its capability version. Set only through FEATURES. */
   replayTransfer: "REPLAY_TRANSFER_ENABLED",
-  /** Room history offload. */
+  /** Room history offload. Set only through FEATURES. */
   historyOffload: "HISTORY_OFFLOAD_ENABLED",
-  /** The required-update gate, GET /v1/app-status. */
+  /** The required-update gate, GET /v1/app-status. Set only through FEATURES. */
   updateGate: "UPDATE_GATE_ENABLED",
-  /** The Story boundary answer for 0.6.0 and older clients on a transferred room. */
+  /** The Story boundary answer for 0.6.0 and older clients on a transferred room. Set only through FEATURES. */
   legacyTransferredRoomUnblock: "LEGACY_TRANSFERRED_ROOM_UNBLOCK",
   /** The Play plus App Store hosting check in place of the Play-only one. */
   appStoreEntitlements: "APP_STORE_ENTITLEMENTS_ENABLED",
-  /** Leaving a finished room (POST .../leave with leave_finished) and its capability. */
+  /** Leaving a finished room (POST .../leave with leave_finished) and its capability. Set only through FEATURES. */
   finishedRoomLeave: "FINISHED_ROOM_LEAVE_ENABLED",
-  /** Room pushes into each member's room index, indexed lists and the 500-link bound. */
+  /** Room pushes into each member's room index, indexed lists and the 500-link bound. Set only through FEATURES. */
   roomIndex: "ROOM_INDEX_ENABLED",
-  /** The live socket (GET /v1/live), its capability and the hints room and friend changes send to it. */
+  /** The live socket (GET /v1/live), its capability and the hints room and friend changes send to it. Set only through FEATURES. */
   liveConnection: "LIVE_CONNECTION_ENABLED",
-  /** Turn try counts: the capability and GET .../tries. Turns may carry a count whatever the flag. */
+  /** Turn try counts: the capability and GET .../tries. Turns may carry a count whatever the flag. Set only through FEATURES. */
   turnTries: "TURN_TRIES_ENABLED",
-  /** End-of-run reactions: the capability, faces on room reads and GET .../end-reactions. Turns may carry a face whatever the flag. */
+  /** End-of-run reactions: the capability, faces on room reads and GET .../end-reactions. Turns may carry a face whatever the flag. Set only through FEATURES. */
   endReactions: "END_REACTIONS_ENABLED",
-  /** Reactions during a run (v2/run-reactions.ts): the capability, the friend's tracks on room reads, turn replies and the end reactions list. Turns may carry a track whatever the flag. Replays read every track through the end reactions list, so they also need endReactions on. */
+  /** Reactions during a run (v2/run-reactions.ts): the capability, the friend's tracks on room reads, turn replies and the end reactions list. Turns may carry a track whatever the flag. Replays read every track through the end reactions list, so they also need endReactions on. Set only through FEATURES. */
   inRunReactions: "IN_RUN_REACTIONS_ENABLED",
-  /** Hard rooms: the capability, creating one, and the reset and read routes of rooms that are not hard yet (v2/hard-mode.ts). */
+  /** Hard rooms: the capability, creating one, and the reset and read routes of rooms that are not hard yet (v2/hard-mode.ts). Set only through FEATURES. */
   hardMode: "HARD_MODE_ENABLED",
-  /** Play Games sign-in as a way back to a friend identity (link, unlink, restore) and its capability. */
+  /** Play Games sign-in as a way back to a friend identity (link, unlink, restore) and its capability. Set only through FEATURES. */
   playGames: "PLAY_GAMES_ENABLED",
   /** Game Center identity verification for the same link, unlink and restore routes. */
   gameCenter: "GAME_CENTER_ENABLED",
-  /** The iOS launch waitlist for the friend link page: /v1/waitlist/ios and its confirm route (waitlist.ts). */
+  /** The iOS launch waitlist for the friend link page: /v1/waitlist/ios and its confirm route (waitlist.ts). Set only through FEATURES. */
   iosWaitlist: "IOS_WAITLIST_ENABLED",
-  /** Display names: PUT /v1/profile/name, names on friends pages and room reads, writes into rooms and the capability (display-names.ts). */
+  /** Display names: PUT /v1/profile/name, names on friends pages and room reads, writes into rooms and the capability (display-names.ts). Set only through FEATURES. */
   displayNames: "DISPLAY_NAMES_ENABLED",
   /** Pollen earned from accepted turns and first clears, the wallet routes and the turn reply field (pollen/). Set only through FEATURES. */
   pollenEarn: "POLLEN_EARN",

@@ -1,20 +1,18 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
 import { FLAG_VARS, flagOn, flags, type FlagName, type FlagVar, type ServerVars } from "../src/flags";
+import { CHAPTERS } from "../src/v2/chapters";
 
-/**
- * The 34 flags that were live as their own "true" var and now live in FEATURES only. Deploys list them there, and
- * once their own vars are dropped FEATURES is their only switch, so each must be read through flagOn.
- */
-const FOLDED: readonly FlagVar[] = [
-  "COOP_CHAPTERS_ENABLED", "DISPLAY_NAMES_ENABLED", "END_REACTIONS_ENABLED", "FINISHED_ROOM_LEAVE_ENABLED", "FIRST_STEPS_ENABLED",
-  "FRIEND_ROOM_EVENTS_ENABLED", "HARD_MODE_ENABLED", "HISTORY_OFFLOAD_ENABLED", "HOUSE_CHAPTER_ENABLED", "IN_RUN_REACTIONS_ENABLED",
-  "IOS_WAITLIST_ENABLED", "JOURNEY_CHAPTERS_ENABLED", "LEGACY_TRANSFERRED_ROOM_UNBLOCK", "LIGHTHOUSE_V2_CHAPTER_ENABLED",
-  "LIVE_CONNECTION_ENABLED", "LONG_WAY_HOME_V2_CHAPTER_ENABLED", "NOTIFICATIONS_ENABLED", "PHOTO_DELIVERY_ENABLED", "PHOTO_TRANSFER_ENABLED",
-  "PLAY_GAMES_ENABLED", "PRESENCE_ENABLED", "PRESET_REACTIONS_ENABLED", "RELAY_PHOTOS_ENABLED", "REPLAY_TRANSFER_ENABLED",
-  "REVENUECAT_DELETION_ENABLED", "ROOM_INDEX_ENABLED", "SAFETY_ENFORCEMENT_ENABLED", "TESTER_ACCESS_ENABLED", "TURN_OF_THE_TIDE_CHAPTER_ENABLED",
-  "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED", "TURN_TRIES_ENABLED", "UPDATE_GATE_ENABLED", "V2_ROOMS_ENABLED", "WISHING_WELL_CHAPTER_ENABLED"];
 const ROWS = Object.entries(FLAG_VARS) as [FlagName, FlagVar][];
+const FLAGS_SOURCE = Object.values(import.meta.glob<string>("../src/flags.ts", { query: "?raw", import: "default", eager: true }))[0];
+/**
+ * The flags whose FLAG_VARS doc ends "Set only through FEATURES.": FEATURES is their one switch in production, so each
+ * must be read through flagOn. flags.ts is the one list; the deploy runner and flip-features read the same marker.
+ */
+const FEATURES_ONLY: readonly FlagVar[] = (() => {
+  const block = FLAGS_SOURCE.slice(FLAGS_SOURCE.indexOf("export const FLAG_VARS"), FLAGS_SOURCE.indexOf("} as const);"));
+  return [...block.matchAll(/\/\*\*(.*?)\*\/\s*\n\s*\w+: "([A-Z0-9_]+)",/g)].filter(m => m[1].includes("Set only through FEATURES.")).map(m => m[2] as FlagVar);
+})();
 const VAR_NAMES = new Set<string>(Object.values(FLAG_VARS));
 const SOURCES = import.meta.glob<string>("../src/**/*.ts", { query: "?raw", import: "default", eager: true });
 
@@ -45,14 +43,15 @@ function allowed(file: string, code: string, at: number, name: string): boolean 
 }
 
 describe("flags folded into FEATURES", () => {
-  it("lists 34 known flags, once each", () => {
-    expect(FOLDED.length).toBe(34);
-    expect(new Set(FOLDED).size).toBe(34);
-    for (const name of FOLDED) expect(VAR_NAMES.has(name), name).toBe(true);
+  it("marks the 34 folded flags and the six born in FEATURES, each once, and every chapter flag", () => {
+    expect(FEATURES_ONLY.length).toBe(40);
+    expect(new Set(FEATURES_ONLY).size).toBe(40);
+    expect(FEATURES_ONLY.filter(name => name.endsWith("_ENABLED") || name === "LEGACY_TRANSFERRED_ROOM_UNBLOCK").length).toBe(34);
+    for (const row of CHAPTERS) if (row.flag) expect(FEATURES_ONLY.includes(row.flag), row.flag).toBe(true);
   });
 
-  it("turns each folded flag on through FEATURES alone, with its own var absent", () => {
-    for (const name of FOLDED) {
+  it("turns each marked flag on through FEATURES alone, with its own var absent", () => {
+    for (const name of FEATURES_ONLY) {
       const vars = { FEATURES: name } as ServerVars;
       expect(Object.hasOwn(vars, name)).toBe(false);
       expect(flagOn(vars, name), name).toBe(true);
@@ -61,9 +60,9 @@ describe("flags folded into FEATURES", () => {
     }
   });
 
-  it("turns on exactly the folded flags when FEATURES lists all 34, whatever their own vars said", () => {
-    const vars = { FEATURES: FOLDED.join(","), ...Object.fromEntries(FOLDED.map(name => [name, "false"])) } as ServerVars;
-    for (const [accessor, name] of ROWS) expect(flags[accessor](vars), name).toBe(FOLDED.includes(name));
+  it("turns on exactly the marked flags when FEATURES lists them all, whatever their own vars said", () => {
+    const vars = { FEATURES: FEATURES_ONLY.join(","), ...Object.fromEntries(FEATURES_ONLY.map(name => [name, "false"])) } as ServerVars;
+    for (const [accessor, name] of ROWS) expect(flags[accessor](vars), name).toBe(FEATURES_ONLY.includes(name));
   });
 
   it("reads no flag var outside flags.ts except through flagOn", () => {
