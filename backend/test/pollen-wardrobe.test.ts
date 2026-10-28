@@ -245,6 +245,19 @@ describe("board rewards reaching a player", () => {
     // The pushed-down pair keeps theirs, and holds first place again.
     expect(await items(other)).toEqual(["gold_leaf", "top_ten_ribbon"]);
   });
+  it("delivers in the operator call that ranks or strikes a run, without waiting for the next pull", async () => {
+    const host = await create(), guest = await create(), other = await create(), friend = await create();
+    await rank([other.player_id, friend.player_id], 200);
+    // A run far ahead of first place waits for a person; approving it ranks it.
+    const held = await rank([host.player_id, guest.player_id], 100);
+    expect(await items(host)).toEqual([]);
+    const review = (action: string) => call("/operator/leaderboards/review", "POST", undefined, { schema_version: 1, board: RELAY_BOARD, entry_id: held.entry_id, action }, BOARDS_WARDROBE, { Authorization: "Bearer " + OPERATOR });
+    expect((await review("approve")).status).toBe(200);
+    expect(await items(host)).toEqual(["gold_leaf", "top_ten_ribbon"]);
+    expect(await items(other)).toEqual(["gold_leaf", "top_ten_ribbon"]);
+    expect((await review("strike")).status).toBe(200);
+    expect(await items(host)).toEqual([]);
+  });
   it("never lets an older delivery undo a newer one, and answers a deleted player as done", async () => {
     const player = await create();
     expect(await giveBoardItems(player, ["gold_leaf", "top_ten_ribbon"], 20)).toMatchObject({ ok: true, value: { changed: true } });
