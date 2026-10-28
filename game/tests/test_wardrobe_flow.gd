@@ -204,6 +204,7 @@ func _owned_only() -> void:
 		if sells:
 			_check(model.shop and model.tab == "all" and model.items.size() == 6 and tabs.visible and shelf.visible, "Selling: the tabs, the shelf and every item")
 			_check(page.find_child("WardrobeCard_tide", true, false) != null and PlayerCopy.WARDROBE_PRICE % "20,000" in _texts(page), "Selling: an item on sale shows its price")
+			_check(t.flow._error_line("not_owned") == PlayerCopy.WARDROBE_ERRORS.not_owned, "Selling: refusals keep their words")
 		else:
 			_check(not model.shop and model.tab == "owned" and model.featured.is_empty() and model.items.map(func(entry: Dictionary) -> String: return entry.id) == ["daisy"], "Selling nothing: only the owned item, no shelf")
 			_check(not tabs.visible and not shelf.visible and page.find_child("WardrobeCard_tide", true, false) == null, "Selling nothing: no tabs, no shelf, no item on sale")
@@ -215,6 +216,7 @@ func _owned_only() -> void:
 			t.flow.confirm_buy("tide", 20000)
 			await _frames()
 			_check(t.fake.sent.size() == sent and t.host.ui.get_child_count() == 0, "Selling nothing: an item on sale is never bought and no card opens")
+			_check(["not_owned", "pollen_short", "pollen_price_changed"].all(func(code: String) -> bool: return t.flow._error_line(code) == PlayerCopy.WARDROBE_ERROR) and t.flow._error_line("busy") == PlayerCopy.WARDROBE_ERRORS.busy, "Selling nothing: a refusal never says buy or price")
 			t.flow.select("daisy")
 			_check((page.find_child("WardrobeAction", true, false) as Button).text == PlayerCopy.WARDROBE_WEAR, "Selling nothing: an owned item offers Wear")
 			t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "equip", "look": {"hat": "daisy"}, "revision": 9.0e12}}]

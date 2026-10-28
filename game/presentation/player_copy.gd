@@ -65,6 +65,8 @@ const DISPLAY_NAME_ERRORS := {
 	"display_name_locked": "You can't set a name right now. You can still stay anonymous.",
 	"pollen_short": "You need more Pollen for this change. Staying anonymous is always free.",
 	"name_change_price": "The price of a name change just changed. Check it and save again.",
+	# A price refusal on a build that shows no price (display_name_flow.gd refusal_code).
+	"name_price_hidden": DISPLAY_NAME_PRICE_HIDDEN,
 }
 ## The name change price (POLLEN-RULES.md "Prices"): Save says what the change costs.
 const DISPLAY_NAME_SAVE_PRICED := "Save for %s Pollen"

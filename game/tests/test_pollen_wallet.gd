@@ -222,6 +222,8 @@ func _result_line() -> void:
 	store.set_enabled(SERVER, ME, true)
 	var line: Control = ResultLine.build(scope, ROOM, _hash(90), "Maya", Color.WHITE, store)
 	_check(line != null and line.find_child("PollenBloomFlower", true, false) != null, "On, the line shows, with a flower for the bloom")
+	var sold_words: Array = [] if line == null else line.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+	_check("Maya has Full Journey: +10%" in sold_words, "The selling build names the friend's Full Journey boost: " + str(sold_words))
 	if line != null: line.free()
 	_check(ResultLine.build(scope, ROOM, _hash(91), "Maya", Color.WHITE, store) == null and ResultLine.build({}, ROOM, _hash(90), "Maya", Color.WHITE, store) == null, "Nothing for another turn or without a player")
 	PollenSurfaces.set_shared_for_tests(false)

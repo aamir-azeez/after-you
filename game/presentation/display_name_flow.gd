@@ -177,8 +177,13 @@ func _save(choice: String, name: String) -> Dictionary:
 	_refresh_chips()
 	var answer: Dictionary = await _client().send(DisplayNameClient.SAVE_WAIT_MS)
 	_refresh_chips()
-	if answer.get("done", false) and not answer.get("ok", false): return {"closed": false, "code": str(answer.get("code", ""))}
+	if answer.get("done", false) and not answer.get("ok", false): return {"closed": false, "code": refusal_code(str(answer.get("code", "")))}
 	return {"closed": true}
+
+## The server's code as the player hears it: a price refusal on a build that
+## shows no price (services/pollen_surfaces.gd) names no price.
+static func refusal_code(code: String) -> String:
+	return "name_price_hidden" if code in ["pollen_short", "name_change_price"] and not PollenSurfaces.shared().shop_visible() else code
 
 ## A send that came back after its card closed: a refusal is said once.
 func _settled(answer: Dictionary) -> void:
@@ -188,7 +193,7 @@ func _settled(answer: Dictionary) -> void:
 	var wardrobe: Variant = host.get("wardrobe_flow") if host != null else null
 	if (answer.get("ok", false) or str(answer.get("code", "")) in ["pollen_short", "name_change_price"]) and wardrobe is Object and is_instance_valid(wardrobe) and wardrobe.has_method("refresh"): wardrobe.refresh()
 	if answer.get("ok", false) or prompt_open(): return
-	var line := str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), ""))
+	var line := str(PlayerCopy.DISPLAY_NAME_ERRORS.get(refusal_code(str(answer.get("code", ""))), ""))
 	if not line.is_empty() and host.has_method("_toast"): host._toast(line)
 
 ## Sends a choice still waiting (after a friends read).

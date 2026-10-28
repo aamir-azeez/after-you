@@ -41,6 +41,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const DisplayNames = preload("res://services/display_names.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
@@ -415,9 +416,14 @@ static func choice_cost(price: Dictionary, own: Dictionary, choice: String, name
 	if name.is_empty() or (name == str(own.get("name", "")) and str(own.get("choice", "")) != "anonymous"): return 0
 	return maxi(0, int(price.get("price", 0)))
 
-## Whether this build names the change price (the context's price `shown`).
+## Whether this build names the change price (the context's price `shown`, else the build's own answer).
 func _price_shown() -> bool:
-	return bool((_context.get("price", {}) as Dictionary).get("shown", true))
+	var price: Dictionary = _context.get("price", {})
+	return bool(price.get("shown")) if price.has("shown") else PollenSurfaces.shared().shop_visible()
+
+## A change that costs on a build that shows no price: it is never sent.
+func _price_hidden_blocks() -> bool:
+	return cost() > 0 and not _price_shown()
 
 ## Whether the price holds Save back: the change costs and the balance is short,
 ## or the change costs on a build that shows no price.
@@ -451,8 +457,8 @@ func _mark(row: Button, on: bool) -> void:
 	row.set_pressed_no_signal(on)
 
 func _save() -> void:
-	# Enter in the field saves too, so the price rule is asked here as well as on the button.
-	if _busy or not is_instance_valid(modal) or _price_blocks(): return
+	# Enter in the field saves too, so a hidden price is asked here as well as on the button.
+	if _busy or not is_instance_valid(modal) or _price_hidden_blocks(): return
 	var name := ""
 	# Nothing typed and nothing picked: the tag already shows the anonymous
 	# name, so Save keeps that.
@@ -477,7 +483,8 @@ func _save() -> void:
 	# The card was closed while it waited (the prompt is the card's child).
 	if not is_inside_tree(): return
 	_busy = false
-	_show_price()
+	save_button.disabled = _price_hidden_blocks()
+	save_button.text = _save_label()
 	if answer is Dictionary and not answer.get("closed", true):
 		_error.text = str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), PlayerCopy.DISPLAY_NAME_ERRORS.characters))
 		_show()

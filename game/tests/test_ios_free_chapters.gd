@@ -84,6 +84,7 @@ func _run() -> void:
 	_check(baseline.free_cards > 0 and baseline.islands == 8 and baseline.home_offer and baseline.hosting_row and baseline.next_island, "Earlier islands, the Full Journey offer, hosting access and Next island are all there")
 	_check(baseline.together_paid > 0 and baseline.together_locked == baseline.together_paid, "Play with your friend lists the paid chapters locked")
 	_check(baseline.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY, "Account keeps its purchases summary")
+	_check(baseline.grant_card, "The monthly Full Journey Pollen card may show")
 	_check(baseline.store_rows == [false, false], "A desktop build without a store has no Full Journey or Restore row")
 	baseline.erase("store_rows")
 	var together_modes := 2 if app.hard_together() else 1
@@ -119,6 +120,7 @@ func _run() -> void:
 		_check(not free.home_offer, "Home has no Full Journey button" + label)
 		_check(not free.hosting_row and free.store_rows == [false, false], "Settings has no Check hosting access, Full Journey or Restore purchases row" + label)
 		_check(free.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY_FREE, "Account's summary drops purchases" + label)
+		_check(not free.grant_card, "The monthly Full Journey Pollen card never shows" + label)
 		_check(not free.next_island and free.next_island_free, "Finishing island 3 offers no Next island into a paid one; earlier islands still lead on" + label)
 		# Free places: the earlier islands Earlier islands lists and the chapters Play Solo lists.
 		var free_places: Array = Catalog.all().filter(func(item: Dictionary) -> bool:
@@ -283,8 +285,10 @@ func _surfaces(app: Node, platform: String, config: Dictionary) -> Dictionary:
 	PlatformSupport.override_release = true
 	for key: String in ["purchase_mode", "entitlement_id", "revenuecat_public_key"]: app.config.erase(key)
 	app.config.merge(config, true)
+	var grant_card: bool = app._grant_card_allowed()
 	app.api.player_id = ""
 	var seen := {}
+	seen.grant_card = grant_card
 	app.journey_flow.hard = false
 	app.journey_flow.show_journey()
 	await _settle()

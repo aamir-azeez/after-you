@@ -20,6 +20,7 @@ const ThemeRules = preload("res://presentation/control_theme.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const Outfit = preload("res://services/outfit.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
@@ -194,7 +195,7 @@ func render(model: Dictionary) -> void:
 	_status.text = status
 	_status.visible = not status.is_empty()
 	_retry.visible = bool(model.get("retry", false))
-	var shop := bool(model.get("shop", true))
+	var shop := bool(model.get("shop", PollenSurfaces.shared().shop_visible()))
 	_tab_row.visible = shop
 	var tab := str(model.get("tab", "all"))
 	for key: String in _tabs:

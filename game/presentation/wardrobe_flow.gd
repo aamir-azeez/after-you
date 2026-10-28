@@ -136,7 +136,7 @@ func confirm_buy(id: String, cost: int) -> void:
 	if not _surfaces().shop_visible(): return
 	var answer: Dictionary = await _client().buy("item", id, cost)
 	if answer.get("ok", false): _toast(PlayerCopy.WARDROBE_BOUGHT % Catalog.display_name(id))
-	else: _toast(str(PlayerCopy.WARDROBE_ERRORS.get(str(answer.get("code", "")), PlayerCopy.WARDROBE_ERROR)))
+	else: _toast(_error_line(str(answer.get("code", ""))))
 	_redraw()
 
 func _wear(entry: Dictionary) -> void:
@@ -144,7 +144,7 @@ func _wear(entry: Dictionary) -> void:
 	if bool(entry.worn): look.erase(str(entry.slot))
 	else: look[str(entry.slot)] = str(entry.id)
 	var answer: Dictionary = await _client().wear(look)
-	if not answer.get("ok", false): _toast(str(PlayerCopy.WARDROBE_ERRORS.get(str(answer.get("code", "")), PlayerCopy.WARDROBE_ERROR)))
+	if not answer.get("ok", false): _toast(_error_line(str(answer.get("code", ""))))
 	_redraw()
 
 ## The page's model (presentation/wardrobe_page.gd), from the kept wardrobe and wallet.
@@ -212,6 +212,11 @@ static func _chapter_name(level_id: String) -> String:
 				_chapter_names[level_id] = str(descriptor.get("title", level_id))
 				break
 	return str(_chapter_names[level_id])
+
+## A refusal's words. Without the shop, the ones that name buying or a price read plainly.
+func _error_line(code: String) -> String:
+	if not _surfaces().shop_visible() and code in ["not_owned", "pollen_short", "pollen_price_changed"]: return PlayerCopy.WARDROBE_ERROR
+	return str(PlayerCopy.WARDROBE_ERRORS.get(code, PlayerCopy.WARDROBE_ERROR))
 
 func _close_sheet() -> void:
 	var open: Variant = _sheet.get_ref() if _sheet != null else null

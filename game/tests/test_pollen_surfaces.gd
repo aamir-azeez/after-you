@@ -113,6 +113,12 @@ func _name_price() -> void:
 	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": true}, "Selling: the price, the balance and that it shows: " + str(Flow.name_price(current)))
 	PollenSurfaces.set_shared_for_tests(false)
 	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": false}, "Selling nothing: the same price, marked not shown")
+	for code: String in ["pollen_short", "name_change_price"]:
+		var line := str(PlayerCopy.DISPLAY_NAME_ERRORS.get(Flow.refusal_code(code), ""))
+		_check(line == PlayerCopy.DISPLAY_NAME_PRICE_HIDDEN, "Selling nothing: the %s refusal names no price: %s" % [code, line])
+	_check(Flow.refusal_code("display_name_refused") == "display_name_refused", "Selling nothing: other refusals keep their words")
+	PollenSurfaces.set_shared_for_tests(true)
+	_check(Flow.refusal_code("pollen_short") == "pollen_short" and Flow.refusal_code("name_change_price") == "name_change_price", "Selling: price refusals keep their words")
 	PollenSurfaces.set_shared_for_tests(null)
 	Wardrobe.use_shared(null)
 	PollenWallet.use_shared(null)

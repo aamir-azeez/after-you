@@ -1950,7 +1950,7 @@ func _service_update_gate() -> void:
 ## "Your monthly Pollen arrived", once per instalment, on Home only and only
 ## when nothing else is up: never over a turn, a card or a held finger.
 func _service_grant_card() -> void:
-	if not grant_card_check or mode != "home" or application_backgrounded or running or not PollenSurfaces.shared().full_journey_visible(): return
+	if not grant_card_check or mode != "home" or application_backgrounded or running or not _grant_card_allowed(): return
 	if is_instance_valid(_whats_new_card) or _update_gate_active() or TouchInput.press_held(overlay): return
 	for child: Node in ui.get_children():
 		if child.get_script() == InGameModal: return
@@ -2429,6 +2429,11 @@ func _full_journey_access() -> bool:
 ## shown locked. The one rule is Purchases.paid_content_hidden.
 func _paid_content_hidden() -> bool:
 	return Purchases.paid_content_hidden(config)
+
+## The monthly grant card names Full Journey, so this build's configuration
+## decides it the way every Pollen surface does (services/pollen_surfaces.gd).
+func _grant_card_allowed() -> bool:
+	return PollenSurfaces.for_configuration(config).full_journey_visible()
 
 ## Home's Full Journey offer: shown while there is something to unlock and buy.
 func _full_journey_offered() -> bool:
