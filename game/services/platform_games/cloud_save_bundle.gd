@@ -8,6 +8,8 @@ extends RefCounted
 ## - removed_replays: the union of replays a player removed (by their pair digest), so a replay
 ##   removed on one phone never comes back from another;
 ## - keepsakes: per place, solo and friend each stay earned once either copy earned them;
+## - hard: per chapter, its solo and together Hard marks, merged like keepsakes (a mark only
+##   ever turns on). A copy from before this field reads as one with no Hard marks;
 ## - journals: per chapter, the copy with more finished stages; this phone's on a tie;
 ## - settings: the copy changed last, by its change stamp (never a device's clock order alone:
 ##   a copy with no recorded change has stamp 0 and loses to any real change).
@@ -15,7 +17,7 @@ extends RefCounted
 ## merge(x, x) == x, so applying the same cloud copy twice changes nothing.
 ##
 ## No credentials, ids, rooms or friends are ever in a bundle: only solo progress,
-## keepsakes and a few device-neutral settings.
+## keepsakes, Hard marks and a few device-neutral settings.
 const Typed = preload("res://services/typed_values.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 
@@ -33,17 +35,20 @@ const JOURNAL_NAME := "^[a-z0-9-]{1,64}-journey-v[0-9]{1,3}\\.json$"
 ## Keepsake places are "<chapter>/<stage>"; the catalog checks them when they are applied.
 const KEEPSAKE_ID := "^[A-Za-z0-9@/_.:-]{1,96}$"
 const DIGEST := "^[a-f0-9]{64}$"
+## Hard marks are kept per chapter key, "<level id>@<version>"; HardMode checks them when applied.
+const CHAPTER_KEY := "^[a-z0-9][a-z0-9-]{0,63}@[0-9]{1,4}$"
 static var _patterns: Dictionary = {}
 
 ## Compiles every pattern once on the calling (main) thread, so worker threads only read the cache.
 static func warm() -> void:
-	for pattern: String in [LEVEL_ID, JOURNAL_NAME, KEEPSAKE_ID, DIGEST]: _matches("", pattern)
+	for pattern: String in [LEVEL_ID, JOURNAL_NAME, KEEPSAKE_ID, DIGEST, CHAPTER_KEY]: _matches("", pattern)
 
 static func empty() -> Dictionary:
-	return {"schema_version": SCHEMA_VERSION, "settings": {"values": {}, "stamp": 0}, "completed": {}, "replays": {}, "removed_replays": {}, "keepsakes": {}, "journals": {}}
+	return {"schema_version": SCHEMA_VERSION, "settings": {"values": {}, "stamp": 0}, "completed": {}, "replays": {}, "removed_replays": {}, "keepsakes": {}, "journals": {}, "hard": {}}
 
-## A bundle from local data. `journals` maps a journal file name to its LocalSave envelope.
-static func collect(save_data: Dictionary, settings_stamp: int, keepsakes: Dictionary, journals: Dictionary) -> Dictionary:
+## A bundle from local data. `journals` maps a journal file name to its LocalSave envelope;
+## `hard` is HardMode.marks().
+static func collect(save_data: Dictionary, settings_stamp: int, keepsakes: Dictionary, journals: Dictionary, hard: Dictionary = {}) -> Dictionary:
 	var bundle := empty()
 	var settings: Variant = save_data.get("settings")
 	if settings is Dictionary:
@@ -71,6 +76,10 @@ static func collect(save_data: Dictionary, settings_stamp: int, keepsakes: Dicti
 		var mark: Variant = keepsakes[id]
 		if id is String and _matches(id, KEEPSAKE_ID) and mark is Dictionary and (mark.get("solo") == true or mark.get("friend") == true):
 			bundle.keepsakes[id] = {"solo": mark.get("solo") == true, "friend": mark.get("friend") == true}
+	for key: Variant in hard:
+		var mark: Variant = hard[key]
+		if key is String and _matches(key, CHAPTER_KEY) and mark is Dictionary and (mark.get("solo") == true or mark.get("together") == true):
+			bundle.hard[key] = {"solo": mark.get("solo") == true, "together": mark.get("together") == true}
 	for name: Variant in journals:
 		var stages := journal_stages(journals[name])
 		if name is String and _matches(name, JOURNAL_NAME) and stages > 0:
@@ -110,6 +119,10 @@ static func merge(a: Dictionary, b: Dictionary) -> Dictionary:
 			var mark: Dictionary = out.keepsakes.get(id, {"solo": false, "friend": false})
 			var other: Dictionary = source.keepsakes[id]
 			out.keepsakes[id] = {"solo": mark.solo or other.get("solo", false), "friend": mark.friend or other.get("friend", false)}
+		for key: String in source.get("hard", {}):
+			var mark: Dictionary = out.hard.get(key, {"solo": false, "together": false})
+			var other: Dictionary = source.hard[key]
+			out.hard[key] = {"solo": mark.solo or other.get("solo", false), "together": mark.together or other.get("together", false)}
 		for name: String in source.get("journals", {}):
 			var entry: Dictionary = source.journals[name]
 			if not out.journals.has(name) or int(entry.stages) > int(out.journals[name].stages): out.journals[name] = entry.duplicate(true)
@@ -158,10 +171,11 @@ static func decode(bytes: PackedByteArray) -> Dictionary:
 	return validated(json.data)
 
 ## Only the fields and shapes this version knows; anything else makes the copy unusable ({}),
-## so a newer app's bundle is never half-read. Unknown keepsake places and levels pass here;
-## the owners (HomeKeepsakes, LocalSave) check them against their catalogs when applying.
+## so a newer app's bundle is never half-read. A copy written before Hard marks joined (no
+## "hard" field) reads as one with none. Unknown keepsake places, levels and chapters pass
+## here; the owners (HomeKeepsakes, LocalSave, HardMode) check them when applying.
 static func validated(value: Variant) -> Dictionary:
-	if not value is Dictionary or value.size() != 7 or not Typed.equal(value.get("schema_version"), SCHEMA_VERSION): return {}
+	if not value is Dictionary or value.size() != 7 + int(value.has("hard")) or not Typed.equal(value.get("schema_version"), SCHEMA_VERSION): return {}
 	var settings: Variant = value.get("settings")
 	if not settings is Dictionary or settings.size() != 2 or not settings.get("values") is Dictionary or not Typed.whole_number(settings.get("stamp")) or int(settings.stamp) < 0: return {}
 	var out := empty()
@@ -188,6 +202,12 @@ static func validated(value: Variant) -> Dictionary:
 		var mark: Variant = value.keepsakes[id]
 		if not id is String or not _matches(id, KEEPSAKE_ID) or not mark is Dictionary or mark.size() != 2 or not mark.get("solo") is bool or not mark.get("friend") is bool: return {}
 		out.keepsakes[id] = {"solo": mark.solo, "friend": mark.friend}
+	var hard: Variant = value.get("hard", {})
+	if not hard is Dictionary or hard.size() > 64: return {}
+	for key: Variant in hard:
+		var mark: Variant = hard[key]
+		if not key is String or not _matches(key, CHAPTER_KEY) or not mark is Dictionary or mark.size() != 2 or not mark.get("solo") is bool or not mark.get("together") is bool: return {}
+		out.hard[key] = {"solo": mark.solo, "together": mark.together}
 	for name: Variant in value.journals:
 		var entry: Variant = value.journals[name]
 		if not name is String or not _matches(name, JOURNAL_NAME) or not entry is Dictionary or entry.size() != 2 or not Typed.whole_number(entry.get("stages")) or not entry.get("envelope") is Dictionary: return {}

@@ -83,6 +83,24 @@ func _run() -> void:
 	_check(Bundle.validated(bad_setting).is_empty(), "Settings outside the travelling set are refused")
 	_check(Bundle.validated({"schema_version": 1}).is_empty(), "A partial copy is refused")
 
+	# Hard marks travel per chapter and merge like keepsakes: a mark only ever turns on.
+	var hard_phone := Bundle.collect(_save({}, []), 0, {}, {}, {"first-steps@1": {"solo": true, "together": false}, "relay-isles@2": {"solo": false, "together": false}, "Not A Key": {"solo": true, "together": true}})
+	_check(hard_phone.hard.keys() == ["first-steps@1"], "Only earned Hard marks of well-formed chapter keys are carried")
+	var hard_cloud := Bundle.collect(_save({}, []), 0, {}, {}, {"first-steps@1": {"solo": false, "together": true}, "conservatory@1": {"solo": true, "together": false}})
+	var hard_joined := Bundle.merge(hard_phone, hard_cloud)
+	_check(hard_joined.hard["first-steps@1"] == {"solo": true, "together": true} and hard_joined.hard["conservatory@1"] == {"solo": true, "together": false}, "Hard marks only add, from either copy")
+	_check(Bundle.fingerprint(Bundle.merge(hard_cloud, hard_phone)) == Bundle.fingerprint(hard_joined) and Bundle.fingerprint(Bundle.merge(hard_joined, hard_joined)) == Bundle.fingerprint(hard_joined), "Hard marks merge in either order and twice to the same copy")
+	_check(Bundle.decode(Bundle.encode(hard_joined)).hard == hard_joined.hard, "Hard marks survive the slot")
+	# A copy written before Hard marks joined the bundle has seven fields: it still reads, with none.
+	var older := merged.duplicate(true)
+	older.erase("hard")
+	var older_read := Bundle.validated(older)
+	_check(not older_read.is_empty() and older_read.hard.is_empty() and older_read.keepsakes == merged.keepsakes, "A copy from before Hard marks reads, with no Hard marks")
+	_check(Bundle.adds_to(Bundle.merge(older_read, hard_phone), older_read), "Hard marks this phone has are written to an older copy")
+	var bad_hard := hard_joined.duplicate(true)
+	bad_hard.hard["first-steps@1"] = {"solo": "yes", "together": false}
+	_check(Bundle.validated(bad_hard).is_empty(), "A Hard mark of the wrong shape makes the copy unusable")
+
 	# Size: journals are dropped, fewest stages first, until the slot fits.
 	var big := Bundle.collect(_save({"sound": true}, ["first-light"]), 1, {"relay/one": {"solo": true, "friend": false}}, {})
 	var noise := Crypto.new()

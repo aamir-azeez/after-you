@@ -14,6 +14,7 @@ const Levels = preload("res://core/levels.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RelayJourney = preload("res://services/relay_journey.gd")
 const Retained = preload("res://tests/retained_chapter_fixture.gd")
+const HardMode = preload("res://services/hard_mode.gd")
 
 class Slot extends "res://services/platform_games/games_provider.gd":
 	var data := PackedByteArray()
@@ -274,7 +275,11 @@ func _sources_apply(dir: String) -> void:
 	var sources: RefCounted = Sources.new(host, state)
 	sources.journal_paths = {}
 	sources.staging = dir.path_join("staging")
+	sources.hard_path = dir.path_join("hard.json")
+	_check(sources.stamp().contains("hard.json"), "A Hard mark alone changes the sources' stamp, so it is synced")
+	_check(HardMode.new(sources.hard_path).record(Registry.FIRST_STEPS, HardMode.SOLO), "A local Hard mark")
 	var local: Dictionary = await sources.collect()
+	_check(local.hard == {Registry.FIRST_STEPS: {"solo": true, "together": false}}, "This phone's Hard marks are collected")
 	_check(local.completed.has(Levels.IDS[0]) and local.settings.stamp == 0, "Untouched default settings collect with stamp 0")
 	var place: String = Catalog.all()[0].id
 	var remote := Bundle.empty()
@@ -282,6 +287,7 @@ func _sources_apply(dir: String) -> void:
 	remote.replays = {Levels.IDS[1]: {"a": {"x": 1}, "b": {}, "draft": {}}}
 	remote.keepsakes = {place: {"solo": true, "friend": false}, "nowhere/at-all": {"solo": true, "friend": false}}
 	remote.settings = {"values": {"sound": false, "haptics": false}, "stamp": 50}
+	remote.hard = {Registry.FIRST_STEPS: {"solo": false, "together": true}, "turn-of-the-tide@1": {"solo": true, "together": false}, "earlier@1": {"solo": true, "together": true}}
 	var merged := Bundle.merge(local, remote)
 	host.mode = "play"
 	_check(not await sources.apply(merged), "Nothing applies away from Home")
@@ -292,6 +298,14 @@ func _sources_apply(dir: String) -> void:
 	_check(host.saves.data.settings.sound == false and host.applied_settings == 1, "Newer settings apply and take effect")
 	_check(host.saves.data.settings.graphics_quality == LocalSave.defaults().settings.graphics_quality, "Device settings are untouched")
 	_check(host.home_keepsakes.earned_marks().has(place) and not host.home_keepsakes.earned_marks().has("nowhere/at-all"), "Keepsakes go through the catalog")
+	var hard_now := HardMode.new(sources.hard_path).marks()
+	_check(hard_now.get(Registry.FIRST_STEPS) == {"solo": true, "together": true} and hard_now.get("turn-of-the-tide@2", {}).get("solo") == true and hard_now.size() == 2, "Hard marks from the cloud only add, under the offered chapter, and only for chapters with Hard")
+	# A damaged Hard file is kept aside, never lost, before cloud marks are written.
+	for candidate: String in [sources.hard_path, sources.hard_path + ".backup"]: FileAccess.open(candidate, FileAccess.WRITE).store_string("{damaged")
+	_check(await sources.apply(merged), "Cloud marks apply over a damaged Hard file")
+	var aside := Array(DirAccess.get_files_at(dir)).filter(func(name: String) -> bool: return name.begins_with("hard.json") and name.contains(".unreadable-"))
+	_check(aside.size() == 2 and aside.all(func(name: String) -> bool: return FileAccess.get_file_as_string(dir.path_join(name)) == "{damaged"), "Each damaged copy is kept aside by its digest: %s" % [aside])
+	_check(HardMode.new(sources.hard_path).marks().get(Registry.FIRST_STEPS) == {"solo": true, "together": true}, "and the cloud's marks are back on the phone")
 	var again: Dictionary = await sources.collect()
 	_check(again.settings.stamp == 50, "Applied settings keep the cloud's stamp, so they do not look new")
 	# Older settings never replace newer ones.

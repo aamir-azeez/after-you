@@ -1,7 +1,7 @@
 extends RefCounted
 ## Where cloud save reads and writes this phone's progress, always through the files' owners:
 ## Main's journey save (settings, finished earlier islands and their replays), HomeKeepsakes,
-## and the solo chapter journals. Built by Main; lives only while Main does.
+## the Hard marks (HardMode) and the solo chapter journals. Built by Main; lives only while Main does.
 ##
 ## Safety, kept from the local save rules:
 ## - nothing is collected or applied while a save is held read-only (damaged or newer);
@@ -18,6 +18,7 @@ const LocalSave = preload("res://services/local_save.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Levels = preload("res://core/levels.gd")
 const State = preload("res://services/platform_games/platform_games_state.gd")
+const HardMode = preload("res://services/hard_mode.gd")
 
 const STAGING := "user://cloud-save-staging"
 const MAX_JOURNAL_BYTES := RelayJourney.MAX_SAVE_BYTES
@@ -30,6 +31,8 @@ var _state: RefCounted
 var journal_paths: Dictionary = {}
 ## Tests: where the staging copies go.
 var staging := STAGING
+## Tests: the Hard marks file.
+var hard_path := HardMode.MARKS_PATH
 
 func _init(host: Node, state: RefCounted) -> void:
 	_host = weakref(host)
@@ -54,7 +57,7 @@ func at_home() -> bool:
 func stamp() -> String:
 	var host := _main()
 	var parts: Array[String] = []
-	var paths: Array[String] = [host.saves.path if host != null else LocalSave.PATH, "user://home-keepsakes-v1.json"]
+	var paths: Array[String] = [host.saves.path if host != null else LocalSave.PATH, "user://home-keepsakes-v1.json", hard_path]
 	var names: Array = journal_paths.keys()
 	names.sort()
 	for name: String in names: paths.append(journal_paths[name].path)
@@ -100,6 +103,7 @@ func collect() -> Dictionary:
 	if host == null or not ready(): return {}
 	var data: Dictionary = host.saves.data
 	var keepsakes: Dictionary = host.home_keepsakes.earned_marks()
+	var hard: Dictionary = HardMode.new(hard_path).marks()
 	var task_paths := {}
 	for name: String in journal_paths: task_paths[name] = journal_paths[name].path
 	var result := {}
@@ -111,7 +115,7 @@ func collect() -> Dictionary:
 	WorkerThreadPool.wait_for_task_completion(task)
 	host = null
 	if _main() == null or not ready(): return {}
-	return Bundle.collect(data, settings_stamp(_values(data.get("settings"))), keepsakes, result)
+	return Bundle.collect(data, settings_stamp(_values(data.get("settings"))), keepsakes, result, hard)
 
 ## Worker: each journal's envelope as parsed JSON. Reads only; skips anything odd.
 static func _read_journals(paths: Dictionary, out: Dictionary) -> void:
@@ -157,6 +161,7 @@ func apply(merged: Dictionary) -> bool:
 		_state.set_cloud({"settings_hash": JSON.stringify(_values(changes.settings), "", true).sha256_text(), "settings_stamp": int(merged.settings.stamp)})
 		host._apply_settings()
 	if not host.home_keepsakes.adopt_earned(merged.keepsakes): return false
+	if not HardMode.new(hard_path).adopt(merged.get("hard", {})): return false
 	return _fill_journals(merged.journals)
 
 ## Writes cloud journals for chapters this phone has never started. False while some remain.

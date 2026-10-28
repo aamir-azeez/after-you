@@ -12,7 +12,7 @@ extends RefCounted
 ##   finished solo or with a friend opens both hard plays. Those marks are
 ##   rebuilt from the journals and shared replays, so no unlock is kept here.
 ## - Marks: which hard plays are done, in their own small file (MARKS_PATH).
-##   A mark only ever turns on.
+##   A mark only ever turns on. Cloud save carries them (marks(), adopt()).
 ## - Runs: the last MAX_FAILED failed runs per chapter and mode, and the last
 ##   finished solo run, in one file per chapter beside its journal, with a
 ##   small index of every chapter's runs (INDEX_PATH) for the Replays rows.
@@ -182,6 +182,41 @@ func record(chapter_key: String, mode: String) -> bool:
 	mark[mode] = true
 	var next := _marks.duplicate(true)
 	next[key] = mark
+	return _write(next)
+
+## Every mark, {offered chapter key: {"solo": bool, "together": bool}}: what
+## Home's keepsakes show and what cloud save carries. A copy.
+func marks() -> Dictionary:
+	_load()
+	return _marks.duplicate(true)
+
+## Marks from a cloud copy, kept in one write: marks of chapters without hard
+## plays are dropped, and a mark only ever turns on. True when they are on disk
+## (or brought nothing new).
+func adopt(incoming: Dictionary) -> bool:
+	_load()
+	var next := _marks.duplicate(true)
+	for key: Variant in incoming:
+		var mark: Variant = incoming[key]
+		if not key is String or key.length() > 64 or not mark is Dictionary or not eligible(Registry.offered_key(key)): continue
+		var offered := Registry.offered_key(key)
+		var had: Dictionary = next.get(offered, {SOLO: false, TOGETHER: false})
+		next[offered] = {SOLO: had[SOLO] or _true(mark.get(SOLO)), TOGETHER: had[TOGETHER] or _true(mark.get(TOGETHER))}
+	if next == _marks: return true
+	return _write(next)
+
+## Writes the marks whole. A copy that does not read (damaged) is first kept
+## aside under its digest, as the keepsake ledger keeps its own, so a write
+## never replaces the only copy of marks it could not read.
+func _write(next: Dictionary) -> bool:
+	for candidate: String in AtomicFile.read_candidates(path):
+		var text := FileAccess.get_file_as_string(candidate) if FileAccess.file_exists(candidate) else ""
+		if text.is_empty() or _parse_marks(text) != null: continue
+		var digest := FileAccess.get_sha256(candidate)
+		var aside := candidate + ".unreadable-" + digest
+		if digest.is_empty(): return false
+		if FileAccess.file_exists(aside) and FileAccess.get_sha256(aside) == digest: continue
+		if DirAccess.copy_absolute(ProjectSettings.globalize_path(candidate), ProjectSettings.globalize_path(aside)) != OK or FileAccess.get_sha256(aside) != digest: return false
 	if not AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "marks": next}, "", false), true): return false
 	_marks = next
 	return true
