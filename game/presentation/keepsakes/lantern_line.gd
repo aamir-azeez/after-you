@@ -55,6 +55,11 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			anim.set_at(light, "visible", true, 0.0)
 			anim.path(light, func(t: float) -> Vector3: return _lantern(0, count).lerp(_lantern(count - 1, count), t), 0.0, 1.8, 0.5)
 			anim.set_at(light, "visible", false, 1.85)
+			for index in range(count):
+				var at := 1.8 * (0.0 if count < 2 else float(index) / float(count - 1))
+				var glow: MeshInstance3D = anim.spawn(anim.fx, P.low_sphere(0.075), P.clear(P.LAMP, 0.45, 1.6), _lantern(index, count))
+				anim.set_at(glow, "visible", true, at)
+				anim.set_at(glow, "visible", false, at + 0.35)
 			anim.sound(str(sounds.get("base", "")), 0.0)
 		"together":
 			var flags: Node3D = parts.flags

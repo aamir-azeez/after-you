@@ -326,14 +326,7 @@ static func choose_cues(keys: Array, room: int) -> PackedByteArray:
 func _play_cue(key: String, step: float, gain: float, live_play: bool) -> void:
 	if backgrounded:
 		return
-	if sound_enabled and not voices.is_empty() and _cue_allowed():
-		var cue: Dictionary = SoundCues.CUES[key]
-		var voice: AudioStreamPlayer = long_voice if cue.get("voice", "") == "long" else voices[next_voice]
-		voice.stream = cue.clip
-		voice.pitch_scale = semitones_to_pitch(step)
-		voice.volume_db = CUE_DB + float(cue.get("db", 0.0)) + gain
-		voice.play()
-		if voice != long_voice: next_voice = (next_voice + 1) % voices.size()
+	if sound_enabled and not voices.is_empty() and _cue_allowed(): _voice_cue(key, step, gain)
 	var haptic := int(SoundCues.CUES[key].get("haptic_ms", 0))
 	if live_play and haptics_enabled and haptic > 0: _emit_haptic(haptic)
 
@@ -480,11 +473,15 @@ func play_reaction(identity: Array) -> void:
 ## the same on every tap. It never advances a turn's cue identities.
 func play_keepsake_cue(key: String) -> void:
 	if not CLIPS.has(key) or not sound_enabled or backgrounded or voices.is_empty() or not _frame_allows_cue(): return
+	_voice_cue(key, keepsake_pitch(key), 0.0)
+
+## Sounds one cue on its voice at `step` semitones and `gain` dB.
+func _voice_cue(key: String, step: float, gain: float) -> void:
 	var cue: Dictionary = SoundCues.CUES[key]
-	var voice: AudioStreamPlayer = long_voice if cue.get("voice", "") == "long" and is_instance_valid(long_voice) else voices[next_voice]
+	var voice: AudioStreamPlayer = long_voice if cue.get("voice", "") == "long" else voices[next_voice]
 	voice.stream = cue.clip
-	voice.pitch_scale = semitones_to_pitch(keepsake_pitch(key))
-	voice.volume_db = CUE_DB + float(cue.get("db", 0.0))
+	voice.pitch_scale = semitones_to_pitch(step)
+	voice.volume_db = CUE_DB + float(cue.get("db", 0.0)) + gain
 	voice.play()
 	if voice != long_voice: next_voice = (next_voice + 1) % voices.size()
 

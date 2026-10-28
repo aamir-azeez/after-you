@@ -663,7 +663,7 @@ func _update_explore_action() -> void:
 	if not is_instance_valid(_explore_action): return
 	var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
 	var near: bool = _exploring and _actors.has("a") and is_instance_valid(_keepsake_layer) and _keepsake_layer.nearest(_actors.a.position, EXPLORE_NOTICE) == str(item.get("id", "-"))
-	_explore_action.visible = near and item.get("look") == "keepsake"
+	_explore_action.visible = near and item.get("playable", false)
 	if _explore_action.visible: _explore_action.text = str(item.action)
 
 func _greet() -> void:
@@ -852,7 +852,7 @@ func _walk(actor: Node3D, step: float) -> void:
 		# Straight on, else slide along x or z.
 		for attempt in range(3):
 			var candidate := actor.position + (move if attempt == 0 else Vector3(move.x, 0, 0) if attempt == 1 else Vector3(0, 0, move.z))
-			if _keepsake_layer.walkable(candidate):
+			if _keepsake_layer.can_step(actor.position, candidate):
 				actor.position = candidate
 				break
 	# The bridge rises as the spirit comes near and carries it only once its
@@ -866,7 +866,7 @@ func _walk(actor: Node3D, step: float) -> void:
 
 func _clear_position(role: String, candidate: Vector3) -> bool:
 	if not _floor.has_point(Vector2(candidate.x,candidate.z)): return false
-	if is_instance_valid(_keepsake_layer) and _keepsake_layer.blocks(candidate, SPIRIT_CLEARANCE): return false
+	if is_instance_valid(_keepsake_layer) and _keepsake_layer.blocks_step(_actors[role].position, candidate, SPIRIT_CLEARANCE): return false
 	for other: String in _actors:
 		if other!=role and candidate.distance_to(_actors[other].position)<SEPARATION:
 			return false

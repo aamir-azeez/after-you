@@ -212,11 +212,7 @@ func _write(next: Dictionary) -> bool:
 	for candidate: String in AtomicFile.read_candidates(path):
 		var text := FileAccess.get_file_as_string(candidate) if FileAccess.file_exists(candidate) else ""
 		if text.is_empty() or _parse_marks(text) != null: continue
-		var digest := FileAccess.get_sha256(candidate)
-		var aside := candidate + ".unreadable-" + digest
-		if digest.is_empty(): return false
-		if FileAccess.file_exists(aside) and FileAccess.get_sha256(aside) == digest: continue
-		if DirAccess.copy_absolute(ProjectSettings.globalize_path(candidate), ProjectSettings.globalize_path(aside)) != OK or FileAccess.get_sha256(aside) != digest: return false
+		if not AtomicFile.keep_unreadable(candidate): return false
 	if not AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "marks": next}, "", false), true): return false
 	_marks = next
 	return true

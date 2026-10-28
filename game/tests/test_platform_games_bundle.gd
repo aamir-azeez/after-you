@@ -97,6 +97,9 @@ func _run() -> void:
 	var older_read := Bundle.validated(older)
 	_check(not older_read.is_empty() and older_read.hard.is_empty() and older_read.keepsakes == merged.keepsakes, "A copy from before Hard marks reads, with no Hard marks")
 	_check(Bundle.adds_to(Bundle.merge(older_read, hard_phone), older_read), "Hard marks this phone has are written to an older copy")
+	var plain_bytes := Bundle.encode(merged)
+	var plain_raw := plain_bytes.slice(8).decompress(plain_bytes.decode_u32(4), FileAccess.COMPRESSION_ZSTD).get_string_from_utf8()
+	_check(not (JSON.parse_string(plain_raw) as Dictionary).has("hard") and Bundle.decode(plain_bytes).hard.is_empty(), "A copy with no Hard marks is written with the seven fields older builds read")
 	var bad_hard := hard_joined.duplicate(true)
 	bad_hard.hard["first-steps@1"] = {"solo": "yes", "together": false}
 	_check(Bundle.validated(bad_hard).is_empty(), "A Hard mark of the wrong shape makes the copy unusable")

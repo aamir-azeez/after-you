@@ -22,7 +22,9 @@ static func line(entry: Dictionary, item: Dictionary, together_hard: bool) -> St
 	if entry.id == EARLIER: return _lantern_line(entry, item, copy)
 	match str(item.get("look", "none")):
 		"next": return PlayerCopy.KEEPSAKE_NEXT % entry.title
-		"started": return PlayerCopy.KEEPSAKE_STARTED % [_count(stages, ANY), stages.size(), entry.title]
+		"started":
+			var done := _count(stages, ANY)
+			return PlayerCopy.KEEPSAKE_MIXED if done == stages.size() else PlayerCopy.KEEPSAKE_STARTED % [done, stages.size(), entry.title]
 		"none": return PlayerCopy.KEEPSAKE_NEXT % entry.title
 	if entry.together and not item.together:
 		var with_friend := _count(stages, FRIEND)
@@ -61,7 +63,7 @@ static func every_line(entries: Array) -> Array[String]:
 			lines.append_array([PlayerCopy.KEEPSAKE_NEXT_EARLIER, PlayerCopy.KEEPSAKE_LANTERNS_WANT_TOGETHER % [count, count, copy.together],
 				PlayerCopy.KEEPSAKE_LANTERNS_LIT % [count - 1, count, copy.together], PlayerCopy.KEEPSAKE_LANTERNS_DONE % str(copy.action).to_lower()])
 			continue
-		lines.append_array([PlayerCopy.KEEPSAKE_NEXT % entry.title, PlayerCopy.KEEPSAKE_STARTED % [maxi(1, count - 1), count, entry.title],
+		lines.append_array([PlayerCopy.KEEPSAKE_NEXT % entry.title, PlayerCopy.KEEPSAKE_MIXED, PlayerCopy.KEEPSAKE_STARTED % [maxi(1, count - 1), count, entry.title],
 			PlayerCopy.KEEPSAKE_FRIEND_PART % [maxi(1, count - 1), count], PlayerCopy.KEEPSAKE_WANTS_TOGETHER % copy.together,
 			PlayerCopy.KEEPSAKE_WANTS_HARD % copy.hard, PlayerCopy.KEEPSAKE_WANTS_HARD_TOGETHER % copy.hard,
 			PlayerCopy.KEEPSAKE_WANTS_TOP % copy.top, PlayerCopy.KEEPSAKE_DONE % str(copy.action).to_lower()])

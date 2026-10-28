@@ -164,7 +164,7 @@ func _make_set(shown_now: bool) -> Dictionary:
 			Parts.outline(holder, builder, "%s|%d" % [id, item.stages.size()], item.stages if item.look == "started" else [], plain)
 		for part: Variant in parts.values():
 			if part is Node: _held.append(part)
-		props[id] = {"name": holder.name, "parts": parts, "state": state}
+		props[id] = {"name": holder.name, "parts": parts, "state": state, "look": item.look}
 	builds += 1
 	return {"root": root, "props": props, "keys": _keys()}
 
@@ -209,10 +209,17 @@ func settling() -> bool:
 
 # --- taps ---------------------------------------------------------------------------
 
-## Plays a keepsake's tap. False (and nothing changes) while another plays, or
-## for a keepsake that is only an outline.
+## Whether a keepsake can play now: drawn earned in the set on screen (a
+## keepsake just earned plays once its rebuilt set is swapped in).
+func playable(id: String) -> bool:
+	return _set.get("props", {}).get(id, {}).get("look") == "keepsake"
+
+## Plays a keepsake's tap. A second tap on the one playing changes nothing; a
+## tap on another ends the first in its rest pose and plays the new one. False
+## for a keepsake that is not drawn earned.
 func play(id: String) -> bool:
-	if not _play.is_empty() or not _set.get("props", {}).has(id) or _items.get(id, {}).get("look") != "keepsake": return false
+	if not playable(id) or _play.get("id") == id: return false
+	if not _play.is_empty(): _end_play()
 	var prop: Dictionary = _set.props[id]
 	var holder := (_set.root as Node3D).get_node_or_null(NodePath(prop.name)) as Node3D
 	if holder == null: return false
@@ -282,7 +289,7 @@ func selected_item() -> Dictionary:
 	var item: Dictionary = _items[id]
 	return {"id": id, "name": entry.keepsake.copy.name, "line": Card.line(entry, item, together_hard), "look": item.look,
 		"together": item.together, "hard": item.hard, "top": item.top, "has_together": entry.together, "has_hard": entry.hard,
-		"top_offered": entry.hard and entry.together and (together_hard or item.top), "action": entry.keepsake.copy.action}
+		"top_offered": entry.hard and entry.together and (together_hard or item.top), "action": entry.keepsake.copy.action, "playable": playable(id)}
 
 func count_line() -> String:
 	return Card.count_line(_result)
@@ -371,6 +378,15 @@ func blocks(point: Vector3, margin: float) -> bool:
 		if distance(id, point) < margin: return true
 	return false
 
+## Whether a step from `from` to `to` takes a spirit nearer than `margin` to a
+## keepsake and nearer than it already was, so a spirit a keepsake appeared
+## beside can always walk away from it.
+func blocks_step(from: Vector3, to: Vector3, margin: float) -> bool:
+	for id: String in _shown:
+		var after := distance(id, to)
+		if after < margin and after < distance(id, from): return true
+	return false
+
 ## How far a point is outside a keepsake's ground (0 inside), in metres.
 func distance(id: String, point: Vector3) -> float:
 	var local := slot_transform(id).affine_inverse() * Vector3(point.x, 0.0, point.z)
@@ -411,10 +427,20 @@ func _build_ground() -> void:
 func island_floor(island: String) -> Rect2:
 	return _floors[0 if island == "left" else 1]
 
+## The gold spirit's room round a keepsake in Explore.
+const WALK_CLEARANCE := 0.12
+
 ## True where an Explore walk may stand: on a Home island or a crossing that
 ## carries the spirit, and not inside a keepsake.
 func walkable(point: Vector3) -> bool:
-	if blocks(point, 0.12): return false
+	if blocks(point, WALK_CLEARANCE): return false
+	return _ground(point)
+
+## An Explore step: onto ground, and never deeper into a keepsake.
+func can_step(from: Vector3, to: Vector3) -> bool:
+	return _ground(to) and not blocks_step(from, to, WALK_CLEARANCE)
+
+func _ground(point: Vector3) -> bool:
 	var at := Vector2(point.x, point.z)
 	for rect: Rect2 in _floors:
 		if rect.has_point(at): return true

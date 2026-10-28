@@ -574,11 +574,7 @@ static func _valid_envelope(value: Variant) -> bool:
 	return true
 
 func _preserve_unreadable(path: String) -> bool:
-	var digest := FileAccess.get_sha256(path)
-	if digest.is_empty(): return false
-	var backup := path + ".unreadable-" + digest
-	if FileAccess.file_exists(backup): return FileAccess.get_sha256(backup) == digest
-	return DirAccess.copy_absolute(path, backup) == OK and FileAccess.get_sha256(backup) == digest
+	return AtomicFile.keep_unreadable(path)
 
 func _hold(message: String) -> void:
 	read_only = true

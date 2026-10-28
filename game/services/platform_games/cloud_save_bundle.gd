@@ -9,7 +9,8 @@ extends RefCounted
 ##   removed on one phone never comes back from another;
 ## - keepsakes: per place, solo and friend each stay earned once either copy earned them;
 ## - hard: per chapter, its solo and together Hard marks, merged like keepsakes (a mark only
-##   ever turns on). A copy from before this field reads as one with no Hard marks;
+##   ever turns on). A copy from before this field reads as one with no Hard marks,
+##   and a copy with none is written without it, so older builds still read it;
 ## - journals: per chapter, the copy with more finished stages; this phone's on a tie;
 ## - settings: the copy changed last, by its change stamp (never a device's clock order alone:
 ##   a copy with no recorded change has stamp 0 and loses to any real change).
@@ -140,6 +141,8 @@ static func fingerprint(bundle: Dictionary) -> String:
 ## fewest stages first, until the bundle fits; completions, keepsakes and settings always fit.
 static func encode(bundle: Dictionary) -> PackedByteArray:
 	var working := bundle.duplicate(true)
+	# A copy with no Hard marks keeps the seven fields older builds read.
+	if working.get("hard", {}).is_empty(): working.erase("hard")
 	var order: Array = working.journals.keys()
 	order.sort_custom(func(x: String, y: String) -> bool:
 		var sx := int(working.journals[x].stages)

@@ -153,6 +153,8 @@ func _check_states_and_updates() -> void:
 	var highlight: Node3D = layer.get_node("SelectedSlot")
 	layer.select_id("relay-isles")
 	_check(is_equal_approx(highlight.position.x, layer.slot_transform("relay-isles").origin.x), "The selected keepsake is marked on the island")
+	var glass: Dictionary = States.entries().filter(func(entry: Dictionary) -> bool: return entry.id == "conservatory")[0]
+	_check(Card.line(glass, {"look": "started", "stages": [[true, false], [false, true]]}, true) == PlayerCopy.KEEPSAKE_MIXED and Card.line(glass, {"look": "started", "stages": [[true, false], [false, false]]}, true) == PlayerCopy.KEEPSAKE_STARTED % [1, 2, "Conservatory"], "Every stage done in mixed modes says how to earn it")
 	var definition_before := JSON.stringify(world.current_level)
 	_check(JSON.stringify(world.current_level) == definition_before and not world.garden.visible, "Home clears the gameplay garden while it owns the island")
 	var garden: Node3D = world.garden
@@ -307,7 +309,7 @@ func _check_play() -> void:
 		var tap_start := Time.get_ticks_msec()
 		cues.clear()
 		_check(stage.play_keepsake(id) and stage.keepsake_playing(), "%s plays" % id)
-		_check(not stage.play_keepsake(id) and not stage.play_keepsake(layer.shown_ids()[0]), "A second tap while %s plays is ignored" % id)
+		_check(not stage.play_keepsake(id), "A second tap while %s plays is ignored" % id)
 		var moved := false
 		var asked := false
 		while stage.keepsake_playing() and Time.get_ticks_msec() - tap_start < 6000:
@@ -333,6 +335,30 @@ func _check_play() -> void:
 	await create_timer(0.9).timeout
 	_check(not stage.keepsake_playing() and _pose(layer, "the-wishing-well") == well_rest, "and after a moment everything is back at rest")
 	world.reduced_motion = false
+	# A tap on another keepsake ends the first in its rest pose and plays the new one.
+	var well_pose := _pose(layer, "the-wishing-well")
+	stage.play_keepsake("the-wishing-well")
+	await create_timer(1.0).timeout
+	_check(stage.play_keepsake("first-steps") and _pose(layer, "the-wishing-well") == well_pose, "A tap on another keepsake while one plays puts the first at rest and plays the new one")
+	layer.stop_play()
+	# A keepsake earned while Home is open plays once its set is drawn, never as an outline.
+	var partial: Array[Dictionary] = _cleared("first-steps", true, false)
+	stage.set_hard({}, true)
+	stage.set_keepsakes(partial)
+	await _settle(layer)
+	var earned: Array[Dictionary] = partial.duplicate(true)
+	_cleared("relay-isles", true, false, earned)
+	stage.set_keepsakes(earned)
+	layer.select_id("relay-isles")
+	_check(not layer.playable("relay-isles"), "A keepsake still drawn as an outline is not playable")
+	_check(not stage.play_keepsake("relay-isles"), "A keepsake still drawn as an outline does not play: %s" % [layer.selected_item()])
+	_check(not layer.selected_item().playable and layer.selected_item().id == "relay-isles", "and offers no action: %s" % [layer.selected_item()])
+	await _settle(layer)
+	_check(layer.playable("relay-isles") and stage.play_keepsake("relay-isles"), "and plays once its rebuilt set is drawn")
+	layer.stop_play()
+	stage.set_hard(_all_hard(), true)
+	stage.set_keepsakes(_everything())
+	await _settle(layer)
 	# A state change during a tap waits for it to end.
 	var builds: int = layer.builds
 	stage.play_keepsake("the-wishing-well")
@@ -494,6 +520,10 @@ func _check_explore_bridge() -> void:
 		_frames(stage, world, 1, 0.1)
 		for role: String in world.actors: clear = clear and not layer.blocks(world.actors[role].position, 0.0)
 	_check(clear, "Wandering spirits never walk into a keepsake")
+	# A spirit a keepsake appeared beside can always walk away.
+	var inside: Vector3 = layer.slot_transform("rolling-home") * Vector3(0, 0, 0.55)
+	_check(layer.blocks(inside, Stage.SPIRIT_CLEARANCE) and not layer.blocks_step(inside, inside + (inside - layer.slot_transform("rolling-home").origin).normalized() * 0.05, Stage.SPIRIT_CLEARANCE), "A spirit beside a keepsake may always step away from it")
+	_check(layer.blocks_step(inside, layer.slot_transform("rolling-home").origin.lerp(inside, 0.9), Stage.SPIRIT_CLEARANCE), "but never nearer")
 	var spirit: Node3D = world.actors.a
 	stage._explore_button.pressed.emit()
 	spirit.position = Vector3(left - 3.2, 0, bridge_z)

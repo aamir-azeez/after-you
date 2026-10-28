@@ -87,7 +87,7 @@ func _test_tokens() -> void:
 	_check(ControlTheme.INK == UiTokens.INK and ControlTheme.CREAM == UiTokens.CREAM and ControlTheme.CHOICE_DISABLED == UiTokens.DISABLED_TEXT, "Control theme colours are the shared tokens")
 	_check(Main.INK == UiTokens.INK and Main.CREAM == UiTokens.CREAM and Main.MINT == UiTokens.MINT and Main.MUTED == UiTokens.MUTED, "Main's colours are the shared tokens")
 	_check(EmptyState.CREAM == UiTokens.CREAM and EmptyState.MUTED == UiTokens.SOFT, "Empty state colours are the shared tokens")
-	_check(HomeStage.PAGE_FILL == UiTokens.PAGE_FILL and HomeStage.PAGE_BORDER == UiTokens.PAGE_BORDER and HomeStage.SOLO_LIT == UiTokens.SOLO and HomeStage.TOGETHER_LIT == UiTokens.TOGETHER, "Home stage colours are the shared tokens")
+	_check(HomeStage.PAGE_FILL == UiTokens.PAGE_FILL and HomeStage.PAGE_BORDER == UiTokens.PAGE_BORDER and HomeStage.KeepsakeCard.TOGETHER_LIT == UiTokens.TOGETHER, "Home stage colours are the shared tokens")
 	# The values players have always seen.
 	_check(UiTokens.INK == Color("193d39") and UiTokens.CREAM == Color("eceddb") and UiTokens.MINT == Color("a6d9c4") and UiTokens.MUTED == Color("9dbeb4") and UiTokens.SOFT == Color("afc6be") and UiTokens.SECONDARY == Color("254b45") and UiTokens.SECONDARY_BORDER == Color("54766a") and UiTokens.SELECTED == Color("3a6b5f"), "Token values keep the existing palette")
 	_check(UiTokens.HOME_STAGE_LEFT <= UiTokens.HOME_PANEL_WIDTH, "The camera stage starts at or under the panel's edge")
@@ -168,7 +168,7 @@ func _check_layout(app: Node, screen: Rect2, safe: Rect2, unseen: bool, context:
 	# finer text scale, so the box stays low over the island.
 	var status: Label = stage._keepsake_status
 	var status_font := status.get_theme_font("font")
-	for line: String in HomeStage.STATUS_LINES:
+	for line: String in stage._keepsake_layer.every_line():
 		_check(status_font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, HomeStage.STATUS_SIZE).x * 1.03 <= stage._keepsake_controls.custom_minimum_size.x, "The keepsake status fits one line: %s %s (%.0f in %.0f)" % [line, context, status_font.get_string_size(line, HORIZONTAL_ALIGNMENT_LEFT, -1, HomeStage.STATUS_SIZE).x, stage._keepsake_controls.custom_minimum_size.x])
 	_check(not menu.is_processing() and not menu.is_physics_processing(), "The menu does no per-frame work: " + context)
 	_check(not stage._allowed(menu.play_button.get_global_rect().get_center()) and not stage._allowed(Vector2(panel_end - 4.0, safe.get_center().y)), "Presses on the panel never start a camera gesture: " + context)

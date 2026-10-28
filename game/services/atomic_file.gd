@@ -91,6 +91,17 @@ static func move_aside(source: String, stem: String, expected: String = "") -> b
 		return FileAccess.get_sha256(aside) == digest and DirAccess.remove_absolute(source) == OK
 	return DirAccess.rename_absolute(source, aside) == OK and FileAccess.get_sha256(aside) == digest
 
+## Copies a file that does not read to `path` + ".unreadable-" + its SHA-256,
+## a recovery name no store reads or writes, before anything replaces it. A
+## copy already there is reused only while its bytes still match. False when
+## the copy cannot be confirmed.
+static func keep_unreadable(path: String) -> bool:
+	var digest := FileAccess.get_sha256(path)
+	if digest.is_empty(): return false
+	var aside := path + ".unreadable-" + digest
+	if FileAccess.file_exists(aside): return FileAccess.get_sha256(aside) == digest
+	return DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(aside)) == OK and FileAccess.get_sha256(aside) == digest
+
 static func _keep(path: String, previous: String, backup: Backup) -> Error:
 	if backup == Backup.COPY: return DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(previous))
 	if FileAccess.file_exists(previous) and _remove(previous) != OK: return FAILED
