@@ -475,7 +475,16 @@ func show_keepsake_landmark(stage_id: String) -> void:
 	keepsake_landmark.position = Vector3(best.x/100.0,height,best.y/100.0)
 	terrain.add_child(keepsake_landmark)
 	cylinder(0.43,0.16,Color("a8a38a"),Vector3(0,0.08,0),keepsake_landmark)
-	var prop := KeepsakeVisual.create(self,descriptor)
+	# A chapter's corner shows its Home keepsake's first look; an earlier island
+	# keeps its own small keepsake.
+	var home: Dictionary = {} if str(descriptor.family) == "earlier" else ChapterIndex.home_keepsake(str(descriptor.family))
+	var prop: Node3D
+	if home.is_empty():
+		prop = KeepsakeVisual.create(self,descriptor)
+	else:
+		prop = Node3D.new()
+		prop.name = "Keepsake_" + str(descriptor.family).replace("-", "_")
+		load(str(home.keepsake.builder)).new().build(prop, {})
 	prop.position.y = 0.17
 	prop.scale = Vector3.ONE*0.62
 	keepsake_landmark.add_child(prop)
