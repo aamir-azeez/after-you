@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.4.20",
+      "date": "2026-10-09",
+      "highlights": [{"icon": "people", "text": "Play with a friend fits on one page"}, {"icon": "link", "text": "Share your friend code from any app"}, {"icon": "star", "text": "Give each friend a nickname"}]
+    },
+    {
       "version": "0.4.19",
       "date": "2026-10-09",
       "highlights": [{"icon": "play", "text": "Solo replays play again"}, {"icon": "picture", "text": "Replays has Solo and Together tabs"}, {"icon": "tap", "text": "Ask for a redo in online rooms"}]
