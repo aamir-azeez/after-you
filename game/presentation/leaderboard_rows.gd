@@ -1,7 +1,8 @@
 extends RefCounted
 ## One row of a leaderboard (presentation/leaderboard_screen.gd): the rank, the
 ## pair's two pips, their names or "A pair", a Gold leaf tag on a first place
-## that earned it, the time and, on another pair's run, Report.
+## that earned it, the time, Watch on a run whose replay the server keeps, and,
+## on another pair's run, Report.
 ##
 ## Pips are kit/pip_avatar.gd in still mode: one shared offscreen render per
 ## look, never a live view per row. Boards carry no outfits: a board is one
@@ -25,8 +26,8 @@ const ROW_FILL := Color("173e3a")
 const MINE_FILL := Color("1f4c45")
 const GOLD_INK := Color("f4d77b")
 
-## A ranked run. `report` (Callable, may be empty) shows Report; `mine` tints the row.
-static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool) -> Control:
+## A ranked run. `report` and `watch` (Callables, may be empty) show Report and Watch; `mine` tints the row.
+static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool, watch: Callable = Callable()) -> Control:
 	var names: Variant = row.get("names")
 	var title := PlayerCopy.LEADERBOARD_NAMES % [names[0], names[1]] if names is Array else PlayerCopy.LEADERBOARD_A_PAIR
 	var box := _row(MINE_FILL if mine else ROW_FILL)
@@ -36,7 +37,8 @@ static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool)
 	_name(line, title, compact)
 	if row.get("gold_leaf", false): line.add_child(_gold_leaf(compact))
 	_time(line, Runs.time_text(int(row.ticks)), compact)
-	if report.is_valid(): line.add_child(_report_button(report))
+	if watch.is_valid(): line.add_child(_text_button("LeaderboardWatch", PlayerCopy.LEADERBOARD_WATCH, watch))
+	if report.is_valid(): line.add_child(_text_button("LeaderboardReport", PlayerCopy.LEADERBOARD_REPORT, report))
 	box.name = "LeaderboardRow%d" % int(row.rank)
 	return box
 
@@ -126,15 +128,15 @@ static func _tag(text: String, ink: Color, icon: Texture2D, compact: bool, descr
 	if not text.is_empty(): inner.add_child(_label(text, 15 if compact else 16, ink))
 	return panel
 
-static func _report_button(report: Callable) -> Button:
+static func _text_button(node_name: String, text: String, action: Callable) -> Button:
 	var button := Button.new()
-	button.name = "LeaderboardReport"
-	button.text = PlayerCopy.LEADERBOARD_REPORT
+	button.name = node_name
+	button.text = text
 	button.focus_mode = Control.FOCUS_ALL
 	button.custom_minimum_size = Vector2(0, 44)
 	button.add_theme_font_size_override("font_size", 15)
 	ThemeRules.plain_tab(button)
-	button.pressed.connect(report)
+	button.pressed.connect(action)
 	return button
 
 static func _label(text: String, size: int, ink: Color) -> Label:

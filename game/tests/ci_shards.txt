@@ -133,6 +133,7 @@ late_ball 2
 layout 3
 leaderboard_replay_check 2
 leaderboard_screen 3
+leaderboard_watch 3
 legacy_cumulative_holds 1
 legacy_redo_navigation 3
 license_catalog 1

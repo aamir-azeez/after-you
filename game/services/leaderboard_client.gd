@@ -9,8 +9,13 @@ extends RefCounted
 ##   nothing pending, sync() reads the server's once per install (so a
 ##   reinstall shows it right) and otherwise asks nothing.
 ## - report(): POST .../entries/<entry>/report.
+## - replay(): GET .../replay/<entry>, a top 10 run's replay for the viewer
+##   (services/leaderboard_replay.gd), checked on a worker. Never kept: each
+##   Watch asks once, and the server answers from its cache.
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
+const LeaderboardReplay = preload("res://services/leaderboard_replay.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const PREFIX := "/v1/leaderboards/"
 const ME := "/v1/leaderboards/me"
 const VIEW_KEEP_MS := 60_000
@@ -80,6 +85,17 @@ func report(key: String, entry_id: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s%s/entries/%s/report" % [PREFIX, key, entry_id], {"schema_version": 1})
 	return {"ok": bool(response.get("ok", false)), "code": str(response.get("code", ""))}
 
+## {ok, parts} for the run `row` (a row of board `key`, with a replay_hash) of
+## chapter `chapter_key`: the viewer's parts, decoded and hash-checked, or {ok: false, code}.
+func replay(key: String, chapter_key: String, row: Dictionary) -> Dictionary:
+	if not _hash(row.get("replay_hash")) or not _entry(row.get("entry_id")): return {"ok": false, "code": "no_replay"}
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_GET, "%s%s/replay/%s" % [PREFIX, key, row.entry_id])
+	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
+	var work := Callable(LeaderboardReplay, "parts").bind(response.get("data"), key, str(row.entry_id), str(row.replay_hash), chapter_key)
+	var parts: Variant = await Reaper.run(work, true)
+	if not parts is Array or parts.is_empty(): return {"ok": false, "code": "invalid_replay"}
+	return {"ok": true, "parts": parts}
+
 ## The board as the server sent it, or {} when it is not one this build reads.
 static func valid_view(value: Variant, key: String) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not Typed.equal(value.get("board"), key) or not value.get("top") is Array or not value.get("checking") is Array: return {}
@@ -89,7 +105,10 @@ static func valid_view(value: Variant, key: String) -> Dictionary:
 		if not row is Dictionary or not Typed.whole_number(row.get("rank")) or not Typed.whole_number(row.get("ticks")) or not _entry(row.get("entry_id")) or not row.get("gold_leaf") is bool: return {}
 		var names: Variant = row.get("names")
 		if names != null and (not names is Array or names.size() != 2 or not names[0] is String or not names[1] is String): return {}
-		top.append({"rank": int(row.rank), "entry_id": row.entry_id, "ticks": int(row.ticks), "names": names, "gold_leaf": row.gold_leaf, "finished_on": str(row.get("finished_on", ""))})
+		# A server before replays sends no replay_hash: the row has no Watch.
+		var replay_hash: Variant = row.get("replay_hash")
+		if replay_hash != null and not _hash(replay_hash): return {}
+		top.append({"rank": int(row.rank), "entry_id": row.entry_id, "ticks": int(row.ticks), "names": names, "gold_leaf": row.gold_leaf, "finished_on": str(row.get("finished_on", "")), "replay_hash": replay_hash})
 	var checking: Array = []
 	for id: Variant in value.checking:
 		if not _entry(id): return {}
@@ -98,6 +117,9 @@ static func valid_view(value: Variant, key: String) -> Dictionary:
 
 static func _entry(value: Variant) -> bool:
 	return value is String and value.length() == 32 and value.is_valid_hex_number()
+
+static func _hash(value: Variant) -> bool:
+	return value is String and value.length() == 64 and value.is_valid_hex_number() and value == value.to_lower()
 
 func _read_choice() -> Dictionary:
 	var text := AtomicFile.read_text(_choice_path)

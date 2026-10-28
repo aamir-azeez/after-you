@@ -22,12 +22,15 @@ extends Node
 ##   the first-run name prompt
 ## - node: add_child (the Friends layer stays Main's child)
 ## - leaderboards: ensure_relay_session, relay_session (capabilities), api
-##   (player_id), _paid_content_hidden, for the page opened over Friends
+##   (player_id), _paid_content_hidden, for the page opened over Friends; and
+##   for a run's replay, as Replays plays one: shared_replay_child,
+##   _set_world_visible, soundscape, saves (settings), _relay_identity
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link(). refresh() calls the screen's private
 ## _refresh, as Main's alert routing did.
 const FriendsScreen = preload("res://presentation/friends_screen.gd")
 const LeaderboardScreen = preload("res://presentation/leaderboard_screen.gd")
+const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -112,7 +115,40 @@ func _open_leaderboards() -> void:
 	board.player_id = str(host.api.player_id)
 	board.chapter_filter = func(key: String) -> bool: return not (host._paid_content_hidden() and bool(Registry.descriptor(key).get("premium", false)))
 	board.notice.connect(host.notification_flow.friends_notice)
+	board.watch_requested.connect(func(parts: Array, chapter_key: String) -> void: _watch_replay(board, parts, chapter_key))
 	screen.open_overlay(board)
+
+## A leaderboard run's replay in the shared replay viewer, full screen as Replays
+## plays one (Main paces frames and routes Back by shared_replay_child). Friends
+## and the board hide meanwhile; leaving shows them again.
+func _watch_replay(board: CanvasLayer, parts: Array, chapter_key: String) -> void:
+	if not is_open() or host.application_backgrounded or is_instance_valid(host.shared_replay_child) or parts.is_empty():
+		board.replay_closed()
+		return
+	var view: Node3D = SharedReplayView.new()
+	view.leaderboard_chapter = chapter_key
+	view.entry = parts[0]
+	view.sequence = parts
+	view.settings = host.saves.data.settings.duplicate(true)
+	view.api = host.api
+	view.identity = host._relay_identity
+	view.closed.connect(func() -> void: _leave_replay(board))
+	screen.visible = false
+	host._set_world_visible(false)
+	host.soundscape.set_backgrounded(true)
+	host.shared_replay_child = view
+	host.add_child(view)
+
+func _leave_replay(board: CanvasLayer) -> void:
+	var view: Node = host.shared_replay_child
+	if is_instance_valid(view):
+		host.remove_child(view)
+		view.queue_free()
+	host.shared_replay_child = null
+	host._set_world_visible(true)
+	host.soundscape.set_backgrounded(host.application_backgrounded)
+	if is_open(): screen.visible = true
+	if is_instance_valid(board): board.replay_closed()
 
 ## A friends list read while Friends is up: display names may have just come
 ## on (the chip appears and the first-run prompt opens once), and a name

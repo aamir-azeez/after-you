@@ -1,6 +1,8 @@
 extends Node3D
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## An immutable, read-only view. This scene has no gameplay journal or commit API.
+## It plays a room's verified parts from Replays, or, with `leaderboard_chapter`
+## set, a leaderboard run (services/leaderboard_replay.gd).
 signal closed
 const Collection = preload("res://services/shared_replay_collection.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -43,6 +45,10 @@ var api: Node
 ## spirit's badge shows it and the player's own spirit reads "You".
 var friend_name := ""
 var context_factory: RefCounted
+## A leaderboard run of this chapter key, set before the view is added. Its parts
+## name no room or player, so they are checked by replay alone, and the view
+## offers no photos, no Report or block and no badges. Back leaves to the board.
+var leaderboard_chapter := ""
 var controls: CanvasLayer
 var world: Node3D
 var sim: RefCounted
@@ -144,11 +150,11 @@ func _ready() -> void:
 	controls.finish_requested.connect(_pause)
 	if sequence.is_empty(): sequence = [entry]
 	if not _current() or sequence.size() > RoomStages.MAX_STAGES:
-		_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
+		_show_error(_unverified_text())
 		return
 	sequence = sequence.duplicate(true)
 	mode = "loading"
-	var card: VBoxContainer = controls.card("Shared replay", "")
+	var card: VBoxContainer = controls.card(PlayerCopy.LEADERBOARD_REPLAY_TITLE if _board_run() else "Shared replay", "")
 	_loading_bar=LoadingBar.new()
 	_loading_bar.reduced_motion=bool(settings.get("reduced_motion",false))
 	card.add_child(_loading_bar)
@@ -157,9 +163,11 @@ func _ready() -> void:
 	# Joined in _process once it ends, or by the reaper after _exit_tree.
 	Reaper.ensure()
 	_validation_worker = Thread.new()
-	if _validation_worker.start(Callable(get_script(), "valid_sequence").bind(sequence, str(_binding.player_id), _validation_progress)) != OK:
+	var check := Callable(get_script(), "valid_board_sequence").bind(sequence, leaderboard_chapter, _validation_progress) if _board_run() \
+		else Callable(get_script(), "valid_sequence").bind(sequence, str(_binding.player_id), _validation_progress)
+	if _validation_worker.start(check) != OK:
 		_validation_worker = null
-		_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
+		_show_error(_unverified_text())
 
 func _prepare_replay() -> void:
 	entry = sequence[0]
@@ -188,7 +196,7 @@ func _prepare_replay() -> void:
 	run_player.hud = controls.hud
 	run_player.soundscape = soundscape
 	run_player.settings = settings
-	if entry.room.family == "chapter":
+	if entry.room.family == "chapter" and not _board_run():
 		_photos = ReadSession.new(api, identity)
 		_photos.photo_context_factory = context_factory
 		_photos.photo_targets = Collection._verified_photo_turns(entry, _binding.player_id)
@@ -202,15 +210,39 @@ func _prepare_replay() -> void:
 func _current() -> bool:
 	return identity.is_valid() and _binding.get("ready", false) and identity.call() == _binding
 
+func _board_run() -> bool:
+	return not leaderboard_chapter.is_empty()
+
+func _unverified_text() -> String:
+	return PlayerCopy.LEADERBOARD_REPLAY_UNVERIFIED if _board_run() else PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714
+
 ## One part, or a chapter's parts in stage order from its first stage, each
 ## checkpoint nested in the next part's proof.
 static func valid_sequence(values: Array, owner: String, progress: RefCounted = null) -> bool:
+	return _valid_parts(values, func(value: Variant) -> bool: return Collection.verify_entry(value, owner), progress)
+
+## A leaderboard run: every stage of `chapter_key` from its first, each part
+## replayed and nested in the next. Its parts carry only the chapter, never a
+## room or a player.
+static func valid_board_sequence(values: Array, chapter_key: String, progress: RefCounted = null) -> bool:
+	if values.size() != RoomStages.count(Registry.definition(chapter_key)): return false
+	return _valid_parts(values, func(value: Variant) -> bool: return _valid_board_part(value, chapter_key), progress)
+
+static func _valid_board_part(value: Variant, chapter_key: String) -> bool:
+	if not value is Dictionary or value.size() != 3 or not Typed.equal(value.get("schema_version"), 1) or not Collection.Coordinator._pair_bounded(value): return false
+	var room: Variant = value.get("room")
+	var pair: Variant = value.get("pair")
+	if not room is Dictionary or room.size() != 2 or room.get("family") != "chapter" or room.get("chapter_key") != chapter_key or not pair is Dictionary: return false
+	if not pair.get("a") is Dictionary or not pair.get("b") is Dictionary or not Typed.equal(pair.a.get("role"), "a") or not Typed.equal(pair.b.get("role"), "b"): return false
+	return Collection._verify_entry_proof(value)
+
+static func _valid_parts(values: Array, verify: Callable, progress: RefCounted) -> bool:
 	if values.is_empty() or values.size() > RoomStages.MAX_STAGES: return false
 	if progress != null: progress.set_total(values.size()+1)
 	for value: Variant in values:
 		# A viewer that has left stops between parts.
 		if progress != null and progress.cancelled(): return false
-		if not Collection.verify_entry(value, owner): return false
+		if not verify.call(value): return false
 		if progress != null: progress.advance()
 	if values.size() == 1:
 		if progress != null: progress.advance()
@@ -312,8 +344,8 @@ func _cues(snapshot: Dictionary) -> Dictionary:
 func _update_hud(snapshot: Dictionary = {}) -> void:
 	var state: Dictionary = (sim.snapshot() if snapshot.is_empty() else snapshot).duplicate()
 	state.context_action = {"label": "Replay", "enabled": false}
-	state.message = PlayerCopy.SHARED_REPLAY_VIEW_C46191B0894B
-	controls.update_state("SHARED REPLAY\n" + _display_title, float(_frames.size() - cursor) / 30.0, state, false)
+	state.message = PlayerCopy.LEADERBOARD_REPLAY_MESSAGE if _board_run() else PlayerCopy.SHARED_REPLAY_VIEW_C46191B0894B
+	controls.update_state(("LEADERBOARD RUN\n" if _board_run() else "SHARED REPLAY\n") + _display_title, float(_frames.size() - cursor) / 30.0, state, false)
 	controls.stick.hide()
 	controls.action_button.hide()
 	controls.finish_button.hide()
@@ -326,10 +358,11 @@ func _pause() -> void:
 	if is_instance_valid(strip):
 		_safety_photos = strip.report_targets()
 		strip.clear()
-	var card: VBoxContainer = controls.card(PlayerCopy.SHARED_REPLAY_VIEW_91F0B52CD01E, PlayerCopy.SHARED_REPLAY_VIEW_6EE4245DCD7F)
+	var card: VBoxContainer = controls.card(PlayerCopy.LEADERBOARD_REPLAY_PAUSED, PlayerCopy.LEADERBOARD_REPLAY_PAUSED_BODY) if _board_run() \
+		else controls.card(PlayerCopy.SHARED_REPLAY_VIEW_91F0B52CD01E, PlayerCopy.SHARED_REPLAY_VIEW_6EE4245DCD7F)
 	card.add_child(controls.button_for("resume", _resume))
 	card.add_child(controls.button_for("replay", _start))
-	card.add_child(controls.button("Report or block player", _open_safety))
+	if not _board_run(): card.add_child(controls.button("Report or block player", _open_safety))
 	card.add_child(controls.button_for("back", _leave))
 
 func _finished() -> void:
@@ -348,9 +381,10 @@ func _show_finished() -> void:
 	running = false
 	mode = "complete"
 	if is_instance_valid(strip): strip.clear()
-	var card: VBoxContainer = controls.card(PlayerCopy.SHARED_REPLAY_VIEW_DA1E512354C7, PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D)
+	var card: VBoxContainer = controls.card(PlayerCopy.LEADERBOARD_REPLAY_DONE, PlayerCopy.LEADERBOARD_REPLAY_DONE_BODY) if _board_run() \
+		else controls.card(PlayerCopy.SHARED_REPLAY_VIEW_DA1E512354C7, PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D)
 	card.add_child(controls.button_for("replay", _start))
-	card.add_child(controls.button("Report or block player", _open_safety))
+	if not _board_run(): card.add_child(controls.button("Report or block player", _open_safety))
 	card.add_child(controls.button_for("back", _leave))
 
 func _process(delta: float) -> void:
@@ -365,7 +399,7 @@ func _process(delta: float) -> void:
 		var valid: bool = _validation_worker.wait_to_finish()
 		_validation_worker = null
 		if not valid:
-			_show_error(PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714)
+			_show_error(_unverified_text())
 			return
 		mode="preparing"
 		if is_instance_valid(_loading_bar): _loading_bar.update_progress({"phase":"preparing"})
@@ -392,12 +426,12 @@ func identity_invalidated() -> void:
 	running = false
 	if _photos != null: _photos.invalidate_identity()
 	if is_instance_valid(strip): strip.clear()
-	_show_error(PlayerCopy.SHARED_REPLAY_VIEW_FBCF70672D83)
+	_show_error(PlayerCopy.LEADERBOARD_REPLAY_ACCOUNT_CHANGED if _board_run() else PlayerCopy.SHARED_REPLAY_VIEW_FBCF70672D83)
 
 func _show_error(message: String) -> void:
 	running = false
 	mode = "error"
-	var card: VBoxContainer = controls.card(PlayerCopy.SHARED_REPLAY_VIEW_B81950FA86BB, message)
+	var card: VBoxContainer = controls.card(PlayerCopy.LEADERBOARD_REPLAY_UNAVAILABLE if _board_run() else PlayerCopy.SHARED_REPLAY_VIEW_B81950FA86BB, message)
 	card.add_child(controls.button_for("back", _leave))
 
 func _leave() -> void:
@@ -441,7 +475,7 @@ func _report_photo(reference: Dictionary) -> void:
 	_open_safety()
 
 func _open_safety() -> void:
-	if not _current() or is_instance_valid(_safety_screen): return
+	if not _current() or is_instance_valid(_safety_screen) or _board_run(): return
 	var peer: String = entry.room.guest_id if entry.room.host_id == _binding.player_id else entry.room.host_id
 	var room := {"room_family": "relay" if entry.room.family == "chapter" else "legacy", "room_id": entry.room.room_id, "peer_id": peer, "photos": _safety_photos.duplicate(true)}
 	running = false

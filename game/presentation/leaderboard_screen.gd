@@ -9,6 +9,10 @@ extends CanvasLayer
 ## board itself never names anyone who did not choose to show their name.
 ## It reads boards through services/leaderboard_client.gd only and keeps no
 ## live view of its own, so it costs nothing while it sits open.
+##
+## Watch on a top 10 row fetches that run's replay and asks Friends' flow
+## (watch_requested) to play it in the shared replay viewer; the page hides
+## until the flow calls replay_closed(), so Back from the replay returns here.
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
@@ -27,6 +31,8 @@ const CARD_EDGE := Color("466e63")
 ## A short line for the app's pop-up (presentation/toast.gd).
 signal notice(text: String, news: bool)
 signal closed
+## A run's replay is ready: the viewer's parts (services/leaderboard_replay.gd) and its chapter key.
+signal watch_requested(parts: Array, chapter_key: String)
 
 ## services/leaderboard_client.gd for the signed-in player.
 var client: RefCounted
@@ -52,6 +58,8 @@ var _stacked := false
 var _alive := true
 var _generation := 0
 var _modal: Control
+## "" or "loading" while a Watch fetches, "watching" while its replay plays.
+var _replay_state := ""
 
 func _ready() -> void:
 	layer = 60
@@ -110,7 +118,9 @@ func close() -> void:
 	queue_free()
 
 ## Back (forwarded by Friends, which owns this page) closes the report question first, then the page.
+## While a replay plays, its viewer takes Back.
 func go_back() -> void:
+	if _replay_state == "watching": return
 	if is_instance_valid(_modal) and not _modal.is_queued_for_deletion(): _modal.go_back()
 	else: close()
 
@@ -248,7 +258,8 @@ func _render_board() -> void:
 	for row: Dictionary in top:
 		var is_mine: bool = row.entry_id in mine_ids
 		var report := Callable() if is_mine else func(): _ask_report(board, row.entry_id)
-		_board.add_child(Rows.ranked(row, is_mine, report, _compact))
+		var watch := func(): _watch(row)
+		_board.add_child(Rows.ranked(row, is_mine, report, _compact, watch if row.get("replay_hash") != null else Callable()))
 	_render_own(mine, top)
 
 ## "Your best": this player's ranked run, else their fastest run that can rank, with "Checking" while it waits.
@@ -278,6 +289,27 @@ func _render_own(mine: Array, top: Array) -> void:
 		var line := _note(PlayerCopy.LEADERBOARD_NEWEST_CHECKING)
 		line.name = "LeaderboardCheckingNote"
 		_board.add_child(line)
+
+## Fetches the run's replay once per tap; a second tap while it loads waits for the first.
+func _watch(row: Dictionary) -> void:
+	if not _replay_state.is_empty() or not _alive or client == null: return
+	_replay_state = "loading"
+	notice.emit(PlayerCopy.LEADERBOARD_WATCH_LOADING, false)
+	var chapter_key := _selected
+	var answer: Dictionary = await client.replay(Runs.board_key(chapter_key), chapter_key, row)
+	if not _alive: return
+	if not answer.get("ok", false):
+		_replay_state = ""
+		notice.emit(PlayerCopy.LEADERBOARD_REPLAY_FAILED, false)
+		return
+	_replay_state = "watching"
+	visible = false
+	watch_requested.emit(answer.parts, chapter_key)
+
+## The replay closed (or could not open): the board shows again as it was.
+func replay_closed() -> void:
+	_replay_state = ""
+	if _alive: visible = true
 
 func _ask_report(board: String, entry_id: String) -> void:
 	if is_instance_valid(_modal) or not _alive: return
