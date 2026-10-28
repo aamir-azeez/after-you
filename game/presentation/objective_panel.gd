@@ -11,7 +11,8 @@ var bar: ProgressBar
 func _ready() -> void:
 	mouse_filter = Control.MOUSE_FILTER_STOP
 	custom_minimum_size.x = 224
-	var style := ControlTheme.rounded(Color("193f3aed"), 12)
+	# Opaque: a world badge or glyph behind the card never shows through it.
+	var style := ControlTheme.rounded(Color("193f3a"), 12)
 	style.content_margin_left = 14
 	style.content_margin_right = 14
 	style.content_margin_top = 10

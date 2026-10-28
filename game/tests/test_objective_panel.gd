@@ -32,6 +32,7 @@ func _run() -> void:
 			_check(panel.detail_label.text == "Keep the path lit" and panel.bar.value == 2.5 and panel.bar.max_value == 4.0, "The numeric state controls the bar while guidance stays separate")
 			_check(Rect2(Vector2.ZERO, Vector2(dimensions)).encloses(bounds), "Objective panel stays inside the landscape viewport")
 			_check(bounds.position.x > dimensions.x * 0.5 and bounds.position.y >= 124, "Objective appears on the right below Pause and presence")
+			_check(is_equal_approx((panel.get_theme_stylebox("panel") as StyleBoxFlat).bg_color.a, 1.0), "The card is opaque, so nothing in the world shows through it")
 			for other: Control in [controls.timer_label, controls.turn_progress, controls.pause_button, controls.stick, controls.action_button, controls.finish_button]:
 				_check(not bounds.intersects(other.get_global_rect()), "The right objective does not overlap timer or controls")
 			_check(snapshot == original, "HUD formatting does not change the simulation snapshot")
