@@ -65,10 +65,8 @@ async function pending(env: Env): Promise<string[]> {
     const board = keys[(start + step) % keys.length];
     const stub = env.LEADERBOARD_BOARDS.getByName(board);
     let work: PendingWork = await stub.pendingWork(Math.max(0, Math.min(budget, MAX_REPLAY_CHARS)), deliveries);
-    if (work.rewards?.length) {
-      deliveries -= work.rewards.length;
-      await deliverRewards(env, board, stub, work.rewards);
-    }
+    const rewards = work.rewards ?? [];
+    deliveries -= rewards.length;
     const due = work.standing.slice(0, checks);
     if (due.length) {
       checks -= due.length;
@@ -82,6 +80,8 @@ async function pending(env: Env): Promise<string[]> {
       entries.push(JSON.stringify({ board, ...facts }).slice(0, -1) + `,"checkpoint":${checkpoint}}`);
       budget -= checkpoint.length;
     }
+    // After this board's replay work is in hand: a delivery never costs the job its work.
+    if (rewards.length) await deliverRewards(env, board, stub, rewards);
   }
   return entries;
 }

@@ -62,13 +62,16 @@ export function openRewardSync(storage: DurableObjectStorage): void {
 export class BoardRewardLedger implements RewardSink {
   constructor(private readonly storage: DurableObjectStorage) {}
   grant(player: string, reward: LeaderboardReward, board: string, entryId: string): void {
+    // Only a reward new to the player here changes their items; another run's grant of it does not.
+    const had = this.storage.sql.exec("SELECT 1 FROM lb_grants WHERE player_id=? AND reward=? LIMIT 1", player, reward).toArray().length > 0;
     const written = this.storage.sql.exec("INSERT OR IGNORE INTO lb_grants VALUES (?,?,?,?,?,?)", `${reward}:${board}:${entryId}:${player}`, player, reward, board, entryId, Date.now()).rowsWritten;
-    if (written > 0) this.mark(player);
+    if (written > 0 && !had) this.mark(player);
   }
   revokeEntry(entryId: string): number {
-    const players = this.storage.sql.exec<{ player_id: string }>("SELECT DISTINCT player_id FROM lb_grants WHERE entry_id=?", entryId).toArray();
+    const players = this.storage.sql.exec<{ player_id: string }>("SELECT DISTINCT player_id FROM lb_grants WHERE entry_id=?", entryId).toArray().map(row => row.player_id);
+    const before = new Map(players.map(player => [player, this.itemsFor(player).join(",")]));
     const gone = this.storage.sql.exec("DELETE FROM lb_grants WHERE entry_id=?", entryId).rowsWritten;
-    for (const row of players) this.mark(row.player_id);
+    for (const player of players) if (this.itemsFor(player).join(",") !== before.get(player)) this.mark(player);
     return gone;
   }
   forgetPlayer(player: string): void {
@@ -86,9 +89,17 @@ export class BoardRewardLedger implements RewardSink {
     return this.storage.sql.exec<{ player_id: string; seq: number }>(`SELECT player_id,seq FROM ${SYNC_TABLE} WHERE player_id!=? ORDER BY seq, player_id LIMIT ?`, HIGH, limit).toArray()
       .map(row => ({ player_id: row.player_id, seq: row.seq, items: this.itemsFor(row.player_id) }));
   }
-  /** Clears each mark the delivery answered for, only while it still carries the seq that was delivered. */
-  delivered(done: readonly { player_id: string; seq: number }[]): void {
+  /**
+   * Clears each mark the delivery answered for, and moves each one that failed behind every other mark
+   * (a fresh seq), so a Player that keeps failing never holds up the rest. Either only while the mark
+   * still carries the seq that was delivered: a newer change keeps its own.
+   */
+  delivered(done: readonly { player_id: string; seq: number }[], failed: readonly { player_id: string; seq: number }[] = []): void {
     for (const item of done) if (item.player_id !== HIGH) this.storage.sql.exec(`DELETE FROM ${SYNC_TABLE} WHERE player_id=? AND seq=?`, item.player_id, item.seq);
+    for (const item of failed) {
+      const still = item.player_id !== HIGH && this.storage.sql.exec(`SELECT 1 FROM ${SYNC_TABLE} WHERE player_id=? AND seq=?`, item.player_id, item.seq).toArray().length > 0;
+      if (still) this.mark(item.player_id);
+    }
   }
 
   private itemsFor(player: string): string[] {

@@ -149,9 +149,9 @@ export class LeaderboardBoard extends DurableObject<Env> {
     return rewardLimit > 0 ? { standing, replay, rewards: this.rewards.deliveries(rewardLimit) } : { standing, replay };
   }
 
-  /** The deliveries the players' own Players answered: each mark goes unless a newer change came since (rewards.ts delivered). */
-  rewardsDelivered(done: { player_id: string; seq: number }[]): void {
-    this.ctx.storage.transactionSync(() => this.rewards.delivered(done));
+  /** How the players' own Players answered: each answered mark goes and each failed one moves back, unless a newer change came since (rewards.ts delivered). */
+  rewardsDelivered(done: { player_id: string; seq: number }[], failed: { player_id: string; seq: number }[] = []): void {
+    this.ctx.storage.transactionSync(() => this.rewards.delivered(done, failed));
   }
 
   /** Account check results. An ineligible run is dropped; an eligible one keeps each member's name choice. Returns the work left and the board now. */

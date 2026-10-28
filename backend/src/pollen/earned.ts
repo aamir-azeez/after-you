@@ -10,7 +10,8 @@ import { CATALOG, EARNED_TIER, type Catalog } from "./catalog";
  *   delivered whole by the replay job (leaderboards/operator.ts); a delivery with an older `seq`
  *   than the stored one changes nothing, so a late or repeated one never undoes a newer one.
  * - every_hard: a together Hard first clear of every chapter in EVERY_HARD_LEVELS, read from the
- *   hardclear claims the wallet keeps (wallet.ts) when one lands; kept once earned.
+ *   hardclear claims the wallet keeps (wallet.ts) when one lands; kept once earned. It is written
+ *   while earning is on whatever POLLEN_WARDROBE says, so turning the wardrobe on later shows it.
  *
  * Storage (storage-schema.ts POLLEN_EARNED_TABLES), made by the first earned item: one row per
  * source, at most one per board plus Every Hard. Every write runs inside the caller's transaction.
@@ -19,7 +20,7 @@ const [EARNED] = POLLEN_EARNED_TABLES;
 export const EVERY_HARD = "every_hard";
 /**
  * The chapters Every Hard asks for, by level id (any version): every chapter the game offers Hard
- * on (game services/hard_mode.gd eligible). test/pollen-earned.test.ts pins it to the game's chapter
+ * on (game services/hard_mode.gd eligible). test/pollen-wardrobe.test.ts pins it to the game's chapter
  * manifest, so a chapter the game adds Hard to fails the test until it is listed here.
  */
 export const EVERY_HARD_LEVELS: readonly string[] = Object.freeze([
@@ -44,10 +45,10 @@ function ensureTable(storage: DurableObjectStorage): void {
   known.delete(storage);
 }
 
-/** Whether every id is a released earned-only item of the catalogue, each once. */
+/** Whether every id is an earned-only item of the catalogue, each once. Released or not: `released` gates drawing, never owning. */
 export function validEarnedItems(items: unknown, catalog: Catalog = CATALOG): items is string[] {
   return Array.isArray(items) && items.length <= Object.keys(catalog.items).length && new Set(items).size === items.length &&
-    items.every(id => typeof id === "string" && Object.hasOwn(catalog.items, id) && catalog.items[id].tier === EARNED_TIER && catalog.items[id].released);
+    items.every(id => typeof id === "string" && Object.hasOwn(catalog.items, id) && catalog.items[id].tier === EARNED_TIER);
 }
 
 /** Every item some source gives the player now. A row that cannot be read gives nothing. */
@@ -64,17 +65,18 @@ export function earnedItems(storage: DurableObjectStorage): Set<string> {
 }
 
 /**
- * Sets what `source` gives the player, unless the stored row is as new or newer (`seq`). A source
- * that gives nothing and was never stored writes nothing. Returns whether the row changed.
+ * Sets what `source` gives the player, unless the stored row is as new or newer (`seq`). Even an empty
+ * set is stored with its seq, so an older delivery that arrives after it can never bring an item back.
+ * Returns whether what the source gives changed.
  */
 export function setEarned(storage: DurableObjectStorage, source: string, items: readonly string[], seq: number, now: number): boolean {
   const row = present(storage) ? storage.sql.exec<{ items: string; seq: number }>("SELECT items,seq FROM pollen_earned WHERE source=?", source).toArray()[0] : undefined;
-  if (row ? row.seq >= seq : items.length === 0) return false;
+  if (row && row.seq >= seq) return false;
   const text = JSON.stringify([...items].sort());
   if (row?.items === text) { storage.sql.exec("UPDATE pollen_earned SET seq=? WHERE source=?", seq, source); return false; }
   ensureTable(storage);
   storage.sql.exec("INSERT OR REPLACE INTO pollen_earned VALUES (?,?,?,?)", source, text, seq, now);
-  return true;
+  return row !== undefined || items.length > 0;
 }
 
 /** Every Hard, once each chapter in EVERY_HARD_LEVELS has a together Hard first clear (`hardCleared`). Kept once earned. */

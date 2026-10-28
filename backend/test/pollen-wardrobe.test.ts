@@ -8,7 +8,7 @@ import { EVERY_HARD, EVERY_HARD_LEVELS } from "../src/pollen/earned";
 import { shopOn, wardrobeMode, wardrobeOn } from "../src/pollen/features";
 import { chapterTier } from "../src/pollen/rates";
 import { CATALOG, EARNED_TIER } from "../src/pollen/catalog";
-import { openRewardSync, REWARD_ITEMS } from "../src/leaderboards/rewards";
+import { BoardRewardLedger, openRewardSync, REWARD_ITEMS } from "../src/leaderboards/rewards";
 import { boardKeys } from "../src/leaderboards/boards";
 import { deriveJobToken } from "../src/leaderboards/job-token";
 import { entryId, pairKey, type LeaderboardRun } from "../src/leaderboards/run";
@@ -171,6 +171,12 @@ describe("Every Hard", () => {
     expect(rows).toEqual([{ source: EVERY_HARD, items: JSON.stringify([EVERY_HARD]) }]);
     expect((await call("/v1/pollen/equip", "POST", player, equipBody({ leaf: EVERY_HARD }))).status).toBe(200);
   });
+  it("is recorded while only earning is on, so the wardrobe shows it once it goes on", async () => {
+    const player = await create();
+    await hardClears(player, EVERY_HARD_LEVELS);
+    expect(await wallet(player, EARN)).not.toHaveProperty("wardrobe");
+    expect((await wallet(player, WARDROBE)).wardrobe!.items).toEqual([EVERY_HARD]);
+  });
   it("needs Hard clears: plain first clears of every chapter give nothing", async () => {
     const player = await create();
     await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => {
@@ -260,6 +266,47 @@ describe("board rewards reaching a player", () => {
     const tables = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) =>
       state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE name=?", POLLEN_EARNED_TABLES[0].name).toArray());
     expect(tables).toEqual([]);
+  });
+  it("never lets an older delivery bring back what a newer, empty one took, even with nothing stored before", async () => {
+    const player = await create();
+    expect(await giveBoardItems(player, [], 6)).toMatchObject({ ok: true, value: { changed: false } });
+    expect(await giveBoardItems(player, ["gold_leaf"], 5)).toMatchObject({ ok: true, value: { changed: false } });
+    expect(await items(player)).toEqual([]);
+  });
+  it("gives a released or unreleased earned item alike, and refuses anything sold", async () => {
+    const player = await create();
+    expect(await giveBoardItems(player, ["every_hard"], 1)).toMatchObject({ ok: true });
+    expect(await giveBoardItems(player, ["lighthouse_lamp"], 2)).toMatchObject({ ok: false, status: 400 });
+  });
+  it("marks a player only when what the board gives them changes, and moves a failed delivery behind the rest", async () => {
+    const pair: [string, string] = ["p".repeat(22), "q".repeat(22)];
+    await rank(pair, 200);
+    const marks = () => runInDurableObject(board(), async (_, state) =>
+      state.storage.sql.exec<{ player_id: string; seq: number }>("SELECT player_id,seq FROM lb_reward_sync WHERE player_id!='' ORDER BY seq, player_id").toArray());
+    const first = await marks();
+    expect(first.map(row => row.player_id).sort()).toEqual([...pair].sort());
+    await runInDurableObject(board(), async (_, state) => new BoardRewardLedger(state.storage).delivered(first));
+    expect(await marks()).toEqual([]);
+    // The same pair beats its own time: a new ribbon grant, but nothing new to wear.
+    await rank(pair, 190);
+    expect(await marks()).toEqual([]);
+    await runInDurableObject(board(), async (_, state) => {
+      const ledger = new BoardRewardLedger(state.storage);
+      state.storage.sql.exec("INSERT INTO lb_reward_sync VALUES (?,?),(?,?)", pair[0], 10, pair[1], 11);
+      ledger.delivered([], [{ player_id: pair[0], seq: 10 }, { player_id: pair[1], seq: 99 }]);
+    });
+    const moved = await marks();
+    expect(moved.map(row => row.player_id)).toEqual([pair[1], pair[0]]);
+    expect(moved[1].seq).toBeGreaterThan(11);
+    expect(moved[0].seq).toBe(11);
+  });
+  it("forgets an erased player's marks with their grants", async () => {
+    const host = await create(), guest = await create();
+    await rank([host.player_id, guest.player_id], 100);
+    await board().forget(RELAY_BOARD, host.player_id);
+    const marked = await runInDurableObject(board(), async (_, state) =>
+      state.storage.sql.exec<{ player_id: string }>("SELECT player_id FROM lb_reward_sync WHERE player_id!=''").toArray().map(row => row.player_id));
+    expect(marked).toEqual([guest.player_id]);
   });
   it("backfills a board whose grants were recorded before deliveries existed", async () => {
     const host = await create(), guest = await create();
