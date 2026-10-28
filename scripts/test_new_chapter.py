@@ -53,7 +53,7 @@ REFUSED = [
 SHARED = {
     "game/content/chapters/index.gd", "game/core/cooperative/stage_catalog.gd", "game/core/journey/stage_catalog.gd",
     "game/presentation/player_copy.gd", "game/tests/ci_shards.txt",
-    "backend/wrangler.jsonc", "backend/src/flags.ts",
+    "backend/src/flags.ts",
 }
 EXISTING_SUITES = ["chapter_descriptors", "chapter_manifest", "chapter_registry", "registry_golden", "chapter_thumbnail_catalog", "ci_shards",
                    "home_keepsake_layer", "home_keepsake_states", "keepsake_props", "scrolling_camera", "fold_present", "lighthouse_v2_release"]

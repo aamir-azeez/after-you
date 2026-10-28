@@ -241,14 +241,9 @@ def add_to_shards(plan: Plan, suites: list[str], shard: str) -> None:
         plan.insert(shards.relative, position, [f"{suite} {shard}"])
 
 
-def add_flag(plan: Plan, flag: str, accessor: str) -> None:
-    wrangler = plan.text("backend/wrangler.jsonc")
-    check_free(plan, wrangler.relative, f'"{flag}"', f"the var {flag}")
-    last = wrangler.find_last(r'^\s*"[A-Z0-9_]+_CHAPTERS?_ENABLED": "false",$')
-    if last < 0:
-        raise Refused(f"{wrangler.relative} has no chapter flag lines")
-    indent = re.match(r"^\s*", wrangler.lines[last]).group(0)
-    plan.insert(wrangler.relative, last + 1, [f'{indent}"{flag}": "false",'])
+def add_flag(plan: Plan, flag: str, accessor: str, title: str, key: str) -> None:
+    # The flag lives only in FEATURES (backend/src/flags.ts header): no wrangler.jsonc default, and the row carries the
+    # "Set only through FEATURES." doc line the deploy tools read before they will list it.
     flags = plan.text("backend/src/flags.ts")
     check_free(plan, flags.relative, f'"{flag}"', f"the var {flag}")
     check_free(plan, flags.relative, f" {accessor}:", f"an accessor {accessor}")
@@ -256,7 +251,9 @@ def add_flag(plan: Plan, flag: str, accessor: str) -> None:
     if last < 0:
         raise Refused(f"{flags.relative} has no chapter flag rows")
     indent = re.match(r"^\s*", flags.lines[last]).group(0)
-    plan.insert(flags.relative, last + 1, [f'{indent}{accessor}: "{flag}",'])
+    plan.insert(flags.relative, last + 1, [
+        f"{indent}/** Creating {title} rooms ({key}), read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */",
+        f'{indent}{accessor}: "{flag}",'])
 
 
 def add_copy(plan: Plan, const: str, title: str, key: str, stage_copy: bool) -> None:
@@ -470,7 +467,7 @@ def scaffold(args: argparse.Namespace, root: Path) -> Plan:
     if not args.version_of:
         add_copy(plan, const, title, key, stage_copy)
     add_to_shards(plan, suites, args.shard)
-    add_flag(plan, values["FLAG"], camel(level_id) + ("" if version == 1 else f"V{version}") + "Chapter")
+    add_flag(plan, values["FLAG"], camel(level_id) + ("" if version == 1 else f"V{version}") + "Chapter", values["TITLE"], key)
     return plan
 
 
