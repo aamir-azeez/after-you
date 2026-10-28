@@ -248,7 +248,7 @@ func _home() -> void:
 	_check(menu.get_node("HomeMenuMargin").get_combined_minimum_size().y <= menu.size.y + 0.5, "and the column still fits 720")
 	holder.queue_free()
 	await process_frame
-	var hub: Control = preload("res://presentation/room_hub_screen.gd").new()
+	var hub := preload("res://presentation/room_hub_screen.gd").new()
 	var tag: Control = hub._duel_tag()
 	_check(tag.name == "DuelTag" and (tag.get_child(0) as Label).text == PlayerCopy.DUEL_TAG, "a duel's room card carries the Duel tag")
 	tag.free()
