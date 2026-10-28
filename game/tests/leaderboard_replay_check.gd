@@ -11,7 +11,8 @@ extends RefCounted
 ## - replays every pair with that chapter family's own verifier,
 ##   ChapterRegistry.simulation_script(key).verify_checkpoint, which replays
 ##   each recording and derives each checkpoint exactly;
-## - refuses any turn with catch assistance on;
+## - refuses any turn with catch assistance on, except in a duel's run
+##   (`duel: true`, backend duels/store.ts), which may have them;
 ## - measures the run as the sum of every replayed turn's ticks and compares it
 ##   with the claimed time.
 ## It proves the recordings are valid and the time is real, not that no retry
@@ -33,6 +34,7 @@ static func check(entry: Dictionary) -> Dictionary:
 	var verified: Dictionary = engine.verify_checkpoint(definition, checkpoint)
 	if not verified.get("valid", false): return _result(false, 0, "replay_failed")
 	var measured := 0
+	var assisted_ok := Typed.equal(entry.get("duel"), true)
 	var current: Dictionary = checkpoint
 	for index in range(stages, 0, -1):
 		var proof: Variant = current.get("proof")
@@ -40,7 +42,7 @@ static func check(entry: Dictionary) -> Dictionary:
 		for role: String in ["a", "b"]:
 			var turn: Variant = proof.get(role)
 			if not turn is Dictionary or not Typed.whole_number(turn.get("duration_ticks")): return _result(false, measured, "broken_chain")
-			if not Typed.equal(turn.get("catch_assistance"), false): return _result(false, measured, "assisted_run")
+			if not assisted_ok and not Typed.equal(turn.get("catch_assistance"), false): return _result(false, measured, "assisted_run")
 			measured += int(turn.duration_ticks)
 		current = Registry.previous_checkpoint(key, current)
 	if not Typed.equal(current.get("stage_index"), 0): return _result(false, measured, "broken_chain")

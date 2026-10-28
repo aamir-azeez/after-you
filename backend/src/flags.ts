@@ -60,6 +60,8 @@ export const FLAG_VARS = Object.freeze({
   pollenSandboxAppStore: "POLLEN_SANDBOX_APP_STORE",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
+  /** Duels (duels/): parties, friend challenges, ghost races, the duel premium and win bonus, and their capability. Needs LEADERBOARDS: duels live in the boards and their runs go to its replay check. Set only through FEATURES. */
+  duels: "DUELS",
 } as const);
 
 /**
