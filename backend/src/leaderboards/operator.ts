@@ -2,12 +2,12 @@ import { ApiError, boundedJson, isObject, text } from "../protocol";
 import { JSON_HEADERS, json } from "../http";
 import { flags } from "../flags";
 import { boardKeys, developerBest, knownBoard } from "./boards";
-import { MAX_REPLAY_CHARS, type LeaderboardBoard, type PendingWork, type Verdict } from "./board";
+import { MAX_REPLAY_CHARS, type PendingWork, type Verdict } from "./board";
 import { leaderboardCaller } from "./job-token";
 import { checkRun } from "./eligibility";
 import { pooled } from "../room-inbox";
 import { storeView } from "./view-cache";
-import { deliverRewards } from "./reward-delivery";
+import { MAX_REWARD_DELIVERIES, deliverRewards, type RewardBatch } from "./reward-delivery";
 import { wardrobeOn } from "../pollen/features";
 
 /**
@@ -29,8 +29,6 @@ const MAX_VERDICTS = 64;
 /** Account checks per pending call, across boards, four at a time (each is up to 4 requests). */
 const MAX_STANDINGS = 16;
 const STANDING_CONCURRENCY = 4;
-/** Players handed their board rewards per pending call, across boards; each is one Player request. */
-const MAX_REWARD_DELIVERIES = 16;
 const ENTRY = /^[a-f0-9]{32}$/, HASH = /^[a-f0-9]{64}$/;
 
 export async function routeLeaderboardOperator(request: Request, path: string, env: Env): Promise<Response> {
@@ -61,12 +59,12 @@ async function pending(env: Env): Promise<string[]> {
   const entries: string[] = [];
   const keys = boardKeys(), start = Math.floor(Date.now() / 3_600_000) % keys.length;
   let budget = MAX_PENDING_CHARS, checks = MAX_STANDINGS, deliveries = wardrobeOn(env) ? MAX_REWARD_DELIVERIES : 0;
+  const batches: RewardBatch[] = [];
   for (let step = 0; step < keys.length; step++) {
     const board = keys[(start + step) % keys.length];
     const stub = env.LEADERBOARD_BOARDS.getByName(board);
     let work: PendingWork = await stub.pendingWork(Math.max(0, Math.min(budget, MAX_REPLAY_CHARS)), deliveries);
-    const rewards = work.rewards ?? [];
-    deliveries -= rewards.length;
+    if (work.rewards?.length) { deliveries -= work.rewards.length; batches.push({ board, stub, rewards: work.rewards }); }
     const due = work.standing.slice(0, checks);
     if (due.length) {
       checks -= due.length;
@@ -80,9 +78,9 @@ async function pending(env: Env): Promise<string[]> {
       entries.push(JSON.stringify({ board, ...facts }).slice(0, -1) + `,"checkpoint":${checkpoint}}`);
       budget -= checkpoint.length;
     }
-    // After this board's replay work is in hand: a delivery never costs the job its work.
-    if (rewards.length) await deliverRewards(env, board, stub, rewards);
   }
+  // One pass once every board's replay work is in hand: a delivery never costs the job its work.
+  await deliverRewards(env, batches);
   return entries;
 }
 
@@ -99,30 +97,24 @@ function parseVerdicts(value: unknown): Map<string, Verdict[]> {
   return byBoard;
 }
 
-/** One request per board named, plus the deliveries of a board where a run ranked (deliverNow). Each run that ranked is reported back by id only. */
+/**
+ * One request per board named; each run that ranked is reported back by id only. While the wardrobe is
+ * on, each board's answer also carries its changed rewards, handed out in one pass once every board's
+ * verdicts are applied (reward-delivery.ts), so a pair the celebration promised a Gold leaf can wear it
+ * at once rather than after the next hourly pull.
+ */
 async function verdicts(env: Env, value: unknown): Promise<{ ranked: string[] }> {
-  const ranked: string[] = [];
+  const ranked: string[] = [], batches: RewardBatch[] = [];
+  let deliveries = wardrobeOn(env) ? MAX_REWARD_DELIVERIES : 0;
   for (const [board, list] of parseVerdicts(value)) {
     const stub = env.LEADERBOARD_BOARDS.getByName(board);
-    const answer = await stub.verdicts(board, list, developerBest(board));
+    const answer = await stub.verdicts(board, list, developerBest(board), deliveries);
     await storeView(answer.view);
     ranked.push(...answer.ranked.map(note => note.entry_id));
-    if (answer.ranked.length) await deliverNow(env, board, stub);
+    if (answer.rewards?.length) { deliveries -= answer.rewards.length; batches.push({ board, stub, rewards: answer.rewards }); }
   }
+  await deliverRewards(env, batches);
   return { ranked };
-}
-
-/**
- * While the wardrobe is on, hands out a board's changed rewards in the call that changed them, so a pair
- * the celebration promised a Gold leaf can wear it at once rather than after the next hourly pull. Best
- * effort: whatever is left stays marked for the next pending call. Requests: 1 board, plus 1 per player and 1 board when any.
- */
-async function deliverNow(env: Env, board: string, stub: DurableObjectStub<LeaderboardBoard>): Promise<void> {
-  if (!wardrobeOn(env)) return;
-  try {
-    const work = await stub.pendingWork(0, MAX_REWARD_DELIVERIES);
-    if (work.rewards?.length) await deliverRewards(env, board, stub, work.rewards);
-  } catch { /* the marks stay for the next pending call */ }
 }
 
 async function reviewList(env: Env): Promise<{ board: string; entries: unknown[] }[]> {
@@ -139,8 +131,9 @@ async function review(env: Env, input: Record<string, unknown>): Promise<{ done:
   const board = knownBoard(input.board), entry = text(input.entry_id, ENTRY);
   if (!board) throw new ApiError(400, "invalid_leaderboard_request");
   const stub = env.LEADERBOARD_BOARDS.getByName(board);
-  const answer = input.action === "strike" ? await stub.strike(board, entry) : await stub.review(board, entry, input.action === "approve");
+  const deliveries = wardrobeOn(env) ? MAX_REWARD_DELIVERIES : 0;
+  const answer = input.action === "strike" ? await stub.strike(board, entry, deliveries) : await stub.review(board, entry, input.action === "approve", deliveries);
   await storeView(answer.view);
-  if (answer.done && input.action !== "reject") await deliverNow(env, board, stub);
+  if (answer.rewards?.length) await deliverRewards(env, [{ board, stub, rewards: answer.rewards }]);
   return { done: answer.done };
 }

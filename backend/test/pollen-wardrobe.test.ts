@@ -9,8 +9,9 @@ import { shopOn, wardrobeMode, wardrobeOn } from "../src/pollen/features";
 import { chapterTier } from "../src/pollen/rates";
 import { CATALOG, EARNED_TIER } from "../src/pollen/catalog";
 import { BoardRewardLedger, openRewardSync, REWARD_ITEMS } from "../src/leaderboards/rewards";
-import { boardKeys } from "../src/leaderboards/boards";
+import { boardKey, boardKeys } from "../src/leaderboards/boards";
 import { deriveJobToken } from "../src/leaderboards/job-token";
+import { DELIVERY_TIMEOUT_MS } from "../src/leaderboards/reward-delivery";
 import { entryId, pairKey, type LeaderboardRun } from "../src/leaderboards/run";
 import { CHAPTERS } from "../src/v2/chapters";
 import { POLLEN_EARNED_TABLES } from "../src/storage-schema";
@@ -97,7 +98,8 @@ describe("each route under each combination", () => {
     expect(read.balance).toBe(5000);
     if (expected.wardrobe === "none") { expect(read).not.toHaveProperty("wardrobe"); expect(read).not.toHaveProperty("name_price"); }
     if (expected.wardrobe === "owned") {
-      expect(read.wardrobe).toEqual({ items: ["gold_leaf"], packs: [], look: {}, look_revision: 0, offered: Object.keys(CATALOG.items).filter(id => CATALOG.items[id].released) });
+      // Without the shop nothing of the catalogue shows: `offered` holds only the player's own items.
+      expect(read.wardrobe).toEqual({ items: ["gold_leaf"], packs: [], look: {}, look_revision: 0, offered: ["gold_leaf"] });
       expect(read).not.toHaveProperty("name_price");
     }
     if (expected.wardrobe === "shop") {
@@ -258,6 +260,50 @@ describe("board rewards reaching a player", () => {
     expect((await review("strike")).status).toBe(200);
     expect(await items(host)).toEqual([]);
   });
+  it("applies every board's verdicts first, then delivers in one pass with one budget, and a slow Player holds up nobody", async () => {
+    const relay = [await create(), await create()], steps = [await create(), await create()];
+    const firstSteps = CHAPTERS.find(row => boardKey(row.adapter.key) === "first-steps@1")!.adapter.key;
+    async function checked(key: string, chapter: typeof firstSteps, members: Account[], ticks: number) {
+      const stub = env.LEADERBOARD_BOARDS.getByName(key);
+      const run: LeaderboardRun = { schema_version: 1, board: key, entry_id: await entryId(`room${++serial}`.padEnd(22, "z"), 0), pair_key: await pairKey(members[0].player_id, members[1].player_id),
+        members: [members[0].player_id, members[1].player_id], ticks, finished_at: new Date(1000).toISOString(), finished_ms: 1000, chapter: { ...chapter }, simulation_version: 8, checkpoint: { stage_index: 2, marker: serial } as never };
+      await stub.submit(key, run);
+      await stub.standings(key, [{ entry_id: run.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
+      const proof = (await stub.pendingWork()).replay.find(item => item.entry_id === run.entry_id)!;
+      return { board: key, entry_id: run.entry_id, proof_hash: proof.proof_hash, valid: true, measured_ticks: ticks, reason: "" };
+    }
+    const verdicts = [await checked(RELAY_BOARD, CHAPTERS[0].adapter.key, relay, 600), await checked("first-steps@1", firstSteps, steps, 420)];
+    // The first relay player's Player answers long after the delivery time limit.
+    const slowId = relay[0].player_id;
+    const slowPlayers = new Proxy(env.PLAYERS, { get(target, key) {
+      if (key !== "getByName") { const value = Reflect.get(target, key); return typeof value === "function" ? value.bind(target) : value; }
+      return (id: string) => {
+        const stub = target.getByName(id);
+        if (id !== slowId) return stub;
+        return new Proxy(stub, { get(inner, method) {
+          if (method === "noteBoardRewards") return () => new Promise(resolve => setTimeout(() => resolve({ ok: true, value: { changed: false } }), DELIVERY_TIMEOUT_MS * 4));
+          return Reflect.get(inner, method);
+        } });
+      };
+    } });
+    const meter = countingEnv(Object.assign({ ...env }, BOARDS_WARDROBE, { PLAYERS: slowPlayers }) as Env);
+    const started = Date.now();
+    const answer = await call("/operator/leaderboards/verdicts", "POST", undefined, { schema_version: 1, verdicts }, BOARDS_WARDROBE, { Authorization: "Bearer " + await deriveJobToken(OPERATOR) }, meter.env);
+    expect(answer.status).toBe(200);
+    expect(Date.now() - started).toBeLessThan(DELIVERY_TIMEOUT_MS * 2);
+    expect((await answer.json<{ ranked: string[] }>()).ranked.sort()).toEqual(verdicts.map(item => item.entry_id).sort());
+    // Both boards' verdicts before any delivery, no extra board read, one report per board.
+    const boardCalls = meter.calls.filter(name => name.startsWith("LEADERBOARD_BOARDS."));
+    expect(boardCalls).toEqual(["LEADERBOARD_BOARDS.verdicts", "LEADERBOARD_BOARDS.verdicts", "LEADERBOARD_BOARDS.rewardsDelivered", "LEADERBOARD_BOARDS.rewardsDelivered"]);
+    expect(meter.calls.indexOf("PLAYERS.noteBoardRewards")).toBeGreaterThan(meter.calls.lastIndexOf("LEADERBOARD_BOARDS.verdicts"));
+    expect(meter.calls.filter(name => name === "PLAYERS.noteBoardRewards")).toHaveLength(4);
+    for (const account of [relay[1], ...steps]) expect(await items(account)).toEqual(["gold_leaf", "top_ten_ribbon"]);
+    expect(await items(relay[0])).toEqual([]);
+    // The slow player keeps a mark for the next pull.
+    const marked = await runInDurableObject(board(), async (_, state) =>
+      state.storage.sql.exec<{ player_id: string }>("SELECT player_id FROM lb_reward_sync WHERE player_id!=''").toArray().map(row => row.player_id));
+    expect(marked).toEqual([slowId]);
+  }, 30_000);
   it("never lets an older delivery undo a newer one, and answers a deleted player as done", async () => {
     const player = await create();
     expect(await giveBoardItems(player, ["gold_leaf", "top_ten_ribbon"], 20)).toMatchObject({ ok: true, value: { changed: true } });

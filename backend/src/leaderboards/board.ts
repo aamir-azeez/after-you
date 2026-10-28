@@ -149,6 +149,11 @@ export class LeaderboardBoard extends DurableObject<Env> {
     return rewardLimit > 0 ? { standing, replay, rewards: this.rewards.deliveries(rewardLimit) } : { standing, replay };
   }
 
+  /** With `rewardLimit`, up to that many marked players and their items (rewards.ts deliveries), so a call that changed rewards hands them out with no request of its own. */
+  private rewardsAsked(rewardLimit: number): { rewards?: RewardDelivery[] } {
+    return rewardLimit > 0 ? { rewards: this.rewards.deliveries(rewardLimit) } : {};
+  }
+
   /** How the players' own Players answered: each answered mark goes and each failed one moves back, unless a newer change came since (rewards.ts delivered). */
   rewardsDelivered(done: { player_id: string; seq: number }[], failed: { player_id: string; seq: number }[] = []): void {
     this.ctx.storage.transactionSync(() => this.rewards.delivered(done, failed));
@@ -181,7 +186,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * kept as its replay only once the run ranks or waits, and only when the
    * proof it came from is still the one the verdict checked.
    */
-  async verdicts(board: string, verdicts: Verdict[], developerBest: number | null): Promise<{ ranked: RankedNote[]; view: BoardView }> {
+  async verdicts(board: string, verdicts: Verdict[], developerBest: number | null, rewardLimit = 0): Promise<{ ranked: RankedNote[]; view: BoardView; rewards?: RewardDelivery[] }> {
     const ranked: RankedNote[] = [], replays = await this.encodeKeepable(verdicts);
     this.ctx.storage.transactionSync(() => {
       for (const verdict of verdicts) {
@@ -199,11 +204,11 @@ export class LeaderboardBoard extends DurableObject<Env> {
         if (note) ranked.push(note);
       }
     });
-    return { ranked, view: this.view(board) };
+    return { ranked, view: this.view(board), ...this.rewardsAsked(rewardLimit) };
   }
 
   /** A person's answer on a run waiting for review: approve ranks it, reject drops it. */
-  review(board: string, entryId: string, approve: boolean): { done: boolean; ranked: RankedNote | null; view: BoardView } {
+  review(board: string, entryId: string, approve: boolean, rewardLimit = 0): { done: boolean; ranked: RankedNote | null; view: BoardView; rewards?: RewardDelivery[] } {
     let done = false, ranked: RankedNote | null = null;
     this.ctx.storage.transactionSync(() => {
       const entry = this.entry(entryId);
@@ -212,7 +217,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       if (approve) { entry.data.holds = []; ranked = this.rank(board, entry); }
       else this.drop(entryId, "rejected");
     });
-    return { done, ranked, view: this.view(board) };
+    return { done, ranked, view: this.view(board), ...this.rewardsAsked(rewardLimit) };
   }
 
   /**
@@ -220,7 +225,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * it pushed down keep theirs; runs that move up into the top 10, or to a
    * strict first place, earn what that place earns.
    */
-  strike(board: string, entryId: string): { done: boolean; promoted: RankedNote[]; view: BoardView } {
+  strike(board: string, entryId: string, rewardLimit = 0): { done: boolean; promoted: RankedNote[]; view: BoardView; rewards?: RewardDelivery[] } {
     let done = false;
     const promoted: RankedNote[] = [];
     this.ctx.storage.transactionSync(() => {
@@ -232,7 +237,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       const ranked = this.ranked();
       ranked.slice(0, TOP_PLACES).forEach((entry, index) => { if (this.award(board, entry, index, ranked)) promoted.push(noteOf(entry)); });
     });
-    return { done, promoted, view: this.view(board) };
+    return { done, promoted, view: this.view(board), ...this.rewardsAsked(rewardLimit) };
   }
 
   /** A player's report of a ranked or reviewed run; each player counts once. Returns the number of reporters. */

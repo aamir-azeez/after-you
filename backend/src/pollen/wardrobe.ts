@@ -31,7 +31,8 @@ export type LookState = { schema_version: 1; look: Look; revision: number };
 export type EquipReceipt = LookState & { op: "equip" };
 /**
  * What GET /v1/pollen adds while the wardrobe is on: what is owned (bought, dropped or earned) and worn,
- * and `offered`, the items the server releases (sold or earned), which a phone may draw.
+ * and `offered`, the items a phone may draw: with the shop on, every item the server releases (sold or
+ * earned); with it off, only the player's own, so nothing of the catalogue shows without the shop.
  */
 export type OwnedView = { items: string[]; packs: string[]; look: Look; look_revision: number; offered: string[] };
 /**
@@ -183,7 +184,7 @@ export function wardrobeView(storage: DurableObjectStorage, shop: boolean, catal
   const items = owned(storage), look = storedLook(storage, catalog);
   const base: OwnedView = { items: [...items].filter(([, kind]) => kind === "item").map(([id]) => id).sort(), packs: [...items].filter(([, kind]) => kind === "pack").map(([id]) => id).sort(),
     look: look.look, look_revision: look.revision, offered: offeredItems(catalog) };
-  if (!shop) return base;
+  if (!shop) return { ...base, offered: offeredItems(catalog).filter(id => items.get(id) === "item") };
   const sets = Object.fromEntries(offeredSets(catalog).map(set => [set, setPieces(set, catalog)]));
   const unlocked = offeredItems(catalog).filter(id => catalog.items[id].unlock !== "" && chapterCleared(storage, catalog.items[id].unlock));
   return { ...base, prices: Object.fromEntries(offeredItems(catalog).filter(id => sold(id, catalog)).map(id => [id, itemPrice(id, catalog)])),
