@@ -5,6 +5,8 @@ const Registry = preload("res://services/chapter_registry.gd")
 
 func _run() -> void:
 	root.size = Vector2i(1280,720)
+	# Every cooperative chapter is opened: count each as played.
+	_check(preload("res://tests/unlock_fixture.gd").seed_played(), "Every chapter counts as played")
 	for key: String in Registry.keys():
 		var scene := Registry.solo_scene(key)
 		_check(not scene.is_empty() and ResourceLoader.exists(scene),"Every bundled chapter has a loadable solo scene: " + key)

@@ -380,11 +380,7 @@ func together_chapters() -> Array[Dictionary]:
 		if known and not host.relay_session.supports_creation(ChapterRegistry.hosting_key(offered,host.relay_session.supports_creation)): tag = " · unavailable online"
 		item.locked = item.premium and not reason.is_empty()
 		item.tag = tag
-		if not ChapterUnlocks.reached(offered, unlocks):
-			item.locked = true
-			item.note = ChapterUnlocks.reason(offered, unlocks, true)
-			item.unlock_reason = ChapterUnlocks.reason(offered, unlocks)
-		elif item.locked:
+		if not ChapterUnlocks.lock_entry(item, unlocks) and item.locked:
 			item.lock_reason = reason
 			# Owned through the Test Store: the card says the code is what is missing.
 			if reason == Purchases.HOSTING_NEEDS_TESTER_CODE: item.note = PlayerCopy.HOSTING_NEEDS_TESTER_CODE

@@ -22,7 +22,7 @@ const MAX_ACTIVE_LINKS := 20
 const MAX_LINKS := 60
 const INVITE_DAYS := 7
 ## Header names a 0.6.0 phone never sent (rooms_api.gd at v0.6.0).
-const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history", "x-afteryou-known-room", "x-afteryou-live"]
+const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history", "x-afteryou-known-room", "x-afteryou-live", "x-afteryou-open-chapters"]
 const HistoryStore = preload("res://services/history_store.gd")
 
 var replay_transfer_enabled := true
@@ -173,7 +173,7 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	if path == "/v2/capabilities": return _capabilities(headers)
 	if path == "/v2/rooms" and method == HTTPClient.METHOD_GET: return _list(player)
 	if path == "/v2/rooms" and method == HTTPClient.METHOD_POST: return _create(player, body)
-	if path == "/v2/rooms/join": return _join(player, body)
+	if path == "/v2/rooms/join": return _join(player, body, headers)
 	if path == "/v1/room-inbox": return _inbox(player, headers)
 	if path == "/v1/invitations/resolve": return _resolve(body)
 	if path == "/v1/rooms/join" and legacy_invites.has(normalize_invite(body.get("invite_code"))):
@@ -448,7 +448,7 @@ static func normalize_invite(value: Variant) -> String:
 	var code: String = value.strip_edges().replace("-", "").replace(" ", "").to_upper()
 	return code if RegEx.create_from_string("^[0-9A-F]{20}$").search(code) else ""
 
-func _join(player: String, body: Dictionary) -> Dictionary:
+func _join(player: String, body: Dictionary, headers: Dictionary = {}) -> Dictionary:
 	if not mutations_enabled: return _fail(503, "v2_mutations_disabled")
 	for key: Variant in body:
 		if key not in ["invite_code", "supported_simulation_versions"]: return _fail(400, "unexpected_fields")
@@ -465,6 +465,11 @@ func _join(player: String, body: Dictionary) -> Dictionary:
 		return _ok(_view(room, player))
 	if Time.get_unix_time_from_datetime_string(str(room.invite_expires_at).left(19)) < now: return _fail(410, "invite_expired")
 	if room.guest_id != null: return _fail(409, "room_full")
+	# A new guest whose open chapters (X-AfterYou-Open-Chapters) leave out the
+	# room's chapter is refused (v2/chapter-unlocks.ts); no header, no check.
+	var open: Variant = headers.get("x-afteryou-open-chapters")
+	if open is String and not str(room.level_id) in Array(open.split(",")).map(func(level: String) -> String: return level.strip_edges()):
+		return _fail(403, "chapter_not_open")
 	room.guest_id = player
 	room.revision += 1
 	_bump(room, player)

@@ -111,6 +111,12 @@ func _existing_players() -> void:
 	_check(Unlocks.reached(chain[6], partly) and not Unlocks.reached(chain[7], partly), "A room for a chapter keeps it open")
 	var veteran := Fixture.all_played()
 	_check(_reached(veteran) == chain, "A player who has been in every chapter keeps them all")
+	_check(Unlocks.opens_after(chain[0]).is_empty() and Unlocks.opens_after(chain[3]) == chain[2] and Unlocks.opens_after("no-such@1").is_empty(), "Each chapter is opened by the one before it")
+	var item := {"key": chain[3], "locked": false}
+	var fresh := Unlocks.progress({}, {}, true)
+	_check(Unlocks.lock_entry(item, fresh) and item.locked and item.note == Unlocks.reason(chain[3], fresh, true) and item.unlock_reason == Unlocks.reason(chain[3], fresh), "A card the chain has not reached is locked with its reason")
+	var first := {"key": chain[0], "locked": false}
+	_check(not Unlocks.lock_entry(first, fresh) and not first.locked and not first.has("note"), "A reached card is left as it was")
 
 ## A Full Journey chapter needs the chain and Full Journey; screens that keep
 ## their own Full Journey lock ask reached() and get the chain's reason first.
@@ -166,11 +172,20 @@ func _joining() -> void:
 	_check(Array(levels) == [Registry.FIRST_STEPS.get_slice("@", 0)], "A new player's join names First Steps alone: %s" % line)
 	_check(Unlocks.open(Registry.FIRST_STEPS, newcomer) and Unlocks.open(Registry.FIRST_STEPS, veteran), "A new player and a veteran can both play First Steps together")
 	_check(Unlocks.open(chain[2], veteran) and not Unlocks.open(chain[2], newcomer), "Only the veteran has the third chapter")
-	_check(not chain[2].get_slice("@", 0) in levels and chain[2].get_slice("@", 0) in Unlocks.join_header(veteran), "So a room for it refuses the new player and takes the veteran")
+	_check(not chain[2].get_slice("@", 0) in levels and chain[2].get_slice("@", 0) in _levels(veteran), "So a room for it refuses the new player and takes the veteran")
 	_check(Unlocks.join_refusal(newcomer) == PlayerCopy.CHAPTER_JOIN_NOT_REACHED % Unlocks.title(Registry.FIRST_STEPS), "The refused new player is told to ask for First Steps")
 	var after_first := Unlocks.progress(Fixture.finished_through(chain[0], "friend"), {}, false)
 	_check(Unlocks.join_refusal(after_first) == PlayerCopy.CHAPTER_JOIN_NOT_REACHED % Unlocks.title(chain[1]), "After First Steps together, the next chapter is the one to ask for")
-	_check(chain[1].get_slice("@", 0) in Unlocks.join_header(after_first), "And a room for it now takes the new player")
+	_check(chain[1].get_slice("@", 0) in _levels(after_first), "And a room for it now takes the new player")
+	var finished_room := Unlocks.progress({}, {}, false, [chain[0]])
+	_check(Unlocks.reached(chain[1], finished_room) and not Unlocks.reached(chain[2], finished_room), "A finished room counts as a finish before its places reach this phone")
+	var named := RegEx.create_from_string("^[a-z0-9-]{1,64}$")
+	var all := _levels(veteran)
+	_check(all.size() <= 64, "A join names at most the 64 levels the room reads")
 	for key: String in Registry.keys():
 		var level := key.get_slice("@", 0)
-		_check(level in Unlocks.join_header(veteran), "A veteran's join names %s" % level)
+		_check(level in all, "A veteran's join names %s" % level)
+		_check(named.search(level) != null, "Level id %s fits the room's header pattern, or every join would be refused" % level)
+
+static func _levels(state: Dictionary) -> Array:
+	return Array(Unlocks.join_header(state).get_slice(": ", 1).split(","))

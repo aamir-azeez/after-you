@@ -3,7 +3,7 @@ extends Node
 ## SubViewport with its own save file, identity and DeviceApi. Lifecycle
 ## events go to this phone only. Room journals, replay caches and inbox caches
 ## use the app's own owner-scoped stores under the suite's isolated user://.
-const Main = preload("res://main.gd")
+const Main = preload("res://tests/unlocked_main.gd")
 const Save = preload("res://services/local_save.gd")
 const DeviceApi = preload("res://tests/online_harness/device_api.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")

@@ -7,7 +7,7 @@ extends SceneTree
 ## Home's keepsake and Hard totals, the keepsakes standing on Home, and What's new
 ## count and show the free chapters alone there, and nothing else changes elsewhere.
 
-const Main = preload("res://main.gd")
+const Main = preload("res://tests/unlocked_main.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const Purchases = preload("res://services/purchases.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")

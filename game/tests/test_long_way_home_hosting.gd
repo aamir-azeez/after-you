@@ -3,7 +3,7 @@ extends SceneTree
 ## chapter id, else the previous one, else "unavailable online". Solo always
 ## plays the offered version.
 const Registry = preload("res://services/chapter_registry.gd")
-const Main = preload("res://main.gd")
+const Main = preload("res://tests/unlocked_main.gd")
 const Save = preload("res://services/local_save.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const Fakes = preload("res://tests/test_relay_online.gd")

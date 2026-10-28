@@ -30,6 +30,8 @@ func _run() -> void:
 	await _card_alone()
 	await _bar_motion()
 	await _prepare_keeps_frames()
+	# The chapters opened from Main are past First Steps: count each as played.
+	_check(preload("res://tests/unlock_fixture.gd").seed_played(), "Every chapter counts as played")
 	change_scene_to_file("res://main.tscn")
 	if await _wait_for_scene("res://main.tscn"):
 		await _open_from_main()

@@ -74,4 +74,14 @@ describe("chapter unlocks on join", () => {
     await call("/v2/rooms/join", "POST", other, { invite_code: second.invite_code }, open("first-steps", RELAY.id), gated.env);
     expect(gated.calls).toEqual(plain.calls);
   });
+
+  it("cost a refused guest no more than a full room does", async () => {
+    const host = await create(), guest = await create(), newcomer = await create(), late = await create();
+    const room = await relayRoom(host);
+    const refused = countingEnv(env), full = countingEnv(env);
+    expect((await call("/v2/rooms/join", "POST", newcomer, { invite_code: room.invite_code }, open("first-steps"), refused.env)).status).toBe(403);
+    expect((await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code })).status).toBe(200);
+    expect((await call("/v2/rooms/join", "POST", late, { invite_code: room.invite_code }, {}, full.env)).status).toBe(409);
+    expect(refused.calls).toEqual(full.calls);
+  });
 });

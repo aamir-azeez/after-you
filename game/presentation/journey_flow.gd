@@ -42,6 +42,10 @@ var picker: ChapterPicker
 var hard := false
 ## Full Journey access the open chapter grid was drawn with.
 var _grid_access_drawn := false
+## The marks and the locked cards the open chapter grid was drawn with: new
+## marks that open a chapter draw the page again (refresh_marks).
+var _marks_drawn := 0
+var _locks_drawn: Array[String] = []
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -81,7 +85,10 @@ func show_journey() -> void:
 	# The picker puts every free chapter first, each part in registry order.
 	var owned: bool = host._full_journey_access()
 	_grid_access_drawn = owned
-	chapter_picker.set_entries(entries(owned,hard),ChapterPicker.picture_for(host.ui.size.x))
+	var shown := entries(owned,hard)
+	_marks_drawn = hash(host._chapter_marks())
+	_locks_drawn = _locked(shown)
+	chapter_picker.set_entries(shown,ChapterPicker.picture_for(host.ui.size.x))
 	chapter_picker.chosen.connect(open_solo_chapter)
 	picker = chapter_picker
 	refresh_marks()
@@ -128,9 +135,7 @@ func entries(owned: bool, hard_on: bool = false) -> Array[Dictionary]:
 	var unlocks: Dictionary = host._chapter_unlocks()
 	for item: Dictionary in result:
 		item.locked = item.premium and not owned
-		if not ChapterUnlocks.reached(str(item.key), unlocks):
-			item.locked = true
-			item.note = ChapterUnlocks.reason(str(item.key), unlocks, true)
+		ChapterUnlocks.lock_entry(item, unlocks)
 	return HardMode.picker_entries(result, host._chapter_marks()) if hard_on else result
 
 ## The Chapters page's pictures in its card order, which the thumbnail shelf
@@ -163,9 +168,25 @@ func openable_chapters() -> Array[String]:
 		if not bool(item.locked) and not str(item.key) in result: result.append(str(item.key))
 	return result
 
+## The open page's ticks follow the marks at once. Marks that open a chapter
+## (a keepsake check or a friend's room finishing while the page is up) draw
+## the page again, after any tap in progress.
 func refresh_marks() -> void:
 	if host.mode != MODE_JOURNEY or not is_instance_valid(picker): return
-	picker.refresh_marks(host._chapter_marks())
+	var marks: Dictionary = host._chapter_marks()
+	picker.refresh_marks(marks)
+	var signature := hash(marks)
+	if signature == _marks_drawn: return
+	_marks_drawn = signature
+	if _locked(entries(_grid_access_drawn,hard)) == _locks_drawn: return
+	var drawn := picker
+	await TouchInput.redraw_when_released(host.overlay,func() -> bool: return host.mode == MODE_JOURNEY and picker == drawn,show_journey)
+
+static func _locked(shown: Array[Dictionary]) -> Array[String]:
+	var keys: Array[String] = []
+	for item: Dictionary in shown:
+		if bool(item.get("locked",false)): keys.append(str(item.key))
+	return keys
 
 func show_earlier_islands() -> void:
 	host.running=false

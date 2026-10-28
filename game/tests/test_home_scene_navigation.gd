@@ -28,6 +28,8 @@ func _wait_for_scene(path: String) -> bool:
 	return false
 
 func _run() -> void:
+	# Relay Isles is past First Steps: count every chapter as played.
+	_check(preload("res://tests/unlock_fixture.gd").seed_played(), "Every chapter counts as played")
 	change_scene_to_file("res://main.tscn")
 	if await _wait_for_scene("res://main.tscn"):
 		await _test_round_trip()

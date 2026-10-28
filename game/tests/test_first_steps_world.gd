@@ -2,7 +2,7 @@ extends SceneTree
 const Registry = preload("res://services/chapter_registry.gd")
 const Simulation = preload("res://core/first_steps/simulation.gd")
 const World = preload("res://presentation/first_steps_world.gd")
-const Main = preload("res://main.gd")
+const Main = preload("res://tests/unlocked_main.gd")
 const Save = preload("res://services/local_save.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 var checks := 0

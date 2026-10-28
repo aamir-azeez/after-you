@@ -19,3 +19,16 @@ static func finished_through(last: String, mode: String = "solo") -> Dictionary:
 		marks[key] = {mode: true}
 		if key == last: break
 	return marks
+
+## For tests that run the real main.tscn: earns the first place of every
+## chapter solo in the keepsake ledger (Main's, unless `path` names another),
+## so each chapter counts as played and stays open while no chapter is
+## finished. True once written.
+static func seed_played(path: String = "") -> bool:
+	var Ledger: GDScript = load("res://services/home_keepsakes.gd")
+	var Catalog: GDScript = load("res://services/home_keepsake_catalog.gd")
+	var marks := {}
+	for key: String in ChapterUnlocks.chain():
+		var places: Array[String] = Catalog.chapter_places(key)
+		if not places.is_empty(): marks[places[0]] = {"solo": true}
+	return Ledger.new(Ledger.PATH if path.is_empty() else path).adopt_earned(marks)

@@ -5,7 +5,7 @@ extends SceneTree
 ## build a player who owns Full Journey without a code is told a tester code is
 ## what hosting needs, and the card or host button opens the Tester code screen.
 
-const Main = preload("res://main.gd")
+const Main = preload("res://tests/unlocked_main.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Storage = preload("res://services/local_save.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -30,11 +30,7 @@ class FakeStore extends Purchases:
 ## Main with the accepted tester code and account readiness set by the test.
 class App extends Main:
 	var tester := false
-	## Every chapter already played unless a test sets its own progress
-	## (services/chapter_unlocks.gd).
-	var unlocks: Variant = null
 	func _tester_active() -> bool: return tester
-	func _chapter_unlocks() -> Dictionary: return UnlockFixture.all_played() if unlocks == null else unlocks
 	func _relay_identity() -> Dictionary: return {"ready": true, "player_id": "P".repeat(22), "epoch": 1}
 
 func _initialize() -> void: _run.call_deferred()
@@ -159,7 +155,7 @@ func _run() -> void:
 	_check(_text(scene, PlayerCopy.MAIN_FAD34E850ED9) and not _text(scene, PlayerCopy.HOSTING_NEEDS_TESTER_CODE) and _find(scene, "HostingLockedTester") != null, "Without a Test Store purchase locked hosting keeps the earlier text")
 
 	await _together(scene, store, premium)
-	await _chain(scene)
+	await _chain(scene, store)
 
 	root.remove_child(scene)
 	scene.queue_free()
@@ -261,7 +257,7 @@ func _together(scene: App, store: FakeStore, premium: String) -> void:
 ## later chapter's card shows its lock and reason, is never chosen, and
 ## hosting it is refused with the reason. A remembered locked choice falls
 ## back to First Steps. Joins carry the same progress.
-func _chain(scene: App) -> void:
+func _chain(scene: App, store: FakeStore) -> void:
 	var chain := Unlocks.chain()
 	scene.config.merge(GOOGLE_PLAY, true)
 	scene.unlocks = Unlocks.progress({}, {}, false)
@@ -290,11 +286,58 @@ func _chain(scene: App) -> void:
 	_check(is_instance_valid(scene.room_hub_flow.screen) and scene.mode == "rooms" and hub._message == reason, "Hosting it is refused on the hub with the reason")
 	scene.ensure_relay_session()
 	_check(scene.relay_session.join_unlocks.is_valid() and scene.relay_session.join_unlocks.call() == scene.unlocks, "Joins carry this player's unlock progress")
-	_check(not chain[1].get_slice("@", 0) in Unlocks.join_header(scene.relay_session.join_unlocks.call()), "So a room past First Steps refuses this player")
-	scene.unlocks = null
+	_check(not chain[1].get_slice("@", 0) in _levels(scene.relay_session.join_unlocks.call()), "So a room past First Steps refuses this player")
 	hub.queue_free()
 	scene.room_hub_flow.screen = null
 	await process_frame
+	# Main's own progress: a finished room with a friend counts before this
+	# phone takes its places, and a room in play keeps its chapter open.
+	scene.unlocks = null
+	scene.real = true
+	var before := scene.shared_replays
+	scene.shared_replays = Replays.new([{"family": "chapter", "chapter_key": chain[0]}])
+	var progress: Dictionary = scene._chapter_unlocks()
+	_check(Unlocks.reached(chain[1], progress) and not Unlocks.reached(chain[2], progress), "A finished First Steps room opens the next chapter")
+	_check(chain[1].get_slice("@", 0) in _levels(progress), "And a room for it then takes this player")
+	scene.shared_replays = before
+	# Bought Full Journey before reaching it: the card says what opens the
+	# Lighthouse and leads to the chapters, never to a refused open.
+	store.entitled = true
+	scene.store_flow._show_full_journey_unlocked()
+	await process_frame
+	var lighthouse := Registry.LIGHTHOUSE_V2
+	var line := PlayerCopy.FULL_JOURNEY_NOT_REACHED % [Unlocks.title(Unlocks.opens_after(lighthouse)), Unlocks.title(lighthouse)]
+	_check(_text_in(scene, line) and _button(scene, "Enter the Lighthouse") == null, "Full Journey unlocked says which chapter leads to the Lighthouse")
+	var go := _button(scene, PlayerCopy.FULL_JOURNEY_TO_CHAPTERS)
+	_check(go != null, "And offers the way to the chapters")
+	if go != null:
+		go.pressed.emit()
+		await process_frame
+		_check(scene.mode == "journey", "Which opens the Chapters page")
+	scene.real = false
+	scene.unlocks = UnlockFixture.finished_through(Unlocks.opens_after(lighthouse))
+	scene.unlocks = Unlocks.progress(scene.unlocks, {}, true)
+	scene.store_flow._show_full_journey_unlocked()
+	await process_frame
+	_check(_button(scene, "Enter the Lighthouse") != null, "Once the Lighthouse is reached the card enters it")
+	scene.unlocks = null
+	store.entitled = false
+
+## The level ids a join for `state` names.
+static func _levels(state: Dictionary) -> Array:
+	return Array(Unlocks.join_header(state).get_slice(": ", 1).split(","))
+
+## Finished rooms with a saved replay, as SharedReplayCollection.rooms() lists them.
+class Replays extends RefCounted:
+	var listed: Array
+	func _init(rooms: Array) -> void: listed = rooms
+	func rooms() -> Array: return listed
+
+func _text_in(node: Node, value: String) -> bool:
+	if (node is Label or node is RichTextLabel) and value in str(node.text): return true
+	for child: Node in node.get_children():
+		if _text_in(child, value): return true
+	return false
 
 func _path(label: String) -> String:
 	var result := "user://test-%s-%d.json" % [label, Time.get_ticks_usec()]

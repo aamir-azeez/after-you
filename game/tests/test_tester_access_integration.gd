@@ -1,6 +1,6 @@
 extends SceneTree
 
-const Main = preload("res://main.gd")
+const Main = preload("res://tests/unlocked_main.gd")
 const Preview = preload("res://lighthouse_preview.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Storage = preload("res://services/local_save.gd")

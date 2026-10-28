@@ -617,7 +617,7 @@ func retry_lobby() -> String:
 const DEFINITIVE_LOBBY_REFUSALS := {
 	400: ["invalid_invite", "unexpected_fields", "invalid_field"],
 	402: ["host_unlock_required"],
-	403: ["player_blocked", "chapter_not_open"],
+	403: ["player_blocked", ChapterUnlocks.JOIN_REFUSAL],
 	404: ["invite_not_found"],
 	409: ["room_full", "room_limit_reached", "room_version_conflict", "room_exists", "idempotency_chapter_mismatch", "idempotency_simulation_mismatch", "idempotency_version_mismatch"],
 	410: ["invite_expired", "replay_transferred", "room_deleted"],

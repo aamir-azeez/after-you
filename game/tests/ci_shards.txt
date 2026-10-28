@@ -188,6 +188,7 @@ online_robust 3
 online_scenarios 1
 online_scenarios_edges 1
 online_scenarios_more 3
+online_unlocks 3
 optional_photo_capture 1
 outfit 3
 paid_level_thumbnails 3

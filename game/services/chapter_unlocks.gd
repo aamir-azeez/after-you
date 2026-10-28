@@ -1,22 +1,24 @@
 extends RefCounted
 ## Chapter unlocks: one chain, in the Chapters page order, that every way to
-## play a chapter asks. Solo, a room with a friend (hosting and joining) and
-## duels all use the same check, open(). Nothing here is saved: progress is
-## worked out from what the player already has, so a rebuilt keepsake ledger
-## or a new phone gives the same answer.
+## play a chapter asks: solo, hosting or joining a room with a friend, and
+## duels. Nothing here is saved: progress is worked out from what the player
+## already has, so a rebuilt keepsake ledger or a new phone gives the same answer.
 ##
 ## - The chain: every offered chapter with its own solo screen, in the order
 ##   the pickers show them (Registry.picker_rank): free chapters first, then
 ##   the Full Journey with the Sleeping Lighthouse leading.
 ## - First Steps is always open. A chapter opens once the chapter before it
-##   is finished in any mode (FINISH_MODES). A finish further along opens
+##   is finished in any mode (FINISH_MODES, or a finished room for it). A
+##   finish further along opens
 ##   every chapter before it too, so the rule is one comparison against the
 ##   furthest finished chapter (the frontier).
 ## - A chapter the player has already been in stays open: a place earned there,
 ##   its journal on this phone, or a room for it (touched()). Being in one does
 ##   not open the next.
-## - A Full Journey chapter also needs Full Journey (open()). Screens that keep
-##   their own Full Journey lock and store routing ask reached() and reason().
+## - reached() is the chain alone. Play Solo and Host a room ask it and keep
+##   their own Full Journey lock, store and tester code routing. A join asks
+##   it too: the host's Full Journey covers the guest, as it always has.
+## - open() adds Full Journey: what a duel, which has no host to cover it, asks.
 ## - Earlier islands, keys outside the chain and replays are never gated.
 ##
 ## Callers build progress() once per draw and ask it per card; nothing here
@@ -54,13 +56,17 @@ static func chain_key(key: String) -> String:
 	return str(_counts_for.get(key, ""))
 
 ## What the gate answers from. `marks` is ChapterCompletion.chapters(...),
-## `touched` is touched(...) (chapters the player has already been in) and
-## `full_journey` whether the player has the Full Journey.
-static func progress(marks: Dictionary, touched_keys: Dictionary = {}, full_journey: bool = false) -> Dictionary:
+## `touched` is touched(...) (chapters the player has already been in),
+## `full_journey` whether the player has the Full Journey and `finished_rooms`
+## the chapter keys of finished rooms the player was in, which count before
+## this phone has taken the room's places (a partner's last turn).
+static func progress(marks: Dictionary, touched_keys: Dictionary = {}, full_journey: bool = false, finished_rooms: Array = []) -> Dictionary:
 	_build()
 	var frontier := -1
 	for index in _chain.size():
 		if finished(marks, _chain[index]): frontier = index
+	for key: Variant in finished_rooms:
+		frontier = maxi(frontier, _chain.find(chain_key(str(key))))
 	var opened := {}
 	for key: Variant in touched_keys:
 		var counted := chain_key(str(key))
@@ -93,9 +99,26 @@ static func open(key: String, state: Dictionary) -> bool:
 ## short form a chapter card shows.
 static func reason(key: String, state: Dictionary, note: bool = false) -> String:
 	if not reached(key, state):
-		var previous := _chain[_chain.find(chain_key(key)) - 1]
-		return (PlayerCopy.CHAPTER_LOCKED_NOTE if note else PlayerCopy.CHAPTER_LOCKED) % title(previous)
+		return (PlayerCopy.CHAPTER_LOCKED_NOTE if note else PlayerCopy.CHAPTER_LOCKED) % title(opens_after(key))
 	return "" if open(key, state) else PlayerCopy.CHAPTER_LOCKED_FULL_JOURNEY
+
+## Locks a picker entry (ChapterPicker.entry) the chain has not reached: its
+## card shows the lock and the short reason, and "unlock_reason" carries the
+## sentence for a tap. True when it locked it.
+static func lock_entry(item: Dictionary, state: Dictionary) -> bool:
+	var key := str(item.get("key", ""))
+	if reached(key, state): return false
+	item.locked = true
+	item.note = reason(key, state, true)
+	item.unlock_reason = reason(key, state)
+	return true
+
+## The chapter whose finish opens `key`: the one before it in the chain, or
+## "" for First Steps and keys outside the chain.
+static func opens_after(key: String) -> String:
+	_build()
+	var index := _chain.find(chain_key(key))
+	return _chain[index - 1] if index > 0 else ""
 
 static func title(key: String) -> String:
 	return str(Registry.descriptor(key).get("title", key))
@@ -148,9 +171,7 @@ static func _build() -> void:
 		offered.append(key)
 		premium[key] = bool(Registry.descriptor(key).get("premium", false))
 	var ordered: Array[String] = []
-	for rank: int in 4:
-		for key: String in offered:
-			if Registry.picker_rank(key, premium[key]) == rank: ordered.append(key)
+	ordered.assign(Registry.picker_order(offered, func(key: String) -> int: return Registry.picker_rank(key, premium[key])))
 	var counts := {}
 	var sources := {}
 	for key: String in ordered:

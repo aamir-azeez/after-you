@@ -12,6 +12,7 @@ const ScreenSwitch = preload("res://services/screen_switch.gd")
 const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
 const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
+const RoomInboxClient = preload("res://services/room_inbox_client.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const Joystick = preload("res://presentation/joystick.gd")
@@ -829,21 +830,32 @@ func _chapter_marks() -> Dictionary:
 ## the marks, the chapters already played or in a room, and Full Journey
 ## access. Built once per draw, never per card.
 func _chapter_unlocks() -> Dictionary:
-	return ChapterUnlocks.progress(_chapter_marks(), ChapterUnlocks.touched(home_keepsakes.earned_descriptors(), _room_chapter_keys()), _full_journey_access())
+	var rooms := _known_rooms()
+	return ChapterUnlocks.progress(_chapter_marks(), ChapterUnlocks.touched(home_keepsakes.earned_descriptors(), rooms.chapters), _full_journey_access(), rooms.finished)
 
-## The chapters of the rooms this phone knows: the online session's, the room
-## list's while the hub is up, and finished rooms with a saved replay.
-func _room_chapter_keys() -> Array:
-	var keys: Array = []
+## The rooms this phone knows, as chapter keys: {"chapters": every room's,
+## "finished": finished rooms'}. From the online session's rooms, the room
+## list (the hub's while it is up, else its saved copy, so a cold start knows
+## them too) and finished rooms with a saved replay.
+func _known_rooms() -> Dictionary:
+	var chapters: Array = []
+	var finished: Array = []
 	if relay_session != null:
-		for room_id: Variant in relay_session.room_ids(): keys.append(relay_session.room_chapter(str(room_id)))
-	if room_hub_flow != null and room_hub_flow.inbox != null:
-		for room: Variant in room_hub_flow.inbox.view().get("rooms", []):
-			if room is Dictionary: keys.append(str(room.get("chapter_key", "")))
+		for summary: Dictionary in relay_session.room_summaries():
+			var key: String = relay_session.room_chapter(str(summary.get("room_id", "")))
+			chapters.append(key)
+			if summary.get("active_role") == "complete": finished.append(key)
+	var inbox: RefCounted = room_hub_flow.inbox if room_hub_flow != null and room_hub_flow.inbox != null else RoomInboxClient.new(api, _relay_identity)
+	for room: Variant in inbox.view().get("rooms", []):
+		if not room is Dictionary: continue
+		chapters.append(str(room.get("chapter_key", "")))
+		if room.get("status") == "completed": finished.append(str(room.get("chapter_key", "")))
 	if shared_replays != null:
 		for room: Variant in shared_replays.rooms():
-			if room is Dictionary: keys.append(str(room.get("chapter_key", "")))
-	return keys
+			if room is Dictionary and room.get("family") == "chapter":
+				chapters.append(str(room.get("chapter_key", "")))
+				finished.append(str(room.get("chapter_key", "")))
+	return {"chapters": chapters, "finished": finished}
 
 ## The @1 Lighthouse screen, where its earlier replays play.
 const LIGHTHOUSE_SCENE := LighthouseMigration.V1_SCENE

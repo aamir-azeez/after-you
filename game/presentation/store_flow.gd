@@ -11,7 +11,8 @@ extends Node
 ##   _replay_preview_thumb, _toast
 ## - identity and access rules: _ensure_identity, _relay_identity, _tester_context,
 ##   _tester_checks_enabled, _tester_active, _load_cached_tester,
-##   _hosting_lock_reason, _store_identity_settled, _purchase_session_identity
+##   _hosting_lock_reason, _store_identity_settled, _purchase_session_identity,
+##   _chapter_unlocks
 ##
 ## Cancel rule: every host._card() and host._screen_shell() clears the overlay,
 ## which bumps host.store_view_generation. Each await here keeps the generation
@@ -21,6 +22,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PaidThumbnails = preload("res://presentation/paid_level_thumbnails.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
+const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const Purchases = preload("res://services/purchases.gd")
 const Typed = preload("res://services/typed_values.gd")
@@ -306,7 +308,14 @@ func _show_full_journey_unlocked() -> void:
 		card.add_child(host._paragraph(PlayerCopy.MAIN_FAD34E850ED9,620))
 	elif _manage_subscription_available():
 		card.add_child(host._paragraph(PlayerCopy.for_platform(PlayerCopy.SUBSCRIPTION_ACTIVE,PlayerCopy.SUBSCRIPTION_ACTIVE_IOS),620))
-	card.add_child(host._button("Enter the Lighthouse",func(): lighthouse_requested.emit()))
+	# The Lighthouse leads the Full Journey part of the chapter chain: until the
+	# player reaches it, the card says what opens it and leads to their chapters.
+	var unlocks: Dictionary = host._chapter_unlocks()
+	if ChapterUnlocks.reached(ChapterRegistry.LIGHTHOUSE_V2,unlocks):
+		card.add_child(host._button("Enter the Lighthouse",func(): lighthouse_requested.emit()))
+	else:
+		card.add_child(host._paragraph(PlayerCopy.FULL_JOURNEY_NOT_REACHED % [ChapterUnlocks.title(ChapterUnlocks.opens_after(ChapterRegistry.LIGHTHOUSE_V2)),ChapterUnlocks.title(ChapterRegistry.LIGHTHOUSE_V2)],620))
+		card.add_child(host._button(PlayerCopy.FULL_JOURNEY_TO_CHAPTERS,func(): chapters_requested.emit()))
 	_add_store_links(card)
 	_add_store_back(card)
 

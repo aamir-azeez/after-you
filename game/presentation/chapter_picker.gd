@@ -110,9 +110,7 @@ func set_entries(entries: Array[Dictionary], picture: Vector2) -> void:
 ## lead the pickers come first, then the rest, each in the order given.
 static func shown_order(entries: Array[Dictionary]) -> Array[Dictionary]:
 	var result: Array[Dictionary] = []
-	for rank: int in 4:
-		for item: Dictionary in entries:
-			if Registry.picker_rank(str(item.get("key","")),bool(item.get("premium",false))) == rank: result.append(item)
+	result.assign(Registry.picker_order(entries,func(item: Dictionary) -> int: return Registry.picker_rank(str(item.get("key","")),bool(item.get("premium",false)))))
 	return result
 
 ## Completion ticks and the done tint from ChapterCompletion.chapters(); cards are

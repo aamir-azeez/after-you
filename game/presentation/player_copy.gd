@@ -243,6 +243,10 @@ const HARD_HOST_UNAVAILABLE := "Hard rooms aren't open yet."
 const CHAPTER_LOCKED_NOTE := "Finish %s to open this chapter"
 const CHAPTER_LOCKED := "Finish %s to open this chapter."
 const CHAPTER_LOCKED_FULL_JOURNEY := "This chapter is part of the Full Journey."
+# Full Journey unlocked before the player reaches it: the chapter before the
+# Lighthouse, then the Lighthouse's own name; and the button to their chapters.
+const FULL_JOURNEY_NOT_REACHED := "Finish %s to reach %s. Your Full Journey chapters open from there, one after another."
+const FULL_JOURNEY_TO_CHAPTERS := "Go to your chapters"
 # A join refused because the room's chapter is past this player's. %s is the
 # chapter they can play next, which the friend can host for them.
 const CHAPTER_JOIN_NOT_REACHED := "This room is for a chapter you haven't reached yet. Ask your friend to host %s so you can play it together."

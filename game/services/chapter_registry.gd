@@ -87,6 +87,13 @@ static func leads_picker(key: String) -> bool:
 static func picker_rank(key: String, premium: bool) -> int:
 	return int(premium) * 2 + int(not leads_picker(key))
 
+## `items` sorted by `rank_of` (an item -> its picker_rank), keeping the
+## given order within a rank.
+static func picker_order(items: Array, rank_of: Callable) -> Array:
+	var ranks: Array[Array] = [[], [], [], []]
+	for item: Variant in items: ranks[rank_of.call(item)].append(item)
+	return ranks[0] + ranks[1] + ranks[2] + ranks[3]
+
 ## The scene a Solo card opens: the solo scene, or an earlier version's own
 ## screen while a journey there still continues (a descriptor's
 ## continues_earlier). Loaded, not preloaded: the named script reads this one.

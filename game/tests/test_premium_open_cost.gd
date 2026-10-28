@@ -4,7 +4,7 @@ extends SceneTree
 ## chapter control layers. The secure store is a stand-in for the phone's
 ## native plugin, so every read Main and the chapter make is counted where it
 ## leaves the game.
-const Main = preload("res://main.gd")
+const Main = preload("res://tests/unlocked_main.gd")
 const Card = preload("res://presentation/chapter_loading_card.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
 const ChapterAccess = preload("res://services/chapter_access.gd")
