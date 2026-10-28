@@ -72,6 +72,7 @@ func _run() -> void:
 	await _client_stale()
 	await _name_price()
 	await _wardrobe_without_shop()
+	_capabilities()
 	Catalog.set_offered([])
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
@@ -278,3 +279,19 @@ func _wardrobe_without_shop() -> void:
 	for i in range(4): await process_frame
 	_check(sender.sent.size() == 1 and not sender.sent[0].body.has("pollen_price"), "A name sent while the shop is off carries no price")
 	Wardrobe.use_shared(null)
+
+## What the session reads from the server's capabilities: the wardrobe and the shop apart, and a
+## server from before the split, which sends only the shop's version, meaning both.
+func _capabilities() -> void:
+	var session: RefCounted = load("res://services/relay_online_session.gd").new(null, func() -> Dictionary: return {}, RefCounted.new())
+	var cases := [
+		[{"pollen_version": 1.0}, false, false, "Earning only: no wardrobe, no shop"],
+		[{"pollen_version": 1.0, "pollen_wardrobe_version": 1.0}, true, false, "The wardrobe alone"],
+		[{"pollen_version": 1.0, "pollen_wardrobe_version": 1.0, "pollen_shop_version": 1.0}, true, true, "The wardrobe and the shop"],
+		[{"pollen_version": 1.0, "pollen_shop_version": 1.0}, true, true, "A server from before the split: the shop means both"],
+		[{"pollen_wardrobe_version": 1.0, "pollen_shop_version": 1.0}, false, false, "Nothing without earning"],
+	]
+	for item: Array in cases:
+		session.capabilities = item[0]
+		_check(session.wardrobe_supported() == item[1] and session.shop_supported() == item[2], item[3])
+
