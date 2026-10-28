@@ -152,6 +152,8 @@ var _keepsake_poll := 0.0
 ## -1; the check runs on a later frame (see _show_home).
 var _keepsakes_reconcile_frame := -1
 var _keepsake_identity: Dictionary = {}
+## The Hard marks file's change time and the together Hard switch Home last saw.
+var _home_hard_stamp: Array = []
 var api: Node
 var purchases: Node
 var secrets: Node
@@ -738,8 +740,8 @@ func _show_home() -> void:
 	home_stage.configure(world,home_active,home_keepsakes.earned_descriptors(),_paid_content_hidden())
 	# A card over Home (What's new) keeps its wheel and pinch for itself.
 	home_stage.input_blocked = func() -> bool: return _top_modal() != null
-	var hard := HardMode.new()
-	home_stage.set_hard(hard.states(_chapter_marks(),hard_together(),_paid_content_hidden()),hard.count(hard_together(),_paid_content_hidden()))
+	_set_home_hard(home_stage)
+	home_stage.play_cue = soundscape.play_keepsake_cue
 	overlay.add_child(home_stage)
 	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
 	var menu := HomeMenu.new()
@@ -802,6 +804,13 @@ const LOCKED_PICTURE_TINT := ChapterPicker.LOCKED_PICTURE_TINT
 ## when null).
 func hard_states(together: Variant = null) -> Dictionary:
 	return HardMode.new().states(_chapter_marks(), hard_together() if together == null else bool(together))
+
+## Hands Home's keepsakes the Hard marks and the together Hard switch, and
+## remembers what it handed, so the keepsake poll only hands them on again
+## when the marks file or the switch changed.
+func _set_home_hard(stage: Control) -> void:
+	_home_hard_stamp = [FileAccess.get_modified_time(HardMode.MARKS_PATH), hard_together()]
+	stage.set_hard(HardMode.new().marks(), hard_together())
 
 func hard_together() -> bool:
 	return relay_session != null and relay_session.hard_mode_supported()
@@ -1779,6 +1788,8 @@ func frame_demand() -> String:
 	if is_instance_valid(_chapter_opening): return Frames.ACTIVE
 	if is_instance_valid(shared_replay_child): return Frames.ACTIVE if shared_replay_child.get("mode") in ["replay", "bloom"] else Frames.CALM
 	if running or mode == "completion": return Frames.ACTIVE
+	# A keepsake playing its tap at Home moves for a few seconds, then settles.
+	if mode == "home" and is_instance_valid(home_stage_view) and home_stage_view.keepsake_playing(): return Frames.ACTIVE
 	return Frames.CALM
 
 ## Renders the world once, through a copy of its camera, for the page shade.
@@ -2158,6 +2169,7 @@ func _service_home_keepsakes(delta: float) -> void:
 		journey_flow.refresh_marks()
 	elif is_instance_valid(home_stage_view):
 		home_stage_view.set_keepsakes(home_keepsakes.earned_descriptors())
+		if [FileAccess.get_modified_time(HardMode.MARKS_PATH), hard_together()] != _home_hard_stamp: _set_home_hard(home_stage_view)
 		var offer := overlay.get_node_or_null("HomeFullJourney") as Button
 		if offer != null: offer.visible = _full_journey_offered()
 

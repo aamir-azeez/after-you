@@ -475,6 +475,23 @@ func play_reaction(identity: Array) -> void:
 	voice.volume_db = CUE_DB + float(SoundCues.REACTION.db) + reaction_gain(identity)
 	voice.play()
 
+## A Home keepsake's beat (presentation/home_keepsake_layer.gd): its cue at
+## one pitch inside the cue's span, from the cue alone, so a keepsake sounds
+## the same on every tap. It never advances a turn's cue identities.
+func play_keepsake_cue(key: String) -> void:
+	if not CLIPS.has(key) or not sound_enabled or backgrounded or voices.is_empty() or not _frame_allows_cue(): return
+	var cue: Dictionary = SoundCues.CUES[key]
+	var voice: AudioStreamPlayer = long_voice if cue.get("voice", "") == "long" and is_instance_valid(long_voice) else voices[next_voice]
+	voice.stream = cue.clip
+	voice.pitch_scale = semitones_to_pitch(keepsake_pitch(key))
+	voice.volume_db = CUE_DB + float(cue.get("db", 0.0))
+	voice.play()
+	if voice != long_voice: next_voice = (next_voice + 1) % voices.size()
+
+static func keepsake_pitch(key: String) -> float:
+	var span: Vector2 = SoundCues.CUES.get(key, {}).get("range", Vector2.ZERO)
+	return lerpf(span.x, span.y, identity_unit(["keepsake", key]))
+
 static func reaction_pitch(identity: Array) -> float:
 	var span: Vector2 = SoundCues.REACTION.range
 	return lerpf(span.x, span.y, identity_unit(["end_reaction"] + identity + ["step"]))

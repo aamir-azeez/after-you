@@ -17,8 +17,8 @@ extends RefCounted
 ##   "thumbnail":    the picker image
 ##   "server":       {flag: the backend var gating creation, max_branches}. Only
 ##                   Relay may have flag "" (always creatable).
-## Home's keepsake places (position, size, browse order) are in
-## presentation/home_keepsake_slots.gd.
+## The chapter's one keepsake on Home is its offered version's "home_keepsake"
+## (below); services/home_keepsake_states.gd decides what it shows.
 ## Optional fields, with the value a descriptor gets when it leaves one out:
 const OPTIONAL := {
 	## false keeps a loadable chapter out of the pickers.
@@ -33,8 +33,17 @@ const OPTIONAL := {
 	## The text above a turn's hint, one per stage in stage order; a stage past
 	## the list has none.
 	"turn_intro": [],
-	## The chapter's Home places in order: {stage_id, title}.
+	## The chapter's keepsake ledger places in order: {stage_id, title}.
 	"keepsakes": [],
+	## The chapter's keepsake on Home, on its offered version only (one per
+	## level id): {"builder": a presentation/keepsakes/ script, "island": "left"
+	## or "right" (the Home island it stands on, never worked out from the
+	## price), "slot": [x, z] metres from that island's middle (it faces the Home
+	## camera), "copy": {"name", "action" (the Explore button's words), and the
+	## names of its "together", "hard" and "top" pieces} as PlayerCopy constants,
+	## "sounds": {beat ("base", "together", "hard", "top"): a cue name of
+	## services/sound_cues.gd CUES}}. {} for none.
+	"home_keepsake": {},
 	## The scenery file under content/dressing/.
 	"dressing": "",
 	## Fold the world's static scenery into a few batches.
@@ -117,6 +126,14 @@ static var _data: Dictionary = _by_key()
 ## Registered keys in order. A copy: callers may change it.
 static func keys() -> Array[String]:
 	return _keys.duplicate()
+
+## A chapter's keepsake on Home by its level id (the part of a key before
+## "@"): {"key": the descriptor holding it, "keepsake": its home_keepsake}, or
+## {} when no version of that chapter has one.
+static func home_keepsake(level: String) -> Dictionary:
+	for key: String in _keys:
+		if key.get_slice("@", 0) == level and not _data[key].home_keepsake.is_empty(): return {"key": key, "keepsake": _data[key].home_keepsake}
+	return {}
 
 ## One chapter's descriptor with every optional field filled in, or {} if it is
 ## not registered. Read-only.

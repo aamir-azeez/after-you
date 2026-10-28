@@ -275,6 +275,30 @@ func _home() -> void:
 	_same(lighthouse, LIGHTHOUSE_STAGES, "The Lighthouse @1's places")
 	for key: String in Keepsakes.CHAPTERS:
 		if key != LEGACY_LIGHTHOUSE: _same(Keepsakes.local_path(key), Index.data(key).local_path, "A browsed chapter's Home save is its solo save: " + key)
+	_home_keepsakes()
+
+## Each level id has exactly one home_keepsake, on its offered version, with a
+## builder that loads and builds, a Home island, copy and known sounds.
+func _home_keepsakes() -> void:
+	var levels: Dictionary = {}
+	for key: String in Index.keys():
+		var level := key.get_slice("@", 0)
+		var keepsake: Dictionary = Index.data(key).home_keepsake
+		if not levels.has(level): levels[level] = []
+		if keepsake.is_empty(): continue
+		levels[level].append(key)
+		_check(key in Registry.offered_keys(), "A keepsake lives on its chapter's offered version: " + key)
+		_same(_sorted(keepsake.keys()), ["builder", "copy", "island", "slot", "sounds"], "home_keepsake fields of " + key)
+		_check(ResourceLoader.exists(str(keepsake.get("builder"))) and load(str(keepsake.builder)).new().has_method("build"), "The keepsake builder of %s loads: %s" % [key, keepsake.get("builder")])
+		_check(keepsake.get("island") in ["left", "right"], "The keepsake of %s names a Home island" % key)
+		var slot: Variant = keepsake.get("slot")
+		_check(slot is Array and slot.size() == 2 and slot.all(func(value: Variant) -> bool: return value is float or value is int), "The keepsake slot of %s is [x, z]" % key)
+		_same(_sorted(keepsake.get("copy", {}).keys()), ["action", "hard", "name", "together", "top"], "Keepsake copy of " + key)
+		for word: Variant in keepsake.get("copy", {}).values(): _check(word is String and not str(word).is_empty() and not str(word).contains("-"), "Keepsake copy of %s is plain text without dashes: %s" % [key, word])
+		for beat: Variant in keepsake.get("sounds", {}):
+			_check(beat in ["base", "together", "hard", "top"] and SoundCues.CUES.has(keepsake.sounds[beat]), "Keepsake sound %s of %s is a known beat and cue" % [beat, key])
+	for level: String in levels:
+		_same(levels[level].size(), 1, "Exactly one home_keepsake for the chapter " + level)
 
 ## The other tables' entries that are not registered chapters.
 func _tables() -> void:

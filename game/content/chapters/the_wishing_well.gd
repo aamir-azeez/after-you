@@ -20,5 +20,19 @@ const DATA := {
 	],
 	# The well mouth drops the spirit into the bucket at the bottom of the well.
 	"sound_cues": {"drop": "well_plunk"},
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/wishing_well.gd",
+		"island": "right",
+		"slot": [-0.3, 0.5],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_WISHING_WELL_NAME,
+			"action": PlayerCopy.KEEPSAKE_WISHING_WELL_ACTION,
+			"together": PlayerCopy.KEEPSAKE_WISHING_WELL_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_WISHING_WELL_HARD,
+			"top": PlayerCopy.KEEPSAKE_WISHING_WELL_TOP,
+		},
+		"sounds": {"base": "well_plunk", "together": "seed_caught", "hard": "seed_landed", "top": "receivers_joined"},
+	},
 	"server": {"flag": "WISHING_WELL_CHAPTER_ENABLED", "max_branches": 32},
 }

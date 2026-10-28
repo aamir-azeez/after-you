@@ -19,6 +19,7 @@ const SettingsRows = preload("res://presentation/settings_rows.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const Changelog = preload("res://services/changelog.gd")
+const States = preload("res://services/home_keepsake_states.gd")
 ## Earned places: a free chapter finished solo, so its hard plays open and Home shows
 ## the Hard count, and a paid place earned in a friend's room.
 const EARNED := {"first-steps/a-little-lift": {"solo": true}, "first-steps/a-place-to-grow": {"solo": true},
@@ -88,9 +89,10 @@ func _run() -> void:
 	_check(baseline.store_rows == [false, false], "A desktop build without a store has no Full Journey or Restore row")
 	baseline.erase("store_rows")
 	var together_modes := 2 if app.hard_together() else 1
-	_check(baseline.keepsakes == "Keepsakes · 4 / %d · " % Catalog.variant_total() + PlayerCopy.HARD_COUNT % [0, HardMode.eligible_keys().size() * together_modes] and Catalog.variant_total() == 64,
-		"Home counts every keepsake and every hard play: " + baseline.keepsakes)
-	_check(baseline.keepsake_places == _ids(Catalog.all()), "Every keepsake place has its slot on Home")
+	var upgrades: int = States.states(States.entries(), [], {}, app.hard_together()).upgrades[1]
+	_check(baseline.keepsakes == " · ".join([PlayerCopy.KEEPSAKE_COUNT % [1, 11], PlayerCopy.KEEPSAKE_UPGRADE_COUNT % [0, upgrades], PlayerCopy.KEEPSAKE_HARD_COUNT % [0, 10]]),
+		"Home counts every keepsake, its upgrades and the Hard upgrades, a started paid chapter not yet among them: " + baseline.keepsakes)
+	_check(baseline.keepsake_places == _sorted(States.entries().map(func(entry: Dictionary) -> String: return entry.id)), "Every chapter card's keepsake has its place on Home")
 	var lines := _changelog_lines(false)
 	_check(baseline.whats_new.opened and baseline.whats_new.card == lines.card and baseline.whats_new.earlier == lines.earlier and baseline.whats_new.versions == lines.versions, "What's new shows every highlight in the files")
 
@@ -127,10 +129,11 @@ func _run() -> void:
 			if item.family == "earlier": return Catalog.EARLIER_ROWS.slice(0, free.islands).any(func(row: Array) -> bool: return row[1] == item.stage_id)
 			return "FreeChapter_" + str(item.family).replace("-", "_") in free.free_card_names)
 		var free_total: int = free_places.reduce(func(total: int, item: Dictionary) -> int: return total + (2 if item.friend_available else 1), 0)
-		var free_hard: int = HardMode.eligible_keys().filter(func(key: String) -> bool: return "FreeChapter_" + key.get_slice("@", 0).replace("-", "_") in free.free_card_names).size() * together_modes
-		_check(free_total == 26 and free_hard == 5 * together_modes, "The free chapters hold 26 keepsakes and 5 hard chapters" + label)
-		_check(free.keepsakes == "Keepsakes · 2 / %d · " % free_total + PlayerCopy.HARD_COUNT % [0, free_hard], "Home counts only the free keepsakes and hard plays, leaving out a paid place earned with a friend: " + free.keepsakes + label)
-		_check(free.keepsake_places == _ids(free_places), "Only the free places stand on Home, so no paid outline is browsed" + label)
+		var free_hard: int = HardMode.eligible_keys().filter(func(key: String) -> bool: return "FreeChapter_" + key.get_slice("@", 0).replace("-", "_") in free.free_card_names).size()
+		_check(free_total == 26 and free_hard == 5, "The free chapters hold 26 keepsake places and 5 hard chapters" + label)
+		var free_upgrades: int = States.states(States.entries(true), [], {}, app.hard_together()).upgrades[1]
+		_check(free.keepsakes == " · ".join([PlayerCopy.KEEPSAKE_COUNT % [1, 6], PlayerCopy.KEEPSAKE_UPGRADE_COUNT % [0, free_upgrades], PlayerCopy.KEEPSAKE_HARD_COUNT % [0, free_hard]]), "Home counts only the free keepsakes and their upgrades, leaving out a paid place earned with a friend: " + free.keepsakes + label)
+		_check(free.keepsake_places == _sorted(States.entries(true).map(func(entry: Dictionary) -> String: return entry.id)), "Only the free chapters and the Lantern Line stand on Home, so no paid outline is browsed" + label)
 		var free_lines := _changelog_lines(true)
 		_check(free.whats_new.opened and free.whats_new.card == free_lines.card and free.whats_new.earlier == free_lines.earlier and free.whats_new.versions == free_lines.versions, "What's new still opens, without a paid highlight or a version left with none" + label)
 		_check(free.whats_new.versions < baseline.whats_new.versions and free.whats_new.earlier.size() < baseline.whats_new.earlier.size(), "What's new leaves the paid highlights out" + label)
@@ -316,9 +319,8 @@ func _surfaces(app: Node, platform: String, config: Dictionary) -> Dictionary:
 	var stage: Node = app.home_stage_view
 	var count: Label = stage.find_child("KeepsakeCount", true, false) as Label
 	seen.keepsakes = count.text if count != null else ""
-	var places: Array[String] = stage._keepsake_display.slot_ids() if is_instance_valid(stage._keepsake_display) else []
-	places.sort()
-	seen.keepsake_places = places
+	var places: Array = stage._keepsake_layer.keepsake_ids() if is_instance_valid(stage._keepsake_layer) else []
+	seen.keepsake_places = _sorted(places)
 	seen.whats_new = await _whats_new(app)
 	app.api.player_id = "P".repeat(22)
 	app.settings_flow.show_settings(SettingsRows.ACCOUNT)
@@ -422,3 +424,8 @@ func _check(value: bool, label: String) -> void:
 	if not value:
 		failures += 1
 		push_error(label)
+
+func _sorted(values: Array) -> Array:
+	var copy := values.duplicate()
+	copy.sort()
+	return copy

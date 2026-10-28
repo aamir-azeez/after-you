@@ -28,5 +28,19 @@ const DATA := {
 	},
 	"thumbnail": "res://assets/paid_levels/long-way-home.png",
 	"dressing": "res://content/dressing/long_way_home_v2.gd",
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/signpost.gd",
+		"island": "left",
+		"slot": [0.9, 1.8],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_SIGNPOST_NAME,
+			"action": PlayerCopy.KEEPSAKE_SIGNPOST_ACTION,
+			"together": PlayerCopy.KEEPSAKE_SIGNPOST_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_SIGNPOST_HARD,
+			"top": PlayerCopy.KEEPSAKE_SIGNPOST_TOP,
+		},
+		"sounds": {"base": "valve_turned", "together": "waypoint", "hard": "winch_wound", "top": "island_bloomed"},
+	},
 	"server": {"flag": "LONG_WAY_HOME_V2_CHAPTER_ENABLED", "max_branches": 32},
 }

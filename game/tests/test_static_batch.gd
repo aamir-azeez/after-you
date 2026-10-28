@@ -15,8 +15,9 @@ extends SceneTree
 ##   values at a time: nested arrays and dictionaries, keys too, four levels
 ##   deep and no deeper); a group whose leaf went meanwhile stays as it was,
 ##   and a part of the tree freed between steps is skipped.
-## - On Home the bridge planks with their posts, the plate, the keepsakes and
-##   the actors stay; the island's static leaves are folded.
+## - On Home the bridge planks with their posts, the plate and the actors
+##   stay; the island's static leaves are folded, and the keepsake layer folds
+##   its own still parts and keeps its moving parts.
 ## - With "still", a held node held only to be found keeps its node but its
 ##   plain leaves fold with the batches around it; a held or kept node under
 ##   it stays, and a still leaf itself stays. plan() names the leaves fold()
@@ -172,8 +173,9 @@ func _home() -> void:
 	var actors_ok: bool = true
 	for role: String in world.actors: actors_ok = actors_ok and is_instance_valid(world.actors[role]) and world.actors[role].is_inside_tree()
 	_check(actors_ok, "The spirits stay")
-	var display: Node = app.home_stage_view._keepsake_display
-	_check(is_instance_valid(display) and display.is_inside_tree() and display.find_children("StaticBatch*", "", true, false).is_empty(), "The keepsakes stay their own nodes")
+	var layer: Node = app.home_stage_view._keepsake_layer
+	_check(is_instance_valid(layer) and layer.is_inside_tree() and layer.get_parent() == terrain, "The keepsake layer stands on the island")
+	_check(not terrain.find_children("StaticBatch*", "MeshInstance3D", false, false).any(func(batch: Node) -> bool: return layer.is_ancestor_of(batch)), "Home's own fold leaves the keepsake layer to fold its props")
 	app.queue_free()
 	for i in range(3): await process_frame
 	await create_timer(0.15).timeout

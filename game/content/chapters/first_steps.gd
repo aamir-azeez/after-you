@@ -20,5 +20,19 @@ const DATA := {
 		{"stage_id": "a-little-lift", "title": "A Little Lift"},
 		{"stage_id": "a-place-to-grow", "title": "A Place to Grow"},
 	],
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/bell_lift.gd",
+		"island": "right",
+		"slot": [-1.4, 1.8],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_BELL_LIFT_NAME,
+			"action": PlayerCopy.KEEPSAKE_BELL_LIFT_ACTION,
+			"together": PlayerCopy.KEEPSAKE_BELL_LIFT_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_BELL_LIFT_HARD,
+			"top": PlayerCopy.KEEPSAKE_BELL_LIFT_TOP,
+		},
+		"sounds": {"base": "bell_rung", "together": "lift_ready", "hard": "tower_bell", "top": "island_bloomed"},
+	},
 	"server": {"flag": "FIRST_STEPS_ENABLED", "max_branches": 32},
 }

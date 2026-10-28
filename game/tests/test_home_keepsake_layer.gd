@@ -1,17 +1,22 @@
 extends SceneTree
-## Keepsakes stand on the Home island in fixed slots: real props once a place is
-## finished solo and with a friend, outlines with solo / together marks before.
+## Home's keepsakes on the islands (presentation/home_keepsake_layer.gd): one
+## per chapter card, each on its own island, off the spirits' start spots and
+## clear of the trees, the header buttons, the card and each other; still parts
+## folded and moving parts kept; a burst of changes rebuilt once; taps, repeat
+## taps, Reduce motion, leaving Home mid tap and Explore walk ups; the card's
+## lines, marks and count; the Home bridge in Explore.
 const World = preload("res://presentation/island_world.gd")
 const Stage = preload("res://presentation/home_stage.gd")
-const Display = preload("res://presentation/home_keepsake_display.gd")
-const Slots = preload("res://presentation/home_keepsake_slots.gd")
+const Layer = preload("res://presentation/home_keepsake_layer.gd")
+const States = preload("res://services/home_keepsake_states.gd")
+const Card = preload("res://presentation/keepsakes/keepsake_card.gd")
 const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Levels = preload("res://core/levels.gd")
 const Main = preload("res://main.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
-## Spirits stand about this tall; their screen area includes it.
+const HardMode = preload("res://services/hard_mode.gd")
 const SPIRIT_HEIGHT := 1.15
 var checks := 0
 var failures := 0
@@ -26,10 +31,11 @@ func _check(ok: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
-	_check_slot_table()
 	await _check_states_and_updates()
 	await _check_layout_clearance()
+	await _check_fold()
 	await _check_tap()
+	await _check_play()
 	await _check_explore()
 	await _check_explore_bridge()
 	await _check_explore_arrows()
@@ -39,26 +45,11 @@ func _run() -> void:
 		var heights: Array = box_heights.values()
 		_check(heights.size() == 4 and heights.all(func(height: float) -> bool: return absf(height - heights[0]) <= 0.5), "The keepsake box keeps one height in every state at %s: %s" % [size, box_heights])
 		box_heights.clear()
-	var lift := Catalog.chapter_place("first-steps@1", "a-little-lift")
-	var light := Catalog.chapter_place(Catalog.LIGHTHOUSE, "borrowed-light")
-	_check(Catalog.variant_count([{"id": lift, "solo": true, "friend": true}]) == 2, "Earning solo and together on one place counts two variants")
-	_check(Catalog.variant_count([{"id": light, "solo": true, "friend": true}, {"id": "unknown/place", "solo": true}]) == (2 if Catalog.lighthouse_together() else 1), "Lighthouse places have a together variant once its six-stage chapter is released; unknown places never count")
-	print("HOME KEEPSAKE DISPLAY: %d checks, %d failures" % [checks, failures])
+	print("HOME KEEPSAKE LAYER: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-func _check_slot_table() -> void:
-	for place: Dictionary in Catalog.all():
-		_check(Slots.has_slot(place.id), "Keepsake %s has no Home island slot. Add a row for it to SLOTS in presentation/home_keepsake_slots.gd" % place.id)
-	for id: String in Slots.ids():
-		_check(not Catalog.by_id(id).is_empty(), "Home island slot %s matches no catalog keepsake. Remove or rename its row in presentation/home_keepsake_slots.gd" % id)
-	for level: Dictionary in Levels.all_levels():
-		_check(level.bounds == [-560, -290, 560, 290] and level.gap == [-100, 100], "Every island Home can show has the slot table's shape: " + str(level.id))
-	_check(Display.state_of({"friend_available": true}, {}) == "none" and Display.state_of({"friend_available": true}, {"solo": true}) == "solo" and Display.state_of({"friend_available": true}, {"friend": true}) == "friend" and Display.state_of({"friend_available": true}, {"solo": true, "friend": true}) == "complete", "A place is complete only when finished solo and with a friend")
-	_check(Display.state_of({"friend_available": false}, {"solo": true}) == "complete" and Display.state_of({"friend_available": false}, {"friend": true}) == "none", "A solo-only place is complete once finished solo")
-
-## A world, a Home stage over it and the stage's display.
-func _home(size: Vector2i, items: Array[Dictionary]) -> Dictionary:
-	# Each Home here starts from the default view, never one kept from the last.
+## A world, a Home stage over it and the stage's layer.
+func _home(size: Vector2i, items: Array[Dictionary], hard: Dictionary = {}, together_hard: bool = true) -> Dictionary:
 	Stage._retained_view.clear()
 	var viewport := SubViewport.new()
 	viewport.size = size
@@ -74,311 +65,173 @@ func _home(size: Vector2i, items: Array[Dictionary]) -> Dictionary:
 	theme_source.free()
 	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	stage.configure(world, func() -> bool: return true, items)
+	stage.set_hard(hard, together_hard)
 	viewport.add_child(stage)
 	stage.set_process(false)
 	for frame in range(6):
 		await process_frame
 		stage._process(0)
-	return {"viewport": viewport, "world": world, "stage": stage, "display": stage._keepsake_display}
+	return {"viewport": viewport, "world": world, "stage": stage, "layer": stage._keepsake_layer}
 
-func _earned(id: String, solo: bool, friend: bool) -> Dictionary:
-	var item := Catalog.by_id(id)
-	item.solo = solo
-	item.friend = friend
-	return item
-
-func _materials(root: Node) -> Array:
-	var result := []
-	for node: Node in root.find_children("*", "MeshInstance3D", true, false):
-		var mat: Material = (node as MeshInstance3D).material_override
-		if node.visible and not result.has(mat): result.append(mat)
-	return result
-
-func _check_states_and_updates() -> void:
-	var lift := Catalog.chapter_place("first-steps@1", "a-little-lift")
-	var grow := Catalog.chapter_place("first-steps@1", "a-place-to-grow")
-	var relay := Catalog.chapter_place("relay-isles@2", "relay")
-	var light := Catalog.chapter_place(Catalog.LIGHTHOUSE, "borrowed-light")
-	var items: Array[Dictionary] = [_earned(lift, true, true), _earned(grow, true, false), _earned(relay, false, true), _earned(light, true, false)]
-	var descriptors_before := JSON.stringify(items)
-	var home := await _home(Vector2i(960, 540), items)
-	var world: Node3D = home.world
-	var stage: Control = home.stage
-	var display: Node3D = home.display
-	var definition_before := JSON.stringify(world.current_level)
-	_check(is_instance_valid(display) and display.visible and display.get_parent() == world.terrain, "Keepsakes stand on the Home island itself")
-	# Started chapters (First Steps, Relay, Lighthouse) plus the next untouched one.
-	var shown_expected := {}
-	for chapter: String in ["first-steps@1", "relay-isles@2", Catalog.LIGHTHOUSE, "high-and-low@1"]:
-		for id: String in Catalog.chapter_places(chapter): shown_expected[id] = true
-	_check(display.slot_ids().size() == Catalog.all().size(), "Every catalog place has a slot")
-	_check(display.shown_slot_ids().size() == shown_expected.size() and display.shown_slot_ids().all(func(id: String) -> bool: return shown_expected.has(id)) and display.builds == shown_expected.size(), "Only started chapters and the next one show, each built once: %s" % [display.shown_slot_ids()])
-	for id: String in display.slot_ids():
-		if not shown_expected.has(id): _check(display.slot_node(id) == null, "A later chapter's slot stays empty: " + id)
-	_check(display.island("behind_left") != null and display.island("behind_left").visible and display.island("behind_right") == null and display.island("beside_right") == null, "The Lighthouse island shows once a Lighthouse keepsake is shown, and the others wait")
-	_check(stage.find_children("*", "SubViewport", true, false).is_empty() and display.find_children("*Shelf*", "", true, false).is_empty(), "No shelf or keepsake strip remains")
-	# Finished solo, a Lighthouse place is complete only while it has no together variant.
-	var expect := {lift: "complete", grow: "solo", relay: "friend", light: "solo" if Catalog.lighthouse_together() else "complete"}
-	for id: String in display.shown_slot_ids():
-		var slot: Node3D = display.slot_node(id)
-		var state: String = expect.get(id, "none")
-		var place := Catalog.by_id(id)
-		_check(slot.get_meta("state") == state, "Slot %s shows state %s" % [id, state])
-		var prop := slot.get_node_or_null("Keepsake")
-		var outline := slot.get_node_or_null("Outline")
-		var solo := slot.get_node_or_null("SoloMark")
-		var together := slot.get_node_or_null("TogetherMark")
-		_check_state(slot, state, place)
-	var ghosts := []
-	var plain_shared := true
-	var outline_meshes := 0
-	var prop_meshes := 0
-	var prop_materials := []
-	for id: String in display.shown_slot_ids():
-		var slot: Node3D = display.slot_node(id)
-		var outline := slot.get_node_or_null("Outline") as MeshInstance3D
-		if outline != null:
-			if not ghosts.has(outline.material_override): ghosts.append(outline.material_override)
-			outline_meshes += 1
-			_check(outline.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF and outline.get_child_count() == 0 and outline.mesh.get_surface_count() == 1, "Each outline is one shadowless merged mesh: " + id)
-		var prop := slot.get_node_or_null("Keepsake")
-		if prop != null:
-			for node: Node in prop.find_children("*", "MeshInstance3D", true, false):
-				prop_meshes += 1
-				var mat := (node as MeshInstance3D).material_override as StandardMaterial3D
-				if not prop_materials.has(mat): prop_materials.append(mat)
-				if mat.albedo_texture == null and not mat.emission_enabled: plain_shared = plain_shared and Primitives.is_shared(mat)
-	_check(outline_meshes == display.shown_slot_ids().size() - 4, "Every untouched shown place draws one outline")
-	_check(ghosts.size() == 1 and ghosts.all(func(mat: StandardMaterial3D) -> bool: return mat.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED), "All %d outlines share one transparent material: %d" % [outline_meshes, ghosts.size()])
-	var upgrade_materials := {}
-	for node: Node in display.find_children("Upgrade", "Node3D", true, false):
-		for part: Node in node.find_children("*", "MeshInstance3D", true, false): upgrade_materials[(part as MeshInstance3D).material_override] = true
-	_check(upgrade_materials.size() == 3 and upgrade_materials.keys().all(func(mat: Material) -> bool: return Primitives.is_shared(mat)), "Every upgrade shares the same three kit materials: %d" % upgrade_materials.size())
-	_check(plain_shared and prop_materials.size() < prop_meshes, "Earned keepsakes use the kit's shared materials (%d materials for %d meshes)" % [prop_materials.size(), prop_meshes])
-	var marks := []
-	for node: Node in display.find_children("*Mark", "MeshInstance3D", true, false):
-		var mat: Material = (node as MeshInstance3D).material_override
-		if not marks.has(mat): marks.append(mat)
-	_check(marks.size() <= 4, "Solo and together marks share one material per lit or dim icon")
-	# Selection starts at the first unfinished place in slot order.
-	_check(display.selected_item().id == grow and stage._keepsake_title.text == Catalog.by_id(grow).title, "Home opens on the first unfinished keepsake")
-	_check(stage._keepsake_status.text == PlayerCopy.KEEPSAKE_NEEDS_FRIEND, "A solo-only place says it still needs a friend")
-	# Unchanged descriptors rebuild nothing, even as a fresh deep copy.
-	var nodes := {}
-	for id: String in display.shown_slot_ids(): nodes[id] = display.slot_node(id).get_instance_id()
-	var builds: int = display.builds
-	for repeat in range(5):
-		stage.set_keepsakes(items.duplicate(true))
-		display.set_items(items.duplicate(true))
-	_check(display.builds == builds and display.shown_slot_ids().all(func(id: String) -> bool: return display.slot_node(id).get_instance_id() == nodes[id]), "Unchanged keepsake state rebuilds no slot")
-	var garden := Catalog.chapter_place("relay-isles@2", "garden")
-	var upper := Catalog.chapter_place("high-and-low@1", "upper-path")
-	var upper_mesh: Mesh = (display.slot_node(upper).get_node("Outline") as MeshInstance3D).mesh
-	# Solo to both, together to both, and nothing to solo, in one update.
-	var changed := items.duplicate(true)
-	changed.append(_earned(garden, true, false))
-	changed[1].friend = true
-	changed[2].solo = true
-	stage.set_keepsakes(changed)
-	_check(display.builds == builds + 3, "Only the three changed slots rebuild")
-	for id: String in display.shown_slot_ids():
-		if id in [grow, relay, garden]: _check(display.slot_node(id).get_instance_id() != nodes[id], "A changed slot is rebuilt: " + id)
-		else: _check(display.slot_node(id).get_instance_id() == nodes[id], "An unchanged slot keeps its nodes: " + id)
-	_check_state(display.slot_node(grow), "complete", Catalog.by_id(grow))
-	_check_state(display.slot_node(relay), "complete", Catalog.by_id(relay))
-	_check_state(display.slot_node(garden), "solo", Catalog.by_id(garden))
-	_check(display.selected_item().id in [grow, relay, garden] and stage._keepsake_title.text == display.selected_item().title, "New progress is selected and named in the box")
-	var outline_again := items.duplicate(true)
-	stage.set_keepsakes(outline_again)
-	_check((display.slot_node(upper).get_node("Outline") as MeshInstance3D).mesh == upper_mesh and display.slot_node(garden).get_node_or_null("Outline") != null, "A rebuilt outline reuses its cached merged mesh")
-	# Browsing reaches every slot and wraps.
-	var seen := {}
-	var start: int = display.selected_index
-	for index in range(display.shown_slot_ids().size()):
-		seen[display.selected_item().id] = true
-		display.select_offset(1)
-	_check(seen.size() == display.shown_slot_ids().size() and display.selected_index == start, "Browsing reaches every shown keepsake and wraps")
-	display.select_id(light)
-	stage._update_keepsake_labels()
-	var together: Control = stage._keepsake_controls.find_child("KeepsakeTogether", true, false)
-	if Catalog.lighthouse_together(): _check(together.visible and stage._keepsake_status.text == PlayerCopy.KEEPSAKE_NEEDS_FRIEND, "A Lighthouse keepsake finished solo now waits for a friend")
-	else: _check(not together.visible and stage._keepsake_status.text == PlayerCopy.KEEPSAKE_FINISHED_SOLO, "A solo-only keepsake hides the together icon")
-	var highlight: Node3D = display.get_node("SelectedSlot")
-	_check(highlight.position.x == display.slot_node(light).position.x and highlight.position.z == display.slot_node(light).position.z, "The selected slot is marked on the island")
-	var control_point: Vector2 = stage._keepsake_controls.get_global_rect().get_center()
-	_check(not stage._allowed(control_point), "Keepsake buttons never start a home camera gesture")
-	_check(JSON.stringify(items) == descriptors_before and JSON.stringify(world.current_level) == definition_before, "Looking at keepsakes changes neither awards nor authored gameplay")
-	var garden_prop: Node3D = world.garden
-	_check(not garden_prop.visible and not world.landing_marker.visible, "Home clears the gameplay garden and landing ring while it owns the island")
-	stage.free()
-	await process_frame
-	_check(garden_prop.visible and world.home_presentation_owner == 0, "Leaving home restores gameplay props and releases scenery ownership")
+func _close(home: Dictionary) -> void:
+	if is_instance_valid(home.stage): home.stage.free()
 	home.viewport.free()
 	await process_frame
 
-## One place's look in each state: outline with dim marks, gold keepsake with
-## the solo mark, teal keepsake with the together mark, or the upgraded keepsake.
-func _check_state(slot: Node3D, state: String, place: Dictionary) -> void:
-	var id: String = place.id
-	_check(slot.get_meta("state") == state, "Slot %s shows state %s" % [id, state])
-	var prop := slot.get_node_or_null("Keepsake")
-	var outline := slot.get_node_or_null("Outline")
-	var upgrade := slot.get_node_or_null("Upgrade")
-	var solo := slot.get_node_or_null("SoloMark")
-	var together := slot.get_node_or_null("TogetherMark")
-	match state:
-		"none":
-			_check(prop == null and outline != null and upgrade == null, "An untouched place shows only its outline: " + id)
-			_check(solo != null and not solo.get_meta("lit"), "An outline shows a dim solo mark: " + id)
-			if place.friend_available: _check(together != null and not together.get_meta("lit"), "An outline shows a dim together mark: " + id)
-			else: _check(together == null, "A solo-only outline has no together mark: " + id)
-		"solo":
-			_check(prop != null and outline == null and upgrade == null and prop.get_meta("variant") == "solo", "Done solo shows the gold keepsake: " + id)
-			_check(solo != null and solo.get_meta("lit") and together == null, "Done solo shows only the lit solo mark: " + id)
-		"friend":
-			_check(prop != null and outline == null and upgrade == null and prop.get_meta("variant") == "friend", "Done together shows the teal keepsake: " + id)
-			_check(together != null and together.get_meta("lit") and solo == null, "Done together shows only the lit together mark: " + id)
-		"complete":
-			_check(prop != null and outline == null and solo == null and together == null, "A finished place shows its keepsake with no marks: " + id)
-			_check(prop.get_meta("variant") == ("friend" if place.friend_available else "solo"), "A finished place keeps its together keepsake where one exists: " + id)
-			_check(upgrade != null and upgrade.get_node_or_null("Plinth") != null and upgrade.get_node_or_null("Rim") != null and prop.position.y > 0.0, "A finished keepsake stands raised on the upgrade plinth with its gold rim: " + id)
-			_check(slot.get_node_or_null("Planting") != null, "A finished keepsake has a little planting at its foot: " + id)
+## The ledger marks for every stage of a chapter (or an earlier island).
+func _cleared(level: String, solo: bool, friend: bool, into: Array[Dictionary] = []) -> Array[Dictionary]:
+	for item: Dictionary in Catalog.all():
+		if item.family != level: continue
+		var earned := item.duplicate(true)
+		earned.solo = solo
+		earned.friend = friend and item.friend_available
+		into.append(earned)
+	return into
 
-## A slot's footprint (keepsake and upgrade) in a frame: the island floor, or
-## the terrace's own turned coordinates.
-func _footprint(display: Node3D, slot: Node3D, frame: Transform3D) -> AABB:
-	var box := AABB()
-	var first := true
-	var to_frame := frame.affine_inverse() * display.global_transform.affine_inverse()
-	for part: String in ["Keepsake", "Upgrade"]:
-		var root := slot.get_node_or_null(part)
-		if root == null: continue
-		for node: Node in root.find_children("*", "MeshInstance3D", true, false):
-			var mesh := node as MeshInstance3D
-			if not mesh.visible: continue
-			var local := mesh.get_aabb()
-			for index in range(8):
-				var point: Vector3 = to_frame * mesh.global_transform * local.get_endpoint(index)
-				if first: box = AABB(point, Vector3.ZERO)
-				else: box = box.expand(point)
-				first = false
-	return box
+func _everything() -> Array[Dictionary]:
+	var all: Array[Dictionary] = []
+	for item: Dictionary in Catalog.all():
+		var earned := item.duplicate(true)
+		earned.solo = true
+		earned.friend = item.friend_available
+		all.append(earned)
+	return all
 
-## How far a slot's keepsake and upgrade reach across the floor from its centre.
-func _reach(display: Node3D, slot: Node3D) -> float:
-	var reach := 0.0
-	var to_slot := slot.global_transform.affine_inverse()
-	for part: String in ["Keepsake", "Upgrade"]:
-		var root := slot.get_node_or_null(part)
-		if root == null: continue
-		for node: Node in root.find_children("*", "MeshInstance3D", true, false):
-			var mesh := node as MeshInstance3D
-			# The seed's glow is a camera-facing halo, not part of the footprint.
-			if not mesh.visible or mesh.name == "SeedGlow" or not mesh.mesh is PrimitiveMesh: continue
-			var to_floor := to_slot * mesh.global_transform
-			for vertex: Vector3 in (mesh.mesh as PrimitiveMesh).get_mesh_arrays()[Mesh.ARRAY_VERTEX]:
-				var point: Vector3 = to_floor * vertex
-				reach = maxf(reach, Vector2(point.x, point.z).length())
-	return reach
+func _all_hard() -> Dictionary:
+	var hard := {}
+	for key: String in HardMode.eligible_keys(): hard[key] = {"solo": true, "together": true}
+	return hard
+
+## Waits for the layer's pending rebuild and fold.
+func _settle(layer: Node3D) -> void:
+	var until := Time.get_ticks_msec() + 8000
+	while layer.settling() and Time.get_ticks_msec() < until: await process_frame
+
+func _check_states_and_updates() -> void:
+	var items: Array[Dictionary] = _cleared("first-steps", true, false)
+	_cleared("relay-isles", true, true, items)
+	var home := await _home(Vector2i(960, 540), items, {"first-steps@1": {"solo": true, "together": false}})
+	var world: Node3D = home.world
+	var stage: Control = home.stage
+	var layer: Node3D = home.layer
+	await _settle(layer)
+	_check(is_instance_valid(layer) and layer.get_parent() == world.terrain and layer.name == "HomeKeepsakes", "Keepsakes stand on the Home island itself")
+	_check(layer.shown_ids() == ["first-steps", "relay-isles", "high-and-low"], "Two keepsakes and the next outline show: %s" % [layer.shown_ids()])
+	var lift: Node3D = layer.prop_node("first-steps")
+	var next: Node3D = layer.prop_node("high-and-low")
+	_check(lift != null and lift.find_child("Footing", true, false) != null and layer.parts_of("first-steps").has("lift"), "The Bell Lift stands on its Hard footing with its moving lift")
+	_check(next != null and next.get_node_or_null("Outline") != null and layer.parts_of("high-and-low").is_empty(), "The next keepsake is an outline with nothing to move")
+	var veil := next.get_node("Outline") as MeshInstance3D
+	_check(veil.mesh.get_surface_count() == 1 and veil.material_override.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED and veil.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "An outline is one merged mesh with the see-through veil")
+	_check(stage._keepsake_count.text == "Keepsakes 2 / %d · Upgrades 2 / %d · Hard 1 / 10" % [States.entries().size(), States.states(States.entries(), [], {}, true).upgrades[1]], "The count line: %s" % stage._keepsake_count.text)
+	# Unchanged marks rebuild nothing, even as fresh copies, and a burst rebuilds once.
+	var builds: int = layer.builds
+	for repeat in range(4): stage.set_keepsakes(items.duplicate(true))
+	await _settle(layer)
+	_check(layer.builds == builds and layer.prop_node("first-steps") == lift, "Unchanged marks rebuild nothing")
+	var more := items.duplicate(true)
+	_cleared("high-and-low", true, false, more)
+	stage.set_keepsakes(more)
+	var most := more.duplicate(true)
+	_cleared("the-wishing-well", false, true, most)
+	stage.set_keepsakes(most)
+	_check(layer.builds == builds and layer.prop_node("first-steps") == lift, "The props wait while a burst of awards arrives")
+	await _settle(layer)
+	_check(layer.builds == builds + 1, "A burst of changes rebuilds the set once: %d" % (layer.builds - builds))
+	_check(layer.prop_node("the-wishing-well") != null and layer.parts_of("the-wishing-well").has("bucket"), "The new keepsake stands once the set swaps in")
+	_check(not is_instance_valid(lift), "The old set goes with the swap")
+	_check(layer.find_children("Props", "Node3D", false, false).size() == 1, "Only one set of props stays")
+	_check(stage._keepsake_title.text == PlayerCopy.KEEPSAKE_WISHING_WELL_NAME, "New progress is selected and named on the card")
+	_check(stage._keepsake_status.text == PlayerCopy.KEEPSAKE_WANTS_HARD_TOGETHER % PlayerCopy.KEEPSAKE_WISHING_WELL_HARD, "Cleared with a friend, the card names the Hard piece next: " + stage._keepsake_status.text)
+	# Browsing reaches every shown keepsake and wraps.
+	var seen := {}
+	var start: int = layer.selected_index
+	for index in range(layer.shown_ids().size()):
+		seen[layer.selected_item().id] = true
+		layer.select_offset(1)
+	_check(seen.size() == layer.shown_ids().size() and layer.selected_index == start, "Browsing reaches every shown keepsake and wraps")
+	var highlight: Node3D = layer.get_node("SelectedSlot")
+	layer.select_id("relay-isles")
+	_check(is_equal_approx(highlight.position.x, layer.slot_transform("relay-isles").origin.x), "The selected keepsake is marked on the island")
+	var definition_before := JSON.stringify(world.current_level)
+	_check(JSON.stringify(world.current_level) == definition_before and not world.garden.visible, "Home clears the gameplay garden while it owns the island")
+	var garden: Node3D = world.garden
+	stage.free()
+	await process_frame
+	_check(garden.visible and world.home_presentation_owner == 0, "Leaving Home restores gameplay props")
+	home.viewport.free()
+	await process_frame
 
 func _screen_rect(camera: Camera3D, corners: Array) -> Rect2:
 	var rect := Rect2(camera.unproject_position(corners[0]), Vector2.ZERO)
 	for corner: Vector3 in corners: rect = rect.expand(camera.unproject_position(corner))
 	return rect
 
-func _check_layout_clearance() -> void:
-	var all: Array[Dictionary] = []
-	for place: Dictionary in Catalog.all(): all.append(_earned(place.id, true, true))
-	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
-		var home := await _home(size, all)
-		var stage: Control = home.stage
-		var display: Node3D = home.display
-		var camera: Camera3D = home.world.camera
-		var floor: Rect2 = stage._floor
-		var right := Rect2(1.0, -2.9, 4.6, 5.8)
-		_check(display.shown_slot_ids().size() == Catalog.all().size() and Slots.ISLANDS.keys().all(func(name: String) -> bool: return display.island(name) != null and display.island(name).visible), "A full collection shows every keepsake and every keepsake island")
-		# The two Home trees on the right island, trunk to crown, and the header buttons' corner.
-		var trees: Array[Rect2] = []
-		var tree_screens: Array[Rect2] = []
-		for tree_x: float in [2.45, 3.95, -4.15, -2.65]:
-			if tree_x > 0.0: trees.append(Rect2(tree_x - 0.5, -2.62 - 0.4, 1.0, 0.8))
-			tree_screens.append(_screen_rect(camera, [Vector3(tree_x - 0.45, 0, -2.97), Vector3(tree_x + 0.45, 0, -2.27), Vector3(tree_x - 0.45, 1.65, -2.97), Vector3(tree_x + 0.45, 1.65, -2.27), Vector3(tree_x + 0.45, 1.65, -2.97), Vector3(tree_x - 0.45, 1.65, -2.27)]))
-		var header := Rect2(size.x - 310, 0, 310, 92)
-		var feet := {}
-		var spirits := _screen_rect(camera, [Vector3(floor.position.x, 0, floor.position.y), Vector3(floor.end.x, 0, floor.position.y), Vector3(floor.position.x, 0, floor.end.y), Vector3(floor.end.x, 0, floor.end.y), Vector3(floor.position.x, SPIRIT_HEIGHT, floor.position.y), Vector3(floor.end.x, SPIRIT_HEIGHT, floor.position.y), Vector3(floor.position.x, SPIRIT_HEIGHT, floor.end.y), Vector3(floor.end.x, SPIRIT_HEIGHT, floor.end.y)])
-		var box: Rect2 = stage._keepsake_box.get_global_rect()
-		for id: String in display.slot_ids():
-			var island := Slots.island_of(id)
-			var terraced := not island.is_empty()
-			var origin: Vector3 = display.slot_node(id).position
-			var middle := Slots.island_local(island, origin) if terraced else Vector2(origin.x, origin.z)
-			var reach := _reach(display, display.slot_node(id))
-			var foot := Rect2(middle - Vector2.ONE * reach, Vector2.ONE * reach * 2.0)
-			var world_bounds := _footprint(display, display.slot_node(id), Transform3D.IDENTITY)
-			var world_foot := Rect2(world_bounds.position.x, world_bounds.position.z, world_bounds.size.x, world_bounds.size.z)
-			var corners := []
-			for index in range(8): corners.append(display.to_global(world_bounds.get_endpoint(index)))
-			var area := _screen_rect(camera, corners)
-			if terraced: _check(Slots.island_rect(island).grow(-0.05).encloses(foot), "%s stands on the %s at %s" % [id, island, foot])
-			else: _check(right.grow(-0.05).encloses(foot), "%s stands on the right island at %s" % [id, foot])
-			for tree: Rect2 in trees:
-				_check(not world_foot.grow(0.1).intersects(tree), "%s stays clear of the Home tree at x %.2f" % [id, tree.get_center().x])
-			# The islands behind stand past the four Home trees: a crown may overlap a
-			# keepsake's foot, never its middle.
-			if island.begins_with("behind"):
-				for tree_screen: Rect2 in tree_screens: _check(not tree_screen.has_point(area.get_center()), "%s is not hidden behind a Home tree at %s (%s vs %s)" % [id, size, area, tree_screen])
-			if not terraced: _check(not area.intersects(header), "%s stays clear of the header buttons at %s" % [id, size])
-			_check(not world_foot.intersects(floor.grow(0.4)), "%s stays off the spirits' walking area" % id)
-			# Only keepsakes in front of the spirits' island can cover them on screen.
-			if not island.begins_with("behind"): _check(not area.intersects(spirits), "%s never covers the spirits on screen at %s" % [id, size])
-			_check(not area.intersects(box), "%s is not hidden by the keepsake box at %s (%s vs %s)" % [id, size, area, box])
-			if not terraced: _check(stage._stage_rect().encloses(area), "%s stays in the Home stage at %s (%s in %s)" % [id, size, area, stage._stage_rect()])
-			for other: String in feet:
-				var gap: float = Vector2(origin.x, origin.z).distance_to(feet[other].at) - reach - feet[other].reach
-				_check(gap >= 0.0, "%s does not overlap %s (gap %.2f)" % [id, other, gap])
-			feet[id] = {"at": Vector2(origin.x, origin.z), "reach": reach}
-		# Zoomed all the way out, the whole collection fits the stage, clear of the box and header.
-		stage.zoom_target = Stage.MAX_SIZE
-		stage.zoom_size = Stage.MAX_SIZE
-		stage._frame_camera()
-		for id: String in display.slot_ids():
-			var bounds := _footprint(display, display.slot_node(id), Transform3D.IDENTITY)
-			var corners := []
-			for index in range(8): corners.append(display.to_global(bounds.get_endpoint(index)))
-			var area := _screen_rect(camera, corners)
-			_check(stage._stage_rect().encloses(area) and not area.intersects(box) and not area.intersects(header), "%s fits the stage at the widest zoom at %s (%s)" % [id, size, area])
-		stage.free()
-		home.viewport.free()
-		await process_frame
+## A keepsake's screen area: its ground, up to its tallest part.
+func _screen_area(layer: Node3D, camera: Camera3D, id: String) -> Rect2:
+	var corners := []
+	for corner: Vector2 in layer.ground(id):
+		for height: float in [0.0, 1.75]: corners.append(layer.to_global(Vector3(corner.x, height, corner.y)))
+	return _screen_rect(camera, corners)
 
-func _check_tap() -> void:
-	var none: Array[Dictionary] = []
-	var home := await _home(Vector2i(1280, 720), none)
-	var stage: Control = home.stage
-	var display: Node3D = home.display
-	var camera: Camera3D = home.world.camera
-	_check(display.shown_slot_ids().size() == 2 and Slots.ISLANDS.keys().all(func(name: String) -> bool: return display.island(name) == null), "With nothing earned only First Steps shows its outlines")
-	var target := Catalog.chapter_place("first-steps@1", "a-place-to-grow")
-	var point := camera.unproject_position(display.slot_node(target).to_global(Vector3(0, 0.22, 0)))
-	_check(display.pick(camera, point) == target, "A keepsake's own point picks it")
-	_stage_tap(stage, point)
-	_check(display.selected_item().id == target and stage._keepsake_title.text == Catalog.by_id(target).title and stage._greeting_left == 0.0, "Tapping a keepsake names it in the box without greeting the spirits")
-	_check(stage._keepsake_status.text == PlayerCopy.KEEPSAKE_TEASER, "An untouched outline says it needs solo and a friend")
-	var other := Catalog.chapter_place("first-steps@1", "a-little-lift")
-	var start := camera.unproject_position(display.slot_node(other).to_global(Vector3(0, 0.22, 0)))
-	_stage_touch(stage, 0, start, true)
-	var drag := InputEventScreenDrag.new()
-	drag.index = 0
-	drag.position = start + Vector2(60, 0)
-	stage._input(drag)
-	_stage_touch(stage, 0, start + Vector2(60, 0), false)
-	_check(display.selected_item().id == target, "Dragging from a keepsake stays a camera gesture")
-	var spirit: Vector2 = camera.unproject_position(home.world.actors.a.to_global(Vector3(0, 0.55, 0)))
-	_check(display.pick(camera, spirit).is_empty(), "No keepsake sits under a spirit, so spirit taps still greet")
-	_check(display.pick(camera, stage._stage_rect().position + Vector2(8, 8)).is_empty(), "Empty sky picks nothing")
-	stage.free()
-	home.viewport.free()
-	await process_frame
+func _polygons_meet(a: PackedVector2Array, b: PackedVector2Array) -> bool:
+	return not Geometry2D.intersect_polygons(a, b).is_empty()
+
+func _check_layout_clearance() -> void:
+	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
+		var home := await _home(size, _everything(), _all_hard())
+		var stage: Control = home.stage
+		var layer: Node3D = home.layer
+		var camera: Camera3D = home.world.camera
+		var context := " at %s" % size
+		_check(layer.shown_ids().size() == States.entries().size(), "Everything earned shows every keepsake" + context)
+		var trees: Array[PackedVector2Array] = []
+		for tree_x: float in [2.45, 3.95, -4.15, -2.65]:
+			trees.append(PackedVector2Array([Vector2(tree_x - 0.5, -3.02), Vector2(tree_x + 0.5, -3.02), Vector2(tree_x + 0.5, -2.22), Vector2(tree_x - 0.5, -2.22)]))
+		var header := Rect2(size.x - 310, 0, 310, 92)
+		var box: Rect2 = stage._keepsake_box.get_global_rect()
+		var floor: Rect2 = stage._floor
+		var spots: Array[Vector2] = [floor.get_center() + Vector2(-0.68, 0.42), floor.get_center() + Vector2(0.68, -0.42)]
+		var grounds := {}
+		for id: String in layer.shown_ids():
+			var entry: Dictionary = States.entries()[States.entries().map(func(item: Dictionary) -> String: return item.id).find(id)]
+			var ground: PackedVector2Array = layer.ground(id)
+			var island: Rect2 = layer.island_floor(str(entry.keepsake.island))
+			_check(Array(ground).all(func(corner: Vector2) -> bool: return island.grow(0.2).has_point(corner)), "%s stands on the %s island" % [id, entry.keepsake.island])
+			for tree: PackedVector2Array in trees: _check(not _polygons_meet(ground, tree), "%s stays clear of the Home trees" % id)
+			for spot: Vector2 in spots: _check(layer.distance(id, Vector3(spot.x, 0, spot.y)) >= Stage.SPIRIT_CLEARANCE, "%s stays off the spirits' start spot %s" % [id, spot])
+			for other: String in grounds: _check(not _polygons_meet(ground, grounds[other]), "%s stands apart from %s at full size" % [id, other])
+			grounds[id] = ground
+			var area := _screen_area(layer, camera, id)
+			_check(not area.intersects(header), "%s stays clear of the header buttons%s" % [id, context])
+			_check(not area.intersects(box), "%s is not hidden by the card%s (%s vs %s)" % [id, context, area, box])
+			_check(stage._stage_rect().encloses(area), "%s stays in the Home stage%s (%s in %s)" % [id, context, area, stage._stage_rect()])
+		await _close(home)
+
+## Still parts fold into a few shared batches; moving parts keep their own
+## nodes; the budget holds with every upgrade on every keepsake.
+func _check_fold() -> void:
+	var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
+	var layer: Node3D = home.layer
+	await _settle(layer)
+	var props: Node3D = layer.find_children("Props", "Node3D", false, false)[0]
+	var batches := props.find_children("StaticBatch*", "MeshInstance3D", true, false)
+	_check(batches.size() > 5, "Still parts fold into shared batches: %d" % batches.size())
+	var draws := 0
+	var triangles := 0
+	for node: Node in props.find_children("*", "MeshInstance3D", true, false):
+		var mesh := node as MeshInstance3D
+		if not mesh.is_visible_in_tree() or mesh.mesh == null: continue
+		draws += mesh.mesh.get_surface_count()
+		triangles += mesh.mesh.get_faces().size() / 3
+	print("HOME KEEPSAKE LAYER: every upgrade on every keepsake folds to %d meshes and %d triangles" % [draws, triangles])
+	_check(draws <= 130 and triangles <= 32000, "All eleven with every upgrade stay in budget: %d draws, %d triangles" % [draws, triangles])
+	for id: String in layer.shown_ids():
+		for part: Variant in layer.parts_of(id).values():
+			if not part is Node3D: continue
+			_check(is_instance_valid(part) and (part as Node).is_inside_tree() and props.is_ancestor_of(part), "%s keeps its moving part %s" % [id, (part as Node).name])
+			for batch: Node in batches: _check(not (batch as Node).is_ancestor_of(part), "A moving part is never inside a batch")
+	await _close(home)
 
 func _stage_touch(stage: Control, index: int, point: Vector2, pressed: bool) -> void:
 	var event := InputEventScreenTouch.new()
@@ -394,141 +247,236 @@ func _stage_tap(stage: Control, point: Vector2) -> void:
 	_stage_touch(stage, 0, point, true)
 	_stage_touch(stage, 0, point, false)
 
-## The box holds the slot browser, a status line and the count, at one height.
+func _point(layer: Node3D, camera: Camera3D, id: String) -> Vector2:
+	return camera.unproject_position(layer.to_global(layer.slot_transform(id) * Vector3(0, 0.45, 0)))
+
+func _check_tap() -> void:
+	var items: Array[Dictionary] = _cleared("first-steps", true, false)
+	var home := await _home(Vector2i(1280, 720), items)
+	var stage: Control = home.stage
+	var layer: Node3D = home.layer
+	var camera: Camera3D = home.world.camera
+	await _settle(layer)
+	var point := _point(layer, camera, "first-steps")
+	_check(layer.pick(camera, point) == "first-steps", "A keepsake's own point picks it")
+	layer.select_id("relay-isles")
+	_stage_tap(stage, point)
+	_check(layer.selected_item().id == "first-steps" and stage._keepsake_title.text == PlayerCopy.KEEPSAKE_BELL_LIFT_NAME and stage._greeting_left == 0.0, "Tapping a keepsake names it on the card without greeting the spirits")
+	_check(stage.keepsake_playing(), "Tapping an earned keepsake plays it")
+	layer.stop_play()
+	var outline := _point(layer, camera, "relay-isles")
+	_stage_tap(stage, outline)
+	_check(layer.selected_item().id == "relay-isles" and not stage.keepsake_playing(), "Tapping an outline names it and plays nothing")
+	_check(stage._keepsake_status.text == PlayerCopy.KEEPSAKE_NEXT % "The Relay Isles", "The next outline says which chapter earns it: " + stage._keepsake_status.text)
+	_stage_touch(stage, 0, point, true)
+	var drag := InputEventScreenDrag.new()
+	drag.index = 0
+	drag.position = point + Vector2(60, 0)
+	stage._input(drag)
+	_stage_touch(stage, 0, point + Vector2(60, 0), false)
+	_check(layer.selected_item().id == "relay-isles" and not stage.keepsake_playing(), "Dragging from a keepsake stays a camera gesture")
+	var spirit: Vector2 = camera.unproject_position(home.world.actors.a.to_global(Vector3(0, 0.55, 0)))
+	_check(layer.pick(camera, spirit).is_empty(), "No keepsake sits under a spirit, so spirit taps still greet")
+	_check(layer.pick(camera, stage._stage_rect().position + Vector2(8, 8)).is_empty(), "Empty sky picks nothing")
+	await _close(home)
+
+## The rest pose of every moving part, to compare after a tap.
+func _pose(layer: Node3D, id: String) -> Array:
+	var pose: Array = []
+	for part: Variant in layer.parts_of(id).values():
+		if part is Node3D:
+			pose.append([(part as Node3D).transform, (part as Node3D).visible])
+			for child: Node in (part as Node).get_children():
+				if child is MeshInstance3D: pose.append((child as MeshInstance3D).material_override)
+			if part is MeshInstance3D: pose.append((part as MeshInstance3D).material_override)
+	return pose
+
+func _tweens() -> int:
+	return get_processed_tweens().size()
+
+func _check_play() -> void:
+	var home := await _home(Vector2i(1280, 720), _everything(), _all_hard())
+	var stage: Control = home.stage
+	var world: Node3D = home.world
+	var layer: Node3D = home.layer
+	await _settle(layer)
+	var cues: Array = []
+	stage.play_cue = func(cue: String) -> void: cues.append(cue)
+	for id: String in layer.shown_ids():
+		var rest := _pose(layer, id)
+		var tap_start := Time.get_ticks_msec()
+		cues.clear()
+		_check(stage.play_keepsake(id) and stage.keepsake_playing(), "%s plays" % id)
+		_check(not stage.play_keepsake(id) and not stage.play_keepsake(layer.shown_ids()[0]), "A second tap while %s plays is ignored" % id)
+		var moved := false
+		var asked := false
+		while stage.keepsake_playing() and Time.get_ticks_msec() - tap_start < 6000:
+			await process_frame
+			moved = moved or _pose(layer, id) != rest
+			if not asked and Time.get_ticks_msec() - tap_start > 1000:
+				asked = true
+				_check(not stage.play_keepsake(id), "A tap halfway through %s neither stacks nor restarts it" % id)
+		_check(moved, "%s moves its parts while it plays" % id)
+		_check(not stage.keepsake_playing() and Time.get_ticks_msec() - tap_start <= 4700, "%s finishes within four and a half seconds" % id)
+		await process_frame
+		_check(_pose(layer, id) == rest, "%s ends in exactly its rest pose" % id)
+		var keepsake: Dictionary = States.entries()[States.entries().map(func(entry: Dictionary) -> String: return entry.id).find(id)].keepsake
+		_check(cues.size() == keepsake.sounds.size() and cues == keepsake.sounds.values(), "%s plays one fixed cue per beat: %s" % [id, cues])
+		_check(layer.prop_node(id).get_node_or_null("Tap") == null, "%s frees what it made for the tap" % id)
+	# Reduce motion: parts jump to the lit pose, hold, and go back; nothing slides.
+	world.reduced_motion = true
+	var well_rest := _pose(layer, "the-wishing-well")
+	stage.play_keepsake("the-wishing-well")
+	var lit := _pose(layer, "the-wishing-well")
+	await create_timer(0.3).timeout
+	_check(_pose(layer, "the-wishing-well") == lit, "With Reduce motion nothing slides: the lit pose holds")
+	await create_timer(0.9).timeout
+	_check(not stage.keepsake_playing() and _pose(layer, "the-wishing-well") == well_rest, "and after a moment everything is back at rest")
+	world.reduced_motion = false
+	# A state change during a tap waits for it to end.
+	var builds: int = layer.builds
+	stage.play_keepsake("the-wishing-well")
+	var some: Array[Dictionary] = _cleared("first-steps", true, false)
+	stage.set_keepsakes(some)
+	await create_timer(1.0).timeout
+	_check(layer.builds == builds and stage.keepsake_playing(), "A rebuild waits while a keepsake plays")
+	await _settle(layer)
+	_check(layer.builds == builds + 1 and not stage.keepsake_playing(), "and comes once the tap has ended")
+	# Leaving Home mid tap leaves no Tween behind.
+	stage.set_keepsakes(_everything())
+	await _settle(layer)
+	stage.play_keepsake("sleeping-lighthouse")
+	await create_timer(0.3).timeout
+	_check(_tweens() > 0, "A tap runs a Tween")
+	stage.free()
+	await process_frame
+	await process_frame
+	_check(_tweens() == 0, "Leaving Home mid tap leaves no Tween")
+	home.viewport.free()
+	await process_frame
+
+## The box holds the browser, a status line and the count, at one height.
 func _box_state(size: Vector2i, state: String) -> void:
 	var items: Array[Dictionary] = []
-	for item: Dictionary in Catalog.all():
-		if state == "all" or (state in ["few", "pair"] and item.chapter_key == "first-steps@1"):
-			var earned := item.duplicate(true)
-			earned.solo = true
-			earned.friend = state == "all" and item.friend_available
-			if state == "pair" and not items.is_empty(): continue
-			if state == "pair": earned.friend = true
-			items.append(earned)
-	var home := await _home(size, items)
+	var hard := {}
+	match state:
+		"few": _cleared("first-steps", true, false, items)
+		"pair":
+			_cleared("first-steps", true, true, items)
+			hard = {"first-steps@1": {"solo": true, "together": false}}
+		"all":
+			items = _everything()
+			hard = _all_hard()
+	var home := await _home(size, items, hard)
 	var stage: Control = home.stage
+	var layer: Node3D = home.layer
 	var context := " (%s, %s)" % [state, size]
-	var total := 0
-	for place: Dictionary in Catalog.all(): total += 1 + int(place.friend_available)
-	_check(total == Catalog.variant_total() and total == 2 * Catalog.all().size(), "The collection total is every place solo plus together" + context)
-	var expected_count := 0
-	for item: Dictionary in items: expected_count += int(item.solo) + int(item.friend)
 	var box: Control = stage._keepsake_box
 	var screen := Rect2(Vector2.ZERO, Vector2(size))
 	var box_rect := box.get_global_rect()
 	var hint_rect: Rect2 = stage._hint.get_global_rect()
 	_check(box.is_visible_in_tree() and screen.encloses(box_rect) and screen.encloses(hint_rect), "Box and hint stay on screen" + context)
 	_check(not box_rect.intersects(hint_rect), "The box never meets the bottom-right hint" + context)
-	_check(absf(hint_rect.end.x - (size.x - 30.0)) <= 1.0 and stage._hint.horizontal_alignment == HORIZONTAL_ALIGNMENT_RIGHT and hint_rect.end.y <= size.y - 10.0, "The hint sits right-aligned in the footer band" + context)
-	_check(box_rect.position.x >= stage._stage_rect().position.x - 0.5 and absf(box_rect.get_center().x - stage._stage_rect().get_center().x) <= 1.0, "The box is centred in the island stage, clear of the menu column" + context)
+	_check(box_rect.position.x >= stage._stage_rect().position.x - 0.5 and absf(box_rect.get_center().x - stage._stage_rect().get_center().x) <= 1.0, "The box is centred in the island stage" + context)
 	box_heights[state] = box_rect.size.y
 	var count: Label = stage._keepsake_count
 	var status: Label = stage._keepsake_status
-	_check(count.text == "Keepsakes · %d / %d" % [expected_count, total] and count.is_visible_in_tree(), "The collection count reads Keepsakes · earned / total in every state" + context)
-	_check(status.is_visible_in_tree() and status.text in Stage.STATUS_LINES and status.get_global_rect().end.y <= count.get_global_rect().position.y + 0.5, "A status line sits above the count" + context)
-	_check(stage._keepsake_controls.is_visible_in_tree(), "The browser shows in every state, since every keepsake has a slot" + context)
-	var selected: Dictionary = stage._keepsake_display.selected_item()
-	var solo: TextureRect = stage._keepsake_controls.find_child("KeepsakeSolo", true, false)
-	var together: TextureRect = stage._keepsake_controls.find_child("KeepsakeTogether", true, false)
-	_check(stage._keepsake_title.text == str(selected.title) and solo.visible and solo.self_modulate == (Stage.SOLO_LIT if selected.solo else Stage.VARIANT_DIM) and together.self_modulate == (Stage.TOGETHER_LIT if selected.friend else Stage.VARIANT_DIM), "The browser names the keepsake with lit or dim solo and together icons" + context)
-	if state == "none":
-		_check(status.text == PlayerCopy.KEEPSAKE_TEASER and selected.id == Slots.ids()[0], "With nothing earned the box explains the solo and friend rule on the first keepsake" + context)
-	if state == "all":
-		_check(status.text in [PlayerCopy.KEEPSAKE_FINISHED, PlayerCopy.KEEPSAKE_FINISHED_SOLO], "A complete collection reads as finished" + context)
+	_check(count.is_visible_in_tree() and count.get_global_rect().size.x <= box_rect.size.x, "The count fits the box" + context)
+	var font := count.get_theme_font("font")
+	_check(font.get_string_size(layer.widest_count(), HORIZONTAL_ALIGNMENT_LEFT, -1, count.get_theme_font_size("font_size")).x <= stage._keepsake_count.custom_minimum_size.x + 0.5, "The widest count line fits on one line" + context)
+	_check(status.is_visible_in_tree() and status.text in layer.every_line() and status.get_global_rect().end.y <= count.get_global_rect().position.y + 0.5, "A status line sits above the count: %s%s" % [status.text, context])
+	match state:
+		"none":
+			_check(count.text == PlayerCopy.KEEPSAKE_COUNT % [0, States.entries().size()] and status.text == PlayerCopy.KEEPSAKE_NEXT % "First Steps", "With nothing earned the card points at the first chapter" + context)
+		"pair":
+			stage.select_keepsake("first-steps")
+			_check(status.text == PlayerCopy.KEEPSAKE_WANTS_TOP % PlayerCopy.KEEPSAKE_BELL_LIFT_TOP, "Cleared together and on Hard, the card asks for Hard with a friend: %s%s" % [status.text, context])
+		"all":
+			_check(status.text == PlayerCopy.KEEPSAKE_DONE % PlayerCopy.KEEPSAKE_BELL_LIFT_ACTION.to_lower() or status.text.begins_with(PlayerCopy.KEEPSAKE_DONE.get_slice("%", 0)), "Everything earned invites a tap" + context)
+	var item: Dictionary = layer.selected_item()
+	var marks: Control = stage._keepsake_variant_icons
+	var together := marks.get_node("KeepsakeTogether") as TextureRect
+	var hard_mark: Control = marks.get_node("KeepsakeHard")
+	_check(stage._keepsake_title.text == str(item.name) and together.self_modulate == (Card.TOGETHER_LIT if item.together else Card.DIM) and hard_mark.look == (HardMode.DONE if item.hard else HardMode.OPEN), "The card names the keepsake with lit or faint upgrade marks" + context)
 	var title_rect: Rect2 = stage._keepsake_title.get_global_rect()
-	for icon: Control in [solo, together]:
-		if icon.visible: _check(icon.get_global_rect().size.x >= 20.0 and not icon.get_global_rect().intersects(title_rect) and icon.get_global_rect().position.x >= title_rect.end.x, "Variant icons follow the title without overlapping it" + context)
+	for mark: Node in marks.get_children():
+		if (mark as Control).visible: _check((mark as Control).get_global_rect().position.x >= title_rect.end.x - 0.5, "Upgrade marks follow the title without overlapping it" + context)
 	for child: Control in [stage._keepsake_controls.get_child(0), stage._keepsake_controls.get_child(2)]:
 		_check(box_rect.encloses(child.get_global_rect()), "Browser buttons stay inside the box" + context)
-		var page := child as Button
-		var fill := page.get_theme_stylebox("normal") as StyleBoxFlat
-		_check(page.text.is_empty() and page.size.x >= 48.0 and page.size.y >= 48.0 and fill != null and fill.bg_color == Color("2f5d52") and fill.border_color == Color("466e63") and fill.border_width_left >= 1 and not page.accessibility_name.is_empty(), "Paging buttons are teal secondary controls with a 48+ hit area" + context)
-		_check(not page.get_global_rect().intersects(title_rect) and (not solo.visible or not page.get_global_rect().intersects(solo.get_global_rect())) and (not together.visible or not page.get_global_rect().intersects(together.get_global_rect())), "The title group stays clear of the paging buttons" + context)
-	_check(stage.PAGE_CHEVRON_HEIGHT >= 22.0 and stage.PAGE_CHEVRON_HEIGHT <= 24.0, "The paging chevron is 22 to 24 units tall" + context)
+		_check(not child.get_global_rect().intersects(title_rect), "The title stays clear of the paging buttons" + context)
 	_check(not stage._allowed(box_rect.get_center()), "The box never starts a camera gesture" + context)
-	stage.free()
-	home.viewport.free()
-	await process_frame
+	await _close(home)
 
-## Explore mode walks the gold spirit with the joystick, the camera follows,
-## nearby keepsakes are named, and Back restores the normal Home.
+## Explore walks the gold spirit with the joystick, the camera follows, a
+## keepsake walked up to is named and its action offered, and Back restores Home.
 func _check_explore() -> void:
-	var all: Array[Dictionary] = []
-	for place: Dictionary in Catalog.all(): all.append(_earned(place.id, true, true))
-	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
-		var home := await _home(size, all)
+	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720)]:
+		var home := await _home(size, _everything(), _all_hard())
 		var stage: Control = home.stage
 		var world: Node3D = home.world
-		var display: Node3D = home.display
+		var layer: Node3D = home.layer
+		await _settle(layer)
 		var context := " at %s" % size
-		var screen := Rect2(Vector2.ZERO, Vector2(size))
 		var menu := Control.new()
 		home.viewport.add_child(menu)
-		var box: Rect2 = stage._keepsake_box.get_global_rect()
 		var button: Button = stage._explore_button
-		_check(button.is_visible_in_tree() and button.text == PlayerCopy.HOME_EXPLORE and screen.encloses(button.get_global_rect()) and not button.get_global_rect().intersects(box) and button.size.y >= 48.0, "The Explore button sits on screen, clear of the box" + context)
 		var spirit: Node3D = world.actors.a
 		var start := spirit.position
 		button.pressed.emit()
 		var stick: Control = stage._stick
-		var back: Button = stage._explore_back
-		box = stage._keepsake_box.get_global_rect()
-		_check(stage.is_exploring() and not menu.visible and back.is_visible_in_tree() and stick.is_visible_in_tree() and not button.is_visible_in_tree(), "Explore hides the menu and shows Back and the joystick" + context)
-		_check(screen.encloses(stick.get_global_rect()) and screen.encloses(back.get_global_rect()) and not stick.get_global_rect().intersects(box) and not back.get_global_rect().intersects(box) and back.text == PlayerCopy.HOME_EXPLORE_BACK, "Back and the joystick sit on screen, clear of the box" + context)
+		_check(stage.is_exploring() and not menu.visible and stick.is_visible_in_tree(), "Explore hides the menu and shows the joystick" + context)
 		stick.value = Vector2(1, 0)
 		for frame in range(45): stage._process(1.0 / 30.0)
-		_check(spirit.position.distance_to(start) > 1.0 and display.walkable(spirit.position), "The joystick walks the spirit on solid ground" + context)
-		_check(stage._stage_rect().grow(-40).has_point(world.camera.unproject_position(spirit.global_position)), "The camera follows the spirit" + context)
+		_check(spirit.position.distance_to(start) > 0.5 and layer.walkable(spirit.position), "The joystick walks the spirit on solid ground" + context)
 		stick.value = Vector2(-1, 1)
 		var always_solid := true
+		var never_inside := true
 		for frame in range(240):
 			stage._process(1.0 / 30.0)
-			always_solid = always_solid and display.walkable(spirit.position)
-		_check(always_solid, "The spirit never walks off the islands" + context)
-		var target := Catalog.chapter_place("relay-isles@2", "relay")
-		var slot: Vector3 = display.slot_node(target).position
+			always_solid = always_solid and layer.walkable(spirit.position)
+			never_inside = never_inside and not layer.blocks(spirit.position, 0.0)
+		_check(always_solid and never_inside, "The spirit never walks off the islands or into a keepsake" + context)
 		stick.value = Vector2.ZERO
-		spirit.position = slot + (Vector3(3.35, 0, 0.35) - slot).normalized() * 0.6
+		var well: Transform3D = layer.slot_transform("the-wishing-well")
+		spirit.position = well * Vector3(0, 0, 0.75)
 		stage._process(1.0 / 30.0)
-		_check(display.selected_item().id == target and stage._keepsake_title.text == Catalog.by_id(target).title and stage._keepsake_status.text == PlayerCopy.KEEPSAKE_FINISHED, "Walking up to a keepsake names it with its progress" + context)
-		world.reduced_motion = true
-		stick.value = Vector2(0, -1)
+		var action: Button = stage._explore_action
+		_check(layer.selected_item().id == "the-wishing-well" and stage._keepsake_title.text == PlayerCopy.KEEPSAKE_WISHING_WELL_NAME, "Walking up to a keepsake names it" + context)
+		_check(action.is_visible_in_tree() and action.text == PlayerCopy.KEEPSAKE_WISHING_WELL_ACTION and Rect2(Vector2.ZERO, Vector2(size)).encloses(action.get_global_rect()) and not action.get_global_rect().intersects(stick.get_global_rect()), "The action button offers its action, on screen, clear of the joystick" + context)
+		_check(not stage._allowed(action.get_global_rect().get_center()), "The action button never starts a camera gesture" + context)
+		action.pressed.emit()
+		_check(stage.keepsake_playing(), "Pressing the action plays the keepsake" + context)
+		action.pressed.emit()
+		_check(stage.keepsake_playing(), "A second press while it plays changes nothing" + context)
+		layer.stop_play()
+		spirit.position = layer.slot_transform("the-wishing-well") * Vector3(0, 0, 3.0)
 		stage._process(1.0 / 30.0)
-		_check(stage._explore_focus == spirit.position and stage.zoom_size == stage.EXPLORE_SIZE, "With reduced motion the camera stays exactly on the spirit" + context)
-		world.reduced_motion = false
-		back.pressed.emit()
-		_check(not stage.is_exploring() and menu.visible and spirit.position == start and stage.zoom_target == Stage.DEFAULT_SIZE and button.is_visible_in_tree() and not stick.is_visible_in_tree(), "Back returns to the normal Home, the menu and the spirit where it was" + context)
-		stage.free()
-		home.viewport.free()
-		await process_frame
+		_check(not action.visible, "Walking away hides the action" + context)
+		stage._explore_back.pressed.emit()
+		_check(not stage.is_exploring() and menu.visible and spirit.position == start and not action.visible, "Back returns to the normal Home" + context)
+		await _close(home)
 
-## Steps the stage and the world together, as one frame of the running app.
+## Spirits wandering at Home never walk into a keepsake.
 func _frames(stage: Control, world: Node3D, count: int, step: float = 1.0 / 30.0) -> void:
 	for frame in range(count):
 		stage._process(step)
 		world._process(step)
 
-## Joystick push that walks the explorer along a world direction.
 func _push_toward(direction: Vector3) -> Vector2:
 	var across := Vector3(0.832, 0, -0.555)
 	var away := Vector3(-0.555, 0, -0.832)
 	return Vector2(direction.dot(across), -direction.dot(away))
 
-## True when every Home bridge plank is drawn lower than this.
 func _bridge_below(world: Node3D, height: float) -> bool:
 	return world.bridge_parts.all(func(plank: Node3D) -> bool: return plank.position.y < height)
 
 ## The Home bridge rests lowered and carries nobody; exploring raises it as the
-## spirit comes near, and every frame each plank carries the spirit only once
-## it is drawn up. Walking away lets it down again. A keepsake island's bridge
-## is closed while its island is hidden, and never lowers.
+## spirit comes near, and each plank carries the spirit only once drawn up.
 func _check_explore_bridge() -> void:
-	var all: Array[Dictionary] = []
-	for place: Dictionary in Catalog.all(): all.append(_earned(place.id, true, true))
-	var home := await _home(Vector2i(1560, 720), all)
+	var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
 	var stage: Control = home.stage
 	var world: Node3D = home.world
-	var display: Node3D = home.display
+	var layer: Node3D = home.layer
 	var level: Dictionary = world.current_level
 	var gap: Array = level.get("gap", [-100, 100])
 	var left := float(gap[0]) / 100.0
@@ -539,158 +487,78 @@ func _check_explore_bridge() -> void:
 	var planks: Array = world.bridge_parts
 	_frames(stage, world, 30)
 	_check(planks.size() == 9 and _bridge_below(world, -0.5) and not world.bridge_ready, "Home shows its bridge lowered")
-	_check(not display.walkable(middle) and display.walkable(Vector3(left - 0.6, 0, bridge_z)) and display.walkable(Vector3(right + 0.6, 0, bridge_z)), "A lowered bridge carries nobody, while both shores stay ground")
+	_check(not layer.walkable(middle) and layer.walkable(Vector3(left - 0.6, 0, bridge_z)) and layer.walkable(Vector3(right + 0.6, 0, bridge_z)), "A lowered bridge carries nobody, while both shores stay ground")
+	# Wandering spirits keep clear of every keepsake.
+	var clear := true
+	for frame in range(600):
+		_frames(stage, world, 1, 0.1)
+		for role: String in world.actors: clear = clear and not layer.blocks(world.actors[role].position, 0.0)
+	_check(clear, "Wandering spirits never walk into a keepsake")
 	var spirit: Node3D = world.actors.a
 	stage._explore_button.pressed.emit()
 	spirit.position = Vector3(left - 3.2, 0, bridge_z)
 	_frames(stage, world, 20)
-	_check(not world.home_bridge_raised and _bridge_below(world, -0.5) and not display.walkable(middle), "Exploring leaves the bridge down while the spirit is far from it")
+	_check(not world.home_bridge_raised, "Exploring leaves the bridge down while the spirit is far from it")
 	stage._stick.value = _push_toward(Vector3.RIGHT)
 	var matches := true
-	var on_air := false
-	var rising_blocked := false
 	var raised_at := -1
 	var crossed_at := -1
-	for frame in range(160):
+	for frame in range(200):
 		_frames(stage, world, 1)
 		if raised_at < 0 and world.home_bridge_raised: raised_at = frame
 		for index in range(planks.size()):
 			var over := Vector3(lerpf(left, right, (index + 0.5) / planks.size()), 0, bridge_z)
-			var up: bool = planks[index].position.y >= deck - Display.DECK_TOLERANCE
-			matches = matches and display.walkable(over) == up
-			if world.home_bridge_raised and not up and not display.walkable(over): rising_blocked = true
-		if spirit.position.x > left and spirit.position.x < right:
-			var under: Node3D = planks[mini(int((spirit.position.x - left) / (right - left) * planks.size()), planks.size() - 1)]
-			if under.position.y < deck - Display.DECK_TOLERANCE: on_air = true
+			var up: bool = planks[index].position.y >= deck - Layer.DECK_TOLERANCE
+			matches = matches and layer.walkable(over) == up
 		if spirit.position.x > right + 0.3:
 			crossed_at = frame
 			break
 	stage._stick.value = Vector2.ZERO
 	_check(matches, "Every frame each bridge plank carries the spirit exactly when it is drawn up")
-	_check(raised_at >= 0 and rising_blocked, "The bridge rises as the spirit comes near, and a rising plank carries nobody")
-	_check(not on_air, "The spirit never stands over a plank that is not drawn up")
-	_check(crossed_at > raised_at and display.walkable(spirit.position), "Once risen, the bridge carries the spirit to the other island")
-	# Walking well away lets the bridge down; between the two distances it keeps its state.
-	spirit.position = Vector3(right + 3.0, 0, bridge_z - 2.0)
-	_frames(stage, world, 30)
-	_check(not world.home_bridge_raised and _bridge_below(world, -0.5) and not display.walkable(middle), "Walking away lets the bridge back down")
-	var notice: float = stage.BRIDGE_NOTICE
-	var release: float = stage.BRIDGE_RELEASE
-	var between := Vector3(left - Display.CROSSING_PAD - (notice + release) * 0.5, 0, bridge_z)
-	spirit.position = between
-	_frames(stage, world, 5)
-	_check(not world.home_bridge_raised, "Between the notice and release distances a lowered bridge stays down")
-	spirit.position = Vector3(left - Display.CROSSING_PAD - notice * 0.5, 0, bridge_z)
-	_frames(stage, world, 5)
-	spirit.position = between
-	_frames(stage, world, 5)
-	_check(world.home_bridge_raised, "Between the notice and release distances a raised bridge stays up")
+	_check(raised_at >= 0 and crossed_at > raised_at and layer.walkable(spirit.position), "The bridge rises and carries the spirit to the other island")
 	stage._explore_back.pressed.emit()
 	_frames(stage, world, 30)
-	_check(not world.home_bridge_raised and _bridge_below(world, -0.5) and not display.walkable(middle), "Leaving Explore lets the bridge back down")
-	# A bridge already drawn up, as a chapter can leave it, stays up and carries.
-	world.bridge_ready = true
-	_frames(stage, world, 30)
-	_check(display.walkable(middle), "A bridge the world already shows raised carries the spirit")
-	world.bridge_ready = false
-	stage.free()
-	home.viewport.free()
-	await process_frame
-	# Keepsake islands: a hidden island's bridge is closed, a shown one's is open.
-	var none: Array[Dictionary] = []
-	home = await _home(Vector2i(1560, 720), all)
-	stage = home.stage
-	world = home.world
-	display = home.display
-	var island_name := "behind_left"
-	var island: Node3D = display.island(island_name)
-	var walk: Node3D = island.get_node("Bridge") if island != null else null
-	if walk == null:
-		_check(false, "The %s island and its bridge exist once its keepsakes show" % island_name)
-	else:
-		var length: float = walk.get_meta("length")
-		var on_bridge: Vector3 = walk.transform * Vector3(0, 0, -length * 0.5)
-		_check(island.visible and display.walkable(on_bridge), "A shown keepsake island's bridge carries the spirit")
-		stage.set_keepsakes(none)
-		_check(not island.visible and not display.walkable(on_bridge), "A hidden keepsake island's bridge is closed")
-		stage._explore_button.pressed.emit()
-		var walker: Node3D = world.actors.a
-		walker.position = walk.transform * Vector3(0, 0, Display.CROSSING_PAD + 0.1)
-		stage._stick.value = _push_toward(-walk.transform.basis.z)
-		var stayed := true
-		for frame in range(40):
-			_frames(stage, world, 1)
-			stayed = stayed and -(walk.transform.affine_inverse() * walker.position).z <= 0.0
-		stage._stick.value = Vector2.ZERO
-		var level_planks := walk.get_children().filter(func(node: Node) -> bool: return str(node.name).begins_with("Plank"))
-		_check(stayed and display.walkable(walker.position), "The spirit cannot step onto a closed keepsake bridge")
-		_check(not level_planks.is_empty() and level_planks.all(func(plank: Node3D) -> bool: return is_equal_approx(plank.position.y, Display.PLANK_DECK_Y)), "A keepsake island's bridge never lowers")
-	stage.free()
-	home.viewport.free()
-	await process_frame
+	_check(not world.home_bridge_raised and _bridge_below(world, -0.5), "Leaving Explore lets the bridge back down")
+	await _close(home)
 
-## The keepsake paging arrows show on the normal Home only. Every way in and
-## out of Explore keeps them right: the Explore and Back buttons, the system
-## Back, a pause and resume, a pop-up over Home, and Home closing mid-Explore.
+## The paging arrows show on the normal Home only, through every way in and out of Explore.
 func _check_explore_arrows() -> void:
-	var all: Array[Dictionary] = []
-	for place: Dictionary in Catalog.all(): all.append(_earned(place.id, true, true))
-	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1600, 720)]:
-		var context := " at %s" % size
-		var home := await _home(size, all)
-		var stage: Control = home.stage
-		var world: Node3D = home.world
-		var menu := Control.new()
-		home.viewport.add_child(menu)
-		var previous: Button = stage._keepsake_controls.get_node("KeepsakePrevious")
-		var next: Button = stage._keepsake_controls.get_node("KeepsakeNext")
-		var arrows := func() -> bool: return previous.is_visible_in_tree() and next.is_visible_in_tree()
-		var hidden := func() -> bool: return not previous.is_visible_in_tree() and not next.is_visible_in_tree()
-		_check(arrows.call(), "The normal Home shows the keepsake arrows" + context)
-		stage._explore_button.pressed.emit()
-		_check(stage.is_exploring() and hidden.call() and stage._keepsake_title.is_visible_in_tree(), "Explore hides the keepsake arrows and keeps the keepsake name" + context)
-		var some: Array[Dictionary] = [all[0]]
-		stage.set_keepsakes(some)
-		_frames(stage, world, 2)
-		_check(hidden.call(), "New keepsake progress while exploring keeps the arrows hidden" + context)
-		stage.set_keepsakes(all)
-		# Home's own refresh turning part of the menu back on does not stick.
-		menu.visible = true
-		_frames(stage, world, 1)
-		_check(not menu.visible, "The menu stays hidden while exploring" + context)
-		# Pause and resume: still exploring, arrows hidden, a held joystick let go.
-		stage._stick.value = Vector2(1, 0)
-		stage._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
-		stage._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
-		_frames(stage, world, 2)
-		_check(stage.is_exploring() and hidden.call() and stage._stick.value == Vector2.ZERO, "A pause and resume keeps Explore without the arrows and lets go of the joystick" + context)
-		# A pop-up over Home leaves Explore as it was.
-		var host := Control.new()
-		host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		home.viewport.add_child(host)
-		var popup: Control = InGameModal.open(host, "TestPopup", "Pop-up")
-		_frames(stage, world, 2)
-		_check(stage.is_exploring() and hidden.call() and popup.is_visible_in_tree(), "A pop-up over Explore keeps the arrows hidden" + context)
-		popup.free()
-		host.free()
-		stage._explore_back.pressed.emit()
-		_check(not stage.is_exploring() and arrows.call() and menu.visible, "Back brings the arrows and the menu back" + context)
-		# The system Back leaves Explore too.
-		stage._explore_button.pressed.emit()
-		root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
-		_check(not stage.is_exploring() and arrows.call() and menu.visible and stage._explore_button.is_visible_in_tree(), "The system Back leaves Explore and brings the arrows back" + context)
-		# Home closing mid-Explore (another screen replacing it) restores the
-		# menu and the bridge, and the next Home opens at the earlier zoom.
-		stage._explore_button.pressed.emit()
-		world.home_bridge_raised = true
-		home.viewport.remove_child(stage)
-		_check(menu.visible and not world.home_bridge_raised and is_equal_approx(float(Stage._retained_view.get("zoom_target", 0.0)), Stage.DEFAULT_SIZE), "Home closing mid-Explore restores the menu, the bridge and the zoom" + context)
-		stage.free()
-		var again := Stage.new()
-		again.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-		again.configure(world, func() -> bool: return true, all)
-		home.viewport.add_child(again)
-		_check(not again.is_exploring() and again._keepsake_controls.get_node("KeepsakePrevious").is_visible_in_tree() and again._keepsake_controls.get_node("KeepsakeNext").is_visible_in_tree(), "Home opened again shows the arrows" + context)
-		again.free()
-		home.viewport.free()
-		await process_frame
+	var all := _everything()
+	var home := await _home(Vector2i(1560, 720), all, _all_hard())
+	var stage: Control = home.stage
+	var world: Node3D = home.world
+	var menu := Control.new()
+	home.viewport.add_child(menu)
+	var previous: Button = stage._keepsake_controls.get_node("KeepsakePrevious")
+	var next: Button = stage._keepsake_controls.get_node("KeepsakeNext")
+	var arrows := func() -> bool: return previous.is_visible_in_tree() and next.is_visible_in_tree()
+	var hidden := func() -> bool: return not previous.is_visible_in_tree() and not next.is_visible_in_tree()
+	_check(arrows.call(), "The normal Home shows the keepsake arrows")
+	stage._explore_button.pressed.emit()
+	_check(stage.is_exploring() and hidden.call() and stage._keepsake_title.is_visible_in_tree(), "Explore hides the arrows and keeps the keepsake name")
+	var some: Array[Dictionary] = [all[0]]
+	stage.set_keepsakes(some)
+	_frames(stage, world, 2)
+	_check(hidden.call(), "New progress while exploring keeps the arrows hidden")
+	stage._stick.value = Vector2(1, 0)
+	stage._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
+	stage._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
+	_frames(stage, world, 2)
+	_check(stage.is_exploring() and hidden.call() and stage._stick.value == Vector2.ZERO, "A pause and resume keeps Explore and lets go of the joystick")
+	var host := Control.new()
+	host.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	home.viewport.add_child(host)
+	var popup: Control = InGameModal.open(host, "TestPopup", "Pop-up")
+	_frames(stage, world, 2)
+	_check(stage.is_exploring() and hidden.call() and popup.is_visible_in_tree(), "A pop-up over Explore keeps the arrows hidden")
+	popup.free()
+	host.free()
+	root.propagate_notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+	_check(not stage.is_exploring() and arrows.call() and menu.visible, "The system Back leaves Explore and brings the arrows back")
+	stage._explore_button.pressed.emit()
+	world.home_bridge_raised = true
+	home.viewport.remove_child(stage)
+	_check(menu.visible and not world.home_bridge_raised and is_equal_approx(float(Stage._retained_view.get("zoom_target", 0.0)), Stage.DEFAULT_SIZE), "Home closing mid-Explore restores the menu, the bridge and the zoom")
+	stage.free()
+	home.viewport.free()
+	await process_frame

@@ -67,5 +67,19 @@ const DATA := {
 	# valves the pip turns.
 	"lever_looks": {"boom-chain": "winch", "punt-chain": "winch", "gate-bar": "bolt", "sea-bar": "bolt", "tide": "valve", "basin": "valve", "chamber": "valve"},
 	"lever_actions": {"boom-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "punt-chain": PlayerCopy.TURN_OF_THE_TIDE_PULL_CHAIN, "gate-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR, "sea-bar": PlayerCopy.TURN_OF_THE_TIDE_PULL_BAR},
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/tide_pool.gd",
+		"island": "right",
+		"slot": [0.9, -0.6],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_TIDE_POOL_NAME,
+			"action": PlayerCopy.KEEPSAKE_TIDE_POOL_ACTION,
+			"together": PlayerCopy.KEEPSAKE_TIDE_POOL_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_TIDE_POOL_HARD,
+			"top": PlayerCopy.KEEPSAKE_TIDE_POOL_TOP,
+		},
+		"sounds": {"base": "water_rise", "together": "water_fall", "hard": "crossing_closing", "top": "bell_rung"},
+	},
 	"server": {"flag": "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED", "max_branches": 7},
 }

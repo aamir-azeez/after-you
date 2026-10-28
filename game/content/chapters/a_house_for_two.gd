@@ -18,5 +18,19 @@ const DATA := {
 		{"stage_id": "the-room-below", "title": "The Room Below"},
 	],
 	"dressing": "res://content/dressing/house.gd",
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/little_house.gd",
+		"island": "left",
+		"slot": [-1.4, 1.9],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_HOUSE_NAME,
+			"action": PlayerCopy.KEEPSAKE_HOUSE_ACTION,
+			"together": PlayerCopy.KEEPSAKE_HOUSE_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_HOUSE_HARD,
+			"top": PlayerCopy.KEEPSAKE_HOUSE_TOP,
+		},
+		"sounds": {"base": "bolt_drawn", "together": "seed_caught", "hard": "bolt_shot", "top": "garden_opened"},
+	},
 	"server": {"flag": "HOUSE_CHAPTER_ENABLED", "max_branches": 32},
 }

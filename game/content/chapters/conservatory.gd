@@ -31,5 +31,19 @@ const DATA := {
 		{"stage_id": "the-way-light-returns", "title": "The Way Light Returns"},
 	],
 	"dressing": "res://content/dressing/conservatory.gd",
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/glasshouse.gd",
+		"island": "left",
+		"slot": [0.1, 1.2],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_GLASSHOUSE_NAME,
+			"action": PlayerCopy.KEEPSAKE_GLASSHOUSE_ACTION,
+			"together": PlayerCopy.KEEPSAKE_GLASSHOUSE_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_GLASSHOUSE_HARD,
+			"top": PlayerCopy.KEEPSAKE_GLASSHOUSE_TOP,
+		},
+		"sounds": {"base": "island_bloomed", "together": "water_rise", "hard": "garden_opened", "top": "receivers_joined"},
+	},
 	"server": {"flag": "JOURNEY_CHAPTERS_ENABLED", "max_branches": 32},
 }

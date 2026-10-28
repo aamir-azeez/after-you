@@ -4,10 +4,8 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 ## Home-only presentation. No simulation, recordings, persistence or account I/O.
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
-const KeepsakeDisplay = preload("res://presentation/home_keepsake_display.gd")
-const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
-const HardMode = preload("res://services/hard_mode.gd")
-const HardModeView = preload("res://presentation/hard_mode_view.gd")
+const KeepsakeLayer = preload("res://presentation/home_keepsake_layer.gd")
+const KeepsakeCard = preload("res://presentation/keepsakes/keepsake_card.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 ## Explore mode: the gold spirit walks the islands with the joystick and the
@@ -18,14 +16,19 @@ const EXPLORE_SIZE := 9.5
 const EXPLORE_MIN_SIZE := 6.0
 const EXPLORE_MAX_SIZE := DEFAULT_SIZE
 const EXPLORE_SPEED := 2.2
-## Walking this close to a keepsake (times its size) names it in the box.
-const EXPLORE_NOTICE := 1.15
+## Walking this close to a keepsake's ground (metres) names it in the box and
+## offers its action.
+const EXPLORE_NOTICE := 0.7
+## A wandering spirit keeps this far (metres) from every keepsake's ground.
+const SPIRIT_CLEARANCE := 0.4
 ## The Home bridge rests lowered. Exploring raises it once the spirit walks
 ## within BRIDGE_NOTICE of it and lets it down past BRIDGE_RELEASE, so it never
 ## flickers at one distance and is never lowered under the spirit.
 const BRIDGE_NOTICE := 1.0
 const BRIDGE_RELEASE := 1.6
 ## Keepsake box rows: the browser, a status line and the count (same height in every state).
+## The count shrinks from COUNT_SIZES[0] only when its widest line would not fit.
+const COUNT_SIZES := [19, 17, 15]
 const BROWSER_HEIGHT := 50.0
 const BOX_ROW_GAP := 4.0
 const UiTokens = preload("res://presentation/ui_tokens.gd")
@@ -35,11 +38,6 @@ const PAGE_BORDER := UiTokens.PAGE_BORDER
 const PAGE_CHEVRON := UiTokens.CREAM
 const PAGE_CHEVRON_HEIGHT := 22.0
 const VARIANT_ICON := 24.0
-const SOLO_ICON = preload("res://assets/ui/social/user.svg")
-const TOGETHER_ICON = preload("res://assets/ui/social/users.svg")
-## Variant icons light up in the spirits' colours once that variant is done.
-const SOLO_LIT := UiTokens.SOLO
-const TOGETHER_LIT := UiTokens.TOGETHER
 ## The keepsake box: up to this wide, and no taller than the status line needs,
 ## so it never covers a keepsake standing at the island's front edge. The title
 ## is as large as fits on one line (it wraps to two lines at the smallest size).
@@ -57,7 +55,6 @@ const HINT_ICON = preload("res://assets/ui/whats_new/tap.svg")
 const HINT_ICON_SIZE := 22.0
 const HEADING_FONT = preload("res://assets/fonts/fredoka.ttf")
 static var _heading: FontVariation
-const VARIANT_DIM := Color(0.71, 0.84, 0.78, 0.32)
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
 const MAX_SIZE := 25.0
@@ -102,9 +99,16 @@ var _reset: Button
 var _header_actions: Array[Control] = []
 var _hint: Label
 var _keepsakes: Array[Dictionary] = []
-var _hard_states: Dictionary = {}
-var _hard_count: Array = []
-var _keepsake_display: Node3D
+## Every Hard mark (HardMode.marks()) and whether the server hosts together Hard.
+var _hard_marks: Dictionary = {}
+var _together_hard := false
+var _keepsake_layer: Node3D
+## (cue: String) -> void: a keepsake beat's sound (Main: the soundscape).
+var play_cue: Callable
+## Explore's action button: the nearby keepsake's own words.
+var _explore_action: Button
+## The card's measured status height and count size, per width.
+var _box_fit: Dictionary = {}
 ## Only the free chapters' keepsakes (configure()).
 var _free_only := false
 var _keepsake_controls: Control
@@ -112,7 +116,7 @@ var _keepsake_title: Label
 ## Previous / next paging. Hidden while exploring: the camera follows the spirit
 ## there, and walking up to a keepsake names it instead.
 var _page_buttons: Array[Button] = []
-## Person / two-person icons for the selected keepsake, lit for each variant done.
+## The selected keepsake's upgrade marks (keepsake_card.gd marks_row).
 var _keepsake_variant_icons: HBoxContainer
 var _hidden_props: Array[Dictionary] = []
 var _hint_icon: TextureRect
@@ -123,7 +127,7 @@ var _title_fit := {}
 ## Centred panel holding only keepsake content, the same height in every state:
 ## a browser over every island slot (title and variant icons), a line saying
 ## what the selected keepsake still needs, and the collection count. The
-## keepsakes themselves stand on the island (home_keepsake_display.gd).
+## keepsakes themselves stand on the island (home_keepsake_layer.gd).
 var _keepsake_box: PanelContainer
 var _keepsake_content: VBoxContainer
 var _keepsake_count: Label
@@ -154,8 +158,8 @@ func set_keepsakes(items: Array[Dictionary]) -> void:
 	if _keepsakes == items: return
 	_keepsakes = items.duplicate(true)
 	if not is_inside_tree() or not is_instance_valid(_terrain): return
-	if not is_instance_valid(_keepsake_display): _create_keepsake_display()
-	else: _keepsake_display.set_items(_keepsakes)
+	if not is_instance_valid(_keepsake_layer): _create_keepsake_display()
+	else: _keepsake_layer.set_marks(_keepsakes, _hard_marks, _together_hard)
 	_update_keepsake_labels()
 	_layout()
 
@@ -318,6 +322,7 @@ func _layout() -> void:
 	if is_instance_valid(_explore_button):
 		_explore_back.position = Vector2(24, 24)
 		_stick.position = Vector2(24, size.y-_stick.size.y-24)
+		_explore_action.position = Vector2(size.x-240, size.y-178)
 	if is_instance_valid(_keepsake_box):
 		var width := clampf(rect.size.x-24, 300, BOX_MAX_WIDTH)
 		var inner := width-28
@@ -331,23 +336,42 @@ func _layout() -> void:
 		var wrap := inner
 		_keepsake_status.custom_minimum_size.x = wrap
 		# One box height for every state: the browser, the tallest status line
-		# (which may wrap) and the count.
+		# (which may wrap) and the count, measured once per width.
+		var fit := _fit_box(wrap)
+		var status_height: float = fit.status
+		if _keepsake_count.get_theme_font_size("font_size") != int(fit.count): _keepsake_count.add_theme_font_size_override("font_size", int(fit.count))
 		var count_height := _keepsake_count.get_combined_minimum_size().y
-		var status_font := _keepsake_status.get_theme_font("font")
-		var status_height := 0.0
-		var status_size := _keepsake_status.get_theme_font_size("font_size")
-		var line_height := status_font.get_height(status_size)
-		for line: String in STATUS_LINES:
-			var block := status_font.get_multiline_string_size(line, HORIZONTAL_ALIGNMENT_CENTER, wrap, status_size).y
-			# The label adds its line spacing between wrapped lines.
-			block += maxf(0.0, roundf(block / line_height) - 1.0) * _keepsake_status.get_theme_constant("line_spacing")
-			status_height = maxf(status_height, block)
 		_keepsake_status.custom_minimum_size.y = ceilf(status_height)
 		_keepsake_content.custom_minimum_size.y = ceilf(BROWSER_HEIGHT + status_height + count_height + BOX_ROW_GAP * 2.0)
 		var height := _keepsake_box.get_combined_minimum_size().y
 		_keepsake_box.size = Vector2(width, height)
 		# Low in the stage, just above the hint band, so it covers as little island as possible.
 		_keepsake_box.position = Vector2(rect.get_center().x-global_position.x-width*0.5, size.y-70-height)
+
+## The tallest status line any keepsake can show and the count's font size, at
+## a wrap width: measured once per width, not every frame.
+func _fit_box(wrap: float) -> Dictionary:
+	var key := roundi(wrap)
+	if _box_fit.has(key): return _box_fit[key]
+	var lines: Array[String] = _keepsake_layer.every_line() if is_instance_valid(_keepsake_layer) else [PlayerCopy.KEEPSAKE_NEXT_EARLIER]
+	var status_font := _keepsake_status.get_theme_font("font")
+	var status_size := _keepsake_status.get_theme_font_size("font_size")
+	var line_height := status_font.get_height(status_size)
+	var status_height := 0.0
+	for line: String in lines:
+		var block := status_font.get_multiline_string_size(line, HORIZONTAL_ALIGNMENT_CENTER, wrap, status_size).y
+		# The label adds its line spacing between wrapped lines.
+		block += maxf(0.0, roundf(block / line_height) - 1.0) * _keepsake_status.get_theme_constant("line_spacing")
+		status_height = maxf(status_height, block)
+	var widest: String = _keepsake_layer.widest_count() if is_instance_valid(_keepsake_layer) else ""
+	var count_font := _keepsake_count.get_theme_font("font")
+	var count_size: int = COUNT_SIZES[-1]
+	for size_option: int in COUNT_SIZES:
+		if count_font.get_string_size(widest, HORIZONTAL_ALIGNMENT_LEFT, -1, size_option).x <= wrap:
+			count_size = size_option
+			break
+	_box_fit = {key: {"status": status_height, "count": count_size}}
+	return _box_fit[key]
 
 ## Centres the selected keepsake's title and its variant icons as one group between
 ## the paging buttons. The title takes the largest of TITLE_SIZES that fits on one
@@ -381,9 +405,12 @@ func _place_keepsake_heading(inner: float) -> void:
 
 func _create_keepsake_display() -> void:
 	if not is_instance_valid(_terrain): return
-	_keepsake_display = KeepsakeDisplay.new()
-	_terrain.add_child(_keepsake_display)
-	_keepsake_display.configure(_world, _keepsakes, _free_only)
+	_keepsake_layer = KeepsakeLayer.new()
+	_keepsake_layer.cue = func(cue: String) -> void:
+		if play_cue.is_valid(): play_cue.call(cue)
+	_terrain.add_child(_keepsake_layer)
+	_keepsake_layer.configure(_world, _keepsakes, _hard_marks, _together_hard, _free_only)
+	_box_fit.clear()
 	for prop: Variant in [_world.garden, _world.goal_ring, _world.seed, _world.landing_marker, _world.keepsake_landmark]:
 		if is_instance_valid(prop):
 			_hidden_props.append({"node":prop,"visible":prop.visible})
@@ -434,28 +461,9 @@ func _create_keepsake_box() -> void:
 			_keepsake_title.add_theme_font_size_override("font_size", TITLE_SIZES[0])
 			_keepsake_title.add_theme_color_override("font_color", UiTokens.CREAM)
 			_keepsake_controls.add_child(_keepsake_title)
-	_keepsake_variant_icons = HBoxContainer.new()
-	_keepsake_variant_icons.name = "KeepsakeVariants"
-	_keepsake_variant_icons.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_keepsake_variant_icons.add_theme_constant_override("separation", 4)
+	# The selected keepsake's three upgrade marks: Together, Hard, Together Hard.
+	_keepsake_variant_icons = KeepsakeCard.marks_row(VARIANT_ICON)
 	_keepsake_controls.add_child(_keepsake_variant_icons)
-	for variant: Array in [["KeepsakeSolo", SOLO_ICON, "Solo"], ["KeepsakeTogether", TOGETHER_ICON, "With a friend"]]:
-		var icon := TextureRect.new()
-		icon.name = variant[0]
-		icon.texture = variant[1]
-		icon.tooltip_text = variant[2]
-		icon.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		icon.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		icon.texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
-		icon.custom_minimum_size = Vector2(VARIANT_ICON, VARIANT_ICON)
-		icon.self_modulate = VARIANT_DIM
-		icon.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		_keepsake_variant_icons.add_child(icon)
-	# The place's chapter's two hard plays (services/hard_mode.gd), after its own marks.
-	for mode: String in HardMode.MODES:
-		var hard_mark := HardModeView.mark(mode, HardMode.LOCKED, VARIANT_ICON)
-		hard_mark.visible = false
-		_keepsake_variant_icons.add_child(hard_mark)
 	_keepsake_status = _box_label(STATUS_SIZE, UiTokens.HINT, _keepsake_content)
 	_keepsake_status.name = "KeepsakeStatus"
 	_keepsake_status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
@@ -496,8 +504,8 @@ func _page_button(offset: int) -> Button:
 			middle + Vector2(reach, 0),
 			middle + Vector2(-reach, 6.0 * unit)]), PAGE_CHEVRON, 2.4, true))
 	button.pressed.connect(func():
-		if not is_instance_valid(_keepsake_display): return
-		_keepsake_display.select_offset(offset)
+		if not is_instance_valid(_keepsake_layer): return
+		_keepsake_layer.select_offset(offset)
 		_update_keepsake_labels())
 	return button
 
@@ -511,51 +519,30 @@ func _box_label(font_size: int, color: Color, parent: Node) -> Label:
 	parent.add_child(label)
 	return label
 
-## Each chapter's hard marks (HardMode.states()) and [done, total] hard plays.
-func set_hard(states: Dictionary, counted: Array) -> void:
-	_hard_states = states.duplicate(true)
-	_hard_count = counted.duplicate()
+## Every Hard mark (HardMode.marks()) and whether the server hosts together
+## Hard rooms: Hard upgrades show on the keepsakes, and the gold top is offered.
+func set_hard(marks: Dictionary, together: bool) -> void:
+	_hard_marks = marks.duplicate(true)
+	_together_hard = together
+	if is_instance_valid(_keepsake_layer): _keepsake_layer.set_marks(_keepsakes, _hard_marks, _together_hard)
 	_update_keepsake_labels()
-
-## Every line the status row can show, for one box height in every state.
-const STATUS_LINES := [PlayerCopy.KEEPSAKE_TEASER, PlayerCopy.KEEPSAKE_TEASER_SOLO_ONLY, PlayerCopy.KEEPSAKE_NEEDS_FRIEND, PlayerCopy.KEEPSAKE_NEEDS_SOLO, PlayerCopy.KEEPSAKE_FINISHED, PlayerCopy.KEEPSAKE_FINISHED_SOLO]
-
-## What the selected keepsake still needs, or that it is finished.
-static func status_line(item: Dictionary) -> String:
-	var together: bool = item.get("friend_available", true)
-	match str(item.get("state", "none")):
-		"complete": return PlayerCopy.KEEPSAKE_FINISHED if together else PlayerCopy.KEEPSAKE_FINISHED_SOLO
-		"solo": return PlayerCopy.KEEPSAKE_NEEDS_FRIEND
-		"friend": return PlayerCopy.KEEPSAKE_NEEDS_SOLO
-	return PlayerCopy.KEEPSAKE_TEASER if together else PlayerCopy.KEEPSAKE_TEASER_SOLO_ONLY
 
 func _update_keepsake_labels() -> void:
 	if not is_instance_valid(_keepsake_box): return
-	var item: Dictionary = _keepsake_display.selected_item() if is_instance_valid(_keepsake_display) else {}
-	# Progress counts variants (solo, and together where it exists), not places.
-	var total := KeepsakeCatalog.variant_total(_free_only)
-	var earned := mini(KeepsakeCatalog.variant_count(_keepsakes, _free_only), total)
+	var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
 	_keepsake_controls.visible = not item.is_empty()
-	_keepsake_count.text = "Keepsakes · %d / %d" % [earned, total]
-	# Hard plays keep their own count beside it, once one is open.
-	if _hard_count.size() == 2 and int(_hard_count[1]) > 0 and HardMode.any_open(_hard_states): _keepsake_count.text += " · " + PlayerCopy.HARD_COUNT % [int(_hard_count[0]), int(_hard_count[1])]
-	_keepsake_status.text = status_line(item) if not item.is_empty() else PlayerCopy.KEEPSAKE_TEASER
+	_keepsake_count.text = _keepsake_layer.count_line() if is_instance_valid(_keepsake_layer) else ""
+	_keepsake_status.text = str(item.get("line", PlayerCopy.KEEPSAKE_NEXT_EARLIER))
+	_update_explore_action()
 	if item.is_empty(): return
-	_keepsake_title.text = str(item.title)
-	var solo: TextureRect = _keepsake_variant_icons.get_child(0)
-	var together: TextureRect = _keepsake_variant_icons.get_child(1)
-	solo.self_modulate = SOLO_LIT if item.get("solo", false) else VARIANT_DIM
-	together.visible = item.get("friend_available", true)
-	together.self_modulate = TOGETHER_LIT if item.get("friend", false) else VARIANT_DIM
-	# The place's chapter's hard plays, once open or done.
-	var hard: Variant = _hard_states.get(str(item.get("chapter_key", "")))
-	for index in range(HardMode.MODES.size()):
-		var hard_mark: Control = _keepsake_variant_icons.get_child(2 + index)
-		var look := str(hard.get(HardMode.MODES[index], HardMode.LOCKED)) if hard is Dictionary else HardMode.LOCKED
-		hard_mark.visible = look != HardMode.LOCKED
-		if hard_mark.visible: hard_mark.set_look(look)
+	_keepsake_title.text = str(item.name)
+	KeepsakeCard.show_marks(_keepsake_variant_icons, item)
 	if _keepsake_controls.custom_minimum_size.x > 0:
 		_place_keepsake_heading(_keepsake_controls.custom_minimum_size.x)
+
+## Whether a keepsake's tap is playing (Main draws at full rate meanwhile).
+func keepsake_playing() -> bool:
+	return is_instance_valid(_keepsake_layer) and _keepsake_layer.playing()
 
 func _is_active() -> bool:
 	return is_inside_tree() and is_visible_in_tree() and _foreground and is_instance_valid(_world) and _world.visible and _world.home_view and _world.terrain==_terrain and _world.home_presentation_owner==get_instance_id() and _active.is_valid() and _active.call()
@@ -564,7 +551,7 @@ func _allowed(point: Vector2) -> bool:
 	for action: Control in _header_actions:
 		if is_instance_valid(action) and action.is_visible_in_tree() and action.get_global_rect().has_point(point): return false
 	if is_instance_valid(_keepsake_box) and _keepsake_box.visible and _keepsake_box.get_global_rect().has_point(point): return false
-	for control: Control in [_explore_button, _explore_back, _stick]:
+	for control: Control in [_explore_button, _explore_back, _stick, _explore_action]:
 		if is_instance_valid(control) and control.is_visible_in_tree() and control.get_global_rect().has_point(point): return false
 	# The menu panel keeps its own presses; only Explore has the whole screen.
 	if not _exploring and point.x < global_position.x + UiTokens.HOME_PANEL_WIDTH: return false
@@ -632,7 +619,7 @@ func _begin_tap(index: int, point: Vector2) -> void:
 	# Spirits win a tap near them; otherwise a tap near a keepsake selects it.
 	var keepsake := ""
 	if _greeting_left > 0.0 or not _spirit_near(point):
-		if is_instance_valid(_keepsake_display): keepsake = _keepsake_display.pick(_world.camera, point)
+		if is_instance_valid(_keepsake_layer): keepsake = _keepsake_layer.pick(_world.camera, point)
 		if keepsake.is_empty(): return
 	_tap = {"index": index, "start": point, "msec": Time.get_ticks_msec(), "keepsake": keepsake}
 
@@ -659,13 +646,25 @@ func _finish_tap(point: Vector2) -> void:
 	_tap = {}
 	if point.distance_to(tap.start) <= TAP_SLOP and Time.get_ticks_msec() - int(tap.msec) <= TAP_MAX_MSEC:
 		if str(tap.keepsake).is_empty(): _greet()
-		else: select_keepsake(str(tap.keepsake))
+		elif select_keepsake(str(tap.keepsake)): play_keepsake(str(tap.keepsake))
 
-## Shows a keepsake slot in the box: its name and what it still needs.
+## Shows a keepsake in the box: its name and what it still needs.
 func select_keepsake(id: String) -> bool:
-	if not is_instance_valid(_keepsake_display) or not _keepsake_display.select_id(id): return false
+	if not is_instance_valid(_keepsake_layer) or not _keepsake_layer.select_id(id): return false
 	_update_keepsake_labels()
 	return true
+
+## Plays a keepsake's tap. A second tap while one plays is ignored.
+func play_keepsake(id: String) -> bool:
+	return is_instance_valid(_keepsake_layer) and _keepsake_layer.play(id)
+
+## Explore's action button names the keepsake the spirit stands by, once it is earned.
+func _update_explore_action() -> void:
+	if not is_instance_valid(_explore_action): return
+	var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
+	var near: bool = _exploring and _actors.has("a") and is_instance_valid(_keepsake_layer) and _keepsake_layer.nearest(_actors.a.position, EXPLORE_NOTICE) == str(item.get("id", "-"))
+	_explore_action.visible = near and item.get("look") == "keepsake"
+	if _explore_action.visible: _explore_action.text = str(item.action)
 
 func _greet() -> void:
 	# Presentation only: both spirits share the meet greeting, then wander again.
@@ -781,6 +780,17 @@ func _create_explore_controls() -> void:
 	_stick.visible = false
 	add_child(_stick)
 	_stick.size = Vector2(Joystick.HIT_SIZE, Joystick.HIT_SIZE)
+	# The chapters' action button, in the same place: the nearby keepsake's own words.
+	_explore_action = Button.new()
+	_explore_action.name = "HomeExploreAction"
+	_explore_action.custom_minimum_size = Vector2(210, 64)
+	_explore_action.size = Vector2(210, 64)
+	_explore_action.mouse_filter = Control.MOUSE_FILTER_STOP
+	_explore_action.visible = false
+	_explore_action.pressed.connect(func() -> void:
+		var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
+		if not item.is_empty(): play_keepsake(str(item.id)))
+	add_child(_explore_action)
 
 func is_exploring() -> bool:
 	return _exploring
@@ -792,6 +802,7 @@ func _show_explore_controls() -> void:
 	_explore_back.visible = _exploring
 	_explore_button.visible = not _exploring
 	for page: Button in _page_buttons: page.visible = not _exploring
+	_update_explore_action()
 
 ## Switches Home into explore mode and back. The menu and header hide while
 ## exploring and come back as they were; the gold spirit returns to where it
@@ -841,19 +852,21 @@ func _walk(actor: Node3D, step: float) -> void:
 		# Straight on, else slide along x or z.
 		for attempt in range(3):
 			var candidate := actor.position + (move if attempt == 0 else Vector3(move.x, 0, 0) if attempt == 1 else Vector3(0, 0, move.z))
-			if _keepsake_display.walkable(candidate):
+			if _keepsake_layer.walkable(candidate):
 				actor.position = candidate
 				break
 	# The bridge rises as the spirit comes near and carries it only once its
-	# planks are drawn up (home_keepsake_display.gd).
+	# planks are drawn up (home_keepsake_layer.gd).
 	var reach := BRIDGE_RELEASE if _world.home_bridge_raised else BRIDGE_NOTICE
-	_world.home_bridge_raised = _keepsake_display.near_lowering_crossing(actor.position, reach)
+	_world.home_bridge_raised = _keepsake_layer.near_lowering_crossing(actor.position, reach)
 	_explore_focus = actor.position if _world.reduced_motion else _explore_focus.lerp(actor.position, 1.0 - exp(-8.0 * step))
-	var near: String = _keepsake_display.nearest(actor.position, EXPLORE_NOTICE)
-	if not near.is_empty() and near != str(_keepsake_display.selected_item().get("id", "")): select_keepsake(near)
+	var near: String = _keepsake_layer.nearest(actor.position, EXPLORE_NOTICE)
+	if not near.is_empty() and near != str(_keepsake_layer.selected_item().get("id", "")): select_keepsake(near)
+	else: _update_explore_action()
 
 func _clear_position(role: String, candidate: Vector3) -> bool:
 	if not _floor.has_point(Vector2(candidate.x,candidate.z)): return false
+	if is_instance_valid(_keepsake_layer) and _keepsake_layer.blocks(candidate, SPIRIT_CLEARANCE): return false
 	for other: String in _actors:
 		if other!=role and candidate.distance_to(_actors[other].position)<SEPARATION:
 			return false
@@ -893,7 +906,7 @@ func _exit_tree() -> void:
 	for node: CanvasItem in _explore_hidden:
 		if is_instance_valid(node): node.visible = true
 	_explore_hidden.clear()
-	if is_instance_valid(_keepsake_display): _keepsake_display.queue_free()
+	if is_instance_valid(_keepsake_layer): _keepsake_layer.queue_free()
 	if not is_instance_valid(_world) or _world.home_presentation_owner!=get_instance_id(): return
 	for saved_prop: Dictionary in _hidden_props:
 		if is_instance_valid(saved_prop.node): saved_prop.node.visible = saved_prop.visible

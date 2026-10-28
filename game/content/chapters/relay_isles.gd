@@ -20,5 +20,19 @@ const DATA := {
 		{"stage_id": "relay", "title": "The Relay"},
 		{"stage_id": "garden", "title": "The Garden"},
 	],
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/relay_flag.gd",
+		"island": "right",
+		"slot": [-1.4, -1.3],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_RELAY_FLAG_NAME,
+			"action": PlayerCopy.KEEPSAKE_RELAY_FLAG_ACTION,
+			"together": PlayerCopy.KEEPSAKE_RELAY_FLAG_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_RELAY_FLAG_HARD,
+			"top": PlayerCopy.KEEPSAKE_RELAY_FLAG_TOP,
+		},
+		"sounds": {"base": "handoff_offered", "together": "seed_caught", "hard": "switch_set", "top": "receivers_joined"},
+	},
 	"server": {"flag": "", "max_branches": 32},
 }

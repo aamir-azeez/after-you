@@ -18,5 +18,19 @@ const DATA := {
 		{"stage_id": "down-and-around", "title": "Down and Around"},
 	],
 	"dressing": "res://content/dressing/high_and_low.gd",
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/up_and_down_steps.gd",
+		"island": "right",
+		"slot": [0.0, -1.2],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_STEPS_NAME,
+			"action": PlayerCopy.KEEPSAKE_STEPS_ACTION,
+			"together": PlayerCopy.KEEPSAKE_STEPS_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_STEPS_HARD,
+			"top": PlayerCopy.KEEPSAKE_STEPS_TOP,
+		},
+		"sounds": {"base": "seed_thrown", "together": "seed_landed", "hard": "lever_pulled", "top": "receivers_joined"},
+	},
 	"server": {"flag": "COOP_CHAPTERS_ENABLED", "max_branches": 32},
 }

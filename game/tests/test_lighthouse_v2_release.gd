@@ -9,6 +9,7 @@ const Migration = preload("res://services/lighthouse_migration.gd")
 const V1Journey = preload("res://services/lighthouse_journey.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
+const States = preload("res://services/home_keepsake_states.gd")
 const PaidCatalog = preload("res://services/paid_level_catalog.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const HardMode = preload("res://services/hard_mode.gd")
@@ -38,7 +39,8 @@ func _keepsakes_and_flags() -> void:
 	var released: bool = KEY in Registry.offered_keys()
 	var lighthouse_rows := KeepsakeCatalog.all().filter(func(item: Dictionary) -> bool: return item.chapter_key == KeepsakeCatalog.LIGHTHOUSE)
 	_check(lighthouse_rows.size() == 6 and lighthouse_rows.all(func(item: Dictionary) -> bool: return item.friend_available == released), "The Lighthouse's together keepsakes follow its release (%s)" % released)
-	_check(KeepsakeCatalog.variant_total() == (64 if released else 58), "Keepsake variants: %d" % KeepsakeCatalog.variant_total())
+	var keepsake: Dictionary = States.entries().filter(func(entry: Dictionary) -> bool: return entry.id == "sleeping-lighthouse")[0]
+	_check(keepsake.key == KEY and keepsake.together == released and keepsake.hard == released, "The Little Lighthouse has its together and Hard upgrades exactly when @2 is offered (%s)" % released)
 	_check(PaidCatalog.entry("sleeping-lighthouse").together == released, "The gallery says Together exactly when it can be played together")
 
 ## Writes an @1 journal of the first `pairs` frozen stages and, optionally, the next A.

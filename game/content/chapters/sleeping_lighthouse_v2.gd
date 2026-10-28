@@ -17,5 +17,19 @@ const DATA := {
 	},
 	"thumbnail": "res://assets/paid_levels/sleeping-lighthouse.png",
 	"beds": ["water_far"],
+	# The chapter's keepsake on Home (presentation/keepsakes/).
+	"home_keepsake": {
+		"builder": "res://presentation/keepsakes/little_lighthouse.gd",
+		"island": "left",
+		"slot": [-1.4, -1.3],
+		"copy": {
+			"name": PlayerCopy.KEEPSAKE_LIGHTHOUSE_NAME,
+			"action": PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION,
+			"together": PlayerCopy.KEEPSAKE_LIGHTHOUSE_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_LIGHTHOUSE_HARD,
+			"top": PlayerCopy.KEEPSAKE_LIGHTHOUSE_TOP,
+		},
+		"sounds": {"base": "garden_opened", "together": "waypoint", "hard": "tower_bell", "top": "island_bloomed"},
+	},
 	"server": {"flag": "LIGHTHOUSE_V2_CHAPTER_ENABLED", "max_branches": 7},
 }

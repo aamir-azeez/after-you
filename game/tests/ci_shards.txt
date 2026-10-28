@@ -101,9 +101,10 @@ hard_mode_room 3
 hard_mode_solo 3
 history_store 2
 history_sync 2
-home_keepsake_display 1
+home_keepsake_layer 1
 home_keepsake_lifecycle 3
 home_keepsake_scan 1
+home_keepsake_states 2
 home_keepsakes 3
 home_menu 2
 home_scene_navigation 1
@@ -126,6 +127,7 @@ journey_proofs 2
 journey_seven 3
 journey_world 2
 keepsake_leave 1
+keepsake_props 3
 keyboard_lift 1
 keyboard_lift_wired 2
 label_bubble_tails 1
