@@ -89,6 +89,10 @@ func _run() -> void:
 	session.join_unlocks = func() -> Dictionary: return veteran
 	await session.join_room("room-" + CODE)
 	_check(session.last_error == "That room is full.", "A veteran's join reaches the room's own answer: " + session.last_error)
+	# While the keepsake ledger is unsettled the join carries nothing.
+	session.join_unlocks = func() -> Dictionary: return Unlocks.unsettled()
+	await session.join_room("room-" + CODE)
+	_check(api.joins[-1].is_empty() and session.last_error == "That room is full.", "An unsettled ledger sends no header, as an older build")
 	# Without Main's progress (an older wiring) the join carries nothing and is never refused here.
 	session.join_unlocks = Callable()
 	await session.join_room("room-" + CODE)

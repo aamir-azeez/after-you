@@ -176,6 +176,13 @@ func confirm_room_rendered(api_version: int, room_id: String) -> bool:
 func unread(room: Dictionary) -> bool:
 	return is_unread(room,_seen)
 
+## The rooms the server last listed (this client's saved copy), each with the
+## server's own status. Never named or marked finished from this phone's
+## records, as view() names a placeholder row from a saved replay.
+func listed() -> Array[Dictionary]:
+	if not _bind(): return []
+	return _rooms.duplicate(true)
+
 ## True when the latest successful server read listed this room, so its status
 ## is current enough to close or remove it.
 func confirmed(room: Dictionary) -> bool:

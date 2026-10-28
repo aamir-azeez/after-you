@@ -12,7 +12,6 @@ const ScreenSwitch = preload("res://services/screen_switch.gd")
 const HomeKeepsakes = preload("res://services/home_keepsakes.gd")
 const ChapterCompletion = preload("res://presentation/chapter_completion.gd")
 const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
-const RoomInboxClient = preload("res://services/room_inbox_client.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const HardModeView = preload("res://presentation/hard_mode_view.gd")
 const Joystick = preload("res://presentation/joystick.gd")
@@ -827,35 +826,21 @@ func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(home_keepsakes.earned_descriptors())
 
 ## What the chapter unlock gate answers from (services/chapter_unlocks.gd):
-## the marks Home's keepsakes read, the chapters already played or in a room,
-## and Full Journey access. Built once per draw, never per card.
+## the marks Home's keepsakes read, the chapters already played or in a room
+## (RoomHubFlow.known_rooms) and Full Journey access. Worked out again only
+## when one of those changed, so a draw's several asks cost one build. While
+## the keepsake ledger is held or still being rebuilt it may be missing marks,
+## so every chapter is open and joins say nothing (ChapterUnlocks.unsettled).
+var _unlocks_kept: Array = []
 func _chapter_unlocks() -> Dictionary:
-	var rooms := _known_rooms()
-	return ChapterUnlocks.progress(home_keepsakes.earned_descriptors(), HardMode.new().marks(), ChapterUnlocks.touched(rooms.chapters), _full_journey_access(), rooms.finished)
-
-## The rooms this phone knows, as chapter keys: {"chapters": every room's,
-## "finished": finished rooms'}. From the online session's rooms, the room
-## list (the hub's while it is up, else its saved copy, so a cold start knows
-## them too) and finished rooms with a saved replay.
-func _known_rooms() -> Dictionary:
-	var chapters: Array = []
-	var finished: Array = []
-	if relay_session != null:
-		for summary: Dictionary in relay_session.room_summaries():
-			var key: String = relay_session.room_chapter(str(summary.get("room_id", "")))
-			chapters.append(key)
-			if summary.get("active_role") == "complete": finished.append(key)
-	var inbox: RefCounted = room_hub_flow.inbox if room_hub_flow != null and room_hub_flow.inbox != null else RoomInboxClient.new(api, _relay_identity)
-	for room: Variant in inbox.view().get("rooms", []):
-		if not room is Dictionary: continue
-		chapters.append(str(room.get("chapter_key", "")))
-		if room.get("status") == "completed": finished.append(str(room.get("chapter_key", "")))
-	if shared_replays != null:
-		for room: Variant in shared_replays.rooms():
-			if room is Dictionary and room.get("family") == "chapter":
-				chapters.append(str(room.get("chapter_key", "")))
-				finished.append(str(room.get("chapter_key", "")))
-	return {"chapters": chapters, "finished": finished}
+	if home_keepsakes.read_only or home_keepsakes.backfill_pending(): return ChapterUnlocks.unsettled(_full_journey_access())
+	var earned := home_keepsakes.earned_descriptors()
+	var rooms: Dictionary = room_hub_flow.known_rooms()
+	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access()]
+	if _unlocks_kept.size() == 2 and _unlocks_kept[0] == stamp: return _unlocks_kept[1]
+	var progress := ChapterUnlocks.progress(earned, HardMode.new().marks(), ChapterUnlocks.touched(rooms.chapters), stamp[3], rooms.finished)
+	_unlocks_kept = [stamp, progress]
+	return progress
 
 ## The @1 Lighthouse screen, where its earlier replays play.
 const LIGHTHOUSE_SCENE := LighthouseMigration.V1_SCENE

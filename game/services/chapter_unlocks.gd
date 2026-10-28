@@ -23,6 +23,9 @@ extends RefCounted
 ##   it too: the host's Full Journey covers the guest, as it always has.
 ## - open() adds Full Journey: what a duel, which has no host to cover it, asks.
 ## - Earlier islands, keys outside the chain and replays are never gated.
+## - While the keepsake ledger is held (unreadable) or still being rebuilt from
+##   the journals, its marks may be missing: the caller asks unsettled(), so
+##   nothing is locked and a join carries no header, as an older build's.
 ##
 ## Callers build progress() once per draw and ask it per card; nothing here
 ## reads a file except touched(), which checks a few journal paths.
@@ -80,6 +83,12 @@ static func progress(earned: Array, hard: Dictionary = {}, touched_keys: Diction
 		var counted := chain_key(str(key))
 		if not counted.is_empty(): opened[counted] = true
 	return {"frontier": frontier, "touched": opened, "full_journey": full_journey}
+
+## Progress while the keepsake marks cannot be trusted yet: every chapter
+## reached, Full Journey as given, and no join header.
+static func unsettled(full_journey: bool = false) -> Dictionary:
+	_build()
+	return {"frontier": _chain.size(), "touched": {}, "full_journey": full_journey, "unsettled": true}
 
 ## Whether the chain has reached the chapter for this player. Full Journey is
 ## not asked here.
@@ -139,8 +148,10 @@ static func touched(room_chapters: Array = []) -> Dictionary:
 	return result
 
 ## A join's header line: every registered chapter's level id the player has
-## reached, so the room can refuse a chapter past them.
+## reached, so the room can refuse a chapter past them. "" while unsettled:
+## the join then carries none and is never refused for a chapter.
 static func join_header(state: Dictionary) -> String:
+	if state.get("unsettled", false): return ""
 	var levels: Array[String] = []
 	for key: String in Index.keys():
 		var level := key.get_slice("@", 0)

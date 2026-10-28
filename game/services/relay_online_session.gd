@@ -568,7 +568,8 @@ func retry_lobby() -> String:
 		return ""
 	var request: Dictionary = _index.pending.duplicate(true)
 	var unlocks: Dictionary = join_unlocks.call() if request.path == "/v2/rooms/join" and join_unlocks.is_valid() else {}
-	var headers := PackedStringArray() if unlocks.is_empty() else PackedStringArray([ChapterUnlocks.join_header(unlocks)])
+	var line := "" if unlocks.is_empty() else ChapterUnlocks.join_header(unlocks)
+	var headers := PackedStringArray() if line.is_empty() else PackedStringArray([line])
 	var response := await _call(HTTPClient.METHOD_POST, request.path, request.body, headers)
 	if not response.get("ok", false):
 		# A definitive refusal settles the request: the server joined or created
@@ -587,7 +588,7 @@ func retry_lobby() -> String:
 			if not _write_index(next): return ""
 		_failure(response)
 		if request.path == "/v2/rooms" and int(response.get("status", 0)) == 402 and response.get("code") == "host_unlock_required": last_error = PlayerCopy.SHARED_HOST_CREATE_ACCESS
-		if not unlocks.is_empty() and int(response.get("status", 0)) == 403 and response.get("code") == ChapterUnlocks.JOIN_REFUSAL: last_error = ChapterUnlocks.join_refusal(unlocks)
+		if not line.is_empty() and int(response.get("status", 0)) == 403 and response.get("code") == ChapterUnlocks.JOIN_REFUSAL: last_error = ChapterUnlocks.join_refusal(unlocks)
 		return ""
 	var room: Variant = response.get("data")
 	if not room is Dictionary or not _id(room.get("room_id")):

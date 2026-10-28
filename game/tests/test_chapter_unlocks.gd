@@ -209,6 +209,8 @@ func _joining() -> void:
 	_check(chain[1].get_slice("@", 0) in _levels(after_first), "And a room for it now takes the new player")
 	var finished_room := Unlocks.progress([], {}, {}, false, [chain[0]])
 	_check(Unlocks.reached(chain[1], finished_room) and not Unlocks.reached(chain[2], finished_room), "A finished room counts as a clear before its places reach this phone")
+	var unsettled := Unlocks.unsettled(false)
+	_check(_reached(unsettled) == chain and Unlocks.join_header(unsettled).is_empty() and not Unlocks.open(Registry.LIGHTHOUSE_V2, unsettled), "Unsettled marks lock no chapter, send no join header and keep Full Journey as given")
 	var named := RegEx.create_from_string("^[a-z0-9-]{1,64}$")
 	var all := _levels(veteran)
 	_check(all.size() <= 64, "A join names at most the 64 levels the room reads")

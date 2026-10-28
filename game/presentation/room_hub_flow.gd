@@ -15,6 +15,8 @@ extends Node
 ##   _tester_checks_enabled, _load_cached_tester, _hosting_lock_reason,
 ##   _paid_content_hidden, _online_gated, _friend_display_name, _chapter_marks,
 ##   _chapter_unlocks
+## Main's chapter unlocks read known_rooms(), from the same room list client
+## the hub draws (rooms_client()).
 ## - screen: mode, running, ui, overlay, store_view_generation, lifecycle_generation,
 ##   application_backgrounded, _toast
 ## - room flow: active_room, _relay_available,
@@ -83,6 +85,11 @@ var _tap_room := ""
 ## Whether the server offers Leave room, read only once the list shows a
 ## confirmed finished room. A failed leave forgets it.
 var leave_support := RoomLeaveSupport.new()
+
+## The room list client the hub and the chapter unlocks share (rooms_client()),
+## and the API it was made for.
+var _client: RefCounted
+var _client_api: Node
 
 ## Hint-driven reads of the open hub's rooms (services/refresh_schedule.gd):
 ## one at a time, one more for hints that arrive while a read is out.
@@ -166,9 +173,7 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	host.running=false
 	host.mode=MODE_ROOMS
 	host.ui.visible=false
-	inbox = RoomInboxClient.new(host.api,host._relay_identity)
-	inbox.local = _local_history
-	inbox.finished = _saved_replay_rooms
+	inbox = rooms_client()
 	screen = RoomHubScreen.new()
 	screen.client = inbox
 	screen.restore_choice(selected_chapter,host_visibility)
@@ -247,7 +252,7 @@ func _leave(keep_inbox: bool = false) -> void:
 ## Takes a room off this device's saved hub list, as Remove from list does,
 ## whether or not the hub is up. New activity in the room brings it back.
 func hide_room(version: int, room_id: String) -> void:
-	var client: RefCounted = inbox if inbox != null else RoomInboxClient.new(host.api,host._relay_identity)
+	var client: RefCounted = inbox if inbox != null else rooms_client()
 	for room: Dictionary in client.view().rooms:
 		if int(room.get("api_version",0)) == version and str(room.get("room_id","")) == room_id: client.hide(room)
 
@@ -359,6 +364,38 @@ func _retry(kind: String) -> void:
 	elif not pending_redo.is_empty(): await host.relay_lobby_flow.lobby_action("open",pending_redo)
 	else: host._return_to_room_hub()
 
+## The room list client: one for the flow, kept while the API in use is the
+## same, so the hub and the chapter unlocks read one saved list and never
+## parse it again per draw. It binds to the identity in use on each read.
+func rooms_client() -> RefCounted:
+	if _client == null or _client_api != host.api:
+		_client = RoomInboxClient.new(host.api,host._relay_identity)
+		_client.local = _local_history
+		# Saved replays name rooms the server can no longer read; the hub
+		# loads them, the chapter unlocks read only what is loaded.
+		_client.finished = func() -> Array: return _saved_replay_rooms(is_open())
+		_client_api = host.api
+	return _client
+
+## Every room this phone knows, as chapter keys, for the chapter unlocks
+## (services/chapter_unlocks.gd): {"chapters": every room's, "finished":
+## rooms finished on the server's word (the room list's own "completed") or
+## the online session's (its last turn played)}. A room known from a saved
+## replay counts as known only: that list holds waiting rooms and rooms in
+## play too, and the hub's list names a placeholder row from it.
+func known_rooms() -> Dictionary:
+	var client := rooms_client()
+	var chapters: Array = []
+	var finished: Array = []
+	for room: Dictionary in client.view().get("rooms", []): chapters.append(str(room.get("chapter_key", "")))
+	for room: Dictionary in client.listed():
+		if room.get("status") == "completed" and not RoomInboxClient.unresolved(room): finished.append(str(room.chapter_key))
+	for room: Dictionary in _local_history():
+		chapters.append(str(room.chapter_key))
+		if room.status == "completed": finished.append(str(room.chapter_key))
+	for room: Dictionary in _saved_replay_rooms(false): chapters.append(str(room.chapter_key))
+	return {"chapters": chapters, "finished": finished}
+
 ## Chapter picker entries for Play with a friend. The hub lists offered chapters
 ## and hosts through hosting_key; once the server's chapters are known, a
 ## chapter it cannot create at any version is tagged unavailable online.
@@ -413,10 +450,12 @@ func _local_history() -> Array:
 
 ## Rooms whose replay this phone saved, in the inbox room shape. Once both
 ## players save a finished room's replay the server keeps only a compact record,
-## so this names such a room when the inbox cannot.
-func _saved_replay_rooms() -> Array:
+## so this names such a room when the inbox cannot. `make` makes the saved
+## replays' collection when Main has none yet.
+func _saved_replay_rooms(make: bool = true) -> Array:
 	var rooms: Array = []
 	if not host._relay_identity().ready: return rooms
+	if host.shared_replays == null and not make: return rooms
 	if host.shared_replays == null: host.shared_replays = SharedReplays.new(host.api,host._relay_identity)
 	for room: Dictionary in host.shared_replays.rooms():
 		if room.get("family") != "chapter": continue

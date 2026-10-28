@@ -290,16 +290,10 @@ func _chain(scene: App, store: FakeStore) -> void:
 	hub.queue_free()
 	scene.room_hub_flow.screen = null
 	await process_frame
-	# Main's own progress: a finished room with a friend counts before this
-	# phone takes its places, and a room in play keeps its chapter open.
 	scene.unlocks = null
 	scene.real = true
-	var before := scene.shared_replays
-	scene.shared_replays = Replays.new([{"family": "chapter", "chapter_key": chain[0]}])
-	var progress: Dictionary = scene._chapter_unlocks()
-	_check(Unlocks.reached(chain[1], progress) and not Unlocks.reached(chain[2], progress), "A finished First Steps room opens the next chapter")
-	_check(chain[1].get_slice("@", 0) in _levels(progress), "And a room for it then takes this player")
-	scene.shared_replays = before
+	await _known_rooms(scene, chain)
+	_unsettled(scene, chain)
 	# Bought Full Journey before reaching it: the card says what opens the
 	# Lighthouse and leads to the chapters, never to a refused open.
 	store.entitled = true
@@ -321,6 +315,61 @@ func _chain(scene: App, store: FakeStore) -> void:
 	_check(_button(scene, "Enter the Lighthouse") != null, "Once the Lighthouse is reached the card enters it")
 	scene.unlocks = null
 	store.entitled = false
+
+## Main's own progress from the rooms it knows (RoomHubFlow.known_rooms):
+## only a room the server or the online session says finished is a clear. A
+## hosted room with no turns, a room in play and a room named only from a
+## saved replay keep their chapter open and open nothing after it.
+func _known_rooms(scene: App, chain: Array[String]) -> void:
+	var before := scene.shared_replays
+	scene.api.base_url = "https://unlocks.invalid"
+	scene.api.player_id = "P".repeat(22)
+	scene.api.device_token = "synthetic-token"
+	var me := "P".repeat(22)
+	var friend := "F".repeat(22)
+	var client: RefCounted = scene.room_hub_flow.rooms_client()
+	client.view()
+	_check(scene.room_hub_flow.rooms_client() == client, "The hub and the chapter unlocks share one room list client")
+	var row := func(id: String, key: String, status: String) -> Dictionary:
+		return {"api_version": 2, "room_id": id.repeat(22), "chapter_key": key, "chapter_title": "", "member_ids": [me, friend], "status": status, "revision": 0, "remote_activity_sequence": 0, "activity_at": 0, "family": "relay"}
+	# A room this player hosted, still waiting with no turns, is listed in the
+	# saved replays' rooms like every linked room.
+	scene.shared_replays = Replays.new([{"family": "chapter", "chapter_key": chain[2], "room_id": "w".repeat(22), "host_id": me, "guest_id": null, "title": ""}])
+	var progress: Dictionary = scene._chapter_unlocks()
+	_check(Unlocks.reached(chain[2], progress) and not Unlocks.reached(chain[3], progress), "A hosted room with no turns keeps its chapter open and opens nothing")
+	client._rooms.assign([row.call("a", chain[2], "your_turn"), row.call("b", chain[2], "waiting_for_their_turn")])
+	progress = scene._chapter_unlocks()
+	_check(Unlocks.reached(chain[2], progress) and not Unlocks.reached(chain[3], progress), "A room in play keeps its chapter open and opens nothing")
+	# A placeholder row the server cannot read, named from a saved replay: the
+	# hub shows it finished, the chain does not count it.
+	scene.shared_replays = Replays.new([{"family": "chapter", "chapter_key": chain[2], "room_id": "c".repeat(22), "host_id": me, "guest_id": friend, "title": ""}])
+	client._rooms.assign([row.call("c", "unknown", "unavailable")])
+	var named: Array = client.view().rooms.filter(func(room: Dictionary) -> bool: return room.room_id == "c".repeat(22))
+	_check(named.size() == 1 and named[0].status == "completed", "The hub still names the placeholder as the finished room")
+	progress = scene._chapter_unlocks()
+	_check(not Unlocks.reached(chain[3], progress), "A room named only from a saved replay is never a clear")
+	client._rooms.assign([row.call("d", chain[2], "completed")])
+	progress = scene._chapter_unlocks()
+	_check(Unlocks.reached(chain[3], progress) and not Unlocks.reached(chain[4], progress), "A room the server lists as completed is a clear")
+	_check(chain[3].get_slice("@", 0) in _levels(progress), "And a room for the next chapter then takes this player")
+	_check(scene._chapter_unlocks() == progress, "Asking again with nothing changed gives the same progress")
+	client._rooms.clear()
+	scene.shared_replays = before
+	await process_frame
+
+## While the keepsake ledger is held or still being rebuilt, nothing is locked
+## and a join says nothing, so a veteran is never pulled back to First Steps.
+func _unsettled(scene: App, chain: Array[String]) -> void:
+	var ledger: RefCounted = scene.home_keepsakes
+	ledger.read_only = true
+	var held: Dictionary = scene._chapter_unlocks()
+	ledger.read_only = false
+	_check(Unlocks.reached(chain[-1], held) and Unlocks.join_header(held).is_empty(), "A held ledger locks nothing and a join carries no header")
+	ledger._jobs.append({"kind": "synthetic"})
+	var rebuilding: Dictionary = scene._chapter_unlocks()
+	ledger._jobs.clear()
+	_check(ledger.backfill_pending() == false and Unlocks.reached(chain[-1], rebuilding) and Unlocks.join_header(rebuilding).is_empty(), "A ledger still being rebuilt locks nothing and a join carries no header")
+	_check(not Unlocks.reached(chain[-1], scene._chapter_unlocks()), "Once settled the chain applies again")
 
 ## The level ids a join for `state` names.
 static func _levels(state: Dictionary) -> Array:
