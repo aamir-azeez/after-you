@@ -289,7 +289,7 @@ func _screen() -> void:
 	_check(own != null and not board.is_ancestor_of(own) and _has_text(own, "8") and _has_text(own, Runs.time_text(6300)) and own.find_child("LeaderboardWatch", true, false) != null, "Your best is pinned under the list with its place, time and Watch")
 	var checking: Control = screen.find_child("LeaderboardChecking", true, false)
 	_check(checking.visible and _has_text(checking, PlayerCopy.LEADERBOARD_RUN_CHECKING) and _has_text(checking, Runs.time_text(6000)), "the run being checked shows its time")
-	_check(_has_text(screen.find_child("LeaderboardSharedNote", true, false), PlayerCopy.LEADERBOARD_SHARED_BOARD), "normal and duel runs share the board")
+	_check(not Screen.duels_share_boards and screen.find_child("LeaderboardSharedNote", true, false) == null, "no duel note while duels are off")
 	var cards: Array = screen.find_child("LeaderboardChapters", true, false).find_children("Chapter_*", "Button", true, false)
 	_check(not cards.is_empty() and cards.all(func(card: Node) -> bool: return (card.find_children("*", "TextureRect", true, false)[0] as TextureRect).texture != null), "each chapter shows its capture")
 	var pips: Array = board.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)

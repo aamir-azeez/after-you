@@ -39,6 +39,9 @@ const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 const REFRESH_ICON = preload("res://assets/ui/social/arrows-clockwise.svg")
 const INFO_ICON = preload("res://assets/ui/social/info.svg")
+## Whether the page says normal and duel runs share a board. Off until duels
+## ship; the duels work turns it on behind its own flag.
+static var duels_share_boards := false
 const BACKGROUND := Color("123936")
 const PANEL_FILL := Color("163f3b")
 const PANEL_EDGE := Color("2d5a53")
@@ -243,7 +246,7 @@ func _build_body() -> void:
 	(column if _stacked else rail_column).add_child(_side)
 	_checking_card = _checking()
 	_side.add_child(_checking_card)
-	_side.add_child(_shared_note())
+	if duels_share_boards: _side.add_child(_shared_note())
 	_render_chapters()
 	_render_board()
 
