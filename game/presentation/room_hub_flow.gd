@@ -180,6 +180,8 @@ func open_hub(notice: String = "", refresh: bool = true) -> void:
 	screen.set_chapters(together_chapters())
 	screen.completion_marks = host._chapter_marks()
 	screen.display_name = _member_name
+	# A duel's room carries a small Duel tag (presentation/duels/duels_flow.gd room_kind).
+	screen.duel_kind = host.duels_flow.room_kind if "duels_flow" in host and host.duels_flow != null else Callable()
 	screen.partner_friend = _partner_friend
 	screen.add_friend_requested.connect(_add_partner_friend)
 	screen.thumbnail_for = func(key: String) -> String: return ChapterThumbnailCatalog.path(key)

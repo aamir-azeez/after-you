@@ -104,7 +104,8 @@ func draw_progress(message: String) -> void:
 	card.add_child(back)
 
 ## hard: "create" makes a hard room (services/hard_mode.gd).
-func lobby_action(action: String, value: String = "", hard: bool = false) -> void:
+## duel: "duel" makes the room of one side of a duel, {duel_id, board}, for chapter `value`.
+func lobby_action(action: String, value: String = "", hard: bool = false, duel: Dictionary = {}) -> void:
 	if host.relay_session == null or host.relay_session.busy() or not host._relay_available() or not host._relay_identity().ready or not host.legacy_room_flow.navigation_ready() or not await host._prepare_ordinary_navigation():
 		host._settle_room_flow()
 		return
@@ -130,6 +131,7 @@ func lobby_action(action: String, value: String = "", hard: bool = false) -> voi
 	var room_id := ""
 	match action:
 		"create": room_id = await host.relay_session.create_room(value, hard)
+		"duel": room_id = await host.relay_session.create_duel_room(value, str(duel.get("duel_id", "")), str(duel.get("board", "")))
 		"join": room_id = await host.relay_session.join_room(value)
 		"retry": room_id = await host.relay_session.retry_lobby()
 		"open":

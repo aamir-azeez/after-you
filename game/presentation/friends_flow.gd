@@ -120,6 +120,7 @@ func open_leaderboards(chapter_key: String) -> void:
 	var board := LeaderboardScreen.new()
 	board.chapter_key = chapter_key
 	board.reduced_motion = bool(host.saves.data.settings.get("reduced_motion", false))
+	board.duels_on = host.relay_session != null and host.relay_session.duels_supported()
 	board.client = LeaderboardClient.shared(host.api, str(host.api.player_id))
 	board.player_id = str(host.api.player_id)
 	board.chapter_filter = func(key: String) -> bool: return not (host._paid_content_hidden() and bool(Registry.descriptor(key).get("premium", false)))

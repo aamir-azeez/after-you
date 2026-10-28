@@ -36,6 +36,7 @@ const ReplaysFlow = preload("res://presentation/replays_flow.gd")
 const NotificationFlow = preload("res://presentation/notification_flow.gd")
 const RoomHubFlow = preload("res://presentation/room_hub_flow.gd")
 const FriendsFlow = preload("res://presentation/friends_flow.gd")
+const DuelsFlow = preload("res://presentation/duels/duels_flow.gd")
 const TurnFlow = preload("res://presentation/turn_flow.gd")
 const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
@@ -248,6 +249,8 @@ var notification_flow: NotificationFlow = _host_notification_flow()
 var room_hub_flow: RoomHubFlow = _host_room_hub_flow()
 ## Friends: its screen and its Leave, Host, Return and Join taps.
 var friends_flow: FriendsFlow = _host_friends_flow()
+## Duels: the lobby, its pages and Play into a duel's room.
+var duels_flow: DuelsFlow = _host_duels_flow()
 ## Earlier-island turns: submitting one, checking an unanswered one and the held turn.
 var turn_flow: TurnFlow = _host_turn_flow()
 ## The earlier-island room page, its redo request, fork and advance.
@@ -754,8 +757,10 @@ func _show_home() -> void:
 	var menu := HomeMenu.new()
 	overlay.add_child(menu)
 	# A tap made while the room session is still busy waits on the Play button (RoomHubFlow.open_from_home).
-	menu.build({"play":room_hub_flow.open_from_home,"solo":journey_flow.show_journey,"friends":_show_friends,"replays":replays_flow.show_collection,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
+	menu.build({"play":room_hub_flow.open_from_home,"solo":journey_flow.show_journey,"friends":_show_friends,"duels":_show_duels,"replays":replays_flow.show_collection,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
 	menu.set_play_icon(FriendPlayIcon.new())
+	# The Duels row shows once the server says duels are on.
+	duels_flow.offer(menu)
 	menu.journey_offer.visible = _full_journey_offered()
 	if _whats_new_unseen: menu.mark_whats_new_unseen(Changelog.current_version())
 	home_stage.set_header_actions(menu.header_actions())
@@ -836,9 +841,11 @@ func _chapter_unlocks() -> Dictionary:
 	if home_keepsakes.read_only or home_keepsakes.backfill_pending(): return ChapterUnlocks.unsettled(_full_journey_access())
 	var earned := home_keepsakes.earned_descriptors()
 	var rooms: Dictionary = room_hub_flow.known_rooms()
-	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access()]
+	# A duel's clear counts too (services/duels_client.gd finished_chapters).
+	var finished: Array = rooms.finished + duels_flow.finished_chapters()
+	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access(), hash(finished)]
 	if _unlocks_kept.size() == 2 and _unlocks_kept[0] == stamp: return _unlocks_kept[1]
-	var progress := ChapterUnlocks.progress(earned, HardMode.new().marks(), ChapterUnlocks.touched(rooms.chapters), stamp[3], rooms.finished)
+	var progress := ChapterUnlocks.progress(earned, HardMode.new().marks(), ChapterUnlocks.touched(rooms.chapters), stamp[3], finished)
 	_unlocks_kept = [stamp, progress]
 	return progress
 
@@ -1208,6 +1215,13 @@ func _host_live_connection() -> LiveConnection:
 	return live
 
 ## An internal child, like StoreFlow.
+func _host_duels_flow() -> DuelsFlow:
+	var flow := DuelsFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.home_requested.connect(_show_home)
+	return flow
+
+## An internal child, like StoreFlow.
 func _host_friends_flow() -> FriendsFlow:
 	var flow := FriendsFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
@@ -1437,6 +1451,16 @@ func _online_flow_idle() -> bool:
 func _room_session_idle() -> bool:
 	return _online_flow_idle() and (relay_session == null or not relay_session.busy())
 
+## Duels from Home's row, while the server has them on (presentation/duels/duels_flow.gd).
+func _show_duels(report: Callable = Callable()) -> void:
+	if _online_gated(): return
+	var view := store_view_generation
+	var lifecycle := lifecycle_generation
+	if not _relay_available(report) or not await _ensure_identity(report): return
+	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or duels_flow.is_open() or friends_flow.is_open(): return
+	room_hub_flow.drop()
+	duels_flow.open()
+
 func _show_friends(report: Callable = Callable()) -> void:
 	if _online_gated(): return
 	var from_home := mode == "home"
@@ -1536,6 +1560,10 @@ func _invalidate_relay_identity(clear_notifications: bool = true) -> void:
 	if friends_flow.is_open():
 		if mode == FriendsFlow.MODE_FRIENDS: mode = RoomHubFlow.MODE_ROOMS
 		friends_flow.close()
+		ui.visible = true
+	if duels_flow.is_open():
+		if mode == DuelsFlow.MODE_DUELS: mode = RoomHubFlow.MODE_ROOMS
+		duels_flow.close()
 		ui.visible = true
 	if is_instance_valid(friend_presence): friend_presence.set_identity({})
 	if is_instance_valid(tester_access):
@@ -2223,7 +2251,7 @@ func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
 	# input and Back/close behavior. Never let both screens process Back.
 	# Checks what first: other notifications arrive before the flows exist and after they are freed.
-	if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or friends_flow.is_open() or legacy_room_flow.redo_open()):
+	if what in [NOTIFICATION_WM_GO_BACK_REQUEST, NOTIFICATION_WM_CLOSE_REQUEST] and (is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or friends_flow.is_open() or duels_flow.is_open() or legacy_room_flow.redo_open()):
 		return
 	if what==NOTIFICATION_APPLICATION_PAUSED:
 		_background_application()

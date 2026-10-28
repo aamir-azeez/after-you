@@ -62,6 +62,8 @@ deleted_identity_photo_cleanup 1
 display_name_prompt 3
 display_names 3
 dressing_lint 1
+duels 2
+duels_flow 3
 empty_state 3
 end_reactions 3
 featured_shelf 1

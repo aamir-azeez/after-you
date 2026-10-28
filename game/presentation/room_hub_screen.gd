@@ -65,6 +65,8 @@ signal cards_redrawn
 var client: RefCounted
 var chapters: Array[Dictionary] = []
 var display_name: Callable
+## (room_id) -> "friend", "ghost" or "": a duel's room shows a small Duel tag beside its title.
+var duel_kind: Callable
 ## (room: Dictionary) -> {"state": PartnerFriends state, "partner": id}: whether
 ## a finished room's menu offers to add its partner as a friend.
 var partner_friend: Callable
@@ -803,6 +805,7 @@ func _add_room_card(room: Dictionary) -> void:
 	heading.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	heading.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	title_row.add_child(heading)
+	if duel_kind.is_valid() and not str(duel_kind.call(str(room.get("room_id", "")))).is_empty(): title_row.add_child(_duel_tag())
 	# The unread dot stays inside the details column so every action lines up.
 	if client != null and client.unread(room):
 		var unread_dot := Panel.new()
@@ -868,6 +871,22 @@ func _add_room_card(room: Dictionary) -> void:
 		remove.add_theme_stylebox_override(state,style)
 	remove.pressed.connect(func(): _ask_remove(room.duplicate(true),removal,remove))
 	row.add_child(remove)
+
+## The small Duel tag on a duel's room card.
+func _duel_tag() -> PanelContainer:
+	var tag := PanelContainer.new()
+	tag.name = "DuelTag"
+	var style := ThemeRules.rounded(Color("204d47"), 9, Color("54766a"))
+	ThemeRules.padded(style, 10.0, 2.0)
+	tag.add_theme_stylebox_override("panel", style)
+	tag.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	tag.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var label := Label.new()
+	label.text = PlayerCopy.DUEL_TAG
+	label.add_theme_font_size_override("font_size", 16)
+	label.add_theme_color_override("font_color", Color("eceddb"))
+	tag.add_child(label)
+	return tag
 
 ## The trash button's action on a card that is not finished: "close" for a
 ## room still in play, "leave" for one the other member closed, "hide" for an

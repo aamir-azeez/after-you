@@ -193,6 +193,8 @@ static func capability_headers(method: int, path: String) -> PackedStringArray:
 	if run_reaction_path(method, path): headers.append(RUN_REACTIONS_HEADER)
 	# This build shows leaderboards (presentation/leaderboard_screen.gd), so the server may say they are open.
 	if path == "/v2/capabilities": headers.append("X-AfterYou-Leaderboards: 1")
+	# This build plays duels (presentation/duels/), so the server may say they are open.
+	if path == "/v2/capabilities": headers.append("X-AfterYou-Duels: 1")
 	# This build plays hard rooms (services/hard_mode.gd): it may be told of them and join one.
 	if path in ["/v2/capabilities", "/v2/rooms/join"]: headers.append("X-AfterYou-Hard-Mode: 1")
 	# This build keeps Pollen (services/pollen_wallet.gd): the capability, and a turn's

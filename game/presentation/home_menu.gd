@@ -47,6 +47,8 @@ var play_button: Button
 var play_icon_slot: Control
 var solo_button: Button
 var friends_button: Button
+## Duels, under Friends: hidden until the server says duels are on (show_duels).
+var duels_button: Button
 var replays_button: Button
 var invite_button: Button
 var whats_new_button: Button
@@ -68,7 +70,7 @@ var _density := ""
 
 ## Builds the menu and adds Full Journey beside it in the same parent.
 ## `actions`: play (called with the Play button), solo, friends, replays,
-## invite, whats_new, settings, full_journey.
+## invite, whats_new, settings, full_journey, and duels (optional).
 func build(actions: Dictionary, heading_font: Font) -> void:
 	name = "HomeMenu"
 	_heading_font = heading_font
@@ -121,6 +123,8 @@ func build(actions: Dictionary, heading_font: Font) -> void:
 	friends_button = _row(column, "Friends", preload("res://assets/ui/social/users.svg"), actions.friends, "HomeFriends")
 	friends_button.tooltip_text = "Friends"
 	friends_button.accessibility_name = "Friends"
+	duels_button = _row(column, PlayerCopy.HOME_DUELS, preload("res://assets/ui/duels/pennant.svg"), actions.get("duels", Callable()), "HomeDuels")
+	duels_button.visible = false
 	replays_button = _row(column, "Replays", preload("res://assets/ui/play-circle.svg"), actions.replays, "HomeReplays")
 	_gaps.append(_gap(column))
 	var rule := ColorRect.new()
@@ -198,6 +202,13 @@ func set_play_icon(icon: Control) -> void:
 		if icon.has_method(PLAY_ICON_FOLLOW): icon.call(PLAY_ICON_FOLLOW, play_button)
 	_pad_play()
 
+## Shows or hides the Duels row, then fits the column to the height again.
+func show_duels(available: bool) -> void:
+	if not is_instance_valid(duels_button) or duels_button.visible == available: return
+	duels_button.visible = available
+	_density = ""
+	if is_inside_tree(): _fit()
+
 func has_play_icon() -> bool:
 	for child: Node in play_icon_slot.get_children():
 		if not child.is_queued_for_deletion() and (not child is CanvasItem or (child as CanvasItem).visible): return true
@@ -273,7 +284,7 @@ func _apply(density_name: String) -> void:
 	for index in range(_gaps.size()): _gaps[index].custom_minimum_size.y = density.gaps[index]
 	play_button.custom_minimum_size.y = density.play
 	play_button.add_theme_font_size_override("font_size", int(density.play_font))
-	for row: Button in [solo_button, friends_button, replays_button, whats_new_button]:
+	for row: Button in [solo_button, friends_button, duels_button, replays_button, whats_new_button]:
 		row.custom_minimum_size.y = density.row
 		row.add_theme_font_size_override("font_size", int(density.row_font) - (2 if row == whats_new_button else 0))
 	settings_button.custom_minimum_size = Vector2(density.row, density.row)

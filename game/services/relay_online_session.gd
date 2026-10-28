@@ -54,6 +54,8 @@ var replay_history_cache: Callable
 ## a chapter past them names the one to ask the friend to host instead.
 var join_unlocks: Callable
 var last_error := ""
+## The server's code for the last create or join it refused ("" otherwise), so a duel can join the room its partner made first.
+var last_lobby_code := ""
 var capabilities: Dictionary = {}
 var _supported_chapters: Array[Dictionary] = []
 var _room_chapters: Dictionary = {}
@@ -533,6 +535,26 @@ func create_room(chapter: String = Registry.RELAY, hard: bool = false) -> String
 	if hard: body["mode"] = "hard"
 	return await _start_lobby("/v2/rooms", body)
 
+## The room of one side of a duel (backend duels/routes.ts): an ordinary room
+## made with the duel's `duel_id` and `board`, durable like any create. When
+## the partner's room came first the server answers duel_room_taken, and the
+## caller joins that room instead.
+func create_duel_room(chapter: String, duel_id: String, board: String) -> String:
+	if not _can_lobby_mutate():
+		return ""
+	if not supports_creation(chapter) or not duels_supported():
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_7805B3DE8AEB
+		return ""
+	if not _index.pending.is_empty():
+		last_error = PlayerCopy.RELAY_ONLINE_SESSION_8C3AC7311985
+		return ""
+	var chosen := Registry.descriptor(chapter)
+	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash, "duel": {"duel_id": duel_id, "board": board}}
+	var requested_rules := int(_simulation_versions().get(chapter, Registry.definition(chapter).simulation_version))
+	if requested_rules != int(Registry.definition(chapter).simulation_version):
+		body["simulation_version"] = requested_rules
+	return await _start_lobby("/v2/rooms", body)
+
 func join_room(code: String) -> String:
 	if not _can_lobby_mutate():
 		return ""
@@ -567,10 +589,13 @@ func retry_lobby() -> String:
 	if not _can_lobby_mutate() or _index.pending.is_empty():
 		return ""
 	var request: Dictionary = _index.pending.duplicate(true)
-	var unlocks: Dictionary = join_unlocks.call() if request.path == "/v2/rooms/join" and join_unlocks.is_valid() else {}
+	# A join, and a duel's room (which every player must have open), carry the chapters open to this player.
+	var gated: bool = request.path == "/v2/rooms/join" or request.body.has("duel")
+	var unlocks: Dictionary = join_unlocks.call() if gated and join_unlocks.is_valid() else {}
 	var line := "" if unlocks.is_empty() else ChapterUnlocks.join_header(unlocks)
 	var headers := PackedStringArray() if line.is_empty() else PackedStringArray([line])
 	var response := await _call(HTTPClient.METHOD_POST, request.path, request.body, headers)
+	last_lobby_code = "" if response.get("ok", false) else str(response.get("code", ""))
 	if not response.get("ok", false):
 		# A definitive refusal settles the request: the server joined or created
 		# nothing for it now, and a retry of the same request cannot succeed.
@@ -618,11 +643,11 @@ func retry_lobby() -> String:
 const DEFINITIVE_LOBBY_REFUSALS := {
 	400: ["invalid_invite", "unexpected_fields", "invalid_field"],
 	402: ["host_unlock_required"],
-	403: ["player_blocked", ChapterUnlocks.JOIN_REFUSAL],
-	404: ["invite_not_found"],
-	409: ["room_full", "room_limit_reached", "room_version_conflict", "room_exists", "idempotency_chapter_mismatch", "idempotency_simulation_mismatch", "idempotency_version_mismatch"],
+	403: ["player_blocked", ChapterUnlocks.JOIN_REFUSAL, "duel_pair_only"],
+	404: ["invite_not_found", "duel_not_found"],
+	409: ["room_full", "room_limit_reached", "room_version_conflict", "room_exists", "idempotency_chapter_mismatch", "idempotency_simulation_mismatch", "idempotency_version_mismatch", "duel_room_taken", "duel_not_running", "idempotency_duel_mismatch"],
 	410: ["invite_expired", "replay_transferred", "room_deleted"],
-	422: ["unsupported_chapter", "unsupported_simulation_version"],
+	422: ["unsupported_chapter", "unsupported_simulation_version", "invalid_duel_room", "duel_chapter_mismatch"],
 }
 
 static func _definitive_refusal(response: Dictionary) -> bool:
@@ -1283,6 +1308,10 @@ func display_names_supported() -> bool:
 ## The server has leaderboards open for this build (backend src/leaderboards/routes.ts).
 func leaderboards_supported() -> bool:
 	return Typed.equal(capabilities.get("leaderboards_version"), 1.0)
+
+## The server has duels open for this build (backend src/duels/routes.ts). Every duel entry hides otherwise.
+func duels_supported() -> bool:
+	return Typed.equal(capabilities.get("duels_version"), 1.0)
 
 func nickname_scope() -> Dictionary:
 	## Server and owner that key this device's local friend nicknames and the
