@@ -1,6 +1,8 @@
 extends RefCounted
-## The same small object can appear at its island and later at home. Geometry
-## uses the existing world's material/mesh helpers and owns no gameplay state.
+## An earlier island's small keepsake, at its island's corner and in the story
+## memories (which also show two chapter pieces kept here). A chapter's corner
+## shows its Home keepsake instead (presentation/keepsakes/). Geometry uses the
+## world's material and mesh helpers and owns no gameplay state.
 const SeedVisual = preload("res://presentation/seed_visual.gd")
 const WOOD := Color("a17d60")
 const CREAM := Color("eee4c7")
@@ -20,14 +22,9 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 		"long-way-home":
 			for i in range(5): world.box(Vector3(0.18, 0.09, 0.49), WOOD, Vector3((i-2)*0.19, 0.18+sin(i*PI/4)*0.17, 0), root)
 			for x: float in [-0.43, 0.43]: world.box(Vector3(0.08, 0.55, 0.08), accent, Vector3(x, 0.28, 0.27), root)
-		"patient-garden", "a-place-to-grow":
+		"patient-garden":
 			world.cylinder(0.28, 0.26, Color("ba8770"), Vector3(0, 0.13, 0), root)
-			if id == "patient-garden":
-				_flower(world, root, Vector3.ZERO, accent)
-			else:
-				world.cylinder(0.035, 0.65, WOOD, Vector3(0, 0.51, 0), root)
-				for at: Vector3 in [Vector3(-0.15, 0.65, 0), Vector3(0.13, 0.84, 0), Vector3(0, 1.02, 0)]:
-					world.sphere(0.19, GREEN, at, root).scale = Vector3(0.8, 1.1, 0.6)
+			_flower(world, root, Vector3.ZERO, accent)
 		"rising-together":
 			_frame(world, root, 0.78, 1.0, accent)
 			world.cylinder(0.025, 0.36, CREAM, Vector3(0, 0.80, 0), root)
@@ -53,73 +50,6 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 			world.box(Vector3(0.90, 0.10, 0.4), WOOD, Vector3(0, 0.36, 0), root)
 			world.box(Vector3(0.90, 0.32, 0.09), accent, Vector3(0, 0.60, -0.2), root)
 			for x: float in [-0.32, 0.32]: world.box(Vector3(0.10, 0.31, 0.36), WOOD, Vector3(x, 0.16, 0), root)
-		"a-little-lift":
-			_frame(world, root, 0.78, 1.1, WOOD)
-			_bell(world, root, Vector3(0, 0.77, 0), accent)
-		"relay":
-			world.cylinder(0.035, 1.05, WOOD, Vector3(-0.22, 0.53, 0), root)
-			world.box(Vector3(0.62, 0.31, 0.04), accent, Vector3(0.06, 0.83, 0), root)
-			world.sphere(0.07, CREAM, Vector3(-0.22, 1.13, 0), root)
-		"garden":
-			_frame(world, root, 0.85, 1.02, WOOD)
-			for x: float in [-0.22, 0, 0.22]: world.box(Vector3(0.035, 0.85, 0.04), CREAM, Vector3(x, 0.49, 0), root)
-			for y: float in [0.3, 0.55, 0.8]: world.box(Vector3(0.82, 0.035, 0.04), CREAM, Vector3(0, y, 0), root)
-			_flower(world, root, Vector3(-0.29, 0, 0.13), accent)
-		"borrowed-light":
-			world.box(Vector3(0.64, 0.90, 0.12), accent, Vector3(0, 0.53, 0), root).rotation.z = -0.18
-			world.box(Vector3(0.49, 0.73, 0.035), Color("b0dbd1"), Vector3(0, 0.54, 0.085), root).rotation.z = -0.18
-		"missing-piece":
-			world.cylinder(0.28, 0.13, WOOD, Vector3(0, 0.07, 0), root)
-			world.cylinder(0.035, 0.39, accent, Vector3(0, 0.28, 0), root)
-			world.ring(0.31, accent, Vector3(0, 0.69, 0), root).rotation.x = PI/2
-			world.sphere(0.27, Color("b9dce4"), Vector3(0, 0.69, 0), root).scale.z = 0.18
-		"two-promises":
-			for i in range(2):
-				world.cylinder(0.12, 0.50+i*0.16, CREAM, Vector3((i-0.5)*0.35, 0.25+i*0.08, 0), root)
-				world.sphere(0.09, accent, Vector3((i-0.5)*0.35, 0.59+i*0.16, 0), root).scale = Vector3(0.7, 1.25, 0.7)
-		"after-the-first-bell":
-			world.box(Vector3(0.42, 0.59, 0.42), CREAM, Vector3(0, 0.3, 0), root)
-			_frame(world, root, 0.58, 1.05, WOOD)
-			_bell(world, root, Vector3(0, 0.83, 0), accent)
-			_roof(world, root, Vector3(0, 1.23, 0), accent)
-		"what-carried-you":
-			world.box(Vector3(0.63, 0.23, 0.4), WOOD, Vector3(0, 0.38, 0), root)
-			for x: float in [-0.24, 0.24]:
-				for z: float in [-0.25, 0.25]: world.cylinder(0.12, 0.07, accent, Vector3(x, 0.20, z), root).rotation.x = PI/2
-			world.box(Vector3(0.4, 0.06, 0.08), WOOD, Vector3(0.48, 0.43, 0), root).rotation.z = 0.3
-		"a-welcome-left-on":
-			world.cylinder(0.25, 0.75, CREAM, Vector3(0, 0.38, 0), root)
-			world.cylinder(0.20, 0.24, Color("ffe4a5"), Vector3(0, 0.88, 0), root)
-			world.ring(0.30, accent, Vector3(0, 0.73, 0), root)
-			_roof(world, root, Vector3(0, 1.14, 0), accent)
-		"upper-path":
-			for i in range(4): world.box(Vector3(0.22, (i+1)*0.17, 0.54), accent if i%2==0 else CREAM, Vector3((i-1.5)*0.22, (i+1)*0.085, 0), root)
-		"down-and-around":
-			world.box(Vector3(0.80, 0.11, 0.66), WOOD, Vector3(0, 0.1, 0), root)
-			world.box(Vector3(0.52, 0.035, 0.43), Color("294e48"), Vector3(0, 0.17, 0), root)
-			var hatch: Node3D = world.box(Vector3(0.53, 0.08, 0.48), accent, Vector3(0, 0.39, -0.21), root)
-			hatch.rotation.x = -1.0
-			world.ring(0.075, CREAM, Vector3(0, 0.56, -0.07), root).rotation.x = 0.56
-		"weight-of-a-friend", "bring-it-home":
-			world.cylinder(0.37, 0.12, CREAM, Vector3(0, 0.07, 0), root)
-			world.sphere(0.25, accent, Vector3(0, 0.39, 0), root)
-			world.ring(0.253, CREAM, Vector3(0, 0.39, 0), root).rotation.z = 0.6
-			if id == "bring-it-home":
-				for side: int in [-1, 1]: world.box(Vector3(0.1, 0.43, 0.61), WOOD, Vector3(side*0.35, 0.25, 0), root).rotation.z = -side*0.25
-		"open-the-house":
-			world.ring(0.22, accent, Vector3(0,1.00,0), root).rotation.x = PI/2
-			world.box(Vector3(0.11,0.65,0.11),accent,Vector3(0,0.49,0),root)
-			for y: float in [0.20,0.38]: world.box(Vector3(0.23,0.09,0.11),accent,Vector3(0.12,y,0),root)
-			world.cylinder(0.27,0.12,WOOD,Vector3(0,0.06,0),root)
-		"the-room-below":
-			_frame(world,root,0.63,0.93,CREAM)
-			world.box(Vector3(0.63,0.08,0.24),WOOD,Vector3(0,0.10,0),root)
-			world.box(Vector3(0.53,0.70,0.035),Color("e5c58a"),Vector3(0,0.52,-0.035),root)
-			world.box(Vector3(0.045,0.73,0.05),CREAM,Vector3(0,0.52,0.015),root)
-			world.box(Vector3(0.57,0.045,0.05),CREAM,Vector3(0,0.52,0.015),root)
-			for side: int in [-1,1]:
-				var shutter: Node3D = world.box(Vector3(0.28,0.76,0.06),accent,Vector3(side*0.46,0.53,0.09),root)
-				shutter.rotation.y = -side*0.45
 		"a-light-above":
 			# A small glasshouse carries the chapter's open roof outline home.
 			world.box(Vector3(0.85,0.10,0.60),WOOD,Vector3(0,0.05,0),root)
@@ -131,12 +61,6 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 			# The ridge ends inside the ribs, never flush with their faces.
 			world.box(Vector3(0.05,0.05,0.48),CREAM,Vector3(0,1.03,0),root)
 			world.sphere(0.19,Color("ffe4a5"),Vector3(0,0.42,0),root)
-		"the-way-light-returns":
-			_frame(world,root,0.72,1.04,accent)
-			for side: int in [-1,1]:
-				world.cylinder(0.16,0.22,WOOD,Vector3(side*0.35,0.11,0),root)
-				for y: float in [0.42,0.67,0.92]: _leaf(world,root,Vector3(side*0.35,y,0.06),side*0.6)
-			world.sphere(0.12,Color("ffe4a5"),Vector3(0,0.87,0),root)
 		"the-path-you-leave":
 			world.cylinder(0.26,0.10,CREAM,Vector3(0,0.05,0),root)
 			world.box(Vector3(0.09,1.06,0.09),WOOD,Vector3(0,0.56,0),root)
@@ -146,56 +70,6 @@ static func create(world: Node3D, item: Dictionary, shared: bool = false) -> Nod
 				world.box(Vector3(0.58,0.19,0.06),accent,Vector3(side*0.11,y,0.055),root)
 				var tip: Node3D = world.box(Vector3(0.14,0.14,0.06),accent,Vector3(side*0.39,y,0.055),root)
 				tip.rotation.z = PI/4
-		"a-place-beside-you":
-			world.box(Vector3(0.83,0.63,0.49),CREAM,Vector3(0,0.35,0),root)
-			var roof := PrismMesh.new()
-			roof.size = Vector3(1.00,0.39,0.68)
-			world.mesh_node(roof,accent,Vector3(0,0.86,0),root)
-			for x: float in [-0.22,0.22]:
-				world.box(Vector3(0.24,0.31,0.035),WOOD,Vector3(x,0.42,0.263),root)
-				world.box(Vector3(0.16,0.22,0.04),Color("ffe4a5"),Vector3(x,0.42,0.285),root)
-				world.box(Vector3(0.02,0.21,0.045),CREAM,Vector3(x,0.42,0.30),root)
-		"go-on-ahead":
-			# A coil of rope, its loose end trailing off toward whoever comes next.
-			for i in range(4):
-				var loop: Node3D = world.ring(0.30-i*0.035, WOOD.lightened(0.25) if i % 2 == 0 else CREAM, Vector3(0, 0.06+i*0.075, 0), root)
-				loop.scale.y = 2.2
-			world.cylinder(0.10, 0.05, accent, Vector3(0, 0.33, 0), root)
-			var tail: Node3D = world.cylinder(0.03, 0.42, CREAM, Vector3(0.36, 0.08, 0.12), root)
-			tail.rotation = Vector3(0, -0.35, PI/2)
-		"back-for-you":
-			# A tiny well with its bucket drawn up.
-			world.cylinder(0.32, 0.26, Color("a99d8b"), Vector3(0, 0.13, 0), root)
-			world.ring(0.32, CREAM, Vector3(0, 0.27, 0), root)
-			world.cylinder(0.25, 0.02, Color("4b7480"), Vector3(0, 0.255, 0), root)
-			for x: float in [-0.27, 0.27]: world.box(Vector3(0.06, 0.62, 0.06), WOOD, Vector3(x, 0.55, 0), root)
-			world.box(Vector3(0.66, 0.06, 0.07), WOOD, Vector3(0, 0.86, 0), root)
-			world.cylinder(0.015, 0.22, CREAM, Vector3(0.05, 0.73, 0), root)
-			world.cylinder(0.08, 0.12, accent, Vector3(0.05, 0.58, 0), root)
-		"set-the-tide":
-			# A little mill tide wheel on its post, with its three tide marks.
-			world.cylinder(0.26, 0.06, Color("a99d8b"), Vector3(0, 0.03, 0), root)
-			world.box(Vector3(0.10, 0.62, 0.10), WOOD, Vector3(0, 0.37, -0.07), root)
-			var rim: Node3D = world.ring(0.28, accent, Vector3(0, 0.70, 0.03), root)
-			rim.rotation.x = PI/2
-			for i in range(4):
-				var spoke: Node3D = world.box(Vector3(0.035, 0.54, 0.035), WOOD.lightened(0.2), Vector3(0, 0.70, 0.03), root)
-				spoke.rotation.z = i*PI/4
-			world.sphere(0.07, CREAM, Vector3(0, 0.70, 0.05), root)
-			for i in range(3):
-				var a := lerpf(0.95, -0.95, i/2.0)
-				for band in range(i+1):
-					var along := (float(band)-float(i)*0.5)*0.05
-					var tick: Node3D = world.box(Vector3(0.03, 0.10, 0.03), CREAM, Vector3(-sin(a)*0.40+cos(a)*along, 0.70+cos(a)*0.40+sin(a)*along, 0), root)
-					tick.rotation.z = a
-		"slack-water":
-			# The harbour lantern on a mole stone, a level line of water at its foot.
-			world.box(Vector3(0.64, 0.24, 0.42), Color("a99d8b"), Vector3(0, 0.12, 0), root)
-			world.box(Vector3(0.84, 0.03, 0.58), Color("4b7480"), Vector3(0, 0.08, 0), root)
-			world.cylinder(0.04, 0.62, WOOD, Vector3(0, 0.55, 0), root)
-			world.box(Vector3(0.26, 0.04, 0.26), WOOD, Vector3(0, 0.88, 0), root)
-			world.box(Vector3(0.18, 0.22, 0.18), Color("ffe4a5"), Vector3(0, 1.01, 0), root)
-			world.box(Vector3(0.28, 0.05, 0.28), accent, Vector3(0, 1.14, 0), root)
 		_: world.sphere(0.25, accent, Vector3(0, 0.27, 0), root)
 	if shared:
 		# Two linked leaves alter the silhouette as well as the color. Both
@@ -226,13 +100,3 @@ static func _frame_at(world: Node3D, parent: Node3D, width: float, height: float
 	frame.position = at
 	parent.add_child(frame)
 	_frame(world,frame,width,height,color)
-
-static func _bell(world: Node3D, parent: Node3D, at: Vector3, color: Color) -> void:
-	world.sphere(0.19, color, at, parent).scale = Vector3(1, 1.25, 1)
-	world.ring(0.20, CREAM, at-Vector3(0, 0.13, 0), parent)
-	world.sphere(0.055, WOOD, at-Vector3(0, 0.20, 0), parent)
-
-static func _roof(world: Node3D, parent: Node3D, at: Vector3, color: Color) -> void:
-	var shape := PrismMesh.new()
-	shape.size = Vector3(0.73, 0.34, 0.59)
-	world.mesh_node(shape, color, at, parent)

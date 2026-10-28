@@ -17,7 +17,6 @@ const Lint = preload("res://tests/test_dressing_lint.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const SoundMap = preload("res://services/chapter_sound_map.gd")
 const Registry = preload("res://services/chapter_registry.gd")
-const KeepsakeVisual = preload("res://presentation/keepsake_visual.gd")
 const LabelBubble = preload("res://presentation/kit/label_bubble.gd")
 const JourneyWorld = preload("res://presentation/journey_world.gd")
 const ChapterIndex = preload("res://content/chapters/index.gd")
@@ -717,13 +716,13 @@ func _dressing(level: Dictionary) -> void:
 	world.free()
 
 func _keepsakes() -> void:
-	var host: Node3D = World.new()
-	root.add_child(host)
-	for id: String in ["set-the-tide", "slack-water"]:
-		var keepsake := KeepsakeVisual.create(host, {"stage_id": id})
-		_check(keepsake.get_child_count() > 4, "The %s keepsake has its own shape, not the fallback ball" % id)
-		keepsake.free()
-	host.free()
+	# The corner keepsake of both Tide stages is the chapter's Tide Pool.
+	var home: Dictionary = ChapterIndex.home_keepsake("turn-of-the-tide")
+	_check(str(home.get("keepsake", {}).get("builder", "")).ends_with("tide_pool.gd"), "The Tide's keepsake is the Tide Pool")
+	var keepsake := Node3D.new()
+	load(str(home.keepsake.builder)).new().build(keepsake, {})
+	_check(keepsake.find_children("*", "MeshInstance3D", true, false).size() > 4, "The Tide Pool has its own shape, not the fallback ball")
+	keepsake.free()
 
 func _sound(level: Dictionary) -> void:
 	# Each wheel names its own cue identity, so every switch keeps its own pitch.
