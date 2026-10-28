@@ -460,7 +460,7 @@ func _check_explore() -> void:
 		for frame in range(240):
 			stage._process(1.0 / 30.0)
 			always_solid = always_solid and layer.walkable(spirit.position)
-			never_inside = never_inside and not layer.blocks(spirit.position, 0.0)
+			never_inside = never_inside and not layer.blocks(spirit.position, 0.01)
 		_check(always_solid and never_inside, "The spirit never walks off the islands or into a keepsake" + context)
 		stick.value = Vector2.ZERO
 		var well: Transform3D = layer.slot_transform("the-wishing-well")
@@ -518,7 +518,7 @@ func _check_explore_bridge() -> void:
 	var clear := true
 	for frame in range(600):
 		_frames(stage, world, 1, 0.1)
-		for role: String in world.actors: clear = clear and not layer.blocks(world.actors[role].position, 0.0)
+		for role: String in world.actors: clear = clear and not layer.blocks(world.actors[role].position, 0.01)
 	_check(clear, "Wandering spirits never walk into a keepsake")
 	# A spirit a keepsake appeared beside can always walk away.
 	var inside: Vector3 = layer.slot_transform("rolling-home") * Vector3(0, 0, 0.55)
