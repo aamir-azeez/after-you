@@ -415,7 +415,7 @@ func load_capabilities() -> bool:
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_enabled(str(scope.server), str(scope.owner), pollen_supported())
-	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), shop_supported())
+	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), wardrobe_supported(), shop_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_item_blooms(str(scope.server), str(scope.owner), item_blooms_supported())
 	if not scope.is_empty(): PollenGrant.shared().set_enabled(str(scope.server), str(scope.owner), grant_supported())
 	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()
@@ -1255,7 +1255,12 @@ func _note_partner_look(partner: String, look: Variant) -> void:
 func _note_own_turn_look(recording_hash: String) -> void:
 	TurnLooks.shared().note_turn(recording_hash, OwnLook.outfit())
 
-## The server has the wardrobe open: spending Pollen and wearing items (services/wardrobe.gd).
+## The server has the wardrobe open: owned and earned items, and wearing them (services/wardrobe.gd).
+## A server from before the split sends only the shop's version, which meant the wardrobe too.
+func wardrobe_supported() -> bool:
+	return pollen_supported() and (Typed.equal(capabilities.get("pollen_wardrobe_version"), 1.0) or shop_supported())
+
+## The server has the shop open: spending Pollen, prices and the name change price.
 func shop_supported() -> bool:
 	return pollen_supported() and Typed.equal(capabilities.get("pollen_shop_version"), 1.0)
 

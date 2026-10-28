@@ -1,7 +1,7 @@
 extends SceneTree
 ## The Wardrobe on screen (presentation/wardrobe_flow.gd, wardrobe_page.gd,
 ## wardrobe_sheets.gd) with a stand-in host and a fake transport:
-## - it opens only while the server has the shop on, on every build;
+## - it opens only while the server has the wardrobe on, on every build;
 ## - the page lists what the server sells, with the shelf of the week;
 ## - Buy opens the confirm card (balance, cost with its about line, what is
 ##   left) and only its Buy sends, at the cost the card showed;
@@ -11,7 +11,10 @@ extends SceneTree
 ## - Back asks the host to leave;
 ## - a build without the shop (services/pollen_surfaces.gd, iOS selling
 ##   nothing) lists only what the player owns, with the balance, and Wear and
-##   Take off; no All items tab, no shelf, no price, and nothing is bought.
+##   Take off; no All items tab, no shelf, no price, and nothing is bought;
+## - a server with the wardrobe on and the shop off (POLLEN_WARDROBE alone)
+##   shows the same owned only Wardrobe on both builds, earned items included,
+##   and its empty state talks only about earning.
 const Flow = preload("res://presentation/wardrobe_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
@@ -105,6 +108,7 @@ func _run() -> void:
 	await _buying()
 	await _wearing()
 	await _owned_only()
+	await _server_shop_off()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -114,7 +118,7 @@ func _run() -> void:
 
 func _gates() -> void:
 	var off := _setup(false)
-	_check(not off.flow.available(), "No Wardrobe while the server has the shop off")
+	_check(not off.flow.available(), "No Wardrobe while the server has the wardrobe off")
 	off.flow.show_wardrobe()
 	_check(off.host.overlay.get_child_count() == 0 and off.fake.sent.is_empty(), "Opening it then shows and sends nothing")
 	var hidden := _setup()
@@ -225,6 +229,55 @@ func _owned_only() -> void:
 			t.store.note_view(SERVER, ME, _answer([], {}, 3000).data)
 			t.flow._redraw()
 			_check(PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(page) and not PlayerCopy.WARDROBE_NOTHING_OWNED in _texts(page), "Selling nothing: an empty Wardrobe never mentions buying")
+		t.host.queue_free()
+		await _frames(2)
+
+## The server's wallet read with the wardrobe on and the shop off: owned items only, no prices, no name price.
+static func _owned_answer(items: Array, balance: int) -> Dictionary:
+	return {"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": float(balance), "earned": float(balance), "bank": 12.0,
+		"wardrobe": {"items": items, "packs": [], "look": {}, "look_revision": 1.0, "offered": ["daisy", "seashell", "straw_hat", "tide", "lantern", "lighthouse_lamp", "gold_leaf", "top_ten_ribbon"]}}}
+
+## The wardrobe on and the shop off on the server, on the build that sells (Android) and the one that sells nothing (iPhone).
+func _server_shop_off() -> void:
+	for sells: bool in [true, false]:
+		var t := _setup(false)
+		t.store.set_enabled(SERVER, ME, true, false)
+		t.wallet.set_enabled(SERVER, ME, true)
+		t.flow.surfaces = PollenSurfaces.new(sells)
+		var label := "%s, shop off" % _build(sells)
+		t.store.note_view(SERVER, ME, _owned_answer(["gold_leaf", "top_ten_ribbon"], 3000).data)
+		t.wallet.note_wallet(SERVER, ME, _owned_answer([], 3000).data)
+		t.fake.replies = [_owned_answer(["gold_leaf", "top_ten_ribbon"], 3000)]
+		_check(t.flow.available(), label + ": the Wardrobe opens")
+		t.flow.show_wardrobe()
+		await _frames()
+		var model: Dictionary = t.flow.model()
+		var page: Node = t.host.overlay
+		var balance: Label = page.find_child("WardrobeBalance", true, false)
+		_check(balance != null and balance.text == PlayerCopy.WARDROBE_BALANCE % "3,000", label + ": the balance shows")
+		var ids: Array = model.items.map(func(entry: Dictionary) -> String: return entry.id)
+		ids.sort()
+		_check(not model.shop and model.tab == "owned" and model.featured.is_empty() and ids == ["gold_leaf", "top_ten_ribbon"], label + ": only the earned items: " + str(ids))
+		_check(model.items.all(func(entry: Dictionary) -> bool: return entry.owned and not entry.sold and not entry.locked and int(entry.price) == 0), label + ": nothing on sale, locked or priced")
+		_check(not (page.find_child("WardrobeTabs", true, false) as Control).visible and not (page.find_child("WardrobeFeatured", true, false) as Control).visible, label + ": no tabs and no shelf")
+		var words := _texts(page)
+		_check(not words.any(func(text: String) -> bool: return text.contains("$") or text.contains("Buy") or text.contains("sale") or (text.contains("Pollen") and text != balance.text)), label + ": no price and no buy wording: " + str(words))
+		t.flow.set_tab("all")
+		_check(t.flow.model().tab == "owned", label + ": All items cannot be chosen")
+		var sent: int = t.fake.sent.size()
+		await t.flow.act("tide")
+		t.flow.confirm_buy("tide", 1000)
+		await _frames()
+		_check(t.fake.sent.size() == sent and t.host.ui.get_child_count() == 0, label + ": nothing is bought and no card opens")
+		_check(t.flow._error_line("not_owned") == PlayerCopy.WARDROBE_ERROR, label + ": a refusal never says buy")
+		t.flow.select("gold_leaf")
+		_check((page.find_child("WardrobeAction", true, false) as Button).text == PlayerCopy.WARDROBE_WEAR, label + ": an earned item offers Wear")
+		t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "equip", "look": {"leaf": "gold_leaf"}, "revision": 9.0e12}}]
+		await t.flow.act("gold_leaf")
+		_check(t.fake.sent[-1].path == "/v1/pollen/equip" and t.fake.sent[-1].body.look == {"leaf": "gold_leaf"}, label + ": Wear sends the look")
+		t.store.note_view(SERVER, ME, _owned_answer([], 3000).data)
+		t.flow._redraw()
+		_check(PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(page) and not PlayerCopy.WARDROBE_NOTHING_OWNED in _texts(page), label + ": the empty Wardrobe says " + PlayerCopy.WARDROBE_NOTHING_EARNED)
 		t.host.queue_free()
 		await _frames(2)
 

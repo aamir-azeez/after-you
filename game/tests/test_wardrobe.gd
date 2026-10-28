@@ -10,7 +10,11 @@ extends SceneTree
 ## - a purchase or look that got no answer goes again with the same key and
 ##   body; a new action gets a new key; an equip revision only moves forward;
 ## - one action at a time, and an answer saying the phone was out of date reads
-##   the wardrobe again.
+##   the wardrobe again;
+## - with the wardrobe on and the shop off (POLLEN_WARDROBE alone) the phone
+##   keeps owned and earned items and wears them, with no price, no name
+##   change price and nothing bought; a file from before the split reads the
+##   shop off until the server says again.
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -67,12 +71,18 @@ func _run() -> void:
 	await _client_one_at_a_time()
 	await _client_stale()
 	await _name_price()
+	await _wardrobe_without_shop()
 	Catalog.set_offered([])
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	print("AFTER YOU WARDROBE: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
+
+## A wallet answer with the wardrobe on and the shop off: no prices, sets, unlocks or name price.
+static func owned_answer(items: Array = [], look: Dictionary = {}, revision: int = 0, balance: int = 3000) -> Dictionary:
+	return {"schema_version": 1.0, "balance": float(balance), "earned": float(balance), "bank": 12.0,
+		"wardrobe": {"items": items, "packs": [], "look": look, "look_revision": float(revision), "offered": ["daisy", "gold_leaf", "top_ten_ribbon"]}}
 
 func _checked_views() -> void:
 	var kept := Wardrobe.checked_view(answer(["daisy"], {"hat": "daisy"}, 7, 5000, 1000))
@@ -221,4 +231,50 @@ func _name_price() -> void:
 	client.flush()
 	for i in range(4): await process_frame
 	_check(fake.sent.size() == 3 and not fake.sent[2].body.has("pollen_price"), "Going anonymous carries no price")
+	Wardrobe.use_shared(null)
+
+## The wardrobe on with the shop off (POLLEN_WARDROBE without POLLEN_SHOP).
+func _wardrobe_without_shop() -> void:
+	var kept := Wardrobe.checked_view(owned_answer(["gold_leaf"], {"leaf": "gold_leaf"}, 4))
+	_check(kept.items == ["gold_leaf"] and kept.look == {"leaf": "gold_leaf"} and kept.prices.is_empty() and kept.sets.is_empty() and kept.unlocked.is_empty() and kept.offered_packs.is_empty() and kept.name_price == -1, "A wardrobe answer without the shop is kept, with no price and no name price")
+	var bad := owned_answer()
+	bad.wardrobe.unlocked = "oops"
+	_check(Wardrobe.checked_view(bad).is_empty(), "A shop part that is sent must still be the contract's")
+	var path := _path("no-shop")
+	var store: RefCounted = Wardrobe.new(path)
+	store.set_enabled(SERVER, ME, true, false)
+	_check(store.enabled(SERVER, ME) and not store.shop(SERVER, ME), "The wardrobe can be on with the shop off")
+	_check(store.note_view(SERVER, ME, owned_answer(["gold_leaf"])) and store.view(SERVER, ME).items == ["gold_leaf"], "Its wallet read is kept")
+	_check(store.name_price(SERVER, ME) == -1, "No name change price without the shop")
+	var again: RefCounted = Wardrobe.new(path)
+	_check(again.enabled(SERVER, ME) and not again.shop(SERVER, ME) and again.view(SERVER, ME).items == ["gold_leaf"], "Both answers survive a restart")
+	store.set_enabled(SERVER, ME, true, true)
+	_check(store.shop(SERVER, ME), "The shop turns on beside it")
+	store.set_enabled(SERVER, ME, false, true)
+	_check(not store.enabled(SERVER, ME) and not store.shop(SERVER, ME), "No shop without the wardrobe")
+	var old_path := _path("before-split")
+	AtomicFile.write_text(old_path, JSON.stringify({"schema_version": 1, "scopes": {Wardrobe.scope_key(SERVER, ME): {"enabled": true, "view": {}}}}))
+	var old: RefCounted = Wardrobe.new(old_path)
+	_check(old.enabled(SERVER, ME) and not old.shop(SERVER, ME), "A file from before the split keeps the wardrobe and reads the shop off until the server says")
+	var fake := Fake.new()
+	fake.tree = self
+	var client: RefCounted = WardrobeClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, fake.call_it, store, PollenWallet.new(_path("no-shop-wallet")))
+	store.set_enabled(SERVER, ME, true, false)
+	_check((await client.buy("item", "daisy", 1000)).code == "pollen_shop_disabled" and fake.sent.is_empty(), "Nothing is bought while the shop is off")
+	fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "equip", "look": {"leaf": "gold_leaf"}, "revision": 9.0e12}}]
+	_check((await client.wear({"leaf": "gold_leaf"})).ok and fake.sent.size() == 1 and fake.sent[0].path == WardrobeClient.EQUIP_PATH, "An earned item is worn")
+	# A name change carries no price while the shop is off.
+	var DisplayNames: GDScript = load("res://services/display_names.gd")
+	var DisplayNameClient: GDScript = load("res://services/display_name_client.gd")
+	Wardrobe.use_shared(store)
+	var names: RefCounted = DisplayNames.new(_path("no-shop-names"))
+	names.set_enabled(SERVER, ME, true)
+	var sender := Fake.new()
+	sender.tree = self
+	sender.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "display_name": "Robin", "revision": 1.0}}]
+	var name_client: RefCounted = DisplayNameClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, sender.call_it, names)
+	names.choose(SERVER, ME, "typed", "Robin")
+	name_client.flush()
+	for i in range(4): await process_frame
+	_check(sender.sent.size() == 1 and not sender.sent[0].body.has("pollen_price"), "A name sent while the shop is off carries no price")
 	Wardrobe.use_shared(null)

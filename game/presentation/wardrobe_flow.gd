@@ -13,10 +13,13 @@ extends Node
 ## show_wardrobe() when available(), and the display name flow calls refresh()
 ## after a saved change.
 ##
-## What the build shows comes from services/pollen_surfaces.gd. A build without
-## the shop (iOS selling nothing) opens the Wardrobe only to wear what the player
-## owns, earned items and item bloom drops, with the balance: no All items tab,
-## no shelf of the week, no price and no Buy.
+## What the build shows comes from services/pollen_surfaces.gd, and what the
+## server has on from its capabilities (services/wardrobe.gd): the Wardrobe
+## needs POLLEN_WARDROBE, the shop POLLEN_SHOP too. Without the shop (a build
+## that sells nothing, as iOS without a store, or a server with the shop off)
+## the Wardrobe only wears what the player owns, earned items and item bloom
+## drops, with the balance: no All items tab, no shelf of the week, no price
+## and no Buy.
 ## Hooks for later phases: reaction packs (owned `packs`, the server's
 ## `offered_packs`) and sets (`sets`) are kept by services/wardrobe.gd and
 ## priced by the server, but no pack or set exists yet, so the page lists
@@ -62,8 +65,8 @@ func _surfaces() -> RefCounted:
 	if surfaces == null: surfaces = PollenSurfaces.shared()
 	return surfaces
 
-## Whether Settings may offer the Wardrobe: the server has the shop on for this
-## player and the build shows the Wardrobe.
+## Whether Settings may offer the Wardrobe: the server has the wardrobe on for
+## this player and the build shows the Wardrobe.
 func available() -> bool:
 	if host == null or not _surfaces().wardrobe_visible(): return false
 	return not _client().scope().is_empty()
@@ -108,7 +111,7 @@ func set_tab(tab: String) -> void:
 
 ## Without the shop there is only Owned.
 func _allowed_tab(tab: String) -> String:
-	if not _surfaces().shop_visible(): return "owned"
+	if not shop(): return "owned"
 	return tab if tab in ["all", "owned"] else "all"
 
 func select(id: String) -> void:
@@ -122,7 +125,7 @@ func act(id: String) -> void:
 	if bool(entry.owned):
 		await _wear(entry)
 		return
-	if not bool(entry.sold) or bool(entry.locked) or not _surfaces().shop_visible(): return
+	if not bool(entry.sold) or bool(entry.locked) or not shop(): return
 	var balance := _balance()
 	_close_sheet()
 	var parent: Control = host.ui
@@ -133,7 +136,7 @@ func act(id: String) -> void:
 ## The confirm card's Buy: sends the purchase at the cost the card showed.
 func confirm_buy(id: String, cost: int) -> void:
 	_close_sheet()
-	if not _surfaces().shop_visible(): return
+	if not shop(): return
 	var answer: Dictionary = await _client().buy("item", id, cost)
 	if answer.get("ok", false): _toast(PlayerCopy.WARDROBE_BOUGHT % Catalog.display_name(id))
 	else: _toast(_error_line(str(answer.get("code", ""))))
@@ -147,10 +150,16 @@ func _wear(entry: Dictionary) -> void:
 	if not answer.get("ok", false): _toast(_error_line(str(answer.get("code", ""))))
 	_redraw()
 
+## Whether the shop shows: the build sells and the server has the shop on.
+func shop() -> bool:
+	if not _surfaces().shop_visible(): return false
+	var scope: Dictionary = _client().scope()
+	return not scope.is_empty() and _client().store.shop(str(scope.server), str(scope.owner))
+
 ## The page's model (presentation/wardrobe_page.gd), from the kept wardrobe and wallet.
 ## Without the shop it lists only what the player owns, with no price.
 func model() -> Dictionary:
-	var shop: bool = _surfaces().shop_visible()
+	var selling := shop()
 	var view := _view()
 	var owned: Array = view.get("items", [])
 	var look: Dictionary = view.get("look", {})
@@ -161,11 +170,11 @@ func model() -> Dictionary:
 	for id: String in Catalog.ids():
 		var mine := id in owned
 		# The server's catalogue decides what shows: what it sells, and anything owned (earned items too).
-		var sold: bool = shop and Catalog.sold(id) and id in view.get("offered", [])
+		var sold: bool = selling and Catalog.sold(id) and id in view.get("offered", [])
 		if not mine and not sold: continue
 		if Catalog.slot(id).is_empty(): continue
 		var unlock := Catalog.unlock(id)
-		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": int(prices.get(id, Catalog.price(id))) if shop else 0,
+		var entry := {"id": id, "name": Catalog.display_name(id), "tier": Catalog.tier(id), "slot": Catalog.slot(id), "price": int(prices.get(id, Catalog.price(id))) if selling else 0,
 			"owned": mine, "worn": look.get(Catalog.slot(id)) == id, "sold": sold, "locked": not mine and not unlock.is_empty() and not id in unlocked,
 			"unlock_name": _chapter_name(unlock)}
 		items.append(entry)
@@ -173,8 +182,8 @@ func model() -> Dictionary:
 	var preview := Outfit.from(look)
 	var picked := _entry_in(items, _selected)
 	if not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
-	var featured: Array = FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier).map(func(slot: Dictionary) -> String: return slot.id) if shop else []
-	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "status": _status, "retry": _retry, "shop": shop, "tab": _tab, "selected": _selected,
+	var featured: Array = FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier).map(func(slot: Dictionary) -> String: return slot.id) if selling else []
+	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "status": _status, "retry": _retry, "shop": selling, "tab": _tab, "selected": _selected,
 		"preview": Outfit.from(preview), "featured": featured, "items": items}
 
 func _redraw() -> void:
@@ -215,7 +224,7 @@ static func _chapter_name(level_id: String) -> String:
 
 ## A refusal's words. Without the shop, the ones that name buying or a price read plainly.
 func _error_line(code: String) -> String:
-	if not _surfaces().shop_visible() and code in ["not_owned", "pollen_short", "pollen_price_changed"]: return PlayerCopy.WARDROBE_ERROR
+	if not shop() and code in ["not_owned", "pollen_short", "pollen_price_changed"]: return PlayerCopy.WARDROBE_ERROR
 	return str(PlayerCopy.WARDROBE_ERRORS.get(code, PlayerCopy.WARDROBE_ERROR))
 
 func _close_sheet() -> void:

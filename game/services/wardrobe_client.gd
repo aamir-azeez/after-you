@@ -1,9 +1,9 @@
 extends RefCounted
-## Talks to the wardrobe routes (backend/src/pollen/routes.ts, POLLEN_SHOP) and
-## records each answer: the wallet read (GET /v1/pollen, which carries the
-## wardrobe while the shop is on), a purchase (POST /v1/pollen/spend) and a
-## look (POST /v1/pollen/equip). Nothing is sent while the server has not said
-## the shop is on.
+## Talks to the wardrobe routes (backend/src/pollen/routes.ts) and records each
+## answer: the wallet read (GET /v1/pollen, which carries the wardrobe while it
+## is on), a look (POST /v1/pollen/equip, POLLEN_WARDROBE) and a purchase (POST
+## /v1/pollen/spend, POLLEN_SHOP). Nothing is sent while the server has not said
+## the wardrobe is on, and no purchase while it has not said the shop is.
 ##
 ## Safe to repeat and to send out of order:
 ## - every purchase and look carries its own idempotency key, kept for that one
@@ -46,7 +46,7 @@ func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), 
 	store = wardrobe if wardrobe != null else Wardrobe.shared()
 	wallet = pollen if pollen != null else PollenWallet.shared()
 
-## {server, owner} while the server has said the shop is on, else {}.
+## {server, owner} while the server has said the wardrobe is on, else {}.
 func scope() -> Dictionary:
 	var value: Variant = _scope.call() if _scope.is_valid() else null
 	if not value is Dictionary or value.is_empty() or not Presence.valid_id(value.get("owner")): return {}
@@ -58,7 +58,7 @@ func busy() -> bool:
 ## Reads the wallet and wardrobe. {ok, code}.
 func refresh() -> Dictionary:
 	var context := scope()
-	if context.is_empty(): return {"ok": false, "code": "pollen_shop_disabled"}
+	if context.is_empty(): return {"ok": false, "code": "pollen_wardrobe_disabled"}
 	if _busy: return {"ok": false, "code": "busy"}
 	_busy = true
 	var response := await _request(HTTPClient.METHOD_GET, WALLET_PATH, {})
@@ -68,7 +68,7 @@ func refresh() -> Dictionary:
 ## Buys `id` (kind "item", "set" or "pack") for the cost the player saw. {ok, code, receipt}.
 func buy(kind: String, id: String, cost: int) -> Dictionary:
 	var context := scope()
-	if context.is_empty(): return {"ok": false, "code": "pollen_shop_disabled"}
+	if context.is_empty() or not store.shop(str(context.server), str(context.owner)): return {"ok": false, "code": "pollen_shop_disabled"}
 	if _busy: return {"ok": false, "code": "busy"}
 	_busy = true
 	var body := {"schema_version": 1, "idempotency_key": new_key(), "kind": kind, "id": id, "expected_cost": cost}
@@ -85,7 +85,7 @@ func buy(kind: String, id: String, cost: int) -> Dictionary:
 ## Wears `look` ({slot: id}; {} for the default look). {ok, code, receipt}.
 func wear(look: Dictionary) -> Dictionary:
 	var context := scope()
-	if context.is_empty(): return {"ok": false, "code": "pollen_shop_disabled"}
+	if context.is_empty(): return {"ok": false, "code": "pollen_wardrobe_disabled"}
 	if _busy: return {"ok": false, "code": "busy"}
 	_busy = true
 	var known: Dictionary = store.view(context.server, context.owner)
