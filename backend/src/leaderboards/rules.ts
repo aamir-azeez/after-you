@@ -11,6 +11,18 @@ export const TOP_PLACES = 10;
 /** Ranked entries kept below the top 10, so a struck run lets the next one move up. */
 export const KEPT_RANKED = TOP_PLACES + 3;
 /**
+ * Replays (board.ts lb_replays): each top 10 run keeps its final checkpoint
+ * so players can watch it, in the shared blob format (blob-codec.ts, deflate
+ * plus the SHA-256 of the canonical bytes). A run pushed below place 10,
+ * struck, dropped or played by an erased account loses it; a run waiting for
+ * a person keeps it until their answer. So the server holds about 120 replays
+ * (10 on each of 12 boards) plus at most MAX_REVIEW waiting per board, which
+ * is usually none. A final checkpoint is typically 12 to 35 KB of JSON and
+ * deflates to a fraction of that; an encoded replay above this many bytes is
+ * not kept (its run still ranks, with no Watch).
+ */
+export const MAX_REPLAY_BYTES = 360 * 1024;
+/**
  * Runs waiting, per board, in three pools so one kind can never crowd out another:
  * - unchecked: posted, account check not run yet. A full pool never evicts; the
  *   post runs the account check itself first (submit.ts), so new accounts posting

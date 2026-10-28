@@ -4,18 +4,22 @@ import { json } from "../http";
 import { knownBoard } from "./boards";
 import { syncMemberName } from "./members";
 import { cachedView, storeView } from "./view-cache";
+import { serveReplay } from "./replays";
 
 /**
  * The phone's leaderboard routes, all absent (falling through to 404) while
  * LEADERBOARDS is off (not in FEATURES):
  * - GET /v1/leaderboards/<board>: the board anyone sees, before auth() so a
  *   cached answer costs no Durable Object request at all;
+ * - GET /v1/leaderboards/<board>/replay/<entry>: a top 10 run's replay
+ *   (replays.ts), before auth() for the same reason;
  * - GET and PUT /v1/leaderboards/me: the "Show my name on leaderboards" choice;
  * - POST /v1/leaderboards/<board>/entries/<entry>/report.
  */
 export const LEADERBOARDS_PREFIX = "/v1/leaderboards/";
 export const LEADERBOARDS_HEADER = "X-AfterYou-Leaderboards";
 const BOARD_PATH = /^\/v1\/leaderboards\/([a-z0-9-]{1,48}@[1-9][0-9]{0,3})$/;
+const REPLAY_PATH = /^\/v1\/leaderboards\/([a-z0-9-]{1,48}@[1-9][0-9]{0,3})\/replay\/([a-f0-9]{32})$/;
 const REPORT_PATH = /^\/v1\/leaderboards\/([a-z0-9-]{1,48}@[1-9][0-9]{0,3})\/entries\/([a-f0-9]{32})\/report$/;
 const ME_PATH = "/v1/leaderboards/me";
 
@@ -24,13 +28,15 @@ export function leaderboardsCapability(request: Request, env: Env): { leaderboar
   return flags.leaderboards(env) && request.headers.get(LEADERBOARDS_HEADER) === "1" ? { leaderboards_version: 1 } : {};
 }
 
-/** The public board read, or null for any other request. Limited per address like the other public reads. */
+/** The public board and replay reads, or null for any other request. Limited per address like the other public reads. */
 export async function routeLeaderboardRead(request: Request, path: string, env: Env): Promise<Response | null> {
   if (!flags.leaderboards(env) || request.method !== "GET") return null;
-  const board = knownBoard(BOARD_PATH.exec(path)?.[1]);
+  const replay = REPLAY_PATH.exec(path);
+  const board = knownBoard((replay ?? BOARD_PATH.exec(path))?.[1]);
   if (!board) return null;
   const address = request.headers.get("CF-Connecting-IP") || "local";
   if (!(await env.PLAYER_LIMITER.limit({ key: "leaderboard:" + await digest(address) })).success) throw new ApiError(429, "rate_limited");
+  if (replay) return serveReplay(env, board, replay[2]);
   const cached = await cachedView(board);
   if (cached) return json(cached);
   const view = await env.LEADERBOARD_BOARDS.getByName(board).view(board);

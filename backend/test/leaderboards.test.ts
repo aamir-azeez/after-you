@@ -8,12 +8,14 @@ import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { boardKey, boardKeys, developerBest } from "../src/leaderboards/boards";
 import { DEVELOPER_BESTS } from "../src/leaderboards/developer-bests";
 import { JOB_TOKEN_LABEL, deriveJobToken } from "../src/leaderboards/job-token";
-import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED } from "../src/leaderboards/rules";
+import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED, MAX_REPLAY_BYTES } from "../src/leaderboards/rules";
 import { entryId, finishedRun, pairKey, runTicks, type LeaderboardRun } from "../src/leaderboards/run";
 import { eligible, type Standing } from "../src/leaderboards/standing";
 import { forgetViews } from "../src/leaderboards/view-cache";
+import { forgetReplays } from "../src/leaderboards/replays";
+import { bytesDigest, decodeBlob, ENCODING_DEFLATE } from "../src/blob-codec";
 import type { BoardView } from "../src/leaderboards/view";
-import { countingEnv, meterAllRows } from "./meter";
+import { countingEnv, meterAllRows, meterRows } from "./meter";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -127,7 +129,7 @@ async function rankDirect(entry: LeaderboardRun, best: number | null = 1) {
   return stub.verdicts(RELAY_BOARD, [{ entry_id: entry.entry_id, proof_hash: mine.proof_hash, valid: true, measured_ticks: entry.ticks, reason: "" }], best);
 }
 
-beforeEach(async () => { await forgetViews(boardKeys()); });
+beforeEach(async () => { await forgetViews(boardKeys()); forgetReplays(); });
 afterEach(async () => { Object.assign(bests.live, bests.real); await reset(); });
 
 describe("leaderboard rules", () => {
@@ -472,20 +474,23 @@ describe("the replay job and the person's review", () => {
   });
 });
 
-describe("names and privacy", () => {
-  async function rankedPair() {
-    const host = await create(), guest = await create();
-    for (const [account, name] of [[host, "Ada"], [guest, "Bo"]] as [Account, string][]) {
-      await season(account);
-      expect((await call("/v1/profile/name", "PUT", account, { schema_version: 1, display_name: name, revision: 1 })).status).toBe(200);
-    }
-    const played = await almostDone(host, guest);
-    await played.last();
-    const { entries } = await runJob();
-    await pass(entries);
-    await operator("review", { schema_version: 1, board: RELAY_BOARD, entry_id: entries[0].entry_id, action: "approve" });
-    return { host, guest };
+/** A real pair's run, played, checked, held for a person (the relay board's best cleared), approved and ranked first. */
+async function rankedPair() {
+  bests.live[RELAY_BOARD] = null;
+  const host = await create(), guest = await create();
+  for (const [account, name] of [[host, "Ada"], [guest, "Bo"]] as [Account, string][]) {
+    await season(account);
+    expect((await call("/v1/profile/name", "PUT", account, { schema_version: 1, display_name: name, revision: 1 })).status).toBe(200);
   }
+  const played = await almostDone(host, guest);
+  await played.last();
+  const { entries } = await runJob();
+  await pass(entries);
+  await operator("review", { schema_version: 1, board: RELAY_BOARD, entry_id: entries[0].entry_id, action: "approve" });
+  return { host, guest, room: played.room };
+}
+
+describe("names and privacy", () => {
   const show = (account: Account, value: boolean) => call("/v1/leaderboards/me", "PUT", account, { schema_version: 1, show_name: value });
   it("shows names only once both players opt in, and hides them again when one opts out", async () => {
     const { host, guest } = await rankedPair();
@@ -522,6 +527,138 @@ describe("names and privacy", () => {
     expect((await call(`/v1/leaderboards/${RELAY_BOARD}/entries/${"0".repeat(32)}/report`, "POST", reporter, { schema_version: 1 })).status).toBe(404);
     const list = await (await operator("review-list", { schema_version: 1 })).json<{ boards: { entries: { reports: number }[] }[] }>();
     expect(list.boards[0].entries[0].reports).toBe(1);
+  });
+});
+
+describe("kept replays", () => {
+  type ReplayAnswer = { schema_version: number; board: string; entry_id: string; rank: number; ticks: number; names: string[] | null; digest: string; byte_length: number; body: string };
+  const replayPath = (id: string, key = RELAY_BOARD) => `/v1/leaderboards/${key}/replay/${id}`;
+  const kept = async () => runInDurableObject(board(), async (_, ctx) => ctx.storage.sql.exec<{ entry_id: string }>("SELECT entry_id FROM lb_replays ORDER BY entry_id").toArray().map(row => row.entry_id));
+  async function decoded(answer: ReplayAnswer): Promise<unknown> {
+    const body = Uint8Array.from(atob(answer.body), char => char.charCodeAt(0));
+    const bytes = await decodeBlob(body, answer.byte_length);
+    expect(bytes).not.toBeNull();
+    expect(await bytesDigest(bytes!)).toBe(answer.digest);
+    return JSON.parse(new TextDecoder().decode(bytes!));
+  }
+
+  it("keeps the replay of each top 10 run, deflated with the hash of its canonical checkpoint, and deletes it once the run is pushed below place 10", async () => {
+    // Within 0.85 of each other, so no run waits for a person (rules.ts WIDE_MARGIN_RATIO).
+    const slow = await run(115, 1000);
+    const meterRank = await meterRows({ board: board() }, () => rankDirect(slow));
+    const hash = await digest(canonicalJson(slow.checkpoint));
+    expect((await board().view(RELAY_BOARD)).top[0].replay_hash).toBe(hash);
+    await runInDurableObject(board(), async (_, ctx) => {
+      const row = ctx.storage.sql.exec<{ proof_hash: string; byte_length: number; body: ArrayBuffer }>("SELECT proof_hash,byte_length,body FROM lb_replays").one();
+      const bytes = await decodeBlob(new Uint8Array(row.body), row.byte_length);
+      expect([row.proof_hash, new TextDecoder().decode(bytes!)]).toEqual([hash, canonicalJson(slow.checkpoint)]);
+      expect(new Uint8Array(row.body)[0]).toBe(ENCODING_DEFLATE);
+      expect(ctx.storage.sql.exec("SELECT COUNT(*) AS n FROM lb_proofs").one().n).toBe(0);
+    });
+    const faster: LeaderboardRun[] = [];
+    for (let index = 0; index < TOP_PLACES; index++) { faster.push(await run(100 + index, 2000 + index)); await rankDirect(faster.at(-1)!); }
+    const fastest = await run(95, 1);
+    const meterPush = await meterRows({ board: board() }, () => rankDirect(fastest));
+    console.log(`ranking a run: ${meterRank.rows.board.read} rows read, ${meterRank.rows.board.written} written (first run); one that pushes another below place 10: ${meterPush.rows.board.read} read, ${meterPush.rows.board.written} written`);
+    const ranked = await runInDurableObject(board(), async (_, ctx) => ctx.storage.sql.exec<{ entry_id: string }>("SELECT entry_id FROM lb_entries WHERE state='ranked'").toArray().map(row => row.entry_id));
+    // The slow run and the slowest of the ten keep their times below the top 10, without replays.
+    expect(ranked).toContain(slow.entry_id);
+    expect(ranked).toHaveLength(TOP_PLACES + 2);
+    const top = (await board().view(RELAY_BOARD)).top;
+    expect(await kept()).toEqual(top.map(row => row.entry_id).sort());
+    expect(top.every(row => row.replay_hash !== null)).toBe(true);
+  });
+  it("keeps a held run's replay until the person answers: approve keeps it in the top 10, reject deletes it", async () => {
+    const first = await run(100, 1000);
+    await rankDirect(first);
+    const held = await run(10, 500), refused = await run(11, 600);
+    await rankDirect(held, 1000);
+    await rankDirect(refused, 1000);
+    expect((await kept()).sort()).toEqual([first.entry_id, held.entry_id, refused.entry_id].sort());
+    // Waiting for a person shows no Watch: only ranked rows are on the board.
+    expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id)).toEqual([first.entry_id]);
+    await board().review(RELAY_BOARD, held.entry_id, true);
+    await board().review(RELAY_BOARD, refused.entry_id, false);
+    expect((await kept()).sort()).toEqual([first.entry_id, held.entry_id].sort());
+  });
+  it("deletes the replay of a struck run and of a run its pair's faster run replaced", async () => {
+    const pair: [string, string] = ["u".repeat(22), "v".repeat(22)];
+    const older = await run(200, 1000, pair), newer = await run(150, 2000, pair), fake = await run(120, 3000);
+    for (const entry of [older, newer, fake]) await rankDirect(entry);
+    expect((await kept()).sort()).toEqual([newer.entry_id, fake.entry_id].sort());
+    await board().strike(RELAY_BOARD, fake.entry_id);
+    expect(await kept()).toEqual([newer.entry_id]);
+  });
+  it("keeps no replay above MAX_REPLAY_BYTES, and the run still ranks", async () => {
+    const big = await run(100, 1000);
+    const noise = Array.from({ length: 7 }, () => [...crypto.getRandomValues(new Uint8Array(60_000))].map(byte => byte.toString(16).padStart(2, "0")).join("")).join("");
+    (big.checkpoint as unknown as Record<string, unknown>).noise = noise;
+    await rankDirect(big);
+    expect((await board().view(RELAY_BOARD)).top).toMatchObject([{ entry_id: big.entry_id, replay_hash: null }]);
+    expect(await kept()).toEqual([]);
+    expect(MAX_REPLAY_BYTES).toBe(360 * 1024);
+  });
+  it("serves a top 10 replay to anyone with no ids, for one board request and then none", async () => {
+    const { host, guest, room } = await rankedPair();
+    const id = (await view()).top[0].entry_id;
+    await forgetViews(boardKeys());
+    const cold = countingEnv(configured(ON));
+    const first = await call(replayPath(id), "GET", undefined, undefined, ON, {}, cold.env);
+    expect(first.status).toBe(200);
+    expect(cold.calls).toEqual(["LEADERBOARD_BOARDS.replay"]);
+    const text = await first.clone().text(), answer = await first.json<ReplayAnswer>();
+    for (const secret of [host.player_id, guest.player_id, room.room_id, await pairKey(host.player_id, guest.player_id), host.device_token]) expect(text).not.toContain(secret);
+    expect(Object.keys(answer).sort()).toEqual(["board", "body", "byte_length", "digest", "entry_id", "finished_on", "gold_leaf", "names", "rank", "schema_version", "ticks"]);
+    expect(answer).toMatchObject({ schema_version: 1, board: RELAY_BOARD, entry_id: id, rank: 1, ticks: RELAY_TICKS, names: null });
+    expect(await decoded(answer)).toEqual((await unassistedRelay()).fin);
+    const warm = countingEnv(configured(ON));
+    expect((await call(replayPath(id), "GET", undefined, undefined, ON, {}, warm.env)).status).toBe(200);
+    expect(warm.calls).toEqual([]);
+    // A new isolate's memory: the view is cached by the first answer, the body is not.
+    forgetReplays();
+    const bodyOnly = countingEnv(configured(ON));
+    const { rows } = await meterRows({ board: board() }, () => call(replayPath(id), "GET", undefined, undefined, ON, {}, bodyOnly.env));
+    expect(bodyOnly.calls).toEqual(["LEADERBOARD_BOARDS.replay"]);
+    console.log(`replay view: cold ${cold.calls.length} DO request, cached ${warm.calls.length}, body not cached ${bodyOnly.calls.length} (${rows.board.read} rows read, ${rows.board.written} written); ${answer.body.length} base64 chars for ${answer.byte_length} canonical bytes`);
+  });
+  it("shows names in a replay only as the board does", async () => {
+    const { host, guest } = await rankedPair();
+    for (const account of [host, guest]) expect((await call("/v1/leaderboards/me", "PUT", account, { schema_version: 1, show_name: true })).status).toBe(200);
+    const id = (await view()).top[0].entry_id;
+    expect((await (await call(replayPath(id))).json<ReplayAnswer>()).names).toEqual(["Ada", "Bo"]);
+    await call("/v1/leaderboards/me", "PUT", guest, { schema_version: 1, show_name: false });
+    expect((await (await call(replayPath(id))).json<ReplayAnswer>()).names).toBeNull();
+  });
+  it("deletes the replay of a deleted account's run, keeping its time, and refuses it", async () => {
+    const { host } = await rankedPair();
+    const id = (await view()).top[0].entry_id;
+    expect((await call(replayPath(id))).status).toBe(200);
+    expect((await call("/v1/identity", "DELETE", host)).status).toBe(200);
+    const shown = await view();
+    expect(shown.top).toMatchObject([{ entry_id: id, names: null, replay_hash: null }]);
+    expect(await kept()).toEqual([]);
+    const meter = countingEnv(configured(ON));
+    expect((await call(replayPath(id), "GET", undefined, undefined, ON, {}, meter.env)).status).toBe(404);
+    expect(meter.calls).toEqual([]);
+    await forgetViews(boardKeys()); forgetReplays();
+    expect((await call(replayPath(id))).status).toBe(404);
+  });
+  it("refuses a run below place 10, an unknown run, another board and the flag off", async () => {
+    const runs: LeaderboardRun[] = [];
+    // The slowest ranks first: a run ten ranked runs beat never enters.
+    const eleventh = await run(115, 1000);
+    await rankDirect(eleventh);
+    for (let index = 0; index < TOP_PLACES; index++) { runs.push(await run(100 + index, 2000 + index)); await rankDirect(runs.at(-1)!); }
+    expect((await board().view(RELAY_BOARD)).top.map(row => row.entry_id)).not.toContain(eleventh.entry_id);
+    await forgetViews(boardKeys());
+    expect((await call(replayPath(eleventh.entry_id))).status).toBe(404);
+    expect((await call(replayPath(runs[0].entry_id))).status).toBe(200);
+    expect((await call(replayPath("0".repeat(32)))).status).toBe(404);
+    expect((await call(replayPath(runs[0].entry_id, "first-steps@1"))).status).toBe(404);
+    expect((await call(replayPath(runs[0].entry_id, "relay-isles@9"))).status).not.toBe(200);
+    const off = countingEnv(configured(OFF));
+    expect((await call(replayPath(runs[0].entry_id), "GET", undefined, undefined, OFF, {}, off.env)).status).not.toBe(200);
+    expect(off.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual([]);
   });
 });
 

@@ -3,11 +3,13 @@
  * be cached. It never carries a player id, a pair key or a room id:
  * - top: the ranked runs, at most 10. `names` is the two display names only
  *   when both players chose to show theirs, else null ("A pair").
- *   `gold_leaf` marks a first place that earned the Gold leaf.
+ *   `gold_leaf` marks a first place that earned the Gold leaf. `replay_hash`
+ *   names the run's kept replay (the SHA-256 of its final checkpoint), null
+ *   when it has none; GET .../replay/<entry_id> serves it (replays.ts).
  * - checking: opaque ids of runs waiting for the replay check or a person.
  *   A member works out their own run's id (run.ts entryId) to find it here.
  */
-export type BoardRow = { rank: number; entry_id: string; ticks: number; finished_on: string; names: string[] | null; gold_leaf: boolean };
+export type BoardRow = { rank: number; entry_id: string; ticks: number; finished_on: string; names: string[] | null; gold_leaf: boolean; replay_hash: string | null };
 export type BoardView = { schema_version: 1; board: string; top: BoardRow[]; checking: string[] };
 
 export function emptyView(board: string): BoardView { return { schema_version: 1, board, top: [], checking: [] }; }
