@@ -233,6 +233,17 @@ describe("posting finished runs", () => {
     expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_MEMBERS.read"]);
     expect(await env.LEADERBOARD_MEMBERS.getByName(account.player_id).read()).toEqual({ schema_version: 1, show_name: false, boards: [], revision: 0 });
   });
+  it("while off, an operator name clear on an account that never touched leaderboards only reads, so its deletion still stores nothing", async () => {
+    const account = await create(), meter = countingEnv(configured(OFF));
+    const cleared = await call(`/operator/safety/players/${account.player_id}/clear-name`, "POST", undefined, { schema_version: 1 }, OFF, { Authorization: "Bearer " + OPERATOR }, meter.env);
+    expect(cleared.status).toBe(200);
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_MEMBERS.read"]);
+    expect(await env.LEADERBOARD_MEMBERS.getByName(account.player_id).read()).toEqual({ schema_version: 1, show_name: false, boards: [], revision: 0 });
+    const deleting = countingEnv(configured(OFF));
+    expect((await call("/v1/identity", "DELETE", account, undefined, OFF, {}, deleting.env)).status).toBe(200);
+    expect(deleting.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_MEMBERS.read"]);
+    expect(await env.LEADERBOARD_MEMBERS.getByName(account.player_id).read()).toEqual({ schema_version: 1, show_name: false, boards: [], revision: 0 });
+  });
   it("skips the board when the cached board already holds ten faster runs", async () => {
     for (let index = 0; index < TOP_PLACES; index++) await rankDirect(await run(10 + index, 1000 + index));
     await view(); // caches the full board

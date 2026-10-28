@@ -35,11 +35,22 @@ export async function syncMemberName(env: Env, playerId: string, show?: boolean)
  * a run still waiting for its account check is on no list yet.
  * Requests: 1 (Member) + 1 per board (12 today).
  */
+/** Whether a member record ever changed: a blank one shows no name and is on no board. */
+function known(state: MemberState): boolean { return !state.erased && (state.revision > 0 || state.boards.length > 0); }
+
+/**
+ * syncMemberName only for a player whose member record ever changed. A blank
+ * member shows no name anywhere, so there is nothing to take off; it costs one
+ * read and stores nothing, so a later deletion while leaderboards are off
+ * still leaves no erased mark.
+ */
+export async function syncMemberNameIfKnown(env: Env, playerId: string): Promise<void> {
+  if (known(await env.LEADERBOARD_MEMBERS.getByName(playerId).read())) await syncMemberName(env, playerId);
+}
+
 /** forgetLeaderboardPlayer only for a player whose member record ever changed; anyone else costs one read and stores nothing. */
 export async function forgetLeaderboardPlayerIfKnown(env: Env, playerId: string): Promise<void> {
-  const state = await env.LEADERBOARD_MEMBERS.getByName(playerId).read();
-  if (state.erased || (state.revision === 0 && state.boards.length === 0)) return;
-  await forgetLeaderboardPlayer(env, playerId);
+  if (known(await env.LEADERBOARD_MEMBERS.getByName(playerId).read())) await forgetLeaderboardPlayer(env, playerId);
 }
 
 export async function forgetLeaderboardPlayer(env: Env, playerId: string): Promise<void> {

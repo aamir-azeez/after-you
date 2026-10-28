@@ -2,7 +2,7 @@ import { ApiError, ID_PATTERN, boundedJson, isObject, unwrap, type Outcome } fro
 import { bearerDigest } from "./http";
 import { flags, type ServerVars } from "./flags";
 import { ROOM_INBOX_CONCURRENCY, pooled } from "./room-inbox";
-import { syncMemberName } from "./leaderboards/members";
+import { syncMemberName, syncMemberNameIfKnown } from "./leaderboards/members";
 import { resolveFriendAlias } from "./friend-aliases";
 import { blockedName } from "./name-filter";
 import { shopOn } from "./pollen/features";
@@ -340,7 +340,8 @@ export async function routeDisplayNameOperator(request: Request, path: string, e
   const rooms = unwrap(await env.PLAYERS.getByName(player).operatorClearDisplayName(player));
   const reached = await clearRooms(env, player, rooms);
   // Boards drop the name too, whatever the leaderboards flag says; a failure asks for the repeat this route allows.
-  const boards = await syncMemberName(env, player).then(() => true, () => false);
+  // A player who never touched leaderboards shows no name there, so only a read happens and nothing is stored.
+  const boards = await syncMemberNameIfKnown(env, player).then(() => true, () => false);
   if (reached.some(done => !done) || !boards) throw new ApiError(503, "display_name_clear_incomplete");
   return { schema_version: 1, cleared: true, rooms: rooms.length };
 }
