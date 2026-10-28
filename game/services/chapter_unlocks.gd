@@ -9,9 +9,8 @@ extends RefCounted
 ##   the Full Journey with the Sleeping Lighthouse leading.
 ## - First Steps is always open. A chapter opens once the chapter before it
 ##   is finished in any mode (FINISH_MODES, or a finished room for it). A
-##   finish further along opens
-##   every chapter before it too, so the rule is one comparison against the
-##   furthest finished chapter (the frontier).
+##   finish further along opens every chapter before it too, so the rule is
+##   one comparison against the furthest finished chapter (the frontier).
 ## - A chapter the player has already been in stays open: a place earned there,
 ##   its journal on this phone, or a room for it (touched()). Being in one does
 ##   not open the next.
