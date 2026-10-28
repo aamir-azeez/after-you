@@ -69,7 +69,7 @@ describe("sleeping-lighthouse@2: one six-stage chapter", () => {
   });
 
   it("stays off by default and never reaches a client that does not ask", async () => {
-    expect(env.LIGHTHOUSE_V2_CHAPTER_ENABLED).toBe("false"); expect(creatable(sleepingLighthouseV2, env)).toBe(false);
+    expect(env.LIGHTHOUSE_V2_CHAPTER_ENABLED).toBeUndefined(); expect(creatable(sleepingLighthouseV2, env)).toBe(false);
     const allOn: Env = { ...env }; Object.assign(allOn, ALL_ON, ON);
     const legacy = advertisedChapters(allOn);
     expect(legacy.some(entry => entry.level_id === "sleeping-lighthouse")).toBe(false);

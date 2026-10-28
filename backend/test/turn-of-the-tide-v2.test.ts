@@ -76,7 +76,7 @@ describe("Turn of the Tide version 2 (free, tide rules 10, behind its own flag)"
     expect(comfortRules(10)).toBe(true);
   });
   it("stays off by default: not advertised and not creatable", async () => {
-    expect(env.TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED).toBe("false");
+    expect(env.TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED).toBeUndefined();
     expect(chapterFlag(turnOfTheTideV2)).toBe("TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED");
     expect(creatable(turnOfTheTideV2, env)).toBe(false);
     const allOthers: Env = { ...env }; Object.assign(allOthers, OTHERS_ON);

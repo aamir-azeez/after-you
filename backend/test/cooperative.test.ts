@@ -92,8 +92,8 @@ afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("bounded cooperative chapters", () => {
   it("keeps rollout off by default, independent from First Steps, with authored free/paid metadata", async () => {
-    expect(env.COOP_CHAPTERS_ENABLED).toBe("false");
-    expect(env.HOUSE_CHAPTER_ENABLED).toBe("false");
+    expect(env.COOP_CHAPTERS_ENABLED).toBeUndefined();
+    expect(env.HOUSE_CHAPTER_ENABLED).toBeUndefined();
     const host = await account(), off = { COOP_CHAPTERS_ENABLED: "false", HOUSE_CHAPTER_ENABLED: "false", FIRST_STEPS_ENABLED: "true" };
     const before = await (await call("/v2/capabilities", "GET", host, undefined, off)).json<{ chapters: { level_id: string }[] }>();
     expect(before.chapters.map(c => c.level_id)).toEqual(["relay-isles", "first-steps"]);

@@ -52,7 +52,7 @@ describe("The Wishing Well (free, rules 9, behind its own flag)", () => {
     expect(chapter(wishingWell.key)).toBe(wishingWell); expect(initialCheckpoint(wishingWell.key)).toEqual(initial);
   });
   it("stays off by default: not advertised and not creatable", async () => {
-    expect(env.WISHING_WELL_CHAPTER_ENABLED).toBe("false");
+    expect(env.WISHING_WELL_CHAPTER_ENABLED).toBeUndefined();
     expect(creatable(wishingWell, env)).toBe(false);
     const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true" });
     expect(advertisedChapters(allOn).map(entry => entry.level_id)).not.toContain("the-wishing-well");

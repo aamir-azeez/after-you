@@ -39,7 +39,7 @@ const TURNSTILE_TOKEN_PATTERN = /^[\x21-\x7e]{1,2048}$/;
 /** Siteverify codes that mean our setup is wrong, not that the visitor failed. */
 const TURNSTILE_SETUP_ERRORS = ["missing-input-secret", "invalid-input-secret", "bad-request", "internal-error"];
 
-export type WaitlistEnv = Pick<ServerVars, "IOS_WAITLIST_ENABLED" | "RESEND_API_KEY" | "RESEND_SEGMENT_ID" | "TURNSTILE_SECRET_KEY" | "TURNSTILE_SITE_KEY" | "WAITLIST_CONFIRM_SECRET" | "WAITLIST_REPLY_TO" | "WAITLIST_FROM">
+export type WaitlistEnv = Pick<ServerVars, "FEATURES" | "IOS_WAITLIST_ENABLED" | "RESEND_API_KEY" | "RESEND_SEGMENT_ID" | "TURNSTILE_SECRET_KEY" | "TURNSTILE_SITE_KEY" | "WAITLIST_CONFIRM_SECRET" | "WAITLIST_REPLY_TO" | "WAITLIST_FROM">
   & { PUBLIC_LIMITER: RateLimit; WAITLIST_ADDRESS_LIMITER: RateLimit };
 
 const CORS = Object.freeze({ "Access-Control-Allow-Origin": WAITLIST_ORIGIN, Vary: "Origin" });

@@ -92,7 +92,7 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
     for (const paid of [conservatory, longWayHome, longWayHomeV2]) expect(paid.premium).toBe(true);
   });
   it("stays off by default: not advertised and not creatable", async () => {
-    expect(env.TURN_OF_THE_TIDE_CHAPTER_ENABLED).toBe("false");
+    expect(env.TURN_OF_THE_TIDE_CHAPTER_ENABLED).toBeUndefined();
     expect(creatable(turnOfTheTide, env)).toBe(false);
     const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true",
       WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true" });

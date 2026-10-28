@@ -1,6 +1,7 @@
 /// <reference types="vite/client" />
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
+import { flagOn, type FlagVar } from "../src/flags";
 import { canonicalJson, digest } from "../src/protocol";
 import { CHAPTERS, RELAY_KEY, advertisedChapters, chapter, chapterFlag } from "../src/v2/chapters";
 import manifest from "../../game/tests/fixtures/golden/chapter_manifest.json";
@@ -41,7 +42,7 @@ describe("chapter manifest shared with the game", () => {
     expect(typeof row.flag).toBe("string");
     expect(row.flag === "").toBe(row.key === RELAY);
     expect(chapterFlag(adapter)).toBe(row.flag);
-    if (row.key !== RELAY) expect(env[row.flag as keyof Env]).toBe("false");
+    if (row.key !== RELAY) { expect(env[row.flag as keyof Env]).toBeUndefined(); expect(flagOn(env, row.flag as FlagVar)).toBe(false); }
     // Exactly one bundled definition hashes to the game's definition hash.
     const matching: string[] = [];
     for (const [path, json] of Object.entries(bundled)) if (await digest(canonicalJson(json.default)) === row.definition_hash) matching.push(path);

@@ -55,7 +55,7 @@ describe("registered journey chapters", () => {
     expect(await selected.checkpoint(checkpoint,checkpoint.proof.checkpoint,a,b)).toEqual(checkpoint);
   });
   it("keeps both paid chapters behind one independent default-off creation gate", async () => {
-    expect(env.JOURNEY_CHAPTERS_ENABLED).toBe("false");
+    expect(env.JOURNEY_CHAPTERS_ENABLED).toBeUndefined();
     const host = await account(); await grant(host);
     const before = await (await call("/v2/capabilities", "GET", host, undefined, false)).json<{ chapters: { level_id: string }[] }>();
     expect(before.chapters.some(c => c.level_id === "conservatory" || c.level_id === "long-way-home")).toBe(false);

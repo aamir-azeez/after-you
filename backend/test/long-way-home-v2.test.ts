@@ -62,7 +62,7 @@ describe("Long Way Home version 2 (paid, rules 9, behind its own flag)", () => {
     expect(longWayHome).toMatchObject({ key: { level_version: 1, definition_hash: LONG_WAY_HOME_HASH }, simulation_version: 7, supported_simulation_versions: [7, 8] });
   });
   it("stays off by default: not advertised and not creatable", async () => {
-    expect(env.LONG_WAY_HOME_V2_CHAPTER_ENABLED).toBe("false");
+    expect(env.LONG_WAY_HOME_V2_CHAPTER_ENABLED).toBeUndefined();
     expect(creatable(longWayHomeV2, env)).toBe(false);
     const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true", WISHING_WELL_CHAPTER_ENABLED: "true" });
     expect(advertisedChapters(allOn).filter(entry => entry.level_id === "long-way-home").map(entry => entry.level_version)).toEqual([1]);

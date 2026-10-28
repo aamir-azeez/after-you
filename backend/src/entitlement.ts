@@ -5,7 +5,7 @@ import { storeEntitlement, type StoreEntitlementConfig } from "./store-entitleme
 
 export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
 type RevenueCatConfiguration = Pick<Env, "ENVIRONMENT" | "REVENUECAT_ENTITLEMENT"> & StoreEntitlementConfig &
-  Pick<ServerVars, "APP_STORE_ENTITLEMENTS_ENABLED" | "REVENUECAT_VERIFICATION_MODE" | "REVENUECAT_API_VERSION" | "REVENUECAT_ENTITLEMENT_LOOKUP_ID"> & {
+  Pick<ServerVars, "FEATURES" | "APP_STORE_ENTITLEMENTS_ENABLED" | "REVENUECAT_VERIFICATION_MODE" | "REVENUECAT_API_VERSION" | "REVENUECAT_ENTITLEMENT_LOOKUP_ID"> & {
   PLAYERS?: Env["PLAYERS"];
 };
 export function makeProviderRequest(endpoint: string, key: string): Request {
