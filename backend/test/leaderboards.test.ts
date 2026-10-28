@@ -1,6 +1,6 @@
 import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { canonicalJson, digest } from "../src/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
@@ -20,6 +20,15 @@ import secondA from "../../game/tests/fixtures/v2/garden-a.json";
 import secondB from "../../game/tests/fixtures/v2/garden-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
 import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
+
+// Every board has a developers' best now, so a test that needs the "no best yet"
+// path clears one board's best here; afterEach puts the real values back.
+const bests = vi.hoisted(() => ({ live: {} as Record<string, number | null>, real: {} as Record<string, number | null> }));
+vi.mock("../src/leaderboards/developer-bests", async original => {
+  const actual = await original<typeof import("../src/leaderboards/developer-bests")>();
+  Object.assign(bests.real, actual.DEVELOPER_BESTS);
+  return { DEVELOPER_BESTS: Object.assign(bests.live, actual.DEVELOPER_BESTS) };
+});
 
 // Synthetic identities only: every account here is made by POST /v1/identity in the test runtime.
 type Account = { player_id: string; device_token: string; recovery_code: string };
@@ -119,7 +128,7 @@ async function rankDirect(entry: LeaderboardRun, best: number | null = 1) {
 }
 
 beforeEach(async () => { await forgetViews(boardKeys()); });
-afterEach(async () => { await reset(); });
+afterEach(async () => { Object.assign(bests.live, bests.real); await reset(); });
 
 describe("leaderboard rules", () => {
   it("orders by ticks, then by when the last turn was accepted", () => {
@@ -139,6 +148,8 @@ describe("leaderboard rules", () => {
     expect(new Set(boardKeys()).size).toBe(boardKeys().length);
     expect(Object.keys(DEVELOPER_BESTS).sort()).toEqual([...boardKeys()].sort());
     for (const row of CHAPTERS) expect(boardKeys()).toContain(boardKey(row.adapter.key));
+    for (const key of boardKeys()) expect(developerBest(key)).toBe(bests.real[key]);
+    bests.live[RELAY_BOARD] = null;
     expect(developerBest(RELAY_BOARD)).toBeNull();
   });
   it("needs an account a week old with two partners", () => {
@@ -396,6 +407,7 @@ describe("the replay job and the person's review", () => {
   it("checks accounts, hands out proofs, and ranks a passed run; the job credential cannot review", async () => {
     const host = await create(), guest = await create();
     await season(host); await season(guest);
+    bests.live[RELAY_BOARD] = null;
     const played = await almostDone(host, guest);
     expect((await played.last()).status).toBe(200);
     const meter = countingEnv(configured(ON));
