@@ -22,7 +22,8 @@ import { clearMemberNames, isMemberNamesTable } from "../display-names";
 
 import { MAX_ROW_BYTES } from "./row-bound";
 import { nestedProof } from "./checkpoint-chain";
-import { MAX_ATTEMPT_BYTES, ZERO_LINK, attemptLink, blobBytes, blobFromRows, bytesDigest } from "./history-blob";
+import { MAX_ATTEMPT_BYTES, ZERO_LINK, attemptLink, blobBytes, blobFromRows } from "./history-blob";
+import { bytesDigest } from "../blob-codec";
 import type { AttemptRecord } from "./history";
 
 export { MAX_ROW_BYTES };

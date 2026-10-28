@@ -1,6 +1,7 @@
 import { ApiError } from "../protocol";
 import { flags } from "../flags";
-import { ZERO_LINK, attemptBlob, attemptLink, blobBytes, bytesDigest, lastStage, type AttemptRoom } from "./history-blob";
+import { ZERO_LINK, attemptBlob, attemptLink, blobBytes, lastStage, type AttemptRoom } from "./history-blob";
+import { bytesDigest } from "../blob-codec";
 import { historyPresent, initializeHistory } from "./storage-schema";
 
 /** Sent by clients that keep downloaded room attempts durably and byte for byte. */

@@ -1,4 +1,4 @@
-import { ApiError, canonicalJson, digest, readBounded } from "../protocol";
+import { ApiError, canonicalJson, digest } from "../protocol";
 import type { ChapterKey } from "./chapter-types";
 import { checkpointAt, nestedProof } from "./checkpoint-chain";
 import type { CheckpointV2, RecordingV2 } from "./protocol";
@@ -19,7 +19,6 @@ export const ZERO_LINK = "0".repeat(64);
 export const LINK_SCHEMA = "after-you.history.v1";
 /** Largest blob accepted back; the widest real attempt is about 2.1 MB uncompressed (a Lighthouse branch). */
 export const MAX_ATTEMPT_BYTES = 4 * 1024 * 1024;
-export const ENCODING_RAW = 0, ENCODING_DEFLATE = 1;
 
 const utf8 = (value: string) => new TextEncoder().encode(value);
 export function isStub(data: string): boolean {
@@ -65,9 +64,6 @@ export function lastStage(blob: AttemptBlob): number {
   return blob.open_turn ? stageOf(blob.rows.turns[0].turn_id) : 0;
 }
 export const blobBytes = (blob: AttemptBlob): Uint8Array => utf8(canonicalJson(blob));
-export async function bytesDigest(bytes: Uint8Array): Promise<string> {
-  return [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(b => b.toString(16).padStart(2, "0")).join("");
-}
 /** Commits to the room, the chapter version, the attempt's place and every attempt before it. */
 export function attemptLink(room: AttemptRoom, position: number, previous: string, attemptDigest: string, byteLength: number): Promise<string> {
   return digest(canonicalJson({ schema: LINK_SCHEMA, room_id: room.room_id, level_id: room.level_id, level_version: room.level_version, definition_hash: room.definition_hash,
@@ -87,32 +83,4 @@ export function attemptRows(blob: AttemptBlob): { pairs: Map<string, PairV2>; tu
   for (const facts of blob.rows.turns) need(turns.get(facts.turn_id)?.recording_hash === facts.recording_hash);
   need(turns.size === blob.rows.turns.length);
   return { pairs, turns };
-}
-
-/** A corrupt deflate stream errors while it is read; that counts as no blob. */
-async function drain(stream: ReadableStream<Uint8Array>, limit: number): Promise<Uint8Array | null> {
-  try { return await readBounded(stream, limit); } catch { return null; }
-}
-function through(bytes: Uint8Array, transform: CompressionStream | DecompressionStream): ReadableStream<Uint8Array> {
-  const writer = transform.writable.getWriter();
-  writer.write(bytes).then(() => writer.close()).catch(() => undefined);
-  return transform.readable;
-}
-/**
- * A stored or sent attempt: one encoding byte (0 raw, 1 deflate in zlib framing,
- * which is what Godot's COMPRESSION_DEFLATE reads and writes) and the payload.
- * Hashes always cover the uncompressed canonical bytes.
- */
-export async function encodeAttempt(bytes: Uint8Array, encoding = ENCODING_DEFLATE): Promise<Uint8Array> {
-  const payload = encoding === ENCODING_RAW ? bytes : await drain(through(bytes, new CompressionStream("deflate")), Number.MAX_SAFE_INTEGER);
-  const out = new Uint8Array(payload!.byteLength + 1); out[0] = encoding; out.set(payload!, 1);
-  return out;
-}
-/** The canonical bytes, never more than `expectedLength` of them, or null when the body is not exactly that long. */
-export async function decodeAttempt(body: Uint8Array, expectedLength: number): Promise<Uint8Array | null> {
-  if (body.byteLength < 1) return null;
-  const payload = body.subarray(1);
-  const bytes = body[0] === ENCODING_RAW ? (payload.byteLength <= expectedLength ? payload : null)
-    : body[0] === ENCODING_DEFLATE ? await drain(through(payload, new DecompressionStream("deflate")), expectedLength) : null;
-  return bytes && bytes.byteLength === expectedLength ? bytes : null;
 }

@@ -15,6 +15,7 @@ const Store = preload("res://services/history_store.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 
 const ATTEMPT_KEYS := ["position", "branch", "digest", "link", "byte_length", "last_stage", "state", "acked_by_you", "partner_acked", "wanted_by_partner", "pair_ids"]
 
@@ -202,11 +203,6 @@ func local_pair(server_key: String, owner: String, room_id: String, chapter_key:
 	if not loaded.get("ok", false): return {}
 	var blob: Variant = JSON.parse_string(loaded.bytes.get_string_from_utf8())
 	if not blob is Dictionary or not blob.get("checkpoint") is Dictionary or not Typed.equal(blob.get("room_id"), room_id): return {}
-	var checkpoint: Dictionary = blob.checkpoint
-	while Typed.as_int(checkpoint.get("stage_index"), -1) > stage + 1:
-		checkpoint = Registry.previous_checkpoint(chapter_key, checkpoint)
-		if checkpoint.is_empty(): return {}
-	if Typed.as_int(checkpoint.get("stage_index"), -1) != stage + 1 or not checkpoint.get("proof") is Dictionary: return {}
-	var proof: Dictionary = checkpoint.proof
-	if not proof.get("a") is Dictionary or not proof.get("b") is Dictionary: return {}
-	return {"pair_id": pair_id, "branch": position, "stage_index": stage, "a": proof.a.duplicate(true), "b": proof.b.duplicate(true), "checkpoint": checkpoint.duplicate(true)}
+	var pair := CheckpointPairs.pair(chapter_key, blob.checkpoint, stage, position)
+	if not pair.is_empty(): pair.pair_id = pair_id
+	return pair

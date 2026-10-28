@@ -1,7 +1,7 @@
 import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
-import { bytesDigest, decodeAttempt, encodeAttempt, ENCODING_RAW } from "../src/v2/history-blob";
+import { bytesDigest, decodeBlob, encodeBlob, ENCODING_RAW } from "../src/blob-codec";
 import type { HistoryView } from "../src/v2/history-room";
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import { CHAINS, fork, play } from "./history-chains";
@@ -38,7 +38,7 @@ describe("attempt history endpoints", () => {
     expect(await tables(s)).toBe(0);
     const body = await download(s, s.guest, 1, {});
     expect(body[0]).toBe(1);
-    const bytes = (await decodeAttempt(body, view.attempts[1].byte_length))!;
+    const bytes = (await decodeBlob(body, view.attempts[1].byte_length))!;
     expect(await bytesDigest(bytes)).toBe(view.attempts[1].digest);
     expect(JSON.parse(new TextDecoder().decode(bytes))).toMatchObject({ format: "after-you.attempt", room_id: s.room.room_id, position: 1, branch: 1 });
     expect(await code(await call(`${s.path}/2`, "GET", s.host, undefined, {}, HISTORY))).toBe("404 history_not_found");
@@ -69,7 +69,7 @@ describe("attempt history endpoints", () => {
     expect(await code(await upload(0, foreign))).toBe("422 history_mismatch");
     expect(await code(await upload(0, zero.subarray(0, zero.byteLength - 5)))).toBe("422 history_mismatch");
     const flipped = zero.slice(); flipped[30] ^= 1; expect(await code(await upload(0, flipped))).toBe("422 history_mismatch");
-    const raw = await encodeAttempt((await decodeAttempt(zero, view.attempts[0].byte_length))!, ENCODING_RAW);
+    const raw = await encodeBlob((await decodeBlob(zero, view.attempts[0].byte_length))!, ENCODING_RAW);
     const longer = new Uint8Array(raw.byteLength + 1); longer.set(raw); longer[raw.byteLength] = 0x20;
     expect(await code(await upload(0, longer))).toBe("422 history_mismatch");
     expect(await code(await upload(0, new Uint8Array(4 * 1024 * 1024 + 2)))).toBe("413 body_too_large");

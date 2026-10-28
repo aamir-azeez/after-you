@@ -1,7 +1,8 @@
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { canonicalJson } from "../src/protocol";
-import { ZERO_LINK, attemptBlob, attemptLink, attemptRows, blobBytes, bytesDigest, decodeAttempt, encodeAttempt, ENCODING_RAW, lastStage, type AttemptRoom } from "../src/v2/history-blob";
+import { ZERO_LINK, attemptBlob, attemptLink, attemptRows, blobBytes, lastStage, type AttemptRoom } from "../src/v2/history-blob";
+import { bytesDigest, decodeBlob, encodeBlob, ENCODING_RAW } from "../src/blob-codec";
 import { finishedAttempts, historyChain } from "../src/v2/history";
 import { CHAINS, ROOM, fork, newRoom, open, play, playA, type Room } from "./history-chains";
 import vectors from "../../game/tests/fixtures/history/vectors.json";
@@ -34,35 +35,35 @@ describe("attempt blobs and the attempt hash chain", () => {
     for (const encoded of [vectors.deflate_base64.zlib, vectors.deflate_base64.godot]) {
       const body = base64(encoded);
       expect(body[0]).toBe(1);
-      expect(await decodeAttempt(body, expected.byteLength)).toEqual(expected);
-      expect(await decodeAttempt(body, expected.byteLength - 1)).toBeNull();
-      expect(await decodeAttempt(body, expected.byteLength + 1)).toBeNull();
-      expect(await decodeAttempt(body.subarray(0, body.byteLength - 9), expected.byteLength)).toBeNull();
+      expect(await decodeBlob(body, expected.byteLength)).toEqual(expected);
+      expect(await decodeBlob(body, expected.byteLength - 1)).toBeNull();
+      expect(await decodeBlob(body, expected.byteLength + 1)).toBeNull();
+      expect(await decodeBlob(body.subarray(0, body.byteLength - 9), expected.byteLength)).toBeNull();
       const flipped = body.slice(); flipped[40] ^= 0x10;
-      const decoded = await decodeAttempt(flipped, expected.byteLength);
+      const decoded = await decodeBlob(flipped, expected.byteLength);
       expect(decoded === null || await bytesDigest(decoded) !== vectors.digest).toBe(true);
     }
     for (const chain of CHAINS) {
       const room = newRoom();
       await play(room, await open(room, chain), chain, 0);
       const bytes = blobBytes((await inRoom(room, storage => attemptBlob(storage, roomKey(chain), 0)))!);
-      const deflated = await encodeAttempt(bytes), raw = await encodeAttempt(bytes, ENCODING_RAW);
+      const deflated = await encodeBlob(bytes), raw = await encodeBlob(bytes, ENCODING_RAW);
       console.log("ATTEMPT", chain.name, bytes.byteLength, "bytes, deflate", deflated.byteLength - 1, (bytes.byteLength / (deflated.byteLength - 1)).toFixed(1) + "x");
       expect(deflated.byteLength * 2).toBeLessThan(bytes.byteLength);
-      expect(await decodeAttempt(deflated, bytes.byteLength)).toEqual(bytes);
-      expect(await decodeAttempt(raw, bytes.byteLength)).toEqual(bytes);
-      expect(await bytesDigest((await decodeAttempt(deflated, bytes.byteLength))!)).toBe(await bytesDigest(bytes));
+      expect(await decodeBlob(deflated, bytes.byteLength)).toEqual(bytes);
+      expect(await decodeBlob(raw, bytes.byteLength)).toEqual(bytes);
+      expect(await bytesDigest((await decodeBlob(deflated, bytes.byteLength))!)).toBe(await bytesDigest(bytes));
       const extra = new Uint8Array(raw.byteLength + 1); extra.set(raw);
-      expect(await decodeAttempt(extra, bytes.byteLength)).toBeNull();
-      expect(await decodeAttempt(new Uint8Array([2, ...raw.subarray(1)]), bytes.byteLength)).toBeNull();
+      expect(await decodeBlob(extra, bytes.byteLength)).toBeNull();
+      expect(await decodeBlob(new Uint8Array([2, ...raw.subarray(1)]), bytes.byteLength)).toBeNull();
     }
   });
 
   it("stops inflating a bomb once it passes the expected length", async () => {
-    const bomb = await encodeAttempt(new Uint8Array(64 * 1024 * 1024));
+    const bomb = await encodeBlob(new Uint8Array(64 * 1024 * 1024));
     expect(bomb.byteLength).toBeLessThan(128 * 1024);
     const started = Date.now();
-    expect(await decodeAttempt(bomb, 4 * 1024 * 1024)).toBeNull();
+    expect(await decodeBlob(bomb, 4 * 1024 * 1024)).toBeNull();
     expect(Date.now() - started).toBeLessThan(5000);
   });
 

@@ -1,6 +1,7 @@
 import { ApiError, HASH_PATTERN, canonicalJson, integer, object, text } from "../protocol";
 import { checkpointAt, nestedProof } from "./checkpoint-chain";
-import { ZERO_LINK, attemptBlob, attemptLink, attemptRows, blobBytes, bytesDigest, decodeAttempt, encodeAttempt, isStub, type AttemptBlob, type AttemptRoom } from "./history-blob";
+import { ZERO_LINK, attemptBlob, attemptLink, attemptRows, blobBytes, isStub, type AttemptBlob, type AttemptRoom } from "./history-blob";
+import { bytesDigest, decodeBlob, encodeBlob } from "../blob-codec";
 import { bothSupport, finishedAttempts, historyMembers, historyChain, persistChain, storedAttempts, writeAttempt, type AttemptRecord } from "./history";
 import { chapter, exact } from "./protocol";
 import { boundedArchiveStructure, compactPair, type TransferredRoom } from "./replay-transfer";
@@ -77,13 +78,13 @@ export async function attemptDownload(storage: DurableObjectStorage, room: Histo
   need(blob, 410, "history_offloaded");
   const bytes = blobBytes(blob);
   need(bytes.byteLength === record.byte_length && await bytesDigest(bytes) === record.digest, 500, "history_rows_inconsistent");
-  return encodeAttempt(bytes);
+  return encodeBlob(bytes);
 }
 
 /** The uploaded attempt, proven to be the server's own earlier bytes for this room, place and chain. */
 export async function checkedUpload(records: AttemptRecord[], position: number, body: Uint8Array, room: HistoryRoom): Promise<AttemptBlob> {
   const record = records[position]; need(record, 404, "history_not_found");
-  const bytes = await decodeAttempt(body, record.byte_length);
+  const bytes = await decodeBlob(body, record.byte_length);
   need(bytes && await bytesDigest(bytes) === record.digest, 422, "history_mismatch");
   need(await attemptLink(roomKey(room), position, records[position - 1]?.link ?? ZERO_LINK, record.digest, record.byte_length) === record.link, 422, "history_mismatch");
   let blob: unknown;

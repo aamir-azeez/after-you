@@ -6,6 +6,7 @@ extends RefCounted
 ## removed automatically, because an offloaded attempt may be the only copy left.
 
 const NativeFiles = preload("res://services/native_files.gd")
+const BlobCodec = preload("res://services/blob_codec.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Typed = preload("res://services/typed_values.gd")
 
@@ -13,8 +14,8 @@ const ROOT := "user://history"
 const MAX_ATTEMPT_BYTES := 4 * 1024 * 1024
 const MAX_ATTEMPTS := 32
 const MAX_INDEX_BYTES := 64 * 1024
-const ENCODING_RAW := 0
-const ENCODING_DEFLATE := 1
+const ENCODING_RAW := BlobCodec.ENCODING_RAW
+const ENCODING_DEFLATE := BlobCodec.ENCODING_DEFLATE
 const LINK_SCHEMA := "after-you.history.v1"
 const ZERO_LINK := "0000000000000000000000000000000000000000000000000000000000000000"
 const RECORD_KEYS := ["position", "link", "digest", "byte_length", "file"]
@@ -24,21 +25,13 @@ var root := ROOT
 func _init(root_path: String = ROOT) -> void:
 	root = root_path
 
-## The canonical bytes inside a stored or sent attempt, or empty when they are not
-## exactly `byte_length` long. Inflating stops at that length, so a bomb costs nothing.
+## The canonical bytes inside a stored or sent attempt (services/blob_codec.gd), or
+## empty when they are not exactly `byte_length` long.
 static func decode(tagged: PackedByteArray, byte_length: int) -> PackedByteArray:
-	if tagged.is_empty() or byte_length < 1 or byte_length > MAX_ATTEMPT_BYTES or tagged.size() > MAX_ATTEMPT_BYTES + 1: return PackedByteArray()
-	var payload := tagged.slice(1)
-	var bytes := PackedByteArray()
-	if tagged[0] == ENCODING_RAW: bytes = payload
-	elif tagged[0] == ENCODING_DEFLATE and not payload.is_empty(): bytes = payload.decompress(byte_length, FileAccess.COMPRESSION_DEFLATE)
-	return bytes if bytes.size() == byte_length else PackedByteArray()
+	return BlobCodec.decode(tagged, byte_length, MAX_ATTEMPT_BYTES)
 
 static func digest(bytes: PackedByteArray) -> String:
-	var context := HashingContext.new()
-	context.start(HashingContext.HASH_SHA256)
-	context.update(bytes)
-	return context.finish().hex_encode()
+	return BlobCodec.digest(bytes)
 
 ## The server's chain link for an attempt: room, chapter version, place, the link before it, and the bytes.
 static func link(room: Dictionary, position: int, previous: String, attempt_digest: String, byte_length: int) -> String:
