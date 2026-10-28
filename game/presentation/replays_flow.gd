@@ -36,6 +36,7 @@ const ReplayLoadingBar = preload("res://presentation/replay_loading_bar.gd")
 const UpdateGate = preload("res://presentation/update_gate_screen.gd")
 const WhenLabel = preload("res://presentation/when_label.gd")
 const SharedReplayView = preload("res://presentation/shared_replay_view.gd")
+const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomStages = preload("res://services/room_stages.gd")
@@ -1701,29 +1702,17 @@ func _play_shared_entries(entries: Array) -> void:
 	host.supersede_foreground_refresh()
 	host.mode=MODE_SHARED_REPLAY
 	host.running=false
-	host._set_world_visible(false)
 	host.ui.visible=false
-	host.soundscape.set_backgrounded(true)
-	host.shared_replay_child=SharedReplayView.new()
-	host.shared_replay_child.entry=entries[0]
-	host.shared_replay_child.sequence=entries
-	host.shared_replay_child.settings=host.saves.data.settings.duplicate(true)
-	host.shared_replay_child.api=host.api
-	host.shared_replay_child.identity=host._relay_identity
-	host.shared_replay_child.context_factory=host._room_context_factory()
-	host.shared_replay_child.friend_name=_room_partner_nickname(_current_shared_room())
-	host.shared_replay_child.closed.connect(_leave_shared_replay)
-	host.add_child(host.shared_replay_child)
+	var view: Node3D=SharedReplayLaunch.make(host,entries)
+	view.context_factory=host._room_context_factory()
+	view.friend_name=_room_partner_nickname(_current_shared_room())
+	view.closed.connect(_leave_shared_replay)
+	SharedReplayLaunch.show(host,view)
 
 func _leave_shared_replay() -> void:
 	var blocked: bool = is_instance_valid(host.shared_replay_child) and host.shared_replay_child.blocked_exit
-	if is_instance_valid(host.shared_replay_child):
-		host.remove_child(host.shared_replay_child)
-		host.shared_replay_child.queue_free()
-	host.shared_replay_child=null
-	host._set_world_visible(true)
+	SharedReplayLaunch.close(host)
 	host.ui.visible=true
-	host.soundscape.set_backgrounded(host.application_backgrounded)
 	host.lifecycle_generation+=1
 	if blocked: show_shared_replays()
 	elif host._relay_identity().ready: show_shared_replay_room(shared_replay_room)

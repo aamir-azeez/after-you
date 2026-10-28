@@ -20,7 +20,8 @@ const ANSWER_KEYS := ["schema_version", "board", "entry_id", "rank", "ticks", "f
 ## The viewer's parts for `answer`, or [] unless it is exactly the replay the row
 ## named (`entry_id` and `replay_hash` on `board`) and a whole run of `chapter_key`.
 static func parts(answer: Variant, board: String, entry_id: String, replay_hash: String, chapter_key: String) -> Array:
-	if not answer is Dictionary or answer.size() != ANSWER_KEYS.size() or ANSWER_KEYS.any(func(key: String) -> bool: return not answer.has(key)): return []
+	# Fields a later server adds are ignored, as a board's are (leaderboard_client.gd valid_view).
+	if not answer is Dictionary or ANSWER_KEYS.any(func(key: String) -> bool: return not answer.has(key)): return []
 	if not Typed.equal(answer.schema_version, 1) or not Typed.equal(answer.board, board) or not Typed.equal(answer.entry_id, entry_id) or not Typed.equal(answer.digest, replay_hash): return []
 	if not Typed.whole_number(answer.byte_length) or not answer.body is String or answer.body.length() > (MAX_BODY_BYTES + 2) / 3 * 4: return []
 	var bytes := BlobCodec.verified(Marshalls.base64_to_raw(answer.body), int(answer.byte_length), replay_hash, MAX_CANONICAL_BYTES)

@@ -1759,7 +1759,8 @@ func _service_world_cover() -> void:
 	var shade_id := shade.get_instance_id() if shade != null else 0
 	if shade_id != _backdrop_shade_id: _start_backdrop(shade)
 	elif shade != null and not _backdrop_ready and is_instance_valid(_backdrop_view): _finish_backdrop(shade)
-	var covered := friends_flow.is_open() or room_hub_flow.is_open() or settings_flow.is_open() or is_instance_valid(safety_screen) or legacy_room_flow.redo_open() or (shade != null and _backdrop_ready)
+	# A shared replay draws its own world, even over Friends (a leaderboard run).
+	var covered := not is_instance_valid(shared_replay_child) and (friends_flow.is_open() or room_hub_flow.is_open() or settings_flow.is_open() or is_instance_valid(safety_screen) or legacy_room_flow.redo_open() or (shade != null and _backdrop_ready))
 	if not covered and _backdrop_still != null:
 		_backdrop_still = null
 		_backdrop_key = []

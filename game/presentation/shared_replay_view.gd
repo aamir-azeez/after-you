@@ -49,6 +49,8 @@ var context_factory: RefCounted
 ## name no room or player, so they are checked by replay alone, and the view
 ## offers no photos, no Report or block and no badges. Back leaves to the board.
 var leaderboard_chapter := ""
+## This mode's words (_words_for), chosen once in _ready.
+var _words: Dictionary = {}
 var controls: CanvasLayer
 var world: Node3D
 var sim: RefCounted
@@ -142,6 +144,7 @@ class ReadFactory extends RefCounted:
 		return ReadTarget.new(self, context) if context is RefCounted else null
 
 func _ready() -> void:
+	_words = _words_for(_board_run())
 	_binding = identity.call() if identity.is_valid() else {}
 	controls = Controls.new()
 	controls.settings = settings.duplicate(true)
@@ -154,7 +157,7 @@ func _ready() -> void:
 		return
 	sequence = sequence.duplicate(true)
 	mode = "loading"
-	var card: VBoxContainer = controls.card(PlayerCopy.LEADERBOARD_REPLAY_TITLE if _board_run() else "Shared replay", "")
+	var card: VBoxContainer = controls.card(_words.loading, "")
 	_loading_bar=LoadingBar.new()
 	_loading_bar.reduced_motion=bool(settings.get("reduced_motion",false))
 	card.add_child(_loading_bar)
@@ -214,7 +217,16 @@ func _board_run() -> bool:
 	return not leaderboard_chapter.is_empty()
 
 func _unverified_text() -> String:
-	return PlayerCopy.LEADERBOARD_REPLAY_UNVERIFIED if _board_run() else PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714
+	return _words.unverified
+
+## The viewer's words for a room's replay, or for a leaderboard run.
+static func _words_for(board: bool) -> Dictionary:
+	if board: return {"loading": PlayerCopy.LEADERBOARD_REPLAY_TITLE, "hud": "LEADERBOARD RUN\n", "message": PlayerCopy.LEADERBOARD_REPLAY_MESSAGE,
+		"paused": PlayerCopy.LEADERBOARD_REPLAY_PAUSED, "paused_body": PlayerCopy.LEADERBOARD_REPLAY_PAUSED_BODY, "done": PlayerCopy.LEADERBOARD_REPLAY_DONE, "done_body": PlayerCopy.LEADERBOARD_REPLAY_DONE_BODY,
+		"unverified": PlayerCopy.LEADERBOARD_REPLAY_UNVERIFIED, "account_changed": PlayerCopy.LEADERBOARD_REPLAY_ACCOUNT_CHANGED, "error": PlayerCopy.LEADERBOARD_REPLAY_UNAVAILABLE}
+	return {"loading": "Shared replay", "hud": "SHARED REPLAY\n", "message": PlayerCopy.SHARED_REPLAY_VIEW_C46191B0894B,
+		"paused": PlayerCopy.SHARED_REPLAY_VIEW_91F0B52CD01E, "paused_body": PlayerCopy.SHARED_REPLAY_VIEW_6EE4245DCD7F, "done": PlayerCopy.SHARED_REPLAY_VIEW_DA1E512354C7, "done_body": PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D,
+		"unverified": PlayerCopy.SHARED_REPLAY_VIEW_1F82C26A6714, "account_changed": PlayerCopy.SHARED_REPLAY_VIEW_FBCF70672D83, "error": PlayerCopy.SHARED_REPLAY_VIEW_B81950FA86BB}
 
 ## One part, or a chapter's parts in stage order from its first stage, each
 ## checkpoint nested in the next part's proof.
@@ -344,8 +356,8 @@ func _cues(snapshot: Dictionary) -> Dictionary:
 func _update_hud(snapshot: Dictionary = {}) -> void:
 	var state: Dictionary = (sim.snapshot() if snapshot.is_empty() else snapshot).duplicate()
 	state.context_action = {"label": "Replay", "enabled": false}
-	state.message = PlayerCopy.LEADERBOARD_REPLAY_MESSAGE if _board_run() else PlayerCopy.SHARED_REPLAY_VIEW_C46191B0894B
-	controls.update_state(("LEADERBOARD RUN\n" if _board_run() else "SHARED REPLAY\n") + _display_title, float(_frames.size() - cursor) / 30.0, state, false)
+	state.message = _words.message
+	controls.update_state(_words.hud + _display_title, float(_frames.size() - cursor) / 30.0, state, false)
 	controls.stick.hide()
 	controls.action_button.hide()
 	controls.finish_button.hide()
@@ -358,8 +370,7 @@ func _pause() -> void:
 	if is_instance_valid(strip):
 		_safety_photos = strip.report_targets()
 		strip.clear()
-	var card: VBoxContainer = controls.card(PlayerCopy.LEADERBOARD_REPLAY_PAUSED, PlayerCopy.LEADERBOARD_REPLAY_PAUSED_BODY) if _board_run() \
-		else controls.card(PlayerCopy.SHARED_REPLAY_VIEW_91F0B52CD01E, PlayerCopy.SHARED_REPLAY_VIEW_6EE4245DCD7F)
+	var card: VBoxContainer = controls.card(_words.paused, _words.paused_body)
 	card.add_child(controls.button_for("resume", _resume))
 	card.add_child(controls.button_for("replay", _start))
 	if not _board_run(): card.add_child(controls.button("Report or block player", _open_safety))
@@ -381,8 +392,7 @@ func _show_finished() -> void:
 	running = false
 	mode = "complete"
 	if is_instance_valid(strip): strip.clear()
-	var card: VBoxContainer = controls.card(PlayerCopy.LEADERBOARD_REPLAY_DONE, PlayerCopy.LEADERBOARD_REPLAY_DONE_BODY) if _board_run() \
-		else controls.card(PlayerCopy.SHARED_REPLAY_VIEW_DA1E512354C7, PlayerCopy.SHARED_REPLAY_VIEW_8432676D063D)
+	var card: VBoxContainer = controls.card(_words.done, _words.done_body)
 	card.add_child(controls.button_for("replay", _start))
 	if not _board_run(): card.add_child(controls.button("Report or block player", _open_safety))
 	card.add_child(controls.button_for("back", _leave))
@@ -426,12 +436,12 @@ func identity_invalidated() -> void:
 	running = false
 	if _photos != null: _photos.invalidate_identity()
 	if is_instance_valid(strip): strip.clear()
-	_show_error(PlayerCopy.LEADERBOARD_REPLAY_ACCOUNT_CHANGED if _board_run() else PlayerCopy.SHARED_REPLAY_VIEW_FBCF70672D83)
+	_show_error(_words.account_changed)
 
 func _show_error(message: String) -> void:
 	running = false
 	mode = "error"
-	var card: VBoxContainer = controls.card(PlayerCopy.LEADERBOARD_REPLAY_UNAVAILABLE if _board_run() else PlayerCopy.SHARED_REPLAY_VIEW_B81950FA86BB, message)
+	var card: VBoxContainer = controls.card(_words.error, message)
 	card.add_child(controls.button_for("back", _leave))
 
 func _leave() -> void:

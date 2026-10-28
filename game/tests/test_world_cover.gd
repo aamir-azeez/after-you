@@ -7,6 +7,7 @@ extends SceneTree
 ## - A page shade asks for one still render; a renderer with no image
 ##   (headless) keeps the live world, and leaving the page cleans up.
 ## - Leaving Main never leaves the next scene without its 3D pass.
+## - A shared replay (a leaderboard run over Friends) keeps the 3D pass on.
 ## - A chapter's own Safety and Redo requests screens stop its 3D pass the
 ##   same way, and closing them or leaving the chapter brings it back.
 var checks := 0
@@ -57,6 +58,22 @@ func _run() -> void:
 		screen.free()
 		await _frames(2)
 		_check(not viewport.disable_3d and app.world.is_processing(), "Closing %s brings the world back" % script_path.get_file())
+	# A leaderboard run's replay opened from Friends (friends_flow.gd) draws its own world over Friends.
+	var friends := CanvasLayer.new()
+	app.friends_flow.screen = friends
+	await _frames(2)
+	_check(viewport.disable_3d, "Friends covers the world")
+	app.shared_replay_child = Node3D.new()
+	await _frames(2)
+	_check(not viewport.disable_3d, "A shared replay over Friends keeps the 3D pass on")
+	app.shared_replay_child.free()
+	app.shared_replay_child = null
+	await _frames(2)
+	_check(viewport.disable_3d, "Back on Friends the world is covered again")
+	app.friends_flow.screen = null
+	friends.free()
+	await _frames(2)
+	_check(not viewport.disable_3d and app.world.is_processing(), "Closing Friends brings the world back")
 	# A full page behind the 0.9 shade.
 	app.journey_flow.show_journey()
 	await _frames(4)

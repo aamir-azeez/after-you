@@ -44,6 +44,10 @@ class FakeSound extends RefCounted:
 class FakeSaves extends RefCounted:
 	var data := {"settings": {"sound": false, "haptics": false, "reduced_motion": true}}
 
+## Friends' page, as far as its flow closes it.
+class FakeFriends extends CanvasLayer:
+	func close() -> void: queue_free()
+
 ## The part of Main that Friends' flow uses to play a replay.
 class FakeHost extends Node:
 	var shared_replay_child: Node3D
@@ -95,9 +99,12 @@ func _parts(answer: Dictionary) -> void:
 	var longer := answer.duplicate()
 	longer.byte_length = int(answer.byte_length) + 1
 	_check(LeaderboardReplay.parts(longer, BOARD, ENTRY, hash, Registry.RELAY).is_empty(), "a body of another length is refused")
-	var named := answer.duplicate()
-	named.host_id = OWNER
-	_check(LeaderboardReplay.parts(named, BOARD, ENTRY, hash, Registry.RELAY).is_empty(), "an answer with fields this build does not know is refused")
+	var later := answer.duplicate()
+	later.added_later = true
+	_check(LeaderboardReplay.parts(later, BOARD, ENTRY, hash, Registry.RELAY).size() == 2, "a field a later server adds is ignored")
+	var missing := answer.duplicate()
+	missing.erase("digest")
+	_check(LeaderboardReplay.parts(missing, BOARD, ENTRY, hash, Registry.RELAY).is_empty(), "an answer without its hash is refused")
 	var view := {"schema_version": 1, "board": BOARD, "checking": [], "top": [{"rank": 1, "entry_id": ENTRY, "ticks": 588, "finished_on": "2026-10-20", "names": null, "gold_leaf": true, "replay_hash": "A".repeat(64)}]}
 	_check(Client.valid_view(view, BOARD).is_empty(), "a replay hash must be lowercase hex")
 	view.top[0].erase("replay_hash")
@@ -114,7 +121,7 @@ func _watch(answer: Dictionary) -> void:
 	var host := FakeHost.new()
 	host.api = api
 	root.add_child(host)
-	var friends := CanvasLayer.new()
+	var friends := FakeFriends.new()
 	root.add_child(friends)
 	var flow := FriendsFlow.new(host)
 	flow.screen = friends
@@ -163,8 +170,17 @@ func _watch(answer: Dictionary) -> void:
 	(board.find_child("LeaderboardRow1", true, false).find_child("LeaderboardWatch", true, false) as Button).pressed.emit()
 	for frame in range(10): await process_frame
 	_check(notices.has(PlayerCopy.LEADERBOARD_REPLAY_FAILED) and host.shared_replay_child == null and board.visible, "a replay the server no longer keeps says so and stays on the board: %s" % [notices])
-	board.close()
-	for node: Node in [friends, host, api]: node.queue_free()
+	# Friends closing (an account change, a room opening) takes a replay it opened with it.
+	api.replies["GET /v1/leaderboards/%s/replay/%s" % [BOARD, ENTRY]] = {"ok": true, "data": answer}
+	(board.find_child("LeaderboardRow1", true, false).find_child("LeaderboardWatch", true, false) as Button).pressed.emit()
+	deadline = Time.get_ticks_msec() + 20000
+	while not is_instance_valid(host.shared_replay_child) and Time.get_ticks_msec() < deadline: await process_frame
+	var again: Node = host.shared_replay_child
+	_check(again is View, "Watch opens the run again")
+	flow.close()
+	await process_frame
+	_check(host.shared_replay_child == null and not is_instance_valid(again) and host.world_visible and not host.soundscape.backgrounded, "closing Friends closes its replay and brings Home back")
+	for node: Node in [host, api]: node.queue_free()
 	flow.free()
 	await process_frame
 
