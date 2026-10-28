@@ -306,7 +306,6 @@ describe("ghost races", () => {
   });
 });
 
-const meterCalls = (value: { calls: number }) => value.calls;
 describe("duel cost", () => {
   it("stays within its request budget per step", async () => {
     const { a1, a2, b1 } = await pairs(true);
@@ -328,6 +327,6 @@ describe("duel cost", () => {
     expect(sent.calls).toBeLessThanOrEqual(24);
     expect(accepted.calls).toBeLessThanOrEqual(9);
     expect(read.calls).toBeLessThanOrEqual(4);
-    expect(meterCalls(plain)).toBeLessThanOrEqual(6);
+    expect(plain.calls).toBeLessThanOrEqual(6);
   });
 });

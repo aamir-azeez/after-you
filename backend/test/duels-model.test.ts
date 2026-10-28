@@ -9,6 +9,9 @@ import secondB from "../../game/tests/fixtures/v2/garden-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
 import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
 import type { CheckpointV2, RecordingV2 } from "../src/v2/protocol";
+import { price } from "../src/pollen/earn";
+import { validTurnFacts } from "../src/pollen/turn-facts";
+import { isoWeek } from "../src/pollen/week";
 
 // Synthetic ids only.
 const [A1, A2, B1, B2, X] = ["a1".padEnd(22, "a"), "a2".padEnd(22, "a"), "b1".padEnd(22, "b"), "b2".padEnd(22, "b"), "xx".padEnd(22, "x")];
@@ -280,5 +283,26 @@ describe("duel time", () => {
     delete broken.proof;
     expect(runProgress(broken, stages)).toBeNull();
     expect(runProgress({ ...(final as unknown as CheckpointV2), stage_index: 9 }, stages)).toBeNull();
+  });
+});
+
+describe("duel pay", () => {
+  // POLLEN-RULES.md's worked example: a short-chapter bank turn of base 89 with a first try (111).
+  const facts = { level_id: "first-steps", stage_id: "s1", role: "a" as const, ticks: 10, tries: 1, premium: false, hard: false, host: true, subscriber: false };
+  it("adds half again on base and bonuses, worked out with the room boost and rounded once", () => {
+    expect(price({ facts: { ...facts, boost_percent: 0, duel: true }, bank: true, tail_index: 0, bloom: 1 })).toMatchObject({ amount: 111, boost: 0, duel: 56, duel_percent: 50, total: 167 });
+    expect(price({ facts: { ...facts, boost_percent: 10, duel: true }, bank: true, tail_index: 0, bloom: 1 })).toMatchObject({ amount: 111, boost: 11, duel: 56, total: 178 });
+  });
+  it("leaves blooms on the plain amount, the after-bank tail and ordinary turns as they were", () => {
+    expect(price({ facts: { ...facts, boost_percent: 0, duel: true }, bank: true, tail_index: 0, bloom: 2 })).toMatchObject({ bloom_extra: 111, duel: 56, total: 278 });
+    expect(price({ facts: { ...facts, boost_percent: 0, duel: true }, bank: false, tail_index: 0, bloom: 1 })).not.toHaveProperty("duel");
+    expect(price({ facts: { ...facts, boost_percent: 0 }, bank: true, tail_index: 0, bloom: 1 })).not.toHaveProperty("duel");
+  });
+  it("accepts facts frozen before duels, and only true for the duel key", () => {
+    const base = { schema_version: 1, room_id: "r".repeat(22), recording_hash: "a".repeat(64), turn_id: "t0-0-a", player_id: "p".repeat(22), accepted_at: T0, week: isoWeek(T0),
+      level_id: "first-steps", stage_id: "s1", role: "a", ticks: 10, tries: 1, premium: false, hard: false, host: true, together: true, complete: false, subscriber: false, partner_subscriber: false, boost_percent: 0 };
+    expect(validTurnFacts(base)).toBe(true);
+    expect(validTurnFacts({ ...base, duel: true })).toBe(true);
+    expect(validTurnFacts({ ...base, duel: false })).toBe(false);
   });
 });
