@@ -107,6 +107,8 @@ export const FLAG_VARS = Object.freeze({
   pollenGrant: "POLLEN_GRANT",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. Set only through FEATURES. */
   leaderboards: "LEADERBOARDS",
+  /** Duels (duels/): parties, friend challenges, ghost races, the duel premium and win bonus, and their capability. Needs LEADERBOARDS: duels live in the boards and their runs go to its replay check. Set only through FEATURES. */
+  duels: "DUELS",
 } as const);
 
 export type FlagName = keyof typeof FLAG_VARS;

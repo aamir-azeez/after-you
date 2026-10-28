@@ -49,6 +49,7 @@ export { PollenClaims } from "./pollen/claims";
 import { routeLeaderboardRead, routeLeaderboards } from "./leaderboards/routes";
 import { OPERATOR_PREFIX as LEADERBOARD_OPERATOR_PREFIX, routeLeaderboardOperator } from "./leaderboards/operator";
 import { forgetLeaderboardPlayer, forgetLeaderboardPlayerIfKnown } from "./leaderboards/members";
+import { routeDuels } from "./duels/routes";
 
 /**
  * Every route under a room id except leave, which is already a quiet success for a room the caller has
@@ -160,6 +161,7 @@ export default {
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
       if (pollenRoute(path, env)) return json(await routePollen(request, path, playerId, env, pollenView));
       const leaderboards = await routeLeaderboards(request, path, playerId, env); if (leaderboards !== null) return json(leaderboards);
+      const duels = await routeDuels(request, path, playerId, env); if (duels !== null) return json(duels);
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");

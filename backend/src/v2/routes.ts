@@ -29,7 +29,7 @@ import { triesField, triesWanted } from "./turn-tries";
 import { endReactionField, endReactionsWanted } from "./end-reactions";
 import { runReactionField, runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
-import { openChapters } from "./chapter-unlocks";
+import { CHAPTER_NOT_OPEN, chapterOpen, openChapters } from "./chapter-unlocks";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
 import { checkedWithEnd, creditCommitted, pollenCapability } from "../pollen/routes";
 import type { PollenMember } from "../pollen/turn-facts";
@@ -37,6 +37,8 @@ import type { Look } from "../pollen/catalog";
 import { looksCapability, looksShown } from "../pollen/looks-routes";
 import { leaderboardsCapability } from "../leaderboards/routes";
 import { postFinishedRun } from "../leaderboards/submit";
+import { claimDuelRoom, duelsCapability, parseDuelAsk, prepareDuelRoom } from "../duels/routes";
+import { duelsOn, noteDuelTurn } from "../duels/turn-hook";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -132,6 +134,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...pollenCapability(request, env),
     ...looksCapability(request, env),
     ...leaderboardsCapability(request, env),
+    ...duelsCapability(request, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
@@ -149,9 +152,14 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (path === "/v2/rooms" && request.method === "POST") {
     requireEnabled(env);
-    const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash", ...(input.simulation_version === undefined ? [] : ["simulation_version"]), ...(input.mode === undefined ? [] : ["mode"])]);
+    const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash", ...(input.simulation_version === undefined ? [] : ["simulation_version"]), ...(input.mode === undefined ? [] : ["mode"]), ...(input.duel === undefined ? [] : ["duel"])]);
     const mode = parseMode(input);
     const selected = chapter(input);
+    // A duel's room (duels/routes.ts): its own chapter, never hard, and only for a player who has reached it.
+    const duelAsk = input.duel === undefined ? null : parseDuelAsk(input.duel);
+    if (duelAsk && mode) throw new ApiError(422, "invalid_duel_room");
+    const duel = duelAsk ? await prepareDuelRoom(env, playerId, duelAsk, selected.key) : undefined;
+    if (duel && !chapterOpen(selected.key.level_id, openChapters(request))) throw new ApiError(403, CHAPTER_NOT_OPEN);
     if (input.simulation_version !== undefined && (!Number.isInteger(input.simulation_version) || input.simulation_version === selected.simulation_version || !(selected.supported_simulation_versions ?? []).includes(input.simulation_version as number))) throw new ApiError(422, "unsupported_simulation_version");
     const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
     // A retained intent is already admitted. A create whose reply was lost gets
@@ -171,7 +179,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
     const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
     const link = intent.link;
-    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen, look)));
+    // Both members of a pair may open their duel at once: the first room claimed is the pair's, and the other phone joins it.
+    if (duel && !(await claimDuelRoom(env, playerId, duel, link.room_id, link.invite_code)).ok) { await player.removeRoom(link.room_id, 2); throw new ApiError(409, "duel_room_taken"); }
+    return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen, look, duel)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
     requireEnabled(env);
@@ -363,6 +373,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       if (context) return json(unwrap(await room.operation(playerId, key, context)));
       // A retried final turn posts its run again; the board answers "known" when the first post arrived.
       if (operation === "turns") await postFinishedRun(env, previous.value, context);
+      // A duel's notes are absolute, so a repeat changes nothing.
+      if (operation === "turns" && duelsOn(env)) await noteDuelTurn(env, previous.value.room, await room.duelLinkOf());
       return json(previous.value);
     }
     if (previous.code !== "operation_not_found") unwrap(previous);
@@ -375,8 +387,10 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request))));
   // Story rooms never earn; a standalone turn with `pollen` freezes its facts and is credited once.
-  const committed = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
+  const { duel_link, ...committed } = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
   // A turn that finished a together run that might place goes to its board (leaderboards/submit.ts); the reply is unchanged.
   await postFinishedRun(env, committed, context);
+  // A duel room's turn moves its duel (duels/turn-hook.ts); the reply is unchanged.
+  await noteDuelTurn(env, committed.room, duel_link);
   return json(await creditCommitted(request, env, playerId, committed));
 }

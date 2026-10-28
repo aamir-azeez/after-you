@@ -21,6 +21,8 @@ export type DuelRef = { duel_id: string; board: string; at: number };
 export type PartyState = {
   schema_version: 1; partner: string | null; since: number;
   invites_in: PartyInvite[]; invite_out: { to: string; at: number } | null; duels: DuelRef[];
+  /** Duels whose win bonus this player was already paid or refused, so a read asks the wallet once. */
+  settled: string[];
 };
 export type PartyOp =
   | { kind: "invite"; to: string }
@@ -32,12 +34,13 @@ export type PartyOp =
   | { kind: "unpartner"; partner: string }
   | { kind: "leave" }
   | { kind: "add_duels"; refs: DuelRef[] }
-  | { kind: "drop_duels"; ids: string[] };
+  | { kind: "drop_duels"; ids: string[] }
+  | { kind: "settle_wins"; ids: string[] };
 /** `previous`: the partner this op replaced or removed, whose own row should be told. */
 export type PartyAnswer = { state: PartyState; previous: string | null };
 
 export function blankParty(): PartyState {
-  return { schema_version: 1, partner: null, since: 0, invites_in: [], invite_out: null, duels: [] };
+  return { schema_version: 1, partner: null, since: 0, invites_in: [], invite_out: null, duels: [], settled: [] };
 }
 
 /** Drops invites past their time. Returns whether anything went. */
@@ -97,6 +100,10 @@ export function applyParty(state: PartyState, owner: string, op: PartyOp, now: n
     }
     case "drop_duels":
       state.duels = state.duels.filter(ref => !op.ids.includes(ref.duel_id));
+      state.settled = state.settled.filter(id => !op.ids.includes(id));
+      break;
+    case "settle_wins":
+      state.settled = [...new Set([...state.settled, ...op.ids])].slice(-MAX_MEMBER_DUELS * 2);
       break;
   }
   return ok({ state, previous });
@@ -112,6 +119,6 @@ export function parsedParty(text: string | undefined): PartyState {
   if (!text) return blankParty();
   try {
     const value = JSON.parse(text) as PartyState;
-    return value?.schema_version === 1 && Array.isArray(value.invites_in) && Array.isArray(value.duels) ? { ...blankParty(), ...value } : blankParty();
+    return value?.schema_version === 1 && Array.isArray(value.invites_in) && Array.isArray(value.duels) ? { ...blankParty(), ...value, settled: Array.isArray(value.settled) ? value.settled : [] } : blankParty();
   } catch { return blankParty(); }
 }
