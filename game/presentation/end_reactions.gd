@@ -38,6 +38,8 @@ const SCRIPT_PATH := "res://presentation/end_reactions.gd"
 ## Every tap target is at least this tall and wide.
 const TARGET := 56.0
 const BUBBLE_SIZE := Vector2(68, 62)
+## A following bubble's process priority: after every camera writer.
+const FOLLOW_PRIORITY := 200
 ## A compact bubble's size against BUBBLE_SIZE.
 const COMPACT := 0.8
 const CELL_SIZE := Vector2(98, 94)
@@ -451,6 +453,9 @@ class Bubble extends Control:
 	var tail := TAIL_DOWN
 	var follow: Callable
 	func _ready() -> void:
+		# After camera_exploration (100) adds pinch zoom and pan to the frame,
+		# so the bubble reads the camera the screen will actually show.
+		process_priority = FOLLOW_PRIORITY
 		set_process(follow.is_valid())
 	func _process(_delta: float) -> void:
 		var at: Variant = follow.call() if follow.is_valid() else null
