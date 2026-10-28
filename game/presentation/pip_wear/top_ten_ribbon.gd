@@ -24,6 +24,11 @@ const CLEAR := 1.01
 static func wear(look: RefCounted) -> void:
 	look.mesh(look.head(), Kit.cached_mesh("top_ten_ribbon", _build), Kit.vertex_material())
 
+## The rosette on its own, centred and facing +z, at its worn size (the
+## leaderboard's Top 10 celebration shows it between the pair).
+static func rosette() -> Mesh:
+	return Kit.cached_mesh("top_ten_rosette", func() -> Mesh: return _rosette(Transform3D.IDENTITY))
+
 static func _build() -> Mesh:
 	var vertices: PackedVector3Array = _rosette(Transform3D.IDENTITY).surface_get_arrays(0)[Mesh.ARRAY_VERTEX]
 	var basis := Basis.from_euler(TURN)

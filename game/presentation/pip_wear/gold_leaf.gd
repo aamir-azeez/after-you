@@ -21,10 +21,15 @@ const GLOW_STRENGTH := 0.55
 ## Seconds for one twinkle.
 const TWINKLE := 1.6
 
+## The gold leaf's own material (the leaderboard's first place celebration
+## turns a leaf to it).
+static func material() -> StandardMaterial3D:
+	return Primitives.shared_material(GOLD, 0.38, GOLD, 0.22)
+
 static func wear(look: RefCounted) -> void:
 	var leaf: MeshInstance3D = look.leaf()
 	look.swap_mesh(leaf, Kit.cached_mesh("gold_leaf", func() -> Mesh: return Kit.scaled(Meshes.leaf(), LEAF_SCALE)))
-	look.set_material(leaf, Primitives.shared_material(GOLD, 0.38, GOLD, 0.22))
+	look.set_material(leaf, material())
 	var follow: Node3D = look.attach(leaf, Kit.follow(look.leaf_rest()))
 	var stars := Kit.stars("gold_leaf", SPARKLES, SPARKLE)
 	stars.position = SPARKLES_AT

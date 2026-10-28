@@ -22,8 +22,9 @@ extends Node
 ##   the first-run name prompt
 ## - node: add_child (the Friends layer stays Main's child)
 ## - leaderboards: ensure_relay_session, relay_session (capabilities), api
-##   (player_id), _paid_content_hidden, for the page opened over Friends; and
-##   for a run's replay, presentation/shared_replay_launch.gd's host contract
+##   (player_id), _paid_content_hidden and saves (Reduce motion), for the page
+##   opened over Friends; and for a run's replay,
+##   presentation/shared_replay_launch.gd's host contract
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link(). refresh() calls the screen's private
 ## _refresh, as Main's alert routing did.
@@ -110,8 +111,15 @@ func _offer_leaderboards(page: CanvasLayer) -> void:
 
 ## Leaderboards, over Friends.
 func _open_leaderboards() -> void:
+	open_leaderboards("")
+
+## Leaderboards over Friends, open on `chapter_key` ("" for the first chapter):
+## Friends' button, or a celebration's View board from Home.
+func open_leaderboards(chapter_key: String) -> void:
 	if not is_open() or host.application_backgrounded: return
 	var board := LeaderboardScreen.new()
+	board.chapter_key = chapter_key
+	board.reduced_motion = bool(host.saves.data.settings.get("reduced_motion", false))
 	board.client = LeaderboardClient.shared(host.api, str(host.api.player_id))
 	board.player_id = str(host.api.player_id)
 	board.chapter_filter = func(key: String) -> bool: return not (host._paid_content_hidden() and bool(Registry.descriptor(key).get("premium", false)))

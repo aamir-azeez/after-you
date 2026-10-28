@@ -2,17 +2,21 @@ extends SceneTree
 ## Leaderboards on the phone: services/leaderboard_runs.gd (which runs are
 ## ours, their ids and times), services/leaderboard_client.gd (reading a board
 ## and the name choice) and presentation/leaderboard_screen.gd (the board, the
-## pinned "Your best", the checking note and still pips only).
+## pinned "Your best", the checking note and still pips only). The restyled
+## board's states and its celebrations: tests/test_leaderboard_celebration.gd.
 const Runs = preload("res://services/leaderboard_runs.gd")
 const Client = preload("res://services/leaderboard_client.gd")
 const Screen = preload("res://presentation/leaderboard_screen.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const Placings = preload("res://services/leaderboard_placings.gd")
+const Celebration = preload("res://presentation/leaderboard_celebration.gd")
 const OWNER := "OOOOOOOOOOOOOOOOOOOOOO"
 const ROOM := "AAAAAAAAAAAAAAAAAAAAAA"
 const RUNS_PATH := "user://leaderboard-runs-test.json"
 const CHOICE_PATH := "user://leaderboard-name-test.json"
+const PLACINGS_PATH := "user://leaderboard-placings-test.json"
 
 var checks := 0
 var failures := 0
@@ -32,14 +36,16 @@ class FakeApi extends Node:
 		return replies.get(name + " " + path, {"ok": false, "code": "not_found"}).duplicate(true)
 
 func _run() -> void:
-	for path: String in [RUNS_PATH, CHOICE_PATH]: _clear(path)
+	for path: String in [RUNS_PATH, CHOICE_PATH, PLACINGS_PATH]: _clear(path)
 	Runs.use_path(RUNS_PATH)
+	Placings.use_shared(Placings.new(PLACINGS_PATH))
 	_ids_and_times()
 	_own_runs()
 	_views()
 	await _choice()
 	await _screen()
-	for path: String in [RUNS_PATH, CHOICE_PATH]: _clear(path)
+	Placings.use_shared(null)
+	for path: String in [RUNS_PATH, CHOICE_PATH, PLACINGS_PATH]: _clear(path)
 	print("Leaderboard screen: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -128,21 +134,25 @@ func _screen() -> void:
 	_check(board != null and board.find_child("LeaderboardRow1", true, false) != null and board.find_child("LeaderboardRow3", true, false) != null, "the board shows its ranked runs")
 	_check(screen.find_child("LeaderboardFastestPair", true, false) != null and screen.find_child("LeaderboardAllTime", true, false) != null, "one board, Fastest pair, all time")
 	var first: Node = board.find_child("LeaderboardRow1", true, false)
-	_check(_texts(first).has(PlayerCopy.LEADERBOARD_NAMES % ["Ada", "Bo"]) and first.find_child("LeaderboardTag", true, false) != null, "a pair that shows its names, with the Gold leaf on first place")
+	_check(_texts(first).has(PlayerCopy.LEADERBOARD_NAMES % ["Ada", "Bo"]) and first.find_child("LeaderboardGoldLeaf", true, false) != null, "a pair that shows its names, with the Gold leaf on first place")
 	var third: Node = board.find_child("LeaderboardRow3", true, false)
 	_check(_texts(third).has(PlayerCopy.LEADERBOARD_A_PAIR) and third.find_child("LeaderboardReport", true, false) != null, "a pair without names reads A pair and can be reported")
 	_check(board.find_child("LeaderboardRow2", true, false).find_child("LeaderboardReport", true, false) == null, "a player's own run has no Report")
-	var own: Node = board.find_child("LeaderboardOwnRow", true, false)
+	var own: Node = screen.find_child("LeaderboardOwnRow", true, false)
 	_check(own != null and _texts(own).has("2") and _texts(own).has(Runs.time_text(1470)), "Your best is pinned with its rank")
-	_check(board.find_child("LeaderboardCheckingNote", true, false) != null, "the newest run waiting for its check says so")
-	var pips := screen.find_children("*", "SubViewport", true, false)
+	_check(screen.find_child("LeaderboardChecking", true, false).visible, "the newest run waiting for its check says so")
+	var pips := board.find_children("*", "SubViewport", true, false)
 	_check(pips.is_empty(), "rows draw still pips, never a view of their own: %d views" % pips.size())
+	_check(screen.find_child(Celebration.NODE_NAME, true, false) != null, "this player's confirmed second place is celebrated")
 	var avatars := screen.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
 	_check(avatars.size() == 8 and avatars.all(func(pip: Node) -> bool: return pip.still), "two still pips a row: %d" % avatars.size())
 	var reads := api.requests.filter(func(item: Array) -> bool: return item[1] == "/v1/leaderboards/sleeping-lighthouse@2").size()
 	screen._load(false)
 	for frame in range(4): await process_frame
 	_check(api.requests.filter(func(item: Array) -> bool: return item[1] == "/v1/leaderboards/sleeping-lighthouse@2").size() == reads, "a board read a moment ago is not asked for again")
+	screen.go_back()
+	await process_frame
+	_check(is_instance_valid(screen) and not screen.is_queued_for_deletion(), "Back leaves the celebration first")
 	screen.go_back()
 	await process_frame
 	_check(not is_instance_valid(screen) or screen.is_queued_for_deletion(), "Back closes the page")

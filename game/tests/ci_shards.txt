@@ -133,6 +133,7 @@ keyboard_lift_wired 2
 label_bubble_tails 1
 late_ball 2
 layout 3
+leaderboard_celebration 2
 leaderboard_replay_check 2
 leaderboard_screen 3
 leaderboard_watch 3

@@ -67,6 +67,9 @@ const LiveConnection = preload("res://services/live_connection.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
+const LeaderboardCelebration = preload("res://presentation/leaderboard_celebration.gd")
+const LeaderboardPlacings = preload("res://services/leaderboard_placings.gd")
+const LeaderboardRuns = preload("res://services/leaderboard_runs.gd")
 ## Meta on the control that leaves a screen (see _mark_screen_back).
 const SCREEN_BACK := &"screen_back"
 const Changelog = preload("res://services/changelog.gd")
@@ -624,11 +627,12 @@ func _close_top_modal() -> bool:
 	modal.go_back()
 	return true
 
-## The topmost card open over the screen (InGameModal), or null.
+## The topmost card open over the screen (InGameModal, or a leaderboard
+## celebration), or null.
 func _top_modal() -> Node:
 	for index in range(ui.get_child_count()-1,-1,-1):
 		var child := ui.get_child(index)
-		if child.get_script() == InGameModal and not child.is_queued_for_deletion(): return child
+		if (child.get_script() == InGameModal or child.is_in_group(LeaderboardCelebration.GROUP)) and not child.is_queued_for_deletion(): return child
 	return null
 
 func _list_button(text: String, callback: Callable, primary: bool=true) -> Button:
@@ -1948,10 +1952,8 @@ func _service_update_gate() -> void:
 	if update_gate_dismissed or mode != "home" or not _update_gate_active(): return
 	if application_backgrounded or running or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or friends_flow.is_open() or room_hub_flow.is_open(): return
 	if is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen) or legacy_room_flow.redo_open(): return
-	# A card on Home (What's new, a confirmation) is read and closed first.
-	if is_instance_valid(_whats_new_card): return
-	for child: Node in ui.get_children():
-		if child.get_script() == InGameModal: return
+	# A card on Home (What's new, a confirmation, a celebration) is read and closed first.
+	if is_instance_valid(_whats_new_card) or _top_modal() != null: return
 	if TouchInput.press_held(overlay): return
 	# Nor is a walk or pinch on the island in Explore cut short: the screen
 	# shows once the player leaves Explore. Online entries still ask
@@ -1963,9 +1965,7 @@ func _service_update_gate() -> void:
 ## when nothing else is up: never over a turn, a card or a held finger.
 func _service_grant_card() -> void:
 	if not grant_card_check or mode != "home" or application_backgrounded or running or not _grant_card_allowed(): return
-	if is_instance_valid(_whats_new_card) or _update_gate_active() or TouchInput.press_held(overlay): return
-	for child: Node in ui.get_children():
-		if child.get_script() == InGameModal: return
+	if is_instance_valid(_whats_new_card) or _update_gate_active() or TouchInput.press_held(overlay) or _top_modal() != null: return
 	grant_card_check=false
 	var scope := _names_scope()
 	if scope.is_empty(): return
@@ -1973,6 +1973,28 @@ func _service_grant_card() -> void:
 	if card.is_empty(): return
 	PollenGrant.shared().mark_shown(str(scope.server),str(scope.owner),str(card.key))
 	PollenGrantCard.open(ui,card)
+
+## A run of this player's that a board confirmed in its top 10
+## (services/leaderboard_placings.gd) is celebrated once on Home, when Home is
+## free: never over a turn, a chapter, another screen or card, or a held
+## finger, and only while the server has leaderboards on. On the board itself
+## the leaderboard screen celebrates it.
+func _service_leaderboard_celebration() -> void:
+	if mode != "home" or application_backgrounded or running or api == null: return
+	var owner := str(api.player_id)
+	if owner.is_empty() or not LeaderboardPlacings.shared().has_pending(owner): return
+	if relay_session == null or not relay_session.leaderboards_supported(): return
+	if is_instance_valid(relay_child) or is_instance_valid(_chapter_opening) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child) or is_instance_valid(safety_screen): return
+	if friends_flow.is_open() or room_hub_flow.is_open() or legacy_room_flow.redo_open() or _home_settling(): return
+	if is_instance_valid(_whats_new_card) or _update_gate_active() or TouchInput.press_held(overlay) or _top_modal() != null: return
+	if is_instance_valid(home_stage_view) and home_stage_view.is_exploring(): return
+	var shown := LeaderboardCelebration.show_next(ui, owner, bool(saves.data.settings.get("reduced_motion", false)))
+	if shown != null: shown.view_board.connect(_view_leaderboard)
+
+## A celebration's View board on Home: Friends' leaderboards, on that board's chapter.
+func _view_leaderboard(board: String) -> void:
+	await _show_friends()
+	if friends_flow.is_open(): friends_flow.open_leaderboards(LeaderboardRuns.chapter_of(board))
 
 func _show_update_gate() -> void:
 	running=false
@@ -2133,6 +2155,7 @@ func _process(delta: float) -> void:
 	_service_whats_new()
 	_service_update_gate()
 	_service_grant_card()
+	_service_leaderboard_celebration()
 	_service_photo_resume()
 	if not capture_path.is_empty():
 		capture_frames+=1
