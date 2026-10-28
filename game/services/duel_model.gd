@@ -5,12 +5,12 @@ extends RefCounted
 ## callable the page passes (the friends list and this player's partner), so a
 ## player the server did not name shows as "Sam's partner", never as an id.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
-const TICK_RATE := 30
+const Runs = preload("res://services/leaderboard_runs.gd")
+const TICK_RATE := Runs.TICK_RATE
 
-## m:ss for a time in ticks.
+## A time in ticks, as the Fastest pair board shows it (m:ss.t), so a ghost reads the same here and there.
 static func time_text(ticks: int) -> String:
-	var seconds := maxi(ticks, 0) / TICK_RATE
-	return "%d:%02d" % [seconds / 60, seconds % 60]
+	return Runs.time_text(ticks)
 
 ## The gap between two times: whole seconds, or hundredths under a tenth of a second.
 static func margin_text(ticks: int) -> String:

@@ -108,8 +108,11 @@ export class DuelStore {
     if (!this.present()) return [];
     const work: DuelReplayWork[] = [];
     let chars = 0;
-    for (const row of this.storage.sql.exec<{ entry_id: string; proof_hash: string; ticks: number; chapter: string; checkpoint: string }>("SELECT entry_id,proof_hash,ticks,chapter,checkpoint FROM duel_proofs ORDER BY at").toArray()) {
-      if (skip.has(row.entry_id) || chars + row.checkpoint.length > maxChars) continue;
+    // Lengths first: a checkpoint is read only once it fits.
+    for (const head of this.storage.sql.exec<{ entry_id: string; size: number }>("SELECT entry_id,length(checkpoint) AS size FROM duel_proofs ORDER BY at").toArray()) {
+      if (skip.has(head.entry_id) || chars + head.size > maxChars) continue;
+      const row = this.storage.sql.exec<{ entry_id: string; proof_hash: string; ticks: number; chapter: string; checkpoint: string }>("SELECT entry_id,proof_hash,ticks,chapter,checkpoint FROM duel_proofs WHERE entry_id=?", head.entry_id).toArray()[0];
+      if (!row) continue;
       chars += row.checkpoint.length;
       const chapter = JSON.parse(row.chapter) as ChapterKey & { simulation_version: number };
       const { simulation_version, ...key } = chapter;

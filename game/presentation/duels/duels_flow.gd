@@ -11,7 +11,8 @@ extends Node
 ## tag in Your rooms.
 ##
 ## Main hosts it as a child and reads it through is_open(), close(),
-## offer(menu), room_kind() and finished_chapters(). It reads Main only through
+## offer(menu) and room_kind(). A duel's clear needs nothing here: its room is
+## an ordinary room, so the chapter chain already counts it as a finished room. It reads Main only through
 ## this host contract (read at call time):
 ## - services: api, config, relay_session, ensure_relay_session,
 ##   _friends_client, _friend_display_name
@@ -51,12 +52,10 @@ func _init(main: Node = null) -> void:
 func is_open() -> bool:
 	return is_instance_valid(screen) and not screen.is_queued_for_deletion()
 
-## Duels are offered once the server's capabilities say so: shows Home's row then.
+## Shows Home's row when the capabilities this session already read say duels
+## are on. Home asks the server nothing for it: the next Home after any online
+## screen read them shows the row.
 func offer(menu: Control) -> void:
-	if host.relay_session == null: host.ensure_relay_session()
-	var session: RefCounted = host.relay_session
-	if session == null: return
-	if session.capabilities.is_empty(): await session.load_capabilities()
 	if is_instance_valid(menu) and menu.has_method("show_duels"): menu.show_duels(supported())
 
 func supported() -> bool:
@@ -68,10 +67,6 @@ func client() -> RefCounted:
 ## The room's duel kind ("friend", "ghost") for the Duel tag, or "" (also while duels are off).
 func room_kind(room_id: String) -> String:
 	return client().room_kind(room_id) if supported() else ""
-
-## Chapters this player's pair finished in a duel (services/chapter_unlocks.gd finished_elsewhere).
-func finished_chapters() -> Array:
-	return client().finished_chapters() if host.api != null and not str(host.api.player_id).is_empty() else []
 
 ## The lobby, full screen over Home.
 func open() -> void:
@@ -297,7 +292,8 @@ func _play(view: Dictionary) -> void:
 		return
 	if not str(own.get("invite_code", "")).is_empty():
 		await host.relay_lobby_flow.join_room(own.invite_code)
-		return
+		# A room your partner claimed but never made: make it here instead (the server lets the claim pass after a while).
+		if host.relay_session == null or not host.relay_session.last_lobby_code in ["invite_not_found", "room_deleted"]: return
 	if not await host.relay_lobby_flow.open_lobby(chapter): return
 	await host.relay_lobby_flow.lobby_action("duel", chapter, false, {"duel_id": view.duel_id, "board": view.board})
 	if host.relay_session != null and host.relay_session.last_lobby_code == "duel_room_taken":
@@ -308,6 +304,5 @@ func _play(view: Dictionary) -> void:
 
 ## The bundled chapter key for the duel's board (its own version).
 func _chapter_key(view: Dictionary) -> String:
-	for key: String in Registry.offered_keys():
-		if Runs.board_key(key) == view.board: return key
-	return str(view.chapter)
+	var key := Runs.chapter_of(str(view.board))
+	return key if not key.is_empty() else str(view.chapter)

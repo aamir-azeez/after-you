@@ -5,9 +5,8 @@ extends RefCounted
 ## - lobby(): GET /v1/duels, the party, its invites and every duel this player
 ##   is in. Kept in memory for the pages, and two small facts are saved
 ##   (atomic_file, user://duels.json, per player): which rooms are duel rooms,
-##   for the Duel tag in Your rooms, and which chapters this player's pair
-##   finished in a duel, which open the next chapter (services/chapter_unlocks.gd
-##   finished_elsewhere).
+##   for the Duel tag in Your rooms. A duel's clear needs nothing kept: its
+##   room is an ordinary room, which the chapter chain already counts.
 ## - ghosts(): GET /v1/duels/ghosts, kept for GHOSTS_KEEP_MS.
 ## - duel(): one duel with what it paid this player.
 ## - the party, challenge and duel actions. Challenges and ghost races carry an
@@ -30,7 +29,7 @@ var _path := SAVE_PATH
 var _lobby: Dictionary = {}
 var _ghosts: Dictionary = {}
 var _ghosts_at := -GHOSTS_KEEP_MS
-## {rooms: {room_id: kind}, finished: [chapter key]} for this player.
+## {rooms: {room_id: kind}} for this player.
 var _saved: Dictionary = {}
 
 static var _shared: RefCounted
@@ -113,10 +112,6 @@ static func new_key() -> String:
 func room_kind(room_id: String) -> String:
 	return str(_saved.get("rooms", {}).get(room_id, ""))
 
-## Chapter keys this player's pair finished in a duel.
-func finished_chapters() -> Array:
-	return _saved.get("finished", []).duplicate()
-
 func _party(action: String, body: Dictionary) -> Dictionary:
 	var sent := body.duplicate()
 	sent["schema_version"] = 1
@@ -140,18 +135,16 @@ func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 		answer["win_bonus"] = _bonus(data.get("win_bonus"))
 	return answer
 
-## Notes duel rooms and duel clears, and saves only when they changed.
+## Notes duel rooms, and saves only when they changed.
 func _remember(views: Array) -> void:
 	if _owner.is_empty(): return
 	var rooms: Dictionary = _saved.get("rooms", {}).duplicate()
-	var finished: Array = _saved.get("finished", []).duplicate()
 	for view: Dictionary in views:
 		var own: Dictionary = view.sides[view.mine]
 		if own.get("room_id") is String and not str(own.room_id).is_empty(): rooms[own.room_id] = view.kind
-		if own.finished and not view.chapter in finished: finished.append(view.chapter)
-	if rooms == _saved.get("rooms", {}) and finished == _saved.get("finished", []): return
+	if rooms == _saved.get("rooms", {}): return
 	while rooms.size() > MAX_DUELS * 2: rooms.erase(rooms.keys()[0])
-	_saved = {"rooms": rooms, "finished": finished}
+	_saved = {"rooms": rooms}
 	var text := AtomicFile.read_text(_path)
 	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
 	var all: Dictionary = parsed if parsed is Dictionary else {}
@@ -162,12 +155,11 @@ func _read_saved() -> Dictionary:
 	var text := AtomicFile.read_text(_path)
 	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
 	var mine: Variant = parsed.get(_owner) if parsed is Dictionary else null
-	if not mine is Dictionary or not mine.get("rooms") is Dictionary or not mine.get("finished") is Array: return {"rooms": {}, "finished": []}
+	if not mine is Dictionary or not mine.get("rooms") is Dictionary: return {"rooms": {}}
 	var rooms := {}
 	for room_id: Variant in mine.rooms:
 		if room_id is String and room_id.length() == 22 and mine.rooms[room_id] in ["friend", "ghost"]: rooms[room_id] = mine.rooms[room_id]
-	var finished: Array = mine.finished.filter(func(key: Variant) -> bool: return _board(key))
-	return {"rooms": rooms, "finished": finished}
+	return {"rooms": rooms}
 
 ## A lobby as the server sent it, or {} when it is not one this build reads.
 static func valid_lobby(value: Variant) -> Dictionary:

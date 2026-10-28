@@ -228,7 +228,8 @@ describe("friend duels", () => {
     await verdicts((await job()).entries.filter(entry => entry.duel === true), () => true);
     const repeat = await detail(a1, again.duel);
     expect(repeat.duel.result).toMatchObject({ outcome: "won", reason: "left" });
-    expect(repeat.win_bonus).toEqual({ amount: 0, counted: false, reason: "same_pair" });
+    // A win the other pair handed over by leaving pays no bonus: only a win where both runs passed does.
+    expect(repeat.win_bonus).toBeUndefined();
   });
 
   it("refuse a challenge to a pair that dissolved, and a duel room for the wrong chapter or a hard one", async () => {
@@ -247,6 +248,9 @@ describe("friend duels", () => {
 
   it("decline with Not now, keep to three at once, and need a party on both sides", async () => {
     const { a1, b1, b2 } = await pairs();
+    // A stranger's party is never asked about.
+    const stranger = await create();
+    expect((await challenge(a1, stranger)).status).toBe(403);
     const lone = await create();
     await befriend(a1, lone);
     expect((await challenge(a1, lone)).status).toBe(409);

@@ -45,6 +45,7 @@ class FakeLobby extends RefCounted:
 	var calls: Array = []
 	var session: FakeSession
 	var taken := false
+	var missing := false
 	func open_lobby(chapter: String = "") -> bool:
 		calls.append(["open_lobby", chapter])
 		return true
@@ -53,6 +54,7 @@ class FakeLobby extends RefCounted:
 		session.last_lobby_code = "duel_room_taken" if taken and action == "duel" else ""
 	func join_room(code: String) -> void:
 		calls.append(["join", code])
+		session.last_lobby_code = "invite_not_found" if missing else ""
 
 class FakeFriends extends RefCounted:
 	func view() -> Dictionary: return {"friends": [{"player_id": MAYA, "status": "accepted"}, {"player_id": FINN, "status": "accepted"}]}
@@ -149,10 +151,18 @@ func _run() -> void:
 	var sent: Array = api.requests.slice(before).filter(func(item: Array) -> bool: return item[1].ends_with("/accept"))
 	_check(sent.size() == 1, "a second tap while the first runs does nothing: %d" % sent.size())
 	_check(api.requests.slice(before).any(func(item: Array) -> bool: return item[1] == "/v1/duels"), "the lobby is read again after it")
-	# Room tags and duel clears come from what the client kept.
+	# Room tags come from what the client kept.
 	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_view({"room_id": ROOM, "finished": true, "check": "waiting"})]}}
 	await flow.client().lobby()
-	_check(flow.room_kind(ROOM) == "friend" and flow.finished_chapters() == [BOARD], "a duel room is tagged and its clear counts")
+	_check(flow.room_kind(ROOM) == "friend", "a duel room is tagged")
+	# A room your partner claimed but never made: Play makes one instead.
+	main.relay_lobby_flow.calls.clear()
+	main.relay_lobby_flow.missing = true
+	main.relay_lobby_flow.taken = false
+	await flow._play(Client.valid_view(_view({"room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": false})))
+	_check(main.relay_lobby_flow.calls.size() == 3 and main.relay_lobby_flow.calls[2][0] == "duel", "a room that never appeared is made here: %s" % [main.relay_lobby_flow.calls])
+	flow.open()
+	await _frames(2)
 	flow.close()
 	await _frames(2)
 	_check(not flow.is_open(), "close takes the lobby away")
