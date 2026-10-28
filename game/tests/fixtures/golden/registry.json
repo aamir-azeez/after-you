@@ -1586,18 +1586,18 @@
 			],
 			"stage_presentation": {
 				"set-the-tide": {
-					"hint_a": "Turn the tide to open a way for your partner, then wait on a step by the wheel.",
+					"hint_a": "Turn the tide for your partner and wait on a step by the wheel.",
 					"hint_b": "Cross when the tide is right and ring the harbour bell.",
 					"is_authored_stage": false,
 					"title": "Set the Tide",
-					"typed_digest": "727aec8b8383b284a119bc7680967f7fb20731415913ab5e8eacdbd9d7a34632"
+					"typed_digest": "604143762700619fca2d86116eb06b9475d5ede08fe71bbb01561e55e080bf13"
 				},
 				"slack-water": {
-					"hint_a": "Some chains and bars can only be reached while the sea is shut, so pull those first. Then open the sea, pull the rest, turn the sea wheel to the level on your post and wait there.",
-					"hint_b": "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern.",
+					"hint_a": "Pull what you can reach while the sea is shut. Then open it, pull the rest and turn the sea wheel to your post's level.",
+					"hint_b": "A crossing stays open once you step on it. Fetch the pin, key or line at the mill, then light the lantern.",
 					"is_authored_stage": false,
 					"title": "Slack Water",
-					"typed_digest": "b910047165ae8f538b7d2435483faf973b4a8c00365f968609ca23ea4a000eef"
+					"typed_digest": "1c2a0841cb50a83cb8f62ac9a5b77695b77e61496ef1b478f57bdbf2cba41a38"
 				}
 			},
 			"story_illustration": false,
@@ -1719,18 +1719,18 @@
 			],
 			"stage_presentation": {
 				"set-the-tide": {
-					"hint_a": "Turn the tide to open a way for your partner, then wait on a step by the wheel.",
+					"hint_a": "Turn the tide for your partner and wait on a step by the wheel.",
 					"hint_b": "Cross when the tide is right and ring the harbour bell.",
 					"is_authored_stage": false,
 					"title": "Set the Tide",
-					"typed_digest": "727aec8b8383b284a119bc7680967f7fb20731415913ab5e8eacdbd9d7a34632"
+					"typed_digest": "604143762700619fca2d86116eb06b9475d5ede08fe71bbb01561e55e080bf13"
 				},
 				"slack-water": {
-					"hint_a": "Some chains and bars can only be reached while the sea is shut, so pull those first. Then open the sea, pull the rest, turn the sea wheel to the level on your post and wait there.",
-					"hint_b": "Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern.",
+					"hint_a": "Pull what you can reach while the sea is shut. Then open it, pull the rest and turn the sea wheel to your post's level.",
+					"hint_b": "Let your friend cross before you turn the tide. Then fetch the pin, key or line at the mill and light the lantern.",
 					"is_authored_stage": false,
 					"title": "Slack Water",
-					"typed_digest": "e3e2bf87a6d919fb0098aa9db180ecf84c66290b54df124f0da6d7ebcffe7b10"
+					"typed_digest": "e7879914f739a3e49c81f13ca27941a286d93a75c9b4417e586063a9dfb0a620"
 				}
 			},
 			"story_illustration": false,

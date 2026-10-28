@@ -101,6 +101,7 @@ graphics_settings 3
 hard_mode 3
 hard_mode_room 3
 hard_mode_solo 3
+hint_length 1
 history_store 2
 history_sync 2
 home_keepsake_layer 1

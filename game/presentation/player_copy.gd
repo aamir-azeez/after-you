@@ -743,17 +743,17 @@ const TURN_OF_THE_TIDE_TITLE := "Turn of the Tide"
 const TURN_OF_THE_TIDE_SUMMARY := "Adjust the harbour tide so that your partner can reach the bell. Then your partner sets the sea, and you find the way across."
 const TURN_OF_THE_TIDE_COMPLETION := "The harbour lantern is alight."
 const TURN_OF_THE_TIDE_SET_TITLE := "Set the Tide"
-const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide to open a way for your partner, then wait on a step by the wheel."
+const TURN_OF_THE_TIDE_SET_HINT_A := "Turn the tide for your partner and wait on a step by the wheel."
 const TURN_OF_THE_TIDE_SET_HINT_B := "Cross when the tide is right and ring the harbour bell."
 const TURN_OF_THE_TIDE_SLACK_TITLE := "Slack Water"
-const TURN_OF_THE_TIDE_SLACK_HINT_A := "Some chains and bars can only be reached while the sea is shut, so pull those first. Then open the sea, pull the rest, turn the sea wheel to the level on your post and wait there."
+const TURN_OF_THE_TIDE_SLACK_HINT_A := "Pull what you can reach while the sea is shut. Then open it, pull the rest and turn the sea wheel to your post's level."
 # The goal card under "Crossing ready" in Slack Water's first turn: where it ends.
 const TURN_OF_THE_TIDE_SLACK_GOAL_A := "Wait on a post by the sea wheel."
-const TURN_OF_THE_TIDE_SLACK_HINT_B := "Fetch the pin, key or line at the mill. Any crossing stays open once you step onto it, so take the tides in the right order, then light the lantern."
+const TURN_OF_THE_TIDE_SLACK_HINT_B := "A crossing stays open once you step on it. Fetch the pin, key or line at the mill, then light the lantern."
 # turn-of-the-tide@2: the second spirit must not turn the tide while the
 # memory still walks home over a crossing. Solo, the memory is the player's own.
-const TURN_OF_THE_TIDE_V2_SLACK_HINT_B := "Wait until your friend has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern."
-const TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO := "Wait until your memory has crossed the harbour before you turn the tide. Then fetch the pin, key or line at the mill, each at its own tide, and light the lantern."
+const TURN_OF_THE_TIDE_V2_SLACK_HINT_B := "Let your friend cross before you turn the tide. Then fetch the pin, key or line at the mill and light the lantern."
+const TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO := "Let your memory cross before you turn the tide. Then fetch the pin, key or line at the mill and light the lantern."
 # A turn that ends with a spirit on a crossing as it shuts (journey tide rules):
 # the player's own spirit, the friend's memory, or in solo play the player's
 # own memory.
@@ -3492,11 +3492,22 @@ static func text(key: String) -> String:
 	return str(TEXT.get(key, key))
 
 ## The editable line for a canonical value. solo: the player's partner is
-## their own memory, so a line with a SOLO wording reads that instead.
+## their own memory, so a line with a SOLO wording reads that instead. A value
+## that is already the player's line (a chapter's stage copy) reads its SOLO
+## wording too.
 static func from_canonical(value: String, solo: bool = false) -> String:
 	var key: String = CANONICAL_KEYS.get(value, "")
-	if key.is_empty(): return value
+	if key.is_empty(): return str(_solo_lines().get(value, value)) if solo else value
 	return text(key + SOLO) if solo and TEXT.has(key + SOLO) else text(key)
+
+## {line: its SOLO wording} for every TEXT line that has one, built once.
+static var _solo_by_line: Dictionary = {}
+static func _solo_lines() -> Dictionary:
+	if _solo_by_line.is_empty():
+		for key: String in TEXT:
+			# Two keys sharing one line would share its solo wording too.
+			if TEXT.has(key + SOLO): _solo_by_line[TEXT[key]] = TEXT[key + SOLO]
+	return _solo_by_line
 
 # Ordered formatting tokens are part of the call-site contract.
 const FORMAT_TOKENS := {

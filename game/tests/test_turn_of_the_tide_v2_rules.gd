@@ -230,6 +230,9 @@ func _lines() -> void:
 	_check(PlayerCopy.from_canonical(Simulation.DROWNED_FRIEND) == PlayerCopy.JOURNEY_DROWNED_FRIEND and PlayerCopy.from_canonical(Simulation.DROWNED_FRIEND, true) == PlayerCopy.JOURNEY_DROWNED_MEMORY, "The memory's drowning says your friend online and your memory solo")
 	var hint: String = level.stages[1].hint_b
 	_check(PlayerCopy.from_canonical(hint) == PlayerCopy.TURN_OF_THE_TIDE_V2_SLACK_HINT_B and PlayerCopy.from_canonical(hint, true) == PlayerCopy.TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO, "Slack Water's hint names your friend online and your memory solo")
+	# The HUD reads the stage copy, the player's own line, through the same call.
+	var shown := str(Registry.stage_presentation(KEY, level.stages[1]).hint_b)
+	_check(PlayerCopy.from_canonical(shown) == PlayerCopy.TURN_OF_THE_TIDE_V2_SLACK_HINT_B and PlayerCopy.from_canonical(shown, true) == PlayerCopy.TURN_OF_THE_TIDE_V2_SLACK_HINT_B_SOLO, "The shown Slack Water hint also names your memory solo")
 
 func _source(ops: Array) -> Simulation:
 	var a := Simulation.new()
