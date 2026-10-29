@@ -7,10 +7,9 @@ extends SceneTree
 ##   godot --path <copy> --position -20000,-20000 --resolution 1280x720 --script res://tests/capture_duels.gd -- --out=<dir>
 ## Writes <dir>/duels-lobby.png, duels-lobby-empty.png, duel-in-progress.png,
 ## duel-waiting.png, duel-result-won.png, duel-result-checking.png,
-## duel-ghost-result.png, duels-party.png, duels-start.png, duels-race.png and
-## home-duels-row.png, each with --suffix=<text> added to its name when given,
-## and the empty Open duels column in each of its arts as
-## empty-variations/open-a.png to open-c.png.
+## duel-ghost-result.png, duels-party.png, duels-start.png, duels-race.png,
+## home-duels-row.png and duels-lobby-both-empty.png, each with --suffix=<text>
+## added to its name when given.
 const Client = preload("res://services/duels_client.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Outfit = preload("res://services/outfit.gd")
@@ -165,13 +164,9 @@ func _run() -> void:
 	race.close()
 	lobby.show_lobby({"party": {"partner": null, "intact": false, "invites_in": [MAYA], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}})
 	await _save("duels-lobby-empty")
-	# The empty lobby with the owner's Your duels art, and the empty Open duels column in each of its arts for the owner's pick (duels_screen.gd OPEN_EMPTY_ART).
-	var nothing := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}}
-	DirAccess.make_dir_recursive_absolute(_out + "/empty-variations")
-	for art: String in ["open_a", "open_b", "open_c"]:
-		lobby.open_empty_art = art
-		lobby.show_lobby(nothing)
-		await _save("empty-variations/open-" + art.right(1), 30, false)
+	# Both lists empty, with the owner's picked arts.
+	lobby.show_lobby({"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}})
+	await _save("duels-lobby-both-empty")
 	lobby.close()
 	await process_frame
 	await _home()

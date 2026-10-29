@@ -68,10 +68,8 @@ const SCENES := {
 	# The empty Your duels list (duels_screen.gd EMPTY_ART): after the race, both pairs sitting together on one island, then a hug across pairs, friends first.
 	"duel_together": [["island", Vector2(0, 28), 176.0], ["spirit", Vector2(-54, 30), {"color": "peach", "eyes": "happy", "sit": true, "lean": 0.1, "tilt": 0.2, "size": 0.34}], ["spirit", Vector2(-28, 30), {"color": "mint", "eyes": "happy", "sit": true, "lean": 0.06, "tilt": 0.1, "size": 0.34}], ["spirit", Vector2(28, 30), {"color": "peach", "eyes": "happy", "sit": true, "lean": -0.06, "tilt": -0.1, "size": 0.34}], ["spirit", Vector2(54, 30), {"color": "mint", "eyes": "happy", "sit": true, "lean": -0.1, "tilt": -0.2, "size": 0.34}], ["heart", Vector2(0, -22), 9.0], ["sparkle", Vector2(-76, -34), 5.0], ["sparkle", Vector2(78, -40), 5.0]],
 	"duel_hug": [["spirit", Vector2(-19, 32), {"color": "peach", "eyes": "happy", "lean": 0.16, "tilt": 0.2}], ["spirit", Vector2(19, 32), {"color": "mint", "eyes": "happy", "lean": -0.16, "tilt": -0.2}], ["heart", Vector2(0, -34), 11.0], ["sparkle", Vector2(-48, -20), 5.0], ["sparkle", Vector2(50, -30), 5.0]],
-	# The empty Open duels column, three ways (duels_screen.gd OPEN_EMPTY_ART), drawn in the round friend picture.
+	# The empty Open duels column (duels_screen.gd OPEN_EMPTY_ART): a challenge letter, drawn in the round friend picture.
 	"open_letter": [["envelope", Vector2(0, 4), -0.14], ["sparkle", Vector2(36, -34), 9.0]],
-	"open_peek": [["face", Vector2(-17, 4), {"color": "peach", "eyes": "wide", "look": Vector2(1, -0.3), "tilt": 0.2, "size": 0.72}], ["face", Vector2(17, 7), {"color": "mint", "eyes": "wide", "look": Vector2(1, -0.3), "tilt": -0.1, "size": 0.72}]],
-	"open_hope": [["face", Vector2(-5, 6), {"color": "mint", "look": Vector2(0.6, -0.8), "tilt": 0.12, "size": 1.2}], ["sparkle", Vector2(30, -30), 9.0]],
 	# The Play with your friend icon: two happy faces cheek to cheek, mint behind,
 	# and a heart. Rows with "squish" or "pop" react to the scene state (scene()).
 	# The Wardrobe's empty lists: a bare hanger and the shirt not there yet.
@@ -80,9 +78,9 @@ const SCENES := {
 }
 ## Scenes drawn on a light surface: their own box when not BOX, and a thin
 ## ink edge (box units) round each spirit and prop so peach, mint and pink
-## hold on cream. The empty Open duels column's scenes fill their small round
+## hold on cream. The empty Open duels column's letter fills its small round
 ## picture, drawn larger than a wide card's scene.
-const SCENE_LOOKS := {"friends_squeeze": {"box": Vector2(120, 96), "edge": 2.8}, "wardrobe": {"edge": 2.6}, "open_letter": {"box": Vector2(110, 110)}, "open_peek": {"box": Vector2(110, 110)}, "open_hope": {"box": Vector2(110, 110)}}
+const SCENE_LOOKS := {"friends_squeeze": {"box": Vector2(120, 96), "edge": 2.8}, "wardrobe": {"edge": 2.6}, "open_letter": {"box": Vector2(110, 110)}}
 ## The owner's hanger (assets/ui/hanger.svg) as one stroke: its 256 unit box,
 ## hung from the top of the hook.
 const HANGER_TOP := Vector2(128, 44)
