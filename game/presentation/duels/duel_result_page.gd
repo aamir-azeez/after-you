@@ -48,7 +48,8 @@ func _build() -> void:
 	_column = VBoxContainer.new()
 	_column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	_column.alignment = BoxContainer.ALIGNMENT_CENTER
-	_column.add_theme_constant_override("separation", 10)
+	# Tight rows, so the larger pips and three buttons fit a 720 high screen.
+	_column.add_theme_constant_override("separation", 4)
 	body.add_child(_column)
 	_render()
 
@@ -58,7 +59,7 @@ func _render() -> void:
 	var key := str(view.chapter)
 	set_title("", "")
 	if is_instance_valid(_backdrop): _backdrop.show_chapter(_picture_key())
-	var title := Kit.text(DuelModel.result_title(view, name_of), 50 if not compact else 42, UiTokens.CREAM, true)
+	var title := Kit.text(DuelModel.result_title(view, name_of), 46 if not compact else 40, UiTokens.CREAM, true)
 	title.name = "DuelResultHeadline"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	_column.add_child(title)
@@ -128,7 +129,7 @@ func _card(index: int, won: bool) -> Control:
 	column.add_child(head)
 	var middle := HBoxContainer.new()
 	middle.add_theme_constant_override("separation", 14)
-	var pips := Kit.pips(Vector2(62, 74), index == view.mine)
+	var pips := Kit.pips(Vector2(84, 100) if not compact else Vector2(70, 84), index == view.mine)
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	middle.add_child(pips)
 	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 54 if not compact else 46, UiTokens.CREAM, true)
@@ -136,13 +137,14 @@ func _card(index: int, won: bool) -> Control:
 	time.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	middle.add_child(time)
 	column.add_child(middle)
+	# Stages, not turns: two turns make a stage, as the board's stage dots count them.
 	var steps := DuelModel.steps(view, index)
-	column.add_child(Kit.dots_within(steps.x, steps.y, 340.0, 22.0))
+	column.add_child(Kit.stage_line(steps.x / 2, steps.y / 2, _picture_key(), 340.0 if not compact else 290.0))
 	return card
 
 ## The cream Pollen earned card: each line and the total.
 func _pollen(paid: Dictionary) -> Control:
-	var card := Kit.panel("DuelPollen", UiTokens.CREAM, Color.TRANSPARENT, 22, 18.0)
+	var card := Kit.panel("DuelPollen", UiTokens.CREAM, Color.TRANSPARENT, 22, 14.0)
 	card.custom_minimum_size.x = 560
 	card.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	var column := VBoxContainer.new()

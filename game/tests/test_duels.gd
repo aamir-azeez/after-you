@@ -210,6 +210,10 @@ func _pages() -> void:
 	var open: Node = lobby.find_child("DuelsOpenList", true, false)
 	_check(open.get_child_count() == 1 and open.find_child("Accept", true, false) != null and open.find_child("NotNow", true, false) != null, "a challenge to you has Accept and Not now")
 	_check(_has_text(lobby, PlayerCopy.DUELS_BOOST % 10) and _has_text(lobby, "Maya"), "your party with its boost")
+	var boost: Node = lobby.find_child("DuelsBoost", true, false)
+	_check(boost != null and boost.find_child("PollenMark", true, false) != null, "the Pollen mark sits beside the boost")
+	_check(lobby.find_child("DuelsFullJourneyTag", true, false) != null and _has_text(lobby.find_child("DuelsFullJourneyTag", true, false), PlayerCopy.SETTINGS_FULL_JOURNEY), "Full Journey shows under your pip while it counts")
+	_check(Lobby.TROPHY_ICON.resource_path.ends_with("trophy.svg"), "Race a recorded run has its trophy")
 	var pips: Array = lobby.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
 	_check(not pips.is_empty() and pips.all(func(pip: Node) -> bool: return pip.still), "the lobby draws still pips only")
 	var seen: Array = []
@@ -252,6 +256,8 @@ func _pages() -> void:
 	_check(amount != null and absf(mark.get_global_rect().get_center().y - amount.get_global_rect().get_center().y) <= 0.5 and absf(mark.get_global_rect().get_center().y - total_row.get_child(0).get_global_rect().get_center().y) <= 0.5, "the Pollen mark is centred on the total and its label")
 	_check(amount != null and mark.size.y <= amount.size.y and mark.get_global_rect().position.y > total_row.get_parent().get_child(total_row.get_index() - 2).get_global_rect().end.y, "and stays inside the total's line, clear of the rule above")
 	_check(not _has_text(result, "member in your party"), "no Full Journey member line")
+	var stages: Node = result.find_child("ResultStages", true, false)
+	_check(stages != null and stages.joined and stages.total == 6 and stages.done == 6 and result.find_child("ResultChapterBadge", true, false) != null, "each pair's stages sit on one joined line ending in the chapter badge")
 	var theirs: Button = result.find_child("DuelWatchTheirs", true, false)
 	var asked: Array = []
 	if theirs != null: result.their_run_requested.connect(func(next: Dictionary, _control: Control) -> void: asked.append(next.duel_id))

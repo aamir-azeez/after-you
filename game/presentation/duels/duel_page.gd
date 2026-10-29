@@ -100,7 +100,7 @@ func _side_card(index: int) -> Control:
 	for slot in range(2):
 		var column := VBoxContainer.new()
 		column.add_theme_constant_override("separation", 0)
-		column.add_child(Kit.pip(Vector2(70, 84) if not compact else Vector2(58, 70), Kit.FIRST_PIP if slot == 0 else Kit.SECOND_PIP, own and side.members[slot] == me))
+		column.add_child(Kit.pip(Vector2(92, 108) if not compact else Vector2(74, 88), Kit.FIRST_PIP if slot == 0 else Kit.SECOND_PIP, own and side.members[slot] == me))
 		var shown := ""
 		if side is Dictionary and side.members[slot] != null and name_of.is_valid(): shown = str(name_of.call(side.members[slot]))
 		var name_label := Kit.text(shown, 19)

@@ -15,7 +15,10 @@ const DuelModel = preload("res://services/duel_model.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
-const TROPHY_ICON = preload("res://assets/ui/whats_new/star.svg")
+const TROPHY_ICON = preload("res://assets/ui/duels/trophy.svg")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
+## The party boost line's font size; its Pollen mark is sized from it.
+const BOOST_FONT := 26
 const INFO_ICON = preload("res://assets/ui/social/info.svg")
 const REFRESH_SECONDS := 30.0
 const TILE_WIDTH := 268.0
@@ -209,7 +212,8 @@ func _render_party() -> void:
 	var partner: Variant = party.get("partner") if party.get("intact", false) else null
 	var pips := HBoxContainer.new()
 	pips.add_theme_constant_override("separation", 18)
-	pips.add_child(_named_pip(PlayerCopy.DUEL_YOU, Kit.FIRST_PIP, true))
+	# Full Journey shows under your own pip while it counts here (boost_percent: never on iPhone).
+	pips.add_child(_named_pip(PlayerCopy.DUEL_YOU, Kit.FIRST_PIP, true, boost_percent > 0))
 	if partner != null: pips.add_child(_named_pip(str(name_of.call(partner)) if name_of.is_valid() else "", Kit.SECOND_PIP, false))
 	line.add_child(pips)
 	var middle := VBoxContainer.new()
@@ -224,7 +228,13 @@ func _render_party() -> void:
 		elif waiting != null: words = PlayerCopy.DUELS_PARTY_WAITING % str(name_of.call(waiting))
 		middle.add_child(Kit.wrapped(words, 18))
 	elif boost_percent > 0:
-		middle.add_child(Kit.text(PlayerCopy.DUELS_BOOST % boost_percent, 26, UiTokens.CREAM, true))
+		# The Pollen mark (kit/pollen_mark.gd) beside the boost, sized from its line.
+		var boost := HBoxContainer.new()
+		boost.name = "DuelsBoost"
+		boost.add_theme_constant_override("separation", 10)
+		boost.add_child(PollenMark.beside(BOOST_FONT))
+		boost.add_child(Kit.text(PlayerCopy.DUELS_BOOST % boost_percent, BOOST_FONT, UiTokens.CREAM, true))
+		middle.add_child(boost)
 		middle.add_child(Kit.text(PlayerCopy.DUELS_BOOST_NOTE, 18, UiTokens.SOFT))
 	var party_button := Kit.button(PlayerCopy.DUELS_PARTY, func(): party_requested.emit(), false, 56)
 	party_button.name = "DuelsPartyButton"
@@ -232,13 +242,18 @@ func _render_party() -> void:
 	Kit.icon_on(party_button, preload("res://assets/ui/settings/chevron.svg"), false, 20)
 	line.add_child(party_button)
 
-func _named_pip(label: String, color: Color, own: bool) -> Control:
+func _named_pip(label: String, color: Color, own: bool, full_journey: bool = false) -> Control:
 	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 0)
-	column.add_child(Kit.pip(Vector2(56, 64), color, own))
+	# With the Full Journey tag the pip is a little smaller and the tag tucks under the name, so the row keeps its height.
+	column.add_theme_constant_override("separation", -5 if full_journey else 0)
+	column.add_child(Kit.pip(Vector2(50, 56) if full_journey else Vector2(56, 64), color, own))
 	var name_label := Kit.text(label, 17)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(name_label)
+	if full_journey:
+		var tag := Kit.pill(PlayerCopy.SETTINGS_FULL_JOURNEY, true, 13)
+		tag.name = "DuelsFullJourneyTag"
+		column.add_child(tag)
 	return column
 
 ## A challenge: the chapter, the other pair and its buttons.

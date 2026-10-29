@@ -103,6 +103,23 @@ static func picture(key: String, frame_size: Vector2, radius: int = 12) -> Panel
 static func dots_within(done: int, total: int, width: float, largest: float = 24.0) -> Control:
 	return dots(done, total, clampf(width / maxf(1.0, total * 1.45), 8.0, largest))
 
+## A result's stages: a dot per stage on one joined line that ends in the chapter's round badge.
+static func stage_line(done: int, total: int, key: String, width: float, badge: float = 44.0) -> HBoxContainer:
+	var line := HBoxContainer.new()
+	line.add_theme_constant_override("separation", 0)
+	line.alignment = BoxContainer.ALIGNMENT_CENTER
+	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var dot := clampf((width - badge - 12.0) / maxf(1.0, total * 2.0 - 1.0), 8.0, 24.0)
+	var row := Dots.new()
+	row.name = "ResultStages"
+	row.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.setup(done, total, dot, 12.0)
+	line.add_child(row)
+	var frame := picture(key, Vector2(badge, badge), int(badge * 0.5))
+	frame.name = "ResultChapterBadge"
+	line.add_child(frame)
+	return line
+
 static func dots(done: int, total: int, dot: float = 16.0) -> Control:
 	var row := Dots.new()
 	row.setup(done, total, dot)
