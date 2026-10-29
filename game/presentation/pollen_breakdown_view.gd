@@ -56,9 +56,15 @@ static func _line(left: Control, value: String, size: int, grain: bool = true) -
 	var line := HBoxContainer.new()
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_theme_constant_override("separation", 8)
-	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	left.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	line.add_child(left)
+	# Words fill the row; a tag keeps its own size at the row's start.
+	var lead := left
+	if left is PanelContainer:
+		lead = HBoxContainer.new()
+		lead.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		lead.add_child(left)
+	lead.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	lead.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	line.add_child(lead)
 	if value.is_empty(): return line
 	if grain: line.add_child(PollenMark.beside(size))
 	var amount := _text(value, size, UiTokens.CREAM)
