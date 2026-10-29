@@ -62,8 +62,8 @@ export const FLAG_VARS = Object.freeze({
   leaderboards: "LEADERBOARDS",
   /** Duels (duels/): parties, friend challenges, ghost races, the duel premium and win bonus, and their capability. Needs LEADERBOARDS: duels live in the boards and their runs go to its replay check. */
   duels: "DUELS",
-  /** The replay time limit on finished rooms (v2/replay-expiry.ts): replays no phone saved go REPLAY_KEEP_MS after the room finished. Off by default. */
-  replayExpiry: "REPLAY_EXPIRY",
+  /** Pauses the replay time limit on finished rooms (v2/replay-expiry.ts), which is on unless CONFIG lists this: replays no phone saved go REPLAY_KEEP_MS (a year) after the room finished. */
+  replayExpiryPaused: "REPLAY_EXPIRY_PAUSED",
 } as const);
 
 /**

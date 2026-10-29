@@ -31,7 +31,8 @@ import { STALL_MS } from "./rules";
  *
  * One row at most per room, so no object grows with the number of players.
  */
-export const THEIR_RUN_KEEP_MS = 90 * 86_400_000;
+/** A year, as a finished room's own replays (v2/replay-expiry.ts REPLAY_KEEP_MS). */
+export const THEIR_RUN_KEEP_MS = 365 * 86_400_000;
 /** A duel ends at most STALL_MS after its last turn, so a copy this old is past its duel's end plus the keep in every case. */
 export const THEIR_RUN_FALLBACK_MS = THEIR_RUN_KEEP_MS + STALL_MS;
 

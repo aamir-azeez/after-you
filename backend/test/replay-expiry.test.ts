@@ -8,9 +8,10 @@ import { CHAINS, GUEST, HOST, fork, newRoom, open, play, value, type Room } from
 import { configJson } from "./config";
 import { meterRows } from "./meter";
 
-// The replay time limit on finished rooms (v2/replay-expiry.ts), behind REPLAY_EXPIRY.
+// The replay time limit on finished rooms (v2/replay-expiry.ts): a year, on unless REPLAY_EXPIRY_PAUSED.
 const shared = env as unknown as Record<string, unknown>;
-const ON = configJson({ features: ["REPLAY_EXPIRY"] });
+const ON = configJson({});
+const PAUSED = configJson({ features: ["REPLAY_EXPIRY_PAUSED"] });
 const relay = CHAINS[0], lighthouse = CHAINS[4];
 const DAY = 86_400_000;
 beforeEach(() => { delete shared.CONFIG; });
@@ -30,20 +31,24 @@ const runOut = (room: Room) => runInDurableObject(room, async (_, ctx) => {
   await ctx.storage.setAlarm(Date.now() - 1);
 });
 const fire = (room: Room) => runInDurableObject(room, async (instance: { alarm(): Promise<void> }) => instance.alarm());
+/** A finished room a member then opened, which arms its clock unless the limit is paused. */
 async function finished(chain = relay): Promise<Room> {
   const room = newRoom();
   await play(room, await open(room, chain), chain, 0);
+  value(await room.snapshot(HOST));
+  if (shared.CONFIG !== PAUSED) await expect.poll(async () => (await facts(room)).due, { timeout: 2000 }).not.toBeNull();
   return room;
 }
 const history = async (room: Room, player: string) => value(await room.history(player, 1)) as HistoryView;
 
 describe("the replay time limit", () => {
-  it("is off by default: a finished room arms nothing and keeps its replays", async () => {
+  it("is paused by REPLAY_EXPIRY_PAUSED: a finished room arms nothing and keeps its replays", async () => {
+    shared.CONFIG = PAUSED;
     const room = await finished();
     expect(await facts(room)).toMatchObject({ alarm: null, due: null, owned: true, stubs: 0 });
   });
 
-  it("arms 90 days when a room finishes, shares the alarm, keeps export working, and never deletes on a read", async () => {
+  it("is on by default and arms a year when a member first opens the finished room, shares the alarm, keeps export working, and never deletes on a read", async () => {
     shared.CONFIG = ON;
     const before = Date.now();
     const room = await finished();
@@ -97,7 +102,7 @@ describe("the replay time limit", () => {
   });
 
   it("shares the alarm with a waiting turn hint, and a failing clock tries again in an hour without blocking export", async () => {
-    shared.CONFIG = configJson({ features: ["REPLAY_EXPIRY", "NOTIFICATIONS_ENABLED"] });
+    shared.CONFIG = configJson({ features: ["NOTIFICATIONS_ENABLED"] });
     const room = await finished();
     const armed = await facts(room);
     // The finishing turn queued a hint for the partner: the alarm is the earlier of the two.
@@ -121,7 +126,7 @@ describe("the replay time limit", () => {
     expect(retried).toMatchObject({ owned: true, stubs: 0 });
   });
 
-  it("leaves a room that is not finished any more, arms rooms finished before the switch on their next read, and does nothing switched off", async () => {
+  it("leaves a room that is not finished any more, arms rooms finished before the switch on their next read, and does nothing while paused", async () => {
     shared.CONFIG = ON;
     const forked = await finished();
     await fork(forked, value(await forked.snapshot(HOST)), 1);
@@ -129,7 +134,7 @@ describe("the replay time limit", () => {
     await fire(forked);
     expect(await facts(forked)).toMatchObject({ due: null, stubs: 0, owned: true });
 
-    delete shared.CONFIG;
+    shared.CONFIG = PAUSED;
     const older = await finished();
     expect((await facts(older)).due).toBeNull();
     shared.CONFIG = ON;
@@ -137,9 +142,9 @@ describe("the replay time limit", () => {
     await expect.poll(async () => (await facts(older)).due, { timeout: 2000 }).toBeGreaterThan(Date.now() + REPLAY_KEEP_MS - DAY);
     expect((await facts(older)).owned).toBe(true);
 
-    // Switched off when the clock runs out: nothing goes, and the clock does.
+    // Paused when the clock runs out: nothing goes, and the clock does.
     await runOut(older);
-    delete shared.CONFIG;
+    shared.CONFIG = PAUSED;
     await fire(older);
     expect(await facts(older)).toMatchObject({ due: null, stubs: 0, alarm: null, owned: true });
   });

@@ -7,13 +7,15 @@ import { acknowledgeReplay, captureReplay, prepareReplayTransfer, readReplayTran
 import type { RoomStateV2 } from "./room";
 
 /**
- * The replay time limit on finished rooms (REPLAY_EXPIRY, off by default; the owner turns it on).
+ * The replay time limit on finished rooms: a year, on unless CONFIG lists REPLAY_EXPIRY_PAUSED (the owner chose a year, on, 2026-10-29).
  *
  * A finished standalone room keeps every attempt's replay bytes until both
  * phones have saved them (attempt history, history-room.ts, or the older replay
- * transfer, replay-transfer.ts). With the switch on, the room also arms a clock
- * REPLAY_KEEP_MS long when its run finishes (and, for rooms finished before,
- * the first time a member reads it or its history). When the clock runs out,
+ * transfer, replay-transfer.ts). With the limit on, the room also arms a clock
+ * REPLAY_KEEP_MS long the first time a member reads it, polls it or reads its
+ * history after its run finished (rooms finished before the deploy too). Never
+ * in the finishing commit: rooms that only campaign code touches never arm,
+ * and campaign activation and deletion keep their alarm checks. When the clock runs out,
  * the room keeps only what those paths keep once both phones saved it, by the
  * path its phones use: with both on attempt history, every finished attempt's
  * digest and chain link and its rows as hashes (as acknowledgeAttempt); with
@@ -38,7 +40,7 @@ import type { RoomStateV2 } from "./room";
  * attempt rows once and rewrites each still held turn and pair row as its
  * hash (test/replay-expiry.test.ts measures it).
  */
-export const REPLAY_KEEP_MS = 90 * 86_400_000;
+export const REPLAY_KEEP_MS = 365 * 86_400_000;
 export const REPLAY_EXPIRY_TABLE = { name: "replay_expiry", schema: "CREATE TABLE replay_expiry (id INTEGER PRIMARY KEY CHECK(id=1), due_at INTEGER NOT NULL)" } as const;
 
 function present(storage: DurableObjectStorage): boolean {

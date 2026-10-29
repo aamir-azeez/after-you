@@ -423,27 +423,27 @@ describe("the other pair's run", () => {
     expect((await call(`/v1/duels/${RELAY}/${duel.duel_id}/their-run/ack`, "POST", b1, { schema_version: 1, digest: "x" })).status).toBe(400);
   }, 60_000);
 
-  it("goes 90 days after the duel ends when nobody took it, by the hourly sweep", async () => {
+  it("goes a year after the duel ends when nobody took it, by the hourly sweep", async () => {
     const { b1, a1, duel, roomA, roomB } = await duelWithRooms();
     await verdicts((await job()).entries, () => true);
     expect((await lobby(a1)).duels[0].status).toBe("decided");
     const stub = env.LEADERBOARD_BOARDS.getByName(RELAY);
     // Not due yet: nothing to sweep, and the run is there.
-    expect((await stub.pendingWork(0, 0, Date.now() + 89 * DAY)).copies).toBeUndefined();
+    expect((await stub.pendingWork(0, 0, Date.now() + 364 * DAY)).copies).toBeUndefined();
     await ok(theirRun(b1, duel));
-    const due = (await stub.pendingWork(0, 0, Date.now() + 91 * DAY)).copies!;
+    const due = (await stub.pendingWork(0, 0, Date.now() + 366 * DAY)).copies!;
     expect(due.map(item => item.room_id).sort()).toEqual([roomA.room_id, roomB.room_id].sort());
     expect(due.every(item => item.duel_id === duel.duel_id && item.player === null)).toBe(true);
     await dropRunCopies(env, RELAY, due);
     expect((await theirRun(b1, duel)).status).toBe(410);
     expect((await theirRun(a1, duel)).status).toBe(410);
     // Each room answered: no row is left, and a second sweep is a no-op.
-    expect((await stub.pendingWork(0, 0, Date.now() + 91 * DAY)).copies).toBeUndefined();
+    expect((await stub.pendingWork(0, 0, Date.now() + 366 * DAY)).copies).toBeUndefined();
     await dropRunCopies(env, RELAY, due);
     // A copy found past its keep on a download goes then too, even with no sweep.
     const later = await duelWithRooms();
     await runInDurableObject(env.ROOMS_V2.getByName(later.roomA.room_id), async (instance: { theirRun(viewer: string, now: number): Promise<{ ok: boolean; code?: string }> }) => {
-      expect(await instance.theirRun(later.b1.player_id, Date.now() + 121 * DAY)).toMatchObject({ ok: false, code: "their_run_gone" });
+      expect(await instance.theirRun(later.b1.player_id, Date.now() + 396 * DAY)).toMatchObject({ ok: false, code: "their_run_gone" });
     });
     expect((await theirRun(later.b1, later.duel)).status).toBe(410);
   }, 90_000);
@@ -488,8 +488,8 @@ describe("the other pair's run", () => {
   it("sweeps a friend duel's rooms even when the duel never ends or is never read again", async () => {
     const { duel, roomA, roomB, b1 } = await duelWithRooms([]);
     const stub = env.LEADERBOARD_BOARDS.getByName(RELAY);
-    expect((await stub.pendingWork(0, 0, Date.now() + 91 * DAY)).copies).toBeUndefined();
-    const due = (await stub.pendingWork(0, 0, Date.now() + 121 * DAY + 1)).copies!;
+    expect((await stub.pendingWork(0, 0, Date.now() + 366 * DAY)).copies).toBeUndefined();
+    const due = (await stub.pendingWork(0, 0, Date.now() + 396 * DAY + 1)).copies!;
     expect(due.map(item => item.room_id).sort()).toEqual([roomA.room_id, roomB.room_id].sort());
     await dropRunCopies(env, RELAY, due);
     // The rooms forget the other pair: a run finished after that is never copied.
