@@ -7,7 +7,7 @@ import { memberLook } from "../pollen/room-looks";
  * - Taking: the room reads both members' looks (pollen/room-looks.ts memberLook) inside the commit
  *   of the turn that finished the run, while looks are on, and hands them back as `board_looks`
  *   beside the reply. That is the commit the turn already makes, so no Durable Object request is
- *   added. The Worker takes the field out before the phone sees the reply (withoutBoardLooks).
+ *   added. The Worker takes the field out of the commit before the phone sees the reply.
  * - Keeping: the board stores each look on its member (board.ts Member.look), only when it is not
  *   the default, in the row it already writes for the run. Erasure clears the erased member's look.
  * - Serving: every ranked row carries `looks`, the two looks in slot order (host, guest, as
@@ -39,9 +39,3 @@ export function servedLook(look: unknown, catalog: Catalog = CATALOG): Look {
   return validLook(look, catalog) ? look : {};
 }
 
-/** The reply a phone gets: the commit without the board's server-only field. */
-export function withoutBoardLooks<T extends { board_looks?: PairLooks }>(committed: T): Omit<T, "board_looks"> {
-  if (!("board_looks" in committed)) return committed;
-  const { board_looks: _taken, ...reply } = committed;
-  return reply;
-}

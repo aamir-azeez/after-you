@@ -7,6 +7,7 @@ extends SceneTree
 const Runs = preload("res://services/leaderboard_runs.gd")
 const Client = preload("res://services/leaderboard_client.gd")
 const Screen = preload("res://presentation/leaderboard_screen.gd")
+const Rows = preload("res://presentation/leaderboard_rows.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
@@ -140,9 +141,9 @@ func _screen() -> void:
 	var mine := Runs.entry_id(ROOM, 1)
 	var view := {"schema_version": 1, "board": "sleeping-lighthouse@2", "checking": [Runs.entry_id(ROOM, 2)], "top": [
 		{"rank": 1, "entry_id": "a".repeat(32), "ticks": 900, "finished_on": "2026-10-19", "names": ["Ada", "Bo"], "gold_leaf": true},
-		{"rank": 2, "entry_id": mine, "ticks": 1470, "finished_on": "2026-10-20", "names": null, "gold_leaf": false},
+		{"rank": 2, "entry_id": mine, "ticks": 1470, "finished_on": "2026-10-20", "names": null, "gold_leaf": false, "looks": [{"hat": "daisy"}, {"hat": "seashell"}]},
 		{"rank": 3, "entry_id": "c".repeat(32), "ticks": 1500, "finished_on": "2026-10-21", "names": null, "gold_leaf": false, "looks": [{"hat": "straw_hat"}, {"hat": "daisy"}]}]}
-	TurnLooks.shared().note_member(PARTNER, {"hat": "seashell"})
+	TurnLooks.shared().note_member(PARTNER, {"hat": "straw_hat"})
 	api.replies["GET /v1/leaderboards/sleeping-lighthouse@2"] = {"ok": true, "data": view}
 	api.replies["GET /v1/leaderboards/me"] = {"ok": true, "data": {"schema_version": 1, "show_name": false}}
 	var screen := Screen.new()
@@ -165,7 +166,11 @@ func _screen() -> void:
 	_check(first_pips.size() == 2 and first_pips.all(func(pip: Node) -> bool: return pip.outfit.is_empty()), "a row with no looks shows the default pips")
 	var own: Node = screen.find_child("LeaderboardOwnRow", true, false)
 	var own_pips := own.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
-	_check(own_pips.size() == 2 and own_pips[0].own and own_pips[1].outfit == {"hat": "seashell"}, "Your best dresses the partner in the look this phone last heard for them")
+	_check(own_pips.size() == 2 and not own_pips[0].own and own_pips[0].outfit == {"hat": "daisy"} and own_pips[1].outfit == {"hat": "seashell"}, "Your best on a ranked run draws the pair as its row does")
+	var unlisted: Control = Rows.own(1470, 0, "", false, Callable(), TurnLooks.shared().member(PARTNER))
+	var unlisted_pips := unlisted.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
+	_check(unlisted_pips.size() == 2 and unlisted_pips[0].own and unlisted_pips[1].outfit == {"hat": "straw_hat"}, "Your best on a run the board does not list dresses the partner in the look this phone last heard for them")
+	unlisted.free()
 	_check(own != null and _texts(own).has("2") and _texts(own).has(Runs.time_text(1470)), "Your best is pinned with its rank")
 	_check(screen.find_child("LeaderboardChecking", true, false).visible, "the newest run waiting for its check says so")
 	var celebration: Node = screen.find_child(Celebration.NODE_NAME, true, false)

@@ -758,10 +758,20 @@ describe("looks on rows (art 01)", () => {
   it("stores both looks with the run at submit, on the request it already makes, and keeps them out of the reply", async () => {
     const { played } = await dressedPair();
     const meter = countingEnv(configured(LOOKS));
-    const { value: answer, rows } = await meterRows({ board: board() }, () => played.last(LOOKS, meter.env));
+    // The phone asks for every beside field, so the reply is the one that carries the most.
+    const everything = { "X-AfterYou-Looks": "1", "X-AfterYou-Display-Names": "1", "X-AfterYou-End-Reactions": "1", "X-AfterYou-Run-Reactions": "1", "X-AfterYou-Pollen": "1" };
+    const send = () => call(`/v2/rooms/${played.room.room_id}/turns`, "POST", played.host, played.body, LOOKS, everything, meter.env);
+    const { value: answer, rows } = await meterRows({ board: board() }, send);
     expect(answer.status).toBe(200);
-    expect(await answer.text()).not.toContain("board_looks");
-    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_BOARDS.submit"]);
+    const reply = await answer.json<Record<string, unknown>>();
+    expect(reply.partner_look).toEqual(DAISY);
+    expect(JSON.stringify(reply)).not.toContain("board_looks");
+    // A retried final turn (same key) answers the same way and the board knows the run already.
+    const retried = await send();
+    expect(retried.status).toBe(200);
+    expect(await retried.text()).not.toContain("board_looks");
+    expect((await board().view(RELAY_BOARD)).checking).toHaveLength(1);
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_BOARDS.submit", "LEADERBOARD_BOARDS.submit"]);
     // Host first, as `members` and `names`.
     const [members] = await storedMembers();
     expect(members.map(member => member.look)).toEqual([HAT, DAISY]);
@@ -771,7 +781,7 @@ describe("looks on rows (art 01)", () => {
     const { rows: plainRows } = await meterRows({ board: board() }, () => plain.played.last(NO_LOOKS));
     expect(rows.board.written).toBe(plainRows.board.written);
     expect((await storedMembers())[0].map(member => member.look)).toEqual([undefined, undefined]);
-    console.log(`final turn with looks: ${meter.calls.length} DO requests (${meter.calls.join(", ")}); board rows written ${rows.board.written} with looks, ${plainRows.board.written} without`);
+    console.log(`final turn with looks and its retry: ${meter.calls.length} DO requests (${meter.calls.join(", ")}); board rows written ${rows.board.written} with looks, ${plainRows.board.written} without`);
   });
 
   it("serves a ranked row with both looks, also for a pair that hides its names, from the cached read", async () => {
@@ -833,7 +843,8 @@ describe("looks on rows (art 01)", () => {
     expect((await board().view(RELAY_BOARD)).top[0].looks).toEqual([{}, DAISY]);
     const played = await almostDone();
     const answer = await (await played.last()).json<MutationV2>();
-    expect((await finishedRun({ ...answer, board_looks: [DAISY] }, undefined))?.looks).toBeUndefined();
-    expect((await finishedRun({ ...answer, board_looks: [HAT, DAISY] }, undefined))?.looks).toEqual([HAT, DAISY]);
+    expect((await finishedRun(answer, undefined, [DAISY]))?.looks).toBeUndefined();
+    expect((await finishedRun(answer, undefined))?.looks).toBeUndefined();
+    expect((await finishedRun(answer, undefined, [HAT, DAISY]))?.looks).toEqual([HAT, DAISY]);
   });
 });

@@ -10,8 +10,9 @@ extends RefCounted
 ## worlds' two pips by slot, gold and teal, each wearing what they wore when
 ## the run finished: a row's `looks` (two outfits in slot order, kept by
 ## services/leaderboard_client.gd), the default look when a board has none.
-## "Your best" shows this player's own pip in their own look beside their
-## partner's in the look this phone last heard for them.
+## "Your best" on a ranked run draws the pair exactly as its row does; on a
+## run the board does not list, this player's own pip in their own look beside
+## their partner's in the look this phone last heard for them.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
@@ -70,8 +71,10 @@ static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool,
 	line.add_child(_report(report))
 	return box
 
-## The pinned "Your best": the place when ranked (0: none), the pair, the time and Watch. `partner_look` dresses the partner's pip.
-static func own(ticks: int, rank: int, title: String, compact: bool, watch: Callable = Callable(), partner_look: Dictionary = {}) -> Control:
+## The pinned "Your best": the place when ranked (0: none), the pair, the time and Watch.
+## `run_looks`: the ranked row's two looks, which draw the pair as that row does;
+## without them the first pip is this player's own and `partner_look` dresses the other.
+static func own(ticks: int, rank: int, title: String, compact: bool, watch: Callable = Callable(), partner_look: Dictionary = {}, run_looks: Array = []) -> Control:
 	var box := _row(ROW_FILL, UiTokens.SOFT, 50.0)
 	box.name = "LeaderboardOwnRow"
 	var line: HBoxContainer = box.get_child(0)
@@ -82,7 +85,8 @@ static func own(ticks: int, rank: int, title: String, compact: bool, watch: Call
 	rule.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(rule)
 	_place(line, rank, false, compact, OWN_PLACE)
-	_pips(line, true, compact, [{}, partner_look])
+	if run_looks.size() == 2: _pips(line, false, compact, run_looks)
+	else: _pips(line, true, compact, [{}, partner_look])
 	_name(line, title, compact)
 	_time(line, ticks, compact)
 	line.add_child(_watch(watch, compact))

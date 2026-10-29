@@ -22,14 +22,15 @@ import { mightPlace } from "./view";
  * and posts again as checked, so a flood of posts from new accounts never
  * keeps out players who qualify.
  *
- * `board_looks`: the pair's looks the room handed over with the finishing
- * commit (run-looks.ts), stored with the run in the same request. The caller
- * takes the field out of the phone's reply (withoutBoardLooks).
+ * `looks`: the pair's looks the room handed over with the finishing commit
+ * (run-looks.ts), stored with the run in the same request. A retried premium
+ * final turn posts from its receipt, which has none, so a run that only
+ * reaches its board that way shows the default looks.
  */
-export async function postFinishedRun(env: Env, mutation: MutationV2 & { board_looks?: PairLooks }, context: unknown): Promise<void> {
+export async function postFinishedRun(env: Env, mutation: MutationV2, context: unknown, looks?: PairLooks): Promise<void> {
   if (!flags.leaderboards(env)) return;
   try {
-    const run = await finishedRun(mutation, context);
+    const run = await finishedRun(mutation, context, looks);
     if (!run) return;
     const cached = await cachedView(run.board);
     if (cached && !mightPlace(cached, run.ticks, TOP_PLACES)) return;

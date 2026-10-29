@@ -37,7 +37,6 @@ import type { Look } from "../pollen/catalog";
 import { looksCapability, looksShown } from "../pollen/looks-routes";
 import { leaderboardsCapability } from "../leaderboards/routes";
 import { postFinishedRun } from "../leaderboards/submit";
-import { withoutBoardLooks } from "../leaderboards/run-looks";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -349,8 +348,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request))));
   // Story rooms never earn; a standalone turn with `pollen` freezes its facts and is credited once.
-  const committed = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
+  // `board_looks` is server only: it goes to the board, never into the reply.
+  const { board_looks, ...committed } = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
   // A turn that finished a together run that might place goes to its board (leaderboards/submit.ts); the reply is unchanged.
-  await postFinishedRun(env, committed, context);
-  return json(await creditCommitted(request, env, playerId, withoutBoardLooks(committed)));
+  await postFinishedRun(env, committed, context, board_looks);
+  return json(await creditCommitted(request, env, playerId, committed));
 }

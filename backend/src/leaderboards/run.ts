@@ -57,8 +57,9 @@ export function runTicks(checkpoint: CheckpointV2, stages: number): { ticks: num
  * with two players and no assisted turn finishes a run that can rank. The
  * receipt must still be the room's latest change: a retry answered with a room
  * that has moved on since says nothing about when this run finished.
+ * `handed`: the pair's looks from the finishing commit; kept only when it is a whole pair.
  */
-export async function finishedRun(mutation: MutationV2 & { board_looks?: PairLooks }, context: unknown): Promise<LeaderboardRun | null> {
+export async function finishedRun(mutation: MutationV2, context: unknown, handed?: unknown): Promise<LeaderboardRun | null> {
   const { receipt, room } = mutation;
   if (context !== undefined || receipt.operation !== "turns" || room.active_role !== "complete") return null;
   if (receipt.accepted_revision !== room.revision || receipt.branch !== room.branch) return null;
@@ -69,7 +70,7 @@ export async function finishedRun(mutation: MutationV2 & { board_looks?: PairLoo
   const timed = runTicks(room.checkpoint, stages);
   const finished_ms = Date.parse(room.updated_at);
   if (!timed || !Number.isFinite(finished_ms)) return null;
-  const looks = boardLooksOf(mutation.board_looks);
+  const looks = boardLooksOf(handed);
   return {
     schema_version: 1, board: boardKey(room), entry_id: await entryId(room.room_id, room.branch), pair_key: await pairKey(host, guest),
     members: [host, guest], ticks: timed.ticks, finished_at: room.updated_at, finished_ms,

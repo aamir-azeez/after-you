@@ -400,7 +400,7 @@ func _render_own(mine: Array, top: Array, checking: Array) -> void:
 	var settled: Array = mine.filter(func(run: Dictionary) -> bool: return not run.entry_id in checking)
 	var eligible: Array = settled.filter(func(run: Dictionary) -> bool: return not run.assisted)
 	if not ranked_row.is_empty():
-		_own.add_child(Rows.own(int(ranked_row.ticks), int(ranked_row.rank), Rows.pair_title(ranked_row), _compact, _watcher(ranked_row), _partner_look(ranked_run)))
+		_own.add_child(Rows.own(int(ranked_row.ticks), int(ranked_row.rank), Rows.pair_title(ranked_row), _compact, _watcher(ranked_row), _partner_look(ranked_run), ranked_row.get("looks", [])))
 	elif not eligible.is_empty():
 		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact, Callable(), _partner_look(eligible[0])))
 		# Why it has no place (services/board_status.gd): a run this new may not show in the board's copy yet.
