@@ -50,6 +50,8 @@ export const FLAG_VARS = Object.freeze({
   pollenItemBlooms: "POLLEN_ITEM_BLOOMS",
   /** The Full Journey monthly grant (pollen/grant.ts): instalments on the wallet read and the PollenClaims check. Needs POLLEN_EARN. */
   pollenGrant: "POLLEN_GRANT",
+  /** Pollen bundles on Google Play (pollen/bundle-settle.ts): the bundle claim route, the wallet read's `bundles` part, the daily refund check and the capability. Needs POLLEN_SHOP. Set only through FEATURES. */
+  pollenBundles: "POLLEN_BUNDLES",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
 } as const);

@@ -28,11 +28,13 @@ import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type Displ
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { grantOn, itemBloomsOn, type WardrobeMode } from "./pollen/features";
+import { bundlesOn, grantOn, itemBloomsOn, type WardrobeMode } from "./pollen/features";
 import { knownBoard } from "./leaderboards/boards";
 import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/grant-settle";
 import { readGrant } from "./pollen/grant-provider";
-import { claimFor } from "./pollen/claims";
+import { claimBundlesFor, claimFor } from "./pollen/claims";
+import { bundleCheckDue, bundlesView, dropBundles, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
+import { readBundles } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice } from "./pollen/name-price";
 import type { Look } from "./pollen/catalog";
@@ -192,21 +194,52 @@ export class Player extends DurableObject<Env> {
    * While the grant is on, the wallet read first pays any monthly instalment that is due (pollen/grant-settle.ts)
    * and carries the player's `grant` ladder once they have one.
    */
-  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number }) }> {
+  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; bundles?: BundlesView }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
-    const grant = grantOn(this.env);
+    const grant = grantOn(this.env), bundles = mode === "shop" && bundlesOn(this.env);
     if (grant) {
       await this.settleGrant(identity.player_id);
       // A recovery may have replaced the device while the provider answered.
+      if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
+    }
+    // At most once a day, for a player who bought a bundle: refunds are taken back (and a purchase never claimed is paid).
+    if (bundles && bundleCheckDue(this.ctx.storage, Date.now())) {
+      await this.checkBundles(identity.player_id);
       if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
     }
     const now = Date.now(), wallet = walletView(this.ctx.storage, now), ladder = grant ? grantView(this.ctx.storage) : undefined;
     const read = ladder ? { ...wallet, grant: ladder } : wallet;
     if (mode === "off") return { authorized: true, linked: true, pollen: read };
     const wardrobe = wardrobeView(this.ctx.storage, mode === "shop");
-    return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now) } : { ...read, wardrobe } };
+    return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}) } : { ...read, wardrobe } };
+  }
+  /** The daily bundle refund check (pollen/bundle-settle.ts); a failure never stops the wallet read it rides on. */
+  private async checkBundles(owner: string): Promise<void> {
+    try {
+      const outcome = await this.settleBundles(owner);
+      if (outcome.status === "unavailable") logWarning("pollen_bundle_check_failed", { reason: outcome.reason });
+    } catch (error) { logWarning("pollen_bundle_check_failed", { reason: errorCode(error) }); }
+  }
+  private settleBundles(owner: string) {
+    const now = Date.now();
+    return settleBundles(this.ctx.storage, now, this.pollenActive(owner), {
+      read: () => readBundles(owner, this.env),
+      claim: keys => claimBundlesFor(this.env, owner, keys, now)
+    });
+  }
+  /**
+   * Binding only: credits the player's Play bundle purchases that RevenueCat lists, and takes back refunded
+   * ones (POST /v1/pollen/bundle-claims, pollen/bundle-settle.ts). The device is checked again here.
+   */
+  async pollenBundleClaim(owner: string, deviceHash: string): Promise<Outcome<BundleReply>> {
+    const identity = this.authorized(deviceHash);
+    if (!identity || identity.player_id !== owner) return fail(401, "invalid_auth");
+    const outcome = await this.settleBundles(owner);
+    if (outcome.status === "unavailable") return fail(503, "pollen_bundles_unavailable");
+    if (outcome.status === "absent" || !this.authorized(deviceHash)) return fail(401, "invalid_auth");
+    return ok(outcome.reply);
   }
   /** The monthly grant check (pollen/grant-settle.ts); a failure never stops the wallet read it rides on. */
   private async settleGrant(owner: string): Promise<void> {
@@ -985,6 +1018,7 @@ export class Player extends DurableObject<Env> {
       dropWardrobe(this.ctx.storage);
       dropEarned(this.ctx.storage);
       dropGrant(this.ctx.storage);
+      dropBundles(this.ctx.storage);
     });
     await this.env.SAFETY_PROFILES.getByName(owner).markErasureComplete(owner);
     return ok({ deleted: true });
@@ -994,7 +1028,7 @@ export class Player extends DurableObject<Env> {
 // A Player nobody created answers the identity check as one without an identity row, and stores nothing.
 answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ authorized: false, linked: false }), rotateSafetyToken: () => undefined,
   authorizeNamed: () => ({ authorized: false, linked: true }), authorizeWallet: async () => ({ authorized: false, linked: true }),
-  creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), pollenSpend: () => fail(401, "invalid_auth"), pollenEquip: () => fail(401, "invalid_auth"), noteBoardRewards: () => fail(404, "identity_absent"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
+  creditTurn: async () => fail(404, "identity_absent"), creditTogetherClear: () => fail(404, "identity_absent"), creditSoloClear: () => fail(404, "identity_absent"), setDisplayName: () => fail(401, "invalid_auth"), pollenSpend: () => fail(401, "invalid_auth"), pollenEquip: () => fail(401, "invalid_auth"), pollenBundleClaim: async () => fail(401, "invalid_auth"), noteBoardRewards: () => fail(404, "identity_absent"), operatorClearDisplayName: () => fail(404, "identity_absent"), publicDisplayName: () => null,
   campaignDrainInventory: () => blankPlayerInventory(), operatorCampaignAllocation: () => null,
   operatorCampaignTerminalScope: async () => fail(404, "identity_absent"), operatorFinalizeCampaignTerminalLink: async () => fail(404, "identity_absent"),
   deletingWith: () => false, noteRoomIndex: () => undefined, leaderboardStanding: () => null,

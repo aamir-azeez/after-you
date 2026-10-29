@@ -66,8 +66,15 @@ export const POLLEN_GRANT_TABLES: readonly LazyTable[] = Object.freeze([
 export const POLLEN_EARNED_TABLES: readonly LazyTable[] = Object.freeze([
   { name: "pollen_earned", schema: "CREATE TABLE pollen_earned (source TEXT PRIMARY KEY, items TEXT NOT NULL, seq INTEGER NOT NULL, earned_at INTEGER NOT NULL) WITHOUT ROWID", maxRows: 64 }
 ]);
+/**
+ * Player: Pollen bundles (pollen/bundle-settle.ts), made by the first bundle check, never for a player who
+ * never bought one. One row: when RevenueCat was last read for refunds. The bundles themselves are ledger rows.
+ */
+export const POLLEN_BUNDLE_TABLES: readonly LazyTable[] = Object.freeze([
+  { name: "pollen_bundle_check", schema: "CREATE TABLE pollen_bundle_check (id INTEGER PRIMARY KEY CHECK(id=1), checked_at INTEGER NOT NULL)", maxRows: 1 }
+]);
 /** Every Pollen table a Player may hold: account erasure drops them all, and snapshots refuse a Player that has any. */
-export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([...POLLEN_WALLET_TABLES, ...POLLEN_SHOP_TABLES, ...POLLEN_GRANT_TABLES, ...POLLEN_EARNED_TABLES]);
+export const POLLEN_PLAYER_TABLES: readonly LazyTable[] = Object.freeze([...POLLEN_WALLET_TABLES, ...POLLEN_SHOP_TABLES, ...POLLEN_GRANT_TABLES, ...POLLEN_EARNED_TABLES, ...POLLEN_BUNDLE_TABLES]);
 /** RoomV2: frozen Pollen facts per accepted turn and each member's Full Journey end (pollen/turn-facts.ts). */
 export const POLLEN_ROOM_TABLES: readonly LazyTable[] = Object.freeze([
   // One row per accepted turn, as the turns table (MAX_TURNS); the oldest go first past it.

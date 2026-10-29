@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "first_bonus_percent": 10,
+  "bundles": {
+    "pinch": { "pollen": 5000, "bonus": 0, "usd_cents": 99 },
+    "pouch": { "pollen": 21000, "bonus": 1000, "usd_cents": 399 },
+    "jar": { "pollen": 44000, "bonus": 4000, "usd_cents": 799 },
+    "basket": { "pollen": 115000, "bonus": 15000, "usd_cents": 1999 }
+  }
+}

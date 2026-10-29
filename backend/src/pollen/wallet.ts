@@ -24,6 +24,8 @@ import { noteEveryHard } from "./earned";
  *                                       Every Hard asks for has one, the player earns it (earned.ts)
  *     grant:<anchor>:<n>, grant:lifetime, grantrefund:<anchor>:<n>
  *                                       the monthly grant and its refunds (grant-settle.ts; kept)
+ *     bundle:<purchase id>, bundlerefund:<purchase id>
+ *                                       a Pollen bundle bought on Play and its refund (bundle-settle.ts; kept)
  *   A turn that pays nothing writes no row: a turn played before the guest joined (never paid, by its
  *   frozen facts), or one whose week's after-bank turns are used up (that count only grows, and only
  *   a turn of the current week spends the bank).
@@ -58,8 +60,9 @@ export type WalletView = { schema_version: 1; balance: number; earned: number; b
 /**
  * One paid claim. A turn's also says what its line said, for the app's Pollen from play page:
  * its skill bonuses, a lucky bloom (2 or 3) and why it paid the after-bank rate.
+ * `bundle`, `order` and `usd_cents`: a bundle's or a bundle refund's line (bundle-settle.ts).
  */
-export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string; bonuses?: TurnPrice["bonuses"]; bloom?: number; reason?: TurnLine["reason"] };
+export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string; bonuses?: TurnPrice["bonuses"]; bloom?: number; reason?: TurnLine["reason"]; bundle?: string; order?: string; usd_cents?: number };
 /** A chapter's first clear: what it pays before any room boost, and what it paid once it has (`paid`, with its boost). */
 export type FirstClear = { level_id: string; price: number; paid?: number };
 /**
@@ -319,6 +322,11 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
       if (turn.bonuses.length) entry.bonuses = turn.bonuses;
       if (turn.bloom > 1) entry.bloom = turn.bloom;
       if (turn.reason) entry.reason = turn.reason;
+    }
+    if (row.kind === "bundle" || row.kind === "bundlerefund") {
+      if (typeof detail.bundle === "string") entry.bundle = detail.bundle;
+      if (typeof detail.order === "string") entry.order = detail.order;
+      if (typeof detail.usd_cents === "number") entry.usd_cents = detail.usd_cents;
     }
     return entry;
   });
