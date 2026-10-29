@@ -247,10 +247,11 @@ func model() -> Dictionary:
 	var kinds: Array = []
 	for slot: String in Catalog.slots():
 		if items.any(func(entry: Dictionary) -> bool: return entry.slot == slot and (tab == "all" or bool(entry.owned))): kinds.append(slot)
-	var kind: String = _kind if _kind in kinds else (str(kinds[0]) if not kinds.is_empty() else "")
 	var selected := _selected if not _entry_in(items, _selected).is_empty() else _default_pick(items, look, featured)
-	var preview := Outfit.from(look)
 	var picked := _entry_in(items, selected)
+	# With no chip picked, the chip of the picked item's slot, so its card is on screen.
+	var kind: String = _kind if _kind in kinds else (str(picked.slot) if not picked.is_empty() and picked.slot in kinds else (str(kinds[0]) if not kinds.is_empty() else ""))
+	var preview := Outfit.from(look)
 	if not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
 	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "status": _status, "retry": _retry, "shop": selling, "bundles": bundles(), "tab": tab, "kind": kind, "kinds": kinds,
 		"selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}

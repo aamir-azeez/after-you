@@ -116,6 +116,10 @@ func _check_layout(app: Node, screen: Rect2, safe: Rect2, unseen: bool, context:
 	_check(offer != null and offer == menu.journey_offer, "Full Journey stays a direct child of the overlay: " + context)
 	var order: Array[Button] = [menu.play_button, menu.solo_button, menu.friends_button, menu.replays_button, menu.invite_button, menu.whats_new_button]
 	var names := ["HomePlay", "HomeSolo", "HomeFriends", "HomeReplays", "HomeInvite", "HomeWhatsNew"]
+	# The Wardrobe row joins the column under Replays while the server has the wardrobe on.
+	if menu.wardrobe_button.visible:
+		order.insert(4, menu.wardrobe_button)
+		names.insert(4, "HomeWardrobe")
 	for index in range(order.size()):
 		_check(order[index] != null and order[index].name == names[index] and order[index].is_visible_in_tree(), "Home shows %s: %s" % [names[index], context])
 	_check(menu.play_button.text == "Play with your friend" and menu.solo_button.text == "Play Solo" and menu.friends_button.text == "Friends" and menu.replays_button.text == "Replays" and menu.invite_button.text == PlayerCopy.HOME_INVITE and menu.whats_new_button.text == PlayerCopy.WHATS_NEW, "Labels are the existing words: " + context)
@@ -267,8 +271,27 @@ func _test_wardrobe_row(app: Node) -> void:
 	app._open_wardrobe_from_home()
 	_check(stub.opened.is_empty() and not app._open_wardrobe_from_pip(), "Nothing opens the Wardrobe from Home while it is off")
 	stub.on = true
-	app._refresh_home_wardrobe()
+	# Every size, cutout and tip again with the row showing: it fits, stays in the panel and the safe area.
+	var viewport := app.get_parent() as SubViewport
+	var first := viewport.size
+	for size: Vector2i in SIZES:
+		viewport.size = size
+		var screen := Rect2(Vector2.ZERO, Vector2(size))
+		for insets: Vector4 in INSETS:
+			var safe := Rect2(insets.x, insets.y, size.x - insets.x - insets.z, size.y - insets.y - insets.w)
+			app._apply_safe_area(safe)
+			for unseen: bool in [false, true]:
+				app._whats_new_unseen = unseen
+				app._show_home()
+				await _frames()
+				_check(_menu(app).wardrobe_button.visible, "The Wardrobe row shows at %s insets %s" % [size, insets])
+				_check_layout(app, screen, safe, unseen, "with the Wardrobe row, %s insets %s tip %s" % [size, insets, unseen])
+		app._apply_safe_area(screen)
+	viewport.size = first
+	app._whats_new_unseen = false
+	app._show_home()
 	await _frames()
+	menu = _menu(app)
 	var pip: Control = menu.wardrobe_button.find_child("HomeWardrobePip", true, false)
 	_check(menu.wardrobe_button.visible and pip != null and pip.still and pip.own, "Once it is on the row shows, with the player's own pip as a still picture")
 	_check(menu.wardrobe_button.get_parent() == menu.replays_button.get_parent() and menu.wardrobe_button.get_index() == menu.replays_button.get_index() + 1, "It sits under Replays in the same column")

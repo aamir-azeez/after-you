@@ -122,6 +122,8 @@ func _run() -> void:
 	await _first_tap_waits()
 	await _short_card()
 	await _page_parts()
+	await _offline()
+	await _negative_balance()
 	await _wearing()
 	await _owned_only()
 	await _server_shop_off()
@@ -282,6 +284,37 @@ func _page_parts() -> void:
 	t.flow.set_view("you")
 	_check((page.find_child("WardrobePip", true, false) as Control)._color == SpiritLook.PEACH, "Your pip: peach again")
 	_check(PlayerCopy.WARDROBE_DRAG in _texts(page), "Drag to turn your pip.")
+	t.host.queue_free()
+	await _frames(2)
+
+## Nothing kept and no answer: the page says the wardrobe isn't reachable and offers Try again, which reads again.
+func _offline() -> void:
+	var t := _setup()
+	t.flow.show_wardrobe()
+	_check(PlayerCopy.WARDROBE_LOADING in _texts(t.host.overlay), "While the first read is out the page says it is opening")
+	await _frames()
+	var page: Node = t.host.overlay
+	_check(PlayerCopy.WARDROBE_OFFLINE in _texts(page) and (page.find_child("WardrobeRetry", true, false) as Control).visible, "Offline: the page says so and offers Try again")
+	_check(page.find_child("PollenChip", true, false) == null and not (page.find_child("WardrobeAction", true, false) as Control).visible, "Offline: no balance it does not know and no button")
+	t.fake.replies = [_answer([], {}, 24000)]
+	(page.find_child("WardrobeRetry", true, false) as Button).pressed.emit()
+	await _frames()
+	_check(t.fake.sent.size() == 2 and not PlayerCopy.WARDROBE_OFFLINE in _texts(page) and "24,000" in _texts(page.find_child("WardrobeBalance", true, false)), "Try again reads again and the page fills in")
+	t.host.queue_free()
+	await _frames(2)
+
+## A refund the server took back leaves the balance below zero: it shows as it is, and Buy says why it can't.
+func _negative_balance() -> void:
+	var t := _setup()
+	t.fake.replies = [_answer([], {}, -2100)]
+	t.flow.show_wardrobe()
+	await _frames()
+	_check("-2,100" in _texts(t.host.overlay.find_child("WardrobeBalance", true, false)), "A balance below zero shows as it is")
+	t.flow.set_kind("hat")
+	t.flow.select("daisy")
+	await t.flow.act("daisy")
+	var sheet: Node = t.host.ui.find_child("WardrobeShort", true, false)
+	_check(sheet != null and "3,100" + PlayerCopy.WARDROBE_SHORT_MORE in _texts(sheet) and t.fake.sent.size() == 1, "The short card counts the real gap (3,100 more) and nothing is sent")
 	t.host.queue_free()
 	await _frames(2)
 

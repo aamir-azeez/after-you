@@ -7,6 +7,12 @@ const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
 const Spirit = preload("res://presentation/spirit_visual.gd")
 
+## Stands in for the Wardrobe in the real app: on, and where it was opened from.
+class WardrobeStub extends "res://presentation/wardrobe_flow.gd":
+	var opened: Array[String] = []
+	func available() -> bool: return true
+	func show_wardrobe(from: String = "settings") -> void: opened.append(from)
+
 class SoundProbe:
 	extends "res://services/soundscape.gd"
 	var greetings := 0
@@ -31,6 +37,8 @@ func _run() -> void:
 	await _test_real_spirit_tap()
 	Stage._retained_view.clear()
 	await _test_own_pip_tap()
+	Stage._retained_view.clear()
+	await _test_real_own_pip_tap()
 	Stage._retained_view.clear()
 	await _test_explore_zoom()
 	Stage._retained_view.clear()
@@ -438,6 +446,48 @@ func _test_own_pip_tap() -> void:
 	_check(asked[0]==2,"A two-finger pinch or pan from your pip never opens the Wardrobe")
 	viewport.queue_free()
 	await process_frame
+
+## Through the real app and real viewport input: a tap on your own pip opens the
+## Wardrobe from Home; a tap on your friend's pip greets and opens nothing.
+func _test_real_own_pip_tap() -> void:
+	var path := "user://home-own-pip-"+Crypto.new().generate_random_bytes(8).hex_encode()+".json"
+	var viewport := SubViewport.new()
+	viewport.size=Vector2i(1280,720)
+	viewport.handle_input_locally=true
+	root.add_child(viewport)
+	var app := Main.new()
+	app.saves=Storage.new(path)
+	app.saves.data.settings.sound=false
+	app.saves.data.settings.haptics=false
+	app.saves.flush()
+	var sound := SoundProbe.new()
+	app.soundscape=sound
+	viewport.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	await process_frame
+	await process_frame
+	var stub := WardrobeStub.new(app)
+	var real: Node = app.wardrobe_flow
+	app.wardrobe_flow = stub
+	var stage: Control=app.overlay.get_child(0)
+	stage.set_process(false)
+	stage._process(1.0/60.0)
+	_check(app._home_free_for_card(),"Home is free for a card before the tap")
+	var point := _spirit_point(app.world,"a")
+	_push_touch(viewport,0,point,true)
+	_push_touch(viewport,0,point,false)
+	_check(stub.opened==["home"] and sound.greetings==0,"A real tap on your own pip opens the Wardrobe from Home and does not greet: %s" % [stub.opened])
+	_push_touch(viewport,0,_spirit_point(app.world,"b"),true)
+	_push_touch(viewport,0,_spirit_point(app.world,"b"),false)
+	_check(stub.opened.size()==1 and sound.greetings==1,"A real tap on your friend's pip greets and opens nothing")
+	app.wardrobe_flow = real
+	stub.free()
+	viewport.free()
+	await process_frame
+	await create_timer(0.15).timeout
+	for suffix: String in ["",".tmp",".backup"]:
+		if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
 
 func _test_spirit_tap() -> void:
 	var viewport := SubViewport.new()
