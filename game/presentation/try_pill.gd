@@ -50,15 +50,13 @@ func _init(font_size: int = 18, quiet: bool = false) -> void:
 	if not quiet: label.add_theme_font_override("font", _bold())
 	row.add_child(label)
 
-static var _bold_font: FontVariation
-
-## The pills' bold Nunito, made once.
+## The pills' bold Nunito. Made per pill: a static font would hold text
+## server resources past shutdown (see presentation/kit/session_release.gd).
 static func _bold() -> FontVariation:
-	if _bold_font == null:
-		_bold_font = FontVariation.new()
-		_bold_font.base_font = preload("res://assets/fonts/nunito.ttf")
-		_bold_font.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 800.0}
-	return _bold_font
+	var bold := FontVariation.new()
+	bold.base_font = preload("res://assets/fonts/nunito.ttf")
+	bold.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 800.0}
+	return bold
 
 ## The pill in play: "Try 2" and on, hidden on the first try. With `text`
 ## (a hard run, which has no second try), that line instead, without the
