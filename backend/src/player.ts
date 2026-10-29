@@ -195,7 +195,7 @@ export class Player extends DurableObject<Env> {
   async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
-    if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage) };
+    if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
     const grant = grantOn(this.env);
     if (grant) {
       await this.settleGrant(identity.player_id);

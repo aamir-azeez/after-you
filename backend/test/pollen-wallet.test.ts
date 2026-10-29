@@ -214,15 +214,16 @@ describe("the Pollen wallet", () => {
   it("lists the newest paid claims as history", async () => {
     serial += 100;
     await inPlayer(async storage => {
-      const unpaid = historyView(storage);
+      const unpaid = historyView(storage, MONDAY);
       expect(unpaid.entries).toEqual([]);
       expect(unpaid.first_clears).toContainEqual({ level_id: "first-steps", price: 1200 });
       expect(unpaid.first_clears).toContainEqual({ level_id: "turn-of-the-tide", price: 2000 });
       expect(unpaid.first_clears).toContainEqual({ level_id: "long-way-home", price: 2500 });
-      expect(unpaid.bank).toEqual({ refill: 12, cap: 36, tail: [{ pay: 10, turns: 36 }, { pay: 1, turns: 64 }] });
+      expect(unpaid.bank).toEqual({ left: 12, refill: 12, cap: 36, tail: [{ pay: 10, turns: 36 }, { pay: 1, turns: 64 }] });
       value(await credit(storage, facts(), MONDAY));
       value(await credit(storage, facts({ complete: true, role: "b", stage_id: "second-path" }), MONDAY + 1));
-      const view = historyView(storage), entries = view.entries;
+      const view = historyView(storage, MONDAY + 1), entries = view.entries;
+      expect(view.bank!.left).toBe(10);
       expect(entries.map(entry => [entry.kind, entry.amount])).toEqual([["clear", 1200], ["turn", 89], ["turn", 89]]);
       expect(entries.find(entry => entry.kind === "turn")).toMatchObject({ level_id: "first-steps", role: expect.any(String) });
       // The page's first clears: paid (with its boost) once paid, the price until then.
@@ -235,7 +236,7 @@ describe("the Pollen wallet", () => {
     await inPlayer(async storage => {
       const paid = value(await credit(storage, facts({ tries: 1 }), MONDAY));
       value(await credit(storage, facts({ tries: 1 }), MONDAY + 1));
-      const [repeat, first] = historyView(storage).entries;
+      const [repeat, first] = historyView(storage, MONDAY + 1).entries;
       expect(first).toMatchObject({ kind: "turn", bonuses: ["first_try"] });
       // A bloom shows only when there was one, as on the turn's own line.
       if (paid.turn!.bloom > 1) expect(first.bloom).toBe(paid.turn!.bloom);

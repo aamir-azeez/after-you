@@ -62,8 +62,11 @@ export type WalletView = { schema_version: 1; balance: number; earned: number; b
 export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string; bonuses?: TurnPrice["bonuses"]; bloom?: number; reason?: TurnLine["reason"] };
 /** A chapter's first clear: what it pays before any room boost, and what it paid once it has (`paid`, with its boost). */
 export type FirstClear = { level_id: string; price: number; paid?: number };
-/** The turn bank's rules as the page states them, so no rate lives in the app: the Monday refill, the cap and the after-bank tail. */
-export type BankRules = { refill: number; cap: number; tail: { pay: number; turns: number }[] };
+/**
+ * The turn bank as the page shows it: the full-rate turns left now (`left`, a due refill counted),
+ * and its rules, so no rate lives in the app: the Monday refill, the cap and the after-bank tail.
+ */
+export type BankRules = { left: number; refill: number; cap: number; tail: { pay: number; turns: number }[] };
 /** `first_clears`: every chapter's first clear, in the rates' order; `bank`: the bank's rules. Older apps ignore both. */
 export type HistoryView = { schema_version: 1; entries: HistoryEntry[]; first_clears?: FirstClear[]; bank?: BankRules };
 /**
@@ -302,9 +305,9 @@ export function walletView(storage: DurableObjectStorage, now: number, rates: Ra
  * GET /v1/pollen/history: the newest paid claims, newest first, every chapter's first clear and the bank's rules.
  * Reads the claim rows only (clear claims are never pruned, so a paid clear always shows).
  */
-export function historyView(storage: DurableObjectStorage, rates: Rates = RATES): HistoryView {
+export function historyView(storage: DurableObjectStorage, now: number, rates: Rates = RATES): HistoryView {
   const first_clears: FirstClear[] = Object.keys(rates.chapters).map(level_id => ({ level_id, price: rates.tiers[rates.chapters[level_id]].first_clear }));
-  const bank: BankRules = { refill: rates.bank.refill, cap: rates.bank.cap, tail: rates.tail.map(step => ({ pay: step.pay, turns: step.turns })) };
+  const bank: BankRules = { left: current(storage, now, rates).bank, refill: rates.bank.refill, cap: rates.bank.cap, tail: rates.tail.map(step => ({ pay: step.pay, turns: step.turns })) };
   if (!present(storage)) return { schema_version: 1, entries: [], first_clears, bank };
   const entries = storage.sql.exec<{ kind: string; amount: number; created_at: number; data: string }>("SELECT kind,amount,created_at,data FROM pollen_claims ORDER BY created_at DESC, claim_key LIMIT ?", HISTORY_LIMIT).toArray().map(row => {
     const stored = JSON.parse(row.data) as StoredClaim;
