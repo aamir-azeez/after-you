@@ -16,6 +16,8 @@ export type TurnPrice = {
   /** The tier base before bonuses; 0 after the bank. */
   base: number;
   bonuses: Bonus[];
+  /** Each bonus's percent, in the order of `bonuses`, for the results card's own row per bonus. */
+  bonus_percents: number[];
   /** The bonuses' percents added together. */
   bonus_percent: number;
   /** Base plus bonuses (bank) or the tail step (after the bank). */
@@ -59,7 +61,7 @@ export function price(input: PriceInput, rates: Rates = RATES): TurnPrice {
   const own = chapterTier(facts.level_id, rates);
   if (!input.bank || own === null) {
     const amount = own === null ? 0 : tailPay(input.tail_index, rates);
-    return { kind: "after_bank", base: 0, bonuses: [], bonus_percent: 0, amount, bloom: 1, bloom_extra: 0, boost_percent: 0, boost: 0, total: amount };
+    return { kind: "after_bank", base: 0, bonuses: [], bonus_percents: [], bonus_percent: 0, amount, bloom: 1, bloom_extra: 0, boost_percent: 0, boost: 0, total: amount };
   }
   // A guest in a paid room earns the guest tier, whatever the chapter's own tier.
   const tier = facts.premium && !facts.host ? rates.tiers[rates.guest_paid_tier] : own;
@@ -69,12 +71,13 @@ export function price(input: PriceInput, rates: Rates = RATES): TurnPrice {
   if (speed) bonuses.push(speed === "gold" ? "gold_pace" : "silver_pace");
   // Hard pays only in a paid chapter, to its host, while the host has Full Journey.
   if (facts.premium && facts.hard && facts.host && facts.subscriber) bonuses.push("hard");
-  const bonus_percent = bonuses.reduce((sum, bonus) => sum + rates.bonus_percent[bonus], 0);
+  const bonus_percents = bonuses.map(bonus => rates.bonus_percent[bonus]);
+  const bonus_percent = bonus_percents.reduce((sum, percent) => sum + percent, 0);
   const amount = halfUp(tier.base * (100 + bonus_percent), 100);
   const bloom: BloomMultiplier = bloomEligible(facts, rates) ? input.bloom : 1;
   const bloom_extra = amount * (bloom - 1);
   const boost = halfUp(amount * facts.boost_percent, 100);
-  return { kind: "bank", base: tier.base, bonuses, bonus_percent, amount, bloom, bloom_extra, boost_percent: facts.boost_percent, boost, total: amount + bloom_extra + boost };
+  return { kind: "bank", base: tier.base, bonuses, bonus_percents, bonus_percent, amount, bloom, bloom_extra, boost_percent: facts.boost_percent, boost, total: amount + bloom_extra + boost };
 }
 
 /** A chapter's first clear (and a first Hard clear, which pays it again), with the room's boost. Null for a chapter the rates do not know. */

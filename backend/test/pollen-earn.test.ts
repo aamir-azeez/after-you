@@ -65,10 +65,10 @@ describe("price", () => {
     expect(bank(paid()).total).toBe(207);
   });
   it("adds skill bonuses, so a tier 1 turn pays 89 to 125 before blooms", () => {
-    expect(bank(free({ tries: 1 }))).toMatchObject({ bonuses: ["first_try"], bonus_percent: 25, amount: 111, total: 111 });
+    expect(bank(free({ tries: 1 }))).toMatchObject({ bonuses: ["first_try"], bonus_percents: [25], bonus_percent: 25, amount: 111, total: 111 });
     expect(bank(free({ tries: 2 })).total).toBe(89);
-    expect(price({ facts: free({ tries: 1, ticks: 1200 }), bank: true, tail_index: 0, bloom: 1 }, paced)).toMatchObject({ bonuses: ["first_try", "gold_pace"], amount: 125 });
-    expect(price({ facts: free({ ticks: 1201 }), bank: true, tail_index: 0, bloom: 1 }, paced)).toMatchObject({ bonuses: ["silver_pace"], amount: 93 });
+    expect(price({ facts: free({ tries: 1, ticks: 1200 }), bank: true, tail_index: 0, bloom: 1 }, paced)).toMatchObject({ bonuses: ["first_try", "gold_pace"], bonus_percents: [25, 15], amount: 125 });
+    expect(price({ facts: free({ ticks: 1201 }), bank: true, tail_index: 0, bloom: 1 }, paced)).toMatchObject({ bonuses: ["silver_pace"], bonus_percents: [5], amount: 93 });
     expect(price({ facts: free({ ticks: 1501 }), bank: true, tail_index: 0, bloom: 1 }, paced).bonuses).toEqual([]);
   });
   it("judges pace against the estimate, and leaves out times under its floor", () => {
@@ -98,7 +98,7 @@ describe("price", () => {
   });
   it("pays the after-bank tail with no bonus, bloom or boost", () => {
     expect(price({ facts: free({ tries: 1, boost_percent: 20 }), bank: false, tail_index: 0, bloom: 3 })).toEqual({
-      kind: "after_bank", base: 0, bonuses: [], bonus_percent: 0, amount: 10, bloom: 1, bloom_extra: 0, boost_percent: 0, boost: 0, total: 10 });
+      kind: "after_bank", base: 0, bonuses: [], bonus_percents: [], bonus_percent: 0, amount: 10, bloom: 1, bloom_extra: 0, boost_percent: 0, boost: 0, total: 10 });
     expect([0, 35, 36, 99, 100, 1000].map(index => tailPay(index))).toEqual([10, 10, 1, 1, 0, 0]);
     expect(tailLength()).toBe(100);
     // At most 424 a week after the bank: 10 x 36 + 1 x 64.
