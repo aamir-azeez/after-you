@@ -56,6 +56,8 @@ func _run() -> void:
 	app.saves=Storage.new(path)
 	app.saves.data.settings.sound=false
 	app.saves.data.settings.haptics=true
+	# A save from a launch after the one-time settings change (LocalSave.settle_settings), so startup writes nothing.
+	app.saves.data[Storage.SETTINGS_MIGRATION_KEY]=Storage.SETTINGS_MIGRATION
 	app.saves.flush()
 	sound=SoundProbe.new()
 	app.soundscape=sound

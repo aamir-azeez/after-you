@@ -59,6 +59,8 @@ func boot() -> void:
 	app.saves = Save.new(save_path)
 	app.saves.data.settings.sound = false
 	app.saves.data.settings.assistance = true
+	# A save from a launch after the one-time settings change (LocalSave.settle_settings), so startup writes nothing.
+	app.saves.data[Save.SETTINGS_MIGRATION_KEY] = Save.SETTINGS_MIGRATION
 	if not FileAccess.file_exists(save_path): app.saves.flush()
 	viewport.add_child(app)
 	app.api.queue_free()

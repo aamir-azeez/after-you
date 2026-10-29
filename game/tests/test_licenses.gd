@@ -183,6 +183,8 @@ func _run() -> void:
 	var saves := Storage.new(path)
 	saves.data.settings.sound = false
 	saves.data.settings.haptics = false
+	# A save from a launch after the one-time settings change (LocalSave.settle_settings), so startup writes nothing.
+	saves.data[Storage.SETTINGS_MIGRATION_KEY] = Storage.SETTINGS_MIGRATION
 	_check(saves.flush(), "The isolated test save is prepared")
 	var disk_before := FileAccess.get_file_as_string(path)
 	var viewport := SubViewport.new()

@@ -27,6 +27,8 @@ func _run() -> void:
 	var storage := Storage.new(path)
 	storage.data.settings.sound=false
 	storage.data.settings.haptics=false
+	# A save from a launch after the one-time settings change (LocalSave.settle_settings), so startup writes nothing.
+	storage.data[Storage.SETTINGS_MIGRATION_KEY]=Storage.SETTINGS_MIGRATION
 	_check(storage.flush(),"Use an isolated muted save")
 	var saved := FileAccess.get_file_as_string(path)
 	var viewport := SubViewport.new()
