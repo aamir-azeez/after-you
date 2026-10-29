@@ -705,14 +705,14 @@ export class RoomV2 extends DurableObject<Env> {
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
       if (recording.simulation_version !== (observed.simulation_version ?? chapter(observed).simulation_version)) return fail(422, "unsupported_simulation_version");
-      // A duel's room never takes a turn with Forgiving catches, whatever the phone's setting (written once at create, so read here).
-      if (duelLink(this.ctx.storage) && recording.catch_assistance !== false) return fail(422, "duel_turn_assisted");
       withinTurn(track, recording.duration_ticks);
       const retryAccess = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
       const retryGuard = campaignHttpAccessGuard(this.ctx.storage, retryAccess); if (retryGuard) return retryGuard;
       const currentRetry = this.read();
       if (!currentRetry || !this.member(currentRetry, player)) return fail(404, "room_not_found");
       const retried = this.retry(currentRetry, player, key, hash); if (retried) return retried;
+      // A duel's room never takes a turn with Forgiving catches, whatever the phone's setting (written once at create, so read here; after the retry, so a stored receipt always answers).
+      if (duelLink(this.ctx.storage) && recording.catch_assistance !== false) return fail(422, "duel_turn_assisted");
       if (retryAccess && !campaignProductionEnabled()) return fail(503, "campaign_unavailable");
       if (observed.revision !== revision || observed.branch !== branch) return fail(409, "stale_revision");
       let checkpoint: CheckpointV2 | null = null;

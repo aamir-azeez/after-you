@@ -40,4 +40,4 @@ func _rule() -> void:
 	_check(not ForgivingCatches.on(true, relay, true), "A duel's room never uses them, whatever the setting")
 	_check(not ForgivingCatches.on(true, Registry.LIGHTHOUSE_V2, false), "A chapter with no catch to forgive never records them")
 	var preview := FileAccess.get_file_as_string("res://relay_preview.gd")
-	_check(preview.contains("ForgivingCatches.on(") and not preview.contains("Registry.catch_assistance(chapter_key)"), "A new turn takes its Forgiving catches from the one rule")
+	_check(preview.contains("ForgivingCatches.on(bool(settings.get(\"assistance\", true)), chapter_key, _duel_room())") and preview.contains("online_session.coordinator.duel_room()") and not preview.contains("Registry.catch_assistance(chapter_key)"), "A new turn takes its Forgiving catches from the one rule")
