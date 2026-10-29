@@ -5,6 +5,7 @@ extends SceneTree
 ## unfinished run, an assisted run and an unknown chapter fail.
 const Check = preload("res://tests/leaderboard_replay_check.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const BlobCodec = preload("res://services/blob_codec.gd")
 
 var checks := 0
 var failures := 0
@@ -48,6 +49,14 @@ func _run() -> void:
 	_check(not assisted.valid and assisted.reason == "assisted_run", "a run with catch assistance on never ranks: %s" % assisted)
 	var duel_entry := _entry(Registry.RELAY, relay_final, 588)
 	duel_entry["duel"] = true
+	# A duel run's checkpoint arrives as a blob body, as the server stores and sends it.
+	var bytes := JSON.stringify(relay_final).to_utf8_buffer()
+	var body := PackedByteArray([BlobCodec.ENCODING_DEFLATE]) + bytes.compress(FileAccess.COMPRESSION_DEFLATE)
+	duel_entry.erase("checkpoint")
+	duel_entry.merge({"body": Marshalls.raw_to_base64(body), "byte_length": bytes.size(), "proof_hash": BlobCodec.digest(bytes)}, true)
+	var wrong_hash := duel_entry.duplicate()
+	wrong_hash.proof_hash = "0".repeat(64)
+	_check(Check.check(_as_received(wrong_hash)).reason == "replay_error", "a duel body that does not match its hash goes to a person, never fails the run")
 	var duel := Check.check(_as_received(duel_entry))
 	_check(duel.valid and duel.measured_ticks == 588, "a duel's run may have assisted turns and is still replayed and measured: %s" % duel)
 	_check(Check.verdict(_as_received(duel_entry)).keys().size() == 6, "a duel's verdict has the same six keys")

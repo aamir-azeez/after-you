@@ -22,6 +22,7 @@ import { noteEveryHard } from "./earned";
  *     clear:<level_id>                  a chapter's first clear, together or solo (kept)
  *     hardclear:<level_id>              a chapter's first Hard clear together (kept); once every chapter
  *                                       Every Hard asks for has one, the player earns it (earned.ts)
+ *     duelwin:<duel_id>                 a friend duel's win bonus, 0 when past its weekly limits (duel-pay.ts; pruned with turns)
  *     grant:<anchor>:<n>, grant:lifetime, grantrefund:<anchor>:<n>
  *                                       the monthly grant and its refunds (grant-settle.ts; kept)
  *   A turn that pays nothing writes no row: a turn played before the guest joined (never paid, by its

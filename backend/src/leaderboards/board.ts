@@ -147,7 +147,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * `rewardLimit` up to that many players whose earned items to deliver (rewards.ts deliveries).
    */
   pendingWork(maxChars = MAX_REPLAY_CHARS, rewardLimit = 0): PendingWork {
-    const standing: StandingWork[] = [], replay: ReplayWork[] = [];
+    const standing: StandingWork[] = [], replay: (ReplayWork | DuelReplayWork)[] = [];
     let chars = 0;
     for (const entry of this.entries().filter(item => item.state === "checking").sort(compareRuns)) {
       if (entry.data.eligible === null) { standing.push({ entry_id: entry.entry_id, members: [entry.data.members[0].id, entry.data.members[1].id], finished_ms: entry.finished_ms }); continue; }

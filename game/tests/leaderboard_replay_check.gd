@@ -12,20 +12,27 @@ extends RefCounted
 ##   ChapterRegistry.simulation_script(key).verify_checkpoint, which replays
 ##   each recording and derives each checkpoint exactly;
 ## - refuses any turn with catch assistance on, except in a duel's run
-##   (`duel: true`, backend duels/store.ts), which may have them;
+##   (`duel: true`, backend duels/store.ts), which may have them; a duel's
+##   checkpoint arrives in the shared blob format (`body` in base64 and its
+##   `byte_length`, services/blob_codec.gd) and must match `proof_hash`;
 ## - measures the run as the sum of every replayed turn's ticks and compares it
 ##   with the claimed time.
 ## It proves the recordings are valid and the time is real, not that no retry
 ## happened on the phone.
 const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
+const BlobCodec = preload("res://services/blob_codec.gd")
+## A duel run's checkpoint is at most this long (backend duels/rules.ts MAX_DUEL_PROOF_CHARS).
+const MAX_CHECKPOINT_BYTES := 1_900_000
 
 ## {valid, measured_ticks, reason}; reason is "" when valid.
 static func check(entry: Dictionary) -> Dictionary:
 	var key := Registry.resolve(entry.get("chapter"))
 	if key.is_empty(): return _result(false, 0, "unknown_chapter")
 	var definition := Registry.definition(key)
-	var checkpoint: Variant = entry.get("checkpoint")
+	# A body that does not decode to the bytes its hash names is the server's fault, not the run's: a person looks.
+	if entry.has("body") and _checkpoint(entry) == null: return _result(false, 0, "replay_error")
+	var checkpoint: Variant = _checkpoint(entry)
 	if not checkpoint is Dictionary or definition.is_empty(): return _result(false, 0, "malformed_checkpoint")
 	var stages: int = definition.stages.size()
 	if not Typed.equal(checkpoint.get("stage_index"), stages): return _result(false, 0, "unfinished_run")
@@ -48,6 +55,13 @@ static func check(entry: Dictionary) -> Dictionary:
 	if not Typed.equal(current.get("stage_index"), 0): return _result(false, measured, "broken_chain")
 	if not Typed.whole_number(entry.get("ticks")) or int(entry.ticks) != measured: return _result(false, measured, "time_mismatch")
 	return _result(true, measured, "")
+
+## The run's final checkpoint: inline for a board run, or decoded from a duel run's blob body.
+static func _checkpoint(entry: Dictionary) -> Variant:
+	if not entry.has("body"): return entry.get("checkpoint")
+	if not entry.body is String or not Typed.whole_number(entry.get("byte_length")): return null
+	var bytes := BlobCodec.verified(Marshalls.base64_to_raw(entry.body), int(entry.byte_length), str(entry.get("proof_hash", "")), MAX_CHECKPOINT_BYTES)
+	return null if bytes.is_empty() else JSON.parse_string(bytes.get_string_from_utf8())
 
 ## The verdict the backend's verdicts route takes for one entry.
 static func verdict(entry: Dictionary) -> Dictionary:
