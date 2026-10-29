@@ -131,14 +131,15 @@ describe("the first gift, when the owner sets it", () => {
       expect(await settle(storage, [p("g1", "pouch", true, 1), p("g2", "pinch", false, 2), p("g3", "pinch", false, 3)], GIFT)).toMatchObject({ reply: { balance: 10000, credited: [{ first_gift: 0 }] } });
     });
   });
-  it("pays none at 0 and leaves nothing that would close a gift set later", async () => {
+  it("pays none at 0, and a gift set later never goes to a player who already bought", async () => {
     await runInDurableObject(env.PLAYERS.getByName("gift-zero"), async (_, state) => {
       const storage = state.storage;
       expect(bundlesView(storage)).toEqual({ first_gift: false, first_gift_percent: 0, spent_usd_cents: 0 });
       expect(await settle(storage, [p("z1", "pinch")], BUNDLES)).toMatchObject({ reply: { balance: 5000, credited: [{ first_gift: 0 }] } });
       expect(ledgerLines(storage, "bundle:").map(line => line.detail.first_gift)).toEqual([0]);
-      expect(bundlesView(storage, GIFT).first_gift).toBe(true);
-      expect(walletView(storage, Date.now()).balance).toBe(5000);
+      expect(bundlesView(storage, GIFT).first_gift).toBe(false);
+      expect(await settle(storage, [p("z1", "pinch"), p("z2", "pouch", false, 2)], GIFT)).toMatchObject({ reply: { credited: [{ bundle: "pouch", first_gift: 0 }] } });
+      expect(walletView(storage, Date.now()).balance).toBe(26000);
     });
   });
 });

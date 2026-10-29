@@ -18,8 +18,9 @@ import type { BundlePurchase, BundleRead } from "./bundle-provider";
  *    `bundle:<purchase id>`, and each refunded purchase that was paid takes back exactly what it paid under
  *    `bundlerefund:<purchase id>`, which may take the balance below zero (spending stops until earning repays it).
  *
- * The first bundle a player ever buys also pays the first gift (bundles.ts firstGift), once. Whether it is
- * still open is read from the ledger: any `bundle:` row that carried a gift closes it, refunded or not.
+ * The first bundle a player ever buys also pays the first gift (bundles.ts firstGift), once, while the gift
+ * is set above 0. Whether it is still open is read from the ledger: any `bundle:` row closes it, refunded or
+ * not, with or without a gift, so a gift the owner turns on later never goes to a player who already bought.
  *
  * Storage: the ledger rows (pollen_claims, never pruned) and pollen_bundle_check (storage-schema.ts
  * POLLEN_BUNDLE_TABLES), one row with the last check's time. Nothing is added to the wallet row.
@@ -93,7 +94,8 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (id: str
     }
     if (prior || !held(purchase.id)) continue;
     const pollen = bundles.bundles[purchase.bundle].pollen * purchase.quantity, gift = open ? firstGift(purchase.bundle, bundles) : 0;
-    open = open && gift === 0;
+    // Only the first bundle a player ever buys can carry the gift, whatever the percent was then.
+    open = false;
     entries.push({ key: bundleKey(purchase.id), kind: "bundle", amount: pollen + gift,
       detail: { bundle: purchase.bundle, purchase_id: purchase.id, order: purchase.order, usd_cents: purchase.usd_cents, first_gift: gift, quantity: purchase.quantity, purchased_at: purchase.purchased_at } });
     credited.push({ bundle: purchase.bundle, pollen, first_gift: gift, order: purchase.order, purchased_at: purchase.purchased_at, usd_cents: purchase.usd_cents });
@@ -120,7 +122,7 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
     // Planned again from the ledger as stored now: what an overlapping call paid is never paid twice.
     const paid = new Map(bundleLines(storage).map(line => [line.key, line]));
     const refunded = new Set(refundLines(storage).map(line => line.key));
-    const giftOpen = ![...paid.values()].some(line => Number(line.detail.first_gift ?? 0) > 0);
+    const giftOpen = paid.size === 0;
     const plan = planBundles(read.purchases, id => answers[bundleKey(id)] === true, paid, refunded, giftOpen, bundles);
     applyLedger(storage, plan.entries, now, rates);
     noteCheck(storage, now);
@@ -136,7 +138,7 @@ export function bundlesView(storage: DurableObjectStorage, bundles: Bundles = BU
   try {
     const paid = bundleLines(storage), refunds = refundLines(storage);
     const spent = paid.reduce((sum, line) => sum + Number(line.detail.usd_cents ?? 0), 0) - refunds.reduce((sum, line) => sum + Number(line.detail.usd_cents ?? 0), 0);
-    return { first_gift: percent > 0 && !paid.some(line => Number(line.detail.first_gift ?? 0) > 0), first_gift_percent: percent, spent_usd_cents: Math.max(0, spent) };
+    return { first_gift: percent > 0 && paid.length === 0, first_gift_percent: percent, spent_usd_cents: Math.max(0, spent) };
   } catch { return { first_gift: false, first_gift_percent: percent, spent_usd_cents: 0 }; }
 }
 
