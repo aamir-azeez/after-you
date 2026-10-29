@@ -1,5 +1,6 @@
-import { canonicalJson, fail, ok, type Outcome } from "../protocol";
-import { blobBase64, bytesDigest, encodeBlob } from "../blob-codec";
+import { fail, ok, type Outcome } from "../protocol";
+import { encodeProof, sentProof, type EncodedProof } from "../leaderboards/proofs";
+import type { ReplayWork } from "../leaderboards/board";
 import { REVIEW_REASONS } from "../leaderboards/rules";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
@@ -31,7 +32,7 @@ const TABLES = [
  * allows assisted turns), and the final checkpoint as a tagged blob body in base64 with its canonical
  * length; `proof_hash` is the SHA-256 of those canonical bytes, which the job checks before replaying.
  */
-export type DuelReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; byte_length: number; body: string; duel: true };
+export type DuelReplayWork = ReplayWork & { duel: true };
 export type DuelVerdict = { entry_id: string; proof_hash: string; valid: boolean; measured_ticks: number; reason: string };
 export type DuelAction =
   | { kind: "accept"; player: string; intact: boolean; eligible: boolean }
@@ -92,9 +93,8 @@ export class DuelStore {
   async progress(duelId: string, note: ProgressNote, now: number, proof?: FinishProof): Promise<Outcome<Duel>> {
     if (!this.present()) return fail(404, "duel_not_found");
     // Encoded before the transaction: compression is async.
-    const canonical = proof && note.complete ? new TextEncoder().encode(canonicalJson(proof.checkpoint)) : null;
-    const fits = canonical !== null && canonical.byteLength <= MAX_DUEL_PROOF_CHARS;
-    const kept = fits ? { hash: await bytesDigest(canonical!), length: canonical!.byteLength, body: await encodeBlob(canonical!) } : null;
+    const encoded = proof && note.complete ? await encodeProof(proof.checkpoint) : null;
+    const kept = encoded && encoded.byte_length <= MAX_DUEL_PROOF_CHARS ? encoded : null;
     return this.storage.transactionSync(() => {
       const duel = this.duel(duelId);
       if (!duel) return fail(404, "duel_not_found");
@@ -124,7 +124,7 @@ export class DuelStore {
       chars += row.byte_length;
       const chapter = JSON.parse(row.chapter) as ChapterKey & { simulation_version: number };
       const { simulation_version, ...key } = chapter;
-      work.push({ entry_id: row.entry_id, chapter: key, simulation_version, ticks: row.ticks, proof_hash: row.proof_hash, byte_length: row.byte_length, body: blobBase64(new Uint8Array(row.body)), duel: true });
+      work.push({ entry_id: row.entry_id, chapter: key, simulation_version, ticks: row.ticks, ...sentProof({ proof_hash: row.proof_hash, byte_length: row.byte_length, body: new Uint8Array(row.body) }), duel: true });
     }
     return work;
   }
@@ -164,7 +164,7 @@ export class DuelStore {
     });
   }
 
-  private keepProof(duel: Duel, entryId: string, kept: { hash: string; length: number; body: Uint8Array }, ticks: number, simulationVersion: number, now: number): void {
+  private keepProof(duel: Duel, entryId: string, kept: EncodedProof, ticks: number, simulationVersion: number, now: number): void {
     const held = this.storage.sql.exec<{ entry_id: string; duel_id: string }>("SELECT entry_id,duel_id FROM duel_proofs ORDER BY at").toArray();
     if (held.length >= MAX_DUEL_PROOFS) {
       // Full: the oldest waiting run can no longer be checked, so its duel ends unchecked.
@@ -173,8 +173,8 @@ export class DuelStore {
       const other = oldest.duel_id === duel.duel_id ? duel : this.duel(oldest.duel_id);
       if (other && verdict(other, oldest.entry_id, "error", now) && other !== duel) this.save(other);
     }
-    this.storage.sql.exec("INSERT OR REPLACE INTO duel_proofs VALUES (?,?,?,?,?,?,?,?)", entryId, duel.duel_id, kept.hash, ticks,
-      JSON.stringify({ ...duel.chapter, simulation_version: simulationVersion }), kept.length, kept.body, now);
+    this.storage.sql.exec("INSERT OR REPLACE INTO duel_proofs VALUES (?,?,?,?,?,?,?,?)", entryId, duel.duel_id, kept.proof_hash, ticks,
+      JSON.stringify({ ...duel.chapter, simulation_version: simulationVersion }), kept.byte_length, kept.body, now);
   }
 
   /** Keeps the duel table within MAX_BOARD_DUELS: settled duels go first, oldest first. False when every row is still open. */

@@ -65,6 +65,12 @@ func _run() -> void:
 	unknown.chapter.definition_hash = "0".repeat(64)
 	_check(Check.check(_as_received(unknown)).reason == "unknown_chapter", "a chapter this build does not bundle fails")
 
+	var board_bytes := JSON.stringify(final).to_utf8_buffer()
+	var board_entry := _entry(lighthouse, final, ticks)
+	board_entry.erase("checkpoint")
+	board_entry.merge({"body": Marshalls.raw_to_base64(PackedByteArray([BlobCodec.ENCODING_DEFLATE]) + board_bytes.compress(FileAccess.COMPRESSION_DEFLATE)), "byte_length": board_bytes.size(), "proof_hash": BlobCodec.digest(board_bytes)}, true)
+	var from_blob := Check.check(_as_received(board_entry))
+	_check(from_blob.valid and from_blob.measured_ticks == ticks, "a board run sent as a blob body is decoded, replayed and measured: %s" % from_blob)
 	var verdict := Check.verdict(_as_received(_entry(lighthouse, final, ticks)))
 	_check(verdict.keys().size() == 6 and verdict.valid and verdict.board == "sleeping-lighthouse@2" and verdict.proof_hash == "f".repeat(64), "a verdict carries exactly what the verdicts route takes: %s" % verdict)
 

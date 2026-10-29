@@ -1,6 +1,4 @@
 import { DurableObject } from "cloudflare:workers";
-import { canonicalJson, digest } from "../protocol";
-import { encodeBlob } from "../blob-codec";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import type { ChapterKey } from "../v2/chapter-types";
 import { BoardRewardLedger, REWARD_LEDGER_SCHEMA, openRewardSync, type RewardDelivery, type RewardGrant, type RewardSink } from "./rewards";
@@ -9,6 +7,7 @@ import type { LeaderboardRun } from "./run";
 import { emptyView, type BoardRow, type BoardView } from "./view";
 import { fail, type Outcome } from "../protocol";
 import { DuelStore, type DuelAction, type DuelReplayWork, type FinishProof } from "../duels/store";
+import { BoardProofs, LEGACY_PROOF_TABLE, PROOF_TABLE, encodeProof, sentProof } from "./proofs";
 import type { Duel, ProgressNote, SideRoom } from "../duels/model";
 
 /**
@@ -19,7 +18,7 @@ import type { Duel, ProgressNote, SideRoom } from "../duels/model";
  * - "review": passed the replay and waits for a person (`holds` says why);
  * - "ranked": counts. Only ranked runs push anyone down or earn anything.
  * The room's final checkpoint is kept raw beside a run waiting for its replay
- * (lb_proofs), where the replay job reads it. Once the replay passes it moves
+ * in the shared blob format (proofs.ts, lb_proof_blobs), where the replay job reads it. Once the replay passes it moves
  * to lb_replays in the shared blob format (blob-codec.ts) and stays only while
  * the run waits for a person or ranks in the top 10; every other way out
  * deletes it (rank, drop, forget). Settled runs leave a short tombstone
@@ -46,7 +45,7 @@ type EntryRow = { entry_id: string; pair_key: string; state: "checking" | "revie
 type Entry = Omit<EntryRow, "data"> & { data: EntryData };
 export type StandingWork = { entry_id: string; members: (string | null)[]; finished_ms: number };
 /** `checkpoint` is the stored JSON text, passed on unparsed so the Worker spends no CPU on it. */
-export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; checkpoint: string };
+export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; byte_length: number; body: string };
 /** `rewards`: players whose earned items this board changed, only when asked for (rewards.ts). */
 export type PendingWork = { standing: StandingWork[]; replay: (ReplayWork | DuelReplayWork)[]; rewards?: RewardDelivery[] };
 export type StandingResult = { entry_id: string; eligible: boolean; reason: string; members: MemberChoice[] };
@@ -65,7 +64,8 @@ const MAX_OUTCOMES = 512;
 
 const SCHEMA = [
   "CREATE TABLE IF NOT EXISTS lb_entries (entry_id TEXT PRIMARY KEY, pair_key TEXT NOT NULL, state TEXT NOT NULL, ticks INTEGER NOT NULL, finished_ms INTEGER NOT NULL, data TEXT NOT NULL)",
-  "CREATE TABLE IF NOT EXISTS lb_proofs (entry_id TEXT PRIMARY KEY, proof_hash TEXT NOT NULL, checkpoint TEXT NOT NULL)",
+  LEGACY_PROOF_TABLE,
+  PROOF_TABLE,
   "CREATE TABLE IF NOT EXISTS lb_outcomes (entry_id TEXT PRIMARY KEY, outcome TEXT NOT NULL, at INTEGER NOT NULL)",
   "CREATE TABLE IF NOT EXISTS lb_replays (entry_id TEXT PRIMARY KEY, proof_hash TEXT NOT NULL, byte_length INTEGER NOT NULL, body BLOB NOT NULL)",
   REWARD_LEDGER_SCHEMA
@@ -74,10 +74,12 @@ const SCHEMA = [
 export class LeaderboardBoard extends DurableObject<Env> {
   private readonly rewards: RewardSink & BoardRewardLedger;
   private readonly duels: DuelStore;
+  private readonly proofs: BoardProofs;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.rewards = new BoardRewardLedger(ctx.storage);
     this.duels = new DuelStore(ctx.storage);
+    this.proofs = new BoardProofs(ctx.storage);
     ctx.blockConcurrencyWhile(async () => openLazyStorage(this, ctx.storage, "lb_entries", () => { for (const sql of SCHEMA) ctx.storage.sql.exec(sql); openRewardSync(ctx.storage); }));
   }
 
@@ -87,11 +89,11 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * poster only after this board answered "crowded" (submit.ts).
    */
   async submit(board: string, run: LeaderboardRun, checked?: StandingResult): Promise<{ status: SubmitStatus; view: BoardView }> {
-    const serialized = canonicalJson(run.checkpoint);
-    const proofHash = await digest(serialized);
+    // Encoded before the transaction: compression is async.
+    const proof = await encodeProof(run.checkpoint);
     const status = this.ctx.storage.transactionSync((): SubmitStatus => {
       if (this.outcome(run.entry_id) || this.entry(run.entry_id)) return "known";
-      if (serialized.length > MAX_PROOF_CHARS) return "not_placed";
+      if (proof.byte_length > MAX_PROOF_CHARS) return "not_placed";
       const timed = { ticks: run.ticks, finished_ms: run.finished_ms, entry_id: run.entry_id };
       const all = this.entries();
       const ranked = all.filter(entry => entry.state === "ranked").sort(compareRuns);
@@ -118,7 +120,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
       const data: EntryData = { finished_at: run.finished_at, chapter: run.chapter, simulation_version: run.simulation_version, members,
         eligible: checked ? true : null, holds: [], reports: [], gold: false, submitted_at: Date.now() };
       this.ctx.storage.sql.exec("INSERT INTO lb_entries VALUES (?,?,?,?,?,?)", run.entry_id, run.pair_key, "checking", run.ticks, run.finished_ms, JSON.stringify(data));
-      this.ctx.storage.sql.exec("INSERT INTO lb_proofs VALUES (?,?,?)", run.entry_id, proofHash, serialized);
+      this.proofs.put(run.entry_id, proof);
       return "checking";
     });
     return { status, view: this.view(board) };
@@ -146,15 +148,18 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * What the replay job still has to do here: account checks first, then replays of eligible runs, and with
    * `rewardLimit` up to that many players whose earned items to deliver (rewards.ts deliveries).
    */
-  pendingWork(maxChars = MAX_REPLAY_CHARS, rewardLimit = 0): PendingWork {
+  async pendingWork(maxChars = MAX_REPLAY_CHARS, rewardLimit = 0): Promise<PendingWork> {
+    // Raw runs from before the blob format are encoded once, so only the blob form is ever sent.
+    await this.proofs.convertLegacy();
     const standing: StandingWork[] = [], replay: (ReplayWork | DuelReplayWork)[] = [];
     let chars = 0;
     for (const entry of this.entries().filter(item => item.state === "checking").sort(compareRuns)) {
       if (entry.data.eligible === null) { standing.push({ entry_id: entry.entry_id, members: [entry.data.members[0].id, entry.data.members[1].id], finished_ms: entry.finished_ms }); continue; }
-      const proof = this.ctx.storage.sql.exec<{ proof_hash: string; checkpoint: string }>("SELECT proof_hash,checkpoint FROM lb_proofs WHERE entry_id=?", entry.entry_id).toArray()[0];
-      if (!proof || chars + proof.checkpoint.length > maxChars) continue;
-      chars += proof.checkpoint.length;
-      replay.push({ entry_id: entry.entry_id, chapter: entry.data.chapter, simulation_version: entry.data.simulation_version, ticks: entry.ticks, proof_hash: proof.proof_hash, checkpoint: proof.checkpoint });
+      const size = this.proofs.size(entry.entry_id);
+      if (size === null || chars + size > maxChars) continue;
+      const proof = this.proofs.get(entry.entry_id)!;
+      chars += size;
+      replay.push({ entry_id: entry.entry_id, chapter: entry.data.chapter, simulation_version: entry.data.simulation_version, ticks: entry.ticks, ...sentProof(proof) });
     }
     // A duel run the board hands out too goes once; its verdict reaches both.
     replay.push(...this.duels.pending(Math.max(0, maxChars - chars), new Set(replay.map(item => item.entry_id))));
@@ -172,7 +177,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
   }
 
   /** Account check results. An ineligible run is dropped; an eligible one keeps each member's name choice. Returns the work left and the board now. */
-  standings(board: string, results: StandingResult[], maxChars = MAX_REPLAY_CHARS): { work: PendingWork; view: BoardView } {
+  async standings(board: string, results: StandingResult[], maxChars = MAX_REPLAY_CHARS): Promise<{ work: PendingWork; view: BoardView }> {
     this.ctx.storage.transactionSync(() => {
       for (const result of results) {
         const entry = this.entry(result.entry_id);
@@ -183,7 +188,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
         this.save(entry);
       }
     });
-    return { work: this.pendingWork(maxChars), view: this.view(board) };
+    return { work: await this.pendingWork(maxChars), view: this.view(board) };
   }
 
   /**
@@ -193,19 +198,19 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * (rules.ts holdsFor, against `developerBest`, null when unknown), else ranks
    * at once. Returns the runs that ranked.
    *
-   * The checkpoint of a run that may rank or wait for a person is encoded
-   * first (compression is async, so it cannot run inside the transaction) and
-   * kept as its replay only once the run ranks or waits, and only when the
-   * proof it came from is still the one the verdict checked.
+   * The stored proof of a run that may rank or wait for a person is already
+   * in the blob format, so the same body becomes its replay, kept only once
+   * the run ranks or waits, and only when it is still the proof the verdict
+   * checked.
    */
   async verdicts(board: string, verdicts: Verdict[], developerBest: number | null, rewardLimit = 0): Promise<{ ranked: RankedNote[]; view: BoardView; rewards?: RewardDelivery[]; duels?: string[] }> {
     const ranked: RankedNote[] = [], replays = await this.encodeKeepable(verdicts);
     this.ctx.storage.transactionSync(() => {
       for (const verdict of verdicts) {
         const entry = this.entry(verdict.entry_id);
-        const proof = this.ctx.storage.sql.exec<{ proof_hash: string }>("SELECT proof_hash FROM lb_proofs WHERE entry_id=?", verdict.entry_id).toArray()[0];
-        if (!entry || entry.state !== "checking" || entry.data.eligible !== true || !proof || proof.proof_hash !== verdict.proof_hash) continue;
-        const encoded = replays.get(entry.entry_id), replay = encoded?.proof_hash === proof.proof_hash ? encoded : undefined;
+        const proofHash = this.proofs.hash(verdict.entry_id);
+        if (!entry || entry.state !== "checking" || entry.data.eligible !== true || proofHash === null || proofHash !== verdict.proof_hash) continue;
+        const encoded = replays.get(entry.entry_id), replay = encoded?.proof_hash === proofHash ? encoded : undefined;
         // The job could not judge it (its build lacks the chapter, or the check broke): a person looks.
         if (!verdict.valid && REVIEW_REASONS.includes(verdict.reason)) { this.toReview(entry, [verdict.reason], replay); continue; }
         if (!verdict.valid || verdict.measured_ticks !== entry.ticks) { this.drop(entry.entry_id, "failed"); continue; }
@@ -321,7 +326,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
 
   /** Ranks a run that passed every check, inside the caller's transaction, keeping `replay` when given. Null when it no longer reaches the top 10. */
   private rank(board: string, entry: Entry, replay?: KeptReplay): RankedNote | null {
-    this.ctx.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", entry.entry_id);
+    this.proofs.remove(entry.entry_id);
     const older = this.ranked().filter(item => item.pair_key === entry.pair_key);
     const place = [...this.ranked().filter(item => item.pair_key !== entry.pair_key), entry].sort(compareRuns).findIndex(item => item.entry_id === entry.entry_id);
     // Out of the top 10 now: it goes, and the pair keeps any run it already had.
@@ -353,9 +358,9 @@ export class LeaderboardBoard extends DurableObject<Env> {
     return true;
   }
 
-  /** Sends a run to a person, its raw proof dropped and `replay`, when given, kept until their answer. A full review list gives up its slowest run for a faster one. */
+  /** Sends a run to a person, its waiting proof dropped and `replay`, when given, kept until their answer. A full review list gives up its slowest run for a faster one. */
   private toReview(entry: Entry, holds: string[], replay?: KeptReplay): void {
-    this.ctx.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", entry.entry_id);
+    this.proofs.remove(entry.entry_id);
     const pool = this.entries().filter(item => item.state === "review").sort(compareRuns);
     if (pool.length >= MAX_REVIEW) {
       if (compareRuns(entry, pool[pool.length - 1]) > 0) { this.drop(entry.entry_id, "review_full"); return; }
@@ -371,9 +376,12 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * The tagged replay, at most MAX_REPLAY_BYTES, of each verdict that may keep
    * one: a waiting run whose stored proof it checked, that passed with its
    * claimed time or goes to a person, and that ten ranked runs do not all beat.
-   * Read before the transaction, which checks all of it again.
+   * The stored proof is the replay's body as it is. Read before the
+   * transaction, which checks all of it again.
    */
   private async encodeKeepable(verdicts: Verdict[]): Promise<Map<string, KeptReplay>> {
+    // A verdict on a raw run from before the blob format (handed out before it was converted) finds it encoded.
+    await this.proofs.convertLegacy(verdicts.map(verdict => verdict.entry_id));
     const result = new Map<string, KeptReplay>(), ranked = this.ranked();
     for (const verdict of verdicts) {
       const entry = this.entry(verdict.entry_id);
@@ -381,10 +389,9 @@ export class LeaderboardBoard extends DurableObject<Env> {
       if (verdict.valid ? verdict.measured_ticks !== entry.ticks : !REVIEW_REASONS.includes(verdict.reason)) continue;
       const others = ranked.filter(item => item.pair_key !== entry.pair_key);
       if (others.length >= TOP_PLACES && compareRuns(entry, others[TOP_PLACES - 1]) > 0) continue;
-      const proof = this.ctx.storage.sql.exec<{ proof_hash: string; checkpoint: string }>("SELECT proof_hash,checkpoint FROM lb_proofs WHERE entry_id=?", verdict.entry_id).toArray()[0];
+      const proof = this.proofs.get(verdict.entry_id);
       if (!proof || proof.proof_hash !== verdict.proof_hash) continue;
-      const bytes = new TextEncoder().encode(proof.checkpoint), body = await encodeBlob(bytes);
-      if (body.byteLength <= MAX_REPLAY_BYTES) result.set(verdict.entry_id, { proof_hash: proof.proof_hash, byte_length: bytes.byteLength, body });
+      if (proof.body.byteLength <= MAX_REPLAY_BYTES) result.set(verdict.entry_id, proof);
     }
     return result;
   }
@@ -413,7 +420,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
   /** Removes a run, its proof and its replay, and leaves its tombstone. */
   private drop(id: string, outcome: string): void {
     this.ctx.storage.sql.exec("DELETE FROM lb_entries WHERE entry_id=?", id);
-    this.ctx.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", id);
+    this.proofs.remove(id);
     this.ctx.storage.sql.exec("DELETE FROM lb_replays WHERE entry_id=?", id);
     this.ctx.storage.sql.exec("INSERT OR REPLACE INTO lb_outcomes VALUES (?,?,?)", id, outcome, Date.now());
     this.ctx.storage.sql.exec("DELETE FROM lb_outcomes WHERE entry_id IN (SELECT entry_id FROM lb_outcomes ORDER BY at DESC, entry_id LIMIT -1 OFFSET ?)", MAX_OUTCOMES);
@@ -440,7 +447,7 @@ function noteOf(entry: Entry): RankedNote {
 
 // A board nobody posted to answers reads as an empty board and stores nothing.
 answerWhileBlank(LeaderboardBoard, {
-  view: (board: string) => emptyView(board), replay: (board: string) => ({ replay: null, view: emptyView(board) }), pendingWork: () => ({ standing: [], replay: [] }), standings: (board: string) => ({ work: { standing: [], replay: [] }, view: emptyView(board) }),
+  view: (board: string) => emptyView(board), replay: (board: string) => ({ replay: null, view: emptyView(board) }), pendingWork: async () => ({ standing: [], replay: [] }), standings: async (board: string) => ({ work: { standing: [], replay: [] }, view: emptyView(board) }),
   verdicts: async (board: string) => ({ ranked: [], view: emptyView(board) }), review: (board: string) => ({ done: false, ranked: null, view: emptyView(board) }),
   strike: (board: string) => ({ done: false, promoted: [], view: emptyView(board) }), report: () => null, reviewList: () => [], rewardsDelivered: () => undefined,
   setMember: (board: string) => ({ changed: 0, view: emptyView(board) }), forget: (board: string) => ({ changed: 0, view: emptyView(board) }), rewardsFor: () => [],

@@ -425,11 +425,15 @@ describe("the replay job and the person's review", () => {
     expect((await played.last()).status).toBe(200);
     const meter = countingEnv(configured(ON));
     const pendingCall = await call("/operator/leaderboards/pending", "POST", undefined, { schema_version: 1 }, ON, { Authorization: "Bearer " + await deriveJobToken(OPERATOR) }, meter.env);
-    const { entries } = await pendingCall.json<{ entries: { board: string; entry_id: string; ticks: number; proof_hash: string; checkpoint: unknown }[] }>();
+    const { entries } = await pendingCall.json<{ entries: { board: string; entry_id: string; ticks: number; proof_hash: string; byte_length: number; body: string }[] }>();
     console.log(`hourly pull with one new run: ${meter.calls.length} DO requests (${boardKeys().length} boards)`);
     expect(entries).toHaveLength(1);
     expect(entries[0]).toMatchObject({ board: RELAY_BOARD, ticks: RELAY_TICKS });
-    expect(entries[0].checkpoint).toEqual(played.final);
+    // The run goes out in the shared blob format: its body decodes to the canonical checkpoint its hash names.
+    expect(entries[0]).not.toHaveProperty("checkpoint");
+    const sent = await decodeBlob(Uint8Array.from(atob(entries[0].body), char => char.charCodeAt(0)), entries[0].byte_length);
+    expect(JSON.parse(new TextDecoder().decode(sent!))).toEqual(played.final);
+    expect(await bytesDigest(sent!)).toBe(entries[0].proof_hash);
     // No developers' best yet: the passed run waits for a person.
     expect((await pass(entries)).ranked).toEqual([]);
     expect((await operator("review", { schema_version: 1, board: RELAY_BOARD, entry_id: entries[0].entry_id, action: "approve" }, await deriveJobToken(OPERATOR))).status).toBe(403);
@@ -542,6 +546,44 @@ describe("kept replays", () => {
     return JSON.parse(new TextDecoder().decode(bytes!));
   }
 
+  it("reads a run stored raw before the blob format, sends it encoded, and keeps it as its replay", async () => {
+    const legacy = await run(100, 1000);
+    const stub = board();
+    await stub.submit(RELAY_BOARD, legacy);
+    await stub.standings(RELAY_BOARD, [{ entry_id: legacy.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
+    // Put it back as an older board stored it: raw text, no blob row.
+    const text = canonicalJson(legacy.checkpoint), hash = await digest(text);
+    await runInDurableObject(stub, async (_, ctx) => {
+      ctx.storage.sql.exec("DELETE FROM lb_proof_blobs");
+      ctx.storage.sql.exec("INSERT INTO lb_proofs VALUES (?,?,?)", legacy.entry_id, hash, text);
+    });
+    const work = await stub.pendingWork();
+    const item = work.replay.find(entry => entry.entry_id === legacy.entry_id)!;
+    expect(item).toMatchObject({ proof_hash: hash, byte_length: new TextEncoder().encode(text).byteLength });
+    expect(item).not.toHaveProperty("checkpoint");
+    await runInDurableObject(stub, async (_, ctx) => {
+      expect(ctx.storage.sql.exec("SELECT COUNT(*) AS n FROM lb_proofs").one().n).toBe(0);
+      expect(ctx.storage.sql.exec("SELECT COUNT(*) AS n FROM lb_proof_blobs").one().n).toBe(1);
+    });
+    const answer = await stub.verdicts(RELAY_BOARD, [{ entry_id: legacy.entry_id, proof_hash: hash, valid: true, measured_ticks: legacy.ticks, reason: "" }], 1);
+    expect(answer.ranked.map(note => note.entry_id)).toEqual([legacy.entry_id]);
+    expect(answer.view.top[0].replay_hash).toBe(hash);
+  });
+
+  it("takes a verdict on a raw run handed out before the blob format, converting it then", async () => {
+    const legacy = await run(100, 1000);
+    const stub = board();
+    await stub.submit(RELAY_BOARD, legacy);
+    await stub.standings(RELAY_BOARD, [{ entry_id: legacy.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
+    const text = canonicalJson(legacy.checkpoint), hash = await digest(text);
+    await runInDurableObject(stub, async (_, ctx) => {
+      ctx.storage.sql.exec("DELETE FROM lb_proof_blobs");
+      ctx.storage.sql.exec("INSERT INTO lb_proofs VALUES (?,?,?)", legacy.entry_id, hash, text);
+    });
+    const answer = await stub.verdicts(RELAY_BOARD, [{ entry_id: legacy.entry_id, proof_hash: hash, valid: true, measured_ticks: legacy.ticks, reason: "" }], 1);
+    expect(answer.view.top[0]).toMatchObject({ entry_id: legacy.entry_id, replay_hash: hash });
+  });
+
   it("keeps the replay of each top 10 run, deflated with the hash of its canonical checkpoint, and deletes it once the run is pushed below place 10", async () => {
     // Within 0.85 of each other, so no run waits for a person (rules.ts WIDE_MARGIN_RATIO).
     const slow = await run(115, 1000);
@@ -554,6 +596,7 @@ describe("kept replays", () => {
       expect([row.proof_hash, new TextDecoder().decode(bytes!)]).toEqual([hash, canonicalJson(slow.checkpoint)]);
       expect(new Uint8Array(row.body)[0]).toBe(ENCODING_DEFLATE);
       expect(ctx.storage.sql.exec("SELECT COUNT(*) AS n FROM lb_proofs").one().n).toBe(0);
+      expect(ctx.storage.sql.exec("SELECT COUNT(*) AS n FROM lb_proof_blobs").one().n).toBe(0);
     });
     const faster: LeaderboardRun[] = [];
     for (let index = 0; index < TOP_PLACES; index++) { faster.push(await run(100 + index, 2000 + index)); await rankDirect(faster.at(-1)!); }

@@ -15,7 +15,8 @@ import { describe, expect, it } from "vitest";
  */
 const sources = import.meta.glob<string>("../src/**/*.ts", { query: "?raw", import: "default", eager: true });
 
-const BODY_TABLES = /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|REPLACE\s+INTO)\s+(?:turns|pairs|room|lb_proofs|lb_replays|replay_transfer)\b/i;
+/** Tables that hold a body as it is. lb_replays, lb_proof_blobs and duel_proofs hold only tagged blob bodies, so they are not listed; lb_proofs is the old raw form, read and emptied only (leaderboards/proofs.ts). */
+const BODY_TABLES = /\b(?:INSERT(?:\s+OR\s+\w+)?\s+INTO|UPDATE|REPLACE\s+INTO)\s+(?:turns|pairs|room|lb_proofs|replay_transfer)\b/i;
 const NAMES_BODY = /checkpoint|recording|JSON\.stringify\(\s*(?:pair|turn|archive|blob)\b/i;
 const WRITE = /\b(?:INSERT|UPDATE|REPLACE)\b/;
 const SERVE = /\bjson\(|new Response\(|JSON\.stringify\(/;
@@ -24,8 +25,6 @@ const HASH_NAMES = /\b\w*(?:recording|checkpoint)\w*hash\w*\b|\b\w*Hash\b/gi;
 
 /** file (under src/) -> [lines flagged, why that raw use stays]. */
 const RAW_ALLOWED: Record<string, [number, string]> = {
-  "leaderboards/board.ts": [2, "lb_proofs keeps a waiting run's checkpoint raw until its verdict, for the replay job to splice unparsed; lb_replays stores the tagged body encodeBlob made"],
-  "leaderboards/operator.ts": [1, "the replay job's pending list splices each waiting proof's stored text without parsing it (10 ms CPU on the Free plan)"],
   "room.ts": [4, "legacy v1 room state, read and written whole"],
   "storage-schema.ts": [1, "operator snapshot export and import of v1 tables as plain rows"],
   "v2/storage-schema.ts": [4, "operator snapshot export and import of v2 tables as plain rows"],
