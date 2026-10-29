@@ -1,5 +1,10 @@
 import { FLAG_NAMES, RETIRED_FLAGS } from "../src/flags";
 import { parseConfig } from "../src/config";
+import { CLIENT_HEADER } from "../src/app-status";
+import { POLLEN_REPLY_MIN_VERSION } from "../src/pollen/routes";
+
+/** The client header of the oldest app that gets Pollen reply fields (pollen/routes.ts pollenReplyClient). */
+export const POLLEN_CLIENT = { [CLIENT_HEADER]: POLLEN_REPLY_MIN_VERSION + " play" };
 
 /** What a test may put in CONFIG: its JSON keys (config.ts ServerConfig), with features as a list. */
 export type ConfigSettings = { features?: string[]; min_client_version?: Record<string, unknown>; friend_aliases?: Record<string, unknown>; revenuecat?: Record<string, unknown> };

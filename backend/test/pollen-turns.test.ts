@@ -2,10 +2,11 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
-import { withConfig } from "./config";
+import { POLLEN_CLIENT, withConfig } from "./config";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { POLLEN_HEADER } from "../src/pollen/routes";
+import { CLIENT_HEADER } from "../src/app-status";
 import { noteFullJourney, type PollenReceipt, type WalletView } from "../src/pollen/wallet";
 import { POLLEN_WALLET_TABLES, POLLEN_ROOM_TABLES } from "../src/storage-schema";
 import { countingEnv, meterRows } from "./meter";
@@ -22,7 +23,7 @@ import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Reply = MutationV2 & { pollen?: PollenReceipt | { schema_version: 1; pending: true } };
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
-const ON = { features: ["POLLEN_EARN"], POLLEN_SECRET: SECRET }, OFF = {}, ASK = { [POLLEN_HEADER]: "1" };
+const ON = { features: ["POLLEN_EARN"], POLLEN_SECRET: SECRET }, OFF = {}, ASK = { [POLLEN_HEADER]: "1", ...POLLEN_CLIENT };
 const DAY = 86_400_000;
 const key = () => crypto.randomUUID();
 let address = 0;
@@ -338,6 +339,71 @@ describe("Pollen from turns", () => {
     expect(extra).toEqual({ room: 1, player: 2 });
     expect(retry.rows.player.written).toBe(0);
     expect(claim.rows.room.written + claim.rows.player.written).toBe(0);
+  });
+});
+
+// 0.7.2 draws the Pollen line wrongly (pollen/routes.ts POLLEN_REPLY_MIN_VERSION): an older app, or one naming
+// no version, is answered as if earning were off, yet its turns and claims are credited on the same calls.
+describe("Pollen replies by app version", () => {
+  const OLD = { [POLLEN_HEADER]: "1", [CLIENT_HEADER]: "0.7.2 play" }, UNNAMED = { [POLLEN_HEADER]: "1" };
+  it("advertises Pollen only to an app at the minimum or newer", async () => {
+    const host = await create();
+    const read = async (client?: string) => (await call("/v2/capabilities", "GET", host, undefined, ON, { [POLLEN_HEADER]: "1", ...(client ? { [CLIENT_HEADER]: client } : {}) })).json<Record<string, unknown>>();
+    for (const client of [undefined, "0.7.2 play", "0.7.2 app_store", "0.7.3-rc.1 play", "0.7.3", "bad"]) expect(await read(client), String(client)).not.toHaveProperty("pollen_version");
+    for (const client of ["0.7.3 play", "0.7.3 app_store", "0.7.3 github", "0.8.0 dev"]) expect(await read(client), client).toMatchObject({ pollen_version: 1 });
+  });
+  for (const [name, headers] of [["0.7.2", OLD], ["no version", UNNAMED]] as const) {
+    it(`credits a turn from ${name} with the same calls, and leaves the pollen field out`, async () => {
+      const host = await create(), guest = await create();
+      const older = await room(host, guest), newer = await room(host, guest);
+      const sent = await counted(`/v2/rooms/${older.room_id}/turns`, "POST", host, turnBody(older, firstA), ON, headers);
+      const shown = await counted(`/v2/rooms/${newer.room_id}/turns`, "POST", host, turnBody(newer, firstA), ON, ASK);
+      expect(sent.response.status).toBe(200);
+      expect(sent.calls).toEqual(shown.calls);
+      expect(sent.calls).toContain("PLAYERS.creditTurn");
+      const hidden = await sent.response.json<Reply>();
+      expect(hidden).not.toHaveProperty("pollen"); expect(hidden).not.toHaveProperty("pollen_facts");
+      const paid = receipt(await shown.response.json<Reply>());
+      // Both turns were credited: the wallet holds the hidden one beside the shown one.
+      const view = await wallet(host);
+      expect(view.earned).toBeGreaterThan(paid.earned);
+      expect(view.balance).toBe(paid.balance);
+    });
+  }
+  it("answers a retried turn from 0.7.2 the same way, credits it once, and shows it to the app once it updates", async () => {
+    const host = await create(), guest = await create();
+    const current = await room(host, guest), body = turnBody(current, firstA);
+    const path = `/v2/rooms/${current.room_id}/turns`;
+    const first = await call(path, "POST", host, body, ON, OLD), again = await counted(path, "POST", host, body, ON, OLD);
+    expect(first.status).toBe(200); expect(again.response.status).toBe(200);
+    expect(await first.json<Reply>()).not.toHaveProperty("pollen");
+    expect(await again.response.json<Reply>()).not.toHaveProperty("pollen");
+    const updated = await counted(path, "POST", host, body);
+    const paid = receipt(await updated.response.json<Reply>());
+    expect(paid.turn).toMatchObject({ kind: "bank", amount: 89 });
+    expect(await wallet(host)).toMatchObject({ balance: paid.earned, earned: paid.earned, bank: 11 });
+    // A retry from 0.7.2 costs what a retry from 0.7.3 costs.
+    expect(again.calls).toEqual(updated.calls);
+  });
+  it("credits claims from 0.7.2 and from no version without their receipts", async () => {
+    const host = await create(), guest = await create();
+    const current = await room(host, guest);
+    await turn(current, host, firstA, undefined, ON, OLD);
+    const turnClaim = { schema_version: 1, claims: [{ room_id: current.room_id, recording_hash: firstA.recording_hash }] };
+    const clearClaim = { schema_version: 1, claims: [{ level_id: "first-steps" }] };
+    const older = await counted("/v1/pollen/turn-claims", "POST", host, turnClaim, ON, OLD);
+    expect(await older.response.json()).toEqual({ schema_version: 1, results: [{ room_id: current.room_id, recording_hash: firstA.recording_hash, status: "credited" }] });
+    const newer = await counted("/v1/pollen/turn-claims", "POST", host, turnClaim);
+    expect(older.calls).toEqual(newer.calls);
+    const before = (await newer.response.json<{ results: { receipt: PollenReceipt }[] }>()).results[0].receipt;
+    // The turn was paid once, when it was accepted; each claim answers that same credit.
+    expect(await wallet(host)).toMatchObject({ balance: before.balance, earned: before.earned });
+    expect(before.turn).toMatchObject({ kind: "bank", amount: 89 });
+    for (const headers of [OLD, UNNAMED])
+      expect((await (await call("/v1/pollen/clear-claims", "POST", host, clearClaim, ON, headers)).json<{ results: unknown[] }>()).results).toEqual([{ level_id: "first-steps", status: "credited" }]);
+    // The solo clear was paid once, by the first claim; the updated app sees it in the balance.
+    expect((await (await call("/v1/pollen/clear-claims", "POST", host, clearClaim)).json<{ results: unknown[] }>()).results).toMatchObject([{ status: "credited", receipt: { earned: 0, balance: before.balance + 1200 } }]);
+    expect(await wallet(host)).toMatchObject({ balance: before.balance + 1200 });
   });
 });
 

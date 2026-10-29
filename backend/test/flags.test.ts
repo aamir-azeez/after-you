@@ -7,7 +7,7 @@ import worker from "../src/index";
 import { routeV2 } from "../src/v2/routes";
 import { CHAPTERS, advertisedChapters } from "../src/v2/chapters";
 import { APP } from "../src/config";
-import { configJson, withConfig } from "./config";
+import { POLLEN_CLIENT, configJson, withConfig } from "./config";
 import LIVE_ANSWERS from "./fixtures/live-answers-5601cb81.json";
 
 const ROWS = Object.entries(FLAG_VARS) as [FlagName, FlagVar][];
@@ -131,7 +131,7 @@ const LIVE_ENV = () => withConfig({ ...env, features: LIVE_KEPT, min_client_vers
   PLAY_GAMES_CLIENT_SECRET: "synthetic-client-secret", POLLEN_SECRET: "synthetic-pollen-secret-for-tests-only-0001" }) as unknown as Env;
 const sha = async (text: string) => "sha256:" + hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))));
 
-/** The worker's answers to every capabilities client, /health and /v1/app-status, capabilities as hashes. */
+/** The worker's answers to every capabilities client, /health and /v1/app-status, capabilities as hashes. Capabilities come from an app new enough for Pollen replies (pollen/routes.ts), as live answered every app then. */
 async function liveAnswers(vars: Env): Promise<Record<string, string>> {
   const answers: Record<string, string> = {};
   for (const level of [{}, { "X-AfterYou-Room-Level": "2" }] as Record<string, string>[]) {
@@ -139,7 +139,7 @@ async function liveAnswers(vars: Env): Promise<Record<string, string>> {
     const combos: [string, Record<string, string>][] = [[`${tag}:none`, level], ...ASKING.map((header): [string, Record<string, string>] => [`${tag}:${header}`, { ...level, [header]: "1" }]),
       [`${tag}:all`, { ...level, ...Object.fromEntries(ASKING.map(header => [header, "1"])) }]];
     for (const [key, headers] of combos)
-      answers["capabilities " + key] = await sha(await (await routeV2(new Request("https://after-you.test/v2/capabilities", { headers }), "/v2/capabilities", "c".repeat(22), vars)).text());
+      answers["capabilities " + key] = await sha(await (await routeV2(new Request("https://after-you.test/v2/capabilities", { headers: { ...headers, ...POLLEN_CLIENT } }), "/v2/capabilities", "c".repeat(22), vars)).text());
   }
   answers.health = await (await worker.fetch(new Request("https://after-you.test/health"), vars)).text();
   for (const client of [undefined, "0.6.9 play", "0.7.0 play", "0.6.9 github", "0.7.0 github", "0.0.0 app_store", "0.0.1 dev", "bad"]) {

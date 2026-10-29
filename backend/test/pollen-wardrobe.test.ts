@@ -17,7 +17,7 @@ import { CHAPTERS } from "../src/v2/chapters";
 import { POLLEN_EARNED_TABLES } from "../src/storage-schema";
 import { countingEnv } from "./meter";
 import manifest from "../../game/tests/fixtures/golden/chapter_manifest.json";
-import { withConfig } from "./config";
+import { POLLEN_CLIENT, withConfig } from "./config";
 
 // The wardrobe without the shop (POLLEN_WARDROBE), the shop on top of it (POLLEN_SHOP), and earned
 // items reaching a player: board rewards through the replay job, and Every Hard. Synthetic identities only.
@@ -39,7 +39,7 @@ let address = 0;
 
 async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, unknown> = WARDROBE, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
   return worker.fetch(new Request("https://wardrobe.test" + path, { method,
-    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.93." + (++address % 250), [POLLEN_HEADER]: "1",
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.93." + (++address % 250), [POLLEN_HEADER]: "1", ...POLLEN_CLIENT,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body) }), withConfig(Object.assign({ ...base }, vars)) as Env);
 }

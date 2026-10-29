@@ -10,7 +10,7 @@ import { grantOn } from "../src/pollen/features";
 import { ledgerLines, noteFullJourney, walletView } from "../src/pollen/wallet";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { countingEnv, meterRows } from "./meter";
-import { configJson } from "./config";
+import { POLLEN_CLIENT, configJson } from "./config";
 
 // The Full Journey monthly grant: the ladder, anniversaries, trial, grace and hold, plan switches,
 // gaps, refunds, moved subscriptions, provider outages, overlapping reads and what each read costs.
@@ -383,7 +383,7 @@ const realNow = Date.now.bind(Date);
 async function call(path: string, method = "GET", account?: Account, base: Env = env): Promise<Response> {
   const configured = Object.assign({ ...base }, VARS) as Env;
   return worker.fetch(new Request("https://grant.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.93." + (++address % 250),
-    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1" }, body: method === "POST" ? "{}" : undefined }), configured);
+    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1", ...POLLEN_CLIENT }, body: method === "POST" ? "{}" : undefined }), configured);
 }
 const subscription = (start: number, months = 1, extra: Record<string, unknown> = {}) => ({ object: "subscription", id: "sub_worker_1", product_id: months === 12 ? "prodYearly" : "prodMonthly", store: "play_store",
   environment: "production", ownership: "purchased", status: "active", gives_access: true, current_period_starts_at: start, current_period_ends_at: anniversary(start, months), ends_at: anniversary(start, months), auto_renewal_status: "will_renew", ...extra });

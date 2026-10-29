@@ -8,6 +8,8 @@ import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
 import type { PollenMember, TurnFacts } from "./turn-facts";
 import type { HistoryView, PollenReceipt, WalletView } from "./wallet";
+import { clientHeader, compareVersions } from "../app-status";
+import { parseVersion, type Version } from "../config";
 
 /**
  * The Worker's side of Pollen (POLLEN_EARN). Everything here is absent while the flag is off: no
@@ -44,7 +46,22 @@ export const NO_END = 8_640_000_000_000_000;
 /** The turn reply's `pollen` field: the credit's receipt, or `pending` when it did not land (the phone claims it later). */
 export type PollenReply = PollenReceipt | { schema_version: 1; pending: true };
 
-export function pollenWanted(request: Request): boolean { return request.headers.get(POLLEN_HEADER) === "1"; }
+/**
+ * The oldest app that draws Pollen replies right. 0.7.2 lays out the Pollen line after a turn wrongly
+ * (one letter per line, repeated or missing), so an older app, or a request naming no version
+ * (X-AfterYou-Client, app-status.ts: builds before 0.6.2, tools), is answered as if earning were off:
+ * no capability, no `pollen` on a turn and no receipts on claims. Its turns are still credited, and
+ * the balance shows once the phone updates. A code constant, since that build stays broken for good.
+ */
+export const POLLEN_REPLY_MIN_VERSION = "0.7.3";
+const REPLY_MINIMUM = parseVersion(POLLEN_REPLY_MIN_VERSION) as Version;
+/** Whether the request names an app at POLLEN_REPLY_MIN_VERSION or newer, read as the update gate reads it. */
+export function pollenReplyClient(request: Request): boolean {
+  const client = clientHeader(request);
+  return client !== null && compareVersions(client.version, REPLY_MINIMUM) >= 0;
+}
+/** The phone asked for Pollen (capability and turns) and draws it right. */
+export function pollenWanted(request: Request): boolean { return request.headers.get(POLLEN_HEADER) === "1" && pollenReplyClient(request); }
 /** Earning works only with the flag on and a usable POLLEN_SECRET (no turn is paid without its bloom roll). */
 export function pollenEarning(env: ServerVars): boolean { return earningOn(env); }
 /** The capability field for GET /v2/capabilities: empty unless the client asked while earning works. */
@@ -104,7 +121,7 @@ export function paidUntil(access: Entitlement, until: number | undefined): numbe
  * After an accepted standalone turn whose room froze Pollen facts: one credit to the player's own
  * Player (and, on the turn that finished the chapter together, the partner's first clear). A credit
  * that fails leaves the turn accepted: the reply says `pending` and the phone claims it later. The
- * facts never reach the phone; the `pollen` field goes only to a phone that asked.
+ * facts never reach the phone; the `pollen` field goes only to a phone that asked and draws it right (pollenWanted).
  */
 export async function creditCommitted(request: Request, env: Env, playerId: string, committed: CommittedV2): Promise<MutationV2 & { pollen?: PollenReply }> {
   const { pollen_facts: facts, ...reply } = committed;
@@ -150,7 +167,8 @@ function chapterLevel(levelId: string): { premium: boolean } | null {
  * - POST /v1/pollen/clear-claims {schema_version: 1, claims: [{room_id} | {level_id}]}: a first clear
  *   made together in a room (read from the turn that finished it), or a solo first clear the app reports.
  *   A room's clear the finishing turn already paid answers earned 0 with what it paid as `paid_clears`.
- * Each claim answers credited (with its receipt), refused (with a code; final) or retry.
+ * Each claim answers credited (with its receipt), refused (with a code; final) or retry. An app older
+ * than POLLEN_REPLY_MIN_VERSION is still credited but gets no receipts, since it would draw them.
  */
 export async function routePollen(request: Request, path: string, playerId: string, env: Env, view?: WalletView | HistoryView): Promise<unknown> {
   if (!pollenEarning(env)) throw new ApiError(503, "pollen_disabled");
@@ -189,7 +207,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
       results.push({ room_id, ...result });
     }
   }
-  return { schema_version: 1, results };
+  return { schema_version: 1, results: pollenReplyClient(request) ? results : results.map(result => { const { receipt: _, ...rest } = result as Record<string, unknown>; return rest; }) };
 }
 
 const SPEND_KINDS = ["item", "set", "pack"] as const;
