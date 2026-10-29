@@ -8,7 +8,9 @@ extends SceneTree
 ## Writes <dir>/duels-lobby.png, duels-lobby-empty.png, duel-in-progress.png,
 ## duel-waiting.png, duel-result-won.png, duel-result-checking.png,
 ## duel-ghost-result.png, duels-party.png, duels-start.png, duels-race.png and
-## home-duels-row.png.
+## home-duels-row.png, each with --suffix=<text> added to its name when given,
+## and the empty lobby in each of its three arts as empty-variations/empty-a.png,
+## empty-b.png and empty-c.png.
 const Client = preload("res://services/duels_client.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Outfit = preload("res://services/outfit.gd")
@@ -37,10 +39,12 @@ class Dressed extends RefCounted:
 	func active_look() -> Dictionary: return {"hat": "straw_hat"}
 
 var _out := "."
+var _suffix := ""
 
 func _initialize() -> void:
 	for argument: String in OS.get_cmdline_user_args():
 		if argument.begins_with("--out="): _out = argument.trim_prefix("--out=")
+		if argument.begins_with("--suffix="): _suffix = argument.trim_prefix("--suffix=")
 	_run.call_deferred()
 
 func _name_of(id: Variant) -> String:
@@ -161,6 +165,13 @@ func _run() -> void:
 	race.close()
 	lobby.show_lobby({"party": {"partner": null, "intact": false, "invites_in": [MAYA], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}})
 	await _save("duels-lobby-empty")
+	# The empty lobby in each of its three arts, for the owner's pick (duels_screen.gd EMPTY_ART).
+	var nothing := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}}
+	DirAccess.make_dir_recursive_absolute(_out + "/empty-variations")
+	for art: String in ["duels_a", "duels_b", "duels_c"]:
+		lobby.empty_art = art
+		lobby.show_lobby(nothing)
+		await _save("empty-variations/empty-" + art.right(1), 30, false)
 	lobby.close()
 	await process_frame
 	await _home()
@@ -186,11 +197,11 @@ func _home() -> void:
 	await process_frame
 
 ## Saves the window once every still pip is drawn and `frames` more have passed.
-func _save(name: String, frames: int = 30) -> void:
+func _save(name: String, frames: int = 30, suffixed: bool = true) -> void:
 	var waited := 0
 	while (Snapshots.pending() > 0 or waited < frames) and waited < 600:
 		await process_frame
 		waited += 1
 	await RenderingServer.frame_post_draw
-	var path := "%s/%s.png" % [_out, name]
+	var path := "%s/%s%s.png" % [_out, name, _suffix if suffixed else ""]
 	print("SAVED %s %s" % [path, error_string(root.get_texture().get_image().save_png(path))])

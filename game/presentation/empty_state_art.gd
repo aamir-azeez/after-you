@@ -61,6 +61,16 @@ const SCENES := {
 	"friend_next": [["face", Vector2(66, 6), {"color": "peach", "eyes": "wide", "look": Vector2(-1, 0), "tilt": -0.3, "size": 1.5}]],
 	"footprints": [["walk", Vector2(0, 8), {"from": Vector2(-0.5, 0.45), "to": Vector2(0.55, -0.4)}]],
 	"polaroid": [["polaroid", Vector2(-10, 4), 0.08], ["heart", Vector2(62, -26), 11.0], ["sparkle", Vector2(66, 26), 7.0]],
+	# The empty Duels lobby, three ways (presentation/duels/duels_screen.gd EMPTY_ART picks one).
+	# A: a pair at the start, on an island with its flag, waiting for another pair.
+	"duel_start": [["island", Vector2(0, 24), 150.0], ["flag", Vector2(50, 22)], ["spirit", Vector2(-30, 26), {"color": "peach", "eyes": "wide", "look": Vector2(1, 0), "lean": 0.1}], ["spirit", Vector2(-2, 26), {"color": "mint", "eyes": "wide", "look": Vector2(1, 0), "lean": 0.1}], ["sparkle", Vector2(72, -40), 6.0]],
+	"duel_other": [["outline", Vector2(-30, 2)], ["outline", Vector2(30, 2)], ["sparkle", Vector2(0, -36), 5.0]],
+	# B: two pairs face to face across the picture, cheerful, a heart between them.
+	"duel_rivals": [["face", Vector2(-70, 10), {"color": "peach", "eyes": "happy", "look": Vector2(1, 0), "tilt": 0.15, "size": 0.5}], ["face", Vector2(-36, 12), {"color": "mint", "eyes": "happy", "look": Vector2(1, 0), "tilt": 0.1, "size": 0.5}], ["face", Vector2(36, 12), {"color": "peach", "eyes": "dot", "look": Vector2(-1, 0), "tilt": -0.1, "size": 0.5}], ["face", Vector2(70, 10), {"color": "mint", "eyes": "dot", "look": Vector2(-1, 0), "tilt": -0.15, "size": 0.5}], ["heart", Vector2(0, -24), 10.0]],
+	"duel_snooze": [["face", Vector2(-24, 8), {"color": "mint", "eyes": "soft", "tilt": 0.25, "size": 0.55}], ["face", Vector2(22, 10), {"color": "peach", "eyes": "soft", "tilt": -0.2, "size": 0.55}], ["sparkle", Vector2(60, -34), 5.0]],
+	# C: footprints racing across to a flag, with a letter on its way to another pair.
+	"duel_trail": [["walk", Vector2(-14, 8), {"from": Vector2(-0.5, 0.42), "to": Vector2(0.3, -0.3)}], ["flag", Vector2(62, -2)], ["sparkle", Vector2(-66, -30), 6.0]],
+	"duel_letter": [["face", Vector2(-58, 14), {"color": "mint", "look": Vector2(1, -0.2), "tilt": 0.22, "size": 0.62}], ["envelope", Vector2(4, 4), -0.12], ["face", Vector2(64, 14), {"color": "peach", "eyes": "wide", "look": Vector2(-1, -0.2), "tilt": -0.22, "size": 0.62}]],
 	# The Play with your friend icon: two happy faces cheek to cheek, mint behind,
 	# and a heart. Rows with "squish" or "pop" react to the scene state (scene()).
 	"friends_squeeze": [["face", Vector2(21.5, 7), {"color": "mint", "eyes": "happy", "tilt": -0.18, "size": 0.66, "squish": -1.0}], ["face", Vector2(-21.5, 7), {"color": "peach", "eyes": "happy", "tilt": 0.18, "size": 0.66, "squish": 1.0}], ["heart", Vector2(40, -28), 8.5, {"pop": 0.28, "lift": Vector2(-2, -3)}]],

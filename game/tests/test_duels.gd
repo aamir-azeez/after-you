@@ -227,6 +227,14 @@ func _pages() -> void:
 	ghosts.show_ghosts([{"board": BOARD, "developer": 1470, "top": [{"entry_id": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1", "ticks": 1400, "rank": 1, "names": null}]}])
 	_check(ghosts.find_child("Race_developer", true, false) != null and ghosts.find_child("Race_board_e1e1e1", true, false) != null and _has_text(ghosts, "0:49.0"), "our run and the board's runs with their times")
 	ghosts.close()
+	# Nothing at all: the hand drawn empty art the other lists use, in the owner's pick.
+	lobby.show_lobby(Client.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": []}))
+	await process_frame
+	var empty: Node = lobby.find_child("EmptyState", true, false)
+	_check(empty != null and empty.art == Lobby.EMPTY_ART and _has_text(empty, PlayerCopy.DUELS_EMPTY_TITLE), "an empty lobby draws its empty art")
+	lobby.show_lobby(lobby_data)
+	await process_frame
+	_check(lobby.find_child("EmptyState", true, false) == null or lobby.find_child("EmptyState", true, false).is_queued_for_deletion(), "and it goes once a duel arrives")
 	lobby.close()
 	await process_frame
 
