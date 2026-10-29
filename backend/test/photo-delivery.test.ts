@@ -7,6 +7,7 @@ import { validateRoomV2 } from "../src/v2/snapshot";
 import a from "../../game/tests/fixtures/v2/relay-a.json";
 import b from "../../game/tests/fixtures/v2/relay-b.json";
 import checkpoint from "../../game/tests/fixtures/v2/relay-checkpoint.json";
+import { acceptTerms } from "./terms";
 const H = "H".repeat(22), G = "G".repeat(22), R = "R".repeat(22), I = "AB".repeat(10), SOURCE = "f".repeat(40);
 const key = () => crypto.randomUUID();
 function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(outcome.code); return outcome.value; }
@@ -17,6 +18,7 @@ async function setup() {
   const bytes = new Uint8Array(encode({ data: new Uint8Array(8 * 8 * 4).fill(127), width: 8, height: 8 }, 45).data);
   const jpeg_base64 = btoa(String.fromCharCode(...bytes)), sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(v => v.toString(16).padStart(2, "0")).join("");
   const upload = { idempotency_key: key(), recording_hash: a.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64, sha256 };
+  await acceptTerms(H);
   value(await room.updatePhoto(H, "t0-0-a", upload));
   return { room, upload, ack: { recording_hash: a.recording_hash, photo_revision: 1, sha256 }, before: value(await room.snapshot(H)) };
 }

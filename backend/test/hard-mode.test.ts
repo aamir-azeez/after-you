@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { type Outcome } from "../src/protocol";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -18,11 +19,10 @@ import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Reset = { room: RoomSnapshotV2; failure: Failure };
 const key = () => crypto.randomUUID(), LOOKUP = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
-const ON = { HARD_MODE_ENABLED: "true" }, ASK = { "X-AfterYou-Hard-Mode": "1" };
+const ON = {}, ASK = { "X-AfterYou-Hard-Mode": "1" };
 let address = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = {}, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
-  const configured: Env = { ...base };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...vars });
+  const configured: Env = withConfig({ ...base, ...vars });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
@@ -57,17 +57,14 @@ const tables = (roomId: string) => runInDurableObject(env.ROOMS_V2.getByName(roo
 afterEach(async () => { await reset(); });
 
 describe("hard rooms", () => {
-  it("are advertised only to clients that ask, and only while the flag is on", async () => {
+  it("are advertised only to clients that ask", async () => {
     const host = await create();
     expect(await (await call("/v2/capabilities", "GET", host, undefined, ON)).json()).not.toHaveProperty("hard_mode_version");
-    expect(await (await call("/v2/capabilities", "GET", host, undefined, {}, ASK)).json()).not.toHaveProperty("hard_mode_version");
     expect(await (await call("/v2/capabilities", "GET", host, undefined, ON, ASK)).json()).toMatchObject({ hard_mode_version: 1 });
   });
 
-  it("are created only while the flag is on, and an ordinary room's storage and view stay as they were", async () => {
+  it("leave an ordinary room's storage and view as they were", async () => {
     const host = await create(), guest = await create();
-    const off = await call("/v2/rooms", "POST", host, { idempotency_key: key(), level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH, mode: "hard" });
-    expect(off.status).toBe(503); expect(await errorCode(off)).toBe("hard_mode_disabled");
     const odd = await call("/v2/rooms", "POST", host, { idempotency_key: key(), level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH, mode: "easy" }, ON);
     expect(odd.status).toBe(422); expect(await errorCode(odd)).toBe("unsupported_room_mode");
     const plain = await call("/v2/rooms", "POST", host, { idempotency_key: key(), level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH }, ON);
@@ -76,7 +73,7 @@ describe("hard rooms", () => {
     expect(await tables(room.room_id)).toEqual([]);
     // An ordinary room needs no hard header to join, and its routes stay inert.
     const join = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }); expect(join.status).toBe(200);
-    for (const [vars, status, code] of [[{}, 503, "hard_mode_disabled"], [ON, 409, "not_hard_room"]] as const) {
+    for (const [vars, status, code] of [[ON, 409, "not_hard_room"]] as const) {
       const read = await kept(room.room_id, host, vars); expect(read.status).toBe(status); expect(await errorCode(read)).toBe(code);
       const reset = await sendReset(room, host, resetBody(await join.clone().json<RoomSnapshotV2>()), vars); expect(reset.status).toBe(status);
     }
@@ -219,14 +216,13 @@ describe("hard rooms", () => {
     expect(rows).toBe(MAX_KEPT);
   });
 
-  it("finish as any room does, and keep working if the flag goes off", async () => {
+  it("finish as any room does", async () => {
     const { host, guest, room } = await hardRoom();
     let current = await played(room, host, firstA);
     current = await played(current, guest, firstB, middle);
-    // The flag turned off part way: the hard room's slip is still kept.
-    const { room: back } = await (await sendReset(current, guest, resetBody(current), {})).json<Reset>();
+    const { room: back } = await (await sendReset(current, guest, resetBody(current))).json<Reset>();
     expect(back).toMatchObject({ branch: 1, stage_index: 0 });
-    expect((await kept(room.room_id, host, {})).status).toBe(200);
+    expect((await kept(room.room_id, host)).status).toBe(200);
     current = await played(back, host, firstA);
     current = await played(current, guest, firstB, middle);
     current = await played(current, guest, secondA);
@@ -240,7 +236,7 @@ describe("hard rooms", () => {
     const { host, guest, room } = await hardRoom();
     const sent = await submit(room, host, firstA, undefined, { end_reaction: "happy", tries: 1 });
     expect(sent.status).toBe(200);
-    const seen = await (await call(`/v2/rooms/${room.room_id}`, "GET", guest, undefined, { ...ON, END_REACTIONS_ENABLED: "true" }, { "X-AfterYou-End-Reactions": "1" })).json<RoomSnapshotV2>();
+    const seen = await (await call(`/v2/rooms/${room.room_id}`, "GET", guest, undefined, ON, { "X-AfterYou-End-Reactions": "1" })).json<RoomSnapshotV2>();
     expect(seen.hard).toBeDefined();
     expect(seen.end_reactions).toEqual({ schema_version: 1, faces: { [firstA.recording_hash]: "happy" }, partner: "happy" });
   });

@@ -128,14 +128,12 @@ function linkedVersion(storage: DurableObjectStorage, roomId: string): number | 
  * than the stored one (by the room's clock) only refreshes `checked_at`. A null
  * observation or one without a lasting answer never replaces an answer; a link
  * without a row then gets an "unchecked" row that any real observation
- * replaces. Unlinked rooms are ignored. Without `create`, only an existing row
- * is updated and the table is never made.
+ * replaces. Unlinked rooms are ignored.
  */
-export function recordRoomObservation(storage: DurableObjectStorage, roomId: string, version: number, observation: RoomObservation | null, create: boolean, now = Date.now()): void {
+export function recordRoomObservation(storage: DurableObjectStorage, roomId: string, version: number, observation: RoomObservation | null, now = Date.now()): void {
   if (!indexed(version) || linkedVersion(storage, roomId) !== version) return;
-  if (create) ensureRoomIndex(storage);
+  ensureRoomIndex(storage);
   const old = orMissing(() => storage.sql.exec<{ observed_at: number }>("SELECT observed_at FROM room_index WHERE room_id=?", roomId).toArray()[0], undefined);
-  if (!old && !create) return;
   const state = observation ? observedState(observation.outcome) : null;
   if (state === null || (old && observation!.observed_at < old.observed_at)) {
     if (old) storage.sql.exec("UPDATE room_index SET checked_at=? WHERE room_id=?", now, roomId);

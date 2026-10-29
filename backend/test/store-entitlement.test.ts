@@ -1,16 +1,27 @@
 import { env } from "cloudflare:workers";
 import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { entitlement } from "../src/entitlement";
-import { playEntitlement } from "../src/play-entitlement";
-import { storeEntitlement, type StoreEntitlementConfig } from "../src/store-entitlement";
+import { entitlement as fullCheck } from "../src/entitlement";
+import { playEntitlement as playCheck } from "../src/play-entitlement";
+import { storeEntitlement as storeCheck } from "../src/store-entitlement";
+import type { ServerVars } from "../src/flags";
+import { configJson } from "./config";
 import { rollingHome } from "../src/v2/protocol-cooperative";
 import worker from "../src/index";
 
 // Synthetic provider data only: nothing here has met a real App Store purchase.
 const owner = "p".repeat(22);
-const play: StoreEntitlementConfig = { REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic", REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlPlay", REVENUECAT_PLAY_PRODUCT_ID: "prodPlay", REVENUECAT_PLAY_ENVIRONMENT: "production", REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: "prodMonthly,prodYearly" };
-const stores: StoreEntitlementConfig = { ...play, REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS: "prodIosMonthly, prodIosYearly" };
+/** CONFIG's RevenueCat ids, plus the secret key (`secret`, default synthetic) and the flags (`features`) a check runs with. */
+type Ids = Record<string, unknown> & { secret?: string; features?: string[] };
+const play: Ids = { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay", play_subscription_product_ids: ["prodMonthly", "prodYearly"] };
+const stores: Ids = { ...play, app_store_subscription_product_ids: ["prodIosMonthly", "prodIosYearly"] };
+const APP_STORE_ON = ["APP_STORE_ENTITLEMENTS_ENABLED"];
+/** The env a check reads: the secret beside CONFIG, written raw so a malformed id reaches the code as a hand-edited CONFIG would. */
+const rc = ({ secret = "synthetic-only", features, ...ids }: Ids): ServerVars => ({ ...(secret ? { REVENUECAT_SECRET_KEY: secret } : {}),
+  CONFIG: configJson({ revenuecat: ids, ...(features ? { features } : {}) }, { raw: true }) });
+const storeEntitlement = (player: string, ids: Ids) => storeCheck(player, rc(ids));
+const playEntitlement = (player: string, ids: Ids) => playCheck(player, rc(ids));
+const entitlement = (player: string, ids: Ids) => fullCheck(player, { ...env, ...rc(ids) });
 const grant = (entitlement_id = "entlPlay", expires_at: number | null = null) => ({ entitlement_id, expires_at });
 const purchase = (change: Record<string, unknown> = {}) => ({ object: "purchase", product_id: "prodPlay", store: "play_store", environment: "production", status: "owned", ownership: "purchased", purchased_at: Date.now() - 10000, ...change });
 const playPlan = (change: Record<string, unknown> = {}) => ({ object: "subscription", product_id: "prodMonthly", store: "play_store", environment: "production", ownership: "purchased", gives_access: true, status: "active", ...change });
@@ -49,27 +60,21 @@ describe("APP_STORE_ENTITLEMENTS_ENABLED gate", () => {
     ["no grant", { active: list([]) }],
     ["provider failure", { active: () => new Response(null, { status: 503 }) }]
   ];
-  it.each([undefined, "", "false", "TRUE", "1", " true", "yes"])("flag %j keeps the Play-only check, reads included", async flag => {
+  it.each([[[]], [["POLLEN_EARN"]], [["APP_STORE_ENTITLEMENTS_ENABLED_LATER"]]])("features %j keep the Play-only check, reads included", async features => {
     for (const [, customer] of customers) {
       const expected = provider(customer); const before = await playEntitlement(owner, stores); const expectedReads = reads(expected); vi.restoreAllMocks();
       const requests = provider(customer);
-      const { checked_at, environment, ...result } = await entitlement(owner, { ...env, ...stores, REVENUECAT_VERIFICATION_MODE: "play_store", APP_STORE_ENTITLEMENTS_ENABLED: flag });
-      expect(typeof checked_at).toBe("string"); expect(environment).toBe(env.ENVIRONMENT);
+      const { checked_at, environment, ...result } = await entitlement(owner, { ...stores, features });
+      expect(typeof checked_at).toBe("string"); expect(environment).toBe("test-store");
       expect(result).toEqual(before); expect(reads(requests)).toEqual(expectedReads); vi.restoreAllMocks();
     }
   });
-  it("admits an App Store subscriber only once the flag is exactly \"true\"", async () => {
+  it("admits an App Store subscriber only once CONFIG lists the flag", async () => {
     provider({ subscriptions: list([iosPlan()]) });
-    const off = await entitlement(owner, { ...env, ...stores, REVENUECAT_VERIFICATION_MODE: "play_store" });
+    const off = await entitlement(owner, stores);
     expect(off).toMatchObject(refused); expect(off.access_source).toBeUndefined();
-    const on = await entitlement(owner, { ...env, ...stores, REVENUECAT_VERIFICATION_MODE: "play_store", APP_STORE_ENTITLEMENTS_ENABLED: "true" });
-    expect(on).toEqual({ ...admittedBy("app_store_subscription"), environment: env.ENVIRONMENT, checked_at: expect.any(String) });
-  });
-  it("does nothing outside play_store mode", async () => {
-    provider({ active: list([grant("entlDemo")]) });
-    const demo = { ...env, ...stores, APP_STORE_ENTITLEMENTS_ENABLED: "true", REVENUECAT_API_VERSION: "2", REVENUECAT_ENTITLEMENT_LOOKUP_ID: "entlDemo" };
-    expect(await entitlement(owner, demo)).toMatchObject({ full_journey: true, status: "verified" });
-    expect((await entitlement(owner, { ...demo, REVENUECAT_VERIFICATION_MODE: "app_store" })).status).toBe("unconfigured");
+    const on = await entitlement(owner, { ...stores, features: APP_STORE_ON });
+    expect(on).toEqual({ ...admittedBy("app_store_subscription"), environment: "test-store", checked_at: expect.any(String) });
   });
 });
 
@@ -87,7 +92,7 @@ describe("Play hosts with the flag on", () => {
   ])("gives the same answer and reads for a %s", async (_name, customer, count) => {
     const expected = provider(customer); const before = await playEntitlement(owner, play); const expectedReads = reads(expected); vi.restoreAllMocks();
     let requests = provider(customer);
-    expect(await storeEntitlement(owner, { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "production" })).toEqual(before);
+    expect(await storeEntitlement(owner, { ...stores, app_store_environment: "production" })).toEqual(before);
     expect(reads(requests)).toEqual(expectedReads); expect(requests).toHaveBeenCalledTimes(count); vi.restoreAllMocks();
     // Both App Store environments (the default): the same answer; a refused host with a live grant also costs the sandbox read.
     requests = provider(customer);
@@ -96,14 +101,14 @@ describe("Play hosts with the flag on", () => {
   });
   it("keeps one-time-only Play admission when no Play subscription list is set", async () => {
     const requests = provider({ purchases: list([purchase()]) });
-    expect(await storeEntitlement(owner, { ...stores, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: undefined })).toEqual(admittedBy("play_purchase"));
+    expect(await storeEntitlement(owner, { ...stores, play_subscription_product_ids: undefined })).toEqual(admittedBy("play_purchase"));
     expect(requests).toHaveBeenCalledTimes(2);
   });
   it("keeps review access to the allowlist plus a live grant", async () => {
     const requests = provider();
-    expect(await storeEntitlement(owner, { ...stores, REVENUECAT_REVIEWER_IDS: owner })).toEqual(admittedBy("review_grant")); expect(requests).toHaveBeenCalledTimes(1);
+    expect(await storeEntitlement(owner, { ...stores, reviewer_ids: [owner] })).toEqual(admittedBy("review_grant")); expect(requests).toHaveBeenCalledTimes(1);
     vi.restoreAllMocks(); provider({ active: list([]) });
-    expect(await storeEntitlement(owner, { ...stores, REVENUECAT_REVIEWER_IDS: owner })).toEqual(refused);
+    expect(await storeEntitlement(owner, { ...stores, reviewer_ids: [owner] })).toEqual(refused);
   });
 });
 
@@ -135,7 +140,7 @@ describe("App Store subscriptions", () => {
     }
   });
   it("reads App Store sandbox separately from Play production", async () => {
-    const sandbox = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "sandbox" };
+    const sandbox = { ...stores, app_store_environment: "sandbox" };
     let requests = provider({ subscriptions: { sandbox: list([iosPlan({ environment: "sandbox" })]) } });
     expect(await storeEntitlement(owner, sandbox)).toEqual(admittedBy("app_store_subscription"));
     expect(reads(requests)).toEqual(["active_entitlements?limit=100", "purchases?environment=production&limit=100", "subscriptions?environment=production&limit=100", "subscriptions?environment=sandbox&limit=100"]);
@@ -145,7 +150,7 @@ describe("App Store subscriptions", () => {
     expect(await storeEntitlement(owner, sandbox)).toEqual(admittedBy("play_subscription")); expect(requests).toHaveBeenCalledTimes(3);
   });
   it("supports a separate App Store entitlement", async () => {
-    const parallel = { ...stores, REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID: "entlApp" };
+    const parallel = { ...stores, app_store_entitlement_lookup_id: "entlApp" };
     provider({ active: list([grant("entlApp")]), subscriptions: list([iosPlan()]) });
     expect(await storeEntitlement(owner, parallel)).toEqual(admittedBy("app_store_subscription", "full_journey"));
     vi.restoreAllMocks(); const requests = provider({ active: list([grant("entlApp")]), purchases: list([purchase()]), subscriptions: list([playPlan()]) });
@@ -163,7 +168,7 @@ describe("App Store environments", () => {
   const bothReads = [...productionRead, "subscriptions?environment=sandbox&limit=100"];
   const sandboxPlan = iosPlan({ environment: "sandbox" });
   it.each([["unset", undefined], ["both", "both"]])("%s accepts production or sandbox and reads sandbox only when production did not admit", async (_name, environment) => {
-    const config = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: environment };
+    const config = { ...stores, app_store_environment: environment };
     let requests = provider({ subscriptions: { production: list([iosPlan()]), sandbox: list([sandboxPlan]) } });
     expect(await storeEntitlement(owner, config)).toEqual(admittedBy("app_store_subscription")); expect(reads(requests)).toEqual(productionRead);
     vi.restoreAllMocks(); requests = provider({ subscriptions: { production: list([]), sandbox: list([sandboxPlan]) } });
@@ -178,14 +183,14 @@ describe("App Store environments", () => {
     expect(await storeEntitlement(owner, config)).toEqual(refused);
   });
   it("production alone refuses a sandbox subscription and never reads sandbox", async () => {
-    const config = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "production" };
+    const config = { ...stores, app_store_environment: "production" };
     let requests = provider({ subscriptions: { production: list([]), sandbox: list([sandboxPlan]) } });
     expect(await storeEntitlement(owner, config)).toEqual(refused); expect(reads(requests)).toEqual(productionRead);
     vi.restoreAllMocks(); requests = provider({ subscriptions: { production: list([iosPlan()]) } });
     expect(await storeEntitlement(owner, config)).toEqual(admittedBy("app_store_subscription")); expect(reads(requests)).toEqual(productionRead);
   });
   it("sandbox alone refuses a production subscription", async () => {
-    const config = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "sandbox" };
+    const config = { ...stores, app_store_environment: "sandbox" };
     let requests = provider({ subscriptions: { production: list([iosPlan()]), sandbox: list([]) } });
     expect(await storeEntitlement(owner, config)).toEqual(refused); expect(reads(requests)).toEqual(bothReads);
     vi.restoreAllMocks(); requests = provider({ subscriptions: { sandbox: list([sandboxPlan]) } });
@@ -211,7 +216,7 @@ describe("App Store environments", () => {
     expect(await storeEntitlement(owner, stores)).toEqual(refused); expect(reads(requests)).toEqual(bothReads);
   });
   it.each(["", "Both", "production,sandbox", "all", " both"])("the value %j holds App Store hosts and leaves Play hosts alone", async value => {
-    const config = { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: value };
+    const config = { ...stores, app_store_environment: value };
     provider({ subscriptions: list([iosPlan()]) }); expect(await storeEntitlement(owner, config)).toEqual(unconfigured);
     vi.restoreAllMocks(); provider({ subscriptions: list([playPlan()]) }); expect(await storeEntitlement(owner, config)).toEqual(admittedBy("play_subscription"));
   });
@@ -220,7 +225,7 @@ describe("App Store environments", () => {
       for (const customer of [{ subscriptions: { production: list([playPlan()]), sandbox: list([sandboxPlan]) } }, { subscriptions: { production: list([]), sandbox: list([sandboxPlan]) } }]) {
         const expected = provider(customer); const before = await playEntitlement(owner, play); const expectedReads = reads(expected); vi.restoreAllMocks();
         const requests = provider(customer);
-        const { checked_at, environment, ...result } = await entitlement(owner, { ...env, ...stores, REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_APP_STORE_ENVIRONMENT: value });
+        const { checked_at, environment, ...result } = await entitlement(owner, { ...stores, app_store_environment: value });
         expect(result).toEqual(before); expect(reads(requests)).toEqual(expectedReads); vi.restoreAllMocks();
       }
     }
@@ -247,41 +252,41 @@ describe("hosts with both stores", () => {
 });
 
 describe("store settings fail closed for their own store", () => {
-  const badLists = ["after_you_full_journey_monthly_ios", "prodIosMonthly,not-a-product", Array.from({ length: 9 }, (_, i) => `prod${i}`).join(",")];
+  const badLists = [["after_you_full_journey_monthly_ios"], ["prodIosMonthly", "not-a-product"], Array.from({ length: 9 }, (_, i) => `prod${i}`), "prodIosMonthly"];
   it.each(badLists)("a malformed App Store list %j holds App Store hosts and leaves Play hosts alone", async bad => {
-    const config = { ...stores, REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS: bad };
+    const config = { ...stores, app_store_subscription_product_ids: bad };
     provider({ subscriptions: list([iosPlan()]) }); expect(await storeEntitlement(owner, config)).toEqual(unconfigured);
     vi.restoreAllMocks(); provider({ purchases: list([purchase()]) }); expect(await storeEntitlement(owner, config)).toEqual(admittedBy("play_purchase"));
     vi.restoreAllMocks(); provider({ subscriptions: list([playPlan()]) }); expect(await storeEntitlement(owner, config)).toEqual(admittedBy("play_subscription"));
     vi.restoreAllMocks(); provider({ active: list([]) }); expect(await storeEntitlement(owner, config)).toEqual(refused);
   });
-  it.each([[{ REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS: undefined }], [{ REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS: " , " }], [{ REVENUECAT_APP_STORE_ENVIRONMENT: "Production" }], [{ REVENUECAT_APP_STORE_ENVIRONMENT: "staging" }]])("an unset list or bad environment %j holds rather than refusing", async change => {
+  it.each([[{ app_store_subscription_product_ids: undefined }], [{ app_store_subscription_product_ids: [] }], [{ app_store_environment: "Production" }], [{ app_store_environment: "staging" }]])("an unset list or bad environment %j holds rather than refusing", async change => {
     const requests = provider({ subscriptions: list([iosPlan()]) });
     expect(await storeEntitlement(owner, { ...stores, ...change })).toEqual(unconfigured);
     expect(reads(requests)).toEqual(["active_entitlements?limit=100", "purchases?environment=production&limit=100", "subscriptions?environment=production&limit=100"]);
   });
   it("a malformed Play subscription list holds Play subscribers and still admits App Store hosts", async () => {
-    const config = { ...stores, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: "after_you_full_journey_monthly" };
+    const config = { ...stores, play_subscription_product_ids: ["after_you_full_journey_monthly"] };
     let requests = provider({ subscriptions: list([iosPlan()]) });
     expect(await storeEntitlement(owner, config)).toEqual(admittedBy("app_store_subscription"));
     expect(reads(requests)).toEqual(["active_entitlements?limit=100", "subscriptions?environment=production&limit=100"]);
     vi.restoreAllMocks(); provider({ subscriptions: list([playPlan()]) }); expect(await storeEntitlement(owner, config)).toEqual(unconfigured);
     vi.restoreAllMocks(); requests = provider({ subscriptions: list([iosPlan()]) });
-    expect(await entitlement(owner, { ...env, ...config, REVENUECAT_VERIFICATION_MODE: "play_store" })).toMatchObject(unconfigured); expect(requests).not.toHaveBeenCalled();
+    expect(await entitlement(owner, config)).toMatchObject(unconfigured); expect(requests).not.toHaveBeenCalled();
   });
-  it("a missing Play product or environment holds Play and review but not the App Store", async () => {
-    for (const change of [{ REVENUECAT_PLAY_PRODUCT_ID: "" }, { REVENUECAT_PLAY_ENVIRONMENT: "staging" }]) {
+  it("a missing Play product holds Play and review but not the App Store", async () => {
+    for (const change of [{ play_product_id: "" }, { play_product_id: undefined }]) {
       provider({ subscriptions: list([iosPlan()]) }); expect(await storeEntitlement(owner, { ...stores, ...change })).toEqual(admittedBy("app_store_subscription"));
-      vi.restoreAllMocks(); provider({ purchases: list([purchase()]) }); expect(await storeEntitlement(owner, { ...stores, ...change, REVENUECAT_REVIEWER_IDS: owner })).toEqual(unconfigured);
+      vi.restoreAllMocks(); provider({ purchases: list([purchase()]) }); expect(await storeEntitlement(owner, { ...stores, ...change, reviewer_ids: [owner] })).toEqual(unconfigured);
       vi.restoreAllMocks();
     }
   });
   it("a malformed App Store entitlement ID holds only the App Store", async () => {
-    const config = { ...stores, REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID: "full_journey_ios" };
+    const config = { ...stores, app_store_entitlement_lookup_id: "full_journey_ios" };
     provider({ subscriptions: list([iosPlan()]) }); expect(await storeEntitlement(owner, config)).toEqual(unconfigured);
     vi.restoreAllMocks(); provider({ purchases: list([purchase()]) }); expect(await storeEntitlement(owner, config)).toEqual(admittedBy("play_purchase"));
   });
-  it.each([{ REVENUECAT_SECRET_KEY: "" }, { REVENUECAT_PROJECT_ID: "x" }, { REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "full_journey_play" }])("shared settings %j hold before any read", async change => {
+  it.each([{ secret: "" }, { project_id: "x" }, { play_entitlement_lookup_id: "full_journey_play" }])("shared settings %j hold before any read", async change => {
     const requests = provider({ subscriptions: list([iosPlan()]) });
     expect(await storeEntitlement(owner, { ...stores, ...change })).toEqual(unconfigured); expect(requests).not.toHaveBeenCalled();
   });
@@ -311,9 +316,9 @@ describe("RevenueCat failures", () => {
   });
   it("still admits a Play subscriber when the separate App Store sandbox read fails", async () => {
     provider({ subscriptions: { production: list([playPlan()]), sandbox: failed(503) } });
-    expect(await storeEntitlement(owner, { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "sandbox" })).toEqual(admittedBy("play_subscription"));
+    expect(await storeEntitlement(owner, { ...stores, app_store_environment: "sandbox" })).toEqual(admittedBy("play_subscription"));
     vi.restoreAllMocks(); provider({ subscriptions: { production: list([]), sandbox: failed(503) } });
-    expect(await storeEntitlement(owner, { ...stores, REVENUECAT_APP_STORE_ENVIRONMENT: "sandbox" })).toEqual({ full_journey: false, status: "unavailable", reason: "provider_http_503" });
+    expect(await storeEntitlement(owner, { ...stores, app_store_environment: "sandbox" })).toEqual({ full_journey: false, status: "unavailable", reason: "provider_http_503" });
   });
   it("treats a missing subscription record as no subscription", async () => {
     provider({ subscriptions: failed(404) }); expect(await storeEntitlement(owner, stores)).toEqual(refused);
@@ -322,23 +327,23 @@ describe("RevenueCat failures", () => {
 
 describe("paid room creation through the Worker", () => {
   let requestNo = 0;
-  async function call(path: string, account: { player_id: string; device_token: string } | undefined, body: unknown, overrides: Record<string, unknown> = {}) {
-    const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", ...overrides });
+  async function call(path: string, account: { player_id: string; device_token: string } | undefined, body: unknown, ids?: Ids) {
+    const configured = { ...env, ...(ids ? rc(ids) : {}) } as Env;
     return worker.fetch(new Request("https://after-you.test" + path, { method: account && body === undefined ? "GET" : "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.2." + ++requestNo,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
   }
   it("keeps the shipped error codes and adds the App Store source", async () => {
     const created = await call("/v1/identity", undefined, {}); expect(created.status).toBe(201);
     const host = await created.json<{ player_id: string; device_token: string }>();
-    const live = { ...stores, REVENUECAT_VERIFICATION_MODE: "play_store" };
+    const live = stores;
     provider({ subscriptions: list([iosPlan()]) });
     const off = await call("/v2/rooms", host, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, live);
     expect(off.status).toBe(402); expect(await off.json()).toMatchObject({ error: { code: "host_unlock_required" } });
-    const held = await call("/v2/rooms", host, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, { ...live, APP_STORE_ENTITLEMENTS_ENABLED: "true", REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS: "after_you_full_journey_monthly_ios" });
+    const held = await call("/v2/rooms", host, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, { ...live, features: APP_STORE_ON, app_store_subscription_product_ids: ["after_you_full_journey_monthly_ios"] });
     expect(held.status).toBe(503); expect(await held.json()).toMatchObject({ error: { code: "entitlement_unavailable" } });
-    const on = await call("/v2/rooms", host, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, { ...live, APP_STORE_ENTITLEMENTS_ENABLED: "true" });
+    const on = await call("/v2/rooms", host, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, { ...live, features: APP_STORE_ON });
     expect(on.status).toBe(200);
-    const checked = await call("/v1/entitlement", host, undefined, { ...live, APP_STORE_ENTITLEMENTS_ENABLED: "true" });
+    const checked = await call("/v1/entitlement", host, undefined, { ...live, features: APP_STORE_ON });
     expect(checked.status).toBe(200); expect(await checked.json()).toMatchObject({ full_journey: true, status: "verified", access_source: "app_store_subscription", entitlement: "full_journey_play", player_id: host.player_id });
   });
 });

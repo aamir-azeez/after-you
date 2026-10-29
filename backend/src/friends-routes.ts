@@ -2,7 +2,6 @@ import { ApiError, ID_PATTERN, boundedJson, object, randomToken, text, unwrap } 
 import { bearerDigest } from "./http";
 import { FRIEND_REFRESH_SECONDS, sameFriendLink, validSharedFriendRoom, type FriendEdge, type FriendLink, type SharedFriendRoom } from "./friends";
 import { interactionBlocked } from "./safety";
-import { flags } from "./flags";
 import { FRIEND_ALIAS_HEADER, aliasShaped, friendAliasFor, resolveFriendAlias } from "./friend-aliases";
 import { announceToFriends } from "./live";
 import { displayNamesShown, shownName } from "./display-names";
@@ -80,7 +79,7 @@ export async function routeFriends(request: Request, path: string, owner: string
       const latest = await env.PLAYERS.getByName(link.player_id).friendEdge(link.player_id, owner, names);
       if (!latest || !sameFriendLink(link, latest.link, owner) || await interactionBlocked(env, owner, link.player_id)) return null;
       const stillAccepted = link.accepted && latest.link.accepted;
-      const remaining = stillAccepted && flags.presence(env) ? Math.max(0, Math.min(90, Math.ceil((latest.presence_expires_at - Date.now()) / 1000))) : 0;
+      const remaining = stillAccepted ? Math.max(0, Math.min(90, Math.ceil((latest.presence_expires_at - Date.now()) / 1000))) : 0;
       const stillShared = invite !== null && latest.shared_room?.room_id === invite.room_id && latest.shared_room.api_version === invite.api_version;
       return { player_id: link.player_id, request_id: link.request_id, status: stillAccepted ? "accepted" : link.requested_by === owner ? "outgoing" : "incoming",
         online: remaining > 0, expires_after_seconds: remaining, join_available: stillAccepted && stillShared,

@@ -7,6 +7,7 @@ import { encode } from "jpeg-js";
 import worker from "../src/index";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { isAlarmMetadataTable } from "../src/notification-storage";
+import { TERMS_VERSION } from "../src/public-policy";
 import { cancelCampaignJoinRoot } from "../src/v2/campaign-root";
 import { initializeCampaignTarget, type TargetInitializeRequest } from "../src/v2/campaign-target";
 import { initializeCampaignStorageSchema } from "../src/v2/storage-schema";
@@ -21,6 +22,7 @@ import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.
 import lowA from "../../game/tests/fixtures/cooperative/down-and-around-a.json";
 import lowB from "../../game/tests/fixtures/cooperative/down-and-around-b.json";
 import final from "../../game/tests/fixtures/cooperative/high-and-low-final-checkpoint.json";
+import { withConfig } from "./config";
 
 // Synthetic fixture identities only.
 const H = fixture.active_view.host_id, G = fixture.active_view.guest_id!, R = fixture.active_view.campaign_room_id, I = fixture.active_view.invite_code!;
@@ -85,19 +87,16 @@ function request(path: string, init: { method?: string; body?: unknown; token?: 
   return new Request("https://game.test" + path, { method: init.method ?? "POST", headers, body: init.body === undefined ? undefined : JSON.stringify(init.body) });
 }
 async function drain<T = Record<string, unknown>>(action: string, body: unknown, overrides: Record<string, unknown> = {}): Promise<T> {
-  const response = await worker.fetch(request("/operator/story/" + action, { body }), { ...env, STORY_DRAIN_ENABLED: "true", SAFETY_OPERATOR_TOKEN: OPERATOR, ...overrides } as unknown as Env);
+  const response = await worker.fetch(request("/operator/story/" + action, { body }), withConfig({ ...env, STORY_DRAIN_ENABLED: "true", SAFETY_OPERATOR_TOKEN: OPERATOR, ...overrides }) as unknown as Env);
   const text = await response.text();
   if (response.status !== 200) throw new Error(response.status + " " + text);
   return JSON.parse(text) as T;
 }
-/** The flag values live on 2026-10-16 (deploy-20261016-roomcap), so routes answer as they do for players today. */
-const LIVE_FLAGS = { V2_ROOMS_ENABLED: "true", SAFETY_ENFORCEMENT_ENABLED: "true", PRESENCE_ENABLED: "true", RELAY_PHOTOS_ENABLED: "true", PRESET_REACTIONS_ENABLED: "true",
-  PHOTO_DELIVERY_ENABLED: "true", PHOTO_TRANSFER_ENABLED: "true", REPLAY_TRANSFER_ENABLED: "true", LEGACY_TRANSFERRED_ROOM_UNBLOCK: "true", NOTIFICATIONS_ENABLED: "true",
-  FRIEND_ROOM_EVENTS_ENABLED: "true", TESTER_ACCESS_ENABLED: "true", FIRST_STEPS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true",
-  JOURNEY_CHAPTERS_ENABLED: "true", WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true", TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true",
-  LIGHTHOUSE_V2_CHAPTER_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "false", CAMPAIGN_MUTATIONS_ENABLED: "false", HISTORY_OFFLOAD_ENABLED: "false", UPDATE_GATE_ENABLED: "false" };
+/** The flag values live on 2026-10-16 (deploy-20261016-roomcap) that are still flags, so routes answer as they do for players today. */
+const LIVE_FLAGS = { RELAY_PHOTOS_ENABLED: "true", PHOTO_TRANSFER_ENABLED: "true", NOTIFICATIONS_ENABLED: "true",
+  FRIEND_ROOM_EVENTS_ENABLED: "true", TESTER_ACCESS_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "false", CAMPAIGN_MUTATIONS_ENABLED: "false" };
 async function roomRead(owner: string, roomId: string, method = "GET", suffix = "", body?: unknown) {
-  const response = await worker.fetch(request("/v2/rooms/" + roomId + suffix, { method, player: owner, body }), { ...env, ...LIVE_FLAGS } as unknown as Env);
+  const response = await worker.fetch(request("/v2/rooms/" + roomId + suffix, { method, player: owner, body }), withConfig({ ...env, ...LIVE_FLAGS }) as unknown as Env);
   return { status: response.status, headers: [...response.headers], body: await response.text() };
 }
 /** Every room-scoped route a client can call, as campaign-room-access.test.ts lists them, plus redo, history, replay transfer and leave. */
@@ -136,6 +135,8 @@ async function world() {
     s = value(await root.commit(owner, { base_revision: s.revision, branch: s.branch, idempotency_key: crypto.randomUUID(), recording, ...(checkpoint ? { checkpoint } : {}) })).room;
   const bytes = new Uint8Array(encode({ data: new Uint8Array(8 * 8 * 4).fill(127), width: 8, height: 8 }, 45).data);
   const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(v => v.toString(16).padStart(2, "0")).join("");
+  // Shared photos always need the safety terms accepted.
+  value(await env.SAFETY_PROFILES.getByName(H).accept(H, await digest(TOKENS[H]), TERMS_VERSION));
   value(await root.updatePhoto(H, "t0-0-a", { idempotency_key: crypto.randomUUID(), recording_hash: highA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64: btoa(String.fromCharCode(...bytes)), sha256 }));
   value(await root.react(G, "p0-0", { idempotency_key: crypto.randomUUID(), a_hash: highA.recording_hash, b_hash: highB.recording_hash, expected_reaction_revision: 0, reaction: "love" }));
   const origin = { expected_revision: 1, from_index: 0, source: { room_id: R, revision: s.revision, branch: s.branch, checkpoint_hash: s.checkpoint.checkpoint_hash } };
@@ -185,7 +186,7 @@ describe("operator Story drain", () => {
   it("answers byte-for-byte as before while the flag is off, and only to the operator credential when on", async () => {
     await identity(H);
     const send = async (path: string, init: Parameters<typeof request>[1], vars: Record<string, unknown>) => {
-      const response = await worker.fetch(request(path, init), { ...env, SAFETY_OPERATOR_TOKEN: OPERATOR, ...vars } as unknown as Env);
+      const response = await worker.fetch(request(path, init), withConfig({ ...env, SAFETY_OPERATOR_TOKEN: OPERATOR, ...vars }) as unknown as Env);
       return { status: response.status, headers: [...response.headers], body: await response.text() };
     };
     const body = { schema_version: 1, players: [objectId(H)] };
@@ -260,7 +261,7 @@ describe("operator Story drain", () => {
   it("answers a Story-capable client (0.6.0 to 0.6.3, header 2) on the campaign list, read and reconcile", async () => {
     const w = await world();
     const story = async (owner: string, method: string, path: string, body?: unknown) => {
-      const response = await worker.fetch(request(path, { method, player: owner, body, story: true }), { ...env, ...LIVE_FLAGS } as unknown as Env);
+      const response = await worker.fetch(request(path, { method, player: owner, body, story: true }), withConfig({ ...env, ...LIVE_FLAGS }) as unknown as Env);
       return response.status + " " + await response.text();
     };
     const calls = (owner: string) => [story(owner, "GET", "/v2/campaigns"), story(owner, "GET", "/v2/campaigns/" + R), story(owner, "GET", "/v2/rooms/" + R), story(owner, "POST", "/v2/campaigns/" + R + "/reconcile-deletion", { schema_version: 1 })];

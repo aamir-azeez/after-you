@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { POLLEN_HEADER } from "../src/pollen/routes";
@@ -21,20 +22,20 @@ import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Reply = MutationV2 & { pollen?: PollenReceipt | { schema_version: 1; pending: true } };
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
-const ON = { FEATURES: "POLLEN_EARN", POLLEN_SECRET: SECRET }, OFF = {}, ASK = { [POLLEN_HEADER]: "1" };
+const ON = { features: ["POLLEN_EARN"], POLLEN_SECRET: SECRET }, OFF = {}, ASK = { [POLLEN_HEADER]: "1" };
 const DAY = 86_400_000;
 const key = () => crypto.randomUUID();
 let address = 0;
 
-async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string | undefined> = ON, headers: Record<string, string> = ASK, base: Env = env): Promise<Response> {
-  const configured = Object.assign({ ...base }, { V2_ROOMS_ENABLED: "true", ...vars }) as Env;
+async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, unknown> = ON, headers: Record<string, string> = ASK, base: Env = env): Promise<Response> {
+  const configured = withConfig({ ...base, ...vars }) as unknown as Env;
   return worker.fetch(new Request("https://pollen.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.91." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
-async function counted(path: string, method: string, account: Account, body: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = ASK) {
-  const meter = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...vars } as unknown as Env);
+async function counted(path: string, method: string, account: Account, body: unknown, vars: Record<string, unknown> = ON, headers: Record<string, string> = ASK) {
+  const meter = countingEnv({ ...env });
   const response = await call(path, method, account, body, vars, headers, meter.env);
   return { response, calls: meter.calls };
 }
@@ -55,7 +56,7 @@ async function create(): Promise<Account> {
 async function subscribe(account: Account, until = Date.now() + 30 * DAY): Promise<void> {
   await runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, state) => noteFullJourney(state.storage, until, Date.now()));
 }
-async function room(host: Account, guest: Account, vars: Record<string, string> = ON): Promise<RoomSnapshotV2> {
+async function room(host: Account, guest: Account, vars: Record<string, unknown> = ON): Promise<RoomSnapshotV2> {
   const made = await call("/v2/rooms", "POST", host, { idempotency_key: key(), level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH }, vars);
   expect(made.status).toBe(200);
   const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: (await made.json<RoomSnapshotV2>()).invite_code }, vars); expect(joined.status).toBe(200);
@@ -63,7 +64,7 @@ async function room(host: Account, guest: Account, vars: Record<string, string> 
 }
 const turnBody = (current: RoomSnapshotV2, recording: unknown, checkpoint?: unknown, extra: Record<string, unknown> = {}) =>
   ({ base_revision: current.revision, branch: current.branch, idempotency_key: key(), recording, ...(checkpoint === undefined ? {} : { checkpoint }), ...extra });
-async function turn(current: RoomSnapshotV2, account: Account, recording: unknown, checkpoint?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = ASK): Promise<Reply> {
+async function turn(current: RoomSnapshotV2, account: Account, recording: unknown, checkpoint?: unknown, vars: Record<string, unknown> = ON, headers: Record<string, string> = ASK): Promise<Reply> {
   const sent = await call(`/v2/rooms/${current.room_id}/turns`, "POST", account, turnBody(current, recording, checkpoint), vars, headers);
   expect(sent.status).toBe(200); return sent.json<Reply>();
 }
@@ -77,12 +78,12 @@ const tableNames = (stub: DurableObjectStub) => runInDurableObject(stub, async (
 describe("Pollen from turns", () => {
   it("answers the capability only to a phone that asks while earning works", async () => {
     const host = await create();
-    const read = async (vars: Record<string, string | undefined>, headers: Record<string, string>) => (await call("/v2/capabilities", "GET", host, undefined, vars, headers)).json<Record<string, unknown>>();
+    const read = async (vars: Record<string, unknown>, headers: Record<string, string>) => (await call("/v2/capabilities", "GET", host, undefined, vars, headers)).json<Record<string, unknown>>();
     expect(await read(ON, ASK)).toMatchObject({ pollen_version: 1 });
     expect(await read(ON, {})).not.toHaveProperty("pollen_version");
     expect(await read(OFF, ASK)).not.toHaveProperty("pollen_version");
-    expect(await read({ FEATURES: "POLLEN_EARN", POLLEN_SECRET: undefined }, ASK)).not.toHaveProperty("pollen_version");
-    expect(await read({ FEATURES: "POLLEN_EARN", POLLEN_SECRET: "too-short" }, ASK)).not.toHaveProperty("pollen_version");
+    expect(await read({ features: ["POLLEN_EARN"], POLLEN_SECRET: undefined }, ASK)).not.toHaveProperty("pollen_version");
+    expect(await read({ features: ["POLLEN_EARN"], POLLEN_SECRET: "too-short" }, ASK)).not.toHaveProperty("pollen_version");
   });
   it("adds exactly one Player call to an accepted turn, and nothing at all while off", async () => {
     const host = await create(), guest = await create();
@@ -173,8 +174,8 @@ describe("Pollen from turns", () => {
   it("does nothing at all while the flag is on but POLLEN_SECRET is missing", async () => {
     const host = await create(), guest = await create();
     delete shared.POLLEN_SECRET;
-    const current = await room(host, guest, { FEATURES: "POLLEN_EARN" });
-    const sent = await counted(`/v2/rooms/${current.room_id}/turns`, "POST", host, turnBody(current, firstA), { FEATURES: "POLLEN_EARN" });
+    const current = await room(host, guest, { features: ["POLLEN_EARN"] });
+    const sent = await counted(`/v2/rooms/${current.room_id}/turns`, "POST", host, turnBody(current, firstA), { features: ["POLLEN_EARN"] });
     expect(sent.response.status).toBe(200);
     expect(sent.calls).not.toContain("PLAYERS.creditTurn");
     expect(await sent.response.json()).not.toHaveProperty("pollen");

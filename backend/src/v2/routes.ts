@@ -3,17 +3,16 @@ import { platformCapability } from "../platform-routes";
 import { bytes, json, bearerDigest } from "../http";
 import { flags } from "../flags";
 import { roomLinkVersion, type RoomLink } from "../room-links";
-import { MAX_ROOM_LINKS, reserveWithinRoomLimit } from "../room-limit";
-import { indexedRelayRooms, pageOffset, roomSettler, withNext } from "../room-index-lists";
+import { reserveWithinRoomLimit } from "../room-limit";
+import { indexedRelayRooms, pageOffset, settleFromRoomIndex, withNext } from "../room-index-lists";
 import { MAX_V2_BODY_BYTES, exact, boundedTurnValue } from "./protocol";
 import { advertisedChapters, chapter, creatable } from "./chapters";
 import { MAX_ROOM_STAGES } from "./chapter-types";
 import { stageWithin } from "./room-stage";
-import type { Beside, KnownRoom, PolledRoomV2, RoomLobbyV2 } from "./room";
+import type { Beside, KnownRoom, PolledRoomV2 } from "./room";
 import { PHOTO_TURN_PATTERN } from "./photos";
 import { REACTION_PAIR_PATTERN } from "./reactions";
 import { requireInteraction, requirePhotoTerms } from "../safety-routes";
-import { partnerBlocks } from "../safety";
 import { routeCampaign } from "./campaign-routes";
 import { advertisedCampaigns } from "./campaign-registry";
 import { campaignRequestContext } from "./campaign-room-access";
@@ -52,13 +51,13 @@ async function boundedBytes(request: Request, max: number): Promise<Uint8Array> 
 export const FINISHED_ROOM_HEADER = "X-AfterYou-Finished-Room";
 /**
  * 0.6.0 and older stop all online play when their saved last room answers 410
- * replay_transferred. With LEGACY_TRANSFERRED_ROOM_UNBLOCK=true (off when unset),
- * such a client gets the Story boundary answer instead, which those builds accept
+ * replay_transferred. Such a client (no FINISHED_ROOM_HEADER) gets the Story
+ * boundary answer instead, which those builds accept
  * and move past. Its cost on those builds: that room reads as Story for the app
  * session, and a redo of the finished room cannot restore its replay.
  */
-function legacyTransferredUnblock(request: Request, env: Env, context: unknown): boolean {
-  return flags.legacyTransferredRoomUnblock(env) && context === undefined && request.headers.get(FINISHED_ROOM_HEADER) !== "2";
+function legacyTransferredUnblock(request: Request, context: unknown): boolean {
+  return context === undefined && request.headers.get(FINISHED_ROOM_HEADER) !== "2";
 }
 /**
  * A room poll may name the revision and branch it already holds as
@@ -78,15 +77,14 @@ export function knownRoom(request: Request): KnownRoom | undefined {
  */
 export const POLL_REDO_HEADER = "X-AfterYou-Poll-Redo";
 function pollRedo(request: Request): boolean { return request.headers.get(POLL_REDO_HEADER) === "1"; }
-/** What a standalone room read or turn reply carries beside the room: each part the client asked for while it is on. A Story request gets none. */
+/** What a standalone room read or turn reply carries beside the room: each part the client asked for (names and looks while their flags are on). A Story request gets none. */
 function besideWanted(request: Request, env: Env, context: unknown): Beside {
   if (context !== undefined) return {};
-  return { faces: endReactionsWanted(request) && flags.endReactions(env), names: displayNamesShown(request, env), tracks: runReactionsWanted(request) && flags.inRunReactions(env), looks: looksShown(request, env) };
+  return { faces: endReactionsWanted(request), names: displayNamesShown(request, env), tracks: runReactionsWanted(request), looks: looksShown(request, env) };
 }
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
 export const MAX_JOIN_VERSIONS = 16;
-function requireEnabled(env: Env): void { if (!flags.v2Rooms(env)) throw new ApiError(503, "v2_mutations_disabled"); }
 /** `fullJourneyUntil`: a Full Journey end the provider check just reported for this player, noted with the same call (pollen/routes.ts paidUntil). */
 async function reauthorize(request: Request, playerId: string, env: Env, fullJourneyUntil?: number): Promise<void> {
   // Provider I/O yields; recovery/deletion must revoke the old device before a new mutation.
@@ -103,29 +101,26 @@ async function reauthorize(request: Request, playerId: string, env: Env, fullJou
 export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember, look?: Look): Promise<Response> {
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
-    mutations_enabled: flags.v2Rooms(env), recording_version: 2, simulation_version: 2,
-    photo_uploads_enabled: flags.v2Rooms(env) && flags.relayPhotos(env),
-    preset_reactions_enabled: flags.v2Rooms(env) && flags.presetReactions(env),
-    photo_delivery_enabled: flags.photoDelivery(env),
-    replay_transfer_version: flags.replayTransfer(env) ? 1 : 0,
-    ...(flags.finishedRoomLeave(env) ? { room_leave_version: 1 } : {}),
+    mutations_enabled: true, recording_version: 2, simulation_version: 2,
+    photo_uploads_enabled: flags.relayPhotos(env),
+    preset_reactions_enabled: true,
+    photo_delivery_enabled: true,
+    replay_transfer_version: 1,
+    room_leave_version: 1,
     ...(campaignProductionEnabled() ? { campaign_control_version: 2, campaign_redo_version: 1 } : {}),
-    campaign_creation_enabled: flags.v2Rooms(env) && flags.campaignCreation(env) && advertisedCampaigns(env).length > 0,
-    campaign_mutations_enabled: campaignProductionEnabled() && flags.v2Rooms(env) && flags.campaignMutations(env),
+    campaign_creation_enabled: flags.campaignCreation(env) && advertisedCampaigns(env).length > 0,
+    campaign_mutations_enabled: campaignProductionEnabled() && flags.campaignMutations(env),
     campaign_definitions: advertisedCampaigns(env),
     chapters: advertisedChapters(env, roomLevel(request)),
     ...(roomLevel(request) >= 2 ? { room_level: 2, max_join_versions: MAX_JOIN_VERSIONS, max_stages: MAX_ROOM_STAGES } : {}),
     // Only clients that keep attempts ask; everyone else gets the same bytes as before.
-    ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: flags.historyOffload(env) } : {}),
+    ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: true } : {}),
     ...(pollRedo(request) ? { poll_redo_version: 1 } : {}),
-    // Only clients that send and read try counts ask; the flag decides whether they may.
-    ...(triesWanted(request) && flags.turnTries(env) ? { turn_tries_version: 1 } : {}),
-    // Only clients that send and show end reactions ask; the flag decides whether they may.
-    ...(endReactionsWanted(request) && flags.endReactions(env) ? { end_reactions_version: 1 } : {}),
-    // Only clients that send and play run reactions ask; the flag decides whether they may.
-    ...(runReactionsWanted(request) && flags.inRunReactions(env) ? { run_reactions_version: 1 } : {}),
-    // Only clients that play hard rooms ask; the flag decides whether they may host one.
-    ...(hardWanted(request) && flags.hardMode(env) ? { hard_mode_version: 1 } : {}),
+    // Each version below goes only to clients that ask for it; everyone else gets the same bytes as before.
+    ...(triesWanted(request) ? { turn_tries_version: 1 } : {}),
+    ...(endReactionsWanted(request) ? { end_reactions_version: 1 } : {}),
+    ...(runReactionsWanted(request) ? { run_reactions_version: 1 } : {}),
+    ...(hardWanted(request) ? { hard_mode_version: 1 } : {}),
     ...liveCapability(request, env),
     ...platformCapability(request, env),
     ...displayNamesCapability(request, env),
@@ -135,32 +130,20 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {
-    const links = flags.roomIndex(env) ? null : await player.listRooms();
-    if (!links || links.length > MAX_ROOM_LINKS) { const page = await indexedRelayRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next); }
-    const rooms: RoomLobbyV2[] = [], blocked = partnerBlocks(env, playerId);
-    for (const link of links) {
-      if (roomLinkVersion(link) !== 2) continue;
-      const snapshot = await env.ROOMS_V2.getByName(link.room_id).lobbySnapshot(playerId);
-      if (snapshot.ok) { if (!await blocked(snapshot.value.host_id, snapshot.value.guest_id)) rooms.push(snapshot.value); }
-      else if (snapshot.status === 404) await player.removeRoom(link.room_id, 2);
-      else unwrap(snapshot);
-    }
-    return json({ rooms });
+    const page = await indexedRelayRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next);
   }
   if (path === "/v2/rooms" && request.method === "POST") {
-    requireEnabled(env);
     const input = object(await boundedJson(request, 4096)); exact(input, ["idempotency_key", "level_id", "level_version", "definition_hash", ...(input.simulation_version === undefined ? [] : ["simulation_version"]), ...(input.mode === undefined ? [] : ["mode"])]);
     const mode = parseMode(input);
     const selected = chapter(input);
     if (input.simulation_version !== undefined && (!Number.isInteger(input.simulation_version) || input.simulation_version === selected.simulation_version || !(selected.supported_simulation_versions ?? []).includes(input.simulation_version as number))) throw new ApiError(422, "unsupported_simulation_version");
     const key = text(input.idempotency_key, IDEMPOTENCY_PATTERN);
     // A retained intent is already admitted. A create whose reply was lost gets
-    // its room again from it, even once its chapter or hard mode was switched
-    // off, and without another purchase check. The intent is read only when a
-    // check below would otherwise refuse or charge.
-    const hardOff = Boolean(mode) && !flags.hardMode(env), chapterOff = !creatable(selected, env);
-    const previous = hardOff || chapterOff || selected.premium ? unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined)) : null;
-    if (hardOff && !previous) throw new ApiError(503, "hard_mode_disabled");
+    // its room again from it, even once its chapter was switched off, and
+    // without another purchase check. The intent is read only when a check
+    // below would otherwise refuse or charge.
+    const chapterOff = !creatable(selected, env);
+    const previous = chapterOff || selected.premium ? unwrap(await player.chapterCreation(key, selected.key, input.simulation_version as number | undefined)) : null;
     if (chapterOff && !previous) throw new ApiError(503, "chapter_creation_disabled");
     if (selected.premium && !previous) {
       const { until } = await checkedWithEnd(onGrant => requireHostAccess(playerId, env, onGrant), pollen !== undefined);
@@ -169,19 +152,18 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
     const invite_code = newInvite();
     const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 2), invite_code, host: true, api_version: 2 };
-    const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), roomSettler(env)));
+    const intent = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveChapterRoom(key, proposed, selected.key, input.simulation_version as number | undefined, settled), settleFromRoomIndex));
     const link = intent.link;
     return json(unwrap(await env.ROOMS_V2.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, intent.chapter, intent.simulation_version, mode, memberName, pollen, look)));
   }
   if (path === "/v2/rooms/join" && request.method === "POST") {
-    requireEnabled(env);
     const input = object(await boundedJson(request, 4096)); exact(input, ["invite_code", ...(input.supported_simulation_versions === undefined ? [] : ["supported_simulation_versions"])]);
     const versions = input.supported_simulation_versions;
     if (versions !== undefined && (!Array.isArray(versions) || !versions.length || versions.length > MAX_JOIN_VERSIONS || versions.some(version => !Number.isInteger(version) || version < 1) || new Set(versions).size !== versions.length)) throw new ApiError(422, "unsupported_simulation_version");
     const code = parseInvite(input.invite_code), open = openChapters(request);
     const roomId = await inviteRoomId(code, 2), room = env.ROOMS_V2.getByName(roomId);
     const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 2 && link.room_id === roomId);
-    unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), roomSettler(env)));
+    unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false, api_version: 2 }, settled), settleFromRoomIndex));
     const joined = await room.join(playerId, code, versions as number[] | undefined, hardWanted(request), memberName, pollen, look, open);
     if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId, 2); return json(unwrap(joined)); }
     // A deletion that ran between link reservation and joining must not leave a
@@ -197,11 +179,9 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     // Standalone only. Never promote a Story room through an ordinary route.
     if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "replay_transfer_standalone_only");
     await requireInteraction(env, playerId, "relay", roomId, undefined, safetyToken);
-    if (request.method === "GET" && !key && (!action || action === "manifest")) return json(unwrap(await target.replayTransfer(playerId, !action,
-      flags.replayTransfer(env), looksShown(request, env))));
+    if (request.method === "GET" && !key && (!action || action === "manifest")) return json(unwrap(await target.replayTransfer(playerId, !action, looksShown(request, env))));
     if (request.method === "GET" && action === "operations" && key) return json(unwrap(await target.replayTransferOperation(playerId, text(key, IDEMPOTENCY_PATTERN))));
     if (request.method === "POST" && !key && (action === "ack" || action === "restore")) {
-      if (action === "ack" && !flags.replayTransfer(env)) throw new ApiError(503, "replay_transfer_disabled");
       if (!(await env.PHOTO_ACK_LIMITER.limit({ key: "replay:" + playerId + ":" + roomId })).success) throw new ApiError(429, "replay_transfer_rate_limited");
       const input = await boundedJson(request, action === "restore" ? MAX_REPLAY_ARCHIVE_BYTES + 4096 : 4096);
       await reauthorize(request, playerId, env);
@@ -212,15 +192,13 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   const historyMatch = path.match(/^\/v2\/rooms\/([a-zA-Z0-9_-]{22})\/history(?:\/([0-9]{1,2})(?:\/(ack|want))?)?$/);
   if (historyMatch) {
-    const [, roomId, item, action] = historyMatch, target = env.ROOMS_V2.getByName(roomId), support = historySupport(request, env);
+    const [, roomId, item, action] = historyMatch, target = env.ROOMS_V2.getByName(roomId), support = historySupport(request);
     if (await campaignRequestContext(request, roomId) !== undefined) throw new ApiError(409, "history_standalone_only");
     await requireInteraction(env, playerId, "relay", roomId, undefined, safetyToken);
     if (request.method === "GET" && item === undefined) return json(unwrap(await target.history(playerId, support)));
     const position = item === undefined ? -1 : parsePosition(item);
     if (request.method === "GET" && !action && position >= 0) return bytes(unwrap(await target.historyAttempt(playerId, position, support)));
     if (request.method !== "POST" || position < 0) throw new ApiError(405, "method_not_allowed");
-    // Offload needs the flag; asking for an attempt and sending one back never do, so nothing becomes unrecoverable.
-    if (action === "ack" && !flags.historyOffload(env)) throw new ApiError(503, "history_offload_disabled");
     if (!(await env.PHOTO_ACK_LIMITER.limit({ key: "history:" + playerId + ":" + roomId })).success) throw new ApiError(429, "history_rate_limited");
     if (!action) {
       const body = await boundedBytes(request, MAX_ATTEMPT_BYTES + 1);
@@ -239,7 +217,6 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     await requireInteraction(env, playerId, "relay", roomId, context, safetyToken);
     if (action === "delivery" && request.method === "GET") return json(unwrap(await target.photoDelivery(playerId, turnId, context)));
     if (action === "ack" && request.method === "POST") {
-      if (!flags.photoDelivery(env)) throw new ApiError(503, "photo_delivery_disabled");
       if (!(await env.PHOTO_ACK_LIMITER.limit({ key: playerId + ":" + roomId })).success) throw new ApiError(429, "photo_ack_rate_limited");
       return json(unwrap(await target.acknowledgePhoto(playerId, turnId, await boundedJson(request, 4096), context)));
     }
@@ -254,25 +231,20 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     return json(await leaveRoom(request, playerId, env, 2, id));
   }
   const context = await campaignRequestContext(request, id);
-  // A disabled flag answers before any room or safety read.
   if (operation === "tries") {
-    if (!flags.turnTries(env)) throw new ApiError(503, "turn_tries_disabled");
     if (item || request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (context !== undefined) throw new ApiError(409, "turn_tries_standalone_only");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
     return json(unwrap(await room.tries(playerId)));
   }
   if (operation === "end-reactions") {
-    if (!flags.endReactions(env)) throw new ApiError(503, "end_reactions_disabled");
     if (item || request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (context !== undefined) throw new ApiError(409, "end_reactions_standalone_only");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
-    return json(unwrap(await room.endReactions(playerId, runReactionsWanted(request) && flags.inRunReactions(env))));
+    return json(unwrap(await room.endReactions(playerId, runReactionsWanted(request))));
   }
   // Hard rooms (v2/hard-mode.ts): a slip's reset and the kept slips after the
-  // ones a phone has seen (GET .../hard/<seen>). The room
-  // answers 503 for a room that is not hard while the flag is off; one already
-  // hard keeps working, so a flag turned off never strands a run part way.
+  // ones a phone has seen (GET .../hard/<seen>).
   if (operation === "hard-reset" || operation === "hard") {
     // Only the read names what it has seen: GET .../hard/<n>.
     if (item && operation !== "hard") throw new ApiError(405, "method_not_allowed");
@@ -280,14 +252,13 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (operation === "hard" && request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (operation === "hard-reset" && request.method !== "POST") throw new ApiError(405, "method_not_allowed");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
-    if (operation === "hard") return json(unwrap(await room.hardFailures(playerId, flags.hardMode(env), parseSince(item))));
-    requireEnabled(env);
+    if (operation === "hard") return json(unwrap(await room.hardFailures(playerId, parseSince(item))));
     // The slip is a turn's recording: a longer chapter's own turn bound applies, as for turns.
     let resetLimit = MAX_V2_BODY_BYTES;
     if (Number(request.headers.get("content-length")) > resetLimit) {
       try { const probe = await room.snapshot(playerId); if (probe.ok) resetLimit = chapter(probe.value).limits?.turn_body_bytes ?? resetLimit; } catch { /* keep the published bound */ }
     }
-    return json(unwrap(await room.hardReset(playerId, await boundedJson(request, resetLimit), flags.hardMode(env))));
+    return json(unwrap(await room.hardReset(playerId, await boundedJson(request, resetLimit))));
   }
   // DELETE photo bypasses the interaction gate so owners can remove media.
   // It must still negotiate before inspecting recording/photo authority.
@@ -296,15 +267,15 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   if (operation === "redo" && !item) {
     // A read: auth() has just checked the device, and the room checks membership and blocks. Requests re-check it.
     if (request.method === "GET") return json(unwrap(await room.redo(playerId)));
-    if (request.method === "POST") { requireEnabled(env); return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await bearerDigest(request)))); }
+    if (request.method === "POST") { return json(unwrap(await room.redo(playerId, await boundedJson(request, 4096), await bearerDigest(request)))); }
     throw new ApiError(405, "method_not_allowed");
   }
   if (!operation && request.method === "GET") {
     const known = context === undefined ? knownRoom(request) : undefined;
     const beside = besideWanted(request, env, context);
-    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request, env), pollRedo(request), beside)
-      : await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined, beside);
-    if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, env, context)) throw new ApiError(409, "campaign_client_required");
+    const snapshot: Outcome<PolledRoomV2> = known !== undefined ? await room.snapshotIfChanged(playerId, known, historySupport(request), pollRedo(request), beside)
+      : await room.snapshot(playerId, context, context === undefined ? historySupport(request) : undefined, beside);
+    if (!snapshot.ok && snapshot.code === "replay_transferred" && legacyTransferredUnblock(request, context)) throw new ApiError(409, "campaign_client_required");
     return json(unwrap(snapshot));
   }
   if (!operation && request.method === "DELETE") {
@@ -320,8 +291,6 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     const pairId = text(item, REACTION_PAIR_PATTERN, "invalid_reaction_pair"); await stageWithin(room, pairId, "invalid_reaction_pair");
     if (request.method === "GET") return json(unwrap(await room.reactions(playerId, pairId, context)));
     if (request.method === "POST") {
-      requireEnabled(env);
-      if (!flags.presetReactions(env)) throw new ApiError(503, "preset_reactions_disabled");
       return json(unwrap(await room.react(playerId, pairId, await boundedJson(request, 4096), context)));
     }
   }
@@ -331,7 +300,6 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (request.method === "POST" || request.method === "DELETE") {
       // Removing a photo remains possible while new gameplay/uploads are paused.
       if (request.method === "POST") {
-        requireEnabled(env);
         if (!flags.relayPhotos(env)) throw new ApiError(503, "photo_uploads_disabled");
         await requirePhotoTerms(env, playerId);
       }
@@ -340,7 +308,6 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     }
   }
   if (request.method !== "POST" || item || (operation !== "turns" && operation !== "fork")) throw new ApiError(405, "method_not_allowed");
-  requireEnabled(env);
   // A receiver turn of a longer chapter may exceed the published body bound; only its own room may raise it.
   let bodyLimit = MAX_V2_BODY_BYTES;
   if (operation === "turns" && Number(request.headers.get("content-length")) > bodyLimit) {
@@ -348,7 +315,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   const input = await boundedJson(request, operation === "fork" ? 4096 : bodyLimit);
   if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
-  const snapshot = unwrap(await room.snapshot(playerId, context, context === undefined ? historySupport(request, env) : undefined));
+  const snapshot = unwrap(await room.snapshot(playerId, context, context === undefined ? historySupport(request) : undefined));
   const storyGuard = context ? await room.campaignWriteAvailability() : null;
   if (chapter(snapshot).premium || storyGuard) {
     boundedTurnValue(input, operation === "turns" ? chapter(snapshot).limits : undefined);

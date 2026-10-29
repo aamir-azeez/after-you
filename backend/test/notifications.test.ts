@@ -8,6 +8,7 @@ import { isAlarmMetadataTable, notificationAlarmOwned, scheduleNotifications } f
 import type { RedoState } from "../src/redo-control";
 import type { RoomSnapshotV2, MutationV2 } from "../src/v2/room";
 import { RELAY_KEY } from "../src/v2/protocol";
+import { configJson, withConfig } from "./config";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
@@ -18,7 +19,7 @@ import legacyB from "../../game/tests/fixtures/first-light-b.json";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Target = DurableObjectStub<import("../src/player").Player> | DurableObjectStub<import("../src/room").Room> | DurableObjectStub<import("../src/v2/room").RoomV2>;
 const source = "887055086a7482a6ebaefd79662d0c20a04f8da7", epoch = "e".repeat(22), token = "synthetic-fcm-registration-token";
-let address = 0, config: NotificationEnvironment;
+let address = 0, fcm: string, config: NotificationEnvironment;
 const realNow = Date.now.bind(Date);
 const configuredEnvironments = new Map<NotificationEnvironment, NotificationEnvironment>();
 function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(outcome.code); return outcome.value; }
@@ -29,8 +30,11 @@ beforeAll(async () => {
   const exported = await crypto.subtle.exportKey("pkcs8", keys.privateKey);
   if (!(exported instanceof ArrayBuffer)) throw new Error("synthetic_key_export_failed");
   const bytes = new Uint8Array(exported); let raw = ""; for (const byte of bytes) raw += String.fromCharCode(byte);
-  config = { NOTIFICATIONS_ENABLED: "true", FCM_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: "afteryou-synthetic", client_email: "test@afteryou-synthetic.iam.gserviceaccount.com", private_key: `-----BEGIN PRIVATE KEY-----\n${btoa(raw)}\n-----END PRIVATE KEY-----\n` }) };
+  fcm = JSON.stringify({ project_id: "afteryou-synthetic", client_email: "test@afteryou-synthetic.iam.gserviceaccount.com", private_key: `-----BEGIN PRIVATE KEY-----\n${btoa(raw)}\n-----END PRIVATE KEY-----\n` });
+  config = notify();
 });
+/** Notifications on with the synthetic sender, plus `extra` flags (`NAME: "true"`). */
+function notify(extra: Record<string, unknown> = {}): NotificationEnvironment { return withConfig({ NOTIFICATIONS_ENABLED: "true", FCM_SERVICE_ACCOUNT_JSON: fcm, ...extra }); }
 beforeEach(() => {
   // Native workerd alarms use the real clock. Keep every application due time
   // safely in its future, then force the documented alarm helper exactly once.
@@ -40,22 +44,21 @@ beforeEach(() => {
 });
 afterEach(async () => {
   for (const [target, original] of configuredEnvironments) {
-    if (original.NOTIFICATIONS_ENABLED === undefined) delete target.NOTIFICATIONS_ENABLED; else target.NOTIFICATIONS_ENABLED = original.NOTIFICATIONS_ENABLED;
+    if (original.CONFIG === undefined) delete target.CONFIG; else target.CONFIG = original.CONFIG;
     if (original.FCM_SERVICE_ACCOUNT_JSON === undefined) delete target.FCM_SERVICE_ACCOUNT_JSON; else target.FCM_SERVICE_ACCOUNT_JSON = original.FCM_SERVICE_ACCOUNT_JSON;
-    if (original.IOS_PUSH_ENABLED === undefined) delete target.IOS_PUSH_ENABLED; else target.IOS_PUSH_ENABLED = original.IOS_PUSH_ENABLED;
   }
   configuredEnvironments.clear();
   forgetFcmAccess(); vi.restoreAllMocks(); await reset();
 });
-async function configured(stub: Target, extra: NotificationEnvironment = {}): Promise<void> {
+async function configured(stub: Target, extra: Record<string, unknown> = {}): Promise<void> {
   await runInDurableObject(stub, async instance => {
     const target = (instance as unknown as { env: NotificationEnvironment }).env;
-    if (!configuredEnvironments.has(target)) configuredEnvironments.set(target, { NOTIFICATIONS_ENABLED: target.NOTIFICATIONS_ENABLED, FCM_SERVICE_ACCOUNT_JSON: target.FCM_SERVICE_ACCOUNT_JSON, IOS_PUSH_ENABLED: target.IOS_PUSH_ENABLED });
-    Object.assign(target, config, extra);
+    if (!configuredEnvironments.has(target)) configuredEnvironments.set(target, { CONFIG: target.CONFIG, FCM_SERVICE_ACCOUNT_JSON: target.FCM_SERVICE_ACCOUNT_JSON });
+    Object.assign(target, notify(extra));
   });
 }
 async function call(path: string, method: string, account?: Account, body?: unknown, extra: Record<string, string> = {}): Promise<Response> {
-  const settings: Env = { ...env }; Object.assign(settings, { V2_ROOMS_ENABLED: "true" });
+  const settings: Env = { ...env };
   return worker.fetch(new Request("https://afteryou.test" + path, { method, headers: { "CF-Connecting-IP": "198.18.0." + ++address,
     "Content-Type": "application/json", ...(account ? { "X-Player-Id": account.player_id, Authorization: `Bearer ${account.device_token}` } : {}), ...extra },
     body: body === undefined ? undefined : JSON.stringify(body) }), settings);
@@ -502,7 +505,7 @@ describe("partner redo request notifications", () => {
   });
   it("queues nothing while notifications are off", async () => {
     const { guest, room, stub, path } = await redoReady();
-    await runInDurableObject(stub, async instance => { (instance as unknown as { env: NotificationEnvironment }).env.NOTIFICATIONS_ENABLED = "false"; });
+    await runInDurableObject(stub, async instance => { (instance as unknown as { env: NotificationEnvironment }).env.CONFIG = configJson({}); });
     const quiet = await askRedo(path, room.room_id, guest);
     expect(quiet.request?.status).toBe("pending"); expect(await rows(stub)).toEqual([]);
   });
@@ -577,7 +580,7 @@ describe("iOS alert push behind IOS_PUSH_ENABLED", () => {
   it("sends Android tokens, and iOS tokens while the flag is off, exactly today's bytes", async () => {
     const sent = provider();
     for (const flag of [undefined, "false", "TRUE", " true", "1", "true"]) {
-      const sender = new FcmSender({ ...config, ...(flag === undefined ? {} : { IOS_PUSH_ENABLED: flag }) });
+      const sender = new FcmSender(notify(flag === undefined ? {} : { IOS_PUSH_ENABLED: flag }));
       for (const hint of sampleHints) {
         expect((await sender.send(token, epoch, hint)).status).toBe("sent");
         expect((await sender.send(token, epoch, hint, () => true, "android")).status).toBe("sent");
@@ -590,7 +593,7 @@ describe("iOS alert push behind IOS_PUSH_ENABLED", () => {
     expect(sent.raw[0]).toBe(`{"message":{"token":"${token}","data":{"schema_version":"1","event_id":"relay_${room22}_4","kind":"turn_ready","room_id":"${room22}","room_family":"relay","revision":"4","binding_epoch":"${epoch}"},"android":{"priority":"HIGH","ttl":"604800s","restricted_package_name":"com.aamirazeez.afteryou"}}}`);
   });
   it("gives an iOS token an APNs alert with the app's generic words, its grouping key and the exact hint keys", async () => {
-    const sent = provider(), sender = new FcmSender({ ...config, IOS_PUSH_ENABLED: "true" });
+    const sent = provider(), sender = new FcmSender(notify({ IOS_PUSH_ENABLED: "true" }));
     const titles = ["Your friend left a turn", "Your friend asked for a redo", "Friend rooms"];
     for (const [index, hint] of sampleHints.entries()) {
       expect((await sender.send(token, epoch, hint, () => true, "ios")).status).toBe("sent");

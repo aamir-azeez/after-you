@@ -8,6 +8,7 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { canonicalJson, digest, fail, randomToken, type Outcome } from "../src/protocol";
 import { eraseCampaignRoot } from "../src/v2/campaign-deletion";
 import { campaignContinueKey } from "../src/v2/campaign-protocol";
@@ -41,33 +42,35 @@ vi.mock("../src/v2/campaign-registry", async original => {
     const found = candidates().find(d => same(k, { campaign_id: d.campaign_id, campaign_version: d.campaign_version, definition_hash: d.definition_hash }));
     return manifest.retained && found ? structuredClone(found) : undefined;
   };
+  const { flags: serverFlags } = await import("../src/flags");
   return { ...actual, retainedCampaign,
     advertisedCampaigns: () => manifest.advertised ? [structuredClone(manifest.extra ?? f.definition)] : [],
-    campaignCreatable: (k: CampaignKey, e: { CAMPAIGN_CREATION_ENABLED?: string }) => manifest.advertised && e.CAMPAIGN_CREATION_ENABLED === "true" && !!retainedCampaign(k) };
+    campaignCreatable: (k: CampaignKey, e: Env) => manifest.advertised && serverFlags.campaignCreation(e) && !!retainedCampaign(k) };
 });
 const definition = fixture.definition as CampaignDefinition, key = fixture.active_view.campaign_key as CampaignKey;
 const R = fixture.active_view.campaign_room_id, I = fixture.active_view.invite_code!, T = "a".repeat(43);
 const unwrap = <T>(r: Outcome<T>): T => { if (!r.ok) throw new Error(r.code); return r.value; };
 let H = "", G = "", hash = "", address = 0, nextInvite = I;
 const changed = new Map<object, Record<string, unknown>>();
-const flags = { V2_ROOMS_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true",
-  REVENUECAT_VERIFICATION_MODE: "demo", REVENUECAT_API_VERSION: "1", REVENUECAT_SECRET_KEY: "synthetic-only" };
+const flags = { CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true",
+  REVENUECAT_SECRET_KEY: "synthetic-only", revenuecat: { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" } };
 const root = () => env.ROOMS_V2.getByName(R);
 const context = (): CampaignRoomContext => ({ schema_version: 2, room_id: R, device_hash: hash });
 const create = () => ({ schema_version: 1 as const, idempotency_key: "campaign-http-create-0001", campaign_key: key });
 const join = (id = "campaign-http-join-0001", invite = I): CampaignJoin => ({ schema_version: 2, idempotency_key: id,
   invite_code: invite, campaign_key: key, supported_simulation_versions: [6] });
 async function call(path: string, method = "GET", body?: unknown, owner = H, overrides: Record<string, unknown> = {}, marked = true, token = T) {
-  const configured: Env = { ...env }; Object.assign(configured, flags, overrides);
+  const { CONFIG: _, ...base } = env as Env & { CONFIG?: string }; // configure() writes CONFIG onto the shared env
+  const configured: Env = withConfig({ ...base, ...flags, ...overrides });
   return worker.fetch(new Request("https://campaign.test" + path, { method, headers: { "Content-Type": "application/json",
     "CF-Connecting-IP": "198.19.1." + ++address, "X-Player-Id": owner, Authorization: "Bearer " + token,
     ...(marked ? { "X-AfterYou-Campaign-Schema": "2" } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 async function configure(overrides: Record<string, unknown> = {}) {
   await runInDurableObject(root(), instance => {
-    const local = Reflect.get(instance, "env") as Record<string, unknown>;
-    if (!changed.has(local)) changed.set(local, Object.fromEntries(Object.keys(flags).map(k => [k, local[k]])));
-    Object.assign(local, flags, overrides);
+    const local = Reflect.get(instance, "env") as Record<string, unknown>, vars = withConfig({ ...flags, ...overrides });
+    if (!changed.has(local)) changed.set(local, Object.fromEntries(Object.keys(vars).map(k => [k, local[k]])));
+    Object.assign(local, vars);
   });
 }
 async function made() { const r = await call("/v2/campaigns", "POST", create()); expect(r.status).toBe(201); return r.json<{ campaign: CampaignView }>(); }
@@ -140,7 +143,6 @@ describe("fixed campaign HTTP admission and control", () => {
   it("holds unmarked control requests and global-disabled retries, without silently dropping durable links", async () => {
     await made(); const before = await bytes();
     expect((await call("/v2/campaigns/" + R, "GET", undefined, H, {}, false)).status).toBe(409);
-    expect((await call("/v2/campaigns", "POST", create(), H, { V2_ROOMS_ENABLED: "false" })).status).toBe(503);
     expect(await bytes()).toEqual(before); expect(await env.PLAYERS.getByName(H).listRooms()).toHaveLength(1);
   });
   it("preserves accepted Join and links when the original device rotates at the real binding reply boundary", async () => {

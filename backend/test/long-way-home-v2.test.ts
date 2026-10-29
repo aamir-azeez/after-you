@@ -6,7 +6,7 @@ import { canonicalJson, digest } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { chapter, checkpointV2, initialCheckpoint, recordingV2, acceptedRecording, boundedTurnValue } from "../src/v2/protocol";
 import { longWayHome, longWayHomeV2, LONG_WAY_HOME_HASH, LONG_WAY_HOME_V2_HASH } from "../src/v2/protocol-journey";
-import { advertisedChapters, creatable } from "../src/v2/chapters";
+import { advertisedChapters } from "../src/v2/chapters";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import definition from "../../game/tests/fixtures/journey/long-way-home-v2-definition.json";
@@ -26,16 +26,15 @@ import latestFinal from "../../game/tests/fixtures/journey/long-way-home-v2-late
 import oldPathA from "../../game/tests/fixtures/journey/the-path-you-leave-a.json";
 import bundledDefinition from "../src/v2/long-way-home-v2.json";
 import bundledInitial from "../src/v2/long-way-home-v2-initial.json";
+import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string };
 const key = () => crypto.randomUUID(), CODE = "SYNTHETIC-HOME-V2-HOST";
 const OLD_CLIENT = [2, 4, 5, 6, 7, 8], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9];
-const ON = { LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true" };
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + CODE),
-    REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic", REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlPlay", REVENUECAT_PLAY_PRODUCT_ID: "prodPlay", REVENUECAT_PLAY_ENVIRONMENT: "production", ...overrides });
+  const configured: Env = withConfig({ ...env, TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + CODE),
+    REVENUECAT_SECRET_KEY: "synthetic-only", revenuecat: { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" }, ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.11." + (++requestNo % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
@@ -43,7 +42,7 @@ async function account(): Promise<Account> { const response = await call("/v1/id
 async function grant(owner: Account) { expect((await call("/v1/tester-access", "POST", owner, { schema_version: 1, code: CODE })).status).toBe(200); }
 async function submit(room: RoomSnapshotV2, owner: Account, recording: unknown, checkpoint?: unknown): Promise<MutationV2> {
   const body = { base_revision: room.revision, branch: room.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) };
-  const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, body, ON); expect(response.status).toBe(200); return response.json<MutationV2>();
+  const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, body); expect(response.status).toBe(200); return response.json<MutationV2>();
 }
 async function rehash(input: Record<string, unknown>): Promise<Record<string, unknown>> {
   const body = { ...input }; delete body.checkpoint_hash; delete body.proof;
@@ -51,7 +50,7 @@ async function rehash(input: Record<string, unknown>): Promise<Record<string, un
 }
 afterEach(async () => { await reset(); });
 
-describe("Long Way Home version 2 (paid, rules 9, behind its own flag)", () => {
+describe("Long Way Home version 2 (paid, rules 9)", () => {
   it("bundles the exact native definition and initial checkpoint beside @1", async () => {
     expect(bundledDefinition).toEqual(definition); expect(bundledInitial).toEqual(initial);
     expect(await digest(canonicalJson(definition))).toBe(LONG_WAY_HOME_V2_HASH);
@@ -61,18 +60,8 @@ describe("Long Way Home version 2 (paid, rules 9, behind its own flag)", () => {
     expect(chapter(longWayHome.key)).toBe(longWayHome);
     expect(longWayHome).toMatchObject({ key: { level_version: 1, definition_hash: LONG_WAY_HOME_HASH }, simulation_version: 7, supported_simulation_versions: [7, 8] });
   });
-  it("stays off by default: not advertised and not creatable", async () => {
-    expect(env.LONG_WAY_HOME_V2_CHAPTER_ENABLED).toBeUndefined();
-    expect(creatable(longWayHomeV2, env)).toBe(false);
-    const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true", WISHING_WELL_CHAPTER_ENABLED: "true" });
-    expect(advertisedChapters(allOn).filter(entry => entry.level_id === "long-way-home").map(entry => entry.level_version)).toEqual([1]);
-    const host = await account(); await grant(host);
-    const refused = await call("/v2/rooms", "POST", host, { ...longWayHomeV2.key, idempotency_key: key() });
-    expect(refused.status).toBe(503); expect(await refused.json()).toMatchObject({ error: { code: "chapter_creation_disabled" } });
-  });
-  it("advertises exactly its pinned rules when the flag is on", async () => {
-    const on: Env = { ...env }; Object.assign(on, ON);
-    expect(advertisedChapters(on).find(entry => entry.level_id === "long-way-home" && entry.level_version === 2)).toEqual({ ...longWayHomeV2.key, premium: true, recording_version: 7, simulation_version: 9, supported_simulation_versions: [9] });
+  it("advertises exactly its pinned rules", async () => {
+    expect(advertisedChapters(env).find(entry => entry.level_id === "long-way-home" && entry.level_version === 2)).toEqual({ ...longWayHomeV2.key, premium: true, recording_version: 7, simulation_version: 9, supported_simulation_versions: [9] });
   });
   it("accepts every native way to win, including a receiver past 900 ticks", async () => {
     const start = initialCheckpoint(longWayHomeV2.key) as ChapterCheckpoint;
@@ -103,15 +92,15 @@ describe("Long Way Home version 2 (paid, rules 9, behind its own flag)", () => {
   });
   it("refuses a 0.5.x guest before the seat is taken, and plays both stages to completion", async () => {
     const host = await account(), oldGuest = await account(), guest = await account(); await grant(host);
-    const created = await call("/v2/rooms", "POST", host, { ...longWayHomeV2.key, idempotency_key: key() }, ON);
+    const created = await call("/v2/rooms", "POST", host, { ...longWayHomeV2.key, idempotency_key: key() });
     expect(created.status).toBe(200);
     const room = await created.json<RoomSnapshotV2>();
     expect(room).not.toHaveProperty("simulation_version");
     for (const versions of [undefined, OLD_CLIENT]) {
-      const rejected = await call("/v2/rooms/join", "POST", oldGuest, { invite_code: room.invite_code, ...(versions ? { supported_simulation_versions: versions } : {}) }, ON);
+      const rejected = await call("/v2/rooms/join", "POST", oldGuest, { invite_code: room.invite_code, ...(versions ? { supported_simulation_versions: versions } : {}) });
       expect(rejected.status).toBe(422); expect(await rejected.json()).toMatchObject({ error: { code: "unsupported_simulation_version" } });
     }
-    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT }, ON);
+    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT });
     expect(joined.status).toBe(200);
     const seated = await joined.json<RoomSnapshotV2>();
     const a = await submit(seated, host, pathA), b = await submit(a.room, guest, pathB, middle);

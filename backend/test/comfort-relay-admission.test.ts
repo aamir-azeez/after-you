@@ -12,7 +12,7 @@ const commit = "8".repeat(40);
 let address = 0;
 function value<T>(result: Outcome<T>): T { if (!result.ok) throw new Error(result.code); return result.value; }
 async function call(path: string, method: string, owner?: Account, body?: unknown): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true" });
+  const configured: Env = { ...env };
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.19.12." + ++address,
       ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}) },

@@ -5,7 +5,7 @@ import { campaignAdmissionHash, campaignAdmissionRequest } from "./campaign-admi
 import { campaignCreate, campaignJoin } from "./campaign-protocol";
 import { campaignRequestContext, type CampaignRoomContext } from "./campaign-room-access";
 import { campaignCreatable, definitionResolver, retainedCampaign } from "./campaign-registry";
-import { campaignDevice, campaignGlobalMutations, campaignHostAccess } from "./campaign-bindings";
+import { campaignDevice, campaignHostAccess } from "./campaign-bindings";
 import type { CampaignCreate, CampaignJoin, CampaignView } from "./campaign-types";
 import { campaignDeleted } from "./campaign-deletion";
 import { requireCampaignProduction } from "./campaign-production";
@@ -55,17 +55,14 @@ export async function routeCampaign(request: Request, path: string, owner: strin
   }
   const terminal = path.match(/^\/v2\/campaigns\/([A-Za-z0-9_-]{22})\/reconcile-deletion$/);
   if (terminal && request.method === "POST") {
-    campaignGlobalMutations(env);
     const input = await boundedJson(request, 512);
     need(typeof input === "object" && input !== null && !Array.isArray(input) && Object.keys(input).length === 1 &&
       "schema_version" in input && input.schema_version === 1, "invalid_campaign_terminal_request", 422);
     const rootId = terminal[1], scope = unwrap(await player.campaignTerminalScope(rootId, hash));
     const evidence = campaignDeleted(unwrap(await env.ROOMS_V2.getByName(rootId).campaignTerminalFact(rootId)), rootId);
-    campaignGlobalMutations(env);
     return json(unwrap(await player.finalizeCampaignTerminalLink(scope, evidence, hash)));
   }
   if (path === "/v2/campaigns" && request.method === "POST") {
-    campaignGlobalMutations(env);
     const input = campaignAdmissionRequest(await boundedJson(request, 4096), "create") as CampaignCreate;
     let intent = unwrap(await player.campaignCreation(input.idempotency_key, input.campaign_key, hash));
     if (!intent) {
@@ -74,7 +71,7 @@ export async function routeCampaign(request: Request, path: string, owner: strin
       need(definition && campaignCreatable(input.campaign_key, env), "campaign_creation_disabled", 503);
       campaignCreate(input, definitionResolver(definition));
       if (definition.chapters[0].premium) await campaignHostAccess(env, owner);
-      await campaignDevice(env, owner, hash); campaignGlobalMutations(env);
+      await campaignDevice(env, owner, hash);
       need(campaignCreatable(input.campaign_key, env), "campaign_creation_disabled", 503);
       const invite_code = code(), room_id = (await digest("v2:" + invite_code)).slice(0, 22);
       intent = unwrap(await player.reserveCampaignRoom(input.idempotency_key, { creation_schema: 2,
@@ -86,7 +83,6 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     return json({ campaign: result.campaign }, result.created ? 201 : 200);
   }
   if (path === "/v2/campaigns/join" && request.method === "POST") {
-    campaignGlobalMutations(env);
     const input = campaignAdmissionRequest(await boundedJson(request, 4096), "join") as CampaignJoin;
     const room = (await digest("v2:" + input.invite_code)).slice(0, 22), c = await context(request, room, hash), target = env.ROOMS_V2.getByName(room);
     const known = unwrap(await target.campaignHttpInvite(owner, input, c));
@@ -96,7 +92,7 @@ export async function routeCampaign(request: Request, path: string, owner: strin
       const admitted = unwrap(await player.campaignJoinAttempt(input, hash));
       if (!admitted) {
         need(campaignCreatable(input.campaign_key, env), "campaign_creation_disabled", 503);
-        await campaignDevice(env, owner, hash); campaignGlobalMutations(env);
+        await campaignDevice(env, owner, hash);
         need(campaignCreatable(input.campaign_key, env), "campaign_creation_disabled", 503);
         unwrap(await player.reserveCampaignJoin(input, hash));
       }
@@ -106,7 +102,6 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     return json(accepted);
   }
   if ((path === "/v2/campaigns/cancel" || path === "/v2/campaigns/join/cancel") && request.method === "POST") {
-    campaignGlobalMutations(env);
     const admission = path.endsWith("/join/cancel") ? "join" : "create";
     const input = campaignAdmissionRequest(await boundedJson(request, 4096), admission);
     const request_hash = await campaignAdmissionHash(owner, admission, input);
@@ -121,7 +116,7 @@ export async function routeCampaign(request: Request, path: string, owner: strin
         const observed = await env.ROOMS_V2.getByName(room).campaignTerminalFact(room);
         if (observed.ok) {
           const evidence = campaignDeleted(observed.value, room);
-          await campaignDevice(env, owner, hash); campaignGlobalMutations(env);
+          await campaignDevice(env, owner, hash);
           return json(unwrap(await player.finalizeCampaignTerminalAdmission(scope, evidence, hash)));
         }
       }
@@ -164,7 +159,6 @@ export async function routeCampaign(request: Request, path: string, owner: strin
     need("status" in result, "campaign_state_unavailable"); return json(result, result.status === "pending" ? 202 : 200);
   }
   if ((operation === "continue" || operation === "resume") && !item && request.method === "POST") {
-    campaignGlobalMutations(env);
     const input = await boundedJson(request, 4096);
     const result = unwrap(await target.campaignHttpAdvance(owner, input, c, operation === "resume"));
     if (operation === "continue") { need("status" in result, "campaign_state_unavailable"); return json(result, result.status === "pending" ? 202 : 200); }

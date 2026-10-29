@@ -3,11 +3,12 @@ import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { TERMS_VERSION } from "../src/public-policy";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { checkpointV2, initialCheckpoint, recordingV2, acceptedRecording, boundedTurnValue, chapter } from "../src/v2/protocol";
-import { advertisedChapters, creatable } from "../src/v2/chapters";
+import { advertisedChapters } from "../src/v2/chapters";
 import { sleepingLighthouseV2, LIGHTHOUSE_V2_HASH, LIGHTHOUSE_LIMITS, LIGHTHOUSE_MAX_BRANCHES } from "../src/v2/protocol-lighthouse";
 import { validateTransfer } from "../src/v2/replay-transfer";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
@@ -16,21 +17,17 @@ import chain from "../../game/tests/fixtures/lighthouse/v2-chain.json";
 import bundledDefinition from "../src/v2/sleeping-lighthouse-v2.json";
 import bundledInitial from "../src/v2/sleeping-lighthouse-v2-initial.json";
 
-// sleeping-lighthouse@2: one six-stage chapter on the shared format, behind
-// LIGHTHOUSE_V2_CHAPTER_ENABLED (default "false"). Fixtures come from
+// sleeping-lighthouse@2: one six-stage chapter on the shared format. Fixtures come from
 // game/tests/test_lighthouse_v2_proof.gd.
 type Account = { player_id: string; device_token: string };
 type Any = Record<string, any>;
-const CODE = "SYNTHETIC-LIGHTHOUSE-HOST", ON = { LIGHTHOUSE_V2_CHAPTER_ENABLED: "true" };
+const CODE = "SYNTHETIC-LIGHTHOUSE-HOST", ON = {};
 const OLD_CLIENT = [2, 4, 5, 6, 7, 8, 9], NSTAGE_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11];
-const ALL_ON = { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true",
-  WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true", TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true" };
-const PHOTOS = { RELAY_PHOTOS_ENABLED: "true", SAFETY_ENFORCEMENT_ENABLED: "true", PHOTO_TRANSFER_ENABLED: "true", PHOTO_DELIVERY_ENABLED: "true" };
+const PHOTOS = { RELAY_PHOTOS_ENABLED: "true", PHOTO_TRANSFER_ENABLED: "true" };
 const pairs = (chain as Any).pairs as { a: Any; b: Any }[], checkpoints = (chain as Any).checkpoints as Any[];
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}, extra: Record<string, string> = {}): Promise<Response> {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + CODE), ...overrides });
+  const configured: Env = withConfig({ ...env, TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + CODE), ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.12." + (++requestNo % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...extra }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
@@ -68,28 +65,20 @@ describe("sleeping-lighthouse@2: one six-stage chapter", () => {
     expect(initialCheckpoint(sleepingLighthouseV2.key)).toEqual(checkpoints[0]);
   });
 
-  it("stays off by default and never reaches a client that does not ask", async () => {
-    expect(env.LIGHTHOUSE_V2_CHAPTER_ENABLED).toBeUndefined(); expect(creatable(sleepingLighthouseV2, env)).toBe(false);
-    const allOn: Env = { ...env }; Object.assign(allOn, ALL_ON, ON);
-    const legacy = advertisedChapters(allOn);
+  it("never reaches a client that does not ask", async () => {
+    const legacy = advertisedChapters(env);
     expect(legacy.some(entry => entry.level_id === "sleeping-lighthouse")).toBe(false);
     expect(legacy.length).toBeLessThanOrEqual(16);
     expect(legacy.every(entry => !("stage_count" in entry) && (entry.supported_simulation_versions?.length ?? 1) <= 8)).toBe(true);
-    const level2 = advertisedChapters(allOn, 2);
+    const level2 = advertisedChapters(env, 2);
     expect(level2.find(entry => entry.level_id === "sleeping-lighthouse")).toEqual({ ...sleepingLighthouseV2.key, premium: true, recording_version: 8, simulation_version: 11, supported_simulation_versions: [11], stage_count: 6 });
     expect(level2.filter(entry => entry.stage_count === 2).map(({ stage_count: _s, ...rest }) => { void _s; return rest; })).toEqual(legacy);
     const viewer = await account();
-    // Headerless capabilities are byte-identical with the new flag on or off.
-    const off = await (await call("/v2/capabilities", "GET", viewer, undefined, ALL_ON)).text();
-    const on = await (await call("/v2/capabilities", "GET", viewer, undefined, { ...ALL_ON, ...ON })).text();
-    expect(on).toBe(off); expect(JSON.parse(on)).not.toHaveProperty("room_level");
-    const askedOff = await (await call("/v2/capabilities", "GET", viewer, undefined, ALL_ON, { "X-AfterYou-Room-Level": "2" })).json<Any>();
-    expect(askedOff.chapters.some((entry: Any) => entry.level_id === "sleeping-lighthouse")).toBe(false);
-    const asked = await (await call("/v2/capabilities", "GET", viewer, undefined, { ...ALL_ON, ...ON }, { "X-AfterYou-Room-Level": "2" })).json<Any>();
-    expect(asked).toMatchObject({ room_level: 2, max_join_versions: 16, max_stages: 8 }); expect(asked.chapters.length).toBe(askedOff.chapters.length + 1);
-    // Creating the chapter with the flag off is refused.
-    const creator = await account(); await grant(creator);
-    expect(await status(await call("/v2/rooms", "POST", creator, { ...sleepingLighthouseV2.key, idempotency_key: crypto.randomUUID() }))).toBe("503 chapter_creation_disabled");
+    // Headerless capabilities leave it out, and say nothing of room levels.
+    const plain = await (await call("/v2/capabilities", "GET", viewer)).json<Any>();
+    expect(plain).not.toHaveProperty("room_level"); expect(plain.chapters.some((entry: Any) => entry.level_id === "sleeping-lighthouse")).toBe(false);
+    const asked = await (await call("/v2/capabilities", "GET", viewer, undefined, ON, { "X-AfterYou-Room-Level": "2" })).json<Any>();
+    expect(asked).toMatchObject({ room_level: 2, max_join_versions: 16, max_stages: 8 }); expect(asked.chapters.some((entry: Any) => entry.level_id === "sleeping-lighthouse")).toBe(true);
   });
 
   it("accepts all six pairs on the shared shape and nests six proofs", async () => {
@@ -174,7 +163,7 @@ describe("sleeping-lighthouse@2: one six-stage chapter", () => {
   it("transfers a completed six-stage room, keeps its stage count once compacted, and restores it", async () => {
     const roomId = "t".repeat(22), done = env.ROOMS_V2.getByName(roomId);
     await playAll(done, roomId);
-    const transfer = unwrap(await done.replayTransfer(host, true, true));
+    const transfer = unwrap(await done.replayTransfer(host, true));
     expect(transfer.archive!.turns.length).toBe(12); expect(transfer.archive!.pairs.length).toBe(6);
     expect(() => validateTransfer({ schema_version: 1, manifest: transfer.manifest, acked_player_ids: transfer.acked_player_ids, transferred: transfer.transferred })).not.toThrow();
     const ack = { schema_version: 1, epoch: transfer.manifest.epoch, archive_hash: transfer.manifest.archive_hash };

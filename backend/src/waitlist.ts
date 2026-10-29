@@ -1,5 +1,6 @@
 import { JSON_HEADERS, errorResponse, json } from "./http";
 import { flags, type ServerVars } from "./flags";
+import { APP } from "./config";
 import { ApiError, boundedJson, digest, exactKeys, object } from "./protocol";
 import { logWarning } from "./log";
 import { MIN_CONFIRM_SECRET_LENGTH, TOKEN_PATTERN, signConfirmToken, verifyConfirmToken } from "./waitlist-token";
@@ -19,7 +20,7 @@ import { confirmEmail, sender } from "./waitlist-email";
  * The worker keeps no list and opens no Durable Object. Every answer is the same whether or not the address is already
  * listed. Emails, tokens and upstream bodies are never logged.
  *
- * Absent unless IOS_WAITLIST_ENABLED is "true": both paths then fall through as before (OPTIONS 405, others to auth()).
+ * Absent unless CONFIG lists IOS_WAITLIST_ENABLED: both paths then fall through as before (OPTIONS 405, others to auth()).
  */
 export const WAITLIST_PATH = "/v1/waitlist/ios";
 export const CONFIRM_PATH = "/v1/waitlist/ios/confirm";
@@ -31,15 +32,13 @@ export const TURNSTILE_ACTION = "ios_waitlist";
 const SITEVERIFY_URL = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const RESEND_URL = "https://api.resend.com";
 const UPSTREAM_TIMEOUT_MS = 8000;
-const SEGMENT_PATTERN = /^[A-Za-z0-9-]{8,64}$/;
-const SITE_KEY_PATTERN = /^[A-Za-z0-9_-]{8,64}$/;
 /** A plain address check: one @, no spaces or angle brackets, a dotted domain. Resend does the rest. */
 const EMAIL_PATTERN = /^[^\s@<>()[\]\\,;:"]{1,64}@(?=.{4,253}$)[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?)+$/;
 const TURNSTILE_TOKEN_PATTERN = /^[\x21-\x7e]{1,2048}$/;
 /** Siteverify codes that mean our setup is wrong, not that the visitor failed. */
 const TURNSTILE_SETUP_ERRORS = ["missing-input-secret", "invalid-input-secret", "bad-request", "internal-error"];
 
-export type WaitlistEnv = Pick<ServerVars, "FEATURES" | "IOS_WAITLIST_ENABLED" | "RESEND_API_KEY" | "RESEND_SEGMENT_ID" | "TURNSTILE_SECRET_KEY" | "TURNSTILE_SITE_KEY" | "WAITLIST_CONFIRM_SECRET" | "WAITLIST_REPLY_TO" | "WAITLIST_FROM">
+export type WaitlistEnv = ServerVars
   & { PUBLIC_LIMITER: RateLimit; WAITLIST_ADDRESS_LIMITER: RateLimit };
 
 const CORS = Object.freeze({ "Access-Control-Allow-Origin": WAITLIST_ORIGIN, Vary: "Origin" });
@@ -68,8 +67,9 @@ export async function routeWaitlist(request: Request, path: string, env: Waitlis
 
 type WaitlistConfig = { siteKey: string; turnstileSecret: string; resendKey: string; segment: string; confirmSecret: string; replyTo: string; from: string };
 function configured(env: WaitlistEnv): WaitlistConfig {
-  const siteKey = env.TURNSTILE_SITE_KEY ?? "", segment = env.RESEND_SEGMENT_ID ?? "", confirmSecret = env.WAITLIST_CONFIRM_SECRET ?? "", replyTo = env.WAITLIST_REPLY_TO ?? "", from = env.WAITLIST_FROM ?? "";
-  if (!SITE_KEY_PATTERN.test(siteKey) || !SEGMENT_PATTERN.test(segment) || confirmSecret.length < MIN_CONFIRM_SECRET_LENGTH || !EMAIL_PATTERN.test(replyTo) || !EMAIL_PATTERN.test(from) || !env.TURNSTILE_SECRET_KEY || !env.RESEND_API_KEY) {
+  const { turnstileSiteKey: siteKey, waitlistReplyTo: replyTo, waitlistFrom: from, resendSegmentId: segment } = APP;
+  const confirmSecret = env.WAITLIST_CONFIRM_SECRET ?? "";
+  if (confirmSecret.length < MIN_CONFIRM_SECRET_LENGTH || !env.TURNSTILE_SECRET_KEY || !env.RESEND_API_KEY) {
     logWarning("waitlist_unconfigured");
     throw new ApiError(503, "waitlist_unavailable");
   }

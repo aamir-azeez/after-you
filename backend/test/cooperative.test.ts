@@ -5,7 +5,7 @@ import worker from "../src/index";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { HOST_ACCESS_OUTAGE_GRACE_MS } from "../src/v2/host-access";
-import { RELAY_KEY, acceptedRecording, chapter, checkpointV2, initialCheckpoint, recordingV2, boundedValue, MAX_RECORDING_BYTES, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
+import { acceptedRecording, chapter, checkpointV2, initialCheckpoint, recordingV2, boundedValue, MAX_RECORDING_BYTES, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
 import { highAndLow, rollingHome, houseForTwo } from "../src/v2/protocol-cooperative";
 import type { ChapterAdapter, ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -35,6 +35,7 @@ import houseMiddle from "../../game/tests/fixtures/cooperative/open-the-house-ch
 import belowA from "../../game/tests/fixtures/cooperative/the-room-below-a.json";
 import belowB from "../../game/tests/fixtures/cooperative/the-room-below-b.json";
 import houseFinal from "../../game/tests/fixtures/cooperative/a-house-for-two-final-checkpoint.json";
+import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const key = () => crypto.randomUUID(), source = "d".repeat(40), CODE = "SYNTHETIC-COOPERATIVE-TESTER";
@@ -43,11 +44,11 @@ const cases = [
   { adapter: rollingHome, definition: rollingDefinition, initial: rollingInitial, a: weightA, b: weightB, middle: rollingMiddle, a2: homeA, b2: homeB, final: rollingFinal },
   { adapter: houseForTwo, definition: houseDefinition, initial: houseInitial, a: openA, b: openB, middle: houseMiddle, a2: belowA, b2: belowB, final: houseFinal }
 ];
-const playConfig = { REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic", REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlPlay", REVENUECAT_PLAY_PRODUCT_ID: "prodPlay", REVENUECAT_PLAY_ENVIRONMENT: "production" };
+const playConfig = { REVENUECAT_SECRET_KEY: "synthetic-only", revenuecat: { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" } };
 let requestNo = 0;
 function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(outcome.code); return outcome.value; }
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", ...overrides });
+  const configured: Env = withConfig({ ...env, ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.1." + ++requestNo,
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }),
   configured);
@@ -91,31 +92,6 @@ function provider(access: boolean | (() => boolean) = true) {
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("bounded cooperative chapters", () => {
-  it("keeps rollout off by default, independent from First Steps, with authored free/paid metadata", async () => {
-    expect(env.COOP_CHAPTERS_ENABLED).toBeUndefined();
-    expect(env.HOUSE_CHAPTER_ENABLED).toBeUndefined();
-    const host = await account(), off = { COOP_CHAPTERS_ENABLED: "false", HOUSE_CHAPTER_ENABLED: "false", FIRST_STEPS_ENABLED: "true" };
-    const before = await (await call("/v2/capabilities", "GET", host, undefined, off)).json<{ chapters: { level_id: string }[] }>();
-    expect(before.chapters.map(c => c.level_id)).toEqual(["relay-isles", "first-steps"]);
-    for (const selected of [highAndLow, rollingHome, houseForTwo]) expect((await call("/v2/rooms", "POST", host, { ...selected.key, idempotency_key: key() }, off)).status).toBe(503);
-    expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
-    const on = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
-    expect(on.chapters).toEqual([{ ...RELAY_KEY, premium: false, recording_version: 2, simulation_version: 2, supported_simulation_versions: [2, 8] },
-      { ...highAndLow.key, premium: false, recording_version: 6, simulation_version: 6, supported_simulation_versions: [6, 8] }, { ...rollingHome.key, premium: true, recording_version: 6, simulation_version: 6, supported_simulation_versions: [6, 8] },
-      { ...houseForTwo.key, premium: true, recording_version: 6, simulation_version: 6, supported_simulation_versions: [6, 8] }]);
-  });
-  it("gates House independently and preserves existing chapter availability", async () => {
-    const host = await account(), off = { HOUSE_CHAPTER_ENABLED: "false" };
-    const before = await (await call("/v2/capabilities", "GET", host, undefined, off)).json<{ chapters: { level_id: string }[] }>();
-    expect(before.chapters.map(c => c.level_id)).toEqual(["relay-isles", "high-and-low", "rolling-home"]);
-    expect((await call("/v2/rooms", "POST", host, { ...houseForTwo.key, idempotency_key: key() }, off)).status).toBe(503);
-    await grant(host);
-    const onlyHouse = { COOP_CHAPTERS_ENABLED: "false" };
-    const enabled = await (await call("/v2/capabilities", "GET", host, undefined, onlyHouse)).json<{ chapters: { level_id: string }[] }>();
-    expect(enabled.chapters.map(c => c.level_id)).toEqual(["relay-isles", "a-house-for-two"]);
-    const room = await newRoom(host, houseForTwo, key(), onlyHouse);
-    expect(await (await call(`/v2/rooms/${room.room_id}`, "GET", host, undefined, off)).json()).toEqual(room);
-  });
   it.each(cases)("pins native definitions, all recording bytes and the two-stage proof chain ($adapter.key.level_id)", async fixture => {
     expect(await digest(canonicalJson(fixture.definition))).toBe(fixture.adapter.key.definition_hash);
     expect(chapter(fixture.adapter.key)).toBe(fixture.adapter); expect(initialCheckpoint(fixture.adapter.key)).toEqual(fixture.initial);
@@ -148,7 +124,7 @@ describe("bounded cooperative chapters", () => {
     const b = await submit(a.room, guest, fixture.b, fixture.middle); expect(b.room.active_player_id).toBe(guest.player_id);
     const c = await submit(b.room, guest, fixture.a2), d = await submit(c.room, host, fixture.b2, fixture.final);
     expect(d.room).toMatchObject({ stage_index: 2, active_role: "complete", checkpoint: fixture.final });
-    const retry = await call(path + "/turns", "POST", host, body, { COOP_CHAPTERS_ENABLED: "false", HOUSE_CHAPTER_ENABLED: "false" }); expect(retry.status).toBe(200); expect(await retry.json()).toEqual({ receipt: a.receipt, room: d.room });
+    const retry = await call(path + "/turns", "POST", host, body); expect(retry.status).toBe(200); expect(await retry.json()).toEqual({ receipt: a.receipt, room: d.room });
     expect((await call(path + "/turns", "POST", host, { ...body, branch: 1 })).status).toBe(409);
     const collection = await (await call(path + "/collection", "GET", host)).json<{ pairs: unknown[] }>(); expect(collection.pairs).toHaveLength(2);
     expect(await (await call(path + "/pairs/p0-0", "GET", guest)).json()).toMatchObject({ a: fixture.a, b: fixture.b, checkpoint: fixture.middle });
@@ -280,7 +256,7 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
     expect(await env.PLAYERS.getByName(guest.player_id).storedTesterGrant(guest.player_id)).toBeNull();
   });
   it("admits a host with an active Play subscription while the guest joins and plays without buying", async () => {
-    const subscribed = { ...playConfig, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: "prodMonthly,prodYearly" };
+    const subscribed = { ...playConfig, revenuecat: { ...playConfig.revenuecat, play_subscription_product_ids: ["prodMonthly", "prodYearly"] } };
     const requests = vi.spyOn(globalThis, "fetch").mockImplementation(async url => {
       const target = url instanceof Request ? url.url : String(url);
       if (target.includes("active_entitlements")) return Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: Date.now() + 86400000 }], next_page: null });
@@ -338,13 +314,13 @@ describe.each(cases.filter(fixture => fixture.adapter.premium))("host-owned coop
   it("rejects stale credentials when recovery happens during paid creation lookup", async () => {
     const host = await account(); let rotated = false;
     vi.spyOn(globalThis, "fetch").mockImplementation(async () => { if (!rotated) { rotated = true; await recover(host); } return Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: null }], next_page: null }); });
-    const response = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: key() }, { ...playConfig, REVENUECAT_REVIEWER_IDS: host.player_id });
+    const response = await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: key() }, { ...playConfig, revenuecat: { ...playConfig.revenuecat, reviewer_ids: [host.player_id] } });
     expect(response.status).toBe(401); expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
   });
   it("rejects a new turn after credential recovery during the host's purchase lookup", async () => {
     const requests = provider(), { host, room } = await pair(fixture.adapter, false, playConfig); let next: Account | undefined;
     requests.mockImplementation(async () => { if (!next) next = await recover(host); return Response.json({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: null }], next_page: null }); });
-    const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(room, fixture.a), { ...playConfig, REVENUECAT_REVIEWER_IDS: host.player_id });
+    const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, turn(room, fixture.a), { ...playConfig, revenuecat: { ...playConfig.revenuecat, reviewer_ids: [host.player_id] } });
     expect(response.status).toBe(401); expect(value(await env.ROOMS_V2.getByName(room.room_id).snapshot(host.player_id)).revision).toBe(room.revision);
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", next)).status).toBe(200);
   });

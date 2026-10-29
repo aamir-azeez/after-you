@@ -60,11 +60,11 @@ export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   api_version: 2; invite_code?: string; hard?: HardRun; active_role: "a" | "b" | "complete";
   first_player_id: string | null; active_player_id: string | null; player_slot: Slot;
   stage_id: string; recording_a: RecordingV2 | null; validation: "structural_client_replay_required";
-  /** Only beside a read for a member that asked for end reactions while they are on (end-reactions.ts). */
+  /** Only beside a read for a member that asked for end reactions (end-reactions.ts). */
   end_reactions?: EndReactionsView;
   /** Only beside a full read for a member that asked for names while they are on (display-names.ts): the other member's name or null. */
   partner_name?: string | null;
-  /** Only beside a read for a member that asked for run reactions while they are on (run-reactions.ts): the track of the partner's latest turn, when it has one. */
+  /** Only beside a read for a member that asked for run reactions (run-reactions.ts): the track of the partner's latest turn, when it has one. */
   run_reactions?: RunReactionsView;
   /** Only beside a read for a member that asked for looks while they are on (pollen/room-looks.ts): the partner's look and the looks of their turns. */
   partner_look?: Look;
@@ -78,14 +78,14 @@ export type ReceiptV2 = {
   accepted_revision: number; branch: number; stage_index: number; stage_id: string;
   turn_id: string | null; recording_hash: string | null; pair_id: string | null; checkpoint_hash: string;
 };
-/** `end_reactions` only for a standalone member that asked for them while they are on (end-reactions.ts). */
+/** `end_reactions` only for a standalone member that asked for them (end-reactions.ts). */
 /** `partner_name` likewise for display names (display-names.ts), and `run_reactions` for run reactions (run-reactions.ts). */
 export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 } & BesideFields;
 /** A standalone turn committed with a PollenMember also returns its frozen facts; the Worker takes them out before replying (pollen/routes.ts). */
 export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts };
 /**
  * What a standalone member's read or turn reply carries beside the room, each
- * only when the member asked for it while it is on: the room's end reactions
+ * only when the member asked for it (names and looks also while their flags are on): the room's end reactions
  * (`faces`), the partner's name (`names`) and the run reactions on the partner's latest turn (`tracks`).
  */
 export type Beside = { faces?: boolean; names?: boolean; tracks?: boolean; looks?: boolean };
@@ -222,20 +222,20 @@ export class RoomV2 extends DurableObject<Env> {
    * index (room-index-sync.ts), but only when the room is now settled for its
    * members (finished, replay-transferred) or `reopened` says it may have been
    * before (a fork). The index reads rooms in play live, so ordinary turns
-   * need no push. While the index is off it reads nothing.
+   * need no push.
    *
    * With `actor`, the member who did not act also gets one live hint
    * (live.ts): on the index push when there is one, else on its own call.
    */
   private indexed<T>(outcome: Outcome<T>, reopened = false, actor?: string): Outcome<T> {
     const live = actor !== undefined && flags.liveConnection(this.env);
-    if (!outcome.ok || (!flags.roomIndex(this.env) && !live)) return outcome;
+    if (!outcome.ok) return outcome;
     const state = this.stored();
     if (!state) return outcome;
     const partner = actor === undefined ? null : liveRecipient(state, actor);
     const hint = live && partner ? this.liveHintFrom(state) : null;
     const project = (player: string) => this.projection(player);
-    if (flags.roomIndex(this.env) && (reopened || memberStateOf(project(state.host_id)) !== "in_play")) {
+    if (reopened || memberStateOf(project(state.host_id)) !== "in_play") {
       pushRoomIndex(this.ctx, this.env, state.room_id, 2, [state.host_id, state.guest_id], project, hint && partner ? { to: partner, hint } : undefined);
     } else if (hint) announceRoomChange(this.env, promise => this.ctx.waitUntil(promise), state, actor!);
     return outcome;
@@ -376,7 +376,7 @@ export class RoomV2 extends DurableObject<Env> {
     });
     return ok(this.view(state, host));
   }
-  /** `history` is what the member's request said about keeping attempts (the router passes it only while offload is on). */
+  /** `history` is what the member's request said about keeping attempts (the router passes it for standalone reads). */
   /** `beside`: what a standalone member read asked for beside the room (Beside); a Story read gets none. */
   snapshot(player: string, context?: CampaignRoomContext, history?: HistorySupport, beside: Beside = {}): Promise<Outcome<RoomSnapshotV2>> {
     return this.project(player, context, () => {
@@ -501,7 +501,7 @@ export class RoomV2 extends DurableObject<Env> {
     return this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM operations").one().n < MAX_OPERATIONS;
   }
   /** `looks`: also every turn's look by recording hash, beside the archive and never in it (the archive's hash is unchanged; pollen/room-looks.ts). */
-  async replayTransfer(player: string, includeArchive = true, allowPrepare = true, looks = false): Promise<Outcome<ReplayTransfer & { archive: ReplayArchive | null; turn_looks?: Record<string, Look> }>> {
+  async replayTransfer(player: string, includeArchive = true, looks = false): Promise<Outcome<ReplayTransfer & { archive: ReplayArchive | null; turn_looks?: Record<string, Look> }>> {
     try {
       const boundary = campaignBoundaryGuard(this.ctx.storage, "replay_transfer_standalone_only"); if (boundary) return boundary;
       // A v1 archive needs every row; once attempt history has offloaded one, only history can bring it back.
@@ -514,15 +514,12 @@ export class RoomV2 extends DurableObject<Env> {
         return archived && this.member(archived, player) && value?.transferred ? ok({ ...value, archive: null, ...this.transferLooks(looks) }) : this.unavailable(player);
       }
       if (!this.member(state, player)) return fail(404, "room_not_found");
-      if (!allowPrepare && !readReplayTransfer(this.ctx.storage)) return fail(503, "replay_transfer_disabled");
       const archive = this.ctx.storage.transactionSync(() => captureReplay(this.ctx.storage, state));
       const fingerprint = canonicalJson(archive), archiveHash = await digest(fingerprint);
       return this.ctx.storage.transactionSync(() => {
         const current = this.read(); if (!current || !this.member(current, player)) return this.unavailable(player);
         if (canonicalJson(captureReplay(this.ctx.storage, current)) !== fingerprint) return fail(409, "replay_source_changed");
-        const prior = readReplayTransfer(this.ctx.storage);
-        if (!allowPrepare && (!prior || prior.transferred || canonicalJson(prior.manifest) !== canonicalJson(factsForArchive(archive, prior.manifest.epoch, archiveHash)))) return fail(503, "replay_transfer_disabled");
-        const value = allowPrepare ? prepareReplayTransfer(this.ctx.storage, archive, archiveHash) : prior!;
+        const value = prepareReplayTransfer(this.ctx.storage, archive, archiveHash);
         return ok({ ...value, archive: includeArchive ? archive : null, ...this.transferLooks(looks) });
       });
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
@@ -622,7 +619,6 @@ export class RoomV2 extends DurableObject<Env> {
       return ok(await attemptDownload(this.ctx.storage, room, record));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
-  /** The router allows this only while HISTORY_OFFLOAD_ENABLED is true. */
   async acknowledgeHistory(player: string, position: number, input: unknown, support?: HistorySupport): Promise<Outcome<HistoryView>> {
     try {
       const link = parseAck(input), { record } = await this.historyRecord(player, position, support, true);
@@ -841,14 +837,12 @@ export class RoomV2 extends DurableObject<Env> {
    * turn, and records who slipped with the slip's recording, checkpoint and
    * first turn. When the room has no space left for a whole new run it keeps
    * the slip and ends the run (over) instead. A resend answers the same.
-   * `enabled`: the hard mode flag; a room that is not hard says 503 while it
-   * is off, so the route is inert until it is on.
    */
-  async hardReset(player: string, value: unknown, enabled: boolean): Promise<Outcome<{ room: RoomSnapshotV2; failure: Failure }>> {
+  async hardReset(player: string, value: unknown): Promise<Outcome<{ room: RoomSnapshotV2; failure: Failure }>> {
     try {
       const observed = this.read();
       if (!observed || !this.member(observed, player)) return this.unavailable(player);
-      if (!this.hard.run(this.ctx.storage)) return fail(enabled ? 409 : 503, enabled ? "not_hard_room" : "hard_mode_disabled");
+      if (!this.hard.run(this.ctx.storage)) return fail(409, "not_hard_room");
       const stages = chapter(observed).stages.length;
       const input = parseReset(value, stages);
       const hash = await digest(canonicalJson({ operation: "hard-reset", ...input }));
@@ -906,11 +900,11 @@ export class RoomV2 extends DurableObject<Env> {
       count("turns") + 2 * stages <= MAX_TURNS && count("pairs") + stages <= MAX_PAIRS && count("operations") + 2 * stages <= MAX_OPERATIONS;
   }
   /** A hard room's kept slips for its members (GET .../hard). */
-  hardFailures(player: string, enabled: boolean, since = 0): Promise<Outcome<HardFailures>> {
+  hardFailures(player: string, since = 0): Promise<Outcome<HardFailures>> {
     return this.project(player, undefined, () => {
       if (!this.memberView(player)) return fail(404, "room_not_found");
       const view = failuresView(this.ctx.storage, this.hard, since);
-      return view ? ok(view) : fail(enabled ? 409 : 503, enabled ? "not_hard_room" : "hard_mode_disabled");
+      return view ? ok(view) : fail(409, "not_hard_room");
     });
   }
   collection(player: string, context?: CampaignRoomContext): Promise<Outcome<{ pairs: { pair_id: string; branch: number; stage_index: number; a_hash: string; b_hash: string; checkpoint_hash: string }[]; active_pair_ids: string[] }>> {
@@ -973,15 +967,15 @@ export class RoomV2 extends DurableObject<Env> {
       const input = await parsePhotoMutation(turnId, value, remove);
       if (!remove) {
         if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
-        if (flags.safetyEnforcement(this.env) && !(await this.env.SAFETY_PROFILES.getByName(player).terms(player)).accepted) return fail(403, "terms_acceptance_required");
+        if (!(await this.env.SAFETY_PROFILES.getByName(player).terms(player)).accepted) return fail(403, "terms_acceptance_required");
       }
       const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
       return this.ctx.storage.transactionSync(() => campaignHttpAccessGuard(this.ctx.storage, access) ?? mutatePhoto(this.ctx.storage, this.memberView(player), player, input));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); return fail(500, "photo_storage_error"); }
   }
   /**
-   * The erase always tells the other member's room index, whatever the flag,
-   * so no index row keeps the erased member's id (room-index-sync.ts).
+   * The erase always tells the other member's room index, so no index row
+   * keeps the erased member's id (room-index-sync.ts).
    */
   async eraseForPlayer(player: string, pendingCreation = false): Promise<Outcome<{ deleted: boolean }>> {
     let erased: { room_id: string; partner: string | null; hint: LiveHint | null } | null = null;
@@ -1068,12 +1062,12 @@ export class RoomV2 extends DurableObject<Env> {
     return facts ? ok(facts) : fail(404, "pollen_clear_not_found");
   }
   /**
-   * Binding only (operator clear-name): deletes `player`'s stored name. When a row went and the room
-   * index is on, the other member's index row is pushed again so it stops showing the name.
+   * Binding only (operator clear-name): deletes `player`'s stored name. When a row went, the other
+   * member's room index row is pushed again so it stops showing the name.
    */
   clearMemberName(player: string): boolean {
     const cleared = this.ctx.storage.transactionSync(() => eraseMemberName(this.ctx.storage, player));
-    const state = cleared && flags.roomIndex(this.env) ? this.stored() : null;
+    const state = cleared ? this.stored() : null;
     const partner = state ? this.partnerOf(state, player) : null;
     if (state && partner) pushRoomIndex(this.ctx, this.env, state.room_id, 2, [partner], member => this.projection(member));
     return cleared;

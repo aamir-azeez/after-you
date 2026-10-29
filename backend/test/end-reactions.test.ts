@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { digest, type Outcome } from "../src/protocol";
 import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
@@ -20,11 +21,10 @@ type Account = { player_id: string; device_token: string; recovery_code: string 
 type View = { schema_version: 1; faces: Record<string, string>; partner?: string };
 type Inbox = { rooms: { room_id: string; partner_reaction?: string }[] };
 const key = () => crypto.randomUUID(), CODE = "SYNTHETIC-FACES-TESTER", LOOKUP = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
-const ON = { END_REACTIONS_ENABLED: "true" }, ASK = { "X-AfterYou-End-Reactions": "1" };
+const ON = {}, ASK = { "X-AfterYou-End-Reactions": "1" };
 let address = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = {}, headers: Record<string, string> = {}): Promise<Response> {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", ...vars });
+  const configured: Env = withConfig({ ...env, ...vars });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
@@ -64,10 +64,9 @@ const table = (roomId: string) => runInDurableObject(env.ROOMS_V2.getByName(room
 afterEach(async () => { await reset(); });
 
 describe("end-of-run reactions", () => {
-  it("are advertised only to clients that ask, and only while the flag is on", async () => {
+  it("are advertised only to clients that ask", async () => {
     const host = await create();
     expect(await (await call("/v2/capabilities", "GET", host, undefined, ON)).json()).not.toHaveProperty("end_reactions_version");
-    expect(await (await call("/v2/capabilities", "GET", host, undefined, {}, ASK)).json()).not.toHaveProperty("end_reactions_version");
     expect(await (await call("/v2/capabilities", "GET", host, undefined, ON, ASK)).json()).toMatchObject({ end_reactions_version: 1 });
   });
 
@@ -93,15 +92,12 @@ describe("end-of-run reactions", () => {
     expect(pair.a).toEqual(firstA);
   });
 
-  it("stay out of reads and replies while the flag is off or the client does not ask", async () => {
+  it("stay out of reads and replies while the client does not ask", async () => {
     const { host, guest, room } = await joined();
-    const sent = await submit(room, host, firstA, "heart", undefined, { END_REACTIONS_ENABLED: "false" }, ASK);
+    const sent = await submit(room, host, firstA, "heart");
     expect(sent).not.toHaveProperty("end_reactions");
-    expect(await (await read(room.room_id, guest, { END_REACTIONS_ENABLED: "false" })).json()).not.toHaveProperty("end_reactions");
     expect(await (await read(room.room_id, guest, ON, {})).json()).not.toHaveProperty("end_reactions");
-    const off = await list(room.room_id, host, { END_REACTIONS_ENABLED: "false" });
-    expect(off.status).toBe(503); expect(await errorCode(off)).toBe("end_reactions_disabled");
-    // The face a turn carried while the flag was off is kept all the same.
+    // The face the turn carried is kept all the same.
     expect(await (await list(room.room_id, guest)).json<View>()).toEqual({ schema_version: 1, faces: { [firstA.recording_hash]: "heart" } });
   });
 
@@ -143,7 +139,7 @@ describe("end-of-run reactions", () => {
     const changed = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, { ...sent, end_reaction: "angry" });
     expect(changed.status).toBe(409); expect(await errorCode(changed)).toBe("idempotency_key_reused");
     expect(await (await list(room.room_id, host)).json<View>()).toEqual({ schema_version: 1, faces: { [firstA.recording_hash]: "squeeze" } });
-    expect(await (await call(`/v2/rooms/${room.room_id}/tries`, "GET", host, undefined, { TURN_TRIES_ENABLED: "true" })).json()).toEqual({ schema_version: 1, tries: { [firstA.recording_hash]: 3 } });
+    expect(await (await call(`/v2/rooms/${room.room_id}/tries`, "GET", host)).json()).toEqual({ schema_version: 1, tries: { [firstA.recording_hash]: 3 } });
   });
 
   it("read nothing and create nothing in a room no face was sent to", async () => {
@@ -169,21 +165,16 @@ describe("end-of-run reactions", () => {
     expect((await inbox(guest)).rooms[0].partner_reaction).toBe("sleepy");
   });
 
-  it("reach the room list only for clients that ask while the flag is on, live and from the room index", async () => {
-    for (const indexed of [false, true]) {
-      const { host, guest, room } = await finished(["happy", "sad", undefined, "heart"]);
-      const vars = { ...ON, ROOM_INDEX_ENABLED: String(indexed) };
-      expect((await inbox(guest, vars)).rooms.find(entry => entry.room_id === room.room_id)?.partner_reaction).toBe("heart");
-      expect((await inbox(host, vars)).rooms.find(entry => entry.room_id === room.room_id)).not.toHaveProperty("partner_reaction");
-      expect((await inbox(guest, vars, {})).rooms[0]).not.toHaveProperty("partner_reaction");
-      expect((await inbox(guest, { ...vars, END_REACTIONS_ENABLED: "false" })).rooms[0]).not.toHaveProperty("partner_reaction");
-      await reset();
-    }
+  it("reach the room list from the room index only for clients that ask", async () => {
+    const { host, guest, room } = await finished(["happy", "sad", undefined, "heart"]);
+    expect((await inbox(guest)).rooms.find(entry => entry.room_id === room.room_id)?.partner_reaction).toBe("heart");
+    expect((await inbox(host)).rooms.find(entry => entry.room_id === room.room_id)).not.toHaveProperty("partner_reaction");
+    expect((await inbox(guest, ON, {})).rooms[0]).not.toHaveProperty("partner_reaction");
   });
 
   it("leave with the member who leaves a finished room, and with the room", async () => {
     const { host, guest, room } = await finished(["happy", "sad", "angry", "heart"]);
-    const leave = await call(`/v2/rooms/${room.room_id}/leave`, "POST", host, { schema_version: 1, leave_finished: true }, { FINISHED_ROOM_LEAVE_ENABLED: "true" });
+    const leave = await call(`/v2/rooms/${room.room_id}/leave`, "POST", host, { schema_version: 1, leave_finished: true });
     expect(leave.status).toBe(200);
     expect(await (await list(room.room_id, guest)).json<View>()).toEqual({ schema_version: 1, faces: { [firstB.recording_hash]: "sad", [secondA.recording_hash]: "angry" } });
     expect((await inbox(guest)).rooms[0] ?? {}).not.toHaveProperty("partner_reaction");
@@ -194,8 +185,8 @@ describe("end-of-run reactions", () => {
   it("outlive the rows replay transfer stubs", async () => {
     const { host, guest, room } = await finished(["happy", undefined, "surprised", "annoyed"]);
     for (const member of [host, guest]) {
-      const offer = await (await call(`/v2/rooms/${room.room_id}/replay-transfer`, "GET", member, undefined, { REPLAY_TRANSFER_ENABLED: "true" })).json<{ manifest: { epoch: number; archive_hash: string } }>();
-      expect((await call(`/v2/rooms/${room.room_id}/replay-transfer/ack`, "POST", member, { schema_version: 1, epoch: offer.manifest.epoch, archive_hash: offer.manifest.archive_hash }, { REPLAY_TRANSFER_ENABLED: "true" })).status).toBe(200);
+      const offer = await (await call(`/v2/rooms/${room.room_id}/replay-transfer`, "GET", member)).json<{ manifest: { epoch: number; archive_hash: string } }>();
+      expect((await call(`/v2/rooms/${room.room_id}/replay-transfer/ack`, "POST", member, { schema_version: 1, epoch: offer.manifest.epoch, archive_hash: offer.manifest.archive_hash })).status).toBe(200);
     }
     expect((await call(`/v2/rooms/${room.room_id}/collection`, "GET", host)).status).toBe(410);
     expect(await (await list(room.room_id, guest)).json<View>()).toEqual({ schema_version: 1,

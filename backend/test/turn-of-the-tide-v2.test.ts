@@ -5,7 +5,7 @@ import worker from "../src/index";
 import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint, recordingV2, acceptedRecording } from "../src/v2/protocol";
 import { turnOfTheTide, turnOfTheTideV2, TURN_OF_THE_TIDE_HASH, TURN_OF_THE_TIDE_V2_HASH } from "../src/v2/protocol-journey";
-import { advertisedChapters, chapterFlag, creatable } from "../src/v2/chapters";
+import { advertisedChapters, creatable } from "../src/v2/chapters";
 import { comfortRules, type ChapterCheckpoint, type ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import definition from "../../game/tests/fixtures/journey/turn-of-the-tide-v2-definition.json";
@@ -27,24 +27,22 @@ import oneSeaLockFinal from "../../game/tests/fixtures/journey/slack-water-check
 import bundledDefinition from "../src/v2/turn-of-the-tide-v2.json";
 import bundledInitial from "../src/v2/turn-of-the-tide-v2-initial.json";
 import { TIDE_CHAINS } from "./turn-of-the-tide-chains";
+import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string };
 const key = () => crypto.randomUUID();
 // 0.6.3 sends the first list, and the second to a room-level-2 server; neither offers 10.
 const OLD_CLIENTS = [[2, 4, 5, 6, 7, 8], [2, 4, 5, 6, 7, 8, 9], [2, 4, 5, 6, 7, 8, 9, 11]], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9, 10, 11];
-const ON = { TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED: "true" };
-const OTHERS_ON = { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true",
-  WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true", TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true", LIGHTHOUSE_V2_CHAPTER_ENABLED: "true" };
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...overrides });
+  const configured: Env = withConfig({ ...env, ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.13." + (++requestNo % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 async function account(): Promise<Account> { const response = await call("/v1/identity", "POST", undefined, {}); expect(response.status).toBe(201); return response.json<Account>(); }
 async function submit(room: RoomSnapshotV2, owner: Account, recording: unknown, checkpoint?: unknown): Promise<MutationV2> {
   const body = { base_revision: room.revision, branch: room.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) };
-  const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, body, ON); expect(response.status).toBe(200); return response.json<MutationV2>();
+  const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, body); expect(response.status).toBe(200); return response.json<MutationV2>();
 }
 async function rehash(input: Record<string, unknown>): Promise<Record<string, unknown>> {
   const body = { ...input }; delete body.checkpoint_hash; delete body.proof;
@@ -59,7 +57,7 @@ async function stageOne(): Promise<ChapterCheckpoint> {
 }
 afterEach(async () => { await reset(); });
 
-describe("Turn of the Tide version 2 (free, tide rules 10, behind its own flag)", () => {
+describe("Turn of the Tide version 2 (free, tide rules 10)", () => {
   it("bundles the exact native definition and initial checkpoint beside @1", async () => {
     expect(bundledDefinition).toEqual(definition); expect(bundledInitial).toEqual(initial);
     expect(await digest(canonicalJson(definition))).toBe(TURN_OF_THE_TIDE_V2_HASH);
@@ -75,21 +73,8 @@ describe("Turn of the Tide version 2 (free, tide rules 10, behind its own flag)"
     // Rules 10 records carry the comfort bounds; no other chapter offers 10.
     expect(comfortRules(10)).toBe(true);
   });
-  it("stays off by default: not advertised and not creatable", async () => {
-    expect(env.TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED).toBeUndefined();
-    expect(chapterFlag(turnOfTheTideV2)).toBe("TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED");
-    expect(creatable(turnOfTheTideV2, env)).toBe(false);
-    const allOthers: Env = { ...env }; Object.assign(allOthers, OTHERS_ON);
-    expect(creatable(turnOfTheTideV2, allOthers)).toBe(false);
-    for (const level of [1, 2]) {
-      expect(advertisedChapters(allOthers, level).filter(entry => entry.level_id === "turn-of-the-tide").map(entry => [entry.level_version, entry.definition_hash])).toEqual([[1, TURN_OF_THE_TIDE_HASH]]);
-    }
-    const host = await account();
-    const refused = await call("/v2/rooms", "POST", host, { ...turnOfTheTideV2.key, idempotency_key: key() }, OTHERS_ON);
-    expect(refused.status).toBe(503); expect(await refused.json()).toMatchObject({ error: { code: "chapter_creation_disabled" } });
-  });
-  it("advertises exactly its pinned rules, free, when the flag is on, after every older row", async () => {
-    const on: Env = { ...env }; Object.assign(on, OTHERS_ON, ON);
+  it("advertises exactly its pinned rules, free, after every older row", async () => {
+    const on: Env = env;
     expect(creatable(turnOfTheTideV2, on)).toBe(true);
     const entry = { ...turnOfTheTideV2.key, premium: false, recording_version: 7, simulation_version: 10, supported_simulation_versions: [10] };
     expect(advertisedChapters(on).at(-1)).toEqual(entry);
@@ -169,15 +154,15 @@ describe("Turn of the Tide version 2 (free, tide rules 10, behind its own flag)"
   });
   it("refuses a guest whose client never offered rules 10, and plays both stages to completion", async () => {
     const host = await account(), oldGuest = await account(), guest = await account();
-    const created = await call("/v2/rooms", "POST", host, { ...turnOfTheTideV2.key, idempotency_key: key() }, ON);
+    const created = await call("/v2/rooms", "POST", host, { ...turnOfTheTideV2.key, idempotency_key: key() });
     expect(created.status).toBe(200);
     const room = await created.json<RoomSnapshotV2>();
     expect(room).not.toHaveProperty("simulation_version");
     for (const versions of [undefined, ...OLD_CLIENTS]) {
-      const rejected = await call("/v2/rooms/join", "POST", oldGuest, { invite_code: room.invite_code, ...(versions ? { supported_simulation_versions: versions } : {}) }, ON);
+      const rejected = await call("/v2/rooms/join", "POST", oldGuest, { invite_code: room.invite_code, ...(versions ? { supported_simulation_versions: versions } : {}) });
       expect(rejected.status).toBe(422); expect(await rejected.json()).toMatchObject({ error: { code: "unsupported_simulation_version" } });
     }
-    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT }, ON);
+    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT });
     expect(joined.status).toBe(200);
     const a = await submit(await joined.json<RoomSnapshotV2>(), host, setA), b = await submit(a.room, guest, setB, middle);
     expect(b.room).toMatchObject({ stage_index: 1, active_player_id: guest.player_id, checkpoint: middle });

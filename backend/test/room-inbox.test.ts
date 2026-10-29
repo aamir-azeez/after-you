@@ -9,9 +9,8 @@ import type { RoomSnapshotV2 } from "../src/v2/room";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 let address = 0;
 const key = () => crypto.randomUUID();
-async function call(path: string, method = "GET", account?: Account, body?: unknown, v2Enabled = true): Promise<Response> {
+async function call(path: string, method = "GET", account?: Account, body?: unknown): Promise<Response> {
   const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: v2Enabled ? "true" : "false" });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + ++address,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },

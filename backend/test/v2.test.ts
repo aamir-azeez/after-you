@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { reset, evictDurableObject, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { canonicalJson, digest, randomToken, type RoomSnapshot } from "../src/protocol";
 import { DEFINITION_HASH, MAX_V2_BODY_BYTES, RELAY, checkpointV2, initialCheckpoint, recordingV2 } from "../src/v2/protocol";
 import type { MutationV2, PairV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -16,12 +17,8 @@ import initialFixture from "../../game/tests/fixtures/v2/initial-checkpoint.json
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const key = () => crypto.randomUUID();
 let address = 0;
-async function call(path: string, method = "GET", account?: Account, body?: unknown, enabled = true, rooms = env.ROOMS_V2): Promise<Response> {
-  const configured: Env = { ...env };
-  // Wrangler infers the literal default "false"; the deployed variable can also
-  // be "true". Exercise that runtime configuration without altering the DO data.
-  Object.assign(configured, { V2_ROOMS_ENABLED: enabled ? "true" : "false" });
-  configured.ROOMS_V2 = rooms;
+async function call(path: string, method = "GET", account?: Account, body?: unknown, rooms = env.ROOMS_V2): Promise<Response> {
+  const configured: Env = withConfig({ ...env, ROOMS_V2: rooms });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113." + ++address,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },
@@ -71,12 +68,8 @@ describe("v2 Relay Isles coordination in Workers", () => {
     expect(await checkpointV2(final, checkpoint, await recordingV2(secondA), await recordingV2(secondB))).toEqual(final);
     expect(a.source_recording_hash).toBe("");
   });
-  it("keeps mutations off by default and requires authentication", async () => {
-    const host = await create();
-    expect((await call("/v2/rooms", "POST", host, creation(), false)).status).toBe(503);
-    expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
+  it("requires authentication", async () => {
     expect((await call("/v2/rooms")).status).toBe(401);
-    expect(await (await call("/v2/capabilities", "GET", host, undefined, false)).json()).toMatchObject({ mutations_enabled: false, validation: "structural_client_replay_required" });
   });
   it("rejects unsupported chapters before reserving a link and gives stable creation retries", async () => {
     const host = await create();
@@ -128,7 +121,7 @@ describe("v2 Relay Isles coordination in Workers", () => {
     const value = await retry.json<MutationV2>();
     expect(value.receipt).toEqual(first.receipt); expect(value.room.revision).toBe(advanced.room.revision);
     expect(value.room.stage_id).toBe("garden");
-    const lookup = await (await call(`/v2/rooms/${room.room_id}/operations/${request.idempotency_key}`, "GET", host, undefined, false)).json<MutationV2>();
+    const lookup = await (await call(`/v2/rooms/${room.room_id}/operations/${request.idempotency_key}`, "GET", host)).json<MutationV2>();
     expect(lookup.receipt).toEqual(first.receipt);
     expect((await call(`/v2/rooms/${room.room_id}/operations/${request.idempotency_key}`, "GET", guest)).status).toBe(404);
     expect((await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, { ...request, base_revision: room.revision + 1 })).status).toBe(409);
@@ -209,15 +202,15 @@ describe("v2 Relay Isles coordination in Workers", () => {
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", host)).status).toBe(401);
     const recovered = { player_id: host.player_id, device_token: request.next_device_token, recovery_code: request.next_recovery_code };
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", recovered)).status).toBe(200);
-    expect((await call("/v1/identity", "DELETE", recovered, undefined, false)).status).toBe(200);
+    expect((await call("/v1/identity", "DELETE", recovered)).status).toBe(200);
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", guest)).status).toBe(404);
     expect((await env.ROOMS.getByName(old.room_id).snapshot(host.player_id)).ok).toBe(false);
     expect((await (await call("/v2/rooms", "GET", guest)).json<{ rooms: unknown[] }>()).rooms).toEqual([]);
   });
   it("erases v2 history and leaves a tombstone that prevents delayed creation", async () => {
     const { host, guest, room } = await complete();
-    expect((await call(`/v2/rooms/${room.room_id}`, "DELETE", guest, undefined, false)).status).toBe(200);
-    expect((await call(`/v2/rooms/${room.room_id}`, "DELETE", guest, undefined, false)).status).toBe(404);
+    expect((await call(`/v2/rooms/${room.room_id}`, "DELETE", guest)).status).toBe(200);
+    expect((await call(`/v2/rooms/${room.room_id}`, "DELETE", guest)).status).toBe(404);
     expect((await call(`/v2/rooms/${room.room_id}/collection`, "GET", host)).status).toBe(404);
     await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), async (_, state) => {
       for (const table of ["turns", "pairs", "operations"]) expect(state.storage.sql.exec(`SELECT * FROM ${table}`).toArray()).toEqual([]);
@@ -259,7 +252,7 @@ describe("v2 Relay Isles coordination in Workers", () => {
         return typeof value === "function" ? value.bind(target) : value;
       }
     });
-    const result = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }, true, rooms);
+    const result = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }, rooms);
     expect(result.status).toBe(401);
     expect(await result.json()).toMatchObject({ error: { code: "identity_unavailable" } });
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", host)).status).toBe(404);

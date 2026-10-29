@@ -14,7 +14,7 @@ import { PLATFORM_LINKS_OBJECT, type PlatformProvider } from "./platform-links";
  *   `check: true` instead of the proposal it only answers whether the account is linked, so the
  *   phone can ask the player first; nothing rotates.
  *
- * Each provider is absent unless its flag is "true": the paths then answer as before (404 after
+ * Each provider is absent unless its flag is on: the paths then answer as before (404 after
  * auth, 401 for restore). A flag that is on without its config answers 503 platform_unavailable.
  * GET /v2/capabilities names a provider only to a client that sends X-AfterYou-Platform-Games: 1.
  */
@@ -53,7 +53,7 @@ async function prove(kind: PlatformProvider, credential: unknown, env: ServerVar
     if (!isObject(credential) || Object.keys(credential).join() !== "server_auth_code") throw new ApiError(400, "invalid_platform_credential");
     verified = await verifyPlayGames(credential.server_auth_code, env);
   } else {
-    verified = await verifyGameCenter(credential, env);
+    verified = await verifyGameCenter(credential);
     const source = verified.ok ? gameCenterNonceSource(credential) : null;
     if (verified.ok && source === null) throw new ApiError(401, "platform_credential_invalid");
     if (source !== null) nonce = await digest(source);

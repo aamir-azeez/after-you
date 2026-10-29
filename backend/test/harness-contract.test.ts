@@ -21,7 +21,6 @@ const key = () => crypto.randomUUID();
 let address = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
   const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", REPLAY_TRANSFER_ENABLED: "true" });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.51.100." + ++address, ...headers,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },

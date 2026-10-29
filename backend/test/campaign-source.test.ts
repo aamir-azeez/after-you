@@ -10,6 +10,7 @@ import { runInDurableObject } from "./room-objects";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { encode } from "jpeg-js";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
+import { withConfig } from "./config";
 import { campaignBoundaryGuard, campaignSource, type SourceRequest } from "../src/v2/campaign-source";
 import { deliverTurnHints, isAlarmMetadataTable, queueTurnHint, scheduleNotifications, type DeliveryResult } from "../src/notification-storage";
 import type { NotificationEnvironment } from "../src/notifications";
@@ -25,6 +26,7 @@ import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.
 import lowA from "../../game/tests/fixtures/cooperative/down-and-around-a.json";
 import lowB from "../../game/tests/fixtures/cooperative/down-and-around-b.json";
 import final from "../../game/tests/fixtures/cooperative/high-and-low-final-checkpoint.json";
+import { acceptTerms } from "./terms";
 
 const definition = fixture.definition as CampaignDefinition, view = fixture.active_view as CampaignView;
 const H = view.host_id, G = view.guest_id!, R = view.campaign_room_id, I = view.invite_code!;
@@ -57,7 +59,7 @@ async function prepared(uploadPhoto = false) {
     const bytes = new Uint8Array(encode({ data: new Uint8Array(8 * 8 * 4).fill(127), width: 8, height: 8 }, 45).data);
     const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(b => b.toString(16).padStart(2, "0")).join("");
     upload = { idempotency_key: key(), recording_hash: highA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64: btoa(String.fromCharCode(...bytes)), sha256 };
-    value(await stub.updatePhoto(H, "t0-0-a", upload, false, REQUEST_CONTEXT));
+    await acceptTerms(H); value(await stub.updatePhoto(H, "t0-0-a", upload, false, REQUEST_CONTEXT));
   }
   const current = await state(stub), targetInvite = "EF".repeat(10), targetId = (await digest("v2:" + targetInvite)).slice(0, 22);
   const control = structuredClone(fixture.pending_result.campaign) as CampaignView; control.invite_expires_at = current.invite_expires_at;
@@ -101,13 +103,13 @@ describe("campaign notification await boundaries", () => {
     const base = Date.now() + 3_600_000, clock = vi.spyOn(Date, "now").mockReturnValue(base);
     const { stub } = await ordinary(), current = await state(stub);
     await runInDurableObject(stub, async (instance, ctx) => {
-      queueTurnHint(ctx.storage, { NOTIFICATIONS_ENABLED: "true" }, "relay", current, H);
+      queueTurnHint(ctx.storage, withConfig({ NOTIFICATIONS_ENABLED: "true" }), "relay", current, H);
       await ctx.storage.transaction(async () => scheduleNotifications(ctx.storage));
       clock.mockReturnValue(base + 2000);
       let started!: () => void, finish!: (result: DeliveryResult) => void, calls = 0;
       const waiting = new Promise<void>(resolve => { started = resolve; });
       const response = new Promise<DeliveryResult>(resolve => { finish = resolve; });
-      const fakeEnv = { ...env, NOTIFICATIONS_ENABLED: "true", PLAYERS: { getByName: () => ({ deliverTurnNotification: async () => { calls++; started(); return await response; } }) } } as unknown as Env & NotificationEnvironment;
+      const fakeEnv = withConfig({ ...env, NOTIFICATIONS_ENABLED: "true", PLAYERS: { getByName: () => ({ deliverTurnNotification: async () => { calls++; started(); return await response; } }) } }) as unknown as Env & NotificationEnvironment;
       const pending = deliverTurnHints(ctx.storage, fakeEnv, () => current, () => campaignBoundaryGuard(ctx.storage, "held") === null);
       await waiting;
       initializeCampaignStorageSchema(ctx.storage);
@@ -122,12 +124,12 @@ describe("campaign notification await boundaries", () => {
     const base = Date.now() + 3_600_000, clock = vi.spyOn(Date, "now").mockReturnValue(base);
     const { stub } = await ordinary(), current = await state(stub);
     await runInDurableObject(stub, async (_, ctx) => {
-      queueTurnHint(ctx.storage, { NOTIFICATIONS_ENABLED: "true" }, "relay", current, H);
+      queueTurnHint(ctx.storage, withConfig({ NOTIFICATIONS_ENABLED: "true" }), "relay", current, H);
       await ctx.storage.transaction(async () => scheduleNotifications(ctx.storage));
       const proofBefore = ctx.storage.sql.exec("SELECT data FROM room").toArray();
       clock.mockReturnValue(base + 2000);
       let delivered = false, calls = 0;
-      const fakeEnv = { ...env, NOTIFICATIONS_ENABLED: "true", PLAYERS: { getByName: () => ({ deliverTurnNotification: async () => { calls++; return { delivered }; } }) } } as unknown as Env & NotificationEnvironment;
+      const fakeEnv = withConfig({ ...env, NOTIFICATIONS_ENABLED: "true", PLAYERS: { getByName: () => ({ deliverTurnNotification: async () => { calls++; return { delivered }; } }) } }) as unknown as Env & NotificationEnvironment;
       await deliverTurnHints(ctx.storage, fakeEnv, () => current);
       const row = JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_outbox").one().data);
       expect(row.attempts).toBe(1); expect(row.next_at).toBe(base + 62_000); expect(await ctx.storage.getAlarm()).toBe(row.next_at);

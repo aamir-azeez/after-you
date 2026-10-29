@@ -1,20 +1,7 @@
 import { isObject, readBounded } from "./protocol";
-import { commaList, type ServerVars } from "./flags";
+import type { ServerVars } from "./flags";
+import { APP, LOOKUP_PATTERN, PRODUCT_PATTERN, PROJECT_PATTERN, serverConfig } from "./config";
 
-export type PlayEntitlementConfig = Pick<ServerVars, "REVENUECAT_SECRET_KEY" | "REVENUECAT_PROJECT_ID" | "REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID" |
-  "REVENUECAT_PLAY_PRODUCT_ID" | "REVENUECAT_PLAY_ENVIRONMENT" | "REVENUECAT_REVIEWER_IDS" | "REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS">;
-export const PRODUCT_PATTERN = /^prod[A-Za-z0-9_-]+$/;
-/** Unset or blank gives []; a set but malformed list gives null, so the check holds (unconfigured) rather than refusing every subscriber. */
-export function productList(raw: string | undefined): string[] | null {
-  const values = commaList(raw);
-  if ((raw ?? "").trim() && (values.length > 8 || !values.every(value => PRODUCT_PATTERN.test(value)))) return null;
-  return values;
-}
-/** True when playerId is on a well-formed reviewer list of at most 16 IDs. */
-export function reviewer(config: Pick<ServerVars, "REVENUECAT_REVIEWER_IDS">, playerId: string): boolean {
-  const reviewers = commaList(config.REVENUECAT_REVIEWER_IDS);
-  return reviewers.length <= 16 && reviewers.every(value => /^[A-Za-z0-9_-]{22}$/.test(value)) && reviewers.includes(playerId);
-}
 /** An active entitlement's end in ms: its expiry, or the latest Date for one with none (a lifetime unlock). */
 export function grantEnd(expiry: unknown): number {
   return typeof expiry === "number" && Number.isSafeInteger(expiry) && expiry > 0 ? Math.min(expiry, 8_640_000_000_000_000) : 8_640_000_000_000_000;
@@ -41,41 +28,39 @@ export async function revenuecatRequest(url: string, key: string, method = "GET"
 
 /** This policy is selected by server configuration, never a caller header. */
 /** `onGrant`: as in entitlement.ts, the active entitlement's end once it is found active. */
-export async function playEntitlement(playerId: string, config: PlayEntitlementConfig, onGrant?: (until: number) => void): Promise<{ full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription"; entitlement?: "full_journey_play"; player_id?: string }> {
-  const environment = config.REVENUECAT_PLAY_ENVIRONMENT ?? "production";
-  if (!config.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(config.REVENUECAT_PROJECT_ID ?? "") ||
-      !/^entl[A-Za-z0-9_-]+$/.test(config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID ?? "") ||
-      !PRODUCT_PATTERN.test(config.REVENUECAT_PLAY_PRODUCT_ID ?? "") ||
-      !["production", "sandbox"].includes(environment)) return { full_journey: false, status: "unconfigured" };
+export async function playEntitlement(playerId: string, env: ServerVars, onGrant?: (until: number) => void): Promise<{ full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription"; entitlement?: "full_journey_play"; player_id?: string }> {
+  const config = serverConfig(env).revenuecat, environment = APP.playEnvironment, key = env.REVENUECAT_SECRET_KEY;
+  if (!key || !PROJECT_PATTERN.test(config.project_id ?? "") || !LOOKUP_PATTERN.test(config.play_entitlement_lookup_id ?? "") ||
+      !PRODUCT_PATTERN.test(config.play_product_id ?? "")) return { full_journey: false, status: "unconfigured" };
   // Unset keeps one-time-only admission. A set but malformed list holds (503)
   // rather than quietly refusing every subscriber as unpaid.
-  const subscriptionProducts = productList(config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS);
+  const subscriptionProducts = config.play_subscription_product_ids;
   if (subscriptionProducts === null) return { full_journey: false, status: "unconfigured" };
-  const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(config.REVENUECAT_PROJECT_ID!)}/customers/${encodeURIComponent(playerId)}`;
-  const active = await revenuecatRequest(`${base}/active_entitlements?limit=100`, config.REVENUECAT_SECRET_KEY);
+  const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(config.project_id!)}/customers/${encodeURIComponent(playerId)}`;
+  const active = await revenuecatRequest(`${base}/active_entitlements?limit=100`, key);
   if (!active.ok) return { full_journey: false, status: "unavailable", reason: active.reason };
   if (active.status === 404) return { full_journey: false, status: "verified" };
   const list = active.value;
   if (!isObject(list) || list.object !== "list" || !Array.isArray(list.items) || list.items.length > 100) return { full_journey: false, status: "unavailable", reason: "provider_invalid_list" };
-  const grant = list.items.find(entry => isObject(entry) && entry.entitlement_id === config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID);
+  const grant = list.items.find(entry => isObject(entry) && entry.entitlement_id === config.play_entitlement_lookup_id);
   if (!isObject(grant)) return { full_journey: false, status: list.next_page ? "unavailable" : "verified", ...(list.next_page ? { reason: "provider_incomplete_list" } : {}) };
   if (!(grant.expires_at === null || (typeof grant.expires_at === "number" && Number.isFinite(grant.expires_at) && grant.expires_at > Date.now()))) return { full_journey: false, status: "verified" };
   onGrant?.(grantEnd(grant.expires_at));
   // Review access is an actual provider entitlement plus an operator-managed
   // exact identity allowlist. The allowlist alone never grants access.
-  if (reviewer(config, playerId)) return { full_journey: true, status: "verified", access_source: "review_grant", entitlement: "full_journey_play", player_id: playerId };
-  const purchases = await revenuecatRequest(`${base}/purchases?environment=${environment}&limit=100`, config.REVENUECAT_SECRET_KEY);
+  if (config.reviewer_ids.includes(playerId)) return { full_journey: true, status: "verified", access_source: "review_grant", entitlement: "full_journey_play", player_id: playerId };
+  const purchases = await revenuecatRequest(`${base}/purchases?environment=${environment}&limit=100`, key);
   if (!purchases.ok) return { full_journey: false, status: "unavailable", reason: purchases.reason };
   if (purchases.status === 404) return { full_journey: false, status: "verified" };
   const records = purchases.value;
   if (!isObject(records) || records.object !== "list" || !Array.isArray(records.items) || records.items.length > 100) return { full_journey: false, status: "unavailable", reason: "provider_invalid_list" };
-  const owned = records.items.some(item => isObject(item) && item.object === "purchase" && item.product_id === config.REVENUECAT_PLAY_PRODUCT_ID &&
+  const owned = records.items.some(item => isObject(item) && item.object === "purchase" && item.product_id === config.play_product_id &&
     item.store === "play_store" && item.environment === environment && item.status === "owned" && item.ownership === "purchased" &&
     typeof item.purchased_at === "number" && Number.isSafeInteger(item.purchased_at) && item.purchased_at > 0 && item.purchased_at <= Date.now());
   if (owned) return { full_journey: true, status: "verified", access_source: "play_purchase", entitlement: "full_journey_play", player_id: playerId };
   if (subscriptionProducts.length === 0)
     return { full_journey: false, status: records.next_page ? "unavailable" : "verified", ...(records.next_page ? { reason: "provider_incomplete_list" } : {}) };
-  const subscriptions = await revenuecatRequest(`${base}/subscriptions?environment=${environment}&limit=100`, config.REVENUECAT_SECRET_KEY);
+  const subscriptions = await revenuecatRequest(`${base}/subscriptions?environment=${environment}&limit=100`, key);
   if (!subscriptions.ok) return { full_journey: false, status: "unavailable", reason: subscriptions.reason };
   if (subscriptions.status === 404) return { full_journey: false, status: records.next_page ? "unavailable" : "verified", ...(records.next_page ? { reason: "provider_incomplete_list" } : {}) };
   const plans = subscriptions.value;

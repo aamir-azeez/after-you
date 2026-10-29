@@ -7,12 +7,14 @@ import { digest, randomToken } from "../src/protocol";
 import { PLATFORM_LINKS_OBJECT } from "../src/platform-links";
 import { certificateKey, forgetGameCenterCertificates, gameCenterKeyUrl, gameCenterPayload, verifyGameCenter, verifyPlayGames } from "../src/platform-verify";
 import { countingEnv, meterRows } from "./meter";
+import { APP } from "../src/config";
+import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Loose = Record<string, unknown>;
-const APP_ID = "123456789012", CLIENT_ID = "123456789012-syntheticclientabc.apps.googleusercontent.com", SECRET = "synthetic-client-secret";
-const PLAY_ON = { ...env, PLAY_GAMES_ENABLED: "true", PLAY_GAMES_APP_ID: APP_ID, PLAY_GAMES_WEB_CLIENT_ID: CLIENT_ID, PLAY_GAMES_CLIENT_SECRET: SECRET } as unknown as Env;
-const GC_ON = { ...env, GAME_CENTER_ENABLED: "true" } as unknown as Env;
+const APP_ID = APP.playGamesAppId, CLIENT_ID = APP.playGamesWebClientId, SECRET = "synthetic-client-secret";
+const PLAY_ON = withConfig({ ...env, PLAY_GAMES_ENABLED: "true", PLAY_GAMES_CLIENT_SECRET: SECRET }) as unknown as Env;
+const GC_ON = withConfig({ ...env, GAME_CENTER_ENABLED: "true" }) as unknown as Env;
 let address = 0;
 
 afterEach(async () => { vi.restoreAllMocks(); forgetGameCenterCertificates(); await reset(); });
@@ -61,9 +63,8 @@ describe("platform games capability", () => {
     const off = await read({ ...env }, false);
     expect(await read({ ...env })).toEqual(off);
     expect(await read({ ...PLAY_ON }, false)).toEqual(off);
-    expect(await read({ ...env, PLAY_GAMES_ENABLED: "true" })).toEqual(off);
+    expect(await read(withConfig({ ...env, PLAY_GAMES_ENABLED: "true" }))).toEqual(off);
     expect(await read({ ...PLAY_ON, PLAY_GAMES_CLIENT_SECRET: "" })).toEqual(off);
-    expect(await read({ ...PLAY_ON, PLAY_GAMES_APP_ID: "abc" })).toEqual(off);
   });
   it("names each provider only while it is on, with the public web client id for Play Games", async () => {
     const off = await read({ ...env });
@@ -86,7 +87,7 @@ describe("platform routes while off", () => {
   });
   it("fails closed with 503 when Play Games is on without its config, before any upstream call", async () => {
     const a = await create(); const fetchSpy = vi.spyOn(globalThis, "fetch");
-    const response = await link(a, "code-a", undefined, { ...env, PLAY_GAMES_ENABLED: "true" } as unknown as Env);
+    const response = await link(a, "code-a", undefined, withConfig({ ...env, PLAY_GAMES_ENABLED: "true" }) as unknown as Env);
     expect(response.status).toBe(503); expect(await response.json()).toEqual({ error: { code: "platform_unavailable", retryable: true } });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
@@ -292,14 +293,14 @@ describe("Game Center verification", () => {
   it("verifies Apple's signed payload and rejects a tampered, stale, wrong-app or expired one", async () => {
     const { sign } = await appleKeys();
     const good = await sign("T:_synthetic_team_player");
-    expect(await verifyGameCenter(good, {})).toEqual({ ok: true, external_id: "T:_synthetic_team_player" });
-    expect((await verifyGameCenter({ ...good, team_player_id: "T:_someone_else" }, {})).ok).toBe(false);
-    expect((await verifyGameCenter(await sign("T:_a", Date.now() - 11 * 60_000), {})).ok).toBe(false);
-    expect((await verifyGameCenter(await sign("T:_a", Date.now(), "com.other.app"), {})).ok).toBe(false);
-    expect((await verifyGameCenter({ ...good, extra: 1 }, {})).ok).toBe(false);
+    expect(await verifyGameCenter(good)).toEqual({ ok: true, external_id: "T:_synthetic_team_player" });
+    expect((await verifyGameCenter({ ...good, team_player_id: "T:_someone_else" })).ok).toBe(false);
+    expect((await verifyGameCenter(await sign("T:_a", Date.now() - 11 * 60_000))).ok).toBe(false);
+    expect((await verifyGameCenter(await sign("T:_a", Date.now(), "com.other.app"))).ok).toBe(false);
+    expect((await verifyGameCenter({ ...good, extra: 1 })).ok).toBe(false);
     forgetGameCenterCertificates(); vi.restoreAllMocks();
     const expired = await appleKeys("210101000000Z");
-    expect(await verifyGameCenter(await expired.sign("T:_a"), {})).toEqual({ ok: false, reason: "invalid" });
+    expect(await verifyGameCenter(await expired.sign("T:_a"))).toEqual({ ok: false, reason: "invalid" });
   });
   it("finds the key in a certificate only inside its validity window", () => {
     const cert = certificate(der(0x30, der(0x30), der(0x03, new Uint8Array([0]))), "200101000000Z", "300101000000Z");

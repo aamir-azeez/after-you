@@ -17,6 +17,7 @@ import { CHAPTERS } from "../src/v2/chapters";
 import { POLLEN_EARNED_TABLES } from "../src/storage-schema";
 import { countingEnv } from "./meter";
 import manifest from "../../game/tests/fixtures/golden/chapter_manifest.json";
+import { withConfig } from "./config";
 
 // The wardrobe without the shop (POLLEN_WARDROBE), the shop on top of it (POLLEN_SHOP), and earned
 // items reaching a player: board rewards through the replay job, and Every Hard. Synthetic identities only.
@@ -24,23 +25,23 @@ type Account = { player_id: string; device_token: string; recovery_code: string 
 type Wallet = { balance: number; wardrobe?: Record<string, unknown>; name_price?: number };
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
 const OPERATOR = "o".repeat(43);
-const BASE = { V2_ROOMS_ENABLED: "true", DISPLAY_NAMES_ENABLED: "true", POLLEN_SECRET: SECRET, SAFETY_OPERATOR_TOKEN: OPERATOR };
-const EARN = { ...BASE, FEATURES: "POLLEN_EARN" };
-const WARDROBE = { ...BASE, FEATURES: "POLLEN_EARN,POLLEN_WARDROBE" };
-const SHOP = { ...BASE, FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP" };
-const SHOP_NO_WARDROBE = { ...BASE, FEATURES: "POLLEN_EARN,POLLEN_SHOP" };
-const WARDROBE_NO_EARN = { ...BASE, FEATURES: "POLLEN_WARDROBE,POLLEN_SHOP" };
-const BOARDS_WARDROBE = { ...BASE, FEATURES: "LEADERBOARDS,POLLEN_EARN,POLLEN_WARDROBE" };
-const BOARDS_ONLY = { ...BASE, FEATURES: "LEADERBOARDS,POLLEN_EARN" };
+const BASE = { DISPLAY_NAMES_ENABLED: "true", POLLEN_SECRET: SECRET, SAFETY_OPERATOR_TOKEN: OPERATOR };
+const EARN = { ...BASE, features: ["POLLEN_EARN"] };
+const WARDROBE = { ...BASE, features: ["POLLEN_EARN", "POLLEN_WARDROBE"] };
+const SHOP = { ...BASE, features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"] };
+const SHOP_NO_WARDROBE = { ...BASE, features: ["POLLEN_EARN", "POLLEN_SHOP"] };
+const WARDROBE_NO_EARN = { ...BASE, features: ["POLLEN_WARDROBE", "POLLEN_SHOP"] };
+const BOARDS_WARDROBE = { ...BASE, features: ["LEADERBOARDS", "POLLEN_EARN", "POLLEN_WARDROBE"] };
+const BOARDS_ONLY = { ...BASE, features: ["LEADERBOARDS", "POLLEN_EARN"] };
 const RELAY_BOARD = "relay-isles@2";
 const DAY = 86_400_000;
 let address = 0;
 
-async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = WARDROBE, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
+async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, unknown> = WARDROBE, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
   return worker.fetch(new Request("https://wardrobe.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.93." + (++address % 250), [POLLEN_HEADER]: "1",
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
-    body: body === undefined ? undefined : JSON.stringify(body) }), Object.assign({ ...base }, vars) as Env);
+    body: body === undefined ? undefined : JSON.stringify(body) }), withConfig(Object.assign({ ...base }, vars)) as Env);
 }
 const shared = env as unknown as Record<string, unknown>;
 beforeEach(() => { shared.POLLEN_SECRET = SECRET; });
@@ -61,8 +62,8 @@ async function hardClears(account: Account, levels: readonly string[]): Promise<
     for (const level of levels) expect(creditClear(state.storage, { level_id: level, hard: true, boost_percent: 0 }, Date.now(), () => true).ok, level).toBe(true);
   });
 }
-const wallet = async (account: Account, vars: Record<string, string> = WARDROBE) => (await call("/v1/pollen", "GET", account, undefined, vars)).json<Wallet>();
-const capabilities = async (account: Account, vars: Record<string, string>) => (await call("/v2/capabilities", "GET", account, undefined, vars)).json<Record<string, unknown>>();
+const wallet = async (account: Account, vars: Record<string, unknown> = WARDROBE) => (await call("/v1/pollen", "GET", account, undefined, vars)).json<Wallet>();
+const capabilities = async (account: Account, vars: Record<string, unknown>) => (await call("/v2/capabilities", "GET", account, undefined, vars)).json<Record<string, unknown>>();
 const equipBody = (look: Record<string, string>, revision = Date.now()) => ({ schema_version: 1, idempotency_key: crypto.randomUUID(), revision, look });
 const spendBody = (id: string, expected_cost: number) => ({ schema_version: 1, idempotency_key: crypto.randomUUID(), kind: "item", id, expected_cost });
 const errorOf = async (response: Response) => (await response.json<{ error: { code: string } }>()).error.code;
@@ -72,7 +73,7 @@ const giveBoardItems = (account: Account, items: string[], seq: number, board = 
 
 describe("the flags", () => {
   it("reads the wardrobe on only with earning, and the shop only with the wardrobe", () => {
-    const vars = (features: string, secret = true) => ({ FEATURES: features, ...(secret ? { POLLEN_SECRET: SECRET } : {}) });
+    const vars = (features: string, secret = true) => withConfig({ features: features.split(","), ...(secret ? { POLLEN_SECRET: SECRET } : {}) });
     expect([wardrobeMode(vars("POLLEN_EARN")), wardrobeMode(vars("POLLEN_EARN,POLLEN_WARDROBE")), wardrobeMode(vars("POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP"))]).toEqual(["off", "wardrobe", "shop"]);
     expect(wardrobeOn(vars("POLLEN_WARDROBE"))).toBe(false);
     expect(wardrobeOn(vars("POLLEN_EARN,POLLEN_WARDROBE", false))).toBe(false);
@@ -83,7 +84,7 @@ describe("the flags", () => {
 
 describe("each route under each combination", () => {
   type Expect = { caps: string[]; wardrobe: "none" | "owned" | "shop"; equip: number; spend: number; equipCode?: string; spendCode?: string };
-  const cases: [string, Record<string, string>, Expect][] = [
+  const cases: [string, Record<string, unknown>, Expect][] = [
     ["earning only", EARN, { caps: ["pollen_version"], wardrobe: "none", equip: 503, spend: 503, equipCode: "pollen_wardrobe_disabled", spendCode: "pollen_shop_disabled" }],
     ["earning and the wardrobe", WARDROBE, { caps: ["pollen_version", "pollen_wardrobe_version"], wardrobe: "owned", equip: 200, spend: 503, spendCode: "pollen_shop_disabled" }],
     ["earning, the wardrobe and the shop", SHOP, { caps: ["pollen_version", "pollen_wardrobe_version", "pollen_shop_version"], wardrobe: "shop", equip: 200, spend: 200 }],
@@ -145,7 +146,7 @@ describe("the wardrobe without the shop", () => {
   it("shows looks in rooms with POLLEN_LOOKS on: the worn earned item rides into the room", async () => {
     const host = await create(), guest = await create();
     expect((await giveBoardItems(host, ["gold_leaf"], 1)).ok).toBe(true);
-    const LOOKS = { ...BASE, FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_LOOKS" };
+    const LOOKS = { ...BASE, features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_LOOKS"] };
     expect((await call("/v1/pollen/equip", "POST", host, equipBody({ leaf: "gold_leaf" }), LOOKS)).status).toBe(200);
     const made = await call("/v2/rooms", "POST", host, { idempotency_key: crypto.randomUUID(), level_id: "relay-isles", level_version: 2, definition_hash: CHAPTERS[0].adapter.key.definition_hash }, LOOKS, { "X-AfterYou-Looks": "1" });
     expect(made.status).toBe(200);
@@ -189,7 +190,7 @@ describe("Every Hard", () => {
 });
 
 describe("board rewards reaching a player", () => {
-  const operator = (action: string, vars: Record<string, string>, base?: Env) => deriveJobToken(OPERATOR).then(token =>
+  const operator = (action: string, vars: Record<string, unknown>, base?: Env) => deriveJobToken(OPERATOR).then(token =>
     call(`/operator/leaderboards/${action}`, "POST", undefined, { schema_version: 1 }, vars, { Authorization: "Bearer " + token }, base));
   const board = () => env.LEADERBOARD_BOARDS.getByName(RELAY_BOARD);
   let serial = 0;

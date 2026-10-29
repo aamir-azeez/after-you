@@ -25,6 +25,7 @@ import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.
 import lowA from "../../game/tests/fixtures/cooperative/down-and-around-a.json";
 import lowB from "../../game/tests/fixtures/cooperative/down-and-around-b.json";
 import final from "../../game/tests/fixtures/cooperative/high-and-low-final-checkpoint.json";
+import { acceptTerms } from "./terms";
 
 const H = fixture.active_view.host_id, G = fixture.active_view.guest_id!, R = fixture.active_view.campaign_room_id;
 const room = () => env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId()), operation = () => crypto.randomUUID();
@@ -83,6 +84,7 @@ async function advancedFixture(request: TargetInitializeRequest) {
     current = value(await stub.commit(owner, { base_revision: current.revision, branch: current.branch, idempotency_key: operation(), recording, ...(checkpoint ? { checkpoint } : {}) })).room;
   const bytes = new Uint8Array(encode({ data: new Uint8Array(8 * 8 * 4).fill(127), width: 8, height: 8 }, 45).data);
   const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(n => n.toString(16).padStart(2, "0")).join("");
+  await acceptTerms(H);
   value(await stub.updatePhoto(H, "t0-0-a", { idempotency_key: operation(), recording_hash: highA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64: btoa(String.fromCharCode(...bytes)), sha256 }));
   value(await stub.react(G, "p0-0", { idempotency_key: operation(), a_hash: highA.recording_hash, b_hash: highB.recording_hash, expected_reaction_revision: 0, reaction: "love" }));
   value(await stub.acknowledgePhoto(G, "t0-0-a", { recording_hash: highA.recording_hash, photo_revision: 1, sha256 }));

@@ -2,11 +2,12 @@ import { env, exports } from "cloudflare:workers";
 import { reset, evictDurableObject } from "cloudflare:test";
 import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { entitlement, makeProviderRequest } from "../src/entitlement";
+import { entitlement } from "../src/entitlement";
 import worker from "../src/index";
 import { LEVEL_IDS, randomToken, type Recording, type RoomSnapshot } from "../src/protocol";
 import firstA from "../../game/tests/fixtures/first-light-a.json";
 import firstB from "../../game/tests/fixtures/first-light-b.json";
+import { withConfig } from "./config";
 
 type Credentials = { player_id: string; device_token: string; recovery_code: string };
 let address = 0;
@@ -249,7 +250,8 @@ describe("native client HTTP contract in Workers runtime", () => {
       current = await complete(current, a, b);
       if (index < 2) current = await (await call(`/v1/rooms/${room.room_id}/advance`, "POST", { base_revision: current.revision, idempotency_key: key() }, a)).json<RoomSnapshot>();
     }
-    const configured = { ...env, REVENUECAT_SECRET_KEY: "test-only-key", REVENUECAT_PROJECT_ID: "projtest", REVENUECAT_ENTITLEMENT_LOOKUP_ID: "entltest" };
+    // The host is a reviewer, so one active entitlements read admits them (play-entitlement.ts), one read per check as before.
+    const configured = withConfig({ ...env, REVENUECAT_SECRET_KEY: "test-only-key", revenuecat: { project_id: "projtest", play_entitlement_lookup_id: "entltest", play_product_id: "prodtest", reviewer_ids: [a.player_id] } });
     const provider = vi.spyOn(globalThis, "fetch").mockImplementation(async () => Response.json({ object: "list", items: [{ entitlement_id: "entltest", expires_at: null }], next_page: null }));
     const send = (operation: string, body: unknown, account: Credentials) => worker.fetch(new Request(`https://after-you.test/v1/rooms/${room.room_id}/${operation}`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token }, body: JSON.stringify(body)
@@ -282,14 +284,14 @@ describe("native client HTTP contract in Workers runtime", () => {
       if (index < 2) current = await (await call(`/v1/rooms/${room.room_id}/advance`, "POST", { base_revision: current.revision, idempotency_key: key() }, a)).json<RoomSnapshot>();
     }
     const spy = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(Response.json({ object: "list", items: [{ entitlement_id: "entltest", expires_at: null }], next_page: null }));
-    const configured = { ...env, REVENUECAT_SECRET_KEY: "test-only-key", REVENUECAT_PROJECT_ID: "projtest", REVENUECAT_ENTITLEMENT_LOOKUP_ID: "entltest" };
+    const configured = withConfig({ ...env, REVENUECAT_SECRET_KEY: "test-only-key", revenuecat: { project_id: "projtest", play_entitlement_lookup_id: "entltest", play_product_id: "prodtest", reviewer_ids: [a.player_id] } });
     const request = new Request(`https://after-you.test/v1/rooms/${room.room_id}/advance`, {
       method: "POST", headers: { "Content-Type": "application/json", "X-Player-Id": b.player_id, Authorization: "Bearer " + b.device_token },
       body: JSON.stringify({ base_revision: current.revision, idempotency_key: key() })
     });
     const premium = await worker.fetch(request, configured);
     expect(premium.status).toBe(200);
-    expect((spy.mock.calls[0][0] as Request).url).toBe(`https://api.revenuecat.com/v2/projects/projtest/customers/${a.player_id}/active_entitlements?limit=100`);
+    expect(String(spy.mock.calls[0][0])).toBe(`https://api.revenuecat.com/v2/projects/projtest/customers/${a.player_id}/active_entitlements?limit=100`);
     current = await premium.json<RoomSnapshot>(); expect(current.level_index).toBe(3);
     spy.mockResolvedValueOnce(Response.json({ object: "list", items: [], next_page: null }));
     const revoked = await worker.fetch(new Request(`https://after-you.test/v1/rooms/${room.room_id}/turns`, {
@@ -365,60 +367,18 @@ describe("native client HTTP contract in Workers runtime", () => {
 });
 
 describe("RevenueCat server verification", () => {
-  it("checks the actual Workers request constructor used for outbound calls", () => {
-    const request = makeProviderRequest("https://api.revenuecat.com/v2/projects/test/customers/test/active_entitlements", "test-only-key");
-    expect(request.redirect).toBe("manual");
-    expect(request.headers.get("Authorization")).toBe("Bearer test-only-key");
-  });
   it("requires a real server key and never calls the provider when absent", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
     expect((await entitlement("player", env)).status).toBe("unconfigured"); expect(spy).not.toHaveBeenCalled();
   });
-  it("recognizes a provider-confirmed non-expiring purchase", async () => {
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ subscriber: { entitlements: { full_journey: { purchase_date: "2020-01-01T00:00:00Z", expires_date: null } } } }));
-    expect((await entitlement("player", { ...env, REVENUECAT_API_VERSION: "1", REVENUECAT_SECRET_KEY: "test-only-key" })).full_journey).toBe(true);
-    expect((spy.mock.calls[0][0] as Request).url).toBe("https://api.revenuecat.com/v1/subscribers/player");
-  });
-  it("rejects expired, missing or malformed provider entitlements", async () => {
-    const spy = vi.spyOn(globalThis, "fetch");
-    for (const entry of [{ purchase_date: "2020-01-01", expires_date: "2021-01-01" }, { expires_date: null }, { purchase_date: "2099-01-01", expires_date: null }]) {
-      spy.mockResolvedValueOnce(Response.json({ subscriber: { entitlements: { full_journey: entry } } }));
-      expect((await entitlement("player", { ...env, REVENUECAT_API_VERSION: "1", REVENUECAT_SECRET_KEY: "test-only-key" })).full_journey).toBe(false);
-    }
-  });
-  it("fails closed on provider errors and overlarge replies", async () => {
-    const spy = vi.spyOn(globalThis, "fetch").mockRejectedValueOnce(new Error("connection failed"));
-    expect((await entitlement("player", { ...env, REVENUECAT_API_VERSION: "1", REVENUECAT_SECRET_KEY: "test-only-key" })).status).toBe("unavailable");
-    spy.mockResolvedValueOnce(new Response("x".repeat(270_000)));
-    expect((await entitlement("player", { ...env, REVENUECAT_API_VERSION: "1", REVENUECAT_SECRET_KEY: "test-only-key" })).full_journey).toBe(false);
-  });
-  it("treats a missing subscriber as not purchased rather than an outage", async () => {
-    vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404 }));
-    expect(await entitlement("player", { ...env, REVENUECAT_API_VERSION: "1", REVENUECAT_SECRET_KEY: "test-only-key" })).toMatchObject({ full_journey: false, status: "verified" });
-  });
-  it("requires V2 project and opaque entitlement IDs before sending the secret", async () => {
+  it("requires the project, entitlement and product ids before sending the secret", async () => {
     const spy = vi.spyOn(globalThis, "fetch");
     expect((await entitlement("player", { ...env, REVENUECAT_SECRET_KEY: "test-only-key" })).status).toBe("unconfigured");
+    for (const revenuecat of [{ project_id: "projtest" }, { project_id: "projtest", play_entitlement_lookup_id: "entltest" }, { play_entitlement_lookup_id: "entltest", play_product_id: "prodtest" }])
+      expect((await entitlement("player", withConfig({ ...env, REVENUECAT_SECRET_KEY: "test-only-key", revenuecat }))).status, JSON.stringify(revenuecat)).toBe("unconfigured");
     expect(spy).not.toHaveBeenCalled();
   });
-  it("V2 grants only the configured active entitlement and tolerates a lifetime expiry", async () => {
-    const configured = { ...env, REVENUECAT_SECRET_KEY: "test-only-key", REVENUECAT_PROJECT_ID: "projtest", REVENUECAT_ENTITLEMENT_LOOKUP_ID: "entltest" };
-    const spy = vi.spyOn(globalThis, "fetch");
-    for (const [entry, allowed] of [
-      [{ entitlement_id: "entltest", expires_at: null }, true],
-      [{ entitlement_id: "entltest", expires_at: Date.now() + 100000 }, true],
-      [{ entitlement_id: "entlother", expires_at: null }, false],
-      [{ entitlement_id: "entltest", expires_at: 0 }, false],
-      [{ entitlement_id: "entltest" }, false]
-    ] as const) {
-      spy.mockResolvedValueOnce(Response.json({ object: "list", items: [entry], next_page: null }));
-      expect((await entitlement("player", configured)).full_journey).toBe(allowed);
-    }
-  });
-  it("V2 never follows an arbitrary pagination URL with the server credential", async () => {
-    const configured = { ...env, REVENUECAT_SECRET_KEY: "test-only-key", REVENUECAT_PROJECT_ID: "projtest", REVENUECAT_ENTITLEMENT_LOOKUP_ID: "entltest" };
-    const spy = vi.spyOn(globalThis, "fetch").mockResolvedValue(Response.json({ object: "list", items: [], next_page: "https://elsewhere.example/private" }));
-    expect((await entitlement("player", configured)).status).toBe("unavailable");
-    expect(spy).toHaveBeenCalledTimes(1);
+  it("answers the fixed environment name on every reply", async () => {
+    expect((await entitlement("player", env)).environment).toBe("test-store");
   });
 });

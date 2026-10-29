@@ -14,6 +14,7 @@ import type { TurnFacts } from "../src/pollen/turn-facts";
 import type { Outcome } from "../src/protocol";
 import { meterRows } from "./meter";
 import rawRates from "../src/pollen/rates.json";
+import { withConfig } from "./config";
 
 // Item blooms: the odds table at every boundary, what a drop gives, the explicit empty and fully
 // owned tier rule, independence from the lucky bloom, and a drop inside the turn credit. Synthetic ids only.
@@ -194,9 +195,9 @@ describe("an item bloom in the turn credit", () => {
 
 describe("the item bloom flag", () => {
   it("is on only with POLLEN_ITEM_BLOOMS, the shop and earning", () => {
-    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP,POLLEN_ITEM_BLOOMS", ...SECRET })).toBe(true);
-    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_ITEM_BLOOMS", ...SECRET })).toBe(false);
-    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP", ...SECRET })).toBe(false);
-    expect(itemBloomsOn({ FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP,POLLEN_ITEM_BLOOMS" })).toBe(false);
+    expect(itemBloomsOn(withConfig({ features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_ITEM_BLOOMS"], ...SECRET }))).toBe(true);
+    expect(itemBloomsOn(withConfig({ features: ["POLLEN_EARN", "POLLEN_ITEM_BLOOMS"], ...SECRET }))).toBe(false);
+    expect(itemBloomsOn(withConfig({ features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"], ...SECRET }))).toBe(false);
+    expect(itemBloomsOn(withConfig({ features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_ITEM_BLOOMS"] }))).toBe(false);
   });
 });

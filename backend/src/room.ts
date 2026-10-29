@@ -1,5 +1,4 @@
 import { DurableObject } from "cloudflare:workers";
-import { flags } from "./flags";
 import { ApiError, LEVEL_IDS, equalHash, fail, ok, type LegacySimulationVersion, type Outcome, type Recording, type RoomSnapshot, type RoomState } from "./protocol";
 import { acceptedRedo, consentToRedo, initializeRedo, mutateRedo, parseRedoMutation, redoState, resetRedo, type RedoSource, type RedoState } from "./redo-control";
 import { initializeSchema } from "./storage-schema";
@@ -40,11 +39,10 @@ export class Room extends DurableObject<Env> {
    * After a committed change, sends each member's projection to their room
    * index (room-index-sync.ts), but only when the island is now complete or
    * `reopened` says it was before (a fork or advance). The index reads rooms
-   * in play live, so ordinary turns need no push. While the index is off it
-   * reads nothing.
+   * in play live, so ordinary turns need no push.
    */
   private indexed<T>(outcome: Outcome<T>, reopened = false): Outcome<T> {
-    if (!outcome.ok || !flags.roomIndex(this.env)) return outcome;
+    if (!outcome.ok) return outcome;
     const state = this.read();
     if (state && (reopened || state.active_role === "complete")) pushRoomIndex(this.ctx, this.env, state.room_id, 1, [state.host_id, state.guest_id], player => legacyInboxProjection(this.ctx.storage, player));
     return outcome;
@@ -237,8 +235,8 @@ export class Room extends DurableObject<Env> {
     });
   }
   /**
-   * The erase always tells the other member's room index, whatever the flag,
-   * so no index row keeps the erased member's id (room-index-sync.ts).
+   * The erase always tells the other member's room index, so no index row
+   * keeps the erased member's id (room-index-sync.ts).
    */
   async eraseForPlayer(playerId: string, pendingCreation = false): Promise<Outcome<{ deleted: boolean }>> {
     let erased: { room_id: string; partner: string | null } | null = null;

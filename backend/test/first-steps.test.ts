@@ -3,6 +3,8 @@ import { reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
+import { withConfig } from "./config";
+import { TERMS_VERSION } from "../src/public-policy";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { RELAY_KEY, acceptedRecording, chapter, checkpointV2, initialCheckpoint, recordingV2 } from "../src/v2/protocol";
 import { FIRST_STEPS, FIRST_STEPS_HASH, adapter } from "../src/v2/protocol-first-steps";
@@ -25,9 +27,8 @@ type Account = { player_id: string; device_token: string; recovery_code: string 
 const key = () => crypto.randomUUID(), source = "e".repeat(40), descriptor = adapter.key;
 let requestNo = 0;
 function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(outcome.code); return outcome.value; }
-async function call(path: string, method = "GET", account?: Account, body?: unknown, firstSteps = true, rooms = env.ROOMS_V2): Promise<Response> {
-  const configured: Env = { ...env, ROOMS_V2: rooms };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", FIRST_STEPS_ENABLED: String(firstSteps), RELAY_PHOTOS_ENABLED: "true" });
+async function call(path: string, method = "GET", account?: Account, body?: unknown, rooms = env.ROOMS_V2): Promise<Response> {
+  const configured: Env = withConfig({ ...env, ROOMS_V2: rooms, RELAY_PHOTOS_ENABLED: "true" });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + ++requestNo,
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
@@ -127,16 +128,6 @@ describe("First Steps immutable chapter dispatch", () => {
     expect(await checkpointV2(final, checkpoint, await recordingV2(seedA), await recordingV2(seedB))).toEqual(final);
     expect(await recordingV2(relayA, RELAY_KEY)).toEqual(relayA);
   });
-  it("keeps the rollout hidden/default-off while preserving preview5 Relay capability semantics", async () => {
-    const host = await account();
-    const off = await (await call("/v2/capabilities", "GET", host, undefined, false)).json<{ api_version: number; recording_version: number; simulation_version: number; chapters: Record<string, unknown>[] }>();
-    expect(off).toMatchObject({ api_version: 2, recording_version: 2, simulation_version: 2 }); expect(off.chapters).toHaveLength(1); expect(off.chapters[0]).toMatchObject(RELAY_KEY);
-    expect((await call("/v2/rooms", "POST", host, { ...descriptor, idempotency_key: key() }, false)).status).toBe(503);
-    expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
-    expect((await call("/v2/rooms", "POST", host, { ...RELAY_KEY, idempotency_key: key() }, false)).status).toBe(200);
-    const on = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
-    expect(on.chapters).toHaveLength(2); expect(on.chapters[1]).toMatchObject({ ...descriptor, premium: false, recording_version: 4, simulation_version: 4 });
-  });
   it("binds the complete chapter creation intent before a lost response and rejects key reuse across chapters", async () => {
     const host = await account(), idempotency_key = key(), first = await newRoom(host, descriptor, idempotency_key);
     expect(await newRoom(host, descriptor, idempotency_key)).toEqual(first);
@@ -160,27 +151,15 @@ describe("First Steps immutable chapter dispatch", () => {
     expect((await call("/v2/rooms", "POST", host, { ...descriptor, idempotency_key: oldKey })).status).toBe(409);
     const after = await runInDurableObject(player, async (_, ctx) => ctx.storage.sql.exec<{ data: string }>("SELECT data FROM creations WHERE request_key=?", oldKey).one().data); expect(after).toBe(before);
   });
-  it("keeps new Relay creation rows and Player archives in the old compatible format with First Steps off", async () => {
-    const host = await account(), idempotency_key = key();
-    const created = await call("/v2/rooms", "POST", host, { ...RELAY_KEY, idempotency_key }, false); expect(created.status).toBe(200);
-    const room = await created.json<RoomSnapshotV2>(), player = env.PLAYERS.getByName(host.player_id);
-    const archive = JSON.parse(value(await player.exportSnapshot(source))) as PortableSnapshot;
-    expect(archive.payload.format_version).toBe(2);
-    expect(JSON.parse(String(archive.payload.tables[2].rows[0].data))).toEqual({ room_id: room.room_id, invite_code: room.invite_code, host: true, api_version: 2 });
-    expect(await (await call("/v2/rooms", "POST", host, { ...RELAY_KEY, idempotency_key }, false)).json()).toEqual(room);
-    expect((await call("/v2/rooms", "POST", host, { ...descriptor, idempotency_key })).status).toBe(409);
-    expect((await call("/v1/rooms", "POST", host, { idempotency_key })).status).toBe(409);
-    expect((JSON.parse(value(await player.exportSnapshot(source))) as PortableSnapshot).payload.tables).toEqual(archive.payload.tables);
-  });
-  it("runs the full two-stage role reversal and keeps stable receipts after advancement and creation disable", async () => {
+  it("runs the full two-stage role reversal and keeps stable receipts after advancement", async () => {
     const done = await complete(); expect(done.room).toMatchObject({ ...descriptor, stage_index: 2, active_role: "complete", revision: 5, checkpoint: final });
     expect(done.responses[1].room.active_player_id).toBe(done.guest.player_id); expect(done.responses[2].room.active_player_id).toBe(done.host.player_id);
     const path = `/v2/rooms/${done.room.room_id}`;
-    expect(await (await call(path, "GET", done.host, undefined, false)).json()).toEqual(done.room);
+    expect(await (await call(path, "GET", done.host)).json()).toEqual(done.room);
     const receipt = done.responses[0].receipt;
-    expect(await (await call(`${path}/operations/${receipt.idempotency_key}`, "GET", done.host, undefined, false)).json()).toEqual({ receipt, room: done.room });
+    expect(await (await call(`${path}/operations/${receipt.idempotency_key}`, "GET", done.host)).json()).toEqual({ receipt, room: done.room });
     const retry = { ...turn(done.initial, liftA), idempotency_key: receipt.idempotency_key };
-    expect(await (await call(`${path}/turns`, "POST", done.host, retry, false)).json()).toEqual({ receipt, room: done.room });
+    expect(await (await call(`${path}/turns`, "POST", done.host, retry)).json()).toEqual({ receipt, room: done.room });
     expect((await call(path, "GET", await account())).status).toBe(404);
   });
   it("rejects cross-chapter/schema/outcome substitutions without changing a room", async () => {
@@ -239,6 +218,7 @@ describe("First Steps immutable chapter dispatch", () => {
     const hash = [...new Uint8Array(await crypto.subtle.digest("SHA-256", jpeg))].map(value => value.toString(16).padStart(2, "0")).join("");
     const upload = { idempotency_key: key(), recording_hash: liftA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, sha256: hash, jpeg_base64: btoa(String.fromCharCode(...jpeg)) };
     expect(await stub.updatePhoto(guest.player_id, "t0-0-a", upload)).toMatchObject({ ok: false, code: "turn_not_found" });
+    expect((await call("/v1/safety/terms", "POST", host, { schema_version: 1, terms_version: TERMS_VERSION })).status).toBe(200);
     const photo = value(await stub.updatePhoto(host.player_id, "t0-0-a", upload)); expect(value(await stub.updatePhoto(host.player_id, "t0-0-a", upload))).toEqual(photo);
     expect(value(await stub.snapshot(host.player_id))).toEqual(accepted.room);
     const target = env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId()); expect(await target.restoreSnapshot(value(await stub.exportSnapshot(source)), room.room_id)).toMatchObject({ ok: true });
@@ -262,7 +242,7 @@ describe("First Steps immutable chapter dispatch", () => {
     const rooms = { getByName(name: string) { const stub = env.ROOMS_V2.getByName(name); return { async initialize(...args: Parameters<typeof stub.initialize>) {
       expect((await call("/v1/identity", "DELETE", host)).status).toBe(200); erased = true; return stub.initialize(...args);
     } }; } } as Env["ROOMS_V2"];
-    const response = await call("/v2/rooms", "POST", host, { ...descriptor, idempotency_key: key() }, true, rooms);
+    const response = await call("/v2/rooms", "POST", host, { ...descriptor, idempotency_key: key() }, rooms);
     expect(erased).toBe(true); expect(response.status).toBe(410);
     expect((await call("/v2/rooms", "GET", host)).status).toBe(401);
   });
@@ -274,7 +254,7 @@ describe("First Steps immutable chapter dispatch", () => {
       const data = JSON.stringify(raw); ctx.storage.sql.exec("UPDATE room SET data=?", data); return data;
     });
     expect(await stub.snapshot(host.player_id)).toMatchObject({ ok: false, status: 422, code: "unsupported_chapter" });
-    expect((await call("/v2/rooms", "GET", host)).status).toBe(422); expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toHaveLength(1);
+    expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toHaveLength(1);
     expect((await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code })).status).toBe(422);
     expect(await env.PLAYERS.getByName(guest.player_id).listRooms()).toEqual([]);
     expect((await call("/v2/rooms/join", "POST", member, { invite_code: room.invite_code })).status).toBe(422);

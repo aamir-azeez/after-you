@@ -15,6 +15,7 @@ import { campaignAdmissionHash } from "../src/v2/campaign-admission-intent";
 import { campaignTerminalAdmissionScope, finalizeCampaignTerminalAdmission } from "../src/v2/campaign-player";
 import type { CampaignCreate, CampaignKey } from "../src/v2/campaign-types";
 import fixture from "./fixtures/campaign-control-v2.json";
+import { withConfig } from "./config";
 
 // Substitute only the finite immutable definition. Actual HTTP, named Player
 // and Room bindings, allocation, deletion and local transactions stay real.
@@ -22,21 +23,24 @@ vi.mock("../src/v2/campaign-registry", async original => {
   const actual = await original<typeof import("../src/v2/campaign-registry")>();
   const f = (await import("./fixtures/campaign-control-v2.json")).default;
   const { canonicalJson } = await import("../src/protocol");
+  const { flags } = await import("../src/flags");
   const retainedCampaign = (k: CampaignKey) => canonicalJson(k) === canonicalJson(f.active_view.campaign_key) ? structuredClone(f.definition) : undefined;
   return { ...actual, retainedCampaign, advertisedCampaigns: () => [structuredClone(f.definition)],
-    campaignCreatable: (k: CampaignKey, e: { CAMPAIGN_CREATION_ENABLED?: string }) => e.CAMPAIGN_CREATION_ENABLED === "true" && !!retainedCampaign(k) };
+    campaignCreatable: (k: CampaignKey, e: Env) => flags.campaignCreation(e) && !!retainedCampaign(k) };
 });
 
 const R = fixture.active_view.campaign_room_id, I = fixture.active_view.invite_code!, key = fixture.active_view.campaign_key as CampaignKey;
 const T = "a".repeat(43), OTHER = "Q".repeat(22), CANCEL = "/v2/campaigns/cancel";
-const flags = { V2_ROOMS_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true" };
+const flags = { CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true" };
+const roomVars = { CONFIG: withConfig(flags).CONFIG };
 const changed = new Map<object, Record<string, unknown>>();
 const unwrap = <T>(out: Outcome<T>): T => { if (!out.ok) throw new Error(out.code); return out.value; };
 let H = "", G = "", hash = "", address = 0;
 const root = () => env.ROOMS_V2.getByName(R), player = (owner = H) => env.PLAYERS.getByName(owner);
 const create = (id = "terminal-create-key-0001"): CampaignCreate => ({ schema_version: 1, idempotency_key: id, campaign_key: key });
 async function call(path: string, method = "GET", body?: unknown, owner = H, overrides: Record<string, unknown> = {}, marked = true) {
-  const configured: Env = { ...env }; Object.assign(configured, flags, overrides);
+  const { CONFIG: _shared, ...base } = env as Env & { CONFIG?: string }; // the root room shares env and carries roomVars
+  const configured: Env = withConfig({ ...base, ...flags, ...overrides });
   return worker.fetch(new Request("https://terminal-admission.test" + path, { method, headers: {
     "Content-Type":"application/json", "CF-Connecting-IP":"198.22.1." + ++address, "X-Player-Id":owner, Authorization:"Bearer " + T,
     ...(marked ? { "X-AfterYou-Campaign-Schema":"2" } : {}) }, body:body === undefined ? undefined : JSON.stringify(body) }), configured);
@@ -76,8 +80,8 @@ beforeEach(async () => {
   for (const owner of [H,G]) unwrap(await player(owner).create(owner,hash,"b".repeat(64)));
   await runInDurableObject(root(), instance => {
     const local = Reflect.get(instance,"env") as Record<string,unknown>;
-    if (!changed.has(local)) changed.set(local,Object.fromEntries(Object.keys(flags).map(k => [k,local[k]])));
-    Object.assign(local,flags);
+    if (!changed.has(local)) changed.set(local,Object.fromEntries(Object.keys(roomVars).map(k => [k,local[k]])));
+    Object.assign(local,roomVars);
   });
   const original = crypto.getRandomValues.bind(crypto);
   vi.spyOn(crypto,"getRandomValues").mockImplementation(((array: Uint8Array) => {
@@ -213,8 +217,6 @@ describe("exact lost-Create terminal correlation", () => {
     await paired(); unwrap(await env.SAFETY_PROFILES.getByName(H).setBlock(H,hash,G,true)); await erased();
     const before = await person();
     expect((await call(CANCEL,"POST",create(),H,{},false)).status).toBe(409);
-    expect((await call(CANCEL,"POST",create(),H,{ V2_ROOMS_ENABLED:"false" })).status).toBe(503);
-    expect(await person()).toEqual(before);
     expect(await (await call(CANCEL,"POST",create(),H,{ CAMPAIGN_CREATION_ENABLED:"false",CAMPAIGN_MUTATIONS_ENABLED:"false" })).json()).toEqual(await expected());
     expect(await person()).toEqual(before);
   });

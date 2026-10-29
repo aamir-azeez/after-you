@@ -1,6 +1,7 @@
 import { isObject } from "../protocol";
 import { flags, type ServerVars } from "../flags";
-import { PRODUCT_PATTERN, productList, revenuecatRequest, type ProviderResult } from "../play-entitlement";
+import { APP, PRODUCT_PATTERN, PROJECT_PATTERN, serverConfig } from "../config";
+import { revenuecatRequest, type ProviderResult } from "../play-entitlement";
 import { SUB_ID_PATTERN, type GrantStatus, type GrantSub } from "./grant";
 
 /**
@@ -13,8 +14,8 @@ import { SUB_ID_PATTERN, type GrantStatus, type GrantSub } from "./grant";
  *   "expired" as ended. The hosting check admits trials, grace and testers; this never pays for them.
  * Tester and review grants are not subscriptions, so they never appear here.
  *
- * Environments: Play reads REVENUECAT_PLAY_ENVIRONMENT (production when unset), as the hosting check.
- * The App Store reads production, or sandbox only when REVENUECAT_APP_STORE_ENVIRONMENT is exactly
+ * Environments: Play reads APP.playEnvironment (production), as the hosting check.
+ * The App Store reads production, or sandbox only when CONFIG's revenuecat.app_store_environment is exactly
  * "sandbox": its "both" lets App Review host, but the grant never pays a sandbox purchase there.
  *
  * Any failed, unconfigured or partial read answers { ok: false }: nothing is paid or taken back on it.
@@ -24,17 +25,16 @@ import { SUB_ID_PATTERN, type GrantStatus, type GrantSub } from "./grant";
 export type GrantRead = { ok: true; subs: GrantSub[]; lifetime: { id: string } | null } | { ok: false; reason: string };
 export type ProviderFetch = (url: string, key: string) => Promise<ProviderResult>;
 
-type Store = { store: "play_store" | "app_store"; products: string[]; environment: string };
-const ENVIRONMENTS = ["production", "sandbox"];
+type Store = { store: "play_store" | "app_store"; products: readonly string[]; environment: string };
 
 function stores(env: ServerVars): Store[] | null {
-  const play = productList(env.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS), playEnvironment = env.REVENUECAT_PLAY_ENVIRONMENT ?? "production";
-  if (play === null || !ENVIRONMENTS.includes(playEnvironment)) return null;
-  const out: Store[] = play.length ? [{ store: "play_store", products: play, environment: playEnvironment }] : [];
+  const config = serverConfig(env).revenuecat, play = config.play_subscription_product_ids;
+  if (play === null) return null;
+  const out: Store[] = play.length ? [{ store: "play_store", products: play, environment: APP.playEnvironment }] : [];
   if (flags.appStoreEntitlements(env)) {
-    const app = productList(env.REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS);
+    const app = config.app_store_subscription_product_ids;
     if (app === null) return null;
-    if (app.length) out.push({ store: "app_store", products: app, environment: env.REVENUECAT_APP_STORE_ENVIRONMENT === "sandbox" ? "sandbox" : "production" });
+    if (app.length) out.push({ store: "app_store", products: app, environment: config.app_store_environment === "sandbox" ? "sandbox" : "production" });
   }
   return out;
 }
@@ -69,10 +69,10 @@ function list(result: ProviderResult): unknown[] | string {
  */
 export async function readGrant(playerId: string, env: ServerVars, lifetime: boolean, request: ProviderFetch = revenuecatRequest): Promise<GrantRead> {
   const configured = stores(env);
-  if (env.REVENUECAT_VERIFICATION_MODE !== "play_store" || !env.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(env.REVENUECAT_PROJECT_ID ?? "") || configured === null)
-    return { ok: false, reason: "unconfigured" };
+  const project = serverConfig(env).revenuecat.project_id ?? "";
+  if (!env.REVENUECAT_SECRET_KEY || !PROJECT_PATTERN.test(project) || configured === null) return { ok: false, reason: "unconfigured" };
   const key = env.REVENUECAT_SECRET_KEY;
-  const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(env.REVENUECAT_PROJECT_ID!)}/customers/${encodeURIComponent(playerId)}`;
+  const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(project)}/customers/${encodeURIComponent(playerId)}`;
   const subs: GrantSub[] = [];
   for (const environment of [...new Set(configured.map(store => store.environment))]) {
     const items = list(await request(`${base}/subscriptions?environment=${environment}&limit=100`, key));
@@ -81,7 +81,7 @@ export async function readGrant(playerId: string, env: ServerVars, lifetime: boo
       for (const item of items) { const sub = grantSub(item, store); if (sub) subs.push(sub); }
   }
   let owned: { id: string } | null = null;
-  const product = env.REVENUECAT_PLAY_PRODUCT_ID ?? "", environment = env.REVENUECAT_PLAY_ENVIRONMENT ?? "production";
+  const product = serverConfig(env).revenuecat.play_product_id ?? "", environment = APP.playEnvironment;
   if (lifetime && PRODUCT_PATTERN.test(product)) {
     const items = list(await request(`${base}/purchases?environment=${environment}&limit=100`, key));
     if (typeof items === "string") return { ok: false, reason: items };

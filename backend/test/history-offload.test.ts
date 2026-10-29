@@ -7,6 +7,7 @@ import { sleepingLighthouseV2 } from "../src/v2/protocol-lighthouse";
 import { turnOfTheTide } from "../src/v2/protocol-journey";
 import { CHAINS, GUEST, HOST, fork, newRoom, open, owner, play, value, type Chain, type Room } from "./history-chains";
 import type { RoomSnapshotV2 } from "../src/v2/room";
+import { acceptTerms } from "./terms";
 
 afterEach(async () => { await reset(); });
 const relay = CHAINS[0], tide = CHAINS[3], lighthouse = CHAINS[4];
@@ -29,6 +30,7 @@ const isStub = (data: string) => !data.includes("stage_id") && !data.includes("\
 async function photo(room: Room, turnId: string, recording: Record<string, any>) {
   const bytes = new Uint8Array(encode({ data: new Uint8Array(8 * 8 * 4).fill(127), width: 8, height: 8 }, 45).data);
   const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(v => v.toString(16).padStart(2, "0")).join("");
+  await acceptTerms(owner(recording));
   return value(await room.updatePhoto(owner(recording), turnId, { idempotency_key: crypto.randomUUID(), recording_hash: recording.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64: btoa(String.fromCharCode(...bytes)), sha256 }));
 }
 /** `attempts` finished attempts, each played through and forked back to `forkTo`, offloading each when asked. */

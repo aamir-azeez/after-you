@@ -19,24 +19,25 @@ const relay: ChapterAdapter = {
       (stage.goal_action === "place_relay" ? recording.outcome.placed_relay === true : recording.outcome.planted_seed === true);
   }
 };
-/** Every chapter in advertised order, with the wrangler var that gates creating
- * it ("" = always creatable). One flag may gate several chapters. Chapters added
- * after 0.5.1 each pin their own rules, refuse older guests on join, and get
- * their own flag (default "false"). Each flag is a FlagVar, so it has a row in
- * flags.ts. Never reorder rows: old clients see this order. */
+/** Every chapter in advertised order, with the flag that gates creating it
+ * ("" = always creatable). A new chapter gets its own flag (a FlagVar row in
+ * flags.ts) until it ships; every published chapter is always creatable (its
+ * flag retired, flags.ts RETIRED_FLAGS). Chapters added after 0.5.1 each pin
+ * their own rules and refuse older guests on join. Never reorder rows: old
+ * clients see this order. */
 export const CHAPTERS: readonly { readonly adapter: ChapterAdapter; readonly flag: FlagVar | "" }[] = Object.freeze([
   { adapter: relay, flag: "" },
-  { adapter: FirstSteps.adapter, flag: "FIRST_STEPS_ENABLED" },
-  { adapter: highAndLow, flag: "COOP_CHAPTERS_ENABLED" },
-  { adapter: rollingHome, flag: "COOP_CHAPTERS_ENABLED" },
-  { adapter: houseForTwo, flag: "HOUSE_CHAPTER_ENABLED" },
-  { adapter: conservatory, flag: "JOURNEY_CHAPTERS_ENABLED" },
-  { adapter: longWayHome, flag: "JOURNEY_CHAPTERS_ENABLED" },
-  { adapter: wishingWell, flag: "WISHING_WELL_CHAPTER_ENABLED" },
-  { adapter: longWayHomeV2, flag: "LONG_WAY_HOME_V2_CHAPTER_ENABLED" },
-  { adapter: turnOfTheTide, flag: "TURN_OF_THE_TIDE_CHAPTER_ENABLED" },
-  { adapter: sleepingLighthouseV2, flag: "LIGHTHOUSE_V2_CHAPTER_ENABLED" },
-  { adapter: turnOfTheTideV2, flag: "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED" },
+  { adapter: FirstSteps.adapter, flag: "" },
+  { adapter: highAndLow, flag: "" },
+  { adapter: rollingHome, flag: "" },
+  { adapter: houseForTwo, flag: "" },
+  { adapter: conservatory, flag: "" },
+  { adapter: longWayHome, flag: "" },
+  { adapter: wishingWell, flag: "" },
+  { adapter: longWayHomeV2, flag: "" },
+  { adapter: turnOfTheTide, flag: "" },
+  { adapter: sleepingLighthouseV2, flag: "" },
+  { adapter: turnOfTheTideV2, flag: "" },
 ]);
 const entries: readonly ChapterAdapter[] = CHAPTERS.map(row => row.adapter);
 
@@ -51,7 +52,7 @@ export function chapterKey(value: unknown): ChapterKey { return { ...chapter(val
 export function sameChapter(a: ChapterKey, b: ChapterKey): boolean {
   return a.level_id === b.level_id && a.level_version === b.level_version && a.definition_hash === b.definition_hash;
 }
-/** The wrangler var gating this chapter: "" if always creatable, undefined if unknown. */
+/** The flag gating this chapter: "" if always creatable, undefined if unknown. */
 export function chapterFlag(entry: ChapterAdapter): FlagVar | "" | undefined {
   return CHAPTERS.find(row => row.adapter === entry)?.flag;
 }

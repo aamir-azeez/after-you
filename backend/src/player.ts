@@ -544,7 +544,6 @@ export class Player extends DurableObject<Env> {
     return this.ctx.storage.transaction(async () => {
       const alarm = await this.ctx.storage.getAlarm();
       if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
-      if (online && !flags.presence(this.env)) return fail(503, "presence_unavailable");
       if (!presenceAlarmOwned(this.ctx.storage, alarm)) return fail(503, "presence_unavailable");
       prunePresence(this.ctx.storage);
       if (online) {
@@ -823,14 +822,13 @@ export class Player extends DurableObject<Env> {
   }
   /**
    * `settled` comes from the router's reserveWithinRoomLimit (room-limit.ts).
-   * With the room index on, rows the index holds as finished, closed or
-   * unavailable are settled too, and the bound may rise (roomLinkBound).
+   * Rows the room index holds as finished, closed or unavailable are settled
+   * too, and the bound may rise (roomLinkBound).
    */
   private roomsFull(settled: readonly string[]): boolean {
     const linked = this.ctx.storage.sql.exec<{ room_id: string }>("SELECT room_id FROM rooms").toArray().map(row => row.room_id);
-    if (!flags.roomIndex(this.env)) return roomLimitReached(linked, settled);
     const index = roomIndexCount(this.ctx.storage);
-    return roomLimitReached(linked, [...settled, ...index.settled], roomLinkBound(true, index.unindexed === 0));
+    return roomLimitReached(linked, [...settled, ...index.settled], roomLinkBound(index.unindexed === 0));
   }
   listRooms(): RoomLink[] {
     return this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM rooms ORDER BY rowid DESC").toArray().map(row => JSON.parse(row.data) as RoomLink);
@@ -844,10 +842,9 @@ export class Player extends DurableObject<Env> {
   }
   // Binding-only room index (room-index.ts). The router and the rooms call these; a row never grants access to a room.
   /** A room's push after a change: what it now says about this member. */
-  /** While the index is off (an erase still pushes) it only updates a row that already exists. */
   noteRoomIndex(owner: string, roomId: string, version: number, observation: RoomObservation, hint?: LiveHint): void {
     const identity = this.identity();
-    if (identity?.state === "active" && identity.player_id === owner) recordRoomObservation(this.ctx.storage, roomId, version, observation, flags.roomIndex(this.env));
+    if (identity?.state === "active" && identity.player_id === owner) recordRoomObservation(this.ctx.storage, roomId, version, observation);
     // A live hint that rode on this push (room-index-sync.ts).
     if (hint) this.ctx.waitUntil(this.liveHint(owner, hint).catch(() => false));
   }
@@ -855,7 +852,7 @@ export class Player extends DurableObject<Env> {
   recordRoomIndex(owner: string, observations: { room_id: string; api_version: number; observation: RoomObservation | null }[]): void {
     const identity = this.identity();
     if (identity?.state !== "active" || identity.player_id !== owner) return;
-    this.ctx.storage.transactionSync(() => { for (const item of observations) recordRoomObservation(this.ctx.storage, item.room_id, item.api_version, item.observation, true); });
+    this.ctx.storage.transactionSync(() => { for (const item of observations) recordRoomObservation(this.ctx.storage, item.room_id, item.api_version, item.observation); });
   }
   /** Linked rooms the index holds as finished or gone. */
   roomIndexSettled(): string[] { return roomIndexCount(this.ctx.storage).settled; }

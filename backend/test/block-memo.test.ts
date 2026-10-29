@@ -29,7 +29,7 @@ async function secondRoom(host: Account, guest: Account): Promise<RoomSnapshotV2
 }
 let address = 0;
 async function countedPoll(who: Account, room: RoomSnapshotV2): Promise<string[]> {
-  const { env: counting, calls } = countingEnv(env); Object.assign(counting, { V2_ROOMS_ENABLED: "true" });
+  const { env: counting, calls } = countingEnv(env);
   const response = await worker.fetch(new Request(`https://after-you.test/v2/rooms/${room.room_id}`, { headers: { "CF-Connecting-IP": "198.18.9." + (++address % 250),
     "X-Player-Id": who.player_id, Authorization: "Bearer " + who.device_token, "X-AfterYou-Known-Room": `${room.revision}.${room.branch}` } }), counting);
   expect(response.status).toBe(200); await response.arrayBuffer();

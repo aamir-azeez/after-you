@@ -9,6 +9,7 @@ import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { PortableSnapshot } from "../src/snapshot";
 import { DISPLAY_NAMES_HEADER, FRIEND_LINK_MAX_AGE, FRIEND_LINK_ORIGIN, DISPLAY_NAME_LOCK_MS, DISPLAY_NAME_WINDOW_MS, MEMBER_NAMES, MAX_DISPLAY_NAME_CHANGES, blockedName, cleanDisplayName, shownName } from "../src/display-names";
+import { withConfig } from "./config";
 import { countingEnv, meterRows } from "./meter";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
@@ -27,8 +28,10 @@ const OPERATOR = "o".repeat(43);
 const key = () => crypto.randomUUID();
 let address = 0;
 
-async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string | undefined> = ON, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
-  const configured = Object.assign({ ...base }, { V2_ROOMS_ENABLED: "true", SAFETY_OPERATOR_TOKEN: OPERATOR, ...vars }) as Env;
+async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, unknown> = ON, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
+  // The request's own vars decide its CONFIG; one an object test left on the shared env is not merged in.
+  const { CONFIG: _objects, ...rest } = base as Env & { CONFIG?: string };
+  const configured = withConfig(Object.assign(rest, { SAFETY_OPERATOR_TOKEN: OPERATOR, ...vars })) as Env;
   return worker.fetch(new Request("https://names.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.77." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
@@ -36,7 +39,7 @@ async function call(path: string, method = "GET", account?: Account, body?: unkn
 }
 /** The same request through stubs that record every Durable Object call the Worker makes. */
 async function counted(path: string, method: string, account: Account, body?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = {}): Promise<{ response: Response; calls: string[] }> {
-  const meter = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...vars } as unknown as Env);
+  const meter = countingEnv({ ...env, ...vars } as unknown as Env);
   const response = await call(path, method, account, body, vars, headers, meter.env);
   return { response, calls: meter.calls };
 }
@@ -57,19 +60,22 @@ let offset = 0;
 const advance = (ms: number) => { offset += ms; };
 beforeEach(() => { offset = 0; vi.spyOn(Date, "now").mockImplementation(() => realNow() + offset); });
 
-/** Objects read flags from their own env; tests set them there and put them back after. */
+/** Objects read flags from their own env's CONFIG; tests set them there and put them back after. */
 const changed = new Map<Record<string, unknown>, Record<string, unknown>>();
+const applied = new Map<Record<string, unknown>, Record<string, unknown>>();
 async function objectFlags(stub: DurableObjectStub, vars: Record<string, string>): Promise<void> {
   await runInDurableObject(stub, instance => {
     const target = Reflect.get(instance, "env") as Record<string, unknown>;
     const saved = changed.get(target) ?? {};
-    for (const [name, setting] of Object.entries(vars)) { if (!Object.hasOwn(saved, name)) saved[name] = target[name]; target[name] = setting; }
-    changed.set(target, saved);
+    if (!Object.hasOwn(saved, "CONFIG")) saved.CONFIG = target.CONFIG;
+    const flags = { ...applied.get(target), ...vars };
+    target.CONFIG = withConfig(flags).CONFIG;
+    changed.set(target, saved); applied.set(target, flags);
   });
 }
 afterEach(async () => {
   for (const [target, saved] of changed) for (const [name, setting] of Object.entries(saved)) { if (setting === undefined) delete target[name]; else target[name] = setting; }
-  changed.clear(); vi.restoreAllMocks(); await reset();
+  changed.clear(); applied.clear(); vi.restoreAllMocks(); await reset();
 });
 
 async function friends(account: Account, headers: Record<string, string> = ASK, vars: Record<string, string> = ON): Promise<Page> {
@@ -301,9 +307,11 @@ describe("operator clear-name", () => {
   });
 
   it("pushes the partner's room index again so a stored row stops showing the name", async () => {
-    const host = await named("Maya"), guest = await named("Kai"), vars = { ...ON, ROOM_INDEX_ENABLED: "true" };
-    const done = await finish(await room(host, guest), host, guest);
-    for (const stub of [env.ROOMS_V2.getByName(done.room_id), env.PLAYERS.getByName(guest.player_id)]) await objectFlags(stub, vars);
+    const host = await named("Maya"), guest = await named("Kai"), vars = ON;
+    // The finishing turn pushes the index rows, so the room reads the flag from its own env before it.
+    const started = await room(host, guest);
+    for (const stub of [env.ROOMS_V2.getByName(started.room_id), env.PLAYERS.getByName(guest.player_id)]) await objectFlags(stub, vars);
+    const done = await finish(started, host, guest);
     expect((await inbox(guest, ASK, vars)).find(entry => entry.room_id === done.room_id)?.partner_name).toBe("Maya");
     expect((await inbox(guest, ASK, vars)).find(entry => entry.room_id === done.room_id)?.partner_name).toBe("Maya");
     expect((await clearName(host.player_id)).status).toBe(200);
@@ -409,13 +417,16 @@ describe("room partner names", () => {
     expect(await roomTable(anonymous.room_id)).toBe(false);
   });
 
-  it("reach the room inbox for clients that ask, live and from the room index, each member seeing the other", async () => {
-    for (const indexed of [false, true]) {
+  it("reach the room inbox for clients that ask, from the room index, each member seeing the other", async () => {
+    {
       const host = await named("Maya"), guest = await named("Kai");
-      const done = await finish(await room(host, guest), host, guest);
+      const vars = ON;
+      // The finishing turn pushes the index rows, so the room reads the flag from its own env before it.
+      const started = await room(host, guest);
+      await objectFlags(env.ROOMS_V2.getByName(started.room_id), vars);
+      const done = await finish(started, host, guest);
       const open = await room(await named("Robin"), host);
-      const vars = { ...ON, ROOM_INDEX_ENABLED: String(indexed) };
-      for (const stub of [env.ROOMS_V2.getByName(done.room_id), env.ROOMS_V2.getByName(open.room_id)]) await objectFlags(stub, vars);
+      await objectFlags(env.ROOMS_V2.getByName(open.room_id), vars);
       for (let pass = 0; pass < 2; pass++) {
         const hostEntries = await inbox(host, ASK, vars), guestEntries = await inbox(guest, ASK, vars);
         expect(hostEntries.find(entry => entry.room_id === done.room_id)?.partner_name).toBe("Kai");
@@ -424,11 +435,8 @@ describe("room partner names", () => {
       }
       for (const entry of await inbox(host, {}, vars)) expect(entry).not.toHaveProperty("partner_name");
       for (const entry of await inbox(host, ASK, { ...vars, DISPLAY_NAMES_ENABLED: "false" })) expect(entry).not.toHaveProperty("partner_name");
-      await objectFlags(env.ROOMS_V2.getByName(done.room_id), { DISPLAY_NAMES_ENABLED: "false" });
-      // A room that does not project names while the flag is off still gives every asking entry the key.
-      expect((await inbox(guest, ASK, { ...vars, ROOM_INDEX_ENABLED: "false" })).find(entry => entry.room_id === done.room_id)?.partner_name).toBeNull();
       for (const [target, saved] of changed) for (const [name, setting] of Object.entries(saved)) { if (setting === undefined) delete target[name]; else target[name] = setting; }
-      changed.clear();
+      changed.clear(); applied.clear();
       await reset();
     }
   }, 60_000);
@@ -436,7 +444,7 @@ describe("room partner names", () => {
   it("leave with the member who leaves a finished room, and with the whole room", async () => {
     const host = await named("Maya"), guest = await named("Kai");
     const done = await finish(await room(host, guest), host, guest);
-    const left = await call(`/v2/rooms/${done.room_id}/leave`, "POST", host, { schema_version: 1, leave_finished: true }, { ...ON, FINISHED_ROOM_LEAVE_ENABLED: "true" });
+    const left = await call(`/v2/rooms/${done.room_id}/leave`, "POST", host, { schema_version: 1, leave_finished: true }, ON);
     expect(left.status).toBe(200);
     expect(await memberRows(done.room_id)).toEqual([{ player_id: guest.player_id, display_name: "Kai" }]);
     expect((await (await read(done.room_id, guest)).json<RoomSnapshotV2>()).partner_name).toBeNull();
@@ -577,7 +585,7 @@ describe("a friend request to a room partner", () => {
 });
 
 describe("friend link page name", () => {
-  const link = (code: string, vars: Record<string, string | undefined> = ON, base: Env = env) => call(`/v1/friend-link/${code}/name`, "GET", undefined, undefined, vars, { Origin: FRIEND_LINK_ORIGIN }, base);
+  const link = (code: string, vars: Record<string, unknown> = ON, base: Env = env) => call(`/v1/friend-link/${code}/name`, "GET", undefined, undefined, vars, { Origin: FRIEND_LINK_ORIGIN }, base);
   const answer = async (response: Response) => ({ status: response.status, body: await response.json<Record<string, unknown>>() });
   const none = { status: 200, body: { schema_version: 1, display_name: null } };
 
@@ -610,9 +618,9 @@ describe("friend link page name", () => {
     expect(await answer(await link(account.player_id))).toEqual(none);
   });
 
-  it("resolves a short name through FRIEND_ALIASES as Add friend does", async () => {
+  it("resolves a short name through the friend aliases as Add friend does", async () => {
     const owner = await named("Ash");
-    const aliases = { ...ON, FRIEND_ALIASES: JSON.stringify({ ashtest: owner.player_id }) };
+    const aliases = { ...ON, friend_aliases: { ashtest: owner.player_id } };
     expect(await answer(await link("ashtest", aliases))).toEqual({ status: 200, body: { schema_version: 1, display_name: "Ash" } });
     expect(await answer(await link("AshTest", aliases))).toEqual({ status: 200, body: { schema_version: 1, display_name: "Ash" } });
     expect(await answer(await link("ashtest", ON))).toEqual(none);
@@ -620,13 +628,13 @@ describe("friend link page name", () => {
 
   it("costs at most one Player read, and none once kept or with the flag off", async () => {
     const lee = await named("Lee");
-    const first = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...ON } as unknown as Env);
+    const first = countingEnv({ ...env, ...ON } as unknown as Env);
     await link(lee.player_id, ON, first.env);
     expect(first.calls).toEqual(["PLAYERS.publicDisplayName"]);
-    const second = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...ON } as unknown as Env);
+    const second = countingEnv({ ...env, ...ON } as unknown as Env);
     expect((await answer(await link(lee.player_id, ON, second.env))).body.display_name).toBe("Lee");
     expect(second.calls).toEqual([]);
-    const off = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...OFF } as unknown as Env);
+    const off = countingEnv({ ...env, ...OFF } as unknown as Env);
     await link(lee.player_id, OFF, off.env);
     expect(off.calls).toEqual([]);
   });
@@ -638,7 +646,7 @@ describe("friend link page name", () => {
     expect((await call(`/v1/friend-link/${zoe.player_id}`, "GET", undefined, undefined, ON)).status).not.toBe(200);
     let limited = false;
     for (let i = 0; i < 40 && !limited; i++) {
-      const response = await worker.fetch(new Request(`https://names.test/v1/friend-link/${zoe.player_id}/name`, { headers: { "CF-Connecting-IP": "198.18.99.1" } }), { ...env, ...ON } as unknown as Env);
+      const response = await worker.fetch(new Request(`https://names.test/v1/friend-link/${zoe.player_id}/name`, { headers: { "CF-Connecting-IP": "198.18.99.1" } }), withConfig({ ...env, ...ON }) as unknown as Env);
       limited = response.status === 429;
     }
     expect(limited).toBe(true);

@@ -1,6 +1,7 @@
 import { isObject, readBounded } from "./protocol";
 import { errorCode, logWarning } from "./log";
 import type { ServerVars } from "./flags";
+import { APP } from "./config";
 
 /**
  * Proves who a platform games account is, from the platform only. The player id is never read
@@ -9,8 +10,6 @@ import type { ServerVars } from "./flags";
  */
 export type Verified = { ok: true; external_id: string } | { ok: false; reason: "invalid" | "unavailable" | "unconfigured" };
 
-const PLAY_APP_ID = /^[0-9]{6,20}$/;
-const WEB_CLIENT_ID = /^[0-9]{6,20}-[a-z0-9]{8,64}\.apps\.googleusercontent\.com$/;
 const CLIENT_SECRET = /^[\x21-\x7e]{8,256}$/;
 const AUTH_CODE = /^[\x21-\x7e]{10,2048}$/;
 const ACCESS_TOKEN = /^[\x21-\x7e]{16,4096}$/;
@@ -19,13 +18,11 @@ const TOKEN_URL = "https://oauth2.googleapis.com/token";
 const TIMEOUT_MS = 5000;
 
 export type PlayGamesConfig = { appId: string; clientId: string; secret: string };
-/** All three or nothing: a flag that is on with a missing value fails closed. */
+/** The public ids are APP's; without a well-formed client secret the flag fails closed. */
 export function playGamesConfig(env: ServerVars): PlayGamesConfig | null {
-  const appId = env.PLAY_GAMES_APP_ID, clientId = env.PLAY_GAMES_WEB_CLIENT_ID, secret = env.PLAY_GAMES_CLIENT_SECRET;
-  if (typeof appId !== "string" || !PLAY_APP_ID.test(appId)) return null;
-  if (typeof clientId !== "string" || !WEB_CLIENT_ID.test(clientId)) return null;
+  const secret = env.PLAY_GAMES_CLIENT_SECRET;
   if (typeof secret !== "string" || !CLIENT_SECRET.test(secret)) return null;
-  return { appId, clientId, secret };
+  return { appId: APP.playGamesAppId, clientId: APP.playGamesWebClientId, secret };
 }
 
 async function boundedJsonResponse(response: Response): Promise<unknown> {
@@ -78,7 +75,6 @@ export async function verifyPlayGames(code: unknown, env: ServerVars): Promise<V
 
 // ---- Game Center ----------------------------------------------------------------------------
 
-export const GAME_CENTER_BUNDLE_ID = "com.aamirazeez.afteryou";
 const TEAM_PLAYER_ID = /^[A-Za-z0-9:_.-]{1,128}$/;
 const BASE64 = /^[A-Za-z0-9+/]{4,4096}={0,2}$/;
 /** Apple's signature timestamp is in milliseconds. Outside this window the signature is stale. */
@@ -187,7 +183,7 @@ async function certificate(url: URL, now: number): Promise<Uint8Array | null> {
  * The certificate comes only from an apple.com https URL, so TLS vouches for it; the timestamp must be
  * fresh, and the caller also burns the signature once (see PlatformLinks.claim) so it cannot be replayed.
  */
-export async function verifyGameCenter(input: unknown, env: ServerVars, now = Date.now()): Promise<Verified> {
+export async function verifyGameCenter(input: unknown, now = Date.now()): Promise<Verified> {
   if (!isObject(input)) return { ok: false, reason: "invalid" };
   const keys = Object.keys(input).sort().join(",");
   if (keys !== "public_key_url,salt,signature,team_player_id,timestamp") return { ok: false, reason: "invalid" };
@@ -195,7 +191,7 @@ export async function verifyGameCenter(input: unknown, env: ServerVars, now = Da
   const player = input.team_player_id, timestamp = input.timestamp;
   if (!url || !signature || !salt || salt.length > 64 || signature.length > 1024 || typeof player !== "string" || !TEAM_PLAYER_ID.test(player)) return { ok: false, reason: "invalid" };
   if (typeof timestamp !== "number" || !Number.isSafeInteger(timestamp) || Math.abs(now - timestamp) > GAME_CENTER_WINDOW_MS) return { ok: false, reason: "invalid" };
-  const bundle = typeof env.GAME_CENTER_BUNDLE_ID === "string" && /^[A-Za-z0-9.-]{3,155}$/.test(env.GAME_CENTER_BUNDLE_ID) ? env.GAME_CENTER_BUNDLE_ID : GAME_CENTER_BUNDLE_ID;
+  const bundle = APP.gameCenterBundleId;
   let der: Uint8Array | null;
   try { der = await certificate(url, now); } catch (error) { der = null; logWarning("platform_verify_failed", { provider: "game_center", step: "transport", reason: errorCode(error) }); }
   if (!der) return { ok: false, reason: "unavailable" };

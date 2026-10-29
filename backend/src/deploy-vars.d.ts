@@ -1,8 +1,7 @@
 /**
- * Vars a deploy sets that wrangler.jsonc does not declare, so `wrangler types` cannot list them.
- * FEATURES is the one switch for server flags (flags.ts featureNames); the deploy runners pin it from live.
- * Merged into the generated Env so code that hands Env to a narrowed type that reads a flag still type-checks.
+ * The one var a deploy sets, which wrangler.jsonc never declares (it holds the owner's friend aliases, which must not
+ * reach Git), so `wrangler types` cannot list it. config.ts parses it; the deploy runners pin it from live.
  */
 interface __BaseEnv_Env {
-  FEATURES?: string;
+  CONFIG?: string;
 }

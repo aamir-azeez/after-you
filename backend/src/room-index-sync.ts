@@ -15,9 +15,8 @@ export function observeRoom(project: () => Outcome<RoomInboxProjection>): RoomOb
  * Sends each member's current projection to that member's room index (Player)
  * after a change has committed. Fire and forget: the room's answer never waits
  * on it or changes because of it, and the index re-checks rows, so a lost push
- * only delays a correction. The rooms call it only while the room index is on,
- * except after an erase, which always tells the other member so that no index
- * row keeps the erased member's id. `live` rides one member's live hint
+ * only delays a correction. An erase always tells the other member, so that no
+ * index row keeps the erased member's id. `live` rides one member's live hint
  * (live.ts) on that member's push, so a change never costs a second call.
  */
 export function pushRoomIndex(ctx: DurableObjectState, env: Env, roomId: string, version: 1 | 2, members: readonly (string | null | undefined)[], project: (player: string) => Outcome<RoomInboxProjection>, live?: { to: string; hint: LiveHint }): void {

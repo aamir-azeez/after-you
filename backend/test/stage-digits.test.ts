@@ -3,6 +3,7 @@ import { reset } from "cloudflare:test";
 import { afterEach, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { RELAY_KEY } from "../src/v2/protocol";
 import { TERMS_VERSION } from "../src/public-policy";
 
@@ -12,9 +13,9 @@ import { TERMS_VERSION } from "../src/public-policy";
 // account photo transfers name turns too and keep their outcomes as well.
 type Account = { player_id: string; device_token: string };
 let requestNo = 0;
-const flags = { V2_ROOMS_ENABLED: "true", RELAY_PHOTOS_ENABLED: "true", PRESET_REACTIONS_ENABLED: "true", PHOTO_DELIVERY_ENABLED: "true" };
+const flags = { RELAY_PHOTOS_ENABLED: "true" };
 async function call(path: string, method = "GET", account?: Account, body?: BodyInit, headers: Record<string, string> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, flags);
+  const configured: Env = withConfig({ ...env, ...flags });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.16." + (++requestNo % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers }, body }), configured);
 }
@@ -101,9 +102,9 @@ const EXPECTED: Record<string, string> = {
   };
 
 it("keeps every published safety-report and photo-transfer stage-digit outcome on a two-stage room", async () => {
-  const on = { ...flags, SAFETY_ENFORCEMENT_ENABLED: "true", PHOTO_TRANSFER_ENABLED: "true" };
+  const on = { ...flags, PHOTO_TRANSFER_ENABLED: "true" };
   const send = (path: string, method: string, account: Account | undefined, body: unknown, overrides: Record<string, string> = {}) => {
-    const configured: Env = { ...env }; Object.assign(configured, on, overrides);
+    const configured: Env = withConfig({ ...env, ...on, ...overrides });
     return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.18." + (++requestNo % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: JSON.stringify(body) }), configured);
   };

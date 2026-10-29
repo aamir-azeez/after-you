@@ -15,7 +15,7 @@ const DARK_PAGE = "#123a3d", DARK_CARD = "#1d4a4b", CREAM = "#eceddb", SOFT = "#
 const BODY = "'Nunito','Trebuchet MS',Verdana,Arial,sans-serif";
 const DISPLAY = "'Fredoka','Nunito','Trebuchet MS',Verdana,Arial,sans-serif";
 
-/** The From header for a sender address (WAITLIST_FROM); the address is checked before it gets here. */
+/** The From header for the sender address (APP.waitlistFrom in config.ts). */
 export function sender(address: string): string { return `After You <${address}>`; }
 export type Email = { subject: string; html: string; text: string };
 

@@ -1,7 +1,7 @@
 /**
  * Operator-only count and erase of Story (campaign, api_version 3) data, under /operator/story/.
  *
- * The router reaches this only while STORY_DRAIN_ENABLED is "true"; otherwise the path falls
+ * The router reaches this only while CONFIG lists STORY_DRAIN_ENABLED; otherwise the path falls
  * through to player authentication exactly as before. Every request first passes the operator
  * credential check (requireOperator). A player credential never passes it.
  *

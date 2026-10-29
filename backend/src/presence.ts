@@ -1,5 +1,4 @@
 import { ApiError, HASH_PATTERN, isObject } from "./protocol";
-import { flags } from "./flags";
 import { safetyMembers } from "./safety-routes";
 import { interactionBlocked } from "./safety";
 import type { CampaignRoomContext } from "./v2/campaign-room-access";
@@ -53,7 +52,6 @@ export async function resetPresence(storage: DurableObjectStorage): Promise<void
 export async function roomPresence(env: Env, owner: string, deviceHash: string, family: "legacy" | "relay", roomId: string, context?: CampaignRoomContext): Promise<RoomPresence> {
   const members = await safetyMembers(env, owner, family, roomId, context);
   if (await interactionBlocked(env, members.host_id, members.guest_id)) throw new ApiError(403, "player_blocked");
-  if (!flags.presence(env)) throw new ApiError(503, "presence_unavailable");
   const partner = owner === members.host_id ? members.guest_id : members.host_id;
   const expires = partner ? await env.PLAYERS.getByName(partner).presenceExpiry(partner) : 0;
   // A peer deletion or block may complete while the presence RPC is suspended.

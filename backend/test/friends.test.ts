@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { canonicalJson, digest, randomToken, type Outcome } from "../src/protocol";
 import { FRIEND_REQUEST_TTL_MS, MAX_FRIENDS } from "../src/friends";
 import { RELAY_KEY } from "../src/v2/chapters";
@@ -12,12 +13,11 @@ type List = { schema_version: 1; friend_code: string; friends: Link[]; shared_ro
 type Room = { room_id: string; invite_code: string };
 const SESSION = "a".repeat(36);
 let address = 0;
-const configured = new Map<{ PRESENCE_ENABLED?: string }, string | undefined>();
 const value = <T>(r: Outcome<T>): T => { if (!r.ok) throw new Error(r.code); return r.value; };
 async function call(path: string, method = "GET", a?: Account, body?: unknown, overrides: Partial<Env> = {}) {
   return worker.fetch(new Request("https://friends.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.7." + ++address, ...(a ? { "X-Player-Id": a.player_id, Authorization: "Bearer " + a.device_token } : {}) },
-    body: body === undefined ? undefined : JSON.stringify(body) }), Object.assign({}, env, { PRESENCE_ENABLED: "true", V2_ROOMS_ENABLED: "true" }, overrides));
+    body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, ...overrides }));
 }
 async function create(): Promise<Account> { const r = await call("/v1/identity", "POST", undefined, {}); expect(r.status).toBe(201); return r.json<Account>(); }
 async function request(a: Account, b: Account) { return call("/v1/friends/request", "POST", a, { schema_version: 1, friend_code: b.player_id }); }
@@ -28,10 +28,6 @@ async function pair() {
   const link = await sent.json<Link>(); expect((await accept(b, a, link.request_id)).status).toBe(200); return { a, b, id: link.request_id };
 }
 async function heartbeat(a: Account) {
-  await runInDurableObject(env.PLAYERS.getByName(a.player_id), instance => {
-    const config = Reflect.get(instance, "env") as { PRESENCE_ENABLED?: string };
-    if (!configured.has(config)) configured.set(config, config.PRESENCE_ENABLED); config.PRESENCE_ENABLED = "true";
-  });
   expect((await call("/v1/presence", "POST", a, { schema_version: 1, session_id: SESSION, online: true })).status).toBe(200);
 }
 async function newRoom(a: Account, version: number): Promise<Room> {
@@ -57,8 +53,7 @@ function roomInviteHook(roomId: string, after: () => Promise<void>): Env["ROOMS"
   } });
 }
 afterEach(async () => {
-  for (const [config, old] of configured) { if (old === undefined) delete config.PRESENCE_ENABLED; else config.PRESENCE_ENABLED = old; }
-  configured.clear(); vi.restoreAllMocks(); await reset();
+  vi.restoreAllMocks(); await reset();
 });
 
 describe("bounded friends by code", () => {
@@ -193,31 +188,30 @@ describe("bounded friends by code", () => {
     expect((await join(third, p.a, sent.request_id)).status).toBe(409);
   });
 
-  it.each([{ version: 1, enabled: "true" }, { version: 2, enabled: "true" }, { version: 1, enabled: "false" }, { version: 2, enabled: "false" }])("joins an explicitly shared v$version room without host presence (presence enabled=$enabled)", async ({ version, enabled }) => {
+  it.each([{ version: 1 }, { version: 2 }])("joins an explicitly shared v$version room without host presence", async ({ version }) => {
     const p = await pair(), room = await newRoom(p.a, version);
-    const overrides: Partial<Env> = enabled === "false" ? { PRESENCE_ENABLED: "false" } : {};
     // The host has never published a presence lease.
-    expect((await join(p.b, p.a, p.id, overrides)).status).toBe(409);
+    expect((await join(p.b, p.a, p.id)).status).toBe(409);
     expect((await share(p.a, room, version)).status).toBe(200);
-    const listing = await call("/v1/friends", "GET", p.b, undefined, overrides); expect(listing.status).toBe(200);
+    const listing = await call("/v1/friends", "GET", p.b, undefined); expect(listing.status).toBe(200);
     expect((await listing.json<List>()).friends).toEqual([{ player_id: p.a.player_id, request_id: p.id, status: "accepted", online: false, expires_after_seconds: 0, join_available: true }]);
-    const descriptor = await join(p.b, p.a, p.id, overrides); expect(descriptor.status).toBe(200);
+    const descriptor = await join(p.b, p.a, p.id); expect(descriptor.status).toBe(200);
     expect(await descriptor.json()).toEqual({ schema_version: 1, api_version: version, room_id: room.room_id, invite_code: room.invite_code });
     expect(await (await call(`/v${version}/rooms/${room.room_id}`, "GET", p.a)).json()).toMatchObject({ guest_id: null });
     // An explicit offline message only changes the indicator, not shared access.
     await heartbeat(p.a);
     expect((await call("/v1/presence", "POST", p.a, { schema_version: 1, session_id: SESSION, online: false })).status).toBe(200);
-    expect((await join(p.b, p.a, p.id, overrides)).status).toBe(200);
+    expect((await join(p.b, p.a, p.id)).status).toBe(200);
     expect((await share(p.a, null)).status).toBe(200);
-    expect((await join(p.b, p.a, p.id, overrides)).status).toBe(409);
+    expect((await join(p.b, p.a, p.id)).status).toBe(409);
     expect((await share(p.a, room, version)).status).toBe(200);
-    expect((await join(p.b, p.a, p.id, overrides)).status).toBe(200);
+    expect((await join(p.b, p.a, p.id)).status).toBe(200);
     // A descriptor never reserves the vacant guest slot. Normal join rechecks it.
     const stranger = await create();
     expect((await call(`/v${version}/rooms/join`, "POST", stranger, { invite_code: room.invite_code })).status).toBe(200);
     const full = await call(`/v${version}/rooms/join`, "POST", p.b, { invite_code: room.invite_code }); expect(full.status).toBe(409);
     expect(await full.json()).toMatchObject({ error: { code: "room_full" } });
-    expect((await join(p.b, p.a, p.id, overrides)).status).toBe(409);
+    expect((await join(p.b, p.a, p.id)).status).toBe(409);
   });
 
   it("hides blocked friendships, retains shared access after presence expiry, and revokes it on recovery and deletion", async () => {

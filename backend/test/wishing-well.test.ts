@@ -5,7 +5,6 @@ import worker from "../src/index";
 import { canonicalJson, digest } from "../src/protocol";
 import { RELAY_KEY, chapter, checkpointV2, initialCheckpoint, recordingV2, acceptedRecording, boundedTurnValue } from "../src/v2/protocol";
 import { wishingWell, WISHING_WELL_HASH } from "../src/v2/protocol-cooperative";
-import { advertisedChapters, creatable } from "../src/v2/chapters";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import definition from "../../game/tests/fixtures/cooperative/the-wishing-well-definition.json";
@@ -19,24 +18,24 @@ import longB from "../../game/tests/fixtures/cooperative/back-for-you-b-long.jso
 import final from "../../game/tests/fixtures/cooperative/the-wishing-well-final-checkpoint.json";
 import bundledDefinition from "../src/v2/the-wishing-well.json";
 import bundledInitial from "../src/v2/the-wishing-well-initial.json";
+import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const key = () => crypto.randomUUID();
 const OLD_CLIENT = [2, 4, 5, 6, 7, 8], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9];
-const ON = { WISHING_WELL_CHAPTER_ENABLED: "true" };
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...overrides });
+  const configured: Env = withConfig({ ...env, ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.9." + (++requestNo % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 async function account(): Promise<Account> { const response = await call("/v1/identity", "POST", undefined, {}); expect(response.status).toBe(201); return response.json<Account>(); }
 async function newRoom(host: Account): Promise<RoomSnapshotV2> {
-  const response = await call("/v2/rooms", "POST", host, { ...wishingWell.key, idempotency_key: key() }, ON); expect(response.status).toBe(200); return response.json<RoomSnapshotV2>();
+  const response = await call("/v2/rooms", "POST", host, { ...wishingWell.key, idempotency_key: key() }); expect(response.status).toBe(200); return response.json<RoomSnapshotV2>();
 }
 async function submit(room: RoomSnapshotV2, owner: Account, recording: unknown, checkpoint?: unknown): Promise<MutationV2> {
   const body = { base_revision: room.revision, branch: room.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) };
-  const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, body, ON); expect(response.status).toBe(200); return response.json<MutationV2>();
+  const response = await call(`/v2/rooms/${room.room_id}/turns`, "POST", owner, body); expect(response.status).toBe(200); return response.json<MutationV2>();
 }
 async function rehashCheckpoint(input: Record<string, unknown>): Promise<Record<string, unknown>> {
   const body = { ...input }; delete body.checkpoint_hash; delete body.proof;
@@ -44,28 +43,18 @@ async function rehashCheckpoint(input: Record<string, unknown>): Promise<Record<
 }
 afterEach(async () => { await reset(); });
 
-describe("The Wishing Well (free, rules 9, behind its own flag)", () => {
+describe("The Wishing Well (free, rules 9)", () => {
   it("bundles the exact native definition and initial checkpoint", async () => {
     expect(bundledDefinition).toEqual(definition); expect(bundledInitial).toEqual(initial);
     expect(await digest(canonicalJson(definition))).toBe(WISHING_WELL_HASH);
     expect(wishingWell).toMatchObject({ premium: false, recording_version: 6, simulation_version: 9, supported_simulation_versions: [9], require_supported_simulation_on_join: true });
     expect(chapter(wishingWell.key)).toBe(wishingWell); expect(initialCheckpoint(wishingWell.key)).toEqual(initial);
   });
-  it("stays off by default: not advertised and not creatable", async () => {
-    expect(env.WISHING_WELL_CHAPTER_ENABLED).toBeUndefined();
-    expect(creatable(wishingWell, env)).toBe(false);
-    const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true" });
-    expect(advertisedChapters(allOn).map(entry => entry.level_id)).not.toContain("the-wishing-well");
+  it("advertises exactly its pinned rules", async () => {
     const host = await account();
-    const refused = await call("/v2/rooms", "POST", host, { ...wishingWell.key, idempotency_key: key() });
-    expect(refused.status).toBe(503); expect(await refused.json()).toMatchObject({ error: { code: "chapter_creation_disabled" } });
-    expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
-  });
-  it("advertises exactly its pinned rules when the flag is on", async () => {
-    const host = await account();
-    const caps = await (await call("/v2/capabilities", "GET", host, undefined, ON)).json<{ chapters: Record<string, unknown>[] }>();
-    expect(caps.chapters).toEqual([{ ...RELAY_KEY, premium: false, recording_version: 2, simulation_version: 2, supported_simulation_versions: [2, 8] },
-      { ...wishingWell.key, premium: false, recording_version: 6, simulation_version: 9, supported_simulation_versions: [9] }]);
+    const caps = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
+    expect(caps.chapters[0]).toEqual({ ...RELAY_KEY, premium: false, recording_version: 2, simulation_version: 2, supported_simulation_versions: [2, 8] });
+    expect(caps.chapters).toContainEqual({ ...wishingWell.key, premium: false, recording_version: 6, simulation_version: 9, supported_simulation_versions: [9] });
   });
   it("accepts the native recordings and both checkpoints, including a receiver past 900 ticks", async () => {
     const records = await Promise.all([aheadA, aheadB, backA, backB].map(record => recordingV2(record, wishingWell.key)));
@@ -92,19 +81,19 @@ describe("The Wishing Well (free, rules 9, behind its own flag)", () => {
     const room = await newRoom(host);
     expect(room).not.toHaveProperty("simulation_version");
     for (const versions of [undefined, OLD_CLIENT]) {
-      const rejected = await call("/v2/rooms/join", "POST", oldGuest, { invite_code: room.invite_code, ...(versions ? { supported_simulation_versions: versions } : {}) }, ON);
+      const rejected = await call("/v2/rooms/join", "POST", oldGuest, { invite_code: room.invite_code, ...(versions ? { supported_simulation_versions: versions } : {}) });
       expect(rejected.status).toBe(422); expect(await rejected.json()).toMatchObject({ error: { code: "unsupported_simulation_version" } });
       expect(await env.PLAYERS.getByName(oldGuest.player_id).listRooms()).toEqual([]);
     }
-    const hostView = await (await call(`/v2/rooms/${room.room_id}`, "GET", host, undefined, ON)).json<RoomSnapshotV2>();
+    const hostView = await (await call(`/v2/rooms/${room.room_id}`, "GET", host, undefined)).json<RoomSnapshotV2>();
     expect(hostView.guest_id).toBeNull();
-    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT }, ON);
+    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code, supported_simulation_versions: NEW_CLIENT });
     expect(joined.status).toBe(200); expect((await joined.json<RoomSnapshotV2>()).guest_id).toBe(guest.player_id);
   });
   it("plays both role-swapped stages through a room to completion", async () => {
     const host = await account(), guest = await account();
     const created = await newRoom(host);
-    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: created.invite_code, supported_simulation_versions: NEW_CLIENT }, ON);
+    const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: created.invite_code, supported_simulation_versions: NEW_CLIENT });
     const room = await joined.json<RoomSnapshotV2>();
     const a = await submit(room, host, aheadA), b = await submit(a.room, guest, aheadB, middle);
     expect(b.room).toMatchObject({ stage_index: 1, active_player_id: guest.player_id, checkpoint: middle });

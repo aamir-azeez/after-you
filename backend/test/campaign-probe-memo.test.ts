@@ -25,8 +25,9 @@ describe("campaign storage probe", () => {
     expect((await call(`/v2/rooms/${room.room_id}`, "GET", guest, undefined, {}, headers)).status).toBe(200);
     const poll = await meterRows({ room: stub }, () => call(`/v2/rooms/${room.room_id}`, "GET", guest, undefined, {}, headers));
     expect(poll.value.status).toBe(200);
-    // 82 rows before the memo: four table scans of 18 rows each.
-    expect(poll.rows.room).toEqual({ read: 10, written: 0 });
+    // 82 rows before the memo: four table scans of 18 rows each. With history offload always on, as live has it,
+    // a poll also reads the member's history support (18 more rows).
+    expect(poll.rows.room).toEqual({ read: 28, written: 0 });
   });
 
   it("sees Story storage added mid-life, and forgets it again when that is rolled back", async () => {

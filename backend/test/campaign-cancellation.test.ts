@@ -24,6 +24,7 @@ import fixture from "./fixtures/campaign-control-v2.json";
 import highA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
 import highB from "../../game/tests/fixtures/cooperative/upper-path-b.json";
 import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.json";
+import { acceptTerms } from "./terms";
 
 const H=fixture.active_view.host_id,G=fixture.active_view.guest_id!,R=fixture.active_view.campaign_room_id,I=fixture.active_view.invite_code!;
 const D="a".repeat(64),RECOVERY="b".repeat(64),A="join-attempt-key-0001",B="join-attempt-key-0002",K="create-attempt-key-0001";
@@ -170,6 +171,7 @@ describe("disabled exact admission cancellation fences",()=>{
     const pixels=new Uint8Array(8*8*4).fill(127);for(let i=3;i<pixels.length;i+=4)pixels[i]=255;
     const jpeg=new Uint8Array(encode({data:pixels,width:8,height:8},50).data);
     const sha256=[...new Uint8Array(await crypto.subtle.digest("SHA-256",jpeg))].map(v=>v.toString(16).padStart(2,"0")).join("");
+    await acceptTerms(H);
     const photo=value(await r.updatePhoto(H,"t0-0-a",{idempotency_key:"retained-photo-key",recording_hash:highA.recording_hash,expected_photo_revision:0,expected_photo_hash:null,jpeg_base64:btoa(String.fromCharCode(...jpeg)),sha256}, false, REQUEST_CONTEXT));
     await runInDurableObject(r,async(_,ctx)=>{const names=["turns","pairs","operations","photos","photo_operations","pair_reactions","reaction_operations"],rows=()=>names.map(name=>ctx.storage.sql.exec('SELECT * FROM "'+name+'" ORDER BY rowid').toArray());const before=rows();
       value(await cancelCampaignJoinRoot(ctx.storage,"X".repeat(22),join(),resolver));expect(rows()).toEqual(before);

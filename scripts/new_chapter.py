@@ -242,17 +242,18 @@ def add_to_shards(plan: Plan, suites: list[str], shard: str) -> None:
 
 
 def add_flag(plan: Plan, flag: str, accessor: str, title: str, key: str) -> None:
-    # The flag lives only in FEATURES (backend/src/flags.ts header): no wrangler.jsonc default, and the row carries the
-    # "Set only through FEATURES." doc line the deploy tools read before they will list it.
+    # The flag is a name in CONFIG's features list (backend/src/flags.ts header), never a var of its own. The new row
+    # goes last in FLAG_VARS; check_free also refuses a name in RETIRED_FLAGS, which flags.ts lists too.
     flags = plan.text("backend/src/flags.ts")
-    check_free(plan, flags.relative, f'"{flag}"', f"the var {flag}")
+    check_free(plan, flags.relative, f'"{flag}"', f"the flag {flag}")
     check_free(plan, flags.relative, f" {accessor}:", f"an accessor {accessor}")
-    last = flags.find_last(r'^\s+\w+Chapters?: "[A-Z0-9_]+_ENABLED",$')
-    if last < 0:
-        raise Refused(f"{flags.relative} has no chapter flag rows")
-    indent = re.match(r"^\s*", flags.lines[last]).group(0)
-    plan.insert(flags.relative, last + 1, [
-        f"{indent}/** Creating {title} rooms ({key}), read through the CHAPTERS table in v2/chapters.ts. Set only through FEATURES. */",
+    start = flags.find(r"^export const FLAG_VARS = Object\.freeze\(\{$")
+    end = flags.find(r"^\} as const\);$", start + 1) if start >= 0 else -1
+    if end < 0:
+        raise Refused(f"{flags.relative} has no FLAG_VARS block")
+    indent = re.match(r"^\s*", flags.lines[end - 1]).group(0)
+    plan.insert(flags.relative, end, [
+        f"{indent}/** Creating {title} rooms ({key}), read through the CHAPTERS table in v2/chapters.ts. */",
         f'{indent}{accessor}: "{flag}",'])
 
 

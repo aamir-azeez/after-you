@@ -9,6 +9,7 @@ import { evictDurableObject, reset } from "cloudflare:test";
 import { runInDurableObject } from "./room-objects";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { digest, randomToken, type Outcome } from "../src/protocol";
 import { isAlarmMetadataTable } from "../src/notification-storage";
 import { campaignAdmissionHash, type CampaignAdmissionIntent } from "../src/v2/campaign-admission-intent";
@@ -24,8 +25,9 @@ vi.mock("../src/v2/campaign-registry", async original => {
   const f = (await import("./fixtures/campaign-control-v2.json")).default;
   const { canonicalJson } = await import("../src/protocol");
   const retainedCampaign = (k: CampaignKey) => canonicalJson(k) === canonicalJson(f.active_view.campaign_key) ? structuredClone(f.definition) : undefined;
+  const { flags: serverFlags } = await import("../src/flags");
   return { ...actual, retainedCampaign, advertisedCampaigns: () => [structuredClone(f.definition)],
-    campaignCreatable: (k: CampaignKey, e: { CAMPAIGN_CREATION_ENABLED?: string }) => e.CAMPAIGN_CREATION_ENABLED === "true" && !!retainedCampaign(k) };
+    campaignCreatable: (k: CampaignKey, e: Env) => serverFlags.campaignCreation(e) && !!retainedCampaign(k) };
 });
 
 const R = fixture.active_view.campaign_room_id, I = fixture.active_view.invite_code!, key = fixture.active_view.campaign_key as CampaignKey;
@@ -39,9 +41,10 @@ const path = (id = R) => "/v2/campaigns/" + id + "/reconcile-deletion";
 const released = (owner = G) => ({ schema_version: 1, operation: "campaign_terminal_cleanup", status: "released", player_id: owner, campaign_room_id: R });
 let H = "", G = "", hash = "", address = 0;
 const changed = new Map<object, Record<string, unknown>>();
-const flags = { V2_ROOMS_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true" };
+const flags = { CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true" };
 async function call(route: string, method = "GET", body?: unknown, owner = G, overrides: Record<string, unknown> = {}, marked = true, token = T) {
-  const configured: Env = { ...env }; Object.assign(configured, flags, overrides);
+  const { CONFIG: _, ...base } = env as Env & { CONFIG?: string }; // configure() writes CONFIG onto the shared env
+  const configured: Env = withConfig({ ...base, ...flags, ...overrides });
   return worker.fetch(new Request("https://terminal.test" + route, { method, headers: { "Content-Type": "application/json",
     "CF-Connecting-IP": "198.21.1." + ++address, "X-Player-Id": owner, Authorization: "Bearer " + token,
     ...(marked ? { "X-AfterYou-Campaign-Schema": "2" } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
@@ -75,9 +78,9 @@ beforeEach(async () => {
   await reset(); H = randomToken(16); G = randomToken(16); hash = await digest(T); address = 0;
   for (const owner of [H, G]) unwrap(await player(owner).create(owner, hash, "b".repeat(64)));
   await runInDurableObject(root(), instance => {
-    const local = Reflect.get(instance, "env") as Record<string, unknown>;
-    if (!changed.has(local)) changed.set(local, Object.fromEntries(Object.keys(flags).map(k => [k, local[k]])));
-    Object.assign(local, flags);
+    const local = Reflect.get(instance, "env") as Record<string, unknown>, vars = withConfig(flags);
+    if (!changed.has(local)) changed.set(local, Object.fromEntries(Object.keys(vars).map(k => [k, local[k]])));
+    Object.assign(local, vars);
   });
   const original = crypto.getRandomValues.bind(crypto);
   vi.spyOn(crypto, "getRandomValues").mockImplementation(((array: Uint8Array) => {
@@ -259,11 +262,10 @@ describe("explicit requester-only terminal campaign reconciliation", () => {
     for (const body of [{ ...BODY, acknowledged: true }, { schema_version: 2 }, []]) expect((await call(path(), "POST", body)).status).toBe(422);
     expect(await playerBytes()).toEqual(before);
   });
-  it("allows blocked terminal cleanup during campaign pauses but holds unmarked and globally paused requests", async () => {
+  it("allows blocked terminal cleanup during campaign pauses but holds unmarked requests", async () => {
     await paired(); unwrap(await env.SAFETY_PROFILES.getByName(H).setBlock(H, hash, G, true));
     expect((await call("/v2/campaigns/" + R)).status).toBe(403); await erased(); const before = await playerBytes();
     expect((await call(path(), "POST", BODY, G, {}, false)).status).toBe(409);
-    expect((await call(path(), "POST", BODY, G, { V2_ROOMS_ENABLED: "false" })).status).toBe(503);
     expect(await playerBytes()).toEqual(before);
     expect((await call(path(), "POST", BODY, G, { CAMPAIGN_CREATION_ENABLED: "false", CAMPAIGN_MUTATIONS_ENABLED: "false" })).status).toBe(200);
   });

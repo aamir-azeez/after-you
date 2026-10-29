@@ -34,6 +34,7 @@ import rollingMiddle from "../../game/tests/fixtures/cooperative/weight-of-a-fri
 import homeA from "../../game/tests/fixtures/cooperative/bring-it-home-a.json";
 import homeB from "../../game/tests/fixtures/cooperative/bring-it-home-b.json";
 import homeFinal from "../../game/tests/fixtures/cooperative/rolling-home-final-checkpoint.json";
+import { withConfig } from "./config";
 
 const definition = fixture.definition as CampaignDefinition, key = fixture.active_view.campaign_key as CampaignKey;
 const R = fixture.active_view.campaign_room_id, I = fixture.active_view.invite_code!, T = "a".repeat(43), TOKEN = "c".repeat(64);
@@ -52,7 +53,6 @@ async function socialBoundaryInventory(stub: ReturnType<typeof root>) {
 }
 async function call(path: string, method = "GET", body?: unknown, negotiation: string | null = "2", owner = H, token = T) {
   const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", PRESENCE_ENABLED: "true", PRESET_REACTIONS_ENABLED: "true", PHOTO_DELIVERY_ENABLED: "true" });
   return worker.fetch(new Request("https://campaign.test" + path, { method, headers: {
     "Content-Type": "application/json", "CF-Connecting-IP": "198.19.0." + ++address, "X-Player-Id": owner, Authorization: "Bearer " + token,
     ...(negotiation === null ? {} : { "X-AfterYou-Campaign-Schema": negotiation })
@@ -235,8 +235,9 @@ describe("fixed campaign room HTTP authority", () => {
   it("checks the premium host only for new parent-bound redo acceptance, not accepted receipt recovery", async () => {
     const p = await published(), s = value(await p.child.snapshot(H, context(p.id))), path = `/v2/campaigns/${R}/chapters/1/redo`;
     value(await p.child.commit(H, { base_revision: s.revision, branch: s.branch, idempotency_key: "premium-redo-source-a", recording: rollingA }, context(p.id)));
-    const overrides = { V2_ROOMS_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true", REVENUECAT_VERIFICATION_MODE: "demo",
-      REVENUECAT_API_VERSION: "1", REVENUECAT_SECRET_KEY: "synthetic-only" };
+    // The objects share the test's env, so the router reads this CONFIG too.
+    const overrides = withConfig({ CAMPAIGN_MUTATIONS_ENABLED: "true", REVENUECAT_SECRET_KEY: "synthetic-only",
+      revenuecat: { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" } });
     let local: Record<string, unknown> = {}, previous: Record<string, unknown> = {};
     await runInDurableObject(p.child, instance => {
       local = Reflect.get(instance, "env"); previous = Object.fromEntries(Object.keys(overrides).map(k => [k, local[k]])); Object.assign(local, overrides);

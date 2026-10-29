@@ -3,6 +3,9 @@ import { reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
+import { withConfig } from "./config";
+import { TERMS_VERSION } from "../src/public-policy";
+import { FINISHED_ROOM_HEADER } from "../src/v2/routes";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import type { RoomLobbyV2, RoomSnapshotV2 } from "../src/v2/room";
 import { validateRoomV2 } from "../src/v2/snapshot";
@@ -44,6 +47,9 @@ async function photo(room: Stub) {
   const jpeg_base64 = btoa(String.fromCharCode(...bytes));
   const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(v => v.toString(16).padStart(2, "0")).join("");
   const request = { idempotency_key: key(), recording_hash: firstA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64, sha256 };
+  // Uploads need the owner's accepted safety terms, which need a real (synthetic) identity.
+  const hash = await digest("t".repeat(43)); await env.PLAYERS.getByName(H).create(H, hash, "b".repeat(64));
+  value(await env.SAFETY_PROFILES.getByName(H).accept(H, hash, TERMS_VERSION));
   const accepted = value(await room.updatePhoto(H, "t0-0-a", request));
   return { request, accepted, ack: { recording_hash: firstA.recording_hash, photo_revision: 1, sha256 } };
 }
@@ -183,13 +189,13 @@ describe("completed replay transfer", () => {
 
 type Account = { player_id: string; device_token: string };
 let ip = 0;
-async function call(path: string, method = "GET", owner?: Account, body?: unknown, enabled = false) {
-  const configured = { ...env, V2_ROOMS_ENABLED: "true", REPLAY_TRANSFER_ENABLED: enabled ? "true" : "false" } as unknown as Env;
+async function call(path: string, method = "GET", owner?: Account, body?: unknown, headers: Record<string, string> = {}) {
+  const configured = withConfig({ ...env });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.19." + ++ip,
-    ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
+    ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}), ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 describe("replay transfer HTTP compatibility", () => {
-  it("keeps ACK disabled by default and lists compact room metadata after eviction without restoring gameplay", async () => {
+  it("lists compact room metadata after eviction without restoring gameplay", async () => {
     const host = await (await call("/v1/identity", "POST", undefined, {})).json<Account>();
     const guest = await (await call("/v1/identity", "POST", undefined, {})).json<Account>();
     const room = env.ROOMS_V2.getByName(R), { receipts } = await complete(room, host.player_id, guest.player_id);
@@ -198,17 +204,11 @@ describe("replay transfer HTTP compatibility", () => {
     const otherId = "Q".repeat(22), other = env.ROOMS_V2.getByName(otherId); value(await other.initialize(otherId, host.player_id, "CD".repeat(10)));
     value(await env.PLAYERS.getByName(host.player_id).addRoom({ room_id: otherId, invite_code: "CD".repeat(10), host: true, api_version: 2 }));
     const base = `/v2/rooms/${R}/replay-transfer`;
-    expect((await call(base, "GET", host)).status).toBe(503);
-    expect((await call(base + "/manifest", "GET", host)).status).toBe(503);
-    await runInDurableObject(room, (_, ctx) => {
-      expect(ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name='replay_transfer'").toArray()).toEqual([]);
-    });
-    const offered = await call(base, "GET", host, undefined, true); expect(offered.status).toBe(200);
+    const offered = await call(base, "GET", host); expect(offered.status).toBe(200);
     const offer = await offered.json<ReplayTransfer & { archive: ReplayArchive | null }>();
     const ack = acknowledgement(offer.manifest);
-    expect((await call(base + "/ack", "POST", host, ack)).status).toBe(503);
-    expect((await call(base + "/ack", "POST", host, ack, true)).status).toBe(200);
-    expect((await call(base + "/ack", "POST", guest, ack, true)).status).toBe(200);
+    expect((await call(base + "/ack", "POST", host, ack)).status).toBe(200);
+    expect((await call(base + "/ack", "POST", guest, ack)).status).toBe(200);
     expect((await call(base + "/manifest", "GET", host)).status).toBe(200);
     const stored = JSON.parse(value(await room.exportSnapshot(SOURCE))).payload.tables;
     await evictDurableObject(room);
@@ -219,7 +219,8 @@ describe("replay transfer HTTP compatibility", () => {
     const summary = listed.find(r => r.room_id === R)!;
     expect(summary).toEqual({ ...offer.manifest.room, replay_transfer_version: 1, api_version: 2, active_role: "complete" });
     for (const field of ["invite_code", "checkpoint", "recording_a", "turns", "pairs"]) expect(summary).not.toHaveProperty(field);
-    expect((await call(`/v2/rooms/${R}`, "GET", host)).status).toBe(410);
+    // A client that reads 410 as a finished room says so; 0.6.0 and older get the Story boundary answer instead (routes.ts).
+    expect((await call(`/v2/rooms/${R}`, "GET", host, undefined, { [FINISHED_ROOM_HEADER]: "2" })).status).toBe(410);
     expect(await room.lobbySnapshot("X".repeat(22))).toEqual({ ok: false, status: 404, code: "room_not_found" });
     expect(JSON.parse(value(await room.exportSnapshot(SOURCE))).payload.tables).toEqual(stored);
     expect((await env.PLAYERS.getByName(host.player_id).listRooms()).map(r => r.room_id)).toContain(R);

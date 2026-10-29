@@ -2,7 +2,6 @@ import { ApiError, boundedJson, exactKeys, object, type Outcome } from "./protoc
 import type { RoomInboxProjection } from "./room-inbox";
 import { bearerDigest } from "./http";
 import { roomLinkVersion } from "./room-links";
-import { flags } from "./flags";
 
 /** A member's view of a room: still being played, finished, or no longer theirs (closed, erased or never joined). */
 export type MemberRoomState = "in_play" | "finished" | "gone";
@@ -30,7 +29,7 @@ export function closeOnlyInPlay(request: Request): boolean { return request.head
  * caller closes a room in play with DELETE. Not gated by blocks or mutation
  * flags, and idempotent.
  *
- * With finishedRoomLeave on, `"leave_finished": true` also leaves a room that is
+ * `"leave_finished": true` also leaves a room that is
  * finished for the caller: the room erases the caller's own photos, photo
  * deliveries and reactions and stops treating them as a member (leaveFinished),
  * then the link goes. The partner keeps the room and its replay. A retry after
@@ -38,7 +37,7 @@ export function closeOnlyInPlay(request: Request): boolean { return request.head
  */
 export async function leaveRoom(request: Request, playerId: string, env: Env, version: 1 | 2, roomId: string): Promise<{ schema_version: 1; removed: true }> {
   const input = object(await boundedJson(request, 1024));
-  const finished = flags.finishedRoomLeave(env) && input.leave_finished !== undefined;
+  const finished = input.leave_finished !== undefined;
   exactKeys(input, finished ? ["schema_version", "leave_finished"] : ["schema_version"]);
   if (input.schema_version !== 1 || (finished && input.leave_finished !== true)) throw new ApiError(400, "invalid_room_leave");
   const player = env.PLAYERS.getByName(playerId);

@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import type { HistoryView } from "../src/v2/history-room";
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import { CHAINS, play, playA } from "./history-chains";
-import { HISTORY, ON, account, call, relayPair, type Account } from "./history-http";
+import { HISTORY, account, call, relayPair, type Account } from "./history-http";
 import { countingEnv, meterRows } from "./meter";
 import worker from "../src/index";
 import type { RedoState } from "../src/redo-control";
@@ -66,14 +66,14 @@ describe("conditional room poll", () => {
     const { host, guest, room } = await relayPair(), path = `/v2/rooms/${room.room_id}`;
     const finished = await play(env.ROOMS_V2.getByName(room.room_id), room, CHAINS[0], 0, undefined, players(host, guest));
     // The guest's latest room request says nothing about keeping attempts, so nothing may leave.
-    expect(await (await call(path, "GET", guest, undefined, ON, known(finished))).json()).toMatchObject({ unchanged: true });
-    const view = await (await call(path + "/history", "GET", host, undefined, ON, HISTORY)).json<HistoryView>();
-    expect(await code(await call(path + "/history/0/ack", "POST", host, { schema_version: 1, link: view.head }, ON, HISTORY))).toBe("200 ok");
-    expect((await (await call(path + "/history", "GET", host, undefined, ON, HISTORY)).json<HistoryView>()).attempts[0].state).toBe("held");
+    expect(await (await call(path, "GET", guest, undefined, {}, known(finished))).json()).toMatchObject({ unchanged: true });
+    const view = await (await call(path + "/history", "GET", host, undefined, {}, HISTORY)).json<HistoryView>();
+    expect(await code(await call(path + "/history/0/ack", "POST", host, { schema_version: 1, link: view.head }, {}, HISTORY))).toBe("200 ok");
+    expect((await (await call(path + "/history", "GET", host, undefined, {}, HISTORY)).json<HistoryView>()).attempts[0].state).toBe("held");
     // The same unchanged poll with the history header now counts as support.
-    expect(await (await call(path, "GET", guest, undefined, ON, { ...HISTORY, ...known(finished) })).json()).toMatchObject({ unchanged: true });
-    expect(await code(await call(path + "/history/0/ack", "POST", guest, { schema_version: 1, link: view.head }, ON, HISTORY))).toBe("200 ok");
-    expect((await (await call(path + "/history", "GET", host, undefined, ON, HISTORY)).json<HistoryView>()).attempts[0].state).toBe("offloaded");
+    expect(await (await call(path, "GET", guest, undefined, {}, { ...HISTORY, ...known(finished) })).json()).toMatchObject({ unchanged: true });
+    expect(await code(await call(path + "/history/0/ack", "POST", guest, { schema_version: 1, link: view.head }, {}, HISTORY))).toBe("200 ok");
+    expect((await (await call(path + "/history", "GET", host, undefined, {}, HISTORY)).json<HistoryView>()).attempts[0].state).toBe("offloaded");
   });
 });
 
@@ -137,18 +137,18 @@ describe("redo state in the conditional poll", () => {
     const after = await meterRows({ room: stub }, async () => [await counted(path, host, { ...known(moved), ...POLL_REDO })]);
     const total = (list: string[][]) => list.reduce((sum, calls) => sum + calls.length, 0);
     expect({ requests: before.value.length, routerRpcs: total(before.value), roomRows: before.rows.room.read })
-      .toEqual({ requests: 2, routerRpcs: 6, roomRows: 23 });
+      .toEqual({ requests: 2, routerRpcs: 6, roomRows: 41 });
     // GET /redo also makes its own 2 block checks inside the room: 8 Durable Object requests before (13 on main), 3 after.
     expect(before.value[1].at(-1)).toBe("ROOMS_V2.redo");
     expect({ requests: after.value.length, routerRpcs: total(after.value), roomRows: after.rows.room.read })
-      .toEqual({ requests: 1, routerRpcs: 3, roomRows: 12 });
+      .toEqual({ requests: 1, routerRpcs: 3, roomRows: 30 });
   });
 });
 
 let countedAddress = 0;
 /** One Worker request; returns the Durable Object RPCs the Worker made for it. */
 async function counted(path: string, who: Account, headers: Record<string, string> = {}): Promise<string[]> {
-  const { env: counting, calls } = countingEnv(env); Object.assign(counting, { V2_ROOMS_ENABLED: "true" });
+  const { env: counting, calls } = countingEnv(env);
   const response = await worker.fetch(new Request("https://after-you.test" + path, { headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113." + (++countedAddress % 250),
     "X-Player-Id": who.player_id, Authorization: "Bearer " + who.device_token, ...headers } }), counting);
   expect(response.status).toBe(200); await response.arrayBuffer();

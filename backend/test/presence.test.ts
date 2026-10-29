@@ -11,28 +11,20 @@ type Room = { room_id: string; invite_code: string };
 const COMMIT = "a".repeat(40), SESSION = "a".repeat(36), NEXT_SESSION = "b".repeat(36);
 let address = 0;
 const realNow = Date.now.bind(Date);
-const configuredEnvironments = new Map<{ PRESENCE_ENABLED?: string }, string | undefined>();
 const value = <T>(r: Outcome<T>): T => { if (!r.ok) throw new Error(r.code); return r.value; };
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}) {
   const configured: Env = { ...env };
-  Object.assign(configured, { PRESENCE_ENABLED: "true", V2_ROOMS_ENABLED: "true", ...overrides });
+  Object.assign(configured, overrides);
   return worker.fetch(new Request("https://game.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.1." + ++address, ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
 async function create() { const r = await call("/v1/identity", "POST", undefined, {}); expect(r.status).toBe(201); return r.json<Account>(); }
-async function configured(a: Account, enabled = "true") {
-  await runInDurableObject(env.PLAYERS.getByName(a.player_id), instance => {
-    const target = Reflect.get(instance, "env") as { PRESENCE_ENABLED?: string };
-    if (!configuredEnvironments.has(target)) configuredEnvironments.set(target, target.PRESENCE_ENABLED);
-    target.PRESENCE_ENABLED = enabled;
-  });
-}
 async function heartbeat(a: Account, online = true, session = SESSION, overrides: Record<string, unknown> = {}) {
   return call("/v1/presence", "POST", a, { schema_version: 1, session_id: session, online }, overrides);
 }
 async function pair(version = 1, joined = true) {
-  const host = await create(), guest = await create(); await configured(host); await configured(guest);
+  const host = await create(), guest = await create();
   const prefix = `/v${version}/rooms`;
   const made = await call(prefix, "POST", host, { idempotency_key: crypto.randomUUID(), ...(version === 2 ? RELAY_KEY : {}) }); expect(made.status).toBe(200);
   const room = await made.json<Room>();
@@ -45,17 +37,11 @@ async function recover(a: Account) {
   return next;
 }
 beforeEach(() => { vi.spyOn(Date, "now").mockReturnValue(realNow() + 3_600_000); });
-afterEach(async () => {
-  for (const [target, original] of configuredEnvironments) {
-    if (original === undefined) delete target.PRESENCE_ENABLED; else target.PRESENCE_ENABLED = original;
-  }
-  configuredEnvironments.clear(); vi.restoreAllMocks(); await reset();
-});
+afterEach(async () => { vi.restoreAllMocks(); await reset(); });
 
 describe("short-lived room-scoped presence", () => {
-  it("defaults off, permits offline cleanup, and rejects unauthenticated or malformed requests", async () => {
+  it("permits offline cleanup, and rejects unauthenticated or malformed requests", async () => {
     const a = await create();
-    expect((await heartbeat(a)).status).toBe(503);
     expect(await (await heartbeat(a, false)).json()).toEqual({ schema_version: 1, heartbeat_seconds: 30, expires_after_seconds: 90 });
     expect((await call("/v1/presence", "POST", undefined, {})).status).toBe(401);
     for (const body of [{ schema_version: 2, session_id: SESSION, online: true }, { schema_version: 1, session_id: "A".repeat(36), online: true }, { schema_version: 1, session_id: crypto.randomUUID(), online: true }, { schema_version: 1, session_id: SESSION, online: 1 }, { schema_version: 1, session_id: SESSION, online: true, owner: a.player_id }]) {
@@ -64,9 +50,7 @@ describe("short-lived room-scoped presence", () => {
     expect((await call("/v1/presence", "GET", a)).status).toBe(405);
     expect((await call("/v1/presence/" + a.player_id, "GET", a)).status).toBe(404);
     expect((await heartbeat({ ...a, device_token: randomToken() })).status).toBe(401);
-    await configured(a);
     expect((await heartbeat(a)).status).toBe(200);
-    await configured(a, "false"); expect((await heartbeat(a)).status).toBe(503);
     expect((await heartbeat(a, false)).status).toBe(200);
     expect(await env.PLAYERS.getByName(a.player_id).presenceExpiry(a.player_id)).toBe(0);
   });
@@ -84,7 +68,6 @@ describe("short-lived room-scoped presence", () => {
     expect(online).toEqual({ schema_version: 1, partner_joined: true, partner_online: true, expires_after_seconds: expect.any(Number) });
     expect(Number(online.expires_after_seconds)).toBeGreaterThan(85); expect(Number(online.expires_after_seconds)).toBeLessThanOrEqual(90);
     expect(await (await call(p.path + "/presence", "GET", p.guest)).json()).toMatchObject({ partner_online: false, expires_after_seconds: 0 });
-    expect((await call(p.path + "/presence", "GET", p.host, undefined, { PRESENCE_ENABLED: "false" })).status).toBe(503);
     expect(await (await call(p.path, "GET", p.host)).json()).toEqual(before);
     expect((await heartbeat(p.guest, false)).status).toBe(200);
     expect(await (await call(p.path + "/presence", "GET", p.host)).json()).toMatchObject({ partner_online: false, expires_after_seconds: 0 });
@@ -120,7 +103,7 @@ describe("short-lived room-scoped presence", () => {
     });
   });
   it("preserves a live lease on an early alarm and expires it without a presence read", async () => {
-    const a = await create(); await configured(a); expect((await heartbeat(a)).status).toBe(200);
+    const a = await create(); expect((await heartbeat(a)).status).toBe(200);
     const target = env.PLAYERS.getByName(a.player_id), expires = await target.presenceExpiry(a.player_id);
     expect(await runDurableObjectAlarm(target)).toBe(true);
     expect(await target.presenceExpiry(a.player_id)).toBe(expires);
@@ -168,7 +151,7 @@ describe("short-lived room-scoped presence", () => {
     }
   });
   it("omits leases from existing portable formats and restores offline without relaxing unknown storage holds", async () => {
-    const a = await create(); await configured(a); expect((await heartbeat(a)).status).toBe(200);
+    const a = await create(); expect((await heartbeat(a)).status).toBe(200);
     const source = env.PLAYERS.getByName(a.player_id), serialized = value(await source.exportSnapshot(COMMIT));
     const archive = JSON.parse(serialized); expect(archive.payload.format_version).toBe(1); expect(archive.payload.tables.map((t: { name: string }) => t.name)).toEqual(["identity", "rooms", "creations"]);
     const target = env.PLAYERS.getByName(randomToken(16)); value(await target.restoreSnapshot(serialized, a.player_id));
@@ -181,7 +164,7 @@ describe("short-lived room-scoped presence", () => {
     expect(JSON.parse(value(await target.exportSnapshot(COMMIT))).payload.tables).toEqual(before);
   });
   it("does not overwrite an unknown alarm and keeps the normal player rate limit", async () => {
-    const a = await create(); await configured(a); const target = env.PLAYERS.getByName(a.player_id), due = Date.now() + PRESENCE_TTL_MS;
+    const a = await create(); const target = env.PLAYERS.getByName(a.player_id), due = Date.now() + PRESENCE_TTL_MS;
     await runInDurableObject(target, async (_, ctx) => { await ctx.storage.setAlarm(due); });
     expect((await heartbeat(a)).status).toBe(503);
     await runInDurableObject(target, async (_, ctx) => { expect(await ctx.storage.getAlarm()).toBe(due); expect(ctx.storage.sql.exec("SELECT * FROM presence_leases").toArray()).toEqual([]); });

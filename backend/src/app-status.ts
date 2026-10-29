@@ -3,40 +3,17 @@
  * for online play. It needs no identity. Clients from 0.6.2 send
  * `X-AfterYou-Client: <version> <channel>` on every request.
  *
- * Everything here sits behind UPDATE_GATE_ENABLED. Unless that var is exactly "true" the
- * route does not exist and the request falls through to the authenticated routes, which
- * answer as they always have (401 without credentials). A missing, empty or malformed
- * minimum means no minimum, so a bad var can never lock anyone out. The `dev` channel
- * (desktop development builds) is never gated.
+ * The minimums are CONFIG's min_client_version (config.ts). A missing or malformed minimum
+ * means no minimum, so a bad value can never lock anyone out. The `dev` channel (desktop
+ * development builds) is never gated.
  */
-import { flags, type ServerVars } from "./flags";
+import type { ServerVars } from "./flags";
+import { MAX_VERSION_LENGTH, parseVersion, serverConfig, type Version } from "./config";
 
 export const CLIENT_HEADER = "X-AfterYou-Client";
 export const CHANNELS = ["play", "github", "app_store", "dev"] as const;
 export type Channel = typeof CHANNELS[number];
-const MINIMUM_VAR: Record<Exclude<Channel, "dev">, keyof ServerVars> = {
-  play: "MIN_CLIENT_VERSION_PLAY",
-  github: "MIN_CLIENT_VERSION_GITHUB",
-  app_store: "MIN_CLIENT_VERSION_APP_STORE"
-};
-/** Longest version string either side accepts; the header adds a space and a channel. */
-export const MAX_VERSION_LENGTH = 40;
 const MAX_HEADER_LENGTH = MAX_VERSION_LENGTH + 1 + 9;
-// Semantic version without build metadata: 0.6.2, 0.6.2-rc.1. No leading zeros.
-const NUMBER = "(0|[1-9][0-9]{0,3})";
-const VERSION = new RegExp(`^${NUMBER}\\.${NUMBER}\\.${NUMBER}(?:-([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$`);
-
-export type Version = { core: [number, number, number]; pre: string[] };
-
-export function parseVersion(value: unknown): Version | null {
-  if (typeof value !== "string" || value.length > MAX_VERSION_LENGTH) return null;
-  const found = VERSION.exec(value);
-  if (!found) return null;
-  const pre = found[4] === undefined ? [] : found[4].split(".");
-  // A numeric pre-release identifier has no leading zeros either (semver 9).
-  if (pre.some(part => /^[0-9]+$/.test(part) && (part.length > 1 && part.startsWith("0") || part.length > 6))) return null;
-  return { core: [Number(found[1]), Number(found[2]), Number(found[3])], pre };
-}
 
 /** Semantic version precedence: negative when a is older, 0 when equal, positive when newer. */
 export function compareVersions(a: Version, b: Version): number {
@@ -63,20 +40,19 @@ export function clientHeader(request: Request): { version: Version; text: string
   return version ? { version, text: parts[0], channel: parts[1] as Channel } : null;
 }
 
-/** The minimum a channel needs, or null when its var is missing, empty or malformed. */
+/** The minimum a channel needs, or null when it is missing or malformed. */
 export function channelMinimum(env: ServerVars, channel: Channel): { version: Version; text: string } | null {
   if (channel === "dev") return null;
-  const text = env[MINIMUM_VAR[channel]];
+  const text = serverConfig(env).min_client_version[channel];
   const version = parseVersion(text);
   return version && typeof text === "string" ? { version, text } : null;
 }
 
 export type AppStatus = { schema_version: 1; gate: "off" } | { schema_version: 1; gate: "required"; min_version: string; channel: Channel };
 
-/** The answer for one request. Only an enabled gate, a valid header and a valid, higher minimum say "required". */
+/** The answer for one request. Only a valid header and a valid, higher minimum say "required". */
 export function appStatus(request: Request, env: ServerVars): AppStatus {
   const off: AppStatus = { schema_version: 1, gate: "off" };
-  if (!flags.updateGate(env)) return off;
   const client = clientHeader(request);
   if (!client) return off;
   const minimum = channelMinimum(env, client.channel);

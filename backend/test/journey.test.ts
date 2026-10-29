@@ -18,6 +18,7 @@ import correctedSelector from "../../game/tests/fixtures/journey/validation/corr
 import gardenEnding from "../../game/tests/fixtures/journey/validation/garden-ending.json";
 import changedWindow from "../../game/tests/fixtures/journey/validation/changed-window.json";
 import closedShutter from "../../game/tests/fixtures/journey/validation/closed-return-shutter.json";
+import { withConfig } from "./config";
 
 const cases = [
   { adapter: conservatory, definition: conservatoryDefinition, middle: conservatoryFirst, final: conservatoryFinal },
@@ -26,10 +27,9 @@ const cases = [
 type Account = { player_id: string; device_token: string };
 let requestNo = 0;
 const operationKey = () => crypto.randomUUID(), CODE = "SYNTHETIC-JOURNEY-HOST";
-async function call(path: string, method = "GET", owner?: Account, body?: unknown, enabled = true) {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: String(enabled), TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + CODE),
-    REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic", REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlPlay", REVENUECAT_PLAY_PRODUCT_ID: "prodPlay", REVENUECAT_PLAY_ENVIRONMENT: "production" });
+async function call(path: string, method = "GET", owner?: Account, body?: unknown) {
+  const configured: Env = withConfig({ ...env, TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + CODE),
+    REVENUECAT_SECRET_KEY: "synthetic-only", revenuecat: { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" } });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.3." + ++requestNo,
     ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }),
   configured);
@@ -54,13 +54,8 @@ describe("registered journey chapters", () => {
     const selected = chapter(checkpoint), a = await selected.recording(checkpoint.proof.a), b = await selected.recording(checkpoint.proof.b);
     expect(await selected.checkpoint(checkpoint,checkpoint.proof.checkpoint,a,b)).toEqual(checkpoint);
   });
-  it("keeps both paid chapters behind one independent default-off creation gate", async () => {
-    expect(env.JOURNEY_CHAPTERS_ENABLED).toBeUndefined();
+  it("advertises both paid chapters", async () => {
     const host = await account(); await grant(host);
-    const before = await (await call("/v2/capabilities", "GET", host, undefined, false)).json<{ chapters: { level_id: string }[] }>();
-    expect(before.chapters.some(c => c.level_id === "conservatory" || c.level_id === "long-way-home")).toBe(false);
-    for (const fixture of cases) expect((await call("/v2/rooms", "POST", host, { ...fixture.adapter.key, idempotency_key: operationKey() }, false)).status).toBe(503);
-    expect(await env.PLAYERS.getByName(host.player_id).listRooms()).toEqual([]);
     const after = await (await call("/v2/capabilities", "GET", host)).json<{ chapters: Record<string, unknown>[] }>();
     for (const fixture of cases) expect(after.chapters).toContainEqual({ ...fixture.adapter.key, premium: true, recording_version: 7, simulation_version: 7, supported_simulation_versions: [7, 8] });
   });
@@ -79,7 +74,7 @@ describe("registered journey chapters", () => {
     }
     const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: created.invite_code, supported_simulation_versions: [2,4,5,6,7] }); expect(joined.status).toBe(200);
     expect((await joined.json<RoomSnapshotV2>()).guest_id).toBe(guest.player_id);
-    expect((await call(`/v2/rooms/${created.room_id}`, "GET", guest, undefined, false)).status).toBe(200);
+    expect((await call(`/v2/rooms/${created.room_id}`, "GET", guest)).status).toBe(200);
   });
   it.each(cases)("retains exact native pins and both complete proof pairs ($adapter.key.level_id)", async fixture => {
     const selected = fixture.adapter;

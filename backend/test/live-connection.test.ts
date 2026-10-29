@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { Player } from "../src/player";
 import { SafetyProfile } from "../src/safety";
 import { digest, randomToken } from "../src/protocol";
@@ -12,13 +13,15 @@ import { CHAINS, fork, play, playA, playB } from "./history-chains";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Socket = { ws: WebSocket; messages: unknown[]; closes: number[] };
-const ON = { V2_ROOMS_ENABLED: "true", LIVE_CONNECTION_ENABLED: "true", PRESENCE_ENABLED: "true" };
+const ON = { LIVE_CONNECTION_ENABLED: "true" };
 const OFF = { ...ON, LIVE_CONNECTION_ENABLED: "false" };
 let address = 0;
 const SESSION = "c".repeat(36);
 
 async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, vars);
+  // objectFlags writes CONFIG onto the shared env the objects read; a request brings its own.
+  const { CONFIG: _, ...base } = env as Env & { CONFIG?: string };
+  const configured: Env = withConfig({ ...base, ...vars });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
@@ -31,18 +34,19 @@ async function account(): Promise<Account> {
   return created;
 }
 
-/** Objects read their flags from their own env; tests turn them on there and put them back after. */
-const changed = new Map<Record<string, unknown>, Record<string, unknown>>();
+/** Objects read their flags from their own env's CONFIG; tests turn them on there (merging with what is already on) and put CONFIG back after. */
+const changed = new Map<Record<string, unknown>, { saved: unknown; flags: Record<string, string> }>();
 async function objectFlags(stub: DurableObjectStub, vars: Record<string, string> = ON): Promise<void> {
   await runInDurableObject(stub, instance => {
     const target = Reflect.get(instance, "env") as Record<string, unknown>;
-    const saved = changed.get(target) ?? {};
-    for (const [key, value] of Object.entries(vars)) { if (!Object.hasOwn(saved, key)) saved[key] = target[key]; target[key] = value; }
-    changed.set(target, saved);
+    const state = changed.get(target) ?? { saved: target.CONFIG, flags: {} };
+    Object.assign(state.flags, vars);
+    target.CONFIG = withConfig(state.flags).CONFIG;
+    changed.set(target, state);
   });
 }
 afterEach(async () => {
-  for (const [target, saved] of changed) for (const [key, value] of Object.entries(saved)) { if (value === undefined) delete target[key]; else target[key] = value; }
+  for (const [target, { saved }] of changed) { if (saved === undefined) delete target.CONFIG; else target.CONFIG = saved; }
   changed.clear(); vi.restoreAllMocks(); await reset();
 });
 
@@ -190,7 +194,7 @@ describe("room hints", () => {
     const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }); expect(joined.status).toBe(200);
     await play(stub, await joined.json<RoomSnapshotV2>(), CHAINS[0], 0, undefined, { host: host.player_id, guest: guest.player_id });
     await settle();
-    const leave = (who: Account) => call(`/v2/rooms/${room.room_id}/leave`, "POST", who, { schema_version: 1, leave_finished: true }, { ...ON, FINISHED_ROOM_LEAVE_ENABLED: "true" });
+    const leave = (who: Account) => call(`/v2/rooms/${room.room_id}/leave`, "POST", who, { schema_version: 1, leave_finished: true }, ON);
     await step(sockets, async () => { expect((await leave(guest)).status).toBe(200); }, { host: 1, guest: 0 });
     expect(roomEvents(sockets.host).at(-1)).toMatchObject({ type: "room_changed", room: room.room_id });
     await step(sockets, async () => { expect((await leave(host)).status).toBe(200); }, { host: 0, guest: 0 });
@@ -200,7 +204,7 @@ describe("room hints", () => {
     const host = await account(), guest = await account();
     const sockets = { host: await connect(host), guest: await connect(guest) };
     const room = await relayRoom(host), stub = env.ROOMS_V2.getByName(room.room_id);
-    for (const target of [stub, env.PLAYERS.getByName(host.player_id), env.PLAYERS.getByName(guest.player_id)]) await objectFlags(target, { ...ON, ROOM_INDEX_ENABLED: "true" });
+    for (const target of [stub, env.PLAYERS.getByName(host.player_id), env.PLAYERS.getByName(guest.player_id)]) await objectFlags(target, ON);
     const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }); expect(joined.status).toBe(200);
     await settle();
     const indexed = vi.spyOn(Player.prototype, "noteRoomIndex");
@@ -232,16 +236,16 @@ describe("room hints", () => {
     expect(await env.PLAYERS.getByName(guest.player_id).liveHint(host.player_id, { kind: "room", room_id: room.room_id, revision: 1 })).toBe(false);
   });
 
-  it("cost one hint RPC per change with the flag on and the room index off, and none with the flag off", async () => {
+  it("cost one hint RPC per change with the flag on, and none with the flag off", async () => {
     const hints = vi.spyOn(Player.prototype, "liveHint"), indexed = vi.spyOn(Player.prototype, "noteRoomIndex");
     const host = await account(), guest = await account();
     const room = await relayRoom(host);
-    for (const stub of [env.ROOMS_V2.getByName(room.room_id), env.PLAYERS.getByName(host.player_id), env.PLAYERS.getByName(guest.player_id)]) await objectFlags(stub, { ...ON, ROOM_INDEX_ENABLED: "false" });
+    for (const stub of [env.ROOMS_V2.getByName(room.room_id), env.PLAYERS.getByName(host.player_id), env.PLAYERS.getByName(guest.player_id)]) await objectFlags(stub, ON);
     const hostSocket = await connect(host), guestSocket = await connect(guest);
     expect((await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code })).status).toBe(200);
     await settle();
     expect(hints).toHaveBeenCalledTimes(1);
-    // A turn with the index off: the partner's hint is its own single call.
+    // A turn in play pushes no index row: the partner's hint is its own single call.
     const joined = await (await call(`/v2/rooms/${room.room_id}`, "GET", guest)).json<RoomSnapshotV2>();
     const stage = CHAINS[0].stages[0], partner = stage.a.player_slot === "p0" ? guestSocket : hostSocket;
     const turned = await playA(env.ROOMS_V2.getByName(room.room_id), joined, stage, { host: host.player_id, guest: guest.player_id });

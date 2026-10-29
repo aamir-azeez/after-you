@@ -2,12 +2,17 @@ import { env } from "cloudflare:workers";
 import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { entitlement } from "../src/entitlement";
-import { playEntitlement, revenuecatRequest, type PlayEntitlementConfig } from "../src/play-entitlement";
+import { playEntitlement, revenuecatRequest } from "../src/play-entitlement";
+import type { ServerVars } from "../src/flags";
+import { configJson } from "./config";
 import worker from "../src/index";
 import { randomToken } from "../src/protocol";
 
 const owner = "p".repeat(22);
-const config: PlayEntitlementConfig = { REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic", REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlPlay", REVENUECAT_PLAY_PRODUCT_ID: "prodPlay", REVENUECAT_PLAY_ENVIRONMENT: "production" };
+const RC = { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" };
+/** RevenueCat as live configures it: the secret key beside CONFIG's ids. `raw` writes ids the runners would refuse. */
+const rc = (ids: Record<string, unknown> = {}, raw = false): ServerVars => ({ REVENUECAT_SECRET_KEY: "synthetic-only", CONFIG: configJson({ revenuecat: { ...RC, ...ids } }, { raw }) });
+const config = rc();
 const active = () => ({ object: "list", items: [{ entitlement_id: "entlPlay", expires_at: null }], next_page: null });
 const purchase = () => ({ object: "purchase", product_id: "prodPlay", store: "play_store", environment: "production", status: "owned", ownership: "purchased", purchased_at: Date.now() - 10000 });
 function provider(grants: unknown = active(), purchases: unknown = { object: "list", items: [purchase()], next_page: null }) {
@@ -17,7 +22,7 @@ function provider(grants: unknown = active(), purchases: unknown = { object: "li
   });
 }
 afterEach(async () => { vi.restoreAllMocks(); await reset(); });
-const subscriptionConfig: PlayEntitlementConfig = { ...config, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: "prodMonthly, prodYearly" };
+const subscriptionConfig = rc({ play_subscription_product_ids: ["prodMonthly", "prodYearly"] });
 const subscription = (change: Record<string, unknown> = {}) => ({ object: "subscription", product_id: "prodMonthly", store: "play_store", environment: "production", ownership: "purchased", gives_access: true, status: "active", ...change });
 function subscriptionProvider(items: unknown[], purchases: unknown[] = [], nextPage: string | null = null) {
   return vi.spyOn(globalThis, "fetch").mockImplementation(async (url, options) => {
@@ -47,12 +52,12 @@ describe("server-selected Play subscription policy", () => {
     const requests = subscriptionProvider([subscription()]);
     expect(await playEntitlement(owner, config)).toEqual({ full_journey: false, status: "verified" });
     expect(requests).toHaveBeenCalledTimes(2);
-    requests.mockClear(); expect(await playEntitlement(owner, { ...config, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: " , " })).toEqual({ full_journey: false, status: "verified" }); expect(requests).toHaveBeenCalledTimes(2);
+    requests.mockClear(); expect(await playEntitlement(owner, rc({ play_subscription_product_ids: [] }))).toEqual({ full_journey: false, status: "verified" }); expect(requests).toHaveBeenCalledTimes(2);
   });
   it("holds instead of refusing subscribers when the subscription product list is malformed", async () => {
     const requests = subscriptionProvider([subscription()]);
-    for (const bad of ["after_you_full_journey_monthly,after_you_full_journey_yearly", "prodMonthly,not-a-product", Array.from({ length: 9 }, (_, i) => `prod${i}`).join(",")]) {
-      requests.mockClear(); expect(await playEntitlement(owner, { ...config, REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: bad })).toEqual({ full_journey: false, status: "unconfigured" }); expect(requests).not.toHaveBeenCalled();
+    for (const bad of [["after_you_full_journey_monthly", "after_you_full_journey_yearly"], ["prodMonthly", "not-a-product"], Array.from({ length: 9 }, (_, i) => `prod${i}`), "prodMonthly", [7]]) {
+      requests.mockClear(); expect(await playEntitlement(owner, rc({ play_subscription_product_ids: bad }, true))).toEqual({ full_journey: false, status: "unconfigured" }); expect(requests).not.toHaveBeenCalled();
     }
   });
   it("holds on incomplete or failed subscription reads", async () => {
@@ -87,25 +92,23 @@ describe("server-selected Play purchase policy", () => {
   });
   it("allows review only with both exact operator allowlist and fresh remote grant", async () => {
     const requests = provider();
-    expect(await playEntitlement(owner, { ...config, REVENUECAT_REVIEWER_IDS: owner })).toMatchObject({ full_journey: true, access_source: "review_grant", player_id: owner });
+    expect(await playEntitlement(owner, rc({ reviewer_ids: [owner] }))).toMatchObject({ full_journey: true, access_source: "review_grant", player_id: owner });
     expect(requests).toHaveBeenCalledTimes(1);
     requests.mockResolvedValue(Response.json({ object: "list", items: [], next_page: null }));
-    expect(await playEntitlement(owner, { ...config, REVENUECAT_REVIEWER_IDS: owner })).toEqual({ full_journey: false, status: "verified" });
+    expect(await playEntitlement(owner, rc({ reviewer_ids: [owner] }))).toEqual({ full_journey: false, status: "verified" });
   });
   it("does not permit a different reviewer or a promotional entitlement alone", async () => {
     provider(active(), { object: "list", items: [], next_page: null });
-    expect((await playEntitlement(owner, { ...config, REVENUECAT_REVIEWER_IDS: "q".repeat(22) })).full_journey).toBe(false);
+    expect((await playEntitlement(owner, rc({ reviewer_ids: ["q".repeat(22)] }))).full_journey).toBe(false);
   });
   it("holds on incomplete provider pages and malformed configuration", async () => {
     const request = provider(active(), { object: "list", items: [], next_page: "/next" });
     expect(await playEntitlement(owner, config)).toMatchObject({ status: "unavailable", reason: "provider_incomplete_list" });
-    request.mockClear(); expect(await playEntitlement(owner, { ...config, REVENUECAT_PLAY_PRODUCT_ID: "" })).toMatchObject({ status: "unconfigured" }); expect(request).not.toHaveBeenCalled();
+    request.mockClear(); expect(await playEntitlement(owner, rc({ play_product_id: "" }, true))).toMatchObject({ status: "unconfigured" }); expect(request).not.toHaveBeenCalled();
   });
-  it("preserves default demo verification while an unknown server policy fails closed", async () => {
-    provider({ object: "list", items: [{ entitlement_id: "entlDemo", expires_at: null }] });
-    const demo = { ...env, REVENUECAT_SECRET_KEY: "synthetic", REVENUECAT_API_VERSION: "2", REVENUECAT_PROJECT_ID: "projSynthetic", REVENUECAT_ENTITLEMENT_LOOKUP_ID: "entlDemo" };
-    expect((await entitlement(owner, demo)).full_journey).toBe(true);
-    expect((await entitlement(owner, { ...demo, REVENUECAT_VERIFICATION_MODE: "client_requested_demo" })).status).toBe("unconfigured");
+  it("always runs the Play check: no client or var can pick another policy", async () => {
+    provider();
+    expect(await entitlement(owner, { ...env, ...config })).toMatchObject({ full_journey: true, access_source: "play_purchase", environment: "test-store" });
   });
   it("cancels oversized streams, rejects invalid UTF8 and never follows redirects", async () => {
     let cancelled = false;
@@ -122,7 +125,7 @@ describe("server-selected Play purchase policy", () => {
       const response = await worker.fetch(new Request("https://game.test/v1/identity/recover", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ player_id: account.player_id, recovery_code: account.recovery_code, idempotency_key: crypto.randomUUID(), next_device_token: randomToken(), next_recovery_code: randomToken() }) }), env);
       expect(response.status).toBe(200); return Response.json(active());
     });
-    const response = await worker.fetch(new Request("https://game.test/v1/entitlement", { headers: { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } }), { ...env, ...config, REVENUECAT_REVIEWER_IDS: account.player_id, REVENUECAT_VERIFICATION_MODE: "play_store" } as unknown as Env);
+    const response = await worker.fetch(new Request("https://game.test/v1/entitlement", { headers: { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } }), { ...env, ...rc({ reviewer_ids: [account.player_id] }) } as unknown as Env);
     expect(response.status).toBe(401); expect(await response.json()).toMatchObject({ error: { code: "invalid_auth" } });
   });
 });

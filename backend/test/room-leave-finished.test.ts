@@ -3,7 +3,8 @@ import { evictDurableObject, reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
-import { LEVEL_IDS, type Outcome, type Recording, type RoomSnapshot } from "../src/protocol";
+import { LEVEL_IDS, digest, type Outcome, type Recording, type RoomSnapshot } from "../src/protocol";
+import { TERMS_VERSION } from "../src/public-policy";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { MutationV2, RoomSnapshotV2, RoomV2 } from "../src/v2/room";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -21,9 +22,8 @@ type Inbox = { schema_version: 1; rooms: { room_id: string; status: string; api_
 const key = () => crypto.randomUUID();
 const LEAVE = { schema_version: 1, leave_finished: true };
 let address = 0;
-async function call(path: string, method = "GET", account?: Account, body?: unknown, leaveEnabled = true, headers: Record<string, string> = {}): Promise<Response> {
+async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
   const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", FINISHED_ROOM_LEAVE_ENABLED: String(leaveEnabled) });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
@@ -34,10 +34,10 @@ function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(out
 const errorCode = async (response: Response) => (await response.json<{ error: { code: string } }>()).error.code;
 async function create(): Promise<Account> { const result = await call("/v1/identity", "POST", undefined, {}); expect(result.status).toBe(201); return result.json<Account>(); }
 const links = async (account: Account) => (await env.PLAYERS.getByName(account.player_id).listRooms()).map(link => link.room_id);
-const inbox = async (account: Account, headers: Record<string, string> = {}) => (await call("/v1/room-inbox", "GET", account, undefined, true, headers)).json<Inbox>();
+const inbox = async (account: Account, headers: Record<string, string> = {}) => (await call("/v1/room-inbox", "GET", account, undefined, headers)).json<Inbox>();
 const LEFT = { "X-AfterYou-Room-Leave": "1" };
 const LOOKUP = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
-const leave = (version: 1 | 2, roomId: string, account: Account, body: unknown = LEAVE, enabled = true) => call(`/v${version}/rooms/${roomId}/leave`, "POST", account, body, enabled);
+const leave = (version: 1 | 2, roomId: string, account: Account, body: unknown = LEAVE) => call(`/v${version}/rooms/${roomId}/leave`, "POST", account, body);
 
 const create2 = (host: Account, idempotency_key: string) => call("/v2/rooms", "POST", host, { idempotency_key, level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH });
 async function relayRoom(host: Account, idempotency_key = key()): Promise<RoomSnapshotV2> {
@@ -62,6 +62,8 @@ async function finishedRelay(createKey = key()) {
 async function photo(stub: DurableObjectStub<import("../src/v2/room").RoomV2>, owner: Account, turn: string, recordingHash: string, shade: number) {
   const bytes = new Uint8Array(encode({ data: new Uint8Array(8 * 8 * 4).fill(shade), width: 8, height: 8 }, 45).data);
   const jpeg_base64 = btoa(String.fromCharCode(...bytes)), sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(v => v.toString(16).padStart(2, "0")).join("");
+  // Shared photos always need the safety terms accepted.
+  value(await env.SAFETY_PROFILES.getByName(owner.player_id).accept(owner.player_id, await digest(owner.device_token), TERMS_VERSION));
   value(await stub.updatePhoto(owner.player_id, turn, { idempotency_key: key(), recording_hash: recordingHash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64, sha256 }));
   return { recording_hash: recordingHash, photo_revision: 1, sha256 };
 }
@@ -71,18 +73,6 @@ const reaction = (a: { recording_hash: string }, b: { recording_hash: string }, 
 afterEach(async () => { await reset(); });
 
 describe("leaving a finished room", () => {
-  it("changes nothing while the flag is off", async () => {
-    const { guest, room } = await finishedRelay();
-    const refused = await leave(2, room.room_id, guest, LEAVE, false);
-    expect(refused.status).toBe(400); expect(await errorCode(refused)).toBe("unexpected_field");
-    const kept = await leave(2, room.room_id, guest, { schema_version: 1 }, false);
-    expect(kept.status).toBe(409); expect(await errorCode(kept)).toBe("room_not_closed");
-    expect(await links(guest)).toEqual([room.room_id]);
-    const capabilities = await (await call("/v2/capabilities", "GET", guest, undefined, false)).json<Record<string, unknown>>();
-    expect(capabilities).not.toHaveProperty("room_leave_version");
-    expect(await (await call("/v2/capabilities", "GET", guest)).json()).toMatchObject({ room_leave_version: 1 });
-  });
-
   it("erases only the leaver's photos, deliveries and reactions, and the partner keeps the room and its replay", async () => {
     const { host, guest, room, stub } = await finishedRelay();
     const hostPhoto = await photo(stub, host, "t0-0-a", firstA.recording_hash, 90);
@@ -240,10 +230,9 @@ describe("leaving a finished room", () => {
     expect(await stub.reactionOperation(guest.player_id, key())).toMatchObject({ ok: false, status: 404 });
     expect(await stub.inboxProjection(guest.player_id)).toMatchObject({ ok: false, status: 404 });
     expect(await stub.friendInvite(host.player_id, guest.player_id)).toMatchObject({ ok: false, status: 409, code: "room_not_available" });
-    // The partner sees that their friend left, but only when their client asks and the flag is on.
+    // The partner sees that their friend left, but only when their client asks.
     expect((await inbox(host, LEFT)).rooms).toMatchObject([{ room_id: room.room_id, status: "completed", partner_left: true }]);
     expect((await inbox(host)).rooms[0]).not.toHaveProperty("partner_left");
-    expect((await (await call("/v1/room-inbox", "GET", host, undefined, false, LEFT)).json<Inbox>()).rooms[0]).not.toHaveProperty("partner_left");
   });
 
   it("answers a departed host's create retry as a deleted room, on Relay and legacy rooms", async () => {

@@ -306,7 +306,7 @@ function friendLinkAnswer(name: string | null): Response {
  * GET /v1/friend-link/<friend id or short name>/name, for the friend link page's headline. It
  * answers only a chosen display name, or null. An unknown code, a deleted or never-made identity, an
  * anonymous player, a removed name and the flag off all answer the same null, so the page cannot tell
- * them apart. A short name resolves through FRIEND_ALIASES as an Add friend does. At most one Player
+ * them apart. A short name resolves through CONFIG's friend aliases as an Add friend does. At most one Player
  * read, which stores nothing for an id nobody created; answers are kept for FRIEND_LINK_MAX_AGE.
  */
 export async function routeFriendLinkName(request: Request, code: string, env: Env): Promise<Response> {

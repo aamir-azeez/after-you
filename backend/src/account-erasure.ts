@@ -1,5 +1,6 @@
 import { ApiError, HASH_PATTERN, ID_PATTERN, equalHash, isObject } from "./protocol";
-import { flags, type ServerVars } from "./flags";
+import type { ServerVars } from "./flags";
+import { PROJECT_PATTERN, serverConfig } from "./config";
 import { revenuecatRequest } from "./play-entitlement";
 
 export const ERASURE_SCHEMA = "CREATE TABLE safety_erasure (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)";
@@ -20,9 +21,16 @@ export function writeErasure(storage: DurableObjectStorage, job: ErasureJob): vo
 export function erasureReceipt(storage: DurableObjectStorage, owner: string, deviceHash: string): boolean {
   const job = readErasure(storage); return !!job && job.owner === owner && job.state === "complete" && equalHash(job.device_hash, deviceHash);
 }
+/**
+ * Asks RevenueCat to delete the customer before the identity is forgotten; false holds the erasure for a retry.
+ * A deployment with neither REVENUECAT_SECRET_KEY nor a RevenueCat project (local development, tests) has no
+ * customers there, so it has nothing to delete. Any half configuration holds, so a lost key or a bad CONFIG never
+ * skips a real deletion.
+ */
 export async function requestProviderErasure(owner: string, env: ServerVars): Promise<boolean> {
-  if (!flags.revenuecatDeletion(env)) return true;
-  if (!env.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(env.REVENUECAT_PROJECT_ID ?? "")) return false;
-  const result = await revenuecatRequest(`https://api.revenuecat.com/v2/projects/${encodeURIComponent(env.REVENUECAT_PROJECT_ID!)}/customers/${encodeURIComponent(owner)}`, env.REVENUECAT_SECRET_KEY, "DELETE");
+  const project = serverConfig(env).revenuecat.project_id;
+  if (!env.REVENUECAT_SECRET_KEY && project === undefined) return true;
+  if (!env.REVENUECAT_SECRET_KEY || !PROJECT_PATTERN.test(project ?? "")) return false;
+  const result = await revenuecatRequest(`https://api.revenuecat.com/v2/projects/${encodeURIComponent(project!)}/customers/${encodeURIComponent(owner)}`, env.REVENUECAT_SECRET_KEY, "DELETE");
   return result.ok && (result.status === 200 || result.status === 404);
 }

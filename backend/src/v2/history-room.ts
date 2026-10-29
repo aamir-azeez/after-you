@@ -18,7 +18,7 @@ export type AttemptView = {
 };
 /** The room's identity and chapter, so a phone can file the attempts it keeps under the right room. */
 export type HistoryRoomFacts = { room_id: string; level_id: string; level_version: number; definition_hash: string; host_id: string; guest_id: string | null };
-/** `partner_supports`: the other member's latest room request, while offload was on, said it keeps attempts. */
+/** `partner_supports`: the other member's latest room request said it keeps attempts. */
 export type HistoryView = { schema_version: 1; mode: "attempts" | "v1_transferred"; head: string; room: HistoryRoomFacts; partner_supports: boolean; attempts: AttemptView[] };
 
 function need(value: unknown, status: number, code: string): asserts value { if (!value) throw new ApiError(status, code); }

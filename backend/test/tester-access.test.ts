@@ -8,6 +8,7 @@ import { entitlement } from "../src/entitlement";
 import { validateSnapshot } from "../src/snapshot";
 import { RELAY_KEY } from "../src/v2/chapters";
 import firstSteps from "../../game/tests/fixtures/first_steps/definition.json";
+import { withConfig } from "./config";
 
 // Synthetic fixture only, unrelated to any configured code or secret.
 const CODE = "SYNTHETIC-ONLY-TESTER-CODE";
@@ -18,7 +19,7 @@ let ip = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}) {
   return worker.fetch(new Request("https://game.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.0." + ++ip, ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },
-    body: body === undefined ? undefined : JSON.stringify(body) }), { ...env, ...overrides } as Env);
+    body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, ...overrides }) as unknown as Env);
 }
 const account = async () => { const r = await call("/v1/identity", "POST", undefined, {}); expect(r.status).toBe(201); return r.json<Account>(); };
 const enabled = async () => ({ TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + CODE) });
@@ -117,7 +118,7 @@ describe("permanent authenticated tester access", () => {
     const requests = vi.spyOn(globalThis, "fetch").mockImplementation(async url => Response.json(String(url).includes("active_entitlements") ?
       { object: "list", items: [{ entitlement_id: "entlFixture", expires_at: null }], next_page: null } :
       { object: "list", items: [{ object: "purchase", product_id: "prodFixture", store: "play_store", environment: "production", status: "owned", ownership: "purchased", purchased_at: Date.now() - 10000 }], next_page: null }));
-    const access = await entitlement(a.player_id, { ...env, REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic", REVENUECAT_PROJECT_ID: "projFixture", REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlFixture", REVENUECAT_PLAY_PRODUCT_ID: "prodFixture", REVENUECAT_PLAY_ENVIRONMENT: "production" });
+    const access = await entitlement(a.player_id, withConfig({ ...env, REVENUECAT_SECRET_KEY: "synthetic", revenuecat: { project_id: "projFixture", play_entitlement_lookup_id: "entlFixture", play_product_id: "prodFixture" } }));
     expect(access).toMatchObject({ full_journey: true, access_source: "play_purchase", entitlement: "full_journey_play", player_id: a.player_id }); expect(requests).toHaveBeenCalledTimes(2);
     expect(await (await call("/v1/tester-access", "GET", a)).json()).toMatchObject({ granted: false });
   });

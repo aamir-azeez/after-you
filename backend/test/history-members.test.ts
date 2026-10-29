@@ -4,7 +4,7 @@ import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it } from "vitest";
 import { initializeHistory } from "../src/v2/storage-schema";
 import { CHAINS, play } from "./history-chains";
-import { HISTORY, ON, call, relayPair } from "./history-http";
+import { HISTORY, call, relayPair } from "./history-http";
 
 const SOURCE = "f".repeat(40);
 afterEach(async () => { await reset(); });
@@ -19,50 +19,34 @@ async function storage(id: string) {
 }
 
 describe("history support negotiation", () => {
-  it("never changes a room's storage while offload is off, and answers the same bytes with or without the header", async () => {
-    const { host, guest, room } = await relayPair(), path = "/v2/rooms/" + room.room_id;
-    const before = await storage(room.room_id);
-    const plain = await (await call(path, "GET", host)).text();
-    const flagged = await (await call(path, "GET", host, undefined, {}, HISTORY)).text();
-    const guestView = await (await call(path, "GET", guest, undefined, {}, HISTORY)).text();
-    expect(flagged).toBe(plain); expect(guestView).not.toBe("");
-    expect(await storage(room.room_id)).toEqual(before);
-    expect(before.tables).toEqual([]);
-    // Offload on, but nobody sent the header: still untouched.
-    expect(await (await call(path, "GET", host, undefined, ON)).text()).toBe(plain);
-    expect(await storage(room.room_id)).toEqual(before);
-  });
-
-  it("advertises history only to clients that ask, with the flag's state", async () => {
+  it("advertises history only to clients that ask", async () => {
     const { host } = await relayPair();
     const plain = await (await call("/v2/capabilities", "GET", host)).text();
-    expect(await (await call("/v2/capabilities", "GET", host, undefined, ON)).text()).toBe(plain);
     expect(plain).not.toContain("history");
-    expect(await (await call("/v2/capabilities", "GET", host, undefined, {}, HISTORY)).json()).toMatchObject({ history_version: 1, history_offload_enabled: false });
-    expect(await (await call("/v2/capabilities", "GET", host, undefined, ON, HISTORY)).json()).toMatchObject({ history_version: 1, history_offload_enabled: true });
+    expect(await (await call("/v2/capabilities", "GET", host, undefined, {}, HISTORY)).json()).toMatchObject({ history_version: 1, history_offload_enabled: true });
   });
 
   it("records each member's latest room request, but never from the room list", async () => {
     const { host, guest, room } = await relayPair(), path = "/v2/rooms/" + room.room_id;
     const plain = await (await call(path, "GET", host)).text();
-    expect(await (await call(path, "GET", host, undefined, ON, HISTORY)).text()).toBe(plain);
+    expect(await (await call(path, "GET", host, undefined, {}, HISTORY)).text()).toBe(plain);
     expect(await storage(room.room_id)).toMatchObject({ version: 9, tables: ["history_attempts", "history_members"], members: { [host.player_id]: 1 } });
-    await call("/v2/rooms", "GET", guest, undefined, ON, HISTORY);
+    await call("/v2/rooms", "GET", guest, undefined, {}, HISTORY);
     expect((await storage(room.room_id)).members).toEqual({ [host.player_id]: 1 });
-    await call(path, "GET", guest, undefined, ON);
+    await call(path, "GET", guest, undefined);
     expect((await storage(room.room_id)).members).toEqual({ [host.player_id]: 1, [guest.player_id]: 0 });
-    await call(path, "GET", guest, undefined, ON, HISTORY);
-    await call("/v2/rooms", "GET", host, undefined, ON);
+    await call(path, "GET", guest, undefined, {}, HISTORY);
+    await call("/v2/rooms", "GET", host, undefined);
     expect((await storage(room.room_id)).members).toEqual({ [host.player_id]: 1, [guest.player_id]: 1 });
     // A member who goes back to an older build says so on their next room request.
-    await call(path, "GET", host, undefined, ON);
+    await call(path, "GET", host, undefined);
     expect((await storage(room.room_id)).members).toEqual({ [host.player_id]: 0, [guest.player_id]: 1 });
-    expect(await (await call(path, "GET", host, undefined, ON)).text()).toBe(plain);
+    expect(await (await call(path, "GET", host, undefined)).text()).toBe(plain);
   });
 
   it("keeps replay transfer and operator snapshots working in a room that recorded support", async () => {
     const { host, guest, room } = await relayPair(), path = "/v2/rooms/" + room.room_id, stub = roomOf(room.room_id);
-    await call(path, "GET", host, undefined, ON, HISTORY);
+    await call(path, "GET", host, undefined, {}, HISTORY);
     const state = await play(stub, room, CHAINS[0], 0, undefined, { host: host.player_id, guest: guest.player_id });
     const live = await stub.exportSnapshot(SOURCE); expect(live.ok).toBe(true);
     const copy = env.ROOMS_V2.get(env.ROOMS_V2.newUniqueId());

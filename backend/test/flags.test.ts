@@ -1,104 +1,88 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it, vi } from "vitest";
 
-const production = vi.hoisted(() => ({ on: false }));
-vi.mock("../src/v2/campaign-production", () => ({
-  campaignProductionEnabled: () => production.on,
-  requireCampaignProduction: () => { if (!production.on) throw new Error("campaign_unavailable"); }
-}));
-
-import { FLAG_VARS, commaList, featureNames, flags, flagOn, type FlagName, type FlagVar, type ServerVars } from "../src/flags";
+import { FLAG_NAMES, FLAG_VARS, RETIRED_FLAGS, flags, flagOn, type FlagName, type FlagVar, type ServerVars } from "../src/flags";
 import { KEY_LABELS, KEY_SALT, MIN_SECRET_LENGTH, derivedKey, hmac, pollenSecret } from "../src/pollen/keys";
-import { productList, reviewer } from "../src/play-entitlement";
-import { MAX_JOIN_VERSIONS, routeV2 } from "../src/v2/routes";
-import { advertisedChapters } from "../src/v2/chapters";
-import { advertisedCampaigns } from "../src/v2/campaign-registry";
-import { campaignProductionEnabled } from "../src/v2/campaign-production";
-import { MAX_ROOM_STAGES } from "../src/v2/chapter-types";
-import { HISTORY_HEADER } from "../src/v2/history";
+import worker from "../src/index";
+import { routeV2 } from "../src/v2/routes";
+import { CHAPTERS, advertisedChapters } from "../src/v2/chapters";
+import { APP } from "../src/config";
+import { configJson, withConfig } from "./config";
+import LIVE_ANSWERS from "./fixtures/live-answers-5601cb81.json";
 
-type Loose = Record<string, unknown>;
-const loose = (value: Loose) => value as ServerVars;
 const ROWS = Object.entries(FLAG_VARS) as [FlagName, FlagVar][];
-/** Every shape a var can take: wrangler strings, near misses, test booleans, null and an undefined value. Only "true" (and true, as tests pass it) is on. */
-const VALUES: readonly [unknown, boolean][] = [["true", true], [true, true], ["false", false], ["TRUE", false], ["True", false], [" true", false], ["true ", false],
-  ["1", false], ["yes", false], ["on", false], ["", false], [false, false], [1, false], [0, false], [null, false], [undefined, false]];
+const NAMES = ROWS.map(([, name]) => name);
+const config = (features: string[]): ServerVars => ({ CONFIG: configJson({ features }) });
+/** FEATURES on the live Worker c51b509d (2026-10-29), every one of them on, before the 25 retired flags left the code. */
+const LIVE_FEATURES = ["PRESENCE_ENABLED", "TESTER_ACCESS_ENABLED", "SAFETY_ENFORCEMENT_ENABLED", "REVENUECAT_DELETION_ENABLED", "NOTIFICATIONS_ENABLED",
+  "FRIEND_ROOM_EVENTS_ENABLED", "V2_ROOMS_ENABLED", "FIRST_STEPS_ENABLED", "COOP_CHAPTERS_ENABLED", "HOUSE_CHAPTER_ENABLED", "JOURNEY_CHAPTERS_ENABLED",
+  "WISHING_WELL_CHAPTER_ENABLED", "LONG_WAY_HOME_V2_CHAPTER_ENABLED", "TURN_OF_THE_TIDE_CHAPTER_ENABLED", "LIGHTHOUSE_V2_CHAPTER_ENABLED",
+  "TURN_OF_THE_TIDE_V2_CHAPTER_ENABLED", "RELAY_PHOTOS_ENABLED", "PRESET_REACTIONS_ENABLED", "PHOTO_DELIVERY_ENABLED", "PHOTO_TRANSFER_ENABLED",
+  "REPLAY_TRANSFER_ENABLED", "HISTORY_OFFLOAD_ENABLED", "UPDATE_GATE_ENABLED", "LEGACY_TRANSFERRED_ROOM_UNBLOCK", "FINISHED_ROOM_LEAVE_ENABLED",
+  "ROOM_INDEX_ENABLED", "LIVE_CONNECTION_ENABLED", "TURN_TRIES_ENABLED", "END_REACTIONS_ENABLED", "IN_RUN_REACTIONS_ENABLED", "HARD_MODE_ENABLED",
+  "PLAY_GAMES_ENABLED", "IOS_WAITLIST_ENABLED", "DISPLAY_NAMES_ENABLED", "POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_LOOKS", "LEADERBOARDS"];
+/** What live CONFIG lists once the retired names are gone. */
+const LIVE_KEPT = LIVE_FEATURES.filter(name => FLAG_NAMES.has(name));
 
-// Every *_ENABLED var the generated Env or ServerVars declares has a row in FLAG_VARS.
+// Every *_ENABLED var the generated Env declares, or that ServerVars still names, is a flag.
 type Unlisted = Exclude<Extract<keyof Env | keyof ServerVars, `${string}_ENABLED`>, FlagVar>;
 const everyEnabledVarListed: [Unlisted] extends [never] ? true : Unlisted = true;
 
 describe("flags", () => {
-  it("has one accessor per table row, and each var in one row only", () => {
+  it("has one accessor per table row, and each name in one row only", () => {
     expect(everyEnabledVarListed).toBe(true);
     expect(Object.keys(flags).sort()).toEqual(ROWS.map(([name]) => name).sort());
-    expect(new Set(ROWS.map(([, variable]) => variable)).size).toBe(ROWS.length);
+    expect(FLAG_NAMES.size).toBe(ROWS.length);
+    expect(new Set(NAMES)).toEqual(FLAG_NAMES);
   });
-  it("lists every *_ENABLED var the worker is configured with", () => {
-    const listed = new Set<string>(Object.values(FLAG_VARS));
-    for (const key of Object.keys(env).filter(key => key.endsWith("_ENABLED"))) expect(listed.has(key), key).toBe(true);
-  });
-  it("turns each accessor on only for its own var set to exactly \"true\"", () => {
+  it("turns each accessor on exactly when CONFIG lists its name", () => {
     for (const [set, variable] of ROWS) {
-      for (const [value, on] of VALUES) {
-        const vars = loose({ [variable]: value });
-        for (const [name, own] of ROWS) {
-          const label = `${name} with ${variable}=${JSON.stringify(value)}`;
-          expect(flags[name](vars), label).toBe(name === set && on);
-          expect(flagOn(vars, own), label).toBe(name === set && on);
-        }
+      const vars = config([variable]);
+      for (const [name, own] of ROWS) {
+        expect(flags[name](vars), `${name} with ${variable}`).toBe(name === set);
+        expect(flagOn(vars, own)).toBe(name === set);
       }
     }
-    for (const [name] of ROWS) expect(flags[name](loose({})), `${name} missing`).toBe(false);
+    const all = config(NAMES);
+    for (const [name] of ROWS) expect(flags[name](all), name).toBe(true);
   });
-  it("reads the configured worker env, whose vars all default off", () => {
-    for (const [name] of ROWS) expect(flags[name](env), name).toBe(false);
-    expect(Object.hasOwn(env, "FEATURES"), "FEATURES stays a deploy var, not a wrangler.jsonc one").toBe(false);
+  it("reads every flag off for the test worker's env, which has no CONFIG", () => {
+    expect(Object.hasOwn(env, "CONFIG"), "CONFIG is a deploy var, never a wrangler.jsonc one").toBe(false);
+    for (const [name] of ROWS) expect(flags[name](withConfig({ ...env })), name).toBe(false);
+  });
+  it("ignores a name CONFIG lists that this code does not know, as an older Worker would after a rollback", () => {
+    const vars: ServerVars = { CONFIG: JSON.stringify({ features: ["POLLEN_EARN", "SOME_LATER_FLAG", ...RETIRED_FLAGS] }) };
+    expect(ROWS.filter(([name]) => flags[name](vars)).map(([name]) => name)).toEqual(["pollenEarn"]);
+  });
+  it("turns every flag off for a malformed features list or CONFIG", () => {
+    for (const raw of ["{", "[]", "null", JSON.stringify({ features: "POLLEN_EARN" }), JSON.stringify({ features: ["pollen_earn"] }),
+      JSON.stringify({ features: [1] }), JSON.stringify({ features: Array.from({ length: 65 }, (_, i) => "FLAG_" + i) }), "x".repeat(5000)])
+      for (const [name] of ROWS) expect(flags[name]({ CONFIG: raw }), `${name} ${raw.slice(0, 40)}`).toBe(false);
+  });
+  it("reads a changed CONFIG at once", () => {
+    const first = config(["POLLEN_EARN"]), second = config(["LEADERBOARDS"]);
+    for (let round = 0; round < 3; round++)
+      expect([flags.pollenEarn(first), flags.leaderboards(first), flags.pollenEarn(second), flags.leaderboards(second)]).toEqual([true, false, false, true]);
   });
 });
 
-describe("FEATURES", () => {
-  it("turns on exactly the flags it lists, whatever their own vars say", () => {
-    for (const [set, variable] of ROWS) {
-      for (const own of [undefined, "false", "", "TRUE"]) {
-        const vars = loose({ FEATURES: variable, [variable]: own });
-        for (const [name, other] of ROWS) {
-          expect(flags[name](vars), `${name} with FEATURES=${variable} and own ${JSON.stringify(own)}`).toBe(name === set);
-          expect(flagOn(vars, other)).toBe(name === set);
-        }
-      }
+describe("retired flags", () => {
+  it("were all on live, are gone from the table, and every live name is either kept or retired", () => {
+    expect(RETIRED_FLAGS.length).toBe(25);
+    expect(new Set(RETIRED_FLAGS).size).toBe(RETIRED_FLAGS.length);
+    for (const name of RETIRED_FLAGS) {
+      expect(FLAG_NAMES.has(name), name).toBe(false);
+      expect(LIVE_FEATURES.includes(name), `${name} was on live`).toBe(true);
     }
+    expect([...RETIRED_FLAGS, ...LIVE_KEPT].sort()).toEqual([...LIVE_FEATURES].sort());
+    // Kept: the kill switches and the parts not launched yet. Nothing left the table that was off live.
+    expect(LIVE_KEPT).toEqual(["TESTER_ACCESS_ENABLED", "NOTIFICATIONS_ENABLED", "FRIEND_ROOM_EVENTS_ENABLED", "RELAY_PHOTOS_ENABLED", "PHOTO_TRANSFER_ENABLED",
+      "LIVE_CONNECTION_ENABLED", "PLAY_GAMES_ENABLED", "IOS_WAITLIST_ENABLED", "DISPLAY_NAMES_ENABLED", "POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_LOOKS", "LEADERBOARDS"]);
+    expect(NAMES.filter(name => !LIVE_FEATURES.includes(name))).toEqual(["IOS_PUSH_ENABLED", "CAMPAIGN_CREATION_ENABLED", "CAMPAIGN_MUTATIONS_ENABLED",
+      "STORY_DRAIN_ENABLED", "APP_STORE_ENTITLEMENTS_ENABLED", "GAME_CENTER_ENABLED", "POLLEN_SHOP", "POLLEN_ITEM_BLOOMS", "POLLEN_GRANT"]);
   });
-  it("adds to the dedicated vars, so either one turns a flag on", () => {
-    const vars = loose({ FEATURES: "PRESENCE_ENABLED", V2_ROOMS_ENABLED: "true" });
-    expect(flags.presence(vars)).toBe(true);
-    expect(flags.v2Rooms(vars)).toBe(true);
-    expect(flags.hardMode(vars)).toBe(false);
-  });
-  it("trims items, matches case exactly and ignores unknown names and empty items", () => {
-    const vars = loose({ FEATURES: " V2_ROOMS_ENABLED ,,hard_mode_enabled, NOT_A_FLAG,\tPOLLEN_EARN\n, HARD_MODE_ENABLED_X,displayNames" });
-    expect(ROWS.filter(([name]) => flags[name](vars)).map(([name]) => name).sort()).toEqual(["pollenEarn", "v2Rooms"]);
-    expect([...featureNames("NOT_A_FLAG, also_not")]).toEqual([]);
-  });
-  it("reads nothing from a FEATURES value that is not a string or is empty", () => {
-    for (const raw of [undefined, null, "", " , ", 1, true, ["V2_ROOMS_ENABLED"], { V2_ROOMS_ENABLED: true }]) {
-      expect(featureNames(raw).size, JSON.stringify(raw)).toBe(0);
-      for (const [name] of ROWS) expect(flags[name](loose({ FEATURES: raw })), `${name} ${JSON.stringify(raw)}`).toBe(false);
-    }
-  });
-  it("reads a changed value at once, and every flag from one value at a time", () => {
-    const first = loose({ FEATURES: "V2_ROOMS_ENABLED" }), second = loose({ FEATURES: "HARD_MODE_ENABLED" });
-    for (let round = 0; round < 3; round++) {
-      expect([flags.v2Rooms(first), flags.hardMode(first), flags.v2Rooms(second), flags.hardMode(second)]).toEqual([true, false, false, true]);
-    }
-    // A FEATURES string built from FLAG_VARS turns every flag on: the deploy note pastes one made this way.
-    const all = loose({ FEATURES: Object.values(FLAG_VARS).join(",") });
-    for (const [name] of ROWS) expect(flags[name](all), name).toBe(true);
-  });
-  it("defaults POLLEN_EARN off, and reads it from FEATURES", () => {
-    expect(FLAG_VARS.pollenEarn).toBe("POLLEN_EARN");
-    expect(flags.pollenEarn(env)).toBe(false);
-    expect(flags.pollenEarn(loose({ FEATURES: "POLLEN_EARN" }))).toBe(true);
+  it("leaves every published chapter creatable with no flag", () => {
+    for (const row of CHAPTERS) expect(row.flag, row.adapter.key.level_id).toBe("");
   });
 });
 
@@ -140,95 +124,49 @@ describe("POLLEN_SECRET key derivation", () => {
   });
 });
 
-// A frozen copy of the /v2/capabilities body before flags.ts.
-function oldCapabilities(request: Request, env: Env): unknown {
-  const roomLevel = request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1;
-  return { api_version: 2,
-    mutations_enabled: String(env.V2_ROOMS_ENABLED) === "true", recording_version: 2, simulation_version: 2,
-    photo_uploads_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.RELAY_PHOTOS_ENABLED) === "true",
-    preset_reactions_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String(env.PRESET_REACTIONS_ENABLED) === "true",
-    photo_delivery_enabled: String(env.PHOTO_DELIVERY_ENABLED) === "true",
-    replay_transfer_version: String((env as Env & { REPLAY_TRANSFER_ENABLED?: string }).REPLAY_TRANSFER_ENABLED) === "true" ? 1 : 0,
-    ...(campaignProductionEnabled() ? { campaign_control_version: 2, campaign_redo_version: 1 } : {}),
-    campaign_creation_enabled: String(env.V2_ROOMS_ENABLED) === "true" && String((env as Env & { CAMPAIGN_CREATION_ENABLED?: string }).CAMPAIGN_CREATION_ENABLED) === "true" && advertisedCampaigns(env).length > 0,
-    campaign_mutations_enabled: campaignProductionEnabled() && String(env.V2_ROOMS_ENABLED) === "true" && String((env as Env & { CAMPAIGN_MUTATIONS_ENABLED?: string }).CAMPAIGN_MUTATIONS_ENABLED) === "true",
-    campaign_definitions: advertisedCampaigns(env),
-    chapters: advertisedChapters(env, roomLevel),
-    ...(roomLevel >= 2 ? { room_level: 2, max_join_versions: MAX_JOIN_VERSIONS, max_stages: MAX_ROOM_STAGES } : {}),
-    ...(request.headers.get(HISTORY_HEADER) === "1" ? { history_version: 1, history_offload_enabled: String((env as Env & { HISTORY_OFFLOAD_ENABLED?: string }).HISTORY_OFFLOAD_ENABLED) === "true" } : {}),
-    validation: "structural_client_replay_required" };
-}
-const CAPABILITY_VARS = ["V2_ROOMS_ENABLED", "RELAY_PHOTOS_ENABLED", "PRESET_REACTIONS_ENABLED", "PHOTO_DELIVERY_ENABLED",
-  "REPLAY_TRANSFER_ENABLED", "CAMPAIGN_CREATION_ENABLED", "CAMPAIGN_MUTATIONS_ENABLED", "HISTORY_OFFLOAD_ENABLED"];
-const CHAPTER_VARS = ["FIRST_STEPS_ENABLED", "COOP_CHAPTERS_ENABLED", "HOUSE_CHAPTER_ENABLED", "JOURNEY_CHAPTERS_ENABLED"];
+const ASKING = ["X-AfterYou-History", "X-AfterYou-Poll-Redo", "X-AfterYou-Turn-Tries", "X-AfterYou-End-Reactions", "X-AfterYou-Run-Reactions", "X-AfterYou-Hard-Mode",
+  "X-AfterYou-Live", "X-AfterYou-Platform-Games", "X-AfterYou-Display-Names", "X-AfterYou-Pollen", "X-AfterYou-Looks", "X-AfterYou-Leaderboards"];
+/** Live's settings as CONFIG (the retired names left out) beside the same synthetic secrets the capture used. */
+const LIVE_ENV = () => withConfig({ ...env, features: LIVE_KEPT, min_client_version: { app_store: "0.0.0", github: "0.7.0", play: "0.7.0" },
+  PLAY_GAMES_CLIENT_SECRET: "synthetic-client-secret", POLLEN_SECRET: "synthetic-pollen-secret-for-tests-only-0001" }) as unknown as Env;
+const sha = async (text: string) => "sha256:" + hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))));
 
-describe("/v2/capabilities", () => {
-  it("answers byte for byte as before for every combination of the flags it reads", async () => {
-    const player = "c".repeat(22), seen = new Set<string>();
-    for (const productionOn of [false, true]) {
-      production.on = productionOn;
-      for (const [on, off] of [["true", "false"], [true, undefined], ["TRUE", ""]] as const) {
-        for (let mask = 0; mask < 1 << CAPABILITY_VARS.length; mask++) {
-          const vars: Loose = { ...env };
-          CAPABILITY_VARS.forEach((name, bit) => { vars[name] = mask & (1 << bit) ? on : off; });
-          // Campaign creation also needs every campaign chapter creatable; follow the lowest bit.
-          for (const name of CHAPTER_VARS) vars[name] = mask & 1 ? "true" : "false";
-          for (const headers of [{}, { "X-AfterYou-Room-Level": "2" }, { [HISTORY_HEADER]: "1" }, { "X-AfterYou-Room-Level": "2", [HISTORY_HEADER]: "1" }] as Record<string, string>[]) {
-            const request = new Request("https://after-you.test/v2/capabilities", { headers });
-            const response = await routeV2(request, "/v2/capabilities", player, vars as unknown as Env);
-            const label = `production ${productionOn} on ${JSON.stringify(on)} mask ${mask} ${JSON.stringify(headers)}`;
-            expect(response.status, label).toBe(200);
-            const body = await response.text();
-            expect(body, label).toBe(JSON.stringify(oldCapabilities(request, vars as unknown as Env)));
-            const parsed = JSON.parse(body) as Record<string, unknown>;
-            for (const key of ["mutations_enabled", "photo_uploads_enabled", "preset_reactions_enabled", "photo_delivery_enabled", "campaign_creation_enabled", "campaign_mutations_enabled", "history_offload_enabled"])
-              if (parsed[key] === true) seen.add(key);
-            if (parsed.replay_transfer_version === 1) seen.add("replay_transfer_version");
-          }
-        }
-      }
-    }
-    production.on = false;
-    // The matrix reaches every capability's on state, so each comparison above is not vacuous.
-    expect([...seen].sort()).toEqual(["campaign_creation_enabled", "campaign_mutations_enabled", "history_offload_enabled", "mutations_enabled",
-      "photo_delivery_enabled", "photo_uploads_enabled", "preset_reactions_enabled", "replay_transfer_version"]);
+/** The worker's answers to every capabilities client, /health and /v1/app-status, capabilities as hashes. */
+async function liveAnswers(vars: Env): Promise<Record<string, string>> {
+  const answers: Record<string, string> = {};
+  for (const level of [{}, { "X-AfterYou-Room-Level": "2" }] as Record<string, string>[]) {
+    const tag = Object.keys(level).length ? "L2" : "L1";
+    const combos: [string, Record<string, string>][] = [[`${tag}:none`, level], ...ASKING.map((header): [string, Record<string, string>] => [`${tag}:${header}`, { ...level, [header]: "1" }]),
+      [`${tag}:all`, { ...level, ...Object.fromEntries(ASKING.map(header => [header, "1"])) }]];
+    for (const [key, headers] of combos)
+      answers["capabilities " + key] = await sha(await (await routeV2(new Request("https://after-you.test/v2/capabilities", { headers }), "/v2/capabilities", "c".repeat(22), vars)).text());
+  }
+  answers.health = await (await worker.fetch(new Request("https://after-you.test/health"), vars)).text();
+  for (const client of [undefined, "0.6.9 play", "0.7.0 play", "0.6.9 github", "0.7.0 github", "0.0.0 app_store", "0.0.1 dev", "bad"]) {
+    const response = await worker.fetch(new Request("https://after-you.test/v1/app-status", { headers: { "CF-Connecting-IP": "198.18.9.9", ...(client ? { "X-AfterYou-Client": client } : {}) } }), vars);
+    answers["app-status " + client] = `${response.status} ${await response.text()}`;
+  }
+  return answers;
+}
+/** TRANSITION: live's 16 old vars as they were, with synthetic secrets, and no CONFIG. */
+const OLD_LIVE_VARS = { ENVIRONMENT: "test-store", FEATURES: LIVE_FEATURES.join(","), MIN_CLIENT_VERSION_APP_STORE: "0.0.0", MIN_CLIENT_VERSION_GITHUB: "0.7.0",
+  MIN_CLIENT_VERSION_PLAY: "0.7.0", PLAY_GAMES_APP_ID: "665737720520", PLAY_GAMES_WEB_CLIENT_ID: "665737720520-vh41m91imtvb0sol5vtn0vsfhdod7mgq.apps.googleusercontent.com",
+  REVENUECAT_API_VERSION: "2", REVENUECAT_ENTITLEMENT: "full_journey", REVENUECAT_PLAY_ENVIRONMENT: "production", REVENUECAT_VERIFICATION_MODE: "play_store",
+  TURNSTILE_SITE_KEY: "0x4AAAAAAFcV13jW0771Uryu", WAITLIST_FROM: "waitlist@afteryou.aamirazeez.com", WAITLIST_REPLY_TO: "afteryou-reply@aamirazeez.com",
+  RESEND_SEGMENT_ID: "68cf69ad-59d6-4b84-8865-72dbc72f1a49", PLAY_GAMES_CLIENT_SECRET: "synthetic-client-secret", POLLEN_SECRET: "synthetic-pollen-secret-for-tests-only-0001" };
+
+describe("live answers", () => {
+  // LIVE_ANSWERS is the worker's own output on main 5601cb81 with live's 16 vars (FEATURES with all 38 names).
+  it("answers /v2/capabilities, /health and /v1/app-status byte for byte as live did before the flags retired", async () => {
+    const vars = LIVE_ENV();
+    expect(await liveAnswers(vars)).toEqual(LIVE_ANSWERS);
+    // Every chapter is advertised, as live's flags had it.
+    expect(advertisedChapters(vars, 2).length).toBe(CHAPTERS.length);
   });
-  it("adds room_leave_version only while leaving finished rooms is on", async () => {
-    const read = async (vars: Loose) => JSON.parse(await (await routeV2(new Request("https://after-you.test/v2/capabilities"), "/v2/capabilities", "c".repeat(22), vars as unknown as Env)).text()) as Loose;
-    const off = await read({ ...env });
-    expect(off).not.toHaveProperty("room_leave_version");
-    expect(await read({ ...env, FINISHED_ROOM_LEAVE_ENABLED: "true" })).toEqual({ ...off, room_leave_version: 1 });
-  });
-});
-
-// Frozen copies of the comma-list reads in play-entitlement.ts and store-entitlement.ts before commaList.
-function oldPlayProducts(raw: string | undefined): string[] | null {
-  const subscriptionProducts = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
-  if ((raw ?? "").trim() && (subscriptionProducts.length > 8 || !subscriptionProducts.every(value => /^prod[A-Za-z0-9_-]+$/.test(value)))) return null;
-  return subscriptionProducts;
-}
-function oldStoreProducts(raw: string | undefined): string[] | null {
-  const values = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
-  if ((raw ?? "").trim() && (values.length > 8 || !values.every(value => /^prod[A-Za-z0-9_-]+$/.test(value)))) return null;
-  return values;
-}
-function oldReviewer(raw: string | undefined, playerId: string): boolean {
-  const reviewers = (raw ?? "").split(",").map(value => value.trim()).filter(Boolean);
-  return reviewers.length <= 16 && reviewers.every(value => /^[A-Za-z0-9_-]{22}$/.test(value)) && reviewers.includes(playerId);
-}
-const ID = "r".repeat(22);
-const LISTS: readonly (string | undefined)[] = [undefined, "", " ", ",", " , ", "prodA", " prodA ", "prodA,prodB", "prodA, prodB", "prodA,,prodB", "prodA,", ",prodA",
-  "prodA,bad", "bad", "PRODA", "prod", "prod-x_9", Array.from({ length: 8 }, (_, i) => "prod" + i).join(","), Array.from({ length: 9 }, (_, i) => "prod" + i).join(","),
-  ID, ` ${ID} `, `${ID},${"s".repeat(22)}`, `${ID},short`, Array.from({ length: 16 }, (_, i) => i === 0 ? ID : String(i).padStart(22, "x")).join(","),
-  Array.from({ length: 17 }, (_, i) => i === 0 ? ID : String(i).padStart(22, "x")).join(","), "r".repeat(23), "\tprodA\n"];
-
-describe("comma-list vars", () => {
-  it("split, validate and match exactly as the old Play and store copies", () => {
-    for (const raw of LISTS) {
-      expect(commaList(raw), JSON.stringify(raw)).toEqual((raw ?? "").split(",").map(value => value.trim()).filter(Boolean));
-      expect(productList(raw), JSON.stringify(raw)).toEqual(oldPlayProducts(raw));
-      expect(productList(raw), JSON.stringify(raw)).toEqual(oldStoreProducts(raw));
-      for (const player of [ID, "s".repeat(22), "x"]) expect(reviewer({ REVENUECAT_REVIEWER_IDS: raw }, player), `${JSON.stringify(raw)} ${player}`).toBe(oldReviewer(raw, player));
-    }
+  it("TRANSITION: answers the same from live's old vars while CONFIG is absent, and APP equals them", async () => {
+    expect(await liveAnswers({ ...env, ...OLD_LIVE_VARS } as unknown as Env)).toEqual(LIVE_ANSWERS);
+    expect([APP.environment, APP.playGamesAppId, APP.playGamesWebClientId, APP.turnstileSiteKey, APP.waitlistFrom, APP.waitlistReplyTo, APP.resendSegmentId, APP.playEnvironment]).toEqual([
+      OLD_LIVE_VARS.ENVIRONMENT, OLD_LIVE_VARS.PLAY_GAMES_APP_ID, OLD_LIVE_VARS.PLAY_GAMES_WEB_CLIENT_ID, OLD_LIVE_VARS.TURNSTILE_SITE_KEY, OLD_LIVE_VARS.WAITLIST_FROM,
+      OLD_LIVE_VARS.WAITLIST_REPLY_TO, OLD_LIVE_VARS.RESEND_SEGMENT_ID, OLD_LIVE_VARS.REVENUECAT_PLAY_ENVIRONMENT]);
   });
 });

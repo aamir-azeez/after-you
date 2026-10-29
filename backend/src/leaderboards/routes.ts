@@ -8,7 +8,7 @@ import { serveReplay } from "./replays";
 
 /**
  * The phone's leaderboard routes, all absent (falling through to 404) while
- * LEADERBOARDS is off (not in FEATURES):
+ * LEADERBOARDS is off (not in CONFIG):
  * - GET /v1/leaderboards/<board>: the board anyone sees, before auth() so a
  *   cached answer costs no Durable Object request at all;
  * - GET /v1/leaderboards/<board>/replay/<entry>: a top 10 run's replay

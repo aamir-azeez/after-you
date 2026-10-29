@@ -1,20 +1,14 @@
 import { env } from "cloudflare:workers";
 import { describe, expect, it } from "vitest";
-import { FLAG_VARS, flagOn, flags, type FlagName, type FlagVar, type ServerVars } from "../src/flags";
+import { FLAG_NAMES, RETIRED_FLAGS } from "../src/flags";
 import { CHAPTERS } from "../src/v2/chapters";
 
-const ROWS = Object.entries(FLAG_VARS) as [FlagName, FlagVar][];
-const FLAGS_SOURCE = Object.values(import.meta.glob<string>("../src/flags.ts", { query: "?raw", import: "default", eager: true }))[0];
 /**
- * The flags whose FLAG_VARS doc ends "Set only through FEATURES.": FEATURES is their one switch in production, so each
- * must be read through flagOn. flags.ts is the one list; the deploy runner and flip-features read the same marker.
+ * Every server flag folded into CONFIG's features list (the 2026-10-28 fold put them in FEATURES; lean-config moved
+ * FEATURES into CONFIG and retired the 25 that must stay on). These guards keep it that way.
  */
-const FEATURES_ONLY: readonly FlagVar[] = (() => {
-  const block = FLAGS_SOURCE.slice(FLAGS_SOURCE.indexOf("export const FLAG_VARS"), FLAGS_SOURCE.indexOf("} as const);"));
-  return [...block.matchAll(/\/\*\*(.*?)\*\/\s*\n\s*\w+: "([A-Z0-9_]+)",/g)].filter(m => m[1].includes("Set only through FEATURES.")).map(m => m[2] as FlagVar);
-})();
-const VAR_NAMES = new Set<string>(Object.values(FLAG_VARS));
 const SOURCES = import.meta.glob<string>("../src/**/*.ts", { query: "?raw", import: "default", eager: true });
+const WRANGLER = Object.values(import.meta.glob<string>("../wrangler.jsonc", { query: "?raw", import: "default", eager: true }))[0];
 
 /** The source with its comments blanked (string-aware, so "https://" in a string stays), keeping offsets. */
 function withoutComments(text: string): string {
@@ -31,46 +25,23 @@ function withoutComments(text: string): string {
 }
 
 /**
- * Where a flag var name may appear outside flags.ts: as a quoted FlagVar the chapter table hands to flagOn, or as a
- * quoted key in a Pick<ServerVars, ...> type. Anything else (env.X, env["X"], a destructured X) reads it directly.
+ * Where a flag name may appear outside flags.ts: as a quoted FlagVar a chapter row hands to flagOn. TRANSITION:
+ * config.ts and config-check.ts read the old vars until the cleanup commit. Anything else (env.X, env["X"], a
+ * destructured X) would read a var no deploy sets.
  */
 function allowed(file: string, code: string, at: number, name: string): boolean {
+  if (file.endsWith("/src/config.ts") || file.endsWith("/src/config-check.ts")) return true;
   const quoted = code[at - 1] === '"' && code[at + name.length] === '"';
-  if (!quoted) return false;
-  if (file.endsWith("/v2/chapters.ts") && /flag:\s*$/.test(code.slice(Math.max(0, at - 12), at - 1))) return true;
-  const pick = code.lastIndexOf("Pick<ServerVars,", at);
-  return pick >= 0 && !code.slice(pick, at).includes(">");
+  return quoted && file.endsWith("/v2/chapters.ts") && /flag:\s*$/.test(code.slice(Math.max(0, at - 12), at - 1));
 }
 
-describe("flags folded into FEATURES", () => {
-  it("marks the 34 folded flags and the seven born in FEATURES, each once, and every chapter flag", () => {
-    expect(FEATURES_ONLY.length).toBe(41);
-    expect(new Set(FEATURES_ONLY).size).toBe(41);
-    expect(FEATURES_ONLY.filter(name => name.endsWith("_ENABLED") || name === "LEGACY_TRANSFERRED_ROOM_UNBLOCK").length).toBe(34);
-    for (const row of CHAPTERS) if (row.flag) expect(FEATURES_ONLY.includes(row.flag), row.flag).toBe(true);
-  });
-
-  it("turns each marked flag on through FEATURES alone, with its own var absent", () => {
-    for (const name of FEATURES_ONLY) {
-      const vars = { FEATURES: name } as ServerVars;
-      expect(Object.hasOwn(vars, name)).toBe(false);
-      expect(flagOn(vars, name), name).toBe(true);
-      const [accessor] = ROWS.find(([, variable]) => variable === name)!;
-      expect(flags[accessor](vars), accessor).toBe(true);
-    }
-  });
-
-  it("turns on exactly the marked flags when FEATURES lists them all, whatever their own vars said", () => {
-    const vars = { FEATURES: FEATURES_ONLY.join(","), ...Object.fromEntries(FEATURES_ONLY.map(name => [name, "false"])) } as ServerVars;
-    for (const [accessor, name] of ROWS) expect(flags[accessor](vars), name).toBe(FEATURES_ONLY.includes(name));
-  });
-
-  it("reads no flag var outside flags.ts except through flagOn", () => {
+describe("flags in CONFIG", () => {
+  it("reads no flag or retired flag name outside flags.ts except through flagOn", () => {
     const found: string[] = [];
     for (const [file, text] of Object.entries(SOURCES)) {
       if (file.endsWith("/src/flags.ts")) continue;
       const code = withoutComments(text);
-      for (const name of VAR_NAMES) {
+      for (const name of [...FLAG_NAMES, ...RETIRED_FLAGS]) {
         for (const match of code.matchAll(new RegExp(`\\b${name}\\b`, "g"))) {
           if (!allowed(file, code, match.index!, name)) found.push(`${file}: ${code.slice(Math.max(0, match.index! - 30), match.index! + name.length + 10).replace(/\s+/g, " ")}`);
         }
@@ -79,19 +50,12 @@ describe("flags folded into FEATURES", () => {
     expect(found).toEqual([]);
   });
 
-  it("keeps FEATURES in every narrowed env type that names a flag var", () => {
-    const missing: string[] = [];
-    for (const [file, text] of Object.entries(SOURCES)) {
-      for (const match of withoutComments(text).matchAll(/Pick<ServerVars,([^>]*)>/g)) {
-        const keys = [...match[1].matchAll(/"([A-Z0-9_]+)"/g)].map(m => m[1]);
-        if (keys.some(key => VAR_NAMES.has(key)) && !keys.includes("FEATURES")) missing.push(`${file}: ${match[0]}`);
-      }
-    }
-    expect(missing).toEqual([]);
+  it("gates no chapter with a retired flag", () => {
+    for (const row of CHAPTERS) expect((RETIRED_FLAGS as readonly string[]).includes(row.flag), row.flag).toBe(false);
   });
 
-  it("declares no flag var and no FEATURES in wrangler.jsonc, so a deploy never brings a folded var back", () => {
-    const declared = Object.keys(env).filter(key => VAR_NAMES.has(key) || key === "FEATURES");
-    expect(declared).toEqual([]);
+  it("declares no var at all in wrangler.jsonc, so a deploy never ships a default or the owner's aliases", () => {
+    expect(withoutComments(WRANGLER)).not.toMatch(/"vars"\s*:/);
+    expect(Object.entries(env).filter(([, value]) => typeof value === "string").map(([key]) => key)).toEqual([]);
   });
 });

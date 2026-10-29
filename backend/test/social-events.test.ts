@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { digest, randomToken } from "../src/protocol";
 import { forgetFcmAccess, makeFriendRoomHint, validFriendRoomHint } from "../src/notifications";
 
@@ -14,13 +15,20 @@ let address = 0;
 let clientGate: string | undefined;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, enabled = true, capable = true, extra: Record<string, string> = {}): Promise<Response> {
   const headers = { "Content-Type": "application/json", "CF-Connecting-IP": `198.18.8.${++address}`, ...(capable ? { "X-AfterYou-Friend-Events": "2" } : {}), ...(account ? { "X-Player-Id": account.player_id, Authorization: `Bearer ${account.device_token}` } : {}), ...extra };
-  const settings: Env = { ...env }; Object.assign(settings, { FRIEND_ROOM_EVENTS_ENABLED: enabled ? "true" : "false", V2_ROOMS_ENABLED: "true" }, clientGate === undefined ? {} : { FRIEND_EVENTS_CLIENT_GATE: clientGate });
+  // The request carries the flags the objects were given (objectFlags) and its own FRIEND_ROOM_EVENTS_ENABLED.
+  const { CONFIG: _, ...base } = env as Env & { CONFIG?: string };
+  const settings: Env = withConfig({ ...base, ...objectFlags, FRIEND_ROOM_EVENTS_ENABLED: enabled ? "true" : "false", ...(clientGate === undefined ? {} : { FRIEND_EVENTS_CLIENT_GATE: clientGate }) });
   return worker.fetch(new Request(`https://social-events.test${path}`, { method, headers, body: body === undefined ? undefined : JSON.stringify(body) }), settings);
+}
+/** The flags the objects read from their own env (here the shared test env), written there as one CONFIG. */
+const objectFlags: Record<string, string> = {};
+function writeObjectFlags(objectEnv: Record<string, unknown>, changes: Record<string, string | undefined>): void {
+  for (const [name, value] of Object.entries(changes)) { if (value === undefined) delete objectFlags[name]; else objectFlags[name] = value; }
+  objectEnv.CONFIG = withConfig(objectFlags).CONFIG;
 }
 async function configureInbox(recipient: string): Promise<void> {
   await runInDurableObject(env.FRIEND_ROOM_EVENTS.getByName(recipient), instance => {
-    const objectEnv = Reflect.get(instance, "env") as { FRIEND_ROOM_EVENTS_ENABLED?: string };
-    objectEnv.FRIEND_ROOM_EVENTS_ENABLED = "true";
+    writeObjectFlags(Reflect.get(instance, "env") as Record<string, unknown>, { FRIEND_ROOM_EVENTS_ENABLED: "true" });
   });
 }
 async function create(): Promise<Account> { const response = await call("/v1/identity", "POST", undefined, {}); expect(response.status).toBe(201); return response.json<Account>(); }
@@ -43,15 +51,18 @@ async function publish(host: Account, room: Room, id: string) {
 async function eventRows(recipient: string) {
   return runInDurableObject(env.FRIEND_ROOM_EVENTS.getByName(recipient), (_, ctx) => ctx.storage.sql.exec<{ host_id: string; data: string }>("SELECT host_id,data FROM friend_room_event_queue").toArray());
 }
-afterEach(async () => { clientGate = undefined; forgetFcmAccess(); vi.restoreAllMocks(); await reset(); });
+afterEach(async () => {
+  clientGate = undefined; for (const name of Object.keys(objectFlags)) delete objectFlags[name];
+  delete (env as unknown as Record<string, unknown>).CONFIG; forgetFcmAccess(); vi.restoreAllMocks(); await reset();
+});
 /** Synthetic, shape-valid push settings for one Player; FCM sends are stubbed. */
-const syntheticPush = { NOTIFICATIONS_ENABLED: "true", FCM_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: "afteryou-synthetic", client_email: "test@afteryou-synthetic.iam.gserviceaccount.com", private_key: ["-----BEGIN PRIVATE KEY-----", "AAAA", "-----END PRIVATE KEY-----", ""].join(String.fromCharCode(10)) }) };
+const syntheticPush = { FCM_SERVICE_ACCOUNT_JSON: JSON.stringify({ project_id: "afteryou-synthetic", client_email: "test@afteryou-synthetic.iam.gserviceaccount.com", private_key: ["-----BEGIN PRIVATE KEY-----", "AAAA", "-----END PRIVATE KEY-----", ""].join(String.fromCharCode(10)) }) };
 async function configurePush(player: string, gate?: string, iosPush?: string): Promise<void> {
   await runInDurableObject(env.PLAYERS.getByName(player), instance => {
     const objectEnv = Reflect.get(instance, "env") as Record<string, unknown>;
     Object.assign(objectEnv, syntheticPush);
     if (gate === undefined) delete objectEnv.FRIEND_EVENTS_CLIENT_GATE; else objectEnv.FRIEND_EVENTS_CLIENT_GATE = gate;
-    if (iosPush === undefined) delete objectEnv.IOS_PUSH_ENABLED; else objectEnv.IOS_PUSH_ENABLED = iosPush;
+    writeObjectFlags(objectEnv, { NOTIFICATIONS_ENABLED: "true", IOS_PUSH_ENABLED: iosPush });
   });
 }
 

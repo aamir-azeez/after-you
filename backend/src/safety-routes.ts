@@ -1,6 +1,5 @@
 import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, object, text, unwrap } from "./protocol";
 import { bearerDigest } from "./http";
-import { flags } from "./flags";
 import { LEGACY_STAGE_COUNT } from "./v2/chapter-types";
 import { STAGE_TURN_PATTERN, roomStages } from "./v2/room-stage";
 import { TERMS_VERSION } from "./public-policy";
@@ -18,7 +17,7 @@ export async function requireInteraction(env: Env, owner: string, family: string
   if (await interactionBlocked(env, members.host_id, members.guest_id)) throw new ApiError(403, "player_blocked");
 }
 export async function requirePhotoTerms(env: Env, owner: string): Promise<void> {
-  if (flags.safetyEnforcement(env) && !(await env.SAFETY_PROFILES.getByName(owner).terms(owner)).accepted) throw new ApiError(403, "terms_acceptance_required");
+  if (!(await env.SAFETY_PROFILES.getByName(owner).terms(owner)).accepted) throw new ApiError(403, "terms_acceptance_required");
 }
 /** The stage count a reported photo's turn id is checked against: its relay room's own chapter. */
 async function reportStages(env: Env, input: unknown): Promise<number> {
@@ -31,7 +30,7 @@ async function reportStages(env: Env, input: unknown): Promise<number> {
 export async function routeSafety(request: Request, path: string, owner: string, env: Env): Promise<unknown> {
   const profile = env.SAFETY_PROFILES.getByName(owner), inbox = env.SAFETY_INBOX.getByName("moderation-v1");
   const deviceHash = await bearerDigest(request);
-  if (path === "/v1/safety/config" && request.method === "GET") return { schema_version: 1, enforced: flags.safetyEnforcement(env), terms_version: TERMS_VERSION, privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" };
+  if (path === "/v1/safety/config" && request.method === "GET") return { schema_version: 1, enforced: true, terms_version: TERMS_VERSION, privacy_path: "/privacy", deletion_path: "/account-deletion", rules_path: "/community-rules" };
   if (path === "/v1/safety/terms") {
     if (request.method === "GET") return profile.terms(owner);
     if (request.method === "POST") {

@@ -6,6 +6,7 @@ import worker from "../src/index";
 import { digest, canonicalJson, randomToken } from "../src/protocol";
 import { readErasure, writeErasure, type ErasureJob } from "../src/account-erasure";
 import { TERMS_VERSION } from "../src/public-policy";
+import { configJson } from "./config";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const realNow = Date.now.bind(Date);
 const originals = new Map<Record<string, unknown>, Record<string, unknown>>(); let address = 0;
@@ -19,7 +20,7 @@ async function configured(a: Account) {
   const stub = env.SAFETY_PROFILES.getByName(a.player_id);
   await runInDurableObject(stub, async instance => {
     const config = (instance as unknown as { env: Record<string, unknown> }).env;
-    const changes = { REVENUECAT_DELETION_ENABLED: "true", REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic" };
+    const changes = { REVENUECAT_SECRET_KEY: "synthetic-only", CONFIG: configJson({ revenuecat: { project_id: "projSynthetic" } }) };
     if (!originals.has(config)) originals.set(config, Object.fromEntries(Object.keys(changes).map(key => [key, config[key]])));
     Object.assign(config, changes);
   }); return stub;

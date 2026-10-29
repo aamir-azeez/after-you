@@ -17,6 +17,7 @@ import lowA from "../../game/tests/fixtures/cooperative/down-and-around-a.json";
 import lowB from "../../game/tests/fixtures/cooperative/down-and-around-b.json";
 import final from "../../game/tests/fixtures/cooperative/high-and-low-final-checkpoint.json";
 import rollingA from "../../game/tests/fixtures/cooperative/weight-of-a-friend-a.json";
+import { withConfig } from "./config";
 
 // No policy/registry substitution in this suite. Native recordings are first
 // accepted by an ordinary room, then retained Story metadata is attached as an
@@ -24,8 +25,8 @@ import rollingA from "../../game/tests/fixtures/cooperative/weight-of-a-friend-a
 const H = fixture.active_view.host_id, G = fixture.active_view.guest_id!, R = fixture.active_view.campaign_room_id;
 const I = fixture.active_view.invite_code!, T = "a".repeat(43), token = "c".repeat(64);
 const definition = fixture.definition as CampaignDefinition, key = fixture.active_view.campaign_key as CampaignKey;
-const flags = { V2_ROOMS_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true",
-  FIRST_STEPS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true" };
+const flags = { CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true" };
+const roomVars = { CONFIG: withConfig(flags).CONFIG };
 const changed = new Map<object, Record<string, unknown>>();
 const root = () => env.ROOMS_V2.getByName(R);
 const value = <T>(out: Outcome<T>): T => { if (!out.ok) throw new Error(out.code); return out.value; };
@@ -35,7 +36,8 @@ const create = () => ({ schema_version: 1, idempotency_key: "withdrawn-create-ke
 const join = () => ({ schema_version: 2 as const, idempotency_key: "withdrawn-join-key-0001", invite_code: I,
   campaign_key: key, supported_simulation_versions: [6] });
 async function call(path: string, method = "GET", body?: unknown, owner = H) {
-  const configured: Env = { ...env }; Object.assign(configured, flags);
+  const { CONFIG: _shared, ...base } = env as Env & { CONFIG?: string }; // the room objects share env and may carry roomVars
+  const configured: Env = withConfig({ ...base, ...flags });
   return worker.fetch(new Request("https://withdrawn.test" + path, { method, headers: {
     "Content-Type": "application/json", "X-Player-Id": owner, Authorization: "Bearer " + T,
     "X-AfterYou-Campaign-Schema": "2", "CF-Connecting-IP": "198.19.9." + ++address
@@ -94,7 +96,7 @@ beforeEach(async () => {
   for (const owner of [H, G]) value(await env.PLAYERS.getByName(owner).create(owner, hash, "b".repeat(64)));
   await runInDurableObject(root(), instance => {
     const local = Reflect.get(instance, "env") as Record<string, unknown>;
-    changed.set(local, Object.fromEntries(Object.keys(flags).map(k => [k, local[k]]))); Object.assign(local, flags);
+    changed.set(local, Object.fromEntries(Object.keys(roomVars).map(k => [k, local[k]]))); Object.assign(local, roomVars);
   });
 });
 afterEach(async () => { vi.restoreAllMocks(); for (const [local, prior] of changed) Object.assign(local, prior); changed.clear(); await reset(); });
@@ -156,7 +158,7 @@ it("holds new paid child turns and forks without purchase I/O, preserving exact 
   });
   await runInDurableObject(child, (instance, ctx) => {
     const local = Reflect.get(instance, "env") as Record<string, unknown>;
-    changed.set(local, Object.fromEntries(Object.keys(flags).map(k => [k, local[k]]))); Object.assign(local, flags);
+    changed.set(local, Object.fromEntries(Object.keys(roomVars).map(k => [k, local[k]]))); Object.assign(local, roomVars);
     const member: StoredCampaignMemberV2 = { schema_version: 2, campaign_room_id: R, campaign_key: key, room_id: id,
       chapter_index: 1, chapter: pin, host_id: H, guest_id: G, transition_id: token, status: "active", seal: null,
       incoming: { origin, accepted_revision: 5 } };

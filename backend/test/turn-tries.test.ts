@@ -15,15 +15,15 @@ import secondB from "../../game/tests/fixtures/v2/garden-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
 import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
 import weightA from "../../game/tests/fixtures/cooperative/weight-of-a-friend-a.json";
+import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Tries = { schema_version: 1; tries: Record<string, number> };
 const key = () => crypto.randomUUID(), CODE = "SYNTHETIC-TRIES-TESTER", LOOKUP = "SELECT name FROM sqlite_master WHERE type='table' AND name=?";
-const ON = { TURN_TRIES_ENABLED: "true" }, ASK = { "X-AfterYou-Turn-Tries": "1" };
+const ASK = { "X-AfterYou-Turn-Tries": "1" };
 let address = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = {}, headers: Record<string, string> = {}): Promise<Response> {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", ...vars });
+  const configured: Env = withConfig({ ...env, ...vars });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "203.0.113." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
@@ -45,18 +45,17 @@ async function joined(): Promise<{ host: Account; guest: Account; room: RoomSnap
   const join = await call("/v2/rooms/join", "POST", guest, { invite_code: (await made.json<RoomSnapshotV2>()).invite_code }); expect(join.status).toBe(200);
   return { host, guest, room: await join.json<RoomSnapshotV2>() };
 }
-const tries = async (roomId: string, account: Account, vars = ON) => call(`/v2/rooms/${roomId}/tries`, "GET", account, undefined, vars);
+const tries = async (roomId: string, account: Account) => call(`/v2/rooms/${roomId}/tries`, "GET", account);
 const table = (roomId: string) => runInDurableObject(env.ROOMS_V2.getByName(roomId), async (_instance, state) => state.storage.sql.exec(LOOKUP, TURN_TRIES.name).toArray().length > 0);
 
 afterEach(async () => { await reset(); });
 
 describe("turn try counts", () => {
-  it("are advertised only to clients that ask, and only while the flag is on", async () => {
+  it("are advertised only to clients that ask", async () => {
     const host = await create();
-    const plain = await (await call("/v2/capabilities", "GET", host, undefined, ON)).json<Record<string, unknown>>();
+    const plain = await (await call("/v2/capabilities", "GET", host)).json<Record<string, unknown>>();
     expect(plain).not.toHaveProperty("turn_tries_version");
-    expect(await (await call("/v2/capabilities", "GET", host, undefined, {}, ASK)).json()).not.toHaveProperty("turn_tries_version");
-    expect(await (await call("/v2/capabilities", "GET", host, undefined, ON, ASK)).json()).toMatchObject({ turn_tries_version: 1 });
+    expect(await (await call("/v2/capabilities", "GET", host, undefined, {}, ASK)).json()).toMatchObject({ turn_tries_version: 1 });
   });
 
   it("travel beside each turn, keyed by recording hash, without touching the recording or the room", async () => {
@@ -77,12 +76,10 @@ describe("turn try counts", () => {
     expect(pair.a).toEqual(firstA);
   });
 
-  it("are accepted whatever the flag, and a body without one is unchanged", async () => {
+  it("are accepted, and a body without one is unchanged", async () => {
     const { host, guest, room } = await joined();
-    const sent = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, body(room, firstA, { tries: 2 }), { TURN_TRIES_ENABLED: "false" });
+    const sent = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, body(room, firstA, { tries: 2 }));
     expect(sent.status).toBe(200);
-    const off = await tries(room.room_id, host, { TURN_TRIES_ENABLED: "false" });
-    expect(off.status).toBe(503); expect(await errorCode(off)).toBe("turn_tries_disabled");
     await submit((await sent.json<MutationV2>()).room, guest, firstB, undefined, middle);
     expect(await (await tries(room.room_id, guest)).json<Tries>()).toEqual({ schema_version: 1, tries: { [firstA.recording_hash]: 2 } });
   });
@@ -128,8 +125,8 @@ describe("turn try counts", () => {
     current = await submit(current, guest, secondA, 4);
     current = await submit(current, host, secondB, 5, final);
     for (const member of [host, guest]) {
-      const offer = await (await call(`/v2/rooms/${room.room_id}/replay-transfer`, "GET", member, undefined, { REPLAY_TRANSFER_ENABLED: "true" })).json<{ manifest: { epoch: number; archive_hash: string } }>();
-      expect((await call(`/v2/rooms/${room.room_id}/replay-transfer/ack`, "POST", member, { schema_version: 1, epoch: offer.manifest.epoch, archive_hash: offer.manifest.archive_hash }, { REPLAY_TRANSFER_ENABLED: "true" })).status).toBe(200);
+      const offer = await (await call(`/v2/rooms/${room.room_id}/replay-transfer`, "GET", member)).json<{ manifest: { epoch: number; archive_hash: string } }>();
+      expect((await call(`/v2/rooms/${room.room_id}/replay-transfer/ack`, "POST", member, { schema_version: 1, epoch: offer.manifest.epoch, archive_hash: offer.manifest.archive_hash })).status).toBe(200);
     }
     expect((await call(`/v2/rooms/${room.room_id}/collection`, "GET", host)).status).toBe(410);
     const read = await tries(room.room_id, guest); expect(read.status).toBe(200);
@@ -144,10 +141,10 @@ describe("turn try counts", () => {
     current = await submit(current, guest, firstB, undefined, middle);
     current = await submit(current, guest, secondA, 8);
     current = await submit(current, host, secondB, undefined, final);
-    const offload = { HISTORY_OFFLOAD_ENABLED: "true" }, keeps = { "X-AfterYou-History": "1" };
-    const listed = async (member: Account) => (await (await call(`/v2/rooms/${room.room_id}/history`, "GET", member, undefined, offload, keeps)).json<{ attempts: { link: string; state: string }[] }>()).attempts;
+    const keeps = { "X-AfterYou-History": "1" };
+    const listed = async (member: Account) => (await (await call(`/v2/rooms/${room.room_id}/history`, "GET", member, undefined, {}, keeps)).json<{ attempts: { link: string; state: string }[] }>()).attempts;
     await listed(host); const link = (await listed(guest))[0].link;
-    for (const member of [host, guest]) expect((await call(`/v2/rooms/${room.room_id}/history/0/ack`, "POST", member, { schema_version: 1, link }, offload, keeps)).status).toBe(200);
+    for (const member of [host, guest]) expect((await call(`/v2/rooms/${room.room_id}/history/0/ack`, "POST", member, { schema_version: 1, link }, {}, keeps)).status).toBe(200);
     expect((await listed(host))[0].state).toBe("offloaded");
     expect((await call(`/v2/rooms/${room.room_id}/collection`, "GET", host)).status).toBe(410);
     expect(await (await tries(room.room_id, guest)).json<Tries>()).toEqual({ schema_version: 1, tries: { [firstA.recording_hash]: 2, [secondA.recording_hash]: 8 } });

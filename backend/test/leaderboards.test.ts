@@ -16,6 +16,7 @@ import { forgetReplays } from "../src/leaderboards/replays";
 import { bytesDigest, decodeBlob, ENCODING_DEFLATE } from "../src/blob-codec";
 import { emptyView, type BoardView } from "../src/leaderboards/view";
 import { countingEnv, meterAllRows, meterRows } from "./meter";
+import { withConfig } from "./config";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -35,15 +36,16 @@ vi.mock("../src/leaderboards/developer-bests", async original => {
 // Synthetic identities only: every account here is made by POST /v1/identity in the test runtime.
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const OPERATOR = "o".repeat(43);
-const ON = { V2_ROOMS_ENABLED: "true", FEATURES: "LEADERBOARDS", DISPLAY_NAMES_ENABLED: "true", SAFETY_OPERATOR_TOKEN: OPERATOR };
-const OFF = { ...ON, FEATURES: "" };
+type Vars = Record<string, unknown>;
+const ON: Vars = { features: ["LEADERBOARDS"], DISPLAY_NAMES_ENABLED: "true", SAFETY_OPERATOR_TOKEN: OPERATOR };
+const OFF: Vars = { ...ON, features: [] };
 const RELAY_BOARD = "relay-isles@2";
 const RELAY_TICKS = [firstA, firstB, secondA, secondB].reduce((sum, turn) => sum + turn.duration_ticks, 0);
 const DAY = 86_400_000;
 let address = 0;
 
-function configured(vars: Record<string, string> = ON, base: Env = env): Env { return Object.assign({ ...base }, vars) as Env; }
-async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = {}, target: Env = configured(vars)): Promise<Response> {
+function configured(vars: Vars = ON, base: Env = env): Env { return withConfig(Object.assign({ ...base }, vars)) as Env; }
+async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Vars = ON, headers: Record<string, string> = {}, target: Env = configured(vars)): Promise<Response> {
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
@@ -444,7 +446,8 @@ describe("the replay job and the person's review", () => {
   });
   it("drops a run whose players are too new or have too few partners", async () => {
     const host = await create(), guest = await create();
-    await season(host); await season(guest, 1);
+    // The room they finish together is pushed to both room indexes, so it is the guest's one partner.
+    await season(host); await season(guest, 0);
     const played = await almostDone(host, guest);
     await played.last();
     expect((await runJob()).entries).toEqual([]);

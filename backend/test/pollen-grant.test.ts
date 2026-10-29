@@ -10,6 +10,7 @@ import { grantOn } from "../src/pollen/features";
 import { ledgerLines, noteFullJourney, walletView } from "../src/pollen/wallet";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { countingEnv, meterRows } from "./meter";
+import { configJson } from "./config";
 
 // The Full Journey monthly grant: the ladder, anniversaries, trial, grace and hold, plan switches,
 // gaps, refunds, moved subscriptions, provider outages, overlapping reads and what each read costs.
@@ -274,9 +275,9 @@ describe("the grant's own RevenueCat status filter", () => {
     expect(grantSub(item({ id: "bad id with spaces" }), store)).toBeNull();
   });
   it("reads nothing while unconfigured and answers an incomplete or failed list as unavailable", async () => {
-    const config = { REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic-test-key", REVENUECAT_PROJECT_ID: "proj1234", REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: "prodMonthly" };
+    const config = { REVENUECAT_SECRET_KEY: "synthetic-test-key", CONFIG: configJson({ revenuecat: { project_id: "proj1234", play_subscription_product_ids: ["prodMonthly"] } }) };
     const request = vi.fn(async () => ({ ok: true as const, status: 200, value: { object: "list", items: [item()], next_page: null } }));
-    expect(await readGrant("P".repeat(22), { ...config, REVENUECAT_VERIFICATION_MODE: "demo" }, false, request)).toEqual({ ok: false, reason: "unconfigured" });
+    expect(await readGrant("P".repeat(22), { ...config, CONFIG: configJson({ revenuecat: { play_subscription_product_ids: ["prodMonthly"] } }) }, false, request)).toEqual({ ok: false, reason: "unconfigured" });
     expect(request).not.toHaveBeenCalled();
     expect(await readGrant("P".repeat(22), config, false, request)).toMatchObject({ ok: true, subs: [{ id: "sub_1", status: "paid" }], lifetime: null });
     expect(String((request.mock.calls[0] as unknown[])[0])).toContain("/subscriptions?environment=production&limit=100");
@@ -373,14 +374,14 @@ describe("settling the grant in the Player", () => {
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
 const VARS: Record<string, string> = {
-  FEATURES: "POLLEN_EARN,POLLEN_GRANT", POLLEN_SECRET: SECRET, REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic-revenuecat-key-for-tests",
-  REVENUECAT_PROJECT_ID: "proj1234", REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: "prodMonthly,prodYearly"
+  POLLEN_SECRET: SECRET, REVENUECAT_SECRET_KEY: "synthetic-revenuecat-key-for-tests",
+  CONFIG: configJson({ features: ["POLLEN_EARN", "POLLEN_GRANT"], revenuecat: { project_id: "proj1234", play_subscription_product_ids: ["prodMonthly", "prodYearly"] } })
 };
 const shared = env as unknown as Record<string, unknown>;
 let address = 0, offset = 0, items: unknown[] = [], providerCalls = 0;
 const realNow = Date.now.bind(Date);
 async function call(path: string, method = "GET", account?: Account, base: Env = env): Promise<Response> {
-  const configured = Object.assign({ ...base }, { V2_ROOMS_ENABLED: "true", ...VARS }) as Env;
+  const configured = Object.assign({ ...base }, VARS) as Env;
   return worker.fetch(new Request("https://grant.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.93." + (++address % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1" }, body: method === "POST" ? "{}" : undefined }), configured);
 }
@@ -405,9 +406,10 @@ describe("the grant through the wallet read", () => {
   type Wallet = { balance: number; grant?: { months: number; next: number; top: number; latest?: { key: string; amount: number } } };
 
   it("is on only with POLLEN_GRANT and earning, and tells a phone that asks", async () => {
-    expect(grantOn({ FEATURES: "POLLEN_EARN,POLLEN_GRANT", POLLEN_SECRET: SECRET })).toBe(true);
-    expect(grantOn({ FEATURES: "POLLEN_GRANT", POLLEN_SECRET: SECRET })).toBe(false);
-    expect(grantOn({ FEATURES: "POLLEN_EARN", POLLEN_SECRET: SECRET })).toBe(false);
+    const features = (...names: string[]) => configJson({ features: names });
+    expect(grantOn({ CONFIG: features("POLLEN_EARN", "POLLEN_GRANT"), POLLEN_SECRET: SECRET })).toBe(true);
+    expect(grantOn({ CONFIG: features("POLLEN_GRANT"), POLLEN_SECRET: SECRET })).toBe(false);
+    expect(grantOn({ CONFIG: features("POLLEN_EARN"), POLLEN_SECRET: SECRET })).toBe(false);
     const player = await create();
     expect(await (await call("/v2/capabilities", "GET", player)).json()).toMatchObject({ pollen_version: 1, pollen_grant_version: 1 });
   });
@@ -415,7 +417,7 @@ describe("the grant through the wallet read", () => {
     const player = await create(), start = Date.now() - HOUR;
     items = [subscription(start)];
     await subscribe(player, anniversary(start, 1));
-    const meter = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...VARS } as unknown as Env);
+    const meter = countingEnv({ ...env, ...VARS } as unknown as Env);
     const stubs = { player: env.PLAYERS.getByName(player.player_id), claims: env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) };
     const first = await meterRows(stubs, async () => (await call("/v1/pollen", "GET", player, meter.env)).json<Wallet>());
     expect(meter.calls).toEqual(["PLAYERS.authorizeWallet"]);
@@ -440,7 +442,7 @@ describe("the grant through the wallet read", () => {
   });
   it("costs a free player's wallet read nothing more: no provider call and no write", async () => {
     const player = await create();
-    const meter = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...VARS } as unknown as Env);
+    const meter = countingEnv({ ...env, ...VARS } as unknown as Env);
     const read = await meterRows({ player: env.PLAYERS.getByName(player.player_id) }, async () => (await call("/v1/pollen", "GET", player, meter.env)).json<Wallet>());
     expect(meter.calls).toEqual(["PLAYERS.authorizeWallet"]);
     expect(providerCalls).toBe(0);

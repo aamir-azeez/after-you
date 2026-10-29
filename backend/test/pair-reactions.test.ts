@@ -36,8 +36,8 @@ async function exported(room: Stub): Promise<RoomV2Archive> { return JSON.parse(
 async function encoded(archive: RoomV2Archive): Promise<string> { archive.checksum.value = await digest(canonicalJson(archive.payload)); return canonicalJson(archive); }
 type Account = { player_id: string; device_token: string; recovery_code: string };
 let ip = 0;
-async function call(path: string, method = "GET", owner?: Account, data?: unknown, enabled = true, presets = true): Promise<Response> {
-  const configured = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: String(enabled), FIRST_STEPS_ENABLED: "true", PRESET_REACTIONS_ENABLED: String(presets) });
+async function call(path: string, method = "GET", owner?: Account, data?: unknown): Promise<Response> {
+  const configured = { ...env };
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + ++ip,
     ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}) }, body: data === undefined ? undefined : JSON.stringify(data) }), configured);
 }
@@ -165,7 +165,7 @@ describe("reaction portable archives", () => {
 });
 
 describe("normal authenticated reaction routes", () => {
-  it("requires two-member access, advertises capability, honors the mutation gate and deletes through identity erasure", async () => {
+  it("requires two-member access, advertises capability and deletes through identity erasure", async () => {
     const host = await account(), guest = await account(), outsider = await account();
     const created = await call("/v2/rooms", "POST", host, { ...adapter.key, idempotency_key: key() }); const room = await created.json<RoomSnapshotV2>();
     let state = await (await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code })).json<RoomSnapshotV2>();
@@ -175,19 +175,10 @@ describe("normal authenticated reaction routes", () => {
     const path = `/v2/rooms/${room.room_id}/reactions/p0-0`, input = body();
     expect((await call(path)).status).toBe(401); expect((await call(path, "GET", outsider)).status).toBe(404);
     expect((await (await call("/v2/capabilities", "GET", host)).json<{ preset_reactions_enabled: boolean }>()).preset_reactions_enabled).toBe(true);
-    expect((await call(path, "POST", host, input, false)).status).toBe(503);
-    const unchanged = await exported(env.ROOMS_V2.getByName(room.room_id));
-    const disabled = await call(path, "POST", host, { invalid: "x".repeat(4097) }, true, false);
-    expect(disabled.status).toBe(503); expect(await disabled.json()).toMatchObject({ error: { code: "preset_reactions_disabled" } });
-    expect((await exported(env.ROOMS_V2.getByName(room.room_id))).payload).toMatchObject({ database_schema_version: 3 });
-    expect((await exported(env.ROOMS_V2.getByName(room.room_id))).payload.tables).toEqual(unchanged.payload.tables);
-    for (const [gameplay, presets] of [[false, true], [true, false], [false, false]]) {
-      expect((await (await call("/v2/capabilities", "GET", host, undefined, gameplay, presets)).json<{ preset_reactions_enabled: boolean }>()).preset_reactions_enabled).toBe(false);
-    }
     const result = await call(path, "POST", host, input); expect(result.status).toBe(200); const accepted = await result.json<ReactionMutation>();
-    expect((await (await call(path, "GET", guest, undefined, true, false)).json<PairReactions>()).reactions[0].reaction).toBe("love");
+    expect((await (await call(path, "GET", guest)).json<PairReactions>()).reactions[0].reaction).toBe("love");
     const operation = `/v2/rooms/${room.room_id}/reaction-operations/${input.idempotency_key}`;
-    expect((await (await call(operation, "GET", host, undefined, true, false)).json<ReactionMutation>()).receipt).toEqual(accepted.receipt);
+    expect((await (await call(operation, "GET", host)).json<ReactionMutation>()).receipt).toEqual(accepted.receipt);
     expect((await call(operation, "GET", guest)).status).toBe(404);
     expect(await (await call(`/v2/rooms/${room.room_id}`, "GET", guest)).json()).toEqual({ ...state, player_slot: "p1" });
     expect((await call(path, "POST", host, { ...input, padding: "x".repeat(4096) })).status).toBe(413);

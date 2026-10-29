@@ -3,14 +3,14 @@ import { expect } from "vitest";
 import worker from "../src/index";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { RoomSnapshotV2 } from "../src/v2/room";
+import { withConfig } from "./config";
 
 export type Account = { player_id: string; device_token: string; recovery_code: string };
 export const HISTORY = { "X-AfterYou-History": "1" };
 let address = 0;
 /** One Worker request; `body` is JSON unless it is already bytes. */
-export async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = {}, headers: Record<string, string> = {}): Promise<Response> {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...vars });
+export async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, unknown> = {}, headers: Record<string, string> = {}): Promise<Response> {
+  const configured: Env = withConfig({ ...env, ...vars });
   const raw = body instanceof Uint8Array;
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": raw ? "application/octet-stream" : "application/json", "CF-Connecting-IP": "198.51.100." + (++address % 250),
@@ -26,4 +26,3 @@ export async function relayPair(): Promise<{ host: Account; guest: Account; room
   const joined = await call("/v2/rooms/join", "POST", guest, { invite_code: invite }); expect(joined.status).toBe(200);
   return { host, guest, room: await joined.json<RoomSnapshotV2>() };
 }
-export const ON = { HISTORY_OFFLOAD_ENABLED: "true" };

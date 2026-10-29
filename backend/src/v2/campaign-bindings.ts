@@ -25,8 +25,7 @@ function caller(owner: string, value: unknown): CampaignRoomContext {
     typeof value.room_id === "string" && ID_PATTERN.test(value.room_id) && typeof value.device_hash === "string" && HASH_PATTERN.test(value.device_hash), "campaign_client_required");
   return { schema_version: 2, room_id: value.room_id, device_hash: value.device_hash };
 }
-export function campaignGlobalMutations(env: Env): void { need(flags.v2Rooms(env), "v2_mutations_disabled", 503); }
-function controlMutations(env: Env): void { requireCampaignProduction(); campaignGlobalMutations(env); need(flags.campaignMutations(env), "campaign_mutations_disabled", 503); }
+function controlMutations(env: Env): void { requireCampaignProduction(); need(flags.campaignMutations(env), "campaign_mutations_disabled", 503); }
 export async function campaignDevice(env: Env, owner: string, hash: string): Promise<void> {
   need(await env.PLAYERS.getByName(owner).authorize(hash), "identity_unavailable", 401);
 }
@@ -89,7 +88,7 @@ export async function campaignBindingRedo(storage: DurableObjectStorage, env: En
 export async function campaignBindingInitialize(storage: DurableObjectStorage, env: Env, owner: string, value: unknown, context: unknown, retainedDefinition?: unknown) {
   try {
     const input = campaignAdmissionRequest(value, "create") as CampaignCreate, c = caller(owner, context);
-    const suppliedDefinition = retainedDefinition === undefined ? undefined : structuredClone(retainedDefinition); campaignGlobalMutations(env);
+    const suppliedDefinition = retainedDefinition === undefined ? undefined : structuredClone(retainedDefinition);
     const intent = unwrap(await env.PLAYERS.getByName(owner).campaignCreation(input.idempotency_key, input.campaign_key, c.device_hash));
     need(intent && intent.link.room_id === c.room_id, "campaign_allocation_unavailable");
     // An initialized root carries its own immutable definition. An unfinished
@@ -102,7 +101,7 @@ export async function campaignBindingInitialize(storage: DurableObjectStorage, e
     if (existing) need(existing.anchor && existing.member.room_id === c.room_id && existing.member.host_id === owner, "campaign_binding_mismatch");
     await policy(env, owner, c, owner, existing?.member.guest_id ?? null);
     const current = unwrap(await env.PLAYERS.getByName(owner).campaignCreation(input.idempotency_key, input.campaign_key, c.device_hash));
-    need(current && same(current, intent), "campaign_allocation_unavailable"); campaignGlobalMutations(env);
+    need(current && same(current, intent), "campaign_allocation_unavailable");
     if (existing) {
       need(existing.anchor && same(existing.member.campaign_key, input.campaign_key) && same(existing.anchor.definition, exact) &&
         existing.gameplay?.invite_code === intent.link.invite_code, "campaign_root_binding_mismatch");
@@ -140,7 +139,7 @@ export async function campaignBindingInvite(storage: DurableObjectStorage, env: 
 
 export async function campaignBindingJoin(storage: DurableObjectStorage, env: Env, owner: string, value: unknown, context: unknown) {
   try {
-    const input = campaignAdmissionRequest(value, "join") as CampaignJoin, c = caller(owner, context); campaignGlobalMutations(env);
+    const input = campaignAdmissionRequest(value, "join") as CampaignJoin, c = caller(owner, context);
     const a = await root(storage, c.room_id), joined = owner === a.member.host_id || owner === a.member.guest_id;
     campaignJoin(input, definitionResolver(a.anchor.definition));
     need(same(input.campaign_key, a.member.campaign_key) && input.invite_code === a.anchor.control.invite_code, "campaign_binding_mismatch");
@@ -151,14 +150,14 @@ export async function campaignBindingJoin(storage: DurableObjectStorage, env: En
       const old = a.captured.tables[3]?.rows.find(row => row.request_key === owner + ":" + input.idempotency_key);
       if (old) need(old.request_hash === requestHash && same(joinFact(JSON.parse(String(old.data))).request, input), "idempotency_campaign_mismatch");
       await policy(env, owner, c, a.member.host_id, a.member.guest_id);
-      await canonicalLink(env, owner, c, a.anchor.control); campaignGlobalMutations(env);
+      await canonicalLink(env, owner, c, a.anchor.control);
       need(campaignAccessUnchanged(storage, a), "campaign_state_changed");
       const view = structuredClone(owner === a.member.host_id ? a.anchor.control : { ...a.anchor.control, player_slot: "p1" as const, invite_code: null, invite_expires_at: null });
       return ok({ campaign: view });
     }
     requireCampaignProduction();
     if (!joined) need(unwrap(await env.PLAYERS.getByName(owner).campaignJoinAttempt(input, c.device_hash)), "campaign_allocation_unavailable");
-    await policy(env, owner, c, a.member.host_id, joined ? a.member.guest_id : owner); campaignGlobalMutations(env);
+    await policy(env, owner, c, a.member.host_id, joined ? a.member.guest_id : owner);
     const result = await joinCampaignRoot(storage, owner, input);
     await campaignDevice(env, owner, c.device_hash); // A rotation never erases accepted membership.
     if (!result.ok) return result;
@@ -171,7 +170,7 @@ export async function campaignBindingJoin(storage: DurableObjectStorage, env: En
 
 export async function campaignBindingCancelJoin(storage: DurableObjectStorage, env: Env, owner: string, value: unknown, context: unknown) {
   try {
-    const input = campaignAdmissionRequest(value, "join") as CampaignJoin, c = caller(owner, context); campaignGlobalMutations(env);
+    const input = campaignAdmissionRequest(value, "join") as CampaignJoin, c = caller(owner, context);
     await campaignDevice(env, owner, c.device_hash);
     const result = await cancelCampaignJoinRoot(storage, owner, input);
     await campaignDevice(env, owner, c.device_hash);
@@ -201,7 +200,7 @@ export async function campaignBindingTarget(storage: DurableObjectStorage, value
 
 export async function campaignBindingAdvance(storage: DurableObjectStorage, env: Env, owner: string, value: unknown, context: unknown, resume: boolean): Promise<Outcome<CampaignEnvelope | CampaignContinueResult>> {
   try {
-    boundedCampaign(value, 4096); const input = structuredClone(value), c = caller(owner, context); campaignGlobalMutations(env);
+    boundedCampaign(value, 4096); const input = structuredClone(value), c = caller(owner, context);
     const a = await owned(storage, env, owner, c), definition = structuredClone(a.anchor.definition);
     if (!campaignProductionEnabled()) {
       if (!resume) {

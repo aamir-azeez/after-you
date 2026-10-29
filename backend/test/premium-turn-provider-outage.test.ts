@@ -13,13 +13,14 @@ import rollingMiddle from "../../game/tests/fixtures/cooperative/weight-of-a-fri
 import homeA from "../../game/tests/fixtures/cooperative/bring-it-home-a.json";
 import homeB from "../../game/tests/fixtures/cooperative/bring-it-home-b.json";
 import rollingFinal from "../../game/tests/fixtures/cooperative/rolling-home-final-checkpoint.json";
+import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const key = () => crypto.randomUUID(), CODE = "SYNTHETIC-OUTAGE-TESTER";
-const playConfig = { REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic", REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlPlay", REVENUECAT_PLAY_PRODUCT_ID: "prodPlay", REVENUECAT_PLAY_ENVIRONMENT: "production" };
+const playConfig = { REVENUECAT_SECRET_KEY: "synthetic-only", revenuecat: { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" } };
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = playConfig): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", ...overrides });
+  const configured: Env = withConfig({ ...env, ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.9." + (++requestNo % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }

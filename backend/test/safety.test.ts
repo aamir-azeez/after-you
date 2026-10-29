@@ -9,12 +9,13 @@ import { REPORT_TTL, type SafetyReport, type ReportBody } from "../src/safety";
 import { RELAY_KEY } from "../src/v2/protocol";
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
+import { withConfig } from "./config";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 let address = 0;
 const realNow = Date.now.bind(Date);
 const value = <T>(result: Outcome<T>): T => { if (!result.ok) throw new Error(result.code); return result.value; };
 async function call(path: string, method = "GET", account?: Account, body?: unknown) {
-  return worker.fetch(new Request("https://game.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.19.0." + ++address, ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), { ...env, V2_ROOMS_ENABLED: "true", RELAY_PHOTOS_ENABLED: "true", SAFETY_ENFORCEMENT_ENABLED: "true" } as unknown as Env);
+  return worker.fetch(new Request("https://game.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.19.0." + ++address, ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), withConfig({ ...env, RELAY_PHOTOS_ENABLED: "true" }) as unknown as Env);
 }
 const create = async () => { const response = await call("/v1/identity", "POST", undefined, {}); expect(response.status).toBe(201); return response.json<Account>(); };
 async function operator(path: string, body?: unknown, token = "o".repeat(43)) {
@@ -109,6 +110,8 @@ describe("public policies and authenticated safety", () => {
     const bytes = new Uint8Array(encode({ width: 2, height: 2, data: new Uint8Array(16).fill(150) }, 40).data); let raw = ""; for (const byte of bytes) raw += String.fromCharCode(byte);
     const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(x => x.toString(16).padStart(2, "0")).join("");
     const upload = { idempotency_key: crypto.randomUUID(), recording_hash: firstA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64: btoa(raw), sha256 };
+    // Terms are always enforced now, in the room as well as at the router.
+    expect((await call("/v1/safety/terms", "POST", p.host, { schema_version: 1, terms_version: TERMS_VERSION })).status).toBe(200);
     value(await stub.updatePhoto(p.host.player_id, "t0-0-a", upload));
     const body = { ...p.target, idempotency_key: crypto.randomUUID(), reason: "privacy", photo: { turn_id: "t0-0-a", photo_revision: 1, sha256 } };
     const response = await call("/v1/safety/report", "POST", p.guest, body); expect(response.status).toBe(200); const receipt = await response.json<{ report_id: string }>();
@@ -133,6 +136,8 @@ describe("public policies and authenticated safety", () => {
     const bytes = new Uint8Array(encode({ width: 2, height: 2, data: new Uint8Array(16).fill(130) }, 40).data); let raw = ""; for (const byte of bytes) raw += String.fromCharCode(byte);
     const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(x => x.toString(16).padStart(2, "0")).join("");
     const upload = { idempotency_key: crypto.randomUUID(), recording_hash: firstA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64: btoa(raw), sha256 };
+    // Terms are always enforced now, in the room as well as at the router.
+    expect((await call("/v1/safety/terms", "POST", p.host, { schema_version: 1, terms_version: TERMS_VERSION })).status).toBe(200);
     value(await stub.updatePhoto(p.host.player_id, "t0-0-a", upload));
     const reportKey = crypto.randomUUID(), reportId = await digest(p.guest.player_id + ":" + reportKey);
     value(await stub.updatePhoto(p.host.player_id, "t0-0-a", { idempotency_key: "moderation_" + reportId, recording_hash: firstA.recording_hash, expected_photo_revision: 1, expected_photo_hash: sha256 }, true));

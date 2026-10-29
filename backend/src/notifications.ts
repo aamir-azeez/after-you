@@ -2,7 +2,7 @@ import { isObject, readBounded } from "./protocol";
 import { flags, type ServerVars } from "./flags";
 import { errorCode, logWarning, upstreamCode } from "./log";
 
-export type NotificationEnvironment = Pick<ServerVars, "FEATURES" | "NOTIFICATIONS_ENABLED" | "FCM_SERVICE_ACCOUNT_JSON" | "IOS_PUSH_ENABLED">;
+export type NotificationEnvironment = ServerVars;
 export type TurnHint = { schema_version: "1"; event_id: string; kind: "turn_ready"; room_id: string; room_family: "legacy" | "relay"; revision: string };
 export type FriendRoomHint = { schema_version: "1"; event_id: string; kind: "friend_room_available"; host_id: string; room_id: string; room_family: "legacy" | "relay"; publication_epoch: string };
 /** A partner's redo request. Same six keys as TurnHint; revision is the requested turn's room revision. */

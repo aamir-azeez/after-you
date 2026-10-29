@@ -16,7 +16,7 @@ import legacyB from "../../game/tests/fixtures/first-light-b.json";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 let address = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown) {
-  const configured = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true" });
+  const configured = { ...env };
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: {
     "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + ++address,
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {})
@@ -168,7 +168,7 @@ describe("partner redo requests", () => {
       let reading!: () => void;
       const bodyRead = new Promise<void>(resolve => { reading = resolve; });
       const stream = new ReadableStream<Uint8Array>({ start(value) { controller = value; }, pull() { reading(); } }, { highWaterMark: 0 });
-      const configured = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true" });
+      const configured = { ...env };
       const result = worker.fetch(new Request("https://after-you.test" + path, { method: "POST", body: stream, headers: {
         "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + ++address,
         "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token

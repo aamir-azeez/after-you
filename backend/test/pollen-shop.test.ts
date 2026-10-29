@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { creditClear, noteFullJourney, type WalletView } from "../src/pollen/wallet";
 import { MAX_OPS, type EquipReceipt, type SpendReceipt, type WardrobeView } from "../src/pollen/wardrobe";
@@ -14,22 +15,22 @@ import { countingEnv, meterRows } from "./meter";
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type ShopWallet = WalletView & { wardrobe: WardrobeView; name_price: number };
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
-const SHOP = { FEATURES: "POLLEN_EARN,POLLEN_WARDROBE,POLLEN_SHOP", POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
-const EARN_ONLY = { FEATURES: "POLLEN_EARN", POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
+const SHOP = { features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"], POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
+const EARN_ONLY = { features: ["POLLEN_EARN"], POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
 const ASK = { [POLLEN_HEADER]: "1" };
 const DAY = 86_400_000;
 const key = () => crypto.randomUUID();
 let address = 0;
 
-async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string | undefined> = SHOP, base: Env = env): Promise<Response> {
-  const configured = Object.assign({ ...base }, { V2_ROOMS_ENABLED: "true", ...vars }) as Env;
+async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, unknown> = SHOP, base: Env = env): Promise<Response> {
+  const configured = withConfig({ ...base, ...vars }) as unknown as Env;
   return worker.fetch(new Request("https://shop.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.92." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...ASK },
     body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
-async function counted(path: string, method: string, account: Account, body: unknown, vars: Record<string, string> = SHOP) {
-  const meter = countingEnv({ ...env, V2_ROOMS_ENABLED: "true", ...vars } as unknown as Env);
+async function counted(path: string, method: string, account: Account, body: unknown, vars: Record<string, unknown> = SHOP) {
+  const meter = countingEnv({ ...env });
   const response = await call(path, method, account, body, vars, meter.env);
   return { response, calls: meter.calls };
 }
@@ -53,10 +54,10 @@ async function clear(account: Account, levelId: string): Promise<void> {
     expect(creditClear(state.storage, { level_id: levelId, hard: false, boost_percent: 0 }, Date.now(), () => true).ok).toBe(true);
   });
 }
-const wallet = async (account: Account, vars: Record<string, string> = SHOP) => (await call("/v1/pollen", "GET", account, undefined, vars)).json<ShopWallet>();
+const wallet = async (account: Account, vars: Record<string, unknown> = SHOP) => (await call("/v1/pollen", "GET", account, undefined, vars)).json<ShopWallet>();
 const spendBody = (id: string, expected_cost: number, kind = "item", idempotency_key = key()) => ({ schema_version: 1, idempotency_key, kind, id, expected_cost });
 const equipBody = (look: Record<string, string>, revision = Date.now(), idempotency_key = key()) => ({ schema_version: 1, idempotency_key, revision, look });
-const spend = (account: Account, body: unknown, vars: Record<string, string> = SHOP) => call("/v1/pollen/spend", "POST", account, body, vars);
+const spend = (account: Account, body: unknown, vars: Record<string, unknown> = SHOP) => call("/v1/pollen/spend", "POST", account, body, vars);
 const equip = (account: Account, body: unknown) => call("/v1/pollen/equip", "POST", account, body);
 const tables = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, state) =>
   state.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' AND name LIKE 'pollen_%' ORDER BY name").toArray().map(row => row.name));
@@ -64,10 +65,10 @@ const tables = (account: Account) => runInDurableObject(env.PLAYERS.getByName(ac
 describe("the shop flag", () => {
   it("is absent while off: no capability, no wardrobe on the wallet read, and spend and equip answer 503", async () => {
     const player = await create(); await fund(player, 5000);
-    const capabilities = async (vars: Record<string, string>) => (await call("/v2/capabilities", "GET", player, undefined, vars)).json<Record<string, unknown>>();
+    const capabilities = async (vars: Record<string, unknown>) => (await call("/v2/capabilities", "GET", player, undefined, vars)).json<Record<string, unknown>>();
     expect(await capabilities(SHOP)).toMatchObject({ pollen_version: 1, pollen_shop_version: 1 });
     expect(await capabilities(EARN_ONLY)).not.toHaveProperty("pollen_shop_version");
-    expect(await capabilities({ FEATURES: "POLLEN_SHOP", POLLEN_SECRET: SECRET })).not.toHaveProperty("pollen_shop_version");
+    expect(await capabilities({ features: ["POLLEN_SHOP"], POLLEN_SECRET: SECRET })).not.toHaveProperty("pollen_shop_version");
     const plain = await wallet(player, EARN_ONLY);
     expect(plain).not.toHaveProperty("wardrobe"); expect(plain).not.toHaveProperty("name_price");
     expect((await spend(player, spendBody("daisy", 1000), EARN_ONLY)).status).toBe(503);

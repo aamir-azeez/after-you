@@ -2,6 +2,7 @@ import { env } from "cloudflare:workers";
 import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import worker from "../src/index";
+import { withConfig } from "./config";
 import { canonicalJson, digest } from "../src/protocol";
 import { chapter, checkpointV2, initialCheckpoint, recordingV2, acceptedRecording, boundedTurnValue, boundedValue, MAX_CHECKPOINT_BYTES, MAX_V2_BODY_BYTES } from "../src/v2/protocol";
 import { physicalRecording, scaledLimits } from "../src/v2/protocol-physical-recording";
@@ -35,10 +36,10 @@ import { TIDE_CHAINS } from "./turn-of-the-tide-chains";
 type Account = { player_id: string; device_token: string };
 const key = () => crypto.randomUUID();
 const OLD_CLIENT = [2, 4, 5, 6, 7, 8], NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9];
-const ON = { TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true" };
+const ON = {};
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...overrides });
+  const configured: Env = withConfig({ ...env, ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.12." + (++requestNo % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
@@ -91,18 +92,8 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
     expect(definition.premium).toBe(false);
     for (const paid of [conservatory, longWayHome, longWayHomeV2]) expect(paid.premium).toBe(true);
   });
-  it("stays off by default: not advertised and not creatable", async () => {
-    expect(env.TURN_OF_THE_TIDE_CHAPTER_ENABLED).toBeUndefined();
-    expect(creatable(turnOfTheTide, env)).toBe(false);
-    const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true",
-      WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true" });
-    expect(advertisedChapters(allOn).some(entry => entry.level_id === "turn-of-the-tide")).toBe(false);
-    const host = await account();
-    const refused = await call("/v2/rooms", "POST", host, { ...turnOfTheTide.key, idempotency_key: key() });
-    expect(refused.status).toBe(503); expect(await refused.json()).toMatchObject({ error: { code: "chapter_creation_disabled" } });
-  });
-  it("advertises exactly its pinned rules, free, when the flag is on", async () => {
-    const on: Env = { ...env }; Object.assign(on, ON);
+  it("advertises exactly its pinned rules, free", async () => {
+    const on: Env = withConfig({ ...env });
     expect(creatable(turnOfTheTide, on)).toBe(true);
     expect(advertisedChapters(on).find(entry => entry.level_id === "turn-of-the-tide")).toEqual({ ...turnOfTheTide.key, premium: false, recording_version: 7, simulation_version: 9, supported_simulation_versions: [9] });
   });
@@ -223,7 +214,7 @@ describe("Turn of the Tide (free, rules 9, behind its own flag)", () => {
     const body = { base_revision: c.room.revision, branch: c.room.branch, idempotency_key: key(), recording, checkpoint };
     // Sent with its length, as a client does, so the route asks the room for its bound.
     const text = JSON.stringify(body); expect(text.length).toBeGreaterThan(MAX_V2_BODY_BYTES);
-    const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...ON });
+    const configured: Env = withConfig({ ...env, ...ON });
     const reply = await worker.fetch(new Request(`https://after-you.test/v2/rooms/${c.room.room_id}/turns`, { method: "POST", body: text, headers: { "Content-Type": "application/json",
       "Content-Length": String(text.length), "CF-Connecting-IP": "198.18.12." + (++requestNo % 250), "X-Player-Id": host.player_id, Authorization: "Bearer " + host.device_token } }), configured);
     // Past the size gates, the made-up receiver is refused by the proof itself.

@@ -8,6 +8,7 @@ import definition from "../../game/tests/fixtures/cooperative/the-wishing-well-d
 import aheadA from "../../game/tests/fixtures/cooperative/go-on-ahead-a.json";
 import longB from "../../game/tests/fixtures/cooperative/back-for-you-b-long.json";
 import final from "../../game/tests/fixtures/cooperative/the-wishing-well-final-checkpoint.json";
+import { sleepingLighthouseV2 } from "../src/v2/protocol-lighthouse";
 
 // Per-chapter size bounds, turn length and branch caps are optional. A chapter
 // that sets none keeps every published bound, including the comfort receiver's
@@ -35,9 +36,8 @@ describe("per-chapter limits", () => {
   });
 
   it("registers no published chapter with its own limits or branch cap, beyond the turn caps and branch cap Turn of the Tide declares", () => {
-    const allOn: Env = { ...env }; Object.assign(allOn, { COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true",
-      WISHING_WELL_CHAPTER_ENABLED: "true", LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true", TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true" });
-    const rows = advertisedChapters(allOn, 2);
+    // Sleeping Lighthouse @2 has six stages and its own bounds, pinned in its own suite.
+    const rows = advertisedChapters(env, 2).filter(row => chapter(row) !== sleepingLighthouseV2);
     expect(rows.length).toBeGreaterThan(7);
     expect(rows.some(row => row.level_id === "turn-of-the-tide")).toBe(true);
     for (const row of rows) {

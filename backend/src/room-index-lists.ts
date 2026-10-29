@@ -3,8 +3,6 @@ import { errorCode, logWarning } from "./log";
 import { roomLinkVersion, type RoomLink } from "./room-links";
 import { ROOM_INBOX_CONCURRENCY, inboxBody, inboxEntry, pooled, type RoomInboxEntry, type RoomInboxProjection } from "./room-inbox";
 import { partnerBlocks } from "./safety";
-import { flags } from "./flags";
-import { settledRoomIds } from "./room-limit";
 import { memberStateOf } from "./room-leave";
 import { ROOM_INDEX_READS, ROOM_NEXT_HEADER, ROOM_PAGE_HEADER, type RoomIndexRow, type RoomObservation } from "./room-index";
 import type { RoomLobbyV2 } from "./v2/room";
@@ -12,8 +10,7 @@ import type { RoomLobbyV2 } from "./v2/room";
 /**
  * The indexed inbox, room list and legacy room list: a bounded page chosen by
  * the Player's room index (room-index.ts), so a request costs the same whatever
- * the link count. The router uses these while the room index is on, or for a
- * player with more than MAX_ROOM_LINKS links; otherwise the original code runs.
+ * the link count. The router serves every room list and the inbox from these.
  */
 
 /** The page a request asked for: ROOM_PAGE_HEADER as a decimal offset, else the first page. */
@@ -93,8 +90,7 @@ export function indexedLegacyRooms(playerId: string, env: Env, offset: number): 
 }
 
 /**
- * The room cap's refusal path with the index on (the router passes it to
- * reserveWithinRoomLimit): reads up to ROOM_INDEX_READS links the index cannot
+ * The room cap's refusal path (the router passes it to reserveWithinRoomLimit): reads up to ROOM_INDEX_READS links the index cannot
  * vouch for as settled (unindexed first), stores the results, and returns every
  * room the index now holds as settled, so a reservation refused only because a
  * link had no row can pass once it has one. A failed read stays in play, so a
@@ -105,12 +101,7 @@ export async function settleFromRoomIndex(env: Env, playerId: string): Promise<s
   const links = await player.roomIndexUnsettled(ROOM_INDEX_READS);
   if (!links.length) return [];
   const live = await readAndRecord(env, playerId, links);
-  // A 404 read now settles the room for this reservation, as settledRoomIds does, though the index keeps it unchecked.
+  // A 404 read now settles the room for this reservation, though the index keeps it unchecked.
   const gone = links.filter(link => { const seen = live.get(link.room_id); return !!seen && memberStateOf(seen.outcome) !== "in_play"; }).map(link => link.room_id);
   return [...new Set([...await player.roomIndexSettled(), ...gone])];
-}
-
-/** The room cap's refusal path for this deploy: through the room index while it is on, else settledRoomIds. */
-export function roomSettler(env: Env): (env: Env, playerId: string) => Promise<string[]> {
-  return flags.roomIndex(env) ? settleFromRoomIndex : settledRoomIds;
 }

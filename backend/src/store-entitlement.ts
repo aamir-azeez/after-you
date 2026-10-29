@@ -1,14 +1,12 @@
 import { isObject } from "./protocol";
 import type { ServerVars } from "./flags";
-import { PRODUCT_PATTERN, grantEnd, productList, revenuecatRequest, reviewer, type PlayEntitlementConfig, type ProviderResult } from "./play-entitlement";
+import { APP, LOOKUP_PATTERN, PRODUCT_PATTERN, PROJECT_PATTERN, serverConfig } from "./config";
+import { grantEnd, revenuecatRequest, type ProviderResult } from "./play-entitlement";
 
 /**
- * Play plus App Store hosting check. entitlement.ts selects it only when
- * REVENUECAT_VERIFICATION_MODE=play_store and APP_STORE_ENTITLEMENTS_ENABLED=true;
- * every other configuration runs playEntitlement unchanged.
+ * Play plus App Store hosting check. entitlement.ts selects it only while
+ * APP_STORE_ENTITLEMENTS_ENABLED is on; otherwise playEntitlement runs unchanged.
  */
-export type StoreEntitlementConfig = PlayEntitlementConfig &
-  Pick<ServerVars, "REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS" | "REVENUECAT_APP_STORE_ENVIRONMENT" | "REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID">;
 export type StoreEntitlementResult = {
   full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; reason?: string;
   access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription";
@@ -19,7 +17,6 @@ type Admission = Required<Pick<StoreEntitlementResult, "access_source" | "entitl
 type StoreOutcome = { admitted: Admission } | { refused: true } | { held: "unconfigured" } | { held: "unavailable"; reason: string };
 
 const ENVIRONMENTS = ["production", "sandbox"];
-const LOOKUP_PATTERN = /^entl[A-Za-z0-9_-]+$/;
 /** Subscription states RevenueCat reports as still paid for, including the billing grace period. */
 const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 
@@ -37,7 +34,7 @@ function providerList(result: ProviderResult): ProviderList {
   if (!isObject(list) || list.object !== "list" || !Array.isArray(list.items) || list.items.length > 100) return { ok: false, reason: "provider_invalid_list" };
   return { ok: true, items: list.items, incomplete: Boolean(list.next_page) };
 }
-function subscribed(items: unknown[], store: "play_store" | "app_store", products: string[], environment: string): boolean {
+function subscribed(items: unknown[], store: "play_store" | "app_store", products: readonly string[], environment: string): boolean {
   return items.some(item => isObject(item) && item.object === "subscription" && typeof item.product_id === "string" && products.includes(item.product_id) &&
     item.store === store && item.environment === environment && item.ownership === "purchased" && item.gives_access === true &&
     typeof item.status === "string" && SUBSCRIPTION_ACCESS_STATUSES.includes(item.status));
@@ -45,22 +42,22 @@ function subscribed(items: unknown[], store: "play_store" | "app_store", product
 
 /** This policy is selected by server configuration, never a caller header. */
 /** `onGrant`: as in entitlement.ts, the end of the first active Full Journey entitlement (Play's lookup, then the App Store's). */
-export async function storeEntitlement(playerId: string, config: StoreEntitlementConfig, onGrant?: (until: number) => void): Promise<StoreEntitlementResult> {
-  if (!config.REVENUECAT_SECRET_KEY || !/^[A-Za-z0-9_-]{4,100}$/.test(config.REVENUECAT_PROJECT_ID ?? "")) return { full_journey: false, status: "unconfigured" };
-  const key = config.REVENUECAT_SECRET_KEY;
-  const playLookup = config.REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID ?? "";
-  const playEnvironment = config.REVENUECAT_PLAY_ENVIRONMENT ?? "production";
-  const playSubscriptions = productList(config.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS);
-  const playReady = PRODUCT_PATTERN.test(config.REVENUECAT_PLAY_PRODUCT_ID ?? "") && ENVIRONMENTS.includes(playEnvironment) && playSubscriptions !== null;
-  const appLookup = (config.REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID ?? "").trim() ? config.REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID! : playLookup;
-  const appEnvironments = appStoreEnvironments(config.REVENUECAT_APP_STORE_ENVIRONMENT);
-  const appSubscriptions = productList(config.REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS);
+export async function storeEntitlement(playerId: string, env: ServerVars, onGrant?: (until: number) => void): Promise<StoreEntitlementResult> {
+  const config = serverConfig(env).revenuecat, key = env.REVENUECAT_SECRET_KEY;
+  if (!key || !PROJECT_PATTERN.test(config.project_id ?? "")) return { full_journey: false, status: "unconfigured" };
+  const playLookup = config.play_entitlement_lookup_id ?? "";
+  const playEnvironment = APP.playEnvironment;
+  const playSubscriptions = config.play_subscription_product_ids;
+  const playReady = PRODUCT_PATTERN.test(config.play_product_id ?? "") && playSubscriptions !== null;
+  const appLookup = (config.app_store_entitlement_lookup_id ?? "").trim() ? config.app_store_entitlement_lookup_id! : playLookup;
+  const appEnvironments = appStoreEnvironments(config.app_store_environment);
+  const appSubscriptions = config.app_store_subscription_product_ids;
   // The flag is on, so an unset App Store list is a missing setting, not "no App Store products".
   const appReady = appEnvironments !== null && appSubscriptions !== null && appSubscriptions.length > 0;
   const lookups = [playLookup, appLookup].filter(value => LOOKUP_PATTERN.test(value));
   if (lookups.length === 0) return { full_journey: false, status: "unconfigured" };
 
-  const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(config.REVENUECAT_PROJECT_ID!)}/customers/${encodeURIComponent(playerId)}`;
+  const base = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(config.project_id!)}/customers/${encodeURIComponent(playerId)}`;
   const active = providerList(await revenuecatRequest(`${base}/active_entitlements?limit=100`, key));
   /** Per lookup ID: active, refused (absent or expired), or held. */
   const grant = (lookup: string): StoreOutcome | "active" => {
@@ -93,12 +90,12 @@ export async function storeEntitlement(playerId: string, config: StoreEntitlemen
   if (playGrant !== "active") outcomes.push(playGrant);
   else if (!playReady) outcomes.push({ held: "unconfigured" });
   else {
-    if (reviewer(config, playerId))
+    if (config.reviewer_ids.includes(playerId))
       return admitted({ access_source: "review_grant", entitlement: "full_journey_play" }, playerId);
     const purchases = providerList(await revenuecatRequest(`${base}/purchases?environment=${playEnvironment}&limit=100`, key));
     if (!purchases.ok) outcomes.push({ held: "unavailable", reason: purchases.reason });
     else {
-      const owned = purchases.items.some(item => isObject(item) && item.object === "purchase" && item.product_id === config.REVENUECAT_PLAY_PRODUCT_ID &&
+      const owned = purchases.items.some(item => isObject(item) && item.object === "purchase" && item.product_id === config.play_product_id &&
         item.store === "play_store" && item.environment === playEnvironment && item.status === "owned" && item.ownership === "purchased" &&
         typeof item.purchased_at === "number" && Number.isSafeInteger(item.purchased_at) && item.purchased_at > 0 && item.purchased_at <= Date.now());
       if (owned) return admitted({ access_source: "play_purchase", entitlement: "full_journey_play" }, playerId);

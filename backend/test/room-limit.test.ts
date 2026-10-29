@@ -13,6 +13,7 @@ import secondA from "../../game/tests/fixtures/v2/garden-a.json";
 import secondB from "../../game/tests/fixtures/v2/garden-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
 import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
+import { TERMS_VERSION } from "../src/public-policy";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Inbox = { schema_version: 1; rooms: { room_id: string; status: string }[] };
@@ -23,7 +24,6 @@ let address = 0;
 function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(outcome.code); return outcome.value; }
 async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
   const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", REPLAY_TRANSFER_ENABLED: "true" });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.51.100." + (++address % 250), ...headers,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },
@@ -57,6 +57,8 @@ async function photo(roomId: string, host: Account): Promise<string> {
   const bytes = new Uint8Array(encode({ data: new Uint8Array(8 * 8 * 4).fill(127), width: 8, height: 8 }, 45).data);
   const jpeg_base64 = btoa(String.fromCharCode(...bytes));
   const sha256 = [...new Uint8Array(await crypto.subtle.digest("SHA-256", bytes))].map(v => v.toString(16).padStart(2, "0")).join("");
+  // Terms are always enforced now, in the room as well as at the router.
+  expect((await call("/v1/safety/terms", "POST", host, { schema_version: 1, terms_version: TERMS_VERSION })).status).toBe(200);
   value(await roomV2(roomId).updatePhoto(host.player_id, "t0-0-a", { idempotency_key: key(), recording_hash: firstA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64, sha256 }));
   return jpeg_base64;
 }
@@ -100,7 +102,8 @@ describe("room cap", () => {
       expect(value(await roomV2(done[0].room_id).photo(member.player_id, "t0-0-a")).jpeg_base64).toBe(picture);
       expect((await inbox(member)).rooms.filter(room => done.some(item => item.room_id === room.room_id))).toHaveLength(MAX_ACTIVE_ROOM_LINKS);
     }
-    expect((await call(`/v2/rooms/${done[1].room_id}`, "GET", guest)).status).toBe(410);
+    // A 0.6.1+ read; 0.6.0 (no finished-room header) gets the Story boundary instead.
+    expect((await call(`/v2/rooms/${done[1].room_id}`, "GET", guest, undefined, { "X-AfterYou-Finished-Room": "2" })).status).toBe(410);
 
     // Deleting the host still reaches every room through its links, finished ones included.
     expect((await call("/v1/identity", "DELETE", host)).status).toBe(200);
@@ -144,7 +147,5 @@ describe("room cap", () => {
     const archive = JSON.parse(value(await player.exportSnapshot("f".repeat(40))));
     expect(archive.payload.tables.find((table: { name: string }) => table.name === "rooms").rows).toHaveLength(MAX_ROOM_LINKS);
     expect(await player.campaignLink("Z".repeat(22), await digest(owner.device_token))).toEqual({ ok: true, value: null });
-    // None of these rooms exist, so all read as gone; the total bound still refuses.
-    await expectLimit(await createV2(owner));
   });
 });

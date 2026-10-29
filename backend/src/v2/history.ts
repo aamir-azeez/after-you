@@ -1,5 +1,4 @@
 import { ApiError } from "../protocol";
-import { flags } from "../flags";
 import { ZERO_LINK, attemptBlob, attemptLink, blobBytes, lastStage, type AttemptRoom } from "./history-blob";
 import { bytesDigest } from "../blob-codec";
 import { historyPresent, initializeHistory } from "./storage-schema";
@@ -9,9 +8,9 @@ export const HISTORY_HEADER = "X-AfterYou-History";
 export type HistorySupport = 0 | 1;
 export type HistoryMember = { schema_version: 1; version: HistorySupport };
 
-/** What a member's request says, or undefined while offload is off (nothing is then recorded). */
-export function historySupport(request: Request, env: Env): HistorySupport | undefined {
-  return flags.historyOffload(env) ? request.headers.get(HISTORY_HEADER) === "1" ? 1 : 0 : undefined;
+/** What a member's request says. */
+export function historySupport(request: Request): HistorySupport {
+  return request.headers.get(HISTORY_HEADER) === "1" ? 1 : 0;
 }
 
 export function historyMembers(storage: DurableObjectStorage): Map<string, HistorySupport> {

@@ -8,6 +8,7 @@ import { chapter } from "../src/v2/protocol";
 import type { ChapterCheckpoint, ChapterRecording } from "../src/v2/chapter-types";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import native from "../../game/tests/fixtures/comfort8/recordings.json";
+import { withConfig } from "./config";
 
 type Account = { player_id: string; device_token: string };
 type Proof = { pairs: { a: ChapterRecording; b: ChapterRecording }[]; checkpoints: ChapterCheckpoint[] };
@@ -16,11 +17,8 @@ const chapters = ["rolling-home", "a-house-for-two", "long-way-home"];
 const code = "SYNTHETIC-FIRST-TURN-HOST";
 let requestNo = 0;
 async function call(path: string, method = "GET", owner?: Account, body?: unknown) {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true",
-    TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + code),
-    REVENUECAT_VERIFICATION_MODE: "play_store", REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic",
-    REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: "entlPlay", REVENUECAT_PLAY_PRODUCT_ID: "prodPlay", REVENUECAT_PLAY_ENVIRONMENT: "production" });
+  const configured: Env = withConfig({ ...env, TESTER_ACCESS_ENABLED: "true", TESTER_CODE_SHA256: await digest(TESTER_CODE_DOMAIN + code),
+    REVENUECAT_SECRET_KEY: "synthetic-only", revenuecat: { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" } });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.17." + ++requestNo,
       ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}) },

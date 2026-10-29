@@ -1,66 +1,23 @@
-import { isObject, readBounded } from "./protocol";
 import { flags, type ServerVars } from "./flags";
-import { grantEnd, playEntitlement } from "./play-entitlement";
-import { storeEntitlement, type StoreEntitlementConfig } from "./store-entitlement";
+import { APP } from "./config";
+import { playEntitlement } from "./play-entitlement";
+import { storeEntitlement } from "./store-entitlement";
 
 export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
-type RevenueCatConfiguration = Pick<Env, "ENVIRONMENT" | "REVENUECAT_ENTITLEMENT"> & StoreEntitlementConfig &
-  Pick<ServerVars, "FEATURES" | "APP_STORE_ENTITLEMENTS_ENABLED" | "REVENUECAT_VERIFICATION_MODE" | "REVENUECAT_API_VERSION" | "REVENUECAT_ENTITLEMENT_LOOKUP_ID"> & {
-  PLAYERS?: Env["PLAYERS"];
-};
-export function makeProviderRequest(endpoint: string, key: string): Request {
-  // Workers supports manual/follow, not redirect:error. Never forward the credential on a redirect.
-  return new Request(endpoint, {
-    headers: { Authorization: `Bearer ${key}`, Accept: "application/json" },
-    signal: AbortSignal.timeout(8000), redirect: "manual"
-  });
-}
 /**
+ * The Full Journey check: a stored tester grant, else RevenueCat's record of a real store purchase (Play, plus the
+ * App Store while APP_STORE_ENTITLEMENTS_ENABLED is on). Without REVENUECAT_SECRET_KEY and CONFIG's RevenueCat ids
+ * the answer is "unconfigured", which holds hosting (503) rather than refusing it.
+ *
  * `onGrant`, when given, hears the end of the Full Journey entitlement RevenueCat reported active
  * (ms; null ends, a lifetime unlock, as 8.64e15), before any later admission step. The answer itself
  * never carries it, so every reply stays as it was. Pollen's room boost reads it (pollen/routes.ts paidUntil).
  */
-export async function entitlement(playerId: string, env: RevenueCatConfiguration, onGrant?: (until: number) => void): Promise<Entitlement> {
-  const base = { full_journey: false, environment: env.ENVIRONMENT, checked_at: new Date().toISOString() };
+export async function entitlement(playerId: string, env: ServerVars & { PLAYERS?: Env["PLAYERS"] }, onGrant?: (until: number) => void): Promise<Entitlement> {
+  const base = { full_journey: false, environment: APP.environment, checked_at: new Date().toISOString() };
   if (env.PLAYERS) {
     const grant = await env.PLAYERS.getByName(playerId).storedTesterGrant(playerId);
     if (grant) return { ...base, full_journey: true, status: "verified", access_source: "tester_grant", entitlement: "full_journey", player_id: playerId };
   }
-  if (env.REVENUECAT_VERIFICATION_MODE === "play_store")
-    return { ...base, ...(flags.appStoreEntitlements(env) ? await storeEntitlement(playerId, env, onGrant) : await playEntitlement(playerId, env, onGrant)) };
-  if (env.REVENUECAT_VERIFICATION_MODE && env.REVENUECAT_VERIFICATION_MODE !== "demo") return { ...base, status: "unconfigured" };
-  if (!env.REVENUECAT_SECRET_KEY) return { ...base, status: "unconfigured" };
-  const v2 = env.REVENUECAT_API_VERSION === "2";
-  if (env.REVENUECAT_API_VERSION && !["1", "2"].includes(env.REVENUECAT_API_VERSION)) return { ...base, status: "unconfigured" };
-  if (v2 && (!/^[a-zA-Z0-9_-]{4,100}$/.test(env.REVENUECAT_PROJECT_ID || "") || !/^entl[a-zA-Z0-9_-]+$/.test(env.REVENUECAT_ENTITLEMENT_LOOKUP_ID || ""))) return { ...base, status: "unconfigured" };
-  const endpoint = v2
-    ? `https://api.revenuecat.com/v2/projects/${encodeURIComponent(env.REVENUECAT_PROJECT_ID!)}/customers/${encodeURIComponent(playerId)}/active_entitlements?limit=100`
-    : `https://api.revenuecat.com/v1/subscribers/${encodeURIComponent(playerId)}`;
-  try {
-    const response = await fetch(makeProviderRequest(endpoint, env.REVENUECAT_SECRET_KEY));
-    if (response.status === 404) return { ...base, status: "verified" };
-    if (!response.ok) return { ...base, status: "unavailable", reason: `provider_http_${response.status}` };
-    if (!response.body) return { ...base, status: "unavailable", reason: "provider_empty_response" };
-    const bytes = await readBounded(response.body, 262_144);
-    if (!bytes) return { ...base, status: "unavailable", reason: "provider_response_too_large" };
-    const data: unknown = JSON.parse(new TextDecoder().decode(bytes));
-    if (v2) {
-      if (!isObject(data) || data.object !== "list" || !Array.isArray(data.items)) return { ...base, status: "unavailable", reason: "provider_invalid_list" };
-      const entry = data.items.find(item => isObject(item) && item.entitlement_id === env.REVENUECAT_ENTITLEMENT_LOOKUP_ID);
-      if (!isObject(entry)) return { ...base, status: data.next_page ? "unavailable" : "verified" };
-      const expiry = entry.expires_at;
-      const active = expiry === null || (typeof expiry === "number" && Number.isFinite(expiry) && expiry > Date.now());
-      if (active) onGrant?.(grantEnd(expiry));
-      return { ...base, full_journey: active, status: "verified" };
-    }
-    if (!isObject(data) || !isObject(data.subscriber) || !isObject(data.subscriber.entitlements)) return { ...base, status: "unavailable", reason: "provider_invalid_subscriber" };
-    const entry = data.subscriber.entitlements[env.REVENUECAT_ENTITLEMENT];
-    if (!isObject(entry)) return { ...base, status: "verified" };
-    const purchaseTime = typeof entry.purchase_date === "string" ? Date.parse(entry.purchase_date) : NaN;
-    const expiry = entry.expires_date;
-    const active = Number.isFinite(purchaseTime) && purchaseTime <= Date.now() &&
-      (expiry === null || (typeof expiry === "string" && Date.parse(expiry) > Date.now()));
-    if (active) onGrant?.(grantEnd(expiry === null ? null : Date.parse(expiry as string)));
-    return { ...base, full_journey: active, status: "verified" };
-  } catch { return { ...base, status: "unavailable", reason: "provider_request_or_decode_failed" }; }
+  return { ...base, ...(flags.appStoreEntitlements(env) ? await storeEntitlement(playerId, env, onGrant) : await playEntitlement(playerId, env, onGrant)) };
 }

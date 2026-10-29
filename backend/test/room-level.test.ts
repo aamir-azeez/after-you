@@ -4,6 +4,7 @@ import { afterEach, expect, it } from "vitest";
 import worker from "../src/index";
 import { RELAY_KEY } from "../src/v2/protocol";
 import { campaignAdmissionRequest } from "../src/v2/campaign-admission-intent";
+import { withConfig } from "./config";
 
 // Clients that do not ask keep the published two-stage capability list. A
 // client asks for chapters with more stages with X-AfterYou-Room-Level: 2, and
@@ -11,11 +12,9 @@ import { campaignAdmissionRequest } from "../src/v2/campaign-admission-intent";
 type Account = { player_id: string; device_token: string };
 type Capabilities = Record<string, unknown> & { chapters: Record<string, unknown>[] };
 let requestNo = 0;
-const allOn = { V2_ROOMS_ENABLED: "true", RELAY_PHOTOS_ENABLED: "true", PRESET_REACTIONS_ENABLED: "true", PHOTO_DELIVERY_ENABLED: "true", REPLAY_TRANSFER_ENABLED: "true",
-  COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", FIRST_STEPS_ENABLED: "true", WISHING_WELL_CHAPTER_ENABLED: "true",
-  LONG_WAY_HOME_V2_CHAPTER_ENABLED: "true", TURN_OF_THE_TIDE_CHAPTER_ENABLED: "true" };
+const allOn = { RELAY_PHOTOS_ENABLED: "true" };
 async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, allOn);
+  const configured: Env = withConfig({ ...env, ...allOn });
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.17." + (++requestNo % 250),
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }

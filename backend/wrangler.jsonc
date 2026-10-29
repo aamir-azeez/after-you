@@ -8,13 +8,6 @@
   ],
   "workers_dev": true,
   "send_metrics": false,
-  "vars": {
-    "ENVIRONMENT": "test-store",
-    "REVENUECAT_VERIFICATION_MODE": "demo",
-    "REVENUECAT_PLAY_ENVIRONMENT": "production",
-    "REVENUECAT_API_VERSION": "2",
-    "REVENUECAT_ENTITLEMENT": "full_journey"
-  },
   "durable_objects": {
     "bindings": [
       { "name": "SAFETY_PROFILES", "class_name": "SafetyProfile" },

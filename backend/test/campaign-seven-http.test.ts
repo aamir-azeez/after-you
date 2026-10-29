@@ -71,6 +71,7 @@ import { campaignContinueKey, campaignDefinition } from "../src/v2/campaign-prot
 import type { CampaignDefinition, CampaignKey, CampaignView, CampaignContinueResult } from "../src/v2/campaign-types";
 import type { MutationV2, PairV2, RoomSnapshotV2 } from "../src/v2/room";
 import type { CampaignRedoAccept, CampaignRedoBinding } from "../src/v2/campaign-redo";
+import { withConfig } from "./config";
 import type { RedoState } from "../src/redo-control";
 
 // Synthetic story registry with actual current chapter pins and native-verified
@@ -86,12 +87,12 @@ vi.mock("../src/v2/campaign-registry", async original => {
   };
   return { ...actual, retainedCampaign: resolve,
     advertisedCampaigns: () => catalog.definition ? [structuredClone(catalog.definition)] : [],
-    campaignCreatable: (key: CampaignKey, e: { CAMPAIGN_CREATION_ENABLED?: string }) => e.CAMPAIGN_CREATION_ENABLED === "true" && !!resolve(key) };
+    campaignCreatable: (key: CampaignKey, e: { CONFIG?: string }) => (JSON.parse(e.CONFIG ?? "{}").features ?? []).includes("CAMPAIGN_CREATION_ENABLED") && !!resolve(key) };
 });
-const flags = { V2_ROOMS_ENABLED: "true", FIRST_STEPS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true",
-  HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "true",
-  CAMPAIGN_MUTATIONS_ENABLED: "true", REVENUECAT_VERIFICATION_MODE: "demo", REVENUECAT_API_VERSION: "1",
-  REVENUECAT_SECRET_KEY: "synthetic-only", NOTIFICATIONS_ENABLED: "false" };
+const flags = { CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true", REVENUECAT_SECRET_KEY: "synthetic-only",
+  revenuecat: { project_id: "projSynthetic", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay" }, NOTIFICATIONS_ENABLED: "false" };
+/** The shared env without a CONFIG an object test left there: each request's own flags decide its CONFIG. */
+function base(): Env { const { CONFIG: _objects, ...rest } = env as Env & { CONFIG?: string }; return rest as Env; }
 const T = "a".repeat(43), I = "AB".repeat(10);
 const unwrap = <V>(r: Outcome<V>): V => { if (!r.ok) throw new Error(r.code); return r.value; };
 let H = "", G = "", R = "", device = "", invite = I, address = 0, entitlementReads = 0, key: CampaignKey;
@@ -99,13 +100,13 @@ const targetInitializations = new Set<string>();
 const changed = new Map<object, Record<string, unknown>>();
 async function configure() {
   await runInDurableObject(env.ROOMS_V2.getByName(R), instance => {
-    const local = Reflect.get(instance, "env") as Record<string, unknown>;
-    if (!changed.has(local)) changed.set(local, Object.fromEntries(Object.keys(flags).map(k => [k, local[k]])));
-    Object.assign(local, flags);
+    const local = Reflect.get(instance, "env") as Record<string, unknown>, settings = withConfig({ ...flags });
+    if (!changed.has(local)) changed.set(local, Object.fromEntries(Object.keys(settings).map(k => [k, local[k]])));
+    Object.assign(local, settings);
   });
 }
 async function call(path: string, method = "GET", body?: unknown, owner = H) {
-  const configured: Env = { ...env }; Object.assign(configured, flags);
+  const configured: Env = withConfig({ ...base(), ...flags });
   return worker.fetch(new Request("https://seven-chapter.test" + path, { method, headers: {
     "Content-Type": "application/json", "CF-Connecting-IP": "198.22.1." + ++address,
     "X-Player-Id": owner, Authorization: "Bearer " + T, "X-AfterYou-Campaign-Schema": "2"
@@ -157,8 +158,8 @@ beforeEach(async () => {
   vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 404 }));
 });
 afterEach(async () => {
-  vi.restoreAllMocks(); for (const [target, prior] of changed) Object.assign(target, prior);
-  changed.clear(); flags.NOTIFICATIONS_ENABLED = "false"; flags.V2_ROOMS_ENABLED = "true"; flags.CAMPAIGN_MUTATIONS_ENABLED = "true";
+  vi.restoreAllMocks(); for (const [target, prior] of changed) for (const [name, setting] of Object.entries(prior)) { if (setting === undefined) delete (target as Record<string, unknown>)[name]; else (target as Record<string, unknown>)[name] = setting; }
+  changed.clear(); flags.NOTIFICATIONS_ENABLED = "false"; flags.CAMPAIGN_MUTATIONS_ENABLED = "true";
   catalog.definition = null; await reset();
 });
 
@@ -235,7 +236,7 @@ it("redo keeps rules8 history, uses the reversed stage author, and recovers whil
   expect(current).toMatchObject({ active_role: "a", a_turn_id: null, branch: 1, stage_index: 1 });
   expect(current.completed_pair_ids).toEqual(middle.completed_pair_ids); expect(current.checkpoint).toEqual(middle.checkpoint);
   await evictDurableObject(env.ROOMS_V2.getByName(R));
-  flags.V2_ROOMS_ENABLED = "false"; flags.CAMPAIGN_MUTATIONS_ENABLED = "false"; await configure();
+  flags.CAMPAIGN_MUTATIONS_ENABLED = "false"; await configure();
   expect(await response(await call("/v2/capabilities"))).toMatchObject({ campaign_control_version: 2, campaign_redo_version: 1, campaign_mutations_enabled: false });
   expect(await response(await call(redoPath() + "/operations/" + body.idempotency_key, "GET", undefined, G))).toEqual(accepted);
   expect(await response(await call(redoPath() + "/accept", "POST", body, G))).toEqual(accepted);
@@ -331,7 +332,7 @@ it.each([5, 8] as const)("deletes a rules%i Story identity after a previously sc
   const room = await firstStoryPair(simulation), stub = env.ROOMS_V2.getByName(R);
   // Reproduce the notification rows written by the earlier Story commit path.
   await runInDurableObject(stub, async (_, ctx) => {
-    queueTurnHint(ctx.storage, { NOTIFICATIONS_ENABLED: "true" }, "relay", room, H);
+    queueTurnHint(ctx.storage, withConfig({ NOTIFICATIONS_ENABLED: "true" }), "relay", room, H);
     await scheduleNotifications(ctx.storage);
     expect(await ctx.storage.getAlarm()).toBe(Date.now() + 1000);
   });
@@ -358,7 +359,9 @@ it.each([5, 8] as const)("deletes a rules%i Story identity after a previously sc
   });
   expect(await response(await call("/v1/identity", "DELETE", undefined, G))).toEqual({ deleted: true });
   expect(await env.PLAYERS.getByName(G).listRooms()).toEqual([]);
-  expect(globalThis.fetch).not.toHaveBeenCalled();
+  // No notification is sent; the only provider calls are each deleted identity's RevenueCat customer erasure.
+  expect(vi.mocked(globalThis.fetch).mock.calls.map(([url, init]) => `${init?.method} ${String(url)}`))
+    .toEqual([H, G].map(id => `DELETE https://api.revenuecat.com/v2/projects/projSynthetic/customers/${id}`));
 });
 
 it("carries two players through seven actual chapter adapters, survives returning, and ends once", async () => {

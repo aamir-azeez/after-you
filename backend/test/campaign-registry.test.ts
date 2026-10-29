@@ -7,15 +7,13 @@ import { chapter } from "../src/v2/chapters";
 import { advertisedCampaigns, campaignCreatable, exactCampaignDefinition, retainedCampaign } from "../src/v2/campaign-registry";
 import bundle from "../../game/content/campaigns/a-place-for-two-v1.json";
 import fixture from "./fixtures/campaign-control-v2.json";
+import { withConfig } from "./config";
 
 afterEach(async () => { await reset(); });
 const wanted = { campaign_id: bundle.definition.campaign_id, campaign_version: bundle.definition.campaign_version,
   definition_hash: bundle.definition.definition_hash };
-function enabled(): Env {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true",
-    FIRST_STEPS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", HOUSE_CHAPTER_ENABLED: "true", JOURNEY_CHAPTERS_ENABLED: "true" });
-  return configured;
+function enabled(overrides: Record<string, string> = {}): Env {
+  return withConfig({ ...env, CAMPAIGN_CREATION_ENABLED: "true", CAMPAIGN_MUTATIONS_ENABLED: "true", ...overrides });
 }
 
 it("validates the shared content hashes and seven current rules against the existing chapter adapters", async () => {
@@ -41,17 +39,9 @@ it("validates the shared content hashes and seven current rules against the exis
 });
 
 it("keeps retention available while production cannot advertise or admit Story", () => {
-  const configured = enabled();
-  expect(campaignCreatable(wanted,configured)).toBe(false);
-  Object.assign(configured,{ CAMPAIGN_CREATION_ENABLED:"false", CAMPAIGN_MUTATIONS_ENABLED:"false" });
-  expect(campaignCreatable(wanted,configured)).toBe(false);
+  expect(campaignCreatable(wanted,enabled())).toBe(false);
+  expect(campaignCreatable(wanted,enabled({ CAMPAIGN_CREATION_ENABLED:"false", CAMPAIGN_MUTATIONS_ENABLED:"false" }))).toBe(false);
   expect(retainedCampaign(wanted)).toEqual(bundle.definition);
-  for (const flag of ["FIRST_STEPS_ENABLED","COOP_CHAPTERS_ENABLED","HOUSE_CHAPTER_ENABLED","JOURNEY_CHAPTERS_ENABLED"]) {
-    const paused = enabled(); Object.assign(paused,{ [flag]:"false" });
-    expect(advertisedCampaigns(paused)).toEqual([]);
-    expect(campaignCreatable(wanted,paused)).toBe(false);
-    expect(retainedCampaign(wanted)).toEqual(bundle.definition);
-  }
 });
 
 it("hides Story capabilities and refuses creation despite enabled environment flags", async () => {
@@ -70,7 +60,6 @@ it("hides Story capabilities and refuses creation despite enabled environment fl
   expect(attempt.status).toBe(503);
   expect(await attempt.json()).toMatchObject({ error:{ code:"campaign_unavailable" } });
   expect(await env.PLAYERS.getByName(owner).listRooms()).toEqual([]);
-  Object.assign(configured,{ CAMPAIGN_CREATION_ENABLED:"false" });
-  const paused = await worker.fetch(new Request("https://campaign.test/v2/capabilities",{ headers }),configured);
+  const paused = await worker.fetch(new Request("https://campaign.test/v2/capabilities",{ headers }),enabled({ CAMPAIGN_CREATION_ENABLED:"false" }));
   expect(await paused.json()).toMatchObject({ campaign_creation_enabled:false, campaign_definitions:[] });
 });

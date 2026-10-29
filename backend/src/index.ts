@@ -1,6 +1,8 @@
 import { routePhotoTransfer } from "./photo-transfer-routes";
 import { JSON_HEADERS, errorResponse, json, result, bearerDigest } from "./http";
 import { flags } from "./flags";
+import { APP } from "./config";
+import { CONFIG_CHECK_PATH, routeConfigCheck } from "./config-check";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, inviteRoomId, legacySimulationVersion, newInvite, object, parseInvite, randomToken, recording, text, type RoomSnapshot, unwrap } from "./protocol";
 import { entitlement } from "./entitlement";
 import { requireHostAccess } from "./v2/host-access";
@@ -8,7 +10,7 @@ import { routeTesterAccess } from "./tester-access";
 import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
-import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER, roomInbox } from "./room-inbox";
+import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER } from "./room-inbox";
 import { endReactionsWanted } from "./v2/end-reactions";
 import { DISPLAY_NAME_PATH, displayNamesShown, friendLinkCode, namesRoomRoute, routeDisplayName, routeFriendLinkName } from "./display-names";
 import { leaveRoom, requireInPlay } from "./room-leave";
@@ -26,12 +28,11 @@ import { publicPolicy } from "./public-policy";
 import { appStatus } from "./app-status";
 import { routeWaitlist } from "./waitlist";
 import { requireInteraction, routeSafety } from "./safety-routes";
-import { partnerBlocks } from "./safety";
 import { routeSafetyOperator } from "./safety-operator";
 export { SafetyProfile, SafetyInbox } from "./safety";
 import { deleteLinkedIdentity, roomDeletionDispatcher, roomLinkVersion, type RoomLink } from "./room-links";
-import { MAX_ROOM_LINKS, reserveWithinRoomLimit } from "./room-limit";
-import { indexedLegacyRooms, indexedRoomInbox, pageOffset, roomSettler, withNext } from "./room-index-lists";
+import { reserveWithinRoomLimit } from "./room-limit";
+import { indexedLegacyRooms, indexedRoomInbox, pageOffset, settleFromRoomIndex, withNext } from "./room-index-lists";
 import { routeV2 } from "./v2/routes";
 import { campaignRequestContext } from "./v2/campaign-room-access";
 import { deleteCampaignIdentityLink } from "./v2/campaign-identity-deletion";
@@ -97,19 +98,21 @@ export default {
       const url = new URL(request.url); const path = url.pathname;
       const policy = publicPolicy(request); if (policy) return policy;
       if (url.search) throw new ApiError(400, "query_not_supported");
-      if (path === "/health" && request.method === "GET") return json({ status: "ok", api_version: 1, environment: env.ENVIRONMENT });
+      if (path === "/health" && request.method === "GET") return json({ status: "ok", api_version: 1, environment: APP.environment });
       // The friend link page's headline name: public, read-only, limited per address.
       const linkCode = friendLinkCode(path);
       if (linkCode !== null && request.method === "GET") { await publicLimit(request, env); return await routeFriendLinkName(request, linkCode, env); }
-      // Absent unless UPDATE_GATE_ENABLED is "true": the path then falls through to auth() as before.
-      if (path === "/v1/app-status" && request.method === "GET" && flags.updateGate(env)) { await publicLimit(request, env); return json(appStatus(request, env)); }
+      // Public: whether this client must update before playing online (app-status.ts).
+      if (path === "/v1/app-status" && request.method === "GET") { await publicLimit(request, env); return json(appStatus(request, env)); }
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
+      // TRANSITION: removed with legacyConfig once CONFIG is live (config-check.ts).
+      if (path === CONFIG_CHECK_PATH) { await publicLimit(request, env); return json(await routeConfigCheck(request, env)); }
       if (path.startsWith(LEADERBOARD_OPERATOR_PREFIX)) { await publicLimit(request, env); return await routeLeaderboardOperator(request, path, env); }
-      // Absent unless FEATURES lists LEADERBOARDS: a board read is public and cached, so it needs no Player request.
+      // Absent unless CONFIG lists LEADERBOARDS: a board read is public and cached, so it needs no Player request.
       const board = await routeLeaderboardRead(request, path, env); if (board) return board;
-      // Absent unless STORY_DRAIN_ENABLED is "true": the path then falls through to auth() as before.
+      // Absent unless CONFIG lists STORY_DRAIN_ENABLED: the path then falls through to auth() as before.
       if (path.startsWith(DRAIN_PREFIX) && flags.storyDrain(env)) { await publicLimit(request, env); return json(await routeCampaignDrain(request, path, env)); }
-      // Absent unless IOS_WAITLIST_ENABLED is "true": the path then falls through as before (OPTIONS 405, others to auth()).
+      // Absent unless CONFIG lists IOS_WAITLIST_ENABLED: the path then falls through as before (OPTIONS 405, others to auth()).
       const waitlist = await routeWaitlist(request, path, env); if (waitlist) return waitlist;
       if (request.method === "OPTIONS") return new Response(null, { status: 405, headers: JSON_HEADERS });
       if (path === "/v1/identity" && request.method === "POST") {
@@ -130,7 +133,7 @@ export default {
         const requestHash = await digest(canonicalJson({ player_id, recovery_code: recovery, idempotency_key, next_device_token: nextDevice, next_recovery_code: nextRecovery }));
         return result(await env.PLAYERS.getByName(player_id).recover(await digest(recovery), await digest(nextDevice), await digest(nextRecovery), requestHash));
       }
-      // Absent unless PLAY_GAMES_ENABLED or GAME_CENTER_ENABLED is "true": the path then falls through to auth() as before.
+      // Absent unless CONFIG lists PLAY_GAMES_ENABLED or GAME_CENTER_ENABLED: the path then falls through to auth() as before.
       const restored = await routePlatformRestore(request, path, env); if (restored) return restored;
       if (path === "/v1/identity/deletion-ack" && request.method === "POST") {
         await publicLimit(request, env);
@@ -143,17 +146,15 @@ export default {
       }
       const { playerId, safetyToken, memberName, pollen, pollenView, memberLook } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
-      // Absent unless a platform games flag is "true": the paths then answer 404 as before.
+      // Absent unless a platform games flag is on: the paths then answer 404 as before.
       const platform = await routePlatform(request, path, playerId, env); if (platform) return platform;
-      // Absent unless LIVE_CONNECTION_ENABLED is "true": the path then answers 404 as before.
+      // Absent unless CONFIG lists LIVE_CONNECTION_ENABLED: the path then answers 404 as before.
       if (path === LIVE_PATH && flags.liveConnection(env)) return await forwardLiveUpgrade(request, player, await bearerDigest(request));
       if (path === "/v1/room-inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");
-        const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = flags.finishedRoomLeave(env) && request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
-        // The face on the friend's latest turn, only for clients that show it while end reactions are on.
-        const showReactions = flags.endReactions(env) && endReactionsWanted(request), showNames = displayNamesShown(request, env);
-        const links = flags.roomIndex(env) ? null : await player.listRooms();
-        if (links && links.length <= MAX_ROOM_LINKS) return json(await roomInbox(playerId, env, showClosed, showLeft, links, showReactions, showNames));
+        const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
+        // The face on the friend's latest turn, only for clients that show it.
+        const showReactions = endReactionsWanted(request), showNames = displayNamesShown(request, env);
         const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames);
         return withNext(json(page.body), page.next);
       }
@@ -228,15 +229,7 @@ export default {
       }
       if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken, memberName, pollen, memberLook);
       if (path === "/v1/rooms" && request.method === "GET") {
-        const links = flags.roomIndex(env) ? null : await player.listRooms();
-        if (!links || links.length > MAX_ROOM_LINKS) { const page = await indexedLegacyRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next); }
-        const snapshots: RoomSnapshot[] = [], blocked = partnerBlocks(env, playerId);
-        for (const link of links) {
-          if (roomLinkVersion(link) !== 1) continue;
-          const item = await env.ROOMS.getByName(link.room_id).snapshot(playerId);
-          if (item.ok) { if (!await blocked(item.value.host_id, item.value.guest_id)) snapshots.push(item.value); } else if (item.status === 404) await player.removeRoom(link.room_id);
-        }
-        return json({ rooms: snapshots });
+        const page = await indexedLegacyRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next);
       }
       if (path === "/v1/rooms" && request.method === "POST") {
         const input = object(await boundedJson(request, 4096)); exactKeys(input, ["idempotency_key", "simulation_version"]);
@@ -244,7 +237,7 @@ export default {
         const simulationVersion = legacySimulationVersion(input.simulation_version === undefined ? 1 : input.simulation_version);
         const invite_code = newInvite();
         const proposed: RoomLink = { room_id: await inviteRoomId(invite_code, 1), invite_code, host: true };
-        const link = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveRoom(key, proposed, settled), roomSettler(env)));
+        const link = unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.reserveRoom(key, proposed, settled), settleFromRoomIndex));
         return result(await env.ROOMS.getByName(link.room_id).initialize(link.room_id, playerId, link.invite_code, simulationVersion));
       }
       if (path === "/v1/rooms/join" && request.method === "POST") {
@@ -252,7 +245,7 @@ export default {
         const supportedSimulationVersion = legacySimulationVersion(input.simulation_version === undefined ? 1 : input.simulation_version);
         const code = parseInvite(input.invite_code), roomId = await inviteRoomId(code, 1);
         const alreadyLinked = (await player.listRooms()).some(link => roomLinkVersion(link) === 1 && link.room_id === roomId);
-        unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false }, settled), roomSettler(env)));
+        unwrap(await reserveWithinRoomLimit(env, playerId, settled => player.addRoom({ room_id: roomId, invite_code: "", host: false }, settled), settleFromRoomIndex));
         const joined = await env.ROOMS.getByName(roomId).join(playerId, code, supportedSimulationVersion);
         if (!joined.ok) { if (!alreadyLinked) await player.removeRoom(roomId); return result(joined); }
         if (!await player.authorize(await bearerDigest(request))) {

@@ -8,6 +8,7 @@ import { MAX_ACTIVE_ROOM_LINKS, MAX_INDEXED_ROOM_LINKS, MAX_ROOM_LINKS } from ".
 import { ROOM_DELETION_BATCH, type RoomLink } from "../src/room-links";
 import { ROOM_INBOX_PAGE, ROOM_INDEX_BUDGET, ROOM_INDEX_RECHECKS, ROOM_LIST_PAGE, ROOM_NEXT_HEADER, ROOM_PAGE_HEADER } from "../src/room-index";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
+import { configJson } from "./config";
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import type { RoomInboxProjection } from "../src/room-inbox";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -25,17 +26,6 @@ const key = () => crypto.randomUUID();
 const LIMIT_BODY = '{"error":{"code":"room_limit_reached","retryable":false}}';
 let address = 0;
 function value<T>(outcome: Outcome<T>): T { if (!outcome.ok) throw new Error(outcome.code); return outcome.value; }
-
-/**
- * The flag the rooms and Players read from their own env. In this runtime the
- * Durable Objects share the test's env object, so one assignment reaches all of
- * them; `doFlag` checks that once.
- */
-async function doFlag(on: boolean): Promise<void> {
-  (env as unknown as Record<string, string>).ROOM_INDEX_ENABLED = on ? "true" : "false";
-  const seen = await runInDurableObject(env.PLAYERS.getByName("flag-probe"), async instance => (instance as unknown as { env: Record<string, string> }).env.ROOM_INDEX_ENABLED);
-  expect(seen).toBe(on ? "true" : "false");
-}
 
 /**
  * Wraps every Durable Object namespace and rate limiter on an env so each RPC
@@ -97,12 +87,6 @@ async function countRows(): Promise<void> {
   rowsPatched = true;
 }
 function rowsSince(start: number): number { return cursors.slice(start).reduce((sum, cursor) => sum + cursor.rowsRead, 0); }
-/** Rows read, statements run and their SQL while `work` runs. */
-async function sqlDuring(work: () => Promise<unknown>): Promise<{ rows: number; statements: number; sql: string[] }> {
-  await countRows();
-  const start = cursors.length; await work();
-  return { rows: rowsSince(start), statements: cursors.length - start, sql: cursors.slice(start).map(cursor => cursor.sql) };
-}
 
 /**
  * Counts every Durable Object request in the isolate while installed: the
@@ -122,10 +106,8 @@ async function countEverything(): Promise<{ counter: Counter; restore: () => Pro
   return { counter: holder.counter!, restore: () => runInDurableObject(probe, async instance => { Object.assign((instance as unknown as { env: Record<string, unknown> }).env, holder.saved); }) };
 }
 
-function settings(indexOn: boolean): Env {
-  const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", REPLAY_TRANSFER_ENABLED: "true", ROOM_INDEX_ENABLED: indexOn ? "true" : "false" });
-  return configured;
+function settings(): Env {
+  return { ...env };
 }
 function request(path: string, method: string, account?: Account, body?: unknown, headers: Record<string, string> = {}): Request {
   return new Request("https://after-you.test" + path, { method,
@@ -133,12 +115,12 @@ function request(path: string, method: string, account?: Account, body?: unknown
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body) });
 }
-function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}, indexOn = true): Promise<Response> {
-  return worker.fetch(request(path, method, account, body, headers), settings(indexOn));
+function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
+  return worker.fetch(request(path, method, account, body, headers), settings());
 }
 /** One counted request: its answer, router calls and rows read. */
-async function measured(path: string, account: Account, headers: Record<string, string> = {}, method = "GET", indexOn = true): Promise<{ response: Response; text: string; calls: number; rows: number; counter: Counter }> {
-  const { env: wrapped, counter } = counted(settings(indexOn));
+async function measured(path: string, account: Account, headers: Record<string, string> = {}, method = "GET"): Promise<{ response: Response; text: string; calls: number; rows: number; counter: Counter }> {
+  const { env: wrapped, counter } = counted(settings());
   const start = cursors.length;
   const response = await worker.fetch(request(path, method, account, undefined, headers), wrapped);
   const text = await response.text();
@@ -207,13 +189,24 @@ async function tableNames(account: Account): Promise<string[]> {
   return runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) => ctx.storage.sql.exec<{ name: string }>("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name").toArray().map(row => row.name));
 }
 const links = (account: Account) => env.PLAYERS.getByName(account.player_id).listRooms();
-const inbox = async (account: Account, headers: Record<string, string> = {}, indexOn = true) => (await call("/v1/room-inbox", "GET", account, undefined, headers, indexOn)).json<Inbox>();
+const inbox = async (account: Account, headers: Record<string, string> = {}) => (await call("/v1/room-inbox", "GET", account, undefined, headers)).json<Inbox>();
+/**
+ * Loses the room index push `work` makes for this row, as a push dropped in transit would: waits for the push to
+ * land, then puts the row back as it was before.
+ */
+async function losePush(account: Account, roomId: string, work: () => Promise<unknown>): Promise<void> {
+  const before = (await indexRow(account, roomId))!;
+  await work();
+  await eventually(() => indexRow(account, roomId), row => row?.observed_at !== before.observed_at);
+  await runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) => {
+    ctx.storage.sql.exec("UPDATE room_index SET state=?,observed_at=?,checked_at=?,entry=? WHERE room_id=?", before.state, before.observed_at, before.checked_at, before.entry, roomId);
+  });
+}
 
-afterEach(async () => { await doFlag(false); await reset(); }, 300_000);
+afterEach(async () => { await reset(); }, 300_000);
 
 describe("room index rows", () => {
   it("follow a v2 room through create, join, turns, finish, transfer, close, leave and identity deletion", async () => {
-    await doFlag(true);
     const host = await identity(), guest = await identity();
     const room = await hosted(host);
     // A room in play is pushed nothing; the first inbox read stores it, and every later one reads it live.
@@ -221,9 +214,9 @@ describe("room index rows", () => {
     await inbox(host);
     expect(projection((await indexRow(host, room.room_id))!)).toMatchObject({ status: "waiting_for_friend", membership: { host_id: host.player_id, guest_id: null } });
     expect((await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code })).status).toBe(200);
-    expect(await inbox(guest)).toEqual(await inbox(guest, {}, false));
+    await inbox(guest);
     expect(projection((await indexRow(guest, room.room_id))!)).toMatchObject({ status: "waiting_for_their_turn", membership: { host_id: host.player_id, guest_id: guest.player_id } });
-    expect(await inbox(host)).toEqual(await inbox(host, {}, false));
+    await inbox(host);
     expect(projection((await indexRow(host, room.room_id))!).membership.guest_id).toBe(guest.player_id);
     // The finishing turn pushes both rows to finished.
     const done = await playOut(value(await roomV2(room.room_id).snapshot(host.player_id)), host, guest);
@@ -231,15 +224,12 @@ describe("room index rows", () => {
       const row = await stateOf(member, room.room_id, "finished");
       expect(projection(row!)).toEqual(value(await roomV2(room.room_id).inboxProjection(member.player_id)));
     }
-    // The served inbox is exactly the live projection.
-    const indexed = await inbox(host), live = await inbox(host, {}, false);
-    expect(indexed).toEqual(live);
     // A replay transfer keeps the room finished in both rows.
     const offered = await (await call(`/v2/rooms/${done.room_id}/replay-transfer`, "GET", host)).json<{ manifest: { epoch: number; archive_hash: string } }>();
     for (const member of [host, guest])
       expect((await call(`/v2/rooms/${done.room_id}/replay-transfer/ack`, "POST", member, { schema_version: 1, epoch: offered.manifest.epoch, archive_hash: offered.manifest.archive_hash })).status).toBe(200);
     expect((await indexRow(host, done.room_id))!.state).toBe("finished");
-    expect(await inbox(guest)).toEqual(await inbox(guest, {}, false));
+    await inbox(guest);
 
     // Close: the closer's row goes with the link; the partner's row reads closed.
     const second = await hosted(host);
@@ -259,21 +249,20 @@ describe("room index rows", () => {
   }, 60_000);
 
   it("follow a v1 room through create, join, a turn, a reaction-free close and a 404 prune", async () => {
-    await doFlag(true);
     const host = await identity(), guest = await identity();
     const made = await call("/v1/rooms", "POST", host, { idempotency_key: key() });
     const room = await made.json<{ room_id: string; invite_code: string; revision: number }>();
     await inbox(host);
     expect(projection((await indexRow(host, room.room_id))!)).toMatchObject({ status: "waiting_for_friend" });
     const joined = await (await call("/v1/rooms/join", "POST", guest, { invite_code: room.invite_code })).json<{ revision: number; level_id: string }>();
-    expect(await inbox(host)).toEqual(await inbox(host, {}, false));
+    await inbox(host);
     expect(projection((await indexRow(host, room.room_id))!).status).toBe("your_turn");
     const turn = await call(`/v1/rooms/${room.room_id}/turns`, "POST", host, { base_revision: joined.revision, idempotency_key: key(), recording: {
       schema_version: 1, simulation_version: 1, level_version: 1, tick_rate: 30, level_id: joined.level_id, role: "a", duration_ticks: 30, catch_assistance: true,
       actions: [{ ticks: 30, x: 0, z: 0, action: true }], checkpoints: [{ tick: 30, state_hash: "a".repeat(64) }], final_state_hash: "a".repeat(64), completed: false,
       outcome: { threw_seed: true, caught_seed: false, planted_seed: false } } });
     expect(turn.status).toBe(200);
-    expect(await inbox(guest)).toEqual(await inbox(guest, {}, false));
+    await inbox(guest);
     expect(projection((await indexRow(guest, room.room_id))!).status).toBe("your_turn");
     expect((await call(`/v1/rooms/${room.room_id}`, "DELETE", host)).status).toBe(200);
     await stateOf(guest, room.room_id, "gone");
@@ -281,7 +270,6 @@ describe("room index rows", () => {
   }, 30_000);
 
   it("keep the newer observation when an older one arrives late", async () => {
-    await doFlag(true);
     const host = await identity(), guest = await identity();
     const room = await directRoom(host, guest), done = await playOut(room, host, guest);
     const fresh = await stateOf(host, done.room_id, "finished");
@@ -297,18 +285,17 @@ describe("room index rows", () => {
     expect((await indexRows(host)).map(row => row.room_id)).toEqual([done.room_id]);
   });
 
-  it("self-heal a fork made while rooms were not pushing, within ceil(rows / rechecks) inbox reads", async () => {
-    await doFlag(true);
+  it("self-heal a fork whose push was lost, within ceil(rows / rechecks) inbox reads", async () => {
     const host = await identity(), guests = [await directIdentity(), await directIdentity()];
     const rooms: RoomSnapshotV2[] = [];
     for (let index = 0; index < 20; index++) rooms.push(await finishedRoom(host, guests[index % 2]));
     for (const room of rooms) await stateOf(host, room.room_id, "finished");
-    // Pushes are lost: the flag is off while the guest reopens one room.
-    await doFlag(false);
+    // The push is lost while the guest reopens one room.
     const target = rooms[13];
-    const reopened = value(await roomV2(target.room_id).fork(guests[1].player_id, { base_revision: target.revision, idempotency_key: key(), branch: target.branch, stage_index: 0 }));
-    expect(reopened.room.active_role).not.toBe("complete");
-    await doFlag(true);
+    await losePush(host, target.room_id, async () => {
+      const reopened = value(await roomV2(target.room_id).fork(guests[1].player_id, { base_revision: target.revision, idempotency_key: key(), branch: target.branch, stage_index: 0 }));
+      expect(reopened.room.active_role).not.toBe("complete");
+    });
     expect((await indexRow(host, target.room_id))!.state).toBe("finished");
     await age(host);
     let reads = 0;
@@ -316,60 +303,56 @@ describe("room index rows", () => {
     expect((await inbox(host)).rooms.find(room => room.room_id === target.room_id)?.status).not.toBe("completed");
   }, 60_000);
 
-  it("backfill 60 unindexed links on the first indexed read with the flag-off bytes, and finish an interrupted backfill", async () => {
+  it("backfill 60 unindexed links on the first indexed read, and finish an interrupted backfill", async () => {
     const host = await identity(), guests = [await directIdentity(), await directIdentity(), await directIdentity()];
     for (let index = 0; index < 40; index++) await finishedRoom(host, guests[index % 3]);
     for (let index = 0; index < 20; index++) await directRoom(host, index % 2 ? guests[index % 3] : undefined);
     expect(await links(host)).toHaveLength(MAX_ROOM_LINKS);
+    // Links from before the index: the finish pushes are in, then the table goes.
+    await eventually(() => indexRows(host), rows => rows.filter(row => row.state === "finished").length === 40);
+    await runInDurableObject(env.PLAYERS.getByName(host.player_id), async (_, ctx) => { ctx.storage.sql.exec("DROP TABLE room_index"); });
     expect(await tableNames(host)).not.toContain("room_index");
     await countRows();
-    const off = { inbox: await measured("/v1/room-inbox", host, { "X-AfterYou-Room-Inbox": "2" }, "GET", false), relay: await measured("/v2/rooms", host, {}, "GET", false), legacy: await measured("/v1/rooms", host, {}, "GET", false) };
-    await doFlag(true);
     const first = await measured("/v1/room-inbox", host, { "X-AfterYou-Room-Inbox": "2" });
-    expect(first.text).toBe(off.inbox.text);
     expect(first.response.headers.get(ROOM_NEXT_HEADER)).toBeNull();
     expect((await indexRows(host)).filter(row => row.state !== "unchecked")).toHaveLength(MAX_ROOM_LINKS);
     expect(first.calls).toBeLessThanOrEqual(ROOM_INDEX_BUDGET);
     // Warm: rows are fresh, so nothing is read live.
     const warm = await measured("/v1/room-inbox", host, { "X-AfterYou-Room-Inbox": "2" });
-    expect(warm.text).toBe(off.inbox.text);
+    expect(warm.text).toBe(first.text);
     // Warm: only the 20 rooms in play are read live.
     expect(warm.counter.methods["ROOMS_V2.indexEntry"] ?? 0).toBe(20);
     // Cold: an hour later every row is past its window. Rows in play are read, settled rows only through the re-checks.
     await age(host);
     const cold = await measured("/v1/room-inbox", host, { "X-AfterYou-Room-Inbox": "2" });
-    expect(cold.text).toBe(off.inbox.text);
+    expect(cold.text).toBe(first.text);
     expect(cold.counter.methods["ROOMS_V2.indexEntry"]).toBeLessThanOrEqual(20 + ROOM_INDEX_RECHECKS);
-    expect(cold.calls).toBeLessThan(off.inbox.calls);
     const relay = await measured("/v2/rooms", host), legacy = await measured("/v1/rooms", host);
-    expect(relay.text).toBe(off.relay.text); expect(legacy.text).toBe(off.legacy.text);
-    // Fewer Durable Object requests than the original paths: settled rows come from the index, one own block list replaces half the block reads.
-    expect(warm.calls).toBeLessThan(off.inbox.calls); expect(relay.calls).toBeLessThanOrEqual(off.relay.calls);
+    expect(relay.calls).toBeLessThanOrEqual(ROOM_INDEX_BUDGET); expect(legacy.calls).toBeLessThanOrEqual(ROOM_INDEX_BUDGET);
     console.log("ROOM_INDEX_COST 60 links", JSON.stringify({
-      inbox_flag_off: { calls: off.inbox.calls, rows: off.inbox.rows }, inbox_backfill: { calls: first.calls, rows: first.rows }, inbox_warm: { calls: warm.calls, rows: warm.rows }, inbox_cold: { calls: cold.calls, rows: cold.rows },
-      relay_flag_off: { calls: off.relay.calls, rows: off.relay.rows }, relay_indexed: { calls: relay.calls, rows: relay.rows }, legacy_indexed: { calls: legacy.calls, rows: legacy.rows } }));
+      inbox_backfill: { calls: first.calls, rows: first.rows }, inbox_warm: { calls: warm.calls, rows: warm.rows }, inbox_cold: { calls: cold.calls, rows: cold.rows },
+      relay_indexed: { calls: relay.calls, rows: relay.rows }, legacy_indexed: { calls: legacy.calls, rows: legacy.rows } }));
 
     // An interrupted backfill: half the rows are gone, and the next read restores them.
     await runInDurableObject(env.PLAYERS.getByName(host.player_id), async (_, ctx) => { ctx.storage.sql.exec("DELETE FROM room_index WHERE rowid % 2 = 0"); });
     expect((await indexRows(host)).length).toBeLessThan(MAX_ROOM_LINKS);
-    expect(await (await call("/v1/room-inbox", "GET", host, undefined, { "X-AfterYou-Room-Inbox": "2" })).text()).toBe(off.inbox.text);
+    expect(await (await call("/v1/room-inbox", "GET", host, undefined, { "X-AfterYou-Room-Inbox": "2" })).text()).toBe(first.text);
     expect(await indexRows(host)).toHaveLength(MAX_ROOM_LINKS);
   }, 180_000);
 
   it("answer an empty player within the budget", async () => {
-    await doFlag(true); await countRows();
+    await countRows();
     const host = await identity();
     for (const path of ["/v1/room-inbox", "/v2/rooms", "/v1/rooms"]) {
       const result = await measured(path, host);
       expect(result.response.status).toBe(200); expect(result.calls).toBeLessThanOrEqual(ROOM_INDEX_BUDGET);
-      expect(result.text).toBe(await (await call(path, "GET", host, undefined, {}, false)).text());
     }
   });
 });
 
 describe("room index at 500 links", () => {
   it("pages lists and the inbox within the budget, refuses link 501, and deletes every room in bounded batches", async () => {
-    await doFlag(true); await countRows();
+    await countRows();
     const owner = await identity();
     const partners: Account[] = [];
     for (let index = 0; index < 120; index++) partners.push(await directIdentity());
@@ -405,14 +388,12 @@ describe("room index at 500 links", () => {
     expect(cold.counter.methods["ROOMS_V2.indexEntry"]).toBeLessThanOrEqual(inPlay.length + ROOM_INDEX_RECHECKS);
     expect(cold.calls).toBeLessThanOrEqual(ROOM_INDEX_BUDGET);
 
-    // A finished room far off the first page is reopened while rooms are not pushing; re-checks find it.
+    // A finished room far off the first page is reopened and its push is lost; re-checks find it.
     const firstPage = new Set(page.rooms.map(room => room.room_id));
     const target = all.filter(id => !firstPage.has(id)).at(-1)!;
     const targetState = value(await roomV2(target).snapshot(owner.player_id));
     const partner = partners.find(account => account.player_id === targetState.guest_id)!;
-    await doFlag(false);
-    value(await roomV2(target).fork(partner.player_id, { base_revision: targetState.revision, idempotency_key: key(), branch: targetState.branch, stage_index: 0 }));
-    await doFlag(true);
+    await losePush(owner, target, async () => value(await roomV2(target).fork(partner.player_id, { base_revision: targetState.revision, idempotency_key: key(), branch: targetState.branch, stage_index: 0 })));
     await age(owner);
     let healReads = 0;
     while ((await indexRow(owner, target))!.state !== "in_play") { healReads++; await inbox(owner); expect(healReads).toBeLessThanOrEqual(Math.ceil(MAX_INDEXED_ROOM_LINKS / ROOM_INDEX_RECHECKS) + 1); }
@@ -430,12 +411,9 @@ describe("room index at 500 links", () => {
     console.log("ROOM_INDEX_COST 500 links", JSON.stringify({ inbox_first: { calls: first.calls, rows: first.rows, methods: first.counter.methods }, inbox_warm: { calls: warm.calls, rows: warm.rows }, inbox_cold: { calls: cold.calls, rows: cold.rows, methods: cold.counter.methods }, heal_reads: healReads,
       relay: { calls: relay.calls, rows: relay.rows }, legacy: { calls: legacy.calls, rows: legacy.rows } }));
 
-    // The total bound, with the exact old answer; the flag off falls back to 60 and still lists in pages.
+    // The total bound, with the exact old answer.
     const refused = await createV2(owner);
     expect(refused.status).toBe(409); expect(await refused.text()).toBe(LIMIT_BODY);
-    const offInbox = await measured("/v1/room-inbox", owner, {}, "GET", false);
-    expect((JSON.parse(offInbox.text) as Inbox).rooms).toHaveLength(ROOM_INBOX_PAGE);
-    expect(offInbox.calls).toBeLessThanOrEqual(ROOM_INDEX_BUDGET);
 
     // Identity deletion: the request revokes the identity, erases one batch and answers today's 200.
     const deletion = await measured("/v1/identity", owner, {}, "DELETE");
@@ -473,7 +451,6 @@ describe("room index at 500 links", () => {
 
 describe("room cap with the index", () => {
   it("still refuses a 21st room in play with the exact old answer, and passes 60 links only fully indexed", async () => {
-    await doFlag(true);
     const host = await identity(), guest = await directIdentity();
     for (let index = 0; index < MAX_ACTIVE_ROOM_LINKS; index++) await hosted(host);
     const refused = await createV2(host);
@@ -491,15 +468,12 @@ describe("room cap with the index", () => {
   }, 120_000);
 });
 
-describe("room index with the flag off", () => {
-  it("creates no table, pushes nothing and keeps Player export working; with it on, export skips the index", async () => {
+describe("room index and Player export", () => {
+  it("keeps Player export working and skips the index in it", async () => {
     const host = await identity(), guest = await identity();
     const room = await hosted(host);
-    expect((await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }, {}, false)).status).toBe(200);
+    expect((await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code })).status).toBe(200);
     await playOut(value(await roomV2(room.room_id).snapshot(host.player_id)), host, guest);
-    for (const path of ["/v1/room-inbox", "/v2/rooms", "/v1/rooms"]) expect((await call(path, "GET", host, undefined, {}, false)).status).toBe(200);
-    for (const member of [host, guest]) { expect(await tableNames(member)).not.toContain("room_index"); expect((await env.PLAYERS.getByName(member.player_id).exportSnapshot("f".repeat(40))).ok).toBe(true); }
-    await doFlag(true);
     await inbox(host);
     expect(await tableNames(host)).toContain("room_index");
     const archive = JSON.parse(value(await env.PLAYERS.getByName(host.player_id).exportSnapshot("f".repeat(40))));
@@ -511,32 +485,13 @@ describe("room index with the flag off", () => {
 });
 
 describe("room index costs and erasure", () => {
-  it("costs the same rows and statements with the flag off for a commit and an unlink as before the index", async () => {
+  it("clears the erased member from a partner's row", async () => {
     const host = await identity(), guest = await identity();
-    const room = await hosted(host);
-    const joined = await (await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }, {}, false)).json<RoomSnapshotV2>();
-    const commit = await sqlDuring(() => roomV2(room.room_id).commit(host.player_id, { base_revision: joined.revision, branch: joined.branch, idempotency_key: key(), recording: firstA }));
-    const unlink = await sqlDuring(() => env.PLAYERS.getByName(guest.player_id).removeRoom(room.room_id, 2));
-    // Measured on origin/main f873888 with the same counter: a commit 48 rows in 33 statements, an unlink 2 in 2.
-    expect({ rows: commit.rows, statements: commit.statements }).toEqual({ rows: 48, statements: 33 });
-    expect({ rows: unlink.rows, statements: unlink.statements }).toEqual({ rows: 2, statements: 2 });
-    for (const sql of [...commit.sql, ...unlink.sql]) expect(sql).not.toMatch(/room_index|room_erasure/);
-  });
-
-  it("clears the erased member from a partner's row even with the flag off, and creates no table where none was", async () => {
-    await doFlag(true);
-    const host = await identity(), guest = await identity(), other = await identity();
     const done = await finishedRoom(host, guest);
     await stateOf(guest, done.room_id, "finished");
-    await doFlag(false);
-    const plain = await directRoom(host, other);
-    expect(await tableNames(other)).not.toContain("room_index");
-    expect((await call("/v1/identity", "DELETE", host, undefined, {}, false)).status).toBe(200);
+    expect((await call("/v1/identity", "DELETE", host)).status).toBe(200);
     const row = await stateOf(guest, done.room_id, "gone");
     expect(row!.entry).not.toContain(host.player_id);
-    await new Promise(resolve => setTimeout(resolve, 200));
-    expect(await tableNames(other)).not.toContain("room_index");
-    expect(await roomV2(plain.room_id).memberRoomState(other.player_id)).toBe("gone");
   }, 60_000);
 
   it("finishes a deletion above 60 links whose request batch holds a room that always fails", async () => {
@@ -563,7 +518,6 @@ describe("room index costs and erasure", () => {
   }, 120_000);
 
   it("hides a room blocked in either direction from the indexed inbox and both indexed lists", async () => {
-    await doFlag(true);
     const host = await identity(), blocker = await identity(), blocked = await identity(), friend = await identity();
     const pair = async (guest: Account, v2: boolean) => {
       const made = await call(v2 ? "/v2/rooms" : "/v1/rooms", "POST", host, { idempotency_key: key(), ...(v2 ? { level_id: RELAY.id, level_version: 2, definition_hash: DEFINITION_HASH } : {}) });
@@ -583,26 +537,25 @@ describe("room index costs and erasure", () => {
   }, 60_000);
 
   it("measures a typical player's day: 10 rooms, 5 inbox opens, 3 lobby opens and 20 turns", async () => {
-    const day = async (indexOn: boolean) => {
-      await doFlag(indexOn);
+    const day = async () => {
       const owner = await identity(), partners = [await identity(), await identity(), await identity()];
       for (let index = 0; index < 5; index++) await finishedRoom(owner, partners[index % 3]);
       const today: { room: RoomSnapshotV2; guest: Account }[] = [];
       for (let index = 0; index < 5; index++) { const guest = partners[index % 3]; today.push({ room: await directRoom(owner, guest), guest }); }
-      if (indexOn) { await eventually(() => indexRows(owner), rows => rows.length === 10); await age(owner, 12 * 3_600_000); }
+      await eventually(() => indexRows(owner), rows => rows.length === 10); await age(owner, 12 * 3_600_000);
       await countRows();
       const totals: Counter = { calls: 0, methods: {} };
       let rows = 0;
       for (const [session, { room, guest }] of today.entries()) {
-        if (indexOn) await age(owner, 3 * 3_600_000);
+        await age(owner, 3 * 3_600_000);
         const { counter, restore } = await countEverything();
         const start = cursors.length;
         try {
-          expect((await call("/v1/room-inbox", "GET", owner, undefined, {}, indexOn)).status).toBe(200);
-          if (session < 3) expect((await call("/v2/rooms", "GET", owner, undefined, {}, indexOn)).status).toBe(200);
+          expect((await call("/v1/room-inbox", "GET", owner)).status).toBe(200);
+          if (session < 3) expect((await call("/v2/rooms", "GET", owner)).status).toBe(200);
           let state = room;
           for (const [player, recording, checkpoint] of [[owner, firstA, undefined], [guest, firstB, middle], [guest, secondA, undefined], [owner, secondB, final]] as const) {
-            const turn = await call(`/v2/rooms/${room.room_id}/turns`, "POST", player, { base_revision: state.revision, branch: state.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) }, {}, indexOn);
+            const turn = await call(`/v2/rooms/${room.room_id}/turns`, "POST", player, { base_revision: state.revision, branch: state.branch, idempotency_key: key(), recording, ...(checkpoint ? { checkpoint } : {}) });
             expect(turn.status).toBe(200); state = (await turn.json<{ room: RoomSnapshotV2 }>()).room;
           }
           await new Promise(resolve => setTimeout(resolve, 100));
@@ -613,19 +566,16 @@ describe("room index costs and erasure", () => {
       const counter = totals;
       return { methods: counter.methods, do_requests: counter.calls, rows_read: rows, pushes: counter.methods["PLAYERS.noteRoomIndex"] ?? 0, room_reads: (counter.methods["ROOMS_V2.inboxProjection"] ?? 0) + (counter.methods["ROOMS_V2.indexEntry"] ?? 0) };
     };
-    const off = await day(false), on = await day(true);
-    console.log("ROOM_INDEX_COST typical day", JSON.stringify({ off, on }));
-    expect(off.pushes).toBe(0);
-    // Pushes only when a room finishes (2 each, 5 rooms); rooms are read only while in play.
+    const on = await day();
+    console.log("ROOM_INDEX_COST typical day", JSON.stringify({ on }));
+    // Pushes only when a room finishes (2 each, 5 rooms).
     expect(on.pushes).toBe(10);
-    expect(on.room_reads).toBeLessThan(off.room_reads);
-    expect(on.do_requests).toBeLessThan(off.do_requests);
   }, 180_000);
 
   it("finishes a deletion above 60 links whose provider erasure is held, when the device's acknowledgement retries", async () => {
     const shared = env as unknown as Record<string, string | undefined>;
-    const before = { REVENUECAT_DELETION_ENABLED: shared.REVENUECAT_DELETION_ENABLED, REVENUECAT_SECRET_KEY: shared.REVENUECAT_SECRET_KEY, REVENUECAT_PROJECT_ID: shared.REVENUECAT_PROJECT_ID };
-    Object.assign(shared, { REVENUECAT_DELETION_ENABLED: "true", REVENUECAT_SECRET_KEY: "synthetic-only", REVENUECAT_PROJECT_ID: "projSynthetic" });
+    const before = { REVENUECAT_SECRET_KEY: shared.REVENUECAT_SECRET_KEY, CONFIG: shared.CONFIG };
+    Object.assign(shared, { REVENUECAT_SECRET_KEY: "synthetic-only", CONFIG: configJson({ revenuecat: { project_id: "projSynthetic" } }) });
     const provider = vi.spyOn(globalThis, "fetch").mockResolvedValue(new Response(null, { status: 503 }));
     try {
       const owner = await identity();
@@ -656,7 +606,6 @@ describe("room index costs and erasure", () => {
   }, 120_000);
 
   it("keeps a 404 read between a link's reservation and its room's start unchecked, never settled, and reads it again", async () => {
-    await doFlag(true);
     const host = await identity(), player = env.PLAYERS.getByName(host.player_id);
     const invite = "C".repeat(20), roomId = (await digest("v2:" + invite)).slice(0, 22);
     // POST /v2/rooms reserves the link before it starts the room; an inbox read can land in between.
@@ -672,7 +621,6 @@ describe("room index costs and erasure", () => {
   });
 
   it("erases the deleted host's waiting rooms in the request above 60 links, and picks a lost continuation up again on the next wake", async () => {
-    await doFlag(true);
     const owner = await identity(), guest = await directIdentity(), stranger = await identity();
     // The oldest link, so link order alone would leave it to a later batch.
     const waiting = await directRoom(owner);
@@ -703,13 +651,11 @@ describe("room index costs and erasure", () => {
   });
 
   it("gives the partner's row partner_left when the other member leaves a finished room", async () => {
-    await doFlag(true);
     const host = await identity(), guest = await identity();
     const done = await finishedRoom(host, guest);
     await stateOf(host, done.room_id, "finished");
     const leaving = (path: string, method: string, account: Account, body?: unknown, headers: Record<string, string> = {}) => {
-      const configured = settings(true); Object.assign(configured, { FINISHED_ROOM_LEAVE_ENABLED: "true" });
-      return worker.fetch(request(path, method, account, body, headers), configured);
+      return worker.fetch(request(path, method, account, body, headers), settings());
     };
     expect((await leaving(`/v2/rooms/${done.room_id}/leave`, "POST", guest, { schema_version: 1, leave_finished: true })).status).toBe(200);
     const row = await eventually(() => indexRow(host, done.room_id), value => !!value?.entry && projection(value).partner_left === true);

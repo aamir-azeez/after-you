@@ -5,12 +5,13 @@ import { encode } from "jpeg-js";
 import worker from "../src/index";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { TRANSFER_TTL, TRANSFER_MAX_BYTES, TRANSFER_MAX_OPERATIONS } from "../src/photo-transfer";
+import { withConfig } from "./config";
 const key = () => crypto.randomUUID();
 function value<T>(result: Outcome<T>): T { if (!result.ok) throw new Error(result.code); return result.value; }
 type Account = { player_id: string; device_token: string; recovery_code: string };
 let ip = 0;
-async function call(path: string, method = "GET", owner?: Account, data?: unknown, settings: Partial<Env> = {}) {
-  const configured = { ...env, ...settings }; Object.assign(configured, { PHOTO_TRANSFER_ENABLED: "true", ...settings });
+async function call(path: string, method = "GET", owner?: Account, data?: unknown, settings: Record<string, unknown> = {}) {
+  const configured = withConfig({ ...env, PHOTO_TRANSFER_ENABLED: "true", ...settings }) as unknown as Env;
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + ++ip,
     ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}) }, body: data === undefined ? undefined : JSON.stringify(data) }), configured);
 }

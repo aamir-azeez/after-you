@@ -34,7 +34,6 @@ export function campaignRedoAccess(access: CampaignHttpAccess, binding: Campaign
 }
 export function campaignRedoMutations(env: Env): void {
   requireCampaignProduction();
-  need(flags.v2Rooms(env), "v2_mutations_disabled", 503);
   need(flags.campaignMutations(env), "campaign_mutations_disabled", 503);
 }
 export async function campaignRedoInput(value: unknown, binding: CampaignRedoBinding, accept: true): Promise<CampaignRedoAccept>;

@@ -13,6 +13,7 @@ import denseNative from "../../game/tests/fixtures/comfort8/dense-physical.json"
 import oldRelayA from "../../game/tests/fixtures/v2/relay-a.json";
 import oldPhysicalA from "../../game/tests/fixtures/cooperative/upper-path-a.json";
 import oldJourneyA from "../../game/tests/fixtures/journey/a-light-above-a.json";
+import { withConfig } from "./config";
 
 type Pair = { a: ChapterRecording; b: ChapterRecording };
 type PhysicalProof = { pairs: Pair[]; checkpoints: ChapterCheckpoint[] };
@@ -28,7 +29,7 @@ async function rehash(value: Record<string, unknown>) {
   return { ...body, recording_hash: await digest(canonicalJson(body)) };
 }
 async function call(path: string, method = "GET", owner?: Account, body?: unknown, overrides: Record<string, unknown> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", COOP_CHAPTERS_ENABLED: "true", ...overrides });
+  const configured: Env = withConfig({ ...env, ...overrides });
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.15." + ++requestNo,
       ...(owner ? { "X-Player-Id": owner.player_id, Authorization: "Bearer " + owner.device_token } : {}) },

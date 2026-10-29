@@ -1,11 +1,11 @@
 import { env } from "cloudflare:workers";
-import { reset, runInDurableObject } from "cloudflare:test";
+import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { bytesDigest, decodeBlob, encodeBlob, ENCODING_RAW } from "../src/blob-codec";
 import type { HistoryView } from "../src/v2/history-room";
 import type { RoomSnapshotV2 } from "../src/v2/room";
 import { CHAINS, fork, play } from "./history-chains";
-import { HISTORY, ON, call, relayPair, type Account } from "./history-http";
+import { HISTORY, call, relayPair, type Account } from "./history-http";
 
 afterEach(async () => { await reset(); });
 const chain = CHAINS[0];
@@ -17,25 +17,23 @@ async function setup(attempts: number): Promise<Setup & { state: RoomSnapshotV2 
   for (let i = 0; i < attempts; i++) state = await fork(stub, await play(stub, state, chain, 0, undefined, players), 0, host.player_id);
   return { host, guest, room, state, path: `/v2/rooms/${room.room_id}/history`, stub };
 }
-async function list(setup: Setup, who: Account, vars: Record<string, string> = ON): Promise<HistoryView> {
+async function list(setup: Setup, who: Account, vars: Record<string, string> = {}): Promise<HistoryView> {
   const response = await call(setup.path, "GET", who, undefined, vars, HISTORY); expect(response.status).toBe(200); return response.json<HistoryView>();
 }
-async function download(setup: Setup, who: Account, position: number, vars: Record<string, string> = ON): Promise<Uint8Array> {
+async function download(setup: Setup, who: Account, position: number, vars: Record<string, string> = {}): Promise<Uint8Array> {
   const response = await call(`${setup.path}/${position}`, "GET", who, undefined, vars, HISTORY);
   expect(response.status).toBe(200); expect(response.headers.get("content-type")).toBe("application/octet-stream");
   return new Uint8Array(await response.arrayBuffer());
 }
 const code = async (response: Response) => `${response.status} ${response.status === 200 ? "ok" : (await response.json<{ error: { code: string } }>()).error.code}`;
-const tables = (setup: Setup) => runInDurableObject(setup.stub, (_, ctx) => ctx.storage.sql.exec("SELECT name FROM sqlite_master WHERE name LIKE 'history_%'").toArray().length);
 
 describe("attempt history endpoints", () => {
-  it("lists and serves finished attempts with offload off, without touching storage, and never the live attempt", async () => {
+  it("lists and serves finished attempts, and never the live attempt", async () => {
     const s = await setup(2);
     const view = await list(s, s.host, {});
     expect(view).toMatchObject({ schema_version: 1, mode: "attempts", head: view.attempts[1].link, room: { room_id: s.room.room_id, host_id: s.host.player_id, guest_id: s.guest.player_id } });
     expect(view.attempts.map(a => [a.position, a.state, a.last_stage, a.pair_ids, a.acked_by_you, a.partner_acked, a.wanted_by_partner]))
       .toEqual([[0, "held", 2, ["p0-0", "p0-1"], false, false, false], [1, "held", 2, ["p1-0", "p1-1"], false, false, false]]);
-    expect(await tables(s)).toBe(0);
     const body = await download(s, s.guest, 1, {});
     expect(body[0]).toBe(1);
     const bytes = (await decodeBlob(body, view.attempts[1].byte_length))!;
@@ -43,27 +41,25 @@ describe("attempt history endpoints", () => {
     expect(JSON.parse(new TextDecoder().decode(bytes))).toMatchObject({ format: "after-you.attempt", room_id: s.room.room_id, position: 1, branch: 1 });
     expect(await code(await call(`${s.path}/2`, "GET", s.host, undefined, {}, HISTORY))).toBe("404 history_not_found");
     expect(await code(await call(`${s.path}/32`, "GET", s.host))).toBe("400 invalid_field");
-    expect(await code(await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 1, link: view.attempts[0].link }))).toBe("503 history_offload_disabled");
     expect(await code(await call(s.path, "GET", (await relayPair()).host))).toBe("404 room_not_found");
-    expect(await tables(s)).toBe(0);
   });
 
   it("records ACKs with offload on and shows each member the other's", async () => {
     const s = await setup(1), view = await list(s, s.host), link = view.attempts[0].link;
-    expect(await code(await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 1, link: "0".repeat(64) }, ON, HISTORY))).toBe("409 history_mismatch");
-    expect(await code(await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 2, link }, ON, HISTORY))).toBe("422 invalid_history_request");
+    expect(await code(await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 1, link: "0".repeat(64) }, {}, HISTORY))).toBe("409 history_mismatch");
+    expect(await code(await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 2, link }, {}, HISTORY))).toBe("422 invalid_history_request");
     expect(view.partner_supports).toBe(false);
     expect((await list(s, s.guest)).partner_supports).toBe(true);
-    const acked = await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 1, link }, ON, HISTORY);
+    const acked = await call(`${s.path}/0/ack`, "POST", s.host, { schema_version: 1, link }, {}, HISTORY);
     expect((await acked.json<HistoryView>()).attempts[0]).toMatchObject({ acked_by_you: true, partner_acked: false, state: "held" });
     expect((await list(s, s.guest)).attempts[0]).toMatchObject({ acked_by_you: false, partner_acked: true });
-    expect(await code(await call(`${s.path}/1/ack`, "POST", s.host, { schema_version: 1, link }, ON, HISTORY))).toBe("404 history_not_found");
+    expect(await code(await call(`${s.path}/1/ack`, "POST", s.host, { schema_version: 1, link }, {}, HISTORY))).toBe("404 history_not_found");
   });
 
   it("accepts only the exact bytes of this room's attempt at this place in the chain", async () => {
     const s = await setup(2), other = await setup(1), view = await list(s, s.host);
     const zero = await download(s, s.host, 0), one = await download(s, s.host, 1), foreign = await download(other, other.host, 0);
-    const upload = (position: number, body: Uint8Array, headers: Record<string, string> = HISTORY) => call(`${s.path}/${position}`, "POST", s.host, body, ON, headers);
+    const upload = (position: number, body: Uint8Array, headers: Record<string, string> = HISTORY) => call(`${s.path}/${position}`, "POST", s.host, body, {}, headers);
     expect(await code(await upload(1, zero))).toBe("422 history_mismatch");
     expect(await code(await upload(0, one))).toBe("422 history_mismatch");
     expect(await code(await upload(0, foreign))).toBe("422 history_mismatch");
@@ -73,10 +69,10 @@ describe("attempt history endpoints", () => {
     const longer = new Uint8Array(raw.byteLength + 1); longer.set(raw); longer[raw.byteLength] = 0x20;
     expect(await code(await upload(0, longer))).toBe("422 history_mismatch");
     expect(await code(await upload(0, new Uint8Array(4 * 1024 * 1024 + 2)))).toBe("413 body_too_large");
-    expect(await code(await call(`${s.path}/0`, "POST", s.host, { schema_version: 1 }, ON, HISTORY))).toBe("415 bytes_required");
+    expect(await code(await call(`${s.path}/0`, "POST", s.host, { schema_version: 1 }, {}, HISTORY))).toBe("415 bytes_required");
     // Both encodings of the right bytes are accepted; a held attempt is left as it is.
     for (const body of [zero, raw]) expect((await (await upload(0, body)).json<HistoryView>()).attempts[0]).toMatchObject({ state: "held", acked_by_you: false });
-    expect(await code(await call(`${s.path}/0/want`, "POST", s.guest, { schema_version: 1 }, ON, HISTORY))).toBe("200 ok");
+    expect(await code(await call(`${s.path}/0/want`, "POST", s.guest, { schema_version: 1 }, {}, HISTORY))).toBe("200 ok");
     expect((await list(s, s.host)).attempts[0].wanted_by_partner).toBe(false);
   });
 
@@ -88,6 +84,6 @@ describe("attempt history endpoints", () => {
     await s.stub.acknowledgeReplayTransfer(s.host.player_id, ack); await s.stub.acknowledgeReplayTransfer(s.guest.player_id, ack);
     expect(await list(s, s.guest)).toEqual({ schema_version: 1, mode: "v1_transferred", head: "0".repeat(64), attempts: [], partner_supports: false,
       room: { room_id: s.room.room_id, level_id: s.room.level_id, level_version: s.room.level_version, definition_hash: s.room.definition_hash, host_id: s.host.player_id, guest_id: s.guest.player_id } });
-    expect(await code(await call(`${s.path}/0`, "GET", s.host, undefined, ON, HISTORY))).toBe("409 history_v1_transferred");
+    expect(await code(await call(`${s.path}/0`, "GET", s.host, undefined, {}, HISTORY))).toBe("409 history_v1_transferred");
   });
 });

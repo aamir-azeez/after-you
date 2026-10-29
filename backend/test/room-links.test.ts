@@ -76,7 +76,6 @@ describe("room-link compatibility in the actual Workers runtime", () => {
     expect((await exported(player)).payload.tables).toEqual(before.payload.tables);
     expect((await call("/v1/identity", "GET", account)).status).toBe(200);
     expect((await env.ROOMS.getByName(oldRoom.room_id).snapshot(account.player_id)).ok).toBe(true);
-    expect((await call("/v2/rooms", "POST", account, { idempotency_key: key() })).status).toBe(503);
   });
 
   it("does not erase an unknown version even when a v2 eraser is configured", async () => {

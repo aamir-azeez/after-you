@@ -12,14 +12,14 @@ import middle from "../../game/tests/fixtures/cooperative/go-on-ahead-checkpoint
 import backA from "../../game/tests/fixtures/cooperative/back-for-you-a.json";
 import backB from "../../game/tests/fixtures/cooperative/back-for-you-b.json";
 import final from "../../game/tests/fixtures/cooperative/the-wishing-well-final-checkpoint.json";
+import { TERMS_VERSION } from "../src/public-policy";
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 const key = () => crypto.randomUUID();
-const ON = { WISHING_WELL_CHAPTER_ENABLED: "true", REPLAY_TRANSFER_ENABLED: "true", PHOTO_DELIVERY_ENABLED: "true" };
 const NEW_CLIENT = [2, 4, 5, 6, 7, 8, 9];
 let requestNo = 0;
 async function call(path: string, method = "GET", account?: Account, body?: unknown, headers: Record<string, string> = {}): Promise<Response> {
-  const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...ON });
+  const configured: Env = { ...env };
   return worker.fetch(new Request("https://after-you.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.7." + (++requestNo % 250), ...headers,
     ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), configured);
 }
@@ -56,7 +56,8 @@ describe("a finished room whose replay both players saved", () => {
     for (const player of [host, guest]) expect(await inbox(player)).toEqual([expect.objectContaining(finished)]);
     // Each phone downloads the complete replay and acknowledges it, as on leaving the finished room.
     for (const player of [host, guest]) await saveReplay(room.room_id, player);
-    expect((await call(`/v2/rooms/${room.room_id}`, "GET", host)).status).toBe(410);
+    // A 0.6.0 read (no finished-room header) gets the Story boundary instead; this is a 0.6.1+ read.
+    expect((await call(`/v2/rooms/${room.room_id}`, "GET", host, undefined, { "X-AfterYou-Finished-Room": "2" })).status).toBe(410);
     for (const player of [host, guest]) {
       const rooms = await inbox(player);
       expect(rooms).toEqual([expect.objectContaining({ ...finished, membership: { host_id: host.player_id, guest_id: guest.player_id, you_are_host: player === host } })]);
@@ -71,6 +72,8 @@ describe("a finished room whose replay both players saved", () => {
     // The guest's own stage-two turn photo; the guest's phone saved it on upload and acknowledged it.
     const turn = "t0-1-a", ack = { recording_hash: backA.recording_hash, photo_revision: 1, sha256 };
     const stub = env.ROOMS_V2.getByName(room.room_id);
+    // Terms are always enforced now, in the room as well as at the router.
+    expect((await call("/v1/safety/terms", "POST", guest, { schema_version: 1, terms_version: TERMS_VERSION })).status).toBe(200);
     const uploaded = await stub.updatePhoto(guest.player_id, turn, { idempotency_key: key(), recording_hash: backA.recording_hash, expected_photo_revision: 0, expected_photo_hash: null, jpeg_base64, sha256 });
     expect(uploaded.ok).toBe(true);
     expect((await call(`/v2/rooms/${room.room_id}/photos/${turn}/ack`, "POST", guest, ack)).status).toBe(200);
@@ -84,21 +87,19 @@ describe("a finished room whose replay both players saved", () => {
     const delivered = await call(`/v2/rooms/${room.room_id}/photos/${turn}/ack`, "POST", host, ack);
     expect(delivered.status).toBe(200); expect(await delivered.json()).toMatchObject({ acked: true, removed_reason: "delivered" });
   });
-  it("answers 0.6.0's last-room read with the Story boundary only when the unblock flag is on", async () => {
+  it("answers 0.6.0's last-room read with the Story boundary", async () => {
     const { host, guest, room } = await finishedRoom();
     for (const player of [host, guest]) await saveReplay(room.room_id, player);
-    const read = async (flag: string | undefined, header?: string) => {
-      const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...ON, ...(flag === undefined ? {} : { LEGACY_TRANSFERRED_ROOM_UNBLOCK: flag }) });
+    const read = async (header?: string) => {
+      const configured: Env = { ...env };
       const response = await worker.fetch(new Request(`https://after-you.test/v2/rooms/${room.room_id}`, { headers: { "CF-Connecting-IP": "198.18.8." + (++requestNo % 250),
         "X-Player-Id": host.player_id, Authorization: "Bearer " + host.device_token, ...(header ? { "X-AfterYou-Finished-Room": header } : {}) } }), configured);
       return { status: response.status, code: (await response.json<{ error?: { code: string } }>()).error?.code };
     };
-    expect(await read(undefined)).toEqual({ status: 410, code: "replay_transferred" });
-    expect(await read("false")).toEqual({ status: 410, code: "replay_transferred" });
-    expect(await read("true")).toEqual({ status: 409, code: "campaign_client_required" });
-    expect(await read("true", "2")).toEqual({ status: 410, code: "replay_transferred" });
+    expect(await read()).toEqual({ status: 409, code: "campaign_client_required" });
+    expect(await read("2")).toEqual({ status: 410, code: "replay_transferred" });
     const stranger = await account();
-    const configured: Env = { ...env }; Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...ON, LEGACY_TRANSFERRED_ROOM_UNBLOCK: "true" });
+    const configured: Env = { ...env };
     const outsider = await worker.fetch(new Request(`https://after-you.test/v2/rooms/${room.room_id}`, { headers: { "CF-Connecting-IP": "198.18.8.1", "X-Player-Id": stranger.player_id, Authorization: "Bearer " + stranger.device_token } }), configured);
     expect(outsider.status).not.toBe(409);
   });

@@ -4,14 +4,16 @@ import worker from "../src/index";
 import { inboxKey, ipKey, normalEmail } from "../src/waitlist";
 import { CONFIRM_TTL_SECONDS, signConfirmToken, verifyConfirmToken } from "../src/waitlist-token";
 import { confirmEmail } from "../src/waitlist-email";
+import { APP } from "../src/config";
+import { withConfig } from "./config";
 
 const ORIGIN = "https://aamirazeez.com";
-const SEGMENT = "68cf69ad-59d6-4b84-8865-72dbc72f1a49";
+const SEGMENT = APP.resendSegmentId;
 const SECRET = "test-confirm-secret-0123456789abcdef-never-real";
-const CONFIG = {
-  IOS_WAITLIST_ENABLED: "true", RESEND_API_KEY: "re_test_key_never_real", RESEND_SEGMENT_ID: SEGMENT, TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
-  TURNSTILE_SITE_KEY: "1x00000000000000000000AA", WAITLIST_CONFIRM_SECRET: SECRET, WAITLIST_REPLY_TO: "afteryou-reply@aamirazeez.com",
-  WAITLIST_FROM: "waitlist@afteryou.aamirazeez.com"
+/** The flag and the three secrets. The site key, both addresses and the segment are APP's (config.ts). */
+const VARS = {
+  IOS_WAITLIST_ENABLED: "true", RESEND_API_KEY: "re_test_key_never_real", TURNSTILE_SECRET_KEY: "1x0000000000000000000000000000000AA",
+  WAITLIST_CONFIRM_SECRET: SECRET
 };
 const TOKEN = "XXXX.DUMMY.TOKEN.XXXX";
 const EMAIL = "Someone.Waiting@Example.com", NORMAL = "someone.waiting@example.com";
@@ -33,7 +35,7 @@ function call(options: Call = {}): Promise<Response> {
   const fallback = path === SIGNUP ? { schema_version: 1, email: EMAIL, turnstile_token: TOKEN } : {};
   const body = options.raw ?? (method === "POST" ? JSON.stringify(options.body ?? fallback) : undefined);
   return worker.fetch(new Request("https://game.test" + path, { method, headers, body }),
-    { ...env, PUBLIC_LIMITER: limiter(), WAITLIST_ADDRESS_LIMITER: limiter(), ...noObjects(), ...CONFIG, ...(options.vars ?? {}) } as unknown as Env);
+    withConfig({ ...env, PUBLIC_LIMITER: limiter(), WAITLIST_ADDRESS_LIMITER: limiter(), ...noObjects(), ...VARS, ...(options.vars ?? {}) }) as unknown as Env);
 }
 const confirmCall = async (token: string, options: Call = {}) => call({ path: CONFIRM, body: { schema_version: 1, token }, ...options });
 type Answer = () => Response | Promise<Response>;
@@ -73,7 +75,7 @@ describe("iOS waitlist with the flag off", () => {
   it("answers every method on both paths exactly as before and calls nothing", async () => {
     const fetchSpy = vi.spyOn(globalThis, "fetch");
     for (const flag of [undefined, "false", "TRUE", "1", ""]) {
-      const vars: Record<string, unknown> = { ...CONFIG, IOS_WAITLIST_ENABLED: flag };
+      const vars: Record<string, unknown> = { ...VARS, IOS_WAITLIST_ENABLED: flag };
       for (const path of [SIGNUP, CONFIRM]) {
         const post = await call({ path, vars });
         expect(post.status).toBe(401);
@@ -95,8 +97,8 @@ describe("the page's config and CORS", () => {
     expect(response.status).toBe(200);
     expectCors(response);
     const text = await response.text();
-    expect(JSON.parse(text)).toEqual({ schema_version: 1, site_key: CONFIG.TURNSTILE_SITE_KEY });
-    for (const secret of [CONFIG.TURNSTILE_SECRET_KEY, CONFIG.RESEND_API_KEY, SECRET]) expect(text).not.toContain(secret);
+    expect(JSON.parse(text)).toEqual({ schema_version: 1, site_key: APP.turnstileSiteKey });
+    for (const secret of [VARS.TURNSTILE_SECRET_KEY, VARS.RESEND_API_KEY, SECRET]) expect(text).not.toContain(secret);
   });
 
   it("answers the browser's preflight on both paths for the page's origin only", async () => {
@@ -126,8 +128,8 @@ describe("the page's config and CORS", () => {
     }
   });
 
-  it("stays closed with 503 until every var and secret is set", async () => {
-    for (const missing of ["RESEND_API_KEY", "RESEND_SEGMENT_ID", "TURNSTILE_SECRET_KEY", "TURNSTILE_SITE_KEY", "WAITLIST_CONFIRM_SECRET", "WAITLIST_REPLY_TO", "WAITLIST_FROM"]) {
+  it("stays closed with 503 until every secret is set", async () => {
+    for (const missing of ["RESEND_API_KEY", "TURNSTILE_SECRET_KEY", "WAITLIST_CONFIRM_SECRET"]) {
       const fetchSpy = upstream();
       for (const [path, method] of [[SIGNUP, "GET"], [SIGNUP, "POST"], [CONFIRM, "POST"]]) {
         const response = await call({ path, method, vars: { [missing]: undefined } });
@@ -138,8 +140,6 @@ describe("the page's config and CORS", () => {
       vi.restoreAllMocks();
     }
     expect((await call({ method: "GET", vars: { WAITLIST_CONFIRM_SECRET: "x".repeat(31) } })).status).toBe(503);
-    expect((await call({ method: "GET", vars: { WAITLIST_REPLY_TO: "not an address" } })).status).toBe(503);
-    expect((await call({ method: "GET", vars: { WAITLIST_FROM: "After You <waitlist@afteryou.aamirazeez.com>" } })).status).toBe(503);
   });
 });
 
@@ -153,16 +153,16 @@ describe("signing up", () => {
     expect(await response.json()).toEqual({ schema_version: 1, sent: true });
     expect(urls(fetchSpy)).toEqual(["https://challenges.cloudflare.com/turnstile/v0/siteverify", "https://api.resend.com/emails"]);
     const verify = fetchSpy.mock.calls[0][1] as RequestInit;
-    expect(JSON.parse(String(verify.body))).toEqual({ secret: CONFIG.TURNSTILE_SECRET_KEY, response: TOKEN, remoteip: expect.stringMatching(/^198\.51\.100\./) });
+    expect(JSON.parse(String(verify.body))).toEqual({ secret: VARS.TURNSTILE_SECRET_KEY, response: TOKEN, remoteip: expect.stringMatching(/^198\.51\.100\./) });
     expect(verify.signal).toBeInstanceOf(AbortSignal);
     const sendInit = fetchSpy.mock.calls[1][1] as RequestInit;
-    expect((sendInit.headers as Record<string, string>).Authorization).toBe("Bearer " + CONFIG.RESEND_API_KEY);
+    expect((sendInit.headers as Record<string, string>).Authorization).toBe("Bearer " + VARS.RESEND_API_KEY);
     expect(sendInit.signal).toBeInstanceOf(AbortSignal);
     const message = sentEmail(fetchSpy);
     expect(Object.keys(message).sort()).toEqual(["from", "html", "reply_to", "subject", "text", "to"]);
     expect(message.from).toBe("After You <waitlist@afteryou.aamirazeez.com>");
     expect(message.to).toEqual([NORMAL]);
-    expect(message.reply_to).toBe(CONFIG.WAITLIST_REPLY_TO);
+    expect(message.reply_to).toBe(APP.waitlistReplyTo);
     expect(message.subject).toBe("Confirm your email for After You on iPhone");
     const token = linkToken(message);
     expect(String(message.html)).toContain(`href="https://aamirazeez.com/after-you/waitlist/confirm/#t=${token}"`);
@@ -360,7 +360,7 @@ describe("confirming", () => {
     const add = confirmSpy.mock.calls[0][1] as RequestInit;
     expect(add.method).toBe("POST");
     expect(add.body).toBeUndefined();
-    expect((add.headers as Record<string, string>).Authorization).toBe("Bearer " + CONFIG.RESEND_API_KEY);
+    expect((add.headers as Record<string, string>).Authorization).toBe("Bearer " + VARS.RESEND_API_KEY);
     // The subscription is never set: a new contact starts subscribed, and nothing here can undo an unsubscribe.
     expect(JSON.parse(String((confirmSpy.mock.calls[1][1] as RequestInit).body))).toEqual({ email: NORMAL, segments: [{ id: SEGMENT }] });
   });
@@ -518,7 +518,7 @@ describe("the confirm link and email", () => {
 describe("privacy", () => {
   it("describes the waitlist on /privacy, whatever the flag, with its own removal contact", async () => {
     for (const flag of ["true", "false"]) {
-      const response = await worker.fetch(new Request("https://game.test/privacy"), { ...env, IOS_WAITLIST_ENABLED: flag } as unknown as Env);
+      const response = await worker.fetch(new Request("https://game.test/privacy"), withConfig({ ...env, IOS_WAITLIST_ENABLED: flag }) as unknown as Env);
       expect(response.status).toBe(200);
       const page = await response.text();
       expect(page).toContain("<h2>The iPhone waitlist</h2>");
@@ -545,6 +545,6 @@ describe("privacy", () => {
     await call({ vars: { RESEND_API_KEY: undefined } });
     expect(lines.length).toBeGreaterThan(0);
     const all = lines.join("\n").toLowerCase();
-    for (const secret of [EMAIL, "someone.waiting", "example.com", TOKEN, token, token.split(".")[1], CONFIG.RESEND_API_KEY, CONFIG.TURNSTILE_SECRET_KEY, SECRET, SEGMENT]) expect(all).not.toContain(secret.toLowerCase());
+    for (const secret of [EMAIL, "someone.waiting", "example.com", TOKEN, token, token.split(".")[1], VARS.RESEND_API_KEY, VARS.TURNSTILE_SECRET_KEY, SECRET, SEGMENT]) expect(all).not.toContain(secret.toLowerCase());
   });
 });

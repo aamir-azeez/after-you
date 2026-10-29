@@ -3,6 +3,8 @@ import { reset, runInDurableObject, evictDurableObject } from "cloudflare:test";
 import { afterEach, describe, expect, it } from "vitest";
 import { encode } from "jpeg-js";
 import worker from "../src/index";
+import { withConfig } from "./config";
+import { TERMS_VERSION } from "../src/public-policy";
 import { canonicalJson, digest, type Outcome } from "../src/protocol";
 import { checkPhoto, jpegFrame, MAX_PHOTO_BYTES } from "../src/v2/photo-image";
 import { type PhotoMutation } from "../src/v2/photos";
@@ -32,7 +34,16 @@ function marker(bytes: Uint8Array, wanted: number): number {
   while (offset + 3 < bytes.length) { if (bytes[offset + 1] === wanted) return offset; offset += 2 + bytes[offset + 2] * 256 + bytes[offset + 3]; }
   throw new Error("synthetic fixture marker missing");
 }
+/** Uploads need the owner's accepted safety terms, which need a real identity: synthetic ones, made here. */
+async function acceptTerms(...owners: string[]) {
+  const hash = await digest("t".repeat(43));
+  for (const owner of owners) {
+    await env.PLAYERS.getByName(owner).create(owner, hash, "b".repeat(64));
+    value(await env.SAFETY_PROFILES.getByName(owner).accept(owner, hash, TERMS_VERSION));
+  }
+}
 async function setup() {
+  await acceptTerms(HOST, GUEST);
   const room = stub(); value(await room.initialize(ROOM, HOST, INVITE)); const state = value(await room.join(GUEST, INVITE));
   const accepted = value(await room.commit(HOST, { base_revision: state.revision, branch: state.branch, idempotency_key: key(), recording: firstA }));
   return { room, state: accepted.room };
@@ -171,7 +182,7 @@ describe("optional photos in the actual RoomV2 runtime", () => {
 describe("portable photo snapshots", () => {
   it("measures the maximum retained image count at the largest allowed edge in actual local workerd", async (context) => {
     const bytes = synthetic(960), payload = await image(bytes), room = stub();
-    expect(bytes.length).toBeLessThanOrEqual(MAX_PHOTO_BYTES);
+    expect(bytes.length).toBeLessThanOrEqual(MAX_PHOTO_BYTES); await acceptTerms(HOST);
     let state = value(await room.initialize(ROOM, HOST, INVITE));
     const uploadTimes: number[] = [];
     for (let branch = 0; branch < 32; branch++) {
@@ -230,25 +241,25 @@ describe("public authenticated photo routes", () => {
   it("requires auth, keeps paused uploads separate from deletes, and identity deletion erases media", async () => {
     type Account = { player_id: string; device_token: string };
     let address = 10;
-    async function call(path: string, method: string, account?: Account, body?: unknown, enabled = true, photos = true) {
-      const config: Env = { ...env }; Object.assign(config, { V2_ROOMS_ENABLED: enabled ? "true" : "false", RELAY_PHOTOS_ENABLED: photos ? "true" : "false" });
+    async function call(path: string, method: string, account?: Account, body?: unknown, photos = true) {
+      const config: Env = withConfig({ ...env, RELAY_PHOTOS_ENABLED: photos ? "true" : "false" });
       return worker.fetch(new Request("https://after-you.test"+path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP":"203.0.113."+(address++), ...(account ? { "X-Player-Id":account.player_id, Authorization:"Bearer "+account.device_token } : {}) }, body: body === undefined ? undefined : JSON.stringify(body) }), config);
     }
     const host = await (await call("/v1/identity", "POST", undefined, {})).json<Account>();
-    const initial = await (await call("/v2/rooms", "POST", host, { idempotency_key:key(), level_id:RELAY.id, level_version:2, definition_hash:DEFINITION_HASH }, true, false)).json<RoomSnapshotV2>();
-    const accepted = await (await call(`/v2/rooms/${initial.room_id}/turns`, "POST", host, { base_revision:initial.revision, branch:0, idempotency_key:key(), recording:firstA }, true, false)).json<MutationV2>();
+    expect((await call("/v1/safety/terms", "POST", host, { schema_version: 1, terms_version: TERMS_VERSION })).status).toBe(200);
+    const initial = await (await call("/v2/rooms", "POST", host, { idempotency_key:key(), level_id:RELAY.id, level_version:2, definition_hash:DEFINITION_HASH }, false)).json<RoomSnapshotV2>();
+    const accepted = await (await call(`/v2/rooms/${initial.room_id}/turns`, "POST", host, { base_revision:initial.revision, branch:0, idempotency_key:key(), recording:firstA }, false)).json<MutationV2>();
     const path = `/v2/rooms/${initial.room_id}/photos/${accepted.receipt.turn_id}`, body = await upload();
     expect((await call(path,"GET")).status).toBe(401);
-    expect((await call(path,"POST",host,body,false)).status).toBe(503);
-    const paused = await call(path,"POST",host,body,true,false);
+    const paused = await call(path,"POST",host,body,false);
     expect(paused.status).toBe(503); expect(await paused.json()).toMatchObject({ error: { code:"photo_uploads_disabled", retryable:true } });
-    expect((await (await call("/v2/capabilities","GET",host,undefined,true,false)).json<{photo_uploads_enabled:boolean}>()).photo_uploads_enabled).toBe(false);
+    expect((await (await call("/v2/capabilities","GET",host,undefined,false)).json<{photo_uploads_enabled:boolean}>()).photo_uploads_enabled).toBe(false);
     expect((await (await call("/v2/capabilities","GET",host)).json<{photo_uploads_enabled:boolean}>()).photo_uploads_enabled).toBe(true);
     const result = await call(path,"POST",host,body); expect(result.status).toBe(200); expect(result.headers.get("Cache-Control")).toBe("no-store");
     const photo = await result.json<PhotoMutation>();
-    expect((await call(path,"GET",host,undefined,true,false)).status).toBe(200);
-    expect((await call(`/v2/rooms/${initial.room_id}/photo-operations/${body.idempotency_key}`,"GET",host,undefined,true,false)).status).toBe(200);
-    expect((await call(path,"DELETE",host,removal(photo),false,false)).status).toBe(200);
+    expect((await call(path,"GET",host,undefined,false)).status).toBe(200);
+    expect((await call(`/v2/rooms/${initial.room_id}/photo-operations/${body.idempotency_key}`,"GET",host,undefined,false)).status).toBe(200);
+    expect((await call(path,"DELETE",host,removal(photo),false)).status).toBe(200);
     value(await env.ROOMS_V2.getByName(initial.room_id).updatePhoto(host.player_id, "t0-0-a", await upload(synthetic(), 2, null)));
     expect((await call("/v1/identity","DELETE",host)).status).toBe(200);
     const room = env.ROOMS_V2.getByName(initial.room_id);

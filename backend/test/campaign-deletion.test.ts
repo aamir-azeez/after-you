@@ -10,6 +10,7 @@ import { runInDurableObject } from "./room-objects";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { encode } from "jpeg-js";
 import { canonicalJson, digest, fail, ok, type Outcome } from "../src/protocol";
+import { withConfig } from "./config";
 import { isAlarmMetadataTable, notificationAlarmOwned, queueTurnHint, scheduleNotifications } from "../src/notification-storage";
 import { deleteLinkedIdentity, roomDeletionDispatcher, type RoomLink } from "../src/room-links";
 import { eraseCampaignChild, eraseCampaignRoot, readCampaignRootTerminal, type CampaignChildDeletion, type CampaignDeletionChildren } from "../src/v2/campaign-deletion";
@@ -30,6 +31,7 @@ import middle from "../../game/tests/fixtures/cooperative/upper-path-checkpoint.
 import lowA from "../../game/tests/fixtures/cooperative/down-and-around-a.json";
 import lowB from "../../game/tests/fixtures/cooperative/down-and-around-b.json";
 import final from "../../game/tests/fixtures/cooperative/high-and-low-final-checkpoint.json";
+import { acceptTerms } from "./terms";
 
 const H=fixture.active_view.host_id,G=fixture.active_view.guest_id!,R=fixture.active_view.campaign_room_id,I=fixture.active_view.invite_code!;
 const D="a".repeat(64),RECOVERY="b".repeat(64),TOKEN="c".repeat(64),OTHER="Q".repeat(22);
@@ -54,7 +56,7 @@ async function branch(phase:"prepared"|"published",metadata=false,named=false){
   for(const [owner,recording,checkpoint] of [[H,highA,null],[G,highB,middle],[G,lowA,null],[H,lowB,final]] as const)s=value(await root.commit(owner,{base_revision:s.revision,branch:s.branch,idempotency_key:crypto.randomUUID(),recording,...(checkpoint?{checkpoint}:{})})).room;
   if(metadata){
     const bytes=new Uint8Array(encode({data:new Uint8Array(8*8*4).fill(127),width:8,height:8},45).data),sha256=[...new Uint8Array(await crypto.subtle.digest("SHA-256",bytes))].map(v=>v.toString(16).padStart(2,"0")).join("");
-    value(await root.updatePhoto(H,"t0-0-a",{idempotency_key:crypto.randomUUID(),recording_hash:highA.recording_hash,expected_photo_revision:0,expected_photo_hash:null,jpeg_base64:btoa(String.fromCharCode(...bytes)),sha256}));
+    await acceptTerms(H);value(await root.updatePhoto(H,"t0-0-a",{idempotency_key:crypto.randomUUID(),recording_hash:highA.recording_hash,expected_photo_revision:0,expected_photo_hash:null,jpeg_base64:btoa(String.fromCharCode(...bytes)),sha256}));
     value(await root.react(G,"p0-0",{idempotency_key:crypto.randomUUID(),a_hash:highA.recording_hash,b_hash:highB.recording_hash,expected_reaction_revision:0,reaction:"love"}));
     value(await root.acknowledgePhoto(G,"t0-0-a",{recording_hash:highA.recording_hash,photo_revision:1,sha256}));
   }
@@ -68,7 +70,7 @@ async function branch(phase:"prepared"|"published",metadata=false,named=false){
     if(phase==="prepared"){control.revision=2;control.state="continuing";control.transition={transition_id:TOKEN,phase:"prepared",origin};a.pending={...control.transition,target_intent:target};}
     else {control.revision=5;control.current_index=1;control.chapters[0].completion={source_revision:s.revision,source_branch:s.branch,checkpoint_hash:s.checkpoint.checkpoint_hash,transition_id:TOKEN,from_campaign_revision:1,accepted_campaign_revision:5};control.chapters[1].room_id=targetId;control.activation={transition_id:TOKEN};a.activation={transition_id:TOKEN,origin,target_intent:target,accepted_revision:5};m.status="sealed";m.seal={transition_id:TOKEN,origin};}
     initializeCampaignStorageSchema(ctx.storage);ctx.storage.sql.exec("INSERT INTO campaign_anchor VALUES(1,?)",JSON.stringify(a));ctx.storage.sql.exec("INSERT INTO campaign_member VALUES(1,?)",JSON.stringify(m));
-    if(metadata){value(await cancelCampaignJoinRoot(ctx.storage,OTHER,join(7),resolver));queueTurnHint(ctx.storage,{...env,NOTIFICATIONS_ENABLED:"true"},"relay",gameplay,H);await scheduleNotifications(ctx.storage);}
+    if(metadata){value(await cancelCampaignJoinRoot(ctx.storage,OTHER,join(7),resolver));queueTurnHint(ctx.storage,withConfig({...env,NOTIFICATIONS_ENABLED:"true"}),"relay",gameplay,H);await scheduleNotifications(ctx.storage);}
   });
   if(phase==="published")value(await runInDurableObject(child,(_,ctx)=>initializeCampaignTarget(ctx.storage,request,resolver)));
   const children:CampaignDeletionChildren={erase:async input=>{expect(input.binding.room_id).toBe(targetId);return runInDurableObject(env.ROOMS_V2.get(env.ROOMS_V2.idFromString(childId)),(_,ctx)=>eraseCampaignChild(ctx.storage,input,resolver));}};
@@ -85,7 +87,7 @@ describe("private campaign cascade and api3 identity cleanup",()=>{
     const clock=vi.spyOn(Date,"now").mockReturnValue(Date.now()+3_600_000);
     const r=await waiting();value(await runInDurableObject(r,(_,ctx)=>joinCampaignRoot(ctx.storage,G,join(),resolver)));
     await runInDurableObject(r,async(_,ctx)=>{
-      queueTurnHint(ctx.storage,{NOTIFICATIONS_ENABLED:"true"},"relay",state(ctx),H);await scheduleNotifications(ctx.storage);
+      queueTurnHint(ctx.storage,withConfig({NOTIFICATIONS_ENABLED:"true"}),"relay",state(ctx),H);await scheduleNotifications(ctx.storage);
       await ctx.storage.deleteAlarm();clock.mockReturnValue(Date.now()+1001);
       expect(notificationAlarmOwned(ctx.storage,"RoomV2",null)).toBe(false);
       expect(notificationAlarmOwned(ctx.storage,"RoomV2",null,true)).toBe(true);
@@ -96,7 +98,7 @@ describe("private campaign cascade and api3 identity cleanup",()=>{
     const clock=vi.spyOn(Date,"now").mockReturnValue(Date.now()+3_600_000);
     const r=await waiting();value(await runInDurableObject(r,(_,ctx)=>joinCampaignRoot(ctx.storage,G,join(),resolver)));
     await runInDurableObject(r,async(_,ctx)=>{
-      queueTurnHint(ctx.storage,{NOTIFICATIONS_ENABLED:"true"},"relay",state(ctx),H);await scheduleNotifications(ctx.storage);
+      queueTurnHint(ctx.storage,withConfig({NOTIFICATIONS_ENABLED:"true"}),"relay",state(ctx),H);await scheduleNotifications(ctx.storage);
       await ctx.storage.deleteAlarm();if(mode!=="future")clock.mockReturnValue(Date.now()+1001);
       if(mode==="missing-marker")ctx.storage.sql.exec("DELETE FROM notification_alarm");
       if(mode==="missing-outbox")ctx.storage.sql.exec("DELETE FROM notification_outbox");

@@ -10,7 +10,7 @@ type Account = { player_id: string; device_token: string; recovery_code: string 
 let address = 0;
 function blockTestCall(path: string, method = "GET", account?: Account, body?: unknown, extra: Record<string, string> = {}): Promise<Response> {
   const configured: Env = { ...env };
-  Object.assign(configured, { V2_ROOMS_ENABLED: "true", ...extra });
+  Object.assign(configured, extra);
   return worker.fetch(new Request("https://after-you.test" + path, { method,
     headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.4." + (++address % 250),
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}) },

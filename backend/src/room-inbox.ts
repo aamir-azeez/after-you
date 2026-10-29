@@ -1,7 +1,6 @@
 import { fail, ok, type Outcome } from "./protocol";
 import { errorCode, logWarning } from "./log";
 import { roomLinkVersion, type RoomLink } from "./room-links";
-import { partnerBlocks } from "./safety";
 import { remoteRoomActivity } from "./room-inbox-storage";
 import { departed, isMember } from "./room-departure";
 import { chapter } from "./v2/chapters";
@@ -11,7 +10,7 @@ import { partnerNameField, shownName } from "./display-names";
 export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_their_turn" | "completed" | "unavailable" | "closed";
 /** Clients from 0.5.2 send this header and understand the "closed" status; older clients validate the status list exactly. */
 export const ROOM_INBOX_CLOSED_HEADER = "X-AfterYou-Room-Inbox";
-/** Clients that offer Leave room send this ("1"); while finishedRoomLeave is on, a room the other member left then carries partner_left. */
+/** Clients that offer Leave room send this ("1"); a room the other member left then carries partner_left. */
 export const ROOM_INBOX_LEAVE_HEADER = "X-AfterYou-Room-Leave";
 export type RoomInboxEntry = {
   room_id: string; family: "legacy" | "relay" | "story" | "unknown"; api_version: number;
@@ -20,7 +19,7 @@ export type RoomInboxEntry = {
   status: RoomInboxStatus; revision: number | null; remote_activity_sequence: number; activity_at: string | null;
   /** Only for clients that send ROOM_INBOX_LEAVE_HEADER: the other member left this finished room. */
   partner_left?: true;
-  /** Only for clients that send END_REACTIONS_HEADER while end reactions are on: the face on the other member's latest turn. */
+  /** Only for clients that send END_REACTIONS_HEADER: the face on the other member's latest turn. */
   partner_reaction?: Face;
   /**
    * Only for clients that send DISPLAY_NAMES_HEADER while display names are on, and then on every
@@ -157,21 +156,4 @@ export function inboxBody(entries: readonly (RoomInboxEntry | null)[]): { schema
   const rooms = entries.filter((room): room is RoomInboxEntry => room !== null);
   rooms.sort((a, b) => (Date.parse(b.activity_at ?? "") || 0) - (Date.parse(a.activity_at ?? "") || 0));
   return { schema_version: 1, rooms };
-}
-
-/**
- * Authenticated, bounded summary list. Unavailable links remain visible for recovery.
- * With showClosed, a room another member erased reads "closed" so its remaining
- * member can tell it apart and remove it; otherwise it stays "unavailable".
- * Rooms are read a few at a time, each partner's block check runs once, and a
- * room that throws reads "unavailable" without failing the others. The router
- * passes the links it already read; it sends at most MAX_ROOM_LINKS (room-limit.ts)
- * here, and longer lists or the room index go to room-index-lists.ts.
- */
-export async function roomInbox(playerId: string, env: Env, showClosed = false, showLeft = false, known?: RoomLink[], showReactions = false, showNames = false): Promise<{ schema_version: 1; rooms: RoomInboxEntry[] }> {
-  const links = known ?? await env.PLAYERS.getByName(playerId).listRooms();
-  const blocked = partnerBlocks(env, playerId);
-  return inboxBody(await pooled(links, ROOM_INBOX_CONCURRENCY, link => inboxEntry(link, () => roomLinkVersion(link) === 1
-    ? env.ROOMS.getByName(link.room_id).inboxProjection(playerId)
-    : env.ROOMS_V2.getByName(link.room_id).inboxProjection(playerId), showClosed, showLeft, blocked, showReactions, showNames)));
 }
