@@ -139,6 +139,15 @@ func _results() -> void:
 	store.settle_claim(SERVER, ME, ROOM, _hash(30), {"status": "credited", "receipt": _receipt()})
 	_check(store.result_shown(SERVER, ME, ROOM, _hash(30)) and not store.result_for(SERVER, ME, ROOM, _hash(30)).is_empty(), "The same credit noted again stays shown")
 	_check(not store.result_shown(SERVER, OTHER, ROOM, _hash(30)), "Shown belongs to its player")
+	# A file from a build before the mark: its credits read as shown, so an update never repeats one.
+	var old: Dictionary = JSON.parse_string(FileAccess.get_file_as_string(path))
+	for scope: Dictionary in old.scopes.values():
+		for entry: Dictionary in scope.results: entry.erase("shown")
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify(old))
+	file.close()
+	store = PollenWallet.new(path)
+	_check(store.result_shown(SERVER, ME, ROOM, _hash(31)), "A credit kept before the update reads as shown")
 
 func _clears() -> void:
 	var path := _path("clears")

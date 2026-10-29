@@ -14,6 +14,7 @@ extends RefCounted
 ##   pays each turn once, so sending one twice is harmless;
 ## - results: the newest confirmed turn receipts, for the results line, each
 ##   marked once its line was shown (presentation/pollen_result_line.gd once);
+##   one kept by a build from before the mark reads as shown, so it never shows again;
 ## - clears: first clears waiting to be claimed (POST /v1/pollen/clear-claims):
 ##   "room:<room_id>" for a room this player saw finished together, and
 ##   "level:<level_id>" for a chapter finished solo. Each is sent until the
@@ -372,7 +373,7 @@ func _load() -> void:
 			for entry: Variant in value.results:
 				if not entry is Dictionary or not valid_room(entry.get("room_id")) or not valid_hash(entry.get("recording_hash")): continue
 				var receipt := checked_receipt(Typed.as_dict(entry.get("receipt")).merged({"schema_version": 1}))
-				if not receipt.is_empty(): scope.results.append({"room_id": entry.room_id, "recording_hash": entry.recording_hash, "receipt": receipt, "shown": entry.get("shown") == true})
+				if not receipt.is_empty(): scope.results.append({"room_id": entry.room_id, "recording_hash": entry.recording_hash, "receipt": receipt, "shown": entry.get("shown") != false})
 			scope.results = scope.results.slice(maxi(0, scope.results.size() - MAX_RESULTS))
 		_scopes[key] = scope
 
