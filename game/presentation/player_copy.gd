@@ -156,6 +156,9 @@ const POLLEN_TURN_SAVED_FOR := "%s · stage %d · your turn for %s"
 const POLLEN_TURN_SAVED_WITH := "%s · stage %d · your turn with %s"
 const POLLEN_WEAR_IT := "Wear it"
 const POLLEN_DONE := "Done"
+const POLLEN_WEAR_FAILED := "That did not go on just now. It's in your Wardrobe to wear any time."
+## A bloomed turn's small tag on Pollen from play ("×2").
+const POLLEN_BLOOM_SHORT := "×%d"
 # Pollen from play (presentation/pollen_play_page.gd, pollen board 7b). Every
 # number in these lines comes from the server.
 const POLLEN_PLAY_TITLE := "Pollen from play"

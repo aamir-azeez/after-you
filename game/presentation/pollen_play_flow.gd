@@ -77,7 +77,8 @@ func chip() -> Button:
 	var scope := _scope()
 	var key := PollenWallet.scope_key(str(scope.server), str(scope.owner))
 	var now := balance()
-	var made := PollenChip.make(now, shop())
+	# The plus only where a tap reaches the store.
+	var made := PollenChip.make(now, shop() and store_route.is_valid())
 	var before: Variant = _shown.get(key)
 	_shown[key] = now
 	if before is int and now > before: made.show_gain(now - before, _reduced())

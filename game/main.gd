@@ -1657,8 +1657,10 @@ func _enter_online_relay() -> void:
 	relay_child.share_current_room = room_sharing.share
 	relay_child.room_share_state = room_sharing.view
 	relay_child.partner_friends = partner_friends
-	# An item bloom's Wear it, only while the Wardrobe is on (presentation/wardrobe_flow.gd).
-	if is_instance_valid(wardrobe_flow) and wardrobe_flow.available(): relay_child.wear_item = wardrobe_flow.wear_item
+	# An item bloom's Wear it, offered while the Wardrobe is on (presentation/wardrobe_flow.gd).
+	if is_instance_valid(wardrobe_flow):
+		relay_child.wear_item = wardrobe_flow.wear_item
+		relay_child.wear_available = wardrobe_flow.available
 	relay_child.board_line = board_feedback.line_for
 	relay_child.closed.connect(_leave_online_relay)
 	add_child(relay_child)

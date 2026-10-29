@@ -42,6 +42,8 @@ const Rows = preload("res://presentation/settings_rows.gd")
 const Kit = preload("res://presentation/settings_kit.gd")
 const Spirit = preload("res://presentation/settings_spirit.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
+const PollenMoney = preload("res://services/pollen_money.gd")
 const CREAM := Color("eceddb")
 ## Main's modes on these screens.
 const MODE_SETTINGS := "settings"
@@ -432,7 +434,14 @@ func _row_control(row: Dictionary, stacked: bool) -> Control:
 				option.pressed.connect(_change.bind(row, str(option.get_meta("value"))))
 			return holder
 		Rows.LINK:
-			var holder := Kit.link_row(shown_row)
+			# A Pollen row shows the balance, after its mark (pollen board 1).
+			var pollen: int = int(row.pollen_value.call()) if row.has("pollen_value") else -1
+			var holder := Kit.link_row(shown_row, PollenMoney.grouped(pollen) if pollen >= 0 else "")
+			if pollen >= 0:
+				var value := holder.find_child("Value", true, false) as Control
+				var mark := PollenMark.beside(17)
+				value.get_parent().add_child(mark)
+				value.get_parent().move_child(mark, value.get_index())
 			(holder.get_node(id) as Button).pressed.connect(row.open)
 			return holder
 		Rows.ACTION:

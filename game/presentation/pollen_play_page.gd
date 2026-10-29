@@ -19,6 +19,7 @@ const PollenMoney = preload("res://services/pollen_money.gd")
 const PollenHistory = preload("res://services/pollen_history.gd")
 const PollenResultLine = preload("res://presentation/pollen_result_line.gd")
 const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
+const Breakdown = preload("res://presentation/pollen_breakdown.gd")
 const CHECK := preload("res://assets/ui/settings/check.svg")
 
 const CARD := Color("f3efdf")
@@ -30,7 +31,6 @@ const FILL := Color("e2b25a")
 const EARNED_FILL := Color("cfe9df")
 const EARNED_INK := Color("1f5b4c")
 const ROW_SIZE := 17
-const BONUS_NAMES := {"first_try": PlayerCopy.POLLEN_ROW_FIRST_TRY, "gold_pace": PlayerCopy.POLLEN_ROW_GOLD_PACE, "silver_pace": PlayerCopy.POLLEN_ROW_SILVER_PACE, "hard": PlayerCopy.POLLEN_ROW_HARD}
 
 signal back_pressed
 signal retry_pressed
@@ -217,7 +217,7 @@ func _recent(turns: Array) -> void:
 		amount.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(amount)
 		if int(turn.get("bloom", 1)) > 1:
-			var tag := BreakdownView.tag("×%d" % int(turn.bloom), func() -> Control: return PollenResultLine.Flower.new())
+			var tag := BreakdownView.tag(PlayerCopy.POLLEN_BLOOM_SHORT % int(turn.bloom), func() -> Control: return PollenResultLine.Flower.new())
 			row.add_child(tag)
 
 ## "The Wishing Well, stage 1".
@@ -234,7 +234,7 @@ static func turn_note(turn: Dictionary) -> String:
 		"late": return PlayerCopy.POLLEN_TURN_LATE
 	var names := PackedStringArray()
 	for bonus: String in turn.get("bonuses", []):
-		var named: String = BONUS_NAMES[bonus]
+		var named: String = Breakdown.BONUS_NAMES[bonus]
 		names.append(named if names.is_empty() else named.to_lower())
 	return PlayerCopy.POLLEN_TURN_BONUS_JOIN.join(names)
 

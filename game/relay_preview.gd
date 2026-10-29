@@ -171,9 +171,10 @@ var board_line: Callable
 ## a friend, and the request. Main sets it; without it nothing is offered.
 var partner_friends: RefCounted
 ## func(item_id) -> bool, awaited: wears an item an item bloom just brought
-## (presentation/wardrobe_flow.gd wear_item). Main sets it while the Wardrobe is
-## on; without it the results card offers no Wear it.
+## (presentation/wardrobe_flow.gd wear_item); and func() -> bool, whether the
+## Wardrobe is on now. Main sets both; without them the card offers no Wear it.
 var wear_item: Callable
+var wear_available: Callable
 var _sharing_room := false
 var _room_ready_panel: Control
 ## Notes from outside the room (a friend's room is ready, a tapped notification
@@ -2528,8 +2529,8 @@ func _show_turn_saved() -> bool:
 	var receipt: Dictionary = journey.last_receipt()
 	var partner := _waiting_partner_name(journey.snapshot())
 	var shown_partner := partner if not partner.is_empty() else FriendNicknames.FALLBACK
-	var first := str(receipt.get("turn_id", "")).ends_with("-a")
-	var card := _card(PlayerCopy.POLLEN_TURN_SAVED, (PlayerCopy.POLLEN_TURN_SAVED_FOR if first else PlayerCopy.POLLEN_TURN_SAVED_WITH) % [str(chapter.title), int(receipt.get("stage_index", 0)) + 1, shown_partner])
+	# A first turn leaves a path for the friend; a following one is played with them.
+	var card := _plain_card(PlayerCopy.POLLEN_TURN_SAVED, (PlayerCopy.POLLEN_TURN_SAVED_FOR if role == "a" else PlayerCopy.POLLEN_TURN_SAVED_WITH) % [str(chapter.title), int(receipt.get("stage_index", 0)) + 1, shown_partner])
 	card.add_child(line)
 	var actions := HBoxContainer.new()
 	actions.name = "TurnSavedActions"
@@ -2537,7 +2538,7 @@ func _show_turn_saved() -> bool:
 	card.add_child(actions)
 	var dropped := line.find_child("PollenItemBloom", true, false) != null
 	var item := str(PollenResultLine.dropped_item(online_session.nickname_scope(), receipt))
-	if dropped and wear_item.is_valid() and not item.is_empty():
+	if dropped and wear_item.is_valid() and wear_available.is_valid() and bool(wear_available.call()) and not item.is_empty():
 		var wear := _button(PlayerCopy.POLLEN_WEAR_IT, _wear_dropped.bind(item), false)
 		wear.name = "TurnSavedWear"
 		wear.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -2549,11 +2550,29 @@ func _show_turn_saved() -> bool:
 	return true
 
 ## Wear it: the new item goes on (once the server confirms it), then the room goes on.
+## A wear that does not go through (offline, busy) says so on the card and
+## leaves Done to go on; the item stays in the Wardrobe either way.
 func _wear_dropped(item: String) -> void:
 	if mode != "turn_saved": return
 	mode = "turn_saved_wearing"
-	await wear_item.call(item)
-	if mode == "turn_saved_wearing": _after_turn_saved()
+	var buttons: Array = ui.find_children("TurnSaved*", "Button", true, false)
+	for button: Button in buttons: button.disabled = true
+	var worn: bool = await wear_item.call(item)
+	if not is_inside_tree() or mode != "turn_saved_wearing": return
+	if worn:
+		_after_turn_saved()
+		return
+	mode = "turn_saved"
+	for button: Button in buttons:
+		if is_instance_valid(button): button.disabled = button.name == "TurnSavedWear"
+	var actions := ui.find_child("TurnSavedActions", true, false) as Control
+	if actions != null and actions.get_parent().get_node_or_null("TurnSavedWearFailed") == null:
+		var failed := _label(PlayerCopy.POLLEN_WEAR_FAILED, 17)
+		failed.name = "TurnSavedWearFailed"
+		failed.add_theme_color_override("font_color", MUTED)
+		failed.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+		actions.get_parent().add_child(failed)
+		actions.get_parent().move_child(failed, actions.get_index())
 
 func _after_turn_saved() -> void:
 	if role == "b" and not journey.chapter_complete():

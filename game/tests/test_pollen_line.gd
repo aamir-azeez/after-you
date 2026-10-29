@@ -19,6 +19,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const ResultLine = preload("res://presentation/pollen_result_line.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 # Synthetic ids only.
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
@@ -333,9 +334,11 @@ func _room_flow() -> void:
 	var guest := await _open(api, store, GUEST)
 	_check(guest.mode == "ready" and guest.role == "b", "The guest follows the host's first turn")
 	var worn: Array = []
+	var wear_works := [true]
 	guest.wear_item = func(item: String) -> bool:
 		worn.append(item)
-		return true
+		return wear_works[0]
+	guest.wear_available = func() -> bool: return true
 	await _play(guest, "relay-b")
 	var item_rows := ["Base", "89", "First try", "+25%", "This turn", "111", "A lucky bloom: a new Daisy!", "Added to your Wardrobe. Common."]
 	_check(guest.mode == "turn_saved" and _words(_line(guest)) == item_rows and _line(guest).find_child("PollenItemBloomPip", true, false) != null, "The guest's Turn saved shows the item bloom on their own pip: " + str(_words(_line(guest))))
@@ -343,8 +346,21 @@ func _room_flow() -> void:
 	await _check_layout(guest, func() -> void: guest._show_turn_saved(), "guest's Turn saved card with an item")
 	_check(guest.ui.find_child("TurnSavedWear", true, false) != null, "An item brings Wear it")
 	_press(guest, "TurnSavedWear")
+	_press(guest, "TurnSavedWear")
 	await _settle()
-	_check(worn == ["daisy"] and guest.mode == "checkpoint" and _line(guest) == null, "Wear it wears the new item and goes on to the checkpoint card, with no second line: " + str(worn))
+	_check(worn == ["daisy"] and guest.mode == "checkpoint" and _line(guest) == null, "Wear it wears the new item once, however often it is tapped, and goes on to the checkpoint card, with no second line: " + str(worn))
+	# A wear that does not go through says so; Done still goes on.
+	wear_works[0] = false
+	guest._show_turn_saved()
+	await _settle()
+	_press(guest, "TurnSavedWear")
+	await _settle()
+	var wear := guest.ui.find_child("TurnSavedWear", true, false) as Button
+	var done := guest.ui.find_child("TurnSavedDone", true, false) as Button
+	_check(guest.mode == "turn_saved" and _label_texts(guest).has(PlayerCopy.POLLEN_WEAR_FAILED) and wear.disabled and not done.disabled, "A failed wear stays on the card and says so, with Done to go on")
+	_press(guest, "TurnSavedDone")
+	await _settle()
+	_check(guest.mode == "checkpoint", "Done goes on after a failed wear")
 	guest._show_ready()
 	_check(guest.mode == "ready" and guest.role == "a", "Continue starts the guest's next turn")
 
