@@ -355,6 +355,20 @@ describe("the friends page", () => {
     expect((await friends(b)).friends[0]).toMatchObject({ player_id: a.player_id, display_name: "Maya" });
   });
 
+  it("keeps a request anonymous and names the friend on the accepter's very next read", async () => {
+    const sender = await named("Sky"), accepter = await named("Maya");
+    const request_id = await request(sender, accepter);
+    expect((await friends(accepter)).friends[0]).toMatchObject({ player_id: sender.player_id, status: "incoming", display_name: null });
+    const accepted = await call("/v1/friends/accept", "POST", accepter, { schema_version: 1, player_id: sender.player_id, request_id });
+    expect(accepted.status).toBe(200);
+    // The reply keeps the four keys 0.7.2 checks; the phone takes the name from the list read that follows.
+    expect(Object.keys(await accepted.json<Record<string, unknown>>())).toEqual(["schema_version", "player_id", "request_id", "status"]);
+    // No clock advance: storing the acceptance reopened the list floor, so that read is served at once.
+    const next = await call("/v1/friends", "GET", accepter, undefined, ON, ASK);
+    expect(next.status).toBe(200);
+    expect((await next.json<Page>()).friends[0]).toMatchObject({ player_id: sender.player_id, status: "accepted", display_name: "Sky" });
+  });
+
   it("costs no extra Durable Object call", async () => {
     const a = await named("Maya"), b = await named("Kai"), c = await named("Robin");
     await befriend(a, b); await request(a, c);

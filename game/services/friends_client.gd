@@ -234,13 +234,19 @@ func _mutation(method: int, path: String, body: Dictionary) -> bool:
 			last_error = "Friends unavailable"; return false
 		if path.ends_with("/accept") and (data.request_id != body.request_id or data.status != "accepted"):
 			last_error = "Friends unavailable"; return false
+		var index: int = -1
+		for i in range(_page.get("friends",[]).size()):
+			if _page.friends[i].player_id == data.player_id: index = i; break
+		# A link that just became a friendship (Accept, or Add on someone who
+		# had asked): the reply carries no name and the server names only
+		# accepted rows, so the read that names the new friend is due now, a
+		# few seconds after the last as a live hint makes it. Storing the
+		# acceptance reopened the server's own list floor.
+		if data.status == "accepted" and (index < 0 or _page.friends[index].status != "accepted"): hint(true)
 		if not _page.is_empty():
 			# A link acknowledgement proves consent, not presence or sharing.
 			# Its accepted row can immediately resolve a room via Check room.
 			var row := {"player_id":data.player_id,"request_id":data.request_id,"status":data.status,"online":false,"expires_after_seconds":0,"join_available":false}
-			var index: int = -1
-			for i in range(_page.friends.size()):
-				if _page.friends[i].player_id == data.player_id: index = i; break
 			if index >= 0: _page.friends[index] = row
 			elif _page.friends.size() < 20: _page.friends.append(row)
 			else: _page = {}

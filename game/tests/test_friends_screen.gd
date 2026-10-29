@@ -3,6 +3,7 @@ const Screen = preload("res://presentation/friends_screen.gd")
 const InviteShare = preload("res://services/invite_share.gd")
 const ShareCodes = preload("res://services/share_codes.gd")
 const EventsClient = preload("res://services/friend_room_events_client.gd")
+const DisplayNames = preload("res://services/display_names.gd")
 var screen: CanvasLayer
 var joins := 0
 var closes := 0
@@ -273,10 +274,52 @@ func _run() -> void:
 	await _code_row_widths()
 	await _notify_survives_reopen()
 	await _short_name_code()
+	await _accept_names_new_friend()
 	api.queue_free()
 	await process_frame
 	print("Friends screen: ",failures," failures")
 	quit(0 if failures == 0 else 1)
+
+## Replies handed out in order by the transport of _accept_names_new_friend.
+var replies: Array = []
+
+func queued_request(method: int, path: String, body: Dictionary) -> Dictionary:
+	calls.append({"method":method,"path":path,"body":body})
+	return JSON.parse_string(JSON.stringify(replies.pop_front()))
+
+## A friend request shows the sender's anonymous name; once it is accepted the
+## name they chose shows at once, from the list read the accept makes due.
+func _accept_names_new_friend() -> void:
+	var store_path := "user://test-friends-screen-names-%s.json" % Crypto.new().generate_random_bytes(6).hex_encode()
+	DisplayNames.use_shared(DisplayNames.new(store_path))
+	var sender := "e".repeat(22)
+	var request_id := "f".repeat(22)
+	var asked := page()
+	asked["display_name"] = null
+	asked.friends = [{"player_id":sender,"request_id":request_id,"status":"incoming","online":false,"expires_after_seconds":0,"join_available":false,"display_name":null}]
+	var named := asked.duplicate(true)
+	named.friends[0].status = "accepted"
+	named.friends[0].display_name = "Sky"
+	var friends: RefCounted = Client.new(api,identity,queued_request)
+	friends.clock_ms = func(): return now
+	replies = [{"ok":true,"data":asked}]
+	check(await friends.refresh(),"The page with a friend request loads")
+	var view := Screen.new()
+	view.client = friends
+	root.add_child(view)
+	for _i in 2: await process_frame
+	var anonymous := DisplayNames.anonymous_name(sender)
+	check(not anonymous.is_empty() and find_label(view,anonymous) != null and find_label(view,"Sky") == null,"A friend request shows only the sender's anonymous name")
+	now += 5000
+	var count := calls.size()
+	replies = [{"ok":true,"data":{"schema_version":1,"player_id":sender,"request_id":request_id,"status":"accepted"}},{"ok":true,"data":named}]
+	await view._act("accept",friends.view().friends[0])
+	check(calls.size() == count + 2 and calls[count].path == "/v1/friends/accept" and calls[count + 1].path == "/v1/friends","Accept reads the list right after, well inside the usual minute")
+	check(find_label(view,"Sky") != null and find_label(view,anonymous) == null,"The new friend's chosen name shows at once after Accept")
+	view.queue_free()
+	await process_frame
+	DisplayNames.use_shared(null)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(store_path))
 
 ## A player with an owner-reserved short name shows, copies and shares friend-<name>,
 ## with the long code on a small line below for older versions of the game.

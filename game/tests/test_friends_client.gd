@@ -162,6 +162,7 @@ func _run() -> void:
 	check(not client.refresh_due(true),"Friend mutations preserve the server refresh floor")
 	await _short_names()
 	await _live_hints()
+	await _accept_opens_named_read()
 	ready = false
 	check(client.view().is_empty(),"unavailable identity sees no friends")
 	api.queue_free()
@@ -231,6 +232,34 @@ func _live_hints() -> void:
 	check(not await client.refresh(),"the early read is refused")
 	var wait: int = client.refresh_wait_ms()
 	check(wait >= 2 * Client.LIVE_FLOOR_MS and wait <= 30000,"A refused early read waits for the server's floor, not a minute (%d)" % wait)
+	response = {"ok":true,"data":page()}
+
+## Accepting a request makes due the list read that names the new friend, a
+## few seconds after the last read; an outgoing request or a friend who was
+## already accepted keeps the usual interval.
+func _accept_opens_named_read() -> void:
+	client.invalidate()
+	var asked := page()
+	asked.friends[0].status = "incoming"
+	asked.friends[0].online = false
+	asked.friends[0].expires_after_seconds = 0
+	asked.friends[0].join_available = false
+	response = {"ok":true,"data":asked}
+	check(await client.refresh() and client.refresh_wait_ms() == 60000,"accept setup read")
+	now += 1000
+	response = {"ok":true,"data":{"schema_version":1,"player_id":PEER,"request_id":REQUEST,"status":"accepted"}}
+	check(await client.accept_friend(asked.friends[0]) and client.refresh_wait_ms() == Client.LIVE_FLOOR_MS - 1000,"Accept makes the naming read due a few seconds after the last read (%d)" % client.refresh_wait_ms())
+	now += Client.LIVE_FLOOR_MS
+	var count := calls.size()
+	response = {"ok":true,"data":page()}
+	check(client.refresh_due() and await client.refresh() and calls.size() == count + 1,"The naming read runs once")
+	now += 1000
+	response = {"ok":true,"data":{"schema_version":1,"player_id":PEER,"request_id":REQUEST,"status":"accepted"}}
+	check(await client.accept_friend(page().friends[0]) and client.refresh_wait_ms() == 59000,"A friend already accepted opens no early read")
+	response = {"ok":true,"data":{"schema_version":1,"player_id":"d".repeat(22),"request_id":"e".repeat(22),"status":"outgoing"}}
+	check(await client.add_friend("d".repeat(22)) and client.refresh_wait_ms() == 59000,"An outgoing request opens no early read")
+	response = {"ok":true,"data":{"schema_version":1,"player_id":"g".repeat(22),"request_id":"h".repeat(22),"status":"accepted"}}
+	check(await client.add_friend("g".repeat(22)) and client.refresh_wait_ms() == Client.LIVE_FLOOR_MS - 1000,"Add on someone who had asked becomes a friendship and opens the naming read too")
 	response = {"ok":true,"data":page()}
 
 func _delayed_change() -> void:
