@@ -45,6 +45,8 @@ func _ready() -> void:
 	background.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(background)
 	SafeArea.bleed(background)
+	var behind := backdrop()
+	if behind != null: root.add_child(behind)
 	_margin = MarginContainer.new()
 	_margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	root.add_child(_margin)
@@ -86,6 +88,8 @@ func _ready() -> void:
 func page_name() -> String: return "DuelPage"
 func title_text() -> String: return ""
 func subtitle_text() -> String: return ""
+## What draws between the page's green and its content, or null.
+func backdrop() -> Control: return null
 ## A button at the header's right, or null.
 func header_action() -> Control: return null
 ## Builds the body for the current size.
