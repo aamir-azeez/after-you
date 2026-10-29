@@ -15,7 +15,8 @@ const DuelModel = preload("res://services/duel_model.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
-const TROPHY_ICON = preload("res://assets/ui/duels/trophy.svg")
+## Phosphor "trophy" (assets/ui/social, MIT, with its LICENSE.txt).
+const TROPHY_ICON = preload("res://assets/ui/social/trophy.svg")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 ## The party boost line's font size; its Pollen mark is sized from it.
 const BOOST_FONT := 26
