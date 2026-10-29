@@ -219,6 +219,7 @@ describe("the Pollen wallet", () => {
       expect(unpaid.first_clears).toContainEqual({ level_id: "first-steps", price: 1200 });
       expect(unpaid.first_clears).toContainEqual({ level_id: "turn-of-the-tide", price: 2000 });
       expect(unpaid.first_clears).toContainEqual({ level_id: "long-way-home", price: 2500 });
+      expect(unpaid.bank).toEqual({ refill: 12, cap: 36, tail: [{ pay: 10, turns: 36 }, { pay: 1, turns: 64 }] });
       value(await credit(storage, facts(), MONDAY));
       value(await credit(storage, facts({ complete: true, role: "b", stage_id: "second-path" }), MONDAY + 1));
       const view = historyView(storage), entries = view.entries;
