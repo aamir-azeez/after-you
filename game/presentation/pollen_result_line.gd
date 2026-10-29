@@ -10,6 +10,11 @@ extends RefCounted
 ## only while the server says Pollen earning is on and the build shows earning
 ## (services/pollen_surfaces.gd). A build that names no Full Journey leaves out
 ## the boost lines; the amount still counts the boost.
+##
+## A receipt with the base and each bonus's percent (a server that sends them)
+## shows as the results card's rows (pollen board 7b: presentation/
+## pollen_breakdown.gd and pollen_breakdown_view.gd); an older one as the plain
+## lines below.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
@@ -20,6 +25,8 @@ const OwnLook = preload("res://services/own_look.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
+const Breakdown = preload("res://presentation/pollen_breakdown.gd")
+const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
 
 const FONT_SIZE := 18
 ## The still pip beside an item bloom.
@@ -65,6 +72,14 @@ static func lines(receipt: Dictionary, partner: String, full_journey: bool = tru
 		out.append((PlayerCopy.POLLEN_FIRST_HARD_CLEAR if clear.get("kind") == "hardclear" else PlayerCopy.POLLEN_FIRST_CLEAR) % int(clear.get("total", 0)))
 	return out
 
+## The item an item bloom brought on one of the viewer's turns (its room
+## receipt), or "": what the results card's Wear it wears.
+static func dropped_item(scope: Dictionary, receipt: Dictionary, store: RefCounted = null) -> String:
+	if scope.is_empty(): return ""
+	var wallet: RefCounted = store if store != null else PollenWallet.shared()
+	var kept: Dictionary = wallet.result_for(str(scope.server), str(scope.owner), str(receipt.get("room_id", "")), str(receipt.get("recording_hash", "")))
+	return str(kept.get("item_bloom", {}).get("item_id", ""))
+
 ## The player's own pip at rest, wearing the item an item bloom brought: a still
 ## texture from the shared renderer, never a live view of its own.
 static func dropped_pip(item_id: String) -> Control:
@@ -84,6 +99,11 @@ static func build(scope: Dictionary, room_id: String, recording_hash: String, pa
 	var wallet: RefCounted = store if store != null else PollenWallet.shared()
 	if not wallet.enabled(str(scope.server), str(scope.owner)): return null
 	var receipt: Dictionary = wallet.result_for(str(scope.server), str(scope.owner), room_id, recording_hash)
+	var rows := Breakdown.rows(receipt, partner, surfaces.full_journey_visible())
+	if not rows.is_empty():
+		var card := BreakdownView.build(rows, color, dropped_pip, func() -> Control: return Flower.new())
+		card.name = "PollenResultLine"
+		return card
 	var text := lines(receipt, partner, surfaces.full_journey_visible())
 	if text.is_empty(): return null
 	# The earned amount, when there is one, is the first line, with the Pollen mark (kit/pollen_mark.gd) before it.

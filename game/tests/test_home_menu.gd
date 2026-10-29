@@ -236,7 +236,8 @@ func _test_actions(app: Node) -> void:
 		button.pressed.emit()
 	_check(calls == ["play:HomePlay", "solo", "friends", "replays", "invite", "whats_new", "settings", "full_journey"], "Every control calls its own action once: %s" % [calls])
 	_check(probe.journey_offer.get_parent() == holder, "Full Journey joins the menu's own parent")
-	_check(probe.header_actions() == [probe.journey_offer, probe.settings_button, probe.whats_new_button], "The stage leaves Full Journey, Settings and What's new to their own input")
+	_check(probe.header_actions() == [probe.journey_offer, probe.pollen_slot, probe.settings_button, probe.whats_new_button], "The stage leaves Full Journey, the Pollen chip, Settings and What's new to their own input")
+	_check(probe.pollen_slot.get_parent() == holder and not probe.pollen_slot.visible, "The Pollen chip's slot joins the menu's parent, empty and hidden until a chip comes")
 	holder.free()
 	_check(is_instance_valid(menu), "Home's own menu is untouched by the probe")
 

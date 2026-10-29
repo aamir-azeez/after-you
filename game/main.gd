@@ -43,6 +43,7 @@ const SettingsFlow = preload("res://presentation/settings_flow.gd")
 const PlatformGamesFlow = preload("res://presentation/platform_games_flow.gd")
 const DisplayNameFlow = preload("res://presentation/display_name_flow.gd")
 const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
+const PollenPlayFlow = preload("res://presentation/pollen_play_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
@@ -267,6 +268,10 @@ var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
 var display_name_flow: DisplayNameFlow = _host_display_name_flow()
 ## The Wardrobe: buying and wearing pip cosmetics with Pollen, opened from Settings.
 var wardrobe_flow: WardrobeFlow = _host_wardrobe_flow()
+## Pollen from play and Home's Pollen chip (presentation/pollen_play_flow.gd).
+var pollen_play_flow: PollenPlayFlow = _host_pollen_play_flow()
+## Home's menu while Home shows, for its Pollen chip.
+var _home_menu: Control = null
 ## Play Solo: the Chapters page, Earlier islands and which chapter a card opens.
 var journey_flow: JourneyFlow = _host_journey_flow()
 ## Playing an earlier island, solo or in a legacy room (presentation/earlier_islands_flow.gd).
@@ -360,6 +365,8 @@ func _ready() -> void:
 	# An item bloom's item is owned at once in the wardrobe.
 	PollenWallet.shared().item_dropped.connect(Wardrobe.shared().note_drop)
 	pollen_client.settled.connect(func() -> void: grant_card_check=true)
+	# A wallet read that lands while Home shows updates its chip (the gain shows then).
+	pollen_client.settled.connect(_refresh_pollen_chip)
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.
 	if NativeFiles.durable_available(): RoomsApi.history_supported = HistoryStore.new().self_test()
@@ -761,6 +768,8 @@ func _show_home() -> void:
 	# A tap made while the room session is still busy waits on the Play button (RoomHubFlow.open_from_home).
 	menu.build({"play":room_hub_flow.open_from_home,"solo":journey_flow.show_journey,"friends":_show_friends,"replays":replays_flow.show_collection,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
 	menu.set_play_icon(FriendPlayIcon.new())
+	_home_menu = menu
+	_refresh_pollen_chip()
 	menu.journey_offer.visible = _full_journey_offered()
 	if _whats_new_unseen: menu.mark_whats_new_unseen(Changelog.current_version())
 	home_stage.set_header_actions(menu.header_actions())
@@ -1277,6 +1286,20 @@ func _open_wardrobe_from_home() -> void:
 	wardrobe_flow.show_wardrobe()
 	_wardrobe_home_view = store_view_generation if wardrobe_flow.is_open() else -1
 
+## An internal child, like StoreFlow. Back returns to Home or Settings, where it opened.
+func _host_pollen_play_flow() -> PollenPlayFlow:
+	var flow := PollenPlayFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	flow.back_requested.connect(func(to_settings: bool): settings_flow.show_settings() if to_settings else _show_home())
+	return flow
+
+## Home's Pollen chip, left of Full Journey: shown once the server has Pollen on
+## and a balance is known (presentation/pollen_play_flow.gd chip).
+func _refresh_pollen_chip() -> void:
+	if mode != "home" or not is_instance_valid(_home_menu) or not _home_menu.is_inside_tree(): return
+	_home_menu.set_pollen_chip(pollen_play_flow.chip())
+	if is_instance_valid(home_stage_view): home_stage_view.set_header_actions(_home_menu.header_actions())
+
 ## An internal child, like StoreFlow.
 func _host_journey_flow() -> JourneyFlow:
 	var flow := JourneyFlow.new(self)
@@ -1634,6 +1657,8 @@ func _enter_online_relay() -> void:
 	relay_child.share_current_room = room_sharing.share
 	relay_child.room_share_state = room_sharing.view
 	relay_child.partner_friends = partner_friends
+	# An item bloom's Wear it, only while the Wardrobe is on (presentation/wardrobe_flow.gd).
+	if is_instance_valid(wardrobe_flow) and wardrobe_flow.available(): relay_child.wear_item = wardrobe_flow.wear_item
 	relay_child.board_line = board_feedback.line_for
 	relay_child.closed.connect(_leave_online_relay)
 	add_child(relay_child)

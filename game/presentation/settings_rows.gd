@@ -102,6 +102,10 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "account_intro", "category": ACCOUNT, "kind": INFO, "label": "", "visible_if": state.call(["pending", "restart", "ready", "missing", "unread", "offline"]),
 			"note": PlayerCopy.for_platform(PlayerCopy.MAIN_F890477C65DE, PlayerCopy.MAIN_F890477C65DE_IOS)},
 		{"id": "cleanup_note", "category": ACCOUNT, "kind": INFO, "label": "", "note": PlayerCopy.MAIN_EC79109D7607, "visible_if": state.call(["cleanup"])},
+		# Pollen board 1's row: the balance, the turn bank and first clears (presentation/pollen_play_flow.gd).
+		{"id": "pollen", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_POLLEN, "note": PlayerCopy.SETTINGS_POLLEN_NOTE,
+			"open": func() -> void: host.pollen_play_flow.open_from_settings(),
+			"visible_if": func() -> bool: return host.get("pollen_play_flow") != null and host.pollen_play_flow.available()},
 		{"id": "retry_cleanup", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_RETRY_CLEANUP, "run": account.clear_deleted_identity, "visible_if": state.call(["cleanup"])},
 		{"id": "check_deleted_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CHECK_IDENTITY, "run": account.retry_deleted_identity_read,
 			"visible_if": func() -> bool: return account.panel_state() == "cleanup" and account.identity_unread()},

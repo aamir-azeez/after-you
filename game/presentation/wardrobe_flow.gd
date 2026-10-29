@@ -150,6 +150,16 @@ func _wear(entry: Dictionary) -> void:
 	if not answer.get("ok", false): _toast(_error_line(str(answer.get("code", ""))))
 	_redraw()
 
+## Wears one owned item in its slot, over the rest of the look: the results
+## card's Wear it after an item bloom brought it. True once the server confirmed.
+func wear_item(id: String) -> bool:
+	if not available() or Catalog.slot(id).is_empty(): return false
+	var look: Dictionary = _view().get("look", {}).duplicate()
+	look[Catalog.slot(id)] = id
+	var answer: Dictionary = await _client().wear(look)
+	_redraw()
+	return bool(answer.get("ok", false))
+
 ## Whether the shop shows: the build sells and the server has the shop on.
 func shop() -> bool:
 	if not _surfaces().shop_visible(): return false

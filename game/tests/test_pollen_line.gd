@@ -103,6 +103,16 @@ static func _credit(earned: float, clear: float = 0.0) -> Dictionary:
 	var clears: Array = [{"kind": "clear", "level_id": "relay-isles", "amount": clear, "boost_percent": 0.0, "boost": 0.0, "total": clear}] if clear > 0.0 else []
 	return {"schema_version": 1.0, "earned": earned, "balance": earned, "turn": turn, "clears": clears}
 
+## A credit from a server that sends the base and each bonus's percent: the results card's rows.
+static func _detailed(base: float, bonuses: Array, percents: Array, bloom: float = 1.0, clear: float = 0.0, extra: Dictionary = {}) -> Dictionary:
+	var amount := roundf(base * (100.0 + percents.reduce(func(sum: float, percent: float) -> float: return sum + percent, 0.0)) / 100.0)
+	var turn := {"kind": "bank", "base": base, "bonuses": bonuses, "bonus_percents": percents, "bonus_percent": percents.reduce(func(sum: float, percent: float) -> float: return sum + percent, 0.0),
+		"amount": amount, "bloom": bloom, "bloom_extra": amount * (bloom - 1.0), "boost_percent": 0.0, "boost": 0.0, "total": amount * bloom}
+	var clears: Array = [{"kind": "clear", "level_id": "relay-isles", "amount": clear, "boost_percent": 0.0, "boost": 0.0, "total": clear}] if clear > 0.0 else []
+	var value := {"schema_version": 1.0, "earned": amount * bloom + clear, "balance": amount * bloom + clear, "turn": turn, "clears": clears}
+	value.merge(extra, true)
+	return value
+
 func _snapshot(api: FakeApi, owner: String) -> Dictionary:
 	var index := api.index
 	var first: Variant = HOST if index == 0 else GUEST
@@ -209,6 +219,14 @@ static func _line(preview: Preview) -> Control:
 	var found: Array = preview.ui.find_children("PollenResultLine", "", true, false)
 	return found[0] if not found.is_empty() and (found[0] as Control).is_visible_in_tree() else null
 
+## Every label's text on the screen.
+static func _label_texts(preview: Preview) -> Array:
+	return preview.ui.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.is_visible_in_tree()).map(func(label: Label) -> String: return label.text)
+
+static func _press(preview: Preview, button_name: String) -> void:
+	var button := preview.ui.find_child(button_name, true, false) as Button
+	if button != null: button.pressed.emit()
+
 static func _words(line: Control) -> Array:
 	return [] if line == null else line.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
 
@@ -234,7 +252,8 @@ func _check_layout(preview: Preview, redraw: Callable, context: String) -> void:
 			var width := font.get_string_size(label.text, HORIZONTAL_ALIGNMENT_LEFT, -1, label.get_theme_font_size("font_size")).x
 			var rect := label.get_global_rect()
 			_check(label.get_line_count() == 1 and label.size.x + 0.5 >= width, "'%s' lays out on one row, %d wide for %d of words (%d rows), on the %s at %s" % [label.text, label.size.x, width, label.get_line_count(), context, size])
-			if label.get_parent() is HBoxContainer:
+			# A line led by a flower, pip or mark keeps its words right beside it (a results row leads with its words).
+			if label.get_parent() is HBoxContainer and label.get_index() == 1 and not label.get_parent().get_child(0) is Label:
 				var icon := label.get_parent().get_child(0) as Control
 				_check(icon != label and absf(rect.position.x - icon.get_global_rect().end.x) <= 12.0, "'%s' sits right beside its flower or pip on the %s at %s" % [label.text, context, size])
 			_check(screen.encloses(rect) and scroll != null and rect.position.x >= scroll.get_global_rect().position.x - 0.5 and rect.end.x <= scroll.get_global_rect().end.x + 0.5, "'%s' stays inside the screen and its scroll box on the %s at %s" % [label.text, context, size])
@@ -281,21 +300,30 @@ func _room_flow() -> void:
 	root.add_child(api)
 	var store := MemoryStore.new()
 	var wallet: RefCounted = PollenWallet.shared()
-	# The host's first turn also had a lucky bloom: its row carries the flower.
-	var bloom := _credit(178.0)
-	bloom.turn.merge({"bloom": 2.0, "bloom_extra": 89.0}, true)
-	api.credits = {fixtures["relay-a"].recording_hash: bloom, fixtures["relay-b"].recording_hash: _credit(71.0),
-		fixtures["garden-b"].recording_hash: _credit(389.0, 300.0)}
+	# The host's first turn: the board's double bloom (base, first try, gold pace, This turn, the bloom tag).
+	# The guest's B brought an item. The guest's A is a plain line (a credit that comes later, from a claim);
+	# the host's finishing B, its first clear.
+	api.credits = {fixtures["relay-a"].recording_hash: _detailed(89.0, ["first_try", "gold_pace"], [25.0, 15.0], 2.0),
+		fixtures["relay-b"].recording_hash: _detailed(89.0, ["first_try"], [25.0], 1.0, 0.0, {"item_bloom": {"tier": "common", "item_id": "daisy"}}),
+		fixtures["garden-b"].recording_hash: _detailed(89.0, ["first_try"], [25.0], 1.0, 300.0)}
+	var bloom_rows := ["Base", "89", "First try", "+25%", "Gold pace", "+15%", "This turn", "125", "A lucky bloom: ×2", "250"]
 
-	# The host's first turn, with the friend in the room: the waiting panel shows its credit.
+	# The host's first turn, with the friend in the room: Turn saved shows its credit, then the room goes on.
 	var host := await _open(api, store, HOST)
 	_check(host.mode == "ready" and host.role == "a", "The host starts the first stage")
 	await _play(host, "relay-a")
-	_check(host.mode == "online_waiting" and _words(_line(host)) == ["+178 Pollen", "First try: +25%", "A lucky bloom: ×2"] and _line(host).find_child("PollenBloomFlower", true, false) != null, "The host's waiting panel shows the turn's credit: " + str(_words(_line(host))))
-	await _check_layout(host, host._show_online_waiting, "host's waiting panel")
+	_check(host.mode == "turn_saved" and _words(_line(host)) == bloom_rows and _line(host).find_child("PollenBloomFlower", true, false) != null and _line(host).find_children("PollenMark", "", true, false).size() == 3,
+		"Turn saved shows the turn's rows, with the mark beside each amount and the flower in the bloom's tag: " + str(_words(_line(host))))
+	_check(_label_texts(host).has("Turn saved") and _label_texts(host).any(func(text: String) -> bool: return text.begins_with("The Relay Isles · stage 1 · your turn for")), "Turn saved names the chapter, the stage and whose turn it was: " + str(_label_texts(host)))
+	_check(host.ui.find_child("TurnSavedWear", true, false) == null, "No Wear it without an item")
+	await _check_layout(host, func() -> void: host._show_turn_saved(), "host's Turn saved card")
+	_check(_words(_line(host)) == bloom_rows, "A redraw of the same card keeps the rows")
+	_press(host, "TurnSavedDone")
+	await _settle()
+	_check(host.mode == "online_waiting" and _line(host) == null, "Done goes on to the waiting panel, which never shows the same credit again")
 	host._show_online_waiting()
 	await _settle()
-	_check(_words(_line(host)) == ["+178 Pollen", "First try: +25%", "A lucky bloom: ×2"], "A redraw of the same waiting panel keeps the line")
+	_check(_line(host) == null, "Nor does a redraw of it")
 	await _close(host)
 	host = await _open(api, store, HOST)
 	_check(host.mode == "online_waiting" and _line(host) == null, "Reopening the room never shows the same credit again")
@@ -304,9 +332,19 @@ func _room_flow() -> void:
 	# The guest's B: the checkpoint card shows its credit.
 	var guest := await _open(api, store, GUEST)
 	_check(guest.mode == "ready" and guest.role == "b", "The guest follows the host's first turn")
+	var worn: Array = []
+	guest.wear_item = func(item: String) -> bool:
+		worn.append(item)
+		return true
 	await _play(guest, "relay-b")
-	_check(guest.mode == "checkpoint" and _words(_line(guest)) == ["+71 Pollen", "First try: +25%"], "The guest's checkpoint card shows the turn's credit: " + str(_words(_line(guest))))
-	await _check_layout(guest, guest._after_accept, "guest's checkpoint card")
+	var item_rows := ["Base", "89", "First try", "+25%", "This turn", "111", "A lucky bloom: a new Daisy!", "Added to your Wardrobe. Common."]
+	_check(guest.mode == "turn_saved" and _words(_line(guest)) == item_rows and _line(guest).find_child("PollenItemBloomPip", true, false) != null, "The guest's Turn saved shows the item bloom on their own pip: " + str(_words(_line(guest))))
+	_check(_label_texts(guest).any(func(text: String) -> bool: return text.begins_with("The Relay Isles · stage 1 · your turn with")), "A following turn is with the friend")
+	await _check_layout(guest, func() -> void: guest._show_turn_saved(), "guest's Turn saved card with an item")
+	_check(guest.ui.find_child("TurnSavedWear", true, false) != null, "An item brings Wear it")
+	_press(guest, "TurnSavedWear")
+	await _settle()
+	_check(worn == ["daisy"] and guest.mode == "checkpoint" and _line(guest) == null, "Wear it wears the new item and goes on to the checkpoint card, with no second line: " + str(worn))
 	guest._show_ready()
 	_check(guest.mode == "ready" and guest.role == "a", "Continue starts the guest's next turn")
 
@@ -322,14 +360,15 @@ func _room_flow() -> void:
 	wallet.settle_claim(SERVER, GUEST, ROOM, fixtures["garden-a"].recording_hash, {"status": "credited", "receipt": _credit(64.0)})
 	guest._show_online_waiting()
 	await _settle()
-	_check(_words(_line(guest)) == ["+64 Pollen", "First try: +25%"], "A credit that lands later shows on the waiting screen: " + str(_words(_line(guest))))
+	_check(_words(_line(guest)) == ["+64 Pollen", "First try: +25%"], "A credit that lands later shows on the waiting screen, as the plain line an older receipt has: " + str(_words(_line(guest))))
+	await _check_layout(guest, guest._show_online_waiting, "guest's waiting panel")
 	await _close(guest)
 
 	# The host's B finishes the chapter: the end card shows the turn and the first clear.
 	host = await _open(api, store, HOST)
 	_check(host.mode == "ready" and host.role == "b", "The host plays the last turn")
 	await _play(host, "garden-b")
-	_check(host.mode == "complete" and _words(_line(host)) == ["+389 Pollen", "First try: +25%", "First clear: +300"], "The end card shows the finishing turn's credit: " + str(_words(_line(host))))
+	_check(host.mode == "complete" and _words(_line(host)) == ["Base", "89", "First try", "+25%", "This turn", "111", "First clear", "300", "Pollen earned", "411"], "The end card shows the finishing turn's rows and its first clear, with no Turn saved first: " + str(_words(_line(host))))
 	await _check_layout(host, host._show_completed, "host's end card")
 	await _close(host)
 
@@ -342,7 +381,7 @@ func _room_flow() -> void:
 	var paid := {"schema_version": 1.0, "earned": 0.0, "balance": 1455.0, "clears": [], "paid_clears": [{"kind": "clear", "level_id": "relay-isles", "amount": 300.0, "boost_percent": 0.0, "boost": 0.0, "total": 300.0}]}
 	wallet.settle_clear(SERVER, GUEST, "room:" + ROOM, {"room_id": ROOM, "status": "credited", "receipt": paid})
 	await _settle()
-	_check(_words(_line(guest)) == ["+300 Pollen", "First clear: +300"], "The guest's end card shows the first clear the finish paid them: " + str(_words(_line(guest))))
+	_check(_words(_line(guest)) == ["First clear", "300"], "The guest's end card shows the first clear the finish paid them: " + str(_words(_line(guest))))
 	await _check_layout(guest, guest._show_completed, "guest's end card")
 	await _close(guest)
 	guest = await _open(api, store, GUEST)

@@ -8,7 +8,7 @@ const SOURCE := "res://presentation/kit/pollen_mark.gd"
 ## The grain's own colours: anything else drawing them is drawing a Pollen mark.
 const GRAIN_COLOURS := ["f5c95e", "e7ac45", "eab44c", "dc9f3b"]
 ## Places that show an amount of Pollen with its mark.
-const USERS := ["res://presentation/wardrobe_page.gd", "res://presentation/pollen_result_line.gd", "res://presentation/kit/pollen_chip.gd"]
+const USERS := ["res://presentation/wardrobe_page.gd", "res://presentation/pollen_result_line.gd", "res://presentation/kit/pollen_chip.gd", "res://presentation/pollen_breakdown_view.gd", "res://presentation/pollen_play_page.gd"]
 const SEED := "seed.svg"
 const SEED_OWNER := "res://presentation/seed_timer_bar.gd"
 

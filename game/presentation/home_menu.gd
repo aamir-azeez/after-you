@@ -2,7 +2,8 @@ extends Control
 ## Home's menu (layout A): a solid panel down the left edge with the wordmark,
 ## the line under it, Play with your friend, Play Solo, Friends and Replays
 ## rows, Invite your friends, and What's new beside the Settings cog at the
-## bottom. Full Journey sits apart at the island's top right. Main builds it
+## bottom. Full Journey sits apart at the island's top right, with the Pollen
+## chip (kit/pollen_chip.gd, set_pollen_chip) left of it. Main builds it
 ## with build() and owns every action; this script only lays the menu out.
 ## Layout runs on resize and when the What's new tip comes or goes, never per
 ## frame.
@@ -52,6 +53,8 @@ var invite_button: Button
 var whats_new_button: Button
 var settings_button: Button
 var journey_offer: Button
+## The Pollen chip's slot, at the top right left of Full Journey (or in its place when it is hidden).
+var pollen_slot: HBoxContainer
 var compact := false
 var _panel: Control
 var _margin: MarginContainer
@@ -178,6 +181,19 @@ func build(actions: Dictionary, heading_font: Font) -> void:
 	bottom.add_child(settings_button)
 	journey_offer = _journey(actions.full_journey)
 	get_parent().add_child(journey_offer)
+	pollen_slot = HBoxContainer.new()
+	pollen_slot.name = "HomePollenSlot"
+	pollen_slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	pollen_slot.visible = false
+	pollen_slot.set_anchors_preset(Control.PRESET_TOP_RIGHT)
+	pollen_slot.grow_horizontal = Control.GROW_DIRECTION_BEGIN
+	pollen_slot.offset_top = UiTokens.HOME_TOP
+	pollen_slot.offset_bottom = UiTokens.HOME_TOP + 54.0
+	get_parent().add_child(pollen_slot)
+	# The chip follows Full Journey's width and whether it shows; never per frame.
+	journey_offer.resized.connect(_place_pollen)
+	journey_offer.visibility_changed.connect(_place_pollen)
+	_place_pollen()
 	resized.connect(_fit)
 	_fit()
 	# A wrapped line knows its height once laid out; check the fit again then.
@@ -225,7 +241,22 @@ func _tip_showing() -> bool:
 
 ## The controls Home's stage must leave to their own input.
 func header_actions() -> Array[Control]:
-	return [journey_offer, settings_button, whats_new_button]
+	return [journey_offer, pollen_slot, settings_button, whats_new_button]
+
+## Puts the Pollen chip left of Full Journey, or takes it away (null).
+func set_pollen_chip(chip: Control) -> void:
+	for child: Node in pollen_slot.get_children():
+		pollen_slot.remove_child(child)
+		child.queue_free()
+	if chip != null: pollen_slot.add_child(chip)
+	pollen_slot.visible = chip != null
+	_place_pollen()
+
+func _place_pollen() -> void:
+	if not is_instance_valid(pollen_slot): return
+	var right := RIGHT + (journey_offer.size.x + 14.0 if journey_offer.visible else 0.0)
+	pollen_slot.offset_right = -right
+	pollen_slot.offset_left = -right - 1.0
 
 func _fit() -> void:
 	var tip := whats_new_button.get_node_or_null("WhatsNewTip") as Control if _tip_showing() else null

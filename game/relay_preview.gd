@@ -170,6 +170,10 @@ var board_line: Callable
 ## services/partner_friends.gd: whether this room offers to add its partner as
 ## a friend, and the request. Main sets it; without it nothing is offered.
 var partner_friends: RefCounted
+## func(item_id) -> bool, awaited: wears an item an item bloom just brought
+## (presentation/wardrobe_flow.gd wear_item). Main sets it while the Wardrobe is
+## on; without it the results card offers no Wear it.
+var wear_item: Callable
 var _sharing_room := false
 var _room_ready_panel: Control
 ## Notes from outside the room (a friend's room is ready, a tapped notification
@@ -2499,6 +2503,59 @@ func _accept() -> void:
 
 
 func _after_accept() -> void:
+	if _show_turn_saved(): return
+	_after_turn_saved()
+
+## Pollen board 7b's "Turn saved": the card after an online turn whose credit the
+## server confirmed, with its rows, before the room goes on. Done (or Wear it,
+## after an item bloom) goes on as the flow always did. A turn with no confirmed
+## credit yet (still sending, offline, or a credit that comes later) goes on at
+## once, and its line shows on the waiting screen when it lands. The turn that
+## finished the chapter shows its credit on the end card instead.
+func _show_turn_saved() -> bool:
+	if online_session == null or journey.chapter_complete(): return false
+	var previous := mode
+	mode = "turn_saved"
+	var holder := VBoxContainer.new()
+	_add_pollen_line(holder)
+	if holder.get_child_count() == 0:
+		holder.free()
+		mode = previous
+		return false
+	var line := holder.get_child(0)
+	holder.remove_child(line)
+	holder.free()
+	var receipt: Dictionary = journey.last_receipt()
+	var partner := _waiting_partner_name(journey.snapshot())
+	var shown_partner := partner if not partner.is_empty() else FriendNicknames.FALLBACK
+	var first := str(receipt.get("turn_id", "")).ends_with("-a")
+	var card := _card(PlayerCopy.POLLEN_TURN_SAVED, (PlayerCopy.POLLEN_TURN_SAVED_FOR if first else PlayerCopy.POLLEN_TURN_SAVED_WITH) % [str(chapter.title), int(receipt.get("stage_index", 0)) + 1, shown_partner])
+	card.add_child(line)
+	var actions := HBoxContainer.new()
+	actions.name = "TurnSavedActions"
+	actions.add_theme_constant_override("separation", 12)
+	card.add_child(actions)
+	var dropped := line.find_child("PollenItemBloom", true, false) != null
+	var item := str(PollenResultLine.dropped_item(online_session.nickname_scope(), receipt))
+	if dropped and wear_item.is_valid() and not item.is_empty():
+		var wear := _button(PlayerCopy.POLLEN_WEAR_IT, _wear_dropped.bind(item), false)
+		wear.name = "TurnSavedWear"
+		wear.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		actions.add_child(wear)
+	var done := _button(PlayerCopy.POLLEN_DONE, func(): if mode == "turn_saved": _after_turn_saved())
+	done.name = "TurnSavedDone"
+	done.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	actions.add_child(done)
+	return true
+
+## Wear it: the new item goes on (once the server confirms it), then the room goes on.
+func _wear_dropped(item: String) -> void:
+	if mode != "turn_saved": return
+	mode = "turn_saved_wearing"
+	await wear_item.call(item)
+	if mode == "turn_saved_wearing": _after_turn_saved()
+
+func _after_turn_saved() -> void:
 	if role == "b" and not journey.chapter_complete():
 		mode = "checkpoint"
 		var card := _card(chapter.checkpoint_title, chapter.checkpoint_text)
