@@ -214,12 +214,33 @@ describe("the Pollen wallet", () => {
   it("lists the newest paid claims as history", async () => {
     serial += 100;
     await inPlayer(async storage => {
-      expect(historyView(storage)).toEqual({ schema_version: 1, entries: [] });
+      const unpaid = historyView(storage);
+      expect(unpaid.entries).toEqual([]);
+      expect(unpaid.first_clears).toContainEqual({ level_id: "first-steps", price: 1200 });
+      expect(unpaid.first_clears).toContainEqual({ level_id: "turn-of-the-tide", price: 2000 });
+      expect(unpaid.first_clears).toContainEqual({ level_id: "long-way-home", price: 2500 });
       value(await credit(storage, facts(), MONDAY));
       value(await credit(storage, facts({ complete: true, role: "b", stage_id: "second-path" }), MONDAY + 1));
-      const entries = historyView(storage).entries;
+      const view = historyView(storage), entries = view.entries;
       expect(entries.map(entry => [entry.kind, entry.amount])).toEqual([["clear", 1200], ["turn", 89], ["turn", 89]]);
       expect(entries.find(entry => entry.kind === "turn")).toMatchObject({ level_id: "first-steps", role: expect.any(String) });
+      // The page's first clears: paid (with its boost) once paid, the price until then.
+      expect(view.first_clears).toContainEqual({ level_id: "first-steps", price: 1200, paid: 1200 });
+      expect(view.first_clears).toContainEqual({ level_id: "high-and-low", price: 1200 });
+    });
+  });
+  it("says in history what each turn's line said: its bonuses, a bloom and why it paid a little", async () => {
+    serial += 100;
+    await inPlayer(async storage => {
+      const paid = value(await credit(storage, facts({ tries: 1 }), MONDAY));
+      value(await credit(storage, facts({ tries: 1 }), MONDAY + 1));
+      const [repeat, first] = historyView(storage).entries;
+      expect(first).toMatchObject({ kind: "turn", bonuses: ["first_try"] });
+      // A bloom shows only when there was one, as on the turn's own line.
+      if (paid.turn!.bloom > 1) expect(first.bloom).toBe(paid.turn!.bloom);
+      else expect(first).not.toHaveProperty("bloom");
+      expect(repeat).toMatchObject({ kind: "turn", amount: 10, reason: "repeat" });
+      expect(repeat).not.toHaveProperty("bonuses");
     });
   });
 });

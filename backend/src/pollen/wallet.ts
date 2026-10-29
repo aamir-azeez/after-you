@@ -55,8 +55,15 @@ export type ClearLine = { kind: "clear" | "hardclear"; level_id: string } & Clea
  */
 export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[]; item_bloom?: ItemBloom; paid_clears?: ClearLine[] };
 export type WalletView = { schema_version: 1; balance: number; earned: number; bank: number };
-export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string };
-export type HistoryView = { schema_version: 1; entries: HistoryEntry[] };
+/**
+ * One paid claim. A turn's also says what its line said, for the app's Pollen from play page:
+ * its skill bonuses, a lucky bloom (2 or 3) and why it paid the after-bank rate.
+ */
+export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string; bonuses?: TurnPrice["bonuses"]; bloom?: number; reason?: TurnLine["reason"] };
+/** A chapter's first clear: what it pays before any room boost, and what it paid once it has (`paid`, with its boost). */
+export type FirstClear = { level_id: string; price: number; paid?: number };
+/** `first_clears`: every chapter's first clear, in the rates' order. Older apps ignore it. */
+export type HistoryView = { schema_version: 1; entries: HistoryEntry[]; first_clears?: FirstClear[] };
 /**
  * A first clear to pay: from the turn that finished a chapter together, or claimed by the app for a solo clear.
  * `room_id`: the room whose finish pays it, kept on the claim row, so a later claim from that room can say what it paid.
@@ -289,16 +296,32 @@ export function walletView(storage: DurableObjectStorage, now: number, rates: Ra
   return { schema_version: 1, balance: wallet.balance, earned: wallet.earned, bank: wallet.bank };
 }
 
-/** GET /v1/pollen/history: the newest paid claims, newest first. */
-export function historyView(storage: DurableObjectStorage): HistoryView {
-  if (!present(storage)) return { schema_version: 1, entries: [] };
+/**
+ * GET /v1/pollen/history: the newest paid claims, newest first, and every chapter's first clear.
+ * Reads the claim rows only (clear claims are never pruned, so a paid clear always shows).
+ */
+export function historyView(storage: DurableObjectStorage, rates: Rates = RATES): HistoryView {
+  const first_clears: FirstClear[] = Object.keys(rates.chapters).map(level_id => ({ level_id, price: rates.tiers[rates.chapters[level_id]].first_clear }));
+  if (!present(storage)) return { schema_version: 1, entries: [], first_clears };
   const entries = storage.sql.exec<{ kind: string; amount: number; created_at: number; data: string }>("SELECT kind,amount,created_at,data FROM pollen_claims ORDER BY created_at DESC, claim_key LIMIT ?", HISTORY_LIMIT).toArray().map(row => {
-    const detail = (JSON.parse(row.data) as StoredClaim).detail ?? {};
+    const stored = JSON.parse(row.data) as StoredClaim;
+    const detail = stored.detail ?? {};
     const entry: HistoryEntry = { kind: row.kind, amount: row.amount, at: row.created_at };
     for (const field of ["level_id", "stage_id", "role"] as const) if (typeof detail[field] === "string") entry[field] = detail[field] as string;
+    const turn = row.kind === "turn" ? stored.receipt?.turn : undefined;
+    if (turn) {
+      if (turn.bonuses.length) entry.bonuses = turn.bonuses;
+      if (turn.bloom > 1) entry.bloom = turn.bloom;
+      if (turn.reason) entry.reason = turn.reason;
+    }
     return entry;
   });
-  return { schema_version: 1, entries };
+  const paid = new Map(storage.sql.exec<{ claim_key: string; amount: number }>("SELECT claim_key,amount FROM pollen_claims WHERE kind='clear'").toArray().map(row => [row.claim_key, row.amount]));
+  for (const clear of first_clears) {
+    const amount = paid.get(clearClaimKey("clear", clear.level_id));
+    if (amount !== undefined) clear.paid = amount;
+  }
+  return { schema_version: 1, entries, first_clears };
 }
 
 /** The balance as of `now` (0 for a player who never earned). The caller owns the transaction. */
