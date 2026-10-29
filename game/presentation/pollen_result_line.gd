@@ -75,6 +75,8 @@ static func dropped_pip(item_id: String) -> Control:
 
 ## The line for one of the viewer's turns in a room, or null when there is
 ## nothing to show. `scope` is {server, owner} of the signed-in player.
+## Plain lines fill the width they are given and wrap only by words when it is
+## narrow; a line with a flower or a pip keeps its few words on one row beside it.
 static func build(scope: Dictionary, room_id: String, recording_hash: String, partner: String, color: Color, store: RefCounted = null) -> Control:
 	var surfaces: RefCounted = PollenSurfaces.shared()
 	if not surfaces.earning_visible() or scope.is_empty(): return null
@@ -87,25 +89,58 @@ static func build(scope: Dictionary, room_id: String, recording_hash: String, pa
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	box.add_theme_constant_override("separation", 2)
 	for line: String in text:
+		var icon: Control = null
+		if line.begins_with("*"):
+			icon = Flower.new()
+			line = line.substr(1)
+		elif line.begins_with("@") and line.contains("|"):
+			icon = dropped_pip(line.substr(1, line.find("|") - 1))
+			line = line.substr(line.find("|") + 1)
+		var label := _label(line, color)
+		if icon == null:
+			# A wrapping label asks for almost no width, so it sits straight in the
+			# column, which gives it the whole width.
+			label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			box.add_child(label)
+			continue
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		if line.begins_with("*"):
-			row.add_child(Flower.new())
-			line = line.substr(1)
-		elif line.begins_with("@") and line.contains("|"):
-			row.add_child(dropped_pip(line.substr(1, line.find("|") - 1)))
-			line = line.substr(line.find("|") + 1)
-		var label := Label.new()
-		label.text = line
-		label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-		label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-		label.add_theme_font_size_override("font_size", FONT_SIZE)
-		label.add_theme_color_override("font_color", color)
-		label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		row.add_child(icon)
 		row.add_child(label)
 		box.add_child(row)
 	return box
+
+static func _label(text: String, color: Color) -> Label:
+	var label := Label.new()
+	label.text = text
+	label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	label.add_theme_font_size_override("font_size", FONT_SIZE)
+	label.add_theme_color_override("font_color", color)
+	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return label
+
+## The line for a room screen, shown once per credit: on the first screen drawn
+## for the turn, and again only when that same screen draws again (a poll, a
+## resize). Another screen (the chapter's end card after the waiting one), the
+## room opened again or the app restarted never show it again. A credit that
+## lands later (a claim) shows on the next draw of a screen for its turn.
+## `seen` is the screen owner's memory of what it showed ({} to start, kept per
+## room view); `screen` names the screen; `receipt` is the turn's room receipt.
+static func once(seen: Dictionary, screen: String, scope: Dictionary, receipt: Dictionary, partner: String, color: Color, store: RefCounted = null) -> Control:
+	if scope.is_empty(): return null
+	var wallet: RefCounted = store if store != null else PollenWallet.shared()
+	var room_id := str(receipt.get("room_id", ""))
+	var recording_hash := str(receipt.get("recording_hash", ""))
+	var key := room_id + "|" + recording_hash
+	var again: bool = seen.get("key") == key and seen.get("screen") == screen
+	if not again and wallet.result_shown(str(scope.server), str(scope.owner), room_id, recording_hash): return null
+	var line := build(scope, room_id, recording_hash, partner, color, wallet)
+	if line != null and not again:
+		wallet.mark_shown(str(scope.server), str(scope.owner), room_id, recording_hash)
+		seen.key = key
+		seen.screen = screen
+	return line
 
 ## A small flower drawn beside a lucky bloom: five petals round a heart.
 class Flower extends Control:

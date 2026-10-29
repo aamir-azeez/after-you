@@ -1096,11 +1096,13 @@ func _waiting_partner_name(room: Dictionary) -> String:
 
 
 ## The Pollen the viewer's latest turn in this room earned, once the server
-## confirmed it (presentation/pollen_result_line.gd decides whether it shows).
+## confirmed it, on the screen drawn after that turn (`mode` names it). Each
+## credit shows once (presentation/pollen_result_line.gd once). A turn still
+## being sent has no credit yet, and the last receipt is then an earlier turn's.
+var _pollen_seen: Dictionary = {}
 func _add_pollen_line(parent: Container) -> void:
-	if online_session == null or not online_session.has_method("nickname_scope"): return
-	var receipt: Dictionary = journey.last_receipt()
-	var line := PollenResultLine.build(online_session.nickname_scope(), str(receipt.get("room_id", "")), str(receipt.get("recording_hash", "")), _waiting_partner_name(journey.snapshot()), MUTED)
+	if online_session == null or not online_session.has_method("nickname_scope") or not journey.pending().is_empty(): return
+	var line := PollenResultLine.once(_pollen_seen, mode, online_session.nickname_scope(), journey.last_receipt(), _waiting_partner_name(journey.snapshot()), MUTED)
 	if line != null: parent.add_child(line)
 
 
@@ -2804,6 +2806,8 @@ func _show_completed() -> void:
 	mode = "complete"
 	if hard_flow.complete(): return
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
+	# The turn that finished the chapter earned here, with its first clear.
+	_add_pollen_line(card)
 	if online_session != null and board_line.is_valid() and journey != null and journey.has_method("snapshot"):
 		var line: Variant = board_line.call(journey.snapshot(), chapter_key)
 		if line is Control: card.add_child(line)

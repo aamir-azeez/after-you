@@ -126,6 +126,19 @@ func _results() -> void:
 	for n in range(10, 20): store.note_receipt(SERVER, ME, ROOM, _hash(n), _receipt())
 	_check(store.result_for(SERVER, ME, ROOM, _hash(7)).is_empty() and not store.result_for(SERVER, ME, ROOM, _hash(19)).is_empty(), "Only the newest results are kept")
 	_check(store.result_for(SERVER, ME, "QQQQQQQQQQQQQQQQQQQQQQ", _hash(19)).is_empty(), "A result belongs to its room")
+	# Its line shows once: marked when shown, kept through a restart and through the same credit noted again.
+	var path := _path("shown")
+	store = PollenWallet.new(path)
+	store.note_receipt(SERVER, ME, ROOM, _hash(30), _receipt())
+	store.note_receipt(SERVER, ME, ROOM, _hash(31), _receipt())
+	_check(not store.result_shown(SERVER, ME, ROOM, _hash(30)), "A new credit's line has not shown")
+	store.mark_shown(SERVER, ME, ROOM, _hash(30))
+	_check(store.result_shown(SERVER, ME, ROOM, _hash(30)) and not store.result_shown(SERVER, ME, ROOM, _hash(31)), "Shown is kept per turn")
+	store = PollenWallet.new(path)
+	_check(store.result_shown(SERVER, ME, ROOM, _hash(30)) and not store.result_shown(SERVER, ME, ROOM, _hash(31)), "and survives a restart")
+	store.settle_claim(SERVER, ME, ROOM, _hash(30), {"status": "credited", "receipt": _receipt()})
+	_check(store.result_shown(SERVER, ME, ROOM, _hash(30)) and not store.result_for(SERVER, ME, ROOM, _hash(30)).is_empty(), "The same credit noted again stays shown")
+	_check(not store.result_shown(SERVER, OTHER, ROOM, _hash(30)), "Shown belongs to its player")
 
 func _clears() -> void:
 	var path := _path("clears")

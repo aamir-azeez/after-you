@@ -12,7 +12,8 @@ extends RefCounted
 ## - claims: accepted turns whose credit did not come back confirmed, to send
 ##   to POST /v1/pollen/turn-claims (services/pollen_client.gd). The server
 ##   pays each turn once, so sending one twice is harmless;
-## - results: the newest confirmed turn receipts, for the results line;
+## - results: the newest confirmed turn receipts, for the results line, each
+##   marked once its line was shown (presentation/pollen_result_line.gd once);
 ## - clears: first clears waiting to be claimed (POST /v1/pollen/clear-claims):
 ##   "room:<room_id>" for a room this player saw finished together, and
 ##   "level:<level_id>" for a chapter finished solo. Each is sent until the
@@ -197,8 +198,10 @@ func note_receipt(server: String, owner: String, room_id: String, recording_hash
 	var scope := _scope(server, owner, not kept.is_empty())
 	if kept.is_empty() or scope.is_empty() or not valid_room(room_id) or not valid_hash(recording_hash): return false
 	_drop_claim(scope, room_id, recording_hash)
+	# The same credit noted again (a retried reply, a settled claim) keeps whether its line was shown.
+	var shown := _result_shown(scope, room_id, recording_hash)
 	var results: Array = scope.results.filter(func(entry: Dictionary) -> bool: return entry.recording_hash != recording_hash or entry.room_id != room_id)
-	results.append({"room_id": room_id, "recording_hash": recording_hash, "receipt": kept})
+	results.append({"room_id": room_id, "recording_hash": recording_hash, "receipt": kept, "shown": shown})
 	scope.results = results.slice(maxi(0, results.size() - MAX_RESULTS))
 	# The receipt's balance is the server's newest; earned and bank are only ever
 	# taken from a wallet answer, so a phone that has none asks for one.
@@ -215,6 +218,25 @@ func result_for(server: String, owner: String, room_id: String, recording_hash: 
 	for entry: Dictionary in scope.results:
 		if entry.room_id == room_id and entry.recording_hash == recording_hash: return (entry.receipt as Dictionary).duplicate(true)
 	return {}
+
+## Whether the line for one of this player's turns was shown already.
+func result_shown(server: String, owner: String, room_id: String, recording_hash: String) -> bool:
+	return _result_shown(_scope(server, owner), room_id, recording_hash)
+
+## The line for one of this player's turns was shown: it is never shown again.
+func mark_shown(server: String, owner: String, room_id: String, recording_hash: String) -> void:
+	var scope := _scope(server, owner)
+	if scope.is_empty(): return
+	for entry: Dictionary in scope.results:
+		if entry.room_id == room_id and entry.recording_hash == recording_hash and not entry.shown:
+			entry.shown = true
+			_save()
+			return
+
+static func _result_shown(scope: Dictionary, room_id: String, recording_hash: String) -> bool:
+	for entry: Dictionary in scope.get("results", []):
+		if entry.room_id == room_id and entry.recording_hash == recording_hash: return bool(entry.shown)
+	return false
 
 ## An accepted turn whose credit did not come back confirmed: kept to claim.
 ## `now_ms` is this phone's clock, used only to let old claims go.
@@ -350,7 +372,7 @@ func _load() -> void:
 			for entry: Variant in value.results:
 				if not entry is Dictionary or not valid_room(entry.get("room_id")) or not valid_hash(entry.get("recording_hash")): continue
 				var receipt := checked_receipt(Typed.as_dict(entry.get("receipt")).merged({"schema_version": 1}))
-				if not receipt.is_empty(): scope.results.append({"room_id": entry.room_id, "recording_hash": entry.recording_hash, "receipt": receipt})
+				if not receipt.is_empty(): scope.results.append({"room_id": entry.room_id, "recording_hash": entry.recording_hash, "receipt": receipt, "shown": entry.get("shown") == true})
 			scope.results = scope.results.slice(maxi(0, scope.results.size() - MAX_RESULTS))
 		_scopes[key] = scope
 
