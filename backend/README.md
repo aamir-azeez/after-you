@@ -145,7 +145,7 @@ source_recording_hash: required for B, matching A.final_state_hash
 
 Action durations must sum exactly to `duration_ticks`. Checkpoints must be strictly ordered and within the recording duration. Version mismatches, unknown fields and malformed values are rejected. A must report a thrown seed; B must report a caught and planted seed and completion. Request bodies are limited to 96 KiB while streaming, including requests without `Content-Length`.
 
-**Validation boundary:** the backend verifies structural integrity, membership, versions, sequencing and purchases. It does not run the Godot physics/puzzle simulation, so declared outcomes and hashes are not proof against a modified client. The native client replays and checks semantics before using partner recordings. There is no competitive leaderboard, prize allocation or financial reward based on reported completion.
+**Validation boundary:** the backend verifies structural integrity, membership, versions, sequencing and purchases. It does not run the Godot physics/puzzle simulation, so declared outcomes and hashes are not proof against a modified client. The native client replays and checks semantics before using partner recordings. There is no prize allocation or financial reward based on reported completion.
 
 ## RevenueCat configuration
 
