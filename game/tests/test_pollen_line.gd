@@ -265,6 +265,8 @@ func _long_line_wraps_by_words() -> void:
 		stack.add_child(line)
 		await _settle()
 		for label: Label in line.find_children("*", "Label", true, false):
+			# A line beside its Pollen mark, flower or pip keeps its few words on one row instead.
+			if label.get_parent() is HBoxContainer: continue
 			_check(label.get_line_count() <= 2 and label.size.x >= 250.0, "'%s' wraps by words in a narrow box: %d rows, %d wide" % [label.text, label.get_line_count(), label.size.x])
 	viewport.queue_free()
 	for suffix: String in ["", ".tmp", ".backup"]:
