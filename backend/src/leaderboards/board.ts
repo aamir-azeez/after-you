@@ -150,7 +150,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
    */
   async pendingWork(maxChars = MAX_REPLAY_CHARS, rewardLimit = 0): Promise<PendingWork> {
     // Raw runs from before the blob format are encoded once, so only the blob form is ever sent.
-    await this.proofs.convertLegacy();
+    this.dropBroken(await this.proofs.convertLegacy());
     const standing: StandingWork[] = [], replay: (ReplayWork | DuelReplayWork)[] = [];
     let chars = 0;
     for (const entry of this.entries().filter(item => item.state === "checking").sort(compareRuns)) {
@@ -381,7 +381,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
    */
   private async encodeKeepable(verdicts: Verdict[]): Promise<Map<string, KeptReplay>> {
     // A verdict on a raw run from before the blob format (handed out before it was converted) finds it encoded.
-    await this.proofs.convertLegacy(verdicts.map(verdict => verdict.entry_id));
+    this.dropBroken(await this.proofs.convertLegacy(verdicts.map(verdict => verdict.entry_id)));
     const result = new Map<string, KeptReplay>(), ranked = this.ranked();
     for (const verdict of verdicts) {
       const entry = this.entry(verdict.entry_id);
@@ -394,6 +394,10 @@ export class LeaderboardBoard extends DurableObject<Env> {
       if (proof.body.byteLength <= MAX_REPLAY_BYTES) result.set(verdict.entry_id, proof);
     }
     return result;
+  }
+  /** Runs whose old raw proof no longer matched its hash: they can never be checked, so they go. */
+  private dropBroken(ids: string[]): void {
+    if (ids.length) this.ctx.storage.transactionSync(() => { for (const id of ids) this.drop(id, "failed"); });
   }
   private keepReplay(entryId: string, replay: KeptReplay): void {
     this.ctx.storage.sql.exec("INSERT OR REPLACE INTO lb_replays VALUES (?,?,?,?)", entryId, replay.proof_hash, replay.byte_length, replay.body);

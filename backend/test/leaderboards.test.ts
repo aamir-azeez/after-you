@@ -570,6 +570,19 @@ describe("kept replays", () => {
     expect(answer.view.top[0].replay_hash).toBe(hash);
   });
 
+  it("drops a raw run whose text no longer matches its hash, never sending it", async () => {
+    const legacy = await run(100, 1000);
+    const stub = board();
+    await stub.submit(RELAY_BOARD, legacy);
+    await stub.standings(RELAY_BOARD, [{ entry_id: legacy.entry_id, eligible: true, reason: "", members: [{ show: false, name: null, rev: 0 }, { show: false, name: null, rev: 0 }] }]);
+    await runInDurableObject(stub, async (_, ctx) => {
+      ctx.storage.sql.exec("DELETE FROM lb_proof_blobs");
+      ctx.storage.sql.exec("INSERT INTO lb_proofs VALUES (?,?,?)", legacy.entry_id, "0".repeat(64), canonicalJson(legacy.checkpoint));
+    });
+    expect((await stub.pendingWork()).replay).toEqual([]);
+    expect((await stub.view(RELAY_BOARD)).checking).toEqual([]);
+  });
+
   it("takes a verdict on a raw run handed out before the blob format, converting it then", async () => {
     const legacy = await run(100, 1000);
     const stub = board();
