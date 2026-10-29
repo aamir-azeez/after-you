@@ -63,13 +63,18 @@ export class BoardProofs {
 
   /**
    * Encodes every raw row left from before the blob format (or only those of `ids`) and moves it
-   * across, once. A row that changed or went while it was encoded is left as it now is.
+   * across, once, one row in memory at a time. A row that changed or went while it was encoded is
+   * left as it now is. Answers the ids of rows whose text no longer matched their hash: those are
+   * gone, and the caller drops their runs.
    */
-  async convertLegacy(ids?: readonly string[]): Promise<void> {
-    const rows = this.storage.sql.exec<{ entry_id: string; proof_hash: string; checkpoint: string }>("SELECT entry_id,proof_hash,checkpoint FROM lb_proofs").toArray()
-      .filter(row => !ids || ids.includes(row.entry_id));
-    for (const row of rows) {
-      const bytes = new TextEncoder().encode(row.checkpoint);
+  async convertLegacy(ids?: readonly string[]): Promise<string[]> {
+    const heads = ids ? this.storage.sql.exec<{ entry_id: string; proof_hash: string }>("SELECT entry_id,proof_hash FROM lb_proofs WHERE entry_id IN (SELECT value FROM json_each(?))", JSON.stringify(ids)).toArray()
+      : this.storage.sql.exec<{ entry_id: string; proof_hash: string }>("SELECT entry_id,proof_hash FROM lb_proofs").toArray();
+    const broken: string[] = [];
+    for (const row of heads) {
+      const text = this.storage.sql.exec<{ text: string }>("SELECT checkpoint AS text FROM lb_proofs WHERE entry_id=?", row.entry_id).toArray()[0]?.text;
+      if (text === undefined) continue;
+      const bytes = new TextEncoder().encode(text);
       // The stored hash is the one verdicts already name; a row whose text no longer matches it is dropped, never re-hashed.
       const valid = await bytesDigest(bytes) === row.proof_hash;
       const body = valid ? await encodeBlob(bytes) : null;
@@ -78,7 +83,9 @@ export class BoardProofs {
         if (still?.proof_hash !== row.proof_hash) return;
         this.storage.sql.exec("DELETE FROM lb_proofs WHERE entry_id=?", row.entry_id);
         if (body) this.put(row.entry_id, { proof_hash: row.proof_hash, byte_length: bytes.byteLength, body });
+        else broken.push(row.entry_id);
       });
     }
+    return broken;
   }
 }

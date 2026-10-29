@@ -31,9 +31,9 @@ static func check(entry: Dictionary) -> Dictionary:
 	var key := Registry.resolve(entry.get("chapter"))
 	if key.is_empty(): return _result(false, 0, "unknown_chapter")
 	var definition := Registry.definition(key)
-	# A body that does not decode to the bytes its hash names is the server's fault, not the run's: a person looks.
-	if entry.has("body") and _checkpoint(entry) == null: return _result(false, 0, "replay_error")
 	var checkpoint: Variant = _checkpoint(entry)
+	# A body that does not decode to the bytes its hash names is the server's fault, not the run's: a person looks.
+	if entry.has("body") and checkpoint == null: return _result(false, 0, "replay_error")
 	if not checkpoint is Dictionary or definition.is_empty(): return _result(false, 0, "malformed_checkpoint")
 	var stages: int = definition.stages.size()
 	if not Typed.equal(checkpoint.get("stage_index"), stages): return _result(false, 0, "unfinished_run")
