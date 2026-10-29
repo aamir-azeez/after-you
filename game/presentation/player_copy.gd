@@ -224,6 +224,8 @@ const END_REACTIONS_SOLO_NOTE := "Kept with your replay."
 const END_REACTIONS_MOMENT_NOTE := "This one isn't saved."
 ## Over a reaction the friend made during their turn, as their memory makes it (presentation/run_reaction_player.gd).
 const RUN_REACTIONS_MEMORY := "From their turn"
+## Under the faces card in play: the reactions go with the turn when it is saved or sent.
+const RUN_REACTIONS_NOTE := "Saved with your turn."
 
 # Hard mode (services/hard_mode.gd, presentation/hard_mode_view.gd,
 # presentation/hard_run_flow.gd).

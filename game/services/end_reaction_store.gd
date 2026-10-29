@@ -30,6 +30,12 @@ const MAX_LISTED := 129
 ## Picks not yet sent, by run. Shared by every screen in this run of the app.
 static var _picks: Dictionary = {}
 const MAX_PICKS := 32
+## The last face used, by file, as this run of the app last read, picked or
+## used it, so a pill can show it without reading the file. A face used during
+## a run (presentation/run_reactions.gd) waits here, marked unsaved, until
+## save_last() writes it outside play.
+static var _last_known: Dictionary = {}
+static var _unsaved: Dictionary = {}
 
 var path := FILE_PATH
 var _kept: Dictionary = {}
@@ -73,13 +79,45 @@ func kept(recording_hash: String) -> String:
 
 ## The last face this phone picked, for the split pill's quick half.
 func last_face() -> String:
-	return _last if is_face(_last) else DEFAULT_FACE
+	var known := last_known(path)
+	return known if not known.is_empty() else DEFAULT_FACE
+
+## The last face used with `file`, from memory: "" until a store of it has
+## loaded or a face was used this run of the app.
+static func last_known(file: String = FILE_PATH) -> String:
+	var known: Variant = _last_known.get(file, "")
+	return known if is_face(known) else ""
+
+## A face sent some other way (a reaction during a run): the quick halves
+## offer it next. Memory only, so a tap in play writes no file.
+static func use_last(face_id: String, file: String = FILE_PATH) -> void:
+	if not is_face(face_id): return
+	_last_known[file] = face_id
+	_unsaved[file] = true
+
+## Whether a face use_last() noted for `file` is still to be written.
+static func has_unsaved(file: String = FILE_PATH) -> bool:
+	return _unsaved.has(file)
+
+## Writes a face use_last() noted, when it changed the file's: call it outside play.
+func save_last() -> void:
+	if not _unsaved.has(path): return
+	var face_id := last_known(path)
+	_unsaved.erase(path)
+	_load()
+	if face_id.is_empty(): return
+	_last_known[path] = face_id
+	if _last == face_id: return
+	_last = face_id
+	_save()
 
 ## A pick: remembered for its run and as the last face used.
 func choose(run: String, face_id: String) -> void:
 	if not is_face(face_id): return
 	pick(run, face_id)
+	_unsaved.erase(path)
 	_load()
+	_last_known[path] = face_id
 	if _last == face_id: return
 	_last = face_id
 	_save()
@@ -152,6 +190,8 @@ func _load() -> void:
 	_partners = parsed.partners if parsed != null else {}
 	_reads = parsed.reads if parsed != null else {}
 	_last = parsed.last if parsed != null else ""
+	# A face used in play and not written yet is newer than the file's.
+	if not _unsaved.has(path): _last_known[path] = _last
 
 ## The checked contents of a saved file's text, or null when it is not one.
 ## Entries that do not fit are dropped one by one.

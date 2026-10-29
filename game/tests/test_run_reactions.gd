@@ -192,6 +192,8 @@ func _pill_and_card() -> void:
 		viewport.add_child(controls)
 		var pill := RunReactions.new()
 		pill.settings = controls.settings
+		var faces_path := _path("pill-faces")
+		pill.store_path = faces_path
 		controls.dock_beside_finish(pill, RunReactions.SIZE)
 		controls.show_play()
 		await process_frame
@@ -205,10 +207,20 @@ func _pill_and_card() -> void:
 		_check(not controls.hint_label.get_global_rect().intersects(rect), "The hint line keeps clear of it")
 		var sent: Array = []
 		pill.reacted.connect(func(face: String) -> void: sent.append(face))
-		pill.pressed.emit()
-		await process_frame
+		var quick_rect := pill.quick.get_global_rect()
+		var react_rect := pill.opener.get_global_rect()
+		_check(pill.quick.is_visible_in_tree() and pill.quick_face == EndStore.DEFAULT_FACE and pill._quick_icon.face == EndStore.DEFAULT_FACE, "The split pill's left half shows the last face (Happy before any)")
+		_check(is_equal_approx(quick_rect.position.x, rect.position.x) and is_equal_approx(quick_rect.size.y, rect.size.y) and quick_rect.end.x <= react_rect.position.x + 0.5 and is_equal_approx(react_rect.end.x, rect.end.x), "The quick half is the pill's left end, the divider then React's half to its right end")
+		_check(quick_rect.size.x >= EndReactions.TARGET and react_rect.size.x >= EndReactions.TARGET * 2.0, "Both halves are full size tap targets")
+		_check(pill.quick.accessibility_name == PlayerCopy.END_REACTIONS_QUICK % "Happy" and pill.accessibility_name == PlayerCopy.END_REACTIONS_CHOOSE, "Each half says what it does")
+		await _tap(viewport, quick_rect.get_center())
+		_check(sent == ["happy"] and not pill.faces_open(), "The first tap on the quick half sends the last face, and opens nothing")
+		_check(not FileAccess.file_exists(faces_path) and EndStore.last_known(faces_path) == "happy", "A face sent in play writes no file then")
+		await _tap(viewport, react_rect.get_center())
 		var card: CanvasLayer = pill.faces_card
-		_check(pill.is_visible_in_tree() and pill.faces_open() and card.cells.size() == 9, "React opens the shared faces card")
+		_check(pill.is_visible_in_tree() and pill.faces_open() and card.cells.size() == 9, "The first tap on React opens the shared faces card")
+		var note: Label = card.panel.find_child("ReactionNote", true, false)
+		_check(note != null and note.text == PlayerCopy.RUN_REACTIONS_NOTE, "The card's footer says the reactions are saved with the turn")
 		var panel: Rect2 = card.panel_rect()
 		_check(Rect2(Vector2.ZERO, Vector2(case[0])).encloses(panel), "The card stays on screen")
 		for other: Rect2 in [rect, finish, action, stick]: _check(not panel.intersects(other), "The card never covers the pill, the action button, Finish or the joystick")
@@ -230,12 +242,13 @@ func _pill_and_card() -> void:
 		await process_frame
 		(card.cells["sad"] as Button).pressed.emit()
 		await process_frame
-		_check(sent == ["sad"] and not pill.faces_open(), "A face sends and closes the card")
+		_check(sent == ["happy", "sad"] and not pill.faces_open(), "A face sends and closes the card")
+		_check(pill.quick_face == "sad" and pill._quick_icon.face == "sad" and pill.quick.accessibility_name == PlayerCopy.END_REACTIONS_QUICK % "Sad", "The face sent becomes the quick face")
 		pill.show_cooldown(0.5, false)
-		_check(pill.disabled and not pill.can_send(), "The pill rests while the cooldown runs")
+		_check(pill.disabled and pill.quick.disabled and not pill.can_send() and pill.modulate.a == 1.0, "The pill rests while the cooldown runs, its sweep shown at full strength")
 		pill.pressed.emit()
-		await process_frame
-		_check(not pill.faces_open(), "and opens nothing then")
+		await _tap(viewport, quick_rect.get_center())
+		_check(not pill.faces_open() and sent == ["happy", "sad"], "and neither half does anything then")
 		pill.show_cooldown(0.0, false)
 		pill.pressed.emit()
 		await process_frame
@@ -254,8 +267,37 @@ func _pill_and_card() -> void:
 		controls.hud.visible = false
 		await process_frame
 		_check(not pill.faces_open(), "A pause (the hud hidden) closes the card")
+		var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(faces_path))
+		_check(saved is Dictionary and saved.get("last") == "sad" and not EndStore.has_unsaved(faces_path), "Once the pill hides, the face used in play is written as the last face")
+		var end_card := Control.new()
+		viewport.add_child(end_card)
+		var row: Control = EndReactions.attach(end_card, {"run": HASH_A, "pick": true, "store": EndStore.new(faces_path)})
+		_check(row != null and row._quick_icon.face == "sad", "The end card's quick half offers the face used in play")
+		pill.color = "mint"
+		_check(pill._quick_icon.color == "mint", "The quick face is drawn in the player's spirit colour")
+		controls.hud.visible = true
+		pill.show_cooldown(0.0, false)
+		EndStore.new(faces_path).choose(HASH_B, "angry")
+		pill.visible = false
+		pill.visible = true
+		_check(pill.quick_face == "angry", "A face picked on an end card is the quick face when the pill next shows, read from memory")
 		viewport.queue_free()
 		await process_frame
+
+## A real press and release, as a finger's tap.
+func _tap(viewport: SubViewport, at: Vector2) -> void:
+	var press := InputEventMouseButton.new()
+	press.button_index = MOUSE_BUTTON_LEFT
+	press.button_mask = MOUSE_BUTTON_MASK_LEFT
+	press.pressed = true
+	press.position = at
+	press.global_position = at
+	viewport.push_input(press, true)
+	var release: InputEventMouseButton = press.duplicate()
+	release.pressed = false
+	release.button_mask = 0
+	viewport.push_input(release, true)
+	await process_frame
 
 func _rooms_api() -> void:
 	var turns := "/v2/rooms/" + ROOM + "/turns"
@@ -359,8 +401,9 @@ func _screen() -> void:
 	await process_frame
 	_check(not app.run_reactions.faces_open() and app.mode == "play" and app.running, "Back closes the card first and play goes on")
 	var live_slot: String = app.run_player.live_slot
-	app._react_in_run("happy")
-	_check(app.run_player.live.track() == [{"tick": 30, "id": "happy"}], "A reaction is recorded on the turn's own tick")
+	_check(app.run_reactions.quick_face == "happy", "The quick half offers Happy before any face is used")
+	app.run_reactions.quick.pressed.emit()
+	_check(app.run_player.live.track() == [{"tick": 30, "id": "happy"}], "The quick half's tap is recorded on the turn's own tick")
 	_check(app.world.actors[live_slot].expression_target() == Look.HAPPY, "The spirit makes the face")
 	_check(not _bubbles(app.hud).is_empty(), "A bubble pops over it")
 	app.advance_input(inputs[30])

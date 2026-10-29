@@ -1,8 +1,8 @@
 extends SceneTree
 ## Every chapter's stage hints fit the chapter HUD's hint line in two lines at
 ## most, measured on the real label (presentation/chapter_controls.gd) in its
-## tightest layout: a 1280x720 screen with the reactions pill docked beside
-## Finish, which leaves the hint about 616 px. A phone (1560x720 and wider)
+## tightest layout: a 1280x720 screen with the split reactions pill docked
+## beside Finish, which leaves the hint about 562 px. A phone (1560x720 and wider)
 ## gives it 680. Each hint is read as the player reads it: from the chapter's
 ## stage presentation (stage copy, the authored stage or the native stage),
 ## through PlayerCopy.from_canonical, online and solo. New chapters are
@@ -25,7 +25,7 @@ func _run() -> void:
 	await process_frame
 	await process_frame
 	var width := controls.hint_label.size.x
-	_check(width >= 600.0 and width <= 640.0, "The tightest layout leaves the hint about 616 px (%.0f)" % width)
+	_check(width >= 545.0 and width <= 580.0, "The tightest layout leaves the hint about 562 px (%.0f)" % width)
 	var seen: Dictionary = {}
 	for key: String in Registry.keys():
 		var level := Registry.definition(key)
