@@ -10,6 +10,7 @@ import { storeView } from "./view-cache";
 import { MAX_REWARD_DELIVERIES, deliverRewards, type RewardBatch } from "./reward-delivery";
 import { wardrobeOn } from "../pollen/features";
 import { dropRunCopies } from "../duels/their-run-sweep";
+import { errorCode, logWarning } from "../log";
 /** Duel run copy rooms the hourly pass tells at most (one request each); the rest wait an hour. */
 const MAX_COPY_SWEEPS = 48;
 
@@ -70,7 +71,10 @@ async function pending(env: Env): Promise<string[]> {
     if (work.rewards?.length) { deliveries -= work.rewards.length; batches.push({ board, stub, rewards: work.rewards }); }
     // Duel run copies whose keep is over, or that hear of an erasure (duels/their-run-sweep.ts), within one budget for the pass.
     const copies = (work.copies ?? []).slice(0, sweeps);
-    if (copies.length) { sweeps -= copies.length; await dropRunCopies(env, board, copies); }
+    if (copies.length) {
+      sweeps -= copies.length;
+      try { await dropRunCopies(env, board, copies); } catch (error) { logWarning("duel_run_copy_sweep_failed", { code: errorCode(error) }); }
+    }
     const due = work.standing.slice(0, checks);
     if (due.length) {
       checks -= due.length;

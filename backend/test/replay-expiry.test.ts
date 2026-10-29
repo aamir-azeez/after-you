@@ -57,9 +57,10 @@ describe("the replay time limit", () => {
     expect(await facts(room)).toMatchObject({ due: armed.due, stubs: 0 });
   });
 
-  it("at the end keeps only hashes, the listing and the times, as if both phones had saved it, and costs one alarm", async () => {
+  it("at the end, with both phones on attempt history, keeps only hashes, the listing and the times, and costs one alarm", async () => {
     shared.CONFIG = ON;
     const room = await finished(lighthouse);
+    for (const who of [HOST, GUEST]) await history(room, who);
     const listed = value(await room.lobbySnapshot(HOST));
     await runOut(room);
     const { rows } = await meterRows({ room }, () => fire(room));
@@ -75,8 +76,49 @@ describe("the replay time limit", () => {
     expect(await room.snapshot(HOST)).toMatchObject({ ok: false, code: "replay_transferred" });
     const attempts = (await history(room, GUEST)).attempts;
     expect(attempts.every(item => item.state === "offloaded" && /^[a-f0-9]{64}$/.test(item.digest))).toBe(true);
-    // Export still works on what is left.
     expect((await room.exportSnapshot("d".repeat(40))).ok).toBe(true);
+  });
+
+  it("at the end, with an older phone, completes the replay transfer as if both saved it, and a phone that saved it can send it back", async () => {
+    shared.CONFIG = ON;
+    const room = await finished();
+    // The host's phone saved the archive (replay transfer); the guest's never did.
+    const saved = value(await room.replayTransfer(HOST));
+    const key = { schema_version: 1, epoch: saved.manifest.epoch, archive_hash: saved.manifest.archive_hash };
+    value(await room.acknowledgeReplayTransfer(HOST, key));
+    await runOut(room);
+    await fire(room);
+    expect(await facts(room)).toMatchObject({ due: null, alarm: null, owned: true, held: 0 });
+    expect(value(await room.replayTransfer(GUEST, false))).toMatchObject({ transferred: true, archive: null });
+    expect(await room.snapshot(HOST)).toMatchObject({ ok: false, code: "replay_transferred" });
+    // The host's phone puts it back.
+    expect(await room.restoreReplayTransfer(HOST, { ...key, archive: saved.archive })).toMatchObject({ ok: true });
+    expect((await facts(room)).stubs).toBe(0);
+  });
+
+  it("shares the alarm with a waiting turn hint, and a failing clock tries again in an hour without blocking export", async () => {
+    shared.CONFIG = configJson({ features: ["REPLAY_EXPIRY", "NOTIFICATIONS_ENABLED"] });
+    const room = await finished();
+    const armed = await facts(room);
+    // The finishing turn queued a hint for the partner: the alarm is the earlier of the two.
+    expect(armed.due).not.toBeNull();
+    expect(armed.alarm).toBeLessThan(armed.due!);
+    expect(armed.owned).toBe(true);
+    // The alarm fires for the hint: the clock waits, the hint's schedule keeps both.
+    await fire(room);
+    const later = await facts(room);
+    expect(later).toMatchObject({ due: armed.due, owned: true, stubs: 0 });
+    expect(later.alarm === null || later.alarm <= armed.due!).toBe(true);
+    // A clock that fails (a broken replay transfer row) is moved an hour on, and the room stays exportable.
+    await runInDurableObject(room, async (_, ctx) => {
+      ctx.storage.sql.exec("CREATE TABLE IF NOT EXISTS replay_transfer (id INTEGER PRIMARY KEY CHECK(id=1), data TEXT NOT NULL)");
+      ctx.storage.sql.exec("INSERT OR REPLACE INTO replay_transfer VALUES (1,'not json')");
+    });
+    await runOut(room);
+    await fire(room);
+    const retried = await facts(room);
+    expect(retried.due).toBeGreaterThan(Date.now() + 3_000_000);
+    expect(retried).toMatchObject({ owned: true, stubs: 0 });
   });
 
   it("leaves a room that is not finished any more, arms rooms finished before the switch on their next read, and does nothing switched off", async () => {

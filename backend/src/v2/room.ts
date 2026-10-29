@@ -51,7 +51,8 @@ import { pairLooks, type PairLooks } from "../leaderboards/run-looks";
 import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
 import { clearDuelLink, duelJoinAllowed, duelLink, duelPremium, markDuelDone, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
 import { acknowledgeTheirRun, dropTheirRun, encodeTheirRun, keepTheirRun, serveTheirRun, type TheirRun } from "../duels/their-run";
-import { armReplayExpiry, clearReplayExpiry, finishedRoom, REPLAY_KEEP_MS, replayExpiryDue, runReplayExpiry } from "./replay-expiry";
+import { errorCode as logCode, logWarning } from "../log";
+import { armable, armReplayExpiry, clearReplayExpiry, REPLAY_KEEP_MS, replayExpiryDue, runReplayExpiry } from "./replay-expiry";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -217,7 +218,12 @@ export class RoomV2 extends DurableObject<Env> {
   async alarm(): Promise<void> {
     if (!this.notificationsAvailable()) return;
     // The replay clock first (v2/replay-expiry.ts); the hints' final schedule then sets the next alarm.
-    await runReplayExpiry(this.ctx.storage, () => this.storedOrNull(), flags.replayExpiry(this.env), Date.now());
+    try { await runReplayExpiry(this.ctx.storage, () => this.storedOrNull(), flags.replayExpiry(this.env), Date.now()); }
+    catch (error) {
+      // Never stuck: the clock tries again in an hour, and the hints still run and schedule it.
+      logWarning("replay_expiry_failed", { code: logCode(error) });
+      try { this.ctx.storage.transactionSync(() => { if (replayExpiryDue(this.ctx.storage) !== null) armReplayExpiry(this.ctx.storage, Date.now() + 3_600_000, true); }); } catch { /* the hints' schedule below still owns the alarm */ }
+    }
     return deliverTurnHints(this.ctx.storage, this.env, () => this.notificationsAvailable() ? this.read() : null, () => this.notificationsAvailable());
   }
   /** The live room or its replay-transfer record, null once erased. */
@@ -227,9 +233,9 @@ export class RoomV2 extends DurableObject<Env> {
    * (rooms finished before the switch came on); after the read, never in its way, and it never deletes.
    */
   private armOnRead(context: CampaignRoomContext | undefined): void {
-    if (context !== undefined || !flags.replayExpiry(this.env) || replayExpiryDue(this.ctx.storage) !== null || !finishedRoom(this.read())) return;
+    if (context !== undefined || !flags.replayExpiry(this.env) || replayExpiryDue(this.ctx.storage) !== null || !armable(this.ctx.storage, this.stored())) return;
     this.ctx.waitUntil(this.ctx.storage.transaction(async () => {
-      if (campaignBoundaryGuard(this.ctx.storage, "replay_expiry_standalone_only") || !finishedRoom(this.read())) return;
+      if (campaignBoundaryGuard(this.ctx.storage, "replay_expiry_standalone_only") || !armable(this.ctx.storage, this.stored())) return;
       if (armReplayExpiry(this.ctx.storage, Date.now() + REPLAY_KEEP_MS)) await scheduleNotifications(this.ctx.storage);
     }).catch(() => undefined));
   }
@@ -643,6 +649,7 @@ export class RoomV2 extends DurableObject<Env> {
   async history(player: string, support?: HistorySupport): Promise<Outcome<HistoryView>> {
     try {
       const room = await this.historyAccess(player, support);
+      this.armOnRead(undefined);
       if (archived(room) && room.replay_transfer_version === 1) return ok(v1Transferred(this.ctx.storage, room, player));
       return ok(historyView(this.ctx.storage, room, await loadChain(this.ctx.storage, room, false), player));
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }

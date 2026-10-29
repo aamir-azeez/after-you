@@ -1,7 +1,10 @@
+import { canonicalJson, digest } from "../protocol";
 import { chapter } from "./protocol";
-import { archived, expireAttempt, finishedOf, roomKey, type HistoryRoom } from "./history-room";
-import { historyChain, persistChain, storedAttempts } from "./history";
+import { archived, expireAttempt, finishedOf, offloadedCount, roomKey, type HistoryRoom } from "./history-room";
+import { bothSupport, historyChain, persistChain, storedAttempts } from "./history";
 import { initializeHistory } from "./storage-schema";
+import { acknowledgeReplay, captureReplay, prepareReplayTransfer, readReplayTransfer } from "./replay-transfer";
+import type { RoomStateV2 } from "./room";
 
 /**
  * The replay time limit on finished rooms (REPLAY_EXPIRY, off by default; the owner turns it on).
@@ -10,12 +13,17 @@ import { initializeHistory } from "./storage-schema";
  * phones have saved them (attempt history, history-room.ts, or the older replay
  * transfer, replay-transfer.ts). With the switch on, the room also arms a clock
  * REPLAY_KEEP_MS long when its run finishes (and, for rooms finished before,
- * the first time a member reads it). When the clock runs out, the room keeps
- * only what attempt history keeps after both phones saved an attempt: every
- * finished attempt's digest and chain link, its rows as hashes, and the room's
- * own listing, times and final checkpoint hash, exactly as if both had saved
- * it. A phone that saved an attempt can still send it back; one that never
- * did cannot watch it any more. Nothing is deleted when a room is read.
+ * the first time a member reads it or its history). When the clock runs out,
+ * the room keeps only what those paths keep once both phones saved it, by the
+ * path its phones use: with both on attempt history, every finished attempt's
+ * digest and chain link and its rows as hashes (as acknowledgeAttempt); with
+ * an older phone, or a replay transfer a phone already saved, the replay
+ * transfer manifest and the hashes (as acknowledgeReplay, both members
+ * counted). Either way the room's listing, times and final checkpoint hash
+ * stay, a phone that saved it can still send it back, and one that never did
+ * cannot watch it any more. Nothing is deleted when a room is read, and a room
+ * that is not finished any more (a redo) keeps its history: its clock waits
+ * for it to finish again.
  *
  * The clock is one row here and shares the room's single Durable Object alarm
  * with turn hints (notification-storage.ts): the alarm is due at the earlier
@@ -62,6 +70,12 @@ export function finishedRoom(room: HistoryRoom | null): boolean {
   if (!room || archived(room)) return false;
   try { return room.stage_index === chapter(room).stages.length && room.guest_id !== null; } catch { return false; }
 }
+/** Whether a room has replays the clock could still take: finished and live, or left by attempt history with an attempt still held. */
+export function armable(storage: DurableObjectStorage, room: HistoryRoom | null): boolean {
+  if (!room) return false;
+  if (!archived(room)) return finishedRoom(room);
+  return room.replay_transfer_version === 2 && storedAttempts(storage).some(record => record.state === "held");
+}
 
 /**
  * The alarm's part for the clock, before turn hints run (their final schedule sets the next alarm).
@@ -78,6 +92,10 @@ export async function runReplayExpiry(storage: DurableObjectStorage, room: () =>
     clearReplayExpiry(storage);
     return "dropped";
   }
+  // A phone without attempt history, or a replay transfer a phone already saved: the older path, both counted.
+  if (!archived(stored) && !offloadedCount(storage) && (!bothSupport(storage, stored.host_id, stored.guest_id) || (readReplayTransfer(storage)?.acked_player_ids.length ?? 0) > 0)) {
+    return expireByTransfer(storage, stored, room, now);
+  }
   let chain;
   try { chain = await historyChain(storage, roomKey(stored), finishedOf(stored)); }
   catch {
@@ -93,6 +111,20 @@ export async function runReplayExpiry(storage: DurableObjectStorage, room: () =>
     if (!persistChain(storage, chain.fresh.map(item => item.record))) { armReplayExpiry(storage, now + 3_600_000, true); return "retry"; }
     const finished = finishedOf(current);
     for (const record of storedAttempts(storage)) if (record.state === "held" && record.position < finished) expireAttempt(storage, current, record);
+    clearReplayExpiry(storage);
+    return "expired";
+  });
+}
+
+/** The older path: the room's replay transfer completes as if both phones had saved the archive (replay-transfer.ts). */
+async function expireByTransfer(storage: DurableObjectStorage, stored: RoomStateV2, room: () => HistoryRoom | null, now: number): Promise<"expired" | "retry"> {
+  const archive = storage.transactionSync(() => captureReplay(storage, stored));
+  const fingerprint = canonicalJson(archive), hash = await digest(fingerprint);
+  return storage.transactionSync(() => {
+    const current = room();
+    if (!current || archived(current) || canonicalJson(captureReplay(storage, current)) !== fingerprint) { armReplayExpiry(storage, now + 3_600_000, true); return "retry"; }
+    let transfer = prepareReplayTransfer(storage, archive, hash);
+    for (const member of [current.host_id, current.guest_id!]) transfer = acknowledgeReplay(storage, current, member, transfer);
     clearReplayExpiry(storage);
     return "expired";
   });

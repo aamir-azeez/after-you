@@ -35,7 +35,8 @@ export const THEIR_RUN_KEEP_MS = 90 * 86_400_000;
 /** A duel ends at most STALL_MS after its last turn, so a copy this old is past its duel's end plus the keep in every case. */
 export const THEIR_RUN_FALLBACK_MS = THEIR_RUN_KEEP_MS + STALL_MS;
 
-type Row = { duel_id: string; finished_ms: number; pending: string[]; digest: string | null; byte_length: number | null; raw: string | null };
+/** `raw`: the canonical bytes sit unencoded in `body` until encodeTheirRun runs. */
+type Row = { duel_id: string; finished_ms: number; pending: string[]; digest: string | null; byte_length: number | null; raw: boolean };
 export type TheirRun = { duel_id: string; digest: string; byte_length: number; body: Uint8Array };
 
 const [TABLE] = DUEL_RUN_TABLES;
@@ -62,23 +63,26 @@ function remove(storage: DurableObjectStorage): void {
 export function keepTheirRun(storage: DurableObjectStorage, checkpoint: CheckpointV2, now: number): boolean {
   const link = duelLink(storage);
   if (!link || link.kind !== "friend" || link.done || !link.others?.length || read(storage)) return false;
-  storage.sql.exec(TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
-  write(storage, { duel_id: link.duel_id, finished_ms: now, pending: [...link.others], digest: null, byte_length: null, raw: canonicalJson(checkpoint) }, null);
-  return true;
+  // Never fails the turn: a copy that cannot be made is simply not there (the other pair reads it as gone).
+  try {
+    storage.sql.exec(TABLE.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+    write(storage, { duel_id: link.duel_id, finished_ms: now, pending: [...link.others], digest: null, byte_length: null, raw: true }, new TextEncoder().encode(canonicalJson(checkpoint)));
+    return true;
+  } catch { return false; }
 }
 
 /** Encodes a raw copy into the blob format; a no-op once encoded or gone. Never throws. */
 export async function encodeTheirRun(storage: DurableObjectStorage): Promise<void> {
   try {
     const held = read(storage);
-    if (!held?.row.raw) return;
-    const bytes = new TextEncoder().encode(held.row.raw);
+    if (!held?.row.raw || !held.body) return;
+    const bytes = held.body;
     const [digest, body] = [await bytesDigest(bytes), await encodeBlob(bytes)];
     storage.transactionSync(() => {
       const now = read(storage);
       // Only the copy this call read: an ack or a drop in between wins.
-      if (!now?.row.raw || now.row.raw !== held.row.raw) return;
-      write(storage, { ...now.row, raw: null, digest, byte_length: bytes.byteLength }, body);
+      if (!now?.row.raw || now.row.duel_id !== held.row.duel_id) return;
+      write(storage, { ...now.row, raw: false, digest, byte_length: bytes.byteLength }, body);
     });
   } catch { /* The next download encodes it. */ }
 }
@@ -97,7 +101,7 @@ export async function serveTheirRun(storage: DurableObjectStorage, viewer: strin
   if (held.row.raw) { await encodeTheirRun(storage); held = read(storage); }
   if (!held) return fail(410, "their_run_gone");
   // Still raw: the encode failed this time, and the next try may not.
-  if (!held.body || !held.row.digest || held.row.byte_length === null) return fail(503, "their_run_unavailable");
+  if (held.row.raw || !held.body || !held.row.digest || held.row.byte_length === null) return fail(503, "their_run_unavailable");
   return ok({ duel_id: held.row.duel_id, digest: held.row.digest, byte_length: held.row.byte_length, body: held.body });
 }
 
