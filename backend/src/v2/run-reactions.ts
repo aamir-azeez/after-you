@@ -1,5 +1,5 @@
 import { ApiError, HASH_PATTERN, isObject, text } from "../protocol";
-import { FACES, type Face } from "./end-reactions";
+import { FACES, shownFace, type Face } from "./end-reactions";
 
 /**
  * Reactions made during a run: the faces a player tapped while playing, each at
@@ -79,11 +79,11 @@ export function recordRunReactions(storage: DurableObjectStorage, turnId: string
   tables.delete(storage);
 }
 
-/** Every turn's track (the end reactions list). A room without the table reads no rows. */
-export function runReactionsView(storage: DurableObjectStorage): RunReactionsView {
+/** Every turn's track (the end reactions list), pack faces as end-reactions.ts shownFace gives them for `packs`. A room without the table reads no rows. */
+export function runReactionsView(storage: DurableObjectStorage, packs = true): RunReactionsView {
   const tracks: Record<string, RunReaction[]> = {};
   if (present(storage)) {
-    for (const row of storage.sql.exec<{ recording_hash: string; track: string }>("SELECT recording_hash,track FROM run_reactions ORDER BY rowid LIMIT ?", MAX_ROWS)) tracks[row.recording_hash] = JSON.parse(row.track) as RunReaction[];
+    for (const row of storage.sql.exec<{ recording_hash: string; track: string }>("SELECT recording_hash,track FROM run_reactions ORDER BY rowid LIMIT ?", MAX_ROWS)) tracks[row.recording_hash] = shownTrack(row.track, packs);
   }
   return { schema_version: 1, tracks };
 }
@@ -93,13 +93,19 @@ export function runReactionsView(storage: DurableObjectStorage): RunReactionsVie
  * the memory a second turn plays alongside, or the friend's turn that just
  * finished a pair. One row by key; a room without the table reads none.
  */
-export function partnerTrack(storage: DurableObjectStorage, partner: string | null): RunReactionsView {
+export function partnerTrack(storage: DurableObjectStorage, partner: string | null, packs = true): RunReactionsView {
   const tracks: Record<string, RunReaction[]> = {};
   if (partner !== null && present(storage)) {
     const row = storage.sql.exec<{ recording_hash: string; track: string }>("SELECT r.recording_hash AS recording_hash,r.track AS track FROM run_reactions r WHERE r.turn_id=(SELECT turn_id FROM turns WHERE player_id=? ORDER BY accepted_revision DESC LIMIT 1)", partner).toArray()[0];
-    if (row) tracks[row.recording_hash] = JSON.parse(row.track) as RunReaction[];
+    if (row) tracks[row.recording_hash] = shownTrack(row.track, packs);
   }
   return { schema_version: 1, tracks };
+}
+
+/** A stored track as a phone that does (`packs`) or does not draw pack faces sees it. */
+function shownTrack(stored: string, packs: boolean): RunReaction[] {
+  const track = JSON.parse(stored) as RunReaction[];
+  return packs ? track : track.map(entry => ({ tick: entry.tick, id: shownFace(entry.id, false) }));
 }
 
 /** Leaving a finished room: the leaver's tracks go with their faces. The caller owns the transaction. */

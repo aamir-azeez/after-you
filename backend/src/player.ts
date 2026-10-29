@@ -26,7 +26,7 @@ import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } 
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
-import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
+import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, ownedPackIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
 import { bundlesOn, grantOn, itemBloomsOn, refundsOn, type WardrobeMode } from "./pollen/features";
 import { knownBoard } from "./leaderboards/boards";
@@ -180,13 +180,15 @@ export class Player extends DurableObject<Env> {
    * authorize() for a request that names a room, plus whether this player may reach that room:
    * it holds a link to it, or has Story rows (see storyHeld).
    * An authorized answer also carries the player's current safety token (see v2/block-memo.ts), and with
-   * `pollen` (a turn while Pollen earning is on) the player's Full Journey end.
+   * `pollen` (a turn while Pollen earning is on) the player's Full Journey end. With `packs` (a turn from
+   * a phone that sends pack faces) also the reaction packs the player owns, for v2/face-packs.ts.
    */
-  authorizeRoom(deviceHash: string, roomId: string, pollen = false, looks = false): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; look?: Look } {
+  authorizeRoom(deviceHash: string, roomId: string, pollen = false, looks = false, packs = false): { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; look?: Look; face_packs?: string[] } {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: false };
     const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 || this.storyHeld();
-    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}), ...this.lookField(looks) };
+    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}), ...this.lookField(looks),
+      ...(packs ? { face_packs: ownedPackIds(this.ctx.storage) } : {}) };
   }
   /**
    * authorize() plus the wallet or its history (GET /v1/pollen and /v1/pollen/history), from one call.

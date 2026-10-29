@@ -10,7 +10,7 @@ import { PRESENCE_SESSION, roomPresence } from "./presence";
 import { routeFriends } from "./friends-routes";
 import { friendNotifications, publishSocialRoom, socialInbox } from "./social-routes";
 import { ROOM_INBOX_CLOSED_HEADER, ROOM_INBOX_LEAVE_HEADER } from "./room-inbox";
-import { endReactionsWanted } from "./v2/end-reactions";
+import { endReactionsWanted, facePacksWanted } from "./v2/end-reactions";
 import { DISPLAY_NAME_PATH, displayNamesShown, friendLinkCode, namesRoomRoute, routeDisplayName, routeFriendLinkName } from "./display-names";
 import { leaveRoom, requireInPlay } from "./room-leave";
 import { resolveInvitation } from "./invitation-resolve";
@@ -20,6 +20,7 @@ import type { PollenMember } from "./pollen/turn-facts";
 import type { HistoryView, WalletView } from "./pollen/wallet";
 import { wardrobeMode } from "./pollen/features";
 import { looksMemberRoute, memberLookOf } from "./pollen/looks-routes";
+import { facePacksTurnRoute } from "./v2/face-packs";
 import type { Look } from "./pollen/catalog";
 export { FriendRoomEvents } from "./friend-room-events";
 import { friendEventsCapable } from "./friend-room-events";
@@ -63,8 +64,9 @@ const ROOM_ROUTE = /^\/v[12]\/rooms\/([A-Za-z0-9_-]{22})(?:\/(?!leave(?:\/|$))|$
  * While Pollen earning is on, a turn, room creation and joining learn the player's Full Journey end
  * the same way (`pollen`), and the wallet reads get their answer from it (`pollenView`).
  * While looks are on, a turn, room creation and joining learn the look the player wears the same way (`memberLook`).
+ * A turn from a phone that sends pack faces learns the reaction packs the player owns the same way (`facePacks`, v2/face-packs.ts).
  */
-async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string; memberName?: string | null; pollen?: PollenMember; pollenView?: WalletView | HistoryView; memberLook?: Look }> {
+async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string; memberName?: string | null; pollen?: PollenMember; pollenView?: WalletView | HistoryView; memberLook?: Look; facePacks?: string[] }> {
   const id = request.headers.get("X-Player-Id");
   if (!id || !ID_PATTERN.test(id)) throw new ApiError(401, "invalid_auth");
   const value = request.headers.get("Authorization");
@@ -74,13 +76,14 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   const hash = await digest(token), player = env.PLAYERS.getByName(id), room = ROOM_ROUTE.exec(path)?.[1];
   // The same single Player call either way; a room route also learns whether the room is linked.
   const memberRoute = pollenMemberRoute(request, path, env), view = pollenAuthView(request, path, env), looks = looksMemberRoute(request, path, env);
-  const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks)
+  const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look; face_packs?: string[] } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks, facePacksTurnRoute(request, path))
     : namesRoomRoute(request, path, env) || memberRoute || looks ? await player.authorizeNamed(hash, memberRoute, looks) : view !== null ? await player.authorizeWallet(hash, view, wardrobeMode(env))
     : { authorized: await player.authorize(hash, deleting), linked: true };
   if (!access.authorized && !(deleting && await env.SAFETY_PROFILES.getByName(id).deletionReceipt(id, hash))) throw new ApiError(401, "invalid_auth");
   if (!(await env.PLAYER_LIMITER.limit({ key: id })).success) throw new ApiError(429, "rate_limited");
   if (!access.linked) throw new ApiError(404, "room_not_found");
-  return { playerId: id, safetyToken: access.safety_token, memberName: flags.displayNames(env) ? access.display_name : undefined, pollen: pollenMember(access), pollenView: access.pollen, memberLook: looks ? memberLookOf(access) : undefined };
+  return { playerId: id, safetyToken: access.safety_token, memberName: flags.displayNames(env) ? access.display_name : undefined, pollen: pollenMember(access), pollenView: access.pollen, memberLook: looks ? memberLookOf(access) : undefined,
+    facePacks: Array.isArray(access.face_packs) ? access.face_packs : undefined };
 }
 async function publicLimit(request: Request, env: Env): Promise<void> {
   // Bootstrap has no player identity yet. The edge-provided IP is used only as an ephemeral limiter key.
@@ -141,7 +144,7 @@ export default {
         if (Object.keys(input).length !== 1 || input.schema_version !== 1) throw new ApiError(400, "invalid_safety_request");
         return result(await env.SAFETY_PROFILES.getByName(owner).acknowledgeDeletion(owner, await digest(authorization.slice(7))));
       }
-      const { playerId, safetyToken, memberName, pollen, pollenView, memberLook } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
+      const { playerId, safetyToken, memberName, pollen, pollenView, memberLook, facePacks } = await auth(request, env, path, path === "/v1/identity" && request.method === "DELETE");
       const player = env.PLAYERS.getByName(playerId);
       // Absent unless a platform games flag is on: the paths then answer 404 as before.
       const platform = await routePlatform(request, path, playerId, env); if (platform) return platform;
@@ -152,7 +155,7 @@ export default {
         const showClosed = request.headers.get(ROOM_INBOX_CLOSED_HEADER) === "2", showLeft = request.headers.get(ROOM_INBOX_LEAVE_HEADER) === "1";
         // The face on the friend's latest turn, only for clients that show it.
         const showReactions = endReactionsWanted(request), showNames = displayNamesShown(request, env);
-        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames);
+        const page = await indexedRoomInbox(playerId, env, showClosed, showLeft, pageOffset(request), showReactions, showNames, facePacksWanted(request));
         return withNext(json(page.body), page.next);
       }
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
@@ -224,7 +227,7 @@ export default {
         if (!await player.authorize(await bearerDigest(request), false, pollenEarning(env) ? paidUntil(checked, until) : undefined)) throw new ApiError(401, "invalid_auth");
         return json(checked);
       }
-      if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken, memberName, pollen, memberLook);
+      if (path.startsWith("/v2/")) return await routeV2(request, path, playerId, env, safetyToken, memberName, pollen, memberLook, facePacks);
       if (path === "/v1/rooms" && request.method === "GET") {
         const page = await indexedLegacyRooms(playerId, env, pageOffset(request)); return withNext(json(page.body), page.next);
       }

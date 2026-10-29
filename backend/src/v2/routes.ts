@@ -25,7 +25,8 @@ import { parsePosition } from "./history-room";
 import { requireHostAccess, requireRoomHostAccess } from "./host-access";
 import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
-import { endReactionField, endReactionsWanted } from "./end-reactions";
+import { endReactionField, endReactionsWanted, FACE_PACKS_VERSION, facePacksWanted } from "./end-reactions";
+import { requireOwnedFaces } from "./face-packs";
 import { runReactionField, runReactionsWanted } from "./run-reactions";
 import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { openChapters } from "./chapter-unlocks";
@@ -80,7 +81,7 @@ function pollRedo(request: Request): boolean { return request.headers.get(POLL_R
 /** What a standalone room read or turn reply carries beside the room: each part the client asked for (names and looks while their flags are on). A Story request gets none. */
 function besideWanted(request: Request, env: Env, context: unknown): Beside {
   if (context !== undefined) return {};
-  return { faces: endReactionsWanted(request), names: displayNamesShown(request, env), tracks: runReactionsWanted(request), looks: looksShown(request, env) };
+  return { faces: endReactionsWanted(request), names: displayNamesShown(request, env), tracks: runReactionsWanted(request), looks: looksShown(request, env), packs: facePacksWanted(request) };
 }
 function roomLevel(request: Request): number { return request.headers.get("X-AfterYou-Room-Level") === "2" ? 2 : 1; }
 /** 0.5.x clients send at most 8; later clients may list more rules numbers. */
@@ -96,9 +97,10 @@ async function reauthorize(request: Request, playerId: string, env: Env, fullJou
  * caller's display name from auth() while display names are on (null when anonymous), else
  * undefined; creating, joining and turns pass it into the room call they already make.
  * `pollen` is likewise the caller's Full Journey end while Pollen earning is on (pollen/routes.ts),
- * and `look` the look the caller wears while looks are on (pollen/looks-routes.ts).
+ * and `look` the look the caller wears while looks are on (pollen/looks-routes.ts). `facePacks` is the reaction
+ * packs the caller owns, on a turn from a phone that sends pack faces (face-packs.ts); a turn's pack face needs its pack.
  */
-export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember, look?: Look): Promise<Response> {
+export async function routeV2(request: Request, path: string, playerId: string, env: Env, safetyToken?: string, memberName?: string | null, pollen?: PollenMember, look?: Look, facePacks?: string[]): Promise<Response> {
   const player = env.PLAYERS.getByName(playerId);
   if (path === "/v2/capabilities" && request.method === "GET") return json({ api_version: 2,
     mutations_enabled: true, recording_version: 2, simulation_version: 2,
@@ -120,6 +122,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...(triesWanted(request) ? { turn_tries_version: 1 } : {}),
     ...(endReactionsWanted(request) ? { end_reactions_version: 1 } : {}),
     ...(runReactionsWanted(request) ? { run_reactions_version: 1 } : {}),
+    // Pack faces (face-packs.ts): only a phone that draws them is told it may send them.
+    ...(facePacksWanted(request) ? { face_packs_version: FACE_PACKS_VERSION } : {}),
     ...(hardWanted(request) ? { hard_mode_version: 1 } : {}),
     ...liveCapability(request, env),
     ...platformCapability(request, env),
@@ -241,7 +245,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     if (item || request.method !== "GET") throw new ApiError(405, "method_not_allowed");
     if (context !== undefined) throw new ApiError(409, "end_reactions_standalone_only");
     await requireInteraction(env, playerId, "relay", id, context, safetyToken);
-    return json(unwrap(await room.endReactions(playerId, runReactionsWanted(request))));
+    return json(unwrap(await room.endReactions(playerId, runReactionsWanted(request), facePacksWanted(request))));
   }
   // Hard rooms (v2/hard-mode.ts): a slip's reset and the kept slips after the
   // ones a phone has seen (GET .../hard/<seen>).
@@ -314,6 +318,8 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     try { const probe = await room.snapshot(playerId, context); if (probe.ok) bodyLimit = chapter(probe.value).limits?.turn_body_bytes ?? bodyLimit; } catch { /* keep the published bound */ }
   }
   const input = await boundedJson(request, operation === "fork" ? 4096 : bodyLimit);
+  // A pack face needs its pack, before any room call (face-packs.ts): refused, nothing is kept and the phone sends the turn again without it.
+  if (operation === "turns") requireOwnedFaces(input, facePacks);
   if (operation === "fork" && object(input).redo_request_id !== undefined) await reauthorize(request, playerId, env);
   const snapshot = unwrap(await room.snapshot(playerId, context, context === undefined ? historySupport(request) : undefined));
   const storyGuard = context ? await room.campaignWriteAvailability() : null;

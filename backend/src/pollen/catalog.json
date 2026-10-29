@@ -17,5 +17,8 @@
     "every_hard": { "slot": "leaf", "tier": "earned", "unlock": "", "set": "", "released": true },
     "top_ten_ribbon": { "slot": "hat", "tier": "earned", "unlock": "", "set": "", "released": true }
   },
-  "packs": {}
+  "packs": {
+    "garden_faces": { "released": true, "faces": ["heart_eyes", "proud", "wink"] },
+    "big_feelings": { "released": true, "faces": ["wow", "crying", "dizzy"] }
+  }
 }

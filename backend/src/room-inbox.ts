@@ -4,7 +4,7 @@ import { roomLinkVersion, type RoomLink } from "./room-links";
 import { remoteRoomActivity } from "./room-inbox-storage";
 import { departed, isMember } from "./room-departure";
 import { chapter } from "./v2/chapters";
-import { partnerFace, type Face } from "./v2/end-reactions";
+import { partnerFace, shownFace, type Face } from "./v2/end-reactions";
 import { partnerNameField, shownName } from "./display-names";
 
 export type RoomInboxStatus = "waiting_for_friend" | "your_turn" | "waiting_for_their_turn" | "completed" | "unavailable" | "closed";
@@ -133,10 +133,11 @@ export type InboxSource = () => Promise<Outcome<RoomInboxProjection> | null> | O
  * Story and unknown links, failed reads and refused reads give the fallback
  * entry (with showClosed, a room another member erased reads "closed"); a room
  * whose pair is blocked in either direction is left out (null). partner_left
- * is kept only with showLeft, partner_reaction only with showReactions, and with showNames every
+ * is kept only with showLeft, partner_reaction only with showReactions (a pack face as its everyday
+ * stand-in unless facePacks: v2/end-reactions.ts shownFace), and with showNames every
  * entry carries partner_name, checked again against the name rules (an index row may be a day old).
  */
-export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false): Promise<RoomInboxEntry | null> {
+export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed: boolean, showLeft: boolean, blocked: (host: string, guest: string | null) => Promise<boolean>, showReactions = false, showNames = false, facePacks = false): Promise<RoomInboxEntry | null> {
   const version = roomLinkVersion(link);
   const named = (entry: RoomInboxEntry, name: unknown = null): RoomInboxEntry => showNames ? { ...entry, partner_name: shownName(name) } : entry;
   if (version !== 1 && version !== 2) return named(fallback(link));
@@ -147,7 +148,7 @@ export async function inboxEntry(link: RoomLink, source: InboxSource, showClosed
     const { partner_left, partner_reaction, partner_name, ...value } = result.value;
     if (await blocked(value.membership.host_id!, value.membership.guest_id)) return null;
     return named({ ...value, family: version === 1 ? "legacy" : "relay", api_version: version, ...(showLeft && partner_left ? { partner_left } : {}),
-      ...(showReactions && partner_reaction !== undefined ? { partner_reaction } : {}) }, partner_name);
+      ...(showReactions && partner_reaction !== undefined ? { partner_reaction: shownFace(partner_reaction, facePacks) } : {}) }, partner_name);
   } catch (error) { logWarning("room_inbox_entry_failed", { api_version: version, reason: errorCode(error) }); return named(fallback(link)); }
 }
 

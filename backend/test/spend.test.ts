@@ -18,7 +18,7 @@ const FIXTURE: Catalog = checkedCatalog({
     ribbon: item("hat", "earned"),
     hidden: item("hat", "common", { released: false })
   },
-  packs: { garden_faces: { released: true }, big_feelings: { released: false } }
+  packs: { garden_faces: { released: true, faces: ["heart_eyes", "proud", "wink"] }, big_feelings: { released: false, faces: ["wow", "crying", "dizzy"] } }
 });
 const holding = (owned: string[] = [], cleared: string[] = []): Holdings => ({ owned: new Set(owned), cleared: level => cleared.includes(level) });
 
@@ -45,6 +45,11 @@ describe("the shop catalogue", () => {
     expect(() => checkedCatalog({ ...base, items: { ...base.items, gold_leaf: { ...base.items.gold_leaf, set: "meadow" } } })).toThrow();
     expect(() => checkedCatalog({ ...base, tier_prices: { ...base.tier_prices, earned: 5 } })).toThrow();
     expect(() => checkedCatalog({ ...base, packs: { daisy: { released: true } } })).toThrow();
+    // Every pack face sits in exactly one pack, and a pack holds pack faces only.
+    expect(() => checkedCatalog({ ...base, packs: { ...base.packs, garden_faces: { released: true, faces: ["heart_eyes", "proud", "wink", "happy"] } } })).toThrow();
+    expect(() => checkedCatalog({ ...base, packs: { ...base.packs, garden_faces: { released: true, faces: ["heart_eyes", "proud", "wow"] } } })).toThrow();
+    expect(() => checkedCatalog({ ...base, packs: { ...base.packs, garden_faces: { released: true, faces: ["heart_eyes", "proud"] } } })).toThrow();
+    expect(() => checkedCatalog({ ...base, packs: { ...base.packs, garden_faces: { released: true, faces: [] } } })).toThrow();
     expect(() => checkedCatalog({ ...base, extra: 1 })).toThrow();
   });
   it("lists what is offered, and checks a look's shape against the slots", () => {

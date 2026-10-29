@@ -1,5 +1,6 @@
 import { isObject } from "../protocol";
 import raw from "./catalog.json";
+import { PACK_FACES } from "../v2/end-reactions";
 
 /**
  * The wardrobe catalogue the server sells from (POLLEN-RULES.md "Prices"), as data: catalog.json
@@ -12,10 +13,12 @@ import raw from "./catalog.json";
  * - items: the pip cosmetics, keyed by id; each worn in one slot. An "earned" tier is never sold.
  * - sets: an item's `set` names the set it belongs to; buying a set's missing pieces together
  *   costs less (spend.ts). No item has a set yet.
- * - packs: reaction packs (3 faces each) at `pack_price`; none exists yet.
+ * - packs: reaction packs at `pack_price`, each listing its faces. Every pack face of the end reactions
+ *   (v2/end-reactions.ts PACK_FACES) belongs to exactly one pack, and a pack holds nothing else, so the
+ *   face a turn may carry and the pack that owns it can never drift apart.
  */
 export type CatalogItem = { slot: string; tier: string; unlock: string; set: string; released: boolean };
-export type CatalogPack = { released: boolean };
+export type CatalogPack = { released: boolean; faces: readonly string[] };
 export type Catalog = {
   schema_version: 1; slots: readonly string[]; tier_prices: Readonly<Record<string, number>>;
   set_discount_percent: number; set_round_down: number; set_min_missing: number; pack_price: number;
@@ -50,9 +53,17 @@ export function checkedCatalog(value: unknown): Catalog {
     // An earned item is never sold, so it never sits in a set or behind an unlock.
     if (entry.tier === EARNED_TIER && (entry.set !== "" || entry.unlock !== "")) bad(id);
   }
+  const packed = new Set<string>();
   for (const [id, pack] of Object.entries(v.packs as Record<string, unknown>)) {
-    if (!ITEM_ID_PATTERN.test(id) || Object.hasOwn(v.items as object, id) || !isObject(pack) || !exact(pack, ["released"]) || typeof pack.released !== "boolean") bad(id);
+    if (!ITEM_ID_PATTERN.test(id) || Object.hasOwn(v.items as object, id) || !isObject(pack) || !exact(pack, ["released", "faces"]) || typeof pack.released !== "boolean") bad(id);
+    const faces = (pack as Record<string, unknown>).faces;
+    if (!Array.isArray(faces) || !faces.length) bad(id);
+    for (const face of faces as unknown[]) {
+      if (typeof face !== "string" || !(PACK_FACES as readonly string[]).includes(face) || packed.has(face)) bad(id);
+      packed.add(face as string);
+    }
   }
+  if (packed.size !== PACK_FACES.length) bad("pack faces");
   return deepFreeze(v) as Catalog;
 }
 
@@ -87,6 +98,10 @@ export function offeredItems(catalog: Catalog = CATALOG): string[] {
 }
 export function offeredPacks(catalog: Catalog = CATALOG): string[] {
   return Object.keys(catalog.packs).filter(id => catalog.packs[id].released);
+}
+/** The pack a face belongs to, or undefined for an everyday face (one of BASE_FACES). */
+export function packOfFace(face: string, catalog: Catalog = CATALOG): string | undefined {
+  return Object.keys(catalog.packs).find(id => catalog.packs[id].faces.includes(face));
 }
 
 /**

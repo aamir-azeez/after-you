@@ -8,7 +8,7 @@ import { TESTER_CODE_DOMAIN } from "../src/tester-access";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import { rollingHome } from "../src/v2/protocol-cooperative";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
-import { END_REACTIONS, FACES } from "../src/v2/end-reactions";
+import { BASE_FACES, END_REACTIONS } from "../src/v2/end-reactions";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -120,8 +120,8 @@ describe("end-of-run reactions", () => {
     const extra = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, body(room, firstA, { end_reaction: "happy", reaction: "happy" }));
     expect(extra.status).toBe(400); expect(await errorCode(extra)).toBe("unexpected_fields");
     expect(await table(room.room_id)).toBe(false);
-    expect(FACES).toHaveLength(9);
-    for (const face of FACES) {
+    expect(BASE_FACES).toHaveLength(9);
+    for (const face of BASE_FACES) {
       const fresh = await joined();
       await submit(fresh.room, fresh.host, firstA, face);
       expect(await (await list(fresh.room.room_id, fresh.guest)).json<View>()).toEqual({ schema_version: 1, faces: { [firstA.recording_hash]: face } });

@@ -80,7 +80,7 @@ describe("the shop flag", () => {
     const view = await wallet(player);
     expect(view.wardrobe).toEqual({ items: [], packs: [], look: {}, look_revision: 0,
       offered: ["daisy", "seashell", "straw_hat", "tide", "lantern", "lighthouse_lamp", "gold_leaf", "every_hard", "top_ten_ribbon"],
-      prices: { daisy: 1000, seashell: 1000, straw_hat: 5000, tide: 20000, lantern: 50000, lighthouse_lamp: 100000 }, offered_packs: [], pack_price: 5000, sets: {}, unlocked: [] });
+      prices: { daisy: 1000, seashell: 1000, straw_hat: 5000, tide: 20000, lantern: 50000, lighthouse_lamp: 100000 }, offered_packs: ["garden_faces", "big_feelings"], pack_price: 5000, sets: {}, unlocked: [] });
     expect(view.name_price).toBe(0);
     await clear(player, "sleeping-lighthouse");
     expect((await wallet(player)).wardrobe.unlocked).toEqual(["lighthouse_lamp"]);

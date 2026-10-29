@@ -6,7 +6,7 @@ import { type Outcome } from "../src/protocol";
 import { DEFINITION_HASH, RELAY } from "../src/v2/protocol";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { MAX_RUN_REACTIONS, RUN_REACTIONS, RUN_REACTIONS_HEADER } from "../src/v2/run-reactions";
-import { FACES } from "../src/v2/end-reactions";
+import { BASE_FACES } from "../src/v2/end-reactions";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -110,7 +110,7 @@ describe("run reactions", () => {
     const extra = await call(`/v2/rooms/${room.room_id}/turns`, "POST", host, body(room, firstA, { run_reactions: HAPPY, reactions: HAPPY }));
     expect(extra.status).toBe(400); expect(await errorCode(extra)).toBe("unexpected_fields");
     expect(await table(room.room_id)).toBe(false);
-    const full = Array.from({ length: MAX_RUN_REACTIONS }, (_, index) => ({ tick: index * 7, id: FACES[index % FACES.length] }));
+    const full = Array.from({ length: MAX_RUN_REACTIONS }, (_, index) => ({ tick: index * 7, id: BASE_FACES[index % BASE_FACES.length] }));
     await submit(room, host, firstA, full);
     expect((await (await list(room.room_id, host)).json<{ run_reactions: Tracks }>()).run_reactions.tracks).toEqual({ [firstA.recording_hash]: full });
   });

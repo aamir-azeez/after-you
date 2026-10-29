@@ -74,6 +74,13 @@ function owned(storage: DurableObjectStorage): Map<string, string> {
 export function ownedItemIds(storage: DurableObjectStorage): ReadonlySet<string> {
   return new Set([...owned(storage)].filter(([, kind]) => kind === "item").map(([id]) => id));
 }
+/**
+ * The reaction packs the player owns, for the turn answers that check pack faces (v2/face-packs.ts).
+ * Never throws, so it can never stop the turn it rides on; anything unreadable reads as none.
+ */
+export function ownedPackIds(storage: DurableObjectStorage): string[] {
+  try { return [...owned(storage)].filter(([, kind]) => kind === "pack").map(([id]) => id); } catch { return []; }
+}
 /** Owns an item an item bloom dropped, inside the credit's transaction (pollen/item-blooms.ts). Never one already owned. */
 export function addDroppedItem(storage: DurableObjectStorage, itemId: string, now: number): void {
   ensureTables(storage);
