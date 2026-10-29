@@ -158,6 +158,10 @@ func _pip_panel() -> Control:
 	_pip_box = CenterContainer.new()
 	_pip_box.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.add_child(_pip_box)
+	# The soft round floor the big pip stands on (board 5b), drawn once behind it.
+	var floor := Floor.new()
+	floor.custom_minimum_size = BIG_PIP
+	_pip_box.add_child(floor)
 	_make_preview(SpiritLook.PEACH)
 	_name = ShopKit.text("", 26, CREAM, ShopKit.heading_font())
 	_name.name = "WardrobeItemName"
@@ -532,6 +536,17 @@ func _cream(button: Button) -> void:
 		if state in ["pressed", "hover_pressed"]: fill = Color("e4e0cd")
 		if state == "disabled": fill = Color("8f9f97")
 		button.add_theme_stylebox_override(state, ThemeRules.rounded(fill, 16))
+
+## The flat oval under the big pip's feet.
+class Floor extends Control:
+	func _init() -> void:
+		mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+	func _draw() -> void:
+		var centre := Vector2(size.x * 0.5, size.y * 0.9)
+		draw_set_transform(centre, 0.0, Vector2(1.0, 0.24))
+		draw_circle(Vector2.ZERO, size.x * 0.48, Color("24524b"), true, -1.0, true)
+		draw_set_transform(Vector2.ZERO, 0.0, Vector2.ONE)
 
 ## The small four-point sparkle beside "Featured this week".
 class Sparkle extends Control:
