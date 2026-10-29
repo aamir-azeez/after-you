@@ -73,7 +73,7 @@ func _empties(node: Node) -> Array[Node]:
 ## the owner may pick fits its list whole, with no scroll and no card cut off.
 const OPEN_AREA := Vector2(352, 290)
 const YOURS_AREA := Vector2(814, 420)
-const OPEN_ARTS := ["open_a", "open_b", "open_c"]
+const OPEN_ARTS := ["open_a"]
 const YOURS_ARTS := ["duels_f"]
 
 func _duel_columns() -> void:
@@ -90,7 +90,7 @@ func _duel_columns() -> void:
 		list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		list.size_flags_vertical = Control.SIZE_EXPAND_FILL
 		scroll.add_child(list)
-		var empty: Control = ControlTheme.empty_state(list, art, "" if narrow else PlayerCopy.DUELS_EMPTY_TITLE, PlayerCopy.DUELS_OPEN_EMPTY_B if narrow else PlayerCopy.DUELS_NO_DUELS)
+		var empty: Control = ControlTheme.empty_state(list, art, "" if narrow else PlayerCopy.DUELS_EMPTY_TITLE, PlayerCopy.DUELS_NO_OPEN if narrow else PlayerCopy.DUELS_NO_DUELS)
 		await _frames(3)
 		_check(empty.get_combined_minimum_size().y <= scroll.size.y + 0.5 and scroll.get_v_scroll_bar().max_value <= scroll.size.y + 0.5, "%s fits its column without a scroll: %s" % [art, empty.get_combined_minimum_size()])
 		var geo: Dictionary = empty._layout()

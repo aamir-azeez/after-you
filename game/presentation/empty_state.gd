@@ -34,10 +34,8 @@ const SPOTS := {
 	"replays_together": {"card": "replay", "rows": ["polaroid"]},
 	# The empty Your duels list in the Duels lobby (duels_screen.gd EMPTY_ART).
 	"duels_f": {"card": "room", "rows": ["duel_together", "duel_hug"]},
-	# The empty Open duels column, narrow: one round friend card each (duels_screen.gd OPEN_EMPTY_ART).
+	# The empty Open duels column, narrow: one round friend card (duels_screen.gd OPEN_EMPTY_ART).
 	"open_a": {"card": "friend", "rows": ["open_letter"]},
-	"open_b": {"card": "friend", "rows": ["open_peek"]},
-	"open_c": {"card": "friend", "rows": ["open_hope"]},
 }
 static var _heading: FontVariation
 var art := "rooms"

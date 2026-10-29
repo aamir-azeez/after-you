@@ -251,10 +251,10 @@ func _pages() -> void:
 	var empty: Node = lobby.find_child("DuelsEmpty", true, false).find_child("EmptyState", true, false)
 	_check(empty != null and empty.art == Lobby.EMPTY_ART and _has_text(empty, PlayerCopy.DUELS_EMPTY_TITLE), "an empty lobby draws its empty art")
 	var open_empty: Node = lobby.find_child("DuelsOpenList", true, false).find_child("EmptyState", true, false)
-	_check(open_empty != null and open_empty.art == Lobby.OPEN_EMPTY_ART and _has_text(open_empty, Lobby.OPEN_LINES[Lobby.OPEN_EMPTY_ART]), "an empty Open duels column draws its own art and line")
+	_check(open_empty != null and open_empty.art == Lobby.OPEN_EMPTY_ART and _has_text(open_empty, PlayerCopy.DUELS_NO_OPEN), "an empty Open duels column draws its own art and line")
 	var race: Control = lobby.find_child("DuelsRaceRecorded", true, false)
 	_check(open_empty != null and race != null and (open_empty as Control).get_global_rect().end.y <= race.get_global_rect().position.y, "and it sits above the Race a recorded run card, never over it")
-	_check(Lobby.OPEN_LINES.size() == 3 and Lobby.OPEN_LINES.keys().all(func(art: String) -> bool: return preload("res://presentation/empty_state.gd").SPOTS.has(art)), "every Open duels version has its art and its line")
+	_check(Lobby.OPEN_EMPTY_ART == "open_a" and preload("res://presentation/empty_state.gd").SPOTS.keys().filter(func(art: String) -> bool: return art.begins_with("open_")) == ["open_a"], "the owner's pick is the only Open duels art kept")
 	_check(Lobby.EMPTY_ART == "duels_f" and preload("res://presentation/empty_state.gd").SPOTS.keys().filter(func(art: String) -> bool: return art.begins_with("duels_")) == ["duels_f"], "the owner's pick is the only Your duels art kept")
 	lobby.show_lobby(lobby_data)
 	await process_frame
