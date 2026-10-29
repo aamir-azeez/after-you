@@ -20,6 +20,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const ResultLine = preload("res://presentation/pollen_result_line.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Typed = preload("res://services/typed_values.gd")
 
 # Synthetic ids only.
 const HOST := "HHHHHHHHHHHHHHHHHHHHHH"
@@ -54,6 +55,8 @@ class FakeApi:
 	var has_a := false
 	var revision := 1
 	var receipts: Dictionary = {}
+	## Every turn body the phone sent, in order.
+	var sent: Array = []
 	## recording hash -> the turn reply's `pollen` for that turn.
 	var credits: Dictionary = {}
 	var drop_next := false
@@ -132,7 +135,7 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 	var body: Dictionary = request.body
 	var owner: String = request.owner
 	if path == "/v2/capabilities":
-		return _ok({"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "validation": "structural_client_replay_required", "pollen_version": 1,
+		return _ok({"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "validation": "structural_client_replay_required", "pollen_version": 1, "turn_tries_version": 1,
 			"chapters": [{"level_id": "relay-isles", "level_version": 2, "definition_hash": Canonical.digest(level), "premium": false}]})
 	if path == "/v2/rooms" and request.method == HTTPClient.METHOD_GET:
 		return _ok({"rooms": [_snapshot(api, owner)]})
@@ -145,6 +148,7 @@ func _server(request: Dictionary, api: FakeApi) -> Dictionary:
 	if path.ends_with("/turns"):
 		var key: String = body.idempotency_key
 		var record: Dictionary = body.recording
+		api.sent.append(body.duplicate(true))
 		if not api.receipts.has(key):
 			var stage_index := api.index
 			var hash_input := body.duplicate(true)
@@ -313,6 +317,8 @@ func _room_flow() -> void:
 	var host := await _open(api, store, HOST)
 	_check(host.mode == "ready" and host.role == "a", "The host starts the first stage")
 	await _play(host, "relay-a")
+	# Through the real sending path: a first try sends its count of 1, which is what the server pays First try on.
+	_check(not api.sent.is_empty() and Typed.equal(api.sent[-1].get("tries"), 1), "A first try sends its count of 1: " + str(api.sent[-1].get("tries", "none") if not api.sent.is_empty() else "nothing sent"))
 	_check(host.mode == "turn_saved" and _words(_line(host)) == bloom_rows and _line(host).find_child("PollenBloomFlower", true, false) != null and _line(host).find_children("PollenMark", "", true, false).size() == 3,
 		"Turn saved shows the turn's rows, with the mark beside each amount and the flower in the bloom's tag: " + str(_words(_line(host))))
 	_check(_label_texts(host).has("Turn saved") and _label_texts(host).any(func(text: String) -> bool: return text.begins_with("The Relay Isles · stage 1 · your turn for")), "Turn saved names the chapter, the stage and whose turn it was: " + str(_label_texts(host)))

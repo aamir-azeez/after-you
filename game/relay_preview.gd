@@ -2475,8 +2475,10 @@ func _accept() -> void:
 		_card("Saving your contribution…", PlayerCopy.RELAY_PREVIEW_D30D1660A268)
 		var slot := _tries_slot()
 		var tries := turn_tries.freeze(slot, str(review.get("recording_hash", "")), not hard_flow.on())
-		# A first try sends nothing: it shows as a turn without a count does.
-		var accepted: bool = await journey.commit(review, tries if tries > 1 and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(_end_reaction_context(), review), _review_track if _run_reactions_available() else [])
+		# Every counted turn sends its count, a first try's 1 too: the server pays
+		# the First try bonus on exactly 1 (backend pollen/earn.ts). A turn this
+		# phone did not count (0) sends none.
+		var accepted: bool = await journey.commit(review, tries if tries > 0 and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(_end_reaction_context(), review), _review_track if _run_reactions_available() else [])
 		if not is_inside_tree() or generation != online_request_generation:
 			return
 		if not accepted:
