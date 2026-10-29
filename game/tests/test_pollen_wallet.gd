@@ -37,6 +37,7 @@ func _run() -> void:
 	_claims()
 	_results()
 	_clears()
+	_room_clears()
 	_scopes_and_file()
 	_damaged_file()
 	_rooms_api()
@@ -148,6 +149,35 @@ func _results() -> void:
 	file.close()
 	store = PollenWallet.new(path)
 	_check(store.result_shown(SERVER, ME, ROOM, _hash(31)), "A credit kept before the update reads as shown")
+
+## A room's first clear the room's finish paid: its clear claim's answer says
+## what (paid_clears), and it is kept for the end card, once, per player.
+func _room_clears() -> void:
+	var path := _path("room-clears")
+	var store: RefCounted = PollenWallet.new(path)
+	var line := {"kind": "clear", "level_id": "first-steps", "amount": 1200.0, "boost_percent": 10.0, "boost": 120.0, "total": 1320.0}
+	var paid := {"schema_version": 1.0, "earned": 0.0, "balance": 1500.0, "clears": [], "paid_clears": [line]}
+	_check(PollenWallet.checked_receipt(paid).paid_clears == [{"kind": "clear", "total": 1320, "boost_percent": 10}], "What the finish paid is kept from the answer")
+	_check(PollenWallet.checked_receipt(paid.merged({"paid_clears": [{"kind": "prize", "total": 1.0, "boost_percent": 0.0}]}, true)).is_empty(), "A paid line that is not the contract's refuses the answer")
+	var noted := []
+	store.result_noted.connect(func(server: String, owner: String, room_id: String, recording_hash: String) -> void: noted.append([server, owner, room_id, recording_hash]))
+	var other_room := "QQQQQQQQQQQQQQQQQQQQQQ"
+	store.queue_clear(SERVER, ME, "room:" + ROOM)
+	store.queue_clear(SERVER, ME, "room:" + other_room)
+	store.settle_clear(SERVER, ME, "room:" + ROOM, {"status": "credited", "receipt": paid})
+	_check(store.result_for(SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR) == {"earned": 1320, "balance": 1500, "clears": [{"kind": "clear", "total": 1320, "boost_percent": 10}]}, "The room's first clear is kept for its end card")
+	_check(noted == [[SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR]], "and a screen still up hears of it")
+	# A server from before paid_clears answers earned 0 and nothing else: nothing to show, as before.
+	store.settle_clear(SERVER, ME, "room:" + other_room, {"status": "credited", "receipt": {"schema_version": 1.0, "earned": 0.0, "balance": 1500.0, "clears": []}})
+	_check(store.result_for(SERVER, ME, other_room, PollenWallet.ROOM_CLEAR).is_empty() and noted.size() == 1, "An answer that says nothing paid keeps nothing")
+	store.mark_shown(SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR)
+	store = PollenWallet.new(path)
+	_check(store.result_shown(SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR) and not store.result_for(SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR).is_empty(), "It survives a restart, shown")
+	_check(store.result_for(SERVER, OTHER, ROOM, PollenWallet.ROOM_CLEAR).is_empty(), "It belongs to its player")
+	# A clear the claim itself paid (the finish could not) shows the same way.
+	store.queue_clear(SERVER, OTHER, "room:" + ROOM)
+	store.settle_clear(SERVER, OTHER, "room:" + ROOM, {"status": "credited", "receipt": {"schema_version": 1.0, "earned": 1200.0, "balance": 1200.0, "clears": [line.merged({"total": 1200.0, "boost_percent": 0.0}, true)]}})
+	_check(store.result_for(SERVER, OTHER, ROOM, PollenWallet.ROOM_CLEAR).get("earned") == 1200, "A clear the claim paid is kept too")
 
 func _clears() -> void:
 	var path := _path("clears")

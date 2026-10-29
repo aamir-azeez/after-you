@@ -126,21 +126,36 @@ static func _label(text: String, color: Color) -> Label:
 ## room opened again or the app restarted never show it again. A credit that
 ## lands later (a claim) shows on the next draw of a screen for its turn.
 ## `seen` is the screen owner's memory of what it showed ({} to start, kept per
-## room view); `screen` names the screen; `receipt` is the turn's room receipt.
+## room view); `screen` names the screen; `receipt` is the turn's room receipt,
+## or room_clear(room) for the first clear a room's finish paid this player.
 static func once(seen: Dictionary, screen: String, scope: Dictionary, receipt: Dictionary, partner: String, color: Color, store: RefCounted = null) -> Control:
 	if scope.is_empty(): return null
 	var wallet: RefCounted = store if store != null else PollenWallet.shared()
 	var room_id := str(receipt.get("room_id", ""))
 	var recording_hash := str(receipt.get("recording_hash", ""))
 	var key := room_id + "|" + recording_hash
-	var again: bool = seen.get("key") == key and seen.get("screen") == screen
+	var again: bool = seen.get(key) == screen
 	if not again and wallet.result_shown(str(scope.server), str(scope.owner), room_id, recording_hash): return null
 	var line := build(scope, room_id, recording_hash, partner, color, wallet)
 	if line != null and not again:
 		wallet.mark_shown(str(scope.server), str(scope.owner), room_id, recording_hash)
-		seen.key = key
-		seen.screen = screen
+		seen[key] = screen
 	return line
+
+## The receipt `once` takes for the first clear a room's finish paid this player
+## (the friend of the player whose turn finished it), kept from its clear claim.
+static func room_clear(room_id: String) -> Dictionary:
+	return {"room_id": room_id, "recording_hash": PollenWallet.ROOM_CLEAR}
+
+## Calls `noted` (server, owner, room_id, recording_hash) whenever a credit is
+## kept, so a screen still up for it can show its line; `unwatch` stops it.
+static func watch(noted: Callable) -> void:
+	var wallet: RefCounted = PollenWallet.shared()
+	if not wallet.result_noted.is_connected(noted): wallet.result_noted.connect(noted)
+
+static func unwatch(noted: Callable) -> void:
+	var wallet: RefCounted = PollenWallet.shared()
+	if wallet.result_noted.is_connected(noted): wallet.result_noted.disconnect(noted)
 
 ## A small flower drawn beside a lucky bloom: five petals round a heart.
 class Flower extends Control:

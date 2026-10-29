@@ -146,7 +146,7 @@ func complete() -> bool:
 	var extras := HardModeView.add_band(card, PlayerCopy.HARD_COMPLETE_TITLE, PlayerCopy.HARD_COMPLETE_BODY % str(host.chapter.title), {}, host.title_font, host.hard.mode())
 	HardModeView.fill_extras(extras, context(HardMode.COMPLETE, {}, host.hard.failures()))
 	# The turn that finished the run earned here, with its first Hard clear.
-	host._add_pollen_line(card)
+	host._add_end_pollen(card)
 	host._set_room_state("complete")
 	host._add_room_actions(card, "complete", "turn", host._room_facts())
 	return true

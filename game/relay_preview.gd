@@ -1099,11 +1099,37 @@ func _waiting_partner_name(room: Dictionary) -> String:
 ## confirmed it, on the screen drawn after that turn (`mode` names it). Each
 ## credit shows once (presentation/pollen_result_line.gd once). A turn still
 ## being sent has no credit yet, and the last receipt is then an earlier turn's.
+## `receipt` is another credit's ({} for that turn), as the end card's room clear.
 var _pollen_seen: Dictionary = {}
-func _add_pollen_line(parent: Container) -> void:
+func _add_pollen_line(parent: Container, receipt: Dictionary = {}) -> void:
 	if online_session == null or not online_session.has_method("nickname_scope") or not journey.pending().is_empty(): return
-	var line := PollenResultLine.once(_pollen_seen, mode, online_session.nickname_scope(), journey.last_receipt(), _waiting_partner_name(journey.snapshot()), MUTED)
+	var line := PollenResultLine.once(_pollen_seen, mode, online_session.nickname_scope(), receipt if not receipt.is_empty() else journey.last_receipt(), _waiting_partner_name(journey.snapshot()), MUTED)
 	if line != null: parent.add_child(line)
+
+## The end card's Pollen: the finishing turn's credit, and the first clear the
+## finish paid the friend, which their phone learns from its clear claim, often
+## after the card is up; it joins the card then.
+var _end_pollen: VBoxContainer = null
+func _add_end_pollen(card: Container) -> void:
+	_end_pollen = null
+	if online_session == null: return
+	_end_pollen = VBoxContainer.new()
+	_end_pollen.name = "EndPollenLines"
+	_end_pollen.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	card.add_child(_end_pollen)
+	_fill_end_pollen()
+	PollenResultLine.watch(_pollen_noted)
+
+func _fill_end_pollen() -> void:
+	for line: Node in _end_pollen.get_children():
+		_end_pollen.remove_child(line)
+		line.queue_free()
+	_add_pollen_line(_end_pollen)
+	_add_pollen_line(_end_pollen, PollenResultLine.room_clear(str(journey.snapshot().get("room_id", ""))))
+	_end_pollen.visible = _end_pollen.get_child_count() > 0
+
+func _pollen_noted(_server: String, _owner: String, room_id: String, _recording_hash: String) -> void:
+	if mode == "complete" and is_instance_valid(_end_pollen) and _end_pollen.is_inside_tree() and room_id == str(journey.snapshot().get("room_id", "")): _fill_end_pollen()
 
 
 ## Each slot's pip in its own player's look (presentation/slot_looks.gd). A live
@@ -2807,7 +2833,7 @@ func _show_completed() -> void:
 	if hard_flow.complete(): return
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
 	# The turn that finished the chapter earned here, with its first clear.
-	_add_pollen_line(card)
+	_add_end_pollen(card)
 	if online_session != null and board_line.is_valid() and journey != null and journey.has_method("snapshot"):
 		var line: Variant = board_line.call(journey.snapshot(), chapter_key)
 		if line is Control: card.add_child(line)
@@ -3067,6 +3093,7 @@ func _leave(allow_unsaved: bool = false) -> void:
 
 
 func _exit_tree() -> void:
+	PollenResultLine.unwatch(_pollen_noted)
 	# Never wait here for a next turn still being set up, or a turn's check.
 	_drop_prefetch()
 	_drop_turn_check()

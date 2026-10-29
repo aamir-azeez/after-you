@@ -334,6 +334,17 @@ func _room_flow() -> void:
 	# The guest sees the finished room: their last credit showed already, so the end card has none.
 	guest = await _open(api, store, GUEST)
 	_check(guest.mode == "complete" and _line(guest) == null, "The guest's end card never repeats a credit they saw: " + str(_words(_line(guest))))
+	# Seeing it finished queued the room's first clear claim. Its answer, after the card is up,
+	# says what the host's finish paid the guest: it joins the end card, once.
+	_check(wallet.clear_claims(SERVER, GUEST).any(func(entry: Dictionary) -> bool: return entry.key == "room:" + ROOM), "The finished room's first clear waits to be claimed")
+	var paid := {"schema_version": 1.0, "earned": 0.0, "balance": 1455.0, "clears": [], "paid_clears": [{"kind": "clear", "level_id": "relay-isles", "amount": 300.0, "boost_percent": 0.0, "boost": 0.0, "total": 300.0}]}
+	wallet.settle_clear(SERVER, GUEST, "room:" + ROOM, {"room_id": ROOM, "status": "credited", "receipt": paid})
+	await _settle()
+	_check(_words(_line(guest)) == ["+300 Pollen", "First clear: +300"], "The guest's end card shows the first clear the finish paid them: " + str(_words(_line(guest))))
+	await _check_layout(guest, guest._show_completed, "guest's end card")
+	await _close(guest)
+	guest = await _open(api, store, GUEST)
+	_check(guest.mode == "complete" and _line(guest) == null, "Reopening the finished room never shows the first clear again")
 	await _close(guest)
 	api.queue_free()
 	await _settle()

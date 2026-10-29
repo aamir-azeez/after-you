@@ -15,6 +15,8 @@ extends RefCounted
 ## - results: the newest confirmed turn receipts, for the results line, each
 ##   marked once its line was shown (presentation/pollen_result_line.gd once);
 ##   one kept by a build from before the mark reads as shown, so it never shows again;
+##   a room's first clear that the room's finish paid this player is kept among
+##   them too, under ROOM_CLEAR, from its clear claim's answer;
 ## - clears: first clears waiting to be claimed (POST /v1/pollen/clear-claims):
 ##   "room:<room_id>" for a room this player saw finished together, and
 ##   "level:<level_id>" for a chapter finished solo. Each is sent until the
@@ -45,6 +47,12 @@ const BLOOM_TIERS := ["common", "uncommon", "rare", "epic", "special"]
 const ITEM_PATTERN := "^[a-z0-9_]{1,40}$"
 const ROOM_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const HASH_PATTERN := "^[a-f0-9]{64}$"
+## Where a room's first clear is kept among the results, in place of a turn's recording hash.
+const ROOM_CLEAR := "room-clear"
+
+## A result was kept for one of this player's turns, or for a room's first clear
+## (`recording_hash` ROOM_CLEAR): a screen still up for it may show its line now.
+signal result_noted(server: String, owner: String, room_id: String, recording_hash: String)
 
 ## A confirmed receipt brought an item bloom's item: it is owned now (Main
 ## connects it to services/wardrobe.gd note_drop, so the wardrobe shows it at once).
@@ -98,12 +106,14 @@ static func checked_wallet(value: Variant) -> Dictionary:
 ## or {} when any part of it is not the contract's.
 static func checked_receipt(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not _count(value.get("earned")) or not _balance(value.get("balance")): return {}
-	var clears: Variant = value.get("clears")
-	if not clears is Array or clears.size() > 4: return {}
-	var kept := {"earned": Typed.as_int(value.earned), "balance": Typed.as_int(value.balance), "clears": []}
-	for clear: Variant in clears:
-		if not clear is Dictionary or not clear.get("kind") in ["clear", "hardclear"] or not _count(clear.get("total")) or not _count(clear.get("boost_percent"), 100): return {}
-		kept.clears.append({"kind": clear.kind, "total": Typed.as_int(clear.total), "boost_percent": Typed.as_int(clear.boost_percent)})
+	var clears: Variant = _checked_clears(value.get("clears"))
+	if clears == null: return {}
+	var kept := {"earned": Typed.as_int(value.earned), "balance": Typed.as_int(value.balance), "clears": clears}
+	# A room clear claim's answer: the first clears the room's finish paid already.
+	if value.has("paid_clears"):
+		var paid: Variant = _checked_clears(value.paid_clears)
+		if paid == null: return {}
+		kept["paid_clears"] = paid
 	if value.has("turn"):
 		var turn: Variant = value.turn
 		if not turn is Dictionary or not turn.get("kind") in ["bank", "after_bank"]: return {}
@@ -123,6 +133,15 @@ static func checked_receipt(value: Variant) -> Dictionary:
 		var bloom := checked_item_bloom(value.item_bloom)
 		if bloom.is_empty(): return {}
 		kept["item_bloom"] = bloom
+	return kept
+
+## First clear lines as kept, or null when any is not the contract's.
+static func _checked_clears(value: Variant) -> Variant:
+	if not value is Array or value.size() > 4: return null
+	var kept := []
+	for clear: Variant in value:
+		if not clear is Dictionary or not clear.get("kind") in ["clear", "hardclear"] or not _count(clear.get("total")) or not _count(clear.get("boost_percent"), 100): return null
+		kept.append({"kind": clear.kind, "total": Typed.as_int(clear.total), "boost_percent": Typed.as_int(clear.boost_percent)})
 	return kept
 
 ## An item bloom as kept: {tier, item_id} for a dropped item, or {tier, pollen}
@@ -199,15 +218,12 @@ func note_receipt(server: String, owner: String, room_id: String, recording_hash
 	var scope := _scope(server, owner, not kept.is_empty())
 	if kept.is_empty() or scope.is_empty() or not valid_room(room_id) or not valid_hash(recording_hash): return false
 	_drop_claim(scope, room_id, recording_hash)
-	# The same credit noted again (a retried reply, a settled claim) keeps whether its line was shown.
-	var shown := _result_shown(scope, room_id, recording_hash)
-	var results: Array = scope.results.filter(func(entry: Dictionary) -> bool: return entry.recording_hash != recording_hash or entry.room_id != room_id)
-	results.append({"room_id": room_id, "recording_hash": recording_hash, "receipt": kept, "shown": shown})
-	scope.results = results.slice(maxi(0, results.size() - MAX_RESULTS))
+	_keep_result(scope, room_id, recording_hash, kept)
 	# The receipt's balance is the server's newest; earned and bank are only ever
 	# taken from a wallet answer, so a phone that has none asks for one.
 	if not (scope.wallet as Dictionary).is_empty(): scope.wallet.balance = kept.balance
 	_save()
+	result_noted.emit(server, owner, room_id, recording_hash)
 	# An item bloom's item is owned now: the wardrobe shows it without asking again.
 	if kept.has("item_bloom") and kept.item_bloom.has("item_id"): item_dropped.emit(server, owner, str(kept.item_bloom.item_id))
 	return true
@@ -233,6 +249,14 @@ func mark_shown(server: String, owner: String, room_id: String, recording_hash: 
 			entry.shown = true
 			_save()
 			return
+
+## Keeps one result, newest last. The same credit noted again (a retried reply, a
+## settled claim) keeps whether its line was shown.
+static func _keep_result(scope: Dictionary, room_id: String, recording_hash: String, kept: Dictionary) -> void:
+	var shown := _result_shown(scope, room_id, recording_hash)
+	var results: Array = scope.results.filter(func(entry: Dictionary) -> bool: return entry.recording_hash != recording_hash or entry.room_id != room_id)
+	results.append({"room_id": room_id, "recording_hash": recording_hash, "receipt": kept, "shown": shown})
+	scope.results = results.slice(maxi(0, results.size() - MAX_RESULTS))
 
 static func _result_shown(scope: Dictionary, room_id: String, recording_hash: String) -> bool:
 	for entry: Dictionary in scope.get("results", []):
@@ -320,13 +344,22 @@ func settle_clear(server: String, owner: String, key: String, answer: Variant) -
 	var scope := _scope(server, owner)
 	if scope.is_empty() or not answer is Dictionary or not key in scope.clears: return
 	scope.clears.erase(key)
+	var room := ""
 	if answer.get("status") in ["credited", "refused"]:
 		_remember_cleared(scope, key)
 		var receipt := checked_receipt(answer.get("receipt"))
 		if not receipt.is_empty() and not (scope.wallet as Dictionary).is_empty(): scope.wallet.balance = receipt.balance
+		# A room's first clear, for its end card: what this claim paid, or else what the
+		# room's finish paid already (a server from before `paid_clears` says nothing).
+		var lines: Array = receipt.get("clears", []) if not receipt.get("clears", []).is_empty() else receipt.get("paid_clears", [])
+		if key.begins_with("room:") and not lines.is_empty():
+			room = key.substr(5)
+			var earned: int = lines.reduce(func(sum: int, line: Dictionary) -> int: return sum + int(line.total), 0)
+			_keep_result(scope, room, ROOM_CLEAR, {"earned": earned, "balance": receipt.balance, "clears": lines})
 	else:
 		scope.clears.append(key)
 	_save()
+	if not room.is_empty(): result_noted.emit(server, owner, room, ROOM_CLEAR)
 
 ## Whether a first clear is settled (tests and the client's queueing).
 func cleared(server: String, owner: String, key: String) -> bool:
@@ -371,7 +404,7 @@ func _load() -> void:
 			scope.claims = scope.claims.slice(maxi(0, scope.claims.size() - MAX_CLAIMS))
 		if value.get("results") is Array:
 			for entry: Variant in value.results:
-				if not entry is Dictionary or not valid_room(entry.get("room_id")) or not valid_hash(entry.get("recording_hash")): continue
+				if not entry is Dictionary or not valid_room(entry.get("room_id")) or not (valid_hash(entry.get("recording_hash")) or entry.get("recording_hash") == ROOM_CLEAR): continue
 				var receipt := checked_receipt(Typed.as_dict(entry.get("receipt")).merged({"schema_version": 1}))
 				if not receipt.is_empty(): scope.results.append({"room_id": entry.room_id, "recording_hash": entry.recording_hash, "receipt": receipt, "shown": entry.get("shown") != false})
 			scope.results = scope.results.slice(maxi(0, scope.results.size() - MAX_RESULTS))
