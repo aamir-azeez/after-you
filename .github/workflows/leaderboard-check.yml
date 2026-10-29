@@ -1,13 +1,16 @@
 name: Leaderboard replay check
 
-# Hourly: fetches the together runs waiting on a leaderboard, replays every turn
+# Every 15 minutes: fetches the together runs waiting on a leaderboard, replays every turn
 # with its chapter's own verifier in headless Godot, and posts the verdicts.
 # It does nothing until the repository secret LEADERBOARD_JOB_TOKEN exists, and
 # nothing while the server has leaderboards off. It never runs on a fork or on
 # a pull request.
 on:
   schedule:
-    - cron: "23 * * * *"
+    # GitHub runs schedules best effort: runs can start late or be skipped (the
+    # hourly schedule arrived every 4 to 6 hours). Each empty pull costs about one
+    # Durable Object request per board, so every 15 minutes stays small on the Free plan.
+    - cron: "*/15 * * * *"
   workflow_dispatch:
 
 permissions:
