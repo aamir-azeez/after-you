@@ -4,9 +4,10 @@ extends SceneTree
 ## the grant read in services/pollen_client.gd), through a fake transport:
 ## - the wallet answer's grant part is kept only in the contract's shape;
 ## - "Your monthly Pollen arrived" shows once per instalment, only while the
-##   grant is on and only for a recent one, and says the ladder;
+##   grant is on and only for a recent one, and says the month and what next
+##   month pays (its board, Home and first taps: test_full_journey_board.gd);
 ## - the Full Journey card lists the chapters first, then the room boost, then
-##   the monthly Pollen, and the Pollen lines only while the server pays them;
+##   the monthly Pollen, and the Pollen panels only while the server pays them;
 ## - a phone with Full Journey reads the wallet for the grant once a launch and
 ##   then at most every few hours; a free player's phone never does.
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -95,32 +96,36 @@ func _cards() -> void:
 	_check(not reloaded.note_view(SERVER, ME, {"schema_version": 1.0, "balance": 0.0}), "A wallet answer with no grant part changes nothing")
 
 func _card_view() -> void:
-	_check(GrantCard.amount_line(4750) == "+4,750 Pollen from Full Journey", "The amount line")
-	_check(GrantCard.ladder_line(5000, 12000) == "Next month: 5,000 · Top step: 12,000", "The ladder line")
-	_check(GrantCard.ladder_line(12000, 12000) == "Next month: 12,000 · Top step: 12,000", "The ladder line at the top step")
-	for line: String in [PlayerCopy.POLLEN_GRANT_TITLE, PlayerCopy.POLLEN_GRANT_AMOUNT, PlayerCopy.POLLEN_GRANT_LADDER, PlayerCopy.FULL_JOURNEY_ROOM_BOOST, PlayerCopy.FULL_JOURNEY_GRANT]:
+	_check(GrantCard.amount_text(4750) == "+4,750", "The big amount")
+	_check(GrantCard.month_line({"key": "grant:1790000000000:2", "amount": 4750, "next": 5000, "top": 12000, "months": 2}) == "From Full Journey, month 2 of your ladder.\nNext month: 5,000.", "The month line")
+	_check(GrantCard.month_line({"key": "grant:lifetime", "amount": 4500, "next": 12000, "top": 12000, "months": 31}) == PlayerCopy.POLLEN_GRANT_LIFETIME, "The Lifetime thank you names no month")
+	for line: String in [PlayerCopy.POLLEN_GRANT_TITLE, PlayerCopy.POLLEN_GRANT_MONTH, PlayerCopy.POLLEN_GRANT_LIFETIME, PlayerCopy.POLLEN_GRANT_WARDROBE, PlayerCopy.POLLEN_GRANT_DONE,
+			PlayerCopy.FULL_JOURNEY_ROOM_BOOST, PlayerCopy.FULL_JOURNEY_ROOM_BOOST_NOTE, PlayerCopy.FULL_JOURNEY_GRANT, PlayerCopy.FULL_JOURNEY_GRANT_NOTE,
+			PlayerCopy.FULL_JOURNEY_LADDER_NEXT, PlayerCopy.FULL_JOURNEY_LADDER_BY, PlayerCopy.FULL_JOURNEY_LADDER_TOP]:
 		_check(not line.contains("-") and not line.contains("—") and not line.contains("–"), "No dashes: " + line)
 	var parent := Control.new()
 	parent.size = Vector2(1280, 720)
 	root.add_child(parent)
-	var card: Control = GrantCard.open(parent, {"amount": 4750, "next": 5000, "top": 12000})
+	var card: Control = GrantCard.open(parent, {"key": "grant:1790000000000:2", "amount": 4750, "next": 5000, "top": 12000, "months": 2})
 	await process_frame
 	var texts: Array = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
-	_check(PlayerCopy.POLLEN_GRANT_TITLE in texts and "+4,750 Pollen from Full Journey" in texts and "Next month: 5,000 · Top step: 12,000" in texts, "The card says what arrived and the ladder: " + str(texts))
-	var got_it := card.find_child("PollenGrantGotIt", true, false) as Button
-	_check(got_it != null and got_it.text == PlayerCopy.POLLEN_GRANT_OK, "One quiet button closes it")
-	if got_it != null: got_it.pressed.emit()
+	_check(PlayerCopy.POLLEN_GRANT_TITLE in texts and "+4,750" in texts and "From Full Journey, month 2 of your ladder.\nNext month: 5,000." in texts, "The card says what arrived and the ladder: " + str(texts))
+	_check(card.find_child("PollenGrantWardrobe", true, false) == null, "No Wardrobe to open: Done alone")
+	var done := card.find_child("PollenGrantDone", true, false) as Button
+	_check(done != null and done.text == PlayerCopy.POLLEN_GRANT_DONE, "Done closes it")
+	if done != null: done.pressed.emit()
 	for i in range(20): await process_frame
-	_check(not is_instance_valid(card) or not card.is_inside_tree(), "Got it closes the card")
+	_check(not is_instance_valid(card) or not card.is_inside_tree(), "Done closes the card")
 	parent.queue_free()
 	await process_frame
 
 func _benefits() -> void:
-	var all := Benefits.lines(true, true)
-	_check(all == PackedStringArray([PlayerCopy.SUBSCRIPTION_PURPOSE, PlayerCopy.COOPERATIVE_HOST_ACCESS, PlayerCopy.FULL_JOURNEY_ROOM_BOOST, "4,500 Pollen a month, growing every month you stay."]), "Chapters first, then the room boost, then the monthly Pollen: " + str(all))
-	_check(Benefits.lines(true, true, 7250)[3] == "7,250 Pollen a month, growing every month you stay.", "A returning subscriber sees their own step")
-	_check(Benefits.lines(true, false) == PackedStringArray([PlayerCopy.SUBSCRIPTION_PURPOSE, PlayerCopy.COOPERATIVE_HOST_ACCESS, PlayerCopy.FULL_JOURNEY_ROOM_BOOST]), "No Pollen a month while the grant is off")
-	_check(Benefits.lines(false, true) == PackedStringArray([PlayerCopy.SUBSCRIPTION_PURPOSE, PlayerCopy.COOPERATIVE_HOST_ACCESS]), "No Pollen lines at all while Pollen is off")
+	var all := Benefits.content(true, true)
+	_check(all.intro == PackedStringArray([PlayerCopy.SUBSCRIPTION_PURPOSE, PlayerCopy.COOPERATIVE_HOST_ACCESS]), "Chapters first: " + str(all.intro))
+	_check(all.panels.map(func(panel: Dictionary) -> String: return panel.title) == [PlayerCopy.FULL_JOURNEY_ROOM_BOOST, "4,500 Pollen a month, growing every month you stay"], "then the room boost, then the monthly Pollen: " + str(all.panels))
+	_check(Benefits.content(true, true, {"months": 6, "next": 6000, "top": 12000}).panels[1].title == "6,000 Pollen a month, growing every month you stay", "A returning subscriber sees their own step")
+	_check(Benefits.content(true, false).panels.map(func(panel: Dictionary) -> String: return panel.name) == ["FullJourneyBoost"], "No Pollen a month while the grant is off")
+	_check(Benefits.content(false, true).panels.is_empty(), "No Pollen panels at all while Pollen is off")
 
 func _setup(subscribed: bool, grant_on: bool) -> Dictionary:
 	var api := Api.new()

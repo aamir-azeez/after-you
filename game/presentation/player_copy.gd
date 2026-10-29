@@ -130,10 +130,12 @@ const POLLEN_ITEM_BLOOM_UNKNOWN := "item for your pip"
 
 # The monthly Full Journey Pollen (presentation/pollen_grant_card.gd). Amounts come in grouped.
 const POLLEN_GRANT_TITLE := "Your monthly Pollen arrived"
-const POLLEN_GRANT_AMOUNT := "+%s Pollen from Full Journey"
-## The loyalty ladder under it ("Next month: 4,750 · Top step: 12,000").
-const POLLEN_GRANT_LADDER := "Next month: %s · Top step: %s"
-const POLLEN_GRANT_OK := "Got it"
+## Under the title: which month of the ladder arrived, and what next month pays.
+const POLLEN_GRANT_MONTH := "From Full Journey, month %s of your ladder.\nNext month: %s."
+## The one time thank you for the old Lifetime unlock: no month and no next.
+const POLLEN_GRANT_LIFETIME := "From Full Journey, a thank you for your Lifetime unlock."
+const POLLEN_GRANT_WARDROBE := "Open the Wardrobe"
+const POLLEN_GRANT_DONE := "Done"
 
 # Help: the published bloom odds (presentation/pollen_odds.gd, a Settings About row).
 const POLLEN_ODDS_TITLE := "Lucky blooms"
@@ -2500,9 +2502,16 @@ const COOPERATIVE_COMPLETION := "Your progress is saved."
 const COOPERATIVE_HOST_ACCESS := "Full Journey is only required for the host.\nA friend may join by invitation."
 # Full Journey subscription offer, shared by the store card and locked hosting.
 const SUBSCRIPTION_PURPOSE := "Full Journey is a subscription that pays for hosting and server costs. It unlocks every paid chapter for solo play and for hosting a friend."
-## The Full Journey card's Pollen lines, after the chapters (presentation/full_journey_benefits.gd).
-const FULL_JOURNEY_ROOM_BOOST := "Every room you play in earns 10% more Pollen, for you and your friend."
-const FULL_JOURNEY_GRANT := "%s Pollen a month, growing every month you stay."
+## The Full Journey card's two Pollen panels, after the chapters (presentation/full_journey_benefits.gd).
+const FULL_JOURNEY_ROOM_BOOST := "10% more Pollen for everyone in your room"
+const FULL_JOURNEY_ROOM_BOOST_NOTE := "Each Full Journey player in a room adds 10% to both players' base pay, skill bonuses and first chapter clears. A friend on the free version gets it too. Lucky blooms stay the same for everyone."
+const FULL_JOURNEY_GRANT := "%s Pollen a month, growing every month you stay"
+## The step and the top step.
+const FULL_JOURNEY_GRANT_NOTE := "%s more each month, up to %s. Paid on each monthly anniversary on both plans. It never expires."
+## The ladder line's parts, joined with " · ".
+const FULL_JOURNEY_LADDER_NEXT := "Next month: %s"
+const FULL_JOURNEY_LADDER_BY := "By month %d: %s"
+const FULL_JOURNEY_LADDER_TOP := "Top step: %s"
 const SUBSCRIPTION_MONTHLY := "Subscribe · %s a month"
 const SUBSCRIPTION_YEARLY := "Subscribe · %s a year"
 const SUBSCRIPTION_TERMS_PLAY := "It renews automatically until you cancel. You can cancel any time in Google Play under Payments & subscriptions, and Full Journey stays unlocked until the end of the period you paid for."

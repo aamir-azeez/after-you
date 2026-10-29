@@ -30,8 +30,14 @@ const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const Benefits = preload("res://presentation/full_journey_benefits.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
+const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const BenefitPanel = preload("res://presentation/kit/benefit_panel.gd")
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
+## The card's chapter lines sit a size under the paragraphs elsewhere, as board 3 draws them.
+const INTRO_SIZE := 15
+## Room the card keeps above and below its details column on a short screen.
+const DETAILS_MARGIN := 60.0
 ## Main's mode while a store card is up, including the locked-hosting page.
 const MODE_PAYWALL := "paywall"
 const MODE_TESTER_ACCESS := "tester_access"
@@ -134,25 +140,49 @@ func _full_journey_card() -> VBoxContainer:
 	columns.add_child(gallery)
 	var column := VBoxContainer.new()
 	column.name = "FullJourneyDetails"
-	column.add_theme_constant_override("separation",14)
+	# Board 3 sets the column tighter than other cards, so both panels fit beside the chapters.
+	column.add_theme_constant_override("separation",8)
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	column.alignment = BoxContainer.ALIGNMENT_CENTER
-	columns.add_child(column)
+	# The column scrolls on its own only when a screen is too short for it, so
+	# the card never runs off the screen and its last button stays reachable.
+	var details := ScrollContainer.new()
+	details.name = "FullJourneyDetailsScroll"
+	details.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	details.follow_focus = true
+	details.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	ControlTheme.touch_scroll(details)
+	columns.add_child(details)
+	details.add_child(column)
+	column.minimum_size_changed.connect(_fit_details.bind(details,column))
+	_fit_details.call_deferred(details,column)
 	column.add_child(host._label("Full Journey",32,CREAM,true))
-	for line: String in _benefit_lines():
-		column.add_child(host._paragraph(line,0))
+	var benefits := _benefits()
+	for line: String in benefits.intro:
+		var intro: Label = host._paragraph(line,0)
+		intro.add_theme_font_size_override("font_size",INTRO_SIZE)
+		column.add_child(intro)
+	for panel: Dictionary in benefits.panels:
+		column.add_child(BenefitPanel.make(panel))
 	if Typed.equal(host.config.get("purchase_mode"), "test_store"):
 		column.add_child(host._paragraph(PlayerCopy.MAIN_38EAC523F08C,0))
 	return column
 
+## The details column at its own height, up to what the screen leaves the card.
+func _fit_details(details: ScrollContainer, column: VBoxContainer) -> void:
+	if not is_instance_valid(details) or not is_instance_valid(column): return
+	details.custom_minimum_size.y = minf(column.get_combined_minimum_size().y,maxf(300.0,host.overlay.size.y-DETAILS_MARGIN))
+
 ## What the subscription brings, chapters first (presentation/full_journey_benefits.gd).
-## The Pollen lines follow what the server last said for the signed-in player.
-func _benefit_lines() -> PackedStringArray:
+## The Pollen panels follow what the server last said for the signed-in player,
+## and show only on a build that names Full Journey Pollen.
+func _benefits() -> Dictionary:
 	var scope: Dictionary = host._names_scope() if host.has_method("_names_scope") else {}
-	if scope.is_empty(): return Benefits.lines(false, false)
+	if scope.is_empty(): return Benefits.content(false, false)
 	var server := str(scope.server)
 	var owner := str(scope.owner)
-	return Benefits.lines(PollenWallet.shared().enabled(server, owner), PollenGrant.shared().enabled(server, owner), int(PollenGrant.shared().ladder(server, owner).get("next", 0)))
+	return Benefits.content(PollenWallet.shared().enabled(server, owner), PollenGrant.shared().enabled(server, owner), PollenGrant.shared().ladder(server, owner), PollenSurfaces.shared().full_journey_visible())
 
 ## The one subscription offer used by the store card and locked hosting: each
 ## store package with its store price and period, the renewal terms, Restore

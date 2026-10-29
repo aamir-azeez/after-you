@@ -2000,7 +2000,9 @@ func _service_grant_card() -> void:
 	var card: Dictionary = PollenGrant.shared().pending(str(scope.server),str(scope.owner))
 	if card.is_empty(): return
 	PollenGrant.shared().mark_shown(str(scope.server),str(scope.owner),str(card.key))
-	PollenGrantCard.open(ui,card)
+	# The card says which month of the ladder arrived; Home's pips cheer behind it.
+	card["months"]=int(PollenGrant.shared().ladder(str(scope.server),str(scope.owner)).get("months",0))
+	PollenGrantCard.open(ui,card,world.actors.values() if is_instance_valid(world) else [],wardrobe_flow.show_wardrobe if wardrobe_flow.available() else Callable())
 
 ## A run of this player's that a board confirmed in its top 10
 ## (services/leaderboard_placings.gd) is celebrated once on Home, when Home is
