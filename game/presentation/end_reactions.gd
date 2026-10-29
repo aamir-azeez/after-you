@@ -663,6 +663,11 @@ class FacesCard extends CanvasLayer:
 		grid.add_theme_constant_override("h_separation", 8)
 		grid.add_theme_constant_override("v_separation", 8)
 		stack.add_child(grid)
+		# With tabs the grid keeps the everyday faces' 4 x 2 size, so a tab never
+		# moves the card, or the tabs, under the finger.
+		if not packs.is_empty():
+			var rows := ceili(float(Store.FACES.size() - 1) / grid.columns)
+			grid.custom_minimum_size = Vector2(CELL_SIZE.x * grid.columns + 8.0 * (grid.columns - 1), CELL_SIZE.y * rows + 8.0 * (rows - 1))
 		var picked_pack: String = Store.Catalog.pack_of(row.chosen) if row.chosen is String else ""
 		_fill(picked_pack if picked_pack in packs else _last_tab if _last_tab in packs else "")
 		var note := str(owner_row.context.get("note", ""))

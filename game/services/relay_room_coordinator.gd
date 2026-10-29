@@ -24,10 +24,12 @@ const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
 const RunReactionTrack = preload("res://services/run_reaction_track.gd")
 const ReactionCatalog = preload("res://services/reaction_catalog.gd")
-## The server's answer to a turn carrying a pack face whose pack this player
-## does not own (backend src/v2/face-packs.ts). It kept nothing, so the turn
-## goes again without that face (_resend_without_pack_faces).
-const FACE_PACK_NOT_OWNED := "face_pack_not_owned"
+const FacePacks = preload("res://services/face_packs.gd")
+## The server's answers to a turn carrying a pack face it will not take: the
+## pack is not owned (backend src/v2/face-packs.ts), or a server from before
+## the pack faces does not know the face. Either way it kept nothing, so the
+## turn goes again without its pack faces (_resend_without_pack_faces).
+const FACE_PACK_REFUSALS := {403: ["face_pack_not_owned"], 400: ["invalid_end_reaction", "invalid_run_reactions"]}
 const HardRoomClient = preload("res://services/hard_room_client.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
@@ -554,8 +556,9 @@ func commit(recording: Dictionary, tries: int = 0, face: String = "", track: Arr
 			return _error("invalid_checkpoint", PlayerCopy.RELAY_ROOM_COORDINATOR_FF537A6505A8)
 		body["checkpoint"] = derived.checkpoint
 	if tries > 0: body["tries"] = mini(tries, TurnTries.MAX_TRIES)
-	if EndReactionStore.is_face(face): body["end_reaction"] = face
-	var reactions := RunReactionTrack.parse(track, int(recording.get("duration_ticks", 0)))
+	# A pack face goes only while it can be picked now (services/face_packs.gd).
+	if EndReactionStore.is_face(face) and FacePacks.can_pick(face): body["end_reaction"] = face
+	var reactions := RunReactionTrack.parse(track, int(recording.get("duration_ticks", 0))).filter(func(entry: Dictionary) -> bool: return FacePacks.can_pick(str(entry.id)))
 	if not reactions.is_empty(): body["run_reactions"] = reactions
 	if not _prepare_pending("turns", body):
 		return false
@@ -699,7 +702,7 @@ func _send_pending(recover_guest_join: bool = true) -> bool:
 			# The original request remains durable. Reconcile can send that exact
 			# body after a definitive missing-receipt result; never rekey here.
 			return _network_error(recovered)
-		if int(response.get("status", 0)) == 403 and response.get("code") == FACE_PACK_NOT_OWNED and _pending_pack_faces():
+		if str(response.get("code", "")) in FACE_PACK_REFUSALS.get(int(response.get("status", 0)), []) and _pending_pack_faces():
 			return await _resend_without_pack_faces(response)
 		_network_error(response, true)
 		if recover_guest_join and int(response.get("status", 0)) == 409 and response.get("code") == "stale_revision" and _pending_guest_join_recovery():
@@ -734,10 +737,9 @@ func _pending_pack_faces() -> bool:
 	if ReactionCatalog.is_pack_face(body.get("end_reaction")): return true
 	return body.get("run_reactions") is Array and (body.run_reactions as Array).any(func(entry: Variant) -> bool: return entry is Dictionary and ReactionCatalog.is_pack_face(entry.get("id")))
 
-## The server refused the turn for a pack face this player does not own (a
-## purchase it never saw, or ownership this phone held on to after a change).
-## Nothing was kept, so the same turn goes again at once without the pack
-## faces: the recording, checkpoint and tries are unchanged, and a new key
+## The server refused the turn for a pack face (FACE_PACK_REFUSALS: not owned,
+## or a server that does not know it). Nothing was kept, so the same turn goes
+## again at once without the pack faces: the recording, checkpoint and tries are unchanged, and a new key
 ## binds the new body, kept durably before it is sent. The turn is never lost
 ## to a face.
 func _resend_without_pack_faces(refusal: Dictionary) -> bool:

@@ -41,10 +41,11 @@ const schemaFor = (faces: readonly string[]) =>
   `CREATE TABLE end_reactions (turn_id TEXT PRIMARY KEY, recording_hash TEXT NOT NULL, player_id TEXT NOT NULL, face TEXT NOT NULL CHECK(face IN (${faces.map(face => `'${face}'`).join(",")})))`;
 export const END_REACTIONS = { name: "end_reactions", schema: schemaFor(FACES) } as const;
 /**
- * The table as rooms made it before the pack faces: its CHECK lists only the everyday faces. It
- * keeps working for everyday faces; the first pack face sent to such a room rebuilds it with
- * today's schema inside that turn's transaction (recordEndReaction), copying at most MAX_ROWS rows
- * once. Snapshot checks accept both (isEndReactionsTable).
+ * The table as rooms made it before the pack faces: its CHECK lists only the everyday faces. A room
+ * is still made with it while its faces are everyday faces, so code from before the pack faces can
+ * read it (a rollback). The first pack face sent to the room rebuilds it with today's schema inside
+ * that turn's transaction (recordEndReaction), copying at most MAX_ROWS rows once. Snapshot checks
+ * accept both (isEndReactionsTable).
  */
 export const LEGACY_SCHEMAS: readonly string[] = [schemaFor(BASE_FACES)];
 /** A room holds at most 128 turns (room.ts MAX_TURNS); one more row proves the bound. */
@@ -87,8 +88,10 @@ function present(storage: DurableObjectStorage): boolean {
 /** The caller owns the transaction that inserted the turn row. */
 export function recordEndReaction(storage: DurableObjectStorage, turnId: string, recordingHash: string, player: string, face: Face | undefined): void {
   if (face === undefined) return;
-  storage.sql.exec(END_REACTIONS.schema.replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
-  if (isPackFace(face)) upgradeLegacyTable(storage);
+  // A room whose faces are all everyday faces keeps the table older code reads; the first pack face upgrades it.
+  const pack = isPackFace(face);
+  storage.sql.exec((pack ? END_REACTIONS.schema : LEGACY_SCHEMAS[0]).replace("CREATE TABLE ", "CREATE TABLE IF NOT EXISTS "));
+  if (pack) upgradeLegacyTable(storage);
   storage.sql.exec("INSERT INTO end_reactions VALUES (?,?,?,?)", turnId, text(recordingHash, HASH_PATTERN), player, face);
   tables.delete(storage);
 }

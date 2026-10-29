@@ -100,6 +100,8 @@ describe("reaction pack faces", () => {
     await own(host, "big_feelings", "garden_faces");
     const sent = await turn(room, host, body(room, firstA, { end_reaction: "wow", run_reactions: [{ tick: 12, id: "dizzy" }, { tick: 40, id: "happy" }] }));
     expect(sent.status).toBe(200);
+    // A room's first face being a pack face makes today's table straight away.
+    expect(await tableSql(room.room_id)).toBe(END_REACTIONS.schema);
     const hash = firstA.recording_hash;
     const drawn = await (await read(room.room_id, guest, ALL)).json<RoomSnapshotV2 & { end_reactions: Faces; run_reactions: Tracks }>();
     expect(drawn.end_reactions).toEqual({ schema_version: 1, faces: { [hash]: "wow" }, partner: "wow" });
@@ -122,12 +124,9 @@ describe("reaction pack faces", () => {
     expect((await reply.json<MutationV2 & { end_reactions: Faces }>()).end_reactions.partner).toBe("surprised");
   });
 
-  it("rebuild a room's table made before the pack faces, every row kept, and snapshots accept both", async () => {
+  it("keep a room's table readable by older code until a pack face arrives, then rebuild it with every row kept", async () => {
     const { host, guest, room } = await joined();
-    // A room that took a face before this release holds the table with the everyday faces only.
-    await runInDurableObject(env.ROOMS_V2.getByName(room.room_id), async (_, state) => {
-      state.storage.sql.exec(LEGACY_SCHEMAS[0]);
-    });
+    // Everyday faces make the table older code reads, as rooms did before this release.
     const first = await turn(room, host, body(room, firstA, { end_reaction: "happy" }));
     expect(first.status).toBe(200);
     expect(await tableSql(room.room_id)).toBe(LEGACY_SCHEMAS[0]);

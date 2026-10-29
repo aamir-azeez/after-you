@@ -235,6 +235,9 @@ func _faces_card_tabs() -> void:
 
 func _refused_turn() -> void:
 	_clear_default_store()
+	# The phone believes it owns both packs and the server takes pack faces.
+	FacePacks.source = func() -> Dictionary: return {"server": true, "view": {"packs": ["garden_faces", "big_feelings"]}}
+	PollenSurfaces.set_shared_for_tests(true)
 	var boundary := Boundary.new()
 	var coordinator = await _open(boundary)
 	boundary.responses.append(_error(403, "face_pack_not_owned"))
@@ -250,6 +253,24 @@ func _refused_turn() -> void:
 		_check(not again.has("end_reaction") and again.run_reactions == [{"tick": 40, "id": "happy"}], "The second drops only the pack faces")
 		_check(Canonical.same(first.recording, again.recording) and again.tries == 1 and first.idempotency_key != again.idempotency_key and boundary.all_posts_persisted, "Same recording and tries, a new key, saved before it is sent")
 	_check(coordinator.pending().is_empty() and Store.new().kept(str(fixtures["relay-a"].recording_hash)).is_empty(), "Nothing waits, and no face is kept for the turn")
+	# A server from before the pack faces refuses the face it does not know: the same resend.
+	boundary = Boundary.new()
+	coordinator = await _open(boundary)
+	boundary.responses.append(_error(400, "invalid_end_reaction"))
+	boundary.responses.append(func(request: Dictionary) -> Dictionary: return _ok(_receipt(request, _snapshot(HOST, 0, true, 2))))
+	_check(await coordinator.commit(fixtures["relay-a"], 0, "proud"), "An older server's refusal of a pack face also resends without it")
+	var old_posts: Array = boundary.requests.filter(func(request: Dictionary) -> bool: return request.method == HTTPClient.METHOD_POST)
+	_check(old_posts.size() == 2 and old_posts[0].body.end_reaction == "proud" and not old_posts[1].body.has("end_reaction"), "The second send has no face")
+	# A pack face that cannot be picked now is never sent.
+	FacePacks.source = func() -> Dictionary: return {"server": true, "view": {"packs": ["garden_faces"]}}
+	boundary = Boundary.new()
+	coordinator = await _open(boundary)
+	boundary.responses.append(func(request: Dictionary) -> Dictionary: return _ok(_receipt(request, _snapshot(HOST, 0, true, 2))))
+	_check(await coordinator.commit(fixtures["relay-a"], 0, "wow", [{"tick": 12, "id": "wink"}, {"tick": 20, "id": "crying"}]), "A turn with a face from a pack not owned goes through")
+	var sent: Dictionary = boundary.requests.filter(func(request: Dictionary) -> bool: return request.method == HTTPClient.METHOD_POST)[0].body
+	_check(not sent.has("end_reaction") and sent.run_reactions == [{"tick": 12, "id": "wink"}], "Only faces that can be picked now are sent")
+	FacePacks.source = Callable()
+	PollenSurfaces.set_shared_for_tests(null)
 	# Any other refusal, or one for a turn without pack faces, is held as before.
 	boundary = Boundary.new()
 	coordinator = await _open(boundary)
