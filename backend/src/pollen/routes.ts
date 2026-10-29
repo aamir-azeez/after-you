@@ -112,7 +112,7 @@ export async function creditCommitted(request: Request, env: Env, playerId: stri
   const partner = facts.complete && facts.together ? (facts.host ? reply.room.guest_id : reply.room.host_id) : null;
   const [own] = await Promise.all([
     settle(() => env.PLAYERS.getByName(playerId).creditTurn(playerId, facts)),
-    partner ? settle(() => env.PLAYERS.getByName(partner).creditTogetherClear(partner, facts.level_id, facts.hard, facts.boost_percent)) : null
+    partner ? settle(() => env.PLAYERS.getByName(partner).creditTogetherClear(partner, facts.level_id, facts.hard, facts.boost_percent, facts.room_id)) : null
   ]);
   if (!pollenWanted(request)) return reply;
   return { ...reply, pollen: own?.ok ? own.value : { schema_version: 1, pending: true } };
@@ -149,6 +149,7 @@ function chapterLevel(levelId: string): { premium: boolean } | null {
  *   credit did not land; each reads the turn's frozen facts from its room and credits them once.
  * - POST /v1/pollen/clear-claims {schema_version: 1, claims: [{room_id} | {level_id}]}: a first clear
  *   made together in a room (read from the turn that finished it), or a solo first clear the app reports.
+ *   A room's clear the finishing turn already paid answers earned 0 with what it paid as `paid_clears`.
  * Each claim answers credited (with its receipt), refused (with a code; final) or retry.
  */
 export async function routePollen(request: Request, path: string, playerId: string, env: Env, view?: WalletView | HistoryView): Promise<unknown> {
@@ -184,7 +185,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
       const room_id = claim.room_id as string;
       const facts = await settle(() => env.ROOMS_V2.getByName(room_id).pollenClearFacts(playerId));
       const result = facts === null ? { status: "retry" as const } : !facts.ok ? { status: "refused" as const, code: facts.code }
-        : claimResult(await settle(() => player.creditTogetherClear(playerId, facts.value.level_id, facts.value.hard && facts.value.together, facts.value.boost_percent)));
+        : claimResult(await settle(() => player.creditTogetherClear(playerId, facts.value.level_id, facts.value.hard && facts.value.together, facts.value.boost_percent, room_id)));
       results.push({ room_id, ...result });
     }
   }

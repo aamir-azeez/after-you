@@ -53,12 +53,15 @@ export type ClearLine = { kind: "clear" | "hardclear"; level_id: string } & Clea
  * bloom gave (an item, or its tier's price), only on a turn that dropped one; its Pollen is in `earned`
  * but never in the turn's own total, and is never boosted.
  */
-export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[]; item_bloom?: ItemBloom };
+export type PollenReceipt = { schema_version: 1; earned: number; balance: number; turn?: TurnLine; clears: ClearLine[]; item_bloom?: ItemBloom; paid_clears?: ClearLine[] };
 export type WalletView = { schema_version: 1; balance: number; earned: number; bank: number };
 export type HistoryEntry = { kind: string; amount: number; at: number; level_id?: string; stage_id?: string; role?: string };
 export type HistoryView = { schema_version: 1; entries: HistoryEntry[] };
-/** A first clear to pay: from the turn that finished a chapter together, or claimed by the app for a solo clear. */
-export type ClearClaim = { level_id: string; hard: boolean; boost_percent: number };
+/**
+ * A first clear to pay: from the turn that finished a chapter together, or claimed by the app for a solo clear.
+ * `room_id`: the room whose finish pays it, kept on the claim row, so a later claim from that room can say what it paid.
+ */
+export type ClearClaim = { level_id: string; hard: boolean; boost_percent: number; room_id?: string };
 
 const [WALLET, CLAIMS] = POLLEN_WALLET_TABLES;
 export const MAX_CLAIMS = CLAIMS.maxRows;
@@ -149,7 +152,7 @@ function payClears(storage: DurableObjectStorage, claim: ClearClaim, now: number
     const key = clearClaimKey(kind, claim.level_id), cost = clearPrice(claim.level_id, claim.boost_percent, rates);
     if (cost === null || claimed(storage, key)) continue;
     const line: ClearLine = { kind, level_id: claim.level_id, ...cost };
-    insertClaim(storage, key, kind, cost.total, now, { schema_version: 1, earned: cost.total, clears: [line] }, { level_id: claim.level_id });
+    insertClaim(storage, key, kind, cost.total, now, { schema_version: 1, earned: cost.total, clears: [line] }, { level_id: claim.level_id, ...(claim.room_id ? { room_id: claim.room_id } : {}) });
     lines.push(line);
   }
   if (lines.some(line => line.kind === "hardclear")) noteEveryHard(storage, level => claimed(storage, clearClaimKey("hardclear", level)) !== null, now);
@@ -157,6 +160,20 @@ function payClears(storage: DurableObjectStorage, claim: ClearClaim, now: number
 }
 
 const total = (lines: readonly { total: number }[]) => lines.reduce((sum, line) => sum + line.total, 0);
+
+/**
+ * The first clears this room's finish already paid (the partner's, paid with the finishing turn), as
+ * `paid_clears`, so the partner's phone can show them; nothing for a clear another room or a solo
+ * clear paid. Reads the claim rows only; it writes nothing.
+ */
+function paidBy(storage: DurableObjectStorage, claim: ClearClaim): { paid_clears?: ClearLine[] } {
+  if (!claim.room_id) return {};
+  const lines = (claim.hard ? ["clear", "hardclear"] as const : ["clear"] as const).flatMap(kind => {
+    const row = claimed(storage, clearClaimKey(kind, claim.level_id));
+    return row && row.detail.room_id === claim.room_id ? row.receipt.clears : [];
+  });
+  return lines.length ? { paid_clears: lines } : {};
+}
 
 /**
  * Credits one accepted turn from its frozen facts, once per claim key. `active` re-checks the
@@ -220,7 +237,7 @@ export function creditClear(storage: DurableObjectStorage, claim: ClearClaim, no
     if (!count(claim.boost_percent, 0, boostPercent(2, rates))) return fail(400, "invalid_pollen_clear");
     const wallet = current(storage, now, rates);
     if (present(storage) && (claim.hard ? ["clear", "hardclear"] as const : ["clear"] as const).every(kind => claimed(storage, clearClaimKey(kind, claim.level_id))))
-      return ok({ schema_version: 1, earned: 0, balance: wallet.balance, clears: [] });
+      return ok({ schema_version: 1, earned: 0, balance: wallet.balance, clears: [], ...paidBy(storage, claim) });
     ensureTables(storage);
     const clears = payClears(storage, claim, now, rates);
     const earned = total(clears);

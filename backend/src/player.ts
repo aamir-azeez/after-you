@@ -257,9 +257,10 @@ export class Player extends DurableObject<Env> {
   /**
    * Binding only: a first clear made together, from the facts of the turn that finished the chapter.
    * The room's boost is the same for both members, so the partner's clear uses the frozen percent.
+   * `roomId`: that room, so the partner's later clear claim from it answers what it paid (`paid_clears`).
    */
-  creditTogetherClear(owner: string, levelId: string, hard: boolean, boost: number): Outcome<PollenReceipt> {
-    return creditClear(this.ctx.storage, { level_id: levelId, hard, boost_percent: boost }, Date.now(), this.pollenActive(owner));
+  creditTogetherClear(owner: string, levelId: string, hard: boolean, boost: number, roomId?: string): Outcome<PollenReceipt> {
+    return creditClear(this.ctx.storage, { level_id: levelId, hard, boost_percent: boost, ...(roomId ? { room_id: roomId } : {}) }, Date.now(), this.pollenActive(owner));
   }
   /**
    * Binding only: a solo first clear the app claims. A paid chapter needs Full Journey (the stored

@@ -230,6 +230,32 @@ describe("Pollen from turns", () => {
     // The partner's clear can be claimed again from the room: it pays nothing more.
     const again = await (await call("/v1/pollen/clear-claims", "POST", guest, { schema_version: 1, claims: [{ room_id: current.room_id }] })).json<{ results: { status: string; receipt?: PollenReceipt }[] }>();
     expect(again.results).toMatchObject([{ room_id: current.room_id, status: "credited", receipt: { earned: 0, balance: earned.guest + 1320 } }]);
+    // and says what the finish paid, so the partner's phone can show it; asking again changes nothing.
+    const paid = [{ kind: "clear", level_id: "relay-isles", amount: 1200, boost_percent: 10, boost: 120, total: 1320 }];
+    expect(again.results[0].receipt!.paid_clears).toEqual(paid);
+    const twice = await (await call("/v1/pollen/clear-claims", "POST", guest, { schema_version: 1, claims: [{ room_id: current.room_id }] })).json<{ results: { status: string; receipt?: PollenReceipt }[] }>();
+    expect(twice.results[0].receipt).toMatchObject({ earned: 0, clears: [], paid_clears: paid });
+    expect(await wallet(guest)).toMatchObject({ balance: earned.guest + 1320 });
+    // Only the partner's own claim answers it: the host's own clear came with the turn, and a room clear
+    // the host claims says nothing the guest was paid.
+    const hostClaim = await (await call("/v1/pollen/clear-claims", "POST", host, { schema_version: 1, claims: [{ room_id: current.room_id }] })).json<{ results: { status: string; receipt?: PollenReceipt }[] }>();
+    expect(hostClaim.results[0].receipt).toMatchObject({ earned: 0 });
+    expect(hostClaim.results[0].receipt).not.toHaveProperty("paid_clears");
+  });
+  it("says a paid first clear only to the room that paid it", async () => {
+    const host = await create(), guest = await create();
+    const finished: string[] = [];
+    for (let round = 0; round < 2; round++) {
+      let current = await room(host, guest);
+      for (const [account, recording, checkpoint] of [[host, firstA, undefined], [guest, firstB, middle], [guest, secondA, undefined], [host, secondB, final]] as const)
+        current = (await turn(current, account, recording, checkpoint)).room;
+      finished.push(current.room_id);
+    }
+    const ask = async (roomId: string) => (await (await call("/v1/pollen/clear-claims", "POST", guest, { schema_version: 1, claims: [{ room_id: roomId }] })).json<{ results: { status: string; receipt?: PollenReceipt }[] }>()).results[0].receipt!;
+    expect((await ask(finished[0])).paid_clears).toEqual([{ kind: "clear", level_id: "relay-isles", amount: 1200, boost_percent: 0, boost: 0, total: 1200 }]);
+    // The second room finished the same chapter after it was paid: nothing new, and nothing to show.
+    expect(await ask(finished[1])).toMatchObject({ earned: 0, clears: [] });
+    expect(await ask(finished[1])).not.toHaveProperty("paid_clears");
   });
   it("recovers a partner's first clear the finishing turn could not pay, by that partner's own room claim", async () => {
     const host = await create(), guest = await create();
