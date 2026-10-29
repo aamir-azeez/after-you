@@ -59,10 +59,8 @@ static func receipt(parent: Control, credited: Dictionary, balance_after: int, p
 	_line(table, _bundle_words(bundle), ShopKit.amount(int(credited.pollen), 17, CREAM))
 	if int(credited.first_gift) > 0: _line(table, PlayerCopy.POLLEN_STORE_GIFT % _gift_percent(bundle, int(credited.first_gift)), ShopKit.amount(int(credited.first_gift), 17, CREAM))
 	_line(table, PlayerCopy.POLLEN_STORE_BALANCE, _before_after(balance_after - added, balance_after))
-	var order := str(credited.get("order", ""))
-	var paid_line := paid
-	if not order.is_empty(): paid_line = PlayerCopy.POLLEN_STORE_ORDER % [paid, order] if not paid.is_empty() else PlayerCopy.POLLEN_STORE_ORDER_ONLY % order
-	if not paid_line.is_empty(): _line(table, PlayerCopy.POLLEN_STORE_PAID, ShopKit.text(paid_line, 16, CREAM))
+	var paid_words := paid_line(paid, str(credited.get("order", "")))
+	if not paid_words.is_empty(): _line(table, PlayerCopy.POLLEN_STORE_PAID, ShopKit.text(paid_words, 16, CREAM))
 	var done: Button = modal.add_actions(PlayerCopy.POLLEN_STORE_DONE, func() -> void: modal.close(), PlayerCopy.POLLEN_STORE_OPEN_WARDROBE)
 	done.name = "PollenStoreDone"
 	var wardrobe: Button = modal.find_child("ModalCancel", true, false)
@@ -74,6 +72,13 @@ static func receipt(parent: Control, credited: Dictionary, balance_after: int, p
 		else: wardrobe.visible = false
 	modal.refresh_focus_order()
 	return modal
+
+## The Paid line: what was paid and the Google Play order ("$3.99 · Google Play
+## order GPA.1234"), either alone, or "" with neither. Settings' Pollen and
+## purchases keeps the same line (presentation/pollen_purchases_view.gd).
+static func paid_line(paid: String, order: String) -> String:
+	if order.is_empty(): return paid
+	return PlayerCopy.POLLEN_STORE_ORDER % [paid, order] if not paid.is_empty() else PlayerCopy.POLLEN_STORE_ORDER_ONLY % order
 
 ## "Pouch, with its 1,000 bonus", or the bundle's name alone when it has none.
 static func _bundle_words(bundle: String) -> String:

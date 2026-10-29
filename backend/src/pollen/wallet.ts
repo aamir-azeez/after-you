@@ -336,11 +336,7 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
       if (turn.bloom > 1) entry.bloom = turn.bloom;
       if (turn.reason) entry.reason = turn.reason;
     }
-    if (row.kind === "bundle" || row.kind === "bundlerefund") {
-      if (typeof detail.bundle === "string") entry.bundle = detail.bundle;
-      if (typeof detail.order === "string") entry.order = detail.order;
-      if (typeof detail.usd_cents === "number") entry.usd_cents = detail.usd_cents;
-    }
+    if (row.kind === "bundle" || row.kind === "bundlerefund") Object.assign(entry, receiptFields(detail));
     return entry;
   });
   const paid = new Map(storage.sql.exec<{ claim_key: string; amount: number }>("SELECT claim_key,amount FROM pollen_claims WHERE kind='clear'").toArray().map(row => [row.claim_key, row.amount]));
@@ -351,17 +347,22 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
   return { schema_version: 1, entries, first_clears, bank, ...purchaseLines(storage) };
 }
 
+/** A bundle or refund line's receipt fields, from what bundle-settle.ts kept with it. */
+function receiptFields(detail: Record<string, unknown>): { bundle?: string; order?: string; usd_cents?: number } {
+  return { ...(typeof detail.bundle === "string" ? { bundle: detail.bundle } : {}), ...(typeof detail.order === "string" ? { order: detail.order } : {}),
+    ...(typeof detail.usd_cents === "number" ? { usd_cents: detail.usd_cents } : {}) };
+}
+
 /**
  * The history's purchases part: each bundle and refund line, newest first, and the money spent with refunds
- * taken off (never below zero). Two reads of a primary key range; nothing for a player who never bought.
+ * taken off (never below zero). A bundle is dated when it was bought on Play (a claim may land later), a
+ * refund when it was taken back. Two reads of a primary key range; nothing for a player who never bought.
  */
 export function purchaseLines(storage: DurableObjectStorage): { purchases?: PurchaseLine[]; spent_usd_cents?: number } {
   const lines = (["bundle", "bundlerefund"] as const).flatMap(kind => ledgerLines(storage, `${kind}:`, PURCHASE_READ).map(line => {
-    const entry: PurchaseLine = { kind, amount: line.amount, at: line.at };
-    if (typeof line.detail.bundle === "string") entry.bundle = line.detail.bundle;
-    if (typeof line.detail.order === "string") entry.order = line.detail.order;
-    if (typeof line.detail.usd_cents === "number") entry.usd_cents = line.detail.usd_cents;
-    return entry;
+    const bought = line.detail.purchased_at;
+    const at = kind === "bundle" && typeof bought === "number" && Number.isSafeInteger(bought) && bought > 0 ? bought : line.at;
+    return { kind, amount: line.amount, at, ...receiptFields(line.detail) } satisfies PurchaseLine;
   }));
   if (lines.length === 0) return {};
   const spent = lines.reduce((sum, line) => sum + (line.kind === "bundle" ? 1 : -1) * Number(line.usd_cents ?? 0), 0);

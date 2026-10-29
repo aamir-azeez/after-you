@@ -13,6 +13,7 @@ const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 const BundleArt = preload("res://presentation/kit/bundle_art.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const WhenLabel = preload("res://presentation/when_label.gd")
+const StoreSheets = preload("res://presentation/pollen_store_sheets.gd")
 
 const INK := Color("1d3230")
 const SOFT_INK := Color("4e6660")
@@ -24,8 +25,8 @@ const ART := 46.0
 const GUTTER := 10.0
 
 ## Fills `column` (already empty) from {lines (services/pollen_history.gd
-## purchases), spent_usd_cents, loading}: the title always, the rest once the
-## history is in.
+## purchases), spent_usd_cents (-1 when unknown: no total), loading}: the title
+## always, the rest once the history is in.
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
 	var heading := ShopKit.text(PlayerCopy.POLLEN_PURCHASES_TITLE, 23, INK, title_font if title_font != null else ShopKit.heading_font())
 	column.add_child(heading)
@@ -37,7 +38,7 @@ static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> 
 		none.name = "PollenPurchasesNone"
 		column.add_child(none)
 		return
-	column.add_child(_total(int(model.get("spent_usd_cents", 0)), title_font))
+	if int(model.get("spent_usd_cents", -1)) >= 0: column.add_child(_total(int(model.spent_usd_cents), title_font))
 	for index in range(lines.size()):
 		if index > 0: column.add_child(_rule())
 		column.add_child(_row(lines[index], index))
@@ -101,12 +102,9 @@ static func _row(line: Dictionary, index: int) -> Control:
 	return row
 
 ## The store receipt's Paid line ("$3.99 · Google Play order GPA.1234"), from
-## what the server kept: the money, the order, or both; "" with neither.
+## what the server kept (presentation/pollen_store_sheets.gd paid_line).
 static func receipt_line(line: Dictionary) -> String:
-	var paid := PollenMoney.usd(int(line.usd_cents)) if int(line.get("usd_cents", -1)) >= 0 else ""
-	var order := str(line.get("order", ""))
-	if order.is_empty(): return paid
-	return PlayerCopy.POLLEN_STORE_ORDER % [paid, order] if not paid.is_empty() else PlayerCopy.POLLEN_STORE_ORDER_ONLY % order
+	return StoreSheets.paid_line(PollenMoney.usd(int(line.usd_cents)) if int(line.get("usd_cents", -1)) >= 0 else "", str(line.get("order", "")))
 
 static func _wrapped(value: String, size: int, color: Color) -> Label:
 	var label := ShopKit.text(value, size, color)

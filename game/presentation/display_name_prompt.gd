@@ -81,6 +81,8 @@ var _price_note: RichTextLabel
 var _have_line: HBoxContainer
 var _have_label: Label
 var get_pollen_link: LinkButton
+## What Save's content shows ([amount, short, ink]), so a keystroke that changes nothing rebuilds nothing.
+var _save_shown: Array = []
 ## The rows' column, and the platform row's label as shown ("" for none).
 var _column: VBoxContainer
 var _platform_label := ""
@@ -477,10 +479,6 @@ func _price_shown() -> bool:
 	var price: Dictionary = _context.get("price", {})
 	return bool(price.get("shown")) if price.has("shown") else PollenSurfaces.shared().shop_visible()
 
-## A change that costs on a build that shows no price: it is never sent.
-func _price_hidden_blocks() -> bool:
-	return cost() > 0 and not _price_shown()
-
 ## Pollen still needed for the change now (0 when the balance covers it or it is free).
 func _short_by() -> int:
 	var amount := cost()
@@ -515,12 +513,15 @@ func _show_price() -> void:
 ## Save's face: plain words, "free this time", or the price with the grain inside the button.
 func _show_save(amount: int, short: int) -> void:
 	if amount <= 0 or not _price_shown():
+		_save_shown = []
 		ShopKit.set_button_content(save_button, null)
 		var free := _price_shown() and free_this_time(_context.get("price", {}), _context.get("own", {}), _choice, _chosen_name())
 		save_button.text = PlayerCopy.DISPLAY_NAME_SAVE_FREE if free else PlayerCopy.DISPLAY_NAME_SAVE
 		save_button.accessibility_name = save_button.text
 		return
 	var ink: Color = save_button.get_theme_color("font_disabled_color" if short > 0 else "font_color")
+	if _save_shown == [amount, short, ink]: return
+	_save_shown = [amount, short, ink]
 	var row := HBoxContainer.new()
 	row.name = "DisplayNameSaveContent"
 	row.add_theme_constant_override("separation", 8)
@@ -583,8 +584,8 @@ func _mark(row: Button, on: bool) -> void:
 	row.set_pressed_no_signal(on)
 
 func _save() -> void:
-	# Enter in the field saves too, so a hidden price is asked here as well as on the button.
-	if _busy or not is_instance_valid(modal) or _price_hidden_blocks(): return
+	# Enter in the field saves too, so a hidden price or a short balance holds it here as well as on the button.
+	if _busy or not is_instance_valid(modal) or _price_blocks(): return
 	var name := ""
 	# Nothing typed and nothing picked: the tag already shows the anonymous
 	# name, so Save keeps that.
@@ -604,6 +605,7 @@ func _save() -> void:
 		return
 	_busy = true
 	save_button.disabled = true
+	_save_shown = []
 	ShopKit.set_button_content(save_button, null)
 	save_button.text = PlayerCopy.DISPLAY_NAME_SAVING
 	save_button.accessibility_name = save_button.text

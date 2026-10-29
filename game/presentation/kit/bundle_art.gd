@@ -49,16 +49,22 @@ func _pouch(o: Vector2, s: float) -> void:
 	_grain(o + Vector2(0.58, 0.18) * s, s * 0.1)
 	_grain(o + Vector2(0.5, 0.1) * s, s * 0.1)
 	var body := PackedVector2Array()
-	for index in range(33):
+	for index in range(32):
 		var t := TAU * index / 32.0
 		var p := Vector2(cos(t) * 0.34, sin(t) * 0.32)
 		# The upper half pulls in towards the neck.
 		if p.y < 0.0: p.x *= 1.0 + p.y * 1.4
 		body.append(o + (Vector2(0.5, 0.66) + p) * s)
 	draw_colored_polygon(body, CLOTH)
+	# The right side's shade: its arc of the outline in order (it wraps past the
+	# first point, so start where it begins), closed at the bottom middle.
+	var right := func(index: int) -> bool: return body[posmod(index, body.size())].x > o.x + 0.52 * s
+	var start := 0
+	while start < body.size() and not (right.call(start) and not right.call(start - 1)): start += 1
 	var shade := PackedVector2Array()
-	for point: Vector2 in body:
-		if point.x > o.x + 0.52 * s: shade.append(point)
+	for step in range(body.size()):
+		if start >= body.size() or not right.call(start + step): break
+		shade.append(body[posmod(start + step, body.size())])
 	if shade.size() > 2:
 		shade.append(o + Vector2(0.52, 0.98) * s)
 		draw_colored_polygon(shade, Color(CLOTH_SHADE, 0.6))

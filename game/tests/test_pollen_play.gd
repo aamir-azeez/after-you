@@ -52,6 +52,7 @@ class FakeWardrobe:
 	var selling := false
 	func shop(_server: String, _owner: String) -> bool: return selling
 	func bundles(_server: String, _owner: String) -> bool: return selling
+	func view(_server: String, _owner: String) -> Dictionary: return {"bundles": {"spent_usd_cents": 777}}
 
 class Host:
 	extends Node
@@ -85,12 +86,15 @@ func _run() -> void:
 	quit(1 if failures > 0 else 0)
 
 static func _history(left: int = 15) -> Dictionary:
-	return PollenHistory.checked({"schema_version": 1.0, "entries": [
+	return PollenHistory.checked(_history_value(left))
+
+static func _history_value(left: int = 15) -> Dictionary:
+	return {"schema_version": 1.0, "entries": [
 		{"kind": "turn", "amount": 250.0, "at": 3.0, "level_id": "relay-isles", "stage_id": "relay", "role": "a", "bonuses": ["first_try", "gold_pace"], "bloom": 2.0},
 		{"kind": "turn", "amount": 185.0, "at": 2.0, "level_id": "relay-isles", "stage_id": "garden", "role": "b", "bonuses": ["first_try"]},
 		{"kind": "turn", "amount": 10.0, "at": 1.0, "level_id": "relay-isles", "stage_id": "garden", "role": "b", "reason": "repeat"}],
 		"first_clears": [{"level_id": "first-steps", "price": 1200.0, "paid": 1200.0}, {"level_id": "relay-isles", "price": 1200.0}, {"level_id": "conservatory", "price": 2000.0}],
-		"bank": {"left": float(left), "refill": 12.0, "cap": 36.0, "tail": [{"pay": 10.0, "turns": 36.0}, {"pay": 1.0, "turns": 64.0}]}})
+		"bank": {"left": float(left), "refill": 12.0, "cap": 36.0, "tail": [{"pay": 10.0, "turns": 36.0}, {"pay": 1.0, "turns": 64.0}]}}
 
 func _viewport(size: Vector2i) -> SubViewport:
 	var viewport := SubViewport.new()
@@ -239,11 +243,15 @@ func _purchase_history() -> void:
 		{"kind": "bundlerefund", "amount": 5000.0, "at": 1.0, "bundle": "pinch"}, {"kind": "bundle", "amount": 5000.0, "at": 1.0, "bundle": "pinch", "order": "<b>x</b>"},
 		{"kind": "turn", "amount": 5000.0, "at": 1.0, "bundle": "pinch"}, {"kind": "bundle", "amount": 5000.5, "at": 1.0, "bundle": "pinch"}, "pinch"]
 	_check(PollenHistory.checked(_with_purchases(bad)).purchases.is_empty(), "A line off the contract is left out")
-	# 1999 + 399 - 399, and the Pinch with no price adds nothing.
-	_check(PollenHistory.checked(_with_purchases(PURCHASES, null)).spent_usd_cents == 1999, "Without the server's figure the money spent is the lines' sum, refunds taken off")
-	_check(PollenHistory.checked(_with_purchases(range(101).map(func(_i: int) -> Dictionary: return PURCHASES[3]))).is_empty(), "A list longer than the server sends is refused")
+	_check(PollenHistory.checked(_with_purchases(PURCHASES, null)).spent_usd_cents == -1, "Without the server's figure the money spent is unknown, never a guess")
+	var long := PollenHistory.checked(_with_purchases(range(101).map(func(_i: int) -> Dictionary: return PURCHASES[3])))
+	_check(long.purchases.size() == 100, "A longer list keeps its first 100 and the rest of the history")
+	var broken := _history_value()
+	broken.purchases = "pinch"
+	var kept_rest := PollenHistory.checked(broken)
+	_check(kept_rest.purchases.is_empty() and kept_rest.turns.size() == 3 and not kept_rest.bank.is_empty(), "A purchases part off the contract reads as none; turns, clears and the bank still show")
 	var older := PollenHistory.checked({"schema_version": 1.0, "entries": [{"kind": "turn", "amount": 250.0, "at": 3.0, "level_id": "relay-isles", "stage_id": "relay", "role": "a"}, PURCHASES[2]]})
-	_check(older.turns.size() == 1 and older.purchases.size() == 1 and older.purchases[0].bundle == "pouch" and older.spent_usd_cents == 399, "An older server's history: its bundle entries are the purchases, its turns stay turns")
+	_check(older.turns.size() == 1 and older.purchases.size() == 1 and older.purchases[0].bundle == "pouch" and older.spent_usd_cents == -1, "An older server's history: its bundle entries are the purchases, its turns stay turns, the total is left to the wallet read")
 	_check(PollenHistory.checked({"schema_version": 1.0, "entries": []}).purchases.is_empty(), "No purchases reads as none")
 	_check(PurchasesView.receipt_line({"usd_cents": 399, "order": "GPA.1"}) == PlayerCopy.POLLEN_STORE_ORDER % ["$3.99", "GPA.1"] and PurchasesView.receipt_line({"usd_cents": -1, "order": "GPA.1"}) == PlayerCopy.POLLEN_STORE_ORDER_ONLY % "GPA.1"
 		and PurchasesView.receipt_line({"usd_cents": 99, "order": ""}) == "$0.99", "The receipt line is the store receipt's Paid line, from what the server kept")
@@ -256,8 +264,7 @@ func _purchase_card() -> void:
 		var history := _history()
 		var bought := PollenHistory.checked(_with_purchases())
 		history.purchases = bought.purchases
-		history.spent_usd_cents = bought.spent_usd_cents
-		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true})
+		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": bought.spent_usd_cents})
 		await _settle()
 		var texts := _texts(page)
 		var card := page.find_child("PollenPurchasesCard", true, false) as Control
@@ -270,6 +277,9 @@ func _purchase_card() -> void:
 		page.render({"chip": PollenChip.make(0, true), "full_journey": true, "status": "", "retry": false, "history": PollenHistory.checked({"schema_version": 1.0, "entries": []}), "purchases": true})
 		await _settle()
 		_check(page.find_child("PollenPurchasesNone", true, false) != null and page.find_child("PollenPurchasesTotal", true, false) == null, "No purchases yet, and no total")
+		page.render({"chip": null, "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": -1})
+		await _settle()
+		_check(page.find_child("PollenPurchasesTotal", true, false) == null and page.find_children("PollenPurchaseRow*", "", true, false).size() == 4, "An unknown total shows no figure; the purchases still show")
 		page.render({"chip": null, "full_journey": true, "status": PlayerCopy.POLLEN_PLAY_LOADING, "retry": false, "history": {}, "purchases": true})
 		await _settle()
 		_check(card.visible and _texts(card).has(PlayerCopy.POLLEN_PURCHASES_TITLE) and page.find_child("PollenPurchasesNone", true, false) == null, "Loading: the card keeps its title and shows nothing it does not know")
@@ -299,6 +309,7 @@ func _purchase_flow() -> void:
 		_check(card != null and card.visible == build[2], "The Purchases card on %s: %s" % [build[3], build[2]])
 		var money := _texts(host.overlay).any(func(text: String) -> bool: return text.contains("$") or text.contains("Google Play"))
 		_check(money == build[2], "%s: money shows only with purchases" % build[3])
+	_check(flow.spent_usd_cents({"spent_usd_cents": 1999}) == 1999 and flow.spent_usd_cents({"spent_usd_cents": -1}) == 777, "The total is the history's, else the wallet read's")
 	# Bundles off later: a player who bought still sees them once the history says so.
 	PollenSurfaces.set_shared_for_tests(true, true)
 	flow.surfaces = null

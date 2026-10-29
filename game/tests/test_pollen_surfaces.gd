@@ -100,10 +100,11 @@ func _board_six(size: Vector2i) -> void:
 	root.add_child(holder)
 	var own := {"choice": "typed", "name": "Robin", "revision": 1, "state": "synced", "code": "", "asked": true, "confirmed": "Robin"}
 	var opened: Array = []
+	var sent: Array = []
 	var price := {"price": 0, "balance": 600, "shown": true, "next": 1000}
 	var context := {"own": own, "anonymous": "Kite 41", "platform": "", "edit": true, "price": price,
 		"get_pollen": func(link: Control) -> void: opened.append(link),
-		"save": func(_choice: String, _name: String) -> Dictionary: return {"closed": false, "code": "busy"}}
+		"save": func(choice: String, name: String) -> Dictionary: sent.append([choice, name]); return {"closed": false, "code": "busy"}}
 	var modal: Control = Prompt.open(holder, context)
 	for i in range(3): await process_frame
 	var prompt: Node = modal.find_child("DisplayNamePrompt", true, false)
@@ -135,7 +136,7 @@ func _board_six(size: Vector2i) -> void:
 	_check(opened == [prompt.get_pollen_link], "Get Pollen asks the flow for the short card")
 	prompt.field.text_submitted.emit("Robin Sky")
 	await process_frame
-	_check(prompt.save_button.disabled and _words(prompt.save_button).size() == 2, "Enter never sends a change the balance cannot pay")
+	_check(sent.is_empty() and prompt.save_button.disabled and _words(prompt.save_button).size() == 2, "Enter never sends a change the balance cannot pay: " + str(sent))
 	# Going anonymous is free: plain Save, no price lines or link.
 	prompt.anonymous_row.pressed.emit()
 	await process_frame

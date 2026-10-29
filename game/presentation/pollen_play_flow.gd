@@ -82,6 +82,15 @@ func purchases_shown(history: Dictionary = {}) -> bool:
 	var scope := _scope()
 	return Wardrobe.shared().bundles(str(scope.server), str(scope.owner)) or not (history.get("purchases", []) as Array).is_empty()
 
+## The money spent on bundles in US cents: the history's figure, else (a server
+## from before the history listed purchases) the wallet read's, else -1 (no total shows).
+func spent_usd_cents(history: Dictionary) -> int:
+	var spent := int(history.get("spent_usd_cents", -1))
+	if spent >= 0 or not available(): return spent
+	var scope := _scope()
+	var part: Dictionary = Wardrobe.shared().view(str(scope.server), str(scope.owner)).get("bundles", {})
+	return int(part.get("spent_usd_cents", -1)) if not part.is_empty() else -1
+
 func _reduced() -> bool:
 	return bool(host.saves.data.settings.get("reduced_motion", false)) if host.get("saves") != null else false
 
@@ -155,4 +164,5 @@ func refresh() -> void:
 
 func _redraw(retry: bool) -> void:
 	if not is_open(): return
-	_page.render({"chip": _page_chip, "full_journey": _surfaces().full_journey_visible(), "status": _status, "retry": retry, "history": _history, "purchases": purchases_shown(_history)})
+	_page.render({"chip": _page_chip, "full_journey": _surfaces().full_journey_visible(), "status": _status, "retry": retry, "history": _history,
+		"purchases": purchases_shown(_history), "spent_usd_cents": spent_usd_cents(_history)})

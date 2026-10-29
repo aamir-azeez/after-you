@@ -366,7 +366,8 @@ func _test_pollen_routes(app: Node) -> void:
 	real_store.return_to = "friends"
 	real_store.back_requested.emit()
 	await _frames()
-	_check(wardrobe.opened.is_empty() and app.mode in ["home", "friends"], "Back from a store opened by the name prompt goes to Friends over Home, never the Wardrobe: " + app.mode)
+	# Friends itself then opens through Main's _show_friends, which needs the relay this test app lacks.
+	_check(wardrobe.opened.is_empty() and app.mode == "home", "Back from a store opened by the name prompt goes Home first (then Friends), never the Wardrobe: " + app.mode)
 	real_store.return_to = "wardrobe"
 	play.return_to = "home"
 	app.pollen_store_flow = real_store

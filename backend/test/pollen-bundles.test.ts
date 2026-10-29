@@ -228,6 +228,9 @@ describe("bundles through the Worker", () => {
       ["bundle", 21000, "pouch", 399], ["bundlerefund", -21000, "pouch", 399], ["bundle", 5000, "pinch", 99]].sort());
     const times = history.purchases.map(line => Number(line.at));
     expect(times).toEqual([...times].sort((a, b) => b - a));
+    // A bundle is dated when it was bought on Play, not when its claim landed; a refund when it was taken back.
+    expect(history.purchases.filter(line => line.kind === "bundle").map(line => line.at).sort()).toEqual([1_700_000_000_060, 1_700_000_000_061]);
+    expect(Number(history.purchases.find(line => line.kind === "bundlerefund")?.at)).toBeGreaterThan(1_700_000_000_061);
     expect(history.spent_usd_cents).toBe(99);
   });
 

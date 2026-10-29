@@ -16,8 +16,10 @@ extends RefCounted
 ##   server's own list (every line, never pushed out by turns). A server from
 ##   before that list has only the bundle lines among the newest entries.
 ## - spent_usd_cents: the money spent on bundles, refunds taken off, in US
-##   cents as Google Play reported it: the server's figure, else the sum of the
-##   lines it sent.
+##   cents as Google Play reported it: the server's figure, or -1 from a server
+##   that sends none (its few lines would undercount; the flow then asks the
+##   wallet read's figure).
+## A purchases part off the contract reads as no purchases; the rest still shows.
 ## A history that is not the contract's reads as {}, and the page says so.
 const Typed = preload("res://services/typed_values.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -47,14 +49,14 @@ static func checked(value: Variant) -> Dictionary:
 			if key.is_empty() or bool(Registry.descriptor(key).get("premium", false)): continue
 			clears.append({"level_id": clear.level_id, "price": Typed.as_int(clear.price), "paid": Typed.as_int(clear.paid) if clear.has("paid") else -1})
 	var sent: Variant = value.get("purchases") if value.has("purchases") else value.entries
-	if not sent is Array or sent.size() > MAX_PURCHASES: return {}
 	var purchases: Array[Dictionary] = []
-	for entry: Variant in sent:
-		var line := _purchase(entry)
-		if not line.is_empty(): purchases.append(line)
+	if sent is Array:
+		for entry: Variant in (sent as Array).slice(0, MAX_PURCHASES):
+			var line := _purchase(entry)
+			if not line.is_empty(): purchases.append(line)
 	var spent: Variant = value.get("spent_usd_cents")
 	return {"turns": turns, "first_clears": clears, "bank": _bank(value.get("bank")), "purchases": purchases,
-		"spent_usd_cents": Typed.as_int(spent) if _count(spent) else spent_of(purchases)}
+		"spent_usd_cents": Typed.as_int(spent) if _count(spent) and value.has("purchases") else -1}
 
 ## One bundle or refund line as kept, or {} (a turn's entry, or one off the contract).
 static func _purchase(entry: Variant) -> Dictionary:
@@ -65,13 +67,6 @@ static func _purchase(entry: Variant) -> Dictionary:
 	if not order is String or (not order.is_empty() and _order.search(order) == null): return {}
 	var cents: Variant = entry.get("usd_cents")
 	return {"kind": entry.kind, "bundle": str(entry.bundle), "amount": Typed.as_int(amount), "at": Typed.as_int(entry.at), "order": order, "usd_cents": Typed.as_int(cents) if _count(cents) else -1}
-
-## Money spent on `purchases` in US cents: bundles less refunds, never below zero.
-static func spent_of(purchases: Array) -> int:
-	var total := 0
-	for line: Dictionary in purchases:
-		if int(line.usd_cents) > 0: total += int(line.usd_cents) * (1 if line.kind == "bundle" else -1)
-	return maxi(0, total)
 
 static func _turn(entry: Variant) -> Dictionary:
 	if not entry is Dictionary or entry.get("kind") != "turn" or not Typed.whole_number(entry.get("amount")) or not _count(entry.get("at")): return {}
