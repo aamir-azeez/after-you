@@ -10,7 +10,7 @@ extends "res://presentation/duels/duel_page_base.gd"
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
-const SEED_ICON = preload("res://assets/ui/seed.svg")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const PLAY_ICON = preload("res://assets/ui/play-circle.svg")
 const PollenMoney = preload("res://services/pollen_money.gd")
 
@@ -139,13 +139,6 @@ func _line(label: String, amount: String, font_size: int, total: bool) -> Contro
 	var name_label := Kit.text(label, font_size, UiTokens.INK, total)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name_label)
-	if total:
-		var seed := TextureRect.new()
-		seed.texture = SEED_ICON
-		seed.modulate = Color("e3b04b")
-		seed.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
-		seed.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		seed.custom_minimum_size = Vector2(34, 34)
-		row.add_child(seed)
+	if total: row.add_child(PollenMark.make(PollenMark.TOTAL))
 	row.add_child(Kit.text(amount, font_size, UiTokens.INK, true))
 	return row
