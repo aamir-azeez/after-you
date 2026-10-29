@@ -5,16 +5,17 @@ extends RefCounted
 ##
 ## A waiting run arrives as the server stored it (backend leaderboards/board.ts
 ## ReplayWork): its chapter key, its claimed ticks and the room's final
-## checkpoint, whose proof nests every pair of the finishing branch. The check:
+## checkpoint, whose proof nests every pair of the finishing branch, in the
+## shared blob format (`body` in base64 and its `byte_length`,
+## services/blob_codec.gd), which must decode to the bytes `proof_hash` names.
+## An inline `checkpoint` is still read, as the tests pass it. The check:
 ## - resolves the chapter from the bundled registry only, never from the packet;
 ## - needs the checkpoint to close the chapter (stage_index == stage count);
 ## - replays every pair with that chapter family's own verifier,
 ##   ChapterRegistry.simulation_script(key).verify_checkpoint, which replays
 ##   each recording and derives each checkpoint exactly;
 ## - refuses any turn with catch assistance on, except in a duel's run
-##   (`duel: true`, backend duels/store.ts), which may have them; a duel's
-##   checkpoint arrives in the shared blob format (`body` in base64 and its
-##   `byte_length`, services/blob_codec.gd) and must match `proof_hash`;
+##   (`duel: true`, backend duels/store.ts), which may have them;
 ## - measures the run as the sum of every replayed turn's ticks and compares it
 ##   with the claimed time.
 ## It proves the recordings are valid and the time is real, not that no retry
@@ -22,7 +23,7 @@ extends RefCounted
 const Registry = preload("res://services/chapter_registry.gd")
 const Typed = preload("res://services/typed_values.gd")
 const BlobCodec = preload("res://services/blob_codec.gd")
-## A duel run's checkpoint is at most this long (backend duels/rules.ts MAX_DUEL_PROOF_CHARS).
+## A stored run's checkpoint is at most this long (backend board.ts MAX_PROOF_CHARS, duels/rules.ts MAX_DUEL_PROOF_CHARS).
 const MAX_CHECKPOINT_BYTES := 1_900_000
 
 ## {valid, measured_ticks, reason}; reason is "" when valid.
@@ -56,7 +57,7 @@ static func check(entry: Dictionary) -> Dictionary:
 	if not Typed.whole_number(entry.get("ticks")) or int(entry.ticks) != measured: return _result(false, measured, "time_mismatch")
 	return _result(true, measured, "")
 
-## The run's final checkpoint: inline for a board run, or decoded from a duel run's blob body.
+## The run's final checkpoint, decoded from its blob body (or inline, as tests pass it).
 static func _checkpoint(entry: Dictionary) -> Variant:
 	if not entry.has("body"): return entry.get("checkpoint")
 	if not entry.body is String or not Typed.whole_number(entry.get("byte_length")): return null
