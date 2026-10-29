@@ -6,6 +6,7 @@ const RoomActions = preload("res://presentation/room_actions.gd")
 const Session = preload("res://services/relay_online_session.gd")
 const DiskStore = preload("res://services/relay_online_store.gd")
 const Save = preload("res://services/local_save.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
@@ -565,6 +566,9 @@ func _real_ui_flow() -> void:
 	_check(preview.journey.chapter_complete() and preview.mode=="online_waiting" and _button_named(preview,"Check status")!=null,"Reopened complete snapshot still exposes reconciliation for its pending final turn")
 	await preview._online_refresh()
 	_check(preview.mode=="complete" and preview._pairs().size()==2 and api.receipts.size()==4,"Both real UI stages complete as exactly four confirmed contributions")
+	var board_line: Control = preview.find_child("BoardStatusLine",true,false)
+	var board_words: Label = board_line.find_child("BoardStatusText",true,false) if board_line != null else null
+	_check(board_line != null and board_line.visible and board_words.text==PlayerCopy.BOARD_LINE_OFF,"The finished room's card says where its time stands (this server has no leaderboards)")
 	var writes := store.writes
 	preview.replay_pair_index = 0
 	preview._play_collection_pair()

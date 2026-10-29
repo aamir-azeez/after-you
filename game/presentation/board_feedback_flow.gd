@@ -7,8 +7,9 @@ extends RefCounted
 ##   minute) and says it again.
 ## - service_home(): every frame on Home, but it does work at most every
 ##   CHECK_MS. While this player's newest run of the last WATCH_SECONDS may
-##   still wait for its check, it reads that board at most every READ_MS. The
-##   first read that finds it checking posts one note; a read that finds it
+##   still wait for its check, it reads that board at most every READ_MS. Once
+##   a read (the card's or its own) has found it checking, Home posts one note
+##   when it is free; a read that finds it
 ##   ranked hands it to services/leaderboard_placings.gd (inside board()), so
 ##   Home's existing celebration shows the place. A run seen settled is not read again.
 ## Every board read goes through the shared client; nothing here keeps a view.
@@ -27,6 +28,8 @@ var host: Node
 var _settled: Dictionary = {}
 ## entry_id -> true: runs whose checking note was posted this session.
 var _noted: Dictionary = {}
+## entry_id -> true: runs a read from here found checking.
+var _seen_checking: Dictionary = {}
 ## board -> ticks (msec) of its last read from here.
 var _read_at: Dictionary = {}
 var _next_check := 0
@@ -55,8 +58,8 @@ func _read_for_line(client: RefCounted, run: Dictionary, line: Control) -> void:
 	if not answer.get("ok", false) or not is_instance_valid(line): return
 	var status := BoardStatus.of_run(run, true, answer.view, _now())
 	_note_settled(run, status)
-	# The card already says it is being checked; Home need not say it again.
-	if status.state == BoardStatus.CHECKING: _noted[run.entry_id] = true
+	# Home says it once when the player gets back there, with no read of its own.
+	if status.state == BoardStatus.CHECKING: _seen_checking[run.entry_id] = true
 	line.show_status(status)
 
 ## Turns Forgiving catches off on this phone and in the open room; true when saved.
@@ -72,7 +75,11 @@ func service_home() -> void:
 	if not _supported() or not host._home_free_for_card() or host._home_settling(): return
 	var owner := _owner()
 	var run := BoardStatus.newest_waiting(owner, _settled, _now(), WATCH_SECONDS)
-	if run.is_empty() or (_read_at.has(run.board) and now - int(_read_at[run.board]) < READ_MS): return
+	if run.is_empty(): return
+	if _seen_checking.has(run.entry_id) and not _noted.has(run.entry_id):
+		_post_note(run)
+		return
+	if _read_at.has(run.board) and now - int(_read_at[run.board]) < READ_MS: return
 	_read_at[run.board] = now
 	_reading = true
 	var answer: Dictionary = await _client().board(run.board)
@@ -80,9 +87,14 @@ func service_home() -> void:
 	if not answer.get("ok", false) or owner != _owner(): return
 	var status := BoardStatus.of_run(run, true, answer.view, _now())
 	_note_settled(run, status)
-	if status.state == BoardStatus.CHECKING and not _noted.has(run.entry_id) and host._home_free_for_card():
-		_noted[run.entry_id] = true
-		host._toast(PlayerCopy.BOARD_HOME_CHECKING % Runs.time_text(int(run.ticks)))
+	if status.state == BoardStatus.CHECKING:
+		_seen_checking[run.entry_id] = true
+		if not _noted.has(run.entry_id) and host._home_free_for_card(): _post_note(run)
+
+## "Your time is being checked", once a session for each run.
+func _post_note(run: Dictionary) -> void:
+	_noted[run.entry_id] = true
+	host._toast(PlayerCopy.BOARD_HOME_CHECKING % Runs.time_text(int(run.ticks)))
 
 func _note_settled(run: Dictionary, status: Dictionary) -> void:
 	if status.state in [BoardStatus.RANKED, BoardStatus.NOT_LISTED]: _settled[run.entry_id] = true

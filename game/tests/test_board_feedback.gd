@@ -173,6 +173,13 @@ func _end_of_run_line() -> void:
 	await _frames(4)
 	_check(host.api.requests.size() == 1 and host.api.requests[0][1] == path, "the line reads its board once: %s" % [host.api.requests])
 	_check(words.text == PlayerCopy.BOARD_LINE_CHECKING % "0:49.0" and not (line.find_child("BoardStatusTurnOff", true, false) as Button).visible, "the board confirms it is checking; no button")
+	var reads: int = host.api.requests.size()
+	flow.service_home()
+	await _frames(2)
+	flow._next_check = 0
+	flow.service_home()
+	await _frames(2)
+	_check(host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.0"] and host.api.requests.size() == reads, "back on Home it says so once, with no read of its own: %s" % [host.toasts])
 	line.queue_free()
 	# A run already ranked by the time the card opens again shows its place.
 	var ranked_room := "R1R1R1R1R1R1R1R1R1R1R1"
