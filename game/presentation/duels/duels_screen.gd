@@ -19,6 +19,8 @@ const TROPHY_ICON = preload("res://assets/ui/whats_new/star.svg")
 const INFO_ICON = preload("res://assets/ui/social/info.svg")
 const REFRESH_SECONDS := 30.0
 const TILE_WIDTH := 268.0
+## The empty lobby's art (presentation/empty_state.gd SPOTS): "duels_a", "duels_b" or "duels_c". The owner's pick is this one line.
+const EMPTY_ART := "duels_a"
 
 signal start_requested
 signal party_requested
@@ -37,6 +39,11 @@ var _state := "loading"
 var _party_box: Control
 var _open_list: VBoxContainer
 var _tiles: HBoxContainer
+var _tile_scroll: ScrollContainer
+## Holds the empty lobby's art in place of the tiles while there is no duel at all.
+var _empty: VBoxContainer
+## The art the empty lobby draws; EMPTY_ART unless a capture asks for another.
+var empty_art := EMPTY_ART
 var _overlay: CanvasLayer
 var _gate: BusyTapGate
 var _timer: Timer
@@ -142,6 +149,12 @@ func _build() -> void:
 	tile_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	ThemeRules.touch_scroll(tile_scroll)
 	right_column.add_child(tile_scroll)
+	_tile_scroll = tile_scroll
+	_empty = VBoxContainer.new()
+	_empty.name = "DuelsEmpty"
+	_empty.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_empty.visible = false
+	right_column.add_child(_empty)
 	_tiles = HBoxContainer.new()
 	_tiles.name = "DuelsTiles"
 	_tiles.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -153,6 +166,9 @@ func _render() -> void:
 	_render_party()
 	Kit.clear(_open_list)
 	Kit.clear(_tiles)
+	Kit.clear(_empty)
+	_empty.visible = false
+	_tile_scroll.visible = true
 	if _state != "ready":
 		_open_list.add_child(Kit.wrapped(PlayerCopy.DUELS_LOADING if _state == "loading" else PlayerCopy.DUELS_FAILED, 18))
 		return
@@ -170,7 +186,12 @@ func _render() -> void:
 	var order := func(view: Dictionary) -> int: return 0 if DuelModel.action(view, me) == "play" else 1 if view.status == "running" else 2
 	running.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return order.call(a) < order.call(b) or (order.call(a) == order.call(b) and a.updated_ms > b.updated_ms))
 	for view: Dictionary in running: _tiles.add_child(_tile(view))
-	if running.is_empty():
+	if running.is_empty() and open.is_empty():
+		# Nothing at all yet: the hand drawn empty art every list uses (presentation/empty_state.gd).
+		_tile_scroll.visible = false
+		_empty.visible = true
+		ThemeRules.empty_state(_empty, empty_art, PlayerCopy.DUELS_EMPTY_TITLE, PlayerCopy.DUELS_NO_DUELS)
+	elif running.is_empty():
 		var empty := Kit.wrapped(PlayerCopy.DUELS_NO_DUELS, 18)
 		empty.custom_minimum_size.x = 420
 		_tiles.add_child(empty)

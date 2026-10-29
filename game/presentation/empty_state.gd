@@ -33,6 +33,10 @@ const SPOTS := {
 	"replays_solo": {"card": "replay", "preview": "footprints"},
 	"replays_together": {"card": "replay", "rows": ["polaroid"]},
 	"wardrobe": {"card": "wardrobe", "rows": ["wardrobe"]},
+	# The empty Duels lobby: three versions for the owner to pick from (duels_screen.gd EMPTY_ART).
+	"duels_a": {"card": "room", "rows": ["duel_start", "duel_other"]},
+	"duels_b": {"card": "room", "rows": ["duel_rivals", "duel_snooze"]},
+	"duels_c": {"card": "room", "rows": ["duel_trail", "duel_letter"], "links": [[1, 0, "plane"]]},
 }
 static var _heading: FontVariation
 var art := "rooms"
