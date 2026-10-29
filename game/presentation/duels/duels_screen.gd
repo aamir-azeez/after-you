@@ -21,6 +21,9 @@ const REFRESH_SECONDS := 30.0
 const TILE_WIDTH := 268.0
 ## The empty lobby's art (presentation/empty_state.gd SPOTS): "duels_a", "duels_b" or "duels_c". The owner's pick is this one line.
 const EMPTY_ART := "duels_a"
+## The empty Open duels column's art: "open_a", "open_b" or "open_c", each with its own line (OPEN_LINES). The owner's pick is this one line.
+const OPEN_EMPTY_ART := "open_a"
+const OPEN_LINES := {"open_a": PlayerCopy.DUELS_OPEN_EMPTY_A, "open_b": PlayerCopy.DUELS_OPEN_EMPTY_B, "open_c": PlayerCopy.DUELS_OPEN_EMPTY_C}
 
 signal start_requested
 signal party_requested
@@ -44,6 +47,8 @@ var _tile_scroll: ScrollContainer
 var _empty: VBoxContainer
 ## The art the empty lobby draws; EMPTY_ART unless a capture asks for another.
 var empty_art := EMPTY_ART
+## The art the empty Open duels column draws; OPEN_EMPTY_ART unless a capture asks for another.
+var open_empty_art := OPEN_EMPTY_ART
 var _overlay: CanvasLayer
 var _gate: BusyTapGate
 var _timer: Timer
@@ -181,7 +186,8 @@ func _render() -> void:
 	# Challenges to you first, then the ones you sent.
 	open.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return a.mine > b.mine)
 	for view: Dictionary in open: _open_list.add_child(_challenge_card(view))
-	if open.is_empty(): _open_list.add_child(Kit.wrapped(PlayerCopy.DUELS_NO_OPEN, 17))
+	# No challenge: the column's own small empty art, above the Race a recorded run card and never over it.
+	if open.is_empty(): ThemeRules.empty_state(_open_list, open_empty_art, "", str(OPEN_LINES.get(open_empty_art, PlayerCopy.DUELS_NO_OPEN)))
 	# Your move first, then running, then results.
 	var order := func(view: Dictionary) -> int: return 0 if DuelModel.action(view, me) == "play" else 1 if view.status == "running" else 2
 	running.sort_custom(func(a: Dictionary, b: Dictionary) -> bool: return order.call(a) < order.call(b) or (order.call(a) == order.call(b) and a.updated_ms > b.updated_ms))
