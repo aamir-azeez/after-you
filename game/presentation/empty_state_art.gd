@@ -70,6 +70,24 @@ const SCENES := {
 	"duel_snooze": [["face", Vector2(-24, 8), {"color": "mint", "eyes": "soft", "tilt": 0.25, "size": 0.55}], ["face", Vector2(22, 10), {"color": "peach", "eyes": "soft", "tilt": -0.2, "size": 0.55}], ["sparkle", Vector2(60, -34), 5.0]],
 	# C: footprints racing across to a flag, with a letter on its way to another pair.
 	"duel_trail": [["walk", Vector2(-14, 8), {"from": Vector2(-0.5, 0.42), "to": Vector2(0.3, -0.3)}], ["flag", Vector2(62, -2)], ["sparkle", Vector2(-66, -30), 6.0]],
+	# D: a photo finish: two snapshots of a race, then the pair cheering.
+	"duel_photos": [["polaroid", Vector2(-40, 6), -0.14], ["polaroid", Vector2(42, 4), 0.12], ["sparkle", Vector2(2, -46), 7.0]],
+	"duel_cheer": [["face", Vector2(-24, 10), {"color": "peach", "eyes": "happy", "tilt": 0.2, "size": 0.6}], ["face", Vector2(18, 10), {"color": "mint", "eyes": "happy", "tilt": -0.2, "size": 0.6}], ["heart", Vector2(50, -26), 10.0], ["sparkle", Vector2(-62, -30), 5.0]],
+	# E: neck and neck: two little islands, each pair racing toward its own flag, then two flags almost side by side.
+	"duel_lanes": [["island", Vector2(-50, 30), 92.0], ["spirit", Vector2(-64, 32), {"color": "peach", "eyes": "wide", "look": Vector2(1, 0), "lean": 0.18, "size": 0.3}], ["spirit", Vector2(-44, 32), {"color": "mint", "eyes": "wide", "look": Vector2(1, 0), "lean": 0.18, "size": 0.3}], ["flag", Vector2(-18, 30)], ["island", Vector2(50, 12), 92.0], ["spirit", Vector2(36, 14), {"color": "mint", "eyes": "wide", "look": Vector2(1, 0), "lean": 0.18, "size": 0.3}], ["spirit", Vector2(56, 14), {"color": "peach", "eyes": "wide", "look": Vector2(1, 0), "lean": 0.18, "size": 0.3}], ["flag", Vector2(82, 12)], ["sparkle", Vector2(0, -36), 6.0]],
+	"duel_close": [["island", Vector2(0, 30), 130.0], ["flag", Vector2(-10, 28)], ["flag", Vector2(8, 28)], ["sparkle", Vector2(-44, -30), 6.0], ["sparkle", Vector2(48, -18), 7.0]],
+	# F: after the race: both pairs sitting together on one island, then a hug across pairs, friends first.
+	"duel_together": [["island", Vector2(0, 28), 176.0], ["spirit", Vector2(-54, 30), {"color": "peach", "eyes": "happy", "sit": true, "lean": 0.1, "tilt": 0.2, "size": 0.34}], ["spirit", Vector2(-28, 30), {"color": "mint", "eyes": "happy", "sit": true, "lean": 0.06, "tilt": 0.1, "size": 0.34}], ["spirit", Vector2(28, 30), {"color": "peach", "eyes": "happy", "sit": true, "lean": -0.06, "tilt": -0.1, "size": 0.34}], ["spirit", Vector2(54, 30), {"color": "mint", "eyes": "happy", "sit": true, "lean": -0.1, "tilt": -0.2, "size": 0.34}], ["heart", Vector2(0, -22), 9.0], ["sparkle", Vector2(-76, -34), 5.0], ["sparkle", Vector2(78, -40), 5.0]],
+	"duel_hug": [["spirit", Vector2(-19, 32), {"color": "peach", "eyes": "happy", "lean": 0.16, "tilt": 0.2}], ["spirit", Vector2(19, 32), {"color": "mint", "eyes": "happy", "lean": -0.16, "tilt": -0.2}], ["heart", Vector2(0, -34), 11.0], ["sparkle", Vector2(-48, -20), 5.0], ["sparkle", Vector2(50, -30), 5.0]],
+	# The empty Open duels column, three ways (duels_screen.gd OPEN_EMPTY_ART), drawn in the round friend picture.
+	"open_letter": [["envelope", Vector2(0, 4), -0.14], ["sparkle", Vector2(36, -34), 9.0]],
+	"open_peek": [["face", Vector2(-17, 4), {"color": "peach", "eyes": "wide", "look": Vector2(1, -0.3), "tilt": 0.2, "size": 0.72}], ["face", Vector2(17, 7), {"color": "mint", "eyes": "wide", "look": Vector2(1, -0.3), "tilt": -0.1, "size": 0.72}]],
+	"open_hope": [["face", Vector2(-5, 6), {"color": "mint", "look": Vector2(0.6, -0.8), "tilt": 0.12, "size": 1.2}], ["sparkle", Vector2(30, -30), 9.0]],
+	# Behind a duel's result, in each side margin (duels/duel_result_backdrop.gd "cheer"): the pair cheering after a win, sitting calmly otherwise.
+	"result_cheer_left": [["island", Vector2(0, 30), 150.0], ["spirit", Vector2(-22, 32), {"color": "peach", "eyes": "happy", "tilt": 0.16, "lean": 0.08}], ["spirit", Vector2(22, 32), {"color": "mint", "eyes": "happy", "tilt": -0.16, "lean": -0.08}], ["heart", Vector2(0, -50), 9.0]],
+	"result_cheer_right": [["island", Vector2(0, 30), 150.0], ["flag", Vector2(44, 30)], ["spirit", Vector2(-34, 32), {"color": "peach", "eyes": "happy", "tilt": 0.12}], ["spirit", Vector2(-4, 32), {"color": "mint", "eyes": "happy", "tilt": -0.12}], ["sparkle", Vector2(30, -46), 7.0]],
+	"result_calm_left": [["island", Vector2(0, 30), 150.0], ["spirit", Vector2(-20, 32), {"color": "peach", "eyes": "soft", "sit": true, "lean": 0.08}], ["spirit", Vector2(20, 32), {"color": "mint", "eyes": "soft", "sit": true, "lean": -0.08}]],
+	"result_calm_right": [["island", Vector2(0, 30), 150.0], ["flag", Vector2(44, 30)], ["spirit", Vector2(-30, 32), {"color": "peach", "sit": true}], ["spirit", Vector2(0, 32), {"color": "mint", "sit": true}]],
 	"duel_letter": [["face", Vector2(-58, 14), {"color": "mint", "look": Vector2(1, -0.2), "tilt": 0.22, "size": 0.62}], ["envelope", Vector2(4, 4), -0.12], ["face", Vector2(64, 14), {"color": "peach", "eyes": "wide", "look": Vector2(-1, -0.2), "tilt": -0.22, "size": 0.62}]],
 	# The Play with your friend icon: two happy faces cheek to cheek, mint behind,
 	# and a heart. Rows with "squish" or "pop" react to the scene state (scene()).
@@ -78,7 +96,8 @@ const SCENES := {
 ## Scenes drawn loose on a light surface rather than in a list picture: their
 ## own box, and a thin ink edge (box units) round each spirit and prop so
 ## peach, mint and pink hold on cream.
-const SCENE_LOOKS := {"friends_squeeze": {"box": Vector2(120, 96), "edge": 2.8}}
+## The empty Open duels column's scenes fill their small round picture, drawn larger than a wide card's scene.
+const SCENE_LOOKS := {"friends_squeeze": {"box": Vector2(120, 96), "edge": 2.8}, "open_letter": {"box": Vector2(110, 110)}, "open_peek": {"box": Vector2(110, 110)}, "open_hope": {"box": Vector2(110, 110)}}
 ## A squish (scene state "squish" 0..1) at its fullest, for rows with a
 ## "squish" direction (+1 toward +x): each face slides in, tips further toward
 ## the other and squashes about its chin. A heart row with "pop" grows by that

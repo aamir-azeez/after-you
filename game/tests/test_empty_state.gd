@@ -55,6 +55,7 @@ func _run() -> void:
 	root.size = Vector2i(1600, 720)
 	_island_walk()
 	await _layouts()
+	await _duel_columns()
 	await _room_hub()
 	await _friends()
 	for viewport_size: Vector2i in [Vector2i(1280, 720), Vector2i(1600, 720)]: await _replays(viewport_size)
@@ -66,6 +67,37 @@ func _frames(count: int) -> void:
 
 func _empties(node: Node) -> Array[Node]:
 	return node.find_children("EmptyState", "", true, false).filter(func(found: Node) -> bool: return not found.is_queued_for_deletion())
+
+## The Duels lobby's two empty lists at 1280x720: Open duels, a narrow column
+## above the Race a recorded run card, and Your duels beside it. Every version
+## the owner may pick fits its list whole, with no scroll and no card cut off.
+const OPEN_AREA := Vector2(352, 290)
+const YOURS_AREA := Vector2(814, 420)
+const OPEN_ARTS := ["open_a", "open_b", "open_c"]
+const YOURS_ARTS := ["duels_a", "duels_b", "duels_c", "duels_d", "duels_e", "duels_f"]
+
+func _duel_columns() -> void:
+	for art: String in OPEN_ARTS + YOURS_ARTS:
+		_check(EmptyState.SPOTS.has(art), "the Duels lobby's %s art exists" % art)
+		if not EmptyState.SPOTS.has(art): continue
+		var narrow := art in OPEN_ARTS
+		_check(not narrow or EmptyState.SPOTS[art].card == "friend", "%s draws the narrow round card the column has room for" % art)
+		var scroll := ScrollContainer.new()
+		scroll.size = OPEN_AREA if narrow else YOURS_AREA
+		scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+		root.add_child(scroll)
+		var list := VBoxContainer.new()
+		list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+		scroll.add_child(list)
+		var empty: Control = ControlTheme.empty_state(list, art, "" if narrow else PlayerCopy.DUELS_EMPTY_TITLE, PlayerCopy.DUELS_OPEN_EMPTY_B if narrow else PlayerCopy.DUELS_NO_DUELS)
+		await _frames(3)
+		_check(empty.get_combined_minimum_size().y <= scroll.size.y + 0.5 and scroll.get_v_scroll_bar().max_value <= scroll.size.y + 0.5, "%s fits its column without a scroll: %s" % [art, empty.get_combined_minimum_size()])
+		var geo: Dictionary = empty._layout()
+		for card: Rect2 in geo.cards: _check(card.end.x <= scroll.size.x + 0.5, "%s keeps its cards inside the column" % art)
+		_check(empty.line.get_global_rect().end.y <= scroll.get_global_rect().end.y + 0.5, "%s keeps its line above whatever sits under the column" % art)
+		scroll.queue_free()
+		await process_frame
 
 func _layouts() -> void:
 	for art: String in EmptyState.SPOTS:

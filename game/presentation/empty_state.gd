@@ -36,6 +36,13 @@ const SPOTS := {
 	"duels_a": {"card": "room", "rows": ["duel_start", "duel_other"]},
 	"duels_b": {"card": "room", "rows": ["duel_rivals", "duel_snooze"]},
 	"duels_c": {"card": "room", "rows": ["duel_trail", "duel_letter"], "links": [[1, 0, "plane"]]},
+	"duels_d": {"card": "room", "rows": ["duel_photos", "duel_cheer"]},
+	"duels_e": {"card": "room", "rows": ["duel_lanes", "duel_close"]},
+	"duels_f": {"card": "room", "rows": ["duel_together", "duel_hug"]},
+	# The empty Open duels column, narrow: one round friend card each (duels_screen.gd OPEN_EMPTY_ART).
+	"open_a": {"card": "friend", "rows": ["open_letter"]},
+	"open_b": {"card": "friend", "rows": ["open_peek"]},
+	"open_c": {"card": "friend", "rows": ["open_hope"]},
 }
 static var _heading: FontVariation
 var art := "rooms"
