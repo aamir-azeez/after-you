@@ -8,9 +8,9 @@ import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
 import { boardKey, boardKeys, developerBest } from "../src/leaderboards/boards";
 import { DEVELOPER_BESTS } from "../src/leaderboards/developer-bests";
 import { JOB_TOKEN_LABEL, deriveJobToken } from "../src/leaderboards/job-token";
-import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED, MAX_REPLAY_BYTES } from "../src/leaderboards/rules";
+import { compareRuns, holdsFor, strictlyFirst, TOP_PLACES, KEPT_RANKED, MAX_UNCHECKED, MAX_CHECKED, MAX_REPLAY_BYTES, MIN_ACCOUNT_AGE_MS, MIN_PARTNERS } from "../src/leaderboards/rules";
 import { entryId, finishedRun, pairKey, runTicks, type LeaderboardRun } from "../src/leaderboards/run";
-import { eligible, type Standing } from "../src/leaderboards/standing";
+import { eligible, playerStanding, type Standing } from "../src/leaderboards/standing";
 import { VIEW_TTL_MS, cachedView, forgetViews, storeView } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
 import { bytesDigest, decodeBlob, ENCODING_DEFLATE } from "../src/blob-codec";
@@ -156,11 +156,12 @@ describe("leaderboard rules", () => {
     bests.live[RELAY_BOARD] = null;
     expect(developerBest(RELAY_BOARD)).toBeNull();
   });
-  it("needs an account a week old with two partners", () => {
-    const now = Date.now(), seasoned: Standing = { created_ms: now - 8 * DAY, display_name: null, partners: 2 };
-    expect(eligible(seasoned, now)).toBe(true);
-    expect(eligible({ ...seasoned, created_ms: now - 6 * DAY }, now)).toBe(false);
-    expect(eligible({ ...seasoned, partners: 1 }, now)).toBe(false);
+  it("lets any account with an identity rank while the account check is relaxed, and never one without", () => {
+    // Relaxed on 2026-10-29 (rules.ts): no account age, no partner count.
+    expect([MIN_ACCOUNT_AGE_MS, MIN_PARTNERS]).toEqual([0, 0]);
+    const now = Date.now(), fresh: Standing = { created_ms: now, display_name: null, partners: 0 };
+    expect(eligible(fresh, now)).toBe(true);
+    expect(eligible({ ...fresh, created_ms: now - 8 * DAY, partners: 2 }, now)).toBe(true);
     expect(eligible(null, now)).toBe(false);
   });
   it("times a whole unassisted run and refuses an assisted or partial one", async () => {
@@ -199,8 +200,10 @@ describe("posting finished runs", () => {
     expect(counted.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual([]);
     void early;
   });
-  it("checks the accounts itself when the board's unchecked runs are full, so new accounts cannot crowd out real players", async () => {
+  it("checks the accounts itself when the board's unchecked runs are full, so runs without an account cannot crowd out real players", async () => {
+    // The full pool holds runs whose players have no identity; they never qualify.
     for (let index = 0; index < MAX_UNCHECKED; index++) await board().submit(RELAY_BOARD, await run(5, 5000 + index));
+    // Since the account check was relaxed (rules.ts), a brand-new pair qualifies like a seasoned one.
     const newcomers = await almostDone();
     expect((await newcomers.last()).status).toBe(200);
     const host = await create(), guest = await create();
@@ -208,9 +211,8 @@ describe("posting finished runs", () => {
     const real = await almostDone(host, guest), meter = countingEnv(configured(ON));
     expect((await real.last(ON, meter.env)).status).toBe(200);
     console.log(`final turn on a crowded board: ${meter.calls.filter(name => name.startsWith("LEADERBOARD") || name === "PLAYERS.leaderboardStanding").join(", ")}`);
-    const replay = (await board().pendingWork()).replay.map(item => item.entry_id);
-    expect(replay).toEqual([await entryId(real.room.room_id, real.room.branch)]);
-    expect((await board().view(RELAY_BOARD)).checking).not.toContain(await entryId(newcomers.room.room_id, newcomers.room.branch));
+    const replay = (await board().pendingWork()).replay.map(item => item.entry_id).sort();
+    expect(replay).toEqual([await entryId(real.room.room_id, real.room.branch), await entryId(newcomers.room.room_id, newcomers.room.branch)].sort());
   });
   it("answers a retried final turn as known, so the run is posted once", async () => {
     const played = await almostDone();
@@ -444,12 +446,30 @@ describe("the replay job and the person's review", () => {
     // Nothing left to do.
     expect((await runJob()).entries).toEqual([]);
   });
-  it("drops a run whose players are too new or have too few partners", async () => {
+  it("ranks a brand-new pair with no other partners once the replay passes, reading no partners", async () => {
     const host = await create(), guest = await create();
-    // The room they finish together is pushed to both room indexes, so it is the guest's one partner.
-    await season(host); await season(guest, 0);
     const played = await almostDone(host, guest);
     await played.last();
+    const meter = countingEnv(configured(ON));
+    const pending = await call("/operator/leaderboards/pending", "POST", undefined, { schema_version: 1 }, ON, { Authorization: "Bearer " + await deriveJobToken(OPERATOR) }, meter.env);
+    const { entries } = await pending.json<{ entries: { board: string; entry_id: string; ticks: number; proof_hash: string }[] }>();
+    expect(entries).toHaveLength(1);
+    expect(meter.calls.filter(name => name === "PLAYERS.leaderboardStanding")).toHaveLength(2);
+    // The standing never reads the room index while MIN_PARTNERS is 0.
+    for (const account of [host, guest])
+      await runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) => {
+        ctx.storage.sql.exec("DROP TABLE IF EXISTS room_index");
+        expect(playerStanding(ctx.storage, { player_id: account.player_id, state: "active", created_at: new Date().toISOString() })?.partners).toBe(0);
+      });
+    await pass(entries);
+    await operator("review", { schema_version: 1, board: RELAY_BOARD, entry_id: entries[0].entry_id, action: "approve" });
+    expect((await view()).top).toMatchObject([{ rank: 1, entry_id: entries[0].entry_id }]);
+  });
+  it("still drops a run when a player was erased before the check", async () => {
+    const host = await create(), guest = await create();
+    const played = await almostDone(host, guest);
+    await played.last();
+    expect((await call("/v1/identity", "DELETE", guest)).status).toBe(200);
     expect((await runJob()).entries).toEqual([]);
     expect((await view()).checking).toEqual([]);
   });

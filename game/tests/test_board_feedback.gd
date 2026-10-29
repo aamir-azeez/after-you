@@ -156,6 +156,7 @@ func _line_words() -> void:
 		PlayerCopy.BOARD_LINE_NOT_LISTED, PlayerCopy.BOARD_HOME_CHECKING, PlayerCopy.LEADERBOARD_OWN_ASSISTED, PlayerCopy.LEADERBOARD_OWN_NOT_LISTED, PlayerCopy.LEADERBOARD_RULES,
 		PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_TITLE, PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_BODY, PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_ACCEPT]
 	_check(lines.all(func(text: String) -> bool: return not text.is_empty() and not "—" in text and not "–" in text and not " - " in text), "the new words have no dashes")
+	_check(not "week" in PlayerCopy.LEADERBOARD_RULES and not "different" in PlayerCopy.LEADERBOARD_RULES, "the rules name no account age or partner count (relaxed 2026-10-29)")
 
 func _host() -> FakeHost:
 	var host := FakeHost.new()

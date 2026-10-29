@@ -561,7 +561,7 @@ const LEADERBOARD_EMPTY := "No times here yet. Finish this chapter together to s
 const LEADERBOARD_NO_RUN := "Finish this chapter with a friend and your best time shows here."
 const LEADERBOARD_LOADING := "Loading the board"
 const LEADERBOARD_FAILED := "The board did not load. Try again in a moment."
-const LEADERBOARD_RULES := "Runs played together count once you've both had your account for a week and played with two different people. Solo runs and runs with Forgiving catches on don't."
+const LEADERBOARD_RULES := "Runs played together count. Solo runs and runs with Forgiving catches on don't."
 ## Under "Your best" on the board: why it shows no place.
 const LEADERBOARD_OWN_ASSISTED := "Forgiving catches was on for this time, so it can't rank."
 const LEADERBOARD_OWN_NOT_LISTED := "This time didn't make the board."

@@ -41,10 +41,15 @@ export const REVIEW_REASONS: readonly string[] = ["replay_error", "no_verdict", 
 export const FLOOR_RATIO = 0.8;
 /** A new first this much faster than the old first, or more, waits for a person. */
 export const WIDE_MARGIN_RATIO = 0.85;
+/**
+ * The account check's two conditions, relaxed to 0 on 2026-10-29 so a new pair ranks once its replay
+ * passes. The checks stay in place (standing.ts eligible); raise them again if cheating appears
+ * (they were 7 days and 2 partners). An account with no identity, or erased, still never ranks.
+ */
 /** Both accounts at least this old when the run finished. */
-export const MIN_ACCOUNT_AGE_MS = 7 * 86_400_000;
-/** Each player has turns alongside at least this many different partners. */
-export const MIN_PARTNERS = 2;
+export const MIN_ACCOUNT_AGE_MS = 0;
+/** Each player has turns alongside at least this many different partners. At 0 ranking reads no partners (standing.ts). */
+export const MIN_PARTNERS = 0;
 /** Distinct reporters kept per entry. */
 export const MAX_REPORTERS = 32;
 

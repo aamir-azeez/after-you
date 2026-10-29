@@ -12,11 +12,12 @@ import { MIN_ACCOUNT_AGE_MS, MIN_PARTNERS } from "./rules";
  * revision. A room counts once its revision shows both members took a turn
  * (join is 1, the first turn 2, the partner's turn 3; a hard room's slip also
  * moves it, so this is a floor, not an exact count). Rooms the index never saw
- * do not count, so the check fails closed.
+ * do not count, so the check fails closed. While MIN_PARTNERS is 0 the index is
+ * not read at all and partners reads 0.
  */
 export type Standing = { created_ms: number; display_name: string | null; partners: number };
 
-/** Partners counted, at most this many (the rule needs 2). */
+/** Partners counted, at most this many (the rule needed 2 before it was relaxed). */
 const PARTNER_SCAN_LIMIT = 8;
 const TURNS_ALONGSIDE_REVISION = 3;
 
@@ -24,7 +25,7 @@ export function playerStanding(storage: DurableObjectStorage, identity: { player
   if (!identity || identity.state !== "active") return null;
   const created_ms = Date.parse(identity.created_at);
   if (!Number.isFinite(created_ms)) return null;
-  return { created_ms, display_name: shownName(identity.display_name), partners: indexedPartners(storage, identity.player_id, TURNS_ALONGSIDE_REVISION, PARTNER_SCAN_LIMIT) };
+  return { created_ms, display_name: shownName(identity.display_name), partners: MIN_PARTNERS > 0 ? indexedPartners(storage, identity.player_id, TURNS_ALONGSIDE_REVISION, PARTNER_SCAN_LIMIT) : 0 };
 }
 
 /** Whether a player may rank a run that finished at `finishedMs`. Null standing (no identity) never may. */
