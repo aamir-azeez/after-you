@@ -113,15 +113,15 @@ describe("what an item bloom gives", () => {
     expect(resolveItemBloom(roll("epic"), new Set(), empty)).toEqual({ tier: "epic", roll: 7, pollen: 50000 });
   });
   it("never drops an earned-only item, an item not released or a reaction pack", () => {
-    const wide = catalogWith((items, catalog) => {
+    const wide = catalogWith(items => {
       items.unreleased_daisy = { slot: "hat", tier: "common", unlock: "", set: "", released: false };
-      catalog.packs = { happy_faces: { released: true } };
     });
     expect(droppable("common", wide)).toEqual(["daisy", "seashell"]);
     expect(droppable("earned", wide)).toEqual([]);
     const all = RATES.item_blooms.tiers.flatMap(step => droppable(step.tier));
     expect(all.some(id => CATALOG.items[id].tier === "earned")).toBe(false);
-    expect(all).not.toContain("happy_faces");
+    expect(Object.keys(wide.packs).length).toBeGreaterThan(0);
+    for (const pack of Object.keys(wide.packs)) expect(all).not.toContain(pack);
   });
 });
 function catalogWith(change: (items: Record<string, { slot: string; tier: string; unlock: string; set: string; released: boolean }>, catalog: Record<string, unknown>) => void): Catalog {

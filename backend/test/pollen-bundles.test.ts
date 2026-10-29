@@ -13,7 +13,7 @@ import { ledgerLines, walletView } from "../src/pollen/wallet";
 import { RATES } from "../src/pollen/rates";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { POLLEN_BUNDLE_TABLES, POLLEN_PLAYER_TABLES } from "../src/storage-schema";
-import { configJson } from "./config";
+import { configJson, POLLEN_CLIENT } from "./config";
 import { countingEnv } from "./meter";
 
 // Pollen bundles on Google Play: the table and its product ids, what RevenueCat purchases count, and the
@@ -91,7 +91,7 @@ let lists: Record<string, unknown[]> = {}, gate: Promise<void> | null = null, do
 async function call(path: string, method = "GET", account?: Account, body?: unknown, base: Env = env): Promise<Response> {
   const configured = Object.assign({ ...base }, current) as Env;
   return worker.fetch(new Request("https://bundles.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.94." + (++address % 250),
-    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1" },
+    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1", ...POLLEN_CLIENT },
   body: body === undefined ? (method === "POST" ? "{}" : undefined) : JSON.stringify(body) }), configured);
 }
 const claim = (account: Account, base: Env = env) => call("/v1/pollen/bundle-claims", "POST", account, { schema_version: 1 }, base);
