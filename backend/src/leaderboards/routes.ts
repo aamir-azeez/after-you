@@ -5,12 +5,15 @@ import { knownBoard } from "./boards";
 import { syncMemberName } from "./members";
 import { cachedView, storeView } from "./view-cache";
 import { serveReplay } from "./replays";
+import { publicView } from "./view";
+import { looksOn } from "../pollen/features";
 
 /**
  * The phone's leaderboard routes, all absent (falling through to 404) while
  * LEADERBOARDS is off (not in CONFIG):
  * - GET /v1/leaderboards/<board>: the board anyone sees, before auth() so a
- *   cached answer costs no Durable Object request at all;
+ *   cached answer costs no Durable Object request at all. Rows carry the
+ *   pair's looks only while POLLEN_LOOKS is on (run-looks.ts);
  * - GET /v1/leaderboards/<board>/replay/<entry>: a top 10 run's replay
  *   (replays.ts), before auth() for the same reason;
  * - GET and PUT /v1/leaderboards/me: the "Show my name on leaderboards" choice;
@@ -38,10 +41,10 @@ export async function routeLeaderboardRead(request: Request, path: string, env: 
   if (!(await env.PLAYER_LIMITER.limit({ key: "leaderboard:" + await digest(address) })).success) throw new ApiError(429, "rate_limited");
   if (replay) return serveReplay(env, board, replay[2]);
   const cached = await cachedView(board);
-  if (cached) return json(cached);
+  if (cached) return json(publicView(cached, looksOn(env)));
   const view = await env.LEADERBOARD_BOARDS.getByName(board).view(board);
   await storeView(view);
-  return json(view);
+  return json(publicView(view, looksOn(env)));
 }
 
 /** The signed-in routes under /v1/leaderboards/, after auth(); null for any other path. */

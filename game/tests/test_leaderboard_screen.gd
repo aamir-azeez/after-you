@@ -12,11 +12,15 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
 const Celebration = preload("res://presentation/leaderboard_celebration.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
+const Outfit = preload("res://services/outfit.gd")
 const OWNER := "OOOOOOOOOOOOOOOOOOOOOO"
 const ROOM := "AAAAAAAAAAAAAAAAAAAAAA"
 const RUNS_PATH := "user://leaderboard-runs-test.json"
 const CHOICE_PATH := "user://leaderboard-name-test.json"
 const PLACINGS_PATH := "user://leaderboard-placings-test.json"
+const LOOKS_PATH := "user://leaderboard-looks-test.json"
+const PARTNER := "GGGGGGGGGGGGGGGGGGGGGG"
 
 var checks := 0
 var failures := 0
@@ -36,8 +40,11 @@ class FakeApi extends Node:
 		return replies.get(name + " " + path, {"ok": false, "code": "not_found"}).duplicate(true)
 
 func _run() -> void:
-	for path: String in [RUNS_PATH, CHOICE_PATH, PLACINGS_PATH]: _clear(path)
+	for path: String in [RUNS_PATH, CHOICE_PATH, PLACINGS_PATH, LOOKS_PATH]: _clear(path)
 	Runs.use_path(RUNS_PATH)
+	TurnLooks.use_shared(TurnLooks.new(LOOKS_PATH))
+	# The looks here are items the server offers once Pollen is live; this suite wears them as the celebration suite does.
+	Outfit.show_unreleased = true
 	Placings.use_shared(Placings.new(PLACINGS_PATH))
 	_ids_and_times()
 	_own_runs()
@@ -45,7 +52,9 @@ func _run() -> void:
 	await _choice()
 	await _screen()
 	Placings.use_shared(null)
-	for path: String in [RUNS_PATH, CHOICE_PATH, PLACINGS_PATH]: _clear(path)
+	TurnLooks.use_shared(null)
+	Outfit.show_unreleased = false
+	for path: String in [RUNS_PATH, CHOICE_PATH, PLACINGS_PATH, LOOKS_PATH]: _clear(path)
 	print("Leaderboard screen: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -91,6 +100,17 @@ func _views() -> void:
 	var bad_id := good.duplicate(true)
 	bad_id.checking = ["not an id"]
 	_check(Client.valid_view(bad_id, "relay-isles@2").is_empty(), "a checking id must be an id")
+	# Looks on rows (backend leaderboards/run-looks.ts): kept in slot order, cleaned, and never a reason to refuse a board.
+	_check(Client.valid_view(good, "relay-isles@2").top[0].looks == [], "a board from a server before looks reads with no looks")
+	var dressed := good.duplicate(true)
+	dressed.top[0].looks = [{"hat": "straw_hat"}, {"hat": "daisy", "cape": "red", "body": "no_such_item"}]
+	var read := Client.valid_view(dressed, "relay-isles@2")
+	_check(read.top[0].looks == [{"hat": "straw_hat"}, {"hat": "daisy"}], "a row keeps both looks in slot order, without unknown slots or items: %s" % [read.top[0].looks])
+	for odd: Variant in [[{"hat": "daisy"}], "daisy", [1, null], [[], {}]]:
+		var strange := good.duplicate(true)
+		strange.top[0].looks = odd
+		var kept := Client.valid_view(strange, "relay-isles@2")
+		_check(not kept.is_empty() and kept.top[0].looks in [[], [{}, {}]], "odd looks never refuse the board: %s" % [odd])
 
 func _choice() -> void:
 	var api := FakeApi.new()
@@ -121,7 +141,8 @@ func _screen() -> void:
 	var view := {"schema_version": 1, "board": "sleeping-lighthouse@2", "checking": [Runs.entry_id(ROOM, 2)], "top": [
 		{"rank": 1, "entry_id": "a".repeat(32), "ticks": 900, "finished_on": "2026-10-19", "names": ["Ada", "Bo"], "gold_leaf": true},
 		{"rank": 2, "entry_id": mine, "ticks": 1470, "finished_on": "2026-10-20", "names": null, "gold_leaf": false},
-		{"rank": 3, "entry_id": "c".repeat(32), "ticks": 1500, "finished_on": "2026-10-21", "names": null, "gold_leaf": false}]}
+		{"rank": 3, "entry_id": "c".repeat(32), "ticks": 1500, "finished_on": "2026-10-21", "names": null, "gold_leaf": false, "looks": [{"hat": "straw_hat"}, {"hat": "daisy"}]}]}
+	TurnLooks.shared().note_member(PARTNER, {"hat": "seashell"})
 	api.replies["GET /v1/leaderboards/sleeping-lighthouse@2"] = {"ok": true, "data": view}
 	api.replies["GET /v1/leaderboards/me"] = {"ok": true, "data": {"schema_version": 1, "show_name": false}}
 	var screen := Screen.new()
@@ -138,7 +159,13 @@ func _screen() -> void:
 	var third: Node = board.find_child("LeaderboardRow3", true, false)
 	_check(_texts(third).has(PlayerCopy.LEADERBOARD_A_PAIR) and third.find_child("LeaderboardReport", true, false) != null, "a pair without names reads A pair and can be reported")
 	_check(board.find_child("LeaderboardRow2", true, false).find_child("LeaderboardReport", true, false) == null, "a player's own run has no Report")
+	var third_pips := third.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
+	_check(third_pips.size() == 2 and third_pips[0].outfit == {"hat": "straw_hat"} and third_pips[1].outfit == {"hat": "daisy"} and third_pips.all(func(pip: Node) -> bool: return pip.still), "a pair that hides its names still wears its looks, as still pips")
+	var first_pips := first.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
+	_check(first_pips.size() == 2 and first_pips.all(func(pip: Node) -> bool: return pip.outfit.is_empty()), "a row with no looks shows the default pips")
 	var own: Node = screen.find_child("LeaderboardOwnRow", true, false)
+	var own_pips := own.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
+	_check(own_pips.size() == 2 and own_pips[0].own and own_pips[1].outfit == {"hat": "seashell"}, "Your best dresses the partner in the look this phone last heard for them")
 	_check(own != null and _texts(own).has("2") and _texts(own).has(Runs.time_text(1470)), "Your best is pinned with its rank")
 	_check(screen.find_child("LeaderboardChecking", true, false).visible, "the newest run waiting for its check says so")
 	var celebration: Node = screen.find_child(Celebration.NODE_NAME, true, false)

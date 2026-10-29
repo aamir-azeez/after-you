@@ -33,6 +33,7 @@ const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Rows = preload("res://presentation/leaderboard_rows.gd")
 const Celebration = preload("res://presentation/leaderboard_celebration.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
 const BoardStatus = preload("res://services/board_status.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
@@ -381,23 +382,31 @@ func _fade_in(line: Control) -> void:
 func _watcher(row: Dictionary) -> Callable:
 	return (func(): _watch(row)) if row.get("replay_hash") != null else Callable()
 
+## The look services/turn_looks.gd last heard for a run's partner, as the celebration dresses them ({} when unknown).
+static func _partner_look(run: Dictionary) -> Dictionary:
+	var partner := str(run.get("partner", ""))
+	return TurnLooks.shared().member(partner) if not partner.is_empty() else {}
+
 ## "Your best": this player's ranked run, else their fastest run that is not
 ## waiting for its check; and the checking card for their newest run while
 ## its replay is checked.
 func _render_own(mine: Array, top: Array, checking: Array) -> void:
 	var ranked_row: Dictionary = {}
+	var ranked_run: Dictionary = {}
 	for row: Dictionary in top:
-		if mine.any(func(run: Dictionary) -> bool: return run.entry_id == row.entry_id): ranked_row = row; break
+		for run: Dictionary in mine:
+			if run.entry_id == row.entry_id: ranked_row = row; ranked_run = run; break
+		if not ranked_row.is_empty(): break
 	var settled: Array = mine.filter(func(run: Dictionary) -> bool: return not run.entry_id in checking)
 	var eligible: Array = settled.filter(func(run: Dictionary) -> bool: return not run.assisted)
 	if not ranked_row.is_empty():
-		_own.add_child(Rows.own(int(ranked_row.ticks), int(ranked_row.rank), Rows.pair_title(ranked_row), _compact, _watcher(ranked_row)))
+		_own.add_child(Rows.own(int(ranked_row.ticks), int(ranked_row.rank), Rows.pair_title(ranked_row), _compact, _watcher(ranked_row), _partner_look(ranked_run)))
 	elif not eligible.is_empty():
-		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact))
+		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact, Callable(), _partner_look(eligible[0])))
 		# Why it has no place (services/board_status.gd): a run this new may not show in the board's copy yet.
 		if BoardStatus.of_run(eligible[0], true, _view, Time.get_unix_time_from_system(), mine).state == BoardStatus.NOT_LISTED: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_NOT_LISTED))
 	elif not settled.is_empty():
-		_own.add_child(Rows.own(int(settled[0].ticks), 0, "", _compact))
+		_own.add_child(Rows.own(int(settled[0].ticks), 0, "", _compact, Callable(), _partner_look(settled[0])))
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_ASSISTED))
 	elif mine.is_empty():
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_NO_RUN))

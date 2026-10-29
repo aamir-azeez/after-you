@@ -37,6 +37,7 @@ import type { Look } from "../pollen/catalog";
 import { looksCapability, looksShown } from "../pollen/looks-routes";
 import { leaderboardsCapability } from "../leaderboards/routes";
 import { postFinishedRun } from "../leaderboards/submit";
+import { withoutBoardLooks } from "../leaderboards/run-looks";
 
 /** A raw body of at most `max` bytes. */
 async function boundedBytes(request: Request, max: number): Promise<Uint8Array> {
@@ -351,5 +352,5 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   const committed = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
   // A turn that finished a together run that might place goes to its board (leaderboards/submit.ts); the reply is unchanged.
   await postFinishedRun(env, committed, context);
-  return json(await creditCommitted(request, env, playerId, committed));
+  return json(await creditCommitted(request, env, playerId, withoutBoardLooks(committed)));
 }

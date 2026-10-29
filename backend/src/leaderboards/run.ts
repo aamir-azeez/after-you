@@ -5,6 +5,7 @@ import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
 import type { MutationV2 } from "../v2/room";
 import { boardKey } from "./boards";
+import { boardLooksOf, type PairLooks } from "./run-looks";
 
 /** A finished together run as a board receives it. Never sent to a phone: it names both players. */
 export type LeaderboardRun = {
@@ -12,6 +13,8 @@ export type LeaderboardRun = {
   ticks: number; finished_at: string; finished_ms: number; chapter: ChapterKey; simulation_version: number;
   /** The room's final checkpoint. Its proof nests every pair of the finishing branch, so it alone replays the run. */
   checkpoint: CheckpointV2;
+  /** What each member wore when it finished, in `members` order, when the room handed it over while looks are on (run-looks.ts). */
+  looks?: PairLooks;
 };
 
 const ENTRY_DOMAIN = "after-you leaderboard entry v1\n";
@@ -55,7 +58,7 @@ export function runTicks(checkpoint: CheckpointV2, stages: number): { ticks: num
  * receipt must still be the room's latest change: a retry answered with a room
  * that has moved on since says nothing about when this run finished.
  */
-export async function finishedRun(mutation: MutationV2, context: unknown): Promise<LeaderboardRun | null> {
+export async function finishedRun(mutation: MutationV2 & { board_looks?: PairLooks }, context: unknown): Promise<LeaderboardRun | null> {
   const { receipt, room } = mutation;
   if (context !== undefined || receipt.operation !== "turns" || room.active_role !== "complete") return null;
   if (receipt.accepted_revision !== room.revision || receipt.branch !== room.branch) return null;
@@ -66,10 +69,11 @@ export async function finishedRun(mutation: MutationV2, context: unknown): Promi
   const timed = runTicks(room.checkpoint, stages);
   const finished_ms = Date.parse(room.updated_at);
   if (!timed || !Number.isFinite(finished_ms)) return null;
+  const looks = boardLooksOf(mutation.board_looks);
   return {
     schema_version: 1, board: boardKey(room), entry_id: await entryId(room.room_id, room.branch), pair_key: await pairKey(host, guest),
     members: [host, guest], ticks: timed.ticks, finished_at: room.updated_at, finished_ms,
     chapter: { level_id: room.level_id, level_version: room.level_version, definition_hash: room.definition_hash },
-    simulation_version: timed.simulation_version, checkpoint: room.checkpoint
+    simulation_version: timed.simulation_version, checkpoint: room.checkpoint, ...(looks ? { looks } : {})
   };
 }

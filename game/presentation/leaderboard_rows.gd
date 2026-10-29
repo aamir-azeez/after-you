@@ -6,12 +6,12 @@ extends RefCounted
 ## and Report on another pair's run.
 ##
 ## Pips are kit/pip_avatar.gd in still mode: one shared offscreen render per
-## look, never a live view per row. Boards carry no outfits: a board is one
-## public, cached answer for every reader, and looks are seen only by room
-## members. So a pair shows the worlds' two pips by slot, gold and teal, and
-## "Your best" shows this player's own pip (in their own look) beside a teal
-## one. The hook for looks on boards: a row's `looks` (two outfits, in slot
-## order) dresses its pips, once leaderboard_client keeps that field.
+## look (kit/pip_snapshots.gd), never a live view per row. A pair shows the
+## worlds' two pips by slot, gold and teal, each wearing what they wore when
+## the run finished: a row's `looks` (two outfits in slot order, kept by
+## services/leaderboard_client.gd), the default look when a board has none.
+## "Your best" shows this player's own pip in their own look beside their
+## partner's in the look this phone last heard for them.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
@@ -70,8 +70,8 @@ static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool,
 	line.add_child(_report(report))
 	return box
 
-## The pinned "Your best": the place when ranked (0: none), the pair, the time and Watch.
-static func own(ticks: int, rank: int, title: String, compact: bool, watch: Callable = Callable()) -> Control:
+## The pinned "Your best": the place when ranked (0: none), the pair, the time and Watch. `partner_look` dresses the partner's pip.
+static func own(ticks: int, rank: int, title: String, compact: bool, watch: Callable = Callable(), partner_look: Dictionary = {}) -> Control:
 	var box := _row(ROW_FILL, UiTokens.SOFT, 50.0)
 	box.name = "LeaderboardOwnRow"
 	var line: HBoxContainer = box.get_child(0)
@@ -82,7 +82,7 @@ static func own(ticks: int, rank: int, title: String, compact: bool, watch: Call
 	rule.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(rule)
 	_place(line, rank, false, compact, OWN_PLACE)
-	_pips(line, true, compact)
+	_pips(line, true, compact, [{}, partner_look])
 	_name(line, title, compact)
 	_time(line, ticks, compact)
 	line.add_child(_watch(watch, compact))
@@ -139,7 +139,7 @@ static func _place(line: HBoxContainer, rank: int, gold_leaf: bool, compact: boo
 	cell.add_child(_label(str(rank) if rank > 0 else "", 22 if compact else 24, UiTokens.CREAM, true))
 	line.add_child(cell)
 
-## `looks`: the pair's outfits in slot order, when a board carries them (none does yet).
+## `looks`: the pair's outfits in slot order ([] for none). With `own_first` the first pip is this player's own, in their own look.
 static func _pips(line: HBoxContainer, own_first: bool, compact: bool, looks: Variant = []) -> void:
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", 4)

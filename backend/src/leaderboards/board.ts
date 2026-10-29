@@ -6,6 +6,8 @@ import type { ChapterKey } from "../v2/chapter-types";
 import { BoardRewardLedger, REWARD_LEDGER_SCHEMA, openRewardSync, type RewardDelivery, type RewardGrant, type RewardSink } from "./rewards";
 import { KEPT_RANKED, MAX_CHECKED, MAX_REPLAY_BYTES, MAX_REPORTERS, MAX_REVIEW, MAX_UNCHECKED, REVIEW_REASONS, TOP_PLACES, compareRuns, holdsFor, strictlyFirst } from "./rules";
 import type { LeaderboardRun } from "./run";
+import { keptLook, servedLook, type PairLooks } from "./run-looks";
+import type { Look } from "../pollen/catalog";
 import { emptyView, type BoardRow, type BoardView } from "./view";
 
 /**
@@ -27,8 +29,11 @@ import { emptyView, type BoardRow, type BoardView } from "./view";
  * when the entry has moved on.
  */
 export type SubmitStatus = "checking" | "known" | "not_placed" | "busy" | "crowded" | "ineligible";
-/** `rev`: the member's settings revision (member.ts) the name choice came from; an older one never overwrites it. */
-export type Member = { id: string | null; show: boolean; name: string | null; rev?: number };
+/**
+ * `rev`: the member's settings revision (member.ts) the name choice came from; an older one never overwrites it.
+ * `look`: what the member wore when the run finished (run-looks.ts), kept only when not the default.
+ */
+export type Member = { id: string | null; show: boolean; name: string | null; rev?: number; look?: Look };
 export type MemberChoice = { show: boolean; name: string | null; rev: number };
 type EntryData = {
   finished_at: string; chapter: ChapterKey; simulation_version: number; members: [Member, Member];
@@ -103,7 +108,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
         }
       }
       for (const older of mine) if (older.state !== "ranked") this.drop(older.entry_id, "superseded");
-      const members: [Member, Member] = [{ id: run.members[0], show: false, name: null }, { id: run.members[1], show: false, name: null }];
+      const members: [Member, Member] = [withLook({ id: run.members[0], show: false, name: null }, run.looks?.[0]), withLook({ id: run.members[1], show: false, name: null }, run.looks?.[1])];
       if (checked) members.forEach((member, index) => choose(member, checked.members[index]));
       const data: EntryData = { finished_at: run.finished_at, chapter: run.chapter, simulation_version: run.simulation_version, members,
         eligible: checked ? true : null, holds: [], reports: [], gold: false, submitted_at: Date.now() };
@@ -119,7 +124,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
     const ranked = this.ranked().slice(0, TOP_PLACES), replays = this.replayHashes(ranked.map(entry => entry.entry_id));
     const top: BoardRow[] = ranked.map((entry, index) => ({
       rank: index + 1, entry_id: entry.entry_id, ticks: entry.ticks, finished_on: entry.data.finished_at.slice(0, 10),
-      names: shownNames(entry.data.members), gold_leaf: index === 0 && entry.data.gold, replay_hash: replays.get(entry.entry_id) ?? null }));
+      names: shownNames(entry.data.members), gold_leaf: index === 0 && entry.data.gold, replay_hash: replays.get(entry.entry_id) ?? null, looks: shownLooks(entry.data.members) }));
     const checking = this.entries().filter(entry => entry.state !== "ranked").map(entry => entry.entry_id).sort();
     return { schema_version: 1, board, top, checking };
   }
@@ -274,7 +279,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
     return { changed, view: this.view(board) };
   }
 
-  /** Account erasure: the player's waiting runs go, their ranked runs keep only the pair's time ("A pair") with no replay, and their rewards here go. */
+  /** Account erasure: the player's waiting runs go, their ranked runs keep only the pair's time ("A pair") with no replay and without the player's look (the partner keeps theirs), and their rewards here go. */
   forget(board: string, player: string): { changed: number; view: BoardView } {
     const changed = this.ctx.storage.transactionSync(() => {
       let count = 0;
@@ -282,7 +287,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
         if (!entry.data.members.some(member => member.id === player)) continue;
         count++;
         if (entry.state !== "ranked") { this.drop(entry.entry_id, "forgotten"); continue; }
-        for (const member of entry.data.members) if (member.id === player) { member.id = null; member.show = false; member.name = null; }
+        for (const member of entry.data.members) if (member.id === player) { member.id = null; member.show = false; member.name = null; delete member.look; }
         this.save(entry);
         this.ctx.storage.sql.exec("DELETE FROM lb_replays WHERE entry_id=?", entry.entry_id);
         // The pair key was a hash of both ids; a random one keeps the row without them.
@@ -411,6 +416,15 @@ function choose(member: Member, choice: MemberChoice): boolean {
 function shownNames(members: [Member, Member]): string[] | null {
   const [a, b] = members;
   return a.show && b.show && a.name && b.name ? [a.name, b.name] : null;
+}
+/** A new member with the look they finished in, when it is one the board keeps. */
+function withLook(member: Member, look: unknown): Member {
+  const kept = keptLook(look);
+  return kept ? { ...member, look: kept } : member;
+}
+/** Both looks in slot order, the default for a member with none; also on a hidden-name row. */
+function shownLooks(members: [Member, Member]): PairLooks {
+  return [servedLook(members[0].look), servedLook(members[1].look)];
 }
 function noteOf(entry: Entry): RankedNote {
   return { entry_id: entry.entry_id, members: entry.data.members.filter(member => member.id !== null).map(member => member.id!) };

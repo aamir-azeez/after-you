@@ -19,6 +19,7 @@ const AtomicFile = preload("res://services/atomic_file.gd")
 const LeaderboardReplay = preload("res://services/leaderboard_replay.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
+const Outfit = preload("res://services/outfit.gd")
 const PREFIX := "/v1/leaderboards/"
 const ME := "/v1/leaderboards/me"
 const VIEW_KEEP_MS := 60_000
@@ -116,12 +117,20 @@ static func valid_view(value: Variant, key: String) -> Dictionary:
 		# A server before replays sends no replay_hash: the row has no Watch.
 		var replay_hash: Variant = row.get("replay_hash")
 		if replay_hash != null and not _hash(replay_hash): return {}
-		top.append({"rank": int(row.rank), "entry_id": row.entry_id, "ticks": int(row.ticks), "names": names, "gold_leaf": row.gold_leaf, "finished_on": str(row.get("finished_on", "")), "replay_hash": replay_hash})
+		top.append({"rank": int(row.rank), "entry_id": row.entry_id, "ticks": int(row.ticks), "names": names, "gold_leaf": row.gold_leaf, "finished_on": str(row.get("finished_on", "")), "replay_hash": replay_hash, "looks": row_looks(row.get("looks"))})
 	var checking: Array = []
 	for id: Variant in value.checking:
 		if not _entry(id): return {}
 		checking.append(id)
 	return {"board": key, "top": top, "checking": checking}
+
+## A row's two looks in slot order (backend leaderboards/run-looks.ts), each
+## cleaned by services/outfit.gd, or [] when the row has none (a server before
+## looks, or looks off) or something else. Looks only dress pips, so a bad one
+## never refuses the board.
+static func row_looks(value: Variant) -> Array:
+	if not value is Array or value.size() != 2: return []
+	return [Outfit.from(value[0]), Outfit.from(value[1])]
 
 static func _entry(value: Variant) -> bool:
 	return value is String and value.length() == 32 and value.is_valid_hex_number()

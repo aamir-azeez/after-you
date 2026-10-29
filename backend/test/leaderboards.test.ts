@@ -16,6 +16,7 @@ import { forgetReplays } from "../src/leaderboards/replays";
 import { bytesDigest, decodeBlob, ENCODING_DEFLATE } from "../src/blob-codec";
 import { emptyView, type BoardView } from "../src/leaderboards/view";
 import { countingEnv, meterAllRows, meterRows } from "./meter";
+import { noteFullJourney } from "../src/pollen/wallet";
 import { withConfig } from "./config";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
@@ -715,5 +716,124 @@ describe("finishedRun", () => {
     expect(await finishedRun(answer, { schema_version: 2 })).toBeNull();
     expect(await finishedRun({ ...answer, room: { ...answer.room, revision: answer.room.revision + 1 } }, undefined)).toBeNull();
     expect(await finishedRun({ ...answer, room: { ...answer.room, guest_id: null } }, undefined)).toBeNull();
+  });
+});
+
+describe("looks on rows (art 01)", () => {
+  const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
+  const LOOKS: Vars = { ...ON, features: ["LEADERBOARDS", "POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_LOOKS"], POLLEN_SECRET: SECRET };
+  const NO_LOOKS: Vars = { ...LOOKS, features: ["LEADERBOARDS", "POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"] };
+  const HAT = { hat: "straw_hat" }, DAISY = { hat: "daisy" };
+  const ROW_KEYS = ["entry_id", "finished_on", "gold_leaf", "names", "rank", "replay_hash", "ticks"];
+  const shared = env as unknown as Record<string, unknown>;
+  beforeEach(() => { shared.POLLEN_SECRET = SECRET; });
+  afterEach(() => { delete shared.POLLEN_SECRET; });
+
+  /** Buys and wears `look` through the shop, as the phone would (pollen-looks.test.ts). */
+  async function wear(account: Account, look: Record<string, string>): Promise<void> {
+    const prices: Record<string, number> = { daisy: 1000, straw_hat: 5000 };
+    await runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, state) => {
+      noteFullJourney(state.storage, Date.now() + DAY, Date.now());
+      state.storage.sql.exec("UPDATE pollen_wallet SET data=json_set(data,'$.balance',100000,'$.earned',100000) WHERE id=1");
+    });
+    for (const id of Object.values(look)) expect((await call("/v1/pollen/spend", "POST", account, { schema_version: 1, idempotency_key: crypto.randomUUID(), kind: "item", id, expected_cost: prices[id] }, LOOKS)).status).toBe(200);
+    expect((await call("/v1/pollen/equip", "POST", account, { schema_version: 1, idempotency_key: crypto.randomUUID(), revision: Date.now(), look }, LOOKS)).status).toBe(200);
+  }
+  /** A seasoned pair in a straw hat (host) and a daisy (guest), their run played to its final turn with `vars`. */
+  async function dressedPair(vars: Vars = LOOKS) {
+    bests.live[RELAY_BOARD] = null;
+    const host = await create(), guest = await create();
+    await season(host); await season(guest);
+    await wear(host, HAT); await wear(guest, DAISY);
+    return { host, guest, played: await almostDone(host, guest, vars) };
+  }
+  async function rankAll(): Promise<void> {
+    const { entries } = await runJob();
+    await pass(entries);
+    for (const entry of entries) await operator("review", { schema_version: 1, board: RELAY_BOARD, entry_id: entry.entry_id, action: "approve" });
+  }
+  const storedMembers = () => runInDurableObject(board(), async (_, ctx) =>
+    ctx.storage.sql.exec<{ data: string }>("SELECT data FROM lb_entries").toArray().map(row => (JSON.parse(row.data) as { members: { look?: unknown }[] }).members));
+
+  it("stores both looks with the run at submit, on the request it already makes, and keeps them out of the reply", async () => {
+    const { played } = await dressedPair();
+    const meter = countingEnv(configured(LOOKS));
+    const { value: answer, rows } = await meterRows({ board: board() }, () => played.last(LOOKS, meter.env));
+    expect(answer.status).toBe(200);
+    expect(await answer.text()).not.toContain("board_looks");
+    expect(meter.calls.filter(name => name.startsWith("LEADERBOARD"))).toEqual(["LEADERBOARD_BOARDS.submit"]);
+    // Host first, as `members` and `names`.
+    const [members] = await storedMembers();
+    expect(members.map(member => member.look)).toEqual([HAT, DAISY]);
+    // The same run with looks off writes the same board rows: the looks ride in the entry row it already writes.
+    await reset(); await forgetViews(boardKeys()); shared.POLLEN_SECRET = SECRET;
+    const plain = await dressedPair(NO_LOOKS);
+    const { rows: plainRows } = await meterRows({ board: board() }, () => plain.played.last(NO_LOOKS));
+    expect(rows.board.written).toBe(plainRows.board.written);
+    expect((await storedMembers())[0].map(member => member.look)).toEqual([undefined, undefined]);
+    console.log(`final turn with looks: ${meter.calls.length} DO requests (${meter.calls.join(", ")}); board rows written ${rows.board.written} with looks, ${plainRows.board.written} without`);
+  });
+
+  it("serves a ranked row with both looks, also for a pair that hides its names, from the cached read", async () => {
+    const { played } = await dressedPair();
+    await played.last(LOOKS);
+    await rankAll();
+    await forgetViews(boardKeys());
+    const cold = countingEnv(configured(LOOKS));
+    const shown = await (await call(`/v1/leaderboards/${RELAY_BOARD}`, "GET", undefined, undefined, LOOKS, {}, cold.env)).json<BoardView>();
+    expect(cold.calls).toEqual(["LEADERBOARD_BOARDS.view"]);
+    expect(shown.top).toHaveLength(1);
+    expect(shown.top[0]).toMatchObject({ rank: 1, names: null, looks: [HAT, DAISY] });
+    // An older phone reads the same fields plus one it ignores.
+    expect(Object.keys(shown.top[0]).sort()).toEqual([...ROW_KEYS, "looks"].sort());
+    const warm = countingEnv(configured(LOOKS));
+    expect((await (await call(`/v1/leaderboards/${RELAY_BOARD}`, "GET", undefined, undefined, LOOKS, {}, warm.env)).json<BoardView>()).top[0].looks).toEqual([HAT, DAISY]);
+    expect(warm.calls).toEqual([]);
+    // While looks are off the same cached board reads as it did before looks.
+    expect(Object.keys((await view(RELAY_BOARD, ON)).top[0]).sort()).toEqual(ROW_KEYS);
+    console.log(`board read with looks: cold ${cold.calls.length} DO request, cached ${warm.calls.length}; row ${JSON.stringify(shown.top[0]).length} bytes`);
+  });
+
+  it("shows the looks beside shown names too", async () => {
+    const { host, guest, played } = await dressedPair();
+    for (const [account, name] of [[host, "Ada"], [guest, "Bo"]] as [Account, string][]) {
+      expect((await call("/v1/profile/name", "PUT", account, { schema_version: 1, display_name: name, revision: 1 }, LOOKS)).status).toBe(200);
+      expect((await call("/v1/leaderboards/me", "PUT", account, { schema_version: 1, show_name: true }, LOOKS)).status).toBe(200);
+    }
+    await played.last(LOOKS);
+    await rankAll();
+    expect((await view(RELAY_BOARD, LOOKS)).top[0]).toMatchObject({ names: ["Ada", "Bo"], looks: [HAT, DAISY] });
+  });
+
+  it("takes the erased player's look off the board and its storage; the partner keeps theirs", async () => {
+    const { host, played } = await dressedPair();
+    await played.last(LOOKS);
+    await rankAll();
+    expect((await call("/v1/identity", "DELETE", host, undefined, LOOKS)).status).toBe(200);
+    expect((await view(RELAY_BOARD, LOOKS)).top[0]).toMatchObject({ names: null, replay_hash: null, looks: [{}, DAISY] });
+    const [members] = await storedMembers();
+    expect(members.map(member => member.look)).toEqual([undefined, DAISY]);
+    expect(JSON.stringify(members)).not.toContain("straw_hat");
+  });
+
+  it("stores no looks for a run finished while looks are off, and serves the default for it", async () => {
+    const { played } = await dressedPair(NO_LOOKS);
+    await played.last(NO_LOOKS);
+    await rankAll();
+    expect((await view(RELAY_BOARD, LOOKS)).top[0].looks).toEqual([{}, {}]);
+  });
+
+  it("serves a stored look the catalogue no longer has as the default, and takes only a whole pair from the room", async () => {
+    const entry = { ...await run(100, 1000), looks: [HAT, DAISY] };
+    await rankDirect(entry);
+    // A look kept before its item left the catalogue.
+    await runInDurableObject(board(), async (_, ctx) => {
+      ctx.storage.sql.exec("UPDATE lb_entries SET data=json_set(data,'$.members[0].look',json(?)) WHERE entry_id=?", JSON.stringify({ hat: "retired_hat" }), entry.entry_id);
+    });
+    expect((await board().view(RELAY_BOARD)).top[0].looks).toEqual([{}, DAISY]);
+    const played = await almostDone();
+    const answer = await (await played.last()).json<MutationV2>();
+    expect((await finishedRun({ ...answer, board_looks: [DAISY] }, undefined))?.looks).toBeUndefined();
+    expect((await finishedRun({ ...answer, board_looks: [HAT, DAISY] }, undefined))?.looks).toEqual([HAT, DAISY]);
   });
 });

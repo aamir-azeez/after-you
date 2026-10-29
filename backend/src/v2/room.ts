@@ -47,6 +47,7 @@ import { clearMemberNames, eraseMemberName, memberName, recordMemberName } from 
 import { clearPollenRoom, completionFacts, recordMember, recordTurnFacts, turnFacts, type PollenMember, type TurnFacts } from "../pollen/turn-facts";
 import { clearLooks, eraseMemberLook, eraseTurnLooksOf, memberLook, recordMemberLook, recordTurnLook, turnLooks } from "../pollen/room-looks";
 import type { Look } from "../pollen/catalog";
+import { pairLooks, type PairLooks } from "../leaderboards/run-looks";
 import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
 
 export type RoomStateV2 = {
@@ -81,8 +82,11 @@ export type ReceiptV2 = {
 /** `end_reactions` only for a standalone member that asked for them (end-reactions.ts). */
 /** `partner_name` likewise for display names (display-names.ts), and `run_reactions` for run reactions (run-reactions.ts). */
 export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 } & BesideFields;
-/** A standalone turn committed with a PollenMember also returns its frozen facts; the Worker takes them out before replying (pollen/routes.ts). */
-export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts };
+/**
+ * A standalone turn committed with a PollenMember also returns its frozen facts; the Worker takes them out before replying (pollen/routes.ts).
+ * A standalone turn that finishes the room while looks are on returns both members' looks for its leaderboard post (leaderboards/run-looks.ts), also taken out.
+ */
+export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?: PairLooks };
 /**
  * What a standalone member's read or turn reply carries beside the room, each
  * only when the member asked for it (names and looks also while their flags are on): the room's end reactions
@@ -668,8 +672,10 @@ export class RoomV2 extends DurableObject<Env> {
     const outcome = await this.commitTurn(player, value, context, name, pollen, look);
     if (!outcome.ok || context !== undefined) return outcome;
     const facts = pollen !== undefined && outcome.value.receipt.recording_hash ? turnFacts(this.ctx.storage, outcome.value.receipt.recording_hash) : null;
-    const extra = facts?.player_id === player ? { pollen_facts: facts } : {};
-    if (!(beside.faces || beside.names || beside.tracks || beside.looks)) return facts ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
+    const finished = outcome.value.room;
+    const extra = { ...(facts?.player_id === player ? { pollen_facts: facts } : {}),
+      ...(look !== undefined && finished.active_role === "complete" ? { board_looks: pairLooks(this.ctx.storage, finished.host_id, finished.guest_id) } : {}) };
+    if (!(beside.faces || beside.names || beside.tracks || beside.looks)) return Object.keys(extra).length ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
     const state = this.stored();
     return state ? ok<CommittedV2>({ ...outcome.value, ...this.beside(state, player, beside), ...extra }) : outcome;
   }

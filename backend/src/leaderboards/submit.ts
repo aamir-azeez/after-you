@@ -4,6 +4,7 @@ import type { MutationV2 } from "../v2/room";
 import { checkRun } from "./eligibility";
 import { TOP_PLACES } from "./rules";
 import { finishedRun } from "./run";
+import type { PairLooks } from "./run-looks";
 import { cachedView, storeView } from "./view-cache";
 import { mightPlace } from "./view";
 
@@ -20,8 +21,12 @@ import { mightPlace } from "./view";
  * account check itself (4 more requests: Player and Member for each player)
  * and posts again as checked, so a flood of posts from new accounts never
  * keeps out players who qualify.
+ *
+ * `board_looks`: the pair's looks the room handed over with the finishing
+ * commit (run-looks.ts), stored with the run in the same request. The caller
+ * takes the field out of the phone's reply (withoutBoardLooks).
  */
-export async function postFinishedRun(env: Env, mutation: MutationV2, context: unknown): Promise<void> {
+export async function postFinishedRun(env: Env, mutation: MutationV2 & { board_looks?: PairLooks }, context: unknown): Promise<void> {
   if (!flags.leaderboards(env)) return;
   try {
     const run = await finishedRun(mutation, context);
