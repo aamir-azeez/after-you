@@ -400,11 +400,8 @@ func _server_shop_off() -> void:
 
 ## Whether the balance chip's + shows.
 static func _plus_shown(page: Node) -> bool:
-	var chip: Node = page.find_child("WardrobeBalance", true, false)
-	if chip == null: return false
-	for node: Node in chip.find_children("*", "Button", true, false):
-		if (node as Button).is_visible_in_tree(): return true
-	return false
+	var plus: Node = page.find_child("PollenChipPlus", true, false)
+	return plus != null and (plus as Control).is_visible_in_tree()
 
 static func _build(sells: bool) -> String:
 	return "Selling" if sells else "Selling nothing"

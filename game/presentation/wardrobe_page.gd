@@ -57,7 +57,6 @@ const SHELF_CARD_SIZE := Vector2(150, 150)
 const CARD_PIP := Vector2(56, 70)
 const SHELF_PIP := Vector2(50, 62)
 const BIG_PIP := Vector2(230, 270)
-const BALANCE_FONT := 24
 
 signal back_pressed
 signal tab_chosen(tab: String)
@@ -71,7 +70,10 @@ signal plus_pressed
 var back_button: Button
 var action_button: Button
 var preview: Control
-var chip: PollenChip
+## The balance chip (kit/pollen_chip.gd), made again only when what it shows changes.
+var chip: Button
+var _chip_box: HBoxContainer
+var _chip_shown := []
 var _status: Label
 var _retry: Button
 var _name: Label
@@ -136,10 +138,10 @@ func _header() -> Control:
 	titles.add_child(ShopKit.text(PlayerCopy.WARDROBE_TITLE, 40, CREAM, ShopKit.heading_font()))
 	titles.add_child(ShopKit.text(PlayerCopy.WARDROBE_NOTE, 16, MUTED))
 	header.add_child(titles)
-	chip = PollenChip.new(BALANCE_FONT)
-	chip.name = "WardrobeBalance"
-	chip.plus_pressed.connect(func() -> void: plus_pressed.emit())
-	header.add_child(chip)
+	_chip_box = HBoxContainer.new()
+	_chip_box.name = "WardrobeBalance"
+	_chip_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header.add_child(_chip_box)
 	return header
 
 func _pip_panel() -> Control:
@@ -293,9 +295,7 @@ func _shelf_panel() -> Control:
 ## Redraws the page from the flow's model.
 func render(model: Dictionary) -> void:
 	_model = model.duplicate(true)
-	var balance := int(model.get("balance", -1))
-	chip.set_balance(balance, bool(model.get("balance_known", balance >= 0)))
-	chip.set_plus(bool(model.get("bundles", false)))
+	_show_chip(int(model.get("balance", -1)), bool(model.get("balance_known", int(model.get("balance", -1)) >= 0)), bool(model.get("bundles", false)))
 	var status := str(model.get("status", ""))
 	_status.text = status
 	_status.visible = not status.is_empty()
@@ -326,6 +326,20 @@ func render(model: Dictionary) -> void:
 		_status.visible = true
 	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop)
 	if preview.has_method("wear"): preview.wear(model.get("preview", {}))
+
+## The chip for `balance`, with its plus while bundles sell; none until the server has said.
+func _show_chip(balance: int, known: bool, plus: bool) -> void:
+	var wanted := [balance, known, plus]
+	if wanted == _chip_shown: return
+	_chip_shown = wanted
+	if is_instance_valid(chip):
+		_chip_box.remove_child(chip)
+		chip.queue_free()
+	chip = null
+	if not known: return
+	chip = PollenChip.make(balance, plus)
+	chip.pressed.connect(func() -> void: if plus: plus_pressed.emit())
+	_chip_box.add_child(chip)
 
 func _show_selected(entry: Dictionary, shop: bool) -> void:
 	action_button.visible = not entry.is_empty()

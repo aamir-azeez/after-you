@@ -39,7 +39,9 @@ signal earn_pressed
 signal retry_pressed
 
 var back_button: Button
-var chip: Control
+var chip: Button
+var _chip_box: HBoxContainer
+var _chip_shown := []
 var _gift: PanelContainer
 var _gift_label: RichTextLabel
 var _cards: HBoxContainer
@@ -104,9 +106,15 @@ func _header() -> Control:
 	titles.add_child(ShopKit.text(PlayerCopy.POLLEN_STORE_TITLE, 40, CREAM, ShopKit.heading_font()))
 	titles.add_child(ShopKit.text(PlayerCopy.POLLEN_STORE_NOTE, 16, MUTED))
 	header.add_child(titles)
-	chip = PollenChip.new(24, PlayerCopy.POLLEN_STORE_YOU_HAVE)
-	chip.name = "PollenStoreBalance"
-	header.add_child(chip)
+	_chip_box = HBoxContainer.new()
+	_chip_box.name = "PollenStoreBalance"
+	_chip_box.add_theme_constant_override("separation", 10)
+	_chip_box.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var have := ShopKit.text(PlayerCopy.POLLEN_STORE_YOU_HAVE, 15, MUTED)
+	have.name = "PollenStoreYouHave"
+	have.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	_chip_box.add_child(have)
+	header.add_child(_chip_box)
 	return header
 
 func _gift_line() -> PanelContainer:
@@ -164,7 +172,16 @@ func _footer() -> Control:
 ## Redraws the page from the flow's model.
 func render(model: Dictionary) -> void:
 	var balance := int(model.get("balance", -1))
-	chip.set_balance(balance, bool(model.get("balance_known", balance >= 0)))
+	var known := bool(model.get("balance_known", balance >= 0))
+	_chip_box.visible = known
+	if [balance, known] != _chip_shown:
+		_chip_shown = [balance, known]
+		if is_instance_valid(chip):
+			_chip_box.remove_child(chip)
+			chip.queue_free()
+		# The store is where the plus leads, so its own chip has none.
+		chip = PollenChip.make(balance, false)
+		_chip_box.add_child(chip)
 	var percent := int(model.get("gift_percent", 0))
 	_gift.visible = percent > 0
 	if percent > 0: _gift_label.text = "[b]%s[/b]%s" % [PlayerCopy.POLLEN_STORE_FIRST % percent, PlayerCopy.POLLEN_STORE_FIRST_MORE]
