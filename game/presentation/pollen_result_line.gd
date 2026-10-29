@@ -19,6 +19,7 @@ const Outfit = preload("res://services/outfit.gd")
 const OwnLook = preload("res://services/own_look.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 
 const FONT_SIZE := 18
 ## The still pip beside an item bloom.
@@ -80,8 +81,11 @@ static func build(scope: Dictionary, room_id: String, recording_hash: String, pa
 	if not surfaces.earning_visible() or scope.is_empty(): return null
 	var wallet: RefCounted = store if store != null else PollenWallet.shared()
 	if not wallet.enabled(str(scope.server), str(scope.owner)): return null
-	var text := lines(wallet.result_for(str(scope.server), str(scope.owner), room_id, recording_hash), partner, surfaces.full_journey_visible())
+	var receipt: Dictionary = wallet.result_for(str(scope.server), str(scope.owner), room_id, recording_hash)
+	var text := lines(receipt, partner, surfaces.full_journey_visible())
 	if text.is_empty(): return null
+	# The earned amount, when there is one, is the first line, with the Pollen mark (kit/pollen_mark.gd) before it.
+	var marked := int(receipt.get("earned", 0)) > 0
 	var box := VBoxContainer.new()
 	box.name = "PollenResultLine"
 	box.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -90,6 +94,9 @@ static func build(scope: Dictionary, room_id: String, recording_hash: String, pa
 		var row := HBoxContainer.new()
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if marked:
+			row.add_child(PollenMark.make(PollenMark.LINE))
+			marked = false
 		if line.begins_with("*"):
 			row.add_child(Flower.new())
 			line = line.substr(1)

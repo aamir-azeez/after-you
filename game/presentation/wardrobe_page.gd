@@ -18,6 +18,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const Outfit = preload("res://services/outfit.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
@@ -42,6 +43,7 @@ var back_button: Button
 var action_button: Button
 var preview: Control
 var _balance: Label
+var _balance_mark: Control
 var _status: Label
 var _retry: Button
 var _name: Label
@@ -94,6 +96,10 @@ func _header() -> Control:
 	titles.add_child(_text(PlayerCopy.WARDROBE_TITLE, 34, CREAM))
 	titles.add_child(_text(PlayerCopy.WARDROBE_NOTE, 16, MUTED))
 	header.add_child(titles)
+	# The Pollen mark (kit/pollen_mark.gd) sits before the balance while there is one.
+	_balance_mark = PollenMark.make(PollenMark.LINE)
+	_balance_mark.visible = false
+	header.add_child(_balance_mark)
 	_balance = _text("", 22, CREAM)
 	_balance.name = "WardrobeBalance"
 	_balance.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -191,6 +197,7 @@ func render(model: Dictionary) -> void:
 	_model = model.duplicate(true)
 	var balance := int(model.get("balance", -1))
 	_balance.text = PlayerCopy.WARDROBE_BALANCE % PollenMoney.grouped(balance) if balance >= 0 else ""
+	_balance_mark.visible = balance >= 0
 	var status := str(model.get("status", ""))
 	_status.text = status
 	_status.visible = not status.is_empty()
