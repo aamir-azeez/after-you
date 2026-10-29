@@ -122,6 +122,7 @@ func _run() -> void:
 		for cycle in range(4):
 			var before := toggle.button_pressed
 			await _click(app,toggle)
+			if key == "assistance" and not before: await _accept_confirm(app,toggle)
 			_check(toggle.button_pressed!=before,"Repeated click changes the setting: "+key)
 			_check(toggle.get_draw_mode()==(BaseButton.DRAW_HOVER_PRESSED if toggle.button_pressed else BaseButton.DRAW_HOVER),"Pointer remains over the checked/unchecked switch")
 			for state: String in ["normal","hover","pressed","hover_pressed"]:
@@ -131,6 +132,7 @@ func _run() -> void:
 			loaded.load_data()
 			_check(loaded.data.settings[key]==toggle.button_pressed,"Changed setting survives a fresh file read: "+key)
 			_check(app.saves.data.settings[key]==toggle.button_pressed,"Runtime setting matches the visible switch")
+	await _assistance_asks_first(app)
 	app._show_home()
 	for key: String in SAVED_SWITCHES:
 		app.settings_flow.show_settings(_category_of(key,app))
@@ -161,6 +163,52 @@ func _run() -> void:
 	quit(1 if failures>0 else 0)
 
 ## A save that fails puts the switch back and says so.
+## Turning Forgiving catches on asks first (settings_rows.gd confirm_on): the
+## switch stays off behind the question and nothing is saved until Turn on.
+func _accept_confirm(app: Node, toggle: CheckButton) -> void:
+	await _settle()
+	var modal := app.ui.find_child("ConfirmOn_assistance",true,false) as Control
+	_check(modal != null and not toggle.button_pressed and app.saves.data.settings.assistance == false,"Turning Forgiving catches on asks first and leaves it off meanwhile")
+	if modal == null: return
+	_check(_texts(modal).has(PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_TITLE) and _texts(modal).has(PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_BODY),"The question says leaderboard times won't count")
+	var accept := modal.find_child("ModalConfirm",true,false) as Button
+	_check(accept != null and accept.text == PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_ACCEPT,"Its button says Turn on")
+	await _click(app,accept)
+	# The pointer goes back over the switch, where the loop checks its look.
+	var motion := InputEventMouseMotion.new()
+	motion.position=toggle.get_global_rect().get_center()
+	app.get_viewport().push_input(motion,true)
+	await _settle()
+
+func _assistance_asks_first(app: Node) -> void:
+	await _open(app,_category_of("assistance",app))
+	var toggle := _control(app,"assistance") as CheckButton
+	if toggle.button_pressed: await _click(app,toggle)
+	_check(not toggle.button_pressed and app.saves.data.settings.assistance == false,"Turning Forgiving catches off asks nothing")
+	await _reveal(toggle)
+	await _click(app,toggle)
+	await _settle()
+	var modal := app.ui.find_child("ConfirmOn_assistance",true,false) as Control
+	_check(modal != null,"The question shows")
+	if modal == null: return
+	await _click(app,modal.find_child("ModalCancel",true,false) as Control)
+	await _settle()
+	_check(not toggle.button_pressed and app.saves.data.settings.assistance == false and app.ui.find_child("ConfirmOn_assistance",true,false) == null,"Cancel leaves it off and saves nothing")
+	await _click(app,toggle)
+	await _settle()
+	modal = app.ui.find_child("ConfirmOn_assistance",true,false) as Control
+	if modal != null: modal.go_back()
+	await _settle()
+	_check(not toggle.button_pressed and app.saves.data.settings.assistance == false,"Back leaves it off too")
+	var loaded := Storage.new(app.saves.path)
+	loaded.load_data()
+	_check(loaded.data.settings.assistance == false,"Nothing was written while it asked")
+
+func _texts(node: Node) -> Array:
+	var result: Array = []
+	for label: Node in node.find_children("*","Label",true,false): result.append((label as Label).text)
+	return result
+
 func _failed_save(app: Node) -> void:
 	app.settings_flow.show_settings(Flow.EVERYDAY)
 	await _settle()

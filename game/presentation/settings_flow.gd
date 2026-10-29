@@ -75,6 +75,8 @@ var _title: Label
 var _head: HBoxContainer
 ## The title row's reset, for a category that has one.
 var _reset: Button
+## A confirm_on question while it is up.
+var _confirm_modal: Control
 var _list: VBoxContainer
 var _scroll: ScrollContainer
 var _fade: Control
@@ -454,18 +456,37 @@ func _value(row: Dictionary) -> Variant:
 	return host.saves.data.settings.get(row.key, LocalSave.defaults().settings.get(row.key))
 
 ## Saves a row's new value (the shared path for every row), or puts it back.
+## A row with confirm_on asks first before it turns on.
 func _change(row: Dictionary, value: Variant) -> void:
 	if not is_open() or value == _value(row) and not row.has("set"):
 		refresh()
 		return
+	if value is bool and value and row.get("confirm_on") is Dictionary:
+		_confirm_on(row)
+		return
+	_save_change(row, value)
+
+## The row's question before it turns on: the switch stays off behind it, and
+## only the accept button saves.
+func _confirm_on(row: Dictionary) -> void:
+	refresh()
+	if is_instance_valid(_confirm_modal) and not _confirm_modal.is_queued_for_deletion(): return
+	var ask: Dictionary = row.confirm_on
+	var opener := _list.find_child(str(row.id), true, false) as Control
+	var modal := InGameModal.open(host.ui, "ConfirmOn_" + str(row.id), str(ask.title), "", opener) as InGameModal
+	_confirm_modal = modal
+	modal.label(str(ask.body))
+	modal.add_actions(str(ask.accept), func():
+		modal.close(false)
+		if is_open(): _save_change(row, true), PlayerCopy.SETTINGS_CANCEL)
+	modal.closed.connect(refresh)
+
+func _save_change(row: Dictionary, value: Variant) -> void:
 	var kept: bool
 	if row.has("set"):
 		kept = bool(row.set.call(value))
 	else:
-		var next: Dictionary = host.saves.data.settings.duplicate(true)
-		next[row.key] = value
-		kept = host.saves.update_values({"settings": next})
-		if kept: host._apply_settings()
+		kept = save_setting(str(row.key), value)
 	if not kept: host._toast(PlayerCopy.MAIN_34B82590B663)
 	else:
 		if row.has("on_change"): row.on_change.call(value)
@@ -552,6 +573,14 @@ func _reveal(row_id: String) -> void:
 	# Rows have no layout until the next frame.
 	await get_tree().process_frame
 	if is_open() and is_instance_valid(target): _scroll.ensure_control_visible(target)
+
+## Saves one setting and applies it (the shared path for every saved setting); true when kept.
+func save_setting(key: String, value: Variant) -> bool:
+	var next: Dictionary = host.saves.data.settings.duplicate(true)
+	next[key] = value
+	if not host.saves.update_values({"settings": next}): return false
+	host._apply_settings()
+	return true
 
 ## The photo card's Don't ask again (a chapter room's save_photo_prompt_preference).
 func save_photo_prompt_preference(enabled: bool) -> bool:

@@ -90,6 +90,17 @@ static func _default_values() -> Dictionary:
 		if defaults.get(key) is bool: out[key] = defaults[key]
 	return out
 
+## The cloud's settings as this phone takes them. Forgiving catches never turns
+## on from the cloud: a copy from an older build (where it was on by default)
+## would undo LocalSave's one-time switch off, and turning it on asks first on
+## each phone (presentation/settings_rows.gd confirm_on). Turning it off still syncs.
+static func cloud_values(values: Dictionary, local_values: Dictionary) -> Dictionary:
+	var out := values.duplicate()
+	if out.get("assistance") == true and local_values.get("assistance") != true:
+		if local_values.has("assistance"): out.assistance = local_values.assistance
+		else: out.erase("assistance")
+	return out
+
 static func _values(settings: Variant) -> Dictionary:
 	var out := {}
 	if settings is Dictionary:
@@ -135,9 +146,10 @@ func apply(merged: Dictionary) -> bool:
 	var local_values := _values(data.get("settings"))
 	var local_stamp := settings_stamp(local_values)
 	var settings_changed := false
-	if int(merged.settings.stamp) > local_stamp and merged.settings.values != local_values and not merged.settings.values.is_empty():
+	var incoming := cloud_values(merged.settings.values, local_values)
+	if int(merged.settings.stamp) > local_stamp and incoming != local_values and not incoming.is_empty():
 		var settings: Dictionary = data.settings.duplicate(true)
-		for key: String in merged.settings.values: settings[key] = merged.settings.values[key]
+		for key: String in incoming: settings[key] = incoming[key]
 		changes.settings = settings
 		settings_changed = true
 	var completed: Dictionary = data.get("completed", {}).duplicate(true)

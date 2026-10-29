@@ -164,6 +164,9 @@ var enable_turn_notifications: Callable
 var share_current_room: Callable
 ## Main's view of this room's sharing: {"shared": bool, "busy": bool}.
 var room_share_state: Callable
+## func(snapshot, chapter_key) -> Control or null: the leaderboard line on a
+## finished together run's card (presentation/board_feedback_flow.gd). Main sets it.
+var board_line: Callable
 ## services/partner_friends.gd: whether this room offers to add its partner as
 ## a friend, and the request. Main sets it; without it nothing is offered.
 var partner_friends: RefCounted
@@ -2801,6 +2804,9 @@ func _show_completed() -> void:
 	mode = "complete"
 	if hard_flow.complete(): return
 	var card := _card(PlayerCopy.RELAY_PREVIEW_8D42D9E99BAF, str(chapter.completion_text) + "\n\n" + (PlayerCopy.RELAY_PREVIEW_FF18C2378950 if online_session != null else PlayerCopy.RELAY_PREVIEW_7DECA1CF83C7))
+	if online_session != null and board_line.is_valid() and journey != null and journey.has_method("snapshot"):
+		var line: Variant = board_line.call(journey.snapshot(), chapter_key)
+		if line is Control: card.add_child(line)
 	_set_room_state("complete")
 	EndReactionScreen.attach_completed(_end_reaction_context(), card)
 	_add_room_actions(card, "complete", "turn", _room_facts())

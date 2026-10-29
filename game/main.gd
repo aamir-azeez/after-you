@@ -71,6 +71,7 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const LeaderboardCelebration = preload("res://presentation/leaderboard_celebration.gd")
 const LeaderboardPlacings = preload("res://services/leaderboard_placings.gd")
 const LeaderboardRuns = preload("res://services/leaderboard_runs.gd")
+const BoardFeedbackFlow = preload("res://presentation/board_feedback_flow.gd")
 ## Meta on the control that leaves a screen (see _mark_screen_back).
 const SCREEN_BACK := &"screen_back"
 const Changelog = preload("res://services/changelog.gd")
@@ -256,6 +257,8 @@ var legacy_room_flow: LegacyRoomFlow = _host_legacy_room_flow()
 var relay_lobby_flow: RelayLobbyFlow = _host_relay_lobby_flow()
 ## Settings: one page of categories, and a licence's text.
 var settings_flow: SettingsFlow = _host_settings_flow()
+## The leaderboard line after a together run and the board watch on Home.
+var board_feedback: RefCounted = BoardFeedbackFlow.new(self)
 ## Play Games / Game Center: Settings' row, the progress choice and Main's side of PlatformGames.
 var platform_games_flow: PlatformGamesFlow = _host_platform_games_flow()
 ## Display names: the first-run prompt, the prompt from Friends and the Friends header chip.
@@ -327,8 +330,8 @@ func _ready() -> void:
 	# A replay open that never reached its chapter leaves nothing behind.
 	SoloReplayLaunch.discard()
 	saves.load_data()
-	if saves.fresh: saves.data.settings.merge(LocalSave.NEW_PLAYER_SETTINGS, true)
 	saves.start_fresh_if_unreadable()
+	saves.settle_settings()
 	# Kept hard runs name their friend as this phone names them now.
 	HardModeView.friend_name = _friend_display_name
 	_decide_whats_new()
@@ -1621,6 +1624,7 @@ func _enter_online_relay() -> void:
 	relay_child.share_current_room = room_sharing.share
 	relay_child.room_share_state = room_sharing.view
 	relay_child.partner_friends = partner_friends
+	relay_child.board_line = board_feedback.line_for
 	relay_child.closed.connect(_leave_online_relay)
 	add_child(relay_child)
 	_sync_presence()
@@ -2179,6 +2183,7 @@ func _process(delta: float) -> void:
 	_service_update_gate()
 	_service_grant_card()
 	_service_leaderboard_celebration()
+	board_feedback.service_home()
 	_service_photo_resume()
 	if not capture_path.is_empty():
 		capture_frames+=1

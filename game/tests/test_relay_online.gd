@@ -406,6 +406,8 @@ func _real_ui_flow() -> void:
 	cleanup_paths.append(path)
 	app.saves = Save.new(path)
 	app.saves.data.settings.assistance = true
+	# Chosen after the one-time switch off (LocalSave.settle_settings), so it stays on.
+	app.saves.data[Save.SETTINGS_MIGRATION_KEY] = Save.SETTINGS_MIGRATION
 	app.saves.flush()
 	viewport.add_child(app)
 	app.set_process(false)

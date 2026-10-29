@@ -58,6 +58,10 @@ func board(key: String, fresh: bool = false) -> Dictionary:
 	Placings.shared().learn(_owner, key, view)
 	return {"ok": true, "view": view}
 
+## The board this client last read from the server, however old, or {} (no request).
+func kept_view(key: String) -> Dictionary:
+	return (_views.get(key, {}) as Dictionary).get("view", {})
+
 ## Whether this player chose to show their name (the phone's copy).
 func show_name() -> bool:
 	return bool(_choice.get("show", false))

@@ -33,6 +33,7 @@ const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Rows = preload("res://presentation/leaderboard_rows.gd")
 const Celebration = preload("res://presentation/leaderboard_celebration.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
+const BoardStatus = preload("res://services/board_status.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
@@ -393,8 +394,11 @@ func _render_own(mine: Array, top: Array, checking: Array) -> void:
 		_own.add_child(Rows.own(int(ranked_row.ticks), int(ranked_row.rank), Rows.pair_title(ranked_row), _compact, _watcher(ranked_row)))
 	elif not eligible.is_empty():
 		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact))
+		# Why it has no place (services/board_status.gd): a run this new may not show in the board's copy yet.
+		if BoardStatus.of_run(eligible[0], true, _view, Time.get_unix_time_from_system()).state == BoardStatus.NOT_LISTED: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_NOT_LISTED))
 	elif not settled.is_empty():
 		_own.add_child(Rows.own(int(settled[0].ticks), 0, "", _compact))
+		_own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_ASSISTED))
 	elif mine.is_empty():
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_NO_RUN))
 	var newest: Dictionary = {}

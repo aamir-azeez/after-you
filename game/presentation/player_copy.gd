@@ -525,6 +525,9 @@ const SETTINGS_SOUND := "Sound"
 const SETTINGS_SKIP_WAITS := "Always skip waits"
 const SETTINGS_REDUCED_MOTION := "Reduce motion"
 const SETTINGS_ASSISTANCE := "Forgiving catches"
+const SETTINGS_ASSISTANCE_CONFIRM_TITLE := "Turn on Forgiving catches?"
+const SETTINGS_ASSISTANCE_CONFIRM_BODY := "Leaderboard times won't count while Forgiving catches is on."
+const SETTINGS_ASSISTANCE_CONFIRM_ACCEPT := "Turn on"
 const SETTINGS_ONLINE_STATUS := "Share online status"
 ## Leaderboards (presentation/leaderboard_screen.gd and the Friends setting).
 const SETTINGS_LEADERBOARD_NAME := "Show my name on leaderboards"
@@ -550,7 +553,22 @@ const LEADERBOARD_EMPTY := "No times here yet. Finish this chapter together to s
 const LEADERBOARD_NO_RUN := "Finish this chapter with a friend and your best time shows here."
 const LEADERBOARD_LOADING := "Loading the board"
 const LEADERBOARD_FAILED := "The board did not load. Try again in a moment."
-const LEADERBOARD_RULES := "Runs played together count. Solo runs and runs with Forgiving catches on do not."
+const LEADERBOARD_RULES := "Runs played together count once you've both had the game for a week and played with two different friends. Solo runs and runs with Forgiving catches on don't."
+## Under "Your best" on the board: why it shows no place.
+const LEADERBOARD_OWN_ASSISTED := "Forgiving catches was on for this time, so it can't rank."
+const LEADERBOARD_OWN_NOT_LISTED := "This time didn't make the board."
+## The leaderboard line on the end-of-run card (services/board_status.gd states).
+const BOARD_LINE_OFF := "Leaderboards aren't open yet, so this time wasn't posted."
+const BOARD_LINE_ASSISTED := "This time can't go on the leaderboard because Forgiving catches was on. Both of you need it off for a time to count."
+const BOARD_LINE_TURN_OFF := "Turn off Forgiving catches"
+const BOARD_LINE_TURNED_OFF := "Forgiving catches is off now. Your next run together can count."
+## "%s": the run's time.
+const BOARD_LINE_CHECKING := "Your time %s is being checked for the leaderboard. Your place shows in Friends under Leaderboards once it passes."
+## "%s", "%s": the run's time and its place ("3rd").
+const BOARD_LINE_RANKED := "Your time %s is %s on the leaderboard."
+const BOARD_LINE_NOT_LISTED := "Your time %s didn't make the leaderboard."
+## A note on Home while a run of this player's waits for its check ("%s": its time).
+const BOARD_HOME_CHECKING := "Your time %s is being checked for the leaderboard."
 const LEADERBOARD_REPORT := "Report"
 const LEADERBOARD_REPORT_TITLE := "Report this time"
 const LEADERBOARD_REPORT_BODY := "Tell us this time looks unfair. Someone will look at the run."

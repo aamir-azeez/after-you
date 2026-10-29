@@ -19,6 +19,8 @@ extends RefCounted
 ##   "get" and "set" (returns whether it was kept) for a value of its own.
 ## - visible_if, enabled_if: Callables; shown and enabled when absent.
 ## - on_change: called with the new value once it is saved.
+## - confirm_on: {title, body, accept} for a TOGGLE that asks before it turns
+##   on (presentation/settings_flow.gd); Cancel or Back leaves it off.
 ## - summary: the name it goes by in its category's summary ("Notifications").
 ## - danger: a destructive action, drawn apart in coral.
 ## - expand: a Callable returning more rows to draw in its place (licences).
@@ -72,7 +74,8 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "skip_waits", "icon": preload("res://assets/ui/settings/skip.svg"), "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_SKIP_WAITS, "note": PlayerCopy.SETTINGS_SKIP_WAITS_NOTE, "key": "skip_waits"},
 		{"id": "reduced_motion", "icon": preload("res://assets/ui/settings/calm.svg"), "category": EVERYDAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_REDUCED_MOTION, "note": PlayerCopy.SETTINGS_REDUCED_MOTION_NOTE, "key": "reduced_motion"},
 
-		{"id": "assistance", "icon": preload("res://assets/ui/settings/catch.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ASSISTANCE, "note": PlayerCopy.SETTINGS_ASSISTANCE_NOTE, "key": "assistance"},
+		{"id": "assistance", "icon": preload("res://assets/ui/settings/catch.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ASSISTANCE, "note": PlayerCopy.SETTINGS_ASSISTANCE_NOTE, "key": "assistance",
+			"confirm_on": {"title": PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_TITLE, "body": PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_BODY, "accept": PlayerCopy.SETTINGS_ASSISTANCE_CONFIRM_ACCEPT}},
 		{"id": "left_handed", "icon": preload("res://assets/ui/settings/swap.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.MAIN_A1E007823FF0, "note": PlayerCopy.SETTINGS_LEFT_HANDED_NOTE, "key": "left_handed"},
 		{"id": "photo_prompts", "icon": preload("res://assets/ui/settings/camera.svg"), "category": PLAY, "kind": TOGGLE, "label": PlayerCopy.MAIN_289D745F1246, "note": PlayerCopy.SETTINGS_PHOTO_PROMPTS_NOTE, "key": "photo_prompts"},
 

@@ -31,6 +31,32 @@ static func defaults() -> Dictionary:
 ## because chapter journals (which use this class too) and older apps check
 ## saved envelopes against it; an existing save keeps whatever it holds.
 const NEW_PLAYER_SETTINGS := {"assistance": false}
+## One-time changes to the settings of saves that already exist, by number.
+## The number done is kept at the top of the save, never inside "settings",
+## so chapter envelopes (default_settings_envelope_valid) and the cloud
+## bundle's settings stay as they were. Each change runs once, so a player who
+## sets the value again afterwards keeps their choice.
+## 1: Forgiving catches off for everyone (leaderboards only rank runs without it).
+const SETTINGS_MIGRATION_KEY := "settings_migration"
+const SETTINGS_MIGRATION := 1
+
+## After load_data and start_fresh_if_unreadable. A brand new save takes
+## NEW_PLAYER_SETTINGS and counts as migrated, in memory only (the first
+## ordinary save writes it). An older save gets each change it has not had and
+## is written once; a failed write keeps the change in memory, and the next
+## save writes it. A read-only save is left alone. True when something changed.
+func settle_settings() -> bool:
+	if read_only: return false
+	var done: Variant = data.get(SETTINGS_MIGRATION_KEY, 0)
+	if Typed.whole_number(done) and int(done) >= SETTINGS_MIGRATION: return false
+	if fresh:
+		data.settings.merge(NEW_PLAYER_SETTINGS, true)
+		data[SETTINGS_MIGRATION_KEY] = SETTINGS_MIGRATION
+		return true
+	data.settings.assistance = false
+	data[SETTINGS_MIGRATION_KEY] = SETTINGS_MIGRATION
+	flush()
+	return true
 
 static func default_settings_envelope_valid(value: Variant) -> bool:
 	# Chapter journals do not own UI preferences. Older envelopes may omit

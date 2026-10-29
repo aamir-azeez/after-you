@@ -47,6 +47,8 @@ func _run() -> void:
 	app.saves.data.settings.sound=false
 	app.saves.data.settings.haptics=false
 	app.saves.data.settings.assistance=true
+	# Chosen after the one-time switch off (LocalSave.settle_settings), so it stays on.
+	app.saves.data[Storage.SETTINGS_MIGRATION_KEY]=Storage.SETTINGS_MIGRATION
 	app.saves.flush()
 	root.add_child(app)
 	app.set_process(false)

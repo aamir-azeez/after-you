@@ -14,6 +14,7 @@ auxiliary_room_context 2
 backup_plan 2
 ball_ownership 1
 beam_field 1
+board_feedback 2
 borrowed_light 1
 bubble_placement 1
 busy_tap_gate 1

@@ -75,6 +75,11 @@ func _chapter(key: String, compare_full: bool) -> void:
 	var screen: Node = load(Registry.solo_scene(key)).instantiate()
 	screen.settings = {"sound": false, "haptics": false, "reduced_motion": true, "assistance": true, "left_handed": false}
 	screen.journey = Journey.new(path, null, key)
+	var board_asks: Array = []
+	if "board_line" in screen:
+		screen.board_line = func(_snapshot: Dictionary, asked: String) -> Control:
+			board_asks.append(asked)
+			return null
 	viewport.add_child(screen)
 	_check(screen.mode == "turn_wait" and screen._scene_thread != null, key + " screen: the wait card is up while the final scene is set up on its worker")
 	var frames := 0
@@ -83,6 +88,7 @@ func _chapter(key: String, compare_full: bool) -> void:
 		frames += 1
 	_check(screen.mode == "complete" and frames >= 2 and screen._scene_thread == null, key + " screen: the completion card follows, frames kept drawing (%d)" % frames)
 	_check(var_to_bytes(screen.sim.snapshot()) == var_to_bytes(built.simulation.snapshot()), key + " screen: it shows the final scene the worker built")
+	_check(board_asks.is_empty(), key + " screen: a solo finish has no leaderboard line")
 	# Right after Save the screen's own turn is reused, but only when that turn
 	# started where the last pair did. A room's snapshot can change under a
 	# turn: then the worker sets the scene up from the proven checkpoint again.
