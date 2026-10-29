@@ -215,7 +215,7 @@ static func _side(value: Variant) -> Dictionary:
 		if member != null and not _id(member): return {}
 	if not Typed.whole_number(value.get("steps")) or not Typed.whole_number(value.get("ticks")) or not value.get("finished") is bool or not value.get("left") is bool or not value.get("check") in CHECKS: return {}
 	var turn: Variant = value.get("turn")
-	var side := {"members": value.members.duplicate(), "you": value.you, "steps": int(value.steps), "ticks": int(value.ticks), "assisted": value.get("assisted") == true,
+	var side := {"members": value.members.duplicate(), "you": value.you, "steps": int(value.steps), "ticks": int(value.ticks),
 		"turn": int(turn) if Typed.whole_number(turn) and int(turn) < 2 else -1, "finished": value.finished, "left": value.left, "check": value.check}
 	if value.you:
 		var room: Variant = value.get("room_id")

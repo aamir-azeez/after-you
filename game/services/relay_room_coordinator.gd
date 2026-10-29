@@ -653,6 +653,10 @@ func hard_view() -> Variant:
 	var hard: Variant = _state.snapshot.get("hard")
 	return hard.duplicate(true) if hard is Dictionary else null
 
+## Whether this room is a duel's room (its snapshot's `duel`): no turn in it uses Forgiving catches.
+func duel_room() -> bool:
+	return _guard() and not _state.auth_required and Typed.equal(_state.snapshot.get("duel"), true)
+
 ## A room the server returned for one of this room's own side requests (a
 ## hard room's reset), taken as a refresh would take it.
 func adopt_snapshot(value: Variant) -> bool:
@@ -1104,6 +1108,10 @@ func _valid_snapshot(value: Variant) -> bool:
 	if value.has("hard"):
 		keys.append("hard")
 		if not HardRoomClient.valid_view(value.hard, value): return false
+	# A duel's room says so: its turns never use Forgiving catches (services/forgiving_catches.gd).
+	if value.has("duel"):
+		keys.append("duel")
+		if not Typed.equal(value.duel, true): return false
 	if value.has("simulation_version"):
 		keys.append("simulation_version")
 		if not _range(value.simulation_version, 1, MAX_SIMULATION_VERSION) or int(value.simulation_version) not in Registry.supported_rules(chapter): return false

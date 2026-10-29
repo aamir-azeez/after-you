@@ -28,7 +28,7 @@ function ghost(ticks = 1000, now = T0): Duel {
     ghost: { source: "board", entry_id: "e".repeat(32), rank: 1, ticks, names: null } }, now);
 }
 function note(room: string, revision: number, ticks: number, complete = false, steps = complete ? 4 : 1, at = T0 + revision * 1000): ProgressNote {
-  return { room_id: room, revision, steps, ticks, assisted: false, turn: complete ? null : A1, complete, at_ms: at, entry_id: complete ? room.padEnd(32, "0").slice(0, 32) : null };
+  return { room_id: room, revision, steps, ticks, turn: complete ? null : A1, complete, at_ms: at, entry_id: complete ? room.padEnd(32, "0").slice(0, 32) : null };
 }
 function running(now = T0): Duel {
   const duel = friend(now);
@@ -270,22 +270,27 @@ describe("duel state machine", () => {
 
 describe("duel time", () => {
   const stages = 2;
-  // The fixtures were recorded with forgiving catches on, as most runs are.
+  // The fixtures were recorded with forgiving catches on; a duel's room takes only unassisted turns, so the time reads them with it off.
+  type Turn = { catch_assistance: boolean };
+  type Link = { proof: { a: Turn; b: Turn; checkpoint?: Link; previous_checkpoint?: Link } };
+  const unassisted = (checkpoint: unknown): CheckpointV2 => {
+    const plain = structuredClone(checkpoint) as CheckpointV2 & Link;
+    for (let link: Link | undefined = plain; link?.proof?.a; link = link.proof.checkpoint ?? link.proof.previous_checkpoint) { link.proof.a.catch_assistance = false; link.proof.b.catch_assistance = false; }
+    return plain;
+  };
+  const plainA = { ...secondA, catch_assistance: false } as unknown as RecordingV2;
+
   it("counts every turn on the branch, with the pending first turn of the stage under way", () => {
-    const whole = runProgress(final as unknown as CheckpointV2, stages)!;
+    const whole = runProgress(unassisted(final), stages)!;
     const total = [firstA, firstB, secondA, secondB].reduce((sum, turn) => sum + turn.duration_ticks, 0);
-    expect(whole).toEqual({ steps: 4, ticks: total, assisted: true, complete: true });
-    const half = runProgress(middle as unknown as CheckpointV2, stages, secondA as unknown as RecordingV2)!;
-    expect(half).toEqual({ steps: 3, ticks: firstA.duration_ticks + firstB.duration_ticks + secondA.duration_ticks, assisted: true, complete: false });
+    expect(whole).toEqual({ steps: 4, ticks: total, complete: true });
+    const half = runProgress(unassisted(middle), stages, plainA)!;
+    expect(half).toEqual({ steps: 3, ticks: firstA.duration_ticks + firstB.duration_ticks + secondA.duration_ticks, complete: false });
   });
 
-  it("allows assisted turns and says so, where the board would refuse the run", () => {
-    type Turn = { catch_assistance: boolean };
-    type Link = { proof: { a: Turn; b: Turn; checkpoint?: Link; previous_checkpoint?: Link } };
-    const plain = structuredClone(final) as unknown as CheckpointV2 & Link;
-    for (let link: Link | undefined = plain; link?.proof?.a; link = link.proof.checkpoint ?? link.proof.previous_checkpoint) { link.proof.a.catch_assistance = false; link.proof.b.catch_assistance = false; }
-    expect(runProgress(plain, stages)).toMatchObject({ assisted: false, complete: true });
-    expect(runProgress(final as unknown as CheckpointV2, stages)).toMatchObject({ assisted: true, complete: true });
+  it("reads no duel time from a run with an assisted turn, as the board refuses it too", () => {
+    expect(runProgress(final as unknown as CheckpointV2, stages)).toBeNull();
+    expect(runProgress(unassisted(middle), stages, secondA as unknown as RecordingV2)).toBeNull();
   });
 
   it("refuses a broken chain", () => {

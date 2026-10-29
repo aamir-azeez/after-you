@@ -24,7 +24,7 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink): Promise<{ 
   const at = Date.parse(room.updated_at);
   if (!progress || !Number.isFinite(at)) return null;
   const complete = progress.complete && room.active_role === "complete";
-  const note: ProgressNote = { room_id: room.room_id, revision: room.revision, steps: progress.steps, ticks: progress.ticks, assisted: progress.assisted,
+  const note: ProgressNote = { room_id: room.room_id, revision: room.revision, steps: progress.steps, ticks: progress.ticks,
     turn: complete ? null : room.active_player_id, complete, at_ms: at, entry_id: complete ? await entryId(room.room_id, room.branch) : null };
   const proof = complete && link.kind === "friend" ? { checkpoint: room.checkpoint, simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
   return { note, ...(proof ? { proof } : {}) };

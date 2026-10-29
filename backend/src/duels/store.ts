@@ -28,11 +28,11 @@ const TABLES = [
   "CREATE TABLE IF NOT EXISTS duel_proofs (entry_id TEXT PRIMARY KEY, duel_id TEXT NOT NULL, proof_hash TEXT NOT NULL, ticks INTEGER NOT NULL, chapter TEXT NOT NULL, byte_length INTEGER NOT NULL, body BLOB NOT NULL, at INTEGER NOT NULL) WITHOUT ROWID"
 ];
 /**
- * A duel run waiting for the replay job: the board's ReplayWork facts, `duel: true` (the check then
- * allows assisted turns), and the final checkpoint as a tagged blob body in base64 with its canonical
+ * A duel run waiting for the replay job: the board's ReplayWork facts, checked like any board run (an
+ * assisted turn fails it), and the final checkpoint as a tagged blob body in base64 with its canonical
  * length; `proof_hash` is the SHA-256 of those canonical bytes, which the job checks before replaying.
  */
-export type DuelReplayWork = ReplayWork & { duel: true };
+export type DuelReplayWork = ReplayWork;
 export type DuelVerdict = { entry_id: string; proof_hash: string; valid: boolean; measured_ticks: number; reason: string };
 export type DuelAction =
   | { kind: "accept"; player: string; intact: boolean; eligible: boolean }
@@ -124,7 +124,7 @@ export class DuelStore {
       chars += row.byte_length;
       const chapter = JSON.parse(row.chapter) as ChapterKey & { simulation_version: number };
       const { simulation_version, ...key } = chapter;
-      work.push({ entry_id: row.entry_id, chapter: key, simulation_version, ticks: row.ticks, ...sentProof({ proof_hash: row.proof_hash, byte_length: row.byte_length, body: new Uint8Array(row.body) }), duel: true });
+      work.push({ entry_id: row.entry_id, chapter: key, simulation_version, ticks: row.ticks, ...sentProof({ proof_hash: row.proof_hash, byte_length: row.byte_length, body: new Uint8Array(row.body) }) });
     }
     return work;
   }

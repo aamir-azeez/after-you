@@ -6,6 +6,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal closed
 
 const Registry = preload("res://services/chapter_registry.gd")
+const ForgivingCatches = preload("res://services/forgiving_catches.gd")
 const SlotLooks = preload("res://presentation/slot_looks.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
@@ -1813,8 +1814,8 @@ func _reset_live(resume_draft: bool = false) -> bool:
 	_begin_sound_turn()
 	_begin_memory_wait(journey.role(), journey.prior_recording(), true)
 	_begin_run_reactions(true, {}, journey.prior_recording())
-	# A family with no catch to assist (the Lighthouse) always records false.
-	sim.catch_assistance = bool(settings.get("assistance", true)) and Registry.catch_assistance(chapter_key)
+	# A family with no catch to assist (the Lighthouse) and a duel's room always record false.
+	sim.catch_assistance = ForgivingCatches.on(bool(settings.get("assistance", true)), chapter_key, _duel_room())
 	_dress([journey.prior_recording()])
 	_present_stage_history(_simulation.stage_by_id(definition,journey.stage_id()),journey.checkpoint())
 	return true
@@ -3084,6 +3085,10 @@ func _create_room_now() -> void:
 
 func _claim_hard() -> void:
 	hard_flow.claim()
+
+## Whether this together room is a duel's room (services/relay_room_coordinator.gd duel_room).
+func _duel_room() -> bool:
+	return online_session != null and online_session.coordinator != null and online_session.coordinator.duel_room()
 
 func _hard_on() -> bool:
 	return hard_flow.on()

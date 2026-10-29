@@ -40,7 +40,7 @@ export type Side = {
   pair_key: string;
   room: SideRoom | null;
   /** The room revision the progress below came from; older notes are ignored. */
-  revision: number; steps: number; ticks: number; assisted: boolean;
+  revision: number; steps: number; ticks: number;
   /** Whose turn it is in the side's room, or null. */
   turn: string | null;
   finished_ms: number | null;
@@ -71,10 +71,10 @@ export type Duel = {
   result: DuelResult | null;
   modifiers: Modifier[];
 };
-export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; assisted: boolean; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null };
+export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null };
 
 export function blankSide(members: [string, string], pairKey: string): Side {
-  return { members, pair_key: pairKey, room: null, revision: 0, steps: 0, ticks: 0, assisted: false, turn: null, finished_ms: null, entry_id: null, check: "none", left: false, last_ms: null };
+  return { members, pair_key: pairKey, room: null, revision: 0, steps: 0, ticks: 0, turn: null, finished_ms: null, entry_id: null, check: "none", left: false, last_ms: null };
 }
 
 export type FriendDuelInput = { duel_id: string; board: string; chapter: ChapterKey; steps: number; starter: string; a: Side; b: Side; known: string[] };
@@ -238,7 +238,7 @@ export function progress(duel: Duel, note: ProgressNote, now: number): Outcome<{
   const side = duel.sides[index]!;
   // A pair that left hands the duel over: its room's later turns change nothing here.
   if (duel.status !== "running" || side.left || side.finished_ms !== null || note.revision <= side.revision) return ok({ finished: false });
-  Object.assign(side, { revision: note.revision, steps: Math.min(note.steps, duel.steps), ticks: note.ticks, assisted: note.assisted, turn: note.complete ? null : note.turn, last_ms: note.at_ms });
+  Object.assign(side, { revision: note.revision, steps: Math.min(note.steps, duel.steps), ticks: note.ticks, turn: note.complete ? null : note.turn, last_ms: note.at_ms });
   if (note.complete) {
     side.finished_ms = note.at_ms;
     side.entry_id = note.entry_id;
@@ -301,7 +301,7 @@ export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
 
 /** What one player's phone sees of a duel. Ids on the other pair show only where a friendship was checked. */
 export type SideView = {
-  members: (string | null)[]; you: boolean; steps: number; ticks: number; assisted: boolean;
+  members: (string | null)[]; you: boolean; steps: number; ticks: number;
   /** Index into `members` of whose turn it is, or null. */
   turn: number | null;
   finished: boolean; left: boolean; check: RunCheck;
@@ -324,7 +324,7 @@ export function viewFor(duel: Duel, viewer: string): DuelView | null {
     const own = index === mine;
     const members = side.members.map(id => id !== null && (own || known.has(knownKey(viewer, id))) ? id : null);
     const turn = side.turn === null ? -1 : side.members.indexOf(side.turn);
-    return { members, you: own, steps: side.steps, ticks: side.ticks, assisted: side.assisted, turn: turn < 0 ? null : turn, finished: side.finished_ms !== null, left: side.left, check: side.check,
+    return { members, you: own, steps: side.steps, ticks: side.ticks, turn: turn < 0 ? null : turn, finished: side.finished_ms !== null, left: side.left, check: side.check,
       ...(own ? { room_id: side.room?.room_id ?? null, invite_code: side.room?.invite_code ?? null, hosting: side.room?.host === viewer } : {}) };
   };
   const result = duel.result;

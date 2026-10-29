@@ -11,6 +11,7 @@ import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
 import type { DuelView } from "../src/duels/model";
 import { countingEnv } from "./meter";
+import { configJson } from "./config";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
@@ -26,8 +27,8 @@ type Any = Record<string, unknown>;
 type Lobby = { party: { partner: string | null; intact: boolean; invites_in: string[]; invite_out: string | null }; duels: DuelView[] };
 const OPERATOR = "o".repeat(43);
 const SECRET = "synthetic-pollen-secret-for-tests-only-0002";
-const ON = { V2_ROOMS_ENABLED: "true", FEATURES: "LEADERBOARDS,DUELS,POLLEN_EARN", POLLEN_SECRET: SECRET, SAFETY_OPERATOR_TOKEN: OPERATOR };
-const NO_DUELS = { ...ON, FEATURES: "LEADERBOARDS,POLLEN_EARN" };
+const ON = { CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN"] }), POLLEN_SECRET: SECRET, SAFETY_OPERATOR_TOKEN: OPERATOR };
+const NO_DUELS = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "POLLEN_EARN"] }) };
 const RELAY = "relay-isles@2";
 const RELAY_KEY = { level_id: "relay-isles", level_version: 2, definition_hash: CHAPTERS[0].adapter.key.definition_hash };
 const DAY = 86_400_000;
@@ -71,9 +72,9 @@ async function rerecord(input: Any): Promise<Any> { const body = { ...input }; d
 async function rehash(input: Any): Promise<Any> { const body = { ...input }; delete body.checkpoint_hash; delete body.proof; return { ...input, checkpoint_hash: await digest(canonicalJson(body)) }; }
 /**
  * The Relay fixtures, every hash and link redone, with `slower` more ticks on the last turn and
- * catch assistance as asked. The server checks structure and hashes, not physics.
+ * catch assistance as asked (off, as a duel's room takes only unassisted turns). The server checks structure and hashes, not physics.
  */
-async function relayRun(slower = 0, assisted = true) {
+async function relayRun(slower = 0, assisted = false) {
   const a1 = await rerecord({ ...firstA, catch_assistance: assisted });
   const b1 = await rerecord({ ...firstB, catch_assistance: assisted, source_recording_hash: a1.recording_hash });
   const mid = await rehash({ ...middle, a_recording_hash: a1.recording_hash, b_recording_hash: b1.recording_hash, proof: { ...(middle.proof as Any), a: a1, b: b1 } });
@@ -128,7 +129,7 @@ describe("duels while off", () => {
   it("answer nothing and advertise nothing without DUELS, or without LEADERBOARDS", async () => {
     const a = await create();
     expect((await call("/v1/duels", "GET", a, undefined, NO_DUELS)).status).toBe(404);
-    expect((await call("/v1/duels", "GET", a, undefined, { ...ON, FEATURES: "DUELS" })).status).toBe(404);
+    expect((await call("/v1/duels", "GET", a, undefined, { ...ON, CONFIG: configJson({ features: ["DUELS"] }) })).status).toBe(404);
     const caps = await ok<Any>(call("/v2/capabilities", "GET", a, undefined, NO_DUELS, { "X-AfterYou-Duels": "1" }));
     expect(caps).not.toHaveProperty("duels_version");
     expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, ON, { "X-AfterYou-Duels": "1" }))).toHaveProperty("duels_version", 1);
@@ -204,8 +205,8 @@ describe("friend duels", () => {
     expect(seen).toMatchObject({ status: "running" });
     expect(seen.sides[1]).toMatchObject({ ticks: slow.ticks, finished: true });
 
-    // The replay job gets both runs, allowed their assisted turns.
-    const entries = (await job()).entries.filter(entry => entry.duel === true);
+    // The replay job gets both runs once each, checked like any board run.
+    const entries = (await job()).entries;
     expect(entries.map(entry => entry.ticks).sort()).toEqual([fast.ticks, slow.ticks].sort());
     // Each comes in the shared blob format, never as a raw checkpoint, and decodes to the bytes its hash names.
     for (const entry of entries) {
@@ -234,12 +235,35 @@ describe("friend duels", () => {
     const replay = await ok<RoomSnapshotV2>(openRoom(a1, again.duel));
     const secondJoined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: replay.invite_code }));
     await play(secondJoined, [a1, a2], fast);
-    await verdicts((await job()).entries.filter(entry => entry.duel === true), () => true);
+    await verdicts((await job()).entries, () => true);
     const repeat = await detail(a1, again.duel);
     expect(repeat.duel.result).toMatchObject({ outcome: "won", reason: "left" });
     // A win the other pair handed over by leaving pays no bonus: only a win where both runs passed does.
     expect(repeat.win_bonus).toBeUndefined();
   }, 60_000);
+
+  it("never take a Forgiving catches turn in a duel's room, which says it is one, while an ordinary room still does", async () => {
+    const { a1, a2, b1 } = await pairs(true);
+    const sent = (await ok<{ duel: DuelView }>(challenge(a1, b1))).duel;
+    await ok(call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
+    const room = await ok<RoomSnapshotV2>(openRoom(a1, sent));
+    expect(room.duel).toBe(true);
+    const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: room.invite_code }));
+    expect(joined.duel).toBe(true);
+    const assisted = await relayRun(0, true);
+    const refused = await call(`/v2/rooms/${joined.room_id}/turns`, "POST", a1, turn(joined, assisted.turns[0][1]));
+    expect(refused.status).toBe(422);
+    expect((await refused.json<{ error: { code: string } }>()).error.code).toBe("duel_turn_assisted");
+    // Nothing moved: the duel still reads no steps, and the same turn unassisted is taken.
+    expect((await lobby(a1)).duels[0].sides[0]).toMatchObject({ steps: 0, ticks: 0 });
+    const plain = await relayRun(0);
+    await ok(call(`/v2/rooms/${joined.room_id}/turns`, "POST", a1, turn(joined, plain.turns[0][1])));
+    // An ordinary room is no duel's room and keeps the player's setting.
+    const ordinary = await ok<RoomSnapshotV2>(call("/v2/rooms", "POST", a1, { idempotency_key: crypto.randomUUID(), ...RELAY_KEY }));
+    expect(ordinary).not.toHaveProperty("duel");
+    const guest = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: ordinary.invite_code }));
+    await ok(call(`/v2/rooms/${guest.room_id}/turns`, "POST", a1, turn(guest, assisted.turns[0][1])));
+  });
 
   it("refuse a challenge to a pair that dissolved, and a duel room for the wrong chapter or a hard one", async () => {
     const { a1, b1, b2 } = await pairs();
@@ -269,7 +293,7 @@ describe("friend duels", () => {
     expect((await call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 })).status).toBe(409);
     const boards = CHAPTERS.slice(1, 5).map(row => `${row.adapter.key.level_id}@${row.adapter.key.level_version}`);
     const statuses: number[] = [];
-    for (const key of boards) statuses.push((await call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: key }, { ...ON, FEATURES: ON.FEATURES + ",FIRST_STEPS_ENABLED,COOP_CHAPTERS_ENABLED,HOUSE_CHAPTER_ENABLED" })).status);
+    for (const key of boards) statuses.push((await call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: key })).status);
     expect(statuses).toEqual([200, 200, 200, 409]);
   });
 
@@ -279,7 +303,7 @@ describe("friend duels", () => {
     await ok(call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
     const room = await ok<RoomSnapshotV2>(openRoom(a1, sent));
     const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: room.invite_code }));
-    const run = await relayRun(0, false);
+    const run = await relayRun(0);
     await play(joined, [a1, a2], run);
     const entries = (await job()).entries;
     // One entry for the run, though both the board and the duel wait on it.
@@ -305,7 +329,7 @@ describe("duel erasure", () => {
     const [a, b] = await Promise.all([create(), create()]);
     await befriend(a, b);
     await partner(a, b);
-    expect((await call("/v1/identity", "DELETE", a, undefined, { V2_ROOMS_ENABLED: "true", FEATURES: "" })).status).toBe(200);
+    expect((await call("/v1/identity", "DELETE", a, undefined, { CONFIG: configJson({}) })).status).toBe(200);
     const left = await env.LEADERBOARD_MEMBERS.getByName(b.player_id).partyRead(Date.now());
     expect(left.partner).toBeNull();
   });

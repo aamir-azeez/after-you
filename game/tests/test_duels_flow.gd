@@ -79,10 +79,10 @@ class FakeMain extends Node:
 	func _paid_content_hidden() -> bool: return false
 
 func _view(own: Dictionary, status: String = "running") -> Dictionary:
-	var side := {"members": [ME, MAYA], "you": true, "steps": 0, "ticks": 0, "assisted": false, "turn": null, "finished": false, "left": false, "check": "none", "room_id": null, "invite_code": null, "hosting": false}
+	var side := {"members": [ME, MAYA], "you": true, "steps": 0, "ticks": 0, "turn": null, "finished": false, "left": false, "check": "none", "room_id": null, "invite_code": null, "hosting": false}
 	side.merge(own, true)
 	return {"schema_version": 1, "duel_id": DUEL, "kind": "friend", "board": BOARD, "status": status, "steps": 4, "created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0,
-		"ghost": null, "result": null, "eligible": true, "sides": [side, {"members": [FINN, null], "you": false, "steps": 0, "ticks": 0, "assisted": false, "turn": null, "finished": false, "left": false, "check": "none"}]}
+		"ghost": null, "result": null, "eligible": true, "sides": [side, {"members": [FINN, null], "you": false, "steps": 0, "ticks": 0, "turn": null, "finished": false, "left": false, "check": "none"}]}
 
 func _run() -> void:
 	_clear()

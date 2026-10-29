@@ -39,8 +39,8 @@ export async function pairKey(a: string, b: string): Promise<string> {
  * nested proofs to the start: the ticks added up, whether any turn had catch
  * assistance, and whether every turn ran the same simulation version. Null
  * when the chain is broken or a turn's ticks are not whole. The board ranks a
- * whole unassisted run (runTicks); a duel times any run, assisted or not,
- * finished or not (duels/ticks.ts).
+ * whole unassisted run (runTicks); a duel times an unassisted run, finished
+ * or not (duels/ticks.ts).
  */
 export function walkRun(checkpoint: CheckpointV2): { ticks: number; assisted: boolean; simulation_version: number; mixed: boolean } | null {
   let current: CheckpointV2 = checkpoint, ticks = 0, simulation = -1, assisted = false, mixed = false;

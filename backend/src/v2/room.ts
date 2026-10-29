@@ -60,6 +60,8 @@ export type RoomStateV2 = {
 };
 export type RoomSnapshotV2 = Omit<RoomStateV2, "invite_code"> & {
   api_version: 2; invite_code?: string; hard?: HardRun; active_role: "a" | "b" | "complete";
+  /** Only in a duel's room (duels/room-link.ts): its turns never use Forgiving catches, so the phone records none. */
+  duel?: true;
   first_player_id: string | null; active_player_id: string | null; player_slot: Slot;
   stage_id: string; recording_a: RecordingV2 | null; validation: "structural_client_replay_required";
   /** Only beside a read for a member that asked for end reactions (end-reactions.ts). */
@@ -326,7 +328,7 @@ export class RoomV2 extends DurableObject<Env> {
     const first = !stage ? null : stage.first_player_slot === "p0" ? state.host_id : state.guest_id;
     const second = !stage ? null : stage.first_player_slot === "p0" ? state.guest_id : state.host_id;
     const hard = this.hard.run(this.ctx.storage);
-    return { ...safe, ...(player === state.host_id ? { invite_code } : {}), ...(hard ? { hard } : {}), api_version: 2,
+    return { ...safe, ...(player === state.host_id ? { invite_code } : {}), ...(hard ? { hard } : {}), ...(duelLink(this.ctx.storage) ? { duel: true as const } : {}), api_version: 2,
       active_role: !stage ? "complete" : state.a_turn_id ? "b" : "a", first_player_id: first,
       active_player_id: !stage ? null : state.a_turn_id ? second : first,
       player_slot: player === state.host_id ? "p0" : "p1", stage_id: stage?.id ?? "",
@@ -703,6 +705,8 @@ export class RoomV2 extends DurableObject<Env> {
       if (!observed || !this.member(observed, player)) return fail(404, "room_not_found");
       const recording = await recordingV2(raw, observed), hash = await digest(canonicalJson({ operation: "turns", ...input }));
       if (recording.simulation_version !== (observed.simulation_version ?? chapter(observed).simulation_version)) return fail(422, "unsupported_simulation_version");
+      // A duel's room never takes a turn with Forgiving catches, whatever the phone's setting (written once at create, so read here).
+      if (duelLink(this.ctx.storage) && recording.catch_assistance !== false) return fail(422, "duel_turn_assisted");
       withinTurn(track, recording.duration_ticks);
       const retryAccess = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
       const retryGuard = campaignHttpAccessGuard(this.ctx.storage, retryAccess); if (retryGuard) return retryGuard;

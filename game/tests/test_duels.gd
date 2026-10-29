@@ -52,8 +52,8 @@ func _wire(status: String = "running", overrides: Dictionary = {}) -> Dictionary
 	var view := {"schema_version": 1, "duel_id": DUEL, "kind": "friend", "board": BOARD, "status": status, "steps": 12,
 		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "result": null, "eligible": true,
 		"sides": [
-			{"members": [ME, MAYA], "you": true, "steps": 3, "ticks": 3240, "assisted": false, "turn": 0, "finished": false, "left": false, "check": "none", "room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": true},
-			{"members": [FINN, null], "you": false, "steps": 2, "ticks": 2760, "assisted": true, "turn": 1, "finished": false, "left": false, "check": "none"}]}
+			{"members": [ME, MAYA], "you": true, "steps": 3, "ticks": 3240, "turn": 0, "finished": false, "left": false, "check": "none", "room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": true},
+			{"members": [FINN, null], "you": false, "steps": 2, "ticks": 2760, "turn": 1, "finished": false, "left": false, "check": "none"}]}
 	view.merge(overrides, true)
 	return view
 

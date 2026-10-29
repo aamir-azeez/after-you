@@ -4,7 +4,8 @@
  * A duel is two pairs racing the same chapter version, each in its own fresh
  * room (duels-concepts/IDEAS.md). The faster total of game ticks wins: the
  * ticks of every turn on the finishing branch, as the Fastest pair board counts
- * them, with assisted turns allowed. A ghost race is one pair against a
+ * them. Every turn is unassisted: a duel's room refuses Forgiving catches
+ * (v2/room.ts), and the replay check fails an assisted run. A ghost race is one pair against a
  * recorded time. Pay is in pollen/ (POLLEN-RULES.md "Duels and ghost races").
  */
 

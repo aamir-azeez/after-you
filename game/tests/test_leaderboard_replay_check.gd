@@ -14,6 +14,15 @@ func _check(okay: bool, message: String) -> void:
 	checks += 1
 	if not okay: failures += 1; push_error(message)
 
+## `entry` with its checkpoint as a blob body, as the server sends a duel's run.
+func _as_blob(entry: Dictionary, checkpoint: Dictionary) -> Dictionary:
+	var bytes := JSON.stringify(checkpoint).to_utf8_buffer()
+	var body := PackedByteArray([BlobCodec.ENCODING_DEFLATE]) + bytes.compress(FileAccess.COMPRESSION_DEFLATE)
+	var blob := entry.duplicate()
+	blob.erase("checkpoint")
+	blob.merge({"body": Marshalls.raw_to_base64(body), "byte_length": bytes.size(), "proof_hash": BlobCodec.digest(bytes)}, true)
+	return blob
+
 func _entry(key: String, checkpoint: Dictionary, ticks: int) -> Dictionary:
 	var descriptor := Registry.descriptor(key)
 	return {"board": "%s@%d" % [descriptor.level_id, descriptor.level_version], "entry_id": "e".repeat(32), "proof_hash": "f".repeat(64), "ticks": ticks,
@@ -47,19 +56,16 @@ func _run() -> void:
 	var relay_final: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/final-checkpoint.json"))
 	var assisted := Check.check(_as_received(_entry(Registry.RELAY, relay_final, 588)))
 	_check(not assisted.valid and assisted.reason == "assisted_run", "a run with catch assistance on never ranks: %s" % assisted)
-	var duel_entry := _entry(Registry.RELAY, relay_final, 588)
-	duel_entry["duel"] = true
-	# A duel run's checkpoint arrives as a blob body, as the server stores and sends it.
-	var bytes := JSON.stringify(relay_final).to_utf8_buffer()
-	var body := PackedByteArray([BlobCodec.ENCODING_DEFLATE]) + bytes.compress(FileAccess.COMPRESSION_DEFLATE)
-	duel_entry.erase("checkpoint")
-	duel_entry.merge({"body": Marshalls.raw_to_base64(body), "byte_length": bytes.size(), "proof_hash": BlobCodec.digest(bytes)}, true)
+	# A duel run's checkpoint arrives as a blob body, as the server stores and sends it, and is checked like any board run.
+	var duel_entry := _as_blob(_entry(lighthouse, final, ticks), final)
 	var wrong_hash := duel_entry.duplicate()
 	wrong_hash.proof_hash = "0".repeat(64)
 	_check(Check.check(_as_received(wrong_hash)).reason == "replay_error", "a duel body that does not match its hash goes to a person, never fails the run")
 	var duel := Check.check(_as_received(duel_entry))
-	_check(duel.valid and duel.measured_ticks == 588, "a duel's run may have assisted turns and is still replayed and measured: %s" % duel)
+	_check(duel.valid and duel.measured_ticks == ticks, "a duel's unassisted run is replayed and measured: %s" % duel)
 	_check(Check.verdict(_as_received(duel_entry)).keys().size() == 6, "a duel's verdict has the same six keys")
+	var assisted_duel := Check.check(_as_received(_as_blob(_entry(Registry.RELAY, relay_final, 588), relay_final)))
+	_check(not assisted_duel.valid and assisted_duel.reason == "assisted_run", "a duel's run with an assisted turn fails, as a duel room never takes one: %s" % assisted_duel)
 
 	var unknown := _entry(lighthouse, final, ticks)
 	unknown.chapter.definition_hash = "0".repeat(64)

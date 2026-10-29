@@ -54,8 +54,8 @@ func _duel(id: String, chapter: String, status: String, mine: Array, theirs: Arr
 	var steps: int = Registry.definition(chapter).stages.size() * 2
 	var wire := {"schema_version": 1, "duel_id": id.repeat(32 / id.length()), "kind": "friend", "board": chapter, "status": status, "steps": steps,
 		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "result": null, "eligible": true,
-		"sides": [{"members": [ME, MAYA], "you": true, "steps": mine[0], "ticks": mine[1] * T, "assisted": false, "turn": mine[2], "finished": mine[0] == steps, "left": false, "check": "none", "room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": true},
-			{"members": theirs[3], "you": false, "steps": theirs[0], "ticks": theirs[1] * T, "assisted": false, "turn": theirs[2], "finished": theirs[0] == steps, "left": false, "check": "none"}]}
+		"sides": [{"members": [ME, MAYA], "you": true, "steps": mine[0], "ticks": mine[1] * T, "turn": mine[2], "finished": mine[0] == steps, "left": false, "check": "none", "room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": true},
+			{"members": theirs[3], "you": false, "steps": theirs[0], "ticks": theirs[1] * T, "turn": theirs[2], "finished": theirs[0] == steps, "left": false, "check": "none"}]}
 	wire.merge(extra, true)
 	var view := Client.valid_view(wire)
 	if view.is_empty(): push_error("capture duel did not read: " + id)
@@ -75,7 +75,7 @@ func _run() -> void:
 	var running := _duel("1a", lighthouse, "running", [3, 108, 0], [2, 92, 1, [FINN, NOOR]])
 	var partner_turn := Client.valid_view({"schema_version": 1, "duel_id": "2b".repeat(16), "kind": "ghost", "board": rolling, "status": "running", "steps": 4, "created_ms": 1, "accepted_ms": 2, "updated_ms": 2, "mine": 0,
 		"ghost": {"source": "board", "ticks": 195 * T, "rank": 1, "names": null}, "result": null, "eligible": false,
-		"sides": [{"members": [ME, MAYA], "you": true, "steps": 2, "ticks": 54 * T, "assisted": false, "turn": 1, "finished": false, "left": false, "check": "none", "room_id": ROOM, "invite_code": "", "hosting": true}, null]})
+		"sides": [{"members": [ME, MAYA], "you": true, "steps": 2, "ticks": 54 * T, "turn": 1, "finished": false, "left": false, "check": "none", "room_id": ROOM, "invite_code": "", "hosting": true}, null]})
 	var won := _duel("3c", relay, "decided", [4, 222, null], [4, 246, null, [LEE, SAM]], {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 24 * T, "decided_ms": 9}})
 	var challenge_in := _duel("4d", relay, "challenged", [0, 0, null], [0, 0, null, [FINN, NOOR]], {"mine": 1})
 	challenge_in.mine = 1
@@ -122,7 +122,7 @@ func _run() -> void:
 	checking.close()
 	var ghost_won := Client.valid_view({"schema_version": 1, "duel_id": "7a".repeat(16), "kind": "ghost", "board": relay, "status": "decided", "steps": 4, "created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0,
 		"ghost": {"source": "developer", "ticks": 230 * T, "rank": null, "names": null}, "result": {"outcome": "won", "reason": "faster", "margin_ticks": 9 * T}, "eligible": false,
-		"sides": [{"members": [ME, MAYA], "you": true, "steps": 4, "ticks": 221 * T, "assisted": true, "turn": null, "finished": true, "left": false, "check": "none", "room_id": ROOM, "invite_code": "", "hosting": true}, null]})
+		"sides": [{"members": [ME, MAYA], "you": true, "steps": 4, "ticks": 221 * T, "turn": null, "finished": true, "left": false, "check": "none", "room_id": ROOM, "invite_code": "", "hosting": true}, null]})
 	var ghost_page := ResultPage.new()
 	ghost_page.me = ME
 	ghost_page.name_of = _name_of
