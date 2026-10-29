@@ -11,6 +11,8 @@ const Client = preload("res://services/duels_client.gd")
 const Lobby = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
+const BlobCodec = preload("res://services/blob_codec.gd")
+const TheirRun = preload("res://services/duel_their_run.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
 const PartyPage = preload("res://presentation/duels/duel_party_page.gd")
 const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
@@ -61,6 +63,7 @@ func _run() -> void:
 	_clear(SAVE_PATH)
 	_model()
 	await _client()
+	await _their_run()
 	await _pages()
 	await _home()
 	_clear(SAVE_PATH)
@@ -95,6 +98,70 @@ func _model() -> void:
 	# Answers this build cannot read are refused whole.
 	_check(Client.valid_view(_wire("bogus")).is_empty() and Client.valid_view(_wire("running", {"duel_id": "x"})).is_empty() and Client.valid_view(_wire("running", {"sides": []})).is_empty(), "malformed duels are refused")
 	_check(Client.valid_lobby({"schema_version": 1, "party": {"partner": "short", "intact": true, "invites_in": [], "invite_out": null}, "duels": []}).is_empty(), "a malformed party is refused")
+
+## The other pair's run: when it can be watched, the answer read and kept on this phone, acknowledged
+## once kept and only until the server took it, played from the phone's own copy after that.
+func _their_run() -> void:
+	var over := Client.valid_view(_wire("decided", {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 30}, "sides": [_wire().sides[0].merged({"finished": true}, true), _wire().sides[1].merged({"finished": true}, true)]}))
+	_check(DuelModel.their_run_ready(over), "after a friend duel the other pair's run can be watched")
+	var waiting := Client.valid_view(_wire("running", {"sides": [_wire().sides[0], _wire().sides[1].merged({"finished": true}, true)]}))
+	_check(not DuelModel.their_run_ready(waiting), "not while your own run is still going")
+	var left := Client.valid_view(_wire("running", {"sides": [_wire().sides[0].merged({"left": true}, true), _wire().sides[1].merged({"finished": true}, true)]}))
+	_check(DuelModel.their_run_ready(left), "or once you left the duel")
+	_check(not DuelModel.their_run_ready(Client.valid_view(_wire("decided", {"sides": [_wire().sides[0].merged({"finished": true}, true), _wire().sides[1]]}))), "never before the other pair finished")
+	var ghost := Client.valid_view(_wire("decided", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0].merged({"finished": true}, true), null]}))
+	_check(not ghost.is_empty() and not DuelModel.their_run_ready(ghost), "a ghost race has no other pair's run")
+	# A real whole run of the board's chapter, as the server sends it.
+	var final: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/lighthouse/v2-chain.json")).checkpoints[6]
+	var bytes := JSON.stringify(final).to_utf8_buffer()
+	var answer := {"schema_version": 1, "duel_id": DUEL, "board": BOARD, "digest": BlobCodec.digest(bytes), "byte_length": bytes.size(),
+		"body": Marshalls.raw_to_base64(PackedByteArray([BlobCodec.ENCODING_DEFLATE]) + bytes.compress(FileAccess.COMPRESSION_DEFLATE))}
+	var chapter := Runs.chapter_of(BOARD)
+	_check(not TheirRun.valid(answer, DUEL, BOARD).is_empty() and TheirRun.valid(answer, "e".repeat(32), BOARD).is_empty() and TheirRun.valid(answer.merged({"digest": "x"}, true), DUEL, BOARD).is_empty(), "an answer is read only for its own duel and a real digest")
+	_check(TheirRun.parts(TheirRun.valid(answer, DUEL, BOARD), chapter).size() == 6, "a kept run unwinds into the viewer's parts, a stage each")
+	_check(TheirRun.parts(TheirRun.valid(answer.merged({"digest": "0".repeat(64)}, true), DUEL, BOARD), chapter).is_empty(), "bytes that do not hash to their digest never play")
+	var root_dir := TheirRun.ROOT.path_join(ME)
+	_clear_runs(root_dir)
+	var api := FakeApi.new()
+	root.add_child(api)
+	var client := Client.new(api, ME, SAVE_PATH)
+	var path := "/v1/duels/%s/%s/their-run" % [BOARD, DUEL]
+	api.replies["GET " + path] = {"ok": true, "data": answer}
+	api.replies["POST " + path + "/ack"] = {"ok": false, "code": "connection_interrupted"}
+	var first: Dictionary = await client.their_run(over, chapter)
+	await process_frame
+	_check(first.ok and first.parts.size() == 6 and api.requests.map(func(item: Array) -> String: return item[0]) == ["GET", "POST"] and api.requests[1][2].digest == answer.digest, "the first tap fetches, keeps, then acknowledges: %s" % [api.requests])
+	_check(not TheirRun.kept_run(ME, DUEL).is_empty() and not TheirRun.kept_run(ME, DUEL).acked, "the run is kept here; a lost acknowledgement is remembered as not heard")
+	api.requests.clear()
+	api.replies["POST " + path + "/ack"] = {"ok": true, "data": {"schema_version": 1, "kept": true}}
+	var second: Dictionary = await client.their_run(over, chapter)
+	await process_frame
+	_check(second.ok and api.requests.map(func(item: Array) -> String: return item[0]) == ["POST"], "the next tap plays the phone's copy and sends only the acknowledgement again")
+	_check(TheirRun.kept_run(ME, DUEL).acked, "and notes that the server heard it")
+	api.requests.clear()
+	_check((await client.their_run(over, chapter)).ok and api.requests.is_empty(), "after that it plays with no request at all")
+	_check(TheirRun.kept_run(MAYA, DUEL).is_empty(), "each account keeps its own")
+	_clear_runs(root_dir)
+	api.replies["GET " + path] = {"ok": false, "code": "their_run_gone"}
+	var gone: Dictionary = await client.their_run(over, chapter)
+	_check(not gone.ok and gone.code == "their_run_gone" and TheirRun.kept_run(ME, DUEL).is_empty(), "a run the server no longer keeps says so and keeps nothing")
+	for index: int in TheirRun.MAX_KEPT + 2:
+		TheirRun.keep(ME, "%032x" % index, TheirRun.valid(answer, DUEL, BOARD))
+	_check(DirAccess.get_files_at(root_dir).size() == TheirRun.MAX_KEPT, "at most MAX_KEPT runs are kept")
+	# A kept copy that no longer decodes is dropped, so the next tap fetches it again.
+	TheirRun.keep(ME, DUEL, TheirRun.valid(answer.merged({"body": "AAAA"}, true), DUEL, BOARD))
+	api.replies["GET " + path] = {"ok": true, "data": answer}
+	var broken: Dictionary = await client.their_run(over, chapter)
+	_check(not broken.ok and TheirRun.kept_run(ME, DUEL).is_empty(), "a broken copy is dropped")
+	_check((await client.their_run(over, chapter)).ok and not TheirRun.kept_run(ME, DUEL).is_empty(), "and the next tap fetches the run again")
+	_check(TheirRun.erase_owner(ME) and not DirAccess.dir_exists_absolute(root_dir) and TheirRun.erase_owner(ME), "an erased account's runs and folder go, and a second erase is fine")
+	await process_frame
+	_clear_runs(root_dir)
+	api.queue_free()
+	await process_frame
+
+func _clear_runs(folder: String) -> void:
+	for file: String in DirAccess.get_files_at(folder): DirAccess.remove_absolute(ProjectSettings.globalize_path(folder.path_join(file)))
 
 func _client() -> void:
 	var api := FakeApi.new()
@@ -185,6 +252,11 @@ func _pages() -> void:
 	_check(amount != null and absf(mark.get_global_rect().get_center().y - amount.get_global_rect().get_center().y) <= 0.5 and absf(mark.get_global_rect().get_center().y - total_row.get_child(0).get_global_rect().get_center().y) <= 0.5, "the Pollen mark is centred on the total and its label")
 	_check(amount != null and mark.size.y <= amount.size.y and mark.get_global_rect().position.y > total_row.get_parent().get_child(total_row.get_index() - 2).get_global_rect().end.y, "and stays inside the total's line, clear of the rule above")
 	_check(not _has_text(result, "member in your party"), "no Full Journey member line")
+	var theirs: Button = result.find_child("DuelWatchTheirs", true, false)
+	var asked: Array = []
+	if theirs != null: result.their_run_requested.connect(func(next: Dictionary, _control: Control) -> void: asked.append(next.duel_id))
+	if theirs != null: theirs.pressed.emit()
+	_check(theirs != null and theirs.text == PlayerCopy.DUEL_WATCH_THEIRS and asked == [DUEL] and result.find_child("DuelBackToDuels", true, false).custom_minimum_size.x == 300, "a friend duel's result offers the other pair's run beside your own, three buttons in a row")
 	var behind: Control = result.find_child("DuelResultBackdrop", true, false)
 	_check(behind != null and behind.get_index() == 1 and not behind.is_processing() and behind.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the result has the chapter behind it, over the page's green, still and never in the way")
 	var drawn := ResultPage.Backdrop.new()

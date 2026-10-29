@@ -50,6 +50,7 @@ import type { Look } from "../pollen/catalog";
 import { pairLooks, type PairLooks } from "../leaderboards/run-looks";
 import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
 import { clearDuelLink, duelJoinAllowed, duelLink, duelPremium, markDuelDone, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
+import { acknowledgeTheirRun, dropTheirRun, encodeTheirRun, keepTheirRun, serveTheirRun, type TheirRun } from "../duels/their-run";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -725,7 +726,9 @@ export class RoomV2 extends DurableObject<Env> {
       // Its only await is storage; no provider request participates in acceptance.
       if (await interactionBlocked(this.env, observed.host_id, observed.guest_id)) return fail(403, "player_blocked");
       const access = await prepareCampaignHttpAccess(this.ctx.storage, this.env, player, context);
-      return this.indexed(await this.ctx.storage.transaction(async () => {
+      // Set in the commit that first finishes a friend duel's run: its copy for the other pair is encoded after it (duels/their-run.ts).
+      let theirRun = false;
+      const outcome = this.indexed(await this.ctx.storage.transaction(async () => {
         const projectionGuard = campaignHttpAccessGuard(this.ctx.storage, access); if (projectionGuard) return projectionGuard;
         const state = this.read();
         if (!state || !this.member(state, player)) return fail(404, "room_not_found");
@@ -771,7 +774,10 @@ export class RoomV2 extends DurableObject<Env> {
             duel: duelPremium(duelLink(this.ctx.storage)) });
         }
         // A duel room's run is over for the duel once it first finishes (duels/room-link.ts).
-        if (recording.role === "b" && state.stage_index >= chapter(state).stages.length) markDuelDone(this.ctx.storage);
+        if (recording.role === "b" && state.stage_index >= chapter(state).stages.length) {
+          theirRun = keepTheirRun(this.ctx.storage, state.checkpoint, Date.now());
+          markDuelDone(this.ctx.storage);
+        }
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
         const saved = this.saveReceipt(state, player, receipt);
@@ -782,6 +788,8 @@ export class RoomV2 extends DurableObject<Env> {
         }
         return ok(saved);
       }), false, player);
+      if (theirRun && outcome.ok) this.ctx.waitUntil(encodeTheirRun(this.ctx.storage));
+      return outcome;
     } catch (error) { if (error instanceof ApiError) return fail(error.status, error.code); throw error; }
   }
   fork(player: string, value: unknown, context?: CampaignRoomContext, redoDeviceHash?: string): Promise<Outcome<MutationV2>> {
@@ -1079,6 +1087,12 @@ export class RoomV2 extends DurableObject<Env> {
    */
   /** The duel this room plays for, or null (duels/room-link.ts); a retried premium turn's hook asks it. */
   duelLinkOf(): DuelLink | null { return duelLink(this.ctx.storage); }
+  /** Binding only: a friend duel's run for one of the other pair (duels/their-run.ts), in the blob format. */
+  theirRun(viewer: string, now: number = Date.now()): Promise<Outcome<TheirRun>> { return serveTheirRun(this.ctx.storage, viewer, now); }
+  /** Binding only: one of the other pair keeps the run named by `digest`; the copy goes once both do. */
+  acknowledgeTheirRun(viewer: string, digest: string): Outcome<{ kept: boolean }> { return acknowledgeTheirRun(this.ctx.storage, viewer, digest); }
+  /** Binding only: the board's sweep drops the copy (keep over) or an erased player from it. */
+  dropTheirRun(duelId: string, player: string | null): boolean { return dropTheirRun(this.ctx.storage, duelId, player); }
   pollenTurnFacts(player: string, recordingHash: string): Outcome<TurnFacts> {
     const facts = turnFacts(this.ctx.storage, recordingHash);
     return facts && facts.player_id === player ? ok(facts) : fail(404, "pollen_turn_not_found");

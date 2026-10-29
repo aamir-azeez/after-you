@@ -17,6 +17,8 @@ const Backdrop = preload("res://presentation/duels/duel_result_backdrop.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 
 signal watch_requested(view: Dictionary, control: Control)
+## Watch their run: the other pair's run, after a friend duel (services/duel_their_run.gd).
+signal their_run_requested(view: Dictionary, control: Control)
 
 var me := ""
 var name_of: Callable
@@ -81,16 +83,26 @@ func _render() -> void:
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER
 	buttons.add_theme_constant_override("separation", 22)
+	# Three buttons share the row when the other pair's run can be watched too.
+	var theirs := DuelModel.their_run_ready(view)
+	var width := 300 if theirs else 400
 	if str(view.sides[view.mine].get("room_id", "")) != "":
 		var watch := Kit.button(PlayerCopy.DUEL_WATCH, Callable(), false, 56)
 		watch.name = "DuelWatch"
 		Kit.icon_on(watch, PLAY_ICON, true, 34)
-		watch.custom_minimum_size.x = 400
+		watch.custom_minimum_size.x = width
 		watch.pressed.connect(func(): watch_requested.emit(view, watch))
 		buttons.add_child(watch)
+	if theirs:
+		var their := Kit.button(PlayerCopy.DUEL_WATCH_THEIRS, Callable(), false, 56)
+		their.name = "DuelWatchTheirs"
+		Kit.icon_on(their, PLAY_ICON, true, 34)
+		their.custom_minimum_size.x = width
+		their.pressed.connect(func(): their_run_requested.emit(view, their))
+		buttons.add_child(their)
 	var back := Kit.button(PlayerCopy.DUEL_BACK_TO_DUELS, close, true, 56)
 	back.name = "DuelBackToDuels"
-	back.custom_minimum_size.x = 400
+	back.custom_minimum_size.x = width
 	back.add_theme_font_size_override("font_size", 24)
 	buttons.add_child(back)
 	_column.add_child(buttons)

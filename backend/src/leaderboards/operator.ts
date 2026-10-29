@@ -9,6 +9,9 @@ import { pooled } from "../room-inbox";
 import { storeView } from "./view-cache";
 import { MAX_REWARD_DELIVERIES, deliverRewards, type RewardBatch } from "./reward-delivery";
 import { wardrobeOn } from "../pollen/features";
+import { dropRunCopies } from "../duels/their-run-sweep";
+/** Duel run copy rooms the hourly pass tells at most (one request each); the rest wait an hour. */
+const MAX_COPY_SWEEPS = 48;
 
 /**
  * The replay job's and the owner's routes under /operator/leaderboards/, all POST:
@@ -58,13 +61,16 @@ export async function routeLeaderboardOperator(request: Request, path: string, e
 async function pending(env: Env): Promise<string[]> {
   const entries: string[] = [];
   const keys = boardKeys(), start = Math.floor(Date.now() / 3_600_000) % keys.length;
-  let budget = MAX_PENDING_CHARS, checks = MAX_STANDINGS, deliveries = wardrobeOn(env) ? MAX_REWARD_DELIVERIES : 0;
+  let budget = MAX_PENDING_CHARS, checks = MAX_STANDINGS, deliveries = wardrobeOn(env) ? MAX_REWARD_DELIVERIES : 0, sweeps = MAX_COPY_SWEEPS;
   const batches: RewardBatch[] = [];
   for (let step = 0; step < keys.length; step++) {
     const board = keys[(start + step) % keys.length];
     const stub = env.LEADERBOARD_BOARDS.getByName(board);
     let work: PendingWork = await stub.pendingWork(Math.max(0, Math.min(budget, MAX_REPLAY_CHARS)), deliveries);
     if (work.rewards?.length) { deliveries -= work.rewards.length; batches.push({ board, stub, rewards: work.rewards }); }
+    // Duel run copies whose keep is over, or that hear of an erasure (duels/their-run-sweep.ts), within one budget for the pass.
+    const copies = (work.copies ?? []).slice(0, sweeps);
+    if (copies.length) { sweeps -= copies.length; await dropRunCopies(env, board, copies); }
     const due = work.standing.slice(0, checks);
     if (due.length) {
       checks -= due.length;

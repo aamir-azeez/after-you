@@ -35,6 +35,7 @@ const Runs = preload("res://services/leaderboard_runs.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
 ## Main's mode while Duels is up.
 const MODE_DUELS := "duels"
 ## How often an open duel page reads its duel again.
@@ -45,6 +46,8 @@ signal home_requested
 var host: Node
 var screen: CanvasLayer
 var _duel_timer: Timer
+## True while the other pair's run is fetched for one tap.
+var _their_loading := false
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -271,9 +274,36 @@ func _open_result(view: Dictionary) -> void:
 	page.show_pollen = _surfaces().earning_visible() and host.relay_session != null and host.relay_session.pollen_supported()
 	page.view = view
 	page.watch_requested.connect(func(next: Dictionary, control: Control) -> void: _play(next))
+	page.their_run_requested.connect(func(next: Dictionary, _control: Control) -> void: _watch_theirs(page, next))
 	screen.open_overlay(page)
 	var answer: Dictionary = await client().duel(view.board, view.duel_id)
 	if is_instance_valid(page) and answer.get("ok", false): page.show_result(answer.duel, answer.get("pay", {}), answer.get("win_bonus", {}))
+
+## Plays the other pair's run in the shared replay viewer, from this phone's
+## copy or fetched once (services/duels_client.gd their_run); the result page
+## hides while it plays and comes back as it was. One tap at a time.
+func _watch_theirs(page: Node, view: Dictionary) -> void:
+	if _their_loading or not is_open() or host.application_backgrounded or is_instance_valid(host.shared_replay_child): return
+	_their_loading = true
+	host._toast(PlayerCopy.DUEL_THEIRS_LOADING)
+	var chapter := _chapter_key(view)
+	var answer: Dictionary = await client().their_run(view, chapter)
+	_their_loading = false
+	if not is_open() or not is_instance_valid(page) or host.application_backgrounded or is_instance_valid(host.shared_replay_child): return
+	if not answer.get("ok", false):
+		host._toast(PlayerCopy.DUEL_THEIRS_GONE if answer.get("code") == "their_run_gone" else PlayerCopy.DUEL_THEIRS_FAILED)
+		return
+	var replay := SharedReplayLaunch.make(host, answer.parts)
+	replay.leaderboard_chapter = chapter
+	replay.closed.connect(func() -> void:
+		if host.shared_replay_child != replay: return
+		SharedReplayLaunch.close(host)
+		if is_open(): screen.visible = true
+		if is_instance_valid(page): page.visible = true)
+	# The lobby and the result page each draw on their own layer: both step aside while it plays.
+	screen.visible = false
+	page.visible = false
+	SharedReplayLaunch.show(host, replay)
 
 ## Opens the pair's room: your own, the one your partner made (joined), or a
 ## new one made for the duel. Duels closes first; the room flow takes over.

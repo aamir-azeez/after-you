@@ -14,6 +14,8 @@ import { mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
 import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, RESULT_SHOWN_MS } from "./rules";
 import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
+import { THEIR_RUN_KEEP_MS } from "./their-run";
+import { blobBase64 } from "../blob-codec";
 
 /**
  * The phone's duel routes, all absent (falling through to 404) unless duels
@@ -33,7 +35,7 @@ import type { DuelLink } from "./room-link";
 export const DUELS_PREFIX = "/v1/duels";
 export const DUELS_HEADER = "X-AfterYou-Duels";
 const BOARD = "([a-z0-9-]{1,48}@[1-9][0-9]{0,3})", DUEL_ID = "([a-f0-9]{32})";
-const DUEL_PATH = new RegExp(`^/v1/duels/${BOARD}/${DUEL_ID}(?:/(accept|decline|leave|sync))?$`);
+const DUEL_PATH = new RegExp(`^/v1/duels/${BOARD}/${DUEL_ID}(?:/(accept|decline|leave|sync|their-run|their-run/ack))?$`);
 const PARTY_PATH = /^\/v1\/duels\/party\/(invite|accept|dismiss|cancel|leave)$/;
 const BOARD_CONCURRENCY = 4;
 const GHOSTS_SHOWN = 3;
@@ -333,6 +335,7 @@ export async function routeDuels(request: Request, path: string, player: string,
     if (path === DUELS_PREFIX + "/ghosts") return ghosts(env);
     const match = DUEL_PATH.exec(path);
     if (match && !match[3]) return duelAction(env, player, boardOf(match[1]), match[2], undefined, null, now);
+    if (match?.[3] === "their-run") return theirRun(env, player, boardOf(match[1]), match[2], now);
     throw new ApiError(404, "not_found");
   }
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
@@ -342,8 +345,48 @@ export async function routeDuels(request: Request, path: string, player: string,
   if (path === DUELS_PREFIX + "/challenge") return challenge(env, player, input, now);
   if (path === DUELS_PREFIX + "/ghost") return ghostRace(env, player, input, now);
   const match = DUEL_PATH.exec(path);
-  if (match?.[3]) return duelAction(env, player, boardOf(match[1]), match[2], match[3], input, now);
+  if (match?.[3] === "their-run/ack") return acknowledgeRun(env, player, boardOf(match[1]), match[2], input);
+  if (match?.[3] && match[3] !== "their-run") return duelAction(env, player, boardOf(match[1]), match[2], match[3], input, now);
   throw new ApiError(404, "not_found");
+}
+
+/**
+ * The other pair's side of a friend duel `player` is in, and that side's room, or a refusal: the duel
+ * must be a friend duel and the other pair's run finished in its room (duels/their-run.ts).
+ */
+async function otherRun(env: Env, player: string, board: string, duelId: string): Promise<{ duel: Duel; mine: 0 | 1; room_id: string }> {
+  const [duel] = await duelsAt(env, board).read([duelId]);
+  const mine = duel ? sideOf(duel, player) : -1;
+  if (!duel || mine < 0) throw new ApiError(404, "duel_not_found");
+  const other = duel.sides[1 - mine];
+  if (duel.kind !== "friend" || !other?.room || other.finished_ms === null) throw new ApiError(404, "their_run_not_found");
+  return { duel, mine: mine as 0 | 1, room_id: other.room.room_id };
+}
+
+/**
+ * GET /v1/duels/<board>/<duel>/their-run: the other pair's run, from the room that played it, once the
+ * duel is over for this pair (their own run finished or they left, or the duel settled) and until its
+ * keep is over. The answer names the duel only: the final checkpoint holds no player or room id.
+ * Requests: 2 (the board, to check and find the room; the room).
+ */
+async function theirRun(env: Env, player: string, board: string, duelId: string, now: number) {
+  const { duel, mine, room_id } = await otherRun(env, player, board, duelId);
+  const own = duel.sides[mine]!;
+  if (!isFinal(duel) && own.finished_ms === null && !own.left) throw new ApiError(409, "their_run_not_yet");
+  if (isFinal(duel) && (duel.result?.decided_ms ?? duel.updated_ms) + THEIR_RUN_KEEP_MS <= now) throw new ApiError(410, "their_run_gone");
+  const run = unwrap(await env.ROOMS_V2.getByName(room_id).theirRun(player, now));
+  return { schema_version: 1, duel_id: duel.duel_id, board, digest: run.digest, byte_length: run.byte_length, body: blobBase64(run.body) };
+}
+
+/**
+ * POST /v1/duels/<board>/<duel>/their-run/ack: this phone keeps the run named by `digest`. A repeat,
+ * or one after the copy went, answers ok. Requests: 2 (the board; the room).
+ */
+async function acknowledgeRun(env: Env, player: string, board: string, duelId: string, input: unknown) {
+  if (!isObject(input) || Object.keys(input).length !== 2 || input.schema_version !== 1 || typeof input.digest !== "string" || !/^[a-f0-9]{64}$/.test(input.digest)) throw new ApiError(400, "invalid_duel_request");
+  const { room_id } = await otherRun(env, player, board, duelId);
+  const answer = unwrap(await env.ROOMS_V2.getByName(room_id).acknowledgeTheirRun(player, input.digest));
+  return { schema_version: 1, kept: answer.kept };
 }
 
 /** A create's `duel` field: which duel's room this is. */
@@ -368,7 +411,9 @@ export async function prepareDuelRoom(env: Env, player: string, ask: DuelRoomAsk
   if (c.level_id !== key.level_id || c.level_version !== key.level_version || c.definition_hash !== key.definition_hash) throw new ApiError(422, "duel_chapter_mismatch");
   const members = duel.sides[side as 0 | 1]!.members;
   if (members.some(id => id === null)) throw new ApiError(409, "duel_not_running");
-  return { schema_version: 1, duel_id: duel.duel_id, board: duel.board, kind: duel.kind, side: side as 0 | 1, members: members as string[] };
+  // A friend duel's room knows the other pair, who may watch its run once it is over (their-run.ts).
+  const others = duel.kind === "friend" ? ((duel.sides[1 - side]?.members ?? []) as (string | null)[]).filter((id): id is string => id !== null) : [];
+  return { schema_version: 1, duel_id: duel.duel_id, board: duel.board, kind: duel.kind, side: side as 0 | 1, members: members as string[], ...(duel.kind === "friend" ? { others } : {}) };
 }
 
 /**

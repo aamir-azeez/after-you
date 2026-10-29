@@ -83,6 +83,14 @@ static func action(view: Dictionary, me: String) -> String:
 static func section(view: Dictionary) -> String:
 	return "challenge" if view.status == "challenged" else "duel"
 
+## Whether the other pair's run can be watched (backend duels/routes.ts their-run): a friend
+## duel whose other pair finished, once it is over for this pair (their own run finished or
+## they left, or the duel is settled).
+static func their_run_ready(view: Dictionary) -> bool:
+	if view.get("kind") != "friend" or view.sides.size() < 2 or view.sides[1 - int(view.mine)].is_empty(): return false
+	var own: Dictionary = view.sides[view.mine]
+	return bool(view.sides[1 - int(view.mine)].get("finished", false)) and (view.status != "running" or own.get("finished", false) or own.get("left", false))
+
 ## Shown on the lobby: open challenges and duels, and results. Declined, withdrawn,
 ## expired and dissolved challenges fade without a word.
 static func shown(view: Dictionary) -> bool:

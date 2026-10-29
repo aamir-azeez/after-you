@@ -4,6 +4,8 @@ import { boardKeys } from "./boards";
 import type { MemberState } from "./member";
 import { storeView } from "./view-cache";
 import { forgetDuelParty } from "../duels/erase";
+import { dropRunCopies } from "../duels/their-run-sweep";
+import { errorCode, logWarning } from "../log";
 
 /**
  * A player's name on the boards that hold a run of theirs. Names show only
@@ -53,7 +55,8 @@ export async function forgetLeaderboardPlayerIfKnown(env: Env, playerId: string)
  * time, with no replay, their rewards there go. Every board, not only the listed ones, since
  * a run still waiting for its account check is on no list yet. Duels go the same way: their
  * party first (duels/erase.ts), then each board ends their open duels and drops their ids.
- * Requests: 1 (Member) + 1 per board (12 today), plus the party's (at most 11).
+ * Requests: 1 (Member) + 1 per board (12 today), plus the party's (at most 11), plus one per room
+ * holding a friend duel run copy of theirs and one per board with any (duels/their-run-sweep.ts).
  */
 export async function forgetLeaderboardPlayer(env: Env, playerId: string): Promise<void> {
   await forgetDuelParty(env, playerId);
@@ -61,5 +64,7 @@ export async function forgetLeaderboardPlayer(env: Env, playerId: string): Promi
   await pooled([...boardKeys()], BOARD_CONCURRENCY, async board => {
     const answer = await env.LEADERBOARD_BOARDS.getByName(board).forget(board, playerId);
     if (answer.changed) await storeView(answer.view);
+    // A room or board that does not answer now keeps its row for the hourly sweep; the erasure goes on.
+    try { await dropRunCopies(env, board, answer.copies); } catch (error) { logWarning("duel_run_copy_erase_deferred", { code: errorCode(error) }); }
   });
 }

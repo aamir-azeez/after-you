@@ -13,6 +13,7 @@ import type { DuelView } from "../src/duels/model";
 import { countingEnv } from "./meter";
 import { configJson } from "./config";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
+import { dropRunCopies } from "../src/duels/their-run-sweep";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -352,6 +353,149 @@ describe("ghost races", () => {
     expect(done).toMatchObject({ status: "decided", result: { outcome: run.ticks < ghostTicks ? "won" : run.ticks > ghostTicks ? "lost" : "draw" } });
     expect((await detail(a1, started)).win_bonus).toBeUndefined();
   });
+});
+
+describe("the other pair's run", () => {
+  type Run = { schema_version: number; duel_id: string; board: string; digest: string; byte_length: number; body: string };
+  const theirRun = (account: Account, duel: DuelView) => call(`/v1/duels/${duel.board}/${duel.duel_id}/their-run`, "GET", account);
+  const ack = (account: Account, duel: DuelView, digest: string) => call(`/v1/duels/${duel.board}/${duel.duel_id}/their-run/ack`, "POST", account, { schema_version: 1, digest });
+  const code = async (response: Response) => (await response.json<{ error: { code: string } }>()).error.code;
+  /** A friend duel with both rooms made, and with `finish` the pairs' runs played: A's (fast), then B's (slow). */
+  async function duelWithRooms(finish: ("a" | "b")[] = ["a", "b"]) {
+    const accounts = await pairs(true);
+    const { a1, a2, b1, b2 } = accounts;
+    const duel = (await ok<{ duel: DuelView }>(challenge(a1, b1))).duel;
+    await ok(call(`/v1/duels/${RELAY}/${duel.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
+    const roomA = await ok<RoomSnapshotV2>(openRoom(a1, duel));
+    const joinedA = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: roomA.invite_code }));
+    const roomB = await ok<RoomSnapshotV2>(openRoom(b1, duel));
+    const joinedB = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", b2, { invite_code: roomB.invite_code }));
+    if (finish.includes("a")) await play(joinedA, [a1, a2], await relayRun(0));
+    if (finish.includes("b")) await play(joinedB, [b1, b2], await relayRun(40));
+    return { ...accounts, duel, roomA, roomB };
+  }
+  async function decoded(run: Run): Promise<string> {
+    const body = Uint8Array.from(atob(run.body), char => char.charCodeAt(0));
+    const bytes = await decodeBlob(body, run.byte_length);
+    expect(bytes && await bytesDigest(bytes)).toBe(run.digest);
+    return new TextDecoder().decode(bytes!);
+  }
+
+  it("is the other pair's whole run, with no player or room id, once the duel is over for the pair asking", async () => {
+    const { a1, a2, b1, b2, duel, roomA, roomB } = await duelWithRooms(["a"]);
+    // B has not finished: A's run waits, and A may not see B's unfinished one.
+    expect((await theirRun(b1, duel)).status).toBe(409);
+    expect((await theirRun(a1, duel)).status).toBe(404);
+    const stranger = await create();
+    expect((await theirRun(stranger, duel)).status).toBe(404);
+    await play(await ok<RoomSnapshotV2>(call(`/v2/rooms/${roomB.room_id}`, "GET", b1)), [b1, b2], await relayRun(40));
+    const run = await ok<Run>(theirRun(b1, duel));
+    expect(Object.keys(run).sort()).toEqual(["board", "body", "byte_length", "digest", "duel_id", "schema_version"]);
+    expect(run).toMatchObject({ schema_version: 1, duel_id: duel.duel_id, board: RELAY });
+    const text = await decoded(run);
+    expect(JSON.parse(text).stage_index).toBe(2);
+    for (const id of [a1.player_id, a2.player_id, b1.player_id, b2.player_id, roomA.room_id, roomB.room_id]) expect(text.includes(id)).toBe(false);
+    // The same bytes every time, and to both of B.
+    expect((await ok<Run>(theirRun(b2, duel))).digest).toBe(run.digest);
+    expect((await ok<Run>(theirRun(a1, duel))).digest).not.toBe(run.digest);
+  }, 60_000);
+
+  it("goes once all four have it: the own pair through replay transfer, the other pair by acknowledgements in any order", async () => {
+    const { a1, a2, b1, b2, duel, roomA } = await duelWithRooms();
+    const run = await ok<Run>(theirRun(b1, duel));
+    // A keeps its own run through replay transfer; the room compacts, and B's copy is untouched.
+    const transfer = await ok<{ manifest: { epoch: number; archive_hash: string } }>(call(`/v2/rooms/${roomA.room_id}/replay-transfer`, "GET", a1));
+    const key = { schema_version: 1, epoch: transfer.manifest.epoch, archive_hash: transfer.manifest.archive_hash };
+    await ok(call(`/v2/rooms/${roomA.room_id}/replay-transfer/ack`, "POST", a2, key));
+    expect((await ok<{ transferred: boolean }>(call(`/v2/rooms/${roomA.room_id}/replay-transfer/ack`, "POST", a1, key))).transferred).toBe(true);
+    expect((await ok<Run>(theirRun(b2, duel))).digest).toBe(run.digest);
+    // Out of order: B2 first, then a wrong digest, then B1; repeats stay ok.
+    expect(await ok(ack(b2, duel, run.digest))).toEqual({ schema_version: 1, kept: true });
+    expect(await ok(ack(b2, duel, run.digest))).toEqual({ schema_version: 1, kept: true });
+    const wrong = await ack(b1, duel, "0".repeat(64));
+    expect([wrong.status, await code(wrong)]).toEqual([409, "their_run_mismatch"]);
+    expect(await ok(ack(b1, duel, run.digest))).toEqual({ schema_version: 1, kept: false });
+    expect(await ok(ack(b1, duel, run.digest))).toEqual({ schema_version: 1, kept: false });
+    const gone = await theirRun(b1, duel);
+    expect([gone.status, await code(gone)]).toEqual([410, "their_run_gone"]);
+    // Only a player of the duel acknowledges, and only a well formed digest.
+    expect((await ack(await create(), duel, run.digest)).status).toBe(404);
+    expect((await call(`/v1/duels/${RELAY}/${duel.duel_id}/their-run/ack`, "POST", b1, { schema_version: 1, digest: "x" })).status).toBe(400);
+  }, 60_000);
+
+  it("goes 90 days after the duel ends when nobody took it, by the hourly sweep", async () => {
+    const { b1, a1, duel, roomA, roomB } = await duelWithRooms();
+    await verdicts((await job()).entries, () => true);
+    expect((await lobby(a1)).duels[0].status).toBe("decided");
+    const stub = env.LEADERBOARD_BOARDS.getByName(RELAY);
+    // Not due yet: nothing to sweep, and the run is there.
+    expect((await stub.pendingWork(0, 0, Date.now() + 89 * DAY)).copies).toBeUndefined();
+    await ok(theirRun(b1, duel));
+    const due = (await stub.pendingWork(0, 0, Date.now() + 91 * DAY)).copies!;
+    expect(due.map(item => item.room_id).sort()).toEqual([roomA.room_id, roomB.room_id].sort());
+    expect(due.every(item => item.duel_id === duel.duel_id && item.player === null)).toBe(true);
+    await dropRunCopies(env, RELAY, due);
+    expect((await theirRun(b1, duel)).status).toBe(410);
+    expect((await theirRun(a1, duel)).status).toBe(410);
+    // Each room answered: no row is left, and a second sweep is a no-op.
+    expect((await stub.pendingWork(0, 0, Date.now() + 91 * DAY)).copies).toBeUndefined();
+    await dropRunCopies(env, RELAY, due);
+    // A copy found past its keep on a download goes then too, even with no sweep.
+    const later = await duelWithRooms();
+    await runInDurableObject(env.ROOMS_V2.getByName(later.roomA.room_id), async (instance: { theirRun(viewer: string, now: number): Promise<{ ok: boolean; code?: string }> }) => {
+      expect(await instance.theirRun(later.b1.player_id, Date.now() + 121 * DAY)).toMatchObject({ ok: false, code: "their_run_gone" });
+    });
+    expect((await theirRun(later.b1, later.duel)).status).toBe(410);
+  }, 90_000);
+
+  it("costs the lobby nothing, and a download or an acknowledgement two requests, the board and one room", async () => {
+    const { a1, b1, duel } = await duelWithRooms();
+    const counted = async (work: (target: Env) => Promise<Response>) => {
+      const meter = countingEnv(Object.assign({ ...env }, ON) as Env);
+      const answer = await work(meter.env);
+      expect(answer.status, await answer.clone().text()).toBe(200);
+      return { answer, calls: meter.calls };
+    };
+    const read = await counted(target => call("/v1/duels", "GET", a1, undefined, ON, {}, target));
+    expect(read.calls.filter(name => name.startsWith("ROOMS_V2"))).toEqual([]);
+    const fetched = await counted(target => call(`/v1/duels/${duel.board}/${duel.duel_id}/their-run`, "GET", b1, undefined, ON, {}, target));
+    const run = await fetched.answer.json<Run>();
+    const acked = await counted(target => call(`/v1/duels/${duel.board}/${duel.duel_id}/their-run/ack`, "POST", b1, { schema_version: 1, digest: run.digest }, ON, {}, target));
+    // Measured 2026-10-29: each is the board's read and the room's own call, beside the sign-in (3 in all); the lobby stays at 4.
+    expect(fetched.calls.filter(name => /LEADERBOARD_BOARDS|ROOMS_V2/.test(name))).toEqual(["LEADERBOARD_BOARDS.duelRead", "ROOMS_V2.theirRun"]);
+    expect(acked.calls.filter(name => /LEADERBOARD_BOARDS|ROOMS_V2/.test(name))).toEqual(["LEADERBOARD_BOARDS.duelRead", "ROOMS_V2.acknowledgeTheirRun"]);
+  }, 60_000);
+
+  it("drops an erased player from the other room's list and the copy's waiting list, and a run's copy when a player of it goes", async () => {
+    // B has not finished when B2 goes: A's copy waits for B1 alone, and A's room no longer names B2.
+    const { a1, a2, b1, b2, duel, roomA } = await duelWithRooms(["a"]);
+    expect((await call("/v1/identity", "DELETE", b2)).status).toBe(200);
+    const linkOf = (roomId: string) => runInDurableObject(env.ROOMS_V2.getByName(roomId), async (instance: { duelLinkOf(): { others?: string[] } | null }) => instance.duelLinkOf());
+    expect((await linkOf(roomA.room_id))?.others).toEqual([b1.player_id]);
+    const run = await ok<Run>(theirRun(b1, duel));
+    expect(await ok(ack(b1, duel, run.digest))).toEqual({ schema_version: 1, kept: false });
+    expect((await theirRun(b1, duel)).status).toBe(410);
+    // A player of the run going takes its copy with it, though the room stays for the partner.
+    const other = await duelWithRooms();
+    await runInDurableObject(env.ROOMS_V2.getByName(other.roomA.room_id), async (instance: { dropTheirRun(duelId: string, player: string | null): boolean }) => {
+      expect(instance.dropTheirRun(other.duel.duel_id, other.a2.player_id)).toBe(true);
+      expect(instance.dropTheirRun(other.duel.duel_id, other.a2.player_id)).toBe(true);
+    });
+    expect((await theirRun(other.b1, other.duel)).status).toBe(410);
+    void a1; void a2;
+  }, 90_000);
+
+  it("sweeps a friend duel's rooms even when the duel never ends or is never read again", async () => {
+    const { duel, roomA, roomB, b1 } = await duelWithRooms([]);
+    const stub = env.LEADERBOARD_BOARDS.getByName(RELAY);
+    expect((await stub.pendingWork(0, 0, Date.now() + 91 * DAY)).copies).toBeUndefined();
+    const due = (await stub.pendingWork(0, 0, Date.now() + 121 * DAY + 1)).copies!;
+    expect(due.map(item => item.room_id).sort()).toEqual([roomA.room_id, roomB.room_id].sort());
+    await dropRunCopies(env, RELAY, due);
+    // The rooms forget the other pair: a run finished after that is never copied.
+    expect(await runInDurableObject(env.ROOMS_V2.getByName(roomA.room_id), async (instance: { duelLinkOf(): { others?: string[] } | null }) => instance.duelLinkOf()?.others)).toEqual([]);
+    void duel; void b1;
+  }, 60_000);
 });
 
 describe("duel cost", () => {

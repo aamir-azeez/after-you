@@ -70,6 +70,8 @@ export type Duel = {
   eligible: boolean | null;
   result: DuelResult | null;
   modifiers: Modifier[];
+  /** A settled friend duel's rooms are queued for the board's sweep of their run copies (store.ts, their-run.ts). */
+  copies_queued?: true;
 };
 export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null };
 

@@ -15,6 +15,8 @@ extends RefCounted
 ## failure, never a partial page.
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
+const TheirRun = preload("res://services/duel_their_run.gd")
+const Reaper = preload("res://services/worker_reaper.gd")
 const PREFIX := "/v1/duels"
 const SAVE_PATH := "user://duels.json"
 const GHOSTS_KEEP_MS := 60_000
@@ -104,6 +106,48 @@ func race_ghost(board: String, source: String, entry_id: Variant, key: String) -
 func act(board: String, duel_id: String, action: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s/%s/%s/%s" % [PREFIX, board, duel_id, action], {"schema_version": 1})
 	return _duel_answer(response)
+
+## {ok, parts} for the other pair's run in friend duel `view`, in chapter `chapter_key`,
+## or {ok: false, code}. The phone's own copy plays first; otherwise the server's
+## is fetched, kept here, and only then acknowledged, so the server lets its copy
+## go only once this phone has one (services/duel_their_run.gd).
+func their_run(view: Dictionary, chapter_key: String) -> Dictionary:
+	var duel_id := str(view.get("duel_id", ""))
+	var board := str(view.get("board", ""))
+	var kept := TheirRun.kept_run(_owner, duel_id)
+	if kept.is_empty():
+		var response: Dictionary = await _api.request_json(HTTPClient.METHOD_GET, "%s/%s/%s/their-run" % [PREFIX, board, duel_id])
+		if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
+		kept = TheirRun.valid(response.get("data"), duel_id, board)
+		if kept.is_empty(): return {"ok": false, "code": "invalid_replay"}
+		var parts := await _their_parts(kept, chapter_key)
+		if parts.is_empty(): return {"ok": false, "code": "invalid_replay"}
+		# Acknowledged only once kept on disk.
+		if TheirRun.keep(_owner, duel_id, kept): _confirm_their_run(board, duel_id, kept)
+		return {"ok": true, "parts": parts}
+	var held := await _their_parts(kept, chapter_key)
+	if held.is_empty():
+		# A copy that no longer decodes is dropped, and the next tap fetches the run again.
+		TheirRun.forget(_owner, duel_id)
+		return {"ok": false, "code": "invalid_replay"}
+	# An acknowledgement that was lost goes again; one the server took is never sent twice.
+	if not kept.acked: _confirm_their_run(board, duel_id, kept)
+	return {"ok": true, "parts": held}
+
+## Tells the server this phone keeps the run, and notes that it heard back.
+func _confirm_their_run(board: String, duel_id: String, kept: Dictionary) -> void:
+	if not await _ack_their_run(board, duel_id, kept.digest): return
+	var done := kept.duplicate()
+	done["acked"] = true
+	TheirRun.keep(_owner, duel_id, done)
+
+func _their_parts(kept: Dictionary, chapter_key: String) -> Array:
+	var parts: Variant = await Reaper.run(Callable(TheirRun, "parts").bind(kept, chapter_key), true)
+	return parts if parts is Array else []
+
+func _ack_their_run(board: String, duel_id: String, digest: String) -> bool:
+	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s/%s/%s/their-run/ack" % [PREFIX, board, duel_id], {"schema_version": 1, "digest": digest})
+	return bool(response.get("ok", false))
 
 static func new_key() -> String:
 	return Crypto.new().generate_random_bytes(18).hex_encode()

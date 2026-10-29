@@ -8,7 +8,9 @@ import { keptLook, servedLook, type PairLooks } from "./run-looks";
 import type { Look } from "../pollen/catalog";
 import { emptyView, type BoardRow, type BoardView } from "./view";
 import { fail, type Outcome } from "../protocol";
-import { DuelStore, type DuelAction, type DuelReplayWork, type FinishProof } from "../duels/store";
+import { DuelStore, type DuelAction, type DuelReplayWork, type FinishProof, type RunCopyWork } from "../duels/store";
+/** Run copy rooms one board hands the sweep at a time (duels/their-run-sweep.ts). */
+const MAX_COPY_SWEEP = 32;
 import { BoardProofs, LEGACY_PROOF_TABLE, PROOF_TABLE, encodeProof, sentProof } from "./proofs";
 import type { Duel, ProgressNote, SideRoom } from "../duels/model";
 
@@ -52,7 +54,8 @@ export type StandingWork = { entry_id: string; members: (string | null)[]; finis
 /** `checkpoint` is the stored JSON text, passed on unparsed so the Worker spends no CPU on it. */
 export type ReplayWork = { entry_id: string; chapter: ChapterKey; simulation_version: number; ticks: number; proof_hash: string; byte_length: number; body: string };
 /** `rewards`: players whose earned items this board changed, only when asked for (rewards.ts). */
-export type PendingWork = { standing: StandingWork[]; replay: (ReplayWork | DuelReplayWork)[]; rewards?: RewardDelivery[] };
+/** `copies`: rooms whose duel run copy is due to go or to hear of an erasure (duels/store.ts), present only when there are some. */
+export type PendingWork = { standing: StandingWork[]; replay: (ReplayWork | DuelReplayWork)[]; rewards?: RewardDelivery[]; copies?: RunCopyWork[] };
 export type StandingResult = { entry_id: string; eligible: boolean; reason: string; members: MemberChoice[] };
 export type Verdict = { entry_id: string; proof_hash: string; valid: boolean; measured_ticks: number; reason: string };
 export type RankedNote = { entry_id: string; members: string[] };
@@ -153,7 +156,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
    * What the replay job still has to do here: account checks first, then replays of eligible runs, and with
    * `rewardLimit` up to that many players whose earned items to deliver (rewards.ts deliveries).
    */
-  async pendingWork(maxChars = MAX_REPLAY_CHARS, rewardLimit = 0): Promise<PendingWork> {
+  async pendingWork(maxChars = MAX_REPLAY_CHARS, rewardLimit = 0, now = Date.now()): Promise<PendingWork> {
     // Raw runs from before the blob format are encoded once, so only the blob form is ever sent.
     this.dropBroken(await this.proofs.convertLegacy());
     const standing: StandingWork[] = [], replay: (ReplayWork | DuelReplayWork)[] = [];
@@ -168,7 +171,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
     }
     // A duel run the board hands out too goes once; its verdict reaches both.
     replay.push(...this.duels.pending(Math.max(0, maxChars - chars), new Set(replay.map(item => item.entry_id))));
-    return rewardLimit > 0 ? { standing, replay, rewards: this.rewards.deliveries(rewardLimit) } : { standing, replay };
+    const copies = this.duels.copiesDue(now, MAX_COPY_SWEEP);
+    return { standing, replay, ...(rewardLimit > 0 ? { rewards: this.rewards.deliveries(rewardLimit) } : {}), ...(copies.length ? { copies } : {}) };
   }
 
   /** With `rewardLimit`, up to that many marked players and their items (rewards.ts deliveries), so a call that changed rewards hands them out with no request of its own. */
@@ -238,6 +242,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   duelAct(duelId: string, action: DuelAction): Outcome<{ duel: Duel; room?: SideRoom }> { return this.duels.act(duelId, action, Date.now()); }
   /** A turn accepted in one of the duel's rooms; the finishing turn of a friend run brings its final checkpoint. */
   duelProgress(duelId: string, note: ProgressNote, proof?: FinishProof): Promise<Outcome<Duel>> { return this.duels.progress(duelId, note, Date.now(), proof); }
+  /** The rooms that answered the run copy sweep (duels/their-run-sweep.ts). */
+  runCopiesDone(done: RunCopyWork[]): void { this.duels.copiesDone(done); }
 
   /** A person's answer on a run waiting for review: approve ranks it, reject drops it. */
   review(board: string, entryId: string, approve: boolean, rewardLimit = 0): { done: boolean; ranked: RankedNote | null; view: BoardView; rewards?: RewardDelivery[] } {
@@ -307,7 +313,7 @@ export class LeaderboardBoard extends DurableObject<Env> {
   }
 
   /** Account erasure: the player's waiting runs go, their ranked runs keep only the pair's time ("A pair") with no replay and without the player's look (the partner keeps theirs), and their rewards here go. */
-  forget(board: string, player: string): { changed: number; view: BoardView } {
+  forget(board: string, player: string): { changed: number; view: BoardView; copies: RunCopyWork[] } {
     const changed = this.ctx.storage.transactionSync(() => {
       let count = 0;
       for (const entry of this.entries()) {
@@ -323,7 +329,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
       this.rewards.forgetPlayer(player);
       return count + this.duels.forgetPlayer(player, Date.now());
     });
-    return { changed, view: this.view(board) };
+    // The rooms of this player's friend duels, told of the erasure now (duels/their-run-sweep.ts); the hourly sweep retries any left.
+    return { changed, view: this.view(board), copies: this.duels.copiesFor(player, MAX_COPY_SWEEP) };
   }
 
   /** What a player earned here (rewards.ts). */
@@ -468,6 +475,6 @@ answerWhileBlank(LeaderboardBoard, {
   view: (board: string) => emptyView(board), replay: (board: string) => ({ replay: null, view: emptyView(board) }), pendingWork: async () => ({ standing: [], replay: [] }), standings: async (board: string) => ({ work: { standing: [], replay: [] }, view: emptyView(board) }),
   verdicts: async (board: string) => ({ ranked: [], view: emptyView(board) }), review: (board: string) => ({ done: false, ranked: null, view: emptyView(board) }),
   strike: (board: string) => ({ done: false, promoted: [], view: emptyView(board) }), report: () => null, reviewList: () => [], rewardsDelivered: () => undefined,
-  setMember: (board: string) => ({ changed: 0, view: emptyView(board) }), forget: (board: string) => ({ changed: 0, view: emptyView(board) }), rewardsFor: () => [],
-  duelRead: () => [], duelAct: () => fail(404, "duel_not_found"), duelProgress: async () => fail(404, "duel_not_found")
+  setMember: (board: string) => ({ changed: 0, view: emptyView(board) }), forget: (board: string) => ({ changed: 0, view: emptyView(board), copies: [] }), rewardsFor: () => [],
+  duelRead: () => [], duelAct: () => fail(404, "duel_not_found"), duelProgress: async () => fail(404, "duel_not_found"), runCopiesDone: () => undefined
 });

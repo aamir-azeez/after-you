@@ -23,8 +23,15 @@ static func parts(answer: Variant, board: String, entry_id: String, replay_hash:
 	# Fields a later server adds are ignored, as a board's are (leaderboard_client.gd valid_view).
 	if not answer is Dictionary or ANSWER_KEYS.any(func(key: String) -> bool: return not answer.has(key)): return []
 	if not Typed.equal(answer.schema_version, 1) or not Typed.equal(answer.board, board) or not Typed.equal(answer.entry_id, entry_id) or not Typed.equal(answer.digest, replay_hash): return []
-	if not Typed.whole_number(answer.byte_length) or not answer.body is String or answer.body.length() > (MAX_BODY_BYTES + 2) / 3 * 4: return []
-	var bytes := BlobCodec.verified(Marshalls.base64_to_raw(answer.body), int(answer.byte_length), replay_hash, MAX_CANONICAL_BYTES)
+	return checkpoint_parts(answer.body, answer.byte_length, replay_hash, chapter_key)
+
+## The viewer's parts for a whole run of `chapter_key` whose final checkpoint is
+## `body` (the shared blob format, base64) of `byte_length` canonical bytes
+## hashing to `digest`, or [] when it is not exactly that. A duel's other pair's
+## run (services/duel_their_run.gd) is read here too.
+static func checkpoint_parts(body: Variant, byte_length: Variant, digest: String, chapter_key: String) -> Array:
+	if not Typed.whole_number(byte_length) or not body is String or body.length() > (MAX_BODY_BYTES + 2) / 3 * 4: return []
+	var bytes := BlobCodec.verified(Marshalls.base64_to_raw(body), int(byte_length), digest, MAX_CANONICAL_BYTES)
 	if bytes.is_empty(): return []
 	var checkpoint: Variant = JSON.parse_string(bytes.get_string_from_utf8())
 	if not checkpoint is Dictionary or Registry.resolve(checkpoint) != chapter_key: return []
