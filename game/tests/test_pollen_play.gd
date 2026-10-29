@@ -8,7 +8,7 @@ extends SceneTree
 ##   a bloom or why one paid a little, first clears paid or not, and the Full
 ##   Journey sentence left out on a build that names no Full Journey; it lays
 ##   out inside the screen at 1280x720, 1600x738 and 800x360;
-## - the flow: opens from Home or Settings and goes back there, reads once per
+## - the flow: opens from Home, Settings or the Pollen store and goes back there, reads once per
 ##   opening, and the chip opens the page while the shop is off.
 const Page = preload("res://presentation/pollen_play_page.gd")
 const Flow = preload("res://presentation/pollen_play_flow.gd")
@@ -136,7 +136,7 @@ func _flow() -> void:
 	host.pollen_client.answer = _history()
 	Flow.forget_shown()
 	var back: Array = []
-	flow.back_requested.connect(func(to_settings: bool) -> void: back.append(to_settings))
+	flow.back_requested.connect(func() -> void: back.append(flow.return_to))
 	flow.open_from_home()
 	_check(host.mode == Flow.MODE and _texts(host.overlay).has(PlayerCopy.POLLEN_PLAY_LOADING), "Opening shows the page at once, loading")
 	await _settle()
@@ -145,7 +145,10 @@ func _flow() -> void:
 	flow.open_from_settings()
 	await _settle()
 	(host.overlay.find_child("PollenPlayBack", true, false) as Button).pressed.emit()
-	_check(back == [false, true] and host.pollen_client.reads == 2, "Back goes where it opened from; each opening reads once")
+	flow.open_from_store()
+	await _settle()
+	(host.overlay.find_child("PollenPlayBack", true, false) as Button).pressed.emit()
+	_check(back == ["home", "settings", "store"] and host.pollen_client.reads == 3, "Back goes where it opened from; each opening reads once: " + str(back))
 	host.pollen_client.answer = {}
 	flow.open_from_home()
 	await _settle()

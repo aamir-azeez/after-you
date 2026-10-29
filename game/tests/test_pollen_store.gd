@@ -41,6 +41,8 @@ class Host extends Node:
 	var purchases: Node
 	var toasts: Array = []
 	var scope := {}
+	var earning_opened := 0
+	func show_pollen_from_play() -> void: earning_opened += 1
 	func _names_scope() -> Dictionary: return scope
 	func _clear_overlay() -> void:
 		for child: Node in overlay.get_children(): child.queue_free()
@@ -202,8 +204,8 @@ func _cards() -> void:
 	_check(not (page.find_child("PollenStoreGift", true, false) as Control).visible, "No first bundle line while that gift is off")
 	_check("9,000" in _texts(page.find_child("PollenStoreBalance", true, false)) and PlayerCopy.POLLEN_STORE_YOU_HAVE in words, "The chip says You have 9,000")
 	_check(PlayerCopy.POLLEN_STORE_EARN in words and PlayerCopy.POLLEN_STORE_FOOT in words, "Earn Pollen free by playing and the footnote")
-	t.flow.show_earning()
-	_check(t.host.ui.find_child("PollenStoreEarnCard", true, false) != null, "Earn Pollen free by playing opens its note")
+	(page.find_child("PollenStoreEarn", true, false) as Button).pressed.emit()
+	_check(t.host.earning_opened == 1, "Earn Pollen free by playing opens Pollen from play on the first tap")
 	var back := {"asked": false}
 	t.flow.back_requested.connect(func() -> void: back.asked = true)
 	(page.find_child("PollenStoreBack", true, false) as Button).pressed.emit()

@@ -297,8 +297,6 @@ const POLLEN_STORE_EARN := "Earn Pollen free by playing"
 const POLLEN_STORE_FOOT := "Google Play shows the price in your currency before you pay."
 const POLLEN_STORE_LOADING := "Opening the store…"
 const POLLEN_STORE_OFFLINE := "The store isn't reachable right now. Try again in a moment."
-const POLLEN_STORE_EARN_TITLE := "Earn Pollen free by playing"
-const POLLEN_STORE_EARN_TEXT := "Every turn you play with a friend earns Pollen, and the first time you finish a chapter pays extra. Longer and harder chapters pay more."
 ## The confirm card ("Buy a Pouch?") with its plain sums.
 const POLLEN_STORE_CONFIRM_TITLE := "Buy a %s?"
 const POLLEN_STORE_CONFIRM_NOTE := "Charged by Google Play. Pollen arrives right after."

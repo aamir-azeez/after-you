@@ -1,8 +1,10 @@
 extends Node
 ## Opens Pollen from play (presentation/pollen_play_page.gd, pollen board 7b)
-## from Home's Pollen chip or from Settings, and reads its data once each time
-## it opens (services/pollen_client.gd history), never on a timer. Back returns
-## to where it opened. It also makes the chips (kit/pollen_chip.gd) for Home and
+## from Home's Pollen chip, from Settings or from the Pollen store's "Earn
+## Pollen free by playing", and reads its data once each time it opens
+## (services/pollen_client.gd history), never on a timer. Back returns to where
+## it opened: `return_to` names it ("home", "settings" or "store"); the host
+## reads it. It also makes the chips (kit/pollen_chip.gd) for Home and
 ## the page, and remembers for the app's run the balance a chip last showed the
 ## player, so a chip shows the gain just after earning: increases only, never
 ## after a spend, and none on the first chip after a launch.
@@ -24,7 +26,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 const MODE := "pollen_play"
 
-signal back_requested(to_settings: bool)
+signal back_requested
 
 var host: Node
 ## What this build shows (services/pollen_surfaces.gd); tests set their own.
@@ -38,7 +40,7 @@ var _page: Page
 var _page_chip: Button
 var _history: Dictionary = {}
 var _status := ""
-var _from_settings := false
+var return_to := "home"
 var _reads := 0
 
 func _init(main: Node = null) -> void:
@@ -96,23 +98,25 @@ func _chip_pressed() -> void:
 	elif not is_open(): open_from_home()
 
 func open_from_home() -> void:
-	_from_settings = false
-	_open()
+	_open("home")
 
 func open_from_settings() -> void:
-	_from_settings = true
-	_open()
+	_open("settings")
+
+func open_from_store() -> void:
+	_open("store")
 
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
-func _open() -> void:
+func _open(from: String) -> void:
 	if not available(): return
+	return_to = from
 	host.running = false
 	host.mode = MODE
 	host._clear_overlay()
 	_page = Page.new(host.get("title_font"))
-	_page.back_pressed.connect(func() -> void: back_requested.emit(_from_settings))
+	_page.back_pressed.connect(func() -> void: back_requested.emit())
 	_page.retry_pressed.connect(refresh)
 	host.overlay.add_child(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)

@@ -22,7 +22,8 @@ extends Node
 ##   set-up for this player, shared with Full Journey)
 ## - screen: mode, running, overlay, ui, _clear_overlay, _toast, and
 ##   _mark_screen_back when Main has it
-## - optional: show_pollen_from_play() (the earning page, when Main has one)
+## - show_pollen_from_play() (Pollen from play, presentation/pollen_play_flow.gd),
+##   for "Earn Pollen free by playing"; its Back comes back to the store
 ## It asks Main to leave through back_requested and to open the Wardrobe
 ## through wardrobe_requested.
 ##
@@ -31,7 +32,6 @@ extends Node
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Page = preload("res://presentation/pollen_store_page.gd")
 const Sheets = preload("res://presentation/pollen_store_sheets.gd")
-const InGameModal = preload("res://presentation/in_game_modal.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Bundles = preload("res://services/pollen_bundles.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
@@ -259,18 +259,11 @@ func _show_unseen() -> void:
 	_sheet = weakref(Sheets.receipt(host.ui, newest, int(newest.get("balance", _balance())), paid, func() -> void: wardrobe_requested.emit(), null))
 	_redraw()
 
-## "Earn Pollen free by playing": the earning page when Main has one, else a short card.
+## "Earn Pollen free by playing": Pollen from play, whose Back returns here.
 func show_earning() -> void:
-	if host.has_method("show_pollen_from_play"):
-		host.show_pollen_from_play()
-		return
+	if not is_open() or not host.has_method("show_pollen_from_play"): return
 	_close_sheet()
-	var modal: Control = InGameModal.open(host.ui, "PollenStoreEarnCard", PlayerCopy.POLLEN_STORE_EARN_TITLE, "", _page.find_child("PollenStoreEarn", true, false) if is_open() else null)
-	modal.label(PlayerCopy.POLLEN_STORE_EARN_TEXT, 18)
-	modal.add_actions(PlayerCopy.POLLEN_STORE_DONE, func() -> void: modal.close())
-	var cancel: Button = modal.find_child("ModalCancel", true, false)
-	if cancel != null: cancel.visible = false
-	_sheet = weakref(modal)
+	host.show_pollen_from_play()
 
 ## The page's model (presentation/pollen_store_page.gd).
 func model() -> Dictionary:

@@ -1324,12 +1324,20 @@ func _host_pollen_store_flow() -> PollenStoreFlow:
 	flow.wardrobe_requested.connect(to_wardrobe)
 	return flow
 
-## An internal child, like StoreFlow. Back returns to Home or Settings, where it opened.
+## An internal child, like StoreFlow. Back returns where it opened: Home,
+## Settings, or the Pollen store while it can still open (else Home).
 func _host_pollen_play_flow() -> PollenPlayFlow:
 	var flow := PollenPlayFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(func(to_settings: bool): settings_flow.show_settings() if to_settings else _show_home())
+	flow.back_requested.connect(func():
+		if flow.return_to == "settings": settings_flow.show_settings()
+		elif flow.return_to == "store" and pollen_store_flow.available(): pollen_store_flow.show_store()
+		else: _show_home())
 	return flow
+
+## The Pollen store's "Earn Pollen free by playing" (presentation/pollen_store_flow.gd).
+func show_pollen_from_play() -> void:
+	pollen_play_flow.open_from_store()
 
 ## Home's Pollen chip, left of Full Journey: shown once the server has Pollen on
 ## and a balance is known (presentation/pollen_play_flow.gd chip).
