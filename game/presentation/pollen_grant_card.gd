@@ -16,7 +16,8 @@ const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
-const FullJourneyArt = preload("res://presentation/full_journey_art.gd")
+const PollenBag = preload("res://presentation/pollen_bag.gd")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const HANGER = preload("res://assets/ui/hanger.svg")
@@ -55,7 +56,7 @@ static func open(parent: Control, card: Dictionary, spirits: Array = [], wardrob
 	var amount := HBoxContainer.new()
 	amount.name = "PollenGrantAmount"
 	amount.add_theme_constant_override("separation", 14)
-	amount.add_child(FullJourneyArt.grain(AMOUNT_SIZE * 0.82))
+	amount.add_child(PollenMark.beside(AMOUNT_SIZE))
 	var figure := modal.label(amount_text(int(card.get("amount", 0))), AMOUNT_SIZE, amount)
 	figure.name = "PollenGrantFigure"
 	figure.autowrap_mode = TextServer.AUTOWRAP_OFF
@@ -69,7 +70,7 @@ static func open(parent: Control, card: Dictionary, spirits: Array = [], wardrob
 ## The board's header: the bag before the titles, a bigger title that wraps,
 ## no X; the dim lightened and the card moved right of the island.
 static func _restyle(modal: InGameModal) -> void:
-	var bag := FullJourneyArt.bag(BAG)
+	var bag := PollenBag.bag(BAG)
 	bag.name = "PollenGrantBag"
 	modal.header.add_child(bag)
 	modal.header.move_child(bag, 0)

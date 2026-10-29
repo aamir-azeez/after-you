@@ -4,7 +4,7 @@ extends RefCounted
 ## ladder line in bold. presentation/full_journey_benefits.gd says what each
 ## panel holds; this only draws it. Panels take no input, so a drag that starts
 ## on one still scrolls the card.
-const FullJourneyArt = preload("res://presentation/full_journey_art.gd")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ROOM_ICON = preload("res://assets/ui/social/users.svg")
@@ -51,7 +51,7 @@ static func make(spec: Dictionary) -> PanelContainer:
 	return panel
 
 static func _icon(kind: String) -> Control:
-	if kind == "pollen": return FullJourneyArt.grain(ICON)
+	if kind == "pollen": return PollenMark.make(ICON)
 	var icon := TextureRect.new()
 	icon.name = "RoomIcon"
 	icon.texture = ROOM_ICON

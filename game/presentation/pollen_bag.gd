@@ -3,40 +3,18 @@ extends Control
 ## board 3): a cream sack tied with a pink ribbon, grains heaped in its open
 ## top. Flat shapes drawn once per change, never per frame, and no input.
 ##
-## The Pollen grain itself is never drawn here. Every grain comes from
-## PollenMark (presentation/kit/pollen_mark.gd), through grain() and
-## draw_grains() below.
-## PollenMark: the kit file lands on main with branch pollen-mark. Until then
-## these two leave the grain's space empty. Once it lands, replace MARK_PATH's
-## load with `const PollenMark = preload(MARK_PATH)` and call it directly.
-const MARK_PATH := "res://presentation/kit/pollen_mark.gd"
+## The grains heaped in its top come from PollenMark, the one place the
+## Pollen grain is drawn.
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 
 ## The bag: a cream sack with a darker fold, tied with a pink ribbon.
 const SACK := Color("efe2c4")
 const SACK_SHADE := Color("dccaa3")
 const TIE := Color("e6a3a0")
 
-## The PollenMark grain, `side` pixels square, or an empty space the same size
-## while the kit is not in this build.
-static func grain(side: float) -> Control:
-	if ResourceLoader.exists(MARK_PATH): return load(MARK_PATH).make(side)
-	var space := Control.new()
-	space.name = "PollenMark"
-	space.custom_minimum_size = Vector2(side, side)
-	space.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	space.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	return space
-
-## Grains of `radius` at `centres`, drawn by PollenMark into `canvas` (nothing
-## while the kit is not in this build).
-static func draw_grains(canvas: CanvasItem, centres: Array[Vector2], radius: float) -> void:
-	if not ResourceLoader.exists(MARK_PATH): return
-	var mark: Script = load(MARK_PATH)
-	for centre: Vector2 in centres: mark.draw_grain(canvas, centre, radius)
-
 ## The bag picture, `side` pixels square.
 static func bag(side: float) -> Control:
-	var art: Control = load("res://presentation/full_journey_art.gd").new()
+	var art: Control = load("res://presentation/pollen_bag.gd").new()
 	art.name = "PollenBag"
 	art.custom_minimum_size = Vector2(side, side)
 	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -62,5 +40,5 @@ func _draw() -> void:
 	draw_rect(Rect2(p.call(0.33, 0.37), Vector2(0.34, 0.06) * s), TIE)
 	draw_circle(p.call(0.34, 0.4), s * 0.045, TIE, true, -1.0, true)
 	# Grains heaped in the open top, from PollenMark.
-	var heap: Array[Vector2] = [p.call(0.38, 0.26), p.call(0.62, 0.26), p.call(0.5, 0.2), p.call(0.44, 0.13), p.call(0.58, 0.14)]
-	draw_grains(self, heap, s * 0.1)
+	for centre: Vector2 in [Vector2(0.38, 0.26), Vector2(0.62, 0.26), Vector2(0.5, 0.2), Vector2(0.44, 0.13), Vector2(0.58, 0.14)]:
+		PollenMark.draw_grain(self, p.call(centre.x, centre.y), s * 0.1)
