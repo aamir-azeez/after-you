@@ -160,6 +160,13 @@ export function acknowledgeAttempt(storage: DurableObjectStorage, room: HistoryR
   if (next.acked.length !== record.acked.length) writeAttempt(storage, next);
   return next;
 }
+/**
+ * The replay time limit (replay-expiry.ts): a finished attempt nobody's phone sent back in time leaves as
+ * if both had saved it. Only its hashes stay; a phone that kept it can still send it back.
+ */
+export function expireAttempt(storage: DurableObjectStorage, room: HistoryRoom, record: AttemptRecord): AttemptRecord {
+  return record.state === "offloaded" ? record : offloadAttempt(storage, room, record);
+}
 function offloadAttempt(storage: DurableObjectStorage, room: HistoryRoom, record: AttemptRecord): AttemptRecord {
   const next: AttemptRecord = { ...record, state: "offloaded", acked: [], wanted: [] };
   writeAttempt(storage, next);

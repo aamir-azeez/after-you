@@ -3,6 +3,7 @@ import { flags } from "./flags";
 import { errorCode, logWarning } from "./log";
 import { BINDING_PATTERN, validIosRegistration, MAX_REGISTRATIONS, makeHint, makeRedoHint, validRoomHint, validNotificationToken, MAX_DELIVERY_ATTEMPTS, NOTIFICATION_TTL_MS, type NotificationEnvironment, type RoomHint } from "./notifications";
 import { redoState, type RedoSource } from "./redo-control";
+import { replayExpiryDue } from "./v2/replay-expiry";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS } from "./friend-room-event-storage";
 
 export const REGISTRATION_TABLE = { name: "notification_registrations", schema: "CREATE TABLE notification_registrations (binding_epoch TEXT PRIMARY KEY, data TEXT NOT NULL)" };
@@ -85,8 +86,10 @@ export function notificationAlarmOwned(storage: DurableObjectStorage, kind: stri
     return !isObject(room) || room.room_id !== hint.room_id || Number(room.revision) < Number(hint.revision) ||
       hint.room_family !== (kind === "Room" ? "legacy" : "relay") || (room.host_id !== item.recipient_id && room.guest_id !== item.recipient_id);
   })) return false;
+  // A finished room's replay clock (v2/replay-expiry.ts) is the alarm's other owner.
+  const expiry = replayExpiryDue(storage);
   if (actual === null) {
-    if (markers.length === 0 && pending.length === 0) return true;
+    if (markers.length === 0 && pending.length === 0 && expiry === null) return true;
     // Older Story commits scheduled hints although their alarm handler could not
     // deliver them. Authorized campaign deletion may consume only that exact,
     // overdue operational state; ordinary ownership checks remain strict.
@@ -94,8 +97,8 @@ export function notificationAlarmOwned(storage: DurableObjectStorage, kind: stri
       markers[0].due_at <= 0 || markers[0].due_at > Date.now()) return false;
     actual = markers[0].due_at;
   }
-  return markers.length === 1 && markers[0].id === 1 && Number.isSafeInteger(markers[0].due_at) && markers[0].due_at === actual && pending.length > 0 &&
-    Math.min(...pending.map(row => eventRow(row.data)!.next_at)) === actual;
+  return markers.length === 1 && markers[0].id === 1 && Number.isSafeInteger(markers[0].due_at) && markers[0].due_at === actual && (pending.length > 0 || expiry !== null) &&
+    Math.min(...pending.map(row => eventRow(row.data)!.next_at), ...(expiry === null ? [] : [expiry])) === actual;
 }
 export function clearRegistrations(storage: DurableObjectStorage): void { storage.sql.exec("DELETE FROM notification_registrations"); storage.sql.exec("DELETE FROM notification_categories"); }
 /** Called in the SAME async SQLite transaction as gameplay or deletion writes.
@@ -108,10 +111,12 @@ export async function scheduleNotifications(storage: DurableObjectStorage, allow
   const marker = storage.sql.exec<{ due_at: number }>("SELECT due_at FROM notification_alarm WHERE id=1").toArray()[0];
   if (actual !== null && (!marker || marker.due_at !== actual)) throw new Error("unowned_notification_alarm");
   const rows = storage.sql.exec<{ data: string }>("SELECT data FROM notification_outbox LIMIT 3").toArray();
-  if (!rows.length) { if (marker) { storage.sql.exec("DELETE FROM notification_alarm"); await storage.deleteAlarm(); } return; }
+  // A finished room's replay clock (v2/replay-expiry.ts) shares the one alarm: it is due at the earlier of the two.
+  const expiry = replayExpiryDue(storage);
+  if (!rows.length && expiry === null) { if (marker) { storage.sql.exec("DELETE FROM notification_alarm"); await storage.deleteAlarm(); } return; }
   const values = rows.map(row => eventRow(row.data));
   if (rows.length > 2 || values.some(value => !value)) throw new Error("notification_state_unavailable");
-  const due = Math.min(...values.map(value => value!.next_at));
+  const due = Math.min(...values.map(value => value!.next_at), ...(expiry === null ? [] : [expiry]));
   storage.sql.exec("INSERT OR REPLACE INTO notification_alarm VALUES (1,?)", due); await storage.setAlarm(due);
 }
 /** How soon a repair alarm runs after a gameplay write could not schedule its hint. */

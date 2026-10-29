@@ -51,6 +51,7 @@ import { pairLooks, type PairLooks } from "../leaderboards/run-looks";
 import { CHAPTER_NOT_OPEN, chapterOpen } from "./chapter-unlocks";
 import { clearDuelLink, duelJoinAllowed, duelLink, duelPremium, markDuelDone, recordDuelLink, sameDuelLink, type DuelLink } from "../duels/room-link";
 import { acknowledgeTheirRun, dropTheirRun, encodeTheirRun, keepTheirRun, serveTheirRun, type TheirRun } from "../duels/their-run";
+import { armReplayExpiry, clearReplayExpiry, finishedRoom, REPLAY_KEEP_MS, replayExpiryDue, runReplayExpiry } from "./replay-expiry";
 
 export type RoomStateV2 = {
   schema_version: 2; room_id: string; revision: number; branch: number; stage_index: number;
@@ -213,9 +214,24 @@ export class RoomV2 extends DurableObject<Env> {
     const members = room === undefined ? this.read() : room;
     if (members && this.notificationsAvailable()) announceRoomChange(this.env, promise => this.ctx.waitUntil(promise), members, actor);
   }
-  alarm(): Promise<void> {
-    if (!this.notificationsAvailable()) return Promise.resolve();
+  async alarm(): Promise<void> {
+    if (!this.notificationsAvailable()) return;
+    // The replay clock first (v2/replay-expiry.ts); the hints' final schedule then sets the next alarm.
+    await runReplayExpiry(this.ctx.storage, () => this.storedOrNull(), flags.replayExpiry(this.env), Date.now());
     return deliverTurnHints(this.ctx.storage, this.env, () => this.notificationsAvailable() ? this.read() : null, () => this.notificationsAvailable());
+  }
+  /** The live room or its replay-transfer record, null once erased. */
+  private storedOrNull(): RoomStateV2 | TransferredRoom | null { return this.stored(); }
+  /**
+   * With the replay time limit on, a finished standalone room read by a member arms its clock once
+   * (rooms finished before the switch came on); after the read, never in its way, and it never deletes.
+   */
+  private armOnRead(context: CampaignRoomContext | undefined): void {
+    if (context !== undefined || !flags.replayExpiry(this.env) || replayExpiryDue(this.ctx.storage) !== null || !finishedRoom(this.read())) return;
+    this.ctx.waitUntil(this.ctx.storage.transaction(async () => {
+      if (campaignBoundaryGuard(this.ctx.storage, "replay_expiry_standalone_only") || !finishedRoom(this.read())) return;
+      if (armReplayExpiry(this.ctx.storage, Date.now() + REPLAY_KEEP_MS)) await scheduleNotifications(this.ctx.storage);
+    }).catch(() => undefined));
   }
   notificationEligible(player: string, hint: RoomHint): boolean {
     const state = this.notificationsAvailable() ? this.read() : null;
@@ -397,6 +413,7 @@ export class RoomV2 extends DurableObject<Env> {
   snapshot(player: string, context?: CampaignRoomContext, history?: HistorySupport, beside: Beside = {}): Promise<Outcome<RoomSnapshotV2>> {
     return this.project(player, context, () => {
       const state = this.polledState(player, context, history);
+      if (state.ok) this.armOnRead(context);
       return state.ok ? ok(this.withBeside(this.view(state.value, player), state.value, player, context === undefined ? beside : {})) : state;
     });
   }
@@ -777,6 +794,8 @@ export class RoomV2 extends DurableObject<Env> {
         if (recording.role === "b" && state.stage_index >= chapter(state).stages.length) {
           theirRun = keepTheirRun(this.ctx.storage, state.checkpoint, Date.now());
           markDuelDone(this.ctx.storage);
+          // The replay time limit (v2/replay-expiry.ts) starts when the run finishes; the schedule below sets the alarm.
+          if (context === undefined && flags.replayExpiry(this.env)) armReplayExpiry(this.ctx.storage, Date.now() + REPLAY_KEEP_MS, true);
         }
         const receipt: ReceiptV2 = { schema_version: 2, room_id: state.room_id, idempotency_key: key, request_hash: hash, operation: "turns",
           accepted_revision: state.revision, branch, stage_index, stage_id, turn_id, recording_hash: recording.recording_hash, pair_id, checkpoint_hash: state.checkpoint.checkpoint_hash };
@@ -1049,6 +1068,7 @@ export class RoomV2 extends DurableObject<Env> {
     clearDuelLink(this.ctx.storage);
     clearHard(this.ctx.storage, this.hard);
     resetRedo(this.ctx.storage);
+    clearReplayExpiry(this.ctx.storage);
     clearTurnHints(this.ctx.storage); await scheduleNotifications(this.ctx.storage);
     // Last, so nothing after it can roll back the drop under the cached answer in room-departure.ts.
     clearDepartures(this.ctx.storage);
