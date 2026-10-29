@@ -3,7 +3,9 @@ extends SceneTree
 ## (presentation/ui_tokens.gd): layout A at phone sizes, under cutout insets and
 ## with the What's new tip, the Play button's icon slot, and nothing per frame;
 ## and the Wardrobe row, shown only while the server has the wardrobe on, with
-## the player's own pip as a still picture for its icon.
+## the player's own pip as a still picture for its icon, beside the Pollen chip;
+## and Main's Pollen routes: Pollen from play opened from the Pollen store goes
+## back to the store, or where the store's own Back goes when it cannot open.
 const FriendPlayIcon = preload("res://presentation/friend_play_icon.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
@@ -14,6 +16,8 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const EmptyState = preload("res://presentation/empty_state.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
+const PollenStoreFlow = preload("res://presentation/pollen_store_flow.gd")
+const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 
 ## Stands in for the Wardrobe: whether it is on, and where it was opened from.
 class WardrobeStub:
@@ -22,6 +26,14 @@ class WardrobeStub:
 	var opened: Array[String] = []
 	func available() -> bool: return on
 	func show_wardrobe(from: String = "settings") -> void: opened.append(from)
+
+## Stands in for the Pollen store: whether it can open, and how often it did.
+class StoreStub:
+	extends PollenStoreFlow
+	var on := true
+	var opened := 0
+	func available() -> bool: return on
+	func show_store() -> void: opened += 1
 
 ## 1560x720 is a 2340x1080 phone (and a 1560x720 one); 1600x720 is what an
 ## 800x360 window gets from the canvas_items/expand stretch; 1280x960 a tablet.
@@ -83,6 +95,7 @@ func _run() -> void:
 	await _test_icon_slot(app)
 	await _test_actions(app)
 	await _test_wardrobe_row(app)
+	await _test_pollen_routes(app)
 	viewport.free()
 	await process_frame
 	await create_timer(0.15).timeout
@@ -298,6 +311,13 @@ func _test_wardrobe_row(app: Node) -> void:
 	var column := menu.find_child("HomeMenuMargin", true, false) as Control
 	_check(column.get_combined_minimum_size().y <= menu.size.y + 0.5, "The column still fits the screen with the row")
 	_check(Rect2(Vector2.ZERO, Vector2(UiTokens.HOME_PANEL_WIDTH, menu.size.y)).encloses(Rect2(menu.wardrobe_button.global_position - menu.global_position, menu.wardrobe_button.size)), "The row stays inside the panel")
+	# The Pollen chip and the Wardrobe row show together, each in its own place.
+	menu.set_pollen_chip(PollenChip.make(24000, true))
+	await _frames()
+	var chip_rect: Rect2 = (menu.pollen_slot.get_child(0) as Control).get_global_rect()
+	var journey: Rect2 = menu.journey_offer.get_global_rect()
+	_check(menu.wardrobe_button.visible and Rect2(Vector2.ZERO, Vector2(viewport.size)).encloses(chip_rect) and (not menu.journey_offer.visible or chip_rect.end.x <= journey.position.x) and not chip_rect.intersects(menu.wardrobe_button.get_global_rect()) and chip_rect.position.x >= UiTokens.HOME_PANEL_WIDTH, "The Pollen chip sits left of Full Journey, clear of the panel and its Wardrobe row: %s" % chip_rect)
+	menu.set_pollen_chip(null)
 	menu.wardrobe_button.pressed.emit()
 	_check(stub.opened == ["home"], "The row opens the Wardrobe from Home: " + str(stub.opened))
 	_check(app._open_wardrobe_from_pip() and stub.opened == ["home", "home"], "A tap on your pip opens it while Home is free")
@@ -313,6 +333,39 @@ func _test_wardrobe_row(app: Node) -> void:
 	_check(not menu.wardrobe_button.visible, "Off again: the row hides")
 	app.wardrobe_flow = real
 	stub.free()
+	app._show_home()
+	await _frames()
+
+## Main's Pollen routes (main.gd _host_pollen_play_flow, _back_to_wardrobe):
+## Back from Pollen from play opened from the Pollen store goes back to the
+## store; when the store cannot open now, where the store's Back goes (the
+## Wardrobe as it opened, or Home while the Wardrobe is off).
+func _test_pollen_routes(app: Node) -> void:
+	var real_store: Node = app.pollen_store_flow
+	var real_wardrobe: Node = app.wardrobe_flow
+	var store := StoreStub.new(app)
+	var wardrobe := WardrobeStub.new(app)
+	app.pollen_store_flow = store
+	app.wardrobe_flow = wardrobe
+	var play: Node = app.pollen_play_flow
+	play.return_to = "store"
+	play.back_requested.emit()
+	_check(store.opened == 1 and wardrobe.opened.is_empty(), "Back from Pollen from play opened from the store goes back to the store")
+	store.on = false
+	wardrobe.on = true
+	wardrobe.return_to = "home"
+	play.back_requested.emit()
+	_check(store.opened == 1 and wardrobe.opened == ["home"], "With the store shut now, Back goes to the Wardrobe as it opened: " + str(wardrobe.opened))
+	wardrobe.on = false
+	play.back_requested.emit()
+	await _frames()
+	_check(app.mode == "home" and _menu(app) != null, "And Home while the Wardrobe is off too")
+	_check(app.show_pollen_from_play() == play.is_open(), "The store learns whether Pollen from play opened")
+	play.return_to = "home"
+	app.pollen_store_flow = real_store
+	app.wardrobe_flow = real_wardrobe
+	store.free()
+	wardrobe.free()
 	app._show_home()
 	await _frames()
 

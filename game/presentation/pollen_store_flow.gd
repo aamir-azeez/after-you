@@ -22,8 +22,8 @@ extends Node
 ##   set-up for this player, shared with Full Journey)
 ## - screen: mode, running, overlay, ui, _clear_overlay, _toast, and
 ##   _mark_screen_back when Main has it
-## - show_pollen_from_play() (Pollen from play, presentation/pollen_play_flow.gd),
-##   for "Earn Pollen free by playing"; its Back comes back to the store
+## - show_pollen_from_play() -> bool (Pollen from play, presentation/pollen_play_flow.gd,
+##   true once it opened), for "Earn Pollen free by playing"; its Back comes back here
 ## It asks Main to leave through back_requested and to open the Wardrobe
 ## through wardrobe_requested.
 ##
@@ -259,11 +259,12 @@ func _show_unseen() -> void:
 	_sheet = weakref(Sheets.receipt(host.ui, newest, int(newest.get("balance", _balance())), paid, func() -> void: wardrobe_requested.emit(), null))
 	_redraw()
 
-## "Earn Pollen free by playing": Pollen from play, whose Back returns here.
+## "Earn Pollen free by playing": Pollen from play, whose Back returns here. A
+## page that cannot open (Pollen not known on this phone yet) says so.
 func show_earning() -> void:
 	if not is_open() or not host.has_method("show_pollen_from_play"): return
 	_close_sheet()
-	host.show_pollen_from_play()
+	if not host.show_pollen_from_play(): _toast(PlayerCopy.POLLEN_PLAY_OFFLINE)
 
 ## The page's model (presentation/pollen_store_page.gd).
 func model() -> Dictionary:

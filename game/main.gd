@@ -1317,27 +1317,32 @@ func _host_wardrobe_flow() -> WardrobeFlow:
 func _host_pollen_store_flow() -> PollenStoreFlow:
 	var flow := PollenStoreFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	var to_wardrobe := func() -> void:
-		if wardrobe_flow.available(): wardrobe_flow.show_wardrobe(wardrobe_flow.return_to)
-		else: _show_home()
-	flow.back_requested.connect(to_wardrobe)
-	flow.wardrobe_requested.connect(to_wardrobe)
+	flow.back_requested.connect(_back_to_wardrobe)
+	flow.wardrobe_requested.connect(_back_to_wardrobe)
 	return flow
 
+## The Wardrobe, with the Back it opened with, or Home while the Wardrobe is off.
+func _back_to_wardrobe() -> void:
+	if wardrobe_flow.available(): wardrobe_flow.show_wardrobe(wardrobe_flow.return_to)
+	else: _show_home()
+
 ## An internal child, like StoreFlow. Back returns where it opened: Home,
-## Settings, or the Pollen store while it can still open (else Home).
+## Settings, or the Pollen store (the store's own Back when it cannot open now).
 func _host_pollen_play_flow() -> PollenPlayFlow:
 	var flow := PollenPlayFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.back_requested.connect(func():
 		if flow.return_to == "settings": settings_flow.show_settings()
-		elif flow.return_to == "store" and pollen_store_flow.available(): pollen_store_flow.show_store()
-		else: _show_home())
+		elif flow.return_to != "store": _show_home()
+		elif pollen_store_flow.available(): pollen_store_flow.show_store()
+		else: _back_to_wardrobe())
 	return flow
 
-## The Pollen store's "Earn Pollen free by playing" (presentation/pollen_store_flow.gd).
-func show_pollen_from_play() -> void:
+## The Pollen store's "Earn Pollen free by playing" (presentation/pollen_store_flow.gd):
+## true once Pollen from play is open.
+func show_pollen_from_play() -> bool:
 	pollen_play_flow.open_from_store()
+	return pollen_play_flow.is_open()
 
 ## Home's Pollen chip, left of Full Journey: shown once the server has Pollen on
 ## and a balance is known (presentation/pollen_play_flow.gd chip).

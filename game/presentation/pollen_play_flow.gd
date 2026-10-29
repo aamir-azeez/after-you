@@ -15,8 +15,10 @@ extends Node
 ## - screen: mode, running, overlay (the page's parent), _clear_overlay, and
 ##   _mark_screen_back when Main has it (Android Back)
 ## While the shop sells, the chip's plus shows and a tap goes to `store_route`
-## (the Pollen store, built elsewhere) when one is set; otherwise every tap
-## opens this page, and no purchase route shows.
+## when one is set; otherwise every tap opens this page, and no purchase route
+## shows. Main leaves it unset: the Pollen store (presentation/pollen_store_flow.gd)
+## opens only while bundles sell, which shop() does not check, so a plus could
+## show that opens nothing.
 const Page = preload("res://presentation/pollen_play_page.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -31,7 +33,7 @@ signal back_requested
 var host: Node
 ## What this build shows (services/pollen_surfaces.gd); tests set their own.
 var surfaces: RefCounted
-## The Pollen store, once it exists; a tap on the chip opens it while the shop sells.
+## A purchase route for the chip; a tap opens it while the shop sells (unset in Main, see above).
 var store_route: Callable
 ## Scope key -> the balance a chip last showed.
 static var _shown: Dictionary = {}

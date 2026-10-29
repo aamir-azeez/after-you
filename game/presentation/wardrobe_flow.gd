@@ -26,8 +26,9 @@ extends Node
 ## (store_requested); never for an Epic or a Special.
 ## Hooks for later phases: reaction packs (owned `packs`, the server's
 ## `offered_packs`) and sets (`sets`) are kept by services/wardrobe.gd and
-## priced by the server, but no pack or set exists yet, so the page lists
-## items only: no Faces tab and no set card until one exists.
+## priced by the server. The page lists items only: the Faces tab is still to
+## build (its hooks are services/face_packs.gd faces_tab_visible and pack_rows),
+## and no set exists yet.
 ##
 ## The main button goes through a BusyTapGate (presentation/busy_tap_gate.gd):
 ## a tap while the wardrobe is still being read waits for that read instead of
