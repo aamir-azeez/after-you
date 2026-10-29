@@ -17,6 +17,8 @@ const Presence = preload("res://services/friend_presence.gd")
 const CLAIMS_PATH := "/v1/pollen/turn-claims"
 const CLEARS_PATH := "/v1/pollen/clear-claims"
 const WALLET_PATH := "/v1/pollen"
+const HISTORY_PATH := "/v1/pollen/history"
+const PollenHistory = preload("res://services/pollen_history.gd")
 ## Claims per request: the server's MAX_CLAIMS_PER_REQUEST.
 const PER_REQUEST := 4
 ## Requests one flush may make, so a server that keeps answering "retry" costs
@@ -152,6 +154,16 @@ func _settle_clears(context: Dictionary, batch: Array, response: Dictionary) -> 
 		wallet.settle_clear(context.server, context.owner, batch[index].key, answer)
 		progressed = progressed or answer.get("status") in ["credited", "refused"]
 	return progressed
+
+## The Pollen from play page's one read (GET /v1/pollen/history), when the page
+## opens and never on a timer: checked (services/pollen_history.gd), or {} when
+## it could not be read or Pollen earning is off.
+func history() -> Dictionary:
+	var context := scope()
+	if context.is_empty(): return {}
+	var response: Dictionary = await _request(HTTPClient.METHOD_GET, HISTORY_PATH, {})
+	if scope() != context or not response.get("ok", false): return {}
+	return PollenHistory.checked(response.get("data"))
 
 func _request(method: int, path: String, body: Dictionary) -> Dictionary:
 	var response: Variant

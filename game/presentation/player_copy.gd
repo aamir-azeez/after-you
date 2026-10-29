@@ -129,6 +129,22 @@ const POLLEN_ITEM_BLOOM := "A lucky bloom: a new %s!"
 const POLLEN_ITEM_BLOOM_POLLEN := "A lucky bloom: +%s Pollen"
 ## The item name when this build does not know the item yet.
 const POLLEN_ITEM_BLOOM_UNKNOWN := "item for your pip"
+# The results card's rows (presentation/pollen_breakdown.gd, pollen board 7b).
+const POLLEN_ROW_BASE := "Base"
+const POLLEN_ROW_FIRST_TRY := "First try"
+const POLLEN_ROW_GOLD_PACE := "Gold pace"
+const POLLEN_ROW_SILVER_PACE := "Silver pace"
+const POLLEN_ROW_HARD := "Hard"
+const POLLEN_ROW_PERCENT := "+%d%%"
+## The room boost and whose Full Journey it came from ("Full Journey room +10%: +22 · Maya has Full Journey").
+const POLLEN_ROW_BOOST := "Full Journey room +%d%%: +%s · %s"
+const POLLEN_ROW_BOOST_PARTNER := "%s has Full Journey"
+const POLLEN_ROW_BOOST_YOU := "You have Full Journey"
+const POLLEN_ROW_BOOST_BOTH := "You and %s have Full Journey"
+const POLLEN_ROW_THIS_TURN := "This turn"
+const POLLEN_ROW_FIRST_CLEAR := "First clear"
+const POLLEN_ROW_FIRST_HARD_CLEAR := "First Hard clear"
+const POLLEN_ROW_EARNED := "Pollen earned"
 
 # The monthly Full Journey Pollen (presentation/pollen_grant_card.gd). Amounts come in grouped.
 const POLLEN_GRANT_TITLE := "Your monthly Pollen arrived"

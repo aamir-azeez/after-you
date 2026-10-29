@@ -129,6 +129,15 @@ static func checked_receipt(value: Variant) -> Dictionary:
 		kept["turn"] = {"kind": turn.kind, "amount": Typed.as_int(turn.amount), "total": Typed.as_int(turn.total), "bonuses": bonuses.duplicate(),
 			"bonus_percent": Typed.as_int(turn.bonus_percent), "bloom": Typed.as_int(turn.bloom), "bloom_extra": Typed.as_int(turn.bloom_extra),
 			"boost_percent": Typed.as_int(turn.boost_percent), "boost": Typed.as_int(turn.boost), "reason": reason, "boost_from": from.duplicate()}
+		# For the results card's own rows: the base, and each bonus's percent (a server
+		# from before them sends neither; the card then shows the plain line).
+		if turn.has("base"):
+			if not _count(turn.base): return {}
+			kept.turn["base"] = Typed.as_int(turn.base)
+		if turn.has("bonus_percents"):
+			var percents: Variant = turn.bonus_percents
+			if not percents is Array or percents.size() != bonuses.size() or percents.any(func(percent: Variant) -> bool: return not _count(percent, 100)): return {}
+			kept.turn["bonus_percents"] = percents.map(func(percent: Variant) -> int: return Typed.as_int(percent))
 	if value.has("item_bloom"):
 		var bloom := checked_item_bloom(value.item_bloom)
 		if bloom.is_empty(): return {}
@@ -141,7 +150,16 @@ static func _checked_clears(value: Variant) -> Variant:
 	var kept := []
 	for clear: Variant in value:
 		if not clear is Dictionary or not clear.get("kind") in ["clear", "hardclear"] or not _count(clear.get("total")) or not _count(clear.get("boost_percent"), 100): return null
-		kept.append({"kind": clear.kind, "total": Typed.as_int(clear.total), "boost_percent": Typed.as_int(clear.boost_percent)})
+		var line := {"kind": clear.kind, "total": Typed.as_int(clear.total), "boost_percent": Typed.as_int(clear.boost_percent)}
+		# Its amount before the boost, the boost and its chapter, for the card's own rows.
+		for field: String in ["amount", "boost"]:
+			if clear.has(field):
+				if not _count(clear[field]): return null
+				line[field] = Typed.as_int(clear[field])
+		if clear.has("level_id"):
+			if not clear.level_id is String or _level.search(clear.level_id) == null: return null
+			line["level_id"] = clear.level_id
+		kept.append(line)
 	return kept
 
 ## An item bloom as kept: {tier, item_id} for a dropped item, or {tier, pollen}

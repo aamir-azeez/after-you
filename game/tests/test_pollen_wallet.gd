@@ -82,7 +82,7 @@ func _receipts() -> void:
 	_check(PollenWallet.checked_receipt(wrong).is_empty(), "and a receipt without its clears list")
 	wrong = _receipt()
 	wrong.clears = [{"kind": "clear", "level_id": "first-steps", "amount": 1200.0, "boost_percent": 0.0, "boost": 0.0, "total": 1200.0}]
-	_check(PollenWallet.checked_receipt(wrong).clears == [{"kind": "clear", "total": 1200, "boost_percent": 0}], "A first clear line is kept")
+	_check(PollenWallet.checked_receipt(wrong).clears == [{"kind": "clear", "total": 1200, "boost_percent": 0, "amount": 1200, "boost": 0, "level_id": "first-steps"}], "A first clear line is kept, with its amount, boost and chapter")
 	wrong.clears[0].kind = "prize"
 	_check(PollenWallet.checked_receipt(wrong).is_empty(), "an unknown clear is not")
 	var no_turn := _receipt()
@@ -157,7 +157,7 @@ func _room_clears() -> void:
 	var store: RefCounted = PollenWallet.new(path)
 	var line := {"kind": "clear", "level_id": "first-steps", "amount": 1200.0, "boost_percent": 10.0, "boost": 120.0, "total": 1320.0}
 	var paid := {"schema_version": 1.0, "earned": 0.0, "balance": 1500.0, "clears": [], "paid_clears": [line]}
-	_check(PollenWallet.checked_receipt(paid).paid_clears == [{"kind": "clear", "total": 1320, "boost_percent": 10}], "What the finish paid is kept from the answer")
+	_check(PollenWallet.checked_receipt(paid).paid_clears == [{"kind": "clear", "total": 1320, "boost_percent": 10, "amount": 1200, "boost": 120, "level_id": "first-steps"}], "What the finish paid is kept from the answer")
 	_check(PollenWallet.checked_receipt(paid.merged({"paid_clears": [{"kind": "prize", "total": 1.0, "boost_percent": 0.0}]}, true)).is_empty(), "A paid line that is not the contract's refuses the answer")
 	var noted := []
 	store.result_noted.connect(func(server: String, owner: String, room_id: String, recording_hash: String) -> void: noted.append([server, owner, room_id, recording_hash]))
@@ -165,7 +165,7 @@ func _room_clears() -> void:
 	store.queue_clear(SERVER, ME, "room:" + ROOM)
 	store.queue_clear(SERVER, ME, "room:" + other_room)
 	store.settle_clear(SERVER, ME, "room:" + ROOM, {"status": "credited", "receipt": paid})
-	_check(store.result_for(SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR) == {"earned": 1320, "balance": 1500, "clears": [{"kind": "clear", "total": 1320, "boost_percent": 10}]}, "The room's first clear is kept for its end card")
+	_check(store.result_for(SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR) == {"earned": 1320, "balance": 1500, "clears": [{"kind": "clear", "total": 1320, "boost_percent": 10, "amount": 1200, "boost": 120, "level_id": "first-steps"}]}, "The room's first clear is kept for its end card")
 	_check(noted == [[SERVER, ME, ROOM, PollenWallet.ROOM_CLEAR]], "and a screen still up hears of it")
 	# A server from before paid_clears answers earned 0 and nothing else: nothing to show, as before.
 	store.settle_clear(SERVER, ME, "room:" + other_room, {"status": "credited", "receipt": {"schema_version": 1.0, "earned": 0.0, "balance": 1500.0, "clears": []}})
