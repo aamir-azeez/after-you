@@ -47,7 +47,7 @@ static func attach_ending(ctx: Dictionary, card: Container, recording: Dictionar
 	var note := PlayerCopy.END_REACTIONS_MOMENT_NOTE if not kept else PlayerCopy.END_REACTIONS_ROOM_NOTE if online else PlayerCopy.END_REACTIONS_SOLO_NOTE
 	return EndReactions.attach(card, {"run": str(recording.get("recording_hash", "")), "pick": not waiting, "locked": str(ctx.get("pending_face", "")) if waiting else "",
 		"color": color_of(ctx, recording), "friend": _alongside(ctx, recording), "note": note,
-		"settings": _settings(ctx), "sound": sound_for(ctx, recording)})
+		"settings": _settings(ctx), "sound": sound_for(ctx, recording), "local": not online})
 
 ## The chapter-finish card: both players' faces on the last part (yours only,
 ## solo), shown and not changeable.
@@ -124,7 +124,7 @@ static func attach_hard(extras: Container, hard: Dictionary) -> Control:
 			Store.new().keep(key, face)
 			Store.pick(key, face)
 	return EndReactions.attach(extras, {"run": key, "pick": true, "color": color, "note": PlayerCopy.END_REACTIONS_SOLO_NOTE if kept else PlayerCopy.END_REACTIONS_MOMENT_NOTE,
-		"settings": _settings(ctx), "sound": sound_for(ctx, played), "on_pick": on_pick})
+		"settings": _settings(ctx), "sound": sound_for(ctx, played), "on_pick": on_pick, "local": not bool(ctx.get("online", false))})
 
 static func _stage_id(ctx: Dictionary, index: int) -> String:
 	var stages: Variant = Typed.as_dict(ctx.get("definition")).get("stages", [])

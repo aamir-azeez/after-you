@@ -23,6 +23,11 @@ const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
 const RunReactionTrack = preload("res://services/run_reaction_track.gd")
+const ReactionCatalog = preload("res://services/reaction_catalog.gd")
+## The server's answer to a turn carrying a pack face whose pack this player
+## does not own (backend src/v2/face-packs.ts). It kept nothing, so the turn
+## goes again without that face (_resend_without_pack_faces).
+const FACE_PACK_NOT_OWNED := "face_pack_not_owned"
 const HardRoomClient = preload("res://services/hard_room_client.gd")
 ## Whole-journal bytes, the same as RelayOnlineStore.VALUE_BYTES.
 const MAX_BYTES := 8388608
@@ -694,6 +699,8 @@ func _send_pending(recover_guest_join: bool = true) -> bool:
 			# The original request remains durable. Reconcile can send that exact
 			# body after a definitive missing-receipt result; never rekey here.
 			return _network_error(recovered)
+		if int(response.get("status", 0)) == 403 and response.get("code") == FACE_PACK_NOT_OWNED and _pending_pack_faces():
+			return await _resend_without_pack_faces(response)
 		_network_error(response, true)
 		if recover_guest_join and int(response.get("status", 0)) == 409 and response.get("code") == "stale_revision" and _pending_guest_join_recovery():
 			return await _recover_guest_join()
@@ -718,6 +725,35 @@ func _accept_sent(response: Dictionary) -> bool:
 		# The turn's Pollen credit (rooms_api.gd takes it out of the reply), or none to claim later.
 		if turn and not recording_hash.is_empty() and pollen_sink.is_valid(): pollen_sink.call(_room, recording_hash, response.get("pollen"), chapter_complete())
 	return accepted
+
+## Whether the turn waiting to send carries a pack face, as its end reaction
+## or in its run reactions.
+func _pending_pack_faces() -> bool:
+	if not _guard() or _state.pending.is_empty() or _state.pending.operation != "turns" or not _state.pending.body is Dictionary: return false
+	var body: Dictionary = _state.pending.body
+	if ReactionCatalog.is_pack_face(body.get("end_reaction")): return true
+	return body.get("run_reactions") is Array and (body.run_reactions as Array).any(func(entry: Variant) -> bool: return entry is Dictionary and ReactionCatalog.is_pack_face(entry.get("id")))
+
+## The server refused the turn for a pack face this player does not own (a
+## purchase it never saw, or ownership this phone held on to after a change).
+## Nothing was kept, so the same turn goes again at once without the pack
+## faces: the recording, checkpoint and tries are unchanged, and a new key
+## binds the new body, kept durably before it is sent. The turn is never lost
+## to a face.
+func _resend_without_pack_faces(refusal: Dictionary) -> bool:
+	var rejected: Dictionary = _state.pending.duplicate(true)
+	var body: Dictionary = rejected.body.duplicate(true)
+	if ReactionCatalog.is_pack_face(body.get("end_reaction")): body.erase("end_reaction")
+	if body.get("run_reactions") is Array:
+		var kept: Array = (body.run_reactions as Array).filter(func(entry: Variant) -> bool: return not (entry is Dictionary and ReactionCatalog.is_pack_face(entry.get("id"))))
+		if kept.is_empty(): body.erase("run_reactions")
+		else: body.run_reactions = kept
+	body.idempotency_key = _new_key()
+	var next := _state.duplicate(true)
+	next.pending = {"operation": "turns", "body": body, "request_hash": _request_hash("turns", body), "origin": rejected.origin.duplicate(true), "held": false, "error_code": ""}
+	if body.idempotency_key == rejected.body.idempotency_key or not _valid_pending(next.pending) or not _persist(next):
+		return _network_error(refusal, true)
+	return await _send_pending()
 
 func _recover_transferred_pending() -> Dictionary:
 	if _replay_recovering or not _guard() or _state.pending.is_empty() or not recover_replay_operation.is_valid(): return {"ok": false, "code": "replay_transferred", "status": 410}

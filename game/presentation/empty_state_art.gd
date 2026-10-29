@@ -164,8 +164,12 @@ static func spirit(ci: CanvasItem, at: Transform2D, options: Dictionary, face :=
 		var anchor := HEAD + Vector2(Look.EYE_X * (-1.0 if index == 0 else 1.0), -Look.EYE_Y) * UNIT + look * Vector2(4, 2)
 		var eye := head * Transform2D(0.0, Vector2(UNIT, -UNIT), 0.0, anchor)
 		var shape: Dictionary = Look.eye_contours(expression, index)
+		# Cheeks and tear streams under the eye, and a
+		# heart pupil's own colour.
+		for polygon: PackedVector2Array in shape.get("blush", []): fill(ci, eye, polygon, Color(Look.BLUSH, alpha * Look.BLUSH_STRENGTH))
+		for polygon: PackedVector2Array in shape.get("streams", []): fill(ci, eye, polygon, Color(Look.CREAM, alpha))
 		for polygon: PackedVector2Array in shape.outer: fill(ci, eye, polygon, Color(Look.CREAM, alpha))
-		for polygon: PackedVector2Array in shape.pupil: fill(ci, eye, polygon, Color(Look.PUPIL, alpha))
+		for polygon: PackedVector2Array in shape.pupil: fill(ci, eye, polygon, Color(shape.get("pupil_color", Look.PUPIL), alpha))
 		var width := maxf(1.0, shape.width * UNIT * at.get_scale().x)
 		for line: PackedVector2Array in shape.strokes:
 			var points := eye * line

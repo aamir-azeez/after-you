@@ -136,15 +136,16 @@ func partner(room_id: String) -> String:
 	return str(_partners.get(room_id, ""))
 
 ## What a room read or a turn reply carried (`end_reactions`): every face of the
-## room by recording hash, and the friend's latest. Unknown faces and anything
-## out of shape are skipped one by one; a reply with no list changes nothing.
+## room by recording hash, and the friend's latest. A face this build does not
+## know is kept as Catalog.FALLBACK_FACE (Catalog.shown_face); anything out of
+## shape is skipped on its own; a reply with no list changes nothing.
 func note_room(room_id: String, value: Variant) -> void:
 	if room_id.is_empty() or not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not value.get("faces") is Dictionary: return
 	_load()
 	_merge(value.faces)
-	var friend: Variant = value.get("partner")
+	var friend := Catalog.shown_face(value.get("partner"))
 	_partners.erase(room_id)
-	if is_face(friend): _partners[room_id] = friend
+	if not friend.is_empty(): _partners[room_id] = friend
 	_trim(_partners, MAX_ROOMS)
 	_save()
 
@@ -166,7 +167,8 @@ func read_wanted(room_id: String, covered: String) -> bool:
 func _merge(faces: Dictionary) -> void:
 	if faces.size() > MAX_LISTED: return
 	for recording_hash: Variant in faces:
-		if _hash(recording_hash) and is_face(faces[recording_hash]) and kept(recording_hash) != faces[recording_hash]: _keep(recording_hash, faces[recording_hash])
+		var face := Catalog.shown_face(faces[recording_hash])
+		if _hash(recording_hash) and not face.is_empty() and kept(recording_hash) != face: _keep(recording_hash, face)
 
 func _keep(recording_hash: String, face_id: String) -> void:
 	_kept.erase(recording_hash)

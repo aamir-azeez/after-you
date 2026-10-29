@@ -330,7 +330,12 @@ const END_REACTIONS_QUICK := "React with %s"
 const END_REACTIONS_CLOSE := "Close reactions"
 ## The faces, by id (services/reaction_catalog.gd). The heart is icon only; its name is for screen readers.
 const END_REACTION_NAMES := {"happy": "Happy", "squeeze": "Squeeze", "surprised": "Surprised", "sad": "Sad",
-	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love"}
+	"annoyed": "Annoyed", "angry": "Angry", "sleepy": "Sleepy", "knocked_out": "Knocked out", "heart": "Love",
+	"heart_eyes": "Heart eyes", "proud": "Proud", "wink": "Wink", "wow": "Wow", "crying": "Crying", "dizzy": "Dizzy"}
+## The reaction packs (services/reaction_catalog.gd PACKS), and the faces card's
+## tab for the everyday faces beside a tab per owned pack.
+const FACE_PACK_NAMES := {"garden_faces": "Garden faces", "big_feelings": "Big feelings"}
+const FACE_PACK_FREE_TAB := "Free"
 ## Beside a bubble: your sent face, and the friend's (a name or "A friend").
 const END_REACTIONS_YOU := "You reacted"
 const END_REACTIONS_FRIEND := "%s reacted"

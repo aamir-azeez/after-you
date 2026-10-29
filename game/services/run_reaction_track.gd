@@ -50,16 +50,20 @@ func track() -> Array:
 ## A track read from a server reply or a file, or [] when anything in it is out
 ## of shape (the whole track is refused, as the server refuses it).
 ## `duration_ticks` >= 0 also bounds the last tick by the recording's length.
-static func parse(value: Variant, duration_ticks: int = -1) -> Array:
+## `received`: the track came from the server, so a well-formed face this build
+## does not know plays as Catalog.FALLBACK_FACE instead of refusing the track.
+static func parse(value: Variant, duration_ticks: int = -1, received: bool = false) -> Array:
 	if not value is Array or value.is_empty() or value.size() > MAX_PER_TURN: return []
 	var parsed: Array = []
 	var previous := -1
 	for item: Variant in value:
-		if not item is Dictionary or item.size() != 2 or not Typed.whole_number(item.get("tick")) or not Catalog.is_face(item.get("id")): return []
+		if not item is Dictionary or item.size() != 2 or not Typed.whole_number(item.get("tick")): return []
+		var face: String = Catalog.shown_face(item.get("id")) if received else str(item.get("id")) if Catalog.is_face(item.get("id")) else ""
+		if face.is_empty(): return []
 		var tick := int(item.tick)
 		if tick <= previous: return []
 		previous = tick
-		parsed.append({"tick": tick, "id": str(item.id)})
+		parsed.append({"tick": tick, "id": face})
 	if duration_ticks >= 0 and previous > duration_ticks: return []
 	return parsed
 

@@ -329,10 +329,10 @@ func _normalize_room(value: Dictionary) -> Dictionary:
 
 ## The friend's end-of-run face on their latest turn (presentation only), with
 ## their spirit's colour (the host's slot is p0, the guest's p1). A face this
-## build does not know is left out.
+## build does not know shows as Catalog.FALLBACK_FACE (reaction_catalog.gd).
 static func _partner_reaction(value: Dictionary) -> Dictionary:
-	var face: Variant = value.get("partner_reaction")
-	if not EndReactionStore.is_face(face) or not value.get("membership") is Dictionary: return {}
+	var face := EndReactionStore.Catalog.shown_face(value.get("partner_reaction"))
+	if face.is_empty() or not value.get("membership") is Dictionary: return {}
 	return {"partner_reaction": {"face": face, "color": SpiritLook.SLOT_COLOR_NAMES["p1" if value.membership.get("you_are_host") == true else "p0"]}}
 
 ## The room partner's display name an entry carries (to clients that send

@@ -1,6 +1,6 @@
 extends RefCounted
-## The spirits' look, in one place: palette, body proportions and the ten
-## eye expressions. SpiritVisual builds its meshes from the proportions
+## The spirits' look, in one place: palette, body proportions and the eye
+## expressions. SpiritVisual builds its meshes from the proportions
 ## (spirit_meshes.gd) and paints the eyes on the head with spirit_face.gdshader
 ## from eye(); the flat art (empty_state_art.gd) draws the same contours from
 ## eye_contours(). Change a shape here and both follow.
@@ -21,11 +21,37 @@ const SQUEEZE := &"squeeze"
 const KNOCKED_OUT := &"knocked_out"
 ## ^ ^ closed smiling eyes with pink cheeks: the face a spirit makes as it
 ## sends the heart reaction (services/reaction_catalog.gd HEART_EXPRESSION).
-## The 3D face only; no flat icon draws it.
+## The 3D face; no reaction icon draws it.
 const JOY := &"joy"
-const EXPRESSIONS: Array[StringName] = [NORMAL, HAPPY, ANNOYED, SAD, ANGRY, SURPRISED, SLEEPY, SQUEEZE, KNOCKED_OUT, JOY]
-## The expressions drawn as dark strokes only, with no cream: they never blink.
-const STROKED: Array[StringName] = [SLEEPY, SQUEEZE, KNOCKED_OUT, JOY]
+## The reaction packs' faces (services/reaction_catalog.gd PACKS, approved on
+## board 6b). Garden faces: a cream heart with a red heart inside, eyes shut
+## in arcs bowed down with Joy's cheeks, and one eye shut in a wink. Big
+## feelings: a star for each pupil, squeezed shut with tear streams, and a
+## spiral in each eye.
+const HEART_EYES := &"heart_eyes"
+const PROUD := &"proud"
+const WINK := &"wink"
+const WOW := &"wow"
+const CRYING := &"crying"
+const DIZZY := &"dizzy"
+const EXPRESSIONS: Array[StringName] = [NORMAL, HAPPY, ANNOYED, SAD, ANGRY, SURPRISED, SLEEPY, SQUEEZE, KNOCKED_OUT, JOY, HEART_EYES, PROUD, WINK, WOW, CRYING, DIZZY]
+## The expressions that never blink: those drawn as dark strokes only, with no
+## cream, and Wink, which holds one eye shut.
+const STROKED: Array[StringName] = [SLEEPY, SQUEEZE, KNOCKED_OUT, JOY, PROUD, WINK, CRYING, DIZZY]
+## Heart eyes' inner heart: the heart reaction's coral a step deeper, so it
+## holds on the cream.
+const HEART_RED := Color("e2626b")
+## An open eye's outlines (eye()'s eye_shape): x the pupil's, 0 a wavy oval,
+## 1 a heart (pupil.x its size), 2 a five point star (pupil.x its radius,
+## pupil.y its inner radius as a fraction of it); y the cream's, 0 a wavy oval,
+## 1 a heart (outer.x its size). A heart pupil is drawn in HEART_RED.
+const SHAPE_OVAL := 0.0
+const SHAPE_HEART := 1.0
+const SHAPE_STAR := 2.0
+## A star's corners are rounded this much (metres).
+const STAR_ROUND := 0.008
+## Where the heart's own middle sits in its unit outline (tip at 0, top 1.10).
+const HEART_MIDDLE := 0.55
 
 ## Player identities (unchanged) and the shared parts.
 const PEACH := Color("f4c38d")
@@ -104,14 +130,22 @@ const _NO_CUT := Vector4(0, 1, 9.0, 0)
 ##               all): 0 none, 1 a line a, b, c, 2 a cross: a to b, and c
 ##               through the middle of a to b out to c's mirror, 3 an arc
 ##               bowed upward: stroke is its centre x, y, radius and half
-##               sweep (radians either side of straight up); c is unused
+##               sweep (radians either side of straight up); c is unused,
+##               4 a spiral from its centre out: stroke is the centre x, y,
+##               how far it reaches and its turns (negative turns the other
+##               way), 5 an arc bowed downward: kind 3 mirrored about its centre
 ##   blush       a soft pink cheek: radii x, y and centre offset x, y (0: none)
+##   eye_shape   an open eye's outlines: x the pupil's, y the cream's
+##               (SHAPE_OVAL, SHAPE_HEART, SHAPE_STAR)
+##   tear_stream tear_stream_end  a cream stream falling from under the eye:
+##               its top x, y and radius, then its bottom x, y and radius
+##               (0: none)
 static func eye(expression: StringName, index: int) -> Dictionary:
 	var side := -1.0 if index == 0 else 1.0
 	var e := {"mode": 0, "outer": Vector4(0.085, 0.097, 0, 0), "outer_wave": Vector4.ZERO, "outer_phase": Vector4.ZERO,
 		"pupil": Vector4(0.066, 0.077, 0, 0), "pupil_wave": Vector4.ZERO, "pupil_phase": Vector4.ZERO,
 		"cut": _NO_CUT, "tear": Vector4.ZERO, "tear_pupil": Vector4.ZERO, "stroke": Vector4.ZERO, "stroke_end": Vector4.ZERO,
-		"blush": Vector4.ZERO}
+		"blush": Vector4.ZERO, "eye_shape": Vector4.ZERO, "tear_stream": Vector4.ZERO, "tear_stream_end": Vector4.ZERO}
 	# u: outward from the face's middle, so the two eyes face each other.
 	var at := func(u: float, y: float) -> Vector2: return Vector2(u * side, y)
 	var calm_phase := Vector4(0.6, 2.1, 4.0, 0) if index == 0 else Vector4(2.4, 0.7, 1.3, 0)
@@ -191,6 +225,51 @@ static func eye(expression: StringName, index: int) -> Dictionary:
 			e.stroke_end = Vector4(0, 0, 0.019, 3)
 			var cheek: Vector2 = at.call(0.050, -0.088)
 			e.blush = Vector4(0.050, 0.032, cheek.x, cheek.y)
+		HEART_EYES:
+			# A cream heart with a red heart inside: the open eye's
+			# outline and pupil, heart shaped.
+			e.eye_shape = Vector4(SHAPE_HEART, SHAPE_HEART, 0, 0)
+			e.outer = Vector4(0.180, 0, 0, 0.006)
+			e.pupil = Vector4(0.152, 0, 0, 0.002)
+		PROUD:
+			# Shut and pleased: an arc bowed downward, chin up, with
+			# Joy's pink cheeks.
+			e.mode = 1
+			e.stroke = Vector4(0, 0.050, 0.064, 1.12)
+			e.stroke_end = Vector4(0, 0, 0.019, 5)
+			var cheek: Vector2 = at.call(0.050, -0.084)
+			e.blush = Vector4(0.050, 0.032, cheek.x, cheek.y)
+		WINK:
+			# The viewer's left eye open as Normal; the right one shut
+			# in Joy's arc, no cheeks.
+			if index == 0: return eye(NORMAL, 0)
+			e.mode = 1
+			e.stroke = Vector4(0, -0.034, 0.064, 1.2)
+			e.stroke_end = Vector4(0, 0, 0.019, 3)
+		WOW:
+			# Wide cream eyes, as Surprised, with a big five point star
+			# for a pupil.
+			e.eye_shape = Vector4(SHAPE_STAR, SHAPE_OVAL, 0, 0)
+			e.outer = Vector4(0.100, 0.104, 0, 0.004)
+			e.pupil = Vector4(0.083, 0.50, 0, 0.0)
+		CRYING:
+			# Squeezed shut as Squeeze, with a cream tear stream running
+			# from under each eye, widening as it falls.
+			e.mode = 1
+			var a: Vector2 = at.call(0.050, 0.044)
+			var b: Vector2 = at.call(-0.044, 0.0)
+			var c: Vector2 = at.call(0.050, -0.044)
+			e.stroke = Vector4(a.x, a.y, b.x, b.y)
+			e.stroke_end = Vector4(c.x, c.y, 0.016, 1)
+			var top: Vector2 = at.call(0.014, -0.056)
+			var bottom: Vector2 = at.call(0.030, -0.180)
+			e.tear_stream = Vector4(top.x, top.y, 0.022, 0)
+			e.tear_stream_end = Vector4(bottom.x, bottom.y, 0.042, 0)
+		DIZZY:
+			# A spiral in each eye, turning opposite ways.
+			e.mode = 1
+			e.stroke = Vector4(0, 0, 0.078, 1.6 * side)
+			e.stroke_end = Vector4(0, 0, 0.0145, 4)
 		_:
 			# Normal: a smooth cream oval and a mildly blobby pupil, the two
 			# eyes a little different. Most of the eye is pupil.
@@ -239,6 +318,32 @@ static var _contours: Dictionary = {}
 
 static func _eye_contours(expression: StringName, index: int, steps: int) -> Dictionary:
 	var e := eye(expression, index)
+	var result := _eye_contours_base(e, steps)
+	# Cheeks on any look that has them (the flat art draws them too), and cream tear streams.
+	var bl: Vector4 = e.blush
+	if bl.x > 0.0 and not result.has("blush"): result.blush = [_oval(bl, Vector4.ZERO, Vector4.ZERO, 32)]
+	var ts: Vector4 = e.tear_stream
+	if ts.z > 0.0:
+		var te: Vector4 = e.tear_stream_end
+		var hull := PackedVector2Array()
+		hull.append_array(_oval(Vector4(ts.z, ts.z, ts.x, ts.y), Vector4.ZERO, Vector4.ZERO, 24))
+		hull.append_array(_oval(Vector4(te.z, te.z, te.x, te.y), Vector4.ZERO, Vector4.ZERO, 32))
+		result.streams = [Geometry2D.convex_hull(hull)]
+	if e.eye_shape.x == SHAPE_HEART: result.pupil_color = HEART_RED
+	return result
+
+static func _eye_contours_base(e: Dictionary, steps: int) -> Dictionary:
+	if e.mode == 1 and e.stroke_end.w > 4.5:
+		# Kind 5: an arc bowed downward.
+		var down := _arc(e.stroke, 16)
+		var centre := Vector2(e.stroke.x, e.stroke.y)
+		for i in range(down.size()): down[i] = Vector2(down[i].x, 2.0 * centre.y - down[i].y)
+		return {"outer": [], "pupil": [], "strokes": [down], "width": e.stroke_end.z * 2.0}
+	if e.mode == 1 and e.stroke_end.w > 3.5:
+		# Kind 4: a spiral from the middle out.
+		return {"outer": [], "pupil": [], "strokes": [_spiral(e.stroke, 72)], "width": e.stroke_end.z * 2.0}
+	if e.mode == 0 and (e.eye_shape.x > 0.0 or e.eye_shape.y > 0.0):
+		return _shaped_contours(e, steps)
 	if e.mode == 1:
 		var s: Vector4 = e.stroke
 		var c: Vector4 = e.stroke_end
@@ -273,6 +378,59 @@ static func _eye_contours(expression: StringName, index: int, steps: int) -> Dic
 		outer = _intersect(outer, [_half_plane(Vector2(cut.x, cut.y), cut.z)])
 		pupil = _intersect(pupil, [_half_plane(Vector2(cut.x, cut.y), cut.z - cut.w)])
 	return {"outer": outer, "pupil": pupil, "strokes": [], "width": 0.0}
+
+## An open eye whose cream or pupil is a heart or a star.
+static func _shaped_contours(e: Dictionary, steps: int) -> Dictionary:
+	var outer: Array = [_heart(e.outer) if e.eye_shape.y == SHAPE_HEART else _oval(e.outer, e.outer_wave, e.outer_phase, steps)]
+	var pupil_shape: PackedVector2Array
+	if e.eye_shape.x == SHAPE_HEART: pupil_shape = _heart(e.pupil)
+	elif e.eye_shape.x == SHAPE_STAR: pupil_shape = _star(e.pupil)
+	else: pupil_shape = _oval(e.pupil, e.pupil_wave, e.pupil_phase, steps)
+	var inner: Array = []
+	for polygon: PackedVector2Array in outer:
+		for shrunk: PackedVector2Array in Geometry2D.offset_polygon(polygon, -RIM): inner.append(shrunk)
+	return {"outer": outer, "pupil": _intersect([pupil_shape], inner), "strokes": [], "width": 0.0}
+
+## The heart the shader draws (Inigo Quilez's sdHeart): two straight
+## sides from the tip and a round lobe each, `shape.x` big, its middle at
+## shape.z, shape.w.
+static func _heart(shape: Vector4) -> PackedVector2Array:
+	var size := shape.x
+	var origin := Vector2(shape.z, shape.w - HEART_MIDDLE * size)
+	var right := PackedVector2Array([Vector2.ZERO])
+	var lobe := Vector2(0.25, 0.75)
+	var radius := sqrt(2.0) / 4.0
+	for step in range(25):
+		var angle := -PI * 0.25 + PI * float(step) / 24.0
+		right.append(lobe + Vector2(cos(angle), sin(angle)) * radius)
+	var points := PackedVector2Array()
+	for p: Vector2 in right: points.append(origin + p * size)
+	for i in range(right.size() - 2, 0, -1): points.append(origin + Vector2(-right[i].x, right[i].y) * size)
+	return points
+
+## A five point star, point up, radius shape.x, inner radius shape.y
+## of it, round at the corners (the shader's rounded sdStar5).
+static func _star(shape: Vector4) -> PackedVector2Array:
+	var reach := shape.x - STAR_ROUND
+	var points := PackedVector2Array()
+	for step in range(10):
+		var angle := PI * 0.5 + TAU * float(step) / 10.0
+		var r := reach if step % 2 == 0 else reach * shape.y
+		points.append(Vector2(shape.z, shape.w) + Vector2(cos(angle), sin(angle)) * r)
+	var grown := Geometry2D.offset_polygon(points, STAR_ROUND, Geometry2D.JOIN_ROUND)
+	return grown[0] if not grown.is_empty() else points
+
+## An Archimedean spiral around stroke.xy reaching stroke.z after
+## |stroke.w| turns; a negative count turns the other way.
+static func _spiral(stroke: Vector4, steps: int) -> PackedVector2Array:
+	var turns := absf(stroke.w)
+	var flip := -1.0 if stroke.w < 0.0 else 1.0
+	var points := PackedVector2Array()
+	for step in range(steps + 1):
+		var t := TAU * turns * float(step) / float(steps)
+		var r := stroke.z * t / (TAU * turns)
+		points.append(Vector2(stroke.x + cos(t) * r * flip, stroke.y + sin(t) * r))
+	return points
 
 static func _oval(shape: Vector4, wave: Vector4, phase: Vector4, steps: int) -> PackedVector2Array:
 	var points := PackedVector2Array()

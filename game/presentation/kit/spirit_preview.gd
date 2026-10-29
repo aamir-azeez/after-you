@@ -50,6 +50,8 @@ var _settled := false
 var _held := false
 ## A face change still to draw (under Reduce motion it swaps at once).
 var _face_due := false
+## The face it rests in while no finger holds it (show_face).
+var _rest_face: StringName = Look.NORMAL
 
 func _init(reduced: bool = false, color: Color = PEACH, size_at_least: Vector2 = MIN_SIZE) -> void:
 	name = "SpiritPreview"
@@ -72,6 +74,7 @@ func _ready() -> void:
 	_view.render_target_update_mode = SubViewport.UPDATE_ONCE
 	add_child(_view)
 	_spirit = Stage.pip(_color, outfit)
+	if _rest_face != Look.NORMAL: _spirit.set_expression(_rest_face, true)
 	_face()
 	_camera = Stage.build(_view, _spirit, outfit)
 	texture = _view.get_texture()
@@ -90,6 +93,17 @@ func set_reduced(reduced: bool) -> void:
 	_reduced = reduced
 	turn.reduced = reduced
 	_settled = false
+	set_process(true)
+
+## Rests the pip in `expression` (spirit_look.gd), such as a reaction face the
+## Wardrobe previews (services/face_packs.gd); NORMAL by default. A drag still
+## squeezes its eyes shut and lets go back to this face.
+func show_face(expression: StringName) -> void:
+	if not Look.has(expression) or expression == _rest_face: return
+	_rest_face = expression
+	if _spirit == null or _held: return
+	_spirit.set_expression(_rest_face, _reduced)
+	_face_due = true
 	set_process(true)
 
 ## Whether a finger holds it now.
@@ -131,7 +145,7 @@ func _hold_face() -> void:
 	var holding := turn.dragging()
 	if holding == _held: return
 	_held = holding
-	_spirit.set_expression(Look.SQUEEZE if holding else Look.NORMAL)
+	_spirit.set_expression(Look.SQUEEZE if holding else _rest_face)
 	_face_due = true
 	set_process(true)
 

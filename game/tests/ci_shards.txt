@@ -65,6 +65,7 @@ display_names 3
 dressing_lint 1
 empty_state 3
 end_reactions 3
+face_packs 2
 featured_shelf 1
 final_scene 2
 finished_last_room 2

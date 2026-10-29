@@ -58,7 +58,7 @@ func _clear_default_store() -> void:
 
 func _catalog() -> void:
 	_check(Store.FACES.size() == 9 and Store.FACES[-1] == Store.HEART and Store.FACES[0] == "happy", "Eight faces then the heart, Happy first")
-	_check(Store.Catalog.EXPRESSIONS.size() == 8 and not Store.Catalog.EXPRESSIONS.values().has(Look.NORMAL) and Store.Catalog.EXPRESSIONS.knocked_out == Look.KNOCKED_OUT, "Every face is a real spirit expression, Knocked out in, Normal out")
+	_check(Store.Catalog.EXPRESSIONS.size() == 14 and not Store.Catalog.EXPRESSIONS.values().has(Look.NORMAL) and Store.Catalog.EXPRESSIONS.knocked_out == Look.KNOCKED_OUT, "Every face is a real spirit expression, Knocked out in, Normal out")
 	for face: String in Store.FACES:
 		_check(not EndReactions.face_name(face).is_empty(), "%s has a name for screen readers" % face)
 		if face != Store.HEART: _check(Look.has(Store.expression(face)), "%s draws the spirit's own %s" % [face, Store.expression(face)])
@@ -83,8 +83,8 @@ func _store() -> void:
 	reloaded.keep(HASH_B, "normal")
 	_check(Store.new(path).kept(HASH_B).is_empty() and Store.new(path).kept("not-a-hash").is_empty(), "Only real recording hashes and known faces are kept")
 	store = Store.new(path)
-	store.note_room(ROOM, {"schema_version": 1, "faces": {HASH_B: "heart", "c".repeat(64): "wink", "short": "happy"}, "partner": "heart"})
-	_check(store.kept(HASH_B) == "heart" and store.kept("c".repeat(64)).is_empty() and store.partner(ROOM) == "heart", "A room read keeps known faces one by one, and the friend's latest")
+	store.note_room(ROOM, {"schema_version": 1, "faces": {HASH_B: "heart", "c".repeat(64): "rainbow_face", "d".repeat(64): "Not A Face", "short": "happy"}, "partner": "heart"})
+	_check(store.kept(HASH_B) == "heart" and store.kept("c".repeat(64)) == Store.Catalog.FALLBACK_FACE and store.kept("d".repeat(64)).is_empty() and store.partner(ROOM) == "heart", "A room read keeps faces one by one, a later build's face as Happy, and the friend's latest")
 	store.note_room(ROOM, {"schema_version": 1, "faces": {}})
 	_check(store.partner(ROOM).is_empty() and store.kept(HASH_B) == "heart", "A later read without a friend face clears it and keeps the turns' faces")
 	store.note_room(ROOM, {"schema_version": 2, "faces": {HASH_B: "angry"}, "partner": "angry"})
@@ -363,7 +363,7 @@ func _inbox() -> void:
 	extra.other = 1
 	_check(not InboxClient.valid_server_room(bad) and not InboxClient.valid_server_room(extra), "Anything else in its place, or another new key, is refused")
 	var future := with_face.duplicate(true)
-	future.partner_reaction = "wink"
+	future.partner_reaction = "rainbow_face"
 	_check(InboxClient.valid_server_room(future), "A face a later build knows is still a valid room")
 	var api_node := Node.new()
 	var client := InboxClient.new(api_node, func() -> Dictionary: return {})
@@ -371,7 +371,7 @@ func _inbox() -> void:
 	_check(normal.partner_reaction == {"face": "happy", "color": "mint"} and InboxClient.valid_room(normal), "Kept for the card with the friend's colour: the host's friend is the mint guest")
 	with_face.membership.you_are_host = false
 	_check(client._normalize_room(with_face).partner_reaction.color == "peach", "The guest's friend is the peach host")
-	_check(not client._normalize_room(future).has("partner_reaction") and InboxClient.valid_room(client._normalize_room(future)), "A face this build does not know is left off the card")
+	_check(client._normalize_room(future).partner_reaction.face == Store.Catalog.FALLBACK_FACE and InboxClient.valid_room(client._normalize_room(future)), "A face this build does not know shows as Happy")
 	var hub := RoomHubScreen.new()
 	var line: Control = hub._status_line(normal, "your_turn")
 	_check(line.name == "StatusLine" and line.find_child("FriendReaction", true, false) != null, "The room card shows the friend's face beside its status")

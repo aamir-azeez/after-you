@@ -47,6 +47,7 @@ const PollenPlayFlow = preload("res://presentation/pollen_play_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenStoreFlow = preload("res://presentation/pollen_store_flow.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
+const FacePacks = preload("res://services/face_packs.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
@@ -366,6 +367,8 @@ func _ready() -> void:
 	# Bundle purchases whose claim got no answer go again with each flush (services/bundle_claims.gd).
 	BundleClaims.shared().connect_to(api,_names_scope)
 	pollen_client.bundle_claims=BundleClaims.shared()
+	# The reaction packs the player may pick faces from (services/face_packs.gd).
+	FacePacks.source=_face_packs_state
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
 	# Only a phone with Full Journey reads the wallet for the monthly grant; each flush may bring a card.
 	pollen_client.subscribed=_full_journey_access
@@ -1346,6 +1349,13 @@ func _host_earlier_islands_flow() -> EarlierIslandsFlow:
 	var flow := EarlierIslandsFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
+
+## What services/face_packs.gd reads: whether the signed-in player's server
+## takes pack faces, and their wardrobe as it last said; {} while signed out.
+func _face_packs_state() -> Dictionary:
+	var scope:=_names_scope()
+	if scope.is_empty(): return {}
+	return {"server": relay_session!=null and relay_session.face_packs_supported(), "view": Wardrobe.shared().view(scope.server,scope.owner)}
 
 ## The server and player that key the names and friends this phone keeps, or {}.
 func _names_scope() -> Dictionary:

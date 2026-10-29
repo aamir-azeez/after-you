@@ -23,6 +23,11 @@ extends HBoxContainer
 ##   sound      Callable(face): plays the reaction's pop (soundscape.play_reaction)
 ##   on_pick    Callable(face): after each pick
 ##   store      the EndReactionStore to use (tests); a new one otherwise
+##   local      true: the pick stays on this phone (a solo run), so an owned
+##              pack's faces may be picked whatever the server takes
+##              (services/face_packs.gd)
+##   packs      the packs whose faces the card offers (tests); otherwise
+##              FacePacks.pickable_packs()
 ## A free bubble over the world (a rewatched turn's end) is pop().
 ##
 ## Nothing runs per frame: faces are drawn once, a bubble's pop tween belongs to
@@ -31,6 +36,7 @@ extends HBoxContainer
 ## bubble just appears and stays still.
 const SafeArea = preload("res://presentation/safe_area.gd")
 const Store = preload("res://services/end_reaction_store.gd")
+const FacePacks = preload("res://services/face_packs.gd")
 const Art = preload("res://presentation/empty_state_art.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -300,6 +306,23 @@ func _caption(text: String) -> Label:
 
 # --- The split pill -----------------------------------------------------------
 
+func _quick_default() -> String:
+	return quick_face(store.last_face(), context)
+
+## A quick half's face (this row's pill, and the in-run pill): the last pick,
+## or the default face while the last was a pack face that cannot be picked now.
+static func quick_face(last: String, context: Dictionary) -> String:
+	if not Store.Catalog.is_pack_face(last): return last
+	return last if Store.Catalog.pack_of(last) in offered_packs(context) else Store.DEFAULT_FACE
+
+## The packs whose faces a card offers for `context` (a row's, or any faces card
+## owner's): its "packs" (tests), else those the player may pick now, with
+## "local" for a pick that stays on this phone (services/face_packs.gd).
+static func offered_packs(context: Dictionary) -> Array:
+	var given: Variant = context.get("packs")
+	var packs: Array = given if given is Array else FacePacks.pickable_packs(bool(context.get("local", false)))
+	return packs.filter(func(pack: Variant) -> bool: return pack is String and Store.Catalog.PACKS.has(pack))
+
 func _pill() -> PanelContainer:
 	pill = PanelContainer.new()
 	pill.name = "ReactPill"
@@ -314,7 +337,7 @@ func _pill() -> PanelContainer:
 	quick = quick_half(Vector2(TARGET + 8.0, TARGET), 40.0)
 	quick.focus_mode = Control.FOCUS_ALL
 	_quick_icon = quick_icon(quick)
-	_set_quick_face(store.last_face() if not Store.is_face(chosen) else chosen)
+	_set_quick_face(_quick_default() if not Store.is_face(chosen) else chosen)
 	quick.pressed.connect(func(): choose(_quick_icon.face))
 	var divider := ColorRect.new()
 	divider.name = "PillDivider"
@@ -546,8 +569,14 @@ class Chevron extends Control:
 ## (a narrow window) it opens above the pill, else below. A tap outside, Back,
 ## the close button or a pick closes it.
 ##
+## While the player owns a reaction pack they may pick from now
+## (services/face_packs.gd), a row of tabs sits over the grid: Free, then one
+## per such pack. A tab swaps the grid in place and the card stays open; the
+## card opens on the tab of the face already picked, else the tab last used.
+##
 ## Its owner is the row above, or any node with the same parts: `pill` (the
-## anchor), `opener`, `chosen`, `context` (its "note"), `choose(face)`,
+## anchor), `opener`, `chosen`, `context` (its "note", and "packs" and "local"
+## as the row reads them), `choose(face)`,
 ## `left_handed()` and `_color()`. build()'s options, both optional:
 ##   modal  false: nothing under the card is dimmed or blocked, so play goes on
 ##          (the joystick, the action button); a tap the screen's controls do
@@ -560,7 +589,14 @@ class FacesCard extends CanvasLayer:
 	const POINTER := 9.0
 	## From the pill's outer end past the ending card's own edge.
 	const BESIDE := 30.0
+	## A tab's chip is drawn this much shorter than its tap target, top and bottom.
+	const TAB_INSET := 7.0
+	## The tab last shown ("" for Free), so the card opens where the player left it.
+	static var _last_tab := ""
 	var row: Control
+	var grid: GridContainer
+	var tabs: Dictionary = {}
+	var tab := ""
 	var anchor: Control
 	var shade: ColorRect
 	var panel: PanelContainer
@@ -619,15 +655,16 @@ class FacesCard extends CanvasLayer:
 		close_button.add_child(Cross.new())
 		close_button.pressed.connect(close)
 		header.add_child(close_button)
-		var grid := GridContainer.new()
+		var packs: Array = load(SCRIPT_PATH).offered_packs(row.context)
+		if not packs.is_empty(): stack.add_child(_tab_strip(packs))
+		grid = GridContainer.new()
 		grid.name = "ReactionGrid"
 		grid.columns = 4
 		grid.add_theme_constant_override("h_separation", 8)
 		grid.add_theme_constant_override("v_separation", 8)
 		stack.add_child(grid)
-		for face: String in Store.FACES:
-			if face == Store.HEART: continue
-			grid.add_child(_cell(face, CELL_SIZE, true))
+		var picked_pack: String = Store.Catalog.pack_of(row.chosen) if row.chosen is String else ""
+		_fill(picked_pack if picked_pack in packs else _last_tab if _last_tab in packs else "")
 		var note := str(owner_row.context.get("note", ""))
 		if not note.is_empty():
 			var line := Label.new()
@@ -644,6 +681,54 @@ class FacesCard extends CanvasLayer:
 		get_viewport().size_changed.connect(place)
 		anchor.tree_exiting.connect(close)
 		anchor.visibility_changed.connect(_on_anchor_visibility)
+
+	func _tab_strip(packs: Array) -> HBoxContainer:
+		var strip := HBoxContainer.new()
+		strip.name = "ReactionTabs"
+		strip.add_theme_constant_override("separation", 6)
+		for id: String in [""] + packs:
+			var button := Button.new()
+			button.name = "Tab_" + (id if not id.is_empty() else "free")
+			button.text = PlayerCopy.FACE_PACK_FREE_TAB if id.is_empty() else Store.Catalog.pack_name(id)
+			button.custom_minimum_size = Vector2(TARGET, TARGET)
+			button.focus_mode = Control.FOCUS_ALL
+			button.add_theme_font_size_override("font_size", 17)
+			for state: String in ["font_color", "font_hover_color", "font_pressed_color", "font_hover_pressed_color", "font_focus_color"]:
+				button.add_theme_color_override(state, ControlTheme.INK)
+			button.pressed.connect(func(): if not closing: _fill(id))
+			tabs[id] = button
+			strip.add_child(button)
+		return strip
+
+	## Shows `id`'s faces in the grid ("" the everyday faces) and marks its tab.
+	func _fill(id: String) -> void:
+		tab = id
+		if not tabs.is_empty(): _last_tab = id
+		for child: Node in grid.get_children():
+			cells.erase(str(child.name).trim_prefix("Face_"))
+			grid.remove_child(child)
+			child.queue_free()
+		var faces: Array = Store.Catalog.PACKS.get(id, Store.FACES)
+		for face: String in faces:
+			if face == Store.HEART: continue
+			grid.add_child(_cell(face, CELL_SIZE, true))
+		for key: String in tabs: _style_tab(tabs[key], key == id)
+		# Placed again once built: the grid may be a row shorter or taller.
+		if pointer != null and panel.is_inside_tree(): place()
+
+	func _style_tab(button: Button, on: bool) -> void:
+		var look := ControlTheme.rounded(PICKED_FILL if on else CELL_FILL, 14, PICKED_BORDER if on else CELL_BORDER)
+		look.set_border_width_all(2 if on else 1)
+		look.content_margin_left = 14
+		look.content_margin_right = 14
+		# The chip is drawn shorter than the tap target it sits in.
+		look.expand_margin_top = -TAB_INSET
+		look.expand_margin_bottom = -TAB_INSET
+		var lit := look.duplicate() as StyleBoxFlat
+		lit.bg_color = PICKED_FILL
+		lit.border_color = PICKED_BORDER
+		for state: String in ["normal", "disabled"]: button.add_theme_stylebox_override(state, look)
+		for state: String in ["hover", "pressed", "hover_pressed", "focus"]: button.add_theme_stylebox_override(state, lit)
 
 	func _cell(face: String, cell_size: Vector2, named: bool) -> Button:
 		var cell := Button.new()

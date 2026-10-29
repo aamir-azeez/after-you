@@ -46,7 +46,7 @@ func note(value: Variant) -> void:
 	_load()
 	var changed := false
 	for recording_hash: Variant in listed:
-		var parsed := Track.parse(listed[recording_hash])
+		var parsed := Track.parse(listed[recording_hash], -1, true)
 		if not _hash(recording_hash) or parsed.is_empty() or Typed.same(_tracks.get(recording_hash), parsed): continue
 		_keep(recording_hash, parsed)
 		changed = true
