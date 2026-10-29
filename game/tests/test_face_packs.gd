@@ -2,8 +2,9 @@ extends "res://tests/test_relay_room_coordinator.gd"
 ## Reaction packs (board 6b): the six pack faces in the face shader and the flat
 ## art, which packs a player may pick from (owned, a server that takes them,
 ## never on an iPhone build without the shop), the faces card's pack tabs, the
-## Wardrobe's pack rows, faces this build does not know, and a turn the server
-## refuses for an unowned pack face going again without it.
+## Wardrobe's pack rows, faces this build does not know, the in-run pill's
+## quick half never offering a pack face the send would strip, and a turn the
+## server refuses for an unowned pack face going again without it.
 
 const Look = preload("res://presentation/spirit_look.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
@@ -13,6 +14,7 @@ const FacePacks = preload("res://services/face_packs.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const Store = preload("res://services/end_reaction_store.gd")
 const EndReactions = preload("res://presentation/end_reactions.gd")
+const RunReactions = preload("res://presentation/run_reactions.gd")
 const RunReactionTrack = preload("res://services/run_reaction_track.gd")
 const InboxClient = preload("res://services/room_inbox_client.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -34,6 +36,7 @@ func _run() -> void:
 	_pickable()
 	_wardrobe_rows()
 	await _faces_card_tabs()
+	await _run_pill()
 	await _refused_turn()
 	_headers()
 	FacePacks.source = Callable()
@@ -232,6 +235,37 @@ func _faces_card_tabs() -> void:
 	host.queue_free()
 	await process_frame
 	EndReactions.FacesCard._last_tab = ""
+
+## The in-run pill's quick half takes its face through EndReactions.quick_face
+## like the end card's, with the pill's own context (sent with the turn), so it
+## shows a pack face only while the send would keep it (FacePacks.can_pick).
+func _run_pill() -> void:
+	PollenSurfaces.set_shared_for_tests(true)
+	var path := _path("run-pill")
+	Store.use_last("wow", path)
+	var state := {"server": true, "view": {"packs": []}}
+	FacePacks.source = func() -> Dictionary: return state
+	var pill := RunReactions.new()
+	pill.store_path = path
+	root.add_child(pill)
+	await process_frame
+	_check(pill.quick_face == Store.DEFAULT_FACE and pill._quick_icon.face == Store.DEFAULT_FACE and not FacePacks.can_pick("wow"), "The in-run quick half shows Happy while the last pack face cannot be sent")
+	state.view = {"packs": ["big_feelings"]}
+	pill.hide()
+	pill.show()
+	await process_frame
+	_check(pill.quick_face == "wow" and pill._quick_icon.face == "wow" and FacePacks.can_pick("wow"), "With its pack owned, the last pack face is on the in-run quick half")
+	var sent: Array = []
+	pill.reacted.connect(func(face: String) -> void: sent.append(face))
+	pill.quick.pressed.emit()
+	_check(sent == ["wow"], "Its quick half sends that pack face")
+	state.server = false
+	pill.hide()
+	pill.show()
+	await process_frame
+	_check(pill.quick_face == Store.DEFAULT_FACE and pill._quick_icon.face == Store.DEFAULT_FACE and not FacePacks.can_pick("wow"), "A server that takes no pack faces turns the shown pack face back to Happy")
+	pill.queue_free()
+	await process_frame
 
 func _refused_turn() -> void:
 	_clear_default_store()

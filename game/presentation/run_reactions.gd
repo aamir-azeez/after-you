@@ -183,10 +183,15 @@ func _on_visibility() -> void:
 	close_faces()
 	Store.flush_last(store_path)
 
+## The quick face from the last face used, through EndReactions.quick_face like
+## the end card's, so a pack face the turn's send would strip (a pack not
+## pickable now) shows as the default face instead.
 func _take_last() -> void:
 	var known := Store.last_known(store_path)
-	if not known.is_empty() and known != quick_face:
-		quick_face = known
+	if known.is_empty(): return
+	var face := EndReactions.quick_face(known, context)
+	if face != quick_face:
+		quick_face = face
 		_show_quick_face()
 
 func _show_quick_face() -> void:
