@@ -249,8 +249,10 @@ func _pause_and_kill() -> void:
 	_check(app.mode == "review" and _button(app.overlay, "Save turn") != null, "The resumed turn reaches its review")
 	_check(_visible_body(app).contains(PlayerCopy.HARD_REVIEW_BODY) and not _visible_body(app).contains(PlayerCopy.RELAY_PREVIEW_B9074234FC11), "The review says this turn stays, with no promise of another attempt")
 	_no_retry(app, "The review card")
+	var hard_hash := str(app.review.get("recording_hash", ""))
 	app._accept()
 	_check(app.journey.role() == "b" and _runs(KEY).is_empty(), "The turn is kept and the run goes on")
+	_check(app.turn_tries.tries(hard_hash) == 0, "A Hard turn keeps no First try count, so Replays shows no chip (Hard has no retries)")
 	# A turn closed in its first second: its first tick was saved, so it resumes.
 	app._show_ready()
 	app._begin()

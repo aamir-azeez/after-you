@@ -82,6 +82,9 @@ func _service() -> void:
 	_check(TurnTries.new(path).tries("c".repeat(64)) == 1, "The count of one survives the app closing")
 	_check(tries.freeze(second, "c".repeat(64)) == 1 and TurnTries.new(path).tries("c".repeat(64)) == 1, "Freezing the same turn again (a refused send) keeps the one count")
 	_check(tries.freeze("solo|never-started", "9".repeat(64)) == 0 and tries.tries("9".repeat(64)) == 0, "A turn never started here keeps nothing: it shows no count")
+	var hard_slot := "solo|relay-isles@2#hard|relay|a|x|"
+	tries.start(hard_slot)
+	_check(tries.freeze(hard_slot, "8".repeat(64), false) == 1 and tries.tries("8".repeat(64)) == 0, "A Hard turn's one try keeps no count: no First try chip")
 	tries.restart_solo("relay-isles@2")
 	_check(tries.count(solo) == 0 and tries.count(second) == 0 and tries.count(room) == 2, "A solo redo or restart starts only that chapter's counts again")
 	_check(tries.read_wanted(ROOM, "x"), "A room never read is read")

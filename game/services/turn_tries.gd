@@ -92,10 +92,12 @@ func resume(turn_slot: String) -> int:
 ## The turn is being saved or sent: its count is kept under the recording,
 ## and returned (0 when the turn was never started here). The slot stays open
 ## until close(), so a refused send and another Retry go on counting.
-func freeze(turn_slot: String, recording_hash: String) -> int:
+## `first_tries` false (a Hard turn, which has no retries, so its one try says
+## nothing): a count of one is not kept, and Replays shows no First try chip.
+func freeze(turn_slot: String, recording_hash: String, first_tries: bool = true) -> int:
 	_load_open()
 	var taken := count(turn_slot)
-	if taken > 0 and _hash(recording_hash):
+	if (taken > 1 or (taken == 1 and first_tries)) and _hash(recording_hash):
 		_load_kept()
 		# A resend of the same turn (a refused send) writes nothing again.
 		if tries(recording_hash) != taken:
