@@ -14,6 +14,7 @@ const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const PLAY_ICON = preload("res://assets/ui/play-circle.svg")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Backdrop = preload("res://presentation/duels/duel_result_backdrop.gd")
+const Runs = preload("res://services/leaderboard_runs.gd")
 ## What sits behind the result (duel_result_backdrop.gd): "level", "snapshots" or "cheer". The owner's pick is this one line.
 const RESULT_BG := "level"
 
@@ -58,7 +59,7 @@ func _render() -> void:
 	if view.is_empty(): return
 	var key := str(view.chapter)
 	set_title("", "")
-	if is_instance_valid(_backdrop): _backdrop.show_chapter(key, view.result is Dictionary and view.result.get("outcome", "") == "won")
+	if is_instance_valid(_backdrop): _backdrop.show_chapter(_picture_key(), view.result is Dictionary and view.result.get("outcome", "") == "won")
 	var title := Kit.text(DuelModel.result_title(view, name_of), 50 if not compact else 42, UiTokens.CREAM, true)
 	title.name = "DuelResultHeadline"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -97,6 +98,11 @@ func _render() -> void:
 	back.add_theme_font_size_override("font_size", 24)
 	buttons.add_child(back)
 	_column.add_child(buttons)
+
+## The bundled chapter whose picture shows behind the result: the board's own version, as duels_flow.gd opens it.
+func _picture_key() -> String:
+	var key := Runs.chapter_of(str(view.get("board", "")))
+	return key if not key.is_empty() else str(view.chapter)
 
 func _card(index: int, won: bool) -> Control:
 	var card := Kit.panel("ResultSide%d" % index, Kit.PANEL_FILL, Kit.HIGHLIGHT_EDGE if won else Kit.PANEL_EDGE, 20, 16.0)
