@@ -11,6 +11,7 @@ import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
 import type { DuelView } from "../src/duels/model";
 import { countingEnv } from "./meter";
+import { bytesDigest, decodeBlob } from "../src/blob-codec";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -206,6 +207,14 @@ describe("friend duels", () => {
     // The replay job gets both runs, allowed their assisted turns.
     const entries = (await job()).entries.filter(entry => entry.duel === true);
     expect(entries.map(entry => entry.ticks).sort()).toEqual([fast.ticks, slow.ticks].sort());
+    // Each comes in the shared blob format, never as a raw checkpoint, and decodes to the bytes its hash names.
+    for (const entry of entries) {
+      expect(entry).not.toHaveProperty("checkpoint");
+      const body = Uint8Array.from(atob(entry.body as string), char => char.charCodeAt(0));
+      const bytes = await decodeBlob(body, entry.byte_length as number);
+      expect(bytes && await bytesDigest(bytes)).toBe(entry.proof_hash);
+      expect(JSON.parse(new TextDecoder().decode(bytes!)).stage_index).toBe(2);
+    }
     await verdicts(entries, () => true);
     const won = await detail(a1, duel);
     expect(won.duel.result).toMatchObject({ outcome: "won", reason: "faster", margin_ticks: 40 });

@@ -74,6 +74,13 @@ async function pending(env: Env): Promise<string[]> {
       work = checked.work;
     }
     for (const item of work.replay) {
+      // A duel run arrives as a tagged blob body in base64 (duels/store.ts), which needs no escaping either.
+      if ("body" in item) {
+        const { body, ...facts } = item;
+        entries.push(JSON.stringify({ board, ...facts }).slice(0, -1) + `,"body":"${body}"}`);
+        budget -= item.byte_length;
+        continue;
+      }
       const { checkpoint, ...facts } = item;
       entries.push(JSON.stringify({ board, ...facts }).slice(0, -1) + `,"checkpoint":${checkpoint}}`);
       budget -= checkpoint.length;
