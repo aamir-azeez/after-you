@@ -214,11 +214,12 @@ platform_games_cloud 2
 platform_games_service 3
 player_copy 1
 player_copy_render 1
+pollen_chip 1
 pollen_client 1
 pollen_grant 3
 pollen_item_bloom 2
-pollen_mark 1
 pollen_line 1
+pollen_mark 1
 pollen_surfaces 3
 pollen_wallet 2
 premium_open_cost 1
