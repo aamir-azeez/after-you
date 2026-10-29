@@ -324,6 +324,25 @@ describe("friend hints", () => {
     expect(hints).not.toHaveBeenCalled();
   });
 
+  it("tell the accepter's own phone once when they accept, and never for a refused or repeated accept", async () => {
+    const sender = await account(), accepter = await account(), other = await account();
+    const asked = await call("/v1/friends/request", "POST", sender, { schema_version: 1, friend_code: accepter.player_id }); expect(asked.status).toBe(200);
+    const { request_id } = await asked.json<{ request_id: string }>();
+    const socket = await connect(accepter), sent = await connect(sender);
+    // The accepter's list was just read, so only the push and the reopened floor bring the named read forward.
+    expect((await call("/v1/friends", "GET", accepter)).status).toBe(200);
+    const refused = await call("/v1/friends/accept", "POST", accepter, { schema_version: 1, player_id: other.player_id, request_id });
+    expect(refused.status).toBe(409);
+    const accept = () => call("/v1/friends/accept", "POST", accepter, { schema_version: 1, player_id: sender.player_id, request_id });
+    expect((await accept()).status).toBe(200);
+    await until(() => friendEvents(socket).length === 1 && friendEvents(sent).length === 1);
+    expect((await call("/v1/friends", "GET", accepter)).status).toBe(200);
+    expect((await accept()).status).toBe(200);
+    await settle();
+    expect(friendEvents(socket)).toHaveLength(1);
+    expect(friendEvents(sent)).toHaveLength(1);
+  });
+
   it("cost an accepted friend with no socket one hint RPC and no block lookups", async () => {
     const host = await account(), friend = await account();
     await befriend(host, friend);

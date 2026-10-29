@@ -122,9 +122,10 @@ export class Player extends DurableObject<Env> {
     if (granted < social.next_refresh_at) { social.next_refresh_at = granted; this.writeSocial(identity, social, false); }
   }
   /**
-   * A friend change made in this object for this player. `accepted`: a request
-   * this player sent was accepted. Otherwise a request arrived, was cancelled or
-   * a friend was removed, which opens no early read on the phone.
+   * A friend change made in this object for this player. `accepted`: a link
+   * just became a friendship (this player accepted, or a request they sent was
+   * accepted). Otherwise a request arrived, was cancelled or a friend was
+   * removed, which opens no early read on the phone.
    */
   private pushFriendsChanged(identity: Identity, accepted: boolean): void {
     if (flags.liveConnection(this.env)) sendLive(liveSockets(this.ctx, identity.device_hash), { type: accepted ? "friends_changed" : "friend_requests_changed" });
@@ -389,7 +390,9 @@ export class Player extends DurableObject<Env> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
     const identity = this.identity()!, social = this.social(identity), link = social.links.find(x => x.player_id === peer);
     if (!link || link.request_id !== requestId || link.requested_by !== peer || !link.accepted && link.created_at + FRIEND_REQUEST_TTL_MS <= Date.now()) return fail(409, "friend_request_changed");
-    link.accepted = true; this.writeSocial(identity, social); return ok(link);
+    // The accepter's own phones read the list early: only an accepted row carries the new friend's name, and the reply has none.
+    const accepted = !link.accepted;
+    link.accepted = true; this.writeSocial(identity, social); if (accepted) this.pushFriendsChanged(identity, true); return ok(link);
   }
   /** Binding only, after the recipient's matching approval is read. */
   friendConfirm(owner: string, peer: string, requestId: string): Outcome<FriendLink> {
@@ -397,7 +400,8 @@ export class Player extends DurableObject<Env> {
     if (!identity || identity.player_id !== owner || identity.state !== "active") return fail(404, "friend_unavailable");
     const social = this.social(identity), link = social.links.find(x => x.player_id === peer);
     if (!link || link.request_id !== requestId || link.requested_by !== owner) return fail(409, "friend_request_changed");
-    link.accepted = true; this.writeSocial(identity, social); this.pushFriendsChanged(identity, true); return ok(link);
+    const accepted = !link.accepted;
+    link.accepted = true; this.writeSocial(identity, social); if (accepted) this.pushFriendsChanged(identity, true); return ok(link);
   }
   /** Exact-token removal cannot erase a newer request after a lost reply. */
   friendForget(owner: string, peer: string, requestId: string, deviceHash?: string): Outcome<{ removed: true }> {
