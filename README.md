@@ -101,9 +101,8 @@ To play the game on desktop, launch game/project.godot in Godot 4.7.2. The curre
 
 [Android & builds](native/README.md) · [Backend & API](backend/README.md) · [Simulation & replays](game/core/README.md) · [CI](.github/workflows/verify.yml)
 
-Application source is available under the [MIT license](LICENSE). External libraries,
-fonts and other attributed assets retain their own licenses; retain those notices
-when redistributing the app.
+The source code is licensed under the [GNU AGPL v3.0](LICENSE) as set out in [COPYRIGHT](COPYRIGHT), and the art, sound, levels, text, name and logo are all rights reserved under [ASSETS-LICENSE.md](ASSETS-LICENSE.md).
+External libraries, fonts and other third-party parts keep their own licenses.
 
 Thank you for reading! Here's a cute image:
 <p align="center">

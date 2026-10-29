@@ -1,7 +1,7 @@
 """Generate After You's original, deterministic interface and puzzle sounds.
 
-Uses only Python's standard library. The generated WAV files share the project's
-MIT license; no samples or external recordings are used.
+Uses only Python's standard library. The generated WAV files are After You assets,
+all rights reserved under ASSETS-LICENSE.md; no samples or external recordings are used.
 """
 from pathlib import Path
 import math

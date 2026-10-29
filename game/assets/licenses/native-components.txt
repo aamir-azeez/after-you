@@ -1,11 +1,11 @@
 Native runtime components
 
-This notice inventory covers the Godot Android template build inputs and the pinned native runtime configurations. The final application may select a newer shared version than the native-only build, so this list intentionally retains notices for both inputs. Each keeps its own license; the application MIT license does not replace third-party terms.
+This notice inventory covers the Godot Android template build inputs and the pinned native runtime configurations. The final application may select a newer shared version than the native-only build, so this list intentionally retains notices for both inputs. Each keeps its own license; the After You license does not replace third-party terms.
 
 Apache-2.0 text: Apache-2.0.txt. Exact archive notice files: native-notices.txt. Godot and its internal third-party components are available through the in-app engine notices.
 
 After You Android plugin
-MIT License — after-you-MIT.txt
+GNU Affero General Public License v3.0 only: after-you-LICENSE.txt
 
 androidx.activity:activity:1.8.1
 The Apache Software License, Version 2.0 — http://www.apache.org/licenses/LICENSE-2.0.txt
@@ -188,7 +188,7 @@ Android C++ runtime
 LLVM runtime source commit 5e96669f06077099aa41290cdb4c5e6fa0f59349. Full libc++, libc++abi, libunwind and compiler runtime notices are included in the LLVM Android runtime section.
 
 Android SDK license reference
-Full agreement text is included in Android-SDK-License.txt, captured from the official Google Android SDK repository on 2026-09-14. Google Billing and Play-services are identified above under their published SDK license rather than the application MIT license.
+Full agreement text is included in Android-SDK-License.txt, captured from the official Google Android SDK repository on 2026-09-14. Google Billing and Play-services are identified above under their published SDK license rather than the After You license.
 
 Pinned native runtime additions (including Firebase Messaging 25.1.3)
 

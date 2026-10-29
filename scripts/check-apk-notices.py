@@ -41,12 +41,36 @@ def native_inventory_errors(repo: Path) -> list[str]:
     return errors
 
 
+APP_LICENSE = "game/assets/licenses/after-you-LICENSE.txt"
+APP_LICENSE_PARTS = ("COPYRIGHT", "LICENSE", "ASSETS-LICENSE.md")
+APP_LICENSE_SEPARATOR = "\n--------------------\n\n"
+
+
+def expected_app_license(repo: Path) -> str | None:
+    """COPYRIGHT, LICENSE and ASSETS-LICENSE.md joined by the separator line, or None when a part is missing."""
+    paths = [repo / part for part in APP_LICENSE_PARTS]
+    if not all(path.is_file() for path in paths):
+        return None
+    return APP_LICENSE_SEPARATOR.join(path.read_text(encoding="utf-8").replace("\r\n", "\n") for path in paths)
+
+
+def app_license_errors(repo: Path) -> list[str]:
+    """The in-app After You notice must match the repository's notice files, so the app shows what the repository says."""
+    expected = expected_app_license(repo)
+    app_path = repo / APP_LICENSE
+    if expected is None or not app_path.is_file():
+        return [", ".join(APP_LICENSE_PARTS) + " or the in-app After You license is missing."]
+    if app_path.read_text(encoding="utf-8").replace("\r\n", "\n") != expected:
+        return [APP_LICENSE + " must be " + ", ".join(APP_LICENSE_PARTS) + " joined by the separator line."]
+    return []
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("apk", type=Path)
     args = parser.parse_args()
     game = Path(__file__).resolve().parents[1] / "game"
-    inventory_errors = native_inventory_errors(game.parent)
+    inventory_errors = native_inventory_errors(game.parent) + app_license_errors(game.parent)
     if inventory_errors:
         raise SystemExit("\n".join(inventory_errors))
     notices = sorted((game / "assets" / "licenses").glob("*.txt"))

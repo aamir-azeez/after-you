@@ -172,6 +172,8 @@ func _run() -> void:
 	for path: String in Catalog.file_paths():
 		all_files_present = all_files_present and FileAccess.file_exists(path)
 	_check(all_files_present, "Every catalog notice is present before opening the UI")
+	_check(not entries.is_empty() and entries[0].title == "After You" and str(entries[0].text).contains("GNU AFFERO GENERAL PUBLIC LICENSE") and str(entries[0].text).contains("All rights reserved."),
+		"The first row opens After You's own code license and assets notice")
 	if entries.is_empty():
 		quit(1)
 		return

@@ -5,7 +5,7 @@ extends RefCounted
 const PlatformSupport = preload("res://services/platform_support.gd")
 
 const FILES := {
-	"After You": "res://assets/licenses/after-you-MIT.txt",
+	"After You": "res://assets/licenses/after-you-LICENSE.txt",
 	"Fredoka font": "res://assets/fonts/fredoka-OFL.txt",
 	"Nunito font": "res://assets/fonts/nunito-OFL.txt",
 	"After You Date Pen font (from Nanum Pen Script)": "res://assets/fonts/pen-date-OFL.txt",
