@@ -32,12 +32,7 @@ const SPOTS := {
 	"friends": {"card": "friend", "rows": ["friend", "friend_next"], "links": [[1, 0, "plane"]]},
 	"replays_solo": {"card": "replay", "preview": "footprints"},
 	"replays_together": {"card": "replay", "rows": ["polaroid"]},
-	# The empty Duels lobby: three versions for the owner to pick from (duels_screen.gd EMPTY_ART).
-	"duels_a": {"card": "room", "rows": ["duel_start", "duel_other"]},
-	"duels_b": {"card": "room", "rows": ["duel_rivals", "duel_snooze"]},
-	"duels_c": {"card": "room", "rows": ["duel_trail", "duel_letter"], "links": [[1, 0, "plane"]]},
-	"duels_d": {"card": "room", "rows": ["duel_photos", "duel_cheer"]},
-	"duels_e": {"card": "room", "rows": ["duel_lanes", "duel_close"]},
+	# The empty Your duels list in the Duels lobby (duels_screen.gd EMPTY_ART).
 	"duels_f": {"card": "room", "rows": ["duel_together", "duel_hug"]},
 	# The empty Open duels column, narrow: one round friend card each (duels_screen.gd OPEN_EMPTY_ART).
 	"open_a": {"card": "friend", "rows": ["open_letter"]},

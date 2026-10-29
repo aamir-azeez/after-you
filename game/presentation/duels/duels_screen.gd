@@ -19,8 +19,8 @@ const TROPHY_ICON = preload("res://assets/ui/whats_new/star.svg")
 const INFO_ICON = preload("res://assets/ui/social/info.svg")
 const REFRESH_SECONDS := 30.0
 const TILE_WIDTH := 268.0
-## The empty lobby's art (presentation/empty_state.gd SPOTS): "duels_a", "duels_b" or "duels_c". The owner's pick is this one line.
-const EMPTY_ART := "duels_a"
+## The empty lobby's art (presentation/empty_state.gd SPOTS), the owner's pick.
+const EMPTY_ART := "duels_f"
 ## The empty Open duels column's art: "open_a", "open_b" or "open_c", each with its own line (OPEN_LINES). The owner's pick is this one line.
 const OPEN_EMPTY_ART := "open_a"
 const OPEN_LINES := {"open_a": PlayerCopy.DUELS_OPEN_EMPTY_A, "open_b": PlayerCopy.DUELS_OPEN_EMPTY_B, "open_c": PlayerCopy.DUELS_OPEN_EMPTY_C}

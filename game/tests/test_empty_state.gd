@@ -74,7 +74,7 @@ func _empties(node: Node) -> Array[Node]:
 const OPEN_AREA := Vector2(352, 290)
 const YOURS_AREA := Vector2(814, 420)
 const OPEN_ARTS := ["open_a", "open_b", "open_c"]
-const YOURS_ARTS := ["duels_a", "duels_b", "duels_c", "duels_d", "duels_e", "duels_f"]
+const YOURS_ARTS := ["duels_f"]
 
 func _duel_columns() -> void:
 	for art: String in OPEN_ARTS + YOURS_ARTS:
