@@ -9,8 +9,10 @@ extends RefCounted
 ## from review or pause, and a restart after a failed ending. Resuming a saved
 ## draft is not a start, so a turn resumed after the app closed keeps its
 ## count. When the turn is saved or sent its count is kept under the
-## recording's hash; a friend's counts read from the server are kept the same
-## way. Open counts live in their own small file, written on every start; kept
+## recording's hash, a first try's count of one too (Replays shows it as
+## First try); a friend's counts read from the server are kept the same way. A
+## turn with no kept count (an older build's, or one never started here) shows
+## nothing. Open counts live in their own small file, written on every start; kept
 ## counts change only on a save, a send or a server read. Every change re-reads
 ## its file first, so screens that each hold one of these never undo each
 ## other's counts.
@@ -28,8 +30,6 @@ const FILE_PATH := "user://turn-tries.json"
 const VERSION := 1
 const MAX_TRIES := 999
 const MAX_OPEN := 64
-## Counts of one are not kept: a first try shows nothing, as a turn from an
-## older build does.
 const MAX_KEPT := 1024
 const MAX_READS := 128
 const SOLO := "solo"
@@ -94,12 +94,14 @@ func resume(turn_slot: String) -> int:
 ## until close(), so a refused send and another Retry go on counting.
 func freeze(turn_slot: String, recording_hash: String) -> int:
 	_load_open()
-	var tries := count(turn_slot)
-	if tries > 1 and _hash(recording_hash):
+	var taken := count(turn_slot)
+	if taken > 0 and _hash(recording_hash):
 		_load_kept()
-		_keep(recording_hash, tries)
-		_save_kept()
-	return tries
+		# A resend of the same turn (a refused send) writes nothing again.
+		if tries(recording_hash) != taken:
+			_keep(recording_hash, taken)
+			_save_kept()
+	return taken
 
 ## The turn was saved or accepted; its slot is done.
 func close(turn_slot: String) -> void:
@@ -116,7 +118,7 @@ func restart_solo(chapter_key: String) -> void:
 			changed = true
 	if changed: _save_open()
 
-## The count a saved turn took; 0 when it is unknown or was a first try.
+## The count a saved turn took: 1 for a first try, 0 when it is unknown.
 func tries(recording_hash: String) -> int:
 	return int(_kept.get(recording_hash, 0))
 
@@ -132,7 +134,7 @@ func remember(counts: Dictionary, room_id: String = "", covered: String = "") ->
 	for recording_hash: Variant in counts:
 		var value: Variant = counts[recording_hash]
 		if not recording_hash is String or not _hash(recording_hash) or not Typed.whole_number(value) or int(value) < 1 or int(value) > MAX_TRIES: continue
-		if int(value) > 1 and tries(recording_hash) != int(value): _keep(recording_hash, int(value))
+		if tries(recording_hash) != int(value): _keep(recording_hash, int(value))
 	if not room_id.is_empty():
 		_reads.erase(room_id)
 		_reads[room_id] = covered
@@ -183,7 +185,7 @@ static func _parse_kept(text: String) -> Variant:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), VERSION) or not value.get("kept") is Dictionary or not value.get("reads") is Dictionary: return null
 	var kept := {}
 	for key: Variant in value.kept:
-		if _hash(key) and _count(value.kept[key], 2): kept[key] = int(value.kept[key])
+		if _hash(key) and _count(value.kept[key], 1): kept[key] = int(value.kept[key])
 	var reads := {}
 	for key: Variant in value.reads:
 		if key is String and key.length() <= 64 and value.reads[key] is String and value.reads[key].length() <= 64: reads[key] = value.reads[key]

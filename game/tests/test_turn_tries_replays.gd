@@ -36,7 +36,7 @@ func _reads() -> void:
 	supported.value = true
 	await collection.refresh_memories(key)
 	_check(_tries_reads(api) == 1 and api.calls.back().path == tries_path, "With it, one read after the room's list")
-	_check(TurnTries.new().tries(rows[0].a_hash) == 3 and TurnTries.new().tries(rows[1].b_hash) == 0, "The friend's and your counts are kept by recording; a count of one keeps nothing")
+	_check(TurnTries.new().tries(rows[0].a_hash) == 3 and TurnTries.new().tries(rows[1].b_hash) == 1, "The friend's and your counts are kept by recording, a first try's count of one too")
 	await collection.refresh_memories(key)
 	_check(_tries_reads(api) == 1, "A room whose parts did not change is not read again")
 	# The room's list left the server (offloaded or moved to the phones): the saved parts still lead to a read.

@@ -96,6 +96,8 @@ const SHARED_REPLAY_DELETE_CONFIRM := "Delete this replay from Shared Replays on
 # play from the second try on, and one turn's count on a Replays row.
 const TRY_PILL := "Try %d"
 const TRY_COUNT := "%s · %d tries"
+## A Replays turn played on its first try (the retry count concept's chip).
+const TRY_FIRST := "%s · First try"
 const TRY_YOU := "You"
 const TRY_FIRST_TURN := "First turn"
 const TRY_SECOND_TURN := "Second turn"

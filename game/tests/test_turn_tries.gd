@@ -8,6 +8,7 @@ const Journey = preload("res://services/relay_journey.gd")
 const Replays = preload("res://presentation/replays_flow.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const ControlTheme = preload("res://presentation/control_theme.gd")
 const HASH_A := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const HASH_B := "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
@@ -77,12 +78,16 @@ func _service() -> void:
 	journey.stage = "garden"; journey.turn_role = "b"; journey.start_hash = HASH_B; journey.prior = {"recording_hash": HASH_A}
 	var second := TurnTries.slot_for(journey, "relay-isles@2", false)
 	_check(tries.resume(second) == 1 and tries.resume(second) == 1, "A draft resumed without a count is the first try, once")
-	_check(tries.freeze(second, "c".repeat(64)) == 1 and tries.tries("c".repeat(64)) == 0, "A first try keeps no count: it shows nothing")
+	_check(tries.freeze(second, "c".repeat(64)) == 1 and tries.tries("c".repeat(64)) == 1, "A first try keeps a count of one: Replays shows it as First try")
+	_check(TurnTries.new(path).tries("c".repeat(64)) == 1, "The count of one survives the app closing")
+	_check(tries.freeze(second, "c".repeat(64)) == 1 and TurnTries.new(path).tries("c".repeat(64)) == 1, "Freezing the same turn again (a refused send) keeps the one count")
+	_check(tries.freeze("solo|never-started", "9".repeat(64)) == 0 and tries.tries("9".repeat(64)) == 0, "A turn never started here keeps nothing: it shows no count")
 	tries.restart_solo("relay-isles@2")
 	_check(tries.count(solo) == 0 and tries.count(second) == 0 and tries.count(room) == 2, "A solo redo or restart starts only that chapter's counts again")
 	_check(tries.read_wanted(ROOM, "x"), "A room never read is read")
 	tries.remember({HASH_A: 5.0, "d".repeat(64): 1.0, "e".repeat(64): 1000.0, "not-a-hash": 4.0, "f".repeat(64): "3"}, ROOM, "x")
-	_check(tries.tries(HASH_A) == 5 and tries.tries("d".repeat(64)) == 0 and tries.tries("e".repeat(64)) == 0 and tries.tries("f".repeat(64)) == 0, "Server counts are kept only when they are whole numbers from 2 to 999")
+	_check(tries.tries(HASH_A) == 5 and tries.tries("d".repeat(64)) == 1 and tries.tries("e".repeat(64)) == 0 and tries.tries("f".repeat(64)) == 0, "Server counts are kept only when they are whole numbers from 1 to 999")
+	_older_files()
 	_check(not TurnTries.new(path).read_wanted(ROOM, "x") and TurnTries.new(path).read_wanted(ROOM, "y"), "A room is read again only when its parts changed, across a reload")
 	for index in range(TurnTries.MAX_OPEN + 3): tries.start("solo|bounded|%d" % index)
 	_check(tries.count("solo|bounded|0") == 0 and tries.count("solo|bounded|%d" % (TurnTries.MAX_OPEN + 2)) == 1 and TurnTries.new(path)._open.size() == TurnTries.MAX_OPEN, "Open counts are bounded, oldest out first, across a reload")
@@ -92,6 +97,20 @@ func _service() -> void:
 	file.close()
 	_paths.append(damaged.get_basename() + "-open.json")
 	_check(TurnTries.new(damaged).start("x") == 1, "A damaged file reads as no counts")
+
+## A kept file with counts of one and the older counts reads entry by entry,
+## and keeps its version, so a build from before first tries were kept still
+## reads it (dropping only the ones).
+func _older_files() -> void:
+	var path := _path("older")
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"schema_version": 1, "kept": {HASH_A: 3, HASH_B: 1, "short": 2}, "reads": {}}))
+	file.close()
+	var tries := TurnTries.new(path)
+	_check(tries.tries(HASH_A) == 3 and tries.tries(HASH_B) == 1 and tries.tries("c".repeat(64)) == 0, "A kept file keeps its counts one by one, the bad ones dropped")
+	tries.remember({"e".repeat(64): 2})
+	var saved: Variant = JSON.parse_string(FileAccess.get_file_as_string(path))
+	_check(saved is Dictionary and int(saved.schema_version) == TurnTries.VERSION and int(saved.kept[HASH_B]) == 1, "The file keeps its version, so an older build still reads it")
 
 func _solo_preview(journal: String, counts: String) -> Node3D:
 	var app := Preview.new()
@@ -150,6 +169,9 @@ func _solo_seams() -> void:
 	app._accept()
 	_check(app.mode != "error" and app.journey.role() == "b", "Save turn accepts try 4")
 	_check(app.turn_tries.tries(saved_hash) == 4, "The saved turn keeps its count of 4 under its recording")
+	var retried := _chip(app.turn_tries, [PlayerCopy.TRY_FIRST_TURN, saved_hash])
+	_check(retried != null and not retried.first_try() and retried.label.text == PlayerCopy.TRY_COUNT % [PlayerCopy.TRY_FIRST_TURN, 4], "Replays shows the turn recorded with retries as its count")
+	if retried != null: retried.free()
 	app._show_ready()
 	app._begin()
 	await process_frame
@@ -174,6 +196,35 @@ func _solo_seams() -> void:
 	_check(app._live_tries == 1 and app.turn_tries.tries(saved_hash) == 4, "The redone turn starts a new count and the old one keeps its own")
 	app.queue_free()
 	await process_frame
+	# A fresh journey whose first turn is saved on its first try.
+	app = _solo_preview(_path("journal-first"), _path("first-counts"))
+	await process_frame
+	app._begin()
+	await process_frame
+	for input: Dictionary in inputs: app.advance_input(input)
+	app._finish()
+	var first_hash := str(app.review.get("recording_hash", ""))
+	app._accept()
+	_check(app.mode != "error" and app.journey.role() == "b" and app.turn_tries.tries(first_hash) == 1, "A turn saved on its first try keeps a count of one")
+	var chip := _chip(app.turn_tries, [PlayerCopy.TRY_FIRST_TURN, first_hash])
+	_check(chip != null and chip.first_try() and chip.label.text == PlayerCopy.TRY_FIRST % PlayerCopy.TRY_FIRST_TURN, "Replays shows the turn recorded without retries as First try")
+	if chip != null: chip.free()
+	app.queue_free()
+	await process_frame
+
+## The one pill Replays draws for a single turn, or null.
+func _chip(counts: RefCounted, turn: Array) -> TryPill:
+	var flow := Replays.new()
+	flow._turn_tries = counts
+	var row: Control = flow._tries_row([turn])
+	flow.free()
+	if row == null or row.get_child_count() != 1:
+		if row != null: row.free()
+		return null
+	var pill: TryPill = row.get_child(0)
+	row.remove_child(pill)
+	row.free()
+	return pill
 
 func _room_send() -> void:
 	var boundary := Boundary.new()
@@ -215,13 +266,23 @@ func _find_button(node: Node, text: String) -> Button:
 func _replays_pills() -> void:
 	var counts := _path("replays-counts")
 	var tries := TurnTries.new(counts)
-	tries.remember({HASH_A: 3, HASH_B: 7})
+	var first := "c".repeat(64)
+	var older := "d".repeat(64)
+	tries.remember({HASH_A: 3, HASH_B: 7, first: 1})
 	var flow := Replays.new()
 	flow._turn_tries = TurnTries.new(counts)
-	var row := {"pair": {"a": {"recording_hash": HASH_A}, "b": {"recording_hash": "c".repeat(64)}}}
+	var row := {"pair": {"a": {"recording_hash": HASH_A}, "b": {"recording_hash": first}}}
 	var pills: Control = flow._tries_row(Replays._solo_turns(row))
-	_check(pills != null and pills.get_child_count() == 1 and (pills.get_child(0) as TryPill).label.text == PlayerCopy.TRY_COUNT % [PlayerCopy.TRY_FIRST_TURN, 3], "A solo part shows a pill only for the turn that took more than one try")
-	_check(flow._tries_row(Replays._solo_turns({"pair": {"a": {"recording_hash": "c".repeat(64)}, "b": {}}})) == null, "A part whose turns were first tries shows nothing")
+	_check(pills != null and pills.get_child_count() == 2 and (pills.get_child(0) as TryPill).label.text == PlayerCopy.TRY_COUNT % [PlayerCopy.TRY_FIRST_TURN, 3] and not (pills.get_child(0) as TryPill).first_try(), "A solo part shows the retried turn's count")
+	var chip: TryPill = pills.get_child(1) if pills != null and pills.get_child_count() > 1 else null
+	_check(chip != null and chip.first_try() and chip.label.text == PlayerCopy.TRY_FIRST % PlayerCopy.TRY_SECOND_TURN, "and the First try chip for the turn that took one")
+	if chip != null:
+		var look: StyleBoxFlat = chip.get_theme_stylebox("panel")
+		_check(look.bg_color == TryPill.FIRST_FILL and chip.label.get_theme_color("font_color") == ControlTheme.INK and not chip._icon.visible, "The chip is mint with ink words and a check in place of the retry mark")
+	_check(flow._tries_row(Replays._solo_turns({"pair": {"a": {"recording_hash": older}, "b": {}}})) == null, "A turn from a build that kept no count shows nothing")
+	var one: Control = flow._tries_row([["You", first]])
+	_check(one != null and one.get_child_count() == 1 and (one.get_child(0) as TryPill).first_try() and (one.get_child(0) as TryPill).label.text == "You · First try", "A shared turn on its first try names its player")
+	if one != null: one.free()
 	_check(flow._tries_row(Replays._solo_turns({})) == null, "A part still being checked shows nothing")
 	var both: Control = flow._tries_row([["You", HASH_A], ["Sam", HASH_B]])
 	_check(both.get_child_count() == 2 and (both.get_child(1) as TryPill).label.text == "Sam · 7 tries", "A shared part names each player's count")

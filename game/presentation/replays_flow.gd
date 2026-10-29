@@ -647,10 +647,10 @@ func _replay_row_card(thumb_key: String, title_text: String, caption_text: Strin
 ## Try counts for the list being drawn (services/turn_tries.gd), read once a draw.
 var _turn_tries: RefCounted
 
-## A part's pills: a try count for each of its turns ([who, recording hash,
-## spirit colour, the player's own]) that took more than one try, then each turn's end-of-run
-## face; null when there is neither. A first try, and a turn from a build that
-## kept no count, show no count.
+## A part's pills: each of its turns' ([who, recording hash, spirit colour,
+## the player's own]) try count, or the First try chip for a turn that took
+## one, then each turn's end-of-run face; null when there is none. A turn from
+## a build that kept no count shows no count.
 func _tries_row(turns: Array) -> Control:
 	var pills := _tries_pills(turns)
 	if pills.is_empty(): return null
@@ -668,7 +668,7 @@ func _tries_pills(turns: Array) -> Array[Control]:
 	var pills: Array[Control] = []
 	for turn: Array in turns:
 		var tries: int = _turn_tries.tries(str(turn[1]))
-		if tries < 2: continue
+		if tries < 1: continue
 		var pill := TryPill.new(16, true)
 		pill.show_turn(str(turn[0]),tries)
 		pills.append(pill)
@@ -731,7 +731,7 @@ func _shared_turns(row: Dictionary) -> Array:
 	var a_hash := str(row.get("a_hash","")); var b_hash := str(row.get("b_hash",""))
 	if _turn_tries == null: _turn_tries = TurnTries.new()
 	if _faces == null: _faces = EndReactionStore.new()
-	if _turn_tries.tries(a_hash) < 2 and _turn_tries.tries(b_hash) < 2 and _faces.kept(a_hash).is_empty() and _faces.kept(b_hash).is_empty(): return []
+	if _turn_tries.tries(a_hash) < 1 and _turn_tries.tries(b_hash) < 1 and _faces.kept(a_hash).is_empty() and _faces.kept(b_hash).is_empty(): return []
 	var room := _current_shared_room()
 	if room.get("family") != "chapter": return []
 	var stages: Array = ChapterRegistry.definition(str(room.get("chapter_key",""))).get("stages",[])
