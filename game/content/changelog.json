@@ -2,6 +2,17 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.3",
+      "date": "2026-10-29",
+      "highlights": [{"icon": "leaf", "text": "Pollen after a turn shows once, on one line"}, {"icon": "people", "text": "A new friend's name shows as soon as you accept"}, {"icon": "star", "text": "The end card says where your time stands on the board"}, {"icon": "tap", "text": "Forgiving catches is off, and asks before it turns on"}],
+      "paragraphs": [
+        {"text": "The Pollen a turn earns now shows on one line, once, for both of you, and on the end card too, including after a Hard run. When you accept a friend request, their name shows straight away."},
+        {"text": "After a run together, the end card says where your time stands on the leaderboard: being checked, its place, or why it can't count. If Forgiving catches was on, the card has a button to turn it off. Home tells you while a time is being checked, and times are checked more often, so a place shows sooner. Under Your best, the board says why a time has no place, and its note explains which times can rank."},
+        {"text": "Forgiving catches is now off on every phone, so your times can count. You can turn it back on in Settings, and a note first tells you that leaderboard times won't count while it's on."},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.2",
       "date": "2026-10-28",
       "highlights": [{"icon": "star", "text": "Chapters open one by one as you finish them"}, {"icon": "home", "text": "One keepsake for each chapter on Home, with upgrades"}, {"icon": "people", "text": "Fastest pair leaderboards for every chapter"}, {"icon": "play", "text": "Watch any top 10 run from the boards"}, {"icon": "leaf", "text": "Earn Pollen when you play turns with a friend"}, {"icon": "tap", "text": "Wear the looks you earn from the Wardrobe"}, {"icon": "spark", "text": "Sleeping Lighthouse has a Solo card and Hard mode", "paid": true}, {"icon": "sun", "text": "Turn of the Tide has valves, winches and bolts"}],
@@ -145,16 +156,6 @@
       "paragraphs": [
         {"text": "The chapter picker is as wide as its button and opens right below it, with a scrollbar when the list is long. Back to your photo is a cream button. Replay previews resize to fit the space they have and keep their playback controls."},
         {"text": "The app is ready for hosting alerts, with their own notification permission and delivery, separate from turn reminders, so a friend can hear that you're hosting before they open the room."},
-        {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.4.21",
-      "date": "2026-10-10",
-      "highlights": [{"icon": "spark", "text": "A tidier look for buttons and popups"}, {"icon": "play", "text": "Replays has a list beside a large preview"}, {"icon": "picture", "text": "New pictures for three chapters"}],
-      "paragraphs": [
-        {"text": "This update tidies up how the game looks. Buttons have better padding, icons and labels are centred, and Back is the same soft coral everywhere. Changing a friend's nickname, turning on hosting alerts and answering a redo request happen in matching in-game popups, and a popup tells you when a friend asks you to redo your turn."},
-        {"text": "Replays has a list next to a large preview, and Together opens straight into your most recent room, with a picker for your other rooms. The room hub shows the right chapter names and pictures, the waiting panel shows who's next, and First Steps, High and Low and Relay Isles have new pictures."},
         {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
       ]
     }

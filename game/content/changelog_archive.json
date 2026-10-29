@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.4.21",
+      "date": "2026-10-10",
+      "highlights": [{"icon": "spark", "text": "A tidier look for buttons and popups"}, {"icon": "play", "text": "Replays has a list beside a large preview"}, {"icon": "picture", "text": "New pictures for three chapters"}]
+    },
+    {
       "version": "0.4.20",
       "date": "2026-10-09",
       "highlights": [{"icon": "people", "text": "Play with a friend fits on one page"}, {"icon": "link", "text": "Share your friend code from any app"}, {"icon": "star", "text": "Give each friend a nickname"}]
