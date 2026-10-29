@@ -9,10 +9,8 @@ extends SceneTree
 ## duel-waiting.png, duel-result-won.png, duel-result-checking.png,
 ## duel-ghost-result.png, duels-party.png, duels-start.png, duels-race.png and
 ## home-duels-row.png, each with --suffix=<text> added to its name when given,
-## the empty lobby in each of its arts as empty-variations/empty-a.png to
-## empty-f.png and open-a.png to open-c.png, and the won result over each look
-## behind it as result-bg-a.png to result-bg-c.png, with result-bg-c-lost.png
-## for the drawn look after a loss.
+## and the empty Open duels column in each of its arts as
+## empty-variations/open-a.png to open-c.png.
 const Client = preload("res://services/duels_client.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Outfit = preload("res://services/outfit.gd")
@@ -115,32 +113,7 @@ func _run() -> void:
 	result.win_bonus = {"amount": 250, "counted": true, "reason": ""}
 	lobby.open_overlay(result)
 	await _save("duel-result-won")
-	var won_pay: Dictionary = result.pay
-	var won_bonus: Dictionary = result.win_bonus
 	result.close()
-	# The won result over each look behind it, for the owner's pick (duel_result_page.gd RESULT_BG).
-	for index: int in ResultPage.Backdrop.STYLES.size():
-		var styled := ResultPage.new()
-		styled.me = ME
-		styled.name_of = _name_of
-		styled.view = won
-		styled.pay = won_pay
-		styled.win_bonus = won_bonus
-		styled.result_bg = ResultPage.Backdrop.STYLES[index]
-		lobby.open_overlay(styled)
-		await _save("result-bg-" + "abc"[index], 40, false)
-		styled.close()
-	# The drawn look after a loss: the pairs sit calmly and the sparkles go.
-	var lost_view: Dictionary = won.duplicate(true)
-	lost_view.result.outcome = "lost"
-	var calm := ResultPage.new()
-	calm.me = ME
-	calm.name_of = _name_of
-	calm.view = lost_view
-	calm.result_bg = "cheer"
-	lobby.open_overlay(calm)
-	await _save("result-bg-c-lost", 40, false)
-	calm.close()
 	var checking := ResultPage.new()
 	checking.me = ME
 	checking.name_of = _name_of
@@ -192,14 +165,9 @@ func _run() -> void:
 	race.close()
 	lobby.show_lobby({"party": {"partner": null, "intact": false, "invites_in": [MAYA], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}})
 	await _save("duels-lobby-empty")
-	# The empty lobby in each of its three arts, for the owner's pick (duels_screen.gd EMPTY_ART).
+	# The empty lobby with the owner's Your duels art, and the empty Open duels column in each of its arts for the owner's pick (duels_screen.gd OPEN_EMPTY_ART).
 	var nothing := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}}
 	DirAccess.make_dir_recursive_absolute(_out + "/empty-variations")
-	for art: String in ["duels_a", "duels_b", "duels_c", "duels_d", "duels_e", "duels_f"]:
-		lobby.empty_art = art
-		lobby.show_lobby(nothing)
-		await _save("empty-variations/empty-" + art.right(1), 30, false)
-	lobby.empty_art = lobby.EMPTY_ART
 	for art: String in ["open_a", "open_b", "open_c"]:
 		lobby.open_empty_art = art
 		lobby.show_lobby(nothing)

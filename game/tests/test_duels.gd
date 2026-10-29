@@ -186,22 +186,16 @@ func _pages() -> void:
 	_check(amount != null and mark.size.y <= amount.size.y and mark.get_global_rect().position.y > total_row.get_parent().get_child(total_row.get_index() - 2).get_global_rect().end.y, "and stays inside the total's line, clear of the rule above")
 	_check(not _has_text(result, "member in your party"), "no Full Journey member line")
 	var behind: Control = result.find_child("DuelResultBackdrop", true, false)
-	_check(behind != null and behind.style == ResultPage.RESULT_BG and behind.get_index() == 1 and not behind.is_processing() and behind.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the result has the owner's look behind it, over the page's green, still and never in the way")
-	for look: String in ResultPage.Backdrop.STYLES:
-		var drawn := ResultPage.Backdrop.new(look)
-		root.add_child(drawn)
-		drawn.size = Vector2(1280, 720)
-		drawn.show_chapter(Runs.chapter_of(BOARD), true)
-		await process_frame
-		var pictures := drawn.find_children("ResultPicture", "TextureRect", true, false)
-		_check(look == "cheer" or (pictures.size() >= 1 and pictures.all(func(picture: TextureRect) -> bool: return picture.texture != null)), "%s shows the chapter's own picture" % look)
-		_check(look == "level" or drawn.margin() > 0.0, "%s uses the margins beside the cards at 1280x720" % look)
-		# A narrow screen (out of the tree, so the window's own size does not set the middle).
-		root.remove_child(drawn)
-		drawn.size = Vector2(1000, 720)
-		drawn._relayout()
-		_check(drawn.margin() == 0.0 and drawn.find_children("ResultSnapshot*", "", true, false).all(func(paper: Control) -> bool: return not paper.visible), "%s stays out of a narrow screen's cards" % look)
-		drawn.free()
+	_check(behind != null and behind.get_index() == 1 and not behind.is_processing() and behind.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the result has the chapter behind it, over the page's green, still and never in the way")
+	var drawn := ResultPage.Backdrop.new()
+	root.add_child(drawn)
+	drawn.show_chapter(Runs.chapter_of(BOARD))
+	await process_frame
+	var picture: TextureRect = drawn.find_child("ResultPicture", true, false)
+	_check(picture != null and picture.texture != null and picture.self_modulate.a < 0.5 and picture.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the chapter's own picture, faint over the green")
+	drawn.show_chapter("no-such-chapter")
+	_check(picture.texture == null and not picture.has_meta(ResultPage.Backdrop.ThumbnailShelf.PATH_META), "a chapter with no picture shows none, and no late one lands on it")
+	drawn.free()
 	result.close()
 	var hidden := ResultPage.new()
 	hidden.view = result.view
@@ -261,13 +255,7 @@ func _pages() -> void:
 	var race: Control = lobby.find_child("DuelsRaceRecorded", true, false)
 	_check(open_empty != null and race != null and (open_empty as Control).get_global_rect().end.y <= race.get_global_rect().position.y, "and it sits above the Race a recorded run card, never over it")
 	_check(Lobby.OPEN_LINES.size() == 3 and Lobby.OPEN_LINES.keys().all(func(art: String) -> bool: return preload("res://presentation/empty_state.gd").SPOTS.has(art)), "every Open duels version has its art and its line")
-	for art: String in ["duels_d", "duels_e", "duels_f"]:
-		lobby.empty_art = art
-		lobby.show_lobby(Client.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": []}))
-		await process_frame
-		var drawn: Node = lobby.find_child("DuelsEmpty", true, false).find_child("EmptyState", true, false)
-		_check(drawn != null and drawn.art == art, "the empty lobby can draw %s" % art)
-	lobby.empty_art = Lobby.EMPTY_ART
+	_check(Lobby.EMPTY_ART == "duels_f" and preload("res://presentation/empty_state.gd").SPOTS.keys().filter(func(art: String) -> bool: return art.begins_with("duels_")) == ["duels_f"], "the owner's pick is the only Your duels art kept")
 	lobby.show_lobby(lobby_data)
 	await process_frame
 	var gone: Node = lobby.find_child("DuelsEmpty", true, false).find_child("EmptyState", true, false)

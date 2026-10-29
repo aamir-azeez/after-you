@@ -15,8 +15,6 @@ const PLAY_ICON = preload("res://assets/ui/play-circle.svg")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Backdrop = preload("res://presentation/duels/duel_result_backdrop.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
-## What sits behind the result (duel_result_backdrop.gd): "level", "snapshots" or "cheer". The owner's pick is this one line.
-const RESULT_BG := "level"
 
 signal watch_requested(view: Dictionary, control: Control)
 
@@ -29,15 +27,13 @@ var win_bonus: Dictionary = {}
 ## Whether this build names Full Journey (services/pollen_surfaces.gd), and shows Pollen at all.
 var show_boost := true
 var show_pollen := true
-## The look behind the result; RESULT_BG unless a capture asks for another before the page opens.
-var result_bg := RESULT_BG
 var _column: VBoxContainer
 var _backdrop: Control
 
 func page_name() -> String: return "DuelResult"
 
 func backdrop() -> Control:
-	_backdrop = Backdrop.new(result_bg)
+	_backdrop = Backdrop.new()
 	return _backdrop
 
 func show_result(next: Dictionary, paid: Dictionary = {}, bonus: Dictionary = {}) -> void:
@@ -59,7 +55,7 @@ func _render() -> void:
 	if view.is_empty(): return
 	var key := str(view.chapter)
 	set_title("", "")
-	if is_instance_valid(_backdrop): _backdrop.show_chapter(_picture_key(), view.result is Dictionary and view.result.get("outcome", "") == "won")
+	if is_instance_valid(_backdrop): _backdrop.show_chapter(_picture_key())
 	var title := Kit.text(DuelModel.result_title(view, name_of), 50 if not compact else 42, UiTokens.CREAM, true)
 	title.name = "DuelResultHeadline"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
