@@ -98,9 +98,10 @@ func _cards() -> void:
 func _card_view() -> void:
 	_check(GrantCard.amount_text(4750) == "+4,750", "The big amount")
 	_check(GrantCard.month_line({"key": "grant:1790000000000:2", "amount": 4750, "next": 5000, "top": 12000, "months": 2}) == "From Full Journey, month 2 of your ladder.\nNext month: 5,000.", "The month line")
+	_check(GrantCard.month_line({"key": "grant:1790000000000:1", "amount": 4500, "next": 4750, "top": 12000, "months": 0}) == PlayerCopy.POLLEN_GRANT_NEXT % "4,750", "A month count below the instalment (a refund) names no month")
 	_check(GrantCard.month_line({"key": "grant:lifetime", "amount": 4500, "next": 12000, "top": 12000, "months": 31}) == PlayerCopy.POLLEN_GRANT_LIFETIME, "The Lifetime thank you names no month")
-	for line: String in [PlayerCopy.POLLEN_GRANT_TITLE, PlayerCopy.POLLEN_GRANT_MONTH, PlayerCopy.POLLEN_GRANT_LIFETIME, PlayerCopy.POLLEN_GRANT_WARDROBE, PlayerCopy.POLLEN_GRANT_DONE,
-			PlayerCopy.FULL_JOURNEY_ROOM_BOOST, PlayerCopy.FULL_JOURNEY_ROOM_BOOST_NOTE, PlayerCopy.FULL_JOURNEY_GRANT, PlayerCopy.FULL_JOURNEY_GRANT_NOTE,
+	for line: String in [PlayerCopy.POLLEN_GRANT_TITLE, PlayerCopy.POLLEN_GRANT_MONTH, PlayerCopy.POLLEN_GRANT_LIFETIME, PlayerCopy.POLLEN_GRANT_NEXT, PlayerCopy.POLLEN_GRANT_WARDROBE, PlayerCopy.POLLEN_GRANT_DONE,
+			PlayerCopy.FULL_JOURNEY_ROOM_BOOST, PlayerCopy.FULL_JOURNEY_ROOM_BOOST_NOTE, PlayerCopy.FULL_JOURNEY_GRANT, PlayerCopy.FULL_JOURNEY_GRANT_TOP, PlayerCopy.FULL_JOURNEY_GRANT_NOTE,
 			PlayerCopy.FULL_JOURNEY_LADDER_NEXT, PlayerCopy.FULL_JOURNEY_LADDER_BY, PlayerCopy.FULL_JOURNEY_LADDER_TOP]:
 		_check(not line.contains("-") and not line.contains("—") and not line.contains("–"), "No dashes: " + line)
 	var parent := Control.new()

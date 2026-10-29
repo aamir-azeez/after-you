@@ -39,8 +39,11 @@ const JOY_SECONDS := 3600.0
 
 ## The line under the title: "From Full Journey, month 1 of your ladder.\nNext month: 4,750."
 static func month_line(card: Dictionary) -> String:
-	if str(card.get("key", "")) == LIFETIME_KEY or int(card.get("months", 0)) < 1: return PlayerCopy.POLLEN_GRANT_LIFETIME
-	return PlayerCopy.POLLEN_GRANT_MONTH % [PollenMoney.grouped(int(card.months)), PollenMoney.grouped(int(card.get("next", 0)))]
+	if str(card.get("key", "")) == LIFETIME_KEY: return PlayerCopy.POLLEN_GRANT_LIFETIME
+	var next := PollenMoney.grouped(int(card.get("next", 0)))
+	# A refund can take the count below this instalment's month: then no month is named.
+	if int(card.get("months", 0)) < 1: return PlayerCopy.POLLEN_GRANT_NEXT % next
+	return PlayerCopy.POLLEN_GRANT_MONTH % [PollenMoney.grouped(int(card.months)), next]
 
 ## "+4,500".
 static func amount_text(amount: int) -> String:

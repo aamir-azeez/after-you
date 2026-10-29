@@ -23,6 +23,8 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const Benefits = preload("res://presentation/full_journey_benefits.gd")
 const GrantCard = preload("res://presentation/pollen_grant_card.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const WardrobeClient = preload("res://services/wardrobe_client.gd")
 
 const SIZE := Vector2i(1600, 738)
 const TESTER_ONLY := {"purchase_mode": "tester_only", "entitlement_id": "full_journey", "revenuecat_public_key": ""}
@@ -34,6 +36,11 @@ const PLAYER := "PPPPPPPPPPPPPPPPPPPPPP"
 var checks := 0
 var failures := 0
 var paths: Array[String] = []
+
+## The Wardrobe's server, offline: nothing leaves the test.
+class Offline extends RefCounted:
+	func call_it(_method: int, _path: String, _body: Dictionary) -> Dictionary:
+		return {"ok": false, "status": 0, "code": "connection_interrupted"}
 
 class FakeStore extends Purchases:
 	func _connect_native() -> bool: return true
@@ -137,6 +144,7 @@ func _card_states(app: Node, wallet: RefCounted, grant: RefCounted, scope: Dicti
 		for control: Control in controls:
 			if control.mouse_filter == Control.MOUSE_FILTER_STOP: takes_input = true
 	_check(not takes_input, "The panels take no input, so a drag on them still scrolls")
+	_check(Benefits.content(true, true, {"months": 40, "next": 12000, "top": 12000}).panels[1].title == "12,000 Pollen a month, the top step", "At the top step the panel stops saying it grows")
 	# A returning subscriber sees the step the server says.
 	grant.note_view(server, owner, {"grant": {"months": 6.0, "next": 6000.0, "top": 12000.0}})
 	await _open_card(app)
@@ -242,6 +250,33 @@ func _grant_over_home(app: Node, grant: RefCounted, scope: Dictionary, viewport:
 	await process_frame
 	_check(not is_instance_valid(backed) and spirits.all(func(actor: Node3D) -> bool: return actor.expression_target() != SpiritLook.JOY), "and the pips stop cheering")
 
+	# With the server's Wardrobe on, Home's card opens it, and its Back comes home.
+	var wardrobe := Wardrobe.new(_path("fj-board-wardrobe"))
+	wardrobe.set_enabled(server, owner, true, false)
+	var offline := Offline.new()
+	app.wardrobe_flow.client = WardrobeClient.new(null, app._names_scope, offline.call_it, wardrobe, PollenWallet.shared())
+	grant.note_view(server, owner, {"grant": {"months": 2.0, "next": 5000.0, "top": 12000.0, "latest": {"key": "grant:1790000000000:2", "amount": 4750.0, "at": float(_now())}}})
+	app._show_home()
+	for i in range(4): await process_frame
+	app.grant_card_check = true
+	app._service_grant_card()
+	await process_frame
+	var with_wardrobe: Control = app.ui.find_child("PollenGrantCard", false, false)
+	_check(with_wardrobe != null and with_wardrobe.find_child("PollenGrantWardrobe", true, false) != null, "With the Wardrobe on, the card offers it")
+	if with_wardrobe != null: await _tap(viewport, with_wardrobe.find_child("PollenGrantWardrobe", true, false))
+	_check(app.wardrobe_flow.is_open(), "One tap opens the Wardrobe")
+	app.wardrobe_flow.back_requested.emit()
+	await process_frame
+	_check(app.mode == "home", "Its Back comes home, where it opened: " + str(app.mode))
+	app.settings_flow.show_settings()
+	await process_frame
+	app.wardrobe_flow.show_wardrobe()
+	await process_frame
+	app.wardrobe_flow.back_requested.emit()
+	await process_frame
+	_check(app.mode != "home" and not app.wardrobe_flow.is_open(), "Opened from Settings later, its Back goes to Settings: " + str(app.mode))
+	app.wardrobe_flow.client = null
+
 ## A build that names no Full Journey: no card, and the store card keeps no panel.
 func _iphone(app: Node, grant: RefCounted, scope: Dictionary) -> void:
 	var server := str(scope.server)
@@ -251,7 +286,8 @@ func _iphone(app: Node, grant: RefCounted, scope: Dictionary) -> void:
 	for key: String in ["purchase_mode", "entitlement_id", "revenuecat_public_key"]: app.config.erase(key)
 	app.config.merge(TESTER_ONLY, true)
 	app._show_home()
-	await process_frame
+	for i in range(4): await process_frame
+	_check(app._home_free_for_card() and not app._grant_card_allowed(), "Home is free for a card, but the build names no Full Journey")
 	app.grant_card_check = true
 	app._service_grant_card()
 	await process_frame

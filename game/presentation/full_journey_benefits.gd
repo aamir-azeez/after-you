@@ -31,7 +31,8 @@ static func content(boost: bool, grant: bool, ladder: Dictionary = {}, shown: bo
 		panels.append({"name": "FullJourneyBoost", "icon": "room", "title": PlayerCopy.FULL_JOURNEY_ROOM_BOOST, "body": PlayerCopy.FULL_JOURNEY_ROOM_BOOST_NOTE})
 	if boost and grant and shown:
 		var top := _top(ladder)
-		panels.append({"name": "FullJourneyGrant", "icon": "pollen", "title": PlayerCopy.FULL_JOURNEY_GRANT % PollenMoney.grouped(_first_month(ladder)),
+		var first := _first_month(ladder)
+		panels.append({"name": "FullJourneyGrant", "icon": "pollen", "title": (PlayerCopy.FULL_JOURNEY_GRANT_TOP if first >= top else PlayerCopy.FULL_JOURNEY_GRANT) % PollenMoney.grouped(first),
 			"body": PlayerCopy.FULL_JOURNEY_GRANT_NOTE % [PollenMoney.grouped(GRANT_STEP), PollenMoney.grouped(top)], "ladder": ladder_line(ladder)})
 	return {"intro": PackedStringArray([PlayerCopy.SUBSCRIPTION_PURPOSE, PlayerCopy.COOPERATIVE_HOST_ACCESS]), "panels": panels}
 

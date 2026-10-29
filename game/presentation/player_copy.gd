@@ -134,6 +134,8 @@ const POLLEN_GRANT_TITLE := "Your monthly Pollen arrived"
 const POLLEN_GRANT_MONTH := "From Full Journey, month %s of your ladder.\nNext month: %s."
 ## The one time thank you for the old Lifetime unlock: no month and no next.
 const POLLEN_GRANT_LIFETIME := "From Full Journey, a thank you for your Lifetime unlock."
+## When the server's month count is below this instalment (after a refund): no month named.
+const POLLEN_GRANT_NEXT := "From Full Journey.\nNext month: %s."
 const POLLEN_GRANT_WARDROBE := "Open the Wardrobe"
 const POLLEN_GRANT_DONE := "Done"
 
@@ -2506,6 +2508,8 @@ const SUBSCRIPTION_PURPOSE := "Full Journey is a subscription that pays for host
 const FULL_JOURNEY_ROOM_BOOST := "10% more Pollen for everyone in your room"
 const FULL_JOURNEY_ROOM_BOOST_NOTE := "Each Full Journey player in a room adds 10% to both players' base pay, skill bonuses and first chapter clears. A friend on the free version gets it too. Lucky blooms stay the same for everyone."
 const FULL_JOURNEY_GRANT := "%s Pollen a month, growing every month you stay"
+## A returning subscriber already at the top step.
+const FULL_JOURNEY_GRANT_TOP := "%s Pollen a month, the top step"
 ## The step and the top step.
 const FULL_JOURNEY_GRANT_NOTE := "%s more each month, up to %s. Paid on each monthly anniversary on both plans. It never expires."
 ## The ladder line's parts, joined with " · ".

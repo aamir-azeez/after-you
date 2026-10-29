@@ -118,6 +118,8 @@ var _whats_new_card: Control
 var _whats_new_card_mode := ""
 ## A Pollen flush finished: Home looks once for a monthly Pollen card to show (presentation/pollen_grant_card.gd).
 var grant_card_check := false
+## The overlay generation of a Wardrobe opened from Home, whose Back comes home (-1: none).
+var _wardrobe_home_view := -1
 ## The leaderboard celebration Home opened, while it is up.
 var _home_celebration: Control
 ## Tests set this to see a link instead of opening the browser.
@@ -1260,12 +1262,20 @@ func _host_display_name_flow() -> DisplayNameFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
 
-## An internal child, like StoreFlow. Its Back returns to Settings, where it opens.
+## An internal child, like StoreFlow. Its Back returns to where it opened:
+## Settings, or Home when the monthly Pollen card opened it.
 func _host_wardrobe_flow() -> WardrobeFlow:
 	var flow := WardrobeFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(func(): settings_flow.show_settings())
+	flow.back_requested.connect(func(): _show_home() if _wardrobe_home_view == store_view_generation else settings_flow.show_settings())
 	return flow
+
+## Opens the Wardrobe from Home (the monthly Pollen card); its Back comes home.
+## The page keeps the overlay generation it opened with until another screen
+## replaces it, so a later Wardrobe opened from Settings goes back there.
+func _open_wardrobe_from_home() -> void:
+	wardrobe_flow.show_wardrobe()
+	_wardrobe_home_view = store_view_generation if wardrobe_flow.is_open() else -1
 
 ## An internal child, like StoreFlow.
 func _host_journey_flow() -> JourneyFlow:
@@ -2002,7 +2012,7 @@ func _service_grant_card() -> void:
 	PollenGrant.shared().mark_shown(str(scope.server),str(scope.owner),str(card.key))
 	# The card says which month of the ladder arrived; Home's pips cheer behind it.
 	card["months"]=int(PollenGrant.shared().ladder(str(scope.server),str(scope.owner)).get("months",0))
-	PollenGrantCard.open(ui,card,world.actors.values() if is_instance_valid(world) else [],wardrobe_flow.show_wardrobe if wardrobe_flow.available() else Callable())
+	PollenGrantCard.open(ui,card,world.actors.values() if is_instance_valid(world) else [],_open_wardrobe_from_home if wardrobe_flow.available() else Callable())
 
 ## A run of this player's that a board confirmed in its top 10
 ## (services/leaderboard_placings.gd) is celebrated once on Home, when Home is
