@@ -142,16 +142,23 @@ static func install_buttons(theme: Theme) -> void:
 		var color := CREAM if state=="normal" else UiTokens.CREAM_HOVER if state=="hover" else UiTokens.MINT
 		theme.set_stylebox(state,"Button",padded(rounded(color)))
 		theme.set_color("font_color" if state=="normal" else "font_"+state+"_color","Button",INK)
+		# An icon (the white line icons, an arrow) takes the label's ink: white on cream is 1.2:1, ink on cream 10:1.
+		theme.set_color("icon_"+state+"_color","Button",INK)
 	theme.set_stylebox("disabled","Button",padded(rounded(UiTokens.DISABLED_FILL)))
 	theme.set_color("font_disabled_color","Button",UiTokens.DISABLED_TEXT)
+	theme.set_color("icon_disabled_color","Button",UiTokens.DISABLED_TEXT)
 	# Focused cream buttons keep dark ink; the engine default is a light colour.
 	theme.set_color("font_focus_color","Button",INK)
+	theme.set_color("icon_focus_color","Button",INK)
 	theme.set_stylebox("focus","Button",padded(rounded(Color.TRANSPARENT,16,UiTokens.MINT)))
 
 static func secondary(button: Button) -> void:
 	button.add_theme_stylebox_override("normal",padded(rounded(UiTokens.SECONDARY,14,UiTokens.SECONDARY_BORDER)))
 	button.add_theme_color_override("font_color",CREAM)
 	button.add_theme_color_override("font_focus_color",CREAM)
+	# Its icon is inked like its label: cream on the dark fill (8:1), the theme's ink once hover or press turns it cream or mint.
+	button.add_theme_color_override("icon_normal_color",CREAM)
+	button.add_theme_color_override("icon_focus_color",CREAM)
 	if button is OptionButton: choice_button(button)
 
 static func selected_tab(button: Button) -> void:
