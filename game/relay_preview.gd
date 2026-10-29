@@ -2477,8 +2477,9 @@ func _accept() -> void:
 		var tries := turn_tries.freeze(slot, str(review.get("recording_hash", "")), not hard_flow.on())
 		# Every counted turn sends its count, a first try's 1 too: the server pays
 		# the First try bonus on exactly 1 (backend pollen/earn.ts). A turn this
-		# phone did not count (0) sends none.
-		var accepted: bool = await journey.commit(review, tries if tries > 0 and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(_end_reaction_context(), review), _review_track if _run_reactions_available() else [])
+		# phone did not count (0) sends none, and neither does a Hard turn: Hard
+		# has no retries, so its one try is no First try.
+		var accepted: bool = await journey.commit(review, tries if tries > 0 and not hard_flow.on() and online_session.turn_tries_supported() else 0, EndReactionScreen.face_to_send(_end_reaction_context(), review), _review_track if _run_reactions_available() else [])
 		if not is_inside_tree() or generation != online_request_generation:
 			return
 		if not accepted:
