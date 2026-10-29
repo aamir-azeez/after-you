@@ -1,9 +1,6 @@
-import { env } from "cloudflare:workers";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import worker from "../src/index";
-import { APP, EMPTY_CONFIG, MAX_CONFIG_LENGTH, legacyConfig, parseConfig, serverConfig, type ServerConfig } from "../src/config";
-import { CONFIG_CHECK_PATH, compareConfigs } from "../src/config-check";
-import { FLAG_NAMES, RETIRED_FLAGS, type ServerVars } from "../src/flags";
+import { APP, EMPTY_CONFIG, MAX_CONFIG_LENGTH, parseConfig, serverConfig, type ServerConfig } from "../src/config";
+import { FLAG_NAMES, RETIRED_FLAGS } from "../src/flags";
 import { ID_PATTERN, randomToken } from "../src/protocol";
 import { configJson } from "./config";
 
@@ -13,11 +10,6 @@ const RC = { project_id: "projSynthetic1", play_entitlement_lookup_id: "entlSynt
   play_subscription_product_ids: ["prodSyntheticMonthly", "prodSyntheticYearly"] };
 const KEPT = ["TESTER_ACCESS_ENABLED", "NOTIFICATIONS_ENABLED", "POLLEN_EARN", "LEADERBOARDS"];
 const FULL = { features: KEPT, min_client_version: { play: "0.7.0", github: "0.7.0", app_store: "0.0.0" }, friend_aliases: { owner: ALIAS_ID }, revenuecat: RC };
-/** The same settings as the old separate vars and RevenueCat id secrets, with retired flags still listed, as live had them. */
-const OLD_VARS: ServerVars = { FEATURES: ["PRESENCE_ENABLED", ...KEPT, "V2_ROOMS_ENABLED"].join(","), MIN_CLIENT_VERSION_PLAY: "0.7.0", MIN_CLIENT_VERSION_GITHUB: "0.7.0",
-  MIN_CLIENT_VERSION_APP_STORE: "0.0.0", FRIEND_ALIASES: JSON.stringify({ owner: ALIAS_ID }), REVENUECAT_PROJECT_ID: RC.project_id,
-  REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID: RC.play_entitlement_lookup_id, REVENUECAT_PLAY_PRODUCT_ID: RC.play_product_id,
-  REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS: RC.play_subscription_product_ids.join(",") };
 const view = (config: ServerConfig) => ({ ...config, features: [...config.features].sort(), friend_aliases: [...config.friend_aliases.byAlias] });
 
 afterEach(() => { vi.restoreAllMocks(); });
@@ -96,18 +88,9 @@ describe("serverConfig", () => {
     expect(String(warn.mock.calls[0][0])).not.toContain("bad value!");
     expect(serverConfig({ CONFIG: JSON.stringify(FULL) })).not.toBe(first);
   });
-  it("TRANSITION: reads the old vars while CONFIG is absent, as live configured them", () => {
-    const old = legacyConfig(OLD_VARS), current = parseConfig(JSON.stringify(FULL)).config;
-    expect(serverConfig(OLD_VARS)).toBe(old);
-    expect(Object.values(compareConfigs(current, old)).every(Boolean)).toBe(true);
-    // A flag's own "true" var also counts while CONFIG is absent, as flagOn read it before.
-    expect(legacyConfig({ NOTIFICATIONS_ENABLED: "true" }).features.has("NOTIFICATIONS_ENABLED")).toBe(true);
-  });
-  it("TRANSITION: reads CONFIG alone once it is present, never merged with the old vars", () => {
-    const both = { ...OLD_VARS, CONFIG: configJson({ features: ["LEADERBOARDS"] }) };
-    const config = serverConfig(both);
-    expect([...config.features]).toEqual(["LEADERBOARDS"]);
-    expect(config.min_client_version).toEqual({}); expect(config.friend_aliases.byAlias.size).toBe(0); expect(config.revenuecat.project_id).toBeUndefined();
+  it("reads no CONFIG as the empty configuration", () => {
+    expect(serverConfig({})).toBe(EMPTY_CONFIG);
+    expect(serverConfig({ NOTIFICATIONS_ENABLED: "true", FEATURES: "NOTIFICATIONS_ENABLED" } as never).features.size).toBe(0);
   });
 });
 
@@ -120,30 +103,5 @@ describe("APP", () => {
     expect(APP.playEnvironment).toBe("production");
     expect(APP.resendSegmentId).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
     expect(Object.isFrozen(APP)).toBe(true);
-  });
-});
-
-describe(`TRANSITION: POST ${CONFIG_CHECK_PATH}`, () => {
-  const TOKEN = randomToken();
-  const check = (config: unknown, vars: Record<string, unknown> = OLD_VARS, token = TOKEN) => worker.fetch(new Request("https://after-you.test" + CONFIG_CHECK_PATH, {
-    method: "POST", headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.7.7", Authorization: "Bearer " + token }, body: JSON.stringify({ schema_version: 1, config }) }),
-  { ...env, ...vars, SAFETY_OPERATOR_TOKEN: TOKEN } as unknown as Env);
-  it("needs the operator credential", async () => {
-    expect((await check(JSON.stringify(FULL), OLD_VARS, randomToken())).status).toBe(401);
-  });
-  it("says key by key whether a CONFIG equals what the old vars and secrets say, with booleans only", async () => {
-    const same = await check(JSON.stringify(FULL));
-    expect(same.status).toBe(200);
-    const body = await same.text();
-    expect(JSON.parse(body)).toMatchObject({ schema_version: 1, valid: true, config_var_present: false, same: true });
-    for (const value of [ALIAS_ID, RC.project_id, RC.play_product_id]) expect(body).not.toContain(value);
-    const differs = await (await check(JSON.stringify({ ...FULL, revenuecat: { ...RC, play_product_id: "prodSyntheticOther" } }))).json<{ same: boolean; keys: Record<string, boolean> }>();
-    expect(differs.same).toBe(false);
-    expect(Object.entries(differs.keys).filter(([, equal]) => !equal).map(([key]) => key)).toEqual(["revenuecat.play_product_id"]);
-  });
-  it("refuses a CONFIG the runners would refuse, and answers nothing about the old vars then", async () => {
-    const answer = await (await check(JSON.stringify({ ...FULL, features: [...KEPT, "PRESENCE_ENABLED"] }))).json<Record<string, unknown>>();
-    expect(answer).toEqual({ schema_version: 1, valid: false, problems: [], unknown: ["features.PRESENCE_ENABLED"] });
-    expect((await check(7)).status).toBe(400);
   });
 });

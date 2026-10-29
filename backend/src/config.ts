@@ -11,10 +11,6 @@
  *
  * This file imports nothing at runtime and uses only erasable TypeScript, so the private deploy runners load this
  * same file with Node and refuse to write a CONFIG that `parseConfig(raw, knownFlags)` reports anything for.
- *
- * TRANSITION (removed by the cleanup commit once CONFIG is live): while the CONFIG var is absent, serverConfig
- * builds the same ServerConfig from the old separate vars and secrets (legacyConfig), so the code can ship before
- * the vars move. A CONFIG that is present is the only source; it is never merged with the old vars.
  */
 import type { ServerVars } from "./flags";
 
@@ -229,51 +225,17 @@ export function parseConfig(raw: unknown, knownFlags?: ReadonlySet<string>): Con
 }
 
 let parsed: { raw: unknown; config: ServerConfig } | null = null;
-/** The configuration this request runs with. CONFIG is parsed once per isolate, cached by its raw string. */
+/**
+ * The configuration this request runs with. CONFIG is parsed once per isolate, cached by its raw string. Without
+ * CONFIG (local development, tests) every flag is off, there is no minimum or alias, and RevenueCat is unconfigured.
+ */
 export function serverConfig(env: ServerVars): ServerConfig {
   const raw = env.CONFIG;
-  if (raw === undefined) return legacyConfig(env);
+  if (raw === undefined) return EMPTY_CONFIG;
   if (parsed !== null && parsed.raw === raw) return parsed.config;
   const check = parseConfig(raw);
   // Once per isolate and value. Problems name keys only, never values.
   if (check.problems.length) console.warn(JSON.stringify({ event: "config_invalid", problems: check.problems.join("; ").slice(0, 400) }));
   parsed = { raw, config: check.config };
   return check.config;
-}
-
-// TRANSITION: the old separate vars, read only while CONFIG is absent. The cleanup commit deletes everything below.
-/** The old vars and secrets legacyConfig reads, besides each flag's own var. */
-export const LEGACY_VARS = Object.freeze(["FEATURES", "MIN_CLIENT_VERSION_PLAY", "MIN_CLIENT_VERSION_GITHUB", "MIN_CLIENT_VERSION_APP_STORE", "FRIEND_ALIASES",
-  "REVENUECAT_PROJECT_ID", "REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID", "REVENUECAT_PLAY_PRODUCT_ID", "REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS",
-  "REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS", "REVENUECAT_APP_STORE_ENVIRONMENT", "REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID", "REVENUECAT_REVIEWER_IDS"] as const);
-/** A comma-separated var as trimmed, non-empty items. Unset gives []. */
-export function commaList(raw: unknown): string[] {
-  return (typeof raw === "string" ? raw : "").split(",").map(value => value.trim()).filter(Boolean);
-}
-function legacyAliases(raw: unknown): FriendAliases {
-  if (typeof raw !== "string" || raw.length === 0 || raw.length > 4096) return NO_ALIASES;
-  try { return aliasesFrom(JSON.parse(raw)) ?? NO_ALIASES; } catch { return NO_ALIASES; }
-}
-let legacy: { key: string; config: ServerConfig } | null = null;
-/** What the old vars said, as a ServerConfig: a flag is on when its own var is "true" or FEATURES lists it. */
-export function legacyConfig(env: ServerVars): ServerConfig {
-  const vars = env as Readonly<Record<string, unknown>>;
-  const own: string[] = [];
-  for (const name in vars) if (FLAG_NAME.test(name) && (vars[name] === "true" || vars[name] === true)) own.push(name);
-  const key = JSON.stringify([own, LEGACY_VARS.map(name => vars[name] ?? null)]);
-  if (legacy !== null && legacy.key === key) return legacy.config;
-  const products = (raw: unknown) => { const items = commaList(raw); return typeof raw === "string" && raw.trim() ? productsFrom(items) : []; };
-  const reviewers = reviewersFrom(commaList(vars.REVENUECAT_REVIEWER_IDS)) ?? [];
-  const minimums: Partial<Record<MinimumChannel, string>> = {};
-  for (const [channel, name] of [["play", "MIN_CLIENT_VERSION_PLAY"], ["github", "MIN_CLIENT_VERSION_GITHUB"], ["app_store", "MIN_CLIENT_VERSION_APP_STORE"]] as const)
-    if (typeof vars[name] === "string") minimums[channel] = vars[name] as string;
-  const text = (name: string) => typeof vars[name] === "string" ? vars[name] as string : undefined;
-  const revenuecat: RevenueCatSettings = Object.freeze({
-    project_id: text("REVENUECAT_PROJECT_ID"), play_entitlement_lookup_id: text("REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID"), play_product_id: text("REVENUECAT_PLAY_PRODUCT_ID"),
-    play_subscription_product_ids: products(vars.REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS), app_store_subscription_product_ids: products(vars.REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS),
-    app_store_environment: text("REVENUECAT_APP_STORE_ENVIRONMENT"), app_store_entitlement_lookup_id: text("REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID"), reviewer_ids: reviewers });
-  const config: ServerConfig = Object.freeze({ features: new Set([...commaList(vars.FEATURES), ...own]), min_client_version: Object.freeze(minimums),
-    friend_aliases: legacyAliases(vars.FRIEND_ALIASES), revenuecat });
-  legacy = { key, config };
-  return config;
 }

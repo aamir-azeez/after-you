@@ -94,25 +94,6 @@ export type ServerVars = {
   TURNSTILE_SECRET_KEY?: string;
   /** Secret. Signs the waitlist confirm links (waitlist-token.ts); at least 32 characters. */
   WAITLIST_CONFIRM_SECRET?: string;
-} & LegacyVars;
-/**
- * TRANSITION: the old separate vars and the RevenueCat id secrets, read by config.ts legacyConfig only while CONFIG
- * is absent, and by config-check.ts. The cleanup commit deletes them.
- */
-type LegacyVars = { [V in FlagVar]?: string } & {
-  FEATURES?: string;
-  MIN_CLIENT_VERSION_PLAY?: string;
-  MIN_CLIENT_VERSION_GITHUB?: string;
-  MIN_CLIENT_VERSION_APP_STORE?: string;
-  FRIEND_ALIASES?: string;
-  REVENUECAT_PROJECT_ID?: string;
-  REVENUECAT_PLAY_ENTITLEMENT_LOOKUP_ID?: string;
-  REVENUECAT_PLAY_PRODUCT_ID?: string;
-  REVENUECAT_PLAY_SUBSCRIPTION_PRODUCT_IDS?: string;
-  REVENUECAT_APP_STORE_SUBSCRIPTION_PRODUCT_IDS?: string;
-  REVENUECAT_APP_STORE_ENVIRONMENT?: string;
-  REVENUECAT_APP_STORE_ENTITLEMENT_LOOKUP_ID?: string;
-  REVENUECAT_REVIEWER_IDS?: string;
 };
 
 /** The one flag rule: CONFIG lists the flag. */

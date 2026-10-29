@@ -2,7 +2,6 @@ import { routePhotoTransfer } from "./photo-transfer-routes";
 import { JSON_HEADERS, errorResponse, json, result, bearerDigest } from "./http";
 import { flags } from "./flags";
 import { APP } from "./config";
-import { CONFIG_CHECK_PATH, routeConfigCheck } from "./config-check";
 import { ApiError, ID_PATTERN, SECRET_PATTERN, IDEMPOTENCY_PATTERN, boundedJson, canonicalJson, digest, exactKeys, integer, inviteRoomId, legacySimulationVersion, newInvite, object, parseInvite, randomToken, recording, text, type RoomSnapshot, unwrap } from "./protocol";
 import { entitlement } from "./entitlement";
 import { requireHostAccess } from "./v2/host-access";
@@ -105,8 +104,6 @@ export default {
       // Public: whether this client must update before playing online (app-status.ts).
       if (path === "/v1/app-status" && request.method === "GET") { await publicLimit(request, env); return json(appStatus(request, env)); }
       if (path.startsWith("/operator/safety/")) { await publicLimit(request, env); return json(await routeSafetyOperator(request, path, env)); }
-      // TRANSITION: removed with legacyConfig once CONFIG is live (config-check.ts).
-      if (path === CONFIG_CHECK_PATH) { await publicLimit(request, env); return json(await routeConfigCheck(request, env)); }
       if (path.startsWith(LEADERBOARD_OPERATOR_PREFIX)) { await publicLimit(request, env); return await routeLeaderboardOperator(request, path, env); }
       // Absent unless CONFIG lists LEADERBOARDS: a board read is public and cached, so it needs no Player request.
       const board = await routeLeaderboardRead(request, path, env); if (board) return board;

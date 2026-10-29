@@ -6,7 +6,6 @@ import { KEY_LABELS, KEY_SALT, MIN_SECRET_LENGTH, derivedKey, hmac, pollenSecret
 import worker from "../src/index";
 import { routeV2 } from "../src/v2/routes";
 import { CHAPTERS, advertisedChapters } from "../src/v2/chapters";
-import { APP } from "../src/config";
 import { POLLEN_CLIENT, configJson, withConfig } from "./config";
 import LIVE_ANSWERS from "./fixtures/live-answers-5601cb81.json";
 
@@ -148,13 +147,6 @@ async function liveAnswers(vars: Env): Promise<Record<string, string>> {
   }
   return answers;
 }
-/** TRANSITION: live's 16 old vars as they were, with synthetic secrets, and no CONFIG. */
-const OLD_LIVE_VARS = { ENVIRONMENT: "test-store", FEATURES: LIVE_FEATURES.join(","), MIN_CLIENT_VERSION_APP_STORE: "0.0.0", MIN_CLIENT_VERSION_GITHUB: "0.7.0",
-  MIN_CLIENT_VERSION_PLAY: "0.7.0", PLAY_GAMES_APP_ID: "665737720520", PLAY_GAMES_WEB_CLIENT_ID: "665737720520-vh41m91imtvb0sol5vtn0vsfhdod7mgq.apps.googleusercontent.com",
-  REVENUECAT_API_VERSION: "2", REVENUECAT_ENTITLEMENT: "full_journey", REVENUECAT_PLAY_ENVIRONMENT: "production", REVENUECAT_VERIFICATION_MODE: "play_store",
-  TURNSTILE_SITE_KEY: "0x4AAAAAAFcV13jW0771Uryu", WAITLIST_FROM: "waitlist@afteryou.aamirazeez.com", WAITLIST_REPLY_TO: "afteryou-reply@aamirazeez.com",
-  RESEND_SEGMENT_ID: "68cf69ad-59d6-4b84-8865-72dbc72f1a49", PLAY_GAMES_CLIENT_SECRET: "synthetic-client-secret", POLLEN_SECRET: "synthetic-pollen-secret-for-tests-only-0001" };
-
 describe("live answers", () => {
   // LIVE_ANSWERS is the worker's own output on main 5601cb81 with live's 16 vars (FEATURES with all 38 names).
   it("answers /v2/capabilities, /health and /v1/app-status byte for byte as live did before the flags retired", async () => {
@@ -162,11 +154,5 @@ describe("live answers", () => {
     expect(await liveAnswers(vars)).toEqual(LIVE_ANSWERS);
     // Every chapter is advertised, as live's flags had it.
     expect(advertisedChapters(vars, 2).length).toBe(CHAPTERS.length);
-  });
-  it("TRANSITION: answers the same from live's old vars while CONFIG is absent, and APP equals them", async () => {
-    expect(await liveAnswers({ ...env, ...OLD_LIVE_VARS } as unknown as Env)).toEqual(LIVE_ANSWERS);
-    expect([APP.environment, APP.playGamesAppId, APP.playGamesWebClientId, APP.turnstileSiteKey, APP.waitlistFrom, APP.waitlistReplyTo, APP.resendSegmentId, APP.playEnvironment]).toEqual([
-      OLD_LIVE_VARS.ENVIRONMENT, OLD_LIVE_VARS.PLAY_GAMES_APP_ID, OLD_LIVE_VARS.PLAY_GAMES_WEB_CLIENT_ID, OLD_LIVE_VARS.TURNSTILE_SITE_KEY, OLD_LIVE_VARS.WAITLIST_FROM,
-      OLD_LIVE_VARS.WAITLIST_REPLY_TO, OLD_LIVE_VARS.RESEND_SEGMENT_ID, OLD_LIVE_VARS.REVENUECAT_PLAY_ENVIRONMENT]);
   });
 });
