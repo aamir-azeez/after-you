@@ -2,9 +2,9 @@
   "schema_version": 1,
   "first_bonus_percent": 0,
   "bundles": {
-    "pinch": { "pollen": 5000, "bonus": 0, "usd_cents": 99 },
-    "pouch": { "pollen": 21000, "bonus": 1000, "usd_cents": 399 },
-    "jar": { "pollen": 44000, "bonus": 4000, "usd_cents": 799 },
-    "basket": { "pollen": 115000, "bonus": 15000, "usd_cents": 1999 }
+    "pinch": { "pollen": 5000, "bonus": 0, "usd_cents": 99, "play_product": "after_you_pollen_pinch", "revenuecat_product": "prodd4e2b730e5" },
+    "pouch": { "pollen": 21000, "bonus": 1000, "usd_cents": 399, "play_product": "after_you_pollen_pouch", "revenuecat_product": "prod25def0f41d" },
+    "jar": { "pollen": 44000, "bonus": 4000, "usd_cents": 799, "play_product": "after_you_pollen_jar", "revenuecat_product": "proda8a9bcf221" },
+    "basket": { "pollen": 115000, "bonus": 15000, "usd_cents": 1999, "play_product": "after_you_pollen_basket", "revenuecat_product": "prodde607106a6" }
   }
 }

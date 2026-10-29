@@ -106,7 +106,7 @@ func _frames(count: int = 6) -> void:
 static func _offerings() -> Dictionary:
 	var packages: Array = []
 	for row: Array in [["pinch", "$0.99", 990000], ["pouch", "$3.99", 3990000], ["jar", "$7.99", 7990000], ["basket", "$19.99", 19990000]]:
-		packages.append({"id": "%s_package" % row[0], "product_id": Bundles.PRODUCTS[row[0]], "type": "CUSTOM", "price": row[1], "price_micros": float(row[2]), "currency": "USD"})
+		packages.append({"id": "%s_package" % row[0], "product_id": Bundles.play_product(row[0]) + ":buy", "type": "CUSTOM", "price": row[1], "price_micros": float(row[2]), "currency": "USD"})
 	return {"schema_version": 1, "mode": "google_play", "current_id": "default", "offerings": [
 		{"id": "default", "packages": [{"id": "$rc_monthly", "product_id": "after_you_full_journey_monthly", "type": "MONTHLY", "price": "$0.99", "price_micros": 990000.0, "currency": "USD"}]},
 		{"id": "pollen", "packages": packages}]}

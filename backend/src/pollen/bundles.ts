@@ -1,5 +1,5 @@
 import { isObject } from "../protocol";
-import { BUNDLE_KEYS, type BundleKey } from "../config";
+import { PRODUCT_PATTERN } from "../config";
 import raw from "./bundles.json";
 
 /**
@@ -9,15 +9,22 @@ import raw from "./bundles.json";
  *
  * - `pollen` is what one bundle pays, its bonus included; `bonus` is the part of it that is bonus.
  * - `usd_cents` is the US price, kept for a receipt whose purchase carries no revenue figure.
+ * - `play_product` is the Google Play product id (Play Console), `revenuecat_product` RevenueCat's own
+ *   `prod…` id for it, which the purchases list reports. Both are public ids that change only with the
+ *   products, so they live here in code, not in CONFIG.
  * - The first bundle a player ever buys also pays first_bonus_percent of its own Pollen, rounded down,
  *   once per player (at 10, the Pouch: 2,100). A refund takes it back and never opens it again. It is 0, off,
  *   until the owner decides on it (POLLEN-RULES.md owner decision 5); at 0 nothing is paid and nothing closes.
  * Amounts live only here: the phone never sends one.
  */
-export type Bundle = { pollen: number; bonus: number; usd_cents: number };
+export type Bundle = { pollen: number; bonus: number; usd_cents: number; play_product: string; revenuecat_product: string };
 export type Bundles = { schema_version: 1; first_bonus_percent: number; bundles: Readonly<Record<BundleKey, Bundle>> };
-export { BUNDLE_KEYS, type BundleKey };
+/** The four bundles, smallest first. */
+export const BUNDLE_KEYS = Object.freeze(["pinch", "pouch", "jar", "basket"] as const);
+export type BundleKey = typeof BUNDLE_KEYS[number];
 
+/** A Google Play product id. */
+const PLAY_PRODUCT = /^[a-z][a-z0-9_.]{0,99}$/;
 const count = (value: unknown, min = 0, max = Number.MAX_SAFE_INTEGER): value is number => typeof value === "number" && Number.isSafeInteger(value) && value >= min && value <= max;
 const exact = (value: Record<string, unknown>, keys: readonly string[]) => Object.keys(value).length === keys.length && keys.every(key => Object.hasOwn(value, key));
 
@@ -30,8 +37,11 @@ export function checkedBundles(value: unknown): Bundles {
   if (!isObject(v.bundles) || !exact(v.bundles, BUNDLE_KEYS)) bad("bundles");
   for (const key of BUNDLE_KEYS) {
     const bundle = (v.bundles as Record<string, unknown>)[key];
-    if (!isObject(bundle) || !exact(bundle, ["pollen", "bonus", "usd_cents"]) || !count(bundle.pollen, 1, 10_000_000) || !count(bundle.bonus, 0, bundle.pollen as number) || !count(bundle.usd_cents, 1, 1_000_000)) bad(key);
+    if (!isObject(bundle) || !exact(bundle, ["pollen", "bonus", "usd_cents", "play_product", "revenuecat_product"]) || !count(bundle.pollen, 1, 10_000_000) || !count(bundle.bonus, 0, bundle.pollen as number) || !count(bundle.usd_cents, 1, 1_000_000) ||
+      typeof bundle.play_product !== "string" || !PLAY_PRODUCT.test(bundle.play_product) || typeof bundle.revenuecat_product !== "string" || !PRODUCT_PATTERN.test(bundle.revenuecat_product)) bad(key);
   }
+  const all = (field: string) => BUNDLE_KEYS.map(key => ((v.bundles as Record<string, Record<string, unknown>>)[key])[field]);
+  if (new Set(all("play_product")).size !== BUNDLE_KEYS.length || new Set(all("revenuecat_product")).size !== BUNDLE_KEYS.length) bad("product ids repeat");
   for (const part of [v.bundles, ...Object.values(v.bundles as object), v]) Object.freeze(part);
   return v as Bundles;
 }

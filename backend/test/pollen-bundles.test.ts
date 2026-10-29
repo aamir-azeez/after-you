@@ -12,19 +12,16 @@ import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
 import { ledgerLines, walletView } from "../src/pollen/wallet";
 import { RATES } from "../src/pollen/rates";
 import { POLLEN_HEADER } from "../src/pollen/routes";
-import { parseConfig } from "../src/config";
-import { FLAG_NAMES } from "../src/flags";
 import { POLLEN_BUNDLE_TABLES, POLLEN_PLAYER_TABLES } from "../src/storage-schema";
 import { configJson } from "./config";
 import { countingEnv } from "./meter";
 
-// Pollen bundles on Google Play: the table, the CONFIG product map, what RevenueCat purchases count, and the
+// Pollen bundles on Google Play: the table and its product ids, what RevenueCat purchases count, and the
 // claim route and daily refund check through the Worker. RevenueCat is always a mock; synthetic identities only.
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
-const PRODUCTS = { pinch: "prodPinch", pouch: "prodPouch", jar: "prodJar", basket: "prodBasket" };
 const ON = ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES"];
 const REFUNDS_ONLY = ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS"];
-const vars = (features: string[] = ON, revenuecat: Record<string, unknown> = { project_id: "proj1234", play_bundle_product_ids: PRODUCTS }): Record<string, string> =>
+const vars = (features: string[] = ON, revenuecat: Record<string, unknown> = { project_id: "proj1234" }): Record<string, string> =>
   ({ POLLEN_SECRET: SECRET, REVENUECAT_SECRET_KEY: "synthetic-revenuecat-key-for-tests", CONFIG: configJson({ features, revenuecat }) });
 
 /** The table with the first gift the rules propose (+10%), as the owner may set it. */
@@ -41,52 +38,39 @@ describe("the bundle table", () => {
     expect(["pinch", "pouch", "jar", "basket"].map(key => firstGift(key as "pinch"))).toEqual([0, 0, 0, 0]);
     expect(["pinch", "pouch", "jar", "basket"].map(key => firstGift(key as "pinch", GIFT))).toEqual([500, 2100, 4400, 11500]);
   });
+  it("names the real Play and RevenueCat products, each once", () => {
+    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.play_product, bundle.revenuecat_product]])))
+      .toEqual({ pinch: ["after_you_pollen_pinch", "prodd4e2b730e5"], pouch: ["after_you_pollen_pouch", "prod25def0f41d"], jar: ["after_you_pollen_jar", "proda8a9bcf221"], basket: ["after_you_pollen_basket", "prodde607106a6"] });
+  });
   it("refuses a table outside its shape", () => {
     const copy = () => JSON.parse(JSON.stringify(serverBundles));
     for (const change of [(v: any) => { delete v.bundles.jar; }, (v: any) => { v.bundles.extra = v.bundles.jar; }, (v: any) => { v.bundles.pinch.bonus = 6000; },
-      (v: any) => { v.first_bonus_percent = 101; }, (v: any) => { v.bundles.pouch.pollen = 1.5; }, (v: any) => { v.schema_version = 2; }]) {
+      (v: any) => { v.first_bonus_percent = 101; }, (v: any) => { v.bundles.pouch.pollen = 1.5; }, (v: any) => { v.schema_version = 2; },
+      (v: any) => { v.bundles.jar.revenuecat_product = v.bundles.pouch.revenuecat_product; }, (v: any) => { v.bundles.jar.play_product = "Jar Product"; }, (v: any) => { v.bundles.jar.revenuecat_product = "jar"; }]) {
       const value = copy(); change(value);
       expect(() => checkedBundles(value)).toThrow(/invalid_pollen_bundles/);
     }
   });
 });
 
-describe("the bundle product map in CONFIG", () => {
-  const parse = (map: unknown) => parseConfig(JSON.stringify({ revenuecat: { play_bundle_product_ids: map } }), FLAG_NAMES);
-  it("takes exactly the four bundles, each a distinct prod id", () => {
-    const good = parse(PRODUCTS);
-    expect(good.problems).toEqual([]);
-    expect(good.config.revenuecat.play_bundle_product_ids).toEqual(PRODUCTS);
-    expect(parseConfig(JSON.stringify({ revenuecat: {} })).config.revenuecat.play_bundle_product_ids).toBeUndefined();
-  });
-  it("holds a map with a bundle missing or extra, a malformed id or one id twice", () => {
-    for (const map of [{ pinch: "prodPinch", pouch: "prodPouch", jar: "prodJar" }, { ...PRODUCTS, crate: "prodCrate" }, { ...PRODUCTS, jar: "jar" },
-      { ...PRODUCTS, jar: "prodPouch" }, ["prodPinch"], "prodPinch", { ...PRODUCTS, basket: 7 }]) {
-      const check = parse(map);
-      expect(check.problems.join()).toContain("play_bundle_product_ids");
-      expect(check.config.revenuecat.play_bundle_product_ids).toBeNull();
-    }
-  });
-});
-
-const owned = (id: string, product = "prodPinch", extra: Record<string, unknown> = {}) => ({ object: "purchase", id, customer_id: "c", original_customer_id: "c", product_id: product,
+const owned = (id: string, product = "prodd4e2b730e5", extra: Record<string, unknown> = {}) => ({ object: "purchase", id, customer_id: "c", original_customer_id: "c", product_id: product,
   purchased_at: 1_700_000_000_000 + Number(id.replace(/\D/g, "") || 0), revenue_in_usd: { currency: "USD", gross: 0.99, commission: 0.15, tax: 0, proceeds: 0.84 }, quantity: 1, status: "owned",
   presented_offering_id: "pollen", environment: "production", store: "play_store", store_purchase_identifier: `GPA.0000-${id}`, ownership: "purchased", country: "US", ...extra });
 
 describe("what RevenueCat purchases count", () => {
-  const products = { prodPinch: "pinch", prodPouch: "pouch" } as const;
+  const products = { prodd4e2b730e5: "pinch", prod25def0f41d: "pouch" } as const;
   it("counts a Play production purchase of a configured bundle, owned by purchase", () => {
     expect(bundlePurchase(owned("rc_1"), products)).toEqual({ id: "rc_1", bundle: "pinch", refunded: false, quantity: 1, order: "GPA.0000-rc_1", usd_cents: 99, purchased_at: 1_700_000_000_001 });
-    expect(bundlePurchase(owned("rc_2", "prodPouch", { status: "refunded", revenue_in_usd: null }), products)).toMatchObject({ bundle: "pouch", refunded: true, usd_cents: 399 });
+    expect(bundlePurchase(owned("rc_2", "prod25def0f41d", { status: "refunded", revenue_in_usd: null }), products)).toMatchObject({ bundle: "pouch", refunded: true, usd_cents: 399 });
   });
   it("mints nothing from Test Store, sandbox, promotional, the App Store, family sharing or another product", () => {
     for (const change of [{ store: "test_store" }, { environment: "sandbox" }, { store: "promotional" }, { store: "app_store" }, { ownership: "family_shared" },
-      { product_id: "prodOther" }, { product_id: "prodPinchy" }, { status: "pending" }, { quantity: 0 }, { quantity: 11 }, { id: "bad id" }, { object: "subscription" }, { purchased_at: null }])
-      expect(bundlePurchase(owned("rc_3", "prodPinch", change), products), JSON.stringify(change)).toBeNull();
+      { product_id: "prodOther" }, { product_id: "prodd4e2b730e5y" }, { status: "pending" }, { quantity: 0 }, { quantity: 11 }, { id: "bad id" }, { object: "subscription" }, { purchased_at: null }])
+      expect(bundlePurchase(owned("rc_3", "prodd4e2b730e5", change), products), JSON.stringify(change)).toBeNull();
   });
   it("reads nothing while unconfigured and answers a failed or partial list as unavailable", async () => {
     const request = vi.fn(async () => ({ ok: true as const, status: 200, value: { object: "list", items: [owned("rc_4")], next_page: null } }));
-    expect(await readBundles("P".repeat(22), vars(ON, { project_id: "proj1234" }), request)).toEqual({ ok: false, reason: "unconfigured" });
+    expect(await readBundles("P".repeat(22), vars(ON, {}), request)).toEqual({ ok: false, reason: "unconfigured" });
     expect(request).not.toHaveBeenCalled();
     expect(await readBundles("P".repeat(22), vars(), request)).toMatchObject({ ok: true, purchases: [{ id: "rc_4", bundle: "pinch" }] });
     expect(String((request.mock.calls[0] as unknown[])[0])).toContain("/customers/PPPPPPPPPPPPPPPPPPPPPP/purchases?environment=production&limit=100");
@@ -183,12 +167,12 @@ describe("bundles through the Worker", () => {
 
   it("keeps taking refunds back on the wallet read after bundles stop selling", async () => {
     const player = await create();
-    lists[player.player_id] = [owned("rc_15", "prodPinch")];
+    lists[player.player_id] = [owned("rc_15", "prodd4e2b730e5")];
     await claim(player);
     current = vars(REFUNDS_ONLY); Object.assign(shared, current);
     expect((await claim(player)).status).toBe(503);
     expect(await (await call("/v2/capabilities", "GET", player)).json()).not.toHaveProperty("pollen_bundles_version");
-    lists[player.player_id] = [owned("rc_15", "prodPinch", { status: "refunded" })];
+    lists[player.player_id] = [owned("rc_15", "prodd4e2b730e5", { status: "refunded" })];
     offset = BUNDLE_CHECK_MS + 1000;
     const read = await wallet(player);
     expect(read.balance).toBe(0);
@@ -204,7 +188,7 @@ describe("bundles through the Worker", () => {
 
   it("credits a purchase once with the first gift, a later bundle without it, and a repeat nothing", async () => {
     const player = await create();
-    lists[player.player_id] = [owned("rc_10", "prodPouch")];
+    lists[player.player_id] = [owned("rc_10", "prod25def0f41d")];
     const meter = countingEnv({ ...env, ...current } as unknown as Env);
     const first = await claim(player, meter.env);
     expect(first.status).toBe(200);
@@ -212,7 +196,7 @@ describe("bundles through the Worker", () => {
     expect(await first.json<Reply>()).toEqual({ schema_version: 1, balance: 21000, pending: false, refunded: [],
       credited: [{ bundle: "pouch", pollen: 21000, first_gift: 0, order: "GPA.0000-rc_10", purchased_at: 1_700_000_000_010, usd_cents: 99 }] });
     expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 21000, credited: [], refunded: [] });
-    lists[player.player_id] = [owned("rc_10", "prodPouch"), owned("rc_11", "prodPinch")];
+    lists[player.player_id] = [owned("rc_10", "prod25def0f41d"), owned("rc_11", "prodd4e2b730e5")];
     expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 26000, credited: [{ bundle: "pinch", pollen: 5000, first_gift: 0 }] });
     expect(await wallet(player)).toMatchObject({ balance: 26000, bundles: { first_gift: false, first_gift_percent: 0, spent_usd_cents: 198 } });
     const history = await (await call("/v1/pollen/history", "GET", player)).json<{ entries: Record<string, unknown>[] }>();
@@ -222,7 +206,7 @@ describe("bundles through the Worker", () => {
 
   it("pays two overlapping claims once", async () => {
     const player = await create();
-    lists[player.player_id] = [owned("rc_20", "prodJar")];
+    lists[player.player_id] = [owned("rc_20", "proda8a9bcf221")];
     let open!: () => void;
     gate = new Promise(resolve => { open = resolve; });
     const both = Promise.all([claim(player), claim(player)]);
@@ -236,25 +220,25 @@ describe("bundles through the Worker", () => {
 
   it("takes back a refunded bundle, may go below zero and blocks spending until earning repays it", async () => {
     const player = await create();
-    lists[player.player_id] = [owned("rc_30", "prodPinch")];
+    lists[player.player_id] = [owned("rc_30", "prodd4e2b730e5")];
     expect((await (await claim(player)).json<Reply>()).balance).toBe(5000);
     const daisy = await call("/v1/pollen/spend", "POST", player, { schema_version: 1, idempotency_key: crypto.randomUUID(), kind: "item", id: "daisy", expected_cost: 1000 });
     expect(daisy.status).toBe(200);
-    lists[player.player_id] = [owned("rc_30", "prodPinch", { status: "refunded" })];
+    lists[player.player_id] = [owned("rc_30", "prodd4e2b730e5", { status: "refunded" })];
     expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: -1000, credited: [], refunded: [{ bundle: "pinch", amount: 5000, order: "GPA.0000-rc_30" }] });
     expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: -1000, refunded: [] });
     const blocked = await call("/v1/pollen/spend", "POST", player, { schema_version: 1, idempotency_key: crypto.randomUUID(), kind: "item", id: "seashell", expected_cost: 1000 });
     expect(blocked.status).toBe(403);
     expect(await blocked.json()).toMatchObject({ error: { code: "pollen_blocked" } });
     expect(await wallet(player)).toMatchObject({ balance: -1000, bundles: { first_gift: false, first_gift_percent: 0, spent_usd_cents: 0 } });
-    lists[player.player_id].push(owned("rc_31", "prodPinch"));
+    lists[player.player_id].push(owned("rc_31", "prodd4e2b730e5"));
     expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 4000, credited: [{ first_gift: 0 }] });
   });
 
   it("mints nothing from a sandbox, Test Store, promotional or shared purchase", async () => {
     const player = await create();
-    lists[player.player_id] = [owned("rc_40", "prodPinch", { environment: "sandbox" }), owned("rc_41", "prodPinch", { store: "test_store" }),
-      owned("rc_42", "prodPinch", { store: "promotional" }), owned("rc_43", "prodPinch", { ownership: "family_shared" }), owned("rc_44", "prodUnknown")];
+    lists[player.player_id] = [owned("rc_40", "prodd4e2b730e5", { environment: "sandbox" }), owned("rc_41", "prodd4e2b730e5", { store: "test_store" }),
+      owned("rc_42", "prodd4e2b730e5", { store: "promotional" }), owned("rc_43", "prodd4e2b730e5", { ownership: "family_shared" }), owned("rc_44", "prodUnknown")];
     const meter = countingEnv({ ...env, ...current } as unknown as Env);
     expect(await (await claim(player, meter.env)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
     expect(meter.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenBundleClaim"]);
@@ -262,8 +246,8 @@ describe("bundles through the Worker", () => {
 
   it("pays a purchase to the first identity that claims it, never a second after a restore", async () => {
     const first = await create(), second = await create();
-    lists[first.player_id] = [owned("rc_50", "prodBasket")];
-    lists[second.player_id] = [owned("rc_50", "prodBasket")];
+    lists[first.player_id] = [owned("rc_50", "prodde607106a6")];
+    lists[second.player_id] = [owned("rc_50", "prodde607106a6")];
     expect((await (await claim(first)).json<Reply>()).balance).toBe(115000);
     expect(await (await claim(second)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
     expect((await (await claim(first)).json<Reply>()).balance).toBe(115000);
@@ -275,7 +259,7 @@ describe("bundles through the Worker", () => {
 
   it("answers 503 and writes nothing when RevenueCat cannot be read", async () => {
     const player = await create();
-    lists[player.player_id] = [owned("rc_60", "prodPinch")];
+    lists[player.player_id] = [owned("rc_60", "prodd4e2b730e5")];
     down = true;
     const failed = await claim(player);
     expect(failed.status).toBe(503);
@@ -289,12 +273,12 @@ describe("bundles through the Worker", () => {
     const buyer = await create(), other = await create();
     await wallet(other);
     expect(providerCalls).toBe(0);
-    lists[buyer.player_id] = [owned("rc_70", "prodPinch")];
+    lists[buyer.player_id] = [owned("rc_70", "prodd4e2b730e5")];
     await claim(buyer);
     const checked = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => lastBundleCheck(state.storage));
     expect(checked).toBeGreaterThan(0);
     providerCalls = 0;
-    lists[buyer.player_id] = [owned("rc_70", "prodPinch", { status: "refunded" })];
+    lists[buyer.player_id] = [owned("rc_70", "prodd4e2b730e5", { status: "refunded" })];
     expect((await wallet(buyer)).balance).toBe(5000);
     expect(providerCalls).toBe(0);
     offset = BUNDLE_CHECK_MS + 1000;
@@ -326,7 +310,7 @@ describe("bundles through the Worker", () => {
 
   it("erases the bundle check with the account", async () => {
     const player = await create();
-    lists[player.player_id] = [owned("rc_80", "prodPinch")];
+    lists[player.player_id] = [owned("rc_80", "prodd4e2b730e5")];
     await claim(player);
     expect(await tables(player)).toEqual(expect.arrayContaining([POLLEN_BUNDLE_TABLES[0].name, "pollen_claims", "pollen_wallet"]));
     expect(POLLEN_PLAYER_TABLES.map(table => table.name)).toContain(POLLEN_BUNDLE_TABLES[0].name);

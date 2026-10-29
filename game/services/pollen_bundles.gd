@@ -13,8 +13,7 @@ extends RefCounted
 ## - first_bonus_percent: the one-time gift on a first bundle, 0 while it is off.
 const PATH := "res://content/pollen_bundles.json"
 const ORDER: Array[String] = ["pinch", "pouch", "jar", "basket"]
-## The Google Play product ids (Play Console), and the RevenueCat offering that lists them.
-const PRODUCTS := {"pinch": "pollen_pinch", "pouch": "pollen_pouch", "jar": "pollen_jar", "basket": "pollen_basket"}
+## The RevenueCat offering that lists the bundles' packages (never the Full Journey one).
 const OFFERING := "pollen"
 
 static var _table: Dictionary = {}
@@ -58,11 +57,17 @@ static func gift(id: String, percent: int) -> int:
 static func per_unit(id: String, price_micros: int) -> int:
 	return roundi(pollen(id) * 1000000.0 / price_micros) if price_micros > 0 else 0
 
-## The bundle a store product id sells ("pollen_pouch" or "pollen_pouch:base"), or "".
+## The Google Play product id that sells a bundle ("after_you_pollen_pouch"), from the table.
+static func play_product(id: String) -> String:
+	return str((table().bundles as Dictionary).get(id, {}).get("play_product", ""))
+
+## The bundle a store product id sells ("after_you_pollen_pouch", or with its purchase option
+## "after_you_pollen_pouch:buy"), or "".
 static func bundle_for_product(product_id: Variant) -> String:
 	var product := str(product_id).get_slice(":", 0) if product_id is String else ""
-	for id: String in PRODUCTS:
-		if PRODUCTS[id] == product: return id
+	if product.is_empty(): return ""
+	for id: String in ids():
+		if play_product(id) == product: return id
 	return ""
 
 ## The bundles the store sells now, from an offerings payload (services/purchases.gd

@@ -54,9 +54,6 @@ export const PRODUCT_PATTERN = /^prod[A-Za-z0-9_-]+$/;
 const MAX_PRODUCTS = 8;
 const MAX_REVIEWERS = 16;
 const APP_STORE_ENVIRONMENTS = Object.freeze(["production", "sandbox", "both"] as const);
-/** The four Pollen bundles, in price order (pollen/bundles.json holds what each pays). */
-export const BUNDLE_KEYS = Object.freeze(["pinch", "pouch", "jar", "basket"] as const);
-export type BundleKey = typeof BUNDLE_KEYS[number];
 
 /** Longest version string either side accepts. */
 export const MAX_VERSION_LENGTH = 40;
@@ -94,11 +91,6 @@ export type RevenueCatSettings = {
   readonly app_store_entitlement_lookup_id?: string;
   /** Player ids whose real Full Journey entitlement counts as a review grant. */
   readonly reviewer_ids: readonly string[];
-  /**
-   * The Play Pollen bundles' RevenueCat product ids (`prod…`), one per bundle (pollen/bundles.ts). Unset leaves bundles
-   * unconfigured; null is a set but malformed map (a key missing, extra or repeated), which holds them the same way.
-   */
-  readonly play_bundle_product_ids?: Readonly<Record<BundleKey, string>> | null;
 };
 export type ServerConfig = {
   /** The FLAG_VARS names that are on (flags.ts reads only names it knows). */
@@ -125,7 +117,7 @@ export const EMPTY_CONFIG: ServerConfig = Object.freeze({ features: new Set<stri
 const TOP_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat"];
 const STRING_IDS = { project_id: PROJECT_PATTERN, play_entitlement_lookup_id: LOOKUP_PATTERN, play_product_id: PRODUCT_PATTERN, app_store_entitlement_lookup_id: LOOKUP_PATTERN } as const;
 const PRODUCT_LISTS = ["play_subscription_product_ids", "app_store_subscription_product_ids"] as const;
-const REVENUECAT_KEYS = [...Object.keys(STRING_IDS), ...PRODUCT_LISTS, "app_store_environment", "reviewer_ids", "play_bundle_product_ids"];
+const REVENUECAT_KEYS = [...Object.keys(STRING_IDS), ...PRODUCT_LISTS, "app_store_environment", "reviewer_ids"];
 
 function plainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
@@ -146,13 +138,6 @@ export function aliasesFrom(value: unknown): FriendAliases | null {
 /** A product list: at most MAX_PRODUCTS ids of the `prod…` shape, or null when it is anything else. */
 function productsFrom(value: unknown[]): string[] | null {
   return value.length <= MAX_PRODUCTS && value.every(item => typeof item === "string" && PRODUCT_PATTERN.test(item)) ? value as string[] : null;
-}
-/** The bundle product map: exactly the BUNDLE_KEYS, each a distinct `prod…` id, or null when it is anything else. */
-function bundleProductsFrom(value: unknown): Record<BundleKey, string> | null {
-  if (!plainObject(value) || Object.keys(value).length !== BUNDLE_KEYS.length || !BUNDLE_KEYS.every(key => Object.hasOwn(value, key))) return null;
-  const ids = BUNDLE_KEYS.map(key => value[key]);
-  if (!ids.every(id => typeof id === "string" && PRODUCT_PATTERN.test(id)) || new Set(ids).size !== ids.length) return null;
-  return Object.freeze(Object.fromEntries(BUNDLE_KEYS.map(key => [key, value[key] as string]))) as Record<BundleKey, string>;
 }
 function reviewersFrom(value: unknown[]): string[] | null {
   return value.length <= MAX_REVIEWERS && value.every(item => typeof item === "string" && PLAYER_ID.test(item)) ? value as string[] : null;
@@ -231,11 +216,6 @@ export function parseConfig(raw: unknown, knownFlags?: ReadonlySet<string>): Con
         const list = Array.isArray(given.reviewer_ids) ? reviewersFrom(given.reviewer_ids) : null;
         if (list === null) problems.push(`revenuecat.reviewer_ids must be a list of at most ${MAX_REVIEWERS} player ids`);
         out.reviewer_ids = list ?? [];
-      }
-      if (given.play_bundle_product_ids !== undefined) {
-        const map = bundleProductsFrom(given.play_bundle_product_ids);
-        if (map === null) problems.push(`revenuecat.play_bundle_product_ids must map exactly ${BUNDLE_KEYS.join(", ")} to distinct prod ids`);
-        out.play_bundle_product_ids = map;
       }
       revenuecat = Object.freeze(out);
     }

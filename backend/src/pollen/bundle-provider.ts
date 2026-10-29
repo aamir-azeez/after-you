@@ -1,8 +1,8 @@
 import { isObject } from "../protocol";
 import type { ServerVars } from "../flags";
-import { APP, BUNDLE_KEYS, PROJECT_PATTERN, serverConfig, type BundleKey } from "../config";
+import { APP, PROJECT_PATTERN, serverConfig } from "../config";
 import { revenuecatRequest } from "../play-entitlement";
-import { BUNDLES, type Bundles } from "./bundles";
+import { BUNDLES, BUNDLE_KEYS, type BundleKey, type Bundles } from "./bundles";
 import { SUB_ID_PATTERN } from "./grant";
 import type { ProviderFetch } from "./grant-provider";
 
@@ -10,7 +10,7 @@ import type { ProviderFetch } from "./grant-provider";
  * The bundles' read of RevenueCat: the customer's one-time purchases (REST v2, the same list and key the
  * hosting check reads), filtered to real Pollen only. A purchase counts when it is:
  * - a Play Store purchase in production (APP.playEnvironment), owned by purchase (never family shared);
- * - of one of the four configured bundle products (CONFIG revenuecat.play_bundle_product_ids);
+ * - of one of the four bundle products (bundles.json revenuecat_product);
  * - with a RevenueCat id, a quantity from 1 to MAX_QUANTITY and a purchase time.
  * Test Store, sandbox, promotional, App Store and any other product mint nothing.
  * Status "owned" is paid once; "refunded" takes back what it paid.
@@ -39,17 +39,15 @@ export function bundlePurchase(item: unknown, products: Readonly<Record<string, 
   return { id: item.id, bundle, refunded: item.status === "refunded", quantity, order, usd_cents: usd, purchased_at: item.purchased_at };
 }
 
-/** RevenueCat product id -> bundle, or null while the map is unset or malformed. */
-export function bundleProducts(env: ServerVars): Record<string, BundleKey> | null {
-  const map = serverConfig(env).revenuecat.play_bundle_product_ids;
-  if (!map) return null;
-  return Object.fromEntries(BUNDLE_KEYS.map(key => [map[key], key]));
+/** RevenueCat product id -> bundle, from the table. */
+export function bundleProducts(bundles: Bundles = BUNDLES): Record<string, BundleKey> {
+  return Object.fromEntries(BUNDLE_KEYS.map(key => [bundles.bundles[key].revenuecat_product, key]));
 }
 
 /** The player's counted bundle purchases, oldest first. */
 export async function readBundles(playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<BundleRead> {
-  const products = bundleProducts(env), project = serverConfig(env).revenuecat.project_id ?? "";
-  if (!env.REVENUECAT_SECRET_KEY || !PROJECT_PATTERN.test(project) || products === null) return { ok: false, reason: "unconfigured" };
+  const products = bundleProducts(), project = serverConfig(env).revenuecat.project_id ?? "";
+  if (!env.REVENUECAT_SECRET_KEY || !PROJECT_PATTERN.test(project)) return { ok: false, reason: "unconfigured" };
   const url = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(project)}/customers/${encodeURIComponent(playerId)}/purchases?environment=${APP.playEnvironment}&limit=100`;
   const result = await request(url, env.REVENUECAT_SECRET_KEY);
   if (!result.ok) return { ok: false, reason: result.reason };
