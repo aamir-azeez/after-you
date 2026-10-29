@@ -86,25 +86,23 @@ func settings_stamp(values: Dictionary) -> int:
 static func _default_values() -> Dictionary:
 	var out := {}
 	var defaults: Dictionary = LocalSave.defaults().settings
-	for key: String in Bundle.SETTINGS_KEYS:
+	for key: String in Bundle.SYNCED_SETTINGS:
 		if defaults.get(key) is bool: out[key] = defaults[key]
 	return out
 
-## The cloud's settings as this phone takes them. Forgiving catches never turns
-## on from the cloud: a copy from an older build (where it was on by default)
-## would undo LocalSave's one-time switch off, and turning it on asks first on
-## each phone (presentation/settings_rows.gd confirm_on). Turning it off still syncs.
-static func cloud_values(values: Dictionary, local_values: Dictionary) -> Dictionary:
-	var out := values.duplicate()
-	if out.get("assistance") == true and local_values.get("assistance") != true:
-		if local_values.has("assistance"): out.assistance = local_values.assistance
-		else: out.erase("assistance")
+## The cloud's settings as this phone takes them: only Bundle.SYNCED_SETTINGS.
+## A copy from an older build may still carry Forgiving catches; it stays on
+## each phone, so a change on another phone never turns it on or off here.
+static func cloud_values(values: Dictionary) -> Dictionary:
+	var out := {}
+	for key: String in Bundle.SYNCED_SETTINGS:
+		if values.get(key) is bool: out[key] = values[key]
 	return out
 
 static func _values(settings: Variant) -> Dictionary:
 	var out := {}
 	if settings is Dictionary:
-		for key: String in Bundle.SETTINGS_KEYS:
+		for key: String in Bundle.SYNCED_SETTINGS:
 			if settings.get(key) is bool: out[key] = settings[key]
 	return out
 
@@ -146,7 +144,7 @@ func apply(merged: Dictionary) -> bool:
 	var local_values := _values(data.get("settings"))
 	var local_stamp := settings_stamp(local_values)
 	var settings_changed := false
-	var incoming := cloud_values(merged.settings.values, local_values)
+	var incoming := cloud_values(merged.settings.values)
 	if int(merged.settings.stamp) > local_stamp and incoming != local_values and not incoming.is_empty():
 		var settings: Dictionary = data.settings.duplicate(true)
 		for key: String in incoming: settings[key] = incoming[key]

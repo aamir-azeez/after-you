@@ -55,7 +55,9 @@ func settle_settings() -> bool:
 		return true
 	data.settings.assistance = false
 	data[SETTINGS_MIGRATION_KEY] = SETTINGS_MIGRATION
-	flush()
+	# The write must not wipe the note load_data left for the player (a backup used, a fresh start).
+	var note := last_error
+	if flush(): last_error = note
 	return true
 
 static func default_settings_envelope_valid(value: Variant) -> bool:

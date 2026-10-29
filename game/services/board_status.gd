@@ -1,15 +1,17 @@
 extends RefCounted
 ## Where a finished together run stands on its leaderboard, as one state the
 ## end-of-run card, the board screen and Home all read the same way:
-## - OFF: the server has leaderboards off, so nothing was posted;
+## - OFF: the server had leaderboards off when this phone last asked;
 ## - ASSISTED: a turn had Forgiving catches on, so the server never posts it
 ##   (backend leaderboards/run.ts runTicks);
 ## - CHECKING: posted and waiting for its replay check (or a person). The
 ##   server posts before it answers the final turn (v2/routes.ts), so a run
 ##   just finished counts as checking until a board read says otherwise;
 ## - RANKED: in the top 10, with its place;
-## - NOT_LISTED: settled and not on the board (slower than the ten listed, or
-##   it did not pass the checks).
+## - NOT_LISTED: settled and not on the board (slower than the ten listed, a
+##   pair's repeat no faster than its own run already there, or it did not
+##   pass the checks);
+## - UNKNOWN: an older run and no board read to say where it stands: no line.
 ## Pure: no storage, no requests. Runs come from services/leaderboard_runs.gd
 ## and views from services/leaderboard_client.gd (valid_view).
 const Runs = preload("res://services/leaderboard_runs.gd")
@@ -20,6 +22,7 @@ const ASSISTED := "assisted"
 const CHECKING := "checking"
 const RANKED := "ranked"
 const NOT_LISTED := "not_listed"
+const UNKNOWN := ""
 ## A board read this soon after the run finished may come from a copy the
 ## server kept from before the post (backend view-cache.ts keeps one for up to
 ## two minutes), so a run this new that it does not list still counts as checking.
@@ -27,14 +30,17 @@ const SETTLE_SECONDS := 600
 const TOP_PLACES := 10
 
 ## The state of `run` (a Runs entry: board, entry_id, ticks, assisted,
-## finished_at) given whether the server has leaderboards on and the newest
-## board view ({} when none was read). {state, ticks, rank (0 unless RANKED)}.
-static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix: float) -> Dictionary:
+## finished_at, partner) given whether the server has leaderboards on, the
+## newest board view ({} when none was read) and `mine`, this player's runs on
+## that board (Runs.on_board). {state, ticks, rank (0 unless RANKED)}.
+static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix: float, mine: Array = []) -> Dictionary:
 	var ticks := int(run.get("ticks", 0))
 	var result := {"state": CHECKING, "ticks": ticks, "rank": 0}
 	if not supported: result.state = OFF
 	elif bool(run.get("assisted", false)): result.state = ASSISTED
-	elif view.get("top") is Array and view.get("checking") is Array:
+	elif not view.get("top") is Array or not view.get("checking") is Array:
+		if not recent(run, now_unix): result.state = UNKNOWN
+	else:
 		var id := str(run.get("entry_id", ""))
 		for row: Dictionary in view.top:
 			if row.get("entry_id") == id:
@@ -43,8 +49,26 @@ static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix:
 				return result
 		if id in view.checking: return result
 		var full: bool = view.top.size() >= TOP_PLACES and ticks > int(view.top[TOP_PLACES - 1].get("ticks", 0))
-		if full or not recent(run, now_unix): result.state = NOT_LISTED
+		if full or pair_ahead(run, view, mine) or not recent(run, now_unix): result.state = NOT_LISTED
 	return result
+
+## Whether `view` lists the run as waiting for its check (never a guess).
+static func listed_checking(run: Dictionary, view: Dictionary) -> bool:
+	return view.get("checking") is Array and str(run.get("entry_id", "")) in view.checking
+
+## Whether the board already holds a run by the same pair (this player and the
+## same partner) no slower than `run`: the server then never took it (backend
+## board.ts submit, one entry per pair).
+static func pair_ahead(run: Dictionary, view: Dictionary, mine: Array) -> bool:
+	var partner := str(run.get("partner", ""))
+	if partner.is_empty(): return false
+	var on_board: Dictionary = {}
+	for row: Dictionary in view.get("top", []): on_board[row.get("entry_id")] = true
+	for id: Variant in view.get("checking", []): on_board[id] = true
+	for other: Dictionary in mine:
+		if other.get("entry_id") == run.get("entry_id") or str(other.get("partner", "")) != partner or bool(other.get("assisted", false)): continue
+		if on_board.has(other.get("entry_id")) and int(other.get("ticks", 0)) <= int(run.get("ticks", 0)): return true
+	return false
 
 ## Whether the run finished within SETTLE_SECONDS of `now_unix` (a run with no
 ## readable time counts as recent, so it is never called settled too early).

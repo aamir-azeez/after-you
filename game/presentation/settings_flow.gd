@@ -477,6 +477,8 @@ func _confirm_on(row: Dictionary) -> void:
 	_confirm_modal = modal
 	modal.label(str(ask.body))
 	modal.add_actions(str(ask.accept), func():
+		# A second tap before the card goes writes nothing more.
+		if modal.is_queued_for_deletion() or _value(row) == true: return
 		modal.close(false)
 		if is_open(): _save_change(row, true), PlayerCopy.SETTINGS_CANCEL)
 	modal.closed.connect(refresh)

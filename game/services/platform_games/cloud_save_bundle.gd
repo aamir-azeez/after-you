@@ -18,7 +18,7 @@ extends RefCounted
 ## merge(x, x) == x, so applying the same cloud copy twice changes nothing.
 ##
 ## No credentials, ids, rooms or friends are ever in a bundle: only solo progress,
-## keepsakes, Hard marks and a few device-neutral settings.
+## keepsakes, Hard marks and a few device-neutral settings (SYNCED_SETTINGS).
 const Typed = preload("res://services/typed_values.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 
@@ -30,7 +30,11 @@ const MAX_BYTES := 2_900_000
 const MAX_JSON_BYTES := 24_000_000
 ## Settings that follow a player between phones. Graphics, frame rate and notification
 ## switches belong to the device (and to its system permission), so they stay local.
+## Every key a copy may hold: older builds wrote "assistance" too, so a copy with it still reads.
 const SETTINGS_KEYS := ["sound", "haptics", "reduced_motion", "assistance", "left_handed", "photo_prompts", "skip_waits", "share_online_status"]
+## The settings this build writes and takes. Forgiving catches stays on each
+## phone: a choice on one phone never turns it on or off on another.
+const SYNCED_SETTINGS := ["sound", "haptics", "reduced_motion", "left_handed", "photo_prompts", "skip_waits", "share_online_status"]
 const LEVEL_ID := "^[a-z0-9][a-z0-9_-]{0,63}$"
 const JOURNAL_NAME := "^[a-z0-9-]{1,64}-journey-v[0-9]{1,3}\\.json$"
 ## Keepsake places are "<chapter>/<stage>"; the catalog checks them when they are applied.
@@ -53,7 +57,7 @@ static func collect(save_data: Dictionary, settings_stamp: int, keepsakes: Dicti
 	var bundle := empty()
 	var settings: Variant = save_data.get("settings")
 	if settings is Dictionary:
-		for key: String in SETTINGS_KEYS:
+		for key: String in SYNCED_SETTINGS:
 			if settings.get(key) is bool: bundle.settings.values[key] = settings[key]
 	bundle.settings.stamp = maxi(0, settings_stamp)
 	var completed: Variant = save_data.get("completed")

@@ -8,7 +8,7 @@ extends RefCounted
 ## - service_home(): every frame on Home, but it does work at most every
 ##   CHECK_MS. While this player's newest run of the last WATCH_SECONDS may
 ##   still wait for its check, it reads that board at most every READ_MS. Once
-##   a read (the card's or its own) has found it checking, Home posts one note
+##   a read (the card's or its own) has found it listed as checking, Home posts one note
 ##   when it is free; a read that finds it
 ##   ranked hands it to services/leaderboard_placings.gd (inside board()), so
 ##   Home's existing celebration shows the place. A run seen settled is not read again.
@@ -48,7 +48,7 @@ func line_for(snapshot: Dictionary, chapter_key: String) -> Control:
 	line.assistance_on = func() -> bool: return bool(host.saves.data.settings.get("assistance", false))
 	var supported := _supported()
 	var client := _client() if supported else null
-	line.show_status(BoardStatus.of_run(run, supported, client.kept_view(run.board) if client != null else {}, _now()))
+	line.show_status(BoardStatus.of_run(run, supported, client.kept_view(run.board) if client != null else {}, _now(), Runs.on_board(owner, run.board)))
 	if client != null and not run.assisted: _read_for_line(client, run, line)
 	return line
 
@@ -56,15 +56,19 @@ func _read_for_line(client: RefCounted, run: Dictionary, line: Control) -> void:
 	_read_at[run.board] = Time.get_ticks_msec()
 	var answer: Dictionary = await client.board(run.board)
 	if not answer.get("ok", false) or not is_instance_valid(line): return
-	var status := BoardStatus.of_run(run, true, answer.view, _now())
+	var status := BoardStatus.of_run(run, true, answer.view, _now(), Runs.on_board(_owner(), run.board))
 	_note_settled(run, status)
-	# Home says it once when the player gets back there, with no read of its own.
-	if status.state == BoardStatus.CHECKING: _seen_checking[run.entry_id] = true
+	# Home says it once when the player gets back there, with no read of its own,
+	# only when the board itself lists it (never on the just-finished guess).
+	if BoardStatus.listed_checking(run, answer.view): _seen_checking[run.entry_id] = true
 	line.show_status(status)
 
-## Turns Forgiving catches off on this phone and in the open room; true when saved.
+## Turns Forgiving catches off on this phone and in the open room; true when
+## saved. A failed save says so, as Settings does.
 func turn_off_assistance() -> bool:
-	if not host.settings_flow.save_setting("assistance", false): return false
+	if not host.settings_flow.save_setting("assistance", false):
+		host._toast(PlayerCopy.MAIN_34B82590B663)
+		return false
 	if is_instance_valid(host.relay_child) and host.relay_child.get("settings") is Dictionary: host.relay_child.settings.assistance = false
 	return true
 
@@ -85,9 +89,9 @@ func service_home() -> void:
 	var answer: Dictionary = await _client().board(run.board)
 	_reading = false
 	if not answer.get("ok", false) or owner != _owner(): return
-	var status := BoardStatus.of_run(run, true, answer.view, _now())
+	var status := BoardStatus.of_run(run, true, answer.view, _now(), Runs.on_board(owner, run.board))
 	_note_settled(run, status)
-	if status.state == BoardStatus.CHECKING:
+	if BoardStatus.listed_checking(run, answer.view):
 		_seen_checking[run.entry_id] = true
 		if not _noted.has(run.entry_id) and host._home_free_for_card(): _post_note(run)
 

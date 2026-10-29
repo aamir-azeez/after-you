@@ -18,6 +18,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Storage = preload("res://services/local_save.gd")
 const Sources = preload("res://services/platform_games/cloud_save_sources.gd")
 const Bundle = preload("res://services/platform_games/cloud_save_bundle.gd")
+const State = preload("res://services/platform_games/platform_games_state.gd")
 const OWNER := "OOOOOOOOOOOOOOOOOOOOOO"
 const PARTNER := "GGGGGGGGGGGGGGGGGGGGGG"
 const RUNS_PATH := "user://board-feedback-runs-test.json"
@@ -130,6 +131,21 @@ func _states() -> void:
 	for index in range(10): ten.append(_row(index + 1, "%032x" % (index + 1), 100 + index))
 	_check(BoardStatus.of_run(fresh, true, _view(LIGHTHOUSE_BOARD, ten, []), now).state == BoardStatus.NOT_LISTED, "a run slower than ten listed runs is off the board at once")
 	_check(BoardStatus.of_run({"board": LIGHTHOUSE_BOARD, "entry_id": "d".repeat(32), "ticks": 5, "assisted": false, "finished_at": ""}, true, _view(LIGHTHOUSE_BOARD, [], []), now).state == BoardStatus.CHECKING, "a run with no readable time is never called settled")
+	_check(BoardStatus.of_run(old, true, {}, now).state == BoardStatus.UNKNOWN and Line.text(BoardStatus.of_run(old, true, {}, now)).is_empty(), "an older run with no board read has no line, never a guess")
+	# One entry per pair (backend board.ts submit): a repeat no faster than the pair's own listed run was never taken.
+	var mine_first := {"board": LIGHTHOUSE_BOARD, "entry_id": "e".repeat(32), "ticks": 1400, "assisted": false, "finished_at": _now_iso(-3600), "partner": PARTNER}
+	var repeat := fresh.duplicate()
+	repeat.partner = PARTNER
+	var waiting := _view(LIGHTHOUSE_BOARD, [], [mine_first.entry_id])
+	_check(BoardStatus.of_run(repeat, true, waiting, now, [mine_first, repeat]).state == BoardStatus.NOT_LISTED, "a slower repeat by the same pair is off the board at once, even just finished")
+	_check(BoardStatus.of_run(repeat, true, _view(LIGHTHOUSE_BOARD, [_row(1, mine_first.entry_id, 1400)], []), now, [mine_first, repeat]).state == BoardStatus.NOT_LISTED, "the same when the pair's faster run is ranked")
+	var other_partner := mine_first.duplicate()
+	other_partner.partner = "PPPPPPPPPPPPPPPPPPPPPP"
+	_check(BoardStatus.of_run(repeat, true, waiting, now, [other_partner, repeat]).state == BoardStatus.CHECKING, "a run with another partner is a different pair")
+	var slower := mine_first.duplicate()
+	slower.ticks = 1600
+	_check(BoardStatus.of_run(repeat, true, waiting, now, [slower, repeat]).state == BoardStatus.CHECKING, "a faster repeat replaces the pair's run, so it may be checking")
+	_check(BoardStatus.listed_checking(fresh, _view(LIGHTHOUSE_BOARD, [], [fresh.entry_id])) and not BoardStatus.listed_checking(fresh, _view(LIGHTHOUSE_BOARD, [], [])) and not BoardStatus.listed_checking(fresh, {}), "only a board that lists the run says it is checking")
 
 func _line_words() -> void:
 	_check(Line.text({"state": BoardStatus.CHECKING, "ticks": 1470}) == PlayerCopy.BOARD_LINE_CHECKING % "0:49.0", "checking names the pending time")
@@ -181,6 +197,20 @@ func _end_of_run_line() -> void:
 	await _frames(2)
 	_check(host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.0"] and host.api.requests.size() == reads, "back on Home it says so once, with no read of its own: %s" % [host.toasts])
 	line.queue_free()
+	host.toasts.clear()
+	# Just finished and not listed yet: the card guesses checking; Home stays quiet.
+	var guess_room := "Q1Q1Q1Q1Q1Q1Q1Q1Q1Q1Q1"
+	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [], [])}
+	Client.shared(host.api, OWNER)._views.clear()
+	line = flow.line_for(_snapshot(guess_room, _lighthouse_final(), _now_iso(-1)), Registry.LIGHTHOUSE_V2)
+	root.add_child(line)
+	await _frames(4)
+	_check((line.find_child("BoardStatusText", true, false) as Label).text == PlayerCopy.BOARD_LINE_CHECKING % "0:49.0", "the card still says checking for a run a moment old")
+	flow._next_check = 0
+	flow.service_home()
+	await _frames(3)
+	_check(host.toasts.is_empty() and not flow._seen_checking.has(Runs.entry_id(guess_room, 1)), "Home posts nothing on that guess")
+	line.queue_free()
 	# A run already ranked by the time the card opens again shows its place.
 	var ranked_room := "R1R1R1R1R1R1R1R1R1R1R1"
 	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, Runs.entry_id(ranked_room, 1), 1470)], [])}
@@ -198,6 +228,11 @@ func _end_of_run_line() -> void:
 	var button := line.find_child("BoardStatusTurnOff", true, false) as Button
 	_check((line.find_child("BoardStatusText", true, false) as Label).text == PlayerCopy.BOARD_LINE_ASSISTED and button.visible, "an assisted run says why it can't rank and offers to turn it off")
 	_check(host.api.requests.is_empty(), "an assisted run needs no board read")
+	host.settings_flow.kept = false
+	button.pressed.emit()
+	_check(host.toasts == [PlayerCopy.MAIN_34B82590B663] and button.visible and host.saves.data.settings.assistance == true, "a failed save says so and keeps the button")
+	host.toasts.clear()
+	host.settings_flow.kept = true
 	button.pressed.emit()
 	_check(host.saves.data.settings.assistance == false and not button.visible and (line.find_child("BoardStatusText", true, false) as Label).text == PlayerCopy.BOARD_LINE_TURNED_OFF, "Turn off saves it and says the next run can count")
 	line.queue_free()
@@ -341,6 +376,20 @@ func _settings_migration() -> void:
 	var again := _open(path)
 	_check(not again.settle_settings() and again.data.settings.assistance == true, "a later start keeps the player's choice")
 	_remove_save(path)
+	# A save read from its backup keeps the note for the player through the switch off.
+	path = _save_path("backup")
+	var first := Storage.new(path)
+	first.load_data()
+	first.flush()
+	first.flush()
+	var broken := FileAccess.open(path, FileAccess.WRITE)
+	broken.store_string("{ damaged")
+	broken.close()
+	var from_backup := Storage.new(path)
+	from_backup.load_data()
+	var note := from_backup.last_error
+	_check(not note.is_empty() and not from_backup.read_only and from_backup.settle_settings() and from_backup.last_error == note and from_backup.data.settings.assistance == false, "the switch off keeps the startup note: %s" % from_backup.last_error)
+	_remove_save(path)
 	# A brand new install: off, marked in memory, nothing written until the first save.
 	path = _save_path("new")
 	var fresh := _open(path)
@@ -366,9 +415,19 @@ func _settings_migration() -> void:
 	_remove_save(path)
 
 func _cloud_never_turns_it_on() -> void:
-	var local := {"assistance": false, "sound": true}
-	_check(Sources.cloud_values({"assistance": true, "sound": false}, local) == {"assistance": false, "sound": false}, "a cloud copy never turns Forgiving catches on, and other settings still follow")
-	_check(Sources.cloud_values({"assistance": false}, {"assistance": true}) == {"assistance": false}, "turning it off still follows from the cloud")
-	_check(Sources.cloud_values({"assistance": true}, {"assistance": true}) == {"assistance": true}, "a copy that agrees changes nothing")
-	_check(Sources.cloud_values({"assistance": true, "haptics": false}, {}) == {"haptics": false}, "with no local value it is left out, never turned on")
-	_check("assistance" in Bundle.SETTINGS_KEYS, "the bundle format is unchanged, so older builds still read it")
+	_check(Sources.cloud_values({"assistance": true, "sound": false}) == {"sound": false} and Sources.cloud_values({"assistance": false, "haptics": true}) == {"haptics": true}, "Forgiving catches never comes from the cloud, on or off; other settings still follow")
+	var bundle := Bundle.collect({"settings": {"assistance": true, "sound": false}}, 5, {}, {})
+	_check(not bundle.settings.values.has("assistance") and bundle.settings.values.sound == false, "this phone never sends it")
+	var older := Bundle.empty()
+	older.settings = {"values": {"assistance": true, "sound": true}, "stamp": 9}
+	_check(not Bundle.validated(older).is_empty(), "a copy from an older build that holds it still reads")
+	var host := Node.new()
+	root.add_child(host)
+	var state_path := "user://board-feedback-cloud-state.json"
+	_clear(state_path)
+	var sources: RefCounted = Sources.new(host, State.new(state_path))
+	var fresh_settings: Dictionary = Storage.defaults().settings.duplicate()
+	fresh_settings.merge(Storage.NEW_PLAYER_SETTINGS, true)
+	_check(sources.settings_stamp(Sources._values(fresh_settings)) == 0, "a new install's untouched settings count as no change, so a restore takes the cloud's Sound and Haptics")
+	_clear(state_path)
+	host.queue_free()

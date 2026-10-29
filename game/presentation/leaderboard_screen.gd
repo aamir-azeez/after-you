@@ -395,7 +395,7 @@ func _render_own(mine: Array, top: Array, checking: Array) -> void:
 	elif not eligible.is_empty():
 		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact))
 		# Why it has no place (services/board_status.gd): a run this new may not show in the board's copy yet.
-		if BoardStatus.of_run(eligible[0], true, _view, Time.get_unix_time_from_system()).state == BoardStatus.NOT_LISTED: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_NOT_LISTED))
+		if BoardStatus.of_run(eligible[0], true, _view, Time.get_unix_time_from_system(), mine).state == BoardStatus.NOT_LISTED: _own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_NOT_LISTED))
 	elif not settled.is_empty():
 		_own.add_child(Rows.own(int(settled[0].ticks), 0, "", _compact))
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_ASSISTED))

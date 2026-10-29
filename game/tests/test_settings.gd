@@ -203,6 +203,16 @@ func _assistance_asks_first(app: Node) -> void:
 	var loaded := Storage.new(app.saves.path)
 	loaded.load_data()
 	_check(loaded.data.settings.assistance == false,"Nothing was written while it asked")
+	await _click(app,toggle)
+	await _settle()
+	modal = app.ui.find_child("ConfirmOn_assistance",true,false) as Control
+	var accept := modal.find_child("ModalConfirm",true,false) as Button if modal != null else null
+	var generation := int(app.saves.data.generation)
+	if accept != null:
+		accept.pressed.emit()
+		accept.pressed.emit()
+	await _settle()
+	_check(app.saves.data.settings.assistance == true and int(app.saves.data.generation) == generation + 1,"A double tap on Turn on writes once")
 
 func _texts(node: Node) -> Array:
 	var result: Array = []
