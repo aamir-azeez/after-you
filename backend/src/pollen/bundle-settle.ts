@@ -1,7 +1,7 @@
 import { POLLEN_BUNDLE_TABLES } from "../storage-schema";
 import { DAY_MS, RATES, type Rates } from "./rates";
 import { BUNDLES, firstGift, type BundleKey, type Bundles } from "./bundles";
-import { applyLedger, ledgerLines, walletBalance, type LedgerEntry } from "./wallet";
+import { applyLedger, ledgerLines, purchaseLines, walletBalance, type LedgerEntry } from "./wallet";
 import type { BundlePurchase, BundleRead } from "./bundle-provider";
 
 /**
@@ -136,9 +136,8 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
 export function bundlesView(storage: DurableObjectStorage, bundles: Bundles = BUNDLES): BundlesView {
   const percent = bundles.first_bonus_percent;
   try {
-    const paid = bundleLines(storage), refunds = refundLines(storage);
-    const spent = paid.reduce((sum, line) => sum + Number(line.detail.usd_cents ?? 0), 0) - refunds.reduce((sum, line) => sum + Number(line.detail.usd_cents ?? 0), 0);
-    return { first_gift: percent > 0 && paid.length === 0, first_gift_percent: percent, spent_usd_cents: Math.max(0, spent) };
+    // The same total the history shows (wallet.ts purchaseLines).
+    return { first_gift: percent > 0 && !hasBundles(storage), first_gift_percent: percent, spent_usd_cents: purchaseLines(storage).spent_usd_cents ?? 0 };
   } catch { return { first_gift: false, first_gift_percent: percent, spent_usd_cents: 0 }; }
 }
 

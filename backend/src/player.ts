@@ -36,7 +36,7 @@ import { claimBundlesFor, claimFor } from "./pollen/claims";
 import { bundleCheckDue, bundlesView, dropBundles, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
 import { readBundles } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
-import { countNameSet, namePrice, nextNamePrice } from "./pollen/name-price";
+import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
 import type { Look } from "./pollen/catalog";
 import type { SpendRequest } from "./pollen/spend";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
@@ -192,11 +192,11 @@ export class Player extends DurableObject<Env> {
   }
   /**
    * authorize() plus the wallet or its history (GET /v1/pollen and /v1/pollen/history), from one call.
-   * While the wardrobe is on (`mode`) the wallet also carries it; while the shop is on, with what is sold and the next name change price.
+   * While the wardrobe is on (`mode`) the wallet also carries it; while the shop is on, with what is sold, the next name change price and the price of the change after it.
    * While the grant is on, the wallet read first pays any monthly instalment that is due (pollen/grant-settle.ts)
    * and carries the player's `grant` ladder once they have one.
    */
-  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; bundles?: BundlesView }) }> {
+  async authorizeWallet(deviceHash: string, view: "wallet" | "history", mode: WardrobeMode = "off"): Promise<{ authorized: boolean; linked: boolean; pollen?: WalletView | HistoryView | (WalletView & { grant?: GrantView }) | (WalletView & { grant?: GrantView; wardrobe: OwnedView }) | (WalletView & { grant?: GrantView; wardrobe: WardrobeView; name_price: number; name_price_next: number; bundles?: BundlesView }) }> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
@@ -215,7 +215,7 @@ export class Player extends DurableObject<Env> {
     const read = ladder ? { ...wallet, grant: ladder } : wallet;
     if (mode === "off") return { authorized: true, linked: true, pollen: read };
     const wardrobe = wardrobeView(this.ctx.storage, mode === "shop");
-    return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}) } : { ...read, wardrobe } };
+    return { authorized: true, linked: true, pollen: mode === "shop" ? { ...read, wardrobe, name_price: nextNamePrice(identity, now), name_price_next: nextNamePriceAfter(identity, now), ...(bundles ? { bundles: bundlesView(this.ctx.storage) } : {}) } : { ...read, wardrobe } };
   }
   /** The daily bundle refund check (pollen/bundle-settle.ts); a failure never stops the wallet read it rides on. */
   private async checkBundles(owner: string): Promise<void> {

@@ -10,13 +10,28 @@ extends RefCounted
 ##   that names no Full Journey);
 ## - bank: {left, refill, cap, tail: [{pay, turns}]}, or {} from a server that
 ##   does not send it. The numbers come from the server, never from the app.
+## - purchases: each Pollen bundle bought or taken back by a refund, newest
+##   first, {kind ("bundle" or "bundlerefund"), bundle, amount (negative for a
+##   refund), at, order ("" when unknown), usd_cents (-1 when unknown)}, from the
+##   server's own list (every line, never pushed out by turns). A server from
+##   before that list has only the bundle lines among the newest entries.
+## - spent_usd_cents: the money spent on bundles, refunds taken off, in US
+##   cents as Google Play reported it: the server's figure, else the sum of the
+##   lines it sent.
 ## A history that is not the contract's reads as {}, and the page says so.
 const Typed = preload("res://services/typed_values.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const Bundles = preload("res://services/pollen_bundles.gd")
+const BundleClaims = preload("res://services/bundle_claims.gd")
 
 const MAX_ENTRIES := 50
 const BONUSES := ["first_try", "gold_pace", "silver_pace", "hard"]
 const REASONS := ["repeat", "bank_empty", "late"]
+const PURCHASE_KINDS := ["bundle", "bundlerefund"]
+## As the server's PURCHASE_LIMIT (backend/src/pollen/wallet.ts).
+const MAX_PURCHASES := 100
+
+static var _order := RegEx.create_from_string(BundleClaims.ORDER_PATTERN)
 
 static func checked(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not value.get("entries") is Array or value.entries.size() > MAX_ENTRIES: return {}
@@ -31,7 +46,32 @@ static func checked(value: Variant) -> Dictionary:
 			var key := chapter_key(clear.get("level_id"))
 			if key.is_empty() or bool(Registry.descriptor(key).get("premium", false)): continue
 			clears.append({"level_id": clear.level_id, "price": Typed.as_int(clear.price), "paid": Typed.as_int(clear.paid) if clear.has("paid") else -1})
-	return {"turns": turns, "first_clears": clears, "bank": _bank(value.get("bank"))}
+	var sent: Variant = value.get("purchases") if value.has("purchases") else value.entries
+	if not sent is Array or sent.size() > MAX_PURCHASES: return {}
+	var purchases: Array[Dictionary] = []
+	for entry: Variant in sent:
+		var line := _purchase(entry)
+		if not line.is_empty(): purchases.append(line)
+	var spent: Variant = value.get("spent_usd_cents")
+	return {"turns": turns, "first_clears": clears, "bank": _bank(value.get("bank")), "purchases": purchases,
+		"spent_usd_cents": Typed.as_int(spent) if _count(spent) else spent_of(purchases)}
+
+## One bundle or refund line as kept, or {} (a turn's entry, or one off the contract).
+static func _purchase(entry: Variant) -> Dictionary:
+	if not entry is Dictionary or not entry.get("kind") in PURCHASE_KINDS or not str(entry.get("bundle", "")) in Bundles.ids() or not _count(entry.get("at")): return {}
+	var amount: Variant = entry.get("amount")
+	if not Typed.whole_number(amount) or (float(amount) <= 0.0 if entry.kind == "bundle" else float(amount) >= 0.0): return {}
+	var order: Variant = entry.get("order", "")
+	if not order is String or (not order.is_empty() and _order.search(order) == null): return {}
+	var cents: Variant = entry.get("usd_cents")
+	return {"kind": entry.kind, "bundle": str(entry.bundle), "amount": Typed.as_int(amount), "at": Typed.as_int(entry.at), "order": order, "usd_cents": Typed.as_int(cents) if _count(cents) else -1}
+
+## Money spent on `purchases` in US cents: bundles less refunds, never below zero.
+static func spent_of(purchases: Array) -> int:
+	var total := 0
+	for line: Dictionary in purchases:
+		if int(line.usd_cents) > 0: total += int(line.usd_cents) * (1 if line.kind == "bundle" else -1)
+	return maxi(0, total)
 
 static func _turn(entry: Variant) -> Dictionary:
 	if not entry is Dictionary or entry.get("kind") != "turn" or not Typed.whole_number(entry.get("amount")) or not _count(entry.get("at")): return {}

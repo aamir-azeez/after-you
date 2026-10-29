@@ -9,7 +9,12 @@ extends SceneTree
 ##   Journey sentence left out on a build that names no Full Journey; it lays
 ##   out inside the screen at 1280x720, 1600x738 and 800x360;
 ## - the flow: opens from Home, Settings or the Pollen store and goes back there, reads once per
-##   opening, and the chip opens the page while the shop is off.
+##   opening, and the chip opens the page while the shop is off;
+## - purchases (pollen boards 1 and 2, Batch D): the history's purchases checked
+##   (and read from older servers' entries), the Purchases card with the money
+##   spent, each bundle and refund with its receipt line, its empty and loading
+##   states inside the screen at every size, and the page lists them only on a
+##   build that sells bundles (never iPhone or a build without bundles).
 const Page = preload("res://presentation/pollen_play_page.gd")
 const Flow = preload("res://presentation/pollen_play_flow.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
@@ -18,6 +23,8 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const HomeMenu = preload("res://presentation/home_menu.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
 
 const SIZES := [Vector2i(1280, 720), Vector2i(1561, 720), Vector2i(1600, 720)]
 
@@ -39,6 +46,12 @@ class FakeClient:
 		reads += 1
 		await Engine.get_main_loop().process_frame
 		return answer.duplicate(true)
+
+class FakeWardrobe:
+	extends RefCounted
+	var selling := false
+	func shop(_server: String, _owner: String) -> bool: return selling
+	func bundles(_server: String, _owner: String) -> bool: return selling
 
 class Host:
 	extends Node
@@ -65,6 +78,9 @@ func _run() -> void:
 	await _page_states()
 	await _flow()
 	await _home_slot()
+	_purchase_history()
+	await _purchase_card()
+	await _purchase_flow()
 	print("AFTER YOU POLLEN PLAY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
 
@@ -203,6 +219,107 @@ func _home_slot() -> void:
 		_check(absf(chip.get_global_rect().end.x - (size.x - HomeMenu.RIGHT)) <= 1.0, "With Full Journey hidden the chip takes its place at %s" % size)
 		viewport.queue_free()
 		await _settle()
+
+const PURCHASES := [
+	{"kind": "bundlerefund", "amount": -21000.0, "at": 1.80e12 + 3000.0, "bundle": "pouch", "order": "GPA.1234-5678-9012-34567", "usd_cents": 399.0},
+	{"kind": "bundle", "amount": 115000.0, "at": 1.80e12 + 2000.0, "bundle": "basket", "order": "GPA.2222-3333-4444-55555", "usd_cents": 1999.0},
+	{"kind": "bundle", "amount": 21000.0, "at": 1.80e12 + 1000.0, "bundle": "pouch", "order": "GPA.1234-5678-9012-34567", "usd_cents": 399.0},
+	{"kind": "bundle", "amount": 5000.0, "at": 1.80e12, "bundle": "pinch"}]
+
+static func _with_purchases(lines: Array = PURCHASES, spent: Variant = 1999.0) -> Dictionary:
+	var value := {"schema_version": 1.0, "entries": [], "first_clears": [], "purchases": lines}
+	if spent != null: value.spent_usd_cents = spent
+	return value
+
+func _purchase_history() -> void:
+	var kept := PollenHistory.checked(_with_purchases())
+	_check(kept.purchases.size() == 4 and kept.spent_usd_cents == 1999 and kept.purchases[0].kind == "bundlerefund" and kept.purchases[0].amount == -21000 and kept.purchases[3].usd_cents == -1 and kept.purchases[3].order == "",
+		"Purchases keep their order, a refund's negative Pollen and an unknown price as -1: " + str(kept.purchases))
+	var bad := [{"kind": "bundle", "amount": 5000.0, "at": 1.0, "bundle": "chest"}, {"kind": "bundle", "amount": -5000.0, "at": 1.0, "bundle": "pinch"},
+		{"kind": "bundlerefund", "amount": 5000.0, "at": 1.0, "bundle": "pinch"}, {"kind": "bundle", "amount": 5000.0, "at": 1.0, "bundle": "pinch", "order": "<b>x</b>"},
+		{"kind": "turn", "amount": 5000.0, "at": 1.0, "bundle": "pinch"}, {"kind": "bundle", "amount": 5000.5, "at": 1.0, "bundle": "pinch"}, "pinch"]
+	_check(PollenHistory.checked(_with_purchases(bad)).purchases.is_empty(), "A line off the contract is left out")
+	# 1999 + 399 - 399, and the Pinch with no price adds nothing.
+	_check(PollenHistory.checked(_with_purchases(PURCHASES, null)).spent_usd_cents == 1999, "Without the server's figure the money spent is the lines' sum, refunds taken off")
+	_check(PollenHistory.checked(_with_purchases(range(101).map(func(_i: int) -> Dictionary: return PURCHASES[3]))).is_empty(), "A list longer than the server sends is refused")
+	var older := PollenHistory.checked({"schema_version": 1.0, "entries": [{"kind": "turn", "amount": 250.0, "at": 3.0, "level_id": "relay-isles", "stage_id": "relay", "role": "a"}, PURCHASES[2]]})
+	_check(older.turns.size() == 1 and older.purchases.size() == 1 and older.purchases[0].bundle == "pouch" and older.spent_usd_cents == 399, "An older server's history: its bundle entries are the purchases, its turns stay turns")
+	_check(PollenHistory.checked({"schema_version": 1.0, "entries": []}).purchases.is_empty(), "No purchases reads as none")
+	_check(PurchasesView.receipt_line({"usd_cents": 399, "order": "GPA.1"}) == PlayerCopy.POLLEN_STORE_ORDER % ["$3.99", "GPA.1"] and PurchasesView.receipt_line({"usd_cents": -1, "order": "GPA.1"}) == PlayerCopy.POLLEN_STORE_ORDER_ONLY % "GPA.1"
+		and PurchasesView.receipt_line({"usd_cents": 99, "order": ""}) == "$0.99", "The receipt line is the store receipt's Paid line, from what the server kept")
+
+func _purchase_card() -> void:
+	for size: Vector2i in SIZES + [Vector2i(1600, 738)]:
+		var viewport := _viewport(size)
+		var page := Page.new()
+		viewport.add_child(page)
+		var history := _history()
+		var bought := PollenHistory.checked(_with_purchases())
+		history.purchases = bought.purchases
+		history.spent_usd_cents = bought.spent_usd_cents
+		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true})
+		await _settle()
+		var texts := _texts(page)
+		var card := page.find_child("PollenPurchasesCard", true, false) as Control
+		_check(card.visible and (page.find_child("PollenPlayTitle", true, false) as Label).text == PlayerCopy.SETTINGS_POLLEN_PURCHASES, "The page is Pollen and purchases, with its Purchases card first at %s" % size)
+		_check((page.find_child("PollenPurchasesSpent", true, false) as Label).text == "$19.99" and texts.has(PlayerCopy.POLLEN_PURCHASES_SPENT) and texts.has(PlayerCopy.POLLEN_PURCHASES_USD), "The money spent, in US dollars")
+		_check(page.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and texts.has(PlayerCopy.POLLEN_PURCHASE_REFUNDED % "Pouch") and texts.has("Basket") and texts.has("Pinch")
+			and texts.has(PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"]), "Each bundle and refund with its receipt line: " + str(texts))
+		_check(page.find_child("PollenPurchaseRow0", true, false).find_children("BundleArt", "", true, false).size() == 1, "A purchase row has its bundle's art")
+		_layout(page, size, "the page with purchases")
+		page.render({"chip": PollenChip.make(0, true), "full_journey": true, "status": "", "retry": false, "history": PollenHistory.checked({"schema_version": 1.0, "entries": []}), "purchases": true})
+		await _settle()
+		_check(page.find_child("PollenPurchasesNone", true, false) != null and page.find_child("PollenPurchasesTotal", true, false) == null, "No purchases yet, and no total")
+		page.render({"chip": null, "full_journey": true, "status": PlayerCopy.POLLEN_PLAY_LOADING, "retry": false, "history": {}, "purchases": true})
+		await _settle()
+		_check(card.visible and _texts(card).has(PlayerCopy.POLLEN_PURCHASES_TITLE) and page.find_child("PollenPurchasesNone", true, false) == null, "Loading: the card keeps its title and shows nothing it does not know")
+		page.render({"chip": null, "full_journey": true, "status": "", "retry": false, "history": _history(), "purchases": false})
+		await _settle()
+		_check(not card.visible and (page.find_child("PollenPlayTitle", true, false) as Label).text == PlayerCopy.POLLEN_PLAY_TITLE, "Without purchases it is Pollen from play, as before")
+		viewport.queue_free()
+		await _settle()
+
+func _purchase_flow() -> void:
+	var store := FakeWardrobe.new()
+	Wardrobe.use_shared(store)
+	var viewport := _viewport(SIZES[1])
+	var host := Host.new()
+	viewport.add_child(host)
+	var flow := Flow.new(host)
+	host.add_child(flow)
+	host.pollen_client.answer = PollenHistory.checked(_with_purchases())
+	for build: Array in [[true, true, true, "a Google Play build while bundles sell"], [false, false, false, "iPhone"], [true, false, false, "a build without bundles"]]:
+		PollenSurfaces.set_shared_for_tests(build[0], build[1])
+		flow.surfaces = null
+		store.selling = true
+		_check(flow.purchases_shown() == build[2], "The row and page list purchases on %s: %s" % [build[3], build[2]])
+		flow.open_from_settings()
+		await _settle()
+		var card := host.overlay.find_child("PollenPurchasesCard", true, false) as Control
+		_check(card != null and card.visible == build[2], "The Purchases card on %s: %s" % [build[3], build[2]])
+		var money := _texts(host.overlay).any(func(text: String) -> bool: return text.contains("$") or text.contains("Google Play"))
+		_check(money == build[2], "%s: money shows only with purchases" % build[3])
+	# Bundles off later: a player who bought still sees them once the history says so.
+	PollenSurfaces.set_shared_for_tests(true, true)
+	flow.surfaces = null
+	store.selling = false
+	_check(not flow.purchases_shown(), "With bundles off the Settings row is Pollen")
+	flow.open_from_settings()
+	await _settle()
+	_check((host.overlay.find_child("PollenPurchasesCard", true, false) as Control).visible, "but a history with purchases still lists them")
+	host.pollen_client.answer = {}
+	flow.open_from_settings()
+	await _settle()
+	_check(not (host.overlay.find_child("PollenPurchasesCard", true, false) as Control).visible and _texts(host.overlay).has(PlayerCopy.POLLEN_PLAY_OFFLINE), "Offline with bundles off: no card, the page says so")
+	store.selling = true
+	flow.open_from_settings()
+	await _settle()
+	var offline := host.overlay.find_child("PollenPurchasesCard", true, false) as Control
+	_check(offline.visible and host.overlay.find_child("PollenPurchasesNone", true, false) == null and host.overlay.find_child("PollenPlayRetry", true, false) != null, "Offline while bundles sell: the card's title, no guess, and Try again")
+	PollenSurfaces.set_shared_for_tests(null)
+	Wardrobe.use_shared(null)
+	viewport.queue_free()
+	await _settle()
 
 static func _texts(node: Node) -> Array:
 	return node.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.is_visible_in_tree()).map(func(label: Label) -> String: return label.text)

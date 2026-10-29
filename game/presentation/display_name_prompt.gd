@@ -30,12 +30,18 @@ extends Node
 ##   save (Callable (choice, name) -> {"closed": bool, "code": String}): awaited on Save;
 ##   reduced_motion (bool), haptic (Callable, optional): the pip's grab tick;
 ##   dismissed (Callable, optional): called when the card closes with nothing saved;
-##   price (Dictionary, optional): {price, balance, shown} while the shop is on. A
-##     change to another name then says its price on Save and in a note, and Save
-##     waits while the balance is short. Staying anonymous and keeping the name are
-##     free. `shown` false (a build that shows no price, services/pollen_surfaces.gd)
-##     names no price: a change that would cost waits, with a note that the free
-##     change is used.
+##   price (Dictionary, optional): {price, balance, shown, next} while the shop is
+##     on. As pollen board 6 draws it, a change to another name then says its
+##     price on Save ("Save · [grain] 1,000 about $0.20") and in the line under the
+##     field, with the balance under the choices; while the balance is short Save
+##     waits ("Save · [grain] 1,000 · 400 more needed") and a "Get Pollen" link
+##     shows under it. A free change followed by a paid one (`next`, what the
+##     change after it costs, above 0) says "Save · free this time". Staying
+##     anonymous and keeping the name are free. `shown` false (a build that shows
+##     no price, services/pollen_surfaces.gd) names no price: a change that would
+##     cost waits, with a line that the free change is used, and no link;
+##   get_pollen (Callable (opener: Control), optional): the link's tap (the flow
+##     opens the short of Pollen card, board 5b); without it there is no link.
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -45,6 +51,8 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
+const ShopKit = preload("res://presentation/kit/shop_kit.gd")
+const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const NUNITO = preload("res://assets/fonts/nunito.ttf")
 ## The tag above the pip: the world badge's cream and ink (kit/badges.gd).
 const TAG_FILL := Color("e9edd6")
@@ -53,6 +61,9 @@ const MUTED := Color("afc6be")
 const ERROR := Color("f2b8ae")
 const WIDTH := 860.0
 const PIP_SIZE := Vector2(180, 236)
+## Save's words beside the grain, on the cream main button, and its about line.
+const SAVE_SIZE := 20
+const SAVE_ABOUT_SIZE := 15
 
 var modal: Control
 var field: LineEdit
@@ -64,7 +75,12 @@ var platform_row: Button
 var _counter: Label
 var _error: Label
 var _platform_note: Label
-var _price_note: Label
+## The price line under the field, the balance line under the choices, and the
+## Get Pollen link under Save (pollen board 6).
+var _price_note: RichTextLabel
+var _have_line: HBoxContainer
+var _have_label: Label
+var get_pollen_link: LinkButton
 ## The rows' column, and the platform row's label as shown ("" for none).
 var _column: VBoxContainer
 var _platform_label := ""
@@ -123,11 +139,27 @@ func _build(card: Control) -> void:
 	body.add_child(column)
 	column.add_child(_field())
 	var under := HBoxContainer.new()
+	under.add_theme_constant_override("separation", 12)
 	column.add_child(under)
 	_error = _small("", ERROR, under)
 	_error.name = "DisplayNameError"
 	_error.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	_error.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	# The price line shares the error's place, under the field beside the counter; an error wins.
+	_price_note = RichTextLabel.new()
+	_price_note.name = "DisplayNamePrice"
+	_price_note.bbcode_enabled = true
+	_price_note.fit_content = true
+	_price_note.scroll_active = false
+	_price_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_price_note.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_price_note.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_price_note.add_theme_font_size_override("normal_font_size", 15)
+	_price_note.add_theme_font_size_override("bold_font_size", 15)
+	_price_note.add_theme_font_override("bold_font", ShopKit.bold_font())
+	_price_note.add_theme_color_override("default_color", MUTED)
+	_price_note.visible = false
+	under.add_child(_price_note)
 	_counter = _small("", MUTED, under)
 	_counter.name = "DisplayNameCounter"
 	_counter.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
@@ -140,11 +172,18 @@ func _build(card: Control) -> void:
 	var follow: Variant = _context.get("platform_changed")
 	# A method of this node, not a lambda: the connection is dropped when the card is freed.
 	if follow is Signal and not (follow as Signal).is_null(): (follow as Signal).connect(_platform_changed)
-	_price_note = _small("", MUTED, column)
-	_price_note.name = "DisplayNamePrice"
-	_price_note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	_price_note.visible = false
+	# "[grain] You have 24,000. Keeping me anonymous is always free."
+	_have_line = HBoxContainer.new()
+	_have_line.name = "DisplayNameHave"
+	_have_line.add_theme_constant_override("separation", 8)
+	_have_line.visible = false
+	column.add_child(_have_line)
+	_have_line.add_child(PollenMark.beside(15))
+	_have_label = _small("", MUTED, _have_line)
+	_have_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_have_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	save_button = modal.add_actions(PlayerCopy.DISPLAY_NAME_SAVE, _save, PlayerCopy.DISPLAY_NAME_NOT_NOW if not _context.get("edit", false) else PlayerCopy.DISPLAY_NAME_CANCEL)
+	_add_get_pollen()
 	var dismissed: Variant = _context.get("dismissed")
 	if dismissed is Callable and dismissed.is_valid(): modal.closed.connect(func() -> void: if not _saved: dismissed.call())
 	save_button.name = "DisplayNameSave"
@@ -408,13 +447,30 @@ func _show() -> void:
 
 ## What saving the choice now costs: 0 for anonymous, the name already set, or a free change.
 func cost() -> int:
-	return choice_cost(_context.get("price", {}), _context.get("own", {}), _choice, _platform_name if _choice == "platform" else DisplayNames.clean(field.text))
+	return choice_cost(_context.get("price", {}), _context.get("own", {}), _choice, _chosen_name())
+
+func _chosen_name() -> String:
+	return _platform_name if _choice == "platform" else DisplayNames.clean(field.text)
+
+## Whether `choice` with `name` changes the name: not anonymous, not empty, not the name already set.
+static func is_change(own: Dictionary, choice: String, name: String) -> bool:
+	if choice == "anonymous" or name.is_empty(): return false
+	return not (name == str(own.get("name", "")) and str(own.get("choice", "")) != "anonymous")
 
 ## The same rule for a choice saved: `price` and `own` as in the context.
 static func choice_cost(price: Dictionary, own: Dictionary, choice: String, name: String) -> int:
-	if price.is_empty() or choice == "anonymous": return 0
-	if name.is_empty() or (name == str(own.get("name", "")) and str(own.get("choice", "")) != "anonymous"): return 0
+	if price.is_empty() or not is_change(own, choice, name): return 0
 	return maxi(0, int(price.get("price", 0)))
+
+## Whether a change is free now and the next one costs ("Save · free this time").
+## `next` is the server's price after this change; a server that sends none
+## (-1) leaves it to the phone: a player who holds a name now has used their
+## first name, so this free change is their last.
+static func free_this_time(price: Dictionary, own: Dictionary, choice: String, name: String) -> bool:
+	if price.is_empty() or not is_change(own, choice, name) or int(price.get("price", 0)) > 0: return false
+	var next := int(price.get("next", -1))
+	if next >= 0: return next > 0
+	return str(own.get("choice", "")) in ["typed", "platform"] and not str(own.get("name", "")).is_empty()
 
 ## Whether this build names the change price (the context's price `shown`, else the build's own answer).
 func _price_shown() -> bool:
@@ -425,28 +481,98 @@ func _price_shown() -> bool:
 func _price_hidden_blocks() -> bool:
 	return cost() > 0 and not _price_shown()
 
+## Pollen still needed for the change now (0 when the balance covers it or it is free).
+func _short_by() -> int:
+	var amount := cost()
+	if amount <= 0: return 0
+	return maxi(0, amount - int((_context.get("price", {}) as Dictionary).get("balance", 0)))
+
 ## Whether the price holds Save back: the change costs and the balance is short,
 ## or the change costs on a build that shows no price.
 func _price_blocks() -> bool:
-	var amount := cost()
-	return amount > 0 and (not _price_shown() or amount > int((_context.get("price", {}) as Dictionary).get("balance", 0)))
+	return cost() > 0 and (not _price_shown() or _short_by() > 0)
 
-## Save's label and the price note for the choice now.
+## Save, the price line, the balance line and the link for the choice now (pollen board 6).
 func _show_price() -> void:
 	if save_button == null or _price_note == null or _busy: return
 	var amount := cost()
-	var short := amount - int((_context.get("price", {}) as Dictionary).get("balance", 0))
-	save_button.text = _save_label()
+	var shown := _price_shown()
+	var short := _short_by()
+	_show_save(amount, short)
 	save_button.disabled = _price_blocks()
-	_price_note.visible = amount > 0
-	if amount <= 0: return
-	if not _price_shown(): _price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_HIDDEN
-	elif short > 0: _price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_SHORT % PollenMoney.grouped(short)
-	else: _price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_NOTE % [PollenMoney.grouped(amount), PollenMoney.about(amount)]
+	# One of the two holds the line's left part, so the counter stays at the right.
+	_price_note.visible = amount > 0 and _error.text.is_empty()
+	_error.visible = not _price_note.visible
+	if amount > 0:
+		_price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_NOTE % [PollenMoney.grouped(amount), PollenMoney.about(amount)] if shown else PlayerCopy.DISPLAY_NAME_PRICE_HIDDEN
+	_have_line.visible = amount > 0 and shown
+	if _have_line.visible:
+		_have_label.text = PlayerCopy.DISPLAY_NAME_PRICE_HAVE % PollenMoney.grouped(int((_context.get("price", {}) as Dictionary).get("balance", 0)))
+	if get_pollen_link != null and get_pollen_link.visible != (shown and short > 0):
+		get_pollen_link.visible = shown and short > 0
+		modal.refresh_focus_order()
 
-func _save_label() -> String:
-	var amount := cost()
-	return PlayerCopy.DISPLAY_NAME_SAVE_PRICED % PollenMoney.grouped(amount) if amount > 0 and _price_shown() else PlayerCopy.DISPLAY_NAME_SAVE
+## Save's face: plain words, "free this time", or the price with the grain inside the button.
+func _show_save(amount: int, short: int) -> void:
+	if amount <= 0 or not _price_shown():
+		ShopKit.set_button_content(save_button, null)
+		var free := _price_shown() and free_this_time(_context.get("price", {}), _context.get("own", {}), _choice, _chosen_name())
+		save_button.text = PlayerCopy.DISPLAY_NAME_SAVE_FREE if free else PlayerCopy.DISPLAY_NAME_SAVE
+		save_button.accessibility_name = save_button.text
+		return
+	var ink: Color = save_button.get_theme_color("font_disabled_color" if short > 0 else "font_color")
+	var row := HBoxContainer.new()
+	row.name = "DisplayNameSaveContent"
+	row.add_theme_constant_override("separation", 8)
+	row.add_child(ShopKit.text(PlayerCopy.DISPLAY_NAME_SAVE_DOT, SAVE_SIZE, ink, ShopKit.bold_font()))
+	var needed := PlayerCopy.DISPLAY_NAME_SAVE_NEEDED % PollenMoney.grouped(short) if short > 0 else ""
+	row.add_child(ShopKit.amount(amount, SAVE_SIZE, ink, "", needed))
+	if short <= 0:
+		var about := ShopKit.about(amount, SAVE_ABOUT_SIZE, Color(ink, 0.75))
+		about.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		row.add_child(about)
+	save_button.text = ""
+	ShopKit.set_button_content(save_button, row)
+	if short > 0: save_button.accessibility_name = PlayerCopy.DISPLAY_NAME_SAVE_SHORT % [PollenMoney.grouped(amount), PollenMoney.grouped(short)]
+	else: save_button.accessibility_name = PlayerCopy.DISPLAY_NAME_SAVE_PRICED % PollenMoney.grouped(amount)
+
+## The "Get Pollen" link under Save, shown only while the balance is short.
+func _add_get_pollen() -> void:
+	var open: Variant = _context.get("get_pollen")
+	if not open is Callable or not (open as Callable).is_valid(): return
+	var row := HBoxContainer.new()
+	row.name = "DisplayNameGetPollenRow"
+	row.add_theme_constant_override("separation", 14)
+	row.visible = false
+	modal.content.add_child(row)
+	# Under Save: the left half, under Cancel, stays empty.
+	var gap := Control.new()
+	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(gap)
+	var holder := HBoxContainer.new()
+	holder.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	row.add_child(holder)
+	get_pollen_link = LinkButton.new()
+	get_pollen_link.name = "DisplayNameGetPollen"
+	get_pollen_link.text = PlayerCopy.WARDROBE_GET_POLLEN
+	get_pollen_link.underline = LinkButton.UNDERLINE_MODE_ALWAYS
+	get_pollen_link.custom_minimum_size = Vector2(0, 44)
+	get_pollen_link.focus_mode = Control.FOCUS_ALL
+	get_pollen_link.add_theme_font_size_override("font_size", 16)
+	get_pollen_link.add_theme_color_override("font_color", Color("cfe7dc"))
+	get_pollen_link.add_theme_color_override("font_hover_color", ThemeRules.CREAM)
+	get_pollen_link.visible = false
+	get_pollen_link.pressed.connect(func() -> void: if not _busy: (open as Callable).call(get_pollen_link))
+	holder.add_child(get_pollen_link)
+	# The row shows only with its link.
+	get_pollen_link.visibility_changed.connect(func() -> void: row.visible = get_pollen_link.visible)
+
+## The line under the field: an error, or (with none) the price line.
+func _set_error(text: String) -> void:
+	_error.text = text
+	_price_note.visible = _price_note.visible and text.is_empty()
+	_error.visible = not _price_note.visible
+	_show_price()
 
 func _mark(row: Button, on: bool) -> void:
 	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus", "disabled"]:
@@ -468,7 +594,7 @@ func _save() -> void:
 			name = DisplayNames.clean(field.text)
 			var wrong := DisplayNames.problem(name)
 			if not wrong.is_empty():
-				_error.text = str(PlayerCopy.DISPLAY_NAME_ERRORS.get(wrong, ""))
+				_set_error(str(PlayerCopy.DISPLAY_NAME_ERRORS.get(wrong, "")))
 				field.grab_focus()
 				return
 		"platform": name = _platform_name
@@ -478,13 +604,14 @@ func _save() -> void:
 		return
 	_busy = true
 	save_button.disabled = true
+	ShopKit.set_button_content(save_button, null)
 	save_button.text = PlayerCopy.DISPLAY_NAME_SAVING
+	save_button.accessibility_name = save_button.text
 	var answer: Variant = await save.call(_choice, name)
 	# The card was closed while it waited (the prompt is the card's child).
 	if not is_inside_tree(): return
 	_busy = false
-	save_button.disabled = _price_hidden_blocks()
-	save_button.text = _save_label()
+	_show_price()
 	if answer is Dictionary and not answer.get("closed", true):
 		_error.text = str(PlayerCopy.DISPLAY_NAME_ERRORS.get(str(answer.get("code", "")), PlayerCopy.DISPLAY_NAME_ERRORS.characters))
 		_show()

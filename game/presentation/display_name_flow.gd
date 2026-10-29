@@ -17,7 +17,10 @@ extends Node
 ## prompt is open, since Play Games signs in a few seconds after launch).
 ## While the shop is on, the prompt shows the name change price from the
 ## wardrobe and wallet this phone keeps, and a saved change asks wardrobe_flow
-## (refresh) to read them again.
+## (refresh) to read them again. While the balance is short, the prompt's "Get
+## Pollen" opens the Wardrobe's short of Pollen card (presentation/
+## wardrobe_sheets.gd, pollen board 6), whose own link opens the Pollen store
+## (pollen_store_flow, when Main has it and bundles sell) with Back to Friends.
 const DisplayNames = preload("res://services/display_names.gd")
 const DisplayNameClient = preload("res://services/display_name_client.gd")
 const Prompt = preload("res://presentation/display_name_prompt.gd")
@@ -28,6 +31,7 @@ const GamesProvider = preload("res://services/platform_games/games_provider.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const WardrobeSheets = preload("res://presentation/wardrobe_sheets.gd")
 
 ## The player's own name or where it stands changed (chips redraw).
 signal changed
@@ -38,6 +42,8 @@ var _chips: Array[WeakRef] = []
 var _prompt: WeakRef = null
 ## The name change price the open prompt shows ({} for none), fixed when it opened, so Save records that very price.
 var _prompt_price: Dictionary = {}
+## The short of Pollen card opened from the prompt, while it is open.
+var _short: WeakRef = null
 ## Tests: a stand-in for the PlatformGames autoload.
 var games: Node = null
 
@@ -95,6 +101,7 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 		"haptic": func() -> void: if is_instance_valid(host.get("soundscape")): host.soundscape.tap_haptic(),
 		"dismissed": func() -> void: if hint_later and host.has_method("_toast"): host._toast(PlayerCopy.DISPLAY_NAME_LATER_HINT),
 		"price": _price_for_prompt(current),
+		"get_pollen": func(link: Control) -> void: _open_short(parent, link),
 	}
 	var modal: Control = Prompt.open(parent, context, opener)
 	_prompt = weakref(modal)
@@ -108,11 +115,30 @@ static func name_price(current: Dictionary) -> Dictionary:
 	if current.is_empty(): return {}
 	var price: int = Wardrobe.shared().name_price(str(current.server), str(current.owner))
 	var wallet: Dictionary = PollenWallet.shared().wallet(str(current.server), str(current.owner))
-	return {} if price < 0 or wallet.is_empty() else {"price": price, "balance": int(wallet.balance), "shown": PollenSurfaces.shared().shop_visible()}
+	return {} if price < 0 or wallet.is_empty() else {"price": price, "balance": int(wallet.balance), "shown": PollenSurfaces.shared().shop_visible(),
+		"next": Wardrobe.shared().name_price_next(str(current.server), str(current.owner))}
 
 func _price_for_prompt(current: Dictionary) -> Dictionary:
 	_prompt_price = name_price(current)
 	return _prompt_price
+
+## The short of Pollen card for the change the open prompt prices (board 5b's
+## card, without "It stays in the shop."). Its own link, only while the Pollen
+## store can open, closes the prompt and opens the store with Back to Friends.
+func _open_short(parent: Control, opener: Control) -> void:
+	var open: Variant = _short.get_ref() if _short != null else null
+	if (open is Node and is_instance_valid(open) and not open.is_queued_for_deletion()) or _prompt_price.is_empty() or not bool(_prompt_price.get("shown", false)) or not is_instance_valid(parent): return
+	var store: Variant = host.get("pollen_store_flow") if host != null else null
+	var to_store := Callable()
+	if store is Object and is_instance_valid(store) and store.available():
+		to_store = func() -> void:
+			var prompt: Variant = _prompt.get_ref() if _prompt != null else null
+			if prompt is Control and is_instance_valid(prompt): prompt.close(false)
+			store.show_store("friends")
+	var card: Control = WardrobeSheets.short(parent, PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "", int(_prompt_price.price), int(_prompt_price.balance), to_store, opener, false)
+	# The prompt's name tag draws one step up (over its pip); the card goes over the whole prompt.
+	card.z_index = 1
+	_short = weakref(card)
 
 ## The Friends header's Display name chip, or null while names are off.
 func chip() -> Control:

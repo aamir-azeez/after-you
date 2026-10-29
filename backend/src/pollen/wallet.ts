@@ -70,8 +70,17 @@ export type FirstClear = { level_id: string; price: number; paid?: number };
  * and its rules, so no rate lives in the app: the Monday refill, the cap and the after-bank tail.
  */
 export type BankRules = { left: number; refill: number; cap: number; tail: { pay: number; turns: number }[] };
-/** `first_clears`: every chapter's first clear, in the rates' order; `bank`: the bank's rules. Older apps ignore both. */
-export type HistoryView = { schema_version: 1; entries: HistoryEntry[]; first_clears?: FirstClear[]; bank?: BankRules };
+/**
+ * One bundle bought (`bundle`, its Pollen in `amount`) or taken back by a refund (`bundlerefund`, a negative
+ * `amount`): what the app's Pollen and purchases page lists with its receipt line.
+ */
+export type PurchaseLine = { kind: "bundle" | "bundlerefund"; amount: number; at: number; bundle?: string; order?: string; usd_cents?: number };
+/**
+ * `first_clears`: every chapter's first clear, in the rates' order; `bank`: the bank's rules. `purchases` and
+ * `spent_usd_cents` only for a player who has bought a bundle: every bundle and refund line, newest first (never
+ * pushed out by turns, unlike `entries`), and the money spent, refunds taken off. Older apps ignore all four.
+ */
+export type HistoryView = { schema_version: 1; entries: HistoryEntry[]; first_clears?: FirstClear[]; bank?: BankRules; purchases?: PurchaseLine[]; spent_usd_cents?: number };
 /**
  * A first clear to pay: from the turn that finished a chapter together, or claimed by the app for a solo clear.
  * `room_id`: the room whose finish pays it, kept on the claim row, so a later claim from that room can say what it paid.
@@ -81,6 +90,10 @@ export type ClearClaim = { level_id: string; hard: boolean; boost_percent: numbe
 const [WALLET, CLAIMS] = POLLEN_WALLET_TABLES;
 export const MAX_CLAIMS = CLAIMS.maxRows;
 export const HISTORY_LIMIT = 50;
+/** Bundle and refund lines the history lists, newest first; the money spent counts every line. */
+export const PURCHASE_LIMIT = 100;
+/** Lines of each kind read for the money spent (as bundle-settle.ts reads the ledger). */
+const PURCHASE_READ = 1024;
 /** A turn credited this soon after acceptance is never late, so a turn accepted just before Monday 00:00 UTC keeps its bank turn. */
 export const LATE_GRACE_MS = 3_600_000;
 const MAX_SLOTS = 128;
@@ -335,7 +348,25 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
     const amount = paid.get(clearClaimKey("clear", clear.level_id));
     if (amount !== undefined) clear.paid = amount;
   }
-  return { schema_version: 1, entries, first_clears, bank };
+  return { schema_version: 1, entries, first_clears, bank, ...purchaseLines(storage) };
+}
+
+/**
+ * The history's purchases part: each bundle and refund line, newest first, and the money spent with refunds
+ * taken off (never below zero). Two reads of a primary key range; nothing for a player who never bought.
+ */
+export function purchaseLines(storage: DurableObjectStorage): { purchases?: PurchaseLine[]; spent_usd_cents?: number } {
+  const lines = (["bundle", "bundlerefund"] as const).flatMap(kind => ledgerLines(storage, `${kind}:`, PURCHASE_READ).map(line => {
+    const entry: PurchaseLine = { kind, amount: line.amount, at: line.at };
+    if (typeof line.detail.bundle === "string") entry.bundle = line.detail.bundle;
+    if (typeof line.detail.order === "string") entry.order = line.detail.order;
+    if (typeof line.detail.usd_cents === "number") entry.usd_cents = line.detail.usd_cents;
+    return entry;
+  }));
+  if (lines.length === 0) return {};
+  const spent = lines.reduce((sum, line) => sum + (line.kind === "bundle" ? 1 : -1) * Number(line.usd_cents ?? 0), 0);
+  lines.sort((a, b) => b.at - a.at || (a.kind === b.kind ? 0 : a.kind === "bundlerefund" ? -1 : 1));
+  return { purchases: lines.slice(0, PURCHASE_LIMIT), spent_usd_cents: Math.max(0, spent) };
 }
 
 /** The balance as of `now` (0 for a player who never earned). The caller owns the transaction. */

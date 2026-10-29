@@ -25,7 +25,8 @@ extends Node
 ## - show_pollen_from_play() -> bool (Pollen from play, presentation/pollen_play_flow.gd,
 ##   true once it opened), for "Earn Pollen free by playing"; its Back comes back here
 ## It asks Main to leave through back_requested and to open the Wardrobe
-## through wardrobe_requested.
+## through wardrobe_requested. `return_to` names where Back goes ("wardrobe",
+## or "friends" when the name prompt's short card opened it); Main reads it.
 ##
 ## Taps go through a BusyTapGate: a bundle tapped while the store is still
 ## loading waits for its prices instead of being dropped.
@@ -75,6 +76,8 @@ var _bought: Dictionary = {}
 ## Whether this purchase set the waiting mark (a cancel then drops it).
 var _marked := false
 var _generation := 0
+## Where Back returns: "wardrobe" (Main goes to the Wardrobe, or Home) or "friends".
+var return_to := "wardrobe"
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -108,8 +111,9 @@ func available() -> bool:
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
-func show_store() -> void:
+func show_store(from: String = "wardrobe") -> void:
 	if not available(): return
+	return_to = from
 	_connect_purchases()
 	host.running = false
 	host.mode = MODE_POLLEN_STORE

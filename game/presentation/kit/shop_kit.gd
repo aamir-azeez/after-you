@@ -97,22 +97,26 @@ static func price(value: int, font_size: int, color: Color, soft: Color) -> VBox
 static func content_button(content: Control, height: float = 54.0) -> Button:
 	var button := Button.new()
 	button.custom_minimum_size = Vector2(0, height)
-	var holder := CenterContainer.new()
-	holder.name = "ButtonContent"
-	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	button.add_child(holder)
-	_ignore(content)
-	holder.add_child(content)
+	set_button_content(button, content)
 	return button
 
-## Swaps the content of a content_button().
+## Lays `content` inside any button (a content_button(), or one made elsewhere,
+## such as a modal's main action), in place of what it held; null takes the
+## content away so the button's own text shows again. Clear the button's text
+## while content shows.
 static func set_button_content(button: Button, content: Control) -> void:
-	var holder := button.get_node_or_null("ButtonContent")
-	if holder == null: return
+	var holder := button.get_node_or_null("ButtonContent") as CenterContainer
+	if holder == null:
+		holder = CenterContainer.new()
+		holder.name = "ButtonContent"
+		holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		button.add_child(holder)
 	for child: Node in holder.get_children():
 		holder.remove_child(child)
 		child.queue_free()
+	holder.visible = content != null
+	if content == null: return
 	_ignore(content)
 	holder.add_child(content)
 	button.custom_minimum_size.x = maxf(button.custom_minimum_size.x, content.get_combined_minimum_size().x + 36.0)

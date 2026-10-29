@@ -437,6 +437,7 @@ func _row_control(row: Dictionary, stacked: bool) -> Control:
 			# A Pollen row shows the balance, after its mark (pollen board 1).
 			var pollen: int = int(row.pollen_value.call()) if row.has("pollen_value") else -1
 			var holder := Kit.link_row(shown_row, PollenMoney.grouped(pollen) if pollen >= 0 else "")
+			if row.get("featured", false): Kit.featured_surface(holder.get_node(id) as Button)
 			if pollen >= 0:
 				var value := holder.find_child("Value", true, false) as Control
 				var mark := PollenMark.beside(17)
@@ -533,6 +534,10 @@ func refresh() -> void:
 					option.disabled = not on
 			Rows.LINK, Rows.ACTION:
 				if target is BaseButton: (target as BaseButton).disabled = not on
+		if row.get("label") is Callable and str(row.kind) != Rows.INFO:
+			var title := control.find_child("Label", true, false) as Label
+			if title != null: title.text = Rows.text(row.label)
+			if target is Control: (target as Control).accessibility_name = Rows.text(row.label)
 		if row.get("note") is Callable:
 			var note := control.find_child("Note", true, false) as Label
 			if note != null:

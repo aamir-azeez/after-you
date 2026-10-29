@@ -6,14 +6,14 @@ import { POLLEN_CLIENT, withConfig } from "./config";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { creditClear, noteFullJourney, type WalletView } from "../src/pollen/wallet";
 import { MAX_OPS, type EquipReceipt, type SpendReceipt, type WardrobeView } from "../src/pollen/wardrobe";
-import { NAME_CHANGE_PRICE, namePrice, nextNamePrice } from "../src/pollen/name-price";
+import { NAME_CHANGE_PRICE, namePrice, nextNamePrice, nextNamePriceAfter } from "../src/pollen/name-price";
 import { POLLEN_SHOP_TABLES, POLLEN_WALLET_TABLES } from "../src/storage-schema";
 import { countingEnv, meterRows } from "./meter";
 
 // The wardrobe through the Worker: spending and wearing with idempotency keys, ownership, the
 // Special unlock, the flag off, the name change price, and what each costs. Synthetic identities only.
 type Account = { player_id: string; device_token: string; recovery_code: string };
-type ShopWallet = WalletView & { wardrobe: WardrobeView; name_price: number };
+type ShopWallet = WalletView & { wardrobe: WardrobeView; name_price: number; name_price_next: number };
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
 const SHOP = { features: ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"], POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
 const EARN_ONLY = { features: ["POLLEN_EARN"], POLLEN_SECRET: SECRET, DISPLAY_NAMES_ENABLED: "true" };
@@ -70,7 +70,7 @@ describe("the shop flag", () => {
     expect(await capabilities(EARN_ONLY)).not.toHaveProperty("pollen_shop_version");
     expect(await capabilities({ features: ["POLLEN_SHOP"], POLLEN_SECRET: SECRET })).not.toHaveProperty("pollen_shop_version");
     const plain = await wallet(player, EARN_ONLY);
-    expect(plain).not.toHaveProperty("wardrobe"); expect(plain).not.toHaveProperty("name_price");
+    expect(plain).not.toHaveProperty("wardrobe"); expect(plain).not.toHaveProperty("name_price"); expect(plain).not.toHaveProperty("name_price_next");
     expect((await spend(player, spendBody("daisy", 1000), EARN_ONLY)).status).toBe(503);
     expect((await call("/v1/pollen/equip", "POST", player, equipBody({}), EARN_ONLY)).status).toBe(503);
     expect(await tables(player)).toEqual(POLLEN_WALLET_TABLES.map(table => table.name).sort());
@@ -208,11 +208,12 @@ describe("the name change price", () => {
   it("is free for the first name and the first change, then 1,000 each, charged with the change", async () => {
     const player = await create(); await fund(player, 2500);
     let revision = Date.now() - 60_000;
-    expect((await wallet(player)).name_price).toBe(0);
+    expect(await wallet(player)).toMatchObject({ name_price: 0, name_price_next: 0 });
     expect((await rename(player, "Robin", ++revision, 0)).status).toBe(200);
-    expect((await wallet(player)).name_price).toBe(0);
+    // The free change: the app says "free this time" because the change after it costs.
+    expect(await wallet(player)).toMatchObject({ name_price: 0, name_price_next: NAME_CHANGE_PRICE });
     expect((await rename(player, "Robin Sky", ++revision, 0)).status).toBe(200);
-    expect((await wallet(player)).name_price).toBe(NAME_CHANGE_PRICE);
+    expect(await wallet(player)).toMatchObject({ name_price: NAME_CHANGE_PRICE, name_price_next: NAME_CHANGE_PRICE });
     const free = await rename(player, "Sky", ++revision, 0);
     expect(free.status).toBe(409); expect(await free.json()).toMatchObject({ error: { code: "name_change_price" } });
     const paid = ++revision;
@@ -269,6 +270,19 @@ describe("the name change price", () => {
     expect(namePrice({ display_name: "Robin", display_name_sets: 2 }, null, now)).toBe(0);
     expect(namePrice({ display_name: "Robin", display_name_sets: 2 }, "Robin", now)).toBe(0);
     expect(namePrice({ display_name: "Robin", display_name_sets: 2 }, "Sky", now)).toBe(1000);
+  });
+  it("says what the change after the next one costs, so only the last free change reads as free this time", () => {
+    const now = Date.now();
+    // A first name: the change after it is free too.
+    expect(nextNamePriceAfter({}, now)).toBe(0);
+    // The free change after a first name, a name set before the shop, or a name kept and then gone anonymous.
+    expect(nextNamePriceAfter({ display_name: "Robin", display_name_sets: 1 }, now)).toBe(1000);
+    expect(nextNamePriceAfter({ display_name: "Robin" }, now)).toBe(1000);
+    expect(nextNamePriceAfter({ display_name_sets: 1 }, now)).toBe(1000);
+    // Free after a moderator's clear or a name the filter now refuses, and paid after either.
+    expect(nextNamePriceAfter({ display_name_sets: 2, display_name_locked_until: now - 1 }, now)).toBe(1000);
+    expect(nextNamePriceAfter({ display_name: "x\u0000y", display_name_sets: 2 }, now)).toBe(1000);
+    expect(nextNamePriceAfter({ display_name: "Robin", display_name_sets: 2 }, now)).toBe(1000);
   });
   it("adds nothing to a name change's requests", async () => {
     const player = await create();

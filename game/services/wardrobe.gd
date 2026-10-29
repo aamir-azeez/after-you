@@ -20,7 +20,10 @@ extends RefCounted
 ##   its sets and the Specials whose chapter this player has cleared (only
 ##   while the shop is on; empty otherwise);
 ## - name_price: what the next name change costs (0 while one is free, -1
-##   while the server sends none, as without the shop).
+##   while the server sends none, as without the shop);
+## - name_price_next: what the change after that one costs, once it went
+##   through (-1 from a server that sends none): a free change followed by a
+##   paid one is "free this time" (presentation/display_name_prompt.gd).
 ##
 ## Every value read from the file or a server reply is checked; anything that
 ## fails is dropped. A file that cannot be read reads as empty, and the client
@@ -95,6 +98,9 @@ static func checked_view(value: Variant) -> Dictionary:
 	if not Typed.whole_number(part.get("look_revision")) or float(part.look_revision) < 0.0: return {}
 	var price: Variant = value.get("name_price")
 	if price != null and (not Typed.whole_number(price) or float(price) < 0.0): return {}
+	# The price after the next change: a value off the contract reads as none, never as a reason to drop the view.
+	var after: Variant = value.get("name_price_next")
+	var price_next := Typed.as_int(after) if price != null and Typed.whole_number(after) and float(after) >= 0.0 else -1
 	for list: String in ["items", "packs", "offered"]:
 		if not part.get(list) is Array: return {}
 	for list: String in ["offered_packs", "unlocked"]:
@@ -115,7 +121,7 @@ static func checked_view(value: Variant) -> Dictionary:
 		if valid_id(set_id) and not pieces.is_empty() and pieces.size() <= MAX_SET_PIECES: sets[set_id] = pieces
 	return {"items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
 		"offered": _ids(part.offered), "prices": prices, "offered_packs": _ids(part.get("offered_packs", [])), "pack_price": Typed.as_int(part.get("pack_price"), 0), "sets": sets, "unlocked": _ids(part.get("unlocked", [])),
-		"name_price": Typed.as_int(price) if price != null else -1, "bundles": checked_bundles(value.get("bundles"))}
+		"name_price": Typed.as_int(price) if price != null else -1, "name_price_next": price_next, "bundles": checked_bundles(value.get("bundles"))}
 
 ## The wallet read's bundles part (only while bundles sell) as kept, or {}.
 static func checked_bundles(value: Variant) -> Dictionary:
@@ -223,6 +229,11 @@ func name_price(server: String, owner: String) -> int:
 	var known: Dictionary = view(server, owner)
 	return int(known.get("name_price", -1)) if shop(server, owner) and not known.is_empty() else -1
 
+## What the name change after the next one costs, or -1 while the server has not said.
+func name_price_next(server: String, owner: String) -> int:
+	var known: Dictionary = view(server, owner)
+	return int(known.get("name_price_next", -1)) if shop(server, owner) and not known.is_empty() else -1
+
 # --- The signed-in player ---------------------------------------------------
 
 ## Follows the signed-in player (scope_source): their offered items tell the
@@ -266,7 +277,7 @@ func _load() -> void:
 		if not key is String or not key.contains("|") or not value is Dictionary: continue
 		var saved: Variant = value.get("view")
 		var price: Variant = saved.get("name_price") if saved is Dictionary and Typed.whole_number(saved.get("name_price")) and float(saved.name_price) >= 0.0 else null
-		var kept := checked_view({"wardrobe": saved, "name_price": price, "bundles": saved.get("bundles") if saved is Dictionary else null}) if saved is Dictionary and not saved.is_empty() else {}
+		var kept := checked_view({"wardrobe": saved, "name_price": price, "name_price_next": saved.get("name_price_next") if saved is Dictionary else null, "bundles": saved.get("bundles") if saved is Dictionary else null}) if saved is Dictionary and not saved.is_empty() else {}
 		# A file from before the split has no shop key: the shop reads off until the server says again; bundles likewise.
 		var selling: bool = value.get("enabled") == true and value.get("shop") == true
 		_scopes[key] = {"enabled": value.get("enabled") == true, "shop": selling, "bundles": selling and value.get("bundles") == true, "view": kept}

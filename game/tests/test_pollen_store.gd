@@ -190,7 +190,10 @@ func _gates() -> void:
 
 func _cards() -> void:
 	var t := _setup()
+	t.flow.show_store("friends")
+	_check(t.flow.return_to == "friends", "Opened from the name prompt's short card, Back goes to Friends")
 	t.flow.show_store()
+	_check(t.flow.return_to == "wardrobe", "and from the Wardrobe, back there")
 	_check(t.host.mode == Flow.MODE_POLLEN_STORE and t.flow.is_open() and PlayerCopy.POLLEN_STORE_LOADING in _texts(t.host.overlay), "The store opens and says it is loading")
 	await _frames()
 	var page: Node = t.host.overlay
@@ -206,7 +209,7 @@ func _cards() -> void:
 	_check(page.find_children("BundleArt", "", true, false).size() == 4, "Each card has its art")
 	_check(not (page.find_child("PollenStoreGift", true, false) as Control).visible, "No first bundle line while that gift is off")
 	_check("9,000" in _texts(page.find_child("PollenStoreBalance", true, false)) and PlayerCopy.POLLEN_STORE_YOU_HAVE in words, "The chip says You have 9,000")
-	_check(PlayerCopy.POLLEN_STORE_EARN in words and PlayerCopy.POLLEN_STORE_FOOT in words, "Earn Pollen free by playing and the footnote")
+	_check(PlayerCopy.POLLEN_STORE_EARN in words and PlayerCopy.POLLEN_STORE_FOOT in words and PlayerCopy.POLLEN_STORE_FOOT.ends_with("Receipts: Settings › Account & recovery."), "Earn Pollen free by playing and the footnote, with where receipts are")
 	var toasts: int = t.host.toasts.size()
 	(page.find_child("PollenStoreEarn", true, false) as Button).pressed.emit()
 	_check(t.host.earning_opened == 1 and t.host.toasts.size() == toasts, "Earn Pollen free by playing opens Pollen from play on the first tap")

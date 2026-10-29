@@ -25,3 +25,8 @@ static func grouped(amount: int) -> String:
 static func about(amount: int) -> String:
 	var value := float(maxi(amount, 0)) * pinch_price / float(PINCH_POLLEN)
 	return symbol + "%.2f" % snappedf(value, 0.01)
+
+## US cents as the server keeps money spent (Google Play's US figure): 399 -> "$3.99".
+static func usd(cents: int) -> String:
+	var whole := maxi(cents, 0)
+	return "$%d.%02d" % [floori(whole / 100.0), whole % 100]

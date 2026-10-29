@@ -8,6 +8,9 @@ extends Control
 ## - First chapter clears: each free chapter, ticked with what it paid once
 ##   paid, else its price. Full Journey chapters are one sentence, left out on
 ##   a build that names no Full Journey.
+## While the page lists purchases (a Google Play build where bundles sell or
+## were bought: pollen board 1's "Pollen and purchases"), a Purchases card comes
+## first (presentation/pollen_purchases_view.gd) and the title says so.
 ## presentation/pollen_play_flow.gd reads the data and calls render(); this
 ## script only draws it. Each card scrolls on its own. No timers, no countdown.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -20,6 +23,7 @@ const PollenHistory = preload("res://services/pollen_history.gd")
 const PollenResultLine = preload("res://presentation/pollen_result_line.gd")
 const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
 const Breakdown = preload("res://presentation/pollen_breakdown.gd")
+const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
 const CHECK := preload("res://assets/ui/settings/check.svg")
 
 const CARD := Color("f3efdf")
@@ -38,8 +42,12 @@ signal retry_pressed
 var back_button: Button
 var title_font: Font
 var _chip_slot: HBoxContainer
+var _title_label: Label
 var _turns: VBoxContainer
 var _clears: VBoxContainer
+## The Purchases card's column, and the card, hidden until the page lists purchases.
+var _purchases: VBoxContainer
+var _purchases_card: Control
 
 func _init(heading_font: Font = null) -> void:
 	title_font = heading_font
@@ -62,6 +70,9 @@ func _init(heading_font: Font = null) -> void:
 	body.add_theme_constant_override("separation", 18)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(body)
+	_purchases = _card(body, "PollenPurchasesCard")
+	_purchases_card = body.get_node("PollenPurchasesCard")
+	_purchases_card.visible = false
 	_turns = _card(body, "PollenTurnsCard")
 	_clears = _card(body, "PollenClearsCard")
 
@@ -79,9 +90,10 @@ func _header() -> Control:
 	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	titles.add_theme_constant_override("separation", 0)
 	header.add_child(titles)
-	var title := _text(PlayerCopy.POLLEN_PLAY_TITLE, 34, UiTokens.CREAM)
-	if title_font != null: title.add_theme_font_override("font", title_font)
-	titles.add_child(title)
+	_title_label = _text(PlayerCopy.POLLEN_PLAY_TITLE, 34, UiTokens.CREAM)
+	_title_label.name = "PollenPlayTitle"
+	if title_font != null: _title_label.add_theme_font_override("font", title_font)
+	titles.add_child(_title_label)
 	titles.add_child(_text(PlayerCopy.POLLEN_PLAY_SUBTITLE, 17, UiTokens.MUTED))
 	_chip_slot = HBoxContainer.new()
 	_chip_slot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
@@ -105,7 +117,8 @@ func _card(parent: Control, card_name: String) -> VBoxContainer:
 
 ## Draws `model` from the flow: {chip (kit/pollen_chip.gd, or null before a
 ## balance is known), full_journey, status ("" when the history is in), retry,
-## history (services/pollen_history.gd)}.
+## history (services/pollen_history.gd), purchases (bool: the Purchases card
+## shows, with the history's purchases and money spent)}.
 func render(model: Dictionary) -> void:
 	var chip: Variant = model.get("chip")
 	for child: Node in _chip_slot.get_children():
@@ -113,13 +126,18 @@ func render(model: Dictionary) -> void:
 		_chip_slot.remove_child(child)
 		child.queue_free()
 	if chip is Control and (chip as Control).get_parent() != _chip_slot: _chip_slot.add_child(chip)
-	for column: VBoxContainer in [_turns, _clears]:
+	for column: VBoxContainer in [_purchases, _turns, _clears]:
 		for child: Node in column.get_children():
 			column.remove_child(child)
 			child.queue_free()
+	var purchases := bool(model.get("purchases", false))
+	var status := str(model.get("status", ""))
+	var history: Dictionary = model.get("history", {})
+	_title_label.text = PlayerCopy.SETTINGS_POLLEN_PURCHASES if purchases else PlayerCopy.POLLEN_PLAY_TITLE
+	_purchases_card.visible = purchases
+	if purchases: PurchasesView.fill(_purchases, {"loading": not status.is_empty(), "lines": history.get("purchases", []), "spent_usd_cents": int(history.get("spent_usd_cents", 0))}, title_font)
 	_title(_turns, PlayerCopy.POLLEN_TURNS_TITLE, PlayerCopy.POLLEN_TURNS_NOTE)
 	_title(_clears, PlayerCopy.POLLEN_CLEARS_TITLE, PlayerCopy.POLLEN_CLEARS_NOTE)
-	var status := str(model.get("status", ""))
 	if not status.is_empty():
 		var line := _wrapped(status, ROW_SIZE, SOFT_INK)
 		line.name = "PollenPlayStatus"
@@ -133,7 +151,6 @@ func render(model: Dictionary) -> void:
 			retry.pressed.connect(func() -> void: retry_pressed.emit())
 			_turns.add_child(retry)
 		return
-	var history: Dictionary = model.get("history", {})
 	_bank(history.get("bank", {}))
 	_recent(history.get("turns", []))
 	_first_clears(history.get("first_clears", []), bool(model.get("full_journey", true)))

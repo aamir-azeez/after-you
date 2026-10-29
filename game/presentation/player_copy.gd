@@ -68,10 +68,20 @@ const DISPLAY_NAME_ERRORS := {
 	# A price refusal on a build that shows no price (display_name_flow.gd refusal_code).
 	"name_price_hidden": DISPLAY_NAME_PRICE_HIDDEN,
 }
-## The name change price (POLLEN-RULES.md "Prices"): Save says what the change costs.
+## The name change price (POLLEN-RULES.md "Prices", pollen board 6): Save says what the change costs
+## ("Save · [grain] 1,000 about $0.20"), or that this one is free, or what is still needed.
+## SAVE_PRICED is what a screen reader hears for the priced Save.
 const DISPLAY_NAME_SAVE_PRICED := "Save for %s Pollen"
-const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change costs %s Pollen (about %s)."
-const DISPLAY_NAME_PRICE_SHORT := "You need %s more Pollen to change your name. Staying anonymous is always free."
+const DISPLAY_NAME_SAVE_DOT := "Save ·"
+const DISPLAY_NAME_SAVE_FREE := "Save · free this time"
+const DISPLAY_NAME_SAVE_NEEDED := " · %s more needed"
+const DISPLAY_NAME_SAVE_SHORT := "Save for %s Pollen, %s more needed"
+## Under the field: the amount is bold ([b]), as drawn.
+const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change now costs [b]%s Pollen[/b] (about %s)."
+## Under the choices, after the grain.
+const DISPLAY_NAME_PRICE_HAVE := "You have %s. Keeping me anonymous is always free."
+## The short of Pollen card (board 5b) for a name change: what costs.
+const DISPLAY_NAME_SHORT_ITEM := "A name change"
 ## The same place on a build that shows no price (services/pollen_surfaces.gd): a change that costs waits.
 const DISPLAY_NAME_PRICE_HIDDEN := "Your free change is used. Staying anonymous is always free."
 ## Under a friend's nickname on their Friends row: the name they chose.
@@ -192,6 +202,16 @@ const POLLEN_CLEARS_FULL_JOURNEY := "Full Journey chapters pay more."
 const POLLEN_CLEARS_HARD := "Your first Hard clear together pays the same amount again, once."
 const SETTINGS_POLLEN := "Pollen"
 const SETTINGS_POLLEN_NOTE := "Your balance, the turn bank and first clears."
+## The same row while bundles sell (pollen board 1), and Pollen from play's title when it lists purchases.
+const SETTINGS_POLLEN_PURCHASES := "Pollen and purchases"
+const SETTINGS_POLLEN_PURCHASES_NOTE := "Your balance, total money spent, bundles and their receipts."
+# The purchases card on that page (presentation/pollen_purchases_view.gd).
+const POLLEN_PURCHASES_TITLE := "Purchases"
+const POLLEN_PURCHASES_NOTE := "Pollen bundles you bought, each with its Google Play receipt."
+const POLLEN_PURCHASES_SPENT := "spent in total"
+const POLLEN_PURCHASES_USD := "In US dollars, as Google Play reported each purchase."
+const POLLEN_PURCHASES_NONE := "No purchases yet."
+const POLLEN_PURCHASE_REFUNDED := "%s refunded"
 
 # The monthly Full Journey Pollen (presentation/pollen_grant_card.gd). Amounts come in grouped.
 const POLLEN_GRANT_TITLE := "Your monthly Pollen arrived"
@@ -294,7 +314,7 @@ const POLLEN_STORE_BONUS := "%s + %s bonus · %d%% more"
 const POLLEN_STORE_PER_DOLLAR := "%s Pollen per $1"
 const POLLEN_STORE_PER_UNIT := "%s Pollen per 1 %s"
 const POLLEN_STORE_EARN := "Earn Pollen free by playing"
-const POLLEN_STORE_FOOT := "Google Play shows the price in your currency before you pay."
+const POLLEN_STORE_FOOT := "Google Play shows the price in your currency before you pay. Receipts: Settings › Account & recovery."
 const POLLEN_STORE_LOADING := "Opening the store…"
 const POLLEN_STORE_OFFLINE := "The store isn't reachable right now. Try again in a moment."
 ## The confirm card ("Buy a Pouch?") with its plain sums.

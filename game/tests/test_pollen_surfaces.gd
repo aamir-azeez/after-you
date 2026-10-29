@@ -5,7 +5,13 @@ extends SceneTree
 ##   balance and the Wardrobe, and hides the shop, every price and Full Journey;
 ## - the name change on both builds: the selling build says the price and its
 ##   money figure; the build that sells nothing names no price and never sends
-##   a change that costs, while a free change and going anonymous still save.
+##   a change that costs, while a free change and going anonymous still save;
+## - pollen board 6's Save states on the selling build: "Save · free this
+##   time" only for the last free change (the server's next price, or the
+##   phone's own reading without it), Save with the grain and "about $X" inside,
+##   "N more needed" with Save held back and a Get Pollen link that opens the
+##   short card, the price line under the field and the balance line under the
+##   choices, all inside the card at 1280x720 and 1600x738.
 ## The Wardrobe, the line after a turn and the odds note are covered on both
 ## builds in test_wardrobe_flow, test_pollen_wallet and test_pollen_item_bloom.
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
@@ -44,6 +50,10 @@ func _run() -> void:
 	await _name_price()
 	await _name_prompt(true)
 	await _name_prompt(false)
+	_free_this_time()
+	for size: Vector2i in [Vector2i(1280, 720), Vector2i(1561, 720)]:
+		await _board_six(size)
+	await _short_card()
 	page.queue_free()
 	PlatformSupport.override_platform = ""
 	PollenSurfaces.set_shared_for_tests(null)
@@ -55,6 +65,152 @@ func _run() -> void:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
 	print("AFTER YOU POLLEN SURFACES: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
+
+## The words inside a button's content (Save with the grain), in order.
+static func _words(button: Button) -> Array:
+	var holder := button.get_node_or_null("ButtonContent") as Control
+	if holder == null or not holder.visible: return []
+	return holder.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text)
+
+## "Save · free this time" only for the last free change: from the server's next
+## price, or, from a server that sends none, when the player holds a name now.
+func _free_this_time() -> void:
+	var named := {"choice": "typed", "name": "Robin"}
+	var fresh := {"choice": "", "name": ""}
+	var anon := {"choice": "anonymous", "name": ""}
+	var cases := [
+		[{"price": 0, "next": 1000}, named, "typed", "Sky", true, "the free change after a first name"],
+		[{"price": 0, "next": 1000}, anon, "typed", "Sky", true, "naming again after going anonymous, the free change"],
+		[{"price": 0, "next": 0}, fresh, "typed", "Sky", false, "a first name (the change after it is free too)"],
+		[{"price": 0, "next": 0}, anon, "typed", "Sky", false, "a first name after starting anonymous"],
+		[{"price": 1000, "next": 1000}, named, "typed", "Sky", false, "a paid change"],
+		[{"price": 0, "next": 1000}, named, "typed", "Robin", false, "keeping the name"],
+		[{"price": 0, "next": 1000}, named, "anonymous", "", false, "going anonymous"],
+		[{"price": 0, "next": -1}, named, "typed", "Sky", true, "an older server, a player who holds a name"],
+		[{"price": 0, "next": -1}, anon, "typed", "Sky", false, "an older server, an anonymous player"],
+		[{}, named, "typed", "Sky", false, "the shop off"]]
+	for case: Array in cases:
+		_check(Prompt.free_this_time(case[0], case[1], case[2], case[3]) == case[4], "Free this time for %s: %s" % [case[5], case[4]])
+
+## Board 6's three Save states, the lines and the link, at `size`.
+func _board_six(size: Vector2i) -> void:
+	PollenSurfaces.set_shared_for_tests(true)
+	var holder := Control.new()
+	holder.size = Vector2(size)
+	root.add_child(holder)
+	var own := {"choice": "typed", "name": "Robin", "revision": 1, "state": "synced", "code": "", "asked": true, "confirmed": "Robin"}
+	var opened: Array = []
+	var price := {"price": 0, "balance": 600, "shown": true, "next": 1000}
+	var context := {"own": own, "anonymous": "Kite 41", "platform": "", "edit": true, "price": price,
+		"get_pollen": func(link: Control) -> void: opened.append(link),
+		"save": func(_choice: String, _name: String) -> Dictionary: return {"closed": false, "code": "busy"}}
+	var modal: Control = Prompt.open(holder, context)
+	for i in range(3): await process_frame
+	var prompt: Node = modal.find_child("DisplayNamePrompt", true, false)
+	prompt.field.text = "Robin Sky"
+	prompt.field.text_changed.emit("Robin Sky")
+	await process_frame
+	_check(prompt.save_button.text == PlayerCopy.DISPLAY_NAME_SAVE_FREE and not prompt.save_button.disabled and not prompt._price_note.visible and not prompt._have_line.visible and not prompt.get_pollen_link.visible, "Free this time: Save says so, with no price lines at %s" % size)
+	# A paid change the balance covers.
+	price.price = 1000
+	price.balance = 24000
+	prompt._show()
+	await process_frame
+	_check(_words(prompt.save_button) == [PlayerCopy.DISPLAY_NAME_SAVE_DOT, "1,000", PlayerCopy.WARDROBE_ABOUT % "$0.20"] and prompt.save_button.find_child("PollenMark", true, false) != null and not prompt.save_button.disabled, "Save · [grain] 1,000 about $0.20 at %s" % size)
+	_check(prompt._have_line.visible and prompt._have_label.text == PlayerCopy.DISPLAY_NAME_PRICE_HAVE % "24,000" and prompt._have_line.find_child("PollenMark", true, false) != null, "The balance line with its grain under the choices")
+	_check(prompt._price_note.get_parent() == prompt._counter.get_parent() and prompt._price_note.visible and not prompt.get_pollen_link.visible, "The price line sits under the field beside the counter, and no link while the balance covers it")
+	_fits(modal, prompt, size, "priced")
+	# Short of Pollen: Save waits and says what is needed; the link opens the short card.
+	price.balance = 600
+	prompt._show()
+	await process_frame
+	_check(_words(prompt.save_button) == [PlayerCopy.DISPLAY_NAME_SAVE_DOT, "1,000" + PlayerCopy.DISPLAY_NAME_SAVE_NEEDED % "400"] and prompt.save_button.disabled
+		and prompt.save_button.accessibility_name == PlayerCopy.DISPLAY_NAME_SAVE_SHORT % ["1,000", "400"], "Save · [grain] 1,000 · 400 more needed, held back at %s: %s" % [size, str(_words(prompt.save_button))])
+	_check(prompt.get_pollen_link.is_visible_in_tree() and prompt.get_pollen_link.text == PlayerCopy.WARDROBE_GET_POLLEN, "Get Pollen shows under Save")
+	var link_rect: Rect2 = prompt.get_pollen_link.get_global_rect()
+	var save_rect: Rect2 = prompt.save_button.get_global_rect()
+	_check(link_rect.position.y >= save_rect.end.y and absf(link_rect.position.x - save_rect.position.x) <= 2.0, "under Save, at its left edge: %s %s" % [link_rect, save_rect])
+	_fits(modal, prompt, size, "short")
+	prompt.get_pollen_link.pressed.emit()
+	_check(opened == [prompt.get_pollen_link], "Get Pollen asks the flow for the short card")
+	prompt.field.text_submitted.emit("Robin Sky")
+	await process_frame
+	_check(prompt.save_button.disabled and _words(prompt.save_button).size() == 2, "Enter never sends a change the balance cannot pay")
+	# Going anonymous is free: plain Save, no price lines or link.
+	prompt.anonymous_row.pressed.emit()
+	await process_frame
+	_check(prompt.save_button.text == PlayerCopy.DISPLAY_NAME_SAVE and _words(prompt.save_button).is_empty() and not prompt.save_button.disabled and not prompt.get_pollen_link.visible and not prompt._have_line.visible, "Going anonymous is a plain free Save")
+	# An error takes the price line's place under the field.
+	prompt.field.text = "<<>>"
+	prompt.field.text_changed.emit("<<>>")
+	price.balance = 24000
+	prompt._save()
+	await process_frame
+	_check(prompt._error.visible and not prompt._price_note.visible, "An error takes the price line's place")
+	modal.queue_free()
+	holder.queue_free()
+	await process_frame
+
+## Stands in for Main's Pollen store flow: whether it can open, and where from.
+class StoreStub extends Node:
+	var on := true
+	var opened: Array = []
+	func available() -> bool: return on
+	func show_store(from: String = "wardrobe") -> void: opened.append(from)
+
+class FlowHost extends Node:
+	var pollen_store_flow: Node
+
+## Get Pollen's short card (board 5b's, for a name change): the cost and the
+## balance, no "It stays in the shop.", and its own link to the store only while
+## the store can open, which closes the prompt and opens the store with Back to Friends.
+func _short_card() -> void:
+	var holder := Control.new()
+	holder.size = Vector2(1280, 720)
+	root.add_child(holder)
+	var host := FlowHost.new()
+	host.pollen_store_flow = StoreStub.new()
+	host.add_child(host.pollen_store_flow)
+	root.add_child(host)
+	var flow := Flow.new(host)
+	host.add_child(flow)
+	var prompt_card := Prompt.open(holder, {"own": {}, "anonymous": "Kite 41", "platform": "", "edit": true})
+	flow._prompt = weakref(prompt_card)
+	flow._prompt_price = {"price": 1000, "balance": 600, "shown": true, "next": 1000}
+	flow._open_short(holder, null)
+	flow._open_short(holder, null)
+	await process_frame
+	var cards := holder.find_children("WardrobeShort", "", true, false)
+	_check(cards.size() == 1, "A second tap opens no second card")
+	var card: Control = cards[0] if not cards.is_empty() else null
+	var words: Array = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
+	_check(words.has(PlayerCopy.WARDROBE_SHORT_NOTE % [PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "1,000", "600"]) and words.has("400" + PlayerCopy.WARDROBE_SHORT_MORE) and not words.has(PlayerCopy.WARDROBE_SHORT_STAYS), "The short card names the change and what is needed, and nothing about the shop: " + str(words))
+	var link := card.find_child("WardrobeGetPollen", true, false) as LinkButton if card != null else null
+	_check(link != null, "Its own Get Pollen shows while the store can open")
+	if link != null: link.pressed.emit()
+	await process_frame
+	_check(host.pollen_store_flow.opened == ["friends"] and (not is_instance_valid(prompt_card) or prompt_card.is_queued_for_deletion()), "It closes the prompt and opens the store with Back to Friends")
+	host.pollen_store_flow.on = false
+	flow._open_short(holder, null)
+	await process_frame
+	var shut := holder.find_children("WardrobeShort", "", true, false).filter(func(node: Node) -> bool: return not node.is_queued_for_deletion())
+	_check(shut.size() == 1 and shut[0].find_child("WardrobeGetPollen", true, false) == null, "With the store shut the card has no link")
+	shut[0].close()
+	flow._prompt_price = {"price": 1000, "balance": 600, "shown": false, "next": 1000}
+	flow._open_short(holder, null)
+	await process_frame
+	_check(holder.find_children("WardrobeShort", "", true, false).filter(func(node: Node) -> bool: return not node.is_queued_for_deletion()).is_empty(), "A build that shows no price never opens it")
+	holder.queue_free()
+	host.queue_free()
+	await process_frame
+
+## Everything in the card stays inside it and inside the screen; Save's content fits its button.
+func _fits(modal: Control, prompt: Node, size: Vector2i, context: String) -> void:
+	var panel := modal.find_child("ModalPanel", true, false) as Control
+	var screen := Rect2(Vector2.ZERO, Vector2(size))
+	_check(screen.encloses(panel.get_global_rect()), "The card stays on screen (%s, %s): %s" % [context, size, panel.get_global_rect()])
+	var content := prompt.save_button.get_node("ButtonContent").get_child(0) as Control
+	_check(prompt.save_button.get_global_rect().grow(0.5).encloses(content.get_global_rect()), "Save's content fits its button (%s, %s): %s in %s" % [context, size, content.get_global_rect(), prompt.save_button.get_global_rect()])
 
 func _check(ok: bool, message: String) -> void:
 	checks += 1
@@ -97,7 +253,8 @@ func _rule() -> void:
 
 ## The flow hands the prompt the price with whether this build may show it.
 func _name_price() -> void:
-	var store: RefCounted = Wardrobe.new(_path("wardrobe"))
+	var store_path := _path("wardrobe")
+	var store: RefCounted = Wardrobe.new(store_path)
 	var wallet: RefCounted = PollenWallet.new(_path("wallet"))
 	Wardrobe.use_shared(store)
 	PollenWallet.use_shared(wallet)
@@ -110,9 +267,22 @@ func _name_price() -> void:
 	store.note_view(SERVER, ME, answer)
 	wallet.note_wallet(SERVER, ME, answer)
 	PollenSurfaces.set_shared_for_tests(true)
-	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": true}, "Selling: the price, the balance and that it shows: " + str(Flow.name_price(current)))
+	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": true, "next": -1}, "Selling: the price, the balance and that it shows, with no next price from an older server: " + str(Flow.name_price(current)))
 	PollenSurfaces.set_shared_for_tests(false)
-	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": false}, "Selling nothing: the same price, marked not shown")
+	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": false, "next": -1}, "Selling nothing: the same price, marked not shown")
+	answer.name_price = 0.0
+	answer.name_price_next = 1000.0
+	store.note_view(SERVER, ME, answer)
+	_check(Flow.name_price(current).get("next") == 1000 and Flow.name_price(current).get("price") == 0, "The server's price after the free change comes through")
+	var reread: RefCounted = Wardrobe.new(store_path)
+	reread.set_enabled(SERVER, ME, true)
+	_check(reread.name_price_next(SERVER, ME) == 1000 and reread.name_price(SERVER, ME) == 0, "and is kept on the phone through a restart")
+	answer.name_price_next = -5.0
+	store.note_view(SERVER, ME, answer)
+	_check(Flow.name_price(current).get("next") == -1 and Flow.name_price(current).get("price") == 0, "A next price off the contract reads as none, and the view stays")
+	answer.erase("name_price_next")
+	answer.name_price = 1000.0
+	store.note_view(SERVER, ME, answer)
 	for code: String in ["pollen_short", "name_change_price"]:
 		var line := str(PlayerCopy.DISPLAY_NAME_ERRORS.get(Flow.refusal_code(code), ""))
 		_check(line == PlayerCopy.DISPLAY_NAME_PRICE_HIDDEN, "Selling nothing: the %s refusal names no price: %s" % [code, line])
@@ -141,17 +311,17 @@ func _name_prompt(sells: bool) -> void:
 	prompt.field.text = "Robin Sky"
 	prompt.field.text_changed.emit("Robin Sky")
 	await process_frame
-	var note: Label = prompt._price_note
+	var note: RichTextLabel = prompt._price_note
 	if sells:
-		_check(not prompt.save_button.disabled and prompt.save_button.text == PlayerCopy.DISPLAY_NAME_SAVE_PRICED % "1,000", "Selling: Save says the price")
-		_check(note.visible and note.text == PlayerCopy.DISPLAY_NAME_PRICE_NOTE % ["1,000", "$0.20"], "Selling: the note says the price and its money figure: " + note.text)
+		_check(not prompt.save_button.disabled and prompt.save_button.accessibility_name == PlayerCopy.DISPLAY_NAME_SAVE_PRICED % "1,000" and _words(prompt.save_button) == [PlayerCopy.DISPLAY_NAME_SAVE_DOT, "1,000", PlayerCopy.WARDROBE_ABOUT % "$0.20"], "Selling: Save says the price with the grain and its money figure: " + str(_words(prompt.save_button)))
+		_check(note.visible and note.text == PlayerCopy.DISPLAY_NAME_PRICE_NOTE % ["1,000", "$0.20"] and note.get_parsed_text().contains("1,000 Pollen"), "Selling: the note says the price and its money figure: " + note.text)
 		prompt.field.text_submitted.emit("Robin Sky")
 		for i in range(3): await process_frame
 		_check(saved == [["typed", "Robin Sky"]], "Selling: Enter saves the priced change")
 	else:
-		_check(prompt.save_button.disabled and prompt.save_button.text == PlayerCopy.DISPLAY_NAME_SAVE, "Selling nothing: Save waits and names no price")
+		_check(prompt.save_button.disabled and prompt.save_button.text == PlayerCopy.DISPLAY_NAME_SAVE and _words(prompt.save_button).is_empty(), "Selling nothing: Save waits and names no price")
 		_check(note.visible and note.text == PlayerCopy.DISPLAY_NAME_PRICE_HIDDEN, "Selling nothing: the note says the free change is used: " + note.text)
-		_check(not note.text.contains("$") and not note.text.contains("1,000") and not prompt.save_button.text.contains("Pollen"), "Selling nothing: no price or money figure")
+		_check(not note.text.contains("$") and not note.text.contains("1,000") and not prompt.save_button.text.contains("Pollen") and not prompt._have_line.visible and prompt.find_child("PollenMark", true, false) == null, "Selling nothing: no price, grain or money figure")
 		prompt.field.text_submitted.emit("Robin Sky")
 		for i in range(3): await process_frame
 		_check(saved.is_empty(), "Selling nothing: Enter never sends a change that costs")

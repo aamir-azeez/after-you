@@ -15,6 +15,9 @@ extends SceneTree
 ##   the base and phone shapes; Done and the rail stay put.
 ## - Friends & notifications holds the notification switches inline.
 ## - Account & recovery holds its actions inline and they still work.
+## - Its first row is Pollen board 1's: the balance with the grain on the gold
+##   surface, named "Pollen and purchases" while bundles sell and "Pollen"
+##   otherwise (iPhone, no bundles), and it opens the Pollen page.
 ## - Its rows follow the identity state while it is open.
 ## - Callers land in the right category, and Back goes where Done goes.
 ## - A damaged save still opens with every switch; Always skip waits starts off.
@@ -30,6 +33,18 @@ const RoomsApi=preload("res://services/rooms_api.gd")
 const SAVED_SWITCHES := ["assistance","reduced_motion","left_handed","sound","haptics","photo_prompts","share_online_status","skip_waits"]
 var checks := 0
 var failures := 0
+
+const Kit=preload("res://presentation/settings_kit.gd")
+const PollenPlayFlow=preload("res://presentation/pollen_play_flow.gd")
+
+## Stands in for Main's pollen_play_flow (presentation/pollen_play_flow.gd).
+class PollenStub extends PollenPlayFlow:
+	var purchases := false
+	var opened := 0
+	func available() -> bool: return true
+	func balance() -> int: return 24000
+	func purchases_shown(_history: Dictionary = {}) -> bool: return purchases
+	func open_from_settings() -> void: opened += 1
 
 class Ticks extends Node:
 	var count := 0
@@ -148,6 +163,7 @@ func _run() -> void:
 	await _summaries(app)
 	await _redo_request_option(app,path)
 	await _account_inline(app)
+	await _pollen_row(app)
 	await _identity_arrives(app)
 	await _callers(app)
 	app.get_viewport().queue_free()
@@ -440,6 +456,37 @@ func _redo_request_option(app: Node, path: String) -> void:
 	await _click(app,off)
 	_check(toggle.disabled and toggle.button_pressed and not app.turn_notifications.requests_enabled(), "Turning notifications off pauses redo request alerts and keeps the choice")
 	_check(off.disabled and _summary(app,Flow.FRIENDS)=="Notifications: Off","Off is done: its action rests and the rail says Off")
+
+## Pollen board 1's row in Account & recovery: first after the intro, the
+## balance with its grain on the gold surface, its name following the build.
+func _pollen_row(app: Node) -> void:
+	var real: Node = app.pollen_play_flow
+	var stub := PollenStub.new()
+	app.add_child(stub)
+	app.pollen_play_flow = stub
+	for purchases: bool in [true, false]:
+		stub.purchases = purchases
+		app.settings_flow.show_settings(Flow.ACCOUNT)
+		await _settle()
+		var button := _control(app, "pollen") as Button
+		_check(button != null, "Account & recovery has the Pollen row")
+		if button == null: continue
+		var row := button.get_parent() as Control
+		var words: Array = row.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.is_visible_in_tree()).map(func(label: Label) -> String: return label.text)
+		var name := PlayerCopy.SETTINGS_POLLEN_PURCHASES if purchases else PlayerCopy.SETTINGS_POLLEN
+		var note := PlayerCopy.SETTINGS_POLLEN_PURCHASES_NOTE if purchases else PlayerCopy.SETTINGS_POLLEN_NOTE
+		_check(words.has(name) and words.has(note) and words.has("24,000") and row.find_child("PollenMark", true, false) != null and button.accessibility_name == name, "The row reads %s, its note, and the balance with the grain: %s" % [name, str(words)])
+		var style := button.get_theme_stylebox("normal") as StyleBoxFlat
+		_check(style != null and style.bg_color == Kit.FEATURE and style.border_color == Kit.FEATURE_EDGE and style.border_width_left == 2, "It sits on board 1's gold surface")
+		var links: Array = app.settings_flow.find_children("*", "Button", true, false).filter(func(other: Button) -> bool: return other.is_visible_in_tree() and other.get_parent().name.ends_with("Row") and other.get_global_rect().position.y < button.get_global_rect().position.y)
+		_check(links.is_empty(), "It is the category's first row: " + str(links.map(func(other: Button) -> String: return other.name)))
+		_check(_scroll_of(button).get_global_rect().encloses(button.get_global_rect()), "and wholly on show")
+		await _click(app, button)
+		_check(stub.opened == (1 if purchases else 2), "A tap opens the Pollen page")
+	app.pollen_play_flow = real
+	stub.free()
+	app.settings_flow.show_settings(Flow.ACCOUNT)
+	await _settle()
 
 ## Account & recovery's actions sit in the panel and still work.
 func _account_inline(app: Node) -> void:

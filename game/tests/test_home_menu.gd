@@ -33,7 +33,7 @@ class StoreStub:
 	var on := true
 	var opened := 0
 	func available() -> bool: return on
-	func show_store() -> void: opened += 1
+	func show_store(_from: String = "wardrobe") -> void: opened += 1
 
 ## 1560x720 is a 2340x1080 phone (and a 1560x720 one); 1600x720 is what an
 ## 800x360 window gets from the canvas_items/expand stretch; 1280x960 a tablet.
@@ -361,6 +361,13 @@ func _test_pollen_routes(app: Node) -> void:
 	await _frames()
 	_check(app.mode == "home" and _menu(app) != null, "And Home while the Wardrobe is off too")
 	_check(app.show_pollen_from_play() == play.is_open(), "The store learns whether Pollen from play opened")
+	# The store opened from the name prompt's short card: Back goes Home first, then to Friends.
+	wardrobe.opened.clear()
+	real_store.return_to = "friends"
+	real_store.back_requested.emit()
+	await _frames()
+	_check(wardrobe.opened.is_empty() and app.mode in ["home", "friends"], "Back from a store opened by the name prompt goes to Friends over Home, never the Wardrobe: " + app.mode)
+	real_store.return_to = "wardrobe"
 	play.return_to = "home"
 	app.pollen_store_flow = real_store
 	app.wardrobe_flow = real_wardrobe

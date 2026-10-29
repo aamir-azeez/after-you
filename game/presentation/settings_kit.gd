@@ -39,6 +39,10 @@ const TRACK_ON_EDGE := Color("7cc7a8")
 const TRACK_OFF_TILE := Color("d8d3c0")
 const TRACK_OFF_EDGE := Color("c4bea8")
 const KNOB_OFF_TILE := Color("8a948c")
+## Pollen board 1's featured row: pale gold with the store card's gold edge.
+const FEATURE := Color("fbf3d6")
+const FEATURE_HELD := Color("f5e9c2")
+const FEATURE_EDGE := Color("ecd48e")
 const TILE_GAP := 16
 ## Space inside a row; the panel's own padding plus this lines text up with the title.
 const ROW_PAD := 12
@@ -129,6 +133,14 @@ static func _row_surface(button: BaseButton) -> void:
 	button.focus_mode = Control.FOCUS_ALL
 	button.mouse_default_cursor_shape = Control.CURSOR_POINTING_HAND
 	button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+
+## A featured row (pollen board 1's Pollen row): the same tap row on a pale gold
+## surface with a gold edge, a little deeper while held or hovered.
+static func featured_surface(button: BaseButton) -> void:
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]:
+		var fill := FEATURE_HELD if state in ["hover", "hover_pressed", "pressed"] else FEATURE
+		button.add_theme_stylebox_override(state, rounded(fill, 14, FEATURE_EDGE, 2))
+	button.add_theme_stylebox_override("focus", rounded(Color.TRANSPARENT, 14, INK, 2))
 
 ## The label and note of a row, stacked.
 static func _texts(row: Dictionary, label_color: Color = INK) -> VBoxContainer:

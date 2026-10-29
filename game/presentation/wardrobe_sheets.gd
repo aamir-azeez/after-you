@@ -61,8 +61,10 @@ static func _line(table: GridContainer, words: String, amount: Control) -> void:
 	table.add_child(amount)
 
 ## The short-of-Pollen card for an item of `tier`. `get_pollen` opens the Pollen
-## store; an empty Callable (bundles not on sale) leaves the link out. Returns the modal.
-static func short(parent: Control, item_name: String, tier: String, cost: int, balance: int, get_pollen: Callable = Callable(), opener: Control = null) -> Control:
+## store; an empty Callable (bundles not on sale) leaves the link out. `in_shop`
+## false (a name change, pollen board 6) leaves out "It stays in the shop.".
+## Returns the modal.
+static func short(parent: Control, item_name: String, tier: String, cost: int, balance: int, get_pollen: Callable = Callable(), opener: Control = null, in_shop: bool = true) -> Control:
 	var modal: Control = InGameModal.open(parent, "WardrobeShort", PlayerCopy.WARDROBE_SHORT_TITLE,
 		PlayerCopy.WARDROBE_SHORT_NOTE % [item_name, PollenMoney.grouped(cost), PollenMoney.grouped(balance)], opener)
 	modal.widen(600.0)
@@ -75,9 +77,10 @@ static func short(parent: Control, item_name: String, tier: String, cost: int, b
 	var gap := Control.new()
 	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	need.add_child(gap)
-	var stays := ShopKit.text(PlayerCopy.WARDROBE_SHORT_STAYS, 13, MUTED)
-	stays.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	need.add_child(stays)
+	if in_shop:
+		var stays := ShopKit.text(PlayerCopy.WARDROBE_SHORT_STAYS, 13, MUTED)
+		stays.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+		need.add_child(stays)
 	var earn_box := _box(modal.content, "WardrobeShortEarn")
 	var earn_column := VBoxContainer.new()
 	earn_column.add_theme_constant_override("separation", 4)

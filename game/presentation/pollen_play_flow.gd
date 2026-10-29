@@ -19,6 +19,9 @@ extends Node
 ## shows. Main leaves it unset: the Pollen store (presentation/pollen_store_flow.gd)
 ## opens only while bundles sell, which shop() does not check, so a plus could
 ## show that opens nothing.
+## On a build that sells bundles, the page also lists purchases (pollen board 1,
+## "Pollen and purchases") while the server sells them or the history holds one;
+## Settings names its row from purchases_shown(). iPhone never lists them.
 const Page = preload("res://presentation/pollen_play_page.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -71,6 +74,13 @@ func balance() -> int:
 func shop() -> bool:
 	var scope := _scope()
 	return _surfaces().shop_visible() and not scope.is_empty() and Wardrobe.shared().shop(str(scope.server), str(scope.owner))
+
+## Whether the page lists purchases: a Google Play build that sells bundles, while the
+## server sells them to this player or `history` (once read) holds a purchase.
+func purchases_shown(history: Dictionary = {}) -> bool:
+	if not _surfaces().bundles_visible() or not available(): return false
+	var scope := _scope()
+	return Wardrobe.shared().bundles(str(scope.server), str(scope.owner)) or not (history.get("purchases", []) as Array).is_empty()
 
 func _reduced() -> bool:
 	return bool(host.saves.data.settings.get("reduced_motion", false)) if host.get("saves") != null else false
@@ -145,4 +155,4 @@ func refresh() -> void:
 
 func _redraw(retry: bool) -> void:
 	if not is_open(): return
-	_page.render({"chip": _page_chip, "full_journey": _surfaces().full_journey_visible(), "status": _status, "retry": retry, "history": _history})
+	_page.render({"chip": _page_chip, "full_journey": _surfaces().full_journey_visible(), "status": _status, "retry": retry, "history": _history, "purchases": purchases_shown(_history)})

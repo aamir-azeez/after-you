@@ -199,9 +199,36 @@ describe("bundles through the Worker", () => {
     lists[player.player_id] = [owned("rc_10", "prod25def0f41d"), owned("rc_11", "prodd4e2b730e5")];
     expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 26000, credited: [{ bundle: "pinch", pollen: 5000, first_gift: 0 }] });
     expect(await wallet(player)).toMatchObject({ balance: 26000, bundles: { first_gift: false, first_gift_percent: 0, spent_usd_cents: 198 } });
-    const history = await (await call("/v1/pollen/history", "GET", player)).json<{ entries: Record<string, unknown>[] }>();
+    const history = await (await call("/v1/pollen/history", "GET", player)).json<{ entries: Record<string, unknown>[]; purchases: Record<string, unknown>[]; spent_usd_cents: number }>();
     expect(history.entries.filter(entry => entry.kind === "bundle").map(entry => [entry.amount, entry.bundle, entry.order, entry.usd_cents]).sort())
       .toEqual([[21000, "pouch", "GPA.0000-rc_10", 99], [5000, "pinch", "GPA.0000-rc_11", 99]].sort());
+    // The purchases part lists every bundle with its receipt line, and the money spent.
+    expect(history.purchases.map(line => [line.kind, line.amount, line.bundle, line.order, line.usd_cents]).sort())
+      .toEqual([["bundle", 21000, "pouch", "GPA.0000-rc_10", 99], ["bundle", 5000, "pinch", "GPA.0000-rc_11", 99]].sort());
+    expect(history.spent_usd_cents).toBe(198);
+  });
+
+  it("lists purchases in the history apart from turns, newest first with refunds, and nothing for a player who never bought", async () => {
+    const never = await create();
+    const empty = await (await call("/v1/pollen/history", "GET", never)).json<Record<string, unknown>>();
+    expect(empty).not.toHaveProperty("purchases"); expect(empty).not.toHaveProperty("spent_usd_cents");
+    const player = await create();
+    lists[player.player_id] = [owned("rc_60", "prod25def0f41d", { revenue_in_usd: { gross: 3.99 } })];
+    await claim(player);
+    lists[player.player_id] = [owned("rc_60", "prod25def0f41d", { status: "refunded", revenue_in_usd: { gross: 3.99 } }), owned("rc_61", "prodd4e2b730e5")];
+    await claim(player);
+    // 60 turn rows newer than every purchase: the 50 newest entries hold no bundle, the purchases part still has all three.
+    await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => {
+      for (let index = 0; index < 60; index++)
+        state.storage.sql.exec("INSERT INTO pollen_claims VALUES (?,?,?,?,?)", `turn:room${index}:hash`, "turn", 10, Date.now() + 60_000 + index, JSON.stringify({ schema_version: 1, receipt: { schema_version: 1, earned: 10, clears: [] }, detail: {} }));
+    });
+    const history = await (await call("/v1/pollen/history", "GET", player)).json<{ entries: Record<string, unknown>[]; purchases: Record<string, unknown>[]; spent_usd_cents: number }>();
+    expect(history.entries.some(entry => String(entry.kind).startsWith("bundle"))).toBe(false);
+    expect(history.purchases.map(line => [line.kind, line.amount, line.bundle, line.usd_cents]).sort()).toEqual([
+      ["bundle", 21000, "pouch", 399], ["bundlerefund", -21000, "pouch", 399], ["bundle", 5000, "pinch", 99]].sort());
+    const times = history.purchases.map(line => Number(line.at));
+    expect(times).toEqual([...times].sort((a, b) => b - a));
+    expect(history.spent_usd_cents).toBe(99);
   });
 
   it("pays two overlapping claims once", async () => {

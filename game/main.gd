@@ -1312,12 +1312,19 @@ func _host_wardrobe_flow() -> WardrobeFlow:
 	return flow
 
 ## An internal child, like StoreFlow. The Pollen store opens from the Wardrobe
-## and goes back to it (or Home, when the Wardrobe is off); its receipt's Open
-## the Wardrobe opens the Wardrobe.
+## and goes back to it (or Home, when the Wardrobe is off), or from the name
+## prompt's short card and goes back to Friends; its receipt's Open the
+## Wardrobe opens the Wardrobe.
 func _host_pollen_store_flow() -> PollenStoreFlow:
 	var flow := PollenStoreFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(_back_to_wardrobe)
+	flow.back_requested.connect(func():
+		if flow.return_to != "friends":
+			_back_to_wardrobe()
+			return
+		# Home first, so Friends opens over Home (its Back goes there) and a Friends that cannot open leaves Home.
+		_show_home()
+		_show_friends())
 	flow.wardrobe_requested.connect(_back_to_wardrobe)
 	return flow
 
@@ -1334,7 +1341,7 @@ func _host_pollen_play_flow() -> PollenPlayFlow:
 	flow.back_requested.connect(func():
 		if flow.return_to == "settings": settings_flow.show_settings()
 		elif flow.return_to != "store": _show_home()
-		elif pollen_store_flow.available(): pollen_store_flow.show_store()
+		elif pollen_store_flow.available(): pollen_store_flow.show_store(pollen_store_flow.return_to)
 		else: _back_to_wardrobe())
 	return flow
 
