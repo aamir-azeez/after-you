@@ -11,7 +11,8 @@ extends SceneTree
 ## home-duels-row.png, each with --suffix=<text> added to its name when given,
 ## the empty lobby in each of its arts as empty-variations/empty-a.png to
 ## empty-f.png and open-a.png to open-c.png, and the won result over each look
-## behind it as result-bg-a.png to result-bg-c.png.
+## behind it as result-bg-a.png to result-bg-c.png, with result-bg-c-lost.png
+## for the drawn look after a loss.
 const Client = preload("res://services/duels_client.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Outfit = preload("res://services/outfit.gd")
@@ -129,6 +130,17 @@ func _run() -> void:
 		lobby.open_overlay(styled)
 		await _save("result-bg-" + "abc"[index], 40, false)
 		styled.close()
+	# The drawn look after a loss: the pairs sit calmly and the sparkles go.
+	var lost_view: Dictionary = won.duplicate(true)
+	lost_view.result.outcome = "lost"
+	var calm := ResultPage.new()
+	calm.me = ME
+	calm.name_of = _name_of
+	calm.view = lost_view
+	calm.result_bg = "cheer"
+	lobby.open_overlay(calm)
+	await _save("result-bg-c-lost", 40, false)
+	calm.close()
 	var checking := ResultPage.new()
 	checking.me = ME
 	checking.name_of = _name_of
