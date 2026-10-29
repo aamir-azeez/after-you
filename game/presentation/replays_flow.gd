@@ -717,6 +717,15 @@ static func _solo_turns(row: Dictionary) -> Array:
 ## Each chapter's first slot by stage id, worked out once per chapter: bundled
 ## definitions never change while the game runs.
 static var _first_slots: Dictionary = {}
+## Each chapter's first slots in stage order, worked out once per chapter the same way.
+static var _slots_in_order: Dictionary = {}
+static func _stage_slots(chapter_key: String) -> PackedStringArray:
+	if not _slots_in_order.has(chapter_key):
+		var slots := PackedStringArray()
+		for stage: Variant in ChapterRegistry.definition(chapter_key).get("stages",[]):
+			slots.append(str(stage.get("first_player_slot","")) if stage is Dictionary else "")
+		_slots_in_order[chapter_key] = slots
+	return _slots_in_order[chapter_key]
 static func _first_slot(chapter_key: String, stage_id: String) -> String:
 	if not _first_slots.has(chapter_key):
 		var slots := {}
@@ -734,11 +743,11 @@ func _shared_turns(row: Dictionary) -> Array:
 	if _turn_tries.tries(a_hash) < 1 and _turn_tries.tries(b_hash) < 1 and _faces.kept(a_hash).is_empty() and _faces.kept(b_hash).is_empty(): return []
 	var room := _current_shared_room()
 	if room.get("family") != "chapter": return []
-	var stages: Array = ChapterRegistry.definition(str(room.get("chapter_key",""))).get("stages",[])
+	var slots := _stage_slots(str(room.get("chapter_key","")))
 	var index := int(row.get("stage_index",-1))
-	if index < 0 or index >= stages.size(): return []
+	if index < 0 or index >= slots.size(): return []
 	var you_host: bool = str(room.get("host_id","")) == str(host._relay_identity().player_id)
-	return _turn_owners(str(stages[index].get("first_player_slot","")), you_host, FriendNicknames.sentence_start(_room_partner_name(room)), a_hash, b_hash)
+	return _turn_owners(slots[index], you_host, FriendNicknames.sentence_start(_room_partner_name(room)), a_hash, b_hash)
 
 ## The stage's first turn is the host's when its first slot is p0, the
 ## guest's when it is p1; the second turn is the other player's.

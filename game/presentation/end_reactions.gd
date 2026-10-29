@@ -311,15 +311,9 @@ func _pill() -> PanelContainer:
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 2)
 	pill.add_child(row)
-	quick = _flat_button("QuickReact")
-	quick.custom_minimum_size = Vector2(TARGET + 8.0, TARGET)
-	_quick_icon = FaceIcon.new(store.last_face(), _color(), 40.0)
-	# Centred however the button is sized: a centring box fills it.
-	var centre := CenterContainer.new()
-	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	centre.add_child(_quick_icon)
-	quick.add_child(centre)
+	quick = quick_half(Vector2(TARGET + 8.0, TARGET), 40.0)
+	quick.focus_mode = Control.FOCUS_ALL
+	_quick_icon = quick_icon(quick)
 	_set_quick_face(store.last_face() if not Store.is_face(chosen) else chosen)
 	quick.pressed.connect(func(): choose(_quick_icon.face))
 	var divider := ColorRect.new()
@@ -366,9 +360,37 @@ func _flat_button(node_name: String) -> Button:
 	return button
 
 func _set_quick_face(face: String) -> void:
-	if not is_instance_valid(_quick_icon): return
-	_quick_icon.set_face(face, _color())
-	quick.accessibility_name = PlayerCopy.END_REACTIONS_QUICK % face_name(face)
+	if not is_instance_valid(quick): return
+	show_quick(quick, face, _color())
+
+## A split pill's quick half, shared by this row's pill and the in-run pill
+## (presentation/run_reactions.gd): a flat button, at least `button_size`,
+## with a face `diameter` across centred in it however it is sized. Show a
+## face with show_quick(); the caller connects pressed and styles its states.
+static func quick_half(button_size: Vector2, diameter: float) -> Button:
+	var button := Button.new()
+	button.name = "QuickReact"
+	button.flat = true
+	button.focus_mode = Control.FOCUS_NONE
+	button.mouse_filter = Control.MOUSE_FILTER_STOP
+	button.custom_minimum_size = button_size
+	var plain := StyleBoxEmpty.new()
+	for state: String in ["normal", "hover", "pressed", "hover_pressed", "disabled"]: button.add_theme_stylebox_override(state, plain)
+	var centre := CenterContainer.new()
+	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	centre.add_child(FaceIcon.new(Store.DEFAULT_FACE, "peach", diameter))
+	button.add_child(centre)
+	return button
+
+## The face a quick_half() shows.
+static func quick_icon(button: Button) -> FaceIcon:
+	return button.get_child(0).get_child(0) as FaceIcon
+
+## Shows `face` in a quick_half(), in the spirit's colour, and names the tap.
+static func show_quick(button: Button, face: String, color: String) -> void:
+	quick_icon(button).set_face(face, color)
+	button.accessibility_name = PlayerCopy.END_REACTIONS_QUICK % face_name(face)
 
 # --- The faces card -----------------------------------------------------------
 

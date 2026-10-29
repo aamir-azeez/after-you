@@ -18,6 +18,7 @@ const AtomicFile = preload("res://services/atomic_file.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Catalog = preload("res://services/reaction_catalog.gd")
 const FILE_PATH := "user://end-reactions.json"
+const SCRIPT_PATH := "res://services/end_reaction_store.gd"
 const VERSION := 1
 ## The faces and the heart: the shared catalog's (services/reaction_catalog.gd).
 const FACES: Array[String] = Catalog.FACES
@@ -33,7 +34,7 @@ const MAX_PICKS := 32
 ## The last face used, by file, as this run of the app last read, picked or
 ## used it, so a pill can show it without reading the file. A face used during
 ## a run (presentation/run_reactions.gd) waits here, marked unsaved, until
-## save_last() writes it outside play.
+## flush_last() writes it outside play.
 static var _last_known: Dictionary = {}
 static var _unsaved: Dictionary = {}
 
@@ -99,17 +100,17 @@ static func use_last(face_id: String, file: String = FILE_PATH) -> void:
 static func has_unsaved(file: String = FILE_PATH) -> bool:
 	return _unsaved.has(file)
 
-## Writes a face use_last() noted, when it changed the file's: call it outside play.
-func save_last() -> void:
-	if not _unsaved.has(path): return
-	var face_id := last_known(path)
-	_unsaved.erase(path)
-	_load()
-	if face_id.is_empty(): return
-	_last_known[path] = face_id
-	if _last == face_id: return
-	_last = face_id
-	_save()
+## Writes a face use_last() noted for `file`, when it changed the file's: one
+## read and at most one write, so call it outside play. Nothing noted, nothing read.
+static func flush_last(file: String = FILE_PATH) -> void:
+	if not _unsaved.has(file): return
+	var face_id := last_known(file)
+	_unsaved.erase(file)
+	var store: RefCounted = load(SCRIPT_PATH).new(file)
+	_last_known[file] = face_id
+	if store._last == face_id: return
+	store._last = face_id
+	store._save()
 
 ## A pick: remembered for its run and as the last face used.
 func choose(run: String, face_id: String) -> void:

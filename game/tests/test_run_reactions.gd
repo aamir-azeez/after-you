@@ -53,6 +53,8 @@ func _path(label: String) -> String:
 
 ## The default files the screens and the coordinator use; this suite runs on its own user dir.
 func _clear_default_store() -> void:
+	EndStore._last_known.clear()
+	EndStore._unsaved.clear()
 	for file: String in [RunStore.FILE_PATH, EndStore.FILE_PATH]:
 		for suffix: String in ["", ".tmp", ".backup"]: DirAccess.remove_absolute(ProjectSettings.globalize_path(file + suffix))
 
@@ -219,6 +221,8 @@ func _pill_and_card() -> void:
 		await _tap(viewport, react_rect.get_center())
 		var card: CanvasLayer = pill.faces_card
 		_check(pill.is_visible_in_tree() and pill.faces_open() and card.cells.size() == 9, "The first tap on React opens the shared faces card")
+		var marked: StyleBoxFlat = (card.cells[pill.quick_face] as Button).get_theme_stylebox("normal")
+		_check(pill.chosen == pill.quick_face and marked.border_width_left == 3 and marked.bg_color == EndReactions.PICKED_FILL, "The card marks the last face, as design 4 draws it")
 		var note: Label = card.panel.find_child("ReactionNote", true, false)
 		_check(note != null and note.text == PlayerCopy.RUN_REACTIONS_NOTE, "The card's footer says the reactions are saved with the turn")
 		var panel: Rect2 = card.panel_rect()

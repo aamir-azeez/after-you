@@ -94,27 +94,17 @@ func _init() -> void:
 	add_child(opener, false, Node.INTERNAL_MODE_FRONT)
 	pressed.connect(toggle_faces)
 	visibility_changed.connect(_on_visibility)
+	tree_exiting.connect(func(): Store.flush_last(store_path))
 
 func _build_quick() -> void:
-	quick = Button.new()
-	quick.name = "QuickReact"
-	quick.flat = true
-	quick.focus_mode = Control.FOCUS_NONE
-	quick.mouse_filter = Control.MOUSE_FILTER_STOP
+	quick = EndReactions.quick_half(Vector2(QUICK_WIDTH, SIZE.y), FACE_SIZE)
 	quick.anchor_bottom = 1.0
 	quick.offset_right = QUICK_WIDTH
-	var plain := StyleBoxEmpty.new()
 	var lit := ControlTheme.rounded(SWEEP, int(SIZE.y * 0.5))
 	lit.corner_radius_top_right = 0
 	lit.corner_radius_bottom_right = 0
-	for state: String in ["normal", "hover", "disabled", "focus"]: quick.add_theme_stylebox_override(state, plain)
 	for state: String in ["pressed", "hover_pressed"]: quick.add_theme_stylebox_override(state, lit)
-	_quick_icon = EndReactions.FaceIcon.new(quick_face, color, FACE_SIZE)
-	var centre := CenterContainer.new()
-	centre.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	centre.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	centre.add_child(_quick_icon)
-	quick.add_child(centre)
+	_quick_icon = EndReactions.quick_icon(quick)
 	quick.pressed.connect(func(): choose(quick_face))
 	add_child(quick, false, Node.INTERNAL_MODE_FRONT)
 	_show_quick_face()
@@ -150,11 +140,13 @@ func show_cooldown(ratio: float, spent: bool) -> void:
 	if is_equal_approx(ratio, _cooldown) and spent == _spent: return
 	_cooldown = ratio
 	_spent = spent
-	disabled = not can_send()
-	quick.disabled = disabled
+	var resting := not can_send()
+	# The ink of the bubble and chevron changes only when the pill rests or wakes.
+	if resting != disabled: queue_redraw()
+	disabled = resting
+	quick.disabled = resting
 	modulate.a = RESTING_ALPHA if _spent else 1.0
-	if not can_send(): close_faces()
-	queue_redraw()
+	if resting: close_faces()
 	_backdrop.queue_redraw()
 
 func toggle_faces() -> void:
@@ -162,6 +154,8 @@ func toggle_faces() -> void:
 		close_faces()
 		return
 	if not can_send() or not is_inside_tree(): return
+	# The card marks the last face, as design 4 draws it.
+	chosen = quick_face
 	faces_card = EndReactions.FacesCard.new()
 	faces_card.name = "RunReactionFaces"
 	var host := get_canvas_layer_node()
@@ -187,7 +181,7 @@ func _on_visibility() -> void:
 		_take_last()
 		return
 	close_faces()
-	if Store.has_unsaved(store_path): Store.new(store_path).save_last()
+	Store.flush_last(store_path)
 
 func _take_last() -> void:
 	var known := Store.last_known(store_path)
@@ -196,9 +190,7 @@ func _take_last() -> void:
 		_show_quick_face()
 
 func _show_quick_face() -> void:
-	if not is_instance_valid(_quick_icon): return
-	_quick_icon.set_face(quick_face, color)
-	quick.accessibility_name = PlayerCopy.END_REACTIONS_QUICK % EndReactions.face_name(quick_face)
+	if is_instance_valid(quick): EndReactions.show_quick(quick, quick_face, color)
 
 ## The divider, the speech bubble before React and the chevron after it: down
 ## while the card is shut, up while it is open (design 4).
@@ -218,22 +210,22 @@ func _draw() -> void:
 ## The pill's cream face with its edge, and the cooldown's mint sweep over it,
 ## drawn behind React's label and the quick face.
 class Back extends Control:
+	const RADIUS := int(SIZE.y * 0.5)
+	var _face := ControlTheme.rounded(FILL, RADIUS, BORDER)
+	var _sweep := ControlTheme.rounded(SWEEP, RADIUS)
+	## A straight leading edge until the sweep reaches the far end's curve.
+	var _sweep_edge := ControlTheme.rounded(SWEEP, RADIUS)
 	func _init() -> void:
 		name = "PillBack"
 		show_behind_parent = true
 		mouse_filter = Control.MOUSE_FILTER_IGNORE
+		_sweep_edge.corner_radius_top_right = 0
+		_sweep_edge.corner_radius_bottom_right = 0
 	func _draw() -> void:
 		var owner_pill := get_parent()
-		var radius := int(size.y * 0.5)
-		draw_style_box(ControlTheme.rounded(FILL, radius, BORDER), Rect2(Vector2.ZERO, size))
+		draw_style_box(_face, Rect2(Vector2.ZERO, size))
 		var ratio: float = owner_pill._cooldown
 		if ratio <= 0.0 or owner_pill._spent: return
-		var width := size.x * (1.0 - ratio)
-		if width < 1.0: return
-		var sweep := ControlTheme.rounded(SWEEP, radius)
-		# A straight leading edge until the sweep reaches the far end's curve.
-		if width < size.x - radius:
-			sweep.corner_radius_top_right = 0
-			sweep.corner_radius_bottom_right = 0
-		var inset := Rect2(Vector2(1, 1), Vector2(minf(width, size.x - 2.0), size.y - 2.0))
-		if inset.size.x >= radius: draw_style_box(sweep, inset)
+		var width := minf(size.x * (1.0 - ratio), size.x - 2.0)
+		if width < RADIUS: return
+		draw_style_box(_sweep_edge if width < size.x - RADIUS else _sweep, Rect2(Vector2(1, 1), Vector2(width, size.y - 2.0)))
