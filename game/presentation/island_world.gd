@@ -479,14 +479,18 @@ func show_keepsake_landmark(stage_id: String) -> void:
 	# keeps its own small keepsake.
 	var home: Dictionary = {} if str(descriptor.family) == "earlier" else ChapterIndex.home_keepsake(str(descriptor.family))
 	var prop: Node3D
+	var size := 0.62
 	if home.is_empty():
 		prop = KeepsakeVisual.create(self,descriptor)
 	else:
 		prop = Node3D.new()
 		prop.name = "Keepsake_" + str(descriptor.family).replace("-", "_")
-		load(str(home.keepsake.builder)).new().build(prop, {})
+		var builder: RefCounted = load(str(home.keepsake.builder)).new()
+		builder.build(prop, {})
+		# Home's keepsakes are drawn large; the corner shows one as small as it fits.
+		size = builder.landmark_scale()
 	prop.position.y = 0.17
-	prop.scale = Vector3.ONE*0.62
+	prop.scale = Vector3.ONE*size
 	keepsake_landmark.add_child(prop)
 
 func _keepsake_points(value: Variant, result: Array[Vector2]) -> void:
@@ -604,7 +608,13 @@ func _vary_island(cx: float, cz: float, width: float, depth: float, variant: int
 			Props.build({"kind": "flowers", "at": [(cx + clampf(1.0, -span, span)) * 100.0, rear * 100.0], "size": 0.8}, props, 0.0, false)
 		_: Props.build({"kind": "flowers", "at": [(cx + clampf(-0.1, -span, span)) * 100.0, rear * 100.0], "size": 0.9}, props, 0.0, false)
 
-func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Color) -> void:
+## An island's floating landform under `parent`, for islands a screen adds
+## to the level's own (Home's keepsake isles, presentation/keepsakes/home_isles.gd).
+func island_shell(cx: float, cz: float, width: float, depth: float, grass: Color, parent: Node3D) -> void:
+	_island_shell(cx, cz, width, depth, grass, parent)
+
+## `parent`: where the shell goes (the terrain when left out).
+func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Color, parent: Node3D = null) -> void:
 	# A faceted floating landform encloses the full rectangular simulation floor.
 	# Decorative bevels extend outwards; they never remove a walkable corner.
 	var hx := width/2.0
@@ -647,7 +657,7 @@ func _island_shell(cx: float, cz: float, width: float, depth: float, grass: Colo
 	shell_material.vertex_color_use_as_albedo=true
 	shell_material.cull_mode=BaseMaterial3D.CULL_DISABLED
 	shell.material_override=shell_material
-	terrain.add_child(shell)
+	(parent if parent != null else terrain).add_child(shell)
 
 func _shell_triangle(surface: SurfaceTool, a: Vector3, b: Vector3, c: Vector3, color: Color) -> void:
 	surface.set_color(color)

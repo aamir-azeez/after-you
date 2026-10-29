@@ -1,9 +1,9 @@
 extends RefCounted
 ## Shared pieces for Home's keepsakes (presentation/keepsakes/*.gd): the
-## palette, shape helpers on the world kit's cached meshes and looks, the three
-## upgrade places (the Hard footing under, the together patch beside, the top
-## anchor), and the started outline: the keepsake as one merged mesh with one
-## shared see-through look, and a dot per stage.
+## palette, shape helpers on the world kit's cached meshes and looks, the
+## upgrade pieces every keepsake shares (the Hard plinth, gold balls and vines),
+## and the started outline: the keepsake as one merged mesh with one shared
+## see-through look, and a dot per stage.
 ##
 ## Every mesh and look is cached for the session and never changed in place:
 ## lighting a lamp swaps a mesh to another cached look. Caches this file keeps
@@ -42,12 +42,11 @@ const GHOST := Color(0.29, 0.48, 0.43, 0.42)
 const DOT_SOLO := PEACH
 const DOT_FRIEND := MINT
 const DOT_DIM := Color("dfe6d6")
-## The Hard footing's height; a keepsake with Hard stands this much higher.
-const FOOT_HEIGHT := 0.2
-## Where the together piece stands: on the grass to the keepsake's right.
-const BESIDE := Vector3(0.74, 0.0, 0.12)
-## The gold tops are drawn this much larger than the concept art's.
-const TOP_SCALE := 1.33
+const STEP := Color("efe6c9")
+const PLANK := Color("c4b090")
+const POST := Color("8b7964")
+## A Hard plinth's height: a keepsake on one stands this much higher.
+const PLINTH_TOP := 0.24
 
 static var _tori: Dictionary = {}
 static var _outlines: Dictionary = {}
@@ -96,8 +95,11 @@ static func box(parent: Node3D, size: Vector3, color: Color, at: Vector3, rot: V
 static func cyl(parent: Node3D, radius: float, height: float, color: Color, at: Vector3, top: float = -1.0) -> MeshInstance3D:
 	return node(parent, Primitives.shared_mesh("cylinder", radius, height, radius if top < 0.0 else top), mat(color), at)
 
-static func sph(parent: Node3D, radius: float, color: Color, at: Vector3, size: Vector3 = Vector3.ONE) -> MeshInstance3D:
-	return node(parent, low_sphere(radius), mat(color), at, Vector3.ZERO, size)
+## A low sphere. A squashed or stretched one is baked into its mesh (round in
+## x and z, the middle of the two), so it never carries a scale that keeps it
+## out of Home's shared batches.
+static func sph(parent: Node3D, radius: float, color: Color, at: Vector3, size: Vector3 = Vector3.ONE, rot: Vector3 = Vector3.ZERO) -> MeshInstance3D:
+	return node(parent, low_sphere(radius * (size.x + size.z) * 0.5, radius * 2.0 * size.y), mat(color), at, rot)
 
 static func cone(parent: Node3D, radius: float, height: float, color: Color, at: Vector3) -> MeshInstance3D:
 	return node(parent, Primitives.shared_mesh("cone", radius, height), mat(color), at)
@@ -122,14 +124,16 @@ static func pivot(parent: Node3D, at: Vector3, label: String) -> Node3D:
 	parent.add_child(part)
 	return part
 
-## A sphere with fewer faces than the kit's, for small round parts.
-static func low_sphere(radius: float) -> Mesh:
-	var key := "sphere|%.4f" % radius
+## A sphere with fewer faces than the kit's, for small round parts; `height`
+## stretches it (its diameter when left out).
+static func low_sphere(radius: float, height: float = -1.0) -> Mesh:
+	if height < 0.0: height = radius * 2.0
+	var key := "sphere|%.4f|%.4f" % [radius, height]
 	var cached: Mesh = _tori.get(key)
 	if cached != null: return cached
 	var shape := SphereMesh.new()
 	shape.radius = radius
-	shape.height = radius * 2.0
+	shape.height = height
 	shape.radial_segments = 10
 	shape.rings = 5
 	_keep(key, shape)
@@ -163,27 +167,39 @@ static func _keep(key: String, mesh: Mesh) -> void:
 	_tori[key] = mesh
 	SessionRelease.on_exit(Callable(load("res://presentation/keepsakes/keepsake_parts.gd"), "release_cached"))
 
-# --- the upgrade places --------------------------------------------------------------
+# --- the upgrade pieces --------------------------------------------------------------
 
-## The Hard footing, `width` by `depth`: two slate steps with the snowy Hard
-## peak on the front. The keepsake itself stands FOOT_HEIGHT higher on it.
-static func footing(root: Node3D, width: float, depth: float) -> Node3D:
-	var base := pivot(root, Vector3.ZERO, "Footing")
-	box(base, Vector3(width, 0.12, depth), SLATE_DARK, Vector3(0, 0.06, 0))
-	box(base, Vector3(width - 0.12, 0.08, depth - 0.12), SLATE, Vector3(0, 0.16, 0))
-	prism(base, Vector3(0.24, 0.12, 0.02), SLATE, Vector3(0, 0.065, depth * 0.5 + 0.01))
-	prism(base, Vector3(0.1, 0.05, 0.024), SNOW, Vector3(0, 0.1, depth * 0.5 + 0.012))
+## A Hard plinth, `width` by `depth` round `at`: two slate steps with the snowy
+## Hard peak on the front, PLINTH_TOP high.
+static func plinth(root: Node3D, width: float, depth: float, at: Vector3 = Vector3.ZERO) -> Node3D:
+	var base := pivot(root, at, "Footing")
+	box(base, Vector3(width, 0.14, depth), SLATE_DARK, Vector3(0, 0.07, 0))
+	box(base, Vector3(width - 0.14, 0.1, depth - 0.14), SLATE, Vector3(0, 0.19, 0))
+	prism(base, Vector3(0.3, 0.15, 0.03), SLATE, Vector3(0, 0.075, depth * 0.5 + 0.015))
+	prism(base, Vector3(0.13, 0.065, 0.034), SNOW, Vector3(0, 0.115, depth * 0.5 + 0.017))
 	return base
-
-## The node the keepsake's own parts go under: raised onto the footing when
-## Hard is earned.
-static func body(root: Node3D, state: Dictionary) -> Node3D:
-	var part := pivot(root, Vector3(0, FOOT_HEIGHT if state.get("hard", false) else 0.0, 0), "Body")
-	return part
 
 ## A gold piece's look: glowing softly at rest, brightly while it plays.
 static func gold(bright: bool = false) -> Material:
 	return glow(GOLD_DEEP, 1.6 if bright else 0.45)
+
+## A small gold ball (the Together Hard pieces' crown sparkle).
+static func gold_ball(parent: Node3D, at: Vector3, radius: float) -> MeshInstance3D:
+	return node(parent, low_sphere(radius), gold(), at)
+
+## A gold vine from one point to another with `leaves` leaves.
+static func gold_vine(parent: Node3D, from: Vector3, to: Vector3, leaves: int) -> void:
+	bar(parent, from, to, 0.025, GOLD_DEEP)
+	for index in range(leaves):
+		var at := from.lerp(to, (index + 0.5) / leaves)
+		var side := 1.0 if index % 2 == 0 else -1.0
+		node(parent, low_sphere(0.057, 0.06), gold(), at + Vector3(0.05 * side, 0, 0.03), Vector3(0, 0, 0.6 * side))
+
+## A node `size` times larger, for a keepsake drawn bigger than its pieces.
+static func grown(parent: Node3D, size: float) -> Node3D:
+	var part := pivot(parent, Vector3.ZERO, "Grown")
+	part.scale = Vector3.ONE * size
+	return part
 
 # --- the started outline --------------------------------------------------------------
 

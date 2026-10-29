@@ -19,9 +19,9 @@ const DATA := {
 	"beds": ["water_far"],
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
-		"builder": "res://presentation/keepsakes/little_lighthouse.gd",
-		"island": "left",
-		"slot": [-1.4, -1.3],
+		"builder": "res://presentation/keepsakes/lighthouse.gd",
+		"island": "journey_left",
+		"slot": [-1.0, 2.9],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_LIGHTHOUSE_NAME,
 			"action": PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION,

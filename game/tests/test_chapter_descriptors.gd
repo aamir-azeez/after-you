@@ -22,6 +22,7 @@ const Canonical = preload("res://core/v2/canonical.gd")
 const Golden = preload("res://tests/golden_support.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const Keepsakes = preload("res://services/home_keepsake_catalog.gd")
+const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const Dressing = preload("res://content/dressing/catalog.gd")
 const IslandWorld = preload("res://presentation/island_world.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
@@ -279,7 +280,8 @@ func _home() -> void:
 
 ## Each level id has exactly one home_keepsake, on the version nothing
 ## supersedes (the offered one, or a new chapter not released yet), with a
-## builder that loads and builds, a Home island, copy and known sounds.
+## builder that loads and builds, a Home island or keepsake isle, an optional
+## yaw, copy and known sounds.
 func _home_keepsakes() -> void:
 	var levels: Dictionary = {}
 	for key: String in Index.keys():
@@ -289,9 +291,12 @@ func _home_keepsakes() -> void:
 		if keepsake.is_empty(): continue
 		levels[level].append(key)
 		_check(not Registry.SUPERSEDED.has(key), "A keepsake lives on the version nothing supersedes: move %s's home_keepsake to %s" % [key, Registry.SUPERSEDED.get(key, "")])
-		_same(_sorted(keepsake.keys()), ["builder", "copy", "island", "slot", "sounds"], "home_keepsake fields of " + key)
+		var fields := _sorted(keepsake.keys())
+		fields.erase("yaw")
+		_same(fields, ["builder", "copy", "island", "slot", "sounds"], "home_keepsake fields of " + key)
+		_check(not keepsake.has("yaw") or keepsake.yaw is float or keepsake.yaw is int, "The keepsake yaw of %s is a number" % key)
 		_check(ResourceLoader.exists(str(keepsake.get("builder"))) and load(str(keepsake.builder)).new().has_method("build"), "The keepsake builder of %s loads: %s" % [key, keepsake.get("builder")])
-		_check(keepsake.get("island") in ["left", "right"], "The keepsake of %s names a Home island" % key)
+		_check(keepsake.get("island") in ["left", "right"] or Isles.is_isle(str(keepsake.get("island"))), "The keepsake of %s names a Home island or keepsake isle" % key)
 		var slot: Variant = keepsake.get("slot")
 		_check(slot is Array and slot.size() == 2 and slot.all(func(value: Variant) -> bool: return value is float or value is int), "The keepsake slot of %s is [x, z]" % key)
 		_same(_sorted(keepsake.get("copy", {}).keys()), ["action", "hard", "name", "together", "top"], "Keepsake copy of " + key)

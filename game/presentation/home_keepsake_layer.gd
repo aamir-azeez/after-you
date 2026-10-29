@@ -1,29 +1,38 @@
 extends Node3D
-## Home's keepsakes: one per card on the Chapters page, standing on the two
-## Home islands (services/home_keepsake_states.gd decides what each shows; a
-## chapter's descriptor names its builder, presentation/keepsakes/). A view of
-## earned records, never an award source.
+## Home's keepsakes: one per card on the Chapters page, standing on the Home
+## islands and the keepsake isles (presentation/keepsakes/home_isles.gd;
+## services/home_keepsake_states.gd decides what each shows; a chapter's
+## descriptor names its builder, presentation/keepsakes/). A view of earned
+## records, never an award source.
 ##
 ## The props carry no script: their geometry sits under one plain "Props" node
 ## that this layer folds into shared batches (kit/static_batch.gd), while the
 ## moving parts a builder returns stay their own nodes, held in _held. A change
 ## of state waits REBUILD_DELAY, so a burst of awards (the backfill, a cloud
 ## merge) rebuilds once; the new set is built unseen, folded a slice a frame and
-## swapped in whole, so nothing flickers. A tap or an Explore press plays one
-## keepsake: this layer owns the Tween, ignores a second tap while it plays,
-## waits with any rebuild until it ends, and puts every part back in its rest
-## pose. Leaving Home frees the layer, and the Tween with it.
+## swapped in whole, so nothing flickers. A tap, an Explore press or the pip
+## walking into one plays one keepsake: this layer owns the Tween, ignores a
+## second start while it plays, waits with any rebuild until it ends, then eases
+## every part back to its rest pose. Leaving Home frees the layer, and the
+## Tween with it.
+##
+## In Explore the stage reports each step the pip takes (walked()); nothing
+## here runs while the pip stands still. A step can set a keepsake off (its
+## builder's trigger()), carry the pip on a ride, or take it in and out of a
+## keepsake's stay (a house, a lantern path). The pip walks on the islands, the
+## bridges and a keepsake's walkways, and never into a keepsake's solids.
 const States = preload("res://services/home_keepsake_states.gd")
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Anim = preload("res://presentation/keepsakes/keepsake_anim.gd")
 const Card = preload("res://presentation/keepsakes/keepsake_card.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
-## Home draws each keepsake this many island metres per prop unit: the size
-## at which five keepsakes with every upgrade stand on one island clear of each
-## other, the trees and the spirits' start spots.
+const Isles = preload("res://presentation/keepsakes/home_isles.gd")
+const Builder = preload("res://presentation/keepsakes/keepsake_builder.gd")
+## Home draws each keepsake this many island metres per prop unit.
 const HOME_SCALE := 1.0
-## Every keepsake faces the Home camera (its +z along the camera's ground direction).
+## A keepsake faces the Home camera (its +z along the camera's ground
+## direction) unless its descriptor turns it with a "yaw".
 const CAMERA_FLAT := Vector3(0.5547, 0, 0.8321)
 ## Taps pick the nearest keepsake within this many viewport pixels.
 const PICK_RADIUS := 40.0
@@ -36,6 +45,8 @@ const HIGHLIGHT := Color("f6efd2")
 ## past its end, and over a plank once it is within DECK_TOLERANCE of its deck.
 const CROSSING_PAD := 0.4
 const DECK_TOLERANCE := 0.05
+## An island's walkable floor stops this far inside its edges.
+const FLOOR_INSET := 0.25
 
 var _world: Node3D
 var _free_only := false
@@ -50,21 +61,32 @@ var _items: Dictionary = {}
 var _shown: Array[String] = []
 var selected_index := 0
 ## The set drawn now and the one being built: {"root", "props": {id: {"name",
-## "parts", "state"}}, "keys": {id: look key}}.
+## "parts", "state", "look", "solids"}}, "keys": {id: look key}}.
 var _set: Dictionary = {}
 var _next: Dictionary = {}
 ## Every moving part of both sets, so no fold ever takes them.
 var _held: Array[Node] = []
 var _fold: Dictionary = {}
 var _rebuild_in := -1.0
-## The tap playing now: {"id", "tween", "anim", "rest"}.
+## The tap playing now: {"id", "tween", "anim", "rest", "settling"}.
 var _play: Dictionary = {}
 var _highlight: MeshInstance3D
-var _floors: Array[Rect2] = []
+## Walkable floors and island middles by island id ("left", "right" and the isles).
+var _floors: Dictionary = {}
 var _islands: Dictionary = {}
 var _crossings: Array[Dictionary] = []
-## Sets built since configure(), for tests that prove a burst rebuilds once.
+## Per keepsake, worked out once: {"placed", "inverse", "trigger", "stay",
+## "walkways", "reach": [middle, radius] round everything a step can meet}.
+var _frames: Dictionary = {}
+## Explore: the pip that walks, the triggers it stands in and the stay it is
+## in ({"id", "visit"}).
+var _walker: Node3D
+var _in_trigger: Dictionary = {}
+var _stay: Dictionary = {}
+## Sets built since configure(), for tests that prove a burst rebuilds once,
+## and steps walked() was asked about, for tests that prove a still pip asks nothing.
 var builds := 0
+var steps := 0
 
 ## `earned`: the ledger's places (HomeKeepsakes.earned_descriptors()); `hard`:
 ## HardMode.marks(); `free_only`: a build that sells nothing.
@@ -76,6 +98,7 @@ func configure(world: Node3D, earned: Array, hard: Dictionary, together: bool, f
 	_entries = States.entries(free_only)
 	for entry: Dictionary in _entries: _builders[entry.id] = load(str(entry.keepsake.builder)).new()
 	_build_ground()
+	for entry: Dictionary in _entries: _frames[entry.id] = _frame_of(str(entry.id))
 	_highlight = Primitives.mesh_node(Primitives.ring_mesh(0.62), Primitives.shared_material(HIGHLIGHT, 0.6, HIGHLIGHT, 0.6), Vector3(0, 0.06, 0), self)
 	_highlight.name = "SelectedSlot"
 	_highlight.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
@@ -105,6 +128,7 @@ func _apply(earned: Array, hard: Dictionary, first: bool) -> void:
 		_start_fold(_set)
 	elif _keys() != _set.get("keys", {}) and (_next.is_empty() or _keys() != _next.keys):
 		_rebuild_in = REBUILD_DELAY
+		set_process(true)
 	_show_selected()
 
 ## How far a keepsake has come, to follow progress with the selection.
@@ -126,15 +150,32 @@ func _entry(id: String) -> Dictionary:
 
 # --- building and folding ---------------------------------------------------------
 
-## Where a keepsake stands: its slot from its island's middle, facing the camera.
+## Where a keepsake stands: its slot from its island's middle, facing the
+## camera unless its descriptor gives a yaw.
 func slot_transform(id: String) -> Transform3D:
+	if _frames.has(id): return _frames[id].placed
 	var entry := _entry(id)
 	var middle: Vector2 = _islands.get(str(entry.keepsake.island), Vector2.ZERO)
 	var slot: Array = entry.keepsake.slot
-	var yaw := atan2(CAMERA_FLAT.x, CAMERA_FLAT.z)
+	var yaw := float(entry.keepsake.get("yaw", atan2(CAMERA_FLAT.x, CAMERA_FLAT.z)))
 	return Transform3D(Basis(Vector3.UP, yaw).scaled(Vector3.ONE * HOME_SCALE), Vector3(middle.x + float(slot[0]), 0.0, middle.y + float(slot[1])))
 
-## The state a builder draws: the earned upgrades, and the Lantern Line's lanterns.
+## Everything about a keepsake that never changes with its state.
+func _frame_of(id: String) -> Dictionary:
+	var placed := slot_transform(id)
+	var builder: RefCounted = _builders[id]
+	var trigger: Dictionary = builder.trigger()
+	var stay: Rect2 = builder.stay()
+	var walkways: Array[Rect2] = builder.walkways()
+	var reach := builder.footprint() as Rect2
+	if trigger.has("area"): reach = reach.merge(trigger.area)
+	if trigger.has("line"): reach = reach.expand(trigger.line[0]).expand(trigger.line[1])
+	if stay.has_area(): reach = reach.merge(stay)
+	var middle := placed * Vector3(reach.get_center().x, 0, reach.get_center().y)
+	return {"placed": placed, "inverse": placed.affine_inverse(), "trigger": trigger, "stay": stay, "walkways": walkways,
+		"reach": [Vector2(middle.x, middle.z), reach.size.length() * 0.5 * HOME_SCALE + 0.3]}
+
+## The state a builder draws: the earned upgrades, and the Lantern Walk's lanterns.
 func _look(id: String) -> Dictionary:
 	var item: Dictionary = _items[id]
 	var state := {"together": item.together, "hard": item.hard, "top": item.top}
@@ -162,11 +203,18 @@ func _make_set(shown_now: bool) -> Dictionary:
 			var plain := {}
 			if id == States.EARLIER: plain.lanterns = state.lanterns.map(func(_lit: bool) -> bool: return false)
 			Parts.outline(holder, builder, "%s|%d" % [id, item.stages.size()], item.stages if item.look == "started" else [], plain)
-		for part: Variant in parts.values():
-			if part is Node: _held.append(part)
-		props[id] = {"name": holder.name, "parts": parts, "state": state, "look": item.look}
+		for part: Node in _moving(parts): _held.append(part)
+		var solids: Array[Rect2] = builder.solids(state if item.look == "keepsake" else {})
+		props[id] = {"name": holder.name, "parts": parts, "state": state, "look": item.look, "solids": solids}
 	builds += 1
 	return {"root": root, "props": props, "keys": _keys()}
+
+## A builder's moving parts: its parts that are nodes.
+static func _moving(parts: Dictionary) -> Array[Node]:
+	var result: Array[Node] = []
+	for part: Variant in parts.values():
+		if part is Node: result.append(part)
+	return result
 
 func _start_fold(target: Dictionary) -> void:
 	_fold = StaticBatch.start(target.root, [self], {"containers": true})
@@ -179,6 +227,7 @@ func _process(delta: float) -> void:
 			else: _begin_rebuild()
 	if not _fold.is_empty() and StaticBatch.step(_fold, FOLD_SLICE_USEC): _fold = {}
 	if not _next.is_empty() and _fold.is_empty() and _play.is_empty(): _swap()
+	if _rebuild_in < 0.0 and _fold.is_empty() and _next.is_empty(): set_process(false)
 
 func _begin_rebuild() -> void:
 	if not _next.is_empty():
@@ -191,6 +240,8 @@ func _begin_rebuild() -> void:
 
 func _swap() -> void:
 	var old: Node3D = _set.get("root")
+	var staying := str(_stay.get("id", ""))
+	_stay = {}
 	_set = _next
 	_next = {}
 	(_set.root as Node3D).visible = true
@@ -200,25 +251,27 @@ func _swap() -> void:
 	(_set.root as Node3D).name = "Props"
 	_held.clear()
 	for id: String in _set.props:
-		for part: Variant in _set.props[id].parts.values():
-			if part is Node: _held.append(part)
+		for part: Node in _moving(_set.props[id].parts): _held.append(part)
+	# A pip inside a stay when the set changed walks on inside the new one.
+	if not staying.is_empty() and is_instance_valid(_walker): _update_stay(_walker.position)
 
 ## Whether the set drawn now is still being built or folded.
 func settling() -> bool:
 	return not _next.is_empty() or not _fold.is_empty() or _rebuild_in >= 0.0
 
-# --- taps ---------------------------------------------------------------------------
+# --- playing ------------------------------------------------------------------------
 
 ## Whether a keepsake can play now: drawn earned in the set on screen (a
 ## keepsake just earned plays once its rebuilt set is swapped in).
 func playable(id: String) -> bool:
 	return _set.get("props", {}).get(id, {}).get("look") == "keepsake"
 
-## Plays a keepsake's tap. A second tap on the one playing changes nothing; a
-## tap on another ends the first in its rest pose and plays the new one. False
-## for a keepsake that is not drawn earned.
-func play(id: String) -> bool:
-	if not playable(id) or _play.get("id") == id: return false
+## Plays a keepsake. A second start on the one playing changes nothing; a
+## start on another ends the first in its rest pose and plays the new one,
+## except during a ride, which always finishes. `rider`: the pip, when it set
+## the keepsake off in Explore. False for a keepsake that is not drawn earned.
+func play(id: String, rider: Node3D = null) -> bool:
+	if not playable(id) or _play.get("id") == id or riding(): return false
 	if not _play.is_empty(): _end_play()
 	var prop: Dictionary = _set.props[id]
 	var holder := (_set.root as Node3D).get_node_or_null(NodePath(prop.name)) as Node3D
@@ -226,12 +279,21 @@ func play(id: String) -> bool:
 	var builder: RefCounted = _builders[id]
 	var state: Dictionary = prop.state.duplicate()
 	state.sounds = _entry(id).keepsake.get("sounds", {})
+	# Where the other spirit stands, in the keepsake's frame (the Crossroads points there).
+	var other: Variant = _world.get("actors").get("b") if is_instance_valid(_world) and _world.get("actors") is Dictionary else null
+	if other is Node3D and is_instance_valid(other):
+		var toward := (transform * slot_transform(id)).affine_inverse() * (other as Node3D).position
+		state.toward = Vector2(toward.x, toward.z)
 	var anim := Anim.new()
 	anim.cue = cue
 	anim.reduced = _reduced()
 	anim.fx = Node3D.new()
 	anim.fx.name = "Tap"
 	holder.add_child(anim.fx)
+	if is_instance_valid(rider):
+		anim.rider = rider
+		anim.rider_frame = transform * slot_transform(id)
+		anim.rider_from = anim.rider_frame.affine_inverse() * rider.position
 	var tween := create_tween().set_parallel(true)
 	if not anim.reduced: anim.tween = tween
 	var time := 0.0
@@ -244,8 +306,8 @@ func play(id: String) -> bool:
 		if is_instance_valid(node) and not anim.spawned.has(node): rest.append(_rest_of(node))
 	if anim.reduced: anim.apply_jumps()
 	tween.tween_interval(REDUCED_HOLD if anim.reduced else time)
-	tween.finished.connect(_end_play)
-	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest}
+	tween.finished.connect(_settle)
+	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest, "settling": false}
 	return true
 
 static func _rest_of(node: Node) -> Array:
@@ -253,10 +315,33 @@ static func _rest_of(node: Node) -> Array:
 	var look: Material = (node as MeshInstance3D).material_override if node is MeshInstance3D else null
 	return [node, shape.transform if shape != null else Transform3D.IDENTITY, shape.visible if shape != null else true, look]
 
+## The beats are over: the pip lands, the tap's own parts go, and every moved
+## part eases back to rest over SETTLE seconds (at once with Reduce motion).
+func _settle() -> void:
+	if _play.is_empty() or _play.settling: return
+	var anim: RefCounted = _play.anim
+	_land(anim)
+	if is_instance_valid(anim.fx): anim.fx.visible = false
+	var moved: Array = (_play.rest as Array).filter(func(rest: Array) -> bool: return is_instance_valid(rest[0]) and rest[0] is Node3D and (rest[0] as Node3D).transform != rest[1])
+	if anim.reduced or moved.is_empty():
+		_end_play()
+		return
+	var tween := create_tween().set_parallel(true)
+	for rest: Array in moved: tween.tween_property(rest[0], "transform", rest[1], Builder.SETTLE).set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN_OUT)
+	tween.finished.connect(_end_play)
+	_play.tween = tween
+	_play.settling = true
+
+## Puts a carried pip down where its ride ends.
+func _land(anim: RefCounted) -> void:
+	if anim.landing != null and is_instance_valid(anim.rider): anim.rider.position = anim.landing
+	anim.landing = null
+
 func _end_play() -> void:
 	if _play.is_empty(): return
 	var anim: RefCounted = _play.anim
 	if is_instance_valid(_play.tween): (_play.tween as Tween).kill()
+	_land(anim)
 	for rest: Array in _play.rest:
 		var node: Variant = rest[0]
 		if not is_instance_valid(node): continue
@@ -265,19 +350,123 @@ func _end_play() -> void:
 			(node as Node3D).visible = rest[2]
 		if node is MeshInstance3D: (node as MeshInstance3D).material_override = rest[3]
 	for part: Node in anim.spawned:
-		if is_instance_valid(part): part.queue_free()
-	if is_instance_valid(anim.fx): anim.fx.queue_free()
+		if not is_instance_valid(part): continue
+		if part.get_parent() != null: part.get_parent().remove_child(part)
+		part.queue_free()
+	if is_instance_valid(anim.fx):
+		if anim.fx.get_parent() != null: anim.fx.get_parent().remove_child(anim.fx)
+		anim.fx.queue_free()
 	_play = {}
 
-## Ends a tap now, in its rest pose.
+## Ends a tap now, in its rest pose (a carried pip lands at its ride's end).
 func stop_play() -> void:
 	_end_play()
 
+## Whether a keepsake is playing or easing back to rest.
 func playing() -> bool:
 	return not _play.is_empty()
 
+## Whether a ride is carrying the pip: the stage leaves it to the ride.
+func riding() -> bool:
+	return not _play.is_empty() and not _play.settling and (_play.anim as RefCounted).landing != null
+
 func _reduced() -> bool:
 	return is_instance_valid(_world) and bool(_world.get("reduced_motion"))
+
+# --- Explore --------------------------------------------------------------------------
+
+## The pip took a step in Explore, from `from` to `to`: it sets off what it
+## walked into or through (unless a keepsake is playing), and walks in, along
+## and out of a stay. Called only for a step, so nothing here runs while the
+## pip stands still.
+func walked(from: Vector3, to: Vector3, walker: Node3D) -> void:
+	steps += 1
+	_walker = walker
+	if riding(): return
+	var a2 := Vector2(to.x, to.z)
+	var b2 := Vector2(from.x, from.z)
+	for id: String in _shown:
+		var frame: Dictionary = _frames[id]
+		var reach: Array = frame.reach
+		if (reach[0] as Vector2).distance_to(a2) > float(reach[1]) and (reach[0] as Vector2).distance_to(b2) > float(reach[1]):
+			_in_trigger.erase(id)
+			continue
+		var trigger: Dictionary = frame.trigger
+		if trigger.is_empty() or not playable(id): continue
+		var inverse: Transform3D = frame.inverse
+		var start := inverse * Vector3(from.x, 0, from.z)
+		var end := inverse * Vector3(to.x, 0, to.z)
+		var fire := false
+		if trigger.has("line"):
+			fire = Geometry2D.segment_intersects_segment(Vector2(start.x, start.z), Vector2(end.x, end.z), trigger.line[0], trigger.line[1]) != null
+		elif trigger.has("area"):
+			var inside: bool = (trigger.area as Rect2).has_point(Vector2(end.x, end.z))
+			fire = inside and not _in_trigger.get(id, false)
+			_in_trigger[id] = inside
+		# A walk never cuts another keepsake off mid play: it waits for the pip
+		# to walk in again. A tap or the Explore action still can.
+		if fire and not playing(): play(id, walker)
+	_update_stay(to)
+
+## Walks the pip in, along or out of a stay at `at`.
+func _update_stay(at: Vector3) -> void:
+	var inside := ""
+	var local := Vector2.ZERO
+	for id: String in _shown:
+		var stay: Rect2 = _frames[id].stay
+		if not stay.has_area() or not playable(id): continue
+		var point: Vector3 = _frames[id].inverse * Vector3(at.x, 0, at.z)
+		if stay.has_point(Vector2(point.x, point.z)):
+			inside = id
+			local = Vector2(point.x, point.z)
+			break
+	if str(_stay.get("id", "")) != inside: leave_stay()
+	if inside.is_empty(): return
+	var prop: Dictionary = _set.props[inside]
+	var state: Dictionary = prop.state.duplicate()
+	state.sounds = _entry(inside).keepsake.get("sounds", {})
+	if _stay.is_empty():
+		var holder := (_set.root as Node3D).get_node_or_null(NodePath(prop.name)) as Node3D
+		if holder == null: return
+		var visit := Node3D.new()
+		visit.name = "Visit"
+		holder.add_child(visit)
+		_stay = {"id": inside, "visit": visit}
+		_sound(_builders[inside].arrive(visit, prop.parts, state))
+	_sound(_builders[inside].follow(_stay.visit, prop.parts, state, local))
+
+func _sound(name: String) -> void:
+	if not name.is_empty() and cue.is_valid(): cue.call(name)
+
+## The pip left its stay (or Explore ended): the keepsake is put back as it was.
+func leave_stay() -> void:
+	if _stay.is_empty(): return
+	var id: String = _stay.id
+	var prop: Dictionary = _set.get("props", {}).get(id, {})
+	if not prop.is_empty(): _builders[id].depart(prop.parts, prop.state)
+	var visit: Variant = _stay.visit
+	if is_instance_valid(visit):
+		if (visit as Node).get_parent() != null: (visit as Node).get_parent().remove_child(visit)
+		(visit as Node).queue_free()
+	_stay = {}
+
+## The stay the pip is in, or "".
+func staying() -> String:
+	return str(_stay.get("id", ""))
+
+## How high the pip stands at `at`: a stay's floor (a raised house), else 0.
+func ground_height(at: Vector3) -> float:
+	if _stay.is_empty(): return 0.0
+	var id: String = _stay.id
+	var point: Vector3 = _frames[id].inverse * Vector3(at.x, 0, at.z)
+	return float(_builders[id].floor(_set.props[id].state, Vector2(point.x, point.z)))
+
+## Explore ended: any ride lands, any stay is left, and nothing is half set off.
+func end_explore() -> void:
+	if riding(): stop_play()
+	leave_stay()
+	_in_trigger.clear()
+	_walker = null
 
 # --- the card ---------------------------------------------------------------------------
 
@@ -344,6 +533,15 @@ func _show_selected() -> void:
 	_highlight.position = slot_transform(_shown[selected_index]).origin + Vector3(0, 0.04, 0)
 	_highlight.scale = Vector3.ONE * HOME_SCALE
 
+## Where the selected keepsake stands, in this layer's space (for the camera).
+func selected_point() -> Vector3:
+	return Vector3.ZERO if _shown.is_empty() else point_of(_shown[selected_index])
+
+## A keepsake's middle, a little above its ground, in this layer's space.
+func point_of(id: String) -> Vector3:
+	var middle: Vector2 = _builders[id].footprint().get_center()
+	return slot_transform(id) * Vector3(middle.x, 0.6, middle.y)
+
 # --- picking, walking and the ground ------------------------------------------------------
 
 ## The nearest shown keepsake to a viewport point, or "" when none is in reach.
@@ -352,7 +550,8 @@ func pick(camera: Camera3D, point: Vector2, radius: float = PICK_RADIUS) -> Stri
 	var best_distance := radius
 	for id: String in _shown:
 		var placed := slot_transform(id)
-		for local: Vector3 in [Vector3(0, 0.45, 0), Vector3(0, 0.15, 0), Parts.BESIDE + Vector3(0, 0.25, 0)]:
+		var middle: Vector2 = _builders[id].footprint().get_center()
+		for local: Vector3 in [Vector3(0, 0.45, 0), Vector3(0, 0.15, 0), Vector3(middle.x, 0.3, middle.y), Vector3(middle.x, 1.1, middle.y)]:
 			var anchor := global_transform * (placed * local)
 			if camera.is_position_behind(anchor): continue
 			var distance := camera.unproject_position(anchor).distance_to(point)
@@ -372,42 +571,70 @@ func nearest(point: Vector3, reach: float) -> String:
 			best_distance = gap
 	return best
 
-## Whether a spirit standing at `point`, `margin` metres round, would stand in a keepsake.
+## Whether a spirit standing at `point`, `margin` metres round, would stand in
+## a keepsake's solids.
 func blocks(point: Vector3, margin: float) -> bool:
 	for id: String in _shown:
-		if distance(id, point) < margin: return true
+		if _solid_distance(id, point) < margin: return true
 	return false
 
 ## Whether a step from `from` to `to` takes a spirit nearer than `margin` to a
-## keepsake and nearer than it already was, so a spirit a keepsake appeared
-## beside can always walk away from it.
+## keepsake's solids and nearer than it already was, so a spirit a keepsake
+## appeared beside can always walk away from it.
 func blocks_step(from: Vector3, to: Vector3, margin: float) -> bool:
 	for id: String in _shown:
-		var after := distance(id, to)
-		if after < margin and after < distance(id, from): return true
+		var after := _solid_distance(id, to)
+		if after < margin and after < _solid_distance(id, from): return true
 	return false
 
 ## How far a point is outside a keepsake's ground (0 inside), in metres.
 func distance(id: String, point: Vector3) -> float:
-	var local := slot_transform(id).affine_inverse() * Vector3(point.x, 0.0, point.z)
-	var area: Rect2 = _builders[id].footprint()
-	var flat := Vector2(local.x, local.z)
+	return _rect_distance(_builders[id].footprint(), _local(id, point))
+
+## How far a point is from a keepsake's nearest solid (0 inside one).
+func _solid_distance(id: String, point: Vector3) -> float:
+	var local := _local(id, point)
+	var best := INF
+	for rect: Rect2 in _set.get("props", {}).get(id, {}).get("solids", []): best = minf(best, _rect_distance(rect, local))
+	return best
+
+func _local(id: String, point: Vector3) -> Vector2:
+	var local: Vector3 = (_frames[id].inverse if _frames.has(id) else slot_transform(id).affine_inverse()) * Vector3(point.x, 0.0, point.z)
+	return Vector2(local.x, local.z)
+
+static func _rect_distance(area: Rect2, flat: Vector2) -> float:
 	var inside := Vector2(clampf(flat.x, area.position.x, area.end.x), clampf(flat.y, area.position.y, area.end.y))
 	return flat.distance_to(inside) * HOME_SCALE
 
 ## The ground a keepsake covers, in island metres: its footprint's corners.
 func ground(id: String) -> PackedVector2Array:
-	var area: Rect2 = _builders[id].footprint()
-	var placed := slot_transform(id)
+	return _corners(slot_transform(id), _builders[id].footprint())
+
+## The ground each of a keepsake's solids covers, in island metres.
+func solid_grounds(id: String) -> Array[PackedVector2Array]:
+	var result: Array[PackedVector2Array] = []
+	for rect: Rect2 in _set.get("props", {}).get(id, {}).get("solids", []): result.append(_corners(slot_transform(id), rect))
+	return result
+
+## Where a keepsake's trigger area or stay is, in island metres (its middle), or null.
+func trigger_point(id: String) -> Variant:
+	var trigger: Dictionary = _frames[id].trigger
+	var area: Rect2 = trigger.get("area", _frames[id].stay)
+	if not area.has_area(): return null
+	return slot_transform(id) * Vector3(area.get_center().x, 0, area.get_center().y)
+
+static func _corners(placed: Transform3D, area: Rect2) -> PackedVector2Array:
 	var corners := PackedVector2Array()
 	for corner: Vector2 in [area.position, Vector2(area.end.x, area.position.y), area.end, Vector2(area.position.x, area.end.y)]:
 		var at := placed * Vector3(corner.x, 0, corner.y)
 		corners.append(Vector2(at.x, at.z))
 	return corners
 
-## The Home island floors, their middles and the Home bridge, from the level
-## the world shows. The bridge's planks are the world's own, so its deck is
-## read as drawn.
+## The island floors, their middles and the bridges: the two Home islands and
+## their lowering bridge from the level the world shows (its planks are the
+## world's own, so its deck is read as drawn), and the isles a keepsake stands
+## on (presentation/keepsakes/home_isles.gd), built here with their fixed
+## plank bridges.
 func _build_ground() -> void:
 	var level: Dictionary = _world.current_level
 	var bounds: Array = level.get("bounds", [-560, -290, 560, 290])
@@ -415,23 +642,42 @@ func _build_ground() -> void:
 	var bridge: Dictionary = level.get("bridge", {"z": 0, "width": 180})
 	var left := Rect2(float(bounds[0]) / 100.0, float(bounds[1]) / 100.0, float(gap[0] - bounds[0]) / 100.0, float(bounds[3] - bounds[1]) / 100.0)
 	var right := Rect2(float(gap[1]) / 100.0, float(bounds[1]) / 100.0, float(bounds[2] - gap[1]) / 100.0, float(bounds[3] - bounds[1]) / 100.0)
+	var isles: Array = []
+	for entry: Dictionary in _entries:
+		var island := str(entry.keepsake.island)
+		if Isles.is_isle(island) and not isles.has(island): isles.append(island)
+	Isles.build(_world, _world.terrain, isles)
 	_islands = {"left": left.get_center(), "right": right.get_center()}
-	_floors.assign([left.grow(-0.25), right.grow(-0.25)])
+	_floors = {"left": left.grow(-FLOOR_INSET), "right": right.grow(-FLOOR_INSET)}
+	var isle_floors: Dictionary = Isles.floors(isles, FLOOR_INSET)
+	for id: String in isle_floors:
+		_floors[id] = isle_floors[id]
+		_islands[id] = Isles.ISLES[id].center
 	var start := Vector3(float(gap[0]) / 100.0, 0.0, float(bridge.get("z", 0)) / 100.0)
 	var planks: Array = _world.bridge_parts if "bridge_parts" in _world else []
 	var deck: float = _world.BRIDGE_RAISED_Y if "home_bridge_raised" in _world else -0.10
 	_crossings.assign([{"inverse": Transform3D(Basis.looking_at(Vector3.RIGHT, Vector3.UP), start).affine_inverse(),
-		"half": float(bridge.get("width", 180)) / 200.0 - 0.2, "length": float(gap[1] - gap[0]) / 100.0, "planks": planks, "deck": deck}])
+		"half": float(bridge.get("width", 180)) / 200.0 - 0.2, "length": float(gap[1] - gap[0]) / 100.0, "planks": planks, "deck": deck, "fixed": false}])
+	for ends: Array in Isles.bridges(isles):
+		var from: Vector2 = ends[0]
+		var to: Vector2 = ends[1]
+		var toward := Vector3(to.x - from.x, 0, to.y - from.y)
+		_crossings.append({"inverse": Transform3D(Basis.looking_at(toward, Vector3.UP), Vector3(from.x, 0, from.y)).affine_inverse(),
+			"half": Isles.BRIDGE_WIDTH * 0.5 - 0.2, "length": toward.length(), "planks": [], "deck": 0.0, "fixed": true})
 
-## An island's floor (inset from its edges) in island metres: "left" or "right".
+## An island's floor (inset from its edges) in island metres, by island id.
 func island_floor(island: String) -> Rect2:
-	return _floors[0 if island == "left" else 1]
+	return _floors.get(island, Rect2())
+
+## The island ids this Home stands keepsakes on, and the isles built.
+func island_ids() -> Array:
+	return _floors.keys()
 
 ## The gold spirit's room round a keepsake in Explore.
 const WALK_CLEARANCE := 0.12
 
-## True where an Explore walk may stand: on a Home island or a crossing that
-## carries the spirit, and not inside a keepsake.
+## True where an Explore walk may stand: on an island, a crossing that carries
+## the spirit or a keepsake's walkway, and not inside a keepsake.
 func walkable(point: Vector3) -> bool:
 	if blocks(point, WALK_CLEARANCE): return false
 	return _ground(point)
@@ -442,10 +688,16 @@ func can_step(from: Vector3, to: Vector3) -> bool:
 
 func _ground(point: Vector3) -> bool:
 	var at := Vector2(point.x, point.z)
-	for rect: Rect2 in _floors:
+	for rect: Rect2 in _floors.values():
 		if rect.has_point(at): return true
 	for crossing: Dictionary in _crossings:
 		if _carries(crossing, point): return true
+	for id: String in _shown:
+		var walkways: Array[Rect2] = _frames[id].walkways
+		if walkways.is_empty(): continue
+		var local := _local(id, point)
+		for rect: Rect2 in walkways:
+			if rect.has_point(local): return true
 	return false
 
 ## How far along the crossing `point` is, or NAN when it is off to one side
@@ -458,15 +710,17 @@ func _carries(crossing: Dictionary, point: Vector3) -> bool:
 	var along := _along(crossing, point, 0.0)
 	var length: float = crossing.length
 	if is_nan(along) or along < -CROSSING_PAD or along > length + CROSSING_PAD: return false
-	if along <= 0.0 or along >= length: return true
+	if crossing.fixed or along <= 0.0 or along >= length: return true
 	var planks: Array = crossing.planks
 	if planks.is_empty(): return false
 	var plank: Node3D = planks[mini(int(along / length * planks.size()), planks.size() - 1)]
 	return is_instance_valid(plank) and plank.position.y >= float(crossing.deck) - DECK_TOLERANCE
 
-## True while `point` is within `reach` of the Home bridge, so Explore should raise it.
+## True while `point` is within `reach` of the Home bridge, so Explore should
+## raise it. The isles' plank bridges never lower.
 func near_lowering_crossing(point: Vector3, reach: float) -> bool:
 	for crossing: Dictionary in _crossings:
+		if crossing.fixed: continue
 		var along := _along(crossing, point, reach)
 		if not is_nan(along) and along >= -CROSSING_PAD - reach and along <= float(crossing.length) + CROSSING_PAD + reach: return true
 	return false

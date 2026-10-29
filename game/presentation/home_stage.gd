@@ -58,6 +58,9 @@ static var _heading: FontVariation
 const DEFAULT_SIZE := 15.7
 const MIN_SIZE := 8.0
 const MAX_SIZE := 25.0
+## How far Home's view pans (camera-plane units of DEFAULT_SIZE): enough to
+## bring the keepsake isles behind and beside the Home islands into view.
+const HOME_PAN := Vector2(0.42, 0.40)
 const WALK_SPEED := 0.52
 const SEPARATION := 0.92
 # A tap is a short, nearly still press near a spirit; anything else stays a gesture.
@@ -146,6 +149,14 @@ var _stick: Control
 var _explore_focus := Vector3.ZERO
 var _explore_hidden: Array[CanvasItem] = []
 var _explore_return: Dictionary = {}
+## Explore asks the keepsakes again on the next frame (Explore just began)
+## though the spirit has not stepped.
+var _explore_recheck := false
+## Where Home's view is easing its pan to, to show a keepsake picked on the
+## card that stands off the stage (null when still).
+var _pan_goal: Variant = null
+## Where the explorer stood last frame: any change since is a step.
+var _explore_last := Vector3.ZERO
 var _greeting_left := 0.0
 ## The island's fold while it runs over frames ({} once done).
 var _fold_job: Dictionary = {}
@@ -179,7 +190,7 @@ func _ready() -> void:
 	_exploration.auto_return = false
 	_exploration.minimum_zoom = MIN_SIZE / DEFAULT_SIZE
 	_exploration.maximum_zoom = MAX_SIZE / DEFAULT_SIZE
-	_exploration.maximum_pan = Vector2(0.20, 0.18)
+	_exploration.maximum_pan = HOME_PAN
 	_exploration.allowed = _allowed
 	add_child(_exploration)
 	_explore_view.manual = true
@@ -512,7 +523,8 @@ func _page_button(offset: int) -> Button:
 	button.pressed.connect(func():
 		if not is_instance_valid(_keepsake_layer): return
 		_keepsake_layer.select_offset(offset)
-		_update_keepsake_labels())
+		_update_keepsake_labels()
+		frame_selected())
 	return button
 
 func _box_label(font_size: int, color: Color, parent: Node) -> Label:
@@ -597,6 +609,7 @@ func _gesture(event: InputEvent) -> bool:
 	var before := zoom_target
 	_view().zoom_ratio = zoom_target / _base_size()
 	var handled := _view().handle_event(event)
+	if handled: _pan_goal = null
 	_sync_zoom()
 	if (event is InputEventScreenDrag or event is InputEventMagnifyGesture) and zoom_target != before:
 		zoom_size = zoom_target
@@ -706,6 +719,7 @@ func _spirit_role_near(point: Vector2) -> String:
 	return best
 
 func _reset_view() -> void:
+	_pan_goal = null
 	_view().reset_view()
 	zoom_target = _base_size()
 
@@ -730,6 +744,7 @@ func _process(delta: float) -> void:
 	# Settled sizes stop changing, so a still camera draws nothing new.
 	if _world.reduced_motion or absf(zoom_size-zoom_target) < 0.001: zoom_size = zoom_target
 	else: zoom_size = lerpf(zoom_size,zoom_target,1.0-exp(-12.0*step))
+	_ease_pan(step)
 	_frame_camera()
 	_world.update_spirit_attention()
 	for role: String in _actors:
@@ -751,6 +766,29 @@ func _process(delta: float) -> void:
 		_world.actor_targets[role] = actor.position
 		actor.advance_motion(actor.position-previous,step,_world.reduced_motion)
 	_world.finish_spirit_motion()
+
+## Eases Home's view toward a keepsake the card picked (frame_selected()).
+func _ease_pan(step: float) -> void:
+	if _pan_goal == null or _exploring: return
+	var goal: Vector2 = _pan_goal
+	if _world.reduced_motion or _exploration.pan.distance_to(goal) < 0.002:
+		_exploration.pan = goal
+		_pan_goal = null
+	else:
+		_exploration.pan = _exploration.pan.lerp(goal, 1.0 - exp(-8.0 * step))
+
+## Pans Home's view, within its bounds, so the selected keepsake stands in the
+## island stage, when the card picks one that is off it.
+func frame_selected() -> void:
+	if _exploring or not is_instance_valid(_keepsake_layer) or not is_instance_valid(_world) or not is_instance_valid(_world.camera): return
+	var camera: Camera3D = _world.camera
+	var screen := camera.unproject_position(_keepsake_layer.to_global(_keepsake_layer.selected_point()))
+	var stage := _stage_rect()
+	var room := stage.grow_individual(-80, -110, -80, -200)
+	if room.has_point(screen): return
+	var delta := stage.get_center() - screen
+	var height := maxf(get_viewport_rect().size.y, 1.0)
+	_pan_goal = (_exploration.pan + Vector2(-delta.x, delta.y) * (zoom_target / DEFAULT_SIZE) / height).clamp(-HOME_PAN, HOME_PAN)
 
 func _frame_camera() -> void:
 	var camera: Camera3D = _world.camera
@@ -807,7 +845,7 @@ func _create_explore_controls() -> void:
 	_explore_action.visible = false
 	_explore_action.pressed.connect(func() -> void:
 		var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
-		if not item.is_empty(): play_keepsake(str(item.id)))
+		if not item.is_empty() and is_instance_valid(_keepsake_layer): _keepsake_layer.play(str(item.id), _actors.get("a") if _exploring else null))
 	add_child(_explore_action)
 
 func is_exploring() -> bool:
@@ -842,7 +880,10 @@ func set_exploring(on: bool) -> void:
 					(node as CanvasItem).visible = false
 		_explore_focus = actor.position
 		zoom_target = EXPLORE_SIZE
+		_explore_recheck = true
+		_explore_last = actor.position
 	else:
+		if is_instance_valid(_keepsake_layer): _keepsake_layer.end_explore()
 		for node: CanvasItem in _explore_hidden:
 			if is_instance_valid(node): node.visible = true
 		_explore_hidden.clear()
@@ -859,10 +900,18 @@ func set_exploring(on: bool) -> void:
 	_frame_camera()
 
 ## One explore step: the joystick moves the spirit across the screen's ground
-## directions, anywhere a Home island or bridge is underfoot and no keepsake
-## stands; the camera follows and a keepsake close by is named in the box.
+## directions, anywhere a Home island, isle, bridge or walkway is underfoot and
+## no keepsake stands; the camera follows. Only a step that moves the spirit
+## asks anything of the keepsakes (what it sets off, the stay it walks in, the
+## one it names); a spirit standing still asks nothing. A ride carries the
+## spirit itself until it lands.
 func _walk(actor: Node3D, step: float) -> void:
+	if _keepsake_layer.riding():
+		_explore_last = actor.position
+		_follow_explorer(actor, step)
+		return
 	var push: Vector2 = _stick.value
+	var from := _explore_last
 	if push.length() > 0.0:
 		var across := Vector3(0.832, 0, -0.555)
 		var away := Vector3(-0.555, 0, -0.832)
@@ -873,14 +922,24 @@ func _walk(actor: Node3D, step: float) -> void:
 			if _keepsake_layer.can_step(actor.position, candidate):
 				actor.position = candidate
 				break
-	# The bridge rises as the spirit comes near and carries it only once its
-	# planks are drawn up (home_keepsake_layer.gd).
-	var reach := BRIDGE_RELEASE if _world.home_bridge_raised else BRIDGE_NOTICE
-	_world.home_bridge_raised = _keepsake_layer.near_lowering_crossing(actor.position, reach)
+	var moved := actor.position != from
+	if moved:
+		_keepsake_layer.walked(from, actor.position, actor)
+		if not _keepsake_layer.riding(): actor.position.y = _keepsake_layer.ground_height(actor.position)
+	_explore_last = actor.position
+	if moved or _explore_recheck:
+		_explore_recheck = false
+		# The bridge rises as the spirit comes near and carries it only once its
+		# planks are drawn up (home_keepsake_layer.gd).
+		var reach := BRIDGE_RELEASE if _world.home_bridge_raised else BRIDGE_NOTICE
+		_world.home_bridge_raised = _keepsake_layer.near_lowering_crossing(actor.position, reach)
+		var near: String = _keepsake_layer.nearest(actor.position, EXPLORE_NOTICE)
+		if not near.is_empty() and near != str(_keepsake_layer.selected_item().get("id", "")): select_keepsake(near)
+		else: _update_explore_action()
+	_follow_explorer(actor, step)
+
+func _follow_explorer(actor: Node3D, step: float) -> void:
 	_explore_focus = actor.position if _world.reduced_motion else _explore_focus.lerp(actor.position, 1.0 - exp(-8.0 * step))
-	var near: String = _keepsake_layer.nearest(actor.position, EXPLORE_NOTICE)
-	if not near.is_empty() and near != str(_keepsake_layer.selected_item().get("id", "")): select_keepsake(near)
-	else: _update_explore_action()
 
 func _clear_position(role: String, candidate: Vector3) -> bool:
 	if not _floor.has_point(Vector2(candidate.x,candidate.z)): return false

@@ -68,8 +68,8 @@ const DATA := {
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/tide_pool.gd",
-		"island": "right",
-		"slot": [0.9, 0.7],
+		"island": "tide",
+		"slot": [-0.3, -1.4],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_TIDE_POOL_NAME,
 			"action": PlayerCopy.KEEPSAKE_TIDE_POOL_ACTION,

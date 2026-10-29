@@ -1,9 +1,10 @@
 extends SceneTree
 ## Every keepsake builder (presentation/keepsakes/, named by the descriptors):
 ## each loads and builds every combination of its upgrades within the budget,
-## keeps its pieces inside its own ground, times its tap within the limits,
-## only moves its own moving parts, and draws only looks the GL warm-up
-## compiles. The started outline is one draw with one shared look.
+## keeps its pieces, solids, trigger and stay inside its own ground, times its
+## tap within the limits, only moves its own moving parts, carries a pip only
+## through its own ride and lands it clear of its solids, and draws only looks
+## the GL warm-up compiles. The started outline is one draw with one shared look.
 const States = preload("res://services/home_keepsake_states.gd")
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Anim = preload("res://presentation/keepsakes/keepsake_anim.gd")
@@ -12,9 +13,13 @@ const GlWarmup = preload("res://services/gl_warmup.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Index = preload("res://content/chapters/index.gd")
-const MAX_PARTS := 50
-const MAX_TRIANGLES := 3500
+## Round 2's keepsakes are bigger: the README budget for all eleven with every
+## upgrade is 45,000 triangles (Home's isles included, counted by the layer suite).
+const MAX_PARTS := 90
+const MAX_TRIANGLES := 6000
+const ALL_TRIANGLES := 40000
 const MAX_MOVING := 6
+## Every beat, then the ease back to rest.
 const TOTAL_MAX := 4.5
 var checks := 0
 var failures := 0
@@ -54,10 +59,11 @@ func _run() -> void:
 		for beat: Dictionary in beats:
 			total += float(beat.time)
 			_check(float(beat.time) <= (Builder.BASE_MAX if beat.beat == "base" else Builder.UPGRADE_MAX), "%s's %s beat is short enough: %.2f" % [entry.id, beat.beat, beat.time])
-		_check(beats[0].beat == "base" and total <= TOTAL_MAX, "%s plays every upgrade within %.1f s: %.2f" % [entry.id, TOTAL_MAX, total])
+		_check(beats[0].beat == "base" and total + Builder.SETTLE <= TOTAL_MAX, "%s plays every upgrade and settles within %.1f s: %.2f" % [entry.id, TOTAL_MAX, total + Builder.SETTLE])
 		_check(beats.size() == 1 + int(full.get("together", false)) + int(full.get("hard", false)) + int(full.get("top", false)), "%s adds one beat per earned upgrade" % entry.id)
 		for beat: Dictionary in beats: _check(entry.keepsake.sounds.has(beat.beat), "%s has a sound for its %s beat" % [entry.id, beat.beat])
 		_check_tap_parts(stage, entry, builder, full)
+		_check_explore(stage, entry, builder)
 		# Warm-up: every look it draws is a feature key the GL warm-up compiles.
 		for look: Material in builder.materials():
 			var key := GlWarmup.material_key(look as BaseMaterial3D)
@@ -71,7 +77,7 @@ func _run() -> void:
 		_check(meshes.size() == 3, "%s's outline has one dot per stage" % entry.id)
 		outline_root.free()
 	print("KEEPSAKE PROPS: all eleven with every upgrade: %d parts, %d triangles before folding" % [all_parts, all_triangles])
-	_check(all_triangles <= 32000, "All eleven with every upgrade stay under 32,000 triangles: %d" % all_triangles)
+	_check(all_triangles <= ALL_TRIANGLES, "All eleven with every upgrade stay under %d triangles: %d" % [ALL_TRIANGLES, all_triangles])
 	_check(Primitives.changed_shared_looks().is_empty(), "No keepsake changes a shared look in place: %s" % [Primitives.changed_shared_looks()])
 	stage.free()
 	print("KEEPSAKE PROPS: %d checks, %d failures" % [checks, failures])
@@ -150,3 +156,56 @@ func _check_tap_parts(stage: Node3D, entry: Dictionary, builder: RefCounted, sta
 		holder.free()
 		anim.fx.free()
 	prop.free()
+
+## In Explore: its trigger, stay and solids stand inside its ground; a trigger
+## area or a stay is somewhere the pip can stand; and a ride, from any side,
+## carries the pip only through anim.carry, never touches the pip as a part,
+## and lands it on the grass clear of every solid.
+func _check_explore(stage: Node3D, entry: Dictionary, builder: RefCounted) -> void:
+	var ground: Rect2 = builder.footprint().grow(0.06)
+	var trigger: Dictionary = builder.trigger()
+	var stay: Rect2 = builder.stay()
+	for flags in range(8):
+		var state := {"together": flags & 1 != 0, "hard": flags & 2 != 0 and entry.hard, "top": flags & 4 != 0 and entry.hard}
+		if entry.id == States.EARLIER: state.lanterns = [true, false, true]
+		var solids: Array[Rect2] = builder.solids(state)
+		_check(not solids.is_empty() and solids.all(func(rect: Rect2) -> bool: return ground.encloses(rect)), "%s %s keeps its solids inside its ground" % [entry.id, state])
+		if trigger.has("area"):
+			var area: Rect2 = trigger.area
+			_check(ground.encloses(area), "%s's trigger is inside its ground" % entry.id)
+			_check(_free_in(area, solids), "%s %s's trigger has room to stand in" % [entry.id, state])
+		if trigger.has("line"):
+			for point: Vector2 in trigger.line: _check(ground.has_point(point), "%s's trigger line is inside its ground" % entry.id)
+		if stay.has_area():
+			_check(ground.encloses(stay) and _free_in(stay, solids), "%s %s's stay is inside its ground with room to stand in" % [entry.id, state])
+		# A ride from in front, from the side and from behind lands clear.
+		for from: Vector3 in [Vector3(0, 0, ground.end.y + 0.3), Vector3(ground.position.x - 0.3, 0, 0), Vector3(0, 0, ground.position.y - 0.3)]:
+			var prop := Node3D.new()
+			stage.add_child(prop)
+			var parts: Dictionary = builder.build(prop, state)
+			var anim := Anim.new()
+			anim.fx = Node3D.new()
+			prop.add_child(anim.fx)
+			var rider := Node3D.new()
+			stage.add_child(rider)
+			rider.position = from
+			anim.rider = rider
+			anim.rider_from = from
+			for beat: Dictionary in builder.beats(state):
+				builder.play(str(beat.beat), anim, parts, state)
+				anim.start += float(beat.time)
+			_check(not anim.touched.has(rider), "%s never moves the pip as one of its parts" % entry.id)
+			if anim.landing != null:
+				var landing: Vector3 = anim.landing
+				var flat := Vector2(landing.x, landing.z)
+				_check(landing.y == 0.0 and solids.all(func(rect: Rect2) -> bool: return not rect.grow(0.1).has_point(flat)), "%s %s lands the pip on the grass clear of its solids: %s" % [entry.id, state, landing])
+			rider.free()
+			prop.free()
+
+## Whether a spirit (0.12 round) can stand somewhere in `area` clear of `solids`.
+func _free_in(area: Rect2, solids: Array[Rect2]) -> bool:
+	for x in range(9):
+		for z in range(9):
+			var point := area.position + area.size * Vector2(x / 8.0, z / 8.0)
+			if solids.all(func(rect: Rect2) -> bool: return not rect.grow(0.12).has_point(point)): return true
+	return false

@@ -10,6 +10,7 @@ extends RefCounted
 ## once to the first value a beat gives it (the lit pose: a path's `peak`) when
 ## the layer calls apply_jumps(), and the layer holds that for a moment before
 ## putting everything back.
+const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 
 ## The Tween every call adds to (parallel), or null while only collecting.
 var tween: Tween
@@ -28,6 +29,17 @@ var fx: Node3D
 var made: Dictionary = {}
 ## (cue: String) -> void.
 var cue: Callable
+## The pip, when it set the keepsake off in Explore (null for a tap): carry()
+## moves it. rider_frame turns the keepsake's own frame into the pip's parent
+## space; rider_from is where the pip stood, in the keepsake's frame.
+var rider: Node3D
+var rider_frame := Transform3D.IDENTITY
+var rider_from := Vector3.ZERO
+## Where the last carry leaves the pip, on the ground in its parent space
+## (null when nothing carries it). The layer puts the pip there when the tap
+## ends, however it ends.
+var landing: Variant = null
+var _landing_at := -INF
 var _first: Dictionary = {}
 var _jumps: Array = []
 
@@ -51,6 +63,31 @@ func path(node: Node3D, where: Callable, at: float, time: float, peak: float = 1
 	var step := func(t: float) -> void:
 		if is_instance_valid(node): node.position = where.call(t)
 	tween.tween_method(step, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at)
+
+## Carries the pip along `where.call(t)` (the keepsake's own frame) for t from
+## 0 to 1, starting `at` for `time` seconds. No rider, no carry. Reduced motion
+## moves nothing now: the layer lands the pip where the last carry ends.
+func carry(where: Callable, at: float, time: float) -> void:
+	if rider == null: return
+	var end: Vector3 = rider_frame * (where.call(1.0) as Vector3)
+	if start + at + time >= _landing_at:
+		_landing_at = start + at + time
+		landing = Vector3(end.x, 0.0, end.z)
+	if reduced or tween == null: return
+	var node := rider
+	var frame := rider_frame
+	var step := func(t: float) -> void:
+		if is_instance_valid(node): node.position = frame * (where.call(t) as Vector3)
+	tween.tween_method(step, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at)
+
+## Hops through `points` (the keepsake's own frame), each hop `time` seconds
+## and `height` high, starting `at`. Returns when the last hop lands.
+func hops(points: Array, at: float, time: float, height: float) -> float:
+	var t := at
+	for index in range(points.size() - 1):
+		carry(arc(points[index], points[index + 1], height), t, time)
+		t += time
+	return t
 
 ## An arc from `from` to `to`, `height` above the line at its middle.
 static func arc(from: Vector3, to: Vector3, height: float) -> Callable:
@@ -83,6 +120,24 @@ func spawn(parent: Node3D, mesh: Mesh, look: Material, at: Vector3, rot: Vector3
 	spawned.append(part)
 	touched[part] = true
 	return part
+
+## A soft glow round `at` (a lamp lit, a ring of light), shown from `from` for
+## `time` seconds.
+func halo(parent: Node3D, at: Vector3, radius: float, color: Color, from: float, time: float, alpha: float = 0.3) -> MeshInstance3D:
+	var glow := spawn(parent, Parts.low_sphere(radius), Parts.clear(color, alpha, 1.4), at)
+	set_at(glow, "visible", true, from)
+	set_at(glow, "visible", false, from + time)
+	return glow
+
+## `count` sparkles in a ring round `at`, popping out from `from` for `time`.
+func burst(parent: Node3D, at: Vector3, count: int, radius: float, from: float, time: float) -> void:
+	for index in range(count):
+		var angle := index * TAU / count
+		var out := Vector3(cos(angle) * radius, sin(angle * 2.0) * radius * 0.4, sin(angle) * radius * 0.5)
+		var spark := spawn(parent, Parts.low_sphere(0.035), Parts.glow(Parts.SNOW, 2.0), at)
+		set_at(spark, "visible", true, from)
+		move(spark, "position", at + out, from, time * 0.6, Tween.TRANS_QUAD, Tween.EASE_OUT)
+		set_at(spark, "visible", false, from + time)
 
 ## An empty node made for this tap, to turn spawned parts about a point.
 func spawn_pivot(parent: Node3D, at: Vector3) -> Node3D:

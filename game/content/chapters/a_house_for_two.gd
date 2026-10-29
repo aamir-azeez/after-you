@@ -21,8 +21,8 @@ const DATA := {
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/little_house.gd",
-		"island": "left",
-		"slot": [-1.4, 1.9],
+		"island": "journey_left",
+		"slot": [-0.1, -2.5],
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_HOUSE_NAME,
 			"action": PlayerCopy.KEEPSAKE_HOUSE_ACTION,

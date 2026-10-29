@@ -30,15 +30,15 @@ const DATA := {
 	"dressing": "res://content/dressing/long_way_home_v2.gd",
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
-		"builder": "res://presentation/keepsakes/signpost.gd",
-		"island": "left",
-		"slot": [0.9, 1.8],
+		"builder": "res://presentation/keepsakes/crossroads.gd",
+		"island": "journey_right",
+		"slot": [-0.3, -1.0],
 		"copy": {
-			"name": PlayerCopy.KEEPSAKE_SIGNPOST_NAME,
-			"action": PlayerCopy.KEEPSAKE_SIGNPOST_ACTION,
-			"together": PlayerCopy.KEEPSAKE_SIGNPOST_TOGETHER,
-			"hard": PlayerCopy.KEEPSAKE_SIGNPOST_HARD,
-			"top": PlayerCopy.KEEPSAKE_SIGNPOST_TOP,
+			"name": PlayerCopy.KEEPSAKE_CROSSROADS_NAME,
+			"action": PlayerCopy.KEEPSAKE_CROSSROADS_ACTION,
+			"together": PlayerCopy.KEEPSAKE_CROSSROADS_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_CROSSROADS_HARD,
+			"top": PlayerCopy.KEEPSAKE_CROSSROADS_TOP,
 		},
 		"sounds": {"base": "valve_turned", "together": "waypoint", "hard": "winch_wound", "top": "island_bloomed"},
 	},

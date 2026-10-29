@@ -20,15 +20,15 @@ const DATA := {
 	"dressing": "res://content/dressing/high_and_low.gd",
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
-		"builder": "res://presentation/keepsakes/up_and_down_steps.gd",
-		"island": "right",
-		"slot": [0.1, -1.2],
+		"builder": "res://presentation/keepsakes/giant_steps.gd",
+		"island": "tide",
+		"slot": [-0.65, 1.55],
 		"copy": {
-			"name": PlayerCopy.KEEPSAKE_STEPS_NAME,
-			"action": PlayerCopy.KEEPSAKE_STEPS_ACTION,
-			"together": PlayerCopy.KEEPSAKE_STEPS_TOGETHER,
-			"hard": PlayerCopy.KEEPSAKE_STEPS_HARD,
-			"top": PlayerCopy.KEEPSAKE_STEPS_TOP,
+			"name": PlayerCopy.KEEPSAKE_GIANT_STEPS_NAME,
+			"action": PlayerCopy.KEEPSAKE_GIANT_STEPS_ACTION,
+			"together": PlayerCopy.KEEPSAKE_GIANT_STEPS_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_GIANT_STEPS_HARD,
+			"top": PlayerCopy.KEEPSAKE_GIANT_STEPS_TOP,
 		},
 		"sounds": {"base": "seed_thrown", "together": "seed_landed", "hard": "lever_pulled", "top": "receivers_joined"},
 	},

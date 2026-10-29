@@ -36,10 +36,12 @@ const OPTIONAL := {
 	## The chapter's keepsake ledger places in order: {stage_id, title}.
 	"keepsakes": [],
 	## The chapter's keepsake on Home, on its offered version only (one per
-	## level id): {"builder": a presentation/keepsakes/ script, "island": "left"
-	## or "right" (the Home island it stands on, never worked out from the
-	## price), "slot": [x, z] metres from that island's middle (it faces the Home
-	## camera), "copy": {"name", "action" (the Explore button's words), and the
+	## level id): {"builder": a presentation/keepsakes/ script, "island": the
+	## island it stands on ("left" or "right", the Home islands, or a keepsake
+	## isle of presentation/keepsakes/home_isles.gd; never worked out from the
+	## price), "slot": [x, z] metres from that island's middle, optionally
+	## "yaw" (radians; it faces the Home camera without one), "copy": {"name",
+	## "action" (the Explore button's words), and the
 	## names of its "together", "hard" and "top" pieces} as PlayerCopy constants,
 	## "sounds": {beat ("base", "together", "hard", "top"): a cue name of
 	## services/sound_cues.gd CUES}}. {} for none.

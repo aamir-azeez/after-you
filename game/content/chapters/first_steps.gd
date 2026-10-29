@@ -22,15 +22,16 @@ const DATA := {
 	],
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
-		"builder": "res://presentation/keepsakes/bell_lift.gd",
+		"builder": "res://presentation/keepsakes/bell_arch.gd",
 		"island": "right",
-		"slot": [-1.3, 1.4],
+		"slot": [-1.8, 0.0],
+		"yaw": PI / 2,
 		"copy": {
-			"name": PlayerCopy.KEEPSAKE_BELL_LIFT_NAME,
-			"action": PlayerCopy.KEEPSAKE_BELL_LIFT_ACTION,
-			"together": PlayerCopy.KEEPSAKE_BELL_LIFT_TOGETHER,
-			"hard": PlayerCopy.KEEPSAKE_BELL_LIFT_HARD,
-			"top": PlayerCopy.KEEPSAKE_BELL_LIFT_TOP,
+			"name": PlayerCopy.KEEPSAKE_BELL_ARCH_NAME,
+			"action": PlayerCopy.KEEPSAKE_BELL_ARCH_ACTION,
+			"together": PlayerCopy.KEEPSAKE_BELL_ARCH_TOGETHER,
+			"hard": PlayerCopy.KEEPSAKE_BELL_ARCH_HARD,
+			"top": PlayerCopy.KEEPSAKE_BELL_ARCH_TOP,
 		},
 		"sounds": {"base": "bell_rung", "together": "lift_ready", "hard": "tower_bell", "top": "island_bloomed"},
 	},

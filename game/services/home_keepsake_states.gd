@@ -1,6 +1,6 @@
 extends RefCounted
 ## Home's keepsakes: one per card on the Chapters page (each chapter, plus one
-## Lantern Line for the earlier islands), and how far each has come. A view
+## Lantern Walk for the earlier islands), and how far each has come. A view
 ## over records the game already keeps, never an award source: the keepsake
 ## ledger's per-stage solo and friend marks (services/home_keepsakes.gd) and the
 ## Hard marks (services/hard_mode.gd). Nothing here is saved, and nothing else
@@ -18,7 +18,7 @@ extends RefCounted
 ##   stages    [solo, friend] per stage, for the started outline's dots
 ##   look      "keepsake" (base earned), "started" (stage marks only), "next"
 ##             (the first keepsake in Home order with no marks at all) or "none"
-## The Lantern Line has a base (any earlier island marked; each lantern lights
+## The Lantern Walk has a base (any earlier island marked; each lantern lights
 ## for its own island) and a together upgrade (the free islands all done with
 ## a friend, the same rule in every build). It has no Hard.
 const Index = preload("res://content/chapters/index.gd")
@@ -27,16 +27,17 @@ const Registry = preload("res://services/chapter_registry.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const EARLIER := "earlier"
-## The Lantern Line, in the same shape as a chapter descriptor's home_keepsake
+## The Lantern Walk, in the same shape as a chapter descriptor's home_keepsake
 ## (content/chapters/index.gd), since the earlier islands have no descriptor.
 const EARLIER_KEEPSAKE := {
-	"builder": "res://presentation/keepsakes/lantern_line.gd",
+	"builder": "res://presentation/keepsakes/lantern_walk.gd",
 	"island": "right",
-	"slot": [0.8, 2.0],
+	"slot": [0.0, 2.35],
+	"yaw": 0.0,
 	"copy": {
-		"name": PlayerCopy.KEEPSAKE_LANTERN_LINE_NAME,
-		"action": PlayerCopy.KEEPSAKE_LANTERN_LINE_ACTION,
-		"together": PlayerCopy.KEEPSAKE_LANTERN_LINE_TOGETHER,
+		"name": PlayerCopy.KEEPSAKE_LANTERN_WALK_NAME,
+		"action": PlayerCopy.KEEPSAKE_LANTERN_WALK_ACTION,
+		"together": PlayerCopy.KEEPSAKE_LANTERN_WALK_TOGETHER,
 	},
 	"sounds": {"base": "waypoint", "together": "garden_opened"},
 }
@@ -45,12 +46,12 @@ const LOOKS := ["keepsake", "started", "next", "none"]
 static var _entries: Dictionary = {}
 
 ## The keepsakes Home stands, in Home order: the free chapters in chapter
-## order, the Lantern Line, then the Full Journey chapters. `free_only` (a build
+## order, the Lantern Walk, then the Full Journey chapters. `free_only` (a build
 ## that sells nothing) keeps the free ones, and the free islands' lanterns.
 ## Each: {"id": level id, "key": the chapter key holding its home_keepsake ("" for
-## the Lantern Line), "keepsake": that field, "title": the chapter's title,
+## the Lantern Walk), "keepsake": that field, "title": the chapter's title,
 ## "paid", "places": its keepsake ledger place ids, "friendly": whether each
-## place has a together variant, "free_places" (the Lantern Line's free
+## place has a together variant, "free_places" (the Lantern Walk's free
 ## islands), "together": a friend can play it, "hard": it has Hard plays}.
 ## Worked out once per build kind; read-only.
 static func entries(free_only: bool = false) -> Array:
@@ -78,7 +79,7 @@ static func entries(free_only: bool = false) -> Array:
 		if not Catalog.paid(item): free_islands.append(item.id)
 		if not free_only or not Catalog.paid(item): earlier_places.append(item.id)
 	var result: Array = free
-	result.append({"id": EARLIER, "key": "", "keepsake": EARLIER_KEEPSAKE, "title": PlayerCopy.KEEPSAKE_LANTERN_LINE_NAME, "paid": false,
+	result.append({"id": EARLIER, "key": "", "keepsake": EARLIER_KEEPSAKE, "title": PlayerCopy.KEEPSAKE_LANTERN_WALK_NAME, "paid": false,
 		"places": earlier_places, "free_places": free_islands, "friendly": _friendly(earlier_places), "together": true, "hard": false})
 	result.append_array(paid)
 	for entry: Dictionary in result: entry.make_read_only()

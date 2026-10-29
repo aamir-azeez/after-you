@@ -1,10 +1,13 @@
 extends SceneTree
 ## Home's keepsakes on the islands (presentation/home_keepsake_layer.gd): one
-## per chapter card, each on its own island, off the spirits' start spots and
-## clear of the trees, the header buttons, the card and each other; still parts
-## folded and moving parts kept; a burst of changes rebuilt once; taps, repeat
-## taps, Reduce motion, leaving Home mid tap and Explore walk ups; the card's
-## lines, marks and count; the Home bridge in Explore.
+## per chapter card, each on its own island or isle, off the spirits' start
+## spots and clear of the trees and each other, the Home islands' ones in the
+## opening view clear of the header and the card, the isles' ones a pan from
+## the card away; the isles and their plank bridges; still parts folded and
+## moving parts kept within budget; a burst of changes rebuilt once; taps,
+## repeat taps, Reduce motion, leaving Home mid tap and Explore walk ups;
+## triggers, rides and stays in Explore, and everything settling back to rest;
+## the card's lines, marks and count; the Home bridge in Explore.
 const World = preload("res://presentation/island_world.gd")
 const Stage = preload("res://presentation/home_stage.gd")
 const Layer = preload("res://presentation/home_keepsake_layer.gd")
@@ -17,6 +20,8 @@ const Main = preload("res://main.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const HardMode = preload("res://services/hard_mode.gd")
+const Isles = preload("res://presentation/keepsakes/home_isles.gd")
+const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const SPIRIT_HEIGHT := 1.15
 var checks := 0
 var failures := 0
@@ -33,7 +38,9 @@ func _check(ok: bool, message: String) -> void:
 func _run() -> void:
 	await _check_states_and_updates()
 	await _check_layout_clearance()
+	await _check_isles()
 	await _check_fold()
+	await _check_triggers()
 	await _check_tap()
 	await _check_play()
 	await _check_explore()
@@ -49,7 +56,7 @@ func _run() -> void:
 	quit(1 if failures else 0)
 
 ## A world, a Home stage over it and the stage's layer.
-func _home(size: Vector2i, items: Array[Dictionary], hard: Dictionary = {}, together_hard: bool = true) -> Dictionary:
+func _home(size: Vector2i, items: Array[Dictionary], hard: Dictionary = {}, together_hard: bool = true, free_only: bool = false) -> Dictionary:
 	Stage._retained_view.clear()
 	var viewport := SubViewport.new()
 	viewport.size = size
@@ -64,7 +71,7 @@ func _home(size: Vector2i, items: Array[Dictionary], hard: Dictionary = {}, toge
 	stage.theme = theme_source.ui_theme
 	theme_source.free()
 	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	stage.configure(world, func() -> bool: return true, items)
+	stage.configure(world, func() -> bool: return true, items, free_only)
 	stage.set_hard(hard, together_hard)
 	viewport.add_child(stage)
 	stage.set_process(false)
@@ -119,7 +126,7 @@ func _check_states_and_updates() -> void:
 	_check(layer.shown_ids() == ["first-steps", "relay-isles", "high-and-low"], "Two keepsakes and the next outline show: %s" % [layer.shown_ids()])
 	var lift: Node3D = layer.prop_node("first-steps")
 	var next: Node3D = layer.prop_node("high-and-low")
-	_check(lift != null and lift.find_child("Footing", true, false) != null and layer.parts_of("first-steps").has("lift"), "The Bell Lift stands on its Hard footing with its moving lift")
+	_check(lift != null and lift.find_child("Footing", true, false) != null and layer.parts_of("first-steps").has("lift"), "The Bell Arch stands on its Hard plinths with its moving lift")
 	_check(next != null and next.get_node_or_null("Outline") != null and layer.parts_of("high-and-low").is_empty(), "The next keepsake is an outline with nothing to move")
 	var veil := next.get_node("Outline") as MeshInstance3D
 	_check(veil.mesh.get_surface_count() == 1 and veil.material_override.transparency != BaseMaterial3D.TRANSPARENCY_DISABLED and veil.cast_shadow == GeometryInstance3D.SHADOW_CASTING_SETTING_OFF, "An outline is one merged mesh with the see-through veil")
@@ -180,54 +187,214 @@ func _polygons_meet(a: PackedVector2Array, b: PackedVector2Array) -> bool:
 	return not Geometry2D.intersect_polygons(a, b).is_empty()
 
 func _check_layout_clearance() -> void:
-	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
+	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720), Vector2i(1600, 738)]:
 		var home := await _home(size, _everything(), _all_hard())
 		var stage: Control = home.stage
 		var layer: Node3D = home.layer
-		var camera: Camera3D = home.world.camera
+		var world: Node3D = home.world
+		var camera: Camera3D = world.camera
 		var context := " at %s" % size
 		_check(layer.shown_ids().size() == States.entries().size(), "Everything earned shows every keepsake" + context)
 		var trees: Array[PackedVector2Array] = []
 		for tree_x: float in [2.45, 3.95, -4.15, -2.65]:
-			trees.append(PackedVector2Array([Vector2(tree_x - 0.5, -3.02), Vector2(tree_x + 0.5, -3.02), Vector2(tree_x + 0.5, -2.22), Vector2(tree_x - 0.5, -2.22)]))
+			trees.append(PackedVector2Array([Vector2(tree_x - 0.25, -2.87), Vector2(tree_x + 0.25, -2.87), Vector2(tree_x + 0.25, -2.37), Vector2(tree_x - 0.25, -2.37)]))
 		var header := Rect2(size.x - 310, 0, 310, 92)
 		var box: Rect2 = stage._keepsake_box.get_global_rect()
 		var floor: Rect2 = stage._floor
 		var spots: Array[Vector2] = [floor.get_center() + Vector2(-0.68, 0.42), floor.get_center() + Vector2(0.68, -0.42)]
-		var grounds := {}
+		var solids := {}
 		for id: String in layer.shown_ids():
 			var entry: Dictionary = States.entries()[States.entries().map(func(item: Dictionary) -> String: return item.id).find(id)]
-			var ground: PackedVector2Array = layer.ground(id)
-			var island: Rect2 = layer.island_floor(str(entry.keepsake.island))
-			_check(Array(ground).all(func(corner: Vector2) -> bool: return island.grow(0.2).has_point(corner)), "%s stands on the %s island" % [id, entry.keepsake.island])
-			for tree: PackedVector2Array in trees: _check(not _polygons_meet(ground, tree), "%s stays clear of the Home trees" % id)
+			var island_id := str(entry.keepsake.island)
+			var island: Rect2 = layer.island_floor(island_id)
+			var own: Array = layer.solid_grounds(id)
+			_check(island.has_area() and own.all(func(ground: PackedVector2Array) -> bool: return Array(ground).all(func(corner: Vector2) -> bool: return island.grow(0.2).has_point(corner))), "%s stands on the %s island" % [id, island_id])
+			var apart := true
+			for ground: PackedVector2Array in own:
+				for tree: PackedVector2Array in trees: _check(not _polygons_meet(ground, tree), "%s stays clear of the Home trees" % id)
+				for other: String in solids:
+					for theirs: PackedVector2Array in solids[other]: apart = apart and not _polygons_meet(ground, theirs)
+			_check(apart, "%s stands apart from the others at full size" % id)
+			solids[id] = own
 			for spot: Vector2 in spots: _check(layer.distance(id, Vector3(spot.x, 0, spot.y)) >= Stage.SPIRIT_CLEARANCE, "%s stays off the spirits' start spot %s" % [id, spot])
-			for other: String in grounds: _check(not _polygons_meet(ground, grounds[other]), "%s stands apart from %s at full size" % [id, other])
-			grounds[id] = ground
-			var area := _screen_area(layer, camera, id)
-			_check(not area.intersects(header), "%s stays clear of the header buttons%s" % [id, context])
-			_check(not area.intersects(box), "%s is not hidden by the card%s (%s vs %s)" % [id, context, area, box])
-			_check(stage._stage_rect().encloses(area), "%s stays in the Home stage%s (%s in %s)" % [id, context, area, stage._stage_rect()])
+			if island_id in ["left", "right"]:
+				# The keepsakes on the Home islands show in the opening view.
+				var at := camera.unproject_position(layer.to_global(layer.point_of(id)))
+				_check(stage._stage_rect().has_point(at) and not header.has_point(at) and not box.has_point(at), "%s shows in the opening view, clear of the header and the card%s (%s)" % [id, context, at])
+		# Picking a keepsake on an isle from the card pans the view to show it.
+		world.reduced_motion = true
+		for id: String in layer.shown_ids():
+			layer.select_id(id)
+			stage.frame_selected()
+			stage._process(0.0)
+			var at := camera.unproject_position(layer.to_global(layer.selected_point()))
+			_check(stage._stage_rect().has_point(at), "Picking %s on the card brings it into the stage%s (%s in %s)" % [id, context, at, stage._stage_rect()])
+		world.reduced_motion = false
 		await _close(home)
+
+## The isles a build stands keepsakes on, their plank bridges and their ground.
+func _check_isles() -> void:
+	var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
+	var layer: Node3D = home.layer
+	var world: Node3D = home.world
+	var isles: Node3D = world.terrain.get_node_or_null(Isles.NODE_NAME)
+	_check(isles != null and not layer.is_ancestor_of(isles) and isles.get_script() == null, "The keepsake isles are plain Home terrain, folded with Home")
+	for id: String in ["tide", "journey_left", "journey_right"]:
+		_check(isles.get_node_or_null("Isle_" + id) != null and layer.island_floor(id).has_area(), "Home stands the %s isle" % id)
+		var ends: Array = Isles.ISLES[id].bridge
+		var middle: Vector2 = (ends[0] as Vector2).lerp(ends[1], 0.5)
+		var across := ((ends[1] as Vector2) - (ends[0] as Vector2)).normalized().orthogonal()
+		_check(layer.walkable(Vector3(middle.x, 0, middle.y)), "The %s bridge carries the pip" % id)
+		_check(not layer.walkable(Vector3(middle.x + across.x * 0.9, 0, middle.y + across.y * 0.9)), "Off the side of the %s bridge is water" % id)
+		_check(not layer.near_lowering_crossing(Vector3(middle.x, 0, middle.y), Stage.BRIDGE_NOTICE), "Walking the %s bridge never raises the Home bridge" % id)
+		var center: Vector2 = Isles.ISLES[id].center
+		_check(layer.walkable(Vector3(center.x, 0, center.y)) or layer.blocks(Vector3(center.x, 0, center.y), Layer.WALK_CLEARANCE), "The %s isle is ground" % id)
+	# The lighthouse jetty is ground past the isle's edge.
+	var jetty: Vector3 = layer.trigger_point("sleeping-lighthouse")
+	_check(not layer.island_floor("journey_left").has_point(Vector2(jetty.x, jetty.z)) and layer.walkable(jetty), "The jetty's end is past the isle's edge and still ground")
+	await _close(home)
+	# A build that sells nothing has the tide isle and no journey isles.
+	var free := await _home(Vector2i(1560, 720), _everything(), _all_hard(), true, true)
+	var free_isles: Node3D = free.world.terrain.get_node_or_null(Isles.NODE_NAME)
+	_check(free_isles != null and free_isles.get_node_or_null("Isle_tide") != null and free_isles.get_node_or_null("Isle_journey_left") == null and free_isles.get_node_or_null("Isle_journey_right") == null, "A build that sells nothing has the tide isle and no journey isles")
+	_check(not free.layer.island_floor("journey_left").has_area(), "and walks no journey isle")
+	await _close(free)
+
+## In Explore a step sets a keepsake off: walking into its trigger plays it
+## once (again only after walking out), walking through the arch rings it, a
+## ride carries the pip and lands it on open ground, the house and the lantern
+## path are walked in and out of; a still pip, a wandering pip and an unearned
+## keepsake set nothing off; and every keepsake settles back to rest with
+## nothing left running.
+func _check_triggers() -> void:
+	var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
+	var stage: Control = home.stage
+	var world: Node3D = home.world
+	var layer: Node3D = home.layer
+	await _settle(layer)
+	await process_frame
+	var spirit: Node3D = world.actors.a
+	var steps: int = layer.steps
+	_frames(stage, world, 60)
+	_check(layer.steps == steps and not layer.playing(), "Wandering spirits set nothing off")
+	_check(not layer.is_processing(), "The keepsakes run nothing per frame at rest")
+	stage._explore_button.pressed.emit()
+	_frames(stage, world, 2)
+	steps = layer.steps
+	_frames(stage, world, 30)
+	_check(layer.steps == steps, "A pip standing still in Explore asks the keepsakes nothing")
+	var far := Vector3(-4.3, 0, 0.6)
+	for id: String in layer.shown_ids():
+		var trigger: Dictionary = layer._frames[id].trigger
+		if trigger.is_empty(): continue
+		layer.end_explore()
+		var inside: Vector3
+		if trigger.has("line"):
+			var placed: Transform3D = layer.slot_transform(id)
+			spirit.position = placed * Vector3(0, 0, -0.7)
+			inside = placed * Vector3(0, 0, 0.7)
+			layer.walked(spirit.position, inside, spirit)
+			_check(str(layer._play.get("id", "")) == id, "Walking through %s sets it off, and the next step into another trigger leaves it playing (%s)" % [id, layer._play.get("id", "-")])
+			layer.stop_play()
+			layer.walked(inside, inside + Vector3(0.05, 0, 0), spirit)
+			_check(not layer.playing(), "A step that crosses nothing sets %s off no more" % id)
+			continue
+		inside = layer.trigger_point(id)
+		# Walk in from straight in front, so no other keepsake's line is crossed.
+		far = inside + Vector3(0, 0, 4.0)
+		spirit.position = inside
+		layer.walked(far, inside, spirit)
+		_check(str(layer._play.get("id", "")) == id, "Walking into %s's trigger sets it off" % id)
+		var tween: Variant = layer._play.get("tween")
+		layer.walked(inside, inside + Vector3(0.02, 0, 0), spirit)
+		_check(layer._play.get("tween") == tween, "Another step inside %s's trigger neither stacks nor restarts it" % id)
+		if layer.riding():
+			# A ride: the stick waits, the pip is carried and lands on open ground.
+			stage._stick.value = Vector2(1, 0)
+			var until := Time.get_ticks_msec() + 6000
+			var moved := false
+			var start := spirit.position
+			while layer.riding() and Time.get_ticks_msec() < until:
+				await process_frame
+				stage._process(1.0 / 60.0)
+				moved = moved or spirit.position.distance_to(start) > 0.3
+			stage._stick.value = Vector2.ZERO
+			_check(moved and not layer.riding(), "%s carries the pip on its ride" % id)
+			_check(spirit.position.y == 0.0 and layer.walkable(spirit.position), "%s lands the pip on open ground: %s" % [id, spirit.position])
+		layer.stop_play()
+		var after := spirit.position
+		layer.walked(after, after + Vector3(0.01, 0, 0), spirit)
+		if after.distance_to(inside) < 0.05: _check(not layer.playing(), "Standing on in %s's trigger sets it off no more" % id)
+		layer.walked(after, far, spirit)
+		spirit.position = inside
+		layer.walked(far, inside, spirit)
+		_check(str(layer._play.get("id", "")) == id, "Walking out and back into %s's trigger sets it off again" % id)
+		layer.stop_play()
+		await process_frame
+	# The house: walked into, the roof and front wall fade and the inside is there.
+	far = Vector3(-4.3, 0, 0.6)
+	layer.end_explore()
+	var house: Dictionary = layer.parts_of("a-house-for-two")
+	var cut: Node3D = house.cutaway
+	var faded := func() -> bool: return cut.find_children("*", "MeshInstance3D", true, false).all(func(mesh: Node) -> bool: return mesh.get_meta("cutaway", false))
+	var room: Vector3 = layer.slot_transform("a-house-for-two") * Vector3(0.3, 0, -0.3)
+	layer.walked(far, room, spirit)
+	var prop: Node3D = layer.prop_node("a-house-for-two")
+	_check(layer.staying() == "a-house-for-two" and faded.call() and prop.get_node_or_null("Visit") != null, "Walking into the house fades its roof and front wall and makes its inside")
+	_check(layer.ground_height(room) > 0.5, "On Hard the pip stands on the house's raised floor: %.2f" % layer.ground_height(room))
+	layer.walked(room, far, spirit)
+	await process_frame
+	_check(layer.staying().is_empty() and not cut.find_children("*", "MeshInstance3D", true, false).any(func(mesh: Node) -> bool: return mesh.get_meta("cutaway", false)) and prop.get_node_or_null("Visit") == null, "Walking out puts the house back and its inside goes")
+	layer.walked(far, room, spirit)
+	stage._explore_back.pressed.emit()
+	await process_frame
+	_check(layer.staying().is_empty() and prop.get_node_or_null("Visit") == null and not cut.find_children("*", "MeshInstance3D", true, false).any(func(mesh: Node) -> bool: return mesh.get_meta("cutaway", false)), "Leaving Explore inside the house puts it back")
+	stage._explore_button.pressed.emit()
+	# The Lantern Walk: a lit lantern glows over the pip on the stones.
+	var walk: Transform3D = layer.slot_transform("earlier")
+	layer.walked(far, walk * Vector3(-1.2, 0, 0), spirit)
+	var visit: Node3D = layer.prop_node("earlier").get_node_or_null("Visit")
+	_check(layer.staying() == "earlier" and visit != null and (visit.get_node("Glow") as Node3D).visible, "Walking the stones lights the lantern over the pip")
+	layer.walked(walk * Vector3(-1.2, 0, 0), walk * Vector3(1.2, 0, 0), spirit)
+	_check((visit.get_node("Glow") as Node3D).position.x > 0.5, "and the glow follows the pip along the line")
+	layer.walked(walk * Vector3(1.2, 0, 0), far, spirit)
+	_check(layer.staying().is_empty(), "Walking off the stones leaves the Lantern Walk")
+	# Settled: nothing left made, moving or running.
+	var until := Time.get_ticks_msec() + 3000
+	while layer.playing() and Time.get_ticks_msec() < until: await process_frame
+	await process_frame
+	_check(not layer.playing() and not layer.is_processing() and layer.find_children("Tap", "", true, false).is_empty() and layer.find_children("Visit", "", true, false).is_empty(), "Every keepsake settles back to rest with nothing left running")
+	await _close(home)
+	# An unearned keepsake sets nothing off.
+	var empty := await _home(Vector2i(1560, 720), [])
+	await _settle(empty.layer)
+	empty.stage._explore_button.pressed.emit()
+	var relay: Variant = empty.layer.trigger_point("relay-isles")
+	empty.layer.walked(far, relay, empty.world.actors.a)
+	_check(not empty.layer.playing(), "A keepsake not earned sets nothing off")
+	await _close(empty)
 
 ## Still parts fold into a few shared batches; moving parts keep their own
 ## nodes; the budget holds with every upgrade on every keepsake.
 func _check_fold() -> void:
 	var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
 	var layer: Node3D = home.layer
+	var stage: Control = home.stage
 	await _settle(layer)
+	while stage.folding(): stage._process(0.0)
 	var props: Node3D = layer.find_children("Props", "Node3D", false, false)[0]
+	var isles: Node3D = home.world.terrain.get_node(Isles.NODE_NAME)
 	var batches := props.find_children("StaticBatch*", "MeshInstance3D", true, false)
 	_check(batches.size() > 5, "Still parts fold into shared batches: %d" % batches.size())
 	var draws := 0
 	var triangles := 0
-	for node: Node in props.find_children("*", "MeshInstance3D", true, false):
+	for node: Node in props.find_children("*", "MeshInstance3D", true, false) + isles.find_children("*", "MeshInstance3D", true, false):
 		var mesh := node as MeshInstance3D
 		if not mesh.is_visible_in_tree() or mesh.mesh == null: continue
 		draws += mesh.mesh.get_surface_count()
 		triangles += mesh.mesh.get_faces().size() / 3
-	print("HOME KEEPSAKE LAYER: every upgrade on every keepsake folds to %d meshes and %d triangles" % [draws, triangles])
-	_check(draws <= 130 and triangles <= 32000, "All eleven with every upgrade stay in budget: %d draws, %d triangles" % [draws, triangles])
+	print("HOME KEEPSAKE LAYER: every upgrade on every keepsake, with the isles, folds to %d meshes and %d triangles" % [draws, triangles])
+	_check(draws <= 180 and triangles <= 45000, "All eleven with every upgrade and the isles stay in the README budget (180 draws, 45,000 triangles): %d draws, %d triangles" % [draws, triangles])
 	for id: String in layer.shown_ids():
 		for part: Variant in layer.parts_of(id).values():
 			if not part is Node3D: continue
@@ -263,7 +430,7 @@ func _check_tap() -> void:
 	_check(layer.pick(camera, point) == "first-steps", "A keepsake's own point picks it")
 	layer.select_id("relay-isles")
 	_stage_tap(stage, point)
-	_check(layer.selected_item().id == "first-steps" and stage._keepsake_title.text == PlayerCopy.KEEPSAKE_BELL_LIFT_NAME and stage._greeting_left == 0.0, "Tapping a keepsake names it on the card without greeting the spirits")
+	_check(layer.selected_item().id == "first-steps" and stage._keepsake_title.text == PlayerCopy.KEEPSAKE_BELL_ARCH_NAME and stage._greeting_left == 0.0, "Tapping a keepsake names it on the card without greeting the spirits")
 	_check(stage.keepsake_playing(), "Tapping an earned keepsake plays it")
 	layer.stop_play()
 	var outline := _point(layer, camera, "relay-isles")
@@ -339,7 +506,8 @@ func _check_play() -> void:
 	var well_pose := _pose(layer, "the-wishing-well")
 	stage.play_keepsake("the-wishing-well")
 	await create_timer(1.0).timeout
-	_check(stage.play_keepsake("first-steps") and _pose(layer, "the-wishing-well") == well_pose, "A tap on another keepsake while one plays puts the first at rest and plays the new one")
+	_check(stage.play_keepsake("first-steps"), "A tap on another keepsake while one plays plays the new one (%s)" % [layer._play.get("id", "-")])
+	_check(_pose(layer, "the-wishing-well") == well_pose, "and puts the first at rest")
 	layer.stop_play()
 	# A keepsake earned while Home is open plays once its set is drawn, never as an outline.
 	var partial: Array[Dictionary] = _cleared("first-steps", true, false)
@@ -416,9 +584,9 @@ func _box_state(size: Vector2i, state: String) -> void:
 			_check(count.text == PlayerCopy.KEEPSAKE_COUNT % [0, States.entries().size()] and status.text == PlayerCopy.KEEPSAKE_NEXT % "First Steps", "With nothing earned the card points at the first chapter" + context)
 		"pair":
 			stage.select_keepsake("first-steps")
-			_check(status.text == PlayerCopy.KEEPSAKE_WANTS_TOP % PlayerCopy.KEEPSAKE_BELL_LIFT_TOP, "Cleared together and on Hard, the card asks for Hard with a friend: %s%s" % [status.text, context])
+			_check(status.text == PlayerCopy.KEEPSAKE_WANTS_TOP % PlayerCopy.KEEPSAKE_BELL_ARCH_TOP, "Cleared together and on Hard, the card asks for Hard with a friend: %s%s" % [status.text, context])
 		"all":
-			_check(status.text == PlayerCopy.KEEPSAKE_DONE % PlayerCopy.KEEPSAKE_BELL_LIFT_ACTION.to_lower() or status.text.begins_with(PlayerCopy.KEEPSAKE_DONE.get_slice("%", 0)), "Everything earned invites a tap" + context)
+			_check(status.text == PlayerCopy.KEEPSAKE_DONE % PlayerCopy.KEEPSAKE_BELL_ARCH_ACTION.to_lower() or status.text.begins_with(PlayerCopy.KEEPSAKE_DONE.get_slice("%", 0)), "Everything earned invites a tap" + context)
 	var item: Dictionary = layer.selected_item()
 	var marks: Control = stage._keepsake_variant_icons
 	var together := marks.get_node("KeepsakeTogether") as TextureRect
@@ -464,7 +632,7 @@ func _check_explore() -> void:
 		_check(always_solid and never_inside, "The spirit never walks off the islands or into a keepsake" + context)
 		stick.value = Vector2.ZERO
 		var well: Transform3D = layer.slot_transform("the-wishing-well")
-		spirit.position = well * Vector3(-0.2, 0, 0.55)
+		spirit.position = well * Vector3(0.0, 0, 1.05)
 		stage._process(1.0 / 30.0)
 		var action: Button = stage._explore_action
 		_check(layer.selected_item().id == "the-wishing-well" and stage._keepsake_title.text == PlayerCopy.KEEPSAKE_WISHING_WELL_NAME, "Walking up to a keepsake names it" + context)
@@ -475,7 +643,7 @@ func _check_explore() -> void:
 		action.pressed.emit()
 		_check(stage.keepsake_playing(), "A second press while it plays changes nothing" + context)
 		layer.stop_play()
-		spirit.position = layer.slot_transform("the-wishing-well") * Vector3(0, 0, 3.0)
+		spirit.position = Vector3(-3.3, 0, 1.6)
 		stage._process(1.0 / 30.0)
 		_check(not action.visible, "Walking away hides the action" + context)
 		stage._explore_back.pressed.emit()
@@ -521,9 +689,9 @@ func _check_explore_bridge() -> void:
 		for role: String in world.actors: clear = clear and not layer.blocks(world.actors[role].position, 0.01)
 	_check(clear, "Wandering spirits never walk into a keepsake")
 	# A spirit a keepsake appeared beside can always walk away.
-	var inside: Vector3 = layer.slot_transform("rolling-home") * Vector3(0, 0, 0.55)
-	_check(layer.blocks(inside, Stage.SPIRIT_CLEARANCE) and not layer.blocks_step(inside, inside + (inside - layer.slot_transform("rolling-home").origin).normalized() * 0.05, Stage.SPIRIT_CLEARANCE), "A spirit beside a keepsake may always step away from it")
-	_check(layer.blocks_step(inside, layer.slot_transform("rolling-home").origin.lerp(inside, 0.9), Stage.SPIRIT_CLEARANCE), "but never nearer")
+	var inside: Vector3 = layer.slot_transform("the-wishing-well") * Vector3(0, 0, 0.95)
+	_check(layer.blocks(inside, Stage.SPIRIT_CLEARANCE) and not layer.blocks_step(inside, inside + (inside - layer.slot_transform("the-wishing-well").origin).normalized() * 0.05, Stage.SPIRIT_CLEARANCE), "A spirit beside a keepsake may always step away from it")
+	_check(layer.blocks_step(inside, layer.slot_transform("the-wishing-well").origin.lerp(inside, 0.95), Stage.SPIRIT_CLEARANCE), "but never nearer")
 	var spirit: Node3D = world.actors.a
 	stage._explore_button.pressed.emit()
 	spirit.position = Vector3(left - 3.2, 0, bridge_z)
