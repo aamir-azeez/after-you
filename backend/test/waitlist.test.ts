@@ -516,14 +516,15 @@ describe("the confirm link and email", () => {
 });
 
 describe("privacy", () => {
-  it("describes the waitlist on /privacy, whatever the flag, with its own removal contact", async () => {
+  it("says on /privacy that the waitlist is closed and its list deleted, whatever the flag, with its own contact", async () => {
     for (const flag of ["true", "false"]) {
       const response = await worker.fetch(new Request("https://game.test/privacy"), withConfig({ ...env, IOS_WAITLIST_ENABLED: flag }) as unknown as Env);
       expect(response.status).toBe(200);
       const page = await response.text();
       expect(page).toContain("<h2>The iPhone waitlist</h2>");
-      expect(page).toContain("Resend stores the list");
-      expect(page).toContain("Cloudflare Turnstile");
+      expect(page).toContain("The iPhone waitlist on aamirazeez.com is closed. We sent its one email when After You came out on the App Store, then deleted the list of addresses.");
+      expect(page).not.toContain("Resend stores the list");
+      expect(page).not.toContain("unsubscribe link");
       expect(page).toContain('<a href="mailto:afteryou-reply@aamirazeez.com">afteryou-reply@aamirazeez.com</a>');
       expect(page).not.toContain("three months");
       expect(page).toContain("In the game, we do not ask for your email address or phone number. A display name is optional, and so is signing in to Google Play Games or Game Center.");
