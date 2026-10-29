@@ -4,8 +4,8 @@ extends RefCounted
 ## the small tier mark (one leaf, two leaves, a lavender bud, a lilac flower,
 ## a gold star flower; a lock for Earned), and the tier word in capitals.
 ## Colour is never the only signal: every tier also has its own mark and word.
-## Every place that frames an item by its tier (the Wardrobe's cards, the
-## item bloom card) asks here, so a tier's look changes in one file.
+## Every place that frames an item by its tier asks here (the Wardrobe's cards
+## today; the item bloom card is to use it too), so a tier's look changes in one file.
 ##
 ## Flat styleboxes and one _draw per mark: nothing animates, nothing draws per frame.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -68,7 +68,7 @@ static func label(tier: String, font_size: int = 12, font: Font = null) -> HBoxC
 	row.name = "TierLabel"
 	row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	row.add_theme_constant_override("separation", 5)
-	row.add_child(mark(tier, font_size + 2.0))
+	row.add_child(mark(tier, font_size + 5.0))
 	var text := Label.new()
 	text.text = word(tier)
 	text.mouse_filter = Control.MOUSE_FILTER_IGNORE

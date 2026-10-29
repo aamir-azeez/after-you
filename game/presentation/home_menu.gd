@@ -21,6 +21,8 @@ const SafeArea = preload("res://presentation/safe_area.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const WhatsNewCard = preload("res://presentation/whats_new_card.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+const OwnLook = preload("res://services/own_look.gd")
+const Outfit = preload("res://services/outfit.gd")
 ## The Wardrobe row's icon: the player's own pip in its look, a still picture
 ## from the shared renderer (kit/pip_snapshots.gd), so Home gains no live view.
 const WARDROBE_PIP := Vector2(30, 38)
@@ -56,6 +58,7 @@ var friends_button: Button
 var replays_button: Button
 var wardrobe_button: Button
 var _wardrobe_pip: Control
+var _wardrobe_look := ""
 var invite_button: Button
 var whats_new_button: Button
 var settings_button: Button
@@ -234,6 +237,9 @@ func show_wardrobe(available: bool) -> void:
 ## The row's pip follows what the player wears (services/own_look.gd).
 func refresh_wardrobe_look() -> void:
 	if not is_instance_valid(wardrobe_button) or not wardrobe_button.visible: return
+	var look := Outfit.digest(OwnLook.outfit())
+	if is_instance_valid(_wardrobe_pip) and look == _wardrobe_look: return
+	_wardrobe_look = look
 	if is_instance_valid(_wardrobe_pip):
 		wardrobe_button.remove_child(_wardrobe_pip)
 		_wardrobe_pip.queue_free()

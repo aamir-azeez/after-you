@@ -5,11 +5,13 @@ extends Node
 ## Play build with its store key: services/pollen_surfaces.gd bundles_visible).
 ## iPhone and the Test Store build never open it.
 ##
-## What a bundle adds is never decided here. After Google Play's sheet says the
-## purchase went through, the flow asks the server to claim it
-## (services/bundle_claims.gd), and shows the receipt from the server's answer.
-## A claim that gets no answer stays waiting and goes again on the next flush;
-## its receipt shows the next time the store opens. The store's prices come
+## What a bundle adds is never decided here. Before Google Play's sheet opens,
+## the flow marks a claim as waiting (services/bundle_claims.gd mark_pending), so
+## a purchase is claimed even if the app closes during the sheet; a cancelled
+## sheet drops the mark. After the sheet says the purchase went through, the
+## flow asks the server to claim it and shows the receipt from the server's
+## answer. A claim that gets no answer stays waiting and goes again on the next
+## flush; its receipt shows the next time the store opens. The store's prices come
 ## only from the RevenueCat offering "pollen" (services/pollen_bundles.gd).
 ##
 ## Main hosts it as a child and reads Main only through this host contract
@@ -70,6 +72,8 @@ var _request := ""
 var _buying := ""
 ## The package being bought, kept for its local price on the receipt.
 var _bought: Dictionary = {}
+## Whether this purchase set the waiting mark (a cancel then drops it).
+var _marked := false
 var _generation := 0
 
 func _init(main: Node = null) -> void:
@@ -121,7 +125,6 @@ func show_store() -> void:
 	_gate = BusyTapGate.new(_page)
 	_packages = {}
 	_loaded = false
-	_buying = ""
 	_status = PlayerCopy.POLLEN_STORE_LOADING
 	_retry = false
 	_redraw()
@@ -159,6 +162,8 @@ func _store_ready() -> bool:
 	var deadline := Time.get_ticks_msec() + SETUP_WAIT_MS
 	while not flow.identity_ready():
 		if Time.get_ticks_msec() >= deadline or not is_open(): return false
+		# A set-up that already failed (no request out, nothing configured) is not waited for.
+		if not flow.store_configured and str(flow.store_configure_request).is_empty() and Time.get_ticks_msec() >= deadline - SETUP_WAIT_MS + 500: return false
 		await get_tree().process_frame
 	return true
 
@@ -179,6 +184,7 @@ func _on_completed(id: String, operation: String, payload: Dictionary) -> void:
 		_redraw()
 	elif operation == "purchase_package" and id == _buying:
 		_buying = ""
+		_marked = false
 		await _claim_after_purchase()
 
 func _on_failed(id: String, operation: String, _code: String, message: String, cancelled: bool) -> void:
@@ -188,6 +194,9 @@ func _on_failed(id: String, operation: String, _code: String, message: String, c
 	elif operation == "purchase_package" and id == _buying:
 		_buying = ""
 		_bought = {}
+		# Only a cancelled sheet surely took no payment; any other failure may settle later, so its mark stays.
+		if cancelled and _marked: _claims().drop_mark()
+		_marked = false
 		_toast(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
 		_redraw()
 
@@ -196,7 +205,8 @@ func tap_bundle(id: String) -> void:
 	if not is_open() or _gate == null: return
 	var button: Button = _page.button(id)
 	if button == null: return
-	_gate.tap(button, "", func() -> bool: return _loaded and _buying.is_empty() and not _claims().sending(), func() -> void: confirm(id), func() -> bool: return is_open())
+	_gate.tap(button, "", func() -> bool: return _loaded and _buying.is_empty() and not _claims().sending(), func() -> void: confirm(id), func() -> bool: return is_open(),
+		func() -> void: _toast(PlayerCopy.POLLEN_STORE_OFFLINE))
 
 ## The confirm card for `id` (after a tap; tests call it directly).
 func confirm(id: String) -> void:
@@ -213,6 +223,8 @@ func buy(id: String) -> void:
 	if not is_open() or not _packages.has(id) or not _buying.is_empty() or not available(): return
 	_bought = _packages[id].duplicate()
 	_bought.bundle = id
+	# The mark goes on before the sheet, so a purchase is claimed even if the app closes during it.
+	_marked = _claims().mark_pending()
 	_buying = host.purchases.purchase(str(_bought.offering_id), str(_bought.id))
 
 ## After Google Play took the payment: the server claims it, then the receipt shows.
@@ -244,7 +256,7 @@ func _show_unseen() -> void:
 	_close_sheet()
 	var newest: Dictionary = receipts.back()
 	var paid := str(_bought.get("price", "")) if str(_bought.get("bundle", "")) == str(newest.bundle) else ""
-	_sheet = weakref(Sheets.receipt(host.ui, newest, _balance(), paid, func() -> void: wardrobe_requested.emit(), null))
+	_sheet = weakref(Sheets.receipt(host.ui, newest, int(newest.get("balance", _balance())), paid, func() -> void: wardrobe_requested.emit(), null))
 	_redraw()
 
 ## "Earn Pollen free by playing": the earning page when Main has one, else a short card.

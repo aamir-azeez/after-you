@@ -167,6 +167,10 @@ func act(id: String) -> void:
 		await _wear(entry)
 		return
 	if not bool(entry.sold) or bool(entry.locked) or not shop(): return
+	# A balance the server has not said yet is read first; no card shows a guess.
+	if not _balance_known():
+		await refresh()
+		if not _balance_known() or not is_open(): return
 	var balance := _balance()
 	_close_sheet()
 	var parent: Control = host.ui

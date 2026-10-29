@@ -475,6 +475,8 @@ func purchase_completed(id: String, operation: String, payload: Dictionary) -> v
 			else: show_paywall(tester_store_manual)
 
 func purchase_failed(id: String,operation: String,_code: String,message: String,cancelled: bool) -> void:
+	# Every offerings read of this flow is tracked; another flow's (the Pollen store's) is its own to report.
+	if operation == "get_offerings" and not store_read_views.has(id): return
 	if operation in ["get_customer_info","get_offerings"] and not _accept_store_read(id): return
 	if operation=="configure":
 		if id!=store_configure_request or id.is_empty(): return

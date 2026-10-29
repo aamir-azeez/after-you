@@ -314,6 +314,7 @@ const POLLEN_STORE_THANKS := "Thanks for supporting After You."
 const POLLEN_STORE_BALANCE := "Balance"
 const POLLEN_STORE_PAID := "Paid"
 const POLLEN_STORE_ORDER := "%s · Google Play order %s"
+const POLLEN_STORE_ORDER_ONLY := "Google Play order %s"
 const POLLEN_STORE_OPEN_WARDROBE := "Open the Wardrobe"
 const POLLEN_STORE_DONE := "Done"
 ## After Google Play took the payment but the server has not answered yet.

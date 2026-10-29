@@ -69,6 +69,7 @@ class FakePurchases extends Node:
 		match outcome:
 			"ok": completed.emit.call_deferred(id, "purchase_package", {"schema_version": 1})
 			"cancel": failed.emit.call_deferred(id, "purchase_package", "revenuecat_PURCHASE_CANCELLED", "Purchase cancelled.", true)
+			"silent": pass
 			_: failed.emit.call_deferred(id, "purchase_package", "revenuecat_STORE_PROBLEM", "The store had a problem.", false)
 		return id
 
@@ -260,17 +261,24 @@ func _gift() -> void:
 	t.host.queue_free()
 	await _frames(2)
 
+## A cancelled sheet claims nothing and drops its mark; a failed one claims nothing now but keeps its
+## mark (a payment may settle later); a sheet the app never heard back from (closed) keeps it too.
 func _cancelled_and_failed() -> void:
-	for outcome: String in ["cancel", "fail"]:
+	for outcome: String in ["cancel", "fail", "silent"]:
 		var t := _setup()
 		t.purchases.outcome = outcome
 		t.flow.show_store()
 		await _frames()
 		t.flow.buy("jar")
 		await _frames(6)
-		_check(t.purchases.bought.size() == 1 and t.fake.sent.is_empty() and not t.claims.pending(), "A %s purchase claims nothing" % outcome)
-		_check(t.host.ui.find_child("PollenStoreReceipt", true, false) == null and t.host.toasts.size() == 1, "%s: no receipt, one line for the player" % outcome)
+		_check(t.purchases.bought.size() == 1 and t.fake.sent.is_empty(), "A %s purchase claims nothing at once" % outcome)
+		_check(t.claims.pending() == (outcome != "cancel"), "%s: the waiting mark %s" % [outcome, "goes" if outcome == "cancel" else "stays, so the next flush claims it"])
+		_check(t.host.ui.find_child("PollenStoreReceipt", true, false) == null and t.host.toasts.size() == (0 if outcome == "silent" else 1), "%s: no receipt, at most one line for the player" % outcome)
 		_check(t.wallet.wallet(SERVER, ME).balance == 9000, "%s: the balance is unchanged" % outcome)
+		if outcome != "cancel":
+			t.fake.replies = [_credited("jar", 0, 53000)]
+			await t.claims.flush()
+			_check(t.wallet.wallet(SERVER, ME).balance == 53000 and not t.claims.pending() and t.claims.unseen().size() == 1, "%s: the next flush claims it and keeps its receipt" % outcome)
 		t.host.queue_free()
 		await _frames(2)
 
@@ -348,23 +356,28 @@ func _first_tap_waits() -> void:
 	await _frames(2)
 
 func _claims_service() -> void:
-	_check(BundleClaims.checked_answer({"schema_version": 1, "balance": 5, "credited": [{"bundle": "nope", "pollen": 1, "first_gift": 0, "order": "", "purchased_at": 1, "usd_cents": 1}], "refunded": []}).is_empty(), "An unknown bundle fails the whole answer")
-	_check(BundleClaims.checked_answer({"schema_version": 1, "balance": 5, "credited": [{"bundle": "pinch", "pollen": -1, "first_gift": 0, "order": "", "purchased_at": 1, "usd_cents": 1}], "refunded": []}).is_empty(), "A negative amount fails it")
-	_check(BundleClaims.checked_answer({"schema_version": 1, "balance": 5, "credited": [{"bundle": "pinch", "pollen": 5000, "first_gift": 0, "order": "<b>", "purchased_at": 1, "usd_cents": 99}], "refunded": []}).is_empty(), "An order number outside its pattern fails it")
+	for bad: Dictionary in [{"bundle": "nope", "pollen": 1, "first_gift": 0, "order": "", "purchased_at": 1, "usd_cents": 1}, {"bundle": "pinch", "pollen": -1, "first_gift": 0, "order": "", "purchased_at": 1, "usd_cents": 1},
+			{"bundle": "pinch", "pollen": 5000, "first_gift": 0, "order": "<b>", "purchased_at": 1, "usd_cents": 99}]:
+		var kept := BundleClaims.checked_answer({"schema_version": 1, "balance": 5, "credited": [bad], "refunded": []})
+		_check(kept.get("balance") == 5 and (kept.get("credited", [1]) as Array).is_empty(), "A receipt that fails its check is left out and the balance still counts: " + str(bad))
+	_check(BundleClaims.checked_answer({"schema_version": 1, "balance": 5, "credited": [{"bundle": "pinch", "pollen": 5000, "first_gift": 0, "order": "GPA." + "1".repeat(120), "purchased_at": 1, "usd_cents": 99}], "refunded": []}).credited.size() == 1, "A long order number the server allows is kept")
 	_check(BundleClaims.checked_answer({"schema_version": 2, "balance": 5, "credited": [], "refunded": []}).is_empty() and BundleClaims.checked_answer({"schema_version": 1, "balance": 1.5, "credited": [], "refunded": []}).is_empty(), "A wrong version or a broken balance fails it")
 	_check(not BundleClaims.checked_answer({"schema_version": 1, "balance": -5, "credited": [], "refunded": []}).is_empty(), "A balance below zero is a real answer")
 	var t := _setup()
 	t.fake.replies = [{"ok": false, "status": 503, "code": "pollen_bundles_disabled"}]
 	await t.claims.claim()
 	_check(t.claims.pending(), "A server pause keeps the claim waiting")
+	t.fake.replies = [{"ok": false, "status": 401, "code": "invalid_auth"}]
+	await t.claims.flush()
+	_check(t.claims.pending(), "A changed device keeps it waiting")
 	t.fake.replies = [{"ok": false, "status": 400, "code": "invalid_pollen_bundle_claim"}]
 	await t.claims.flush()
-	_check(not t.claims.pending(), "A final refusal stops it")
+	_check(not t.claims.pending(), "A refusal of the claim itself stops it")
 	await t.claims.claim()
 	for i in range(BundleClaims.MAX_EMPTY + 1):
 		t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": 9000.0, "pending": false, "credited": [], "refunded": []}}]
 		await t.claims.flush()
-	_check(not t.claims.pending() and t.fake.sent.size() <= 3 + BundleClaims.MAX_EMPTY, "A purchase that never lands stops being asked about after a while")
+	_check(not t.claims.pending() and t.fake.sent.size() <= 4 + BundleClaims.MAX_EMPTY, "A purchase that never lands stops being asked about after a while")
 	t.host.scope = {}
 	_check(t.claims.scope().is_empty() and not t.claims.pending(), "Signed out: no claim")
 	t.host.queue_free()

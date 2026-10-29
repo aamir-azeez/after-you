@@ -91,6 +91,8 @@ var _pip_box: CenterContainer
 var _reduced := false
 var _view := "you"
 var _model: Dictionary = {}
+## What the cards were last built from; a redraw that changes only the pick restyles them instead.
+var _cards_key := ""
 
 func _init(reduced: bool = false) -> void:
 	_reduced = reduced
@@ -315,12 +317,18 @@ func render(model: Dictionary) -> void:
 	var by_id := {}
 	for entry: Dictionary in model.get("items", []): by_id[entry.id] = entry
 	var featured: Array = (model.get("featured", []) as Array).filter(func(id: String) -> bool: return by_id.has(id)).map(func(id: String) -> Dictionary: return by_id[id])
-	_fill(_featured, featured, true)
-	_shelf.visible = shop and tab == "all" and not featured.is_empty()
 	var kind := str(model.get("kind", ""))
-	_fill_kinds(model.get("kinds", []), kind)
 	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return (tab == "all" or bool(entry.owned)) and (kind.is_empty() or entry.slot == kind))
-	_fill(_grid, shown, false)
+	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop])
+	if key != _cards_key:
+		_cards_key = key
+		_fill(_featured, featured, true)
+		_fill_kinds(model.get("kinds", []), kind)
+		_fill(_grid, shown, false)
+	else:
+		_restyle(_featured)
+		_restyle(_grid)
+	_shelf.visible = shop and tab == "all" and not featured.is_empty()
 	if tab == "owned" and shown.is_empty() and status.is_empty():
 		_status.text = PlayerCopy.WARDROBE_NOTHING_OWNED if shop else PlayerCopy.WARDROBE_NOTHING_EARNED
 		_status.visible = true
@@ -391,6 +399,18 @@ func _fill(box: Container, entries: Array, small: bool) -> void:
 	var shop := bool(_model.get("shop", false))
 	for entry: Dictionary in entries: box.add_child(_card(entry, small, shop))
 
+## Marks the picked card in `box` without making the cards again.
+func _restyle(box: Container) -> void:
+	var picked := str(_model.get("selected", ""))
+	for card: Node in box.get_children():
+		if not card is Button: continue
+		var id := str(card.get_meta("item_id", ""))
+		var tier := str(card.get_meta("tier", "common"))
+		var on := id == picked
+		(card as Button).set_pressed_no_signal(on)
+		for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
+			card.add_theme_stylebox_override(state, TierFrame.style(tier, 16, on or state in ["pressed", "hover_pressed"]))
+
 func _fill_kinds(kinds: Array, picked: String) -> void:
 	for child: Node in _kinds.get_children():
 		_kinds.remove_child(child)
@@ -420,6 +440,8 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 	card.set_pressed_no_signal(picked)
 	card.accessibility_name = str(entry.name)
 	var tier := str(entry.tier)
+	card.set_meta("item_id", str(entry.id))
+	card.set_meta("tier", tier)
 	for state: String in ["normal", "hover", "pressed", "hover_pressed", "focus"]:
 		card.add_theme_stylebox_override(state, TierFrame.style(tier, 16, picked or state in ["pressed", "hover_pressed"]))
 	card.pressed.connect(func() -> void: item_chosen.emit(str(entry.id)))

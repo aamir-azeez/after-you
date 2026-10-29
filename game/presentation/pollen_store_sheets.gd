@@ -39,7 +39,8 @@ static func confirm(parent: Control, bundle: String, price: String, gift: int, b
 	return modal
 
 ## The receipt for one credited purchase (services/bundle_claims.gd checked_receipt).
-## `paid`: the price as the store showed it, or "" to show the US price.
+## `balance_after`: the balance the server's answer gave. `paid`: the price as the
+## store showed it, or "" when it is not known here (then only the order shows).
 ## `open_wardrobe` runs on Open the Wardrobe (an empty Callable leaves it out).
 static func receipt(parent: Control, credited: Dictionary, balance_after: int, paid: String, open_wardrobe: Callable, opener: Control = null) -> Control:
 	var bundle := str(credited.bundle)
@@ -58,9 +59,10 @@ static func receipt(parent: Control, credited: Dictionary, balance_after: int, p
 	_line(table, _bundle_words(bundle), ShopKit.amount(int(credited.pollen), 17, CREAM))
 	if int(credited.first_gift) > 0: _line(table, PlayerCopy.POLLEN_STORE_GIFT % _gift_percent(bundle, int(credited.first_gift)), ShopKit.amount(int(credited.first_gift), 17, CREAM))
 	_line(table, PlayerCopy.POLLEN_STORE_BALANCE, _before_after(balance_after - added, balance_after))
-	var money := paid if not paid.is_empty() else "$%.2f" % (int(credited.usd_cents) / 100.0)
 	var order := str(credited.get("order", ""))
-	_line(table, PlayerCopy.POLLEN_STORE_PAID, ShopKit.text(PlayerCopy.POLLEN_STORE_ORDER % [money, order] if not order.is_empty() else money, 16, CREAM))
+	var paid_line := paid
+	if not order.is_empty(): paid_line = PlayerCopy.POLLEN_STORE_ORDER % [paid, order] if not paid.is_empty() else PlayerCopy.POLLEN_STORE_ORDER_ONLY % order
+	if not paid_line.is_empty(): _line(table, PlayerCopy.POLLEN_STORE_PAID, ShopKit.text(paid_line, 16, CREAM))
 	var done: Button = modal.add_actions(PlayerCopy.POLLEN_STORE_DONE, func() -> void: modal.close(), PlayerCopy.POLLEN_STORE_OPEN_WARDROBE)
 	done.name = "PollenStoreDone"
 	var wardrobe: Button = modal.find_child("ModalCancel", true, false)

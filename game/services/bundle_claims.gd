@@ -5,12 +5,15 @@ extends RefCounted
 ## RevenueCat itself, credits each one once into its own ledger, and takes back
 ## refunded ones. So a claim is always safe to send again, in any order.
 ##
-## After Google Play's sheet says a purchase went through, the store page asks
-## for a claim. If that claim gets no answer (no signal, a server pause, the app
-## closed), a `pending` mark stays in a small file and the claim goes again on
-## the next flush (services/pollen_client.gd calls flush() on launch, resume and
-## each capabilities read) until the server answers. Receipts the player has not
-## seen yet stay with it, so the store shows them the next time it opens.
+## The store page sets a `pending` mark in a small file before Google Play's
+## sheet opens (mark_pending), so a purchase is never forgotten: not when the app
+## is closed during the sheet, nor when the sheet reports a failure for a payment
+## that settles later. Only a purchase the player cancelled drops the mark. While
+## it is set, the claim goes again on each flush (services/pollen_client.gd calls
+## flush() on launch, resume and each capabilities read) until an answer credits
+## something, MAX_EMPTY answers credited nothing, or MARK_DAYS have passed.
+## Receipts the player has not seen yet stay with it, with the balance their
+## answer gave, so the store shows them the next time it opens.
 ##
 ## Kept per server and player (a scope) in one file written whole with AtomicFile.
 const AtomicFile = preload("res://services/atomic_file.gd")
@@ -27,7 +30,10 @@ const CLAIM_PATH := "/v1/pollen/bundle-claims"
 const MAX_UNSEEN := 8
 ## Answers that credit nothing before a waiting claim stops.
 const MAX_EMPTY := 12
-const ORDER_PATTERN := "^[A-Za-z0-9._:-]{1,64}$"
+## As the server's own check (backend/src/pollen/bundle-provider.ts).
+const ORDER_PATTERN := "^[A-Za-z0-9._:-]{1,128}$"
+## Days a mark keeps asking before it stops.
+const MARK_DAYS := 7
 
 ## A claim answered: `credited` and `refunded` are what that answer applied.
 signal settled(credited: Array, refunded: Array)
@@ -73,10 +79,35 @@ func scope() -> Dictionary:
 func sending() -> bool:
 	return _sending
 
-## Whether a claim waits for the signed-in player.
+## Whether a claim waits for the signed-in player (and is still young enough to ask).
 func pending() -> bool:
 	var context := scope()
-	return not context.is_empty() and bool(_entry(context).get("pending", false))
+	if context.is_empty(): return false
+	var entry := _entry(context)
+	return bool(entry.get("pending", false)) and _now() - int(entry.get("since", 0)) <= MARK_DAYS * 86400
+
+## Sets the mark before a purchase opens Google Play's sheet. True when this
+## call set it (a mark already waiting stays as it is).
+func mark_pending() -> bool:
+	var context := scope()
+	if context.is_empty(): return false
+	var entry := _entry(context, true)
+	if bool(entry.pending) and pending(): return false
+	entry.pending = true
+	entry.empty = 0
+	entry.since = _now()
+	_save()
+	return true
+
+## Drops a mark this purchase set (the player cancelled the sheet).
+func drop_mark() -> void:
+	var context := scope()
+	if context.is_empty() or _entry(context).is_empty(): return
+	_entry(context).pending = false
+	_save()
+
+static func _now() -> int:
+	return int(Time.get_unix_time_from_system())
 
 ## Marks a claim as waiting (a purchase just went through) and sends it.
 ## The claim stays waiting until an answer credits something (or MAX_EMPTY answers did not).
@@ -84,10 +115,7 @@ func pending() -> bool:
 func claim() -> Dictionary:
 	var context := scope()
 	if context.is_empty(): return {"ok": false, "code": "pollen_bundles_disabled", "credited": [], "refunded": []}
-	var entry := _entry(context, true)
-	if not bool(entry.pending): entry.empty = 0
-	entry.pending = true
-	_save()
+	if not pending(): mark_pending()
 	return await _send(context)
 
 ## Sends a waiting claim, if any. Safe to call at any time.
@@ -104,8 +132,8 @@ func _send(context: Dictionary) -> Dictionary:
 	var answer := checked_answer(response.get("data")) if response.get("ok", false) else {}
 	if answer.is_empty():
 		var status := int(response.get("status", 0))
-		# A refusal that is final (the flag went off, the build is unknown) stops the waiting claim.
-		if status >= 400 and status < 500 and status != 429:
+		# Only a refusal of the claim itself is final; anything else (a changed device, a pause) asks again later.
+		if status == 400:
 			_entry(context, true).pending = false
 			_save()
 		return {"ok": false, "code": str(response.get("code", "connection_interrupted")), "credited": [], "refunded": []}
@@ -114,7 +142,10 @@ func _send(context: Dictionary) -> Dictionary:
 	# the purchase a moment later), for at most MAX_EMPTY answers, so a purchase that never lands stops asking.
 	entry.empty = int(entry.get("empty", 0)) + 1 if answer.credited.is_empty() and bool(entry.pending) else 0
 	entry.pending = bool(entry.pending) and answer.credited.is_empty() and int(entry.empty) < MAX_EMPTY
-	for receipt: Dictionary in answer.credited: (entry.unseen as Array).append(receipt)
+	for receipt: Dictionary in answer.credited:
+		var kept := receipt.duplicate()
+		kept.balance = answer.balance
+		(entry.unseen as Array).append(kept)
 	while (entry.unseen as Array).size() > MAX_UNSEEN: (entry.unseen as Array).pop_front()
 	_save()
 	wallet.note_balance(context.server, context.owner, answer.balance)
@@ -139,14 +170,14 @@ func mark_seen() -> void:
 static func checked_answer(value: Variant) -> Dictionary:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), 1) or not Typed.whole_number(value.get("balance")): return {}
 	if not value.get("credited") is Array or not value.get("refunded") is Array or value.credited.size() > 100 or value.refunded.size() > 100: return {}
+	# A receipt that fails its check is left out; the balance the server gave still counts.
 	var credited: Array = []
 	for item: Variant in value.credited:
 		var kept := checked_receipt(item)
-		if kept.is_empty(): return {}
-		credited.append(kept)
+		if not kept.is_empty(): credited.append(kept)
 	var refunded: Array = []
 	for item: Variant in value.refunded:
-		if not item is Dictionary or not str(item.get("bundle", "")) in Bundles.ids() or not Typed.whole_number(item.get("amount")): return {}
+		if not item is Dictionary or not str(item.get("bundle", "")) in Bundles.ids() or not Typed.whole_number(item.get("amount")): continue
 		refunded.append({"bundle": str(item.bundle), "amount": Typed.as_int(item.amount), "order": str(item.get("order", ""))})
 	return {"balance": Typed.as_int(value.balance), "credited": credited, "refunded": refunded}
 
@@ -157,14 +188,17 @@ static func checked_receipt(item: Variant) -> Dictionary:
 		if not Typed.whole_number(item.get(field)) or float(item.get(field)) < 0.0: return {}
 	var order: Variant = item.get("order", "")
 	if not order is String or (not order.is_empty() and _order.search(order) == null): return {}
-	return {"bundle": str(item.bundle), "pollen": Typed.as_int(item.pollen), "first_gift": Typed.as_int(item.first_gift), "order": order,
+	var kept := {"bundle": str(item.bundle), "pollen": Typed.as_int(item.pollen), "first_gift": Typed.as_int(item.first_gift), "order": order,
 		"purchased_at": Typed.as_int(item.purchased_at), "usd_cents": Typed.as_int(item.usd_cents)}
+	# A kept receipt also has the balance its answer gave.
+	if Typed.whole_number(item.get("balance")): kept.balance = Typed.as_int(item.balance)
+	return kept
 
 func _entry(context: Dictionary, create: bool = false) -> Dictionary:
 	var key := Wardrobe.scope_key(str(context.server), str(context.owner))
 	if not _scopes.has(key):
 		if not create: return {}
-		_scopes[key] = {"pending": false, "empty": 0, "unseen": []}
+		_scopes[key] = {"pending": false, "empty": 0, "since": 0, "unseen": []}
 	return _scopes[key]
 
 func _request(method: int, route: String, body: Dictionary) -> Dictionary:
@@ -185,7 +219,7 @@ func _load() -> void:
 		for item: Variant in (value.unseen if value.get("unseen") is Array else []):
 			var kept := checked_receipt(item)
 			if not kept.is_empty(): unseen.append(kept)
-		_scopes[key] = {"pending": value.get("pending") == true, "empty": clampi(Typed.as_int(value.get("empty"), 0), 0, MAX_EMPTY), "unseen": unseen.slice(-MAX_UNSEEN)}
+		_scopes[key] = {"pending": value.get("pending") == true, "empty": clampi(Typed.as_int(value.get("empty"), 0), 0, MAX_EMPTY), "since": maxi(0, Typed.as_int(value.get("since"), 0)), "unseen": unseen.slice(-MAX_UNSEEN)}
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "scopes": _scopes}))
