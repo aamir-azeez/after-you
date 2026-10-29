@@ -409,9 +409,9 @@ jobs:
           # Without it the build keeps purchase_mode "tester_only" with no key: on iOS the store
           # is off and Tester code is hidden in release builds, so nothing can be bought.
           app-config-base64: ${{ secrets.IOS_APP_CONFIG_BASE64 }}
-          # OWNER STEP (phase 4): set to "true" once apple-app-site-association is live on
-          # aamirazeez.com (see claude-20261011\ios\site-upload). The plugin already handles links.
-          universal-links: "false"
+          # On since 0.7.3: apple-app-site-association is served at aamirazeez.com/.well-known,
+          # and the plugin handles the links.
+          universal-links: "true"
           game-center: "true"
           icloud-container: ${{ env.ICLOUD_CONTAINER }}
 
