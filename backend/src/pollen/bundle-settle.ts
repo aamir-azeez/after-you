@@ -33,8 +33,8 @@ export type BundleDeps = {
 export type BundleCredit = { bundle: BundleKey; pollen: number; first_gift: number; order: string; purchased_at: number; usd_cents: number };
 export type BundleRefund = { bundle: BundleKey; amount: number; order: string };
 export type BundleReply = { schema_version: 1; balance: number; credited: BundleCredit[]; refunded: BundleRefund[]; pending: boolean };
-/** What GET /v1/pollen adds while bundles are on: whether the first gift is still open, and the money spent (refunds taken off). */
-export type BundlesView = { first_gift: boolean; spent_usd_cents: number };
+/** What GET /v1/pollen adds while bundles are on: whether a first gift is still open (and set above 0), its percent, and the money spent (refunds taken off). */
+export type BundlesView = { first_gift: boolean; first_gift_percent: number; spent_usd_cents: number };
 export type BundleOutcome = { status: "settled"; reply: BundleReply } | { status: "unavailable"; reason: string } | { status: "absent" };
 
 /** After a failed provider or claims call, the daily check waits this long before trying again (memory only). */
@@ -131,12 +131,13 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
 }
 
 /** GET /v1/pollen's bundles part. Read only; never throws. */
-export function bundlesView(storage: DurableObjectStorage): BundlesView {
+export function bundlesView(storage: DurableObjectStorage, bundles: Bundles = BUNDLES): BundlesView {
+  const percent = bundles.first_bonus_percent;
   try {
     const paid = bundleLines(storage), refunds = refundLines(storage);
     const spent = paid.reduce((sum, line) => sum + Number(line.detail.usd_cents ?? 0), 0) - refunds.reduce((sum, line) => sum + Number(line.detail.usd_cents ?? 0), 0);
-    return { first_gift: !paid.some(line => Number(line.detail.first_gift ?? 0) > 0), spent_usd_cents: Math.max(0, spent) };
-  } catch { return { first_gift: true, spent_usd_cents: 0 }; }
+    return { first_gift: percent > 0 && !paid.some(line => Number(line.detail.first_gift ?? 0) > 0), first_gift_percent: percent, spent_usd_cents: Math.max(0, spent) };
+  } catch { return { first_gift: false, first_gift_percent: percent, spent_usd_cents: 0 }; }
 }
 
 /** Account erasure: the check time goes with the wallet (its ledger rows are the wallet's). */

@@ -24,8 +24,9 @@ import { parseVersion, type Version } from "../config";
  *
  * Bundles (POLLEN_BUNDLES): POST /v1/pollen/bundle-claims costs auth()'s Player call, one more Player call
  * that reads RevenueCat itself (a subrequest), and one PollenClaims request only when RevenueCat lists a
- * purchase new to the player. The daily refund check is a subrequest inside the wallet read's own Player
- * call, only for a player who bought a bundle, plus that PollenClaims request when a new purchase shows up.
+ * purchase new to the player. The daily refund check (POLLEN_REFUNDS, which bundles need and which stays on
+ * after they stop selling) is a subrequest inside the wallet read's own Player call, only for a player who
+ * bought a bundle, plus that PollenClaims request when a new purchase shows up.
  */
 export const POLLEN_HEADER = "X-AfterYou-Pollen";
 export const POLLEN_VERSION = 1;

@@ -28,7 +28,7 @@ import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type Displ
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { bundlesOn, grantOn, itemBloomsOn, type WardrobeMode } from "./pollen/features";
+import { bundlesOn, grantOn, itemBloomsOn, refundsOn, type WardrobeMode } from "./pollen/features";
 import { knownBoard } from "./leaderboards/boards";
 import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/grant-settle";
 import { readGrant } from "./pollen/grant-provider";
@@ -198,14 +198,14 @@ export class Player extends DurableObject<Env> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
-    const grant = grantOn(this.env), bundles = mode === "shop" && bundlesOn(this.env);
+    const grant = grantOn(this.env), refunds = mode === "shop" && refundsOn(this.env), bundles = mode === "shop" && bundlesOn(this.env);
     if (grant) {
       await this.settleGrant(identity.player_id);
       // A recovery may have replaced the device while the provider answered.
       if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
     }
     // At most once a day, for a player who bought a bundle: refunds are taken back (and a purchase never claimed is paid).
-    if (bundles && bundleCheckDue(this.ctx.storage, Date.now())) {
+    if (refunds && bundleCheckDue(this.ctx.storage, Date.now())) {
       await this.checkBundles(identity.player_id);
       if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
     }

@@ -7,7 +7,8 @@ import { pollenSecret } from "./keys";
  * Hard comes from the Hard clears it records. The shop needs the wardrobe: what it sells is owned and
  * worn there, and a Special unlocks from the first clears earning records. Looks need only POLLEN_LOOKS.
  * Item blooms need the shop: a dropped item is one the shop sells. The monthly grant needs earning:
- * it pays into the same wallet. Bundles need the shop: bought Pollen is only for spending there.
+ * it pays into the same wallet. Refund checks need the shop, and bundles need refund checks, so bought
+ * Pollen is never sold without a refund taking it back, and refunds keep being taken back after bundles stop.
  */
 export function earningOn(env: ServerVars): boolean { return flags.pollenEarn(env) && pollenSecret(env) !== null; }
 export function wardrobeOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenWardrobe(env); }
@@ -15,7 +16,8 @@ export function shopOn(env: ServerVars): boolean { return wardrobeOn(env) && fla
 export function looksOn(env: ServerVars): boolean { return flags.pollenLooks(env); }
 export function itemBloomsOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenItemBlooms(env); }
 export function grantOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenGrant(env); }
-export function bundlesOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenBundles(env); }
+export function refundsOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenRefunds(env); }
+export function bundlesOn(env: ServerVars): boolean { return refundsOn(env) && flags.pollenBundles(env); }
 
 /** What the wallet read carries: nothing more, the wardrobe (owned items and the look), or the wardrobe with the shop. */
 export type WardrobeMode = "off" | "wardrobe" | "shop";

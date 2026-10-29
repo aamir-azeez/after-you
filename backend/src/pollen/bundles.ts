@@ -10,7 +10,8 @@ import raw from "./bundles.json";
  * - `pollen` is what one bundle pays, its bonus included; `bonus` is the part of it that is bonus.
  * - `usd_cents` is the US price, kept for a receipt whose purchase carries no revenue figure.
  * - The first bundle a player ever buys also pays first_bonus_percent of its own Pollen, rounded down,
- *   once per player (the Pouch: 2,100). A refund takes it back and never opens it again.
+ *   once per player (at 10, the Pouch: 2,100). A refund takes it back and never opens it again. It is 0, off,
+ *   until the owner decides on it (POLLEN-RULES.md owner decision 5); at 0 nothing is paid and nothing closes.
  * Amounts live only here: the phone never sends one.
  */
 export type Bundle = { pollen: number; bonus: number; usd_cents: number };
