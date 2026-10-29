@@ -95,7 +95,7 @@ static func build(scope: Dictionary, room_id: String, recording_hash: String, pa
 		row.alignment = BoxContainer.ALIGNMENT_CENTER
 		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
 		if marked:
-			row.add_child(PollenMark.make(PollenMark.LINE))
+			row.add_child(PollenMark.beside(FONT_SIZE))
 			marked = false
 		if line.begins_with("*"):
 			row.add_child(Flower.new())

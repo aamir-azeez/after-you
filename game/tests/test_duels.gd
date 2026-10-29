@@ -177,7 +177,28 @@ func _pages() -> void:
 	_check(result.find_child("DuelResultHeadline", true, false).text == "You and Maya won" and _has_text(result, PlayerCopy.DUEL_WINNER), "the winner's title and card")
 	var pollen: Node = result.find_child("DuelPollen", true, false)
 	_check(pollen != null and _has_text(pollen, PlayerCopy.DUEL_PAY_PREMIUM) and _has_text(pollen, PlayerCopy.DUEL_PAY_WIN) and _has_text(pollen, "1,210"), "Pollen earned lists the duel's real pay and its total")
+	await process_frame
+	var mark: Control = pollen.find_child("PollenMark", true, false)
+	var total_row: Control = mark.get_parent() if mark != null else null
+	var amount: Control = total_row.get_child(total_row.get_child_count() - 1) if total_row != null else null
+	_check(amount != null and absf(mark.get_global_rect().get_center().y - amount.get_global_rect().get_center().y) <= 0.5 and absf(mark.get_global_rect().get_center().y - total_row.get_child(0).get_global_rect().get_center().y) <= 0.5, "the Pollen mark is centred on the total and its label")
+	_check(amount != null and mark.size.y <= amount.size.y and mark.get_global_rect().position.y > total_row.get_parent().get_child(total_row.get_index() - 2).get_global_rect().end.y, "and stays inside the total's line, clear of the rule above")
 	_check(not _has_text(result, "member in your party"), "no Full Journey member line")
+	var behind: Control = result.find_child("DuelResultBackdrop", true, false)
+	_check(behind != null and behind.style == ResultPage.RESULT_BG and behind.get_index() == 1 and not behind.is_processing() and behind.mouse_filter == Control.MOUSE_FILTER_IGNORE, "the result has the owner's look behind it, over the page's green, still and never in the way")
+	for look: String in ResultPage.Backdrop.STYLES:
+		var drawn := ResultPage.Backdrop.new(look)
+		root.add_child(drawn)
+		drawn.size = Vector2(1280, 720)
+		drawn.show_chapter(BOARD, true)
+		await process_frame
+		var pictures := drawn.find_children("ResultPicture", "TextureRect", true, false)
+		_check(look == "cheer" or pictures.size() >= 1, "%s shows the chapter's own picture" % look)
+		_check(look == "level" or drawn.margin() > 0.0, "%s uses the margins beside the cards at 1280x720" % look)
+		drawn.size = Vector2(1000, 720)
+		await process_frame
+		_check(drawn.margin() == 0.0 and drawn.find_children("ResultSnapshot*", "", true, false).all(func(paper: Control) -> bool: return not paper.visible), "%s stays out of a narrow screen's cards" % look)
+		drawn.queue_free()
 	result.close()
 	var hidden := ResultPage.new()
 	hidden.view = result.view
@@ -230,11 +251,24 @@ func _pages() -> void:
 	# Nothing at all: the hand drawn empty art the other lists use, in the owner's pick.
 	lobby.show_lobby(Client.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": []}))
 	await process_frame
-	var empty: Node = lobby.find_child("EmptyState", true, false)
+	var empty: Node = lobby.find_child("DuelsEmpty", true, false).find_child("EmptyState", true, false)
 	_check(empty != null and empty.art == Lobby.EMPTY_ART and _has_text(empty, PlayerCopy.DUELS_EMPTY_TITLE), "an empty lobby draws its empty art")
+	var open_empty: Node = lobby.find_child("DuelsOpenList", true, false).find_child("EmptyState", true, false)
+	_check(open_empty != null and open_empty.art == Lobby.OPEN_EMPTY_ART and _has_text(open_empty, Lobby.OPEN_LINES[Lobby.OPEN_EMPTY_ART]), "an empty Open duels column draws its own art and line")
+	var race: Control = lobby.find_child("DuelsRaceRecorded", true, false)
+	_check(open_empty != null and race != null and (open_empty as Control).get_global_rect().end.y <= race.get_global_rect().position.y, "and it sits above the Race a recorded run card, never over it")
+	_check(Lobby.OPEN_LINES.size() == 3 and Lobby.OPEN_LINES.keys().all(func(art: String) -> bool: return preload("res://presentation/empty_state.gd").SPOTS.has(art)), "every Open duels version has its art and its line")
+	for art: String in ["duels_d", "duels_e", "duels_f"]:
+		lobby.empty_art = art
+		lobby.show_lobby(Client.valid_lobby({"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": []}))
+		await process_frame
+		var drawn: Node = lobby.find_child("DuelsEmpty", true, false).find_child("EmptyState", true, false)
+		_check(drawn != null and drawn.art == art, "the empty lobby can draw %s" % art)
+	lobby.empty_art = Lobby.EMPTY_ART
 	lobby.show_lobby(lobby_data)
 	await process_frame
-	_check(lobby.find_child("EmptyState", true, false) == null or lobby.find_child("EmptyState", true, false).is_queued_for_deletion(), "and it goes once a duel arrives")
+	var gone: Node = lobby.find_child("DuelsEmpty", true, false).find_child("EmptyState", true, false)
+	_check(gone == null or gone.is_queued_for_deletion(), "and it goes once a duel arrives")
 	lobby.close()
 	await process_frame
 

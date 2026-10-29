@@ -13,6 +13,9 @@ const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const PLAY_ICON = preload("res://assets/ui/play-circle.svg")
 const PollenMoney = preload("res://services/pollen_money.gd")
+const Backdrop = preload("res://presentation/duels/duel_result_backdrop.gd")
+## What sits behind the result (duel_result_backdrop.gd): "level", "snapshots" or "cheer". The owner's pick is this one line.
+const RESULT_BG := "level"
 
 signal watch_requested(view: Dictionary, control: Control)
 
@@ -25,9 +28,16 @@ var win_bonus: Dictionary = {}
 ## Whether this build names Full Journey (services/pollen_surfaces.gd), and shows Pollen at all.
 var show_boost := true
 var show_pollen := true
+## The look behind the result; RESULT_BG unless a capture asks for another before the page opens.
+var result_bg := RESULT_BG
 var _column: VBoxContainer
+var _backdrop: Control
 
 func page_name() -> String: return "DuelResult"
+
+func backdrop() -> Control:
+	_backdrop = Backdrop.new(result_bg)
+	return _backdrop
 
 func show_result(next: Dictionary, paid: Dictionary = {}, bonus: Dictionary = {}) -> void:
 	view = next
@@ -48,6 +58,7 @@ func _render() -> void:
 	if view.is_empty(): return
 	var key := str(view.chapter)
 	set_title("", "")
+	if is_instance_valid(_backdrop): _backdrop.show_chapter(key, view.result is Dictionary and view.result.get("outcome", "") == "won")
 	var title := Kit.text(DuelModel.result_title(view, name_of), 50 if not compact else 42, UiTokens.CREAM, true)
 	title.name = "DuelResultHeadline"
 	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -130,6 +141,10 @@ func _pollen(paid: Dictionary) -> Control:
 	rule.color = Color(UiTokens.INK, 0.35)
 	rule.custom_minimum_size.y = 1
 	column.add_child(rule)
+	# A little air under the rule, so the total's row sits clear of it.
+	var air := Control.new()
+	air.custom_minimum_size.y = 6
+	column.add_child(air)
 	column.add_child(_line(PlayerCopy.DUEL_PAY_TOTAL, PollenMoney.grouped(int(paid.total)), 26, true))
 	return card
 
@@ -139,6 +154,6 @@ func _line(label: String, amount: String, font_size: int, total: bool) -> Contro
 	var name_label := Kit.text(label, font_size, UiTokens.INK, total)
 	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	row.add_child(name_label)
-	if total: row.add_child(PollenMark.make(PollenMark.TOTAL))
+	if total: row.add_child(PollenMark.beside(font_size))
 	row.add_child(Kit.text(amount, font_size, UiTokens.INK, true))
 	return row

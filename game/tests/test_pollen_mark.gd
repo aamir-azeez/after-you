@@ -4,6 +4,7 @@ extends SceneTree
 ## with its mark get it from there, and the seed picture (the seed timer's own)
 ## never stands in for Pollen again.
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
+const Kit = preload("res://presentation/duels/duel_kit.gd")
 const SOURCE := "res://presentation/kit/pollen_mark.gd"
 ## The grain's own colours: anything else drawing them is drawing a Pollen mark.
 const GRAIN_COLOURS := ["f5c95e", "e7ac45", "eab44c", "dc9f3b"]
@@ -32,12 +33,27 @@ func _run() -> void:
 		if path != SEED_OWNER: _check(not text.contains(SEED), "%s uses the seed picture, which is not the Pollen mark" % path)
 	for path: String in USERS:
 		_check(FileAccess.get_file_as_string(path).contains("res://presentation/kit/pollen_mark.gd"), "%s takes its Pollen mark from the one source" % path)
-	var mark: Control = PollenMark.make(PollenMark.TOTAL)
-	_check(mark.custom_minimum_size == Vector2(PollenMark.TOTAL, PollenMark.TOTAL) and mark.mouse_filter == Control.MOUSE_FILTER_IGNORE and mark.name == "PollenMark", "a mark is square at its size and takes no input")
+	var mark: Control = PollenMark.make(34.0)
+	_check(mark.custom_minimum_size == Vector2(34, 34) and mark.mouse_filter == Control.MOUSE_FILTER_IGNORE and mark.name == "PollenMark", "a mark is square at its size and takes no input")
 	root.add_child(mark)
 	await process_frame
 	_check(mark.is_inside_tree(), "a mark draws in a page")
 	mark.queue_free()
+	for path: String in USERS:
+		var text := FileAccess.get_file_as_string(path)
+		_check(text.contains("PollenMark.beside(") and not text.contains("PollenMark.make("), "%s sizes its mark from the amount's font" % path)
+	# Beside an amount, at every size the game sets one: the grain's middle is the line's middle, and it stays inside the line.
+	for font_size: int in [16, 18, 22, 26, 32]:
+		var row := HBoxContainer.new()
+		root.add_child(row)
+		var amount := Kit.text("606", font_size, Color.BLACK, true)
+		var beside := PollenMark.beside(font_size)
+		row.add_child(beside)
+		row.add_child(amount)
+		await process_frame
+		_check(absf(beside.get_global_rect().get_center().y - amount.get_global_rect().get_center().y) <= 0.5, "a mark at %d is centred on its amount: %s against %s" % [font_size, beside.get_global_rect(), amount.get_global_rect()])
+		_check(beside.size.y <= amount.size.y and beside.size.y >= font_size * 0.8, "a mark at %d is as tall as the digits and a bit more, never past the line: %s" % [font_size, beside.size])
+		row.queue_free()
 	await process_frame
 	print("AFTER YOU POLLEN MARK: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)

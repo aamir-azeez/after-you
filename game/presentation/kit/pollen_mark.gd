@@ -9,10 +9,11 @@ extends Control
 ## Flat shapes, no outline and no texture, so it is sharp at every size and
 ## costs one draw per change, never per frame.
 
-## The sizes it is used at: beside a small line (an earned line, the Wardrobe
-## balance) and beside a large total (a result card).
-const LINE := 20.0
-const TOTAL := 34.0
+## Beside an amount the grain is sized from the amount's font: its digits
+## stand about 0.7 of the font size tall, and the grain is about 1.3 times
+## that, so it reads as part of the line, centred on the digits, and never
+## reaches past the line into a rule or a row above or below.
+const BESIDE := 0.92
 const BODY := Color("f5c95e")
 const SHADE := Color("e7ac45")
 const BUMP := Color("eab44c")
@@ -21,8 +22,12 @@ const HIGHLIGHT := Color("fff3cc")
 const BUMPS := 18
 const DIMPLES := [Vector2(0.28, -0.12), Vector2(0.42, 0.28), Vector2(-0.06, 0.38), Vector2(-0.4, 0.12), Vector2(0.08, -0.48), Vector2(0.12, 0.08)]
 
-## A mark `side` pixels square, ready to sit beside an amount.
-static func make(side: float = LINE) -> Control:
+## A mark sized for an amount set at `font_size`, to sit in the same row.
+static func beside(font_size: int) -> Control:
+	return make(roundf(font_size * BESIDE))
+
+## A mark `side` pixels square.
+static func make(side: float) -> Control:
 	var mark: Control = load("res://presentation/kit/pollen_mark.gd").new()
 	mark.name = "PollenMark"
 	mark.custom_minimum_size = Vector2(side, side)
