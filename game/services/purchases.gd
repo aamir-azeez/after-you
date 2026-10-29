@@ -14,6 +14,7 @@ const PurchaseSession = preload("res://services/purchase_session.gd")
 const NativeBridge = preload("res://services/native_bridge.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const Typed = preload("res://services/typed_values.gd")
+const StoreCurrency = preload("res://services/store_currency.gd")
 ## Full Journey is sold as a monthly or yearly subscription. The earlier
 ## one-time products stay admitted so anyone who bought them keeps access.
 const PLAY_PRODUCT := "after_you_full_journey"
@@ -263,6 +264,7 @@ func _on_result(id: String, operation: String, payload_json: String) -> void:
 	var session_generation: int = _session.current_generation() if is_instance_valid(_session) else -1
 	if operation == "get_offerings":
 		offerings = parsed
+		StoreCurrency.note(parsed)
 	else:
 		customer_info = parsed
 		_review_payload.clear()

@@ -28,6 +28,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const StoreCurrency = preload("res://services/store_currency.gd")
 
 const MODE := "pollen_play"
 
@@ -165,4 +166,10 @@ func refresh() -> void:
 func _redraw(retry: bool) -> void:
 	if not is_open(): return
 	_page.render({"chip": _page_chip, "full_journey": _surfaces().full_journey_visible(), "status": _status, "retry": retry, "history": _history,
-		"purchases": purchases_shown(_history), "spent_usd_cents": spent_usd_cents(_history)})
+		"purchases": purchases_shown(_history), "spent_usd_cents": spent_usd_cents(_history), "money": money_shown()})
+
+## Whether the Purchases card shows money: only while the store sells in US
+## dollars (services/store_currency.gd), since the server keeps Google Play's US
+## figure. Anyone else sees each bundle, its Pollen, its date and its order, and no total.
+func money_shown() -> bool:
+	return StoreCurrency.usd()

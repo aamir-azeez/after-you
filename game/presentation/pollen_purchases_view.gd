@@ -4,7 +4,9 @@ extends RefCounted
 ## money spent on bundles in total, then each bundle bought or refunded, newest
 ## first, with its art, its Pollen, its date and the receipt line the store's
 ## receipt shows ("$3.99 · Google Play order GPA.1234-..."). Money is the server's
-## US figure (services/pollen_history.gd), so the total says it is in US dollars.
+## US figure (services/pollen_history.gd), so it shows only for a player whose
+## store sells in US dollars (`money`), and the total says it is in US dollars.
+## Anyone else sees no total and receipt lines with the order alone.
 ## Pure drawing: presentation/pollen_play_page.gd gives it the card's column and
 ## the data; it keeps nothing and takes no input.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -25,8 +27,8 @@ const ART := 46.0
 const GUTTER := 10.0
 
 ## Fills `column` (already empty) from {lines (services/pollen_history.gd
-## purchases), spent_usd_cents (-1 when unknown: no total), loading}: the title
-## always, the rest once the history is in.
+## purchases), spent_usd_cents (-1 when unknown: no total), money (false: no
+## money anywhere on the card), loading}: the title always, the rest once the history is in.
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
 	var heading := ShopKit.text(PlayerCopy.POLLEN_PURCHASES_TITLE, 23, INK, title_font if title_font != null else ShopKit.heading_font())
 	column.add_child(heading)
@@ -38,10 +40,11 @@ static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> 
 		none.name = "PollenPurchasesNone"
 		column.add_child(none)
 		return
-	if int(model.get("spent_usd_cents", -1)) >= 0: column.add_child(_total(int(model.spent_usd_cents), title_font))
+	var money := bool(model.get("money", false))
+	if money and int(model.get("spent_usd_cents", -1)) >= 0: column.add_child(_total(int(model.spent_usd_cents), title_font))
 	for index in range(lines.size()):
 		if index > 0: column.add_child(_rule())
-		column.add_child(_row(lines[index], index))
+		column.add_child(_row(lines[index], index, money))
 
 ## "$23.97 spent in total", and that it is in US dollars.
 static func _total(cents: int, title_font: Font) -> Control:
@@ -66,7 +69,7 @@ static func _total(cents: int, title_font: Font) -> Control:
 ## One bundle or refund: its art, then the name with its Pollen on the right,
 ## the date, and the receipt line across the row's full width (an order number
 ## is one long word).
-static func _row(line: Dictionary, index: int) -> Control:
+static func _row(line: Dictionary, index: int, money: bool) -> Control:
 	var refund := str(line.kind) == "bundlerefund"
 	var row := HBoxContainer.new()
 	row.name = "PollenPurchaseRow%d" % index
@@ -94,7 +97,7 @@ static func _row(line: Dictionary, index: int) -> Control:
 	top.add_child(gutter)
 	var when := WhenLabel.text(floori(int(line.at) / 1000.0))
 	if not when.is_empty(): words.add_child(_wrapped(when, 14, SOFT_INK))
-	var receipt := receipt_line(line)
+	var receipt := receipt_line(line, money)
 	if not receipt.is_empty():
 		var shown := _wrapped(receipt, 14, SOFT_INK)
 		shown.name = "PollenPurchaseReceipt"
@@ -102,9 +105,10 @@ static func _row(line: Dictionary, index: int) -> Control:
 	return row
 
 ## The store receipt's Paid line ("$3.99 · Google Play order GPA.1234"), from
-## what the server kept (presentation/pollen_store_sheets.gd paid_line).
-static func receipt_line(line: Dictionary) -> String:
-	return StoreSheets.paid_line(PollenMoney.usd(int(line.usd_cents)) if int(line.get("usd_cents", -1)) >= 0 else "", str(line.get("order", "")))
+## what the server kept (presentation/pollen_store_sheets.gd paid_line); the
+## order alone without `money`.
+static func receipt_line(line: Dictionary, money: bool = true) -> String:
+	return StoreSheets.paid_line(PollenMoney.usd(int(line.usd_cents)) if money and int(line.get("usd_cents", -1)) >= 0 else "", str(line.get("order", "")))
 
 static func _wrapped(value: String, size: int, color: Color) -> Label:
 	var label := ShopKit.text(value, size, color)

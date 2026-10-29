@@ -118,7 +118,8 @@ func _card(parent: Control, card_name: String) -> VBoxContainer:
 ## Draws `model` from the flow: {chip (kit/pollen_chip.gd, or null before a
 ## balance is known), full_journey, status ("" when the history is in), retry,
 ## history (services/pollen_history.gd), purchases (bool: the Purchases card
-## shows, with the history's purchases), spent_usd_cents (-1: no total shows)}.
+## shows, with the history's purchases), spent_usd_cents (-1: no total shows),
+## money (bool: the card shows money at all, only for a store selling in US dollars)}.
 func render(model: Dictionary) -> void:
 	var chip: Variant = model.get("chip")
 	for child: Node in _chip_slot.get_children():
@@ -135,7 +136,7 @@ func render(model: Dictionary) -> void:
 	var history: Dictionary = model.get("history", {})
 	_title_label.text = PlayerCopy.SETTINGS_POLLEN_PURCHASES if purchases else PlayerCopy.POLLEN_PLAY_TITLE
 	_purchases_card.visible = purchases
-	if purchases: PurchasesView.fill(_purchases, {"loading": not status.is_empty(), "lines": history.get("purchases", []), "spent_usd_cents": int(model.get("spent_usd_cents", -1))}, title_font)
+	if purchases: PurchasesView.fill(_purchases, {"loading": not status.is_empty(), "lines": history.get("purchases", []), "spent_usd_cents": int(model.get("spent_usd_cents", -1)), "money": bool(model.get("money", false))}, title_font)
 	_title(_turns, PlayerCopy.POLLEN_TURNS_TITLE, PlayerCopy.POLLEN_TURNS_NOTE)
 	_title(_clears, PlayerCopy.POLLEN_CLEARS_TITLE, PlayerCopy.POLLEN_CLEARS_NOTE)
 	if not status.is_empty():

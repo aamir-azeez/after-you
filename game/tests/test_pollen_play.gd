@@ -25,8 +25,10 @@ const HomeMenu = preload("res://presentation/home_menu.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
+const StoreCurrency = preload("res://services/store_currency.gd")
 
 const SIZES := [Vector2i(1280, 720), Vector2i(1561, 720), Vector2i(1600, 720)]
+const CURRENCY_PATH := "user://test_pollen_play_store_currency.json"
 
 class FakeWallet:
 	extends RefCounted
@@ -76,14 +78,36 @@ func _initialize() -> void:
 	_run.call_deferred()
 
 func _run() -> void:
+	StoreCurrency.use_path(CURRENCY_PATH)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(CURRENCY_PATH))
+	_store_currency()
 	await _page_states()
 	await _flow()
 	await _home_slot()
 	_purchase_history()
 	await _purchase_card()
 	await _purchase_flow()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(CURRENCY_PATH))
 	print("AFTER YOU POLLEN PLAY: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
+
+## An offerings payload as services/purchases.gd hands it on, its packages in `currency`.
+static func _offerings(currency: String) -> Dictionary:
+	return {"schema_version": 1.0, "offerings": [{"id": "pollen", "packages": [{"id": "pinch", "product_id": "after_you_pollen_pinch", "price": "x", "price_micros": 990000.0, "currency": currency}]}]}
+
+## The store's currency (services/store_currency.gd): unknown at first, kept from an
+## offerings read, kept across a restart, and never taken from a malformed code.
+func _store_currency() -> void:
+	_check(StoreCurrency.code() == "" and not StoreCurrency.usd(), "Before any offerings read the currency is unknown, so no money shows")
+	StoreCurrency.note({"schema_version": 1.0, "offerings": []})
+	_check(StoreCurrency.code() == "", "An offerings read that names no currency changes nothing")
+	StoreCurrency.note(_offerings("EUR"))
+	_check(StoreCurrency.code() == "EUR" and not StoreCurrency.usd(), "An offerings read names the store's currency")
+	StoreCurrency.note(_offerings("usd<b>"))
+	_check(StoreCurrency.code() == "EUR", "A malformed code is ignored")
+	StoreCurrency.note(_offerings("USD"))
+	StoreCurrency.use_path(CURRENCY_PATH)
+	_check(StoreCurrency.usd(), "The currency is kept across a restart")
 
 static func _history(left: int = 15) -> Dictionary:
 	return PollenHistory.checked(_history_value(left))
@@ -264,7 +288,7 @@ func _purchase_card() -> void:
 		var history := _history()
 		var bought := PollenHistory.checked(_with_purchases())
 		history.purchases = bought.purchases
-		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": bought.spent_usd_cents})
+		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": bought.spent_usd_cents, "money": true})
 		await _settle()
 		var texts := _texts(page)
 		var card := page.find_child("PollenPurchasesCard", true, false) as Control
@@ -274,10 +298,19 @@ func _purchase_card() -> void:
 			and texts.has(PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"]), "Each bundle and refund with its receipt line: " + str(texts))
 		_check(page.find_child("PollenPurchaseRow0", true, false).find_children("BundleArt", "", true, false).size() == 1, "A purchase row has its bundle's art")
 		_layout(page, size, "the page with purchases")
+		# A store selling in another currency: the same purchases, no money anywhere.
+		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": bought.spent_usd_cents, "money": false})
+		await _settle()
+		var local := _texts(page)
+		_check(page.find_child("PollenPurchasesTotal", true, false) == null and not local.has(PlayerCopy.POLLEN_PURCHASES_USD) and not local.any(func(text: String) -> bool: return text.contains("$")),
+			"Not in US dollars: no total and no money at %s: %s" % [size, str(local)])
+		_check(page.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and local.has(PlayerCopy.POLLEN_STORE_ORDER_ONLY % "GPA.2222-3333-4444-55555") and local.has("Basket"),
+			"Not in US dollars: each bundle still shows with its order")
+		_layout(page, size, "the page with purchases and no money")
 		page.render({"chip": PollenChip.make(0, true), "full_journey": true, "status": "", "retry": false, "history": PollenHistory.checked({"schema_version": 1.0, "entries": []}), "purchases": true})
 		await _settle()
 		_check(page.find_child("PollenPurchasesNone", true, false) != null and page.find_child("PollenPurchasesTotal", true, false) == null, "No purchases yet, and no total")
-		page.render({"chip": null, "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": -1})
+		page.render({"chip": null, "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": -1, "money": true})
 		await _settle()
 		_check(page.find_child("PollenPurchasesTotal", true, false) == null and page.find_children("PollenPurchaseRow*", "", true, false).size() == 4, "An unknown total shows no figure; the purchases still show")
 		page.render({"chip": null, "full_journey": true, "status": PlayerCopy.POLLEN_PLAY_LOADING, "retry": false, "history": {}, "purchases": true})
@@ -302,6 +335,7 @@ func _purchase_flow() -> void:
 		PollenSurfaces.set_shared_for_tests(build[0], build[1])
 		flow.surfaces = null
 		store.selling = true
+		StoreCurrency.note(_offerings("USD"))
 		_check(flow.purchases_shown() == build[2], "The row and page list purchases on %s: %s" % [build[3], build[2]])
 		flow.open_from_settings()
 		await _settle()
@@ -310,6 +344,19 @@ func _purchase_flow() -> void:
 		var money := _texts(host.overlay).any(func(text: String) -> bool: return text.contains("$") or text.contains("Google Play"))
 		_check(money == build[2], "%s: money shows only with purchases" % build[3])
 	_check(flow.spent_usd_cents({"spent_usd_cents": 1999}) == 1999 and flow.spent_usd_cents({"spent_usd_cents": -1}) == 777, "The total is the history's, else the wallet read's")
+	# The flow shows money only while the store sells in US dollars.
+	PollenSurfaces.set_shared_for_tests(true, true)
+	flow.surfaces = null
+	store.selling = true
+	StoreCurrency.note(_offerings("GBP"))
+	_check(not flow.money_shown(), "A store in pounds shows no money")
+	flow.open_from_settings()
+	await _settle()
+	var pounds := _texts(host.overlay)
+	_check(host.overlay.find_child("PollenPurchasesCard", true, false).visible and not pounds.any(func(text: String) -> bool: return text.contains("$")) and pounds.any(func(text: String) -> bool: return text.contains("Google Play order")),
+		"In pounds the page lists each purchase with its order and no dollar figure: " + str(pounds))
+	StoreCurrency.note(_offerings("USD"))
+	_check(flow.money_shown(), "Back in US dollars the money shows again")
 	# Bundles off later: a player who bought still sees them once the history says so.
 	PollenSurfaces.set_shared_for_tests(true, true)
 	flow.surfaces = null
