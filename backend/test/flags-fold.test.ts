@@ -43,9 +43,9 @@ function allowed(file: string, code: string, at: number, name: string): boolean 
 }
 
 describe("flags folded into FEATURES", () => {
-  it("marks the 34 folded flags and the seven born in FEATURES, each once, and every chapter flag", () => {
-    expect(FEATURES_ONLY.length).toBe(41);
-    expect(new Set(FEATURES_ONLY).size).toBe(41);
+  it("marks the 34 folded flags and the eight born in FEATURES, each once, and every chapter flag", () => {
+    expect(FEATURES_ONLY.length).toBe(42);
+    expect(new Set(FEATURES_ONLY).size).toBe(42);
     expect(FEATURES_ONLY.filter(name => name.endsWith("_ENABLED") || name === "LEGACY_TRANSFERRED_ROOM_UNBLOCK").length).toBe(34);
     for (const row of CHAPTERS) if (row.flag) expect(FEATURES_ONLY.includes(row.flag), row.flag).toBe(true);
   });
