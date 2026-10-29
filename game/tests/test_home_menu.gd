@@ -1,7 +1,9 @@
 extends SceneTree
 ## Home's menu component (presentation/home_menu.gd) and the shared colour tokens
 ## (presentation/ui_tokens.gd): layout A at phone sizes, under cutout insets and
-## with the What's new tip, the Play button's icon slot, and nothing per frame.
+## with the What's new tip, the Play button's icon slot, and nothing per frame;
+## and the Wardrobe row, shown only while the server has the wardrobe on, with
+## the player's own pip as a still picture for its icon.
 const FriendPlayIcon = preload("res://presentation/friend_play_icon.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
@@ -11,6 +13,15 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const EmptyState = preload("res://presentation/empty_state.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
+
+## Stands in for the Wardrobe: whether it is on, and where it was opened from.
+class WardrobeStub:
+	extends WardrobeFlow
+	var on := false
+	var opened: Array[String] = []
+	func available() -> bool: return on
+	func show_wardrobe(from: String = "settings") -> void: opened.append(from)
 
 ## 1560x720 is a 2340x1080 phone (and a 1560x720 one); 1600x720 is what an
 ## 800x360 window gets from the canvas_items/expand stretch; 1280x960 a tablet.
@@ -71,6 +82,7 @@ func _run() -> void:
 	await _test_tip_clears(app)
 	await _test_icon_slot(app)
 	await _test_actions(app)
+	await _test_wardrobe_row(app)
 	viewport.free()
 	await process_frame
 	await create_timer(0.15).timeout
@@ -240,6 +252,46 @@ func _test_actions(app: Node) -> void:
 	_check(probe.pollen_slot.get_parent() == holder and not probe.pollen_slot.visible, "The Pollen chip's slot joins the menu's parent, empty and hidden until a chip comes")
 	holder.free()
 	_check(is_instance_valid(menu), "Home's own menu is untouched by the probe")
+
+## The Wardrobe row: hidden while the server has the wardrobe off, shown (with
+## its still pip, inside the panel) once it is on, opening the Wardrobe from
+## Home; Home free for a card decides whether the pip's tap may open it.
+func _test_wardrobe_row(app: Node) -> void:
+	var real: Node = app.wardrobe_flow
+	var stub := WardrobeStub.new(app)
+	app.wardrobe_flow = stub
+	app._show_home()
+	await _frames()
+	var menu := _menu(app)
+	_check(not menu.wardrobe_button.visible, "The Wardrobe row is hidden while the server has the wardrobe off")
+	app._open_wardrobe_from_home()
+	_check(stub.opened.is_empty() and not app._open_wardrobe_from_pip(), "Nothing opens the Wardrobe from Home while it is off")
+	stub.on = true
+	app._refresh_home_wardrobe()
+	await _frames()
+	var pip: Control = menu.wardrobe_button.find_child("HomeWardrobePip", true, false)
+	_check(menu.wardrobe_button.visible and pip != null and pip.still and pip.own, "Once it is on the row shows, with the player's own pip as a still picture")
+	_check(menu.wardrobe_button.get_parent() == menu.replays_button.get_parent() and menu.wardrobe_button.get_index() == menu.replays_button.get_index() + 1, "It sits under Replays in the same column")
+	var column := menu.find_child("HomeMenuMargin", true, false) as Control
+	_check(column.get_combined_minimum_size().y <= menu.size.y + 0.5, "The column still fits the screen with the row")
+	_check(Rect2(Vector2.ZERO, Vector2(UiTokens.HOME_PANEL_WIDTH, menu.size.y)).encloses(Rect2(menu.wardrobe_button.global_position - menu.global_position, menu.wardrobe_button.size)), "The row stays inside the panel")
+	menu.wardrobe_button.pressed.emit()
+	_check(stub.opened == ["home"], "The row opens the Wardrobe from Home: " + str(stub.opened))
+	_check(app._open_wardrobe_from_pip() and stub.opened == ["home", "home"], "A tap on your pip opens it while Home is free")
+	var modal := preload("res://presentation/in_game_modal.gd").open(app.ui, "ProbeCard", "Probe")
+	await _frames()
+	_check(not app._open_wardrobe_from_pip() and stub.opened.size() == 2, "Never over a card: the pip's tap is left to the greeting")
+	app._open_wardrobe_from_home()
+	_check(stub.opened.size() == 2, "The row never opens it over a card either")
+	modal.close()
+	await _frames()
+	stub.on = false
+	app._refresh_home_wardrobe()
+	_check(not menu.wardrobe_button.visible, "Off again: the row hides")
+	app.wardrobe_flow = real
+	stub.free()
+	app._show_home()
+	await _frames()
 
 ## Opening the card takes the dot and tip away, and the bottom row's rule returns.
 func _test_tip_clears(app: Node) -> void:

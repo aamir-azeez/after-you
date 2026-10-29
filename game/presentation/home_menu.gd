@@ -1,9 +1,10 @@
 extends Control
 ## Home's menu (layout A): a solid panel down the left edge with the wordmark,
 ## the line under it, Play with your friend, Play Solo, Friends and Replays
-## rows, Invite your friends, and What's new beside the Settings cog at the
-## bottom. Full Journey sits apart at the island's top right, with the Pollen
-## chip (kit/pollen_chip.gd, set_pollen_chip) left of it. Main builds it
+## rows (and Wardrobe, while the server has the wardrobe on: show_wardrobe),
+## Invite your friends, and What's new beside the Settings cog at the bottom.
+## Full Journey sits apart at the island's top right, with the Pollen chip
+## (kit/pollen_chip.gd, set_pollen_chip) left of it. Main builds it
 ## with build() and owns every action; this script only lays the menu out.
 ## Layout runs on resize and when the What's new tip comes or goes, never per
 ## frame.
@@ -19,6 +20,10 @@ const ControlTheme = preload("res://presentation/control_theme.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const WhatsNewCard = preload("res://presentation/whats_new_card.gd")
+const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
+## The Wardrobe row's icon: the player's own pip in its look, a still picture
+## from the shared renderer (kit/pip_snapshots.gd), so Home gains no live view.
+const WARDROBE_PIP := Vector2(30, 38)
 
 const PANEL_WIDTH := UiTokens.HOME_PANEL_WIDTH
 ## The column runs from 64 to 32 short of the panel's edge; the bottom row
@@ -49,6 +54,8 @@ var play_icon_slot: Control
 var solo_button: Button
 var friends_button: Button
 var replays_button: Button
+var wardrobe_button: Button
+var _wardrobe_pip: Control
 var invite_button: Button
 var whats_new_button: Button
 var settings_button: Button
@@ -71,7 +78,7 @@ var _density := ""
 
 ## Builds the menu and adds Full Journey beside it in the same parent.
 ## `actions`: play (called with the Play button), solo, friends, replays,
-## invite, whats_new, settings, full_journey.
+## invite, whats_new, settings, full_journey, and wardrobe (optional).
 func build(actions: Dictionary, heading_font: Font) -> void:
 	name = "HomeMenu"
 	_heading_font = heading_font
@@ -125,6 +132,7 @@ func build(actions: Dictionary, heading_font: Font) -> void:
 	friends_button.tooltip_text = "Friends"
 	friends_button.accessibility_name = "Friends"
 	replays_button = _row(column, "Replays", preload("res://assets/ui/play-circle.svg"), actions.replays, "HomeReplays")
+	wardrobe_button = _wardrobe_row(column, actions.get("wardrobe", Callable()))
 	_gaps.append(_gap(column))
 	var rule := ColorRect.new()
 	rule.name = "HomeRule"
@@ -213,6 +221,43 @@ func set_play_icon(icon: Control) -> void:
 		play_icon_slot.add_child(icon)
 		if icon.has_method(PLAY_ICON_FOLLOW): icon.call(PLAY_ICON_FOLLOW, play_button)
 	_pad_play()
+
+## Shows or hides the Wardrobe row (the server's wardrobe capability), then
+## fits the column to the height again. Its pip is drawn only while it shows.
+func show_wardrobe(available: bool) -> void:
+	if not is_instance_valid(wardrobe_button) or wardrobe_button.visible == available: return
+	wardrobe_button.visible = available
+	if available: refresh_wardrobe_look()
+	_density = ""
+	if is_inside_tree(): _fit()
+
+## The row's pip follows what the player wears (services/own_look.gd).
+func refresh_wardrobe_look() -> void:
+	if not is_instance_valid(wardrobe_button) or not wardrobe_button.visible: return
+	if is_instance_valid(_wardrobe_pip):
+		wardrobe_button.remove_child(_wardrobe_pip)
+		_wardrobe_pip.queue_free()
+	_wardrobe_pip = PipAvatar.new(true, PipAvatar.PEACH, WARDROBE_PIP, true, true)
+	_wardrobe_pip.name = "HomeWardrobePip"
+	_wardrobe_pip.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_wardrobe_pip.anchor_top = 0.5
+	_wardrobe_pip.anchor_bottom = 0.5
+	_wardrobe_pip.offset_left = 9.0
+	_wardrobe_pip.offset_right = 9.0 + WARDROBE_PIP.x
+	_wardrobe_pip.offset_top = -WARDROBE_PIP.y * 0.5 - 2.0
+	_wardrobe_pip.offset_bottom = WARDROBE_PIP.y * 0.5 - 2.0
+	wardrobe_button.add_child(_wardrobe_pip)
+
+## The Wardrobe row: like the others, with an empty icon the size of theirs so
+## its words line up, and the pip drawn over that slot. Hidden until the server
+## has the wardrobe on.
+func _wardrobe_row(parent: Container, action: Callable) -> Button:
+	var blank := Image.create(24, 24, false, Image.FORMAT_RGBA8)
+	var button := _row(parent, PlayerCopy.WARDROBE_OPEN, ImageTexture.create_from_image(blank), action, "HomeWardrobe")
+	button.tooltip_text = PlayerCopy.WARDROBE_OPEN
+	button.accessibility_name = PlayerCopy.WARDROBE_OPEN
+	button.visible = false
+	return button
 
 func has_play_icon() -> bool:
 	for child: Node in play_icon_slot.get_children():
@@ -304,7 +349,7 @@ func _apply(density_name: String) -> void:
 	for index in range(_gaps.size()): _gaps[index].custom_minimum_size.y = density.gaps[index]
 	play_button.custom_minimum_size.y = density.play
 	play_button.add_theme_font_size_override("font_size", int(density.play_font))
-	for row: Button in [solo_button, friends_button, replays_button, whats_new_button]:
+	for row: Button in [solo_button, friends_button, replays_button, wardrobe_button, whats_new_button]:
 		row.custom_minimum_size.y = density.row
 		row.add_theme_font_size_override("font_size", int(density.row_font) - (2 if row == whats_new_button else 0))
 	settings_button.custom_minimum_size = Vector2(density.row, density.row)

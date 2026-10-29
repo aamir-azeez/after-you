@@ -265,6 +265,59 @@ const WARDROBE_ERRORS := {
 	"busy": "One moment, the last change is still saving.",
 }
 const WARDROBE_ERROR := "That didn't go through. Try again."
+## Board 5b: the pip switch, the drag hint, the shop line, the Buy button's
+## words before its grain, and the Earned items' chip.
+const WARDROBE_YOUR_PIP := "Your pip"
+const WARDROBE_FRIEND_VIEW := "As your friend sees you"
+const WARDROBE_DRAG := "Drag to turn your pip."
+const WARDROBE_STAYS := "Every item stays in the shop"
+const WARDROBE_BUY_FOR := "Buy for"
+const WARDROBE_NOT_FOR_SALE := "Not for sale"
+## The short card's Needed box ("Needed: [grain] 5,500 more"), and its link to the Pollen store.
+const WARDROBE_SHORT_NEEDED := "Needed:"
+const WARDROBE_SHORT_MORE := " more"
+const WARDROBE_SHORT_STAYS := "It stays in the shop."
+const WARDROBE_GET_POLLEN := "Get Pollen"
+
+# The Pollen store (board 2: presentation/pollen_store_page.gd, pollen_store_flow.gd).
+const POLLEN_STORE_TITLE := "Pollen"
+const POLLEN_STORE_NOTE := "For the Wardrobe and name changes."
+const POLLEN_STORE_YOU_HAVE := "You have"
+## The first bundle line, only while the gift is on and unused: the percent, then the rest of the line.
+const POLLEN_STORE_FIRST := "Your first bundle comes with %d%% extra Pollen."
+const POLLEN_STORE_FIRST_MORE := " This happens once per account, with no time limit."
+const POLLEN_STORE_BUNDLES := {"pinch": "Pinch", "pouch": "Pouch", "jar": "Jar", "basket": "Basket"}
+const POLLEN_STORE_NO_BONUS := "No bonus"
+## "20,000 + 1,000 bonus · 5% more"
+const POLLEN_STORE_BONUS := "%s + %s bonus · %d%% more"
+## "5,051 Pollen per $1"; the second is the store's own currency code ("per 1 EUR").
+const POLLEN_STORE_PER_DOLLAR := "%s Pollen per $1"
+const POLLEN_STORE_PER_UNIT := "%s Pollen per 1 %s"
+const POLLEN_STORE_EARN := "Earn Pollen free by playing"
+const POLLEN_STORE_FOOT := "Google Play shows the price in your currency before you pay."
+const POLLEN_STORE_LOADING := "Opening the store…"
+const POLLEN_STORE_OFFLINE := "The store isn't reachable right now. Try again in a moment."
+const POLLEN_STORE_EARN_TITLE := "Earn Pollen free by playing"
+const POLLEN_STORE_EARN_TEXT := "Every turn you play with a friend earns Pollen, and the first time you finish a chapter pays extra. Longer and harder chapters pay more."
+## The confirm card ("Buy a Pouch?") with its plain sums.
+const POLLEN_STORE_CONFIRM_TITLE := "Buy a %s?"
+const POLLEN_STORE_CONFIRM_NOTE := "Charged by Google Play. Pollen arrives right after."
+const POLLEN_STORE_LINE_BONUS := "%s, with its %s bonus"
+const POLLEN_STORE_GIFT := "First bundle gift (%d%%)"
+const POLLEN_STORE_YOU_GET := "You get"
+const POLLEN_STORE_YOULL_HAVE := "You'll have"
+const POLLEN_STORE_YOU_PAY := "You pay"
+const POLLEN_STORE_BUY := "Buy for %s"
+## The receipt.
+const POLLEN_STORE_ADDED := "%s Pollen added"
+const POLLEN_STORE_THANKS := "Thanks for supporting After You."
+const POLLEN_STORE_BALANCE := "Balance"
+const POLLEN_STORE_PAID := "Paid"
+const POLLEN_STORE_ORDER := "%s · Google Play order %s"
+const POLLEN_STORE_OPEN_WARDROBE := "Open the Wardrobe"
+const POLLEN_STORE_DONE := "Done"
+## After Google Play took the payment but the server has not answered yet.
+const POLLEN_STORE_ON_ITS_WAY := "Your purchase went through. Your Pollen arrives as soon as the game reaches the server."
 
 # End-of-run reactions (presentation/end_reactions.gd).
 ## The split pill's open half, and the faces card's title.

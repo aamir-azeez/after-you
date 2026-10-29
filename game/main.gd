@@ -45,6 +45,8 @@ const DisplayNameFlow = preload("res://presentation/display_name_flow.gd")
 const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
 const PollenPlayFlow = preload("res://presentation/pollen_play_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
+const PollenStoreFlow = preload("res://presentation/pollen_store_flow.gd")
+const BundleClaims = preload("res://services/bundle_claims.gd")
 const JourneyFlow = preload("res://presentation/journey_flow.gd")
 const EarlierIslandsFlow = preload("res://presentation/earlier_islands_flow.gd")
 const PartnerFriends = preload("res://services/partner_friends.gd")
@@ -119,8 +121,6 @@ var _whats_new_card: Control
 var _whats_new_card_mode := ""
 ## A Pollen flush finished: Home looks once for a monthly Pollen card to show (presentation/pollen_grant_card.gd).
 var grant_card_check := false
-## The overlay generation of a Wardrobe opened from Home, whose Back comes home (-1: none).
-var _wardrobe_home_view := -1
 ## The leaderboard celebration Home opened, while it is up.
 var _home_celebration: Control
 ## Tests set this to see a link instead of opening the browser.
@@ -157,6 +157,8 @@ var sim := Simulation.new()
 var saves := LocalSave.new()
 var home_keepsakes := HomeKeepsakes.new()
 var home_stage_view: Control
+## Home's menu while Home is up (presentation/home_menu.gd), for its Wardrobe row and Pollen chip.
+var home_menu_view: Control
 var _keepsake_poll := 0.0
 ## The frame Home last asked for its keepsake sources to be checked again, or
 ## -1; the check runs on a later frame (see _show_home).
@@ -270,8 +272,8 @@ var display_name_flow: DisplayNameFlow = _host_display_name_flow()
 var wardrobe_flow: WardrobeFlow = _host_wardrobe_flow()
 ## Pollen from play and Home's Pollen chip (presentation/pollen_play_flow.gd).
 var pollen_play_flow: PollenPlayFlow = _host_pollen_play_flow()
-## Home's menu while Home shows, for its Pollen chip.
-var _home_menu: Control = null
+## The Pollen store (presentation/pollen_store_flow.gd), opened from the Wardrobe.
+var pollen_store_flow: PollenStoreFlow = _host_pollen_store_flow()
 ## Play Solo: the Chapters page, Earlier islands and which chapter a card opens.
 var journey_flow: JourneyFlow = _host_journey_flow()
 ## Playing an earlier island, solo or in a legacy room (presentation/earlier_islands_flow.gd).
@@ -359,6 +361,11 @@ func _ready() -> void:
 	pollen_client=PollenClient.new(api,_names_scope)
 	# The player's own look follows the signed-in player (services/own_look.gd).
 	Wardrobe.shared().scope_source=_names_scope
+	# Home's Wardrobe row follows the server's wardrobe capability and the player's look.
+	Wardrobe.shared().changed.connect(_refresh_home_wardrobe)
+	# Bundle purchases whose claim got no answer go again with each flush (services/bundle_claims.gd).
+	BundleClaims.shared().connect_to(api,_names_scope)
+	pollen_client.bundle_claims=BundleClaims.shared()
 	pollen_client.solo_levels=home_keepsakes.solo_finished_levels
 	# Only a phone with Full Journey reads the wallet for the monthly grant; each flush may bring a card.
 	pollen_client.subscribed=_full_journey_access
@@ -766,13 +773,35 @@ func _show_home() -> void:
 	var menu := HomeMenu.new()
 	overlay.add_child(menu)
 	# A tap made while the room session is still busy waits on the Play button (RoomHubFlow.open_from_home).
-	menu.build({"play":room_hub_flow.open_from_home,"solo":journey_flow.show_journey,"friends":_show_friends,"replays":replays_flow.show_collection,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
+	menu.build({"play":room_hub_flow.open_from_home,"solo":journey_flow.show_journey,"friends":_show_friends,"replays":replays_flow.show_collection,"wardrobe":_open_wardrobe_from_home,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
+	home_menu_view = menu
+	menu.show_wardrobe(wardrobe_flow.available())
+	# A tap on the player's own pip opens the Wardrobe too (presentation/home_stage.gd own_pip_tapped).
+	home_stage.own_pip_tapped = _open_wardrobe_from_pip
 	menu.set_play_icon(FriendPlayIcon.new())
-	_home_menu = menu
 	_refresh_pollen_chip()
 	menu.journey_offer.visible = _full_journey_offered()
 	if _whats_new_unseen: menu.mark_whats_new_unseen(Changelog.current_version())
 	home_stage.set_header_actions(menu.header_actions())
+
+## Home's Wardrobe row and the monthly Pollen card: the Wardrobe, whose Back returns to Home.
+func _open_wardrobe_from_home() -> void:
+	if mode != "home" or application_backgrounded or _top_modal() != null or not wardrobe_flow.available(): return
+	wardrobe_flow.show_wardrobe("home")
+
+## A tap on the player's own pip on the island: the Wardrobe, only while Home
+## is free for a card (nothing over it, no turn, no held finger). False leaves
+## the tap to the greeting.
+func _open_wardrobe_from_pip() -> bool:
+	if not wardrobe_flow.available() or not _home_free_for_card(): return false
+	wardrobe_flow.show_wardrobe("home")
+	return true
+
+## Shows Home's Wardrobe row while the server has the wardrobe on, with the pip in its current look.
+func _refresh_home_wardrobe() -> void:
+	if mode != "home" or not is_instance_valid(home_menu_view): return
+	home_menu_view.show_wardrobe(wardrobe_flow.available())
+	home_menu_view.refresh_wardrobe_look()
 
 func _share_invite_from_home() -> void:
 	if mode != "home" or application_backgrounded: return
@@ -1271,20 +1300,26 @@ func _host_display_name_flow() -> DisplayNameFlow:
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	return flow
 
-## An internal child, like StoreFlow. Its Back returns to where it opened:
-## Settings, or Home when the monthly Pollen card opened it.
+## An internal child, like StoreFlow. Its Back returns where it opened: Settings or Home.
 func _host_wardrobe_flow() -> WardrobeFlow:
 	var flow := WardrobeFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(func(): _show_home() if _wardrobe_home_view == store_view_generation else settings_flow.show_settings())
+	flow.back_requested.connect(func(): _show_home() if flow.return_to == "home" else settings_flow.show_settings())
+	flow.store_requested.connect(func(): pollen_store_flow.show_store())
 	return flow
 
-## Opens the Wardrobe from Home (the monthly Pollen card); its Back comes home.
-## The page keeps the overlay generation it opened with until another screen
-## replaces it, so a later Wardrobe opened from Settings goes back there.
-func _open_wardrobe_from_home() -> void:
-	wardrobe_flow.show_wardrobe()
-	_wardrobe_home_view = store_view_generation if wardrobe_flow.is_open() else -1
+## An internal child, like StoreFlow. The Pollen store opens from the Wardrobe
+## and goes back to it (or Home, when the Wardrobe is off); its receipt's Open
+## the Wardrobe opens the Wardrobe.
+func _host_pollen_store_flow() -> PollenStoreFlow:
+	var flow := PollenStoreFlow.new(self)
+	add_child(flow,false,Node.INTERNAL_MODE_BACK)
+	var to_wardrobe := func() -> void:
+		if wardrobe_flow.available(): wardrobe_flow.show_wardrobe(wardrobe_flow.return_to)
+		else: _show_home()
+	flow.back_requested.connect(to_wardrobe)
+	flow.wardrobe_requested.connect(to_wardrobe)
+	return flow
 
 ## An internal child, like StoreFlow. Back returns to Home or Settings, where it opened.
 func _host_pollen_play_flow() -> PollenPlayFlow:
@@ -1296,9 +1331,9 @@ func _host_pollen_play_flow() -> PollenPlayFlow:
 ## Home's Pollen chip, left of Full Journey: shown once the server has Pollen on
 ## and a balance is known (presentation/pollen_play_flow.gd chip).
 func _refresh_pollen_chip() -> void:
-	if mode != "home" or not is_instance_valid(_home_menu) or not _home_menu.is_inside_tree(): return
-	_home_menu.set_pollen_chip(pollen_play_flow.chip())
-	if is_instance_valid(home_stage_view): home_stage_view.set_header_actions(_home_menu.header_actions())
+	if mode != "home" or not is_instance_valid(home_menu_view) or not home_menu_view.is_inside_tree(): return
+	home_menu_view.set_pollen_chip(pollen_play_flow.chip())
+	if is_instance_valid(home_stage_view): home_stage_view.set_header_actions(home_menu_view.header_actions())
 
 ## An internal child, like StoreFlow.
 func _host_journey_flow() -> JourneyFlow:

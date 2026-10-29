@@ -20,10 +20,19 @@ extends Node
 ## the Wardrobe only wears what the player owns, earned items and item bloom
 ## drops, with the balance: no All items tab, no shelf of the week, no price
 ## and no Buy.
+## While bundles sell too (the server's POLLEN_BUNDLES and a build that sells
+## them, services/pollen_surfaces.gd bundles_visible), the balance chip's + and
+## the short card's "Get Pollen" link ask the host to open the Pollen store
+## (store_requested); never for an Epic or a Special.
 ## Hooks for later phases: reaction packs (owned `packs`, the server's
 ## `offered_packs`) and sets (`sets`) are kept by services/wardrobe.gd and
 ## priced by the server, but no pack or set exists yet, so the page lists
-## items only. "Get Pollen" joins the short card with bundles (Phase 6).
+## items only: no Faces tab and no set card until one exists.
+##
+## The main button goes through a BusyTapGate (presentation/busy_tap_gate.gd):
+## a tap while the wardrobe is still being read waits for that read instead of
+## being dropped, so the first tap always registers.
+## `return_to` names where Back goes ("settings" or "home"); the host reads it.
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -35,10 +44,13 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Page = preload("res://presentation/wardrobe_page.gd")
 const Sheets = preload("res://presentation/wardrobe_sheets.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 
 const MODE_WARDROBE := "wardrobe"
 
 signal back_requested
+## The balance chip's + or the short card's Get Pollen: open the Pollen store.
+signal store_requested
 
 var host: Node
 var client: RefCounted
@@ -48,6 +60,11 @@ var _page: Page
 var _sheet: WeakRef = null
 var _tab := "all"
 var _selected := ""
+var _kind := ""
+var _view_mode := "you"
+var _gate: BusyTapGate
+## Where Back returns: "settings" (the default) or "home".
+var return_to := "settings"
 var _status := ""
 var _retry := false
 ## Tests: the week the shelf shows (-1: this week on the phone's clock).
@@ -74,8 +91,9 @@ func available() -> bool:
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
-func show_wardrobe() -> void:
+func show_wardrobe(from: String = "settings") -> void:
 	if not available(): return
+	return_to = from
 	host.running = false
 	host.mode = MODE_WARDROBE
 	host._clear_overlay()
@@ -83,13 +101,19 @@ func show_wardrobe() -> void:
 	_page = Page.new(reduced)
 	_page.back_pressed.connect(func() -> void: back_requested.emit())
 	_page.tab_chosen.connect(set_tab)
+	_page.kind_chosen.connect(set_kind)
+	_page.view_chosen.connect(set_view)
 	_page.item_chosen.connect(select)
-	_page.action_pressed.connect(act)
+	_page.action_pressed.connect(tap_action)
 	_page.retry_pressed.connect(refresh)
+	_page.plus_pressed.connect(func() -> void: if bundles(): store_requested.emit())
 	host.overlay.add_child(_page)
+	_gate = BusyTapGate.new(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
 	_tab = _allowed_tab("all")
 	_selected = ""
+	_kind = ""
+	_view_mode = "you"
 	_status = PlayerCopy.WARDROBE_LOADING if _view().is_empty() else ""
 	_retry = false
 	_redraw()
@@ -107,7 +131,24 @@ func refresh() -> void:
 
 func set_tab(tab: String) -> void:
 	_tab = _allowed_tab(tab)
+	_kind = ""
 	_redraw()
+
+## A slot chip: Hat, Body or Leaf.
+func set_kind(kind: String) -> void:
+	_kind = kind if kind in Catalog.slots() else ""
+	_redraw()
+
+## The pip switch: "you", or "friend" (your pip in a friend's room: mint).
+func set_view(view: String) -> void:
+	_view_mode = view if view in ["you", "friend"] else "you"
+	_redraw()
+
+## The main button's tap: it waits for a wardrobe read or a purchase in flight
+## (the gate), then acts on the item that was picked when it was tapped.
+func tap_action(id: String) -> void:
+	if not is_open() or _gate == null: return
+	_gate.tap(_page.action_button, "", func() -> bool: return not _client().busy(), func() -> void: await act(id), func() -> bool: return is_open() and (_selected == id or _selected.is_empty()))
 
 ## Without the shop there is only Owned.
 func _allowed_tab(tab: String) -> String:
@@ -130,8 +171,9 @@ func act(id: String) -> void:
 	_close_sheet()
 	var parent: Control = host.ui
 	var opener: Control = _page.action_button if is_open() else null
-	if balance < int(entry.price): _sheet = weakref(Sheets.short(parent, str(entry.name), int(entry.price), balance, opener))
-	else: _sheet = weakref(Sheets.confirm(parent, str(entry.name), int(entry.price), balance, func() -> void: confirm_buy(id, int(entry.price)), opener))
+	var get_pollen := (func() -> void: store_requested.emit()) if bundles() else Callable()
+	if balance < int(entry.price): _sheet = weakref(Sheets.short(parent, str(entry.name), str(entry.tier), int(entry.price), balance, get_pollen, opener))
+	else: _sheet = weakref(Sheets.confirm(parent, id, str(entry.name), int(entry.price), balance, func() -> void: confirm_buy(id, int(entry.price)), opener))
 
 ## The confirm card's Buy: sends the purchase at the cost the card showed.
 func confirm_buy(id: String, cost: int) -> void:
@@ -159,6 +201,12 @@ func wear_item(id: String) -> bool:
 	var answer: Dictionary = await _client().wear(look)
 	_redraw()
 	return bool(answer.get("ok", false))
+
+## Whether bundles sell: the build sells them and the server has them on.
+func bundles() -> bool:
+	if not shop() or not _surfaces().bundles_visible(): return false
+	var scope: Dictionary = _client().scope()
+	return _client().store.bundles(str(scope.server), str(scope.owner))
 
 ## Whether the shop shows: the build sells and the server has the shop on.
 func shop() -> bool:
@@ -189,12 +237,28 @@ func model() -> Dictionary:
 			"unlock_name": _chapter_name(unlock)}
 		items.append(entry)
 		if sold: (by_tier.get_or_add(entry.tier, []) as Array).append(id)
-	var preview := Outfit.from(look)
-	var picked := _entry_in(items, _selected)
-	if not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
 	var featured: Array = FeaturedShelf.shelf(week if week >= 0 else FeaturedShelf.this_week(), by_tier).map(func(slot: Dictionary) -> String: return slot.id) if selling else []
-	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "status": _status, "retry": _retry, "shop": selling, "tab": _tab, "selected": _selected,
-		"preview": Outfit.from(preview), "featured": featured, "items": items}
+	var tab := _allowed_tab(_tab)
+	# The slot chips list only slots with something in this tab; a chip with nothing left falls back to the first.
+	var kinds: Array = []
+	for slot: String in Catalog.slots():
+		if items.any(func(entry: Dictionary) -> bool: return entry.slot == slot and (tab == "all" or bool(entry.owned))): kinds.append(slot)
+	var kind: String = _kind if _kind in kinds else (str(kinds[0]) if not kinds.is_empty() else "")
+	var selected := _selected if not _entry_in(items, _selected).is_empty() else _default_pick(items, look, featured)
+	var preview := Outfit.from(look)
+	var picked := _entry_in(items, selected)
+	if not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
+	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "status": _status, "retry": _retry, "shop": selling, "bundles": bundles(), "tab": tab, "kind": kind, "kinds": kinds,
+		"selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}
+
+## The item picked while the player has picked none: what they wear, else the
+## shelf's top slot, else the first item listed.
+static func _default_pick(items: Array, look: Dictionary, featured: Array) -> String:
+	for slot: String in Catalog.slots():
+		if look.has(slot) and not _entry_in(items, str(look[slot])).is_empty(): return str(look[slot])
+	if not featured.is_empty(): return str(featured.back())
+	return str(items[0].id) if not items.is_empty() else ""
+
 
 func _redraw() -> void:
 	if is_open(): _page.render(model())
@@ -208,6 +272,11 @@ func _balance() -> int:
 	if scope.is_empty(): return -1
 	var wallet: Dictionary = _client().wallet.wallet(str(scope.server), str(scope.owner))
 	return int(wallet.get("balance", -1)) if not wallet.is_empty() else -1
+
+## Whether the server has said the balance (a refund may leave it below zero, even at -1).
+func _balance_known() -> bool:
+	var scope: Dictionary = _client().scope()
+	return not scope.is_empty() and not _client().wallet.wallet(str(scope.server), str(scope.owner)).is_empty()
 
 func _entry(id: String) -> Dictionary:
 	return _entry_in(model().items, id)

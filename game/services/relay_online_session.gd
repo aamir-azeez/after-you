@@ -415,7 +415,7 @@ func load_capabilities() -> bool:
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_enabled(str(scope.server), str(scope.owner), pollen_supported())
-	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), wardrobe_supported(), shop_supported())
+	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), wardrobe_supported(), shop_supported(), bundles_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_item_blooms(str(scope.server), str(scope.owner), item_blooms_supported())
 	if not scope.is_empty(): PollenGrant.shared().set_enabled(str(scope.server), str(scope.owner), grant_supported())
 	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()
@@ -1263,6 +1263,10 @@ func wardrobe_supported() -> bool:
 ## The server has the shop open: spending Pollen, prices and the name change price.
 func shop_supported() -> bool:
 	return pollen_supported() and Typed.equal(capabilities.get("pollen_shop_version"), 1.0)
+
+## The server sells Pollen bundles (POLLEN_BUNDLES, never without the shop).
+func bundles_supported() -> bool:
+	return shop_supported() and Typed.equal(capabilities.get("pollen_bundles_version"), 1.0)
 
 ## The server pays Pollen for turns (services/pollen_wallet.gd).
 func pollen_supported() -> bool:

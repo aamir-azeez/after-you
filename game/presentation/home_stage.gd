@@ -133,6 +133,12 @@ var _keepsake_content: VBoxContainer
 var _keepsake_count: Label
 var _keepsake_status: Label
 var _tap: Dictionary = {}
+## A tap on the player's own pip (actor "a", the one Explore walks), outside
+## Explore and outside a greeting: Main opens the Wardrobe and answers true, or
+## answers false (no wardrobe, or Home not free) and the pips greet as before.
+## A tap on the friend's pip always greets. Pinch, pan, a second finger or a
+## drag cancel the tap exactly as before (_track_tap), so neither fights it.
+var own_pip_tapped: Callable
 var _exploring := false
 var _explore_button: Button
 var _explore_back: Button
@@ -618,10 +624,11 @@ func _begin_tap(index: int, point: Vector2) -> void:
 	if _touches.size() > 1 or not _allowed(point): return
 	# Spirits win a tap near them; otherwise a tap near a keepsake selects it.
 	var keepsake := ""
-	if _greeting_left > 0.0 or not _spirit_near(point):
+	var role := "" if _greeting_left > 0.0 else _spirit_role_near(point)
+	if role.is_empty():
 		if is_instance_valid(_keepsake_layer): keepsake = _keepsake_layer.pick(_world.camera, point)
 		if keepsake.is_empty(): return
-	_tap = {"index": index, "start": point, "msec": Time.get_ticks_msec(), "keepsake": keepsake}
+	_tap = {"index": index, "start": point, "msec": Time.get_ticks_msec(), "keepsake": keepsake, "role": role}
 
 func _track_tap(event: InputEvent) -> void:
 	# Any second finger, drag, wheel, pan button or long hold turns a tap into a gesture.
@@ -645,7 +652,9 @@ func _finish_tap(point: Vector2) -> void:
 	var tap := _tap
 	_tap = {}
 	if point.distance_to(tap.start) <= TAP_SLOP and Time.get_ticks_msec() - int(tap.msec) <= TAP_MAX_MSEC:
-		if str(tap.keepsake).is_empty(): _greet()
+		if str(tap.keepsake).is_empty():
+			if tap.get("role") == "a" and not _exploring and own_pip_tapped.is_valid() and own_pip_tapped.call(): return
+			_greet()
 		elif select_keepsake(str(tap.keepsake)): play_keepsake(str(tap.keepsake))
 
 ## Shows a keepsake in the box: its name and what it still needs.
@@ -674,9 +683,15 @@ func _greet() -> void:
 		_rests[role] = maxf(float(_rests[role]), SpiritVisual.GREETING_DURATION)
 
 func _spirit_near(point: Vector2) -> bool:
+	return not _spirit_role_near(point).is_empty()
+
+## The role of the spirit nearest a tap ("a" is the player's own), or "" when none is near.
+func _spirit_role_near(point: Vector2) -> String:
 	# Each spirit projects to a feet-to-crown segment with a generous radius.
 	var camera: Camera3D = _world.camera
-	if not is_instance_valid(camera): return false
+	if not is_instance_valid(camera): return ""
+	var best := ""
+	var best_distance := TAP_RADIUS
 	for role: String in _actors:
 		var actor: Node3D = _actors[role]
 		if not is_instance_valid(actor) or not actor.is_visible_in_tree(): continue
@@ -684,8 +699,11 @@ func _spirit_near(point: Vector2) -> bool:
 		var crown := actor.to_global(Vector3(0,1.0,0))
 		if camera.is_position_behind(feet) or camera.is_position_behind(crown): continue
 		var closest := Geometry2D.get_closest_point_to_segment(point,camera.unproject_position(feet),camera.unproject_position(crown))
-		if closest.distance_to(point) <= TAP_RADIUS: return true
-	return false
+		var distance := closest.distance_to(point)
+		if distance <= best_distance:
+			best = role
+			best_distance = distance
+	return best
 
 func _reset_view() -> void:
 	_view().reset_view()

@@ -30,6 +30,8 @@ func _run() -> void:
 	Stage._retained_view.clear()
 	await _test_real_spirit_tap()
 	Stage._retained_view.clear()
+	await _test_own_pip_tap()
+	Stage._retained_view.clear()
 	await _test_explore_zoom()
 	Stage._retained_view.clear()
 	await _test_tall_screen()
@@ -376,6 +378,66 @@ func _calm(stage: Control, world: Node3D) -> void:
 	for frame in range(600):
 		if stage._greeting_left==0.0 and not world.actors.a.is_happy() and not world.actors.b.is_happy(): return
 		stage._process(1.0/60.0)
+
+## A tap on the player's own pip asks for the Wardrobe (own_pip_tapped); the
+## friend's pip still greets; a refused ask greets as before; a drag, a
+## two-finger pan or a tap during a greeting never asks.
+func _test_own_pip_tap() -> void:
+	var viewport := SubViewport.new()
+	viewport.size = Vector2i(1280,720)
+	root.add_child(viewport)
+	var world := World.new()
+	viewport.add_child(world)
+	world.set_process(false)
+	world.load_level(Levels.get_level("first-light"))
+	var ui := Control.new()
+	ui.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	viewport.add_child(ui)
+	var stage := Stage.new()
+	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	stage.configure(world,func() -> bool: return true)
+	ui.add_child(stage)
+	stage.set_process(false)
+	await process_frame
+	await process_frame
+	stage._process(0.0)
+	var asked := [0]
+	var answer := [true]
+	stage.own_pip_tapped = func() -> bool:
+		asked[0] += 1
+		return answer[0]
+	_calm(stage,world)
+	_stage_tap(stage,_spirit_point(world,"a"))
+	_check(asked[0]==1 and stage._greeting_left==0.0,"A tap on your own pip opens the Wardrobe instead of greeting")
+	_stage_tap(stage,_spirit_point(world,"b"))
+	_check(asked[0]==1 and stage._greeting_left>0.0,"A tap on your friend's pip still greets")
+	_stage_tap(stage,_spirit_point(world,"a"))
+	_check(asked[0]==1,"A tap during a greeting never asks")
+	_calm(stage,world)
+	answer[0] = false
+	_stage_tap(stage,_spirit_point(world,"a"))
+	_check(asked[0]==2 and stage._greeting_left>0.0,"When the Wardrobe can't open (off, or Home not free) the tap greets as before")
+	_calm(stage,world)
+	answer[0] = true
+	var point := _spirit_point(world,"a")
+	_stage_touch(stage,0,point,true)
+	_drag(stage,0,point+Vector2(40,0))
+	_stage_touch(stage,0,point+Vector2(40,0),false)
+	_check(asked[0]==2,"A drag that starts on your pip is a pan, never the Wardrobe")
+	stage._reset_view()
+	stage._process(1.0/60.0)
+	_calm(stage,world)
+	point = _spirit_point(world,"a")
+	var other := point+Vector2(120,0) if stage._allowed(point+Vector2(120,0)) else point-Vector2(120,0)
+	_stage_touch(stage,0,point,true)
+	_stage_touch(stage,1,other,true)
+	_drag(stage,0,point+Vector2(30,40))
+	_drag(stage,1,other+Vector2(30,40))
+	_stage_touch(stage,1,other+Vector2(30,40),false)
+	_stage_touch(stage,0,point+Vector2(30,40),false)
+	_check(asked[0]==2,"A two-finger pinch or pan from your pip never opens the Wardrobe")
+	viewport.queue_free()
+	await process_frame
 
 func _test_spirit_tap() -> void:
 	var viewport := SubViewport.new()

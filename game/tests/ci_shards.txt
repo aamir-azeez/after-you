@@ -223,6 +223,7 @@ pollen_item_bloom 2
 pollen_line 1
 pollen_mark 1
 pollen_play 2
+pollen_store 2
 pollen_surfaces 3
 pollen_wallet 2
 premium_open_cost 1

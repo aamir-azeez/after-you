@@ -9,6 +9,10 @@ extends RefCounted
 ## - shop_visible: anything sold or priced. Items on sale, the shelf of the
 ##   week, Buy and its cards, prices in Pollen or money, bundles, and the name
 ##   change price.
+## - bundles_visible: the Pollen store and its bundles, the + on the balance
+##   chip and the short card's "Get Pollen" link. Only a Google Play build with
+##   its store key sells them: real Pollen comes only from real Play purchases,
+##   so the Test Store build and iOS never show them.
 ## - full_journey_visible: Pollen words that name Full Journey. The monthly
 ##   grant card, the Full Journey boost lines after a turn and the odds note's
 ##   paid chapter sentence.
@@ -22,13 +26,17 @@ const Purchases = preload("res://services/purchases.gd")
 const PATH := "res://services/pollen_surfaces.gd"
 
 var _sells := true
+var _bundles := false
 
-func _init(build_sells: bool = true) -> void:
+func _init(build_sells: bool = true, build_bundles: bool = false) -> void:
 	_sells = build_sells
+	_bundles = build_sells and build_bundles
 
 ## The surfaces for a build `configuration` (app_config.json).
 static func for_configuration(configuration: Dictionary) -> RefCounted:
-	return load(PATH).new(not Purchases.paid_content_hidden(configuration))
+	var sells := not Purchases.paid_content_hidden(configuration)
+	var play := str(configuration.get("purchase_mode", "")) == "google_play" and Purchases.store_enabled(configuration) and not str(configuration.get("revenuecat_public_key", "")).is_empty()
+	return load(PATH).new(sells, play)
 
 ## Read once: the build's configuration never changes while the app runs.
 static var _shared: RefCounted = null
@@ -37,9 +45,10 @@ static func shared() -> RefCounted:
 	if _shared == null: _shared = for_configuration(Purchases.read_configuration())
 	return _shared
 
-## Tests pick a build: true sells, false sells nothing, null reads the configuration again.
-static func set_shared_for_tests(build_sells: Variant) -> void:
-	_shared = null if build_sells == null else load(PATH).new(bool(build_sells))
+## Tests pick a build: true sells, false sells nothing, null reads the configuration again;
+## `build_bundles` also sells Pollen bundles.
+static func set_shared_for_tests(build_sells: Variant, build_bundles: bool = false) -> void:
+	_shared = null if build_sells == null else load(PATH).new(bool(build_sells), build_bundles)
 
 func earning_visible() -> bool:
 	return true
@@ -52,6 +61,9 @@ func wardrobe_visible() -> bool:
 
 func shop_visible() -> bool:
 	return _sells
+
+func bundles_visible() -> bool:
+	return _bundles
 
 func full_journey_visible() -> bool:
 	return _sells

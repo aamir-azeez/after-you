@@ -10,6 +10,9 @@ extends RefCounted
 ##   earned items, and wearing them;
 ## - shop: the server said the shop is on too: buying, prices and the name
 ##   change price;
+## - bundles: the server said Pollen bundles sell too (POLLEN_BUNDLES, never
+##   without the shop), with the view's `bundles` part: whether the first
+##   bundle's gift is still open, its percent, and the money spent on bundles;
 ## - items, packs: what the player owns (bought, dropped or earned);
 ## - look, look_revision: what the player wears ({slot: id}) and its revision;
 ## - offered: what the server releases (sold or earned), which pips may draw;
@@ -112,7 +115,15 @@ static func checked_view(value: Variant) -> Dictionary:
 		if valid_id(set_id) and not pieces.is_empty() and pieces.size() <= MAX_SET_PIECES: sets[set_id] = pieces
 	return {"items": _ids(part.items), "packs": _ids(part.packs), "look": look, "look_revision": Typed.as_int(part.look_revision),
 		"offered": _ids(part.offered), "prices": prices, "offered_packs": _ids(part.get("offered_packs", [])), "pack_price": Typed.as_int(part.get("pack_price"), 0), "sets": sets, "unlocked": _ids(part.get("unlocked", [])),
-		"name_price": Typed.as_int(price) if price != null else -1}
+		"name_price": Typed.as_int(price) if price != null else -1, "bundles": checked_bundles(value.get("bundles"))}
+
+## The wallet read's bundles part (only while bundles sell) as kept, or {}.
+static func checked_bundles(value: Variant) -> Dictionary:
+	if not value is Dictionary or not value.get("first_gift") is bool: return {}
+	var percent: Variant = value.get("first_gift_percent", 0)
+	var spent: Variant = value.get("spent_usd_cents", 0)
+	if not Typed.whole_number(percent) or float(percent) < 0.0 or float(percent) > 100.0 or not Typed.whole_number(spent): return {}
+	return {"first_gift": value.first_gift and float(percent) > 0.0, "first_gift_percent": Typed.as_int(percent), "spent_usd_cents": Typed.as_int(spent)}
 
 # --- Scopes ----------------------------------------------------------------
 
@@ -124,7 +135,7 @@ func _scope(server: String, owner: String, create: bool = false) -> Dictionary:
 	var key := scope_key(server, owner)
 	if not _scopes.has(key):
 		if not create: return {}
-		_scopes[key] = {"enabled": false, "shop": false, "view": {}}
+		_scopes[key] = {"enabled": false, "shop": false, "bundles": false, "view": {}}
 	return _scopes[key]
 
 ## Whether the server said the wardrobe is on for this player.
@@ -136,13 +147,19 @@ func shop(server: String, owner: String) -> bool:
 	var scope := _scope(server, owner)
 	return bool(scope.get("enabled", false)) and bool(scope.get("shop", false))
 
-## The server's answer: the wardrobe `on`, and the shop with it (`shop_on`).
-func set_enabled(server: String, owner: String, on: bool, shop_on: bool = on) -> void:
+## Whether the server said Pollen bundles sell for this player (never without the shop).
+func bundles(server: String, owner: String) -> bool:
+	return shop(server, owner) and bool(_scope(server, owner).get("bundles", false))
+
+## The server's answer: the wardrobe `on`, the shop with it (`shop_on`), and bundles with the shop (`bundles_on`).
+func set_enabled(server: String, owner: String, on: bool, shop_on: bool = on, bundles_on: bool = false) -> void:
 	var scope := _scope(server, owner, on)
 	var selling := on and shop_on
-	if scope.is_empty() or bool(scope.enabled) == on and bool(scope.get("shop", false)) == selling: return
+	var bundling := selling and bundles_on
+	if scope.is_empty() or bool(scope.enabled) == on and bool(scope.get("shop", false)) == selling and bool(scope.get("bundles", false)) == bundling: return
 	scope.enabled = on
 	scope.shop = selling
+	scope.bundles = bundling
 	_save()
 	_announce(server, owner)
 
@@ -249,9 +266,10 @@ func _load() -> void:
 		if not key is String or not key.contains("|") or not value is Dictionary: continue
 		var saved: Variant = value.get("view")
 		var price: Variant = saved.get("name_price") if saved is Dictionary and Typed.whole_number(saved.get("name_price")) and float(saved.name_price) >= 0.0 else null
-		var kept := checked_view({"wardrobe": saved, "name_price": price}) if saved is Dictionary and not saved.is_empty() else {}
-		# A file from before the split has no shop key: the shop reads off until the server says again.
-		_scopes[key] = {"enabled": value.get("enabled") == true, "shop": value.get("enabled") == true and value.get("shop") == true, "view": kept}
+		var kept := checked_view({"wardrobe": saved, "name_price": price, "bundles": saved.get("bundles") if saved is Dictionary else null}) if saved is Dictionary and not saved.is_empty() else {}
+		# A file from before the split has no shop key: the shop reads off until the server says again; bundles likewise.
+		var selling: bool = value.get("enabled") == true and value.get("shop") == true
+		_scopes[key] = {"enabled": value.get("enabled") == true, "shop": selling, "bundles": selling and value.get("bundles") == true, "view": kept}
 
 ## JSON text as a value, or null, without logging an error for a missing or damaged file.
 static func _parsed(text: String) -> Variant:

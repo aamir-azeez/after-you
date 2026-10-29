@@ -31,6 +31,9 @@ const GRANT_READ_MS := 6 * 3600 * 1000
 ## A flush finished; the wallet or a result may have changed.
 signal settled
 
+## Bundle purchases still to claim (services/bundle_claims.gd); Main sets it.
+var bundle_claims: RefCounted
+
 var wallet: RefCounted
 ## The wardrobe kept from the same wallet read while the shop is on (services/wardrobe.gd).
 var wardrobe: RefCounted
@@ -70,6 +73,8 @@ func sending() -> bool:
 ## Sends what waits. Safe to call at any time: it returns at once and works in
 ## the background, one request after another.
 func flush() -> void:
+	# A bundle purchase whose claim got no answer goes again (services/bundle_claims.gd).
+	if bundle_claims != null: bundle_claims.flush()
 	if _sending:
 		_again = true
 		return
