@@ -44,7 +44,7 @@ export const FLAG_VARS = Object.freeze({
   pollenWardrobe: "POLLEN_WARDROBE",
   /** The shop (pollen/spend.ts): buying, prices and the catalogue on the wallet read, and the name change price. Needs POLLEN_WARDROBE. */
   pollenShop: "POLLEN_SHOP",
-  /** Looks in rooms (pollen/room-looks.ts): each member's look and each turn's look, served to phones that send X-AfterYou-Looks. */
+  /** Looks in rooms (pollen/room-looks.ts): each member's look and each turn's look, served to phones that send X-AfterYou-Looks, and each pair's looks on public leaderboard rows (leaderboards/run-looks.ts). */
   pollenLooks: "POLLEN_LOOKS",
   /** Item blooms (pollen/item-blooms.ts): the second roll on a free-chapter bank turn may drop a shop item. Needs POLLEN_SHOP. */
   pollenItemBlooms: "POLLEN_ITEM_BLOOMS",

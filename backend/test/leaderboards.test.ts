@@ -17,7 +17,7 @@ import { bytesDigest, decodeBlob, ENCODING_DEFLATE } from "../src/blob-codec";
 import { emptyView, type BoardView } from "../src/leaderboards/view";
 import { countingEnv, meterAllRows, meterRows } from "./meter";
 import { noteFullJourney } from "../src/pollen/wallet";
-import { withConfig } from "./config";
+import { POLLEN_CLIENT, withConfig } from "./config";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
 import secondA from "../../game/tests/fixtures/v2/garden-a.json";
@@ -759,12 +759,13 @@ describe("looks on rows (art 01)", () => {
     const { played } = await dressedPair();
     const meter = countingEnv(configured(LOOKS));
     // The phone asks for every beside field, so the reply is the one that carries the most.
-    const everything = { "X-AfterYou-Looks": "1", "X-AfterYou-Display-Names": "1", "X-AfterYou-End-Reactions": "1", "X-AfterYou-Run-Reactions": "1", "X-AfterYou-Pollen": "1" };
+    const everything = { "X-AfterYou-Looks": "1", "X-AfterYou-Display-Names": "1", "X-AfterYou-End-Reactions": "1", "X-AfterYou-Run-Reactions": "1", "X-AfterYou-Pollen": "1", ...POLLEN_CLIENT };
     const send = () => call(`/v2/rooms/${played.room.room_id}/turns`, "POST", played.host, played.body, LOOKS, everything, meter.env);
     const { value: answer, rows } = await meterRows({ board: board() }, send);
     expect(answer.status).toBe(200);
     const reply = await answer.json<Record<string, unknown>>();
     expect(reply.partner_look).toEqual(DAISY);
+    expect(reply.pollen).toBeDefined();
     expect(JSON.stringify(reply)).not.toContain("board_looks");
     // A retried final turn (same key) answers the same way and the board knows the run already.
     const retried = await send();

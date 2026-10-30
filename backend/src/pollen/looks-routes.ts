@@ -11,7 +11,8 @@ import { looksOn } from "./features";
  * - Serving: only to a phone that sends LOOKS_HEADER, and only beside a room read or turn reply a
  *   member already gets: `partner_look` (the other member's look now) and `turn_looks` (the look of
  *   each of the other member's turns, by recording hash), and `turn_looks` for every turn beside a
- *   replay transfer. Leaderboards stay public and carry no looks.
+ *   replay transfer. Leaderboard rows also carry each pair's looks while the flag is on, on the public
+ *   cached board read with no header asked, also for a pair that hides its names (leaderboards/run-looks.ts).
  */
 export const LOOKS_HEADER = "X-AfterYou-Looks";
 export const LOOKS_VERSION = 1;
