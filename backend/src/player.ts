@@ -222,6 +222,7 @@ export class Player extends DurableObject<Env> {
     try {
       const outcome = await this.settleBundles(owner, true);
       if (outcome.status === "unavailable") logWarning("pollen_bundle_check_failed", { reason: outcome.reason });
+      else if (outcome.status === "settled" && outcome.lookup_failed) logWarning("pollen_bundle_lookup_failed", { reason: outcome.lookup_failed });
     } catch (error) { logWarning("pollen_bundle_check_failed", { reason: errorCode(error) }); }
   }
   /** `daily`: the refund check, which also looks up paid bundles a restore moved off this player's list. */

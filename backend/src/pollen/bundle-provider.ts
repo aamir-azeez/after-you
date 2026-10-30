@@ -89,21 +89,22 @@ function samePurchase(item: unknown, ask: BundleAsk, products: Readonly<Record<s
 }
 
 /**
- * Whether each asked purchase is refunded now, whichever App User ID holds it: one request per purchase.
+ * Whether each asked purchase is refunded now, whichever App User ID holds it: one request per purchase, all at
+ * once, so a slow provider costs the wallet read one request timeout, not one per purchase.
  * Not found (404, or nothing that matches) is no news; only "refunded" is acted on.
  */
 export async function lookupBundles(asks: readonly BundleAsk[], env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<BundleLookup> {
   const products = bundleProducts(), at = project(env);
   if (at === null) return { ok: false, reason: "unconfigured" };
+  const found = await Promise.all(asks.map(async (ask): Promise<unknown[] | string> => {
+    if (ask.order) return listItems(await request(`${at.base}/purchases?store_purchase_identifier=${encodeURIComponent(ask.order)}`, at.key));
+    const result = await request(`${at.base}/purchases/${encodeURIComponent(ask.id)}`, at.key);
+    return !result.ok ? result.reason : result.status === 404 ? [] : [result.value];
+  }));
   const refunded: string[] = [];
-  for (const ask of asks) {
-    let items: unknown[] | string;
-    if (ask.order) items = listItems(await request(`${at.base}/purchases?store_purchase_identifier=${encodeURIComponent(ask.order)}`, at.key));
-    else {
-      const result = await request(`${at.base}/purchases/${encodeURIComponent(ask.id)}`, at.key);
-      items = !result.ok ? result.reason : result.status === 404 ? [] : [result.value];
-    }
+  for (const [index, items] of found.entries()) {
     if (typeof items === "string") return { ok: false, reason: items };
+    const ask = asks[index];
     if (items.some(item => samePurchase(item, ask, products) && isObject(item) && item.status === "refunded")) refunded.push(ask.id);
   }
   return { ok: true, refunded };

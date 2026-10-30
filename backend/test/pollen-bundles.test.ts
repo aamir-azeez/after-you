@@ -6,7 +6,7 @@ import gameBundles from "../../game/content/pollen_bundles.json";
 import serverBundles from "../src/pollen/bundles.json";
 import { BUNDLES, checkedBundles, firstGift, type Bundles } from "../src/pollen/bundles";
 import { bundlePurchase, lookupBundles, readBundles, type BundleAsk } from "../src/pollen/bundle-provider";
-import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
+import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundleCheckDue, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
 import { bundlesOn, refundsOn } from "../src/pollen/features";
 import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
 import { ledgerLines, walletView } from "../src/pollen/wallet";
@@ -98,6 +98,13 @@ describe("what RevenueCat purchases count", () => {
     const byId = vi.fn(async () => ({ ok: true as const, status: 200, value: owned("rc_5", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: null }) }));
     expect(await lookupBundles([{ ...ask, order: "" }], vars(), byId)).toEqual({ ok: true, refunded: ["rc_5"] });
     expect(String((byId.mock.calls[0] as unknown[])[0])).toBe("https://api.revenuecat.com/v2/projects/proj1234/purchases/rc_5");
+    expect(await lookupBundles([{ ...ask, order: "" }], vars(), async () => ({ ok: true, status: 200, value: owned("rc_6", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: null }) }))).toEqual({ ok: true, refunded: [] });
+    // One failed lookup fails the set; the rest are asked at the same time, not one after another.
+    let open = 0, most = 0;
+    const slow = async (url: string) => { open++; most = Math.max(most, open); await new Promise(resolve => setTimeout(resolve, 5)); open--;
+      return url.endsWith("rc_7") ? { ok: false as const, reason: "provider_request_or_decode_failed" } : { ok: true as const, status: 404, value: null }; };
+    expect(await lookupBundles(["rc_5", "rc_6", "rc_7"].map(id => ({ id, bundle: "pinch" as const, order: "GPA.0000-" + id })), vars(), slow)).toEqual({ ok: false, reason: "provider_request_or_decode_failed" });
+    expect(most).toBe(3);
   });
 });
 
@@ -174,18 +181,20 @@ describe("the refund check's lookups", () => {
   it("takes a looked-up refund back once, under retries and a reply that comes back twice", async () => {
     await runInDurableObject(env.PLAYERS.getByName("lookup-once"), async (_, state) => {
       const storage = state.storage, now = 20_000 * BUNDLE_CHECK_MS;
-      await settleBundles(storage, now, () => true, { read: async () => ({ ok: true, purchases: [p("r1"), p("r2")] }), claim: yes });
+      await settleBundles(storage, now, () => true, { read: async () => ({ ok: true, purchases: [p("r1"), p("r2"), p("r3")] }), claim: yes });
       const asked: string[][] = [];
-      const deps = { read: async () => ({ ok: true as const, purchases: [p("r2")] }), claim: yes, lookup: async (asks: BundleAsk[]) => { asked.push(asks.map(ask => ask.id)); return { ok: true as const, refunded: ["r1", "r1"] }; } };
-      // A failed lookup writes nothing and leaves the check due.
+      const deps = { read: async () => ({ ok: true as const, purchases: [p("r2", true), p("r3")] }), claim: yes, lookup: async (asks: BundleAsk[]) => { asked.push(asks.map(ask => ask.id)); return { ok: true as const, refunded: ["r1", "r1"] }; } };
+      // A failed lookup still takes back the refund the list shows, takes nothing moved back, and leaves the check due.
       const checked = lastBundleCheck(storage);
-      expect(await settleBundles(storage, now + 1, () => true, { ...deps, lookup: async () => ({ ok: false as const, reason: "provider_http_500" }) })).toEqual({ status: "unavailable", reason: "provider_http_500" });
+      expect(await settleBundles(storage, now + 1, () => true, { ...deps, lookup: async () => ({ ok: false as const, reason: "provider_http_500" }) }))
+        .toMatchObject({ status: "settled", lookup_failed: "provider_http_500", reply: { balance: 10000, refunded: [{ order: "GPA.r2" }] } });
       expect(lastBundleCheck(storage)).toBe(checked);
-      expect(ledgerLines(storage, "bundlerefund:")).toEqual([]);
+      expect(bundleCheckDue(storage, now + BUNDLE_CHECK_MS)).toBe(true);
       const both = await Promise.all([settleBundles(storage, now + 2, () => true, deps), settleBundles(storage, now + 2, () => true, deps)]);
       expect(both.flatMap(outcome => outcome.status === "settled" ? outcome.reply.refunded : [])).toEqual([{ bundle: "pinch", amount: 5000, order: "GPA.r1" }]);
+      expect(lastBundleCheck(storage)).toBe(now + 2);
       expect(await settleBundles(storage, now + 3, () => true, deps)).toMatchObject({ reply: { balance: 5000, refunded: [] } });
-      expect(ledgerLines(storage, "bundlerefund:").map(line => [line.key, line.amount])).toEqual([["bundlerefund:r1", -5000]]);
+      expect(ledgerLines(storage, "bundlerefund:").map(line => [line.key, line.amount]).sort()).toEqual([["bundlerefund:r1", -5000], ["bundlerefund:r2", -5000]]);
       // Once taken back it is never looked up again.
       expect(asked).toEqual([["r1"], ["r1"]]);
     });
