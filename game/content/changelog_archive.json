@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.4.22",
+      "date": "2026-10-10",
+      "highlights": [{"icon": "tap", "text": "The chapter picker opens right below its button"}, {"icon": "play", "text": "Replay previews fit the space they have"}, {"icon": "bell", "text": "Hosting alerts get their own permission"}]
+    },
+    {
       "version": "0.4.21",
       "date": "2026-10-10",
       "highlights": [{"icon": "spark", "text": "A tidier look for buttons and popups"}, {"icon": "play", "text": "Replays has a list beside a large preview"}, {"icon": "picture", "text": "New pictures for three chapters"}]

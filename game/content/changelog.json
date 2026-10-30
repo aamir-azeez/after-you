@@ -2,6 +2,18 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.4",
+      "date": "2026-10-30",
+      "highlights": [{"icon": "spark", "text": "Your look shows on your pips in solo chapters"}, {"icon": "home", "text": "Bigger keepsakes your pip sets off by walking past"}, {"icon": "tap", "text": "The Wardrobe has its own button on Home"}, {"icon": "leaf", "text": "A card after a turn shows the Pollen it earned"}, {"icon": "star", "text": "Leaderboard rows show what each pair wore"}, {"icon": "play", "text": "Replays marks a turn played on the first try"}],
+      "paragraphs": [
+        {"text": "In solo chapters both pips now wear your look, while you play and in solo replays. Home has a Wardrobe button with your pip on it, and your Pollen balance shows at the top right. Leaderboard rows show each pair in the looks they wore when they finished, and so does Your best."},
+        {"text": "The keepsakes on Home are bigger, and each one does something different. In Explore your pip sets them off as it walks: under the Bell Arch to ring it, up the Giant Steps to climb and slide down, into the cup of the Rolling Rail for a ride, or through the door of the Little House to look inside. Some of them stand on three new isles: a tide isle and two isles behind Home. Tapping a keepsake still plays it.", "ios_text": "The keepsakes on Home are bigger, and each one does something different. In Explore your pip sets them off as it walks: under the Bell Arch to ring it, or up the Giant Steps to climb and slide down. A new tide isle holds the Giant Steps and the Tide Pool. Tapping a keepsake still plays it."},
+        {"text": "After a turn that earns Pollen, a Turn saved card shows what it earned row by row: the base, any First try, Gold pace, Silver pace or Hard bonus, a first clear and the total. Each Full Journey player in a room adds 10% for both players, and the card says whose Full Journey it was. The Full Journey card explains this room boost in its own panel. In Settings, the Pollen row opens Pollen from play, with your turn bank, the turns you've played with friends and your first chapter clears.", "ios_text": "After a turn that earns Pollen, a Turn saved card shows what it earned row by row: the base, any First try, Gold pace, Silver pace or Hard bonus, a first clear and the total. In Settings, the Pollen row opens Pollen from play, with your turn bank, the turns you've played with friends and your first chapter clears."},
+        {"text": "During a run, the left side of the React button is the last face you sent, so one tap sends it again, and React opens the faces card. The faces card marks the face you sent last. In Replays, a turn you played on its first try shows a First try mark."},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.3",
       "date": "2026-10-29",
       "highlights": [{"icon": "leaf", "text": "Pollen after a turn shows once, on one line"}, {"icon": "people", "text": "A new friend's name shows as soon as you accept"}, {"icon": "star", "text": "The end card says where your time stands on the board"}, {"icon": "tap", "text": "Forgiving catches is off, and asks before it turns on"}],
@@ -146,16 +158,6 @@
       "highlights": [{"icon": "home", "text": "Play with your friend comes first on Home"}, {"icon": "play", "text": "One Replays button for Solo and Together"}],
       "paragraphs": [
         {"text": "Play with your friend is the first option on Home now. Play Solo is a secondary button, and one Replays button opens both Solo and Together recordings."},
-        {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.4.22",
-      "date": "2026-10-10",
-      "highlights": [{"icon": "tap", "text": "The chapter picker opens right below its button"}, {"icon": "play", "text": "Replay previews fit the space they have"}, {"icon": "bell", "text": "Hosting alerts get their own permission"}],
-      "paragraphs": [
-        {"text": "The chapter picker is as wide as its button and opens right below it, with a scrollbar when the list is long. Back to your photo is a cream button. Replay previews resize to fit the space they have and keep their playback controls."},
-        {"text": "The app is ready for hosting alerts, with their own notification permission and delivery, separate from turn reminders, so a friend can hear that you're hosting before they open the room."},
         {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
       ]
     }
