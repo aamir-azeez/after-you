@@ -28,3 +28,7 @@ static func digest(bytes: PackedByteArray) -> String:
 static func verified(tagged: PackedByteArray, byte_length: int, expected_digest: String, max_bytes: int) -> PackedByteArray:
 	var bytes := decode(tagged, byte_length, max_bytes)
 	return bytes if not bytes.is_empty() and digest(bytes) == expected_digest else PackedByteArray()
+
+## The tagged deflate body for canonical `bytes` (backend encodeBlob).
+static func encode(bytes: PackedByteArray) -> PackedByteArray:
+	return PackedByteArray([ENCODING_DEFLATE]) + bytes.compress(FileAccess.COMPRESSION_DEFLATE)
