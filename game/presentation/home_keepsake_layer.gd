@@ -29,6 +29,7 @@ const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
 const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const Builder = preload("res://presentation/keepsakes/keepsake_builder.gd")
+const Explore = preload("res://presentation/keepsakes/keepsake_explore.gd")
 ## Home draws each keepsake this many island metres per prop unit.
 const HOME_SCALE := 1.0
 ## A keepsake faces the Home camera (its +z along the camera's ground
@@ -78,11 +79,7 @@ var _crossings: Array[Dictionary] = []
 ## Per keepsake, worked out once: {"placed", "inverse", "trigger", "stay",
 ## "walkways", "reach": [middle, radius] round everything a step can meet}.
 var _frames: Dictionary = {}
-## Explore: the pip that walks, the triggers it stands in and the stay it is
-## in ({"id", "visit"}).
-var _walker: Node3D
-var _in_trigger: Dictionary = {}
-var _stay: Dictionary = {}
+var _explore := Explore.new(self)
 ## Sets built since configure(), for tests that prove a burst rebuilds once,
 ## and steps walked() was asked about, for tests that prove a still pip asks nothing.
 var builds := 0
@@ -240,8 +237,6 @@ func _begin_rebuild() -> void:
 
 func _swap() -> void:
 	var old: Node3D = _set.get("root")
-	var staying := str(_stay.get("id", ""))
-	_stay = {}
 	_set = _next
 	_next = {}
 	(_set.root as Node3D).visible = true
@@ -252,8 +247,7 @@ func _swap() -> void:
 	_held.clear()
 	for id: String in _set.props:
 		for part: Node in _moving(_set.props[id].parts): _held.append(part)
-	# A pip inside a stay when the set changed walks on inside the new one.
-	if not staying.is_empty() and is_instance_valid(_walker): _update_stay(_walker.position)
+	_explore.set_swapped()
 
 ## Whether the set drawn now is still being built or folded.
 func settling() -> bool:
@@ -305,6 +299,8 @@ func play(id: String, rider: Node3D = null) -> bool:
 	for node: Variant in anim.touched:
 		if is_instance_valid(node) and not anim.spawned.has(node): rest.append(_rest_of(node))
 	if anim.reduced: anim.apply_jumps()
+	# A ride gives the pip back the moment it lands, while the rest still plays.
+	elif anim.landing != null: tween.tween_callback(_land.bind(anim)).set_delay(anim.landing_time())
 	tween.tween_interval(REDUCED_HOLD if anim.reduced else time)
 	tween.finished.connect(_settle)
 	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest, "settling": false}
@@ -375,98 +371,30 @@ func _reduced() -> bool:
 
 # --- Explore --------------------------------------------------------------------------
 
-## The pip took a step in Explore, from `from` to `to`: it sets off what it
-## walked into or through (unless a keepsake is playing), and walks in, along
-## and out of a stay. Called only for a step, so nothing here runs while the
-## pip stands still.
+## The pip took a step in Explore, from `from` to `to` (keepsakes/keepsake_explore.gd):
+## it sets off what it walked into or through, and walks in, along and out of a
+## stay. Called only for a step, so nothing here runs while the pip stands still.
 func walked(from: Vector3, to: Vector3, walker: Node3D) -> void:
 	steps += 1
-	_walker = walker
-	if riding(): return
-	var a2 := Vector2(to.x, to.z)
-	var b2 := Vector2(from.x, from.z)
-	for id: String in _shown:
-		var frame: Dictionary = _frames[id]
-		var reach: Array = frame.reach
-		if (reach[0] as Vector2).distance_to(a2) > float(reach[1]) and (reach[0] as Vector2).distance_to(b2) > float(reach[1]):
-			_in_trigger.erase(id)
-			continue
-		var trigger: Dictionary = frame.trigger
-		if trigger.is_empty() or not playable(id): continue
-		var inverse: Transform3D = frame.inverse
-		var start := inverse * Vector3(from.x, 0, from.z)
-		var end := inverse * Vector3(to.x, 0, to.z)
-		var fire := false
-		if trigger.has("line"):
-			fire = Geometry2D.segment_intersects_segment(Vector2(start.x, start.z), Vector2(end.x, end.z), trigger.line[0], trigger.line[1]) != null
-		elif trigger.has("area"):
-			var inside: bool = (trigger.area as Rect2).has_point(Vector2(end.x, end.z))
-			fire = inside and not _in_trigger.get(id, false)
-			_in_trigger[id] = inside
-		# A walk never cuts another keepsake off mid play: it waits for the pip
-		# to walk in again. A tap or the Explore action still can.
-		if fire and not playing(): play(id, walker)
-	_update_stay(to)
+	_explore.walked(from, to, walker)
 
-## Walks the pip in, along or out of a stay at `at`.
-func _update_stay(at: Vector3) -> void:
-	var inside := ""
-	var local := Vector2.ZERO
-	for id: String in _shown:
-		var stay: Rect2 = _frames[id].stay
-		if not stay.has_area() or not playable(id): continue
-		var point: Vector3 = _frames[id].inverse * Vector3(at.x, 0, at.z)
-		if stay.has_point(Vector2(point.x, point.z)):
-			inside = id
-			local = Vector2(point.x, point.z)
-			break
-	if str(_stay.get("id", "")) != inside: leave_stay()
-	if inside.is_empty(): return
-	var prop: Dictionary = _set.props[inside]
-	var state: Dictionary = prop.state.duplicate()
-	state.sounds = _entry(inside).keepsake.get("sounds", {})
-	if _stay.is_empty():
-		var holder := (_set.root as Node3D).get_node_or_null(NodePath(prop.name)) as Node3D
-		if holder == null: return
-		var visit := Node3D.new()
-		visit.name = "Visit"
-		holder.add_child(visit)
-		_stay = {"id": inside, "visit": visit}
-		_sound(_builders[inside].arrive(visit, prop.parts, state))
-	_sound(_builders[inside].follow(_stay.visit, prop.parts, state, local))
-
-func _sound(name: String) -> void:
-	if not name.is_empty() and cue.is_valid(): cue.call(name)
-
-## The pip left its stay (or Explore ended): the keepsake is put back as it was.
+## The pip left its stay: the keepsake is put back as it was.
 func leave_stay() -> void:
-	if _stay.is_empty(): return
-	var id: String = _stay.id
-	var prop: Dictionary = _set.get("props", {}).get(id, {})
-	if not prop.is_empty(): _builders[id].depart(prop.parts, prop.state)
-	var visit: Variant = _stay.visit
-	if is_instance_valid(visit):
-		if (visit as Node).get_parent() != null: (visit as Node).get_parent().remove_child(visit)
-		(visit as Node).queue_free()
-	_stay = {}
+	_explore.leave_stay()
 
 ## The stay the pip is in, or "".
 func staying() -> String:
-	return str(_stay.get("id", ""))
+	return _explore.staying()
 
 ## How high the pip stands at `at`: a stay's floor (a raised house), else 0.
 func ground_height(at: Vector3) -> float:
-	if _stay.is_empty(): return 0.0
-	var id: String = _stay.id
-	var point: Vector3 = _frames[id].inverse * Vector3(at.x, 0, at.z)
-	return float(_builders[id].floor(_set.props[id].state, Vector2(point.x, point.z)))
+	return _explore.ground_height(at)
 
-## Explore ended: any ride lands, any stay is left, and nothing is half set off.
+## Explore ended (or Home is closing): any ride lands, any stay is left, and
+## nothing is half set off.
 func end_explore() -> void:
 	if riding(): stop_play()
-	leave_stay()
-	_in_trigger.clear()
-	_walker = null
+	_explore.end()
 
 # --- the card ---------------------------------------------------------------------------
 
@@ -515,6 +443,10 @@ func keepsake_ids() -> Array[String]:
 func prop_node(id: String) -> Node3D:
 	if not _set.get("props", {}).has(id): return null
 	return (_set.root as Node3D).get_node_or_null(NodePath(_set.props[id].name)) as Node3D
+
+## Every keepsake drawn now: {id: {"name", "parts", "state", "look", "solids"}}.
+func current_props() -> Dictionary:
+	return _set.get("props", {})
 
 ## The moving parts of a keepsake drawn now.
 func parts_of(id: String) -> Dictionary:

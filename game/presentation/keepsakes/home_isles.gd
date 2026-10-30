@@ -14,7 +14,8 @@ const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const NODE_NAME := "HomeIsles"
 ## Home's own grass (the Home level's palette).
 const GRASS := Color("a6c9a0")
-const ROOTS := Color("456b59")
+## Each isle's dressing pattern (island_world.gd island_dressing), so no two match.
+const DRESSING := {"tide": 1, "journey_left": 2, "journey_right": 3}
 ## Each isle: its middle and size in metres, and its plank bridge from the
 ## Home island's edge into the isle.
 const ISLES := {
@@ -43,21 +44,9 @@ static func build(world: Node3D, terrain: Node3D, ids: Array) -> void:
 		var middle: Vector2 = isle.center
 		var size: Vector2 = isle.size
 		world.island_shell(middle.x, middle.y, size.x, size.y, GRASS, land)
-		_dress(land, middle, size)
+		# Pebbles, tufts and roots as the Home islands have, each isle its own pattern.
+		world.island_dressing(middle.x, middle.y, size.x, size.y, DRESSING[id], land)
 		_bridge(holder, id, isle.bridge)
-
-## Hanging roots, tufts and pebbles, as the Home islands have.
-static func _dress(land: Node3D, middle: Vector2, size: Vector2) -> void:
-	var half := size * 0.5
-	for index in range(5):
-		var root := Parts.cyl(land, 0.025, 0.7 + (index % 3) * 0.08, ROOTS, Vector3(middle.x + sin(index * 2.8) * (half.x - 0.3), -1.35, middle.y + cos(index) * half.y))
-		root.rotation.z = sin(index) * 0.3
-	for index in range(8):
-		var at := Vector3(middle.x + sin(index * 2.7) * (half.x - 0.3), 0.03, middle.y + cos(index * 1.8) * (half.y - 0.25))
-		if index % 3 == 0:
-			Parts.sph(land, 0.11, Color("d7d8bb"), at, Vector3(1.2, 0.55, 1.2))
-		else:
-			for blade in range(3): Parts.box(land, Vector3(0.025, 0.13 + blade * 0.05, 0.035), Color("638d69"), at + Vector3(blade * 0.04, 0.03 + blade * 0.015, 0), Vector3(0, 0, (blade - 1) * 0.24))
 
 static func _bridge(holder: Node3D, id: String, ends: Array) -> void:
 	var from: Vector2 = ends[0]

@@ -320,6 +320,7 @@ func _check_triggers() -> void:
 				moved = moved or spirit.position.distance_to(start) > 0.3
 			stage._stick.value = Vector2.ZERO
 			_check(moved and not layer.riding(), "%s carries the pip on its ride" % id)
+			_check(layer.playing(), "%s gives the pip back the moment it lands, while its upgrades still play" % id)
 			_check(spirit.position.y == 0.0 and layer.walkable(spirit.position), "%s lands the pip on open ground: %s" % [id, spirit.position])
 		layer.stop_play()
 		var after := spirit.position
@@ -342,6 +343,22 @@ func _check_triggers() -> void:
 	var prop: Node3D = layer.prop_node("a-house-for-two")
 	_check(layer.staying() == "a-house-for-two" and faded.call() and prop.get_node_or_null("Visit") != null, "Walking into the house fades its roof and front wall and makes its inside")
 	_check(layer.ground_height(room) > 0.5, "On Hard the pip stands on the house's raised floor: %.2f" % layer.ground_height(room))
+	# New marks while the pip is inside: the rebuilt house is walked on into, quietly.
+	var heard: Array = []
+	stage.play_cue = func(cue: String) -> void: heard.append(cue)
+	var fewer := _everything()
+	fewer = fewer.filter(func(item: Dictionary) -> bool: return item.family != "earlier")
+	stage.set_keepsakes(fewer)
+	await _settle(layer)
+	var rebuilt: Dictionary = layer.parts_of("a-house-for-two")
+	var rebuilt_cut: Node3D = rebuilt.cutaway
+	_check(rebuilt_cut != cut and layer.staying() == "a-house-for-two" and rebuilt_cut.find_children("*", "MeshInstance3D", true, false).all(func(mesh: Node) -> bool: return mesh.get_meta("cutaway", false)), "A rebuild while the pip is inside keeps it inside the new house")
+	_check(heard.is_empty(), "and plays no sound again: %s" % [heard])
+	stage.set_keepsakes(_everything())
+	await _settle(layer)
+	house = layer.parts_of("a-house-for-two")
+	cut = house.cutaway
+	prop = layer.prop_node("a-house-for-two")
 	layer.walked(room, far, spirit)
 	await process_frame
 	_check(layer.staying().is_empty() and not cut.find_children("*", "MeshInstance3D", true, false).any(func(mesh: Node) -> bool: return mesh.get_meta("cutaway", false)) and prop.get_node_or_null("Visit") == null, "Walking out puts the house back and its inside goes")
@@ -365,6 +382,22 @@ func _check_triggers() -> void:
 	await process_frame
 	_check(not layer.playing() and not layer.is_processing() and layer.find_children("Tap", "", true, false).is_empty() and layer.find_children("Visit", "", true, false).is_empty(), "Every keepsake settles back to rest with nothing left running")
 	await _close(home)
+	# Leaving Home mid ride: the ride ends at once and the pip is put back.
+	var riders := await _home(Vector2i(1560, 720), _everything(), _all_hard())
+	await _settle(riders.layer)
+	riders.stage._explore_button.pressed.emit()
+	var step: Vector3 = riders.layer.trigger_point("high-and-low")
+	riders.world.actors.a.position = step
+	riders.layer.walked(step + Vector3(0, 0, 4.0), step, riders.world.actors.a)
+	_check(riders.layer.riding(), "The Giant Steps ride starts")
+	await create_timer(0.3).timeout
+	riders.stage.free()
+	var put_back: Vector3 = riders.world.actors.a.position
+	await process_frame
+	await process_frame
+	_check(_tweens() == 0 and riders.world.actors.a.position == put_back and put_back.y == 0.0 and put_back != step, "Leaving Home mid ride stops it, and nothing moves the pip after Home has put it back: %s" % riders.world.actors.a.position)
+	riders.viewport.free()
+	await process_frame
 	# An unearned keepsake sets nothing off.
 	var empty := await _home(Vector2i(1560, 720), [])
 	await _settle(empty.layer)

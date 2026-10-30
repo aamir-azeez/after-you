@@ -64,6 +64,7 @@ func _run() -> void:
 		for beat: Dictionary in beats: _check(entry.keepsake.sounds.has(beat.beat), "%s has a sound for its %s beat" % [entry.id, beat.beat])
 		_check_tap_parts(stage, entry, builder, full)
 		_check_explore(stage, entry, builder)
+		_check_upgrades(stage, entry, builder)
 		# Warm-up: every look it draws is a feature key the GL warm-up compiles.
 		for look: Material in builder.materials():
 			var key := GlWarmup.material_key(look as BaseMaterial3D)
@@ -209,3 +210,28 @@ func _free_in(area: Rect2, solids: Array[Rect2]) -> bool:
 			var point := area.position + area.size * Vector2(x / 8.0, z / 8.0)
 			if solids.all(func(rect: Rect2) -> bool: return not rect.grow(0.12).has_point(point)): return true
 	return false
+
+## Each upgrade earned on its own draws a keepsake of its own: more pieces than
+## the base look, and a look no other single upgrade draws, so the shape says
+## what has been earned.
+func _check_upgrades(stage: Node3D, entry: Dictionary, builder: RefCounted) -> void:
+	var looks := {}
+	for upgrade: String in ["", "together", "hard", "top"]:
+		if upgrade in ["hard", "top"] and not entry.hard: continue
+		var state := {}
+		if not upgrade.is_empty(): state[upgrade] = true
+		if entry.id == States.EARLIER: state.lanterns = [true, false, true]
+		var prop := Node3D.new()
+		stage.add_child(prop)
+		builder.build(prop, state)
+		var shape: Array = []
+		for node: Node in prop.find_children("*", "MeshInstance3D", true, false):
+			var mesh := node as MeshInstance3D
+			shape.append([mesh.mesh, mesh.material_override, (prop.global_transform.affine_inverse() * mesh.global_transform).origin.snapped(Vector3.ONE * 0.001)])
+		prop.free()
+		looks[upgrade] = shape
+	for upgrade: String in looks:
+		if upgrade.is_empty(): continue
+		_check(looks[upgrade].size() > looks[""].size(), "%s's %s upgrade adds pieces to the base look" % [entry.id, upgrade])
+		for other: String in looks:
+			if other != upgrade and not other.is_empty(): _check(looks[upgrade] != looks[other], "%s draws its %s and %s upgrades differently" % [entry.id, upgrade, other])

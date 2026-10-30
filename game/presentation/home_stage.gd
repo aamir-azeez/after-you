@@ -983,7 +983,12 @@ func _exit_tree() -> void:
 	for node: CanvasItem in _explore_hidden:
 		if is_instance_valid(node): node.visible = true
 	_explore_hidden.clear()
-	if is_instance_valid(_keepsake_layer): _keepsake_layer.queue_free()
+	# A ride or a stay ends now, before the pip is put back below, so nothing
+	# of the layer's Tween moves it after Home has gone.
+	if is_instance_valid(_keepsake_layer):
+		_keepsake_layer.end_explore()
+		_keepsake_layer.stop_play()
+		_keepsake_layer.queue_free()
 	if not is_instance_valid(_world) or _world.home_presentation_owner!=get_instance_id(): return
 	for saved_prop: Dictionary in _hidden_props:
 		if is_instance_valid(saved_prop.node): saved_prop.node.visible = saved_prop.visible

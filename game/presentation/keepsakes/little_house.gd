@@ -151,7 +151,8 @@ func arrive(visit: Node3D, parts: Dictionary, state: Dictionary) -> String:
 	if state.get("top", false):
 		P.node(room, P.Primitives.shared_mesh("box", 0.6, 0.55, 0.18), P.gold(), Vector3(-0.35, y0 + 0.3, -D * 0.5 + 0.12))
 		P.node(room, P.Primitives.shared_mesh("box", 0.3, 0.25, 0.05), P.glow(Color("f09a3e"), 1.6), Vector3(-0.35, y0 + 0.22, -D * 0.5 + 0.22))
-	return str(state.get("sounds", {}).get("base", ""))
+	# The door's own play sounds as the pip walks up; going in is quiet.
+	return ""
 
 static func _glow(parent: Node3D, at: Vector3, radius: float, color: Color, alpha: float) -> void:
 	var glow := P.node(parent, P.low_sphere(radius), P.clear(color, alpha, 1.4), at)

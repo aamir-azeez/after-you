@@ -558,21 +558,7 @@ func _lift_surface_height(coords: Array, height: float) -> float:
 ## islands pass their index so neighbouring islands are not clones.
 func _make_island(cx: float, cz: float, width: float, depth: float, grass: Color, variant: int = 0) -> void:
 	_island_shell(cx,cz,width,depth,grass)
-	for n in range(16):
-		var i := n + variant * 5
-		var x := cx+sin(i*2.7)*(width/2-0.24)
-		var z := cz+cos(i*1.8)*(depth/2-0.18)
-		if i % 3 == 0:
-			var pebble := sphere(0.09+0.025*(i%4),Color("d7d8bb"),Vector3(x,0.035,z),terrain)
-			pebble.scale=Vector3(1.4,0.55,1.0)
-		else:
-			for j in range(3):
-				var blade := box(Vector3(0.025,0.13+j*0.05,0.035),Color("638d69"),Vector3(x+j*0.04,0.06+j*0.015,z),terrain)
-				blade.rotation.z=(j-1)*0.24
-	# Small suspended roots make the islands legible as floating worlds.
-	for i in range(5):
-		var root := cylinder(0.025,0.7+i*0.07,Color("456b59"),Vector3(cx+sin(i*2.8)*(width/2-0.2),-1.35,cz+cos(i)*depth/2),terrain)
-		root.rotation.z=sin(i)*0.3
+	island_dressing(cx,cz,width,depth,variant,terrain)
 	# Scenic edges stay outside the puzzle's readable central routes.
 	if variant > 0:
 		_vary_island(cx, cz, width, depth, variant)
@@ -607,6 +593,25 @@ func _vary_island(cx: float, cz: float, width: float, depth: float, variant: int
 			Props.build({"kind": "bench", "at": [(cx + clampf(0.35, -span, span)) * 100.0, (rear - 0.04) * 100.0], "size": 0.9}, props, 0.0, false)
 			Props.build({"kind": "flowers", "at": [(cx + clampf(1.0, -span, span)) * 100.0, rear * 100.0], "size": 0.8}, props, 0.0, false)
 		_: Props.build({"kind": "flowers", "at": [(cx + clampf(-0.1, -span, span)) * 100.0, rear * 100.0], "size": 0.9}, props, 0.0, false)
+
+## An island's pebbles, grass tufts and hanging roots under `parent`: the
+## level's islands, and the islands a screen adds (Home's keepsake isles).
+func island_dressing(cx: float, cz: float, width: float, depth: float, variant: int, parent: Node3D) -> void:
+	for n in range(16):
+		var i := n + variant * 5
+		var x := cx+sin(i*2.7)*(width/2-0.24)
+		var z := cz+cos(i*1.8)*(depth/2-0.18)
+		if i % 3 == 0:
+			var pebble := sphere(0.09+0.025*(i%4),Color("d7d8bb"),Vector3(x,0.035,z),parent)
+			pebble.scale=Vector3(1.4,0.55,1.0)
+		else:
+			for j in range(3):
+				var blade := box(Vector3(0.025,0.13+j*0.05,0.035),Color("638d69"),Vector3(x+j*0.04,0.06+j*0.015,z),parent)
+				blade.rotation.z=(j-1)*0.24
+	# Small suspended roots make the islands legible as floating worlds.
+	for i in range(5):
+		var root := cylinder(0.025,0.7+i*0.07,Color("456b59"),Vector3(cx+sin(i*2.8)*(width/2-0.2),-1.35,cz+cos(i)*depth/2),parent)
+		root.rotation.z=sin(i)*0.3
 
 ## An island's floating landform under `parent`, for islands a screen adds
 ## to the level's own (Home's keepsake isles, presentation/keepsakes/home_isles.gd).

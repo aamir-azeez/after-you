@@ -80,6 +80,10 @@ func carry(where: Callable, at: float, time: float) -> void:
 		if is_instance_valid(node): node.position = frame * (where.call(t) as Vector3)
 	tween.tween_method(step, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at)
 
+## When the last carry lands the pip, in seconds from the tap.
+func landing_time() -> float:
+	return maxf(_landing_at, 0.0)
+
 ## Hops through `points` (the keepsake's own frame), each hop `time` seconds
 ## and `height` high, starting `at`. Returns when the last hop lands.
 func hops(points: Array, at: float, time: float, height: float) -> float:
