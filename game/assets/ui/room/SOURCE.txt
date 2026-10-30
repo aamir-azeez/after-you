@@ -1,2 +1,3 @@
-Icons drawn for After You (dots, eye-off, door-exit, phone, camera, flag), in the style of the Phosphor regular set used in ../social.
+Phosphor Icons, MIT license (LICENSE.txt). https://github.com/phosphor-icons/core
+camera (camera) and dots (dots-three, bold) keep the Phosphor shapes. door-exit (sign-out), eye-off (eye-slash), flag (flag) and phone (device-mobile) are edited for After You.
 White strokes or fills on a 256 viewBox, so Godot can tint them.
