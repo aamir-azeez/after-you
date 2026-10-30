@@ -1142,7 +1142,8 @@ func _pollen_noted(_server: String, _owner: String, room_id: String, _recording_
 ## Each slot's pip in its own player's look (presentation/slot_looks.gd). A live
 ## turn and the waiting view dress the viewer in their own look and the partner
 ## in theirs, with `recordings` that play in the turn in their own turn's look; a
-## replay (`replay`) dresses each slot in its recording's look only. Solo play
+## replay (`replay`) dresses each slot in its recording's look only, and a turn
+## not accepted yet (the Watch preview) in the viewer's look. Solo play
 ## has both pips the player's own, so both wear the player's look.
 func _dress(recordings: Array, replay: bool = false) -> void:
 	if not is_instance_valid(world) or not world.has_method("wear_slots"): return
@@ -1150,7 +1151,16 @@ func _dress(recordings: Array, replay: bool = false) -> void:
 		world.wear_slots(SlotLooks.solo())
 		return
 	var room: Dictionary = journey.snapshot() if journey != null and journey.has_method("snapshot") else {}
-	world.wear_slots(SlotLooks.replay(recordings) if replay else SlotLooks.live(room, recordings))
+	world.wear_slots(SlotLooks.replay(recordings, null, _unsent_hashes()) if replay else SlotLooks.live(room, recordings))
+
+## The turns this phone holds that the room has not accepted yet: the one in
+## review and the one sent and waiting. They are the viewer's own, played now.
+func _unsent_hashes() -> Array:
+	var held: Array = [review.get("recording_hash")]
+	var pending: Variant = journey.pending() if journey != null and journey.has_method("pending") else {}
+	var body: Variant = pending.get("body") if pending is Dictionary else null
+	if body is Dictionary and body.get("recording") is Dictionary: held.append(body.recording.get("recording_hash"))
+	return held.filter(func(value: Variant) -> bool: return value is String and not value.is_empty())
 
 
 ## The other player's id: the viewer's slot is p0 when they host, p1 when they joined.

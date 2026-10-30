@@ -9,6 +9,8 @@ extends RefCounted
 ##   its slot in that turn's own look.
 ## - replay(): every slot in its recording's own look, whatever either player
 ##   wears now. A turn this phone never heard a look for plays in the default.
+##   A turn this phone holds unsent (`unsent`: the Watch preview of a turn not
+##   saved yet) is the viewer's own, played just now, so it wears their look.
 ## - solo(): both pips are the player's own, so both wear their look now,
 ##   live and in replays alike (solo turns keep no looks of their own).
 ## Rooms name the viewer's slot in `player_slot` (p0 hosts, p1 joined).
@@ -32,12 +34,13 @@ static func solo() -> Dictionary:
 	for slot: String in SLOTS: result[slot] = own.duplicate()
 	return result
 
-static func replay(recordings: Array, looks: RefCounted = null) -> Dictionary:
+static func replay(recordings: Array, looks: RefCounted = null, unsent: Array = []) -> Dictionary:
 	var store: RefCounted = looks if looks != null else TurnLooks.shared()
 	var result := {}
 	for recording: Variant in recordings:
 		if not recording is Dictionary: continue
 		var slot := str(recording.get("player_slot", ""))
 		var recording_hash := str(recording.get("recording_hash", ""))
-		if slot in SLOTS and TurnLooks.valid_hash(recording_hash): result[slot] = store.look(recording_hash)
+		if not slot in SLOTS or not TurnLooks.valid_hash(recording_hash): continue
+		result[slot] = OwnLook.outfit() if recording_hash in unsent else store.look(recording_hash)
 	return result
