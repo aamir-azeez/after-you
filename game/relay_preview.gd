@@ -1157,9 +1157,7 @@ func _dress(recordings: Array, replay: bool = false) -> void:
 ## review and the one sent and waiting. They are the viewer's own, played now.
 func _unsent_hashes() -> Array:
 	var held: Array = [review.get("recording_hash")]
-	var pending: Variant = journey.pending() if journey != null and journey.has_method("pending") else {}
-	var body: Variant = pending.get("body") if pending is Dictionary else null
-	if body is Dictionary and body.get("recording") is Dictionary: held.append(body.recording.get("recording_hash"))
+	if journey != null and journey.has_method("pending_recording_hash"): held.append(journey.pending_recording_hash())
 	return held.filter(func(value: Variant) -> bool: return value is String and not value.is_empty())
 
 

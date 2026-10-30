@@ -491,6 +491,13 @@ func pending_reaction() -> String:
 	var face: Variant = _state.pending.body.get("end_reaction")
 	return face if EndReactionStore.is_face(face) else ""
 
+## The recording hash of the turn waiting to send, or "" (a fork carries none).
+func pending_recording_hash() -> String:
+	if _state.is_empty() or _state.pending.is_empty() or not _state.pending.body is Dictionary: return ""
+	var recording: Variant = _state.pending.body.get("recording")
+	var recording_hash: Variant = recording.get("recording_hash") if recording is Dictionary else null
+	return recording_hash if recording_hash is String else ""
+
 
 ## A poll names the verified revision and branch it holds, so a room that has
 ## not moved answers small (X-AfterYou-Known-Room). Only an ordinary room with

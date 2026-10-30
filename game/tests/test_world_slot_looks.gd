@@ -118,13 +118,7 @@ func _room() -> void:
 	store.note_member(friend, {"body": "tide"})
 	store.note_turn(partner_turn.recording_hash, {"hat": "seashell"})
 	var room_script := GDScript.new()
-	room_script.source_code = "extends RefCounted
-var room := {}
-func snapshot() -> Dictionary:
-	return room.duplicate(true)
-func pending() -> Dictionary:
-	return {}
-"
+	room_script.source_code = "extends RefCounted\nvar room := {}\nvar sent := \"\"\nfunc snapshot() -> Dictionary:\n\treturn room.duplicate(true)\nfunc pending_recording_hash() -> String:\n\treturn sent\n"
 	room_script.reload()
 	var journey: RefCounted = room_script.new()
 	journey.set("room", {"player_slot": "p1", "host_id": friend, "guest_id": me})
@@ -145,8 +139,16 @@ func pending() -> Dictionary:
 	screen.review = {"player_slot": "p1", "recording_hash": "c".repeat(64)}
 	screen._dress([screen.review, partner_turn], true)
 	_check(world.actors.p1.outfit() == {"hat": "daisy"} and world.actors.p0.outfit() == {"hat": "seashell"}, "Watch preview: the viewer's unsent turn plays in their look")
+	# Accepted: this phone keeps the look it was played in, and a later look change never reaches its replay.
+	store.note_turn("c".repeat(64), {"hat": "seashell"})
+	screen._dress([screen.review, partner_turn], true)
+	_check(world.actors.p1.outfit() == {"hat": "seashell"}, "A held review of an accepted turn replays in the look it was accepted in")
 	screen.review = {}
-	screen._dress([{"player_slot": "p1", "recording_hash": "c".repeat(64)}, partner_turn], true)
+	journey.set("sent", "d".repeat(64))
+	screen._dress([{"player_slot": "p1", "recording_hash": "d".repeat(64)}, partner_turn], true)
+	_check(world.actors.p1.outfit() == {"hat": "daisy"}, "The turn sent and waiting plays in the viewer's look")
+	journey.set("sent", "")
+	screen._dress([{"player_slot": "p1", "recording_hash": "e".repeat(64)}, partner_turn], true)
 	_check(world.actors.p1.outfit().is_empty(), "A replay of a turn this phone never heard a look for still plays in the default")
 	screen.free()
 	world.queue_free()
