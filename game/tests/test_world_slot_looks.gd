@@ -3,8 +3,11 @@ extends SceneTree
 ## (IslandWorld.wear_slots, presentation/slot_looks.gd), in every family of
 ## world (First Steps, Relay and the lighthouse family), and keeps it when a
 ## stage is built again; a slot left out wears the default look, and the other
-## slot's look never moves to it.
+## slot's look never moves to it. A solo chapter (RelayPreview with no room)
+## dresses both pips in the player's own look.
 const Registry = preload("res://services/chapter_registry.gd")
+const RelayPreview = preload("res://relay_preview.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 
@@ -56,6 +59,38 @@ func _run() -> void:
 		_check(world.actors.p0.outfit().is_empty() and world.actors.p1.outfit() == {"body": "tide"}, "%s: a stage built again keeps each slot's look" % key)
 		world.queue_free()
 		await _frames(2)
+	await _solo()
 	Catalog.set_offered([])
 	print("AFTER YOU WORLD LOOKS: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures > 0 else 0)
+
+## Solo play: the screen with no online session dresses both pips in the
+## player's look, from the signed-in player's wardrobe, live and in replays.
+func _solo() -> void:
+	var server := "https://looks.example.test"
+	var me := "aaaaaaaaaaaaaaaaaaaaaa"
+	var path := "user://test-world-looks-wardrobe-%s.json" % Crypto.new().generate_random_bytes(6).hex_encode()
+	var wardrobe: RefCounted = Wardrobe.new(path)
+	Wardrobe.use_shared(wardrobe)
+	wardrobe.scope_source = func() -> Dictionary: return {"server": server, "owner": me}
+	wardrobe.set_enabled(server, me, true)
+	wardrobe.note_view(server, me, {"name_price": 0.0, "wardrobe": {"items": ["daisy", "tide"], "packs": [], "look": {"hat": "daisy", "body": "tide"}, "look_revision": 1.0,
+		"offered": ["daisy", "seashell", "tide"], "offered_packs": [], "sets": {}, "unlocked": []}})
+	var key := _key("relay-isles")
+	var world: Node3D = Registry.world_script(key).new()
+	root.add_child(world)
+	GraphicsPolicy.apply(world, {"graphics_quality": "balanced"})
+	world.load_level(Registry.definition(key))
+	await _frames(4)
+	var screen: Node3D = RelayPreview.new()
+	screen.world = world
+	var worn := {"hat": "daisy", "body": "tide"}
+	screen._dress([])
+	_check(world.actors.p0.outfit() == worn and world.actors.p1.outfit() == worn, "Solo play: both pips wear the player's look")
+	screen._dress([{"player_slot": "p0", "recording_hash": "a".repeat(64)}], true)
+	_check(world.actors.p0.outfit() == worn and world.actors.p1.outfit() == worn, "A solo replay keeps the player's look on both pips")
+	screen.free()
+	world.queue_free()
+	await _frames(2)
+	Wardrobe.use_shared(null)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(path))

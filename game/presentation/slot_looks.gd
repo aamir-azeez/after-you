@@ -9,6 +9,8 @@ extends RefCounted
 ##   its slot in that turn's own look.
 ## - replay(): every slot in its recording's own look, whatever either player
 ##   wears now. A turn this phone never heard a look for plays in the default.
+## - solo(): both pips are the player's own, so both wear their look now,
+##   live and in replays alike (solo turns keep no looks of their own).
 ## Rooms name the viewer's slot in `player_slot` (p0 hosts, p1 joined).
 const OwnLook = preload("res://services/own_look.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
@@ -22,6 +24,12 @@ static func live(room: Dictionary, recordings: Array = [], looks: RefCounted = n
 	var partner: Variant = room.get("guest_id") if mine == "p0" else room.get("host_id")
 	var result := {mine: OwnLook.outfit(), partner_slot: store.member(str(partner)) if partner is String else {}}
 	result.merge(replay(recordings, store), true)
+	return result
+
+static func solo() -> Dictionary:
+	var own := OwnLook.outfit()
+	var result := {}
+	for slot: String in SLOTS: result[slot] = own.duplicate()
 	return result
 
 static func replay(recordings: Array, looks: RefCounted = null) -> Dictionary:

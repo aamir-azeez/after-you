@@ -321,6 +321,8 @@ func _ready() -> void:
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	soundscape.listen_to(world)
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
+	# Solo pips are built in the player's look, so the ready card shows it too.
+	if online_session == null: _dress([])
 	if staged and OpeningCard.covering():
 		# Main's opening card covers this screen: its controls and loading
 		# card are made at the start of the next frame (before any step of
@@ -1141,10 +1143,13 @@ func _pollen_noted(_server: String, _owner: String, room_id: String, _recording_
 ## turn and the waiting view dress the viewer in their own look and the partner
 ## in theirs, with `recordings` that play in the turn in their own turn's look; a
 ## replay (`replay`) dresses each slot in its recording's look only. Solo play
-## has no room, so its pips keep the default look.
+## has both pips the player's own, so both wear the player's look.
 func _dress(recordings: Array, replay: bool = false) -> void:
 	if not is_instance_valid(world) or not world.has_method("wear_slots"): return
-	var room: Dictionary = journey.snapshot() if online_session != null and journey != null and journey.has_method("snapshot") else {}
+	if online_session == null:
+		world.wear_slots(SlotLooks.solo())
+		return
+	var room: Dictionary = journey.snapshot() if journey != null and journey.has_method("snapshot") else {}
 	world.wear_slots(SlotLooks.replay(recordings) if replay else SlotLooks.live(room, recordings))
 
 

@@ -92,7 +92,22 @@ func _slots() -> void:
 	var mine := {"player_slot": "p1", "recording_hash": _hash(11)}
 	_check(SlotLooks.replay([ghost, mine], store) == {"p0": {"hat": "daisy"}, "p1": {"hat": "seashell"}}, "A replay dresses each slot in its recording's look, not today's")
 	_check(SlotLooks.replay([{"player_slot": "p0", "recording_hash": _hash(99)}], store) == {"p0": {}}, "A turn this phone never heard a look for plays in the default")
-	_check(SlotLooks.live({}, [], store).is_empty(), "Solo play, with no room, keeps the default look")
+	_check(SlotLooks.live({}, [], store).is_empty(), "A room this phone cannot read yet dresses nothing from it")
+	_check(SlotLooks.solo() == {"p0": {"hat": "straw_hat"}, "p1": {"hat": "straw_hat"}}, "Solo play: both pips are the player's, in their look")
+	# A solo chapter is its own scene: Main, the scope source's object, is freed
+	# while it runs, and the player is still signed in and still wears their look.
+	var stand_in_script := GDScript.new()
+	stand_in_script.source_code = "extends Node\nfunc names_scope() -> Dictionary:\n\treturn {\"server\": \"%s\", \"owner\": \"%s\"}\n" % [SERVER, ME]
+	stand_in_script.reload()
+	var main_stand_in: Node = stand_in_script.new()
+	wardrobe.scope_source = Callable(main_stand_in, "names_scope")
+	_check(wardrobe.active_look() == {"hat": "straw_hat"}, "The look follows a scope source on an object")
+	main_stand_in.free()
+	_check(not wardrobe.scope_source.is_valid() and not wardrobe.scope_source.is_null(), "The freed object leaves a dead source behind")
+	_check(wardrobe.active_look() == {"hat": "straw_hat"} and SlotLooks.solo().p0 == {"hat": "straw_hat"}, "With Main freed, the player's pips still wear their look")
+	_check(preload("res://services/cosmetic_catalog.gd").released("straw_hat"), "With Main freed, the catalogue still releases the player's items")
+	wardrobe.scope_source = Callable()
+	_check(wardrobe.active_look().is_empty(), "No scope source at all reads as nobody signed in")
 	Wardrobe.use_shared(null)
 	preload("res://services/cosmetic_catalog.gd").set_offered([])
 

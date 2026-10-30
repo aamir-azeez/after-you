@@ -238,7 +238,12 @@ func name_price_next(server: String, owner: String) -> int:
 
 ## Follows the signed-in player (scope_source): their offered items tell the
 ## catalogue what the server releases. Cheap when nothing changed.
+## A source whose object is gone (Main, freed while a solo chapter scene runs)
+## keeps the last player: they are still signed in, so their pips still wear
+## their look and the catalogue still releases their items. A new Main sets a
+## new source on its way in.
 func follow() -> void:
+	if not scope_source.is_null() and not scope_source.is_valid(): return
 	var value: Variant = scope_source.call() if scope_source.is_valid() else null
 	var key := scope_key(str(value.server), str(value.owner)) if value is Dictionary and not value.is_empty() and value.has("server") and value.has("owner") else ""
 	if key == _active: return
