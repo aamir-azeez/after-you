@@ -1,8 +1,8 @@
 import { POLLEN_BUNDLE_TABLES } from "../storage-schema";
 import { DAY_MS, RATES, type Rates } from "./rates";
-import { BUNDLES, firstGift, type BundleKey, type Bundles } from "./bundles";
+import { BUNDLES, BUNDLE_KEYS, firstGift, type BundleKey, type Bundles } from "./bundles";
 import { applyLedger, ledgerLines, purchaseLines, walletBalance, type LedgerEntry } from "./wallet";
-import type { BundlePurchase, BundleRead } from "./bundle-provider";
+import type { BundleAsk, BundleLookup, BundlePurchase, BundleRead } from "./bundle-provider";
 
 /**
  * Pollen bundles in the player's own Player Durable Object (POLLEN_BUNDLES): bought Pollen is credited
@@ -18,6 +18,16 @@ import type { BundlePurchase, BundleRead } from "./bundle-provider";
  *    `bundle:<purchase id>`, and each refunded purchase that was paid takes back exactly what it paid under
  *    `bundlerefund:<purchase id>`, which may take the balance below zero (spending stops until earning repays it).
  *
+ * A restore with RevenueCat's "Transfer to new App User ID" moves a purchase off the buyer's list, so the
+ * identity that was paid for it would never see its refund there. The daily check (deps.lookup) therefore also
+ * looks up each paid bundle missing from the list and not taken back yet by its Google Play order, whoever holds
+ * it now (bundle-provider.ts lookupBundles): outbound requests only, at most MAX_BUNDLE_LOOKUPS a check, rotated
+ * by day when there are more, and none at all for a buyer whose bundles are all still listed. A refunded one is
+ * planned under the ledger's own purchase id, so it is taken back under the same `bundlerefund:` key, once.
+ * PollenClaims already pays each purchase to one identity only, so only that identity's take-back matters.
+ * The claim route makes no lookups; while a paid bundle is missing it leaves the check time alone, so the next
+ * wallet read still makes them.
+ *
  * The first bundle a player ever buys also pays the first gift (bundles.ts firstGift), once, while the gift
  * is set above 0. Whether it is still open is read from the ledger: any `bundle:` row closes it, refunded or
  * not, with or without a gift, so a gift the owner turns on later never goes to a player who already bought.
@@ -30,6 +40,8 @@ export type BundleDeps = {
   read: () => Promise<BundleRead>;
   /** PollenClaims answers by key ("bundle:<id>": held by this player), or null when it could not be asked. */
   claim: (keys: string[]) => Promise<Record<string, boolean> | null>;
+  /** The daily check only: which paid bundles missing from the list are refunded now (bundle-provider.ts lookupBundles). */
+  lookup?: (asks: BundleAsk[]) => Promise<BundleLookup>;
 };
 export type BundleCredit = { bundle: BundleKey; pollen: number; first_gift: number; order: string; purchased_at: number; usd_cents: number };
 export type BundleRefund = { bundle: BundleKey; amount: number; order: string };
@@ -42,6 +54,8 @@ export type BundleOutcome = { status: "settled"; reply: BundleReply } | { status
 export const BUNDLE_OUTAGE_PAUSE_MS = 5 * 60_000;
 /** The refund check runs at most this often per player. */
 export const BUNDLE_CHECK_MS = DAY_MS;
+/** At most this many paid bundles missing from the list are looked up in one check (Workers cap subrequests per call). */
+export const MAX_BUNDLE_LOOKUPS = 8;
 
 const [CHECK] = POLLEN_BUNDLE_TABLES;
 export const bundleKey = (id: string) => `bundle:${id}`;
@@ -79,6 +93,26 @@ export function bundleCheckDue(storage: DurableObjectStorage, now: number): bool
   return now - lastBundleCheck(storage) >= BUNDLE_CHECK_MS;
 }
 
+/**
+ * The paid bundles not taken back that the list no longer shows, as lookups: up to MAX_BUNDLE_LOOKUPS, a
+ * different window each day when there are more, so none waits for good.
+ */
+export function missingBundles(storage: DurableObjectStorage, listed: readonly BundlePurchase[], now: number): BundleAsk[] {
+  const shown = new Set(listed.map(purchase => bundleKey(purchase.id)));
+  const back = new Set(refundLines(storage).map(line => line.key));
+  const asks = bundleLines(storage).flatMap(line => {
+    const id = line.key.slice(bundleKey("").length), bundle = line.detail.bundle, order = line.detail.order;
+    if (shown.has(line.key) || back.has(bundleRefundKey(id)) || !(BUNDLE_KEYS as readonly unknown[]).includes(bundle)) return [];
+    return [{ id, bundle: bundle as BundleKey, order: typeof order === "string" ? order : "" }];
+  });
+  if (asks.length <= MAX_BUNDLE_LOOKUPS) return asks;
+  const start = (Math.floor(now / DAY_MS) * MAX_BUNDLE_LOOKUPS) % asks.length;
+  return Array.from({ length: MAX_BUNDLE_LOOKUPS }, (_, index) => asks[(start + index) % asks.length]);
+}
+
+/** A looked-up refund as the plan reads it: the ledger's own purchase, refunded. */
+const takenBack = (ask: BundleAsk): BundlePurchase => ({ id: ask.id, bundle: ask.bundle, refunded: true, quantity: 1, order: ask.order, usd_cents: 0, purchased_at: 0 });
+
 /** The plan for one read, from the ledger as stored now: what to pay and what to take back. */
 export function planBundles(purchases: readonly BundlePurchase[], held: (id: string) => boolean, paid: ReadonlyMap<string, Line>, refunded: ReadonlySet<string>, giftOpen: boolean, bundles: Bundles = BUNDLES): { entries: LedgerEntry[]; credited: BundleCredit[]; refunds: BundleRefund[] } {
   const entries: LedgerEntry[] = [], credited: BundleCredit[] = [], refunds: BundleRefund[] = [];
@@ -110,6 +144,15 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (id: str
 export async function settleBundles(storage: DurableObjectStorage, now: number, active: () => boolean, deps: BundleDeps, rates: Rates = RATES, bundles: Bundles = BUNDLES): Promise<BundleOutcome> {
   const read = await deps.read();
   if (!read.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: read.reason }; }
+  const asks = missingBundles(storage, read.purchases, now);
+  let moved: BundlePurchase[] = [];
+  if (asks.length && deps.lookup) {
+    const found = await deps.lookup(asks);
+    if (!found.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: found.reason }; }
+    moved = asks.filter(ask => found.refunded.includes(ask.id)).map(takenBack);
+  }
+  // Without lookups (the claim route) a missing bundle leaves the check due, so the wallet read still looks it up.
+  const checked = asks.length === 0 || deps.lookup !== undefined;
   const before = new Set(bundleLines(storage).map(line => line.key));
   const fresh = read.purchases.filter(purchase => !purchase.refunded && !before.has(bundleKey(purchase.id)));
   // Ask about at most MAX keys at a time; a longer list waits for the next call.
@@ -123,9 +166,9 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
     const paid = new Map(bundleLines(storage).map(line => [line.key, line]));
     const refunded = new Set(refundLines(storage).map(line => line.key));
     const giftOpen = paid.size === 0;
-    const plan = planBundles(read.purchases, id => answers[bundleKey(id)] === true, paid, refunded, giftOpen, bundles);
+    const plan = planBundles([...read.purchases, ...moved], id => answers[bundleKey(id)] === true, paid, refunded, giftOpen, bundles);
     applyLedger(storage, plan.entries, now, rates);
-    noteCheck(storage, now);
+    if (checked) noteCheck(storage, now);
     outcome = { status: "settled", reply: { schema_version: 1, balance: walletBalance(storage, now, rates), credited: plan.credited, refunded: plan.refunds, pending: false } };
   });
   paused.delete(storage);

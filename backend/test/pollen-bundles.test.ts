@@ -5,8 +5,8 @@ import worker from "../src/index";
 import gameBundles from "../../game/content/pollen_bundles.json";
 import serverBundles from "../src/pollen/bundles.json";
 import { BUNDLES, checkedBundles, firstGift, type Bundles } from "../src/pollen/bundles";
-import { bundlePurchase, readBundles } from "../src/pollen/bundle-provider";
-import { BUNDLE_CHECK_MS, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
+import { bundlePurchase, lookupBundles, readBundles, type BundleAsk } from "../src/pollen/bundle-provider";
+import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
 import { bundlesOn, refundsOn } from "../src/pollen/features";
 import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
 import { ledgerLines, walletView } from "../src/pollen/wallet";
@@ -14,7 +14,7 @@ import { RATES } from "../src/pollen/rates";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { POLLEN_BUNDLE_TABLES, POLLEN_PLAYER_TABLES } from "../src/storage-schema";
 import { configJson, POLLEN_CLIENT } from "./config";
-import { countingEnv } from "./meter";
+import { countingEnv, meterRows } from "./meter";
 
 // Pollen bundles on Google Play: the table and its product ids, what RevenueCat purchases count, and the
 // claim route and daily refund check through the Worker. RevenueCat is always a mock; synthetic identities only.
@@ -78,15 +78,38 @@ describe("what RevenueCat purchases count", () => {
     expect(await readBundles("P".repeat(22), vars(), async () => ({ ok: false, reason: "provider_http_500" }))).toEqual({ ok: false, reason: "provider_http_500" });
     expect(await readBundles("P".repeat(22), vars(), async () => ({ ok: true, status: 404, value: null }))).toEqual({ ok: true, purchases: [] });
   });
+  it("looks a moved purchase up by its Play order, whoever holds it, and acts only on the same purchase refunded", async () => {
+    const ask: BundleAsk = { id: "rc_5", bundle: "pinch", order: "GPA.0000-rc_5" };
+    const list = (...items: unknown[]) => async () => ({ ok: true as const, status: 200, value: { object: "list", items, next_page: null } });
+    const request = vi.fn(list(owned("rc_5", "prodd4e2b730e5", { status: "refunded", customer_id: "someone-else" })));
+    expect(await lookupBundles([ask], vars(ON, {}), request)).toEqual({ ok: false, reason: "unconfigured" });
+    expect(request).not.toHaveBeenCalled();
+    expect(await lookupBundles([ask], vars(), request)).toEqual({ ok: true, refunded: ["rc_5"] });
+    expect(String((request.mock.calls[0] as unknown[])[0])).toBe("https://api.revenuecat.com/v2/projects/proj1234/purchases?store_purchase_identifier=GPA.0000-rc_5");
+    // A new RevenueCat id after the move still matches by order; the order may come back as a number.
+    expect(await lookupBundles([ask], vars(), list(owned("rc_99", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: "GPA.0000-rc_5" })))).toEqual({ ok: true, refunded: ["rc_5"] });
+    expect(await lookupBundles([{ ...ask, order: "12345678" }], vars(), list(owned("rc_5", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: 12345678 })))).toEqual({ ok: true, refunded: ["rc_5"] });
+    for (const change of [{ status: "owned" }, { store_purchase_identifier: "GPA.other" }, { product_id: "prod25def0f41d" }, { environment: "sandbox" }, { store: "test_store" }, { ownership: "family_shared" }])
+      expect(await lookupBundles([ask], vars(), list(owned("rc_5", "prodd4e2b730e5", { status: "refunded", ...change }))), JSON.stringify(change)).toEqual({ ok: true, refunded: [] });
+    expect(await lookupBundles([ask], vars(), async () => ({ ok: true, status: 404, value: null }))).toEqual({ ok: true, refunded: [] });
+    expect(await lookupBundles([ask], vars(), async () => ({ ok: false, reason: "provider_http_429" }))).toEqual({ ok: false, reason: "provider_http_429" });
+    expect(await lookupBundles([ask], vars(), async () => ({ ok: true, status: 200, value: { object: "list", items: [], next_page: "more" } }))).toEqual({ ok: false, reason: "provider_incomplete_list" });
+    // No order kept: the purchase by its RevenueCat id.
+    const byId = vi.fn(async () => ({ ok: true as const, status: 200, value: owned("rc_5", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: null }) }));
+    expect(await lookupBundles([{ ...ask, order: "" }], vars(), byId)).toEqual({ ok: true, refunded: ["rc_5"] });
+    expect(String((byId.mock.calls[0] as unknown[])[0])).toBe("https://api.revenuecat.com/v2/projects/proj1234/purchases/rc_5");
+  });
 });
 
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Reply = { schema_version: 1; balance: number; credited: { bundle: string; pollen: number; first_gift: number; order: string; usd_cents: number }[]; refunded: { bundle: string; amount: number; order: string }[]; pending: boolean };
 type Wallet = { balance: number; bundles?: { first_gift: boolean; first_gift_percent: number; spent_usd_cents: number } };
 const shared = env as unknown as Record<string, unknown>;
+/** Player rows a moved refund's take-back writes: the refund line, the wallet row and the check time. */
+const PLAYER_ROWS_ON_TAKE_BACK = 3;
 const realNow = Date.now.bind(Date);
 let address = 0, offset = 0, providerCalls = 0, current: Record<string, string> = vars();
-let lists: Record<string, unknown[]> = {}, gate: Promise<void> | null = null, down = false;
+let lists: Record<string, unknown[]> = {}, orders: Record<string, unknown[]> = {}, gate: Promise<void> | null = null, down = false;
 
 async function call(path: string, method = "GET", account?: Account, body?: unknown, base: Env = env): Promise<Response> {
   const configured = Object.assign({ ...base }, current) as Env;
@@ -128,10 +151,51 @@ describe("the first gift, when the owner sets it", () => {
   });
 });
 
+describe("the refund check's lookups", () => {
+  afterEach(async () => { await reset(); });
+  const p = (id: string, refunded = false) => ({ id, bundle: "pinch" as const, refunded, quantity: 1, order: "GPA." + id, usd_cents: 99, purchased_at: Number(id.slice(1)) });
+  const yes = async (keys: string[]) => Object.fromEntries(keys.map(key => [key, true]));
+  it("asks only about paid bundles missing from the list, at most the cap a check, a new window each day", async () => {
+    await runInDurableObject(env.PLAYERS.getByName("lookup-cap"), async (_, state) => {
+      const storage = state.storage, all = Array.from({ length: 11 }, (_, index) => p("m" + (index + 1)));
+      const day = BUNDLE_CHECK_MS, start = 20_000 * day;
+      expect(await settleBundles(storage, start, () => true, { read: async () => ({ ok: true, purchases: all }), claim: yes })).toMatchObject({ reply: { balance: 55000 } });
+      const seen: string[][] = [];
+      const lookup = async (asks: BundleAsk[]) => { seen.push(asks.map(ask => ask.id)); return { ok: true as const, refunded: [] }; };
+      // Still listed: nothing to look up.
+      await settleBundles(storage, start + day, () => true, { read: async () => ({ ok: true, purchases: all }), claim: yes, lookup });
+      expect(seen).toEqual([]);
+      for (let next = 2; next <= 3; next++) await settleBundles(storage, start + next * day, () => true, { read: async () => ({ ok: true, purchases: [all[0]] }), claim: yes, lookup });
+      expect(seen.map(ids => ids.length)).toEqual([MAX_BUNDLE_LOOKUPS, MAX_BUNDLE_LOOKUPS]);
+      expect(new Set(seen.flat())).toEqual(new Set(all.slice(1).map(each => each.id)));
+      expect(walletView(storage, start + 3 * day).balance).toBe(55000);
+    });
+  });
+  it("takes a looked-up refund back once, under retries and a reply that comes back twice", async () => {
+    await runInDurableObject(env.PLAYERS.getByName("lookup-once"), async (_, state) => {
+      const storage = state.storage, now = 20_000 * BUNDLE_CHECK_MS;
+      await settleBundles(storage, now, () => true, { read: async () => ({ ok: true, purchases: [p("r1"), p("r2")] }), claim: yes });
+      const asked: string[][] = [];
+      const deps = { read: async () => ({ ok: true as const, purchases: [p("r2")] }), claim: yes, lookup: async (asks: BundleAsk[]) => { asked.push(asks.map(ask => ask.id)); return { ok: true as const, refunded: ["r1", "r1"] }; } };
+      // A failed lookup writes nothing and leaves the check due.
+      const checked = lastBundleCheck(storage);
+      expect(await settleBundles(storage, now + 1, () => true, { ...deps, lookup: async () => ({ ok: false as const, reason: "provider_http_500" }) })).toEqual({ status: "unavailable", reason: "provider_http_500" });
+      expect(lastBundleCheck(storage)).toBe(checked);
+      expect(ledgerLines(storage, "bundlerefund:")).toEqual([]);
+      const both = await Promise.all([settleBundles(storage, now + 2, () => true, deps), settleBundles(storage, now + 2, () => true, deps)]);
+      expect(both.flatMap(outcome => outcome.status === "settled" ? outcome.reply.refunded : [])).toEqual([{ bundle: "pinch", amount: 5000, order: "GPA.r1" }]);
+      expect(await settleBundles(storage, now + 3, () => true, deps)).toMatchObject({ reply: { balance: 5000, refunded: [] } });
+      expect(ledgerLines(storage, "bundlerefund:").map(line => [line.key, line.amount])).toEqual([["bundlerefund:r1", -5000]]);
+      // Once taken back it is never looked up again.
+      expect(asked).toEqual([["r1"], ["r1"]]);
+    });
+  });
+});
+
 describe("bundles through the Worker", () => {
   beforeEach(() => {
     current = vars(); Object.assign(shared, current);
-    offset = 0; providerCalls = 0; lists = {}; gate = null; down = false;
+    offset = 0; providerCalls = 0; lists = {}; orders = {}; gate = null; down = false;
     vi.spyOn(Date, "now").mockImplementation(() => realNow() + offset);
     vi.spyOn(globalThis, "fetch").mockImplementation(async input => {
       const url = String(input instanceof Request ? input.url : input);
@@ -139,6 +203,9 @@ describe("bundles through the Worker", () => {
       providerCalls++;
       if (gate) await gate;
       if (down) return new Response(null, { status: 500 });
+      // The project-level search by Play order, whoever holds the purchase now.
+      const order = new URL(url).searchParams.get("store_purchase_identifier");
+      if (order !== null) return Response.json({ object: "list", items: orders[order] ?? [], next_page: null });
       const player = /customers\/([^/]+)\//.exec(url)?.[1] ?? "";
       return url.includes("/purchases?") ? Response.json({ object: "list", items: lists[player] ?? [], next_page: null }) : new Response(null, { status: 404 });
     });
@@ -324,6 +391,77 @@ describe("bundles through the Worker", () => {
     expect((await call("/v1/pollen", "GET", buyer)).status).toBe(200);
     await wallet(buyer);
     expect(providerCalls).toBe(2);
+  });
+
+  it("takes a refund back from the identity it paid after a restore moved the purchase to another account", async () => {
+    const buyer = await create(), other = await create();
+    lists[buyer.player_id] = [owned("rc_100", "prodd4e2b730e5")];
+    lists[other.player_id] = [owned("rc_100", "prodd4e2b730e5")];
+    expect((await (await claim(buyer)).json<Reply>()).balance).toBe(5000);
+    expect((await (await claim(other)).json<Reply>()).balance).toBe(0);
+    // "Transfer to new App User ID": the purchase now lists only under the other account, and is refunded there.
+    const refunded = owned("rc_100", "prodd4e2b730e5", { status: "refunded", customer_id: other.player_id });
+    lists[buyer.player_id] = []; lists[other.player_id] = [refunded]; orders["GPA.0000-rc_100"] = [refunded];
+    offset = BUNDLE_CHECK_MS + 1000; providerCalls = 0;
+    const meter = countingEnv({ ...env, ...current } as unknown as Env);
+    const stubs = { player: env.PLAYERS.getByName(buyer.player_id) as unknown as DurableObjectStub, claims: env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) as unknown as DurableObjectStub };
+    const metered = await meterRows(stubs, async () => (await call("/v1/pollen", "GET", buyer, undefined, meter.env)).json<Wallet>());
+    expect(metered.value.balance).toBe(0);
+    // One DO request (the wallet read itself), one list and one lookup; the refund row, the wallet and the check time written.
+    expect(meter.calls).toEqual(["PLAYERS.authorizeWallet"]);
+    expect(providerCalls).toBe(2);
+    expect(metered.rows.claims).toEqual({ read: 0, written: 0 });
+    expect(metered.rows.player.written).toBe(PLAYER_ROWS_ON_TAKE_BACK);
+    const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:"));
+    expect(lines.map(line => [line.key, line.amount, line.detail.order])).toEqual([["bundlerefund:rc_100", -5000, "GPA.0000-rc_100"]]);
+    // The other account was never paid, so nothing comes off it, and it makes no check.
+    expect((await wallet(other)).balance).toBe(0);
+    expect(providerCalls).toBe(2);
+    // The next day: the list only, no lookup, nothing taken twice.
+    offset += BUNDLE_CHECK_MS + 1000;
+    expect((await wallet(buyer)).balance).toBe(0);
+    expect(providerCalls).toBe(3);
+  });
+
+  it("takes a moved refund back once from two overlapping wallet reads", async () => {
+    const buyer = await create();
+    lists[buyer.player_id] = [owned("rc_110", "prodd4e2b730e5")];
+    await claim(buyer);
+    const refunded = owned("rc_110", "prodd4e2b730e5", { status: "refunded", customer_id: "moved" });
+    lists[buyer.player_id] = []; orders["GPA.0000-rc_110"] = [refunded];
+    offset = BUNDLE_CHECK_MS + 1000;
+    let open!: () => void;
+    gate = new Promise(resolve => { open = resolve; });
+    const both = Promise.all([wallet(buyer), wallet(buyer)]);
+    await new Promise(resolve => setTimeout(resolve, 20));
+    open();
+    expect((await both).map(read => read.balance)).toEqual([0, 0]);
+    const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:"));
+    expect(lines.map(line => line.key)).toEqual(["bundlerefund:rc_110"]);
+  });
+
+  it("makes no lookup from the claim route, and leaves the check due for the wallet read", async () => {
+    const buyer = await create();
+    lists[buyer.player_id] = [owned("rc_120", "prodd4e2b730e5")];
+    await claim(buyer);
+    const refunded = owned("rc_120", "prodd4e2b730e5", { status: "refunded", customer_id: "moved" });
+    lists[buyer.player_id] = [owned("rc_121", "prod25def0f41d")]; orders["GPA.0000-rc_120"] = [refunded];
+    offset = BUNDLE_CHECK_MS + 1000; providerCalls = 0;
+    expect(await (await claim(buyer)).json<Reply>()).toMatchObject({ balance: 26000, credited: [{ bundle: "pouch" }], refunded: [] });
+    expect(providerCalls).toBe(1);
+    expect((await wallet(buyer)).balance).toBe(21000);
+    expect(providerCalls).toBe(3);
+  });
+
+  it("makes no lookup and takes nothing back without POLLEN_REFUNDS", async () => {
+    const buyer = await create();
+    lists[buyer.player_id] = [owned("rc_130", "prodd4e2b730e5")];
+    await claim(buyer);
+    lists[buyer.player_id] = []; orders["GPA.0000-rc_130"] = [owned("rc_130", "prodd4e2b730e5", { status: "refunded", customer_id: "moved" })];
+    current = vars(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP"]); Object.assign(shared, current);
+    offset = BUNDLE_CHECK_MS + 1000; providerCalls = 0;
+    expect((await wallet(buyer)).balance).toBe(5000);
+    expect(providerCalls).toBe(0);
   });
 
   it("keeps bundle keys out of the moving subscription claim, and subscription keys out of the bundle claim", async () => {

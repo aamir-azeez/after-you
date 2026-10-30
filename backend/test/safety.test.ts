@@ -42,6 +42,10 @@ describe("public policies and authenticated safety", () => {
     }
     expect((await call("/v1/safety/config")).status).toBe(401);
   });
+  it("names the Pollen purchase record in the privacy policy", async () => {
+    const body = await (await call("/privacy")).text();
+    expect(body).toContain("Deleting your online identity deletes them. If you buy Pollen, we keep a record of each purchase (the bundle, its date, Google Play's order number and its price) so we can credit it once and take it back if it is refunded.</p>");
+  });
   it("covers iPhone on the deletion page and keeps the Android wording", async () => {
     const body = await (await call("/account-deletion")).text();
     expect(body).toContain("Delete identity and shared rooms. The iPhone app has the same steps.</p>");

@@ -1,7 +1,7 @@
 import { isObject } from "../protocol";
 import type { ServerVars } from "../flags";
 import { APP, PROJECT_PATTERN, serverConfig } from "../config";
-import { revenuecatRequest } from "../play-entitlement";
+import { revenuecatRequest, type ProviderResult } from "../play-entitlement";
 import { BUNDLES, BUNDLE_KEYS, type BundleKey, type Bundles } from "./bundles";
 import { SUB_ID_PATTERN } from "./grant";
 import type { ProviderFetch } from "./grant-provider";
@@ -16,6 +16,12 @@ import type { ProviderFetch } from "./grant-provider";
  * Status "owned" is paid once; "refunded" takes back what it paid.
  *
  * Any failed, unconfigured, malformed or partial read answers { ok: false }: nothing is credited or taken back on it.
+ *
+ * lookupBundles is the refund check's second read, for a paid bundle no longer in the buyer's own list (a restore
+ * with RevenueCat's "Transfer to new App User ID" moved it to another identity): the purchase found by its Google
+ * Play order, whoever holds it now, through the project-level search
+ * (https://www.revenuecat.com/docs/api-v2/purchase#tag/Purchase/operation/search-purchases), or by its RevenueCat
+ * id when no order was kept (https://www.revenuecat.com/docs/api-v2/purchase#tag/Purchase/operation/get-purchase).
  */
 export type BundlePurchase = { id: string; bundle: BundleKey; refunded: boolean; quantity: number; order: string; usd_cents: number; purchased_at: number };
 export type BundleRead = { ok: true; purchases: BundlePurchase[] } | { ok: false; reason: string };
@@ -44,18 +50,61 @@ export function bundleProducts(bundles: Bundles = BUNDLES): Record<string, Bundl
   return Object.fromEntries(BUNDLE_KEYS.map(key => [bundles.bundles[key].revenuecat_product, key]));
 }
 
+/** The project's REST v2 base and key, or null while unconfigured. */
+function project(env: ServerVars): { base: string; key: string } | null {
+  const id = serverConfig(env).revenuecat.project_id ?? "", key = env.REVENUECAT_SECRET_KEY;
+  return key && PROJECT_PATTERN.test(id) ? { base: `https://api.revenuecat.com/v2/projects/${encodeURIComponent(id)}`, key } : null;
+}
+/** A whole list's items, [] for 404, or the reason it cannot be trusted. */
+function listItems(result: ProviderResult): unknown[] | string {
+  if (!result.ok) return result.reason;
+  if (result.status === 404) return [];
+  const value = result.value;
+  if (!isObject(value) || value.object !== "list" || !Array.isArray(value.items) || value.items.length > 100) return "provider_invalid_list";
+  return value.next_page ? "provider_incomplete_list" : value.items;
+}
+
 /** The player's counted bundle purchases, oldest first. */
 export async function readBundles(playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<BundleRead> {
-  const products = bundleProducts(), project = serverConfig(env).revenuecat.project_id ?? "";
-  if (!env.REVENUECAT_SECRET_KEY || !PROJECT_PATTERN.test(project)) return { ok: false, reason: "unconfigured" };
-  const url = `https://api.revenuecat.com/v2/projects/${encodeURIComponent(project)}/customers/${encodeURIComponent(playerId)}/purchases?environment=${APP.playEnvironment}&limit=100`;
-  const result = await request(url, env.REVENUECAT_SECRET_KEY);
-  if (!result.ok) return { ok: false, reason: result.reason };
-  if (result.status === 404) return { ok: true, purchases: [] };
-  const value = result.value;
-  if (!isObject(value) || value.object !== "list" || !Array.isArray(value.items) || value.items.length > 100) return { ok: false, reason: "provider_invalid_list" };
-  if (value.next_page) return { ok: false, reason: "provider_incomplete_list" };
-  const purchases = value.items.flatMap(item => { const each = bundlePurchase(item, products); return each ? [each] : []; });
+  const products = bundleProducts(), at = project(env);
+  if (at === null) return { ok: false, reason: "unconfigured" };
+  const items = listItems(await request(`${at.base}/customers/${encodeURIComponent(playerId)}/purchases?environment=${APP.playEnvironment}&limit=100`, at.key));
+  if (typeof items === "string") return { ok: false, reason: items };
+  const purchases = items.flatMap(item => { const each = bundlePurchase(item, products); return each ? [each] : []; });
   purchases.sort((a, b) => a.purchased_at - b.purchased_at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
   return { ok: true, purchases };
+}
+
+/** A paid bundle the refund check asks about: the ledger's own purchase id, bundle and Play order ("" when none was kept). */
+export type BundleAsk = { id: string; bundle: BundleKey; order: string };
+/** The asked purchases RevenueCat reports refunded now, by the ledger's purchase id; { ok: false } when any lookup failed. */
+export type BundleLookup = { ok: true; refunded: string[] } | { ok: false; reason: string };
+
+/** Whether `item` is the asked purchase: the same order (or, without one, the same RevenueCat id), counted by bundlePurchase() as the same bundle. */
+function samePurchase(item: unknown, ask: BundleAsk, products: Readonly<Record<string, BundleKey>>): boolean {
+  if (!isObject(item)) return false;
+  // Compared as text: the docs' sample shows the order as a number though the schema says string.
+  if (ask.order ? String(item.store_purchase_identifier) !== ask.order : item.id !== ask.id) return false;
+  return bundlePurchase(item, products)?.bundle === ask.bundle;
+}
+
+/**
+ * Whether each asked purchase is refunded now, whichever App User ID holds it: one request per purchase.
+ * Not found (404, or nothing that matches) is no news; only "refunded" is acted on.
+ */
+export async function lookupBundles(asks: readonly BundleAsk[], env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<BundleLookup> {
+  const products = bundleProducts(), at = project(env);
+  if (at === null) return { ok: false, reason: "unconfigured" };
+  const refunded: string[] = [];
+  for (const ask of asks) {
+    let items: unknown[] | string;
+    if (ask.order) items = listItems(await request(`${at.base}/purchases?store_purchase_identifier=${encodeURIComponent(ask.order)}`, at.key));
+    else {
+      const result = await request(`${at.base}/purchases/${encodeURIComponent(ask.id)}`, at.key);
+      items = !result.ok ? result.reason : result.status === 404 ? [] : [result.value];
+    }
+    if (typeof items === "string") return { ok: false, reason: items };
+    if (items.some(item => samePurchase(item, ask, products) && isObject(item) && item.status === "refunded")) refunded.push(ask.id);
+  }
+  return { ok: true, refunded };
 }

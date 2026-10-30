@@ -34,7 +34,7 @@ import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/gran
 import { readGrant } from "./pollen/grant-provider";
 import { claimBundlesFor, claimFor } from "./pollen/claims";
 import { bundleCheckDue, bundlesView, dropBundles, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
-import { readBundles } from "./pollen/bundle-provider";
+import { lookupBundles, readBundles, type BundleAsk } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
 import type { Look } from "./pollen/catalog";
@@ -220,15 +220,17 @@ export class Player extends DurableObject<Env> {
   /** The daily bundle refund check (pollen/bundle-settle.ts); a failure never stops the wallet read it rides on. */
   private async checkBundles(owner: string): Promise<void> {
     try {
-      const outcome = await this.settleBundles(owner);
+      const outcome = await this.settleBundles(owner, true);
       if (outcome.status === "unavailable") logWarning("pollen_bundle_check_failed", { reason: outcome.reason });
     } catch (error) { logWarning("pollen_bundle_check_failed", { reason: errorCode(error) }); }
   }
-  private settleBundles(owner: string) {
+  /** `daily`: the refund check, which also looks up paid bundles a restore moved off this player's list. */
+  private settleBundles(owner: string, daily = false) {
     const now = Date.now();
     return settleBundles(this.ctx.storage, now, this.pollenActive(owner), {
       read: () => readBundles(owner, this.env),
-      claim: keys => claimBundlesFor(this.env, owner, keys, now)
+      claim: keys => claimBundlesFor(this.env, owner, keys, now),
+      ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env) } : {})
     });
   }
   /**
