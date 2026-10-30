@@ -5,6 +5,7 @@ const Journal = preload("res://services/lighthouse_journey.gd")
 const Simulation = preload("res://core/lighthouse/borrowed_light.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const ReunionAudio = preload("res://tests/reunion_audio_checks.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
 var checks := 0
 var failures := 0
 var screen: Node3D
@@ -29,7 +30,19 @@ func _run() -> void:
 		_check(receiver.reset("b", a, current_pairs, Simulation.CURRENT_SIMULATION_VERSION), "Current B uses the exact newly recorded A")
 		for input: Dictionary in Simulation.expand_recording_inputs(pair.b): receiver.step(input)
 		current_pairs.append({"a": a, "b": receiver.export_recording()})
+	# The player wears a look: both solo pips wear it (presentation/slot_looks.gd solo).
+	var wardrobe_path := "user://test-lighthouse-screen-wardrobe-%d.json" % Time.get_ticks_usec()
+	var wardrobe: RefCounted = Wardrobe.new(wardrobe_path)
+	Wardrobe.use_shared(wardrobe)
+	wardrobe.scope_source = func() -> Dictionary: return {"server": "https://looks.example.test", "owner": "aaaaaaaaaaaaaaaaaaaaaa"}
+	wardrobe.set_enabled("https://looks.example.test", "aaaaaaaaaaaaaaaaaaaaaa", true)
+	wardrobe.note_view("https://looks.example.test", "aaaaaaaaaaaaaaaaaaaaaa", {"name_price": 0.0, "wardrobe": {"items": ["daisy"], "packs": [], "look": {"hat": "daisy"}, "look_revision": 1.0,
+		"offered": ["daisy"], "offered_packs": [], "sets": {}, "unlocked": []}})
 	if not await _open(): return
+	_check(screen.world.actors.has("p0") and screen.world.actors.has("p1") and screen.world.actors.p0.outfit() == {"hat": "daisy"} and screen.world.actors.p1.outfit() == {"hat": "daisy"}, "Both solo Lighthouse pips wear the player's look")
+	Wardrobe.use_shared(null)
+	preload("res://services/cosmetic_catalog.gd").set_offered([])
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(wardrobe_path))
 	_check(screen.mode == "ready" and not screen.running, "Opening the chapter does not begin an unsolicited recording")
 	var audio_errors := ReunionAudio.chapter(screen)
 	_check(audio_errors.is_empty(), "Lighthouse reunion audio: " + str(audio_errors))

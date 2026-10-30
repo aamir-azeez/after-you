@@ -19,6 +19,7 @@ const Purchases = preload("res://services/purchases.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const ScreenSwitch = preload("res://services/screen_switch.gd")
+const SlotLooks = preload("res://presentation/slot_looks.gd")
 const SOUND_CHAPTER := "sleeping-lighthouse@1"
 
 var journey: RefCounted = Journey.new()
@@ -105,6 +106,8 @@ func _ready() -> void:
 		if running and mode in ["play", "replay"]: soundscape.play_reunion())
 	soundscape.listen_to(world)
 	world.reduced_motion = bool(settings.get("reduced_motion", false))
+	# Both solo pips are the player's, in their look, on every stage this world builds.
+	world.wear_slots(SlotLooks.solo())
 	controls = Controls.new()
 	controls.settings = settings.duplicate(true)
 	add_child(controls)
