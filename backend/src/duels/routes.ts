@@ -2,7 +2,7 @@ import { ApiError, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, digest, isObjec
 import { pooled } from "../room-inbox";
 import { interactionBlocked } from "../safety";
 import { pairKey } from "../leaderboards/run";
-import { boardKeys, developerBest, knownBoard } from "../leaderboards/boards";
+import { boardKeys, knownBoard } from "../leaderboards/boards";
 import { eligible } from "../leaderboards/standing";
 import { cachedView, storeView } from "../leaderboards/view-cache";
 import { pollenEarning } from "../pollen/routes";
@@ -15,6 +15,7 @@ import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, 
 import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
+import { developerGhost } from "./developer-ghosts";
 import { blobBase64 } from "../blob-codec";
 
 /**
@@ -24,7 +25,7 @@ import { blobBase64 } from "../blob-codec";
  *   is in, read from the boards their pointers name (one request per board).
  *   It also pays a won friend duel's win bonus the first time it sees one.
  * - GET  /v1/duels/ghosts: each chapter's recorded times to race, from the
- *   board views (cached, so usually no request) and the developers' bests.
+ *   board views (cached, so usually no request) and the developers' ghosts.
  * - POST /v1/duels/party/{invite,accept,dismiss,cancel,leave}
  * - POST /v1/duels/challenge, POST /v1/duels/ghost
  * - GET  /v1/duels/<board>/<duel_id>: one duel, with what it paid this player.
@@ -153,12 +154,12 @@ async function lobby(env: Env, player: string, now: number): Promise<unknown> {
   };
 }
 
-/** Each board's times to race: its top runs from the view (cached when it can be) and the developers' best. */
+/** Each board's times to race: its top runs from the view (cached when it can be) and the developers' ghost. */
 async function ghosts(env: Env): Promise<unknown> {
   const boards = await pooled([...boardKeys()], BOARD_CONCURRENCY, async key => {
     let view = await cachedView(key);
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
-    return { board: key, developer: developerBest(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
+    return { board: key, developer: developerGhost(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
   });
   return { schema_version: 1, boards };
 }
@@ -247,7 +248,7 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number):
   if (!mine.intact || !mine.partner) throw new ApiError(409, "party_required");
   let ghost: Ghost;
   if (body.source === "developer") {
-    const ticks = developerBest(key);
+    const ticks = developerGhost(key);
     if (ticks === null || body.entry_id !== null) throw new ApiError(404, "ghost_not_found");
     ghost = { source: "developer", entry_id: null, rank: null, ticks, names: null };
   } else {
