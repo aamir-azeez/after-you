@@ -2677,6 +2677,9 @@ func _exit_tree() -> void:
 	home_keepsakes.deactivate()
 	# A waiting invite link outlives a scene change (a solo chapter); it never reaches disk.
 	InviteLinkBridge.hold(invite_link_pending, invite_link_expires_ms)
+	# The wardrobe keeps whoever is signed in as Main leaves (services/wardrobe.gd
+	# follow), so a solo chapter's pips wear that player's look, never an earlier one's.
+	Wardrobe.shared().follow()
 	# The room view ends here; foreground presence continues in standalone scenes.
 	if is_instance_valid(friend_presence): friend_presence.monitor_room("", "")
 

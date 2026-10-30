@@ -97,15 +97,24 @@ func _slots() -> void:
 	# A solo chapter is its own scene: Main, the scope source's object, is freed
 	# while it runs, and the player is still signed in and still wears their look.
 	var stand_in_script := GDScript.new()
-	stand_in_script.source_code = "extends Node\nfunc names_scope() -> Dictionary:\n\treturn {\"server\": \"%s\", \"owner\": \"%s\"}\n" % [SERVER, ME]
+	stand_in_script.source_code = "extends Node\nvar server := \"\"\nvar owner_id := \"\"\nfunc names_scope() -> Dictionary:\n\treturn {\"server\": server, \"owner\": owner_id}\n"
 	stand_in_script.reload()
 	var main_stand_in: Node = stand_in_script.new()
+	main_stand_in.set("server", SERVER)
+	main_stand_in.set("owner_id", ME)
 	wardrobe.scope_source = Callable(main_stand_in, "names_scope")
 	_check(wardrobe.active_look() == {"hat": "straw_hat"}, "The look follows a scope source on an object")
+	# Another player signs in on this phone (a recovery) and Main leaves at once:
+	# Main's _exit_tree follows first, so the kept player is the one signed in now.
+	wardrobe.set_enabled(SERVER, FRIEND, true)
+	wardrobe.note_view(SERVER, FRIEND, {"name_price": 0.0, "wardrobe": {"items": ["seashell"], "packs": [], "look": {"hat": "seashell"}, "look_revision": 1.0,
+		"offered": ["seashell"], "offered_packs": [], "sets": {}, "unlocked": []}})
+	main_stand_in.set("owner_id", FRIEND)
+	wardrobe.follow()
 	main_stand_in.free()
 	_check(not wardrobe.scope_source.is_valid() and not wardrobe.scope_source.is_null(), "The freed object leaves a dead source behind")
-	_check(wardrobe.active_look() == {"hat": "straw_hat"} and SlotLooks.solo().p0 == {"hat": "straw_hat"}, "With Main freed, the player's pips still wear their look")
-	_check(preload("res://services/cosmetic_catalog.gd").released("straw_hat"), "With Main freed, the catalogue still releases the player's items")
+	_check(wardrobe.active_look() == {"hat": "seashell"} and SlotLooks.solo().p0 == {"hat": "seashell"}, "With Main freed, the player signed in as it left still wears their look")
+	_check(preload("res://services/cosmetic_catalog.gd").released("seashell") and not preload("res://services/cosmetic_catalog.gd").released("straw_hat"), "With Main freed, the catalogue releases that player's items only")
 	wardrobe.scope_source = Callable()
 	_check(wardrobe.active_look().is_empty(), "No scope source at all reads as nobody signed in")
 	Wardrobe.use_shared(null)
