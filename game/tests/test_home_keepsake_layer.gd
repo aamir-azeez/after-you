@@ -252,6 +252,26 @@ func _check_isles() -> void:
 	# The lighthouse jetty is ground past the isle's edge.
 	var jetty: Vector3 = layer.trigger_point("sleeping-lighthouse")
 	_check(not layer.island_floor("journey_left").has_point(Vector2(jetty.x, jetty.z)) and layer.walkable(jetty), "The jetty's end is past the isle's edge and still ground")
+	# The stick walks the pip from a Home island over each plank bridge onto its isle.
+	var stage: Control = home.stage
+	var spirit: Node3D = world.actors.a
+	stage._explore_button.pressed.emit()
+	for walk: Array in [["journey_left", Vector3(-3.0, 0, -2.4), Vector3(0, 0, -1)], ["journey_right", Vector3(3.2, 0, -2.4), Vector3(0, 0, -1)], ["tide", Vector3(5.3, 0, -0.1), Vector3(1, 0, 0)]]:
+		var start: Vector3 = walk[1]
+		spirit.position = start
+		_frames(stage, world, 1)
+		var solid: bool = layer.walkable(spirit.position)
+		var arrived := -1
+		stage._stick.value = _push_toward(walk[2])
+		for frame in range(150):
+			_frames(stage, world, 1)
+			solid = solid and layer.walkable(spirit.position)
+			if layer.island_floor(walk[0]).has_point(Vector2(spirit.position.x, spirit.position.z)) and spirit.position.distance_to(start) > 1.5:
+				arrived = frame
+				break
+		stage._stick.value = Vector2.ZERO
+		_check(solid and arrived >= 0, "The stick walks the pip over the bridge onto the %s isle on solid ground (arrived at frame %d, at %s)" % [walk[0], arrived, spirit.position])
+	stage._explore_back.pressed.emit()
 	await _close(home)
 	# A build that sells nothing has the tide isle and no journey isles.
 	var free := await _home(Vector2i(1560, 720), _everything(), _all_hard(), true, true)

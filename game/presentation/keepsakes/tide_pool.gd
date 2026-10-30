@@ -12,6 +12,8 @@ const RADIUS := 1.05
 ## The water's height at low and high tide.
 const LOW := 0.18
 const HIGH := 0.36
+## The stepping stones' height at low tide: their tops 5 cm over the water.
+const STONES_LOW := LOW + 0.01
 const WEIGHT := Vector3(-1.3, 0.06, 0.55)
 const ROCK_POOL := Vector3(1.55, 0, 0.6)
 const MARK := Vector3(0.95, 0, -0.75)
@@ -26,7 +28,8 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 	var water := P.pivot(root, Vector3(0, 0.12, 0), "Water")
 	water.scale = Vector3(1, LOW - 0.12, 1)
 	P.cyl(water, RADIUS - 0.05, 1.0, P.TIDE, Vector3(0, 0.5, 0))
-	var stones := P.pivot(root, Vector3(0, LOW - 0.03, 0), "Stones")
+	# At low tide the stones' tops stand just clear of the water.
+	var stones := P.pivot(root, Vector3(0, STONES_LOW, 0), "Stones")
 	for at: Vector3 in STONES: P.cyl(stones, 0.15, 0.08, Color("d8cfba"), at, 0.17)
 	P.box(root, Vector3(0.16, 1.9, 0.16), P.WOOD, Vector3(0, 0.95, -RADIUS - 0.05))
 	var wheel := P.pivot(root, Vector3(0, 1.35, -RADIUS + 0.06), "Wheel")
@@ -90,7 +93,7 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			for index in range(4): anim.halo(anim.fx, STONES[index] + Vector3(0, top + 0.04, 0), 0.08, P.SNOW, 0.95 + index * 0.22, 0.25, 0.5)
 			# And the tide goes out again.
 			anim.move(parts.water, "scale:y", LOW - 0.12, 1.95, 0.45)
-			anim.move(parts.stones, "position:y", LOW - 0.03, 1.95, 0.45)
+			anim.move(parts.stones, "position:y", STONES_LOW, 1.95, 0.45)
 			anim.move(weight, "position:y", WEIGHT.y, 1.95, 0.4)
 		"together":
 			var boat: Node3D = parts.boat

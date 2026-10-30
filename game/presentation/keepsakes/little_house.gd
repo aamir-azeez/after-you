@@ -37,7 +37,8 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		P.box(windows, Vector3(0.42, 0.16, 0.03), P.LAMP_OFF, Vector3(0.5, y0 * 0.5, D * 0.5 + 0.06))
 		P.prism(cellar, Vector3(0.26, 0.13, 0.03), P.SNOW, Vector3(-0.5, y0 * 0.5, D * 0.5 + 0.06))
 		for index in range(2): P.box(cellar, Vector3(0.6, 0.21, 0.26), P.STONE_LIGHT, Vector3(DOOR_X + DOOR_W * 0.5, 0.105 + index * 0.21, D * 0.5 + 0.18 + (1 - index) * 0.24))
-	P.box(house, Vector3(W, 0.06, D), P.WOOD_LIGHT, Vector3(0, y0 + 0.03, 0))
+	# The floor stops just inside the walls, so no face lies on a wall's.
+	P.box(house, Vector3(W - 0.04, 0.06, D - 0.04), P.WOOD_LIGHT, Vector3(0, y0 + 0.03, 0))
 	# The back and side walls always stand.
 	P.box(house, Vector3(W, H, 0.08), P.CREAM, Vector3(0, y0 + H * 0.5, -D * 0.5))
 	for side: int in [-1, 1]: P.box(house, Vector3(0.08, H, D), P.CREAM, Vector3(side * W * 0.5, y0 + H * 0.5, 0))
