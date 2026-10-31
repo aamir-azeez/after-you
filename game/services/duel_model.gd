@@ -99,7 +99,7 @@ static func shown(view: Dictionary) -> bool:
 ## The result page's title: "You and Maya won", "Finn and Noor won", "A draw", or "No result".
 static func result_title(view: Dictionary, name_of: Callable) -> String:
 	var result: Variant = view.result
-	if not result is Dictionary: return PlayerCopy.DUEL_CHECKING_TITLE
+	if not result is Dictionary: return PlayerCopy.DUEL_CHECKING_RUN_TITLE if view.kind == "ghost" else PlayerCopy.DUEL_CHECKING_TITLE
 	match result.outcome:
 		"won":
 			if view.kind == "ghost": return PlayerCopy.DUEL_BEAT_GHOST
@@ -113,9 +113,7 @@ static func result_title(view: Dictionary, name_of: Callable) -> String:
 ## The line under the result's cards.
 static func result_line(view: Dictionary) -> String:
 	var result: Variant = view.result
-	if not result is Dictionary:
-		var own: Dictionary = view.sides[view.mine]
-		return PlayerCopy.DUEL_CHECKING_LINE if own.finished else ""
+	if not result is Dictionary: return checking_line(view)
 	match result.reason:
 		"faster":
 			var margin := margin_text(int(result.margin_ticks))
@@ -145,9 +143,19 @@ static func _partner_name(view: Dictionary, name_of: Callable) -> String:
 		if shown != PlayerCopy.DUEL_YOU and not shown.is_empty(): return shown
 	return PlayerCopy.DUEL_PARTNER
 
-## The result card's Pollen lines from the duel's pay and win bonus: [[label, amount]], and the total.
+## The note while your finished run waits for the replay check: every friend run, and a ghost race
+## run faster than Our run (its first win there pays a bonus); "" otherwise.
+static func checking_line(view: Dictionary) -> String:
+	var own: Dictionary = view.sides[view.mine]
+	if not own.finished: return ""
+	if view.kind == "friend": return PlayerCopy.DUEL_CHECKING_LINE
+	return PlayerCopy.DUEL_CHECKING_RUN_LINE if own.check == "waiting" else ""
+
+## The result card's Pollen lines from the duel's pay and bonus: [[label, amount]], and the total.
+## `bonus`: a friend duel's win bonus, or a ghost race's first win over Our run (`ghost`), which the
+## server sends only on the race that paid it.
 ## `with_boost`: false where this build names no Full Journey (services/pollen_surfaces.gd); the boost then folds into the turns' line.
-static func pay_lines(pay: Dictionary, bonus: Dictionary, with_boost: bool = true) -> Dictionary:
+static func pay_lines(pay: Dictionary, bonus: Dictionary, with_boost: bool = true, ghost: bool = false) -> Dictionary:
 	var lines: Array = []
 	if not pay.is_empty() and int(pay.turns) > 0:
 		var boosted := with_boost and int(pay.boost) > 0
@@ -155,7 +163,7 @@ static func pay_lines(pay: Dictionary, bonus: Dictionary, with_boost: bool = tru
 		if int(pay.duel) > 0: lines.append([PlayerCopy.DUEL_PAY_PREMIUM, int(pay.duel)])
 		if boosted: lines.append([PlayerCopy.DUEL_PAY_BOOST % int(pay.boost_percent), int(pay.boost)])
 	if not bonus.is_empty():
-		lines.append([PlayerCopy.DUEL_PAY_WIN if bonus.counted else _bonus_note(str(bonus.reason)), int(bonus.amount)])
+		lines.append([PlayerCopy.DUEL_PAY_GHOST_FIRST if ghost else PlayerCopy.DUEL_PAY_WIN if bonus.counted else _bonus_note(str(bonus.reason)), int(bonus.amount)])
 	var total := 0
 	for line: Array in lines: total += int(line[1])
 	return {"lines": lines, "total": total}

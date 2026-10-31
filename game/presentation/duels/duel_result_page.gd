@@ -3,8 +3,8 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## Journey note): the title, both pairs' cards with their whole times and
 ## dots (Winner on the winning pair), the gap, and Pollen earned from this
 ## duel's real pay: the turns' own pay, the duel bonus and the room boost as
-## the wallet credited them, and the win bonus (services/duel_model.gd
-## pay_lines). The card hides while Pollen is off or nothing was paid. While
+## the wallet credited them, and the win bonus, or on a ghost race the first
+## win over Our run on the board (services/duel_model.gd pay_lines). The card hides while Pollen is off or nothing was paid. While
 ## the runs are still checked, the cards show the times under "Checking both
 ## runs". Watch replay opens the pair's room, which plays its finished run.
 const DuelModel = preload("res://services/duel_model.gd")
@@ -23,7 +23,7 @@ signal their_run_requested(view: Dictionary, control: Control)
 var me := ""
 var name_of: Callable
 var view: Dictionary = {}
-## services/duels_client.gd duel(): the pay and win bonus, {} when none.
+## services/duels_client.gd duel(): the pay and win bonus (a ghost race's first win over Our run), {} when none.
 var pay: Dictionary = {}
 var win_bonus: Dictionary = {}
 ## Whether this build names Full Journey (services/pollen_surfaces.gd), and shows Pollen at all.
@@ -79,7 +79,7 @@ func _render() -> void:
 		var gap := Kit.text(line, 22, UiTokens.SOFT, true)
 		gap.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		_column.add_child(gap)
-	var paid := DuelModel.pay_lines(pay, win_bonus, show_boost)
+	var paid := DuelModel.pay_lines(pay, win_bonus, show_boost, view.kind == "ghost")
 	if show_pollen and not paid.lines.is_empty(): _column.add_child(_pollen(paid))
 	var buttons := HBoxContainer.new()
 	buttons.alignment = BoxContainer.ALIGNMENT_CENTER

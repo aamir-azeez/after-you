@@ -40,6 +40,8 @@ const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
 const MODE_DUELS := "duels"
 ## How often an open duel page reads its duel again.
 const DUEL_REFRESH_SECONDS := 15.0
+## How often while a ghost race run waits for its replay check (the job runs every 15 minutes).
+const DUEL_CHECK_REFRESH_SECONDS := 60.0
 
 signal home_requested
 
@@ -249,21 +251,28 @@ func _open_duel(view: Dictionary) -> void:
 		var synced: Dictionary = await client().act(view.board, view.duel_id, "sync")
 		if synced.get("ok", false) and is_instance_valid(page): page.show_duel(synced.duel)
 
-## Reads the open duel again every DUEL_REFRESH_SECONDS while its page is up; a result swaps in the result page.
+## Reads the open duel again while its page is up (refresh_seconds); a result swaps in the result page.
 func _watch_duel(page: CanvasLayer) -> void:
 	if is_instance_valid(_duel_timer): _duel_timer.queue_free()
 	_duel_timer = Timer.new()
-	_duel_timer.wait_time = DUEL_REFRESH_SECONDS
+	_duel_timer.wait_time = refresh_seconds(page.view)
 	page.add_child(_duel_timer)
 	_duel_timer.timeout.connect(func() -> void:
 		if not is_instance_valid(page) or host.application_backgrounded: return
 		var answer: Dictionary = await client().duel(page.view.board, page.view.duel_id)
 		if not is_instance_valid(page) or not answer.get("ok", false): return
-		if answer.duel.status == "running": page.show_duel(answer.duel)
+		if answer.duel.status == "running":
+			page.show_duel(answer.duel)
+			if is_instance_valid(_duel_timer): _duel_timer.wait_time = refresh_seconds(answer.duel)
 		else:
 			page.close()
 			_open_result(answer.duel))
 	_duel_timer.start()
+
+## DUEL_CHECK_REFRESH_SECONDS while your ghost race run waits for its check, else DUEL_REFRESH_SECONDS.
+static func refresh_seconds(view: Dictionary) -> float:
+	var waiting: bool = view.kind == "ghost" and view.sides[view.mine].check == "waiting"
+	return DUEL_CHECK_REFRESH_SECONDS if waiting else DUEL_REFRESH_SECONDS
 
 func _open_result(view: Dictionary) -> void:
 	if not is_open(): return

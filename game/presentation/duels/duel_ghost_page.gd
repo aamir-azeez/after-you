@@ -3,7 +3,8 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## offer: our own run (the developers' time) and the Fastest pair board's top
 ## runs. Race starts a ghost race with your partner, which the flow
 ## (duels_flow.gd) opens like any duel. Ghost races pay like ordinary turns
-## together, so nothing here mentions a prize.
+## together; the first win over our own run on a chapter adds a one time
+## bonus, shown on the result page only, so nothing here mentions a prize.
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")

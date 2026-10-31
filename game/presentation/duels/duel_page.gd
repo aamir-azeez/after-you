@@ -152,7 +152,7 @@ func _render_card() -> void:
 	var partner := _partner_name()
 	if own.finished:
 		words.add_child(Kit.text(PlayerCopy.DUEL_FINISHED, 40, UiTokens.CREAM, true))
-		words.add_child(Kit.wrapped(PlayerCopy.DUEL_CHECKING_LINE if view.kind == "friend" else "", 19))
+		words.add_child(Kit.wrapped(DuelModel.checking_line(view), 19))
 	elif mine_now:
 		words.add_child(Kit.text(PlayerCopy.DUEL_YOUR_TURN_TITLE, 46 if not compact else 38, UiTokens.CREAM, true))
 		words.add_child(Kit.wrapped(PlayerCopy.DUEL_PARTNER_LEFT_PATH % partner if own.steps > 0 else PlayerCopy.DUEL_FIRST_TURN, 20))

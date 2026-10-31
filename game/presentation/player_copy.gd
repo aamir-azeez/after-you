@@ -856,6 +856,9 @@ const DUEL_GHOST_FASTER := "The recorded run was faster"
 const DUEL_NO_RESULT := "No result"
 const DUEL_CHECKING_TITLE := "Checking both runs"
 const DUEL_CHECKING_LINE := "The result shows once both runs are checked."
+## A ghost race run faster than Our run waits for its check.
+const DUEL_CHECKING_RUN_TITLE := "Checking your run"
+const DUEL_CHECKING_RUN_LINE := "The result shows once your run is checked."
 const DUEL_WINNER := "Winner"
 const DUEL_FASTER := "Finished %s faster."
 const DUEL_SLOWER := "Finished %s behind."
@@ -874,6 +877,8 @@ const DUEL_PAY_BOOST := "Full Journey boost (+%d%%)"
 const DUEL_PAY_WIN := "Win bonus"
 const DUEL_PAY_WIN_CAP := "Win bonus (3 a week, used up)"
 const DUEL_PAY_WIN_SAME := "Win bonus (once a week per pair)"
+## The one time bonus for a pair's first win over Our run on a chapter.
+const DUEL_PAY_GHOST_FIRST := "First time beating Our run"
 const DUEL_PAY_TOTAL := "Total"
 const DUEL_WATCH := "Watch replay"
 ## The other pair's run after a friend duel (services/duel_their_run.gd).

@@ -101,6 +101,8 @@ func _run() -> void:
 	main.relay_session.on = false
 	flow.open()
 	_check(not flow.is_open() and flow.room_kind(ROOM) == "", "duels stay hidden while the server has them off")
+	var ghost_wait := {"kind": "ghost", "mine": 0, "sides": [{"check": "waiting"}, null]}
+	_check(Flow.refresh_seconds(ghost_wait) == Flow.DUEL_CHECK_REFRESH_SECONDS and Flow.refresh_seconds({"kind": "ghost", "mine": 0, "sides": [{"check": "none"}, null]}) == Flow.DUEL_REFRESH_SECONDS and Flow.refresh_seconds({"kind": "friend", "mine": 1, "sides": [{"check": "none"}, {"check": "waiting"}]}) == Flow.DUEL_REFRESH_SECONDS, "a ghost race waiting for its check reads less often, every other duel as before")
 	main.relay_session.on = true
 	flow.open()
 	await _frames(4)

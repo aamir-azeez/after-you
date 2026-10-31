@@ -95,6 +95,13 @@ func _model() -> void:
 	_check(DuelModel.pay_lines({}, {"amount": 0, "counted": false, "reason": "same_pair"}).lines[0][0] == PlayerCopy.DUEL_PAY_WIN_SAME, "a win that did not count says why")
 	var ghost := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0], null]}))
 	_check(not ghost.is_empty() and DuelModel.pair_title(ghost, 1, _name_of) == PlayerCopy.DUEL_GHOST_PAIR and DuelModel.ticks(ghost, 1) == 3000 and DuelModel.steps(ghost, 1) == Vector2i(12, 12), "a ghost race shows the recorded run's whole time")
+	var ghost_checking := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), null]}))
+	_check(DuelModel.result_title(ghost_checking, _name_of) == PlayerCopy.DUEL_CHECKING_RUN_TITLE and DuelModel.checking_line(ghost_checking) == PlayerCopy.DUEL_CHECKING_RUN_LINE and DuelModel.result_line(ghost_checking) == PlayerCopy.DUEL_CHECKING_RUN_LINE, "a run faster than Our run waits for its own check")
+	var ghost_done := Client.valid_view(_wire("running", {"kind": "ghost", "ghost": {"source": "developer", "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0].merged({"finished": true, "check": "none"}, true), null]}))
+	_check(DuelModel.checking_line(ghost_done) == "" and DuelModel.checking_line(checking) == PlayerCopy.DUEL_CHECKING_LINE, "a ghost run with no check says nothing, a friend run always waits")
+	var first := DuelModel.pay_lines(pay, {"amount": 100, "counted": true, "reason": ""}, true, true)
+	_check(first.total == 1171 and first.lines[-1] == [PlayerCopy.DUEL_PAY_GHOST_FIRST, 100], "the first win over Our run is its own line: %s" % first)
+	_check(DuelModel.pay_lines(pay, {}, true, true).lines.size() == 3, "and no line where the board already paid it")
 	# Answers this build cannot read are refused whole.
 	_check(Client.valid_view(_wire("bogus")).is_empty() and Client.valid_view(_wire("running", {"duel_id": "x"})).is_empty() and Client.valid_view(_wire("running", {"sides": []})).is_empty(), "malformed duels are refused")
 	_check(Client.valid_lobby({"schema_version": 1, "party": {"partner": "short", "intact": true, "invites_in": [], "invite_out": null}, "duels": []}).is_empty(), "a malformed party is refused")
@@ -183,6 +190,13 @@ func _client() -> void:
 	api.replies["GET /v1/duels/%s/%s" % [BOARD, DUEL]] = {"ok": true, "data": {"schema_version": 1, "duel": _wire("decided", {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 30}}), "pay": {"turns": 6, "plain": 1, "blooms": 0, "duel": 1, "boost": 0, "boost_percent": 0, "total": 2}, "win_bonus": {"amount": 250, "counted": true}}}
 	var detail: Dictionary = await client.duel(BOARD, DUEL)
 	_check(detail.ok and detail.pay.turns == 6 and detail.win_bonus.amount == 250, "a duel's pay and win bonus read")
+	var ghost_wire := _wire("decided", {"kind": "ghost", "ghost": {"source": "developer", "entry_id": null, "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0], null], "result": {"outcome": "won", "reason": "faster", "margin_ticks": 30}})
+	api.replies["GET /v1/duels/%s/%s" % [BOARD, DUEL]] = {"ok": true, "data": {"schema_version": 1, "duel": ghost_wire, "ghost_bonus": {"amount": 100, "counted": true}, "win_bonus": {"amount": 250, "counted": true}}}
+	detail = await client.duel(BOARD, DUEL)
+	_check(detail.ok and detail.win_bonus.amount == 100, "a ghost race reads its first win bonus, never a friend duel's field")
+	api.replies["GET /v1/duels/%s/%s" % [BOARD, DUEL]] = {"ok": true, "data": {"schema_version": 1, "duel": ghost_wire}}
+	detail = await client.duel(BOARD, DUEL)
+	_check(detail.ok and detail.win_bonus.is_empty(), "and nothing on a later win")
 	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {}, "duels": "nope"}}
 	_check(not (await client.lobby()).ok and not client.last_lobby().is_empty(), "a bad answer keeps the last good lobby")
 	api.queue_free()
@@ -283,6 +297,22 @@ func _pages() -> void:
 	await process_frame
 	_check(hidden.find_child("DuelPollen", true, false) == null, "no Pollen card where Pollen is off")
 	hidden.close()
+	# A ghost race won against Our run: the first win's line, and none once the board was paid.
+	var beat := Client.valid_view(_wire("decided", {"kind": "ghost", "ghost": {"source": "developer", "entry_id": null, "ticks": 3000, "rank": null, "names": null}, "result": {"outcome": "won", "reason": "faster", "margin_ticks": 30}, "sides": [_wire().sides[0].merged({"steps": 12, "finished": true, "check": "passed"}, true), null]}))
+	for paid_before: bool in [false, true]:
+		var raced := ResultPage.new()
+		raced.me = ME
+		raced.name_of = _name_of
+		raced.view = beat
+		lobby.open_overlay(raced)
+		raced.show_result(beat, {"turns": 6, "plain": 600, "blooms": 0, "duel": 0, "boost": 0, "boost_percent": 0, "total": 600}, {} if paid_before else {"amount": 100, "counted": true, "reason": ""})
+		await process_frame
+		var card: Node = raced.find_child("DuelPollen", true, false)
+		_check(raced.find_child("DuelResultHeadline", true, false).text == PlayerCopy.DUEL_BEAT_GHOST and card != null, "a won ghost race shows its title and Pollen card")
+		if paid_before: _check(not _has_text(card, PlayerCopy.DUEL_PAY_GHOST_FIRST) and not _has_text(card, PlayerCopy.DUEL_PAY_WIN) and _has_text(card, "600"), "a board already paid shows nothing extra")
+		else: _check(_has_text(card, PlayerCopy.DUEL_PAY_GHOST_FIRST) and _has_text(card, "+100") and _has_text(card, "700") and not _has_text(card, PlayerCopy.DUEL_PAY_WIN), "the first win over Our run shows its own line and counts in the total")
+		raced.close()
+		await process_frame
 	# The party page.
 	var party := PartyPage.new()
 	party.name_of = _name_of

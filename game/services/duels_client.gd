@@ -81,7 +81,8 @@ func ghosts(fresh: bool = false) -> Dictionary:
 	_ghosts_at = Time.get_ticks_msec()
 	return {"ok": true, "boards": boards}
 
-## {ok, duel, pay, win_bonus} for one duel.
+## {ok, duel, pay, win_bonus} for one duel. `win_bonus`: a friend duel's, or on a ghost race the
+## server's `ghost_bonus`, its first win over Our run on the board.
 func duel(board: String, duel_id: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_GET, "%s/%s/%s" % [PREFIX, board, duel_id])
 	return _duel_answer(response, true)
@@ -176,7 +177,7 @@ func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 	var answer := {"ok": true, "duel": view}
 	if detail:
 		answer["pay"] = _pay(data.get("pay"))
-		answer["win_bonus"] = _bonus(data.get("win_bonus"))
+		answer["win_bonus"] = _bonus(data.get("ghost_bonus" if view.kind == "ghost" else "win_bonus"))
 	return answer
 
 ## Notes duel rooms, and saves only when they changed.
