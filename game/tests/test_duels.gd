@@ -102,6 +102,15 @@ func _model() -> void:
 	var first := DuelModel.pay_lines(pay, {"amount": 100, "counted": true, "reason": ""}, true, true)
 	_check(first.total == 1171 and first.lines[-1] == [PlayerCopy.DUEL_PAY_GHOST_FIRST, 100], "the first win over Our run is its own line: %s" % first)
 	_check(DuelModel.pay_lines(pay, {}, true, true).lines.size() == 3, "and no line where the board already paid it")
+	_check(lines.lines[2][0] == "Full Journey (+10%)", "the boost line names Full Journey: " + str(lines.lines[2][0]))
+	var ours := {"source": "developer", "ticks": 3000, "rank": null, "names": null}
+	var failed_check := Client.valid_view(_wire("decided", {"kind": "ghost", "ghost": ours, "sides": [_wire().sides[0], null], "result": {"outcome": "lost", "reason": "failed_check", "margin_ticks": null}}))
+	_check(DuelModel.result_title(failed_check, _name_of) == PlayerCopy.DUEL_NO_RESULT, "a run that failed its check never says the recorded run was faster")
+	var left_race := Client.valid_view(_wire("unfinished", {"kind": "ghost", "ghost": ours, "sides": [_wire().sides[0].merged({"left": true}, true), null], "result": {"outcome": "none", "reason": "left", "margin_ticks": null}}))
+	_check(DuelModel.result_line(left_race) == PlayerCopy.DUEL_RESULT_YOU_LEFT_RACE, "leaving a race against a recorded run says you left it")
+	var they_left := Client.valid_view(_wire("decided", {"result": {"outcome": "won", "reason": "left", "margin_ticks": null}}))
+	var we_left := Client.valid_view(_wire("decided", {"result": {"outcome": "lost", "reason": "left", "margin_ticks": null}}))
+	_check(DuelModel.result_line(they_left) == PlayerCopy.DUEL_RESULT_LEFT and DuelModel.result_line(we_left) == PlayerCopy.DUEL_RESULT_YOU_LEFT, "a friend duel names the pair that left")
 	# Answers this build cannot read are refused whole.
 	_check(Client.valid_view(_wire("bogus")).is_empty() and Client.valid_view(_wire("running", {"duel_id": "x"})).is_empty() and Client.valid_view(_wire("running", {"sides": []})).is_empty(), "malformed duels are refused")
 	_check(Client.valid_lobby({"schema_version": 1, "party": {"partner": "short", "intact": true, "invites_in": [], "invite_out": null}, "duels": []}).is_empty(), "a malformed party is refused")

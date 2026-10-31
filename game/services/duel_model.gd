@@ -105,7 +105,8 @@ static func result_title(view: Dictionary, name_of: Callable) -> String:
 			if view.kind == "ghost": return PlayerCopy.DUEL_BEAT_GHOST
 			return PlayerCopy.DUEL_WON % _partner_name(view, name_of)
 		"lost":
-			if view.kind == "ghost": return PlayerCopy.DUEL_GHOST_FASTER
+			# A ghost race is lost only on time; a run that failed its check has no result.
+			if view.kind == "ghost": return PlayerCopy.DUEL_GHOST_FASTER if result.reason == "faster" else PlayerCopy.DUEL_NO_RESULT
 			return PlayerCopy.DUEL_THEY_WON % pair_title(view, 1 - view.mine, name_of).replace(" + ", " and ")
 		"draw": return PlayerCopy.DUEL_DRAW
 	return PlayerCopy.DUEL_NO_RESULT
@@ -119,7 +120,10 @@ static func result_line(view: Dictionary) -> String:
 			var margin := margin_text(int(result.margin_ticks))
 			return PlayerCopy.DUEL_FASTER % margin if result.outcome == "won" else PlayerCopy.DUEL_SLOWER % margin
 		"draw": return PlayerCopy.DUEL_SAME_TIME
-		"left": return PlayerCopy.DUEL_RESULT_LEFT
+		"left":
+			# Only a ghost race's own pair can leave it; a friend duel names the pair that left.
+			if view.kind == "ghost": return PlayerCopy.DUEL_RESULT_YOU_LEFT_RACE
+			return PlayerCopy.DUEL_RESULT_YOU_LEFT if result.outcome == "lost" else PlayerCopy.DUEL_RESULT_LEFT
 		"failed_check": return PlayerCopy.DUEL_RESULT_CHECK
 		"stalled": return PlayerCopy.DUEL_RESULT_STALLED
 	return PlayerCopy.DUEL_RESULT_NONE
