@@ -328,9 +328,11 @@ func _settle() -> void:
 	_play.tween = tween
 	_play.settling = true
 
-## Puts a carried pip down where its ride ends.
+## Puts a carried pip down where its ride ends, out of any ride pose.
 func _land(anim: RefCounted) -> void:
-	if anim.landing != null and is_instance_valid(anim.rider): anim.rider.position = anim.landing
+	if anim.landing != null and is_instance_valid(anim.rider):
+		anim.rider.position = anim.landing
+		if anim.rider.has_method("end_ride"): anim.rider.end_ride()
 	anim.landing = null
 
 func _end_play() -> void:

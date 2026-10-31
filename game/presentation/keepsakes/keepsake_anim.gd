@@ -80,6 +80,24 @@ func carry(where: Callable, at: float, time: float) -> void:
 		if is_instance_valid(node): node.position = frame * (where.call(t) as Vector3)
 	tween.tween_method(step, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at)
 
+## Calls the pip's own ride hook `method` (presentation/spirit_visual.gd:
+## play_hop, set_ride_pose, play_carry_release) at `at`. Nothing without a
+## rider that has it, and nothing under Reduce motion, where the pip simply lands.
+func rider_call(method: StringName, args: Array, at: float) -> void:
+	if reduced or tween == null or rider == null or not rider.has_method(method): return
+	var node := rider
+	tween.tween_callback(func() -> void:
+		if is_instance_valid(node): node.callv(method, args)).set_delay(start + at)
+
+## Calls the pip's ride hook `method` with `value.call(t)` (an Array of its
+## arguments) for t from 0 to 1, from `at` for `time` seconds.
+func rider_track(method: StringName, value: Callable, at: float, time: float) -> void:
+	if reduced or tween == null or rider == null or not rider.has_method(method): return
+	var node := rider
+	var step := func(t: float) -> void:
+		if is_instance_valid(node): node.callv(method, value.call(t))
+	tween.tween_method(step, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at)
+
 ## When the last carry lands the pip, in seconds from the tap.
 func landing_time() -> float:
 	return maxf(_landing_at, 0.0)

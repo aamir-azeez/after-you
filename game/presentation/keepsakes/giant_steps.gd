@@ -1,7 +1,10 @@
 extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## The High and Low keepsake: Giant Steps the pip climbs, and a chute it rides
-## back down to the grass. Walking up to the first step sets the pip climbing;
-## a tap sends a peach ball up and down instead. Together: a mint seesaw flings
+## back down to the grass. Walking up to the first step sets the pip hopping
+## up the steps one at a time (a crouch, a stretch, a squash and a footstep on
+## each), then it sits, slides the chute's curve leaning into it, and hops off
+## its lip onto the grass with a little bounce (the pip's ride hooks,
+## presentation/spirit_visual.gd). A tap sends a peach ball the same way. Together: a mint seesaw flings
 ## a mint ball up after the pip. Hard: a slate tower with a ladder for a higher
 ## climb and a longer ride. Together Hard: a gold flag at the very top pops up
 ## as the pip arrives.
@@ -23,7 +26,7 @@ static func _high(state: Dictionary) -> Vector3:
 ## The chute from the top down to the grass.
 static func _chute(state: Dictionary) -> Array[Vector3]:
 	var high := _high(state)
-	var start := Vector3(high.x, high.y - 0.02, 0.45)
+	var start := Vector3(high.x, high.y - 0.02, TOWER.z + 0.22 if state.get("hard", false) else 0.45)
 	return [start, Vector3(start.x + 0.2, start.y * 0.55, 1.05), Vector3(start.x + 0.32, start.y * 0.22, 1.45), Vector3(start.x + 0.36, 0.1, 1.75)]
 
 func build(root: Node3D, state: Dictionary) -> Dictionary:
@@ -59,23 +62,62 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		parts.flag = flag
 	return parts
 
-## The climb and the ride, in the keepsake's frame: [point, ...] hops up, then
-## the chute, then the landing on the grass.
-static func _climb(state: Dictionary, from: Vector3) -> Array:
-	var points: Array = [from, Vector3(-0.7, 0, 0.55)]
-	for top: Vector3 in _tops(): points.append(top)
+## One hop up a step, in seconds; how high a hop clears the riser above it.
+const HOP_TIME := 0.2
+const HOP_HEIGHT := 0.2
+const LADDER_TIME := 0.28
+const SIT_TIME := 0.18
+const SLIDE_TIME := 0.6
+const LIP_TIME := 0.22
+
+## The ride the pip (or, from a tap, a peach ball) takes from `from`, in the
+## keepsake's frame: a list of legs {"kind": "hop", "ladder", "sit", "slide"
+## or "lip", "path": Callable(t 0..1) -> Vector3 (feet on the surface), "time"}.
+## Up the steps one hop each (and the ladder on Hard), sit at the chute's top,
+## slide its curve speeding up, and hop off its lip onto the grass.
+static func ride(state: Dictionary, from: Vector3) -> Array:
+	var legs: Array = []
+	var last := from
+	for top: Vector3 in _tops():
+		legs.append({"kind": "hop", "path": Anim.arc(last, top, HOP_HEIGHT), "time": HOP_TIME})
+		last = top
+	var high := _high(state)
 	if state.get("hard", false):
-		points.append(Vector3(TOWER.x, 1.2, TOWER.z + 0.42))
-	return points
+		# Over to the tower's ladder, then up its rungs to the top.
+		var rung := Vector3(TOWER.x, last.y, TOWER.z + 0.36)
+		legs.append({"kind": "hop", "path": Anim.arc(last, rung, HOP_HEIGHT * 0.6), "time": HOP_TIME})
+		legs.append({"kind": "ladder", "path": _line(rung, Vector3(TOWER.x, high.y, TOWER.z + 0.2)), "time": LADDER_TIME})
+		last = Vector3(TOWER.x, high.y, TOWER.z + 0.2)
+	var chute := _chute(state)
+	legs.append({"kind": "sit", "path": _line(last, chute[0]), "time": SIT_TIME})
+	legs.append({"kind": "slide", "path": _slide(chute), "time": SLIDE_TIME})
+	legs.append({"kind": "lip", "path": Anim.arc(chute[chute.size() - 1], _landing(state), 0.12), "time": LIP_TIME})
+	return legs
+
+static func _line(from: Vector3, to: Vector3) -> Callable:
+	return func(t: float) -> Vector3: return from.lerp(to, t)
+
+## Down the chute's own bars by distance, gathering speed as it goes.
+static func _slide(chute: Array[Vector3]) -> Callable:
+	var lengths: Array[float] = [0.0]
+	for index in range(1, chute.size()): lengths.append(lengths[index - 1] + chute[index - 1].distance_to(chute[index]))
+	var total: float = lengths[lengths.size() - 1]
+	return func(t: float) -> Vector3:
+		var eased := clampf(t, 0.0, 1.0)
+		var at := (0.35 * eased + 0.65 * eased * eased) * total
+		var index := 1
+		while index < lengths.size() - 1 and lengths[index] < at: index += 1
+		var span := maxf(0.0001, lengths[index] - lengths[index - 1])
+		return chute[index - 1].lerp(chute[index], (at - lengths[index - 1]) / span)
 
 static func _landing(state: Dictionary) -> Vector3:
 	var end: Vector3 = _chute(state)[3]
 	return Vector3(end.x, 0, end.z + 0.3)
 
 func beats(state: Dictionary) -> Array:
-	var result: Array = [{"beat": "base", "time": 2.45 if state.get("hard", false) else 2.1}]
+	var result: Array = [{"beat": "base", "time": 2.5 if state.get("hard", false) else 2.05}]
 	for beat: String in UPGRADES:
-		if state.get(beat, false): result.append({"beat": beat, "time": {"together": 0.6, "hard": 0.5, "top": 0.55}[beat]})
+		if state.get(beat, false): result.append({"beat": beat, "time": {"together": 0.6, "hard": 0.45, "top": 0.5}[beat]})
 	return result
 
 func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) -> void:
@@ -83,38 +125,37 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 	var high := _high(state)
 	match beat:
 		"base":
-			# Up the steps (and the ladder on Hard), then down the chute.
-			var start: Vector3 = anim.rider_from if anim.rider != null else Vector3(-0.7, 0.12, 0.55)
-			var climb := _climb(state, start)
+			# Up the steps one hop at a time (and the ladder on Hard), then sit
+			# and slide the chute's curve, and hop off its lip onto the grass.
+			var start: Vector3 = anim.rider_from if anim.rider != null else Vector3(-0.7, 0, 0.6)
 			var ball: MeshInstance3D = null
+			var lifted := Vector3.ZERO
 			if anim.rider == null:
-				ball = anim.spawn(anim.fx, P.low_sphere(0.12), P.mat(P.PEACH), start + Vector3(0, 0.12, 0))
+				lifted = Vector3(0, 0.12, 0)
+				ball = anim.spawn(anim.fx, P.low_sphere(0.12), P.mat(P.PEACH), start + lifted)
 				anim.set_at(ball, "visible", true, 0.0)
 			var t := 0.0
-			var lifted := Vector3(0, 0.12, 0) if ball != null else Vector3.ZERO
-			for index in range(climb.size() - 1):
-				var hop: Callable = anim.arc(climb[index] + lifted, climb[index + 1] + lifted, 0.18)
-				if ball != null: anim.path(ball, hop, t, 0.18)
-				else: anim.carry(hop, t, 0.18)
-				t += 0.18
-			var top := Vector3(high.x, high.y, 0.45 if not state.get("hard", false) else high.z)
-			var up: Callable = (func(s: float) -> Vector3: return (climb[climb.size() - 1] as Vector3).lerp(top, s) + lifted)
-			if ball != null: anim.path(ball, up, t, 0.3)
-			else: anim.carry(up, t, 0.3)
-			t += 0.3
-			anim.sound(str(sounds.get("base", "")), t)
-			var chute := _chute(state)
-			chute.push_front(top)
-			chute.append(_landing(state))
-			var slide := func(s: float) -> Vector3:
-				var at := s * (chute.size() - 1)
-				var index := mini(int(at), chute.size() - 2)
-				return (chute[index] as Vector3).lerp(chute[index + 1], at - index) + lifted
-			if ball != null:
-				anim.path(ball, slide, t, 0.6, 1.0)
-				anim.set_at(ball, "visible", false, t + 0.62)
-			else: anim.carry(slide, t, 0.6)
-			for index in range(4): anim.halo(anim.fx, _tops()[index] + Vector3(0, 0.2, 0.15), 0.05, P.SNOW, 0.18 * (index + 2), 0.4, 0.5)
+			for leg: Dictionary in ride(state, start):
+				var path: Callable = leg.path
+				var time: float = leg.time
+				if ball != null: anim.path(ball, func(u: float) -> Vector3: return path.call(u) + lifted, t, time, 1.0)
+				else: anim.carry(path, t, time)
+				match str(leg.kind):
+					"hop": anim.rider_call(&"play_hop", [time], t)
+					"ladder":
+						for rung in range(2): anim.rider_call(&"play_hop", [time * 0.5], t + rung * time * 0.5)
+					"sit": anim.rider_track(&"set_ride_pose", func(u: float) -> Array: return [u, Vector3(-0.12 * u, 0, 0)], t, time)
+					"slide":
+						anim.sound(str(sounds.get("base", "")), t)
+						# Sitting back and leaning into the chute's curve, most at its middle.
+						anim.rider_track(&"set_ride_pose", func(u: float) -> Array: return [1.0, Vector3(-0.12, 0, 0.16 * sin(u * PI))], t, time)
+					"lip":
+						anim.rider_track(&"set_ride_pose", func(u: float) -> Array: return [1.0 - u, Vector3(-0.12 * (1.0 - u), 0, 0)], t, time * 0.5)
+						anim.rider_call(&"play_hop", [time], t)
+						anim.rider_call(&"play_carry_release", [], t + time)
+				t += time
+			if ball != null: anim.set_at(ball, "visible", false, t + 0.02)
+			for index in range(4): anim.halo(anim.fx, _tops()[index] + Vector3(0, 0.2, 0.15), 0.05, P.SNOW, HOP_TIME * (index + 1), 0.4, 0.5)
 		"together":
 			# The seesaw flips and flings a mint ball up after the pip.
 			var plank: Node3D = parts.seesaw

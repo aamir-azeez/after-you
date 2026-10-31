@@ -77,6 +77,7 @@ func _run() -> void:
 		_check(veil.mesh.get_surface_count() == 1 and veil.material_override == Parts.ghost() and meshes.filter(func(node: Node) -> bool: return (node as MeshInstance3D).material_override == Parts.ghost()).size() == 1, "%s's outline is one merged mesh with the shared veil" % entry.id)
 		_check(meshes.size() == 3, "%s's outline has one dot per stage" % entry.id)
 		outline_root.free()
+	_check_giant_steps_ride()
 	print("KEEPSAKE PROPS: all eleven with every upgrade: %d parts, %d triangles before folding" % [all_parts, all_triangles])
 	_check(all_triangles <= ALL_TRIANGLES, "All eleven with every upgrade stay under %d triangles: %d" % [ALL_TRIANGLES, all_triangles])
 	_check(Primitives.changed_shared_looks().is_empty(), "No keepsake changes a shared look in place: %s" % [Primitives.changed_shared_looks()])
@@ -235,3 +236,65 @@ func _check_upgrades(stage: Node3D, entry: Dictionary, builder: RefCounted) -> v
 		_check(looks[upgrade].size() > looks[""].size(), "%s's %s upgrade adds pieces to the base look" % [entry.id, upgrade])
 		for other: String in looks:
 			if other != upgrade and not other.is_empty(): _check(looks[upgrade] != looks[other], "%s draws its %s and %s upgrades differently" % [entry.id, upgrade, other])
+
+## The Giant Steps ride, from in front of the first step and from the side:
+## one hop per step that clears every riser and lands on a step's top, the
+## ladder on the tower's face on Hard, the slide along the chute's own bars,
+## each leg starting where the last ended, and the last landing on the grass,
+## all inside the base beat.
+func _check_giant_steps_ride() -> void:
+	var Steps: GDScript = load("res://presentation/keepsakes/giant_steps.gd")
+	var builder: RefCounted = Steps.new()
+	for hard: bool in [false, true]:
+		var state := {"hard": hard}
+		var chute: Array[Vector3] = Steps._chute(state)
+		for from: Vector3 in [Vector3(-0.65, 0, 0.6), Vector3(-1.1, 0, 0.0)]:
+			var legs: Array = Steps.ride(state, from)
+			var label := "Giant Steps ride (hard %s, from %s)" % [hard, from]
+			_check(legs.filter(func(leg: Dictionary) -> bool: return leg.kind == "hop").size() == 5 + int(hard), "%s hops once per step%s" % [label, ", and once to the ladder" if hard else ""])
+			var last := from
+			var total := 0.0
+			var clear := true
+			var on_tops := true
+			var on_chute := true
+			var joined := true
+			for leg: Dictionary in legs:
+				var path: Callable = leg.path
+				total += float(leg.time)
+				joined = joined and (path.call(0.0) as Vector3).distance_to(last) < 0.001
+				for sample in range(41):
+					var at: Vector3 = path.call(sample / 40.0)
+					match str(leg.kind):
+						"hop", "lip": clear = clear and at.y >= _steps_surface(at, hard) - 0.005
+						"slide": on_chute = on_chute and _to_polyline(at, chute) < 0.005
+						"ladder": on_chute = on_chute and absf(at.x - Steps.TOWER.x) < 0.01 and at.z > Steps.TOWER.z + 0.17 and at.z < Steps.TOWER.z + 0.4
+				var end: Vector3 = path.call(1.0)
+				# Every hop but the one over to the ladder ends on a step's top.
+				if leg.kind == "hop" and end.x < Steps.TOWER.x - 0.18: on_tops = on_tops and absf(end.y - _steps_surface(end, hard)) < 0.005 and end.y > 0.0
+				last = end
+			_check(joined, "%s: each leg starts where the last one ended" % label)
+			_check(clear, "%s: every hop clears the risers and the tower" % label)
+			_check(on_tops, "%s: every hop lands on a step's top" % label)
+			_check(on_chute, "%s: the slide follows the chute's bars and the ladder its rungs" % label)
+			_check(absf(last.y) < 0.001 and last.distance_to(Steps._landing(state)) < 0.001, "%s: lands on the grass past the chute" % label)
+			_check(total <= float(builder.beats(state)[0].time) + 0.001, "%s fits its base beat: %.2f" % [label, total])
+
+## The height of the Giant Steps' surface under a point: a step's top, the
+## tower's top on Hard, else the grass.
+func _steps_surface(at: Vector3, hard: bool) -> float:
+	var Steps: GDScript = load("res://presentation/keepsakes/giant_steps.gd")
+	var height := 0.0
+	for index in range(5):
+		var x: float = -0.7 + index * Steps.STEP_WIDTH
+		if absf(at.x - x) <= Steps.STEP_WIDTH * 0.5 and absf(at.z) <= 0.4: height = maxf(height, 0.24 * (index + 1))
+	if hard and absf(at.x - Steps.TOWER.x) <= 0.18 and absf(at.z - Steps.TOWER.z) <= 0.18: height = maxf(height, 2.24)
+	return height
+
+static func _to_polyline(at: Vector3, points: Array[Vector3]) -> float:
+	var best := INF
+	for index in range(points.size() - 1):
+		var a: Vector3 = points[index]
+		var b: Vector3 = points[index + 1]
+		var t := clampf((at - a).dot(b - a) / maxf((b - a).length_squared(), 0.000001), 0.0, 1.0)
+		best = minf(best, at.distance_to(a.lerp(b, t)))
+	return best

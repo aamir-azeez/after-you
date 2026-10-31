@@ -130,6 +130,14 @@ var _placing := false
 var _wearing: RefCounted = null
 ## How much higher the leaf sits while an item lifts it.
 var _leaf_lift := Vector3.ZERO
+## A Home keepsake ride carrying the spirit (presentation/keepsakes/): a hop's
+## crouch, stretch and landing squash, a seated tuck and a lean, laid over the
+## pose. The ride moves the spirit itself; these only shape the body.
+var _hop_age := 1.0
+var _hop_duration := 1.0
+var _hop_landed := true
+var _ride_sit := 0.0
+var _ride_lean := Vector3.ZERO
 
 func _init(color: Color=Look.PEACH) -> void:
 	facing.name="Facing"
@@ -205,6 +213,7 @@ func reset_motion() -> void:
 	reunion_age=REUNION_DURATION
 	celebration_age=CELEBRATION_DURATION
 	_celebration_complete=false
+	end_ride()
 	_clear_reunion_sparkles()
 	_clear_reaction()
 	_expression_time=0.0
@@ -372,6 +381,12 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	reunion_sparkle_age=minf(REUNION_SPARKLE_DURATION,reunion_sparkle_age+delta)
 	celebration_age=minf(CELEBRATION_DURATION,celebration_age+delta)
 	_wake_age=minf(SpiritIdle.WAKE_DURATION,_wake_age+delta)
+	var landed := false
+	if _hop_age<_hop_duration:
+		_hop_age=minf(_hop_duration,_hop_age+delta)
+		if not _hop_landed and _hop_age>=_hop_duration*0.8:
+			_hop_landed=true
+			landed=true
 	var planar := Vector2(displacement.x,displacement.z)
 	var distance := planar.length()
 	var speed := distance/delta
@@ -400,7 +415,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 		_pose_blend=1.0
 		_apply_pose(0.0)
 		# Reduced motion changes the pose, not the player's sound preference.
-		if contacts>0: stepped.emit()
+		if contacts>0 or landed: stepped.emit()
 		return
 	var target_blend := clampf(speed/WALK_SPEED,0.0,1.0) if speed>0.025 else 0.0
 	motion_blend=lerpf(motion_blend,target_blend,1.0-exp(-12.0*delta))
@@ -412,7 +427,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	_apply_pose(motion_blend)
 	_apply_reunion_sparkles()
 	# A stalled render frame must not release a burst of queued sounds.
-	if contacts>0: stepped.emit()
+	if contacts>0 or landed: stepped.emit()
 
 func _advance_expression(delta: float) -> void:
 	_expression_time+=delta
@@ -475,6 +490,19 @@ func _apply_pose(amount: float) -> void:
 	# Positive X pitch leans +Z; negative Z roll leans +X in the facing pivot.
 	upper_body.rotation=Vector3(0.035*amount+lean.y,sway*0.14,cos(stride_phase+expression_phase*0.18)*0.032*amount-lean.x+sway*0.24)
 	var squash := compression*0.18-hop*0.035-launch*0.065
+	# A ride's hop: crouch to take off, stretch with the feet tucked, squash to land.
+	var ride_tuck := 0.0
+	if _hop_age<_hop_duration and not _reduced_motion:
+		var phase := _hop_age/_hop_duration
+		var crouch := sin(phase/0.2*PI) if phase<0.2 else 0.0
+		var stretch := sin((phase-0.2)/0.55*PI) if phase>=0.2 and phase<0.75 else 0.0
+		var land := sin((phase-0.75)/0.25*PI) if phase>=0.75 else 0.0
+		squash+=crouch*0.12-stretch*0.1+land*0.16
+		ride_tuck=stretch*0.05
+	if not _reduced_motion:
+		squash+=_ride_sit*0.06
+		upper_body.position.y-=_ride_sit*0.06
+		upper_body.rotation+=_ride_lean
 	upper_body.scale=Vector3(1.0+squash*0.45,1.0-squash,1.0+squash*0.45)
 	var settle := 0.0
 	if release_age>=0.0 and release_age<RELEASE_SETTLE_DURATION and not _reduced_motion:
@@ -528,6 +556,7 @@ func _apply_pose(amount: float) -> void:
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
 		feet[index].rotation.x -= tap*0.22
 		if rest.body_shift!=Vector3.ZERO or rest.feet_forward!=0.0: feet[index].position+=rest.body_shift+Vector3(0,0,rest.feet_forward)
+		if (ride_tuck!=0.0 or _ride_sit!=0.0) and not _reduced_motion: feet[index].position+=Vector3(0,ride_tuck+_ride_sit*0.02,_ride_sit*0.09)
 	if not _doze_zs.is_empty(): _apply_doze_zs(idle)
 
 ## The pose layer's offsets this frame, faded by `idle` (none while walking).
@@ -597,6 +626,34 @@ func play_throw() -> void:
 func play_carry_release() -> void:
 	# A Lighthouse offer is a successful release, not an invented throw arc.
 	release_age=0.0
+
+## One hop of a ride, `duration` seconds from takeoff to landing: a crouch,
+## a stretch in the air with the feet tucked, and a squash as it lands, which
+## steps (the footstep cue) once.
+func play_hop(duration: float) -> void:
+	_hop_duration=maxf(duration,0.05)
+	_hop_age=0.0
+	_hop_landed=false
+
+## A ride's seated tuck (`sit` 0 to 1: the body drops and the feet come
+## forward) and its lean (radians, in the facing pivot: +x leans forward).
+func set_ride_pose(sit: float, lean: Vector3) -> void:
+	_ride_sit=clampf(sit,0.0,1.0)
+	_ride_lean=lean
+
+## The ride let go: no hop, no tuck, no lean.
+func end_ride() -> void:
+	_hop_age=_hop_duration
+	_hop_landed=true
+	_ride_sit=0.0
+	_ride_lean=Vector3.ZERO
+
+## A frame of being carried: the spirit turns toward where it is carried, and
+## its feet do not walk.
+func advance_carried(displacement: Vector3, delta: float, reduced_motion: bool) -> void:
+	var planar := Vector2(displacement.x,displacement.z)
+	if delta>0.0 and planar.length()/delta>0.025: facing_target=atan2(planar.x,planar.y)
+	advance_motion(Vector3.ZERO,delta,reduced_motion)
 
 func carry_anchor_position() -> Vector3:
 	var seed_hop := absf(sin(stride_phase))*0.08*motion_blend if not _reduced_motion else 0.0
