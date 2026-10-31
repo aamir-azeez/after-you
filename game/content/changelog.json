@@ -2,6 +2,19 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.6",
+      "date": "2026-10-31",
+      "highlights": [{"icon": "home", "text": "Your pip hops up the Giant Steps and slides down happy"}, {"icon": "bell", "text": "New water sounds in chapters and on Home"}, {"icon": "star", "text": "Sounds for the Wardrobe, Pollen and leaderboards"}, {"icon": "tap", "text": "A soft tick on every button"}, {"icon": "picture", "text": "Better layouts on tablets and folding phones"}],
+      "paragraphs": [
+        {"text": "In Explore, walk your pip up to the front of the Giant Steps and it hops up them one step at a time, then sits at the top and slides down the chute with a happy face. Gold sparkles trail behind it, a heart pops up near the bottom, and your phone gives a light tap as it lands if Haptics is on. A tap on the Giant Steps still sends a ball the same way."},
+        {"text": "Drops fall down the shaft in the Wishing Well, and small waves wash up the shore in Turn of the Tide. The water goes quiet while a chapter or a replay is paused. On Home, the Wishing Well and Tide Pool keepsakes drip and splash as they play."},
+        {"text": "The Sleeping Lighthouse has the same waves on its shore, and buying something plays a sound when it goes through.", "paid": true},
+        {"text": "Putting something on or taking it off in the Wardrobe has its own sound, and so do Pollen arriving and reaching the top 10 on a leaderboard. Other buttons give a soft tick when you press them, except the ones you play a turn with, which already make their own sounds."},
+        {"text": "On tablets and folding phones, the Wardrobe and Pollen from play sit in the middle of the screen at a phone's height, the way Friends and Settings already do, so their cards no longer stretch to the top and bottom.", "ios_text": "On iPad and iPhone Duo, the Wardrobe and Pollen from play sit in the middle of the screen at a phone's height, the way Friends and Settings already do. When the iPhone Duo's camera takes a strip down one side, the game draws a little smaller so nothing ends up under it."},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.5",
       "date": "2026-10-31",
       "highlights": [{"icon": "leaf", "text": "Pollen bundles in the store, with 20% more on your first", "paid": true}, {"icon": "star", "text": "The shop opens: spend Pollen on looks and faces", "paid": true}, {"icon": "picture", "text": "New pictures for the Pouch and the Jar"}],
@@ -151,18 +164,6 @@
         {"text": "Replays shows a loading bar while it loads, instead of an empty list. It also remembers which replays it has already checked, so the list opens much faster after you restart the game."},
         {"text": "On Friends, Copy is a single icon next to Share Invite. Tap a friend's code to copy it."},
         {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.5.0",
-      "date": "2026-10-10",
-      "highlights": [{"icon": "picture", "text": "Chapters are picture cards you tap to play"}, {"icon": "spark", "text": "Your level stays on screen after a turn"}, {"icon": "tap", "text": "Lists and dropdowns scroll when you drag them"}, {"icon": "bell", "text": "Footsteps and catches change pitch"}],
-      "paragraphs": [
-        {"text": "Each chapter is a card with its picture on it. Tap a card to play it alone, and a check mark shows which chapters you've finished. Free chapters come first, and playing with a friend starts at Play with your friend. The hosting page for a locked chapter shows its picture next to the unlock options.", "paid": true},
-        {"text": "When you finish a turn, the level stays on screen next to a side panel. The panel says your turn is saved, shows whose turn is next and has one button for turning on notifications. Other actions, like asking for a redo or reporting a player, are in Room options. The invitation code has a full-size Copy button that confirms when it worked, and the code goes away once your friend joins."},
-        {"text": "In Play with a friend, Your rooms scroll in their own column, the buttons line up, each room shows its status in a small tag, and Join stays off until you enter a code. On Friends, Notify sits next to Join and is easy to see when it's on, and your code has Share code and Copy buttons. Lists and dropdowns, such as the chapter picker and Account & recovery, scroll when you drag them."},
-        {"text": "In Replays the preview stays in view while the list scrolls, and the Earlier islands have new pictures. Tap either character on Home to watch them celebrate, and they close their eyes happily when they meet. Footsteps, catches and meetups change pitch, so they don't sound the same every time. There's also a new line at the bottom of Home."},
-        {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters. The hosting page for a locked chapter doesn't talk about buying in this build anymore.", "channels": ["github"]}
       ]
     }
   ]
