@@ -2456,11 +2456,22 @@ func _service_photo_resume() -> void:
 	var owner := str(_relay_identity().player_id)
 	var context := _photo_resume_context()
 	var entry: Dictionary = await photo_resume_prompt.check(owner)
-	if entry.is_empty() or not _photo_resume_safe() or str(_relay_identity().player_id) != owner: return
+	if entry.is_empty(): return
+	if not _photo_resume_safe() or str(_relay_identity().player_id) != owner:
+		_photo_resume_later()
+		return
 	if context == _photo_resume_context() and not _photo_resume_tapped() and _photo_resume_returns(entry) and await _open_photo_resume_room(str(entry.room_id), true): return
-	# A tap the player made meanwhile goes on; the room offers the photo when it opens.
-	if not _photo_resume_safe() or _photo_resume_tapped() or str(_relay_identity().player_id) != owner: return
+	# A Play tap the player made meanwhile goes on; the room offers the photo when it opens.
+	if _photo_resume_tapped(): return
+	if not _photo_resume_safe() or str(_relay_identity().player_id) != owner:
+		_photo_resume_later()
+		return
 	photo_resume_prompt.show_prompt(ui, entry)
+
+## Home was held up for a moment (a card the app showed, a busy session, a new identity):
+## the waiting photo is looked at again once Home is free.
+func _photo_resume_later() -> void:
+	if mode == "home" and not _photo_resume_tapped(): _photo_resume_checked = false
 
 ## Whether this start goes straight back to the entry's room: its camera opened just now, no
 ## room was opened yet, and no tapped alert or invite link waits to take the player elsewhere.
@@ -2469,9 +2480,9 @@ func _photo_resume_returns(entry: Dictionary) -> bool:
 	if is_instance_valid(turn_notifications) and not turn_notifications.pending_route().is_empty(): return false
 	return photo_resume_prompt.resume_store.just_closed(entry)
 
-## The player tapped something on Home: a Play tap waiting for the busy session, or a card.
+## The player tapped Play on Home, and that tap waits for the busy session or runs.
 func _photo_resume_tapped() -> bool:
-	return room_hub_flow.tap_pending() or _top_modal() != null
+	return room_hub_flow.tap_pending()
 
 ## Any navigation, identity change or trip to the background changes this.
 func _photo_resume_context() -> Array:
@@ -2479,7 +2490,7 @@ func _photo_resume_context() -> Array:
 
 func _photo_resume_safe() -> bool:
 	if mode != "home" or application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
-	if is_instance_valid(_whats_new_card): return false # One Home card at a time; this one waits.
+	if is_instance_valid(_whats_new_card) or _top_modal() != null: return false # One Home card at a time; this one waits.
 	if _update_gate_active(): return false # The room cannot open until this build is updated.
 	if not _relay_identity().ready or not saves.data.get("pending_turn", {}).is_empty() or not saves.data.get("room_draft", {}).is_empty(): return false
 	if relay_session != null and (relay_session.busy() or not relay_session.can_leave_for_legacy() or (relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty())): return false

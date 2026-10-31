@@ -12,6 +12,8 @@ extends SceneTree
 ##   brings the same photo back.
 ## - Restarted, and the player taps on before the room opens by itself: the tap
 ##   wins, and the room opened from the hub still offers the same photo.
+## - Restarted, and a card the app shows by itself (a Pollen gift, a board
+##   placing) comes up on Home as the room opens: once it is closed, the room opens.
 const Harness = preload("res://tests/online_harness/harness.gd")
 const UserFiles = preload("res://tests/online_harness/user_files.gd")
 const Resume = preload("res://services/photo_capture_resume.gd")
@@ -20,6 +22,8 @@ const RESTARTED := "restarted under the camera"
 const LATER := "restarted, opened again later"
 const OFFLINE := "restarted, room out of reach"
 const TAPPED := "restarted, player taps on as the room opens"
+const CARD := "restarted, a Home card shows as the room opens"
+const InGameModal = preload("res://presentation/in_game_modal.gd")
 var h: Node
 var files: RefCounted
 
@@ -34,7 +38,7 @@ func _run() -> void:
 	for how: String in [MEMORY, RESTARTED]:
 		for photographer: String in ["host", "guest"]:
 			await _camera_round_trip(photographer, how)
-	for how: String in [LATER, OFFLINE, TAPPED]:
+	for how: String in [LATER, OFFLINE, TAPPED, CARD]:
 		await _camera_round_trip("host", how)
 	h.print_slowest()
 	h.end()
@@ -82,6 +86,13 @@ func _camera_round_trip(who: String, how: String) -> void:
 				await _until(func() -> bool: return photographer.app._photo_resume_checked and photographer.child() == null and photographer.app.relay_session != null and photographer.app.relay_session.busy())
 				h.open_hub(photographer)
 				return
+			if how == CARD:
+				await _until(func() -> bool: return photographer.app._photo_resume_checked and photographer.child() == null and photographer.app.relay_session != null and photographer.app.relay_session.busy())
+				var card: Control = InGameModal.open(photographer.app.ui, "HarnessHomeCard", "A card the app shows by itself")
+				await _until(func() -> bool: return not photographer.app.relay_session.busy(), 5000)
+				await h.frames(10)
+				h.check(photographer.child() == null and photographer.app.find_child("PhotoResumeModal", true, false) == null, photographer.label + " waits under a card Home shows by itself (at %s)" % photographer.where())
+				card.close(false)
 			await _until(func() -> bool: return photographer.button("PhotoSend") != null or photographer.button("PhotoResumeOpen") != null)
 		await h.step("Android starts After You again after the camera", restart, [photographer] if how == OFFLINE else [])
 		if how == TAPPED:
