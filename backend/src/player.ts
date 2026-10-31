@@ -34,7 +34,7 @@ import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/gran
 import { readGrant } from "./pollen/grant-provider";
 import { claimBundlesFor, claimFor } from "./pollen/claims";
 import { bundleCheckDue, bundlesView, dropBundles, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
-import { lookupBundles, readBundles, type BundleAsk } from "./pollen/bundle-provider";
+import { lookupBundles, readBundles, sandboxBundles, type BundleAsk } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
 import type { Look } from "./pollen/catalog";
@@ -231,7 +231,7 @@ export class Player extends DurableObject<Env> {
     return settleBundles(this.ctx.storage, now, this.pollenActive(owner), {
       read: () => readBundles(owner, this.env),
       claim: purchases => claimBundlesFor(this.env, owner, purchases, now),
-      ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env) } : {})
+      ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env, undefined, sandboxBundles(owner, this.env)) } : {})
     });
   }
   /**

@@ -89,7 +89,7 @@ export type RevenueCatSettings = {
   readonly app_store_environment?: string;
   /** Unset reuses the Play lookup id. */
   readonly app_store_entitlement_lookup_id?: string;
-  /** Player ids whose real Full Journey entitlement counts as a review grant. */
+  /** Player ids whose real Full Journey entitlement counts as a review grant, and whose App Store sandbox Pollen bundles pay (pollen/bundle-provider.ts): the App Review identity. */
   readonly reviewer_ids: readonly string[];
 };
 export type ServerConfig = {

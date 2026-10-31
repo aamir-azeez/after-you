@@ -153,6 +153,13 @@ describe("what App Store purchases count", () => {
     expect(bundlePurchase(apple("rc_6", "prod235f72a2e0", { store_purchase_identifier: "GPA.1" }), bundleProducts())?.order).toBe("");
     expect(bundlePurchase(owned("rc_7", "prodd4e2b730e5", { store_purchase_identifier: "appstore:1" }), bundleProducts())?.order).toBe("");
   });
+  it("counts an App Store sandbox purchase only when asked for the review identity, and a Play one never", () => {
+    expect(bundlePurchase(apple("rc_9", "prod235f72a2e0", { environment: "sandbox" }), bundleProducts(), "sandbox")).toMatchObject({ bundle: "pinch", order: "appstore:2000000000000009" });
+    expect(bundlePurchase(apple("rc_9", "prod235f72a2e0", { environment: "sandbox" }), bundleProducts())).toBeNull();
+    expect(bundlePurchase(owned("rc_10", "prodd4e2b730e5", { environment: "sandbox" }), bundleProducts(), "sandbox")).toBeNull();
+    // A sandbox read never counts a production purchase twice, and the reverse.
+    expect(bundlePurchase(apple("rc_11"), bundleProducts(), "sandbox")).toBeNull();
+  });
   it("looks a moved App Store purchase up by its own transaction id", async () => {
     const request = vi.fn(async () => ({ ok: true as const, status: 200, value: { object: "list", items: [apple("rc_8", "prod235f72a2e0", { status: "refunded", customer_id: "moved" })], next_page: null } }));
     expect(await lookupBundles([{ id: "rc_8", bundle: "pinch", order: "appstore:2000000000000008" }], vars(), request)).toEqual({ ok: true, refunded: ["rc_8"] });
@@ -701,6 +708,39 @@ describe("bundles through the Worker", () => {
     const history = await (await call("/v1/pollen/history", "GET", first)).json<{ purchases: Record<string, unknown>[]; spent_usd_cents: number }>();
     expect(history.purchases.map(line => [line.kind, line.order, line.store, line.usd_cents])).toEqual([["bundle", "2000000000000310", "app_store", 499]]);
     expect(history.spent_usd_cents).toBe(499);
+  });
+
+  it("pays the review identity's App Store sandbox bundle once, and nobody else's sandbox buy", async () => {
+    const reviewer = await create(), other = await create();
+    current = vars(BOTH, { project_id: "proj1234", reviewer_ids: [reviewer.player_id] }); Object.assign(shared, current);
+    const sandbox = (id: string, extra: Record<string, unknown> = {}) => apple(id, "prodc18dc7e8e6", { environment: "sandbox", revenue_in_usd: { gross: 0 }, ...extra });
+    lists[reviewer.player_id] = [sandbox("rc_400"), owned("rc_401", "prodd4e2b730e5", { environment: "sandbox" })];
+    lists[other.player_id] = [sandbox("rc_402"), sandbox("rc_403", { store_purchase_identifier: "2000000000000400" })];
+    const meter = countingEnv({ ...env, ...current } as unknown as Env);
+    const stubs = { player: env.PLAYERS.getByName(reviewer.player_id) as unknown as DurableObjectStub, claims: env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) as unknown as DurableObjectStub };
+    providerCalls = 0;
+    const paid = await meterRows(stubs, async () => (await claim(reviewer, meter.env)).json<Reply>());
+    // The App Store sandbox Pouch pays; the Play sandbox Pinch never does.
+    expect(paid.value).toMatchObject({ balance: 21000, credited: [{ bundle: "pouch", order: "2000000000000400", store: "app_store", first_gift: 0 }] });
+    expect(paid.value.credited).toHaveLength(1);
+    // One more list request (the sandbox one) for the review identity only; the same Player calls and one claims row.
+    expect(meter.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenBundleClaim"]);
+    expect(providerCalls).toBe(2);
+    expect(paid.rows.claims.written).toBe(1);
+    expect(await (await claim(reviewer)).json<Reply>()).toMatchObject({ balance: 21000, credited: [] });
+    const keys = await runInDurableObject(env.PLAYERS.getByName(reviewer.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key));
+    expect(keys).toEqual(["bundle:appstore:2000000000000400"]);
+    // Anyone else's sandbox buy, or the review purchase restored onto another account, mints nothing, with one list request.
+    providerCalls = 0;
+    expect(await (await claim(other)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
+    expect(providerCalls).toBe(1);
+    // A sandbox refund is taken back from the review identity, also after a restore moved it.
+    const refunded = sandbox("rc_400", { status: "refunded", customer_id: "moved" });
+    lists[reviewer.player_id] = []; orders["2000000000000400"] = [refunded];
+    offset = BUNDLE_CHECK_MS + 1000;
+    expect((await wallet(reviewer)).balance).toBe(0);
+    const back = await runInDurableObject(env.PLAYERS.getByName(reviewer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]));
+    expect(back).toEqual([["bundlerefund:appstore:2000000000000400", -21000]]);
   });
 
   it("keeps a Play order and an App Store id with the same digits apart: each pays once, in its own rows", async () => {
