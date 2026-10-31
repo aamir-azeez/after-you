@@ -1,5 +1,6 @@
-"""Generate After You's synthesised world cues: bell, well plunk, reel, water, bird calls
-and the hand-worked controls (winch, bolt, valve).
+"""Generate After You's synthesised world cues: bell, well plunk, reel, water, bird calls,
+the hand-worked controls (winch, bolt, valve), drips, sloshes, shore washes and the
+quiet UI confirmations (a toggle's tick, Pollen's sparkle).
 
 Run with Python 3.11+, standard library only. No recordings, samples or network:
     python scripts/generate_cues.py            # rebuild every cue, refuse any drift
@@ -333,6 +334,81 @@ def valve() -> list[float]:
     return one_shot(mellow(out, 3500.0))
 
 
+def drip() -> list[float]:
+    """One small water drop, dry: a bubble plink over a faint body, for water
+    a Home keepsake pours or the pip hops through."""
+    out = silence(0.2)
+    overlay(out, tone(lambda t: 260.0, 0.03, lambda t: soft_onset(t, 0.002) * math.exp(-t / 0.008)), 0.0, 0.25)
+    overlay(out, droplet(1250.0, 0.06), 0.003, 1.0)
+    return one_shot(mellow(out, 6000.0))
+
+
+def well_drip() -> list[float]:
+    """A drop falling down a stone well: a rounder, lower drop and two soft
+    echoes off the shaft, each darker than the last."""
+    dry = silence(0.12)
+    overlay(dry, tone(lambda t: 210.0, 0.04, lambda t: soft_onset(t, 0.002) * math.exp(-t / 0.01)), 0.0, 0.3)
+    overlay(dry, droplet(880.0, 0.075), 0.002, 1.0)
+    out = silence(0.95)
+    overlay(out, dry, 0.0)
+    for delay, gain, cutoff in ((0.19, 0.34, 2600.0), (0.4, 0.15, 1700.0)):
+        lp = Biquad("lp", cutoff)
+        overlay(out, [lp(s) for s in dry + silence(0.04)], delay, gain)
+    return one_shot(mellow(out, 4500.0))
+
+
+def slosh() -> list[float]:
+    """A little rounded slosh of water against a rim or a rocking boat: a soft
+    swell of low water noise that settles, with two small drops after it. No
+    bright splash (the owner ruled the small splash out for the well)."""
+    src, lp, bp = noise(0.5, 151), Biquad("lp", 900), Biquad("bp", 520, 0.9)
+    out = []
+    for i, x in enumerate(src):
+        u = i / len(src)
+        bp.set(520 - 220 * u)
+        env = math.sin(math.pi * min(u / 0.22, 1.0) / 2) ** 2 * (1 - u) ** 1.6
+        out.append(env * (1.3 * lp(x) + 0.6 * bp(x)))
+    overlay(out, droplet(1150.0, 0.045), 0.2, 0.08)
+    overlay(out, droplet(1500.0, 0.035), 0.29, 0.05)
+    return one_shot(mellow(out, 3000.0), 8.0)
+
+
+def shore_wash() -> list[float]:
+    """A gentle wave running up a shore and drawing back: a low swell that
+    builds, then a softer hiss of foam as it recedes."""
+    seconds = 2.6
+    rng, lp, lp2, fizz = random.Random(161), Biquad("lp", 1000), Biquad("lp", 750), Biquad("bp", 1800, 0.8)
+    foam = noise(seconds, 162)
+    brown, out = 0.0, []
+    for i in range(int(seconds * RATE)):
+        t = i / RATE
+        brown = 0.996 * brown + 0.05 * rng.uniform(-1, 1)
+        run_up = math.sin(math.pi * min(t / 0.95, 1.0) / 2) ** 2
+        recede = math.exp(-max(0.0, t - 0.95) / 0.7)
+        hiss = math.sin(math.pi * min(max(0.0, t - 0.7) / 0.5, 1.0) / 2) * math.exp(-max(0.0, t - 1.2) / 0.55)
+        out.append(run_up * recede * lp2(lp(brown)) * 1.4 + 0.09 * hiss * fizz(foam[i]))
+    return one_shot(mellow(out, 3200.0), 12.0)
+
+
+def tick() -> list[float]:
+    """A soft wooden tick for a flipped toggle: a small knock and a faint click."""
+    out = silence(0.08)
+    overlay(out, thunk(620.0, 0.05, 0.009), 0.0, 1.0)
+    click, bp = noise(0.008, 171), Biquad("bp", 1900, 2.0)
+    overlay(out, [bp(x) * math.exp(-i / RATE / 0.0012) for i, x in enumerate(click)], 0.0, 0.5)
+    return one_shot(mellow(out, 5000.0), 2.0)
+
+
+def sparkle() -> list[float]:
+    """Pollen arriving: three soft glints rising through C, E and G, each a
+    little bell partial over its fundamental, quiet and quick."""
+    out = silence(0.62)
+    for n, f in enumerate((1046.5, 1318.51, 1567.98)):
+        overlay(out, tone(lambda t, f=f: f, 0.42, lambda t: soft_onset(t, 0.003) * math.exp(-t / 0.085), (1.0, 0.0, 0.12)),
+                n * 0.07, 0.8 - 0.12 * n)
+    return one_shot(mellow(out, 6000.0))
+
+
 def bird_phrases() -> list[list[tuple]]:
     """The garden songbird the owner chose (preview 03a): three short whistled
     phrases and a faint second bird's "tsip" triple, as notes
@@ -395,6 +471,12 @@ CUES = {
     "winch": winch,
     "bolt": bolt,
     "valve": valve,
+    "drip": drip,
+    "well-drip": well_drip,
+    "slosh": slosh,
+    "shore-wash": shore_wash,
+    "tick": tick,
+    "sparkle": sparkle,
 }
 # Files that loop; scripts/test_cues.py checks their seams.
 LOOPS = ("reel", "water-lap", "spout")
@@ -413,6 +495,12 @@ APPROVED = {
     "winch": "992c7263e17ef9705e868812df3c544bba8cc8247056ea60e3a1f2aa5be87c05",
     "bolt": "4b4b5e911025c3caa88d1e139ad48d1a428d89801a4f063e08387114ae939213",
     "valve": "681bb260ad66a8c40ef773085af9832030e1508fadd31e840e67b5374002ba55",
+    "drip": "88d890dda4bdc4828de6ba8dad237141d4481e7a07c82bbfdd82a1f518d22179",
+    "well-drip": "8fc6a480c28725c5ced23bfc8bc73c1a4aa592ac7d3502db074dcbe9a84abc6b",
+    "slosh": "8024f468133f8ae2565273aec9fdb367e960242496c4119de944e539a20283ef",
+    "shore-wash": "ee845a89d4464ff905b09f816cbad44fca07dd3d7070ee189392188aab44835d",
+    "tick": "349de2096de8ce965ac139effddc5e90430af17e51e017bc7b0fcb8686d7ffa1",
+    "sparkle": "b87bbf727ea49ea4b309b1f7ca0f01d8aff2edc2c52d4a8b5628c48d765b9b01",
 }
 
 
