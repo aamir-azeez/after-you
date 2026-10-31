@@ -10,6 +10,7 @@ extends Control
 ## resize, never per frame; the art takes no input.
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
+const Shapes = preload("res://presentation/empty_state_art.gd")
 const SCRIPT_PATH := "res://presentation/kit/bundle_art.gd"
 
 const CLOTH := Color("efe3c6")
@@ -39,7 +40,7 @@ const BASKET_BODY := [Vector2(0.12, 0.46), Vector2(0.88, 0.46), Vector2(0.78, 0.
 const BASKET_RIM := Rect2(0.09, 0.42, 0.82, 0.08)
 
 ## Pouch: a soft sack, its corners [x, y, rounding] clockwise from the neck.
-const POUCH_BODY := [[0.585, 0.36, 0.03], [0.68, 0.45, 0.1], [0.845, 0.68, 0.18], [0.78, 0.945, 0.1], [0.22, 0.945, 0.1], [0.155, 0.68, 0.18], [0.32, 0.45, 0.1], [0.415, 0.36, 0.03]]
+const POUCH_BODY := [[0.585, 0.36, 0.03], [0.69, 0.44, 0.1], [0.87, 0.67, 0.2], [0.79, 0.945, 0.11], [0.21, 0.945, 0.11], [0.13, 0.67, 0.2], [0.31, 0.44, 0.1], [0.415, 0.36, 0.03]]
 ## The open mouth above the tie (its shadowed inside), the grains in it and
 ## the ruffled lip in front of them, its scallops centred on POUCH_LIP.
 const POUCH_MOUTH := Rect2(0.3, 0.225, 0.4, 0.11)
@@ -50,14 +51,17 @@ const POUCH_TIE := Rect2(0.385, 0.345, 0.23, 0.055)
 ## Jar: the glass with a short neck, its corners [x, y, rounding] clockwise.
 const JAR_BODY := [[0.3, 0.2, 0.02], [0.7, 0.2, 0.02], [0.7, 0.265, 0.03], [0.79, 0.33, 0.09], [0.79, 0.94, 0.12], [0.21, 0.94, 0.12], [0.21, 0.33, 0.09], [0.3, 0.265, 0.03]]
 const JAR_WALL := 0.03
-## Grains fill the jar from the bottom with glass showing between them; the
-## ones against the glass are cut by it.
-const JAR_GRAINS := [[0.345, 0.83], [0.5, 0.835], [0.655, 0.83], [0.4225, 0.69], [0.5775, 0.69], [0.345, 0.55], [0.5, 0.55], [0.655, 0.55], [0.4225, 0.41], [0.5775, 0.41]]
-const JAR_GRAIN := 0.1
+## Grains fill the jar with glass showing between them, listed top row first
+## so each grain's highlight stays clear of the row above; the ones against
+## the glass are cut by it.
+const JAR_GRAINS := [[0.4225, 0.41], [0.5775, 0.41], [0.345, 0.55], [0.5, 0.55], [0.655, 0.55], [0.4225, 0.69], [0.5775, 0.69], [0.345, 0.83], [0.5, 0.835], [0.655, 0.83]]
+const JAR_GRAIN := 0.095
 const JAR_LID := Rect2(0.265, 0.085, 0.47, 0.125)
 const JAR_BAND := Rect2(0.285, 0.19, 0.43, 0.045)
 
-## Built shapes by bundle: an Array of layers in the unit square (see _layer_*).
+## Built shapes by bundle: an Array of layers in the unit square, each
+## ["fill", polygon, colour, smooth edge], ["line", points, colour, width],
+## ["grain", centre, radius] or ["cut", kit/pollen_mark.gd grain_cut parts].
 static var _shapes := {}
 
 var bundle := "pinch"
@@ -78,12 +82,32 @@ func _draw() -> void:
 		"basket": _basket(o, s)
 		_: _pinch(o, s)
 
-## The Pouch's or the Jar's layers in the unit square, built the first time and kept.
+## The Pouch's or the Jar's layers in the unit square, built the first time and
+## kept (none for the other bundles, which draw straight from their constants).
 static func shapes(id: String) -> Array:
 	if not _shapes.has(id):
-		_shapes[id] = _build_jar() if id == "jar" else _build_pouch()
+		match id:
+			"pouch": _shapes[id] = _build_pouch()
+			"jar": _shapes[id] = _build_jar()
+			_: return []
 		SessionRelease.on_exit(Callable(load(SCRIPT_PATH), "release_cached"))
 	return _shapes[id]
+
+## The art faded to `alpha` as one picture (a refunded purchase): its layers
+## fade together in a CanvasGroup, so none shows through the ones over it.
+static func faded(bundle_id: String, side: float, alpha: float) -> Control:
+	var holder := Control.new()
+	holder.name = "BundleArtFaded"
+	holder.custom_minimum_size = Vector2(side, side)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	holder.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	var group := CanvasGroup.new()
+	group.self_modulate.a = alpha
+	holder.add_child(group)
+	var art: Control = load(SCRIPT_PATH).new(bundle_id, side)
+	art.size = Vector2(side, side)
+	group.add_child(art)
+	return holder
 
 static func release_cached() -> void:
 	_shapes.clear()
@@ -99,10 +123,10 @@ static func silhouette(id: String) -> Array[PackedVector2Array]:
 			for grain: Array in POUCH_GRAINS: parts.append(_circle(Vector2(grain[0], grain[1]), grain[2] * GRAIN_REACH))
 		"jar":
 			parts.append(_rounded(JAR_BODY))
-			parts.append(_rounded_rect(JAR_LID, 0.035))
+			parts.append(Shapes.round_rect(JAR_LID, 0.035))
 		"basket":
 			parts.append(PackedVector2Array(BASKET_BODY))
-			parts.append(_rounded_rect(BASKET_RIM, 0.04))
+			parts.append(Shapes.round_rect(BASKET_RIM, 0.04))
 			for at: Array in BASKET_HEAP: parts.append(_circle(Vector2(at[0], at[1]), BASKET_GRAIN * GRAIN_REACH))
 		_:
 			for grain: Array in PINCH: parts.append(_circle(Vector2(grain[0], grain[1]), grain[2] * GRAIN_REACH))
@@ -117,11 +141,10 @@ func _draw_layers(layers: Array, at: Transform2D) -> void:
 	for layer: Array in layers:
 		match layer[0]:
 			"fill":
-				var points: PackedVector2Array = at * (layer[1] as PackedVector2Array)
-				draw_colored_polygon(points, layer[2])
-				# A one pixel edge in the same colour smooths the polygon's own hard edge.
-				if layer[3]: draw_polyline(_closed(points), layer[2], 1.0, true)
-			"line": draw_polyline(at * (layer[1] as PackedVector2Array), layer[2], maxf(1.0, float(layer[3]) * scale), true)
+				# A smooth fill adds a one pixel edge that softens the polygon's hard edge.
+				if layer[3]: Shapes.fill(self, at, layer[1], layer[2])
+				else: draw_colored_polygon(at * (layer[1] as PackedVector2Array), layer[2])
+			"line": Shapes.stroke(self, at, layer[1], layer[2], layer[3])
 			"grain": PollenMark.draw_grain(self, at * (layer[1] as Vector2), float(layer[2]) * scale)
 			"cut": PollenMark.draw_cut(self, layer[1], at)
 
@@ -151,13 +174,17 @@ func _basket(o: Vector2, s: float) -> void:
 	draw_style_box(rim, Rect2(o + BASKET_RIM.position * s, BASKET_RIM.size * s))
 
 ## A soft drawstring sack: grains in its open mouth behind a cloth lip, a pink
-## tie round the neck, the body shaded on the right and lit on the left.
+## tie round the neck, the body shaded on the right and below, away from the light.
 static func _build_pouch() -> Array:
 	var layers := []
 	var body := _rounded(POUCH_BODY)
 	layers.append(_layer_fill(_mouth(), CLOTH_MOUTH))
 	for grain: Array in POUCH_GRAINS: layers.append(["grain", Vector2(grain[0], grain[1]), grain[2]])
-	layers.append(_layer_fill(_lip(), CLOTH))
+	var lip := _lip()
+	layers.append(_layer_fill(lip, CLOTH))
+	# The ruffle's fold where it gathers into the tie, so the lip reads on a cream card.
+	for piece: PackedVector2Array in Geometry2D.intersect_polygons(lip, PackedVector2Array([Vector2(0.3, 0.323), Vector2(0.7, 0.323), Vector2(0.7, 0.37), Vector2(0.3, 0.37)])):
+		layers.append(_layer_fill(piece, CLOTH_SHADE))
 	layers.append(_layer_fill(body, CLOTH))
 	# The shade: the body less a copy moved up and left leaves a crescent on the right.
 	var moved := Transform2D(0.0, Vector2(-0.085, -0.04)) * body
@@ -165,7 +192,7 @@ static func _build_pouch() -> Array:
 	# Two gathers falling from the tie.
 	layers.append(["line", PackedVector2Array([Vector2(0.45, 0.41), Vector2(0.43, 0.47), Vector2(0.405, 0.52)]), CLOTH_SHADE, 0.014])
 	layers.append(["line", PackedVector2Array([Vector2(0.55, 0.41), Vector2(0.57, 0.46), Vector2(0.595, 0.5)]), CLOTH_SHADE, 0.014])
-	layers.append(_layer_fill(_rounded_rect(POUCH_TIE, 0.025), TIE))
+	layers.append(_layer_fill(Shapes.round_rect(POUCH_TIE, 0.025), TIE))
 	layers.append(_layer_fill(_circle(POUCH_TIE.get_center() + Vector2(0.0, 0.004), 0.034), TIE_KNOT))
 	return layers
 
@@ -185,22 +212,22 @@ static func _build_jar() -> Array:
 	# The inner rim covers the grains' cut edges; the outer rim is the glass's outline.
 	layers.append(["line", _closed(inside), GLASS_WALL, 0.014])
 	layers.append(["line", _closed(body), GLASS_RIM, 0.018])
-	layers.append(_layer_fill(_rounded_rect(Rect2(0.258, 0.38, 0.03, 0.36), 0.015), GLASS_SHINE))
+	layers.append(_layer_fill(Shapes.round_rect(Rect2(0.258, 0.38, 0.03, 0.36), 0.014), GLASS_SHINE))
 	layers.append(_layer_fill(_circle(Vector2(0.273, 0.785), 0.015), GLASS_SHINE))
 	layers.append(["line", PackedVector2Array([Vector2(0.75, 0.45), Vector2(0.751, 0.62), Vector2(0.747, 0.8)]), Color(1, 1, 1, 0.4), 0.012])
-	layers.append(_layer_fill(_rounded_rect(JAR_BAND, 0.02), TIE))
-	layers.append(_layer_fill(_rounded_rect(JAR_LID, 0.035), LID))
-	layers.append(_layer_fill(_rounded_rect(Rect2(JAR_LID.position.x, JAR_LID.end.y - 0.035, JAR_LID.size.x, 0.035), 0.017), LID_SHADE))
-	layers.append(_layer_fill(_rounded_rect(Rect2(JAR_LID.position.x + 0.04, JAR_LID.position.y + 0.022, 0.15, 0.022), 0.011), LID_LIGHT))
+	layers.append(_layer_fill(Shapes.round_rect(JAR_BAND, 0.02), TIE))
+	layers.append(_layer_fill(Shapes.round_rect(JAR_LID, 0.035), LID))
+	layers.append(_layer_fill(Shapes.round_rect(Rect2(JAR_LID.position.x, JAR_LID.end.y - 0.035, JAR_LID.size.x, 0.035), 0.016), LID_SHADE))
+	layers.append(_layer_fill(Shapes.round_rect(Rect2(JAR_LID.position.x + 0.04, JAR_LID.position.y + 0.022, 0.15, 0.022), 0.01), LID_LIGHT))
 	return layers
 
 ## The mouth's opening: a flat oval behind the grains.
 static func _mouth() -> PackedVector2Array:
-	return _ellipse(POUCH_MOUTH.get_center(), POUCH_MOUTH.size * 0.5, 0.0)
+	return Shapes.ellipse(POUCH_MOUTH.get_center(), POUCH_MOUTH.size * 0.5)
 
 ## The lip: the mouth's front, gathered into a ruffle of soft scallops over the grains' lower edge.
 static func _lip() -> PackedVector2Array:
-	var lip: Array[PackedVector2Array] = [PackedVector2Array([Vector2(0.315, POUCH_LIP), Vector2(0.685, POUCH_LIP), Vector2(0.6, 0.37), Vector2(0.4, 0.37)])]
+	var lip: Array[PackedVector2Array] = [PackedVector2Array([Vector2(0.315, POUCH_LIP), Vector2(0.685, POUCH_LIP), Vector2(0.615, 0.37), Vector2(0.385, 0.37)])]
 	for index in range(7): lip.append(_circle(Vector2(lerpf(0.33, 0.67, index / 6.0), POUCH_LIP), 0.03))
 	return _union(lip)[0]
 
@@ -231,18 +258,8 @@ static func _rounded(corners: Array) -> PackedVector2Array:
 	if points.size() > 1 and points[0].is_equal_approx(points[points.size() - 1]): points.remove_at(points.size() - 1)
 	return points
 
-static func _rounded_rect(rect: Rect2, rounding: float) -> PackedVector2Array:
-	return _rounded([[rect.position.x, rect.position.y, rounding], [rect.end.x, rect.position.y, rounding], [rect.end.x, rect.end.y, rounding], [rect.position.x, rect.end.y, rounding]])
-
 static func _circle(centre: Vector2, radius: float) -> PackedVector2Array:
-	return _ellipse(centre, Vector2(radius, radius), 0.0)
-
-static func _ellipse(centre: Vector2, radii: Vector2, turn: float) -> PackedVector2Array:
-	var points := PackedVector2Array()
-	for index in range(32):
-		var angle := TAU * index / 32.0
-		points.append(centre + Vector2(cos(angle) * radii.x, sin(angle) * radii.y).rotated(turn))
-	return points
+	return Shapes.ellipse(centre, Vector2(radius, radius))
 
 static func _closed(points: PackedVector2Array) -> PackedVector2Array:
 	var line := points.duplicate()

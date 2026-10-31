@@ -74,9 +74,8 @@ static func _row(line: Dictionary, index: int, money: bool) -> Control:
 	var row := HBoxContainer.new()
 	row.name = "PollenPurchaseRow%d" % index
 	row.add_theme_constant_override("separation", 12)
-	var art := BundleArt.new(str(line.bundle), ART)
+	var art: Control = BundleArt.faded(str(line.bundle), ART, 0.55) if refund else BundleArt.new(str(line.bundle), ART)
 	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	if refund: art.modulate.a = 0.55
 	row.add_child(art)
 	var words := VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL

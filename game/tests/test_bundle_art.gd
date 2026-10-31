@@ -3,13 +3,18 @@ extends SceneTree
 ## kept, every shape triangulates (the Pouch's shade once logged a failed
 ## triangulation on every draw), the Jar's grains stay inside its glass, the
 ## Pouch's grains sit in its mouth behind the cloth lip, nothing leaves the
-## art's square, and the four grow from the Pinch to the Basket.
+## art's square, the four grow from the Pinch to the Basket, and a refunded
+## bundle fades as one picture.
 const BundleArt = preload("res://presentation/kit/bundle_art.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const SessionRelease = preload("res://presentation/kit/session_release.gd")
 const BUNDLES := ["pinch", "pouch", "jar", "basket"]
 ## Area left over when a shape is cut to the one it should sit in, in the unit square.
 const SLACK := 0.00002
+## The sizes the game draws the art at (purchases, receipt, confirm, store) and a big one.
+const SIDES := [46.0, 76.0, 84.0, 104.0, 120.0]
+## Each bundle covers at least this much more than the one before it.
+const GROWTH := 1.04
 
 var checks := 0
 var failures := 0
@@ -30,10 +35,11 @@ func _run() -> void:
 			if layer[0] == "fill":
 				var points: PackedVector2Array = layer[1]
 				_check(points.size() > 2 and points[0] != points[points.size() - 1], "%s fill %d never repeats its first point" % [id, index])
-				_check(not Geometry2D.triangulate_polygon(points).is_empty(), "%s fill %d triangulates" % [id, index])
+				_triangulates(points, "%s fill %d" % [id, index])
 			if layer[0] == "cut":
 				for part: Array in layer[1]:
-					if part[0] is PackedVector2Array: _check(not Geometry2D.triangulate_polygon(part[0]).is_empty(), "%s cut grain piece %d triangulates" % [id, index])
+					if part[0] is PackedVector2Array: _triangulates(part[0], "%s cut grain piece in layer %d" % [id, index])
+	_check(BundleArt.shapes("basket").is_empty() and not BundleArt._shapes.has("basket"), "Only the Pouch and the Jar keep built shapes")
 	_jar()
 	_pouch()
 	_sizes()
@@ -44,11 +50,17 @@ func _run() -> void:
 	SessionRelease.release_all()
 	_check(BundleArt._shapes.is_empty(), "Release lets go of the kept shapes")
 	# Each bundle draws in a page at the sizes the game sets.
-	for side: float in [46.0, 76.0, 84.0, 104.0]:
+	for side: float in SIDES:
 		for id: String in BUNDLES:
 			var art: Control = BundleArt.new(id, side)
 			_check(art.custom_minimum_size == Vector2(side, side) and art.mouse_filter == Control.MOUSE_FILTER_IGNORE and art.name == "BundleArt", "%s at %d is square at its size and takes no input" % [id, side])
 			root.add_child(art)
+	var faded: Control = BundleArt.faded("jar", 46.0, 0.55)
+	var group := faded.get_child(0) as CanvasGroup
+	_check(faded.custom_minimum_size == Vector2(46, 46) and group != null and is_equal_approx(group.self_modulate.a, 0.55) and group.modulate == Color.WHITE, "A refunded bundle fades its art as one picture")
+	var inner: Control = group.get_child(0)
+	_check(inner.name == "BundleArt" and inner.size == Vector2(46, 46) and inner.modulate == Color.WHITE, "The faded art draws whole inside its group")
+	root.add_child(faded)
 	await process_frame
 	await process_frame
 	for art: Node in root.get_children():
@@ -76,7 +88,8 @@ func _jar() -> void:
 				_check(_left_over(outline, inside) < SLACK, "A cut grain's part in the jar stays inside the glass")
 	_check(whole + cut == BundleArt.JAR_GRAINS.size() and whole > 0 and cut > 0, "The jar holds every grain, some whole and the ones at the glass cut: %d whole, %d cut" % [whole, cut])
 
-## The pouch's grains sit in its mouth: drawn before the lip, their lower edge behind it.
+## The pouch's grains sit in its mouth: drawn before the lip, and below the
+## lip's scallops every bit of each grain is covered by what is drawn over it.
 func _pouch() -> void:
 	var layers := BundleArt.shapes("pouch")
 	var mouth := 0
@@ -91,11 +104,18 @@ func _pouch() -> void:
 	var lip_top := 1.0
 	for point: Vector2 in lip: lip_top = minf(lip_top, point.y)
 	var mouth_shape: PackedVector2Array = layers[first_grain - 1][1]
+	var covers: Array[PackedVector2Array] = []
+	for index in range(last_grain + 1, layers.size()):
+		if layers[index][0] == "fill": covers.append(layers[index][1])
+	var below := PackedVector2Array([Vector2(0, BundleArt.POUCH_LIP), Vector2(1, BundleArt.POUCH_LIP), Vector2(1, 1), Vector2(0, 1)])
 	for grain: Array in BundleArt.POUCH_GRAINS:
 		mouth += 1
 		var reach := float(grain[2]) * BundleArt.GRAIN_REACH
 		var centre := Vector2(grain[0], grain[1])
-		_check(centre.y + reach > lip_top and centre.y + reach <= 0.4, "A pouch grain's bottom is behind the lip: %s" % centre)
+		_check(centre.y + reach > lip_top, "A pouch grain's bottom is behind the lip: %s" % centre)
+		var left := 0.0
+		for piece: PackedVector2Array in Geometry2D.intersect_polygons(_circle(centre, reach), below): left += _uncovered(piece, covers)
+		_check(left < SLACK, "Below the lip's scallops a pouch grain is covered: %s shows %.6f" % [centre, left])
 		# Above the lip the grain sits within the mouth's width.
 		var shown := Geometry2D.clip_polygons(_circle(centre, reach), PackedVector2Array([Vector2(0, lip_top), Vector2(1, lip_top), Vector2(1, 1), Vector2(0, 1)]))
 		for piece: PackedVector2Array in shown:
@@ -114,7 +134,7 @@ func _sizes() -> void:
 		areas.append(total)
 	print("BUNDLE AREAS ", BUNDLES, " ", areas)
 	for index in range(1, areas.size()):
-		_check(areas[index] > areas[index - 1], "%s covers more than %s: %.3f against %.3f" % [BUNDLES[index], BUNDLES[index - 1], areas[index], areas[index - 1]])
+		_check(areas[index] >= areas[index - 1] * GROWTH, "%s covers clearly more than %s: %.3f against %.3f" % [BUNDLES[index], BUNDLES[index - 1], areas[index], areas[index - 1]])
 
 ## A grain inside the clip stays round; one outside it is left out; one across its edge is cut.
 func _grain_cut() -> void:
@@ -133,6 +153,23 @@ func _polygons(layer: Array) -> Array[PackedVector2Array]:
 		"cut":
 			for part: Array in layer[1]: found.append(part[0] if part[0] is PackedVector2Array else _circle(part[0], float(part[1])))
 	return found
+
+## Triangulates as drawn: in the unit square and at every size the game draws.
+func _triangulates(points: PackedVector2Array, what: String) -> void:
+	_check(not Geometry2D.triangulate_polygon(points).is_empty(), "%s triangulates" % what)
+	for side: float in SIDES:
+		_check(not Geometry2D.triangulate_polygon(Transform2D(0.0, Vector2(side, side), 0.0, Vector2(3, 5)) * points).is_empty(), "%s triangulates at %d" % [what, side])
+
+## The area of `shape` that none of `covers` hides.
+func _uncovered(shape: PackedVector2Array, covers: Array[PackedVector2Array]) -> float:
+	var left: Array[PackedVector2Array] = [shape]
+	for cover: PackedVector2Array in covers:
+		var next: Array[PackedVector2Array] = []
+		for piece: PackedVector2Array in left: next.append_array(Geometry2D.clip_polygons(piece, cover))
+		left = next
+	var total := 0.0
+	for piece: PackedVector2Array in left: total += BundleArt.area(piece)
+	return absf(total)
 
 func _inside_square(points: PackedVector2Array) -> bool:
 	for point: Vector2 in points:
