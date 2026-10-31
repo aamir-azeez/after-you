@@ -2316,13 +2316,7 @@ func _service_home_keepsakes(delta: float) -> void:
 	_keepsake_poll += delta
 	if _keepsake_poll < 0.15: return
 	_keepsake_poll = 0.0
-	var identity := _relay_identity()
-	if identity.ready and identity != _keepsake_identity:
-		_keepsake_identity = identity.duplicate()
-		if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
-		# The cached index is enough here. Loading every saved room would replay
-		# its full proof on the home thread; verification is queued by the service.
-		home_keepsakes.reconcile_friend(shared_replays)
+	_keepsake_friend_pass()
 	if home_keepsakes.backfill_pending(): home_keepsakes.advance_backfill(1)
 	if mode == JourneyFlow.MODE_JOURNEY:
 		journey_flow.refresh_marks()
@@ -2332,18 +2326,30 @@ func _service_home_keepsakes(delta: float) -> void:
 		var offer := overlay.get_node_or_null("HomeFullJourney") as Button
 		if offer != null: offer.visible = _full_journey_offered()
 
+## The friend keepsake pass, once per ready identity (owner and epoch). The
+## cached index is enough here. Loading every saved room would replay its full
+## proof on the home thread; verification is queued by the service.
+func _keepsake_friend_pass() -> void:
+	var identity := _relay_identity()
+	if not identity.ready or identity == _keepsake_identity: return
+	_keepsake_identity = identity.duplicate()
+	if shared_replays == null: shared_replays = SharedReplays.new(api,_relay_identity)
+	home_keepsakes.reconcile_friend(shared_replays)
+
 ## The room hub finishes a keepsake check Home started and starts none of its
 ## own. While a check runs the chapter chain stays open (_chapter_unlocks), so
 ## without this a hub opened during one kept every chapter open, and its joins
-## unchecked, until the player went back Home. Its cards are drawn again with
-## their locks once the check ends.
+## unchecked, until the player went back Home. An identity that became ready
+## meanwhile joins its friend pass to the check, so the chain never settles
+## without it. The cards are drawn again with their locks once the check ends.
 func _service_hub_keepsakes(delta: float) -> void:
 	if not home_keepsakes.backfill_pending(): return
 	_keepsake_poll += delta
 	if _keepsake_poll < 0.15: return
 	_keepsake_poll = 0.0
+	_keepsake_friend_pass()
 	home_keepsakes.advance_backfill(1)
-	if not home_keepsakes.backfill_pending() and room_hub_flow.is_open(): room_hub_flow.redraw_chapters()
+	if not home_keepsakes.backfill_pending() and room_hub_flow.is_open(): room_hub_flow.redraw_locks()
 
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,

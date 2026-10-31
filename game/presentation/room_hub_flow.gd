@@ -36,6 +36,7 @@ extends Node
 ## RelayLobbyFlow calls select_chapter() when a chapter's rooms are checked.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
+const TouchInput = preload("res://presentation/touch_input.gd")
 const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const LegacyRoomFlow = preload("res://presentation/legacy_room_flow.gd")
 const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
@@ -216,10 +217,21 @@ func is_open() -> bool:
 func go_back() -> void:
 	screen.go_back()
 
-## Draws the chapter cards again, for a change in hosting access or in the
-## chapter locks (Main._service_hub_keepsakes).
+## Draws the chapter cards again, for a change in hosting access.
 func redraw_chapters() -> void:
 	screen.set_chapters(together_chapters())
+
+## Home's keepsake check ended while the hub was up (Main._service_hub_keepsakes):
+## the chapter cards are drawn again with their locks. A tap the hub's gate
+## holds or runs keeps the screen it was made on (its label and its chapter),
+## so the redraw waits for it to run or give up, then for any finger to lift.
+func redraw_locks() -> void:
+	var drawn := screen
+	var still := func() -> bool: return is_instance_valid(drawn) and drawn == screen and host.mode == MODE_ROOMS
+	var tree := Engine.get_main_loop() as SceneTree
+	while still.call() and _gate != null and _gate.area() == drawn and (_gate.waiting() or _gate.running):
+		await tree.process_frame
+	await TouchInput.redraw_when_released(drawn, still, redraw_chapters)
 
 ## Reads the open hub's rooms again once earlier requests are done.
 func refresh() -> void:
