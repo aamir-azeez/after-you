@@ -128,8 +128,10 @@ static func _history_value(left: int = 15) -> Dictionary:
 		"bank": {"left": float(left), "refill": 12.0, "cap": 36.0, "tail": [{"pay": 10.0, "turns": 36.0}, {"pay": 1.0, "turns": 64.0}]}}
 
 ## A busy player: 30 turns, the newest played just now, and every free chapter cleared.
+## Times are whole milliseconds, as the server sends them: the system clock has
+## parts of a millisecond on Linux, and checked() drops a turn whose time is not whole.
 static func _busy() -> Dictionary:
-	var now := Time.get_unix_time_from_system() * 1000.0
+	var now := floorf(Time.get_unix_time_from_system() * 1000.0)
 	var turns := []
 	for index in range(30):
 		turns.append({"kind": "turn", "amount": 111.0, "at": now - index * 3600000.0, "level_id": "first-steps", "stage_id": "a-little-lift", "role": "a", "bonuses": ["first_try"], "bloom": 2.0 if index % 5 == 0 else 1.0})
@@ -181,8 +183,9 @@ func _page_states() -> void:
 		_check(page.find_children("PollenTurnRow*", "", true, false).size() == 30 and not (page.find_child("PollenPlaySpare", true, false) as Spare).showing(), "A long list scrolls and leaves no room for the pip at %s" % size)
 		_check(str(_label(page.find_child("PollenTurnRow0", true, false), "PollenTurnWhen")).begins_with("Today, "), "Each turn says when it was played")
 		var bar := (page.find_child("PollenTurnsCard", true, false).get_child(0) as ScrollContainer).get_v_scroll_bar()
-		var inset := page.find_child("PollenTurnRow0", true, false).get_parent().get_parent() as MarginContainer
-		_check(bar.visible and inset.get_theme_constant("margin_right") == Page.GUTTER and (page.find_child("PollenTurnRow0", true, false) as Control).get_global_rect().end.x <= bar.get_global_rect().position.x - Page.GUTTER + 0.5,
+		var first := page.find_child("PollenTurnRow0", true, false) as Control
+		var inset := first.get_parent().get_parent() as MarginContainer if first != null else null
+		_check(first != null and bar.visible and inset.get_theme_constant("margin_right") == Page.GUTTER and first.get_global_rect().end.x <= bar.get_global_rect().position.x - Page.GUTTER + 0.5,
 			"A long list's rows keep the scroll bar's room clear at %s" % size)
 		_check(page.find_children("PollenPlaySpare", "", true, false).size() == 1, "A redraw leaves one spare room")
 		_check((page.find_child("PollenClearsLeft", true, false) as Label).text == "2,400" and _texts(page).has(PlayerCopy.POLLEN_CLEARS_ALL_PAID) and _texts(page).has("2 of 2 cleared"), "Every free chapter cleared: what they paid")
@@ -191,8 +194,9 @@ func _page_states() -> void:
 			"bank": {"left": 12.0, "refill": 12.0, "cap": 36.0, "tail": []}})})
 		await _settle()
 		_check(page.find_child("PollenTurnsNone", true, false) != null and (page.find_child("PollenPlaySpare", true, false) as Spare).showing(), "No turns yet: the line, with the pip in the room under it at %s" % size)
-		var short_inset := page.find_child("PollenTurnsNone", true, false).get_parent().get_parent() as MarginContainer
-		_check(short_inset.get_theme_constant("margin_right") == 0, "A list that fits gives the room back at %s" % size)
+		var none := page.find_child("PollenTurnsNone", true, false)
+		var short_inset := none.get_parent().get_parent() as MarginContainer if none != null else null
+		_check(short_inset != null and short_inset.get_theme_constant("margin_right") == 0, "A list that fits gives the room back at %s" % size)
 		_layout(page, size, "a new player's page")
 		page.render({"chip": PollenChip.make(24000, false), "full_journey": false, "status": "", "retry": false, "history": _history(0)})
 		await _settle()
