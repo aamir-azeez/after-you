@@ -26,7 +26,8 @@ env:
   # Official godot-builds release asset digests, also listed in Godot's SHA512-SUMS.txt.
   GODOT_MACOS_SHA256: "c58a24e31d720be9d62f60cb5627c4e695fb72f21b0cfe1bc9ccaa9a3b3ba63e"
   GODOT_TEMPLATES_SHA256: "f298490b8d44d934be425a5a65a51bf15f422428b229a06a6e11d9ffea248011"
-  XCODE_APP: /Applications/Xcode_26.6.app
+  # Xcode 27.1 on the xcode-27 image (iOS 27.1 SDK). The Simulator job keeps its own.
+  XCODE_APP: /Applications/Xcode_27.1.app
   # The iOS plugin (native/ios): godot-cpp, and the two SDKs it can use. Release digests come
   # from the GitHub release API (Firebase) or were computed from the release asset (RevenueCat).
   GODOT_CPP_TAG: "10.0.0-stable"
@@ -44,7 +45,7 @@ jobs:
     # A manual TestFlight run skips the unsigned checks; pushes always run them.
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.testflight) }}
     # Standard arm64 runner: free on a public repository. Never use -large or -xlarge.
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -219,10 +220,13 @@ jobs:
   simulator:
     name: iOS Simulator launch (x86_64 under Rosetta, best effort)
     # Godot 4.7.2's simulator library holds only x86_64 code, so this builds x86_64 and relies
-    # on Rosetta. It never fails the workflow; the device job above is the proof.
+    # on Rosetta. It never fails the workflow; the device job above is the proof. It stays on
+    # macos-26 with Xcode 26.6: the xcode-27 image's iOS 27 Simulator runtimes are arm64 only.
     needs: device
     continue-on-error: true
     runs-on: macos-26
+    env:
+      XCODE_APP: /Applications/Xcode_26.6.app
     timeout-minutes: 60
     defaults:
       run:
@@ -372,7 +376,7 @@ jobs:
   testflight:
     name: Signed build and TestFlight upload
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.testflight }}
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 120
     defaults:
       run:
