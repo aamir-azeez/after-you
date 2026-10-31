@@ -154,7 +154,7 @@ func load_store() -> void:
 	if ready and host.has_method("_read_store_support"):
 		await host._read_store_support()
 		if not is_open() or generation != _generation: return
-		ready = available()
+		ready = available() and StoreSupport.shared().read_now()
 	if not ready:
 		_fail_load()
 		return

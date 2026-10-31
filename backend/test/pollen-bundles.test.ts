@@ -7,11 +7,12 @@ import serverBundles from "../src/pollen/bundles.json";
 import { APP_STORE_BUNDLES_READY, BUNDLES, checkedBundles, firstGift, storeReady, type BundleKey, type Bundles } from "../src/pollen/bundles";
 import { bundleProducts, bundlePurchase, lookupBundles, readBundles, type BundleAsk, type BundlePurchase } from "../src/pollen/bundle-provider";
 import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundleCheckDue, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
-import { anyBundlesOn, appStoreBundlesOn, bundlesOn, refundsOn } from "../src/pollen/features";
+import { anyBundlesOn, appStoreBundlesOn, bundlesOn, itemDropsOn, refundsOn } from "../src/pollen/features";
 import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
 import { applyLedger, ledgerLines, walletView } from "../src/pollen/wallet";
 import { RATES } from "../src/pollen/rates";
-import { POLLEN_HEADER } from "../src/pollen/routes";
+import { POLLEN_HEADER, POLLEN_SHOP_MIN_VERSION } from "../src/pollen/routes";
+import { CLIENT_HEADER } from "../src/app-status";
 import { POLLEN_BUNDLE_TABLES, POLLEN_PLAYER_TABLES } from "../src/storage-schema";
 import { configJson, POLLEN_CLIENT, PRE_SHOP_CLIENT } from "./config";
 import { countingEnv, meterRows } from "./meter";
@@ -663,6 +664,17 @@ describe("bundles through the Worker", () => {
     expect(await caps(player)).toMatchObject({ pollen_bundles_version: 1, pollen_app_store_bundles_version: 1 });
   });
 
+  it("tells an App Store build through GET /v2/capabilities when the server admits App Store subscribers", async () => {
+    const player = await create();
+    const apple = { [CLIENT_HEADER]: POLLEN_SHOP_MIN_VERSION + " app_store" };
+    current = { ...vars(["APP_STORE_ENTITLEMENTS_ENABLED"], { project_id: "proj1234", play_entitlement_lookup_id: "entlPlay", play_product_id: "prodPlay", app_store_subscription_product_ids: ["prodIosMonthly"] }) };
+    Object.assign(shared, current);
+    expect(await caps(player, apple)).toMatchObject({ app_store_full_journey_version: 1 });
+    expect(await caps(player)).not.toHaveProperty("app_store_full_journey_version");
+    use(ON);
+    expect(await caps(player, apple)).not.toHaveProperty("app_store_full_journey_version");
+  });
+
   it("pays an App Store purchase once by its transaction id, with the requests and rows a Play purchase costs", async () => {
     use(BOTH);
     const first = await create(), second = await create();
@@ -724,6 +736,9 @@ describe("bundles through the Worker", () => {
 
   it("offers no shop, item drops or bundles to an app older than 0.7.5", async () => {
     use([...BOTH, "POLLEN_ITEM_BLOOMS"]);
+    // A turn's credit drops an item only for an app offered the shop (Player.creditTurn reads this rule).
+    expect([itemDropsOn(current, true), itemDropsOn(current, false)]).toEqual([true, false]);
+    expect(itemDropsOn(vars(BOTH), true)).toBe(false);
     const player = await create();
     const old = await caps(player, PRE_SHOP_CLIENT);
     expect(old).toMatchObject({ pollen_version: 1, pollen_wardrobe_version: 1 });

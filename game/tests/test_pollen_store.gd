@@ -506,7 +506,7 @@ func _iphone() -> void:
 	_check(off.host.reads == 1 and off.purchases.serial == 0 and off.flow._packages.is_empty() and not off.flow.available(), "No App Store bundles on the server: nothing priced, nothing to buy")
 	off.host.queue_free()
 	await _frames(2)
-	# No answer this run (the read failed): prices from the earlier answer may show, but Buy opens no sheet.
+	# No answer this run (the read failed): the store prices nothing, and Buy opens no sheet even with a package in hand.
 	support = StoreSupport.new(_path("store-support-fail"))
 	StoreSupport.use_shared(support)
 	var failed := _setup(true, true, true, true)
@@ -517,9 +517,11 @@ func _iphone() -> void:
 	failed.purchases.offerings = _ios_offerings()
 	failed.flow.show_store()
 	await _frames()
+	_check(failed.host.reads == 1 and failed.purchases.serial == 0 and failed.flow._packages.is_empty() and PlayerCopy.POLLEN_STORE_OFFLINE in _texts(failed.host.overlay), "Without this run's answer the store prices nothing and says it isn't reachable")
+	failed.flow._packages = Bundles.packages(_ios_offerings())
 	failed.flow.buy("pinch")
 	await _frames(4)
-	_check(failed.purchases.bought.is_empty() and failed.host.toasts.has(PlayerCopy.POLLEN_STORE_OFFLINE) and not failed.claims.pending(), "Without this run's answer Buy opens no sheet and sets no claim mark")
+	_check(failed.purchases.bought.is_empty() and failed.host.toasts.has(PlayerCopy.POLLEN_STORE_OFFLINE) and not failed.claims.pending(), "and Buy opens no sheet and sets no claim mark")
 	failed.host.queue_free()
 	await _frames(2)
 	StoreSupport.use_shared(null)

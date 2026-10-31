@@ -51,9 +51,13 @@ function appStoreLookup(config: ReturnType<typeof serverConfig>["revenuecat"]): 
  */
 export function appStoreReady(env: ServerVars): boolean {
   if (!flags.appStoreEntitlements(env) || !env.REVENUECAT_SECRET_KEY) return false;
-  const config = serverConfig(env).revenuecat, products = config.app_store_subscription_product_ids;
-  return PROJECT_PATTERN.test(config.project_id ?? "") && LOOKUP_PATTERN.test(appStoreLookup(config)) && appStoreEnvironments(config.app_store_environment) !== null &&
-    products !== null && products.length > 0;
+  const config = serverConfig(env).revenuecat;
+  return PROJECT_PATTERN.test(config.project_id ?? "") && LOOKUP_PATTERN.test(appStoreLookup(config)) && appStoreSettings(config);
+}
+/** The App Store's own settings the check reads: a known environment and at least one subscription product. */
+function appStoreSettings(config: ReturnType<typeof serverConfig>["revenuecat"]): boolean {
+  const products = config.app_store_subscription_product_ids;
+  return appStoreEnvironments(config.app_store_environment) !== null && products !== null && products.length > 0;
 }
 
 /** This policy is selected by server configuration, never a caller header. */
@@ -69,7 +73,7 @@ export async function storeEntitlement(playerId: string, env: ServerVars, onGran
   const appEnvironments = appStoreEnvironments(config.app_store_environment);
   const appSubscriptions = config.app_store_subscription_product_ids;
   // The flag is on, so an unset App Store list is a missing setting, not "no App Store products".
-  const appReady = appEnvironments !== null && appSubscriptions !== null && appSubscriptions.length > 0;
+  const appReady = appStoreSettings(config);
   const lookups = [playLookup, appLookup].filter(value => LOOKUP_PATTERN.test(value));
   if (lookups.length === 0) return { full_journey: false, status: "unconfigured" };
 

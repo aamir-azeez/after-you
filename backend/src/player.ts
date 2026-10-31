@@ -28,7 +28,7 @@ import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type Displ
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, ownedPackIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { anyBundlesOn, grantOn, itemBloomsOn, refundsOn, type WardrobeMode } from "./pollen/features";
+import { anyBundlesOn, grantOn, itemDropsOn, refundsOn, type WardrobeMode } from "./pollen/features";
 import { knownBoard } from "./leaderboards/boards";
 import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/grant-settle";
 import { readGrant } from "./pollen/grant-provider";
@@ -200,7 +200,7 @@ export class Player extends DurableObject<Env> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
-    const grant = grantOn(this.env), refunds = mode === "shop" && refundsOn(this.env), bundles = mode === "shop" && anyBundlesOn(this.env);
+    const grant = grantOn(this.env), refunds = refundsOn(this.env), bundles = mode === "shop" && anyBundlesOn(this.env);
     if (grant) {
       await this.settleGrant(identity.player_id);
       // A recovery may have replaced the device while the provider answered.
@@ -291,7 +291,7 @@ export class Player extends DurableObject<Env> {
   creditTurn(owner: string, facts: unknown, drops = false): Promise<Outcome<PollenReceipt>> {
     if (!this.pollenActive(owner)()) return Promise.resolve(fail(404, "identity_absent"));
     return creditTurn(this.ctx.storage, this.env, owner, facts, Date.now(), this.pollenActive(owner), RATES,
-      drops === true && itemBloomsOn(this.env) ? { owned: ownedItemIds, give: addDroppedItem } : undefined);
+      itemDropsOn(this.env, drops) ? { owned: ownedItemIds, give: addDroppedItem } : undefined);
   }
   /**
    * Binding only: a first clear made together, from the facts of the turn that finished the chapter.

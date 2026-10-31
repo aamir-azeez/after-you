@@ -362,7 +362,7 @@ func _buy_full_journey(package: Dictionary) -> void:
 		return
 	# Money moves only on this run's answer (services/store_support.gd); Restore stays open.
 	if not StoreSupport.shared().may_buy():
-		host._toast(PlayerCopy.PURCHASES_49387E2DE82E_IOS)
+		host._toast(PlayerCopy.PURCHASES_49387E2DE82E_IOS if StoreSupport.shared().read_now() else PlayerCopy.POLLEN_STORE_OFFLINE)
 		return
 	store_action_pending=true
 	var card := _full_journey_card()
@@ -387,7 +387,7 @@ func _load_store(force_refresh: bool = false) -> void:
 	# An iPhone opens the store only once this run's read says the server takes App Store purchases.
 	if host.has_method("_read_store_support") and not await host._read_store_support():
 		if host.mode == MODE_PAYWALL and view == host.store_view_generation:
-			_show_store_problem(PlayerCopy.PURCHASES_49387E2DE82E_IOS)
+			_show_store_problem(PlayerCopy.PURCHASES_49387E2DE82E_IOS if StoreSupport.shared().read_now() else PlayerCopy.POLLEN_STORE_OFFLINE)
 		return
 	if host.mode != MODE_PAYWALL or view != host.store_view_generation: return
 	if store_configured:
