@@ -181,6 +181,9 @@ func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: flo
 ## and life, from popping in to gone.
 const SPARKLE_SIZE := 0.1
 const SPARKLE_LIFE := 0.65
+## How long before the sit a ride's face goes on (spirit_face.gd swaps a face
+## with a quick blink).
+const FACE_LEAD := 0.2
 ## How far behind the pip along the slide a sparkle pops (a share of it).
 const SPARKLE_LAG := 0.06
 
@@ -193,7 +196,8 @@ func _slide_joy(points: Array[Vector3], seat: float, sit_time: float, time: floa
 	if face != &"":
 		if reduced:
 			if rider.has_method(&"set_ride_face"): rider.set_ride_face(face)
-		else: rider_call(&"set_ride_face", [face], seat)
+		# Put on just before the sit, so the face's own swap is done as it sits.
+		else: rider_call(&"set_ride_face", [face], maxf(0.0, seat - FACE_LEAD))
 	# Reduce motion shows the beat all at once: the face, and the tap (its own
 	# Settings switch) once, with no glints or heart.
 	if reduced:
