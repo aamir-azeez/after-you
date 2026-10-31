@@ -31,6 +31,7 @@ const Benefits = preload("res://presentation/full_journey_benefits.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 const BenefitPanel = preload("res://presentation/kit/benefit_panel.gd")
 const CREAM := Color("eceddb")
 const GOLD := Color("f1c48a")
@@ -359,6 +360,10 @@ func _buy_full_journey(package: Dictionary) -> void:
 	if host.purchases.has_entitlement():
 		_show_full_journey_unlocked()
 		return
+	# Money moves only on this run's answer (services/store_support.gd); Restore stays open.
+	if not StoreSupport.shared().may_buy():
+		host._toast(PlayerCopy.PURCHASES_49387E2DE82E_IOS)
+		return
 	store_action_pending=true
 	var card := _full_journey_card()
 	card.add_child(host._paragraph(PlayerCopy.MAIN_8A2FF5596F1C,600))
@@ -377,6 +382,12 @@ func _load_store(force_refresh: bool = false) -> void:
 	if not await host._ensure_identity():
 		if host.mode == MODE_PAYWALL and view == host.store_view_generation:
 			_show_store_problem(PlayerCopy.MAIN_5FE98B59E6BA)
+		return
+	if host.mode != MODE_PAYWALL or view != host.store_view_generation: return
+	# An iPhone opens the store only once this run's read says the server takes App Store purchases.
+	if host.has_method("_read_store_support") and not await host._read_store_support():
+		if host.mode == MODE_PAYWALL and view == host.store_view_generation:
+			_show_store_problem(PlayerCopy.PURCHASES_49387E2DE82E_IOS)
 		return
 	if host.mode != MODE_PAYWALL or view != host.store_view_generation: return
 	if store_configured:

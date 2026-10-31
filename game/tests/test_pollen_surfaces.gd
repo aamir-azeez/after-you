@@ -23,6 +23,7 @@ const Flow = preload("res://presentation/display_name_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -244,6 +245,30 @@ func _rule() -> void:
 		_check(_parts(PollenSurfaces.for_configuration(config)) == EARN_AND_WEAR, "iOS selling nothing (%s) earns, keeps the balance and the Wardrobe, and hides the shop and Full Journey" % config.get("purchase_mode", "no config"))
 	for config: Dictionary in [APP_STORE, TEST_STORE]:
 		_check(_parts(PollenSurfaces.for_configuration(config)) == EVERY_PART, "iOS with a store (%s) shows every part" % config.purchase_mode)
+	# Bundles: a Google Play or App Store build with its key, never the Test Store or a build without a key.
+	_check(PollenSurfaces.for_configuration(APP_STORE).bundles_visible(), "The App Store build sells bundles")
+	for config: Dictionary in [TEST_STORE, APP_STORE_NO_KEY, TESTER_ONLY]:
+		_check(not PollenSurfaces.for_configuration(config).bundles_visible(), "iOS %s sells no bundles" % config.get("purchase_mode"))
+	# The server's answer for the signed-in player (services/store_support.gd): unknown and on show, off holds every paid part.
+	var support: RefCounted = StoreSupport.new(_path("store-support"))
+	StoreSupport.use_shared(support)
+	support.scope_source = func() -> Dictionary: return {"server": SERVER, "owner": ME}
+	var selling: RefCounted = PollenSurfaces.for_configuration(APP_STORE)
+	_check(support.state(SERVER, ME) == StoreSupport.UNKNOWN and _parts(selling) == EVERY_PART and selling.bundles_visible(), "No answer yet: the iPhone build decides")
+	support.note(SERVER, ME, false)
+	_check(_parts(selling) == EARN_AND_WEAR and not selling.bundles_visible(), "The server takes no App Store purchases: the shop, bundles and Full Journey hide, earning and the Wardrobe stay")
+	_check(support.hides_paid() and not support.confirmed(SERVER, ME) and not support.may_buy() and support.read_now(), "and nothing may be bought on that answer")
+	support.note(SERVER, ME, true)
+	_check(_parts(selling) == EVERY_PART and selling.bundles_visible() and support.may_buy(), "It does: every part shows, and money may move on this run's answer")
+	var again: RefCounted = StoreSupport.new(support.path)
+	again.scope_source = support.scope_source
+	_check(again.state(SERVER, ME) == StoreSupport.ON and not again.read_this_session(SERVER, ME) and not again.may_buy() and not again.read_now(), "A restart keeps the answer for what shows, but money waits for a new read")
+	again.note(SERVER, ME, false)
+	_check(StoreSupport.new(support.path).state(SERVER, ME) == StoreSupport.OFF, "An off answer is kept on disk")
+	PlatformSupport.override_platform = PlatformSupport.ANDROID
+	_check(not again.hides_paid() and again.may_buy() and again.read_now(), "Android never waits on the App Store answer")
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	StoreSupport.use_shared(null)
 	PlatformSupport.override_platform = ""
 	PollenSurfaces.set_shared_for_tests(false)
 	_check(_parts(PollenSurfaces.shared()) == EARN_AND_WEAR, "Tests can pick the build that sells nothing")

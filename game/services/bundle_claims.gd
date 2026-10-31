@@ -5,7 +5,7 @@ extends RefCounted
 ## RevenueCat itself, credits each one once into its own ledger, and takes back
 ## refunded ones. So a claim is always safe to send again, in any order.
 ##
-## The store page sets a `pending` mark in a small file before Google Play's
+## The store page sets a `pending` mark in a small file before the store's
 ## sheet opens (mark_pending), so a purchase is never forgotten: not when the app
 ## is closed during the sheet, nor when the sheet reports a failure for a payment
 ## that settles later. Only a purchase the player cancelled drops the mark. While
@@ -86,7 +86,7 @@ func pending() -> bool:
 	var entry := _entry(context)
 	return bool(entry.get("pending", false)) and _now() - int(entry.get("since", 0)) <= MARK_DAYS * 86400
 
-## Sets the mark before a purchase opens Google Play's sheet. True when this
+## Sets the mark before a purchase opens the store's sheet. True when this
 ## call set it (a mark already waiting stays as it is).
 func mark_pending() -> bool:
 	var context := scope()
@@ -178,7 +178,9 @@ static func checked_answer(value: Variant) -> Dictionary:
 	var refunded: Array = []
 	for item: Variant in value.refunded:
 		if not item is Dictionary or not str(item.get("bundle", "")) in Bundles.ids() or not Typed.whole_number(item.get("amount")): continue
-		refunded.append({"bundle": str(item.bundle), "amount": Typed.as_int(item.amount), "order": str(item.get("order", ""))})
+		var back := {"bundle": str(item.bundle), "amount": Typed.as_int(item.amount), "order": str(item.get("order", ""))}
+		if item.get("store") == Bundles.APP_STORE: back.store = Bundles.APP_STORE
+		refunded.append(back)
 	return {"balance": Typed.as_int(value.balance), "credited": credited, "refunded": refunded}
 
 ## One credited purchase as kept, or {}.
@@ -190,6 +192,8 @@ static func checked_receipt(item: Variant) -> Dictionary:
 	if not order is String or (not order.is_empty() and _order.search(order) == null): return {}
 	var kept := {"bundle": str(item.bundle), "pollen": Typed.as_int(item.pollen), "first_gift": Typed.as_int(item.first_gift), "order": order,
 		"purchased_at": Typed.as_int(item.purchased_at), "usd_cents": Typed.as_int(item.usd_cents)}
+	# An App Store purchase names its store, so its receipt says "App Store transaction".
+	if item.get("store") == Bundles.APP_STORE: kept.store = Bundles.APP_STORE
 	# A kept receipt also has the balance its answer gave.
 	if Typed.whole_number(item.get("balance")): kept.balance = Typed.as_int(item.balance)
 	return kept

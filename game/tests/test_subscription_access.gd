@@ -1,13 +1,17 @@
 extends SceneTree
 ## Full Journey subscription states seen by the client: monthly, yearly, grace,
 ## expired, the grandfathered one-time product and no purchase, plus the
-## subscriber's Manage, Restore and Settings paths. Test doubles only.
+## subscriber's Manage, Restore and Settings paths, on Google Play and on iPhone
+## (where Subscribe waits for this run's server answer and Restore never does).
+## Test doubles only.
 
 const Main = preload("res://main.gd")
 const Purchases = preload("res://services/purchases.gd")
 const ChapterAccess = preload("res://services/chapter_access.gd")
 const Storage = preload("res://services/local_save.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 
 const PLAY := {"purchase_mode":"google_play","entitlement_id":"full_journey_play"}
 const TEST := {"purchase_mode":"test_store","entitlement_id":"full_journey"}
@@ -15,6 +19,10 @@ const NOW_MS := 1_800_000_000_000
 
 class RestoreProbe extends Purchases:
 	var restores := 0
+	var bought: Array = []
+	func purchase(offering_id: String, package_id: String) -> String:
+		bought.append([offering_id, package_id])
+		return "buy-%d" % bought.size()
 	var restore_answer: Dictionary = {}
 	func _connect_native() -> bool: return false
 	func is_available() -> bool: return true
@@ -33,6 +41,9 @@ static func payload(entry: Variant, mode: String = "google_play", entitlement: S
 	if entry is Dictionary: entitlements[entitlement] = entry
 	return {"schema_version":1,"mode":mode,"player_id":"p".repeat(22),"request_date_ms":NOW_MS,"entitlements":entitlements}
 
+static func app_store_entry(product: String, active: bool, expires_ms: Variant) -> Dictionary:
+	return {"active":active,"store":"APP_STORE","product_id":product,"sandbox":false,"expires_at_ms":expires_ms,"verification":"NOT_REQUESTED"}
+
 static func play_entry(product: String, active: bool, expires_ms: Variant) -> Dictionary:
 	return {"active":active,"store":"PLAY_STORE","product_id":product,"sandbox":false,"expires_at_ms":expires_ms,"verification":"NOT_REQUESTED"}
 
@@ -40,6 +51,7 @@ func _run() -> void:
 	_entitlement_states()
 	await _chapter_access_states()
 	await _subscriber_screens()
+	await _iphone_screens()
 	for path: String in paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -163,6 +175,77 @@ func _subscriber_screens() -> void:
 	_check(_button(app.overlay, "Full Journey") == null, "A build without a store has no Full Journey settings entry")
 	root.remove_child(app)
 	app.queue_free()
+	await process_frame
+
+## iPhone: the App Store packages with Apple's terms; Subscribe opens Apple's sheet only
+## after this run's capabilities read said the server takes App Store purchases;
+## Restore works either way and unlocks an App Store subscription; Manage opens
+## Apple's subscriptions page.
+func _iphone_screens() -> void:
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	var support: RefCounted = StoreSupport.new(_path("store-support"))
+	StoreSupport.use_shared(support)
+	var app := Main.new()
+	app.saves = Storage.new(_path("iphone"))
+	root.add_child(app)
+	app.set_process(false)
+	app.set_physics_process(false)
+	app.world.set_process(false)
+	app.purchases.queue_free()
+	var store := RestoreProbe.new()
+	var config := {"purchase_mode":"app_store","entitlement_id":"full_journey_play","revenuecat_public_key":"appl_synthetic","api_base_url":"https://after-you.example"}
+	store._configuration = config.duplicate(true)
+	app.purchases = store
+	app.add_child(store)
+	app.config.merge(config, true)
+	app.store_flow.store_configured = true
+	app.store_flow.store_owner = "p".repeat(22)
+	app.api.player_id = app.store_flow.store_owner
+	app.api.device_token = "d".repeat(43)
+	app.identity_loading = false
+	support.scope_source = func() -> Dictionary: return {"server": "https://after-you.example", "owner": "p".repeat(22)}
+	for i in range(3): await process_frame
+	app.store_flow.show_paywall(true)
+	app.store_flow.purchase_completed("offer", "get_offerings", {"current_id":"default","offerings":[{"id":"default","packages":[
+		{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly_ios","price":"$1.49"},
+		{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly_ios","price":"$12.99"}]}]})
+	var monthly := _button(app.overlay, "Subscribe · $1.49 a month")
+	_check(monthly != null and _button(app.overlay, "Subscribe · $12.99 a year") != null, "iPhone: the App Store's monthly and yearly packages with their prices")
+	_check(_label(app.overlay, PlayerCopy.SUBSCRIPTION_TERMS_APP_STORE) != null and _button(app.overlay, PlayerCopy.SUBSCRIPTION_TERMS_OF_USE) != null, "iPhone: Apple's renewal terms and the Terms of Use link")
+	# No read this run: Subscribe is refused and nothing opens.
+	if monthly != null: monthly.pressed.emit()
+	await process_frame
+	_check(store.bought.is_empty() and not app.store_flow.store_action_pending, "iPhone: Subscribe opens no sheet before this run's server answer")
+	# The answer is off: still refused, and Main hides paid content.
+	support.note("https://after-you.example", "p".repeat(22), false)
+	_check(app._paid_content_hidden(), "iPhone: a server that takes no App Store purchases hides paid content")
+	# Restore never waits on that answer: App Review needs it, and it charges nothing.
+	var restore := _button(app.overlay, "Restore purchases")
+	_check(restore != null, "iPhone: the paywall offers Restore purchases")
+	if restore != null: restore.pressed.emit()
+	await process_frame
+	_check(store.restores == 1 and app.store_flow.store_action_pending, "iPhone: Restore asks the App Store once")
+	store.customer_info = payload(app_store_entry("after_you_full_journey_yearly_ios", true, NOW_MS + 1000), "app_store")
+	app.store_flow.purchase_completed(app.store_flow.store_action_request, "restore_purchases", store.customer_info)
+	_check(store.has_entitlement() and _label(app.overlay, "Full Journey unlocked.") != null, "iPhone: restoring an active App Store subscription unlocks Full Journey")
+	var manage := _button(app.overlay, PlayerCopy.SUBSCRIPTION_MANAGE)
+	_check(manage != null and _label(app.overlay, PlayerCopy.SUBSCRIPTION_ACTIVE_IOS) != null and Purchases.subscriptions_url(app.config) == Purchases.APP_STORE_SUBSCRIPTIONS_URL, "iPhone: Manage subscription opens Apple's subscriptions page")
+	# The answer is on: Subscribe opens Apple's sheet.
+	store.customer_info = {}
+	support.note("https://after-you.example", "p".repeat(22), true)
+	_check(not app._paid_content_hidden(), "iPhone: a server that takes App Store purchases shows paid content")
+	app.store_flow.store_action_pending = false
+	app.store_flow.show_paywall(true)
+	app.store_flow.purchase_completed("offer-2", "get_offerings", {"current_id":"default","offerings":[{"id":"default","packages":[
+		{"id":"$rc_monthly","type":"MONTHLY","product_id":"after_you_full_journey_monthly_ios","price":"$1.49"}]}]})
+	monthly = _button(app.overlay, "Subscribe · $1.49 a month")
+	if monthly != null: monthly.pressed.emit()
+	await process_frame
+	_check(store.bought == [["default", "$rc_monthly"]], "iPhone: once this run's answer says yes, Subscribe opens the App Store's sheet: " + str(store.bought))
+	root.remove_child(app)
+	app.queue_free()
+	StoreSupport.use_shared(null)
+	PlatformSupport.override_platform = ""
 	await process_frame
 
 func _path(name: String) -> String:

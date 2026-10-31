@@ -4,7 +4,10 @@ extends SceneTree
 ## it (services/bundle_claims.gd, services/pollen_bundles.gd), with a stand-in
 ## host, a stand-in store (RevenueCat's purchases bridge) and a fake server:
 ## - it opens only while the server sells bundles and the build sells them
-##   (never on iPhone or the Test Store build);
+##   (never on a free iPhone build or the Test Store build);
+## - on iPhone: the App Store's own products and prices from the same "pollen"
+##   offering, Apple's wording, an App Store receipt line, prices only after this
+##   run's server answer, and no sheet without it;
 ## - the four bundles show the art, totals, bonus lines, Pollen per $1 and the
 ##   store's own prices from the "pollen" offering only; the first bundle line
 ##   shows only while that gift is on and unused, on one line with its percent;
@@ -26,6 +29,8 @@ const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 
 # Synthetic ids only.
 const ME := "bbbbbbbbbbbbbbbbbbbbbb"
@@ -53,6 +58,21 @@ class Host extends Node:
 	func _clear_overlay() -> void:
 		for child: Node in overlay.get_children(): child.queue_free()
 	func _toast(text: String) -> void: toasts.append(text)
+
+## An iPhone's Main: its one capabilities read this run (Main._read_store_support)
+## notes the server's answer, and the bundles that read carries.
+class IosHost extends Host:
+	var support: RefCounted
+	var store: RefCounted
+	var reads := 0
+	## "on", "off" (the server sells no App Store bundles) or "fail" (no answer).
+	var answer := "on"
+	func _read_store_support() -> bool:
+		reads += 1
+		if answer == "fail": return false
+		store.set_enabled(scope.server, scope.owner, true, true, answer == "on")
+		support.note(scope.server, scope.owner, answer == "on")
+		return answer == "on"
 
 ## The RevenueCat bridge's signals and calls (services/purchases.gd).
 class FakePurchases extends Node:
@@ -114,7 +134,7 @@ func _frames(count: int = 6) -> void:
 static func _offerings() -> Dictionary:
 	var packages: Array = []
 	for row: Array in [["pinch", "$0.99", 990000], ["pouch", "$3.99", 3990000], ["jar", "$7.99", 7990000], ["basket", "$19.99", 19990000]]:
-		packages.append({"id": "%s_package" % row[0], "product_id": Bundles.play_product(row[0]) + ":buy", "type": "CUSTOM", "price": row[1], "price_micros": float(row[2]), "currency": "USD"})
+		packages.append({"id": "%s_package" % row[0], "product_id": Bundles.product(row[0], Bundles.PLAY_STORE) + ":buy", "type": "CUSTOM", "price": row[1], "price_micros": float(row[2]), "currency": "USD"})
 	return {"schema_version": 1, "mode": "google_play", "current_id": "default", "offerings": [
 		{"id": "default", "packages": [{"id": "$rc_monthly", "product_id": "after_you_full_journey_monthly", "type": "MONTHLY", "price": "$0.99", "price_micros": 990000.0, "currency": "USD"}]},
 		{"id": "pollen", "packages": packages}]}
@@ -124,12 +144,22 @@ static func _view(gift: bool, percent: int = 0, balance: int = 9000) -> Dictiona
 		"wardrobe": {"items": [], "packs": [], "look": {}, "look_revision": 1.0, "offered": ["daisy"], "offered_packs": [], "sets": {}, "unlocked": []},
 		"bundles": {"first_gift": gift, "first_gift_percent": float(percent), "spent_usd_cents": 0.0}}
 
-static func _credited(bundle: String, gift: int, balance: int, order: String = "GPA.1234-5678-9012-34567") -> Dictionary:
-	return {"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": float(balance), "pending": false, "refunded": [],
-		"credited": [{"bundle": bundle, "pollen": float(Bundles.pollen(bundle)), "first_gift": float(gift), "order": order, "purchased_at": 1.8e12, "usd_cents": float(Bundles.usd_cents(bundle))}]}}
+static func _credited(bundle: String, gift: int, balance: int, order: String = "GPA.1234-5678-9012-34567", store: String = "") -> Dictionary:
+	var credited := {"bundle": bundle, "pollen": float(Bundles.pollen(bundle)), "first_gift": float(gift), "order": order, "purchased_at": 1.8e12, "usd_cents": float(Bundles.usd_cents(bundle))}
+	if not store.is_empty(): credited.store = store
+	return {"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": float(balance), "pending": false, "refunded": [], "credited": [credited]}}
 
-func _setup(server_bundles: bool = true, build_bundles: bool = true, sells: bool = true) -> Dictionary:
-	var host := Host.new()
+## The same "pollen" offering as an iPhone's SDK lists it: the App Store's products and prices.
+static func _ios_offerings() -> Dictionary:
+	var packages: Array = []
+	for row: Array in [["pinch", "$1.49", 1490000], ["pouch", "$4.99", 4990000], ["jar", "$8.99", 8990000], ["basket", "$21.99", 21990000]]:
+		packages.append({"id": row[0], "product_id": Bundles.product(row[0], Bundles.APP_STORE), "type": "CUSTOM", "price": row[1], "price_micros": float(row[2]), "currency": "USD"})
+	return {"schema_version": 1, "mode": "app_store", "current_id": "default", "offerings": [
+		{"id": "default", "packages": [{"id": "$rc_monthly", "product_id": "after_you_full_journey_monthly_ios", "type": "MONTHLY", "price": "$1.49", "price_micros": 1490000.0, "currency": "USD"}]},
+		{"id": "pollen", "packages": packages}]}
+
+func _setup(server_bundles: bool = true, build_bundles: bool = true, sells: bool = true, iphone: bool = false) -> Dictionary:
+	var host: Host = IosHost.new() if iphone else Host.new()
 	host.overlay = Control.new()
 	host.ui = Control.new()
 	for layer: Control in [host.overlay, host.ui]: layer.size = Vector2(1600, 738)
@@ -172,6 +202,7 @@ func _run() -> void:
 	await _offline_store()
 	await _first_tap_waits()
 	await _claims_service()
+	await _iphone()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -429,6 +460,71 @@ func _claims_service() -> void:
 	await _frames(2)
 
 ## Every visible word under `node`.
+## iPhone: the App Store's bundles at its prices, Apple's wording and receipt line,
+## and money only on this run's answer from the server.
+func _iphone() -> void:
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	var support: RefCounted = StoreSupport.new(_path("store-support"))
+	StoreSupport.use_shared(support)
+	var t := _setup(true, true, true, true)
+	support.scope_source = t.host._names_scope
+	t.host.support = support
+	t.host.store = t.store
+	t.purchases.offerings = _ios_offerings()
+	_check(Bundles.store() == Bundles.APP_STORE and Bundles.usd_cents("pinch") == 149 and Bundles.product("jar") == "after_you_pollen_jar_ios", "An iPhone buys from the App Store's products and prices")
+	t.flow.show_store()
+	await _frames()
+	var words := _texts(t.host.overlay)
+	_check(t.host.reads == 1, "The store asks the server once this run before it prices anything")
+	_check("$1.49" in words and "$4.99" in words and "$8.99" in words and "$21.99" in words and t.flow._packages.size() == 4, "Each price is the App Store's own: " + str(words))
+	for amount: String in ["3,356", "4,208", "4,894", "5,230"]:
+		_check(PlayerCopy.POLLEN_STORE_PER_DOLLAR % amount in words, "Pollen per $1 at the App Store's prices: %s in %s" % [amount, words])
+	_check(PlayerCopy.POLLEN_STORE_FOOT_IOS in words and not PlayerCopy.POLLEN_STORE_FOOT in words, "The footnote names the App Store")
+	t.flow.confirm("pouch")
+	var sheet: Node = t.host.ui.find_child("PollenStoreConfirm", true, false)
+	_check(sheet != null and PlayerCopy.POLLEN_STORE_CONFIRM_NOTE_IOS in _texts(sheet) and "$4.99" in _texts(sheet), "The confirm card says Apple charges it, at the App Store's price")
+	t.fake.replies = [_credited("pouch", 0, 30000, "2000000000000310", Bundles.APP_STORE)]
+	(sheet.find_child("PollenStoreConfirmBuy", true, false) as Button).pressed.emit()
+	await _frames(10)
+	_check(t.purchases.bought == [["pollen", "pouch"]], "Its Buy hands the App Store's Pouch package to the store")
+	var receipt: Node = t.host.ui.find_child("PollenStoreReceipt", true, false)
+	_check(receipt != null and PlayerCopy.POLLEN_STORE_APP_STORE_ORDER % ["$4.99", "2000000000000310"] in _texts(receipt), "The receipt names the App Store transaction: " + str(_texts(receipt) if receipt != null else []))
+	_check(t.claims.unseen().is_empty() and not t.claims.pending(), "Nothing waits after the claim")
+	t.host.queue_free()
+	await _frames(2)
+	# A server that sells no App Store bundles: the store prices nothing and opens no sheet.
+	support = StoreSupport.new(_path("store-support-off"))
+	StoreSupport.use_shared(support)
+	var off := _setup(true, true, true, true)
+	support.scope_source = off.host._names_scope
+	off.host.support = support
+	off.host.store = off.store
+	off.host.answer = "off"
+	off.purchases.offerings = _ios_offerings()
+	off.flow.show_store()
+	await _frames()
+	_check(off.host.reads == 1 and off.purchases.serial == 0 and off.flow._packages.is_empty() and not off.flow.available(), "No App Store bundles on the server: nothing priced, nothing to buy")
+	off.host.queue_free()
+	await _frames(2)
+	# No answer this run (the read failed): prices from the earlier answer may show, but Buy opens no sheet.
+	support = StoreSupport.new(_path("store-support-fail"))
+	StoreSupport.use_shared(support)
+	var failed := _setup(true, true, true, true)
+	support.scope_source = failed.host._names_scope
+	failed.host.support = support
+	failed.host.store = failed.store
+	failed.host.answer = "fail"
+	failed.purchases.offerings = _ios_offerings()
+	failed.flow.show_store()
+	await _frames()
+	failed.flow.buy("pinch")
+	await _frames(4)
+	_check(failed.purchases.bought.is_empty() and failed.host.toasts.has(PlayerCopy.POLLEN_STORE_OFFLINE) and not failed.claims.pending(), "Without this run's answer Buy opens no sheet and sets no claim mark")
+	failed.host.queue_free()
+	await _frames(2)
+	StoreSupport.use_shared(null)
+	PlatformSupport.override_platform = ""
+
 static func _texts(node: Node) -> Array:
 	var out: Array = []
 	if node == null: return out

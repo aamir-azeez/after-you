@@ -161,7 +161,7 @@ func _footer() -> Control:
 	ThemeRules.secondary(earn)
 	earn.pressed.connect(func() -> void: earn_pressed.emit())
 	row.add_child(earn)
-	var foot := ShopKit.text(PlayerCopy.POLLEN_STORE_FOOT, 14, MUTED)
+	var foot := ShopKit.text(PlayerCopy.for_platform(PlayerCopy.POLLEN_STORE_FOOT, PlayerCopy.POLLEN_STORE_FOOT_IOS), 14, MUTED)
 	foot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	foot.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART

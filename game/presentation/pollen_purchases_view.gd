@@ -32,7 +32,7 @@ const GUTTER := 10.0
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
 	var heading := ShopKit.text(PlayerCopy.POLLEN_PURCHASES_TITLE, 23, INK, title_font if title_font != null else ShopKit.heading_font())
 	column.add_child(heading)
-	column.add_child(_wrapped(PlayerCopy.POLLEN_PURCHASES_NOTE, 15, SOFT_INK))
+	column.add_child(_wrapped(PlayerCopy.for_platform(PlayerCopy.POLLEN_PURCHASES_NOTE, PlayerCopy.POLLEN_PURCHASES_NOTE_IOS), 15, SOFT_INK))
 	if bool(model.get("loading", false)): return
 	var lines: Array = model.get("lines", [])
 	if lines.is_empty():
@@ -63,7 +63,7 @@ static func _total(cents: int, title_font: Font) -> Control:
 	var words := ShopKit.text(PlayerCopy.POLLEN_PURCHASES_SPENT, ROW_SIZE, INK)
 	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(words)
-	column.add_child(_wrapped(PlayerCopy.POLLEN_PURCHASES_USD, 14, SOFT_INK))
+	column.add_child(_wrapped(PlayerCopy.for_platform(PlayerCopy.POLLEN_PURCHASES_USD, PlayerCopy.POLLEN_PURCHASES_USD_IOS), 14, SOFT_INK))
 	return box
 
 ## One bundle or refund: its art, then the name with its Pollen on the right,
@@ -107,7 +107,7 @@ static func _row(line: Dictionary, index: int, money: bool) -> Control:
 ## what the server kept (presentation/pollen_store_sheets.gd paid_line); the
 ## order alone without `money`.
 static func receipt_line(line: Dictionary, money: bool = true) -> String:
-	return StoreSheets.paid_line(PollenMoney.usd(int(line.usd_cents)) if money and int(line.get("usd_cents", -1)) >= 0 else "", str(line.get("order", "")))
+	return StoreSheets.paid_line(PollenMoney.usd(int(line.usd_cents)) if money and int(line.get("usd_cents", -1)) >= 0 else "", str(line.get("order", "")), str(line.get("store", "")))
 
 static func _wrapped(value: String, size: int, color: Color) -> Label:
 	var label := ShopKit.text(value, size, color)

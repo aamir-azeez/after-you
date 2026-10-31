@@ -66,7 +66,10 @@ static func _purchase(entry: Variant) -> Dictionary:
 	var order: Variant = entry.get("order", "")
 	if not order is String or (not order.is_empty() and _order.search(order) == null): return {}
 	var cents: Variant = entry.get("usd_cents")
-	return {"kind": entry.kind, "bundle": str(entry.bundle), "amount": Typed.as_int(amount), "at": Typed.as_int(entry.at), "order": order, "usd_cents": Typed.as_int(cents) if _count(cents) else -1}
+	var kept := {"kind": entry.kind, "bundle": str(entry.bundle), "amount": Typed.as_int(amount), "at": Typed.as_int(entry.at), "order": order, "usd_cents": Typed.as_int(cents) if _count(cents) else -1}
+	# An App Store line says so ("store": "app_store"); a Play line names no store, as before.
+	if entry.get("store") == Bundles.APP_STORE: kept["store"] = Bundles.APP_STORE
+	return kept
 
 static func _turn(entry: Variant) -> Dictionary:
 	if not entry is Dictionary or entry.get("kind") != "turn" or not Typed.whole_number(entry.get("amount")) or not _count(entry.get("at")): return {}

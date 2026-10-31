@@ -2,15 +2,20 @@ extends RefCounted
 ## How Pollen amounts read on screen: grouped digits ("24,000") and the small
 ## "about $X" line beside a price (POLLEN-RULES.md "Money"). The about figure
 ## uses the Pinch rate, 5,000 Pollen for the Pinch's price, which is the
-## cautious rate. Until the Pinch is on sale (Phase 6) its price is the US one;
-## pinch_price is the hook for the store's local price then.
+## cautious rate. The price is this phone's store's US one from the bundle table
+## ($0.99 on Google Play, $1.49 on the App Store); pinch_price is the hook for the
+## store's local price.
+const Bundles = preload("res://services/pollen_bundles.gd")
 const PINCH_POLLEN := 5000
-const PINCH_PRICE_USD := 0.99
 
-## The Pinch's price and how to write it: the store's local price once bundles
-## sell (`symbol` before the amount), else US dollars.
-static var pinch_price := PINCH_PRICE_USD
+## The Pinch's price and how to write it (`symbol` before the amount). A
+## pinch_price of 0 reads this phone's store's US price from the table, each time.
+static var pinch_price := 0.0
 static var symbol := "$"
+
+## The Pinch's price the about figure uses.
+static func pinch() -> float:
+	return pinch_price if pinch_price > 0.0 else Bundles.usd_cents("pinch") / 100.0
 
 ## 24000 -> "24,000"; negative amounts keep their sign.
 static func grouped(amount: int) -> String:
@@ -23,7 +28,7 @@ static func grouped(amount: int) -> String:
 
 ## The money an amount of Pollen is about worth at the Pinch rate: 20000 -> "$3.96".
 static func about(amount: int) -> String:
-	var value := float(maxi(amount, 0)) * pinch_price / float(PINCH_POLLEN)
+	var value := float(maxi(amount, 0)) * pinch() / float(PINCH_POLLEN)
 	return symbol + "%.2f" % snappedf(value, 0.01)
 
 ## US cents as the server keeps money spent (Google Play's US figure): 399 -> "$3.99".

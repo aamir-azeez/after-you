@@ -10,23 +10,30 @@ extends RefCounted
 ##   week, Buy and its cards, prices in Pollen or money, bundles, and the name
 ##   change price.
 ## - bundles_visible: the Pollen store and its bundles, the + on the balance
-##   chip and the short card's "Get Pollen" link. Only a Google Play build with
-##   its store key sells them: real Pollen comes only from real Play purchases,
-##   so the Test Store build and iOS never show them.
+##   chip and the short card's "Get Pollen" link. Only a Google Play build or an
+##   App Store build with its store key sells them: real Pollen comes only from
+##   real store purchases, so the Test Store build and a free iOS build never
+##   show them. The server decides per store (services/relay_online_session.gd
+##   bundles_supported).
 ## - full_journey_visible: Pollen words that name Full Journey. The monthly
 ##   grant card, the Full Journey boost lines after a turn and the odds note's
 ##   paid chapter sentence.
 ##
 ## A build that sells nothing (Purchases.paid_content_hidden: iOS without a
 ## store it can use) earns, holds a balance and wears what it owns, but shows no
-## shop, no price and no Full Journey until it sells through Apple. Android,
-## desktop and an iOS build with a store show every part. The server still
-## decides whether each part is on for the player.
+## shop, no price and no Full Journey. Android, desktop and an iOS build with a
+## store show every part. The server still decides whether each part is on for
+## the player; on iPhone, Main also hides the shop and Full Journey while the
+## server says it takes no App Store purchases (services/store_support.gd).
 const Purchases = preload("res://services/purchases.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 const PATH := "res://services/pollen_surfaces.gd"
 
 var _sells := true
 var _bundles := false
+## () -> bool: true while the server hides this build's paid parts (an iOS store build: StoreSupport.hides_paid).
+var _held := Callable()
 
 func _init(build_sells: bool = true, build_bundles: bool = false) -> void:
 	_sells = build_sells
@@ -35,8 +42,14 @@ func _init(build_sells: bool = true, build_bundles: bool = false) -> void:
 ## The surfaces for a build `configuration` (app_config.json).
 static func for_configuration(configuration: Dictionary) -> RefCounted:
 	var sells := not Purchases.paid_content_hidden(configuration)
-	var play := str(configuration.get("purchase_mode", "")) == "google_play" and Purchases.store_enabled(configuration) and not str(configuration.get("revenuecat_public_key", "")).is_empty()
-	return load(PATH).new(sells, play)
+	var mode := str(configuration.get("purchase_mode", ""))
+	var store := mode in ["google_play", "app_store"] and Purchases.store_enabled(configuration) and not str(configuration.get("revenuecat_public_key", "")).is_empty()
+	var surfaces: RefCounted = load(PATH).new(sells, store)
+	if sells and PlatformSupport.is_ios(): surfaces._held = func() -> bool: return StoreSupport.shared().hides_paid()
+	return surfaces
+
+func _selling() -> bool:
+	return _sells and not (_held.is_valid() and _held.call())
 
 ## Read once: the build's configuration never changes while the app runs.
 static var _shared: RefCounted = null
@@ -60,10 +73,10 @@ func wardrobe_visible() -> bool:
 	return true
 
 func shop_visible() -> bool:
-	return _sells
+	return _selling()
 
 func bundles_visible() -> bool:
-	return _bundles
+	return _bundles and _selling()
 
 func full_journey_visible() -> bool:
-	return _sells
+	return _selling()

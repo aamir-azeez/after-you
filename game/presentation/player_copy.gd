@@ -208,8 +208,10 @@ const SETTINGS_POLLEN_PURCHASES_NOTE := "Your balance, total money spent, bundle
 # The purchases card on that page (presentation/pollen_purchases_view.gd).
 const POLLEN_PURCHASES_TITLE := "Purchases"
 const POLLEN_PURCHASES_NOTE := "Pollen bundles you bought, each with its Google Play receipt."
+const POLLEN_PURCHASES_NOTE_IOS := "Pollen bundles you bought, each with its store receipt."
 const POLLEN_PURCHASES_SPENT := "spent in total"
 const POLLEN_PURCHASES_USD := "In US dollars, as Google Play reported each purchase."
+const POLLEN_PURCHASES_USD_IOS := "In US dollars, as each store reported the purchase."
 const POLLEN_PURCHASES_NONE := "No purchases yet."
 const POLLEN_PURCHASE_REFUNDED := "%s refunded"
 
@@ -313,11 +315,13 @@ const POLLEN_STORE_PER_DOLLAR := "%s Pollen per $1"
 const POLLEN_STORE_PER_UNIT := "%s Pollen per 1 %s"
 const POLLEN_STORE_EARN := "Earn Pollen free by playing"
 const POLLEN_STORE_FOOT := "Google Play shows the price in your currency before you pay. Receipts: Settings › Account & recovery."
+const POLLEN_STORE_FOOT_IOS := "The App Store shows the price in your currency before you pay. Receipts: Settings › Account & recovery."
 const POLLEN_STORE_LOADING := "Opening the store…"
 const POLLEN_STORE_OFFLINE := "The store isn't reachable right now. Try again in a moment."
 ## The confirm card ("Buy a Pouch?") with its plain sums.
 const POLLEN_STORE_CONFIRM_TITLE := "Buy a %s?"
 const POLLEN_STORE_CONFIRM_NOTE := "Charged by Google Play. Pollen arrives right after."
+const POLLEN_STORE_CONFIRM_NOTE_IOS := "Charged to your Apple Account. Pollen arrives right after."
 const POLLEN_STORE_LINE_BONUS := "%s, with its %s bonus"
 const POLLEN_STORE_GIFT := "First bundle gift (%d%%)"
 const POLLEN_STORE_YOU_GET := "You get"
@@ -331,9 +335,12 @@ const POLLEN_STORE_BALANCE := "Balance"
 const POLLEN_STORE_PAID := "Paid"
 const POLLEN_STORE_ORDER := "%s · Google Play order %s"
 const POLLEN_STORE_ORDER_ONLY := "Google Play order %s"
+## The same for an App Store purchase, by its transaction id (the line names its own store on any phone).
+const POLLEN_STORE_APP_STORE_ORDER := "%s · App Store transaction %s"
+const POLLEN_STORE_APP_STORE_ORDER_ONLY := "App Store transaction %s"
 const POLLEN_STORE_OPEN_WARDROBE := "Open the Wardrobe"
 const POLLEN_STORE_DONE := "Done"
-## After Google Play took the payment but the server has not answered yet.
+## After the store took the payment but the server has not answered yet.
 const POLLEN_STORE_ON_ITS_WAY := "Your purchase went through. Your Pollen arrives as soon as the game reaches the server."
 
 # End-of-run reactions (presentation/end_reactions.gd).

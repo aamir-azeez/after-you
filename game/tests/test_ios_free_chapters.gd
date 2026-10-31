@@ -6,6 +6,8 @@ extends SceneTree
 ## exactly what they showed before. Joining a friend's paid room keeps its card details.
 ## Home's keepsake and Hard totals, the keepsakes standing on Home, and What's new
 ## count and show the free chapters alone there, and nothing else changes elsewhere.
+## An iPhone that sells does the same while the server says it takes no App Store
+## purchases (services/store_support.gd), and shows everything again once it does.
 
 const Main = preload("res://tests/unlocked_main.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
@@ -20,6 +22,7 @@ const Catalog = preload("res://services/home_keepsake_catalog.gd")
 const HardMode = preload("res://services/hard_mode.gd")
 const Changelog = preload("res://services/changelog.gd")
 const States = preload("res://services/home_keepsake_states.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 ## Earned places: a free chapter finished solo, so its hard plays open and Home shows
 ## the Hard count, and a paid place earned in a friend's room.
 const EARNED := {"first-steps/a-little-lift": {"solo": true}, "first-steps/a-place-to-grow": {"solo": true},
@@ -150,6 +153,26 @@ func _run() -> void:
 		_check(hard_grid != null and hard_grid.get_children().all(func(card: Node) -> bool: return not str(card.name).begins_with("PaidLevel_")), "Hard in Play Solo lists no paid chapter either" + label)
 		app.journey_flow.hard = false
 
+
+	# An iPhone that sells, while the server says it takes no App Store purchases: the free chapters alone.
+	var support: RefCounted = StoreSupport.new(_path("ios-free-store-support"))
+	StoreSupport.use_shared(support)
+	support.scope_source = func() -> Dictionary: return {"server": "https://ios-free.example.test", "owner": "P".repeat(22)}
+	var unknown: Dictionary = await _surfaces(app, PlatformSupport.IOS, APP_STORE)
+	_check(unknown.store_rows == [true, true], "Before any server answer an iPhone that sells shows its store rows")
+	unknown.erase("store_rows")
+	_check(unknown == baseline, "Before any server answer an iPhone that sells shows what it showed before: " + _differences(unknown, baseline))
+	support.note("https://ios-free.example.test", "P".repeat(22), false)
+	var held: Dictionary = await _surfaces(app, PlatformSupport.IOS, APP_STORE)
+	_check(held.paid_cards == 0 and held.locked_cards == 0 and held.together_paid == 0 and held.islands == 3, "A server without App Store purchases: no paid or locked chapter and the three free islands")
+	_check(not held.home_offer and held.store_rows == [false, false] and not held.hosting_row and not held.grant_card and held.summary == PlayerCopy.SETTINGS_ACCOUNT_SUMMARY_FREE,
+		"A server without App Store purchases: no Full Journey offer, store rows, hosting row or monthly card")
+	support.note("https://ios-free.example.test", "P".repeat(22), true)
+	var open: Dictionary = await _surfaces(app, PlatformSupport.IOS, APP_STORE)
+	_check(open.store_rows == [true, true], "Once the server takes App Store purchases the store rows show again")
+	open.erase("store_rows")
+	_check(open == baseline, "and everything else shows as before: " + _differences(open, baseline))
+	StoreSupport.use_shared(null)
 
 	# A friend's paid room joined from a free-only build keeps its part count.
 	PlatformSupport.override_platform = PlatformSupport.IOS

@@ -24,6 +24,8 @@ const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
+const PlatformSupport = preload("res://services/platform_support.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const OwnLook = preload("res://services/own_look.gd")
@@ -424,6 +426,8 @@ func load_capabilities() -> bool:
 	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), wardrobe_supported(), shop_supported(), bundles_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_item_blooms(str(scope.server), str(scope.owner), item_blooms_supported())
 	if not scope.is_empty(): PollenGrant.shared().set_enabled(str(scope.server), str(scope.owner), grant_supported())
+	# Only an iPhone asks whether the server takes App Store purchases (services/store_support.gd).
+	if not scope.is_empty() and PlatformSupport.is_ios(): StoreSupport.shared().note(str(scope.server), str(scope.owner), app_store_full_journey_supported())
 	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()
 	if coordinator != null: coordinator.supported_simulation_versions = _simulation_versions()
 	return true
@@ -1270,9 +1274,16 @@ func wardrobe_supported() -> bool:
 func shop_supported() -> bool:
 	return pollen_supported() and Typed.equal(capabilities.get("pollen_shop_version"), 1.0)
 
-## The server sells Pollen bundles (POLLEN_BUNDLES, never without the shop).
+## The server sells Pollen bundles in this phone's store (never without the shop): Google
+## Play's (POLLEN_BUNDLES) anywhere but iOS, the App Store's (POLLEN_BUNDLES_APP_STORE) on iOS.
+## Each store switches on and off by itself.
 func bundles_supported() -> bool:
-	return shop_supported() and Typed.equal(capabilities.get("pollen_bundles_version"), 1.0)
+	var field := "pollen_app_store_bundles_version" if PlatformSupport.is_ios() else "pollen_bundles_version"
+	return shop_supported() and Typed.equal(capabilities.get(field), 1.0)
+
+## The server admits App Store subscribers to Full Journey (sent only to an App Store build).
+func app_store_full_journey_supported() -> bool:
+	return Typed.equal(capabilities.get("app_store_full_journey_version"), 1.0)
 
 ## The server pays Pollen for turns (services/pollen_wallet.gd).
 func pollen_supported() -> bool:

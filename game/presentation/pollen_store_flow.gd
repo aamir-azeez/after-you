@@ -1,9 +1,12 @@
 extends Node
-## The Pollen store (Pollen board 2): the page, its confirm card, Google Play's
-## own sheet, and the receipt. It sells only while the server has bundles on
-## (POLLEN_BUNDLES, never without the shop) and the build sells them (a Google
-## Play build with its store key: services/pollen_surfaces.gd bundles_visible).
-## iPhone and the Test Store build never open it.
+## The Pollen store (Pollen board 2): the page, its confirm card, the store's
+## own sheet (Google Play, or the App Store on iPhone), and the receipt. It
+## sells only while the server has this store's bundles on (POLLEN_BUNDLES on
+## Play, POLLEN_BUNDLES_APP_STORE on iPhone, never without the shop) and the
+## build sells them (a Google Play or App Store build with its store key:
+## services/pollen_surfaces.gd bundles_visible). The Test Store build and a free
+## iPhone build never open it. On iPhone the prices load, and Buy opens Apple's
+## sheet, only after this run's capabilities read (Main._read_store_support).
 ##
 ## What a bundle adds is never decided here. Before Google Play's sheet opens,
 ## the flow marks a claim as waiting (services/bundle_claims.gd mark_pending), so
@@ -40,6 +43,7 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 
 const MODE_POLLEN_STORE := "pollen_store"
 ## How long the store waits for RevenueCat to be set up for this player.
@@ -146,6 +150,11 @@ func load_store() -> void:
 	_redraw()
 	var ready: bool = await _store_ready()
 	if not is_open() or generation != _generation: return
+	# An iPhone asks the server once this run before it prices anything; its answer may close the store.
+	if ready and host.has_method("_read_store_support"):
+		await host._read_store_support()
+		if not is_open() or generation != _generation: return
+		ready = available()
 	if not ready:
 		_fail_load()
 		return
@@ -221,20 +230,25 @@ func confirm(id: String) -> void:
 	var gift := Bundles.gift(id, int(view.get("bundles", {}).get("first_gift_percent", 0))) if bool(view.get("bundles", {}).get("first_gift", false)) else 0
 	_sheet = weakref(Sheets.confirm(host.ui, id, str(package.price), gift, _balance(), _balance_known(), func() -> void: buy(id), _page.button(id)))
 
-## The confirm card's Buy: hands over to Google Play's sheet.
+## The confirm card's Buy: hands over to the store's sheet.
 func buy(id: String) -> void:
 	_close_sheet()
 	if not is_open() or not _packages.has(id) or not _buying.is_empty() or not available(): return
+	# Money moves only on this run's answer (services/store_support.gd): on iPhone, available() above
+	# then reads the bundles that same capabilities read set.
+	if not StoreSupport.shared().read_now():
+		_toast(PlayerCopy.POLLEN_STORE_OFFLINE)
+		return
 	_bought = _packages[id].duplicate()
 	_bought.bundle = id
 	# The mark goes on before the sheet, so a purchase is claimed even if the app closes during it.
 	_marked = _claims().mark_pending()
 	_buying = host.purchases.purchase(str(_bought.offering_id), str(_bought.id))
 
-## After Google Play took the payment: the server claims it, then the receipt shows.
+## After the store took the payment: the server claims it, then the receipt shows.
 func _claim_after_purchase() -> void:
 	var answer: Dictionary = {}
-	# RevenueCat may list a purchase a moment after Google Play's sheet closes: a few quick tries, then the flush's.
+	# RevenueCat may list a purchase a moment after the store's sheet closes: a few quick tries, then the flush's.
 	for attempt in range(CLAIM_TRIES):
 		if attempt > 0: await get_tree().create_timer(CLAIM_PAUSE_S * attempt).timeout
 		answer = await _claims().claim()

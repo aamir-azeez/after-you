@@ -56,6 +56,7 @@ const PollenGrant = preload("res://services/pollen_grant.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrantCard = preload("res://presentation/pollen_grant_card.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
+const StoreSupport = preload("res://services/store_support.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
 const RoomReactions = preload("res://presentation/room_reactions.gd")
@@ -367,6 +368,8 @@ func _ready() -> void:
 	pollen_client=PollenClient.new(api,_names_scope)
 	# The player's own look follows the signed-in player (services/own_look.gd).
 	Wardrobe.shared().scope_source=_names_scope
+	# On iPhone, whether the server takes App Store purchases follows the signed-in player (services/store_support.gd).
+	StoreSupport.shared().scope_source=_names_scope
 	# Home's Wardrobe row follows the server's wardrobe capability and the player's look.
 	Wardrobe.shared().changed.connect(_refresh_home_wardrobe)
 	# Bundle purchases whose claim got no answer go again with each flush (services/bundle_claims.gd).
@@ -2668,9 +2671,23 @@ func _full_journey_access() -> bool:
 
 ## True on an iOS build that sells nothing: every paid surface (chapter cards,
 ## earlier islands, the Full Journey offer, hosting access) is left out, never
-## shown locked. The one rule is Purchases.paid_content_hidden.
+## shown locked. The one rule is Purchases.paid_content_hidden, and on an
+## iPhone that sells, the server saying it takes no App Store purchases
+## (services/store_support.gd hides_paid), read when each screen is drawn.
 func _paid_content_hidden() -> bool:
-	return Purchases.paid_content_hidden(config)
+	return Purchases.paid_content_hidden(config) or StoreSupport.shared().hides_paid()
+
+## Before an iPhone purchase sheet opens: one capabilities read in this run of
+## the app, then whether it said the server takes App Store purchases
+## (StoreSupport.may_buy). Every other build answers true at once.
+func _read_store_support() -> bool:
+	if not PlatformSupport.is_ios(): return true
+	var scope := _names_scope()
+	if scope.is_empty(): return false
+	if not StoreSupport.shared().read_this_session(str(scope.server), str(scope.owner)):
+		ensure_relay_session()
+		await relay_session.load_capabilities()
+	return StoreSupport.shared().may_buy()
 
 ## The monthly grant card names Full Journey, so this build's configuration
 ## decides it the way every Pollen surface does (services/pollen_surfaces.gd).
