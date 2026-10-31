@@ -147,6 +147,9 @@ static func _label(text: String, color: Color) -> Label:
 	label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return label
 
+## The meta a line carries on its first showing (once).
+const FIRST_SHOWN := "pollen_first_shown"
+
 ## The line for a room screen, shown once per credit: on the first screen drawn
 ## for the turn, and again only when that same screen draws again (a poll, a
 ## resize). Another screen (the chapter's end card after the waiting one), the
@@ -155,8 +158,7 @@ static func _label(text: String, color: Color) -> Label:
 ## `seen` is the screen owner's memory of what it showed ({} to start, kept per
 ## room view); `screen` names the screen; `receipt` is the turn's room receipt,
 ## or room_clear(room) for the first clear a room's finish paid this player.
-## The line's first showing carries FIRST_SHOWN, so its screen can sound it once.
-const FIRST_SHOWN := "pollen_first_shown"
+## Its first showing carries the FIRST_SHOWN meta, so its screen sounds it once.
 static func once(seen: Dictionary, screen: String, scope: Dictionary, receipt: Dictionary, partner: String, color: Color, store: RefCounted = null) -> Control:
 	if scope.is_empty(): return null
 	var wallet: RefCounted = store if store != null else PollenWallet.shared()

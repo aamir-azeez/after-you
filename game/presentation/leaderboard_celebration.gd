@@ -73,7 +73,8 @@ const HANDOVER := 1.55
 ## The second place arch's height, in stage heights from the pair's floor.
 const ARCH_RISE := 0.9
 
-## The tiers. `seconds` of motion; `frame` the setting (card, arch, gold);
+## The tiers. `cue` the tier's sound (a fixed cue of services/sound_cues.gd,
+## played by whoever opened it); `seconds` of motion; `frame` the setting (card, arch, gold);
 ## `height` of the pair on screen and `aspect` of their view; `gap` metres
 ## from the middle to each pip; `width` of the stage; `card` width when framed;
 ## `leaves` the loose leaves as [x, y, turn] in stage heights from the pair's

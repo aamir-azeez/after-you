@@ -14,6 +14,11 @@ class Probe:
 		super(key, step, gain, live_play)
 		last_key = key
 
+## A flow's host: Main, as far as play_on reads it.
+class SoundHost:
+	extends Object
+	var soundscape: Node
+
 ## A world that only reports moving mechanisms.
 class FakeWorld:
 	extends Node3D
@@ -656,8 +661,12 @@ func _check_loops() -> void:
 	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
 	_check(_loop_playing(probe, "water_near") and _loop_voice(probe, "spout") != null, "Showing the world again brings back what still sounds")
 	# The pause card: the screen says paused, and the regular check hushes the water.
-	var paused := [true]
+	var paused := [false]
 	probe.quiet_while = func() -> bool: return paused[0]
+	probe._on_call_due()
+	_check(probe.call_voice.playing, "A shore wash plays when its call is due")
+	probe.call_voice.stop()
+	paused[0] = true
 	probe._on_call_due()
 	_check(not probe.call_voice.playing, "No shore wash starts once the screen is paused")
 	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
@@ -700,6 +709,9 @@ func _check_fixed_cues() -> void:
 		var span: Vector2 = SoundCues.CUES[key].range
 		unchanged = unchanged and Soundscape.fixed_pitch(key) == lerpf(span.x, span.y, Soundscape.identity_unit(["keepsake", key]))
 	_check(unchanged, "Every keepsake beat keeps the one pitch it had before drops had variants")
+	var pinned := {"well_plunk": -0.387539, "water_rise": 0.764946, "island_bloomed": 3.383716, "bell_rung": 0.767959}
+	for key: String in pinned:
+		_check(absf(Soundscape.fixed_pitch(key) - float(pinned[key])) < 0.00001, "The %s keepsake beat keeps its pinned pitch: %f" % [key, Soundscape.fixed_pitch(key)])
 	var drops: Array = []
 	var walk := true
 	var drip_span: Vector2 = SoundCues.CUES.drip.range
@@ -724,8 +736,11 @@ func _check_fixed_cues() -> void:
 		probe.begin_turn("turn-of-the-tide@2", "slack-water")
 		for event: String in ["water_rise", "bridge_opened", "water_rise", "bridge_closed"]:
 			if probe == busy:
+				# A keepsake beat and screen sounds on the turn's own clips, and water.
 				probe.play_fixed_cue("drip", 2)
-				probe.play_fixed_cue("ui_pollen")
+				probe.play_fixed_cue("water_rise")
+				probe.play_fixed_cue("ui_worn")
+				probe.play_fixed_cue("ui_first")
 			probe.consume_turn_events([event], ["b|" + event], true)
 			heard[index].append(_voice_sound(_last_cue(probe)))
 	_check(heard[0] == heard[1], "Keepsake and screen cues never move a turn's pitches: %s" % [heard])
@@ -737,6 +752,8 @@ func _check_fixed_cues() -> void:
 	busy.play_fixed_cue("ui_bought")
 	busy.set_backgrounded(false)
 	_check(busy.next_voice == played, "Sound off or the app in the background plays no fixed cue")
+	# A new frame: the turn above already rang ui_first in this one.
+	await process_frame
 	busy.play_fixed_cue("ui_first")
 	_check(busy.long_voice.playing and busy.long_voice.stream == SoundCues.BELL and is_equal_approx(busy.long_voice.pitch_scale, 1.0), "First place rings the bell on its own voice at its pitch")
 	busy.play_fixed_cue("not-a-cue")
@@ -746,6 +763,25 @@ func _check_fixed_cues() -> void:
 	Soundscape.play_on(null, "ui_bought")
 	_check(busy.next_voice == played, "A host with no soundscape plays nothing and does not fail")
 	host.free()
+	var owner := Tuned.new()
+	owner.max_cues_per_frame = 0
+	root.add_child(owner)
+	owner.configure({"sound": true, "haptics": false})
+	var main_like := SoundHost.new()
+	main_like.soundscape = owner
+	Soundscape.play_on(main_like, "ui_bought")
+	_check(owner.next_voice == 1 and owner.voices[0].playing and owner.voices[0].stream == SoundCues.BLOOM, "A host's soundscape plays the cue asked of it")
+	# Two Pollen lines on one card: the same cue twice in a frame sounds once.
+	owner.play_fixed_cue("ui_pollen")
+	owner.play_fixed_cue("ui_pollen")
+	owner.play_fixed_cue("drip", 1)
+	owner.play_fixed_cue("drip", 2)
+	_check(owner.next_voice == 4, "The same fixed cue twice in one frame sounds once; another variant still sounds")
+	await process_frame
+	owner.play_fixed_cue("ui_pollen")
+	_check(owner.next_voice == 0, "and the next frame may sound it again")
+	main_like.free()
+	owner.queue_free()
 	plain.queue_free()
 	busy.queue_free()
 
@@ -843,7 +879,7 @@ func _run() -> void:
 	await _check_calls()
 	await _check_loops()
 	_check_reduced_motion()
-	_check_fixed_cues()
+	await _check_fixed_cues()
 	sound.queue_free()
 	await process_frame
 	# Let the audio thread consume its queued stop commands before shutting down.

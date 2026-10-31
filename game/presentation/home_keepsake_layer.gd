@@ -52,8 +52,8 @@ const FLOOR_INSET := 0.25
 var _world: Node3D
 var _free_only := false
 var together_hard := false
-## (cue: String, variant: int) -> void: plays one keepsake sound; variant 0
-## is a beat's own cue, a higher one the next drop of a run (soundscape fixed_pitch).
+## (cue: String, variant: int) -> void: plays one keepsake sound. Variant n is
+## the n-th drop of a water run (soundscape fixed_pitch); 0 for everything else.
 var cue: Callable
 ## A ride's joy (keepsake_anim.gd): (pip: Node3D) -> void pops a heart over the
 ## pip, and () -> void taps the phone lightly (Settings' Haptics decides).

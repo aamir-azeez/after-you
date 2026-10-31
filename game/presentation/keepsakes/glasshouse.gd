@@ -109,8 +109,8 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 				anim.move(petal, "position", bud + Vector3(cos(angle), sin(angle), 0) * 0.09 + Vector3(0, 0, 0.02), 1.5, 0.3, Tween.TRANS_BACK, Tween.EASE_OUT)
 			anim.burst(anim.fx, bud * GROWN + Vector3(0, 0.3, 0.1), 6, 0.45, 1.7, 0.6)
 			anim.sound(str(sounds.get("base", "")), 1.5)
-			# Each drop drips into the glasshouse as it arrives (after the beat's
-			# own cue, which Reduce motion plays alone).
+			# Each drop drips into the glasshouse as it arrives. Water always
+			# follows a beat's own cue, which Reduce motion plays alone.
 			for index in range(4): anim.sound("drip", 0.6 + index * 0.12, index)
 		"together":
 			var can: Node3D = parts.can
@@ -121,8 +121,8 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 				anim.set_at(drop, "visible", true, 0.25 + index * 0.08)
 				anim.move(drop, "position", CAN + Vector3(0.6, 0.1, 0), 0.25 + index * 0.08, 0.25, Tween.TRANS_QUAD, Tween.EASE_IN)
 				anim.set_at(drop, "visible", false, 0.5 + index * 0.08)
-				anim.sound("drip", 0.5 + index * 0.08, index + 4)
 			anim.sound(str(sounds.get("together", "")), 0.0)
+			for index in range(3): anim.sound("drip", 0.5 + index * 0.08, index + 4)
 		"hard":
 			# The vines' flowers open.
 			for side: int in [-1, 1]:

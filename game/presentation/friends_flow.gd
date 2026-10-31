@@ -25,6 +25,7 @@ extends Node
 ##   (player_id), _paid_content_hidden and saves (Reduce motion), for the page
 ##   opened over Friends; and for a run's replay,
 ##   presentation/shared_replay_launch.gd's host contract
+## - sound: soundscape when Main has it (play_fixed_cue), for a celebration's tier
 ## Main asks is_open() and drives the screen through close(), hosting_hint(),
 ## refresh() and confirm_invite_link(). refresh() calls the screen's private
 ## _refresh, as Main's alert routing did.

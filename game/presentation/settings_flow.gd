@@ -17,7 +17,7 @@ extends Node
 ## at call time, so Main or a test can swap a service):
 ## - services: saves, _apply_settings, _play_store_enabled, identity_data, api,
 ##   secrets, get_tree, soundscape (tap_haptic: a flipped tile's tick and
-##   a turned spirit's)
+##   a turned spirit's; play_fixed_cue: a flipped tile's click)
 ## - screen: mode, running, overlay, ui, _clear_overlay, _back_button, _card,
 ##   _label, _toast
 ## - flows (flow to flow, through the rows table): notification_flow
@@ -38,6 +38,8 @@ const LocalSave = preload("res://services/local_save.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+## A flipped tile's tick sounds on the host's soundscape (play_on).
+const Soundscape = preload("res://services/soundscape.gd")
 const Rows = preload("res://presentation/settings_rows.gd")
 const Kit = preload("res://presentation/settings_kit.gd")
 const Spirit = preload("res://presentation/settings_spirit.gd")
@@ -506,7 +508,7 @@ func _save_change(row: Dictionary, value: Variant) -> void:
 		# and a soft click (when sound is on, which a tile turning it off is not).
 		if row.kind == Rows.TOGGLE:
 			_tap_haptic()
-			if is_instance_valid(host.soundscape): host.soundscape.play_fixed_cue("ui_tap")
+			Soundscape.play_on(host, "ui_tap")
 	refresh()
 
 ## Puts every row on show, the rail's summaries, the reset and the spirit in

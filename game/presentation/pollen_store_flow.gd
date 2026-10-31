@@ -25,6 +25,7 @@ extends Node
 ##   set-up for this player, shared with Full Journey)
 ## - screen: mode, running, overlay, ui, _clear_overlay, _toast, and
 ##   _mark_screen_back when Main has it
+## - soundscape when Main has it (play_fixed_cue): a receipt's sound
 ## - show_pollen_from_play() -> bool (Pollen from play, presentation/pollen_play_flow.gd,
 ##   true once it opened), for "Earn Pollen free by playing"; its Back comes back here
 ## It asks Main to leave through back_requested and to open the Wardrobe

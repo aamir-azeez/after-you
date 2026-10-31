@@ -9,6 +9,8 @@ extends Node
 ## - services: api, _names_scope, saves (reduced motion)
 ## - screen: mode, running, overlay (the page's parent), ui (the cards' parent),
 ##   _clear_overlay, _toast, and _mark_screen_back when Main has it (Android Back)
+## - soundscape when Main has it (play_fixed_cue): worn, taken off and bought.
+##   wear_item() stays quiet: its caller (a room's Wear it) sounds it on its own.
 ## It asks Main to leave through back_requested. Settings opens it with
 ## show_wardrobe() when available(), and the display name flow calls refresh()
 ## after a saved change.
@@ -209,7 +211,6 @@ func wear_item(id: String) -> bool:
 	var look: Dictionary = _view().get("look", {}).duplicate()
 	look[Catalog.slot(id)] = id
 	var answer: Dictionary = await _client().wear(look)
-	if answer.get("ok", false): Soundscape.play_on(host, "ui_worn")
 	_redraw()
 	return bool(answer.get("ok", false))
 

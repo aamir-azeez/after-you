@@ -2584,6 +2584,8 @@ func _wear_dropped(item: String) -> void:
 	var worn: bool = await wear_item.call(item)
 	if not is_inside_tree() or mode != "turn_saved_wearing": return
 	if worn:
+		# Main's soundscape is quiet under the room: the room's own says it.
+		if is_instance_valid(soundscape): soundscape.play_fixed_cue("ui_worn")
 		_after_turn_saved()
 		return
 	mode = "turn_saved"

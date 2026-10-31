@@ -590,6 +590,14 @@ func _check_play() -> void:
 	_check(_pose(layer, "the-wishing-well") == lit, "With Reduce motion nothing slides: the lit pose holds")
 	await create_timer(0.9).timeout
 	_check(not stage.keepsake_playing() and _pose(layer, "the-wishing-well") == well_rest, "and after a moment everything is back at rest")
+	for id: String in WATER_HEARD:
+		cues.clear()
+		water.clear()
+		stage.play_keepsake(id)
+		await create_timer(0.1).timeout
+		layer.stop_play()
+		var base: String = States.entries()[States.entries().map(func(entry: Dictionary) -> String: return entry.id).find(id)].keepsake.sounds.base
+		_check(cues == [base] and water.is_empty(), "With Reduce motion %s plays its base cue alone, no water: %s %s" % [id, cues, water])
 	world.reduced_motion = false
 	# A tap on another keepsake ends the first in its rest pose and plays the new one.
 	var well_pose := _pose(layer, "the-wishing-well")

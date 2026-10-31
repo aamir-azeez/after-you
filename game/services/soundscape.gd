@@ -84,6 +84,8 @@ var long_voice: AudioStreamPlayer
 var max_cues_per_frame := MAX_CUES_PER_FRAME
 var _cue_frame := -1
 var _frame_cues := 0
+## Fixed cues (play_fixed_cue) already heard this frame, as "key|variant".
+var _frame_fixed := {}
 ## A batch with more cues than its frame has room for: per cue that would play,
 ## 1 sounds and 0 is counted but silent (choose_cues). Empty: every cue takes
 ## the next free place in the frame, in order.
@@ -356,6 +358,7 @@ func _roll_frame() -> void:
 	if frame != _cue_frame:
 		_cue_frame = frame
 		_frame_cues = 0
+		if not _frame_fixed.is_empty(): _frame_fixed.clear()
 
 static func semitones_to_pitch(semitones: float) -> float:
 	return pow(2.0, semitones / 12.0)
@@ -478,14 +481,20 @@ func play_reaction(identity: Array) -> void:
 ## Wardrobe, the Pollen store and line, a leaderboard celebration, a Settings
 ## toggle). The same cue and variant sound the same on every tap, and it never
 ## advances a turn's cue identities.
+## The same cue and variant twice in one rendered frame (two Pollen lines on one
+## card) sounds once, as a crowded tick merges its repeats.
 func play_fixed_cue(key: String, variant: int = 0) -> void:
-	if not CLIPS.has(key) or not sound_enabled or backgrounded or voices.is_empty() or not _frame_allows_cue(): return
+	if not CLIPS.has(key) or not sound_enabled or backgrounded or voices.is_empty(): return
+	_roll_frame()
+	var heard := "%s|%d" % [key, variant]
+	if _frame_fixed.has(heard) or not _frame_allows_cue(): return
+	_frame_fixed[heard] = true
 	_voice_cue(key, fixed_pitch(key, variant), 0.0)
 
 ## Plays `key` on `host`'s soundscape when it has one (a flow's host contract).
 static func play_on(host: Object, key: String) -> void:
 	var soundscape: Variant = host.get("soundscape") if host != null else null
-	if soundscape is Node and is_instance_valid(soundscape) and soundscape.has_method("play_fixed_cue"): soundscape.play_fixed_cue(key)
+	if is_instance_valid(soundscape) and soundscape is Node and soundscape.has_method("play_fixed_cue"): soundscape.play_fixed_cue(key)
 
 ## Sounds one cue on its voice at `step` semitones and `gain` dB.
 func _voice_cue(key: String, step: float, gain: float) -> void:
