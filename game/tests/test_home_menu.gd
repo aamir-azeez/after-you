@@ -36,8 +36,11 @@ class StoreStub:
 	func show_store(_from: String = "wardrobe") -> void: opened += 1
 
 ## 1560x720 is a 2340x1080 phone (and a 1560x720 one); 1600x720 is what an
-## 800x360 window gets from the canvas_items/expand stretch; 1280x960 a tablet.
-const SIZES := [Vector2i(1560, 720), Vector2i(1600, 720), Vector2i(1280, 720), Vector2i(1280, 960)]
+## 800x360 window gets from the canvas_items/expand stretch; 1280x960 a 4:3
+## iPad, 1280x800 a 16:10 Android tablet, 1280x900 the iPhone Duo's inner
+## display (and near enough the 11-inch iPad's 1280x894), and 1461x1004 the
+## Duo's outer display once its camera column scales it (SafeArea.fit_width).
+const SIZES := [Vector2i(1560, 720), Vector2i(1600, 720), Vector2i(1280, 720), Vector2i(1280, 960), Vector2i(1280, 800), Vector2i(1280, 900), Vector2i(1461, 1004)]
 ## Cutout insets (left, top, right, bottom) in viewport units.
 const INSETS := [Vector4.ZERO, Vector4(96, 0, 0, 0), Vector4(0, 0, 96, 0), Vector4(64, 18, 48, 24)]
 
