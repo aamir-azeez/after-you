@@ -184,6 +184,8 @@ const SPARKLE_LIFE := 0.65
 ## How long before the sit a ride's face goes on (spirit_face.gd swaps a face
 ## with a quick blink).
 const FACE_LEAD := 0.2
+## How far out to the side a sparkle pops: past a pip's head (0.345 half wide).
+const SPARKLE_SIDE := 0.42
 ## How far behind the pip along the slide a sparkle pops (a share of it).
 const SPARKLE_LAG := 0.06
 
@@ -209,8 +211,9 @@ func _slide_joy(points: Array[Vector3], seat: float, sit_time: float, time: floa
 	for index in range(trail):
 		var share := (index + 0.5) / trail
 		var when := at + time * share
-		# Popped just behind the pip, beside it, then twinkling up and away.
-		var side := 0.12 if index % 2 == 0 else -0.12
+		# Popped just behind the pip, out past its head on either side (so the
+		# head never hides one at its biggest), then twinkling up and away.
+		var side := SPARKLE_SIDE if index % 2 == 0 else -SPARKLE_SIDE
 		var from: Vector3 = (slide.call(maxf(0.0, share - SPARKLE_LAG)) as Vector3) + lift + Vector3(side, 0.35 + 0.08 * (index % 3), 0)
 		var spark := spawn_sparkle(fx, from)
 		var size := SPARKLE_SIZE * (1.0 if index % 3 != 1 else 0.8)
