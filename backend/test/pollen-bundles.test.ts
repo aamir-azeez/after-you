@@ -665,7 +665,7 @@ describe("bundles through the Worker", () => {
     expect(await caps(player)).toMatchObject({ pollen_app_store_bundles_version: 1 });
     expect(await caps(player)).not.toHaveProperty("pollen_bundles_version");
     lists[player.player_id] = [apple("rc_300")];
-    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 5000, credited: [{ bundle: "pinch", order: "2000000000000300", store: "app_store", usd_cents: 149 }] });
+    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: firstPay("pinch"), credited: [{ bundle: "pinch", first_gift: firstGift("pinch"), order: "2000000000000300", store: "app_store", usd_cents: 149 }] });
     expect(await wallet(player)).toMatchObject({ bundles: { first_gift: false, spent_usd_cents: 149 } });
     use(BOTH);
     expect(await caps(player)).toMatchObject({ pollen_bundles_version: 1, pollen_app_store_bundles_version: 1 });
@@ -691,15 +691,15 @@ describe("bundles through the Worker", () => {
     const stubs = { player: env.PLAYERS.getByName(first.player_id) as unknown as DurableObjectStub, claims: env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) as unknown as DurableObjectStub };
     providerCalls = 0;
     const paid = await meterRows(stubs, async () => (await claim(first, meter.env)).json<Reply>());
-    expect(paid.value).toEqual({ schema_version: 1, balance: 21000, pending: false, refunded: [],
-      credited: [{ bundle: "pouch", pollen: 21000, first_gift: 0, order: "2000000000000310", store: "app_store", purchased_at: 1_700_000_000_310, usd_cents: 499 }] });
+    expect(paid.value).toEqual({ schema_version: 1, balance: firstPay("pouch"), pending: false, refunded: [],
+      credited: [{ bundle: "pouch", pollen: 21000, first_gift: firstGift("pouch"), order: "2000000000000310", store: "app_store", purchased_at: 1_700_000_000_310, usd_cents: 499 }] });
     // Auth and the claim; one RevenueCat list for both stores; one claims row; the ledger line and the wallet row.
     expect(meter.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenBundleClaim"]);
     expect(providerCalls).toBe(1);
     expect(paid.rows.claims.written).toBe(1);
     // A restore onto another account (a new RevenueCat id, the same transaction) never pays twice.
     expect(await (await claim(second)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
-    expect(await (await claim(first)).json<Reply>()).toMatchObject({ balance: 21000, credited: [] });
+    expect(await (await claim(first)).json<Reply>()).toMatchObject({ balance: firstPay("pouch"), credited: [] });
     const rows = await runInDurableObject(env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT), async (_, state) =>
       state.storage.sql.exec<{ claim_key: string }>("SELECT claim_key FROM pollen_claims_held").toArray().map(row => row.claim_key));
     expect(rows).toEqual(["appstore:2000000000000310"]);
@@ -721,13 +721,13 @@ describe("bundles through the Worker", () => {
     providerCalls = 0;
     const paid = await meterRows(stubs, async () => (await claim(reviewer, meter.env)).json<Reply>());
     // The App Store sandbox Pouch pays; the Play sandbox Pinch never does.
-    expect(paid.value).toMatchObject({ balance: 21000, credited: [{ bundle: "pouch", order: "2000000000000400", store: "app_store", first_gift: 0 }] });
+    expect(paid.value).toMatchObject({ balance: firstPay("pouch"), credited: [{ bundle: "pouch", order: "2000000000000400", store: "app_store", first_gift: firstGift("pouch") }] });
     expect(paid.value.credited).toHaveLength(1);
     // One more list request (the sandbox one) for the review identity only; the same Player calls and one claims row.
     expect(meter.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenBundleClaim"]);
     expect(providerCalls).toBe(2);
     expect(paid.rows.claims.written).toBe(1);
-    expect(await (await claim(reviewer)).json<Reply>()).toMatchObject({ balance: 21000, credited: [] });
+    expect(await (await claim(reviewer)).json<Reply>()).toMatchObject({ balance: firstPay("pouch"), credited: [] });
     const keys = await runInDurableObject(env.PLAYERS.getByName(reviewer.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key));
     expect(keys).toEqual(["bundle:appstore:2000000000000400"]);
     // Anyone else's sandbox buy, or the review purchase restored onto another account, mints nothing, with one list request.
@@ -740,14 +740,14 @@ describe("bundles through the Worker", () => {
     offset = BUNDLE_CHECK_MS + 1000;
     expect((await wallet(reviewer)).balance).toBe(0);
     const back = await runInDurableObject(env.PLAYERS.getByName(reviewer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]));
-    expect(back).toEqual([["bundlerefund:appstore:2000000000000400", -21000]]);
+    expect(back).toEqual([["bundlerefund:appstore:2000000000000400", -firstPay("pouch")]]);
   });
 
   it("keeps a Play order and an App Store id with the same digits apart: each pays once, in its own rows", async () => {
     use(BOTH);
     const player = await create();
     lists[player.player_id] = [owned("rc_320", "prodd4e2b730e5", { store_purchase_identifier: "2000000000000320" }), apple("rc_321", "prod235f72a2e0", { store_purchase_identifier: "2000000000000320" })];
-    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 10000, credited: [{ order: "2000000000000320" }, { order: "2000000000000320", store: "app_store" }] });
+    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: firstPay("pinch") + 5000, credited: [{ order: "2000000000000320", first_gift: firstGift("pinch") }, { order: "2000000000000320", store: "app_store", first_gift: 0 }] });
     expect((await (await claim(player)).json<Reply>()).credited).toEqual([]);
     const keys = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key).sort());
     expect(keys).toEqual(["bundle:2000000000000320", "bundle:appstore:2000000000000320"]);
@@ -760,7 +760,7 @@ describe("bundles through the Worker", () => {
     use(APP_STORE_ONLY);
     const buyer = await create();
     lists[buyer.player_id] = [apple("rc_330"), apple("rc_331", "prod5920f90735")];
-    expect((await (await claim(buyer)).json<Reply>()).balance).toBe(49000);
+    expect((await (await claim(buyer)).json<Reply>()).balance).toBe(firstPay("pinch") + 44000);
     // The App Store stops selling; refunds are still taken back on the wallet read.
     use(REFUNDS_ONLY);
     const away = apple("rc_331", "prod5920f90735", { status: "refunded", customer_id: "moved" });
@@ -769,7 +769,7 @@ describe("bundles through the Worker", () => {
     expect((await wallet(buyer)).balance).toBe(0);
     expect(providerCalls).toBe(2);
     const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]).sort());
-    expect(lines).toEqual([["bundlerefund:appstore:2000000000000330", -5000], ["bundlerefund:appstore:2000000000000331", -44000]]);
+    expect(lines).toEqual([["bundlerefund:appstore:2000000000000330", -firstPay("pinch")], ["bundlerefund:appstore:2000000000000331", -44000]]);
     const history = await (await call("/v1/pollen/history", "GET", buyer)).json<{ purchases: Record<string, unknown>[] }>();
     expect(history.purchases.filter(line => line.kind === "bundlerefund").map(line => [line.order, line.store]).sort()).toEqual([["2000000000000330", "app_store"], ["2000000000000331", "app_store"]]);
   });
