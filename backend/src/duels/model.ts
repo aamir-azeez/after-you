@@ -17,7 +17,10 @@ import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "./rules";
  *   counts once the replay check passed it (`check`), so a win arrives with
  *   the result.
  * - ghost: pair 0 races a recorded time (`ghost`); side 1 is null. Decided the
- *   moment the pair finishes, with no check: a ghost race earns nothing extra.
+ *   moment the pair finishes, with no check, except a finish faster than the
+ *   developers' ghost: that run waits for the replay check like a friend run
+ *   (awaitsCheck), since its win pays a first time bonus (pollen/duel-pay.ts
+ *   creditGhostWin). A run that fails it ends the race with no result.
  *
  * Time rules are read lazily (settle): a challenge fades after
  * CHALLENGE_TTL_MS, and a running duel nobody has played for STALL_MS ends
@@ -108,6 +111,14 @@ export function players(duel: Duel): string[] {
   return [...duel.sides[0].members, ...(duel.sides[1]?.members ?? [])].filter((id): id is string => id !== null);
 }
 
+/**
+ * Whether a side's finished run waits for the replay check before the duel is decided: every friend run,
+ * and a run faster than the developers' ghost, the only ghost win that pays.
+ */
+export function awaitsCheck(duel: Duel, ticks: number): boolean {
+  return duel.kind === "friend" || (duel.ghost?.source === "developer" && ticks < duel.ghost.ticks);
+}
+
 /** A side's score: its raw ticks. The one place a card layer's modifiers would apply; boards never read it. */
 export function score(duel: Duel, index: 0 | 1): number {
   if (index === 1 && duel.kind === "ghost") return duel.ghost!.ticks;
@@ -152,8 +163,12 @@ export function decide(duel: Duel, now: number): boolean {
   if (duel.status !== "running") return false;
   if (duel.kind === "ghost") {
     const side = duel.sides[0];
-    if (side.left) return conclude(duel, null, "left", now, null);
-    if (side.finished_ms === null) return false;
+    const state = sideSettled(side);
+    if (state === "left") return conclude(duel, null, "left", now, null);
+    if (state === "failed") return conclude(duel, null, "failed_check", now, null);
+    if (state === "error") return conclude(duel, null, "unchecked", now, null);
+    // A run with no check ("none") counts at once; one waiting for it stays open.
+    if (side.finished_ms === null || side.check === "waiting") return false;
     return compare(duel, now);
   }
   const states = [sideSettled(duel.sides[0]), sideSettled(duel.sides[1]!)];
@@ -244,16 +259,16 @@ export function progress(duel: Duel, note: ProgressNote, now: number): Outcome<{
   if (note.complete) {
     side.finished_ms = note.at_ms;
     side.entry_id = note.entry_id;
-    side.check = duel.kind === "friend" ? "waiting" : "none";
+    side.check = awaitsCheck(duel, side.ticks) ? "waiting" : "none";
   }
   duel.updated_ms = now;
   decide(duel, now);
   return ok({ finished: note.complete });
 }
 
-/** The replay check's answer on a waiting friend run. Returns whether it counted. */
+/** The replay check's answer on a waiting run (awaitsCheck). Returns whether it counted. */
 export function verdict(duel: Duel, entryId: string, check: "passed" | "failed" | "error", now: number): boolean {
-  if (duel.kind !== "friend" || duel.status !== "running") return false;
+  if (duel.status !== "running") return false;
   const side = duel.sides.find(item => item?.entry_id === entryId && item.check === "waiting");
   if (!side) return false;
   side.check = check;

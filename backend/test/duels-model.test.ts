@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accept, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, newFriendDuel, newGhostRace, players, progress, score, settle, sideOf, verdict, viewFor, type Duel, type ProgressNote } from "../src/duels/model";
+import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, newFriendDuel, newGhostRace, players, progress, score, settle, sideOf, verdict, viewFor, type Duel, type ProgressNote } from "../src/duels/model";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "../src/duels/rules";
 import { runProgress } from "../src/duels/ticks";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -23,9 +23,9 @@ function friend(now = T0): Duel {
   return newFriendDuel({ duel_id: "d".repeat(32), board: "relay-isles@2", chapter: CHAPTER, steps: 4, starter: A1,
     a: blankSide([A1, A2], "pa"), b: blankSide([B1, B2], "pb"), known: [knownKey(A1, B1)] }, now);
 }
-function ghost(ticks = 1000, now = T0): Duel {
+function ghost(ticks = 1000, now = T0, source: "board" | "developer" = "board"): Duel {
   return newGhostRace({ duel_id: "g".repeat(32), board: "relay-isles@2", chapter: CHAPTER, steps: 4, starter: A1, a: blankSide([A1, A2], "pa"),
-    ghost: { source: "board", entry_id: "e".repeat(32), rank: 1, ticks, names: null } }, now);
+    ghost: source === "board" ? { source, entry_id: "e".repeat(32), rank: 1, ticks, names: null } : { source, entry_id: null, rank: null, ticks, names: null } }, now);
 }
 function note(room: string, revision: number, ticks: number, complete = false, steps = complete ? 4 : 1, at = T0 + revision * 1000): ProgressNote {
   return { room_id: room, revision, steps, ticks, turn: complete ? null : A1, complete, at_ms: at, entry_id: complete ? room.padEnd(32, "0").slice(0, 32) : null };
@@ -209,7 +209,7 @@ describe("duel state machine", () => {
     expect(duel.sides[1]!.finished_ms).toBeNull();
   });
 
-  it("a ghost race is decided the moment the pair finishes, with no check", () => {
+  it("a race against a board run is decided the moment the pair finishes, with no check", () => {
     const won = ghost(3000);
     claimRoom(won, A2, { room_id: "rg", invite_code: "ig" }, T0);
     progress(won, note("rg", 5, 2999, true), T0 + 10);
@@ -229,6 +229,35 @@ describe("duel state machine", () => {
     leave(left, A1, T0 + 1);
     expect(left.status).toBe("unfinished");
     expect(decide(left, T0 + 2)).toBe(false);
+  });
+
+  it("a run faster than the developers' ghost waits for the check, which decides it; a slower one is decided at once", () => {
+    const finished = (check?: "passed" | "failed" | "error", ticks = 2999) => {
+      const race = ghost(3000, T0, "developer");
+      claimRoom(race, A2, { room_id: "rg", invite_code: "ig" }, T0);
+      progress(race, note("rg", 5, ticks, true), T0 + 10);
+      if (check) expect(verdict(race, race.sides[0].entry_id!, check, T0 + 20)).toBe(true);
+      return race;
+    };
+    const waiting = finished();
+    expect(waiting).toMatchObject({ status: "running", result: null });
+    expect(waiting.sides[0].check).toBe("waiting");
+    expect(settle(waiting, T0 + 30)).toBe(false);
+    const passed = finished("passed");
+    expect(viewFor(passed, A1)!.result).toMatchObject({ outcome: "won", reason: "faster", margin_ticks: 1 });
+    expect(verdict(passed, passed.sides[0].entry_id!, "failed", T0 + 40)).toBe(false);
+    // A run that fails the check, or one the job could not judge, ends the race with no result.
+    expect(viewFor(finished("failed"), A1)!.result).toMatchObject({ outcome: "none", reason: "failed_check" });
+    expect(viewFor(finished("error"), A1)!.result).toMatchObject({ outcome: "none", reason: "unchecked" });
+    for (const ticks of [3000, 3001]) {
+      const slow = finished(undefined, ticks);
+      expect(slow.sides[0].check).toBe("none");
+      expect(slow.status).toBe("decided");
+    }
+    // Only the developers' ghost and friend duels ask for the check.
+    expect(awaitsCheck(ghost(3000), 1)).toBe(false);
+    expect(awaitsCheck(ghost(3000, T0, "developer"), 3000)).toBe(false);
+    expect(awaitsCheck(friend(), 999_999)).toBe(true);
   });
 
   it("only the pair and checked friends see ids, and only your own side carries the room", () => {

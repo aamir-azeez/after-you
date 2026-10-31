@@ -7,6 +7,7 @@ import type { ProgressNote } from "./model";
 import type { DuelLink } from "./room-link";
 import type { FinishProof } from "./store";
 import { runProgress } from "./ticks";
+import { developerGhost } from "./developer-ghosts";
 
 /** Duels run while DUELS and LEADERBOARDS are both on: duels live in the boards, and friend results need its replay check. */
 export function duelsOn(env: ServerVars): boolean { return flags.duels(env) && flags.leaderboards(env); }
@@ -14,8 +15,8 @@ export function duelsOn(env: ServerVars): boolean { return flags.duels(env) && f
 /**
  * The note a duel room's state gives its duel: absolute values at the room's
  * revision (model.ts progress keeps only newer ones), and on a finished run
- * its board entry id and, for a friend duel, its final checkpoint for the
- * replay job. Null when the room's chain cannot be read.
+ * its board entry id and, for a run that may need the replay check, its final
+ * checkpoint for the replay job. Null when the room's chain cannot be read.
  */
 export async function roomNote(room: RoomSnapshotV2, link: DuelLink): Promise<{ note: ProgressNote; proof?: FinishProof } | null> {
   let adapter;
@@ -26,7 +27,10 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink): Promise<{ 
   const complete = progress.complete && room.active_role === "complete";
   const note: ProgressNote = { room_id: room.room_id, revision: room.revision, steps: progress.steps, ticks: progress.ticks,
     turn: complete ? null : room.active_player_id, complete, at_ms: at, entry_id: complete ? await entryId(room.room_id, room.branch) : null };
-  const proof = complete && link.kind === "friend" ? { checkpoint: room.checkpoint, simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
+  // A finish that may wait for the check brings its checkpoint: every friend run, and a ghost race run faster than the
+  // developers' ghost. The board decides (model.ts awaitsCheck); this only spares the rest the payload.
+  const checked = link.kind === "friend" || progress.ticks < (developerGhost(link.board) ?? 0);
+  const proof = complete && checked ? { checkpoint: room.checkpoint, simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
   return { note, ...(proof ? { proof } : {}) };
 }
 

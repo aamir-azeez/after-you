@@ -10,8 +10,9 @@ import { developerGhost } from "../src/duels/developer-ghosts";
 import { deriveJobToken } from "../src/leaderboards/job-token";
 import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
-import type { DuelView } from "../src/duels/model";
-import { countingEnv } from "./meter";
+import { blankSide, newGhostRace, type DuelView } from "../src/duels/model";
+import type { LeaderboardBoard } from "../src/leaderboards/board";
+import { countingEnv, meterRows } from "./meter";
 import { configJson } from "./config";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
 import { dropRunCopies } from "../src/duels/their-run-sweep";
@@ -73,15 +74,17 @@ async function season(account: Account): Promise<void> {
 async function rerecord(input: Any): Promise<Any> { const body = { ...input }; delete body.recording_hash; return { ...input, recording_hash: await digest(canonicalJson(body)) }; }
 async function rehash(input: Any): Promise<Any> { const body = { ...input }; delete body.checkpoint_hash; delete body.proof; return { ...input, checkpoint_hash: await digest(canonicalJson(body)) }; }
 /**
- * The Relay fixtures, every hash and link redone, with `slower` more ticks on the last turn and
- * catch assistance as asked (off, as a duel's room takes only unassisted turns). The server checks structure and hashes, not physics.
+ * The Relay fixtures, every hash and link redone, with `slower` more ticks on the last turn (fewer
+ * when negative, taken from its longer second to last action) and catch assistance as asked (off, as
+ * a duel's room takes only unassisted turns). The server checks structure and hashes, not physics.
  */
 async function relayRun(slower = 0, assisted = false) {
   const a1 = await rerecord({ ...firstA, catch_assistance: assisted });
   const b1 = await rerecord({ ...firstB, catch_assistance: assisted, source_recording_hash: a1.recording_hash });
   const mid = await rehash({ ...middle, a_recording_hash: a1.recording_hash, b_recording_hash: b1.recording_hash, proof: { ...(middle.proof as Any), a: a1, b: b1 } });
   const a2 = await rerecord({ ...secondA, catch_assistance: assisted, checkpoint_hash: mid.checkpoint_hash });
-  const actions = secondB.actions.map((action, index) => index === secondB.actions.length - 1 ? { ...action, ticks: action.ticks + slower } : action);
+  const changed = secondB.actions.length - (slower < 0 ? 2 : 1);
+  const actions = secondB.actions.map((action, index) => index === changed ? { ...action, ticks: action.ticks + slower } : action);
   const replay_checks = secondB.replay_checks.map((check, index) => index === secondB.replay_checks.length - 1 ? { ...check, tick: check.tick + slower } : check);
   const b2 = await rerecord({ ...secondB, catch_assistance: assisted, actions, replay_checks, duration_ticks: secondB.duration_ticks + slower, checkpoint_hash: mid.checkpoint_hash, source_recording_hash: a2.recording_hash });
   const fin = await rehash({ ...final, previous_checkpoint_hash: mid.checkpoint_hash, a_recording_hash: a2.recording_hash, b_recording_hash: b2.recording_hash, proof: { previous_checkpoint: mid, a: a2, b: b2 } });
@@ -109,7 +112,7 @@ async function verdicts(entries: Any[], valid: (entry: Any) => boolean) {
   return ok(call("/operator/leaderboards/verdicts", "POST", undefined, { schema_version: 1, verdicts: entries.map(entry => ({ board: entry.board, entry_id: entry.entry_id, proof_hash: entry.proof_hash,
     valid: valid(entry), measured_ticks: entry.ticks, reason: valid(entry) ? "" : "replay_failed" })) }, ON, { Authorization: "Bearer " + await deriveJobToken(OPERATOR) }));
 }
-const detail = (account: Account, duel: DuelView) => ok<{ duel: DuelView; pay?: Any; win_bonus?: Any }>(call(`/v1/duels/${duel.board}/${duel.duel_id}`, "GET", account));
+const detail = (account: Account, duel: DuelView) => ok<{ duel: DuelView; pay?: Any; win_bonus?: Any; ghost_bonus?: Any }>(call(`/v1/duels/${duel.board}/${duel.duel_id}`, "GET", account));
 
 const shared = env as unknown as Record<string, unknown>;
 beforeEach(async () => { shared.POLLEN_SECRET = SECRET; await forgetViews(boardKeys()); forgetReplays(); });
@@ -354,6 +357,153 @@ describe("ghost races", () => {
     expect(done).toMatchObject({ status: "decided", result: { outcome: run.ticks < ghostTicks ? "won" : run.ticks > ghostTicks ? "lost" : "draw" } });
     expect((await detail(a1, started)).win_bonus).toBeUndefined();
   });
+});
+
+describe("the first win over Our run", () => {
+  const OURS = developerGhost(RELAY)!;
+  const race = async (who: Account) => (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", who, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }))).duel;
+  /** Starts a race against the developers' ghost and plays it through with `slower` ticks against the fixtures' run. */
+  async function played(host: Account, guest: Account, slower: number, duel?: DuelView) {
+    const started = duel ?? await race(host);
+    const room = await ok<RoomSnapshotV2>(openRoom(host, started));
+    const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }));
+    await play(joined, [host, guest], await relayRun(slower));
+    return started;
+  }
+  /** The player's ghost win lines: [board, amount, duel] each. */
+  const lines = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) =>
+    !ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='pollen_claims'").toArray().length ? [] : ctx.storage.sql.exec<{ claim_key: string; amount: number; data: string }>("SELECT claim_key,amount,data FROM pollen_claims WHERE kind='ghostwin'").toArray()
+      .map(row => [row.claim_key, row.amount, (JSON.parse(row.data) as { detail: { duel_id: string } }).detail.duel_id]));
+  const proofRows = () => runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (_, ctx) =>
+    ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='duel_proofs'").toArray().length ? ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duel_proofs").one().n : 0);
+  /** The replay job's entries for duel runs of `ticks`, judged `valid`. */
+  async function judge(ticks: number, valid: boolean) {
+    const entries = (await job()).entries.filter(entry => entry.ticks === ticks);
+    expect(entries.length).toBeGreaterThan(0);
+    await verdicts(entries, () => valid);
+  }
+
+  it("pays each player of the pair once per board, after the check passes, and never for a second win there", async () => {
+    const { a1, a2 } = await pairs();
+    const fast = (await relayRun(-5)).ticks;
+    expect(fast).toBeLessThan(OURS);
+    const first = await played(a2, a1, -5);
+    // Faster than Our run: the race waits for the replay check, and pays nothing yet.
+    const waiting = await detail(a1, first);
+    expect(waiting.duel).toMatchObject({ status: "running", result: null });
+    expect(waiting.duel.sides[0]).toMatchObject({ finished: true, check: "waiting" });
+    expect(waiting.ghost_bonus).toBeUndefined();
+    expect(await proofRows()).toBe(1);
+    await judge(fast, true);
+    expect(await proofRows()).toBe(0);
+    const won = await detail(a1, first);
+    expect(won.duel.result).toMatchObject({ outcome: "won", reason: "faster", margin_ticks: OURS - fast });
+    expect(won.ghost_bonus).toEqual({ amount: 100, counted: true });
+    expect(won.win_bonus).toBeUndefined();
+    // A repeat answers the same; the partner is paid through the lobby, then sees it too.
+    expect((await detail(a1, first)).ghost_bonus).toEqual({ amount: 100, counted: true });
+    await lobby(a2);
+    expect(await lines(a2)).toEqual([["ghostwin:" + RELAY, 100, first.duel_id]]);
+    expect((await detail(a2, first)).ghost_bonus).toEqual({ amount: 100, counted: true });
+
+    // A second win on the same board shows and pays nothing extra.
+    const second = await played(a1, a2, -5);
+    await judge(fast, true);
+    const again = await detail(a1, second);
+    expect(again.duel.result).toMatchObject({ outcome: "won", reason: "faster" });
+    expect(again.ghost_bonus).toBeUndefined();
+    await lobby(a2);
+    for (const account of [a1, a2]) expect(await lines(account)).toEqual([["ghostwin:" + RELAY, 100, first.duel_id]]);
+  }, 60_000);
+
+  it("pays nothing on a loss, a draw, a failed check, or a race against a board run", async () => {
+    const { a1, a2 } = await pairs();
+    // Slower or level with Our run: decided at once, with no proof kept for the check.
+    for (const slower of [1, 0]) {
+      const done = await detail(a1, await played(a1, a2, slower));
+      expect(done.duel.result!.outcome).toBe(slower ? "lost" : "draw");
+      expect(done.duel.sides[0].check).toBe("none");
+      expect(done.ghost_bonus).toBeUndefined();
+      expect(await proofRows()).toBe(0);
+    }
+    // Faster, but the run fails its check: no result.
+    const failed = await played(a1, a2, -5);
+    await judge((await relayRun(-5)).ticks, false);
+    const refused = await detail(a1, failed);
+    expect(refused.duel.result).toMatchObject({ outcome: "none", reason: "failed_check" });
+    expect(refused.ghost_bonus).toBeUndefined();
+    // A race against a board run, far slower than the pair: decided at once and never paid.
+    const now = Date.now(), duelId = "b".repeat(32);
+    const boardRace = newGhostRace({ duel_id: duelId, board: RELAY, chapter: RELAY_KEY, steps: 4, starter: a1.player_id, a: blankSide([a1.player_id, a2.player_id], "pair"),
+      ghost: { source: "board", entry_id: "e".repeat(32), rank: 1, ticks: OURS * 4, names: null } }, now);
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (board: LeaderboardBoard) => { board.duelCreate(boardRace); });
+    for (const id of [a1.player_id, a2.player_id]) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs: [{ duel_id: duelId, board: RELAY, at: now }] }, now);
+    const seen = (await lobby(a1)).duels.find(duel => duel.duel_id === duelId)!;
+    const beat = await detail(a1, await played(a1, a2, -5, seen));
+    expect(beat.duel.result).toMatchObject({ outcome: "won", reason: "faster" });
+    expect(beat.duel.sides[0].check).toBe("none");
+    expect(beat.ghost_bonus).toBeUndefined();
+    expect(await proofRows()).toBe(0);
+    await lobby(a2);
+    for (const account of [a1, a2]) expect(await lines(account)).toEqual([]);
+  }, 60_000);
+
+  it("never pays a win over Our run decided before the check, or one whose run could not be kept for it", async () => {
+    const { a1, a2 } = await pairs();
+    const now = Date.now(), members: [string, string] = [a1.player_id, a2.player_id];
+    const ours = { source: "developer" as const, entry_id: null, rank: null, ticks: OURS, names: null };
+    // A race this build never checked, decided as a win the moment the pair finished.
+    const old = newGhostRace({ duel_id: "c".repeat(32), board: RELAY, chapter: RELAY_KEY, steps: 4, starter: a1.player_id, a: blankSide(members, "pair"), ghost: ours }, now);
+    Object.assign(old.sides[0], { finished_ms: now, ticks: OURS - 5, steps: 4, check: "none" });
+    Object.assign(old, { status: "decided", result: { winner: 0, reason: "faster", decided_ms: now, margin_ticks: 5 } });
+    // A fast finish whose checkpoint never arrived: the check cannot run, so the race ends unchecked.
+    const lost = newGhostRace({ duel_id: "f".repeat(32), board: RELAY, chapter: RELAY_KEY, steps: 4, starter: a1.player_id, a: blankSide(members, "pair"), ghost: ours }, now);
+    const boards = env.LEADERBOARD_BOARDS.getByName(RELAY);
+    for (const duel of [old, lost]) await runInDurableObject(boards, async (board: LeaderboardBoard) => { board.duelCreate(duel); });
+    for (const id of members) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs: [old, lost].map(duel => ({ duel_id: duel.duel_id, board: RELAY, at: now })) }, now);
+    await boards.duelAct(lost.duel_id, { kind: "claim", player: a1.player_id, room_id: "r".repeat(22), invite_code: "i".repeat(20), room_absent: false });
+    const noted = await boards.duelProgress(lost.duel_id, { room_id: "r".repeat(22), revision: 4, steps: 4, ticks: OURS - 5, turn: null, complete: true, at_ms: now, entry_id: "e".repeat(32) });
+    expect(noted.ok && noted.value.result).toMatchObject({ reason: "unchecked", winner: null });
+    const views = (await lobby(a1)).duels;
+    expect(views.find(duel => duel.duel_id === old.duel_id)!.result).toMatchObject({ outcome: "won" });
+    for (const duel of [old, lost]) expect((await detail(a1, views.find(view => view.duel_id === duel.duel_id)!)).ghost_bonus).toBeUndefined();
+    await lobby(a2);
+    for (const account of [a1, a2]) expect(await lines(account)).toEqual([]);
+    expect(await proofRows()).toBe(0);
+  }, 60_000);
+
+  it("pays once when two won races on the board are decided together and read at once", async () => {
+    const { a1, a2 } = await pairs();
+    const races = [await played(a1, a2, -5), await played(a2, a1, -5)];
+    await judge((await relayRun(-5)).ticks, true);
+    const answers = await Promise.all([...races, ...races].flatMap(duel => [detail(a1, duel), detail(a2, duel)]));
+    for (const account of [a1, a2]) {
+      const held = await lines(account);
+      expect(held).toHaveLength(1);
+      const paidBy = held[0][2];
+      // Only the race that paid shows the line, to each player and on every read.
+      const mine = answers.filter((_, index) => index % 2 === (account === a1 ? 0 : 1));
+      expect(mine.filter(answer => answer.ghost_bonus).map(answer => answer.duel.duel_id)).toEqual([paidBy, paidBy]);
+    }
+  }, 60_000);
+
+  it("costs the first read of a paying race the credit and the party row's settle, and the lobby no wallet request after", async () => {
+    const { a1, a2 } = await pairs();
+    const won = await played(a1, a2, -5);
+    await judge((await relayRun(-5)).ticks, true);
+    const meter = countingEnv(Object.assign({ ...env }, ON) as Env);
+    const stubs = { wallet: env.PLAYERS.getByName(a1.player_id), party: env.LEADERBOARD_MEMBERS.getByName(a1.player_id), board: env.LEADERBOARD_BOARDS.getByName(RELAY) };
+    const { rows } = await meterRows(stubs, () => ok(call(`/v1/duels/${RELAY}/${won.duel_id}`, "GET", a1, undefined, ON, {}, meter.env)));
+    // Measured 2026-10-31: auth, the board read and the room pay as any finished duel's read, then the credit and the settle.
+    expect(meter.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.duelRoomPay", "PLAYERS.creditGhostWin", "LEADERBOARD_MEMBERS.partyApply"]);
+    // Rows written: the claim row and the wallet row; the party row; nothing on the board, whose race was saved when decided.
+    expect(rows.wallet.written).toBe(2);
+    expect(rows.party.written).toBe(1);
+    expect(rows.board.written).toBe(0);
+    const later = countingEnv(Object.assign({ ...env }, ON) as Env);
+    await ok(call("/v1/duels", "GET", a1, undefined, ON, {}, later.env));
+    expect(later.calls).toEqual(["PLAYERS.authorize", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_BOARDS.duelRead"]);
+  }, 60_000);
 });
 
 describe("the other pair's run", () => {

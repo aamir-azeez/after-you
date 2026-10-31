@@ -6,6 +6,7 @@ import { boardKeys, knownBoard } from "../leaderboards/boards";
 import { eligible } from "../leaderboards/standing";
 import { cachedView, storeView } from "../leaderboards/view-cache";
 import { pollenEarning } from "../pollen/routes";
+import { RATES } from "../pollen/rates";
 import type { DuelRoomPay, DuelWinAnswer } from "../pollen/duel-pay";
 import { CHAPTERS, creatable } from "../v2/chapters";
 import { blankSide, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type SideRoom } from "./model";
@@ -23,7 +24,8 @@ import { blobBase64 } from "../blob-codec";
  * are on (turn-hook.ts duelsOn), after auth():
  * - GET  /v1/duels: the lobby. The party, invites, and every duel this player
  *   is in, read from the boards their pointers name (one request per board).
- *   It also pays a won friend duel's win bonus the first time it sees one.
+ *   It also pays a won friend duel's win bonus, or a first win over the
+ *   developers' ghost, the first time it sees one.
  * - GET  /v1/duels/ghosts: each chapter's recorded times to race, from the
  *   board views (cached, so usually no request) and the developers' ghosts.
  * - POST /v1/duels/party/{invite,accept,dismiss,cancel,leave}
@@ -110,23 +112,30 @@ async function addRefs(env: Env, players: readonly string[], ref: DuelRef, now: 
   await pooled([...new Set(players)], BOARD_CONCURRENCY, async id => { await party(env, id).partyApply(id, { kind: "add_duels", refs: [ref] }, now); });
 }
 
-/** Open friend duels (or running ghost races) of the pair `key` among `duels`. */
+/** Open friend duels (or ghost races still being played: a finished run waiting for its check holds no slot) of the pair `key` among `duels`. */
 function openFor(duels: readonly Duel[], key: string, kind: Duel["kind"]): number {
-  return duels.filter(duel => duel.kind === kind && isOpen(duel) && duel.sides.some(side => side?.pair_key === key)).length;
+  return duels.filter(duel => duel.kind === kind && isOpen(duel) && (kind === "friend" || duel.sides[0].finished_ms === null) && duel.sides.some(side => side?.pair_key === key)).length;
 }
 
 /**
- * The win bonus for a won, eligible friend duel, once per player (pollen/duel-pay.ts): asked of
- * the wallet only while the player's party row has not settled it. Null when nothing is due.
+ * The bonus a decided duel owes `player`, once per player (pollen/duel-pay.ts): a won, eligible
+ * friend duel's win bonus, or the first win over the developers' ghost on its board. Asked of the
+ * wallet only while the player's party row has not settled it. Null when nothing is due.
  */
 async function winBonus(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<DuelWinAnswer | null> {
   const mine = sideOf(duel, player);
-  // Only a win where both runs passed the replay check pays (POLLEN-RULES.md): never one the other pair left or failed.
-  if (!pollenEarning(env) || duel.kind !== "friend" || duel.status !== "decided" || duel.result?.winner !== mine || duel.result.reason !== "faster" || duel.eligible !== true) return null;
+  // Only a win on time whose runs all passed the replay check pays (POLLEN-RULES.md): never one the other pair left or failed.
+  if (!pollenEarning(env) || duel.status !== "decided" || duel.result?.winner !== mine || duel.result.reason !== "faster") return null;
+  const friend = duel.kind === "friend" && duel.eligible === true;
+  // A ghost race pays only against the developers' ghost, on a run the check passed (model.ts awaitsCheck); a rate of 0 writes nothing.
+  const ghost = duel.kind === "ghost" && duel.ghost?.source === "developer" && duel.sides[0].check === "passed" && RATES.duels.ghost_win_bonus > 0;
+  if (!friend && !ghost) return null;
   if (!force && settled.includes(duel.duel_id)) return null;
-  const other = duel.sides[1 - mine]!;
+  const wallet = env.PLAYERS.getByName(player);
   try {
-    const answer = await env.PLAYERS.getByName(player).creditDuelWin(player, { duel_id: duel.duel_id, opponent: other.pair_key, decided_ms: duel.result.decided_ms });
+    const answer = friend
+      ? await wallet.creditDuelWin(player, { duel_id: duel.duel_id, opponent: duel.sides[1 - mine]!.pair_key, decided_ms: duel.result.decided_ms })
+      : await wallet.creditGhostWin(player, { duel_id: duel.duel_id, board: duel.board });
     if (answer.ok) return answer.value;
     // A final refusal (an old win, no identity) is settled too, so it is never asked again.
     return answer.status < 500 ? { amount: 0, counted: false, balance: 0 } : null;
@@ -314,7 +323,12 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
   return { schema_version: 1, duel: viewFor(duel, player) };
 }
 
-/** One duel, with this player's pay from it once it is over. Requests: the board read, plus 1 or 2 on the player's own wallet when over. */
+/**
+ * One duel, with this player's pay from it once it is over: `win_bonus` on a friend duel, `ghost_bonus`
+ * on the ghost race that paid the first win over the developers' ghost on its board, and nothing on a
+ * later win there. Requests: the board read, plus 1 or 2 on the player's own wallet when over, and the
+ * party row's write when a bonus was asked.
+ */
 async function duelDetail(env: Env, player: string, duel: Duel, now: number): Promise<unknown> {
   const view = viewFor(duel, player)!;
   const room = duel.sides[sideOf(duel, player) as 0 | 1]!.room;
@@ -324,7 +338,8 @@ async function duelDetail(env: Env, player: string, duel: Duel, now: number): Pr
     bonus = await winBonus(env, player, duel, [], true);
     if (bonus) await party(env, player).partyApply(player, { kind: "settle_wins", ids: [duel.duel_id] }, now);
   }
-  return { schema_version: 1, duel: view, ...(pay ? { pay } : {}), ...(bonus ? { win_bonus: { amount: bonus.amount, counted: bonus.counted, ...(bonus.reason ? { reason: bonus.reason } : {}) } } : {}) };
+  const shown = bonus ? { amount: bonus.amount, counted: bonus.counted, ...(bonus.reason ? { reason: bonus.reason } : {}) } : null;
+  return { schema_version: 1, duel: view, ...(pay ? { pay } : {}), ...(shown && duel.kind === "friend" ? { win_bonus: shown } : {}), ...(shown?.counted && duel.kind === "ghost" ? { ghost_bonus: shown } : {}) };
 }
 
 /** The signed-in routes under /v1/duels; null for any other path or while duels are off. */

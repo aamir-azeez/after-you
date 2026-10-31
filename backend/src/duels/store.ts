@@ -4,7 +4,7 @@ import type { ReplayWork } from "../leaderboards/board";
 import { REVIEW_REASONS } from "../leaderboards/rules";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
-import { accept, claimRoom, decide, decline, forgetPlayer, isFinal, leave, progress, settle, verdict, type Duel, type ProgressNote, type SideRoom } from "./model";
+import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, progress, settle, verdict, type Duel, type ProgressNote, type SideRoom } from "./model";
 import { MAX_BOARD_DUELS, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, STALL_MS } from "./rules";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
 
@@ -16,8 +16,9 @@ import { THEIR_RUN_KEEP_MS } from "./their-run";
  * submission scans:
  * - duels: one row per duel (model.ts), the newest MAX_BOARD_DUELS kept;
  *   settled ones go first past it.
- * - duel_proofs: a finished friend run's final checkpoint in the shared blob
- *   format (blob-codec.ts: deflate, its canonical length and SHA-256), while the
+ * - duel_proofs: a finished run's final checkpoint (a friend run, or a ghost
+ *   race run faster than the developers' ghost) in the shared blob format
+ *   (blob-codec.ts: deflate, its canonical length and SHA-256), while the
  *   replay job has not judged it (at most MAX_DUEL_PROOFS).
  * Both appear with the first duel write, never on a board nobody duels on.
  * - duel_run_copies: pointers only, never bytes. A friend duel's room may
@@ -103,25 +104,25 @@ export class DuelStore {
   }
 
   /**
-   * A turn accepted in a duel room. On the turn that finishes a friend run,
-   * its final checkpoint waits here for the replay job. Answers the duel.
+   * A turn accepted in a duel room. On the turn that finishes a run that
+   * waits for the replay check (model.ts awaitsCheck), its final checkpoint
+   * waits here for the replay job. Answers the duel.
    */
   async progress(duelId: string, note: ProgressNote, now: number, proof?: FinishProof): Promise<Outcome<Duel>> {
     if (!this.present()) return fail(404, "duel_not_found");
-    // Encoded before the transaction: compression is async.
-    const encoded = proof && note.complete ? await encodeProof(proof.checkpoint) : null;
+    // Encoded before the transaction (compression is async), and only on the side's first finish of a run the check will want.
+    const held = proof && note.complete ? this.duel(duelId) : null;
+    const first = held?.sides.find(side => side?.room?.room_id === note.room_id)?.finished_ms === null;
+    const encoded = held && first && awaitsCheck(held, note.ticks) ? await encodeProof(proof!.checkpoint) : null;
     const kept = encoded && encoded.byte_length <= MAX_DUEL_PROOF_CHARS ? encoded : null;
     return this.storage.transactionSync(() => {
       const duel = this.duel(duelId);
       if (!duel) return fail(404, "duel_not_found");
       const before = JSON.stringify(duel);
       const answer = progress(duel, note, now);
-      if (answer.ok && answer.value.finished && duel.kind === "friend" && note.entry_id) {
-        const side = duel.sides.find(item => item?.entry_id === note.entry_id);
-        if (side && !kept) side.check = "error";
-        else if (side && kept) this.keepProof(duel, note.entry_id, kept, side.ticks, proof!.simulation_version, now);
-        if (side?.check === "error") decide(duel, now);
-      }
+      const side = answer.ok && answer.value.finished && note.entry_id ? duel.sides.find(item => item?.entry_id === note.entry_id && item.check === "waiting") : undefined;
+      if (side && kept) this.keepProof(duel, note.entry_id!, kept, side.ticks, proof!.simulation_version, now);
+      else if (side) { side.check = "error"; decide(duel, now); }
       if (JSON.stringify(duel) !== before) this.save(duel);
       return answer.ok ? ok(duel) : answer;
     });
