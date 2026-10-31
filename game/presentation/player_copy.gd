@@ -245,7 +245,7 @@ const WARDROBE_TITLE := "Wardrobe"
 const WARDROBE_BACK := "Back"
 ## Under the picked item's name: its slot and tier ("Hat, Common").
 const WARDROBE_FACTS := "%s, %s"
-const WARDROBE_NOTE := "Looks only. Friends see what your pip wears."
+const WARDROBE_NOTE := "Customize your little pip!"
 const WARDROBE_BALANCE := "%s Pollen"
 const WARDROBE_FEATURED := "Featured this week"
 const WARDROBE_ALL := "All items"

@@ -20,8 +20,8 @@ extends SceneTree
 ##   remembers where the Wardrobe was opened from;
 ## - a build without the shop (iOS selling nothing) and a server with the shop
 ##   off show the same frame with only Owned: no price, no Buy, no shelf, no +;
-## - an empty list shows its drawing and line (presentation/empty_state.gd):
-##   nothing owned, nothing in the shop, the shop off, or nothing in a slot;
+## - an empty list shows the one hanger drawing (presentation/empty_state.gd)
+##   with its case's line: nothing owned, nothing in the shop, or the shop off;
 ##   never while loading or offline, made once and still on idle frames.
 const Flow = preload("res://presentation/wardrobe_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
@@ -288,6 +288,7 @@ func _page_parts() -> void:
 	t.flow.set_view("you")
 	_check((page.find_child("WardrobePip", true, false) as Control)._color == SpiritLook.PEACH, "Your pip: peach again")
 	_check(PlayerCopy.WARDROBE_DRAG in _texts(page), "Drag to turn your pip.")
+	_check(PlayerCopy.WARDROBE_NOTE == "Customize your little pip!" and PlayerCopy.WARDROBE_NOTE in _texts(page), "The header says Customize your little pip!")
 	t.host.queue_free()
 	await _frames(2)
 
@@ -447,7 +448,7 @@ func _empty_lists() -> void:
 	_check(_empty(page) == null and (page.find_child("WardrobeItems", true, false) as Control).visible, "Empty lists: none while things are on sale")
 	t.flow.set_tab("owned")
 	var empty: Control = _empty(page)
-	_check(empty != null and empty.art == "wardrobe_owned" and _texts(page).count(PlayerCopy.WARDROBE_NOTHING_OWNED) == 1 and not (page.find_child("WardrobeItems", true, false) as Control).visible, "Nothing owned: the drawing with its line, once")
+	_check(empty != null and empty.art == "wardrobe" and _texts(page).count(PlayerCopy.WARDROBE_NOTHING_OWNED) == 1 and not (page.find_child("WardrobeItems", true, false) as Control).visible, "Nothing owned: the drawing with its line, once")
 	await _frames(3)
 	var drawn: int = empty.draw_count if empty != null else -1
 	t.flow._redraw()
@@ -461,17 +462,13 @@ func _empty_lists() -> void:
 	t.store.note_view(SERVER, ME, bare)
 	t.flow.set_tab("all")
 	empty = _empty(page)
-	_check(empty != null and empty.art == "wardrobe_shelf" and PlayerCopy.WARDROBE_NOTHING_IN_SHOP in _texts(page) and not (page.find_child("WardrobeShelf", true, false) as Control).visible, "Nothing in the shop: the shelf drawing and its line")
-	# The flow hides a slot chip with nothing in it; the page still draws one it is given.
-	var model: Dictionary = t.flow.model()
-	model.merge({"tab": "owned", "kinds": ["hat", "leaf"], "kind": "leaf"}, true)
-	t.flow._page.render(model)
-	empty = _empty(page)
-	_check(empty != null and empty.art == "wardrobe_slot" and PlayerCopy.WARDROBE_NOTHING_OWNED in _texts(page), "Nothing in a slot: the slot drawing")
+	_check(empty != null and empty.art == "wardrobe" and PlayerCopy.WARDROBE_NOTHING_IN_SHOP in _texts(page) and not (page.find_child("WardrobeShelf", true, false) as Control).visible, "Nothing in the shop: the drawing with its line")
+	t.flow.set_tab("owned")
+	_check(_texts(page).has(PlayerCopy.WARDROBE_NOTHING_OWNED) and not _texts(page).has(PlayerCopy.WARDROBE_NOTHING_IN_SHOP), "Both tabs empty: switching tabs changes the line")
 	t.store.set_enabled(SERVER, ME, true, false, true)
 	t.flow._redraw()
 	empty = _empty(page)
-	_check(empty != null and empty.art == "wardrobe_shelf" and PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(page) and not PlayerCopy.WARDROBE_NOTHING_IN_SHOP in _texts(page), "The shop off: the shelf drawing says what you earn shows here")
+	_check(empty != null and empty.art == "wardrobe" and PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(page) and not PlayerCopy.WARDROBE_NOTHING_OWNED in _texts(page), "The shop off: the drawing says what you earn shows here")
 	t.host.queue_free()
 	await _frames(2)
 

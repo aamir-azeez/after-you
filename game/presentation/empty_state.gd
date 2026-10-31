@@ -32,9 +32,7 @@ const SPOTS := {
 	"friends": {"card": "friend", "rows": ["friend", "friend_next"], "links": [[1, 0, "plane"]]},
 	"replays_solo": {"card": "replay", "preview": "footprints"},
 	"replays_together": {"card": "replay", "rows": ["polaroid"]},
-	"wardrobe_owned": {"card": "wardrobe", "rows": ["wardrobe_owned"]},
-	"wardrobe_slot": {"card": "wardrobe", "rows": ["wardrobe_slot"]},
-	"wardrobe_shelf": {"card": "wardrobe", "rows": ["wardrobe_shelf"]},
+	"wardrobe": {"card": "wardrobe", "rows": ["wardrobe"]},
 }
 static var _heading: FontVariation
 var art := "rooms"

@@ -327,19 +327,19 @@ func render(model: Dictionary) -> void:
 	var featured: Array = (model.get("featured", []) as Array).filter(func(id: String) -> bool: return by_id.has(id)).map(func(id: String) -> Dictionary: return by_id[id])
 	var kind := str(model.get("kind", ""))
 	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return (tab == "all" or bool(entry.owned)) and (kind.is_empty() or entry.slot == kind))
-	# An empty list shows its drawing (empty_state.gd): nothing in the picked
-	# slot, nothing owned, or nothing in the shop or no shop. Never while the
-	# status line says loading or offline.
+	# An empty list shows the drawing (empty_state.gd) with its case's line:
+	# nothing owned, nothing in the shop, or no shop. Never while the status
+	# line says loading or offline.
 	var empty := ""
 	if shown.is_empty() and status.is_empty():
-		empty = "wardrobe_slot" if not kind.is_empty() else ("wardrobe_owned" if tab == "owned" and shop else "wardrobe_shelf")
+		empty = PlayerCopy.WARDROBE_NOTHING_EARNED if not shop else (PlayerCopy.WARDROBE_NOTHING_IN_SHOP if tab == "all" else PlayerCopy.WARDROBE_NOTHING_OWNED)
 	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty])
 	if key != _cards_key:
 		_cards_key = key
 		_fill(_featured, featured, true)
 		_fill_kinds(model.get("kinds", []), kind)
 		_fill(_grid, shown, false)
-		_show_empty(empty, shop)
+		_show_empty(empty)
 	else:
 		_restyle(_featured)
 		_restyle(_grid)
@@ -347,17 +347,15 @@ func render(model: Dictionary) -> void:
 	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop)
 	if preview.has_method("wear"): preview.wear(model.get("preview", {}))
 
-## The empty list's drawing and line for `spot` (empty_state.gd SPOTS), or none.
-func _show_empty(spot: String, shop: bool) -> void:
+## The empty list's drawing with `line` under it, or none when `line` is empty.
+func _show_empty(line: String) -> void:
 	if is_instance_valid(_empty):
 		_list.remove_child(_empty)
 		_empty.queue_free()
 	_empty = null
-	_grid.visible = spot.is_empty()
-	if spot.is_empty(): return
-	var text := PlayerCopy.WARDROBE_NOTHING_OWNED if shop else PlayerCopy.WARDROBE_NOTHING_EARNED
-	if spot == "wardrobe_shelf" and shop: text = PlayerCopy.WARDROBE_NOTHING_IN_SHOP
-	_empty = ThemeRules.empty_state(_list, spot, "", text)
+	_grid.visible = line.is_empty()
+	if line.is_empty(): return
+	_empty = ThemeRules.empty_state(_list, "wardrobe", "", line)
 
 ## The chip for `balance`, with its plus while bundles sell; none until the server has said.
 func _show_chip(balance: int, known: bool, plus: bool) -> void:
