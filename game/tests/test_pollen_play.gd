@@ -5,9 +5,12 @@ extends SceneTree
 ##   none on the first chip), and no plus while the shop is off;
 ## - the page: loading, offline with Try again, the bank with its rules, an
 ##   empty bank's tail in the server's numbers, recent turns with their bonuses,
-##   a bloom or why one paid a little, first clears paid or not, and the Full
-##   Journey sentence left out on a build that names no Full Journey; it lays
-##   out inside the screen at 1280x720, 1600x738 and 800x360;
+##   a bloom or why one paid a little, their chapter's picture and when they
+##   were played, what first clears still pay, first clears paid or not, the
+##   owner's footnote, and the Full Journey sentence left out on a build that
+##   names no Full Journey; the own pip shows in a short list's spare room and
+##   never in a long one; the back square; it lays out inside the screen at
+##   1280x720, 1600x738 and 800x360;
 ## - the flow: opens from Home, Settings or the Pollen store and goes back there, reads once per
 ##   opening, and the chip opens the page while the shop is off;
 ## - purchases (pollen boards 1 and 2, Batch D): the history's purchases checked
@@ -25,6 +28,8 @@ const HomeMenu = preload("res://presentation/home_menu.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
+const TurnsView = preload("res://presentation/pollen_turns_view.gd")
+const Spare = preload("res://presentation/pollen_play_spare.gd")
 const StoreCurrency = preload("res://services/store_currency.gd")
 
 const SIZES := [Vector2i(1280, 720), Vector2i(1561, 720), Vector2i(1600, 720)]
@@ -55,6 +60,8 @@ class FakeWardrobe:
 	func shop(_server: String, _owner: String) -> bool: return selling
 	func bundles(_server: String, _owner: String) -> bool: return selling
 	func view(_server: String, _owner: String) -> Dictionary: return {"bundles": {"spent_usd_cents": 777}}
+	## The own pip on the page reads the look through services/own_look.gd.
+	func active_look() -> Dictionary: return {}
 
 class Host:
 	extends Node
@@ -120,6 +127,21 @@ static func _history_value(left: int = 15) -> Dictionary:
 		"first_clears": [{"level_id": "first-steps", "price": 1200.0, "paid": 1200.0}, {"level_id": "relay-isles", "price": 1200.0}, {"level_id": "conservatory", "price": 2000.0}],
 		"bank": {"left": float(left), "refill": 12.0, "cap": 36.0, "tail": [{"pay": 10.0, "turns": 36.0}, {"pay": 1.0, "turns": 64.0}]}}
 
+## A busy player: 30 turns, the newest played just now, and every free chapter cleared.
+static func _busy() -> Dictionary:
+	var now := Time.get_unix_time_from_system() * 1000.0
+	var turns := []
+	for index in range(30):
+		turns.append({"kind": "turn", "amount": 111.0, "at": now - index * 3600000.0, "level_id": "first-steps", "stage_id": "a-little-lift", "role": "a", "bonuses": ["first_try"], "bloom": 2.0 if index % 5 == 0 else 1.0})
+	var value := _history_value()
+	value.entries = turns
+	value.first_clears = [{"level_id": "first-steps", "price": 1200.0, "paid": 1200.0}, {"level_id": "relay-isles", "price": 1200.0, "paid": 1200.0}]
+	return PollenHistory.checked(value)
+
+static func _label(node: Node, label_name: String) -> Variant:
+	var found := node.find_child(label_name, true, false) as Label if node != null else null
+	return found.text if found != null else null
+
 func _viewport(size: Vector2i) -> SubViewport:
 	var viewport := SubViewport.new()
 	viewport.size = size
@@ -144,14 +166,40 @@ func _page_states() -> void:
 		_check(texts.has("The Relay Isles, stage 1") and texts.has("First try · gold pace") and texts.has("The Relay Isles, stage 2") and texts.has(PlayerCopy.POLLEN_TURN_REPEAT), "Recent turns name the place, their bonuses, and why one paid a little")
 		_check(page.find_children("PollenBloomTag", "", true, false).size() == 1, "A bloomed turn carries its small flower tag")
 		_check(texts.has("+1,200 earned") and page.find_children("*PollenClearRow*", "", true, false).size() == 2 and texts.has(PlayerCopy.POLLEN_CLEARS_FULL_JOURNEY + " " + PlayerCopy.POLLEN_CLEARS_HARD), "First clears: paid and not, free chapters only, with the Full Journey sentence: " + str(texts))
+		_check(texts.has("Full Journey chapters pay more. Your first Hard clear together pays the same amount again"), "The footnote is the owner's words, exactly")
+		_check((page.find_child("PollenClearsLeft", true, false) as Label).text == "1,200" and texts.has("still to earn from 1 first clear") and texts.has("1 of 2 cleared") and is_equal_approx((page.find_child("PollenClearsBoxBar", true, false) as ProgressBar).value, 1.0),
+			"What first clears still pay, the server's prices summed, and how many are cleared: " + str(texts))
 		_check(page.find_child("PollenBankTail", true, false) == null, "A bank with turns left needs no tail line")
+		_check(page.find_child("PollenTurnRow0", true, false).find_child("ChapterPicture", true, false) != null and page.find_child("PollenClearRow0", true, false).find_child("ChapterPicture", true, false) != null, "Turns and clears show their chapter's picture")
+		# The fixture's turns are at 1 to 3 ms, under a second after the epoch: no real time.
+		_check(page.find_child("PollenTurnWhen", true, false) == null, "A turn with no real time says no time")
+		var back := page.find_child("PollenPlayBack", true, false) as Button
+		_check(back.text.is_empty() and back.icon != null and back.accessibility_name == PlayerCopy.POLLEN_PLAY_BACK and back.custom_minimum_size == Vector2(56, 56), "Back is the board's coral square, named for screen readers")
 		_layout(page, size, "the full page")
+		page.render({"chip": PollenChip.make(24000, false), "full_journey": true, "status": "", "retry": false, "history": _busy()})
+		await _settle()
+		_check(page.find_children("PollenTurnRow*", "", true, false).size() == 30 and not (page.find_child("PollenPlaySpare", true, false) as Spare).showing(), "A long list scrolls and leaves no room for the pip at %s" % size)
+		_check(str(_label(page.find_child("PollenTurnRow0", true, false), "PollenTurnWhen")).begins_with("Today, "), "Each turn says when it was played")
+		var bar := (page.find_child("PollenTurnsCard", true, false).get_child(0) as ScrollContainer).get_v_scroll_bar()
+		var inset := page.find_child("PollenTurnRow0", true, false).get_parent().get_parent() as MarginContainer
+		_check(bar.visible and inset.get_theme_constant("margin_right") == Page.GUTTER and (page.find_child("PollenTurnRow0", true, false) as Control).get_global_rect().end.x <= bar.get_global_rect().position.x - Page.GUTTER + 0.5,
+			"A long list's rows keep the scroll bar's room clear at %s" % size)
+		_check(page.find_children("PollenPlaySpare", "", true, false).size() == 1, "A redraw leaves one spare room")
+		_check((page.find_child("PollenClearsLeft", true, false) as Label).text == "2,400" and _texts(page).has(PlayerCopy.POLLEN_CLEARS_ALL_PAID) and _texts(page).has("2 of 2 cleared"), "Every free chapter cleared: what they paid")
+		_layout(page, size, "a busy player's page")
+		page.render({"chip": PollenChip.make(0, false), "full_journey": true, "status": "", "retry": false, "history": PollenHistory.checked({"schema_version": 1.0, "entries": [], "first_clears": _history_value().first_clears,
+			"bank": {"left": 12.0, "refill": 12.0, "cap": 36.0, "tail": []}})})
+		await _settle()
+		_check(page.find_child("PollenTurnsNone", true, false) != null and (page.find_child("PollenPlaySpare", true, false) as Spare).showing(), "No turns yet: the line, with the pip in the room under it at %s" % size)
+		var short_inset := page.find_child("PollenTurnsNone", true, false).get_parent().get_parent() as MarginContainer
+		_check(short_inset.get_theme_constant("margin_right") == 0, "A list that fits gives the room back at %s" % size)
+		_layout(page, size, "a new player's page")
 		page.render({"chip": PollenChip.make(24000, false), "full_journey": false, "status": "", "retry": false, "history": _history(0)})
 		await _settle()
 		texts = _texts(page)
 		var tail := page.find_child("PollenBankTail", true, false) as Label
 		_check(texts.has(PlayerCopy.POLLEN_BANK_EMPTY_LINE) and tail != null and tail.text == "After the bank runs out, each turn earns 10 for the next 36 turns, then 1 for the next 64, then nothing until Monday, when the bank gains 12 more turns.", "An empty bank says what turns still earn, in the server's numbers: " + (tail.text if tail != null else "none"))
-		_check(texts.has(PlayerCopy.POLLEN_CLEARS_HARD) and not texts.any(func(text: String) -> bool: return text.contains("Full Journey")), "A build that names no Full Journey leaves its sentence out")
+		_check(texts.has("Your first Hard clear together pays the same amount again") and not texts.any(func(text: String) -> bool: return text.contains("Full Journey")), "A build that names no Full Journey leaves its sentence out")
 		_layout(page, size, "the page with an empty bank")
 		viewport.queue_free()
 		await _settle()
@@ -297,6 +345,7 @@ func _purchase_card() -> void:
 		_check(page.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and texts.has(PlayerCopy.POLLEN_PURCHASE_REFUNDED % "Pouch") and texts.has("Basket") and texts.has("Pinch")
 			and texts.has(PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"]), "Each bundle and refund with its receipt line: " + str(texts))
 		_check(page.find_child("PollenPurchaseRow0", true, false).find_children("BundleArt", "", true, false).size() == 1, "A purchase row has its bundle's art")
+		_check(page.find_child("PollenTurnRow0", true, false).find_child("ChapterPicture", true, false) == null and page.find_child("PollenClearRow0", true, false).find_child("ChapterPicture", true, false) == null, "Three cards leave the chapter pictures out at %s" % size)
 		_layout(page, size, "the page with purchases")
 		# A store selling in another currency: the same purchases, no money anywhere.
 		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": bought.spent_usd_cents, "money": false})

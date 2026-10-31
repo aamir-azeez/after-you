@@ -199,7 +199,13 @@ const POLLEN_CLEARS_TITLE := "First chapter clears"
 const POLLEN_CLEARS_NOTE := "Once per chapter, solo or together."
 const POLLEN_CLEAR_EARNED := "+%s earned"
 const POLLEN_CLEARS_FULL_JOURNEY := "Full Journey chapters pay more."
-const POLLEN_CLEARS_HARD := "Your first Hard clear together pays the same amount again, once."
+const POLLEN_CLEARS_HARD := "Your first Hard clear together pays the same amount again"
+## The box atop First chapter clears: the Pollen the free chapters not yet cleared still pay.
+const POLLEN_CLEARS_WAITING := "still to earn from %d first clears"
+const POLLEN_CLEARS_WAITING_ONE := "still to earn from 1 first clear"
+## The same box once every free chapter is cleared, beside what they paid.
+const POLLEN_CLEARS_ALL_PAID := "earned from first clears"
+const POLLEN_CLEARS_COUNT := "%d of %d cleared"
 const SETTINGS_POLLEN := "Pollen"
 const SETTINGS_POLLEN_NOTE := "Your balance, the turn bank and first clears."
 ## The same row while bundles sell (pollen board 1), and Pollen from play's title when it lists purchases.
