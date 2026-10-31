@@ -7,7 +7,7 @@ extends RefCounted
 ## Another chapter (see `chapters`) can be offered, hosted, joined and listed;
 ## turns are only played in relay-isles@2.
 ## What it does not do: physics (the real server is structural only too), photo
-## delivery, Story/campaign, friend requests, presence, friend room events and
+## delivery (uploads only with photos_enabled), Story/campaign, friend requests, presence, friend room events and
 ## push. Friends are linked directly by befriend(). Those answer as the
 ## live server does with their features off.
 ##
@@ -24,8 +24,17 @@ const INVITE_DAYS := 7
 ## Header names a 0.6.0 phone never sent (rooms_api.gd at v0.6.0).
 const POST_060_HEADERS := ["x-afteryou-room-level", "x-afteryou-friends", "x-afteryou-finished-room", "x-afteryou-friend-events", "x-afteryou-history", "x-afteryou-known-room", "x-afteryou-live", "x-afteryou-open-chapters"]
 const HistoryStore = preload("res://services/history_store.gd")
+const SafetyClient = preload("res://services/safety_client.gd")
 
 var replay_transfer_enabled := true
+## RELAY_PHOTOS_ENABLED with every player's photo terms accepted. On, the
+## capability offers photo_uploads_enabled and a member uploads a photo to their
+## own accepted turn as v2/photos.ts does (revision check, idempotent receipts);
+## photo delivery to the friend stays off.
+var photos_enabled := false
+## "room_id:turn_id" -> the turn's photo state, with its jpeg_base64.
+var photos: Dictionary = {}
+var _photo_receipts: Dictionary = {}
 ## LIVE_CONNECTION_ENABLED on the live Worker (off unless "true"). On, the
 ## capability offers live_version 1 to a phone that asks, and live_socket (a
 ## phone's socket factory) opens that phone's live socket. The server then
@@ -184,11 +193,15 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	if path == "/v1/friends/share": return _share(player, body)
 	var friend_join := RegEx.create_from_string("^/v1/friends/([A-Za-z0-9_-]{22})/join$").search(path)
 	if friend_join != null and method == HTTPClient.METHOD_POST: return _friend_join(player, friend_join.get_string(1))
+	if path == "/v1/safety/config" and method == HTTPClient.METHOD_GET:
+		return _ok({"schema_version": 1, "enforced": true, "terms_version": SafetyClient.TERMS_VERSION, "privacy_path": "/privacy", "deletion_path": "/account-deletion", "rules_path": "/community-rules"})
+	if path == "/v1/safety/terms" and method == HTTPClient.METHOD_GET:
+		return _ok({"schema_version": 1, "terms_version": SafetyClient.TERMS_VERSION, "accepted": photos_enabled, "accepted_at": _stamp() if photos_enabled else null})
 	if path == "/v1/social/inbox": return _ok({"schema_version": 1, "available": false, "events": [], "preferences": []})
 	# queued counts the friends alerted (social-routes.ts), as the client checks.
 	if path == "/v1/social/publication": return _fail(409, "friend_room_not_shared") if record.get("shared_room") == null else _ok({"schema_version": 1, "publication_epoch": 1, "queued": 0})
 	if RegEx.create_from_string("^/v2/rooms/[A-Za-z0-9_-]{22}/history").search(path) != null: return _history_route(player, method, path, headers, body, PackedByteArray())
-	var found := RegEx.create_from_string("^/v2/rooms/([A-Za-z0-9_-]{22})(?:/(turns|fork|redo|collection|operations|pairs|photos|leave|replay-transfer)(?:/(.*))?)?$").search(path)
+	var found := RegEx.create_from_string("^/v2/rooms/([A-Za-z0-9_-]{22})(?:/(turns|fork|redo|collection|operations|pairs|photos|photo-operations|leave|replay-transfer)(?:/(.*))?)?$").search(path)
 	if found == null:
 		unknown.append("%d %s" % [method, path])
 		return _fail(404, "not_found")
@@ -204,7 +217,10 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 		if _offloaded(room) > 0 and method == HTTPClient.METHOD_GET or _offloaded(room) > 0 and item in ["ack", "restore"]: return _fail(409, "history_offload_active")
 		return _transfer(player, room, method, item, body)
 	# Photo reads keep working on a transferred room (routes.ts:135-147, v2/photos.ts:32-38).
-	if section == "photos": return _photo(player, room, method, item)
+	if section == "photos": return _photo(player, room, method, item, body)
+	if section == "photo-operations":
+		var known: Variant = _photo_receipts.get(room.room_id + ":" + player + ":" + item)
+		return _ok(_photo_outcome(room, known)) if known is Dictionary else _fail(404, "photo_operation_not_found")
 	if room.transferred:
 		if section.is_empty() and legacy_transferred_unblock and not headers.has("x-afteryou-finished-room"): return _fail(409, "campaign_client_required")
 		return _fail(410, "replay_transferred")
@@ -246,17 +262,69 @@ func _route(method: int, path: String, headers: Dictionary, body: Dictionary, pl
 	unknown.append("%d %s" % [method, path])
 	return _fail(404, "not_found")
 
-## The harness never uploads photos: every accepted turn reads as photo-less.
-func _photo(player: String, room: Dictionary, method: int, item: String) -> Dictionary:
+## A turn's photo (v2/photos.ts): reads for every member, uploads only with
+## photos_enabled and only to the caller's own turn. Delivery stays off.
+func _photo(player: String, room: Dictionary, method: int, item: String, body: Dictionary = {}) -> Dictionary:
 	var turn := item.get_slice("/", 0)
 	var action := item.get_slice("/", 1) if item.contains("/") else ""
-	if not room.turns.any(func(entry: Dictionary) -> bool: return entry.turn_id == turn): return _fail(404, "turn_not_found")
+	var accepted: Array = room.turns.filter(func(entry: Dictionary) -> bool: return entry.turn_id == turn)
+	if accepted.is_empty(): return _fail(404, "turn_not_found")
+	var state: Variant = photos.get(room.room_id + ":" + turn)
+	var public: Variant = _public_photo(state)
 	if action == "delivery" and method == HTTPClient.METHOD_GET:
-		return _ok({"schema_version": 1, "photo": null, "available": false, "removed_reason": null, "intended_player_ids": [room.host_id] + ([room.guest_id] if room.guest_id != null else []), "acked_player_ids": []})
+		return _ok({"schema_version": 1, "photo": public, "available": false, "removed_reason": null, "intended_player_ids": [room.host_id] + ([room.guest_id] if room.guest_id != null else []), "acked_player_ids": []})
 	if action == "ack": return _fail(503, "photo_delivery_disabled")
-	if action.is_empty() and method == HTTPClient.METHOD_GET: return _ok({"photo": null, "jpeg_base64": null})
+	if action.is_empty() and method == HTTPClient.METHOD_GET:
+		return _ok({"photo": public, "jpeg_base64": state.jpeg_base64 if state is Dictionary else null})
+	if action.is_empty() and method == HTTPClient.METHOD_POST:
+		if not photos_enabled: return _fail(503, "photo_uploads_disabled")
+		return _upload_photo(player, room, accepted[0], state, body)
 	if action.is_empty(): return _fail(503, "photo_uploads_disabled")
 	return _fail(405, "method_not_allowed")
+
+## mutatePhoto for an upload: owner and recording checked, a replayed key returns
+## its first receipt, and the expected revision must be the current one.
+func _upload_photo(player: String, room: Dictionary, turn: Dictionary, state: Variant, body: Dictionary) -> Dictionary:
+	if turn.player_id != player: return _fail(404, "turn_not_found")
+	if body.get("recording_hash") != turn.recording.recording_hash: return _fail(409, "photo_recording_mismatch")
+	var material := body.duplicate(true)
+	material.merge({"operation": "photo_upload", "turn_id": turn.turn_id})
+	var request_hash := Canonical.digest(material)
+	var key: String = room.room_id + ":" + player + ":" + str(body.get("idempotency_key", ""))
+	var known: Variant = _photo_receipts.get(key)
+	if known is Dictionary:
+		return _ok(_photo_outcome(room, known)) if known.request_hash == request_hash else _fail(409, "idempotency_key_reused")
+	var revision := int(state.photo_revision) if state is Dictionary else 0
+	var current_hash: Variant = state.sha256 if state is Dictionary else null
+	if int(body.get("expected_photo_revision", -1)) != revision or body.get("expected_photo_hash") != current_hash: return _fail(409, "stale_photo_revision")
+	var bytes := Marshalls.base64_to_raw(str(body.get("jpeg_base64", "")))
+	var image := Image.new()
+	if bytes.is_empty() or image.load_jpg_from_buffer(bytes) != OK: return _fail(400, "invalid_photo_jpeg")
+	var digest := HashingContext.new()
+	digest.start(HashingContext.HASH_SHA256)
+	digest.update(bytes)
+	if digest.finish().hex_encode() != str(body.get("sha256", "")): return _fail(400, "photo_checksum_mismatch")
+	var next := {"schema_version": 1, "turn_id": turn.turn_id, "owner_player_id": player, "recording_hash": turn.recording.recording_hash, "photo_revision": revision + 1,
+		"sha256": str(body.get("sha256", "")), "width": image.get_width(), "height": image.get_height(), "byte_length": bytes.size(), "updated_at": _stamp(), "jpeg_base64": body.jpeg_base64}
+	photos[room.room_id + ":" + turn.turn_id] = next
+	var receipt := {"schema_version": 1, "room_id": room.room_id, "idempotency_key": body.idempotency_key, "request_hash": request_hash, "operation": "photo_upload",
+		"turn_id": turn.turn_id, "recording_hash": next.recording_hash, "photo_revision": next.photo_revision, "photo_hash": next.sha256}
+	_photo_receipts[key] = receipt
+	return _ok(_photo_outcome(room, receipt))
+
+func _photo_outcome(room: Dictionary, receipt: Dictionary) -> Dictionary:
+	return {"receipt": receipt.duplicate(true), "photo": _public_photo(photos.get(room.room_id + ":" + str(receipt.turn_id)))}
+
+static func _public_photo(state: Variant) -> Variant:
+	if not state is Dictionary: return null
+	var public: Dictionary = state.duplicate(true)
+	public.erase("jpeg_base64")
+	return public
+
+## The photo the server holds for a turn, or {}.
+func turn_photo(room_id: String, turn_id: String) -> Dictionary:
+	var state: Variant = photos.get(room_id + ":" + turn_id)
+	return state.duplicate(true) if state is Dictionary else {}
 
 ## redoSource (v2/room.ts:160-167): set while a second turn is owed.
 func _redo_source(room: Dictionary) -> Variant:
@@ -276,7 +344,7 @@ func _capabilities(headers: Dictionary) -> Dictionary:
 		if headers.has("x-afteryou-room-level"): chapter["stage_count"] = level.stages.size()
 		offered.append(chapter)
 	var value := {"api_version": 2, "mutations_enabled": mutations_enabled, "recording_version": 2, "simulation_version": 2,
-		"photo_uploads_enabled": false, "preset_reactions_enabled": false, "photo_delivery_enabled": false,
+		"photo_uploads_enabled": photos_enabled, "preset_reactions_enabled": false, "photo_delivery_enabled": false,
 		"replay_transfer_version": 1 if replay_transfer_enabled else 0, "campaign_creation_enabled": false,
 		"campaign_mutations_enabled": false, "campaign_definitions": [], "chapters": offered, "validation": "structural_client_replay_required"}
 	if headers.get("x-afteryou-history") == "1": value.merge({"history_version": 1, "history_offload_enabled": history_offload_enabled})

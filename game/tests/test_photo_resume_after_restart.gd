@@ -110,6 +110,12 @@ func _store_rules() -> void:
 	_check(store.entries(OWNER).is_empty(), "A damaged resume file reads as nothing waiting, without an error")
 	store.clock = func() -> int: return 2000000000
 	_check(store.begin(OWNER, _target(), "capture-4"), "A damaged file is replaced by the next entry")
+	var fresh: Dictionary = store.entries(OWNER)[0]
+	_check(store.just_closed(fresh), "A camera opened moments ago means After You closed under it just now: its room opens at once")
+	store.clock = func() -> int: return 2000000000 + Resume.RETURN_SEC + 1
+	_check(not store.just_closed(fresh) and store.entries(OWNER).size() == 1, "An older entry still waits, but Home asks before opening its room")
+	store.clock = func() -> int: return 2000000000 - 1
+	_check(not store.just_closed(fresh), "An entry from a clock that moved back is not treated as just closed")
 	store.clock = func() -> int: return 2000000000 + Resume.MAX_AGE_SEC + 1
 	_check(store.entries(OWNER).is_empty(), "Old entries expire")
 	leftover = FileAccess.open(store._path(OWNER) + ".tmp", FileAccess.WRITE)

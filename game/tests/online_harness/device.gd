@@ -7,6 +7,7 @@ const Main = preload("res://tests/unlocked_main.gd")
 const Save = preload("res://services/local_save.gd")
 const DeviceApi = preload("res://tests/online_harness/device_api.gd")
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
+const FakePhotoNative = preload("res://tests/online_harness/fake_photo_native.gd")
 
 var label := ""
 var server: RefCounted
@@ -18,6 +19,9 @@ var app: Node
 var api: Node
 var legacy_060 := false
 var latency_frames := 1
+## This phone's native photo service (fake_photo_native.gd) once it has a camera,
+## else null (no camera, as on desktop). It outlives the app, as the plugin's files do.
+var photo_native: RefCounted
 ## Every toast and error card seen since the last clear, with the step's fault flag.
 ## Friend news in the pop-up (it carries the friends icon) is kept apart in `news`.
 var toasts: Array[String] = []
@@ -57,6 +61,7 @@ func new_phone() -> void:
 func boot() -> void:
 	app = Main.new()
 	app.saves = Save.new(save_path)
+	app.photo_native = photo_native
 	app.saves.data.settings.sound = false
 	app.saves.data.settings.assistance = true
 	# A save from a launch after the one-time settings change (LocalSave.settle_settings), so startup writes nothing.
@@ -91,6 +96,11 @@ func force_quit() -> void:
 		app.free()
 	app = null
 	api = null
+
+## Gives this phone a camera from its next screen on.
+func add_camera() -> void:
+	if photo_native == null: photo_native = FakePhotoNative.new()
+	if running(): app.photo_native = photo_native
 
 func running() -> bool:
 	return is_instance_valid(app)

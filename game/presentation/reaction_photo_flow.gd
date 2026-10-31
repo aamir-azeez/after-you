@@ -13,6 +13,8 @@ const SafetyScreen = preload("res://presentation/safety_screen.gd")
 const Polaroid = preload("res://presentation/photo_polaroid_card.gd")
 const Typed = preload("res://services/typed_values.gd")
 var capture_override: Node
+## Native photo service override for tests; null uses the native plugin.
+var native_override: Object
 var controller_override: RefCounted
 var resume_store: RefCounted
 var prompts_enabled: Callable
@@ -54,7 +56,7 @@ func configure(host: Node, session: RefCounted, context_factory: RefCounted = nu
 	_context_factory = context_factory
 
 func _ready() -> void:
-	_capture = Capture.new() if capture_override == null else capture_override
+	_capture = Capture.new(native_override) if capture_override == null else capture_override
 	add_child(_capture)
 	_local = Local.new(_capture)
 	add_child(_local)

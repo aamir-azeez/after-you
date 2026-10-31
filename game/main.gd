@@ -303,6 +303,8 @@ var safety_return := "settings"
 ## Home prompt for a turn photo that After You closed under (photo_resume_prompt.gd).
 var photo_resume_prompt: Node
 var _photo_resume_checked := false
+## Set once any room screen opened this session: from then on a waiting photo only asks.
+var _photo_resume_left_home := false
 var turn_notifications: Node
 var hosting_notification_preferences := HostingNotificationPreferences.new()
 var friend_presence: Node
@@ -310,6 +312,8 @@ var presence_hud: Label
 var invite_link_bridge: Node
 ## Native inbox override for tests; production uses the native plugin.
 var invite_link_native: Object
+## Native photo service override for tests; null uses the native plugin.
+var photo_native: Object
 ## In-memory only: one validated friend ID from an invite link, never persisted or auto-added.
 var invite_link_pending := ""
 var invite_link_expires_ms := 0
@@ -1715,9 +1719,11 @@ func _enter_online_relay() -> void:
 	_set_world_visible(false)
 	ui.visible = false
 	soundscape.set_backgrounded(true)
+	_photo_resume_left_home = true
 	relay_child = RelayPreview.new()
 	relay_child.chapter_key = relay_session.chapter_key()
 	relay_child.online_session = relay_session
+	relay_child.photo_native = photo_native
 	relay_child.friend_presence = friend_presence
 	relay_child.live_connection = live_connection
 	relay_child.settings = saves.data.settings.duplicate(true)
@@ -2436,18 +2442,35 @@ func supersede_foreground_refresh() -> void:
 	lifecycle_generation+=1
 
 ## Once a session, on Home: a turn that still waits for its photo because After You closed
-## while the camera was open. Its room opens on request and offers that photo again.
+## while the camera was open. Its room offers that photo again. When the camera closed it
+## just now and this start went nowhere else first, the room opens at once, so the player is
+## back where they took the picture. Otherwise, or when the room cannot open now, Home asks.
 func _service_photo_resume() -> void:
 	if _photo_resume_checked or not _photo_resume_safe(): return
 	_photo_resume_checked = true
 	if not is_instance_valid(photo_resume_prompt):
 		photo_resume_prompt = PhotoResumePrompt.new()
+		photo_resume_prompt.native_override = photo_native
 		photo_resume_prompt.open_requested.connect(_open_photo_resume_room)
 		add_child(photo_resume_prompt)
 	var owner := str(_relay_identity().player_id)
+	var context := _photo_resume_context()
 	var entry: Dictionary = await photo_resume_prompt.check(owner)
 	if entry.is_empty() or not _photo_resume_safe() or str(_relay_identity().player_id) != owner: return
+	if context == _photo_resume_context() and _photo_resume_returns(entry) and await _open_photo_resume_room(str(entry.room_id), true): return
+	if not _photo_resume_safe() or str(_relay_identity().player_id) != owner: return
 	photo_resume_prompt.show_prompt(ui, entry)
+
+## Whether this start goes straight back to the entry's room: its camera opened just now, no
+## room was opened yet, and no tapped alert or invite link waits to take the player elsewhere.
+func _photo_resume_returns(entry: Dictionary) -> bool:
+	if _photo_resume_left_home or not invite_link_pending.is_empty(): return false
+	if is_instance_valid(turn_notifications) and not turn_notifications.pending_route().is_empty(): return false
+	return photo_resume_prompt.resume_store.just_closed(entry)
+
+## Any navigation, identity change or trip to the background changes this.
+func _photo_resume_context() -> Array:
+	return [str(_relay_identity().player_id), relay_identity_epoch, lifecycle_generation, store_view_generation]
 
 func _photo_resume_safe() -> bool:
 	if mode != "home" or application_backgrounded or running or submission_in_flight or identity_loading or identity_busy or foreground_refresh_running or is_instance_valid(relay_child) or saves.read_only: return false
@@ -2457,22 +2480,28 @@ func _photo_resume_safe() -> bool:
 	if relay_session != null and (relay_session.busy() or not relay_session.can_leave_for_legacy() or (relay_session.coordinator != null and not relay_session.coordinator.draft().is_empty())): return false
 	return legacy_room_flow.navigation_ready("", false)
 
-func _open_photo_resume_room(room_id: String) -> void:
-	if _online_gated(): return
+## True once the room is open. `automatic`: no tap asked for it, so a refusal says nothing,
+## the caller asks on Home instead, and anything the player did meanwhile wins.
+func _open_photo_resume_room(room_id: String, automatic: bool = false) -> bool:
+	if _online_gated(): return false
 	if not _photo_resume_safe():
-		_toast(PlayerCopy.MAIN_BE8E691311EE)
-		return
+		if not automatic: _toast(PlayerCopy.MAIN_BE8E691311EE)
+		return false
+	var context := _photo_resume_context()
+	var current := func() -> bool: return _photo_resume_safe() and (not automatic or context == _photo_resume_context())
 	ensure_relay_session()
 	if relay_session.capabilities.is_empty():
 		if not await relay_session.load_lobby():
-			_toast(PlayerCopy.MAIN_571E92F64ED1)
-			return
-		if not _photo_resume_safe(): return
+			if not automatic: _toast(PlayerCopy.MAIN_571E92F64ED1)
+			return false
+		if not current.call(): return false
 	if not await relay_session.open_room(room_id):
-		_toast(PlayerCopy.MAIN_BE8E691311EE)
-		return
+		if not automatic: _toast(PlayerCopy.MAIN_BE8E691311EE)
+		return false
 	# The room's first view finds the waiting photo and opens its card (relay_preview.gd).
-	if _photo_resume_safe(): _enter_online_relay()
+	if not current.call(): return false
+	_enter_online_relay()
+	return is_instance_valid(relay_child)
 
 func _setup_invite_links() -> void:
 	invite_link_bridge = InviteLinkBridge.new()

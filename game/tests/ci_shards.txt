@@ -182,6 +182,7 @@ object_motion_trail 1
 objective_panel 3
 old_story_replays 2
 old_story_saves 2
+online_camera_photo 2
 online_history 2
 online_history_more 2
 online_live 2

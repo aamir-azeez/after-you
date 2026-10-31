@@ -12,6 +12,10 @@ const MAX_ENTRIES := 8
 const MAX_FILE := 32 * 1024
 ## Long enough to come back after a busy week; an entry is only a hint to reopen a card.
 const MAX_AGE_SEC := 14 * 24 * 3600
+## An entry this young means After You closed under the camera just now (the native side
+## keeps the camera's picture this long, PhotoPendingCapture.MAX_AGE_MS): the next start
+## goes straight back to its room instead of asking on Home.
+const RETURN_SEC := 30 * 60
 const ENTRY_KEYS := ["room_id", "turn_id", "recording_hash", "gameplay_key", "request_id", "started_unix", "photo"]
 var directory := "user://photo-capture-resume"
 var clock: Callable = func() -> int: return int(Time.get_unix_time_from_system())
@@ -70,6 +74,11 @@ func attach_photo(owner: String, request_id: String, photo: Dictionary) -> bool:
 			entry.photo = photo.duplicate(true)
 			found = true
 	return found and _write(owner, all)
+
+## True for an entry whose camera opened within RETURN_SEC.
+func just_closed(entry: Dictionary) -> bool:
+	var age := int(clock.call()) - int(entry.get("started_unix", 0))
+	return valid_entry(entry) and age >= 0 and age <= RETURN_SEC
 
 func has_request(owner: String, request_id: String) -> bool:
 	return entries(owner).any(func(entry: Dictionary) -> bool: return entry.request_id == request_id)

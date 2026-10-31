@@ -97,6 +97,8 @@ var online_refresh_queued := false
 var online_request_generation := 0
 var reaction_photos_enabled := ReactionPhotos.FEATURE_ENABLED
 var reaction_photos: Node
+## Native photo service override for tests; null uses the native plugin.
+var photo_native: Object
 var reaction_strip: Control
 var clipboard_copy: Callable = _copy_with_display_server
 var definition: Dictionary = Catalog.relay_isles()
@@ -357,6 +359,7 @@ func _finish_ready() -> void:
 	world.camera_exploration.frame_applied.connect(_position_replay_photos)
 	if online_session != null and reaction_photos_enabled:
 		reaction_photos = ReactionPhotos.new()
+		reaction_photos.native_override = photo_native
 		reaction_photos.configure(self, online_session)
 		reaction_photos.prompts_enabled = _photo_prompts_enabled
 		reaction_photos.save_prompt_preference = _save_photo_prompts
