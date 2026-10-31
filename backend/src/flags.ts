@@ -56,6 +56,8 @@ export const FLAG_VARS = Object.freeze({
   pollenBundles: "POLLEN_BUNDLES",
   /** Pollen bundles on the App Store (pollen/bundle-settle.ts): the same claim route, wallet read part and its own capability for iPhone, once the App Store's four products are in bundles.json. Needs POLLEN_REFUNDS, not POLLEN_BUNDLES, so each store switches on and off by itself. Set only through FEATURES. */
   pollenBundlesAppStore: "POLLEN_BUNDLES_APP_STORE",
+  /** App Store sandbox Pollen bundles for any player (pollen/bundle-settle.ts), so App Review sees a sandbox purchase pay: read only by a claim that finds nothing new in production. Needs POLLEN_BUNDLES_APP_STORE. Set only through FEATURES. */
+  pollenSandboxAppStore: "POLLEN_SANDBOX_APP_STORE",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
 } as const);

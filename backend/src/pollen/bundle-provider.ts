@@ -96,11 +96,14 @@ function listItems(result: ProviderResult): unknown[] | string {
   return value.next_page ? "provider_incomplete_list" : value.items;
 }
 
+/** Oldest first, ties by RevenueCat id. */
+export function byPurchaseTime(a: BundlePurchase, b: BundlePurchase): number { return a.purchased_at - b.purchased_at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); }
+
 /** The player's counted bundle purchases, oldest first; for the review identity, its App Store sandbox ones too. */
-export async function readBundles(playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<BundleRead> {
+export async function readBundles(playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest, only?: typeof SANDBOX): Promise<BundleRead> {
   const products = bundleProducts(), at = project(env);
   if (at === null) return { ok: false, reason: "unconfigured" };
-  const environments = sandboxBundles(playerId, env) ? [APP.playEnvironment, SANDBOX] : [APP.playEnvironment];
+  const environments = only === SANDBOX ? [SANDBOX] : sandboxBundles(playerId, env) ? [APP.playEnvironment, SANDBOX] : [APP.playEnvironment];
   const lists = await Promise.all(environments.map(async environment =>
     ({ environment, items: listItems(await request(`${at.base}/customers/${encodeURIComponent(playerId)}/purchases?environment=${environment}&limit=100`, at.key)) })));
   const purchases: BundlePurchase[] = [];
@@ -108,7 +111,7 @@ export async function readBundles(playerId: string, env: ServerVars, request: Pr
     if (typeof items === "string") return { ok: false, reason: items };
     for (const item of items) { const each = bundlePurchase(item, products, environment); if (each) purchases.push(each); }
   }
-  purchases.sort((a, b) => a.purchased_at - b.purchased_at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  purchases.sort(byPurchaseTime);
   return { ok: true, purchases };
 }
 

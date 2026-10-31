@@ -7,7 +7,7 @@ import serverBundles from "../src/pollen/bundles.json";
 import { APP_STORE_BUNDLES_READY, BUNDLES, checkedBundles, firstGift, storeReady, type BundleKey, type Bundles } from "../src/pollen/bundles";
 import { bundleProducts, bundlePurchase, lookupBundles, readBundles, type BundleAsk, type BundlePurchase } from "../src/pollen/bundle-provider";
 import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundleCheckDue, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
-import { anyBundlesOn, appStoreBundlesOn, bundlesOn, itemDropsOn, refundsOn } from "../src/pollen/features";
+import { anyBundlesOn, appStoreBundlesOn, bundlesOn, itemDropsOn, refundsOn, sandboxAppStoreOn } from "../src/pollen/features";
 import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
 import { applyLedger, ledgerLines, walletView } from "../src/pollen/wallet";
 import { RATES } from "../src/pollen/rates";
@@ -741,6 +741,51 @@ describe("bundles through the Worker", () => {
     expect((await wallet(reviewer)).balance).toBe(0);
     const back = await runInDurableObject(env.PLAYERS.getByName(reviewer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]));
     expect(back).toEqual([["bundlerefund:appstore:2000000000000400", -firstPay("pouch")]]);
+  });
+
+  it("pays any player's App Store sandbox bundle once while POLLEN_SANDBOX_APP_STORE is on, reading sandbox only when production has nothing new", async () => {
+    const on = (names: string[]) => ({ CONFIG: configJson({ features: names }), POLLEN_SECRET: SECRET });
+    expect(sandboxAppStoreOn(on([...BOTH, "POLLEN_SANDBOX_APP_STORE"]))).toBe(true);
+    expect(sandboxAppStoreOn(on([...ON, "POLLEN_SANDBOX_APP_STORE"]))).toBe(false);
+    const player = await create(), other = await create();
+    const sandbox = (id: string, extra: Record<string, unknown> = {}) => apple(id, "prodc18dc7e8e6", { environment: "sandbox", revenue_in_usd: { gross: 0 }, ...extra });
+    lists[player.player_id] = [sandbox("rc_500"), owned("rc_501", "prodd4e2b730e5", { environment: "sandbox" })];
+    lists[other.player_id] = [sandbox("rc_502", { store_purchase_identifier: "2000000000000500" })];
+    // Off: nobody's sandbox buy pays (the review identity aside), with one list request.
+    use(BOTH); providerCalls = 0;
+    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
+    expect(providerCalls).toBe(1);
+    // On: the App Store sandbox Pouch pays once; the Play sandbox Pinch never does.
+    use([...BOTH, "POLLEN_SANDBOX_APP_STORE"]); providerCalls = 0;
+    const meter = countingEnv({ ...env, ...current } as unknown as Env);
+    const stubs = { player: env.PLAYERS.getByName(player.player_id) as unknown as DurableObjectStub, claims: env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) as unknown as DurableObjectStub };
+    const paid = await meterRows(stubs, async () => (await claim(player, meter.env)).json<Reply>());
+    expect(paid.value).toMatchObject({ balance: firstPay("pouch"), credited: [{ bundle: "pouch", order: "2000000000000500", store: "app_store", first_gift: firstGift("pouch") }] });
+    expect(paid.value.credited).toHaveLength(1);
+    // The production list found nothing new, so one sandbox list follows; the same Player calls and one claims row.
+    expect(meter.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenBundleClaim"]);
+    expect(providerCalls).toBe(2);
+    expect(paid.rows.claims.written).toBe(1);
+    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: firstPay("pouch"), credited: [] });
+    const keys = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key));
+    expect(keys).toEqual(["bundle:appstore:2000000000000500"]);
+    // The same transaction restored onto another account pays nothing there.
+    expect(await (await claim(other)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
+    // A claim with something new in production makes no sandbox request.
+    lists[player.player_id].push(owned("rc_503", "prodd4e2b730e5"));
+    providerCalls = 0;
+    expect(await (await claim(player)).json<Reply>()).toMatchObject({ credited: [{ bundle: "pinch", first_gift: 0 }] });
+    expect(providerCalls).toBe(1);
+    // The wallet read makes no sandbox request; the daily check takes a refunded sandbox bundle back through its lookup.
+    providerCalls = 0;
+    await wallet(player);
+    expect(providerCalls).toBe(0);
+    orders["2000000000000500"] = [sandbox("rc_500", { status: "refunded", customer_id: "moved" })];
+    offset = BUNDLE_CHECK_MS + 1000;
+    expect((await wallet(player)).balance).toBe(5000);
+    expect(providerCalls).toBe(2);
+    const back = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]));
+    expect(back).toEqual([["bundlerefund:appstore:2000000000000500", -firstPay("pouch")]]);
   });
 
   it("keeps a Play order and an App Store id with the same digits apart: each pays once, in its own rows", async () => {

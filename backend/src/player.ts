@@ -28,13 +28,13 @@ import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type Displ
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, ownedPackIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { anyBundlesOn, grantOn, itemDropsOn, refundsOn, type WardrobeMode } from "./pollen/features";
+import { anyBundlesOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
 import { knownBoard } from "./leaderboards/boards";
 import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/grant-settle";
 import { readGrant } from "./pollen/grant-provider";
 import { claimBundlesFor, claimFor } from "./pollen/claims";
 import { bundleCheckDue, bundlesView, dropBundles, settleBundles, type BundleReply, type BundlesView } from "./pollen/bundle-settle";
-import { lookupBundles, readBundles, sandboxBundles, type BundleAsk } from "./pollen/bundle-provider";
+import { SANDBOX, lookupBundles, readBundles, sandboxBundles, type BundleAsk } from "./pollen/bundle-provider";
 import { RATES } from "./pollen/rates";
 import { countNameSet, namePrice, nextNamePrice, nextNamePriceAfter } from "./pollen/name-price";
 import type { Look } from "./pollen/catalog";
@@ -225,13 +225,19 @@ export class Player extends DurableObject<Env> {
       else if (outcome.status === "settled" && outcome.lookup_failed) logWarning("pollen_bundle_lookup_failed", { reason: outcome.lookup_failed });
     } catch (error) { logWarning("pollen_bundle_check_failed", { reason: errorCode(error) }); }
   }
-  /** `daily`: the refund check, which also looks up paid bundles a restore moved off this player's list. */
+  /**
+   * `daily`: the refund check, which also looks up paid bundles a restore moved off this player's list. While
+   * POLLEN_SANDBOX_APP_STORE is on, a claim with nothing new in production also reads the App Store sandbox list (the
+   * review identity always reads it), and the refund check's lookups match sandbox purchases, so a sandbox line paid
+   * here is taken back when refunded.
+   */
   private settleBundles(owner: string, daily = false) {
-    const now = Date.now();
+    const now = Date.now(), reviewer = sandboxBundles(owner, this.env), anyone = sandboxAppStoreOn(this.env);
     return settleBundles(this.ctx.storage, now, this.pollenActive(owner), {
       read: () => readBundles(owner, this.env),
       claim: purchases => claimBundlesFor(this.env, owner, purchases, now),
-      ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env, undefined, sandboxBundles(owner, this.env)) } : {})
+      ...(!daily && anyone && !reviewer ? { sandbox: () => readBundles(owner, this.env, undefined, SANDBOX) } : {}),
+      ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env, undefined, reviewer || anyone) } : {})
     });
   }
   /**

@@ -28,6 +28,7 @@ export function grantOn(env: ServerVars): boolean { return earningOn(env) && fla
 export function refundsOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenRefunds(env); }
 export function bundlesOn(env: ServerVars): boolean { return refundsOn(env) && flags.pollenBundles(env); }
 export function appStoreBundlesOn(env: ServerVars): boolean { return refundsOn(env) && flags.pollenBundlesAppStore(env) && APP_STORE_BUNDLES_READY; }
+export function sandboxAppStoreOn(env: ServerVars): boolean { return appStoreBundlesOn(env) && flags.pollenSandboxAppStore(env); }
 /** Whether a turn's credit may drop an item: item blooms on, for an app offered the shop (routes.ts pollenShopClient). */
 export function itemDropsOn(env: ServerVars, shopClient: boolean): boolean { return shopClient === true && itemBloomsOn(env); }
 /** Bundles sell in at least one store: the claim route and the wallet read's `bundles` part. */

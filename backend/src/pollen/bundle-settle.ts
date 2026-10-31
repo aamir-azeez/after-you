@@ -2,7 +2,7 @@ import { POLLEN_BUNDLE_TABLES } from "../storage-schema";
 import { DAY_MS, RATES, type Rates } from "./rates";
 import { BUNDLES, BUNDLE_KEYS, firstGift, type BundleKey, type Bundles } from "./bundles";
 import { applyLedger, ledgerLines, purchaseLines, walletBalance, type LedgerEntry } from "./wallet";
-import type { BundleAsk, BundleLookup, BundlePurchase, BundleRead } from "./bundle-provider";
+import { byPurchaseTime, type BundleAsk, type BundleLookup, type BundlePurchase, type BundleRead } from "./bundle-provider";
 import { refId, refStore } from "./claims";
 
 /**
@@ -52,6 +52,11 @@ export type BundleDeps = {
   claim: (purchases: BundlePurchase[]) => Promise<Record<string, boolean> | null>;
   /** The daily check only: which paid bundles missing from the list are refunded now (bundle-provider.ts lookupBundles). */
   lookup?: (asks: BundleAsk[]) => Promise<BundleLookup>;
+  /**
+   * The claim route only, while POLLEN_SANDBOX_APP_STORE is on: the player's App Store sandbox purchases, read only when
+   * the production list has nothing new to pay (one more RevenueCat request, no DO request), so App Review's sandbox buy pays.
+   */
+  sandbox?: () => Promise<BundleRead>;
 };
 /**
  * What a reply says about one purchase: `order` is the store's own id as its receipt shows it (the Play order, or the
@@ -194,7 +199,16 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (order: 
 export async function settleBundles(storage: DurableObjectStorage, now: number, active: () => boolean, deps: BundleDeps, rates: Rates = RATES, bundles: Bundles = BUNDLES): Promise<BundleOutcome> {
   const read = await deps.read();
   if (!read.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: read.reason }; }
-  const asks = missingBundles(storage, read.purchases, now);
+  let listed = read.purchases;
+  if (deps.sandbox) {
+    const paid = paidIndex(bundleLines(storage));
+    if (!listed.some(purchase => !purchase.refunded && purchase.order !== "" && !paidLine(purchase, paid))) {
+      const extra = await deps.sandbox();
+      if (!extra.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: extra.reason }; }
+      listed = [...listed, ...extra.purchases].sort(byPurchaseTime);
+    }
+  }
+  const asks = missingBundles(storage, listed, now);
   let moved: BundlePurchase[] = [], lookupFailed: string | null = null;
   if (asks.length && deps.lookup) {
     const found = await deps.lookup(asks);
@@ -204,8 +218,8 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
   // Without lookups made (the claim route, or a failed lookup) a missing bundle leaves the check due, so the wallet read looks it up again.
   const checked = asks.length === 0 || (deps.lookup !== undefined && lookupFailed === null);
   // Orders new to this player, each once; at most MAX_CLAIM_KEYS at a time, a longer list waits for the next call.
-  const before = paidIndex(bundleLines(storage)), gone = refundedOrders(read.purchases), fresh = new Map<string, BundlePurchase>();
-  for (const purchase of read.purchases)
+  const before = paidIndex(bundleLines(storage)), gone = refundedOrders(listed), fresh = new Map<string, BundlePurchase>();
+  for (const purchase of listed)
     if (!purchase.refunded && purchase.order && !gone.has(purchase.order) && !paidLine(purchase, before) && !fresh.has(purchase.order)) fresh.set(purchase.order, purchase);
   const asked = [...fresh.values()].slice(0, 16);
   const answers = asked.length ? await deps.claim(asked) : {};
@@ -216,7 +230,7 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
     // Planned again from the ledger as stored now: what an overlapping call paid is never paid twice.
     const lines = bundleLines(storage);
     const refunded = new Set(refundLines(storage).map(line => line.key));
-    const plan = planBundles([...read.purchases, ...moved], order => answers[order] === true, lines, refunded, lines.length === 0, bundles);
+    const plan = planBundles([...listed, ...moved], order => answers[order] === true, lines, refunded, lines.length === 0, bundles);
     applyLedger(storage, plan.entries, now, rates);
     if (checked) noteCheck(storage, now);
     outcome = { status: "settled", reply: { schema_version: 1, balance: walletBalance(storage, now, rates), credited: plan.credited, refunded: plan.refunds, pending: false }, ...(lookupFailed ? { lookup_failed: lookupFailed } : {}) };
