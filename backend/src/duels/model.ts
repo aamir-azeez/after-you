@@ -69,7 +69,10 @@ export type Duel = {
   ghost: Ghost | null;
   /** Friendships checked across the two pairs ("a|b", ids sorted): only those players see each other's ids. */
   known: string[];
-  /** Whether all four accounts met the board's rule when the challenge was accepted: a win pays its bonus only then. */
+  /**
+   * True once accepted. The win bonus once needed all four accounts to meet the board's account rule here;
+   * the owner dropped that rule (2026-10-31), so nothing reads it. Kept for stored duels and older phones.
+   */
   eligible: boolean | null;
   result: DuelResult | null;
   modifiers: Modifier[];
@@ -188,10 +191,9 @@ function compare(duel: Duel, now: number): boolean {
 
 /**
  * Pair 1 accepts. `intact`: both its members still have each other as their
- * party; a pair that dissolved closes the challenge. `eligible`: the four
- * accounts' board rule, for the win bonus.
+ * party; a pair that dissolved closes the challenge.
  */
-export function accept(duel: Duel, player: string, now: number, intact: boolean, eligible: boolean): Outcome<Duel> {
+export function accept(duel: Duel, player: string, now: number, intact: boolean): Outcome<Duel> {
   if (duel.kind !== "friend") return fail(409, "not_a_challenge");
   if (sideOf(duel, player) !== 1) return fail(403, "duel_not_yours");
   settle(duel, now);
@@ -204,7 +206,7 @@ export function accept(duel: Duel, player: string, now: number, intact: boolean,
   }
   duel.status = "running";
   duel.accepted_ms = now;
-  duel.eligible = eligible;
+  duel.eligible = true;
   duel.updated_ms = now;
   return ok(duel);
 }

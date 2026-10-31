@@ -49,7 +49,7 @@ const TABLES = [
 export type DuelReplayWork = ReplayWork;
 export type DuelVerdict = { entry_id: string; proof_hash: string; valid: boolean; measured_ticks: number; reason: string };
 export type DuelAction =
-  | { kind: "accept"; player: string; intact: boolean; eligible: boolean }
+  | { kind: "accept"; player: string; intact: boolean }
   | { kind: "decline"; player: string }
   | { kind: "leave"; player: string }
   | { kind: "claim"; player: string; room_id: string; invite_code: string; room_absent: boolean };
@@ -90,7 +90,7 @@ export class DuelStore {
       if (!duel) return fail(404, "duel_not_found");
       const before = JSON.stringify(duel);
       let answer: Outcome<unknown>;
-      if (action.kind === "accept") answer = accept(duel, action.player, now, action.intact, action.eligible);
+      if (action.kind === "accept") answer = accept(duel, action.player, now, action.intact);
       else if (action.kind === "decline") answer = decline(duel, action.player, now);
       else if (action.kind === "leave") answer = leave(duel, action.player, now);
       else answer = claimRoom(duel, action.player, { room_id: action.room_id, invite_code: action.invite_code }, now, action.room_absent);

@@ -169,7 +169,8 @@ describe("duel parties", () => {
 
 describe("friend duels", () => {
   it("run from challenge to result, with rooms, turns, the replay check, pay and the win bonus", async () => {
-    const { a1, a2, b1, b2 } = await pairs(true);
+    // Brand new accounts: the win bonus has no account rule (dropped 2026-10-31).
+    const { a1, a2, b1, b2 } = await pairs();
     const key = crypto.randomUUID();
     const sent = await ok<{ duel: DuelView }>(challenge(a1, b1, key));
     // A retried challenge answers the same duel.
@@ -666,9 +667,10 @@ describe("duel cost", () => {
     const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: room.invite_code }));
     const run = await relayRun(0);
     const plain = await counted(target => call(`/v2/rooms/${joined.room_id}/turns`, "POST", a1, turn(joined, run.turns[0][1]), ON, {}, target));
-    // Measured 2026-10-28: challenge 24 (friendship checks across both pairs dominate), accept 9, lobby 4, a duel turn 6 (one more than a plain turn).
+    // Measured 2026-10-28: challenge 24 (friendship checks across both pairs dominate), lobby 4, a duel turn 6 (one more than a plain turn).
+    // An accept is 5 since 2026-10-31: the four account checks went with the account rule.
     expect(sent.calls).toBeLessThanOrEqual(24);
-    expect(accepted.calls).toBeLessThanOrEqual(9);
+    expect(accepted.calls).toBeLessThanOrEqual(5);
     expect(read.calls).toBeLessThanOrEqual(4);
     expect(plain.calls).toBeLessThanOrEqual(6);
   });

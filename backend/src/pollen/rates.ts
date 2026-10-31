@@ -21,7 +21,7 @@ export type Rates = {
   /**
    * Friend duels (POLLEN-RULES.md "Duels and ghost races"): a duel bank turn adds turn_percent of its
    * base plus bonuses, worked out together with the room boost and rounded once; each player of the
-   * winning pair gets win_bonus, at most wins_per_week counted wins a week, once a week per opposing pair.
+   * winning pair gets win_bonus, at most wins_per_week counted wins a week, once a week per opposing pair, with no account rule.
    * Each player of a pair that first beats the developers' ghost on a board gets ghost_win_bonus, once.
    */
   duels: { turn_percent: number; win_bonus: number; wins_per_week: number; ghost_win_bonus: number };

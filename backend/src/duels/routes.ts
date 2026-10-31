@@ -3,7 +3,6 @@ import { pooled } from "../room-inbox";
 import { interactionBlocked } from "../safety";
 import { pairKey } from "../leaderboards/run";
 import { boardKeys, knownBoard } from "../leaderboards/boards";
-import { eligible } from "../leaderboards/standing";
 import { cachedView, storeView } from "../leaderboards/view-cache";
 import { pollenEarning } from "../pollen/routes";
 import { RATES } from "../pollen/rates";
@@ -118,15 +117,15 @@ function openFor(duels: readonly Duel[], key: string, kind: Duel["kind"]): numbe
 }
 
 /**
- * The bonus a decided duel owes `player`, once per player (pollen/duel-pay.ts): a won, eligible
- * friend duel's win bonus, or the first win over the developers' ghost on its board. Asked of the
+ * The bonus a decided duel owes `player`, once per player (pollen/duel-pay.ts): a won friend duel's
+ * win bonus, or the first win over the developers' ghost on its board. No account rule (dropped 2026-10-31). Asked of the
  * wallet only while the player's party row has not settled it. Null when nothing is due.
  */
 async function winBonus(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<DuelWinAnswer | null> {
   const mine = sideOf(duel, player);
   // Only a win on time whose runs all passed the replay check pays (POLLEN-RULES.md): never one the other pair left or failed.
   if (!pollenEarning(env) || duel.status !== "decided" || duel.result?.winner !== mine || duel.result.reason !== "faster") return null;
-  const friend = duel.kind === "friend" && duel.eligible === true;
+  const friend = duel.kind === "friend";
   // A ghost race pays only against the developers' ghost, on a run the check passed (model.ts awaitsCheck); a rate of 0 writes nothing.
   const ghost = duel.kind === "ghost" && duel.ghost?.source === "developer" && duel.sides[0].check === "passed" && RATES.duels.ghost_win_bonus > 0;
   if (!friend && !ghost) return null;
@@ -278,13 +277,6 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number):
   return { schema_version: 1, duel: viewFor(made, player) };
 }
 
-/** Whether all four accounts meet the board's rule now (7 days old, turns with 2 partners). Requests: 4 Players. */
-async function allEligible(env: Env, ids: readonly (string | null)[], now: number): Promise<boolean> {
-  if (ids.some(id => id === null)) return false;
-  const standings = await Promise.all(ids.map(id => env.PLAYERS.getByName(id!).leaderboardStanding()));
-  return standings.every(standing => eligible(standing, now));
-}
-
 async function duelAction(env: Env, player: string, key: string, duelId: string, action: string | undefined, input: unknown, now: number): Promise<unknown> {
   const [duel] = await duelsAt(env, key).read([duelId]);
   const mine = duel ? sideOf(duel, player) : -1;
@@ -302,8 +294,7 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
         if (duels.filter(item => item.kind === "friend" && item.status === "running" && item.sides.some(side => side?.pair_key === duel.sides[1]!.pair_key)).length >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
       }
     }
-    const fair = duel.status === "challenged" && intact ? await allEligible(env, [...duel.sides[0].members, ...duel.sides[1]!.members], now) : false;
-    const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact, eligible: fair }));
+    const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact }));
     return { schema_version: 1, duel: viewFor(answer.duel, player) };
   }
   if (action === "decline" || action === "leave") {

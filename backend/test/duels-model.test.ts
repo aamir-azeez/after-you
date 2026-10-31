@@ -32,7 +32,7 @@ function note(room: string, revision: number, ticks: number, complete = false, s
 }
 function running(now = T0): Duel {
   const duel = friend(now);
-  expect(accept(duel, B1, now + 1, true, true).ok).toBe(true);
+  expect(accept(duel, B1, now + 1, true).ok).toBe(true);
   expect(claimRoom(duel, A1, { room_id: "ra", invite_code: "ia" }, now + 2).ok).toBe(true);
   expect(claimRoom(duel, B2, { room_id: "rb", invite_code: "ib" }, now + 3).ok).toBe(true);
   return duel;
@@ -45,11 +45,11 @@ function finishBoth(duel: Duel, a: number, b: number): void {
 describe("duel state machine", () => {
   it("accepting twice answers the running duel and only the challenged pair may accept", () => {
     const duel = friend();
-    expect(accept(duel, A2, T0 + 1, true, true)).toMatchObject({ ok: false, code: "duel_not_yours" });
-    expect(accept(duel, X, T0 + 1, true, true)).toMatchObject({ ok: false, code: "duel_not_yours" });
-    expect(accept(duel, B1, T0 + 1, true, true).ok).toBe(true);
+    expect(accept(duel, A2, T0 + 1, true)).toMatchObject({ ok: false, code: "duel_not_yours" });
+    expect(accept(duel, X, T0 + 1, true)).toMatchObject({ ok: false, code: "duel_not_yours" });
+    expect(accept(duel, B1, T0 + 1, true).ok).toBe(true);
     expect(duel.status).toBe("running");
-    expect(accept(duel, B2, T0 + 5, true, false).ok).toBe(true);
+    expect(accept(duel, B2, T0 + 5, true).ok).toBe(true);
     // The second accept changes nothing: the first one's time and account answer stay.
     expect(duel.accepted_ms).toBe(T0 + 1);
     expect(duel.eligible).toBe(true);
@@ -57,9 +57,9 @@ describe("duel state machine", () => {
 
   it("a challenge to a pair that dissolved closes, and stays closed", () => {
     const duel = friend();
-    expect(accept(duel, B1, T0 + 1, false, true)).toMatchObject({ ok: false, code: "challenge_pair_gone" });
+    expect(accept(duel, B1, T0 + 1, false)).toMatchObject({ ok: false, code: "challenge_pair_gone" });
     expect(duel.status).toBe("pair_gone");
-    expect(accept(duel, B2, T0 + 2, true, true)).toMatchObject({ ok: false, code: "challenge_pair_gone" });
+    expect(accept(duel, B2, T0 + 2, true)).toMatchObject({ ok: false, code: "challenge_pair_gone" });
   });
 
   it("Not now declines, the sender takes a challenge back, and both repeat safely", () => {
@@ -67,7 +67,7 @@ describe("duel state machine", () => {
     expect(decline(one, B2, T0 + 1).ok).toBe(true);
     expect(one.status).toBe("declined");
     expect(decline(one, B1, T0 + 2).ok).toBe(true);
-    expect(accept(one, B1, T0 + 3, true, true)).toMatchObject({ ok: false, code: "challenge_declined" });
+    expect(accept(one, B1, T0 + 3, true)).toMatchObject({ ok: false, code: "challenge_declined" });
     const two = friend();
     expect(decline(two, A2, T0 + 1).ok).toBe(true);
     expect(two.status).toBe("withdrawn");
@@ -79,14 +79,14 @@ describe("duel state machine", () => {
     expect(settle(duel, T0 + CHALLENGE_TTL_MS - 1)).toBe(false);
     expect(settle(duel, T0 + CHALLENGE_TTL_MS)).toBe(true);
     expect(duel.status).toBe("expired");
-    expect(accept(duel, B1, T0 + CHALLENGE_TTL_MS + 1, true, true)).toMatchObject({ ok: false, code: "challenge_expired" });
+    expect(accept(duel, B1, T0 + CHALLENGE_TTL_MS + 1, true)).toMatchObject({ ok: false, code: "challenge_expired" });
     expect(decline(duel, B1, T0 + CHALLENGE_TTL_MS + 1).ok).toBe(true);
   });
 
   it("the first member to open claims the side's room and the partner gets the same room", () => {
     const duel = friend();
     expect(claimRoom(duel, A1, { room_id: "ra", invite_code: "ia" }, T0)).toMatchObject({ ok: false, code: "duel_not_running" });
-    accept(duel, B1, T0 + 1, true, true);
+    accept(duel, B1, T0 + 1, true);
     expect(claimRoom(duel, A1, { room_id: "ra", invite_code: "ia" }, T0 + 2)).toMatchObject({ ok: true, value: { room_id: "ra", host: A1 } });
     // Both partners tapped at once: the second claim answers the first room.
     expect(claimRoom(duel, A2, { room_id: "ra2", invite_code: "ia2" }, T0 + 3)).toMatchObject({ ok: true, value: { room_id: "ra", host: A1 } });
@@ -97,7 +97,7 @@ describe("duel state machine", () => {
 
   it("a room claim that never became a room passes to the partner after a while, never sooner", () => {
     const duel = friend();
-    accept(duel, B1, T0, true, true);
+    accept(duel, B1, T0, true);
     claimRoom(duel, A1, { room_id: "ra", invite_code: "ia" }, T0);
     expect(claimRoom(duel, A2, { room_id: "rb", invite_code: "ib" }, T0 + ROOM_CLAIM_TAKEOVER_MS - 1, true)).toMatchObject({ ok: true, value: { room_id: "ra" } });
     expect(claimRoom(duel, A2, { room_id: "rb", invite_code: "ib" }, T0 + ROOM_CLAIM_TAKEOVER_MS, false)).toMatchObject({ ok: true, value: { room_id: "ra" } });
