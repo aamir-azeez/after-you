@@ -135,9 +135,13 @@ var _leaf_lift := Vector3.ZERO
 ## pose. The ride moves the spirit itself; these only shape the body.
 var _hop_age := 1.0
 var _hop_duration := 1.0
+var _hop_contact := 0.8
 var _hop_landed := true
 var _ride_sit := 0.0
 var _ride_lean := Vector3.ZERO
+## Where a ride last carried the spirit, to turn it the way it is carried.
+var _carried_from := Vector3.ZERO
+var _carried := false
 
 func _init(color: Color=Look.PEACH) -> void:
 	facing.name="Facing"
@@ -384,7 +388,7 @@ func advance_motion(displacement: Vector3, delta: float, reduced_motion: bool) -
 	var landed := false
 	if _hop_age<_hop_duration:
 		_hop_age=minf(_hop_duration,_hop_age+delta)
-		if not _hop_landed and _hop_age>=_hop_duration*0.8:
+		if not _hop_landed and _hop_age>=_hop_duration*_hop_contact:
 			_hop_landed=true
 			landed=true
 	var planar := Vector2(displacement.x,displacement.z)
@@ -494,14 +498,15 @@ func _apply_pose(amount: float) -> void:
 	var ride_tuck := 0.0
 	if _hop_age<_hop_duration and not _reduced_motion:
 		var phase := _hop_age/_hop_duration
+		var air := _hop_contact-0.2
 		var crouch := sin(phase/0.2*PI) if phase<0.2 else 0.0
-		var stretch := sin((phase-0.2)/0.55*PI) if phase>=0.2 and phase<0.75 else 0.0
-		var land := sin((phase-0.75)/0.25*PI) if phase>=0.75 else 0.0
-		squash+=crouch*0.12-stretch*0.1+land*0.16
+		var stretch := sin((phase-0.2)/air*PI) if phase>=0.2 and phase<_hop_contact else 0.0
+		var land := sin((phase-_hop_contact)/(1.0-_hop_contact)*PI) if phase>=_hop_contact else 0.0
+		squash+=crouch*0.12-stretch*0.1+land*0.18
 		ride_tuck=stretch*0.05
 	if not _reduced_motion:
-		squash+=_ride_sit*0.06
-		upper_body.position.y-=_ride_sit*0.06
+		squash+=_ride_sit*0.08
+		upper_body.position.y-=_ride_sit*0.12
 		upper_body.rotation+=_ride_lean
 	upper_body.scale=Vector3(1.0+squash*0.45,1.0-squash,1.0+squash*0.45)
 	var settle := 0.0
@@ -556,7 +561,7 @@ func _apply_pose(amount: float) -> void:
 		feet[index].rotation.x=sin(foot_phase)*0.22*amount if swinging else 0.0
 		feet[index].rotation.x -= tap*0.22
 		if rest.body_shift!=Vector3.ZERO or rest.feet_forward!=0.0: feet[index].position+=rest.body_shift+Vector3(0,0,rest.feet_forward)
-		if (ride_tuck!=0.0 or _ride_sit!=0.0) and not _reduced_motion: feet[index].position+=Vector3(0,ride_tuck+_ride_sit*0.02,_ride_sit*0.09)
+		if (ride_tuck!=0.0 or _ride_sit!=0.0) and not _reduced_motion: feet[index].position+=Vector3(0,ride_tuck+_ride_sit*0.04,_ride_sit*0.18)
 	if not _doze_zs.is_empty(): _apply_doze_zs(idle)
 
 ## The pose layer's offsets this frame, faded by `idle` (none while walking).
@@ -627,11 +632,12 @@ func play_carry_release() -> void:
 	# A Lighthouse offer is a successful release, not an invented throw arc.
 	release_age=0.0
 
-## One hop of a ride, `duration` seconds from takeoff to landing: a crouch,
-## a stretch in the air with the feet tucked, and a squash as it lands, which
-## steps (the footstep cue) once.
-func play_hop(duration: float) -> void:
+## One hop of a ride, `duration` seconds, its feet touching down at `contact`
+## of it: a crouch to take off, a stretch in the air with the feet tucked, then
+## a footstep (the footstep cue) and a squash on the ground.
+func play_hop(duration: float, contact: float = 0.8) -> void:
 	_hop_duration=maxf(duration,0.05)
+	_hop_contact=clampf(contact,0.3,0.95)
 	_hop_age=0.0
 	_hop_landed=false
 
@@ -647,12 +653,16 @@ func end_ride() -> void:
 	_hop_landed=true
 	_ride_sit=0.0
 	_ride_lean=Vector3.ZERO
+	_carried=false
 
-## A frame of being carried: the spirit turns toward where it is carried, and
-## its feet do not walk.
-func advance_carried(displacement: Vector3, delta: float, reduced_motion: bool) -> void:
-	var planar := Vector2(displacement.x,displacement.z)
-	if delta>0.0 and planar.length()/delta>0.025: facing_target=atan2(planar.x,planar.y)
+## A frame of being carried by a ride (which moves the spirit itself): the
+## spirit turns toward where it has been carried since the last frame, and its
+## feet do not walk.
+func advance_carried(delta: float, reduced_motion: bool) -> void:
+	var planar := Vector2(position.x-_carried_from.x,position.z-_carried_from.z)
+	if _carried and delta>0.0 and planar.length()/delta>0.025: facing_target=atan2(planar.x,planar.y)
+	_carried_from=position
+	_carried=true
 	advance_motion(Vector3.ZERO,delta,reduced_motion)
 
 func carry_anchor_position() -> Vector3:

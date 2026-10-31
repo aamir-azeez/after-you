@@ -81,35 +81,95 @@ func carry(where: Callable, at: float, time: float) -> void:
 	tween.tween_method(step, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at)
 
 ## Calls the pip's own ride hook `method` (presentation/spirit_visual.gd:
-## play_hop, set_ride_pose, play_carry_release) at `at`. Nothing without a
-## rider that has it, and nothing under Reduce motion, where the pip simply lands.
+## play_hop, play_carry_release) at `at`. Nothing without a rider that has it,
+## and nothing under Reduce motion, where the pip simply lands.
 func rider_call(method: StringName, args: Array, at: float) -> void:
 	if reduced or tween == null or rider == null or not rider.has_method(method): return
 	var node := rider
 	tween.tween_callback(func() -> void:
 		if is_instance_valid(node): node.callv(method, args)).set_delay(start + at)
 
-## Calls the pip's ride hook `method` with `value.call(t)` (an Array of its
-## arguments) for t from 0 to 1, from `at` for `time` seconds.
-func rider_track(method: StringName, value: Callable, at: float, time: float) -> void:
-	if reduced or tween == null or rider == null or not rider.has_method(method): return
-	var node := rider
-	var step := func(t: float) -> void:
-		if is_instance_valid(node): node.callv(method, value.call(t))
-	tween.tween_method(step, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at)
-
 ## When the last carry lands the pip, in seconds from the tap.
 func landing_time() -> float:
 	return maxf(_landing_at, 0.0)
 
-## Hops through `points` (the keepsake's own frame), each hop `time` seconds
-## and `height` high, starting `at`. Returns when the last hop lands.
-func hops(points: Array, at: float, time: float, height: float) -> float:
+# --- the pip's ride moves: data in, motion out ------------------------------------------
+# Any keepsake that carries the pip (or, from a tap, a stand-in `mover` raised
+# by `lift`) describes only its points; these turn them into hops and slides,
+# with the pip's own ride hooks timed to them (spirit_visual.gd play_hop,
+# set_ride_pose, play_carry_release). Everything is the tap's Tween: nothing
+# runs at rest, and the layer puts the pip down out of its ride pose however
+# the tap ends.
+
+## The share of a hop's time at which the feet touch down. The path is there
+## by then and holds; the pip's landing squash and footstep fall on it.
+const HOP_CONTACT := 0.8
+## How far back the pip leans while sitting on a slide (radians).
+const SIT_LEAN := -0.3
+
+## One hop from `from` to `to`, `height` above the line at its middle,
+## touching down at HOP_CONTACT of its time.
+static func hop_leg(from: Vector3, to: Vector3, height: float) -> Callable:
+	var flight := arc(from, to, height)
+	return func(t: float) -> Vector3: return flight.call(minf(t / HOP_CONTACT, 1.0))
+
+## Down `points` by distance (their own straight pieces), gathering speed.
+static func slide_leg(points: Array[Vector3]) -> Callable:
+	var lengths: Array[float] = [0.0]
+	for index in range(1, points.size()): lengths.append(lengths[index - 1] + points[index - 1].distance_to(points[index]))
+	var total: float = lengths[lengths.size() - 1]
+	return func(t: float) -> Vector3:
+		var eased := clampf(t, 0.0, 1.0)
+		var at := (0.35 * eased + 0.65 * eased * eased) * total
+		var index := 1
+		while index < lengths.size() - 1 and lengths[index] < at: index += 1
+		var span := maxf(0.0001, lengths[index] - lengths[index - 1])
+		return points[index - 1].lerp(points[index], (at - lengths[index - 1]) / span)
+
+## Hops through `points`, one hop each of `time` seconds and `height` high,
+## starting `at`, the pip crouching, stretching and landing with a footstep on
+## each. Returns when the last hop ends.
+func hop_steps(points: Array, at: float, time: float, height: float, mover: Node3D = null, lift: Vector3 = Vector3.ZERO) -> float:
 	var t := at
 	for index in range(points.size() - 1):
-		carry(arc(points[index], points[index + 1], height), t, time)
+		_follow(hop_leg(points[index], points[index + 1], height), t, time, mover, lift)
+		rider_call(&"play_hop", [time, HOP_CONTACT], t)
 		t += time
 	return t
+
+## From `from`, sits onto the top of `points` over `sit_time`, slides down them
+## over `time` leaning into the curve by `lean` radians at its middle, and hops
+## off their end onto `landing` over `lip_time`, settling with a bounce.
+## Returns when it lands.
+func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: float, sit_time: float, time: float, lip_time: float, lean: float, mover: Node3D = null, lift: Vector3 = Vector3.ZERO) -> float:
+	var top := points[0]
+	_follow(func(u: float) -> Vector3: return from.lerp(top, u), at, sit_time, mover, lift)
+	_follow(slide_leg(points), at + sit_time, time, mover, lift)
+	var off := at + sit_time + time
+	_follow(hop_leg(points[points.size() - 1], landing, 0.12), off, lip_time, mover, lift)
+	rider_call(&"play_hop", [lip_time, HOP_CONTACT], off)
+	rider_call(&"play_carry_release", [], off + lip_time * HOP_CONTACT)
+	if not reduced and tween != null and rider != null and rider.has_method(&"set_ride_pose"):
+		var node := rider
+		var sit := func(u: float) -> void:
+			if is_instance_valid(node): node.set_ride_pose(u, Vector3(SIT_LEAN * u, 0, 0))
+		var ride := func(u: float) -> void:
+			if is_instance_valid(node): node.set_ride_pose(1.0, Vector3(SIT_LEAN, 0, lean * sin(u * PI)))
+		var rise := func(u: float) -> void:
+			if is_instance_valid(node): node.set_ride_pose(1.0 - u, Vector3(SIT_LEAN * (1.0 - u), 0, 0))
+		tween.tween_method(sit, 0.0, 1.0, maxf(sit_time, 0.01)).set_delay(start + at)
+		tween.tween_method(ride, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at + sit_time)
+		tween.tween_method(rise, 0.0, 1.0, maxf(lip_time * HOP_CONTACT, 0.01)).set_delay(start + off)
+	return off + lip_time
+
+func _follow(leg: Callable, at: float, time: float, mover: Node3D, lift: Vector3) -> void:
+	if mover != null: path(mover, func(u: float) -> Vector3: return leg.call(u) + lift, at, time, 1.0)
+	else: carry(leg, at, time)
+
+## Hops the pip through `points` (the keepsake's own frame), each hop `time`
+## seconds and `height` high, starting `at`. Returns when the last hop lands.
+func hops(points: Array, at: float, time: float, height: float) -> float:
+	return hop_steps(points, at, time, height)
 
 ## An arc from `from` to `to`, `height` above the line at its middle.
 static func arc(from: Vector3, to: Vector3, height: float) -> Callable:

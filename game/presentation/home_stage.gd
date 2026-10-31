@@ -766,7 +766,7 @@ func _process(delta: float) -> void:
 		_world.actor_targets[role] = actor.position
 		# A keepsake ride carries the explorer: it turns to the way it goes, and
 		# its feet do not walk.
-		if _exploring and role == "a" and is_instance_valid(_keepsake_layer) and _keepsake_layer.riding(): actor.advance_carried(actor.position-previous,step,_world.reduced_motion)
+		if _exploring and role == "a" and is_instance_valid(_keepsake_layer) and _keepsake_layer.riding(): actor.advance_carried(step,_world.reduced_motion)
 		else: actor.advance_motion(actor.position-previous,step,_world.reduced_motion)
 	_world.finish_spirit_motion()
 

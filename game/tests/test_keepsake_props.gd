@@ -237,47 +237,73 @@ func _check_upgrades(stage: Node3D, entry: Dictionary, builder: RefCounted) -> v
 		for other: String in looks:
 			if other != upgrade and not other.is_empty(): _check(looks[upgrade] != looks[other], "%s draws its %s and %s upgrades differently" % [entry.id, upgrade, other])
 
-## The Giant Steps ride, from in front of the first step and from the side:
-## one hop per step that clears every riser and lands on a step's top, the
-## ladder on the tower's face on Hard, the slide along the chute's own bars,
-## each leg starting where the last ended, and the last landing on the grass,
-## all inside the base beat.
+## The Giant Steps ride, from anywhere it is set off and from the side, as the
+## shared ride moves draw it (keepsake_anim.gd hop_leg and slide_leg): one hop
+## per step that clears every riser and lands on a step's top, the ladder hops
+## out in front of the tower's face and over its edge onto its top on Hard,
+## the slide along the chute's own bars, each leg starting where the last ended,
+## and the last landing on the grass, all inside the base beat.
 func _check_giant_steps_ride() -> void:
 	var Steps: GDScript = load("res://presentation/keepsakes/giant_steps.gd")
 	var builder: RefCounted = Steps.new()
 	for hard: bool in [false, true]:
 		var state := {"hard": hard}
-		var chute: Array[Vector3] = Steps._chute(state)
-		for from: Vector3 in [Vector3(-0.65, 0, 0.6), Vector3(-1.1, 0, 0.0)]:
-			var legs: Array = Steps.ride(state, from)
+		var times: Dictionary = Steps.TIMES[hard]
+		for from: Vector3 in [Vector3(-0.95, 0, 0.8), Vector3(-0.35, 0, 0.45), Vector3(0.4, 0, 0.6)]:
+			var points: Dictionary = Steps.ride_points(state, from)
 			var label := "Giant Steps ride (hard %s, from %s)" % [hard, from]
-			_check(legs.filter(func(leg: Dictionary) -> bool: return leg.kind == "hop").size() == 5 + int(hard), "%s hops once per step%s" % [label, ", and once to the ladder" if hard else ""])
+			_check(points.climb.size() == 7 and points.ladder.size() == (4 if hard else 0), "%s hops once onto the grass, once per step%s" % [label, " and three times up the ladder" if hard else ""])
+			var legs: Array = []
+			for index in range(points.climb.size() - 1): legs.append(["hop", Anim.hop_leg(points.climb[index], points.climb[index + 1], Steps.HOP_HEIGHT), times.hop])
+			for index in range(points.ladder.size() - 1): legs.append(["ladder", Anim.hop_leg(points.ladder[index], points.ladder[index + 1], Steps.LADDER_HEIGHT), times.ladder])
+			var top: Vector3 = points.ladder[points.ladder.size() - 1] if hard else points.climb[points.climb.size() - 1]
+			var chute: Array[Vector3] = points.chute
+			legs.append(["sit", func(u: float) -> Vector3: return top.lerp(chute[0], u), times.sit])
+			legs.append(["slide", Anim.slide_leg(chute), times.slide])
+			legs.append(["lip", Anim.hop_leg(chute[chute.size() - 1], points.landing, 0.12), times.lip])
 			var last := from
 			var total := 0.0
 			var clear := true
 			var on_tops := true
 			var on_chute := true
 			var joined := true
-			for leg: Dictionary in legs:
-				var path: Callable = leg.path
-				total += float(leg.time)
+			for leg: Array in legs:
+				var path: Callable = leg[1]
+				total += float(leg[2])
 				joined = joined and (path.call(0.0) as Vector3).distance_to(last) < 0.001
 				for sample in range(41):
 					var at: Vector3 = path.call(sample / 40.0)
-					match str(leg.kind):
-						"hop", "lip": clear = clear and at.y >= _steps_surface(at, hard) - 0.005
+					match str(leg[0]):
+						"hop", "lip", "ladder": clear = clear and at.y >= _steps_surface(at, hard) - 0.005
 						"slide": on_chute = on_chute and _to_polyline(at, chute) < 0.005
-						"ladder": on_chute = on_chute and absf(at.x - Steps.TOWER.x) < 0.01 and at.z > Steps.TOWER.z + 0.17 and at.z < Steps.TOWER.z + 0.4
+						"sit": on_chute = on_chute and at.y >= _steps_surface(at, hard) - 0.03
 				var end: Vector3 = path.call(1.0)
-				# Every hop but the one over to the ladder ends on a step's top.
-				if leg.kind == "hop" and end.x < Steps.TOWER.x - 0.18: on_tops = on_tops and absf(end.y - _steps_surface(end, hard)) < 0.005 and end.y > 0.0
+				if leg[0] == "hop" and end.y > 0.0: on_tops = on_tops and absf(end.y - _steps_surface(end, hard)) < 0.005
+				if leg[0] == "ladder" and end.x == Steps.TOWER.x and end.z > Steps.TOWER.z + 0.3: on_tops = on_tops and end.z - (Steps.TOWER.z + 0.18) >= 0.2
 				last = end
 			_check(joined, "%s: each leg starts where the last one ended" % label)
 			_check(clear, "%s: every hop clears the risers and the tower" % label)
-			_check(on_tops, "%s: every hop lands on a step's top" % label)
-			_check(on_chute, "%s: the slide follows the chute's bars and the ladder its rungs" % label)
-			_check(absf(last.y) < 0.001 and last.distance_to(Steps._landing(state)) < 0.001, "%s: lands on the grass past the chute" % label)
-			_check(total <= float(builder.beats(state)[0].time) + 0.001, "%s fits its base beat: %.2f" % [label, total])
+			_check(on_tops, "%s: every hop lands on a step's top, and the ladder hops a pip's width out from the tower" % label)
+			_check(on_chute, "%s: the sit stays on the top and the slide follows the chute's bars" % label)
+			_check(absf(last.y) < 0.001 and last.distance_to(points.landing) < 0.001, "%s: lands on the grass past the chute" % label)
+			_check(total <= float(builder.beats(state)[0].time) + 0.001 and float(builder.beats(state)[0].time) <= Builder.BASE_MAX, "%s fits its base beat: %.2f" % [label, total])
+		# Beside or behind the steps the ball goes, and the pip is not carried.
+		for side: Vector3 in [Vector3(-1.2, 0, 0.0), Vector3(0.2, 0, -0.7)]:
+			var prop := Node3D.new()
+			root.add_child(prop)
+			var parts: Dictionary = builder.build(prop, state)
+			var anim := Anim.new()
+			anim.fx = Node3D.new()
+			prop.add_child(anim.fx)
+			anim.rider = Node3D.new()
+			prop.add_child(anim.rider)
+			anim.rider_from = side
+			builder.play("base", anim, parts, state)
+			_check(anim.landing == null and not anim.spawned.is_empty(), "Giant Steps from %s sends the ball and carries nobody" % side)
+			prop.free()
+		# The hops touch down before their end, so the landing squash is on the ground.
+		var hop: Callable = Anim.hop_leg(Vector3.ZERO, Vector3(0.36, 0.24, 0), Steps.HOP_HEIGHT)
+		_check((hop.call(Anim.HOP_CONTACT) as Vector3).distance_to(Vector3(0.36, 0.24, 0)) < 0.001 and (hop.call(0.9) as Vector3) == (hop.call(1.0) as Vector3), "A hop touches down at its contact and holds there")
 
 ## The height of the Giant Steps' surface under a point: a step's top, the
 ## tower's top on Hard, else the grass.
