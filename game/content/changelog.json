@@ -2,6 +2,19 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.5",
+      "date": "2026-10-31",
+      "highlights": [{"icon": "leaf", "text": "Pollen bundles in the store, with 20% more on your first", "paid": true}, {"icon": "star", "text": "The shop opens: spend Pollen on looks and faces", "paid": true}, {"icon": "key", "text": "Full Journey on iPhone too, by the month or the year", "paid": true}, {"icon": "picture", "text": "New pictures for the Pouch and the Jar", "paid": true}],
+      "paragraphs": [
+        {"text": "The Pollen store is open. Tap the + beside your balance in the Wardrobe to see four bundles: Pinch, Pouch, Jar and Basket. Each card shows the price Google Play charges and how much Pollen you get for each dollar. Your first bundle adds 20% more Pollen, once. The receipts stay in Settings, under Account & recovery, in Pollen and purchases.", "ios_text": "The Pollen store is open on iPhone too. Tap the + beside your balance in the Wardrobe to see four bundles: Pinch, Pouch, Jar and Basket. Each card shows the App Store price and how much Pollen you get for each dollar. Your first bundle adds 20% more Pollen, once, whichever phone you buy it on. The receipts stay in Settings, under Account & recovery, in Pollen and purchases.", "channels": ["play", "app_store"], "paid": true},
+        {"text": "The shop in the Wardrobe opens. Spend the Pollen you earn by playing, or from a bundle, on hats, bodies, leaves and the two packs of reaction faces. Everything stays in the shop, so you can come back for it later.", "paid": true},
+        {"text": "Full Journey comes to iPhone as a subscription, by the month or by the year, with the App Store price shown before you pay. It opens the paid chapters and lets you host them for a friend. Restore purchases brings it back on a new phone, and Manage subscription opens your App Store subscriptions.", "channels": ["app_store"], "paid": true},
+        {"text": "The Pouch and the Jar have new pictures, with their Pollen grains kept inside.", "paid": true},
+        {"text": "If Android closes After You while you take a photo for a turn, the game now opens straight back into that room, where your photo waits. A tap on Home still takes you Home.", "ios_text": ""},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.4",
       "date": "2026-10-30",
       "highlights": [{"icon": "spark", "text": "Your look shows on your pips in solo chapters"}, {"icon": "home", "text": "Bigger keepsakes your pip sets off by walking past"}, {"icon": "tap", "text": "The Wardrobe has its own button on Home"}, {"icon": "leaf", "text": "A card after a turn shows the Pollen it earned"}, {"icon": "star", "text": "Leaderboard rows show what each pair wore"}, {"icon": "play", "text": "Replays marks a turn played on the first try"}],
@@ -150,15 +163,6 @@
         {"text": "In Play with a friend, Your rooms scroll in their own column, the buttons line up, each room shows its status in a small tag, and Join stays off until you enter a code. On Friends, Notify sits next to Join and is easy to see when it's on, and your code has Share code and Copy buttons. Lists and dropdowns, such as the chapter picker and Account & recovery, scroll when you drag them."},
         {"text": "In Replays the preview stays in view while the list scrolls, and the Earlier islands have new pictures. Tap either character on Home to watch them celebrate, and they close their eyes happily when they meet. Footsteps, catches and meetups change pitch, so they don't sound the same every time. There's also a new line at the bottom of Home."},
         {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters. The hosting page for a locked chapter doesn't talk about buying in this build anymore.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.4.23",
-      "date": "2026-10-10",
-      "highlights": [{"icon": "home", "text": "Play with your friend comes first on Home"}, {"icon": "play", "text": "One Replays button for Solo and Together"}],
-      "paragraphs": [
-        {"text": "Play with your friend is the first option on Home now. Play Solo is a secondary button, and one Replays button opens both Solo and Together recordings."},
-        {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
       ]
     }
   ]

@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.4.23",
+      "date": "2026-10-10",
+      "highlights": [{"icon": "home", "text": "Play with your friend comes first on Home"}, {"icon": "play", "text": "One Replays button for Solo and Together"}]
+    },
+    {
       "version": "0.4.22",
       "date": "2026-10-10",
       "highlights": [{"icon": "tap", "text": "The chapter picker opens right below its button"}, {"icon": "play", "text": "Replay previews fit the space they have"}, {"icon": "bell", "text": "Hosting alerts get their own permission"}]
