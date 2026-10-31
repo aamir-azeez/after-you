@@ -12,6 +12,7 @@ const Builder = preload("res://presentation/keepsakes/keepsake_builder.gd")
 const GlWarmup = preload("res://services/gl_warmup.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const SparkleStar = preload("res://presentation/kit/sparkle_star.gd")
 const Index = preload("res://content/chapters/index.gd")
 ## Round 2's keepsakes are bigger: the README budget for all eleven with every
 ## upgrade is 45,000 triangles (Home's isles included, counted by the layer suite).
@@ -307,11 +308,13 @@ func _check_giant_steps_ride() -> void:
 			root.add_child(holder)
 			anim.tween = holder.create_tween().set_parallel(true)
 			builder.play("base", anim, parts, state)
-			var sparkles := anim.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).material_override == Parts.glow(Parts.SNOW, 2.0)).size()
+			var sparkles := anim.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).mesh == SparkleStar.glint()).size()
 			anim.tween.custom_step(5.0)
 			if side.z >= 0.42:
 				_check(anim.landing != null and pip.calls >= 10, "Giant Steps from in front carries the pip, hopping, sitting and bouncing: %d hooks" % pip.calls)
-				_check(pip.faces == [&"happy"] and joys.hearts == 1 and joys.haptics == 1 and sparkles >= 5, "and its slide is joyful: a Happy face, one heart, one light tap and a trail of glints (%s, %s, %d)" % [pip.faces, joys, sparkles])
+				_check(pip.faces == [&"happy"] and joys.hearts == 1 and joys.haptics == 1 and sparkles >= 8, "and its slide is joyful: a Happy face, one heart, one light tap and a trail of sparkles (%s, %s, %d)" % [pip.faces, joys, sparkles])
+				var shown := anim.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).mesh == SparkleStar.glint() and ((part as Node3D).visible or (part as Node3D).scale != Vector3.ZERO))
+				_check(shown.is_empty(), "and every sparkle has twinkled away by the end: %d left" % shown.size())
 			else: _check(anim.landing == null and not anim.spawned.is_empty() and pip.calls == 0 and pip.faces.is_empty() and joys.hearts == 0 and joys.haptics == 0, "Giant Steps from %s sends the ball, and the pip standing by neither hops, sits, smiles nor bounces: %d" % [side, pip.calls])
 			anim.tween.kill()
 			holder.free()
@@ -332,7 +335,7 @@ func _check_giant_steps_ride() -> void:
 		calm.pop_heart = func(_pip: Node3D) -> void: calm_joys.hearts += 1
 		calm.haptic = func() -> void: calm_joys.haptics += 1
 		builder.play("base", calm, still_parts, state)
-		var glints := calm.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).material_override == Parts.glow(Parts.SNOW, 2.0)).size()
+		var glints := calm.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).mesh == SparkleStar.glint()).size()
 		_check(calm_pip.faces == [&"happy"] and calm_joys.hearts == 0 and calm_joys.haptics == 1 and glints == 0, "With Reduce motion the slide keeps the Happy face and the one tap, with no glints or heart (%s, %s, %d)" % [calm_pip.faces, calm_joys, glints])
 		still.free()
 		# The hops touch down before their end, so the landing squash is on the ground.

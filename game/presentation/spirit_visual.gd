@@ -10,6 +10,7 @@ const Look = preload("res://presentation/spirit_look.gd")
 const Meshes = preload("res://presentation/spirit_meshes.gd")
 const SpiritFace = preload("res://presentation/spirit_face.gd")
 const Primitives = preload("res://presentation/kit/primitives.gd")
+const SparkleStar = preload("res://presentation/kit/sparkle_star.gd")
 const PipOutfit = preload("res://presentation/pip_outfit.gd")
 const Outfit = preload("res://services/outfit.gd")
 
@@ -655,12 +656,15 @@ func set_ride_face(face: StringName) -> void:
 	show_expression(face,600.0)
 	_ride_face=true
 
-## The ride let go: no hop, no tuck, no lean, and its face goes.
-func end_ride() -> void:
+## The ride let go: no hop, no tuck, no lean, and its face goes: at once, or
+## after `linger` seconds (a ride that landed keeps it through its bounce).
+func end_ride(linger: float = 0.0) -> void:
 	if _ride_face:
 		_ride_face=false
-		_clear_reaction()
-		_refresh_expression()
+		if linger>0.0 and _reaction_age<_reaction_duration: _reaction_duration=_reaction_age+linger
+		else:
+			_clear_reaction()
+			_refresh_expression()
 	_hop_age=_hop_duration
 	_hop_landed=true
 	_ride_sit=0.0
@@ -693,24 +697,9 @@ func photo_anchor_height() -> float:
 func _build_reunion_sparkles() -> void:
 	reunion_sparkles.name="ReunionSparkles"
 	add_child(reunion_sparkles)
-	var points := PackedVector3Array([
-		Vector3(0,1,0),Vector3(0.22,0.22,0),Vector3(1,0,0),Vector3(0.22,-0.22,0),
-		Vector3(0,-1,0),Vector3(-0.22,-0.22,0),Vector3(-1,0,0),Vector3(-0.22,0.22,0)
-	])
-	var vertices := PackedVector3Array()
-	for index in range(points.size()):
-		vertices.append_array(PackedVector3Array([Vector3.ZERO,points[index],points[(index+1)%points.size()]]))
-	var arrays := []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX]=vertices
-	var shape := ArrayMesh.new()
-	shape.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
-	var material := StandardMaterial3D.new()
-	material.albedo_color=Color("fff0bc")
-	material.shading_mode=BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.billboard_mode=BaseMaterial3D.BILLBOARD_ENABLED
-	material.billboard_keep_scale=true
-	material.cull_mode=BaseMaterial3D.CULL_DISABLED
+	# The game's four-pointed sparkle (kit/sparkle_star.gd), shared by every spirit.
+	var shape := SparkleStar.star()
+	var material := SparkleStar.look(Color("fff0bc"))
 	for index in range(REUNION_SPARKLE_COUNT):
 		var sparkle := MeshInstance3D.new()
 		sparkle.name="Sparkle%d" % index

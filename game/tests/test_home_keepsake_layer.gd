@@ -356,7 +356,8 @@ func _check_triggers() -> void:
 			if id == "high-and-low":
 				_check(hopped and landings[0] >= 6 and sat > 0.9, "The Giant Steps pip hops each step with a footstep and sits to slide: %d footsteps, sat %.2f" % [landings[0], sat])
 				_check(smiled and joys.hearts == 1 and joys.haptics == 1, "and slides happy, with one heart and one light tap as it lands: %s, %s" % [smiled, joys])
-				_check(spirit.expression_target() != &"happy", "and its face is back to normal once it lands")
+				for frame in range(40): stage._process(1.0 / 60.0)
+				_check(spirit.expression_target() != &"happy", "and its face is back to normal just after it lands, past its bounce")
 			_check(float(spirit._ride_sit) == 0.0 and spirit._ride_lean == Vector3.ZERO and float(spirit._hop_age) >= float(spirit._hop_duration), "%s lands the pip out of its ride pose" % id)
 			_check(layer.playing(), "%s gives the pip back the moment it lands, while its upgrades still play" % id)
 			_check(spirit.position.y == 0.0 and layer.walkable(spirit.position), "%s lands the pip on open ground: %s" % [id, spirit.position])

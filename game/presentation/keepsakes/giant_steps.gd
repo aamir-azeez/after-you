@@ -79,7 +79,7 @@ const LADDER_OUT := 0.4
 const SLIDE_LEAN := 0.16
 ## The slide's joy (keepsake_anim.gd slide_down): a Happy face down the chute,
 ## a few glints trailing it, a heart near the bottom and a light tap on landing.
-const SLIDE_JOY := {"face": &"happy", "sparkles": 5, "heart_at": 0.8, "haptic": true}
+const SLIDE_JOY := {"face": &"happy", "sparkles": 9, "heart_at": 0.8, "haptic": true}
 
 ## The ride from `from`, in the keepsake's frame, as the points the pip's
 ## hops and slide go through (keepsake_anim.gd hop_steps and slide_down): a

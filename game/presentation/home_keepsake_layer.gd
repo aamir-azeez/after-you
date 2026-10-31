@@ -306,7 +306,7 @@ func play(id: String, rider: Node3D = null) -> bool:
 		if is_instance_valid(node) and not anim.spawned.has(node): rest.append(_rest_of(node))
 	if anim.reduced: anim.apply_jumps()
 	# A ride gives the pip back the moment it lands, while the rest still plays.
-	elif anim.landing != null: tween.tween_callback(_land.bind(anim)).set_delay(anim.landing_time())
+	elif anim.landing != null: tween.tween_callback(_land.bind(anim, true)).set_delay(anim.landing_time())
 	tween.tween_interval(REDUCED_HOLD if anim.reduced else time)
 	tween.finished.connect(_settle)
 	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest, "settling": false}
@@ -334,11 +334,16 @@ func _settle() -> void:
 	_play.tween = tween
 	_play.settling = true
 
-## Puts a carried pip down where its ride ends, out of any ride pose.
-func _land(anim: RefCounted) -> void:
+## A ride's face stays this long after it lands, through its bounce.
+const LANDED_FACE := 0.4
+
+## Puts a carried pip down where its ride ends, out of any ride pose: its face
+## stays through the bounce when it `landed`, and goes at once when the ride is
+## cut off.
+func _land(anim: RefCounted, landed: bool = false) -> void:
 	if anim.landing != null and is_instance_valid(anim.rider):
 		anim.rider.position = anim.landing
-		if anim.rider.has_method("end_ride"): anim.rider.end_ride()
+		if anim.rider.has_method("end_ride"): anim.rider.end_ride(LANDED_FACE if landed else 0.0)
 	anim.landing = null
 
 func _end_play() -> void:

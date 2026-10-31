@@ -11,6 +11,7 @@ extends RefCounted
 ## the layer calls apply_jumps(), and the layer holds that for a moment before
 ## putting everything back.
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
+const SparkleStar = preload("res://presentation/kit/sparkle_star.gd")
 
 ## The Tween every call adds to (parallel), or null while only collecting.
 var tween: Tween
@@ -146,9 +147,10 @@ func hop_steps(points: Array, at: float, time: float, height: float, mover: Node
 ## over `time` leaning into the curve by `lean` radians at its middle, and hops
 ## off their end onto `landing` over `lip_time`, settling with a bounce.
 ## `joy`, all optional: "face" (an expression the pip wears from the sit until
-## it lets go), "sparkles" (how many glints trail it down), "heart_at" (the
-## share of the slide where a heart pops over it) and "haptic" (a light tap of
-## the phone as it lands). Reduce motion keeps the face and the tap, and drops
+## it lets go), "sparkles" (how many sparkles trail it down, popping just behind
+## it, twinkling up and shrinking away), "heart_at" (the share of the slide
+## where a heart pops over it) and "haptic" (a light tap of the phone as it
+## lands). Reduce motion keeps the face and the tap, and drops
 ## the glints and the heart.
 ## Returns when it lands.
 func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: float, sit_time: float, time: float, lip_time: float, lean: float, mover: Node3D = null, lift: Vector3 = Vector3.ZERO, joy: Dictionary = {}) -> float:
@@ -159,7 +161,7 @@ func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: flo
 	_follow(hop_leg(points[points.size() - 1], landing, 0.12), off, lip_time, mover, lift)
 	# The pip's own hooks only when the pip is what rides (a `mover` rides in its place).
 	if mover != null: return off + lip_time
-	_slide_joy(points, at + sit_time, time, off + lip_time * HOP_CONTACT, lift, joy)
+	_slide_joy(points, at, sit_time, time, off + lip_time * HOP_CONTACT, lift, joy)
 	rider_call(&"play_hop", [lip_time, HOP_CONTACT], off)
 	rider_call(&"play_carry_release", [], off + lip_time * HOP_CONTACT)
 	if not reduced and tween != null and rider != null and rider.has_method(&"set_ride_pose"):
@@ -175,14 +177,23 @@ func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: flo
 		tween.tween_method(rise, 0.0, 1.0, maxf(lip_time * HOP_CONTACT, 0.01)).set_delay(start + off)
 	return off + lip_time
 
-## The slide's joy (slide_down's `joy`), for a pip that rides it.
-func _slide_joy(points: Array[Vector3], at: float, time: float, landed: float, lift: Vector3, joy: Dictionary) -> void:
+## A trail sparkle's size (half width, metres: a third of a pip's head across)
+## and life, from popping in to gone.
+const SPARKLE_SIZE := 0.1
+const SPARKLE_LIFE := 0.65
+## How far behind the pip along the slide a sparkle pops (a share of it).
+const SPARKLE_LAG := 0.06
+
+## The slide's joy (slide_down's `joy`), for a pip that rides it: the face
+## from the sit, the sparkles, the heart and the tap.
+func _slide_joy(points: Array[Vector3], seat: float, sit_time: float, time: float, landed: float, lift: Vector3, joy: Dictionary) -> void:
 	if rider == null or joy.is_empty(): return
+	var at := seat + sit_time
 	var face: StringName = joy.get("face", &"")
 	if face != &"":
 		if reduced:
 			if rider.has_method(&"set_ride_face"): rider.set_ride_face(face)
-		else: rider_call(&"set_ride_face", [face], at - 0.1)
+		else: rider_call(&"set_ride_face", [face], seat)
 	# Reduce motion shows the beat all at once: the face, and the tap (its own
 	# Settings switch) once, with no glints or heart.
 	if reduced:
@@ -193,9 +204,19 @@ func _slide_joy(points: Array[Vector3], at: float, time: float, landed: float, l
 	var trail: int = joy.get("sparkles", 0)
 	for index in range(trail):
 		var share := (index + 0.5) / trail
-		var spark := spawn(fx, Parts.low_sphere(0.035), Parts.glow(Parts.SNOW, 2.0), (slide.call(share) as Vector3) + lift + Vector3(0, 0.25, 0))
-		set_at(spark, "visible", true, at + time * share)
-		set_at(spark, "visible", false, at + time * share + 0.3)
+		var when := at + time * share
+		# Popped just behind the pip, beside it, then twinkling up and away.
+		var side := 0.12 if index % 2 == 0 else -0.12
+		var from: Vector3 = (slide.call(maxf(0.0, share - SPARKLE_LAG)) as Vector3) + lift + Vector3(side, 0.35 + 0.08 * (index % 3), 0)
+		var spark := spawn_sparkle(fx, from)
+		var size := SPARKLE_SIZE * (1.0 if index % 3 != 1 else 0.8)
+		set_at(spark, "visible", true, when)
+		move(spark, "scale", Vector3.ONE * size, when, 0.12, Tween.TRANS_BACK, Tween.EASE_OUT)
+		move(spark, "scale", Vector3.ONE * size * 0.65, when + 0.12, 0.12)
+		move(spark, "scale", Vector3.ONE * size * 0.9, when + 0.24, 0.12)
+		move(spark, "scale", Vector3.ZERO, when + 0.36, SPARKLE_LIFE - 0.36, Tween.TRANS_QUAD, Tween.EASE_IN)
+		move(spark, "position", from + Vector3(0, 0.22, 0), when, SPARKLE_LIFE, Tween.TRANS_SINE, Tween.EASE_OUT)
+		set_at(spark, "visible", false, when + SPARKLE_LIFE)
 	var node := rider
 	if joy.has("heart_at") and pop_heart.is_valid():
 		var heart := pop_heart
@@ -261,6 +282,22 @@ func burst(parent: Node3D, at: Vector3, count: int, radius: float, from: float, 
 		set_at(spark, "visible", true, from)
 		move(spark, "position", at + out, from, time * 0.6, Tween.TRANS_QUAD, Tween.EASE_OUT)
 		set_at(spark, "visible", false, from + time)
+
+## One of the game's sparkles (kit/sparkle_star.gd glint: gold on a darker rim
+## with a white core) made for this tap at `at`, hidden and at no size until a
+## beat shows it.
+func spawn_sparkle(parent: Node3D, at: Vector3) -> MeshInstance3D:
+	var part := MeshInstance3D.new()
+	part.mesh = SparkleStar.glint()
+	part.position = at
+	part.scale = Vector3.ZERO
+	part.visible = false
+	part.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	parent.add_child(part)
+	looks.append_array(SparkleStar.glint_looks())
+	spawned.append(part)
+	touched[part] = true
+	return part
 
 ## An empty node made for this tap, to turn spawned parts about a point.
 func spawn_pivot(parent: Node3D, at: Vector3) -> Node3D:
