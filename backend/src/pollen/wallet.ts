@@ -24,8 +24,9 @@ import { noteEveryHard } from "./earned";
  *                                       Every Hard asks for has one, the player earns it (earned.ts)
  *     grant:<anchor>:<n>, grant:lifetime, grantrefund:<anchor>:<n>
  *                                       the monthly grant and its refunds (grant-settle.ts; kept)
- *     bundle:<purchase id>, bundlerefund:<purchase id>
- *                                       a Pollen bundle bought on Play and its refund (bundle-settle.ts; kept)
+ *     bundle:<Play order>, bundlerefund:<Play order>
+ *                                       a Pollen bundle bought on Play and its refund (bundle-settle.ts; kept;
+ *                                       a line keyed by RevenueCat purchase id instead is the older form)
  *   A turn that pays nothing writes no row: a turn played before the guest joined (never paid, by its
  *   frozen facts), or one whose week's after-bank turns are used up (that count only grows, and only
  *   a turn of the current week spends the bank).

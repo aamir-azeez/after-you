@@ -12,7 +12,8 @@ import type { ProviderFetch } from "./grant-provider";
  * - a Play Store purchase in production (APP.playEnvironment), owned by purchase (never family shared);
  * - of one of the four bundle products (bundles.json revenuecat_product);
  * - with a RevenueCat id, a quantity from 1 to MAX_QUANTITY and a purchase time.
- * Test Store, sandbox, promotional, App Store and any other product mint nothing.
+ * Test Store, sandbox, promotional, App Store and any other product mint nothing. A purchase without a Play
+ * order is never paid (bundle-settle.ts pays by order); it can only take back an older line paid under its id.
  * Status "owned" is paid once; "refunded" takes back what it paid.
  *
  * Any failed, unconfigured, malformed or partial read answers { ok: false }: nothing is credited or taken back on it.
@@ -28,7 +29,13 @@ export type BundleRead = { ok: true; purchases: BundlePurchase[] } | { ok: false
 
 /** Play lets a player buy a few of one consumable at once (multi-quantity); each pays its Pollen, never a second first gift. */
 export const MAX_QUANTITY = 10;
-const ORDER_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
+/** A Google Play order number as RevenueCat reports it (store_purchase_identifier, "GPA.…"): what a bundle is paid once by. */
+export const ORDER_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
+/** The order as text ("" when none or malformed): the docs' sample shows it as a number though the schema says string. */
+function orderOf(value: unknown): string {
+  const text = typeof value === "string" ? value : typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? String(value) : "";
+  return ORDER_PATTERN.test(text) ? text : "";
+}
 
 /** One listed purchase as the bundles see it, or null for one that never counts. */
 export function bundlePurchase(item: unknown, products: Readonly<Record<string, BundleKey>>, environment: string = APP.playEnvironment, bundles: Bundles = BUNDLES): BundlePurchase | null {
@@ -39,7 +46,7 @@ export function bundlePurchase(item: unknown, products: Readonly<Record<string, 
   if (typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) return null;
   if (typeof item.purchased_at !== "number" || !Number.isSafeInteger(item.purchased_at) || item.purchased_at <= 0) return null;
   const bundle = products[item.product_id];
-  const order = typeof item.store_purchase_identifier === "string" && ORDER_PATTERN.test(item.store_purchase_identifier) ? item.store_purchase_identifier : "";
+  const order = orderOf(item.store_purchase_identifier);
   const gross = isObject(item.revenue_in_usd) ? item.revenue_in_usd.gross : undefined;
   const usd = typeof gross === "number" && Number.isFinite(gross) && gross >= 0 && gross <= 10_000 ? Math.round(gross * 100) : bundles.bundles[bundle].usd_cents * quantity;
   return { id: item.id, bundle, refunded: item.status === "refunded", quantity, order, usd_cents: usd, purchased_at: item.purchased_at };
@@ -83,8 +90,7 @@ export type BundleLookup = { ok: true; refunded: string[] } | { ok: false; reaso
 /** Whether `item` is the asked purchase: the same order (or, without one, the same RevenueCat id), counted by bundlePurchase() as the same bundle. */
 function samePurchase(item: unknown, ask: BundleAsk, products: Readonly<Record<string, BundleKey>>): boolean {
   if (!isObject(item)) return false;
-  // Compared as text: the docs' sample shows the order as a number though the schema says string.
-  if (ask.order ? String(item.store_purchase_identifier) !== ask.order : item.id !== ask.id) return false;
+  if (ask.order ? orderOf(item.store_purchase_identifier) !== ask.order : item.id !== ask.id) return false;
   return bundlePurchase(item, products)?.bundle === ask.bundle;
 }
 

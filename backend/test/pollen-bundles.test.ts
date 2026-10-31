@@ -9,7 +9,7 @@ import { bundlePurchase, lookupBundles, readBundles, type BundleAsk } from "../s
 import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundleCheckDue, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
 import { bundlesOn, refundsOn } from "../src/pollen/features";
 import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
-import { ledgerLines, walletView } from "../src/pollen/wallet";
+import { applyLedger, ledgerLines, walletView } from "../src/pollen/wallet";
 import { RATES } from "../src/pollen/rates";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { POLLEN_BUNDLE_TABLES, POLLEN_PLAYER_TABLES } from "../src/storage-schema";
@@ -194,7 +194,7 @@ describe("the refund check's lookups", () => {
       expect(both.flatMap(outcome => outcome.status === "settled" ? outcome.reply.refunded : [])).toEqual([{ bundle: "pinch", amount: 5000, order: "GPA.r1" }]);
       expect(lastBundleCheck(storage)).toBe(now + 2);
       expect(await settleBundles(storage, now + 3, () => true, deps)).toMatchObject({ reply: { balance: 5000, refunded: [] } });
-      expect(ledgerLines(storage, "bundlerefund:").map(line => [line.key, line.amount]).sort()).toEqual([["bundlerefund:r1", -5000], ["bundlerefund:r2", -5000]]);
+      expect(ledgerLines(storage, "bundlerefund:").map(line => [line.key, line.amount]).sort()).toEqual([["bundlerefund:GPA.r1", -5000], ["bundlerefund:GPA.r2", -5000]]);
       // Once taken back it is never looked up again.
       expect(asked).toEqual([["r1"], ["r1"]]);
     });
@@ -359,7 +359,7 @@ describe("bundles through the Worker", () => {
     expect((await (await claim(first)).json<Reply>()).balance).toBe(115000);
     const rows = await runInDurableObject(env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT), async (_, state) =>
       state.storage.sql.exec<{ claim_key: string; holder: string }>("SELECT claim_key, holder FROM pollen_claims_held").toArray());
-    expect(rows.map(row => row.claim_key)).toEqual(["bundle:rc_50"]);
+    expect(rows.map(row => row.claim_key)).toEqual(["order:GPA.0000-rc_50"]);
     expect(rows[0].holder).toMatch(/^[a-f0-9]{64}$/);
   });
 
@@ -422,7 +422,7 @@ describe("bundles through the Worker", () => {
     expect(metered.rows.claims).toEqual({ read: 0, written: 0 });
     expect(metered.rows.player.written).toBe(PLAYER_ROWS_ON_TAKE_BACK);
     const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:"));
-    expect(lines.map(line => [line.key, line.amount, line.detail.order])).toEqual([["bundlerefund:rc_100", -5000, "GPA.0000-rc_100"]]);
+    expect(lines.map(line => [line.key, line.amount, line.detail.order])).toEqual([["bundlerefund:GPA.0000-rc_100", -5000, "GPA.0000-rc_100"]]);
     // The other account was never paid, so nothing comes off it, and it makes no check.
     expect((await wallet(other)).balance).toBe(0);
     expect(providerCalls).toBe(2);
@@ -446,7 +446,7 @@ describe("bundles through the Worker", () => {
     open();
     expect((await both).map(read => read.balance)).toEqual([0, 0]);
     const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:"));
-    expect(lines.map(line => line.key)).toEqual(["bundlerefund:rc_110"]);
+    expect(lines.map(line => line.key)).toEqual(["bundlerefund:GPA.0000-rc_110"]);
   });
 
   it("makes no lookup from the claim route, and leaves the check due for the wallet read", async () => {
@@ -475,14 +475,89 @@ describe("bundles through the Worker", () => {
 
   it("keeps bundle keys out of the moving subscription claim, and subscription keys out of the bundle claim", async () => {
     const stub = env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) as unknown as DurableObjectStub;
-    await runInDurableObject(stub, async (instance: unknown) => {
-      const claims = instance as PollenClaims;
-      expect(claims.claim(["bundle:rc_90"], "a".repeat(64), 1)).toBeNull();
-      expect(claims.claimBundles(["sub:rc_90"], "a".repeat(64), 1)).toBeNull();
-      expect(claims.claimBundles(["bundle:rc_90"], "a".repeat(64), 1)).toEqual({ "bundle:rc_90": true });
-      expect(claims.claimBundles(["bundle:rc_90"], "b".repeat(64), 2)).toEqual({ "bundle:rc_90": false });
-      expect(claims.claimBundles(["bundle:rc_90"], "a".repeat(64), 3)).toEqual({ "bundle:rc_90": true });
+    await runInDurableObject(stub, async (instance: unknown, state) => {
+      const claims = instance as PollenClaims, a = "a".repeat(64), b = "b".repeat(64);
+      expect(claims.claim(["order:GPA.90"], a, 1)).toBeNull();
+      expect(claims.claim(["bundle:rc_90"], a, 1)).toBeNull();
+      expect(claims.claimBundles(["sub:rc_90"], a, 1)).toBeNull();
+      // The older purchase id key is only read now, never claimed.
+      expect(claims.claimBundles(["bundle:rc_90"], a, 1)).toBeNull();
+      expect(claims.claimBundles(["order:GPA.90"], a, 1, ["order:GPA.91"])).toBeNull();
+      expect(claims.claimBundles(["order:GPA.90"], a, 1)).toEqual({ "order:GPA.90": true });
+      expect(claims.claimBundles(["order:GPA.90"], b, 2)).toEqual({ "order:GPA.90": false });
+      expect(claims.claimBundles(["order:GPA.90"], a, 3)).toEqual({ "order:GPA.90": true });
+      // An older row for the purchase decides who holds its order, once, and the order row keeps it.
+      state.storage.sql.exec("INSERT INTO pollen_claims_held VALUES (?,?,?,0)", "bundle:rc_91", b, 4);
+      expect(claims.claimBundles(["order:GPA.91"], a, 5, ["bundle:rc_91"])).toEqual({ "order:GPA.91": false });
+      expect(claims.claimBundles(["order:GPA.91"], b, 6)).toEqual({ "order:GPA.91": true });
+      expect(claims.claimBundles(["order:GPA.92"], a, 7, ["bundle:rc_92"])).toEqual({ "order:GPA.92": true });
     });
+  });
+
+  it("pays one Play order once when a restore gives it a new RevenueCat id on another account", async () => {
+    const first = await create(), second = await create();
+    lists[first.player_id] = [owned("rc_200", "prodd4e2b730e5")];
+    lists[second.player_id] = [owned("rc_201", "prodd4e2b730e5", { store_purchase_identifier: "GPA.0000-rc_200" })];
+    const claimsStub = { claims: env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) as unknown as DurableObjectStub };
+    const paid = await meterRows(claimsStub, async () => (await claim(first)).json<Reply>());
+    expect(paid.value.balance).toBe(5000);
+    expect(paid.rows.claims.written).toBe(1);
+    const refused = await meterRows(claimsStub, async () => (await claim(second)).json<Reply>());
+    expect(refused.value).toMatchObject({ balance: 0, credited: [] });
+    expect(refused.rows.claims.written).toBe(0);
+    const rows = await runInDurableObject(env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT), async (_, state) =>
+      state.storage.sql.exec<{ claim_key: string }>("SELECT claim_key FROM pollen_claims_held").toArray().map(row => row.claim_key));
+    expect(rows).toEqual(["order:GPA.0000-rc_200"]);
+  });
+
+  it("never pays again when the purchase comes back to the buyer under a new RevenueCat id, and never pays one without an order", async () => {
+    const buyer = await create();
+    lists[buyer.player_id] = [owned("rc_210", "prodd4e2b730e5")];
+    expect((await (await claim(buyer)).json<Reply>()).balance).toBe(5000);
+    const back = owned("rc_211", "prodd4e2b730e5", { store_purchase_identifier: "GPA.0000-rc_210" });
+    lists[buyer.player_id] = [back];
+    expect(await (await claim(buyer)).json<Reply>()).toMatchObject({ balance: 5000, credited: [] });
+    // Both records listed at once, and two records of one new order: each order pays once.
+    const twice = owned("rc_213", "prodd4e2b730e5", { store_purchase_identifier: "GPA.0000-rc_212" });
+    lists[buyer.player_id] = [owned("rc_210", "prodd4e2b730e5"), back, owned("rc_212", "prodd4e2b730e5"), twice, owned("rc_214", "prodd4e2b730e5", { store_purchase_identifier: null })];
+    expect(await (await claim(buyer)).json<Reply>()).toMatchObject({ balance: 10000, credited: [{ order: "GPA.0000-rc_212" }] });
+    const keys = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key).sort());
+    expect(keys).toEqual(["bundle:GPA.0000-rc_210", "bundle:GPA.0000-rc_212"]);
+  });
+
+  it("takes a refund back by its order when the refunded record has a new RevenueCat id, on either account", async () => {
+    const buyer = await create();
+    lists[buyer.player_id] = [owned("rc_220", "prodd4e2b730e5"), owned("rc_221", "prodd4e2b730e5")];
+    expect((await (await claim(buyer)).json<Reply>()).balance).toBe(10000);
+    // Restored back under a new id and refunded there: the buyer's own list shows it, no lookup.
+    const home = owned("rc_222", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: "GPA.0000-rc_220" });
+    // Moved away under a new id and refunded there: found by its order.
+    const away = owned("rc_223", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: "GPA.0000-rc_221", customer_id: "moved" });
+    lists[buyer.player_id] = [home]; orders["GPA.0000-rc_221"] = [away];
+    offset = BUNDLE_CHECK_MS + 1000; providerCalls = 0;
+    expect((await wallet(buyer)).balance).toBe(0);
+    expect(providerCalls).toBe(2);
+    const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]).sort());
+    expect(lines).toEqual([["bundlerefund:GPA.0000-rc_220", -5000], ["bundlerefund:GPA.0000-rc_221", -5000]]);
+    offset += BUNDLE_CHECK_MS + 1000;
+    expect((await wallet(buyer)).balance).toBe(0);
+    expect(providerCalls).toBe(3);
+  });
+
+  it("still matches and takes back a line kept under the older purchase id key", async () => {
+    const buyer = await create();
+    await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => {
+      applyLedger(state.storage, [
+        { key: "bundle:rc_240", kind: "bundle", amount: 5000, detail: { bundle: "pinch", purchase_id: "rc_240", order: "GPA.0000-rc_240", usd_cents: 99, first_gift: 0, quantity: 1, purchased_at: 1 } },
+        { key: "bundle:rc_241", kind: "bundle", amount: 5000, detail: { bundle: "pinch", purchase_id: "rc_241", order: "", usd_cents: 99, first_gift: 0, quantity: 1, purchased_at: 2 } }], Date.now(), RATES);
+    });
+    // Listed again under its order (a new id) and by its id without one: neither pays again.
+    lists[buyer.player_id] = [owned("rc_242", "prodd4e2b730e5", { store_purchase_identifier: "GPA.0000-rc_240" }), owned("rc_241", "prodd4e2b730e5", { store_purchase_identifier: null })];
+    expect(await (await claim(buyer)).json<Reply>()).toMatchObject({ balance: 10000, credited: [] });
+    lists[buyer.player_id] = [owned("rc_242", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: "GPA.0000-rc_240" }), owned("rc_241", "prodd4e2b730e5", { status: "refunded", store_purchase_identifier: null })];
+    expect(await (await claim(buyer)).json<Reply>()).toMatchObject({ balance: 0, refunded: [{ amount: 5000 }, { amount: 5000 }] });
+    const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => line.key).sort());
+    expect(lines).toEqual(["bundlerefund:rc_240", "bundlerefund:rc_241"]);
   });
 
   it("erases the bundle check with the account", async () => {

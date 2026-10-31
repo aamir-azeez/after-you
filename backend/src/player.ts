@@ -230,7 +230,7 @@ export class Player extends DurableObject<Env> {
     const now = Date.now();
     return settleBundles(this.ctx.storage, now, this.pollenActive(owner), {
       read: () => readBundles(owner, this.env),
-      claim: keys => claimBundlesFor(this.env, owner, keys, now),
+      claim: (keys, older) => claimBundlesFor(this.env, owner, keys, older, now),
       ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env) } : {})
     });
   }
