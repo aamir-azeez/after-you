@@ -23,7 +23,7 @@ static func make(host: Node, entries: Array) -> Node3D:
 
 static func show(host: Node, view: Node3D) -> void:
 	host._set_world_visible(false)
-	host.soundscape.set_backgrounded(true)
+	host.soundscape.set_covered(true)
 	host.shared_replay_child = view
 	host.add_child(view)
 
@@ -35,4 +35,4 @@ static func close(host: Node) -> void:
 		view.queue_free()
 	host.shared_replay_child = null
 	host._set_world_visible(true)
-	host.soundscape.set_backgrounded(host.application_backgrounded)
+	host.soundscape.set_covered(false)

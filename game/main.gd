@@ -1115,7 +1115,7 @@ func _open_photo_transfer() -> void:
 	running=false
 	_set_world_visible(false)
 	ui.visible=false
-	soundscape.set_backgrounded(true)
+	soundscape.set_covered(true)
 	photo_transfer_child=screen.new(api,_relay_identity,_leave_photo_transfer)
 	add_child(photo_transfer_child)
 
@@ -1126,7 +1126,7 @@ func _leave_photo_transfer() -> void:
 	photo_transfer_child=null
 	_set_world_visible(true)
 	ui.visible=true
-	soundscape.set_backgrounded(application_backgrounded)
+	soundscape.set_covered(false)
 	lifecycle_generation+=1
 	settings_flow.show_settings(SettingsFlow.ACCOUNT)
 
@@ -1729,7 +1729,7 @@ func _enter_online_relay() -> void:
 	room_play = false
 	_set_world_visible(false)
 	ui.visible = false
-	soundscape.set_backgrounded(true)
+	soundscape.set_covered(true)
 	relay_child = RelayPreview.new()
 	relay_child.chapter_key = relay_session.chapter_key()
 	relay_child.online_session = relay_session
@@ -1759,7 +1759,7 @@ func _leave_online_relay() -> void:
 	relay_child = null
 	_set_world_visible(true)
 	ui.visible = true
-	soundscape.set_backgrounded(application_backgrounded)
+	soundscape.set_covered(false)
 	lifecycle_generation += 1
 	_sync_presence()
 	_return_to_room_hub(relay_session.last_error if relay_session != null else "",false)
@@ -2053,8 +2053,9 @@ func _resume_application() -> void:
 	_sync_world_processing()
 	store_flow.resume_purchase_access()
 	if is_instance_valid(soundscape):
-		# A full-screen child that muted Home (a room, a Together replay, Photo transfer) keeps it muted.
-		soundscape.set_backgrounded(is_instance_valid(relay_child) or is_instance_valid(shared_replay_child) or is_instance_valid(photo_transfer_child))
+		# A full-screen child that covers Home (a room, a Together replay, Photo
+		# transfer) keeps it covered: that is set_covered's, not this.
+		soundscape.set_backgrounded(false)
 	lifecycle_generation+=1
 	foreground_response={}
 	foreground_refresh_queued=true

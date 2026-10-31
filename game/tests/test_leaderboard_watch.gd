@@ -40,6 +40,8 @@ class FakeApi extends Node:
 class FakeSound extends RefCounted:
 	var backgrounded := false
 	func set_backgrounded(value: bool) -> void: backgrounded = value
+	var covered := false
+	func set_covered(value: bool) -> void: covered = value
 
 class FakeSaves extends RefCounted:
 	var data := {"settings": {"sound": false, "haptics": false, "reduced_motion": true}}
@@ -150,7 +152,7 @@ func _watch(answer: Dictionary) -> void:
 	_check(notices.has(PlayerCopy.LEADERBOARD_WATCH_LOADING) and not notices.has(PlayerCopy.LEADERBOARD_REPLAY_FAILED), "the tap says the run is loading: %s" % [notices])
 	var view: Node = host.shared_replay_child
 	_check(view is View and view.leaderboard_chapter == Registry.RELAY and view.sequence.size() == 2 and view.get_parent() == host, "Watch opens the shared replay viewer in its leaderboard mode")
-	_check(not board.visible and not friends.visible and not host.world_visible and host.soundscape.backgrounded, "the board, Friends and Home hide while the run plays")
+	_check(not board.visible and not friends.visible and not host.world_visible and host.soundscape.covered, "the board, Friends and Home hide while the run plays")
 	if not view is View: return
 	while view.mode in ["loading", "preparing"] and Time.get_ticks_msec() < deadline: await process_frame
 	_check(view.mode == "replay" and view.running and view._photos == null and not is_instance_valid(view.strip), "the run plays, with no photos: %s" % view.mode)
@@ -163,7 +165,7 @@ func _watch(answer: Dictionary) -> void:
 	view._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
 	await process_frame
 	_check(host.shared_replay_child == null and (not is_instance_valid(view) or view.is_queued_for_deletion()), "Back again leaves the replay")
-	_check(board.visible and friends.visible and host.world_visible and not host.soundscape.backgrounded, "Back returns to the board as it was")
+	_check(board.visible and friends.visible and host.world_visible and not host.soundscape.covered, "Back returns to the board as it was")
 	_check(board.find_child("LeaderboardRow1", true, false) != null, "the board still shows its runs")
 	api.replies["GET /v1/leaderboards/%s/replay/%s" % [BOARD, ENTRY]] = {"ok": false, "code": "replay_not_found"}
 	notices.clear()
@@ -179,7 +181,7 @@ func _watch(answer: Dictionary) -> void:
 	_check(again is View, "Watch opens the run again")
 	flow.close()
 	await process_frame
-	_check(host.shared_replay_child == null and not is_instance_valid(again) and host.world_visible and not host.soundscape.backgrounded, "closing Friends closes its replay and brings Home back")
+	_check(host.shared_replay_child == null and not is_instance_valid(again) and host.world_visible and not host.soundscape.covered, "closing Friends closes its replay and brings Home back")
 	for node: Node in [host, api]: node.queue_free()
 	flow.free()
 	await process_frame

@@ -908,10 +908,27 @@ func _check_button_ticks() -> void:
 	button.pressed.emit()
 	probe.set_backgrounded(false)
 	_check(probe.ticks == 6, "Sound off or the app in the background makes no tick")
+	# A press that opens a room or a replay covers its screen first, then ticks.
+	var opener := Button.new()
+	opener.pressed.connect(func() -> void: probe.set_covered(true))
+	box.add_child(opener)
+	opener.pressed.emit()
+	_check(probe.covered and probe.ticks == 7, "A press that covers its own screen (opening a room or a replay) still ticks")
+	await process_frame
+	# Photo transfer: a child with no sound of its own over the covered screen.
+	var transfer := Control.new()
+	screen.add_child(transfer)
+	var transfer_button := Button.new()
+	transfer.add_child(transfer_button)
+	transfer_button.pressed.emit()
+	_check(probe.ticks == 8, "A button on a child with no sound ticks on the covered screen under it")
+	transfer.free()
+	probe.set_covered(false)
+	await process_frame
 	var bare := Button.new()
 	root.add_child(bare)
 	bare.pressed.emit()
-	_check(probe.ticks == 6, "A button under no screen with sound is silent and does not fail")
+	_check(probe.ticks == 8, "A button under no screen with sound is silent and does not fail")
 	bare.free()
 	# Real clicks: a release over the button ticks, and a Sound tile turned off
 	# is silent (its toggled runs before pressed).
@@ -935,21 +952,55 @@ func _check_button_ticks() -> void:
 	panel.add_child(tile)
 	await process_frame
 	_click(view, Vector2(40, 30), true)
-	_check(probe.ticks == 6, "Pressing down on a button makes no tick")
+	_check(probe.ticks == 8, "Pressing down on a button makes no tick")
 	_click(view, Vector2(40, 30), false)
-	_check(probe.ticks == 7, "Letting go over it ticks")
+	_check(probe.ticks == 9, "Letting go over it ticks")
 	await process_frame
 	_click(view, Vector2(40, 120), true)
 	_click(view, Vector2(40, 120), false)
-	_check(not tile.button_pressed and probe.ticks == 7, "Turning the Sound tile off makes no tick")
+	_check(not tile.button_pressed and probe.ticks == 9, "Turning the Sound tile off makes no tick")
 	await process_frame
 	_click(view, Vector2(40, 120), true)
 	_click(view, Vector2(40, 120), false)
-	_check(tile.button_pressed and probe.ticks == 8, "Turning it back on ticks")
+	_check(tile.button_pressed and probe.ticks == 10, "Turning it back on ticks")
 	current_scene = null
 	screen.queue_free()
 	for hook: Node in hooks: hook.queue_free()
 	await process_frame
+
+## Covered by a full-screen child: the world hushes, a fixed cue still plays.
+func _check_covered() -> void:
+	var probe := _tuned(71)
+	var world := FakeWorld.new()
+	root.add_child(world)
+	probe.listen_to(world, "home")
+	probe.begin_turn("turn-of-the-tide@1", "set-the-tide")
+	await create_timer(0.2).timeout
+	probe.consume_turn_events(["water_rise"], ["b|water_rise"], false)
+	var sounding: AudioStreamPlayer = _last_cue(probe)
+	_check(probe.ambience.playing and _loop_playing(probe, "water_near") and sounding.playing, "Before covering: ambience, bed and a cue sound")
+	probe.set_covered(true)
+	_check(not probe.ambience.playing and _all_loops_silent(probe) and probe.calling.is_empty(), "Covering hushes the ambience, beds and calls at once")
+	_check(sounding.playing, "A cue already sounding finishes under the cover (the opening press's tick)")
+	var played := probe.next_voice
+	probe.consume_turn_events(["bridge_opened"], ["bridge_opened:x|bridge_opened:x"], false)
+	probe.play_footstep("a")
+	probe.play_reunion()
+	_check(probe.next_voice == played and not probe.reunion_voice.playing and not probe.step_voices.any(func(voice: AudioStreamPlayer) -> bool: return voice.playing), "Covered, no turn cue, step or meetup sounds")
+	probe.play_fixed_cue("ui_tap")
+	_check(probe.next_voice != played, "Covered, a button's tick still plays")
+	await process_frame
+	probe.set_backgrounded(true)
+	played = probe.next_voice
+	probe.play_fixed_cue("ui_tap")
+	_check(probe.next_voice == played and not sounding.playing, "In the background nothing plays, not even a tick")
+	probe.set_backgrounded(false)
+	_check(probe.covered and not probe.ambience.playing, "Coming back from the background keeps a covered screen hushed")
+	probe.set_covered(false)
+	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
+	_check(probe.ambience.playing and _loop_playing(probe, "water_near") and probe.calling == "shore", "Uncovering brings the ambience, bed and shore back")
+	probe.queue_free()
+	world.queue_free()
 
 static func _click(view: SubViewport, at: Vector2, down: bool) -> void:
 	var event := InputEventMouseButton.new()
@@ -1055,6 +1106,7 @@ func _run() -> void:
 	_check_reduced_motion()
 	await _check_fixed_cues()
 	await _check_button_ticks()
+	await _check_covered()
 	sound.queue_free()
 	await process_frame
 	# Let the audio thread consume its queued stop commands before shutting down.

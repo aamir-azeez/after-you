@@ -456,7 +456,7 @@ func _real_ui_flow() -> void:
 	preview._notification(Node.NOTIFICATION_APPLICATION_PAUSED)
 	app._resume_application()
 	preview._notification(Node.NOTIFICATION_APPLICATION_RESUMED)
-	_check(app.soundscape.backgrounded and not preview.soundscape.backgrounded,"Android resume keeps retained parent's audio suspended while child owns sound")
+	_check(app.soundscape.covered and not app.soundscape.ambience.playing and not preview.soundscape.backgrounded,"Android resume keeps retained parent's audio suspended while child owns sound")
 	_check(not app.world.is_processing(),"Android resume keeps the hidden parent world suspended")
 	_check(preview.journey==app.relay_session.coordinator and preview.mode=="ready","Online presentation uses tested room coordinator instead of solo save")
 	_check(_panel_texts(preview) == ["Copy", "Share current room", "Record", "Room options"] and _header_texts(preview) == ["[icon] Back", "[icon] Refresh"],"The host's ready panel before the friend joins: Copy, Share current room, Record, Room options, with Refresh in the header %s %s" % [str(_panel_texts(preview)), str(_header_texts(preview))])

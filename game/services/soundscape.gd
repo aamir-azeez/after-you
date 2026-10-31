@@ -55,6 +55,11 @@ const WORLD_CHECK_SECONDS := 0.25
 var sound_enabled := true
 var haptics_enabled := true
 var backgrounded := false
+## A full-screen child (a room, a shared replay, Photo transfer) covers this
+## screen: its world, ambience, steps and turn cues hush as when backgrounded,
+## but a fixed cue (a button's tick, a confirmation) still plays, so a press
+## that opens the child or a button on a child with no sound of its own ticks.
+var covered := false
 var ambience: AudioStreamPlayer
 var voices: Array[AudioStreamPlayer] = []
 var next_voice := 0
@@ -186,6 +191,19 @@ func set_backgrounded(value: bool) -> void:
 		_stop_effects()
 	_update_ambience()
 
+## Covers or uncovers this screen (`covered`). Covering lets a one-shot cue
+## already sounding finish (the tick of the press that opened the child).
+func set_covered(value: bool) -> void:
+	covered = value
+	if value:
+		_stop_effects(true)
+	_update_ambience()
+
+## True while nothing but a fixed cue may sound: the app is in the background
+## or a full-screen child covers this screen.
+func _hushed() -> bool:
+	return backgrounded or covered
+
 ## Plays the world's moving mechanisms and its place's bed while that world is
 ## on screen. `place` names the bed outside a recorded turn ("home").
 func listen_to(world: Node3D, place: String = "") -> void:
@@ -294,7 +312,7 @@ func _plan_batch(events: Array) -> void:
 ## True when `count` cues would sound and this frame has some room, but not
 ## for them all. A full frame needs no plan: every cue is counted but silent.
 func _crowded(count: int) -> bool:
-	if count < 2 or max_cues_per_frame <= 0 or not sound_enabled or backgrounded or voices.is_empty(): return false
+	if count < 2 or max_cues_per_frame <= 0 or not sound_enabled or _hushed() or voices.is_empty(): return false
 	_roll_frame()
 	var room := max_cues_per_frame - _frame_cues
 	return room > 0 and count > room
@@ -330,7 +348,7 @@ static func choose_cues(keys: Array, room: int) -> PackedByteArray:
 	return plan
 
 func _play_cue(key: String, step: float, gain: float, live_play: bool) -> void:
-	if backgrounded:
+	if _hushed():
 		return
 	if sound_enabled and not voices.is_empty() and _cue_allowed(): _voice_cue(key, step, gain)
 	var haptic := int(SoundCues.CUES[key].get("haptic_ms", 0))
@@ -409,7 +427,7 @@ func _cue_variation(key: String, source: String) -> Dictionary:
 ## The light tick a tapped control gives (a Settings tile), when haptics are on.
 const TAP_HAPTIC_MS := 12
 func tap_haptic() -> void:
-	if haptics_enabled and not backgrounded: _emit_haptic(TAP_HAPTIC_MS)
+	if haptics_enabled and not _hushed(): _emit_haptic(TAP_HAPTIC_MS)
 
 func _emit_haptic(duration_ms: int) -> void:
 	if PlatformSupport.is_phone():
@@ -422,7 +440,7 @@ func play_footstep(spirit: String = "") -> void:
 	# Neighbouring steps of one spirit never share a pitch.
 	var detune := spread_pitch(SoundCues.FOOTSTEPS.detune, float(_step_detunes.get(spirit, NO_PITCH)), STEP_MIN_MOVE, identity_unit(id + ["pitch"]))
 	_step_detunes[spirit] = detune
-	if not sound_enabled or backgrounded or step_voices.is_empty():
+	if not sound_enabled or _hushed() or step_voices.is_empty():
 		return
 	var voice := step_voices[next_step % step_voices.size()]
 	# Each spirit alternates its own two contacts; the second spirit starts on
@@ -434,11 +452,13 @@ func play_footstep(spirit: String = "") -> void:
 	voice.play()
 	next_step+=1
 
-func _stop_effects() -> void:
+## `keep_cues`: one-shot cues already sounding finish (covering, not backgrounding).
+func _stop_effects(keep_cues: bool = false) -> void:
 	stop_reunion()
-	for voice in voices:
-		voice.stop()
-	if is_instance_valid(long_voice): long_voice.stop()
+	if not keep_cues:
+		for voice in voices:
+			voice.stop()
+		if is_instance_valid(long_voice): long_voice.stop()
 	for voice in step_voices:
 		voice.stop()
 	if is_instance_valid(call_voice): call_voice.stop()
@@ -453,7 +473,7 @@ func play_reunion() -> void:
 		pitch = spread_pitch(REUNION_RANGE, _turn_reunion, REUNION_MIN_MOVE, identity_unit(id + ["note"]))
 		_turn_reunion = pitch
 		gain = lerpf(SoundCues.REUNION.gain.x, SoundCues.REUNION.gain.y, identity_unit(id + ["gain"]))
-	if not sound_enabled or backgrounded or not is_instance_valid(reunion_voice): return
+	if not sound_enabled or _hushed() or not is_instance_valid(reunion_voice): return
 	if pitch == NO_PITCH:
 		reunion_pitch = spread_pitch(REUNION_RANGE, reunion_pitch, REUNION_MIN_MOVE, variation.randf())
 		pitch = reunion_pitch
@@ -467,7 +487,7 @@ func play_reunion() -> void:
 ## sounds the same when picked, on the friend's card and in a rewatch. It never
 ## advances a turn's cue identities, so no other cue moves.
 func play_reaction(identity: Array) -> void:
-	if not sound_enabled or backgrounded or voices.is_empty() or not _frame_allows_cue(): return
+	if not sound_enabled or _hushed() or voices.is_empty() or not _frame_allows_cue(): return
 	var voice := voices[next_voice]
 	next_voice = (next_voice + 1) % voices.size()
 	voice.stream = SoundCues.REACTION.clip
@@ -476,6 +496,7 @@ func play_reaction(identity: Array) -> void:
 	voice.play()
 
 ## A cue outside any recorded turn, at one pitch from its name and `variant`
+## (it plays while `covered`, never while backgrounded)
 ## alone (fixed_pitch): a Home keepsake's beat and the water it pours
 ## (presentation/home_keepsake_layer.gd), and a screen's confirmations (the
 ## Wardrobe, the Pollen store and line, a leaderboard celebration, a Settings
@@ -532,7 +553,7 @@ static func reaction_gain(identity: Array) -> float:
 ## reaction sounds the same live, as the friend's memory, on retry and in a replay.
 ## It never advances a turn's cue identities.
 func play_run_reaction(slot: String, track: Array, index: int) -> void:
-	if index < 0 or index >= track.size() or not sound_enabled or backgrounded or voices.is_empty() or not _frame_allows_cue(): return
+	if index < 0 or index >= track.size() or not sound_enabled or _hushed() or voices.is_empty() or not _frame_allows_cue(): return
 	var voice := voices[next_voice]
 	next_voice = (next_voice + 1) % voices.size()
 	voice.stream = SoundCues.REACTION.clip
@@ -556,7 +577,7 @@ func stop_reunion() -> void:
 func _update_ambience() -> void:
 	if not is_instance_valid(ambience):
 		return
-	if not sound_enabled or backgrounded:
+	if not sound_enabled or _hushed():
 		ambience.stop()
 	elif not ambience.playing:
 		ambience.play()
@@ -578,7 +599,7 @@ func place() -> String:
 ## while the world is on screen; mechanism loops only while it also moves.
 func _sync_loops() -> void:
 	if loop_voices.is_empty(): return
-	var audible := sound_enabled and not backgrounded and not _quiet() and is_instance_valid(_world) and _world.is_visible_in_tree()
+	var audible := sound_enabled and not _hushed() and not _quiet() and is_instance_valid(_world) and _world.is_visible_in_tree()
 	var moving := audible and _world.is_processing()
 	var wanted := {}
 	var calls := ""
@@ -590,7 +611,7 @@ func _sync_loops() -> void:
 		for id: String in _motions:
 			var motion: Dictionary = SoundCues.MOTION[_motions[id].kind]
 			wanted[id] = {"loop": motion.loop, "pitch": float(motion.pitch) + (float(motion.rise) if int(_motions[id].direction) > 0 else 0.0), "bed": false}
-	var instant := not sound_enabled or backgrounded
+	var instant := not sound_enabled or _hushed()
 	_set_calls(calls, instant)
 	for id: String in _sounding.keys():
 		if not wanted.has(id): _release(_sounding[id], id, instant)
@@ -633,7 +654,7 @@ func _set_calls(key: String, instant: bool) -> void:
 
 ## Sings the next call and sets the timer for the one after it.
 func _on_call_due() -> void:
-	if calling.is_empty() or not sound_enabled or backgrounded or not is_instance_valid(call_voice): return
+	if calling.is_empty() or not sound_enabled or _hushed() or not is_instance_valid(call_voice): return
 	if not is_instance_valid(_world) or not _world.is_visible_in_tree() or _quiet(): return
 	var spec: Dictionary = SoundCues.CALLS[calling]
 	var pick := next_call(spec, variation, _last_call, _call_pitch)
