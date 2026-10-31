@@ -17,6 +17,7 @@ beam_field 1
 board_feedback 2
 borrowed_light 1
 bubble_placement 1
+bundle_art 3
 busy_tap_gate 1
 camera_exploration 2
 campaign_photo_context 1
