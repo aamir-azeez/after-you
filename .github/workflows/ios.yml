@@ -70,6 +70,8 @@ jobs:
           xcodebuild -version
           xcodebuild -showsdks | grep -iE 'iphoneos|iphonesimulator'
           sw_vers
+          # Test branch: the upload tool the TestFlight job uses must still ship with this Xcode.
+          xcrun --find altool && xcrun altool --version || echo "::warning::altool is missing from $XCODE_APP"
 
       - name: Build the iOS plugin
         uses: ./.github/actions/build-ios-plugin
