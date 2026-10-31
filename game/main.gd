@@ -303,7 +303,8 @@ var safety_return := "settings"
 ## Home prompt for a turn photo that After You closed under (photo_resume_prompt.gd).
 var photo_resume_prompt: Node
 var _photo_resume_checked := false
-## Set once any room screen opened this session: from then on a waiting photo only asks.
+## Set once the player is anywhere but Home this session (a room, a card's button, any
+## screen): from then on a waiting photo only asks on Home.
 var _photo_resume_left_home := false
 var turn_notifications: Node
 var hosting_notification_preferences := HostingNotificationPreferences.new()
@@ -1719,7 +1720,6 @@ func _enter_online_relay() -> void:
 	_set_world_visible(false)
 	ui.visible = false
 	soundscape.set_backgrounded(true)
-	_photo_resume_left_home = true
 	relay_child = RelayPreview.new()
 	relay_child.chapter_key = relay_session.chapter_key()
 	relay_child.online_session = relay_session
@@ -2446,6 +2446,7 @@ func supersede_foreground_refresh() -> void:
 ## just now and this start went nowhere else first, the room opens at once, so the player is
 ## back where they took the picture. Otherwise, or when the room cannot open now, Home asks.
 func _service_photo_resume() -> void:
+	if mode != "home": _photo_resume_left_home = true
 	if _photo_resume_checked or not _photo_resume_safe(): return
 	_photo_resume_checked = true
 	if not is_instance_valid(photo_resume_prompt):

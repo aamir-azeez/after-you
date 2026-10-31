@@ -13,7 +13,9 @@ extends SceneTree
 ## - Restarted, and the player taps on before the room opens by itself: the tap
 ##   wins, and the room opened from the hub still offers the same photo.
 ## - Restarted, and a card the app shows by itself (a Pollen gift, a board
-##   placing) comes up on Home as the room opens: once it is closed, the room opens.
+##   placing) comes up on Home as the room opens, or is already up: once it is
+##   closed, the room opens. When its button takes the player elsewhere (the
+##   Wardrobe, View board) and back, Home asks instead.
 const Harness = preload("res://tests/online_harness/harness.gd")
 const UserFiles = preload("res://tests/online_harness/user_files.gd")
 const Resume = preload("res://services/photo_capture_resume.gd")
@@ -23,6 +25,9 @@ const LATER := "restarted, opened again later"
 const OFFLINE := "restarted, room out of reach"
 const TAPPED := "restarted, player taps on as the room opens"
 const CARD := "restarted, a Home card shows as the room opens"
+const CARD_FIRST := "restarted, a Home card is up before the photo is looked at"
+const CARD_SOLO := "restarted, a Home card's button leads to Solo and back"
+const CARD_BOARD := "restarted, a Home card's View board leads to Friends and back"
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 var h: Node
 var files: RefCounted
@@ -38,7 +43,7 @@ func _run() -> void:
 	for how: String in [MEMORY, RESTARTED]:
 		for photographer: String in ["host", "guest"]:
 			await _camera_round_trip(photographer, how)
-	for how: String in [LATER, OFFLINE, TAPPED, CARD]:
+	for how: String in [LATER, OFFLINE, TAPPED, CARD, CARD_FIRST, CARD_SOLO, CARD_BOARD]:
 		await _camera_round_trip("host", how)
 	h.print_slowest()
 	h.end()
@@ -93,6 +98,23 @@ func _camera_round_trip(who: String, how: String) -> void:
 				await h.frames(10)
 				h.check(photographer.child() == null and photographer.app.find_child("PhotoResumeModal", true, false) == null, photographer.label + " waits under a card Home shows by itself (at %s)" % photographer.where())
 				card.close(false)
+			if how in [CARD_FIRST, CARD_SOLO, CARD_BOARD]:
+				# A card the app shows by itself is up on Home before anything else happens.
+				var card: Control = InGameModal.open(photographer.app.ui, "HarnessHomeCard", "A card the app shows by itself")
+				await h.frames(30)
+				h.check(photographer.child() == null and photographer.app.find_child("PhotoResumeModal", true, false) == null and not photographer.app._photo_resume_checked, photographer.label + " waits under a card that was up first (at %s)" % photographer.where())
+				card.close(false)
+				if how == CARD_SOLO:
+					# The card's button leads away (as the Pollen card's Wardrobe does), then Back to Home.
+					photographer.app.journey_flow.show_journey()
+					await h.frames(5)
+					photographer.app._show_home()
+				elif how == CARD_BOARD:
+					# View board's own path: Friends, then Back to Home.
+					await photographer.app._show_friends()
+					await h.frames(5)
+					photographer.app.friends_flow.close()
+					photographer.app._show_home()
 			await _until(func() -> bool: return photographer.button("PhotoSend") != null or photographer.button("PhotoResumeOpen") != null)
 		await h.step("Android starts After You again after the camera", restart, [photographer] if how == OFFLINE else [])
 		if how == TAPPED:
@@ -102,7 +124,7 @@ func _camera_round_trip(who: String, how: String) -> void:
 			await h.step(photographer.label + " opens the room from the hub", func():
 				h.open_room_card(photographer, room)
 				await _until(func() -> bool: return photographer.button("PhotoSend") != null))
-		if how in [LATER, OFFLINE]:
+		if how in [LATER, OFFLINE, CARD_SOLO, CARD_BOARD]:
 			h.check(photographer.app.mode == "home" and photographer.button("PhotoResumeOpen") != null and photographer.child() == null, photographer.label + " is asked on Home before the room opens (at %s)" % photographer.where())
 			h.check(photographer.toasts.is_empty(), photographer.label + " sees no error for a room that did not open by itself (%s)" % [photographer.toasts])
 			await h.step(photographer.label + " taps Open room", func():
