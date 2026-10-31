@@ -226,12 +226,16 @@ func _add_store_links(card: VBoxContainer) -> void:
 	if not _privacy_url().is_empty():
 		buttons.append(host._button(PlayerCopy.SUBSCRIPTION_PRIVACY,func(): OS.shell_open(_privacy_url()),false))
 	if PlatformSupport.is_ios():
-		var terms: Button = host._button(PlayerCopy.SUBSCRIPTION_TERMS_OF_USE,func(): OS.shell_open(PlatformSupport.APPLE_TERMS_URL),false)
+		var terms: Button = host._button(PlayerCopy.SUBSCRIPTION_TERMS_OF_USE,_open_terms_of_use,false)
 		terms.name = "TermsOfUse"
 		buttons.append(terms)
 	for button: Button in buttons:
 		button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		links.add_child(button)
+
+## Apple's standard licence agreement, the Terms of Use every iOS subscription screen links.
+func _open_terms_of_use() -> void:
+	OS.shell_open(PlatformSupport.APPLE_TERMS_URL)
 
 func _manage_subscription_available() -> bool:
 	return host.config.get("purchase_mode") in ["google_play","app_store"] and not Purchases.subscriptions_url(host.config).is_empty() and host.purchases.has_method("has_subscription") and host.purchases.has_subscription()

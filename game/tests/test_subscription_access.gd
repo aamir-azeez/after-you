@@ -136,6 +136,7 @@ func _subscriber_screens() -> void:
 		{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly:yearly","price":"₹899.00"}]}]})
 	_check(_button(app.overlay, "Subscribe · ₹89.00 a month") != null and _button(app.overlay, "Subscribe · ₹899.00 a year") != null, "The paywall shows each package with the store's own localized price")
 	_check(_button(app.overlay, PlayerCopy.SUBSCRIPTION_PRIVACY) != null and _button(app.overlay, PlayerCopy.SUBSCRIPTION_MANAGE) == null, "A nonsubscriber sees the privacy policy and no Manage subscription")
+	_check(app.overlay.find_child("TermsOfUse", true, false) == null, "Google Play's card keeps its links: no Apple Terms of Use")
 	_check(not "$0.99" in _all_text(app.overlay) and not "$9.99" in _all_text(app.overlay), "No price is hard-coded in the paywall")
 	_button(app.overlay, "Restore purchases").pressed.emit()
 	await process_frame
@@ -211,7 +212,13 @@ func _iphone_screens() -> void:
 		{"id":"$rc_annual","type":"ANNUAL","product_id":"after_you_full_journey_yearly_ios","price":"$12.99"}]}]})
 	var monthly := _button(app.overlay, "Subscribe · $1.49 a month")
 	_check(monthly != null and _button(app.overlay, "Subscribe · $12.99 a year") != null, "iPhone: the App Store's monthly and yearly packages with their prices")
-	_check(_label(app.overlay, PlayerCopy.SUBSCRIPTION_TERMS_APP_STORE) != null and _button(app.overlay, PlayerCopy.SUBSCRIPTION_TERMS_OF_USE) != null, "iPhone: Apple's renewal terms and the Terms of Use link")
+	_check(_label(app.overlay, PlayerCopy.SUBSCRIPTION_TERMS_APP_STORE) != null, "iPhone: Apple's renewal terms")
+	# Apple asks every screen that sells an auto-renewable subscription to link its Terms of Use (the standard EULA) beside the privacy policy.
+	var links: Node = app.overlay.find_child("StoreLinks", true, false)
+	var terms: Button = links.find_child("TermsOfUse", false, false) as Button if links != null else null
+	_check(terms != null and terms.text == "Terms of Use" and terms.pressed.is_connected(app.store_flow._open_terms_of_use) and _button(links, PlayerCopy.SUBSCRIPTION_PRIVACY) != null,
+		"iPhone: the Full Journey card links Terms of Use beside the privacy policy")
+	_check(PlatformSupport.APPLE_TERMS_URL == "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/", "Terms of Use opens Apple's standard EULA")
 	# No read this run: Subscribe is refused and nothing opens.
 	if monthly != null: monthly.pressed.emit()
 	await process_frame
