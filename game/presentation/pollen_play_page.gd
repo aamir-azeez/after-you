@@ -14,6 +14,7 @@ extends Control
 ## script only draws it. Each card scrolls on its own. No timers, no countdown.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
+const PageMargin = preload("res://presentation/kit/page_margin.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const Parts = preload("res://presentation/pollen_play_parts.gd")
@@ -48,9 +49,7 @@ func _init(heading_font: Font = null) -> void:
 	shade.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	SafeArea.bleed(shade)
 	add_child(shade)
-	var margin := MarginContainer.new()
-	margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	for side: String in ["left", "top", "right", "bottom"]: margin.add_theme_constant_override("margin_" + side, 22)
+	var margin := PageMargin.new(22, 22)
 	add_child(margin)
 	var outer := VBoxContainer.new()
 	outer.add_theme_constant_override("separation", 16)
