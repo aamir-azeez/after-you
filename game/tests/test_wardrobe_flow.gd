@@ -19,7 +19,10 @@ extends SceneTree
 ## - Wear and Take off send the whole look; Back asks the host to leave and
 ##   remembers where the Wardrobe was opened from;
 ## - a build without the shop (iOS selling nothing) and a server with the shop
-##   off show the same frame with only Owned: no price, no Buy, no shelf, no +.
+##   off show the same frame with only Owned: no price, no Buy, no shelf, no +;
+## - an empty list shows its drawing and line (presentation/empty_state.gd):
+##   nothing owned, nothing in the shop, the shop off, or nothing in a slot;
+##   never while loading or offline, made once and still on idle frames.
 const Flow = preload("res://presentation/wardrobe_flow.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
@@ -127,6 +130,7 @@ func _run() -> void:
 	await _wearing()
 	await _owned_only()
 	await _server_shop_off()
+	await _empty_lists()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -430,6 +434,48 @@ func _server_shop_off() -> void:
 		_check(PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(page) and not PlayerCopy.WARDROBE_NOTHING_OWNED in _texts(page), label + ": the empty Wardrobe says " + PlayerCopy.WARDROBE_NOTHING_EARNED)
 		t.host.queue_free()
 		await _frames(2)
+
+func _empty_lists() -> void:
+	var t := _setup()
+	t.flow.show_wardrobe()
+	var page: Node = t.host.overlay
+	_check(_empty(page) == null, "Empty lists: no drawing while the first read is out")
+	await _frames()
+	_check(_empty(page) == null and PlayerCopy.WARDROBE_OFFLINE in _texts(page), "Empty lists: offline says so, with no drawing")
+	t.fake.replies = [_answer([], {}, 24000)]
+	await t.flow.refresh()
+	_check(_empty(page) == null and (page.find_child("WardrobeItems", true, false) as Control).visible, "Empty lists: none while things are on sale")
+	t.flow.set_tab("owned")
+	var empty: Control = _empty(page)
+	_check(empty != null and empty.art == "wardrobe_owned" and _texts(page).count(PlayerCopy.WARDROBE_NOTHING_OWNED) == 1 and not (page.find_child("WardrobeItems", true, false) as Control).visible, "Nothing owned: the drawing with its line, once")
+	await _frames(3)
+	var drawn: int = empty.draw_count if empty != null else -1
+	t.flow._redraw()
+	await _frames(20)
+	_check(drawn >= 1 and _empty(page) == empty and empty.draw_count == drawn, "Nothing owned: a redraw with nothing new keeps the drawing, and idle frames draw nothing")
+	var bare: Dictionary = _answer([], {}, 24000).data
+	bare.wardrobe.offered = []
+	t.store.note_view(SERVER, ME, bare)
+	t.flow.set_tab("all")
+	empty = _empty(page)
+	_check(empty != null and empty.art == "wardrobe_shelf" and PlayerCopy.WARDROBE_NOTHING_IN_SHOP in _texts(page) and not (page.find_child("WardrobeShelf", true, false) as Control).visible, "Nothing in the shop: the shelf drawing and its line")
+	# The flow hides a slot chip with nothing in it; the page still draws one it is given.
+	var model: Dictionary = t.flow.model()
+	model.merge({"tab": "owned", "kinds": ["hat", "leaf"], "kind": "leaf"}, true)
+	t.flow._page.render(model)
+	empty = _empty(page)
+	_check(empty != null and empty.art == "wardrobe_slot" and PlayerCopy.WARDROBE_NOTHING_OWNED in _texts(page), "Nothing in a slot: the slot drawing")
+	t.store.set_enabled(SERVER, ME, true, false, true)
+	t.flow._redraw()
+	empty = _empty(page)
+	_check(empty != null and empty.art == "wardrobe_shelf" and PlayerCopy.WARDROBE_NOTHING_EARNED in _texts(page) and not PlayerCopy.WARDROBE_NOTHING_IN_SHOP in _texts(page), "The shop off: the shelf drawing says what you earn shows here")
+	t.host.queue_free()
+	await _frames(2)
+
+## The page's empty list drawing, or null.
+static func _empty(page: Node) -> Control:
+	var found: Array = page.find_children("EmptyState", "", true, false).filter(func(node: Node) -> bool: return not node.is_queued_for_deletion())
+	return found[0] if found.size() == 1 else null
 
 ## Whether the balance chip's + shows.
 static func _plus_shown(page: Node) -> bool:

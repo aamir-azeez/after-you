@@ -32,6 +32,9 @@ const SPOTS := {
 	"friends": {"card": "friend", "rows": ["friend", "friend_next"], "links": [[1, 0, "plane"]]},
 	"replays_solo": {"card": "replay", "preview": "footprints"},
 	"replays_together": {"card": "replay", "rows": ["polaroid"]},
+	"wardrobe_owned": {"card": "wardrobe", "rows": ["wardrobe_owned"]},
+	"wardrobe_slot": {"card": "wardrobe", "rows": ["wardrobe_slot"]},
+	"wardrobe_shelf": {"card": "wardrobe", "rows": ["wardrobe_shelf"]},
 }
 static var _heading: FontVariation
 var art := "rooms"
@@ -58,8 +61,10 @@ func setup(art_id: String, title_text: String, text: String, below: Control = nu
 		_heading = FontVariation.new()
 		_heading.base_font = HEADING_FONT
 		_heading.variation_opentype = {TextServerManager.get_primary_interface().name_to_tag("wght"): 600.0}
-	title = _label(title_text, 24, CREAM, _heading)
-	line = _label(text, 18, MUTED, null)
+	# A list on a cream panel (its card has "ink") writes in that ink.
+	var ink: Variant = Art.CARDS[SPOTS[art_id].card].get("ink")
+	title = _label(title_text, 24, CREAM if ink == null else ink, _heading)
+	line = _label(text, 18, MUTED if ink == null else Color(ink, 0.8), null)
 	extra = below
 	if extra != null:
 		if extra.get_parent() != null: extra.get_parent().remove_child(extra)

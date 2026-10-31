@@ -266,6 +266,8 @@ const WARDROBE_SET_PRICE := "The pieces you're missing, together: %s Pollen"
 const WARDROBE_NOTHING_OWNED := "Things you buy or earn show here."
 ## The same on a build without the shop (services/pollen_surfaces.gd).
 const WARDROBE_NOTHING_EARNED := "Things you earn show here."
+## All items with nothing for sale and nothing owned.
+const WARDROBE_NOTHING_IN_SHOP := "Nothing in the shop right now."
 const WARDROBE_LOADING := "Opening your wardrobe…"
 const WARDROBE_OFFLINE := "The wardrobe isn't reachable right now. Try again in a moment."
 const WARDROBE_TRY_AGAIN := "Try again"

@@ -53,6 +53,10 @@ const CARDS := {
 	"room": {"height": 120.0, "radius": 16.0, "pad": Vector2(14, 12), "slot": Vector2(154, 96), "slot_radius": 8.0, "button": Vector2(132, 50)},
 	"friend": {"height": 116.0, "radius": 16.0, "pad": Vector2(16, 16), "slot": Vector2(64, 64), "slot_radius": 32.0, "button": Vector2(48, 48)},
 	"replay": {"height": 112.0, "radius": 16.0, "pad": Vector2(28, 20), "slot": Vector2(128, 72), "slot_radius": 10.0, "button": Vector2(96, 50), "preview": true},
+	# The Wardrobe's item cards keep their 16 px frame and 12 px picture corners
+	# (wardrobe_page._card), in a row the room card's size so the drawing reads,
+	# with no button. "ink" draws the dashes and text in ink on the cream panel.
+	"wardrobe": {"height": 120.0, "radius": 16.0, "pad": Vector2(14, 12), "slot": Vector2(154, 96), "slot_radius": 12.0, "button": Vector2.ZERO, "ink": INK},
 }
 const SCENES := {
 	"invite": [["face", Vector2(-58, 14), {"color": "peach", "look": Vector2(1, -0.2), "tilt": 0.22, "size": 0.62}], ["envelope", Vector2(4, 4), -0.12], ["outline", Vector2(70, 2)], ["sparkle", Vector2(36, -38), 7.0]],
@@ -68,7 +72,42 @@ const SCENES := {
 ## Scenes drawn loose on a light surface rather than in a list picture: their
 ## own box, and a thin ink edge (box units) round each spirit and prop so
 ## peach, mint and pink hold on cream.
-const SCENE_LOOKS := {"friends_squeeze": {"box": Vector2(120, 96), "edge": 2.8}}
+const SCENE_LOOKS := {"friends_squeeze": {"box": Vector2(120, 96), "edge": 2.8}, "wardrobe_owned": {"edge": 2.6}, "wardrobe_slot": {"edge": 2.6}, "wardrobe_shelf": {"edge": 2.6}}
+## The Wardrobe's three empty lists (empty_state.gd SPOTS), five drawings each
+## for the owner to choose from; wardrobe_option (1 to 5) picks the one that
+## draws. Once the owner picks, the chosen rows move into SCENES and these go.
+## owned: nothing owned yet. slot: nothing in the picked slot. shelf: nothing
+## in the shop, or the shop is off.
+const WARDROBE_OPTIONS := {
+	"wardrobe_owned": [
+		[["cupboard", Vector2(14, 50)], ["spirit", Vector2(-62, 50), {"color": "peach", "eyes": "wide", "look": Vector2(1, -0.3), "tilt": 0.2, "lean": 0.08, "size": 0.5}], ["sparkle", Vector2(62, -44), 6.0]],
+		[["rail", Vector2(10, 50), 120.0], ["hanger", Vector2(-22, -42), 0.0, 0.155], ["hanger", Vector2(12, -42), 0.38, 0.155], ["swing", Vector2(12, -42), 30.0], ["hanger", Vector2(46, -42), 0.0, 0.155], ["spirit", Vector2(-74, 50), {"color": "peach", "look": Vector2(1, -1), "tilt": 0.18, "size": 0.5}]],
+		[["spirit", Vector2(-8, 52), {"color": "peach", "eyes": "happy", "tilt": 0.12, "size": 0.62}], ["leaf", Vector2(2, -4), 0.5, 2.6], ["sparkle", Vector2(50, -38), 6.0], ["sparkle", Vector2(-54, -22), 5.0], ["heart", Vector2(46, 14), 7.0]],
+		[["trunk", Vector2(6, 52), "lid"], ["face", Vector2(6, 8), {"color": "peach", "eyes": "wide", "look": Vector2(1, -0.6), "tilt": 0.18, "size": 0.55}], ["trunk", Vector2(6, 52), "box"], ["trail", Vector2(26, 0), Vector2(54, -36)], ["moth", Vector2(60, -40), 0.3]],
+		[["mirror", Vector2(34, 54), {"color": "peach", "alpha": 0.5, "eyes": "soft", "look": Vector2(-1, 0), "tilt": -0.1}], ["spirit", Vector2(-34, 54), {"color": "peach", "look": Vector2(1, -0.2), "tilt": 0.12, "size": 0.5}], ["sparkle", Vector2(-72, -32), 5.0]],
+	],
+	"wardrobe_slot": [
+		[["nail", Vector2(0, -50)], ["hanger", Vector2(0, -50), 0.0, 0.3], ["dashed", Vector2(0, 14), "shirt", 1.0], ["sparkle", Vector2(48, -30), 6.0], ["sparkle", Vector2(-50, 22), 5.0]],
+		[["dashed", Vector2(0, -20), "hat", 1.2], ["spirit", Vector2(0, 54), {"color": "peach", "eyes": "wide", "look": Vector2(0, -1), "size": 0.62}], ["sparkle", Vector2(-42, -34), 6.0], ["sparkle", Vector2(46, -12), 5.0]],
+		[["pegs", Vector2(-14, 54)], ["spirit", Vector2(36, 54), {"color": "peach", "eyes": "soft", "look": Vector2(-1, -1), "tilt": -0.1, "size": 0.5}], ["sparkle", Vector2(-52, -40), 5.0]],
+		[["giftbox", Vector2(6, 52)], ["spirit", Vector2(-50, 52), {"color": "peach", "eyes": "wide", "look": Vector2(1, 0.3), "tilt": 0.15, "lean": 0.06, "size": 0.5}], ["sparkle", Vector2(10, -26), 6.0]],
+		[["pattern", Vector2(-4, 0), -0.08], ["spool", Vector2(54, 36)], ["face", Vector2(-62, 26), {"color": "peach", "eyes": "happy", "look": Vector2(1, -0.4), "tilt": 0.2, "size": 0.5}]],
+	],
+	"wardrobe_shelf": [
+		[["shelf", Vector2(0, -4), 150.0], ["dashed", Vector2(-38, -9), "hat", 0.8], ["dashed", Vector2(30, -5), "leaf", 1.8], ["sparkle", Vector2(4, -40), 6.0], ["face", Vector2(0, 36), {"color": "peach", "eyes": "wide", "look": Vector2(0, -1), "size": 0.5}]],
+		[["bookcase", Vector2(30, 54)], ["spirit", Vector2(-24, 54), {"color": "peach", "eyes": "soft", "sit": true, "lean": 0.18, "tilt": 0.3, "size": 0.55}], ["sparkle", Vector2(-66, -34), 5.0]],
+		[["plinth", Vector2(0, 54)], ["dashed", Vector2(0, -6), "hat", 1.0], ["sparkle", Vector2(-40, -30), 6.0], ["sparkle", Vector2(42, -44), 5.0], ["sparkle", Vector2(36, -2), 4.0]],
+		[["parcel", Vector2(0, 56)], ["spirit", Vector2(-2, 16), {"color": "peach", "eyes": "happy", "sit": true, "tilt": 0.15, "look": Vector2(0.4, -0.3), "size": 0.5}], ["sparkle", Vector2(50, -30), 6.0], ["heart", Vector2(-50, -20), 7.0]],
+		[["window", Vector2(16, 52)], ["face", Vector2(-60, 14), {"color": "peach", "eyes": "wide", "look": Vector2(1, -0.2), "tilt": 0.25, "size": 0.55}], ["sparkle", Vector2(-72, -36), 5.0]],
+	],
+}
+static var wardrobe_option := 1
+## Wood for the Wardrobe's rails, shelves and pegs; glass for its mirror and window.
+const WOOD := Color("c9a87a")
+const GLASS := Color("dcefe8")
+## The owner's hanger (assets/ui/hanger.svg) as one stroke: its 256 unit box,
+## hung from the top of the hook.
+const HANGER_TOP := Vector2(128, 44)
 ## A squish (scene state "squish" 0..1) at its fullest, for rows with a
 ## "squish" direction (+1 toward +x): each face slides in, tips further toward
 ## the other and squashes about its chin. A heart row with "pop" grows by that
@@ -87,7 +126,7 @@ static func scene(ci: CanvasItem, scene_id: String, slot: Rect2, state: Dictiona
 	var s := minf(slot.size.x / box.x, slot.size.y / box.y)
 	var at := Transform2D(0.0, Vector2(s, s), 0.0, slot.get_center())
 	var edge: float = look.get("edge", 0.0) * s
-	for row: Array in SCENES.get(scene_id, []):
+	for row: Array in rows(scene_id):
 		var pos: Vector2 = row[1]
 		match row[0]:
 			"spirit", "face":
@@ -104,9 +143,15 @@ static func scene(ci: CanvasItem, scene_id: String, slot: Rect2, state: Dictiona
 			"heart":
 				var posed := pose(row, state)
 				heart(ci, at, posed.pos, posed.size, edge)
-			"sparkle": sparkle(ci, at, pos, row[2])
+			"sparkle": sparkle(ci, at, pos, row[2], edge)
 			"walk": walk(ci, at, pos, row[2])
 			"polaroid": polaroid(ci, at * Transform2D(row[2], Vector2(1.3, 1.3), 0.0, pos))
+			_: prop(ci, at, row, edge)
+
+## A scene's rows: a Wardrobe list's picked option, else SCENES.
+static func rows(scene_id: String) -> Array:
+	if WARDROBE_OPTIONS.has(scene_id): return WARDROBE_OPTIONS[scene_id][clampi(wardrobe_option, 1, 5) - 1]
+	return SCENES.get(scene_id, [])
 
 ## Where a spirit or heart row lands for a scene state: {place, options} for a
 ## spirit (its transform in scene units, and its options with the state's eyes
@@ -244,9 +289,11 @@ static func heart(ci: CanvasItem, at: Transform2D, pos: Vector2, size: float, ed
 		for part: PackedVector2Array in parts: edged(ci, at, part, edge, INK)
 	for part: PackedVector2Array in parts: fill(ci, at, part, HEART)
 
-static func sparkle(ci: CanvasItem, at: Transform2D, pos: Vector2, size: float) -> void:
+## A sparkle; edge as spirit()'s.
+static func sparkle(ci: CanvasItem, at: Transform2D, pos: Vector2, size: float, edge := 0.0) -> void:
 	var points := PackedVector2Array()
 	for step: int in range(8): points.append(pos + Vector2.from_angle(step * PI * 0.25 - PI * 0.5) * size * (1.0 if step % 2 == 0 else 0.3))
+	if edge > 0.0: edged(ci, at, points, edge, INK)
 	fill(ci, at, points, GOLD)
 
 ## The game's island block: a grass top over two sandy sides, flat shaded.
@@ -290,6 +337,204 @@ static func polaroid(ci: CanvasItem, at: Transform2D) -> void:
 		spirit(ci, at * Transform2D(0.0, Vector2(0.36, 0.36), 0.0, Vector2(pair[0], -6)), {"color": pair[1], "eyes": "happy", "tilt": pair[2]}, true)
 	fill(ci, at * Transform2D(-0.12, Vector2(0, -41)), round_rect(Rect2(-15, -5, 30, 10), 1.0), Color(LINE, 0.6))
 
+## The Wardrobe's props, one row each: [kind, position, ...] in scene units.
+## Edge as spirit()'s: each filled piece gets its thin ink edge on the cream.
+static func prop(ci: CanvasItem, at: Transform2D, row: Array, edge: float) -> void:
+	var pos: Vector2 = row[1]
+	var place := at * Transform2D(0.0, pos)
+	match row[0]:
+		"hanger": hanger(ci, at * Transform2D(row[2], pos), row[3], INK)
+		"swing": swing(ci, place, row[2])
+		"rail": rail(ci, place, row[2], edge)
+		"cupboard": cupboard(ci, place, edge)
+		"leaf": big_leaf(ci, at * Transform2D(row[2], pos), row[3], edge)
+		"trunk": trunk(ci, place, row[2], edge)
+		"trail": dots(ci, at, pos, row[2])
+		"moth": moth(ci, at * Transform2D(row[2], pos), edge)
+		"mirror": mirror(ci, place, row[2], edge)
+		"nail": fill(ci, place, ellipse(Vector2.ZERO, Vector2(2.6, 2.6)), INK)
+		"dashed": dashed(ci, at * Transform2D(0.0, Vector2(row[3], row[3]), 0.0, pos) * outline_of(row[2]), Color(INK, 0.55), 1.6, 5.0, 4.0)
+		"pegs": pegs(ci, place, edge)
+		"giftbox": giftbox(ci, place, edge)
+		"pattern": pattern(ci, at * Transform2D(row[2], pos), edge)
+		"spool": spool(ci, place, edge)
+		"shelf": shelf(ci, place, row[2], edge)
+		"bookcase": bookcase(ci, place, edge)
+		"plinth": plinth(ci, place, edge)
+		"parcel": parcel(ci, place, edge)
+		"window": shop_window(ci, place, edge)
+
+## A filled piece with its ink edge.
+static func _part(ci: CanvasItem, at: Transform2D, points: PackedVector2Array, color: Color, edge: float) -> void:
+	if edge > 0.0: edged(ci, at, points, edge, INK)
+	fill(ci, at, points, color)
+
+## The owner's hanger at `size` of its 256 unit drawing, hung from the origin.
+static func hanger(ci: CanvasItem, at: Transform2D, size: float, color: Color) -> void:
+	var points := PackedVector2Array()
+	for step: int in range(13): points.append(Vector2(128, 72) + Vector2.from_angle(PI + step * PI * 1.5 / 12.0) * 28.0)
+	points.append_array([Vector2(128, 116), Vector2(30, 182), Vector2(27, 192), Vector2(36, 200), Vector2(220, 200), Vector2(229, 192), Vector2(226, 182), Vector2(128, 116)])
+	var placed := at * Transform2D(0.0, Vector2(size, size), 0.0, -HANGER_TOP * size)
+	stroke(ci, placed, points, color, 20.0)
+	ci.draw_circle(placed * points[0], maxf(0.5, 10.0 * placed.get_scale().x), color, true, -1.0, true)
+
+## Two short arcs beside a swinging thing, `reach` below its pivot.
+static func swing(ci: CanvasItem, at: Transform2D, reach: float) -> void:
+	for radius: float in [reach, reach + 6.0]:
+		var arc := PackedVector2Array()
+		for step: int in range(5): arc.append(Vector2.from_angle(PI * 0.5 - 0.2 - step * 0.09) * radius)
+		stroke(ci, at, arc, Color(INK, 0.45), 1.6)
+
+## A coat rail on two posts, feet at the origin.
+static func rail(ci: CanvasItem, at: Transform2D, width: float, edge: float) -> void:
+	for side: float in [-1.0, 1.0]:
+		_part(ci, at, round_rect(Rect2(side * width * 0.5 - 10.0, -4, 20, 4), 2.0), WOOD.darkened(0.12), edge)
+		_part(ci, at, round_rect(Rect2(side * width * 0.5 - 2.5, -92, 5, 90), 2.5), WOOD, edge)
+	_part(ci, at, round_rect(Rect2(-width * 0.5 - 6.0, -95, width + 12.0, 5), 2.5), WOOD, edge)
+
+## A wardrobe with both doors open and nothing inside but a hanger.
+static func cupboard(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	for side: float in [-1.0, 1.0]: fill(ci, at, round_rect(Rect2(side * 26.0 - 4.0, -6, 8, 6), 1.5), PHOTO.darkened(0.25))
+	_part(ci, at, round_rect(Rect2(-35, -92, 70, 88), 6.0), PHOTO, edge)
+	fill(ci, at, round_rect(Rect2(-29, -86, 58, 76), 3.0), PHOTO.darkened(0.45))
+	stroke(ci, at, PackedVector2Array([Vector2(-26, -74), Vector2(26, -74)]), Color(LINE, 0.7), 2.0)
+	hanger(ci, at * Transform2D(0.0, Vector2(8, -74)), 0.14, Color(LINE, 0.85))
+	for side: float in [-1.0, 1.0]:
+		_part(ci, at, PackedVector2Array([Vector2(side * 35, -91), Vector2(side * 53, -85), Vector2(side * 53, -9), Vector2(side * 35, -5)]), PHOTO.lightened(0.12), edge)
+		fill(ci, at, ellipse(Vector2(side * 48, -47), Vector2(2.4, 2.4)), GOLD)
+
+## A leaf several times the spirit's own, stalk at the origin.
+static func big_leaf(ci: CanvasItem, at: Transform2D, size: float, edge: float) -> void:
+	stroke(ci, at, PackedVector2Array([Vector2(0, 5), Vector2(0, -2)]), Look.LEAF.darkened(0.2), 2.4)
+	_part(ci, at * Transform2D(0.0, Vector2(size, size), 0.0, Vector2.ZERO), _leaf(), Look.LEAF, edge)
+	stroke(ci, at, PackedVector2Array([Vector2(0, -2.0 * size), Vector2(0, -Look.LEAF_LENGTH * UNIT * 0.8 * size)]), Look.LEAF.darkened(0.3), 1.4)
+
+## An open trunk, feet at the origin: "lid" (behind) or "box" (in front).
+static func trunk(ci: CanvasItem, at: Transform2D, part: String, edge: float) -> void:
+	if part == "lid":
+		_part(ci, at, PackedVector2Array([Vector2(-38, -34), Vector2(38, -34), Vector2(32, -64), Vector2(-32, -64)]), SAND.darkened(0.14), edge)
+		fill(ci, at, PackedVector2Array([Vector2(-31, -38), Vector2(31, -38), Vector2(27, -59), Vector2(-27, -59)]), SAND.darkened(0.3))
+		return
+	_part(ci, at, round_rect(Rect2(-38, -36, 76, 36), 4.0), SAND, edge)
+	fill(ci, at, round_rect(Rect2(-34, -36, 68, 6), 2.0), PHOTO.darkened(0.3))
+	for x: float in [-26.0, 20.0]: fill(ci, at, round_rect(Rect2(x, -30, 6, 29), 1.0), SAND.darkened(0.18))
+	_part(ci, at, round_rect(Rect2(-5, -31, 10, 9), 2.0), GOLD, edge)
+
+## A dotted flight path from one point to another.
+static func dots(ci: CanvasItem, at: Transform2D, from: Vector2, to: Vector2) -> void:
+	var control := (from + to) * 0.5 + Vector2(-10, -4)
+	for step: int in range(6):
+		var t := float(step) / 6.0
+		fill(ci, at, ellipse(from.lerp(control, t).lerp(control.lerp(to, t), t), Vector2(1.4, 1.4)), Color(INK, 0.2 + 0.08 * step))
+
+## A small moth, body at the origin.
+static func moth(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	for side: float in [-1.0, 1.0]:
+		_part(ci, at * Transform2D(side * 0.4, Vector2(side * 4.5, 3.5)), ellipse(Vector2.ZERO, Vector2(5.0, 3.6)), PAPER.darkened(0.08), edge)
+	for side: float in [-1.0, 1.0]:
+		_part(ci, at * Transform2D(-side * 0.45, Vector2(side * 6.5, -2.0)), ellipse(Vector2.ZERO, Vector2(7.0, 4.6)), PAPER, edge)
+		fill(ci, at, ellipse(Vector2(side * 7.0, -2.2), Vector2(1.7, 1.7)), GOLD)
+		stroke(ci, at, PackedVector2Array([Vector2(side * 1.0, -5.0), Vector2(side * 3.0, -9.0), Vector2(side * 5.0, -10.5)]), INK, 1.1)
+	fill(ci, at, ellipse(Vector2.ZERO, Vector2(1.9, 5.6)), INK)
+
+## A standing mirror, feet at the origin, with a faded spirit inside it
+## (`reflection`: spirit() options).
+static func mirror(ci: CanvasItem, at: Transform2D, reflection: Dictionary, edge: float) -> void:
+	for side: float in [-1.0, 1.0]: stroke(ci, at, PackedVector2Array([Vector2(side * 16, 0), Vector2(side * 7, -26)]), INK, 2.6)
+	_part(ci, at, ellipse(Vector2(0, -54), Vector2(26, 38)), GOLD, edge)
+	fill(ci, at, ellipse(Vector2(0, -54), Vector2(21, 33)), GLASS)
+	spirit(ci, at * Transform2D(0.0, Vector2(SPIRIT_SIZE, SPIRIT_SIZE), 0.0, Vector2(0, -24)), reflection)
+	var shine := PackedVector2Array()
+	for step: int in range(6): shine.append(Vector2(0, -54) + Vector2.from_angle(PI * 1.12 + step * 0.07) * Vector2(16, 27))
+	stroke(ci, at, shine, Color(1, 1, 1, 0.8), 2.2)
+
+## A dashed outline for something not there yet: "shirt", "hat" or "leaf",
+## about 50 scene units across (a leaf is the spirit's own).
+static func outline_of(shape: String) -> PackedVector2Array:
+	match shape:
+		"shirt": return PackedVector2Array([Vector2(-10, -20), Vector2(-26, -14), Vector2(-34, -2), Vector2(-26, 4), Vector2(-22, -2), Vector2(-22, 24), Vector2(22, 24), Vector2(22, -2), Vector2(26, 4), Vector2(34, -2), Vector2(26, -14), Vector2(10, -20), Vector2(5, -15), Vector2(0, -14), Vector2(-5, -15)])
+		"hat":
+			var points := PackedVector2Array()
+			for step: int in range(9): points.append(Vector2(-26.0 + 52.0 * step / 8.0, 2.0 + 4.0 * sin(PI * step / 8.0)))
+			points.append(Vector2(14, 0))
+			for step: int in range(9): points.append(Vector2(0, -12) + Vector2.from_angle(-PI * step / 8.0) * Vector2(14, 12))
+			points.append(Vector2(-14, 0))
+			return points
+		"leaf": return _leaf()
+	return PackedVector2Array()
+
+## A peg stand with nothing on its pegs, base at the origin.
+static func pegs(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	_part(ci, at, ellipse(Vector2(0, -3), Vector2(20, 5)), WOOD.darkened(0.12), edge)
+	for peg: Vector2 in [Vector2(-72, -0.5), Vector2(-56, PI + 0.5), Vector2(-40, -0.5)]:
+		_part(ci, at * Transform2D(peg.y, Vector2(0, peg.x)), round_rect(Rect2(0, -2.5, 20, 5), 2.5), WOOD, edge)
+	_part(ci, at, round_rect(Rect2(-3, -90, 6, 88), 3.0), WOOD, edge)
+	_part(ci, at, ellipse(Vector2(0, -92), Vector2(5.5, 5.5)), WOOD, edge)
+
+## An open gift box, empty, its lid leaning on its side.
+static func giftbox(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	var lid := at * Transform2D(1.3, Vector2(39, -29))
+	_part(ci, lid, round_rect(Rect2(-30, -7, 60, 9), 3.0), HEART.lightened(0.15), edge)
+	fill(ci, lid, round_rect(Rect2(-5, -7, 10, 9), 0.5), GOLD)
+	_part(ci, at, round_rect(Rect2(-30, -38, 60, 38), 3.0), HEART, edge)
+	fill(ci, at, round_rect(Rect2(-27, -38, 54, 6), 2.0), HEART.darkened(0.4))
+	fill(ci, at, round_rect(Rect2(-5, -32, 10, 32), 0.5), GOLD)
+
+## A paper sewing pattern with a dashed shirt on it, pinned at the top.
+static func pattern(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	_part(ci, at, round_rect(Rect2(-34, -42, 68, 84), 2.0), PAPER, edge)
+	dashed(ci, at * Transform2D(0.0, Vector2(0.95, 0.95), 0.0, Vector2(0, 6)) * outline_of("shirt"), Color(INK, 0.5), 1.4, 4.0, 3.0)
+	stroke(ci, at, PackedVector2Array([Vector2(0, -38), Vector2(6, -47)]), INK, 1.2)
+	_part(ci, at, ellipse(Vector2(6, -48), Vector2(3, 3)), GOLD, edge)
+
+## A spool of thread with a loose end.
+static func spool(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	stroke(ci, at, PackedVector2Array([Vector2(-6, -4), Vector2(-16, -12), Vector2(-26, -6), Vector2(-34, -16)]), HEART.darkened(0.15), 1.3)
+	_part(ci, at, ellipse(Vector2(0, 13), Vector2(11, 3.5)), WOOD, edge)
+	_part(ci, at, round_rect(Rect2(-7, -12, 14, 24), 2.0), HEART, edge)
+	for y: float in [-6.0, 0.0, 6.0]: stroke(ci, at, PackedVector2Array([Vector2(-6, y), Vector2(6, y)]), HEART.darkened(0.15), 1.0)
+	_part(ci, at, ellipse(Vector2(0, -13), Vector2(11, 3.5)), WOOD, edge)
+
+## A bare wall shelf on two brackets, its top at the origin.
+static func shelf(ci: CanvasItem, at: Transform2D, width: float, edge: float) -> void:
+	for side: float in [-1.0, 1.0]:
+		_part(ci, at, PackedVector2Array([Vector2(side * (width * 0.5 - 14.0), 7), Vector2(side * (width * 0.5 - 30.0), 7), Vector2(side * (width * 0.5 - 14.0), 24)]), WOOD.darkened(0.15), edge)
+	_part(ci, at, round_rect(Rect2(-width * 0.5, 0, width, 7), 2.5), WOOD, edge)
+
+## A little cupboard of three empty cubbies, feet at the origin.
+static func bookcase(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	for side: float in [-1.0, 1.0]: fill(ci, at, round_rect(Rect2(side * 24.0 - 4.0, -6, 8, 6), 1.5), PHOTO.darkened(0.25))
+	_part(ci, at, round_rect(Rect2(-32, -92, 64, 88), 5.0), PHOTO, edge)
+	for index: int in range(3): fill(ci, at, round_rect(Rect2(-26, -86 + index * 27, 52, 21), 2.0), PHOTO.darkened(0.45))
+
+## An empty display stand, base at the origin.
+static func plinth(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	_part(ci, at, round_rect(Rect2(-24, -38, 48, 36), 2.0), MINT.lightened(0.35), edge)
+	fill(ci, at, round_rect(Rect2(-24, -31, 48, 3), 1.0), GOLD)
+	_part(ci, at, round_rect(Rect2(-28, -6, 56, 6), 2.0), MINT.lightened(0.2), edge)
+	_part(ci, at, ellipse(Vector2(0, -38), Vector2(27, 7)), MINT.lightened(0.55), edge)
+
+## A tied parcel, base at the origin, with a heart on its front.
+static func parcel(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	_part(ci, at, round_rect(Rect2(-36, -40, 72, 40), 3.0), SAND, edge)
+	stroke(ci, at, PackedVector2Array([Vector2(0, -40), Vector2(0, 0)]), Color(INK, 0.55), 1.6)
+	stroke(ci, at, PackedVector2Array([Vector2(-36, -20), Vector2(36, -20)]), Color(INK, 0.55), 1.6)
+	heart(ci, at, Vector2(-18, -9), 5.0, edge)
+
+## A little shop window under a striped awning, with nothing in it.
+static func shop_window(ci: CanvasItem, at: Transform2D, edge: float) -> void:
+	_part(ci, at, round_rect(Rect2(-48, -70, 96, 64), 4.0), PHOTO, edge)
+	fill(ci, at, round_rect(Rect2(-42, -64, 84, 50), 2.0), GLASS)
+	stroke(ci, at, PackedVector2Array([Vector2(-36, -30), Vector2(36, -30)]), Color(INK, 0.25), 2.0)
+	stroke(ci, at, PackedVector2Array([Vector2(-34, -56), Vector2(-24, -46)]), Color(1, 1, 1, 0.8), 2.2)
+	_part(ci, at, round_rect(Rect2(-54, -10, 108, 7), 2.0), WOOD, edge)
+	var stripe := 112.0 / 6.0
+	for index: int in range(6):
+		var x := -56.0 + index * stripe
+		var points := PackedVector2Array([Vector2(x, -86), Vector2(x + stripe, -86)])
+		for step: int in range(9): points.append(Vector2(x + stripe * 0.5, -72) + Vector2.from_angle(PI * step / 8.0) * Vector2(stripe * 0.5, 5))
+		_part(ci, at, points, MINT if index % 2 == 0 else PAPER, edge)
+
 ## Something passing from one row's picture to another's. "plane": a paper
 ## plane on a dotted trail, leaving the top of one picture and arriving just
 ## under the other's, clear of the row text.
@@ -312,14 +557,15 @@ static func plane_trail(ci: CanvasItem, from: Vector2, to: Vector2, bow: float) 
 ## plus faint text bars unless the card carries the real text.
 static func ghost_card(ci: CanvasItem, spec: Dictionary, rect: Rect2, fade: float, bars: bool) -> Dictionary:
 	var parts := card_parts(spec, rect)
-	dashed(ci, round_rect(rect, spec.radius), Color(LINE, 0.3 * fade), 1.5, 7.0, 6.0)
-	if parts.has("slot"): dashed(ci, round_rect(parts.slot, spec.slot_radius), Color(LINE, 0.22 * fade), 1.5, 5.0, 5.0)
-	if parts.has("button"): dashed(ci, round_rect(parts.button, minf(14.0, parts.button.size.y * 0.5)), Color(LINE, 0.18 * fade), 1.5, 5.0, 5.0)
+	var tone: Color = spec.get("ink", LINE)
+	dashed(ci, round_rect(rect, spec.radius), Color(tone, 0.3 * fade), 1.5, 7.0, 6.0)
+	if parts.has("slot"): dashed(ci, round_rect(parts.slot, spec.slot_radius), Color(tone, 0.22 * fade), 1.5, 5.0, 5.0)
+	if parts.has("button") and parts.button.size.x > 0.0: dashed(ci, round_rect(parts.button, minf(14.0, parts.button.size.y * 0.5)), Color(tone, 0.18 * fade), 1.5, 5.0, 5.0)
 	if bars:
 		var text: Rect2 = parts.text
 		for line: Vector3 in [Vector3(0.62, 14, -18), Vector3(0.38, 10, 8)]:
 			var bar := Rect2(text.position.x, text.get_center().y + line.z, text.size.x * line.x, line.y)
-			fill(ci, Transform2D.IDENTITY, round_rect(bar, line.y * 0.5), Color(LINE, 0.07 * fade))
+			fill(ci, Transform2D.IDENTITY, round_rect(bar, line.y * 0.5), Color(tone, 0.07 * fade))
 	return parts
 
 ## The wide Replays preview card (replays_flow._begin_replay_split): a picture

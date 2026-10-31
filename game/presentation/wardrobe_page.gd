@@ -87,6 +87,9 @@ var _kinds: HBoxContainer
 var _shelf: PanelContainer
 var _featured: HBoxContainer
 var _grid: HFlowContainer
+## The scroll's list, and the empty list's drawing in it while there is one.
+var _list: VBoxContainer
+var _empty: Control
 var _pip_box: CenterContainer
 var _reduced := false
 var _view := "you"
@@ -260,20 +263,21 @@ func _shop_panel() -> Control:
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
 	ThemeRules.touch_scroll(scroll)
 	column.add_child(scroll)
-	var list := VBoxContainer.new()
-	list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	list.add_theme_constant_override("separation", 12)
-	scroll.add_child(list)
-	list.add_child(_shelf_panel())
+	_list = VBoxContainer.new()
+	_list.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	_list.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	_list.add_theme_constant_override("separation", 12)
+	scroll.add_child(_list)
+	_list.add_child(_shelf_panel())
 	_kinds = HBoxContainer.new()
 	_kinds.name = "WardrobeKinds"
 	_kinds.add_theme_constant_override("separation", 8)
-	list.add_child(_kinds)
+	_list.add_child(_kinds)
 	_grid = HFlowContainer.new()
 	_grid.name = "WardrobeItems"
 	_grid.add_theme_constant_override("h_separation", 12)
 	_grid.add_theme_constant_override("v_separation", 12)
-	list.add_child(_grid)
+	_list.add_child(_grid)
 	return panel
 
 ## "Featured this week" in its own tinted panel: the title, then the six cards.
@@ -323,21 +327,37 @@ func render(model: Dictionary) -> void:
 	var featured: Array = (model.get("featured", []) as Array).filter(func(id: String) -> bool: return by_id.has(id)).map(func(id: String) -> Dictionary: return by_id[id])
 	var kind := str(model.get("kind", ""))
 	var shown: Array = (model.get("items", []) as Array).filter(func(entry: Dictionary) -> bool: return (tab == "all" or bool(entry.owned)) and (kind.is_empty() or entry.slot == kind))
-	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop])
+	# An empty list shows its drawing (empty_state.gd): nothing in the picked
+	# slot, nothing owned, or nothing in the shop or no shop. Never while the
+	# status line says loading or offline.
+	var empty := ""
+	if shown.is_empty() and status.is_empty():
+		empty = "wardrobe_slot" if not kind.is_empty() else ("wardrobe_owned" if tab == "owned" and shop else "wardrobe_shelf")
+	var key := var_to_str([featured, shown, model.get("kinds", []), kind, shop, empty])
 	if key != _cards_key:
 		_cards_key = key
 		_fill(_featured, featured, true)
 		_fill_kinds(model.get("kinds", []), kind)
 		_fill(_grid, shown, false)
+		_show_empty(empty, shop)
 	else:
 		_restyle(_featured)
 		_restyle(_grid)
 	_shelf.visible = shop and tab == "all" and not featured.is_empty()
-	if tab == "owned" and shown.is_empty() and status.is_empty():
-		_status.text = PlayerCopy.WARDROBE_NOTHING_OWNED if shop else PlayerCopy.WARDROBE_NOTHING_EARNED
-		_status.visible = true
 	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop)
 	if preview.has_method("wear"): preview.wear(model.get("preview", {}))
+
+## The empty list's drawing and line for `spot` (empty_state.gd SPOTS), or none.
+func _show_empty(spot: String, shop: bool) -> void:
+	if is_instance_valid(_empty):
+		_list.remove_child(_empty)
+		_empty.queue_free()
+	_empty = null
+	_grid.visible = spot.is_empty()
+	if spot.is_empty(): return
+	var text := PlayerCopy.WARDROBE_NOTHING_OWNED if shop else PlayerCopy.WARDROBE_NOTHING_EARNED
+	if spot == "wardrobe_shelf" and shop: text = PlayerCopy.WARDROBE_NOTHING_IN_SHOP
+	_empty = ThemeRules.empty_state(_list, spot, "", text)
 
 ## The chip for `balance`, with its plus while bundles sell; none until the server has said.
 func _show_chip(balance: int, known: bool, plus: bool) -> void:

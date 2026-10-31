@@ -19,8 +19,10 @@ const FakeApi = preload("res://tests/fake_rooms_api.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const PEER := "dddddddddddddddddddddd"
 ## List areas measured on the real screens: room hub column, Friends list,
-## Replays Together and Solo, each at 1280x720 and 1600x720.
-const AREAS: Array[Vector2] = [Vector2(710, 566), Vector2(847, 566), Vector2(639, 367), Vector2(1236, 375), Vector2(1556, 380), Vector2(1236, 544), Vector2(1556, 544)]
+## Replays Together and Solo, each at 1280x720 and 1600x720, and the
+## Wardrobe's list at 1280x720 and 1600x720.
+const AREAS: Array[Vector2] = [Vector2(710, 566), Vector2(847, 566), Vector2(639, 367), Vector2(1236, 375), Vector2(1556, 380), Vector2(1236, 544), Vector2(1556, 544), Vector2(828, 516), Vector2(1148, 516)]
+const WARDROBE_SPOTS := ["wardrobe_owned", "wardrobe_slot", "wardrobe_shelf"]
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 
 ## Long enough to wrap to two or three lines, as a translation might.
@@ -54,6 +56,7 @@ func _initialize() -> void:
 func _run() -> void:
 	root.size = Vector2i(1600, 720)
 	_island_walk()
+	await _wardrobe_options()
 	await _layouts()
 	await _room_hub()
 	await _friends()
@@ -127,6 +130,32 @@ func _layouts() -> void:
 			await _frames(2)
 			_check(empty.draw_count > drawn, context + ": a resize redraws the art")
 			scroll.free()
+
+## The Wardrobe's lists sit on the cream panel: ink text and dashes, and an
+## ink edge on the drawing. Each of the five options per list is its own
+## drawing, and each draws once and then holds still.
+func _wardrobe_options() -> void:
+	for art: String in WARDROBE_SPOTS:
+		var seen := {}
+		for option: int in range(1, 6):
+			Art.wardrobe_option = option
+			var rows: Array = Art.rows(art)
+			seen[var_to_str(rows)] = true
+			var holder := Control.new()
+			holder.size = AREAS[-1]
+			root.add_child(holder)
+			var empty: Control = ControlTheme.empty_state(holder, art, "", PlayerCopy.WARDROBE_NOTHING_OWNED)
+			empty.size = holder.size
+			await _frames(3)
+			var context := "%s option %d" % [art, option]
+			_check(not rows.is_empty() and Art.SCENE_LOOKS[art].edge > 0.0, context + ": a drawing with its ink edge")
+			_check(empty.line.get_theme_color("font_color") == Color(Art.INK, 0.8) and Art.CARDS.wardrobe.ink == Art.INK, context + ": ink words on the cream panel")
+			var drawn: int = empty.draw_count
+			await _frames(20)
+			_check(drawn >= 1 and empty.draw_count == drawn, context + ": drawn once, and idle frames draw nothing")
+			holder.free()
+		_check(seen.size() == 5, art + ": five different drawings")
+	Art.wardrobe_option = 1
 
 func _room_hub() -> void:
 	root.size = Vector2i(1280, 720)
