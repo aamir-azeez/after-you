@@ -10,6 +10,8 @@ extends SceneTree
 ##   straight back to the room.
 ## - Restarted later, or with the room out of reach: Home asks, and Open room
 ##   brings the same photo back.
+## - Restarted, and the player taps on before the room opens by itself: the tap
+##   wins, and the room opened from the hub still offers the same photo.
 const Harness = preload("res://tests/online_harness/harness.gd")
 const UserFiles = preload("res://tests/online_harness/user_files.gd")
 const Resume = preload("res://services/photo_capture_resume.gd")
@@ -17,6 +19,7 @@ const MEMORY := "kept in memory"
 const RESTARTED := "restarted under the camera"
 const LATER := "restarted, opened again later"
 const OFFLINE := "restarted, room out of reach"
+const TAPPED := "restarted, player taps on as the room opens"
 var h: Node
 var files: RefCounted
 
@@ -31,7 +34,7 @@ func _run() -> void:
 	for how: String in [MEMORY, RESTARTED]:
 		for photographer: String in ["host", "guest"]:
 			await _camera_round_trip(photographer, how)
-	for how: String in [LATER, OFFLINE]:
+	for how: String in [LATER, OFFLINE, TAPPED]:
 		await _camera_round_trip("host", how)
 	h.print_slowest()
 	h.end()
@@ -74,8 +77,20 @@ func _camera_round_trip(who: String, how: String) -> void:
 			await h.reopen(photographer)
 			# The room is out of reach for a moment: every capability read fails.
 			if how == OFFLINE: photographer.api.faults.append({"path": "/v2/capabilities", "kind": "status", "status": 503, "count": 20})
+			if how == TAPPED:
+				# The player taps Play with your friend while the room is still opening by itself.
+				await _until(func() -> bool: return photographer.app._photo_resume_checked and photographer.child() == null and photographer.app.relay_session != null and photographer.app.relay_session.busy())
+				h.open_hub(photographer)
+				return
 			await _until(func() -> bool: return photographer.button("PhotoSend") != null or photographer.button("PhotoResumeOpen") != null)
 		await h.step("Android starts After You again after the camera", restart, [photographer] if how == OFFLINE else [])
+		if how == TAPPED:
+			# The Play tap waits for the busy session ("Opening…"), then opens the hub.
+			h.check(photographer.hub() != null and photographer.child() == null and photographer.app.find_child("PhotoResumeModal", true, false) == null, photographer.label + "'s tap wins over the room opening by itself (at %s)" % photographer.where())
+			h.check(photographer.toasts.is_empty(), photographer.label + "'s tap opens the hub without an error (%s)" % [photographer.toasts])
+			await h.step(photographer.label + " opens the room from the hub", func():
+				h.open_room_card(photographer, room)
+				await _until(func() -> bool: return photographer.button("PhotoSend") != null))
 		if how in [LATER, OFFLINE]:
 			h.check(photographer.app.mode == "home" and photographer.button("PhotoResumeOpen") != null and photographer.child() == null, photographer.label + " is asked on Home before the room opens (at %s)" % photographer.where())
 			h.check(photographer.toasts.is_empty(), photographer.label + " sees no error for a room that did not open by itself (%s)" % [photographer.toasts])

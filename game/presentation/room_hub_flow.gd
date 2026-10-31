@@ -164,6 +164,10 @@ func open_from_home(source: Control) -> void:
 	# The first time with names on, the name prompt opens over the room list.
 	if is_instance_valid(screen): host.display_name_flow.maybe_ask(screen.page_root(), true)
 
+## True while a tap on Play waits for the busy session or runs.
+func tap_pending() -> bool:
+	return _gate != null and (_gate.waiting() or _gate.running)
+
 ## Builds the hub without the entry checks of show_rooms; every room flow
 ## returns here. A notice, such as why a room could not be opened, shows above
 ## the room list.

@@ -2457,8 +2457,9 @@ func _service_photo_resume() -> void:
 	var context := _photo_resume_context()
 	var entry: Dictionary = await photo_resume_prompt.check(owner)
 	if entry.is_empty() or not _photo_resume_safe() or str(_relay_identity().player_id) != owner: return
-	if context == _photo_resume_context() and _photo_resume_returns(entry) and await _open_photo_resume_room(str(entry.room_id), true): return
-	if not _photo_resume_safe() or str(_relay_identity().player_id) != owner: return
+	if context == _photo_resume_context() and not _photo_resume_tapped() and _photo_resume_returns(entry) and await _open_photo_resume_room(str(entry.room_id), true): return
+	# A tap the player made meanwhile goes on; the room offers the photo when it opens.
+	if not _photo_resume_safe() or _photo_resume_tapped() or str(_relay_identity().player_id) != owner: return
 	photo_resume_prompt.show_prompt(ui, entry)
 
 ## Whether this start goes straight back to the entry's room: its camera opened just now, no
@@ -2467,6 +2468,10 @@ func _photo_resume_returns(entry: Dictionary) -> bool:
 	if _photo_resume_left_home or not invite_link_pending.is_empty(): return false
 	if is_instance_valid(turn_notifications) and not turn_notifications.pending_route().is_empty(): return false
 	return photo_resume_prompt.resume_store.just_closed(entry)
+
+## The player tapped something on Home: a Play tap waiting for the busy session, or a card.
+func _photo_resume_tapped() -> bool:
+	return room_hub_flow.tap_pending() or _top_modal() != null
 
 ## Any navigation, identity change or trip to the background changes this.
 func _photo_resume_context() -> Array:
@@ -2488,7 +2493,7 @@ func _open_photo_resume_room(room_id: String, automatic: bool = false) -> bool:
 		if not automatic: _toast(PlayerCopy.MAIN_BE8E691311EE)
 		return false
 	var context := _photo_resume_context()
-	var current := func() -> bool: return _photo_resume_safe() and (not automatic or context == _photo_resume_context())
+	var current := func() -> bool: return _photo_resume_safe() and (not automatic or (context == _photo_resume_context() and not _photo_resume_tapped()))
 	ensure_relay_session()
 	if relay_session.capabilities.is_empty():
 		if not await relay_session.load_lobby():
