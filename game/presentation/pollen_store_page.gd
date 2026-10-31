@@ -1,6 +1,6 @@
 extends Control
 ## The Pollen store as Pollen board 2 draws it, in the Friends page frame:
-## - the header: the coral back square, "Pollen" over its note, and the
+## - the header: the coral back square, the "Pollen" title and the
 ##   "You have [grain] 9,000" chip;
 ## - the first bundle line, only while that one-time gift is on and unused;
 ## - four bundle cards (Pinch, Pouch, Jar, Basket): the art (kit/bundle_art.gd),
@@ -100,12 +100,11 @@ func _header() -> Control:
 	ThemeRules.danger(back_button, BACK_ICON)
 	back_button.pressed.connect(func() -> void: back_pressed.emit())
 	header.add_child(back_button)
-	var titles := VBoxContainer.new()
-	titles.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	titles.add_theme_constant_override("separation", 0)
-	titles.add_child(ShopKit.text(PlayerCopy.POLLEN_STORE_TITLE, 40, CREAM, ShopKit.heading_font()))
-	titles.add_child(ShopKit.text(PlayerCopy.POLLEN_STORE_NOTE, 16, MUTED))
-	header.add_child(titles)
+	var title := ShopKit.text(PlayerCopy.POLLEN_STORE_TITLE, 40, CREAM, ShopKit.heading_font())
+	title.name = "PollenStoreTitle"
+	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	header.add_child(title)
 	_chip_box = HBoxContainer.new()
 	_chip_box.name = "PollenStoreBalance"
 	_chip_box.add_theme_constant_override("separation", 10)
@@ -184,7 +183,7 @@ func render(model: Dictionary) -> void:
 		_chip_box.add_child(chip)
 	var percent := int(model.get("gift_percent", 0))
 	_gift.visible = percent > 0
-	if percent > 0: _gift_label.text = "[b]%s[/b]%s" % [PlayerCopy.POLLEN_STORE_FIRST % percent, PlayerCopy.POLLEN_STORE_FIRST_MORE]
+	if percent > 0: _gift_label.text = "[b]%s[/b]" % (PlayerCopy.POLLEN_STORE_FIRST % percent)
 	var status := str(model.get("status", ""))
 	_status.text = status
 	_status.visible = not status.is_empty()

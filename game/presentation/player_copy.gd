@@ -301,11 +301,9 @@ const WARDROBE_GET_POLLEN := "Get Pollen"
 
 # The Pollen store (board 2: presentation/pollen_store_page.gd, pollen_store_flow.gd).
 const POLLEN_STORE_TITLE := "Pollen"
-const POLLEN_STORE_NOTE := "For the Wardrobe and name changes."
 const POLLEN_STORE_YOU_HAVE := "You have"
-## The first bundle line, only while the gift is on and unused: the percent, then the rest of the line.
+## The first bundle line, only while the gift is on and unused, with its percent.
 const POLLEN_STORE_FIRST := "Your first bundle comes with %d%% extra Pollen."
-const POLLEN_STORE_FIRST_MORE := " This happens once per account, with no time limit."
 const POLLEN_STORE_BUNDLES := {"pinch": "Pinch", "pouch": "Pouch", "jar": "Jar", "basket": "Basket"}
 const POLLEN_STORE_NO_BONUS := "No bonus"
 ## "20,000 + 1,000 bonus · 5% more"

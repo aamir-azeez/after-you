@@ -7,7 +7,10 @@ extends SceneTree
 ##   (never on iPhone or the Test Store build);
 ## - the four bundles show the art, totals, bonus lines, Pollen per $1 and the
 ##   store's own prices from the "pollen" offering only; the first bundle line
-##   shows only while that gift is on and unused;
+##   shows only while that gift is on and unused, on one line with its percent;
+## - at 1600x738 and on a small phone (1280x720) the header, the first bundle
+##   line, the cards and the footer sit in order inside the page, with no gap
+##   left where the header's note was;
 ## - the confirm card adds up in plain sums, and its Buy hands over to the store;
 ## - a purchase is claimed from the server, and the receipt shows what was
 ##   added, the balance before and after, the price and the order number;
@@ -162,6 +165,7 @@ func _run() -> void:
 	await _cards()
 	await _buying()
 	await _gift()
+	for size: Vector2 in [Vector2(1600, 738), Vector2(1280, 720)]: await _layout(size)
 	await _cancelled_and_failed()
 	await _claim_waits()
 	await _refund()
@@ -251,23 +255,24 @@ func _buying() -> void:
 	t.host.queue_free()
 	await _frames(2)
 
-## The first bundle gift, while it is on and unused.
+## The first bundle gift, while it is on and unused, at the owner's 20%.
 func _gift() -> void:
 	var t := _setup()
-	t.store.note_view(SERVER, ME, _view(true, 10))
+	t.store.note_view(SERVER, ME, _view(true, 20))
 	t.flow.show_store()
 	await _frames()
 	var gift: Control = t.host.overlay.find_child("PollenStoreGift", true, false)
-	_check(gift.visible and (gift.find_child("*", true, false) != null) and str((t.host.overlay.find_children("*", "RichTextLabel", true, false)[0] as RichTextLabel).text).contains("10%"), "The first bundle line shows while the gift is on")
+	var line := gift.find_children("*", "RichTextLabel", true, false)[0] as RichTextLabel
+	_check(gift.visible and line.get_parsed_text() == PlayerCopy.POLLEN_STORE_FIRST % 20, "The first bundle line shows while the gift is on, its percent and nothing more: " + line.get_parsed_text())
 	t.flow.confirm("pouch")
 	var words := _texts(t.host.ui.find_child("PollenStoreConfirm", true, false))
-	_check(PlayerCopy.POLLEN_STORE_GIFT % 10 in words and "2,100" in words and "23,100" in words and "32,100" in words, "The confirm card adds the gift: 2,100, you get 23,100, you'll have 32,100: " + str(words))
-	t.fake.replies = [_credited("pouch", 2100, 32100)]
+	_check(PlayerCopy.POLLEN_STORE_GIFT % 20 in words and "4,200" in words and "25,200" in words and "34,200" in words, "The confirm card adds the gift: 4,200, you get 25,200, you'll have 34,200: " + str(words))
+	t.fake.replies = [_credited("pouch", 4200, 34200)]
 	t.flow.buy("pouch")
 	await _frames(10)
 	var lines := _texts(t.host.ui.find_child("PollenStoreReceipt", true, false))
-	_check(PlayerCopy.POLLEN_STORE_ADDED % "23,100" in lines and PlayerCopy.POLLEN_STORE_GIFT % 10 in lines and "32,100" in lines, "The receipt: 23,100 Pollen added with the gift row: " + str(lines))
-	t.store.note_view(SERVER, ME, _view(false, 10))
+	_check(PlayerCopy.POLLEN_STORE_ADDED % "25,200" in lines and PlayerCopy.POLLEN_STORE_GIFT % 20 in lines and "34,200" in lines, "The receipt: 25,200 Pollen added with the gift row: " + str(lines))
+	t.store.note_view(SERVER, ME, _view(false, 20))
 	t.flow._redraw()
 	_check(not gift.visible, "Once used, the line goes")
 	t.host.queue_free()
@@ -275,6 +280,34 @@ func _gift() -> void:
 
 ## A cancelled sheet claims nothing and drops its mark; a failed one claims nothing now but keeps its
 ## mark (a payment may settle later); a sheet the app never heard back from (closed) keeps it too.
+## The page at `size` with the first bundle line on: the header holds only the
+## back square, the title and the chip, every part sits below the one before it,
+## and the footer ends inside the page.
+func _layout(size: Vector2) -> void:
+	var t := _setup()
+	for layer: Control in [t.host.overlay, t.host.ui]: layer.size = size
+	t.store.note_view(SERVER, ME, _view(true, 20))
+	t.flow.show_store()
+	await _frames()
+	var page: Control = t.host.overlay.find_child("PollenStorePage", true, false)
+	var title: Control = page.find_child("PollenStoreTitle", true, false)
+	var back: Control = page.find_child("PollenStoreBack", true, false)
+	var header := title.get_parent() as Control
+	_check(header == back.get_parent() and is_equal_approx(header.size.y, maxf(back.size.y, title.get_combined_minimum_size().y)), "The header is as tall as its back square or title, with no note under the title at %s: %s" % [size, header.size])
+	_check(_texts(header).slice(0, 2) == [PlayerCopy.POLLEN_STORE_TITLE, PlayerCopy.POLLEN_STORE_YOU_HAVE], "The title is followed by You have, with no note between at %s: %s" % [size, _texts(header)])
+	var gift: Control = page.find_child("PollenStoreGift", true, false)
+	var line := gift.find_children("*", "RichTextLabel", true, false)[0] as RichTextLabel
+	_check(gift.visible and line.get_line_count() == 1 and line.get_content_width() <= line.size.x + 0.5 and is_equal_approx(gift.size.y, gift.get_combined_minimum_size().y), "The first bundle line is one line inside its panel at %s" % size)
+	var parts: Array[Control] = [header, gift, page.find_child("PollenStoreBundles", true, false), (page.find_child("PollenStoreEarn", true, false) as Control).get_parent()]
+	var ordered := true
+	for index in range(1, parts.size()): ordered = ordered and parts[index].get_global_rect().position.y >= parts[index - 1].get_global_rect().end.y - 0.5
+	_check(ordered and parts.back().get_global_rect().end.y <= page.get_global_rect().end.y + 0.5, "Header, first bundle line, cards and footer sit in order inside the page at %s" % size)
+	for id: String in Bundles.ORDER:
+		var card: Control = page.find_child("PollenStoreBundle_" + id, true, false)
+		_check(page.get_global_rect().encloses(card.get_global_rect()), "The %s card fits the page at %s" % [id, size])
+	t.host.queue_free()
+	await _frames(2)
+
 func _cancelled_and_failed() -> void:
 	for outcome: String in ["cancel", "fail", "silent"]:
 		var t := _setup()
