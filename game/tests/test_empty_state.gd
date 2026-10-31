@@ -148,7 +148,7 @@ func _wardrobe_options() -> void:
 			empty.size = holder.size
 			await _frames(3)
 			var context := "%s option %d" % [art, option]
-			_check(not rows.is_empty() and Art.SCENE_LOOKS[art].edge > 0.0, context + ": a drawing with its ink edge")
+			_check(not rows.is_empty() and Art.SCENE_LOOKS[art].edge > 0.0, context + ": the option has rows and the list an ink edge")
 			_check(empty.line.get_theme_color("font_color") == Color(Art.INK, 0.8) and Art.CARDS.wardrobe.ink == Art.INK, context + ": ink words on the cream panel")
 			var drawn: int = empty.draw_count
 			await _frames(20)

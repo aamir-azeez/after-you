@@ -422,10 +422,14 @@ static func trunk(ci: CanvasItem, at: Transform2D, part: String, edge: float) ->
 
 ## A dotted flight path from one point to another.
 static func dots(ci: CanvasItem, at: Transform2D, from: Vector2, to: Vector2) -> void:
-	var control := (from + to) * 0.5 + Vector2(-10, -4)
-	for step: int in range(6):
-		var t := float(step) / 6.0
-		fill(ci, at, ellipse(from.lerp(control, t).lerp(control.lerp(to, t), t), Vector2(1.4, 1.4)), Color(INK, 0.2 + 0.08 * step))
+	trail(ci, at, from, (from + to) * 0.5 + Vector2(-10, -4), to, 6, 1.4, Color(INK, 0.2), 0.48)
+
+## Dots along a curve from `from` to `to` bowed toward `control`, fading in:
+## each dot's alpha is the colour's plus `rise` times how far along it is.
+static func trail(ci: CanvasItem, at: Transform2D, from: Vector2, control: Vector2, to: Vector2, count: int, radius: float, color: Color, rise: float) -> void:
+	for step: int in range(count):
+		var t := float(step) / count
+		fill(ci, at, ellipse(from.lerp(control, t).lerp(control.lerp(to, t), t), Vector2(radius, radius)), Color(color, color.a + rise * t))
 
 ## A small moth, body at the origin.
 static func moth(ci: CanvasItem, at: Transform2D, edge: float) -> void:
@@ -544,11 +548,7 @@ static func link(ci: CanvasItem, kind: String, from_slot: Rect2, to_slot: Rect2)
 
 static func plane_trail(ci: CanvasItem, from: Vector2, to: Vector2, bow: float) -> void:
 	var control := (from + to) * 0.5 + Vector2(bow, 0)
-	var dots := 7
-	for step: int in range(dots):
-		var t := float(step) / dots
-		var point := from.lerp(control, t).lerp(control.lerp(to, t), t)
-		fill(ci, Transform2D.IDENTITY, ellipse(point, Vector2(1.6, 1.6)), Color(LINE, 0.25 + 0.4 * t))
+	trail(ci, Transform2D.IDENTITY, from, control, to, 7, 1.6, Color(LINE, 0.25), 0.4)
 	var at := Transform2D((to - control).angle(), to)
 	fill(ci, at, PackedVector2Array([Vector2(12, 0), Vector2(-10, -8), Vector2(-4, 1)]), PAPER)
 	fill(ci, at, PackedVector2Array([Vector2(12, 0), Vector2(-4, 1), Vector2(-7, 7)]), PAPER.darkened(0.22))

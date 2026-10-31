@@ -453,6 +453,9 @@ func _empty_lists() -> void:
 	t.flow._redraw()
 	await _frames(20)
 	_check(drawn >= 1 and _empty(page) == empty and empty.draw_count == drawn, "Nothing owned: a redraw with nothing new keeps the drawing, and idle frames draw nothing")
+	t.flow.set_tab("all")
+	_check(_empty(page) == null and (page.find_child("WardrobeItems", true, false) as Control).visible, "Back to All items: the drawing goes and the items show again")
+	t.flow.set_tab("owned")
 	var bare: Dictionary = _answer([], {}, 24000).data
 	bare.wardrobe.offered = []
 	t.store.note_view(SERVER, ME, bare)
