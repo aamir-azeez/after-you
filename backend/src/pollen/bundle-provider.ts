@@ -16,9 +16,11 @@ import type { ProviderFetch } from "./grant-provider";
  * - with a RevenueCat id, a quantity from 1 to MAX_QUANTITY and a purchase time.
  * Test Store, sandbox (TestFlight and Play license testers), promotional and any other product mint nothing. One
  * production list holds both stores, so the App Store adds no request.
- * The one exception is App Review (owner, 2026-10-31): for a player in CONFIG's revenuecat.reviewer_ids (the review
- * identity, whose player id is its RevenueCat App User ID), App Store sandbox purchases count too, read with one more
- * list request for that player only. They pay once by transaction id under the same keys and first gift rule.
+ * The exceptions are for App Review (owner, 2026-10-31), App Store sandbox purchases only, read with one more list
+ * request: always for a player in CONFIG's revenuecat.reviewer_ids (the review identity, whose player id is its
+ * RevenueCat App User ID), and for any player while POLLEN_SANDBOX_APP_STORE is on, on a claim whose production list
+ * has nothing new (bundle-settle.ts deps.sandbox). They pay once by transaction id under the same keys and first gift
+ * rule, and carry `sandbox`, so the refund check looks them up in sandbox whatever the flag says later.
  * Sandbox Play purchases never count, for anyone.
  * Each counted purchase carries its reference (`order`, claims.ts bundleRef): the Play order, or "appstore:" and the
  * App Store transaction id. A purchase without one is never paid (bundle-settle.ts pays by reference); it can only
@@ -32,8 +34,8 @@ import type { ProviderFetch } from "./grant-provider";
  * (https://www.revenuecat.com/docs/api-v2/purchase#tag/Purchase/operation/search-purchases), or by its RevenueCat
  * id when no order was kept (https://www.revenuecat.com/docs/api-v2/purchase#tag/Purchase/operation/get-purchase).
  */
-/** `order`: the purchase's reference (claims.ts bundleRef), "" when the store gave none. */
-export type BundlePurchase = { id: string; bundle: BundleKey; refunded: boolean; quantity: number; order: string; usd_cents: number; purchased_at: number };
+/** `order`: the purchase's reference (claims.ts bundleRef), "" when the store gave none. `sandbox`: an App Store sandbox purchase. */
+export type BundlePurchase = { id: string; bundle: BundleKey; refunded: boolean; quantity: number; order: string; usd_cents: number; purchased_at: number; sandbox?: true };
 /** The environment App Review, TestFlight and Play license testers buy in. */
 export const SANDBOX = "sandbox";
 /** Whether App Store sandbox bundles count for this player: the review identity only (CONFIG revenuecat.reviewer_ids). */
@@ -71,7 +73,7 @@ export function bundlePurchase(item: unknown, products: BundleProducts, environm
   const order = refOf(store, item.store_purchase_identifier);
   const gross = isObject(item.revenue_in_usd) ? item.revenue_in_usd.gross : undefined;
   const usd = typeof gross === "number" && Number.isFinite(gross) && gross >= 0 && gross <= 10_000 ? Math.round(gross * 100) : bundles.bundles[bundle][store].usd_cents * quantity;
-  return { id: item.id, bundle, refunded: item.status === "refunded", quantity, order, usd_cents: usd, purchased_at: item.purchased_at };
+  return { id: item.id, bundle, refunded: item.status === "refunded", quantity, order, usd_cents: usd, purchased_at: item.purchased_at, ...(environment === SANDBOX ? { sandbox: true as const } : {}) };
 }
 
 /** RevenueCat product id -> bundle and store, from the table: a store not set up yet ("" ids) has none. */
@@ -99,7 +101,7 @@ function listItems(result: ProviderResult): unknown[] | string {
 /** Oldest first, ties by RevenueCat id. */
 export function byPurchaseTime(a: BundlePurchase, b: BundlePurchase): number { return a.purchased_at - b.purchased_at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); }
 
-/** The player's counted bundle purchases, oldest first; for the review identity, its App Store sandbox ones too. */
+/** The player's counted bundle purchases, oldest first; for the review identity, its App Store sandbox ones too. `only` SANDBOX reads the sandbox list alone. */
 export async function readBundles(playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest, only?: typeof SANDBOX): Promise<BundleRead> {
   const products = bundleProducts(), at = project(env);
   if (at === null) return { ok: false, reason: "unconfigured" };
@@ -116,13 +118,13 @@ export async function readBundles(playerId: string, env: ServerVars, request: Pr
 }
 
 /** A paid bundle the refund check asks about: the ledger's own purchase id, bundle and reference ("" when none was kept). */
-export type BundleAsk = { id: string; bundle: BundleKey; order: string };
+export type BundleAsk = { id: string; bundle: BundleKey; order: string; sandbox?: boolean };
 /** The asked purchases RevenueCat reports refunded now, by the ledger's purchase id; { ok: false } when any lookup failed. */
 export type BundleLookup = { ok: true; refunded: string[] } | { ok: false; reason: string };
 
 /** Whether `item` is the asked purchase: the same reference (or, without one, the same RevenueCat id), counted by bundlePurchase() as the same bundle. */
-function samePurchase(item: unknown, ask: BundleAsk, products: BundleProducts, sandbox: boolean): boolean {
-  const counted = bundlePurchase(item, products) ?? (sandbox ? bundlePurchase(item, products, SANDBOX) : null);
+function samePurchase(item: unknown, ask: BundleAsk, products: BundleProducts): boolean {
+  const counted = bundlePurchase(item, products, ask.sandbox ? SANDBOX : APP.playEnvironment);
   if (counted === null || counted.bundle !== ask.bundle) return false;
   return ask.order ? counted.order === ask.order : counted.id === ask.id;
 }
@@ -132,7 +134,7 @@ function samePurchase(item: unknown, ask: BundleAsk, products: BundleProducts, s
  * once, so a slow provider costs the wallet read one request timeout, not one per purchase.
  * Not found (404, or nothing that matches) is no news; only "refunded" is acted on.
  */
-export async function lookupBundles(asks: readonly BundleAsk[], env: ServerVars, request: ProviderFetch = revenuecatRequest, sandbox = false): Promise<BundleLookup> {
+export async function lookupBundles(asks: readonly BundleAsk[], env: ServerVars, request: ProviderFetch = revenuecatRequest): Promise<BundleLookup> {
   const products = bundleProducts(), at = project(env);
   if (at === null) return { ok: false, reason: "unconfigured" };
   const found = await Promise.all(asks.map(async (ask): Promise<unknown[] | string> => {
@@ -144,7 +146,7 @@ export async function lookupBundles(asks: readonly BundleAsk[], env: ServerVars,
   for (const [index, items] of found.entries()) {
     if (typeof items === "string") return { ok: false, reason: items };
     const ask = asks[index];
-    if (items.some(item => samePurchase(item, ask, products, sandbox) && isObject(item) && item.status === "refunded")) refunded.push(ask.id);
+    if (items.some(item => samePurchase(item, ask, products) && isObject(item) && item.status === "refunded")) refunded.push(ask.id);
   }
   return { ok: true, refunded };
 }

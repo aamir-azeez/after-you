@@ -759,7 +759,16 @@ describe("bundles through the Worker", () => {
     use([...BOTH, "POLLEN_SANDBOX_APP_STORE"]); providerCalls = 0;
     const meter = countingEnv({ ...env, ...current } as unknown as Env);
     const stubs = { player: env.PLAYERS.getByName(player.player_id) as unknown as DurableObjectStub, claims: env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) as unknown as DurableObjectStub };
+    // A failed sandbox read answers 503 and writes nothing.
+    const fetched = vi.mocked(globalThis.fetch);
+    const real = fetched.getMockImplementation()!;
+    fetched.mockImplementation(async input => String(input instanceof Request ? input.url : input).includes("environment=sandbox") ? new Response(null, { status: 500 }) : real(input));
+    expect((await claim(player)).status).toBe(503);
+    expect(await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundle:"))).toEqual([]);
+    fetched.mockImplementation(real);
+    providerCalls = 0;
     const paid = await meterRows(stubs, async () => (await claim(player, meter.env)).json<Reply>());
+    expect(String(fetched.mock.calls.at(-1)?.[0])).toContain("environment=sandbox");
     expect(paid.value).toMatchObject({ balance: firstPay("pouch"), credited: [{ bundle: "pouch", order: "2000000000000500", store: "app_store", first_gift: firstGift("pouch") }] });
     expect(paid.value.credited).toHaveLength(1);
     // The production list found nothing new, so one sandbox list follows; the same Player calls and one claims row.
@@ -786,6 +795,24 @@ describe("bundles through the Worker", () => {
     expect(providerCalls).toBe(2);
     const back = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]));
     expect(back).toEqual([["bundlerefund:appstore:2000000000000500", -firstPay("pouch")]]);
+  });
+
+  it("still takes back a sandbox bundle refunded after POLLEN_SANDBOX_APP_STORE goes off", async () => {
+    const player = await create();
+    const sandbox = (extra: Record<string, unknown> = {}) => apple("rc_510", "prod235f72a2e0", { environment: "sandbox", ...extra });
+    lists[player.player_id] = [sandbox()];
+    use([...BOTH, "POLLEN_SANDBOX_APP_STORE"]);
+    expect((await (await claim(player)).json<Reply>()).balance).toBe(firstPay("pinch"));
+    use(BOTH);
+    // Refunded in sandbox: the daily check finds it by its transaction id, in sandbox, and takes it back once.
+    orders["2000000000000510"] = [sandbox({ status: "refunded" })];
+    offset = BUNDLE_CHECK_MS + 1000; providerCalls = 0;
+    expect((await wallet(player)).balance).toBe(0);
+    expect(providerCalls).toBe(2);
+    // A production record with the same id never matches the sandbox line.
+    orders["2000000000000510"] = [apple("rc_510", "prod235f72a2e0", { status: "refunded" })];
+    const lines = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => line.key));
+    expect(lines).toEqual(["bundlerefund:appstore:2000000000000510"]);
   });
 
   it("keeps a Play order and an App Store id with the same digits apart: each pays once, in its own rows", async () => {

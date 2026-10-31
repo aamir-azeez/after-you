@@ -11,7 +11,8 @@ import { refId, refStore } from "./claims";
  *
  * Run by the claim route (POST /v1/pollen/bundle-claims, after a purchase) and, at most once a day, by the
  * wallet read of a player who has bought a bundle before (the refund check):
- * 1. One RevenueCat read from inside this call (an outbound subrequest, not a DO request).
+ * 1. One RevenueCat read from inside this call (an outbound subrequest, not a DO request), and on the claim route,
+ *    while POLLEN_SANDBOX_APP_STORE is on and that read has nothing new to pay, one more for the App Store sandbox list.
  * 2. For purchases new to this player, one PollenClaims request (claims.ts claimBundles): the first identity
  *    to claim a purchase's reference (its Google Play order, or "appstore:" and its App Store transaction id,
  *    claims.ts bundleRef) keeps it, so a restore that moves it to another App User ID, or gives it a new
@@ -144,9 +145,9 @@ export function missingBundles(storage: DurableObjectStorage, listed: readonly B
   const shown = new Set(listed.flatMap(purchase => { const line = paidLine(purchase, paid); return line ? [line.key] : []; }));
   const back = new Set(refundLines(storage).map(line => line.key));
   const asks = lines.flatMap(line => {
-    const { bundle, order, purchase_id: id } = line.detail;
+    const { bundle, order, purchase_id: id, environment } = line.detail;
     if (shown.has(line.key) || back.has(refundKeyOf(line)) || !(BUNDLE_KEYS as readonly unknown[]).includes(bundle)) return [];
-    return [{ id: typeof id === "string" ? id : line.key.slice(bundleKey("").length), bundle: bundle as BundleKey, order: typeof order === "string" ? order : "" }];
+    return [{ id: typeof id === "string" ? id : line.key.slice(bundleKey("").length), bundle: bundle as BundleKey, order: typeof order === "string" ? order : "", ...(environment === "sandbox" ? { sandbox: true } : {}) }];
   });
   if (asks.length <= MAX_BUNDLE_LOOKUPS) return asks;
   const start = (Math.floor(now / DAY_MS) * MAX_BUNDLE_LOOKUPS) % asks.length;
@@ -154,7 +155,7 @@ export function missingBundles(storage: DurableObjectStorage, listed: readonly B
 }
 
 /** A looked-up refund as the plan reads it: the ledger's own purchase, refunded. */
-const takenBack = (ask: BundleAsk): BundlePurchase => ({ id: ask.id, bundle: ask.bundle, refunded: true, quantity: 1, order: ask.order, usd_cents: 0, purchased_at: 0 });
+const takenBack = (ask: BundleAsk): BundlePurchase => ({ id: ask.id, bundle: ask.bundle, refunded: true, quantity: 1, order: ask.order, usd_cents: 0, purchased_at: 0, ...(ask.sandbox ? { sandbox: true as const } : {}) });
 
 /** The orders a read shows refunded: none of them is paid on that read, whatever order its records come in. */
 const refundedOrders = (purchases: readonly BundlePurchase[]) => new Set(purchases.flatMap(purchase => purchase.refunded && purchase.order ? [purchase.order] : []));
@@ -184,7 +185,7 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (order: 
     // Only the first bundle a player ever buys can carry the gift, whatever the percent was then.
     open = false;
     const line: Line = { key: bundleKey(purchase.order), amount: pollen + gift,
-      detail: { bundle: purchase.bundle, purchase_id: purchase.id, order: purchase.order, usd_cents: purchase.usd_cents, first_gift: gift, quantity: purchase.quantity, purchased_at: purchase.purchased_at } };
+      detail: { bundle: purchase.bundle, purchase_id: purchase.id, order: purchase.order, usd_cents: purchase.usd_cents, first_gift: gift, quantity: purchase.quantity, purchased_at: purchase.purchased_at, ...(purchase.sandbox ? { environment: "sandbox" } : {}) } };
     paid.byOrder.set(purchase.order, line); paid.byKey.set(line.key, line);
     entries.push({ ...line, kind: "bundle" });
     credited.push({ bundle: purchase.bundle, pollen, first_gift: gift, ...receiptOf(purchase.order), purchased_at: purchase.purchased_at, usd_cents: purchase.usd_cents });
@@ -201,8 +202,8 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
   if (!read.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: read.reason }; }
   let listed = read.purchases;
   if (deps.sandbox) {
-    const paid = paidIndex(bundleLines(storage));
-    if (!listed.some(purchase => !purchase.refunded && purchase.order !== "" && !paidLine(purchase, paid))) {
+    const paid = paidIndex(bundleLines(storage)), gone = refundedOrders(listed);
+    if (!listed.some(purchase => !purchase.refunded && purchase.order !== "" && !gone.has(purchase.order) && !paidLine(purchase, paid))) {
       const extra = await deps.sandbox();
       if (!extra.ok) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: extra.reason }; }
       listed = [...listed, ...extra.purchases].sort(byPurchaseTime);

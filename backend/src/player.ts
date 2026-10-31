@@ -228,8 +228,8 @@ export class Player extends DurableObject<Env> {
   /**
    * `daily`: the refund check, which also looks up paid bundles a restore moved off this player's list. While
    * POLLEN_SANDBOX_APP_STORE is on, a claim with nothing new in production also reads the App Store sandbox list (the
-   * review identity always reads it), and the refund check's lookups match sandbox purchases, so a sandbox line paid
-   * here is taken back when refunded.
+   * review identity always reads it). A sandbox line keeps that mark, so the refund check looks it up in sandbox and
+   * takes it back when refunded, whatever the flag says by then.
    */
   private settleBundles(owner: string, daily = false) {
     const now = Date.now(), reviewer = sandboxBundles(owner, this.env), anyone = sandboxAppStoreOn(this.env);
@@ -237,7 +237,7 @@ export class Player extends DurableObject<Env> {
       read: () => readBundles(owner, this.env),
       claim: purchases => claimBundlesFor(this.env, owner, purchases, now),
       ...(!daily && anyone && !reviewer ? { sandbox: () => readBundles(owner, this.env, undefined, SANDBOX) } : {}),
-      ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env, undefined, reviewer || anyone) } : {})
+      ...(daily ? { lookup: (asks: BundleAsk[]) => lookupBundles(asks, this.env) } : {})
     });
   }
   /**
