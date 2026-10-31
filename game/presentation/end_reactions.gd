@@ -34,6 +34,7 @@ extends HBoxContainer
 ## the bubble and ends with it, and the faces card is on its own canvas layer
 ## under the pill, closed when the pill leaves the tree. Under Reduce motion a
 ## bubble just appears and stays still.
+const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const Store = preload("res://services/end_reaction_store.gd")
 const FacePacks = preload("res://services/face_packs.gd")
@@ -339,6 +340,8 @@ func _pill() -> PanelContainer:
 	_quick_icon = quick_icon(quick)
 	_set_quick_face(_quick_default() if not Store.is_face(chosen) else chosen)
 	quick.pressed.connect(func(): choose(_quick_icon.face))
+	# A face pops its own sound when picked.
+	ButtonTicks.quiet(quick)
 	var divider := ColorRect.new()
 	divider.name = "PillDivider"
 	divider.color = Color(ControlTheme.CREAM, 0.35)
@@ -768,6 +771,7 @@ class FacesCard extends CanvasLayer:
 			label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			box.add_child(label)
 		cell.pressed.connect(func(): if not closing and is_instance_valid(row): row.choose(face))
+		ButtonTicks.quiet(cell)
 		cells[face] = cell
 		return cell
 

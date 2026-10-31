@@ -18,6 +18,7 @@ const Joystick = preload("res://presentation/joystick.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const ActionButtons = preload("res://presentation/action_buttons.gd")
+const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const LocalSave = preload("res://services/local_save.gd")
@@ -358,6 +359,8 @@ func _ready() -> void:
 	# Configure before entering the tree: saved mute must also mute startup.
 	soundscape.configure(saves.data.settings)
 	add_child(soundscape)
+	# Every button in the app ticks on a press, from one hook that outlives scene changes.
+	ButtonTicks.install(get_tree())
 	levels=Levels.all_levels()
 	current_level=levels[0]
 	var loaded_config: Variant=_parse_json(FileAccess.get_file_as_string("res://app_config.json"))
@@ -560,11 +563,14 @@ func _build_ui() -> void:
 	stick.size=Vector2(Joystick.HIT_SIZE,Joystick.HIT_SIZE)
 	hud.add_child(stick)
 	interact_button=_button("Throw seed",earlier_islands_flow.request_context_action)
+	# In-run controls make the run's own cues: no tick.
+	ButtonTicks.quiet(interact_button)
 	interact_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	interact_button.position=Vector2(-232,-168)
 	interact_button.size=Vector2(195,72)
 	hud.add_child(interact_button)
 	finish_button=_action_button("finish",earlier_islands_flow.finish_recording)
+	ButtonTicks.quiet(finish_button)
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	finish_button.position=Vector2(-247,-87)
 	finish_button.size=Vector2(210,54)

@@ -17,6 +17,7 @@ const HoldButton = preload("res://presentation/hold_button.gd")
 const MemoryWaitBar = preload("res://presentation/memory_wait_bar.gd")
 const FastForwardBadge = preload("res://presentation/fast_forward_badge.gd")
 const TryPill = preload("res://presentation/try_pill.gd")
+const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc7bd")
 var settings: Dictionary = {}
@@ -178,6 +179,9 @@ func _build_ui() -> void:
 	ControlTheme.install_buttons(theme)
 	ui.theme = theme
 	hud = Control.new()
+	# The in-run controls (action, pause, finish, fast forward) make the run's
+	# own cues; a tick on each press would talk over them.
+	ButtonTicks.quiet(hud)
 	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(hud)

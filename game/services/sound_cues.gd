@@ -107,9 +107,10 @@ const CUES := {
 	"drip": {"clip": DRIP, "range": Vector2(-2.0, 5.0), "db": -6.0, "fixed": true},
 	"slosh": {"clip": SLOSH, "range": Vector2(-2.0, 1.0), "db": -5.0, "fixed": true},
 	# Quiet confirmations on screens, each at one exact pitch (a zero-width span):
-	# a flipped toggle, an item worn or taken off, a purchase the server
+	# a pressed button, an item worn or taken off, a purchase the server
 	# confirmed, Pollen arriving, and a leaderboard top 10 by tier.
-	"ui_tap": {"clip": TICK, "range": Vector2(0.0, 0.0), "db": -12.0, "fixed": true},
+	# Every button's press (presentation/button_ticks.gd): under the quietest footstep.
+	"ui_tap": {"clip": TICK, "range": Vector2(0.0, 0.0), "db": -18.0, "fixed": true},
 	"ui_worn": {"clip": READY, "range": Vector2(5.0, 5.0), "db": -6.0, "fixed": true},
 	"ui_taken_off": {"clip": READY, "range": Vector2(0.0, 0.0), "db": -9.0, "fixed": true},
 	"ui_bought": {"clip": BLOOM, "range": Vector2(0.0, 0.0), "db": -6.0, "fixed": true},

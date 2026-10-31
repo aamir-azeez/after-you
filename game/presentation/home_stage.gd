@@ -1,4 +1,5 @@
 extends Control
+const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
@@ -868,6 +869,8 @@ func _create_explore_controls() -> void:
 	_explore_action.size = Vector2(210, 64)
 	_explore_action.mouse_filter = Control.MOUSE_FILTER_STOP
 	_explore_action.visible = false
+	# The keepsake it sets off plays its own sound.
+	ButtonTicks.quiet(_explore_action)
 	_explore_action.pressed.connect(func() -> void:
 		var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
 		if not item.is_empty() and is_instance_valid(_keepsake_layer): _keepsake_layer.play(str(item.id), _actors.get("a") if _exploring else null))

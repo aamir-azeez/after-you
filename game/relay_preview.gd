@@ -13,6 +13,7 @@ const Simulation = preload("res://core/v2/simulation_v2.gd")
 const Journey = preload("res://services/relay_journey.gd")
 const World = preload("res://presentation/relay_world.gd")
 const Controls = preload("res://presentation/chapter_controls.gd")
+const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Joystick = preload("res://presentation/joystick.gd")
@@ -2565,6 +2566,8 @@ func _show_turn_saved() -> bool:
 	if dropped and wear_item.is_valid() and wear_available.is_valid() and bool(wear_available.call()) and not item.is_empty():
 		var wear := _button(PlayerCopy.POLLEN_WEAR_IT, _wear_dropped.bind(item), false)
 		wear.name = "TurnSavedWear"
+		# Wearing sounds its own chime once the server confirms it.
+		ButtonTicks.quiet(wear)
 		wear.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		actions.add_child(wear)
 	var done := _button(PlayerCopy.POLLEN_DONE, func(): if mode == "turn_saved": _after_turn_saved())

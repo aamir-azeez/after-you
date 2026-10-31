@@ -9,6 +9,7 @@ extends RefCounted
 ##   joins it only while bundles sell (`get_pollen` valid), and never for an
 ##   Epic or a Special: no bundle is ever suggested for those. It never names a
 ##   bundle and never estimates how long earning takes.
+const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -48,6 +49,8 @@ static func confirm(parent: Control, id: String, item_name: String, cost: int, b
 	_line(table, PlayerCopy.WARDROBE_COST_LINE % [item_name, PollenMoney.about(cost)], ShopKit.amount(cost, 18, CREAM, PlayerCopy.WARDROBE_MINUS % ""))
 	_line(table, PlayerCopy.WARDROBE_LEFT, ShopKit.amount(balance - cost, 18, CREAM))
 	var button: Button = modal.add_actions(PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(cost), buy, PlayerCopy.DISPLAY_NAME_CANCEL)
+	# A purchase sounds its own chord once the server confirms it.
+	ButtonTicks.quiet(button)
 	var cancel: Button = modal.find_child("ModalCancel", true, false)
 	if cancel != null: ThemeRules.secondary(cancel)
 	button.name = "WardrobeConfirmBuy"

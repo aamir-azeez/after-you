@@ -30,6 +30,7 @@ extends Control
 ## Cards draw still pips (kit/pip_avatar.gd still mode), so a long list shares
 ## the one offscreen renderer; only the big pip is live, and it is made again
 ## only when the switch changes its colour.
+const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
@@ -184,6 +185,8 @@ func _pip_panel() -> Control:
 	gap.custom_minimum_size.y = 6
 	column.add_child(gap)
 	action_button = ShopKit.content_button(Control.new(), 58)
+	# Wear and Take off sound their own chime; the flow ticks the press that opens Buy.
+	ButtonTicks.quiet(action_button)
 	action_button.name = "WardrobeAction"
 	action_button.pressed.connect(func() -> void: if not str(_model.get("selected", "")).is_empty(): action_pressed.emit(str(_model.selected)))
 	column.add_child(action_button)
