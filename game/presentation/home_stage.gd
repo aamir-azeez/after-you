@@ -6,6 +6,8 @@ const PlatformSupport = preload("res://services/platform_support.gd")
 const CameraExploration = preload("res://presentation/camera_exploration.gd")
 const KeepsakeLayer = preload("res://presentation/home_keepsake_layer.gd")
 const KeepsakeCard = preload("res://presentation/keepsakes/keepsake_card.gd")
+const EndReactions = preload("res://presentation/end_reactions.gd")
+const ReactionCatalog = preload("res://services/reaction_catalog.gd")
 const SpiritVisual = preload("res://presentation/spirit_visual.gd")
 const Joystick = preload("res://presentation/joystick.gd")
 ## Explore mode: the gold spirit walks the islands with the joystick and the
@@ -108,6 +110,9 @@ var _together_hard := false
 var _keepsake_layer: Node3D
 ## (cue: String) -> void: a keepsake beat's sound (Main: the soundscape).
 var play_cue: Callable
+## () -> void: a light tap of the phone, when Settings' Haptics is on (Main:
+## the soundscape's tap_haptic).
+var play_haptic: Callable
 ## Explore's action button: the nearby keepsake's own words.
 var _explore_action: Button
 ## The card's measured status height and count size, per width.
@@ -425,6 +430,9 @@ func _create_keepsake_display() -> void:
 	_keepsake_layer = KeepsakeLayer.new()
 	_keepsake_layer.cue = func(cue: String) -> void:
 		if play_cue.is_valid(): play_cue.call(cue)
+	_keepsake_layer.pop_heart = _pop_heart
+	_keepsake_layer.haptic = func() -> void:
+		if play_haptic.is_valid(): play_haptic.call()
 	_terrain.add_child(_keepsake_layer)
 	_keepsake_layer.configure(_world, _keepsakes, _hard_marks, _together_hard, _free_only)
 	_box_fit.clear()
@@ -433,6 +441,19 @@ func _create_keepsake_display() -> void:
 			_hidden_props.append({"node":prop,"visible":prop.visible})
 			prop.visible = false
 	_update_keepsake_labels()
+
+## A ride's heart over the pip: the reaction bubble's heart (end_reactions.gd),
+## following the pip while it shows, then gone.
+const HEART_HEIGHT := 1.5
+const HEART_SECONDS := 0.9
+func _pop_heart(actor: Node3D) -> void:
+	if not is_instance_valid(_world) or not is_instance_valid(_world.camera) or not is_inside_tree(): return
+	var camera: Camera3D = _world.camera
+	var at: Variant = EndReactions.point_above(camera, actor, self, HEART_HEIGHT)
+	if not at is Vector2: return
+	var refs := [weakref(camera), weakref(actor), weakref(self)]
+	var follow := func() -> Variant: return EndReactions.point_above(refs[0], refs[1], refs[2], HEART_HEIGHT)
+	EndReactions.pop(self, at, ReactionCatalog.HEART, "peach", {"reduced_motion": _world.reduced_motion}, HEART_SECONDS, follow)
 
 func _create_keepsake_box() -> void:
 	_keepsake_box = PanelContainer.new()

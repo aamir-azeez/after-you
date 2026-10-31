@@ -779,6 +779,7 @@ func _show_home() -> void:
 	home_stage.input_blocked = func() -> bool: return _top_modal() != null
 	_set_home_hard(home_stage)
 	home_stage.play_cue = soundscape.play_keepsake_cue
+	home_stage.play_haptic = soundscape.tap_haptic
 	overlay.add_child(home_stage)
 	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
 	var menu := HomeMenu.new()

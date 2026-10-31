@@ -139,6 +139,8 @@ var _hop_contact := 0.8
 var _hop_landed := true
 var _ride_sit := 0.0
 var _ride_lean := Vector3.ZERO
+## The face a ride put on (cleared when the ride lets go).
+var _ride_face := false
 ## Where a ride last carried the spirit, to turn it the way it is carried.
 var _carried_from := Vector3.ZERO
 var _carried := false
@@ -647,8 +649,18 @@ func set_ride_pose(sit: float, lean: Vector3) -> void:
 	_ride_sit=clampf(sit,0.0,1.0)
 	_ride_lean=lean
 
-## The ride let go: no hop, no tuck, no lean.
+## A ride's face (the existing expressions, spirit_look.gd), held until the
+## ride lets go.
+func set_ride_face(face: StringName) -> void:
+	show_expression(face,600.0)
+	_ride_face=true
+
+## The ride let go: no hop, no tuck, no lean, and its face goes.
 func end_ride() -> void:
+	if _ride_face:
+		_ride_face=false
+		_clear_reaction()
+		_refresh_expression()
 	_hop_age=_hop_duration
 	_hop_landed=true
 	_ride_sit=0.0

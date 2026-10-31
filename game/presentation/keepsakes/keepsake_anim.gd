@@ -39,6 +39,10 @@ var rider_from := Vector3.ZERO
 ## (null when nothing carries it). The layer puts the pip there when the tap
 ## ends, however it ends.
 var landing: Variant = null
+## The joy a ride can add (slide_down): (pip: Node3D) -> void pops a heart over
+## the pip, () -> void gives a light tap of the phone. Either may be empty.
+var pop_heart: Callable
+var haptic: Callable
 var _landing_at := -INF
 var _first: Dictionary = {}
 var _jumps: Array = []
@@ -141,8 +145,12 @@ func hop_steps(points: Array, at: float, time: float, height: float, mover: Node
 ## From `from`, sits onto the top of `points` over `sit_time`, slides down them
 ## over `time` leaning into the curve by `lean` radians at its middle, and hops
 ## off their end onto `landing` over `lip_time`, settling with a bounce.
+## `joy`, all optional: "face" (an expression the pip wears from the sit until
+## it lets go), "sparkles" (how many glints trail it down), "heart_at" (the
+## share of the slide where a heart pops over it) and "haptic" (a light tap of
+## the phone as it lands). Reduce motion keeps the face and drops the rest.
 ## Returns when it lands.
-func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: float, sit_time: float, time: float, lip_time: float, lean: float, mover: Node3D = null, lift: Vector3 = Vector3.ZERO) -> float:
+func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: float, sit_time: float, time: float, lip_time: float, lean: float, mover: Node3D = null, lift: Vector3 = Vector3.ZERO, joy: Dictionary = {}) -> float:
 	var top := points[0]
 	_follow(func(u: float) -> Vector3: return from.lerp(top, u), at, sit_time, mover, lift)
 	_follow(slide_leg(points), at + sit_time, time, mover, lift)
@@ -150,6 +158,7 @@ func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: flo
 	_follow(hop_leg(points[points.size() - 1], landing, 0.12), off, lip_time, mover, lift)
 	# The pip's own hooks only when the pip is what rides (a `mover` rides in its place).
 	if mover != null: return off + lip_time
+	_slide_joy(points, at + sit_time, time, off + lip_time * HOP_CONTACT, lift, joy)
 	rider_call(&"play_hop", [lip_time, HOP_CONTACT], off)
 	rider_call(&"play_carry_release", [], off + lip_time * HOP_CONTACT)
 	if not reduced and tween != null and rider != null and rider.has_method(&"set_ride_pose"):
@@ -164,6 +173,29 @@ func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: flo
 		tween.tween_method(ride, 0.0, 1.0, maxf(time, 0.01)).set_delay(start + at + sit_time)
 		tween.tween_method(rise, 0.0, 1.0, maxf(lip_time * HOP_CONTACT, 0.01)).set_delay(start + off)
 	return off + lip_time
+
+## The slide's joy (slide_down's `joy`), for a pip that rides it.
+func _slide_joy(points: Array[Vector3], at: float, time: float, landed: float, lift: Vector3, joy: Dictionary) -> void:
+	if rider == null or joy.is_empty(): return
+	var face: StringName = joy.get("face", &"")
+	if face != &"":
+		if reduced:
+			if rider.has_method(&"set_ride_face"): rider.set_ride_face(face)
+		else: rider_call(&"set_ride_face", [face], at - 0.1)
+	if reduced or tween == null: return
+	var slide := slide_leg(points)
+	var trail: int = joy.get("sparkles", 0)
+	for index in range(trail):
+		var share := (index + 0.5) / trail
+		var spark := spawn(fx, Parts.low_sphere(0.035), Parts.glow(Parts.SNOW, 2.0), (slide.call(share) as Vector3) + lift + Vector3(0, 0.25, 0))
+		set_at(spark, "visible", true, at + time * share)
+		set_at(spark, "visible", false, at + time * share + 0.3)
+	var node := rider
+	if joy.has("heart_at") and pop_heart.is_valid():
+		var heart := pop_heart
+		tween.tween_callback(func() -> void:
+			if is_instance_valid(node): heart.call(node)).set_delay(start + at + time * float(joy.heart_at))
+	if joy.get("haptic", false) and haptic.is_valid(): tween.tween_callback(haptic).set_delay(start + landed)
 
 func _follow(leg: Callable, at: float, time: float, mover: Node3D, lift: Vector3) -> void:
 	if mover != null: path(mover, func(u: float) -> Vector3: return leg.call(u) + lift, at, time, 1.0)

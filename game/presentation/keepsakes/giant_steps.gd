@@ -77,6 +77,9 @@ const LADDER_HEIGHT := 0.3
 const LADDER_OUT := 0.4
 ## How much the pip leans into the chute's curve.
 const SLIDE_LEAN := 0.16
+## The slide's joy (keepsake_anim.gd slide_down): a Happy face down the chute,
+## a few glints trailing it, a heart near the bottom and a light tap on landing.
+const SLIDE_JOY := {"face": &"happy", "sparkles": 5, "heart_at": 0.8, "haptic": true}
 
 ## The ride from `from`, in the keepsake's frame, as the points the pip's
 ## hops and slide go through (keepsake_anim.gd hop_steps and slide_down): a
@@ -132,7 +135,7 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			if not points.ladder.is_empty(): t = anim.hop_steps(points.ladder, t, times.ladder, LADDER_HEIGHT, ball, lift)
 			var at_top: Vector3 = points.ladder[points.ladder.size() - 1] if not points.ladder.is_empty() else points.climb[points.climb.size() - 1]
 			anim.sound(str(sounds.get("base", "")), t + float(times.sit))
-			t = anim.slide_down(at_top, points.chute, points.landing, t, times.sit, times.slide, times.lip, SLIDE_LEAN, ball, lift)
+			t = anim.slide_down(at_top, points.chute, points.landing, t, times.sit, times.slide, times.lip, SLIDE_LEAN, ball, lift, SLIDE_JOY)
 			if ball != null: anim.set_at(ball, "visible", false, t + 0.02)
 			for index in range(4): anim.halo(anim.fx, _tops()[index] + Vector3(0, 0.2, 0.15), 0.05, P.SNOW, float(times.hop) * (index + 2), 0.4, 0.5)
 		"together":

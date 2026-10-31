@@ -304,6 +304,9 @@ func _check_triggers() -> void:
 	_frames(stage, world, 30)
 	_check(layer.steps == steps, "A pip standing still in Explore asks the keepsakes nothing")
 	var far := Vector3(-4.3, 0, 0.6)
+	var joys := {"hearts": 0, "haptics": 0}
+	layer.pop_heart = func(_pip: Node3D) -> void: joys.hearts += 1
+	stage.play_haptic = func() -> void: joys.haptics += 1
 	for id: String in layer.shown_ids():
 		var trigger: Dictionary = layer._frames[id].trigger
 		if trigger.is_empty(): continue
@@ -339,17 +342,21 @@ func _check_triggers() -> void:
 			spirit.stepped.connect(count)
 			var sat := 0.0
 			var hopped := false
+			var smiled := false
 			while layer.riding() and Time.get_ticks_msec() < until:
 				await process_frame
 				stage._process(1.0 / 60.0)
 				moved = moved or spirit.position.distance_to(start) > 0.3
 				sat = maxf(sat, float(spirit._ride_sit))
 				hopped = hopped or float(spirit._hop_age) < float(spirit._hop_duration)
+				smiled = smiled or spirit.expression_target() == &"happy"
 			spirit.stepped.disconnect(count)
 			stage._stick.value = Vector2.ZERO
 			_check(moved and not layer.riding(), "%s carries the pip on its ride" % id)
 			if id == "high-and-low":
 				_check(hopped and landings[0] >= 6 and sat > 0.9, "The Giant Steps pip hops each step with a footstep and sits to slide: %d footsteps, sat %.2f" % [landings[0], sat])
+				_check(smiled and joys.hearts == 1 and joys.haptics == 1, "and slides happy, with one heart and one light tap as it lands: %s, %s" % [smiled, joys])
+				_check(spirit.expression_target() != &"happy", "and its face is back to normal once it lands")
 			_check(float(spirit._ride_sit) == 0.0 and spirit._ride_lean == Vector3.ZERO and float(spirit._hop_age) >= float(spirit._hop_duration), "%s lands the pip out of its ride pose" % id)
 			_check(layer.playing(), "%s gives the pip back the moment it lands, while its upgrades still play" % id)
 			_check(spirit.position.y == 0.0 and layer.walkable(spirit.position), "%s lands the pip on open ground: %s" % [id, spirit.position])
@@ -421,12 +428,16 @@ func _check_triggers() -> void:
 	riders.world.actors.a.position = step
 	riders.layer.walked(step + Vector3(0, 0, 4.0), step, riders.world.actors.a)
 	_check(riders.layer.riding(), "The Giant Steps ride starts")
-	await create_timer(0.3).timeout
+	# Stepped to a fixed time, partway down the slide (Hard: the ladder comes first).
+	(riders.layer._play.tween as Tween).custom_step(1.95)
+	var rider: Node3D = riders.world.actors.a
+	_check(riders.layer.riding() and rider.expression_target() == &"happy" and float(rider._ride_sit) > 0.5, "Partway down the slide the pip sits, happy (riding %s, face %s, sit %.2f)" % [riders.layer.riding(), rider.expression_target(), float(rider._ride_sit)])
 	riders.stage.free()
 	var put_back: Vector3 = riders.world.actors.a.position
 	await process_frame
 	await process_frame
 	_check(_tweens() == 0 and riders.world.actors.a.position == put_back and put_back.y == 0.0 and put_back != step, "Leaving Home mid ride stops it, and nothing moves the pip after Home has put it back: %s" % riders.world.actors.a.position)
+	_check(rider.expression_target() != &"happy" and float(rider._ride_sit) == 0.0, "and its face and seat are back to normal")
 	riders.viewport.free()
 	await process_frame
 	# An unearned keepsake sets nothing off.

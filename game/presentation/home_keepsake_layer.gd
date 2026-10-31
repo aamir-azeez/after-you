@@ -54,6 +54,10 @@ var _free_only := false
 var together_hard := false
 ## (cue: String) -> void: plays one keepsake beat's sound.
 var cue: Callable
+## A ride's joy (keepsake_anim.gd): (pip: Node3D) -> void pops a heart over the
+## pip, and () -> void taps the phone lightly (Settings' Haptics decides).
+var pop_heart: Callable
+var haptic: Callable
 var _entries: Array = []
 var _builders: Dictionary = {}
 var _result: Dictionary = {}
@@ -280,6 +284,8 @@ func play(id: String, rider: Node3D = null) -> bool:
 		state.toward = Vector2(toward.x, toward.z)
 	var anim := Anim.new()
 	anim.cue = cue
+	anim.pop_heart = pop_heart
+	anim.haptic = haptic
 	anim.reduced = _reduced()
 	anim.fx = Node3D.new()
 	anim.fx.name = "Tap"

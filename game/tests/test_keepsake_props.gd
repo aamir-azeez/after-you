@@ -300,16 +300,41 @@ func _check_giant_steps_ride() -> void:
 			prop.add_child(pip)
 			anim.rider = pip
 			anim.rider_from = side
+			var joys := {"hearts": 0, "haptics": 0}
+			anim.pop_heart = func(_pip: Node3D) -> void: joys.hearts += 1
+			anim.haptic = func() -> void: joys.haptics += 1
 			var holder := Node.new()
 			root.add_child(holder)
 			anim.tween = holder.create_tween().set_parallel(true)
 			builder.play("base", anim, parts, state)
+			var sparkles := anim.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).material_override == Parts.glow(Parts.SNOW, 2.0)).size()
 			anim.tween.custom_step(5.0)
-			if side.z >= 0.42: _check(anim.landing != null and pip.calls >= 10, "Giant Steps from in front carries the pip, hopping, sitting and bouncing: %d hooks" % pip.calls)
-			else: _check(anim.landing == null and not anim.spawned.is_empty() and pip.calls == 0, "Giant Steps from %s sends the ball, and the pip standing by neither hops, sits nor bounces: %d" % [side, pip.calls])
+			if side.z >= 0.42:
+				_check(anim.landing != null and pip.calls >= 10, "Giant Steps from in front carries the pip, hopping, sitting and bouncing: %d hooks" % pip.calls)
+				_check(pip.faces == [&"happy"] and joys.hearts == 1 and joys.haptics == 1 and sparkles >= 5, "and its slide is joyful: a Happy face, one heart, one light tap and a trail of glints (%s, %s, %d)" % [pip.faces, joys, sparkles])
+			else: _check(anim.landing == null and not anim.spawned.is_empty() and pip.calls == 0 and pip.faces.is_empty() and joys.hearts == 0 and joys.haptics == 0, "Giant Steps from %s sends the ball, and the pip standing by neither hops, sits, smiles nor bounces: %d" % [side, pip.calls])
 			anim.tween.kill()
 			holder.free()
 			prop.free()
+		# Reduce motion keeps the Happy face and drops the glints, the heart and the tap.
+		var still := Node3D.new()
+		root.add_child(still)
+		var still_parts: Dictionary = builder.build(still, state)
+		var calm := Anim.new()
+		calm.reduced = true
+		calm.fx = Node3D.new()
+		still.add_child(calm.fx)
+		var calm_pip := HookedPip.new()
+		still.add_child(calm_pip)
+		calm.rider = calm_pip
+		calm.rider_from = Vector3(-0.65, 0, 0.6)
+		var calm_joys := {"hearts": 0, "haptics": 0}
+		calm.pop_heart = func(_pip: Node3D) -> void: calm_joys.hearts += 1
+		calm.haptic = func() -> void: calm_joys.haptics += 1
+		builder.play("base", calm, still_parts, state)
+		var glints := calm.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).material_override == Parts.glow(Parts.SNOW, 2.0)).size()
+		_check(calm_pip.faces == [&"happy"] and calm_joys.hearts == 0 and calm_joys.haptics == 0 and glints == 0, "With Reduce motion the slide keeps the Happy face with no glints, heart or tap (%s, %s, %d)" % [calm_pip.faces, calm_joys, glints])
+		still.free()
 		# The hops touch down before their end, so the landing squash is on the ground.
 		var hop: Callable = Anim.hop_leg(Vector3.ZERO, Vector3(0.36, 0.24, 0), Steps.HOP_HEIGHT)
 		_check((hop.call(Anim.HOP_CONTACT) as Vector3).distance_to(Vector3(0.36, 0.24, 0)) < 0.001 and (hop.call(0.9) as Vector3) == (hop.call(1.0) as Vector3), "A hop touches down at its contact and holds there")
@@ -340,3 +365,5 @@ class HookedPip extends Node3D:
 	func play_hop(_duration: float, _contact: float = 0.8) -> void: calls += 1
 	func set_ride_pose(_sit: float, _lean: Vector3) -> void: calls += 1
 	func play_carry_release() -> void: calls += 1
+	var faces: Array[StringName] = []
+	func set_ride_face(face: StringName) -> void: faces.append(face)
