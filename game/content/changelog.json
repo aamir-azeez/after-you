@@ -4,13 +4,13 @@
     {
       "version": "0.7.5",
       "date": "2026-10-31",
-      "highlights": [{"icon": "leaf", "text": "Pollen bundles in the store, with 20% more on your first", "paid": true}, {"icon": "star", "text": "The shop opens: spend Pollen on looks and faces", "paid": true}, {"icon": "picture", "text": "New pictures for the Pouch and the Jar", "paid": true}, {"icon": "picture", "text": "Back in your room if the game closes for a photo"}],
+      "highlights": [{"icon": "leaf", "text": "Pollen bundles in the store, with 20% more on your first", "paid": true}, {"icon": "star", "text": "The shop opens: spend Pollen on looks and faces", "paid": true}, {"icon": "picture", "text": "New pictures for the Pouch and the Jar"}],
       "paragraphs": [
         {"text": "The Pollen store is open. Tap the + beside your balance in the Wardrobe to see four bundles: Pinch, Pouch, Jar and Basket. Each card shows the price Google Play charges and how much Pollen you get for each dollar. Your first bundle adds 20% more Pollen, once. The receipts stay in Settings, under Account & recovery, in Pollen and purchases.", "ios_text": "The Pollen store is open on iPhone too. Tap the + beside your balance in the Wardrobe to see four bundles: Pinch, Pouch, Jar and Basket. Each card shows the App Store price and how much Pollen you get for each dollar. Your first bundle adds 20% more Pollen, once, whichever phone you buy it on. The receipts stay in Settings, under Account & recovery, in Pollen and purchases.", "channels": ["play", "app_store"], "paid": true},
         {"text": "The shop in the Wardrobe opens. Spend the Pollen you earn by playing, or from a bundle, on hats, bodies, leaves and the two packs of reaction faces. Everything stays in the shop, so you can come back for it later.", "paid": true},
         {"text": "Full Journey comes to iPhone too, so a friend on an iPhone can host the paid chapters for you.", "ios_text": "Full Journey comes to iPhone as a subscription, by the month or by the year, with the App Store price shown before you pay. It opens the paid chapters and lets you host them for a friend. Restore purchases brings it back on a new phone, and Manage subscription opens your App Store subscriptions.", "paid": true},
-        {"text": "The Pouch and the Jar have new pictures, with their Pollen grains kept inside.", "paid": true},
-        {"text": "If Android closes After You while you take a photo for a turn, the game now opens straight back into that room, where your photo waits. A tap on Home still takes you Home.", "ios_text": "If After You closes while you take a photo for a turn, the game now opens straight back into that room. A tap on Home still takes you Home."},
+        {"text": "The Pouch and the Jar have new pictures, with their Pollen grains kept inside."},
+        {"text": "If Android closes After You while you take a photo for a turn, the game now opens straight back into that room, where your photo waits. A tap on Home still takes you Home.", "ios_text": ""},
         {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
       ]
     },
