@@ -316,7 +316,7 @@ func _check_giant_steps_ride() -> void:
 			anim.tween.kill()
 			holder.free()
 			prop.free()
-		# Reduce motion keeps the Happy face and drops the glints, the heart and the tap.
+		# Reduce motion keeps the Happy face and the tap, and drops the glints and the heart.
 		var still := Node3D.new()
 		root.add_child(still)
 		var still_parts: Dictionary = builder.build(still, state)
@@ -333,7 +333,7 @@ func _check_giant_steps_ride() -> void:
 		calm.haptic = func() -> void: calm_joys.haptics += 1
 		builder.play("base", calm, still_parts, state)
 		var glints := calm.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).material_override == Parts.glow(Parts.SNOW, 2.0)).size()
-		_check(calm_pip.faces == [&"happy"] and calm_joys.hearts == 0 and calm_joys.haptics == 0 and glints == 0, "With Reduce motion the slide keeps the Happy face with no glints, heart or tap (%s, %s, %d)" % [calm_pip.faces, calm_joys, glints])
+		_check(calm_pip.faces == [&"happy"] and calm_joys.hearts == 0 and calm_joys.haptics == 1 and glints == 0, "With Reduce motion the slide keeps the Happy face and the one tap, with no glints or heart (%s, %s, %d)" % [calm_pip.faces, calm_joys, glints])
 		still.free()
 		# The hops touch down before their end, so the landing squash is on the ground.
 		var hop: Callable = Anim.hop_leg(Vector3.ZERO, Vector3(0.36, 0.24, 0), Steps.HOP_HEIGHT)

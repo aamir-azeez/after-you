@@ -148,7 +148,8 @@ func hop_steps(points: Array, at: float, time: float, height: float, mover: Node
 ## `joy`, all optional: "face" (an expression the pip wears from the sit until
 ## it lets go), "sparkles" (how many glints trail it down), "heart_at" (the
 ## share of the slide where a heart pops over it) and "haptic" (a light tap of
-## the phone as it lands). Reduce motion keeps the face and drops the rest.
+## the phone as it lands). Reduce motion keeps the face and the tap, and drops
+## the glints and the heart.
 ## Returns when it lands.
 func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: float, sit_time: float, time: float, lip_time: float, lean: float, mover: Node3D = null, lift: Vector3 = Vector3.ZERO, joy: Dictionary = {}) -> float:
 	var top := points[0]
@@ -182,7 +183,12 @@ func _slide_joy(points: Array[Vector3], at: float, time: float, landed: float, l
 		if reduced:
 			if rider.has_method(&"set_ride_face"): rider.set_ride_face(face)
 		else: rider_call(&"set_ride_face", [face], at - 0.1)
-	if reduced or tween == null: return
+	# Reduce motion shows the beat all at once: the face, and the tap (its own
+	# Settings switch) once, with no glints or heart.
+	if reduced:
+		if joy.get("haptic", false) and haptic.is_valid(): haptic.call()
+		return
+	if tween == null: return
 	var slide := slide_leg(points)
 	var trail: int = joy.get("sparkles", 0)
 	for index in range(trail):
