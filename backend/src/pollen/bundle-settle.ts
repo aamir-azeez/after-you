@@ -3,7 +3,6 @@ import { DAY_MS, RATES, type Rates } from "./rates";
 import { BUNDLES, BUNDLE_KEYS, firstGift, type BundleKey, type Bundles } from "./bundles";
 import { applyLedger, ledgerLines, purchaseLines, walletBalance, type LedgerEntry } from "./wallet";
 import type { BundleAsk, BundleLookup, BundlePurchase, BundleRead } from "./bundle-provider";
-import { orderClaimKey } from "./claims";
 
 /**
  * Pollen bundles in the player's own Player Durable Object (POLLEN_BUNDLES): bought Pollen is credited
@@ -45,8 +44,8 @@ import { orderClaimKey } from "./claims";
 export type BundleDeps = {
   /** The player's counted bundle purchases (bundle-provider.ts readBundles). */
   read: () => Promise<BundleRead>;
-  /** PollenClaims answers by order key ("order:<order>": held by this player), each with its older "bundle:<id>" key; null when it could not be asked. */
-  claim: (keys: string[], older: string[]) => Promise<Record<string, boolean> | null>;
+  /** PollenClaims (claims.ts claimBundlesFor): whether this player holds each purchase's order, by order; null when it could not be asked. */
+  claim: (purchases: BundlePurchase[]) => Promise<Record<string, boolean> | null>;
   /** The daily check only: which paid bundles missing from the list are refunded now (bundle-provider.ts lookupBundles). */
   lookup?: (asks: BundleAsk[]) => Promise<BundleLookup>;
 };
@@ -139,13 +138,17 @@ export function missingBundles(storage: DurableObjectStorage, listed: readonly B
 /** A looked-up refund as the plan reads it: the ledger's own purchase, refunded. */
 const takenBack = (ask: BundleAsk): BundlePurchase => ({ id: ask.id, bundle: ask.bundle, refunded: true, quantity: 1, order: ask.order, usd_cents: 0, purchased_at: 0 });
 
+/** The orders a read shows refunded: none of them is paid on that read, whatever order its records come in. */
+const refundedOrders = (purchases: readonly BundlePurchase[]) => new Set(purchases.flatMap(purchase => purchase.refunded && purchase.order ? [purchase.order] : []));
+
 /**
  * The plan for one read, from the ledger as stored now: what to pay and what to take back. `held` is whether
- * this player holds an order (PollenClaims). Two records of one order in one read pay or take back once.
+ * this player holds an order (PollenClaims). Two records of one order in one read pay or take back once, and an
+ * order any record shows refunded is never paid.
  */
 export function planBundles(purchases: readonly BundlePurchase[], held: (order: string) => boolean, lines: readonly Line[], refunded: ReadonlySet<string>, giftOpen: boolean, bundles: Bundles = BUNDLES): { entries: LedgerEntry[]; credited: BundleCredit[]; refunds: BundleRefund[] } {
   const entries: LedgerEntry[] = [], credited: BundleCredit[] = [], refunds: BundleRefund[] = [];
-  const paid = paidIndex(lines), back = new Set(refunded);
+  const paid = paidIndex(lines), back = new Set(refunded), gone = refundedOrders(purchases);
   let open = giftOpen;
   for (const purchase of purchases) {
     const prior = paidLine(purchase, paid);
@@ -158,7 +161,7 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (order: 
       refunds.push({ bundle: purchase.bundle, amount: prior.amount, order });
       continue;
     }
-    if (prior || !purchase.order || !held(purchase.order)) continue;
+    if (prior || !purchase.order || gone.has(purchase.order) || !held(purchase.order)) continue;
     const pollen = bundles.bundles[purchase.bundle].pollen * purchase.quantity, gift = open ? firstGift(purchase.bundle, bundles) : 0;
     // Only the first bundle a player ever buys can carry the gift, whatever the percent was then.
     open = false;
@@ -188,11 +191,11 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
   // Without lookups made (the claim route, or a failed lookup) a missing bundle leaves the check due, so the wallet read looks it up again.
   const checked = asks.length === 0 || (deps.lookup !== undefined && lookupFailed === null);
   // Orders new to this player, each once; at most MAX_CLAIM_KEYS at a time, a longer list waits for the next call.
-  const before = paidIndex(bundleLines(storage)), fresh = new Map<string, BundlePurchase>();
+  const before = paidIndex(bundleLines(storage)), gone = refundedOrders(read.purchases), fresh = new Map<string, BundlePurchase>();
   for (const purchase of read.purchases)
-    if (!purchase.refunded && purchase.order && !paidLine(purchase, before) && !fresh.has(purchase.order)) fresh.set(purchase.order, purchase);
+    if (!purchase.refunded && purchase.order && !gone.has(purchase.order) && !paidLine(purchase, before) && !fresh.has(purchase.order)) fresh.set(purchase.order, purchase);
   const asked = [...fresh.values()].slice(0, 16);
-  const answers = asked.length ? await deps.claim(asked.map(purchase => orderClaimKey(purchase.order)), asked.map(purchase => bundleKey(purchase.id))) : {};
+  const answers = asked.length ? await deps.claim(asked) : {};
   if (answers === null) { paused.set(storage, now + BUNDLE_OUTAGE_PAUSE_MS); return { status: "unavailable", reason: "claims_unavailable" }; }
   let outcome: BundleOutcome = { status: "absent" };
   storage.transactionSync(() => {
@@ -200,7 +203,7 @@ export async function settleBundles(storage: DurableObjectStorage, now: number, 
     // Planned again from the ledger as stored now: what an overlapping call paid is never paid twice.
     const lines = bundleLines(storage);
     const refunded = new Set(refundLines(storage).map(line => line.key));
-    const plan = planBundles([...read.purchases, ...moved], order => answers[orderClaimKey(order)] === true, lines, refunded, lines.length === 0, bundles);
+    const plan = planBundles([...read.purchases, ...moved], order => answers[order] === true, lines, refunded, lines.length === 0, bundles);
     applyLedger(storage, plan.entries, now, rates);
     if (checked) noteCheck(storage, now);
     outcome = { status: "settled", reply: { schema_version: 1, balance: walletBalance(storage, now, rates), credited: plan.credited, refunded: plan.refunds, pending: false }, ...(lookupFailed ? { lookup_failed: lookupFailed } : {}) };

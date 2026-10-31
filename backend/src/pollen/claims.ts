@@ -2,7 +2,6 @@ import { DurableObject } from "cloudflare:workers";
 import type { ServerVars } from "../flags";
 import { KEY_LABELS, derivedKey, hmac } from "./keys";
 import { SUB_ID_PATTERN, type ClaimAnswer } from "./grant";
-import { ORDER_PATTERN } from "./bundle-provider";
 
 /**
  * PollenClaims: one global object that knows which identity holds each store subscription (and the
@@ -27,11 +26,12 @@ import { ORDER_PATTERN } from "./bundle-provider";
 export const POLLEN_CLAIMS_OBJECT = "pollen-claims-v1";
 export const MAX_CLAIM_KEYS = 16;
 export const CLAIM_KEY_PATTERN = new RegExp(`^(sub|purchase):${SUB_ID_PATTERN.source.slice(1, -1)}$`);
-/** A Pollen bundle's Google Play order ("order:<order>"): only claimBundles takes these, and claim() never moves one. */
-export const ORDER_CLAIM_KEY_PATTERN = new RegExp(`^order:${ORDER_PATTERN.source.slice(1, -1)}$`);
+/** A Pollen bundle's Google Play order ("order:<order>", the order in the same characters as an id): only claimBundles takes these, and claim() never moves one. */
+export const ORDER_CLAIM_KEY_PATTERN = new RegExp(`^order:${SUB_ID_PATTERN.source.slice(1, -1)}$`);
 /** The older bundle key ("bundle:<RevenueCat purchase id>"), only ever read now. */
 export const BUNDLE_CLAIM_KEY_PATTERN = new RegExp(`^bundle:${SUB_ID_PATTERN.source.slice(1, -1)}$`);
-export const orderClaimKey = (order: string) => `order:${order}`;
+const orderClaimKey = (order: string) => `order:${order}`;
+const olderClaimKey = (id: string) => `bundle:${id}`;
 const SCHEMA = "CREATE TABLE IF NOT EXISTS pollen_claims_held (claim_key TEXT PRIMARY KEY, holder TEXT NOT NULL, since INTEGER NOT NULL, moved INTEGER NOT NULL) WITHOUT ROWID";
 const HASH = /^[a-f0-9]{64}$/;
 
@@ -93,11 +93,15 @@ export async function claimFor(env: Env & ServerVars, playerId: string, keys: st
   } catch { return null; }
 }
 
-/** Claims bundle order `keys` for `playerId` (claimBundles, with each one's `older` key); null when the object could not be asked (nothing is credited then). */
-export async function claimBundlesFor(env: Env & ServerVars, playerId: string, keys: string[], older: (string | null)[], now: number): Promise<Record<string, boolean> | null> {
+/**
+ * Claims each bundle purchase's Play order for `playerId` (claimBundles, with its RevenueCat id for the older key):
+ * whether this player holds it, by order. Null when the object could not be asked (nothing is credited then).
+ */
+export async function claimBundlesFor(env: Env & ServerVars, playerId: string, purchases: readonly { order: string; id: string }[], now: number): Promise<Record<string, boolean> | null> {
   try {
     const key = derivedKey(env, KEY_LABELS.claims);
     if (key === null) return null;
-    return await env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT).claimBundles(keys, hex(await hmac(await key, playerId)), now, older);
+    const answers = await env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT).claimBundles(purchases.map(each => orderClaimKey(each.order)), hex(await hmac(await key, playerId)), now, purchases.map(each => olderClaimKey(each.id)));
+    return answers === null ? null : Object.fromEntries(purchases.map(each => [each.order, answers[orderClaimKey(each.order)] === true]));
   } catch { return null; }
 }

@@ -5,7 +5,7 @@ import worker from "../src/index";
 import gameBundles from "../../game/content/pollen_bundles.json";
 import serverBundles from "../src/pollen/bundles.json";
 import { BUNDLES, checkedBundles, firstGift, type Bundles } from "../src/pollen/bundles";
-import { bundlePurchase, lookupBundles, readBundles, type BundleAsk } from "../src/pollen/bundle-provider";
+import { bundlePurchase, lookupBundles, readBundles, type BundleAsk, type BundlePurchase } from "../src/pollen/bundle-provider";
 import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundleCheckDue, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
 import { bundlesOn, refundsOn } from "../src/pollen/features";
 import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
@@ -133,7 +133,7 @@ describe("the first gift, when the owner sets it", () => {
   afterEach(async () => { await reset(); });
   const p = (id: string, bundle: "pinch" | "pouch", refunded = false, at = 1) => ({ id, bundle, refunded, quantity: 1, order: "GPA." + id, usd_cents: 99, purchased_at: at });
   const settle = (storage: DurableObjectStorage, purchases: ReturnType<typeof p>[], table: Bundles) =>
-    settleBundles(storage, Date.now(), () => true, { read: async () => ({ ok: true as const, purchases }), claim: async keys => Object.fromEntries(keys.map(key => [key, true])) }, RATES, table);
+    settleBundles(storage, Date.now(), () => true, { read: async () => ({ ok: true as const, purchases }), claim: async asked => Object.fromEntries(asked.map(each => [each.order, true])) }, RATES, table);
   it("pays 10% once on the first bundle, never on a later one, and a refund never opens it again", async () => {
     await runInDurableObject(env.PLAYERS.getByName("gift-ten"), async (_, state) => {
       const storage = state.storage;
@@ -161,7 +161,7 @@ describe("the first gift, when the owner sets it", () => {
 describe("the refund check's lookups", () => {
   afterEach(async () => { await reset(); });
   const p = (id: string, refunded = false) => ({ id, bundle: "pinch" as const, refunded, quantity: 1, order: "GPA." + id, usd_cents: 99, purchased_at: Number(id.slice(1)) });
-  const yes = async (keys: string[]) => Object.fromEntries(keys.map(key => [key, true]));
+  const yes = async (asked: BundlePurchase[]) => Object.fromEntries(asked.map(each => [each.order, true]));
   it("asks only about paid bundles missing from the list, at most the cap a check, a new window each day", async () => {
     await runInDurableObject(env.PLAYERS.getByName("lookup-cap"), async (_, state) => {
       const storage = state.storage, all = Array.from({ length: 11 }, (_, index) => p("m" + (index + 1)));
@@ -523,6 +523,13 @@ describe("bundles through the Worker", () => {
     expect(await (await claim(buyer)).json<Reply>()).toMatchObject({ balance: 10000, credited: [{ order: "GPA.0000-rc_212" }] });
     const keys = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key).sort());
     expect(keys).toEqual(["bundle:GPA.0000-rc_210", "bundle:GPA.0000-rc_212"]);
+    // A new order listed refunded under one id and owned under another, in either order, never pays.
+    for (const [index, first] of [true, false].entries()) {
+      const id = `rc_${215 + 2 * index}`, other = `rc_${216 + 2 * index}`;
+      const records = [owned(id, "prodd4e2b730e5", { status: "refunded" }), owned(other, "prodd4e2b730e5", { store_purchase_identifier: `GPA.0000-${id}` })];
+      lists[buyer.player_id] = first ? records : records.reverse();
+      expect(await (await claim(buyer)).json<Reply>()).toMatchObject({ balance: 10000, credited: [], refunded: [] });
+    }
   });
 
   it("takes a refund back by its order when the refunded record has a new RevenueCat id, on either account", async () => {

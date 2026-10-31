@@ -30,7 +30,7 @@ export type BundleRead = { ok: true; purchases: BundlePurchase[] } | { ok: false
 /** Play lets a player buy a few of one consumable at once (multi-quantity); each pays its Pollen, never a second first gift. */
 export const MAX_QUANTITY = 10;
 /** A Google Play order number as RevenueCat reports it (store_purchase_identifier, "GPA.…"): what a bundle is paid once by. */
-export const ORDER_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
+const ORDER_PATTERN = /^[A-Za-z0-9_.:-]{1,128}$/;
 /** The order as text ("" when none or malformed): the docs' sample shows it as a number though the schema says string. */
 function orderOf(value: unknown): string {
   const text = typeof value === "string" ? value : typeof value === "number" && Number.isSafeInteger(value) && value >= 0 ? String(value) : "";
