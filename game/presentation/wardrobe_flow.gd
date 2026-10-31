@@ -42,7 +42,6 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 ## Its confirmations sound on the host's soundscape (play_on).
 const Soundscape = preload("res://services/soundscape.gd")
-const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const Outfit = preload("res://services/outfit.gd")
 const FeaturedShelf = preload("res://services/featured_shelf.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
@@ -172,8 +171,6 @@ func act(id: String) -> void:
 	if bool(entry.owned):
 		await _wear(entry)
 		return
-	# The page's button is quiet for Wear; a press toward Buy ticks like any other.
-	Soundscape.play_on(host, ButtonTicks.CUE)
 	if not bool(entry.sold) or bool(entry.locked) or not shop(): return
 	# A balance the server has not said yet is read first; no card shows a guess.
 	if not _balance_known():

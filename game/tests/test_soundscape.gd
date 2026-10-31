@@ -39,6 +39,14 @@ class Tuned:
 	func _now_msec() -> int:
 		return clock
 
+## Counts the button ticks it plays (the voice index wraps round its pool).
+class TickProbe:
+	extends Tuned
+	var ticks := 0
+	func _voice_cue(key: String, step: float, gain: float) -> void:
+		super(key, step, gain)
+		if key == ButtonTicks.CUE: ticks += 1
+
 var checks := 0
 var failures := 0
 
@@ -800,11 +808,13 @@ func _check_button_ticks() -> void:
 	ButtonTicks.install(self)
 	ButtonTicks.install(self)
 	await process_frame
-	var hooks := root.get_children().filter(func(child: Node) -> bool: return child.name == ButtonTicks.NODE_NAME)
-	_check(hooks.size() == 1, "Installing the tick twice keeps one hook under the root")
+	var hooks := root.get_children().filter(func(child: Node) -> bool: return child.get_script() == ButtonTicks)
+	_check(hooks.size() == 1, "Installing the tick twice in one frame keeps one hook under the root")
 	var screen := TickScreen.new()
 	root.add_child(screen)
-	var probe := Tuned.new()
+	# As in the app: the screen showing is the tree's current scene.
+	current_scene = screen
+	var probe := TickProbe.new()
 	probe.max_cues_per_frame = 0
 	screen.add_child(probe)
 	probe.configure({"sound": true, "haptics": false})
@@ -816,44 +826,72 @@ func _check_button_ticks() -> void:
 	button.mouse_entered.emit()
 	button.focus_entered.emit()
 	button.button_down.emit()
-	_check(probe.next_voice == 0, "Hover, focus and a press going down make no tick")
+	_check(probe.ticks == 0, "Hover, focus and a press going down make no tick")
 	button.pressed.emit()
 	var voice := probe.voices[0]
-	_check(probe.next_voice == 1 and voice.stream == SoundCues.TICK and is_equal_approx(voice.volume_db, Soundscape.CUE_DB + float(tap.db)) and is_equal_approx(voice.pitch_scale, 1.0), "A confirmed press ticks on its screen's soundscape")
+	_check(probe.ticks == 1 and voice.stream == SoundCues.TICK and is_equal_approx(voice.volume_db, Soundscape.CUE_DB + float(tap.db)) and is_equal_approx(voice.pitch_scale, 1.0), "A confirmed press ticks on its screen's soundscape")
 	var toggle := CheckButton.new()
 	box.add_child(toggle)
 	toggle.pressed.emit()
 	button.pressed.emit()
-	_check(probe.next_voice == 1, "Presses in one frame tick once")
+	_check(probe.ticks == 1, "Presses in one frame tick once")
 	await process_frame
 	# A card that closes itself first (its handler runs before the tick) still ticks.
 	var closer := Button.new()
 	closer.pressed.connect(func() -> void: box.remove_child(closer))
 	box.add_child(closer)
 	closer.pressed.emit()
-	_check(probe.next_voice == 2 and not closer.is_inside_tree(), "A button its own press takes out of the tree still ticks")
+	_check(probe.ticks == 2 and not closer.is_inside_tree(), "A button its own press takes out of the tree ticks on the screen still showing")
 	closer.free()
 	await process_frame
-	# Quiet: the in-run HUD and a button that plays its own sound.
+	# Leaving a room: its handler takes the whole room away before the tick, so
+	# the tick lands on the screen left showing, never on the room's (gone) one.
+	var room := TickScreen.new()
+	screen.add_child(room)
+	var room_sound := TickProbe.new()
+	room_sound.max_cues_per_frame = 0
+	room.add_child(room_sound)
+	room_sound.configure({"sound": true, "haptics": false})
+	room.soundscape = room_sound
+	var leave := Button.new()
+	leave.pressed.connect(func() -> void: screen.remove_child(room))
+	room.add_child(leave)
+	leave.pressed.emit()
+	_check(probe.ticks == 3 and room_sound.ticks == 0, "Leave ticks on the screen it returns to: %d %d" % [probe.ticks, room_sound.ticks])
+	room.free()
+	await process_frame
+	# Quiet: the controls a run is played with, and a button that plays its own sound.
 	var controls := ChapterControls.new()
 	screen.add_child(controls)
 	await process_frame
-	for control: Button in [controls.action_button, controls.pause_button, controls.finish_button, controls.fast_forward_button]: control.pressed.emit()
-	_check(probe.next_voice == 2 and ButtonTicks.soundscape_for(controls.action_button) == null, "The in-run controls never tick over the run's cues")
+	for control: Button in [controls.action_button, controls.finish_button, controls.fast_forward_button]: control.pressed.emit()
+	var reactions := Control.new()
+	var face := Button.new()
+	reactions.add_child(face)
+	controls.dock_beside_finish(reactions, Vector2(120, 54))
+	face.pressed.emit()
+	_check(probe.ticks == 3 and ButtonTicks.soundscape_for(controls.action_button) == null, "The controls a run is played with never tick over its cues")
+	controls.pause_button.pressed.emit()
+	_check(probe.ticks == 4, "Pause ticks: it makes no cue of its own")
+	await process_frame
 	var card_button := controls.button("Play", func() -> void: pass)
 	controls.overlay.add_child(card_button)
 	card_button.pressed.emit()
-	_check(probe.next_voice == 3, "A card's button over the chapter ticks")
+	_check(probe.ticks == 5, "A card's button over the chapter ticks")
 	await process_frame
 	var own := Button.new()
 	ButtonTicks.quiet(own)
 	box.add_child(own)
 	own.pressed.emit()
-	_check(probe.next_voice == 3, "A button that plays its own sound does not tick as well")
+	_check(probe.ticks == 5, "A button that plays its own sound does not tick as well")
+	ButtonTicks.quiet(own, false)
+	own.pressed.emit()
+	_check(probe.ticks == 6, "A button let tick again ticks (the Wardrobe's button toward Buy)")
+	await process_frame
 	# The nearest screen's soundscape: a room inside Main ticks on the room's.
 	var inner := TickScreen.new()
 	screen.add_child(inner)
-	var inner_sound := Tuned.new()
+	var inner_sound := TickProbe.new()
 	inner_sound.max_cues_per_frame = 0
 	inner.add_child(inner_sound)
 	inner_sound.configure({"sound": true, "haptics": false})
@@ -861,7 +899,7 @@ func _check_button_ticks() -> void:
 	var room_button := Button.new()
 	inner.add_child(room_button)
 	room_button.pressed.emit()
-	_check(inner_sound.next_voice == 1 and probe.next_voice == 3, "A button ticks on the nearest screen's soundscape only")
+	_check(inner_sound.ticks == 1 and probe.ticks == 6, "A button ticks on the nearest screen's soundscape only")
 	await process_frame
 	probe.configure({"sound": false, "haptics": false})
 	button.pressed.emit()
@@ -869,15 +907,57 @@ func _check_button_ticks() -> void:
 	probe.set_backgrounded(true)
 	button.pressed.emit()
 	probe.set_backgrounded(false)
-	_check(probe.next_voice == 3, "Sound off or the app in the background makes no tick")
+	_check(probe.ticks == 6, "Sound off or the app in the background makes no tick")
 	var bare := Button.new()
 	root.add_child(bare)
 	bare.pressed.emit()
-	_check(probe.next_voice == 3, "A button under no screen with sound is silent and does not fail")
+	_check(probe.ticks == 6, "A button under no screen with sound is silent and does not fail")
 	bare.free()
+	# Real clicks: a release over the button ticks, and a Sound tile turned off
+	# is silent (its toggled runs before pressed).
+	var view := SubViewport.new()
+	view.size = Vector2i(400, 300)
+	view.handle_input_locally = true
+	screen.add_child(view)
+	var panel := TickScreen.new()
+	panel.soundscape = probe
+	panel.size = Vector2(400, 300)
+	view.add_child(panel)
+	var plain := Button.new()
+	plain.position = Vector2(10, 10)
+	plain.size = Vector2(120, 50)
+	panel.add_child(plain)
+	var tile := CheckButton.new()
+	tile.button_pressed = true
+	tile.position = Vector2(10, 100)
+	tile.size = Vector2(120, 50)
+	tile.toggled.connect(func(on: bool) -> void: probe.configure({"sound": on, "haptics": false}))
+	panel.add_child(tile)
+	await process_frame
+	_click(view, Vector2(40, 30), true)
+	_check(probe.ticks == 6, "Pressing down on a button makes no tick")
+	_click(view, Vector2(40, 30), false)
+	_check(probe.ticks == 7, "Letting go over it ticks")
+	await process_frame
+	_click(view, Vector2(40, 120), true)
+	_click(view, Vector2(40, 120), false)
+	_check(not tile.button_pressed and probe.ticks == 7, "Turning the Sound tile off makes no tick")
+	await process_frame
+	_click(view, Vector2(40, 120), true)
+	_click(view, Vector2(40, 120), false)
+	_check(tile.button_pressed and probe.ticks == 8, "Turning it back on ticks")
+	current_scene = null
 	screen.queue_free()
 	for hook: Node in hooks: hook.queue_free()
 	await process_frame
+
+static func _click(view: SubViewport, at: Vector2, down: bool) -> void:
+	var event := InputEventMouseButton.new()
+	event.position = at
+	event.button_index = MOUSE_BUTTON_LEFT
+	event.button_mask = MOUSE_BUTTON_MASK_LEFT if down else 0
+	event.pressed = down
+	view.push_input(event, true)
 
 ## Under Reduce motion a mechanism snaps, so the world reports no movement.
 func _check_reduced_motion() -> void:

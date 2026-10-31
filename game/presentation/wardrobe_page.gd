@@ -185,8 +185,6 @@ func _pip_panel() -> Control:
 	gap.custom_minimum_size.y = 6
 	column.add_child(gap)
 	action_button = ShopKit.content_button(Control.new(), 58)
-	# Wear and Take off sound their own chime; the flow ticks the press that opens Buy.
-	ButtonTicks.quiet(action_button)
 	action_button.name = "WardrobeAction"
 	action_button.pressed.connect(func() -> void: if not str(_model.get("selected", "")).is_empty(): action_pressed.emit(str(_model.selected)))
 	column.add_child(action_button)
@@ -382,6 +380,8 @@ func _show_selected(entry: Dictionary, shop: bool) -> void:
 	_note.visible = false
 	if entry.is_empty(): return
 	action_button.disabled = false
+	# Wear and Take off sound their own chime; a press toward Buy ticks.
+	ButtonTicks.quiet(action_button, bool(entry.owned))
 	var label := ""
 	if bool(entry.owned):
 		label = PlayerCopy.WARDROBE_TAKE_OFF if bool(entry.worn) else PlayerCopy.WARDROBE_WEAR

@@ -179,9 +179,6 @@ func _build_ui() -> void:
 	ControlTheme.install_buttons(theme)
 	ui.theme = theme
 	hud = Control.new()
-	# The in-run controls (action, pause, finish, fast forward) make the run's
-	# own cues; a tick on each press would talk over them.
-	ButtonTicks.quiet(hud)
 	hud.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	hud.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	ui.add_child(hud)
@@ -255,11 +252,14 @@ func _build_ui() -> void:
 	action_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	action_button.position = Vector2(-240, -178)
 	action_button.size = Vector2(210, 64)
+	# The controls a run is played with make its own cues: no tick over them.
+	ButtonTicks.quiet(action_button)
 	hud.add_child(action_button)
 	finish_button = button_for("finish", func(): finish_requested.emit())
 	finish_button.set_anchors_and_offsets_preset(Control.PRESET_BOTTOM_RIGHT)
 	finish_button.position = Vector2(-240, -100)
 	finish_button.size = Vector2(210, 54)
+	ButtonTicks.quiet(finish_button)
 	hud.add_child(finish_button)
 	fast_forward_button = HoldButton.new()
 	fast_forward_button.name = "FastForward"
@@ -271,6 +271,7 @@ func _build_ui() -> void:
 	fast_forward_button.position = Vector2(-240, -178)
 	fast_forward_button.size = Vector2(210, 64)
 	fast_forward_button.visible = false
+	ButtonTicks.quiet(fast_forward_button)
 	hud.add_child(fast_forward_button)
 	# Skip acts on release, so the turn ends after the finger has lifted.
 	skip_wait_button = button_for("skip_wait", func(): skip_wait_requested.emit())
@@ -301,6 +302,8 @@ func _build_ui() -> void:
 ## buttons in their places. The hint line keeps clear of it. One control at most.
 func dock_beside_finish(control: Control, size: Vector2) -> void:
 	_docked_width = size.x + DOCK_GAP
+	# A run's reactions pop their own sound.
+	ButtonTicks.quiet(control)
 	hud.add_child(control)
 	if settings.get("left_handed", false): _anchor_rect(control, Control.PRESET_BOTTOM_LEFT, Rect2(28.0 + 210.0 + DOCK_GAP, -100, size.x, size.y))
 	else: _anchor_rect(control, Control.PRESET_BOTTOM_RIGHT, Rect2(-240.0 - DOCK_GAP - size.x, -100, size.x, size.y))
