@@ -43,8 +43,10 @@ jobs:
     name: iOS device build (unsigned, arm64, ${{ matrix.services }})
     # A manual TestFlight run skips the unsigned checks; pushes always run them.
     if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.testflight) }}
-    # Standard arm64 runner: free on a public repository. Never use -large or -xlarge.
-    runs-on: macos-26
+    # Test branch: the Xcode 27.1 image (iOS 27.1 SDK, iPhone Duo). Never use -large or -xlarge.
+    runs-on: xcode-27
+    env:
+      XCODE_APP: /Applications/Xcode_27.1.app
     timeout-minutes: 90
     strategy:
       fail-fast: false
@@ -66,6 +68,8 @@ jobs:
           set -euo pipefail
           sudo xcode-select --switch "$XCODE_APP"
           xcodebuild -version
+          xcodebuild -showsdks | grep -iE 'iphoneos|iphonesimulator'
+          sw_vers
 
       - name: Build the iOS plugin
         uses: ./.github/actions/build-ios-plugin
@@ -155,7 +159,7 @@ jobs:
           for key in CFBundleIdentifier CFBundleDisplayName CFBundleShortVersionString CFBundleVersion \
             MinimumOSVersion UIDeviceFamily UISupportedInterfaceOrientations UISupportedInterfaceOrientations~ipad UIRequiresFullScreen \
             ITSAppUsesNonExemptEncryption NSCameraUsageDescription NSMicrophoneUsageDescription \
-            NSPhotoLibraryUsageDescription; do
+            NSPhotoLibraryUsageDescription DTSDKName DTPlatformVersion DTXcode DTXcodeBuild UIApplicationSceneManifest; do
             printf '%s: ' "$key"
             /usr/libexec/PlistBuddy -c "Print :$key" "$app/Info.plist" 2>/dev/null || echo "(absent)"
           done | tee "$IOS_LOGS/app-identity.txt"
@@ -222,7 +226,10 @@ jobs:
     # on Rosetta. It never fails the workflow; the device job above is the proof.
     needs: device
     continue-on-error: true
-    runs-on: macos-26
+    runs-on: xcode-27
+    env:
+      XCODE_APP: /Applications/Xcode_27.1.app
+      SIMULATOR_DEVICE: iPhone Duo
     timeout-minutes: 60
     defaults:
       run:
@@ -259,7 +266,9 @@ jobs:
               archs = runtime.get("supportedArchitectures")
               print(f'{runtime.get("name")}: supportedArchitectures={archs}')
               # Older simctl versions omit the key; treat that as unknown and try anyway.
-              if archs is None or "x86_64" in archs:
+              offers = any(d.get("name") == os.environ["SIMULATOR_DEVICE"] for d in runtime.get("supportedDeviceTypes", []))
+              print(f'  offers {os.environ["SIMULATOR_DEVICE"]}: {offers}')
+              if (archs is None or "x86_64" in archs) and (offers or not chosen):
                   chosen = runtime["identifier"]
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as env:
               if chosen:
@@ -344,6 +353,9 @@ jobs:
             fi
           done
           tail -40 "$IOS_LOGS/godot-stdout.log" "$IOS_LOGS/godot-stderr.log" 2>/dev/null || true
+          # Test branch: the size Godot was given on the Duo's inner display.
+          grep -iE 'screen|window|safe|resolution|size' "$IOS_LOGS/godot-stdout.log" | head -20 || true
+          sips -g pixelWidth -g pixelHeight "$IOS_LOGS"/simulator-*s.png 2>/dev/null || true
 
       - name: Remove the temporary simulator
         if: always() && env.SIM_UDID != ''
