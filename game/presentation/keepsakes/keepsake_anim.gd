@@ -128,12 +128,13 @@ static func slide_leg(points: Array[Vector3]) -> Callable:
 
 ## Hops through `points`, one hop each of `time` seconds and `height` high,
 ## starting `at`, the pip crouching, stretching and landing with a footstep on
-## each. Returns when the last hop ends.
+## each (a `mover` given rides instead, and the pip is left alone). Returns
+## when the last hop ends.
 func hop_steps(points: Array, at: float, time: float, height: float, mover: Node3D = null, lift: Vector3 = Vector3.ZERO) -> float:
 	var t := at
 	for index in range(points.size() - 1):
 		_follow(hop_leg(points[index], points[index + 1], height), t, time, mover, lift)
-		rider_call(&"play_hop", [time, HOP_CONTACT], t)
+		if mover == null: rider_call(&"play_hop", [time, HOP_CONTACT], t)
 		t += time
 	return t
 
@@ -147,6 +148,8 @@ func slide_down(from: Vector3, points: Array[Vector3], landing: Vector3, at: flo
 	_follow(slide_leg(points), at + sit_time, time, mover, lift)
 	var off := at + sit_time + time
 	_follow(hop_leg(points[points.size() - 1], landing, 0.12), off, lip_time, mover, lift)
+	# The pip's own hooks only when the pip is what rides (a `mover` rides in its place).
+	if mover != null: return off + lip_time
 	rider_call(&"play_hop", [lip_time, HOP_CONTACT], off)
 	rider_call(&"play_carry_release", [], off + lip_time * HOP_CONTACT)
 	if not reduced and tween != null and rider != null and rider.has_method(&"set_ride_pose"):

@@ -287,19 +287,28 @@ func _check_giant_steps_ride() -> void:
 			_check(on_chute, "%s: the sit stays on the top and the slide follows the chute's bars" % label)
 			_check(absf(last.y) < 0.001 and last.distance_to(points.landing) < 0.001, "%s: lands on the grass past the chute" % label)
 			_check(total <= float(builder.beats(state)[0].time) + 0.001 and float(builder.beats(state)[0].time) <= Builder.BASE_MAX, "%s fits its base beat: %.2f" % [label, total])
-		# Beside or behind the steps the ball goes, and the pip is not carried.
-		for side: Vector3 in [Vector3(-1.2, 0, 0.0), Vector3(0.2, 0, -0.7)]:
+		# In front the pip rides and its hooks run; beside or behind the steps the
+		# ball goes, and the pip is not carried.
+		for side: Vector3 in [Vector3(-0.65, 0, 0.6), Vector3(-1.2, 0, 0.0), Vector3(0.2, 0, -0.7)]:
 			var prop := Node3D.new()
 			root.add_child(prop)
 			var parts: Dictionary = builder.build(prop, state)
 			var anim := Anim.new()
 			anim.fx = Node3D.new()
 			prop.add_child(anim.fx)
-			anim.rider = Node3D.new()
-			prop.add_child(anim.rider)
+			var pip := HookedPip.new()
+			prop.add_child(pip)
+			anim.rider = pip
 			anim.rider_from = side
+			var holder := Node.new()
+			root.add_child(holder)
+			anim.tween = holder.create_tween().set_parallel(true)
 			builder.play("base", anim, parts, state)
-			_check(anim.landing == null and not anim.spawned.is_empty(), "Giant Steps from %s sends the ball and carries nobody" % side)
+			anim.tween.custom_step(5.0)
+			if side.z >= 0.42: _check(anim.landing != null and pip.calls >= 10, "Giant Steps from in front carries the pip, hopping, sitting and bouncing: %d hooks" % pip.calls)
+			else: _check(anim.landing == null and not anim.spawned.is_empty() and pip.calls == 0, "Giant Steps from %s sends the ball, and the pip standing by neither hops, sits nor bounces: %d" % [side, pip.calls])
+			anim.tween.kill()
+			holder.free()
 			prop.free()
 		# The hops touch down before their end, so the landing squash is on the ground.
 		var hop: Callable = Anim.hop_leg(Vector3.ZERO, Vector3(0.36, 0.24, 0), Steps.HOP_HEIGHT)
@@ -324,3 +333,10 @@ static func _to_polyline(at: Vector3, points: Array[Vector3]) -> float:
 		var t := clampf((at - a).dot(b - a) / maxf((b - a).length_squared(), 0.000001), 0.0, 1.0)
 		best = minf(best, at.distance_to(a.lerp(b, t)))
 	return best
+
+## A pip that counts the ride hooks it is given.
+class HookedPip extends Node3D:
+	var calls := 0
+	func play_hop(_duration: float, _contact: float = 0.8) -> void: calls += 1
+	func set_ride_pose(_sit: float, _lean: Vector3) -> void: calls += 1
+	func play_carry_release() -> void: calls += 1
