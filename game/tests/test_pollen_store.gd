@@ -8,7 +8,7 @@ extends SceneTree
 ## - the four bundles show the art, totals, bonus lines, Pollen per $1 and the
 ##   store's own prices from the "pollen" offering only; the first bundle line
 ##   shows only while that gift is on and unused, on one line with its percent;
-## - at 1600x738 and on a small phone (1280x720) the header, the first bundle
+## - at 1600x738 and on small phones (1600x720, 1280x720) the header, the first bundle
 ##   line, the cards and the footer sit in order inside the page, with no gap
 ##   left where the header's note was;
 ## - the confirm card adds up in plain sums, and its Buy hands over to the store;
@@ -165,7 +165,7 @@ func _run() -> void:
 	await _cards()
 	await _buying()
 	await _gift()
-	for size: Vector2 in [Vector2(1600, 738), Vector2(1280, 720)]: await _layout(size)
+	for size: Vector2 in [Vector2(1600, 738), Vector2(1600, 720), Vector2(1280, 720)]: await _layout(size)
 	await _cancelled_and_failed()
 	await _claim_waits()
 	await _refund()
@@ -235,7 +235,7 @@ func _buying() -> void:
 	var sheet: Node = t.host.ui.find_child("PollenStoreConfirm", true, false)
 	var words := _texts(sheet)
 	_check(sheet != null and PlayerCopy.POLLEN_STORE_CONFIRM_TITLE % "Pouch" in words and PlayerCopy.POLLEN_STORE_LINE_BONUS % ["Pouch", "1,000"] in words, "Buy a Pouch? with the Pouch and its bonus")
-	_check("21,000" in words and PlayerCopy.POLLEN_STORE_YOU_GET in words and "9,000  →  " in words and "30,000" in words and "$3.99" in words and not PlayerCopy.POLLEN_STORE_GIFT % 10 in words, "Plain sums: you get 21,000, 9,000 to 30,000, you pay $3.99, no gift: " + str(words))
+	_check("21,000" in words and PlayerCopy.POLLEN_STORE_YOU_GET in words and "9,000  →  " in words and "30,000" in words and "$3.99" in words and not words.any(func(word: String) -> bool: return word.begins_with(PlayerCopy.POLLEN_STORE_GIFT.get_slice("(", 0))), "Plain sums: you get 21,000, 9,000 to 30,000, you pay $3.99, no gift: " + str(words))
 	_check(t.purchases.bought.is_empty() and t.fake.sent.is_empty(), "Nothing is bought until its Buy")
 	t.fake.replies = [_credited("pouch", 0, 30000)]
 	(sheet.find_child("PollenStoreConfirmBuy", true, false) as Button).pressed.emit()
