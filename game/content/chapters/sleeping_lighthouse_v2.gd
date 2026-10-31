@@ -16,7 +16,7 @@ const DATA := {
 		"completion": PlayerCopy.LIGHTHOUSE_PREVIEW_7F3B08F42FED,
 	},
 	"thumbnail": "res://assets/paid_levels/sleeping-lighthouse.png",
-	"beds": ["water_far"],
+	"beds": ["water_far", "shore"],
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/lighthouse.gd",

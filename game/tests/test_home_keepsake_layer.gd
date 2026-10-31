@@ -23,6 +23,14 @@ const HardMode = preload("res://services/hard_mode.gd")
 const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const StaticBatch = preload("res://presentation/kit/static_batch.gd")
 const SPIRIT_HEIGHT := 1.15
+## The water a keepsake pours or rocks (services/sound_cues.gd), heard beside its beats.
+const WATER_CUES := ["drip", "slosh"]
+## Every beat earned: each water keepsake's water as [cue, variant], in time order.
+const WATER_HEARD := {
+	"conservatory": [["drip", 0], ["drip", 1], ["drip", 2], ["drip", 3], ["drip", 4], ["drip", 5], ["drip", 6]],
+	"turn-of-the-tide": [["drip", 0], ["drip", 1], ["drip", 2], ["drip", 3], ["slosh", 0], ["slosh", 0]],
+	"the-wishing-well": [["drip", 0], ["drip", 1], ["drip", 2], ["drip", 3], ["drip", 4]],
+}
 var checks := 0
 var failures := 0
 var box_heights := {}
@@ -384,7 +392,7 @@ func _check_triggers() -> void:
 	_check(layer.ground_height(room) > 0.5, "On Hard the pip stands on the house's raised floor: %.2f" % layer.ground_height(room))
 	# New marks while the pip is inside: the rebuilt house is walked on into, quietly.
 	var heard: Array = []
-	stage.play_cue = func(cue: String) -> void: heard.append(cue)
+	stage.play_cue = func(cue: String, _variant: int) -> void: heard.append(cue)
 	var fewer := _everything()
 	fewer = fewer.filter(func(item: Dictionary) -> bool: return item.family != "earlier")
 	stage.set_keepsakes(fewer)
@@ -546,11 +554,15 @@ func _check_play() -> void:
 	var layer: Node3D = home.layer
 	await _settle(layer)
 	var cues: Array = []
-	stage.play_cue = func(cue: String) -> void: cues.append(cue)
+	var water: Array = []
+	stage.play_cue = func(cue: String, variant: int) -> void:
+		if cue in WATER_CUES: water.append([cue, variant])
+		else: cues.append(cue)
 	for id: String in layer.shown_ids():
 		var rest := _pose(layer, id)
 		var tap_start := Time.get_ticks_msec()
 		cues.clear()
+		water.clear()
 		_check(stage.play_keepsake(id) and stage.keepsake_playing(), "%s plays" % id)
 		_check(not stage.play_keepsake(id), "A second tap while %s plays is ignored" % id)
 		var moved := false
@@ -567,6 +579,7 @@ func _check_play() -> void:
 		_check(_pose(layer, id) == rest, "%s ends in exactly its rest pose" % id)
 		var keepsake: Dictionary = States.entries()[States.entries().map(func(entry: Dictionary) -> String: return entry.id).find(id)].keepsake
 		_check(cues.size() == keepsake.sounds.size() and cues == keepsake.sounds.values(), "%s plays one fixed cue per beat: %s" % [id, cues])
+		_check(water == WATER_HEARD.get(id, []), "%s plays its water at its moments, each drop of a run at its own pitch: %s" % [id, water])
 		_check(layer.prop_node(id).get_node_or_null("Tap") == null, "%s frees what it made for the tap" % id)
 	# Reduce motion: parts jump to the lit pose, hold, and go back; nothing slides.
 	world.reduced_motion = true

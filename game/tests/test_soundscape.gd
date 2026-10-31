@@ -2,6 +2,7 @@ extends SceneTree
 
 const Soundscape = preload("res://services/soundscape.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
+const Celebration = preload("res://presentation/leaderboard_celebration.gd")
 
 class Probe:
 	extends "res://services/soundscape.gd"
@@ -97,6 +98,8 @@ func _check_cues() -> void:
 	var probe := _tuned(23)
 	var keys: Array = Soundscape.CUE_RANGES.keys()
 	_check(keys.size() == Soundscape.CLIPS.size(), "Every gameplay cue has its own pitch range")
+	# A turn's cues; fixed cues have one pitch each (_check_fixed_cues).
+	keys = keys.filter(func(key: String) -> bool: return not SoundCues.is_fixed(key))
 	var order: Array = []
 	for i in range(160):
 		order.append(keys[i % keys.size()])
@@ -471,7 +474,7 @@ func _check_calls() -> void:
 	probe._call_timer.stop()
 	probe._sync_loops()
 	_check(probe.calling == "birds" and not probe._call_timer.is_stopped(), "The world check arms a set of calls whose timer stopped")
-	probe.begin_turn("turn-of-the-tide@1", "set-the-tide")
+	probe.begin_turn("relay-isles@2", "relay")
 	_check(probe.calling.is_empty() and probe._call_timer.is_stopped(), "A chapter without birds stops them")
 	probe.clear_turn()
 	_check(probe.calling == "birds" and not probe._call_timer.is_stopped(), "Back on Home the birds wait to sing again")
@@ -625,7 +628,7 @@ func _check_loops() -> void:
 	_check(probe.calling == "birds" and not probe._call_timer.is_stopped() and _all_loops_silent(probe), "Home sings its bird calls while its world is on screen, on no bed or loop voice")
 	probe.begin_turn("turn-of-the-tide@1", "set-the-tide")
 	await create_timer(0.2).timeout
-	_check(_loop_playing(probe, "water_near") and probe.calling.is_empty() and probe._call_timer.is_stopped(), "A chapter swaps the birds for its own water")
+	_check(_loop_playing(probe, "water_near") and probe.calling == "shore" and not probe._call_timer.is_stopped(), "A chapter swaps the birds for its own water and its shore")
 	world.mechanism_moving.emit("bucket", "bucket", -1)
 	var reel := _loop_voice(probe, "reel")
 	_check(reel != null and is_equal_approx(reel.pitch_scale, 1.0), "A lowering bucket turns the shared reel at its own pitch")
@@ -652,6 +655,18 @@ func _check_loops() -> void:
 	world.visible = true
 	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
 	_check(_loop_playing(probe, "water_near") and _loop_voice(probe, "spout") != null, "Showing the world again brings back what still sounds")
+	# The pause card: the screen says paused, and the regular check hushes the water.
+	var paused := [true]
+	probe.quiet_while = func() -> bool: return paused[0]
+	probe._on_call_due()
+	_check(not probe.call_voice.playing, "No shore wash starts once the screen is paused")
+	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
+	_check(not _loop_playing(probe, "water_near") and _loop_voice(probe, "spout") == null and probe.calling.is_empty() and probe._call_timer.is_stopped(), "A paused screen hushes its bed, its loops and its shore")
+	_check(not probe._world_check.is_stopped(), "and keeps checking, so it hears the pause end")
+	paused[0] = false
+	await create_timer(Soundscape.WORLD_CHECK_SECONDS + 0.15).timeout
+	_check(_loop_playing(probe, "water_near") and probe.calling == "shore" and not probe._call_timer.is_stopped(), "Leaving the pause brings the water and the shore back")
+	probe.quiet_while = Callable()
 	probe.configure({"sound": false, "haptics": false})
 	_check(_all_loops_silent(probe), "Sound off stops every loop and bed at once")
 	probe.configure({"sound": true, "haptics": false})
@@ -676,6 +691,63 @@ static func _loop_voice(probe: Tuned, loop: String) -> AudioStreamPlayer:
 
 static func _loop_playing(probe: Tuned, loop: String) -> bool:
 	return _loop_voice(probe, loop) != null
+
+## Fixed cues (keepsakes and screens): one pitch per cue and variant, the
+## keepsakes' first pitch as it always was, and no turn's pitch ever moves.
+func _check_fixed_cues() -> void:
+	var unchanged := true
+	for key: String in SoundCues.CUES:
+		var span: Vector2 = SoundCues.CUES[key].range
+		unchanged = unchanged and Soundscape.fixed_pitch(key) == lerpf(span.x, span.y, Soundscape.identity_unit(["keepsake", key]))
+	_check(unchanged, "Every keepsake beat keeps the one pitch it had before drops had variants")
+	var drops: Array = []
+	var walk := true
+	var drip_span: Vector2 = SoundCues.CUES.drip.range
+	for variant in range(8):
+		var pitch := Soundscape.fixed_pitch("drip", variant)
+		walk = walk and pitch >= drip_span.x and pitch <= drip_span.y and pitch == Soundscape.fixed_pitch("drip", variant)
+		if variant > 0: walk = walk and absf(pitch - float(drops[-1])) >= Soundscape.CUE_MIN_MOVE - 0.0001
+		drops.append(pitch)
+	_check(walk, "A run of drops stays in its span, moves each drop and is the same run every time: " + str(drops))
+	var exact := true
+	for key: String in SoundCues.CUES:
+		if key.begins_with("ui_"): exact = exact and SoundCues.is_fixed(key) and SoundCues.CUES[key].range.x == SoundCues.CUES[key].range.y and Soundscape.fixed_pitch(key, 3) == SoundCues.CUES[key].range.x
+	_check(exact, "Each screen confirmation has one exact pitch")
+	for kind: String in Celebration.TIERS:
+		_check(SoundCues.CUES.has(str(Celebration.TIERS[kind].get("cue", ""))), "The %s celebration names a cue" % kind)
+	# The same turn with fixed cues between its events sounds exactly the same.
+	var plain := _tuned(41)
+	var busy := _tuned(42)
+	var heard: Array = [[], []]
+	for index in range(2):
+		var probe: Tuned = [plain, busy][index]
+		probe.begin_turn("turn-of-the-tide@2", "slack-water")
+		for event: String in ["water_rise", "bridge_opened", "water_rise", "bridge_closed"]:
+			if probe == busy:
+				probe.play_fixed_cue("drip", 2)
+				probe.play_fixed_cue("ui_pollen")
+			probe.consume_turn_events([event], ["b|" + event], true)
+			heard[index].append(_voice_sound(_last_cue(probe)))
+	_check(heard[0] == heard[1], "Keepsake and screen cues never move a turn's pitches: %s" % [heard])
+	var played := busy.next_voice
+	busy.configure({"sound": false, "haptics": false})
+	busy.play_fixed_cue("ui_bought")
+	busy.configure({"sound": true, "haptics": false})
+	busy.set_backgrounded(true)
+	busy.play_fixed_cue("ui_bought")
+	busy.set_backgrounded(false)
+	_check(busy.next_voice == played, "Sound off or the app in the background plays no fixed cue")
+	busy.play_fixed_cue("ui_first")
+	_check(busy.long_voice.playing and busy.long_voice.stream == SoundCues.BELL and is_equal_approx(busy.long_voice.pitch_scale, 1.0), "First place rings the bell on its own voice at its pitch")
+	busy.play_fixed_cue("not-a-cue")
+	_check(busy.next_voice == played, "An unknown fixed cue is silent")
+	var host := Node.new()
+	Soundscape.play_on(host, "ui_bought")
+	Soundscape.play_on(null, "ui_bought")
+	_check(busy.next_voice == played, "A host with no soundscape plays nothing and does not fail")
+	host.free()
+	plain.queue_free()
+	busy.queue_free()
 
 ## Under Reduce motion a mechanism snaps, so the world reports no movement.
 func _check_reduced_motion() -> void:
@@ -771,6 +843,7 @@ func _run() -> void:
 	await _check_calls()
 	await _check_loops()
 	_check_reduced_motion()
+	_check_fixed_cues()
 	sound.queue_free()
 	await process_frame
 	# Let the audio thread consume its queued stop commands before shutting down.

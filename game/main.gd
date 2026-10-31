@@ -778,7 +778,7 @@ func _show_home() -> void:
 	# A card over Home (What's new) keeps its wheel and pinch for itself.
 	home_stage.input_blocked = func() -> bool: return _top_modal() != null
 	_set_home_hard(home_stage)
-	home_stage.play_cue = soundscape.play_keepsake_cue
+	home_stage.play_cue = soundscape.play_fixed_cue
 	home_stage.play_haptic = soundscape.tap_haptic
 	overlay.add_child(home_stage)
 	# The menu panel, its actions and Full Journey (presentation/home_menu.gd).
@@ -2120,6 +2120,7 @@ func _service_grant_card() -> void:
 	# The card says which month of the ladder arrived; Home's pips cheer behind it.
 	card["months"]=int(PollenGrant.shared().ladder(str(scope.server),str(scope.owner)).get("months",0))
 	PollenGrantCard.open(ui,card,world.actors.values() if is_instance_valid(world) else [],_open_wardrobe_from_home if wardrobe_flow.available() else Callable())
+	soundscape.play_fixed_cue("ui_pollen")
 
 ## A run of this player's that a board confirmed in its top 10
 ## (services/leaderboard_placings.gd) is celebrated once on Home, when Home is
@@ -2135,7 +2136,9 @@ func _service_leaderboard_celebration() -> void:
 	if relay_session == null or not relay_session.leaderboards_supported(): return
 	if _home_settling() or _update_gate_active() or not _home_free_for_card(): return
 	_home_celebration = LeaderboardCelebration.show_next(ui, owner, bool(saves.data.settings.get("reduced_motion", false)))
-	if _home_celebration != null: _home_celebration.view_board.connect(_view_leaderboard)
+	if _home_celebration != null:
+		_home_celebration.view_board.connect(_view_leaderboard)
+		soundscape.play_fixed_cue(_home_celebration.cue())
 
 ## A celebration's View board on Home: Friends' leaderboards, on that board's chapter.
 func _view_leaderboard(board: String) -> void:

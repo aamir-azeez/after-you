@@ -36,7 +36,7 @@ const DATA := {
 	# exactly where it counts.
 	"stand_spots": true,
 	"water_levels": {"tide": ["low", "half", "high"], "basin": ["shut", "low", "half", "high"], "chamber": ["low", "half", "high"]},
-	"beds": ["water_near"],
+	"beds": ["water_near", "shore"],
 	# Only what a crossing here can wait on (test_chapter_descriptors checks):
 	# jetty-3 on the first stage; the boom jetty and the punt ferry on the
 	# second (the sea gate and the mole steps read the sea through an "any",

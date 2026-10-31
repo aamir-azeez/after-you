@@ -108,6 +108,10 @@ var calling := ""
 var _call_timer: Timer
 var _last_call := -1
 var _call_pitch := NO_PITCH
+## () -> bool: true while the screen holds its world still behind a card it
+## calls paused. Beds and calls fade out then and come back after, on the
+## regular world check (no per-frame work). Unset: never quiet.
+var quiet_while: Callable
 
 func _init() -> void:
 	variation.randomize()
@@ -468,12 +472,20 @@ func play_reaction(identity: Array) -> void:
 	voice.volume_db = CUE_DB + float(SoundCues.REACTION.db) + reaction_gain(identity)
 	voice.play()
 
-## A Home keepsake's beat (presentation/home_keepsake_layer.gd): its cue at
-## one pitch inside the cue's span, from the cue alone, so a keepsake sounds
-## the same on every tap. It never advances a turn's cue identities.
-func play_keepsake_cue(key: String) -> void:
+## A cue outside any recorded turn, at one pitch from its name and `variant`
+## alone (fixed_pitch): a Home keepsake's beat and the water it pours
+## (presentation/home_keepsake_layer.gd), and a screen's confirmations (the
+## Wardrobe, the Pollen store and line, a leaderboard celebration, a Settings
+## toggle). The same cue and variant sound the same on every tap, and it never
+## advances a turn's cue identities.
+func play_fixed_cue(key: String, variant: int = 0) -> void:
 	if not CLIPS.has(key) or not sound_enabled or backgrounded or voices.is_empty() or not _frame_allows_cue(): return
-	_voice_cue(key, keepsake_pitch(key), 0.0)
+	_voice_cue(key, fixed_pitch(key, variant), 0.0)
+
+## Plays `key` on `host`'s soundscape when it has one (a flow's host contract).
+static func play_on(host: Object, key: String) -> void:
+	var soundscape: Variant = host.get("soundscape") if host != null else null
+	if soundscape is Node and is_instance_valid(soundscape) and soundscape.has_method("play_fixed_cue"): soundscape.play_fixed_cue(key)
 
 ## Sounds one cue on its voice at `step` semitones and `gain` dB.
 func _voice_cue(key: String, step: float, gain: float) -> void:
@@ -485,9 +497,16 @@ func _voice_cue(key: String, step: float, gain: float) -> void:
 	voice.play()
 	if voice != long_voice: next_voice = (next_voice + 1) % voices.size()
 
-static func keepsake_pitch(key: String) -> float:
+## Variant 0 is the cue's one pitch (its identity keeps the "keepsake" salt,
+## so every keepsake beat keeps the pitch it always had). Variant n walks on
+## from it, each step at least CUE_MIN_MOVE from the one before where the span
+## allows, so a run of drops moves and is the same run on every tap.
+static func fixed_pitch(key: String, variant: int = 0) -> float:
 	var span: Vector2 = SoundCues.CUES.get(key, {}).get("range", Vector2.ZERO)
-	return lerpf(span.x, span.y, identity_unit(["keepsake", key]))
+	var pitch := lerpf(span.x, span.y, identity_unit(["keepsake", key]))
+	for step in range(1, variant + 1):
+		pitch = spread_pitch(span, pitch, CUE_MIN_MOVE, identity_unit(["keepsake", key, step]))
+	return pitch
 
 static func reaction_pitch(identity: Array) -> float:
 	var span: Vector2 = SoundCues.REACTION.range
@@ -550,7 +569,7 @@ func place() -> String:
 ## while the world is on screen; mechanism loops only while it also moves.
 func _sync_loops() -> void:
 	if loop_voices.is_empty(): return
-	var audible := sound_enabled and not backgrounded and is_instance_valid(_world) and _world.is_visible_in_tree()
+	var audible := sound_enabled and not backgrounded and not _quiet() and is_instance_valid(_world) and _world.is_visible_in_tree()
 	var moving := audible and _world.is_processing()
 	var wanted := {}
 	var calls := ""
@@ -606,7 +625,7 @@ func _set_calls(key: String, instant: bool) -> void:
 ## Sings the next call and sets the timer for the one after it.
 func _on_call_due() -> void:
 	if calling.is_empty() or not sound_enabled or backgrounded or not is_instance_valid(call_voice): return
-	if not is_instance_valid(_world) or not _world.is_visible_in_tree(): return
+	if not is_instance_valid(_world) or not _world.is_visible_in_tree() or _quiet(): return
 	var spec: Dictionary = SoundCues.CALLS[calling]
 	var pick := next_call(spec, variation, _last_call, _call_pitch)
 	_last_call = pick.variant
@@ -631,6 +650,9 @@ static func next_call(spec: Dictionary, rng: RandomNumberGenerator, last: int, l
 	var gain := rng.randf_range(spec.gain.x, spec.gain.y)
 	var gap := rng.randf_range(spec.gap.x, spec.gap.y)
 	return {"variant": variant, "pitch": pitch, "gain": gain, "gap": gap}
+
+func _quiet() -> bool:
+	return quiet_while.is_valid() and bool(quiet_while.call())
 
 func _free_voice(pool: Array[AudioStreamPlayer]) -> AudioStreamPlayer:
 	for voice: AudioStreamPlayer in pool:

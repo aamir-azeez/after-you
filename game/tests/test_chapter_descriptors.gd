@@ -312,7 +312,7 @@ func _tables() -> void:
 	_same(Dressing.OTHER_FILES.keys(), [LEGACY_LIGHTHOUSE], "Dressing that is not a registered chapter's")
 	_same(Dressing.FILES[LEGACY_LIGHTHOUSE].resource_path, "res://content/dressing/sleeping_lighthouse.gd", "Dressing of the Lighthouse @1")
 	_same(IslandWorld.OTHER_STATIC_FOLD_CHAPTERS, [LEGACY_LIGHTHOUSE], "Folded keys that are not registered chapters")
-	_same(SoundCues.BEDS, {LEGACY_LIGHTHOUSE: ["water_far"], "home": ["birds"]}, "Beds that are not a registered chapter's")
+	_same(SoundCues.BEDS, {LEGACY_LIGHTHOUSE: ["water_far", "shore"], "home": ["birds"]}, "Beds that are not a registered chapter's")
 	for key: String in Index.keys():
 		var data := Index.data(key)
 		_same(Thumbnails.path(key), data.thumbnail, "Thumbnail of " + key)

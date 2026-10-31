@@ -90,7 +90,10 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			path.append(LANDING)
 			anim.carry(anim.arc(path[0], path[1], 0.05), 0.0, 0.25)
 			anim.hops(path.slice(1), 0.9, 0.22, 0.25)
-			for index in range(4): anim.halo(anim.fx, STONES[index] + Vector3(0, top + 0.04, 0), 0.08, P.SNOW, 0.95 + index * 0.22, 0.25, 0.5)
+			for index in range(4):
+				anim.halo(anim.fx, STONES[index] + Vector3(0, top + 0.04, 0), 0.08, P.SNOW, 0.95 + index * 0.22, 0.25, 0.5)
+				# A wet stone under each hop.
+				anim.sound("drip", 0.95 + index * 0.22, index)
 			# And the tide goes out again.
 			anim.move(parts.water, "scale:y", LOW - 0.12, 1.95, 0.45)
 			anim.move(parts.stones, "position:y", STONES_LOW, 1.95, 0.45)
@@ -103,6 +106,8 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			anim.move(boat, "position:y", ROCK_POOL.y + 0.18, 0.35, 0.25)
 			anim.move(boat, "rotation:z", 0.0, 0.45, 0.15)
 			anim.sound(str(sounds.get("together", "")), 0.0)
+			# The water rocks under the boat as it settles.
+			anim.sound("slosh", 0.3)
 		"hard":
 			# The water runs past the top mark and spills over the rim.
 			anim.move(parts.water, "scale:y", HIGH + 0.04, 0.0, 0.25)
@@ -113,6 +118,8 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 				anim.set_at(spill, "visible", false, 0.58)
 			anim.move(parts.water, "scale:y", LOW - 0.12, 0.3, 0.3)
 			anim.sound(str(sounds.get("hard", "")), 0.0)
+			# The spill lands on the grass.
+			anim.sound("slosh", 0.45)
 		"top":
 			var lamp: Node3D = parts.lantern
 			for found: Node in lamp.get_children():

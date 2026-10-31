@@ -312,6 +312,8 @@ func _ready() -> void:
 		if _journal_loader == null: journey.load_data()
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
+	# The pause card holds the world still: its water and calls hush meanwhile.
+	soundscape.quiet_while = func() -> bool: return mode == "paused"
 	add_child(soundscape)
 	world = Registry.world_script(chapter_key).new()
 	world.fold_over_frames = true
@@ -1114,7 +1116,10 @@ var _pollen_seen: Dictionary = {}
 func _add_pollen_line(parent: Container, receipt: Dictionary = {}) -> void:
 	if online_session == null or not online_session.has_method("nickname_scope") or not journey.pending().is_empty(): return
 	var line := PollenResultLine.once(_pollen_seen, mode, online_session.nickname_scope(), receipt if not receipt.is_empty() else journey.last_receipt(), _waiting_partner_name(journey.snapshot()), MUTED)
-	if line != null: parent.add_child(line)
+	if line == null: return
+	parent.add_child(line)
+	# Pollen arriving sparkles once, the first time its line shows.
+	if line.has_meta(PollenResultLine.FIRST_SHOWN) and is_instance_valid(soundscape): soundscape.play_fixed_cue("ui_pollen")
 
 ## The end card's Pollen: the finishing turn's credit, and the first clear the
 ## finish paid the friend, which their phone learns from its clear claim, often

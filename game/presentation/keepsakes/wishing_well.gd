@@ -95,6 +95,7 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 				anim.set_at(skip, "visible", true, index * 0.13)
 				anim.move(skip, "scale", Vector3.ONE * 1.8, index * 0.13, 0.22, Tween.TRANS_QUAD, Tween.EASE_OUT)
 				anim.set_at(skip, "visible", false, index * 0.13 + 0.22)
+				anim.sound("drip", index * 0.13, index)
 			anim.sound(str(sounds.get("hard", "")), 0.0)
 		"top":
 			# The star lights and a gold fountain rises from the water.
@@ -106,6 +107,8 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 				anim.set_at(drop, "visible", true, index * 0.04)
 				anim.path(drop, anim.arc(water, water + Vector3(cos(angle) * 0.45, 0, sin(angle) * 0.35), 0.8), index * 0.04, 0.5, 0.5)
 				anim.set_at(drop, "visible", false, index * 0.04 + 0.55)
+			# The gold drops fall back into the water.
+			for index in range(2): anim.sound("drip", 0.5 + index * 0.1, index + 3)
 			anim.sound(str(sounds.get("top", "")), 0.0)
 
 func _coin(anim: RefCounted, at: Vector3) -> MeshInstance3D:

@@ -26,7 +26,18 @@
 		"winch_unwound",
 		"bolt_shot",
 		"bolt_drawn",
-		"valve_turned"
+		"valve_turned",
+		"drip",
+		"slosh",
+		"ui_tap",
+		"ui_worn",
+		"ui_taken_off",
+		"ui_bought",
+		"ui_pollen",
+		"ui_top_ten",
+		"ui_third",
+		"ui_second",
+		"ui_first"
 	],
 	"chapters": {
 		"a-house-for-two@1": {

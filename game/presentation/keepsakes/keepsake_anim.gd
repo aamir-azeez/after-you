@@ -28,7 +28,7 @@ var looks: Array[Material] = []
 var fx: Node3D
 ## Parts a builder made in one beat and reuses in a later one, by name.
 var made: Dictionary = {}
-## (cue: String) -> void.
+## (cue: String, variant: int) -> void.
 var cue: Callable
 ## The pip, when it set the keepsake off in Explore (null for a tap): carry()
 ## moves it. rider_frame turns the keepsake's own frame into the pip's parent
@@ -316,14 +316,15 @@ func spawn_pivot(parent: Node3D, at: Vector3) -> Node3D:
 	touched[part] = true
 	return part
 
-## Plays a cue at `at`. Reduced motion plays the tap's first cue only.
-func sound(name: String, at: float = 0.0) -> void:
+## Plays a cue at `at`; `variant` picks a run's next pitch (drops across
+## stones). Reduced motion plays the tap's first cue only.
+func sound(name: String, at: float = 0.0, variant: int = 0) -> void:
 	if name.is_empty() or not cue.is_valid(): return
 	if reduced:
-		if not _first.has("sound"): cue.call(name)
+		if not _first.has("sound"): cue.call(name, variant)
 		_first["sound"] = true
 		return
-	if tween != null: tween.tween_callback(func() -> void: cue.call(name)).set_delay(start + at)
+	if tween != null: tween.tween_callback(func() -> void: cue.call(name, variant)).set_delay(start + at)
 
 ## Reduced motion: puts every part in its lit pose (after the layer has kept
 ## the rest pose).

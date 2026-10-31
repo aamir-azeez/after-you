@@ -30,6 +30,9 @@ const EVENTS := ["bell", "beacon_lit", "bridge_closed", "bridge_open", "bridge_o
 	"receivers_joined", "relay_filled", "rest_reached", "route_selected", "seed_caught", "seed_landed", "seed_missed",
 	"seed_taken", "seed_thrown", "selector:probe-selector", "source_aligned", "stage_complete", "tower_anchored",
 	"tower_reached", "turn_finished", "unknown-probe-event"]
+## Places whose world shows water, and the beds that sound like it.
+const WATER_PLACES := ["turn-of-the-tide@1", "turn-of-the-tide@2", "sleeping-lighthouse@1", "sleeping-lighthouse@2", "the-wishing-well@1"]
+const WATER_BEDS := ["water_near", "water_far", "shore", "well_drips"]
 var checks := 0
 var failures := 0
 
@@ -85,12 +88,30 @@ func _run() -> void:
 	_check_known_fields()
 	_check_look_cues()
 	_check_look_identity()
+	_check_fixed_cues(events)
+	_check_water_beds()
 	var result := Golden.check(GOLDEN, {"events": events, "chapters": table, "audible_cues": Soundscape.CLIPS.keys()})
 	for message: String in result.messages:
 		push_error(message)
 	_check(result.ok, "Event to sound mapping matches golden " + GOLDEN)
 	print("SOUND MAP: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## Cues only keepsakes and screens play (soundscape play_fixed_cue) share no
+## name with any engine event, so no chapter starts sounding one by accident.
+func _check_fixed_cues(events: Array) -> void:
+	var fixed := SoundCues.CUES.keys().filter(func(key: String) -> bool: return SoundCues.is_fixed(key))
+	_check(fixed.has("drip") and fixed.has("slosh") and fixed.has("ui_pollen"), "Keepsake water and screen confirmations are fixed cues: %s" % [fixed])
+	for key: String in fixed:
+		_check(not events.has(key), "No engine event is named like the fixed cue " + key)
+
+## Every place whose world shows water has water under it: a wash, the shore or
+## drops down a well, from services/sound_cues.gd LOOPS and CALLS.
+func _check_water_beds() -> void:
+	for place: String in WATER_PLACES:
+		var beds := SoundCues.beds(place)
+		_check(beds.any(func(bed: String) -> bool: return bed in WATER_BEDS), "%s has a water bed: %s" % [place, beds])
+		_check(SoundCues.bed_problems(beds).is_empty(), "%s's beds are loops or one set of calls" % place)
 
 ## remember() tracks every field a snapshot has, but only some chapter
 ## families diff each one. A chapter that does not diff a field (here a

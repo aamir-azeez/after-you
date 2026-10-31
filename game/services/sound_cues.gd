@@ -35,6 +35,12 @@ const POP := preload("res://assets/audio/pop.wav")
 const WINCH := preload("res://assets/audio/winch.wav")
 const BOLT := preload("res://assets/audio/bolt.wav")
 const VALVE := preload("res://assets/audio/valve.wav")
+const DRIP := preload("res://assets/audio/drip.wav")
+const WELL_DRIP := preload("res://assets/audio/well-drip.wav")
+const SLOSH := preload("res://assets/audio/slosh.wav")
+const SHORE_WASH := preload("res://assets/audio/shore-wash.wav")
+const TICK := preload("res://assets/audio/tick.wav")
+const SPARKLE := preload("res://assets/audio/sparkle.wav")
 
 ## The level every cue plays at (dB), and how far its gain wanders unless its
 ## entry sets "gain".
@@ -50,6 +56,9 @@ const DEFAULT_PRIORITY := 1
 ##   voice:     "long" for a ringing tail that a burst of short cues must not
 ##              cut; everything else shares the short-cue voices
 ##   haptic_ms: a live press vibrates the phone this long
+##   fixed:     true for a cue only soundscape play_fixed_cue plays (a Home
+##              keepsake's water, a screen's confirmation), at one pitch from
+##              its name; no engine event may share its name
 ##   priority:  which cues a tick with more cues than voices keeps first
 ##              (soundscape choose_cues): 3 the water and a stage's big
 ##              moments, 2 a spirit's own action, default 1 (DEFAULT_PRIORITY)
@@ -91,6 +100,24 @@ const CUES := {
 	"bolt_shot": {"clip": BOLT, "range": Vector2(-1.0, 1.5), "priority": 2},
 	"bolt_drawn": {"clip": BOLT, "range": Vector2(-4.0, -2.0), "priority": 2},
 	"valve_turned": {"clip": VALVE, "range": Vector2(-1.5, 1.5), "db": -1.0, "priority": 2},
+	# Fixed cues (soundscape play_fixed_cue): one pitch from the cue's name and
+	# a variant, never an engine event's, so a keepsake or a screen sounds the
+	# same every time and no turn's pitches move. No engine event has these names.
+	# Water a Home keepsake pours, drips or rocks: small drops and a soft slosh.
+	"drip": {"clip": DRIP, "range": Vector2(-2.0, 5.0), "db": -6.0, "fixed": true},
+	"slosh": {"clip": SLOSH, "range": Vector2(-2.0, 1.0), "db": -5.0, "fixed": true},
+	# Quiet confirmations on screens, each at one exact pitch (a zero-width span):
+	# a flipped toggle, an item worn or taken off, a purchase the server
+	# confirmed, Pollen arriving, and a leaderboard top 10 by tier.
+	"ui_tap": {"clip": TICK, "range": Vector2(0.0, 0.0), "db": -12.0, "fixed": true},
+	"ui_worn": {"clip": READY, "range": Vector2(5.0, 5.0), "db": -6.0, "fixed": true},
+	"ui_taken_off": {"clip": READY, "range": Vector2(0.0, 0.0), "db": -9.0, "fixed": true},
+	"ui_bought": {"clip": BLOOM, "range": Vector2(0.0, 0.0), "db": -6.0, "fixed": true},
+	"ui_pollen": {"clip": SPARKLE, "range": Vector2(0.0, 0.0), "db": -8.0, "fixed": true},
+	"ui_top_ten": {"clip": READY, "range": Vector2(2.0, 2.0), "db": -5.0, "fixed": true},
+	"ui_third": {"clip": CATCH, "range": Vector2(0.0, 0.0), "db": -4.0, "fixed": true},
+	"ui_second": {"clip": BLOOM, "range": Vector2(2.0, 2.0), "db": -4.0, "fixed": true},
+	"ui_first": {"clip": BELL, "range": Vector2(0.0, 0.0), "db": -3.0, "voice": "long", "fixed": true},
 }
 
 ## A lever or selector drawn as a presentation/kit/lever_looks.gd kind (a
@@ -147,6 +174,22 @@ const CALLS := {
 		"db": -39.0, "gain": Vector2(-2.0, 0.0), "pitch": Vector2(-4.0, -2.0), "min_move": 0.75,
 		"gap": Vector2(6.0, 14.0), "first": Vector2(2.0, 8.0),
 	},
+	# Drops falling down the Wishing Well's shaft, each with its echoes: sparse
+	# and low, under the reel of the bucket.
+	"well_drips": {
+		"variants": [
+			{"clip": WELL_DRIP}, {"clip": WELL_DRIP, "pitch": 3.0, "db": -2.0},
+			{"clip": WELL_DRIP, "pitch": -2.0, "db": -1.0},
+		],
+		"db": -27.0, "gain": Vector2(-3.0, 0.0), "pitch": Vector2(-1.5, 1.5), "min_move": 0.75,
+		"gap": Vector2(2.5, 7.0), "first": Vector2(1.0, 4.0),
+	},
+	# Small waves running up a shore and drawing back, over a place's wash.
+	"shore": {
+		"variants": [{"clip": SHORE_WASH}, {"clip": SHORE_WASH, "pitch": -1.5, "db": -1.5}],
+		"db": -33.0, "gain": Vector2(-3.0, 0.0), "pitch": Vector2(-1.0, 1.0), "min_move": 0.4,
+		"gap": Vector2(2.0, 6.0), "first": Vector2(0.5, 3.0),
+	},
 }
 
 ## A world mechanism that moves (island_world.gd mechanism_moving) -> its
@@ -166,9 +209,13 @@ const MOTION := {
 ## registered chapter's are its descriptor's "beds" (content/chapters/index.gd).
 ## They play only while that world is on screen.
 const BEDS := {
-	"sleeping-lighthouse@1": ["water_far"],
+	"sleeping-lighthouse@1": ["water_far", "shore"],
 	"home": ["birds"],
 }
+
+## True for a cue only keepsakes and screens play (CUES "fixed").
+static func is_fixed(key: String) -> bool:
+	return bool(CUES.get(key, {}).get("fixed", false))
 
 ## Which cues a crowded tick keeps first (CUES "priority").
 static func priority(key: String) -> int:
@@ -199,6 +246,7 @@ static func problems() -> Array[String]:
 		if cue.has("voice") and cue.voice != "long": found.append("Cue %s names an unknown voice" % key)
 		if cue.has("gain") and not (cue.gain is Vector2): found.append("Cue %s has a bad gain span" % key)
 		if cue.has("priority") and not (cue.priority is int and cue.priority >= DEFAULT_PRIORITY): found.append("Cue %s has a bad priority" % key)
+		if cue.has("fixed") and not (cue.fixed is bool): found.append("Cue %s has a bad fixed flag" % key)
 	for look: String in LOOK_CUES:
 		var pair: Variant = LOOK_CUES[look]
 		if not (pair is Array and pair.size() == 2 and CUES.has(pair[0]) and CUES.has(pair[1])): found.append("Look %s needs a pulled and a let-go cue" % look)

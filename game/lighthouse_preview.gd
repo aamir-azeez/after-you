@@ -95,6 +95,8 @@ func _ready() -> void:
 		settings = saved.data.settings.duplicate(true)
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
+	# The pause card holds the world still: its water and calls hush meanwhile.
+	soundscape.quiet_while = func() -> bool: return mode == "paused"
 	add_child(soundscape)
 	world = World.new()
 	world.fold_over_frames = true

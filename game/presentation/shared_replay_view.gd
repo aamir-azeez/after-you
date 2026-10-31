@@ -187,6 +187,8 @@ func _prepare_replay() -> void:
 	world.camera_exploration.frame_applied.connect(_position_replay_photos)
 	soundscape = Soundscape.new()
 	soundscape.configure(settings)
+	# The pause card holds the world still: its water and calls hush meanwhile.
+	soundscape.quiet_while = func() -> bool: return mode == "paused"
 	add_child(soundscape)
 	world.footstep.connect(func(spirit: String): if running: soundscape.play_footstep(spirit))
 	world.reunion.connect(func(): if running: soundscape.play_reunion())

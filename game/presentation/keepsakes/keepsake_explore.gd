@@ -82,7 +82,7 @@ func update_stay(at: Vector3, quiet: bool = false) -> void:
 	_sound(builder.follow(_stay.visit, prop.parts, state, local), quiet)
 
 func _sound(name: String, quiet: bool) -> void:
-	if not quiet and not name.is_empty() and _layer.cue.is_valid(): _layer.cue.call(name)
+	if not quiet and not name.is_empty() and _layer.cue.is_valid(): _layer.cue.call(name, 0)
 
 ## The pip left its stay (or Explore ended): the keepsake is put back as it was.
 func leave_stay() -> void:

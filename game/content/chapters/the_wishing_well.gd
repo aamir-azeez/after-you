@@ -20,6 +20,8 @@ const DATA := {
 	],
 	# The well mouth drops the spirit into the bucket at the bottom of the well.
 	"sound_cues": {"drop": "well_plunk"},
+	# Drops falling down the shaft while the well is on screen.
+	"beds": ["well_drips"],
 	# The chapter's keepsake on Home (presentation/keepsakes/).
 	"home_keepsake": {
 		"builder": "res://presentation/keepsakes/wishing_well.gd",

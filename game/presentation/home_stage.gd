@@ -108,7 +108,8 @@ var _keepsakes: Array[Dictionary] = []
 var _hard_marks: Dictionary = {}
 var _together_hard := false
 var _keepsake_layer: Node3D
-## (cue: String) -> void: a keepsake beat's sound (Main: the soundscape).
+## (cue: String, variant: int) -> void: a keepsake beat's sound (Main: the
+## soundscape's play_fixed_cue).
 var play_cue: Callable
 ## () -> void: a light tap of the phone, when Settings' Haptics is on (Main:
 ## the soundscape's tap_haptic).
@@ -428,8 +429,8 @@ func _place_keepsake_heading(inner: float) -> void:
 func _create_keepsake_display() -> void:
 	if not is_instance_valid(_terrain): return
 	_keepsake_layer = KeepsakeLayer.new()
-	_keepsake_layer.cue = func(cue: String) -> void:
-		if play_cue.is_valid(): play_cue.call(cue)
+	_keepsake_layer.cue = func(cue: String, variant: int) -> void:
+		if play_cue.is_valid(): play_cue.call(cue, variant)
 	_keepsake_layer.pop_heart = _pop_heart
 	_keepsake_layer.haptic = func() -> void:
 		if play_haptic.is_valid(): play_haptic.call()
