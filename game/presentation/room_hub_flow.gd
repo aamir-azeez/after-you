@@ -224,14 +224,22 @@ func redraw_chapters() -> void:
 ## Home's keepsake check ended while the hub was up (Main._service_hub_keepsakes):
 ## the chapter cards are drawn again with their locks. A tap the hub's gate
 ## holds or runs keeps the screen it was made on (its label and its chapter),
-## so the redraw waits for it to run or give up, then for any finger to lift.
+## so the redraw waits for it to run or give up, and for any finger to lift
+## (at most RELEASE_WAIT_MS), checking both every frame: a finger lifting off
+## Host or Join makes a tap in that same frame.
+const RELEASE_WAIT_MS := 5000
 func redraw_locks() -> void:
 	var drawn := screen
-	var still := func() -> bool: return is_instance_valid(drawn) and drawn == screen and host.mode == MODE_ROOMS
 	var tree := Engine.get_main_loop() as SceneTree
-	while still.call() and _gate != null and _gate.area() == drawn and (_gate.waiting() or _gate.running):
+	var release_deadline := Time.get_ticks_msec() + RELEASE_WAIT_MS
+	while _hub_still(drawn):
+		var tap_held := _gate != null and _gate.area() == drawn and (_gate.waiting() or _gate.running)
+		if not tap_held and (not TouchInput.press_held(drawn) or Time.get_ticks_msec() >= release_deadline): break
 		await tree.process_frame
-	await TouchInput.redraw_when_released(drawn, still, redraw_chapters)
+	if _hub_still(drawn): redraw_chapters()
+
+func _hub_still(drawn: CanvasLayer) -> bool:
+	return is_instance_valid(drawn) and drawn == screen and host.mode == MODE_ROOMS
 
 ## Reads the open hub's rooms again once earlier requests are done.
 func refresh() -> void:
