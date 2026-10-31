@@ -929,6 +929,12 @@ func _open_premium_chapter(scene: String, replay_context: Dictionary = {}, hard:
 		return
 	_open_chapter_preview(scene,replay_context,hard)
 
+## A chapter or a room screen is about to build: Home's keepsake check stops
+## after its current stage, so it does not compete with the build, and its
+## source is checked again later (HomeKeepsakes.stop_worker).
+func _yield_keepsake_check() -> void:
+	home_keepsakes.stop_worker()
+
 func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard: Dictionary = {}) -> void:
 	if is_instance_valid(_chapter_opening): return
 	# The chapter's own open proves what the warm-up has not reached yet.
@@ -939,9 +945,7 @@ func _open_chapter_preview(scene: String, replay_context: Dictionary = {}, hard:
 	if _chapter_open_busy():
 		_toast(PlayerCopy.MAIN_A776CD47C8D9)
 		return
-	# Home's keepsake check stops after its current stage, so it does not
-	# compete with the build; Home checks that source again later.
-	home_keepsakes.stop_worker()
+	_yield_keepsake_check()
 	# The chapter builds in one frame after the scene change; its card is
 	# drawn first. Nothing changes until it is up.
 	var opening := ChapterLoadingCard.new()
@@ -1703,6 +1707,7 @@ func _enter_online_relay() -> void:
 	foreground_refresh_queued = false
 	foreground_response = {}
 	running = false
+	_yield_keepsake_check()
 	room_hub_flow.release()
 	mode = "relay_online"
 	friend_share_target = {"api_version":2,"room_id":relay_session.coordinator.snapshot().room_id}

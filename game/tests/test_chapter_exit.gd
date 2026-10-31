@@ -2,6 +2,7 @@ extends "res://tests/test_relay_online.gd"
 ## Exercise real scene exit, retained session and durable coordinator requests.
 ## Only HTTP and storage are the same controlled doubles as the online suite.
 const Registry = preload("res://services/chapter_registry.gd")
+const StopRequest = preload("res://services/stop_request.gd")
 
 func _run() -> void:
 	for key: String in Registry.keys():
@@ -79,7 +80,12 @@ func _open_case(key: String) -> Dictionary:
 	_check(await session.open_room(ROOM), "Authenticated room read accepts the native chapter fixtures: " + key)
 	_check(session.coordinator.snapshot().get("simulation_version", level.simulation_version) == fixtures["relay-a"].simulation_version, "Retained room keeps the exact native fixture rule version: " + key)
 	session.capabilities = {"mutations_enabled": true}
+	# A keepsake check Home's worker is running (its stop request) while the room opens.
+	var check_stop := StopRequest.new()
+	app.home_keepsakes._worker_stop = check_stop
 	app._enter_online_relay()
+	_check(check_stop.stopped(), "Opening the room asks Home's running keepsake check to stop after its stage: " + key)
+	app.home_keepsakes._worker_stop = null
 	var preview: Node = app.relay_child
 	preview.set_process(false)
 	preview.set_physics_process(false)
