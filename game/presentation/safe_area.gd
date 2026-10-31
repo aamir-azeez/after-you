@@ -71,6 +71,9 @@ static func poll(tree: SceneTree) -> bool:
 ## outer display) would leave the safe area narrower than any phone gives, and
 ## pages wrap and cut their text. Such a screen draws everything a little
 ## smaller instead, down to MIN_WIDTH_SCALE (about an iPhone mini's size).
+## Phones wider than 16:9 always have room to spare and never change; a screen
+## 16:9 or narrower with any side inset (an Android foldable's inner screen with
+## a camera hole) draws just enough smaller to keep the authored width.
 const SAFE_WIDTH := 1280.0
 const MIN_WIDTH_SCALE := 0.8
 ## The factor this module last wrote to the root (1 until a screen needs one).

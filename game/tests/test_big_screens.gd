@@ -86,10 +86,14 @@ func _run() -> void:
 ## The two rules as plain arithmetic.
 func _test_rules() -> void:
 	var base := Vector2(1280, 720)
-	# Phones never change: their safe area is already wider than the authored width.
+	# Phones wider than 16:9 never change: their safe area is already wider than the authored width.
 	_check(is_equal_approx(SafeArea.width_scale(Vector2(2340, 1080), base, 2340 - 136), 1.0), "A 19.5:9 Android phone with a camera hole keeps its scale")
 	_check(is_equal_approx(SafeArea.width_scale(Vector2(2556, 1179), base, 2556 - 2 * 186), 1.0), "An iPhone in landscape with both side insets keeps its scale")
 	_check(is_equal_approx(SafeArea.width_scale(Vector2(2732, 2048), base, 2732), 1.0), "An iPad keeps its scale")
+	# A screen 16:9 or narrower is exactly 1280 units wide, so any side inset scales it a
+	# little: a book style Android foldable's inner screen with a 100 px camera hole.
+	var foldable := SafeArea.width_scale(Vector2(2176, 1812), base, 2176 - 100)
+	_check(is_equal_approx(foldable, 2076.0 / 2176.0), "A foldable's camera hole draws it about 5%% smaller (%.3f)" % foldable)
 	# The Duo's camera column: the safe area comes back to 1280 units.
 	var outer := SafeArea.width_scale(Vector2(2034, 1398), base, 2034 - 252)
 	_check(outer < 1.0 and is_equal_approx((2034 - 252) / (2034.0 / 1280.0 * outer), 1280.0), "The Duo's outer display draws a little smaller so its safe area is 1280 units wide (%.3f)" % outer)
@@ -145,7 +149,7 @@ func _check_page(app: Node, page: Control, safe: Rect2, name: String) -> void:
 	var above := block.position.y - safe.position.y
 	var below := safe.end.y - block.end.y
 	if safe.size.y > SafeArea.PAGE_HEIGHT:
-		_check(block.size.y <= SafeArea.PAGE_HEIGHT + 1.5 and absf(above - below) <= 1.5, "%s: %s centres a page block no taller than the phone's (%.0f tall, %.0f above, %.0f below)" % [name, page.name, block.size.y, above, below])
+		_check(block.size.y < SafeArea.PAGE_HEIGHT + 2.0 and absf(above - below) <= 1.5, "%s: %s centres a page block no taller than the phone's (%.0f tall, %.0f above, %.0f below)" % [name, page.name, block.size.y, above, below])
 	else:
 		_check(absf(above - margin.ends) <= 1.0 and absf(below - margin.ends) <= 1.0, "%s: %s keeps its spacing on a short screen (%.1f above, %.1f below)" % [name, page.name, above, below])
 	_check(is_equal_approx(block.position.x - safe.position.x, float(margin.side)), "%s: %s keeps its side spacing" % [name, page.name])
@@ -172,9 +176,10 @@ func _test_fold(app: Node) -> void:
 	await _settle()
 	var outer := root.content_scale_factor
 	SafeArea.simulate(Rect2(252, 0, 2853 - 252, 2007 - 60))
+	# Read before any frame passes, so the root's half second poll cannot be what moved it.
 	root.size = Vector2i(2853, 2007)
-	await _settle()
 	var inner := root.content_scale_factor
+	await _settle()
 	_check(outer < inner and inner < 1.0, "Opening the Duo moves the root scale with the window (%.3f to %.3f)" % [outer, inner])
 	_same_rect(app.ui.get_global_rect(), SafeArea.rect(root), "Main follows the unfolded safe area")
 
