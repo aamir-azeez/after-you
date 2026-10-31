@@ -13,8 +13,8 @@ import raw from "./bundles.json";
  *   `prod…` id for it, which the purchases list reports. Both are public ids that change only with the
  *   products, so they live here in code, not in CONFIG.
  * - The first bundle a player ever buys also pays first_bonus_percent of its own Pollen, rounded down,
- *   once per player (at 10, the Pouch: 2,100). A refund takes it back and never opens it again. It is 0, off,
- *   until the owner decides on it (POLLEN-RULES.md owner decision 5); at 0 nothing is paid and nothing closes.
+ *   once per player (at 20, the owner's choice of 2026-10-31, the Pouch: 4,200). A refund takes it back and never
+ *   opens it again. At 0 it is off: nothing is paid and nothing closes.
  * Amounts live only here: the phone never sends one.
  */
 export type Bundle = { pollen: number; bonus: number; usd_cents: number; play_product: string; revenuecat_product: string };

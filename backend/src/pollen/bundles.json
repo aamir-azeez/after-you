@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "first_bonus_percent": 0,
+  "first_bonus_percent": 20,
   "bundles": {
     "pinch": { "pollen": 5000, "bonus": 0, "usd_cents": 99, "play_product": "after_you_pollen_pinch", "revenuecat_product": "prodd4e2b730e5" },
     "pouch": { "pollen": 21000, "bonus": 1000, "usd_cents": 399, "play_product": "after_you_pollen_pouch", "revenuecat_product": "prod25def0f41d" },
