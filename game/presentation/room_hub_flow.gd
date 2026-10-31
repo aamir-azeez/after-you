@@ -216,7 +216,8 @@ func is_open() -> bool:
 func go_back() -> void:
 	screen.go_back()
 
-## Draws the chapter cards again, for a change in hosting access.
+## Draws the chapter cards again, for a change in hosting access or in the
+## chapter locks (Main._service_hub_keepsakes).
 func redraw_chapters() -> void:
 	screen.set_chapters(together_chapters())
 

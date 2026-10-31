@@ -134,6 +134,8 @@ func _quiet() -> bool:
 		var child: Node = device.child()
 		if child != null and _child_busy(child): return false
 		if app.mode == "relay_rooms": return false
+		# The hub finishes Home's keepsake check, then draws its chapter locks.
+		if app.mode == "rooms" and app.home_keepsakes.backfill_pending(): return false
 	return true
 
 ## A room screen on its way somewhere by itself: a request, a load, or a bloom

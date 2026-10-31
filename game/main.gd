@@ -2302,7 +2302,11 @@ func _home_settling() -> bool:
 	return (is_instance_valid(home_stage_view) and home_stage_view.folding()) or ScreenSwitch.pending_count() > 0
 
 func _service_home_keepsakes(delta: float) -> void:
-	if mode not in ["home",JourneyFlow.MODE_JOURNEY] or application_backgrounded or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening): return
+	if application_backgrounded or is_instance_valid(relay_child) or is_instance_valid(_chapter_opening): return
+	if mode == RoomHubFlow.MODE_ROOMS:
+		_service_hub_keepsakes(delta)
+		return
+	if mode not in ["home",JourneyFlow.MODE_JOURNEY]: return
 	# In a frame of its own: after Home's island has folded and the screen
 	# before it has been freed, which both take the first frames.
 	if _keepsakes_reconcile_frame >= 0 and Engine.get_process_frames() > _keepsakes_reconcile_frame and not _home_settling():
@@ -2327,6 +2331,19 @@ func _service_home_keepsakes(delta: float) -> void:
 		if [FileAccess.get_modified_time(HardMode.MARKS_PATH), hard_together()] != _home_hard_stamp: _set_home_hard(home_stage_view)
 		var offer := overlay.get_node_or_null("HomeFullJourney") as Button
 		if offer != null: offer.visible = _full_journey_offered()
+
+## The room hub finishes a keepsake check Home started and starts none of its
+## own. While a check runs the chapter chain stays open (_chapter_unlocks), so
+## without this a hub opened during one kept every chapter open, and its joins
+## unchecked, until the player went back Home. Its cards are drawn again with
+## their locks once the check ends.
+func _service_hub_keepsakes(delta: float) -> void:
+	if not home_keepsakes.backfill_pending(): return
+	_keepsake_poll += delta
+	if _keepsake_poll < 0.15: return
+	_keepsake_poll = 0.0
+	home_keepsakes.advance_backfill(1)
+	if not home_keepsakes.backfill_pending() and room_hub_flow.is_open(): room_hub_flow.redraw_chapters()
 
 func _notification(what: int) -> void:
 	# The retained parent owns services, while the child owns its active draft,
