@@ -45,6 +45,8 @@ static func follow_turns(tree: SceneTree) -> void:
 	if root.has_meta(TURNS_META): return
 	root.set_meta(TURNS_META, true)
 	_seen = native()
+	fit_width(root)
+	root.size_changed.connect(func() -> void: fit_width(root))
 	var timer := Timer.new()
 	timer.name = "SafeAreaTurns"
 	timer.wait_time = TURN_POLL_SECONDS
@@ -59,8 +61,46 @@ static func poll(tree: SceneTree) -> bool:
 	var now := native()
 	if now == _seen: return false
 	_seen = now
+	fit_width(tree.root)
 	tree.call_group(Watch.GROUP, "relayout_now")
 	return true
+
+## The narrowest the safe area may be: the authored width (project.godot's
+## base). The expand stretch already keeps the whole screen at least this wide;
+## an inset column (the iPhone Duo's camera side holds 84 pt, a sixth of its
+## outer display) would leave the safe area narrower than any phone gives, and
+## pages wrap and cut their text. Such a screen draws everything a little
+## smaller instead, down to MIN_WIDTH_SCALE (about an iPhone mini's size).
+const SAFE_WIDTH := 1280.0
+const MIN_WIDTH_SCALE := 0.8
+## The factor this module last wrote to the root (1 until a screen needs one).
+static var _width_scale := 1.0
+
+## The root's content scale factor that keeps a `safe_width` wide native safe
+## area at least SAFE_WIDTH units wide in a `window` sized screen stretched
+## from `base` (canvas_items, expand). 1 when it already is.
+static func width_scale(window: Vector2, base: Vector2, safe_width: float) -> float:
+	if not (window.x > 0.0 and window.y > 0.0 and base.x > 0.0 and base.y > 0.0 and safe_width > 0.0): return 1.0
+	var stretch := minf(window.x / base.x, window.y / base.y)
+	return clampf(safe_width / (SAFE_WIDTH * stretch), MIN_WIDTH_SCALE, 1.0)
+
+## Applies width_scale to `root` from the current safe area. Only a screen with
+## a safe area (a phone or tablet, or a simulated one) changes; anything else
+## goes back to 1 if this module changed it. Called on a resize and when the
+## safe area moves, never per frame; the factor depends on screen pixels only,
+## so the resize it causes changes nothing further.
+static func fit_width(root: Window) -> void:
+	if root == null or root.content_scale_mode != Window.CONTENT_SCALE_MODE_CANVAS_ITEMS or root.content_scale_aspect != Window.CONTENT_SCALE_ASPECT_EXPAND: return
+	var safe := native()
+	var wanted := 1.0
+	if safe.has_area():
+		var screen := Rect2(Vector2.ZERO, Vector2(root.size))
+		wanted = width_scale(screen.size, Vector2(root.content_scale_size), screen.intersection(safe).size.x)
+	elif is_equal_approx(_width_scale, 1.0):
+		return # never changed here: leave the root's own factor alone
+	if is_equal_approx(wanted, _width_scale) and is_equal_approx(root.content_scale_factor, wanted): return
+	_width_scale = wanted
+	root.content_scale_factor = wanted
 
 static func viewport_rect(screen_safe: Rect2, screen_transform: Transform2D, viewport: Rect2) -> Rect2:
 	if not screen_safe.is_finite() or not screen_transform.is_finite() or not screen_safe.has_area() or is_zero_approx(screen_transform.determinant()):
