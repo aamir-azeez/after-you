@@ -234,7 +234,9 @@ func redraw_locks() -> void:
 	var release_deadline := Time.get_ticks_msec() + RELEASE_WAIT_MS
 	while _hub_still(drawn):
 		var tap_held := _gate != null and _gate.area() == drawn and (_gate.waiting() or _gate.running)
-		if not tap_held and (not TouchInput.press_held(drawn) or Time.get_ticks_msec() >= release_deadline): break
+		# The finger's wait starts once no tap is held (a held tap may wait longer).
+		if tap_held: release_deadline = Time.get_ticks_msec() + RELEASE_WAIT_MS
+		elif not TouchInput.press_held(drawn) or Time.get_ticks_msec() >= release_deadline: break
 		await tree.process_frame
 	if _hub_still(drawn): redraw_chapters()
 
