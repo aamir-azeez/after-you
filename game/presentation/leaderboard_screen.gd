@@ -67,6 +67,8 @@ var chapter_filter: Callable
 var chapter_key := ""
 ## The player's Reduce motion setting, for celebrations.
 var reduced_motion := false
+## (cue: String) -> void: plays a celebration's tier sound (Main's soundscape).
+var play_cue: Callable
 
 var _root: Control
 var _margin: MarginContainer
@@ -421,7 +423,9 @@ func _render_own(mine: Array, top: Array, checking: Array) -> void:
 func _celebrate() -> void:
 	if not _alive or not visible or not _replay_state.is_empty() or _showing(_modal) or _showing(_celebration): return
 	_celebration = Celebration.show_next(_root, player_id, reduced_motion)
-	if _celebration != null: _celebration.view_board.connect(show_board)
+	if _celebration == null: return
+	_celebration.view_board.connect(show_board)
+	if play_cue.is_valid(): play_cue.call(_celebration.cue())
 
 ## Fetches the run's replay once per tap; a second tap while it loads waits for the first.
 func _watch(row: Dictionary) -> void:

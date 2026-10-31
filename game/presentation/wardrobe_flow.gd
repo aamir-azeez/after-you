@@ -38,6 +38,8 @@ const Wardrobe = preload("res://services/wardrobe.gd")
 const WardrobeClient = preload("res://services/wardrobe_client.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
+## Its confirmations sound on the host's soundscape (play_on).
+const Soundscape = preload("res://services/soundscape.gd")
 const Outfit = preload("res://services/outfit.gd")
 const FeaturedShelf = preload("res://services/featured_shelf.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
@@ -185,7 +187,9 @@ func confirm_buy(id: String, cost: int) -> void:
 	_close_sheet()
 	if not shop(): return
 	var answer: Dictionary = await _client().buy("item", id, cost)
-	if answer.get("ok", false): _toast(PlayerCopy.WARDROBE_BOUGHT % Catalog.display_name(id))
+	if answer.get("ok", false):
+		Soundscape.play_on(host, "ui_bought")
+		_toast(PlayerCopy.WARDROBE_BOUGHT % Catalog.display_name(id))
 	else: _toast(_error_line(str(answer.get("code", ""))))
 	_redraw()
 
@@ -195,6 +199,7 @@ func _wear(entry: Dictionary) -> void:
 	else: look[str(entry.slot)] = str(entry.id)
 	var answer: Dictionary = await _client().wear(look)
 	if not answer.get("ok", false): _toast(_error_line(str(answer.get("code", ""))))
+	else: Soundscape.play_on(host, "ui_taken_off" if bool(entry.worn) else "ui_worn")
 	_redraw()
 
 ## Wears one owned item in its slot, over the rest of the look: the results
@@ -204,6 +209,7 @@ func wear_item(id: String) -> bool:
 	var look: Dictionary = _view().get("look", {}).duplicate()
 	look[Catalog.slot(id)] = id
 	var answer: Dictionary = await _client().wear(look)
+	if answer.get("ok", false): Soundscape.play_on(host, "ui_worn")
 	_redraw()
 	return bool(answer.get("ok", false))
 

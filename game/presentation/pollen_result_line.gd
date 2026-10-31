@@ -155,6 +155,8 @@ static func _label(text: String, color: Color) -> Label:
 ## `seen` is the screen owner's memory of what it showed ({} to start, kept per
 ## room view); `screen` names the screen; `receipt` is the turn's room receipt,
 ## or room_clear(room) for the first clear a room's finish paid this player.
+## The line's first showing carries FIRST_SHOWN, so its screen can sound it once.
+const FIRST_SHOWN := "pollen_first_shown"
 static func once(seen: Dictionary, screen: String, scope: Dictionary, receipt: Dictionary, partner: String, color: Color, store: RefCounted = null) -> Control:
 	if scope.is_empty(): return null
 	var wallet: RefCounted = store if store != null else PollenWallet.shared()
@@ -167,6 +169,7 @@ static func once(seen: Dictionary, screen: String, scope: Dictionary, receipt: D
 	if line != null and not again:
 		wallet.mark_shown(str(scope.server), str(scope.owner), room_id, recording_hash)
 		seen[key] = screen
+		line.set_meta(FIRST_SHOWN, true)
 	return line
 
 ## The receipt `once` takes for the first clear a room's finish paid this player

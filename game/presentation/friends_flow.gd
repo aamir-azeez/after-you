@@ -35,6 +35,8 @@ const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Typed = preload("res://services/typed_values.gd")
+## A leaderboard celebration sounds on the host's soundscape (play_on).
+const Soundscape = preload("res://services/soundscape.gd")
 ## Main's mode while Friends is up.
 const MODE_FRIENDS := "friends"
 
@@ -120,6 +122,7 @@ func open_leaderboards(chapter_key: String) -> void:
 	var board := LeaderboardScreen.new()
 	board.chapter_key = chapter_key
 	board.reduced_motion = bool(host.saves.data.settings.get("reduced_motion", false))
+	board.play_cue = func(cue: String) -> void: Soundscape.play_on(host, cue)
 	board.client = LeaderboardClient.shared(host.api, str(host.api.player_id))
 	board.player_id = str(host.api.player_id)
 	board.chapter_filter = func(key: String) -> bool: return not (host._paid_content_hidden() and bool(Registry.descriptor(key).get("premium", false)))

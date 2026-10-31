@@ -44,6 +44,8 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const StoreSupport = preload("res://services/store_support.gd")
+## The receipt sounds on the host's soundscape (play_on).
+const Soundscape = preload("res://services/soundscape.gd")
 
 const MODE_POLLEN_STORE := "pollen_store"
 ## How long the store waits for RevenueCat to be set up for this player.
@@ -275,6 +277,7 @@ func _show_unseen() -> void:
 	var newest: Dictionary = receipts.back()
 	var paid := str(_bought.get("price", "")) if str(_bought.get("bundle", "")) == str(newest.bundle) else ""
 	_sheet = weakref(Sheets.receipt(host.ui, newest, int(newest.get("balance", _balance())), paid, func() -> void: wardrobe_requested.emit(), null))
+	Soundscape.play_on(host, "ui_bought")
 	_redraw()
 
 ## "Earn Pollen free by playing": Pollen from play, whose Back returns here. A

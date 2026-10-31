@@ -502,8 +502,11 @@ func _save_change(row: Dictionary, value: Variant) -> void:
 	if not kept: host._toast(PlayerCopy.MAIN_34B82590B663)
 	else:
 		if row.has("on_change"): row.on_change.call(value)
-		# A flipped tile answers with the usual light tick (when haptics are on).
-		if row.kind == Rows.TOGGLE: _tap_haptic()
+		# A flipped tile answers with the usual light tick (when haptics are on)
+		# and a soft click (when sound is on, which a tile turning it off is not).
+		if row.kind == Rows.TOGGLE:
+			_tap_haptic()
+			if is_instance_valid(host.soundscape): host.soundscape.play_fixed_cue("ui_tap")
 	refresh()
 
 ## Puts every row on show, the rail's summaries, the reset and the spirit in

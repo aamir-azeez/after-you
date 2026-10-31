@@ -79,10 +79,10 @@ const ARCH_RISE := 0.9
 ## `leaves` the loose leaves as [x, y, turn] in stage heights from the pair's
 ## floor (x out from the middle, y up), and `drift` where they move to.
 const TIERS := {
-	Placings.TOP_TEN: {"seconds": 1.0, "frame": "card", "card": 576, "width": 500, "height": 210, "aspect": 1.9, "gap": 0.56, "mark": "ribbon", "leaves": [], "drift": Vector2.ZERO},
-	Placings.THIRD: {"seconds": 1.6, "frame": "card", "card": 772, "width": 640, "height": 260, "aspect": 1.5, "gap": 0.4, "mark": "bronze", "leaves": [[-0.86, 0.12, -0.5], [-0.74, 0.03, -1.1], [0.74, 0.03, 1.1], [0.86, 0.12, 0.5]], "drift": Vector2(0.04, 0.22)},
-	Placings.SECOND: {"seconds": 2.1, "frame": "arch", "width": 900, "height": 300, "aspect": 1.5, "gap": 0.4, "mark": "silver", "leaves": [[-0.66, 0.62, -0.9], [-0.86, 0.36, -1.3], [-0.6, 0.16, -1.8], [0.6, 0.16, 1.8], [0.86, 0.36, 1.3], [0.66, 0.62, 0.9]], "drift": Vector2(0.16, 0.04)},
-	Placings.FIRST: {"seconds": 2.8, "frame": "gold", "width": 900, "height": 300, "aspect": 1.5, "gap": 0.4, "mark": "gold", "leaves": [[-0.94, 0.9, -0.7], [-1.04, 0.46, -1.2], [-0.84, 0.1, -1.7], [0.84, 0.1, 1.7], [1.04, 0.46, 1.2], [0.94, 0.9, 0.7]], "drift": Vector2(0.0, -0.06)},
+	Placings.TOP_TEN: {"cue": "ui_top_ten", "seconds": 1.0, "frame": "card", "card": 576, "width": 500, "height": 210, "aspect": 1.9, "gap": 0.56, "mark": "ribbon", "leaves": [], "drift": Vector2.ZERO},
+	Placings.THIRD: {"cue": "ui_third", "seconds": 1.6, "frame": "card", "card": 772, "width": 640, "height": 260, "aspect": 1.5, "gap": 0.4, "mark": "bronze", "leaves": [[-0.86, 0.12, -0.5], [-0.74, 0.03, -1.1], [0.74, 0.03, 1.1], [0.86, 0.12, 0.5]], "drift": Vector2(0.04, 0.22)},
+	Placings.SECOND: {"cue": "ui_second", "seconds": 2.1, "frame": "arch", "width": 900, "height": 300, "aspect": 1.5, "gap": 0.4, "mark": "silver", "leaves": [[-0.66, 0.62, -0.9], [-0.86, 0.36, -1.3], [-0.6, 0.16, -1.8], [0.6, 0.16, 1.8], [0.86, 0.36, 1.3], [0.66, 0.62, 0.9]], "drift": Vector2(0.16, 0.04)},
+	Placings.FIRST: {"cue": "ui_first", "seconds": 2.8, "frame": "gold", "width": 900, "height": 300, "aspect": 1.5, "gap": 0.4, "mark": "gold", "leaves": [[-0.94, 0.9, -0.7], [-1.04, 0.46, -1.2], [-0.84, 0.1, -1.7], [0.84, 0.1, 1.7], [1.04, 0.46, 1.2], [0.94, 0.9, 0.7]], "drift": Vector2(0.0, -0.06)},
 }
 
 ## View board was pressed: the board to show.
@@ -133,6 +133,11 @@ static func open(parent: Control, confirmed: Dictionary, reduced_motion: bool) -
 	made.reduced = reduced_motion
 	parent.add_child(made)
 	return made
+
+## The tier's sound (services/sound_cues.gd CUES, a fixed cue), for whoever
+## opened it to play on its soundscape.
+func cue() -> String:
+	return str(TIERS.get(tier, {}).get("cue", ""))
 
 ## Whether a celebration is up under `parent`.
 static func showing(parent: Node) -> bool:
