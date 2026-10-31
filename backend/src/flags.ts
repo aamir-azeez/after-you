@@ -54,6 +54,8 @@ export const FLAG_VARS = Object.freeze({
   pollenRefunds: "POLLEN_REFUNDS",
   /** Pollen bundles on Google Play (pollen/bundle-settle.ts): the bundle claim route, the wallet read's `bundles` part and the capability. Needs POLLEN_REFUNDS, so bundles never sell without refunds being taken back. Set only through FEATURES. */
   pollenBundles: "POLLEN_BUNDLES",
+  /** Pollen bundles on the App Store (pollen/bundle-settle.ts): the same claim route, wallet read part and its own capability for iPhone, once the App Store's four products are in bundles.json. Needs POLLEN_REFUNDS, not POLLEN_BUNDLES, so each store switches on and off by itself. Set only through FEATURES. */
+  pollenBundlesAppStore: "POLLEN_BUNDLES_APP_STORE",
   /** Leaderboards (leaderboards/): board reads, posting finished together runs, the name choice, reports and the replay check routes. */
   leaderboards: "LEADERBOARDS",
 } as const);

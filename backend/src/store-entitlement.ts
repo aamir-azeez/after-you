@@ -1,5 +1,5 @@
 import { isObject } from "./protocol";
-import type { ServerVars } from "./flags";
+import { flags, type ServerVars } from "./flags";
 import { APP, LOOKUP_PATTERN, PRODUCT_PATTERN, PROJECT_PATTERN, serverConfig } from "./config";
 import { grantEnd, revenuecatRequest, type ProviderResult } from "./play-entitlement";
 
@@ -40,6 +40,22 @@ function subscribed(items: unknown[], store: "play_store" | "app_store", product
     typeof item.status === "string" && SUBSCRIPTION_ACCESS_STATUSES.includes(item.status));
 }
 
+/** The App Store's Full Journey lookup: its own, or Play's when unset (the iOS products on the same entitlement). */
+function appStoreLookup(config: ReturnType<typeof serverConfig>["revenuecat"]): string {
+  return (config.app_store_entitlement_lookup_id ?? "").trim() ? config.app_store_entitlement_lookup_id! : config.play_entitlement_lookup_id ?? "";
+}
+/**
+ * Whether this server admits App Store subscribers: APP_STORE_ENTITLEMENTS_ENABLED with the key, the project, a lookup
+ * and the App Store settings this check needs. An iPhone sells Full Journey only while it says so (entitlement.ts
+ * storeCapability), so it never sells a subscription the hosting check would hold as unconfigured.
+ */
+export function appStoreReady(env: ServerVars): boolean {
+  if (!flags.appStoreEntitlements(env) || !env.REVENUECAT_SECRET_KEY) return false;
+  const config = serverConfig(env).revenuecat, products = config.app_store_subscription_product_ids;
+  return PROJECT_PATTERN.test(config.project_id ?? "") && LOOKUP_PATTERN.test(appStoreLookup(config)) && appStoreEnvironments(config.app_store_environment) !== null &&
+    products !== null && products.length > 0;
+}
+
 /** This policy is selected by server configuration, never a caller header. */
 /** `onGrant`: as in entitlement.ts, the end of the first active Full Journey entitlement (Play's lookup, then the App Store's). */
 export async function storeEntitlement(playerId: string, env: ServerVars, onGrant?: (until: number) => void): Promise<StoreEntitlementResult> {
@@ -49,7 +65,7 @@ export async function storeEntitlement(playerId: string, env: ServerVars, onGran
   const playEnvironment = APP.playEnvironment;
   const playSubscriptions = config.play_subscription_product_ids;
   const playReady = PRODUCT_PATTERN.test(config.play_product_id ?? "") && playSubscriptions !== null;
-  const appLookup = (config.app_store_entitlement_lookup_id ?? "").trim() ? config.app_store_entitlement_lookup_id! : playLookup;
+  const appLookup = appStoreLookup(config);
   const appEnvironments = appStoreEnvironments(config.app_store_environment);
   const appSubscriptions = config.app_store_subscription_product_ids;
   // The flag is on, so an unset App Store list is a missing setting, not "no App Store products".

@@ -15,7 +15,7 @@ import secondA from "../../game/tests/fixtures/v2/garden-a.json";
 import secondB from "../../game/tests/fixtures/v2/garden-b.json";
 import middle from "../../game/tests/fixtures/v2/relay-checkpoint.json";
 import final from "../../game/tests/fixtures/v2/final-checkpoint.json";
-import { withConfig } from "./config";
+import { POLLEN_CLIENT, withConfig } from "./config";
 
 // Looks in rooms: each member's own look rides into the room on calls already made, is kept per
 // turn, is served only to members whose phone asks, and survives replay transfer. Synthetic ids only.
@@ -51,7 +51,7 @@ async function wear(account: Account, look: Record<string, string>): Promise<voi
     noteFullJourney(state.storage, Date.now() + DAY, Date.now());
     state.storage.sql.exec("UPDATE pollen_wallet SET data=json_set(data,'$.balance',100000,'$.earned',100000) WHERE id=1");
   });
-  for (const id of Object.values(look)) expect((await call("/v1/pollen/spend", "POST", account, { schema_version: 1, idempotency_key: key(), kind: "item", id, expected_cost: prices[id] })).status).toBe(200);
+  for (const id of Object.values(look)) expect((await call("/v1/pollen/spend", "POST", account, { schema_version: 1, idempotency_key: key(), kind: "item", id, expected_cost: prices[id] }, ON, { ...ASK, ...POLLEN_CLIENT })).status).toBe(200);
   expect((await call("/v1/pollen/equip", "POST", account, { schema_version: 1, idempotency_key: key(), revision: Date.now(), look })).status).toBe(200);
 }
 async function room(host: Account, guest: Account, vars: Record<string, unknown> = ON): Promise<RoomSnapshotV2> {

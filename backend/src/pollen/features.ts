@@ -1,5 +1,6 @@
 import { flags, type ServerVars } from "../flags";
 import { pollenSecret } from "./keys";
+import { APP_STORE_BUNDLES_READY } from "./bundles";
 
 /**
  * Which Pollen parts are on. Earning needs POLLEN_EARN and a usable POLLEN_SECRET (no turn is paid
@@ -9,6 +10,10 @@ import { pollenSecret } from "./keys";
  * Item blooms need the shop: a dropped item is one the shop sells. The monthly grant needs earning:
  * it pays into the same wallet. Refund checks need the shop, and bundles need refund checks, so bought
  * Pollen is never sold without a refund taking it back, and refunds keep being taken back after bundles stop.
+ * Bundles sell per store: POLLEN_BUNDLES on Google Play, POLLEN_BUNDLES_APP_STORE on the App Store once its four
+ * products are in bundles.json. Either one opens the claim route and the wallet read's `bundles` part. Settling
+ * itself pays any counted production purchase from either store (bundle-provider.ts), so a purchase made just
+ * before a store switches off is still paid by its next claim or refund check.
  */
 export function earningOn(env: ServerVars): boolean { return flags.pollenEarn(env) && pollenSecret(env) !== null; }
 export function wardrobeOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenWardrobe(env); }
@@ -18,6 +23,9 @@ export function itemBloomsOn(env: ServerVars): boolean { return shopOn(env) && f
 export function grantOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenGrant(env); }
 export function refundsOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenRefunds(env); }
 export function bundlesOn(env: ServerVars): boolean { return refundsOn(env) && flags.pollenBundles(env); }
+export function appStoreBundlesOn(env: ServerVars): boolean { return refundsOn(env) && flags.pollenBundlesAppStore(env) && APP_STORE_BUNDLES_READY; }
+/** Bundles sell in at least one store: the claim route and the wallet read's `bundles` part. */
+export function anyBundlesOn(env: ServerVars): boolean { return bundlesOn(env) || appStoreBundlesOn(env); }
 
 /** What the wallet read carries: nothing more, the wardrobe (owned items and the look), or the wardrobe with the shop. */
 export type WardrobeMode = "off" | "wardrobe" | "shop";

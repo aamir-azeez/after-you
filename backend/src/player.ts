@@ -28,7 +28,7 @@ import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type Displ
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, ownedPackIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { bundlesOn, grantOn, itemBloomsOn, refundsOn, type WardrobeMode } from "./pollen/features";
+import { anyBundlesOn, grantOn, itemBloomsOn, refundsOn, type WardrobeMode } from "./pollen/features";
 import { knownBoard } from "./leaderboards/boards";
 import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/grant-settle";
 import { readGrant } from "./pollen/grant-provider";
@@ -200,7 +200,7 @@ export class Player extends DurableObject<Env> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: true };
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
-    const grant = grantOn(this.env), refunds = mode === "shop" && refundsOn(this.env), bundles = mode === "shop" && bundlesOn(this.env);
+    const grant = grantOn(this.env), refunds = mode === "shop" && refundsOn(this.env), bundles = mode === "shop" && anyBundlesOn(this.env);
     if (grant) {
       await this.settleGrant(identity.player_id);
       // A recovery may have replaced the device while the provider answered.
@@ -235,7 +235,7 @@ export class Player extends DurableObject<Env> {
     });
   }
   /**
-   * Binding only: credits the player's Play bundle purchases that RevenueCat lists, and takes back refunded
+   * Binding only: credits the player's Play and App Store bundle purchases that RevenueCat lists, and takes back refunded
    * ones (POST /v1/pollen/bundle-claims, pollen/bundle-settle.ts). The device is checked again here.
    */
   async pollenBundleClaim(owner: string, deviceHash: string): Promise<Outcome<BundleReply>> {
@@ -285,12 +285,13 @@ export class Player extends DurableObject<Env> {
   }
   /**
    * Binding only: credits one accepted turn from the facts its room froze (pollen/wallet.ts creditTurn).
-   * While item blooms are on, the credit may also drop an item into the wardrobe (pollen/item-blooms.ts).
+   * While item blooms are on, the credit may also drop an item into the wardrobe (pollen/item-blooms.ts), when
+   * `drops` says the app that sent the turn is offered the shop (pollen/routes.ts pollenShopClient).
    */
-  creditTurn(owner: string, facts: unknown): Promise<Outcome<PollenReceipt>> {
+  creditTurn(owner: string, facts: unknown, drops = false): Promise<Outcome<PollenReceipt>> {
     if (!this.pollenActive(owner)()) return Promise.resolve(fail(404, "identity_absent"));
     return creditTurn(this.ctx.storage, this.env, owner, facts, Date.now(), this.pollenActive(owner), RATES,
-      itemBloomsOn(this.env) ? { owned: ownedItemIds, give: addDroppedItem } : undefined);
+      drops === true && itemBloomsOn(this.env) ? { owned: ownedItemIds, give: addDroppedItem } : undefined);
   }
   /**
    * Binding only: a first clear made together, from the facts of the turn that finished the chapter.

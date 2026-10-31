@@ -32,6 +32,7 @@ import { hardWanted, parseMode, parseSince } from "./hard-mode";
 import { openChapters } from "./chapter-unlocks";
 import { displayNamesCapability, displayNamesShown } from "../display-names";
 import { checkedWithEnd, creditCommitted, pollenCapability } from "../pollen/routes";
+import { storeCapability } from "../entitlement";
 import type { PollenMember } from "../pollen/turn-facts";
 import type { Look } from "../pollen/catalog";
 import { looksCapability, looksShown } from "../pollen/looks-routes";
@@ -129,6 +130,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...platformCapability(request, env),
     ...displayNamesCapability(request, env),
     ...pollenCapability(request, env),
+    ...storeCapability(request, env),
     ...looksCapability(request, env),
     ...leaderboardsCapability(request, env),
     validation: "structural_client_replay_required" });

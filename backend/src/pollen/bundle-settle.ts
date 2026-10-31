@@ -3,6 +3,7 @@ import { DAY_MS, RATES, type Rates } from "./rates";
 import { BUNDLES, BUNDLE_KEYS, firstGift, type BundleKey, type Bundles } from "./bundles";
 import { applyLedger, ledgerLines, purchaseLines, walletBalance, type LedgerEntry } from "./wallet";
 import type { BundleAsk, BundleLookup, BundlePurchase, BundleRead } from "./bundle-provider";
+import { refId, refStore } from "./claims";
 
 /**
  * Pollen bundles in the player's own Player Durable Object (POLLEN_BUNDLES): bought Pollen is credited
@@ -11,9 +12,11 @@ import type { BundleAsk, BundleLookup, BundlePurchase, BundleRead } from "./bund
  * Run by the claim route (POST /v1/pollen/bundle-claims, after a purchase) and, at most once a day, by the
  * wallet read of a player who has bought a bundle before (the refund check):
  * 1. One RevenueCat read from inside this call (an outbound subrequest, not a DO request).
- * 2. For orders new to this player, one PollenClaims request (claims.ts claimBundles): the first identity
- *    to claim a Google Play order keeps it, so a restore that moves it to another App User ID, or gives it a
- *    new RevenueCat id, never pays twice.
+ * 2. For purchases new to this player, one PollenClaims request (claims.ts claimBundles): the first identity
+ *    to claim a purchase's reference (its Google Play order, or "appstore:" and its App Store transaction id,
+ *    claims.ts bundleRef) keeps it, so a restore that moves it to another App User ID, or gives it a new
+ *    RevenueCat id, never pays twice. Both stores' purchases settle the same way below; "order" there means
+ *    the reference.
  * 3. After those awaits, one synchronous transaction plans again from the ledger as stored now (an
  *    overlapping call may have paid in between): each owned order not paid yet pays once under
  *    `bundle:<order>`, and each refunded purchase whose order was paid takes back exactly what it paid under
@@ -34,9 +37,10 @@ import type { BundleAsk, BundleLookup, BundlePurchase, BundleRead } from "./bund
  * pause) so the lookups are made again. The claim route makes no lookups; while a paid bundle is missing it
  * leaves the check time alone too, so the next wallet read still makes them.
  *
- * The first bundle a player ever buys also pays the first gift (bundles.ts firstGift), once, while the gift
- * is set above 0. Whether it is still open is read from the ledger: any `bundle:` row closes it, refunded or
- * not, with or without a gift, so a gift the owner turns on later never goes to a player who already bought.
+ * The first bundle a player ever buys, in either store, also pays the first gift (bundles.ts firstGift), once, while
+ * the gift is set above 0. Whether it is still open is read from the ledger: any `bundle:` row closes it, refunded or
+ * not, from either store, with or without a gift, so a gift the owner turns on later never goes to a player who
+ * already bought, and a Play buyer never gets a second one on iPhone.
  *
  * Storage: the ledger rows (pollen_claims, never pruned) and pollen_bundle_check (storage-schema.ts
  * POLLEN_BUNDLE_TABLES), one row with the last check's time. Nothing is added to the wallet row.
@@ -49,8 +53,17 @@ export type BundleDeps = {
   /** The daily check only: which paid bundles missing from the list are refunded now (bundle-provider.ts lookupBundles). */
   lookup?: (asks: BundleAsk[]) => Promise<BundleLookup>;
 };
-export type BundleCredit = { bundle: BundleKey; pollen: number; first_gift: number; order: string; purchased_at: number; usd_cents: number };
-export type BundleRefund = { bundle: BundleKey; amount: number; order: string };
+/**
+ * What a reply says about one purchase: `order` is the store's own id as its receipt shows it (the Play order, or the
+ * App Store transaction id), and `store` is "app_store" for an App Store purchase (absent for Play, as before).
+ */
+type Receipt = { order: string; store?: "app_store" };
+export type BundleCredit = { bundle: BundleKey; pollen: number; first_gift: number; purchased_at: number; usd_cents: number } & Receipt;
+export type BundleRefund = { bundle: BundleKey; amount: number } & Receipt;
+/** A reference (claims.ts bundleRef) as a reply shows it. */
+export function receiptOf(ref: string): Receipt {
+  return refStore(ref) === "app_store" ? { order: refId(ref), store: "app_store" } : { order: ref };
+}
 export type BundleReply = { schema_version: 1; balance: number; credited: BundleCredit[]; refunded: BundleRefund[]; pending: boolean };
 /** What GET /v1/pollen adds while bundles are on: whether a first gift is still open (and set above 0), its percent, and the money spent (refunds taken off). */
 export type BundlesView = { first_gift: boolean; first_gift_percent: number; spent_usd_cents: number };
@@ -158,7 +171,7 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (order: 
       const order = typeof prior.detail.order === "string" && prior.detail.order ? prior.detail.order : purchase.order;
       entries.push({ key: refundKeyOf(prior), kind: "bundlerefund", amount: -prior.amount,
         detail: { bundle: purchase.bundle, purchase_id: purchase.id, order, usd_cents: Number(prior.detail.usd_cents ?? purchase.usd_cents), refunds: prior.key } });
-      refunds.push({ bundle: purchase.bundle, amount: prior.amount, order });
+      refunds.push({ bundle: purchase.bundle, amount: prior.amount, ...receiptOf(order) });
       continue;
     }
     if (prior || !purchase.order || gone.has(purchase.order) || !held(purchase.order)) continue;
@@ -169,7 +182,7 @@ export function planBundles(purchases: readonly BundlePurchase[], held: (order: 
       detail: { bundle: purchase.bundle, purchase_id: purchase.id, order: purchase.order, usd_cents: purchase.usd_cents, first_gift: gift, quantity: purchase.quantity, purchased_at: purchase.purchased_at } };
     paid.byOrder.set(purchase.order, line); paid.byKey.set(line.key, line);
     entries.push({ ...line, kind: "bundle" });
-    credited.push({ bundle: purchase.bundle, pollen, first_gift: gift, order: purchase.order, purchased_at: purchase.purchased_at, usd_cents: purchase.usd_cents });
+    credited.push({ bundle: purchase.bundle, pollen, first_gift: gift, ...receiptOf(purchase.order), purchased_at: purchase.purchased_at, usd_cents: purchase.usd_cents });
   }
   return { entries, credited, refunds };
 }

@@ -1,7 +1,7 @@
 import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, canonicalJson, digest, isObject, unwrap, type Outcome } from "../protocol";
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
-import { bundlesOn, earningOn, grantOn, itemBloomsOn, shopOn, wardrobeOn } from "./features";
+import { anyBundlesOn, appStoreBundlesOn, bundlesOn, earningOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
 import { ITEM_ID_PATTERN } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
@@ -22,7 +22,7 @@ import { parseVersion, type Version } from "../config";
  * is on, that call itself reads RevenueCat when an instalment is due (a subrequest, about once a month
  * per subscriber) and asks PollenClaims once per subscription new to the player (grant-settle.ts).
  *
- * Bundles (POLLEN_BUNDLES): POST /v1/pollen/bundle-claims costs auth()'s Player call, one more Player call
+ * Bundles (POLLEN_BUNDLES on Google Play, POLLEN_BUNDLES_APP_STORE on the App Store): POST /v1/pollen/bundle-claims costs auth()'s Player call, one more Player call
  * that reads RevenueCat itself (a subrequest), and one PollenClaims request only when RevenueCat lists a
  * purchase new to the player. The daily refund check (POLLEN_REFUNDS, which bundles need and which stays on
  * after they stop selling) is a subrequest inside the wallet read's own Player call, only for a player who
@@ -47,6 +47,8 @@ export const ITEM_BLOOMS_VERSION = 1;
 export const GRANT_VERSION = 1;
 /** The capability version of Pollen bundles (the claim route and the wallet read's `bundles`), so a phone sells them only while they pay. */
 export const BUNDLES_VERSION = 1;
+/** The same for the App Store's bundles, which switch on by themselves: an iPhone sells bundles only while this is sent. */
+export const APP_STORE_BUNDLES_VERSION = 1;
 /** Claims one request may carry; each costs a Room read and a Player credit. */
 export const MAX_CLAIMS_PER_REQUEST = 4;
 /** A Full Journey with no end (a lifetime unlock): the latest time a Date holds. */
@@ -69,15 +71,37 @@ export function pollenReplyClient(request: Request): boolean {
   const client = clientHeader(request);
   return client !== null && compareVersions(client.version, REPLY_MINIMUM) >= 0;
 }
+/**
+ * The oldest app the shop is offered to (owner, 2026-10-31): spending, prices, the name change price, item drops and
+ * bundles in either store. 0.7.4 on Android and 0.7.3 on iPhone keep earning and the Wardrobe, and never see a price:
+ * no shop, item bloom or bundle capability, a wallet read without the shop or the name price (so a paid name change
+ * is refused, as from any phone that shows no price), no item dropped on their turns, and 503 on spending and bundle
+ * claims. A request naming no version counts as older. A code
+ * constant, like POLLEN_REPLY_MIN_VERSION.
+ */
+export const POLLEN_SHOP_MIN_VERSION = "0.7.5";
+const SHOP_MINIMUM = parseVersion(POLLEN_SHOP_MIN_VERSION) as Version;
+/** Whether the request names an app at POLLEN_SHOP_MIN_VERSION or newer. */
+export function pollenShopClient(request: Request): boolean {
+  const client = clientHeader(request);
+  return client !== null && compareVersions(client.version, SHOP_MINIMUM) >= 0;
+}
+/** What the wallet read carries for this request (features.ts wardrobeMode): an app older than the shop's gets the wardrobe without it. */
+export function walletMode(request: Request, env: ServerVars): WardrobeMode {
+  const mode = wardrobeMode(env);
+  return mode === "shop" && !pollenShopClient(request) ? "wardrobe" : mode;
+}
 /** The phone asked for Pollen (capability and turns) and draws it right. */
 export function pollenWanted(request: Request): boolean { return request.headers.get(POLLEN_HEADER) === "1" && pollenReplyClient(request); }
 /** Earning works only with the flag on and a usable POLLEN_SECRET (no turn is paid without its bloom roll). */
 export function pollenEarning(env: ServerVars): boolean { return earningOn(env); }
 /** The capability field for GET /v2/capabilities: empty unless the client asked while earning works. */
-export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number; pollen_bundles_version?: number } {
+export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number; pollen_bundles_version?: number; pollen_app_store_bundles_version?: number } {
   if (!pollenWanted(request) || !pollenEarning(env)) return {};
-  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION } : {}), ...(shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
-    ...(itemBloomsOn(env) ? { pollen_item_blooms_version: ITEM_BLOOMS_VERSION } : {}), ...(grantOn(env) ? { pollen_grant_version: GRANT_VERSION } : {}), ...(bundlesOn(env) ? { pollen_bundles_version: BUNDLES_VERSION } : {}) };
+  const shop = pollenShopClient(request);
+  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
+    ...(shop && itemBloomsOn(env) ? { pollen_item_blooms_version: ITEM_BLOOMS_VERSION } : {}), ...(grantOn(env) ? { pollen_grant_version: GRANT_VERSION } : {}),
+    ...(shop && bundlesOn(env) ? { pollen_bundles_version: BUNDLES_VERSION } : {}), ...(shop && appStoreBundlesOn(env) ? { pollen_app_store_bundles_version: APP_STORE_BUNDLES_VERSION } : {}) };
 }
 
 const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;
@@ -137,7 +161,7 @@ export async function creditCommitted(request: Request, env: Env, playerId: stri
   if (!facts) return reply;
   const partner = facts.complete && facts.together ? (facts.host ? reply.room.guest_id : reply.room.host_id) : null;
   const [own] = await Promise.all([
-    settle(() => env.PLAYERS.getByName(playerId).creditTurn(playerId, facts)),
+    settle(() => env.PLAYERS.getByName(playerId).creditTurn(playerId, facts, pollenShopClient(request))),
     partner ? settle(() => env.PLAYERS.getByName(partner).creditTogetherClear(partner, facts.level_id, facts.hard, facts.boost_percent, facts.room_id)) : null
   ]);
   if (!pollenWanted(request)) return reply;
@@ -198,7 +222,7 @@ export async function routePollen(request: Request, path: string, playerId: stri
       const room_id = claim.room_id as string, recording_hash = claim.recording_hash as string;
       const facts = await settle(() => env.ROOMS_V2.getByName(room_id).pollenTurnFacts(playerId, recording_hash));
       const result = facts === null ? { status: "retry" as const } : !facts.ok ? { status: "refused" as const, code: facts.code }
-        : claimResult(await settle(() => player.creditTurn(playerId, facts.value as TurnFacts)));
+        : claimResult(await settle(() => player.creditTurn(playerId, facts.value as TurnFacts, pollenShopClient(request))));
       results.push({ room_id, recording_hash, ...result });
     }
   } else {
@@ -231,7 +255,7 @@ const SPEND_KINDS = ["item", "set", "pack"] as const;
  */
 async function routeWardrobe(request: Request, path: string, playerId: string, env: Env): Promise<unknown> {
   const spend = path === SPEND_PATH;
-  if (spend ? !shopOn(env) : !wardrobeOn(env)) throw new ApiError(503, spend ? "pollen_shop_disabled" : "pollen_wardrobe_disabled");
+  if (spend ? !shopOn(env) || !pollenShopClient(request) : !wardrobeOn(env)) throw new ApiError(503, spend ? "pollen_shop_disabled" : "pollen_wardrobe_disabled");
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const input = await boundedJson(request, 1024), code = spend ? "invalid_pollen_spend" : "invalid_pollen_equip";
   const fields = spend ? ["schema_version", "idempotency_key", "kind", "id", "expected_cost"] : ["schema_version", "idempotency_key", "revision", "look"];
@@ -248,12 +272,13 @@ async function routeWardrobe(request: Request, path: string, playerId: string, e
 }
 
 /**
- * POST /v1/pollen/bundle-claims (POLLEN_BUNDLES), after auth(), with the body exactly {schema_version: 1}: the
- * phone sends nothing about what it bought. The Player reads the player's purchases from RevenueCat and credits
- * each Play bundle once, or takes back a refunded one (pollen/bundle-settle.ts). Safe to repeat at any time.
+ * POST /v1/pollen/bundle-claims (POLLEN_BUNDLES or POLLEN_BUNDLES_APP_STORE), after auth(), with the body exactly
+ * {schema_version: 1}: the phone sends nothing about what it bought, nor from which store. The Player reads the
+ * player's purchases from RevenueCat and credits each Play or App Store bundle once, or takes back a refunded one
+ * (pollen/bundle-settle.ts). Safe to repeat at any time.
  */
 async function routeBundles(request: Request, playerId: string, env: Env): Promise<unknown> {
-  if (!bundlesOn(env)) throw new ApiError(503, "pollen_bundles_disabled");
+  if (!anyBundlesOn(env) || !pollenShopClient(request)) throw new ApiError(503, "pollen_bundles_disabled");
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const input = await boundedJson(request, 256);
   if (!isObject(input) || !only(input, ["schema_version"]) || input.schema_version !== 1) throw new ApiError(400, "invalid_pollen_bundle_claim");

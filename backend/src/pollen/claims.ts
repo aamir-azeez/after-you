@@ -19,7 +19,7 @@ import { SUB_ID_PATTERN, type ClaimAnswer } from "./grant";
  *   or reordered read plans the same. A new holder takes the row with since = now and moved = true;
  *   the identity it moved from sees a later `since` when it holds it again.
  * - Pollen bundles (claimBundles) are the other way round: the first identity to claim a Google Play order
- *   ("order:<order>") keeps it for good, so a restore that moves a consumable to a new App User ID, or gives it
+ *   ("order:<order>") or an App Store purchase ("appstore:<original transaction id>") keeps it for good, so a restore that moves a consumable to a new App User ID, or gives it
  *   a new RevenueCat id, never mints its Pollen twice. Rows keyed "bundle:<RevenueCat purchase id>" came first;
  *   none were written before the shop opened, but one is still read when its order has no row yet.
  */
@@ -30,8 +30,26 @@ export const CLAIM_KEY_PATTERN = new RegExp(`^(sub|purchase):${SUB_ID_PATTERN.so
 export const ORDER_CLAIM_KEY_PATTERN = new RegExp(`^order:${SUB_ID_PATTERN.source.slice(1, -1)}$`);
 /** The older bundle key ("bundle:<RevenueCat purchase id>"), only ever read now. */
 export const BUNDLE_CLAIM_KEY_PATTERN = new RegExp(`^bundle:${SUB_ID_PATTERN.source.slice(1, -1)}$`);
-const orderClaimKey = (order: string) => `order:${order}`;
-const olderClaimKey = (id: string) => `bundle:${id}`;
+/**
+ * A bundle purchase's reference, what it is paid once by in the ledger (`bundle:<ref>`) and here: a Google Play order
+ * as it is ("GPA.…", so every Play key stays as it was), and an App Store purchase as "appstore:" and its original
+ * transaction id (for a consumable the same as its transaction id, which RevenueCat lists as store_purchase_identifier).
+ * The prefix keeps the two stores' ids apart for good: a Play order never starts with it (bundle-provider.ts refuses one).
+ */
+export const APP_STORE_REF = "appstore:";
+/** An App Store transaction id: digits only. */
+export const APP_STORE_TRANSACTION = /^[0-9]{1,40}$/;
+/** An App Store purchase's claim key, the reference itself ("appstore:<id>"). */
+export const APP_STORE_CLAIM_KEY_PATTERN = new RegExp(`^${APP_STORE_REF}${APP_STORE_TRANSACTION.source.slice(1, -1)}$`);
+export function bundleRef(store: "play_store" | "app_store", id: string): string { return store === "app_store" ? APP_STORE_REF + id : id; }
+/** The store a reference names. */
+export function refStore(ref: string): "play_store" | "app_store" { return ref.startsWith(APP_STORE_REF) ? "app_store" : "play_store"; }
+/** The store's own id in a reference, as the store and its receipt show it. */
+export function refId(ref: string): string { return ref.startsWith(APP_STORE_REF) ? ref.slice(APP_STORE_REF.length) : ref; }
+/** The claim key: "order:<Play order>", or the App Store reference as it is. */
+const orderClaimKey = (ref: string) => ref.startsWith(APP_STORE_REF) ? ref : `order:${ref}`;
+/** The older key by RevenueCat purchase id, which only Play purchases ever had. */
+const olderClaimKey = (each: { order: string; id: string }) => each.order.startsWith(APP_STORE_REF) ? null : `bundle:${each.id}`;
 const SCHEMA = "CREATE TABLE IF NOT EXISTS pollen_claims_held (claim_key TEXT PRIMARY KEY, holder TEXT NOT NULL, since INTEGER NOT NULL, moved INTEGER NOT NULL) WITHOUT ROWID";
 const HASH = /^[a-f0-9]{64}$/;
 
@@ -56,13 +74,13 @@ export class PollenClaims extends DurableObject<Env> {
     });
   }
   /**
-   * Binding only: whether `holder` holds each bundle order (`keys`, "order:<order>"), the first holder for good.
+   * Binding only: whether `holder` holds each bundle purchase (`keys`, "order:<Play order>" or "appstore:<id>"), the first holder for good.
    * An order nobody holds becomes the holder's (true); one another holder took first answers false and never
    * moves. `older` may name, at the same index, the purchase's older "bundle:<id>" key: while the order has no
    * row, whoever holds that one holds the order.
    */
   claimBundles(keys: string[], holder: string, now: number, older: (string | null)[] = []): Record<string, boolean> | null {
-    if (!Array.isArray(keys) || keys.length < 1 || keys.length > MAX_CLAIM_KEYS || !keys.every(key => typeof key === "string" && ORDER_CLAIM_KEY_PATTERN.test(key)) ||
+    if (!Array.isArray(keys) || keys.length < 1 || keys.length > MAX_CLAIM_KEYS || !keys.every(key => typeof key === "string" && (ORDER_CLAIM_KEY_PATTERN.test(key) || APP_STORE_CLAIM_KEY_PATTERN.test(key))) ||
       !Array.isArray(older) || older.length > keys.length || !older.every(key => key === null || (typeof key === "string" && BUNDLE_CLAIM_KEY_PATTERN.test(key))) ||
       typeof holder !== "string" || !HASH.test(holder) || !Number.isSafeInteger(now) || now <= 0) return null;
     const holderOf = (key: string) => this.ctx.storage.sql.exec<{ holder: string }>("SELECT holder FROM pollen_claims_held WHERE claim_key=?", key).toArray()[0]?.holder;
@@ -94,14 +112,14 @@ export async function claimFor(env: Env & ServerVars, playerId: string, keys: st
 }
 
 /**
- * Claims each bundle purchase's Play order for `playerId` (claimBundles, with its RevenueCat id for the older key):
- * whether this player holds it, by order. Null when the object could not be asked (nothing is credited then).
+ * Claims each bundle purchase's reference for `playerId` (claimBundles, with a Play purchase's RevenueCat id for the
+ * older key): whether this player holds it, by reference (`order`, bundleRef). Null when the object could not be asked (nothing is credited then).
  */
 export async function claimBundlesFor(env: Env & ServerVars, playerId: string, purchases: readonly { order: string; id: string }[], now: number): Promise<Record<string, boolean> | null> {
   try {
     const key = derivedKey(env, KEY_LABELS.claims);
     if (key === null) return null;
-    const answers = await env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT).claimBundles(purchases.map(each => orderClaimKey(each.order)), hex(await hmac(await key, playerId)), now, purchases.map(each => olderClaimKey(each.id)));
+    const answers = await env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT).claimBundles(purchases.map(each => orderClaimKey(each.order)), hex(await hmac(await key, playerId)), now, purchases.map(olderClaimKey));
     return answers === null ? null : Object.fromEntries(purchases.map(each => [each.order, answers[orderClaimKey(each.order)] === true]));
   } catch { return null; }
 }

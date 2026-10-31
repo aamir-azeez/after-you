@@ -736,7 +736,7 @@ describe("looks on rows (art 01)", () => {
       noteFullJourney(state.storage, Date.now() + DAY, Date.now());
       state.storage.sql.exec("UPDATE pollen_wallet SET data=json_set(data,'$.balance',100000,'$.earned',100000) WHERE id=1");
     });
-    for (const id of Object.values(look)) expect((await call("/v1/pollen/spend", "POST", account, { schema_version: 1, idempotency_key: crypto.randomUUID(), kind: "item", id, expected_cost: prices[id] }, LOOKS)).status).toBe(200);
+    for (const id of Object.values(look)) expect((await call("/v1/pollen/spend", "POST", account, { schema_version: 1, idempotency_key: crypto.randomUUID(), kind: "item", id, expected_cost: prices[id] }, LOOKS, POLLEN_CLIENT)).status).toBe(200);
     expect((await call("/v1/pollen/equip", "POST", account, { schema_version: 1, idempotency_key: crypto.randomUUID(), revision: Date.now(), look }, LOOKS)).status).toBe(200);
   }
   /** A seasoned pair in a straw hat (host) and a daisy (guest), their run played to its final turn with `vars`. */

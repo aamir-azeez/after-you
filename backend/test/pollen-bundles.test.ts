@@ -4,22 +4,26 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import gameBundles from "../../game/content/pollen_bundles.json";
 import serverBundles from "../src/pollen/bundles.json";
-import { BUNDLES, checkedBundles, firstGift, type BundleKey, type Bundles } from "../src/pollen/bundles";
-import { bundlePurchase, lookupBundles, readBundles, type BundleAsk, type BundlePurchase } from "../src/pollen/bundle-provider";
+import { APP_STORE_BUNDLES_READY, BUNDLES, checkedBundles, firstGift, storeReady, type BundleKey, type Bundles } from "../src/pollen/bundles";
+import { bundleProducts, bundlePurchase, lookupBundles, readBundles, type BundleAsk, type BundlePurchase } from "../src/pollen/bundle-provider";
 import { BUNDLE_CHECK_MS, MAX_BUNDLE_LOOKUPS, bundleCheckDue, bundlesView, lastBundleCheck, settleBundles } from "../src/pollen/bundle-settle";
-import { bundlesOn, refundsOn } from "../src/pollen/features";
+import { anyBundlesOn, appStoreBundlesOn, bundlesOn, refundsOn } from "../src/pollen/features";
 import { POLLEN_CLAIMS_OBJECT, type PollenClaims } from "../src/pollen/claims";
 import { applyLedger, ledgerLines, walletView } from "../src/pollen/wallet";
 import { RATES } from "../src/pollen/rates";
 import { POLLEN_HEADER } from "../src/pollen/routes";
 import { POLLEN_BUNDLE_TABLES, POLLEN_PLAYER_TABLES } from "../src/storage-schema";
-import { configJson, POLLEN_CLIENT } from "./config";
+import { configJson, POLLEN_CLIENT, PRE_SHOP_CLIENT } from "./config";
 import { countingEnv, meterRows } from "./meter";
 
 // Pollen bundles on Google Play: the table and its product ids, what RevenueCat purchases count, and the
 // claim route and daily refund check through the Worker. RevenueCat is always a mock; synthetic identities only.
 const SECRET = "synthetic-pollen-secret-for-tests-only-0001";
 const ON = ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES"];
+/** Both stores selling. */
+const BOTH = [...ON, "POLLEN_BUNDLES_APP_STORE"];
+/** The App Store alone: iPhone sells, Play does not. */
+const APP_STORE_ONLY = ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS", "POLLEN_BUNDLES_APP_STORE"];
 const REFUNDS_ONLY = ["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_REFUNDS"];
 const vars = (features: string[] = ON, revenuecat: Record<string, unknown> = { project_id: "proj1234" }): Record<string, string> =>
   ({ POLLEN_SECRET: SECRET, REVENUECAT_SECRET_KEY: "synthetic-revenuecat-key-for-tests", CONFIG: configJson({ features, revenuecat }) });
@@ -34,22 +38,38 @@ describe("the bundle table", () => {
   it("is the same file the game reads", () => {
     expect(gameBundles).toEqual(serverBundles);
   });
-  it("pays the rules' amounts, with the owner's 20% first gift rounded down, and 10% when set", () => {
-    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.pollen, bundle.bonus, bundle.usd_cents]])))
-      .toEqual({ pinch: [5000, 0, 99], pouch: [21000, 1000, 399], jar: [44000, 4000, 799], basket: [115000, 15000, 1999] });
+  it("pays the rules' amounts in both stores, with the owner's 20% first gift rounded down, and 10% when set", () => {
+    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.pollen, bundle.bonus, bundle.play_store.usd_cents, bundle.app_store.usd_cents]])))
+      .toEqual({ pinch: [5000, 0, 99, 149], pouch: [21000, 1000, 399, 499], jar: [44000, 4000, 799, 899], basket: [115000, 15000, 1999, 2199] });
     expect(BUNDLES.first_bonus_percent).toBe(20);
     expect(["pinch", "pouch", "jar", "basket"].map(key => firstGift(key as "pinch"))).toEqual([1000, 4200, 8800, 23000]);
     expect(["pinch", "pouch", "jar", "basket"].map(key => firstGift(key as "pinch", GIFT))).toEqual([500, 2100, 4400, 11500]);
   });
-  it("names the real Play and RevenueCat products, each once", () => {
-    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.play_product, bundle.revenuecat_product]])))
+  it("names the real Play, App Store and RevenueCat products, each once", () => {
+    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.play_store.product, bundle.play_store.revenuecat_product]])))
       .toEqual({ pinch: ["after_you_pollen_pinch", "prodd4e2b730e5"], pouch: ["after_you_pollen_pouch", "prod25def0f41d"], jar: ["after_you_pollen_jar", "proda8a9bcf221"], basket: ["after_you_pollen_basket", "prodde607106a6"] });
+    expect(Object.fromEntries(Object.entries(BUNDLES.bundles).map(([key, bundle]) => [key, [bundle.app_store.product, bundle.app_store.revenuecat_product]])))
+      .toEqual({ pinch: ["after_you_pollen_pinch_ios", "prod235f72a2e0"], pouch: ["after_you_pollen_pouch_ios", "prodc18dc7e8e6"], jar: ["after_you_pollen_jar_ios", "prod5920f90735"], basket: ["after_you_pollen_basket_ios", "prod9dfc202990"] });
+  });
+  it("keeps the App Store's ids apart from Play's, and a store set up only when all four of its products are", () => {
+    expect(storeReady("play_store")).toBe(true);
+    expect(storeReady("app_store")).toBe(true);
+    expect(APP_STORE_BUNDLES_READY).toBe(true);
+    const unset = JSON.parse(JSON.stringify(serverBundles));
+    for (const key of ["pinch", "pouch", "jar", "basket"]) unset.bundles[key].app_store.revenuecat_product = "";
+    const table = checkedBundles(unset);
+    expect(storeReady("app_store", table)).toBe(false);
+    expect(Object.values(bundleProducts(table)).map(each => each.store)).toEqual(["play_store", "play_store", "play_store", "play_store"]);
+    expect(Object.values(bundleProducts()).filter(each => each.store === "app_store").map(each => each.bundle)).toEqual(["pinch", "pouch", "jar", "basket"]);
   });
   it("refuses a table outside its shape", () => {
     const copy = () => JSON.parse(JSON.stringify(serverBundles));
     for (const change of [(v: any) => { delete v.bundles.jar; }, (v: any) => { v.bundles.extra = v.bundles.jar; }, (v: any) => { v.bundles.pinch.bonus = 6000; },
-      (v: any) => { v.first_bonus_percent = 101; }, (v: any) => { v.bundles.pouch.pollen = 1.5; }, (v: any) => { v.schema_version = 2; },
-      (v: any) => { v.bundles.jar.revenuecat_product = v.bundles.pouch.revenuecat_product; }, (v: any) => { v.bundles.jar.play_product = "Jar Product"; }, (v: any) => { v.bundles.jar.revenuecat_product = "jar"; }]) {
+      (v: any) => { v.first_bonus_percent = 101; }, (v: any) => { v.bundles.pouch.pollen = 1.5; }, (v: any) => { v.schema_version = 1; },
+      (v: any) => { v.bundles.jar.play_store.revenuecat_product = v.bundles.pouch.play_store.revenuecat_product; }, (v: any) => { v.bundles.jar.play_store.product = "Jar Product"; },
+      (v: any) => { v.bundles.jar.play_store.revenuecat_product = "jar"; }, (v: any) => { v.bundles.jar.app_store.revenuecat_product = v.bundles.jar.play_store.revenuecat_product; },
+      (v: any) => { v.bundles.jar.app_store.product = v.bundles.jar.play_store.product; }, (v: any) => { v.bundles.jar.app_store.revenuecat_product = ""; },
+      (v: any) => { delete v.bundles.jar.app_store; }, (v: any) => { v.bundles.jar.app_store.usd_cents = 0; }, (v: any) => { v.bundles.jar.extra_store = v.bundles.jar.app_store; }]) {
       const value = copy(); change(value);
       expect(() => checkedBundles(value)).toThrow(/invalid_pollen_bundles/);
     }
@@ -61,7 +81,7 @@ const owned = (id: string, product = "prodd4e2b730e5", extra: Record<string, unk
   presented_offering_id: "pollen", environment: "production", store: "play_store", store_purchase_identifier: `GPA.0000-${id}`, ownership: "purchased", country: "US", ...extra });
 
 describe("what RevenueCat purchases count", () => {
-  const products = { prodd4e2b730e5: "pinch", prod25def0f41d: "pouch" } as const;
+  const products = { prodd4e2b730e5: { bundle: "pinch", store: "play_store" }, prod25def0f41d: { bundle: "pouch", store: "play_store" } } as const;
   it("counts a Play production purchase of a configured bundle, owned by purchase", () => {
     expect(bundlePurchase(owned("rc_1"), products)).toEqual({ id: "rc_1", bundle: "pinch", refunded: false, quantity: 1, order: "GPA.0000-rc_1", usd_cents: 99, purchased_at: 1_700_000_000_001 });
     expect(bundlePurchase(owned("rc_2", "prod25def0f41d", { status: "refunded", revenue_in_usd: null }), products)).toMatchObject({ bundle: "pouch", refunded: true, usd_cents: 399 });
@@ -111,6 +131,56 @@ describe("what RevenueCat purchases count", () => {
   });
 });
 
+/** An App Store purchase as RevenueCat lists it: its transaction id is the store_purchase_identifier. */
+const apple = (id: string, product = "prod235f72a2e0", extra: Record<string, unknown> = {}) => owned(id, product,
+  { store: "app_store", store_purchase_identifier: "20000000000" + id.replace(/\D/g, "").padStart(5, "0"), revenue_in_usd: { currency: "USD", gross: 1.49, commission: 0.22, tax: 0, proceeds: 1.27 }, ...extra });
+
+describe("what App Store purchases count", () => {
+  it("counts an App Store production purchase of an App Store bundle, by its transaction id kept apart from Play orders", () => {
+    expect(bundlePurchase(apple("rc_1"), bundleProducts())).toEqual({ id: "rc_1", bundle: "pinch", refunded: false, quantity: 1, order: "appstore:2000000000000001", usd_cents: 149, purchased_at: 1_700_000_000_001 });
+    // No revenue figure: the App Store's own US price, not Play's.
+    expect(bundlePurchase(apple("rc_2", "prodc18dc7e8e6", { revenue_in_usd: null }), bundleProducts())).toMatchObject({ bundle: "pouch", usd_cents: 499 });
+    // The id may come back as a number.
+    expect(bundlePurchase(apple("rc_3", "prod235f72a2e0", { store_purchase_identifier: 2000000000000003 }), bundleProducts())?.order).toBe("appstore:2000000000000003");
+  });
+  it("mints nothing from sandbox (App Review, TestFlight), a product of the other store, family sharing or a malformed id", () => {
+    for (const change of [{ environment: "sandbox" }, { product_id: "prodd4e2b730e5" }, { store: "play_store" }, { ownership: "family_shared" }, { store: "test_store" }])
+      expect(bundlePurchase(apple("rc_4", "prod235f72a2e0", change), bundleProducts()), JSON.stringify(change)).toBeNull();
+    // A Play product listed as an App Store purchase, and the other way round, never count.
+    expect(bundlePurchase(owned("rc_5", "prod235f72a2e0"), bundleProducts())).toBeNull();
+    // An id that is not an App Store transaction id, or a Play order that looks like an App Store reference, is no reference.
+    expect(bundlePurchase(apple("rc_6", "prod235f72a2e0", { store_purchase_identifier: "GPA.1" }), bundleProducts())?.order).toBe("");
+    expect(bundlePurchase(owned("rc_7", "prodd4e2b730e5", { store_purchase_identifier: "appstore:1" }), bundleProducts())?.order).toBe("");
+  });
+  it("looks a moved App Store purchase up by its own transaction id", async () => {
+    const request = vi.fn(async () => ({ ok: true as const, status: 200, value: { object: "list", items: [apple("rc_8", "prod235f72a2e0", { status: "refunded", customer_id: "moved" })], next_page: null } }));
+    expect(await lookupBundles([{ id: "rc_8", bundle: "pinch", order: "appstore:2000000000000008" }], vars(), request)).toEqual({ ok: true, refunded: ["rc_8"] });
+    expect(String((request.mock.calls[0] as unknown[])[0])).toBe("https://api.revenuecat.com/v2/projects/proj1234/purchases?store_purchase_identifier=2000000000000008");
+    // A Play purchase with the same digits is another purchase.
+    expect(await lookupBundles([{ id: "rc_8", bundle: "pinch", order: "2000000000000008" }], vars(), request)).toEqual({ ok: true, refunded: [] });
+  });
+});
+
+describe("the first gift across stores", () => {
+  afterEach(async () => { await reset(); });
+  const p = (id: string, bundle: "pinch" | "pouch", order: string, at: number) => ({ id, bundle, refunded: false, quantity: 1, order, usd_cents: 149, purchased_at: at });
+  const settle = (storage: DurableObjectStorage, purchases: ReturnType<typeof p>[]) =>
+    settleBundles(storage, Date.now(), () => true, { read: async () => ({ ok: true as const, purchases }), claim: async asked => Object.fromEntries(asked.map(each => [each.order, true])) }, RATES, GIFT);
+  it("pays once per player whichever store the first bundle came from", async () => {
+    await runInDurableObject(env.PLAYERS.getByName("gift-stores"), async (_, state) => {
+      const storage = state.storage;
+      expect(await settle(storage, [p("a1", "pouch", "appstore:2000000000000101", 1)])).toMatchObject({ reply: { credited: [{ first_gift: 2100, order: "2000000000000101", store: "app_store" }] } });
+      expect(await settle(storage, [p("a1", "pouch", "appstore:2000000000000101", 1), p("g1", "pouch", "GPA.g1", 2)])).toMatchObject({ reply: { credited: [{ first_gift: 0, order: "GPA.g1" }] } });
+      expect(bundlesView(storage, GIFT).first_gift).toBe(false);
+    });
+    await runInDurableObject(env.PLAYERS.getByName("gift-stores-2"), async (_, state) => {
+      const storage = state.storage;
+      expect(await settle(storage, [p("g2", "pinch", "GPA.g2", 1)])).toMatchObject({ reply: { credited: [{ first_gift: 500 }] } });
+      expect(await settle(storage, [p("g2", "pinch", "GPA.g2", 1), p("a2", "pinch", "appstore:2000000000000102", 2)])).toMatchObject({ reply: { credited: [{ first_gift: 0, store: "app_store" }] } });
+    });
+  });
+});
+
 type Account = { player_id: string; device_token: string; recovery_code: string };
 type Reply = { schema_version: 1; balance: number; credited: { bundle: string; pollen: number; first_gift: number; order: string; usd_cents: number }[]; refunded: { bundle: string; amount: number; order: string }[]; pending: boolean };
 type Wallet = { balance: number; bundles?: { first_gift: boolean; first_gift_percent: number; spent_usd_cents: number } };
@@ -121,10 +191,10 @@ const realNow = Date.now.bind(Date);
 let address = 0, offset = 0, providerCalls = 0, current: Record<string, string> = vars();
 let lists: Record<string, unknown[]> = {}, orders: Record<string, unknown[]> = {}, gate: Promise<void> | null = null, down = false;
 
-async function call(path: string, method = "GET", account?: Account, body?: unknown, base: Env = env): Promise<Response> {
+async function call(path: string, method = "GET", account?: Account, body?: unknown, base: Env = env, client: Record<string, string> = POLLEN_CLIENT): Promise<Response> {
   const configured = Object.assign({ ...base }, current) as Env;
   return worker.fetch(new Request("https://bundles.test" + path, { method, headers: { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.94." + (++address % 250),
-    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1", ...POLLEN_CLIENT },
+    ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), [POLLEN_HEADER]: "1", ...client },
   body: body === undefined ? (method === "POST" ? "{}" : undefined) : JSON.stringify(body) }), configured);
 }
 const claim = (account: Account, base: Env = env) => call("/v1/pollen/bundle-claims", "POST", account, { schema_version: 1 }, base);
@@ -569,6 +639,110 @@ describe("bundles through the Worker", () => {
     expect(await (await claim(buyer)).json<Reply>()).toMatchObject({ balance: 0, refunded: [{ amount: 5000 }, { amount: 5000 }] });
     const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => line.key).sort());
     expect(lines).toEqual(["bundlerefund:rc_240", "bundlerefund:rc_241"]);
+  });
+
+  const use = (features: string[]) => { current = vars(features); Object.assign(shared, current); };
+  const caps = async (player: Account, client: Record<string, string> = POLLEN_CLIENT) => (await call("/v2/capabilities", "GET", player, undefined, env, client)).json<Record<string, unknown>>();
+
+  it("sells on the App Store by its own switch, apart from Google Play", async () => {
+    const on = (names: string[]) => ({ CONFIG: configJson({ features: names }), POLLEN_SECRET: SECRET });
+    expect([bundlesOn(on(APP_STORE_ONLY)), appStoreBundlesOn(on(APP_STORE_ONLY)), anyBundlesOn(on(APP_STORE_ONLY))]).toEqual([false, true, true]);
+    expect([bundlesOn(on(ON)), appStoreBundlesOn(on(ON)), anyBundlesOn(on(ON))]).toEqual([true, false, true]);
+    // The App Store needs refund checks like Play.
+    expect(appStoreBundlesOn(on(["POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_BUNDLES_APP_STORE"]))).toBe(false);
+    const player = await create();
+    expect(await caps(player)).toMatchObject({ pollen_bundles_version: 1 });
+    expect(await caps(player)).not.toHaveProperty("pollen_app_store_bundles_version");
+    use(APP_STORE_ONLY);
+    expect(await caps(player)).toMatchObject({ pollen_app_store_bundles_version: 1 });
+    expect(await caps(player)).not.toHaveProperty("pollen_bundles_version");
+    lists[player.player_id] = [apple("rc_300")];
+    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 5000, credited: [{ bundle: "pinch", order: "2000000000000300", store: "app_store", usd_cents: 149 }] });
+    expect(await wallet(player)).toMatchObject({ bundles: { first_gift: false, spent_usd_cents: 149 } });
+    use(BOTH);
+    expect(await caps(player)).toMatchObject({ pollen_bundles_version: 1, pollen_app_store_bundles_version: 1 });
+  });
+
+  it("pays an App Store purchase once by its transaction id, with the requests and rows a Play purchase costs", async () => {
+    use(BOTH);
+    const first = await create(), second = await create();
+    lists[first.player_id] = [apple("rc_310", "prodc18dc7e8e6", { revenue_in_usd: { gross: 4.99 } })];
+    lists[second.player_id] = [apple("rc_311", "prodc18dc7e8e6", { store_purchase_identifier: "2000000000000310" })];
+    const meter = countingEnv({ ...env, ...current } as unknown as Env);
+    const stubs = { player: env.PLAYERS.getByName(first.player_id) as unknown as DurableObjectStub, claims: env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT) as unknown as DurableObjectStub };
+    providerCalls = 0;
+    const paid = await meterRows(stubs, async () => (await claim(first, meter.env)).json<Reply>());
+    expect(paid.value).toEqual({ schema_version: 1, balance: 21000, pending: false, refunded: [],
+      credited: [{ bundle: "pouch", pollen: 21000, first_gift: 0, order: "2000000000000310", store: "app_store", purchased_at: 1_700_000_000_310, usd_cents: 499 }] });
+    // Auth and the claim; one RevenueCat list for both stores; one claims row; the ledger line and the wallet row.
+    expect(meter.calls).toEqual(["PLAYERS.authorize", "PLAYERS.pollenBundleClaim"]);
+    expect(providerCalls).toBe(1);
+    expect(paid.rows.claims.written).toBe(1);
+    // A restore onto another account (a new RevenueCat id, the same transaction) never pays twice.
+    expect(await (await claim(second)).json<Reply>()).toMatchObject({ balance: 0, credited: [] });
+    expect(await (await claim(first)).json<Reply>()).toMatchObject({ balance: 21000, credited: [] });
+    const rows = await runInDurableObject(env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT), async (_, state) =>
+      state.storage.sql.exec<{ claim_key: string }>("SELECT claim_key FROM pollen_claims_held").toArray().map(row => row.claim_key));
+    expect(rows).toEqual(["appstore:2000000000000310"]);
+    const keys = await runInDurableObject(env.PLAYERS.getByName(first.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key));
+    expect(keys).toEqual(["bundle:appstore:2000000000000310"]);
+    const history = await (await call("/v1/pollen/history", "GET", first)).json<{ purchases: Record<string, unknown>[]; spent_usd_cents: number }>();
+    expect(history.purchases.map(line => [line.kind, line.order, line.store, line.usd_cents])).toEqual([["bundle", "2000000000000310", "app_store", 499]]);
+    expect(history.spent_usd_cents).toBe(499);
+  });
+
+  it("keeps a Play order and an App Store id with the same digits apart: each pays once, in its own rows", async () => {
+    use(BOTH);
+    const player = await create();
+    lists[player.player_id] = [owned("rc_320", "prodd4e2b730e5", { store_purchase_identifier: "2000000000000320" }), apple("rc_321", "prod235f72a2e0", { store_purchase_identifier: "2000000000000320" })];
+    expect(await (await claim(player)).json<Reply>()).toMatchObject({ balance: 10000, credited: [{ order: "2000000000000320" }, { order: "2000000000000320", store: "app_store" }] });
+    expect((await (await claim(player)).json<Reply>()).credited).toEqual([]);
+    const keys = await runInDurableObject(env.PLAYERS.getByName(player.player_id), async (_, state) => ledgerLines(state.storage, "bundle:").map(line => line.key).sort());
+    expect(keys).toEqual(["bundle:2000000000000320", "bundle:appstore:2000000000000320"]);
+    const rows = await runInDurableObject(env.POLLEN_CLAIMS.getByName(POLLEN_CLAIMS_OBJECT), async (_, state) =>
+      state.storage.sql.exec<{ claim_key: string }>("SELECT claim_key FROM pollen_claims_held ORDER BY claim_key").toArray().map(row => row.claim_key));
+    expect(rows).toEqual(["appstore:2000000000000320", "order:2000000000000320"]);
+  });
+
+  it("takes an App Store refund back, from the list and after a restore moved it, and keeps doing so once the App Store stops selling", async () => {
+    use(APP_STORE_ONLY);
+    const buyer = await create();
+    lists[buyer.player_id] = [apple("rc_330"), apple("rc_331", "prod5920f90735")];
+    expect((await (await claim(buyer)).json<Reply>()).balance).toBe(49000);
+    // The App Store stops selling; refunds are still taken back on the wallet read.
+    use(REFUNDS_ONLY);
+    const away = apple("rc_331", "prod5920f90735", { status: "refunded", customer_id: "moved" });
+    lists[buyer.player_id] = [apple("rc_330", "prod235f72a2e0", { status: "refunded" })]; orders["2000000000000331"] = [away];
+    offset = BUNDLE_CHECK_MS + 1000; providerCalls = 0;
+    expect((await wallet(buyer)).balance).toBe(0);
+    expect(providerCalls).toBe(2);
+    const lines = await runInDurableObject(env.PLAYERS.getByName(buyer.player_id), async (_, state) => ledgerLines(state.storage, "bundlerefund:").map(line => [line.key, line.amount]).sort());
+    expect(lines).toEqual([["bundlerefund:appstore:2000000000000330", -5000], ["bundlerefund:appstore:2000000000000331", -44000]]);
+    const history = await (await call("/v1/pollen/history", "GET", buyer)).json<{ purchases: Record<string, unknown>[] }>();
+    expect(history.purchases.filter(line => line.kind === "bundlerefund").map(line => [line.order, line.store]).sort()).toEqual([["2000000000000330", "app_store"], ["2000000000000331", "app_store"]]);
+  });
+
+  it("offers no shop, item drops or bundles to an app older than 0.7.5", async () => {
+    use([...BOTH, "POLLEN_ITEM_BLOOMS"]);
+    const player = await create();
+    const old = await caps(player, PRE_SHOP_CLIENT);
+    expect(old).toMatchObject({ pollen_version: 1, pollen_wardrobe_version: 1 });
+    for (const field of ["pollen_shop_version", "pollen_item_blooms_version", "pollen_bundles_version", "pollen_app_store_bundles_version"]) expect(old, field).not.toHaveProperty(field);
+    expect(await caps(player)).toMatchObject({ pollen_shop_version: 1, pollen_item_blooms_version: 1, pollen_bundles_version: 1, pollen_app_store_bundles_version: 1 });
+    // The wallet read carries the wardrobe without what is sold.
+    const read = await (await call("/v1/pollen", "GET", player, undefined, env, PRE_SHOP_CLIENT)).json<Record<string, unknown>>();
+    expect(read).toHaveProperty("wardrobe");
+    for (const field of ["bundles", "name_price", "name_price_next"]) expect(read, field).not.toHaveProperty(field);
+    expect(await wallet(player)).toHaveProperty("name_price");
+    lists[player.player_id] = [apple("rc_340")];
+    const refused = await call("/v1/pollen/bundle-claims", "POST", player, { schema_version: 1 }, env, PRE_SHOP_CLIENT);
+    expect(refused.status).toBe(503);
+    const spend = await call("/v1/pollen/spend", "POST", player, { schema_version: 1, idempotency_key: crypto.randomUUID(), kind: "item", id: "daisy", expected_cost: 1000 }, env, PRE_SHOP_CLIENT);
+    expect(spend.status).toBe(503);
+    expect(await spend.json()).toMatchObject({ error: { code: "pollen_shop_disabled" } });
+    // No version at all counts as older.
+    expect(await caps(player, {})).not.toHaveProperty("pollen_shop_version");
+    expect(providerCalls).toBe(0);
   });
 
   it("erases the bundle check with the account", async () => {

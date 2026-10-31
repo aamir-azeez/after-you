@@ -8,6 +8,7 @@ import { bloomRoll } from "./blooms";
 import { itemBloomRoll, resolveItemBloom, type ItemBloom, type ItemDrops } from "./item-blooms";
 import { validTurnFacts } from "./turn-facts";
 import { noteEveryHard } from "./earned";
+import { refId, refStore } from "./claims";
 
 /**
  * The Pollen wallet, in the player's own Player Durable Object: the only real balance. Phones keep
@@ -75,7 +76,7 @@ export type BankRules = { left: number; refill: number; cap: number; tail: { pay
  * One bundle bought (`bundle`, its Pollen in `amount`) or taken back by a refund (`bundlerefund`, a negative
  * `amount`): what the app's Pollen and purchases page lists with its receipt line.
  */
-export type PurchaseLine = { kind: "bundle" | "bundlerefund"; amount: number; at: number; bundle?: string; order?: string; usd_cents?: number };
+export type PurchaseLine = { kind: "bundle" | "bundlerefund"; amount: number; at: number; bundle?: string; order?: string; store?: "app_store"; usd_cents?: number };
 /**
  * `first_clears`: every chapter's first clear, in the rates' order; `bank`: the bank's rules. `purchases` and
  * `spent_usd_cents` only for a player who has bought a bundle: every bundle and refund line, newest first (never
@@ -349,8 +350,10 @@ export function historyView(storage: DurableObjectStorage, now: number, rates: R
 }
 
 /** A bundle or refund line's receipt fields, from what bundle-settle.ts kept with it. */
-function receiptFields(detail: Record<string, unknown>): { bundle?: string; order?: string; usd_cents?: number } {
-  return { ...(typeof detail.bundle === "string" ? { bundle: detail.bundle } : {}), ...(typeof detail.order === "string" ? { order: detail.order } : {}),
+function receiptFields(detail: Record<string, unknown>): { bundle?: string; order?: string; store?: "app_store"; usd_cents?: number } {
+  // The ledger keeps the reference (claims.ts bundleRef); the receipt shows the store's own id, and names the App Store.
+  const order = typeof detail.order === "string" ? detail.order : undefined;
+  return { ...(typeof detail.bundle === "string" ? { bundle: detail.bundle } : {}), ...(order !== undefined ? { order: refId(order), ...(refStore(order) === "app_store" ? { store: "app_store" as const } : {}) } : {}),
     ...(typeof detail.usd_cents === "number" ? { usd_cents: detail.usd_cents } : {}) };
 }
 

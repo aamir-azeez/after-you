@@ -1,7 +1,8 @@
 import { env } from "cloudflare:workers";
 import { reset } from "cloudflare:test";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { entitlement as fullCheck } from "../src/entitlement";
+import { entitlement as fullCheck, storeCapability } from "../src/entitlement";
+import { CLIENT_HEADER } from "../src/app-status";
 import { playEntitlement as playCheck } from "../src/play-entitlement";
 import { storeEntitlement as storeCheck } from "../src/store-entitlement";
 import type { ServerVars } from "../src/flags";
@@ -345,5 +346,22 @@ describe("paid room creation through the Worker", () => {
     expect(on.status).toBe(200);
     const checked = await call("/v1/entitlement", host, undefined, { ...live, features: APP_STORE_ON });
     expect(checked.status).toBe(200); expect(await checked.json()).toMatchObject({ full_journey: true, status: "verified", access_source: "app_store_subscription", entitlement: "full_journey_play", player_id: host.player_id });
+  });
+});
+
+describe("the App Store Full Journey capability", () => {
+  const ask = (client: string | null) => new Request("https://store.test/v2/capabilities", { headers: client ? { [CLIENT_HEADER]: client } : {} });
+  const live: Ids = { ...stores, features: APP_STORE_ON };
+  it("goes to an App Store build only while App Store subscribers are admitted", () => {
+    expect(storeCapability(ask("0.7.5 app_store"), rc(live))).toEqual({ app_store_full_journey_version: 1 });
+    // The default environment ("both") and the Play lookup reused; a sandbox only setting still admits App Review.
+    expect(storeCapability(ask("0.7.5 app_store"), rc({ ...live, app_store_environment: "sandbox", app_store_entitlement_lookup_id: "entlIos" }))).toEqual({ app_store_full_journey_version: 1 });
+    for (const client of ["0.7.5 play", "0.7.5 github", "0.7.5", null]) expect(storeCapability(ask(client), rc(live)), String(client)).toEqual({});
+  });
+  it("is absent while the flag is off or any App Store setting the check needs is missing", () => {
+    for (const ids of [{ ...stores }, { ...live, app_store_subscription_product_ids: [] }, { ...live, app_store_subscription_product_ids: undefined },
+      { ...live, app_store_subscription_product_ids: "prodIosMonthly" }, { ...live, app_store_environment: "staging" }, { ...live, project_id: undefined },
+      { ...live, secret: "" }, { ...live, play_entitlement_lookup_id: undefined }])
+      expect(storeCapability(ask("0.7.5 app_store"), rc(ids as Ids)), JSON.stringify(ids)).toEqual({});
   });
 });
