@@ -115,10 +115,9 @@ static func _load() -> void:
 	if _loaded: return
 	_loaded = true
 	_data = {}
-	var text := AtomicFile.read_text(_path)
-	if text.is_empty(): return
-	var parsed: Variant = JSON.parse_string(text)
-	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), 1) or not parsed.get("players") is Dictionary: return
+	var parsed: Variant = AtomicFile.read_json(_path, func(value: Variant) -> bool:
+		return value is Dictionary and Typed.equal(value.get("schema_version"), 1) and value.get("players") is Dictionary)
+	if not parsed is Dictionary: return
 	for owner: Variant in parsed.players:
 		var list: Variant = parsed.players[owner]
 		if not owner is String or not list is Array: continue

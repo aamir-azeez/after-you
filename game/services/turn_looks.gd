@@ -107,9 +107,8 @@ static func _put(map: Dictionary, key: String, value: Dictionary, limit: int) ->
 func _load() -> void:
 	_turns = {}
 	_members = {}
-	var parsed: Variant = _parsed(AtomicFile.read_text(path, func(text: String) -> bool:
-		var value: Variant = _parsed(text)
-		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION)))
+	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:
+		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION))
 	if not parsed is Dictionary: return
 	for pair: Array in [[parsed.get("turns"), _turns, MAX_TURNS, func(key: Variant) -> bool: return valid_hash(key)],
 			[parsed.get("members"), _members, MAX_MEMBERS, func(key: Variant) -> bool: return valid_player(key)]]:
@@ -120,11 +119,6 @@ func _load() -> void:
 			if not (pair[3] as Callable).call(key) or not entry is Dictionary: continue
 			var kept := Wardrobe.checked_look(entry)
 			if kept.size() == (entry as Dictionary).size(): _put(pair[1], key, kept, pair[2])
-
-## JSON text as a value, or null, without logging an error for a missing or damaged file.
-static func _parsed(text: String) -> Variant:
-	var json := JSON.new()
-	return json.data if not text.is_empty() and json.parse(text) == OK else null
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "turns": _turns, "members": _members}))

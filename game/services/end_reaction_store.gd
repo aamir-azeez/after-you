@@ -185,10 +185,10 @@ static func _hash(value: Variant) -> bool:
 func _load() -> void:
 	# The accepted copy is parsed once: its parse is kept from the check.
 	var accepted: Array = [null]
-	var text := AtomicFile.read_text(path, func(candidate: String) -> bool:
+	AtomicFile.read_json(path, func(candidate: Variant) -> bool:
 		accepted[0] = _parse(candidate)
 		return accepted[0] != null)
-	var parsed: Variant = accepted[0] if not text.is_empty() else null
+	var parsed: Variant = accepted[0]
 	_kept = parsed.kept if parsed != null else {}
 	_partners = parsed.partners if parsed != null else {}
 	_reads = parsed.reads if parsed != null else {}
@@ -196,12 +196,9 @@ func _load() -> void:
 	# A face used in play and not written yet is newer than the file's.
 	if not _unsaved.has(path): _last_known[path] = _last
 
-## The checked contents of a saved file's text, or null when it is not one.
-## Entries that do not fit are dropped one by one.
-static func _parse(text: String) -> Variant:
-	var json := JSON.new()
-	if text.is_empty() or json.parse(text) != OK: return null
-	var value: Variant = json.data
+## The checked contents of a saved file's JSON value, or null when it is not
+## one. Entries that do not fit are dropped one by one.
+static func _parse(value: Variant) -> Variant:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), VERSION): return null
 	for field: String in ["kept", "partners", "reads"]:
 		if not value.get(field) is Dictionary: return null

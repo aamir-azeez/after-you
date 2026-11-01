@@ -62,17 +62,14 @@ static func _hash(value: Variant) -> bool:
 
 func _load() -> void:
 	var accepted: Array = [null]
-	var text := AtomicFile.read_text(path, func(candidate: String) -> bool:
+	AtomicFile.read_json(path, func(candidate: Variant) -> bool:
 		accepted[0] = _parse(candidate)
 		return accepted[0] != null)
-	_tracks = accepted[0] if not text.is_empty() and accepted[0] is Dictionary else {}
+	_tracks = accepted[0] if accepted[0] is Dictionary else {}
 
-## The tracks a saved file's text holds, or null when it is not one. Tracks
+## The tracks a saved file's JSON value holds, or null when it is not one. Tracks
 ## that do not fit are dropped one by one.
-static func _parse(text: String) -> Variant:
-	var json := JSON.new()
-	if text.is_empty() or json.parse(text) != OK: return null
-	var value: Variant = json.data
+static func _parse(value: Variant) -> Variant:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), VERSION) or not value.get("tracks") is Dictionary: return null
 	var tracks := {}
 	for key: Variant in value.tracks:

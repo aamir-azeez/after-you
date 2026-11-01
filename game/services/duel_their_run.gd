@@ -33,8 +33,7 @@ static func parts(kept: Dictionary, chapter_key: String) -> Array:
 ## The run kept for `duel_id` on this phone for `owner`, or {}.
 static func kept_run(owner: String, duel_id: String) -> Dictionary:
 	if not _matches(duel_id, DUEL_ID) or not _matches(owner, OWNER): return {}
-	var text := AtomicFile.read_text(_path(owner, duel_id))
-	var value: Variant = JSON.parse_string(text) if not text.is_empty() else null
+	var value: Variant = AtomicFile.read_json(_path(owner, duel_id), func(candidate: Variant) -> bool: return candidate is Dictionary)
 	if not value is Dictionary or not value.get("digest") is String or not _matches(value.digest, DIGEST) or not Typed.whole_number(value.get("byte_length")) or not value.get("body") is String: return {}
 	return {"digest": value.digest, "byte_length": int(value.byte_length), "body": value.body, "acked": value.get("acked") == true}
 
@@ -49,7 +48,7 @@ static func keep(owner: String, duel_id: String, kept: Dictionary) -> bool:
 
 ## Drops the run kept for `duel_id` (one that no longer decodes, so the next tap fetches it again).
 static func forget(owner: String, duel_id: String) -> void:
-	if _matches(duel_id, DUEL_ID) and _matches(owner, OWNER): AtomicFile.remove(_path(owner, duel_id))
+	if _matches(duel_id, DUEL_ID) and _matches(owner, OWNER): _remove(_path(owner, duel_id))
 
 ## Account erasure (services/deleted_identity_cache_cleanup.gd): every run kept for `owner`, and their folder. True once gone.
 static func erase_owner(owner: String, root: String = ROOT) -> bool:
@@ -66,7 +65,12 @@ static func _prune(folder: String) -> void:
 		if file.ends_with(".json"): files.append([FileAccess.get_modified_time(folder.path_join(file)), file])
 	files.sort()
 	while files.size() > MAX_KEPT:
-		AtomicFile.remove(folder.path_join(files.pop_front()[1]))
+		_remove(folder.path_join(files.pop_front()[1]))
+
+## A kept run, the copies a write may leave beside it, and a damaged copy of it kept aside (AtomicFile.read_json).
+static func _remove(path: String) -> void:
+	AtomicFile.remove(path)
+	AtomicFile.remove_unreadable(path)
 
 static func _path(owner: String, duel_id: String) -> String:
 	return ROOT.path_join(owner).path_join(duel_id + ".json")

@@ -208,16 +208,17 @@ func _remember(views: Array) -> void:
 
 ## This player's part of the file, beside the other players' parts.
 func _save() -> void:
-	var text := AtomicFile.read_text(_path)
-	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
-	var all: Dictionary = parsed if parsed is Dictionary else {}
+	var all := _read_all()
 	all[_owner] = {"rooms": _saved.rooms, "rung": _saved.rung.keys()}
 	AtomicFile.write_text(_path, JSON.stringify(all))
 
+## Every player's part of the file, or {} when no copy of it reads.
+func _read_all() -> Dictionary:
+	var parsed: Variant = AtomicFile.read_json(_path, func(value: Variant) -> bool: return value is Dictionary)
+	return parsed if parsed is Dictionary else {}
+
 func _read_saved() -> Dictionary:
-	var text := AtomicFile.read_text(_path)
-	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
-	var mine: Variant = parsed.get(_owner) if parsed is Dictionary else null
+	var mine: Variant = _read_all().get(_owner)
 	var rooms := {}
 	var rung := {}
 	if not mine is Dictionary: return {"rooms": rooms, "rung": rung}

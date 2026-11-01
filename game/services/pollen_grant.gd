@@ -118,9 +118,8 @@ func mark_shown(server: String, owner: String, key: String) -> void:
 
 func _load() -> void:
 	_scopes = {}
-	var parsed: Variant = _parsed(AtomicFile.read_text(path, func(text: String) -> bool:
-		var value: Variant = _parsed(text)
-		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION) and value.get("scopes") is Dictionary))
+	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:
+		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION) and value.get("scopes") is Dictionary)
 	if not parsed is Dictionary or not parsed.get("scopes") is Dictionary: return
 	for key: Variant in parsed.scopes:
 		var value: Variant = parsed.scopes[key]
@@ -128,10 +127,6 @@ func _load() -> void:
 		var shown: Variant = value.get("shown", "")
 		_scopes[key] = {"enabled": value.get("enabled") == true, "ladder": checked_grant(value.get("ladder")),
 			"shown": shown if shown is String and (shown.is_empty() or _key.search(shown) != null) else ""}
-
-static func _parsed(text: String) -> Variant:
-	var json := JSON.new()
-	return json.data if not text.is_empty() and json.parse(text) == OK else null
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "scopes": _scopes}))

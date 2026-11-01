@@ -139,16 +139,18 @@ static func _hash(value: Variant) -> bool:
 	return value is String and value.length() == 64 and value.is_valid_hex_number() and value == value.to_lower()
 
 func _read_choice() -> Dictionary:
-	var text := AtomicFile.read_text(_choice_path)
-	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
-	if parsed is Dictionary and parsed.get(_owner) is Dictionary and parsed[_owner].get("show") is bool and parsed[_owner].get("pending") is bool:
-		return {"show": parsed[_owner].show, "pending": parsed[_owner].pending, "synced": parsed[_owner].get("synced", false) == true}
+	var mine: Variant = _read_choices().get(_owner)
+	if mine is Dictionary and mine.get("show") is bool and mine.get("pending") is bool:
+		return {"show": mine.show, "pending": mine.pending, "synced": mine.get("synced", false) == true}
 	return {"show": false, "pending": false, "synced": false}
 
 func _write_choice() -> bool:
 	if _owner.is_empty(): return false
-	var text := AtomicFile.read_text(_choice_path)
-	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
-	var all: Dictionary = parsed if parsed is Dictionary else {}
+	var all := _read_choices()
 	all[_owner] = _choice.duplicate()
 	return AtomicFile.write_text(_choice_path, JSON.stringify(all))
+
+## Every player's choice in the file, or {} when no copy of it reads.
+func _read_choices() -> Dictionary:
+	var parsed: Variant = AtomicFile.read_json(_choice_path, func(value: Variant) -> bool: return value is Dictionary)
+	return parsed if parsed is Dictionary else {}

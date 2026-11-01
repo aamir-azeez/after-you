@@ -213,11 +213,11 @@ func _request(method: int, route: String, body: Dictionary) -> Dictionary:
 
 func _load() -> void:
 	_scopes = {}
-	var text := AtomicFile.read_text(path)
-	var json := JSON.new()
-	if text.is_empty() or json.parse(text) != OK or not json.data is Dictionary or not Typed.equal(json.data.get("schema_version"), VERSION) or not json.data.get("scopes") is Dictionary: return
-	for key: Variant in json.data.scopes:
-		var value: Variant = json.data.scopes[key]
+	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:
+		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION) and value.get("scopes") is Dictionary)
+	if not parsed is Dictionary: return
+	for key: Variant in parsed.scopes:
+		var value: Variant = parsed.scopes[key]
 		if not key is String or not key.contains("|") or not value is Dictionary: continue
 		var unseen: Array = []
 		for item: Variant in (value.unseen if value.get("unseen") is Array else []):

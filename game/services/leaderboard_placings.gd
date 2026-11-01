@@ -129,9 +129,8 @@ static func _placing(value: Variant) -> bool:
 func _load() -> void:
 	_players = {}
 	# A damaged file falls back to the copy a cut off write left whole.
-	var parsed: Variant = _parsed(AtomicFile.read_text(path, func(text: String) -> bool:
-		var value: Variant = _parsed(text)
-		return value is Dictionary and Typed.equal(value.get("version"), VERSION) and value.get("players") is Dictionary))
+	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:
+		return value is Dictionary and Typed.equal(value.get("version"), VERSION) and value.get("players") is Dictionary)
 	if not parsed is Dictionary: return
 	for owner: Variant in parsed.players:
 		var value: Variant = parsed.players[owner]
@@ -144,11 +143,6 @@ func _load() -> void:
 			if _placing(item) and not shown.has(item.entry_id) and _find(pending, item.entry_id) < 0:
 				pending.append({"entry_id": item.entry_id, "board": item.board, "rank": int(item.rank), "ticks": int(item.ticks), "names": item.names, "gold_leaf": item.gold_leaf, "partner": item.partner})
 		_players[owner] = {"shown": shown, "pending": pending.slice(maxi(pending.size() - MAX_PENDING, 0))}
-
-## JSON text as a value, or null, without logging an error for a damaged file.
-static func _parsed(text: String) -> Variant:
-	var json := JSON.new()
-	return json.data if not text.is_empty() and json.parse(text) == OK else null
 
 func _save() -> bool:
 	var players: Dictionary = {}

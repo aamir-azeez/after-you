@@ -173,6 +173,14 @@ func _their_run() -> void:
 	var broken: Dictionary = await client.their_run(over, chapter)
 	_check(not broken.ok and TheirRun.kept_run(ME, DUEL).is_empty(), "a broken copy is dropped")
 	_check((await client.their_run(over, chapter)).ok and not TheirRun.kept_run(ME, DUEL).is_empty(), "and the next tap fetches the run again")
+	# A kept file that does not read is kept aside like any damaged file, and forgetting the run drops that copy too.
+	var damaged := FileAccess.open(root_dir.path_join(DUEL + ".json"), FileAccess.WRITE)
+	damaged.store_string("{\"digest\"")
+	damaged.close()
+	var aside := func() -> bool: return Array(DirAccess.get_files_at(root_dir)).any(func(name: String) -> bool: return name.begins_with(DUEL + ".json.unreadable-"))
+	_check(TheirRun.kept_run(ME, DUEL).is_empty() and aside.call(), "a damaged kept run reads as none and is kept aside")
+	TheirRun.forget(ME, DUEL)
+	_check(not aside.call(), "forgetting it drops the kept-aside copy too")
 	_check(TheirRun.erase_owner(ME) and not DirAccess.dir_exists_absolute(root_dir) and TheirRun.erase_owner(ME), "an erased account's runs and folder go, and a second erase is fine")
 	await process_frame
 	_clear_runs(root_dir)

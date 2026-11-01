@@ -24,6 +24,7 @@ extends SceneTree
 ## - the claims service checks every answer and keeps its waiting mark on disk.
 const Flow = preload("res://presentation/pollen_store_flow.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const Bundles = preload("res://services/pollen_bundles.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
@@ -371,6 +372,16 @@ func _claim_waits() -> void:
 	var reload: RefCounted = BundleClaims.new(t.claims.path, t.store, t.wallet)
 	reload.connect_to(null, t.host._names_scope, t.fake.call_it)
 	_check(reload.pending(), "The waiting claim survives a restart")
+	# A write cut off between its steps: a damaged file beside the whole new copy.
+	var whole := FileAccess.get_file_as_string(t.claims.path)
+	for pair: Array in [[t.claims.path + ".tmp", whole], [t.claims.path, whole.substr(0, whole.length() / 2)]]:
+		var file := FileAccess.open(pair[0], FileAccess.WRITE)
+		file.store_string(pair[1])
+		file.close()
+	var cut: RefCounted = BundleClaims.new(t.claims.path, t.store, t.wallet)
+	cut.connect_to(null, t.host._names_scope, t.fake.call_it)
+	_check(cut.pending() and AtomicFile.remove_unreadable(t.claims.path), "A damaged claims file reads its whole copy, so the waiting claim is not lost")
+	DirAccess.remove_absolute(t.claims.path + ".tmp")
 	t.fake.replies = [_credited("pinch", 0, 14000)]
 	await t.claims.flush()
 	_check(not t.claims.pending() and t.claims.unseen().size() == 1 and t.wallet.wallet(SERVER, ME).balance == 14000, "The next flush credits it and keeps its receipt for the player")

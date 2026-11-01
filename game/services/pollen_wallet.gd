@@ -404,9 +404,8 @@ static func _fresh(claims: Array, now: int) -> Array:
 
 func _load() -> void:
 	_scopes = {}
-	var parsed: Variant = _parsed(AtomicFile.read_text(path, func(text: String) -> bool:
-		var value: Variant = _parsed(text)
-		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION) and value.get("scopes") is Dictionary))
+	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:
+		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION) and value.get("scopes") is Dictionary)
 	if not parsed is Dictionary or not parsed.get("scopes") is Dictionary: return
 	for key: Variant in parsed.scopes:
 		var value: Variant = parsed.scopes[key]
@@ -432,11 +431,6 @@ func _load() -> void:
 				if not receipt.is_empty(): scope.results.append({"room_id": entry.room_id, "recording_hash": entry.recording_hash, "receipt": receipt, "shown": entry.get("shown") != false})
 			scope.results = scope.results.slice(maxi(0, scope.results.size() - MAX_RESULTS))
 		_scopes[key] = scope
-
-## JSON text as a value, or null, without logging an error for a missing or damaged file.
-static func _parsed(text: String) -> Variant:
-	var json := JSON.new()
-	return json.data if not text.is_empty() and json.parse(text) == OK else null
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "scopes": _scopes}))

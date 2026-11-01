@@ -65,13 +65,13 @@ func clear_friend(server: String, owner: String, friend: String) -> void:
 
 func clear_owner(owner: String, server: String = "") -> void:
 	var remaining: Array[Dictionary] = []
-	var changed := false
 	for entry: Dictionary in _entries:
-		if entry.owner == owner and (server.is_empty() or entry.server == server): changed = true
-		else: remaining.append(entry)
-	if changed:
-		_entries = remaining
-		_save()
+		if entry.owner != owner or not (server.is_empty() or entry.server == server): remaining.append(entry)
+	_entries = remaining
+	# Written even when nothing changed: a damaged file read as empty, and the
+	# copy of it kept aside (AtomicFile.read_json), hold nicknames of every player here.
+	_save()
+	AtomicFile.remove_unreadable(path)
 
 ## Whether the word list (services/name_filter.gd) refuses a nickname.
 static func refused(value: String) -> bool:
@@ -87,12 +87,15 @@ static func _valid_nickname(value: String) -> bool:
 func _load() -> void:
 	_entries.clear()
 	# A copy left by a write cut off part way is read only when the file itself is missing or damaged.
-	var entries: Variant = _entries_from(AtomicFile.read_text(path, func(text: String) -> bool: return _entries_from(text) != null))
+	var accepted: Array = [null]
+	AtomicFile.read_json(path, func(value: Variant) -> bool:
+		accepted[0] = _entries_from(value)
+		return accepted[0] != null)
+	var entries: Variant = accepted[0]
 	if entries != null: _entries = entries
 
-## The valid entries in a saved file's text, or null when the file is not one.
-func _entries_from(text: String) -> Variant:
-	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
+## The valid entries in a saved file's JSON value, or null when the file is not one.
+func _entries_from(parsed: Variant) -> Variant:
 	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), VERSION) or not parsed.get("entries") is Array: return null
 	var entries: Array[Dictionary] = []
 	for value: Variant in parsed.entries:

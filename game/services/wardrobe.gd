@@ -279,9 +279,8 @@ func _offer() -> void:
 
 func _load() -> void:
 	_scopes = {}
-	var parsed: Variant = _parsed(AtomicFile.read_text(path, func(text: String) -> bool:
-		var value: Variant = _parsed(text)
-		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION) and value.get("scopes") is Dictionary))
+	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:
+		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION) and value.get("scopes") is Dictionary)
 	if not parsed is Dictionary or not parsed.get("scopes") is Dictionary: return
 	for key: Variant in parsed.scopes:
 		var value: Variant = parsed.scopes[key]
@@ -292,11 +291,6 @@ func _load() -> void:
 		# A file from before the split has no shop key: the shop reads off until the server says again; bundles likewise.
 		var selling: bool = value.get("enabled") == true and value.get("shop") == true
 		_scopes[key] = {"enabled": value.get("enabled") == true, "shop": selling, "bundles": selling and value.get("bundles") == true, "view": kept}
-
-## JSON text as a value, or null, without logging an error for a missing or damaged file.
-static func _parsed(text: String) -> Variant:
-	var json := JSON.new()
-	return json.data if not text.is_empty() and json.parse(text) == OK else null
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "scopes": _scopes}))

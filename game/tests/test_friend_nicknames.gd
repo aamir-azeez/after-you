@@ -33,6 +33,7 @@ func _cut_off_writes() -> void:
 	_write(PATH,whole.substr(0,whole.length() / 2))
 	_write(tmp,whole)
 	check(Nicknames.new(PATH).nickname(SERVER,OWNER,FRIEND) == "Sunny","A whole tmp file is read when the primary is damaged")
+	check(FileAccess.file_exists(PATH + ".unreadable-" + FileAccess.get_sha256(PATH)),"The damaged primary is kept aside before a write can replace it")
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
 	_write(PATH,whole)
 	DirAccess.make_dir_absolute(ProjectSettings.globalize_path(tmp))
@@ -41,6 +42,7 @@ func _cut_off_writes() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(tmp))
 	check(Nicknames.new(PATH).nickname(SERVER,OWNER,FRIEND) == "Sunny","A failed save leaves the previous file untouched")
 	names.clear_owner(OWNER)
+	check(not Array(DirAccess.get_files_at(PATH.get_base_dir())).any(func(name: String) -> bool: return name.begins_with(PATH.get_file() + ".unreadable-")),"Forgetting a player removes the damaged copies kept aside")
 
 func _run() -> void:
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(PATH))

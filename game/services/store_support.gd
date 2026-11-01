@@ -103,11 +103,9 @@ func read_now() -> bool:
 
 func _load() -> void:
 	_scopes = {}
-	var text := AtomicFile.read_text(path)
-	var json := JSON.new()
-	if text.is_empty() or json.parse(text) != OK: return
-	var parsed: Variant = json.data
-	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), VERSION) or not parsed.get("scopes") is Dictionary: return
+	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:
+		return value is Dictionary and Typed.equal(value.get("schema_version"), VERSION) and value.get("scopes") is Dictionary)
+	if not parsed is Dictionary: return
 	for key: Variant in parsed.scopes:
 		var value: Variant = parsed.scopes[key]
 		if key is String and key.contains("|") and value is bool: _scopes[key] = value

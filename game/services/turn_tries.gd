@@ -162,19 +162,26 @@ func _load_open() -> void:
 	_lock.lock()
 	var waiting: Variant = _soon.get(open_path)
 	_lock.unlock()
-	var text: String = waiting if waiting is String else AtomicFile.read_text(open_path, func(saved: String) -> bool: return _parse_open(saved) != null)
-	var parsed: Variant = _parse_open(text)
-	_open = parsed if parsed != null else {}
+	# Counts the worker has not written yet are newer than the file's.
+	var accepted: Array = [_parse_open(JSON.parse_string(waiting)) if waiting is String else null]
+	if not waiting is String:
+		AtomicFile.read_json(open_path, func(value: Variant) -> bool:
+			accepted[0] = _parse_open(value)
+			return accepted[0] != null)
+	_open = accepted[0] if accepted[0] != null else {}
 
 func _load_kept() -> void:
-	var parsed: Variant = _parse_kept(AtomicFile.read_text(path, func(text: String) -> bool: return _parse_kept(text) != null))
+	var accepted: Array = [null]
+	AtomicFile.read_json(path, func(value: Variant) -> bool:
+		accepted[0] = _parse_kept(value)
+		return accepted[0] != null)
+	var parsed: Variant = accepted[0]
 	_kept = parsed.kept if parsed != null else {}
 	_reads = parsed.reads if parsed != null else {}
 
-## The checked open counts in a saved file's text, or null when it is not one.
-## Entries that do not fit are dropped one by one.
-static func _parse_open(text: String) -> Variant:
-	var value: Variant = JSON.parse_string(text) if not text.is_empty() else null
+## The checked open counts in a saved file's JSON value, or null when it is
+## not one. Entries that do not fit are dropped one by one.
+static func _parse_open(value: Variant) -> Variant:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), VERSION) or not value.get("open") is Dictionary: return null
 	var open := {}
 	for key: Variant in value.open:
@@ -182,8 +189,7 @@ static func _parse_open(text: String) -> Variant:
 	_trim(open, MAX_OPEN)
 	return open
 
-static func _parse_kept(text: String) -> Variant:
-	var value: Variant = JSON.parse_string(text) if not text.is_empty() else null
+static func _parse_kept(value: Variant) -> Variant:
 	if not value is Dictionary or not Typed.equal(value.get("schema_version"), VERSION) or not value.get("kept") is Dictionary or not value.get("reads") is Dictionary: return null
 	var kept := {}
 	for key: Variant in value.kept:
