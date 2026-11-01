@@ -13,7 +13,7 @@ import { forgetReplays } from "../src/leaderboards/replays";
 import { blankSide, newGhostRace, type DuelView } from "../src/duels/model";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
 import { countingEnv, meterRows } from "./meter";
-import { configJson } from "./config";
+import { POLLEN_CLIENT, configJson } from "./config";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
 import { dropRunCopies } from "../src/duels/their-run-sweep";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -39,7 +39,7 @@ let address = 0;
 
 async function call(path: string, method = "GET", account?: Account, body?: unknown, vars: Record<string, string> = ON, headers: Record<string, string> = {}, base: Env = env): Promise<Response> {
   return worker.fetch(new Request("https://duels.test" + path, { method,
-    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + (++address % 250), "X-AfterYou-Pollen": "1",
+    headers: { "Content-Type": "application/json", "CF-Connecting-IP": "192.0.2." + (++address % 250), "X-AfterYou-Pollen": "1", ...POLLEN_CLIENT,
       ...(account ? { "X-Player-Id": account.player_id, Authorization: "Bearer " + account.device_token } : {}), ...headers },
     body: body === undefined ? undefined : JSON.stringify(body) }), Object.assign({ ...base }, vars) as Env);
 }
