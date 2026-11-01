@@ -478,7 +478,7 @@ static func valid_run(run: Dictionary) -> bool:
 	return slip.is_empty() or (slip.size() == 3 and slip.get("recording") is Dictionary and not slip.recording.is_empty() and slip.get("checkpoint") is Dictionary and not slip.checkpoint.is_empty() and slip.get("prior") is Dictionary)
 
 static func _player_id(value: Variant) -> bool:
-	return value is String and value.length() == 22 and RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(value) != null
+	return Typed.valid_id(value)
 
 static func _whole_numbers(run: Dictionary) -> Dictionary:
 	var copy := run.duplicate(true)

@@ -1247,7 +1247,7 @@ func _failure(response: Dictionary, fallback: String = "") -> bool:
 	return false
 
 static func _id(value: Variant) -> bool:
-	return Coordinator._token(value, 22)
+	return Typed.valid_id(value)
 
 func safety_client() -> RefCounted:
 	_ready()

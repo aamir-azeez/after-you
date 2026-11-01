@@ -3,7 +3,6 @@ extends RefCounted
 const Canonical = preload("res://core/v2/canonical.gd")
 const Journal = preload("res://services/relay_online_store.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
-const Coordinator = preload("res://services/relay_room_coordinator.gd")
 const Typed = preload("res://services/typed_values.gd")
 
 class DiskStore:
@@ -262,4 +261,4 @@ static func _valid_source(value: Variant) -> bool:
 		if character not in "0123456789abcdef": return false
 	return true
 static func _id(value: Variant) -> bool:
-	return Coordinator._token(value, 22)
+	return Typed.valid_id(value)

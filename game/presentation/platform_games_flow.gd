@@ -193,7 +193,7 @@ func _copy_recovery() -> void:
 	if _copy_busy: return
 	var player := str(host.identity_data.get("player_id", ""))
 	var code := str(host.identity_data.get("recovery_code", ""))
-	if not RecoveryDetails.field_matches(player, RecoveryDetails.ID_PATTERN) or not RecoveryDetails.field_matches(code, RecoveryDetails.SECRET_PATTERN):
+	if not Typed.valid_id(player) or not RecoveryDetails.field_matches(code, RecoveryDetails.SECRET_PATTERN):
 		host._toast(PlayerCopy.MAIN_A77FFD68F5E6)
 		return
 	_copy_busy = true

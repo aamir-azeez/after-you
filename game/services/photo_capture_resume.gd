@@ -109,13 +109,13 @@ func sync_native(owner: String, local_request: Callable) -> Array[Dictionary]:
 static func valid_entry(value: Variant) -> bool:
 	if not value is Dictionary or value.size() != ENTRY_KEYS.size() or not ENTRY_KEYS.all(func(key: String) -> bool: return value.has(key)):
 		return false
-	return Capture._matches(value.room_id, "^[A-Za-z0-9_-]{22}$") and Capture._matches(value.turn_id, RoomStages.TURN_ID) and Capture._matches(value.recording_hash, "^[a-f0-9]{64}$") and Capture._matches(value.gameplay_key, "^[A-Za-z0-9_-]{16,80}$") and Capture._matches(value.request_id, "^[A-Za-z0-9_-]{1,80}$") and Capture._integer(value.started_unix, 4102444800) and value.photo is Dictionary and (value.photo.is_empty() or Capture._metadata_valid(value.photo))
+	return Typed.valid_id(value.room_id) and Capture._matches(value.turn_id, RoomStages.TURN_ID) and Capture._matches(value.recording_hash, "^[a-f0-9]{64}$") and Capture._matches(value.gameplay_key, "^[A-Za-z0-9_-]{16,80}$") and Capture._matches(value.request_id, "^[A-Za-z0-9_-]{1,80}$") and Capture._integer(value.started_unix, 4102444800) and value.photo is Dictionary and (value.photo.is_empty() or Capture._metadata_valid(value.photo))
 
 static func _same_turn(a: Dictionary, b: Dictionary) -> bool:
 	return a.room_id == b.room_id and a.turn_id == b.turn_id
 
 static func _owner(owner: String) -> bool:
-	return Capture._matches(owner, "^[A-Za-z0-9_-]{22}$")
+	return Typed.valid_id(owner)
 
 func _path(owner: String) -> String:
 	return directory.path_join(owner.sha256_text() + ".json")

@@ -110,7 +110,7 @@ func _transport_enabled() -> bool:
 	return enabled() or hosting_enabled()
 
 func set_hosting_friend(player_id: String, value: bool, request_id: String = "", request_permission: bool = true) -> bool:
-	if not _save_hosting_preference.is_valid() or not _matches(player_id,"^[A-Za-z0-9_-]{22}$") or identity_key(_identity.call()).is_empty(): return false
+	if not _save_hosting_preference.is_valid() or not Typed.valid_id(player_id) or identity_key(_identity.call()).is_empty(): return false
 	var saved: Variant = _hosting_preference.call()
 	if not saved is Dictionary: saved = {}
 	var next: Dictionary = saved.duplicate(true)
@@ -490,14 +490,14 @@ func _status(message: String) -> void:
 	changed.emit()
 
 static func identity_key(identity: Dictionary) -> String:
-	if identity.get("ready") != true or not _matches(identity.get("owner"), "^[A-Za-z0-9_-]{22}$") or not _matches(identity.get("credential_hash"), "^[a-f0-9]{64}$"): return ""
+	if identity.get("ready") != true or not Typed.valid_id(identity.get("owner")) or not _matches(identity.get("credential_hash"), "^[a-f0-9]{64}$"): return ""
 	return str(identity.owner) + ":" + str(identity.credential_hash)
 
 static func binding_key(binding: Dictionary) -> String:
 	return str(binding.get("owner", "")) + ":" + str(binding.get("credential_hash", ""))
 
 static func valid_binding(value: Dictionary) -> bool:
-	return value.size() == 4 and Typed.equal(value.get("schema_version"), 1) and _matches(value.get("owner"), "^[A-Za-z0-9_-]{22}$") and _matches(value.get("credential_hash"), "^[a-f0-9]{64}$") and _matches(value.get("binding_epoch"), "^[A-Za-z0-9_-]{22}$")
+	return value.size() == 4 and Typed.equal(value.get("schema_version"), 1) and Typed.valid_id(value.get("owner")) and _matches(value.get("credential_hash"), "^[a-f0-9]{64}$") and Typed.valid_id(value.get("binding_epoch"))
 
 static func valid_route(value: Variant) -> bool:
 	if not value is Dictionary: return false
@@ -507,9 +507,9 @@ static func valid_route(value: Variant) -> bool:
 	for key: String in keys:
 		if not value.get(key) is String: return false
 	var sequence: String = value.publication_epoch if hosting else value.revision
-	if value.schema_version != "1" or value.kind not in ["turn_ready","friend_room_available","redo_requested"] or value.room_family not in ["legacy","relay"] or not _matches(value.room_id,"^[A-Za-z0-9_-]{22}$") or not _matches(value.binding_epoch,"^[A-Za-z0-9_-]{22}$") or not _matches(value.event_id,"^[A-Za-z0-9_-]{16,128}$") or not _matches(sequence,"^[1-9][0-9]{0,15}$") or int(sequence) > 9007199254740991: return false
+	if value.schema_version != "1" or value.kind not in ["turn_ready","friend_room_available","redo_requested"] or value.room_family not in ["legacy","relay"] or not Typed.valid_id(value.room_id) or not Typed.valid_id(value.binding_epoch) or not _matches(value.event_id,"^[A-Za-z0-9_-]{16,128}$") or not _matches(sequence,"^[1-9][0-9]{0,15}$") or int(sequence) > 9007199254740991: return false
 	if value.kind == "redo_requested" and not _matches(value.event_id,"^redo_[a-f0-9]{64}$"): return false
-	return not hosting or (_matches(value.host_id,"^[A-Za-z0-9_-]{22}$") and value.event_id == value.host_id + "_" + sequence)
+	return not hosting or (Typed.valid_id(value.host_id) and value.event_id == value.host_id + "_" + sequence)
 
 static func valid_token(value: Variant) -> bool:
 	return value is String and value.length() >= 16 and value.length() <= 4096 and _matches(value, "^[!-~]+$")

@@ -3,6 +3,7 @@ extends Node
 signal changed
 const Api = preload("res://services/rooms_api.gd")
 const PollBackoff = preload("res://services/poll_backoff.gd")
+const Typed = preload("res://services/typed_values.gd")
 const INTERVAL_MS := 30000
 ## A partner whose status stays the same is read less often, up to this. An
 ## online partner's lease runs at least 60 s past each read (a 90 s lease
@@ -212,10 +213,7 @@ static func identity_key(value: Dictionary) -> String:
 	return JSON.stringify([value.base_url, value.player_id, value.device_token.sha256_text(), value.epoch])
 
 static func valid_id(value: Variant) -> bool:
-	if not value is String or value.length() != 22: return false
-	for character: String in value:
-		if not character in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-": return false
-	return true
+	return Typed.valid_id(value)
 
 static func valid_room_response(value: Variant) -> bool:
 	if not value is Dictionary or value.size() != 4 or not (value.get("schema_version") is int or value.get("schema_version") is float) or value.schema_version != 1 or not value.get("partner_joined") is bool or not value.get("partner_online") is bool: return false

@@ -79,7 +79,7 @@ func _load() -> void:
 		if not key is String or not key.contains("|") or not rows is Dictionary: continue
 		var kept := {}
 		for player: Variant in rows:
-			if player is String and player.length() == 22 and rows[player] in STATUSES and kept.size() < MAX_ENTRIES: kept[player] = rows[player]
+			if Typed.valid_id(player) and rows[player] in STATUSES and kept.size() < MAX_ENTRIES: kept[player] = rows[player]
 		_scopes[key] = kept
 
 func _save() -> bool:

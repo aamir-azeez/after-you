@@ -236,7 +236,7 @@ func _read_saved() -> Dictionary:
 	if not mine is Dictionary: return {"rooms": rooms, "rung": rung}
 	if mine.get("rooms") is Dictionary:
 		for room_id: Variant in mine.rooms:
-			if room_id is String and room_id.length() == 22 and mine.rooms[room_id] in ["friend", "ghost"]: rooms[room_id] = mine.rooms[room_id]
+			if Typed.valid_id(room_id) and mine.rooms[room_id] in ["friend", "ghost"]: rooms[room_id] = mine.rooms[room_id]
 	if mine.get("rung") is Array:
 		for duel_id: Variant in (mine.rung as Array).slice(maxi((mine.rung as Array).size() - MAX_DUELS * 2, 0)):
 			if _entry(duel_id): rung[duel_id] = true
@@ -301,7 +301,7 @@ static func _side(value: Variant) -> Dictionary:
 	if value.you:
 		var room: Variant = value.get("room_id")
 		var invite: Variant = value.get("invite_code")
-		side["room_id"] = room if room is String and room.length() == 22 else ""
+		side["room_id"] = room if Typed.valid_id(room) else ""
 		side["invite_code"] = invite if invite is String else ""
 		side["hosting"] = value.get("hosting") == true
 	return side
@@ -319,7 +319,7 @@ static func _bonus(value: Variant) -> Dictionary:
 	return {"amount": int(value.amount), "counted": value.counted, "reason": str(value.get("reason", ""))}
 
 static func _id(value: Variant) -> bool:
-	return value is String and value.length() == 22
+	return Typed.valid_id(value)
 
 static func _entry(value: Variant) -> bool:
 	return value is String and value.length() == 32 and value.is_valid_hex_number()

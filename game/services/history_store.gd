@@ -52,7 +52,7 @@ static func _record_shape(record: Variant) -> bool:
 		and _hash(record.get("link")) and _hash(record.get("digest")) and (record.get("byte_length") is int or record.get("byte_length") is float) and int(record.byte_length) > 0 and int(record.byte_length) <= MAX_ATTEMPT_BYTES
 
 static func _id(value: String) -> bool:
-	return RegEx.create_from_string("^[a-zA-Z0-9_-]{22}$").search(value) != null
+	return Typed.valid_id(value)
 
 func room_directory(server_key: String, owner: String, room_id: String) -> String:
 	if not _hash(server_key) or not _id(owner) or not _id(room_id): return ""

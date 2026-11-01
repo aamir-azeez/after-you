@@ -969,7 +969,7 @@ static func _room_path(room: Dictionary) -> String: return ("/v2/rooms/" if room
 static func _same_members(a: Dictionary, b: Dictionary) -> bool: return Typed.equal(a.get("host_id"), b.get("host_id")) and Typed.equal(a.get("guest_id"), b.get("guest_id"))
 static func _matches_summary(pair: Dictionary, expected: Dictionary) -> bool:
 	return expected.is_empty() or (expected.get("a_hash") == pair.a.recording_hash and expected.get("b_hash") == pair.b.recording_hash and expected.get("checkpoint_hash") == pair.checkpoint.checkpoint_hash)
-static func _id(value: Variant) -> bool: return Coordinator._token(value, 22)
+static func _id(value: Variant) -> bool: return Typed.valid_id(value)
 static func _hash(value: Variant) -> bool: return Coordinator._pattern(value, "^[a-f0-9]{64}$")
 static func _pair_id(value: Variant) -> bool: return Coordinator._pattern(value, "^p([0-9]|[12][0-9]|3[01])-" + RoomStages.DIGIT + "$")
 static func _valid_room(room: Variant, owner: String) -> bool:

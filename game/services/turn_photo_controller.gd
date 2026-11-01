@@ -672,7 +672,7 @@ static func _exact(value: Dictionary, keys: Array) -> bool:
 	return value.size() == keys.size() and keys.all(func(key: String) -> bool: return value.has(key))
 
 static func _id(value: Variant) -> bool:
-	return Capture._matches(value, "^[A-Za-z0-9_-]{22}$")
+	return Typed.valid_id(value)
 
 static func _key(value: Variant) -> bool:
 	return Capture._matches(value, "^[A-Za-z0-9_-]{16,80}$")

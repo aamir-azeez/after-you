@@ -265,7 +265,7 @@ static func _date(value: Variant) -> bool:
 	return day >= 1 and day <= days[month-1]
 
 static func _owner(value: String) -> bool:
-	return RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(value) != null
+	return Typed.valid_id(value)
 
 static func _token(value: String) -> bool:
 	return RegEx.create_from_string("^[A-Za-z0-9_-]{43}$").search(value) != null

@@ -336,7 +336,7 @@ static func _timestamp(value: Variant) -> bool:
 	return Time.get_datetime_string_from_unix_time(seconds) == value.substr(0, 19)
 
 static func _exact(value: Dictionary, keys: Array) -> bool: return Coordinator._exact(value, keys)
-static func _id(value: Variant) -> bool: return Coordinator._token(value, 22)
+static func _id(value: Variant) -> bool: return Typed.valid_id(value)
 static func _hash(value: Variant) -> bool: return Coordinator._pattern(value, "^[a-f0-9]{64}$")
 static func _integer(value: Variant, low: int, high: int) -> bool: return Coordinator._range(value, low, high)
 static func _failure(code: String) -> Dictionary: return {"ok": false, "code": code}

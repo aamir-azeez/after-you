@@ -132,7 +132,7 @@ static func short(name: String, limit: int = MAX_LENGTH) -> String:
 ## number ("Kite 41"). Every phone makes the same one from the public id, so
 ## nothing is stored or sent. "" for a value that is not a player id.
 static func anonymous_name(player_id: String) -> String:
-	if not RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(player_id): return ""
+	if not Typed.valid_id(player_id): return ""
 	var words := _anonymous_words()
 	if words.is_empty(): return ""
 	var digest := player_id.sha256_buffer()

@@ -227,10 +227,7 @@ static func new_publication_id() -> String:
 	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(16)).replace("+","-").replace("/","_").trim_suffix("=").trim_suffix("=")
 
 static func valid_publication_id(value: Variant) -> bool:
-	if not value is String or value.length() != 22: return false
-	for character: String in value:
-		if character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-": return false
-	return true
+	return Typed.valid_id(value)
 
 static func valid_room(value: Variant) -> bool:
 	if not value is Dictionary or value.size() != 2 or not Presence.valid_id(value.get("room_id")): return false

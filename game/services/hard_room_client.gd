@@ -222,4 +222,4 @@ func _fail(code: String) -> bool:
 	return false
 
 static func _id(value: Variant) -> bool:
-	return value is String and value.length() == 22 and RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(value) != null
+	return Typed.valid_id(value)

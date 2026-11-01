@@ -33,10 +33,7 @@ func _ready() -> void:
 	bridge.failed.connect(_failed)
 
 static func valid_owner(owner: String) -> bool:
-	var pattern := RegEx.new()
-	pattern.compile("^[A-Za-z0-9_-]{22}$")
-	var found := pattern.search(owner)
-	return found != null and found.get_string() == owner
+	return Typed.valid_id(owner)
 
 static func marker_owner(value: Variant) -> String:
 	if not value is Dictionary or value.size() != 2 or not Typed.equal(value.get("schema_version"), 1) or not value.get("owner") is String:

@@ -39,7 +39,7 @@ static func valid(value: Variant) -> bool:
 	for scope: Variant in value:
 		if not scope is String or scope.length() > 2048 or not value[scope] is Dictionary or value[scope].size() > 20: return false
 		for peer: Variant in value[scope]:
-			if not peer is String or RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(peer) == null: return false
+			if not Typed.valid_id(peer): return false
 			var request: Variant = value[scope][peer]
-			if not request is String or RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(request) == null: return false
+			if not Typed.valid_id(request): return false
 	return true

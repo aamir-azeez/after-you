@@ -200,7 +200,7 @@ func invalidate_identity() -> void:
 func bind_room(room_id: String) -> bool:
 	if not finish_live_draft_save(): return false
 	var identity := _current_identity()
-	if identity.is_empty() or not _token(room_id, 22):
+	if identity.is_empty() or not Typed.valid_id(room_id):
 		return _error("identity_unavailable", PlayerCopy.RELAY_ROOM_COORDINATOR_86B1462AD35E)
 	if _owner != "" and (identity.player_id != _owner or int(identity.epoch) != _epoch):
 		invalidate_identity()
@@ -1124,7 +1124,7 @@ func _valid_snapshot(value: Variant) -> bool:
 		if not _range(value.simulation_version, 1, MAX_SIMULATION_VERSION) or int(value.simulation_version) not in Registry.supported_rules(chapter): return false
 	if not _exact(value, keys) or not Typed.equal(value.api_version, 2) or not Typed.equal(value.schema_version, 2) or chapter.is_empty() or (not _chapter_key.is_empty() and chapter != _chapter_key) or not Typed.equal(value.validation, "structural_client_replay_required") or not Typed.equal(value.room_id, _room):
 		return false
-	if not _token(value.host_id, 22) or (value.guest_id != null and (not _token(value.guest_id, 22) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
+	if not Typed.valid_id(value.host_id) or (value.guest_id != null and (not Typed.valid_id(value.guest_id) or value.guest_id == value.host_id)) or _owner not in [value.host_id, value.guest_id]:
 		return false
 	# A room's stage index runs to its chapter's stage count, which means complete.
 	var stages := RoomStages.count(level)
@@ -1499,7 +1499,7 @@ func observe_room_binding() -> Dictionary:
 	# Identity only, including during a pending request or a read-only hold.
 	# This observation never restores a journal or grants gameplay authority.
 	var identity := _current_identity()
-	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch or not _token(_room,22): return {}
+	if identity.is_empty() or identity.player_id != _owner or int(identity.epoch) != _epoch or not Typed.valid_id(_room): return {}
 	return {"owner":_owner,"epoch":_epoch,"room_id":_room}
 
 func observe_state() -> Dictionary:

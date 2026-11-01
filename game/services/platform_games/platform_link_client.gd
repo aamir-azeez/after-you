@@ -5,7 +5,6 @@ const Typed = preload("res://services/typed_values.gd")
 
 const CAPABILITY_HEADER := "X-AfterYou-Platform-Games: 1"
 const WEB_CLIENT_ID := "^[0-9]{6,20}-[a-z0-9]{8,64}\\.apps\\.googleusercontent\\.com$"
-const PLAYER_ID := "^[a-zA-Z0-9_-]{22}$"
 
 var _api: Node
 
@@ -49,7 +48,7 @@ func restore(provider: String, credential: Dictionary, pending: Dictionary) -> D
 	if not response.get("ok", false): return {"ok": false, "code": _code(response), "status": int(response.get("status", 0))}
 	var data: Dictionary = response.data
 	var player: Variant = data.get("player_id")
-	if not Typed.equal(data.get("restored"), true) or not player is String or RegEx.create_from_string(PLAYER_ID).search(player) == null:
+	if not Typed.equal(data.get("restored"), true) or not Typed.valid_id(player):
 		return {"ok": false, "code": "invalid_response", "status": 200}
 	return {"ok": true, "player_id": player}
 

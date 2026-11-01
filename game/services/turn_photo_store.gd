@@ -55,7 +55,7 @@ func save_scope(scope: String, value: Dictionary) -> Dictionary:
 	return {"ok": store.update_values({"turn_photo_scope": scope, "turn_photo_value": value.duplicate(true)})}
 
 func list_scopes(owner: String) -> Dictionary:
-	if not _matches(owner, "^[A-Za-z0-9_-]{22}$") or _retired.has(owner):
+	if not Typed.valid_id(owner) or _retired.has(owner):
 		return {"ok": false, "error": "invalid_owner"}
 	var folder := directory.path_join(owner.sha256_text())
 	if not DirAccess.dir_exists_absolute(folder):
@@ -100,7 +100,7 @@ func list_scopes(owner: String) -> Dictionary:
 	return {"ok": true, "scopes": result}
 
 func erase_owner(owner: String) -> Dictionary:
-	if not _matches(owner, "^[A-Za-z0-9_-]{22}$"):
+	if not Typed.valid_id(owner):
 		return {"ok": false, "error": "invalid_owner"}
 	_retired[owner] = true
 	var folder := directory.path_join(owner.sha256_text())

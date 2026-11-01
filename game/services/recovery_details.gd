@@ -6,7 +6,6 @@ const Typed = preload("res://services/typed_values.gd")
 
 const MAX_TEXT_LENGTH := 2048
 const BLOCK_PATTERN := PlayerCopy.RECOVERY_DETAILS_CE7907464194
-const ID_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const SECRET_PATTERN := "^[A-Za-z0-9_-]{43}$"
 const KEY_PATTERN := "^[A-Za-z0-9_-]{16,80}$"
 
@@ -41,4 +40,4 @@ static func valid_pending(value: Variant) -> bool:
 	var request: Dictionary=value.request
 	if request.size()!=5:
 		return false
-	return field_matches(request.get("player_id"),ID_PATTERN) and field_matches(request.get("recovery_code"),SECRET_PATTERN) and field_matches(request.get("idempotency_key"),KEY_PATTERN) and field_matches(request.get("next_device_token"),SECRET_PATTERN) and field_matches(request.get("next_recovery_code"),SECRET_PATTERN) and request.next_device_token!=request.next_recovery_code and request.next_device_token!=request.recovery_code and request.next_recovery_code!=request.recovery_code
+	return Typed.valid_id(request.get("player_id")) and field_matches(request.get("recovery_code"),SECRET_PATTERN) and field_matches(request.get("idempotency_key"),KEY_PATTERN) and field_matches(request.get("next_device_token"),SECRET_PATTERN) and field_matches(request.get("next_recovery_code"),SECRET_PATTERN) and request.next_device_token!=request.next_recovery_code and request.next_device_token!=request.recovery_code and request.next_recovery_code!=request.recovery_code

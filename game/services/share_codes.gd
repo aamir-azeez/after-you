@@ -1,4 +1,5 @@
 extends RefCounted
+const Typed = preload("res://services/typed_values.gd")
 ## Typed share codes ("<type>-<id>") and invite links. Server IDs and API bodies are
 ## unchanged: format() adds the prefix for display/copy/share, parse() accepts prefixed,
 ## legacy unprefixed and link input and returns the bare ID for API calls.
@@ -27,7 +28,7 @@ const LINK_PATTERN := "\\A(?i:https)://(?i:aamirazeez\\.com)/after-you/link/?(?:
 static func _id(type: String, raw: String, alias: bool = true) -> String:
 	match type:
 		FRIEND:
-			if _matches(raw, "\\A[A-Za-z0-9_-]{22}\\z"): return raw
+			if Typed.valid_id(raw): return raw
 			# Only a short name is lowercased; IDs stay case-sensitive.
 			var short := raw.to_lower()
 			return short if alias and is_alias(short) else ""

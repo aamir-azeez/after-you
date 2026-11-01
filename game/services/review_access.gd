@@ -33,7 +33,7 @@ func invalidate() -> void:
 	_verified_scope = ""
 
 func verify(owner: String, base_url: String) -> bool:
-	if _backgrounded or RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(owner) == null or not base_url.begins_with("https://"):
+	if _backgrounded or not Typed.valid_id(owner) or not base_url.begins_with("https://"):
 		return false
 	var waiting_generation := _generation
 	while _busy and is_inside_tree() and Time.get_ticks_msec() < _deadline:
@@ -83,7 +83,7 @@ func _identity(generation: int) -> Dictionary:
 	if parser.parse(saved.value) != OK or not parser.data is Dictionary: return {}
 	var identity: Dictionary = parser.data
 	if not identity.get("player_id") is String or not identity.get("device_token") is String: return {}
-	if RegEx.create_from_string("^[A-Za-z0-9_-]{22}$").search(identity.player_id) == null or RegEx.create_from_string("^[A-Za-z0-9_-]{32,128}$").search(identity.device_token) == null: return {}
+	if not Typed.valid_id(identity.player_id) or RegEx.create_from_string("^[A-Za-z0-9_-]{32,128}$").search(identity.device_token) == null: return {}
 	return {"player_id": identity.player_id, "device_token": identity.device_token}
 
 func _read_secret(name: String, generation: int) -> Dictionary:

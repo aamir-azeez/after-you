@@ -210,7 +210,7 @@ func toggle_recovery_details(detail: VBoxContainer, row: Control) -> void:
 	if label != null: label.text = PlayerCopy.SETTINGS_RECOVERY_DETAILS_HIDE
 
 static func _copyable(player: String, code: String) -> bool:
-	return RecoveryDetails.field_matches(player,RecoveryDetails.ID_PATTERN) and RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN)
+	return Typed.valid_id(player) and RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN)
 
 ## Recovery details on a screen of their own, for the recovery steps that
 ## happen outside Settings (a restart, a storage failure, a new identity).
@@ -236,7 +236,7 @@ func show_recovery_details() -> void:
 func copy_recovery_details(player: String, code: String) -> void:
 	if recovery_copy_busy:
 		return
-	if host.identity_busy or (not host.pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=host.identity_data.get("player_id","") or code!=host.identity_data.get("recovery_code","") or not RecoveryDetails.field_matches(player,RecoveryDetails.ID_PATTERN) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN):
+	if host.identity_busy or (not host.pending_recovery.is_empty() and not _can_copy_acknowledged_recovery()) or player!=host.identity_data.get("player_id","") or code!=host.identity_data.get("recovery_code","") or not Typed.valid_id(player) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN):
 		host._toast(PlayerCopy.MAIN_6F5191162022)
 		return
 	recovery_copy_busy=true
@@ -308,7 +308,7 @@ func recover_identity(player: String, code: String) -> void:
 	if host.identity_busy:
 		return
 	# Empty fields get the same note as mistyped ones, so the tap is never silent.
-	if not RecoveryDetails.field_matches(player,RecoveryDetails.ID_PATTERN) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN):
+	if not Typed.valid_id(player) or not RecoveryDetails.field_matches(code,RecoveryDetails.SECRET_PATTERN):
 		host._toast(PlayerCopy.MAIN_C1B99419085A)
 		return
 	if not host.pending_recovery.is_empty():

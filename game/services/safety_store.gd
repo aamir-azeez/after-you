@@ -16,7 +16,7 @@ static func matches(value: Variant, pattern: String) -> bool:
 	regex.compile(pattern)
 	return regex.search(value) != null
 
-static func id(value: Variant) -> bool: return matches(value, "^[A-Za-z0-9_-]{22}$")
+static func id(value: Variant) -> bool: return Typed.valid_id(value)
 static func empty(owner: String) -> Dictionary:
 	return {"schema_version": 1, "owner": owner, "blocked_players": [], "blocked_rooms": {}, "pending": {}, "receipt": {}}
 

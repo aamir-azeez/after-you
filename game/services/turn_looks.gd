@@ -25,11 +25,9 @@ const VERSION := 1
 const MAX_TURNS := 512
 const MAX_MEMBERS := 64
 const HASH_PATTERN := "^[a-f0-9]{64}$"
-const PLAYER_PATTERN := "^[A-Za-z0-9_-]{22}$"
 
 static var _shared: RefCounted = null
 static var _hash := RegEx.create_from_string(HASH_PATTERN)
-static var _player := RegEx.create_from_string(PLAYER_PATTERN)
 
 var path := PATH
 ## Insertion ordered: the oldest key first.
@@ -52,7 +50,7 @@ static func valid_hash(value: Variant) -> bool:
 	return value is String and _hash.search(value) != null
 
 static func valid_player(value: Variant) -> bool:
-	return value is String and _player.search(value) != null
+	return Typed.valid_id(value)
 
 ## The look a turn was played in ({} for the default look or an unknown turn).
 func look(recording_hash: String) -> Dictionary:

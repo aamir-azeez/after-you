@@ -128,4 +128,4 @@ static func _integer(value: Variant, minimum: int, maximum: int) -> bool:
 static func _matches(value: Variant, expression: String) -> bool:
 	return value is String and RegEx.create_from_string(expression).search(value) != null
 
-static func _id(value: Variant) -> bool: return _matches(value,"^[A-Za-z0-9_-]{22}$")
+static func _id(value: Variant) -> bool: return Typed.valid_id(value)

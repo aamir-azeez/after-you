@@ -5,6 +5,9 @@ extends RefCounted
 ## container) instead of a script error. Well-typed values behave exactly as
 ## ==, Canonical.same, int(), Dictionary and Array do.
 const Canonical = preload("res://core/v2/canonical.gd")
+## The server's 22 character ids (players, rooms, requests): base64url of 16
+## bytes. Compiled once. The length check matters: $ also matches before a final newline.
+static var _id := RegEx.create_from_string("^[A-Za-z0-9_-]{22}$")
 
 ## True when == can compare the two values: the same kind, two numbers, String
 ## with StringName, or null on either side.
@@ -41,3 +44,7 @@ static func as_int(value: Variant, fallback: int = 0) -> int:
 ## The value when it is a Dictionary, otherwise an empty one.
 static func as_dict(value: Variant) -> Dictionary:
 	return value if value is Dictionary else {}
+
+## A 22 character server id: a player, room, request or publication id.
+static func valid_id(value: Variant) -> bool:
+	return value is String and value.length() == 22 and _id.search(value) != null

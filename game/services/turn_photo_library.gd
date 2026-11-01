@@ -447,7 +447,7 @@ static func _digest(bytes: PackedByteArray) -> String:
 	return context.finish().hex_encode()
 
 static func _id(value: Variant) -> bool:
-	return _matches(value, "^[A-Za-z0-9_-]{22}$")
+	return Typed.valid_id(value)
 
 static func _hash(value: Variant) -> bool:
 	return _matches(value, "^[a-f0-9]{64}$")

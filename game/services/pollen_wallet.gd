@@ -45,7 +45,6 @@ const BONUSES := ["first_try", "gold_pace", "silver_pace", "hard"]
 ## Item bloom tiers (backend rates.json item_blooms); an earned item never drops.
 const BLOOM_TIERS := ["common", "uncommon", "rare", "epic", "special"]
 const ITEM_PATTERN := "^[a-z0-9_]{1,40}$"
-const ROOM_PATTERN := "^[A-Za-z0-9_-]{22}$"
 const HASH_PATTERN := "^[a-f0-9]{64}$"
 ## Where a room's first clear is kept among the results, in place of a turn's recording hash.
 const ROOM_CLEAR := "room-clear"
@@ -59,7 +58,6 @@ signal result_noted(server: String, owner: String, room_id: String, recording_ha
 signal item_dropped(server: String, owner: String, item_id: String)
 
 static var _shared: RefCounted = null
-static var _room := RegEx.create_from_string(ROOM_PATTERN)
 static var _hash := RegEx.create_from_string(HASH_PATTERN)
 static var _level := RegEx.create_from_string(LEVEL_PATTERN)
 static var _item := RegEx.create_from_string(ITEM_PATTERN)
@@ -89,7 +87,7 @@ static func _balance(value: Variant) -> bool:
 	return Typed.whole_number(value) and absf(float(value)) <= 9007199254740991.0
 
 static func valid_room(value: Variant) -> bool:
-	return value is String and _room.search(value) != null
+	return Typed.valid_id(value)
 
 static func valid_hash(value: Variant) -> bool:
 	return value is String and _hash.search(value) != null
