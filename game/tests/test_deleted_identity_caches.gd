@@ -13,6 +13,12 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const Duels = preload("res://services/duels_client.gd")
+const BundleClaims = preload("res://services/bundle_claims.gd")
+const PollenGrant = preload("res://services/pollen_grant.gd")
+const StoreSupport = preload("res://services/store_support.gd")
+const Placings = preload("res://services/leaderboard_placings.gd")
+const Board = preload("res://services/leaderboard_client.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const PEER := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -190,6 +196,22 @@ func _test_main_order() -> void:
 	write(directory.path_join("main-runs.json"), {"schema_version": 1, "players": {OWNER: [run], PEER: [run]}})
 	Runs.use_path(directory.path_join("main-runs.json"))
 	write(Duels.SAVE_PATH, {OWNER: {"rooms": {ROOM: "friend"}, "rung": []}, PEER: {"rooms": {ROOM: "ghost"}, "rung": []}})
+	var stale_duels: RefCounted = Duels.shared(api, OWNER)
+	write(Board.CHOICE_PATH, {OWNER: {"show": true, "pending": false}, PEER: {"show": true, "pending": false}})
+	var stale_board: RefCounted = Board.shared(api, OWNER)
+	var mine := api.base_url + "|" + OWNER
+	var theirs := api.base_url + "|" + PEER
+	var scoped := {
+		"bundle claims": [BundleClaims, func(path: String) -> RefCounted: return BundleClaims.new(path, wardrobe, wallet), {mine: {"pending": true}, theirs: {"pending": true}}],
+		"monthly Pollen": [PollenGrant, func(path: String) -> RefCounted: return PollenGrant.new(path), {mine: {"enabled": true}, theirs: {"enabled": true}}],
+		"App Store support": [StoreSupport, func(path: String) -> RefCounted: return StoreSupport.new(path), {mine: true, theirs: true}],
+	}
+	for label: String in scoped:
+		var path := directory.path_join("main-" + label.replace(" ", "-") + ".json")
+		write(path, {"schema_version": 1, "scopes": scoped[label][2]})
+		scoped[label][0].use_shared(scoped[label][1].call(path))
+	write(directory.path_join("main-placings.json"), {"version": 1, "players": {OWNER: {"shown": [], "pending": []}, PEER: {"shown": [], "pending": []}}})
+	Placings.use_shared(Placings.new(directory.path_join("main-placings.json")))
 	api.before = func(): check(photos.calls > 0 and app.saves.data.room.is_empty() and not app.saves.data.has("pending_turn") and secrets.calls.is_empty(), "Real main clears local owned data before ACK and retains credentials")
 	photos.succeeds = false
 	await app.account_flow.clear_deleted_identity()
@@ -214,9 +236,24 @@ func _test_main_order() -> void:
 	check(Runs.runs_of(OWNER).is_empty() and Runs.runs_of(PEER).size() == 1, "and its leaderboard runs")
 	var duels: Variant = JSON.parse_string(FileAccess.get_file_as_string(Duels.SAVE_PATH))
 	check(duels is Dictionary and not duels.has(OWNER) and duels.has(PEER), "and its duel rooms and bells")
+	stale_duels.mark_rung("b".repeat(32))
+	duels = JSON.parse_string(FileAccess.get_file_as_string(Duels.SAVE_PATH))
+	check(duels is Dictionary and not duels.has(OWNER), "and a duels client still holding the removed identity never writes it back")
+	for label: String in scoped:
+		var kept: Variant = JSON.parse_string(FileAccess.get_file_as_string(directory.path_join("main-" + label.replace(" ", "-") + ".json")))
+		check(kept is Dictionary and not kept.scopes.has(mine) and kept.scopes.has(theirs), "and its %s, keeping another player's" % label)
+		scoped[label][0].use_shared(null)
+	var placings: Variant = JSON.parse_string(FileAccess.get_file_as_string(directory.path_join("main-placings.json")))
+	check(placings is Dictionary and not placings.players.has(OWNER) and placings.players.has(PEER), "and its leaderboard placings")
+	stale_board.set_show_name(false)
+	var choices: Variant = JSON.parse_string(FileAccess.get_file_as_string(Board.CHOICE_PATH))
+	check(choices is Dictionary and not choices.has(OWNER) and choices.has(PEER), "and its leaderboard name choice, which a client still holding it never writes back")
 	PollenWallet.use_shared(null)
 	Wardrobe.use_shared(null)
+	Placings.use_shared(null)
 	Runs.use_path(Runs.PATH)
-	DirAccess.remove_absolute(Duels.SAVE_PATH)
+	for path: String in [Duels.SAVE_PATH, Board.CHOICE_PATH]:
+		AtomicFile.remove(path)
+		AtomicFile.remove_unreadable(path)
 	app.queue_free()
 	await process_frame

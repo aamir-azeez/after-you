@@ -209,14 +209,17 @@ func _remember(views: Array) -> void:
 
 ## This player's part of the file, beside the other players' parts.
 func _save() -> void:
+	if _owner.is_empty(): return
 	var all := _read_all(_path)
 	all[_owner] = {"rooms": _saved.rooms, "rung": _saved.rung.keys()}
 	AtomicFile.write_text(_path, JSON.stringify(all))
 
 ## Forgets a player's part of the file (account deletion); other players' parts stay.
 static func clear_owner(owner: String, path: String = SAVE_PATH) -> void:
-	# A shared client still holding the player's part would write it back.
-	if _shared != null and _shared._owner == owner: _shared = null
+	# A client still holding the player (a request awaiting its answer) must never write them back.
+	if _shared != null and _shared._owner == owner:
+		_shared._owner = ""
+		_shared = null
 	var all := _read_all(path)
 	all.erase(owner)
 	# Written even when nothing changed: a damaged file read as empty, and the

@@ -101,6 +101,16 @@ func read_now() -> bool:
 	var scope := current()
 	return not scope.is_empty() and read_this_session(str(scope.server), str(scope.owner))
 
+## Forgets everything kept for a player on every server (account deletion).
+func clear_owner(owner: String) -> void:
+	for scopes: Dictionary in [_scopes, _session]:
+		for key: String in scopes.keys():
+			if key.get_slice("|", 1) == owner: scopes.erase(key)
+	# Written even when nothing changed: a damaged file read as empty, and the
+	# copy of it kept aside (AtomicFile.read_json), hold every player's answer here.
+	_save()
+	AtomicFile.remove_unreadable(path)
+
 func _load() -> void:
 	_scopes = {}
 	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool:

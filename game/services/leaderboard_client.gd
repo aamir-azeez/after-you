@@ -150,7 +150,23 @@ func _write_choice() -> bool:
 	all[_owner] = _choice.duplicate()
 	return AtomicFile.write_text(_choice_path, JSON.stringify(all))
 
+## Forgets a player's name choice (account deletion); other players' choices stay.
+static func clear_owner(owner: String, choice_path: String = CHOICE_PATH) -> void:
+	# A client still holding the player (a request awaiting its answer) must never write them back.
+	if _shared != null and _shared._owner == owner:
+		_shared._owner = ""
+		_shared = null
+	var all := _read_choices_at(choice_path)
+	all.erase(owner)
+	# Written even when nothing changed: a damaged file read as empty, and the
+	# copy of it kept aside (AtomicFile.read_json), hold every player's choice here.
+	AtomicFile.write_text(choice_path, JSON.stringify(all))
+	AtomicFile.remove_unreadable(choice_path)
+
 ## Every player's choice in the file, or {} when no copy of it reads.
 func _read_choices() -> Dictionary:
-	var parsed: Variant = AtomicFile.read_json(_choice_path, func(value: Variant) -> bool: return value is Dictionary)
+	return _read_choices_at(_choice_path)
+
+static func _read_choices_at(choice_path: String) -> Dictionary:
+	var parsed: Variant = AtomicFile.read_json(choice_path, func(value: Variant) -> bool: return value is Dictionary)
 	return parsed if parsed is Dictionary else {}

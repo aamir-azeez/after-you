@@ -126,6 +126,14 @@ static func _placing(value: Variant) -> bool:
 	if names != null and (not names is Array or names.size() != 2 or not names[0] is String or not names[1] is String): return false
 	return value.get("gold_leaf") is bool and value.get("partner") is String
 
+## Forgets every placing kept for a player (account deletion); other players' stay.
+func clear_owner(owner: String) -> void:
+	_players.erase(owner)
+	# Written even when nothing changed: a damaged file read as empty, and the
+	# copy of it kept aside (AtomicFile.read_json), hold every player's placings here.
+	_save()
+	AtomicFile.remove_unreadable(path)
+
 func _load() -> void:
 	_players = {}
 	# A damaged file falls back to the copy a cut off write left whole.
