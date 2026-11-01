@@ -14,7 +14,9 @@ extends SceneTree
 ## - the friends list's optional name keys, which never refuse a page;
 ## - rooms_api asks for names and takes the partner's name out of a room reply;
 ## - the room list keeps a partner's name; the roster and the room partner
-##   friend request (state from what the phone keeps, the ordinary request).
+##   friend request (state from what the phone keeps, the ordinary request);
+## - the names and roster files: a missing or empty one is nothing kept and
+##   logs no error; a damaged one is kept aside before the next write.
 const DisplayNames = preload("res://services/display_names.gd")
 const Client = preload("res://services/display_name_client.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
@@ -25,6 +27,7 @@ const SafetyStore = preload("res://services/safety_store.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RoomInbox = preload("res://services/room_inbox_client.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const LogWatch = preload("res://tests/log_watch.gd")
 
 # Synthetic ids only.
 const SERVER := "https://names.example.test"
@@ -60,6 +63,7 @@ func _run() -> void:
 	_own()
 	_others()
 	_reload()
+	_files()
 	_resolver()
 	_friends_page()
 	_rooms_api()
@@ -200,7 +204,39 @@ func _reload() -> void:
 	file = FileAccess.open(path, FileAccess.WRITE)
 	file.store_string("{not json")
 	file.close()
+	_paths.append(path + ".unreadable-" + FileAccess.get_sha256(path))
 	_check(not DisplayNames.new(path).enabled(SERVER, ME), "An unreadable file reads as nothing kept")
+
+## Both stores read their file once, through AtomicFile.read_json: [make, kept, write] each.
+func _files() -> void:
+	var watch: LogWatch = LogWatch.start(["Parse JSON failed"])
+	var stores := {
+		"names": [func(path: String) -> RefCounted: return DisplayNames.new(path),
+			func(store: RefCounted) -> bool: return store.enabled(SERVER, ME),
+			func(store: RefCounted) -> void: store.take_friends_page(SERVER, ME, {"display_name": "Robin", "friends": [{"player_id": MAYA, "display_name": "Maya"}]})],
+		"roster": [func(path: String) -> RefCounted: return FriendRoster.new(path),
+			func(store: RefCounted) -> bool: return store.known(SERVER, ME),
+			func(store: RefCounted) -> void: store.take_page(SERVER, ME, {"friends": [{"player_id": MAYA, "status": "accepted"}]})],
+	}
+	for label: String in stores:
+		var make: Callable = stores[label][0]
+		var kept: Callable = stores[label][1]
+		var path := _path(label + "-files")
+		_check(not kept.call(make.call(path)), label + ": no file is nothing kept")
+		FileAccess.open(path, FileAccess.WRITE).close()
+		_check(not kept.call(make.call(path)), label + ": an empty file is nothing kept")
+		_check(watch.count("Parse JSON failed") == 0, label + ": a missing or empty file logs no JSON error")
+		var file := FileAccess.open(path, FileAccess.WRITE)
+		file.store_string("{damaged")
+		file.close()
+		var aside := path + ".unreadable-" + FileAccess.get_sha256(path)
+		_paths.append(aside)
+		var store: RefCounted = make.call(path)
+		_check(not kept.call(store), label + ": a damaged file is nothing kept")
+		stores[label][2].call(store)
+		_check(FileAccess.get_file_as_string(aside) == "{damaged", label + ": its bytes are kept aside before a write replaces them")
+		_check(kept.call(make.call(path)), label + ": and the new file reads")
+	watch.stop()
 
 func _resolver() -> void:
 	var store := _store()

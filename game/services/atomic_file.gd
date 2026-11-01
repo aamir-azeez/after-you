@@ -70,6 +70,24 @@ static func read_text(path: String, accept: Callable = Callable(), tmp_suffix: S
 		return text
 	return ""
 
+## The JSON value of `path`, or of the copy a write cut off between its steps
+## left behind: the first one `accept` takes (any value without it), else null.
+## Parsed without logging. A missing or empty copy is no data. A copy whose
+## text does not parse is damaged: it is first kept aside (keep_unreadable), as
+## the save keeps its own, so a later write never replaces its only copy.
+static func read_json(path: String, accept: Callable = Callable(), tmp_suffix: String = TMP) -> Variant:
+	for candidate: String in read_candidates(path, tmp_suffix):
+		if not FileAccess.file_exists(candidate): continue
+		var text := FileAccess.get_file_as_string(candidate)
+		if text.is_empty(): continue
+		var json := JSON.new()
+		if json.parse(text) != OK:
+			keep_unreadable(candidate)
+			continue
+		if accept.is_valid() and not accept.call(json.data): continue
+		return json.data
+	return null
+
 ## Removes the file and every copy a write may have left beside it.
 static func remove(path: String, tmp_suffix: String = TMP) -> bool:
 	var removed := true

@@ -72,7 +72,7 @@ func clear_owner(owner: String) -> void:
 
 func _load() -> void:
 	_scopes = {}
-	var parsed: Variant = JSON.parse_string(AtomicFile.read_text(path, func(text: String) -> bool: return JSON.parse_string(text) is Dictionary))
+	var parsed: Variant = AtomicFile.read_json(path, func(value: Variant) -> bool: return value is Dictionary)
 	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), VERSION) or not parsed.get("scopes") is Dictionary: return
 	for key: Variant in parsed.scopes:
 		var rows: Variant = parsed.scopes[key]

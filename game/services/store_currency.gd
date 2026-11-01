@@ -50,6 +50,6 @@ static func use_path(storage_path: String) -> void:
 static func _load() -> void:
 	_loaded = true
 	_code = ""
-	var parsed: Variant = JSON.parse_string(AtomicFile.read_text(path))
+	var parsed: Variant = AtomicFile.read_json(path)
 	if parsed is Dictionary and int(parsed.get("schema_version", 0)) == VERSION and _valid.search(str(parsed.get("currency", ""))) != null:
 		_code = str(parsed.currency)

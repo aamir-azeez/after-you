@@ -54,8 +54,8 @@ const ROOM_CLEAR := "room-clear"
 ## (`recording_hash` ROOM_CLEAR): a screen still up for it may show its line now.
 signal result_noted(server: String, owner: String, room_id: String, recording_hash: String)
 
-## A confirmed receipt brought an item bloom's item: it is owned now (Main
-## connects it to services/wardrobe.gd note_drop, so the wardrobe shows it at once).
+## A confirmed receipt brought an item bloom's item: it is owned now (the
+## wardrobe follows it, services/wardrobe.gd follow_drops, so it shows it at once).
 signal item_dropped(server: String, owner: String, item_id: String)
 
 static var _shared: RefCounted = null

@@ -5,7 +5,9 @@ extends SceneTree
 ## and the Wardrobe row, shown only while the server has the wardrobe on, with
 ## the player's own pip as a still picture for its icon, beside the Pollen chip;
 ## and Main's Pollen routes: Pollen from play opened from the Pollen store goes
-## back to the store, or where the store's own Back goes when it cannot open.
+## back to the store, or where the store's own Back goes when it cannot open;
+## and Home built again (each return from a chapter builds a new Main) wires
+## the shared stores once and logs no error.
 const FriendPlayIcon = preload("res://presentation/friend_play_icon.gd")
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
@@ -18,6 +20,13 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
 const PollenStoreFlow = preload("res://presentation/pollen_store_flow.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const LogWatch = preload("res://tests/log_watch.gd")
+## Errors Home must never log: a store wired twice, a missing file read as damaged JSON.
+const WATCHED := ["already connected", "Parse JSON failed"]
+## How many more times Home is built after the first.
+const REBUILDS := 3
 
 ## Stands in for the Wardrobe: whether it is on, and where it was opened from.
 class WardrobeStub:
@@ -64,6 +73,7 @@ func _check(ok: bool, message: String) -> void:
 		push_error(message)
 
 func _run() -> void:
+	var watch: LogWatch = LogWatch.start(WATCHED)
 	_test_tokens()
 	var path := "user://home-menu-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
 	var viewport := SubViewport.new()
@@ -101,6 +111,10 @@ func _run() -> void:
 	await _test_pollen_routes(app)
 	viewport.free()
 	await process_frame
+	await _test_home_again()
+	for phrase: String in WATCHED:
+		_check(watch.count(phrase) == 0, "Home logs no '%s' error (%d)" % [phrase, watch.count(phrase)])
+	watch.stop()
 	await create_timer(0.15).timeout
 	for suffix: String in ["", ".tmp", ".backup"]:
 		if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -379,6 +393,30 @@ func _test_pollen_routes(app: Node) -> void:
 	wardrobe.free()
 	app._show_home()
 	await _frames()
+
+## Every return from a chapter builds a new Main over the same shared stores:
+## an item bloom's item still reaches the wardrobe through one connection.
+func _test_home_again() -> void:
+	for round in range(REBUILDS):
+		var path := "user://home-menu-again-" + Crypto.new().generate_random_bytes(8).hex_encode() + ".json"
+		var viewport := SubViewport.new()
+		viewport.size = SIZES[0]
+		root.add_child(viewport)
+		var app := Main.new()
+		app.saves = Storage.new(path)
+		app.saves.data.settings.sound = false
+		app.saves.data.settings.haptics = false
+		viewport.add_child(app)
+		app.set_process(false)
+		app.set_physics_process(false)
+		await _frames()
+		viewport.free()
+		await process_frame
+		for suffix: String in ["", ".tmp", ".backup"]:
+			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
+	var drops: Array = PollenWallet.shared().item_dropped.get_connections()
+	_check(drops.size() == 1 and drops[0].callable == Callable(Wardrobe.shared(), "note_drop"),
+		"Home built %d times connects item drops to the wardrobe once: %d" % [REBUILDS + 1, drops.size()])
 
 ## Opening the card takes the dot and tip away, and the bottom row's rule returns.
 func _test_tip_clears(app: Node) -> void:

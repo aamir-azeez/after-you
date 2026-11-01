@@ -1083,7 +1083,8 @@ func _restore_ready_world() -> void:
 	if is_instance_valid(world) and is_instance_valid(world.camera):
 		var camera: Camera3D = world.camera
 		# A redraw that frames again this frame eases on from here.
-		if _room_framed: _shown_framing = {"frame": Engine.get_process_frames(), "framing": WaitFraming.of(camera)}
+		# Leaving (_exit_tree) the camera has left the tree already, and nothing frames again.
+		if _room_framed and camera.is_inside_tree(): _shown_framing = {"frame": Engine.get_process_frames(), "framing": WaitFraming.of(camera)}
 		camera.transform = _room_camera.transform
 		camera.size = _room_camera.size
 		camera.keep_aspect = _room_camera.keep_aspect

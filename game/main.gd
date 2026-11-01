@@ -387,7 +387,7 @@ func _ready() -> void:
 	# Only a phone with Full Journey reads the wallet for the monthly grant; each flush may bring a card.
 	pollen_client.subscribed=_full_journey_access
 	# An item bloom's item is owned at once in the wardrobe.
-	PollenWallet.shared().item_dropped.connect(Wardrobe.shared().note_drop)
+	Wardrobe.shared().follow_drops(PollenWallet.shared().item_dropped)
 	pollen_client.settled.connect(func() -> void: grant_card_check=true)
 	# A wallet read that lands while Home shows updates its chip (the gain shows then).
 	pollen_client.settled.connect(_refresh_pollen_chip)

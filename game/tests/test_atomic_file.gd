@@ -1,7 +1,9 @@
 extends SceneTree
 ## services/atomic_file.gd: the one tmp + flush + rename write every small store
-## uses, and its fallback read of a copy a cut-off write left behind.
+## uses, and its fallback read of a copy a cut-off write left behind, as text
+## or as a JSON value read without logging.
 const AtomicFile = preload("res://services/atomic_file.gd")
+const LogWatch = preload("res://tests/log_watch.gd")
 const DIR := "user://atomic-file-test"
 
 var checks := 0
@@ -27,6 +29,7 @@ func _run() -> void:
 	_copy_backup_write()
 	_failed_writes()
 	_fallback_read()
+	_json_read()
 	_candidates()
 	_remove_all()
 	print("ATOMIC FILE: %d checks, %d failures" % [checks, failures])
@@ -125,6 +128,28 @@ func _fallback_read() -> void:
 	_check(AtomicFile.read_text(path, valid) == "", "Nothing accepted reads as empty")
 	_write_raw(path + ".new", "{\"v\":3}")
 	_check(AtomicFile.read_text(path, valid, ".new") == "{\"v\":3}", "A store's own copy suffix is read")
+	_clear(path)
+
+func _json_read() -> void:
+	var path := DIR + "/json.json"
+	var watch: LogWatch = LogWatch.start(["Parse JSON failed"])
+	var dictionary := func(value: Variant) -> bool: return value is Dictionary
+	_clear(path)
+	_check(AtomicFile.read_json(path) == null, "No file is no data")
+	_write_raw(path, "")
+	_check(AtomicFile.read_json(path) == null, "An empty file is no data")
+	_write_raw(path, "{\"v\":1}")
+	_check(AtomicFile.read_json(path, dictionary) == {"v": 1.0}, "A whole file reads as its value")
+	_check(AtomicFile.read_json(path, func(_value: Variant) -> bool: return false) == null, "A value the store refuses is no data")
+	var damaged := "{\"v\":"
+	_write_raw(path, damaged)
+	_write_raw(path + ".tmp", "{\"v\":2}")
+	var aside := path + ".unreadable-" + FileAccess.get_sha256(path)
+	_check(AtomicFile.read_json(path, dictionary) == {"v": 2.0}, "A damaged file falls back to the copy a cut-off write left")
+	_check(_read(aside) == damaged and _read(path) == damaged, "The damaged file is kept aside, and left in place")
+	_check(watch.count("Parse JSON failed") == 0, "Reading JSON logs no parse error: %d" % watch.count("Parse JSON failed"))
+	watch.stop()
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(aside))
 	_clear(path)
 
 func _candidates() -> void:

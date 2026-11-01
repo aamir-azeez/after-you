@@ -1,6 +1,9 @@
 extends SceneTree
 ## Use real scene changes without preloading Main or HomeStage: no test-held
 ## script reference may keep their session state alive across chapter scenes.
+const LogWatch = preload("res://tests/log_watch.gd")
+## Errors no return to Home may log: a store wired twice, a missing file read as damaged JSON.
+const WATCHED := ["already connected", "Parse JSON failed"]
 var checks := 0
 var failures := 0
 
@@ -28,11 +31,16 @@ func _wait_for_scene(path: String) -> bool:
 	return false
 
 func _run() -> void:
+	var watch: LogWatch = LogWatch.start(WATCHED)
 	# Relay Isles is past First Steps: count every chapter as played.
 	_check(preload("res://tests/unlock_fixture.gd").seed_played(), "Every chapter counts as played")
 	change_scene_to_file("res://main.tscn")
 	if await _wait_for_scene("res://main.tscn"):
 		await _test_round_trip()
+	_check_wired_once()
+	for phrase: String in WATCHED:
+		_check(watch.count(phrase) == 0, "Returning Home logs no '%s' error (%d)" % [phrase, watch.count(phrase)])
+	watch.stop()
 	if is_instance_valid(current_scene):
 		current_scene.queue_free()
 		await process_frame
@@ -118,6 +126,14 @@ func _test_round_trip() -> void:
 	stage = current_scene.overlay.get_child(0)
 	_check(stage.zoom_target == default_size and stage._exploration.pan == Vector2.ZERO and not stage._reset.visible,
 		"Reset view remains reset after another complete chapter round trip")
+
+## Each return Home built a new Main over the same shared stores: an item
+## bloom's item still reaches the wardrobe through exactly one connection.
+func _check_wired_once() -> void:
+	var wardrobe: RefCounted = load("res://services/wardrobe.gd").shared()
+	var drops: Array = load("res://services/pollen_wallet.gd").shared().item_dropped.get_connections()
+	_check(drops.size() == 1 and drops[0].callable == Callable(wardrobe, "note_drop"),
+		"Item drops reach the wardrobe through one connection after returning Home: %d" % drops.size())
 
 func _touch(index: int, point: Vector2, pressed: bool) -> void:
 	var event := InputEventScreenTouch.new()

@@ -3,13 +3,22 @@ extends "res://tests/test_relay_online.gd"
 ## Only HTTP and storage are the same controlled doubles as the online suite.
 const Registry = preload("res://services/chapter_registry.gd")
 const StopRequest = preload("res://services/stop_request.gd")
+const LogWatch = preload("res://tests/log_watch.gd")
+## Errors leaving a chapter must never log: a store wired twice when Main is
+## built again, a missing file read as damaged JSON, and the room camera read
+## after it left the tree.
+const WATCHED := ["already connected", "Parse JSON failed", "is_inside_tree()"]
 
 func _run() -> void:
+	var watch: LogWatch = LogWatch.start(WATCHED)
 	for key: String in Registry.keys():
 		_load_chapter(key)
 		await _leave_during_read(key)
 		await _leave_during_submission(key, false)
 		await _leave_during_submission(key, true)
+	for phrase: String in WATCHED:
+		_check(watch.count(phrase) == 0, "Leaving chapters logs no '%s' error (%d)" % [phrase, watch.count(phrase)])
+	watch.stop()
 	for path: String in cleanup_paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix):

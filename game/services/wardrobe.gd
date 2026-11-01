@@ -199,6 +199,12 @@ func note_spend(server: String, owner: String, receipt: Variant) -> bool:
 	_announce(server, owner)
 	return true
 
+## Takes item drops from `drops` (services/pollen_wallet.gd item_dropped) into
+## note_drop. Main calls it each time it is built, and each return from a
+## chapter builds Main again over the same shared stores, so it connects once.
+func follow_drops(drops: Signal) -> void:
+	if not drops.is_connected(note_drop): drops.connect(note_drop)
+
 ## An item an item bloom dropped, from a confirmed turn receipt: owned now, so
 ## the wardrobe shows it without reading the wallet again. Nothing before the
 ## first wardrobe read; that read carries it anyway.
