@@ -105,7 +105,8 @@ func _layout() -> void:
 	if not is_instance_valid(_margin): return
 	var rect := get_viewport().get_visible_rect()
 	var safe := SafeArea.rect(get_viewport())
-	var now_compact := safe.size.x < 1100
+	# Compact on a narrow safe area, or one shorter than a phone's (the Duo's outer display with its camera band on top).
+	var now_compact := safe.size.x < 1100 or safe.size.y < SafeArea.PAGE_HEIGHT - 20.0
 	var side := SafeArea.centred(safe.size.x, 1240, 18)
 	var tall := SafeArea.centred(safe.size.y, SafeArea.PAGE_HEIGHT, 12 if now_compact else 16)
 	SafeArea.pad(_margin, rect, safe, side, tall, side, tall)

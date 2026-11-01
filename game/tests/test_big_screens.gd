@@ -6,6 +6,8 @@ extends SceneTree
 ## wide (SafeArea.fit_width), Main's content follows it, Home, Settings and the
 ## HUD stay inside it, and the Wardrobe, the Pollen store and Pollen from play
 ## centre a phone-height page block (kit/page_margin.gd) instead of stretching.
+## The duel pages (the lobby, a duel, Race a recorded run and a result) are
+## their own layers and centre the same block themselves (duels/duel_page_base.gd).
 
 const Main = preload("res://main.gd")
 const Storage = preload("res://services/local_save.gd")
@@ -14,6 +16,16 @@ const PageMargin = preload("res://presentation/kit/page_margin.gd")
 const WardrobePage = preload("res://presentation/wardrobe_page.gd")
 const PollenStorePage = preload("res://presentation/pollen_store_page.gd")
 const PollenPlayPage = preload("res://presentation/pollen_play_page.gd")
+const DuelsScreen = preload("res://presentation/duels/duels_screen.gd")
+const DuelPage = preload("res://presentation/duels/duel_page.gd")
+const DuelGhostPage = preload("res://presentation/duels/duel_ghost_page.gd")
+const DuelResultPage = preload("res://presentation/duels/duel_result_page.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
+## A synthetic duel for the duel pages: never a real player.
+const DUEL_ME := "MMMMMMMMMMMMMMMMMMMMMM"
+const DUEL_BOARD := "sleeping-lighthouse@2"
+## How far a duel page's content may run past its block's authored size, in units.
+const DUEL_SLACK := 4.0
 
 ## [physical pixels, native insets (left, top, right, bottom) in pixels, name].
 ## The Duo's insets are an estimate until a device or Device Hub run reads them:
@@ -130,6 +142,7 @@ func _test_screen(app: Node, size: Vector2i, insets: Vector4, name: String) -> v
 	_check_inside(app.overlay, safe, name + " Settings")
 	for page: Control in [WardrobePage.new(false), PollenStorePage.new(), PollenPlayPage.new()]:
 		await _check_page(app, page, safe, name)
+	await _check_duel_pages(safe, name)
 	await _check_hud(app, safe, name)
 	app._show_home()
 	await _settle()
@@ -155,6 +168,61 @@ func _check_page(app: Node, page: Control, safe: Rect2, name: String) -> void:
 	_check(is_equal_approx(block.position.x - safe.position.x, float(margin.side)), "%s: %s keeps its side spacing" % [name, page.name])
 	_check_inside(page, safe, "%s %s" % [name, page.name])
 	app._clear_overlay()
+
+## A running or decided duel as the server sends it.
+static func _duel(status: String, result: Variant = null) -> Dictionary:
+	return {"schema_version": 1, "duel_id": "d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0", "kind": "friend", "board": DUEL_BOARD, "status": status, "steps": 12,
+		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "result": result, "eligible": true, "sides": [
+			{"members": [DUEL_ME, "AAAAAAAAAAAAAAAAAAAAAA"], "you": true, "steps": 12, "ticks": 3240, "turn": 0, "finished": status == "decided", "left": false, "check": "passed" if status == "decided" else "none", "room_id": "RRRRRRRRRRRRRRRRRRRRRR", "invite_code": "abcdefabcdefabcdefab", "hosting": true},
+			{"members": ["FFFFFFFFFFFFFFFFFFFFFF", null], "you": false, "steps": 12 if status == "decided" else 2, "ticks": 2760, "turn": 1, "finished": status == "decided", "left": false, "check": "passed" if status == "decided" else "none"}]}
+
+## The duel pages: the lobby, then a duel, Race a recorded run and a result over it.
+func _check_duel_pages(safe: Rect2, name: String) -> void:
+	var name_of := func(_id: Variant) -> String: return "Maya"
+	var lobby := DuelsScreen.new()
+	lobby.me = DUEL_ME
+	lobby.name_of = name_of
+	root.add_child(lobby)
+	await _settle()
+	lobby.show_lobby(DuelsClient.valid_lobby({"schema_version": 1, "party": {"partner": "AAAAAAAAAAAAAAAAAAAAAA", "intact": true, "invites_in": [], "invite_out": null},
+		"duels": [_duel("running"), _duel("decided", {"outcome": "won", "reason": "faster", "margin_ticks": 30, "decided_ms": 9}).merged({"duel_id": "d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1d1"}, true)]}))
+	await _settle()
+	_check(lobby.find_child("DuelsTiles", true, false).get_child_count() == 2, "%s: the duel lobby shows its duels" % name)
+	_check_duel_page(lobby, safe, name)
+	var duel := DuelPage.new()
+	duel.me = DUEL_ME
+	duel.name_of = name_of
+	duel.view = DuelsClient.valid_view(_duel("running"))
+	var ghosts := DuelGhostPage.new()
+	ghosts.chapters = [DUEL_BOARD]
+	var result := DuelResultPage.new()
+	result.me = DUEL_ME
+	result.name_of = name_of
+	result.view = DuelsClient.valid_view(_duel("decided", {"outcome": "won", "reason": "faster", "margin_ticks": 720, "decided_ms": 9}))
+	result.pay = {"turns": 6, "plain": 600, "blooms": 0, "duel": 300, "duel_percent": 50, "boost": 60, "boost_percent": 10, "total": 960}
+	result.win_bonus = {"amount": 250, "counted": true, "reason": ""}
+	for page: CanvasLayer in [duel, ghosts, result]:
+		lobby.open_overlay(page)
+		await _settle()
+		if page == ghosts: ghosts.show_ghosts([{"board": DUEL_BOARD, "developer": 1470, "top": [{"entry_id": "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1", "ticks": 1400, "rank": 1, "names": null}]}])
+		await _settle()
+		_check_duel_page(page, safe, name)
+		page.close()
+		await _settle()
+	lobby.close()
+	await _settle()
+
+## A duel page centres a block about 1240 wide and a phone's height tall in the safe area, with every control inside it.
+## Its content may be a few units over its block's authored size (it was fitted to 1280x720), never out of the safe area.
+func _check_duel_page(page: CanvasLayer, safe: Rect2, name: String) -> void:
+	var block: Rect2 = ((page.get("_margin") as Control).get_child(0) as Control).get_global_rect()
+	_check(safe.grow(0.5).encloses(block), "%s: %s stays inside the safe area (%s in %s)" % [name, page.page_name(), block, safe])
+	var above := block.position.y - safe.position.y
+	var below := safe.end.y - block.end.y
+	if safe.size.y > SafeArea.PAGE_HEIGHT:
+		_check(block.size.y <= SafeArea.PAGE_HEIGHT + DUEL_SLACK and absf(above - below) <= 1.5, "%s: %s centres a page block no taller than the phone's (%.0f tall, %.0f above, %.0f below)" % [name, page.page_name(), block.size.y, above, below])
+	_check(block.size.x <= 1240.0 + DUEL_SLACK and absf((block.position.x - safe.position.x) - (safe.end.x - block.end.x)) <= DUEL_SLACK, "%s: %s keeps a centred block about 1240 wide (%.0f)" % [name, page.page_name(), block.size.x])
+	_check_inside(page.root, safe, "%s %s" % [name, page.page_name()])
 
 ## The chapter HUD: every control inside the safe area and none on another.
 func _check_hud(app: Node, safe: Rect2, name: String) -> void:
