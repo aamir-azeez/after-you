@@ -2,6 +2,20 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.7",
+      "date": "2026-11-01",
+      "highlights": [{"icon": "people", "text": "Race another pair of friends in Duels"}, {"icon": "star", "text": "Race Our run or a top time from the leaderboard"}, {"icon": "leaf", "text": "100 Pollen the first time you beat Our run on a chapter"}, {"icon": "bell", "text": "A bell rings when your pair wins"}, {"icon": "play", "text": "Online rooms open without a pause"}],
+      "paragraphs": [
+        {"text": "Duels are on Home, under Friends. You play every duel as a pair, so open Party first and ask a friend to be your duel partner. Then tap Start a duel, pick a friend's pair and a chapter you both have open, and send the challenge. Challenges from your friends show under Open duels, where you can accept them. Each pair plays the chapter in its own room, taking turns as usual, and the faster pair wins. Only time spent playing counts, so waiting for a turn adds nothing. Your pair can have 3 duels going at once."},
+        {"text": "Turns in a friend duel earn extra Pollen. The duel result and the Pollen card after each turn list it as the duel bonus, with its percent. Both players in the winning pair also get a win bonus, for up to 3 wins a week and one a week against the same pair. After a friend duel, Watch their run plays the other pair's run."},
+        {"text": "Race a recorded run, under Open duels, lets your pair race a time on any chapter you have open. Pick Our run, the time we set ourselves, or one of the top times on the chapter's leaderboard. A race pays Pollen like any turn together, and you each get 100 Pollen the first time you beat Our run on a chapter."},
+        {"text": "When your pair wins a duel or beats a recorded run, the first place bell from the leaderboards rings the first time you open the result. Duels always play with Forgiving catches off, and duel runs share the chapter's leaderboard with normal runs."},
+        {"text": "In a party, each Full Journey member adds 10% Pollen for both of you.", "paid": true},
+        {"text": "Opening an online room no longer freezes the screen for a moment. The room's world builds behind its loading card, the way a solo chapter does."},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.6",
       "date": "2026-10-31",
       "highlights": [{"icon": "home", "text": "Your pip hops up the Giant Steps and slides down happy"}, {"icon": "bell", "text": "New water sounds in chapters and on Home"}, {"icon": "star", "text": "Sounds for the Wardrobe, Pollen and leaderboards"}, {"icon": "tap", "text": "A soft tick on every button"}, {"icon": "picture", "text": "Better layouts on tablets and folding phones"}],
@@ -150,20 +164,6 @@
         {"text": "Play Solo and Play with a friend use the same chapter picker. You can close a room that is still in play, and remove finished or closed rooms from your list. The old Play together screen is gone, so Back from hosting returns to Play with a friend. Notify for a friend stays on after you leave Friends and come back."},
         {"text": "Replays shows the whole list as soon as it opens, and you can tap anywhere on a row to select it. Sleeping Lighthouse solo replays open from the Solo replays list. Most solo chapters have a Redo my previous turn button, and Notifications has a switch that alerts you when your friend asks for a redo."},
         {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.5.1",
-      "date": "2026-10-10",
-      "highlights": [{"icon": "link", "text": "Invite a friend with a link"}, {"icon": "key", "text": "Codes start with friend- or room-"}, {"icon": "home", "text": "Home has a new layout"}, {"icon": "play", "text": "Replays open faster after a restart"}],
-      "paragraphs": [
-        {"text": "You can send invite links now. Tap Share Invite on Friends or on Home to send your friend a link. If your friend has After You on an Android phone, the link opens the game and asks them to confirm adding you. A friend who doesn't have the game yet sees a page with your friend code and a Google Play button.", "ios_text": "You can send invite links now. Tap Share Invite on Friends or on Home to send your friend a link."},
-        {"text": "Codes now say what they are: friend codes start with friend- and room codes start with room-. Older codes still work. Your friends need this version to use the new codes and links."},
-        {"text": "Home has a new layout. Play with your friend is at the top, Play Solo and Friends sit side by side, and Replays and Invite your friends come after them. Settings is the gear icon in the top corner. The keepsakes box shows the keepsakes you still have to earn."},
-        {"text": "Play Solo has big play buttons on each chapter card. Finished chapters have a tick and a different colour, and locked Full Journey chapters are darker and carry a lock.", "paid": true},
-        {"text": "Replays shows a loading bar while it loads, instead of an empty list. It also remembers which replays it has already checked, so the list opens much faster after you restart the game."},
-        {"text": "On Friends, Copy is a single icon next to Share Invite. Tap a friend's code to copy it."},
-        {"text": "This is a RevenueCat Test Store tester APK. Hosting paid co-op rooms needs a tester code, and Full Journey unlocks the paid solo chapters.", "channels": ["github"]}
       ]
     }
   ]

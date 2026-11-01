@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.5.1",
+      "date": "2026-10-10",
+      "highlights": [{"icon": "link", "text": "Invite a friend with a link"}, {"icon": "key", "text": "Codes start with friend- or room-"}, {"icon": "home", "text": "Home has a new layout"}, {"icon": "play", "text": "Replays open faster after a restart"}]
+    },
+    {
       "version": "0.5.0",
       "date": "2026-10-10",
       "highlights": [{"icon": "picture", "text": "Chapters are picture cards you tap to play"}, {"icon": "spark", "text": "Your level stays on screen after a turn"}, {"icon": "tap", "text": "Lists and dropdowns scroll when you drag them"}, {"icon": "bell", "text": "Footsteps and catches change pitch"}]
