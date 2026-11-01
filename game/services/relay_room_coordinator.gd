@@ -105,6 +105,10 @@ var _draft_write_generation := -1
 ## the reply returns each checked the same turn again. Only valid checks are kept.
 var _proven_turns: Dictionary = {}
 const PROVEN_TURNS := 8
+## The snapshot verify_room_snapshot last proved and what that proof read
+## (_verify_context), so accepting the same snapshot next checks it once:
+## opening a room verifies its answer, then accepts it (services/relay_online_session.gd).
+var _verified: Dictionary = {}
 ## How long the last turn check took here, per replayed tick, so a screen can
 ## tell ahead whether a check is worth a wait card (as RelayJourney does).
 var _last_check_usec := 0
@@ -180,6 +184,7 @@ func invalidate_identity() -> void:
 	_busy = 0
 	_replay_recovering = false
 	_proven_turns.clear()
+	_verified = {}
 	_state = {}
 	_owner = ""
 	_epoch = -1
@@ -212,6 +217,7 @@ func bind_room(room_id: String) -> bool:
 	_clear_chapter()
 	_state = _empty_state()
 	_proven_turns.clear()
+	_verified = {}
 	_retire_live()
 	_draft_replay_verified = true
 	read_only = false
@@ -878,7 +884,7 @@ func _accept_snapshot(value: Variant) -> bool:
 	# identical copy skips the checkpoint and recording re-simulation.
 	var guarded := _guard()
 	var identical: bool = guarded and not _state.snapshot.is_empty() and Typed.same(value, _state.snapshot)
-	if not guarded or (not identical and not _valid_snapshot(value)):
+	if not guarded or (not identical and not _take_verified(value) and not _valid_snapshot(value)):
 		_remote_hold = true
 		return _error("invalid_snapshot", PlayerCopy.RELAY_ROOM_COORDINATOR_97B931D8DEE0)
 	if not _state.snapshot.is_empty():
@@ -1525,7 +1531,21 @@ func playback_context() -> Dictionary:
 func verify_room_snapshot(value: Variant) -> bool:
 	# A navigation probe can use the complete native validator without accepting
 	# a cache generation or changing the visible room.
-	return _guard() and not read_only and _valid_snapshot(value)
+	_verified = {}
+	if not _guard() or read_only or not _valid_snapshot(value): return false
+	_verified = {"context": _verify_context(), "value": (value as Dictionary).duplicate(true)}
+	return true
+
+## Everything _valid_snapshot reads besides the snapshot itself.
+func _verify_context() -> Array:
+	return [_generation, _owner, _epoch, _room, _chapter_key]
+
+## Whether verify_room_snapshot just proved this exact snapshot here. Taken
+## once: the proof is dropped whatever the answer.
+func _take_verified(value: Variant) -> bool:
+	var proven := _verified
+	_verified = {}
+	return not proven.is_empty() and value is Dictionary and proven.context == _verify_context() and proven.value == value
 
 func accept_room_snapshot(value: Variant) -> bool:
 	return _accept_snapshot(value)

@@ -245,6 +245,12 @@ func _refusals() -> void:
 	var skipped := _room(4, false, 9)
 	skipped.completed_pair_ids = ["p0-0", "p0-1", "p0-2"]
 	_check(not probe.call(skipped), "A completed pair list shorter than the stage index is refused")
+	# A room open proves its answer, then accepts it: the proof covers that exact snapshot only.
+	var proved := _room(4, true, 9)
+	var changed := proved.duplicate(true)
+	changed.completed_pair_ids = ["p0-0", "p0-1", "p0-2"]
+	_check(probe.call(proved) and not coordinator.accept_room_snapshot(changed) and coordinator.last_code == "invalid_snapshot", "A snapshot other than the one just proved is checked in full and refused")
+	_check(probe.call(proved) and coordinator.accept_room_snapshot(proved) and coordinator.snapshot().revision == 9, "The snapshot just proved is accepted")
 	var two_stage := Registry.definition(Registry.TURN_OF_THE_TIDE)
 	_check(RoomStages.within(1, two_stage) and not RoomStages.within(2, two_stage) and RoomStages.within(5, level) and not RoomStages.within(6, level) and not RoomStages.within(-1, level) and not RoomStages.within(1.5, level), "Stage bounds come from each chapter")
 
