@@ -55,6 +55,7 @@ var _their_loading := false
 ## The idempotency key of each challenge or ghost race sent with no answer yet,
 ## by what it asked for. A tap again sends the same key, so after a reply lost
 ## on the way the server answers the duel the first tap made, never a second one.
+## A server's answer (a duel, or a refusal) settles it; the next tap is a new duel.
 var _unanswered: Dictionary = {}
 
 func _init(main: Node = null) -> void:
@@ -109,6 +110,7 @@ func close() -> void:
 
 func _left() -> void:
 	screen = null
+	_unanswered.clear()
 	if host.mode == MODE_DUELS:
 		host.ui.visible = true
 		home_requested.emit()
@@ -205,11 +207,12 @@ func _challenge(page: CanvasLayer, friend: String, chapter: String) -> void:
 	page.close()
 
 ## Sends `request` with the key kept for `asked` (_unanswered), made on its
-## first tap, and drops that key once the duel is made.
+## first tap, and drops that key once the server answers it.
 func _send_once(asked: String, request: Callable) -> Dictionary:
 	if not _unanswered.has(asked): _unanswered[asked] = DuelsClient.new_key()
 	var answer: Dictionary = await request.call(_unanswered[asked])
-	if answer.get("ok", false): _unanswered.erase(asked)
+	var status := int(answer.get("status", 0))
+	if answer.get("ok", false) or (status >= 400 and status < 500): _unanswered.erase(asked)
 	return answer
 
 func _open_ghosts() -> void:

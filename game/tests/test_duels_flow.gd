@@ -199,6 +199,13 @@ func _run() -> void:
 	await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
 	challenged = keys.call("/v1/duels/challenge")
 	_check(challenged.size() == 4 and challenged[2] == challenged[0] and challenged[3] != challenged[0], "once a challenge is answered, the next one is a new challenge: %s" % [challenged])
+	if is_instance_valid(asked): asked.close()
+	asked = FakePage.new()
+	root.add_child(asked)
+	api.replies["POST /v1/duels/challenge"] = {"ok": false, "status": 409, "code": "duel_limit_reached"}
+	for index in range(2): await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
+	challenged = keys.call("/v1/duels/challenge")
+	_check(challenged.size() == 6 and challenged[4] != challenged[3] and challenged[5] != challenged[4], "a refusal from the server settles its key too: %s" % [challenged])
 	asked.close()
 	# Back on the Party or Start a duel page while the friends list loads: the page is gone, and nothing writes to it.
 	var watch: LogWatch = LogWatch.start(["previously freed"])

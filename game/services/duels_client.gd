@@ -184,7 +184,7 @@ func _party(action: String, body: Dictionary) -> Dictionary:
 	return {"ok": true, "lobby": checked}
 
 func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
-	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
+	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", "")), "status": int(response.get("status", 0))}
 	var data: Variant = response.get("data")
 	var view := valid_view(data.get("duel") if data is Dictionary else null)
 	if view.is_empty(): return {"ok": false, "code": "invalid_duels"}
