@@ -21,6 +21,7 @@ extends Node
 ## - chapters: _chapter_unlocks, _full_journey_access, _paid_content_hidden
 ## - rooms: relay_lobby_flow (open_lobby, lobby_action, join_room)
 ## - node: add_child
+## - sound: soundscape when Main has it (play_fixed_cue), for a won result's bell
 const DuelsScreen = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
@@ -36,6 +37,7 @@ const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
+const Soundscape = preload("res://services/soundscape.gd")
 ## Main's mode while Duels is up.
 const MODE_DUELS := "duels"
 ## How often an open duel page reads its duel again.
@@ -286,7 +288,10 @@ func _open_result(view: Dictionary) -> void:
 	page.their_run_requested.connect(func(next: Dictionary, _control: Control) -> void: _watch_theirs(page, next))
 	screen.open_overlay(page)
 	var answer: Dictionary = await client().duel(view.board, view.duel_id)
-	if is_instance_valid(page) and answer.get("ok", false): page.show_result(answer.duel, answer.get("pay", {}), answer.get("win_bonus", {}))
+	if not is_instance_valid(page) or not answer.get("ok", false): return
+	page.show_result(answer.duel, answer.get("pay", {}), answer.get("win_bonus", {}))
+	var cue := DuelModel.result_cue(answer.duel)
+	if not cue.is_empty(): Soundscape.play_on(host, cue)
 
 ## Plays the other pair's run in the shared replay viewer, from this phone's
 ## copy or fetched once (services/duels_client.gd their_run); the result page

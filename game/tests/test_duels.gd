@@ -21,6 +21,7 @@ const HomeMenu = preload("res://presentation/home_menu.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const SoundCues = preload("res://services/sound_cues.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -84,9 +85,11 @@ func _model() -> void:
 	_check(DuelModel.margin_text(720) == PlayerCopy.DUEL_MARGIN_SECONDS % 24 and DuelModel.margin_text(2) == PlayerCopy.DUEL_MARGIN_HUNDREDTHS % (2.0 / 30.0), "the gap reads seconds, or hundredths under a tenth")
 	var won := Client.valid_view(_wire("decided", {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 720, "decided_ms": 9}}))
 	_check(DuelModel.result_title(won, _name_of) == "You and Maya won" and DuelModel.result_line(won) == PlayerCopy.DUEL_FASTER % (PlayerCopy.DUEL_MARGIN_SECONDS % 24), "the result title and line")
+	_check(DuelModel.result_cue(won) == "ui_first" and SoundCues.CUES.ui_first.get("fixed", false), "a won result sounds the first place bell, a fixed cue")
 	_check(DuelModel.action(won, ME) == "result", "a decided duel is a result tile")
 	var checking := Client.valid_view(_wire("running", {"sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), _wire().sides[1]]}))
 	_check(DuelModel.result_title(checking, _name_of) == PlayerCopy.DUEL_CHECKING_TITLE and DuelModel.result_line(checking) == PlayerCopy.DUEL_CHECKING_LINE, "a finished pair waits for the check")
+	_check(DuelModel.result_cue(checking) == "" and DuelModel.result_cue(Client.valid_view(_wire("decided", {"result": {"outcome": "lost", "reason": "faster", "margin_ticks": 30, "decided_ms": 9}}))) == "", "a result still checked or lost sounds nothing")
 	var pay := {"turns": 6, "plain": 600, "blooms": 111, "duel": 300, "boost": 60, "boost_percent": 10, "total": 1071}
 	var lines := DuelModel.pay_lines(pay, {"amount": 250, "counted": true, "reason": ""})
 	_check(lines.total == 1321 and lines.lines.size() == 4 and lines.lines[1][0] == PlayerCopy.DUEL_PAY_PREMIUM and lines.lines[3][0] == PlayerCopy.DUEL_PAY_WIN, "the real pay: turns, duel bonus, boost, win bonus: %s" % lines)
@@ -387,7 +390,7 @@ func _home() -> void:
 	var menu := HomeMenu.new()
 	holder.add_child(menu)
 	var none := func() -> void: pass
-	menu.build({"play": func(_button: Button) -> void: pass, "solo": none, "friends": none, "duels": none, "replays": none, "invite": none, "whats_new": none, "settings": none, "full_journey": none}, preload("res://assets/fonts/nunito.ttf"))
+	menu.build({"play": func(_button: Button) -> void: pass, "solo": none, "friends": none, "duels": none, "replays": none, "wardrobe": none, "invite": none, "whats_new": none, "settings": none, "full_journey": none}, preload("res://assets/fonts/nunito.ttf"))
 	await process_frame
 	_check(not menu.duels_button.visible, "Home hides Duels until the server says they are on")
 	var index := menu.duels_button.get_index()
@@ -396,6 +399,10 @@ func _home() -> void:
 	await process_frame
 	_check(menu.duels_button.visible and menu.duels_button.custom_minimum_size.y >= 48.0, "then shows, at least 48 high")
 	_check(menu.get_node("HomeMenuMargin").get_combined_minimum_size().y <= menu.size.y + 0.5, "and the column still fits 720")
+	# With the Wardrobe row too (main's Home), every row still fits 720.
+	menu.show_wardrobe(true)
+	await process_frame
+	_check(menu.wardrobe_button.visible and menu.duels_button.visible and menu.get_node("HomeMenuMargin").get_combined_minimum_size().y <= menu.size.y + 0.5, "beside the Wardrobe row the column still fits 720")
 	holder.queue_free()
 	await process_frame
 	var hub := preload("res://presentation/room_hub_screen.gd").new()
