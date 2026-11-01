@@ -539,7 +539,7 @@ func create_room(chapter: String = Registry.RELAY, hard: bool = false) -> String
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_8C3AC7311985
 		return ""
 	var chosen := Registry.descriptor(chapter)
-	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash}
+	var body := {"idempotency_key": RoomsApi.new_key(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash}
 	var requested_rules := int(_simulation_versions().get(chapter, Registry.definition(chapter).simulation_version))
 	if requested_rules != int(Registry.definition(chapter).simulation_version):
 		body["simulation_version"] = requested_rules
@@ -560,7 +560,7 @@ func create_duel_room(chapter: String, duel_id: String, board: String) -> String
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_8C3AC7311985
 		return ""
 	var chosen := Registry.descriptor(chapter)
-	var body := {"idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash, "duel": {"duel_id": duel_id, "board": board}}
+	var body := {"idempotency_key": RoomsApi.new_key(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash, "duel": {"duel_id": duel_id, "board": board}}
 	var requested_rules := int(_simulation_versions().get(chapter, Registry.definition(chapter).simulation_version))
 	if requested_rules != int(Registry.definition(chapter).simulation_version):
 		body["simulation_version"] = requested_rules
@@ -1247,12 +1247,7 @@ func _failure(response: Dictionary, fallback: String = "") -> bool:
 	return false
 
 static func _id(value: Variant) -> bool:
-	if not value is String or value.length() != 22:
-		return false
-	for character: String in value:
-		if character not in "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789_-":
-			return false
-	return true
+	return Coordinator._token(value, 22)
 
 func safety_client() -> RefCounted:
 	_ready()

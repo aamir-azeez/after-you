@@ -17,6 +17,7 @@ extends RefCounted
 ## failure, never a partial page.
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const TheirRun = preload("res://services/duel_their_run.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const PREFIX := "/v1/duels"
@@ -153,7 +154,7 @@ func _ack_their_run(board: String, duel_id: String, digest: String) -> bool:
 	return bool(response.get("ok", false))
 
 static func new_key() -> String:
-	return Crypto.new().generate_random_bytes(18).hex_encode()
+	return RoomsApi.new_key()
 
 ## "friend", "ghost" or "" for a room this phone knows as a duel room.
 func room_kind(room_id: String) -> String:

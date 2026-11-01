@@ -19,6 +19,7 @@ const RoomStages = preload("res://services/room_stages.gd")
 const Proofs = preload("res://services/journey_proofs.gd")
 const Frozen = preload("res://services/frozen_simulation.gd")
 const Typed = preload("res://services/typed_values.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const RunReactionStore = preload("res://services/run_reaction_store.gd")
@@ -1388,7 +1389,7 @@ func _room_path() -> String:
 
 
 func _new_key() -> String:
-	return str(_keys.call()) if _keys.is_valid() else Crypto.new().generate_random_bytes(18).hex_encode()
+	return str(_keys.call()) if _keys.is_valid() else RoomsApi.new_key()
 
 
 static func _request_hash(operation: String, body: Dictionary) -> String:

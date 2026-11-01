@@ -13,6 +13,7 @@ const RoomStages = preload("res://services/room_stages.gd")
 const Catalog = preload("res://core/v2/stage_catalog.gd")
 const Capture = preload("res://services/optional_photo_capture.gd")
 const Typed = preload("res://services/typed_values.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const MAX_BYTES := 160 * 1024
 const MAX_STATE := 256 * 1024
 const META_KEYS := ["schema_version", "turn_id", "owner_player_id", "recording_hash", "photo_revision", "sha256", "width", "height", "byte_length", "updated_at"]
@@ -398,7 +399,7 @@ func _ack_cached(room_id: String, cached: Dictionary, ticket: int, context: RefC
 		_library.mark_ack(_owner, cached.entry_id)
 
 func _mutation_body() -> Dictionary:
-	return {"idempotency_key": str(_keys.call()) if _keys.is_valid() else Crypto.new().generate_random_bytes(18).hex_encode(), "recording_hash": _state.target.recording_hash,
+	return {"idempotency_key": str(_keys.call()) if _keys.is_valid() else RoomsApi.new_key(), "recording_hash": _state.target.recording_hash,
 		"expected_photo_revision": int(_photo.photo_revision) if _photo is Dictionary else 0, "expected_photo_hash": _photo.sha256 if _photo is Dictionary else null}
 
 func _stage(operation: String, body: Dictionary, photo_id: String) -> bool:

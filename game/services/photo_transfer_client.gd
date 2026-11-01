@@ -5,6 +5,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 signal progress(message: String)
 const Save = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const BASE := "/v1/photo-transfer"
 const BODY_LIMIT := 800 * 1024
@@ -194,7 +195,7 @@ func prepare() -> bool:
 	var ids: Array = []
 	for entry: Dictionary in local.entries.slice(0, MAX_ENTRIES): ids.append(entry.entry_id)
 	var next := _state.duplicate(true)
-	next.upload = {"start_key": _key(), "session_id": "", "entry_ids": ids, "cursor": 0}
+	next.upload = {"start_key": RoomsApi.new_key(), "session_id": "", "entry_ids": ids, "cursor": 0}
 	if not _persist(next): return _finish(ticket, _storage_error())
 	return _finish(ticket, await _upload(ticket))
 
@@ -224,7 +225,7 @@ func _upload(ticket: int) -> bool:
 			return false
 		if not await _send_pending(ticket): return false
 	while _same(ticket) and int(_state.upload.cursor) < _state.upload.entry_ids.size():
-		var body := {"schema_version": 1, "idempotency_key": _key(), "entries": []}
+		var body := {"schema_version": 1, "idempotency_key": RoomsApi.new_key(), "entries": []}
 		var cursor := int(_state.upload.cursor)
 		for index in range(cursor, mini(cursor + 16, _state.upload.entry_ids.size())):
 			var exported: Dictionary = _library.export_entry(_owner, _state.upload.entry_ids[index])
@@ -296,7 +297,7 @@ func receive() -> bool:
 			seen.append(entry.entry_id)
 			ack.append({"entry_id": entry.entry_id, "sha256": entry.sha256, "entry_revision": entry.entry_revision})
 		var next := _state.duplicate(true)
-		next.pending = {"operation": "restore_ack", "path": BASE + "/restore-ack", "session_id": null, "count": ack.size(), "body": {"schema_version": 1, "idempotency_key": _key(), "entries": ack}}
+		next.pending = {"operation": "restore_ack", "path": BASE + "/restore-ack", "session_id": null, "count": ack.size(), "body": {"schema_version": 1, "idempotency_key": RoomsApi.new_key(), "entries": ack}}
 		if not _persist(next): return _finish(ticket, _storage_error())
 		if not await _send_pending(ticket): return _finish(ticket, false)
 		cursor += batch.size()
@@ -347,9 +348,6 @@ func _storage_error() -> bool:
 func _invalid_receive() -> bool:
 	_say(PlayerCopy.PHOTO_TRANSFER_CLIENT_FFDC2731C383)
 	return false
-
-static func _key() -> String:
-	return Crypto.new().generate_random_bytes(18).hex_encode()
 
 static func _id(value: Variant) -> bool:
 	return _matches(value, "^[A-Za-z0-9_-]{22}$")

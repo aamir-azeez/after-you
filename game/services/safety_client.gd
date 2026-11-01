@@ -2,6 +2,7 @@ extends RefCounted
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 ## Authenticated, explicit safety operations. No timer-triggered POSTs.
 const Store = preload("res://services/safety_store.gd")
+const RoomsApi = preload("res://services/rooms_api.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
@@ -231,7 +232,7 @@ func report(room: Dictionary, reason: String, photo: Variant = null) -> bool:
 	var ticket := _begin()
 	if ticket < 0: return false
 	if not _state.pending.is_empty(): return _finish(ticket, _fail("pending_report"))
-	var body := {"schema_version": 1, "idempotency_key": Crypto.new().generate_random_bytes(18).hex_encode(), "room_family": room.room_family, "room_id": room.room_id, "reason": reason, "photo": photo.duplicate(true) if photo is Dictionary else photo}
+	var body := {"schema_version": 1, "idempotency_key": RoomsApi.new_key(), "room_family": room.room_family, "room_id": room.room_id, "reason": reason, "photo": photo.duplicate(true) if photo is Dictionary else photo}
 	if not Store.valid_report(body): return _finish(ticket, _fail("invalid_safety_target"))
 	var next := _state.duplicate(true)
 	next.pending = body
