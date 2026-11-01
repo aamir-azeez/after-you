@@ -296,7 +296,7 @@ static func _side(value: Variant) -> Dictionary:
 static func _pay(value: Variant) -> Dictionary:
 	if not value is Dictionary: return {}
 	var pay := {}
-	for field: String in ["turns", "plain", "blooms", "duel", "boost", "boost_percent", "total"]:
+	for field: String in ["turns", "plain", "blooms", "duel", "duel_percent", "boost", "boost_percent", "total"]:
 		if not Typed.whole_number(value.get(field)): return {}
 		pay[field] = int(value[field])
 	return pay

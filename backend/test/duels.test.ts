@@ -226,7 +226,7 @@ describe("friend duels", () => {
     const won = await detail(a1, duel);
     expect(won.duel.result).toMatchObject({ outcome: "won", reason: "faster", margin_ticks: 40 });
     expect(won.win_bonus).toEqual({ amount: 250, counted: true });
-    expect(won.pay).toMatchObject({ turns: 2 });
+    expect(won.pay).toMatchObject({ turns: 2, duel_percent: 50 });
     // A repeat answers the same bonus, and the loser gets none.
     expect((await detail(a1, duel)).win_bonus).toEqual({ amount: 250, counted: true });
     const lost = await detail(b1, duel);

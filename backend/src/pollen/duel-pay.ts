@@ -25,7 +25,7 @@ export type DuelWin = { duel_id: string; opponent: string; decided_ms: number };
 export type GhostWin = { duel_id: string; board: string };
 export type BonusReason = "weekly_cap" | "same_pair" | "board_paid";
 export type DuelWinAnswer = { amount: number; counted: boolean; reason?: BonusReason; balance: number };
-export type DuelRoomPay = { turns: number; plain: number; blooms: number; duel: number; boost: number; boost_percent: number; total: number };
+export type DuelRoomPay = { turns: number; plain: number; blooms: number; duel: number; duel_percent: number; boost: number; boost_percent: number; total: number };
 
 const WIN_PREFIX = "duelwin:";
 const GHOST_PREFIX = "ghostwin:";
@@ -75,7 +75,7 @@ function answer(amount: number, reason: unknown, balance: number): DuelWinAnswer
 
 /** What the player's turns in `roomId` paid, read from their turn claims. Reads only. */
 export function duelRoomPay(storage: DurableObjectStorage, roomId: string): DuelRoomPay {
-  const pay: DuelRoomPay = { turns: 0, plain: 0, blooms: 0, duel: 0, boost: 0, boost_percent: 0, total: 0 };
+  const pay: DuelRoomPay = { turns: 0, plain: 0, blooms: 0, duel: 0, duel_percent: 0, boost: 0, boost_percent: 0, total: 0 };
   let rows: { data: string }[] = [];
   try {
     const prefix = `turn:${roomId}:`, end = `turn:${roomId};`;
@@ -88,6 +88,8 @@ export function duelRoomPay(storage: DurableObjectStorage, roomId: string): Duel
     pay.plain += turn.amount ?? 0;
     pay.blooms += turn.bloom_extra ?? 0;
     pay.duel += turn.duel ?? 0;
+    // The premium's percent as the turns were priced (pollen/earn.ts price, rates.duels.turn_percent).
+    pay.duel_percent = Math.max(pay.duel_percent, turn.duel_percent ?? 0);
     pay.boost += turn.boost ?? 0;
     pay.boost_percent = Math.max(pay.boost_percent, turn.boost_percent ?? 0);
     pay.total += turn.total ?? 0;

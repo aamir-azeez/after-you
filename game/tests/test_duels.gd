@@ -90,9 +90,9 @@ func _model() -> void:
 	var checking := Client.valid_view(_wire("running", {"sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), _wire().sides[1]]}))
 	_check(DuelModel.result_title(checking, _name_of) == PlayerCopy.DUEL_CHECKING_TITLE and DuelModel.result_line(checking) == PlayerCopy.DUEL_CHECKING_LINE, "a finished pair waits for the check")
 	_check(DuelModel.result_cue(checking) == "" and DuelModel.result_cue(Client.valid_view(_wire("decided", {"result": {"outcome": "lost", "reason": "faster", "margin_ticks": 30, "decided_ms": 9}}))) == "", "a result still checked or lost sounds nothing")
-	var pay := {"turns": 6, "plain": 600, "blooms": 111, "duel": 300, "boost": 60, "boost_percent": 10, "total": 1071}
+	var pay := {"turns": 6, "plain": 600, "blooms": 111, "duel": 300, "duel_percent": 50, "boost": 60, "boost_percent": 10, "total": 1071}
 	var lines := DuelModel.pay_lines(pay, {"amount": 250, "counted": true, "reason": ""})
-	_check(lines.total == 1321 and lines.lines.size() == 4 and lines.lines[1][0] == PlayerCopy.DUEL_PAY_PREMIUM and lines.lines[3][0] == PlayerCopy.DUEL_PAY_WIN, "the real pay: turns, duel bonus, boost, win bonus: %s" % lines)
+	_check(lines.total == 1321 and lines.lines.size() == 4 and lines.lines[1][0] == PlayerCopy.DUEL_PAY_PREMIUM % 50 and lines.lines[3][0] == PlayerCopy.DUEL_PAY_WIN, "the real pay: turns, duel bonus, boost, win bonus: %s" % lines)
 	var quiet := DuelModel.pay_lines(pay, {}, false)
 	_check(quiet.total == 1071 and quiet.lines.size() == 2, "where Full Journey is not named, the boost folds into the turns line")
 	_check(DuelModel.pay_lines({}, {"amount": 0, "counted": false, "reason": "same_pair"}).lines[0][0] == PlayerCopy.DUEL_PAY_WIN_SAME, "a win that did not count says why")
@@ -199,7 +199,7 @@ func _client() -> void:
 	var key := Client.new_key()
 	var sent: Dictionary = await client.challenge(FINN, BOARD, key)
 	_check(sent.ok and api.requests[-1][2].idempotency_key == key and api.requests[-1][2].friend == FINN, "a challenge carries its tap's key")
-	api.replies["GET /v1/duels/%s/%s" % [BOARD, DUEL]] = {"ok": true, "data": {"schema_version": 1, "duel": _wire("decided", {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 30}}), "pay": {"turns": 6, "plain": 1, "blooms": 0, "duel": 1, "boost": 0, "boost_percent": 0, "total": 2}, "win_bonus": {"amount": 250, "counted": true}}}
+	api.replies["GET /v1/duels/%s/%s" % [BOARD, DUEL]] = {"ok": true, "data": {"schema_version": 1, "duel": _wire("decided", {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 30}}), "pay": {"turns": 6, "plain": 1, "blooms": 0, "duel": 1, "duel_percent": 50, "boost": 0, "boost_percent": 0, "total": 2}, "win_bonus": {"amount": 250, "counted": true}}}
 	var detail: Dictionary = await client.duel(BOARD, DUEL)
 	_check(detail.ok and detail.pay.turns == 6 and detail.win_bonus.amount == 250, "a duel's pay and win bonus read")
 	# A won duel rings its bell once per player, after a restart too (duels_flow.gd _open_result).
@@ -275,13 +275,13 @@ func _pages() -> void:
 	result.me = ME
 	result.name_of = _name_of
 	result.view = Client.valid_view(_wire("decided", {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 720}, "sides": [_wire().sides[0].merged({"steps": 12, "finished": true, "check": "passed"}, true), _wire().sides[1].merged({"steps": 12, "finished": true, "check": "passed"}, true)]}))
-	result.pay = {"turns": 6, "plain": 600, "blooms": 0, "duel": 300, "boost": 60, "boost_percent": 10, "total": 960}
+	result.pay = {"turns": 6, "plain": 600, "blooms": 0, "duel": 300, "duel_percent": 50, "boost": 60, "boost_percent": 10, "total": 960}
 	result.win_bonus = {"amount": 250, "counted": true, "reason": ""}
 	lobby.open_overlay(result)
 	await process_frame
 	_check(result.find_child("DuelResultHeadline", true, false).text == "You and Maya won" and _has_text(result, PlayerCopy.DUEL_WINNER), "the winner's title and card")
 	var pollen: Node = result.find_child("DuelPollen", true, false)
-	_check(pollen != null and _has_text(pollen, PlayerCopy.DUEL_PAY_PREMIUM) and _has_text(pollen, PlayerCopy.DUEL_PAY_WIN) and _has_text(pollen, "1,210"), "Pollen earned lists the duel's real pay and its total")
+	_check(pollen != null and _has_text(pollen, PlayerCopy.DUEL_PAY_PREMIUM % 50) and _has_text(pollen, PlayerCopy.DUEL_PAY_WIN) and _has_text(pollen, "1,210"), "Pollen earned lists the duel's real pay and its total")
 	await process_frame
 	var mark: Control = pollen.find_child("PollenMark", true, false)
 	var total_row: Control = mark.get_parent() if mark != null else null
@@ -324,7 +324,7 @@ func _pages() -> void:
 		raced.name_of = _name_of
 		raced.view = beat
 		lobby.open_overlay(raced)
-		raced.show_result(beat, {"turns": 6, "plain": 600, "blooms": 0, "duel": 0, "boost": 0, "boost_percent": 0, "total": 600}, {} if paid_before else {"amount": 100, "counted": true, "reason": ""})
+		raced.show_result(beat, {"turns": 6, "plain": 600, "blooms": 0, "duel": 0, "duel_percent": 0, "boost": 0, "boost_percent": 0, "total": 600}, {} if paid_before else {"amount": 100, "counted": true, "reason": ""})
 		await process_frame
 		var card: Node = raced.find_child("DuelPollen", true, false)
 		_check(raced.find_child("DuelResultHeadline", true, false).text == PlayerCopy.DUEL_BEAT_GHOST and card != null, "a won ghost race shows its title and Pollen card")

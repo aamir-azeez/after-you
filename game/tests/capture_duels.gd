@@ -108,7 +108,7 @@ func _run() -> void:
 	result.me = ME
 	result.name_of = _name_of
 	result.view = won
-	result.pay = {"turns": 2, "plain": 222, "blooms": 0, "duel": 112, "boost": 22, "boost_percent": 10, "total": 356}
+	result.pay = {"turns": 2, "plain": 222, "blooms": 0, "duel": 112, "duel_percent": 50, "boost": 22, "boost_percent": 10, "total": 356}
 	result.win_bonus = {"amount": 250, "counted": true, "reason": ""}
 	lobby.open_overlay(result)
 	await _save("duel-result-won")
@@ -127,7 +127,7 @@ func _run() -> void:
 	ghost_page.me = ME
 	ghost_page.name_of = _name_of
 	ghost_page.view = ghost_won
-	ghost_page.pay = {"turns": 2, "plain": 222, "blooms": 111, "duel": 0, "boost": 0, "boost_percent": 0, "total": 333}
+	ghost_page.pay = {"turns": 2, "plain": 222, "blooms": 111, "duel": 0, "duel_percent": 0, "boost": 0, "boost_percent": 0, "total": 333}
 	lobby.open_overlay(ghost_page)
 	await _save("duel-ghost-result")
 	ghost_page.close()

@@ -171,7 +171,7 @@ static func pay_lines(pay: Dictionary, bonus: Dictionary, with_boost: bool = tru
 	if not pay.is_empty() and int(pay.turns) > 0:
 		var boosted := with_boost and int(pay.boost) > 0
 		lines.append([PlayerCopy.DUEL_PAY_TURNS, int(pay.plain) + int(pay.blooms) + (0 if boosted else int(pay.boost))])
-		if int(pay.duel) > 0: lines.append([PlayerCopy.DUEL_PAY_PREMIUM, int(pay.duel)])
+		if int(pay.duel) > 0: lines.append([PlayerCopy.DUEL_PAY_PREMIUM % int(pay.duel_percent), int(pay.duel)])
 		if boosted: lines.append([PlayerCopy.DUEL_PAY_BOOST % int(pay.boost_percent), int(pay.boost)])
 	if not bonus.is_empty():
 		lines.append([PlayerCopy.DUEL_PAY_GHOST_FIRST if ghost else PlayerCopy.DUEL_PAY_WIN if bonus.counted else _bonus_note(str(bonus.reason)), int(bonus.amount)])

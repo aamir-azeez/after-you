@@ -138,10 +138,11 @@ static func checked_receipt(value: Variant) -> Dictionary:
 			var percents: Variant = turn.bonus_percents
 			if not percents is Array or percents.size() != bonuses.size() or percents.any(func(percent: Variant) -> bool: return not _count(percent, 100)): return {}
 			kept.turn["bonus_percents"] = percents.map(func(percent: Variant) -> int: return Typed.as_int(percent))
-		# A friend duel's turn: its premium, already in the total (backend pollen/earn.ts price).
+		# A friend duel's turn: its premium, already in the total, and its percent (backend pollen/earn.ts price).
 		if turn.has("duel"):
-			if not _count(turn.duel): return {}
+			if not _count(turn.duel) or not _count(turn.get("duel_percent"), 100): return {}
 			kept.turn["duel"] = Typed.as_int(turn.duel)
+			kept.turn["duel_percent"] = Typed.as_int(turn.duel_percent)
 	if value.has("item_bloom"):
 		var bloom := checked_item_bloom(value.item_bloom)
 		if bloom.is_empty(): return {}
