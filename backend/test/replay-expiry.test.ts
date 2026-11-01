@@ -30,7 +30,7 @@ const runOut = (room: Room) => runInDurableObject(room, async (_, ctx) => {
   ctx.storage.sql.exec("UPDATE notification_alarm SET due_at=?", Date.now() - 1);
   await ctx.storage.setAlarm(Date.now() - 1);
 });
-const fire = (room: Room) => runInDurableObject(room, async (instance: { alarm(): Promise<void> }) => instance.alarm());
+const fire = (room: Room) => runInDurableObject(room, async instance => (instance as unknown as { alarm(): Promise<void> }).alarm());
 /** A finished room a member then opened, which arms its clock unless the limit is paused. */
 async function finished(chain = relay): Promise<Room> {
   const room = newRoom();
