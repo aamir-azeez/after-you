@@ -63,6 +63,8 @@ func note_request(server: String, owner: String, player: String) -> void:
 	_save()
 
 func clear_owner(owner: String) -> void:
+	# A damaged copy kept aside (AtomicFile.read_json) holds friend ids of every player here.
+	AtomicFile.remove_unreadable(path)
 	var changed := false
 	for key: String in _scopes.keys():
 		if key.get_slice("|", 1) == owner:

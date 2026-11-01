@@ -149,7 +149,7 @@ func _json_read() -> void:
 	_check(_read(aside) == damaged and _read(path) == damaged, "The damaged file is kept aside, and left in place")
 	_check(watch.count("Parse JSON failed") == 0, "Reading JSON logs no parse error: %d" % watch.count("Parse JSON failed"))
 	watch.stop()
-	DirAccess.remove_absolute(ProjectSettings.globalize_path(aside))
+	_check(AtomicFile.remove_unreadable(path) and not FileAccess.file_exists(aside) and _read(path) == damaged, "Removing the kept copies leaves the file itself")
 	_clear(path)
 
 func _candidates() -> void:

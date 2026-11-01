@@ -341,6 +341,8 @@ static func _trim(names: Dictionary) -> void:
 
 ## Forgets everything kept for a player (account deletion, a new identity).
 func clear_owner(owner: String) -> void:
+	# A damaged copy kept aside (AtomicFile.read_json) holds names of every player here.
+	AtomicFile.remove_unreadable(path)
 	var changed := false
 	for key: String in _scopes.keys():
 		if key.get_slice("|", 1) == owner:

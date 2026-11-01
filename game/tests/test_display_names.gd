@@ -16,7 +16,8 @@ extends SceneTree
 ## - the room list keeps a partner's name; the roster and the room partner
 ##   friend request (state from what the phone keeps, the ordinary request);
 ## - the names and roster files: a missing or empty one is nothing kept and
-##   logs no error; a damaged one is kept aside before the next write.
+##   logs no error; a damaged one is kept aside before the next write, until
+##   account deletion forgets it.
 const DisplayNames = preload("res://services/display_names.gd")
 const Client = preload("res://services/display_name_client.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
@@ -235,7 +236,10 @@ func _files() -> void:
 		_check(not kept.call(store), label + ": a damaged file is nothing kept")
 		stores[label][2].call(store)
 		_check(FileAccess.get_file_as_string(aside) == "{damaged", label + ": its bytes are kept aside before a write replaces them")
-		_check(kept.call(make.call(path)), label + ": and the new file reads")
+		var again: RefCounted = make.call(path)
+		_check(kept.call(again), label + ": and the new file reads")
+		again.clear_owner(ME)
+		_check(not FileAccess.file_exists(aside), label + ": forgetting a player (account deletion) removes the kept damaged copy too")
 	watch.stop()
 
 func _resolver() -> void:

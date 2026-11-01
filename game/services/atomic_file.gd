@@ -73,8 +73,9 @@ static func read_text(path: String, accept: Callable = Callable(), tmp_suffix: S
 ## The JSON value of `path`, or of the copy a write cut off between its steps
 ## left behind: the first one `accept` takes (any value without it), else null.
 ## Parsed without logging. A missing or empty copy is no data. A copy whose
-## text does not parse is damaged: it is first kept aside (keep_unreadable), as
-## the save keeps its own, so a later write never replaces its only copy.
+## text does not parse is damaged: it is first kept aside when it can be
+## (keep_unreadable), as the save keeps its own, so a later write does not
+## replace its only copy. remove_unreadable forgets those kept copies.
 static func read_json(path: String, accept: Callable = Callable(), tmp_suffix: String = TMP) -> Variant:
 	for candidate: String in read_candidates(path, tmp_suffix):
 		if not FileAccess.file_exists(candidate): continue
@@ -119,6 +120,17 @@ static func keep_unreadable(path: String) -> bool:
 	var aside := path + ".unreadable-" + digest
 	if FileAccess.file_exists(aside): return FileAccess.get_sha256(aside) == digest
 	return DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(aside)) == OK and FileAccess.get_sha256(aside) == digest
+
+## Removes every copy keep_unreadable kept of `path` and of the copies a write
+## may leave beside it (account deletion: a damaged copy cannot be cleared of
+## one player only). False when one could not be removed.
+static func remove_unreadable(path: String, tmp_suffix: String = TMP) -> bool:
+	var removed := true
+	var directory := path.get_base_dir()
+	for name: String in DirAccess.get_files_at(directory):
+		for candidate: String in read_candidates(path, tmp_suffix):
+			if name.begins_with(candidate.get_file() + ".unreadable-") and _remove(directory.path_join(name)) != OK: removed = false
+	return removed
 
 static func _keep(path: String, previous: String, backup: Backup) -> Error:
 	if backup == Backup.COPY: return DirAccess.copy_absolute(ProjectSettings.globalize_path(path), ProjectSettings.globalize_path(previous))
