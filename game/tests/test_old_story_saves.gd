@@ -54,6 +54,7 @@ func _run() -> void:
 	if is_instance_valid(hub) and hub.room_action(ROOM)!=null:
 		hub.room_action(ROOM).pressed.emit()
 		for _frame in range(4): await process_frame
+		await RoomEntry.built(self, app)
 	_check(is_instance_valid(app.relay_child) and app.relay_child.chapter_key=="relay-isles@2","The joined chapter opens")
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await process_frame

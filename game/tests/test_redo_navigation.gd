@@ -42,6 +42,7 @@ func _run() -> void:
 	app.relay_session._redo=Redo.new(api,app._relay_identity,redo_journals)
 	await app.relay_lobby_flow.open_lobby("relay-isles@2")
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
+	await RoomEntry.built(self, app)
 	var preview: Node=app.relay_child
 	_check(is_instance_valid(preview),"Open a real online chapter with the first stage already verified")
 	if not is_instance_valid(preview): quit(1); return
@@ -109,6 +110,7 @@ func _run() -> void:
 	app.relay_session._redo=Redo.new(api,app._relay_identity,redo_journals)
 	await app.relay_lobby_flow.open_lobby("relay-isles@2")
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
+	await RoomEntry.built(self, app)
 	preview=app.relay_child
 	preview.set_process(false)
 	preview.set_physics_process(false)

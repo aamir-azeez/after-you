@@ -50,6 +50,7 @@ func _run() -> void:
 		_pointer(viewport,joined.get_global_rect().get_center(),true)
 		_pointer(viewport,joined.get_global_rect().get_center(),false)
 		await process_frame
+	await RoomEntry.built(self, app)
 	_check(is_instance_valid(app.relay_child) and app.mode=="relay_online" and not app.ui.visible and not app.friends_flow.is_open(),"Closing Friends after Join preserves the native chapter destination")
 	if is_instance_valid(app.relay_child): _check(_button_named(app.relay_child,"Share current room") == null,"A guest cannot share the host's chapter from its room card")
 	var joins := api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/join")
@@ -64,6 +65,7 @@ func _run() -> void:
 	await process_frame
 	var reads_before: int=api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/"+ROOM).size()
 	await app.friends_flow.screen._act("join",app.friends_client.view().friends[0])
+	await RoomEntry.built(self, app)
 	_check(is_instance_valid(app.relay_child) and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/join").size()==1,"A known friend chapter reopens without consuming its invitation again")
 	_check(api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v2/rooms/"+ROOM).size()==reads_before+1,"Known chapter reentry performs one authoritative room GET")
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
@@ -86,6 +88,7 @@ func _run() -> void:
 	await app._show_friends()
 	await process_frame
 	await app.friends_flow.screen._act("join",app.friends_client.view().friends[0])
+	await RoomEntry.built(self, app)
 	_check(app.mode=="room" and api.calls.filter(func(call: Dictionary) -> bool: return call.path=="/v1/rooms/join").size()==1,"A known earlier island reopens through GET rather than another join")
 	# Start a room GET, then leave the route before the reply arrives.
 	app.room_hub_flow.show_rooms()
@@ -134,11 +137,11 @@ func _run() -> void:
 	_check(app.friends_flow.screen.shareable_room.is_empty() and _screen_button(app.friends_flow.screen,"Share current room")==null,"A retained room after account change is not silently chosen for sharing")
 	app.friends_flow.screen.close()
 	await process_frame
-	app._enter_online_relay()
+	await RoomEntry.enter(self, app)
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	app.legacy_room_flow.accept_room(_ok({"room_id":LEGACY_CODE.sha256_text().substr(0,22),"revision":1,"host_id":HOST,"guest_id":GUEST,"level_index":0,"level_id":"first-light","active_role":"a","first_player_id":HOST,"recordings":{},"attempt":0}))
 	await _share_current_room(viewport,app,api,{"api_version":1,"room_id":LEGACY_CODE.sha256_text().substr(0,22)},"Opening an earlier island after a chapter shares the latest earlier island")
-	app._enter_online_relay()
+	await RoomEntry.enter(self, app)
 	if is_instance_valid(app.relay_child): app.relay_child._leave()
 	await _share_current_room(viewport,app,api,{"api_version":2,"room_id":ROOM},"Opening the chapter after an earlier island shares the latest chapter")
 	await _host_from_friends(viewport,app,api)
@@ -172,7 +175,7 @@ func _direct_room_actions(viewport: SubViewport, app: Node, api: FakeApi) -> voi
 	api.revision = 0
 	app.relay_session = Session.new(api,app._relay_identity,MemoryStore.new())
 	_check(await app.relay_session.load_lobby() and await app.relay_session.open_room(ROOM),"Direct sharing starts from a verified host room before a friend joins")
-	app._enter_online_relay()
+	await RoomEntry.enter(self, app)
 	var preview: Node = app.relay_child
 	if not is_instance_valid(preview): _check(false,"Host room opens its native invitation card"); return
 	preview.set_process(false)

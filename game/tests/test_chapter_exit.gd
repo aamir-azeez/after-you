@@ -83,7 +83,7 @@ func _open_case(key: String) -> Dictionary:
 	# A keepsake check Home's worker is running (its stop request) while the room opens.
 	var check_stop := StopRequest.new()
 	app.home_keepsakes._worker_stop = check_stop
-	app._enter_online_relay()
+	await RoomEntry.enter(self, app)
 	_check(check_stop.stopped(), "Opening the room asks Home's running keepsake check to stop after its stage: " + key)
 	app.home_keepsakes._worker_stop = null
 	var preview: Node = app.relay_child
@@ -162,7 +162,7 @@ func _leave_during_submission(key: String, lose_reply: bool) -> void:
 	else:
 		_check(session.coordinator.pending().is_empty() and session.coordinator.last_receipt().recording_hash == fixtures["relay-a"].recording_hash, "A validated acknowledgement persists after the presentation is gone: " + key)
 	_check(_post_count(api) == 1 and Canonical.digest(scene.app.saves.data) == solo_before, "Receipt recovery never resubmits or changes the solo journey: " + key)
-	scene.app._enter_online_relay()
+	await RoomEntry.enter(self, scene.app)
 	_check(scene.app.relay_child != null and scene.app.relay_child.mode == "online_waiting", "Reopening shows the confirmed next-player state: " + key)
 	scene.app._leave_online_relay()
 	scene.viewport.queue_free()

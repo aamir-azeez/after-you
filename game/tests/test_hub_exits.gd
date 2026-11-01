@@ -173,6 +173,7 @@ func _open_while_busy(app: Node, api: FakeApi) -> void:
 	for _frame in range(40):
 		await process_frame
 		if is_instance_valid(app.relay_child): break
+	await RoomEntry.built(self, app)
 	_check(is_instance_valid(app.relay_child) and app.mode=="relay_online","The waiting Open goes on to the room once the session is free")
 	if is_instance_valid(app.relay_child): await _ready_card_poll(app)
 	if is_instance_valid(app.relay_child): app.relay_child._leave()

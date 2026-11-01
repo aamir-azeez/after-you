@@ -29,7 +29,7 @@ func _room_ui(key: String) -> void:
 	service.set_process(false)
 	app.friend_presence = service
 	app.api.base_url = "https://presence.invalid"
-	app._enter_online_relay()
+	await RoomEntry.enter(self, app)
 	var preview: Node = app.relay_child
 	preview.set_process(false)
 	preview.set_physics_process(false)

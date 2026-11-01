@@ -40,6 +40,7 @@ func _run() -> void:
 	server_request={"request_id":Canonical.digest(source),"source":source,"status":"pending"}
 	await app.relay_lobby_flow.open_lobby("relay-isles@2")
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
+	await RoomEntry.built(self, app)
 	var preview: Node=app.relay_child
 	_check(is_instance_valid(preview),"The room opens")
 	if not is_instance_valid(preview): quit(1); return

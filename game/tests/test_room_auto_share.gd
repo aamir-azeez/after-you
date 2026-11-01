@@ -43,6 +43,7 @@ func _run() -> void:
 	app.relay_child._leave()
 	await _frames(4)
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
+	await RoomEntry.built(self, app)
 	await _frames(8)
 	_check(_count(api,"/v1/friends/share") == 1 and _count(api,"/v1/social/publication") == 1,"Reopening a hosted room sends no share and no second alert")
 	_check_card(app,true,"A reopened shared room still shows that it is shared")
@@ -92,6 +93,7 @@ func _run() -> void:
 	app.room_hub_flow.host_visibility = "friends"
 	await app.relay_lobby_flow.lobby_action("create","relay-isles@2")
 	app.friends_client.busy = true
+	await RoomEntry.built(self, app)
 	await _frames(4)
 	_check(_count(api,"/v1/friends/share") == shares,"The automatic share waits while another Friends request is out")
 	var share: Button = _share_button(app)
@@ -129,11 +131,13 @@ func _run() -> void:
 	shares = _count(api,"/v1/friends/share")
 	accepted = publication_ids.size()
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
+	await RoomEntry.built(self, app)
 	await _frames(12)
 	_check(_count(api,"/v1/friends/share") == shares+1 and publication_ids.size() == accepted+1 and not app._friend_events().owes(room),"Reopening a room that still owes its alert shares it and sends the alert once")
 	app.relay_child._leave()
 	await _frames(4)
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
+	await RoomEntry.built(self, app)
 	await _frames(12)
 	_check(_count(api,"/v1/friends/share") == shares+1 and publication_ids.size() == accepted+1,"Reopening again sends nothing more")
 
@@ -192,6 +196,7 @@ func _host(app: Node, api: FakeApi, visibility: String) -> void:
 	await app.relay_lobby_flow.open_lobby("relay-isles@2")
 	app.room_hub_flow.host_visibility = visibility
 	await app.relay_lobby_flow.lobby_action("create","relay-isles@2")
+	await RoomEntry.built(self, app)
 	await _frames(12)
 
 func _frames(count: int) -> void:

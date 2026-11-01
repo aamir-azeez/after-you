@@ -1,6 +1,7 @@
 extends SceneTree
 
 const Main = preload("res://main.gd")
+const RoomEntry = preload("res://tests/room_entry.gd")
 const Preview = preload("res://relay_preview.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
 const Session = preload("res://services/relay_online_session.gd")
@@ -438,7 +439,7 @@ func _real_ui_flow() -> void:
 	api.enabled = true
 	await app.relay_lobby_flow.open_lobby("relay-isles@2")
 	await app.relay_lobby_flow.lobby_action("create","relay-isles@2")
-	var preview = app.relay_child
+	var preview = await RoomEntry.built(self, app)
 	preview.set_physics_process(false)
 	preview.set_process(false)
 	await process_frame
@@ -489,7 +490,7 @@ func _real_ui_flow() -> void:
 	wrong_invite["room_id"] = "Z".repeat(22)
 	_check(Session.verified_invitation(wrong_invite,HOST).is_empty() and Session.verified_invitation(preview.journey.snapshot(),GUEST).is_empty(),"Mismatched room and non-host values cannot become clipboard invitations")
 	await _recent_room_recovery(app, api, store)
-	preview = app.relay_child
+	preview = await RoomEntry.built(self, app)
 	_check(_panel_texts(preview) == ["Copy", "Share current room", "Resume", "Record", "Room options"],"A saved rehearsal adds Resume beside Record %s" % [str(_panel_texts(preview))])
 	await _check_panel_fits(preview,viewport,"host's turn with a saved rehearsal before the friend joins")
 	api.drop_next = true
@@ -503,7 +504,7 @@ func _real_ui_flow() -> void:
 	await app.relay_lobby_flow.lobby_action("open","Z".repeat(22))
 	_check(not is_instance_valid(app.relay_child) and app.mode=="rooms" and is_instance_valid(app.room_hub_flow.screen),"Blocked room selection never enters a different cached room and returns to the room hub")
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
-	preview = app.relay_child
+	preview = await RoomEntry.built(self, app)
 	preview.set_physics_process(false)
 	preview.set_process(false)
 	_check(preview.mode=="online_waiting" and not preview.journey.pending().is_empty(),"Reopening the selected original room retains its exact pending request")
@@ -531,7 +532,7 @@ func _real_ui_flow() -> void:
 	app.relay_session = Session.new(api,app._relay_identity,store)
 	await app.relay_lobby_flow.open_lobby("relay-isles@2")
 	await app.relay_lobby_flow.lobby_action("join","A1".repeat(10))
-	preview = app.relay_child
+	preview = await RoomEntry.built(self, app)
 	preview.set_physics_process(false)
 	preview.set_process(false)
 	_check(preview.role=="b" and preview.journey.my_turn(),"Joined friend receives exact earlier ghost as B")
@@ -551,7 +552,7 @@ func _real_ui_flow() -> void:
 	app.relay_session = Session.new(api,app._relay_identity,store)
 	await app.relay_lobby_flow.open_lobby("relay-isles@2")
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
-	preview = app.relay_child
+	preview = await RoomEntry.built(self, app)
 	preview.set_physics_process(false)
 	preview.set_process(false)
 	api.drop_next = true
@@ -559,7 +560,7 @@ func _real_ui_flow() -> void:
 	_check(preview.mode=="online_waiting" and not preview.journey.pending().is_empty(),"Lost final B reply keeps a receipt-check state")
 	preview._leave()
 	await app.relay_lobby_flow.lobby_action("open",ROOM)
-	preview = app.relay_child
+	preview = await RoomEntry.built(self, app)
 	preview.set_physics_process(false)
 	preview.set_process(false)
 	_check(preview.journey.chapter_complete() and preview.mode=="online_waiting" and _button_named(preview,"Check status")!=null,"Reopened complete snapshot still exposes reconciliation for its pending final turn")
@@ -642,7 +643,7 @@ func _play(preview, name: String) -> void:
 		_check(preview.mode!="photo" and not preview.reaction_photos.active,"Skip returns to the normal checkpoint or waiting flow: "+name)
 
 func _recent_room_recovery(app: Node, api: FakeApi, store: MemoryStore) -> void:
-	var preview = app.relay_child
+	var preview = await RoomEntry.built(self, app)
 	_check(preview.journey.save_draft(fixtures["relay-a"]), "Recent room starts with a saved rehearsal")
 	var scope := "relay-room-v2:"+HOST+":"+ROOM
 	var saved_room := Canonical.digest(store.values[scope])
@@ -651,7 +652,7 @@ func _recent_room_recovery(app: Node, api: FakeApi, store: MemoryStore) -> void:
 		preview._leave()
 		api.room_failure = {"ok":false,"status":status,"code":codes[status]}
 		await app.relay_lobby_flow.lobby_action("open", ROOM)
-		preview = app.relay_child
+		preview = await RoomEntry.built(self, app)
 		_check(is_instance_valid(preview), "Cached recent room retains its explicit recovery screen")
 		if not is_instance_valid(preview): return
 		preview.set_process(false)
@@ -662,7 +663,7 @@ func _recent_room_recovery(app: Node, api: FakeApi, store: MemoryStore) -> void:
 			preview._leave()
 			api.room_failure = {"ok":false,"status":0,"code":"connection_interrupted"}
 			await app.relay_lobby_flow.lobby_action("open", ROOM)
-			preview = app.relay_child
+			preview = await RoomEntry.built(self, app)
 			_check(is_instance_valid(preview), "Known unavailable room remains reachable for recovery while offline")
 			if not is_instance_valid(preview): return
 			preview.set_process(false)
@@ -685,7 +686,7 @@ func _recent_room_recovery(app: Node, api: FakeApi, store: MemoryStore) -> void:
 	_check(api.calls.size()==calls and preview.refresh_schedule.stopped(), "Terminal scheduling stays paused until the player returns to rooms")
 	preview._leave()
 	await app.relay_lobby_flow.lobby_action("open", ROOM)
-	preview = app.relay_child
+	preview = await RoomEntry.built(self, app)
 	_check(is_instance_valid(preview), "Verified explicit reopen reconnects the retained room")
 	if not is_instance_valid(preview): return
 	preview.set_process(false)
