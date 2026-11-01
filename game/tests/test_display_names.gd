@@ -29,6 +29,7 @@ const RoomsApi = preload("res://services/rooms_api.gd")
 const RoomInbox = preload("res://services/room_inbox_client.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const LogWatch = preload("res://tests/log_watch.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 
 # Synthetic ids only.
 const SERVER := "https://names.example.test"
@@ -240,6 +241,14 @@ func _files() -> void:
 		_check(kept.call(again), label + ": and the new file reads")
 		again.clear_owner(ME)
 		_check(not FileAccess.file_exists(aside), label + ": forgetting a player (account deletion) removes the kept damaged copy too")
+		# Forgotten at once, before any write: the damaged file goes as well, so no later start keeps it again.
+		file = FileAccess.open(path, FileAccess.WRITE)
+		file.store_string("{damaged")
+		file.close()
+		make.call(path).clear_owner(ME)
+		_check(not FileAccess.file_exists(aside) and AtomicFile.read_json(path) is Dictionary, label + ": forgetting a player right after start replaces the damaged file and its kept copy")
+		make.call(path)
+		_check(not FileAccess.file_exists(aside), label + ": and the next start keeps nothing aside")
 	watch.stop()
 
 func _resolver() -> void:

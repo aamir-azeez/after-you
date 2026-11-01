@@ -341,14 +341,12 @@ static func _trim(names: Dictionary) -> void:
 
 ## Forgets everything kept for a player (account deletion, a new identity).
 func clear_owner(owner: String) -> void:
-	# A damaged copy kept aside (AtomicFile.read_json) holds names of every player here.
-	AtomicFile.remove_unreadable(path)
-	var changed := false
 	for key: String in _scopes.keys():
-		if key.get_slice("|", 1) == owner:
-			_scopes.erase(key)
-			changed = true
-	if changed: _save()
+		if key.get_slice("|", 1) == owner: _scopes.erase(key)
+	# Written even when nothing changed: a damaged file read as empty, and the
+	# copy of it kept aside (AtomicFile.read_json), hold names of every player here.
+	_save()
+	AtomicFile.remove_unreadable(path)
 
 static func _now() -> int:
 	return int(Time.get_unix_time_from_system())
