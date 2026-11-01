@@ -29,7 +29,7 @@ static func build(rows: Array[Dictionary], ink: Color, pip: Callable, flower: Ca
 	box.add_theme_constant_override("separation", 6)
 	for index in range(rows.size()):
 		var row: Dictionary = rows[index]
-		if index > 0 and str(row.kind) in ["bonus", "boost", "total", "clear", "earned"]: box.add_child(_rule())
+		if index > 0 and str(row.kind) in ["bonus", "boost", "duel", "total", "clear", "earned"]: box.add_child(_rule())
 		box.add_child(_row(row, ink, pip, flower))
 	return box
 

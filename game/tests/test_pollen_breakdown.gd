@@ -4,7 +4,7 @@ extends SceneTree
 ## history as the server sends them (JSON numbers arrive as floats):
 ## - a bank turn: base, each bonus with its own percent, the room boost and whose
 ##   it was (left out on a build that names no Full Journey), This turn, and a
-##   lucky bloom with the bloomed total;
+##   lucky bloom with the bloomed total, and a friend duel's premium;
 ## - an after-bank turn: This turn and why it paid a little (repeat, bank empty, late);
 ## - an item bloom, a fully owned tier's Pollen, first clears and what it all came to;
 ## - a receipt without the base or the bonus percents has no rows (the plain line shows);
@@ -48,6 +48,11 @@ func _bank_turn() -> void:
 	_check(both[3].label == "Full Journey room +20%: +43 · You and Maya have Full Journey" and both[4].value == "259", "Two subscribers: " + str(_labels(both)))
 	_check(Breakdown.rows(_receipt(_turn({"boost_from": ["you"]})), "Maya")[3].label.ends_with("· You have Full Journey"), "Your own Full Journey")
 	_check(Breakdown.rows(_receipt(_turn()), "a friend")[3].label.ends_with("· Your friend has Full Journey"), "A friend with no name")
+	# A friend duel's turn: 216 at 10% boost and the 50% premium, one rounding: 130 - 22 = 108.
+	var duel := Breakdown.rows(_receipt(_turn({"duel_percent": 50.0, "duel": 108.0, "total": 346.0})), "Maya")
+	_check(_labels(duel).slice(-3) == ["Full Journey room +10%: +22 · Maya has Full Journey", PlayerCopy.DUEL_PAY_PREMIUM + " = 108", "This turn = 346"] and duel[-2].grain, "A duel turn names its premium so the rows add up: " + str(_labels(duel)))
+	_check(not _receipt(_turn()).turn.has("duel") and not _labels(rows).any(func(label: String) -> bool: return label.begins_with(PlayerCopy.DUEL_PAY_PREMIUM)), "Any other turn has no duel row")
+	_check(PollenWallet.checked_receipt({"schema_version": 1.0, "earned": 1.0, "balance": 1.0, "clears": [], "turn": _turn({"duel": -1.0})}).is_empty(), "A duel premium below zero refuses the receipt")
 	var phone := Breakdown.rows(_receipt(_turn()), "Maya", false)
 	_check(_labels(phone) == ["Base = 166", "First try = +25%", "Silver pace = +5%", "This turn = 238"], "A build that names no Full Journey leaves out the boost row, not the amount: " + str(_labels(phone)))
 	var plain := Breakdown.rows(_receipt(_turn({"bonuses": [], "bonus_percents": [], "bonus_percent": 0.0, "amount": 89.0, "base": 89.0, "boost_percent": 0.0, "boost": 0.0, "total": 89.0, "boost_from": []})), "")

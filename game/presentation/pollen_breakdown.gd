@@ -8,7 +8,7 @@ extends RefCounted
 ## Rows are dictionaries: {kind, label, value, grain} and, for an item bloom,
 ## item_id and tier. `value` is "" for a row that is all words. `grain` puts
 ## the Pollen mark before the value. Kinds:
-## base, bonus, boost, total, bloom, item, item_pollen, clear, reason, earned.
+## base, bonus, boost, duel, total, bloom, item, item_pollen, clear, reason, earned.
 ##
 ## A receipt from a server that sends no base or bonus percents (older ones,
 ## and receipts kept before they came) has no rows: the plain lines show then.
@@ -42,6 +42,8 @@ static func rows(receipt: Dictionary, partner: String, full_journey: bool = true
 				out.append(_row("bonus", BONUS_NAMES[turn.bonuses[index]], PlayerCopy.POLLEN_ROW_PERCENT % int(percents[index])))
 			if int(turn.boost_percent) > 0 and full_journey:
 				out.append(_row("boost", PlayerCopy.POLLEN_ROW_BOOST % [int(turn.boost_percent), PollenMoney.grouped(int(turn.boost)), _boost_whose(turn.get("boost_from", []), partner)]))
+			# A friend duel's turn: its premium, as the duel result page names it (duel_model.gd pay_lines).
+			if int(turn.get("duel", 0)) > 0: out.append(_row("duel", PlayerCopy.DUEL_PAY_PREMIUM, PollenMoney.grouped(int(turn.duel)), true))
 		# This turn: everything but a bloom's extra, which the bloom row adds.
 		out.append(_row("total", PlayerCopy.POLLEN_ROW_THIS_TURN, PollenMoney.grouped(int(turn.total) - int(turn.bloom_extra)), true))
 		if int(turn.bloom) > 1: out.append(_row("bloom", PlayerCopy.POLLEN_BLOOM % int(turn.bloom), PollenMoney.grouped(int(turn.total)), true))
