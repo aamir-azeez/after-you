@@ -217,9 +217,7 @@ func _test_save_field_types() -> void:
 	_check(Typed.as_int(4.0) == 4 and Typed.as_int(-2) == -2 and Typed.as_int("4", -1) == -1 and Typed.as_int([4], -1) == -1 and Typed.as_int(4.5, -1) == -1 and Typed.as_int(INF, -1) == -1, "as_int reads only whole numbers")
 	_check(Typed.as_dict({"a": 1}) == {"a": 1} and Typed.as_dict([1]).is_empty() and Typed.as_dict("x").is_empty(), "as_dict reads only dictionaries")
 	_check(Typed.valid_id("Ab-_0123456789abcdefgh"), "valid_id reads a 22 character server id")
-	for value: Variant in ["Ab-_0123456789abcdefg", "Ab-_0123456789abcdefgh
-", "Ab-_0123456789abcdefg
-", "Ab-_0123456789abcdef/h", "Ab-_0123456789abcdef=h", "", 22, null, ["Ab-_0123456789abcdefgh"]]:
+	for value: Variant in ["Ab-_0123456789abcdefg", "Ab-_0123456789abcdefgh\n", "Ab-_0123456789abcdefg\n", "Ab-_0123456789abcdef/h", "Ab-_0123456789abcdef=h", "", 22, null, ["Ab-_0123456789abcdefgh"]]:
 		_check(not Typed.valid_id(value), "valid_id refuses %s" % [JSON.stringify(value)])
 	_check(Typed.as_int(float(1 << 52)) == 1 << 52 and Typed.as_int(1e300, -1) == -1 and Typed.as_int(-1e300, -1) == -1 and RoomsApi.json_int(1e300) == -1 and RoomsApi.json_int(1e300, 7) == 7, "as_int and json_int read no number past 2^53")
 	for value: Variant in [0, 0.0, 7, 7.0]:

@@ -1360,7 +1360,7 @@ func _guard() -> bool:
 
 func _current_identity() -> Dictionary:
 	var value: Variant = _identity.call()
-	if not value is Dictionary or value.get("ready") != true or not _token(value.get("player_id"), 22) or not _range(value.get("epoch"), 0, 9007199254740991):
+	if not value is Dictionary or value.get("ready") != true or not Typed.valid_id(value.get("player_id")) or not _range(value.get("epoch"), 0, 9007199254740991):
 		return {}
 	return {"player_id": value.player_id, "epoch": int(value.epoch)}
 

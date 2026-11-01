@@ -53,7 +53,7 @@ func _connect_native_signals() -> void:
 	_native.connect("customer_info_updated", _updated)
 
 func bind_context(configuration: Dictionary, owner: String, token: String) -> void:
-	if not _id(owner, 22, 22) or not _id(token, 32, 128):
+	if not Typed.valid_id(owner) or not _id(token, 32, 128):
 		suspend(true)
 		return
 	var scope := JSON.stringify([str(configuration.get("api_base_url", "")).trim_suffix("/"),
