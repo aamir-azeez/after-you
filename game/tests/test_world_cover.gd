@@ -2,7 +2,7 @@ extends SceneTree
 ## Behind Friends and the room hub (opaque) and behind full pages (a 0.9
 ## shade), the 3D Home world is not drawn or run; a page shade shows a still
 ## of it instead (main._service_world_cover). It returns when they close.
-## - An opaque layer (Friends, room hub, Safety, Redo requests) stops the root viewport's 3D pass and the world's
+## - An opaque layer (Friends, Duels, room hub, Safety, Redo requests) stops the root viewport's 3D pass and the world's
 ##   processing; closing it restores both.
 ## - A page shade asks for one still render; a renderer with no image
 ##   (headless) keeps the live world, and leaving the page cleans up.
@@ -74,6 +74,20 @@ func _run() -> void:
 	friends.free()
 	await _frames(2)
 	_check(not viewport.disable_3d and app.world.is_processing(), "Closing Friends brings the world back")
+	# The Duels lobby is opaque too (duels/duel_page_base.gd), and the other pair's run plays over it in the shared replay.
+	var duels := CanvasLayer.new()
+	app.duels_flow.screen = duels
+	await _frames(2)
+	_check(viewport.disable_3d and not app.world.is_processing(), "Duels covers the world")
+	app.shared_replay_child = Node3D.new()
+	await _frames(2)
+	_check(not viewport.disable_3d, "A shared replay over Duels keeps the 3D pass on")
+	app.shared_replay_child.free()
+	app.shared_replay_child = null
+	app.duels_flow.screen = null
+	duels.free()
+	await _frames(2)
+	_check(not viewport.disable_3d and app.world.is_processing(), "Closing Duels brings the world back")
 	# A full page behind the 0.9 shade.
 	app.journey_flow.show_journey()
 	await _frames(4)
