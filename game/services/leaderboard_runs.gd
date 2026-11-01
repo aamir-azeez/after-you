@@ -92,7 +92,19 @@ static func note(owner: String, snapshot: Dictionary, chapter_key: String) -> vo
 
 static func _save(owner: String, mine: Array) -> void:
 	_data[owner] = mine
+	_write()
+
+static func _write() -> void:
 	AtomicFile.write_text(_path, JSON.stringify({"schema_version": 1, "players": _data}))
+
+## Forgets every run kept for a player (account deletion); other players' runs stay.
+static func clear_owner(owner: String) -> void:
+	_load()
+	_data.erase(owner)
+	# Written even when nothing changed: a damaged file read as empty, and the
+	# copy of it kept aside (AtomicFile.read_json), hold every player's runs here.
+	_write()
+	AtomicFile.remove_unreadable(_path)
 
 ## This player's runs, oldest first.
 static func runs_of(owner: String) -> Array:

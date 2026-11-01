@@ -40,6 +40,7 @@ func _run() -> void:
 	_room_clears()
 	_scopes_and_file()
 	_damaged_file()
+	_clear_owner()
 	_rooms_api()
 	_result_line()
 	for path: String in _paths:
@@ -235,6 +236,24 @@ func _damaged_file() -> void:
 	var damaged: RefCounted = PollenWallet.new(path)
 	_check(damaged.wallet(SERVER, ME).is_empty() and not damaged.enabled(SERVER, ME), "A damaged file reads as empty, so the wallet is asked for again")
 	_check(damaged.note_wallet(SERVER, ME, {"schema_version": 1.0, "balance": 7.0, "earned": 7.0, "bank": 12.0}) and PollenWallet.new(path).wallet(SERVER, ME).balance == 7, "and the next answer writes a whole file")
+
+## Account deletion forgets one player on every server; the other players' wallets stay.
+func _clear_owner() -> void:
+	var path := _path("clear")
+	var store: RefCounted = PollenWallet.new(path)
+	var answer := {"schema_version": 1.0, "balance": 5.0, "earned": 5.0, "bank": 1.0}
+	for server: String in [SERVER, "https://other.example.test"]:
+		for owner: String in [ME, OTHER]: store.note_wallet(server, owner, answer)
+	store.clear_owner(ME)
+	var again: RefCounted = PollenWallet.new(path)
+	_check(again.wallet(SERVER, ME).is_empty() and again.wallet("https://other.example.test", ME).is_empty(), "Forgetting a player (account deletion) drops their wallet on every server")
+	_check(again.wallet(SERVER, OTHER).balance == 5 and again.wallet("https://other.example.test", OTHER).balance == 5, "and keeps every other player's")
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string("{damaged")
+	file.close()
+	var aside := path + ".unreadable-" + FileAccess.get_sha256(path)
+	PollenWallet.new(path).clear_owner(ME)
+	_check(FileAccess.file_exists(path) and not FileAccess.file_exists(aside) and PollenWallet.new(path).wallet(SERVER, OTHER).is_empty(), "Forgetting a player replaces a damaged file and removes the copy kept aside")
 
 func _rooms_api() -> void:
 	_check(PollenWallet.HEADER in RoomsApi.capability_headers(HTTPClient.METHOD_GET, "/v2/capabilities"), "The capability asks for Pollen")

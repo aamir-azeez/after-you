@@ -40,6 +40,10 @@ const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const Typed = preload("res://services/typed_values.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const FriendRoster = preload("res://services/friend_roster.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const LeaderboardRuns = preload("res://services/leaderboard_runs.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const CREAM := Color("eceddb")
@@ -605,6 +609,10 @@ func clear_deleted_identity() -> void:
 	host.friend_nicknames.clear_owner(owner, host.api.base_url)
 	DisplayNames.shared().clear_owner(owner)
 	FriendRoster.shared().clear_owner(owner)
+	PollenWallet.shared().clear_owner(owner)
+	Wardrobe.shared().clear_owner(owner)
+	LeaderboardRuns.clear_owner(owner)
+	DuelsClient.clear_owner(owner)
 	host.identity_read_state=host.IdentityReadState.MISSING
 	host.api.player_id=""
 	host.api.device_token=""

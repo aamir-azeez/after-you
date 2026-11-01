@@ -65,6 +65,7 @@ static func answer(items: Array = [], look: Dictionary = {}, revision: int = 0, 
 func _run() -> void:
 	_checked_views()
 	_file_and_damage()
+	_clear_owner()
 	_looks_in_order()
 	_own_look()
 	await _client_retries()
@@ -119,6 +120,28 @@ func _file_and_damage() -> void:
 	_check(damaged.note_view(SERVER, ME, answer(["tide"])) and damaged.view(SERVER, ME).items == ["tide"], "The next wallet read fills it again")
 	var corrupt: RefCounted = Wardrobe.new(path)
 	_check(corrupt.view(SERVER, ME).items == ["tide"], "And that answer is what the file then holds")
+
+## Account deletion forgets one player on every server; the other players' wardrobes stay.
+func _clear_owner() -> void:
+	var path := _path("wardrobe-clear")
+	var store: RefCounted = Wardrobe.new(path)
+	for server: String in [SERVER, "https://other.example.test"]:
+		for owner: String in [ME, OTHER]:
+			store.set_enabled(server, owner, true)
+			store.note_view(server, owner, answer(["daisy"], {"hat": "daisy"}, 3))
+	store.scope_source = func() -> Dictionary: return {"server": SERVER, "owner": ME}
+	_check(store.active_look() == {"hat": "daisy"} and not Catalog._offered.is_empty(), "The signed-in player wears their look before account deletion")
+	store.clear_owner(ME)
+	_check(store.active_look().is_empty() and Catalog._offered.is_empty(), "Forgetting the signed-in player drops their look and what the catalogue released for them")
+	var again: RefCounted = Wardrobe.new(path)
+	_check(again.view(SERVER, ME).is_empty() and again.view("https://other.example.test", ME).is_empty(), "Forgetting a player (account deletion) drops their wardrobe on every server")
+	_check(again.view(SERVER, OTHER).look == {"hat": "daisy"} and again.view("https://other.example.test", OTHER).look == {"hat": "daisy"}, "and keeps every other player's")
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string("{damaged")
+	file.close()
+	var aside := path + ".unreadable-" + FileAccess.get_sha256(path)
+	Wardrobe.new(path).clear_owner(ME)
+	_check(FileAccess.file_exists(path) and not FileAccess.file_exists(aside) and AtomicFile.read_json(path) is Dictionary, "Forgetting a player replaces a damaged file and removes the copy kept aside")
 
 func _looks_in_order() -> void:
 	var store: RefCounted = Wardrobe.new(_path("looks"))

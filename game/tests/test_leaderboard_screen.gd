@@ -90,6 +90,23 @@ func _own_runs() -> void:
 	_check(mine.size() == 2 and mine[0].entry_id == Runs.entry_id(ROOM, 1) and mine[0].ticks == 1470, "each finished branch is one run, kept once: %s" % [mine])
 	Runs.use_path(RUNS_PATH)
 	_check(Runs.on_board(OWNER, "sleeping-lighthouse@2").size() == 2 and Runs.runs_of("someone-else").is_empty(), "runs survive a restart and stay per player")
+	# Account deletion forgets one player's runs, straight after a start too; the other players' runs stay.
+	Runs.note(PARTNER, _snapshot(ROOM, 1, final), Registry.LIGHTHOUSE_V2)
+	_check(Runs.runs_of(PARTNER).size() == 1, "the partner keeps their own run on a shared phone")
+	Runs.use_path(RUNS_PATH)
+	Runs.clear_owner(PARTNER)
+	Runs.use_path(RUNS_PATH)
+	_check(Runs.runs_of(PARTNER).is_empty() and Runs.on_board(OWNER, "sleeping-lighthouse@2").size() == 2, "forgetting a player (account deletion) drops only their runs")
+	var damaged := "user://leaderboard-runs-damaged-test.json"
+	var file := FileAccess.open(damaged, FileAccess.WRITE)
+	file.store_string("{damaged")
+	file.close()
+	var aside := damaged + ".unreadable-" + FileAccess.get_sha256(damaged)
+	Runs.use_path(damaged)
+	Runs.clear_owner(PARTNER)
+	_check(FileAccess.file_exists(damaged) and not FileAccess.file_exists(aside) and JSON.parse_string(FileAccess.get_file_as_string(damaged)) is Dictionary, "forgetting a player replaces a damaged runs file and removes the copy kept aside")
+	DirAccess.remove_absolute(damaged)
+	Runs.use_path(RUNS_PATH)
 
 func _views() -> void:
 	var good := {"schema_version": 1, "board": "relay-isles@2", "top": [{"rank": 1, "entry_id": "a".repeat(32), "ticks": 300, "finished_on": "2026-10-20", "names": null, "gold_leaf": true}], "checking": ["b".repeat(32)]}

@@ -400,6 +400,15 @@ static func _fresh(claims: Array, now: int) -> Array:
 	var kept := claims.filter(func(entry: Dictionary) -> bool: return int(entry.at) >= oldest and int(entry.at) <= now + 86400000)
 	return kept.slice(maxi(0, kept.size() - MAX_CLAIMS))
 
+## Forgets everything kept for a player on every server (account deletion).
+func clear_owner(owner: String) -> void:
+	for key: String in _scopes.keys():
+		if key.get_slice("|", 1) == owner: _scopes.erase(key)
+	# Written even when nothing changed: a damaged file read as empty, and the
+	# copy of it kept aside (AtomicFile.read_json), hold every player's wallet here.
+	_save()
+	AtomicFile.remove_unreadable(path)
+
 # --- File ------------------------------------------------------------------
 
 func _load() -> void:

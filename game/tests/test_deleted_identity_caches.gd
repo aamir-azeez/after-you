@@ -9,6 +9,10 @@ const Relay = preload("res://services/relay_online_store.gd")
 const Shared = preload("res://services/shared_replay_store.gd")
 const Safety = preload("res://services/safety_store.gd")
 const WrongTypes = preload("res://tests/wrong_types.gd")
+const PollenWallet = preload("res://services/pollen_wallet.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const Runs = preload("res://services/leaderboard_runs.gd")
+const Duels = preload("res://services/duels_client.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const PEER := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -174,6 +178,18 @@ func _test_main_order() -> void:
 	app.friend_nicknames = Main.FriendNicknames.new(directory.path_join("main-nicknames.json"))
 	check(app.friend_nicknames.set_nickname(api.base_url, OWNER, PEER, "Buddy") and app.friend_nicknames.nickname(api.base_url, OWNER, PEER) == "Buddy", "A device-local friend nickname exists before account deletion")
 	app.saves.update_values({"room": {"old": true}, "pending_turn": {"keep_until_cleanup": true}, "room_draft": {}, "completed": {"solo": true}})
+	# Stores that keep every player of this phone in one file: only the deleted player's part goes.
+	var wallet: RefCounted = PollenWallet.new(directory.path_join("main-wallet.json"))
+	PollenWallet.use_shared(wallet)
+	var wardrobe: RefCounted = Wardrobe.new(directory.path_join("main-wardrobe.json"))
+	Wardrobe.use_shared(wardrobe)
+	for owner: String in [OWNER, PEER]:
+		wallet.note_wallet(api.base_url, owner, {"schema_version": 1, "balance": 3, "earned": 3, "bank": 0})
+		wardrobe.set_enabled(api.base_url, owner, true)
+	var run := {"board": "relay-isles@2", "entry_id": "a".repeat(32), "ticks": 300, "assisted": false, "finished_at": "", "partner": ""}
+	write(directory.path_join("main-runs.json"), {"schema_version": 1, "players": {OWNER: [run], PEER: [run]}})
+	Runs.use_path(directory.path_join("main-runs.json"))
+	write(Duels.SAVE_PATH, {OWNER: {"rooms": {ROOM: "friend"}, "rung": []}, PEER: {"rooms": {ROOM: "ghost"}, "rung": []}})
 	api.before = func(): check(photos.calls > 0 and app.saves.data.room.is_empty() and not app.saves.data.has("pending_turn") and secrets.calls.is_empty(), "Real main clears local owned data before ACK and retains credentials")
 	photos.succeeds = false
 	await app.account_flow.clear_deleted_identity()
@@ -192,5 +208,15 @@ func _test_main_order() -> void:
 	check(api.calls.size() == count and app.identity_data.is_empty() and app.api.device_token.is_empty(), "Retry clears credentials only after persisted server confirmation")
 	check(not app.saves.data.has(Photos.MARKER_KEY) and not app.saves.data.has(Ack.KEY) and app.saves.data.completed == {"solo": true}, "Cleanup markers removed last; solo completion retained")
 	check(app.friend_nicknames.nickname(api.base_url, OWNER, PEER) == "", "Account deletion clears this device's friend nicknames for the removed identity")
+	check(wallet.wallet(api.base_url, OWNER).is_empty() and not wallet.wallet(api.base_url, PEER).is_empty(), "Account deletion clears the removed identity's Pollen wallet copy and keeps another player's")
+	check(not wardrobe.enabled(api.base_url, OWNER) and wardrobe.enabled(api.base_url, PEER), "and its wardrobe copy")
+	Runs.use_path(directory.path_join("main-runs.json"))
+	check(Runs.runs_of(OWNER).is_empty() and Runs.runs_of(PEER).size() == 1, "and its leaderboard runs")
+	var duels: Variant = JSON.parse_string(FileAccess.get_file_as_string(Duels.SAVE_PATH))
+	check(duels is Dictionary and not duels.has(OWNER) and duels.has(PEER), "and its duel rooms and bells")
+	PollenWallet.use_shared(null)
+	Wardrobe.use_shared(null)
+	Runs.use_path(Runs.PATH)
+	DirAccess.remove_absolute(Duels.SAVE_PATH)
 	app.queue_free()
 	await process_frame

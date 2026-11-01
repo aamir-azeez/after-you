@@ -275,6 +275,17 @@ func _offer() -> void:
 	var on: bool = not scope.is_empty() and bool(scope.get("enabled", false))
 	Catalog.set_offered(((scope.view as Dictionary).get("offered", []) as Array) if on else [])
 
+## Forgets everything kept for a player on every server (account deletion).
+func clear_owner(owner: String) -> void:
+	for key: String in _scopes.keys():
+		if key.get_slice("|", 1) == owner: _scopes.erase(key)
+	# Written even when nothing changed: a damaged file read as empty, and the
+	# copy of it kept aside (AtomicFile.read_json), hold every player's wardrobe here.
+	_save()
+	AtomicFile.remove_unreadable(path)
+	# The catalogue stops releasing what a forgotten active player was offered.
+	if not _active.is_empty() and not _scopes.has(_active): _offer()
+
 # --- File ------------------------------------------------------------------
 
 func _load() -> void:
