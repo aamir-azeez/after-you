@@ -199,6 +199,7 @@ func _run() -> void:
 	for size: Vector2 in [Vector2(1600, 738), Vector2(1600, 720), Vector2(1280, 720)]: await _layout(size)
 	await _cancelled_and_failed()
 	await _claim_waits()
+	await _resume_flush_first()
 	await _refund()
 	await _offline_store()
 	await _first_tap_waits()
@@ -390,6 +391,34 @@ func _claim_waits() -> void:
 	_check(PlayerCopy.POLLEN_STORE_ADDED % "5,000" in _texts(t.host.ui.find_child("PollenStoreReceipt", true, false)) and t.claims.unseen().is_empty(), "Its receipt shows on the next visit, once")
 	t.host.queue_free()
 	await _frames(2)
+
+## The app's return from the store's sheet sends the waiting claim (Main's
+## flush) before the purchase's answer comes. The purchase's claim takes that
+## answer instead of failing as busy, and the receipt shows either way.
+func _resume_flush_first() -> void:
+	for flushed_first: bool in [false, true]:
+		var t := _setup()
+		t.purchases.outcome = "silent"
+		t.flow.show_store()
+		await _frames()
+		t.flow.buy("pouch")
+		await _frames(2)
+		var buying: String = t.flow._buying
+		t.fake.delay = 1 if flushed_first else 20
+		t.fake.replies = [_credited("pouch", 0, 30000), {"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": 30000.0, "pending": false, "refunded": [], "credited": []}}]
+		if flushed_first: await t.claims.flush()
+		else:
+			t.claims.flush()
+			await _frames(2)
+		t.purchases.completed.emit(buying, "purchase_package", {"schema_version": 1})
+		await create_timer(Flow.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+		await _frames(4)
+		var lines := _texts(t.host.ui.find_child("PollenStoreReceipt", true, false))
+		var case := "flushed first" if flushed_first else "flush still sending"
+		_check(PlayerCopy.POLLEN_STORE_ADDED % "21,000" in lines and not PlayerCopy.POLLEN_STORE_ON_ITS_WAY in t.host.toasts, "%s: the receipt shows, not 'on its way': %s %s" % [case, lines, t.host.toasts])
+		_check(t.fake.sent.size() == (2 if flushed_first else 1), "%s: the purchase's claim asks no more than it needs: %d" % [case, t.fake.sent.size()])
+		t.host.queue_free()
+		await _frames(2)
 
 func _refund() -> void:
 	var t := _setup()

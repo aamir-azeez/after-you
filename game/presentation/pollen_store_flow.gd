@@ -82,6 +82,9 @@ var _buying := ""
 var _bought: Dictionary = {}
 ## Whether this purchase set the waiting mark (a cancel then drops it).
 var _marked := false
+## The unseen receipts when this purchase began: a change means its claim was
+## credited, even by a flush the app sent on its return from the store's sheet.
+var _unseen_at_buy: Array = []
 var _generation := 0
 ## Where Back returns: "wardrobe" (Main goes to the Wardrobe, or Home) or "friends".
 var return_to := "wardrobe"
@@ -246,18 +249,21 @@ func buy(id: String) -> void:
 	_bought.bundle = id
 	# The mark goes on before the sheet, so a purchase is claimed even if the app closes during it.
 	_marked = _claims().mark_pending()
+	_unseen_at_buy = _claims().unseen()
 	_buying = host.purchases.purchase(str(_bought.offering_id), str(_bought.id))
 
 ## After the store took the payment: the server claims it, then the receipt shows.
 func _claim_after_purchase() -> void:
-	var answer: Dictionary = {}
 	# RevenueCat may list a purchase a moment after the store's sheet closes: a few quick tries, then the flush's.
 	for attempt in range(CLAIM_TRIES):
-		if attempt > 0: await get_tree().create_timer(CLAIM_PAUSE_S * attempt).timeout
-		answer = await _claims().claim()
+		if attempt > 0:
+			await get_tree().create_timer(CLAIM_PAUSE_S * attempt).timeout
+			# A flush between tries (the app's return from the store's sheet) may have credited it.
+			if _claims().unseen() != _unseen_at_buy: break
+		var answer: Dictionary = await _claims().claim()
 		if answer.get("ok", false) and not (answer.credited as Array).is_empty(): break
 		if not is_inside_tree(): return
-	if not answer.get("ok", false) or (answer.credited as Array).is_empty():
+	if _claims().unseen() == _unseen_at_buy:
 		# The purchase stands; the claim stays waiting and goes again on the next flush.
 		_toast(PlayerCopy.POLLEN_STORE_ON_ITS_WAY)
 		_bought = {}

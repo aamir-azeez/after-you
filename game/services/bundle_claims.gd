@@ -37,6 +37,8 @@ const MARK_DAYS := 7
 
 ## A claim answered: `credited` and `refunded` are what that answer applied.
 signal settled(credited: Array, refunded: Array)
+## Every send's answer, as claim() returns it. A claim asked while a send runs takes that send's answer.
+signal answered(answer: Dictionary)
 
 static var _shared: RefCounted = null
 static var _order := RegEx.create_from_string(ORDER_PATTERN)
@@ -115,6 +117,8 @@ static func _now() -> int:
 func claim() -> Dictionary:
 	var context := scope()
 	if context.is_empty(): return {"ok": false, "code": "pollen_bundles_disabled", "credited": [], "refunded": []}
+	# A flush already sends this claim (the app's return from the store's sheet sends it).
+	if _sending: return await answered
 	if not pending(): mark_pending()
 	return await _send(context)
 
@@ -128,6 +132,12 @@ func _send(context: Dictionary) -> Dictionary:
 	_sending = true
 	var response := await _request(HTTPClient.METHOD_POST, CLAIM_PATH, {"schema_version": 1})
 	_sending = false
+	var answer := _settle(context, response)
+	answered.emit(answer)
+	return answer
+
+## What a claim's server response means here, kept before it is returned.
+func _settle(context: Dictionary, response: Dictionary) -> Dictionary:
 	if scope() != context: return {"ok": false, "code": "identity_changed", "credited": [], "refunded": []}
 	var answer := checked_answer(response.get("data")) if response.get("ok", false) else {}
 	if answer.is_empty():
