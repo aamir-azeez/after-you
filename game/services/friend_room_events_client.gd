@@ -224,7 +224,7 @@ func _load_pending() -> void:
 		_pending_owed_at = RoomsApi.json_int(config.get_value(key,"owed_at",0),0)
 
 static func new_publication_id() -> String:
-	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(16)).replace("+","-").replace("/","_").trim_suffix("=").trim_suffix("=")
+	return Typed.new_id()
 
 static func valid_publication_id(value: Variant) -> bool:
 	return Typed.valid_id(value)

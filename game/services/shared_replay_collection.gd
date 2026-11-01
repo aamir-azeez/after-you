@@ -16,6 +16,7 @@ const Keepsakes = preload("res://services/home_keepsakes.gd")
 const KeepsakeCatalog = preload("res://services/home_keepsake_catalog.gd")
 const LoadProgress = preload("res://services/replay_load_progress.gd")
 const RoomStages = preload("res://services/room_stages.gd")
+const WhenLabel = preload("res://presentation/when_label.gd")
 const Typed = preload("res://services/typed_values.gd")
 const TurnTries = preload("res://services/turn_tries.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
@@ -374,9 +375,8 @@ func _load_times() -> bool:
 	return true
 
 func _remember_time(key: String, snapshot: Dictionary) -> void:
-	var at: Variant = snapshot.get("updated_at")
-	if not at is String or at.length() < 19 or at.length() > 40 or not _load_times(): return
-	var seconds := int(Time.get_unix_time_from_datetime_string(at.substr(0, 19)))
+	var seconds := WhenLabel.parse_iso(snapshot.get("updated_at"))
+	if seconds <= 0 or not _load_times(): return
 	if seconds <= int(_times.get(key, 0)): return
 	var next := _times.duplicate()
 	next[key] = seconds

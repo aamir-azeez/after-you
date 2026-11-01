@@ -19,7 +19,7 @@ extends Node
 ## - state: application_backgrounded, submission_in_flight, identity_loading,
 ##   identity_busy, identity_read_state, IdentityReadState,
 ##   foreground_refresh_running, relay_identity_epoch, lifecycle_generation
-## - rules: _relay_identity, _token_digest, _await_secret, _parse_json,
+## - rules: _relay_identity, _token_digest, _await_secret,
 ##   _update_gate_active, _friend_display_name
 ## - entry points: legacy_room_flow (navigation_ready, show_saved_room),
 ##   ensure_relay_session, queue_foreground_refresh,
@@ -42,6 +42,7 @@ const FriendsClient = preload("res://services/friends_client.gd")
 const Toast = preload("res://presentation/toast.gd")
 const Levels = preload("res://core/levels.gd")
 const Typed = preload("res://services/typed_values.gd")
+const LocalSave = preload("res://services/local_save.gd")
 var host: Node
 ## A tapped alert that could not open waits until this time before another try.
 var route_retry_ms := 0
@@ -95,7 +96,7 @@ func _read_binding() -> Dictionary:
 	if not result.get("ok", false) or not payload is Dictionary: return {"ok": false}
 	if Typed.equal(payload.get("found"), false) and payload.get("value") == null: return {"ok": true, "value": {}}
 	if not Typed.equal(payload.get("found"), true) or not payload.get("value") is String: return {"ok": false}
-	var value: Variant = host._parse_json(payload.value)
+	var value: Variant = LocalSave.parse_json(payload.value)
 	return {"ok": value is Dictionary, "value": value}
 
 func _write_binding(value: Dictionary) -> Dictionary:

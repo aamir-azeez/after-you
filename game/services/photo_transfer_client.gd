@@ -7,6 +7,7 @@ const Save = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Canonical = preload("res://core/v2/canonical.gd")
+const Capture = preload("res://services/optional_photo_capture.gd")
 const BASE := "/v1/photo-transfer"
 const BODY_LIMIT := 800 * 1024
 const MAX_ENTRIES := 1000
@@ -353,14 +354,7 @@ static func _id(value: Variant) -> bool:
 	return Typed.valid_id(value)
 
 static func _hash(value: Variant) -> bool:
-	return _matches(value, "^[a-f0-9]{64}$")
-
-static func _matches(value: Variant, pattern: String) -> bool:
-	if not value is String: return false
-	var expression := RegEx.new()
-	expression.compile(pattern)
-	var found := expression.search(value)
-	return found != null and found.get_string() == value
+	return Capture._matches(value, "^[a-f0-9]{64}$")
 
 static func _positive_integer(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and value > 0 and value <= 2147483647 and value == int(value)
@@ -369,7 +363,7 @@ func _valid_state(value: Variant) -> bool:
 	if not value is Dictionary or not _exact(value, ["schema_version", "owner", "upload", "pending"]) or not Typed.equal(value.schema_version, 1) or not Typed.equal(value.owner, _owner) or not value.upload is Dictionary or not value.pending is Dictionary: return false
 	var upload: Dictionary = value.upload
 	if not upload.is_empty():
-		if not _exact(upload, ["start_key", "session_id", "entry_ids", "cursor"]) or not _matches(upload.start_key, "^[A-Za-z0-9_-]{16,80}$") or upload.session_id not in ["", upload.start_key] or not upload.entry_ids is Array or upload.entry_ids.is_empty() or upload.entry_ids.size() > MAX_ENTRIES or not _integer(upload.cursor, 0, upload.entry_ids.size()): return false
+		if not _exact(upload, ["start_key", "session_id", "entry_ids", "cursor"]) or not Capture._matches(upload.start_key, "^[A-Za-z0-9_-]{16,80}$") or upload.session_id not in ["", upload.start_key] or not upload.entry_ids is Array or upload.entry_ids.is_empty() or upload.entry_ids.size() > MAX_ENTRIES or not _integer(upload.cursor, 0, upload.entry_ids.size()): return false
 		var seen: Array = []
 		for id: Variant in upload.entry_ids:
 			if not _hash(id) or id in seen: return false
@@ -378,7 +372,7 @@ func _valid_state(value: Variant) -> bool:
 	if pending.is_empty(): return true
 	if not _exact(pending, ["operation", "path", "session_id", "count", "body"]) or pending.operation not in ["upload", "restore_ack"] or not _integer(pending.count, 1, 16) or not pending.body is Dictionary or not _exact(pending.body, ["schema_version", "idempotency_key", "entries"]): return false
 	var body: Dictionary = pending.body
-	if not Typed.equal(body.schema_version, 1) or not _matches(body.idempotency_key, "^[A-Za-z0-9_-]{16,80}$") or not body.entries is Array or body.entries.size() != pending.count or JSON.stringify(body).to_utf8_buffer().size() > BODY_LIMIT: return false
+	if not Typed.equal(body.schema_version, 1) or not Capture._matches(body.idempotency_key, "^[A-Za-z0-9_-]{16,80}$") or not body.entries is Array or body.entries.size() != pending.count or JSON.stringify(body).to_utf8_buffer().size() > BODY_LIMIT: return false
 	if pending.operation == "upload":
 		if upload.is_empty() or Typed.equal(upload.session_id, "") or not Typed.equal(pending.session_id, upload.session_id) or not Typed.equal(pending.path, BASE + "/" + str(upload.session_id) + "/entries") or int(upload.cursor) + body.entries.size() > upload.entry_ids.size(): return false
 	elif pending.session_id != null or not Typed.equal(pending.path, BASE + "/restore-ack"): return false

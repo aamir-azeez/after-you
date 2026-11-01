@@ -48,3 +48,7 @@ static func as_dict(value: Variant) -> Dictionary:
 ## A 22 character server id: a player, room, request or publication id.
 static func valid_id(value: Variant) -> bool:
 	return value is String and value.length() == 22 and _id.search(value) != null
+
+## A new random id of that form (16 random bytes as base64url, no padding).
+static func new_id() -> String:
+	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(16)).replace("+", "-").replace("/", "_").trim_suffix("==")

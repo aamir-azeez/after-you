@@ -366,7 +366,7 @@ func _ready() -> void:
 	ButtonTicks.install(get_tree())
 	levels=Levels.all_levels()
 	current_level=levels[0]
-	var loaded_config: Variant=_parse_json(FileAccess.get_file_as_string("res://app_config.json"))
+	var loaded_config: Variant=LocalSave.parse_json(FileAccess.get_file_as_string("res://app_config.json"))
 	config=loaded_config if loaded_config is Dictionary else {}
 	api=RoomsApi.new()
 	api.base_url=str(config.get("api_base_url",""))
@@ -1478,7 +1478,7 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 		identity_loading=false
 		identity_read_state=IdentityReadState.FAILED
 		if payload.get("found") is bool and payload.found==true and payload.get("value") is String:
-			var saved: Variant=_parse_json(payload.value)
+			var saved: Variant=LocalSave.parse_json(payload.value)
 			if RecoveryDetails.valid_pending(saved):
 				pending_recovery=saved
 				identity_read_state=IdentityReadState.RECOVERY_PENDING
@@ -1498,7 +1498,7 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 		if payload.get("found") is bool and payload.found==false and payload.get("value")==null:
 			identity_read_state=IdentityReadState.MISSING
 		elif payload.get("found") is bool and payload.found==true and payload.get("value") is String:
-			var identity: Variant=_parse_json(payload.value)
+			var identity: Variant=LocalSave.parse_json(payload.value)
 			if identity is Dictionary and identity.get("player_id") is String and identity.get("device_token") is String and not identity.player_id.is_empty() and not identity.device_token.is_empty():
 				identity_read_state=IdentityReadState.LOADED
 				identity_data=identity
@@ -1897,10 +1897,6 @@ func _scroll_list(card: VBoxContainer, scrolling: bool=true) -> VBoxContainer:
 	else:
 		card.add_child(list)
 	return list
-
-static func _parse_json(text: String) -> Variant:
-	var parser := JSON.new()
-	return parser.data if parser.parse(text)==OK else null
 
 func _set_world_visible(value: bool) -> void:
 	if is_instance_valid(world):

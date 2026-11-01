@@ -13,6 +13,7 @@ const LighthouseJourney = preload("res://services/lighthouse_journey.gd")
 const LighthouseStages = preload("res://core/lighthouse/stage_catalog.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const Typed = preload("res://services/typed_values.gd")
+const Index = preload("res://services/solo_replay_index.gd")
 const MAX_SAVE_BYTES := 2097152
 const MAX_ARCHIVED_ATTEMPTS := 32
 ## Main-thread budget per advance for sources that need no worker: missing
@@ -389,7 +390,7 @@ func _load_trusted() -> void:
 	if Typed.equal(parsed.get("schema_version"), LEGACY_SCHEMA):
 		if parsed.size() != 3 or not Typed.equal(parsed.get("stamp"), _legacy_stamp()): return
 		for key: Variant in parsed.keys:
-			if not _digest(key):
+			if not Index._digest(key):
 				_trusted.clear()
 				return
 			_trusted[key] = LEGACY_GROUP
@@ -397,15 +398,12 @@ func _load_trusted() -> void:
 	if parsed.size() != 4 or not Typed.equal(parsed.get("schema_version"), VERIFIED_SCHEMA) or not Typed.equal(parsed.get("stamp"), _verifier_stamp()) or not parsed.get("chapters") is Dictionary: return
 	var current := {}
 	for entry: Variant in parsed.keys:
-		if not entry is Array or entry.size() != 2 or not _digest(entry[0]) or not entry[1] is String or not parsed.chapters.get(entry[1]) is String:
+		if not entry is Array or entry.size() != 2 or not Index._digest(entry[0]) or not entry[1] is String or not parsed.chapters.get(entry[1]) is String:
 			_trusted.clear()
 			return
 		if not current.has(entry[1]): current[entry[1]] = _chapter_stamp(entry[1])
 		# Another chapter's rules or a newly added chapter never touch this entry.
 		if parsed.chapters[entry[1]] == current[entry[1]]: _trusted[entry[0]] = entry[1]
-
-static func _digest(value: Variant) -> bool:
-	return value is String and value.length() == 64 and value.is_valid_hex_number(false)
 
 func _save_trusted() -> void:
 	if not _trusted_dirty or _verified_path.is_empty(): return

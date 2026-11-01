@@ -260,8 +260,12 @@ static func _newer(value: Variant) -> bool:
 	return (version is int or version is float or version is String) and int(version) > 1
 
 static func _read_json(file_path: String) -> Variant:
+	return parse_json(FileAccess.get_file_as_string(file_path))
+
+## The JSON value of `text`, or null when it does not parse. Parsed without logging.
+static func parse_json(text: String) -> Variant:
 	var parser := JSON.new()
-	return parser.data if parser.parse(FileAccess.get_file_as_string(file_path))==OK else null
+	return parser.data if parser.parse(text)==OK else null
 
 ## The bytes of one copy of the save, or null when the file cannot be opened.
 func _copy_bytes(file_path: String) -> Variant:

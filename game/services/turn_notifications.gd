@@ -3,6 +3,8 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const Typed = preload("res://services/typed_values.gd")
+## A failed registration retries on the room poll's failure schedule.
+const RefreshClock = preload("res://services/refresh_schedule.gd")
 ## One registration owner. Push is a hint; authenticated room reads remain authority.
 signal changed
 signal foreground_hint(route: Dictionary)
@@ -10,7 +12,6 @@ signal route_available
 
 const REGISTRATION_PATH := "/v1/notifications/registration"
 const CATEGORIES_PATH := "/v1/notifications/categories"
-const RETRY_MS := [5000, 15000, 30000]
 # A server without the categories endpoint answers 404; back off without touching turn status.
 const CATEGORY_RETRY_MS := [15000, 60000, 300000]
 var bridge: Node
@@ -321,7 +322,7 @@ func _reconcile(generation: int, key: String, now_ms: int) -> void:
 		return
 	if _binding.is_empty():
 		var identity: Dictionary = _identity.call()
-		var next := {"schema_version": 1, "owner": identity.owner, "credential_hash": identity.credential_hash, "binding_epoch": _new_epoch()}
+		var next := {"schema_version": 1, "owner": identity.owner, "credential_hash": identity.credential_hash, "binding_epoch": Typed.new_id()}
 		var stored: Dictionary = await _write_binding.call(next)
 		if not _current(generation, key): return
 		if not stored.get("ok", false):
@@ -479,8 +480,8 @@ func _current(generation: int, key: String) -> bool:
 	return is_inside_tree() and generation == _generation and key == identity_key(_identity.call())
 
 func _fail(now_ms: int, message: String, retry_after_ms: int = 0) -> void:
-	_failures = mini(_failures + 1, RETRY_MS.size())
-	_next_ms = maxi(Time.get_ticks_msec(), now_ms) + maxi(int(RETRY_MS[_failures - 1]), clampi(retry_after_ms, 0, 86400000))
+	_failures = mini(_failures + 1, RefreshClock.FAILURE_DELAYS_MS.size())
+	_next_ms = maxi(Time.get_ticks_msec(), now_ms) + maxi(int(RefreshClock.FAILURE_DELAYS_MS[_failures - 1]), clampi(retry_after_ms, 0, 86400000))
 	_queued = true
 	_status(message)
 
@@ -527,6 +528,3 @@ static func _matches(value: Variant, pattern: String) -> bool:
 		expression = RegEx.create_from_string(pattern)
 		_compiled[pattern] = expression
 	return expression.search(value) != null
-
-static func _new_epoch() -> String:
-	return Marshalls.raw_to_base64(Crypto.new().generate_random_bytes(16)).replace("+", "-").replace("/", "_").trim_suffix("==")
