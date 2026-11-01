@@ -1167,6 +1167,8 @@ answerWhileBlank(RoomV2, {
   reactionOperation: async () => roomNotFound(), photo: async () => roomNotFound(), photoOperation: async () => roomNotFound(), photoDelivery: async () => roomNotFound(),
   redo: async () => roomNotFound(), history: async () => roomNotFound(), tries: async () => roomNotFound(), endReactions: async () => roomNotFound(), interactionAllowed: async () => roomNotFound(),
   hardReset: async () => roomNotFound(), hardFailures: async () => roomNotFound(), clearMemberName: () => false, duelLinkOf: () => null,
+  // As a room with no duel answers them (duels/their-run.ts), without making tables first.
+  theirRun: async () => fail(410, "their_run_gone"), acknowledgeTheirRun: () => fail(404, "their_run_not_found"), dropTheirRun: () => false,
   pollenTurnFacts: () => fail(404, "pollen_turn_not_found"), pollenClearFacts: () => fail(404, "pollen_clear_not_found"),
   campaignDrainCensus: () => absentCensus()
 });
