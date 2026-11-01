@@ -202,6 +202,13 @@ func _client() -> void:
 	api.replies["GET /v1/duels/%s/%s" % [BOARD, DUEL]] = {"ok": true, "data": {"schema_version": 1, "duel": _wire("decided", {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 30}}), "pay": {"turns": 6, "plain": 1, "blooms": 0, "duel": 1, "boost": 0, "boost_percent": 0, "total": 2}, "win_bonus": {"amount": 250, "counted": true}}}
 	var detail: Dictionary = await client.duel(BOARD, DUEL)
 	_check(detail.ok and detail.pay.turns == 6 and detail.win_bonus.amount == 250, "a duel's pay and win bonus read")
+	# A won duel rings its bell once per player, after a restart too (duels_flow.gd _open_result).
+	_check(client.bell_due(detail.duel), "a won duel's bell is due")
+	client.mark_rung(str(detail.duel.duel_id))
+	_check(not client.bell_due(detail.duel) and not Client.new(api, ME, SAVE_PATH).bell_due(detail.duel), "once rung it never rings again, after a restart too")
+	_check(Client.new(api, MAYA, SAVE_PATH).bell_due(detail.duel) and Client.new(api, ME, SAVE_PATH).room_kind(ROOM) == "friend", "another player's bell is their own, and the rooms are kept beside it")
+	var lost := Client.valid_view(_wire("decided", {"result": {"outcome": "lost", "reason": "faster", "margin_ticks": 30, "decided_ms": 9}}))
+	_check(not lost.is_empty() and not client.bell_due(lost), "a lost duel has no bell")
 	var ghost_wire := _wire("decided", {"kind": "ghost", "ghost": {"source": "developer", "entry_id": null, "ticks": 3000, "rank": null, "names": null}, "sides": [_wire().sides[0], null], "result": {"outcome": "won", "reason": "faster", "margin_ticks": 30}})
 	api.replies["GET /v1/duels/%s/%s" % [BOARD, DUEL]] = {"ok": true, "data": {"schema_version": 1, "duel": ghost_wire, "ghost_bonus": {"amount": 100, "counted": true}, "win_bonus": {"amount": 250, "counted": true}}}
 	detail = await client.duel(BOARD, DUEL)

@@ -5,8 +5,10 @@ extends RefCounted
 ## - lobby(): GET /v1/duels, the party, its invites and every duel this player
 ##   is in. Kept in memory for the pages, and two small facts are saved
 ##   (atomic_file, user://duels.json, per player): which rooms are duel rooms,
-##   for the Duel tag in Your rooms. A duel's clear needs nothing kept: its
-##   room is an ordinary room, which the chapter chain already counts.
+##   for the Duel tag in Your rooms, and which won duels already rang their
+##   bell (bell_due, mark_rung), so each win rings once, after a restart too,
+##   as a leaderboard celebration shows once. A duel's clear needs nothing
+##   kept: its room is an ordinary room, which the chapter chain already counts.
 ## - ghosts(): GET /v1/duels/ghosts, kept for GHOSTS_KEEP_MS.
 ## - duel(): one duel with what it paid this player.
 ## - the party, challenge and duel actions. Challenges and ghost races carry an
@@ -31,7 +33,7 @@ var _path := SAVE_PATH
 var _lobby: Dictionary = {}
 var _ghosts: Dictionary = {}
 var _ghosts_at := -GHOSTS_KEEP_MS
-## {rooms: {room_id: kind}} for this player.
+## {rooms: {room_id: kind}, rung: {duel_id: true} oldest first} for this player.
 var _saved: Dictionary = {}
 
 static var _shared: RefCounted
@@ -157,6 +159,18 @@ static func new_key() -> String:
 func room_kind(room_id: String) -> String:
 	return str(_saved.get("rooms", {}).get(room_id, ""))
 
+## Whether a won duel's result has not rung its bell on this phone yet.
+func bell_due(view: Dictionary) -> bool:
+	var result: Variant = view.get("result")
+	return result is Dictionary and result.get("outcome") == "won" and _entry(view.get("duel_id")) and not _saved.rung.has(view.duel_id)
+
+## The duel's bell rang: it never rings again for this player.
+func mark_rung(duel_id: String) -> void:
+	if _owner.is_empty() or not _entry(duel_id) or _saved.rung.has(duel_id): return
+	_saved.rung[duel_id] = true
+	while _saved.rung.size() > MAX_DUELS * 2: _saved.rung.erase(_saved.rung.keys()[0])
+	_save()
+
 func _party(action: String, body: Dictionary) -> Dictionary:
 	var sent := body.duplicate()
 	sent["schema_version"] = 1
@@ -189,22 +203,31 @@ func _remember(views: Array) -> void:
 		if own.get("room_id") is String and not str(own.room_id).is_empty(): rooms[own.room_id] = view.kind
 	if rooms == _saved.get("rooms", {}): return
 	while rooms.size() > MAX_DUELS * 2: rooms.erase(rooms.keys()[0])
-	_saved = {"rooms": rooms}
+	_saved.rooms = rooms
+	_save()
+
+## This player's part of the file, beside the other players' parts.
+func _save() -> void:
 	var text := AtomicFile.read_text(_path)
 	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
 	var all: Dictionary = parsed if parsed is Dictionary else {}
-	all[_owner] = _saved
+	all[_owner] = {"rooms": _saved.rooms, "rung": _saved.rung.keys()}
 	AtomicFile.write_text(_path, JSON.stringify(all))
 
 func _read_saved() -> Dictionary:
 	var text := AtomicFile.read_text(_path)
 	var parsed: Variant = JSON.parse_string(text) if not text.is_empty() else null
 	var mine: Variant = parsed.get(_owner) if parsed is Dictionary else null
-	if not mine is Dictionary or not mine.get("rooms") is Dictionary: return {"rooms": {}}
 	var rooms := {}
-	for room_id: Variant in mine.rooms:
-		if room_id is String and room_id.length() == 22 and mine.rooms[room_id] in ["friend", "ghost"]: rooms[room_id] = mine.rooms[room_id]
-	return {"rooms": rooms}
+	var rung := {}
+	if not mine is Dictionary: return {"rooms": rooms, "rung": rung}
+	if mine.get("rooms") is Dictionary:
+		for room_id: Variant in mine.rooms:
+			if room_id is String and room_id.length() == 22 and mine.rooms[room_id] in ["friend", "ghost"]: rooms[room_id] = mine.rooms[room_id]
+	if mine.get("rung") is Array:
+		for duel_id: Variant in (mine.rung as Array).slice(maxi((mine.rung as Array).size() - MAX_DUELS * 2, 0)):
+			if _entry(duel_id): rung[duel_id] = true
+	return {"rooms": rooms, "rung": rung}
 
 ## A lobby as the server sent it, or {} when it is not one this build reads.
 static func valid_lobby(value: Variant) -> Dictionary:

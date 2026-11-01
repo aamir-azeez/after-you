@@ -113,6 +113,7 @@ static func result_title(view: Dictionary, name_of: Callable) -> String:
 
 ## The fixed cue (services/sound_cues.gd) the result page sounds as it shows
 ## a decided duel: the leaderboard's first place bell for a win, else none.
+## It rings once per duel (services/duels_client.gd bell_due).
 static func result_cue(view: Dictionary) -> String:
 	var result: Variant = view.get("result")
 	return "ui_first" if result is Dictionary and result.get("outcome") == "won" else ""

@@ -21,7 +21,7 @@ extends Node
 ## - chapters: _chapter_unlocks, _full_journey_access, _paid_content_hidden
 ## - rooms: relay_lobby_flow (open_lobby, lobby_action, join_room)
 ## - node: add_child
-## - sound: soundscape when Main has it (play_fixed_cue), for a won result's bell
+## - sound: soundscape when Main has it (play_fixed_cue), for a won result's bell, once per duel
 const DuelsScreen = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
@@ -290,8 +290,11 @@ func _open_result(view: Dictionary) -> void:
 	var answer: Dictionary = await client().duel(view.board, view.duel_id)
 	if not is_instance_valid(page) or not answer.get("ok", false): return
 	page.show_result(answer.duel, answer.get("pay", {}), answer.get("win_bonus", {}))
+	# A win rings once, the first time its result opens on this phone, as a leaderboard celebration shows once.
 	var cue := DuelModel.result_cue(answer.duel)
-	if not cue.is_empty(): Soundscape.play_on(host, cue)
+	if cue.is_empty() or not client().bell_due(answer.duel): return
+	client().mark_rung(str(answer.duel.duel_id))
+	Soundscape.play_on(host, cue)
 
 ## Plays the other pair's run in the shared replay viewer, from this phone's
 ## copy or fetched once (services/duels_client.gd their_run); the result page
