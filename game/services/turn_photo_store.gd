@@ -6,6 +6,7 @@ extends RefCounted
 const Save = preload("res://services/local_save.gd")
 const Typed = preload("res://services/typed_values.gd")
 const RoomStages = preload("res://services/room_stages.gd")
+const Capture = preload("res://services/optional_photo_capture.gd")
 const MAX_FILE := 384 * 1024
 const MAX_VALUE := 256 * 1024
 var directory := "user://turn-photos"
@@ -131,18 +132,12 @@ func erase_owner(owner: String) -> Dictionary:
 	return {"ok": all_removed}
 
 func _path(scope: String) -> String:
-	if not _matches(scope, "^turn-photo-v1:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}:" + RoomStages.TURN_ID.trim_prefix("^")):
+	if not Capture._matches(scope, "^turn-photo-v1:[A-Za-z0-9_-]{22}:[A-Za-z0-9_-]{22}:" + RoomStages.TURN_ID.trim_prefix("^")):
 		return ""
 	return directory.path_join(scope.split(":")[1].sha256_text()).path_join(scope.sha256_text() + ".json")
 
-static func _matches(value: String, pattern: String) -> bool:
-	var expression := RegEx.new()
-	expression.compile(pattern)
-	var found := expression.search(value)
-	return found != null and found.get_string() == value
-
 static func _filename(value: String) -> bool:
-	return _matches(value, "^[a-f0-9]{64}\\.json$")
+	return Capture._matches(value, "^[a-f0-9]{64}\\.json$")
 
 static func _generation(value: Variant) -> bool:
 	return (value is int or value is float) and is_finite(float(value)) and value >= 0 and value <= 2147483647 and value == int(value)
