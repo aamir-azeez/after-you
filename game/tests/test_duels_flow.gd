@@ -9,6 +9,7 @@ const Client = preload("res://services/duels_client.gd")
 const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Registry = preload("res://services/chapter_registry.gd")
+const LogWatch = preload("res://tests/log_watch.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -29,7 +30,7 @@ class FakeApi extends Node:
 	var requests: Array = []
 	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		var name: String = {HTTPClient.METHOD_GET: "GET", HTTPClient.METHOD_POST: "POST"}.get(method, "?")
-		requests.append([name, path])
+		requests.append([name, path, body])
 		await Engine.get_main_loop().process_frame
 		return replies.get(name + " " + path, {"ok": false, "code": "not_found"}).duplicate(true)
 
@@ -60,6 +61,19 @@ class FakeFriends extends RefCounted:
 	func view() -> Dictionary: return {"friends": [{"player_id": MAYA, "status": "accepted"}, {"player_id": FINN, "status": "accepted"}]}
 	func refresh(_manual: bool = false) -> bool: return true
 
+## A page that closes, standing in for the ghost and challenge pages.
+class FakePage extends CanvasLayer:
+	func close() -> void: queue_free()
+
+## A friends list not read yet this session: it arrives a few frames after it is asked for.
+class SlowFriends extends FakeFriends:
+	var read := false
+	func view() -> Dictionary: return super() if read else {}
+	func refresh(_manual: bool = false) -> bool:
+		for index in range(4): await Engine.get_main_loop().process_frame
+		read = true
+		return true
+
 class FakeMain extends Node:
 	var api: Node
 	var config := {}
@@ -71,7 +85,8 @@ class FakeMain extends Node:
 	var toasts: Array = []
 	var unlocks := {}
 	func ensure_relay_session() -> void: pass
-	func _friends_client(_create: bool) -> RefCounted: return FakeFriends.new()
+	var friends: RefCounted = FakeFriends.new()
+	func _friends_client(_create: bool) -> RefCounted: return friends
 	func _friend_display_name(id: String) -> String: return {MAYA: "Maya", FINN: "Finn"}.get(id, "a friend")
 	func _toast(text: String) -> void: toasts.append(text)
 	func _chapter_unlocks() -> Dictionary: return unlocks
@@ -163,6 +178,43 @@ func _run() -> void:
 	main.relay_lobby_flow.taken = false
 	await flow._play(Client.valid_view(_view({"room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": false})))
 	_check(main.relay_lobby_flow.calls.size() == 3 and main.relay_lobby_flow.calls[2][0] == "duel", "a room that never appeared is made here: %s" % [main.relay_lobby_flow.calls])
+	# A race or challenge whose answer was lost: a tap again sends the same key, so the server answers the duel the first tap made.
+	var asked: CanvasLayer = FakePage.new()
+	root.add_child(asked)
+	var keys := func(path: String) -> Array: return api.requests.filter(func(item: Array) -> bool: return item[1] == path).map(func(item: Array) -> String: return item[2].idempotency_key)
+	for path: String in ["/v1/duels/ghost", "/v1/duels/challenge"]: api.replies["POST " + path] = {"ok": false, "code": "connection_interrupted"}
+	for index in range(2):
+		await flow._race(asked, Registry.FIRST_STEPS, "developer", null)
+		await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
+	await flow._race(asked, Registry.FIRST_STEPS, "board", "e".repeat(32))
+	var raced: Array = keys.call("/v1/duels/ghost")
+	var challenged: Array = keys.call("/v1/duels/challenge")
+	_check(raced.size() == 3 and raced[0] == raced[1] and raced[2] != raced[0], "a race tapped again after a lost answer keeps its key; another ghost gets its own: %s" % [raced])
+	_check(challenged.size() == 2 and challenged[0] == challenged[1], "a challenge tapped again after a lost answer keeps its key: %s" % [challenged])
+	api.replies["POST /v1/duels/challenge"] = {"ok": true, "data": {"schema_version": 1, "duel": _view({}, "challenged")}}
+	await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
+	_check(not is_instance_valid(asked) or asked.is_queued_for_deletion(), "the answered challenge closes its page")
+	asked = FakePage.new()
+	root.add_child(asked)
+	await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
+	challenged = keys.call("/v1/duels/challenge")
+	_check(challenged.size() == 4 and challenged[2] == challenged[0] and challenged[3] != challenged[0], "once a challenge is answered, the next one is a new challenge: %s" % [challenged])
+	asked.close()
+	# Back on the Party or Start a duel page while the friends list loads: the page is gone, and nothing writes to it.
+	var watch: LogWatch = LogWatch.start(["previously freed"])
+	for open: Callable in [flow._open_party, flow._open_challenge]:
+		main.friends = SlowFriends.new()
+		flow.open()
+		await _frames(2)
+		open.call()
+		await _frames(1)
+		var page: CanvasLayer = flow.screen.overlay()
+		_check(page != null, "the page opens before its friends list arrives")
+		if page != null: page.close()
+		await _frames(8)
+	_check(watch.count("previously freed") == 0, "a page closed while its friends list loads is left alone")
+	watch.stop()
+	main.friends = FakeFriends.new()
 	flow.open()
 	await _frames(2)
 	flow.close()

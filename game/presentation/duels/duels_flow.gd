@@ -52,6 +52,10 @@ var screen: CanvasLayer
 var _duel_timer: Timer
 ## True while the other pair's run is fetched for one tap.
 var _their_loading := false
+## The idempotency key of each challenge or ghost race sent with no answer yet,
+## by what it asked for. A tap again sends the same key, so after a reply lost
+## on the way the server answers the duel the first tap made, never a second one.
+var _unanswered: Dictionary = {}
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -159,7 +163,9 @@ func _open_party() -> void:
 	page.party = client().last_lobby().get("party", {})
 	page.party_action.connect(func(action: String, friend: String, control: Control) -> void: page.tap(control, func() -> void: await _party(page, action, friend)))
 	screen.open_overlay(page)
-	page.set_friends(await _friends())
+	var friends := await _friends()
+	# Back may close the page while the friends list loads.
+	if is_instance_valid(page): page.set_friends(friends)
 
 func _party(page: CanvasLayer, action: String, friend: String) -> void:
 	var duels: RefCounted = client()
@@ -183,17 +189,28 @@ func _open_challenge() -> void:
 	var partner: Variant = client().last_lobby().get("party", {}).get("partner")
 	page.send_requested.connect(func(friend: String, chapter: String, control: Control) -> void: page.tap(control, func() -> void: await _challenge(page, friend, chapter)))
 	screen.open_overlay(page)
-	page.friends = await _friends(partner)
-	if is_instance_valid(page) and page.is_inside_tree(): page._render()
+	var friends := await _friends(partner)
+	if not is_instance_valid(page): return
+	page.friends = friends
+	if page.is_inside_tree(): page._render()
 
 func _challenge(page: CanvasLayer, friend: String, chapter: String) -> void:
-	var answer: Dictionary = await client().challenge(friend, Runs.board_key(chapter), DuelsClient.new_key())
+	var board := Runs.board_key(chapter)
+	var answer: Dictionary = await _send_once("challenge|%s|%s" % [friend, board], func(key: String) -> Dictionary: return await client().challenge(friend, board, key))
 	if not is_instance_valid(page): return
 	if not answer.get("ok", false):
 		_toast_failure(answer)
 		return
 	host._toast(PlayerCopy.DUELS_SENT)
 	page.close()
+
+## Sends `request` with the key kept for `asked` (_unanswered), made on its
+## first tap, and drops that key once the duel is made.
+func _send_once(asked: String, request: Callable) -> Dictionary:
+	if not _unanswered.has(asked): _unanswered[asked] = DuelsClient.new_key()
+	var answer: Dictionary = await request.call(_unanswered[asked])
+	if answer.get("ok", false): _unanswered.erase(asked)
+	return answer
 
 func _open_ghosts() -> void:
 	if not is_open(): return
@@ -205,7 +222,8 @@ func _open_ghosts() -> void:
 	if is_instance_valid(page): page.show_ghosts(answer.get("boards", []), not answer.get("ok", false))
 
 func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant) -> void:
-	var answer: Dictionary = await client().race_ghost(Runs.board_key(chapter), source, entry_id, DuelsClient.new_key())
+	var board := Runs.board_key(chapter)
+	var answer: Dictionary = await _send_once("ghost|%s|%s|%s" % [board, source, entry_id], func(key: String) -> Dictionary: return await client().race_ghost(board, source, entry_id, key))
 	if not is_instance_valid(page): return
 	if not answer.get("ok", false):
 		_toast_failure(answer)
