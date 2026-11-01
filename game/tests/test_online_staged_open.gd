@@ -35,23 +35,29 @@ func _run() -> void:
 	await _room(Registry.WISHING_WELL, 0)
 	await _room(Registry.LIGHTHOUSE_V2, 0)
 	await _room("turn-of-the-tide@2", 0)
+	await _room("turn-of-the-tide@2", 1)
 	await _back_mid_build(Registry.RELAY)
 	Preview.staged_build_usec = 0
 	print("ONLINE STAGED OPEN: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-func _fixture(name: String) -> Dictionary:
-	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/" + name + ".json"))
+func _fixture(path: String) -> Dictionary:
+	return JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/" + path + ".json"))
+
+## The checkpoint a room on its second stage starts from (the chapters' test fixtures).
+const SECOND_STAGE_CHECKPOINTS := {"relay-isles@2": "v2/relay-checkpoint", "turn-of-the-tide@2": "journey/turn-of-the-tide-v2-set-the-tide-checkpoint"}
 
 ## The room as the server sends it to the host: the first stage of any
-## chapter before the friend joins (the host's turn), or the Relay's second
-## stage (its test fixtures), the friend joined and the friend's turn.
+## chapter before the friend joins (the host's turn), or the second stage of
+## a chapter with a fixture checkpoint for it, the friend joined and the
+## friend's turn. Turn of the Tide builds one stage at a time, so its second
+## stage shows the staged build going straight to the room's stage.
 func _snapshot(key: String, index: int) -> Dictionary:
 	var d := Registry.descriptor(key)
 	var level := Registry.definition(key)
 	var room := {"api_version": 2, "schema_version": 2, "room_id": ROOM, "revision": 2 * index, "branch": 0, "stage_index": index,
 		"level_id": d.level_id, "level_version": d.level_version, "definition_hash": d.definition_hash,
-		"host_id": HOST, "guest_id": GUEST if index > 0 else null, "checkpoint": Registry.initial_checkpoint(key) if index == 0 else _fixture("relay-checkpoint"),
+		"host_id": HOST, "guest_id": GUEST if index > 0 else null, "checkpoint": Registry.initial_checkpoint(key) if index == 0 else _fixture(SECOND_STAGE_CHECKPOINTS[key]),
 		"a_turn_id": null, "completed_pair_ids": ["p0-0"] if index > 0 else [], "invite_expires_at": "2026-12-21T12:00:00Z",
 		"created_at": "2026-10-31T12:00:00Z", "updated_at": "2026-10-31T12:00:00Z", "active_role": "a", "first_player_id": HOST if index == 0 else GUEST,
 		"active_player_id": HOST if index == 0 else GUEST, "player_slot": "p0", "stage_id": level.stages[index].id, "recording_a": null,

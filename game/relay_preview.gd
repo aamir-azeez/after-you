@@ -246,7 +246,8 @@ var _leave_after_load := false
 ## A staged world build, asked for by Main's chapter open behind its card
 ## (request_staged_build): the world builds over several frames, a few
 ## milliseconds each, while this screen waits in "loading" and the card keeps
-## moving. Any other way of making this screen builds the world at once.
+## moving; or by Main's online room open (staged_room_open). Any other way of
+## making this screen builds the world at once.
 ## Every chapter stages (island_world.build_staged), straight to the stage the
 ## screen opens on, a slice of each frame sized to the device
 ## (island_world.frame_budget_usec). Tests set staged_build_usec to stage a

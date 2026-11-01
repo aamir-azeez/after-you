@@ -324,6 +324,7 @@ func _typed_room_joins(app: Node, api: FakeApi) -> void:
 	before = api.calls.size()
 	await app.room_hub_flow._join("room-" + "a1".repeat(10))
 	await _frames(2)
+	await RoomEntry.built(self, app)
 	var joined: Array = api.calls.slice(before).filter(func(call: Dictionary) -> bool: return call.path == "/v2/rooms/join")
 	_check(not app.toasts.has("Invitation unavailable") and joined.size() == 1 and joined[0].body.invite_code == "A1".repeat(10),"A resolved chapter code from the room hub joins instead of showing Invitation unavailable")
 	resolve_reply = {}

@@ -1,4 +1,5 @@
 extends SceneTree
+const RoomEntry = preload("res://tests/room_entry.gd")
 ## Real shared preview and menu layout. Inputs are synthetic simulation fixtures,
 ## never represented as Android touches or independent-player acceptance.
 const Preview = preload("res://relay_preview.gd")
@@ -380,3 +381,4 @@ func _settle_join(app: Node) -> void:
 	while not is_instance_valid(app.relay_child) and Time.get_ticks_msec()<deadline: await process_frame
 	await process_frame
 	await process_frame
+	await RoomEntry.built(self, app)
