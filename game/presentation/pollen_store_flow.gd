@@ -256,12 +256,11 @@ func buy(id: String) -> void:
 func _claim_after_purchase() -> void:
 	# RevenueCat may list a purchase a moment after the store's sheet closes: a few quick tries, then the flush's.
 	for attempt in range(CLAIM_TRIES):
-		if attempt > 0:
-			await get_tree().create_timer(CLAIM_PAUSE_S * attempt).timeout
-			# A flush between tries (the app's return from the store's sheet) may have credited it.
-			if _claims().unseen() != _unseen_at_buy: break
-		var answer: Dictionary = await _claims().claim()
-		if answer.get("ok", false) and not (answer.credited as Array).is_empty(): break
+		if attempt > 0: await get_tree().create_timer(CLAIM_PAUSE_S * attempt).timeout
+		# Always asked once: a flush that credited an older purchase first clears the mark this one needs.
+		await _claims().claim()
+		# Credited by this claim, or by a flush (the app's return from the store's sheet) before it.
+		if _claims().unseen() != _unseen_at_buy: break
 		if not is_inside_tree(): return
 	if _claims().unseen() == _unseen_at_buy:
 		# The purchase stands; the claim stays waiting and goes again on the next flush.
