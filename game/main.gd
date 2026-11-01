@@ -1760,6 +1760,8 @@ func _enter_online_relay() -> void:
 	relay_child = RelayPreview.new()
 	relay_child.chapter_key = relay_session.chapter_key()
 	relay_child.online_session = relay_session
+	# The room's world builds over frames behind its loading card, not in this frame.
+	relay_child.staged_room_open = true
 	relay_child.photo_native = photo_native
 	relay_child.friend_presence = friend_presence
 	relay_child.live_connection = live_connection

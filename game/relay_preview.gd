@@ -253,6 +253,12 @@ var _leave_after_load := false
 ## build however fast the machine is; 0 leaves the slice to the world.
 static var staged_build_usec := 0
 static var _staged_request := ""
+## Main's online room open (main.gd _enter_online_relay) sets this before
+## adding the room screen: its world builds the same staged way, straight to
+## the room's stage, behind this screen's own loading card. It built in the
+## frame Main added the screen (a Turn of the Tide room held one desktop frame
+## for 130 to 195 ms). Any other way of making an online screen builds at once.
+var staged_room_open := false
 var _world_building := false
 var _leave_after_build := false
 
@@ -299,7 +305,7 @@ func _ready() -> void:
 		_replay_collection = injected.context.accepted_pairs.duplicate(true)
 		replay_pair_index = int(injected.context.get("start_stage_index", injected.context.selected_stage_index))
 	_claim_hard()
-	var staged: bool = not scene_file_path.is_empty() and _staged_request == scene_file_path and online_session == null
+	var staged: bool = staged_room_open if online_session != null else (not scene_file_path.is_empty() and _staged_request == scene_file_path)
 	_staged_request = ""
 	if online_session == null and not _solo_replay_only and not _solo_replay_context_error:
 		if _hard_on():
@@ -415,11 +421,20 @@ func _build_world_staged() -> void:
 	world.process_mode = Node.PROCESS_MODE_DISABLED
 	var shown := world.visible
 	world.visible = false
+	var waited := false
 	while _journal_loader != null and not _leaving:
 		await get_tree().process_frame
+		waited = true
 		_finish_ready_due()
 		# Joined here as soon as it ends, not a frame later from _process.
 		if mode == "loading": _poll_journal_load()
+	# The build never starts in the frame this screen entered: that frame
+	# draws the loading card (an online room's open has just checked the room
+	# in it), and the frame cap the build's slice reads has caught up with
+	# the build (frame_policy.gd LOADING).
+	if not waited and not _leaving:
+		await get_tree().process_frame
+		_finish_ready_due()
 	if not _leaving and not _leave_after_build:
 		# The ready card's fresh turn is set up on a worker meanwhile (it
 		# replays the partner's turn): the same setup the card would run.
@@ -452,16 +467,17 @@ func _start_opening_turn() -> void:
 	if not job.is_empty() and Proofs.setup_replays(job): _prefetch_turn(job)
 
 ## The stage the first view shows, as far as this screen knows before its
-## world is built: the solo journal's current stage, or its last for a
-## finished chapter, or a collection replay's stage. "" (the first stage)
-## for anything else.
+## world is built: the solo journal's or the room's current stage, or its
+## last for a finished chapter, or a collection replay's stage. "" (the first
+## stage) for anything else. A guess that misses costs only a rebuild of the
+## right stage (island_world.present_stage).
 func _opening_stage_id() -> String:
 	if _solo_replay_only:
 		# A replay from the collection plays its chosen stage.
 		if replay_pair_index < 0 or replay_pair_index >= _replay_collection.size() or not _replay_collection[replay_pair_index] is Dictionary: return ""
 		var pair: Dictionary = _replay_collection[replay_pair_index]
 		return str(pair.b.get("stage_id", "")) if pair.get("b") is Dictionary else ""
-	if online_session != null or _solo_replay_context_error or journey == null or _journal_loader != null: return ""
+	if _solo_replay_context_error or journey == null or _journal_loader != null: return ""
 	if journey.read_only or not journey.has_method("stage_id"): return ""
 	if journey.chapter_complete():
 		var stages: Array = definition.get("stages", [])
@@ -476,9 +492,11 @@ func _loads_threaded() -> bool:
 func _show_journal_loading() -> void:
 	mode = "loading"
 	running = false
-	var card := _card("Opening your chapter", PlayerCopy.LIGHTHOUSE_PREVIEW_E52C132C24BE)
-	_loading_label = _label(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, 18)
-	card.add_child(_loading_label)
+	# A room keeps no saved paths on this device: its card says only that the room opens.
+	var card := _card("Opening your chapter", PlayerCopy.HUB_OPENING_ROOM if online_session != null else PlayerCopy.LIGHTHOUSE_PREVIEW_E52C132C24BE)
+	if online_session == null:
+		_loading_label = _label(PlayerCopy.LIGHTHOUSE_PREVIEW_DA74C3A728FC, 18)
+		card.add_child(_loading_label)
 	card.add_child(_action_button("back", _leave))
 
 ## Work the journal worker does first: the Lighthouse carries an unconverted
