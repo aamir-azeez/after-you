@@ -42,15 +42,25 @@ describe("public policies and authenticated safety", () => {
     }
     expect((await call("/v1/safety/config")).status).toBe(401);
   });
-  it("names the Pollen purchase record in the privacy policy", async () => {
+  it("names the Pollen purchase record, both stores and the duel run copy in the privacy policy", async () => {
     const body = await (await call("/privacy")).text();
-    expect(body).toContain("Deleting your online identity deletes them. If you buy Pollen, we keep a record of each purchase (the bundle, its date, Google Play's order number and its price) so we can credit it once and take it back if it is refunded.</p>");
+    expect(body).toContain("<p>Effective 2 November 2026.</p>");
+    expect(body).toContain("Deleting your online identity deletes them. If you buy Pollen, we keep a record of each purchase (the bundle, its date, its price, and Google Play's order number or the App Store's transaction ID) so we can credit it once and take it back if it is refunded.</p>");
+    expect(body).toContain("The Play edition uses Google Play and the iPhone edition uses the App Store, each with RevenueCat for purchase validation");
+    expect(body).toContain("<p>When duels are on, after a friend duel each pair can watch the other pair's run.");
+    expect(body).toContain("We delete the server's copy once both of them have saved it, and in any case one year after the duel ends.");
+    expect(body).toContain("Recordings that are not saved on both phones stay on our server for one year, counted from the first time either of you opens the room after it is finished.");
+    expect(body).toContain("have no routine expiry, apart from the unsaved recordings and duel runs described above;");
+    expect(body).toContain("does not refund a purchase or erase Google Play or App Store transaction records.</p>");
+    expect(body).not.toContain("no in-app purchases yet");
+    expect(body.replace(/<title>[^<]*<\/title>/, "")).not.toMatch(new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]"));
   });
   it("covers iPhone on the deletion page and keeps the Android wording", async () => {
     const body = await (await call("/account-deletion")).text();
     expect(body).toContain("Delete identity and shared rooms. The iPhone app has the same steps.</p>");
     expect(body).toContain("It requests removal of your RevenueCat customer information.");
-    expect(body).toContain("It does not refund a content purchase or erase Google Play's transaction records. The iPhone edition has no in-app purchases yet.</p>");
+    expect(body).toContain("It does not refund a content purchase or erase Google Play's or the App Store's transaction records.</p>");
+    expect(body).not.toContain("no in-app purchases yet");
     expect(body.replace(/<title>[^<]*<\/title>/, "")).not.toMatch(new RegExp("[" + String.fromCharCode(0x2013, 0x2014) + "]"));
   });
   it("requires explicit exact rules acceptance and preserves its first date across retry/eviction", async () => {
