@@ -150,8 +150,8 @@ func sync_hosting_preferences(preferences: Array) -> void:
 func _ask_hosting_permission_once() -> void:
 	var key := _hosting_key()
 	if key.is_empty() or not hosting_enabled() or hosting_registered(): return
-	var asked := ConfigFile.new()
-	asked.load(permission_asked_path)
+	var asked: ConfigFile = AtomicFile.read_config(permission_asked_path)
+	if asked == null: asked = ConfigFile.new()
 	var section := key.sha256_text()
 	if Typed.equal(asked.get_value(section,"asked",false), true): return
 	asked.set_value(section,"asked",true)

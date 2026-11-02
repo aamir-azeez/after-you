@@ -199,8 +199,8 @@ func _cache_section() -> String:
 
 func _save_pending() -> void:
 	if _binding.is_empty(): return
-	var config := ConfigFile.new()
-	config.load(PENDING_PATH)
+	var config: ConfigFile = AtomicFile.read_config(PENDING_PATH)
+	if config == null: config = ConfigFile.new()
 	var key := _cache_section()
 	if _pending_publication_id.is_empty():
 		config.erase_section(key)
@@ -214,8 +214,8 @@ func _load_pending() -> void:
 	_pending_publication_id = ""
 	_pending_room = {}
 	_pending_owed_at = 0
-	var config := ConfigFile.new()
-	if config.load(PENDING_PATH) != OK: return
+	var config: ConfigFile = AtomicFile.read_config(PENDING_PATH)
+	if config == null: return
 	var key := _cache_section()
 	var publication_id: Variant = config.get_value(key,"publication_id","")
 	var room: Variant = config.get_value(key,"room",{})

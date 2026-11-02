@@ -104,8 +104,10 @@ static func remember(result: String, v1_path: String = V1_PATH, marker_path: Str
 	return AtomicFile.write_text(marker_path, text)
 
 static func _marker(marker_path: String, v1_path: String) -> String:
-	if not FileAccess.file_exists(marker_path): return ""
-	var parsed: Variant = JSON.parse_string(FileAccess.get_file_as_string(marker_path))
+	# The marker, or the copy a cut-off write left beside it (services/atomic_file.gd).
+	var text := AtomicFile.read_text(marker_path, func(candidate: String) -> bool: return JSON.new().parse(candidate) == OK)
+	if text.is_empty(): return ""
+	var parsed: Variant = JSON.parse_string(text)
 	if not parsed is Dictionary or not Typed.equal(parsed.get("schema_version"), MARKER_SCHEMA) or not Typed.equal(parsed.get("source"), _digest(v1_path)): return ""
 	return str(parsed.get("result", ""))
 

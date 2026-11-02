@@ -256,8 +256,8 @@ func _bind(force: bool = false) -> bool:
 	return true
 
 func _load() -> void:
-	var config := ConfigFile.new()
-	if config.load(CACHE_PATH) != OK: return
+	var config: ConfigFile = AtomicFile.read_config(CACHE_PATH)
+	if config == null: return
 	var key := _cache_section()
 	var value: Variant = config.get_value(key,"rooms",[])
 	if value is Array and valid_page({"schema_version":1,"rooms":value}):
@@ -274,8 +274,8 @@ func _load() -> void:
 			if identity is String and identity.length() <= 40 and (sequence is int or sequence is float) and is_finite(sequence) and sequence >= 0: _hidden[identity] = int(sequence)
 
 func _save() -> void:
-	var config := ConfigFile.new()
-	config.load(CACHE_PATH)
+	var config: ConfigFile = AtomicFile.read_config(CACHE_PATH)
+	if config == null: config = ConfigFile.new()
 	var key := _cache_section()
 	config.set_value(key,"rooms",_rooms)
 	config.set_value(key,"seen",_seen)

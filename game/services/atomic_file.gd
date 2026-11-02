@@ -70,6 +70,15 @@ static func read_text(path: String, accept: Callable = Callable(), tmp_suffix: S
 		return text
 	return ""
 
+## The ConfigFile kept at `path` (written as encode_to_text through write_text),
+## or in the copy a cut-off write left beside it; null when none parses.
+static func read_config(path: String, tmp_suffix: String = TMP) -> ConfigFile:
+	var text := read_text(path, func(candidate: String) -> bool: return ConfigFile.new().parse(candidate) == OK, tmp_suffix)
+	if text.is_empty(): return null
+	var config := ConfigFile.new()
+	config.parse(text)
+	return config
+
 ## The JSON value of `path`, or of the copy a write cut off between its steps
 ## left behind: the first one `accept` takes (any value without it), else null.
 ## Parsed without logging. A missing or empty copy is no data. A copy whose

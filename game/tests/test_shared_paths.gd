@@ -39,6 +39,7 @@ const KNOWN_FAILURES := {
 	"offline:res://presentation/safety_screen.gd": "unowned (shared-paths audit): unblock and report buttons stay live offline",
 	"offline:res://presentation/shared_replay_view.gd": "unowned (shared-paths audit): report and block in a replay stay live offline",
 	"offline:res://presentation/legacy_room_flow.gd": "unowned (shared-paths audit): legacy room create, join, fork and advance stay live offline",
+	"offline:res://presentation/notification_flow.gd": "unowned (shared-paths audit): a room alert tapped offline says the room could not be opened on every retry",
 	"offline:res://relay_preview.gd": "unowned (shared-paths audit): New room on the end card and redo requests stay live offline (turns themselves are kept)",
 }
 
@@ -91,7 +92,6 @@ const ONLINE_CLIENTS := ["duels_client", "friends_client", "leaderboard_client",
 const OFFLINE_EXEMPT := {
 	"res://presentation/board_feedback_flow.gd": "no button: Home's background board watch",
 	"res://presentation/friends_flow.gd": "opens Friends, whose buttons hold (friends_screen.gd); its board read runs in the background",
-	"res://presentation/notification_flow.gd": "its one button turns on a kept preference; the service registers when it next reaches the server",
 	"res://presentation/bundle_purchase.gd": "refuses offline itself before a purchase starts; the store page holds its buttons",
 	"res://presentation/settings_rows.gd": "declares rows online: true; settings_flow.gd holds each one",
 	"res://presentation/turn_flow.gd": "a turn is kept as pending_turn and sent again later, offline included",
@@ -107,6 +107,8 @@ const NAME_EXEMPT := {
 
 ## (f) Constants holding a count that is never Pollen, though they read like an amount.
 const POLLEN_COUNTS := {"POLLEN_BANK_REFILL": "turns the bank gains each Monday"}
+## Constants holding a Pollen amount that the "%s Pollen" or "+%s" shape misses.
+const POLLEN_AMOUNTS := ["POLLEN_TAIL_FIRST", "POLLEN_TAIL_STEP"]
 
 ## (g) Scripts that write a file without AtomicFile, and why.
 const SAVE_EXEMPT := {
@@ -375,12 +377,20 @@ func _pollen() -> void:
 	_check(amounts.size() >= 10, "The Pollen amount lines are found: %d" % amounts.size())
 	for name: String in POLLEN_COUNTS:
 		_check(counted.has(name), "POLLEN_COUNTS names %s, which holds no %%d now: delete it" % name)
-	var used := RegEx.create_from_string("PlayerCopy\\.(" + "|".join(amounts) + ")\\b[^\\n]*")
+	for name: String in POLLEN_AMOUNTS:
+		_check(copy.contains("const " + name + " "), "POLLEN_AMOUNTS names %s, which PlayerCopy no longer has: delete it" % name)
+		if name not in amounts: amounts.append(name)
+	# Each constant on its own, so a second one on the same line is checked too.
+	var used := RegEx.create_from_string("PlayerCopy\\.(" + "|".join(amounts) + ")\\b")
 	for path: String in _sources:
 		if path == "res://presentation/player_copy.gd": continue
-		for match: RegExMatch in used.search_all(_sources[path]):
-			var line := match.get_string()
-			if not line.substr(match.get_string(1).length() + 11, 40).contains("%"): continue
+		var source: String = _sources[path]
+		for match: RegExMatch in used.search_all(source):
+			var start := source.rfind("\n", match.get_start()) + 1
+			var end := source.find("\n", match.get_end())
+			if end < 0: end = source.length()
+			if not source.substr(match.get_end(), end - match.get_end()).contains("%"): continue
+			var line := source.substr(start, end - start)
 			_check(line.contains("grouped("), "%s fills PlayerCopy.%s without PollenMoney.grouped: %s" % [path, match.get_string(1), line.strip_edges().left(120)])
 
 # (g) Saves ------------------------------------------------------------------

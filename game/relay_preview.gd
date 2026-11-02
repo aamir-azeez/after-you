@@ -1208,10 +1208,7 @@ func _replay_badges(state: Dictionary) -> Dictionary:
 	if _replay_label.is_empty():
 		var room: Dictionary = journey.snapshot() if journey != null and journey.has_method("snapshot") else {}
 		var slot := str(room.get("player_slot", ""))
-		var partner: Variant = room.get("guest_id") if slot == "p0" else room.get("host_id")
-		var scope: Dictionary = online_session.nickname_scope() if partner is String and online_session != null and online_session.has_method("nickname_scope") else {}
-		var names: RefCounted = nickname_store if nickname_store != null else FriendNicknames.new()
-		var shown := "" if scope.is_empty() else str(names.display_name(str(scope.server), str(scope.owner), str(partner)))
+		var shown := _waiting_partner_name(room)
 		_replay_label = {"slot": slot, "name": "" if shown == FriendNicknames.FALLBACK else shown}
 	return preload("res://presentation/kit/badges.gd").viewer_labels(state, _replay_label.slot, _replay_label.name)
 
