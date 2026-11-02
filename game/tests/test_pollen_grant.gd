@@ -208,6 +208,30 @@ func _client_reads() -> void:
 	await _settle(buying.client)
 	_check(buying.fake.sent.size() == 1 and buying.fake.sent[0].headers == PackedStringArray(["X-AfterYou-Full-Journey: bought"]), "then the purchase's read says bought, and it alone goes: " + str(buying.fake.sent.size()))
 	buying.api.queue_free()
+	# The store may list a new purchase a little late: an answer with nothing paid tries again, not at once
+	# but after the server's ten minutes, and gives up after three answered tries.
+	var late := _setup(false, true)
+	var empty := {"ok": true, "data": {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "bank": 12.0}}
+	late.fake.replies = [empty, empty, empty, empty]
+	late.client.note_full_journey_bought()
+	await _settle(late.client)
+	late.client.flush()
+	await _settle(late.client)
+	_check(late.fake.sent.size() == 1, "Nothing paid yet: no second try at once")
+	for n in range(3):
+		for key: String in late.client._bought.keys(): late.client._bought[key].at = 0
+		late.client.flush()
+		await _settle(late.client)
+	_check(late.fake.sent.size() == 3, "Three answered tries in all, then it stops: " + str(late.fake.sent.size()))
+	var paid := _setup(false, true)
+	paid.fake.replies = [empty, {"ok": true, "data": _answer(1, 4750, "grant:1790000000000:1", 4500)}]
+	paid.client.note_full_journey_bought()
+	await _settle(paid.client)
+	for key: String in paid.client._bought.keys(): paid.client._bought[key].at = 0
+	paid.client.flush()
+	await _settle(paid.client)
+	_check(paid.fake.sent.size() == 2 and paid.grant.pending(paid.api.base_url, ME).amount == 4500 and paid.client._bought.is_empty(), "The second try pays and ends the purchase's reads")
+	for each: Dictionary in [late, paid]: each.api.queue_free()
 	off.client.note_full_journey_bought()
 	await _settle(off.client)
 	_check(off.fake.sent.is_empty(), "Nor while the grant is off, even after a purchase")

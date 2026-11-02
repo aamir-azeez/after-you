@@ -34,6 +34,11 @@ const GRANT_READ_MS := 6 * 3600 * 1000
 ## The wallet read's word on Full Journey: "1" while this phone has it, "bought"
 ## on the read right after a purchase or restore. It only lets the server look.
 const FULL_JOURNEY_HEADER := "X-AfterYou-Full-Journey"
+## Answered "bought" reads one purchase may make while the store has not listed
+## it yet, each at least BOUGHT_RETRY_MS after the last (the server looks again
+## after ten minutes: backend/src/pollen/grant.ts BOUGHT_GAP_MS).
+const BOUGHT_TRIES := 3
+const BOUGHT_RETRY_MS := 11 * 60 * 1000
 
 ## A flush finished; the wallet or a result may have changed.
 signal settled
@@ -55,7 +60,9 @@ var subscribed: Callable
 var purchasing: Callable
 ## Scope key -> Time.get_ticks_msec() of the last wallet read made for the grant.
 var _grant_read_at: Dictionary = {}
-## Scope key -> true: a Full Journey purchase or restore waits for its wallet read (memory only).
+## Scope key -> {left, at}: a Full Journey purchase or restore waits for a wallet
+## read that shows its monthly Pollen: `left` answered tries, none before `at`
+## (Time.get_ticks_msec()). Memory only.
 var _bought: Dictionary = {}
 var _api: Node
 ## () -> {server, owner} of the signed-in player, or {}.
@@ -125,7 +132,7 @@ func _run() -> void:
 			# Only an answered read counts for the grant: an offline launch tries again on the next flush.
 			var key := PollenWallet.scope_key(context.server, context.owner)
 			if _grant_wanted(context): _grant_read_at[key] = Time.get_ticks_msec()
-			if bought: _bought.erase(key)
+			if bought: _note_bought_read(key, read.get("data"))
 			if wardrobe != null: wardrobe.note_view(context.server, context.owner, read.get("data"))
 			if grant != null: grant.note_view(context.server, context.owner, read.get("data"))
 		if not _again: break
@@ -147,11 +154,23 @@ func _grant_due(context: Dictionary) -> bool:
 func note_full_journey_bought() -> void:
 	var context := scope()
 	if context.is_empty(): return
-	_bought[PollenWallet.scope_key(context.server, context.owner)] = true
+	_bought[PollenWallet.scope_key(context.server, context.owner)] = {"left": BOUGHT_TRIES, "at": 0}
 	flush()
 
 func _bought_waiting(context: Dictionary) -> bool:
-	return grant != null and grant.enabled(context.server, context.owner) and _bought.has(PollenWallet.scope_key(context.server, context.owner))
+	if grant == null or not grant.enabled(context.server, context.owner): return false
+	var waiting: Variant = _bought.get(PollenWallet.scope_key(context.server, context.owner))
+	return waiting is Dictionary and Time.get_ticks_msec() >= int(waiting.at)
+
+## A "bought" read was answered: done once it shows a monthly Pollen paid, else
+## tried again later (RevenueCat may list a new purchase a little late), at most BOUGHT_TRIES times.
+func _note_bought_read(key: String, data: Variant) -> void:
+	var waiting: Variant = _bought.get(key)
+	if not waiting is Dictionary: return
+	var kept: Dictionary = PollenGrant.checked_grant(data.get("grant") if data is Dictionary else null)
+	var paid: bool = kept.has("latest")
+	if paid or int(waiting.left) <= 1: _bought.erase(key)
+	else: _bought[key] = {"left": int(waiting.left) - 1, "at": Time.get_ticks_msec() + BOUGHT_RETRY_MS}
 
 ## The wallet read's Full Journey header, or none while the grant is off or this phone has no word to give.
 func grant_headers(context: Dictionary) -> PackedStringArray:
