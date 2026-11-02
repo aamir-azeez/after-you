@@ -22,7 +22,8 @@ extends Node3D
 ## here runs while the pip stands still. A step can set a keepsake off (its
 ## builder's trigger()), carry the pip on a ride, or take it in and out of a
 ## keepsake's stay (a house, a lantern path). The pip walks on the islands, the
-## bridges and a keepsake's walkways, and never into a keepsake's solids.
+## bridges and a keepsake's walkways, and never into a keepsake's solids or
+## under its low parts (the Rolling Rail's dip, builder.ride_overhead()).
 const States = preload("res://services/home_keepsake_states.gd")
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Anim = preload("res://presentation/keepsakes/keepsake_anim.gd")
@@ -70,7 +71,8 @@ var _items: Dictionary = {}
 var _shown: Array[String] = []
 var selected_index := 0
 ## The set drawn now and the one being built: {"root", "props": {id: {"name",
-## "parts", "state", "look", "solids"}}, "keys": {id: look key}}.
+## "parts", "state", "look", "solids", "overhead"}}, "keys": {id: look key}};
+## "overhead" holds the solids that keep the pip from under low parts.
 var _set: Dictionary = {}
 var _next: Dictionary = {}
 ## Every moving part of both sets, so no fold ever takes them.
@@ -215,8 +217,10 @@ func _make_set(shown_now: bool) -> Dictionary:
 			if id == States.EARLIER: plain.lanterns = state.lanterns.map(func(_lit: bool) -> bool: return false)
 			Parts.outline(holder, builder, "%s|%d" % [id, item.stages.size()], item.stages if item.look == "started" else [], plain)
 		for part: Node in _moving(parts): _held.append(part)
-		var solids: Array[Rect2] = builder.solids(state if item.look == "keepsake" else {})
-		props[id] = {"name": holder.name, "parts": parts, "state": state, "look": item.look, "solids": solids}
+		var drawn := state if item.look == "keepsake" else {}
+		var solids: Array[Rect2] = builder.solids(drawn)
+		var overhead := Approach.kept_off(builder.ride_overhead(drawn), WALK_CLEARANCE)
+		props[id] = {"name": holder.name, "parts": parts, "state": state, "look": item.look, "solids": solids, "overhead": overhead}
 	builds += 1
 	return {"root": root, "props": props, "keys": _keys()}
 
@@ -357,7 +361,7 @@ func _approach(id: String, builder: RefCounted, state: Dictionary, anim: RefCoun
 	var goal: Variant = builder.ride_start(state, anim.rider_from)
 	if goal == null: return 0.0
 	var placed := slot_transform(id)
-	var ground := func(at: Vector2) -> bool: return walkable(placed * Vector3(at.x, 0, at.y))
+	var ground := func(at: Vector2) -> bool: return approach_ground(id, placed * Vector3(at.x, 0, at.y))
 	var hops := Approach.route(anim.rider_from, goal, _set.props[id].solids, WALK_CLEARANCE, ground, builder.ride_overhead(state))
 	if hops.is_empty():
 		anim.rider = null
@@ -573,7 +577,7 @@ func prop_node(id: String) -> Node3D:
 	if not _set.get("props", {}).has(id): return null
 	return (_set.root as Node3D).get_node_or_null(NodePath(_set.props[id].name)) as Node3D
 
-## Every keepsake drawn now: {id: {"name", "parts", "state", "look", "solids"}}.
+## Every keepsake drawn now: {id: {"name", "parts", "state", "look", "solids", "overhead"}}.
 func current_props() -> Dictionary:
 	return _set.get("props", {})
 
@@ -633,21 +637,33 @@ func nearest(point: Vector3, reach: float) -> String:
 	return best
 
 ## Whether a spirit standing at `point`, `margin` metres round, would stand in
-## a keepsake's solids.
-func blocks(point: Vector3, margin: float) -> bool:
+## a keepsake's solids or under its low parts (any but `under`'s own).
+func blocks(point: Vector3, margin: float, under: String = "") -> bool:
 	for id: String in _shown:
 		if _solid_distance(id, point) < margin: return true
+		if id == under: continue
+		for rect: Rect2 in _overhead(id):
+			if _rect_distance(rect, _local(id, point)) < margin: return true
 	return false
 
 ## Whether a step from `from` to `to` takes a spirit nearer than `margin` to a
-## keepsake's solids and nearer than it already was, so a spirit a keepsake
-## appeared beside can always walk away from it. A gate counts as it stands
-## for a spirit at `from`.
+## keepsake's solids, or to the ground under one of its low parts, and nearer
+## than it already was, so a spirit a keepsake appeared beside, or over, can
+## always walk away from it. Each low part counts on its own, so a spirit
+## under one still never walks into the solids (the rail's posts) beneath it.
+## A gate counts as it stands for a spirit at `from`.
 func blocks_step(from: Vector3, to: Vector3, margin: float) -> bool:
 	for id: String in _shown:
 		var after := _solid_distance(id, to, from)
 		if after < margin and after < _solid_distance(id, from, from): return true
+		for rect: Rect2 in _overhead(id):
+			after = _rect_distance(rect, _local(id, to))
+			if after < margin and after < _rect_distance(rect, _local(id, from)): return true
 	return false
+
+## The solids that keep a spirit from under a keepsake's low parts, in its frame.
+func _overhead(id: String) -> Array:
+	return _set.get("props", {}).get(id, {}).get("overhead", [])
 
 ## How far a point is outside a keepsake's ground (0 inside), in metres.
 func distance(id: String, point: Vector3) -> float:
@@ -764,10 +780,17 @@ func near_trigger(point: Vector3, reach: float) -> bool:
 	return false
 
 ## True where an Explore walk may stand: on an island, a crossing that carries
-## the spirit or a keepsake's walkway, and not inside a keepsake.
+## the spirit or a keepsake's walkway, and not inside a keepsake or under its
+## low parts.
 func walkable(point: Vector3) -> bool:
 	if blocks(point, WALK_CLEARANCE): return false
 	return _ground(point)
+
+## Where the hops round to `id`'s ride may go: walkable, or under its own low
+## parts, which the way round (ride_approach.gd) keeps off itself once it has
+## hopped a pip standing under them out.
+func approach_ground(id: String, point: Vector3) -> bool:
+	return not blocks(point, WALK_CLEARANCE, id) and _ground(point)
 
 ## An Explore step: onto ground, and never deeper into a keepsake.
 func can_step(from: Vector3, to: Vector3) -> bool:
@@ -823,7 +846,7 @@ func _away(from: Vector3, to: Vector3) -> Vector3:
 	for id: String in _shown:
 		var local := _local(id, to)
 		var here := _local(id, from)
-		for rect: Rect2 in _rects(id, from):
+		for rect: Rect2 in _rects(id, from) + _overhead(id):
 			var gap := _rect_distance(rect, local)
 			if gap <= 0.0 or gap >= best: continue
 			var edge := Vector2(clampf(here.x, rect.position.x, rect.end.x), clampf(here.y, rect.position.y, rect.end.y))
