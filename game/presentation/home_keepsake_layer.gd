@@ -775,7 +775,7 @@ const SLIDE_LEAST := 0.1
 func step(from: Vector3, move: Vector3) -> Vector3:
 	if can_step(from, from + move): return from + move
 	_push_gate(from, from + move)
-	var away := _away(from + move, from)
+	var away := _away(from, from + move)
 	if away != Vector3.ZERO and move.dot(away) < 0.0:
 		var along := move - away * move.dot(away)
 		if along.length() <= move.length() * SLIDE_LEAST: return from
@@ -799,20 +799,23 @@ func _push_gate(from: Vector3, to: Vector3) -> void:
 				play(id)
 				return
 
-## The flat way out from the solid nearest `point` (its gates as they stand
-## for a spirit at `at`), in island space; zero when none is within twice
-## the walk clearance.
-func _away(point: Vector3, at: Vector3) -> Vector3:
+## The flat way out to `from` from the solid nearest `to` (its gates as they
+## stand for a spirit at `from`), in island space; zero when none is within
+## twice the walk clearance. Taken at `from`, where the pip touches it, so
+## round a corner the slide follows the corner's curve and never cuts in.
+func _away(from: Vector3, to: Vector3) -> Vector3:
 	var best := WALK_CLEARANCE * 2.0
 	var away := Vector3.ZERO
 	for id: String in _shown:
-		var local := _local(id, point)
-		for rect: Rect2 in _rects(id, at):
-			var edge := Vector2(clampf(local.x, rect.position.x, rect.end.x), clampf(local.y, rect.position.y, rect.end.y))
-			var gap := local.distance_to(edge) * HOME_SCALE
+		var local := _local(id, to)
+		var here := _local(id, from)
+		for rect: Rect2 in _rects(id, from):
+			var gap := _rect_distance(rect, local)
 			if gap <= 0.0 or gap >= best: continue
+			var edge := Vector2(clampf(here.x, rect.position.x, rect.end.x), clampf(here.y, rect.position.y, rect.end.y))
+			if here == edge: continue
 			best = gap
-			var out := (local - edge).normalized()
+			var out := (here - edge).normalized()
 			away = (_frames[id].placed.basis * Vector3(out.x, 0, out.y)).normalized()
 	return away
 
