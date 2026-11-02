@@ -5,7 +5,7 @@ extends RefCounted
 ##   checkpoint and the board this phone last read), then reads the board
 ##   once (services/leaderboard_client.gd board(), which keeps a read for a
 ##   minute) and says it again. A run that places on the board this phone
-##   shows (services/board_status.gd place(), its check still to come) is
+##   shows (services/board_status.gd shown_row(), its check still to come) is
 ##   celebrated over the room at once, from the kept board or else that read:
 ##   the same celebration a confirmed place gets, once a run, since it is
 ##   marked shown in services/leaderboard_placings.gd before it opens. Its
@@ -87,11 +87,11 @@ func _celebrate(run: Dictionary, view: Dictionary, line: Control) -> void:
 	var parent: Variant = room.get("ui")
 	if not parent is Control or not (parent as Control).is_ancestor_of(line) or not (line.get_parent() as Control).is_visible_in_tree() or Celebration.showing(parent): return
 	if Placings.shared().was_shown(owner, run.entry_id): return
-	var rank := BoardStatus.place(run, view, _now(), Runs.on_board(owner, run.board))
-	if Placings.tier(rank).is_empty(): return
+	var row := BoardStatus.shown_row(run, view, _now(), Runs.on_board(owner, run.board))
+	if row.is_empty() or Placings.tier(int(row.rank)).is_empty(): return
 	Placings.shared().mark_shown(owner, run.entry_id)
-	# Names and the Gold leaf come with the confirmed row; until then it is A pair.
-	var placing := {"entry_id": run.entry_id, "board": run.board, "rank": rank, "ticks": int(run.ticks), "names": null, "gold_leaf": false, "partner": str(run.get("partner", ""))}
+	# The row as the board shows it: a confirmed one brings its names and Gold leaf.
+	var placing := Placings.placing_of(row, run.board, str(run.get("partner", "")))
 	var shown: Control = Celebration.open(parent, placing, bool(host.saves.data.settings.get("reduced_motion", false)))
 	if shown == null: return
 	shown.view_board.connect(_view_board)

@@ -12,6 +12,8 @@ extends RefCounted
 ##   pair's repeat no faster than its own run already there, or it did not
 ##   pass the checks);
 ## - UNKNOWN: an older run and no board read to say where it stands: no line.
+## shown_rows() is the board as this phone shows it, with this player's runs
+## that wait for their check at their places.
 ## Pure: no storage, no requests. Runs come from services/leaderboard_runs.gd
 ## and views from services/leaderboard_client.gd (valid_view).
 const Runs = preload("res://services/leaderboard_runs.gd")
@@ -61,14 +63,17 @@ static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix:
 ##   names it keeps. Other pairs' waiting runs never move anyone.
 ## - On equal times a listed run stays ahead: it finished first (rules.ts compareRuns).
 ## - Places count again from 1 and stop at 10; the Gold leaf stays only on first place.
+## - `gone` (entry_id -> true): runs an earlier read listed as checking that
+##   this one lists nowhere. They failed their check, so they go at once
+##   rather than when the settle window ends.
 ## A pending row: {rank, entry_id, ticks, names, gold_leaf, finished_on,
 ## replay_hash: null, looks: [], pending: true, partner}. [] without a board read.
-static func shown_rows(view: Dictionary, mine: Array, now_unix: float) -> Array:
+static func shown_rows(view: Dictionary, mine: Array, now_unix: float, gone: Dictionary = {}) -> Array:
 	if not view.get("top") is Array or not view.get("checking") is Array: return []
 	var waiting: Dictionary = {}
 	for run: Dictionary in mine:
 		# A run the pair's own listed run is no slower than never entered (pair_ahead).
-		if bool(run.get("assisted", false)) or of_run(run, true, view, now_unix, mine).state != CHECKING or pair_ahead(run, view, mine): continue
+		if gone.has(run.entry_id) or bool(run.get("assisted", false)) or of_run(run, true, view, now_unix, mine).state != CHECKING or pair_ahead(run, view, mine): continue
 		var pair := str(run.get("partner", ""))
 		var key := pair if not pair.is_empty() else "run:" + str(run.entry_id)
 		if not waiting.has(key) or _ahead(run, waiting[key]): waiting[key] = run
@@ -103,12 +108,16 @@ static func shown_rows(view: Dictionary, mine: Array, now_unix: float) -> Array:
 		rows[index].gold_leaf = index == 0 and bool(rows[index].get("gold_leaf", false))
 	return rows
 
-## The place `run` has on the board this phone shows (shown_rows), or 0 when
-## it shows none there (off the board, settled, or no board read).
-static func place(run: Dictionary, view: Dictionary, now_unix: float, mine: Array) -> int:
+## The row `run` has on the board this phone shows (shown_rows), or {} when
+## it has none there (off the board, settled, or no board read).
+static func shown_row(run: Dictionary, view: Dictionary, now_unix: float, mine: Array) -> Dictionary:
 	for row: Dictionary in shown_rows(view, mine, now_unix):
-		if row.entry_id == run.get("entry_id"): return int(row.rank)
-	return 0
+		if row.entry_id == run.get("entry_id"): return row
+	return {}
+
+## Its place there, or 0.
+static func place(run: Dictionary, view: Dictionary, now_unix: float, mine: Array) -> int:
+	return int(shown_row(run, view, now_unix, mine).get("rank", 0))
 
 static func _ahead(a: Dictionary, b: Dictionary) -> bool:
 	return int(a.ticks) < int(b.ticks) or (int(a.ticks) == int(b.ticks) and str(a.get("finished_at", "")) < str(b.get("finished_at", "")))

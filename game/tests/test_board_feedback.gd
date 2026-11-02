@@ -227,6 +227,7 @@ func _shown_rows() -> void:
 	var refused := waiting.duplicate()
 	refused.finished_at = _now_iso(-BoardStatus.SETTLE_SECONDS - 60)
 	_check(BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, ten, []), [refused], now).all(func(row: Dictionary) -> bool: return not row.pending), "a run that failed its check leaves the board quietly")
+	_check(BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, ten, []), [waiting], now, {waiting.entry_id: true}).all(func(row: Dictionary) -> bool: return not row.pending), "and at once when an earlier read listed it waiting, inside the settle window too")
 	var accepted: Array = ten.duplicate(true)
 	accepted.insert(3, _row(4, waiting.entry_id, 1250))
 	rows = BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, accepted.slice(0, 10), []), [waiting], now)
@@ -377,6 +378,7 @@ func _end_of_run_celebration() -> void:
 	_check(shown != null and shown.placing.rank == 3 and shown.placing.entry_id == entry and shown.placing.ticks == 1470 and shown.placing.names == null and not shown.placing.gold_leaf, "once the board is read the place the run gets is celebrated over the room: %s" % [shown.placing if shown != null else {}])
 	_check(room.soundscape.cues == ["ui_third"], "with the place's own sound, on the room's soundscape: %s" % [room.soundscape.cues])
 	_check(Placings.shared().was_shown(OWNER, entry) and not line.visible, "marked shown, and the card says nothing about the check")
+	_check(shown != null and shown.reduced, "under Reduce motion")
 	_check(Celebration.close_over(room.ui) and not Celebration.close_over(room.ui), "Back closes the celebration, and only it")
 	await _frames(1)
 	# The card drawn again (the room refreshed, or opened again later): no second one.
@@ -424,6 +426,38 @@ func _end_of_run_celebration() -> void:
 	host.relay_child = room
 	line.queue_free()
 	await _frames(1)
+	# A run already confirmed when the card reads its board: its row's names and Gold leaf.
+	_fresh_runs()
+	var gold_room := "C7C7C7C7C7C7C7C7C7C7C7"
+	var gold_row := _row(1, Runs.entry_id(gold_room, 1), 1470)
+	gold_row.names = ["Ada", "Bo"]
+	gold_row.gold_leaf = true
+	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [gold_row], [])}
+	Client.shared(host.api, OWNER)._views.clear()
+	line = flow.line_for(_snapshot(gold_room, _lighthouse_final(), _now_iso(-2)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(5)
+	shown = room.ui.find_child(Celebration.NODE_NAME, false, false)
+	_check(shown != null and shown.placing.gold_leaf and shown.placing.names == ["Ada", "Bo"] and not Placings.shared().has_pending(OWNER), "a confirmed first place keeps its Gold leaf and names, celebrated once, here")
+	if shown != null: Celebration.close_over(room.ui)
+	line.queue_free()
+	await _frames(1)
+	# The room changed under the card's read: nothing, and Home can still celebrate it.
+	_fresh_runs()
+	var swap_room := "C8C8C8C8C8C8C8C8C8C8C8"
+	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 2000)], [])}
+	Client.shared(host.api, OWNER)._views.clear()
+	line = flow.line_for(_snapshot(swap_room, _lighthouse_final(), _now_iso(-2)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	var other := FakeRoom.new()
+	other.host = host
+	root.add_child(other)
+	host.relay_child = other
+	await _frames(5)
+	_check(not Celebration.showing(room.ui) and not Celebration.showing(other.ui) and not Placings.shared().was_shown(OWNER, Runs.entry_id(swap_room, 1)), "a card whose room is no longer the open one celebrates nothing")
+	host.relay_child = room
+	other.queue_free()
+	line.queue_free()
 	# No celebration: the card gone before the read, a failed read, a place outside the top 10.
 	_fresh_runs()
 	var gone_room := "C4C4C4C4C4C4C4C4C4C4C4"

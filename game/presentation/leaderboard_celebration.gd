@@ -1,6 +1,7 @@
 extends Control
-## The moment this player's run is confirmed in a chapter board's top 10
-## (services/leaderboard_placings.gd): the pair, the chapter, the place and the
+## The moment this player's run makes a chapter board's top 10: confirmed
+## (services/leaderboard_placings.gd), or on the end-of-run card at the place
+## it would get before its check (presentation/board_feedback_flow.gd): the pair, the chapter, the place and the
 ## time, held until View board or Back. Four tiers, each one row of TIERS:
 ##   top_ten  a card with the blue Top 10 rosette between the pips, about 1.0 s
 ##   third    a wider card, a bronze stage and place mark, about 1.6 s
@@ -124,7 +125,7 @@ static func show_next(parent: Control, owner: String, reduced_motion: bool) -> C
 	Placings.shared().mark_shown(owner, str(waiting.entry_id))
 	return open(parent, waiting, reduced_motion)
 
-## A celebration for `confirmed` over `parent`; null for a place outside the top 10.
+## A celebration for `confirmed` (a placing, confirmed or still to be checked) over `parent`; null for a place outside the top 10.
 static func open(parent: Control, confirmed: Dictionary, reduced_motion: bool) -> Control:
 	var kind := Placings.tier(int(confirmed.get("rank", 0)))
 	if kind.is_empty(): return null

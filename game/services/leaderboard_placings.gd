@@ -75,7 +75,7 @@ func learn(owner: String, board: String, view: Dictionary) -> bool:
 	for row: Dictionary in view.top:
 		listed[row.entry_id] = true
 		if not mine.has(row.entry_id) or row.entry_id in checking or player.shown.has(row.entry_id) or tier(int(row.rank)).is_empty(): continue
-		var placing := {"entry_id": row.entry_id, "board": board, "rank": int(row.rank), "ticks": int(row.ticks), "names": row.get("names"), "gold_leaf": bool(row.get("gold_leaf", false)), "partner": str(mine[row.entry_id].get("partner", ""))}
+		var placing := placing_of(row, board, str(mine[row.entry_id].get("partner", "")))
 		var at := _find(pending, row.entry_id)
 		if at < 0: pending.append(placing)
 		elif pending[at] == placing: continue
@@ -88,6 +88,11 @@ func learn(owner: String, board: String, view: Dictionary) -> bool:
 	_players[owner] = player
 	_save()
 	return true
+
+## A board row of this player's run as a placing: {entry_id, board, rank,
+## ticks, names, gold_leaf, partner}.
+static func placing_of(row: Dictionary, board: String, partner: String) -> Dictionary:
+	return {"entry_id": row.entry_id, "board": board, "rank": int(row.rank), "ticks": int(row.ticks), "names": row.get("names"), "gold_leaf": bool(row.get("gold_leaf", false)), "partner": partner}
 
 ## Whether a placing waits for its celebration (cheap enough for every frame).
 func has_pending(owner: String) -> bool:

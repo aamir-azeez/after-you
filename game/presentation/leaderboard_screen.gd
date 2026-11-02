@@ -353,10 +353,15 @@ func _render_board() -> void:
 	var mine: Array = Runs.on_board(player_id, board)
 	var mine_by_id: Dictionary = {}
 	for run: Dictionary in mine: mine_by_id[run.entry_id] = run
-	var rows: Array = BoardStatus.shown_rows(_view, mine, Time.get_unix_time_from_system())
 	var checking: Array = _view.get("checking", [])
 	var passed: Array = _was_checking.get(board, [])
 	_was_checking[board] = checking.duplicate()
+	# Runs this page saw waiting that the board now lists nowhere failed their check.
+	var gone: Dictionary = {}
+	for id: String in passed: gone[id] = true
+	for id: String in checking: gone.erase(id)
+	for row: Dictionary in _view.get("top", []): gone.erase(row.entry_id)
+	var rows: Array = BoardStatus.shown_rows(_view, mine, Time.get_unix_time_from_system(), gone)
 	if rows.is_empty():
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_EMPTY))
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_RULES))
