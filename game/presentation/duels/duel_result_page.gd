@@ -129,7 +129,7 @@ func _card(index: int, won: bool) -> Control:
 	column.add_child(head)
 	var middle := HBoxContainer.new()
 	middle.add_theme_constant_override("separation", 14)
-	var pips := Kit.pips(Vector2(84, 100) if not compact else Vector2(70, 84), index == view.mine)
+	var pips := Kit.pips(Vector2(84, 100) if not compact else Vector2(70, 84), DuelModel.members(view, index), me, DuelModel.looks(view, index))
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	middle.add_child(pips)
 	var time := Kit.text(DuelModel.time_text(DuelModel.ticks(view, index)), 54 if not compact else 46, UiTokens.CREAM, true)

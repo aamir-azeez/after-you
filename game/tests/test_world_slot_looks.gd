@@ -136,6 +136,12 @@ func _room() -> void:
 	_check(world.actors.p1.outfit() == {"hat": "daisy"} and world.actors.p0.outfit() == {"hat": "seashell"}, "Room ready card and live turn: the viewer wears their look, the partner's turn its own")
 	screen._dress([])
 	_check(world.actors.p1.outfit() == {"hat": "daisy"} and world.actors.p0.outfit() == {"body": "tide"}, "Room waiting view: the partner wears the look they wear now")
+	# A duel's room (its snapshot says `duel`) dresses its pips the same way.
+	journey.set("room", {"player_slot": "p1", "host_id": friend, "guest_id": me, "duel": true})
+	world.wear_slots({})
+	screen._dress([])
+	_check(world.actors.p1.outfit() == {"hat": "daisy"} and world.actors.p0.outfit() == {"body": "tide"}, "A duel's room: the viewer wears their look and the partner theirs")
+	journey.set("room", {"player_slot": "p1", "host_id": friend, "guest_id": me})
 	screen.review = {"player_slot": "p1", "recording_hash": "c".repeat(64)}
 	screen._dress([screen.review, partner_turn], true)
 	_check(world.actors.p1.outfit() == {"hat": "daisy"} and world.actors.p0.outfit() == {"hat": "seashell"}, "Watch preview: the viewer's unsent turn plays in their look")

@@ -62,6 +62,18 @@ static func your_turn(view: Dictionary, me: String) -> bool:
 	# No turn yet: the first room has not been made, and either of you may open it.
 	return true
 
+## A side's members in slot order; a ghost's are nobody.
+static func members(view: Dictionary, index: int) -> Array:
+	if index == 1 and view.kind == "ghost": return [null, null]
+	return view.sides[index].members
+
+## What a side's members wear, in `members` order (services/duels_client.gd
+## `looks`); a ghost wears its board row's. [{}, {}] when the server sent none.
+static func looks(view: Dictionary, index: int) -> Array:
+	var source: Variant = view.get("ghost") if index == 1 and view.kind == "ghost" else view.sides[index]
+	var held: Variant = source.get("looks") if source is Dictionary else null
+	return held if held is Array and held.size() == 2 else [{}, {}]
+
 ## The steps a side has played and the whole run's, for its dots.
 static func steps(view: Dictionary, index: int) -> Vector2i:
 	if index == 1 and view.kind == "ghost": return Vector2i(view.steps, view.steps)

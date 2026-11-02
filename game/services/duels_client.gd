@@ -15,6 +15,11 @@ extends RefCounted
 ##   idempotency key made once per tap, so a retry answers the duel it made.
 ## Every answer is checked before it is used; one this build cannot read is a
 ## failure, never a partial page.
+## - looks: while the server has looks on, each side carries what its members
+##   wear (`looks`, in `members` order), a board ghost its row's, and the lobby
+##   the partner's (`party.partner_look`). Kept as sent ({} for anything that is
+##   not a Dictionary); the pages clean them (services/outfit.gd) as they draw,
+##   so only offered items ever show. A server without them reads as the default.
 ## - hints_sent(): whether the latest lobby or duel read said duel changes also
 ##   come over the live socket (duel_hints_version), so the screens may read at
 ##   their backup pace. A server rolled back to one without hints says nothing,
@@ -304,7 +309,7 @@ static func valid_lobby(value: Variant) -> Dictionary:
 		duels.append(view)
 	if duels.size() > MAX_DUELS: return {}
 	var limits: Variant = value.get("limits")
-	return {"party": {"partner": partner, "intact": party.intact, "invites_in": party.invites_in.duplicate(), "invite_out": out}, "duels": duels,
+	return {"party": {"partner": partner, "intact": party.intact, "invites_in": party.invites_in.duplicate(), "invite_out": out, "partner_look": _look(party.get("partner_look"))}, "duels": duels,
 		"limits": {"friend": int(limits.get("friend", 3)), "ghost": int(limits.get("ghost", 3))} if limits is Dictionary else {"friend": 3, "ghost": 3}}
 
 ## One duel as the server sent it (backend duels/model.ts DuelView), or {}.
@@ -326,7 +331,7 @@ static func valid_view(value: Variant) -> Dictionary:
 	var kept_ghost: Variant = null
 	if value.kind == "ghost":
 		if not ghost is Dictionary or not Typed.whole_number(ghost.get("ticks")) or not ghost.get("source") in ["board", "developer"]: return {}
-		kept_ghost = {"source": ghost.source, "ticks": int(ghost.ticks), "rank": int(ghost.rank) if Typed.whole_number(ghost.get("rank")) else 0, "names": ghost.get("names") if ghost.get("names") is Array else null}
+		kept_ghost = {"source": ghost.source, "ticks": int(ghost.ticks), "rank": int(ghost.rank) if Typed.whole_number(ghost.get("rank")) else 0, "names": ghost.get("names") if ghost.get("names") is Array else null, "looks": _looks(ghost.get("looks"))}
 	var result: Variant = value.get("result")
 	var kept_result: Variant = null
 	if result != null:
@@ -343,7 +348,7 @@ static func _side(value: Variant) -> Dictionary:
 	if not Typed.whole_number(value.get("steps")) or not Typed.whole_number(value.get("ticks")) or not value.get("finished") is bool or not value.get("left") is bool or not value.get("check") in CHECKS: return {}
 	var turn: Variant = value.get("turn")
 	var side := {"members": value.members.duplicate(), "you": value.you, "steps": int(value.steps), "ticks": int(value.ticks),
-		"turn": int(turn) if Typed.whole_number(turn) and int(turn) < 2 else -1, "finished": value.finished, "left": value.left, "check": value.check}
+		"turn": int(turn) if Typed.whole_number(turn) and int(turn) < 2 else -1, "finished": value.finished, "left": value.left, "check": value.check, "looks": _looks(value.get("looks"))}
 	if value.you:
 		var room: Variant = value.get("room_id")
 		var invite: Variant = value.get("invite_code")
@@ -351,6 +356,14 @@ static func _side(value: Variant) -> Dictionary:
 		side["invite_code"] = invite if invite is String else ""
 		side["hosting"] = value.get("hosting") == true
 	return side
+
+## Two looks in member order, as sent; {} for each one missing or not a Dictionary.
+static func _looks(value: Variant) -> Array:
+	var sent: Array = value if value is Array else []
+	return [_look(sent[0] if sent.size() > 0 else null), _look(sent[1] if sent.size() > 1 else null)]
+
+static func _look(value: Variant) -> Dictionary:
+	return (value as Dictionary).duplicate() if value is Dictionary else {}
 
 static func _pay(value: Variant) -> Dictionary:
 	if not value is Dictionary: return {}

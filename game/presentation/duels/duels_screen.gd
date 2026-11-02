@@ -206,7 +206,7 @@ func _render_party() -> void:
 	pips.add_theme_constant_override("separation", 18)
 	# Full Journey shows under your own pip while it counts here (boost_percent: never on iPhone).
 	pips.add_child(_named_pip(PlayerCopy.DUEL_YOU, Kit.FIRST_PIP, true, boost_percent > 0))
-	if partner != null: pips.add_child(_named_pip(str(name_of.call(partner)) if name_of.is_valid() else "", Kit.SECOND_PIP, false))
+	if partner != null: pips.add_child(_named_pip(str(name_of.call(partner)) if name_of.is_valid() else "", Kit.SECOND_PIP, false, false, party.get("partner_look", {})))
 	line.add_child(pips)
 	var middle := VBoxContainer.new()
 	middle.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -234,11 +234,11 @@ func _render_party() -> void:
 	Kit.icon_on(party_button, preload("res://assets/ui/settings/chevron.svg"), false, 20)
 	line.add_child(party_button)
 
-func _named_pip(label: String, color: Color, own: bool, full_journey: bool = false) -> Control:
+func _named_pip(label: String, color: Color, own: bool, full_journey: bool = false, look: Dictionary = {}) -> Control:
 	var column := VBoxContainer.new()
 	# With the Full Journey tag the pip is a little smaller and the tag tucks under the name, so the row keeps its height.
 	column.add_theme_constant_override("separation", -5 if full_journey else 0)
-	column.add_child(Kit.pip(Vector2(50, 56) if full_journey else Vector2(56, 64), color, own))
+	column.add_child(Kit.pip(Vector2(50, 56) if full_journey else Vector2(56, 64), color, own, look))
 	var name_label := Kit.text(label, 17)
 	name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	column.add_child(name_label)
@@ -264,7 +264,7 @@ func _challenge_card(view: Dictionary) -> Control:
 	column.add_child(title)
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", 6)
-	pair.add_child(Kit.pips(Vector2(30, 40)))
+	pair.add_child(Kit.pips(Vector2(30, 40), DuelModel.members(view, 1 - view.mine), me, DuelModel.looks(view, 1 - view.mine)))
 	var who := Kit.text(DuelModel.pair_title(view, 1 - view.mine, name_of).replace(" + ", " and "), 17, UiTokens.SOFT)
 	who.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	who.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -332,7 +332,7 @@ func _lane(view: Dictionary, index: int) -> Control:
 	who.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	who.custom_minimum_size.x = 100
 	column.add_child(who)
-	var pips := Kit.pips(Vector2(30, 40), index == view.mine)
+	var pips := Kit.pips(Vector2(30, 40), DuelModel.members(view, index), me, DuelModel.looks(view, index))
 	if index == 1 and view.kind == "ghost": pips.modulate = Color(1, 1, 1, 0.55)
 	column.add_child(pips)
 	var steps := DuelModel.steps(view, index)

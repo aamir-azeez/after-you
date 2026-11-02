@@ -3,7 +3,10 @@ extends RefCounted
 ## button looks, a pair of still pips, a chapter picture and a row of step
 ## dots. Every page builds from these, so the lobby, the duel page and the
 ## result page look the same. Pips are always still (kit/pip_avatar.gd), so a
-## page of tiles runs no 3D views and draws nothing per frame.
+## page of tiles runs no 3D views and draws nothing per frame. Every pip wears
+## its player's look: this player's own from services/own_look.gd, anyone
+## else's as the server sent it, cleaned by services/outfit.gd, so an item
+## this build is not offered never shows.
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
@@ -12,6 +15,7 @@ const ChapterPicker = preload("res://presentation/chapter_picker.gd")
 const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const Dots = preload("res://presentation/duels/duel_dots.gd")
+const Outfit = preload("res://services/outfit.gd")
 const BACKGROUND := Color("123936")
 const PANEL_FILL := Color("163f3b")
 const PANEL_EDGE := Color("2d5a53")
@@ -75,22 +79,24 @@ static func pill(value: String, lit: bool, font_size: int = 17) -> PanelContaine
 	box.add_child(label)
 	return box
 
-## Two still pips side by side; `own_first`: the first is this player's own pip and look.
-static func pips(pip_size: Vector2, own_first: bool = false, separation: int = 4) -> HBoxContainer:
+## A pair's two still pips in slot order (services/duel_model.gd members and
+## looks): the member who is `me` is this player's own pip in their own look,
+## wherever they sit; every other wears `looks` at its slot.
+static func pips(pip_size: Vector2, members: Array = [null, null], me: String = "", looks: Array = [], separation: int = 4) -> HBoxContainer:
 	var pair := HBoxContainer.new()
 	pair.add_theme_constant_override("separation", separation)
 	pair.alignment = BoxContainer.ALIGNMENT_CENTER
 	pair.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	for index in range(2):
-		var pip := PipAvatar.new(true, FIRST_PIP if index == 0 else SECOND_PIP, pip_size, true, own_first and index == 0)
-		pip.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		pair.add_child(pip)
+		var member: Variant = members[index] if index < members.size() else null
+		pair.add_child(pip(pip_size, FIRST_PIP if index == 0 else SECOND_PIP, member != null and not me.is_empty() and member == me, looks[index] if index < looks.size() else {}))
 	return pair
 
-## A single still pip, the player's own when `own`.
-static func pip(pip_size: Vector2, color: Color, own: bool = false) -> Control:
+## A single still pip: the player's own when `own`, otherwise wearing `look`.
+static func pip(pip_size: Vector2, color: Color, own: bool = false, look: Variant = {}) -> Control:
 	var made := PipAvatar.new(true, color, pip_size, true, own)
 	made.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	if not own: made.wear(Outfit.from(look))
 	return made
 
 ## The chapter's real capture in a rounded frame, loaded off the main thread.

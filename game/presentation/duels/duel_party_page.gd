@@ -83,7 +83,7 @@ func _render_top() -> void:
 	row.add_theme_constant_override("separation", 28)
 	_top.add_child(row)
 	row.add_child(_slot(PlayerCopy.DUEL_YOU, Kit.FIRST_PIP, true, true))
-	row.add_child(_slot(_name(partner) if partner != null else PlayerCopy.DUELS_PARTY_EMPTY_SLOT, Kit.SECOND_PIP, false, partner != null))
+	row.add_child(_slot(_name(partner) if partner != null else PlayerCopy.DUELS_PARTY_EMPTY_SLOT, Kit.SECOND_PIP, false, partner != null, party.get("partner_look", {}) if partner != null else {}))
 	var words := VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	words.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -98,10 +98,10 @@ func _render_top() -> void:
 		leave.pressed.connect(func(): party_action.emit("leave", "", leave))
 		row.add_child(leave)
 
-func _slot(label: String, color: Color, own: bool, filled: bool) -> Control:
+func _slot(label: String, color: Color, own: bool, filled: bool, look: Dictionary = {}) -> Control:
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 2)
-	var pip := Kit.pip(Vector2(84, 98), color, own)
+	var pip := Kit.pip(Vector2(84, 98), color, own, look)
 	if not filled: pip.modulate = Color(1, 1, 1, 0.3)
 	column.add_child(pip)
 	var name_label := Kit.text(label, 20, UiTokens.CREAM if filled else UiTokens.MUTED)

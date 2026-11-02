@@ -98,10 +98,11 @@ func _side_card(index: int) -> Control:
 	var pips := HBoxContainer.new()
 	pips.add_theme_constant_override("separation", 14)
 	var side: Variant = view.sides[index]
+	var looks := DuelModel.looks(view, index)
 	for slot in range(2):
 		var column := VBoxContainer.new()
 		column.add_theme_constant_override("separation", 0)
-		column.add_child(Kit.pip(Vector2(92, 108) if not compact else Vector2(74, 88), Kit.FIRST_PIP if slot == 0 else Kit.SECOND_PIP, own and side.members[slot] == me))
+		column.add_child(Kit.pip(Vector2(92, 108) if not compact else Vector2(74, 88), Kit.FIRST_PIP if slot == 0 else Kit.SECOND_PIP, own and side.members[slot] == me, looks[slot]))
 		var shown := ""
 		if side is Dictionary and side.members[slot] != null and name_of.is_valid(): shown = str(name_of.call(side.members[slot]))
 		var name_label := Kit.text(shown, 19)
@@ -145,7 +146,7 @@ func _render_card() -> void:
 	var head := HBoxContainer.new()
 	head.add_theme_constant_override("separation", 16)
 	head.alignment = BoxContainer.ALIGNMENT_CENTER
-	head.add_child(Kit.pips(Vector2(56, 66), true))
+	head.add_child(Kit.pips(Vector2(56, 66), DuelModel.members(view, view.mine), me, DuelModel.looks(view, view.mine)))
 	var words := VBoxContainer.new()
 	words.add_theme_constant_override("separation", 2)
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL

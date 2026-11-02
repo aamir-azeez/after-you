@@ -8,11 +8,12 @@ extends SceneTree
 ## Writes <dir>/duels-lobby.png, duels-lobby-empty.png, duel-in-progress.png,
 ## duel-waiting.png, duel-result-won.png, duel-result-checking.png,
 ## duel-ghost-result.png, duels-party.png, duels-start.png, duels-race.png,
-## home-duels-row.png and duels-lobby-both-empty.png, each with --suffix=<text>
-## added to its name when given.
+## home-duels-row.png, duels-lobby-both-empty.png and duel-room-turn.png (a duel
+## room's world with both members in their looks), each with --suffix=<text>
+## added to its name when given. Every pip wears a look: yours (straw hat) and
+## each other player's as a server with looks sends it.
 const Client = preload("res://services/duels_client.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
-const Outfit = preload("res://services/outfit.gd")
 const Snapshots = preload("res://presentation/kit/pip_snapshots.gd")
 const Lobby = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
@@ -24,6 +25,10 @@ const HomeMenu = preload("res://presentation/home_menu.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
+const SlotLooks = preload("res://presentation/slot_looks.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
+const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -33,6 +38,8 @@ const SAM := "SSSSSSSSSSSSSSSSSSSSSS"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
 const NAMES := {ME: "You", MAYA: "Maya", FINN: "Finn", NOOR: "Noor", LEE: "Lee", SAM: "Sam"}
 const T := 30
+## What everyone else wears, as the server sends it.
+const LOOKS := {MAYA: {"hat": "daisy"}, FINN: {"body": "tide"}, NOOR: {"hat": "seashell"}, LEE: {"hat": "seashell", "body": "tide"}, SAM: {"hat": "daisy"}}
 
 class Dressed extends RefCounted:
 	func active_look() -> Dictionary: return {"hat": "straw_hat"}
@@ -54,8 +61,8 @@ func _duel(id: String, chapter: String, status: String, mine: Array, theirs: Arr
 	var steps: int = Registry.definition(chapter).stages.size() * 2
 	var wire := {"schema_version": 1, "duel_id": id.repeat(32 / id.length()), "kind": "friend", "board": chapter, "status": status, "steps": steps,
 		"created_ms": 1, "accepted_ms": 2, "updated_ms": 3, "mine": 0, "ghost": null, "result": null, "eligible": true,
-		"sides": [{"members": [ME, MAYA], "you": true, "steps": mine[0], "ticks": mine[1] * T, "turn": mine[2], "finished": mine[0] == steps, "left": false, "check": "none", "room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": true},
-			{"members": theirs[3], "you": false, "steps": theirs[0], "ticks": theirs[1] * T, "turn": theirs[2], "finished": theirs[0] == steps, "left": false, "check": "none"}]}
+		"sides": [{"members": [ME, MAYA], "you": true, "steps": mine[0], "ticks": mine[1] * T, "turn": mine[2], "finished": mine[0] == steps, "left": false, "check": "none", "room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": true, "looks": [{}, LOOKS[MAYA]]},
+			{"members": theirs[3], "you": false, "steps": theirs[0], "ticks": theirs[1] * T, "turn": theirs[2], "finished": theirs[0] == steps, "left": false, "check": "none", "looks": theirs[3].map(func(id: String) -> Dictionary: return LOOKS.get(id, {}))}]}
 	wire.merge(extra, true)
 	var view := Client.valid_view(wire)
 	if view.is_empty(): push_error("capture duel did not read: " + id)
@@ -67,7 +74,8 @@ func _run() -> void:
 		quit(1)
 		return
 	DirAccess.make_dir_recursive_absolute(_out)
-	Outfit.show_unreleased = true
+	# The server's offered items, as a wallet read sets them: every look below shows.
+	Catalog.set_offered(["daisy", "seashell", "straw_hat", "tide"])
 	Wardrobe.use_shared(Dressed.new())
 	var lighthouse := Registry.LIGHTHOUSE_V2
 	var rolling := Registry.ROLLING_HOME
@@ -75,7 +83,7 @@ func _run() -> void:
 	var running := _duel("1a", lighthouse, "running", [3, 108, 0], [2, 92, 1, [FINN, NOOR]])
 	var partner_turn := Client.valid_view({"schema_version": 1, "duel_id": "2b".repeat(16), "kind": "ghost", "board": rolling, "status": "running", "steps": 4, "created_ms": 1, "accepted_ms": 2, "updated_ms": 2, "mine": 0,
 		"ghost": {"source": "board", "ticks": 195 * T, "rank": 1, "names": null}, "result": null, "eligible": false,
-		"sides": [{"members": [ME, MAYA], "you": true, "steps": 2, "ticks": 54 * T, "turn": 1, "finished": false, "left": false, "check": "none", "room_id": ROOM, "invite_code": "", "hosting": true}, null]})
+		"sides": [{"members": [ME, MAYA], "you": true, "steps": 2, "ticks": 54 * T, "turn": 1, "finished": false, "left": false, "check": "none", "room_id": ROOM, "invite_code": "", "hosting": true, "looks": [{}, LOOKS[MAYA]]}, null]})
 	var won := _duel("3c", relay, "decided", [4, 222, null], [4, 246, null, [LEE, SAM]], {"result": {"outcome": "won", "reason": "faster", "margin_ticks": 24 * T, "decided_ms": 9}})
 	var challenge_in := _duel("4d", relay, "challenged", [0, 0, null], [0, 0, null, [FINN, NOOR]], {"mine": 1})
 	challenge_in.mine = 1
@@ -84,7 +92,7 @@ func _run() -> void:
 	swapped[1].you = true
 	challenge_in.sides = swapped
 	var challenge_out := _duel("5e", rolling, "challenged", [0, 0, null], [0, 0, null, [LEE, SAM]])
-	var lobby_data := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [running, partner_turn, won, challenge_in, challenge_out], "limits": {"friend": 3, "ghost": 3}}
+	var lobby_data := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null, "partner_look": LOOKS[MAYA]}, "duels": [running, partner_turn, won, challenge_in, challenge_out], "limits": {"friend": 3, "ghost": 3}}
 	var lobby := Lobby.new()
 	lobby.me = ME
 	lobby.name_of = _name_of
@@ -134,7 +142,7 @@ func _run() -> void:
 	# The party page, with an invite and your friends to ask.
 	var party := PartyPage.new()
 	party.name_of = _name_of
-	party.party = {"partner": null, "intact": false, "invites_in": [FINN], "invite_out": NOOR}
+	party.party = {"partner": MAYA, "intact": true, "invites_in": [FINN], "invite_out": null, "partner_look": LOOKS[MAYA]}
 	party.friends = [{"id": MAYA, "name": "Maya"}, {"id": NOOR, "name": "Noor"}, {"id": LEE, "name": "Lee"}]
 	lobby.open_overlay(party)
 	await _save("duels-party")
@@ -170,6 +178,7 @@ func _run() -> void:
 	lobby.close()
 	await process_frame
 	await _home()
+	await _room()
 	print("CAPTURE DONE")
 	quit(0)
 
@@ -189,6 +198,26 @@ func _home() -> void:
 	await _save("home-duels-row")
 	holder.queue_free()
 	back.queue_free()
+	await process_frame
+
+## A duel room's turn: the chapter's world, each slot dressed as the room screen
+## dresses it (presentation/slot_looks.gd live) from a duel room's snapshot and
+## the partner's look as a room read reports it (services/turn_looks.gd).
+func _room() -> void:
+	var looks_path := "user://capture-duel-room-looks.json"
+	var store: RefCounted = TurnLooks.new(looks_path)
+	TurnLooks.use_shared(store)
+	store.note_member(MAYA, LOOKS[MAYA])
+	var key := Registry.RELAY
+	var world: Node3D = Registry.world_script(key).new()
+	root.add_child(world)
+	GraphicsPolicy.apply(world, {"graphics_quality": "balanced"})
+	world.wear_slots(SlotLooks.live({"player_slot": "p0", "host_id": ME, "guest_id": MAYA, "duel": true}))
+	world.load_level(Registry.definition(key))
+	await _save("duel-room-turn", 60)
+	world.queue_free()
+	TurnLooks.use_shared(null)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(looks_path))
 	await process_frame
 
 ## Saves the window once every still pip is drawn and `frames` more have passed.
