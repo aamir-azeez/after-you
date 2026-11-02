@@ -5,7 +5,8 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## once both reach the same stage; the chapter's picture; and the card for
 ## your own pair's next move: Play your turn (or View turns while your partner
 ## plays). A ghost race shows the recorded run's whole time on the right.
-## Leave duel sits under the card while your pair has not finished.
+## Leave duel sits under the card while your pair has not finished; once your
+## pair left, the card says so and offers nothing more.
 ## The flow (duels_flow.gd) reads the duel again while this page is up and
 ## hands it in through show_duel(); nothing here polls or draws per frame.
 const DuelModel = preload("res://services/duel_model.gd")
@@ -150,6 +151,12 @@ func _render_card() -> void:
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	head.add_child(words)
 	var partner := _partner_name()
+	if own.left:
+		# Your pair left: the duel goes on for the other pair, with nothing left to play here.
+		words.add_child(Kit.text(PlayerCopy.DUEL_LEFT, 40, UiTokens.CREAM, true))
+		words.add_child(Kit.wrapped(PlayerCopy.DUEL_RESULT_YOU_LEFT, 19))
+		_card.add_child(head)
+		return
 	if own.finished:
 		words.add_child(Kit.text(PlayerCopy.DUEL_FINISHED, 40, UiTokens.CREAM, true))
 		words.add_child(Kit.wrapped(DuelModel.checking_line(view), 19))

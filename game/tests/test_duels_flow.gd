@@ -11,6 +11,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const LogWatch = preload("res://tests/log_watch.gd")
 const Clock = preload("res://services/refresh_schedule.gd")
+const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -225,6 +226,7 @@ func _run() -> void:
 	watch.stop()
 	main.friends = FakeFriends.new()
 	await _polling(main, api, flow)
+	await _leaving(api, flow)
 	flow.open()
 	await _frames(2)
 	flow.close()
@@ -332,6 +334,44 @@ func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow.screen.overlay().close()
 	await _frames(3)
 	_check(reads.call(lobby_path) == lobby_reads + 1, "closing the duel reads the lobby at once")
+	flow.close()
+	await _frames(2)
+
+## Leave shows at once from the server's answer: the page and the lobby under
+## it say Left, a read that went out before Leave cannot bring the old duel
+## back, and a duel that Leave ended swaps in its result.
+func _leaving(api: FakeApi, flow: Node) -> void:
+	var duel_path := "/v1/duels/%s/%s" % [BOARD, DUEL]
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_view({})]}}
+	flow.open()
+	flow.set_process(false)
+	await _frames(3)
+	var running := Client.valid_view(_view({}))
+	flow._open_duel(running)
+	await _frames(3)
+	var page: CanvasLayer = flow.screen.overlay()
+	_check(page != null and page.find_child("DuelLeave", true, false) != null, "a running duel offers Leave")
+	var left := _view({"left": true, "turn": null})
+	left.updated_ms = 10
+	api.replies["POST %s/leave" % duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": left}}
+	page.leave_requested.emit(running)
+	await _frames(3)
+	_check(page.view.sides[0].left and page.find_child("DuelLeave", true, false) == null and page.find_child("DuelPlay", true, false) == null, "the duel page shows Left at once, with nothing left to play")
+	var kept: Dictionary = flow.client().last_lobby()
+	_check(kept.duels.size() == 1 and kept.duels[0].sides[0].left, "the lobby under it keeps the duel as left too")
+	# A read that went out before Leave answers with the older duel: the page stays as it is.
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _view({})}}
+	flow._show_duel(page, Client.valid_view(_view({})))
+	_check(page.view.sides[0].left, "an older read does not bring back the running duel")
+	# Leave that ends the duel (the other pair had left, or a ghost race): the result opens at once.
+	var ended := _view({"left": true, "turn": null}, "decided")
+	ended.updated_ms = 20
+	ended.result = {"outcome": "none", "reason": "left"}
+	api.replies["POST %s/leave" % duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": ended}}
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": ended}}
+	page.leave_requested.emit(page.view)
+	await _frames(3)
+	_check(flow.screen.overlay() is ResultPage, "a duel that Leave ended shows its result at once")
 	flow.close()
 	await _frames(2)
 

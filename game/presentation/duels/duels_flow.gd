@@ -333,26 +333,37 @@ func _open_duel(view: Dictionary) -> void:
 	page.play_requested.connect(func(next: Dictionary, control: Control) -> void: _play(next))
 	page.leave_requested.connect(func(next: Dictionary) -> void:
 		var answer: Dictionary = await client().act(next.board, next.duel_id, "leave")
-		if not answer.get("ok", false): _toast_failure(answer)
-		elif is_instance_valid(page): page.show_duel(answer.duel))
+		if not answer.get("ok", false):
+			_toast_failure(answer)
+			return
+		# The lobby under the page shows the duel as left too (services/duels_client.gd keeps the answer).
+		if is_open(): screen.show_lobby(client().last_lobby())
+		_show_duel(page, answer.duel))
 	screen.open_overlay(page)
 	# The phone's room may be ahead of the duel (a lost note): ask the server to look once.
 	var own: Dictionary = view.sides[view.mine]
 	if view.status == "running" and not own.finished and not str(own.get("room_id", "")).is_empty():
 		var synced: Dictionary = await client().act(view.board, view.duel_id, "sync")
-		if synced.get("ok", false) and is_instance_valid(page): page.show_duel(synced.duel)
+		if synced.get("ok", false): _show_duel(page, synced.duel)
 
 ## One timed read of the open duel; a result swaps in the result page.
 func _read_duel(page: CanvasLayer, ticket: Dictionary) -> void:
 	var answer: Dictionary = await client().duel(page.view.board, page.view.duel_id)
 	# A failed read waits the same pace, as the lobby's does.
 	_duel_reads.complete(ticket, Time.get_ticks_msec(), true)
-	if not is_instance_valid(page) or not answer.get("ok", false): return
-	if answer.duel.status == "running":
-		page.show_duel(answer.duel)
+	if answer.get("ok", false): _show_duel(page, answer.duel)
+
+## A newer copy of the open duel, from a read or this player's own action
+## (Leave shows at once): a running duel redraws its page, an ended one swaps in
+## the result page. A copy older than the page's, such as a read that went out
+## before Leave, changes nothing.
+func _show_duel(page: CanvasLayer, duel: Dictionary) -> void:
+	if not is_instance_valid(page) or not page.alive() or int(duel.updated_ms) < int(page.view.get("updated_ms", 0)): return
+	if duel.status == "running":
+		page.show_duel(duel)
 	else:
 		page.close()
-		_open_result(answer.duel)
+		_open_result(duel)
 
 ## How often an open duel reads again: DUEL_CHECK_INTERVAL_MS while your ghost race run waits for its check, else DUEL_INTERVAL_MS.
 static func refresh_ms(view: Dictionary) -> int:

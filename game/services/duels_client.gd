@@ -189,11 +189,25 @@ func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 	var view := valid_view(data.get("duel") if data is Dictionary else null)
 	if view.is_empty(): return {"ok": false, "code": "invalid_duels"}
 	_remember([view])
+	_keep_in_lobby(view)
 	var answer := {"ok": true, "duel": view}
 	if detail:
 		answer["pay"] = _pay(data.get("pay"))
 		answer["win_bonus"] = _bonus(data.get("ghost_bonus" if view.kind == "ghost" else "win_bonus"))
 	return answer
+
+## Puts a duel's newer copy into the kept lobby, so the lobby under a page
+## shows what an action answered (a duel just left) before the next read.
+func _keep_in_lobby(view: Dictionary) -> void:
+	var duels: Array = _lobby.get("duels", [])
+	for index in range(duels.size()):
+		if duels[index].duel_id != view.duel_id: continue
+		if int(view.updated_ms) < int(duels[index].updated_ms): return
+		var kept := _lobby.duplicate()
+		kept.duels = duels.duplicate()
+		kept.duels[index] = view
+		_lobby = kept
+		return
 
 ## Notes duel rooms, and saves only when they changed.
 func _remember(views: Array) -> void:
