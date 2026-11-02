@@ -724,7 +724,7 @@ const LEADERBOARD_TIME := "Time"
 const LEADERBOARD_WAITING_CHECK := "Waiting to be checked"
 ## The card beside the board while a run of this player's waits there for its replay check, and its time.
 const LEADERBOARD_RUN_CHECKING := "Your time is being checked"
-const LEADERBOARD_RUN_CHECKING_NOTE := "You see its place on the board now. Other players see it once the check passes."
+const LEADERBOARD_RUN_CHECKING_NOTE := "You and your partner see its place now. Others see it once the check passes."
 const LEADERBOARD_SHARED_BOARD := "Normal runs and duel runs share this board."
 const LEADERBOARD_EMPTY := "No times here yet. Finish this chapter together to set the first one."
 const LEADERBOARD_NO_RUN := "Finish this chapter with a friend and your best time shows here."
