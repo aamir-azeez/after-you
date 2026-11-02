@@ -6,11 +6,18 @@
  * The minimums are CONFIG's min_client_version (config.ts). A missing or malformed minimum
  * means no minimum, so a bad value can never lock anyone out. The `dev` channel (desktop
  * development builds) is never gated.
+ *
+ * A client that sends `X-AfterYou-Switches: 1` also gets `switches`: the public switches
+ * Home draws its rows from, the same for every player (duels, leaderboards). Clients
+ * that do not ask get the same bytes as before, so their strict reading of a "required"
+ * answer is untouched. Reading them costs no Durable Object request.
  */
-import type { ServerVars } from "./flags";
+import { flags, type ServerVars } from "./flags";
 import { MAX_VERSION_LENGTH, parseVersion, serverConfig, type Version } from "./config";
+import { duelsOn } from "./duels/turn-hook";
 
 export const CLIENT_HEADER = "X-AfterYou-Client";
+export const SWITCHES_HEADER = "X-AfterYou-Switches";
 export const CHANNELS = ["play", "github", "app_store", "dev"] as const;
 export type Channel = typeof CHANNELS[number];
 const MAX_HEADER_LENGTH = MAX_VERSION_LENGTH + 1 + 9;
@@ -48,14 +55,21 @@ export function channelMinimum(env: ServerVars, channel: Channel): { version: Ve
   return version && typeof text === "string" ? { version, text } : null;
 }
 
-export type AppStatus = { schema_version: 1; gate: "off" } | { schema_version: 1; gate: "required"; min_version: string; channel: Channel };
+/** Home's public switches, the same for every player: each mirrors its /v2/capabilities field. */
+export type Switches = { duels: boolean; leaderboards: boolean };
+export type AppStatus = ({ schema_version: 1; gate: "off" } | { schema_version: 1; gate: "required"; min_version: string; channel: Channel }) & { switches?: Switches };
+
+export function switches(env: ServerVars): Switches {
+  return { duels: duelsOn(env), leaderboards: flags.leaderboards(env) };
+}
 
 /** The answer for one request. Only a valid header and a valid, higher minimum say "required". */
 export function appStatus(request: Request, env: ServerVars): AppStatus {
-  const off: AppStatus = { schema_version: 1, gate: "off" };
+  const extra = request.headers.get(SWITCHES_HEADER) === "1" ? { switches: switches(env) } : {};
+  const off: AppStatus = { schema_version: 1, gate: "off", ...extra };
   const client = clientHeader(request);
   if (!client) return off;
   const minimum = channelMinimum(env, client.channel);
   if (!minimum || compareVersions(client.version, minimum.version) >= 0) return off;
-  return { schema_version: 1, gate: "required", min_version: minimum.text, channel: client.channel };
+  return { schema_version: 1, gate: "required", min_version: minimum.text, channel: client.channel, ...extra };
 }

@@ -12,9 +12,10 @@ const MINIMUMS = { play: "0.6.4", github: "0.6.3", app_store: "1.0.0" };
 const ON = { min_client_version: MINIMUMS };
 let ip = 0;
 function limiter(success = true) { return { limit: vi.fn(async () => ({ success })) }; }
-async function call(path: string, options: { client?: string; method?: string; account?: Account; vars?: Record<string, unknown>; body?: unknown } = {}) {
+async function call(path: string, options: { client?: string; method?: string; account?: Account; vars?: Record<string, unknown>; body?: unknown; switches?: string } = {}) {
   const headers: Record<string, string> = { "Content-Type": "application/json", "CF-Connecting-IP": "198.18.1." + (++ip % 250) };
   if (options.client !== undefined) headers["X-AfterYou-Client"] = options.client;
+  if (options.switches !== undefined) headers["X-AfterYou-Switches"] = options.switches;
   if (options.account) { headers["X-Player-Id"] = options.account.player_id; headers.Authorization = "Bearer " + options.account.device_token; }
   // vars that bring their own CONFIG (a malformed one on purpose) go in as they are; others are folded into CONFIG.
   const vars = options.vars ?? {}, merged = "CONFIG" in vars ? { ...env, ...vars } : withConfig({ ...env, ...vars });
@@ -113,6 +114,47 @@ describe("GET /v1/app-status with the gate on", () => {
     expect([query.status, await query.json()]).toEqual([400, { error: { code: "query_not_supported", retryable: false } }]);
     const post = await call("/v1/app-status", { method: "POST", client: "0.6.3 play", vars: ON, body: {} });
     expect([post.status, await post.json()]).toEqual([401, { error: { code: "invalid_auth", retryable: false } }]);
+  });
+});
+
+describe("Home's public switches", () => {
+  const asked = async (vars: Record<string, unknown>, client: string | undefined = "0.7.9 play", switches = "1") => {
+    const response = await call("/v1/app-status", { client, vars, switches });
+    expect(response.status).toBe(200);
+    return response.json();
+  };
+  it("answers them only to a client that asks, from the same flags as /v2/capabilities", async () => {
+    expect(await asked({})).toEqual({ schema_version: 1, gate: "off", switches: { duels: false, leaderboards: false } });
+    expect(await asked({ features: ["LEADERBOARDS"] })).toEqual({ schema_version: 1, gate: "off", switches: { duels: false, leaderboards: true } });
+    // Duels live in the boards: DUELS alone stays off, as duelsCapability answers.
+    expect(await asked({ features: ["DUELS"] })).toEqual({ schema_version: 1, gate: "off", switches: { duels: false, leaderboards: false } });
+    expect(await asked({ features: ["LEADERBOARDS", "DUELS"] })).toEqual({ schema_version: 1, gate: "off", switches: { duels: true, leaderboards: true } });
+    // Without a client header, or with any other value of the switches header.
+    expect(await asked({ features: ["LEADERBOARDS", "DUELS"] }, undefined)).toEqual({ schema_version: 1, gate: "off", switches: { duels: true, leaderboards: true } });
+    for (const other of ["0", "2", "", "yes"]) expect(await asked({ features: ["LEADERBOARDS", "DUELS"] }, "0.7.9 play", other), other).toEqual({ schema_version: 1, gate: "off" });
+  });
+  it("rides beside a required gate without changing it", async () => {
+    expect(await asked({ ...ON, features: ["LEADERBOARDS", "DUELS"] }, "0.6.3 play")).toEqual({ schema_version: 1, gate: "required", min_version: "0.6.4", channel: "play", switches: { duels: true, leaderboards: true } });
+  });
+  it("leaves every answer to a client that does not ask byte for byte as it was", async () => {
+    for (const client of [undefined, "0.6.3 play", "0.6.4 play"]) {
+      const before = await (await call("/v1/app-status", { client, vars: ON })).text();
+      const flagged = await (await call("/v1/app-status", { client, vars: { ...ON, features: ["LEADERBOARDS", "DUELS"] } })).text();
+      expect(flagged, String(client)).toBe(before);
+      expect(Object.keys(JSON.parse(flagged))).not.toContain("switches");
+    }
+  });
+  it("goes through the same public limiter, and reads no Durable Object", async () => {
+    const refused = await call("/v1/app-status", { client: "0.7.9 play", vars: { PUBLIC_LIMITER: limiter(false), features: ["LEADERBOARDS", "DUELS"] }, switches: "1" });
+    expect(refused.status).toBe(429);
+    // Every Durable Object namespace replaced by one that fails the test if touched.
+    const touched: string[] = [];
+    const namespaces = Object.fromEntries(Object.entries(env as unknown as Record<string, unknown>)
+      .filter(([, value]) => typeof (value as { idFromName?: unknown })?.idFromName === "function")
+      .map(([name]) => [name, new Proxy({}, { get: () => { touched.push(name); throw new Error("Durable Object read"); } })]));
+    expect(Object.keys(namespaces)).toContain("PLAYERS");
+    const response = await call("/v1/app-status", { client: "0.7.9 play", vars: { ...namespaces, features: ["LEADERBOARDS", "DUELS"] }, switches: "1" });
+    expect([response.status, touched]).toEqual([200, []]);
   });
 });
 
