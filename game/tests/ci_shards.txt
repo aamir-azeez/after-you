@@ -72,6 +72,7 @@ duels 2
 duels_flow 3
 empty_state 3
 end_reactions 3
+explore_room 1
 face_packs 2
 featured_shelf 1
 final_scene 2
