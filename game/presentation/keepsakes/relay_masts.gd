@@ -14,11 +14,12 @@ const HARD_LIFT := 0.34
 const MINT_MAST := Vector3(2.0, 0, 0.5)
 ## The flag's cord runs up CORD_X beside the first mast. The flag clips to it
 ## by toggles at its hoist's ends, HANG above and below its pivot, the top one
-## riding the lines too, and hangs FRONT in front of them so it passes the
-## masts clear. FLY is how far its tip reaches from the hoist.
+## riding the lines too, and hangs BEHIND them so it passes the masts (and
+## the Hard signal flags, which flick out to the front) clear. FLY is how far
+## its tip reaches from the hoist.
 const CORD_X := 0.08
 const HANG := 0.18
-const FRONT := 0.065
+const BEHIND := -0.065
 const FLY := 0.56
 ## How far down the mint line (a share of it) the flag is handed on.
 const HANDOFF := 0.65
@@ -65,8 +66,8 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 	P.cyl(root, 0.24, 0.18, P.WOOD_LIGHT, Vector3(ENDS[0] - 0.45, 0.09, -0.35), 0.27)
 	for index in range(4): P.sph(root, 0.08, P.LEAF if index % 2 == 0 else P.CORAL, Vector3(ENDS[0] - 0.55 + index * 0.07, 0.24, -0.39 + (index % 2) * 0.08))
 	var flag := P.pivot(root, _flag_rest(state), "Flag")
-	P.prism(flag, Vector3(HANG * 2.0, FLY, 0.02), P.PEACH, Vector3(FLY * 0.5, 0, FRONT), Vector3(0, 0, -PI / 2))
-	for side: int in [-1, 1]: P.sph(flag, 0.032, P.WOOD_LIGHT, Vector3(0, side * HANG, 0.03))
+	P.prism(flag, Vector3(HANG * 2.0, FLY, 0.02), P.PEACH, Vector3(FLY * 0.5, 0, BEHIND), Vector3(0, 0, -PI / 2))
+	for side: int in [-1, 1]: P.sph(flag, 0.032, P.WOOD_LIGHT, Vector3(0, side * HANG, BEHIND * 0.45))
 	parts.rope = rope
 	parts.flag = flag
 	if state.get("together", false):
