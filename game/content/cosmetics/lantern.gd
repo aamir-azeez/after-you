@@ -9,4 +9,6 @@ const DATA := {
 	"art": "res://presentation/pip_wear/lantern.gd",
 	## Its stalk arcs above the head.
 	"tall": true,
+	## It hangs beside the head on the side the pip views turn away.
+	"wide": true,
 }

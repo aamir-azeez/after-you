@@ -28,6 +28,10 @@ const OPTIONAL := {
 	## true: the Settings, name page and chip views pull back a little so the
 	## item stays in frame.
 	"tall": false,
+	## true: the item hangs out past the head on the side the three-quarter
+	## views turn away, so those views pull back further and look a little
+	## toward it (presentation/kit/pip_stage.gd).
+	"wide": false,
 	## Metres the leaf sits higher while the item is worn (it pokes up through
 	## a hat's brim).
 	"leaf_lift": 0.0,

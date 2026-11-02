@@ -76,6 +76,10 @@ static func released_ids() -> Array[String]:
 static func tall(id: String) -> bool:
 	return bool(Index.data(id).get("tall", false))
 
+## Whether wearing it pulls the pip views back further and toward its side.
+static func wide(id: String) -> bool:
+	return bool(Index.data(id).get("wide", false))
+
 ## Metres the leaf sits higher while it is worn.
 static func leaf_lift(id: String) -> float:
 	return float(Index.data(id).get("leaf_lift", 0.0))

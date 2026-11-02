@@ -60,6 +60,12 @@ static func tall(outfit: Dictionary) -> bool:
 		if Catalog.tall(id): return true
 	return false
 
+## Whether any worn item hangs out past the head's far side in the pip views.
+static func wide(outfit: Dictionary) -> bool:
+	for id: String in items(outfit):
+		if Catalog.wide(id): return true
+	return false
+
 ## The highest leaf lift of the worn items, in metres.
 static func leaf_lift(outfit: Dictionary) -> float:
 	var lift := 0.0
