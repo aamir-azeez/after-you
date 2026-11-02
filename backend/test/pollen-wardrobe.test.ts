@@ -7,7 +7,7 @@ import { creditClear, noteFullJourney } from "../src/pollen/wallet";
 import { EVERY_HARD, EVERY_HARD_LEVELS } from "../src/pollen/earned";
 import { shopOn, wardrobeMode, wardrobeOn } from "../src/pollen/features";
 import { chapterTier } from "../src/pollen/rates";
-import { CATALOG, EARNED_TIER, offeredItems } from "../src/pollen/catalog";
+import { CATALOG, EARNED_TIER, OFFERED_TAG, checkedCatalog, offeredItems, offeredTag } from "../src/pollen/catalog";
 import { BoardRewardLedger, openRewardSync, REWARD_ITEMS } from "../src/leaderboards/rewards";
 import { boardKey, boardKeys } from "../src/leaderboards/boards";
 import { deriveJobToken } from "../src/leaderboards/job-token";
@@ -86,8 +86,8 @@ describe("each route under each combination", () => {
   type Expect = { caps: string[]; wardrobe: "none" | "owned" | "shop"; equip: number; spend: number; equipCode?: string; spendCode?: string };
   const cases: [string, Record<string, unknown>, Expect][] = [
     ["earning only", EARN, { caps: ["pollen_version"], wardrobe: "none", equip: 503, spend: 503, equipCode: "pollen_wardrobe_disabled", spendCode: "pollen_shop_disabled" }],
-    ["earning and the wardrobe", WARDROBE, { caps: ["pollen_version", "pollen_wardrobe_version"], wardrobe: "owned", equip: 200, spend: 503, spendCode: "pollen_shop_disabled" }],
-    ["earning, the wardrobe and the shop", SHOP, { caps: ["pollen_version", "pollen_wardrobe_version", "pollen_shop_version"], wardrobe: "shop", equip: 200, spend: 200 }],
+    ["earning and the wardrobe", WARDROBE, { caps: ["pollen_version", "pollen_wardrobe_version", "pollen_offered_tag"], wardrobe: "owned", equip: 200, spend: 503, spendCode: "pollen_shop_disabled" }],
+    ["earning, the wardrobe and the shop", SHOP, { caps: ["pollen_version", "pollen_wardrobe_version", "pollen_offered_tag", "pollen_shop_version"], wardrobe: "shop", equip: 200, spend: 200 }],
     ["the shop without the wardrobe", SHOP_NO_WARDROBE, { caps: ["pollen_version"], wardrobe: "none", equip: 503, spend: 503, equipCode: "pollen_wardrobe_disabled", spendCode: "pollen_shop_disabled" }],
   ];
   it.each(cases)("%s", async (_name, vars, expected) => {
@@ -161,14 +161,26 @@ describe("what a friend's phone may draw", () => {
   // A phone draws a look's item only once its own wallet read offers it (game services/outfit.gd), so `offered`
   // must hold every released item for every app, or a friend's Gold leaf or Daisy shows as the plain pip.
   it("offers every released item to an app older than the shop, which still sells nothing", async () => {
-    const wearer = await create(), friend = await create();
-    expect((await giveBoardItems(wearer, ["gold_leaf"], 1)).ok).toBe(true);
-    expect((await call("/v1/pollen/equip", "POST", wearer, equipBody({ leaf: "gold_leaf" }), SHOP)).status).toBe(200);
+    const friend = await create();
     const old = await (await call("/v1/pollen", "GET", friend, undefined, SHOP, PRE_SHOP_CLIENT)).json<Wallet>();
     expect(old.wardrobe).toEqual({ items: [], packs: [], look: {}, look_revision: 0, offered: offeredItems() });
     expect(old.wardrobe!.offered).toEqual(expect.arrayContaining(["gold_leaf", "daisy"]));
     expect(old).not.toHaveProperty("name_price");
     expect((await wallet(friend, SHOP)).wardrobe!.offered).toEqual(offeredItems());
+  });
+  it("tags what is offered beside the wardrobe's capability, so a phone holding an older read reads again", async () => {
+    const player = await create();
+    for (const client of [POLLEN_CLIENT, PRE_SHOP_CLIENT]) {
+      const caps = await (await call("/v2/capabilities", "GET", player, undefined, WARDROBE, client)).json<Record<string, unknown>>();
+      expect(caps.pollen_offered_tag).toBe(OFFERED_TAG);
+    }
+    expect(OFFERED_TAG).toMatch(/^[a-f0-9]{8}$/);
+    expect(await capabilities(player, EARN)).not.toHaveProperty("pollen_offered_tag");
+    // Releasing one more item (or taking one back) changes the tag; the same set gives the same tag.
+    const items = Object.fromEntries(Object.entries(CATALOG.items).map(([id, item]) => [id, { ...item, released: id === "daisy" ? false : item.released }]));
+    const fewer = checkedCatalog({ ...structuredClone(CATALOG), items });
+    expect(offeredTag(fewer)).not.toBe(OFFERED_TAG);
+    expect(offeredTag(checkedCatalog(structuredClone(CATALOG)))).toBe(OFFERED_TAG);
   });
 });
 

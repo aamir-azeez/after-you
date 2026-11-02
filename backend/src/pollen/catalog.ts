@@ -96,6 +96,18 @@ export function offeredSets(catalog: Catalog = CATALOG): string[] {
 export function offeredItems(catalog: Catalog = CATALOG): string[] {
   return Object.keys(catalog.items).filter(id => catalog.items[id].released);
 }
+/**
+ * A short tag of offeredItems() (FNV-1a, 8 hex), sent beside the wardrobe's capability (routes.ts pollenCapability).
+ * A phone keeps the `offered` of its last wallet read and draws nothing else on any pip, so it reads the wallet
+ * again once this tag differs from the one its kept read came with: releasing an item reaches every phone on its
+ * next launch, without a wallet read on each launch.
+ */
+export function offeredTag(catalog: Catalog = CATALOG): string {
+  let hash = 0x811c9dc5;
+  for (const char of offeredItems(catalog).join(",")) hash = Math.imul(hash ^ char.charCodeAt(0), 0x01000193) >>> 0;
+  return hash.toString(16).padStart(8, "0");
+}
+export const OFFERED_TAG = offeredTag();
 export function offeredPacks(catalog: Catalog = CATALOG): string[] {
   return Object.keys(catalog.packs).filter(id => catalog.packs[id].released);
 }

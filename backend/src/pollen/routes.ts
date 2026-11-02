@@ -2,7 +2,7 @@ import { ApiError, HASH_PATTERN, IDEMPOTENCY_PATTERN, ID_PATTERN, boundedJson, c
 import type { ServerVars } from "../flags";
 import { bearerDigest } from "../http";
 import { anyBundlesOn, appStoreBundlesOn, bundlesOn, earningOn, grantOn, itemBloomsOn, shopOn, wardrobeMode, wardrobeOn, type WardrobeMode } from "./features";
-import { ITEM_ID_PATTERN } from "./catalog";
+import { ITEM_ID_PATTERN, OFFERED_TAG } from "./catalog";
 import { CHAPTERS } from "../v2/chapters";
 import type { CommittedV2, MutationV2 } from "../v2/room";
 import type { Entitlement } from "../entitlement";
@@ -97,10 +97,10 @@ export function pollenWanted(request: Request): boolean { return request.headers
 /** Earning works only with the flag on and a usable POLLEN_SECRET (no turn is paid without its bloom roll). */
 export function pollenEarning(env: ServerVars): boolean { return earningOn(env); }
 /** The capability field for GET /v2/capabilities: empty unless the client asked while earning works. */
-export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number; pollen_bundles_version?: number; pollen_app_store_bundles_version?: number } {
+export function pollenCapability(request: Request, env: ServerVars): { pollen_version?: number; pollen_wardrobe_version?: number; pollen_offered_tag?: string; pollen_shop_version?: number; pollen_item_blooms_version?: number; pollen_grant_version?: number; pollen_bundles_version?: number; pollen_app_store_bundles_version?: number } {
   if (!pollenWanted(request) || !pollenEarning(env)) return {};
   const shop = pollenShopClient(request);
-  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
+  return { pollen_version: POLLEN_VERSION, ...(wardrobeOn(env) ? { pollen_wardrobe_version: WARDROBE_VERSION, pollen_offered_tag: OFFERED_TAG } : {}), ...(shop && shopOn(env) ? { pollen_shop_version: SHOP_VERSION } : {}),
     ...(shop && itemBloomsOn(env) ? { pollen_item_blooms_version: ITEM_BLOOMS_VERSION } : {}), ...(grantOn(env) ? { pollen_grant_version: GRANT_VERSION } : {}),
     ...(shop && bundlesOn(env) ? { pollen_bundles_version: BUNDLES_VERSION } : {}), ...(shop && appStoreBundlesOn(env) ? { pollen_app_store_bundles_version: APP_STORE_BUNDLES_VERSION } : {}) };
 }
