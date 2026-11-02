@@ -18,7 +18,8 @@ import { PLATFORM_LINKS_OBJECT } from "./platform-links";
 import { readCreation, validChapterCreation, type ChapterCreation } from "./v2/creation-intent";
 import { RELAY_KEY, sameChapter } from "./v2/chapters";
 import type { ChapterKey } from "./v2/chapter-types";
-import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, pushCategoryAllowed, validRoomHint, validNotificationToken, type IosRegistration, type RoomHint, type SendResult } from "./notifications";
+import { BINDING_PATTERN, FcmSender, MAX_REGISTRATIONS, REGISTRATION_TTL_MS, makeFriendRoomHint, notificationsConfigured, validRoomHint, validNotificationToken, type IosRegistration, type RoomHint, type SendResult } from "./notifications";
+import { pushPhones, sendToPhones, type FinishedPushes } from "./notification-phones";
 import { clearRegistrations, initializeNotifications, pruneNotificationCategories, type DeliveryResult } from "./notification-storage";
 import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION_OPS_TABLE, FRIEND_PUBLICATION_TABLE, FRIEND_SUBSCRIPTIONS_TABLE, MAX_FRIEND_SUBSCRIPTIONS, MAX_PUBLICATION_RECEIPTS, PUBLICATION_ID_PATTERN, type FriendPublication, type FriendSubscription } from "./friend-room-event-storage";
 import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
@@ -70,6 +71,8 @@ export class Player extends DurableObject<Env> {
     this.finishedPushes.delete(key); this.finishedPushes.add(key);
     while (this.finishedPushes.size > MAX_FINISHED_PUSHES) this.finishedPushes.delete(this.finishedPushes.values().next().value!);
   }
+  /** The finished-push memory as the shared phone loop (notification-phones.ts) reads it. */
+  private readonly pushMemory: FinishedPushes = { finished: key => this.pushFinished(key), finish: (key, sent) => this.finishPush(key, sent) };
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.notificationSender = new FcmSender(env);
@@ -334,8 +337,7 @@ export class Player extends DurableObject<Env> {
     const identity = this.identity();
     if (!identity || identity.state !== "active") return;
     try {
-      await sendPollenPush(this.ctx.storage, this.env, this.notificationSender, identity.device_hash, hash => this.authorize(hash), lines,
-        { finished: key => this.pushFinished(key), finish: (key, sent) => this.finishPush(key, sent) });
+      await sendPollenPush(this.ctx.storage, this.env, this.notificationSender, identity.device_hash, hash => this.authorize(hash), lines, this.pushMemory);
     } catch (error) { logWarning("pollen_push_failed", { reason: errorCode(error) }); }
   }
   /**
@@ -639,23 +641,17 @@ export class Player extends DurableObject<Env> {
       await interactionBlocked(this.env, event.recipient_id, event.host_id)) return { status: "cancelled" };
     const available = event.room.api_version === 1 ? await this.env.ROOMS.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id) : await this.env.ROOMS_V2.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id);
     if (!available.ok) return { status: "cancelled" };
-    const stored = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>("SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
-    if (stored.length > MAX_REGISTRATIONS) return { status: "retry" };
     // Only a phone whose registration came from a client that reads hosting
     // events (0.6.1+) gets the push; an older one could never acknowledge it.
+    // No device or age rule here: a row past REGISTRATION_TTL_MS is chosen and then cancelled by its current check.
     const gated = FRIEND_EVENTS_CLIENT_GATE(this.env);
-    const registrations = stored.filter(row => {
-      const data = JSON.parse(row.data) as { friend_events?: number; platform?: string; categories?: string };
-      return (!gated || data.friend_events === 2) && pushCategoryAllowed(this.env, data, "friend_room_available");
-    });
+    const registrations = pushPhones(this.ctx.storage, this.env, "friend_room_available", { optIn: "all", include: data => !gated || data.friend_events === 2 });
+    if (registrations === null) return { status: "retry" };
     if (!registrations.length || !notificationsConfigured(this.env)) return { status: "done" };
-    const outcomes = await Promise.all(registrations.map(async (row): Promise<SendResult> => {
-      const registration = JSON.parse(row.data) as { token: string; device_hash: string; updated_at: number; platform?: string };
-      const pushKey = `friend:${event.event_id}:${row.binding_epoch}:${registration.token}`;
-      if (this.pushFinished(pushKey)) return { status: "sent" };
-      const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
-        Date.now() - registration.updated_at < REGISTRATION_TTL_MS;
-      const eligible = async (): Promise<boolean> => {
+    const outcomes = await sendToPhones(this.ctx.storage, this.notificationSender, registrations, this.pushMemory, {
+      family: "friend", hint: makeFriendRoomHint(event.host_id, event.room, event.publication_epoch, event.event_id), authorized: hash => this.authorize(hash),
+      stillCurrent: phone => Date.now() - phone.registration.updated_at < REGISTRATION_TTL_MS,
+      confirm: async current => {
         if (!current()) return false;
         const recipientEdge = this.friendEdge(event.recipient_id, event.host_id), hostPlayer = this.env.PLAYERS.getByName(event.host_id);
         const [hostEdge, publication, subscription, pending] = await Promise.all([hostPlayer.friendEdge(event.host_id, event.recipient_id), hostPlayer.friendPublication(event.host_id), this.friendSubscription(event.recipient_id, event.host_id), this.env.FRIEND_ROOM_EVENTS.getByName(event.recipient_id).isPending(event.recipient_id, event.event_id)]);
@@ -664,13 +660,8 @@ export class Player extends DurableObject<Env> {
         if (await interactionBlocked(this.env, event.recipient_id, event.host_id) || !current()) return false;
         const room = event.room.api_version === 1 ? await this.env.ROOMS.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id) : await this.env.ROOMS_V2.getByName(event.room.room_id).friendInvite(event.host_id, event.recipient_id);
         return room.ok && current();
-      };
-      const sent = await this.notificationSender.send(registration.token, row.binding_epoch,
-        makeFriendRoomHint(event.host_id, event.room, event.publication_epoch, event.event_id), eligible, registration.platform === "ios" ? "ios" : "android");
-      if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
-      this.finishPush(pushKey, sent);
-      return sent;
-    }));
+      }
+    });
     if (outcomes.some(value => value.status === "retry" || value.status === "unconfigured")) return { status: "retry", retry_after_ms: Math.max(0, ...outcomes.map(value => value.retry_after_ms ?? 0)) };
     if (outcomes.length > 0 && outcomes.every(value => value.status === "cancelled")) return { status: "cancelled" };
     return { status: "done" };
@@ -814,18 +805,14 @@ export class Player extends DurableObject<Env> {
     this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE json_extract(data,'$.device_hash')!=? OR json_extract(data,'$.updated_at')<?", identity.device_hash, Date.now() - REGISTRATION_TTL_MS);
     pruneNotificationCategories(this.ctx.storage);
     // Redo requests go only to registrations that opted in; older clients never do.
-    const rows = this.ctx.storage.sql.exec<{ binding_epoch: string; data: string }>(redo ? "SELECT r.binding_epoch AS binding_epoch,r.data AS data FROM notification_registrations r JOIN notification_categories c ON c.binding_epoch=r.binding_epoch LIMIT 5" : "SELECT binding_epoch,data FROM notification_registrations LIMIT 5").toArray();
-    if (rows.length > MAX_REGISTRATIONS) return { delivered: false };
-    // An iOS alert shows without app code, so the turn opt-out is applied here (flag on only).
-    const allowed = rows.filter(row => pushCategoryAllowed(this.env, JSON.parse(row.data) as { platform?: string; categories?: string }, hint.kind));
-    const outcomes = await Promise.all(allowed.map(async (row): Promise<SendResult> => {
-      const registration = JSON.parse(row.data) as { token: string; device_hash: string; platform?: string };
-      const pushKey = `room:${hint.event_id}:${row.binding_epoch}:${registration.token}`;
-      if (this.pushFinished(pushKey)) return { status: "sent" };
-      const current = () => this.authorize(registration.device_hash) && this.ctx.storage.sql.exec<{ data: string }>("SELECT data FROM notification_registrations WHERE binding_epoch=?", row.binding_epoch).toArray()[0]?.data === row.data &&
-        this.ctx.storage.sql.exec("SELECT room_id FROM rooms WHERE room_id=?", hint.room_id).toArray().length === 1 &&
-        (!redo || this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_categories WHERE binding_epoch=?", row.binding_epoch).toArray().length === 1);
-      const eligible = async () => {
+    // No further rule: the erase above already left only this device's rows within REGISTRATION_TTL_MS.
+    const phones = pushPhones(this.ctx.storage, this.env, hint.kind, { optIn: redo ? "redo" : "all", include: () => true });
+    if (phones === null) return { delivered: false };
+    const outcomes = await sendToPhones(this.ctx.storage, this.notificationSender, phones, this.pushMemory, {
+      family: "room", hint, authorized: hash => this.authorize(hash),
+      stillCurrent: phone => this.ctx.storage.sql.exec("SELECT room_id FROM rooms WHERE room_id=?", hint.room_id).toArray().length === 1 &&
+        (!redo || this.ctx.storage.sql.exec("SELECT binding_epoch FROM notification_categories WHERE binding_epoch=?", phone.binding_epoch).toArray().length === 1),
+      confirm: async current => {
         if (!current()) return false;
         // Another member may have deleted the room while our OAuth request ran;
         // their partner's stale room link is not sufficient membership authority.
@@ -833,12 +820,8 @@ export class Player extends DurableObject<Env> {
         if (!pending || !current()) return false;
         const members = hint.room_family === "legacy" ? await this.env.ROOMS.getByName(hint.room_id).safetyMembers(identity.player_id) : await this.env.ROOMS_V2.getByName(hint.room_id).safetyMembers(identity.player_id);
         return members.ok && !await interactionBlocked(this.env, members.value.host_id, members.value.guest_id) && current();
-      };
-      const sent = await this.notificationSender.send(registration.token, row.binding_epoch, hint, eligible, registration.platform === "ios" ? "ios" : "android");
-      if (sent.status === "invalid_token" && current()) this.ctx.storage.sql.exec("DELETE FROM notification_registrations WHERE binding_epoch=? AND data=?", row.binding_epoch, row.data);
-      this.finishPush(pushKey, sent);
-      return sent;
-    }));
+      }
+    });
     return { delivered: outcomes.every(value => value.status === "sent" || value.status === "invalid_token" || value.status === "rejected" || value.status === "cancelled"), retry_after_ms: Math.max(0, ...outcomes.map(value => value.retry_after_ms ?? 0)) };
   }
   recover(recoveryHash: string, nextDeviceHash: string, nextRecoveryHash: string, requestHash: string): Outcome<{ player_id: string; recovered: true }> {
