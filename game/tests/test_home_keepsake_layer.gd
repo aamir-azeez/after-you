@@ -53,6 +53,7 @@ func _run() -> void:
 	await _check_play()
 	await _check_explore()
 	await _check_explore_climb()
+	await _check_explore_roam()
 	await _check_explore_bridge()
 	await _check_explore_arrows()
 	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
@@ -854,6 +855,38 @@ func _check_explore_climb() -> void:
 		var tapped: RefCounted = layer._play.anim
 		_check(tapped.spawned.any(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).mesh == Parts.low_sphere(0.12)) and spirit.position == still, "and sends the ball (%s)" % look)
 		layer.stop_play()
+		await _close(home)
+
+## Leaving Explore by Back or the system Back, the spirits roam Home again,
+## even when the other spirit has wandered to where the explorer is put back.
+func _check_explore_roam() -> void:
+	for way: String in ["back", "system back"]:
+		var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
+		var stage: Control = home.stage
+		var world: Node3D = home.world
+		await _settle(home.layer)
+		var a: Node3D = world.actors.a
+		var b: Node3D = world.actors.b
+		stage._explore_button.pressed.emit()
+		stage._stick.value = Vector2(1, 0)
+		_frames(stage, world, 60)
+		stage._stick.value = Vector2.ZERO
+		# The other spirit stands where the explorer started.
+		b.position = stage._explore_return.position + Vector3(0.3, 0, 0)
+		stage._goals.b = b.position
+		if way == "back": stage._explore_back.pressed.emit()
+		else: stage._notification(Node.NOTIFICATION_WM_GO_BACK_REQUEST)
+		_check(not stage.is_exploring(), "%s leaves Explore" % way)
+		var a_from := a.position
+		var b_from := b.position
+		var travelled := {"a": 0.0, "b": 0.0}
+		for frame in range(600):
+			var before := {"a": a.position, "b": b.position}
+			_frames(stage, world, 1)
+			travelled.a += a.position.distance_to(before.a)
+			travelled.b += b.position.distance_to(before.b)
+		_check(travelled.a > 1.0 and travelled.b > 1.0 and a.position != a_from and b.position != b_from, "After %s both spirits roam Home again: %.2f m and %.2f m" % [way, travelled.a, travelled.b])
+		_check(a.position.distance_to(b.position) >= Stage.SEPARATION - 0.001, "and they walk apart and keep apart (%s): %.2f m" % [way, a.position.distance_to(b.position)])
 		await _close(home)
 
 ## Spirits wandering at Home never walk into a keepsake.

@@ -782,7 +782,7 @@ func _process(delta: float) -> void:
 				_choose_goal(role)
 			else:
 				var candidate := actor.position.move_toward(_goals[role],WALK_SPEED*step)
-				if _clear_position(role,candidate):
+				if _step_clear(role,candidate):
 					actor.position = candidate
 				else:
 					_choose_goal(role)
@@ -969,20 +969,39 @@ func _walk(actor: Node3D, step: float) -> void:
 func _follow_explorer(actor: Node3D, step: float) -> void:
 	_explore_focus = actor.position if _world.reduced_motion else _explore_focus.lerp(actor.position, 1.0 - exp(-8.0 * step))
 
-func _clear_position(role: String, candidate: Vector3) -> bool:
-	if not _floor.has_point(Vector2(candidate.x,candidate.z)): return false
-	if is_instance_valid(_keepsake_layer) and _keepsake_layer.blocks_step(_actors[role].position, candidate, SPIRIT_CLEARANCE): return false
+## Whether a wandering spirit may head for `goal`: on its island, clear of the
+## keepsakes and the other spirit, and in view.
+func _goal_clear(role: String, goal: Vector3) -> bool:
+	if not _floor.has_point(Vector2(goal.x,goal.z)): return false
+	if is_instance_valid(_keepsake_layer) and _keepsake_layer.blocks_step(_actors[role].position, goal, SPIRIT_CLEARANCE): return false
 	for other: String in _actors:
-		if other!=role and candidate.distance_to(_actors[other].position)<SEPARATION:
-			return false
+		if other!=role and goal.distance_to(_actors[other].position)<SEPARATION: return false
+	return _in_view(goal)
+
+## Whether a wandering spirit may take a step to `to`: on its island, and never
+## deeper into a keepsake, nearer the other spirit or out of view than it
+## already is, so a spirit put where it should not stand (the explorer put back
+## from Explore where the other has wandered) always walks out of it.
+func _step_clear(role: String, to: Vector3) -> bool:
+	var from: Vector3 = _actors[role].position
+	if not _floor.has_point(Vector2(to.x,to.z)): return false
+	if is_instance_valid(_keepsake_layer) and _keepsake_layer.blocks_step(from, to, SPIRIT_CLEARANCE): return false
+	for other: String in _actors:
+		if other==role: continue
+		var apart := to.distance_to(_actors[other].position)
+		if apart<SEPARATION and apart<from.distance_to(_actors[other].position): return false
+	return not _in_view(from) or _in_view(to)
+
+## Whether a spirit standing at `point` shows whole in Home's stage.
+func _in_view(point: Vector3) -> bool:
 	var safe := _stage_rect().grow(-42)
-	return safe.has_point(_world.camera.unproject_position(_world.to_global(candidate))) and safe.has_point(_world.camera.unproject_position(_world.to_global(candidate+Vector3(0,1.15,0))))
+	return safe.has_point(_world.camera.unproject_position(_world.to_global(point))) and safe.has_point(_world.camera.unproject_position(_world.to_global(point+Vector3(0,1.15,0))))
 
 func _choose_goal(role: String) -> void:
 	var actor: Node3D = _actors[role]
 	for attempt in range(12):
 		var candidate := Vector3(_random.randf_range(_floor.position.x,_floor.end.x),0,_random.randf_range(_floor.position.y,_floor.end.y))
-		if actor.position.distance_to(candidate)>0.65 and _clear_position(role,candidate):
+		if actor.position.distance_to(candidate)>0.65 and _goal_clear(role,candidate):
 			_goals[role] = candidate
 			_rests[role] = _random.randf_range(0.6,1.6)
 			return

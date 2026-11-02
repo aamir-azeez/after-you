@@ -195,7 +195,7 @@ func _test_gestures_and_wander() -> void:
 					total_movement[role]+=moved
 					all_bounded=all_bounded and stage._floor.has_point(Vector2(position.x,position.z)) and position.y==0.0
 					all_slow=all_slow and moved<=Stage.WALK_SPEED/60.0+0.00001
-					all_on_screen=all_on_screen and stage._clear_position(role,position)
+					all_on_screen=all_on_screen and stage._goal_clear(role,position)
 				all_separate=all_separate and world.actors.a.position.distance_to(world.actors.b.position)>=Stage.SEPARATION-0.00001
 	_check(all_bounded,"Both spirits remain on the inset display island through varied sizes and zooms")
 	_check(all_separate,"Wandering spirits never overlap one another")
