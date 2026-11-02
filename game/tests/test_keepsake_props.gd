@@ -380,46 +380,78 @@ static func _to_polyline(at: Vector3, points: Array[Vector3]) -> float:
 		best = minf(best, at.distance_to(a.lerp(b, t)))
 	return best
 
-## The Relay Masts flag never floats: every stretch of its trip keeps its top
-## toggle on the cord up the first mast, the top line or the mint line, it
-## comes back along the same points it went out by, one stretch after the
-## other, and is at rest as the tap's last beat ends (so the settle moves
-## nothing), with the Together cue inside the tap.
+## The Relay Masts flag never floats. Played beat by beat into a real Tween
+## and stepped through the tap, its top toggle is always on the cord up the
+## first mast, the top line or the mint line, and its body keeps clear of the
+## far mast; it goes out one stretch at a time, comes back by the same points,
+## and stands exactly in its built pose as the last beat ends (so the settle
+## moves nothing). Only the base beat moves it.
 func _check_relay_flag() -> void:
 	var Relay: GDScript = load("res://presentation/keepsakes/relay_masts.gd")
 	var builder: RefCounted = Relay.new()
 	for flags in range(8):
 		var state := {"together": flags & 1 != 0, "hard": flags & 2 != 0, "top": flags & 4 != 0}
+		var label := "Relay Masts flag %s" % state
 		var y0: float = Relay.HARD_LIFT if state.hard else 0.0
 		var line: float = y0 + Relay.POLE - 0.08
 		var hang := Vector3(0, Relay.HANG, 0)
-		var rest: Vector3 = Relay.route(state)[0]
-		var cord: Array[Vector3] = [Vector3(rest.x, 0, 0), Vector3(rest.x, line, 0)]
+		var prop := Node3D.new()
+		root.add_child(prop)
+		var parts: Dictionary = builder.build(prop, state)
+		var flag: Node3D = parts.flag
+		var built := flag.transform
+		var cord: Array[Vector3] = [Vector3(built.origin.x, 0, 0), Vector3(built.origin.x, line, 0)]
 		var top_line: Array[Vector3] = [Vector3(Relay.ENDS[0], line, 0), Vector3(Relay.ENDS[1], line, 0)]
 		var mint_line: Array[Vector3] = [Vector3(Relay.ENDS[1], line, 0), Relay.MINT_MAST + Vector3(0, Relay.POLE * 0.85 - 0.08, 0)]
-		var trip: Dictionary = builder.trip(state)
+		var anim := Anim.new()
+		anim.fx = Node3D.new()
+		prop.add_child(anim.fx)
+		var holder := Node.new()
+		root.add_child(holder)
+		anim.tween = holder.create_tween().set_parallel(true)
+		anim.tween.pause()
 		var tap := 0.0
-		for beat: Dictionary in builder.beats(state): tap += float(beat.time)
-		var label := "Relay Masts flag %s" % state
-		var from := rest
-		var free := 0.0
+		for beat: Dictionary in builder.beats(state):
+			anim.start = tap
+			var before: bool = anim.touched.has(flag)
+			builder.play(str(beat.beat), anim, parts, state)
+			if beat.beat != "base": _check(anim.touched.has(flag) == before, "%s: only the base beat moves it, not %s" % [label, beat.beat])
+			tap += float(beat.time)
 		var on_lines := true
+		var clear := true
+		var now := 0.0
+		while now < tap - 0.0001:
+			var step := minf(0.05, tap - now)
+			anim.tween.custom_step(step)
+			now += step
+			var toggle := flag.position + hang
+			on_lines = on_lines and [cord, top_line, mint_line].any(func(segment: Array[Vector3]) -> bool: return _to_polyline(toggle, segment) < 0.002)
+			for share: float in [0.2, 0.5, 0.8]:
+				var body: Vector3 = flag.transform * Vector3(Relay.FLY * share, 0, Relay.BEHIND)
+				clear = clear and Vector2(body.x - Relay.ENDS[1], body.z).length() >= 0.05
+		# The layer's Tween runs until its last tweener ends, a hair past the beats.
+		anim.tween.custom_step(0.001)
+		_check(on_lines, "%s: its top toggle stays on the cord or a line all the way" % label)
+		_check(clear, "%s: it keeps clear of the far mast" % label)
+		_check(flag.transform == built, "%s: stands in its built pose as the last beat ends: %s" % [label, flag.transform])
+		# Out and back by the same points, one stretch after the other, in time.
+		var trip: Dictionary = builder.trip(state)
+		var free := 0.0
 		var in_turn := true
-		var visits: Array[Vector3] = [rest]
+		var visits: Array[Vector3] = [built.origin]
 		for leg: Array in trip.legs:
-			var to: Vector3 = leg[0]
-			on_lines = on_lines and [cord, top_line, mint_line].any(func(segment: Array[Vector3]) -> bool: return _to_polyline(from + hang, segment) < 0.001 and _to_polyline(to + hang, segment) < 0.001)
-			in_turn = in_turn and float(leg[1]) >= free - 0.001 and float(leg[2]) >= 0.1
+			in_turn = in_turn and float(leg[1]) >= free - 0.001 and float(leg[2]) >= 0.05
 			free = float(leg[1]) + float(leg[2])
-			visits.append(to)
-			from = to
+			visits.append(leg[0])
 		var there := visits.slice(0, visits.size() / 2 + 1)
 		var home := visits.slice(visits.size() / 2)
 		home.reverse()
-		_check(on_lines, "%s: every stretch keeps its top toggle on the cord or a line" % label)
 		_check(in_turn and there == home and there.size() == (4 if state.together else 3), "%s: goes out one stretch at a time and comes back the same way" % label)
-		_check(from == rest and free <= tap + 0.001 and float(trip.out) < float(trip.back), "%s: is home at rest by the tap's end: %.2f of %.2f" % [label, free, tap])
+		_check(float(trip.out) < float(trip.back) and free <= tap + 0.001, "%s: waits at the far end and is home by the tap's end: %.2f of %.2f" % [label, free, tap])
 		_check(float(builder.beats(state)[0].time) <= Builder.BASE_MAX and tap + Builder.SETTLE <= TOTAL_MAX, "%s: the tap keeps within its time: %.2f" % [label, tap])
+		anim.tween.kill()
+		holder.free()
+		prop.free()
 
 ## A pip that counts the ride hooks it is given.
 class HookedPip extends Node3D:

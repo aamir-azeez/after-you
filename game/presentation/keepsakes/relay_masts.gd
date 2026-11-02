@@ -3,10 +3,10 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## basket of fruit. Tugging the rope at the first mast (walking up to it, or a
 ## tap) runs the flag up its cord beside the first mast and along the line to
 ## the far one; after a moment a second tug brings it back the same way to rest.
-## Together: a mint third mast, so the flag is handed on down the second line
-## and comes back up it. Hard: both masts stand on slate plinths with crossbars
-## whose signal flags flick out as the flag passes. Together Hard: gold lamps on
-## the mast tops light one after the other.
+## Together: a mint third mast, so the flag turns at the far mast, is handed
+## on down the second line and comes back up it. Hard: both masts stand on
+## slate plinths with crossbars whose signal flags flick out as the flag comes
+## home. Together Hard: gold lamps on the mast tops light one after the other.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const POLE := 2.4
 const ENDS: Array[float] = [-1.3, 1.3]
@@ -21,8 +21,13 @@ const CORD_X := 0.08
 const HANG := 0.18
 const BEHIND := -0.065
 const FLY := 0.56
-## How far down the mint line (a share of it) the flag is handed on.
-const HANDOFF := 0.65
+## How far down the mint line (a share of it) the flag is handed on: its tip
+## passes just beside the mint mast, clear of the mint ball on Hard.
+const HANDOFF := 0.45
+## The route point where it turns onto the mint line (the far mast), and how
+## long the turn takes, there and back.
+const CORNER := 2
+const TURN := 0.12
 ## The flag's pace along its cord and the lines (metres a second), the gap
 ## between one stretch and the next, and how long it waits at the far end
 ## before coming back (longer when the tap has the time).
@@ -30,7 +35,7 @@ const SPEED := 3.0
 const GAP := 0.05
 const HOLD: Array[float] = [0.2, 0.5]
 ## Every beat of a tap together: the 4.5 s a tap may take, less the settle.
-const TAP_MAX := 4.2
+const TAP_MAX := 4.5 - SETTLE
 
 static func _y0(state: Dictionary) -> float:
 	return HARD_LIFT if state.get("hard", false) else 0.0
@@ -95,6 +100,12 @@ static func _line_y(state: Dictionary) -> float:
 static func _mint_top() -> Vector3:
 	return MINT_MAST + Vector3(0, POLE * 0.85 - 0.08, 0)
 
+## The flag's turn about its hoist to face along the mint line, so it hangs
+## from that line and keeps clear of the far mast.
+static func _mint_heading() -> float:
+	var run := _mint_top() - Vector3(ENDS[1], 0, 0)
+	return -atan2(run.z, run.x)
+
 ## Where the flag's pivot goes on its way out, from rest: up its cord to the
 ## top line, along it to the far mast, and with Together on down the mint
 ## line. Its top toggle stays on the cord or a line all the way.
@@ -112,16 +123,20 @@ static func route(state: Dictionary) -> Array[Vector3]:
 	points.append(far.lerp(_mint_top(), HANDOFF) - hang)
 	return points
 
-## The flag's whole trip in a tap: {"legs": [[to, at, time], ...] from the
-## tap's start, out along route() and back the same way to rest, "out": when
-## it reaches the far end, "back": when it sets off home}. It comes back at
-## its own pace when the tap has the time and faster when it is short, and is
-## at rest as the last beat ends, so the settle has nothing left to move.
+## The flag's whole trip in a tap, in times from the tap's start: "legs"
+## [[to, at, time], ...] out along route() and back the same way to rest,
+## "turns" [[rotation_y, at, time], ...] at the far mast with Together on,
+## "out" when it reaches the far end and "back" when it sets off home. It
+## comes back faster than it went when the tap is short and slower when it has
+## time to spare, and is at rest as the last beat ends, so the settle has
+## nothing left to move.
 func trip(state: Dictionary) -> Dictionary:
 	var points := route(state)
+	var turning: bool = state.get("together", false)
 	var tap := 0.0
 	for beat: Dictionary in beats(state): tap += float(beat.time)
 	var legs: Array = []
+	var turns: Array = []
 	var length := 0.0
 	var at := 0.1
 	for index in range(1, points.size()):
@@ -129,16 +144,22 @@ func trip(state: Dictionary) -> Dictionary:
 		legs.append([points[index], at, time])
 		at += time + GAP
 		length += points[index - 1].distance_to(points[index])
+		if turning and index == CORNER:
+			turns.append([_mint_heading(), at, TURN])
+			at += TURN + GAP
 	var out := at - GAP
-	var gaps := GAP * (points.size() - 2)
-	var back := out + clampf(tap - out - gaps - length / SPEED, HOLD[0], HOLD[1])
-	var pace := (tap - back - gaps) / length
+	var waits := GAP * (points.size() - 2) + (TURN + GAP if turning else 0.0)
+	var back := out + clampf(tap - out - waits - length / SPEED, HOLD[0], HOLD[1])
+	var pace := (tap - back - waits) / length
 	at = back
 	for index in range(points.size() - 1, 0, -1):
 		var time := points[index - 1].distance_to(points[index]) * pace
 		legs.append([points[index - 1], at, time])
 		at += time + GAP
-	return {"legs": legs, "out": out, "back": back}
+		if turning and index - 1 == CORNER:
+			turns.append([0.0, at, TURN])
+			at += TURN + GAP
+	return {"legs": legs, "turns": turns, "out": out, "back": back}
 
 ## The flag comes home through the upgrade beats, so the base beat takes what
 ## the tap has left after them, up to BASE_MAX.
@@ -165,6 +186,9 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			for at: float in [0.0, float(path.back)]: _tug(anim, parts.rope, at)
 			anim.sound(str(sounds.get("base", "")), 0.0)
 			for leg: Array in path.legs: anim.move(flag, "position", leg[0], leg[1], leg[2])
+			# Reduce motion shows it at the top of its cord, square to the line.
+			if not anim.reduced:
+				for turn: Array in path.turns: anim.move(flag, "rotation:y", turn[0], turn[1], turn[2])
 			# Glints along the line behind it as it crosses.
 			var across: Array = path.legs[1]
 			var from: Vector3 = path.legs[0][0]
