@@ -194,12 +194,7 @@ const SPARKLE_LAG := 0.06
 func _slide_joy(points: Array[Vector3], seat: float, sit_time: float, time: float, landed: float, lift: Vector3, joy: Dictionary) -> void:
 	if rider == null or joy.is_empty(): return
 	var at := seat + sit_time
-	var face: StringName = joy.get("face", &"")
-	if face != &"":
-		if reduced:
-			if rider.has_method(&"set_ride_face"): rider.set_ride_face(face)
-		# Put on just before the sit, so the face's own swap is done as it sits.
-		else: rider_call(&"set_ride_face", [face], maxf(0.0, seat - FACE_LEAD))
+	ride_face(joy.get("face", &""), seat)
 	# Reduce motion shows the beat all at once: the face, and the tap (its own
 	# Settings switch) once, with no glints or heart.
 	if reduced:
@@ -230,6 +225,16 @@ func _slide_joy(points: Array[Vector3], seat: float, sit_time: float, time: floa
 		tween.tween_callback(func() -> void:
 			if is_instance_valid(node): heart.call(node)).set_delay(start + at + time * float(joy.heart_at))
 	if joy.get("haptic", false) and haptic.is_valid(): tween.tween_callback(haptic).set_delay(start + landed)
+
+## Puts `face` (spirit_look.gd) on a carried pip from `at`, a beat's time: the
+## face swaps in just before, so the swap is done by then, and the layer takes
+## it off as the ride lands (kept through the bounce) or is cut short.
+## Reduce motion puts it on at once. Nothing without a rider.
+func ride_face(face: StringName, at: float) -> void:
+	if rider == null or face == &"": return
+	if reduced:
+		if rider.has_method(&"set_ride_face"): rider.set_ride_face(face)
+	else: rider_call(&"set_ride_face", [face], maxf(0.0, at - FACE_LEAD))
 
 func _follow(leg: Callable, at: float, time: float, mover: Node3D, lift: Vector3) -> void:
 	if mover != null: path(mover, func(u: float) -> Vector3: return leg.call(u) + lift, at, time, 1.0)

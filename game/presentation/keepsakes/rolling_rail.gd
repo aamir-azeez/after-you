@@ -1,7 +1,7 @@
 extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## The Rolling Home keepsake: a Rolling Rail that curves overhead from a
 ## boarding stand, with a peach cart. Walking up to the stand sets the pip
-## climbing into the cart, and it rides the rail to the far end and hops off;
+## climbing into the cart, and it rides the rail, happy, to the far end and hops off;
 ## a tap sends the cart along empty. Together: a mint catch cup at the end of
 ## the rail that the pip slides into. Hard: a loop in the middle, and the ride
 ## goes all the way round it. Together Hard: a gold bell over the dip rings as
@@ -10,6 +10,8 @@ const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const CUP := Vector3(1.75, 0, 0.2)
 const LOOP := Vector3(0.0, 1.25, 0.0)
 const LOOP_RADIUS := 0.42
+## The pip's face from boarding the cart until it lands (keepsake_anim.gd ride_face).
+const RIDE_FACE := &"happy"
 ## Where the pip sits in the cart, over the cart's middle.
 const SEAT := Vector3(0, 0.2, 0)
 
@@ -102,6 +104,8 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			var steps: Array = [anim.rider_from, Vector3(-1.95, 0.28, 0.0), Vector3(-1.67, 0.56, 0.0), Vector3(-1.39, 0.84, 0.0), _cart_rest() + SEAT]
 			var t: float = anim.hops(steps, 0.0, 0.16, 0.18)
 			if anim.rider == null: t = 0.3
+			# Happy in the cart, as on the Giant Steps slide, until it lands.
+			anim.ride_face(RIDE_FACE, t)
 			# The ride along the rail, round the loop on Hard.
 			var path := _ride(hard)
 			var where := _along(path)

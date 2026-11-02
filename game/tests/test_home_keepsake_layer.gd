@@ -54,6 +54,7 @@ func _run() -> void:
 	await _check_explore()
 	await _check_explore_climb()
 	await _check_explore_roam()
+	await _check_rail_face()
 	await _check_explore_bridge()
 	await _check_explore_arrows()
 	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
@@ -910,6 +911,43 @@ func _check_explore_roam() -> void:
 		_check(travelled.a > 1.0 and travelled.b > 1.0 and a.position != a_from and b.position != b_from, "After %s both spirits roam Home again: %.2f m and %.2f m" % [way, travelled.a, travelled.b])
 		_check(a.position.distance_to(b.position) >= Stage.SEPARATION - 0.001, "and they walk apart and keep apart (%s): %.2f m" % [way, a.position.distance_to(b.position)])
 		await _close(home)
+
+## The pip rides the Rolling Rail happy, as it slides the Giant Steps: the face
+## goes on as it boards the cart and stays through the ride and the cup, then
+## goes just after it lands, and at once when the ride is cut short.
+func _check_rail_face() -> void:
+	var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
+	var stage: Control = home.stage
+	var layer: Node3D = home.layer
+	var pip: Node3D = home.world.actors.a
+	await _settle(layer)
+	stage._explore_button.pressed.emit()
+	for cut: bool in [false, true]:
+		layer.end_explore()
+		var inside: Vector3 = layer.trigger_point("rolling-home")
+		pip.position = inside
+		layer.walked(inside + Vector3(0, 0, 4.0), inside, pip)
+		_check(layer.riding(), "Walking up to the Rolling Rail starts its ride")
+		var tween: Tween = layer._play.tween
+		var happy_from := -1.0
+		var steady := true
+		var time := 0.0
+		while layer.riding() and time < 6.0:
+			tween.custom_step(1.0 / 30.0)
+			time += 1.0 / 30.0
+			var happy: bool = pip.expression_target() == &"happy"
+			if happy and happy_from < 0.0: happy_from = time
+			if happy_from >= 0.0 and layer.riding(): steady = steady and happy
+			if cut and happy_from >= 0.0 and time > happy_from + 0.5: break
+		_check(happy_from > 0.0 and happy_from < 1.0 and steady, "The pip is happy from boarding the cart through the ride (on at %.2f s)" % happy_from)
+		if cut:
+			layer.stop_play()
+			_check(pip.expression_target() != &"happy", "A ride cut short takes the happy face off at once")
+		else:
+			for frame in range(40): stage._process(1.0 / 60.0)
+			_check(not layer.riding() and pip.expression_target() != &"happy", "and its face is back to normal just after it lands")
+			layer.stop_play()
+	await _close(home)
 
 ## Spirits wandering at Home never walk into a keepsake.
 func _frames(stage: Control, world: Node3D, count: int, step: float = 1.0 / 30.0) -> void:
