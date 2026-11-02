@@ -206,10 +206,15 @@ func needs_read(server: String, owner: String) -> bool:
 func note_view(server: String, owner: String, value: Variant) -> bool:
 	var kept := checked_view(value)
 	var scope := _scope(server, owner, not kept.is_empty())
-	if kept.is_empty() or scope.is_empty(): return false
+	if scope.is_empty(): return false
 	var tag: String = _offered_tags.get(scope_key(server, owner), "")
 	var retagged: bool = not tag.is_empty() and str(scope.get("offered_tag", "")) != tag
 	if retagged: scope.offered_tag = tag
+	# An answer this build cannot keep (callers pass only answered reads) still
+	# counts as read under this tag, so it is not asked for again on every flush.
+	if kept.is_empty():
+		if retagged: _save()
+		return false
 	if scope.view != kept:
 		scope.view = kept
 		_save()

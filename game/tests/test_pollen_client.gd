@@ -306,6 +306,23 @@ func _wardrobe_offered() -> void:
 	for bad: Variant in ["0BADF00D", "0badf00", 7, ""]:
 		again.note_offered_tag(server, ME, bad)
 		_check(not again.needs_read(server, ME), "A tag off the contract is none: " + str(bad))
+	# A read that fails keeps the old tag, so the next flush asks again.
+	wardrobe.note_offered_tag(server, ME, "feedc0de")
+	t.fake.replies = [{"ok": false, "status": 0, "code": "connection_interrupted"}]
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 2 and wardrobe.needs_read(server, ME), "A failed read leaves the tag unstored")
+	# An answered read this build cannot keep (a slot from a newer catalogue) counts as read: no read on every flush.
+	var newer := _wardrobe_answer(["daisy", "gold_leaf"])
+	newer.wardrobe.look = {"wing": "feather"}
+	t.fake.replies = [{"ok": true, "data": newer}]
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 3 and not wardrobe.needs_read(server, ME), "An answer this build cannot keep stores the tag")
+	_check(Outfit.from(friend) == friend, "and the kept view still draws the friend's items")
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 3, "and the next flush reads nothing")
 	t.api.queue_free()
 
 func _check(condition: bool, message: String) -> void:
