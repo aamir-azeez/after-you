@@ -358,7 +358,7 @@ func _approach(id: String, builder: RefCounted, state: Dictionary, anim: RefCoun
 	if goal == null: return 0.0
 	var placed := slot_transform(id)
 	var ground := func(at: Vector2) -> bool: return walkable(placed * Vector3(at.x, 0, at.y))
-	var hops := Approach.route(anim.rider_from, goal, _set.props[id].solids, WALK_CLEARANCE, ground)
+	var hops := Approach.route(anim.rider_from, goal, _set.props[id].solids, WALK_CLEARANCE, ground, builder.ride_overhead(state))
 	if hops.is_empty():
 		anim.rider = null
 		return 0.0

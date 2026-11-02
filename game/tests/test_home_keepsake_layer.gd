@@ -52,6 +52,7 @@ func _run() -> void:
 	await _check_tap()
 	await _check_play()
 	await _check_explore()
+	_check_ride_route()
 	await _check_explore_rides()
 	await _check_explore_roam()
 	await _check_rail_face()
@@ -779,11 +780,37 @@ func _ride_spots(layer: Node3D, id: String) -> Array[Vector3]:
 			spots.append(local)
 	return spots
 
+## The way round (ride_approach.gd): a pip standing in a room's square corner,
+## as far from the solid as it may walk, still finds a way whose first leg
+## keeps that far, and one nearer finds none; ground under a low overhead part
+## is kept off unless the pip stands there; a way that would only exist through
+## it is none.
+func _check_ride_route() -> void:
+	var Approach: GDScript = load("res://presentation/keepsakes/ride_approach.gd")
+	var anywhere := func(_at: Vector2) -> bool: return true
+	var block: Array[Rect2] = [Rect2(0, 0, 1, 1)]
+	var corner := Vector3(-0.09, 0, -0.09)
+	var hops: Array[Vector3] = Approach.route(corner, Vector3(0.5, 0, 2.0), block, 0.12, anywhere)
+	var kept := hops.size() > 1
+	for index in range(1, hops.size()):
+		for sample in range(11):
+			var at: Vector3 = hops[index - 1].lerp(hops[index], sample / 10.0)
+			kept = kept and Layer._rect_distance(block[0], Vector2(at.x, at.z)) >= 0.11 - 0.0001
+	_check(kept, "From a solid's corner the way round keeps the pip's room: %d hops" % hops.size())
+	_check(Approach.route(Vector3(-0.07, 0, -0.07), Vector3(0.5, 0, 2.0), block, 0.12, anywhere).is_empty(), "and from nearer than its room there is none")
+	var overhead: Array[Rect2] = [Rect2(-1, 0.5, 2, 1)]
+	var none: Array[Rect2] = []
+	var round_it: Array[Vector3] = Approach.route(Vector3(0, 0, 0), Vector3(0, 0, 2.5), none, 0.12, anywhere, overhead)
+	_check(round_it.size() > 2 and round_it.all(func(at: Vector3) -> bool: return not overhead[0].grow(-0.02).has_point(Vector2(at.x, at.z))), "The way round goes past a low overhead part's ends: %d hops" % round_it.size())
+	_check(Approach.route(Vector3(0, 0, 1), Vector3(0, 0, 2.5), none, 0.12, anywhere, overhead).size() > 1, "and from under it the pip simply hops out")
+	_check(Approach.route(Vector3(0, 0, 0), Vector3(0, 0, 2.5), none, 0.12, func(at: Vector2) -> bool: return absf(at.x) < 0.8, overhead).is_empty(), "With no ground round it there is no way, so the ride plays as a tap")
+
 ## A ride's action pressed in Explore from anywhere but its start (beside or
 ## behind the Giant Steps, the Rolling Rail's stand or the Turn of the Tide's
 ## pool), in every look (plain, Together, Hard, and all three with the gold
 ## top): the pip hops round on open ground, never into a solid or the pool, to
-## where the ride starts, rides and lands on open ground. Back while it hops
+## where the ride starts (off the ground under the rail's low dip), rides and
+## lands on open ground. Back while it hops
 ## round ends the ride at once; Reduce motion lands it with no hops. A pip
 ## already at the start rides at once. The Giant Steps send no ball in
 ## Explore, and a tap outside Explore still sends it.
@@ -817,7 +844,15 @@ func _check_explore_rides() -> void:
 			_check(not far.is_empty(), "%s's action is offered on its far side (%s): %d spots, %d far" % [id, look, spots.size(), far.size()])
 			# From its start it rides at once.
 			var start: Vector3 = builder.ride_start(state, Vector3(0, 0, -9))
-			_check(builder.ride_start(state, start) == null and layer.walkable(placed * start), "%s's start is on open ground, and from there it rides at once (%s)" % [id, look])
+			_check(builder.ride_start(state, start) == null and layer.walkable(placed * start), "%s's start is on open ground (%s)" % [id, look])
+			spirit.position = placed * start
+			stage._explore_last = spirit.position
+			stage._explore_recheck = true
+			stage._process(1.0 / 30.0)
+			action.pressed.emit()
+			_check(layer.riding() and (layer._play.anim.rider_from as Vector3).distance_to(start) < 0.001, "and from there it rides at once (%s %s)" % [id, look])
+			layer.stop_play()
+			var overhead: Array[Rect2] = builder.ride_overhead(state)
 			var tried: Array[Vector3] = []
 			for index in range(0, spots.size(), maxi(1, spots.size() / 8)): tried.append(spots[index])
 			if not far.is_empty(): tried.append_array([far[0], far[far.size() - 1]])
@@ -838,6 +873,8 @@ func _check_explore_rides() -> void:
 				_check((layer._play.anim.spawned as Array).filter(is_ball).is_empty(), "and sends no ball (%s)" % label)
 				var tween: Tween = layer._play.tween
 				var clear := true
+				# Off the ground under a low overhead part, unless it stood there.
+				var under: Array[Rect2] = overhead.filter(func(rect: Rect2) -> bool: return not rect.has_point(Vector2(local.x, local.z)))
 				var arrived := false
 				var risen := 0.0
 				var frames := 0
@@ -847,7 +884,8 @@ func _check_explore_rides() -> void:
 					if not layer.riding(): break
 					var flat := Vector3(spirit.position.x, 0, spirit.position.z)
 					# Until it reaches the start it hops round on open ground, out of every solid.
-					if not arrived: clear = clear and layer._ground(flat) and not layer.blocks(flat, Layer.WALK_CLEARANCE - 0.015)
+					var here: Vector3 = placed.affine_inverse() * flat
+					if not arrived: clear = clear and layer._ground(flat) and not layer.blocks(flat, Layer.WALK_CLEARANCE - 0.015) and not under.any(func(rect: Rect2) -> bool: return rect.grow(-0.02).has_point(Vector2(here.x, here.z)))
 					arrived = arrived or flat.distance_to(goal) < 0.05
 					if arrived: risen = maxf(risen, spirit.position.y)
 				_check(clear and arrived, "The pip hops round on open ground to the start, never through it (%s)" % label)

@@ -46,7 +46,8 @@ extends RefCounted
 ## - solids(state): what the pip may not walk into; walkways(): extra ground
 ##   off the islands (a jetty).
 ## - ride_start(state, from): where the pip must stand to ride, when the
-##   Explore action sets it off from somewhere it cannot (null: anywhere).
+##   Explore action sets it off from somewhere it cannot (null: anywhere);
+##   ride_overhead(state): ground the hops round to there keep off.
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Anim = preload("res://presentation/keepsakes/keepsake_anim.gd")
 const BASE_MAX := 4.45
@@ -140,6 +141,11 @@ func stay() -> Rect2:
 ## plays it as a tap, without the pip, when there is no way round.
 func ride_start(_state: Dictionary, _from: Vector3) -> Variant:
 	return null
+
+## The ground under parts that hang too low for the pip to hop beneath (the
+## Rolling Rail's dip), which the hops round to ride_start() keep off.
+func ride_overhead(_state: Dictionary) -> Array[Rect2]:
+	return []
 
 ## A ride_start() for a ride that boards from `area`: null when `from` stands
 ## in it, else its middle on the grass.

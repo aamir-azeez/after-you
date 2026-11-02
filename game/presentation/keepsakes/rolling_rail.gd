@@ -148,6 +148,12 @@ const BOARDING := Rect2(-2.15, 0.3, 0.35, 0.45)
 func ride_start(_state: Dictionary, from: Vector3) -> Variant:
 	return start_in(BOARDING, from)
 
+## Where the pip's head would meet the track: under the rail's dip (x -0.72
+## to 0.72, lower than 0.95 m, and the loop on Hard) and a head's half width
+## either side. The hops round to the stand go past its ends instead.
+func ride_overhead(_state: Dictionary) -> Array[Rect2]:
+	return [Rect2(-1.0, -0.65, 2.0, 1.3)]
+
 func solids(state: Dictionary) -> Array[Rect2]:
 	var rail := _rail()
 	var result: Array[Rect2] = [Rect2(-2.1, -0.25, 0.86, 0.5)]
