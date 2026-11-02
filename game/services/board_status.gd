@@ -8,7 +8,7 @@ extends RefCounted
 ##   server posts before it answers the final turn (v2/routes.ts), so a run
 ##   just finished counts as checking until a board read says otherwise;
 ## - RANKED: in the top 10, with its place;
-## - NOT_LISTED: settled and not on the board (slower than the ten listed, a
+## - NOT_LISTED: settled and not on the board (no faster than the ten listed, a
 ##   pair's repeat no faster than its own run already there, or it did not
 ##   pass the checks);
 ## - UNKNOWN: an older run and no board read to say where it stands: no line.
@@ -50,7 +50,8 @@ static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix:
 				result.rank = int(row.rank)
 				return result
 		if id in view.checking: return result
-		var full: bool = view.top.size() >= TOP_PLACES and ticks > int(view.top[TOP_PLACES - 1].get("ticks", 0))
+		# On equal times the listed run finished first, so it stays ahead (backend rules.ts compareRuns).
+		var full: bool = view.top.size() >= TOP_PLACES and ticks >= int(view.top[TOP_PLACES - 1].get("ticks", 0))
 		if full or pair_ahead(run, view, mine) or not recent(run, now_unix): result.state = NOT_LISTED
 	return result
 
@@ -122,6 +123,15 @@ static func shown_row(run: Dictionary, view: Dictionary, now_unix: float, mine: 
 	for row: Dictionary in shown_rows(view, mine, now_unix, {}, known):
 		if row.entry_id == run.get("entry_id"): return row
 	return {}
+
+## Whether `run` stands on the board this phone shows as a run waiting for its
+## check (a `pending` row of shown_rows). The one rule for every surface that
+## speaks of a waiting run: its clock row, the board's checking card, Your
+## best, the end card's celebration and Home's note. It follows the server's
+## own (backend board.ts submit): a run no faster than the pair's own ranked or
+## waiting run, or than ten other pairs' runs, never enters, so it never counts.
+static func stands_waiting(run: Dictionary, view: Dictionary, now_unix: float, mine: Array) -> bool:
+	return bool(shown_row(run, view, now_unix, mine).get("pending", false))
 
 ## Its place there, or 0.
 static func place(run: Dictionary, view: Dictionary, now_unix: float, mine: Array) -> int:

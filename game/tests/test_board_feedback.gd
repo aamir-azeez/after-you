@@ -109,6 +109,7 @@ func _run() -> void:
 	await _end_of_run_line()
 	await _end_of_run_celebration()
 	await _home_watch()
+	for me: String in [OWNER, PARTNER]: await _refused_run(me)
 	await _board_reasons()
 	await _refused_row()
 	_settings_migration()
@@ -175,6 +176,14 @@ func _states() -> void:
 	slower.ticks = 1600
 	_check(BoardStatus.of_run(repeat, true, waiting, now, [slower, repeat]).state == BoardStatus.CHECKING, "a faster repeat replaces the pair's run, so it may be checking")
 	_check(BoardStatus.listed_checking(fresh, _view(LIGHTHOUSE_BOARD, [], [fresh.entry_id])) and not BoardStatus.listed_checking(fresh, _view(LIGHTHOUSE_BOARD, [], [])) and not BoardStatus.listed_checking(fresh, {}), "only a board that lists the run says it is checking")
+	# The server's own rules (backend board.ts submit, rules.ts compareRuns): equal times keep the earlier run ahead.
+	var level_tenth := fresh.duplicate()
+	level_tenth.ticks = 109
+	_check(BoardStatus.of_run(level_tenth, true, _view(LIGHTHOUSE_BOARD, ten, []), now).state == BoardStatus.NOT_LISTED and not BoardStatus.stands_waiting(level_tenth, _view(LIGHTHOUSE_BOARD, ten, []), now, [level_tenth]), "a run level with the tenth never enters")
+	var level_pair := repeat.duplicate()
+	level_pair.ticks = 1400
+	_check(BoardStatus.of_run(level_pair, true, waiting, now, [mine_first, level_pair]).state == BoardStatus.NOT_LISTED and not BoardStatus.stands_waiting(level_pair, waiting, now, [mine_first, level_pair]), "nor a repeat level with the pair's own waiting run")
+	_check(BoardStatus.stands_waiting(repeat, waiting, now, [slower, repeat]) and not BoardStatus.stands_waiting(repeat, waiting, now, [mine_first, repeat]), "a run counts as waiting only when it would stand above the pair's own run")
 
 func _run_on(entry: String, ticks: int, partner: String, finished_at: String, assisted: bool = false) -> Dictionary:
 	return {"board": LIGHTHOUSE_BOARD, "entry_id": entry, "ticks": ticks, "assisted": assisted, "finished_at": finished_at, "partner": partner}
@@ -601,6 +610,89 @@ func _home_watch() -> void:
 	await _frames(2)
 	_check(host.api.requests.size() == 2, "with the board off Home reads nothing")
 	_drop(host)
+
+## A run the server never takes (backend board.ts submit "not_placed": no
+## faster than the pair's own ranked run) shows nothing waiting anywhere: no
+## celebration from the kept board or the card's read, and no note on Home.
+## A run the board lists waiting that would stand above the pair's row has
+## both. `me` is either member: both phones note the run (Runs.note).
+func _refused_run(me: String) -> void:
+	_fresh_runs()
+	_clear(PLACINGS_PATH)
+	Placings.use_shared(Placings.new(PLACINGS_PATH))
+	var host := _host()
+	host.api.player_id = me
+	var client: RefCounted = Client.shared(host.api, me)
+	client._choice_path = CHOICE_PATH
+	var room := FakeRoom.new()
+	room.host = host
+	host.relay_child = room
+	root.add_child(room)
+	var flow := Flow.new(host)
+	var path := "/v1/leaderboards/" + LIGHTHOUSE_BOARD
+	var tag := me.left(1)
+	# The pair's earlier run, ranked second with the same time (1470 ticks).
+	var earlier_room := tag + "E" + "1".repeat(20)
+	Runs.note(me, _snapshot(earlier_room, _lighthouse_final(), "2026-10-20T10:00:00.000Z"), Registry.LIGHTHOUSE_V2)
+	var top := [_row(1, "01".repeat(16), 900), _row(2, Runs.entry_id(earlier_room, 1), 1470), _row(3, "03".repeat(16), 2000)]
+	var refused_room := tag + "N" + "1".repeat(20)
+	var refused := Runs.entry_id(refused_room, 1)
+	var board := _view(LIGHTHOUSE_BOARD, top, [])
+	client._views[LIGHTHOUSE_BOARD] = {"at": Time.get_ticks_msec(), "view": board}
+	host.api.replies["GET " + path] = {"ok": true, "data": board}
+	var line: Control = flow.line_for(_snapshot(refused_room, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(1)
+	_check(not Celebration.showing(room.ui), "%s: a run no faster than the pair's ranked run is not celebrated from the kept board" % tag)
+	await _frames(5)
+	var run: Dictionary = Runs.on_board(me, LIGHTHOUSE_BOARD).filter(func(item: Dictionary) -> bool: return item.entry_id == refused)[0]
+	_check(not Celebration.showing(room.ui) and not Placings.shared().was_shown(me, refused) and not BoardStatus.stands_waiting(run, board, Time.get_unix_time_from_system(), Runs.on_board(me, LIGHTHOUSE_BOARD)), "%s: nor after the card's read, and it never stands waiting" % tag)
+	flow._next_check = 0
+	flow.service_home()
+	await _frames(4)
+	_check(host.toasts.is_empty() and not flow._seen_checking.has(refused), "%s: Home says nothing about it: %s" % [tag, host.toasts])
+	# A board that lists it waiting anyway (never from the server) still moves nothing.
+	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, top, [refused])}
+	client._views.clear()
+	flow._next_check = 0
+	flow._read_at.clear()
+	flow._settled.clear()
+	flow.service_home()
+	await _frames(4)
+	_check(host.toasts.is_empty() and not flow._seen_checking.has(refused), "%s: a listed run that would not stand above the pair's row has no note either" % tag)
+	line.queue_free()
+	# A faster run the board lists waiting stands above the pair's row: celebrated, and Home says it.
+	# This time the pair's earlier run on this phone is slower (1600 ticks).
+	_clear(RUNS_PATH)
+	var file := FileAccess.open(RUNS_PATH, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"schema_version": 1, "players": {me: [_run_on(Runs.entry_id(earlier_room, 1), 1600, PARTNER if me == OWNER else OWNER, "2026-10-20T10:00:00.000Z")]}}))
+	file.close()
+	Runs.use_path(RUNS_PATH)
+	var faster_room := tag + "F" + "1".repeat(20)
+	var faster := Runs.entry_id(faster_room, 1)
+	var slower_top := [_row(1, "01".repeat(16), 900), _row(2, Runs.entry_id(earlier_room, 1), 1600), _row(3, "03".repeat(16), 2000)]
+	host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, slower_top, [faster])}
+	# The board this phone kept from before the post does not list it: the card's read is fresh, so it hears the post's answer.
+	client._views.clear()
+	client._views[LIGHTHOUSE_BOARD] = {"at": Time.get_ticks_msec(), "view": _view(LIGHTHOUSE_BOARD, slower_top, [])}
+	line = flow.line_for(_snapshot(faster_room, _lighthouse_final(), _now_iso(-5)), Registry.LIGHTHOUSE_V2)
+	room.card.add_child(line)
+	await _frames(5)
+	var shown: Node = room.ui.find_child(Celebration.NODE_NAME, false, false)
+	_check(shown != null and shown.placing.entry_id == faster and shown.placing.rank == 2, "%s: a listed run above the pair's row is celebrated at its place" % tag)
+	if shown != null: Celebration.close_over(room.ui)
+	line.queue_free()
+	flow._next_check = 0
+	flow.service_home()
+	await _frames(3)
+	_check(host.toasts == [PlayerCopy.BOARD_HOME_CHECKING % "0:49.0"], "%s: and Home says it is being checked: %s" % [tag, host.toasts])
+	room.queue_free()
+	host.relay_child = null
+	_drop(host)
+	await _frames(1)
+	_fresh_runs()
+	_clear(PLACINGS_PATH)
+	Placings.use_shared(Placings.new(PLACINGS_PATH))
 
 func _board_reasons() -> void:
 	_clear(RUNS_PATH)
