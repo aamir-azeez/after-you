@@ -62,33 +62,31 @@ func keep(node: Node) -> void:
 
 ## Keeps `node` turning about its up axis at `rate` radians a second once the
 ## tap ends, for as long as the keepsake holds its end state (never under
-## Reduce motion, and only while Home is drawn). `beams` evenly spaced arms
-## turn on it; each of `answers`, [part, bearing, lit look, dark look], is lit
-## while an arm points within ANSWER_WIDTH of its bearing.
-func spin(node: Node3D, rate: float, beams: int = 1, answers: Array = []) -> void:
+## Reduce motion, and only while Home is drawn). Each of `answers`, [part,
+## bearing, lit look, dark look], is lit while the node's +x points within
+## ANSWER_WIDTH of its bearing (a beam passing over it).
+func spin(node: Node3D, rate: float, answers: Array = []) -> void:
 	keep(node)
 	for answer: Array in answers:
 		keep(answer[0])
 		looks.append_array([answer[2], answer[3]])
-	spins.append({"node": node, "rate": rate, "beams": maxi(1, beams), "answers": answers})
+	spins.append({"node": node, "rate": rate, "answers": answers})
 
-## How near an arm points to an answer's bearing to light it (radians).
+## How near the beam points to an answer's bearing to light it (radians).
 const ANSWER_WIDTH := 0.22
 
 ## Turns every spin on by `step` seconds and lights its answers. Writes
-## nothing else; a light changes only as an arm comes or goes.
+## nothing else; a light changes only as the beam comes or goes.
 static func advance_spins(list: Array[Dictionary], step: float) -> void:
 	for turning: Dictionary in list:
 		if not is_instance_valid(turning.node): continue
 		var node: Node3D = turning.node
 		var angle := fposmod(node.rotation.y + float(turning.rate) * step, TAU)
 		node.rotation.y = angle
-		var gap := TAU / int(turning.beams)
 		for answer: Array in turning.answers:
 			if not is_instance_valid(answer[0]): continue
 			var part: MeshInstance3D = answer[0]
-			var off := fposmod(angle - float(answer[1]), gap)
-			var look: Material = answer[2] if minf(off, gap - off) <= ANSWER_WIDTH else answer[3]
+			var look: Material = answer[2] if absf(angle_difference(angle, float(answer[1]))) <= ANSWER_WIDTH else answer[3]
 			if part.material_override != look: part.material_override = look
 
 ## Tweens `node`'s `property` (a subpath such as "rotation:y" is fine) to `to`

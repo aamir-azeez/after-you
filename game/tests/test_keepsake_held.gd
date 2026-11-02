@@ -36,12 +36,13 @@ func _run() -> void:
 		await _check_glasshouse(look)
 		await _check_lighthouse(look)
 	await _check_running()
+	await _check_steps_press()
 	await _check_cost()
 	print("KEEPSAKE HELD: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
-## A world and a Home stage showing the two keepsakes in one look.
-func _home(look: Array) -> Dictionary:
+## A world and a Home stage showing the two keepsakes (or amilies) in one look.
+func _home(look: Array, families: Array = [GLASS, LIGHT]) -> Dictionary:
 	Stage._retained_view.clear()
 	var viewport := SubViewport.new()
 	viewport.size = Vector2i(1280, 720)
@@ -58,7 +59,7 @@ func _home(look: Array) -> Dictionary:
 	stage.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	var items: Array[Dictionary] = []
 	for item: Dictionary in Catalog.all():
-		if not item.family in [GLASS, LIGHT]: continue
+		if not item.family in families: continue
 		var earned := item.duplicate(true)
 		earned.solo = true
 		earned.friend = bool(look[1]) and item.friend_available
@@ -174,16 +175,27 @@ func _check_lighthouse(look: Array) -> void:
 	tween.custom_step(0.1)
 	var beam: Dictionary = layer._play.anim.made.beam
 	var turn: Node3D = beam.turn
-	var arm: Node3D = beam.arms[0]
+	var arm: Node3D = beam.arm
 	tween.custom_step(0.4)
 	_check(arm.scale.x > Lighthouse.REACH_FROM.x and arm.scale.x < 1.0, "%s's beam reaches out of the lamp: %.2f" % [label, arm.scale.x])
+	_check(layer.prop_node(LIGHT).find_children("*", "MeshInstance3D", true, false).filter(func(mesh: Node) -> bool: return (mesh as MeshInstance3D).mesh == beam.cone.mesh).size() == 1, "%s has one beam" % label)
+	if look[2]:
+		# Hard: the board's second, faster sweep, once round on top of the slow
+		# turn, easing back into it where the slow turn would have been.
+		var hard_at := Lighthouse.new().base_time() + (Lighthouse.new().upgrade_time("together") if look[1] else 0.0)
+		tween.custom_step(hard_at + 0.3 - 0.5)
+		var spun := arm.rotation.y
+		tween.custom_step(0.05)
+		var fast := arm.rotation.y - spun
+		_check(spun > 1.0 and spun < TAU - 1.0 and fast > (TAU / Lighthouse.SWEEP) * 0.05 * 10.0, "%s sweeps the beam round fast at its Hard beat: %.2f rad, %.3f in a twentieth" % [label, spun, fast])
+		tween.custom_step(0.3)
+		_check(is_equal_approx(arm.rotation.y, TAU), "%s's fast sweep ends a whole turn round, back on the slow turn" % label)
 	await _finish(layer)
 	await process_frame
 	_check(not layer.playing() and not stage.keepsake_playing() and layer.holding(LIGHT), "%s stays on, held, not playing, so Home stays calm" % label)
-	_check(lamp.material_override != lamp_rest and turn.is_visible_in_tree() and arm.scale.is_equal_approx(Vector3.ONE), "%s keeps the lamp lit and the beam out" % label)
-	_check(beam.arms.size() == (2 if look[2] else 1) and beam.arms.all(func(each: Node3D) -> bool: return each.is_visible_in_tree() and each.scale.is_equal_approx(Vector3.ONE)), "%s keeps %d beam(s) out" % [label, beam.arms.size()])
+	_check(lamp.material_override != lamp_rest and turn.is_visible_in_tree() and arm.is_visible_in_tree() and arm.scale.is_equal_approx(Vector3.ONE), "%s keeps the lamp lit and the beam out" % label)
 	var gold: Material = Parts.clear(Lighthouse.BEAM_GOLD, Lighthouse.BEAM_ALPHA, 1.2)
-	_check(beam.cones.all(func(cone: MeshInstance3D) -> bool: return (cone.material_override == gold) == bool(look[3])), "%s's beams are %s" % [label, "gold" if look[3] else "plain"])
+	_check((beam.cone.material_override == gold) == bool(look[3]), "%s's beam is %s" % [label, "gold" if look[3] else "plain"])
 	_check(not layer.is_processing(), "%s turns without the layer's own frame callback" % label)
 	# It turns slowly and steadily, one turn every SWEEP seconds.
 	var rate := TAU / Lighthouse.SWEEP
@@ -216,7 +228,7 @@ func _check_lighthouse(look: Array) -> void:
 		turn.rotation.y = fposmod(bearing + PI * 0.5, TAU)
 		layer.advance_held(0.0)
 		_check(lit == Parts.glow(Parts.LAMP, 2.0) and boat.material_override == Parts.mat(Parts.LAMP_OFF), "%s's boat lamp lights as the beam passes and goes out after" % label)
-	# Pressed again: the beams fade back into the lamp as they turn, and it sleeps.
+	# Pressed again: the beam fades back into the lamp as it turns, and it sleeps.
 	_check(stage.play_keepsake(LIGHT) and stage.keepsake_playing() and not layer.holding(LIGHT), "%s pressed again plays its fade off" % label)
 	angle = turn.rotation.y
 	layer.advance_held(0.2)
@@ -254,7 +266,7 @@ func _check_lighthouse(look: Array) -> void:
 	home.world.reduced_motion = true
 	stage.play_keepsake(LIGHT)
 	var still: Dictionary = layer._play.anim.made.beam
-	_check((still.arms[0] as Node3D).scale == Vector3.ONE and (still.turn as Node3D).visible, "%s with Reduce motion is on at once" % label)
+	_check((still.arm as Node3D).scale == Vector3.ONE and (still.turn as Node3D).visible, "%s with Reduce motion is on at once" % label)
 	await _finish(layer)
 	angle = (still.turn as Node3D).rotation.y
 	stage._process(0.5)
@@ -296,6 +308,47 @@ func _check_running() -> void:
 	_check(Lighthouse.new().off_time() <= Builder.UPGRADE_MAX and Lighthouse.new().press_again() == Builder.SWITCH and Glasshouse.new().press_again() == Builder.REPLAY, "The lighthouse switches off within an upgrade beat's time; the Conservatory replays")
 	await _close(home)
 
+## "Climb the steps" pressed again beside the Giant Steps while its last climb
+## eases back to rest: the press counts, the pip hops round to the front again
+## (ride_approach.gd) and climbs, and the Giant Steps holds nothing.
+func _check_steps_press() -> void:
+	var STEPS := "high-and-low"
+	var home := await _home(LOOKS[3], [STEPS])
+	var layer: Node3D = home.layer
+	var stage: Control = home.stage
+	var spirit: Node3D = home.world.actors.a
+	stage._explore_button.pressed.emit()
+	var placed: Transform3D = layer.slot_transform(STEPS)
+	var beside := Vector3.INF
+	for x in range(-14, 13):
+		var local := Vector3(x * 0.2, 0, 0.0)
+		if absf(local.x) > 1.0 and layer.walkable(placed * local) and layer.nearest(placed * local, Stage.EXPLORE_NOTICE) == STEPS:
+			beside = placed * local
+			break
+	_check(beside.is_finite(), "There is a spot beside the Giant Steps that offers the climb")
+	if not beside.is_finite():
+		await _close(home)
+		return
+	var settled := false
+	for pass_index in range(2):
+		spirit.position = beside
+		spirit.reset_motion()
+		layer.select_id(STEPS)
+		var pressed: bool = layer.play(STEPS, spirit)
+		var anim: RefCounted = layer._play.get("anim")
+		_check(pressed and layer.riding() and anim != null and anim.start > 0.0, "Climb pressed beside the Giant Steps hops round first (pass %d, pressed as it eased back: %s)" % [pass_index, settled])
+		if not pressed: break
+		var tween: Tween = layer._play.tween
+		var frames := 0
+		while layer.playing() and not layer._play.settling and frames < 600:
+			frames += 1
+			tween.custom_step(1.0 / 30.0)
+		settled = layer.playing() and layer._play.settling
+		if pass_index == 0: _check(settled, "The Giant Steps eases back to rest after its climb, where the next press lands")
+		_check(not layer.riding() and not layer.holding(STEPS), "and lands the pip, holding nothing (pass %d)" % pass_index)
+	layer.stop_play()
+	await _close(home)
+
 ## What a held keepsake costs a frame: one rotation and a light check.
 func _check_cost() -> void:
 	var home := await _home(LOOKS[3])
@@ -311,6 +364,6 @@ func _check_cost() -> void:
 	start = Time.get_ticks_usec()
 	for index in range(CALLS): layer.advance_held(1.0 / 30.0)
 	var held := float(Time.get_ticks_usec() - start) / CALLS
-	print("KEEPSAKE HELD COST: %.2f us a frame with nothing held, %.2f us with the lighthouse (two beams, boat lamp) and the flower held" % [idle, held])
+	print("KEEPSAKE HELD COST: %.2f us a frame with nothing held, %.2f us with the lighthouse (beam and boat lamp) and the flower held" % [idle, held])
 	_check(held < 200.0, "Holding them costs well under a frame's budget: %.2f us" % held)
 	await _close(home)
