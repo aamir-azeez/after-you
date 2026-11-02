@@ -20,7 +20,7 @@ import { duelsOn } from "./turn-hook";
  */
 export type DuelNews = { duel_id: string; at: number; recipients: string[] };
 
-/** Duel hints go out, and phones are told so (duelsCapability), only while duels and the live socket are both on. */
+/** Duel hints go out, and phones are told so in every duel read (hintsField), only while duels and the live socket are both on. */
 export function duelHintsOn(env: ServerVars): boolean { return duelsOn(env) && flags.liveConnection(env); }
 
 /**

@@ -147,7 +147,7 @@ async function winBonus(env: Env, player: string, duel: Duel, settled: readonly 
 async function lobby(env: Env, player: string, now: number): Promise<unknown> {
   const pair = await pairOf(env, player, now);
   const { duels, missing } = await duelsOf(env, pair.state.duels, player);
-  const stale =duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS).map(duel => duel.duel_id);
+  const stale = duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS).map(duel => duel.duel_id);
   const shown = duels.filter(duel => !stale.includes(duel.duel_id));
   const settled: string[] = [];
   // Every won duel is paid before its pointer goes, so a winner who stays away a while still gets it.
