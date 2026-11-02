@@ -125,11 +125,14 @@ function openFor(duels: readonly Duel[], key: string, kind: Duel["kind"]): numbe
  */
 async function winBonus(env: Env, player: string, duel: Duel, settled: readonly string[], force = false): Promise<DuelWinAnswer | null> {
   const mine = sideOf(duel, player);
-  // Only a win on time whose runs all passed the replay check pays (POLLEN-RULES.md): never one the other pair left or failed.
+  // Only a win on time pays (POLLEN-RULES.md), its runs passed by the replay check while duel run checks are on (model.ts
+  // awaitsCheck), as they finished while off: never one the other pair left or failed.
   if (!pollenEarning(env) || duel.status !== "decided" || duel.result?.winner !== mine || duel.result.reason !== "faster") return null;
   const friend = duel.kind === "friend";
-  // A ghost race pays only against the developers' ghost, on a run the check passed (model.ts awaitsCheck); a rate of 0 writes nothing.
-  const ghost = duel.kind === "ghost" && duel.ghost?.source === "developer" && duel.sides[0].check === "passed" && RATES.duels.ghost_win_bonus > 0;
+  // A ghost race pays only against the developers' ghost, on a run the check passed or that counted without it while duel
+  // run checks were off (model.ts Side.waived), never one decided before the bonus existed; a rate of 0 writes nothing.
+  const run = duel.sides[0];
+  const ghost = duel.kind === "ghost" && duel.ghost?.source === "developer" && (run.check === "passed" || run.waived === true) && RATES.duels.ghost_win_bonus > 0;
   if (!friend && !ghost) return null;
   if (!force && settled.includes(duel.duel_id)) return null;
   const wallet = env.PLAYERS.getByName(player);

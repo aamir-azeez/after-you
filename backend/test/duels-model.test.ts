@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress, score, settle, sideOf, verdict, viewFor, type Duel, type ProgressNote } from "../src/duels/model";
+import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "../src/duels/rules";
 import { runProgress } from "../src/duels/ticks";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -18,6 +18,8 @@ import { isoWeek } from "../src/pollen/week";
 const [A1, A2, B1, B2, X] = ["a1".padEnd(22, "a"), "a2".padEnd(22, "a"), "b1".padEnd(22, "b"), "b2".padEnd(22, "b"), "xx".padEnd(22, "x")];
 const CHAPTER = { level_id: "relay-isles", level_version: 2, definition_hash: "f".repeat(64) };
 const T0 = 1_800_000_000_000;
+/** A turn's note with duel run checks on (DUEL_RUN_CHECKS), as most of these cases are; "duel run checks off" below passes false. */
+const progress = (duel: Duel, note: ProgressNote, now: number) => progressWith(duel, note, now, true);
 
 function friend(now = T0): Duel {
   return newFriendDuel({ duel_id: "d".repeat(32), board: "relay-isles@2", chapter: CHAPTER, steps: 4, starter: A1,
@@ -254,11 +256,14 @@ describe("duel state machine", () => {
       expect(slow.sides[0].check).toBe("none");
       expect(slow.status).toBe("decided");
     }
-    // Only the developers' ghost and friend duels ask for the check.
-    expect(awaitsCheck(ghost(3000), 1)).toBe(false);
-    expect(awaitsCheck(ghost(3000, T0, "developer"), 3000)).toBe(false);
-    expect(awaitsCheck(friend(), 999_999)).toBe(true);
+    // Only the developers' ghost and friend duels ask for the check, and only while duel run checks are on.
+    expect(awaitsCheck(ghost(3000), 1, true)).toBe(false);
+    expect(awaitsCheck(ghost(3000, T0, "developer"), 3000, true)).toBe(false);
+    expect(awaitsCheck(friend(), 999_999, true)).toBe(true);
+    expect(awaitsCheck(ghost(3000, T0, "developer"), 1, false)).toBe(false);
+    expect(awaitsCheck(friend(), 999_999, false)).toBe(false);
   });
+
 
   it("only the pair and checked friends see ids, and only your own side carries the room", () => {
     const duel = running();
@@ -357,6 +362,66 @@ describe("duel pay", () => {
     expect(validTurnFacts(base)).toBe(true);
     expect(validTurnFacts({ ...base, duel: true })).toBe(true);
     expect(validTurnFacts({ ...base, duel: false })).toBe(false);
+  });
+});
+
+describe("duel run checks off", () => {
+  const off = (duel: Duel, item: ProgressNote, now: number) => progressWith(duel, item, now, false);
+  it("decide a friend duel the moment both runs finish, or one finishes and the other pair left", () => {
+    const duel = running();
+    expect(off(duel, note("ra", 9, 2000, true), T0 + 30).ok).toBe(true);
+    expect(duel.sides[0]).toMatchObject({ check: "none", waived: true });
+    expect(duel.status).toBe("running");
+    expect(off(duel, note("rb", 9, 2100, true), T0 + 40).ok).toBe(true);
+    expect(viewFor(duel, A1)!.result).toMatchObject({ outcome: "won", reason: "faster", margin_ticks: 100 });
+    const left = running();
+    off(left, note("ra", 9, 2000, true), T0 + 30);
+    expect(leave(left, B1, T0 + 40).ok).toBe(true);
+    expect(viewFor(left, A1)!.result).toMatchObject({ outcome: "won", reason: "left" });
+  });
+
+  it("decide a race faster than the developers' ghost at once, marked as counted without its check; other races as before", () => {
+    const race = ghost(3000, T0, "developer");
+    claimRoom(race, A2, { room_id: "rg", invite_code: "ig" }, T0);
+    off(race, note("rg", 5, 2999, true), T0 + 10);
+    expect(race.sides[0]).toMatchObject({ check: "none", waived: true });
+    expect(viewFor(race, A1)!.result).toMatchObject({ outcome: "won", reason: "faster", margin_ticks: 1 });
+    // A slower run, or one against a board run, never would have waited: nothing is waived.
+    for (const [made, ticks] of [[ghost(3000, T0, "developer"), 3001], [ghost(3000), 1]] as const) {
+      claimRoom(made, A2, { room_id: "rg", invite_code: "ig" }, T0);
+      off(made, note("rg", 5, ticks, true), T0 + 10);
+      expect(made.status).toBe("decided");
+      expect(made.sides[0].waived).toBeUndefined();
+    }
+  });
+
+  it("settle runs still waiting for a check as passed, once, and leave other duels alone", () => {
+    const duel = running();
+    progress(duel, note("ra", 9, 2000, true), T0 + 30);
+    progress(duel, note("rb", 9, 2100, true), T0 + 40);
+    expect(duel.sides.map(side => side!.check)).toEqual(["waiting", "waiting"]);
+    expect(waiveChecks(duel, T0 + 50)).toBe(true);
+    expect(duel.sides[0]).toMatchObject({ check: "passed", waived: true });
+    expect(viewFor(duel, A1)!.result).toMatchObject({ outcome: "won", reason: "faster" });
+    expect(duel.updated_ms).toBe(T0 + 50);
+    expect(waiveChecks(duel, T0 + 60)).toBe(false);
+    // One pair still playing: its finished rival counts as passed, and the duel waits for the other run.
+    const half = running();
+    progress(half, note("ra", 9, 2000, true), T0 + 30);
+    expect(waiveChecks(half, T0 + 50)).toBe(true);
+    expect(half).toMatchObject({ status: "running", result: null });
+    expect(half.sides[0]!.check).toBe("passed");
+    // A check already given stands, and a duel nobody waits on is not touched.
+    const failed = running();
+    progress(failed, note("ra", 9, 2000, true), T0 + 30);
+    verdict(failed, failed.sides[0].entry_id!, "failed", T0 + 35);
+    expect(waiveChecks(failed, T0 + 50)).toBe(false);
+    expect(waiveChecks(friend(), T0 + 50)).toBe(false);
+    const race = ghost(3000, T0, "developer");
+    claimRoom(race, A2, { room_id: "rg", invite_code: "ig" }, T0);
+    progress(race, note("rg", 5, 2999, true), T0 + 10);
+    expect(waiveChecks(race, T0 + 20)).toBe(true);
+    expect(viewFor(race, A1)!.result).toMatchObject({ outcome: "won", reason: "faster" });
   });
 });
 

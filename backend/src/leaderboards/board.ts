@@ -10,6 +10,7 @@ import { emptyView, type BoardRow, type BoardView } from "./view";
 import { fail, type Outcome } from "../protocol";
 import { DuelStore, type DuelAction, type DuelReplayWork, type FinishProof, type RunCopyWork } from "../duels/store";
 import { announceDuelNews } from "../duels/news";
+import { duelRunChecksOn } from "../duels/turn-hook";
 /** Run copy rooms one board hands the sweep at a time (duels/their-run-sweep.ts). */
 const MAX_COPY_SWEEP = 32;
 import { BoardProofs, LEGACY_PROOF_TABLE, PROOF_TABLE, encodeProof, sentProof } from "./proofs";
@@ -34,7 +35,8 @@ import type { Duel, ProgressNote, SideRoom } from "../duels/model";
  * when the entry has moved on.
  *
  * The chapter version's duels live here too, in their own tables
- * (duels/store.ts). Their finished runs go to the same replay job: pending
+ * (duels/store.ts). While duel run checks are on (DUEL_RUN_CHECKS), their
+ * finished runs go to the same replay job: pending
  * work lists them after the board's own (once each, when a run is both), and
  * every verdict is offered to both.
  */
@@ -88,7 +90,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
     super(ctx, env);
     this.rewards = new BoardRewardLedger(ctx.storage);
     // A duel that moved past a milestone tells its other players over the live socket (duels/news.ts), after the reply.
-    this.duels = new DuelStore(ctx.storage, news => ctx.waitUntil(announceDuelNews(env, news)));
+    // Duel run checks are read from this object's own CONFIG at each call (duels/turn-hook.ts duelRunChecksOn).
+    this.duels = new DuelStore(ctx.storage, news => ctx.waitUntil(announceDuelNews(env, news)), () => duelRunChecksOn(env));
     this.proofs = new BoardProofs(ctx.storage);
     ctx.blockConcurrencyWhile(async () => openLazyStorage(this, ctx.storage, "lb_entries", () => { for (const sql of SCHEMA) ctx.storage.sql.exec(sql); openRewardSync(ctx.storage); }));
   }

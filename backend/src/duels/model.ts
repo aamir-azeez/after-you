@@ -13,14 +13,18 @@ import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "./rules";
  *
  * Two kinds, one shape:
  * - friend: pair 0 challenged pair 1. Each pair plays the chapter in its own
- *   fresh room (`room`, claimed by whichever member opens it first). A run
+ *   fresh room (`room`, claimed by whichever member opens it first). While
+ *   duel run checks are on (DUEL_RUN_CHECKS, passed in as `checks`), a run
  *   counts once the replay check passed it (`check`), so a win arrives with
- *   the result.
+ *   the result; while they are off (the default) it counts as it finishes
+ *   (`check` "none").
  * - ghost: pair 0 races a recorded time (`ghost`); side 1 is null. Decided the
- *   moment the pair finishes, with no check, except a finish faster than the
- *   developers' ghost: that run waits for the replay check like a friend run
- *   (awaitsCheck), since its win pays a first time bonus (pollen/duel-pay.ts
- *   creditGhostWin). A run that fails it ends the race with no result.
+ *   moment the pair finishes, with no check, except, while checks are on, a
+ *   finish faster than the developers' ghost: that run waits for the replay
+ *   check like a friend run (awaitsCheck), since its win pays a first time
+ *   bonus (pollen/duel-pay.ts creditGhostWin). A run that fails it ends the
+ *   race with no result. Checks turned off settle a run still waiting as
+ *   passed (waiveChecks).
  *
  * Time rules are read lazily (settle): a challenge fades after
  * CHALLENGE_TTL_MS, and a running duel nobody has played for STALL_MS ends
@@ -51,6 +55,12 @@ export type Side = {
   entry_id: string | null;
   check: RunCheck; left: boolean;
   last_ms: number | null;
+  /**
+   * True when the finished run counted without the replay check it would have waited for, since duel run checks were
+   * off (DUEL_RUN_CHECKS): its `check` reads "none", or "passed" when it was waiting as they went off (waiveChecks).
+   * What tells such a win over the developers' ghost, which pays, from a race decided before that bonus existed.
+   */
+  waived?: true;
 };
 export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null };
 export type ResultReason = "faster" | "draw" | "left" | "failed_check" | "unchecked" | "stalled" | "erased";
@@ -115,11 +125,12 @@ export function players(duel: Duel): string[] {
 }
 
 /**
- * Whether a side's finished run waits for the replay check before the duel is decided: every friend run,
- * and a run faster than the developers' ghost, the only ghost win that pays.
+ * Whether a side's finished run waits for the replay check before the duel is decided: only while duel run
+ * checks are on (`checks`, the DUEL_RUN_CHECKS flag), every friend run and a run faster than the developers'
+ * ghost, the only ghost win that pays.
  */
-export function awaitsCheck(duel: Duel, ticks: number): boolean {
-  return duel.kind === "friend" || (duel.ghost?.source === "developer" && ticks < duel.ghost.ticks);
+export function awaitsCheck(duel: Duel, ticks: number, checks: boolean): boolean {
+  return checks && (duel.kind === "friend" || (duel.ghost?.source === "developer" && ticks < duel.ghost.ticks));
 }
 
 /** A side's score: its raw ticks. The one place a card layer's modifiers would apply; boards never read it. */
@@ -158,6 +169,8 @@ function conclude(duel: Duel, winner: 0 | 1 | null, reason: ResultReason, now: n
 type Settled = "passed" | "failed" | "error" | "left" | "open";
 function sideSettled(side: Side): Settled {
   if (side.finished_ms === null) return side.left ? "left" : "open";
+  // A run no check waits on ("none", duel run checks off) counts as it finished.
+  if (side.check === "none") return "passed";
   return side.check === "passed" || side.check === "failed" || side.check === "error" ? side.check : "open";
 }
 
@@ -250,7 +263,7 @@ export function claimRoom(duel: Duel, player: string, proposal: { room_id: strin
  * that revision, so a lost or repeated note is healed by the next one. A
  * side's first finish is final: a later redo in its room changes nothing here.
  */
-export function progress(duel: Duel, note: ProgressNote, now: number): Outcome<{ finished: boolean }> {
+export function progress(duel: Duel, note: ProgressNote, now: number, checks: boolean): Outcome<{ finished: boolean }> {
   settle(duel, now);
   const index = duel.sides.findIndex(side => side?.room?.room_id === note.room_id);
   if (index < 0) return fail(404, "duel_room_unknown");
@@ -261,11 +274,27 @@ export function progress(duel: Duel, note: ProgressNote, now: number): Outcome<{
   if (note.complete) {
     side.finished_ms = note.at_ms;
     side.entry_id = note.entry_id;
-    side.check = awaitsCheck(duel, side.ticks) ? "waiting" : "none";
+    side.check = awaitsCheck(duel, side.ticks, checks) ? "waiting" : "none";
+    if (!checks && awaitsCheck(duel, side.ticks, true)) side.waived = true;
   }
   duel.updated_ms = now;
   decide(duel, now);
   return ok({ finished: note.complete });
+}
+
+/**
+ * Duel run checks are off: a running duel's runs still waiting for the replay check count as passed, and the
+ * duel is decided if it can be. Returns whether it changed. A run finished while checks were on is never left
+ * waiting for a check nobody will make.
+ */
+export function waiveChecks(duel: Duel, now: number): boolean {
+  if (duel.status !== "running") return false;
+  let changed = false;
+  for (const side of duel.sides) if (side?.check === "waiting") { side.check = "passed"; side.waived = true; changed = true; }
+  if (!changed) return false;
+  duel.updated_ms = now;
+  decide(duel, now);
+  return true;
 }
 
 /** The replay check's answer on a waiting run (awaitsCheck). Returns whether it counted. */

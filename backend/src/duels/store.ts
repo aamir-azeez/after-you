@@ -4,7 +4,7 @@ import type { ReplayWork } from "../leaderboards/board";
 import { REVIEW_REASONS } from "../leaderboards/rules";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
-import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, milestone, newsRecipients, progress, settle, verdict, type Duel, type Milestone, type ProgressNote, type SideRoom } from "./model";
+import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, milestone, newsRecipients, progress, settle, verdict, waiveChecks, type Duel, type Milestone, type ProgressNote, type SideRoom } from "./model";
 import type { DuelNews } from "./news";
 import { MAX_BOARD_DUELS, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, STALL_MS } from "./rules";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
@@ -20,7 +20,11 @@ import { THEIR_RUN_KEEP_MS } from "./their-run";
  * - duel_proofs: a finished run's final checkpoint (a friend run, or a ghost
  *   race run faster than the developers' ghost) in the shared blob format
  *   (blob-codec.ts: deflate, its canonical length and SHA-256), while the
- *   replay job has not judged it (at most MAX_DUEL_PROOFS).
+ *   replay job has not judged it (at most MAX_DUEL_PROOFS). Only while duel
+ *   run checks are on (`checks`, DUEL_RUN_CHECKS): off, nothing is encoded or
+ *   kept, the job is handed no duel run, and a duel still waiting on a check
+ *   counts it as passed the next time a call loads it (model.ts waiveChecks),
+ *   its proofs going with it.
  * Both appear with the first duel write, never on a board nobody duels on.
  * - duel_run_copies: pointers only, never bytes. A friend duel's room may
  *   keep a copy of its run for the other pair (their-run.ts). Each claimed room
@@ -69,7 +73,9 @@ export class DuelStore {
   private loaded: Map<string, Milestone> | null = null;
   private news = new Map<string, DuelNews>();
   private actor: string | null = null;
-  constructor(private readonly storage: DurableObjectStorage, private readonly announce: (news: DuelNews[]) => void = () => undefined) {}
+  /** `checks`: whether duel run checks are on (duels/turn-hook.ts duelRunChecksOn), read once per call. */
+  constructor(private readonly storage: DurableObjectStorage, private readonly announce: (news: DuelNews[]) => void = () => undefined,
+    private readonly checks: () => boolean = () => false) {}
 
   /** Adds a new duel; the same id again answers the one already held. Null when the board is full of open duels. */
   create(duel: Duel, now: number): Duel | null {
@@ -86,8 +92,10 @@ export class DuelStore {
   /** The duels named, settled to `now` (a changed one is saved), in the order asked; unknown ids are left out. */
   read(ids: readonly string[], now: number, reader: string | null = null): Duel[] {
     if (!this.present() || !ids.length) return [];
+    const checks = this.checks();
     return this.tell(reader, () => this.storage.transactionSync(() => ids.map(id => this.duel(id)).filter((duel): duel is Duel => duel !== null).map(duel => {
-      if (settle(duel, now)) this.save(duel);
+      const waived = this.waive(duel, now, checks);
+      if (settle(duel, now) || waived) this.save(duel);
       return duel;
     })));
   }
@@ -95,10 +103,12 @@ export class DuelStore {
   /** One player action on one duel. Answers the duel (with the side's room for a claim), or the model's refusal. */
   act(duelId: string, action: DuelAction, now: number): Outcome<{ duel: Duel; room?: SideRoom }> {
     if (!this.present()) return fail(404, "duel_not_found");
+    const checks = this.checks();
     return this.tell(action.player, () => this.storage.transactionSync(() => {
       const duel = this.duel(duelId);
       if (!duel) return fail(404, "duel_not_found");
       const before = JSON.stringify(duel);
+      this.waive(duel, now, checks);
       let answer: Outcome<unknown>;
       if (action.kind === "accept") answer = accept(duel, action.player, now, action.intact);
       else if (action.kind === "decline") answer = decline(duel, action.player, now);
@@ -121,16 +131,18 @@ export class DuelStore {
    */
   async progress(duelId: string, note: ProgressNote, now: number, proof?: FinishProof, actor: string | null = null): Promise<Outcome<Duel>> {
     if (!this.present()) return fail(404, "duel_not_found");
+    const checks = this.checks();
     // Encoded before the transaction (compression is async), and only on the side's first finish of a run the check will want.
-    const held = proof && note.complete ? this.duel(duelId) : null;
+    const held = checks && proof && note.complete ? this.duel(duelId) : null;
     const first = held?.sides.find(side => side?.room?.room_id === note.room_id)?.finished_ms === null;
-    const encoded = held && first && awaitsCheck(held, note.ticks) ? await encodeProof(proof!.checkpoint) : null;
+    const encoded = held && first && awaitsCheck(held, note.ticks, checks) ? await encodeProof(proof!.checkpoint) : null;
     const kept = encoded && encoded.byte_length <= MAX_DUEL_PROOF_CHARS ? encoded : null;
     return this.tell(actor, () => this.storage.transactionSync(() => {
       const duel = this.duel(duelId);
       if (!duel) return fail(404, "duel_not_found");
       const before = JSON.stringify(duel);
-      const answer = progress(duel, note, now);
+      this.waive(duel, now, checks);
+      const answer = progress(duel, note, now, checks);
       const side = answer.ok && answer.value.finished && note.entry_id ? duel.sides.find(item => item?.entry_id === note.entry_id && item.check === "waiting") : undefined;
       if (side && kept) this.keepProof(duel, note.entry_id!, kept, side.ticks, proof!.simulation_version, now);
       else if (side) { side.check = "error"; decide(duel, now); }
@@ -141,7 +153,8 @@ export class DuelStore {
 
   /** Duel runs for the replay job, at most `maxChars` of canonical bytes, skipping entries the board already hands out. */
   pending(maxChars: number, skip: ReadonlySet<string>): DuelReplayWork[] {
-    if (!this.present()) return [];
+    // Checks off: no duel run goes to the job; one held from before goes at its duel's next load (waive).
+    if (!this.present() || !this.checks()) return [];
     const work: DuelReplayWork[] = [];
     let chars = 0;
     // Lengths first: a body is read only once it fits.
@@ -221,6 +234,12 @@ export class DuelStore {
   private duel(id: string): Duel | null {
     const row = this.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE duel_id=?", id).toArray()[0];
     return row ? this.track(JSON.parse(row.data) as Duel) : null;
+  }
+  /** Checks off (`checks` false): a run still waiting counts as passed (model.ts waiveChecks) and its proofs go. The caller saves. */
+  private waive(duel: Duel, now: number, checks: boolean): boolean {
+    if (checks || !waiveChecks(duel, now)) return false;
+    this.storage.sql.exec("DELETE FROM duel_proofs WHERE duel_id=?", duel.duel_id);
+    return true;
   }
   /** Notes a duel's milestone the first time a call loads it, so its save can tell what moved. */
   private track(duel: Duel): Duel {

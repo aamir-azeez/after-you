@@ -6,7 +6,8 @@
  * ticks of every turn on the finishing branch, as the Fastest pair board counts
  * them. Every turn is unassisted: a duel's room refuses Forgiving catches
  * (v2/room.ts), and the replay check fails an assisted run. A ghost race is one pair against a
- * recorded time; a run faster than the developers' ghost is checked too (model.ts awaitsCheck).
+ * recorded time; while duel run checks are on (DUEL_RUN_CHECKS, off by default), a run faster than the
+ * developers' ghost is checked too (model.ts awaitsCheck).
  * Pay is in pollen/ (POLLEN-RULES.md "Duels and ghost races").
  */
 
@@ -30,7 +31,7 @@ export const MAX_MEMBER_DUELS = 24;
 export const MAX_RECENT_DUELS = 12;
 /** A decided duel stays on the lobby this long, as a result tile. */
 export const RESULT_SHOWN_MS = 7 * 86_400_000;
-/** Raw duel runs waiting for the replay check, per board: a friend duel's run, or a ghost race's beating the developers' ghost, is checked before its win counts. */
+/** Raw duel runs waiting for the replay check, per board, while duel run checks are on (DUEL_RUN_CHECKS): a friend duel's run, or a ghost race's beating the developers' ghost, is checked before its win counts. */
 export const MAX_DUEL_PROOFS = 64;
 /** Duel records kept per board, newest first; settled ones go first past it. */
 export const MAX_BOARD_DUELS = 512;

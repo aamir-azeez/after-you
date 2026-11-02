@@ -115,10 +115,41 @@ async function verdicts(entries: Any[], valid: (entry: Any) => boolean) {
     valid: valid(entry), measured_ticks: entry.ticks, reason: valid(entry) ? "" : "replay_failed" })) }, ON, { Authorization: "Bearer " + await deriveJobToken(OPERATOR) }));
 }
 const detail = (account: Account, duel: DuelView) => ok<{ duel: DuelView; pay?: Any; win_bonus?: Any; ghost_bonus?: Any }>(call(`/v1/duels/${duel.board}/${duel.duel_id}`, "GET", account));
+/** The duel tables' statements on a board (duels/store.ts), apart from its own runs', for meterRows. */
+const DUEL_TABLES = /duel/;
+/** Duel runs the Relay board keeps for the replay check. */
+const proofRows = () => runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (_, ctx) =>
+  ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='duel_proofs'").toArray().length ? ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duel_proofs").one().n : 0);
+/** A friend duel A1 + A2 against B1 + B2, accepted, both rooms open and joined, each pair's host first. */
+async function friendRooms(a1: Account, a2: Account, b1: Account, b2: Account) {
+  const duel = (await ok<{ duel: DuelView }>(challenge(a1, b1))).duel;
+  await ok(call(`/v1/duels/${RELAY}/${duel.duel_id}/accept`, "POST", b1, { schema_version: 1 }));
+  const roomA = await ok<RoomSnapshotV2>(openRoom(a1, duel));
+  const joinedA = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: roomA.invite_code }));
+  const roomB = await ok<RoomSnapshotV2>(openRoom(b1, duel));
+  const joinedB = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", b2, { invite_code: roomB.invite_code }));
+  return { duel, joinedA, joinedB };
+}
 
 const shared = env as unknown as Record<string, unknown>;
+/** Objects read their own CONFIG, which the Worker's vars never reach: what a test set there, put back after it. */
+const objectConfigs = new Map<Record<string, unknown>, unknown>();
+async function objectConfig(stubs: DurableObjectStub[], config: string): Promise<void> {
+  for (const stub of stubs) await runInDurableObject(stub, instance => {
+    const target = Reflect.get(instance, "env") as Record<string, unknown>;
+    if (!objectConfigs.has(target)) objectConfigs.set(target, target.CONFIG);
+    target.CONFIG = config;
+  });
+}
+/** Duel run checks on (DUEL_RUN_CHECKS, off by default) at the Relay board, the object that reads them. */
+const CHECKS = configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "DUEL_RUN_CHECKS"] });
+const checksOn = (config = CHECKS) => objectConfig([env.LEADERBOARD_BOARDS.getByName(RELAY) as unknown as DurableObjectStub], config);
 beforeEach(async () => { shared.POLLEN_SECRET = SECRET; await forgetViews(boardKeys()); forgetReplays(); });
-afterEach(async () => { delete shared.POLLEN_SECRET; await reset(); });
+afterEach(async () => {
+  for (const [target, value] of objectConfigs) { if (value === undefined) delete target.CONFIG; else target.CONFIG = value; }
+  objectConfigs.clear();
+  delete shared.POLLEN_SECRET; await reset();
+});
 
 /** Four friends in two parties: A1 + A2 and B1 + B2, with A1 and B1 friends. */
 async function pairs(seasoned = false) {
@@ -171,6 +202,7 @@ describe("duel parties", () => {
 
 describe("friend duels", () => {
   it("run from challenge to result, with rooms, turns, the replay check, pay and the win bonus", async () => {
+    await checksOn();
     // Brand new accounts: the win bonus has no account rule (dropped 2026-10-31).
     const { a1, a2, b1, b2 } = await pairs();
     const key = crypto.randomUUID();
@@ -248,6 +280,40 @@ describe("friend duels", () => {
     expect(repeat.duel.result).toMatchObject({ outcome: "won", reason: "left" });
     // A win the other pair handed over by leaving pays no bonus: only a win where both runs passed does.
     expect(repeat.win_bonus).toBeUndefined();
+  }, 60_000);
+
+  it("are decided as the second run finishes while duel run checks are off, paying the win bonus at once and keeping no proof", async () => {
+    const board = env.LEADERBOARD_BOARDS.getByName(RELAY) as unknown as DurableObjectStub;
+    /** One whole duel, fast A against B 40 ticks slower: the board's rows written from the first turn to the paid result. */
+    const whole = async (checks: boolean) => {
+      await checksOn(checks ? CHECKS : ON.CONFIG);
+      const { a1, a2, b1, b2 } = await pairs();
+      const { duel, joinedA, joinedB } = await friendRooms(a1, a2, b1, b2);
+      const metered = await meterRows({ board }, async () => {
+        await play(joinedA, [a1, a2], await relayRun(0));
+        await play(joinedB, [b1, b2], await relayRun(40));
+        const seen = (await lobby(b2)).duels.find(item => item.duel_id === duel.duel_id)!;
+        if (checks) {
+          expect(seen).toMatchObject({ status: "running", result: null });
+          expect(await proofRows()).toBe(2);
+        } else {
+          // Decided in the finishing turn: no run waits and no proof is kept for the replay job (its board run still goes, as ever).
+          expect(seen).toMatchObject({ status: "decided", result: { outcome: "lost", reason: "faster", margin_ticks: 40 } });
+          expect(seen.sides.map(side => side!.check)).toEqual(["none", "none"]);
+          expect(await proofRows()).toBe(0);
+        }
+        // The job judges the board runs either way; with checks on its verdicts also decide the duel.
+        await verdicts((await job()).entries, () => true);
+        return detail(a1, duel);
+      }, DUEL_TABLES);
+      expect(metered.value.duel.result).toMatchObject({ outcome: "won", reason: "faster", margin_ticks: 40 });
+      expect(metered.value.win_bonus).toEqual({ amount: 250, counted: true });
+      return metered.rows.board.written;
+    };
+    const on = await whole(true), off = await whole(false);
+    // Rows written to the duel tables, measured 2026-11-02: duel run checks cost a friend duel 6 more (the two runs' proofs
+    // kept and dropped, and the duel saved again by their verdicts); the board runs cost the same either way.
+    expect({ on, off }).toEqual({ on: 16, off: 10 });
   }, 60_000);
 
   it("never take a Forgiving catches turn in a duel's room, which says it is one, while an ordinary room still does", async () => {
@@ -377,8 +443,6 @@ describe("the first win over Our run", () => {
   const lines = (account: Account) => runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) =>
     !ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='pollen_claims'").toArray().length ? [] : ctx.storage.sql.exec<{ claim_key: string; amount: number; data: string }>("SELECT claim_key,amount,data FROM pollen_claims WHERE kind='ghostwin'").toArray()
       .map(row => [row.claim_key, row.amount, (JSON.parse(row.data) as { detail: { duel_id: string } }).detail.duel_id]));
-  const proofRows = () => runInDurableObject(env.LEADERBOARD_BOARDS.getByName(RELAY), async (_, ctx) =>
-    ctx.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE name='duel_proofs'").toArray().length ? ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM duel_proofs").one().n : 0);
   /** The replay job's entries for duel runs of `ticks`, judged `valid`. */
   async function judge(ticks: number, valid: boolean) {
     const entries = (await job()).entries.filter(entry => entry.ticks === ticks);
@@ -387,6 +451,7 @@ describe("the first win over Our run", () => {
   }
 
   it("pays each player of the pair once per board, after the check passes, and never for a second win there", async () => {
+    await checksOn();
     const { a1, a2 } = await pairs();
     const fast = (await relayRun(-5)).ticks;
     expect(fast).toBeLessThan(OURS);
@@ -420,6 +485,7 @@ describe("the first win over Our run", () => {
   }, 60_000);
 
   it("pays nothing on a loss, a draw, a failed check, or a race against a board run", async () => {
+    await checksOn();
     const { a1, a2 } = await pairs();
     // Slower or level with Our run: decided at once, with no proof kept for the check.
     for (const slower of [1, 0]) {
@@ -452,6 +518,7 @@ describe("the first win over Our run", () => {
   }, 60_000);
 
   it("never pays a win over Our run decided before the check, or one whose run could not be kept for it", async () => {
+    await checksOn();
     const { a1, a2 } = await pairs();
     const now = Date.now(), members: [string, string] = [a1.player_id, a2.player_id];
     const ours = { source: "developer" as const, entry_id: null, rank: null, ticks: OURS, names: null };
@@ -473,6 +540,58 @@ describe("the first win over Our run", () => {
     await lobby(a2);
     for (const account of [a1, a2]) expect(await lines(account)).toEqual([]);
     expect(await proofRows()).toBe(0);
+  }, 60_000);
+
+  it("pays a win over Our run at once while duel run checks are off, and settles runs left waiting when they went off as passed", async () => {
+    const { a1, a2 } = await pairs();
+    const fast = (await relayRun(-5)).ticks;
+    // Off: the race is decided as the pair finishes, its win counted without the check, and pays at once.
+    await checksOn(ON.CONFIG);
+    const now = await detail(a1, await played(a2, a1, -5));
+    expect(now.duel).toMatchObject({ status: "decided", result: { outcome: "won", reason: "faster", margin_ticks: OURS - fast } });
+    expect(now.duel.sides[0].check).toBe("none");
+    expect(now.ghost_bonus).toEqual({ amount: 100, counted: true });
+    expect(await proofRows()).toBe(0);
+
+    // Runs finished while checks were on, waiting, when they go off: the next read settles them as passed and drops their proofs.
+    const { a1: c1, a2: c2, b1: d1, b2: d2 } = await pairs();
+    await checksOn();
+    const race = await played(c1, c2, -5);
+    const { duel, joinedA, joinedB } = await friendRooms(c1, c2, d1, d2);
+    await play(joinedA, [c1, c2], await relayRun(0));
+    await play(joinedB, [d1, d2], await relayRun(40));
+    expect((await detail(c1, race)).duel.sides[0].check).toBe("waiting");
+    expect((await detail(c1, duel)).duel.status).toBe("running");
+    expect(await proofRows()).toBe(3);
+    await checksOn(ON.CONFIG);
+    // The proofs wait for their duels' next read, which drops them.
+    expect(await proofRows()).toBe(3);
+    const views = (await lobby(c2)).duels;
+    expect(await proofRows()).toBe(0);
+    expect(views.find(item => item.duel_id === race.duel_id)).toMatchObject({ status: "decided", result: { outcome: "won", reason: "faster" } });
+    expect(views.find(item => item.duel_id === duel.duel_id)).toMatchObject({ status: "decided", result: { outcome: "won", reason: "faster", margin_ticks: 40 } });
+    expect((await detail(c1, race)).ghost_bonus).toEqual({ amount: 100, counted: true });
+    expect((await detail(c1, duel)).win_bonus).toEqual({ amount: 250, counted: true });
+    expect(await lines(c2)).toEqual([["ghostwin:" + RELAY, 100, race.duel_id]]);
+  }, 60_000);
+
+  it("cost the board fewer rows for a win over Our run while duel run checks are off", async () => {
+    const board = env.LEADERBOARD_BOARDS.getByName(RELAY) as unknown as DurableObjectStub;
+    const whole = async (checks: boolean) => {
+      await checksOn(checks ? CHECKS : ON.CONFIG);
+      const { a1, a2 } = await pairs();
+      const metered = await meterRows({ board }, async () => {
+        const race = await played(a1, a2, -5);
+        // The job judges the board run either way; with checks on its verdict also decides the race.
+        await verdicts((await job()).entries, () => true);
+        return detail(a1, race);
+      }, DUEL_TABLES);
+      expect(metered.value.ghost_bonus).toEqual({ amount: 100, counted: true });
+      return metered.rows.board.written;
+    };
+    const on = await whole(true), off = await whole(false);
+    // Rows written to the duel tables, measured 2026-11-02: the check costs a race won over Our run 7 more.
+    expect({ on, off }).toEqual({ on: 13, off: 6 });
   }, 60_000);
 
   it("pays once when two won races on the board are decided together and read at once", async () => {
@@ -683,18 +802,8 @@ describe("duel hints", () => {
   const LIVE = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "LIVE_CONNECTION_ENABLED"] }) };
   const LIVE_OFF = ON;
   type Socket = { messages: Any[] };
-  const saved = new Map<Record<string, unknown>, unknown>();
-  async function objectsLive(stubs: DurableObjectStub[], on = true): Promise<void> {
-    for (const stub of stubs) await runInDurableObject(stub, instance => {
-      const target = Reflect.get(instance, "env") as Record<string, unknown>;
-      if (!saved.has(target)) saved.set(target, target.CONFIG);
-      target.CONFIG = on ? LIVE.CONFIG : ON.CONFIG;
-    });
-  }
-  afterEach(() => {
-    for (const [target, value] of saved) { if (value === undefined) delete target.CONFIG; else target.CONFIG = value; }
-    saved.clear(); vi.restoreAllMocks();
-  });
+  const objectsLive = (stubs: DurableObjectStub[], on = true) => objectConfig(stubs, on ? LIVE.CONFIG : ON.CONFIG);
+  afterEach(() => { vi.restoreAllMocks(); });
   async function connect(who: Account): Promise<Socket> {
     const answer = await call(LIVE_PATH, "GET", who, undefined, LIVE, { Upgrade: "websocket" });
     expect(answer.status).toBe(101);
@@ -752,6 +861,8 @@ describe("duel hints", () => {
   it("follow a friend duel's milestones and every turn to the players who did not act", async () => {
     const { a1, a2, b1, b2 } = await pairs();
     await objectsLive([...players(a1, a2, b1, b2), board()]);
+    // With duel run checks on, so the check result is news of its own.
+    await checksOn(configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "LIVE_CONNECTION_ENABLED", "DUEL_RUN_CHECKS"] }));
     const sockets = { a1: await connect(a1), a2: await connect(a2), b1: await connect(b1), b2: await connect(b2) };
     const path = (duel: DuelView, action: string) => "/v1/duels/" + RELAY + "/" + duel.duel_id + "/" + action;
     let duel!: DuelView;

@@ -6,8 +6,8 @@ import { runInDurableObject } from "cloudflare:test";
  */
 export type Rows = { read: number; written: number };
 
-/** Rows each object's SQL reads and writes while `work` runs (workerd's own cursor counters). */
-export async function meterRows<T>(stubs: Record<string, DurableObjectStub>, work: () => Promise<T>): Promise<{ value: T; rows: Record<string, Rows> }> {
+/** Rows each object's SQL reads and writes while `work` runs (workerd's own cursor counters); `only`: just the statements it matches. */
+export async function meterRows<T>(stubs: Record<string, DurableObjectStub>, work: () => Promise<T>, only?: RegExp): Promise<{ value: T; rows: Record<string, Rows> }> {
   const cursors: Record<string, SqlStorageCursor<Record<string, SqlStorageValue>>[]> = {};
   const restore: (() => Promise<void>)[] = [];
   for (const [name, stub] of Object.entries(stubs)) {
@@ -15,7 +15,7 @@ export async function meterRows<T>(stubs: Record<string, DurableObjectStub>, wor
     await runInDurableObject(stub, async (_, ctx) => {
       const sql = ctx.storage.sql, original = sql.exec;
       sql.exec = ((query: string, ...bindings: SqlStorageValue[]) => {
-        const cursor = original.call(sql, query, ...bindings); cursors[name].push(cursor); return cursor;
+        const cursor = original.call(sql, query, ...bindings); if (!only || only.test(query)) cursors[name].push(cursor); return cursor;
       }) as typeof sql.exec;
       restore.push(() => runInDurableObject(stub, async (__, again) => { again.storage.sql.exec = original; }));
     });

@@ -154,12 +154,13 @@ static func _partner_name(view: Dictionary, name_of: Callable) -> String:
 		if shown != PlayerCopy.DUEL_YOU and not shown.is_empty(): return shown
 	return PlayerCopy.DUEL_PARTNER
 
-## The note while your finished run waits for the replay check: every friend run, and a ghost race
-## run faster than Our run (its first win there pays a bonus); "" otherwise.
+## The note while your finished run waits for the replay check: while the server checks duel runs
+## (backend DUEL_RUN_CHECKS), every friend run, and a ghost race run faster than Our run (its first
+## win there pays a bonus); "" otherwise. A run no check waits on ("none") counts as it finishes.
 static func checking_line(view: Dictionary) -> String:
 	var own: Dictionary = view.sides[view.mine]
 	if not own.finished: return ""
-	if view.kind == "friend": return PlayerCopy.DUEL_CHECKING_LINE
+	if view.kind == "friend": return PlayerCopy.DUEL_CHECKING_LINE if own.check != "none" else ""
 	return PlayerCopy.DUEL_CHECKING_RUN_LINE if own.check == "waiting" else ""
 
 ## The result card's Pollen lines from the duel's pay and bonus: [[label, amount]], and the total.

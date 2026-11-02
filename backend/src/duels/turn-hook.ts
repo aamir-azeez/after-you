@@ -9,8 +9,10 @@ import type { FinishProof } from "./store";
 import { runProgress } from "./ticks";
 import { developerGhost } from "./developer-ghosts";
 
-/** Duels run while DUELS and LEADERBOARDS are both on: duels live in the boards, and friend results need its replay check. */
+/** Duels run while DUELS and LEADERBOARDS are both on: duels live in the boards, which also run their replay check while DUEL_RUN_CHECKS is on. */
 export function duelsOn(env: ServerVars): boolean { return flags.duels(env) && flags.leaderboards(env); }
+/** Duel runs wait for the board's replay check (model.ts awaitsCheck) only while DUEL_RUN_CHECKS is on beside duels; off by default. */
+export function duelRunChecksOn(env: ServerVars): boolean { return duelsOn(env) && flags.duelRunChecks(env); }
 
 /**
  * The note a duel room's state gives its duel: absolute values at the room's
@@ -28,7 +30,8 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink): Promise<{ 
   const note: ProgressNote = { room_id: room.room_id, revision: room.revision, steps: progress.steps, ticks: progress.ticks,
     turn: complete ? null : room.active_player_id, complete, at_ms: at, entry_id: complete ? await entryId(room.room_id, room.branch) : null };
   // A finish that may wait for the check brings its checkpoint: every friend run, and a ghost race run faster than the
-  // developers' ghost. The board decides (model.ts awaitsCheck); this only spares the rest the payload.
+  // developers' ghost. The board decides (model.ts awaitsCheck, which reads DUEL_RUN_CHECKS in the board's own CONFIG),
+  // and with checks off it neither encodes nor keeps it; this only spares the rest the payload.
   const checked = link.kind === "friend" || progress.ticks < (developerGhost(link.board) ?? 0);
   const proof = complete && checked ? { checkpoint: room.checkpoint, simulation_version: room.simulation_version ?? adapter.simulation_version } : undefined;
   return { note, ...(proof ? { proof } : {}) };
