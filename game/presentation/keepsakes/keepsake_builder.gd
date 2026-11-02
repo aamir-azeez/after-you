@@ -163,6 +163,22 @@ func solids(_state: Dictionary) -> Array[Rect2]:
 func walkways() -> Array[Rect2]:
 	return []
 
+## Solids a moving part stands as only while it is drawn shut (the house's
+## door), read from `parts` as drawn now on every Explore step, in its own
+## frame. `at` is where the pip stands, so a pip already behind one is never
+## shut in. `parts` is empty for an outline, which never opens.
+func gates(_parts: Dictionary, _state: Dictionary, _at: Vector2) -> Array[Rect2]:
+	return []
+
+## A round piece's solid: three rects whose corners lie on its circle, so the
+## pip walks round it as drawn, with no square corners standing out past it.
+static func round_solid(middle: Vector2, radius: float) -> Array[Rect2]:
+	var wide := radius * 0.924
+	var narrow := radius * 0.383
+	var square := radius * 0.707
+	return [Rect2(middle.x - wide, middle.y - narrow, wide * 2.0, narrow * 2.0), Rect2(middle.x - narrow, middle.y - wide, narrow * 2.0, wide * 2.0),
+		Rect2(middle.x - square, middle.y - square, square * 2.0, square * 2.0)]
+
 ## How large a chapter's corner draws its first look (island_world.gd).
 func landmark_scale() -> float:
 	var size := footprint().size

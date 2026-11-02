@@ -18,7 +18,11 @@ const D := 1.5
 const H := 1.25
 const CELLAR := 0.42
 const DOOR_X := -0.45
-const DOOR_W := 0.42
+## The doorway is a little wider than the pip is drawn, so it walks in without squeezing.
+const DOOR_W := 0.5
+## The shut door stops the pip until it has swung open this far (radians of
+## its 1.45 swing).
+const OPEN_ENOUGH := 0.9
 const MAILBOX := Vector3(1.4, 0, 0.95)
 
 static func _y0(state: Dictionary) -> float:
@@ -54,7 +58,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 	P.box(cut, Vector3(0.44, 0.36, 0.03), P.LAMP_OFF, Vector3(0.45, y0 + 0.72, D * 0.5 + 0.05))
 	var door := P.pivot(cut, Vector3(DOOR_X, y0 + 0.06, D * 0.5 + 0.05), "Door")
 	P.box(door, Vector3(DOOR_W, 0.8, 0.05), P.WOOD, Vector3(DOOR_W * 0.5, 0.4, 0))
-	P.sph(door, 0.03, P.GOLD, Vector3(0.36, 0.4, 0.03))
+	P.sph(door, 0.03, P.GOLD, Vector3(DOOR_W - 0.06, 0.4, 0.03))
 	var parts := {"cutaway": cut, "door": door, "windows": windows}
 	for side: int in [-1, 1]:
 		var shutter := P.pivot(cut, Vector3(0.45 + side * 0.24, y0 + 0.72, D * 0.5 + 0.08), "Shutter")
@@ -120,9 +124,10 @@ func _light(anim: RefCounted, windows: Node3D, at: float) -> void:
 
 # --- inside -----------------------------------------------------------------------------
 
-## Walking up to the door.
+## Walking up to the door, from the path or from inside: far enough out that
+## the door has swung open by the time the pip reaches it.
 func trigger() -> Dictionary:
-	return {"area": Rect2((DOOR_X - 0.15) * SIZE, D * 0.5 * SIZE + 0.05, (DOOR_W + 0.3) * SIZE, 0.55)}
+	return {"area": Rect2((DOOR_X - 0.3) * SIZE, D * 0.5 * SIZE - 0.5, (DOOR_W + 0.6) * SIZE, 1.3)}
 
 ## At the door and inside.
 func stay() -> Rect2:
@@ -183,6 +188,15 @@ func solids(state: Dictionary) -> Array[Rect2]:
 		Rect2(x0, z1 - t, door0 - x0, t * 2.0), Rect2(door1, z1 - t, -x0 - door1, t * 2.0)]
 	if state.get("together", false): result.append(Rect2((MAILBOX.x - 0.15) * s, (MAILBOX.z - 0.22) * s, 0.3 * s, 0.44 * s))
 	return result
+
+## The door, shut until it has swung open: a pip already inside (behind the
+## doorway) is never shut in.
+func gates(parts: Dictionary, _state: Dictionary, at: Vector2) -> Array[Rect2]:
+	var door: Node3D = parts.get("door")
+	if door != null and absf(door.rotation.y) >= OPEN_ENOUGH: return []
+	if at.y < D * 0.5 * SIZE and absf(at.x) < W * 0.5 * SIZE: return []
+	var t := 0.06 * SIZE
+	return [Rect2(DOOR_X * SIZE, D * 0.5 * SIZE - t, DOOR_W * SIZE, t * 2.0)]
 
 func footprint() -> Rect2:
 	return Rect2(-1.4, -1.2, 3.85, 3.4)

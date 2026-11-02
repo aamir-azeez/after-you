@@ -952,12 +952,8 @@ func _walk(actor: Node3D, step: float) -> void:
 		var across := Vector3(0.832, 0, -0.555)
 		var away := Vector3(-0.555, 0, -0.832)
 		var move := (across * push.x - away * push.y) * EXPLORE_SPEED * step
-		# Straight on, else slide along x or z.
-		for attempt in range(3):
-			var candidate := actor.position + (move if attempt == 0 else Vector3(move.x, 0, 0) if attempt == 1 else Vector3(0, 0, move.z))
-			if _keepsake_layer.can_step(actor.position, candidate):
-				actor.position = candidate
-				break
+		# Straight on, else sliding along whatever is in the way.
+		actor.position = _keepsake_layer.step(actor.position, move)
 	var moved := actor.position != from
 	if moved:
 		_keepsake_layer.walked(from, actor.position, actor)

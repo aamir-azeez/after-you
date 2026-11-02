@@ -90,7 +90,8 @@ var _floors: Dictionary = {}
 var _islands: Dictionary = {}
 var _crossings: Array[Dictionary] = []
 ## Per keepsake, worked out once: {"placed", "inverse", "trigger", "stay",
-## "walkways", "reach": [middle, radius] round everything a step can meet}.
+## "walkways", "gated": whether it has gates (builder.gates()), "reach":
+## [middle, radius] round everything a step can meet}.
 var _frames: Dictionary = {}
 var _explore := Explore.new(self)
 ## Sets built since configure(), for tests that prove a burst rebuilds once,
@@ -183,7 +184,7 @@ func _frame_of(id: String) -> Dictionary:
 	if stay.has_area(): reach = reach.merge(stay)
 	var middle := placed * Vector3(reach.get_center().x, 0, reach.get_center().y)
 	return {"placed": placed, "inverse": placed.affine_inverse(), "trigger": trigger, "stay": stay, "walkways": walkways,
-		"reach": [Vector2(middle.x, middle.z), reach.size.length() * 0.5 * HOME_SCALE + 0.3]}
+		"gated": not builder.gates({}, {}, Vector2(INF, INF)).is_empty(), "reach": [Vector2(middle.x, middle.z), reach.size.length() * 0.5 * HOME_SCALE + 0.3]}
 
 ## The state a builder draws: the earned upgrades, and the Lantern Walk's lanterns.
 func _look(id: String) -> Dictionary:
@@ -626,23 +627,35 @@ func blocks(point: Vector3, margin: float) -> bool:
 
 ## Whether a step from `from` to `to` takes a spirit nearer than `margin` to a
 ## keepsake's solids and nearer than it already was, so a spirit a keepsake
-## appeared beside can always walk away from it.
+## appeared beside can always walk away from it. A gate counts as it stands
+## for a spirit at `from`.
 func blocks_step(from: Vector3, to: Vector3, margin: float) -> bool:
 	for id: String in _shown:
-		var after := _solid_distance(id, to)
-		if after < margin and after < _solid_distance(id, from): return true
+		var after := _solid_distance(id, to, from)
+		if after < margin and after < _solid_distance(id, from, from): return true
 	return false
 
 ## How far a point is outside a keepsake's ground (0 inside), in metres.
 func distance(id: String, point: Vector3) -> float:
 	return _rect_distance(_builders[id].footprint(), _local(id, point))
 
-## How far a point is from a keepsake's nearest solid (0 inside one).
-func _solid_distance(id: String, point: Vector3) -> float:
+## How far a point is from a keepsake's nearest solid (0 inside one), its
+## gates as they stand for a spirit at `at`.
+func _solid_distance(id: String, point: Vector3, at: Vector3 = point) -> float:
 	var local := _local(id, point)
 	var best := INF
-	for rect: Rect2 in _set.get("props", {}).get(id, {}).get("solids", []): best = minf(best, _rect_distance(rect, local))
+	for rect: Rect2 in _rects(id, at): best = minf(best, _rect_distance(rect, local))
 	return best
+
+## A keepsake's solids, and the gates it stands shut now for a spirit at `at`.
+func _rects(id: String, at: Vector3) -> Array[Rect2]:
+	var prop: Dictionary = _set.get("props", {}).get(id, {})
+	if prop.is_empty(): return []
+	var rects: Array[Rect2] = prop.solids
+	if not _frames[id].gated: return rects
+	var all := rects.duplicate()
+	all.append_array(_builders[id].gates(prop.parts if prop.look == "keepsake" else {}, prop.state, _local(id, at)))
+	return all
 
 func _local(id: String, point: Vector3) -> Vector2:
 	var local: Vector3 = (_frames[id].inverse if _frames.has(id) else slot_transform(id).affine_inverse()) * Vector3(point.x, 0.0, point.z)
@@ -744,6 +757,41 @@ func walkable(point: Vector3) -> bool:
 ## An Explore step: onto ground, and never deeper into a keepsake.
 func can_step(from: Vector3, to: Vector3) -> bool:
 	return _ground(to) and not blocks_step(from, to, WALK_CLEARANCE)
+
+## A slide steps this far off the face it runs along, so rounding never
+## counts it as walking in.
+const SLIDE_NUDGE := 0.0005
+
+## Where an Explore step of `move` from `from` ends: straight on; else along
+## the face of the solid in the way, in its keepsake's own turned frame, so a
+## push into a turned keepsake runs the pip along it instead of stopping it;
+## else along x or z (the island and bridge edges); else where it stands.
+func step(from: Vector3, move: Vector3) -> Vector3:
+	if can_step(from, from + move): return from + move
+	var away := _away(from + move, from)
+	if away != Vector3.ZERO and move.dot(away) < 0.0:
+		var along := move - away * move.dot(away) + away * SLIDE_NUDGE
+		if can_step(from, from + along): return from + along
+	for part: Vector3 in [Vector3(move.x, 0, 0), Vector3(0, 0, move.z)]:
+		if part != Vector3.ZERO and can_step(from, from + part): return from + part
+	return from
+
+## The flat way out from the solid nearest `point` (its gates as they stand
+## for a spirit at `at`), in island space; zero when none is within twice
+## the walk clearance.
+func _away(point: Vector3, at: Vector3) -> Vector3:
+	var best := WALK_CLEARANCE * 2.0
+	var away := Vector3.ZERO
+	for id: String in _shown:
+		var local := _local(id, point)
+		for rect: Rect2 in _rects(id, at):
+			var edge := Vector2(clampf(local.x, rect.position.x, rect.end.x), clampf(local.y, rect.position.y, rect.end.y))
+			var gap := local.distance_to(edge) * HOME_SCALE
+			if gap <= 0.0 or gap >= best: continue
+			best = gap
+			var out := (local - edge).normalized()
+			away = (_frames[id].placed.basis * Vector3(out.x, 0, out.y)).normalized()
+	return away
 
 func _ground(point: Vector3) -> bool:
 	var at := Vector2(point.x, point.z)
