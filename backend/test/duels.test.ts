@@ -564,10 +564,12 @@ describe("the first win over Our run", () => {
     expect((await detail(c1, duel)).duel.status).toBe("running");
     expect(await proofRows()).toBe(3);
     await checksOn(ON.CONFIG);
-    // The proofs wait for their duels' next read, which drops them.
+    // A verdict that still finds their proofs (work handed out before, or the board runs' own verdicts on the same entries)
+    // decides nothing now, even a failing one: their runs count as passed and the proofs go.
     expect(await proofRows()).toBe(3);
-    const views = (await lobby(c2)).duels;
+    await verdicts((await job()).entries, () => false);
     expect(await proofRows()).toBe(0);
+    const views = (await lobby(c2)).duels;
     expect(views.find(item => item.duel_id === race.duel_id)).toMatchObject({ status: "decided", result: { outcome: "won", reason: "faster" } });
     expect(views.find(item => item.duel_id === duel.duel_id)).toMatchObject({ status: "decided", result: { outcome: "won", reason: "faster", margin_ticks: 40 } });
     expect((await detail(c1, race)).ghost_bonus).toEqual({ amount: 100, counted: true });

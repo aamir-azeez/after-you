@@ -170,9 +170,14 @@ export class DuelStore {
     return work;
   }
 
-  /** Replay verdicts on duel runs. A verdict counts only for a waiting run whose stored proof it checked. Returns the duels that changed. */
+  /**
+   * Replay verdicts on duel runs. A verdict counts only for a waiting run whose stored proof it checked. With duel run
+   * checks off, one that still finds a proof (work handed out before, or a board run's verdict on the same entry) decides
+   * nothing: its duel's waiting runs count as passed (waive). Returns the duels that changed.
+   */
   verdicts(list: readonly DuelVerdict[], now: number): string[] {
     if (!this.present() || !list.length) return [];
+    const checks = this.checks();
     return this.tell(null, () => this.storage.transactionSync(() => {
       const changed: string[] = [];
       for (const item of list) {
@@ -181,6 +186,7 @@ export class DuelStore {
         this.storage.sql.exec("DELETE FROM duel_proofs WHERE entry_id=?", item.entry_id);
         const duel = this.duel(proof.duel_id);
         if (!duel) continue;
+        if (!checks) { if (this.waive(duel, now, checks)) { this.save(duel); changed.push(duel.duel_id); } continue; }
         const check = item.valid && item.measured_ticks === proof.ticks ? "passed" : !item.valid && REVIEW_REASONS.includes(item.reason) ? "error" : "failed";
         if (verdict(duel, item.entry_id, check, now)) { this.save(duel); changed.push(duel.duel_id); }
       }

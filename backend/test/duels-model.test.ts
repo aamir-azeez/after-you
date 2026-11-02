@@ -411,12 +411,14 @@ describe("duel run checks off", () => {
     expect(waiveChecks(half, T0 + 50)).toBe(true);
     expect(half).toMatchObject({ status: "running", result: null });
     expect(half.sides[0]!.check).toBe("passed");
+    // Phones see a run that counted without its check as having none, so none says it waits for one.
+    expect(viewFor(half, A1)!.sides[0].check).toBe("none");
     // A check already given stands, and a duel nobody waits on is not touched.
     const failed = running();
     progress(failed, note("ra", 9, 2000, true), T0 + 30);
     verdict(failed, failed.sides[0].entry_id!, "failed", T0 + 35);
     expect(waiveChecks(failed, T0 + 50)).toBe(false);
-    expect(waiveChecks(friend(), T0 + 50)).toBe(false);
+    expect(waiveChecks(running(), T0 + 50)).toBe(false);
     const race = ghost(3000, T0, "developer");
     claimRoom(race, A2, { room_id: "rg", invite_code: "ig" }, T0);
     progress(race, note("rg", 5, 2999, true), T0 + 10);

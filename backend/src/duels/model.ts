@@ -399,7 +399,8 @@ export function viewFor(duel: Duel, viewer: string): DuelView | null {
     const own = index === mine;
     const members = side.members.map(id => id !== null && (own || known.has(knownKey(viewer, id))) ? id : null);
     const turn = side.turn === null ? -1 : side.members.indexOf(side.turn);
-    return { members, you: own, steps: side.steps, ticks: side.ticks, turn: turn < 0 ? null : turn, finished: side.finished_ms !== null, left: side.left, check: side.check,
+    // A run that counted without its check (waived) shows none, so no phone says it waits for one.
+    return { members, you: own, steps: side.steps, ticks: side.ticks, turn: turn < 0 ? null : turn, finished: side.finished_ms !== null, left: side.left, check: side.waived ? "none" : side.check,
       ...(own ? { room_id: side.room?.room_id ?? null, invite_code: side.room?.invite_code ?? null, hosting: side.room?.host === viewer } : {}) };
   };
   const result = duel.result;
