@@ -94,7 +94,7 @@ func _side_card(index: int) -> Control:
 	left.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	left.add_theme_constant_override("separation", 6)
 	row.add_child(left)
-	left.add_child(Kit.text(DuelModel.pair_title(view, index, name_of), 30 if compact else 34, UiTokens.CREAM, true))
+	left.add_child(Kit.fitted(Kit.text(DuelModel.pair_title(view, index, name_of), 30 if compact else 34, UiTokens.CREAM, true)))
 	var pips := HBoxContainer.new()
 	pips.add_theme_constant_override("separation", 14)
 	var side: Variant = view.sides[index]
@@ -105,7 +105,7 @@ func _side_card(index: int) -> Control:
 		column.add_child(Kit.pip(Vector2(92, 108) if not compact else Vector2(74, 88), Kit.FIRST_PIP if slot == 0 else Kit.SECOND_PIP, own and side.members[slot] == me, looks[slot]))
 		var shown := ""
 		if side is Dictionary and side.members[slot] != null and name_of.is_valid(): shown = str(name_of.call(side.members[slot]))
-		var name_label := Kit.text(shown, 19)
+		var name_label := Kit.fitted(Kit.text(shown, 19), 92.0 if not compact else 74.0)
 		name_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		column.add_child(name_label)
 		pips.add_child(column)
@@ -123,6 +123,7 @@ func _side_card(index: int) -> Control:
 	var turn := DuelModel.turn_line(view, index, name_of)
 	var lit := own and DuelModel.your_turn(view, me) and turn == PlayerCopy.DUEL_YOUR_TURN
 	var pill := Kit.pill(turn, lit, 20)
+	Kit.fitted(pill.get_child(0))
 	pill.custom_minimum_size.x = 230
 	right.add_child(pill)
 	var steps := DuelModel.steps(view, index)
@@ -165,7 +166,7 @@ func _render_card() -> void:
 		words.add_child(Kit.text(PlayerCopy.DUEL_YOUR_TURN_TITLE, 46 if not compact else 38, UiTokens.CREAM, true))
 		words.add_child(Kit.wrapped(PlayerCopy.DUEL_PARTNER_LEFT_PATH % partner if own.steps > 0 else PlayerCopy.DUEL_FIRST_TURN, 20))
 	else:
-		words.add_child(Kit.text(PlayerCopy.DUEL_WAITING_TITLE % partner, 38, UiTokens.CREAM, true))
+		words.add_child(Kit.fitted(Kit.text(PlayerCopy.DUEL_WAITING_TITLE % partner, 38, UiTokens.CREAM, true)))
 		words.add_child(Kit.wrapped(PlayerCopy.DUEL_WAITING_BODY, 19))
 	_card.add_child(head)
 	if not own.finished:

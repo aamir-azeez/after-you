@@ -260,6 +260,7 @@ func _check_inside(node: Node, safe: Rect2, context: String) -> void:
 func _scrolled(control: Control) -> bool:
 	var ancestor := control.get_parent()
 	while ancestor != null:
-		if ancestor is ScrollContainer: return true
+		# Only a scroll with more to show: a page body that fits (duels/duel_page_base.gd) is checked like any other.
+		if ancestor is ScrollContainer and (ancestor.get_v_scroll_bar().max_value > ancestor.size.y + 0.5 or ancestor.get_h_scroll_bar().max_value > ancestor.size.x + 0.5): return true
 		ancestor = ancestor.get_parent()
 	return false

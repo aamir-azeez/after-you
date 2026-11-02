@@ -69,6 +69,7 @@ display_name_prompt 3
 display_names 3
 dressing_lint 1
 duel_looks 2
+duel_page_layout 1
 duel_play_order 1
 duel_room 2
 duels 2

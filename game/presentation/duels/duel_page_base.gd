@@ -1,7 +1,9 @@
 extends CanvasLayer
 ## What every duel page shares: the deep green page, a header with Back, a
 ## title, a quiet line beside it and an optional button at the right, and a
-## body that lays out again only when the safe area changes. A page builds its
+## body that lays out again only when the safe area changes. The body scrolls
+## when it is taller than the space under the header (a long name, a short
+## screen), so nothing runs past the page's bottom spacing. A page builds its
 ## body in _build() and redraws its content in _render(); it never redraws per
 ## frame. Back closes the page's own pop-up first, then the page.
 const Kit = preload("res://presentation/duels/duel_kit.gd")
@@ -75,11 +77,19 @@ func _ready() -> void:
 	_header.add_child(_subtitle)
 	var trailing := header_action()
 	if trailing != null: _header.add_child(trailing)
+	var scroll := ScrollContainer.new()
+	scroll.name = page_name() + "Scroll"
+	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.follow_focus = true
+	layout.add_child(scroll)
 	body = VBoxContainer.new()
 	body.name = page_name() + "Body"
+	# Filling the scroll's height while it fits, so a panel that takes the rest of the page still does.
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	body.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	(body as VBoxContainer).add_theme_constant_override("separation", 12)
-	layout.add_child(body)
+	scroll.add_child(body)
 	SafeArea.watch(self, _layout)
 	_layout()
 	opened()
@@ -105,8 +115,9 @@ func _layout() -> void:
 	if not is_instance_valid(_margin): return
 	var rect := get_viewport().get_visible_rect()
 	var safe := SafeArea.rect(get_viewport())
-	# Compact on a narrow safe area, or one shorter than a phone's (the Duo's outer display with its camera band on top).
-	var now_compact := safe.size.x < 1100 or safe.size.y < SafeArea.PAGE_HEIGHT - 20.0
+	# Compact on a narrow safe area, or one shorter than a phone's full height: any
+	# bottom inset (a gesture bar), the Duo's outer display with its camera band on top.
+	var now_compact := safe.size.x < 1100 or safe.size.y < SafeArea.PAGE_HEIGHT - 0.5
 	var side := SafeArea.centred(safe.size.x, 1240, 18)
 	var tall := SafeArea.centred(safe.size.y, SafeArea.PAGE_HEIGHT, 12 if now_compact else 16)
 	SafeArea.pad(_margin, rect, safe, side, tall, side, tall)

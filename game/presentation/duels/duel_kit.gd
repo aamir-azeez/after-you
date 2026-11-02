@@ -38,6 +38,14 @@ static func text(value: String, font_size: int, ink: Color = UiTokens.CREAM, hea
 	label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 	return label
 
+## A one-line `label` that never grows past its place: a long name ends in an
+## ellipsis instead of widening the card around it. `width`: the least it keeps.
+static func fitted(label: Label, width: float = 0.0) -> Label:
+	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
+	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	label.custom_minimum_size.x = width
+	return label
+
 static func wrapped(value: String, font_size: int, ink: Color = UiTokens.SOFT) -> Label:
 	var label := text(value, font_size, ink)
 	label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
