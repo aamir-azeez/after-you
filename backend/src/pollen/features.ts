@@ -25,6 +25,8 @@ export function shopOn(env: ServerVars): boolean { return wardrobeOn(env) && fla
 export function looksOn(env: ServerVars): boolean { return flags.pollenLooks(env); }
 export function itemBloomsOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenItemBlooms(env); }
 export function grantOn(env: ServerVars): boolean { return earningOn(env) && flags.pollenGrant(env); }
+/** The grant also pays on its own date from the Player's alarm and sends the monthly push (pollen/grant-alarm.ts). */
+export function grantAlarmOn(env: ServerVars): boolean { return grantOn(env) && flags.pollenGrantAlarm(env); }
 export function refundsOn(env: ServerVars): boolean { return shopOn(env) && flags.pollenRefunds(env); }
 export function bundlesOn(env: ServerVars): boolean { return refundsOn(env) && flags.pollenBundles(env); }
 export function appStoreBundlesOn(env: ServerVars): boolean { return refundsOn(env) && flags.pollenBundlesAppStore(env) && APP_STORE_BUNDLES_READY; }

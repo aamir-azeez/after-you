@@ -8,7 +8,13 @@ export type FriendRoomHint = { schema_version: "1"; event_id: string; kind: "fri
 /** A partner's redo request. Same six keys as TurnHint; revision is the requested turn's room revision. */
 export type RedoHint = { schema_version: "1"; event_id: string; kind: "redo_requested"; room_id: string; room_family: "legacy" | "relay"; revision: string };
 export type RoomHint = TurnHint | RedoHint;
-export type PushHint = RoomHint | FriendRoomHint;
+/**
+ * A monthly grant instalment the Player's alarm paid (pollen/grant-alarm.ts). `amount`: the Pollen it paid
+ * (a catch-up's total); `event_id`: "pollen_" and 32 hex of the SHA-256 of the newest instalment's ledger key,
+ * so it is opaque and the same for a repeat of the same payment. No room and no player data.
+ */
+export type PollenHint = { schema_version: "1"; event_id: string; kind: "pollen_monthly"; amount: string };
+export type PushHint = RoomHint | FriendRoomHint | PollenHint;
 /** "rejected": FCM refused this message for this token in a way a retry cannot fix. The token is kept. */
 export type SendResult = { status: "sent" | "cancelled" | "invalid_token" | "rejected" | "retry" | "unconfigured"; retry_after_ms?: number };
 export const BINDING_PATTERN = /^[A-Za-z0-9_-]{22}$/;
@@ -47,6 +53,19 @@ export function validFriendRoomHint(value: unknown): value is FriendRoomHint {
     typeof value.room_id === "string" && /^[A-Za-z0-9_-]{22}$/.test(value.room_id) && (value.room_family === "legacy" || value.room_family === "relay") &&
     typeof value.publication_epoch === "string" && /^[1-9][0-9]{0,15}$/.test(value.publication_epoch) && Number.isSafeInteger(Number(value.publication_epoch));
 }
+export const MAX_POLLEN_PUSH = 9_999_999;
+export function validPollenHint(value: unknown): value is PollenHint {
+  if (!isObject(value) || Object.keys(value).length !== 4) return false;
+  return value.schema_version === "1" && typeof value.event_id === "string" && /^pollen_[a-f0-9]{32}$/.test(value.event_id) &&
+    value.kind === "pollen_monthly" && typeof value.amount === "string" && /^[1-9][0-9]{0,6}$/.test(value.amount);
+}
+/** The push for what one alarm settle paid: `key`, the newest line's ledger key; `amount`, the total. Null when there is nothing to tell. */
+export async function makePollenHint(key: string, amount: number): Promise<PollenHint | null> {
+  if (!Number.isSafeInteger(amount) || amount < 1 || amount > MAX_POLLEN_PUSH) return null;
+  return { schema_version: "1", event_id: `pollen_${(await sha256Hex(key)).slice(0, 32)}`, kind: "pollen_monthly", amount: String(amount) };
+}
+/** Thousands always grouped with a comma, whatever the phone's language: the same rule as the apps (4,500). */
+export function pollenAmount(amount: string): string { return amount.replace(/\B(?=(\d{3})+(?!\d))/g, ","); }
 /** Sent only by the iOS app, on a registration POST. Absent means Android, whose row is unchanged. */
 export const PLATFORM_HEADER = "X-AfterYou-Platform";
 /** The iOS app's enabled push categories. iOS shows an alert without running app code, so the server filters. */
@@ -63,7 +82,10 @@ export function registrationPlatform(request: Request): IosRegistration | null |
 export function validIosRegistration(value: Record<string, unknown>): boolean {
   return value.platform === "ios" && PUSH_CATEGORIES.some(item => item === value.categories);
 }
-/** With the flag on, an iOS row gets only the kinds its app has on: turns (turn and redo) and hosting. */
+/**
+ * With the flag on, an iOS row gets only the kinds its app has on: turns (turn, redo and the monthly Pollen,
+ * which rides the main notification setting) and hosting.
+ */
 export function pushCategoryAllowed(env: NotificationEnvironment, registration: { platform?: unknown; categories?: unknown }, kind: PushHint["kind"]): boolean {
   if (!flags.iosPush(env) || registration.platform !== "ios") return true;
   const categories = typeof registration.categories === "string" ? registration.categories.split(",") : [];
@@ -71,20 +93,23 @@ export function pushCategoryAllowed(env: NotificationEnvironment, registration: 
 }
 /** The same words as Android's NotificationDelivery and the iOS plugin's local notification. No player data. */
 export const PUSH_TITLES: Record<PushHint["kind"], string> = {
-  turn_ready: "Your friend left a turn", redo_requested: "Your friend asked for a redo", friend_room_available: "Friend rooms"
+  turn_ready: "Your friend left a turn", redo_requested: "Your friend asked for a redo", friend_room_available: "Friend rooms", pollen_monthly: "Your monthly Pollen is here"
 };
 export const PUSH_BODY = "Open After You to see your shared moment.";
+/** The monthly Pollen push's body, as the apps word it. */
+export const pollenPushBody = (amount: string) => `+${pollenAmount(amount)} Pollen from Full Journey`;
 async function sha256Hex(value: string): Promise<string> {
   return [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value)))].map(byte => byte.toString(16).padStart(2, "0")).join("");
 }
 /** An APNs alert for an iOS token. The hint stays in `data`, which FCM delivers as the custom keys the plugin
  * validates for tap routing. No content-available: the plugin would then post a second, local notification. */
 export async function apnsAlert(hint: PushHint, nowMs = Date.now()): Promise<Record<string, unknown>> {
-  // The plugin's own grouping key, so a newer alert for the same room and kind replaces the older one.
-  const digest = await sha256Hex(`${hint.room_family}:${hint.room_id}:${hint.kind}`);
+  // The plugin's own grouping key, so a newer alert for the same room and kind replaces the older one; one key for every monthly Pollen alert.
+  const pollen = hint.kind === "pollen_monthly";
+  const digest = await sha256Hex(pollen ? hint.kind : `${hint.room_family}:${hint.room_id}:${hint.kind}`);
   return {
     headers: { "apns-push-type": "alert", "apns-priority": "10", "apns-expiration": String(Math.floor(nowMs / 1000) + NOTIFICATION_TTL_MS / 1000), "apns-collapse-id": digest },
-    payload: { aps: { alert: { title: PUSH_TITLES[hint.kind], body: PUSH_BODY }, sound: "default", "thread-id": `after_you_update:${digest}` } }
+    payload: { aps: { alert: { title: PUSH_TITLES[hint.kind], body: pollen ? pollenPushBody(hint.amount) : PUSH_BODY }, sound: "default", "thread-id": pollen ? "after_you_pollen" : `after_you_update:${digest}` } }
   };
 }
 type Account = { project_id: string; client_email: string; private_key: string };
@@ -171,7 +196,7 @@ export class FcmSender {
   }
   async send(token: string, epoch: string, hint: PushHint, stillCurrent: () => boolean | Promise<boolean> = () => true, platform: "android" | "ios" = "android"): Promise<SendResult> {
     const config = account(this.env); if (!config) return { status: "unconfigured" };
-    if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch) || !(validRoomHint(hint) || validFriendRoomHint(hint))) { logWarning("push_send_failed", { outcome: "retry", reason: "invalid_input" }); return { status: "retry" }; }
+    if (!validNotificationToken(token) || !BINDING_PATTERN.test(epoch) || !(validRoomHint(hint) || validFriendRoomHint(hint) || validPollenHint(hint))) { logWarning("push_send_failed", { outcome: "retry", reason: "invalid_input" }); return { status: "retry" }; }
     try {
       const access = await this.accessToken(config); if (!access) { logWarning("push_send_failed", { outcome: "retry", reason: "oauth_unavailable" }); return { status: "retry" }; }
       // OAuth may yield long enough for recovery, deletion or token replacement.

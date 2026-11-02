@@ -50,6 +50,8 @@ export const FLAG_VARS = Object.freeze({
   pollenItemBlooms: "POLLEN_ITEM_BLOOMS",
   /** The Full Journey monthly grant (pollen/grant.ts): instalments on the wallet read and the PollenClaims check. Needs POLLEN_EARN. */
   pollenGrant: "POLLEN_GRANT",
+  /** The monthly grant's own alarm (pollen/grant-alarm.ts): each live subscriber's Player wakes on the instalment's date, pays it as the wallet read would and sends the monthly Pollen push. Needs POLLEN_GRANT. */
+  pollenGrantAlarm: "POLLEN_GRANT_ALARM",
   /** Pollen bundle refunds (pollen/bundle-settle.ts): the wallet read's daily check that takes back a refunded bundle, kept on after bundles stop selling. Needs POLLEN_SHOP. Set only through FEATURES. */
   pollenRefunds: "POLLEN_REFUNDS",
   /** Pollen bundles on Google Play (pollen/bundle-settle.ts): the bundle claim route, the wallet read's `bundles` part and the capability. Needs POLLEN_REFUNDS, so bundles never sell without refunds being taken back. Set only through FEATURES. */

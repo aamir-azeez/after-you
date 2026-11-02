@@ -38,12 +38,19 @@ export function presenceAlarmOwned(storage: DurableObjectStorage, actual: number
   if (markers.length !== 1 || markers[0].id !== 1 || !Number.isSafeInteger(markers[0].due_at) || markers[0].due_at <= 0) return false;
   return (actual === markers[0].due_at || (consumed && actual === null)) && leases.every(row => markers[0].due_at <= row.expires_at);
 }
-/** Caller owns one SQLite transaction and has already verified alarm ownership. */
-export async function schedulePresence(storage: DurableObjectStorage): Promise<void> {
-  const next = storage.sql.exec<{ due_at: number | null }>("SELECT MIN(expires_at) AS due_at FROM presence_leases").one().due_at;
-  if (next === null) { storage.sql.exec("DELETE FROM presence_alarm"); await storage.deleteAlarm(); return; }
-  storage.sql.exec("INSERT OR REPLACE INTO presence_alarm VALUES (1,?)", next);
-  await storage.setAlarm(next);
+/**
+ * Caller owns one SQLite transaction and has already verified alarm ownership. The marker holds the Player's
+ * one alarm: the earliest lease expiry, or `extra` (the monthly grant's wake, pollen/grant-alarm.ts) when that
+ * is sooner. A marker earlier than every lease, or with no lease at all, is what presenceAlarmOwned already
+ * accepts (and older code too: its alarm prunes, finds nothing and clears it). Writes only on a change.
+ */
+export async function schedulePresence(storage: DurableObjectStorage, extra: number | null = null): Promise<void> {
+  const lease = storage.sql.exec<{ due_at: number | null }>("SELECT MIN(expires_at) AS due_at FROM presence_leases").one().due_at;
+  const next = lease === null ? extra : extra === null ? lease : Math.min(lease, extra);
+  const marker = storage.sql.exec<{ due_at: number }>("SELECT due_at FROM presence_alarm WHERE id=1").toArray()[0]?.due_at ?? null;
+  if (next === null) { if (marker !== null) storage.sql.exec("DELETE FROM presence_alarm"); await storage.deleteAlarm(); return; }
+  if (marker !== next) storage.sql.exec("INSERT OR REPLACE INTO presence_alarm VALUES (1,?)", next);
+  if (await storage.getAlarm() !== next) await storage.setAlarm(next);
 }
 export async function resetPresence(storage: DurableObjectStorage): Promise<void> {
   clearPresence(storage); storage.sql.exec("DELETE FROM presence_alarm"); await storage.deleteAlarm();

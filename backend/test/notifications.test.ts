@@ -3,7 +3,7 @@ import { runInDurableObject, runDurableObjectAlarm, reset } from "cloudflare:tes
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
 import { digest, randomToken, type RoomSnapshot, type Outcome } from "../src/protocol";
-import { FcmSender, forgetFcmAccess, makeFriendRoomHint, makeHint, makeRedoHint, validHint, validRoomHint, type NotificationEnvironment, type PushHint } from "../src/notifications";
+import { FcmSender, forgetFcmAccess, makeFriendRoomHint, makeHint, makeRedoHint, validHint, validRoomHint, type NotificationEnvironment, type PollenHint, type PushHint } from "../src/notifications";
 import { isAlarmMetadataTable, notificationAlarmOwned, scheduleNotifications } from "../src/notification-storage";
 import type { RedoState } from "../src/redo-control";
 import type { RoomSnapshotV2, MutationV2 } from "../src/v2/room";
@@ -574,7 +574,7 @@ async function hex(value: string): Promise<string> {
   return Array.from(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value))), byte => byte.toString(16).padStart(2, "0")).join("");
 }
 const room22 = "r".repeat(22), host22 = "h".repeat(22);
-const sampleHints: PushHint[] = [makeHint("relay", room22, 4), makeRedoHint("legacy", room22, 3, "a".repeat(64)), makeFriendRoomHint(host22, { api_version: 2, room_id: room22 }, 5, `${host22}_5`)];
+const sampleHints: Exclude<PushHint, PollenHint>[] = [makeHint("relay", room22, 4), makeRedoHint("legacy", room22, 3, "a".repeat(64)), makeFriendRoomHint(host22, { api_version: 2, room_id: room22 }, 5, `${host22}_5`)];
 
 describe("iOS alert push behind IOS_PUSH_ENABLED", () => {
   it("sends Android tokens, and iOS tokens while the flag is off, exactly today's bytes", async () => {

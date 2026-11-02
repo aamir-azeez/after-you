@@ -30,9 +30,11 @@ import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type Displ
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
 import { addDroppedItem, dropWardrobe, equip, noteBoardRewards, ownedItemIds, ownedPackIds, spend, wardrobeView, wornLook, type EquipReceipt, type OpKey, type OwnedView, type SpendReceipt, type WardrobeView } from "./pollen/wardrobe";
 import { dropEarned, validEarnedItems } from "./pollen/earned";
-import { anyBundlesOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
+import { anyBundlesOn, grantAlarmOn, grantOn, itemDropsOn, refundsOn, sandboxAppStoreOn, type WardrobeMode } from "./pollen/features";
 import { knownBoard } from "./leaderboards/boards";
-import { dropGrant, grantView, settleGrant, type GrantView } from "./pollen/grant-settle";
+import { dropGrant, grantView, settleGrant, storedGrant, type GrantOutcome, type GrantView } from "./pollen/grant-settle";
+import { grantAlarmAt, grantWake } from "./pollen/grant-alarm";
+import { sendPollenPush } from "./pollen/grant-push";
 import type { GrantHint } from "./pollen/grant";
 import { readGrant } from "./pollen/grant-provider";
 import { claimBundlesFor, claimFor } from "./pollen/claims";
@@ -213,7 +215,8 @@ export class Player extends DurableObject<Env> {
     if (view === "history") return { authorized: true, linked: true, pollen: historyView(this.ctx.storage, Date.now()) };
     const grant = grantOn(this.env), refunds = refundsOn(this.env), bundles = mode === "shop" && anyBundlesOn(this.env);
     if (grant) {
-      await this.settleGrant(identity.player_id, hint);
+      // A read that saved the grant also sets its alarm to the next instalment (pollen/grant-alarm.ts).
+      if (await this.settleGrant(identity.player_id, hint) === "settled") await this.armGrantAlarm();
       // A recovery may have replaced the device while the provider answered.
       if (!this.authorized(deviceHash)) return { authorized: false, linked: true };
     }
@@ -263,15 +266,60 @@ export class Player extends DurableObject<Env> {
     if (outcome.status === "absent" || !this.authorized(deviceHash)) return fail(401, "invalid_auth");
     return ok(outcome.reply);
   }
-  /** The monthly grant check (pollen/grant-settle.ts); a failure never stops the wallet read it rides on. */
-  private async settleGrant(owner: string, hint: GrantHint): Promise<void> {
+  /**
+   * The monthly grant check (pollen/grant-settle.ts); a failure never stops the wallet read or the alarm it rides on.
+   * `paid`: told what this settle newly paid (the alarm's push).
+   */
+  private async settleGrant(owner: string, hint: GrantHint, paid?: (lines: readonly { key: string; amount: number }[]) => void): Promise<GrantOutcome | "failed"> {
     const now = Date.now();
     try {
-      await settleGrant(this.ctx.storage, now, this.pollenActive(owner), {
+      return await settleGrant(this.ctx.storage, now, this.pollenActive(owner), {
         read: lifetime => readGrant(owner, this.env, lifetime),
-        claim: keys => claimFor(this.env, owner, keys, now)
+        claim: keys => claimFor(this.env, owner, keys, now),
+        ...(paid ? { paid } : {})
       }, hint);
-    } catch (error) { logWarning("pollen_grant_failed", { reason: errorCode(error) }); }
+    } catch (error) { logWarning("pollen_grant_failed", { reason: errorCode(error) }); return "failed"; }
+  }
+  /**
+   * The monthly grant's part of the Player's one alarm (presence.ts schedulePresence): the next wake for the
+   * stored grant (pollen/grant-alarm.ts), only with POLLEN_GRANT_ALARM and an active identity, else none.
+   */
+  private grantAlarm(now: number): number | null {
+    if (!grantAlarmOn(this.env) || this.identity()?.state !== "active") return null;
+    try { return grantAlarmAt(storedGrant(this.ctx.storage), fullJourneyUntil(this.ctx.storage), now); }
+    catch (error) { logWarning("pollen_grant_alarm_failed", { reason: errorCode(error) }); return null; }
+  }
+  /** Sets the one alarm from the presence leases and the grant. The caller holds the transaction and checked the alarm is owned. */
+  private scheduleAlarm(): Promise<void> { return schedulePresence(this.ctx.storage, this.grantAlarm(Date.now())); }
+  /** After a settle that saved the grant: the alarm moves to its next wake, or stops for a grant with none. Writes only on a change. */
+  private async armGrantAlarm(): Promise<void> {
+    if (!grantAlarmOn(this.env)) return;
+    try {
+      await this.ctx.storage.transaction(async () => {
+        // An identity deletion owns the alarm until it finishes.
+        if (roomErasurePending(this.ctx.storage)) return;
+        if (!presenceAlarmOwned(this.ctx.storage, await this.ctx.storage.getAlarm())) throw new Error("unowned_presence_alarm");
+        await this.scheduleAlarm();
+      });
+    } catch (error) { logWarning("pollen_grant_alarm_failed", { reason: errorCode(error) }); }
+  }
+  /** The alarm's grant part: settles only once the grant's own wake has come (presence wakes the alarm far more often). Returns what it paid. */
+  private async settleGrantWake(): Promise<{ key: string; amount: number }[]> {
+    const identity = this.identity(), paid: { key: string; amount: number }[] = [];
+    if (!grantAlarmOn(this.env) || identity?.state !== "active") return paid;
+    try { if (!grantWake(storedGrant(this.ctx.storage), fullJourneyUntil(this.ctx.storage), Date.now())?.run) return paid; }
+    catch (error) { logWarning("pollen_grant_alarm_failed", { reason: errorCode(error) }); return paid; }
+    await this.settleGrant(identity.player_id, "none", lines => paid.push(...lines));
+    return paid;
+  }
+  /** The monthly Pollen push for what the alarm paid (pollen/grant-push.ts); best effort, never thrown. */
+  private async pushPollen(lines: readonly { key: string; amount: number }[]): Promise<void> {
+    const identity = this.identity();
+    if (!identity || identity.state !== "active") return;
+    try {
+      await sendPollenPush(this.ctx.storage, this.env, this.notificationSender, identity.device_hash, hash => this.authorize(hash), lines,
+        { finished: key => this.pushFinished(key), finish: (key, sent) => this.finishPush(key, sent) });
+    } catch (error) { logWarning("pollen_push_failed", { reason: errorCode(error) }); }
   }
   /**
    * Binding only: one purchase (POST /v1/pollen/spend, pollen/wardrobe.ts spend). The device is checked
@@ -622,7 +670,7 @@ export class Player extends DurableObject<Env> {
         if (!existing.length && this.ctx.storage.sql.exec<{ n: number }>("SELECT COUNT(*) AS n FROM presence_leases").one().n >= MAX_PRESENCE_SESSIONS) return fail(409, "presence_session_limit");
         this.ctx.storage.sql.exec("INSERT OR REPLACE INTO presence_leases VALUES (?,?,?)", session, deviceHash, Date.now() + PRESENCE_TTL_MS);
       } else this.ctx.storage.sql.exec("DELETE FROM presence_leases WHERE session_id=?", session);
-      await schedulePresence(this.ctx.storage);
+      await this.scheduleAlarm();
       return ok(presencePolicy());
     });
   }
@@ -637,13 +685,22 @@ export class Player extends DurableObject<Env> {
     prunePresence(this.ctx.storage);
     return this.ctx.storage.sql.exec<{ expires_at: number | null }>("SELECT MAX(expires_at) AS expires_at FROM presence_leases WHERE device_hash=?", identity.device_hash).one().expires_at ?? 0;
   }
+  /**
+   * The one alarm: an identity deletion's batches while one runs; otherwise the monthly grant once its wake has come
+   * (pollen/grant-alarm.ts; its provider calls run before the transaction), presence lease pruning, and the next
+   * wake for both. The push for what the grant paid goes last, after the alarm is set again.
+   */
   async alarm(): Promise<void> {
     if (roomErasurePending(this.ctx.storage)) return this.continueRoomErasure();
+    const paid = await this.settleGrantWake();
+    // A deletion that began during the settle took the alarm over.
+    if (roomErasurePending(this.ctx.storage)) return;
     await this.ctx.storage.transaction(async () => {
       const actual = await this.ctx.storage.getAlarm();
       if (!presenceAlarmOwned(this.ctx.storage, actual, true)) throw new Error("unowned_presence_alarm");
-      prunePresence(this.ctx.storage); await schedulePresence(this.ctx.storage);
+      prunePresence(this.ctx.storage); await this.scheduleAlarm();
     });
+    if (paid.length) await this.pushPollen(paid);
   }
   /** Binding-only host lookup; the logical owner and active identity must match. */
   storedTesterGrant(owner: string): TesterGrant | null {

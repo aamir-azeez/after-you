@@ -27,6 +27,12 @@ export type GrantDeps = {
   read: (lifetime: boolean) => Promise<GrantRead>;
   /** PollenClaims answers by claim key, or null when it could not be asked. */
   claim: (keys: string[]) => Promise<Record<string, ClaimAnswer> | null>;
+  /**
+   * Told what this settle newly paid (the ledger's fresh positive grant lines, never a line another read
+   * already paid), after its transaction committed. Only the caller that started the settle is told: a read
+   * that joins one already out takes its outcome only.
+   */
+  paid?: (lines: readonly { key: string; amount: number }[]) => void;
 };
 /** What GET /v1/pollen adds for a player with a grant: the loyalty count, the next step, the top step and the newest instalment. */
 export type GrantView = { months: number; next: number; top: number; latest?: { key: string; amount: number; at: number } };
@@ -100,7 +106,7 @@ async function settleDue(storage: DurableObjectStorage, now: number, active: () 
   if (answers === null) { paused.set(storage, now + OUTAGE_PAUSE_MS); return "unavailable"; }
   const subClaims = Object.fromEntries(read.subs.filter(sub => answers[subscriptionClaimKey(sub.id)]).map(sub => [sub.id, answers[subscriptionClaimKey(sub.id)]]));
   const lifetimeClaim = read.lifetime ? answers[purchaseClaimKey(read.lifetime.id)] : undefined;
-  let waiting = false, alive = false;
+  let waiting = false, alive = false, newly: LedgerEntry[] = [];
   storage.transactionSync(() => {
     if (!active()) return;
     alive = true;
@@ -116,9 +122,13 @@ async function settleDue(storage: DurableObjectStorage, now: number, active: () 
     if (paid.length) plan.state.latest = { key: paid[paid.length - 1].key, amount: paid[paid.length - 1].amount, at: now };
     saveGrant(storage, plan.state);
     waiting = plan.state.live && anniversary(plan.state.anchor, plan.state.next) <= now;
+    newly = paid;
   });
   // An erasure that finished during the awaits leaves nothing to note on.
   if (!alive) return "settled";
+  if (newly.length && deps.paid) {
+    try { deps.paid(newly.map(line => ({ key: line.key, amount: line.amount }))); } catch { /* A listener never undoes or fails a payment. */ }
+  }
   if (waiting) paused.set(storage, now + WAIT_PAUSE_MS);
   // The read also refreshes the Full Journey end the room boost uses, but only ever later: a gift or
   // another entitlement this read does not count must not end a boost (refunds move it back in Phase 6).
