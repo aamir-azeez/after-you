@@ -783,8 +783,8 @@ func _ride_spots(layer: Node3D, id: String) -> Array[Vector3]:
 ## The way round (ride_approach.gd): a pip standing in a room's square corner,
 ## as far from the solid as it may walk, still finds a way whose first leg
 ## keeps that far, and one nearer finds none; ground under a low overhead part
-## is kept off unless the pip stands there; a way that would only exist through
-## it is none.
+## is kept off, and from under it the pip leaves by the nearest side first; a
+## way that would only exist through it is none.
 func _check_ride_route() -> void:
 	var Approach: GDScript = load("res://presentation/keepsakes/ride_approach.gd")
 	var anywhere := func(_at: Vector2) -> bool: return true
@@ -802,7 +802,9 @@ func _check_ride_route() -> void:
 	var none: Array[Rect2] = []
 	var round_it: Array[Vector3] = Approach.route(Vector3(0, 0, 0), Vector3(0, 0, 2.5), none, 0.12, anywhere, overhead)
 	_check(round_it.size() > 2 and round_it.all(func(at: Vector3) -> bool: return not overhead[0].grow(-0.02).has_point(Vector2(at.x, at.z))), "The way round goes past a low overhead part's ends: %d hops" % round_it.size())
-	_check(Approach.route(Vector3(0, 0, 1), Vector3(0, 0, 2.5), none, 0.12, anywhere, overhead).size() > 1, "and from under it the pip simply hops out")
+	var out: Array[Vector3] = Approach.route(Vector3(0.2, 0, 1.3), Vector3(-2.0, 0, 0), none, 0.12, anywhere, overhead)
+	var under := out.map(func(at: Vector3) -> bool: return overhead[0].grow(-0.02).has_point(Vector2(at.x, at.z)))
+	_check(out.size() > 2 and under[0] and not under.slice(1).has(true) and out[1].z > 1.5, "and from under it the pip hops out by the nearest side, then round: %s" % [out])
 	_check(Approach.route(Vector3(0, 0, 0), Vector3(0, 0, 2.5), none, 0.12, func(at: Vector2) -> bool: return absf(at.x) < 0.8, overhead).is_empty(), "With no ground round it there is no way, so the ride plays as a tap")
 
 ## A ride's action pressed in Explore from anywhere but its start (beside or
@@ -856,6 +858,10 @@ func _check_explore_rides() -> void:
 			var tried: Array[Vector3] = []
 			for index in range(0, spots.size(), maxi(1, spots.size() / 8)): tried.append(spots[index])
 			if not far.is_empty(): tried.append_array([far[0], far[far.size() - 1]])
+			# And from under a low overhead part (the rail's dip), if one is offered.
+			var under_dip := spots.filter(func(at: Vector3) -> bool: return overhead.any(func(rect: Rect2) -> bool: return rect.grow(-0.1).has_point(Vector2(at.x, at.z))))
+			if not under_dip.is_empty(): tried.append(under_dip[under_dip.size() / 2])
+			_check(overhead.is_empty() or not under_dip.is_empty(), "%s is offered from under its low dip too (%s)" % [id, look])
 			for local: Vector3 in tried:
 				var label := "%s %s from %s" % [id, look, local]
 				var at := placed * local
@@ -873,8 +879,9 @@ func _check_explore_rides() -> void:
 				_check((layer._play.anim.spawned as Array).filter(is_ball).is_empty(), "and sends no ball (%s)" % label)
 				var tween: Tween = layer._play.tween
 				var clear := true
-				# Off the ground under a low overhead part, unless it stood there.
-				var under: Array[Rect2] = overhead.filter(func(rect: Rect2) -> bool: return not rect.has_point(Vector2(local.x, local.z)))
+				# Off the ground under a low overhead part, once out from under it.
+				var under := func(at: Vector3) -> bool: return overhead.any(func(rect: Rect2) -> bool: return rect.grow(-0.02).has_point(Vector2(at.x, at.z)))
+				var out_from_under: bool = not under.call(local)
 				var arrived := false
 				var risen := 0.0
 				var frames := 0
@@ -885,7 +892,10 @@ func _check_explore_rides() -> void:
 					var flat := Vector3(spirit.position.x, 0, spirit.position.z)
 					# Until it reaches the start it hops round on open ground, out of every solid.
 					var here: Vector3 = placed.affine_inverse() * flat
-					if not arrived: clear = clear and layer._ground(flat) and not layer.blocks(flat, Layer.WALK_CLEARANCE - 0.015) and not under.any(func(rect: Rect2) -> bool: return rect.grow(-0.02).has_point(Vector2(here.x, here.z)))
+					if not arrived:
+						var below: bool = under.call(here)
+						clear = clear and layer._ground(flat) and not layer.blocks(flat, Layer.WALK_CLEARANCE - 0.015) and not (below and out_from_under)
+						out_from_under = out_from_under or not below
 					arrived = arrived or flat.distance_to(goal) < 0.05
 					if arrived: risen = maxf(risen, spirit.position.y)
 				_check(clear and arrived, "The pip hops round on open ground to the start, never through it (%s)" % label)

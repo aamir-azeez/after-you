@@ -17,16 +17,18 @@ const SAMPLE := 0.15
 
 ## Points from `from` to `to`, `from` first and no two more than STRIDE apart,
 ## going round `solids` grown by `clearance`, off the ground under `overhead`
-## (parts hanging too low to hop beneath, unless the pip already stands under
-## one) and only where `walkable` (Vector2 in this frame -> bool) lets the pip
-## stand. Empty when there is no way round (or `from` stands nearer a solid
-## than `clearance`, or `to` in a solid's room or off the ground).
+## (parts hanging too low to hop beneath: a pip standing under one first
+## leaves by its nearest open side) and only where `walkable` (Vector2 in this
+## frame -> bool) lets the pip stand. Empty when there is no way round (or
+## `from` stands nearer a solid than `clearance`, or `to` in a solid's room,
+## under an overhead part or off the ground).
 static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: float, walkable: Callable, overhead: Array[Rect2] = []) -> Array[Vector3]:
 	var start := Vector2(from.x, from.z)
 	var goal := Vector2(to.x, to.z)
-	var blocked: Array[Rect2] = solids.duplicate()
 	for rect: Rect2 in overhead:
-		if not rect.has_point(start): blocked.append(rect.grow(-clearance))
+		if rect.has_point(start): return _out_from_under(from, to, rect.grow(TURN_OUT), solids, clearance, walkable, overhead)
+	var blocked: Array[Rect2] = solids.duplicate()
+	for rect: Rect2 in overhead: blocked.append(rect.grow(-clearance))
 	# A leg may graze the pip's room round a solid, never cut into it.
 	var rooms: Array[Rect2] = []
 	for rect: Rect2 in blocked: rooms.append(rect.grow(clearance - 0.01))
@@ -49,13 +51,16 @@ static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: f
 	# ground is struck out and the next shortest tried.
 	var off := {}
 	var clear := {}
+	var grounded := {}
 	var way := PackedInt32Array()
 	while way.is_empty():
 		way = _shortest(nodes, rooms, leaving, near, clearance - 0.01, off, clear)
 		if way.is_empty(): return []
 		for index in range(1, way.size()):
-			if _grounded(nodes[way[index - 1]], nodes[way[index]], walkable): continue
-			off[Vector2i(mini(way[index - 1], way[index]), maxi(way[index - 1], way[index]))] = true
+			var leg := Vector2i(mini(way[index - 1], way[index]), maxi(way[index - 1], way[index]))
+			if not grounded.has(leg): grounded[leg] = _grounded(nodes[leg.x], nodes[leg.y], walkable)
+			if grounded[leg]: continue
+			off[leg] = true
 			way = PackedInt32Array()
 			break
 	var result: Array[Vector3] = [from]
@@ -67,6 +72,20 @@ static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: f
 			var at := a.lerp(b, float(hop) / hops)
 			result.append(Vector3(at.x, 0.0, at.y))
 	return result
+
+## From under an overhead part (`out` is its ground grown by TURN_OUT): out by
+## the nearest side with a way out and a way on, then round as from anywhere.
+static func _out_from_under(from: Vector3, to: Vector3, out: Rect2, solids: Array[Rect2], clearance: float, walkable: Callable, overhead: Array[Rect2]) -> Array[Vector3]:
+	var exits: Array[Vector3] = [Vector3(out.position.x, 0, from.z), Vector3(out.end.x, 0, from.z), Vector3(from.x, 0, out.position.y), Vector3(from.x, 0, out.end.y)]
+	exits.sort_custom(func(a: Vector3, b: Vector3) -> bool: return a.distance_squared_to(from) < b.distance_squared_to(from))
+	for exit: Vector3 in exits:
+		var way := route(from, exit, solids, clearance, walkable)
+		if way.is_empty(): continue
+		var on := route(exit, to, solids, clearance, walkable, overhead)
+		if on.is_empty(): continue
+		way.append_array(on.slice(1))
+		return way
+	return []
 
 ## The node indices from 0 (the start) to 1 (the goal) by the shortest legs
 ## that cut no room and are not `off` (Vector2i(low, high) -> true), the first
