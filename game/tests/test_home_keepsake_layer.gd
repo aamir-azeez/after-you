@@ -579,6 +579,8 @@ func _check_play() -> void:
 		_check(moved, "%s moves its parts while it plays" % id)
 		_check(not stage.keepsake_playing() and Time.get_ticks_msec() - tap_start <= 4700, "%s finishes within four and a half seconds" % id)
 		await process_frame
+		# The glasshouse and the lighthouse hold their end (test_keepsake_held.gd); let go here.
+		if layer.holding(id): layer._release(id)
 		_check(_pose(layer, id) == rest, "%s ends in exactly its rest pose" % id)
 		var keepsake: Dictionary = States.entries()[States.entries().map(func(entry: Dictionary) -> String: return entry.id).find(id)].keepsake
 		_check(cues.size() == keepsake.sounds.size() and cues == keepsake.sounds.values(), "%s plays one fixed cue per beat: %s" % [id, cues])

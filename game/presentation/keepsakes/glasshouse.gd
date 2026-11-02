@@ -1,11 +1,12 @@
 extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## The Conservatory keepsake: a glasshouse with a flower in a pot and a pump
 ## by the door. Pushing the pump handle (walking up to it, or a tap) runs water
-## in; the roof opens and the flower grows taller than the pip and blooms.
-## Together: a mint watering can that tips and waters too. Hard: vines climb
-## both back corners from slate plinths, and their flowers open with the
-## bloom. Together Hard: a gold sun on the ridge turns, and the flower's middle
-## turns gold.
+## in; the roof opens and the flower grows taller than the pip and blooms, and
+## it stays grown, the roof open, until the pump is pushed again, when the
+## flower starts small and grows again. Together: a mint watering can that tips
+## and waters too. Hard: vines climb both back corners from slate plinths, and
+## their flowers open with the bloom and stay open. Together Hard: a gold sun
+## on the ridge turns, and the flower's middle turns gold and stays gold.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const W := 1.9
 const D := 1.35
@@ -102,11 +103,14 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			anim.move(parts.roof_left, "rotation:z", 0.56 - 0.9, 0.6, 0.5)
 			anim.move(parts.roof_right, "rotation:z", -0.56 + 0.9, 0.6, 0.5)
 			anim.move(flower, "scale", Vector3.ONE * GROWN, 0.8, 0.8, Tween.TRANS_BACK, Tween.EASE_OUT)
+			# Grown, with the roof open over it, it stays until the pump is pushed again.
+			for part: Node3D in [flower, parts.roof_left, parts.roof_right]: anim.keep(part)
 			for index in range(6):
 				var angle := index * TAU / 6.0
 				var petal: MeshInstance3D = anim.spawn(flower, P.low_sphere(0.075, 0.15), P.mat(P.PEACH), bud + Vector3(cos(angle), sin(angle), 0) * 0.04, Vector3(0, 0, angle))
 				anim.set_at(petal, "visible", true, 1.5)
 				anim.move(petal, "position", bud + Vector3(cos(angle), sin(angle), 0) * 0.09 + Vector3(0, 0, 0.02), 1.5, 0.3, Tween.TRANS_BACK, Tween.EASE_OUT)
+				anim.keep(petal)
 			anim.burst(anim.fx, bud * GROWN + Vector3(0, 0.3, 0.1), 6, 0.45, 1.7, 0.6)
 			anim.sound(str(sounds.get("base", "")), 1.5)
 			# Each drop drips into the glasshouse as it arrives. Water always
@@ -129,6 +133,7 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 				var bloom: MeshInstance3D = anim.spawn(anim.fx, P.low_sphere(0.07), P.mat(P.CORAL), _vine(side) + Vector3(0, 1.55, 0.02), Vector3.ZERO, Vector3.ONE * 0.2)
 				anim.set_at(bloom, "visible", true, 0.0)
 				anim.move(bloom, "scale", Vector3.ONE, 0.0, 0.35, Tween.TRANS_BACK, Tween.EASE_OUT)
+				anim.keep(bloom)
 			anim.sound(str(sounds.get("hard", "")), 0.0)
 		"top":
 			# The sun turns and lights, and the flower's middle turns gold.
@@ -137,6 +142,7 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			brighten(anim, sun, 0.0)
 			var heart: MeshInstance3D = anim.spawn(flower, P.low_sphere(0.055), P.gold(true), bud + Vector3(0, 0, 0.03))
 			anim.set_at(heart, "visible", true, 0.0)
+			anim.keep(heart)
 			anim.halo(anim.fx, Vector3(0, RIDGE + 0.38, 0), 0.4, P.GOLD, 0.0, 0.55, 0.22)
 			anim.sound(str(sounds.get("top", "")), 0.0)
 

@@ -1,12 +1,25 @@
 extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## The Sleeping Lighthouse keepsake: a tall lighthouse on a jetty that runs out
 ## past the island's edge. Walking out to the end of the jetty (or a tap) wakes
-## the lamp, and its beam sweeps across every Home island before it settles
-## back to sleep. Together: a mint boat on its own pond whose lamp blinks back
-## as the beam passes. Hard: a gallery rail and a bell on a slate plinth, and a
-## second, faster sweep. Together Hard: a gold weathervane on the roof, and the
-## last sweep turns gold.
+## the lamp: its beam reaches out and starts a slow turn across every Home
+## island, and stays on, turning, until it is pressed again, when the beam
+## fades back into the lamp and it sleeps. Together: a mint boat on its own
+## pond whose lamp blinks back each time the beam passes. Hard: a gallery rail
+## and a bell on a slate plinth, and a second beam opposite the first, so the
+## sweep comes round twice as often. Together Hard: a gold weathervane on the
+## roof, and the beams turn gold.
 const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
+## One full turn of the beam, in seconds, once it is on.
+const SWEEP := 10.0
+## Pressing it again while it is on: SWITCH fades it off (a lamp switched off);
+## REPLAY would put it out and wake it again from the start.
+const PRESS_AGAIN := SWITCH
+const OFF_TIME := 0.8
+## The beam's look, see-through, and the steps it fades through going off.
+const BEAM_ALPHA := 0.42
+const FADES := [0.28, 0.14]
+## A beam reaching out of the lamp starts this thin and short.
+const REACH_FROM := Vector3(0.02, 0.3, 0.3)
 const HARD_LIFT := 0.32
 const POND := Vector3(1.25, 0, 0.95)
 const BEAM := Color("fff3b8")
@@ -68,28 +81,63 @@ func base_time() -> float:
 func upgrade_time(beat: String) -> float:
 	return 0.65 if beat == "hard" else 0.55
 
-## The beam: a pivot at the lamp turning a long see-through cone, made for the
-## first beat and reused by the later sweeps.
-func _beam(anim: RefCounted, state: Dictionary) -> Node3D:
+func press_again() -> String:
+	return PRESS_AGAIN
+
+func off_time() -> float:
+	return OFF_TIME
+
+## The beam: a pivot at the lamp that turns, with one arm (two on Hard, the
+## second opposite) each reaching a long see-through cone out of the lamp.
+## Made in the first beat and kept while the lamp is on; only the pivot turns.
+## {"turn", "arms": [Node3D], "cones": [MeshInstance3D]}.
+func _beam(anim: RefCounted, state: Dictionary) -> Dictionary:
 	if anim.made.has("beam"): return anim.made.beam
 	var turn: Node3D = anim.spawn_pivot(anim.fx, Vector3(0, _y0(state) + 2.36, 0))
-	var cone: MeshInstance3D = anim.spawn(turn, P.Primitives.shared_mesh("cone", 0.5, 4.2), P.clear(BEAM, 0.42, 1.2), Vector3(2.3, 0, 0), Vector3(0, 0, PI / 2))
-	anim.made.beam = turn
-	anim.made.cone = cone
-	return turn
+	var beam := {"turn": turn, "arms": [], "cones": []}
+	for index in range(2 if state.get("hard", false) else 1):
+		var arm: Node3D = anim.spawn_pivot(turn, Vector3.ZERO)
+		arm.rotation.y = PI * index
+		arm.scale = REACH_FROM
+		var cone: MeshInstance3D = anim.spawn(arm, P.Primitives.shared_mesh("cone", 0.5, 4.2), P.clear(BEAM, BEAM_ALPHA, 1.2), Vector3(2.3, 0, 0), Vector3(0, 0, PI / 2))
+		beam.arms.append(arm)
+		beam.cones.append(cone)
+	anim.made.beam = beam
+	return beam
+
+## An arm of the beam reaching out of the lamp from `at`, and kept.
+static func _reach(anim: RefCounted, beam: Dictionary, index: int, at: float, time: float) -> void:
+	var arm: Node3D = beam.arms[index]
+	anim.set_at(arm, "visible", true, at)
+	anim.set_at(beam.cones[index], "visible", true, at)
+	anim.move(arm, "scale", Vector3.ONE, at, time, Tween.TRANS_SINE, Tween.EASE_OUT)
+	anim.keep(arm)
+	anim.keep(beam.cones[index])
 
 func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) -> void:
 	var sounds: Dictionary = state.get("sounds", {})
 	var lamp: MeshInstance3D = parts.lamp
 	match beat:
 		"base":
-			# The lamp wakes and the beam sweeps once round every island, then sleeps.
+			# The lamp wakes, the beam reaches out and starts a slow turn round
+			# every island, gathering speed until it turns once every SWEEP
+			# seconds as the tap ends; from there the layer keeps it turning.
 			anim.set_at(lamp, "material_override", P.glow(P.LAMP, 2.0), 0.0)
+			anim.keep(lamp)
 			anim.halo(anim.fx, Vector3(0, _y0(state) + 2.36, 0), 0.42, P.LAMP, 0.0, 2.3)
-			var turn := _beam(anim, state)
+			var beam := _beam(anim, state)
+			var turn: Node3D = beam.turn
 			anim.set_at(turn, "visible", true, 0.15)
-			anim.set_at(anim.made.cone, "visible", true, 0.15)
-			anim.move(turn, "rotation:y", TAU, 0.15, 2.1, Tween.TRANS_SINE, Tween.EASE_IN_OUT)
+			_reach(anim, beam, 0, 0.15, 0.9)
+			var total := 0.0
+			for each: Dictionary in beats(state): total += float(each.time)
+			# An ease in from still ends at PI / 2 times its mean speed: at SWEEP's.
+			var rate := TAU / SWEEP
+			var reach := total - 0.15
+			anim.move(turn, "rotation:y", rate * reach * 2.0 / PI, 0.15, reach, Tween.TRANS_SINE, Tween.EASE_IN)
+			var answers: Array = []
+			if parts.has("boat_lamp"): answers.append([parts.boat_lamp, atan2(-POND.z, POND.x), P.glow(P.LAMP, 2.0), P.mat(P.LAMP_OFF)])
+			anim.spin(turn, rate, beam.arms.size(), answers)
 			anim.sound(str(sounds.get("base", "")), 0.0)
 		"together":
 			# The boat's lamp blinks back as the beam passes.
@@ -100,22 +148,28 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 			anim.halo(anim.fx, POND + Vector3(0, 0.68, 0), 0.2, P.LAMP, 0.0, 0.43)
 			anim.sound(str(sounds.get("together", "")), 0.0)
 		"hard":
-			# A second, faster sweep, and the gallery bell rings.
-			var turn := _beam(anim, state)
-			anim.move(turn, "rotation:y", TAU * 2.0, 0.0, 0.6, Tween.TRANS_LINEAR)
+			# The second beam reaches out opposite the first, and the gallery bell rings.
+			_reach(anim, _beam(anim, state), 1, 0.0, 0.6)
 			var bell: Node3D = parts.bell
 			anim.move(bell, "rotation:z", 0.5, 0.0, 0.12)
 			anim.move(bell, "rotation:z", -0.35, 0.12, 0.18)
 			anim.move(bell, "rotation:z", 0.0, 0.3, 0.2)
 			anim.sound(str(sounds.get("hard", "")), 0.0)
 		"top":
-			# The last sweep turns gold and the weathervane spins.
-			var turn := _beam(anim, state)
-			anim.set_at(anim.made.cone, "material_override", P.clear(BEAM_GOLD, 0.42, 1.2), 0.0)
-			anim.move(turn, "rotation:y", TAU * 3.0, 0.0, 0.5, Tween.TRANS_SINE, Tween.EASE_OUT)
+			# The beams turn gold and the weathervane spins.
+			for cone: MeshInstance3D in _beam(anim, state).cones: anim.set_at(cone, "material_override", P.clear(BEAM_GOLD, BEAM_ALPHA, 1.2), 0.0)
 			anim.move(parts.vane, "rotation:y", 0.6 + TAU, 0.0, 0.5, Tween.TRANS_SINE, Tween.EASE_OUT)
 			brighten(anim, parts.vane, 0.0)
 			anim.sound(str(sounds.get("top", "")), 0.0)
+		"off":
+			# Pressed again while on: the beams fade back into the lamp as they
+			# turn, the lamp dims, and the layer puts it all back to sleep.
+			var beam := _beam(anim, state)
+			var color := BEAM_GOLD if state.get("top", false) else BEAM
+			for index in range(beam.arms.size()):
+				anim.move(beam.arms[index], "scale", REACH_FROM, 0.0, OFF_TIME - 0.05, Tween.TRANS_SINE, Tween.EASE_IN)
+				for step in range(FADES.size()): anim.set_at(beam.cones[index], "material_override", P.clear(color, float(FADES[step]), 1.2), 0.2 + step * 0.25)
+			anim.set_at(lamp, "material_override", P.glow(P.LAMP, 1.0), 0.3)
 
 ## Walking out to the end of the jetty.
 func trigger() -> Dictionary:

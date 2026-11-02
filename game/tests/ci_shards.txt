@@ -140,6 +140,7 @@ journey_corrections 1
 journey_proofs 2
 journey_seven 3
 journey_world 2
+keepsake_held 2
 keepsake_leave 1
 keepsake_props 3
 keyboard_lift 1
