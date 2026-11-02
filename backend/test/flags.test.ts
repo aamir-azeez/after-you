@@ -130,6 +130,14 @@ const LIVE_ENV = () => withConfig({ ...env, features: LIVE_KEPT, min_client_vers
   PLAY_GAMES_CLIENT_SECRET: "synthetic-client-secret", POLLEN_SECRET: "synthetic-pollen-secret-for-tests-only-0001" }) as unknown as Env;
 const sha = async (text: string) => "sha256:" + hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text))));
 
+/** Capability fields added on purpose after the capture, taken out so every other byte is still compared. */
+const ADDED_SINCE_CAPTURE = ["pollen_offered_tag"];
+function sinceCapture(text: string): string {
+  const value = JSON.parse(text) as Record<string, unknown>;
+  if (!ADDED_SINCE_CAPTURE.some(field => Object.hasOwn(value, field))) return text;
+  for (const field of ADDED_SINCE_CAPTURE) delete value[field];
+  return JSON.stringify(value);
+}
 /** The worker's answers to every capabilities client, /health and /v1/app-status, capabilities as hashes. Capabilities come from an app new enough for Pollen replies (pollen/routes.ts), as live answered every app then. */
 async function liveAnswers(vars: Env): Promise<Record<string, string>> {
   const answers: Record<string, string> = {};
@@ -138,7 +146,7 @@ async function liveAnswers(vars: Env): Promise<Record<string, string>> {
     const combos: [string, Record<string, string>][] = [[`${tag}:none`, level], ...ASKING.map((header): [string, Record<string, string>] => [`${tag}:${header}`, { ...level, [header]: "1" }]),
       [`${tag}:all`, { ...level, ...Object.fromEntries(ASKING.map(header => [header, "1"])) }]];
     for (const [key, headers] of combos)
-      answers["capabilities " + key] = await sha(await (await routeV2(new Request("https://after-you.test/v2/capabilities", { headers: { ...headers, ...POLLEN_CLIENT } }), "/v2/capabilities", "c".repeat(22), vars)).text());
+      answers["capabilities " + key] = await sha(sinceCapture(await (await routeV2(new Request("https://after-you.test/v2/capabilities", { headers: { ...headers, ...POLLEN_CLIENT } }), "/v2/capabilities", "c".repeat(22), vars)).text()));
   }
   answers.health = await (await worker.fetch(new Request("https://after-you.test/health"), vars)).text();
   for (const client of [undefined, "0.6.9 play", "0.7.0 play", "0.6.9 github", "0.7.0 github", "0.0.0 app_store", "0.0.1 dev", "bad"]) {
