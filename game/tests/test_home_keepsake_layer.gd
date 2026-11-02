@@ -1128,18 +1128,30 @@ func _check_rail_dip() -> void:
 			slid = layer.step(slid, placed.basis * (Vector3(0.6, 0, -0.8) * 0.05))
 			slid_clear = slid_clear and not under.call(slid)
 		_check(slid_clear and (back * slid).x > 0.5, "Pushed at a slant into the dip the pip slides along it (%s): %s" % [look, back * slid])
-		# Standing under the dip when it appears, it walks out, never into a post.
+		# Standing under the dip when it appears, even right by a post, it walks
+		# out, and no step takes it nearer a post than it may walk and was.
+		var by_posts: Array[Vector3] = []
+		for solid: Rect2 in prop.solids:
+			if not dips[0].intersects(solid): continue
+			var half := solid.size * 0.5 + Vector2(0.04, 0.04)
+			for side: Vector2 in [Vector2(half.x, 0), Vector2(-half.x, 0), Vector2(0, half.y), Vector2(0, -half.y)]:
+				var local := Vector3(solid.get_center().x + side.x, 0, solid.get_center().y + side.y)
+				if dips[0].grow(-0.04).has_point(Vector2(local.x, local.z)) and layer._solid_distance(ID, placed * local) > 0.0: by_posts.append(local)
 		var spots := _under_dip(layer, ID)
-		_check(spots.size() >= 8, "There are spots under the dip clear of its posts (%s): %d" % [look, spots.size()])
+		_check(spots.size() >= 8 and by_posts.size() >= 6, "There are spots under the dip, and right by its posts (%s): %d, %d" % [look, spots.size(), by_posts.size()])
+		spots.append_array(by_posts)
 		var stuck: Array[Vector3] = []
 		var into: Array[String] = []
 		for local: Vector3 in spots:
 			var out := false
 			for way: Vector3 in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]:
 				var at := placed * local
+				var was: float = layer._solid_distance(ID, at)
 				for move in range(30):
 					at = layer.step(at, placed.basis * (way * 0.05))
-					if layer._solid_distance(ID, at) < Layer.WALK_CLEARANCE - 0.001: into.append("%s by %s" % [local, way])
+					var now: float = layer._solid_distance(ID, at)
+					if now < minf(was, Layer.WALK_CLEARANCE) - 0.001: into.append("%s by %s" % [local, way])
+					was = now
 				out = out or (not under.call(at) and layer.walkable(at))
 			if not out: stuck.append(local)
 		_check(stuck.is_empty(), "A pip under the dip when it appears walks out (%s): stuck at %s" % [look, stuck])
