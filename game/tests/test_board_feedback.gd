@@ -216,6 +216,27 @@ func _shown_rows() -> void:
 	both.ticks = 1150
 	rows = BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, ten, []), [waiting, both], now)
 	_check(rows.filter(func(row: Dictionary) -> bool: return row.pending).size() == 1 and rows[2].entry_id == both.entry_id, "two runs just finished by one pair: only the faster shows: %s" % [_ranks(rows)])
+	# A pair named on another board this phone read: its waiting run carries those names (pair_names).
+	var relay_run := _run_on("ab".repeat(16), 5000, PARTNER, "2026-10-20T10:00:00.000Z")
+	relay_run.board = RELAY_BOARD
+	var relay_named := _row(2, relay_run.entry_id, 5000)
+	relay_named.names = ["Ada", "Bo"]
+	var views := {RELAY_BOARD: _view(RELAY_BOARD, [relay_named], [])}
+	var known := BoardStatus.pair_names([waiting, relay_run], views, true)
+	_check(known == {PARTNER: ["Ada", "Bo"]}, "a named row of the pair on any board read names the pair: %s" % [known])
+	_check(BoardStatus.pair_names([waiting, relay_run], views, false).is_empty(), "never while this player hides their name")
+	var hidden := relay_named.duplicate()
+	hidden.names = null
+	_check(BoardStatus.pair_names([waiting, relay_run], {RELAY_BOARD: _view(RELAY_BOARD, [hidden], [])}, true).is_empty(), "an \"A pair\" row says nothing of the partner's choice")
+	var stranger := relay_run.duplicate()
+	stranger.partner = "PPPPPPPPPPPPPPPPPPPPPP"
+	_check(not BoardStatus.pair_names([stranger], views, true).has(PARTNER) and BoardStatus.pair_names([relay_run.merged({"partner": ""}, true)], views, true).is_empty(), "only a row of the same pair counts")
+	rows = BoardStatus.shown_rows(view, [waiting], now, {}, known)
+	_check(rows[3].pending and rows[3].names == ["Ada", "Bo"], "the waiting row is named as the board will name it: %s" % [rows[3].names])
+	_check(BoardStatus.shown_rows(view, [waiting], now)[3].names == null, "and with no names known it is \"A pair\"")
+	rows = BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, with_ranked, [waiting.entry_id]), [ranked, waiting], now, {}, {PARTNER: ["Cy", "Di"]})
+	_check(rows[3].names == ["Ada", "Bo"], "the pair's ranked row on this board names it first")
+	_check(BoardStatus.shown_row(waiting, view, now, [waiting], known).names == ["Ada", "Bo"], "shown_row names it the same")
 	var first := waiting.duplicate()
 	first.ticks = 900
 	var gold: Array = ten.duplicate(true)
@@ -443,6 +464,32 @@ func _end_of_run_celebration() -> void:
 	if shown != null: Celebration.close_over(room.ui)
 	line.queue_free()
 	await _frames(1)
+	# A pair a board this phone read names (another chapter's row of theirs): its
+	# waiting run is celebrated with the names the board will give it, while this
+	# player shows their name; otherwise "A pair", as the board would show it.
+	var client: RefCounted = Client.shared(host.api, OWNER)
+	var kept_choice: Dictionary = client._choice.duplicate()
+	for show: bool in [true, false]:
+		_fresh_runs()
+		var relay_room := "R9R9R9R9R9R9R9R9R9R9R9"
+		Runs.note(OWNER, _snapshot(relay_room, _relay_final(), "2026-10-20T10:00:00.000Z"), Registry.RELAY)
+		var relay_row := _row(4, Runs.entry_id(relay_room, 1), 5000)
+		relay_row.names = ["Ada", "Bo"]
+		client._views.clear()
+		client._views[RELAY_BOARD] = {"at": Time.get_ticks_msec(), "view": _view(RELAY_BOARD, [relay_row], [])}
+		client._choice = {"show": show, "pending": false, "synced": true}
+		var named_room := "C9C9C9C9C9C9C9C9C9C9C9" if show else "CACACACACACACACACACACA"
+		host.api.replies["GET " + path] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 2000)], [Runs.entry_id(named_room, 1)])}
+		line = flow.line_for(_snapshot(named_room, _lighthouse_final(), _now_iso(-2)), Registry.LIGHTHOUSE_V2)
+		room.card.add_child(line)
+		await _frames(5)
+		shown = room.ui.find_child(Celebration.NODE_NAME, false, false)
+		var want: Variant = ["Ada", "Bo"] if show else null
+		_check(shown != null and shown.placing.rank == 1 and shown.placing.names == want, "a waiting run of a pair named on another board: %s while this player %s their name" % [shown.placing.names if shown != null else "no celebration", "shows" if show else "hides"])
+		if shown != null: Celebration.close_over(room.ui)
+		line.queue_free()
+		await _frames(1)
+	client._choice = kept_choice
 	# The room changed under the card's read: nothing, and Home can still celebrate it.
 	_fresh_runs()
 	var swap_room := "C8C8C8C8C8C8C8C8C8C8C8"

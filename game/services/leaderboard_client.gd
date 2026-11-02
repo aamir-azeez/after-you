@@ -63,6 +63,12 @@ func board(key: String, fresh: bool = false) -> Dictionary:
 func kept_view(key: String) -> Dictionary:
 	return (_views.get(key, {}) as Dictionary).get("view", {})
 
+## Every board this client last read from the server (board -> view), however old (no request).
+func kept_views() -> Dictionary:
+	var views: Dictionary = {}
+	for key: String in _views: views[key] = _views[key].view
+	return views
+
 ## Whether this player chose to show their name (the phone's copy).
 func show_name() -> bool:
 	return bool(_choice.get("show", false))

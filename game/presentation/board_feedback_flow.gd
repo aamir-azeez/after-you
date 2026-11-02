@@ -8,7 +8,8 @@ extends RefCounted
 ##   shows (services/board_status.gd shown_row(), its check still to come) is
 ##   celebrated over the room at once, from the kept board or else that read:
 ##   the same celebration a confirmed place gets, once a run, since it is
-##   marked shown in services/leaderboard_placings.gd before it opens. Its
+##   marked shown in services/leaderboard_placings.gd before it opens, named
+##   as the board would name the pair (BoardStatus.pair_names). Its
 ##   confirmation later is then no news; a run that fails its check just
 ##   leaves the board this phone shows.
 ## - service_home(): every frame on Home, but it does work at most every
@@ -87,7 +88,7 @@ func _celebrate(run: Dictionary, view: Dictionary, line: Control) -> void:
 	var parent: Variant = room.get("ui")
 	if not parent is Control or not (parent as Control).is_ancestor_of(line) or not (line.get_parent() as Control).is_visible_in_tree() or Celebration.showing(parent): return
 	if Placings.shared().was_shown(owner, run.entry_id): return
-	var row := BoardStatus.shown_row(run, view, _now(), Runs.on_board(owner, run.board))
+	var row := BoardStatus.shown_row(run, view, _now(), Runs.on_board(owner, run.board), _pair_names(owner))
 	if row.is_empty() or Placings.tier(int(row.rank)).is_empty(): return
 	Placings.shared().mark_shown(owner, run.entry_id)
 	# The row as the board shows it: a confirmed one brings its names and Gold leaf.
@@ -143,6 +144,11 @@ func _post_note(run: Dictionary) -> void:
 
 func _note_settled(run: Dictionary, status: Dictionary) -> void:
 	if status.state in [BoardStatus.RANKED, BoardStatus.NOT_LISTED]: _settled[run.entry_id] = true
+
+## The names the board would give this player's pairs (BoardStatus.pair_names), as the board screen names a waiting row.
+func _pair_names(owner: String) -> Dictionary:
+	var client := _client()
+	return BoardStatus.pair_names(Runs.runs_of(owner), client.kept_views(), client.show_name())
 
 func _supported() -> bool:
 	return host.relay_session != null and host.relay_session.leaderboards_supported()

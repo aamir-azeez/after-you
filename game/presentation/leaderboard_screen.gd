@@ -365,7 +365,9 @@ func _render_board() -> void:
 	for id: String in checking: gone.erase(id)
 	for row: Dictionary in _view.get("top", []): gone.erase(row.entry_id)
 	_gone[board] = gone
-	var rows: Array = BoardStatus.shown_rows(_view, mine, Time.get_unix_time_from_system(), gone)
+	# A waiting row is named as the board would name its pair once it ranks.
+	var known := BoardStatus.pair_names(Runs.runs_of(player_id), client.kept_views(), client.show_name()) if client != null else {}
+	var rows: Array = BoardStatus.shown_rows(_view, mine, Time.get_unix_time_from_system(), gone, known)
 	if rows.is_empty():
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_EMPTY))
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_RULES))

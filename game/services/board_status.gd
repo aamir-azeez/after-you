@@ -66,9 +66,11 @@ static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix:
 ## - `gone` (entry_id -> true): runs an earlier read listed as checking that
 ##   this one lists nowhere. They failed their check, so they go at once
 ##   rather than when the settle window ends.
+## - `known` (partner -> two names, pair_names()): a waiting run whose pair has
+##   no ranked row here to take the names of is named as the board would name it.
 ## A pending row: {rank, entry_id, ticks, names, gold_leaf, finished_on,
 ## replay_hash: null, looks: [], pending: true, partner}. [] without a board read.
-static func shown_rows(view: Dictionary, mine: Array, now_unix: float, gone: Dictionary = {}) -> Array:
+static func shown_rows(view: Dictionary, mine: Array, now_unix: float, gone: Dictionary = {}, known: Dictionary = {}) -> Array:
 	if not view.get("top") is Array or not view.get("checking") is Array: return []
 	var waiting: Dictionary = {}
 	for run: Dictionary in mine:
@@ -78,7 +80,7 @@ static func shown_rows(view: Dictionary, mine: Array, now_unix: float, gone: Dic
 		var key := pair if not pair.is_empty() else "run:" + str(run.entry_id)
 		if not waiting.has(key) or _ahead(run, waiting[key]): waiting[key] = run
 	var replaced: Dictionary = {}
-	var names: Dictionary = {}
+	var names: Dictionary = known.duplicate(true)
 	for run: Dictionary in mine:
 		var pair := str(run.get("partner", ""))
 		if not pair.is_empty() and waiting.has(pair): replaced[run.entry_id] = pair
@@ -110,8 +112,8 @@ static func shown_rows(view: Dictionary, mine: Array, now_unix: float, gone: Dic
 
 ## The row `run` has on the board this phone shows (shown_rows), or {} when
 ## it has none there (off the board, settled, or no board read).
-static func shown_row(run: Dictionary, view: Dictionary, now_unix: float, mine: Array) -> Dictionary:
-	for row: Dictionary in shown_rows(view, mine, now_unix):
+static func shown_row(run: Dictionary, view: Dictionary, now_unix: float, mine: Array, known: Dictionary = {}) -> Dictionary:
+	for row: Dictionary in shown_rows(view, mine, now_unix, {}, known):
 		if row.entry_id == run.get("entry_id"): return row
 	return {}
 
@@ -122,11 +124,34 @@ static func place(run: Dictionary, view: Dictionary, now_unix: float, mine: Arra
 static func _ahead(a: Dictionary, b: Dictionary) -> bool:
 	return int(a.ticks) < int(b.ticks) or (int(a.ticks) == int(b.ticks) and str(a.get("finished_at", "")) < str(b.get("finished_at", "")))
 
-## A waiting run as a row; `names` holds the names of the pair's ranked row it takes the place of.
+## A waiting run as a row; `names` holds the names of the pair's ranked row it
+## takes the place of, else the ones pair_names() knows for the pair.
 static func _pending_row(run: Dictionary, names: Dictionary) -> Dictionary:
 	var partner := str(run.get("partner", ""))
 	return {"rank": 0, "entry_id": run.entry_id, "ticks": int(run.ticks), "names": names.get(partner) if not partner.is_empty() else null, "gold_leaf": false,
 		"finished_on": str(run.get("finished_at", "")).left(10), "replay_hash": null, "looks": [], "pending": true, "partner": partner}
+
+## The names the board would give each of this player's pairs on a run it
+## has not ranked yet (partner -> [two names]). The board names a pair only
+## when both players chose to show their names (backend board.ts shownNames),
+## and only a named row of the pair tells this phone the partner did: a row in
+## one of `views` (board -> view, the boards this phone read) of a run in
+## `runs` (this player's runs on any board) with that partner, taken while this
+## player still shows their name (`show_own`). The names are the row's own, the
+## players' display names, never a friend nickname, as on any row. A pair
+## with no such row is left out, so its run shows as "A pair", as the board would.
+static func pair_names(runs: Array, views: Dictionary, show_own: bool) -> Dictionary:
+	var known: Dictionary = {}
+	if not show_own: return known
+	for run: Dictionary in runs:
+		var partner := str(run.get("partner", ""))
+		var view: Variant = views.get(run.get("board"))
+		if partner.is_empty() or known.has(partner) or not view is Dictionary or not view.get("top") is Array: continue
+		for row: Variant in view.top:
+			if row is Dictionary and row.get("entry_id") == run.get("entry_id") and row.get("names") is Array and (row.names as Array).size() == 2:
+				known[partner] = (row.names as Array).duplicate()
+				break
+	return known
 
 ## Whether `view` lists the run as waiting for its check (never a guess).
 static func listed_checking(run: Dictionary, view: Dictionary) -> bool:
