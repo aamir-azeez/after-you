@@ -2,6 +2,11 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.6.0",
+      "date": "2026-10-13",
+      "highlights": [{"icon": "spark", "text": "Two free chapters: The Wishing Well and Turn of the Tide"}, {"icon": "home", "text": "Long Way Home has a harder finale", "paid": true}, {"icon": "star", "text": "Keepsakes stand on the home island"}, {"icon": "key", "text": "Full Journey is a monthly or yearly subscription", "paid": true}]
+    },
+    {
       "version": "0.5.1",
       "date": "2026-10-10",
       "highlights": [{"icon": "link", "text": "Invite a friend with a link"}, {"icon": "key", "text": "Codes start with friend- or room-"}, {"icon": "home", "text": "Home has a new layout"}, {"icon": "play", "text": "Replays open faster after a restart"}]

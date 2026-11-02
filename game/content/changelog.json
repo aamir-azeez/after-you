@@ -2,6 +2,21 @@
   "schema_version": 1,
   "entries": [
     {
+      "version": "0.7.8",
+      "date": "2026-11-02",
+      "highlights": [{"icon": "leaf", "text": "Tap your Pollen balance to open the Pollen page"}, {"icon": "leaf", "text": "Short of Pollen? Buy the bundle you need on the spot", "paid": true}, {"icon": "star", "text": "Your leaderboard place shows as soon as you finish"}, {"icon": "people", "text": "Friends see each other's looks"}, {"icon": "bell", "text": "Duels update as they happen"}, {"icon": "home", "text": "More room to walk in Explore"}, {"icon": "sun", "text": "The Lighthouse stays lit until you rest the lamp", "paid": true}],
+      "paragraphs": [
+        {"text": "Your Pollen balance has a + beside it, on Home too, and the + opens the Pollen store. Previous purchases, at the bottom of the store, holds your bundle receipts, which used to be in Settings. When an item or a name change costs more Pollen than you have, the Not enough Pollen yet card names the smallest bundle that covers the rest, or the one that gets you closest, and shows how much Pollen it gives. Its button shows the price and buys the bundle right there. Once the Pollen arrives, the item's card opens again, so you still choose whether to spend it.", "channels": ["play", "app_store"], "paid": true},
+        {"text": "Pollen prices in the Wardrobe and on a name change no longer have a rough dollar amount beside them. On the Owned tab of the Wardrobe, Hat, Body and Leaf each end with a Get more card that opens All items, as long as the shop has something you don't own yet.", "paid": true},
+        {"text": "Tapping your Pollen balance on Home or in the Wardrobe opens the Pollen page, which used to be called Pollen from play. The Wardrobe button and your balance show up on Home every time, including right after the game starts and when you come back from a solo chapter. Friends see each other's looks too. A friend's pip used to show up plain when they wore something your phone hadn't seen yet. A look you put on after your last turn in a room reaches your friend after your next turn there."},
+        {"text": "When you finish a chapter together and your time makes the top 10, the end of the chapter celebrates your place at once instead of saying the time is being checked. On the leaderboard and under Your best, the run stands at its place with a small clock beside it until the check is done. It shows your pair's names if the board already lists them, and a first place shows the Gold leaf on your phone. A run that fails the check leaves the board."},
+        {"text": "Duels update as they happen. A challenge, an answer, a turn or a pair leaving shows in Open duels, on the duel page and in Party straight away while you're online, and within a minute otherwise. Results show as soon as both pairs finish. If you challenge a pair you already have a duel with on that chapter, the game opens that duel."},
+        {"text": "Explore has more room to walk. The keepsakes on Home stand further apart, three isles are wider and the Relay Masts face the other way. Your pip slides along whatever it walks into instead of stopping. The other pip keeps wandering while you explore, and both walk about again when you come back. Climb the steps and Turn the tide work from any side: your pip hops round the Giant Steps or the Tide Pool to where it starts. On the Relay Masts, the flag runs up its own cord, along the top line and back the same way."},
+        {"text": "Walk up to the Little House and its door swings open for your pip, which can't walk through it while it's shut. Ride the rail works from any side of the Rolling Rail, and your pip keeps its happy face until it lands. The Glasshouse flower stays grown until you push the pump again. After you wake the lamp, the Lighthouse beam keeps turning slowly until you press Rest the lamp.", "paid": true},
+        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
+      ]
+    },
+    {
       "version": "0.7.7",
       "date": "2026-11-01",
       "highlights": [{"icon": "people", "text": "Race another pair of friends in Duels"}, {"icon": "star", "text": "Race Our run or a top time from the leaderboard"}, {"icon": "leaf", "text": "100 Pollen the first time you beat Our run on a chapter"}, {"icon": "bell", "text": "A bell rings when your pair wins"}, {"icon": "play", "text": "Online rooms open without a pause"}],
@@ -149,21 +164,6 @@
         {"text": "Hosting alerts were fixed. A room you host for Friends is shared as soon as you host it, the alert is kept if the app restarts, and it is sent again if the first try fails. Alerts stay on after a cold start, and after a reinstall the game asks once for notification permission. A friend's hosting alert also shows inside the app while it's open."},
         {"text": "Speech bubbles slide beside a spirit instead of covering it, and every lever bubble points at the top of the knob. Balanced and High graphics don't draw shadows now, and the lighting is as bright as before. In Explore on Home, the bridge rises as you walk up to it, and the keepsake arrows are hidden."},
         {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code, and the game now says so when you try to host.", "channels": ["github"]}
-      ]
-    },
-    {
-      "version": "0.6.0",
-      "date": "2026-10-13",
-      "highlights": [{"icon": "spark", "text": "Two free chapters: The Wishing Well and Turn of the Tide"}, {"icon": "home", "text": "Long Way Home has a harder finale", "paid": true}, {"icon": "star", "text": "Keepsakes stand on the home island"}, {"icon": "key", "text": "Full Journey is a monthly or yearly subscription", "paid": true}],
-      "paragraphs": [
-        {"text": "There are two new free chapters, The Wishing Well and Turn of the Tide, and you can play them solo or host them for a friend online. Long Way Home has a new version with a harder finale and three ways through. It keeps the house and the first stage, and keepsakes you already earned there still count. To join a room in any of these chapters, your friend needs 0.6.0 too.", "paid": true},
-        {"text": "Full Journey is now a subscription, paid monthly or yearly. It pays for hosting and server costs, and it unlocks the paid chapters for solo play and for hosting a friend. If you bought Full Journey before, it stays unlocked.", "paid": true},
-        {"text": "Keepsakes now stand on the home island as landmarks on their own bridged islands. Each one shows whether you finished its chapter solo, with a friend, or both. Tap Explore on Home to walk a spirit around them."},
-        {"text": "The seed looks like the white seed on the app icon now, and it tumbles as it flies. The turn timer is a small seed that moves along a dotted path to a sprout. In Long Way Home and Turn of the Tide, lever and pad labels are speech bubbles that point at their control. Most chapters have new scenery, and the chapter pictures were retaken to match."},
-        {"text": "A loading card shows while a chapter opens, and solo chapters open faster because the game reuses checks it already made on your phone. Sound pitch slides smoothly within a range, and the same moment plays at the same pitch in replays. The ball and the seed share one motion blur, which fixes the thin strips behind the ball in Rolling Home."},
-        {"text": "Play Solo and Play with a friend use the same chapter picker. You can close a room that is still in play, and remove finished or closed rooms from your list. The old Play together screen is gone, so Back from hosting returns to Play with a friend. Notify for a friend stays on after you leave Friends and come back."},
-        {"text": "Replays shows the whole list as soon as it opens, and you can tap anywhere on a row to select it. Sleeping Lighthouse solo replays open from the Solo replays list. Most solo chapters have a Redo my previous turn button, and Notifications has a switch that alerts you when your friend asks for a redo."},
-        {"text": "This APK uses the RevenueCat Test Store. A test subscription unlocks the paid solo chapters only. Hosting paid chapters for a friend still needs a tester code.", "channels": ["github"]}
       ]
     }
   ]
