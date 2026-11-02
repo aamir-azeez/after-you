@@ -26,8 +26,6 @@ extends SceneTree
 
 ## Check id -> who fixes it and what is wrong.
 const KNOWN_FAILURES := {
-	"pips:res://presentation/duels/duel_kit.gd": "duel-looks: duel pages and duel rooms draw the other pips with no look",
-	"home_switches": "home-caps: Home's Duels row, board watch and leaderboard name row wait for a capabilities read",
 	"capabilities:res://presentation/reaction_photo_flow.gd": "unowned (shared-paths audit): photo_uploads_enabled is read raw; give it an accessor",
 	"capabilities:res://presentation/replays_flow.gd": "unowned (shared-paths audit): replay_transfer_version is read raw; give it an accessor",
 	"offline:res://presentation/duels/duels_flow.gd": "unowned (shared-paths audit): Challenge, Race, Party and the duel answers stay live offline",
@@ -66,7 +64,7 @@ const PIP_MAKERS := {
 	"res://presentation/duels/duel_kit.gd": ["dressed", "both pairs in every duel page"],
 	"res://presentation/wardrobe_page.gd": ["preview", "shows each item on the plain pip"],
 	"res://presentation/wardrobe_sheets.gd": ["preview", "the buy sheet shows the item on the plain pip"],
-	"res://presentation/pollen_result_line.gd": ["preview", "the item a bloom dropped, alone on the player's colour (audit: owner may want their look under it)"],
+	"res://presentation/pollen_result_line.gd": ["preview", "owner 2026-11-02: the dropped item shows alone on a plain pip"],
 	"res://presentation/story_memory_world.gd": ["unshown", "Story was removed; only tests load it"],
 }
 ## A script that reads a player's look.
