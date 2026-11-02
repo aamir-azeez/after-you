@@ -288,8 +288,6 @@ func _check_lighthouse(look: Array) -> void:
 	home.viewport.free()
 	await process_frame
 
-## The wake's turn eases in and hands over at the held speed: the angle a
-## frame before the end and the held step after differ by about one held step.
 ## The Explore button by the Lighthouse says what a press will do: "Wake the
 ## lamp" while it sleeps, "Rest the lamp" from the press that wakes it, while
 ## it stays on, until the press that puts it to rest. The Conservatory keeps
@@ -311,6 +309,11 @@ func _check_lighthouse_words() -> void:
 	button.pressed.emit()
 	_check(layer.playing() and not layer.holding(LIGHT) and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, "Pressed again, it fades to rest and the button reads %s at once: %s" % [PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, button.text])
 	await _finish(layer)
+	# A tap on it in Explore (not the button) changes the words at once too.
+	_check(stage.play_keepsake(LIGHT) and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_HELD_ACTION, "Tapped in Explore, it wakes and the button reads %s at once" % PlayerCopy.KEEPSAKE_LIGHTHOUSE_HELD_ACTION)
+	await _finish(layer)
+	_check(stage.play_keepsake(LIGHT) and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, "Tapped again, it fades to rest and the button reads %s at once" % PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION)
+	await _finish(layer)
 	stage._update_explore_action()
 	_check(not layer.switched_on(LIGHT) and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, "Asleep again, it reads %s" % PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION)
 	stage.select_keepsake(GLASS)
@@ -319,6 +322,8 @@ func _check_lighthouse_words() -> void:
 	_check(layer.holding(GLASS) and layer.selected_item().action == PlayerCopy.KEEPSAKE_GLASSHOUSE_ACTION, "The Conservatory, held, keeps its one set of words")
 	await _close(home)
 
+## The wake's turn eases in and hands over at the held speed: the angle a
+## frame before the end and the held step after differ by about one held step.
 func _check_running() -> void:
 	var home := await _home(LOOKS[3])
 	var layer: Node3D = home.layer

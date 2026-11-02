@@ -701,9 +701,13 @@ func select_keepsake(id: String) -> bool:
 	_update_keepsake_labels()
 	return true
 
-## Plays a keepsake's tap. A second tap while one plays is ignored.
-func play_keepsake(id: String) -> bool:
-	return is_instance_valid(_keepsake_layer) and _keepsake_layer.play(id)
+## Plays a keepsake's tap (`rider`: the pip, from Explore's button). A second
+## tap while one plays is ignored. Explore's button words follow what it did
+## (the lamp woken or put to rest).
+func play_keepsake(id: String, rider: Node3D = null) -> bool:
+	var played: bool = is_instance_valid(_keepsake_layer) and _keepsake_layer.play(id, rider)
+	_update_explore_action()
+	return played
 
 ## Explore's action button names the keepsake the spirit stands by, once it is earned.
 func _update_explore_action() -> void:
@@ -877,9 +881,7 @@ func _create_explore_controls() -> void:
 	ButtonTicks.quiet(_explore_action)
 	_explore_action.pressed.connect(func() -> void:
 		var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
-		if not item.is_empty() and is_instance_valid(_keepsake_layer): _keepsake_layer.play(str(item.id), _actors.get("a") if _exploring else null)
-		# Its words follow what the press did (the lamp woken or put to rest).
-		_update_explore_action())
+		if not item.is_empty(): play_keepsake(str(item.id), _actors.get("a") if _exploring else null))
 	add_child(_explore_action)
 
 func is_exploring() -> bool:
