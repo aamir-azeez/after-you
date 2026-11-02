@@ -18,14 +18,14 @@ const SAMPLE := 0.15
 ## Points from `from` to `to`, `from` first and no two more than STRIDE apart,
 ## going round `solids` grown by `clearance` and only where `walkable` (Vector2
 ## in this frame -> bool) lets the pip stand. Empty when there is no way round
-## (or `from` stands in a solid's room).
+## (or `from` stands in a solid's room, or `to` off the ground).
 static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: float, walkable: Callable) -> Array[Vector3]:
 	var start := Vector2(from.x, from.z)
 	var goal := Vector2(to.x, to.z)
 	# A leg may graze the pip's room round a solid, never cut into it.
 	var rooms: Array[Rect2] = []
 	for rect: Rect2 in solids: rooms.append(rect.grow(clearance - 0.01))
-	if _inside(start, rooms) or _inside(goal, rooms): return []
+	if _inside(start, rooms) or _inside(goal, rooms) or not walkable.call(goal): return []
 	var nodes: Array[Vector2] = [start, goal]
 	for rect: Rect2 in solids:
 		var out := rect.grow(clearance + TURN_OUT)

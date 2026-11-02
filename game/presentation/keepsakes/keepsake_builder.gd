@@ -117,8 +117,7 @@ func stay() -> Rect2:
 	return Rect2()
 
 ## Where the pip must stand for its ride when the Explore action sets it off
-## from `from` (this frame), or null when it rides from where it stands (or
-## carries no pip). The layer hops the pip round the solids to there first
+## from `from` (this frame), or null when it rides from where it stands. The layer hops the pip round the solids to there first
 ## (ride_approach.gd).
 func ride_start(_state: Dictionary, _from: Vector3) -> Variant:
 	return null

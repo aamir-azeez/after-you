@@ -823,6 +823,30 @@ func _check_explore_climb() -> void:
 			_check(risen > 1.1, "then climbs to the top (%s): %.2f" % [label, risen])
 			_check(not layer.riding() and spirit.position.y == 0.0 and layer.walkable(spirit.position), "and lands on open ground past the chute (%s): %s" % [label, spirit.position])
 			layer.stop_play()
+		if look == "all" and not behind.is_empty():
+			# Back pressed while the pip hops round: the ride ends at once.
+			var back_from: Vector3 = placed * (behind[0] as Vector3)
+			spirit.position = back_from
+			stage._explore_last = back_from
+			stage._process(1.0 / 30.0)
+			action.pressed.emit()
+			(layer._play.tween as Tween).custom_step(0.2)
+			stage._explore_back.pressed.emit()
+			_check(not layer.playing() and not layer.riding() and spirit.position.y == 0.0, "Back while the pip hops round ends the ride at once")
+			stage._explore_button.pressed.emit()
+			# Reduce motion: no hops, and the pip lands past the chute as when it walks up.
+			home.world.reduced_motion = true
+			spirit.position = back_from
+			stage._explore_last = back_from
+			stage._process(1.0 / 30.0)
+			action.pressed.emit()
+			var calm: RefCounted = layer._play.anim
+			var calm_balls: Array = calm.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).mesh == Parts.low_sphere(0.12))
+			_check(layer.riding() and calm_balls.is_empty() and spirit.position == back_from, "With Reduce motion the climb still carries the pip, with no ball and no hops")
+			(layer._play.tween as Tween).custom_step(Layer.REDUCED_HOLD + 0.1)
+			_check(not layer.riding() and spirit.position.y == 0.0 and layer.walkable(spirit.position) and spirit.position.distance_to(back_from) > 1.0, "and lands it past the chute: %s" % spirit.position)
+			layer.stop_play()
+			home.world.reduced_motion = false
 		stage._explore_back.pressed.emit()
 		# Outside Explore a tap still sends the ball, and the pip stays put.
 		var still: Vector3 = spirit.position
