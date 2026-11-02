@@ -30,9 +30,11 @@ const Main = preload("res://main.gd")
 ## least 2 x (ROUTE_ROOM + Layer.WALK_CLEARANCE) = 0.64 m apart, wider than
 ## the pip is drawn (0.6 m across its shadow), so no way needs careful steering.
 const ROUTE_ROOM := 0.2
-## Room each side of the pip's middle through a keepsake's door: a lane 2.5
-## times the pip's radius, a doorway as wide as the pip is drawn.
-const DOOR_ROOM := 0.15
+## Room each side of the pip's middle through a keepsake's door. The Little
+## House's doorway is drawn 0.55 m wide (its chapter draws the same house),
+## which leaves the middle about 0.15 m each side; the grid reads a little
+## under that through a turned house, so the check asks for 0.1.
+const DOOR_ROOM := 0.1
 const CELL := 0.05
 ## Ground with room smaller than this (square metres) is a sliver, not a place.
 const POCKET := 0.05

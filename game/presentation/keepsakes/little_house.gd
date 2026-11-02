@@ -18,8 +18,9 @@ const D := 1.5
 const H := 1.25
 const CELLAR := 0.42
 const DOOR_X := -0.45
-## The doorway is a little wider than the pip is drawn, so it walks in without squeezing.
-const DOOR_W := 0.5
+## The doorway. A chapter's corner draws this keepsake too (island_world.gd
+## show_keepsake_landmark), so the house is drawn as it always was.
+const DOOR_W := 0.42
 ## The shut door stops the pip until it has swung open this far (radians of
 ## its 1.45 swing).
 const OPEN_ENOUGH := 0.9
@@ -58,7 +59,7 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 	P.box(cut, Vector3(0.44, 0.36, 0.03), P.LAMP_OFF, Vector3(0.45, y0 + 0.72, D * 0.5 + 0.05))
 	var door := P.pivot(cut, Vector3(DOOR_X, y0 + 0.06, D * 0.5 + 0.05), "Door")
 	P.box(door, Vector3(DOOR_W, 0.8, 0.05), P.WOOD, Vector3(DOOR_W * 0.5, 0.4, 0))
-	P.sph(door, 0.03, P.GOLD, Vector3(DOOR_W - 0.06, 0.4, 0.03))
+	P.sph(door, 0.03, P.GOLD, Vector3(0.36, 0.4, 0.03))
 	var parts := {"cutaway": cut, "door": door, "windows": windows}
 	for side: int in [-1, 1]:
 		var shutter := P.pivot(cut, Vector3(0.45 + side * 0.24, y0 + 0.72, D * 0.5 + 0.08), "Shutter")
