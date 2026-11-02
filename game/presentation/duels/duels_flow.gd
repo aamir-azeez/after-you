@@ -246,7 +246,6 @@ func _read_lobby(ticket: Dictionary) -> void:
 	var answer: Dictionary = await client().lobby()
 	# A failed read waits the same minute: the schedule's quicker failure retries would cost more.
 	_lobby_reads.complete(ticket, Time.get_ticks_msec(), true)
-	_repace()
 	if not is_open(): return
 	screen.show_lobby(answer.get("lobby", {}), not answer.get("ok", false))
 	var overlay: CanvasLayer = screen.overlay()
@@ -440,12 +439,7 @@ func _read_duel(page: CanvasLayer, ticket: Dictionary) -> void:
 	var answer: Dictionary = await client().duel(page.view.board, page.view.duel_id)
 	# A failed read waits the same pace, as the lobby's does.
 	_duel_reads.complete(ticket, Time.get_ticks_msec(), true)
-	_repace()
 	if answer.get("ok", false): _show_duel(page, answer.duel)
-
-## An answer may say hints stopped (a server rolled back) or started: the next read keeps the pace that holds now.
-func _repace() -> void:
-	if _reading(): _bind(Time.get_ticks_msec())
 
 ## A newer copy of the open duel, from a read or this player's own action
 ## (Leave shows at once): a running duel redraws its page, an ended one swaps in

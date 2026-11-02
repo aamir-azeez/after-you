@@ -471,9 +471,11 @@ func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow.open()
 	flow.set_process(false)
 	await _frames(3)
-	var lobby_reads: int = reads.call(lobby_path)
+	# The first frame after the open read takes the pace its answer set (a read the older clocks still owed comes here).
 	var at := Time.get_ticks_msec() + 4000000
 	flow._tick(at)
+	await _frames(3)
+	var lobby_reads: int = reads.call(lobby_path)
 	flow._tick(at + Clock.DUELS_LOBBY_INTERVAL_MS + 1000)
 	await _frames(3)
 	_check(reads.call(lobby_path) == lobby_reads, "with hints the lobby does not read every minute")
@@ -543,7 +545,9 @@ func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	var ending := later + Clock.DUEL_INTERVAL_MS + 3 + Clock.DUEL_BACKUP_MS
 	flow._tick(ending)
 	await _frames(3)
-	flow._tick(ending + Clock.DUEL_INTERVAL_MS)
+	# The next frame takes the pace that answer set.
+	flow._tick(ending + 1)
+	flow._tick(ending + 1 + Clock.DUEL_INTERVAL_MS)
 	await _frames(3)
 	_check(reads.call(duel_path) == duel_reads + 4, "a server that stopped sending hints brings back the 30 s pace at its next answer: %d" % (reads.call(duel_path) - duel_reads))
 	live.good = false
