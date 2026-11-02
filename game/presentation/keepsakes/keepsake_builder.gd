@@ -41,6 +41,8 @@ extends RefCounted
 ## - stay(): a Rect2 the pip can be inside of (a house, a path under lanterns);
 ##   arrive(), follow() and depart() run as it walks in, along and out.
 ##   Rect2() for none. floor() is the height the pip stands at in there.
+## - gates(parts, state, at): solids a moving part stands as only while shut
+##   (a door), read live on each step; a push into one sets the keepsake off.
 ## - solids(state): what the pip may not walk into; walkways(): extra ground
 ##   off the islands (a jetty).
 ## - ride_start(state, from): where the pip must stand to ride, when the

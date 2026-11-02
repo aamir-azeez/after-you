@@ -654,7 +654,8 @@ func _rects(id: String, at: Vector3) -> Array[Rect2]:
 	var rects: Array[Rect2] = prop.solids
 	if not _frames[id].gated: return rects
 	var all := rects.duplicate()
-	all.append_array(_builders[id].gates(prop.parts if prop.look == "keepsake" else {}, prop.state, _local(id, at)))
+	var keepsake: bool = prop.look == "keepsake"
+	all.append_array(_builders[id].gates(prop.parts if keepsake else {}, prop.state if keepsake else {}, _local(id, at)))
 	return all
 
 func _local(id: String, point: Vector3) -> Vector2:
@@ -762,19 +763,41 @@ func can_step(from: Vector3, to: Vector3) -> bool:
 ## counts it as walking in.
 const SLIDE_NUDGE := 0.0005
 
+## A push this nearly straight into a face holds the pip still instead of
+## sliding it (a fraction of the step left along the face).
+const SLIDE_LEAST := 0.1
+
 ## Where an Explore step of `move` from `from` ends: straight on; else along
 ## the face of the solid in the way, in its keepsake's own turned frame, so a
 ## push into a turned keepsake runs the pip along it instead of stopping it;
-## else along x or z (the island and bridge edges); else where it stands.
+## else along x or z (the island and bridge edges); else where it stands. A
+## push into a shut gate (the house's door) opens it, as walking up to it does.
 func step(from: Vector3, move: Vector3) -> Vector3:
 	if can_step(from, from + move): return from + move
+	_push_gate(from, from + move)
 	var away := _away(from + move, from)
 	if away != Vector3.ZERO and move.dot(away) < 0.0:
-		var along := move - away * move.dot(away) + away * SLIDE_NUDGE
+		var along := move - away * move.dot(away)
+		if along.length() <= move.length() * SLIDE_LEAST: return from
+		along += away * SLIDE_NUDGE
 		if can_step(from, from + along): return from + along
 	for part: Vector3 in [Vector3(move.x, 0, 0), Vector3(0, 0, move.z)]:
 		if part != Vector3.ZERO and can_step(from, from + part): return from + part
 	return from
+
+## A step from `from` to `to` that a shut gate stops sets its keepsake off
+## (the door swings open), while nothing else plays: a pip that waited at the
+## door, or came while another keepsake played, is never left at it.
+func _push_gate(from: Vector3, to: Vector3) -> void:
+	if playing(): return
+	for id: String in _shown:
+		if not _frames[id].gated or not playable(id): continue
+		var prop: Dictionary = _set.props[id]
+		var local := _local(id, to)
+		for rect: Rect2 in _builders[id].gates(prop.parts, prop.state, _local(id, from)):
+			if _rect_distance(rect, local) < WALK_CLEARANCE:
+				play(id)
+				return
 
 ## The flat way out from the solid nearest `point` (its gates as they stand
 ## for a spirit at `at`), in island space; zero when none is within twice
