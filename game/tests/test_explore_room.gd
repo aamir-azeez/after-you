@@ -45,28 +45,37 @@ const OPEN := -1.45
 ## it is taken off this list. The layout that clears them all waits for the
 ## owner's look (branch explore-collisions).
 const KNOWN_SQUEEZES: Array[String] = [
-	"no upgrades|bridge tide", "no upgrades|near high-and-low", "no upgrades|near turn-of-the-tide", "no upgrades|squeeze on journey_left",
-	"no upgrades|squeeze on tide", "no upgrades|trigger high-and-low", "no upgrades|trigger sleeping-lighthouse",
+	"no upgrades|bridge tide", "no upgrades|near high-and-low", "no upgrades|near turn-of-the-tide",
+	"no upgrades|squeeze on journey_left by a-house-for-two", "no upgrades|squeeze on journey_left by conservatory",
+	"no upgrades|squeeze on tide by high-and-low", "no upgrades|trigger high-and-low", "no upgrades|trigger sleeping-lighthouse",
 	"no upgrades|trigger turn-of-the-tide", "no upgrades|way through first-steps",
 	"Together|bridge tide", "Together|near a-house-for-two", "Together|near conservatory", "Together|near high-and-low",
-	"Together|near turn-of-the-tide", "Together|squeeze on journey_left", "Together|squeeze on journey_right", "Together|squeeze on tide",
-	"Together|trigger a-house-for-two", "Together|trigger conservatory", "Together|trigger high-and-low", "Together|trigger long-way-home",
-	"Together|trigger sleeping-lighthouse", "Together|trigger turn-of-the-tide", "Together|way through first-steps",
+	"Together|near turn-of-the-tide", "Together|squeeze on journey_left by a-house-for-two", "Together|squeeze on journey_left by conservatory",
+	"Together|squeeze on journey_left by sleeping-lighthouse", "Together|squeeze on journey_right by long-way-home",
+	"Together|squeeze on tide by high-and-low", "Together|squeeze on tide by turn-of-the-tide", "Together|trigger a-house-for-two",
+	"Together|trigger conservatory", "Together|trigger high-and-low", "Together|trigger long-way-home", "Together|trigger sleeping-lighthouse",
+	"Together|trigger turn-of-the-tide", "Together|way through first-steps",
 	"Hard|bridge journey_right", "Hard|bridge tide", "Hard|near high-and-low", "Hard|near long-way-home", "Hard|near rolling-home",
-	"Hard|near turn-of-the-tide", "Hard|squeeze on journey_left", "Hard|squeeze on journey_right", "Hard|squeeze on right", "Hard|squeeze on tide",
-	"Hard|trigger high-and-low", "Hard|trigger long-way-home", "Hard|trigger rolling-home", "Hard|trigger sleeping-lighthouse",
-	"Hard|trigger turn-of-the-tide", "Hard|way through first-steps",
+	"Hard|near turn-of-the-tide", "Hard|squeeze on journey_left by a-house-for-two", "Hard|squeeze on journey_left by conservatory",
+	"Hard|squeeze on journey_left by sleeping-lighthouse", "Hard|squeeze on journey_right by long-way-home", "Hard|squeeze on right by relay-isles",
+	"Hard|squeeze on tide by high-and-low", "Hard|trigger high-and-low", "Hard|trigger long-way-home", "Hard|trigger rolling-home",
+	"Hard|trigger sleeping-lighthouse", "Hard|trigger turn-of-the-tide", "Hard|way through first-steps",
 	"every upgrade|bridge journey_right", "every upgrade|bridge tide", "every upgrade|near a-house-for-two", "every upgrade|near conservatory",
 	"every upgrade|near high-and-low", "every upgrade|near long-way-home", "every upgrade|near rolling-home", "every upgrade|near turn-of-the-tide",
-	"every upgrade|squeeze on a walkway", "every upgrade|squeeze on journey_left", "every upgrade|squeeze on journey_right",
-	"every upgrade|squeeze on right", "every upgrade|squeeze on tide", "every upgrade|trigger a-house-for-two", "every upgrade|trigger conservatory",
-	"every upgrade|trigger high-and-low", "every upgrade|trigger long-way-home", "every upgrade|trigger rolling-home",
-	"every upgrade|trigger sleeping-lighthouse", "every upgrade|trigger turn-of-the-tide", "every upgrade|way through first-steps",
+	"every upgrade|squeeze on a walkway by relay-isles", "every upgrade|squeeze on journey_left by a-house-for-two",
+	"every upgrade|squeeze on journey_left by conservatory", "every upgrade|squeeze on journey_left by sleeping-lighthouse",
+	"every upgrade|squeeze on journey_right by long-way-home", "every upgrade|squeeze on right by relay-isles",
+	"every upgrade|squeeze on tide by high-and-low", "every upgrade|squeeze on tide by turn-of-the-tide", "every upgrade|trigger a-house-for-two",
+	"every upgrade|trigger conservatory", "every upgrade|trigger high-and-low", "every upgrade|trigger long-way-home",
+	"every upgrade|trigger rolling-home", "every upgrade|trigger sleeping-lighthouse", "every upgrade|trigger turn-of-the-tide",
+	"every upgrade|way through first-steps",
 	"walk|the Journey bridge", "walk|the tide bridge"
 ]
 
 var checks := 0
 var failures := 0
+## Every room key checked, so a listed squeeze that no check reaches fails too.
+var room_keys := {}
 
 func _initialize() -> void: _run.call_deferred()
 
@@ -79,6 +88,7 @@ func _check(ok: bool, message: String) -> void:
 
 ## A room check, by `key`: a known squeeze is reported, never hidden.
 func _room(ok: bool, key: String, message: String) -> void:
+	room_keys[key] = true
 	if not KNOWN_SQUEEZES.has(key):
 		_check(ok, "%s [%s]" % [message, key])
 		return
@@ -96,6 +106,7 @@ func _run() -> void:
 	await _check_room("every upgrade", true, _hard(true))
 	await _check_slide()
 	await _check_arch_walks()
+	for key: String in KNOWN_SQUEEZES: _check(room_keys.has(key), "%s is listed as a known squeeze but no check reaches it: take it off KNOWN_SQUEEZES" % key)
 	await _check_door()
 	print("EXPLORE ROOM: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -180,7 +191,7 @@ func _check_room(name: String, friend: bool, hard: Dictionary) -> void:
 	var route := _reach(grid, start, ROUTE_ROOM)
 	var door_reach := _reach(grid, start, DOOR_ROOM)
 	# Every piece of ground with room is reached with that room, or (a stay) through its door.
-	# One check per island: every piece of ground on it with room is reached.
+	# One check per island and nearest keepsake: all ground there with room is reached.
 	var squeezed := {}
 	for pocket: Dictionary in _pockets(grid, route):
 		var inside := ""
@@ -188,8 +199,9 @@ func _check_room(name: String, friend: bool, hard: Dictionary) -> void:
 			if (layer._frames[id].stay as Rect2).has_area() and (layer._frames[id].stay as Rect2).has_point(layer._local(id, pocket.at)): inside = id
 		var by_door := not inside.is_empty() and _any(pocket.cells, door_reach)
 		if by_door: continue
-		var key := "%s|squeeze on %s" % [name, _island_of(layer, pocket.at)]
-		squeezed[key] = "%s: ground with room round %s (%.2f m2) is reached only through a squeeze" % [name, _where(pocket.at), pocket.area]
+		var key := "%s|squeeze on %s by %s" % [name, _island_of(layer, pocket.at), layer.nearest(pocket.at, INF)]
+		var line := "%s: ground with room round %s (%.2f m2) is reached only through a squeeze" % [name, _where(pocket.at), pocket.area]
+		squeezed[key] = line if not squeezed.has(key) else "%s; %s" % [squeezed[key], line]
 	for key: String in squeezed: _room(false, key, squeezed[key])
 	for key: String in KNOWN_SQUEEZES:
 		if key.begins_with(name + "|squeeze on ") and not squeezed.has(key): _room(true, key, "")
