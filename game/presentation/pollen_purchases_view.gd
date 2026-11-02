@@ -58,13 +58,23 @@ static func render(modal: Control, model: Dictionary) -> void:
 
 ## Fills `column` (already empty) from {lines (services/pollen_history.gd
 ## purchases), money (false: no money anywhere on the list), status (shown
-## instead of the rows while the history is loading or could not be read)}.
+## instead of the rows while the history is loading or could not be read) and
+## retry (a Callable: a Try again button under the status)}.
 static func fill(column: VBoxContainer, model: Dictionary) -> void:
 	var status := str(model.get("status", ""))
 	if not status.is_empty():
 		var waiting := _wrapped(status, ROW_SIZE, SOFT_INK)
 		waiting.name = "PollenPurchasesStatus"
 		column.add_child(waiting)
+		var retry: Variant = model.get("retry")
+		if retry is Callable and (retry as Callable).is_valid():
+			var again := Button.new()
+			again.name = "PollenPurchasesRetry"
+			again.text = PlayerCopy.POLLEN_PLAY_RETRY
+			again.custom_minimum_size = Vector2(0, 50)
+			again.size_flags_horizontal = Control.SIZE_SHRINK_BEGIN
+			again.pressed.connect(retry)
+			column.add_child(again)
 		return
 	var lines: Array = model.get("lines", [])
 	if lines.is_empty():

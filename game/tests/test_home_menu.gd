@@ -406,8 +406,20 @@ func _test_pollen_routes(app: Node) -> void:
 	real_store.return_to = "pollen"
 	real_store.back_requested.emit()
 	await _frames()
-	_check(play.is_open() == play.available() and (not play.available() or play.return_to == "settings"), "Back from a store opened by the Pollen page's plus reopens the page with its own Back")
-	if not play.available(): _check(app.mode == "home", "and Home when the page cannot open")
+	if play.available(): _check(play.is_open() and play.return_to == "settings", "Back from a store opened by the Pollen page's plus reopens the page with its own Back")
+	else: _check(app.mode == "home", "Back from a store opened by the Pollen page's plus goes Home when the page cannot open")
+	# The page opened from a store that cannot open now: the store's own Back (Home here), never the Wardrobe it never saw.
+	store.on = false
+	app.pollen_store_flow = store
+	store.return_to = "home"
+	wardrobe.on = true
+	wardrobe.opened.clear()
+	play.return_to = "store"
+	play.back_requested.emit()
+	await _frames()
+	_check(wardrobe.opened.is_empty() and app.mode == "home", "Back from the page to a shut store opened from Home goes Home: " + str(wardrobe.opened))
+	wardrobe.on = false
+	app.pollen_store_flow = real_store
 	# The store opened from the name prompt's short card: Back goes Home first, then to Friends.
 	wardrobe.opened.clear()
 	real_store.return_to = "friends"

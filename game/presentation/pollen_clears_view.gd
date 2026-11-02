@@ -22,16 +22,14 @@ const RING := Color("a99f86")
 const ROW_SIZE := Parts.ROW_SIZE
 
 ## Fills `column` from {history (services/pollen_history.gd), full_journey
-## (bool: the build names Full Journey), pictures (bool: rows show their
-## chapter's picture; off where the card is narrow)}.
+## (bool: the build names Full Journey)}.
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
 	Parts.heading(column, PlayerCopy.POLLEN_CLEARS_TITLE, PlayerCopy.POLLEN_CLEARS_NOTE, title_font)
 	var clears: Array = model.get("history", {}).get("first_clears", [])
 	if not clears.is_empty(): column.add_child(_summary(clears, title_font))
-	var pictures := bool(model.get("pictures", true))
 	for index in range(clears.size()):
 		if index > 0: column.add_child(Parts.rule())
-		column.add_child(_row(clears[index], index, pictures))
+		column.add_child(_row(clears[index], index))
 	var note := PlayerCopy.POLLEN_CLEARS_FULL_JOURNEY + " " + PlayerCopy.POLLEN_CLEARS_HARD if bool(model.get("full_journey", true)) else PlayerCopy.POLLEN_CLEARS_HARD
 	var said := Parts.wrapped(note, Parts.NOTE_SIZE, Parts.SOFT_INK)
 	said.name = "PollenClearsFoot"
@@ -57,13 +55,13 @@ static func _summary(clears: Array, title_font: Font) -> Control:
 	return Parts.summary("PollenClearsBox", amount, words, done, clears.size(), PlayerCopy.POLLEN_CLEARS_COUNT % [done, clears.size()], "")
 
 ## One free chapter: its tick, picture and name, and what it paid or pays.
-static func _row(clear: Dictionary, index: int, pictures: bool) -> Control:
+static func _row(clear: Dictionary, index: int) -> Control:
 	var row := HBoxContainer.new()
 	row.name = "PollenClearRow%d" % index
 	row.add_theme_constant_override("separation", 12)
 	var paid := int(clear.paid) >= 0
 	row.add_child(_tick(paid))
-	var art := Parts.picture(str(clear.level_id)) if pictures else null
+	var art := Parts.picture(str(clear.level_id))
 	if art != null: row.add_child(art)
 	var title := Parts.text(PollenHistory.chapter_title(str(clear.level_id)), ROW_SIZE, Parts.INK)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL

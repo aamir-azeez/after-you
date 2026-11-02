@@ -2,7 +2,7 @@ extends RefCounted
 ## The currency the player's store sells in ("USD", "GBP"), as the last offerings
 ## read named it (services/purchases.gd get_offerings, any offering's package),
 ## kept on the phone so it is known after a restart, before the store opens again.
-## "" until a read has named one. The Purchases card (presentation/pollen_purchases_view.gd)
+## "" until a read has named one. Previous purchases (presentation/pollen_purchases_view.gd)
 ## shows money only while this is "USD": the server keeps Google Play's US figure,
 ## so a player who pays in another currency would see a price they never paid.
 const AtomicFile = preload("res://services/atomic_file.gd")

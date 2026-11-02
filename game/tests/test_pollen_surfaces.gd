@@ -192,7 +192,7 @@ func _short_card() -> void:
 	var words: Array = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
 	_check(words.has(PlayerCopy.WARDROBE_SHORT_NOTE % [PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "1,000", "600"]) and words.has("400" + PlayerCopy.WARDROBE_SHORT_MORE) and not words.has(PlayerCopy.WARDROBE_SHORT_STAYS), "The short card names the change and what is needed, and nothing about the shop: " + str(words))
 	var link := card.find_child("WardrobeGetPollen", true, false) as BaseButton if card != null else null
-	_check(link != null and words.has(PlayerCopy.WARDROBE_SHORT_BUNDLE % "Pinch"), "Its own Get Pollen shows while the store can open, with the Pinch that covers 400")
+	_check(link != null and words.has(PlayerCopy.WARDROBE_SHORT_BUNDLE_NAME % "Pinch"), "Its own Get Pollen shows while the store can open, with the Pinch that covers 400")
 	if link != null: link.pressed.emit()
 	await process_frame
 	_check(host.pollen_store_flow.opened == [["friends", "pinch"]] and (not is_instance_valid(prompt_card) or prompt_card.is_queued_for_deletion()), "It closes the prompt and opens the store with Back to Friends")

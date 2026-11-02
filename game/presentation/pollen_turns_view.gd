@@ -20,8 +20,7 @@ const WhenLabel = preload("res://presentation/when_label.gd")
 
 const ROW_SIZE := Parts.ROW_SIZE
 
-## Fills `column` from {history (services/pollen_history.gd), pictures (bool:
-## rows show their chapter's picture; off where the card is narrow)}.
+## Fills `column` from {history (services/pollen_history.gd)}.
 static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
 	Parts.heading(column, PlayerCopy.POLLEN_TURNS_TITLE, PlayerCopy.POLLEN_TURNS_NOTE, title_font)
 	var history: Dictionary = model.get("history", {})
@@ -31,10 +30,9 @@ static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> 
 		var none := Parts.wrapped(PlayerCopy.POLLEN_TURNS_NONE, ROW_SIZE, Parts.SOFT_INK)
 		none.name = "PollenTurnsNone"
 		column.add_child(none)
-	var pictures := bool(model.get("pictures", true))
 	for index in range(turns.size()):
 		if index > 0: column.add_child(Parts.rule())
-		column.add_child(_row(turns[index], index, pictures))
+		column.add_child(_row(turns[index], index))
 	column.add_child(Spare.new())
 
 ## The turn bank: how many full rate turns are left, how full it is, and its rules.
@@ -59,11 +57,11 @@ static func tail_line(bank: Dictionary) -> String:
 	return PlayerCopy.POLLEN_TAIL % [PlayerCopy.POLLEN_TAIL_THEN.join(steps), int(bank.get("refill", 0))]
 
 ## One turn: its chapter's picture, where, what added to it, its Pollen and when.
-static func _row(turn: Dictionary, index: int, pictures: bool) -> Control:
+static func _row(turn: Dictionary, index: int) -> Control:
 	var row := HBoxContainer.new()
 	row.name = "PollenTurnRow%d" % index
 	row.add_theme_constant_override("separation", 12)
-	var art := Parts.picture(str(turn.level_id)) if pictures else null
+	var art := Parts.picture(str(turn.level_id))
 	if art != null: row.add_child(art)
 	var words := VBoxContainer.new()
 	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -1416,8 +1416,9 @@ func _pollen_page_back(page: PollenPlayFlow) -> void:
 		"settings": settings_flow.show_settings()
 		"wardrobe": _back_to_wardrobe()
 		"store":
+			# A store that cannot open now: where its own Back goes (never "pollen" here, see PollenStoreFlow.show_earning).
 			if pollen_store_flow.available(): pollen_store_flow.reopen()
-			else: _back_to_wardrobe()
+			else: _pollen_store_back(pollen_store_flow)
 		_: _show_home()
 
 ## The Pollen store's "Earn Pollen free by playing" (presentation/pollen_store_flow.gd):

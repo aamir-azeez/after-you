@@ -120,13 +120,14 @@ static func short(parent: Control, item_name: String, tier: String, cost: int, b
 	earn.add_child(icon)
 	earn.add_child(ShopKit.text(PlayerCopy.WARDROBE_SHORT_EARN, 17, CREAM, ShopKit.bold_font()))
 	var bundle := Bundles.cover(cost - balance, offer)
-	if get_pollen.is_valid() and not tier in NO_BUNDLE_TIERS and not bundle.is_empty(): _suggest(modal, bundle, Bundles.adds(bundle, offer) >= cost - balance, get_pollen)
+	if get_pollen.is_valid() and not tier in NO_BUNDLE_TIERS and not bundle.is_empty(): _suggest(modal, bundle, Bundles.adds(bundle, offer) >= cost - balance, get_pollen, in_shop)
 	modal.refresh_focus_order()
 	return modal
 
-## The suggested bundle's box: its art, "Get the Basket to buy this." (or "The
-## Basket gets you closest." when even it does not `cover` the gap), and Get Pollen.
-static func _suggest(modal: Control, bundle: String, covers: bool, get_pollen: Callable) -> void:
+## The suggested bundle's box: its art, "Get the Basket to buy this." ("to
+## change your name." for a name change, `item` false; "The Basket gets you
+## closest." when even it does not `covers` the gap), and Get Pollen.
+static func _suggest(modal: Control, bundle: String, covers: bool, get_pollen: Callable, item: bool = true) -> void:
 	var box := _box(modal.content, "WardrobeShortBundle")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
@@ -135,7 +136,7 @@ static func _suggest(modal: Control, bundle: String, covers: bool, get_pollen: C
 	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(art)
 	var title := str(PlayerCopy.POLLEN_STORE_BUNDLES.get(bundle, bundle))
-	var line := ShopKit.text((PlayerCopy.WARDROBE_SHORT_BUNDLE if covers else PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST) % title, 17, CREAM, ShopKit.bold_font())
+	var line := ShopKit.text((PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST if not covers else PlayerCopy.WARDROBE_SHORT_BUNDLE if item else PlayerCopy.WARDROBE_SHORT_BUNDLE_NAME) % title, 17, CREAM, ShopKit.bold_font())
 	line.name = "WardrobeShortBundleLine"
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL

@@ -1,7 +1,7 @@
 extends RefCounted
 ## The pieces Pollen from play's cards share (presentation/pollen_turns_view.gd
 ## and pollen_clears_view.gd): the card's inks, labels (presentation/kit/shop_kit.gd
-## type, as the Purchases card), rules between rows, the summary box both cards
+## type, as Previous purchases), rules between rows, the summary box both cards
 ## open with (a big figure, its words, a bar and a line of rules under it, as
 ## the turn bank on pollen board 7b), and a chapter's small picture from the
 ## thumbnail shelf (loaded off the main thread, kept while Main is up; the

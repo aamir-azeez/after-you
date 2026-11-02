@@ -77,7 +77,7 @@ static func receipt(parent: Control, credited: Dictionary, balance_after: int, p
 ## The Paid line: what was paid and the store's order ("$3.99 · Google Play
 ## order GPA.1234", or "$4.99 · App Store transaction 2000…" when `store` is
 ## "app_store"), either alone, or "" with neither. Each line names the store it
-## came from, whatever phone shows it. Settings' Pollen and purchases keeps the
+## came from, whatever phone shows it. The store's Previous purchases keeps the
 ## same line (presentation/pollen_purchases_view.gd).
 static func paid_line(paid: String, order: String, store: String = "") -> String:
 	if order.is_empty(): return paid

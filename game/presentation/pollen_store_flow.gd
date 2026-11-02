@@ -342,6 +342,10 @@ func show_purchases() -> void:
 	_close_sheet()
 	var sheet := PurchasesView.open(host.ui, _page.purchases_button)
 	_sheet = weakref(sheet)
+	_read_purchases(sheet)
+
+## One history read for the open receipts list; its Try again reads again.
+func _read_purchases(sheet: Control) -> void:
 	PurchasesView.render(sheet, {"status": PlayerCopy.POLLEN_PLAY_LOADING})
 	_purchase_reads += 1
 	var read := _purchase_reads
@@ -350,7 +354,7 @@ func show_purchases() -> void:
 	if client != null: answer = await client.history()
 	# A newer read, or the sheet closed meanwhile: this answer is not shown.
 	if read != _purchase_reads or not is_instance_valid(sheet) or sheet.is_queued_for_deletion(): return
-	if answer.is_empty(): PurchasesView.render(sheet, {"status": PlayerCopy.POLLEN_PLAY_OFFLINE})
+	if answer.is_empty(): PurchasesView.render(sheet, {"status": PlayerCopy.POLLEN_PURCHASES_OFFLINE, "retry": _read_purchases.bind(sheet)})
 	else: PurchasesView.render(sheet, {"lines": answer.get("purchases", []), "money": StoreCurrency.usd()})
 
 ## The page's model (presentation/pollen_store_page.gd).

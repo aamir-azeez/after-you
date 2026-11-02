@@ -742,10 +742,15 @@ func _previous_purchases() -> void:
 	button.pressed.emit()
 	await _frames()
 	# A second tap closes the open list and opens a fresh one.
-	var open: Array = t.host.ui.get_children().filter(func(node: Node) -> bool: return str(node.name).contains("PollenPurchases") and not node.is_queued_for_deletion())
-	_check(open.size() == 1, "One receipts list at a time")
+	var open: Array = t.host.ui.get_children().filter(func(node: Node) -> bool: return node.find_child("PollenPurchasesList", true, false) != null and not node.is_queued_for_deletion())
+	_check(open.size() == 1, "One receipts list at a time: %d" % open.size())
+	if open.is_empty(): return
 	sheet = open.back()
-	_check(PlayerCopy.POLLEN_PLAY_OFFLINE in _texts(sheet) and sheet.find_child("PollenPurchasesNone", true, false) == null, "Offline: it says so and guesses nothing")
+	_check(PlayerCopy.POLLEN_PURCHASES_OFFLINE in _texts(sheet) and sheet.find_child("PollenPurchasesNone", true, false) == null, "Offline: it says so and guesses nothing")
+	history.answer = PollenHistory.checked({"schema_version": 1.0, "entries": [], "purchases": []})
+	(sheet.find_child("PollenPurchasesRetry", true, false) as Button).pressed.emit()
+	await _frames()
+	_check(history.reads == 4 and sheet.find_child("PollenPurchasesNone", true, false) != null, "Its Try again reads again in the same list")
 	StoreCurrency.use_path(StoreCurrency.PATH)
 	t.host.queue_free()
 	await _frames(2)

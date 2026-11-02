@@ -16,8 +16,8 @@ extends SceneTree
 ## - Friends & notifications holds the notification switches inline.
 ## - Account & recovery holds its actions inline and they still work.
 ## - Its first row is Pollen board 1's: the balance with the grain on the gold
-##   surface, named "Pollen and purchases" while bundles sell and "Pollen"
-##   otherwise (iPhone, no bundles), and it opens the Pollen page.
+##   surface, named "Pollen" on every build (receipts live in the Pollen
+##   store), and each tap opens the Pollen page.
 ## - Its rows follow the identity state while it is open.
 ## - Callers land in the right category, and Back goes where Done goes.
 ## - A damaged save still opens with every switch; Always skip waits starts off.
