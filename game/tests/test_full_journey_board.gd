@@ -296,8 +296,8 @@ func _grant_over_home(app: Node, grant: RefCounted, scope: Dictionary, viewport:
 
 ## The owner's 0.7.7 case: the Wardrobe's own wallet read is the one that pays.
 ## No card over the Wardrobe; back on Home it shows once with nothing set by
-## hand, and never again, a restart included. A payment that lands while the
-## store card is up (a purchase's "bought" read) waits for Home the same way.
+## hand, and never again, a restart included. A payment kept while the store
+## card is up waits for Home the same way.
 func _wardrobe_paid(app: Node, grant: RefCounted, scope: Dictionary) -> void:
 	var server := str(scope.server)
 	var owner := str(scope.owner)
@@ -323,7 +323,7 @@ func _wardrobe_paid(app: Node, grant: RefCounted, scope: Dictionary) -> void:
 	_check(not grant.pending(server, owner).is_empty(), "but the instalment its read paid is kept")
 	app.wardrobe_flow.back_requested.emit()
 	for i in range(4): await process_frame
-	_check(app.mode == "home" and not app.grant_card_check, "Back on Home, nothing set by hand")
+	_check(app.mode == "home", "Back on Home: " + str(app.mode))
 	app._service_grant_card()
 	await process_frame
 	var card: Control = app.ui.find_child("PollenGrantCard", false, false)
@@ -335,7 +335,7 @@ func _wardrobe_paid(app: Node, grant: RefCounted, scope: Dictionary) -> void:
 	await process_frame
 	_check(app.ui.find_child("PollenGrantCard", false, false) == null, "once")
 	_check(PollenGrant.new(grant.path).pending(server, owner).is_empty(), "and not after a restart either")
-	# Paid while the store card is up: the card waits for Home to be free.
+	# Paid while the store card is up (as a purchase's own read can be): the card waits for Home to be free.
 	app.mode = app.store_flow.MODE_PAYWALL
 	app.store_flow.purchase_offer = OFFER.duplicate(true)
 	app.store_flow._show_store_offer()

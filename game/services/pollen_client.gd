@@ -16,6 +16,7 @@ extends RefCounted
 ## once (backend/src/pollen/routes.ts grantHint; the server bounds each).
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
+const WalletReply = preload("res://services/wallet_reply.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const CLAIMS_PATH := "/v1/pollen/turn-claims"
@@ -128,13 +129,13 @@ func _run() -> void:
 			requests += 1
 			var bought := _bought_waiting(context)
 			var read: Dictionary = await _request(HTTPClient.METHOD_GET, WALLET_PATH, {}, grant_headers(context))
-			if scope() != context or not read.get("ok", false) or not wallet.note_wallet(context.server, context.owner, read.get("data")): break
+			if scope() != context or not read.get("ok", false): break
+			# Every store the read feeds keeps its part (services/wallet_reply.gd); a wallet part that cannot be kept stops the flush.
+			if not WalletReply.note(context.server, context.owner, read.get("data"), wallet, wardrobe, grant).wallet: break
 			# Only an answered read counts for the grant: an offline launch tries again on the next flush.
 			var key := PollenWallet.scope_key(context.server, context.owner)
 			if _grant_wanted(context): _grant_read_at[key] = Time.get_ticks_msec()
 			if bought: _note_bought_read(key, read.get("data"))
-			if wardrobe != null: wardrobe.note_view(context.server, context.owner, read.get("data"))
-			if grant != null: grant.note_view(context.server, context.owner, read.get("data"))
 		if not _again: break
 	_sending = false
 	settled.emit()

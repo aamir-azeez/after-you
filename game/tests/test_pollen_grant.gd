@@ -142,13 +142,12 @@ func _catch_up() -> void:
 	_check(GrantCard.summary(reloaded.pending(SERVER, ME)) == {"count": 4, "total": 22500}, "Months kept while no card showed add up too")
 	# Across the top step: months 30 and 31 pay 11,750 and 12,000.
 	_check(GrantCard.summary({"key": "grant:1790000000000:31", "amount": 12000, "next": 12000, "top": 12000, "months": 31, "since": 2}) == {"count": 2, "total": 23750}, "Each month at its own step, up to the top")
-	var single := {"count": 1, "total": 4500}
 	for unsure: Dictionary in [
 			{"key": "grant:1790000000000:5", "amount": 4500, "next": 5750, "top": 12000, "months": 5, "since": 2},
 			{"key": "grant:1790000000000:5", "amount": 4500, "next": 4750, "top": 12000, "months": 1, "since": 0},
 			{"key": "grant:lifetime", "amount": 4500, "next": 5250, "top": 12000, "months": 3, "since": 2},
-			{"key": "grant:1790000000000:49", "amount": 4500, "next": 12000, "top": 12000, "months": 60, "since": 49}]:
-		_check(GrantCard.summary(unsure) == single, "What cannot be told for sure shows the newest month alone: " + str(unsure))
+			{"key": "grant:1790000000000:49", "amount": 12000, "next": 12000, "top": 12000, "months": 60, "since": 49}]:
+		_check(GrantCard.summary(unsure) == {"count": 1, "total": int(unsure.amount)}, "What cannot be told for sure shows the newest month alone: " + str(unsure))
 	var unknown := PollenGrant.new(_path("catch-up-new"))
 	unknown.set_enabled(SERVER, ME, true)
 	unknown.note_view(SERVER, ME, _answer(3, 5250, "grant:1790000000000:3", 5000))
@@ -198,8 +197,7 @@ func _wardrobe_read() -> void:
 	var transport := func(_method: int, _path_: String, _body: Dictionary) -> Dictionary:
 		await process_frame
 		return replies.pop_front() if not replies.is_empty() else {"ok": false, "code": "connection_interrupted"}
-	var client: RefCounted = WardrobeClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, transport, wardrobe, wallet)
-	client.grant = grant
+	var client: RefCounted = WardrobeClient.new(null, func() -> Dictionary: return {"server": SERVER, "owner": ME}, transport, wardrobe, wallet, grant)
 	await client.refresh()
 	_check(grant.pending(SERVER, ME).get("amount") == 4500, "The Wardrobe's read keeps the monthly Pollen it paid")
 	var broken := _answer(2, 5000, "grant:1790000000000:2", 4750)

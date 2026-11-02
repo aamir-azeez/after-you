@@ -38,7 +38,8 @@ const BAG := 74.0
 ## The pips keep their joy face while the card is up: a timed reaction this
 ## long, which a doze never takes over, cleared as the card goes.
 const JOY_SECONDS := 3600.0
-## The most months one wallet read pays (backend/src/pollen/grant.ts MAX_CATCH_UP).
+## The most months one card adds up; more than that names the newest month alone
+## (one read pays at most 48: backend/src/pollen/grant.ts MAX_CATCH_UP).
 const CATCH_UP := 48
 
 ## The line under the title: "From Full Journey, month 1 of your ladder.\nNext month: 4,750.",
@@ -55,8 +56,9 @@ static func month_line(card: Dictionary) -> String:
 ## What the card names: {count, total}. Every month the ladder counted since
 ## the last card (`since`, services/pollen_grant.gd pending) and what they paid
 ## together, each at its own step; the newest one alone when that cannot be
-## told for sure: no card to count from, the Lifetime thank you, a refund in
-## between, or a sum whose last month does not match what the server paid.
+## told for sure: no card to count from, the Lifetime thank you, a count that
+## went down (a refund), or a sum whose last month does not match what the
+## server paid. A refund in between can only make it name fewer months, never more.
 static func summary(card: Dictionary) -> Dictionary:
 	var amount := int(card.get("amount", 0))
 	var single := {"count": 1, "total": amount}

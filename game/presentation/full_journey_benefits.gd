@@ -45,7 +45,7 @@ static func ladder_line(ladder: Dictionary = {}) -> String:
 	var month := int(ladder.get("months", 0)) + 1
 	var parts := PackedStringArray()
 	if first < top: parts.append(PlayerCopy.FULL_JOURNEY_LADDER_NEXT % PollenMoney.grouped(mini(first + GRANT_STEP, top)))
-	if month + 1 < LADDER_MONTH: parts.append(PlayerCopy.FULL_JOURNEY_LADDER_BY % [LADDER_MONTH, PollenMoney.grouped(mini(GRANT_FIRST + GRANT_STEP * (LADDER_MONTH - 1), top))])
+	if month + 1 < LADDER_MONTH: parts.append(PlayerCopy.FULL_JOURNEY_LADDER_BY % [LADDER_MONTH, PollenMoney.grouped(instalment(LADDER_MONTH, top))])
 	parts.append(PlayerCopy.FULL_JOURNEY_LADDER_TOP % PollenMoney.grouped(top))
 	return SEPARATOR.join(parts)
 

@@ -131,9 +131,10 @@ var _whats_new_card_mode := ""
 ## Home looks once more for a monthly Pollen card to show (presentation/pollen_grant_card.gd).
 ## Set by tests; the app itself looks whenever the grant store's revision moves.
 var grant_card_check := false
-## The grant store and revision Home last looked at: whichever wallet read keeps a
-## new instalment (the Pollen flush, the Wardrobe's read), Home looks once it is free.
-var _grant_card_seen: Array = [null, -1]
+## The grant store, its revision and the identity epoch Home last looked at: whichever
+## wallet read keeps a new instalment (the Pollen flush, the Wardrobe's read), or
+## another player signing in, Home looks once it is free.
+var _grant_card_seen: Array = [null, -1, -1]
 ## The leaderboard celebration Home opened, while it is up.
 var _home_celebration: Control
 ## Tests set this to see a link instead of opening the browser.
@@ -2262,15 +2263,15 @@ func _home_free_for_card() -> bool:
 ## grant store keeps a new instalment, from whichever wallet read brought it.
 func _service_grant_card() -> void:
 	var grant := PollenGrant.shared()
-	if not grant_card_check and _grant_card_seen[0]==grant and _grant_card_seen[1]==grant.revision: return
-	# A build that names no Full Journey never shows it: nothing to wait for.
-	var allowed := _grant_card_allowed()
-	if allowed and (_update_gate_active() or not _home_free_for_card()): return
+	if not grant_card_check and _grant_card_seen[0]==grant and _grant_card_seen[1]==grant.revision and _grant_card_seen[2]==relay_identity_epoch: return
+	if _update_gate_active() or not _home_free_for_card(): return
+	# No player yet: looked at again once there is one (a card kept from before still shows).
 	var scope := _names_scope()
-	if allowed and scope.is_empty(): return
+	if scope.is_empty(): return
 	grant_card_check=false
-	_grant_card_seen=[grant,grant.revision]
-	if not allowed: return
+	_grant_card_seen=[grant,grant.revision,relay_identity_epoch]
+	# A build that names no Full Journey never shows it; asked last, as it is the costly check.
+	if not _grant_card_allowed(): return
 	var card: Dictionary = grant.pending(str(scope.server),str(scope.owner))
 	if card.is_empty(): return
 	# Marked before it opens, so it never shows twice; the card says which month (or months) arrived.

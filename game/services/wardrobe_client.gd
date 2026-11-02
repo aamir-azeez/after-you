@@ -28,6 +28,7 @@ extends RefCounted
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrant = preload("res://services/pollen_grant.gd")
+const WalletReply = preload("res://services/wallet_reply.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const Typed = preload("res://services/typed_values.gd")
 const Connectivity = preload("res://services/connectivity.gd")
@@ -60,13 +61,13 @@ var _busy := false
 var connectivity: RefCounted
 
 ## transport(method, path, body) -> response, for tests; else the API's queue.
-func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), wardrobe: RefCounted = null, pollen: RefCounted = null) -> void:
+func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), wardrobe: RefCounted = null, pollen: RefCounted = null, monthly: RefCounted = null) -> void:
 	_api = api
 	_scope = scope_source
 	_transport = transport
 	store = wardrobe if wardrobe != null else Wardrobe.shared()
 	wallet = pollen if pollen != null else PollenWallet.shared()
-	grant = PollenGrant.shared()
+	grant = monthly if monthly != null else PollenGrant.shared()
 
 ## {server, owner} while the server has said the wardrobe is on, else {}.
 func scope() -> Dictionary:
@@ -186,10 +187,9 @@ static func _answer(response: Dictionary) -> Dictionary:
 func _note_wallet(context: Dictionary, response: Dictionary) -> Dictionary:
 	if not response.get("ok", false) or scope() != context: return {"ok": false, "code": str(response.get("code", "connection_interrupted"))}
 	var data: Variant = response.get("data")
-	var noted: bool = wallet.note_wallet(context.server, context.owner, data)
-	noted = store.note_view(context.server, context.owner, data) and noted
-	# The grant part stands on its own: a read the server answered may have paid an instalment.
-	if grant != null: grant.note_view(context.server, context.owner, data)
+	# Every store the read feeds keeps its part, the grant's too (services/wallet_reply.gd).
+	var kept: Dictionary = WalletReply.note(context.server, context.owner, data, wallet, store, grant)
+	var noted: bool = kept.wallet and kept.wardrobe
 	if noted: changed.emit()
 	return {"ok": noted, "code": "" if noted else "invalid_response"}
 
