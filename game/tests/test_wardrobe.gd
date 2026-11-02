@@ -31,6 +31,26 @@ var checks := 0
 var failures := 0
 var _paths: Array[String] = []
 
+## The API the online session reads capabilities through (synthetic token).
+class CapsApi extends Node:
+	var base_url := SERVER
+	var player_id := ME
+	var device_token := "synthetic-device-token"
+	var capabilities: Dictionary = {}
+	func request_json(_method: int, path: String, _body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
+		await Engine.get_main_loop().process_frame
+		if path == "/v2/capabilities": return {"ok": true, "status": 200, "data": capabilities.duplicate(true)}
+		return {"ok": false, "status": 0, "code": "connection_interrupted"}
+
+## The session's room store, in memory.
+class MemoryStore extends RefCounted:
+	var values: Dictionary = {}
+	func load_scope(scope: String) -> Dictionary:
+		return {"ok": true, "found": values.has(scope), "value": values.get(scope, {}).duplicate(true)}
+	func save_scope(scope: String, value: Dictionary) -> Dictionary:
+		values[scope] = value.duplicate(true)
+		return {"ok": true}
+
 class Fake extends RefCounted:
 	var tree: SceneTree
 	var sent: Array = []
@@ -74,6 +94,7 @@ func _run() -> void:
 	await _name_price()
 	await _wardrobe_without_shop()
 	_capabilities()
+	await _offered_tag_wiring()
 	Catalog.set_offered([])
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
@@ -302,6 +323,28 @@ func _wardrobe_without_shop() -> void:
 	for i in range(4): await process_frame
 	_check(sender.sent.size() == 1 and not sender.sent[0].body.has("pollen_price"), "A name sent while the shop is off carries no price")
 	Wardrobe.use_shared(null)
+
+## A real capabilities read hands the server's offered tag to the shared
+## wardrobe under the same scope the Pollen client reads (and none while the
+## wardrobe is off), so a view kept under no tag is read again.
+func _offered_tag_wiring() -> void:
+	var store: RefCounted = Wardrobe.new(_path("tag-wiring"))
+	Wardrobe.use_shared(store)
+	store.set_enabled(SERVER, ME, true, false)
+	store.note_view(SERVER, ME, owned_answer())
+	var api := CapsApi.new()
+	root.add_child(api)
+	var session: RefCounted = load("res://services/relay_online_session.gd").new(api, func() -> Dictionary: return {"ready": true, "player_id": ME, "epoch": 1}, MemoryStore.new())
+	var base := {"api_version": 2, "recording_version": 2, "simulation_version": 2, "mutations_enabled": true, "validation": "structural_client_replay_required", "chapters": []}
+	api.capabilities = base.merged({"pollen_version": 1, "pollen_wardrobe_version": 1, "pollen_offered_tag": "0badf00d"})
+	_check(await session.load_capabilities(), "Capabilities load")
+	_check(store.needs_read(SERVER, ME), "The capabilities read hands the offered tag to the wardrobe the Pollen client reads")
+	api.capabilities = base.merged({"pollen_version": 1, "pollen_offered_tag": "0badf00d"})
+	_check(await session.load_capabilities(), "Capabilities load without the wardrobe")
+	_check(not store.needs_read(SERVER, ME), "With the wardrobe off nothing is read")
+	Wardrobe.use_shared(null)
+	api.queue_free()
+	await process_frame
 
 ## What the session reads from the server's capabilities: the wardrobe and the shop apart, and a
 ## server from before the split, which sends only the shop's version, meaning both.
