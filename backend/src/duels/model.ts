@@ -318,6 +318,32 @@ export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
   return true;
 }
 
+/**
+ * What a duel's players are told of (duels/news.ts): the changes that matter to them, never a mid-run turn.
+ * `shared` goes to both pairs (an answer, a finish, a leave, a check result, an end); `rooms[i]` only to side
+ * i, whose members open or join that room. Steps, ticks and whose turn it is are left out on purpose.
+ */
+export type Milestone = { shared: string; rooms: (string | null)[] };
+export function milestone(duel: Duel): Milestone {
+  return {
+    shared: JSON.stringify([duel.status, duel.accepted_ms, duel.sides.map(side => side && [side.finished_ms !== null, side.left, side.check])]),
+    rooms: duel.sides.map(side => side?.room?.room_id ?? null)
+  };
+}
+
+/**
+ * The players to tell that `duel` moved from `before` (null: not seen before, so everyone), leaving out
+ * `actor`, whose own reply already shows it. Empty when nothing that matters changed.
+ */
+export function newsRecipients(before: Milestone | null, duel: Duel, actor: string | null): string[] {
+  const now = milestone(duel), told = new Set<string>();
+  const members = (side: Side | null): string[] => ((side?.members ?? []) as (string | null)[]).filter((id): id is string => id !== null);
+  if (!before || before.shared !== now.shared) for (const id of players(duel)) told.add(id);
+  else duel.sides.forEach((side, index) => { if (before.rooms[index] !== now.rooms[index]) for (const id of members(side)) told.add(id); });
+  if (actor) told.delete(actor);
+  return [...told];
+}
+
 /** What one player's phone sees of a duel. Ids on the other pair show only where a friendship was checked. */
 export type SideView = {
   members: (string | null)[]; you: boolean; steps: number; ticks: number;

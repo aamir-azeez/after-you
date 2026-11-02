@@ -31,15 +31,19 @@ const DEVICE_HEADER = "X-AfterYou-Live-Device";
 /** What a source object asks a recipient's Player to announce. Binding only. */
 export type LiveHint =
   | { kind: "room"; room_id: string; revision: number }
-  | { kind: "friends"; from: string; request_id: string };
+  | { kind: "friends"; from: string; request_id: string }
+  | { kind: "duels"; duel_id: string | null; at: number };
 /**
  * What the phone receives. A hint names nothing the phone could not already read.
  * `friends_changed` (a friend's shared room, an accepted request) comes with an
  * early list read the server opened; `friend_requests_changed` (a request
  * arrived, was cancelled, or a friend was removed) does not, so a stranger's
  * request/cancel loop never drives extra list reads on the phone.
+ * `duels_changed` (duels/news.ts): a duel this player is in reached a milestone (`duel`, changed at `at`),
+ * or, with no `duel`, the party or the list of duels changed. Older apps ignore the type.
  */
-export type LiveMessage = { type: "room_changed"; room: string; seq: number } | { type: "friends_changed" } | { type: "friend_requests_changed" };
+export type LiveMessage = { type: "room_changed"; room: string; seq: number } | { type: "friends_changed" } | { type: "friend_requests_changed" }
+  | { type: "duels_changed"; duel?: string; at: number };
 type Attachment = { device_hash: string; opened_at: number };
 
 export function validLiveHint(value: unknown): value is LiveHint {
@@ -47,9 +51,12 @@ export function validLiveHint(value: unknown): value is LiveHint {
   const hint = value as Record<string, unknown>;
   if (hint.kind === "room") return Object.keys(hint).length === 3 && typeof hint.room_id === "string" && ID_PATTERN.test(hint.room_id) && Number.isSafeInteger(hint.revision) && Number(hint.revision) >= 0;
   if (hint.kind === "friends") return Object.keys(hint).length === 3 && typeof hint.from === "string" && ID_PATTERN.test(hint.from) && typeof hint.request_id === "string" && ID_PATTERN.test(hint.request_id);
+  if (hint.kind === "duels") return Object.keys(hint).length === 3 && (hint.duel_id === null || (typeof hint.duel_id === "string" && DUEL_ID_PATTERN.test(hint.duel_id))) && Number.isSafeInteger(hint.at) && Number(hint.at) >= 0;
   return false;
 }
+const DUEL_ID_PATTERN = /^[a-f0-9]{32}$/;
 export function liveMessage(hint: LiveHint): LiveMessage {
+  if (hint.kind === "duels") return { type: "duels_changed", ...(hint.duel_id ? { duel: hint.duel_id } : {}), at: hint.at };
   return hint.kind === "room" ? { type: "room_changed", room: hint.room_id, seq: hint.revision } : { type: "friends_changed" };
 }
 
@@ -133,6 +140,10 @@ export function announceRoomChange(env: ServerVars & { PLAYERS: PlayerHints }, w
   const recipient = liveRecipient(room, actor);
   if (!recipient) return;
   wait(env.PLAYERS.getByName(recipient).liveHint(recipient, liveRoomHint(room)).catch(() => false));
+}
+/** The same hint to each player named (a duel's few players), one RPC each, best effort. The caller checks its own flags. */
+export function hintPlayers(env: { PLAYERS: PlayerHints }, recipients: readonly string[], hint: LiveHint): Promise<unknown> {
+  return Promise.all([...new Set(recipients)].map(id => env.PLAYERS.getByName(id).liveHint(id, hint).catch(() => false)));
 }
 /** One hint to each accepted friend that a shared room changed, best effort; it also opens the friend's next list read early. Off: no call at all. */
 export function announceToFriends(env: ServerVars & { PLAYERS: PlayerHints }, owner: string, links: readonly FriendLink[]): Promise<unknown> {

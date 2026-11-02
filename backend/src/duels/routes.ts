@@ -16,6 +16,7 @@ import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
 import { developerGhost } from "./developer-ghosts";
+import { announceLobby, duelHintsOn } from "./news";
 import { blobBase64 } from "../blob-codec";
 
 /**
@@ -42,9 +43,14 @@ const PARTY_PATH = /^\/v1\/duels\/party\/(invite|accept|dismiss|cancel|leave)$/;
 const BOARD_CONCURRENCY = 4;
 const GHOSTS_SHOWN = 3;
 
-/** `duels_version: 1` on /v2/capabilities for a phone that asks while duels are on. */
-export function duelsCapability(request: Request, env: Env): { duels_version?: number } {
-  return duelsOn(env) && request.headers.get(DUELS_HEADER) === "1" ? { duels_version: 1 } : {};
+/**
+ * `duels_version: 1` on /v2/capabilities for a phone that asks while duels are on, with
+ * `duel_hints_version: 1` while duel changes also come over the live socket (news.ts): only
+ * then may a phone slow its duel reads down to a backup pace.
+ */
+export function duelsCapability(request: Request, env: Env): { duels_version?: number; duel_hints_version?: number } {
+  if (!duelsOn(env) || request.headers.get(DUELS_HEADER) !== "1") return {};
+  return { duels_version: 1, ...(duelHintsOn(env) ? { duel_hints_version: 1 } : {}) };
 }
 
 function fields(input: unknown, keys: string[]): Record<string, unknown> {
@@ -78,7 +84,7 @@ function duelsAt(env: Env, key: string) {
     read: async (ids: string[]) => (await stub.duelRead(ids)) as unknown as Duel[],
     create: async (duel: Duel) => (await stub.duelCreate(duel)) as unknown as Duel | null,
     act: async (id: string, action: DuelAction) => (await stub.duelAct(id, action)) as unknown as Outcome<{ duel: Duel; room?: SideRoom }>,
-    progress: async (id: string, note: ProgressNote, proof?: FinishProof) => (await stub.duelProgress(id, note, proof)) as unknown as Outcome<Duel>
+    progress: async (id: string, note: ProgressNote, proof?: FinishProof, actor?: string) => (await stub.duelProgress(id, note, proof, actor)) as unknown as Outcome<Duel>
   };
 }
 
@@ -172,14 +178,24 @@ async function ghosts(env: Env): Promise<unknown> {
   return { schema_version: 1, boards };
 }
 
+/**
+ * A party op, answered with the lobby. Every other player whose row it changed (an invite arrived or
+ * was taken back, an invite was accepted, a partner left) is told once it is stored (news.ts).
+ */
 async function partyRoute(env: Env, action: string, player: string, input: unknown, now: number): Promise<unknown> {
+  const told: string[] = [];
   const apply = async (id: string, op: PartyOp) => unwrap(await party(env, id).partyApply(id, op, now));
   // Leaving the old party when a new one forms: the old partner stops naming this player.
-  const release = async (previous: string | null, from: string) => { if (previous && previous !== from) await party(env, previous).partyApply(previous, { kind: "unpartner", partner: from }, now); };
+  const release = async (previous: string | null, from: string) => {
+    if (!previous || previous === from) return;
+    await party(env, previous).partyApply(previous, { kind: "unpartner", partner: from }, now);
+    told.push(previous);
+  };
   if (action === "invite") {
     const friend = playerId(fields(input, ["friend"]).friend);
     if (!await friends(env, player, friend)) throw new ApiError(403, "party_friends_only");
     await apply(friend, { kind: "invited", from: player });
+    told.push(friend);
     await apply(player, { kind: "invite", to: friend });
   } else if (action === "accept") {
     const from = playerId(fields(input, ["from"]).from);
@@ -187,6 +203,7 @@ async function partyRoute(env: Env, action: string, player: string, input: unkno
     // The inviter's own row first: their invite must still stand.
     const confirmed = await party(env, from).partyApply(from, { kind: "confirm", partner: player }, now);
     if (!confirmed.ok) { await party(env, player).partyApply(player, { kind: "dismiss", from }, now); throw new ApiError(confirmed.status, confirmed.code); }
+    told.push(from);
     await release(confirmed.value.previous, from);
     const accepted = await apply(player, { kind: "accept", from });
     await release(accepted.previous, player);
@@ -195,13 +212,14 @@ async function partyRoute(env: Env, action: string, player: string, input: unkno
   } else if (action === "cancel") {
     fields(input, []);
     const state = await party(env, player).partyRead(now);
-    if (state.invite_out) await party(env, state.invite_out.to).partyApply(state.invite_out.to, { kind: "dismiss", from: player }, now);
+    if (state.invite_out) { await party(env, state.invite_out.to).partyApply(state.invite_out.to, { kind: "dismiss", from: player }, now); told.push(state.invite_out.to); }
     await apply(player, { kind: "cancel" });
   } else {
     fields(input, []);
     const left = await apply(player, { kind: "leave" });
     await release(left.previous, player);
   }
+  await announceLobby(env, told.filter(id => id !== player), now);
   return lobby(env, player, now);
 }
 
@@ -241,6 +259,8 @@ async function challenge(env: Env, player: string, input: unknown, now: number):
   const made = await duel;
   if (!made) throw new ApiError(503, "duels_busy");
   await addRefs(env, [...a, ...b], { duel_id: duelId, board: key, at: now }, now);
+  // Only now does every lobby list it.
+  await announceLobby(env, [...a, ...b].filter(id => id !== player), made.updated_ms, duelId);
   return { schema_version: 1, duel: viewFor(made, player) };
 }
 
@@ -274,6 +294,7 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number):
   const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player, a: blankSide(a, aKey), ghost }, now));
   if (!made) throw new ApiError(503, "duels_busy");
   await addRefs(env, a, { duel_id: duelId, board: key, at: now }, now);
+  await announceLobby(env, [mine.partner], made.updated_ms, duelId);
   return { schema_version: 1, duel: viewFor(made, player) };
 }
 
@@ -308,7 +329,7 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
     const link = snapshot.ok ? await env.ROOMS_V2.getByName(room.room_id).duelLinkOf() : null;
     if (snapshot.ok && link?.duel_id === duelId) {
       const made = await roomNote(snapshot.value, link);
-      if (made) { const noted = await duelsAt(env, key).progress(duelId, made.note, made.proof); if (noted.ok) return { schema_version: 1, duel: viewFor(noted.value, player) }; }
+      if (made) { const noted = await duelsAt(env, key).progress(duelId, made.note, made.proof, player); if (noted.ok) return { schema_version: 1, duel: viewFor(noted.value, player) }; }
     }
   }
   return { schema_version: 1, duel: viewFor(duel, player) };

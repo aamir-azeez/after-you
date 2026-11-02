@@ -37,13 +37,14 @@ export async function roomNote(room: RoomSnapshotV2, link: DuelLink): Promise<{ 
 /**
  * After an accepted turn in a duel room (v2/routes.ts, beside the board post):
  * one request to the duel's board. Never throws and never changes the turn
- * reply; a lost note is healed by the next turn or the phone's sync.
+ * reply; a lost note is healed by the next turn or the phone's sync. `actor`:
+ * who took the turn, whom the duel's news leaves out (duels/news.ts).
  */
-export async function noteDuelTurn(env: Env, room: RoomSnapshotV2, link: DuelLink | null | undefined): Promise<void> {
+export async function noteDuelTurn(env: Env, room: RoomSnapshotV2, link: DuelLink | null | undefined, actor?: string): Promise<void> {
   if (!link || !duelsOn(env)) return;
   try {
     const made = await roomNote(room, link);
-    if (made) await env.LEADERBOARD_BOARDS.getByName(link.board).duelProgress(link.duel_id, made.note, made.proof);
+    if (made) await env.LEADERBOARD_BOARDS.getByName(link.board).duelProgress(link.duel_id, made.note, made.proof, actor);
   } catch (error) {
     logWarning("duel_note_failed", { code: errorCode(error) });
   }

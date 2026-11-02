@@ -352,7 +352,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
       // A retried final turn posts its run again; the board answers "known" when the first post arrived.
       if (operation === "turns") await postFinishedRun(env, previous.value, context);
       // A duel's notes are absolute, so a repeat changes nothing; only a duel room (its snapshot says so) asks for its link.
-      if (operation === "turns" && duelsOn(env) && previous.value.room.duel) await noteDuelTurn(env, previous.value.room, await room.duelLinkOf());
+      if (operation === "turns" && duelsOn(env) && previous.value.room.duel) await noteDuelTurn(env, previous.value.room, await room.duelLinkOf(), playerId);
       return json(previous.value);
     }
     if (previous.code !== "operation_not_found") unwrap(previous);
@@ -370,6 +370,6 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   // A turn that finished a together run that might place goes to its board (leaderboards/submit.ts); the reply is unchanged.
   await postFinishedRun(env, committed, context, board_looks);
   // A duel room's turn moves its duel (duels/turn-hook.ts); the reply is unchanged.
-  await noteDuelTurn(env, committed.room, duel_link);
+  await noteDuelTurn(env, committed.room, duel_link, playerId);
   return json(await creditCommitted(request, env, playerId, committed));
 }

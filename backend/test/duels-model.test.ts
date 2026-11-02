@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, newFriendDuel, newGhostRace, players, progress, score, settle, sideOf, verdict, viewFor, type Duel, type ProgressNote } from "../src/duels/model";
+import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress, score, settle, sideOf, verdict, viewFor, type Duel, type ProgressNote } from "../src/duels/model";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "../src/duels/rules";
 import { runProgress } from "../src/duels/ticks";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
@@ -357,5 +357,52 @@ describe("duel pay", () => {
     expect(validTurnFacts(base)).toBe(true);
     expect(validTurnFacts({ ...base, duel: true })).toBe(true);
     expect(validTurnFacts({ ...base, duel: false })).toBe(false);
+  });
+});
+
+describe("duel news", () => {
+  it("tells both pairs of an answer, a finish, a leave, a check result and an end, never the player who acted", () => {
+    const duel = friend();
+    expect(newsRecipients(null, duel, A1).sort()).toEqual([A2, B1, B2].sort());
+    let before = milestone(duel);
+    expect(accept(duel, B1, T0 + 1, true).ok).toBe(true);
+    expect(newsRecipients(before, duel, B1).sort()).toEqual([A1, A2, B2].sort());
+    before = milestone(duel);
+    expect(claimRoom(duel, A1, { room_id: "ra", invite_code: "ia" }, T0 + 2).ok).toBe(true);
+    // A room claimed is news to its own pair only.
+    expect(newsRecipients(before, duel, A1)).toEqual([A2]);
+    expect(claimRoom(duel, B2, { room_id: "rb", invite_code: "ib" }, T0 + 3).ok).toBe(true);
+    before = milestone(duel);
+    expect(progress(duel, note("ra", 1, 100), T0 + 4).ok).toBe(true);
+    expect(progress(duel, note("rb", 1, 90), T0 + 5).ok).toBe(true);
+    // Mid-run turns move steps and ticks, which are no milestone.
+    expect(newsRecipients(before, duel, A1)).toEqual([]);
+    expect(progress(duel, note("ra", 4, 400, true), T0 + 6).ok).toBe(true);
+    expect(newsRecipients(before, duel, A1).sort()).toEqual([A2, B1, B2].sort());
+    before = milestone(duel);
+    expect(leave(duel, B1, T0 + 7).ok).toBe(true);
+    expect(newsRecipients(before, duel, B1).sort()).toEqual([A1, A2, B2].sort());
+    before = milestone(duel);
+    expect(verdict(duel, duel.sides[0].entry_id!, "passed", T0 + 8)).toBe(true);
+    expect(duel.status).toBe("decided");
+    // A check result has no actor: everyone hears it.
+    expect(newsRecipients(before, duel, null).sort()).toEqual([A1, A2, B1, B2].sort());
+    expect(newsRecipients(milestone(duel), duel, null)).toEqual([]);
+  });
+
+  it("tells a ghost race's pair of its check result and an expired challenge's players, and nobody erased", () => {
+    const race = ghost(1000, T0, "developer");
+    expect(claimRoom(race, A1, { room_id: "ra", invite_code: "ia" }, T0 + 1).ok).toBe(true);
+    expect(progress(race, note("ra", 4, 900, true), T0 + 2).ok).toBe(true);
+    const waiting = milestone(race);
+    expect(verdict(race, race.sides[0].entry_id!, "passed", T0 + 3)).toBe(true);
+    expect(newsRecipients(waiting, race, null).sort()).toEqual([A1, A2].sort());
+    const challenge = friend();
+    const sent = milestone(challenge);
+    expect(settle(challenge, T0 + CHALLENGE_TTL_MS)).toBe(true);
+    expect(newsRecipients(sent, challenge, null).sort()).toEqual([A1, A2, B1, B2].sort());
+    const open = friend(), asked = milestone(open);
+    expect(forgetPlayer(open, B2, T0 + 1)).toBe(true);
+    expect(newsRecipients(asked, open, null).sort()).toEqual([A1, A2, B1].sort());
   });
 });

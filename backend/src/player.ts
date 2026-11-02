@@ -105,6 +105,8 @@ export class Player extends DurableObject<Env> {
       if (!link || roomLinkVersion(JSON.parse(link.data) as RoomLink) !== 2) return false;
       return sendLive(liveSockets(this.ctx, identity.device_hash), liveMessage(hint)) > 0;
     }
+    // A duel hint names only a duel this player is in (duels/news.ts); the duel reads check that again. Writes nothing.
+    if (hint.kind === "duels") return sendLive(liveSockets(this.ctx, identity.device_hash), liveMessage(hint)) > 0;
     if (!this.acceptedFriend(identity, hint.from, hint.request_id)) return false;
     if (await interactionBlocked(this.env, owner, hint.from)) return false;
     const current = this.identity();

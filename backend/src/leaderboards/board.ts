@@ -9,6 +9,7 @@ import type { Look } from "../pollen/catalog";
 import { emptyView, type BoardRow, type BoardView } from "./view";
 import { fail, type Outcome } from "../protocol";
 import { DuelStore, type DuelAction, type DuelReplayWork, type FinishProof, type RunCopyWork } from "../duels/store";
+import { announceDuelNews } from "../duels/news";
 /** Run copy rooms one board hands the sweep at a time (duels/their-run-sweep.ts). */
 const MAX_COPY_SWEEP = 32;
 import { BoardProofs, LEGACY_PROOF_TABLE, PROOF_TABLE, encodeProof, sentProof } from "./proofs";
@@ -86,7 +87,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.rewards = new BoardRewardLedger(ctx.storage);
-    this.duels = new DuelStore(ctx.storage);
+    // A duel that moved past a milestone tells its other players over the live socket (duels/news.ts), after the reply.
+    this.duels = new DuelStore(ctx.storage, news => ctx.waitUntil(announceDuelNews(env, news)));
     this.proofs = new BoardProofs(ctx.storage);
     ctx.blockConcurrencyWhile(async () => openLazyStorage(this, ctx.storage, "lb_entries", () => { for (const sql of SCHEMA) ctx.storage.sql.exec(sql); openRewardSync(ctx.storage); }));
   }
@@ -240,8 +242,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
   duelRead(ids: string[]): Duel[] { return this.duels.read(ids, Date.now()); }
   /** A player's accept, Not now, leave or room claim on one duel. */
   duelAct(duelId: string, action: DuelAction): Outcome<{ duel: Duel; room?: SideRoom }> { return this.duels.act(duelId, action, Date.now()); }
-  /** A turn accepted in one of the duel's rooms; the finishing turn of a friend run brings its final checkpoint. */
-  duelProgress(duelId: string, note: ProgressNote, proof?: FinishProof): Promise<Outcome<Duel>> { return this.duels.progress(duelId, note, Date.now(), proof); }
+  /** A turn accepted in one of the duel's rooms; the finishing turn of a friend run brings its final checkpoint. `actor`: whose turn it was. */
+  duelProgress(duelId: string, note: ProgressNote, proof?: FinishProof, actor?: string): Promise<Outcome<Duel>> { return this.duels.progress(duelId, note, Date.now(), proof, actor ?? null); }
   /** The rooms that answered the run copy sweep (duels/their-run-sweep.ts). */
   runCopiesDone(done: RunCopyWork[]): void { this.duels.copiesDone(done); }
 

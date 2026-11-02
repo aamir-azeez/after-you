@@ -1,7 +1,9 @@
 import { env } from "cloudflare:workers";
 import { reset, runInDurableObject } from "cloudflare:test";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src/index";
+import { Player } from "../src/player";
+import { LIVE_PATH } from "../src/live";
 import { canonicalJson, digest } from "../src/protocol";
 import { CHAPTERS } from "../src/v2/chapters";
 import type { MutationV2, RoomSnapshotV2 } from "../src/v2/room";
@@ -673,5 +675,123 @@ describe("duel cost", () => {
     expect(accepted.calls).toBeLessThanOrEqual(5);
     expect(read.calls).toBeLessThanOrEqual(4);
     expect(plain.calls).toBeLessThanOrEqual(6);
+  });
+});
+
+describe("duel hints", () => {
+  // The live socket and duels on, at the Worker and in every object (objects read their own CONFIG).
+  const LIVE = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "LIVE_CONNECTION_ENABLED"] }) };
+  const LIVE_OFF = ON;
+  type Socket = { messages: Any[] };
+  const saved = new Map<Record<string, unknown>, unknown>();
+  async function objectsLive(stubs: DurableObjectStub[], on = true): Promise<void> {
+    for (const stub of stubs) await runInDurableObject(stub, instance => {
+      const target = Reflect.get(instance, "env") as Record<string, unknown>;
+      if (!saved.has(target)) saved.set(target, target.CONFIG);
+      target.CONFIG = on ? LIVE.CONFIG : ON.CONFIG;
+    });
+  }
+  afterEach(() => {
+    for (const [target, value] of saved) { if (value === undefined) delete target.CONFIG; else target.CONFIG = value; }
+    saved.clear(); vi.restoreAllMocks();
+  });
+  async function connect(who: Account): Promise<Socket> {
+    const answer = await call(LIVE_PATH, "GET", who, undefined, LIVE, { Upgrade: "websocket" });
+    expect(answer.status).toBe(101);
+    const ws = answer.webSocket!; ws.accept();
+    const socket: Socket = { messages: [] };
+    ws.addEventListener("message", event => { const text = String(event.data); if (text !== "pong") socket.messages.push(JSON.parse(text) as Any); });
+    return socket;
+  }
+  const duelEvents = (socket: Socket) => socket.messages.filter(message => message.type === "duels_changed");
+  async function until(condition: () => boolean, ms = 8000): Promise<void> {
+    const end = Date.now() + ms;
+    while (!condition()) { if (Date.now() > end) throw new Error("timed out"); await new Promise(resolve => setTimeout(resolve, 5)); }
+  }
+  const pause = () => new Promise(resolve => setTimeout(resolve, 80));
+  /** Runs one change and checks how many duel hints each socket got for it. */
+  async function step(sockets: Record<string, Socket>, change: () => Promise<unknown>, expected: Record<string, number>): Promise<Record<string, Any[]>> {
+    const before = Object.fromEntries(Object.entries(sockets).map(([name, socket]) => [name, duelEvents(socket).length]));
+    await change();
+    await until(() => Object.entries(expected).every(([name, count]) => duelEvents(sockets[name]).length >= before[name] + count));
+    await pause();
+    const got = Object.fromEntries(Object.entries(sockets).map(([name, socket]) => [name, duelEvents(socket).slice(before[name])]));
+    expect(Object.fromEntries(Object.entries(got).map(([name, list]) => [name, list.length]))).toEqual(expected);
+    return got;
+  }
+  const players = (...accounts: Account[]) => accounts.map(account => env.PLAYERS.getByName(account.player_id) as unknown as DurableObjectStub);
+  const board = () => env.LEADERBOARD_BOARDS.getByName(RELAY) as unknown as DurableObjectStub;
+
+  it("are advertised only while duels and the live socket are both on, to a phone that asks for duels", async () => {
+    const a = await create();
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, LIVE, { "X-AfterYou-Duels": "1" }))).toMatchObject({ duels_version: 1, duel_hints_version: 1 });
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, LIVE_OFF, { "X-AfterYou-Duels": "1" }))).not.toHaveProperty("duel_hints_version");
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, LIVE))).not.toHaveProperty("duel_hints_version");
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, { ...LIVE, CONFIG: configJson({ features: ["LEADERBOARDS", "LIVE_CONNECTION_ENABLED"] }) }, { "X-AfterYou-Duels": "1" }))).not.toHaveProperty("duel_hints_version");
+  });
+
+  it("tell only the player whose party row changed: an invite, an accept, a cancel and a leave, never a dismiss", async () => {
+    const [a, b, c] = await Promise.all([create(), create(), create()]);
+    await befriend(a, b); await befriend(a, c); await befriend(b, c);
+    await objectsLive(players(a, b, c));
+    const sockets = { a: await connect(a), b: await connect(b), c: await connect(c) };
+    const party = (who: Account, action: string, body: Any = {}) => ok(call("/v1/duels/party/" + action, "POST", who, { schema_version: 1, ...body }, LIVE));
+    const [invite] = (await step(sockets, () => party(a, "invite", { friend: b.player_id }), { a: 0, b: 1, c: 0 })).b;
+    // A party hint names no duel: the lobby reads once.
+    expect(invite).toEqual({ type: "duels_changed", at: expect.any(Number) });
+    await step(sockets, () => party(b, "accept", { from: a.player_id }), { a: 1, b: 0, c: 0 });
+    await step(sockets, () => party(c, "invite", { friend: a.player_id }), { a: 1, b: 0, c: 0 });
+    await step(sockets, () => party(a, "dismiss", { from: c.player_id }), { a: 0, b: 0, c: 0 });
+    await step(sockets, () => party(c, "invite", { friend: b.player_id }), { a: 0, b: 1, c: 0 });
+    await step(sockets, () => party(c, "cancel"), { a: 0, b: 1, c: 0 });
+    await step(sockets, () => party(b, "leave"), { a: 1, b: 0, c: 0 });
+  });
+
+  it("follow a friend duel's milestones to the players who did not act, and never a mid-run turn", async () => {
+    const { a1, a2, b1, b2 } = await pairs();
+    await objectsLive([...players(a1, a2, b1, b2), board()]);
+    const sockets = { a1: await connect(a1), a2: await connect(a2), b1: await connect(b1), b2: await connect(b2) };
+    const path = (duel: DuelView, action: string) => "/v1/duels/" + RELAY + "/" + duel.duel_id + "/" + action;
+    let duel!: DuelView;
+    const sent = await step(sockets, async () => { duel = (await ok<{ duel: DuelView }>(call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY }, LIVE))).duel; },
+      { a1: 0, a2: 1, b1: 1, b2: 1 });
+    expect(sent.b2[0]).toEqual({ type: "duels_changed", duel: duel.duel_id, at: duel.updated_ms });
+    await step(sockets, () => ok(call(path(duel, "accept"), "POST", b2, { schema_version: 1 })), { a1: 1, a2: 1, b1: 1, b2: 0 });
+    // The second accept changes nothing, so it tells nobody.
+    await step(sockets, () => ok(call(path(duel, "accept"), "POST", b1, { schema_version: 1 })), { a1: 0, a2: 0, b1: 0, b2: 0 });
+    // A room claimed is news to its own pair only.
+    let room!: RoomSnapshotV2;
+    await step(sockets, async () => { room = await ok<RoomSnapshotV2>(openRoom(a1, duel)); }, { a1: 0, a2: 1, b1: 0, b2: 0 });
+    const joined = await ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", a2, { invite_code: room.invite_code }));
+    const run = await relayRun(0);
+    const hosting: [Account, Account] = joined.host_id === a1.player_id ? [a1, a2] : [a2, a1];
+    let replies: MutationV2[] = [];
+    await step(sockets, async () => { replies = await play(joined, hosting, { ...run, turns: run.turns.slice(0, -1) }); }, { a1: 0, a2: 0, b1: 0, b2: 0 });
+    const [who, recording, checkpoint] = run.turns[run.turns.length - 1];
+    const finisher = hosting[who];
+    const named: [string, Account][] = [["a1", a1], ["a2", a2], ["b1", b1], ["b2", b2]];
+    const others = Object.fromEntries(named.map(([name, account]) => [name, account === finisher ? 0 : 1]));
+    await step(sockets, () => ok(call("/v2/rooms/" + joined.room_id + "/turns", "POST", finisher, turn(replies[replies.length - 1].room, recording, checkpoint))), others);
+    await step(sockets, () => ok(call(path(duel, "leave"), "POST", b2, { schema_version: 1 })), { a1: 1, a2: 1, b1: 1, b2: 0 });
+    // The check result has no actor: all four hear the duel end.
+    const ended = await step(sockets, async () => verdicts((await job()).entries, () => true), { a1: 1, a2: 1, b1: 1, b2: 1 });
+    expect((await detail(a1, duel)).duel).toMatchObject({ status: "decided", updated_ms: ended.a1[0].at });
+  }, 60_000);
+
+  it("tell the partner of a new ghost race, and cost one Player request per player told, writing no row", async () => {
+    const { a1, a2 } = await pairs();
+    await objectsLive([...players(a1, a2), board()]);
+    const sockets = { a1: await connect(a1), a2: await connect(a2) };
+    const hints = vi.spyOn(Player.prototype, "liveHint");
+    const race = (vars: typeof LIVE) => ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }, vars));
+    const stubs = { a1: players(a1)[0], a2: players(a2)[0] };
+    const told = await meterRows(stubs, () => step(sockets, () => race(LIVE), { a1: 0, a2: 1 }));
+    expect(hints).toHaveBeenCalledTimes(1);
+    // The same race with hints off writes the same rows: a hint stores nothing.
+    await objectsLive(players(a1, a2), false);
+    const quiet = await meterRows(stubs, () => race(LIVE_OFF));
+    expect(hints).toHaveBeenCalledTimes(1);
+    expect(told.rows.a2.written).toBe(quiet.rows.a2.written);
+    expect(told.rows.a1.written).toBe(quiet.rows.a1.written);
   });
 });

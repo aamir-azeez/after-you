@@ -4,7 +4,8 @@ import type { ReplayWork } from "../leaderboards/board";
 import { REVIEW_REASONS } from "../leaderboards/rules";
 import type { ChapterKey } from "../v2/chapter-types";
 import type { CheckpointV2 } from "../v2/protocol";
-import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, progress, settle, verdict, type Duel, type ProgressNote, type SideRoom } from "./model";
+import { accept, awaitsCheck, claimRoom, decide, decline, forgetPlayer, isFinal, leave, milestone, newsRecipients, progress, settle, verdict, type Duel, type Milestone, type ProgressNote, type SideRoom } from "./model";
+import type { DuelNews } from "./news";
 import { MAX_BOARD_DUELS, MAX_DUEL_PROOFS, MAX_DUEL_PROOF_CHARS, STALL_MS } from "./rules";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
 
@@ -33,6 +34,11 @@ import { THEIR_RUN_KEEP_MS } from "./their-run";
  *
  * Each call is one synchronous transaction around one model call, and the
  * row is written only when the duel changed, so retries cost no rows.
+ *
+ * News (duels/news.ts): a read, an action, a turn, a verdict or an erasure
+ * that moved a duel past a milestone (model.ts) hands `announce` who to tell,
+ * once its transaction is done; a new duel is announced by its route instead,
+ * once every player's pointer to it exists. Nothing is stored for it.
  */
 const COPIES_TABLE = "CREATE TABLE IF NOT EXISTS duel_run_copies (room_id TEXT NOT NULL, duel_id TEXT NOT NULL, player TEXT NOT NULL, due_ms INTEGER NOT NULL, PRIMARY KEY (room_id, duel_id, player)) WITHOUT ROWID";
 /** One room to tell, for the sweep (their-run.ts dropTheirRuns): with no player, the copy's keep is over. */
@@ -59,7 +65,11 @@ export type FinishProof = { checkpoint: CheckpointV2; simulation_version: number
 const known = new WeakMap<DurableObjectStorage, boolean>();
 
 export class DuelStore {
-  constructor(private readonly storage: DurableObjectStorage) {}
+  /** While one call runs (tell): each duel's milestone as first loaded, and the news so far. */
+  private loaded: Map<string, Milestone> | null = null;
+  private news = new Map<string, DuelNews>();
+  private actor: string | null = null;
+  constructor(private readonly storage: DurableObjectStorage, private readonly announce: (news: DuelNews[]) => void = () => undefined) {}
 
   /** Adds a new duel; the same id again answers the one already held. Null when the board is full of open duels. */
   create(duel: Duel, now: number): Duel | null {
@@ -76,16 +86,16 @@ export class DuelStore {
   /** The duels named, settled to `now` (a changed one is saved), in the order asked; unknown ids are left out. */
   read(ids: readonly string[], now: number): Duel[] {
     if (!this.present() || !ids.length) return [];
-    return this.storage.transactionSync(() => ids.map(id => this.duel(id)).filter((duel): duel is Duel => duel !== null).map(duel => {
+    return this.tell(null, () => this.storage.transactionSync(() => ids.map(id => this.duel(id)).filter((duel): duel is Duel => duel !== null).map(duel => {
       if (settle(duel, now)) this.save(duel);
       return duel;
-    }));
+    })));
   }
 
   /** One player action on one duel. Answers the duel (with the side's room for a claim), or the model's refusal. */
   act(duelId: string, action: DuelAction, now: number): Outcome<{ duel: Duel; room?: SideRoom }> {
     if (!this.present()) return fail(404, "duel_not_found");
-    return this.storage.transactionSync(() => {
+    return this.tell(action.player, () => this.storage.transactionSync(() => {
       const duel = this.duel(duelId);
       if (!duel) return fail(404, "duel_not_found");
       const before = JSON.stringify(duel);
@@ -100,22 +110,23 @@ export class DuelStore {
       if (JSON.stringify(duel) !== before) this.save(duel);
       if (!answer.ok) return answer;
       return ok({ duel, ...(action.kind === "claim" ? { room: answer.value as SideRoom } : {}) });
-    });
+    }));
   }
 
   /**
    * A turn accepted in a duel room. On the turn that finishes a run that
    * waits for the replay check (model.ts awaitsCheck), its final checkpoint
-   * waits here for the replay job. Answers the duel.
+   * waits here for the replay job. Answers the duel. `actor`: the player whose
+   * turn it was, left out of the news.
    */
-  async progress(duelId: string, note: ProgressNote, now: number, proof?: FinishProof): Promise<Outcome<Duel>> {
+  async progress(duelId: string, note: ProgressNote, now: number, proof?: FinishProof, actor: string | null = null): Promise<Outcome<Duel>> {
     if (!this.present()) return fail(404, "duel_not_found");
     // Encoded before the transaction (compression is async), and only on the side's first finish of a run the check will want.
     const held = proof && note.complete ? this.duel(duelId) : null;
     const first = held?.sides.find(side => side?.room?.room_id === note.room_id)?.finished_ms === null;
     const encoded = held && first && awaitsCheck(held, note.ticks) ? await encodeProof(proof!.checkpoint) : null;
     const kept = encoded && encoded.byte_length <= MAX_DUEL_PROOF_CHARS ? encoded : null;
-    return this.storage.transactionSync(() => {
+    return this.tell(actor, () => this.storage.transactionSync(() => {
       const duel = this.duel(duelId);
       if (!duel) return fail(404, "duel_not_found");
       const before = JSON.stringify(duel);
@@ -125,7 +136,7 @@ export class DuelStore {
       else if (side) { side.check = "error"; decide(duel, now); }
       if (JSON.stringify(duel) !== before) this.save(duel);
       return answer.ok ? ok(duel) : answer;
-    });
+    }));
   }
 
   /** Duel runs for the replay job, at most `maxChars` of canonical bytes, skipping entries the board already hands out. */
@@ -149,7 +160,7 @@ export class DuelStore {
   /** Replay verdicts on duel runs. A verdict counts only for a waiting run whose stored proof it checked. Returns the duels that changed. */
   verdicts(list: readonly DuelVerdict[], now: number): string[] {
     if (!this.present() || !list.length) return [];
-    return this.storage.transactionSync(() => {
+    return this.tell(null, () => this.storage.transactionSync(() => {
       const changed: string[] = [];
       for (const item of list) {
         const proof = this.storage.sql.exec<{ duel_id: string; proof_hash: string; ticks: number }>("SELECT duel_id,proof_hash,ticks FROM duel_proofs WHERE entry_id=?", item.entry_id).toArray()[0];
@@ -161,17 +172,17 @@ export class DuelStore {
         if (verdict(duel, item.entry_id, check, now)) { this.save(duel); changed.push(duel.duel_id); }
       }
       return changed;
-    });
+    }));
   }
 
   /** Account erasure: the player leaves every duel here; their waiting runs' proofs go. Returns how many duels changed. */
   forgetPlayer(player: string, now: number): number {
     if (!this.present()) return 0;
-    return this.storage.transactionSync(() => {
+    return this.tell(null, () => this.storage.transactionSync(() => {
       let count = 0;
       const rows = this.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE instr(data, ?) > 0", player).toArray();
       for (const row of rows) {
-        const duel = JSON.parse(row.data) as Duel;
+        const duel = this.track(JSON.parse(row.data) as Duel);
         // Every room of theirs holding a run copy hears of it, before the duel forgets their id.
         this.queueCopies(duel, now, player);
         if (!forgetPlayer(duel, player, now)) continue;
@@ -180,7 +191,7 @@ export class DuelStore {
         count++;
       }
       return count;
-    });
+    }));
   }
 
   private keepProof(duel: Duel, entryId: string, kept: EncodedProof, ticks: number, simulationVersion: number, now: number): void {
@@ -209,7 +220,32 @@ export class DuelStore {
 
   private duel(id: string): Duel | null {
     const row = this.storage.sql.exec<{ data: string }>("SELECT data FROM duels WHERE duel_id=?", id).toArray()[0];
-    return row ? JSON.parse(row.data) as Duel : null;
+    return row ? this.track(JSON.parse(row.data) as Duel) : null;
+  }
+  /** Notes a duel's milestone the first time a call loads it, so its save can tell what moved. */
+  private track(duel: Duel): Duel {
+    if (this.loaded && !this.loaded.has(duel.duel_id)) this.loaded.set(duel.duel_id, milestone(duel));
+    return duel;
+  }
+  /**
+   * Runs one synchronous call with news on, then hands what it found to `announce`
+   * once the transaction is done, so a call that throws tells nobody. Never spans an await.
+   */
+  private tell<T>(actor: string | null, work: () => T): T {
+    this.loaded = new Map();
+    this.news = new Map();
+    this.actor = actor;
+    let found: DuelNews[] = [];
+    try {
+      const value = work();
+      found = [...this.news.values()];
+      return value;
+    } finally {
+      this.loaded = null;
+      this.news = new Map();
+      this.actor = null;
+      if (found.length) this.announce(found);
+    }
   }
   /** Rooms whose run copy is due to go or to hear of an erasure by `now`, oldest first, at most `limit`. */
   copiesDue(now: number, limit: number): RunCopyWork[] {
@@ -250,6 +286,10 @@ export class DuelStore {
     return this.storage.sql.exec("SELECT 1 FROM sqlite_master WHERE type='table' AND name='duel_run_copies'").toArray().length > 0;
   }
   private save(duel: Duel): void {
+    if (this.loaded) {
+      const recipients = newsRecipients(this.loaded.get(duel.duel_id) ?? null, duel, this.actor);
+      if (recipients.length) this.news.set(duel.duel_id, { duel_id: duel.duel_id, at: duel.updated_ms, recipients });
+    }
     if (isFinal(duel) && duel.kind === "friend" && !duel.copies_queued) { this.queueCopies(duel, duel.updated_ms); duel.copies_queued = true; }
     this.storage.sql.exec("INSERT OR REPLACE INTO duels VALUES (?,?,?,?)", duel.duel_id, duel.status, duel.updated_ms, JSON.stringify(duel));
     if (isFinal(duel)) this.storage.sql.exec("DELETE FROM duel_proofs WHERE duel_id=?", duel.duel_id);
