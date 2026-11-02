@@ -27,7 +27,6 @@ extends SceneTree
 ## Check id -> who fixes it and what is wrong.
 const KNOWN_FAILURES := {
 	"pips:res://presentation/duels/duel_kit.gd": "duel-looks: duel pages and duel rooms draw the other pips with no look",
-	"home_pips_dressed": "home-pip-look: Home's island pips never wear the player's look",
 	"home_switches": "home-caps: Home's Duels row, board watch and leaderboard name row wait for a capabilities read",
 	"capabilities:res://presentation/reaction_photo_flow.gd": "unowned (shared-paths audit): photo_uploads_enabled is read raw; give it an accessor",
 	"capabilities:res://presentation/replays_flow.gd": "unowned (shared-paths audit): replay_transfer_version is read raw; give it an accessor",
@@ -40,6 +39,7 @@ const KNOWN_FAILURES := {
 	"offline:res://presentation/safety_screen.gd": "unowned (shared-paths audit): unblock and report buttons stay live offline",
 	"offline:res://presentation/shared_replay_view.gd": "unowned (shared-paths audit): report and block in a replay stay live offline",
 	"offline:res://presentation/legacy_room_flow.gd": "unowned (shared-paths audit): legacy room create, join, fork and advance stay live offline",
+	"offline:res://relay_preview.gd": "unowned (shared-paths audit): New room on the end card and redo requests stay live offline (turns themselves are kept)",
 }
 
 ## (a) The scripts that draw a pip.
@@ -91,11 +91,10 @@ const ONLINE_CLIENTS := ["duels_client", "friends_client", "leaderboard_client",
 const OFFLINE_EXEMPT := {
 	"res://presentation/board_feedback_flow.gd": "no button: Home's background board watch",
 	"res://presentation/friends_flow.gd": "opens Friends, whose buttons hold (friends_screen.gd); its board read runs in the background",
-	"res://presentation/notification_flow.gd": "background inbox reads; a route with no button asks Main._offline_blocked",
+	"res://presentation/notification_flow.gd": "its one button turns on a kept preference; the service registers when it next reaches the server",
 	"res://presentation/bundle_purchase.gd": "refuses offline itself before a purchase starts; the store page holds its buttons",
 	"res://presentation/settings_rows.gd": "declares rows online: true; settings_flow.gd holds each one",
 	"res://presentation/turn_flow.gd": "a turn is kept as pending_turn and sent again later, offline included",
-	"res://relay_preview.gd": "in-room writes wait in the room coordinator's and redo client's kept queues",
 }
 
 ## (e) The name resolver and the scripts allowed under it.
