@@ -59,6 +59,11 @@ func _run() -> void:
 		field.text_changed.emit(field.text)
 	var add := find_button(screen,"Add friend")
 	check(add != null and add.disabled,"Typing a code offline keeps Add friend greyed")
+	var asked := calls.size()
+	said.clear()
+	field.text_submitted.emit(field.text)
+	await process_frame
+	check(calls.size() == asked and said.has(PlayerCopy.OFFLINE_NEEDS_CONNECTION),"Enter in the code field offline sends nothing and says why")
 	# The countdown's own enabling (every second) keeps the grey.
 	screen._update_countdowns()
 	check(_buttons_named(["Join"]).values().all(func(b: Button) -> bool: return b.disabled),"The countdown's refresh keeps Join greyed")

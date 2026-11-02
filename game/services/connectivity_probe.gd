@@ -12,9 +12,8 @@ extends Node
 ## any kind reads as online and it stops.
 const Connectivity = preload("res://services/connectivity.gd")
 const RefreshScheduleScript = preload("res://services/refresh_schedule.gd")
-const PATH := "/v1/app-status"
+const AppStatus = preload("res://services/app_status.gd")
 const TIMEOUT_SECONDS := 6.0
-const BODY_LIMIT := 4096
 ## The first ask after going offline.
 const FIRST_MS := 5000
 
@@ -70,7 +69,7 @@ func _notification(what: int) -> void:
 func _process(_delta: float) -> void:
 	var token: Dictionary = _schedule.begin_if_due(_now(), true, false)
 	if token.is_empty(): return
-	var response: Array = await _send(base_url.trim_suffix("/") + PATH)
+	var response: Array = await _send(base_url.trim_suffix("/") + AppStatus.PATH)
 	if not is_inside_tree(): return
 	Connectivity.shared().note_response(response)
 	_schedule.complete(token, _now(), Connectivity.shared().online())
@@ -80,7 +79,7 @@ func _send(url: String) -> Array:
 	if transport.is_valid(): return await transport.call(url)
 	var request := HTTPRequest.new()
 	request.timeout = TIMEOUT_SECONDS
-	request.body_size_limit = BODY_LIMIT
+	request.body_size_limit = AppStatus.BODY_LIMIT
 	add_child(request)
 	if request.request(url, PackedStringArray(), HTTPClient.METHOD_GET) != OK:
 		request.queue_free()

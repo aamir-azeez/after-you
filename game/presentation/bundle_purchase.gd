@@ -22,6 +22,7 @@ extends Node
 const Bundles = preload("res://services/pollen_bundles.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
 const StoreSupport = preload("res://services/store_support.gd")
+const Connectivity = preload("res://services/connectivity.gd")
 
 ## How long a price read waits for RevenueCat to be set up for this player.
 const SETUP_WAIT_MS := 15000
@@ -134,13 +135,16 @@ func _priced(payload: Dictionary) -> void:
 
 ## Opens the store's sheet for `bundle`; `done` (outcome: Dictionary) hears how
 ## it ended. Returns "" once the sheet is asked for, "offline" when this run's
-## store answer does not let money move, or "busy" (not priced, or one is out).
+## store answer does not let money move or the phone is offline, or "busy"
+## (not priced, or one is out).
 ## A tap waits for ready_to_buy() first, so a claim being sent is not cut short.
 func buy(bundle: String, done: Callable) -> String:
 	if not buying.is_empty() or not priced() or not packages.has(bundle) or not flow.available(): return "busy"
 	# Money moves only on this run's answer (services/store_support.gd): on iPhone, available() above
 	# then reads the bundles that same capabilities read set.
 	if not StoreSupport.shared().read_now(): return "offline"
+	# Nor while the phone reads as offline (services/connectivity.gd): the claim needs the server.
+	if not Connectivity.shared().online(): return "offline"
 	_connect()
 	_bought = (packages[bundle] as Dictionary).duplicate()
 	_bought.bundle = bundle

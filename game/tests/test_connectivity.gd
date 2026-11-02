@@ -289,6 +289,24 @@ func _holds() -> void:
 	_tap(viewport, Vector2(260, 50))
 	await _frames(2)
 	_check(sunk == [PlayerCopy.OFFLINE_NEEDS_CONNECTION], "A hold with no sink of its own says why through the default (Main's toast)")
+	# A drag through a list that starts on a greyed button is a scroll: it says nothing.
+	await create_timer(0.5).timeout
+	for step: Array in [[true, Vector2(260, 50)], [false, Vector2(260, 130)]]:
+		var event := InputEventMouseButton.new()
+		event.button_index = MOUSE_BUTTON_LEFT
+		event.pressed = step[0]
+		event.position = step[1]
+		event.global_position = step[1]
+		viewport.push_input(event)
+	await _frames(2)
+	_check(sunk.size() == 1, "A drag that starts on a greyed button says nothing")
+	# The one refusal every entry point uses.
+	var heard: Array = []
+	var asked := [0]
+	state.probe = func() -> void: asked[0] += 1
+	_check(OfflineHold.refuse(func(text: String) -> void: heard.append(text)) and heard == [PlayerCopy.OFFLINE_NEEDS_CONNECTION] and asked[0] == 1, "Offline the refusal says why and asks the server once")
+	state.note_reached()
+	_check(not OfflineHold.refuse(func(text: String) -> void: heard.append(text)) and heard.size() == 1, "Online it lets the caller go on")
 	viewport.queue_free()
 	await _frames(2)
 

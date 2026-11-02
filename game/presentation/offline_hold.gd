@@ -19,6 +19,8 @@ const PATH := "res://presentation/offline_hold.gd"
 const NAME := "OfflineHold"
 ## Mouse emulation sends a touch twice; one reason per tap.
 const TAP_GAP_MS := 400
+## A press that moved further than this before it lifted was a scroll, not a tap.
+const TAP_SLOP := 24.0
 ## How much of a held button's own drawn children shows.
 const DIM := 0.45
 
@@ -30,6 +32,7 @@ var _say: Callable
 var _held := false
 var _faded := false
 var _last_tap := -TAP_GAP_MS
+var _pressed_at := Vector2.INF
 
 ## Holds `button` while offline; `say(text)` shows the reason on a tap. Holding
 ## the same button again only changes where the reason goes.
@@ -58,6 +61,16 @@ static func set_enabled(button: BaseButton, enabled: bool) -> void:
 	existing._held = enabled and not Connectivity.shared().online()
 	button.disabled = not enabled or existing._held
 	existing._dim()
+
+## The one refusal for anything that needs the server: while offline it says
+## why through `say` (else say_default, Main's toast), asks the server once and
+## returns true; online it returns false and the caller goes on.
+static func refuse(say: Callable = Callable()) -> bool:
+	if Connectivity.shared().online(): return false
+	var sink := say if say.is_valid() else say_default
+	if sink.is_valid(): sink.call(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
+	Connectivity.shared().check_now()
+	return true
 
 ## Whether `button` is greyed out by a hold now.
 static func held(button: BaseButton) -> bool:
@@ -93,13 +106,20 @@ func _dim() -> void:
 	for child: Node in _button.get_children():
 		if child is CanvasItem: (child as CanvasItem).modulate.a = DIM if faded else 1.0
 
+## A tap on the held button: pressed and lifted on it without moving like a
+## scroll. A drag through a list that starts on it says nothing.
 func _on_input(event: InputEvent) -> void:
 	if not _held: return
-	var released: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT and not event.pressed) or (event is InputEventScreenTouch and not event.pressed)
-	if not released: return
+	var touch: bool = (event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT) or event is InputEventScreenTouch
+	if not touch: return
+	var at: Vector2 = event.position
+	if event.pressed:
+		_pressed_at = at
+		return
+	var started := _pressed_at
+	_pressed_at = Vector2.INF
+	if started == Vector2.INF or started.distance_to(at) > TAP_SLOP or not Rect2(Vector2.ZERO, _button.size).has_point(at): return
 	var now := Time.get_ticks_msec()
 	if now - _last_tap < TAP_GAP_MS: return
 	_last_tap = now
-	var sink := _say if _say.is_valid() else say_default
-	if sink.is_valid(): sink.call(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
-	Connectivity.shared().check_now()
+	refuse(_say)

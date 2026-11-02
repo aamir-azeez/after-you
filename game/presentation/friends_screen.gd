@@ -1054,8 +1054,9 @@ func _offer_link() -> void:
 	var cancel: Button = _modal.find_child("ModalCancel",true,false)
 	if cancel != null: _outlined(cancel)
 	# The modal can appear right after an automatic navigation; a stray tap must not confirm.
-	_online(add)
+	# Disabled first, so the connection coming back cannot arm it early; the timer arms it through the hold.
 	add.disabled = true
+	_online(add)
 	var armed: WeakRef = weakref(add)
 	get_tree().create_timer(INVITE_CONFIRM_ARM_SEC).timeout.connect(func():
 		var button: Button = armed.get_ref()
@@ -1178,6 +1179,8 @@ func _say(text: String, news: bool = false) -> void:
 	if not text.is_empty(): notice.emit(text,news)
 
 func _act(action: String, peer: Dictionary = {}) -> void:
+	# Enter in the code field and a tap kept for after a refresh come here too, past the greyed buttons.
+	if OfflineHold.refuse(func(text: String) -> void: _say(text)): return
 	if _keep_for_after_refresh(_act_on_current.bind(action,peer)): return
 	if not _current() or not _foreground or _busy: return
 	_busy = true

@@ -2174,10 +2174,7 @@ func _check_app_status() -> void:
 ## trying. Their buttons are greyed already (presentation/offline_hold.gd); this
 ## covers routes with no button (a notification, a link).
 func _offline_blocked(report: Callable = Callable()) -> bool:
-	if Connectivity.shared().online(): return false
-	_report(report,PlayerCopy.OFFLINE_NEEDS_CONNECTION)
-	Connectivity.shared().check_now()
-	return true
+	return OfflineHold.refuse(func(text: String) -> void: _report(report,text))
 
 func _connectivity_changed(online: bool) -> void:
 	wardrobe_flow.connectivity_changed(online)

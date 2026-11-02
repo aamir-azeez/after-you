@@ -32,7 +32,6 @@ const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const WardrobeSheets = preload("res://presentation/wardrobe_sheets.gd")
-const Connectivity = preload("res://services/connectivity.gd")
 const OfflineHold = preload("res://presentation/offline_hold.gd")
 
 ## The player's own name or where it stands changed (chips redraw).
@@ -81,10 +80,7 @@ func maybe_ask(parent: Control, hint_later: bool = false) -> bool:
 ## A name change needs the server: offline it says why and asks the server once.
 func edit(parent: Control, opener: Control = null) -> void:
 	if not enabled() or prompt_open() or not is_instance_valid(parent): return
-	if not Connectivity.shared().online():
-		if host != null and host.has_method("_toast"): host._toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
-		Connectivity.shared().check_now()
-		return
+	if OfflineHold.refuse(): return
 	_open(parent, true, opener)
 
 func prompt_open() -> bool:
