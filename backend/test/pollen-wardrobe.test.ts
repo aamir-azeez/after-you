@@ -7,7 +7,7 @@ import { creditClear, noteFullJourney } from "../src/pollen/wallet";
 import { EVERY_HARD, EVERY_HARD_LEVELS } from "../src/pollen/earned";
 import { shopOn, wardrobeMode, wardrobeOn } from "../src/pollen/features";
 import { chapterTier } from "../src/pollen/rates";
-import { CATALOG, EARNED_TIER } from "../src/pollen/catalog";
+import { CATALOG, EARNED_TIER, offeredItems } from "../src/pollen/catalog";
 import { BoardRewardLedger, openRewardSync, REWARD_ITEMS } from "../src/leaderboards/rewards";
 import { boardKey, boardKeys } from "../src/leaderboards/boards";
 import { deriveJobToken } from "../src/leaderboards/job-token";
@@ -17,7 +17,7 @@ import { CHAPTERS } from "../src/v2/chapters";
 import { POLLEN_EARNED_TABLES } from "../src/storage-schema";
 import { countingEnv } from "./meter";
 import manifest from "../../game/tests/fixtures/golden/chapter_manifest.json";
-import { POLLEN_CLIENT, withConfig } from "./config";
+import { POLLEN_CLIENT, PRE_SHOP_CLIENT, withConfig } from "./config";
 
 // The wardrobe without the shop (POLLEN_WARDROBE), the shop on top of it (POLLEN_SHOP), and earned
 // items reaching a player: board rewards through the replay job, and Every Hard. Synthetic identities only.
@@ -99,8 +99,8 @@ describe("each route under each combination", () => {
     expect(read.balance).toBe(5000);
     if (expected.wardrobe === "none") { expect(read).not.toHaveProperty("wardrobe"); expect(read).not.toHaveProperty("name_price"); }
     if (expected.wardrobe === "owned") {
-      // Without the shop nothing of the catalogue shows: `offered` holds only the player's own items.
-      expect(read.wardrobe).toEqual({ items: ["gold_leaf"], packs: [], look: {}, look_revision: 0, offered: ["gold_leaf"] });
+      // Without the shop nothing is sold, but `offered` is still every released item: a phone draws a friend's look from it.
+      expect(read.wardrobe).toEqual({ items: ["gold_leaf"], packs: [], look: {}, look_revision: 0, offered: offeredItems() });
       expect(read).not.toHaveProperty("name_price");
     }
     if (expected.wardrobe === "shop") {
@@ -154,6 +154,21 @@ describe("the wardrobe without the shop", () => {
     expect((await call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }, LOOKS, { "X-AfterYou-Looks": "1" })).status).toBe(200);
     const seen = await call(`/v2/rooms/${room.room_id}`, "GET", guest, undefined, LOOKS, { "X-AfterYou-Looks": "1" });
     expect(await seen.json()).toMatchObject({ partner_look: { leaf: "gold_leaf" } });
+  });
+});
+
+describe("what a friend's phone may draw", () => {
+  // A phone draws a look's item only once its own wallet read offers it (game services/outfit.gd), so `offered`
+  // must hold every released item for every app, or a friend's Gold leaf or Daisy shows as the plain pip.
+  it("offers every released item to an app older than the shop, which still sells nothing", async () => {
+    const wearer = await create(), friend = await create();
+    expect((await giveBoardItems(wearer, ["gold_leaf"], 1)).ok).toBe(true);
+    expect((await call("/v1/pollen/equip", "POST", wearer, equipBody({ leaf: "gold_leaf" }), SHOP)).status).toBe(200);
+    const old = await (await call("/v1/pollen", "GET", friend, undefined, SHOP, PRE_SHOP_CLIENT)).json<Wallet>();
+    expect(old.wardrobe).toEqual({ items: [], packs: [], look: {}, look_revision: 0, offered: offeredItems() });
+    expect(old.wardrobe!.offered).toEqual(expect.arrayContaining(["gold_leaf", "daisy"]));
+    expect(old).not.toHaveProperty("name_price");
+    expect((await wallet(friend, SHOP)).wardrobe!.offered).toEqual(offeredItems());
   });
 });
 
