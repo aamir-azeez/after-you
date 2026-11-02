@@ -17,6 +17,9 @@ import { SUB_ID_PATTERN, type GrantStatus, type GrantSub } from "./grant";
  * Environments: Play reads APP.playEnvironment (production), as the hosting check.
  * The App Store reads production, or sandbox only when CONFIG's revenuecat.app_store_environment is exactly
  * "sandbox": its "both" lets App Review host, but the grant never pays a sandbox purchase there.
+ * A player in CONFIG's revenuecat.tester_ids (the owner's test identity) also has each store's sandbox subscriptions
+ * read and paid as real ones. Their periods are minutes long and renew fast, but instalments fall due on monthly
+ * anniversaries of the anchor (grant.ts), so a tester is paid at most one instalment a calendar month, as anyone.
  *
  * Any failed, unconfigured or partial read answers { ok: false }: nothing is paid or taken back on it.
  * The subscription `id` is RevenueCat's own, kept through renewals (a renewal is not a new subscription),
@@ -26,16 +29,20 @@ export type GrantRead = { ok: true; subs: GrantSub[]; lifetime: { id: string } |
 export type ProviderFetch = (url: string, key: string) => Promise<ProviderResult>;
 
 type Store = { store: "play_store" | "app_store"; products: readonly string[]; environment: string };
+const SANDBOX = "sandbox";
 
-function stores(env: ServerVars): Store[] | null {
+function stores(playerId: string, env: ServerVars): Store[] | null {
   const config = serverConfig(env).revenuecat, play = config.play_subscription_product_ids;
   if (play === null) return null;
   const out: Store[] = play.length ? [{ store: "play_store", products: play, environment: APP.playEnvironment }] : [];
   if (flags.appStoreEntitlements(env)) {
     const app = config.app_store_subscription_product_ids;
     if (app === null) return null;
-    if (app.length) out.push({ store: "app_store", products: app, environment: config.app_store_environment === "sandbox" ? "sandbox" : "production" });
+    if (app.length) out.push({ store: "app_store", products: app, environment: config.app_store_environment === "sandbox" ? SANDBOX : "production" });
   }
+  // A tester's sandbox subscriptions pay as real ones, in each store above: one more list read, for testers only.
+  if (config.tester_ids.includes(playerId))
+    for (const each of [...out]) if (!out.some(other => other.store === each.store && other.environment === SANDBOX)) out.push({ ...each, environment: SANDBOX });
   return out;
 }
 
@@ -68,7 +75,7 @@ function list(result: ProviderResult): unknown[] | string {
  * (one more read, made only for a player whose noted Full Journey has no end).
  */
 export async function readGrant(playerId: string, env: ServerVars, lifetime: boolean, request: ProviderFetch = revenuecatRequest): Promise<GrantRead> {
-  const configured = stores(env);
+  const configured = stores(playerId, env);
   const project = serverConfig(env).revenuecat.project_id ?? "";
   if (!env.REVENUECAT_SECRET_KEY || !PROJECT_PATTERN.test(project) || configured === null) return { ok: false, reason: "unconfigured" };
   const key = env.REVENUECAT_SECRET_KEY;

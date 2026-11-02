@@ -52,7 +52,7 @@ export const PROJECT_PATTERN = /^[A-Za-z0-9_-]{4,100}$/;
 export const LOOKUP_PATTERN = /^entl[A-Za-z0-9_-]+$/;
 export const PRODUCT_PATTERN = /^prod[A-Za-z0-9_-]+$/;
 const MAX_PRODUCTS = 8;
-const MAX_REVIEWERS = 16;
+const MAX_LISTED_PLAYERS = 16;
 const APP_STORE_ENVIRONMENTS = Object.freeze(["production", "sandbox", "both"] as const);
 
 /** Longest version string either side accepts. */
@@ -91,6 +91,11 @@ export type RevenueCatSettings = {
   readonly app_store_entitlement_lookup_id?: string;
   /** Player ids whose real Full Journey entitlement counts as a review grant, and whose App Store sandbox Pollen bundles pay (pollen/bundle-provider.ts): the App Review identity. */
   readonly reviewer_ids: readonly string[];
+  /**
+   * Player ids whose sandbox purchases (Play license testers, TestFlight) count as real ones in both stores: Pollen bundles,
+   * Full Journey hosting from a subscription, and the monthly grant. The owner's own test identity; [] when unset.
+   */
+  readonly tester_ids: readonly string[];
 };
 export type ServerConfig = {
   /** The FLAG_VARS names that are on (flags.ts reads only names it knows). */
@@ -112,12 +117,13 @@ export type ConfigCheck = { config: ServerConfig; problems: string[]; unknown: s
 /** What a RevenueCat id that is not a string reads as: no pattern accepts it, so its check holds. */
 const MALFORMED = "(malformed)";
 const NO_ALIASES: FriendAliases = Object.freeze({ byAlias: new Map<string, string>(), byId: new Map<string, string>() });
-const NO_REVENUECAT: RevenueCatSettings = Object.freeze({ play_subscription_product_ids: [], app_store_subscription_product_ids: [], reviewer_ids: [] });
+const NO_REVENUECAT: RevenueCatSettings = Object.freeze({ play_subscription_product_ids: [], app_store_subscription_product_ids: [], reviewer_ids: [], tester_ids: [] });
 export const EMPTY_CONFIG: ServerConfig = Object.freeze({ features: new Set<string>(), min_client_version: Object.freeze({}), friend_aliases: NO_ALIASES, revenuecat: NO_REVENUECAT });
 const TOP_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat"];
 const STRING_IDS = { project_id: PROJECT_PATTERN, play_entitlement_lookup_id: LOOKUP_PATTERN, play_product_id: PRODUCT_PATTERN, app_store_entitlement_lookup_id: LOOKUP_PATTERN } as const;
 const PRODUCT_LISTS = ["play_subscription_product_ids", "app_store_subscription_product_ids"] as const;
-const REVENUECAT_KEYS = [...Object.keys(STRING_IDS), ...PRODUCT_LISTS, "app_store_environment", "reviewer_ids"];
+const PLAYER_LISTS = ["reviewer_ids", "tester_ids"] as const;
+const REVENUECAT_KEYS = [...Object.keys(STRING_IDS), ...PRODUCT_LISTS, "app_store_environment", ...PLAYER_LISTS];
 
 function plainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype;
@@ -139,8 +145,9 @@ export function aliasesFrom(value: unknown): FriendAliases | null {
 function productsFrom(value: unknown[]): string[] | null {
   return value.length <= MAX_PRODUCTS && value.every(item => typeof item === "string" && PRODUCT_PATTERN.test(item)) ? value as string[] : null;
 }
-function reviewersFrom(value: unknown[]): string[] | null {
-  return value.length <= MAX_REVIEWERS && value.every(item => typeof item === "string" && PLAYER_ID.test(item)) ? value as string[] : null;
+/** A player id list (reviewers, testers): at most MAX_LISTED_PLAYERS ids, or null when it is anything else. */
+function playersFrom(value: unknown[]): string[] | null {
+  return value.length <= MAX_LISTED_PLAYERS && value.every(item => typeof item === "string" && PLAYER_ID.test(item)) ? value as string[] : null;
 }
 
 /**
@@ -192,7 +199,7 @@ export function parseConfig(raw: unknown, knownFlags?: ReadonlySet<string>): Con
       for (const key of Object.keys(given)) if (!REVENUECAT_KEYS.includes(key)) unknown.push(`revenuecat.${key}`);
       // A malformed id stays a string the consumer's own pattern refuses, so that check holds ("unconfigured"); a value
       // that is not a string becomes MALFORMED, never "", which would read as unset (an unset App Store lookup reuses Play's).
-      const out: { -readonly [K in keyof RevenueCatSettings]: RevenueCatSettings[K] } = { play_subscription_product_ids: [], app_store_subscription_product_ids: [], reviewer_ids: [] };
+      const out: { -readonly [K in keyof RevenueCatSettings]: RevenueCatSettings[K] } = { play_subscription_product_ids: [], app_store_subscription_product_ids: [], reviewer_ids: [], tester_ids: [] };
       for (const [key, pattern] of Object.entries(STRING_IDS) as [keyof typeof STRING_IDS, RegExp][]) {
         const item = given[key];
         if (item === undefined) continue;
@@ -212,10 +219,13 @@ export function parseConfig(raw: unknown, knownFlags?: ReadonlySet<string>): Con
         if (typeof environment !== "string" || !(APP_STORE_ENVIRONMENTS as readonly string[]).includes(environment)) problems.push("revenuecat.app_store_environment must be production, sandbox or both");
         out.app_store_environment = typeof environment === "string" ? environment : MALFORMED;
       }
-      if (given.reviewer_ids !== undefined) {
-        const list = Array.isArray(given.reviewer_ids) ? reviewersFrom(given.reviewer_ids) : null;
-        if (list === null) problems.push(`revenuecat.reviewer_ids must be a list of at most ${MAX_REVIEWERS} player ids`);
-        out.reviewer_ids = list ?? [];
+      // A malformed list lists nobody.
+      for (const key of PLAYER_LISTS) {
+        const item = given[key];
+        if (item === undefined) continue;
+        const list = Array.isArray(item) ? playersFrom(item) : null;
+        if (list === null) problems.push(`revenuecat.${key} must be a list of at most ${MAX_LISTED_PLAYERS} player ids`);
+        out[key] = list ?? [];
       }
       revenuecat = Object.freeze(out);
     }
