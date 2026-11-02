@@ -38,12 +38,20 @@ func _duel_server(request: Dictionary, api: FakeApi) -> Dictionary:
 		return _ok({"schema_version": 1, "duel": _duel_view(request.owner)})
 	if path == "/v2/rooms" and request.method == HTTPClient.METHOD_POST and request.body.has("duel"):
 		if not refuse_create.is_empty():
-			if refuse_create == "duel_room_taken": duel_room = {"room_id": ROOM, "invite_code": INVITE, "host": GUEST}
 			return {"ok": false, "status": 409, "code": refuse_create, "error": "Synthetic refusal " + refuse_create + "."}
+		# The first of the pair to claim keeps the room (backend duels/routes.ts claimDuelRoom).
+		if not duel_room.is_empty() and duel_room.host != request.owner:
+			return {"ok": false, "status": 409, "code": "duel_room_taken", "error": "Synthetic refusal duel_room_taken."}
 		duel_room = {"room_id": ROOM, "invite_code": INVITE, "host": request.owner}
 	if path.begins_with("/v1/"):
 		return _ok({})
 	return _server(request, api)
+
+## Every room here is the duel's: its snapshot says so (backend v2/room.ts).
+func _snapshot(api: FakeApi, owner: String) -> Dictionary:
+	var value := super(api, owner)
+	value["duel"] = true
+	return value
 
 func _run() -> void:
 	for name: String in ["relay-a","relay-b","garden-a","garden-b","initial-checkpoint","relay-checkpoint","final-checkpoint"]:
@@ -54,6 +62,7 @@ func _run() -> void:
 		await _refused_comes_back()
 		await _second_turn_makes_room()
 		await _partner_first_is_joined()
+		await _lost_create_goes_again()
 	for path: String in cleanup_paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path+suffix): DirAccess.remove_absolute(path+suffix)
@@ -154,19 +163,40 @@ func _second_turn_makes_room() -> void:
 	_check(is_instance_valid(app.relay_child) and not app.room_hub_flow.is_open() and _hub_reads(api) == 0 and not app.duels_flow.is_open(), "%s: the duel's room opens, not the room hub (mode %s)" % [kind, app.mode])
 	await _done(made)
 
-## Both tapped at once and the partner's create came first: this phone joins their room.
+## Both tapped at once and the partner's create came first (this page was read before it): this phone joins their room.
 func _partner_first_is_joined() -> void:
 	duel_room = {}
-	refuse_create = "duel_room_taken"
+	refuse_create = ""
 	var made := await _app()
 	var app: Main = made[0]
 	var api: FakeApi = made[1]
+	duel_room = {"room_id": ROOM, "invite_code": INVITE, "host": GUEST}
 	await app.duels_flow._play(made[2])
 	await _frames(4)
 	var joins: Array = api.calls.filter(func(call: Dictionary) -> bool: return call.path == "/v2/rooms/join")
 	_check(_creates(api).size() == 1 and joins.size() == 1 and joins[0].body.invite_code == INVITE, "%s: the partner's room is joined after the create is refused as taken: %s" % [kind, api.calls.map(func(call: Dictionary) -> String: return call.path)])
-	_check(not app.room_hub_flow.is_open() and _hub_reads(api) == 0 and (is_instance_valid(app.relay_child) or app.duels_flow.is_open()), "%s: joining the partner's room never shows the room hub (mode %s)" % [kind, app.mode])
+	_check(is_instance_valid(app.relay_child) and not app.room_hub_flow.is_open() and _hub_reads(api) == 0, "%s: the partner's room opens, never the room hub (mode %s)" % [kind, app.mode])
+	await _done(made)
+
+## A create whose answer was lost stays saved and goes again, as it was, on the
+## next Play; the duel's room it opens is never shared with friends.
+func _lost_create_goes_again() -> void:
+	duel_room = {}
 	refuse_create = ""
+	var made := await _app()
+	var app: Main = made[0]
+	var api: FakeApi = made[1]
+	app.room_hub_flow.host_visibility = "friends"
+	api.drop_next = true
+	await app.duels_flow._play(made[2])
+	await _frames(4)
+	var page: Variant = app.duels_flow.screen.overlay() if app.duels_flow.is_open() else null
+	_check(page is DuelPage and not app.room_hub_flow.is_open() and not app.relay_session.pending_lobby().is_empty(), "%s: a lost answer brings the duel back and keeps the create" % kind)
+	await app.duels_flow._play(made[2])
+	await _frames(4)
+	var creates := _creates(api)
+	_check(creates.size() == 2 and creates[0].body.idempotency_key == creates[1].body.idempotency_key and is_instance_valid(app.relay_child) and app.relay_session.pending_lobby().is_empty(), "%s: the next Play sends the same create again and opens its room" % kind)
+	_check(api.calls.all(func(call: Dictionary) -> bool: return not call.path.begins_with("/v1/friends/share") and not call.path.begins_with("/v1/social/publication")), "%s: a duel's room is never shared or announced to friends" % kind)
 	await _done(made)
 
 func _frames(count: int) -> void:

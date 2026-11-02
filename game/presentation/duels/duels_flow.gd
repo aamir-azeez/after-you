@@ -66,11 +66,11 @@ const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
 const HintReads = preload("res://services/duel_hint_reads.gd")
+const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 ## Main's mode while Duels is up.
 const MODE_DUELS := "duels"
-## Main's mode while Play's room step shows its progress card (relay_lobby_flow.gd MODE_LOBBY).
-const MODE_ROOM_STEP := "relay_rooms"
-## A room claimed a moment ago is joined once more after this wait.
+## A room claimed a moment ago is joined up to JOIN_TRIES times, this far apart.
+const JOIN_TRIES := 3
 const JOIN_AGAIN_S := 1.0
 
 signal home_requested
@@ -100,10 +100,11 @@ var _their_loading := false
 ## on the way the server answers the duel the first tap made, never a second one.
 ## A server's answer (a duel, or a refusal) settles it; the next tap is a new duel.
 var _unanswered: Dictionary = {}
-## While Play opens a duel's room (_play): the duel to come back to, the room
-## step's failure codes Play goes on from, whether one came, and a token that
-## return_instead moves on, so the step that was running stops.
+## While Play opens a duel's room (_play): the duel to come back to and the
+## player who tapped, the room step's failure codes Play goes on from, whether
+## one came, and a token that _stop() moves on, so the step that was running stops.
 var _opening: Dictionary = {}
+var _opening_player := ""
 var _goes_on: Array = []
 var _held := false
 var _open_token := 0
@@ -591,53 +592,60 @@ func _watch_theirs(page: Node, view: Dictionary) -> void:
 ## Whoever of the pair taps Play first makes the room, whatever the turn order
 ## (DuelModel.your_turn): the other joins it and sees the room's own waiting
 ## view until their turn. A room step that cannot go on comes back to this
-## duel's page with its reason (return_instead), never to the room hub.
+## duel's page with its reason (return_instead), never to the room hub. The
+## one exception is another room's saved create or join, which holds every
+## room step: the hub's card for it is where it is finished, as for any room.
 func _play(view: Dictionary) -> void:
 	if not is_open() or host.application_backgrounded or not _opening.is_empty(): return
 	if not ChapterUnlocks.open(view.chapter, host._chapter_unlocks()):
 		host._toast(PlayerCopy.DUELS_CHAPTER_CLOSED)
 		return
 	var chapter := _chapter_key(view)
-	host.mode = MODE_ROOM_STEP
+	host.mode = RelayLobbyFlow.MODE_LOBBY
 	close()
 	host.ui.visible = true
 	_open_token += 1
 	var token := _open_token
 	_opening = view
+	_opening_player = str(host.api.player_id)
 	await _open_room(view, chapter, token)
-	# return_instead already brought the duel back.
+	# return_instead already brought the duel back, or another screen took over.
 	if token != _open_token: return
-	_opening = {}
-	_goes_on = []
-	_held = false
+	var stopped_quietly := _stepping()
+	_stop()
 	# A step that stopped without a word, its progress card still up: the duel again.
-	if not is_instance_valid(host.relay_child) and host.mode == MODE_ROOM_STEP: _back_to(view, "")
+	if stopped_quietly: _back_to(view, "")
 
 func _open_room(view: Dictionary, chapter: String, token: int) -> void:
 	var own: Dictionary = view.sides[view.mine]
-	if not str(own.get("room_id", "")).is_empty() and own.get("hosting", false):
-		_step([])
-		if await host.relay_lobby_flow.open_lobby(chapter): await host.relay_lobby_flow.lobby_action("open", own.room_id)
+	var pending: Dictionary = host.relay_session.pending_lobby() if host.relay_session != null else {}
+	if not pending.is_empty() and not _pending_for(view):
+		_stop()
+		host._return_to_room_hub(PlayerCopy.RELAY_ONLINE_SESSION_8C3AC7311985)
 		return
-	# A room your partner claimed but never made: make it here instead (the server lets the claim pass after a while).
-	if not str(own.get("invite_code", "")).is_empty():
-		if not await _step_held(token, ["invite_not_found", "room_deleted"], host.relay_lobby_flow.join_room.bind(own.invite_code)): return
+	# This duel's create whose answer was lost goes again first: its room, or the partner's that came first.
+	if pending.is_empty():
+		if not str(own.get("room_id", "")).is_empty() and own.get("hosting", false):
+			_step([])
+			if await host.relay_lobby_flow.open_lobby(chapter): await host.relay_lobby_flow.lobby_action("open", own.room_id)
+			return
+		# A room your partner claimed but never made: make it here instead (the server lets the claim pass after a while).
+		if not str(own.get("invite_code", "")).is_empty():
+			if not await _step_held(token, ["invite_not_found", "room_deleted"], host.relay_lobby_flow.join_room.bind(own.invite_code)): return
 	# The first of you to open the duel makes its room.
 	if not await _step_held(token, ["duel_room_taken"], _make_room.bind(view, chapter)): return
 	# Your partner's room came first: join it.
 	var fresh: Dictionary = await client().duel(view.board, view.duel_id)
-	if token != _open_token: return
+	if token != _open_token or not _stepping(): return
 	var invite := str(fresh.duel.sides[fresh.duel.mine].get("invite_code", "")) if fresh.get("ok", false) else ""
 	if invite.is_empty():
-		_step([])
+		_stop()
 		_back_to(view, PlayerCopy.DUELS_ACTION_FAILED)
 		return
-	# A room claimed a moment ago may still be on its way: one more try after a short wait.
-	if not await _step_held(token, ["invite_not_found"], host.relay_lobby_flow.join_room.bind(invite)): return
-	await host.get_tree().create_timer(JOIN_AGAIN_S).timeout
-	if token != _open_token: return
-	_step([])
-	await host.relay_lobby_flow.join_room(invite)
+	# A room claimed a moment ago may still be on its way: a few tries, a moment apart; the last one's refusal comes back.
+	for attempt in range(JOIN_TRIES):
+		if not await _step_held(token, ["invite_not_found"] if attempt < JOIN_TRIES - 1 else [], host.relay_lobby_flow.join_room.bind(invite)): return
+		await host.get_tree().create_timer(JOIN_AGAIN_S).timeout
 
 ## Makes the duel's room; a create whose answer was lost is sent again as it was.
 func _make_room(view: Dictionary, chapter: String) -> void:
@@ -645,10 +653,11 @@ func _make_room(view: Dictionary, chapter: String) -> void:
 	if _pending_for(view): await host.relay_lobby_flow.lobby_action("retry")
 	else: await host.relay_lobby_flow.lobby_action("duel", chapter, false, {"duel_id": view.duel_id, "board": view.board})
 
-## Runs one room step whose failures with `codes` Play goes on from. True when
-## it failed with one of them; false when the room opened, the duel came back
-## or the step stopped some other way.
+## Runs one room step whose failures with `codes` Play goes on from, while
+## Play still has the screen. True when it failed with one of them; false when
+## the room opened, the duel came back or the step stopped some other way.
 func _step_held(token: int, codes: Array, run: Callable) -> bool:
+	if token != _open_token or not _stepping(): return false
 	_step(codes)
 	await run.call()
 	if token != _open_token or not _held: return false
@@ -661,6 +670,19 @@ func _step(codes: Array) -> void:
 	_held = false
 	if host.relay_session != null: host.relay_session.last_lobby_code = ""
 
+## Whether Play's room step still has the screen: its progress card, for the
+## player who tapped Play, with no room open. A notification that opened
+## another screen, or another player, ends the step.
+func _stepping() -> bool:
+	return not _opening.is_empty() and host.mode == RelayLobbyFlow.MODE_LOBBY and not is_instance_valid(host.relay_child) and str(host.api.player_id) == _opening_player
+
+## Play's room step is over: a step still out stops at its next check.
+func _stop() -> void:
+	_opening = {}
+	_goes_on = []
+	_held = false
+	_open_token += 1
+
 ## Whether this phone holds this duel's create, its answer lost (services/relay_online_session.gd pending_lobby).
 func _pending_for(view: Dictionary) -> bool:
 	if host.relay_session == null: return false
@@ -669,21 +691,22 @@ func _pending_for(view: Dictionary) -> bool:
 	return pending.get("path") == "/v2/rooms" and body is Dictionary and body.get("duel") is Dictionary and body.duel.get("duel_id") == view.duel_id
 
 ## Main asks this before a room step returns to the room hub (Main._return_to_room_hub).
-## While Play opens a duel's room it answers true: a failure Play goes on from
-## waits for it, and anything else (a refusal, a lost connection, Back on the
-## progress card) brings the duel's page back with `notice`.
+## While Play's room step has the screen it answers true: a failure Play goes on
+## from waits for it, and anything else (a refusal, a lost connection, Back on
+## the progress card) brings the duel's page back with `notice`. Otherwise false,
+## and a step that lost the screen ends.
 func return_instead(notice: String) -> bool:
 	if _opening.is_empty(): return false
+	if not _stepping():
+		_stop()
+		return false
 	var code := str(host.relay_session.last_lobby_code) if host.relay_session != null else ""
 	if not code.is_empty() and code in _goes_on:
 		_goes_on = []
 		_held = true
 		return true
 	var view := _opening
-	_opening = {}
-	_goes_on = []
-	_held = false
-	_open_token += 1
+	_stop()
 	_back_to(view, notice)
 	return true
 

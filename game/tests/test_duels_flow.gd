@@ -123,12 +123,14 @@ class FakeMain extends Node:
 	var relay_child: Node
 	## The room hub opened, and the rooms entered.
 	var hubs := 0
+	var hub_notices: Array = []
 	var entered := 0
 	func ensure_relay_session() -> void: pass
 	func _return_to_room_hub(notice: String = "", _refresh: bool = true) -> void:
 		relay_lobby_flow.generation += 1
 		if duels_flow.return_instead(notice): return
 		hubs += 1
+		hub_notices.append(notice)
 		mode = "rooms"
 	func enter_room() -> void:
 		entered += 1
@@ -183,12 +185,14 @@ func _run() -> void:
 	_check(not flow.is_open() and main.ui.visible, "the room flow takes over from Duels")
 	# Play: your partner's room is joined.
 	main.relay_lobby_flow.calls.clear()
+	_leave_room(main)
 	flow.open()
 	await _frames(2)
 	await flow._play(Client.valid_view(_view({"room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": false})))
 	_check(main.relay_lobby_flow.calls == [["join", "abcdefabcdefabcdefab"]], "Play joins the room your partner made: %s" % [main.relay_lobby_flow.calls])
 	# Play: no room yet, so this phone makes it for the duel.
 	main.relay_lobby_flow.calls.clear()
+	_leave_room(main)
 	flow.open()
 	await _frames(2)
 	await flow._play(Client.valid_view(_view({})))
@@ -197,6 +201,7 @@ func _run() -> void:
 	main.relay_lobby_flow.calls.clear()
 	main.relay_lobby_flow.taken = true
 	api.replies["GET /v1/duels/%s/%s" % [BOARD, DUEL]] = {"ok": true, "data": {"schema_version": 1, "duel": _view({"room_id": ROOM, "invite_code": "fedcbafedcbafedcbafe", "hosting": false})}}
+	_leave_room(main)
 	flow.open()
 	await _frames(2)
 	await flow._play(Client.valid_view(_view({})))
@@ -231,6 +236,7 @@ func _run() -> void:
 	main.relay_lobby_flow.calls.clear()
 	main.relay_lobby_flow.missing = true
 	main.relay_lobby_flow.taken = false
+	_leave_room(main)
 	await flow._play(Client.valid_view(_view({"room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": false})))
 	_check(main.relay_lobby_flow.calls.size() == 3 and main.relay_lobby_flow.calls[2][0] == "duel", "a room that never appeared is made here: %s" % [main.relay_lobby_flow.calls])
 	main.relay_lobby_flow.missing = false
@@ -823,7 +829,7 @@ func _play_orders(main: FakeMain, api: FakeApi, flow: Node) -> void:
 		api.replies[duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _server_view(kind, {"room_id": ROOM, "invite_code": "fedcbafedcbafedcbafe", "hosting": false})}}
 		await _tap_play(main, flow, made.call({"turn": 0}), ["duel_room_taken"])
 		_check(lobby.calls.size() == 3 and lobby.calls[2] == ["join", "fedcbafedcbafedcbafe"] and main.entered == entered + 3 and main.hubs == hubs, "%s: a page from before the partner's room joins it: %s" % [kind, lobby.calls])
-		# Both tapped at once and the partner's room is still on its way: one more join after a moment.
+		# Both tapped at once and the partner's room is still on its way: another join a moment later.
 		await _tap_play(main, flow, made.call({}), ["duel_room_taken", "invite_not_found", ""])
 		var joins: Array = lobby.calls.filter(func(call: Array) -> bool: return call[0] == "join")
 		_check(joins.size() == 2 and main.entered == entered + 4 and main.hubs == hubs, "%s: both at once, a room still on its way is joined on a second try: %s" % [kind, lobby.calls])
@@ -867,6 +873,7 @@ func _play_orders(main: FakeMain, api: FakeApi, flow: Node) -> void:
 		_leave_room(main)
 		main._return_to_room_hub("")
 		_check(main.hubs == hubs + 1, "%s: leaving a duel's room goes to the room hub as before" % kind)
+		await _more_orders(main, api, flow, made)
 		main.mode = "home"
 	# Duels switched off while a room was being made: Home, not the hub.
 	var hubs_before := main.hubs
@@ -879,6 +886,52 @@ func _play_orders(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	main.relay_session.on = true
 	await _frames(2)
 	_check(not flow.is_open() and main.hubs == hubs_before and main.ui.visible, "duels switched off meanwhile: back to Home, never the hub")
+
+## The orders the critic found: a lost create with the partner's room made
+## meanwhile, a partner's room that never arrives, another room's saved
+## request, and another screen or player taking over mid-step.
+func _more_orders(main: FakeMain, api: FakeApi, flow: Node, made: Callable) -> void:
+	var lobby: FakeLobby = main.relay_lobby_flow
+	var kind: String = made.call({}).kind
+	var shown := func() -> bool:
+		var page: CanvasLayer = flow.screen.overlay() if flow.is_open() else null
+		return page is DuelPage and page.view.duel_id == DUEL and main.mode == Flow.MODE_DUELS
+	var hubs := main.hubs
+	var entered := main.entered
+	# This duel's create lost its answer and the partner made the room meanwhile: the same create goes first, is refused as taken, and the partner's room is joined.
+	main.relay_session.pending = {"path": "/v2/rooms", "body": {"duel": {"duel_id": DUEL, "board": BOARD}}}
+	await _tap_play(main, flow, made.call({"room_id": ROOM, "invite_code": "abcdefabcdefabcdefab", "hosting": false}), ["duel_room_taken"])
+	main.relay_session.pending = {}
+	_check(lobby.calls.size() == 3 and lobby.calls[1][0] == "retry" and lobby.calls[2] == ["join", "fedcbafedcbafedcbafe"] and main.entered == entered + 1 and main.hubs == hubs, "%s: a lost create goes again before the partner's room is joined: %s" % [kind, lobby.calls])
+	# The partner's room never arrives: three joins, then the duel with the reason.
+	await _tap_play(main, flow, made.call({}), ["duel_room_taken", "invite_not_found", "invite_not_found", "invite_not_found"])
+	var joins: Array = lobby.calls.filter(func(call: Array) -> bool: return call[0] == "join")
+	_check(joins.size() == Flow.JOIN_TRIES and shown.call() and "refused invite_not_found" in main.toasts and main.hubs == hubs, "%s: a partner's room that never arrives brings the duel back after %d joins: %s" % [kind, Flow.JOIN_TRIES, lobby.calls])
+	# Another room's saved create or join holds every room step: the hub's card for it, as for any room.
+	main.relay_session.pending = {"path": "/v2/rooms/join", "body": {"invite_code": "fedcbafedcbafedcbafe"}}
+	await _tap_play(main, flow, made.call({}))
+	main.relay_session.pending = {}
+	_check(lobby.calls.is_empty() and main.hubs == hubs + 1 and main.hub_notices.back() == PlayerCopy.RELAY_ONLINE_SESSION_8C3AC7311985 and not flow.is_open(), "%s: another room's saved request goes to the hub's card for it" % kind)
+	# Another screen (a notification) takes over mid-step: the duel never comes back over it, and that screen's own hub return goes on.
+	for change: String in ["screen", "player"]:
+		hubs = main.hubs
+		_leave_room(main)
+		if not flow.is_open(): flow.open()
+		await _frames(2)
+		lobby.frames = 4
+		lobby.refuse = ["duel_not_running"]
+		flow._play(made.call({}))
+		await _frames(1)
+		if change == "screen": main.mode = "friends"
+		else: api.player_id = FINN
+		await _frames(8)
+		api.player_id = ME
+		lobby.frames = 0
+		lobby.refuse = []
+		_check(not flow.is_open() and main.hubs == hubs + 1, "%s: a %s that changes mid-step gets no duel back over it" % [kind, change])
+		main._return_to_room_hub("")
+		_check(main.hubs == hubs + 2, "%s: after a %s change, a later hub return is never held for the duel" % [kind, change])
+	main.mode = "home"
 
 ## Opens `view`'s page over the lobby and taps Play, the room steps answering `refuse` in order.
 func _tap_play(main: FakeMain, flow: Node, view: Dictionary, refuse: Array = []) -> void:

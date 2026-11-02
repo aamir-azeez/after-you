@@ -145,7 +145,8 @@ func lobby_action(action: String, value: String = "", hard: bool = false, duel: 
 		return
 	var hosted := {"api_version":2,"room_id":room_id}
 	var sharing: bool = bool(host.saves.data.settings.get("share_online_status", true))
-	var hosting: bool = host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("host_id") == host.api.player_id
+	# A duel's room is never shared: only its pair may join it (a "retry" may be a duel's create).
+	var hosting: bool = host.relay_session.coordinator != null and host.relay_session.coordinator.snapshot().get("host_id") == host.api.player_id and not host.relay_session.coordinator.duel_room()
 	if action in ["create", "retry"] and hosting and host.room_hub_flow.host_visibility == "friends" and sharing:
 		# A Friends room is shared as soon as it exists and sends one hosting
 		# alert. The alert is saved as owed first, so a restart keeps it.
