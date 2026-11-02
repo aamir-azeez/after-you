@@ -4,9 +4,10 @@ import { playEntitlement } from "./play-entitlement";
 import { appStoreReady, storeEntitlement } from "./store-entitlement";
 import { clientHeader } from "./app-status";
 
-export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription" | "tester_grant"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
+export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription" | "tester_grant" | "tester_switched_off"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
 /**
- * The Full Journey check: a stored tester grant, else RevenueCat's record of a real store purchase (Play, plus the
+ * The Full Journey check: a tester's switch (test-codes.ts) answers "verified, not entitled" with no provider call
+ * while it is on, whatever they own; else a stored tester grant, else RevenueCat's record of a real store purchase (Play, plus the
  * App Store while APP_STORE_ENTITLEMENTS_ENABLED is on). Without REVENUECAT_SECRET_KEY and CONFIG's RevenueCat ids
  * the answer is "unconfigured", which holds hosting (503) rather than refusing it.
  *
@@ -17,7 +18,8 @@ export type Entitlement = { full_journey: boolean; status: "verified" | "unconfi
 export async function entitlement(playerId: string, env: ServerVars & { PLAYERS?: Env["PLAYERS"] }, onGrant?: (until: number) => void): Promise<Entitlement> {
   const base = { full_journey: false, environment: APP.environment, checked_at: new Date().toISOString() };
   if (env.PLAYERS) {
-    const grant = await env.PLAYERS.getByName(playerId).storedTesterGrant(playerId);
+    const { grant, full_journey_off } = await env.PLAYERS.getByName(playerId).storedAccess(playerId);
+    if (full_journey_off) return { ...base, status: "verified", access_source: "tester_switched_off", player_id: playerId };
     if (grant) return { ...base, full_journey: true, status: "verified", access_source: "tester_grant", entitlement: "full_journey", player_id: playerId };
   }
   return { ...base, ...(flags.appStoreEntitlements(env) ? await storeEntitlement(playerId, env, onGrant) : await playEntitlement(playerId, env, onGrant)) };

@@ -1,6 +1,7 @@
 import { ApiError, HASH_PATTERN, boundedJson, digest, equalHash, isObject, unwrap } from "./protocol";
 import { bearerDigest } from "./http";
 import { flags, type ServerVars } from "./flags";
+import { isTester, matchTestCode, runTestAction, type TestActionReply } from "./test-codes";
 
 export const TESTER_CODE_DOMAIN = "afteryou.tester-code.v1:";
 export type TesterGrant = { schema_version: 1; granted_at: string };
@@ -17,12 +18,17 @@ export function testerReceipt(owner: string, grant: TesterGrant | null): TesterA
   return grant ? { schema_version: 1, granted: true, access_source: "tester_grant", entitlement: "full_journey", player_id: owner, granted_at: grant.granted_at } :
     { schema_version: 1, granted: false, player_id: owner };
 }
-/** Normal authenticated caller only. The submitted code is never persisted or logged. */
-export async function routeTesterAccess(request: Request, owner: string, env: Env & ServerVars): Promise<TesterAccess> {
+/**
+ * Normal authenticated caller only. The submitted code is never persisted or logged. A player in CONFIG's
+ * tester list may also type a test code here (test-codes.ts); for everyone else the route is unchanged.
+ */
+export async function routeTesterAccess(request: Request, owner: string, env: Env & ServerVars): Promise<TesterAccess | TestActionReply> {
   if (!["GET", "POST"].includes(request.method)) throw new ApiError(405, "method_not_allowed");
   const player = env.PLAYERS.getByName(owner), deviceHash = await bearerDigest(request);
   const existing = unwrap(await player.testerAccess(owner, deviceHash));
-  if (request.method === "GET" || existing.granted) return existing;
+  // A tester's every attempt spends the limiter, granted or not, since a test code works either way.
+  const tester = request.method === "POST" && isTester(env, owner);
+  if (request.method === "GET" || existing.granted && !tester) return existing;
   // Separate actor and edge-IP buckets bound guessing across credential rotation
   // and fresh identities. Neither code nor credentials appear in limiter keys.
   const ip = await digest(request.headers.get("CF-Connecting-IP") || "local");
@@ -30,6 +36,11 @@ export async function routeTesterAccess(request: Request, owner: string, env: En
       !(await env.TESTER_CODE_LIMITER.limit({ key: "ip:" + ip })).success) throw new ApiError(429, "tester_rate_limited");
   const body = await boundedJson(request, 1024);
   if (!isObject(body) || Object.keys(body).sort().join() !== "code,schema_version" || body.schema_version !== 1 || typeof body.code !== "string" || !/^[!-~]{8,128}$/.test(body.code)) throw new ApiError(400, "invalid_tester_request");
+  if (tester) {
+    const action = await matchTestCode(env, body.code);
+    if (action) return runTestAction(action, owner, deviceHash, env);
+    if (existing.granted) return existing;
+  }
   const proposedHash = await digest(TESTER_CODE_DOMAIN + body.code);
   const accepted = flags.testerAccess(env) && typeof env.TESTER_CODE_SHA256 === "string" && HASH_PATTERN.test(env.TESTER_CODE_SHA256) && equalHash(proposedHash, env.TESTER_CODE_SHA256);
   // This binding-only Boolean comes solely from the server policy above. The

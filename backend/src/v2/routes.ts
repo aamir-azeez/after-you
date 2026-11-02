@@ -23,6 +23,7 @@ import { HISTORY_HEADER, historySupport } from "./history";
 import { MAX_ATTEMPT_BYTES } from "./history-blob";
 import { parsePosition } from "./history-room";
 import { requireHostAccess, requireRoomHostAccess } from "./host-access";
+import { testerSwitchCapability } from "../test-codes";
 import { liveCapability } from "../live";
 import { triesField, triesWanted } from "./turn-tries";
 import { endReactionField, endReactionsWanted, FACE_PACKS_VERSION, facePacksWanted } from "./end-reactions";
@@ -136,6 +137,7 @@ export async function routeV2(request: Request, path: string, playerId: string, 
     ...looksCapability(request, env),
     ...leaderboardsCapability(request, env),
     ...duelsCapability(request, env),
+    ...await testerSwitchCapability(playerId, env),
     validation: "structural_client_replay_required" });
   if (path === "/v2/campaigns" || path.startsWith("/v2/campaigns/")) return routeCampaign(request, path, playerId, env);
   if (path === "/v2/rooms" && request.method === "GET") {

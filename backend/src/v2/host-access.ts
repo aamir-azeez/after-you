@@ -1,5 +1,6 @@
 import { ApiError } from "../protocol";
 import { entitlement, type Entitlement } from "../entitlement";
+import { isTester } from "../test-codes";
 
 /**
  * Premium turn admission windows, kept together so a policy change is one line here.
@@ -50,7 +51,8 @@ export type RoomHostAccess = {
  * provider check that admitted the turn, or null when the room's memo (or the outage grace) did.
  */
 export async function requireRoomHostAccess(room: RoomHostAccess, hostId: string, env: Env, onGrant?: (until: number) => void): Promise<Entitlement | null> {
-  const age = await room.hostAccessAge(hostId);
+  // A tester's host is checked every turn, so their Full Journey switch (test-codes.ts) holds at once.
+  const age = isTester(env, hostId) ? null : await room.hostAccessAge(hostId);
   if (age !== null && age < HOST_ACCESS_FRESH_MS) return null;
   const access = await entitlement(hostId, env, onGrant), refusal = hostAccessRefusal(access);
   if (!refusal) {

@@ -162,10 +162,11 @@ export async function checkedWithEnd<T extends Entitlement | null>(check: (onGra
 /**
  * The Full Journey end a provider check reported, to note on the player and copy into rooms:
  * the end of the paid period (NO_END for a lifetime unlock), 0 when RevenueCat verified no access,
- * undefined when it says nothing about paid access (unavailable, unconfigured, a tester or review grant).
+ * undefined when it says nothing about paid access (unavailable, unconfigured, a tester or review grant, or a
+ * tester's switch, which leaves the wallet on the real purchase while rooms copy no boost: player.ts roomFullJourneyUntil).
  */
 export function paidUntil(access: Entitlement, until: number | undefined): number | undefined {
-  if (access.status !== "verified") return undefined;
+  if (access.status !== "verified" || access.access_source === "tester_switched_off") return undefined;
   if (!access.full_journey) return 0;
   if (access.access_source === "tester_grant" || access.access_source === "review_grant") return undefined;
   return until;

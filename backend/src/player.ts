@@ -44,7 +44,8 @@ import type { SpendRequest } from "./pollen/spend";
 import { LIVE_FRIENDS_REFRESH_SECONDS, acceptLiveSocket, liveUnauthorized, closeLiveSockets, liveClosed, liveMessage, liveMessageReceived, liveSockets, sendLive, setLiveAutoResponse, validLiveHint, type LiveHint } from "./live";
 
 type RecoveryReceipt = { previous_recovery_hash: string; request_hash: string };
-type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; recovery_receipt?: RecoveryReceipt; social?: SocialState } & DisplayNameFields;
+/** `full_journey_off`: a tester's own switch (test-codes.ts): treated as without Full Journey until switched back. Absent otherwise. */
+type Identity = { player_id: string; device_hash: string; recovery_hash: string; state: "active" | "deleting"; created_at: string; tester_grant?: TesterGrant; full_journey_off?: true; recovery_receipt?: RecoveryReceipt; social?: SocialState } & DisplayNameFields;
 type FriendPublicationState = { schema_version: 1; epoch_counter: number; current: FriendPublication | null };
 function isPublicationState(value: unknown): value is FriendPublicationState {
   return isObject(value) && Object.keys(value).length === 3 && value.schema_version === 1 && Number.isSafeInteger(value.epoch_counter) && Number(value.epoch_counter) >= 0 &&
@@ -174,7 +175,11 @@ export class Player extends DurableObject<Env> {
    */
   authorizeNamed(deviceHash: string, pollen = false, looks = false): { authorized: boolean; linked: boolean; display_name?: string | null; fj_until?: number; look?: Look } {
     const identity = this.authorized(deviceHash);
-    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}), ...this.lookField(looks) } : { authorized: false, linked: true };
+    return identity ? { authorized: true, linked: true, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks) } : { authorized: false, linked: true };
+  }
+  /** The Full Journey end a room copies for its boost: none while the tester switch has this player as without Full Journey. */
+  private roomFullJourneyUntil(identity: Identity): number {
+    return identity.full_journey_off === true ? 0 : fullJourneyUntil(this.ctx.storage);
   }
   /** `look`: the look the player wears (pollen/wardrobe.ts), only for routes that write it into a room while looks are on. */
   private lookField(looks: boolean): { look?: Look } {
@@ -191,7 +196,7 @@ export class Player extends DurableObject<Env> {
     const identity = this.authorized(deviceHash);
     if (!identity) return { authorized: false, linked: false };
     const linked = this.ctx.storage.sql.exec("SELECT 1 FROM rooms WHERE room_id=?", roomId).toArray().length > 0 || this.storyHeld();
-    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: fullJourneyUntil(this.ctx.storage) } : {}), ...this.lookField(looks),
+    return { authorized: true, linked, safety_token: this.safetyToken, display_name: identity.display_name ?? null, ...(pollen ? { fj_until: this.roomFullJourneyUntil(identity) } : {}), ...this.lookField(looks),
       ...(packs ? { face_packs: ownedPackIds(this.ctx.storage) } : {}) };
   }
   /**
@@ -646,6 +651,27 @@ export class Player extends DurableObject<Env> {
     if (!validTesterGrant(identity.tester_grant)) throw new Error("unsupported_tester_grant");
     return { ...identity.tester_grant };
   }
+  /**
+   * Binding only, for the Full Journey check (entitlement.ts): the stored tester grant and the tester switch,
+   * from one identity read, so the check makes no more Player calls than before.
+   */
+  storedAccess(owner: string): { grant: TesterGrant | null; full_journey_off: boolean } {
+    const grant = this.storedTesterGrant(owner);
+    const identity = this.identity();
+    return { grant, full_journey_off: !!identity && identity.player_id === owner && identity.state === "active" && identity.full_journey_off === true };
+  }
+  /**
+   * Binding only, after the route matched a tester's toggle code (test-codes.ts): flips the switch in one
+   * synchronous identity write and answers where it now stands. Nothing about the code is kept.
+   */
+  toggleFullJourneyOff(owner: string, deviceHash: string): Outcome<{ full_journey_off: boolean }> {
+    if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
+    const identity = this.identity()!;
+    if (identity.full_journey_off === true) delete identity.full_journey_off;
+    else identity.full_journey_off = true;
+    this.ctx.storage.sql.exec("UPDATE identity SET data=? WHERE id=1", JSON.stringify(identity));
+    return ok({ full_journey_off: identity.full_journey_off === true });
+  }
   testerAccess(owner: string, deviceHash: string): Outcome<TesterAccess> {
     if (!this.authorize(deviceHash) || this.identity()?.player_id !== owner) return fail(401, "invalid_auth");
     return ok(testerReceipt(owner, this.storedTesterGrant(owner)));
@@ -1061,5 +1087,6 @@ answerWhileBlank(Player, { authorize: () => false, authorizeRoom: () => ({ autho
   deletingWith: () => false, noteRoomIndex: () => undefined, leaderboardStanding: () => null,
   // A link that outlived its player: the restore route drops it.
   restoreLinked: () => fail(404, "identity_absent"), recoveryMatches: () => false,
+  storedAccess: () => ({ grant: null, full_journey_off: false }),
   // No identity, so no socket: a hint is dropped and an upgrade (unreachable past auth()) is refused.
   liveHint: async () => false, fetch: () => liveUnauthorized() });

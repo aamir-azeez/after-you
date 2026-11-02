@@ -19,7 +19,7 @@ describe("CONFIG schema", () => {
     const check = parseConfig(JSON.stringify(FULL), FLAG_NAMES);
     expect(check.problems).toEqual([]); expect(check.unknown).toEqual([]);
     expect(view(check.config)).toEqual({ ...FULL, features: [...KEPT].sort(), friend_aliases: [["owner", ALIAS_ID]],
-      revenuecat: { ...RC, app_store_subscription_product_ids: [], reviewer_ids: [], tester_ids: [] } });
+      revenuecat: { ...RC, app_store_subscription_product_ids: [], reviewer_ids: [], tester_ids: [] }, test_codes: new Map() });
     expect(check.config.friend_aliases.byId.get(ALIAS_ID)).toBe("owner");
     // A live-sized CONFIG, with every RevenueCat id and a few aliases, stays far under the cap and Cloudflare's 5 KB.
     expect(JSON.stringify({ ...FULL, features: [...FLAG_NAMES], friend_aliases: { a1b: ALIAS_ID, c2d: "B".repeat(22), e3f: "C".repeat(22), g4h: "D".repeat(22) } }).length).toBeLessThan(MAX_CONFIG_LENGTH / 2);

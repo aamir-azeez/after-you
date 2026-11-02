@@ -5,7 +5,7 @@
  *   the web page or every email already shows them, so they are code, not config.
  * - CONFIG: one plain var holding a JSON object (ServerConfig, parsed by parseConfig) for everything that is not
  *   secret but must change without a code deploy, or must never reach Git: the server flags, the minimum app
- *   versions, the owner's friend aliases and the RevenueCat identifiers. It lives only in
+ *   versions, the owner's friend aliases, the RevenueCat identifiers and the testers' code hashes. It lives only in
  *   Cloudflare and in the deploy runners' pinned copy, never in wrangler.jsonc.
  * - Secrets: keys and tokens, each its own `wrangler secret`, so a rotation touches nothing else. Never here.
  *
@@ -97,6 +97,13 @@ export type RevenueCatSettings = {
    */
   readonly tester_ids: readonly string[];
 };
+/**
+ * The testers' own codes (test-codes.ts), by what each does: action -> SHA-256 of TEST_CODE_SALT, the action, ":" and
+ * the code. Only players in revenuecat.tester_ids can use one. A salted hash, never the code, so CONFIG may hold it.
+ */
+export const TEST_CODE_ACTIONS = Object.freeze(["grant_keepsakes", "reset_keepsakes", "toggle_full_journey"] as const);
+export type TestCodeAction = typeof TEST_CODE_ACTIONS[number];
+const CODE_HASH = /^[0-9a-f]{64}$/;
 export type ServerConfig = {
   /** The FLAG_VARS names that are on (flags.ts reads only names it knows). */
   readonly features: ReadonlySet<string>;
@@ -104,6 +111,8 @@ export type ServerConfig = {
   readonly min_client_version: Readonly<Partial<Record<MinimumChannel, string>>>;
   readonly friend_aliases: FriendAliases;
   readonly revenuecat: RevenueCatSettings;
+  /** Each configured test code action and its hash; empty when unset or malformed. */
+  readonly test_codes: ReadonlyMap<TestCodeAction, string>;
 };
 /**
  * `problems`: values that are malformed. Each malformed value fails safe where it is read: the whole object when it
@@ -118,8 +127,9 @@ export type ConfigCheck = { config: ServerConfig; problems: string[]; unknown: s
 const MALFORMED = "(malformed)";
 const NO_ALIASES: FriendAliases = Object.freeze({ byAlias: new Map<string, string>(), byId: new Map<string, string>() });
 const NO_REVENUECAT: RevenueCatSettings = Object.freeze({ play_subscription_product_ids: [], app_store_subscription_product_ids: [], reviewer_ids: [], tester_ids: [] });
-export const EMPTY_CONFIG: ServerConfig = Object.freeze({ features: new Set<string>(), min_client_version: Object.freeze({}), friend_aliases: NO_ALIASES, revenuecat: NO_REVENUECAT });
-const TOP_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat"];
+const NO_TEST_CODES: ReadonlyMap<TestCodeAction, string> = new Map();
+export const EMPTY_CONFIG: ServerConfig = Object.freeze({ features: new Set<string>(), min_client_version: Object.freeze({}), friend_aliases: NO_ALIASES, revenuecat: NO_REVENUECAT, test_codes: NO_TEST_CODES });
+const TOP_KEYS = ["features", "min_client_version", "friend_aliases", "revenuecat", "test_codes"];
 const STRING_IDS = { project_id: PROJECT_PATTERN, play_entitlement_lookup_id: LOOKUP_PATTERN, play_product_id: PRODUCT_PATTERN, app_store_entitlement_lookup_id: LOOKUP_PATTERN } as const;
 const PRODUCT_LISTS = ["play_subscription_product_ids", "app_store_subscription_product_ids"] as const;
 const PLAYER_LISTS = ["reviewer_ids", "tester_ids"] as const;
@@ -148,6 +158,18 @@ function productsFrom(value: unknown[]): string[] | null {
 /** A player id list (reviewers, testers): at most MAX_LISTED_PLAYERS ids, or null when it is anything else. */
 function playersFrom(value: unknown[]): string[] | null {
   return value.length <= MAX_LISTED_PLAYERS && value.every(item => typeof item === "string" && PLAYER_ID.test(item)) ? value as string[] : null;
+}
+
+/** Test codes: all valid or none (fail closed). An action this code does not know is reported and left out. */
+function testCodesFrom(value: unknown, unknown: string[]): Map<TestCodeAction, string> | null {
+  if (!plainObject(value)) return null;
+  const codes = new Map<TestCodeAction, string>();
+  for (const [action, hash] of Object.entries(value)) {
+    if (!(TEST_CODE_ACTIONS as readonly string[]).includes(action)) { unknown.push(`test_codes.${action}`); continue; }
+    if (typeof hash !== "string" || !CODE_HASH.test(hash) || [...codes.values()].includes(hash)) return null;
+    codes.set(action as TestCodeAction, hash);
+  }
+  return codes;
 }
 
 /**
@@ -230,7 +252,13 @@ export function parseConfig(raw: unknown, knownFlags?: ReadonlySet<string>): Con
       revenuecat = Object.freeze(out);
     }
   }
-  const config: ServerConfig = Object.freeze({ features, min_client_version: Object.freeze(minimums), friend_aliases: aliases, revenuecat });
+  let testCodes = NO_TEST_CODES;
+  if (value.test_codes !== undefined) {
+    const parsed = testCodesFrom(value.test_codes, unknown);
+    if (parsed) testCodes = parsed;
+    else problems.push("test_codes must map test code actions to distinct lowercase SHA-256 hashes");
+  }
+  const config: ServerConfig = Object.freeze({ features, min_client_version: Object.freeze(minimums), friend_aliases: aliases, revenuecat, test_codes: testCodes });
   return { config, problems, unknown };
 }
 
