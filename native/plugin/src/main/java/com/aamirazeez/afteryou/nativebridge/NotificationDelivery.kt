@@ -15,6 +15,7 @@ import androidx.core.content.ContextCompat
 internal object NotificationDelivery {
     const val TURN_CHANNEL = "after_you_turns_v1"
     const val HOSTING_CHANNEL = "after_you_friend_rooms_v1"
+    const val POLLEN_CHANNEL = "after_you_pollen_v1"
     private fun categories(context: Context) = context.getSharedPreferences("after_you_notification_categories", Context.MODE_PRIVATE)
     fun setCategories(context: Context, turns: Boolean, hosting: Boolean, requests: Boolean) {
         check(categories(context).edit().putBoolean("turns", turns).putBoolean("hosting", hosting).putBoolean("requests", requests).commit())
@@ -22,6 +23,8 @@ internal object NotificationDelivery {
     fun categoryEnabled(context: Context, kind: String): Boolean = when (kind) {
         "friend_room_available" -> categories(context).getBoolean("hosting", false)
         "redo_requested" -> categories(context).getBoolean("requests", false)
+        // Monthly Pollen rides the main notifications switch; Godot always saves it.
+        NotificationPolicy.POLLEN_KIND -> categories(context).getBoolean("turns", false)
         else -> categories(context).getBoolean("turns", kind == "turn_ready")
     }
     const val EVENT_EXTRA = "after_you_event_id"
@@ -42,8 +45,21 @@ internal object NotificationDelivery {
             description = PlayerCopy.NOTIFICATIONDELIVERY_04C4F3638050
             lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
         })
-
+        manager.createNotificationChannel(NotificationChannel(POLLEN_CHANNEL, PlayerCopy.NOTIFICATIONDELIVERY_POLLEN_CHANNEL, NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = PlayerCopy.NOTIFICATIONDELIVERY_POLLEN_CHANNEL_DESCRIPTION
+            lockscreenVisibility = NotificationCompat.VISIBILITY_PRIVATE
+        })
     }
+
+    fun channelFor(kind: String): String = when (kind) {
+        "friend_room_available" -> HOSTING_CHANNEL
+        NotificationPolicy.POLLEN_KIND -> POLLEN_CHANNEL
+        else -> TURN_CHANNEL
+    }
+
+    /** One visible notification per room and kind, and one for monthly Pollen: a newer hint replaces the older one. */
+    fun tag(event: TurnNotification): String =
+        TAG_PREFIX + NotificationStore.hash(if (event.isPollen) event.kind else event.family + ":" + event.roomId + ":" + event.kind)
 
     fun channelEnabled(context: Context, channel: String): Boolean = enabled(context) &&
         (Build.VERSION.SDK_INT < 26 || context.getSystemService(NotificationManager::class.java)
@@ -68,7 +84,7 @@ internal object NotificationDelivery {
         if (NotificationRuntime.foreground(event)) return
         if (!enabled(context)) return
         createChannels(context)
-        val channel = if (event.kind == "friend_room_available") HOSTING_CHANNEL else TURN_CHANNEL
+        val channel = channelFor(event.kind)
         if (!channelEnabled(context, channel)) return
         val intent = Intent(context, NotificationOpenActivity::class.java).apply {
             // A fixed explicit target; no supplied URL, component or activity flags are accepted.
@@ -78,23 +94,24 @@ internal object NotificationDelivery {
         val pending = PendingIntent.getActivity(context, 0, intent, PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE)
         val publicView = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.after_you_notification)
-            .setContentTitle("After You").setContentText(PlayerCopy.NOTIFICATIONDELIVERY_A5B249A65E48).build()
+            .setContentTitle("After You")
+            .setContentText(if (event.isPollen) PlayerCopy.NOTIFICATIONDELIVERY_POLLEN_TITLE else PlayerCopy.NOTIFICATIONDELIVERY_A5B249A65E48).build()
         val notification = NotificationCompat.Builder(context, channel)
             .setSmallIcon(R.drawable.after_you_notification)
             .setContentTitle(when (event.kind) {
                 "friend_room_available" -> "Friend rooms"
                 "redo_requested" -> PlayerCopy.NOTIFICATIONDELIVERY_REDO_REQUESTED
+                NotificationPolicy.POLLEN_KIND -> PlayerCopy.NOTIFICATIONDELIVERY_POLLEN_TITLE
                 else -> "Your friend left a turn"
             })
-            .setContentText(PlayerCopy.NOTIFICATIONDELIVERY_D4901221095C)
-            .setCategory(NotificationCompat.CATEGORY_SOCIAL)
+            .setContentText(if (event.isPollen) PlayerCopy.pollenBody(event.amount) else PlayerCopy.NOTIFICATIONDELIVERY_D4901221095C)
+            .setCategory(if (event.isPollen) null else NotificationCompat.CATEGORY_SOCIAL)
             .setVisibility(NotificationCompat.VISIBILITY_PRIVATE).setPublicVersion(publicView)
             .setOnlyAlertOnce(true).setAutoCancel(true).setContentIntent(pending)
             .setTimeoutAfter(NotificationPolicy.RETENTION_MS)
             .build()
         try {
-            val tag = TAG_PREFIX + NotificationStore.hash(event.family + ":" + event.roomId + ":" + event.kind)
-            NotificationManagerCompat.from(context).notify(tag, 1, notification)
+            NotificationManagerCompat.from(context).notify(tag(event), 1, notification)
             store.markPosted(event)
         } catch (_: SecurityException) {
             // Permission can change after the check. Keep the event pending, without logging it.

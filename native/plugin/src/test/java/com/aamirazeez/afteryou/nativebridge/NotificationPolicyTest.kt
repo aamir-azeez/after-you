@@ -71,6 +71,73 @@ class NotificationPolicyTest {
         assertNull(NotificationPolicy.parse(hint + ("kind" to "reaction")))
     }
 
+    private fun pollen() = mapOf("schema_version" to "1", "event_id" to "pollen_" + "0a".repeat(16),
+        "kind" to "pollen_monthly", "amount" to "4500", "binding_epoch" to "a".repeat(22))
+
+    @Test fun monthlyPollenUsesItsOwnExactFiveKeySchema() {
+        val parsed = NotificationPolicy.parse(pollen())
+        assertNotNull(parsed)
+        assertTrue(parsed!!.isPollen)
+        assertEquals(4500L, parsed.amount)
+        assertEquals("", parsed.roomId)
+        assertEquals("", parsed.family)
+        assertEquals(pollen(), parsed.fields())
+        assertEquals(1L, NotificationPolicy.parse(pollen() + ("amount" to "1"))!!.amount)
+        assertEquals(9_999_999L, NotificationPolicy.parse(pollen() + ("amount" to "9999999"))!!.amount)
+        assertNull(NotificationPolicy.parse(pollen() + ("schema_version" to "2")))
+        assertNull(NotificationPolicy.parse(pollen() + ("binding_epoch" to "short")))
+    }
+
+    @Test fun monthlyPollenRejectsMalformedEventIdsAndAmounts() {
+        listOf("", "0", "01", "00", "-1", "+1", "1.0", "1e3", "4,500", " 1", "1\n", "12345678", "99999999999").forEach {
+            assertNull(it, NotificationPolicy.parse(pollen() + ("amount" to it)))
+        }
+        listOf("pollen_" + "0a".repeat(15), "pollen_" + "0a".repeat(17), "pollen_" + "0A".repeat(16),
+            "pollen_" + "g".repeat(32), "Pollen_" + "0a".repeat(16), "event_1234567890123456", "redo_" + "a1".repeat(32),
+            "pollen_" + "0a".repeat(16) + "\n").forEach {
+            assertNull(it, NotificationPolicy.parse(pollen() + ("event_id" to it)))
+        }
+    }
+
+    @Test fun monthlyPollenRejectsExtraMissingAndMixedKeys() {
+        for (key in pollen().keys) assertNull(NotificationPolicy.parse(pollen() - key))
+        for (extra in listOf("room_id", "room_family", "revision", "host_id", "title", "url")) {
+            assertNull(NotificationPolicy.parse(pollen() + (extra to "r".repeat(22))))
+        }
+        // A Pollen kind in a room hint's shape, and a room kind in Pollen's shape.
+        assertNull(NotificationPolicy.parse(valid() + ("kind" to "pollen_monthly")))
+        assertNull(NotificationPolicy.parse(valid() + mapOf("kind" to "pollen_monthly", "event_id" to "pollen_" + "0a".repeat(16))))
+        for (kind in listOf("turn_ready", "redo_requested", "friend_room_available", "reaction")) {
+            assertNull(NotificationPolicy.parse(pollen() + ("kind" to kind)))
+        }
+    }
+
+    @Test fun pollenAmountIsAlwaysGroupedWithCommas() {
+        val cases = mapOf(1L to "1", 999L to "999", 1000L to "1,000", 4500L to "4,500", 99_999L to "99,999",
+            576_000L to "576,000", 1_234_567L to "1,234,567", 9_999_999L to "9,999,999")
+        for ((amount, text) in cases) assertEquals(text, PlayerCopy.pollenAmount(amount))
+        val previous = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.GERMANY)
+            assertEquals("+4,500 Pollen from Full Journey", PlayerCopy.pollenBody(4500))
+            assertEquals("+576,000 Pollen from Full Journey", PlayerCopy.pollenBody(576_000))
+        } finally { java.util.Locale.setDefault(previous) }
+        assertEquals("Your monthly Pollen is here", PlayerCopy.NOTIFICATIONDELIVERY_POLLEN_TITLE)
+    }
+
+    @Test fun monthlyPollenHasOneFixedTagAndItsOwnChannel() {
+        val first = NotificationPolicy.parse(pollen())!!
+        val later = NotificationPolicy.parse(pollen() + mapOf("event_id" to "pollen_" + "b1".repeat(16), "amount" to "9000"))!!
+        val expected = "after_you_update:" + NotificationStore.hash("pollen_monthly")
+        assertEquals(expected, NotificationDelivery.tag(first))
+        assertEquals(expected, NotificationDelivery.tag(later))
+        assertEquals(NotificationDelivery.POLLEN_CHANNEL, NotificationDelivery.channelFor("pollen_monthly"))
+        assertEquals(NotificationDelivery.TURN_CHANNEL, NotificationDelivery.channelFor("turn_ready"))
+        assertEquals(NotificationDelivery.HOSTING_CHANNEL, NotificationDelivery.channelFor("friend_room_available"))
+        val turn = NotificationPolicy.parse(valid())!!
+        assertEquals("after_you_update:" + NotificationStore.hash("relay:" + "r".repeat(22) + ":turn_ready"), NotificationDelivery.tag(turn))
+    }
+
     @Test fun tokenAndScopeInputsAreBoundedWithoutTreatingTokensAsUrls() {
         assertTrue(NotificationPolicy.validToken("token_" + "a".repeat(30) + ":suffix"))
         assertFalse(NotificationPolicy.validToken("a".repeat(4097)))

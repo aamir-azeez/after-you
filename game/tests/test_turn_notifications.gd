@@ -113,6 +113,11 @@ class RouteMain extends Main:
 	func _toast(_message: String) -> void: messages += 1
 	func _process(_delta: float) -> void: pass
 
+## Counts each time Home is asked for, instead of drawing it.
+class PollenMain extends RouteMain:
+	var homes := 0
+	func _show_home() -> void: homes += 1; mode = "home"
+
 ## Counts each time the room page opens, instead of drawing it.
 class RouteRoomFlow extends LegacyRoomFlow:
 	func show_room() -> void: host.opened += 1; host.mode = "room"
@@ -184,6 +189,8 @@ func _run() -> void:
 	await _test_redo_requests()
 	await _test_saved_categories()
 	await _test_ios_registration_headers()
+	_test_pollen_shapes()
+	await _test_pollen_route()
 	for name: String in DirAccess.get_files_at(categories_dir): DirAccess.remove_absolute(categories_dir.path_join(name))
 	DirAccess.remove_absolute(categories_dir)
 	print("TURN NOTIFICATIONS: %d checks, %d failures" % [checks, failures])
@@ -693,3 +700,79 @@ func _test_ios_registration_headers() -> void:
 	_check(f.api.headers.size() == 3 and f.api.calls.filter(func(item: Dictionary) -> bool: return item.path == Notifications.REGISTRATION_PATH).size() == 3,"An unchanged iOS registration is not sent again, and each one sent carried the headers")
 	_drop(f)
 	PlatformSupport.override_platform = ""
+
+func _pollen_route(epoch: String = EPOCH) -> Dictionary:
+	return {"schema_version": "1", "event_id": "pollen_" + "0a".repeat(16), "kind": "pollen_monthly", "amount": "4500", "binding_epoch": epoch}
+
+## The monthly Pollen alert has its own exact five keys and names no room.
+func _test_pollen_shapes() -> void:
+	var event := _pollen_route()
+	_check(Notifications.valid_route(event), "The exact monthly Pollen hint is accepted")
+	for amount: String in ["1", "999", "9999999"]:
+		var other := event.duplicate(true); other.amount = amount
+		_check(Notifications.valid_route(other), "A Pollen amount of 1 to 7 digits is accepted: " + amount)
+	for variant: Dictionary in WrongTypes.variants(event):
+		_check(not Notifications.valid_route(variant.value), "A Pollen hint with a wrongly typed field is refused: " + variant.path)
+	for field: String in event.keys():
+		var missing := event.duplicate(true); missing.erase(field)
+		_check(not Notifications.valid_route(missing), "A Pollen hint missing a field is refused: " + field)
+	for update: Dictionary in [{"amount": "0"}, {"amount": "01"}, {"amount": "12345678"}, {"amount": "-1"}, {"amount": "4,500"}, {"amount": " 1"}, {"amount": "1\n"}, {"amount": ""}, {"amount": 4500}, {"schema_version": "2"}, {"binding_epoch": "short"}, {"event_id": "pollen_" + "0A".repeat(16)}, {"event_id": "pollen_" + "0a".repeat(15)}, {"event_id": "pollen_" + "0a".repeat(16) + "\n"}, {"event_id": "synthetic_event_00000001"}, {"room_id": ROOM}, {"room_family": "relay"}, {"revision": "1"}, {"host_id": OWNER}]:
+		var invalid := event.duplicate(true); invalid.merge(update, true)
+		_check(not Notifications.valid_route(invalid), "A malformed or widened Pollen hint is refused: " + JSON.stringify(update))
+	var turn_shaped := _route(); turn_shaped.kind = "pollen_monthly"
+	_check(not Notifications.valid_route(turn_shaped), "A Pollen kind in a room hint's shape is refused")
+	var pollen_shaped := event.duplicate(true); pollen_shaped.kind = "turn_ready"
+	_check(not Notifications.valid_route(pollen_shaped), "A room kind in the Pollen shape is refused")
+
+## A tapped monthly Pollen alert rides the main option, opens Home only once
+## leaving the screen is safe, never interrupts play, and is dropped when no
+## safe moment comes in time.
+func _test_pollen_route() -> void:
+	var f := _fixture()
+	f.state.stored = _bind_value(); f.native.bound = EPOCH; f.native.route = _pollen_route()
+	await f.service.service(Time.get_ticks_msec(), true, true)
+	_check(f.service.accepts(_pollen_route()) and f.service.pending_route() == _pollen_route(), "With notifications on, a tapped Pollen alert under the current binding is the pending route")
+	_check(not f.service.accepts(_pollen_route("D".repeat(22))), "A Pollen alert for another binding is refused")
+	f.state.desired = false
+	_check(not f.service.accepts(_pollen_route()) and f.service.pending_route().is_empty(), "With notifications off, a Pollen alert is refused")
+	f.state.desired = true
+	var screen := PollenMain.new()
+	screen.api = f.api; screen.turn_notifications = f.service
+	screen.identity_read_state = screen.IdentityReadState.LOADED
+	screen.saves.path = "user://notification-pollen-test.json"
+	root.add_child(screen)
+	screen.toast = Toast.new()
+	screen.add_child(screen.toast)
+	var requests: int = f.api.calls.size()
+	screen.mode = "play"; screen.running = true
+	for _i in 3: screen.notification_flow.service_route()
+	_check(screen.homes == 0 and screen.mode == "play" and screen.running and not f.service.pending_route().is_empty(), "A Pollen tap never pulls the player out of a level; it waits")
+	_check(screen.messages == 0 and not screen.toast.showing(), "A waiting Pollen tap shows no room pop-up")
+	screen.running = false; screen.mode = "home"; screen.saves.data.pending_turn = {"kept": true}
+	screen.notification_flow.service_route()
+	_check(not f.service.pending_route().is_empty() and screen.homes == 0, "An unsent turn keeps the Pollen tap waiting")
+	screen.saves.data.erase("pending_turn")
+	screen.mode = "journey"
+	screen.notification_flow.service_route()
+	_check(screen.homes == 1 and screen.mode == "home" and f.service.pending_route().is_empty() and f.native.route.is_empty(), "Once leaving is safe, a Pollen tap opens Home and is used up")
+	_check(f.api.calls.size() == requests and screen.opened == 0, "Opening Home for Pollen reads no room and opens no room")
+	f.native.route = _pollen_route(); f.native.route.event_id = "pollen_" + "1b".repeat(16)
+	await f.service.refresh_pending_route()
+	screen.notification_flow.service_route()
+	_check(screen.homes == 1 and screen.mode == "home" and f.native.route.is_empty(), "On Home a Pollen tap stays on Home and is used up")
+	f.native.route = _pollen_route(); f.native.route.event_id = "pollen_" + "2c".repeat(16)
+	await f.service.refresh_pending_route()
+	screen.mode = "relay_rooms"
+	screen.notification_flow.service_route()
+	_check(screen.homes == 1 and screen.mode == "relay_rooms" and not f.native.route.is_empty(), "The lobby is never left for Pollen; the tap waits")
+	screen.notification_flow._pollen_until_ms = Time.get_ticks_msec() - 1
+	screen.notification_flow.service_route()
+	_check(screen.homes == 1 and screen.mode == "relay_rooms" and f.native.route.is_empty() and f.service.pending_route().is_empty(), "A Pollen tap with no safe moment in time is dropped where the player is")
+	screen.mode = "home"
+	screen.notification_flow.foreground_hint(_pollen_route())
+	_check(not screen.toast.showing() and screen.homes == 1 and f.api.calls.size() == requests, "A Pollen alert while the app is open shows nothing and reads nothing")
+	screen.free()
+	for suffix: String in ["", ".tmp", ".backup"]:
+		var path := "user://notification-pollen-test.json" + suffix
+		if FileAccess.file_exists(path): DirAccess.remove_absolute(path)
+	_drop(f)

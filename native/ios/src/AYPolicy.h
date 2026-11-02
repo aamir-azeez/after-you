@@ -2,6 +2,9 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
+/// The monthly Full Journey Pollen hint's kind. It names no room.
+extern NSString *const AYPollenKind;
+
 /// Validation shared by every native service. The rules match the Android bridge
 /// (BridgePolicy.kt, InviteLink.kt, NotificationPolicy.kt). Nothing here grants access.
 @interface AYPolicy : NSObject
@@ -25,6 +28,8 @@ NS_ASSUME_NONNULL_BEGIN
 /// Accepts only the agreed hint schema. APNs and FCM keys ("aps", "gcm.*", "google.*") are
 /// ignored; every remaining key must be one of the hint fields. Returns the canonical fields.
 + (nullable NSDictionary<NSString *, NSString *> *)notificationFromPayload:(NSDictionary *)payload;
+/// A validated decimal amount with its thousands always grouped by commas ("4500" -> "4,500"), whatever the locale.
++ (NSString *)groupedAmount:(NSString *)digits;
 
 /// Public Firebase configuration from GoogleService-Info.plist, checked like Android's.
 + (BOOL)validFirebaseOptions:(NSDictionary *)options bundleId:(NSString *)bundleId;

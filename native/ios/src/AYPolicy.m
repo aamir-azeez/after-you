@@ -10,7 +10,21 @@ static BOOL AYMatches(NSString *pattern, NSString *value) {
 	return match != nil && NSEqualRanges(match.range, whole);
 }
 
+NSString *const AYPollenKind = @"pollen_monthly";
+
 @implementation AYPolicy
+
++ (NSString *)groupedAmount:(NSString *)digits {
+	// Text only, never a number formatter: the comma stays whatever the phone's locale.
+	NSMutableString *grouped = [NSMutableString stringWithCapacity:digits.length + digits.length / 3];
+	for (NSUInteger i = 0; i < digits.length; i++) {
+		if (i > 0 && (digits.length - i) % 3 == 0) {
+			[grouped appendString:@","];
+		}
+		[grouped appendFormat:@"%C", [digits characterAtIndex:i]];
+	}
+	return grouped;
+}
 
 + (BOOL)validStorageName:(NSString *)name {
 	return AYMatches(@"[a-z][a-z0-9_.-]{0,63}", name);
@@ -108,7 +122,18 @@ static BOOL AYMatches(NSString *pattern, NSString *value) {
 		total += [(NSString *)value length];
 	}
 	NSSet *keys = [NSSet setWithArray:data.allKeys];
-	if ((![keys isEqualToSet:turnKeys] && ![keys isEqualToSet:friendKeys]) || total > 1024) {
+	if (total > 1024) {
+		return nil;
+	}
+	// Monthly Pollen has its own exact key set and names no room; it is checked before any room key.
+	NSSet *pollenKeys = [NSSet setWithArray:@[ @"schema_version", @"event_id", @"kind", @"amount", @"binding_epoch" ]];
+	if ([keys isEqualToSet:pollenKeys]) {
+		BOOL valid = [data[@"schema_version"] isEqualToString:@"1"] && [data[@"kind"] isEqualToString:AYPollenKind] &&
+				AYMatches(@"pollen_[a-f0-9]{32}", data[@"event_id"]) && [self validEventId:data[@"event_id"]] &&
+				AYMatches(@"[1-9][0-9]{0,6}", data[@"amount"]) && [self validEpoch:data[@"binding_epoch"]];
+		return valid ? [data copy] : nil;
+	}
+	if (![keys isEqualToSet:turnKeys] && ![keys isEqualToSet:friendKeys]) {
 		return nil;
 	}
 	if (![data[@"schema_version"] isEqualToString:@"1"]) {

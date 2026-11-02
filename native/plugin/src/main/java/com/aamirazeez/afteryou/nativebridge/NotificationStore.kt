@@ -98,7 +98,9 @@ internal class NotificationStore(context: Context) : SQLiteOpenHelper(context, d
                     return@transaction
                 }
             }
-            db.rawQuery("SELECT revision FROM watermark WHERE kind=? AND room_id=? AND family=?", arrayOf(event.kind, event.roomId, event.family)).use {
+            // A Pollen amount is not a sequence (a catch-up pays more than the next month), so only
+            // its event id dedupes it; its watermark row still marks the newest one as latest.
+            if (!event.isPollen) db.rawQuery("SELECT revision FROM watermark WHERE kind=? AND room_id=? AND family=?", arrayOf(event.kind, event.roomId, event.family)).use {
                 if (it.moveToFirst() && it.getLong(0) >= event.revision) return@transaction
             }
             db.insertOrThrow("events", null, values(event, now))

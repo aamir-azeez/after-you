@@ -3,8 +3,9 @@ extends Node
 ## save, secret and identity callbacks, the notification rows of Settings >
 ## Friends & notifications (their values; presentation/settings_rows.gd draws
 ## them) and the Enable offer on room cards, alerts that arrive while the app is open, and
-## opening the room or Friends that a tapped alert names. A tap from a cold start
-## or a resume stays in the service's pending route until opening it is safe.
+## opening the room or Friends that a tapped alert names, or Home for a tapped
+## monthly Pollen alert. A tap from a cold start or a resume stays in the
+## service's pending route until opening it is safe.
 ## Friends news goes to the pop-up (Main.toast): the Friends screen's own lines,
 ## and on any other screen a hosting alert or a live friends hint's news, with
 ## View to open Friends once leaving the screen is safe.
@@ -23,7 +24,7 @@ extends Node
 ##   _update_gate_active, _friend_display_name
 ## - entry points: legacy_room_flow (navigation_ready, show_saved_room),
 ##   ensure_relay_session, queue_foreground_refresh,
-##   _show_friends, friends_flow (is_open, hosting_hint, refresh),
+##   _show_friends, _show_home, friends_flow (is_open, hosting_hint, refresh),
 ##   _enter_online_relay, _request_update_gate, settings_flow (is_open,
 ##   refresh: Settings redraws its notification rows when the service changes),
 ##   _friends_client, INVITE_LINK_TTL_MS
@@ -43,9 +44,13 @@ const Toast = preload("res://presentation/toast.gd")
 const Levels = preload("res://core/levels.gd")
 const Typed = preload("res://services/typed_values.gd")
 const LocalSave = preload("res://services/local_save.gd")
+const RelayLobbyFlow = preload("res://presentation/relay_lobby_flow.gd")
 var host: Node
 ## A tapped alert that could not open waits until this time before another try.
 var route_retry_ms := 0
+## The tapped monthly Pollen alert seen last, and until when it may still open Home.
+var _pollen_event := ""
+var _pollen_until_ms := 0
 var _route_busy := false
 var _deferred_event := ""
 var _hint: Label
@@ -68,6 +73,8 @@ func configure_service(service: Node, native: Node) -> void:
 	service.changed.connect(update_offer)
 	service.foreground_hint.connect(foreground_hint)
 	service.route_available.connect(func():
+		# A monthly Pollen tap only opens Home, so it has no room to announce.
+		if service.pending_route().get("kind") == TurnNotifications.POLLEN_KIND: return
 		# Only where Main's own screens show; a room or Friends says why on its own.
 		if is_instance_valid(host.toast) and is_instance_valid(host.ui) and host.ui.visible: host._toast(PlayerCopy.MAIN_6FE6B224FD24))
 
@@ -160,6 +167,10 @@ func update_offer() -> void:
 ## An alert that arrived while the app is open.
 func foreground_hint(route: Dictionary) -> void:
 	if not host.turn_notifications.accepts(route): return
+	# Monthly Pollen with the app open: the phone shows no banner and there is
+	# nothing to open. Home's own wallet reads bring the Pollen in
+	# (services/pollen_client.gd); a read just for this alert is not made.
+	if route.get("kind") == TurnNotifications.POLLEN_KIND: return
 	if route.get("kind") == "friend_room_available":
 		# Android shows no banner while the app is open, so say it here. A room
 		# keeps its own notes on its card; elsewhere the pop-up offers View.
@@ -184,6 +195,8 @@ func hosting_view_ready(_events: Array) -> void:
 
 ## True when a tapped alert may change the screen now.
 func route_safe(route: Dictionary) -> bool:
+	# Home for monthly Pollen; never from the lobby, whose own Back closes it.
+	if route.get("kind") == TurnNotifications.POLLEN_KIND: return host.mode != RelayLobbyFlow.MODE_LOBBY and _can_leave(false, "") and host.turn_notifications.accepts(route)
 	if not _can_leave(route.get("kind") == "friend_room_available", str(route.room_id) if route.room_family == "legacy" else ""): return false
 	return host.turn_notifications.accepts(route)
 
@@ -292,6 +305,9 @@ func service_route() -> void:
 		host.turn_notifications.acknowledge_route(route.event_id)
 		host._request_update_gate()
 		return
+	if route.get("kind") == TurnNotifications.POLLEN_KIND:
+		_service_pollen(route)
+		return
 	if not route_safe(route):
 		if not host.application_backgrounded and _deferred_event != route.event_id:
 			_deferred_event = route.event_id
@@ -302,6 +318,20 @@ func service_route() -> void:
 	_route_busy = true
 	await _open_route(route)
 	_route_busy = false
+
+## A tapped monthly Pollen alert opens Home once leaving this screen is safe,
+## within Main.INVITE_LINK_TTL_MS of being seen (like View). After that it is
+## dropped, so a tap made during a level never pulls the player Home long after.
+## On Home it changes nothing. It waits without a pop-up: those are about rooms.
+func _service_pollen(route: Dictionary) -> void:
+	var now := Time.get_ticks_msec()
+	if _pollen_event != route.event_id:
+		_pollen_event = route.event_id
+		_pollen_until_ms = now + host.INVITE_LINK_TTL_MS
+	if route_safe(route):
+		if host.mode != "home": host._show_home()
+	elif now < _pollen_until_ms: return
+	host.turn_notifications.acknowledge_route(str(route.event_id))
 
 func _open_route(route: Dictionary) -> void:
 	if not route_safe(route): return

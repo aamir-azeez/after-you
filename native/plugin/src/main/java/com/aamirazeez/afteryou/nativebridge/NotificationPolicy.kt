@@ -4,10 +4,15 @@ package com.aamirazeez.afteryou.nativebridge
 internal object NotificationPolicy {
     private val keys = setOf("schema_version", "event_id", "kind", "room_id", "room_family", "revision", "binding_epoch")
     private val friendKeys = setOf("schema_version", "event_id", "kind", "host_id", "room_id", "room_family", "publication_epoch", "binding_epoch")
+    private val pollenKeys = setOf("schema_version", "event_id", "kind", "amount", "binding_epoch")
     private val opaque = Regex("[A-Za-z0-9_-]{16,128}")
     private val redoEvent = Regex("redo_[a-f0-9]{64}")
     private val room = Regex("[A-Za-z0-9_-]{22}")
     private val integer = Regex("[1-9][0-9]{0,15}")
+    private val pollenEvent = Regex("pollen_[a-f0-9]{32}")
+    private val pollenAmount = Regex("[1-9][0-9]{0,6}")
+    /** The monthly Full Journey Pollen the server just paid. It names no room. */
+    const val POLLEN_KIND = "pollen_monthly"
     const val MAX_REVISION = 9_007_199_254_740_991L
     const val MAX_EVENTS = 256
     const val MAX_ROOMS = 128
@@ -18,7 +23,10 @@ internal object NotificationPolicy {
     fun validToken(value: String) = value.length in 16..4096 && value.all { it.code in 33..126 }
 
     fun parse(data: Map<String, String>): TurnNotification? {
-        if (data.keys != keys && data.keys != friendKeys || data.values.sumOf { it.length } > 1024) return null
+        if (data.values.sumOf { it.length } > 1024) return null
+        // Its own exact key set, checked before any room key is read.
+        if (data.keys == pollenKeys) return parsePollen(data)
+        if (data.keys != keys && data.keys != friendKeys) return null
         if (data["schema_version"] != "1") return null
         val event = data.getValue("event_id")
         val kind = data.getValue("kind")
@@ -38,8 +46,22 @@ internal object NotificationPolicy {
         if (hosting && event != data.getValue("host_id") + "_" + rawRevision) return null
         return TurnNotification(event, kind, roomId, family, revision, epoch)
     }
+
+    private fun parsePollen(data: Map<String, String>): TurnNotification? {
+        if (data["schema_version"] != "1" || data["kind"] != POLLEN_KIND) return null
+        val event = data.getValue("event_id")
+        val amount = data.getValue("amount")
+        val epoch = data.getValue("binding_epoch")
+        if (!pollenEvent.matches(event) || !validEventId(event) || !pollenAmount.matches(amount) || !validEpoch(epoch)) return null
+        return TurnNotification.pollen(event, amount.toLong(), epoch)
+    }
 }
 
+/**
+ * One stored hint, in the ledger's row shape. A room hint fills every field. A monthly Pollen
+ * hint names no room: its roomId and family are empty and revision holds its amount, so the
+ * stored rows keep the schema older versions wrote and read.
+ */
 internal data class TurnNotification(
     val eventId: String,
     val kind: String,
@@ -48,7 +70,17 @@ internal data class TurnNotification(
     val revision: Long,
     val epoch: String
 ) {
-    fun fields(): Map<String, String> = if (kind == "friend_room_available") mapOf(
+    companion object {
+        fun pollen(eventId: String, amount: Long, epoch: String) =
+            TurnNotification(eventId, NotificationPolicy.POLLEN_KIND, "", "", amount, epoch)
+    }
+    val isPollen: Boolean get() = kind == NotificationPolicy.POLLEN_KIND
+    /** The Pollen paid, for a monthly Pollen hint only. */
+    val amount: Long get() = revision
+
+    fun fields(): Map<String, String> = if (isPollen) mapOf(
+        "schema_version" to "1", "event_id" to eventId, "kind" to kind, "amount" to amount.toString(), "binding_epoch" to epoch
+    ) else if (kind == "friend_room_available") mapOf(
         "schema_version" to "1", "event_id" to eventId, "kind" to kind, "host_id" to eventId.substringBeforeLast("_"),
         "room_id" to roomId, "room_family" to family, "publication_epoch" to revision.toString(), "binding_epoch" to epoch
     ) else mapOf("schema_version" to "1", "event_id" to eventId, "kind" to kind,

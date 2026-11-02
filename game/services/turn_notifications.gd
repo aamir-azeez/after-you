@@ -11,6 +11,10 @@ signal foreground_hint(route: Dictionary)
 signal route_available
 
 const REGISTRATION_PATH := "/v1/notifications/registration"
+## The monthly Full Journey Pollen the server just paid. It names no room, rides
+## the main notifications switch (enabled()), and a tap on it only opens Home.
+const POLLEN_KIND := "pollen_monthly"
+const POLLEN_KEYS := ["schema_version","event_id","kind","amount","binding_epoch"]
 const CATEGORIES_PATH := "/v1/notifications/categories"
 # A server without the categories endpoint answers 404; back off without touching turn status.
 const CATEGORY_RETRY_MS := [15000, 60000, 300000]
@@ -471,7 +475,15 @@ func acknowledge_route(event_id: String) -> void:
 	await bridge.call_native("ack_route", [event_id])
 
 func accepts(route: Variant) -> bool:
-	return valid_route(route) and (enabled() if route.kind == "turn_ready" else requests_enabled() if route.kind == "redo_requested" else hosting_enabled() and _hosting_ids().has(str(route.host_id))) and not _binding.is_empty() and binding_key(_binding) == identity_key(_identity.call()) and route.binding_epoch == _binding.binding_epoch
+	return valid_route(route) and _kind_on(route) and not _binding.is_empty() and binding_key(_binding) == identity_key(_identity.call()) and route.binding_epoch == _binding.binding_epoch
+
+## Each kind follows its own option: turns and monthly Pollen the main one,
+## redo requests their sub-option, and a room ready the friend it names.
+func _kind_on(route: Dictionary) -> bool:
+	match route.kind:
+		"turn_ready", POLLEN_KIND: return enabled()
+		"redo_requested": return requests_enabled()
+	return hosting_enabled() and _hosting_ids().has(str(route.host_id))
 
 func _received(route: Dictionary) -> void:
 	if accepts(route): foreground_hint.emit(route.duplicate(true))
@@ -502,6 +514,7 @@ static func valid_binding(value: Dictionary) -> bool:
 
 static func valid_route(value: Variant) -> bool:
 	if not value is Dictionary: return false
+	if Typed.equal(value.get("kind"), POLLEN_KIND): return _valid_pollen(value)
 	var hosting: bool = Typed.equal(value.get("kind"), "friend_room_available")
 	var keys: Array = ["schema_version","event_id","kind","room_id","room_family","binding_epoch","host_id","publication_epoch"] if hosting else ["schema_version","event_id","kind","room_id","room_family","revision","binding_epoch"]
 	if value.size() != keys.size(): return false
@@ -511,6 +524,14 @@ static func valid_route(value: Variant) -> bool:
 	if value.schema_version != "1" or value.kind not in ["turn_ready","friend_room_available","redo_requested"] or value.room_family not in ["legacy","relay"] or not Typed.valid_id(value.room_id) or not Typed.valid_id(value.binding_epoch) or not _matches(value.event_id,"^[A-Za-z0-9_-]{16,128}$") or not _matches(sequence,"^[1-9][0-9]{0,15}$") or int(sequence) > 9007199254740991: return false
 	if value.kind == "redo_requested" and not _matches(value.event_id,"^redo_[a-f0-9]{64}$"): return false
 	return not hosting or (Typed.valid_id(value.host_id) and value.event_id == value.host_id + "_" + sequence)
+
+## A monthly Pollen route: exactly its five string keys and no room.
+static func _valid_pollen(value: Dictionary) -> bool:
+	if value.size() != POLLEN_KEYS.size(): return false
+	for key: String in POLLEN_KEYS:
+		if not value.get(key) is String: return false
+	# \z, not $: $ also matches before a final line break.
+	return value.schema_version == "1" and Typed.valid_id(value.binding_epoch) and _matches(value.event_id,"^pollen_[a-f0-9]{32}\\z") and _matches(value.amount,"^[1-9][0-9]{0,6}\\z")
 
 static func valid_token(value: Variant) -> bool:
 	return value is String and value.length() >= 16 and value.length() <= 4096 and _matches(value, "^[!-~]+$")

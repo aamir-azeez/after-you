@@ -37,6 +37,11 @@ static NSString *const AYCopyTurnTitle = @"Your friend left a turn";
 static NSString *const AYCopyHostingTitle = @"Friend rooms";
 static NSString *const AYCopyRedoTitle = @"Your friend asked for a redo";
 static NSString *const AYCopyBody = @"Open After You to see your shared moment.";
+static NSString *const AYCopyPollenTitle = @"Your monthly Pollen is here";
+// %@ is the amount, grouped by AYPolicy groupedAmount.
+static NSString *const AYCopyPollenBody = @"+%@ Pollen from Full Journey";
+// The server's APNs alert uses the same group, so a local and a server alert stack together.
+static NSString *const AYPollenThread = @"after_you_pollen";
 
 static int64_t AYNowMs(void) {
 	return (int64_t)([[NSDate date] timeIntervalSince1970] * 1000.0);
@@ -260,13 +265,21 @@ static NSString *AYJson(NSDictionary *value) {
 	}
 	UNMutableNotificationContent *content = [UNMutableNotificationContent new];
 	NSString *kind = event[@"kind"];
-	content.title = [kind isEqualToString:@"friend_room_available"] ? AYCopyHostingTitle : ([kind isEqualToString:@"redo_requested"] ? AYCopyRedoTitle : AYCopyTurnTitle);
-	content.body = AYCopyBody;
+	BOOL pollen = [kind isEqualToString:AYPollenKind];
+	if (pollen) {
+		content.title = AYCopyPollenTitle;
+		content.body = [NSString stringWithFormat:AYCopyPollenBody, [AYPolicy groupedAmount:event[@"amount"]]];
+	} else {
+		content.title = [kind isEqualToString:@"friend_room_available"] ? AYCopyHostingTitle : ([kind isEqualToString:@"redo_requested"] ? AYCopyRedoTitle : AYCopyTurnTitle);
+		content.body = AYCopyBody;
+	}
 	content.sound = [UNNotificationSound defaultSound];
 	content.userInfo = @{ AYEventKey : event[@"event_id"] };
-	// One visible notification per room and kind; a newer hint replaces the older one.
-	NSString *tag = [AYTagPrefix stringByAppendingString:[AYNotificationStore sha256:[NSString stringWithFormat:@"%@:%@:%@", event[@"room_family"], event[@"room_id"], kind]]];
-	content.threadIdentifier = tag;
+	// One visible notification per room and kind, and one for monthly Pollen (the server's
+	// apns-collapse-id): a newer hint replaces the older one.
+	NSString *key = pollen ? kind : [NSString stringWithFormat:@"%@:%@:%@", event[@"room_family"], event[@"room_id"], kind];
+	NSString *tag = [AYTagPrefix stringByAppendingString:[AYNotificationStore sha256:key]];
+	content.threadIdentifier = pollen ? AYPollenThread : tag;
 	UNNotificationRequest *request = [UNNotificationRequest requestWithIdentifier:tag content:content trigger:nil];
 	[[UNUserNotificationCenter currentNotificationCenter] addNotificationRequest:request withCompletionHandler:^(NSError *error) {
 		if (error == nil) {

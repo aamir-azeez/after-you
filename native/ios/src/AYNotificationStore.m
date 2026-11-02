@@ -15,7 +15,9 @@ static const int AYMaxRooms = 128;
 }
 @end
 
-/// The stored form of one hint: the same six values as Android's TurnNotification.
+/// The stored form of one hint: the same six values as Android's TurnNotification. A monthly
+/// Pollen hint names no room: its room and family are empty and revision holds its amount, so
+/// the rows keep the schema older versions wrote.
 @interface AYStoredEvent : NSObject
 @property(nonatomic, copy) NSString *eventId;
 @property(nonatomic, copy) NSString *kind;
@@ -23,6 +25,7 @@ static const int AYMaxRooms = 128;
 @property(nonatomic, copy) NSString *family;
 @property(nonatomic) int64_t revision;
 @property(nonatomic, copy) NSString *epoch;
+@property(nonatomic, readonly) BOOL pollen;
 @end
 
 @implementation AYStoredEvent
@@ -31,16 +34,29 @@ static const int AYMaxRooms = 128;
 	AYStoredEvent *event = [AYStoredEvent new];
 	event.eventId = fields[@"event_id"];
 	event.kind = fields[@"kind"];
+	event.epoch = fields[@"binding_epoch"];
+	if (event.pollen) {
+		event.roomId = @"";
+		event.family = @"";
+		event.revision = [fields[@"amount"] longLongValue];
+		return event;
+	}
 	event.roomId = fields[@"room_id"];
 	event.family = fields[@"room_family"];
 	BOOL hosting = [event.kind isEqualToString:@"friend_room_available"];
 	event.revision = [fields[hosting ? @"publication_epoch" : @"revision"] longLongValue];
-	event.epoch = fields[@"binding_epoch"];
 	return event;
+}
+
+- (BOOL)pollen {
+	return [self.kind isEqualToString:AYPollenKind];
 }
 
 - (NSDictionary<NSString *, NSString *> *)fields {
 	NSString *revision = [NSString stringWithFormat:@"%lld", self.revision];
+	if (self.pollen) {
+		return @{ @"schema_version" : @"1", @"event_id" : self.eventId, @"kind" : self.kind, @"amount" : revision, @"binding_epoch" : self.epoch };
+	}
 	if ([self.kind isEqualToString:@"friend_room_available"]) {
 		NSRange last = [self.eventId rangeOfString:@"_" options:NSBackwardsSearch];
 		NSString *host = last.location == NSNotFound ? self.eventId : [self.eventId substringToIndex:last.location];
@@ -279,7 +295,9 @@ static const int AYMaxRooms = 128;
 			accepted = [[self eventFromRow:existing[0]] isEqualToEvent:event] && [existing[0][6] longLongValue] == 0 && [self isLatest:event];
 			return YES;
 		}
-		NSArray *mark = [self rows:@"SELECT revision FROM watermark WHERE kind=? AND room_id=? AND family=?" arguments:@[ event.kind, event.roomId, event.family ]];
+		// A Pollen amount is not a sequence (a catch-up pays more than the next month), so only its
+		// event id dedupes it; its watermark row still marks the newest one as latest.
+		NSArray *mark = event.pollen ? @[] : [self rows:@"SELECT revision FROM watermark WHERE kind=? AND room_id=? AND family=?" arguments:@[ event.kind, event.roomId, event.family ]];
 		if (mark.count > 0 && [mark[0][0] longLongValue] >= event.revision) {
 			return YES;
 		}
@@ -360,6 +378,10 @@ static const int AYMaxRooms = 128;
 	}
 	if ([kind isEqualToString:@"redo_requested"]) {
 		return saved && [row[2] longLongValue] != 0;
+	}
+	// Monthly Pollen rides the main notifications switch, off until the game saves it.
+	if ([kind isEqualToString:AYPollenKind]) {
+		return saved && [row[0] longLongValue] != 0;
 	}
 	// Before the first save, Android defaults turns to on for turn_ready only.
 	return saved ? [row[0] longLongValue] != 0 : [kind isEqualToString:@"turn_ready"];

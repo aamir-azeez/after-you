@@ -28,4 +28,25 @@ internal object PlayerCopy {
     const val NOTIFICATIONDELIVERY_D4901221095C = "Open After You to see your shared moment."
     // notificationdelivery.redo_requested
     const val NOTIFICATIONDELIVERY_REDO_REQUESTED = "Your friend asked for a redo"
+    // notificationdelivery.pollen_title (also the lock screen text)
+    const val NOTIFICATIONDELIVERY_POLLEN_TITLE = "Your monthly Pollen is here"
+    // notificationdelivery.pollen_body: %s is the amount, grouped by pollenAmount
+    const val NOTIFICATIONDELIVERY_POLLEN_BODY = "+%s Pollen from Full Journey"
+    // notificationdelivery.pollen_channel
+    const val NOTIFICATIONDELIVERY_POLLEN_CHANNEL = "Monthly Pollen"
+    // notificationdelivery.pollen_channel_description
+    const val NOTIFICATIONDELIVERY_POLLEN_CHANNEL_DESCRIPTION = "When your monthly Full Journey Pollen arrives."
+
+    fun pollenBody(amount: Long): String = NOTIFICATIONDELIVERY_POLLEN_BODY.replace("%s", pollenAmount(amount))
+
+    /** Thousands always grouped with a comma, whatever the phone's locale (4500 -> "4,500"). */
+    fun pollenAmount(amount: Long): String {
+        val digits = amount.coerceAtLeast(0).toString()
+        val grouped = StringBuilder(digits.length + digits.length / 3)
+        digits.forEachIndexed { index, digit ->
+            if (index > 0 && (digits.length - index) % 3 == 0) grouped.append(',')
+            grouped.append(digit)
+        }
+        return grouped.toString()
+    }
 }

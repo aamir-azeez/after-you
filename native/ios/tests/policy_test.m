@@ -27,6 +27,10 @@ static NSDictionary *turnEvent(NSString *eventId, NSString *room, NSString *revi
 	return @{ @"schema_version" : @"1", @"event_id" : eventId, @"kind" : @"turn_ready", @"room_id" : room, @"room_family" : @"relay", @"revision" : revision, @"binding_epoch" : epoch };
 }
 
+static NSDictionary *pollenEvent(NSString *eventId, NSString *amount, NSString *epoch) {
+	return @{ @"schema_version" : @"1", @"event_id" : eventId, @"kind" : @"pollen_monthly", @"amount" : amount, @"binding_epoch" : epoch };
+}
+
 int main(void) {
 	@autoreleasepool {
 		NSString *player = repeat(@"P", 22);
@@ -73,6 +77,41 @@ int main(void) {
 		badHost[@"publication_epoch"] = @"8";
 		check([AYPolicy notificationFromPayload:badHost] == nil, @"A friend room event ID must match its publication epoch");
 
+		// Monthly Pollen: its own exact five keys, no room.
+		NSString *pollenId = [@"pollen_" stringByAppendingString:repeat(@"0a", 16)];
+		NSDictionary *pollen = pollenEvent(pollenId, @"4500", epoch);
+		NSMutableDictionary *pollenPush = [pollen mutableCopy];
+		pollenPush[@"aps"] = @{ @"alert" : @{ @"title" : @"Your monthly Pollen is here" } };
+		pollenPush[@"gcm.message_id"] = @"1234";
+		check([[AYPolicy notificationFromPayload:pollenPush] isEqualToDictionary:pollen], @"A monthly Pollen hint is accepted with its five fields");
+		check([AYPolicy notificationFromPayload:pollenEvent(pollenId, @"1", epoch)] != nil && [AYPolicy notificationFromPayload:pollenEvent(pollenId, @"9999999", epoch)] != nil, @"Pollen amounts from 1 to 7 digits are accepted");
+		for (NSString *amount in @[ @"", @"0", @"01", @"-1", @"+1", @"1.0", @"4,500", @" 1", @"1\n", @"12345678" ]) {
+			check([AYPolicy notificationFromPayload:pollenEvent(pollenId, amount, epoch)] == nil, [@"A malformed Pollen amount is rejected: " stringByAppendingString:amount]);
+		}
+		for (NSString *badId in @[ [@"pollen_" stringByAppendingString:repeat(@"0a", 15)], [@"pollen_" stringByAppendingString:repeat(@"0A", 16)], [@"pollen_" stringByAppendingString:repeat(@"g", 32)], eventA, [@"redo_" stringByAppendingString:repeat(@"a1", 32)] ]) {
+			check([AYPolicy notificationFromPayload:pollenEvent(badId, @"4500", epoch)] == nil, [@"A Pollen event ID must be pollen_ and 32 lowercase hex: " stringByAppendingString:badId]);
+		}
+		for (NSString *key in pollen) {
+			NSMutableDictionary *missing = [pollen mutableCopy];
+			[missing removeObjectForKey:key];
+			check([AYPolicy notificationFromPayload:missing] == nil, [@"A Pollen hint missing a key is rejected: " stringByAppendingString:key]);
+		}
+		for (NSString *key in @[ @"room_id", @"room_family", @"revision", @"host_id", @"title" ]) {
+			NSMutableDictionary *more = [pollen mutableCopy];
+			more[key] = room;
+			check([AYPolicy notificationFromPayload:more] == nil, [@"A Pollen hint with an extra key is rejected: " stringByAppendingString:key]);
+		}
+		NSMutableDictionary *turnShapedPollen = [turnEvent(pollenId, room, @"5", epoch) mutableCopy];
+		turnShapedPollen[@"kind"] = AYPollenKind;
+		check([AYPolicy notificationFromPayload:turnShapedPollen] == nil, @"A Pollen kind in a room hint's shape is rejected");
+		NSMutableDictionary *pollenShapedTurn = [pollen mutableCopy];
+		pollenShapedTurn[@"kind"] = @"turn_ready";
+		check([AYPolicy notificationFromPayload:pollenShapedTurn] == nil, @"A room kind in the Pollen shape is rejected");
+		NSDictionary *grouping = @{ @"1" : @"1", @"999" : @"999", @"1000" : @"1,000", @"4500" : @"4,500", @"576000" : @"576,000", @"1234567" : @"1,234,567" };
+		for (NSString *digits in grouping) {
+			check([[AYPolicy groupedAmount:digits] isEqualToString:grouping[digits]], [@"Pollen amounts are grouped with commas: " stringByAppendingString:digits]);
+		}
+
 		NSDictionary *firebase = @{ @"GOOGLE_APP_ID" : @"1:123456789:ios:0123456789abcdef", @"API_KEY" : [@"AIza" stringByAppendingString:repeat(@"x", 35)], @"GCM_SENDER_ID" : @"123456789", @"PROJECT_ID" : @"after-you-game", @"BUNDLE_ID" : @"com.aamirazeez.afteryou" };
 		check([AYPolicy validFirebaseOptions:firebase bundleId:@"com.aamirazeez.afteryou"], @"A complete iOS Firebase configuration is accepted");
 		check(![AYPolicy validFirebaseOptions:firebase bundleId:@"com.example.other"], @"A configuration for another bundle is refused");
@@ -98,8 +137,16 @@ int main(void) {
 		check([[store pendingRoute:1004][@"event_id"] isEqualToString:eventA], @"The tapped event becomes the pending route");
 		check([store acknowledge:eventA] && [store pendingRoute:1005] == nil, @"Acknowledging clears the route");
 		check([store receive:turnEvent(repeat(@"d", 20), room, @"9", epoch) now:1000 + 8LL * 24 * 3600 * 1000], @"A newer hint after retention is accepted");
+		NSString *pollenA = [@"pollen_" stringByAppendingString:repeat(@"1b", 16)];
+		NSString *pollenB = [@"pollen_" stringByAppendingString:repeat(@"2c", 16)];
+		check([store receive:pollenEvent(pollenA, @"9000", epoch) now:1000 + 8LL * 24 * 3600 * 1000 + 1], @"A monthly Pollen hint is stored without a room");
+		check([store receive:pollenEvent(pollenB, @"4500", epoch) now:1000 + 8LL * 24 * 3600 * 1000 + 2], @"A later Pollen hint with a smaller amount is still new");
+		check([store markTapped:pollenB] && [[store pendingRoute:1000 + 8LL * 24 * 3600 * 1000 + 4] isEqualToDictionary:pollenEvent(pollenB, @"4500", epoch)], @"A tapped Pollen route keeps its exact five fields");
+		check([store acknowledge:pollenB], @"A Pollen route is acknowledged like any other");
+		check(![store categoryEnabled:AYPollenKind], @"Monthly Pollen is off until the categories are saved");
 		check([store categoryEnabled:@"turn_ready"] && ![store categoryEnabled:@"friend_room_available"] && ![store categoryEnabled:@"redo_requested"], @"Category defaults match Android");
 		check([store setCategoriesTurns:NO hosting:YES requests:YES] && ![store categoryEnabled:@"turn_ready"] && [store categoryEnabled:@"friend_room_available"], @"Saved categories apply");
+		check(![store categoryEnabled:AYPollenKind] && [store setCategoriesTurns:YES hosting:NO requests:NO] && [store categoryEnabled:AYPollenKind], @"Monthly Pollen follows the main turns switch");
 		AYNotificationRegistration *cleared = [store clearBinding];
 		check(cleared.optedIn && cleared.epoch.length == 0 && cleared.generation == 2 && cleared.pending, @"Clearing the binding keeps the preference and bumps the generation");
 		AYNotificationRegistration *off = [store setOptedIn:NO];
