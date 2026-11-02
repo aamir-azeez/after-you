@@ -18,20 +18,28 @@ const SAMPLE := 0.15
 ## Points from `from` to `to`, `from` first and no two more than STRIDE apart,
 ## going round `solids` grown by `clearance` and only where `walkable` (Vector2
 ## in this frame -> bool) lets the pip stand. Empty when there is no way round
-## (or `from` stands in a solid's room, or `to` off the ground).
+## (or `from` stands nearer a solid than `clearance`, or `to` in a solid's
+## room or off the ground).
 static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: float, walkable: Callable) -> Array[Vector3]:
 	var start := Vector2(from.x, from.z)
 	var goal := Vector2(to.x, to.z)
 	# A leg may graze the pip's room round a solid, never cut into it.
 	var rooms: Array[Rect2] = []
 	for rect: Rect2 in solids: rooms.append(rect.grow(clearance - 0.01))
-	if _inside(start, rooms) or _inside(goal, rooms) or not walkable.call(goal): return []
+	if _inside(goal, rooms) or not walkable.call(goal): return []
+	# A pip may stand in a room's square corner, as far from the solid as it may
+	# walk: its first leg then keeps out of that solid itself.
+	var leaving: Array[Rect2] = []
+	for index in range(solids.size()):
+		if not rooms[index].has_point(start): leaving.append(rooms[index])
+		elif _distance(solids[index], start) < clearance - 0.01: return []
+		else: leaving.append(solids[index])
 	var nodes: Array[Vector2] = [start, goal]
 	for rect: Rect2 in solids:
 		var out := rect.grow(clearance + TURN_OUT)
 		for corner: Vector2 in [out.position, Vector2(out.end.x, out.position.y), out.end, Vector2(out.position.x, out.end.y)]:
 			if not _inside(corner, rooms) and walkable.call(corner): nodes.append(corner)
-	var way := _shortest(nodes, rooms, walkable)
+	var way := _shortest(nodes, rooms, leaving, walkable)
 	if way.is_empty(): return []
 	var result: Array[Vector3] = [from]
 	for index in range(1, way.size()):
@@ -44,8 +52,9 @@ static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: f
 	return result
 
 ## The node indices from 0 (the start) to 1 (the goal) by the shortest clear
-## legs, or empty. A handful of corners, so a plain Dijkstra.
-static func _shortest(nodes: Array[Vector2], rooms: Array[Rect2], walkable: Callable) -> PackedInt32Array:
+## legs, the first keeping out of `leaving`, or empty. A handful of corners,
+## so a plain Dijkstra.
+static func _shortest(nodes: Array[Vector2], rooms: Array[Rect2], leaving: Array[Rect2], walkable: Callable) -> PackedInt32Array:
 	var count := nodes.size()
 	var best := PackedFloat32Array()
 	best.resize(count)
@@ -66,12 +75,16 @@ static func _shortest(nodes: Array[Vector2], rooms: Array[Rect2], walkable: Call
 		for next in range(count):
 			if done[next] == 1 or next == at: continue
 			var length := nodes[at].distance_to(nodes[next])
-			if best[at] + length < best[next] and _clear(nodes[at], nodes[next], rooms, walkable):
+			if best[at] + length < best[next] and _clear(nodes[at], nodes[next], leaving if at == 0 else rooms, walkable):
 				best[next] = best[at] + length
 				back[next] = at
 	var way := PackedInt32Array([1])
 	while way[0] != 0: way.insert(0, back[way[0]])
 	return way
+
+## How far `point` is outside `rect` (0 inside).
+static func _distance(rect: Rect2, point: Vector2) -> float:
+	return point.distance_to(Vector2(clampf(point.x, rect.position.x, rect.end.x), clampf(point.y, rect.position.y, rect.end.y)))
 
 static func _inside(point: Vector2, rooms: Array[Rect2]) -> bool:
 	for room: Rect2 in rooms:
