@@ -91,7 +91,7 @@ func _celebrate(run: Dictionary, view: Dictionary, line: Control) -> void:
 	var row := BoardStatus.shown_row(run, view, _now(), Runs.on_board(owner, run.board), _pair_names(owner))
 	if row.is_empty() or Placings.tier(int(row.rank)).is_empty(): return
 	Placings.shared().mark_shown(owner, run.entry_id)
-	# The row as the board shows it: a confirmed one brings its names and Gold leaf.
+	# The row as the board shows it here, with its names and Gold leaf (a waiting first place wears it too).
 	var placing := Placings.placing_of(row, run.board, str(run.get("partner", "")))
 	var shown: Control = Celebration.open(parent, placing, bool(host.saves.data.settings.get("reduced_motion", false)))
 	if shown == null: return

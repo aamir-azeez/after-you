@@ -242,7 +242,19 @@ func _shown_rows() -> void:
 	var gold: Array = ten.duplicate(true)
 	gold[0].gold_leaf = true
 	rows = BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, gold, [first.entry_id]), [first], now)
-	_check(rows[0].pending and not rows[0].gold_leaf and not rows[1].gold_leaf, "a waiting first place never shows the Gold leaf, and the run it passes loses it here: %s" % [rows.slice(0, 2)])
+	_check(rows[0].pending and rows[0].gold_leaf and not rows[1].gold_leaf and rows.filter(func(row: Dictionary) -> bool: return row.gold_leaf).size() == 1, "a waiting first place wears the Gold leaf here, and the run it passes loses it: %s" % [rows.slice(0, 2)])
+	rows = BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, gold, []), [first], now, {first.entry_id: true})
+	_check(not rows[0].pending and rows[0].gold_leaf and rows[0].entry_id == gold[0].entry_id, "a failed check takes it off quietly: the first place has its leaf back")
+	_check(BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, [], [first.entry_id]), [first], now)[0].gold_leaf, "first on an empty board wears it too")
+	var level := first.duplicate()
+	level.ticks = 1000
+	_check(not BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, gold, [level.entry_id]), [level], now)[0].pending, "a waiting run level with first stays behind it")
+	var two := first.duplicate()
+	two.entry_id = "cd".repeat(16)
+	two.partner = "PPPPPPPPPPPPPPPPPPPPPP"
+	rows = BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, gold, [first.entry_id, two.entry_id]), [first, two], now)
+	_check(rows[0].pending and rows[1].pending and not rows[0].gold_leaf and not rows[1].gold_leaf and not rows[2].gold_leaf, "two waiting runs level at the top: neither is strictly first, so no leaf: %s" % [rows.slice(0, 3)])
+	_check(BoardStatus.shown_rows(_view(LIGHTHOUSE_BOARD, ten, [first.entry_id]), [first], now)[0].gold_leaf, "a waiting run passing a first place with no leaf still earns it")
 	# A board read that does not list the run yet (the server's copy from before the post).
 	_check(BoardStatus.place(waiting, _view(LIGHTHOUSE_BOARD, ten, []), now, [waiting]) == 4, "a run a moment old the board does not list yet keeps its place")
 	# Refused: off the checking list once past the settle window.
@@ -425,6 +437,7 @@ func _end_of_run_celebration() -> void:
 	await _frames(1)
 	shown = room.ui.find_child(Celebration.NODE_NAME, false, false)
 	_check(shown != null and shown.placing.entry_id == kept_entry and shown.placing.rank == 1 and room.soundscape.cues.back() == "ui_first", "the board this phone kept places it first straight away")
+	_check(shown != null and shown.placing.gold_leaf and shown.get("_gold"), "a waiting first place is celebrated with the Gold leaf, as the board shows it here")
 	room.stays = true
 	shown.find_child("CelebrationViewBoard", true, false).pressed.emit()
 	_check(host.boards_viewed.is_empty() and host.relay_child == room, "a room that can't close yet keeps the player in it")

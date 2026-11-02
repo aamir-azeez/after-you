@@ -1,7 +1,8 @@
 extends RefCounted
 ## The rows of a leaderboard (presentation/leaderboard_screen.gd), in fixed
 ## columns so header() lines up with every row: the place (with a gold leaf
-## mark on a first place that earned the Gold leaf), the pair's two pips, their
+## mark on a first place that earned the Gold leaf, or on this phone a waiting
+## run that would earn it), the pair's two pips, their
 ## names or "A pair", the time, Watch on a run whose replay the server keeps,
 ## and Report on another pair's run. A run of this player's that waits for its
 ## check (services/board_status.gd shown_rows, `pending`) stands at the place it
@@ -127,13 +128,16 @@ static func _cell(line: HBoxContainer, label: Label, width: float, align: Horizo
 	label.horizontal_alignment = align
 	line.add_child(label)
 
-## The place, with the gold leaf mark beside a first place that earned it ("" when 0),
-## and the clock after it while the run waits for its check.
+## The place, with the gold leaf mark beside a first place that earned it, or
+## would once its check passes ("" when 0), and the clock after it while the
+## run waits for its check. Leaf, place and clock together are drawn smaller in
+## the compact column so they fit it.
 static func _place(line: HBoxContainer, rank: int, gold_leaf: bool, compact: bool, width: float = 0.0, pending: bool = false) -> void:
 	var cell := HBoxContainer.new()
+	var tight := compact and gold_leaf and pending
 	cell.custom_minimum_size.x = width if width > 0.0 else _width(PLACE, compact)
 	cell.alignment = BoxContainer.ALIGNMENT_CENTER
-	cell.add_theme_constant_override("separation", 6)
+	cell.add_theme_constant_override("separation", 3 if tight else 6)
 	cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	if gold_leaf:
 		var mark := TextureRect.new()
@@ -142,24 +146,24 @@ static func _place(line: HBoxContainer, rank: int, gold_leaf: bool, compact: boo
 		mark.modulate = GOLD_INK
 		mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 		mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-		mark.custom_minimum_size = Vector2(26, 26)
+		mark.custom_minimum_size = Vector2(20, 20) if tight else Vector2(26, 26)
 		mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		mark.tooltip_text = PlayerCopy.LEADERBOARD_GOLD_LEAF
 		mark.mouse_filter = Control.MOUSE_FILTER_PASS
 		cell.add_child(mark)
 	cell.add_child(_label(str(rank) if rank > 0 else "", 22 if compact else 24, UiTokens.CREAM, true))
-	if pending: cell.add_child(_clock())
+	if pending: cell.add_child(_clock(18.0 if tight else 22.0))
 	line.add_child(cell)
 
 ## The small clock of a run waiting for its check, named for screen readers.
-static func _clock() -> TextureRect:
+static func _clock(side: float = 22.0) -> TextureRect:
 	var mark := TextureRect.new()
 	mark.name = "LeaderboardWaiting"
 	mark.texture = CLOCK_ICON
 	mark.modulate = UiTokens.SOFT
 	mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
 	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
-	mark.custom_minimum_size = Vector2(22, 22)
+	mark.custom_minimum_size = Vector2(side, side)
 	mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	mark.tooltip_text = PlayerCopy.LEADERBOARD_WAITING_CHECK
 	mark.accessibility_name = PlayerCopy.LEADERBOARD_WAITING_CHECK

@@ -62,7 +62,12 @@ static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix:
 ##   run shows, and it takes the place of the pair's slower ranked row, whose
 ##   names it keeps. Other pairs' waiting runs never move anyone.
 ## - On equal times a listed run stays ahead: it finished first (rules.ts compareRuns).
-## - Places count again from 1 and stop at 10; the Gold leaf stays only on first place.
+## - Places count again from 1 and stop at 10; the Gold leaf stays only on first
+##   place. A waiting run first, faster than every run below it, wears it here
+##   before its check (and while a person looks at it), since passing earns it
+##   (backend board.ts award, rules.ts strictlyFirst), and the run it passes
+##   loses it here. A failed check takes the waiting row away, so the leaf
+##   goes back where it was.
 ## - `gone` (entry_id -> true): runs an earlier read listed as checking that
 ##   this one lists nowhere. They failed their check, so they go at once
 ##   rather than when the settle window ends.
@@ -108,6 +113,7 @@ static func shown_rows(view: Dictionary, mine: Array, now_unix: float, gone: Dic
 	for index in range(rows.size()):
 		rows[index].rank = index + 1
 		rows[index].gold_leaf = index == 0 and bool(rows[index].get("gold_leaf", false))
+	if not rows.is_empty() and rows[0].pending: rows[0].gold_leaf = rows.size() == 1 or int(rows[0].ticks) < int(rows[1].ticks)
 	return rows
 
 ## The row `run` has on the board this phone shows (shown_rows), or {} when

@@ -52,6 +52,7 @@ func _run() -> void:
 	_views()
 	await _choice()
 	await _screen()
+	await _waiting_first()
 	Placings.use_shared(null)
 	TurnLooks.use_shared(null)
 	Outfit.show_unreleased = false
@@ -207,6 +208,64 @@ func _screen() -> void:
 	await process_frame
 	_check(not is_instance_valid(screen) or screen.is_queued_for_deletion(), "Back closes the page")
 	api.queue_free()
+
+## A run of this player's waiting for its check that would be first: on this
+## phone it stands first with the clock and the Gold leaf, named as the board
+## will name the pair (their row on another board this phone read), and the
+## first place it passes loses the leaf here. Its check failing takes the row
+## away quietly and the leaf goes back.
+func _waiting_first() -> void:
+	var path := "user://leaderboard-runs-waiting-test.json"
+	var waiting := Runs.entry_id("WWWWWWWWWWWWWWWWWWWWWW", 1)
+	var relay := Runs.entry_id("RRRRRRRRRRRRRRRRRRRRRR", 1)
+	var file := FileAccess.open(path, FileAccess.WRITE)
+	file.store_string(JSON.stringify({"schema_version": 1, "players": {OWNER: [
+		{"board": "sleeping-lighthouse@2", "entry_id": waiting, "ticks": 1470, "assisted": false, "finished_at": Time.get_datetime_string_from_unix_time(int(Time.get_unix_time_from_system()) - 30) + "Z", "partner": PARTNER},
+		{"board": "relay-isles@2", "entry_id": relay, "ticks": 5000, "assisted": false, "finished_at": "2026-10-20T10:00:00Z", "partner": PARTNER}]}}))
+	file.close()
+	Runs.use_path(path)
+	var api := FakeApi.new()
+	root.add_child(api)
+	var top := [{"rank": 1, "entry_id": "f".repeat(32), "ticks": 2000, "finished_on": "2026-10-19", "names": ["Cy", "Di"], "gold_leaf": true},
+		{"rank": 2, "entry_id": "e".repeat(32), "ticks": 2100, "finished_on": "2026-10-19", "names": null, "gold_leaf": false}]
+	api.replies["GET /v1/leaderboards/sleeping-lighthouse@2"] = {"ok": true, "data": {"schema_version": 1, "board": "sleeping-lighthouse@2", "top": top, "checking": [waiting]}}
+	var screen := Screen.new()
+	screen.client = Client.new(api, OWNER, CHOICE_PATH)
+	screen.client._choice = {"show": true, "pending": false, "synced": true}
+	screen.client._views["relay-isles@2"] = {"at": Time.get_ticks_msec(), "view": {"schema_version": 1, "board": "relay-isles@2", "checking": [],
+		"top": [{"rank": 3, "entry_id": relay, "ticks": 5000, "finished_on": "2026-10-20", "names": ["Ada", "Bo"], "gold_leaf": false}]}}
+	screen.player_id = OWNER
+	screen.chapter_filter = func(key: String) -> bool: return key == Registry.LIGHTHOUSE_V2
+	root.add_child(screen)
+	for frame in range(10): await process_frame
+	var board: Node = screen.find_child("LeaderboardBoard", true, false)
+	var first: Node = board.find_child("LeaderboardRow1", true, false) if board != null else null
+	var second: Node = board.find_child("LeaderboardRow2", true, false) if board != null else null
+	_check(first != null and first.find_child("LeaderboardWaiting", true, false) != null and first.find_child("LeaderboardGoldLeaf", true, false) != null and _texts(first).has(Runs.time_text(1470)), "a waiting run that would be first stands first with its clock and the Gold leaf")
+	_check(first != null and _texts(first).has(PlayerCopy.LEADERBOARD_NAMES % ["Ada", "Bo"]), "named as the board will name the pair: %s" % [_texts(first) if first != null else []])
+	_check(second != null and _texts(second).has(PlayerCopy.LEADERBOARD_NAMES % ["Cy", "Di"]) and second.find_child("LeaderboardGoldLeaf", true, false) == null, "the first place it passes loses the leaf on this phone")
+	var own: Node = screen.find_child("LeaderboardOwnRow", true, false)
+	_check(own != null and own.find_child("LeaderboardWaiting", true, false) != null and _texts(own).has(PlayerCopy.LEADERBOARD_NAMES % ["Ada", "Bo"]), "Your best is the waiting first place, named too")
+	# The check fails: the board lists it nowhere.
+	api.replies["GET /v1/leaderboards/sleeping-lighthouse@2"] = {"ok": true, "data": {"schema_version": 1, "board": "sleeping-lighthouse@2", "top": top, "checking": []}}
+	screen._load(true)
+	for frame in range(6): await process_frame
+	first = board.find_child("LeaderboardRow1", true, false)
+	_check(first != null and first.find_child("LeaderboardGoldLeaf", true, false) != null and first.find_child("LeaderboardWaiting", true, false) == null and _texts(first).has(PlayerCopy.LEADERBOARD_NAMES % ["Cy", "Di"]) and screen.find_children("LeaderboardWaiting", "", true, false).is_empty(), "a failed check takes the row away quietly and the first place has its leaf back")
+	screen.queue_free()
+	await process_frame
+	# On a narrow screen the leaf, the place and the clock still fit the place column.
+	for compact: bool in [false, true]:
+		var row: Control = Rows.ranked({"rank": 1, "entry_id": waiting, "ticks": 1470, "names": null, "gold_leaf": true, "pending": true, "looks": []}, true, Callable(), compact)
+		root.add_child(row)
+		await process_frame
+		var cell: Control = row.get_child(0).get_child(0)
+		var wide := cell.get_combined_minimum_size().x
+		_check(cell.find_child("LeaderboardGoldLeaf", false, false) != null and cell.find_child("LeaderboardWaiting", false, false) != null and wide <= (Rows.PLACE.y if compact else Rows.PLACE.x) + 0.5, "%s: the waiting first place's leaf, place and clock fit their column: %.0f px" % ["compact" if compact else "wide", wide])
+		row.queue_free()
+	api.queue_free()
+	Runs.use_path(RUNS_PATH)
+	_clear(path)
 
 func _texts(node: Node) -> Array:
 	var result: Array = []
