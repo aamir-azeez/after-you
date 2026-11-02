@@ -6,11 +6,16 @@ extends SceneTree
 ##   while one is out runs after it, never beside it;
 ## - credited claims keep their receipts, refused ones go, and a failed request
 ##   or a server pause keeps them for the next flush;
-## - the wallet is read only when this phone has none;
+## - the wallet is read only when this phone has none, or when its wardrobe
+##   came under another offered tag than the server's now (an item released,
+##   or a read from before tags): then once, so a friend's item shows here;
 ## - a server that keeps answering "retry" costs a few requests, not a loop;
 ## - an answer that arrives after the player changed is not recorded.
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const Client = preload("res://services/pollen_client.gd")
+const Wardrobe = preload("res://services/wardrobe.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
+const Outfit = preload("res://services/outfit.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -55,6 +60,8 @@ func _run() -> void:
 	await _bounded()
 	await _identity_change()
 	await _first_clears()
+	await _wardrobe_offered()
+	Catalog.set_offered([])
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -254,6 +261,51 @@ func _first_clears() -> void:
 	t.client.flush()
 	await _settle(t.client)
 	_check(t.fake.sent.size() == 4 and t.store.clear_claims(t.api.base_url, ME).size() == 1, "A newly finished chapter is claimed; a server pause keeps it")
+	t.api.queue_free()
+
+## A wallet answer with the wardrobe on and the shop off, offering `offered`.
+static func _wardrobe_answer(offered: Array) -> Dictionary:
+	return {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "bank": 12.0,
+		"wardrobe": {"items": [], "packs": [], "look": {}, "look_revision": 0.0, "offered": offered}}
+
+## A friend's phone kept a wardrobe read that offered only its own items (an
+## app before 0.7.5, or a read while the shop was off), so a friend's Gold leaf
+## drew as the plain pip. The server's offered tag reads it again once.
+func _wardrobe_offered() -> void:
+	var t := _setup()
+	var server: String = t.api.base_url
+	t.store.note_wallet(server, ME, {"schema_version": 1.0, "balance": 0.0, "earned": 0.0, "bank": 12.0})
+	var path := "user://test-pollen-client-wardrobe-%s.json" % Crypto.new().generate_random_bytes(6).hex_encode()
+	_paths.append(path)
+	var wardrobe: RefCounted = Wardrobe.new(path)
+	wardrobe.scope_source = func() -> Dictionary: return {"server": server, "owner": ME}
+	wardrobe.set_enabled(server, ME, true, false)
+	wardrobe.note_view(server, ME, _wardrobe_answer([]))
+	t.client.wardrobe = wardrobe
+	var friend := {"leaf": "gold_leaf", "hat": "daisy"}
+	_check(Outfit.from(friend).is_empty(), "Offered nothing, the phone draws a friend's look plain")
+	# A server that sends no tag (not deployed yet) costs no read.
+	wardrobe.note_offered_tag(server, ME, null)
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.is_empty(), "No tag from the server: no wallet read")
+	wardrobe.note_offered_tag(server, ME, "0badf00d")
+	t.fake.replies = [{"ok": true, "data": _wardrobe_answer(["daisy", "gold_leaf"])}]
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 1 and t.fake.sent[0].path == "/v1/pollen", "A wardrobe kept under no tag is read again once: " + str(t.fake.sent))
+	_check(Catalog.released("gold_leaf") and Outfit.from(friend) == friend, "and the friend's Gold leaf and Daisy draw")
+	t.client.flush()
+	await _settle(t.client)
+	_check(t.fake.sent.size() == 1, "The same tag again: no read")
+	var again: RefCounted = Wardrobe.new(path)
+	again.note_offered_tag(server, ME, "0badf00d")
+	_check(not again.needs_read(server, ME), "The tag is kept with the read, so the next launch reads nothing")
+	again.note_offered_tag(server, ME, "1234abcd")
+	_check(again.needs_read(server, ME), "A new tag (an item released) reads once more")
+	for bad: Variant in ["0BADF00D", "0badf00", 7, ""]:
+		again.note_offered_tag(server, ME, bad)
+		_check(not again.needs_read(server, ME), "A tag off the contract is none: " + str(bad))
 	t.api.queue_free()
 
 func _check(condition: bool, message: String) -> void:

@@ -429,6 +429,8 @@ func load_capabilities() -> bool:
 	if not scope.is_empty() and PlatformSupport.is_ios(): StoreSupport.shared().note(str(scope.server), str(scope.owner), app_store_full_journey_supported())
 	if not scope.is_empty(): PollenWallet.shared().set_enabled(str(scope.server), str(scope.owner), pollen_supported())
 	if not scope.is_empty(): Wardrobe.shared().set_enabled(str(scope.server), str(scope.owner), wardrobe_supported(), shop_supported(), bundles_supported())
+	# Before the flush below, so a wardrobe read under an older offered tag is read again.
+	if not scope.is_empty(): Wardrobe.shared().note_offered_tag(str(scope.server), str(scope.owner), capabilities.get("pollen_offered_tag") if wardrobe_supported() else null)
 	if not scope.is_empty(): PollenWallet.shared().set_item_blooms(str(scope.server), str(scope.owner), item_blooms_supported())
 	if not scope.is_empty(): PollenGrant.shared().set_enabled(str(scope.server), str(scope.owner), grant_supported())
 	if pollen_supported() and pollen_flush.is_valid(): pollen_flush.call()

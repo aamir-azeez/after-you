@@ -2,8 +2,9 @@ extends RefCounted
 ## Sends this player's waiting Pollen claims (POST /v1/pollen/turn-claims), its
 ## waiting first clears (POST /v1/pollen/clear-claims: rooms seen finished
 ## together, and chapters finished solo as the Home keepsake marks show), and
-## reads the wallet (GET /v1/pollen) when this phone has none, recording each
-## answer in PollenWallet. One request at a time: a flush asked for while one
+## reads the wallet (GET /v1/pollen) when this phone has none, or its wardrobe
+## needs it (services/wardrobe.gd needs_read), recording each answer in
+## PollenWallet. One request at a time: a flush asked for while one
 ## runs goes once that one returns. Main flushes at launch (once the server's
 ## capabilities are read) and on every resume. Nothing is sent while the server
 ## has not said Pollen earning is on.
@@ -101,8 +102,9 @@ func _run() -> void:
 			if scope() != context or not _settle_clears(context, clears, answer): break
 			continue
 		# A phone with no wallet (a new install, or a file that could not be read) asks for it,
-		# and so does one with no wardrobe while the shop is on: the same read carries both.
-		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_missing(context) or _grant_due(context):
+		# and so does one whose wardrobe is missing or older than the server's offered items
+		# (services/wardrobe.gd needs_read): the same read carries both.
+		if wallet.wallet(context.server, context.owner).is_empty() or _wardrobe_stale(context) or _grant_due(context):
 			requests += 1
 			var read: Dictionary = await _request(HTTPClient.METHOD_GET, WALLET_PATH, {})
 			if scope() != context or not read.get("ok", false) or not wallet.note_wallet(context.server, context.owner, read.get("data")): break
@@ -124,8 +126,8 @@ func _grant_due(context: Dictionary) -> bool:
 	var key := PollenWallet.scope_key(context.server, context.owner)
 	return not _grant_read_at.has(key) or Time.get_ticks_msec() - int(_grant_read_at[key]) >= GRANT_READ_MS
 
-func _wardrobe_missing(context: Dictionary) -> bool:
-	return wardrobe != null and wardrobe.enabled(context.server, context.owner) and wardrobe.view(context.server, context.owner).is_empty()
+func _wardrobe_stale(context: Dictionary) -> bool:
+	return wardrobe != null and wardrobe.needs_read(context.server, context.owner)
 
 ## Records each claim's answer; false when the request itself failed (sent again later).
 func _settle_claims(context: Dictionary, batch: Array, response: Dictionary) -> bool:

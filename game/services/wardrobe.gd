@@ -15,7 +15,11 @@ extends RefCounted
 ##   bundle's gift is still open, its percent, and the money spent on bundles;
 ## - items, packs: what the player owns (bought, dropped or earned);
 ## - look, look_revision: what the player wears ({slot: id}) and its revision;
-## - offered: what the server releases (sold or earned), which pips may draw;
+## - offered: what the server releases (sold or earned), which pips may draw,
+##   this player's and every friend's; offered_tag: the server's tag of it
+##   (capabilities `pollen_offered_tag`, backend/src/pollen/catalog.ts
+##   offeredTag) when this read came, so a release reads the wallet again
+##   (needs_read) and a friend's new item shows on this phone;
 ## - offered_packs, prices, pack_price, sets, unlocked: what the server sells,
 ##   its sets and the Specials whose chapter this player has cleared (only
 ##   while the shop is on; empty otherwise);
@@ -42,13 +46,17 @@ const ID_PATTERN := "^[a-z0-9_]{1,40}$"
 ## Ids a list may hold: well past any catalogue the server sends.
 const MAX_IDS := 256
 const MAX_SET_PIECES := 16
+const TAG_PATTERN := "^[a-f0-9]{8}$"
 
 static var _shared: RefCounted = null
 static var _id := RegEx.create_from_string(ID_PATTERN)
+static var _tag := RegEx.create_from_string(TAG_PATTERN)
 
 var path := PATH
 var _scopes: Dictionary = {}
 var _active := ""
+## Scope key -> the server's offered tag from its last capabilities read (memory only).
+var _offered_tags: Dictionary = {}
 ## () -> {server, owner} of the signed-in player, or {} (Main's _names_scope).
 var scope_source: Callable
 
@@ -174,15 +182,39 @@ func view(server: String, owner: String) -> Dictionary:
 	var scope := _scope(server, owner)
 	return (scope.view as Dictionary).duplicate(true) if not scope.is_empty() else {}
 
-## A wallet answer: keeps its wardrobe part when it has one.
+## The server's tag of what it offers (capabilities `pollen_offered_tag`); anything else is none.
+func note_offered_tag(server: String, owner: String, value: Variant) -> void:
+	var key := scope_key(server, owner)
+	if valid_tag(value): _offered_tags[key] = value
+	else: _offered_tags.erase(key)
+
+static func valid_tag(value: Variant) -> bool:
+	return value is String and _tag.search(value) != null
+
+## Whether the wallet should be read for the wardrobe: it is on, and nothing is
+## kept yet, or what is kept came with another offered tag than the server's
+## now (an item was released, or the read is older than tags). A server that
+## sends no tag asks for nothing more than an empty view did.
+func needs_read(server: String, owner: String) -> bool:
+	var scope := _scope(server, owner)
+	if scope.is_empty() or not bool(scope.get("enabled", false)): return false
+	if (scope.view as Dictionary).is_empty(): return true
+	var tag: String = _offered_tags.get(scope_key(server, owner), "")
+	return not tag.is_empty() and str(scope.get("offered_tag", "")) != tag
+
+## A wallet answer: keeps its wardrobe part when it has one, with the offered tag it came under.
 func note_view(server: String, owner: String, value: Variant) -> bool:
 	var kept := checked_view(value)
 	var scope := _scope(server, owner, not kept.is_empty())
 	if kept.is_empty() or scope.is_empty(): return false
+	var tag: String = _offered_tags.get(scope_key(server, owner), "")
+	var retagged: bool = not tag.is_empty() and str(scope.get("offered_tag", "")) != tag
+	if retagged: scope.offered_tag = tag
 	if scope.view != kept:
 		scope.view = kept
 		_save()
 		_announce(server, owner)
+	elif retagged: _save()
 	return true
 
 ## A purchase the server confirmed (POST /v1/pollen/spend): its pieces are owned now.
@@ -304,6 +336,7 @@ func _load() -> void:
 		# A file from before the split has no shop key: the shop reads off until the server says again; bundles likewise.
 		var selling: bool = value.get("enabled") == true and value.get("shop") == true
 		_scopes[key] = {"enabled": value.get("enabled") == true, "shop": selling, "bundles": selling and value.get("bundles") == true, "view": kept}
+		if not kept.is_empty() and valid_tag(value.get("offered_tag")): _scopes[key].offered_tag = value.offered_tag
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "scopes": _scopes}))
