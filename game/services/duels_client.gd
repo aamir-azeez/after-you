@@ -56,9 +56,7 @@ func lobby() -> Dictionary:
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
 	var checked := valid_lobby(response.get("data"))
 	if checked.is_empty(): return {"ok": false, "code": "invalid_duels"}
-	_lobby = checked
-	_remember(checked.duels)
-	return {"ok": true, "lobby": checked}
+	return {"ok": true, "lobby": _take(checked)}
 
 ## The last lobby read, or {}.
 func last_lobby() -> Dictionary:
@@ -179,9 +177,7 @@ func _party(action: String, body: Dictionary) -> Dictionary:
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
 	var checked := valid_lobby(response.get("data"))
 	if checked.is_empty(): return {"ok": false, "code": "invalid_duels"}
-	_lobby = checked
-	_remember(checked.duels)
-	return {"ok": true, "lobby": checked}
+	return {"ok": true, "lobby": _take(checked)}
 
 func _duel_answer(response: Dictionary, detail: bool = false) -> Dictionary:
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", "")), "status": int(response.get("status", 0))}
@@ -202,12 +198,29 @@ func _keep_in_lobby(view: Dictionary) -> void:
 	var duels: Array = _lobby.get("duels", [])
 	for index in range(duels.size()):
 		if duels[index].duel_id != view.duel_id: continue
-		if int(view.updated_ms) < int(duels[index].updated_ms): return
+		if _older(view, duels[index]): return
 		var kept := _lobby.duplicate()
 		kept.duels = duels.duplicate()
 		kept.duels[index] = view
 		_lobby = kept
 		return
+
+## Keeps a lobby the server answered (a read or a party action). A read that
+## went out before an action (Leave) answers with older copies of its duels:
+## the newer copies kept here stay. Duels the server dropped stay dropped.
+func _take(checked: Dictionary) -> Dictionary:
+	var held: Dictionary = {}
+	for view: Dictionary in _lobby.get("duels", []): held[view.duel_id] = view
+	for index in range(checked.duels.size()):
+		var fresh: Dictionary = checked.duels[index]
+		if held.has(fresh.duel_id) and _older(fresh, held[fresh.duel_id]): checked.duels[index] = held[fresh.duel_id]
+	_lobby = checked
+	_remember(checked.duels)
+	return checked
+
+## Whether `view` is an older copy of the same duel than `than`.
+static func _older(view: Dictionary, than: Dictionary) -> bool:
+	return int(view.updated_ms) < int(than.updated_ms)
 
 ## Notes duel rooms, and saves only when they changed.
 func _remember(views: Array) -> void:

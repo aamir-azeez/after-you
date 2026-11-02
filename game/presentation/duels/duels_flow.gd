@@ -62,6 +62,8 @@ var _duel_reads := RefreshClock.new()
 var _lobby_asked := false
 ## False while the app is paused or has lost focus.
 var _in_front := true
+## True for the moment a page closes right after a fresh lobby read (_already_open): that close reads nothing more.
+var _lobby_fresh := false
 ## True while the other pair's run is fetched for one tap.
 var _their_loading := false
 ## The idempotency key of each challenge or ghost race sent with no answer yet,
@@ -81,7 +83,7 @@ func _process(_delta: float) -> void:
 
 ## Starts the lobby's or the open duel's read when it is due and may run.
 func _tick(now: int) -> void:
-	if not is_open():
+	if not _reading():
 		_lobby_reads.bind("", now)
 		_duel_reads.bind("", now)
 		set_process(false)
@@ -91,15 +93,16 @@ func _tick(now: int) -> void:
 	if page != null:
 		var duel_ticket: Dictionary = _duel_reads.begin_if_due(now, shown and page.visible, false)
 		if not duel_ticket.is_empty(): _read_duel(page, duel_ticket)
-	var waiting: bool = screen.overlay() == null and screen.wants_refresh()
-	var lobby_ticket: Dictionary = _lobby_reads.begin_if_due(now, shown and (_lobby_asked or waiting), false)
+	# Whether the lobby waits on others is looked at only once its read is due.
+	var wanted: bool = _lobby_asked or (now >= _lobby_reads.next_due_ms() and not _lobby_reads.busy() and screen.overlay() == null and screen.wants_refresh())
+	var lobby_ticket: Dictionary = _lobby_reads.begin_if_due(now, shown and wanted, false)
 	if not lobby_ticket.is_empty(): _read_lobby(lobby_ticket)
 
 ## Binds both clocks to what is open now and returns the duel page being read, or null.
 func _bind(now: int) -> CanvasLayer:
 	_lobby_reads.bind("lobby/%d" % screen.get_instance_id(), now, RefreshClock.DUELS_LOBBY_INTERVAL_MS)
 	var page: CanvasLayer = screen.overlay()
-	if not page is DuelPage or page.view.is_empty():
+	if not page is DuelPage or not page.alive() or page.view.is_empty():
 		_duel_reads.bind("", now)
 		return null
 	_duel_reads.bind("duel/%d/%s" % [page.get_instance_id(), page.view.duel_id], now, refresh_ms(page.view))
@@ -111,7 +114,7 @@ func _notification(what: int) -> void:
 	elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN] and not _in_front:
 		# Android sends more than one of these: only the first after a pause reads, once.
 		_in_front = true
-		if not is_open(): return
+		if not _reading(): return
 		var now := Time.get_ticks_msec()
 		_bind(now)
 		_duel_reads.request_now(now)
@@ -173,9 +176,13 @@ func _left() -> void:
 		host.ui.visible = true
 		home_requested.emit()
 
+## Whether a lobby this flow opened is up, so its reads may run.
+func _reading() -> bool:
+	return is_open() and screen is DuelsScreen
+
 ## Reads the lobby at once; a read already out, which may predate an action, is followed by one more.
 func _refresh() -> void:
-	if not is_open(): return
+	if not _reading() or _lobby_fresh: return
 	var now := Time.get_ticks_msec()
 	_bind(now)
 	_lobby_asked = true
@@ -287,12 +294,15 @@ func _already_open(page: CanvasLayer, friend: String, board: String) -> void:
 	if answer.get("ok", false): screen.show_lobby(answer.lobby)
 	var found := _open_with(friend, board)
 	if not is_instance_valid(page): return
-	if found.get("status") == "running":
-		page.close()
-		_open_duel(found)
+	if found.is_empty():
+		host._toast(PlayerCopy.DUELS_ALREADY_OPEN)
 		return
-	host._toast(PlayerCopy.DUELS_ALREADY_OPEN)
-	if not found.is_empty(): page.close()
+	# The lobby was just read: closing the page reads it no second time.
+	_lobby_fresh = true
+	page.close()
+	_lobby_fresh = false
+	if found.status == "running": _open_duel(found)
+	else: host._toast(PlayerCopy.DUELS_ALREADY_OPEN)
 
 ## The open friend duel on `board` whose other pair has `friend`, from the kept lobby, or {}.
 func _open_with(friend: String, board: String) -> Dictionary:

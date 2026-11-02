@@ -31,10 +31,12 @@ class FakeApi extends Node:
 	var player_id := ME
 	var replies: Dictionary = {}
 	var requests: Array = []
+	## Frames a request takes to answer, by "METHOD path" (1 when not named).
+	var delays: Dictionary = {}
 	func request_json(method: int, path: String, body: Dictionary = {}, _still: Callable = Callable()) -> Dictionary:
 		var name: String = {HTTPClient.METHOD_GET: "GET", HTTPClient.METHOD_POST: "POST"}.get(method, "?")
 		requests.append([name, path, body])
-		await Engine.get_main_loop().process_frame
+		for index in range(int(delays.get(name + " " + path, 1))): await Engine.get_main_loop().process_frame
 		return replies.get(name + " " + path, {"ok": false, "code": "not_found"}).duplicate(true)
 
 class FakeSession extends RefCounted:
@@ -121,7 +123,6 @@ func _run() -> void:
 	_check(not flow.is_open() and flow.room_kind(ROOM) == "", "duels stay hidden while the server has them off")
 	var ghost_wait := {"kind": "ghost", "mine": 0, "sides": [{"check": "waiting"}, null]}
 	_check(Flow.refresh_ms(ghost_wait) == Clock.DUEL_CHECK_INTERVAL_MS and Flow.refresh_ms({"kind": "ghost", "mine": 0, "sides": [{"check": "none"}, null]}) == Clock.DUEL_INTERVAL_MS and Flow.refresh_ms({"kind": "friend", "mine": 1, "sides": [{"check": "none"}, {"check": "waiting"}]}) == Clock.DUEL_INTERVAL_MS, "a ghost race waiting for its check reads less often, every other duel as before")
-	_check(Clock.DUELS_LOBBY_INTERVAL_MS == 60000 and Clock.DUEL_INTERVAL_MS == 30000 and Clock.DUEL_CHECK_INTERVAL_MS == 60000, "the lobby reads once a minute, a duel every 30 s, a ghost race waiting for its check once a minute")
 	main.relay_session.on = true
 	flow.open()
 	await _frames(4)
@@ -286,13 +287,24 @@ func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow._tick(t + 300001)
 	await _frames(3)
 	_check(reads.call(lobby_path) == before + 4, "the lobby reads once it shows again")
+	# A failed read keeps the minute: no quicker retries.
+	api.replies["GET " + lobby_path] = {"ok": false, "code": "connection_interrupted"}
+	flow._tick(t + 361000)
+	await _frames(3)
+	for later: int in [366000, 376000, 391000]: flow._tick(t + later)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 5, "a failed lobby read is not retried within the minute: %d" % (reads.call(lobby_path) - before))
+	flow._tick(t + 421000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 6, "the lobby reads again a minute after a failed read")
+	api.replies["GET " + lobby_path] = running_lobby
 	# Nothing can change without this player: no timed read, but a page closing still reads at once.
 	api.replies["GET " + lobby_path] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_view({}, "decided")]}}
 	flow._refresh()
 	await _frames(3)
 	flow._tick(t + 500000)
 	await _frames(3)
-	_check(reads.call(lobby_path) == before + 5, "a quiet lobby only reads when asked")
+	_check(reads.call(lobby_path) == before + 7, "a quiet lobby only reads when asked")
 	api.replies["GET " + lobby_path] = running_lobby
 	# An open duel reads every 30 s; the lobby under it does not read on its own.
 	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _view({})}}
@@ -315,6 +327,15 @@ func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow._notification(NOTIFICATION_APPLICATION_RESUMED)
 	await _frames(3)
 	_check(reads.call(duel_path) == duel_reads + 2 and reads.call(lobby_path) == lobby_reads, "coming back reads the open duel once, and not the lobby under it")
+	api.replies["GET " + duel_path] = {"ok": false, "code": "connection_interrupted"}
+	flow._tick(at + 130000)
+	await _frames(3)
+	for later: int in [135000, 145000]: flow._tick(at + later)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 3, "a failed duel read is not retried within 30 s")
+	flow._tick(at + 160000)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 4, "an open duel reads again 30 s after a failed read")
 	# A ghost race waiting for its check reads once a minute.
 	var ghost := _view({"members": [ME, null], "finished": true, "check": "waiting"})
 	ghost.kind = "ghost"
@@ -356,15 +377,27 @@ func _leaving(api: FakeApi, flow: Node) -> void:
 	var left := _view({"left": true, "turn": null})
 	left.updated_ms = 10
 	api.replies["POST %s/leave" % duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": left}}
+	# Reads of the duel and of the lobby go out before Leave and answer after it, with the older running duel.
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _view({})}}
+	api.delays = {"GET " + duel_path: 8, "GET /v1/duels": 8}
+	var reads := func(path: String) -> int: return api.requests.filter(func(item: Array) -> bool: return item[0] == "GET" and item[1] == path).size()
+	var duel_reads: int = reads.call(duel_path) + 1
+	var lobby_reads: int = reads.call("/v1/duels") + 1
+	var at := Time.get_ticks_msec() + 2000000
+	flow._tick(at)
+	flow._tick(at + Clock.DUEL_INTERVAL_MS)
+	flow._refresh()
 	page.leave_requested.emit(running)
 	await _frames(3)
 	_check(page.view.sides[0].left and page.find_child("DuelLeave", true, false) == null and page.find_child("DuelPlay", true, false) == null, "the duel page shows Left at once, with nothing left to play")
 	var kept: Dictionary = flow.client().last_lobby()
 	_check(kept.duels.size() == 1 and kept.duels[0].sides[0].left, "the lobby under it keeps the duel as left too")
-	# A read that went out before Leave answers with the older duel: the page stays as it is.
-	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _view({})}}
-	flow._show_duel(page, Client.valid_view(_view({})))
-	_check(page.view.sides[0].left, "an older read does not bring back the running duel")
+	await _frames(10)
+	api.delays = {}
+	kept = flow.client().last_lobby()
+	_check(reads.call(duel_path) == duel_reads and reads.call("/v1/duels") == lobby_reads, "both older reads were out before Leave")
+	_check(page.view.sides[0].left and page.find_child("DuelLeave", true, false) == null, "a duel read that went out before Leave does not bring back the running duel")
+	_check(kept.duels.size() == 1 and kept.duels[0].sides[0].left, "a lobby read that went out before Leave keeps the duel as left")
 	# Leave that ends the duel (the other pair had left, or a ghost race): the result opens at once.
 	var ended := _view({"left": true, "turn": null}, "decided")
 	ended.updated_ms = 20
@@ -385,6 +418,8 @@ func _already_open(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	var lobby_with := func(duels: Array) -> Dictionary: return {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": duels}}
 	for case: Array in [["running", true], ["challenged", false], ["", false]]:
 		var duels: Array = [] if case[0] == "" else [_view({}, case[0])]
+		# Newer than any copy of this duel the earlier steps kept.
+		for view: Dictionary in duels: view.updated_ms = 100
 		api.replies["GET /v1/duels"] = lobby_with.call(duels)
 		flow.open()
 		flow.set_process(false)
