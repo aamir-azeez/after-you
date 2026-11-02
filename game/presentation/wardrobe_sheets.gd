@@ -3,13 +3,13 @@ extends RefCounted
 ## - confirm(): before any Pollen leaves the balance: "Buy Toadstool cap?", the
 ##   item on a still pip, then You have, the item, and You'll have left, each with the grain. Buy names the cost.
 ## - short(): when the balance is short: what it costs and what the player has,
-##   the Needed box ("Needed: [grain] 5,500 more", "It stays in the shop."),
-##   and "Keep playing with friends to earn more." While bundles sell
-##   (`get_pollen` valid) it also names the smallest bundle that covers the gap
-##   (services/pollen_bundles.gd cover: "Get the Basket to buy this.", or the
-##   largest, "The Basket gets you closest.") beside its art, with a Get Pollen
-##   button that opens the Pollen store with that bundle highlighted. It never
-##   estimates how long earning takes.
+##   the Needed box ("Needed: [grain] 5,500 more"), and "Keep playing with
+##   friends to earn more." While bundles sell (a `buyer`) it also names the
+##   smallest bundle that covers the gap (services/pollen_bundles.gd cover:
+##   "Get the Basket to buy this.", or the largest, "The Basket gets you
+##   closest.") beside its art, with a button that shows that bundle's store
+##   price and buys it right there (presentation/short_card_buy.gd), and a line
+##   under it for how a purchase ended. It never estimates how long earning takes.
 const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
@@ -17,6 +17,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const BundleArt = preload("res://presentation/kit/bundle_art.gd")
+const ShortCardBuy = preload("res://presentation/short_card_buy.gd")
 const Bundles = preload("res://services/pollen_bundles.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Outfit = preload("res://services/outfit.gd")
@@ -69,12 +70,13 @@ static func _line(table: GridContainer, words: String, amount: Control) -> void:
 	amount.size_flags_horizontal = Control.SIZE_SHRINK_END
 	table.add_child(amount)
 
-## The short-of-Pollen card for an item of `tier`. `get_pollen` (bundle: String)
-## opens the Pollen store with the suggested bundle highlighted; an empty
-## Callable (bundles not on sale) leaves the suggestion out. `offer` is the
-## wardrobe view's `bundles` part, for the first bundle gift. `in_shop` false (a
-## name change, pollen board 6) leaves out "It stays in the shop.". Returns the modal.
-static func short(parent: Control, item_name: String, tier: String, cost: int, balance: int, get_pollen: Callable = Callable(), opener: Control = null, in_shop: bool = true, offer: Dictionary = {}) -> Control:
+## The short-of-Pollen card for an item of `tier`. `buyer` is the Pollen
+## store's purchase engine (presentation/bundle_purchase.gd) while bundles
+## sell, else null, which leaves the suggestion out; `credited` runs once a
+## bundle bought here arrived. `offer` is the wardrobe view's `bundles` part,
+## for the first bundle gift. `in_shop` false (a name change, pollen board 6)
+## words the suggestion for the name. Returns the modal.
+static func short(parent: Control, item_name: String, tier: String, cost: int, balance: int, buyer: Node = null, credited: Callable = Callable(), opener: Control = null, in_shop: bool = true, offer: Dictionary = {}) -> Control:
 	var modal: Control = InGameModal.open(parent, "WardrobeShort", PlayerCopy.WARDROBE_SHORT_TITLE,
 		PlayerCopy.WARDROBE_SHORT_NOTE % [item_name, PollenMoney.grouped(cost), PollenMoney.grouped(balance)], opener)
 	modal.widen(600.0)
@@ -84,13 +86,6 @@ static func short(parent: Control, item_name: String, tier: String, cost: int, b
 	need_box.add_child(need)
 	need.add_child(ShopKit.text(PlayerCopy.WARDROBE_SHORT_NEEDED, 16, MUTED))
 	need.add_child(ShopKit.amount(cost - balance, 20, CREAM, "", PlayerCopy.WARDROBE_SHORT_MORE))
-	var gap := Control.new()
-	gap.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	need.add_child(gap)
-	if in_shop:
-		var stays := ShopKit.text(PlayerCopy.WARDROBE_SHORT_STAYS, 13, MUTED)
-		stays.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		need.add_child(stays)
 	var earn_box := _box(modal.content, "WardrobeShortEarn")
 	var earn_column := VBoxContainer.new()
 	earn_column.add_theme_constant_override("separation", 4)
@@ -108,14 +103,15 @@ static func short(parent: Control, item_name: String, tier: String, cost: int, b
 	earn.add_child(icon)
 	earn.add_child(ShopKit.text(PlayerCopy.WARDROBE_SHORT_EARN, 17, CREAM, ShopKit.bold_font()))
 	var bundle := Bundles.cover(cost - balance, offer)
-	if get_pollen.is_valid() and not tier in NO_BUNDLE_TIERS and not bundle.is_empty(): _suggest(modal, bundle, Bundles.adds(bundle, offer) >= cost - balance, get_pollen, in_shop)
+	if is_instance_valid(buyer) and not tier in NO_BUNDLE_TIERS and not bundle.is_empty(): _suggest(modal, bundle, Bundles.adds(bundle, offer) >= cost - balance, buyer, credited, in_shop)
 	modal.refresh_focus_order()
 	return modal
 
 ## The suggested bundle's box: its art, "Get the Basket to buy this." ("to
 ## change your name." for a name change, `item` false; "The Basket gets you
-## closest." when even it does not `covers` the gap), and Get Pollen.
-static func _suggest(modal: Control, bundle: String, covers: bool, get_pollen: Callable, item: bool = true) -> void:
+## closest." when even it does not `covers` the gap), its price button, and
+## the line under the box for how a purchase ended.
+static func _suggest(modal: Control, bundle: String, covers: bool, buyer: Node, credited: Callable, item: bool = true) -> void:
 	var box := _box(modal.content, "WardrobeShortBundle")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
@@ -130,16 +126,12 @@ static func _suggest(modal: Control, bundle: String, covers: bool, get_pollen: C
 	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(line)
-	var button := Button.new()
-	button.name = "WardrobeGetPollen"
-	button.text = PlayerCopy.WARDROBE_GET_POLLEN
-	button.custom_minimum_size = Vector2(0, 50)
-	button.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	button.add_theme_font_size_override("font_size", 17)
-	button.pressed.connect(func() -> void:
-		modal.close(false)
-		get_pollen.call(bundle))
-	row.add_child(button)
+	var status := ShopKit.text("", 15, CREAM)
+	status.name = "WardrobeShortStatus"
+	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	status.visible = false
+	row.add_child(ShortCardBuy.make(modal, box, bundle, buyer, status, credited))
+	modal.content.add_child(status)
 
 static func _box(parent: Control, node_name: String) -> PanelContainer:
 	var box := PanelContainer.new()

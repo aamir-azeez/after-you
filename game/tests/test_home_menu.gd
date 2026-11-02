@@ -43,10 +43,10 @@ class StoreStub:
 	var opened := 0
 	var froms: Array = []
 	func available() -> bool: return on
-	func show_store(from: String = "wardrobe", bundle: String = "") -> void:
+	func show_store(from: String = "wardrobe") -> void:
 		opened += 1
-		froms.append([from, bundle])
-	func reopen() -> void: show_store(return_to, highlight)
+		froms.append(from)
+	func reopen() -> void: show_store(return_to)
 
 ## 1560x720 is a 2340x1080 phone (and a 1560x720 one); 1600x720 is what an
 ## 800x360 window gets from the canvas_items/expand stretch; 1280x960 a 4:3
@@ -394,7 +394,7 @@ func _test_pollen_routes(app: Node) -> void:
 	store.on = true
 	_check(play.store_open(), "Main wires the chip's plus to the Pollen store while it sells")
 	play.store_route.call("home")
-	_check(store.froms.back() == ["home", ""], "The plus opens the store with Back to Home: " + str(store.froms))
+	_check(store.froms.back() == "home", "The plus opens the store with Back to Home: " + str(store.froms))
 	store.on = false
 	_check(not play.store_open(), "No plus while the store cannot sell")
 	# The real store's Back: Home, or the Pollen page it was opened from (keeping the page's own Back).
@@ -420,13 +420,6 @@ func _test_pollen_routes(app: Node) -> void:
 	_check(wardrobe.opened.is_empty() and app.mode == "home", "Back from the page to a shut store opened from Home goes Home: " + str(wardrobe.opened))
 	wardrobe.on = false
 	app.pollen_store_flow = real_store
-	# The store opened from the name prompt's short card: Back goes Home first, then to Friends.
-	wardrobe.opened.clear()
-	real_store.return_to = "friends"
-	real_store.back_requested.emit()
-	await _frames()
-	# Friends itself then opens through Main's _show_friends, which needs the relay this test app lacks.
-	_check(wardrobe.opened.is_empty() and app.mode == "home", "Back from a store opened by the name prompt goes Home first (then Friends), never the Wardrobe: " + app.mode)
 	real_store.return_to = "wardrobe"
 	play.return_to = "home"
 	app.pollen_store_flow = real_store

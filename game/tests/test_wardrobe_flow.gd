@@ -49,8 +49,32 @@ var checks := 0
 var failures := 0
 var _paths: Array[String] = []
 
+## Stands in for the Pollen store's purchase engine (presentation/bundle_purchase.gd):
+## nothing priced yet, so a short card's button names its bundle and waits.
+class StubBuyer extends Node:
+	signal prices_changed(loaded: bool)
+	var flow: Node
+	var loads := 0
+	func priced() -> bool: return false
+	func loading() -> bool: return loads > 0
+	func load_prices() -> void: loads += 1
+	func ensure_prices() -> void: if not loading(): load_prices()
+	func price(_bundle: String) -> String: return ""
+	func ready_to_buy() -> bool: return false
+	func buy(_bundle: String, _done: Callable) -> String: return "busy"
+	func take_unseen() -> Array: return []
+
+## Stands in for Main's Pollen store flow: whether it sells, and its engine.
+class StoreStub extends Node:
+	var on := true
+	var purchase: Node
+	var opened: Array = []
+	func available() -> bool: return on
+	func show_store(from: String = "wardrobe") -> void: opened.append(from)
+
 class Host extends Node:
 	var api: Node = null
+	var pollen_store_flow: Node = null
 	var mode := ""
 	var running := true
 	var overlay: Control
@@ -119,6 +143,13 @@ func _setup(on: bool = true, bundles: bool = false) -> Dictionary:
 	flow.client = WardrobeClient.new(null, host._names_scope, fake.call_it, store, wallet)
 	flow.week = 3
 	flow.surfaces = PollenSurfaces.new(true, bundles)
+	if bundles:
+		var stub := StoreStub.new()
+		stub.purchase = StubBuyer.new()
+		stub.purchase.flow = stub
+		stub.add_child(stub.purchase)
+		host.add_child(stub)
+		host.pollen_store_flow = stub
 	# The shared wardrobe releases what the server offers (services/wardrobe.gd); the flow here uses its own store.
 	preload("res://services/cosmetic_catalog.gd").set_offered(SOLD + ["gold_leaf", "every_hard", "top_ten_ribbon"])
 	if on:
@@ -232,14 +263,14 @@ func _short_card() -> void:
 		_check(_plus_shown(t.host.overlay) == bundles, "The chip's + shows only while bundles sell (%s)" % bundles)
 		var opened: Array = []
 		var pollen := {"count": 0}
-		t.flow.store_requested.connect(func(bundle: String) -> void: opened.append(bundle))
+		t.flow.store_requested.connect(func() -> void: opened.append("store"))
 		t.flow.pollen_requested.connect(func() -> void: pollen.count += 1)
 		var chip: Control = t.host.overlay.find_child("PollenChip", true, false)
 		chip.amount_pressed.emit()
 		_check(pollen.count == 1 and opened.is_empty(), "The chip's balance asks for the Pollen page")
 		if bundles:
 			chip.plus_pressed.emit()
-			_check(opened == [""], "The chip's + asks for the store with nothing highlighted")
+			_check(opened == ["store"], "The chip's + asks for the store")
 			opened.clear()
 		t.flow.select("tide")
 		await t.flow.act("tide")
@@ -247,16 +278,19 @@ func _short_card() -> void:
 		var words := _texts(sheet)
 		_check(sheet != null and t.fake.sent.size() == 1, "A short balance opens the short card and sends nothing")
 		_check(PlayerCopy.WARDROBE_SHORT_NOTE % ["Tide", "20,000", "14,500"] in words and PlayerCopy.WARDROBE_SHORT_NEEDED in words and "5,500" + PlayerCopy.WARDROBE_SHORT_MORE in words, "It says what it costs, what you have and Needed: 5,500 more: " + str(words))
-		_check(PlayerCopy.WARDROBE_SHORT_STAYS in words and PlayerCopy.WARDROBE_SHORT_EARN in words, "It says it stays in the shop and to keep playing with friends")
+		_check(not "It stays in the shop." in words and PlayerCopy.WARDROBE_SHORT_EARN in words, "It says to keep playing with friends, and no more that it stays in the shop")
 		_check(not words.any(func(text: String) -> bool: return text.contains("$") or text.contains("week") or text.contains("day")), "It never shows money or a time to earn it")
 		_check((PlayerCopy.WARDROBE_SHORT_BUNDLE % "Pouch" in words) == bundles and words.any(func(text: String) -> bool: return text.contains("Pinch") or text.contains("Basket")) == false,
 			"While bundles sell it names the smallest bundle that covers 5,500, the Pouch (%s): %s" % [bundles, words])
-		var link: BaseButton = sheet.find_child("WardrobeGetPollen", true, false)
-		_check((link != null) == bundles and (sheet.find_child("WardrobeShortBundle", true, false) != null) == bundles, "Get Pollen and the bundle show only while bundles sell (%s)" % bundles)
-		if link != null:
-			link.pressed.emit()
+		var buy: BaseButton = sheet.find_child("WardrobeShortBuy", true, false)
+		_check((buy != null) == bundles and (sheet.find_child("WardrobeShortBundle", true, false) != null) == bundles and sheet.find_child("WardrobeGetPollen", true, false) == null, "The bundle and its buy button show only while bundles sell (%s)" % bundles)
+		if buy != null:
+			_check(_texts(buy) == ["Pouch"] and t.host.pollen_store_flow.purchase.loads == 1, "Before the store priced it the button names the Pouch, and the card asks for the prices: " + str(_texts(buy)))
+			buy.pressed.emit()
 			await _frames(2)
-			_check(opened == ["pouch"] and t.host.ui.find_child("WardrobeShort", true, false) == null, "Get Pollen closes the card and asks for the Pollen store on the Pouch: " + str(opened))
+			_check(opened.is_empty() and t.host.ui.find_child("WardrobeShort", true, false) != null, "Its tap stays on the card and opens no store page")
+		sheet.close()
+		await _frames(2)
 		t.flow.select("lantern")
 		await t.flow.act("lantern")
 		var epic: Node = t.host.ui.find_child("WardrobeShort", true, false)
@@ -272,7 +306,7 @@ func _short_card() -> void:
 	s.flow.select("lighthouse_lamp")
 	await s.flow.act("lighthouse_lamp")
 	var special: Node = s.host.ui.find_child("WardrobeShort", true, false)
-	_check(special != null and PlayerCopy.WARDROBE_SHORT_BUNDLE % "Basket" in _texts(special) and special.find_child("WardrobeGetPollen", true, false) != null, "Short 99,500 for a Special: the Basket")
+	_check(special != null and PlayerCopy.WARDROBE_SHORT_BUNDLE % "Basket" in _texts(special) and special.find_child("WardrobeShortBuy", true, false) != null, "Short 99,500 for a Special: the Basket")
 	s.host.queue_free()
 	await _frames(2)
 	# With the first bundle gift on, a 50,000 gap is the Jar's 44,000 and its 8,800 gift; past the Basket it gets you closest.

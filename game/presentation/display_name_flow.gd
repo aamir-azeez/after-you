@@ -19,8 +19,8 @@ extends Node
 ## wardrobe and wallet this phone keeps, and a saved change asks wardrobe_flow
 ## (refresh) to read them again. While the balance is short, the prompt's "Get
 ## Pollen" opens the Wardrobe's short of Pollen card (presentation/
-## wardrobe_sheets.gd, pollen board 6), whose own link opens the Pollen store
-## (pollen_store_flow, when Main has it and bundles sell) with Back to Friends.
+## wardrobe_sheets.gd, pollen board 6), which buys its bundle in place through
+## the Pollen store's purchase engine (pollen_store_flow, when Main has it and bundles sell).
 const DisplayNames = preload("res://services/display_names.gd")
 const DisplayNameClient = preload("res://services/display_name_client.gd")
 const Prompt = preload("res://presentation/display_name_prompt.gd")
@@ -124,23 +124,34 @@ func _price_for_prompt(current: Dictionary) -> Dictionary:
 	return _prompt_price
 
 ## The short of Pollen card for the change the open prompt prices (board 5b's
-## card, without "It stays in the shop."). Only while the Pollen store can open,
-## it suggests the smallest bundle that covers the change; its Get Pollen closes
-## the prompt and opens the store on that bundle, with Back to Friends.
+## card). Only while the Pollen store can open, it suggests the smallest bundle
+## that covers the change and buys it in place (presentation/short_card_buy.gd)
+## through the store's purchase engine; once that Pollen arrives the card
+## closes and the prompt shows the new balance, so Save is still the tap that spends.
 func _open_short(parent: Control, opener: Control) -> void:
 	var open: Variant = _short.get_ref() if _short != null else null
 	if (open is Node and is_instance_valid(open) and not open.is_queued_for_deletion()) or _prompt_price.is_empty() or not bool(_prompt_price.get("shown", false)) or not is_instance_valid(parent): return
 	var store: Variant = host.get("pollen_store_flow") if host != null else null
-	var to_store := Callable()
-	if store is Object and is_instance_valid(store) and store.available():
-		to_store = func(bundle: String) -> void:
-			var prompt: Variant = _prompt.get_ref() if _prompt != null else null
-			if prompt is Control and is_instance_valid(prompt): prompt.close(false)
-			store.show_store("friends", bundle)
-	var card: Control = WardrobeSheets.short(parent, PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "", int(_prompt_price.price), int(_prompt_price.balance), to_store, opener, false, _prompt_price.get("offer", {}))
+	var buyer: Node = store.get("purchase") if store is Object and is_instance_valid(store) and store.available() else null
+	var card: Control = WardrobeSheets.short(parent, PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "", int(_prompt_price.price), int(_prompt_price.balance), buyer, _after_bundle, opener, false, _prompt_price.get("offer", {}))
 	# The prompt's name tag draws one step up (over its pip); the card goes over the whole prompt.
 	card.z_index = 1
 	_short = weakref(card)
+
+## A bundle bought on the short card arrived: the card closes and the open
+## prompt shows its price and balance again from what this phone now keeps.
+func _after_bundle() -> void:
+	var open: Variant = _short.get_ref() if _short != null else null
+	if open is Control and is_instance_valid(open) and open.has_method("close"): open.close(false)
+	_short = null
+	var modal: Variant = _prompt.get_ref() if _prompt != null else null
+	if not modal is Control or not is_instance_valid(modal) or (modal as Control).is_queued_for_deletion(): return
+	var price := name_price(scope())
+	var prompt: Node = (modal as Control).find_child("DisplayNamePrompt", true, false)
+	# A price this phone cannot say now leaves the prompt's own, which the server checks on Save.
+	if prompt == null or price.is_empty(): return
+	_prompt_price = price
+	prompt.set_price(price)
 
 ## The Friends header's Display name chip, or null while names are off.
 func chip() -> Control:

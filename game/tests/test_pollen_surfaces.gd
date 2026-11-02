@@ -153,26 +153,47 @@ func _board_six(size: Vector2i) -> void:
 	holder.queue_free()
 	await process_frame
 
-## Stands in for Main's Pollen store flow: whether it can open, and where from.
+## Stands in for the Pollen store's purchase engine (presentation/bundle_purchase.gd):
+## nothing priced yet, so a short card's button names its bundle and waits.
+class StubBuyer extends Node:
+	signal prices_changed(loaded: bool)
+	var flow: Node
+	var loads := 0
+	func priced() -> bool: return false
+	func loading() -> bool: return loads > 0
+	func load_prices() -> void: loads += 1
+	func ensure_prices() -> void: if not loading(): load_prices()
+	func price(_bundle: String) -> String: return ""
+	func ready_to_buy() -> bool: return false
+	func buy(_bundle: String, _done: Callable) -> String: return "busy"
+	func take_unseen() -> Array: return []
+
+## Stands in for Main's Pollen store flow: whether it sells, and its engine.
 class StoreStub extends Node:
 	var on := true
+	var purchase: Node
 	var opened: Array = []
 	func available() -> bool: return on
-	func show_store(from: String = "wardrobe", bundle: String = "") -> void: opened.append([from, bundle])
+	func show_store(from: String = "wardrobe") -> void: opened.append(from)
 
 class FlowHost extends Node:
 	var pollen_store_flow: Node
+	func _names_scope() -> Dictionary: return {}
 
 ## Get Pollen's short card (board 5b's, for a name change): the cost and the
-## balance, no "It stays in the shop.", and, only while the store can open, the
-## smallest bundle that covers the change with its own Get Pollen, which closes
-## the prompt and opens the store on that bundle with Back to Friends.
+## balance, and, only while the store can open, the smallest bundle that covers
+## the change with its own buy button (presentation/short_card_buy.gd). Once
+## that Pollen arrives the card closes and the prompt stays; the prompt then
+## follows a new balance (set_price), and Save is still the tap that saves.
 func _short_card() -> void:
 	var holder := Control.new()
 	holder.size = Vector2(1280, 720)
 	root.add_child(holder)
 	var host := FlowHost.new()
 	host.pollen_store_flow = StoreStub.new()
+	host.pollen_store_flow.purchase = StubBuyer.new()
+	host.pollen_store_flow.purchase.flow = host.pollen_store_flow
+	host.pollen_store_flow.add_child(host.pollen_store_flow.purchase)
 	host.add_child(host.pollen_store_flow)
 	root.add_child(host)
 	var flow := Flow.new(host)
@@ -187,17 +208,30 @@ func _short_card() -> void:
 	_check(cards.size() == 1, "A second tap opens no second card")
 	var card: Control = cards[0] if not cards.is_empty() else null
 	var words: Array = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
-	_check(words.has(PlayerCopy.WARDROBE_SHORT_NOTE % [PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "1,000", "600"]) and words.has("400" + PlayerCopy.WARDROBE_SHORT_MORE) and not words.has(PlayerCopy.WARDROBE_SHORT_STAYS), "The short card names the change and what is needed, and nothing about the shop: " + str(words))
-	var link := card.find_child("WardrobeGetPollen", true, false) as BaseButton if card != null else null
-	_check(link != null and words.has(PlayerCopy.WARDROBE_SHORT_BUNDLE_NAME % "Pinch"), "Its own Get Pollen shows while the store can open, with the Pinch that covers 400")
-	if link != null: link.pressed.emit()
+	_check(words.has(PlayerCopy.WARDROBE_SHORT_NOTE % [PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "1,000", "600"]) and words.has("400" + PlayerCopy.WARDROBE_SHORT_MORE) and not words.has("It stays in the shop."), "The short card names the change and what is needed, and nothing about the shop: " + str(words))
+	var buy := card.find_child("WardrobeShortBuy", true, false) as BaseButton if card != null else null
+	_check(buy != null and card.find_child("WardrobeGetPollen", true, false) == null and words.has(PlayerCopy.WARDROBE_SHORT_BUNDLE_NAME % "Pinch"), "Its own buy button shows while the store can open, with the Pinch that covers 400")
+	flow._after_bundle()
 	await process_frame
-	_check(host.pollen_store_flow.opened == [["friends", "pinch"]] and (not is_instance_valid(prompt_card) or prompt_card.is_queued_for_deletion()), "It closes the prompt and opens the store with Back to Friends")
+	_check((not is_instance_valid(card) or card.is_queued_for_deletion()) and is_instance_valid(prompt_card) and not prompt_card.is_queued_for_deletion() and host.pollen_store_flow.opened.is_empty(), "Once the Pollen arrived the card closes, the prompt stays and no store page opens")
+	var prompt: Node = prompt_card.find_child("DisplayNamePrompt", true, false)
+	var tries: Array = []
+	prompt._context.save = func(choice: String, typed: String) -> Dictionary:
+		tries.append([choice, typed])
+		return {"closed": false, "code": "busy"}
+	prompt.field.text = "Robin Sky"
+	prompt.field.text_changed.emit("Robin Sky")
+	prompt.set_price({"price": 1000, "balance": 600, "shown": true, "next": 1000})
+	_check(prompt.save_button.disabled, "Short of Pollen, Save waits")
+	prompt.set_price({"price": 1000, "balance": 5600, "shown": true, "next": 1000})
+	await process_frame
+	_check(not prompt.save_button.disabled and tries.is_empty() and prompt._have_label.text == PlayerCopy.DISPLAY_NAME_PRICE_HAVE % "5,600", "With the new balance Save is ready, and nothing saves until it is tapped")
+	prompt_card.close()
 	host.pollen_store_flow.on = false
 	flow._open_short(holder, null)
 	await process_frame
 	var shut := holder.find_children("WardrobeShort", "", true, false).filter(func(node: Node) -> bool: return not node.is_queued_for_deletion())
-	_check(shut.size() == 1 and shut[0].find_child("WardrobeGetPollen", true, false) == null and shut[0].find_child("WardrobeShortBundle", true, false) == null, "With the store shut the card suggests nothing")
+	_check(shut.size() == 1 and shut[0].find_child("WardrobeShortBuy", true, false) == null and shut[0].find_child("WardrobeShortBundle", true, false) == null, "With the store shut the card suggests nothing")
 	shut[0].close()
 	flow._prompt_price = {"price": 1000, "balance": 600, "shown": false, "next": 1000}
 	flow._open_short(holder, null)

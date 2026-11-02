@@ -298,10 +298,9 @@ const WARDROBE_DRAG := "Drag to turn your pip."
 const WARDROBE_STAYS := "Every item stays in the shop"
 const WARDROBE_BUY_FOR := "Buy for"
 const WARDROBE_NOT_FOR_SALE := "Not for sale"
-## The short card's Needed box ("Needed: [grain] 5,500 more"), and its link to the Pollen store.
+## The short card's Needed box ("Needed: [grain] 5,500 more"); Get Pollen is the name card's link and the chip's +.
 const WARDROBE_SHORT_NEEDED := "Needed:"
 const WARDROBE_SHORT_MORE := " more"
-const WARDROBE_SHORT_STAYS := "It stays in the shop."
 const WARDROBE_GET_POLLEN := "Get Pollen"
 ## The short card's nudge to the smallest bundle that covers the gap, or the largest when none does.
 const WARDROBE_SHORT_BUNDLE := "Get the %s to buy this."

@@ -8,14 +8,11 @@ extends Node
 ## iPhone build never open it. On iPhone the prices load, and Buy opens Apple's
 ## sheet, only after this run's capabilities read (Main._read_store_support).
 ##
-## What a bundle adds is never decided here. Before Google Play's sheet opens,
-## the flow marks a claim as waiting (services/bundle_claims.gd mark_pending), so
-## a purchase is claimed even if the app closes during the sheet; a cancelled
-## sheet drops the mark. After the sheet says the purchase went through, the
-## flow asks the server to claim it and shows the receipt from the server's
-## answer. A claim that gets no answer stays waiting and goes again on the next
-## flush; its receipt shows the next time the store opens. The store's prices come
-## only from the RevenueCat offering "pollen" (services/pollen_bundles.gd).
+## The prices, the store's sheet and the claim after it are its child
+## `purchase` (presentation/bundle_purchase.gd), which a short of Pollen card
+## buys through too. After a purchase here the receipt shows from the server's
+## answer; a claim that gets no answer stays waiting and goes again on the next
+## flush, and its receipt shows the next time the store opens.
 ##
 ## Main hosts it as a child and reads Main only through this host contract
 ## (read at call time, so Main or a test can swap a service):
@@ -33,9 +30,7 @@ extends Node
 ##   (presentation/pollen_purchases_view.gd), read once each time it opens
 ## It asks Main to leave through back_requested and to open the Wardrobe
 ## through wardrobe_requested. `return_to` names where Back goes ("wardrobe";
-## "friends" when the name prompt's short card opened it; "home" from Home's
-## chip; "pollen" from the Pollen page's chip); Main reads it. A short card
-## opens the store with the bundle it suggests highlighted (`highlight`).
+## "home" from Home's chip; "pollen" from the Pollen page's chip); Main reads it.
 ##
 ## Taps go through a BusyTapGate: a bundle tapped while the store is still
 ## loading waits for its prices instead of being dropped.
@@ -49,18 +44,13 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
-const StoreSupport = preload("res://services/store_support.gd")
 const StoreCurrency = preload("res://services/store_currency.gd")
 const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
 ## The receipt sounds on the host's soundscape (play_on).
 const Soundscape = preload("res://services/soundscape.gd")
+const BundlePurchase = preload("res://presentation/bundle_purchase.gd")
 
 const MODE_POLLEN_STORE := "pollen_store"
-## How long the store waits for RevenueCat to be set up for this player.
-const SETUP_WAIT_MS := 15000
-## Claims sent right after a purchase before leaving it to the flush, and the pause between them (growing).
-const CLAIM_TRIES := 3
-const CLAIM_PAUSE_S := 1.5
 
 signal back_requested
 signal wardrobe_requested
@@ -75,38 +65,24 @@ var wardrobe: RefCounted
 var wallet: RefCounted
 ## () -> bool, awaited: RevenueCat is set up for the signed-in player. Tests set their own.
 var store_ready: Callable
+## The one purchase engine (presentation/bundle_purchase.gd), shared with the short of Pollen cards.
+var purchase: BundlePurchase
 var _page: Page
 var _gate: BusyTapGate
 var _sheet: WeakRef = null
-## Bundle id -> the offering's package for it, once the store priced it.
-var _packages: Dictionary = {}
 var _status := ""
 var _retry := false
-var _loaded := false
-var _request := ""
-var _buying := ""
-## The package being bought, kept for its local price on the receipt.
-var _bought: Dictionary = {}
-## Whether this purchase set the waiting mark (a cancel then drops it).
-var _marked := false
-## The receipts known when this purchase began (_receipts_known): a new one
-## for its bundle means its claim was credited, even by a flush the app sent on
-## its return from the store's sheet. Its claim takes this and _bought as its own when the
-## sheet closes, so a purchase made while it still tries never changes them.
-var _known_at_buy: Array = []
-## Receipts this page showed (and so marked seen), newest last: a claim whose
-## receipt another purchase showed first still counts as credited.
-var _shown: Array = []
-var _generation := 0
 ## The Previous purchases sheet's history reads; only the newest one draws.
 var _purchase_reads := 0
-## Where Back returns: "wardrobe" (Main goes to the Wardrobe, or Home), "friends", "home" or "pollen".
+## Where Back returns: "wardrobe" (Main goes to the Wardrobe, or Home), "home" or "pollen".
 var return_to := "wardrobe"
-## The bundle a short card suggested, drawn highlighted while the store shows ("" for none).
-var highlight := ""
 
 func _init(main: Node = null) -> void:
 	host = main
+	purchase = BundlePurchase.new(self)
+	purchase.name = "BundlePurchase"
+	add_child(purchase, false, Node.INTERNAL_MODE_BACK)
+	purchase.prices_changed.connect(_on_prices)
 
 func _surfaces() -> RefCounted:
 	if surfaces == null: surfaces = PollenSurfaces.shared()
@@ -135,16 +111,13 @@ func available() -> bool:
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
-## Opens the store, its Back going to `from`, with `bundle` highlighted ("" for none).
-func show_store(from: String = "wardrobe", bundle: String = "") -> void:
+## Opens the store, its Back going to `from`.
+func show_store(from: String = "wardrobe") -> void:
 	if not available(): return
 	return_to = from
-	highlight = bundle if bundle in Bundles.ids() else ""
-	_connect_purchases()
 	host.running = false
 	host.mode = MODE_POLLEN_STORE
 	host._clear_overlay()
-	_generation += 1
 	_page = Page.new()
 	_page.back_pressed.connect(func() -> void: back_requested.emit())
 	_page.bundle_pressed.connect(tap_bundle)
@@ -155,8 +128,6 @@ func show_store(from: String = "wardrobe", bundle: String = "") -> void:
 	host.overlay.add_child(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
 	_gate = BusyTapGate.new(_page)
-	_packages = {}
-	_loaded = false
 	_status = PlayerCopy.POLLEN_STORE_LOADING
 	_retry = false
 	_redraw()
@@ -165,156 +136,68 @@ func show_store(from: String = "wardrobe", bundle: String = "") -> void:
 	_show_unseen()
 	load_store()
 
-## Opens the store again with the Back and the highlight it had (when the Pollen page it opened goes Back).
+## Opens the store again with the Back it had (when the Pollen page it opened goes Back).
 func reopen() -> void:
-	show_store(return_to, highlight)
+	show_store(return_to)
 
-## Reads the store's prices for the bundles.
+## Reads the store's prices for the bundles (purchase.load_prices; a read
+## already out, from a short card, is the one this waits for).
 func load_store() -> void:
 	if not is_open(): return
-	var generation := _generation
 	_status = PlayerCopy.POLLEN_STORE_LOADING
 	_retry = false
 	_redraw()
-	var ready: bool = await _store_ready()
-	if not is_open() or generation != _generation: return
-	# An iPhone asks the server once this run before it prices anything; its answer may close the store.
-	if ready and host.has_method("_read_store_support"):
-		await host._read_store_support()
-		if not is_open() or generation != _generation: return
-		ready = available() and StoreSupport.shared().read_now()
-	if not ready:
-		_fail_load()
-		return
-	_request = host.purchases.fetch_offerings()
+	purchase.load_prices()
 
-func _fail_load() -> void:
-	_status = PlayerCopy.POLLEN_STORE_OFFLINE
-	_retry = true
-	_loaded = false
+func _on_prices(loaded: bool) -> void:
+	if not is_open(): return
+	_status = "" if loaded else PlayerCopy.POLLEN_STORE_OFFLINE
+	_retry = not loaded
 	_redraw()
-
-func _store_ready() -> bool:
-	if store_ready.is_valid(): return await store_ready.call()
-	var flow: Variant = host.get("store_flow")
-	if flow == null: return false
-	if host.has_method("_ensure_identity") and not await host._ensure_identity(): return false
-	if not flow.store_configured: flow.configure_purchases(true)
-	var deadline := Time.get_ticks_msec() + SETUP_WAIT_MS
-	while not flow.identity_ready():
-		if Time.get_ticks_msec() >= deadline or not is_open(): return false
-		# A set-up that already failed (no request out, nothing configured) is not waited for.
-		if not flow.store_configured and str(flow.store_configure_request).is_empty() and Time.get_ticks_msec() >= deadline - SETUP_WAIT_MS + 500: return false
-		await get_tree().process_frame
-	return true
-
-func _connect_purchases() -> void:
-	var purchases: Variant = host.get("purchases")
-	if purchases == null: return
-	if not purchases.completed.is_connected(_on_completed): purchases.completed.connect(_on_completed)
-	if not purchases.failed.is_connected(_on_failed): purchases.failed.connect(_on_failed)
-
-func _on_completed(id: String, operation: String, payload: Dictionary) -> void:
-	if operation == "get_offerings" and id == _request:
-		_request = ""
-		if not is_open(): return
-		_packages = Bundles.packages(payload)
-		_loaded = not _packages.is_empty()
-		_status = "" if _loaded else PlayerCopy.POLLEN_STORE_OFFLINE
-		_retry = not _loaded
-		_redraw()
-	elif operation == "purchase_package" and id == _buying:
-		var bought := _bought
-		var known := _known_at_buy
-		_buying = ""
-		_bought = {}
-		_known_at_buy = []
-		_marked = false
-		await _claim_after_purchase(bought, known)
-
-func _on_failed(id: String, operation: String, _code: String, message: String, cancelled: bool) -> void:
-	if operation == "get_offerings" and id == _request:
-		_request = ""
-		if is_open(): _fail_load()
-	elif operation == "purchase_package" and id == _buying:
-		_buying = ""
-		_bought = {}
-		_known_at_buy = []
-		# Only a cancelled sheet surely took no payment; any other failure may settle later, so its mark stays.
-		if cancelled and _marked: _claims().drop_mark()
-		_marked = false
-		_toast(PlayerCopy.MAIN_B621C76A2638 if cancelled else message)
-		_redraw()
 
 ## A bundle's price button: waits for the prices, then opens the confirm card.
 func tap_bundle(id: String) -> void:
 	if not is_open() or _gate == null: return
 	var button: Button = _page.button(id)
 	if button == null: return
-	_gate.tap(button, "", func() -> bool: return _loaded and _buying.is_empty() and not _claims().sending(), func() -> void: confirm(id), func() -> bool: return is_open(),
+	_gate.tap(button, "", purchase.ready_to_buy, func() -> void: confirm(id), func() -> bool: return is_open(),
 		func() -> void: _toast(PlayerCopy.POLLEN_STORE_OFFLINE))
 
 ## The confirm card for `id` (after a tap; tests call it directly).
 func confirm(id: String) -> void:
-	if not is_open() or not _packages.has(id) or not _buying.is_empty(): return
+	if not is_open() or not purchase.packages.has(id) or not purchase.buying.is_empty(): return
 	_close_sheet()
-	var package: Dictionary = _packages[id]
 	var gift := Bundles.gift(id, Bundles.gift_percent(_view().get("bundles", {})))
-	_sheet = weakref(Sheets.confirm(host.ui, id, str(package.price), gift, _balance(), _balance_known(), func() -> void: buy(id), _page.button(id)))
+	_sheet = weakref(Sheets.confirm(host.ui, id, purchase.price(id), gift, _balance(), _balance_known(), func() -> void: buy(id), _page.button(id)))
 
 ## The confirm card's Buy: hands over to the store's sheet.
 func buy(id: String) -> void:
 	_close_sheet()
-	if not is_open() or not _packages.has(id) or not _buying.is_empty() or not available(): return
-	# Money moves only on this run's answer (services/store_support.gd): on iPhone, available() above
-	# then reads the bundles that same capabilities read set.
-	if not StoreSupport.shared().read_now():
-		_toast(PlayerCopy.POLLEN_STORE_OFFLINE)
-		return
-	_bought = _packages[id].duplicate()
-	_bought.bundle = id
-	# The mark goes on before the sheet, so a purchase is claimed even if the app closes during it.
-	_marked = _claims().mark_pending()
-	_known_at_buy = _receipts_known()
-	_buying = host.purchases.purchase(str(_bought.offering_id), str(_bought.id))
+	if not is_open(): return
+	var refused: String = purchase.buy(id, _purchase_ended)
+	# Refused with no purchase out: this run's store answer, or prices a new read took away.
+	if not refused.is_empty() and purchase.buying.is_empty(): _toast(PlayerCopy.POLLEN_STORE_OFFLINE)
 
-## After the store took the payment: the server claims it, then the receipt shows.
-## `bought` and `known` are this purchase's own (_bought and _known_at_buy at its Buy).
-func _claim_after_purchase(bought: Dictionary, known: Array) -> void:
-	# RevenueCat may list a purchase a moment after the store's sheet closes: a few quick tries, then the flush's.
-	for attempt in range(CLAIM_TRIES):
-		if attempt > 0: await get_tree().create_timer(CLAIM_PAUSE_S * attempt).timeout
-		# Always asked once: a flush that credited an older purchase first clears the mark this one needs.
-		await _claims().claim()
-		# Credited by this claim, or by a flush (the app's return from the store's sheet) before it.
-		if _credited_since(known, str(bought.get("bundle", ""))): break
-		if not is_inside_tree(): return
-	if not _credited_since(known, str(bought.get("bundle", ""))):
-		# The purchase stands; the claim stays waiting and goes again on the next flush.
-		_toast(PlayerCopy.POLLEN_STORE_ON_ITS_WAY)
-		_redraw()
-		return
-	_show_unseen(bought)
-
-## The receipts this page showed and those still unseen.
-func _receipts_known() -> Array:
-	return _shown + _claims().unseen()
-
-## Whether a receipt for `bundle` came that `known` (_receipts_known at a Buy)
-## did not have. Another bundle's receipt is another purchase's.
-func _credited_since(known: Array, bundle: String) -> bool:
-	return _receipts_known().any(func(receipt: Dictionary) -> bool: return str(receipt.bundle) == bundle and not receipt in known)
+## How a purchase from this page ended: the receipt, or why there is none.
+func _purchase_ended(ended: Dictionary) -> void:
+	match str(ended.outcome):
+		"credited": _show_unseen(ended.bought)
+		"on_its_way":
+			# The purchase stands; the claim stays waiting and goes again on the next flush.
+			_toast(PlayerCopy.POLLEN_STORE_ON_ITS_WAY)
+			_redraw()
+		_:
+			_toast(PlayerCopy.MAIN_B621C76A2638 if ended.outcome == "cancelled" else str(ended.message))
+			_redraw()
 
 ## Shows the receipts the player has not seen, newest last on top. `bought`,
 ## the package a purchase just paid for, gives the receipt its local price.
 func _show_unseen(bought: Dictionary = {}) -> void:
 	if not is_open(): return
-	var receipts: Array = _claims().unseen()
+	var receipts: Array = purchase.take_unseen()
 	if receipts.is_empty():
 		_redraw()
 		return
-	_claims().mark_seen()
-	_shown = (_shown + receipts).slice(-BundleClaims.MAX_UNSEEN * 2)
 	_close_sheet()
 	var newest: Dictionary = receipts.back()
 	var paid := str(bought.get("price", "")) if str(bought.get("bundle", "")) == str(newest.bundle) else ""
@@ -361,14 +244,14 @@ func model() -> Dictionary:
 	var part: Dictionary = view.get("bundles", {})
 	var bundles: Array = []
 	for id: String in Bundles.ids():
-		var package: Dictionary = _packages.get(id, {})
+		var package: Dictionary = purchase.packages.get(id, {})
 		var micros := int(package.get("price_micros", 0))
 		var currency := str(package.get("currency", ""))
 		var per := ""
 		if micros > 0: per = (PlayerCopy.POLLEN_STORE_PER_DOLLAR % PollenMoney.grouped(Bundles.per_unit(id, micros))) if currency in ["", "USD"] else (PlayerCopy.POLLEN_STORE_PER_UNIT % [PollenMoney.grouped(Bundles.per_unit(id, micros)), currency])
 		bundles.append({"id": id, "name": str(PlayerCopy.POLLEN_STORE_BUNDLES.get(id, id)), "pollen": Bundles.pollen(id), "base": Bundles.base(id), "bonus": Bundles.bonus(id),
 			"percent": Bundles.bonus_percent(id), "per": per, "price": str(package.get("price", ""))})
-	return {"balance": _balance(), "balance_known": _balance_known(), "status": _status, "retry": _retry, "gift_percent": Bundles.gift_percent(part), "bundles": bundles, "highlight": highlight}
+	return {"balance": _balance(), "balance_known": _balance_known(), "status": _status, "retry": _retry, "gift_percent": Bundles.gift_percent(part), "bundles": bundles}
 
 func _redraw() -> void:
 	if is_open(): _page.render(model())

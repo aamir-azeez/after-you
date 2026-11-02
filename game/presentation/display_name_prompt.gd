@@ -446,6 +446,12 @@ func _show() -> void:
 		if not _platform_name.is_empty() and not _busy: _platform_note.text = _platform_name
 	_show_price()
 
+## The price and balance changed while the card is open (Pollen bought on its
+## short card): Save and the lines follow them. Saving still takes Save's tap.
+func set_price(price: Dictionary) -> void:
+	_context.price = price
+	_show()
+
 ## What saving the choice now costs: 0 for anonymous, the name already set, or a free change.
 func cost() -> int:
 	return choice_cost(_context.get("price", {}), _context.get("own", {}), _choice, _chosen_name())

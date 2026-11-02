@@ -15,8 +15,7 @@ extends Control
 ##
 ## A view only: presentation/pollen_store_flow.gd builds the model and answers
 ## the signals. The model: balance (int; -1 while unknown), status, retry,
-## gift_percent (0 hides the first bundle line), highlight (the bundle a short
-## card suggested, drawn with a gold edge; "" for none), and bundles: Array of
+## gift_percent (0 hides the first bundle line), and bundles: Array of
 ## {id, name, pollen, base, bonus, percent, per, price}, in store order.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
@@ -38,7 +37,6 @@ const CARD := Color("f5eedb")
 const BONUS := Color("dcefe2")
 const PRICE := Color("234e47")
 ## The suggested bundle's edge, from the store card's gold family (the chip's gain gold).
-const HIGHLIGHT := PollenChip.GOLD
 
 signal back_pressed
 signal bundle_pressed(id: String)
@@ -209,20 +207,18 @@ func render(model: Dictionary) -> void:
 		_cards.remove_child(child)
 		child.queue_free()
 	_buttons.clear()
-	var highlight := str(model.get("highlight", ""))
-	for entry: Dictionary in model.get("bundles", []): _cards.add_child(_card(entry, str(entry.id) == highlight))
+	for entry: Dictionary in model.get("bundles", []): _cards.add_child(_card(entry))
 
 ## The price button of a bundle, or null (tests, the flow's tap gate).
 func button(id: String) -> Button:
 	return _buttons.get(id)
 
-## A bundle's card; `picked`: the bundle a short card suggested, with a gold edge.
-func _card(entry: Dictionary, picked: bool = false) -> Control:
+## A bundle's card.
+func _card(entry: Dictionary) -> Control:
 	var panel := PanelContainer.new()
 	panel.name = "PollenStoreBundle_" + str(entry.id)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	var card := ThemeRules.rounded(CARD, 22, HIGHLIGHT if picked else Color.TRANSPARENT)
-	if picked: card.set_border_width_all(4)
+	var card := ThemeRules.rounded(CARD, 22)
 	panel.add_theme_stylebox_override("panel", ThemeRules.padded(card, 16, 16))
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 6)

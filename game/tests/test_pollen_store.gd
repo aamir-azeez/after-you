@@ -22,12 +22,20 @@ extends SceneTree
 ##   next visit; a refund the server took back shows in the balance, below zero;
 ## - a tap while a claim is still out waits for it (first taps);
 ## - the claims service checks every answer and keeps its waiting mark on disk;
-## - the bundle a short card suggests (services/pollen_bundles.gd cover) and
-##   its highlight; the chip without a plus, whose balance opens the Pollen
+## - the bundle a short card suggests (services/pollen_bundles.gd cover); the
+##   chip without a plus, whose balance opens the Pollen
 ##   page (or goes Back to it when the page opened the store); Previous
 ##   purchases opens the receipts list from one history read, money only in US
-##   dollars; the footnote no longer points to Settings.
+##   dollars; the footnote no longer points to Settings;
+## - a Wardrobe short card buys its bundle in place through the same purchase
+##   engine (presentation/short_card_buy.gd): the bundle's name while the prices
+##   load, then its store price; one purchase for any number of taps; once the
+##   Pollen arrives the item's confirm card opens on the new balance and nothing
+##   is spent without its Buy; a bundle that only got closer opens the short
+##   card again; cancelled, failed and on its way stay on the card with their
+##   line; on iPhone the same, after this run's server answer, at Apple's price.
 const Flow = preload("res://presentation/pollen_store_flow.gd")
+const BundlePurchase = preload("res://presentation/bundle_purchase.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const Bundles = preload("res://services/pollen_bundles.gd")
@@ -39,7 +47,9 @@ const PlatformSupport = preload("res://services/platform_support.gd")
 const StoreSupport = preload("res://services/store_support.gd")
 const StoreCurrency = preload("res://services/store_currency.gd")
 const PollenHistory = preload("res://services/pollen_history.gd")
-const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
+const WardrobeFlow = preload("res://presentation/wardrobe_flow.gd")
+const WardrobeClient = preload("res://services/wardrobe_client.gd")
+const Catalog = preload("res://services/cosmetic_catalog.gd")
 
 # Synthetic ids only.
 const ME := "bbbbbbbbbbbbbbbbbbbbbb"
@@ -61,6 +71,7 @@ class Host extends Node:
 	var earning_opened := 0
 	var earning_opens := true
 	var pollen_client: RefCounted = null
+	var pollen_store_flow: Node = null
 	func show_pollen_from_play() -> bool:
 		earning_opened += 1
 		return earning_opens
@@ -90,6 +101,8 @@ class FakePurchases extends Node:
 	signal failed(request_id: String, operation: String, code: String, message: String, cancelled: bool)
 	var offerings: Dictionary = {}
 	var offerings_fail := false
+	## The read stays out until a test answers it.
+	var offerings_silent := false
 	## "ok", "cancel" or "fail".
 	var outcome := "ok"
 	var bought: Array = []
@@ -97,7 +110,8 @@ class FakePurchases extends Node:
 	func fetch_offerings() -> String:
 		serial += 1
 		var id := "read-%d" % serial
-		if offerings_fail: failed.emit.call_deferred(id, "get_offerings", "revenuecat_NETWORK_ERROR", "No store", false)
+		if offerings_silent: pass
+		elif offerings_fail: failed.emit.call_deferred(id, "get_offerings", "revenuecat_NETWORK_ERROR", "No store", false)
 		else: completed.emit.call_deferred(id, "get_offerings", offerings)
 		return id
 	func purchase(offering_id: String, package_id: String) -> String:
@@ -229,6 +243,9 @@ func _run() -> void:
 	_cover()
 	await _suggested_and_routes()
 	await _previous_purchases()
+	await _short_card_buys()
+	await _short_card_outcomes()
+	await _short_card_iphone()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -251,8 +268,8 @@ func _gates() -> void:
 
 func _cards() -> void:
 	var t := _setup()
-	t.flow.show_store("friends")
-	_check(t.flow.return_to == "friends", "Opened from the name prompt's short card, Back goes to Friends")
+	t.flow.show_store("home")
+	_check(t.flow.return_to == "home", "Opened from Home's chip, Back goes Home")
 	t.flow.show_store()
 	_check(t.flow.return_to == "wardrobe", "and from the Wardrobe, back there")
 	_check(t.host.mode == Flow.MODE_POLLEN_STORE and t.flow.is_open() and PlayerCopy.POLLEN_STORE_LOADING in _texts(t.host.overlay), "The store opens and says it is loading")
@@ -262,7 +279,7 @@ func _cards() -> void:
 	for id: String in Bundles.ORDER:
 		_check(page.find_child("PollenStoreBundle_" + id, true, false) != null and page.find_child("PollenStoreBuy_" + id, true, false) != null, "The %s card and its price button show" % id)
 	_check("$0.99" in words and "$3.99" in words and "$7.99" in words and "$19.99" in words, "Each price is the store's own: " + str(words))
-	_check(not "after_you_full_journey_monthly" in str(t.flow._packages) and t.flow._packages.size() == 4, "Only the Pollen offering's packages are read")
+	_check(not "after_you_full_journey_monthly" in str(t.flow.purchase.packages) and t.flow.purchase.packages.size() == 4, "Only the Pollen offering's packages are read")
 	_check(PlayerCopy.POLLEN_STORE_NO_BONUS in words and PlayerCopy.POLLEN_STORE_BONUS % ["20,000", "1,000", 5] in words and PlayerCopy.POLLEN_STORE_BONUS % ["40,000", "4,000", 10] in words and PlayerCopy.POLLEN_STORE_BONUS % ["100,000", "15,000", 15] in words, "Bonus lines in plain Pollen and percent")
 	for row: Array in [["5,051"], ["5,263"], ["5,507"], ["5,753"]]:
 		_check(PlayerCopy.POLLEN_STORE_PER_DOLLAR % row[0] in words, "Pollen per $1: %s in %s" % [row[0], words])
@@ -392,9 +409,9 @@ func _claim_waits() -> void:
 	await _frames()
 	t.flow.buy("pinch")
 	await _frames(4)
-	await create_timer(Flow.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+	await create_timer(BundlePurchase.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
 	await _frames(4)
-	_check(t.fake.sent.size() == Flow.CLAIM_TRIES and t.claims.pending() and PlayerCopy.POLLEN_STORE_ON_ITS_WAY in t.host.toasts, "No answer: a few tries, then it waits and the player is told it is on its way")
+	_check(t.fake.sent.size() == BundlePurchase.CLAIM_TRIES and t.claims.pending() and PlayerCopy.POLLEN_STORE_ON_ITS_WAY in t.host.toasts, "No answer: a few tries, then it waits and the player is told it is on its way")
 	var reload: RefCounted = BundleClaims.new(t.claims.path, t.store, t.wallet)
 	reload.connect_to(null, t.host._names_scope, t.fake.call_it)
 	_check(reload.pending(), "The waiting claim survives a restart")
@@ -428,7 +445,7 @@ func _resume_flush_first() -> void:
 		await _frames()
 		t.flow.buy("pouch")
 		await _frames(2)
-		var buying: String = t.flow._buying
+		var buying: String = t.flow.purchase.buying
 		t.fake.delay = 1 if flushed_first else 20
 		t.fake.replies = [_credited("pouch", 0, 30000), {"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": 30000.0, "pending": false, "refunded": [], "credited": []}}]
 		if flushed_first: await t.claims.flush()
@@ -436,7 +453,7 @@ func _resume_flush_first() -> void:
 			t.claims.flush()
 			await _frames(2)
 		t.purchases.completed.emit(buying, "purchase_package", {"schema_version": 1})
-		await create_timer(Flow.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+		await create_timer(BundlePurchase.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
 		await _frames(4)
 		var lines := _texts(t.host.ui.find_child("PollenStoreReceipt", true, false))
 		var case := "flushed first" if flushed_first else "flush still sending"
@@ -460,7 +477,7 @@ func _second_purchase_while_trying() -> void:
 		await _frames()
 		t.flow.buy("pouch")
 		await _frames(2)
-		var first: String = t.flow._buying
+		var first: String = t.flow.purchase.buying
 		t.fake.replies = [nothing_new.call(9000)]
 		t.purchases.completed.emit(first, "purchase_package", {"schema_version": 1})
 		await _frames(4)
@@ -470,11 +487,11 @@ func _second_purchase_while_trying() -> void:
 		await t.claims.flush()
 		t.flow.buy("jar")
 		await _frames(2)
-		var second: String = t.flow._buying
+		var second: String = t.flow.purchase.buying
 		_check(second != first and not second.is_empty(), "%s: the second bundle's sheet opens while the first still tries" % case)
 		var jar := _credited("jar", 0, 74000, "GPA.1234-5678-9012-34568")
 		t.fake.replies = [jar if both_at_once else nothing_new.call(30000)]
-		await create_timer(Flow.CLAIM_PAUSE_S + 0.5).timeout
+		await create_timer(BundlePurchase.CLAIM_PAUSE_S + 0.5).timeout
 		await _frames(4)
 		var lines := _texts(t.host.ui.find_child("PollenStoreReceipt", true, false))
 		if both_at_once: _check(PlayerCopy.POLLEN_STORE_ADDED % "44,000" in lines, "%s: the first purchase's claim shows the newest receipt: %s" % [case, lines])
@@ -482,7 +499,7 @@ func _second_purchase_while_trying() -> void:
 		_check(not PlayerCopy.POLLEN_STORE_ON_ITS_WAY in t.host.toasts, "%s: the first purchase never says 'on its way' once credited: %s" % [case, t.host.toasts])
 		t.fake.replies = [nothing_new.call(74000) if both_at_once else jar]
 		t.purchases.completed.emit(second, "purchase_package", {"schema_version": 1})
-		await create_timer(Flow.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+		await create_timer(BundlePurchase.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
 		await _frames(4)
 		# The first receipt was still freeing as this one opened, so this one is found by its sheet, not its name.
 		lines = _texts(t.flow._sheet.get_ref() if t.flow._sheet != null else null)
@@ -502,18 +519,18 @@ func _other_bundle_credited_first() -> void:
 	await _frames()
 	t.flow.buy("pouch")
 	await _frames(2)
-	var first: String = t.flow._buying
+	var first: String = t.flow.purchase.buying
 	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "balance": 9000.0, "pending": false, "refunded": [], "credited": []}}]
 	t.purchases.completed.emit(first, "purchase_package", {"schema_version": 1})
 	await _frames(4)
 	t.flow.buy("jar")
 	await _frames(2)
 	t.fake.replies = [_credited("jar", 0, 53000, "GPA.1234-5678-9012-34568")]
-	t.purchases.completed.emit(t.flow._buying, "purchase_package", {"schema_version": 1})
+	t.purchases.completed.emit(t.flow.purchase.buying, "purchase_package", {"schema_version": 1})
 	await _frames(4)
 	var lines := _texts(t.flow._sheet.get_ref() if t.flow._sheet != null else null)
 	_check(PlayerCopy.POLLEN_STORE_ADDED % "44,000" in lines and PlayerCopy.POLLEN_STORE_ORDER % ["$7.99", "GPA.1234-5678-9012-34568"] in lines, "The second purchase shows its own receipt and price: %s" % [lines])
-	await create_timer(Flow.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+	await create_timer(BundlePurchase.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
 	await _frames(4)
 	_check(PlayerCopy.POLLEN_STORE_ON_ITS_WAY in t.host.toasts and t.claims.pending(), "The first purchase, never listed, keeps waiting and says it is on its way: %s" % [t.host.toasts])
 	t.host.queue_free()
@@ -615,7 +632,7 @@ func _iphone() -> void:
 	await _frames()
 	var words := _texts(t.host.overlay)
 	_check(t.host.reads == 1, "The store asks the server once this run before it prices anything")
-	_check("$1.49" in words and "$4.99" in words and "$8.99" in words and "$21.99" in words and t.flow._packages.size() == 4, "Each price is the App Store's own: " + str(words))
+	_check("$1.49" in words and "$4.99" in words and "$8.99" in words and "$21.99" in words and t.flow.purchase.packages.size() == 4, "Each price is the App Store's own: " + str(words))
 	for amount: String in ["3,356", "4,208", "4,894", "5,230"]:
 		_check(PlayerCopy.POLLEN_STORE_PER_DOLLAR % amount in words, "Pollen per $1 at the App Store's prices: %s in %s" % [amount, words])
 	_check(PlayerCopy.POLLEN_STORE_FOOT_IOS in words and not PlayerCopy.POLLEN_STORE_FOOT in words, "The footnote names the App Store")
@@ -642,7 +659,7 @@ func _iphone() -> void:
 	off.purchases.offerings = _ios_offerings()
 	off.flow.show_store()
 	await _frames()
-	_check(off.host.reads == 1 and off.purchases.serial == 0 and off.flow._packages.is_empty() and not off.flow.available(), "No App Store bundles on the server: nothing priced, nothing to buy")
+	_check(off.host.reads == 1 and off.purchases.serial == 0 and off.flow.purchase.packages.is_empty() and not off.flow.available(), "No App Store bundles on the server: nothing priced, nothing to buy")
 	off.host.queue_free()
 	await _frames(2)
 	# No answer this run (the read failed): the store prices nothing, and Buy opens no sheet even with a package in hand.
@@ -656,8 +673,8 @@ func _iphone() -> void:
 	failed.purchases.offerings = _ios_offerings()
 	failed.flow.show_store()
 	await _frames()
-	_check(failed.host.reads == 1 and failed.purchases.serial == 0 and failed.flow._packages.is_empty() and PlayerCopy.POLLEN_STORE_OFFLINE in _texts(failed.host.overlay), "Without this run's answer the store prices nothing and says it isn't reachable")
-	failed.flow._packages = Bundles.packages(_ios_offerings())
+	_check(failed.host.reads == 1 and failed.purchases.serial == 0 and failed.flow.purchase.packages.is_empty() and PlayerCopy.POLLEN_STORE_OFFLINE in _texts(failed.host.overlay), "Without this run's answer the store prices nothing and says it isn't reachable")
+	failed.flow.purchase.packages = Bundles.packages(_ios_offerings())
 	failed.flow.buy("pinch")
 	await _frames(4)
 	_check(failed.purchases.bought.is_empty() and failed.host.toasts.has(PlayerCopy.POLLEN_STORE_OFFLINE) and not failed.claims.pending(), "and Buy opens no sheet and sets no claim mark")
@@ -676,34 +693,27 @@ func _cover() -> void:
 	_check(Bundles.cover(50000, {"first_gift": false, "first_gift_percent": 20}) == "basket", "A used gift counts for nothing")
 	_check(Bundles.cover(500000) == "basket", "A gap no bundle covers points to the largest")
 
-## A short card's suggestion opens the store with that bundle highlighted; the
-## chip there has no plus and its balance opens the Pollen page, or goes Back
-## to it when the Pollen page opened the store.
+## The store's chip has no plus and its balance opens the Pollen page, or goes
+## Back to it when the Pollen page opened the store.
 func _suggested_and_routes() -> void:
 	var t := _setup()
-	t.flow.show_store("wardrobe", "basket")
+	t.flow.show_store("wardrobe")
 	await _frames()
 	var page: Node = t.host.overlay
-	var picked := (page.find_child("PollenStoreBundle_basket", true, false) as Control).get_theme_stylebox("panel") as StyleBoxFlat
-	var other := (page.find_child("PollenStoreBundle_jar", true, false) as Control).get_theme_stylebox("panel") as StyleBoxFlat
-	_check(t.flow.highlight == "basket" and picked.border_width_top > 0 and picked.border_color == PollenChip.GOLD and other.border_width_top == 0, "The suggested bundle has a gold edge, the others none")
 	var chip: Control = page.find_child("PollenChip", true, false)
 	_check(chip != null and chip.plus_button == null, "The store's own chip has no plus")
 	chip.amount_pressed.emit()
 	_check(t.host.earning_opened == 1, "Its balance opens the Pollen page")
 	t.flow.show_store("pollen")
 	await _frames()
-	_check(t.flow.highlight == "" and page.find_child("PollenStoreBundle_basket", true, false).get_theme_stylebox("panel").border_width_top == 0, "Opened without a suggestion, no bundle is highlighted")
 	var back := {"count": 0}
 	t.flow.back_requested.connect(func() -> void: back.count += 1)
 	(page.find_child("PollenChip", true, false) as Control).amount_pressed.emit()
 	(page.find_child("PollenStoreEarn", true, false) as Button).pressed.emit()
 	_check(back.count == 2 and t.host.earning_opened == 1, "Opened from the Pollen page, its balance and Earn go Back to it instead of stacking another")
-	t.flow.show_store("home", "jar")
+	t.flow.show_store("home")
 	t.flow.reopen()
-	_check(t.flow.return_to == "home" and t.flow.highlight == "jar", "Opening again keeps its Back and its highlight")
-	t.flow.show_store("home", "chest")
-	_check(t.flow.highlight == "", "An unknown bundle is never highlighted")
+	_check(t.flow.return_to == "home", "Opening again keeps its Back")
 	t.host.queue_free()
 	await _frames(2)
 
@@ -762,3 +772,154 @@ static func _texts(node: Node) -> Array:
 	if (node is Label or node is Button) and not str(node.text).is_empty(): out.append(node.text)
 	for child: Node in node.get_children(): out.append_array(_texts(child))
 	return out
+
+## A Wardrobe on the store test's host, its page open on Daisy (1,000) with
+## `balance`; the short card's buyer is this store's purchase engine.
+func _wardrobe_on(t: Dictionary, balance: int) -> Node:
+	Catalog.set_offered(["daisy"])
+	t.host.pollen_store_flow = t.flow
+	var view := _view(false, 0, balance)
+	t.store.note_view(SERVER, ME, view)
+	t.wallet.note_wallet(SERVER, ME, view)
+	var flow: Node = WardrobeFlow.new(t.host)
+	t.host.add_child(flow)
+	flow.client = WardrobeClient.new(null, t.host._names_scope, t.fake.call_it, t.store, t.wallet)
+	flow.surfaces = PollenSurfaces.new(true, true)
+	t.fake.replies = [{"ok": true, "status": 200, "data": view}]
+	flow.show_wardrobe()
+	await _frames()
+	t.fake.sent.clear()
+	flow.select("daisy")
+	await flow.act("daisy")
+	return flow
+
+## The button's words (its content label).
+static func _buy_words(button: Node) -> Array:
+	return _texts(button) if button != null else []
+
+func _short_card_buys() -> void:
+	var t := _setup()
+	t.purchases.offerings_silent = true
+	var flow := await _wardrobe_on(t, 500)
+	var card: Node = t.host.ui.find_child("WardrobeShort", true, false)
+	var words := _texts(card)
+	_check(card != null and not words.has("It stays in the shop.") and PlayerCopy.WARDROBE_SHORT_EARN in words and PlayerCopy.WARDROBE_SHORT_BUNDLE % "Pinch" in words, "The short card says no more that it stays in the shop, and names the Pinch: " + str(words))
+	var button: Button = card.find_child("WardrobeShortBuy", true, false) if card != null else null
+	_check(button != null and card.find_child("WardrobeGetPollen", true, false) == null, "Get Pollen gives way to the bundle's own buy button")
+	_check(_buy_words(button) == ["Pinch"] and t.flow.purchase.loading() and t.purchases.serial == 1, "While the store prices it, the button names the Pinch and one price read is out: " + str(_buy_words(button)))
+	t.fake.replies = [_credited("pinch", 0, 5500)]
+	button.pressed.emit()
+	button.pressed.emit()
+	await _frames(4)
+	_check(t.purchases.bought.is_empty(), "A tap while the prices load waits for them")
+	t.purchases.completed.emit(t.flow.purchase.request, "get_offerings", _offerings())
+	await _frames(2)
+	button.pressed.emit()
+	await _frames(12)
+	_check(t.purchases.bought == [["pollen", "pinch_package"]], "The prices came: one purchase of the Pinch for every tap: " + str(t.purchases.bought))
+	var short_left: Array = t.host.ui.find_children("WardrobeShort", "", true, false).filter(func(node: Node) -> bool: return not node.is_queued_for_deletion())
+	var confirm: Node = t.host.ui.find_child("WardrobeConfirm", true, false)
+	var lines := _texts(confirm)
+	_check(short_left.is_empty() and confirm != null and "5,500" in lines and "4,500" in lines, "Once the Pollen arrived the short card gave way to Daisy's confirm card on 5,500: " + str(lines))
+	_check(t.fake.sent.size() == 1 and t.fake.sent[0].path == BundleClaims.CLAIM_PATH and t.claims.unseen().is_empty() and not t.claims.pending(), "Only the claim was sent, nothing was spent, and the receipt counts as seen")
+	_check(t.host.ui.find_child("PollenStoreReceipt", true, false) == null, "No receipt card over the confirm card")
+	t.host.queue_free()
+	await _frames(2)
+	# A price already read: the button shows it at once. A bundle that only got closer opens the short card again.
+	var c := _setup()
+	c.flow.purchase.load_prices()
+	await _frames(2)
+	await _wardrobe_on(c, 500)
+	var again: Node = c.host.ui.find_child("WardrobeShort", true, false)
+	var priced: Button = again.find_child("WardrobeShortBuy", true, false) if again != null else null
+	_check(_buy_words(priced) == ["$0.99"] and c.purchases.serial == 1, "Prices already read: the button shows the Pinch's store price, with no second read: " + str(_buy_words(priced)))
+	c.fake.replies = [_credited("pinch", 0, 900)]
+	priced.pressed.emit()
+	await _frames(12)
+	# The new card takes a fresh name while the old one is still leaving.
+	var shorts: Array = c.host.ui.get_children().filter(func(node: Node) -> bool: return node.find_child("WardrobeShortNeed", true, false) != null and not node.is_queued_for_deletion())
+	_check(shorts.size() == 1 and "100" + PlayerCopy.WARDROBE_SHORT_MORE in _texts(shorts[0]) and c.host.ui.find_child("WardrobeConfirm", true, false) == null, "Still short on 900: the short card opens again with the new gap: " + str(c.host.ui.get_children().map(func(node: Node) -> Array: return _texts(node))))
+	c.host.queue_free()
+	await _frames(2)
+
+func _short_card_outcomes() -> void:
+	for row: Array in [["cancel", PlayerCopy.MAIN_B621C76A2638], ["fail", "The store had a problem."]]:
+		var t := _setup()
+		t.purchases.outcome = row[0]
+		await _wardrobe_on(t, 500)
+		var card: Node = t.host.ui.find_child("WardrobeShort", true, false)
+		var button: Button = card.find_child("WardrobeShortBuy", true, false)
+		button.pressed.emit()
+		await _frames(8)
+		var status: Label = card.find_child("WardrobeShortStatus", true, false)
+		_check(is_instance_valid(card) and not card.is_queued_for_deletion() and status.visible and status.text == row[1] and not button.disabled, "%s: the card stays with its line, and the button can be tapped again: %s" % [row[0], status.text])
+		_check(t.fake.sent.is_empty() and (row[0] != "cancel" or not t.claims.pending()), "%s: nothing is claimed; a cancel drops the mark" % row[0])
+		t.host.queue_free()
+		await _frames(2)
+	# A card closed while its tap waits for the prices buys nothing.
+	var gone := _setup()
+	gone.purchases.offerings_silent = true
+	await _wardrobe_on(gone, 500)
+	var leaving: Node = gone.host.ui.find_child("WardrobeShort", true, false)
+	(leaving.find_child("WardrobeShortBuy", true, false) as Button).pressed.emit()
+	await _frames(2)
+	leaving.close()
+	gone.purchases.completed.emit(gone.flow.purchase.request, "get_offerings", _offerings())
+	await _frames(8)
+	_check(gone.purchases.bought.is_empty() and not gone.claims.pending(), "A card closed while its tap waits opens no store sheet")
+	gone.host.queue_free()
+	await _frames(2)
+	# The claim gets no answer: the purchase stands, on its way, and the card can close.
+	var w := _setup()
+	await _wardrobe_on(w, 500)
+	var waiting: Node = w.host.ui.find_child("WardrobeShort", true, false)
+	var buy: Button = waiting.find_child("WardrobeShortBuy", true, false)
+	buy.pressed.emit()
+	await _frames(4)
+	_check(buy.disabled and _texts(buy) == ["$0.99"], "While the purchase is out the button takes no taps")
+	await create_timer(BundlePurchase.CLAIM_PAUSE_S * 3.0 + 0.5).timeout
+	var line: Label = waiting.find_child("WardrobeShortStatus", true, false)
+	_check(line.visible and line.text == PlayerCopy.POLLEN_STORE_ON_ITS_WAY and buy.disabled and w.claims.pending() and w.purchases.bought.size() == 1, "No answer: it says the Pollen is on its way, the claim waits, and no second purchase can start")
+	var close: Button = waiting.find_child("ModalClose", true, false)
+	close.pressed.emit()
+	await _frames(2)
+	_check(not is_instance_valid(waiting) or waiting.is_queued_for_deletion(), "and the card closes")
+	w.host.queue_free()
+	await _frames(2)
+
+func _short_card_iphone() -> void:
+	PlatformSupport.override_platform = PlatformSupport.IOS
+	var support: RefCounted = StoreSupport.new(_path("store-support-short"))
+	StoreSupport.use_shared(support)
+	var t := _setup(true, true, true, true)
+	support.scope_source = t.host._names_scope
+	t.host.support = support
+	t.host.store = t.store
+	t.purchases.offerings = _ios_offerings()
+	await _wardrobe_on(t, 500)
+	await _frames(4)
+	var card: Node = t.host.ui.find_child("WardrobeShort", true, false)
+	var button: Button = card.find_child("WardrobeShortBuy", true, false)
+	_check(t.host.reads == 1 and _buy_words(button) == ["$1.49"], "iPhone: the card asks the server once this run, then shows the App Store's price: " + str(_buy_words(button)))
+	t.fake.replies = [_credited("pinch", 0, 5500, "2000000000000311", Bundles.APP_STORE)]
+	button.pressed.emit()
+	await _frames(12)
+	_check(t.purchases.bought == [["pollen", "pinch"]] and t.host.ui.find_child("WardrobeConfirm", true, false) != null, "iPhone: the App Store's Pinch, then Daisy's confirm card")
+	t.host.queue_free()
+	await _frames(2)
+	# This run's server answer turns App Store bundles off: the card keeps only the earning line.
+	var off := _setup(true, true, true, true)
+	support.scope_source = off.host._names_scope
+	off.host.support = support
+	off.host.store = off.store
+	off.host.answer = "off"
+	off.purchases.offerings = _ios_offerings()
+	await _wardrobe_on(off, 500)
+	await _frames(4)
+	var shut: Node = off.host.ui.find_child("WardrobeShort", true, false)
+	var bundle_box: Control = shut.find_child("WardrobeShortBundle", true, false) if shut != null else null
+	_check(shut != null and bundle_box != null and not bundle_box.visible and PlayerCopy.WARDROBE_SHORT_EARN in _texts(shut) and off.purchases.bought.is_empty(), "iPhone, bundles off this run: the bundle box goes, the earning line stays: " + str(_texts(shut)))
+	off.host.queue_free()
+	await _frames(2)
+	StoreSupport.use_shared(null)
+	PlatformSupport.override_platform = ""

@@ -11,6 +11,8 @@ extends Node
 ##   _clear_overlay, _toast, and _mark_screen_back when Main has it (Android Back)
 ## - soundscape when Main has it (play_fixed_cue): worn, taken off and bought.
 ##   wear_item() stays quiet: its caller (a room's Wear it) sounds it on its own.
+## - pollen_store_flow when Main has it: its `purchase` engine, through which
+##   the short card buys the bundle it suggests.
 ## It asks Main to leave through back_requested. Settings opens it with
 ## show_wardrobe() when available(), and the display name flow calls refresh()
 ## after a saved change.
@@ -23,9 +25,11 @@ extends Node
 ## drops, with the balance: no All items tab, no shelf of the week, no price
 ## and no Buy.
 ## While bundles sell too (the server's POLLEN_BUNDLES and a build that sells
-## them, services/pollen_surfaces.gd bundles_visible), the balance chip's + and
-## the short card's Get Pollen ask the host to open the Pollen store
-## (store_requested), the short card's with the bundle it suggests highlighted.
+## them, services/pollen_surfaces.gd bundles_visible), the balance chip's + asks
+## the host to open the Pollen store (store_requested), and the short card
+## buys the bundle it suggests in place, at the store's price: once that Pollen
+## arrives the item's confirm card opens on the new balance, so the item still
+## takes its own Buy tap.
 ## The chip's balance asks for the Pollen page (pollen_requested).
 ## Hooks for later phases: reaction packs (owned `packs`, the server's
 ## `offered_packs`) and sets (`sets`) are kept by services/wardrobe.gd and
@@ -55,9 +59,8 @@ const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const MODE_WARDROBE := "wardrobe"
 
 signal back_requested
-## The balance chip's + or the short card's Get Pollen: open the Pollen store,
-## with `bundle` highlighted ("" for none).
-signal store_requested(bundle: String)
+## The balance chip's +: open the Pollen store.
+signal store_requested
 ## The balance chip's balance: open the Pollen page.
 signal pollen_requested
 
@@ -116,7 +119,7 @@ func show_wardrobe(from: String = "settings") -> void:
 	_page.more_chosen.connect(show_more)
 	_page.action_pressed.connect(tap_action)
 	_page.retry_pressed.connect(refresh)
-	_page.plus_pressed.connect(func() -> void: if bundles(): store_requested.emit(""))
+	_page.plus_pressed.connect(func() -> void: if bundles(): store_requested.emit())
 	_page.pollen_pressed.connect(func() -> void: pollen_requested.emit())
 	host.overlay.add_child(_page)
 	_gate = BusyTapGate.new(_page)
@@ -202,10 +205,28 @@ func act(id: String) -> void:
 	var parent: Control = host.ui
 	var opener: Control = _page.action_button if is_open() else null
 	if balance < int(entry.price):
-		# The card suggests the smallest bundle that covers the gap; its Get Pollen opens the store on it.
-		var get_pollen := (func(bundle: String) -> void: store_requested.emit(bundle)) if bundles() else Callable()
-		_sheet = weakref(Sheets.short(parent, str(entry.name), str(entry.tier), int(entry.price), balance, get_pollen, opener, true, _view().get("bundles", {})))
+		# The card suggests the smallest bundle that covers the gap and buys it in place.
+		var card: Control = Sheets.short(parent, str(entry.name), str(entry.tier), int(entry.price), balance, _buyer(), _after_bundle.bind(id), opener, true, _view().get("bundles", {}))
+		card.set_meta(&"short_for", id)
+		_sheet = weakref(card)
 	else: _sheet = weakref(Sheets.confirm(parent, id, str(entry.name), int(entry.price), balance, func() -> void: confirm_buy(id, int(entry.price)), opener))
+
+## The Pollen store's purchase engine (presentation/bundle_purchase.gd) while bundles sell, else null.
+func _buyer() -> Node:
+	var store: Variant = host.get("pollen_store_flow") if host != null else null
+	if not bundles() or not store is Object or not is_instance_valid(store) or not store.available(): return null
+	return store.get("purchase")
+
+## A bundle bought on item `id`'s short card arrived: while that card is still
+## up, it closes and the item's card opens on the new balance (the confirm
+## card, or the short card again when the bundle only got closer). Nothing is spent here.
+func _after_bundle(id: String) -> void:
+	var open: Variant = _sheet.get_ref() if _sheet != null else null
+	if not open is Control or not is_instance_valid(open) or (open as Control).is_queued_for_deletion() or str((open as Control).get_meta(&"short_for", "")) != id: return
+	_close_sheet()
+	if not is_open(): return
+	_redraw()
+	await act(id)
 
 ## The confirm card's Buy: sends the purchase at the cost the card showed.
 func confirm_buy(id: String, cost: int) -> void:
