@@ -150,7 +150,8 @@ func ride_start(_state: Dictionary, from: Vector3) -> Variant:
 
 ## Where the pip's head would meet the track: under the rail's dip (x -0.72
 ## to 0.72, lower than 0.95 m, and the loop on Hard) and a head's half width
-## either side. The hops round to the stand go past its ends instead.
+## either side. The hops round to the stand, and the pip walking, go past
+## its ends instead.
 func ride_overhead(_state: Dictionary) -> Array[Rect2]:
 	return [Rect2(-1.0, -0.65, 2.0, 1.3)]
 

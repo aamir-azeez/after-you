@@ -47,7 +47,8 @@ extends RefCounted
 ##   off the islands (a jetty).
 ## - ride_start(state, from): where the pip must stand to ride, when the
 ##   Explore action sets it off from somewhere it cannot (null: anywhere);
-##   ride_overhead(state): ground the hops round to there keep off.
+##   ride_overhead(state): ground under low parts that the hops round to
+##   there, and every Explore walk, keep off.
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Anim = preload("res://presentation/keepsakes/keepsake_anim.gd")
 const BASE_MAX := 4.45
@@ -142,8 +143,10 @@ func stay() -> Rect2:
 func ride_start(_state: Dictionary, _from: Vector3) -> Variant:
 	return null
 
-## The ground under parts that hang too low for the pip to hop beneath (the
-## Rolling Rail's dip), which the hops round to ride_start() keep off.
+## The ground under parts that hang too low for the pip to pass beneath (the
+## Rolling Rail's dip), in every look: the hops round to ride_start() keep off
+## it, and so does an Explore walk (home_keepsake_layer.gd), which a pip
+## standing under it when it appears leaves by any way out.
 func ride_overhead(_state: Dictionary) -> Array[Rect2]:
 	return []
 

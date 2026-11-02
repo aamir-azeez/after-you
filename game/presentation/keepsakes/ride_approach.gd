@@ -28,7 +28,7 @@ static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: f
 	for rect: Rect2 in overhead:
 		if rect.has_point(start): return _out_from_under(from, to, rect.grow(TURN_OUT), solids, clearance, walkable, overhead)
 	var blocked: Array[Rect2] = solids.duplicate()
-	for rect: Rect2 in overhead: blocked.append(rect.grow(-clearance))
+	blocked.append_array(kept_off(overhead, clearance))
 	# A leg may graze the pip's room round a solid, never cut into it.
 	var rooms: Array[Rect2] = []
 	for rect: Rect2 in blocked: rooms.append(rect.grow(clearance - 0.01))
@@ -71,6 +71,14 @@ static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: f
 		for hop in range(1, hops + 1):
 			var at := a.lerp(b, float(hop) / hops)
 			result.append(Vector3(at.x, 0.0, at.y))
+	return result
+
+## The solids that keep a pip's middle, `clearance` round, off the ground
+## under `overhead` parts: the way round here and an Explore walk on Home
+## (home_keepsake_layer.gd) both keep off the same ground.
+static func kept_off(overhead: Array[Rect2], clearance: float) -> Array[Rect2]:
+	var result: Array[Rect2] = []
+	for rect: Rect2 in overhead: result.append(rect.grow(-clearance))
 	return result
 
 ## From under an overhead part (`out` is its ground grown by TURN_OUT): out by

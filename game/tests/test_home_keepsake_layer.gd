@@ -6,8 +6,9 @@ extends SceneTree
 ## the card away; the isles and their plank bridges; still parts folded and
 ## moving parts kept within budget; a burst of changes rebuilt once; taps,
 ## repeat taps, Reduce motion, leaving Home mid tap and Explore walk ups;
-## triggers, rides and stays in Explore, and everything settling back to rest;
-## the card's lines, marks and count; the Home bridge in Explore.
+## triggers, rides and stays in Explore, the Rolling Rail's low dip walked
+## round, and everything settling back to rest; the card's lines, marks and
+## count; the Home bridge in Explore.
 const World = preload("res://presentation/island_world.gd")
 const Stage = preload("res://presentation/home_stage.gd")
 const Layer = preload("res://presentation/home_keepsake_layer.gd")
@@ -54,6 +55,7 @@ func _run() -> void:
 	await _check_explore()
 	_check_ride_route()
 	await _check_explore_rides()
+	await _check_rail_dip()
 	await _check_explore_roam()
 	await _check_rail_face()
 	await _check_explore_bridge()
@@ -780,6 +782,21 @@ func _ride_spots(layer: Node3D, id: String) -> Array[Vector3]:
 			spots.append(local)
 	return spots
 
+## Spots in a ride's own frame under its low dip, clear of the solids beneath
+## it, where the action shows: where a pip stands when the rail appears over it.
+func _under_dip(layer: Node3D, id: String) -> Array[Vector3]:
+	var placed: Transform3D = layer.slot_transform(id)
+	var builder: RefCounted = layer._builders[id]
+	var spots: Array[Vector3] = []
+	for rect: Rect2 in builder.ride_overhead(layer.current_props()[id].state):
+		var inner := rect.grow(-0.1)
+		for x in range(5):
+			for z in range(4):
+				var local := Vector3(inner.position.x + inner.size.x * x / 4.0, 0, inner.position.y + inner.size.y * z / 3.0)
+				var at := placed * local
+				if layer._ground(at) and not layer.blocks(at, Layer.WALK_CLEARANCE, id) and layer.nearest(at, Stage.EXPLORE_NOTICE) == id: spots.append(local)
+	return spots
+
 ## The way round (ride_approach.gd): a pip standing in a room's square corner,
 ## as far from the solid as it may walk, still finds a way whose first leg
 ## keeps that far, and one nearer finds none; ground under a low overhead part
@@ -846,7 +863,7 @@ func _check_explore_rides() -> void:
 			_check(not far.is_empty(), "%s's action is offered on its far side (%s): %d spots, %d far" % [id, look, spots.size(), far.size()])
 			# From every spot that offers it there is a way round, so none plays as a tap.
 			var Approach: GDScript = load("res://presentation/keepsakes/ride_approach.gd")
-			var ground := func(at: Vector2) -> bool: return layer.walkable(placed * Vector3(at.x, 0, at.y))
+			var ground := func(at: Vector2) -> bool: return layer.approach_ground(id, placed * Vector3(at.x, 0, at.y))
 			var stuck := spots.filter(func(at: Vector3) -> bool: return Approach.route(at, builder.ride_start(state, at), layer.current_props()[id].solids, Layer.WALK_CLEARANCE, ground, builder.ride_overhead(state)).is_empty())
 			_check(stuck.is_empty(), "From every spot offering %s there is a way round (%s): none from %s" % [id, look, stuck])
 			# From its start it rides at once.
@@ -863,8 +880,10 @@ func _check_explore_rides() -> void:
 			var tried: Array[Vector3] = []
 			for index in range(0, spots.size(), maxi(1, spots.size() / 8)): tried.append(spots[index])
 			if not far.is_empty(): tried.append_array([far[0], far[far.size() - 1]])
-			# And from under a low overhead part (the rail's dip), if one is offered.
-			var under_dip := spots.filter(func(at: Vector3) -> bool: return overhead.any(func(rect: Rect2) -> bool: return rect.grow(-0.1).has_point(Vector2(at.x, at.z))))
+			# And from under a low overhead part (the rail's dip), which the pip
+			# never walks under but stands under when the rail appears over it.
+			var under_dip := _under_dip(layer, id)
+			_check(spots.all(func(at: Vector3) -> bool: return not overhead.any(func(rect: Rect2) -> bool: return rect.grow(-0.02).has_point(Vector2(at.x, at.z)))), "No spot offering %s is under its low dip (%s)" % [id, look])
 			if not under_dip.is_empty(): tried.append(under_dip[under_dip.size() / 2])
 			_check(overhead.is_empty() or not under_dip.is_empty(), "%s is offered from under its low dip too (%s)" % [id, look])
 			for local: Vector3 in tried:
@@ -899,7 +918,8 @@ func _check_explore_rides() -> void:
 					var here: Vector3 = placed.affine_inverse() * flat
 					if not arrived:
 						var below: bool = under.call(here)
-						clear = clear and layer._ground(flat) and not layer.blocks(flat, Layer.WALK_CLEARANCE - 0.015) and not (below and out_from_under)
+						var in_dip := overhead.any(func(rect: Rect2) -> bool: return rect.has_point(Vector2(here.x, here.z)))
+						clear = clear and layer._ground(flat) and not layer.blocks(flat, Layer.WALK_CLEARANCE - 0.015, id if in_dip else "") and not (below and out_from_under)
 						out_from_under = out_from_under or not below
 					arrived = arrived or flat.distance_to(goal) < 0.05
 					if arrived: risen = maxf(risen, spirit.position.y)
@@ -1043,6 +1063,95 @@ func _check_rail_face() -> void:
 			_check(not layer.riding() and pip.expression_target() != &"happy", "and its face is back to normal just after it lands")
 			layer.stop_play()
 	await _close(home)
+
+## The Rolling Rail's low dip, in every look (plain, Together, Hard, all and
+## the outline of a chapter started): the joystick walks the pip round it, never
+## under it, from in front or behind; pushed at a slant into it the pip slides
+## along; a pip standing under it when it appears walks out by some way, and
+## never into the posts or the Hard plinth beneath it on the way; a wandering
+## spirit never heads under it.
+func _check_rail_dip() -> void:
+	const ID := "rolling-home"
+	var key := ""
+	for eligible: String in HardMode.eligible_keys():
+		if eligible.begins_with(ID): key = eligible
+	var started: Array[Dictionary] = []
+	for item: Dictionary in _cleared(ID, true, false):
+		if started.is_empty(): started.append(item)
+	var looks := {
+		"plain": [_cleared(ID, true, false), {}, "keepsake"],
+		"together": [_cleared(ID, true, true), {}, "keepsake"],
+		"hard": [_cleared(ID, true, false), {key: {"solo": true, "together": false}}, "keepsake"],
+		"all": [_everything(), _all_hard(), "keepsake"],
+		"outline": [started, {}, "started"],
+	}
+	for look: String in looks:
+		var home := await _home(Vector2i(1560, 720), looks[look][0], looks[look][1])
+		var stage: Control = home.stage
+		var layer: Node3D = home.layer
+		var pip: Node3D = home.world.actors.a
+		await _settle(layer)
+		stage._explore_button.pressed.emit()
+		var prop: Dictionary = layer.current_props().get(ID, {})
+		_check(prop.get("look", "") == looks[look][2] and not (prop.get("overhead", []) as Array).is_empty(), "The Rolling Rail stands drawn as %s and keeps the pip from under its dip (%s)" % [looks[look][2], look])
+		if prop.is_empty():
+			await _close(home)
+			continue
+		var placed: Transform3D = layer.slot_transform(ID)
+		var back: Transform3D = placed.affine_inverse()
+		var dips: Array[Rect2] = layer._builders[ID].ride_overhead(prop.state)
+		var under := func(at: Vector3) -> bool:
+			var local := back * Vector3(at.x, 0, at.z)
+			return dips.any(func(rect: Rect2) -> bool: return rect.grow(-0.04).has_point(Vector2(local.x, local.z)))
+		# Straight at it with the joystick, from in front and from behind.
+		var walked := 0
+		for side: float in [1.0, -1.0]:
+			var from := placed * Vector3(0.45, 0, 1.3 * side)
+			if not layer.walkable(from): continue
+			walked += 1
+			pip.position = from
+			stage._explore_last = from
+			stage._stick.value = _push_toward(placed.basis * Vector3(0, 0, -side)).normalized()
+			var kept := true
+			for frame in range(60):
+				stage._process(1.0 / 30.0)
+				kept = kept and not under.call(pip.position)
+			stage._stick.value = Vector2.ZERO
+			var reached: float = (back * pip.position).z * side
+			_check(kept and reached < 0.75, "The joystick walks the pip up to the dip from %s and never under it (%s): stopped %.2f m out" % ["in front" if side > 0.0 else "behind", look, reached])
+		_check(walked > 0, "The pip walks up to the dip from at least one side (%s)" % look)
+		# At a slant it slides along the dip's side.
+		var slant_from := placed * Vector3(-0.3, 0, 0.85)
+		var slid := slant_from
+		var slid_clear := true
+		for move in range(40):
+			slid = layer.step(slid, placed.basis * (Vector3(0.6, 0, -0.8) * 0.05))
+			slid_clear = slid_clear and not under.call(slid)
+		_check(slid_clear and (back * slid).x > 0.5, "Pushed at a slant into the dip the pip slides along it (%s): %s" % [look, back * slid])
+		# Standing under the dip when it appears, it walks out, never into a post.
+		var spots := _under_dip(layer, ID)
+		_check(spots.size() >= 8, "There are spots under the dip clear of its posts (%s): %d" % [look, spots.size()])
+		var stuck: Array[Vector3] = []
+		var into: Array[String] = []
+		for local: Vector3 in spots:
+			var out := false
+			for way: Vector3 in [Vector3(1, 0, 0), Vector3(-1, 0, 0), Vector3(0, 0, 1), Vector3(0, 0, -1)]:
+				var at := placed * local
+				for move in range(30):
+					at = layer.step(at, placed.basis * (way * 0.05))
+					if layer._solid_distance(ID, at) < Layer.WALK_CLEARANCE - 0.001: into.append("%s by %s" % [local, way])
+				out = out or (not under.call(at) and layer.walkable(at))
+			if not out: stuck.append(local)
+		_check(stuck.is_empty(), "A pip under the dip when it appears walks out (%s): stuck at %s" % [look, stuck])
+		_check(into.is_empty(), "and never into a post or plinth under it on the way (%s): %s" % [look, into])
+		# A wandering spirit never heads under it either.
+		var front := placed * Vector3(0.45, 0, 1.3)
+		var goals := 0
+		for x in range(9):
+			for z in range(5):
+				if not layer.blocks_step(front, placed * Vector3(-0.9 + x * 0.225, 0, -0.55 + z * 0.275), Stage.SPIRIT_CLEARANCE): goals += 1
+		_check(goals == 0, "A wandering spirit never heads for the ground under the dip (%s): %d goals" % [look, goals])
+		await _close(home)
 
 ## Spirits wandering at Home never walk into a keepsake.
 func _frames(stage: Control, world: Node3D, count: int, step: float = 1.0 / 30.0) -> void:
