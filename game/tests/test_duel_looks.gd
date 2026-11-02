@@ -17,6 +17,9 @@ const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
 const PartyPage = preload("res://presentation/duels/duel_party_page.gd")
 const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
+const SlotLooks = preload("res://presentation/slot_looks.gd")
+const Registry = preload("res://services/chapter_registry.gd")
+const CheckpointPairs = preload("res://services/checkpoint_pairs.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
@@ -67,6 +70,7 @@ func _run() -> void:
 	Wardrobe.use_shared(Dressed.new())
 	_client()
 	_kit()
+	_their_run()
 	await _pages()
 	Wardrobe.use_shared(null)
 	Catalog.set_offered([])
@@ -108,6 +112,23 @@ func _kit() -> void:
 	root.add_child(nobody)
 	_check(nobody.get_children().all(func(pip: Node) -> bool: return not pip.own and pip.outfit.is_empty()), "a pair with nobody known wears the default")
 	nobody.free()
+
+## The other pair's run plays from its final checkpoint's turns: each carries
+## its slot and recording hash, so the `turn_looks` the their-run reply brings
+## (services/rooms_api.gd keeps them) dress each turn in its own look.
+func _their_run() -> void:
+	var checkpoint: Dictionary = JSON.parse_string(FileAccess.get_file_as_string("res://tests/fixtures/v2/final-checkpoint.json"))
+	var key := Registry.resolve(checkpoint)
+	var pairs := CheckpointPairs.pairs(key, checkpoint, 0)
+	_check(not pairs.is_empty(), "the fixture run reads as turn pairs")
+	if pairs.is_empty(): return
+	var last: Dictionary = pairs[-1]
+	var looks_path := "user://test-duel-looks-their-run-%s.json" % Crypto.new().generate_random_bytes(6).hex_encode()
+	var store: RefCounted = TurnLooks.new(looks_path)
+	store.note_turns({str(last.a.recording_hash): FINN_LOOK})
+	var worn := SlotLooks.replay([last.a, last.b], store)
+	_check(worn.get(str(last.a.player_slot)) == FINN_LOOK and worn.get(str(last.b.player_slot)) == {}, "their run dresses each turn in the look it was played in: %s" % [worn])
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(looks_path))
 
 func _worn(node: Node) -> Array:
 	return node.find_children("*", "", true, false).filter(func(child: Node) -> bool: return child is PipAvatar).map(func(pip: PipAvatar) -> Dictionary: return MINE if pip.own and pip.outfit == MINE else pip.outfit)
