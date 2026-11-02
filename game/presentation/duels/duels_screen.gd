@@ -9,8 +9,9 @@ extends "res://presentation/duels/duel_page_base.gd"
 ## (presentation/duels/duels_flow.gd), which owns the client; this page only
 ## draws the lobby it is given and says what was tapped. Taps wait through a
 ## BusyTapGate, so a first tap always registers and a second one waits.
-## The lobby is read again on open, when a page over it closes, and every
-## REFRESH_SECONDS while it is in front; never per frame.
+## The flow reads the lobby again on open, when a page over it closes, and
+## once a minute while it is in front and wants_refresh() says something can
+## change without this player (services/refresh_schedule.gd); never per frame.
 const DuelModel = preload("res://services/duel_model.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const Registry = preload("res://services/chapter_registry.gd")
@@ -21,7 +22,6 @@ const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 ## The party boost line's font size; its Pollen mark is sized from it.
 const BOOST_FONT := 26
 const INFO_ICON = preload("res://assets/ui/social/info.svg")
-const REFRESH_SECONDS := 30.0
 const TILE_WIDTH := 268.0
 ## The empty lobby's art (presentation/empty_state.gd SPOTS), the owner's pick.
 const EMPTY_ART := "duels_f"
@@ -52,8 +52,6 @@ var _empty: VBoxContainer
 var empty_art := EMPTY_ART
 var _overlay: CanvasLayer
 var _gate: BusyTapGate
-var _timer: Timer
-var _foreground := true
 
 func page_name() -> String: return "DuelsScreen"
 func title_text() -> String: return PlayerCopy.DUELS_TITLE
@@ -68,16 +66,9 @@ func header_action() -> Control:
 
 func opened() -> void:
 	_gate = BusyTapGate.new(root)
-	_timer = Timer.new()
-	_timer.wait_time = REFRESH_SECONDS
-	_timer.timeout.connect(func() -> void: if _foreground and not Kit.showing(_overlay) and _waiting_on_others(): refresh_requested.emit())
-	add_child(_timer)
-	_timer.start()
 
 func _notification(what: int) -> void:
-	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]: _foreground = false
-	elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN]: _foreground = true
-	elif what == NOTIFICATION_WM_GO_BACK_REQUEST: go_back()
+	if what == NOTIFICATION_WM_GO_BACK_REQUEST: go_back()
 
 func go_back() -> void:
 	if Kit.showing(_overlay): _overlay.go_back()
@@ -95,7 +86,7 @@ func overlay() -> CanvasLayer:
 	return _overlay if Kit.showing(_overlay) else null
 
 ## Whether anything on the lobby can change without this player: a running duel or a challenge. Only then does the lobby read again on its own.
-func _waiting_on_others() -> bool:
+func wants_refresh() -> bool:
 	if _lobby.is_empty(): return true
 	if not _lobby.party.invites_in.is_empty() or _lobby.party.invite_out != null: return true
 	return _lobby.duels.any(func(view: Dictionary) -> bool: return view.status in ["running", "challenged"])

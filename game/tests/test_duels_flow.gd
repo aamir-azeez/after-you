@@ -10,6 +10,7 @@ const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const LogWatch = preload("res://tests/log_watch.gd")
+const Clock = preload("res://services/refresh_schedule.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -117,7 +118,8 @@ func _run() -> void:
 	flow.open()
 	_check(not flow.is_open() and flow.room_kind(ROOM) == "", "duels stay hidden while the server has them off")
 	var ghost_wait := {"kind": "ghost", "mine": 0, "sides": [{"check": "waiting"}, null]}
-	_check(Flow.refresh_seconds(ghost_wait) == Flow.DUEL_CHECK_REFRESH_SECONDS and Flow.refresh_seconds({"kind": "ghost", "mine": 0, "sides": [{"check": "none"}, null]}) == Flow.DUEL_REFRESH_SECONDS and Flow.refresh_seconds({"kind": "friend", "mine": 1, "sides": [{"check": "none"}, {"check": "waiting"}]}) == Flow.DUEL_REFRESH_SECONDS, "a ghost race waiting for its check reads less often, every other duel as before")
+	_check(Flow.refresh_ms(ghost_wait) == Clock.DUEL_CHECK_INTERVAL_MS and Flow.refresh_ms({"kind": "ghost", "mine": 0, "sides": [{"check": "none"}, null]}) == Clock.DUEL_INTERVAL_MS and Flow.refresh_ms({"kind": "friend", "mine": 1, "sides": [{"check": "none"}, {"check": "waiting"}]}) == Clock.DUEL_INTERVAL_MS, "a ghost race waiting for its check reads less often, every other duel as before")
+	_check(Clock.DUELS_LOBBY_INTERVAL_MS == 60000 and Clock.DUEL_INTERVAL_MS == 30000 and Clock.DUEL_CHECK_INTERVAL_MS == 60000, "the lobby reads once a minute, a duel every 30 s, a ghost race waiting for its check once a minute")
 	main.relay_session.on = true
 	flow.open()
 	await _frames(4)
@@ -222,6 +224,7 @@ func _run() -> void:
 	_check(watch.count("previously freed") == 0, "a page closed while its friends list loads is left alone")
 	watch.stop()
 	main.friends = FakeFriends.new()
+	await _polling(main, api, flow)
 	flow.open()
 	await _frames(2)
 	flow.close()
@@ -233,6 +236,104 @@ func _run() -> void:
 	_clear()
 	print("AFTER YOU DUELS FLOW: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
+
+## The lobby and an open duel read on their own at the slower pace, never in
+## the background or while hidden, and once at once on coming back. The clock
+## is driven by hand (_tick) with made-up times; real frames only let the
+## stand-in requests answer.
+func _polling(main: FakeMain, api: FakeApi, flow: Node) -> void:
+	var lobby_path := "/v1/duels"
+	var duel_path := "/v1/duels/%s/%s" % [BOARD, DUEL]
+	var reads := func(path: String) -> int: return api.requests.filter(func(item: Array) -> bool: return item[0] == "GET" and item[1] == path).size()
+	var running_lobby := {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_view({})]}}
+	api.replies["GET " + lobby_path] = running_lobby
+	flow.close()
+	await _frames(4)
+	var before: int = reads.call(lobby_path)
+	flow.open()
+	flow.set_process(false)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 1, "opening the lobby reads it at once: %d" % (reads.call(lobby_path) - before))
+	var t := Time.get_ticks_msec() + 1000
+	flow._tick(t + 30000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 1, "the lobby does not read again after 30 s")
+	flow._tick(t + 61000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 2, "the lobby reads again after a minute while a duel runs")
+	# In the background nothing reads; coming back reads once, however many signals arrive.
+	flow._notification(NOTIFICATION_APPLICATION_PAUSED)
+	flow._notification(NOTIFICATION_APPLICATION_FOCUS_OUT)
+	flow._tick(t + 200000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 2, "nothing reads while the app is in the background")
+	flow._notification(NOTIFICATION_APPLICATION_RESUMED)
+	flow._notification(NOTIFICATION_APPLICATION_FOCUS_IN)
+	await _frames(3)
+	flow._tick(t + 200001)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 3, "coming back reads the lobby once, at once: %d" % (reads.call(lobby_path) - before))
+	# Hidden (the other pair's run playing over it): no read until it shows again.
+	flow.screen.visible = false
+	flow._tick(t + 300000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 3, "a hidden lobby does not read")
+	flow.screen.visible = true
+	flow._tick(t + 300001)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 4, "the lobby reads once it shows again")
+	# Nothing can change without this player: no timed read, but a page closing still reads at once.
+	api.replies["GET " + lobby_path] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [_view({}, "decided")]}}
+	flow._refresh()
+	await _frames(3)
+	flow._tick(t + 500000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == before + 5, "a quiet lobby only reads when asked")
+	api.replies["GET " + lobby_path] = running_lobby
+	# An open duel reads every 30 s; the lobby under it does not read on its own.
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": _view({})}}
+	flow._open_duel(Client.valid_view(_view({})))
+	await _frames(3)
+	var lobby_reads: int = reads.call(lobby_path)
+	var duel_reads: int = reads.call(duel_path)
+	var at := t + 600000
+	flow._tick(at)
+	flow._tick(at + 29999)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads, "an open duel does not read before 30 s")
+	flow._tick(at + 30000)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 1 and reads.call(lobby_path) == lobby_reads, "an open duel reads after 30 s, and the lobby under it does not")
+	flow._notification(NOTIFICATION_APPLICATION_PAUSED)
+	flow._tick(at + 100000)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 1, "an open duel does not read in the background")
+	flow._notification(NOTIFICATION_APPLICATION_RESUMED)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 2 and reads.call(lobby_path) == lobby_reads, "coming back reads the open duel once, and not the lobby under it")
+	# A ghost race waiting for its check reads once a minute.
+	var ghost := _view({"members": [ME, null], "finished": true, "check": "waiting"})
+	ghost.kind = "ghost"
+	ghost.ghost = {"source": "developer", "ticks": 900}
+	ghost.sides[1] = null
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": ghost}}
+	flow._open_duel(Client.valid_view(ghost))
+	await _frames(3)
+	duel_reads = reads.call(duel_path)
+	at = t + 800000
+	flow._tick(at)
+	flow._tick(at + 30000)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads, "a ghost race waiting for its check does not read after 30 s")
+	flow._tick(at + 60000)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 1, "a ghost race waiting for its check reads after a minute")
+	lobby_reads = reads.call(lobby_path)
+	flow.screen.overlay().close()
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 1, "closing the duel reads the lobby at once")
+	flow.close()
+	await _frames(2)
 
 func _frames(count: int) -> void:
 	for index in range(count): await process_frame

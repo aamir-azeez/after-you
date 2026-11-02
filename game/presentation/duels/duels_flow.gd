@@ -22,6 +22,14 @@ extends Node
 ## - rooms: relay_lobby_flow (open_lobby, lobby_action, join_room)
 ## - node: add_child
 ## - sound: soundscape when Main has it (play_fixed_cue), for a won result's bell, once per duel
+##
+## Reads on their own (services/refresh_schedule.gd keeps the pace): the lobby
+## once a minute while a challenge or running duel can change without this
+## player, an open duel every 30 s (a ghost race waiting for its check once a
+## minute). Nothing reads while the app is in the background or has lost focus,
+## or while the lobby is hidden (the other pair's run playing over it); coming
+## back reads the screen in front once, at once. Opening, a page closing and
+## this player's own actions read at once. A failed read keeps the same pace.
 const DuelsScreen = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
@@ -38,18 +46,22 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const RefreshClock = preload("res://services/refresh_schedule.gd")
 ## Main's mode while Duels is up.
 const MODE_DUELS := "duels"
-## How often an open duel page reads its duel again.
-const DUEL_REFRESH_SECONDS := 15.0
-## How often while a ghost race run waits for its replay check (the job runs every 15 minutes).
-const DUEL_CHECK_REFRESH_SECONDS := 60.0
 
 signal home_requested
 
 var host: Node
 var screen: CanvasLayer
-var _duel_timer: Timer
+## The lobby's and the open duel page's reads, one at a time each.
+var _lobby_reads := RefreshClock.new()
+var _duel_reads := RefreshClock.new()
+## A lobby read was asked for (open, a page closed, an own action): it runs
+## even when nothing on the lobby waits on others or a page is over it.
+var _lobby_asked := false
+## False while the app is paused or has lost focus.
+var _in_front := true
 ## True while the other pair's run is fetched for one tap.
 var _their_loading := false
 ## The idempotency key of each challenge or ghost race sent with no answer yet,
@@ -60,6 +72,51 @@ var _unanswered: Dictionary = {}
 
 func _init(main: Node = null) -> void:
 	host = main
+
+func _ready() -> void:
+	set_process(is_open())
+
+func _process(_delta: float) -> void:
+	_tick(Time.get_ticks_msec())
+
+## Starts the lobby's or the open duel's read when it is due and may run.
+func _tick(now: int) -> void:
+	if not is_open():
+		_lobby_reads.bind("", now)
+		_duel_reads.bind("", now)
+		set_process(false)
+		return
+	var page := _bind(now)
+	var shown: bool = _in_front and not host.application_backgrounded and screen.visible
+	if page != null:
+		var duel_ticket: Dictionary = _duel_reads.begin_if_due(now, shown and page.visible, false)
+		if not duel_ticket.is_empty(): _read_duel(page, duel_ticket)
+	var waiting: bool = screen.overlay() == null and screen.wants_refresh()
+	var lobby_ticket: Dictionary = _lobby_reads.begin_if_due(now, shown and (_lobby_asked or waiting), false)
+	if not lobby_ticket.is_empty(): _read_lobby(lobby_ticket)
+
+## Binds both clocks to what is open now and returns the duel page being read, or null.
+func _bind(now: int) -> CanvasLayer:
+	_lobby_reads.bind("lobby/%d" % screen.get_instance_id(), now, RefreshClock.DUELS_LOBBY_INTERVAL_MS)
+	var page: CanvasLayer = screen.overlay()
+	if not page is DuelPage or page.view.is_empty():
+		_duel_reads.bind("", now)
+		return null
+	_duel_reads.bind("duel/%d/%s" % [page.get_instance_id(), page.view.duel_id], now, refresh_ms(page.view))
+	return page
+
+func _notification(what: int) -> void:
+	if what in [NOTIFICATION_APPLICATION_PAUSED, NOTIFICATION_APPLICATION_FOCUS_OUT]:
+		_in_front = false
+	elif what in [NOTIFICATION_APPLICATION_RESUMED, NOTIFICATION_APPLICATION_FOCUS_IN] and not _in_front:
+		# Android sends more than one of these: only the first after a pause reads, once.
+		_in_front = true
+		if not is_open(): return
+		var now := Time.get_ticks_msec()
+		_bind(now)
+		_duel_reads.request_now(now)
+		_lobby_reads.request_now(now)
+		_tick(now)
 
 func is_open() -> bool:
 	return is_instance_valid(screen) and not screen.is_queued_for_deletion()
@@ -99,6 +156,7 @@ func open() -> void:
 	host.add_child(screen)
 	var kept: Dictionary = client().last_lobby()
 	if not kept.is_empty(): screen.show_lobby(kept)
+	set_process(true)
 	_refresh()
 
 ## Closes Duels for a screen Main shows instead; Main sets its mode first.
@@ -115,9 +173,20 @@ func _left() -> void:
 		host.ui.visible = true
 		home_requested.emit()
 
+## Reads the lobby at once; a read already out, which may predate an action, is followed by one more.
 func _refresh() -> void:
 	if not is_open(): return
+	var now := Time.get_ticks_msec()
+	_bind(now)
+	_lobby_asked = true
+	_lobby_reads.hint(now)
+	_tick(now)
+
+func _read_lobby(ticket: Dictionary) -> void:
+	_lobby_asked = false
 	var answer: Dictionary = await client().lobby()
+	# A failed read waits the same minute: the schedule's quicker failure retries would cost more.
+	_lobby_reads.complete(ticket, Time.get_ticks_msec(), true)
 	if not is_open(): return
 	screen.show_lobby(answer.get("lobby", {}), not answer.get("ok", false))
 	var overlay: CanvasLayer = screen.overlay()
@@ -267,35 +336,28 @@ func _open_duel(view: Dictionary) -> void:
 		if not answer.get("ok", false): _toast_failure(answer)
 		elif is_instance_valid(page): page.show_duel(answer.duel))
 	screen.open_overlay(page)
-	_watch_duel(page)
 	# The phone's room may be ahead of the duel (a lost note): ask the server to look once.
 	var own: Dictionary = view.sides[view.mine]
 	if view.status == "running" and not own.finished and not str(own.get("room_id", "")).is_empty():
 		var synced: Dictionary = await client().act(view.board, view.duel_id, "sync")
 		if synced.get("ok", false) and is_instance_valid(page): page.show_duel(synced.duel)
 
-## Reads the open duel again while its page is up (refresh_seconds); a result swaps in the result page.
-func _watch_duel(page: CanvasLayer) -> void:
-	if is_instance_valid(_duel_timer): _duel_timer.queue_free()
-	_duel_timer = Timer.new()
-	_duel_timer.wait_time = refresh_seconds(page.view)
-	page.add_child(_duel_timer)
-	_duel_timer.timeout.connect(func() -> void:
-		if not is_instance_valid(page) or host.application_backgrounded: return
-		var answer: Dictionary = await client().duel(page.view.board, page.view.duel_id)
-		if not is_instance_valid(page) or not answer.get("ok", false): return
-		if answer.duel.status == "running":
-			page.show_duel(answer.duel)
-			if is_instance_valid(_duel_timer): _duel_timer.wait_time = refresh_seconds(answer.duel)
-		else:
-			page.close()
-			_open_result(answer.duel))
-	_duel_timer.start()
+## One timed read of the open duel; a result swaps in the result page.
+func _read_duel(page: CanvasLayer, ticket: Dictionary) -> void:
+	var answer: Dictionary = await client().duel(page.view.board, page.view.duel_id)
+	# A failed read waits the same pace, as the lobby's does.
+	_duel_reads.complete(ticket, Time.get_ticks_msec(), true)
+	if not is_instance_valid(page) or not answer.get("ok", false): return
+	if answer.duel.status == "running":
+		page.show_duel(answer.duel)
+	else:
+		page.close()
+		_open_result(answer.duel)
 
-## DUEL_CHECK_REFRESH_SECONDS while your ghost race run waits for its check, else DUEL_REFRESH_SECONDS.
-static func refresh_seconds(view: Dictionary) -> float:
+## How often an open duel reads again: DUEL_CHECK_INTERVAL_MS while your ghost race run waits for its check, else DUEL_INTERVAL_MS.
+static func refresh_ms(view: Dictionary) -> int:
 	var waiting: bool = view.kind == "ghost" and view.sides[view.mine].check == "waiting"
-	return DUEL_CHECK_REFRESH_SECONDS if waiting else DUEL_REFRESH_SECONDS
+	return RefreshClock.DUEL_CHECK_INTERVAL_MS if waiting else RefreshClock.DUEL_INTERVAL_MS
 
 func _open_result(view: Dictionary) -> void:
 	if not is_open(): return

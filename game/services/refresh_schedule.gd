@@ -9,6 +9,14 @@ extends RefCounted
 
 const ROOM_INTERVAL_MS := 3000
 const LOBBY_INTERVAL_MS := 10000
+## The Duels lobby (presentation/duels/duels_flow.gd) while a challenge or a
+## running duel can change without this player. One read costs 3 to 5 Durable
+## Object requests, so it reads once a minute.
+const DUELS_LOBBY_INTERVAL_MS := 60000
+## An open duel's page (about 2 Durable Object requests a read).
+const DUEL_INTERVAL_MS := 30000
+## An open ghost race whose run waits for its replay check (the job runs every 15 minutes).
+const DUEL_CHECK_INTERVAL_MS := 60000
 const FAILURE_DELAYS_MS := [5000, 15000, 30000]
 const PollBackoff = preload("res://services/poll_backoff.gd")
 
