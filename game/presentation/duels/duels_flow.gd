@@ -7,8 +7,8 @@ extends Node
 ## made one at once, the server keeps the first and this phone joins it.
 ##
 ## Every duel entry hides while the server says duels are off
-## (relay_online_session.gd duels_supported): Home's row, the lobby, the Duel
-## tag in Your rooms.
+## (relay_online_session.gd duels_supported): the lobby, the Duel tag in Your
+## rooms, and Home's row (offer), which also follows the public switch.
 ##
 ## Main hosts it as a child and reads it through is_open(), close(),
 ## offer(menu) and room_kind(). A duel's clear needs nothing here: its room is
@@ -40,6 +40,7 @@ extends Node
 ## a page other than Party is over it (closing that page reads it anyway). A
 ## socket that comes back after dropping reads both once (missed_hints), and
 ## the moment it drops the pace goes back to the one above.
+const ServerSwitches = preload("res://services/server_switches.gd")
 const DuelsScreen = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
@@ -177,11 +178,16 @@ func _notification(what: int) -> void:
 func is_open() -> bool:
 	return is_instance_valid(screen) and not screen.is_queued_for_deletion()
 
-## Shows Home's row when the capabilities this session already read say duels
-## are on. Home asks the server nothing for it: the next Home after any online
-## screen read them shows the row.
+## Shows Home's row while the server says duels are on: this session's
+## capabilities when they say so, else the public switch the phone last heard
+## (services/server_switches.gd: the app-status answer at launch, kept on
+## disk). Home asks nothing for it. A tap reads the capabilities first when
+## this session has none (Main._show_duels), and the lobby opens on those.
 func offer(menu: Control) -> void:
-	if menu != null and is_instance_valid(menu) and menu.has_method("show_duels"): menu.show_duels(supported())
+	if menu != null and is_instance_valid(menu) and menu.has_method("show_duels"): menu.show_duels(offered())
+
+func offered() -> bool:
+	return supported() or ServerSwitches.shared().on_for(host.api, "duels")
 
 func supported() -> bool:
 	return host.relay_session != null and host.relay_session.duels_supported()

@@ -30,6 +30,7 @@ const TesterSwitches = preload("res://services/tester_switches.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const OwnLook = preload("res://services/own_look.gd")
+const ServerSwitches = preload("res://services/server_switches.gd")
 ## Every rules version this build can replay, for a server that allows at most
 ## 8 entries (every server before room level 2): 10 = the tide rules of
 ## turn-of-the-tide@2. Saved joins keep their exact body: each array ever sent
@@ -425,6 +426,8 @@ func load_capabilities() -> bool:
 	_supported_chapters.assign(checked.chapters)
 	var scope := nickname_scope()
 	if not scope.is_empty(): DisplayNames.shared().set_enabled(str(scope.server), str(scope.owner), display_names_supported())
+	# Home's rows that follow the server's public switches keep this answer too (services/server_switches.gd).
+	if not scope.is_empty(): ServerSwitches.shared().note(str(scope.server), {"duels": duels_supported(), "leaderboards": leaderboards_supported(), "hard_mode": hard_mode_supported()})
 	# Only an iPhone asks whether the server takes App Store purchases (services/store_support.gd), noted
 	# before the Wardrobe announces, so what that redraws already reads the new answer.
 	if not scope.is_empty() and PlatformSupport.is_ios(): StoreSupport.shared().note(str(scope.server), str(scope.owner), app_store_full_journey_supported())

@@ -20,6 +20,7 @@ extends RefCounted
 ##   ranked hands it to services/leaderboard_placings.gd (inside board()), so
 ##   Home's existing celebration shows the place. A run seen settled is not read again.
 ## Every board read goes through the shared client; nothing here keeps a view.
+const ServerSwitches = preload("res://services/server_switches.gd")
 const BoardStatus = preload("res://services/board_status.gd")
 const BoardStatusLine = preload("res://presentation/board_status_line.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
@@ -150,8 +151,10 @@ func _pair_names(owner: String) -> Dictionary:
 	var client := _client()
 	return BoardStatus.pair_names(Runs.runs_of(owner), client.kept_views(), client.show_name())
 
+## This session's capabilities when they say on, else the public switch last
+## heard (services/server_switches.gd), so Home's board watch runs after a launch too.
 func _supported() -> bool:
-	return host.relay_session != null and host.relay_session.leaderboards_supported()
+	return (host.relay_session != null and host.relay_session.leaderboards_supported()) or ServerSwitches.shared().on_for(host.api, "leaderboards")
 
 func _owner() -> String:
 	return str(host.api.player_id) if host.api != null else ""

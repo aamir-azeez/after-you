@@ -60,6 +60,7 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenGrantCard = preload("res://presentation/pollen_grant_card.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const StoreSupport = preload("res://services/store_support.gd")
+const ServerSwitches = preload("res://services/server_switches.gd")
 const TesterSwitches = preload("res://services/tester_switches.gd")
 const RecoveryDetails = preload("res://services/recovery_details.gd")
 const Secrets = preload("res://services/secure_store.gd")
@@ -422,6 +423,8 @@ func _ready() -> void:
 	pollen_client.settled.connect(func() -> void: wardrobe_flow.sync_pending())
 	# Offline and back: the Wardrobe sends what was put on meanwhile, and Home's row follows what it can show.
 	Connectivity.shared().changed.connect(_connectivity_changed)
+	# Home's Duels row follows the server's public switches as each answer lands (services/server_switches.gd).
+	ServerSwitches.shared().changed.connect(_refresh_home_switches)
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.
 	if NativeFiles.durable_available(): RoomsApi.history_supported = HistoryStore.new().self_test()
@@ -835,7 +838,7 @@ func _show_home() -> void:
 	home_stage.own_pip_tapped = _open_wardrobe_from_pip
 	menu.set_play_icon(FriendPlayIcon.new())
 	_refresh_home_pollen()
-	# The Duels row shows once the server says duels are on.
+	# The Duels row shows while the server says duels are on: at once from the last answer kept.
 	duels_flow.offer(menu)
 	menu.journey_offer.visible = _full_journey_offered()
 	if _whats_new_unseen: menu.mark_whats_new_unseen(Changelog.current_version())
@@ -868,6 +871,10 @@ func _refresh_home_pollen() -> void:
 	if mode != "home" or not is_instance_valid(home_menu_view): return
 	home_menu_view.show_wardrobe(wardrobe_flow.available())
 	_refresh_pollen_chip()
+
+## A public switch changed (services/server_switches.gd): Home's Duels row follows at once.
+func _refresh_home_switches() -> void:
+	if mode == "home" and is_instance_valid(home_menu_view): duels_flow.offer(home_menu_view)
 
 ## The wardrobe changed (services/wardrobe.gd changed): the row and the chip, and the row's pip and the island's pips in the current look.
 func _refresh_home_wardrobe() -> void:
@@ -960,8 +967,17 @@ func _hard_marks() -> Dictionary:
 func _switched_off() -> bool:
 	return TesterSwitches.shared().full_journey_off()
 
+## Leaderboard surfaces outside a room (Home's celebration and board watch,
+## Settings' name row): this session's capabilities when they say on, else the
+## public switch last heard (services/server_switches.gd).
+func _leaderboards_offered() -> bool:
+	return (relay_session != null and relay_session.leaderboards_supported()) or ServerSwitches.shared().on_for(api, "leaderboards")
+
+## Together Hard on Home and the chapter cards: this session's capabilities
+## when they say on, else what the last capabilities read said, kept on disk
+## (services/server_switches.gd), so a launch does not wait for an online screen.
 func hard_together() -> bool:
-	return relay_session != null and relay_session.hard_mode_supported()
+	return (relay_session != null and relay_session.hard_mode_supported()) or ServerSwitches.shared().on_for(api, "hard_mode")
 
 func _chapter_marks() -> Dictionary:
 	return ChapterCompletion.chapters(_keepsake_earned())
@@ -1675,12 +1691,32 @@ func _room_session_idle() -> bool:
 	return _online_flow_idle() and (relay_session == null or not relay_session.busy())
 
 ## Duels from Home's row, while the server has them on (presentation/duels/duels_flow.gd).
+## The row can show from the public switch alone, so the tap reads this
+## session's capabilities first when they are missing or say off (a newer
+## public answer may have said on); the lobby opens only on them, and an
+## answer that says off hides the row (services/server_switches.gd).
 func _show_duels(report: Callable = Callable()) -> void:
 	if _online_gated() or _offline_blocked(report): return
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
+	var current := func() -> bool: return view == store_view_generation and lifecycle == lifecycle_generation and not application_backgrounded and not duels_flow.is_open() and not friends_flow.is_open()
 	if not _relay_available(report) or not await _ensure_identity(report): return
-	if view != store_view_generation or lifecycle != lifecycle_generation or application_backgrounded or duels_flow.is_open() or friends_flow.is_open(): return
+	if not current.call(): return
+	ensure_relay_session()
+	if relay_session.capabilities.is_empty() or not duels_flow.supported():
+		# A busy session would refuse the read and drop what it knows: the tap says so instead.
+		if relay_session.busy():
+			_report(report,PlayerCopy.ROOMS_API_DA75E6F7A674)
+			return
+		var session: RefCounted = relay_session
+		var loaded: bool = await session.load_capabilities()
+		if not current.call() or relay_session != session: return
+		if not loaded:
+			_report(report,session.last_error if not session.last_error.is_empty() else PlayerCopy.RELAY_ONLINE_SESSION_268ED4C8A12F)
+			return
+	if not duels_flow.supported():
+		_refresh_home_switches()
+		return
 	room_hub_flow.drop()
 	duels_flow.open()
 
@@ -2197,10 +2233,13 @@ func _resume_application() -> void:
 
 ## Asks whether this build must update before playing online: at launch, and on a
 ## resume once the last answer is six hours old. A later answer replaces an earlier
-## one, so "off" or any error lifts a block.
+## one, so "off" or any error lifts a block. The same answer brings Home's public
+## switches; one without them (offline, a 429, an older server) keeps those known.
 func _check_app_status() -> void:
 	if app_status == null or app_status.busy: return
 	await app_status.check()
+	# Kept for the server that answered.
+	if not app_status.switches.is_empty(): ServerSwitches.shared().note(app_status.base_url, app_status.switches)
 	if _update_gate_active(): return
 	update_gate_dismissed = false
 	if mode == "update_gate": _show_home()
@@ -2292,7 +2331,7 @@ func _service_leaderboard_celebration() -> void:
 	if api == null or is_instance_valid(_home_celebration): return
 	var owner := str(api.player_id)
 	if owner.is_empty() or not LeaderboardPlacings.shared().has_pending(owner): return
-	if relay_session == null or not relay_session.leaderboards_supported(): return
+	if not _leaderboards_offered(): return
 	if _home_settling() or _update_gate_active() or not _home_free_for_card(): return
 	_home_celebration = LeaderboardCelebration.show_next(ui, owner, bool(saves.data.settings.get("reduced_motion", false)))
 	if _home_celebration != null:
@@ -2502,7 +2541,7 @@ func _service_home_keepsakes(delta: float) -> void:
 		if _home_hard_now() != _home_hard_stamp: _set_home_hard(home_stage_view)
 		var offer := overlay.get_node_or_null("HomeFullJourney") as Button
 		if offer != null: offer.visible = _full_journey_offered()
-		# The Duels row follows whatever capabilities this session has read since Home opened; it asks nothing itself.
+		# The Duels row follows this session's capabilities or the public switch last heard; it asks nothing itself.
 		duels_flow.offer(overlay.get_node_or_null("HomeMenu"))
 		# So do the Wardrobe row and the Pollen chip; the wardrobe first follows an identity that became ready meanwhile.
 		Wardrobe.shared().follow()

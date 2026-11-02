@@ -126,6 +126,7 @@ home_menu 2
 home_pollen_refresh 1
 home_scene_navigation 1
 home_stage 2
+home_switches 3
 home_warmup_held_touch 1
 hosted_chapter 2
 hosting_locked 3

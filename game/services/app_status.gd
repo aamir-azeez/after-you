@@ -10,12 +10,17 @@ extends Node
 ##
 ## Runs on its own HTTPRequest, never through RoomsApi, whose single request slot
 ## belongs to rooms and friends.
+##
+## The same request asks for Home's public switches (services/server_switches.gd):
+## `switches` holds them from a well formed 200 answer and is {} after anything
+## else, which keeps what the phone already knew. They never change the gate.
 
 signal answered(result: Dictionary)
 
 const ClientIdentity = preload("res://services/client_identity.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Typed = preload("res://services/typed_values.gd")
+const ServerSwitches = preload("res://services/server_switches.gd")
 const PATH := "/v1/app-status"
 const TIMEOUT_SECONDS := 8.0
 const BODY_LIMIT := 4096
@@ -30,6 +35,8 @@ var busy := false
 ## Each answer tells the app the server is reached, or not (services/connectivity.gd); null says nothing.
 var connectivity: RefCounted = null
 var result: Dictionary = OFF.duplicate()
+## The last check's public switches (ServerSwitches.parse), {} unless it was answered with them.
+var switches: Dictionary = {}
 ## Wall-clock seconds of the last finished check, or -1 before the first.
 var checked_at := -1.0
 ## Tests replace these: transport(url, headers) -> [result, status, headers, body] or [];
@@ -60,10 +67,11 @@ func check() -> Dictionary:
 		result = OFF.duplicate()
 		return result
 	busy = true
-	var response: Array = await _send(base_url.trim_suffix("/") + PATH, PackedStringArray([header]))
+	var response: Array = await _send(base_url.trim_suffix("/") + PATH, PackedStringArray([header, ServerSwitches.SWITCHES_HEADER]))
 	busy = false
 	if connectivity != null: connectivity.note_response(response)
 	result = interpret(response, ClientIdentity.version(), channel)
+	switches = switches_in(response)
 	checked_at = now()
 	answered.emit(result)
 	return result
@@ -83,12 +91,12 @@ func _send(url: String, headers: PackedStringArray) -> Array:
 
 ## {"gate": "required", "min_version", "channel"} only for a complete, valid answer
 ## that names a newer version for this channel; {"gate": "off"} for everything else.
+## The switches this build asks for ride beside the gate and never change it.
 static func interpret(response: Array, own_version: String, own_channel: String) -> Dictionary:
-	if response.size() != 4 or int(response[0]) != HTTPRequest.RESULT_SUCCESS or int(response[1]) != 200: return OFF.duplicate()
-	if not response[3] is PackedByteArray or response[3].size() > BODY_LIMIT: return OFF.duplicate()
-	var parsed: Variant = JSON.parse_string(response[3].get_string_from_utf8())
-	if not parsed is Dictionary or RoomsApi.json_int(parsed.get("schema_version")) != 1: return OFF.duplicate()
+	var parsed := _answer(response)
+	if parsed.is_empty(): return OFF.duplicate()
 	var keys: Array = parsed.keys()
+	keys.erase("switches")
 	keys.sort()
 	if not Typed.equal(parsed.get("gate"), "required") or keys != ["channel", "gate", "min_version", "schema_version"]: return OFF.duplicate()
 	var minimum: Variant = parsed.get("min_version")
@@ -96,3 +104,15 @@ static func interpret(response: Array, own_version: String, own_channel: String)
 	var order: Variant = ClientIdentity.compare(own_version, minimum)
 	if order == null or int(order) >= 0: return OFF.duplicate()
 	return {"gate": "required", "min_version": minimum, "channel": own_channel}
+
+## The public switches of a well formed 200 answer (ServerSwitches.parse), else {}.
+static func switches_in(response: Array) -> Dictionary:
+	return ServerSwitches.parse(_answer(response).get("switches"))
+
+## The body of a 200 answer of schema 1, or {} for anything else.
+static func _answer(response: Array) -> Dictionary:
+	if response.size() != 4 or int(response[0]) != HTTPRequest.RESULT_SUCCESS or int(response[1]) != 200: return {}
+	if not response[3] is PackedByteArray or response[3].size() > BODY_LIMIT: return {}
+	var parsed: Variant = JSON.parse_string(response[3].get_string_from_utf8())
+	if not parsed is Dictionary or RoomsApi.json_int(parsed.get("schema_version")) != 1: return {}
+	return parsed

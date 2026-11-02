@@ -202,6 +202,19 @@ func _interpret() -> void:
 	for name: String in open:
 		_check(AppStatus.interpret(open[name], "0.6.1", "play") == AppStatus.OFF, "Fails open on " + name)
 	_check(AppStatus.interpret(_reply(_required()), "0.6", "play") == AppStatus.OFF, "Fails open when this build's own version is invalid")
+	# Home's public switches ride beside the gate (services/server_switches.gd) and never change it.
+	var switched := _required()
+	switched["switches"] = {"duels": true, "leaderboards": false}
+	_check(AppStatus.interpret(_reply(switched), "0.6.1", "play") == good, "A required answer with switches still blocks")
+	_check(AppStatus.switches_in(_reply(switched)) == {"duels": true, "leaderboards": false}, "Its switches are read")
+	var odd_switches := _required()
+	odd_switches["switches"] = "on"
+	_check(AppStatus.interpret(_reply(odd_switches), "0.6.1", "play") == good and AppStatus.switches_in(_reply(odd_switches)).is_empty(), "Malformed switches neither change the gate nor read as switches")
+	_check(AppStatus.switches_in(_reply({"schema_version": 1, "gate": "off", "switches": {"duels": false, "leaderboards": "yes", "later": 1}})) == {"duels": false}, "Only well typed known switches are read")
+	var unanswered := {"a 429": _reply({"schema_version": 1, "gate": "off", "switches": {"duels": false}}, 429), "a timeout": _reply({"schema_version": 1, "gate": "off", "switches": {"duels": false}}, 0, HTTPRequest.RESULT_TIMEOUT),
+		"no answer": [], "schema 2": _reply({"schema_version": 2, "gate": "off", "switches": {"duels": false}}), "no switches": _reply({"schema_version": 1, "gate": "off"})}
+	for name: String in unanswered:
+		_check(AppStatus.switches_in(unanswered[name]).is_empty(), "No switches from " + name)
 	_check(AppStatus.interpret(_reply(_required("0.6.2", "dev")), "0.6.1", "dev") == AppStatus.OFF, "The dev channel is never gated")
 
 
@@ -225,7 +238,7 @@ func _status_check() -> void:
 	if transport.calls.size() == 1:
 		var call: Dictionary = transport.calls[0]
 		_check(call.url == "https://status.synthetic.invalid/v1/app-status", "It asks GET /v1/app-status")
-		_check(call.headers == PackedStringArray(["X-AfterYou-Client: 0.6.1 play"]), "It sends only the client header: no player ID, credentials or body")
+		_check(call.headers == PackedStringArray(["X-AfterYou-Client: 0.6.1 play", "X-AfterYou-Switches: 1"]), "It sends only the client and switches headers: no player ID, credentials or body")
 	_check(not status.due(), "A fresh answer is not due again")
 	clock[0] += AppStatus.RECHECK_SECONDS - 1
 	_check(not status.due(), "Under six hours later it is not due")
