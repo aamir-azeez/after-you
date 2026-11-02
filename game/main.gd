@@ -408,6 +408,10 @@ func _ready() -> void:
 	# A wallet read that lands while Home shows updates its chip (the gain shows then).
 	# Every capabilities read with Pollen on ends in a flush, so the Wardrobe row follows it too.
 	pollen_client.settled.connect(_refresh_home_pollen)
+	# A look put on offline goes with the next flush too (presentation/wardrobe_flow.gd sync_pending).
+	pollen_client.settled.connect(func() -> void: wardrobe_flow.sync_pending())
+	# Offline and back: the Wardrobe sends what was put on meanwhile, and Home's row follows what it can show.
+	Connectivity.shared().changed.connect(_connectivity_changed)
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.
 	if NativeFiles.durable_available(): RoomsApi.history_supported = HistoryStore.new().self_test()
@@ -865,6 +869,7 @@ func _refresh_home_wardrobe() -> void:
 func _follow_identity() -> void:
 	Wardrobe.shared().follow()
 	_refresh_home_pollen()
+	wardrobe_flow.sync_pending()
 
 func _share_invite_from_home() -> void:
 	if mode != "home" or application_backgrounded: return
@@ -2173,6 +2178,10 @@ func _offline_blocked(report: Callable = Callable()) -> bool:
 	_report(report,PlayerCopy.OFFLINE_NEEDS_CONNECTION)
 	Connectivity.shared().check_now()
 	return true
+
+func _connectivity_changed(online: bool) -> void:
+	wardrobe_flow.connectivity_changed(online)
+	_refresh_home_pollen()
 
 func _live_health_changed(healthy: bool) -> void:
 	if healthy: Connectivity.shared().note_reached()

@@ -29,7 +29,9 @@ extends Control
 ##   the chip's +), tab ("all" or "owned"), kind (the slot chip picked), kinds
 ##   (slots that have something in this tab), selected (id or ""), view ("you"
 ##   or "friend"), preview (the look the big pip wears), featured (ids), and
-##   more (bool: Owned ends with Get more), items: Array of {id, name, tier,
+##   more (bool: Owned ends with Get more), buy_offline (bool: Buy greys with a
+##   line saying it needs a connection), note (a line shown while no status is:
+##   the offline note), items: Array of {id, name, tier,
 ##   slot, price, owned, worn, locked,
 ##   unlock_name, sold}, in shop order.
 ## Cards draw still pips (kit/pip_avatar.gd still mode), so a long list shares
@@ -319,8 +321,9 @@ func render(model: Dictionary) -> void:
 	_model = model.duplicate(true)
 	_show_chip(int(model.get("balance", -1)), bool(model.get("balance_known", int(model.get("balance", -1)) >= 0)), bool(model.get("bundles", false)))
 	var status := str(model.get("status", ""))
-	_status.text = status
-	_status.visible = not status.is_empty()
+	var line := status if not status.is_empty() else str(model.get("note", ""))
+	_status.text = line
+	_status.visible = not line.is_empty()
 	_retry.visible = bool(model.get("retry", false))
 	var shop := bool(model.get("shop", PollenSurfaces.shared().shop_visible()))
 	var tab := str(model.get("tab", "all"))
@@ -359,7 +362,7 @@ func render(model: Dictionary) -> void:
 		_restyle(_featured)
 		_restyle(_grid)
 	_shelf.visible = shop and tab == "all" and not featured.is_empty()
-	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop)
+	_show_selected(by_id.get(str(model.get("selected", "")), {}), shop, bool(model.get("buy_offline", false)))
 	if preview.has_method("wear"): preview.wear(model.get("preview", {}))
 
 ## The empty list's drawing with `line` under it, or none when `line` is empty.
@@ -387,7 +390,7 @@ func _show_chip(balance: int, known: bool, plus: bool) -> void:
 	chip.plus_pressed.connect(func() -> void: plus_pressed.emit())
 	_chip_box.add_child(chip)
 
-func _show_selected(entry: Dictionary, shop: bool) -> void:
+func _show_selected(entry: Dictionary, shop: bool, buy_offline: bool = false) -> void:
 	action_button.visible = not entry.is_empty()
 	_name.text = str(entry.get("name", ""))
 	_hint.visible = true
@@ -406,6 +409,10 @@ func _show_selected(entry: Dictionary, shop: bool) -> void:
 	elif bool(entry.locked):
 		action_button.disabled = true
 		_set_note(PlayerCopy.WARDROBE_LOCKED % str(entry.unlock_name))
+	elif buy_offline:
+		# Buying needs the server: the button keeps its price, greyed, and says why.
+		action_button.disabled = true
+		_set_note(PlayerCopy.WARDROBE_CONNECT_TO_BUY)
 	action_button.text = ""
 	action_button.tooltip_text = ""
 	if not label.is_empty():

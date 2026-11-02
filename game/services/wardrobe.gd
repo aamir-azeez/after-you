@@ -28,6 +28,19 @@ extends RefCounted
 ## - name_price_next: what the change after that one costs, once it went
 ##   through (-1 from a server that sends none): a free change followed by a
 ##   paid one is "free this time" (presentation/display_name_prompt.gd).
+## - pending: a look the player put on that the server has not confirmed yet
+##   ({look, revision, key}), worn on this phone at once (effective_look) and
+##   sent by services/wardrobe_client.gd sync, offline or not. Its revision is
+##   the phone's clock when it was put on and its key the equip's idempotency
+##   key, both fixed then, so every send of it is the same equip. The rule
+##   when the server's look changed meanwhile (another phone): the newer intent
+##   wins by revision. Once the server's look_revision reaches the pending
+##   one's (a wallet read or an equip receipt), the server's look stands and
+##   the pending one goes: past it, another phone put a look on later; equal,
+##   this one landed. The server applies the same rule (an equip at or under
+##   its revision answers its current look), so a pending look put on before
+##   the other phone's change never replaces it. A pending look with an item
+##   the server says is no longer owned goes too.
 ##
 ## Every value read from the file or a server reply is checked; anything that
 ## fails is dropped. A file that cannot be read reads as empty, and the client
@@ -47,10 +60,12 @@ const ID_PATTERN := "^[a-z0-9_]{1,40}$"
 const MAX_IDS := 256
 const MAX_SET_PIECES := 16
 const TAG_PATTERN := "^[a-f0-9]{8}$"
+const KEY_PATTERN := "^[a-f0-9]{32}$"
 
 static var _shared: RefCounted = null
 static var _id := RegEx.create_from_string(ID_PATTERN)
 static var _tag := RegEx.create_from_string(TAG_PATTERN)
+static var _key := RegEx.create_from_string(KEY_PATTERN)
 
 var path := PATH
 var _scopes: Dictionary = {}
@@ -217,6 +232,10 @@ func note_view(server: String, owner: String, value: Variant) -> bool:
 		return false
 	if scope.view != kept:
 		scope.view = kept
+		_settle_pending(scope)
+		_save()
+		_announce(server, owner)
+	elif _settle_pending(scope):
 		_save()
 		_announce(server, owner)
 	elif retagged: _save()
@@ -263,9 +282,82 @@ func note_look(server: String, owner: String, receipt: Variant) -> bool:
 	if Typed.as_int(receipt.revision) < int(scope.view.look_revision): return false
 	scope.view.look = look
 	scope.view.look_revision = Typed.as_int(receipt.revision)
+	_settle_pending(scope)
 	_save()
 	_announce(server, owner)
 	return true
+
+# --- A look not confirmed yet ------------------------------------------------
+
+## The look put on and not confirmed yet ({look, revision, key}), or {}.
+func pending(server: String, owner: String) -> Dictionary:
+	var scope := _scope(server, owner)
+	return (scope.get("pending", {}) as Dictionary).duplicate(true) if not scope.is_empty() else {}
+
+## What the player wears on this phone: the pending look, else the confirmed one.
+func effective_look(server: String, owner: String) -> Dictionary:
+	var scope := _scope(server, owner)
+	if scope.is_empty(): return {}
+	if scope.has("pending"): return (scope.pending.look as Dictionary).duplicate()
+	return ((scope.view as Dictionary).get("look", {}) as Dictionary).duplicate()
+
+## Puts `look` on now (worn here at once) as the newest intent: a revision past
+## the confirmed and any earlier pending one, and its own key. Only over a
+## wardrobe the server has said, with owned items only. The new pending look, or {}.
+func put_on(server: String, owner: String, look: Dictionary, now_ms: int) -> Dictionary:
+	var scope := _scope(server, owner)
+	if scope.is_empty() or not bool(scope.get("enabled", false)) or (scope.view as Dictionary).is_empty(): return {}
+	var kept := checked_look(look)
+	if kept.size() != look.size() or not _owned(scope.view, kept): return {}
+	var least := int(scope.view.look_revision)
+	if scope.has("pending"): least = maxi(least, int(scope.pending.revision))
+	scope.pending = {"look": kept, "revision": maxi(now_ms, least + 1), "key": Crypto.new().generate_random_bytes(16).hex_encode()}
+	_save()
+	_announce(server, owner)
+	return (scope.pending as Dictionary).duplicate(true)
+
+## An equip answered: the receipt is kept as any look is (note_look), and the
+## pending look it answered goes, unless a newer one replaced it meanwhile.
+func settle_look(server: String, owner: String, key: String, receipt: Variant) -> bool:
+	var noted := note_look(server, owner, receipt)
+	var scope := _scope(server, owner)
+	if not scope.is_empty() and scope.has("pending") and scope.pending.key == key:
+		scope.erase("pending")
+		_save()
+		_announce(server, owner)
+	return noted
+
+## The server refused the pending look with `key` (an item no longer owned, a
+## bad revision): it goes, and the confirmed look shows again.
+func drop_pending(server: String, owner: String, key: String) -> void:
+	var scope := _scope(server, owner)
+	if scope.is_empty() or not scope.has("pending") or scope.pending.key != key: return
+	scope.erase("pending")
+	_save()
+	_announce(server, owner)
+
+## The rule above, after the confirmed view changed. True when the pending look went.
+static func _settle_pending(scope: Dictionary) -> bool:
+	if not scope.has("pending"): return false
+	var view: Dictionary = scope.view
+	if int(view.get("look_revision", 0)) >= int(scope.pending.revision) or not _owned(view, scope.pending.look):
+		scope.erase("pending")
+		return true
+	return false
+
+static func _owned(view: Dictionary, look: Dictionary) -> bool:
+	var items: Array = view.get("items", [])
+	for slot: String in look:
+		if not look[slot] in items: return false
+	return true
+
+## A saved pending look as kept, or {} when any part is wrong.
+static func checked_pending(value: Variant) -> Dictionary:
+	if not value is Dictionary or not value.get("look") is Dictionary or not Typed.whole_number(value.get("revision")) or float(value.revision) < 1.0: return {}
+	if not value.get("key") is String or _key.search(value.key) == null: return {}
+	var look := checked_look(value.look)
+	if look.size() != (value.look as Dictionary).size(): return {}
+	return {"look": look, "revision": Typed.as_int(value.revision), "key": value.key}
 
 ## What the next name change costs, or -1 while the server has not said or the shop is off.
 func name_price(server: String, owner: String) -> int:
@@ -294,11 +386,13 @@ func follow() -> void:
 	_offer()
 	changed.emit()
 
-## What the signed-in player wears ({} for the default look or while the shop is off).
+## What the signed-in player wears ({} for the default look or while the
+## wardrobe is off): a look put on and not confirmed yet shows at once, offline too.
 func active_look() -> Dictionary:
 	follow()
 	var scope: Dictionary = _scopes.get(_active, {})
 	if scope.is_empty() or not bool(scope.get("enabled", false)): return {}
+	if scope.has("pending"): return (scope.pending.look as Dictionary).duplicate()
 	return ((scope.view as Dictionary).get("look", {}) as Dictionary).duplicate()
 
 func _announce(server: String, owner: String) -> void:
@@ -342,6 +436,11 @@ func _load() -> void:
 		var selling: bool = value.get("enabled") == true and value.get("shop") == true
 		_scopes[key] = {"enabled": value.get("enabled") == true, "shop": selling, "bundles": selling and value.get("bundles") == true, "view": kept}
 		if not kept.is_empty() and valid_tag(value.get("offered_tag")): _scopes[key].offered_tag = value.offered_tag
+		# A pending look only over a kept wardrobe, and only while the rule still keeps it.
+		var waiting := checked_pending(value.get("pending"))
+		if not kept.is_empty() and not waiting.is_empty():
+			_scopes[key].pending = waiting
+			_settle_pending(_scopes[key])
 
 func _save() -> bool:
 	return AtomicFile.write_text(path, JSON.stringify({"schema_version": VERSION, "scopes": _scopes}))

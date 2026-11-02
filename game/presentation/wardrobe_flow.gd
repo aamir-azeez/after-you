@@ -37,6 +37,14 @@ extends Node
 ## build (its hooks are services/face_packs.gd faces_tab_visible and pack_rows),
 ## and no set exists yet.
 ##
+## Offline (services/connectivity.gd) the Wardrobe still opens once this
+## player has a wardrobe saved from an earlier read: what they own, what they
+## wear and the catalogue as last saved. Wear and Take off work at once
+## (services/wardrobe_client.gd sync sends them when the app is next online;
+## friends see the new look after that). Buying needs the server: All items
+## stays browsable with its last prices, and Buy greys with a line saying so.
+## A player with nothing saved sees no Wardrobe offline (available).
+##
 ## The main button goes through a BusyTapGate (presentation/busy_tap_gate.gd):
 ## a tap while the wardrobe is still being read waits for that read instead of
 ## being dropped, so the first tap always registers.
@@ -55,6 +63,7 @@ const Page = preload("res://presentation/wardrobe_page.gd")
 const Sheets = preload("res://presentation/wardrobe_sheets.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
+const Connectivity = preload("res://services/connectivity.gd")
 
 const MODE_WARDROBE := "wardrobe"
 
@@ -94,11 +103,13 @@ func _surfaces() -> RefCounted:
 	if surfaces == null: surfaces = PollenSurfaces.shared()
 	return surfaces
 
-## Whether Settings may offer the Wardrobe: the server has the wardrobe on for
-## this player and the build shows the Wardrobe.
+## Whether Settings and Home may offer the Wardrobe: the server has the
+## wardrobe on for this player and the build shows the Wardrobe; offline, only
+## while a wardrobe from an earlier read is saved (there is something to show).
 func available() -> bool:
 	if host == null or not _surfaces().wardrobe_visible(): return false
-	return not _client().scope().is_empty()
+	if _client().scope().is_empty(): return false
+	return _client().online() or not _view().is_empty()
 
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
@@ -131,7 +142,22 @@ func show_wardrobe(from: String = "settings") -> void:
 	_status = PlayerCopy.WARDROBE_LOADING if _view().is_empty() else ""
 	_retry = false
 	_redraw()
-	refresh()
+	# Offline the saved wardrobe shows as it is; the read comes once the phone is back online (connectivity_changed).
+	if _client().online(): refresh()
+
+## The phone went offline or came back (Main follows services/connectivity.gd):
+## a look put on offline is sent, and an open page reads again and redraws (Buy).
+func connectivity_changed(online: bool) -> void:
+	if host == null or _client().scope().is_empty(): return
+	_redraw()
+	if not online: return
+	await _client().sync()
+	if is_open(): refresh()
+
+## Sends a look put on and not confirmed yet (Main, after a Pollen flush and
+## once the identity is read). Nothing while there is none.
+func sync_pending() -> void:
+	if host != null and not _client().scope().is_empty(): _client().sync()
 
 ## Reads the wardrobe again; the page redraws with the answer.
 func refresh() -> void:
@@ -196,6 +222,9 @@ func act(id: String) -> void:
 		await _wear(entry)
 		return
 	if not bool(entry.sold) or bool(entry.locked) or not shop(): return
+	if not _client().online():
+		_offline_reason()
+		return
 	# A balance the server has not said yet is read first; no card shows a guess.
 	if not _balance_known():
 		await refresh()
@@ -232,6 +261,10 @@ func _after_bundle(id: String) -> void:
 func confirm_buy(id: String, cost: int) -> void:
 	_close_sheet()
 	if not shop(): return
+	if not _client().online():
+		_offline_reason()
+		_redraw()
+		return
 	var answer: Dictionary = await _client().buy("item", id, cost)
 	if answer.get("ok", false):
 		Soundscape.play_on(host, "ui_bought")
@@ -240,7 +273,7 @@ func confirm_buy(id: String, cost: int) -> void:
 	_redraw()
 
 func _wear(entry: Dictionary) -> void:
-	var look: Dictionary = _view().get("look", {}).duplicate()
+	var look := _look()
 	if bool(entry.worn): look.erase(str(entry.slot))
 	else: look[str(entry.slot)] = str(entry.id)
 	var answer: Dictionary = await _client().wear(look)
@@ -249,10 +282,11 @@ func _wear(entry: Dictionary) -> void:
 	_redraw()
 
 ## Wears one owned item in its slot, over the rest of the look: the results
-## card's Wear it after an item bloom brought it. True once the server confirmed.
+## card's Wear it after an item bloom brought it. True once it is worn here
+## (the server confirms it with the next sync when not at once).
 func wear_item(id: String) -> bool:
 	if not available() or Catalog.slot(id).is_empty(): return false
-	var look: Dictionary = _view().get("look", {}).duplicate()
+	var look := _look()
 	look[Catalog.slot(id)] = id
 	var answer: Dictionary = await _client().wear(look)
 	_redraw()
@@ -274,7 +308,7 @@ func model() -> Dictionary:
 	var selling := shop()
 	var view := _view()
 	var owned: Array = view.get("items", [])
-	var look: Dictionary = view.get("look", {})
+	var look := _look()
 	var unlocked: Array = view.get("unlocked", [])
 	var prices: Dictionary = view.get("prices", {})
 	var items: Array = []
@@ -305,7 +339,9 @@ func model() -> Dictionary:
 	if not picked.is_empty() and not bool(picked.worn): preview[str(picked.slot)] = str(picked.id)
 	# Owned ends with Get more on every slot while the shop has anything the player does not own (show_more picks where it leads).
 	var more := selling and tab == "owned" and not _buyable_slots(items).is_empty()
-	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "status": _status, "retry": _retry, "shop": selling, "bundles": bundles(), "tab": tab, "kind": kind, "kinds": kinds,
+	var offline: bool = not _client().online()
+	return {"balance": _balance() if _surfaces().wallet_visible() else -1, "balance_known": _surfaces().wallet_visible() and _balance_known(), "status": _status, "retry": _retry, "shop": selling, "bundles": bundles() and not offline, "tab": tab, "kind": kind, "kinds": kinds,
+		"buy_offline": selling and offline, "note": PlayerCopy.WARDROBE_OFFLINE_NOTE if offline and not view.is_empty() else "",
 		"more": more, "selected": selected, "view": _view_mode, "preview": Outfit.from(preview), "featured": featured, "items": items}
 
 ## The item picked while the player has picked none: what they wear, else the
@@ -323,6 +359,16 @@ func _redraw() -> void:
 func _view() -> Dictionary:
 	var scope: Dictionary = _client().scope()
 	return {} if scope.is_empty() else _client().store.view(str(scope.server), str(scope.owner))
+
+## What the player wears on this phone: a look put on and not confirmed yet, else the server's.
+func _look() -> Dictionary:
+	var scope: Dictionary = _client().scope()
+	return {} if scope.is_empty() else _client().store.effective_look(str(scope.server), str(scope.owner))
+
+## Why buying waits: the phone is offline. Asks the server once, so a connection that came back shows at once.
+func _offline_reason() -> void:
+	_toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
+	Connectivity.shared().check_now()
 
 func _balance() -> int:
 	var scope: Dictionary = _client().scope()

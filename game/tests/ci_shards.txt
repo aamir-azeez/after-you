@@ -391,6 +391,7 @@ wait_framing 1
 wait_hints 2
 wardrobe 3
 wardrobe_flow 1
+wardrobe_offline 2
 watch_all_parts 3
 water_locks 3
 water_locks_bake 1

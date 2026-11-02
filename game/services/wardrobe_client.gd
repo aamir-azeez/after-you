@@ -14,10 +14,21 @@ extends RefCounted
 ## - a purchase names the cost the confirm sheet showed (`expected_cost`), so a
 ##   price that changed in between is refused instead of charged;
 ## - one request at a time: an action asked for while one is out answers "busy".
+##
+## Wearing works offline (services/wardrobe.gd pending): wear() puts the look on
+## this phone at once, with its revision and key fixed then, and sync() sends
+## it with the equip call whenever the app reaches the server (now, or from
+## Main when the phone is back online and after each Pollen flush). A send
+## with no answer keeps it for the next sync; an answer settles it; a refusal
+## drops it and reads the wardrobe again. Only the newest look put on is sent:
+## a newer one put on while a send is out goes next, in the same sync. Nothing
+## is sent while services/connectivity.gd says offline. Buying never queues:
+## it needs an answer, so offline it is refused ("offline").
 const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const Presence = preload("res://services/friend_presence.gd")
 const Typed = preload("res://services/typed_values.gd")
+const Connectivity = preload("res://services/connectivity.gd")
 
 const WALLET_PATH := "/v1/pollen"
 const SPEND_PATH := "/v1/pollen/spend"
@@ -37,6 +48,8 @@ var _api: Node
 var _scope: Callable
 var _transport: Callable
 var _busy := false
+## Whether the server is reached (services/connectivity.gd); tests set their own.
+var connectivity: RefCounted
 
 ## transport(method, path, body) -> response, for tests; else the API's queue.
 func _init(api: Node, scope_source: Callable, transport: Callable = Callable(), wardrobe: RefCounted = null, pollen: RefCounted = null) -> void:
@@ -55,7 +68,10 @@ func scope() -> Dictionary:
 func busy() -> bool:
 	return _busy
 
-## Reads the wallet and wardrobe. {ok, code}.
+func online() -> bool:
+	return (connectivity if connectivity != null else Connectivity.shared()).online()
+
+## Reads the wallet and wardrobe. {ok, code}. A look put on and not sent yet goes after it.
 func refresh() -> Dictionary:
 	var context := scope()
 	if context.is_empty(): return {"ok": false, "code": "pollen_wardrobe_disabled"}
@@ -63,12 +79,15 @@ func refresh() -> Dictionary:
 	_busy = true
 	var response := await _request(HTTPClient.METHOD_GET, WALLET_PATH, {})
 	_busy = false
-	return _note_wallet(context, response)
+	var answer := _note_wallet(context, response)
+	_sync_later()
+	return answer
 
 ## Buys `id` (kind "item", "set" or "pack") for the cost the player saw. {ok, code, receipt}.
 func buy(kind: String, id: String, cost: int) -> Dictionary:
 	var context := scope()
 	if context.is_empty() or not store.shop(str(context.server), str(context.owner)): return {"ok": false, "code": "pollen_shop_disabled"}
+	if not online(): return {"ok": false, "code": "offline"}
 	if _busy: return {"ok": false, "code": "busy"}
 	_busy = true
 	var body := {"schema_version": 1, "idempotency_key": new_key(), "kind": kind, "id": id, "expected_cost": cost}
@@ -80,25 +99,62 @@ func buy(kind: String, id: String, cost: int) -> Dictionary:
 		changed.emit()
 	_busy = false
 	if not answer.ok and answer.code in STALE: await refresh()
+	else: _sync_later()
 	return answer
 
-## Wears `look` ({slot: id}; {} for the default look). {ok, code, receipt}.
+## Wears `look` ({slot: id}; {} for the default look): on this phone at once,
+## offline too, then sent (sync). {ok, code, receipt, pending}: ok once it is
+## worn here; `pending` while the server has not confirmed it yet.
 func wear(look: Dictionary) -> Dictionary:
 	var context := scope()
 	if context.is_empty(): return {"ok": false, "code": "pollen_wardrobe_disabled"}
-	if _busy: return {"ok": false, "code": "busy"}
+	var put: Dictionary = store.put_on(str(context.server), str(context.owner), look, int(Time.get_unix_time_from_system() * 1000.0))
+	if put.is_empty(): return {"ok": false, "code": "not_owned"}
+	changed.emit()
+	return await sync()
+
+## Sends the look put on and not confirmed yet, if any, while the server is
+## reached; the newest one each time round. {ok, code, receipt, pending}.
+func sync() -> Dictionary:
+	var context := scope()
+	if context.is_empty(): return {"ok": false, "code": "pollen_wardrobe_disabled"}
+	var server := str(context.server)
+	var owner := str(context.owner)
+	var waiting := {"ok": true, "code": "", "receipt": {}, "pending": true}
+	if store.pending(server, owner).is_empty(): return {"ok": true, "code": "", "receipt": {}}
+	# Offline it waits for the next sync; a send already out sends this one next.
+	if not online() or _busy: return waiting
 	_busy = true
-	var known: Dictionary = store.view(context.server, context.owner)
-	var revision := maxi(int(Time.get_unix_time_from_system() * 1000.0), int(known.get("look_revision", 0)) + 1)
-	var body := {"schema_version": 1, "idempotency_key": new_key(), "revision": revision, "look": look.duplicate()}
-	var response := await _send(EQUIP_PATH, body)
-	var answer := _answer(response)
-	if answer.ok and scope() == context:
-		store.note_look(context.server, context.owner, answer.receipt)
-		changed.emit()
+	var answer := waiting
+	var stale := false
+	while true:
+		var put: Dictionary = store.pending(server, owner)
+		if put.is_empty() or scope() != context or not online(): break
+		var body := {"schema_version": 1, "idempotency_key": put.key, "revision": put.revision, "look": (put.look as Dictionary).duplicate()}
+		var response := await _send(EQUIP_PATH, body)
+		if scope() != context: break
+		answer = _answer(response)
+		if answer.ok:
+			store.settle_look(server, owner, str(put.key), answer.receipt)
+			changed.emit()
+			continue
+		var status := int(response.get("status", 0))
+		if status >= 400 and status < 500:
+			# Refused for good (an item no longer owned, a revision off the clock): the confirmed look shows again.
+			store.drop_pending(server, owner, str(put.key))
+			changed.emit()
+			stale = true
+		else: answer = waiting
+		break
 	_busy = false
-	if not answer.ok and answer.code in STALE: await refresh()
+	if stale: await refresh()
 	return answer
+
+## A sync once the current call returns: a look put on while a read or a
+## purchase was out goes as soon as the slot is free.
+func _sync_later() -> void:
+	var context := scope()
+	if not context.is_empty() and not store.pending(str(context.server), str(context.owner)).is_empty(): sync.call_deferred()
 
 ## A fresh idempotency key: 32 hex characters.
 static func new_key() -> String:
@@ -107,7 +163,9 @@ static func new_key() -> String:
 ## Sends one action, again with the same body and key when no answer came.
 func _send(path: String, body: Dictionary) -> Dictionary:
 	var response: Dictionary = {}
-	for _attempt in range(MAX_SENDS):
+	for attempt in range(MAX_SENDS):
+		# No more tries once the phone reads as offline: the action keeps its key for later.
+		if attempt > 0 and not online(): break
 		response = await _request(HTTPClient.METHOD_POST, path, body)
 		if response.get("ok", false) or int(response.get("status", 0)) > 0 and int(response.get("status", 0)) < 500: break
 	return response

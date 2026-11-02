@@ -32,6 +32,15 @@ const DisplayNameFlow = preload("res://presentation/display_name_flow.gd")
 class OpenStore extends "res://presentation/pollen_store_flow.gd":
 	func available() -> bool: return true
 
+## The Wardrobe as Main sees it: shown while `on`, and what Main tells it.
+class WardrobeStub extends "res://presentation/wardrobe_flow.gd":
+	var on := true
+	var told: Array = []
+	var synced := 0
+	func available() -> bool: return on
+	func connectivity_changed(online: bool) -> void: told.append(online)
+	func sync_pending() -> void: synced += 1
+
 ## Names as if on, to see that offline a change does not open.
 class NamesOn extends "res://presentation/display_name_flow.gd":
 	var opened := 0
@@ -321,6 +330,25 @@ func _home() -> void:
 	_check(app.home_menu_view.play_button.disabled, "A Home built offline starts greyed")
 	state.note_reached()
 	_check(not app.home_menu_view.play_button.disabled, "And comes back too")
+	# The Wardrobe hears each flip, and Home's row follows what it can show then.
+	var real_wardrobe: Node = app.wardrobe_flow
+	var stub := WardrobeStub.new(app)
+	app.add_child(stub)
+	app.wardrobe_flow = stub
+	app._refresh_home_pollen()
+	_check(app.home_menu_view.wardrobe_button.visible, "The Wardrobe row shows while the Wardrobe has something to show")
+	stub.on = false
+	state.force(false)
+	_check(stub.told == [false] and not app.home_menu_view.wardrobe_button.visible, "Offline the Wardrobe hears it and the row follows (hidden with nothing saved)")
+	stub.on = true
+	state.note_reached()
+	_check(stub.told == [false, true] and app.home_menu_view.wardrobe_button.visible, "Online again the Wardrobe hears it and the row comes back")
+	app._follow_identity()
+	_check(stub.synced == 1, "The identity read sends a look put on offline")
+	app.pollen_client.settled.emit()
+	_check(stub.synced == 2, "So does each Pollen flush")
+	app.wardrobe_flow = real_wardrobe
+	stub.queue_free()
 	# Routes with no button say why instead of trying.
 	var toasts: Array = []
 	state.force(false)
