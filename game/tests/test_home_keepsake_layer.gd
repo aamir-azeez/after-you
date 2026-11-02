@@ -859,7 +859,29 @@ func _check_explore_climb() -> void:
 
 ## Leaving Explore by Back or the system Back, the spirits roam Home again,
 ## even when the other spirit has wandered to where the explorer is put back.
+## While the explorer is away on the isles, the other spirit roams its own
+## island out of view, clear of the keepsakes and their triggers and stays.
 func _check_explore_roam() -> void:
+	var away := await _home(Vector2i(1560, 720), _everything(), _all_hard())
+	await _settle(away.layer)
+	var other: Node3D = away.world.actors.b
+	away.stage._explore_button.pressed.emit()
+	var far: Vector3 = away.layer.slot_transform("high-and-low") * Vector3(0.4, 0, 2.2)
+	away.world.actors.a.position = far
+	away.stage._explore_last = far
+	away.stage._explore_recheck = true
+	var roamed := 0.0
+	var kept_clear := true
+	for frame in range(600):
+		var before := other.position
+		_frames(away.stage, away.world, 1)
+		roamed += other.position.distance_to(before)
+		kept_clear = kept_clear and away.stage._floor.has_point(Vector2(other.position.x, other.position.z)) and not away.layer.blocks(other.position, Stage.SPIRIT_CLEARANCE - 0.01) and not (away.layer.near_trigger(other.position, Stage.TRIGGER_ROOM - 0.01) and not away.layer.near_trigger(before, Stage.TRIGGER_ROOM - 0.01))
+	var seen: Vector2 = away.world.camera.unproject_position(away.world.to_global(other.position))
+	_check(not Rect2(Vector2.ZERO, Vector2(1560, 720)).has_point(seen), "The explorer's walk takes the other spirit out of view: %s" % seen)
+	_check(roamed > 1.0, "Out of view, the other spirit keeps roaming its island: %.2f m" % roamed)
+	_check(kept_clear, "on its own island, clear of the keepsakes and of their triggers and stays")
+	await _close(away)
 	for way: String in ["back", "system back"]:
 		var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
 		var stage: Control = home.stage

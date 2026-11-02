@@ -640,6 +640,19 @@ func island_ids() -> Array:
 ## The gold spirit's room round a keepsake in Explore.
 const WALK_CLEARANCE := 0.12
 
+## Whether `point` is within `reach` metres of a shown keepsake's trigger (its
+## area or line) or stay, where the explorer sets one off: the other spirit
+## roams clear of them in Explore.
+func near_trigger(point: Vector3, reach: float) -> bool:
+	for id: String in _shown:
+		var frame: Dictionary = _frames[id]
+		var local := _local(id, point)
+		var trigger: Dictionary = frame.trigger
+		if trigger.has("area") and _rect_distance(trigger.area, local) <= reach: return true
+		if trigger.has("line") and local.distance_to(Geometry2D.get_closest_point_to_segment(local, trigger.line[0], trigger.line[1])) * HOME_SCALE <= reach: return true
+		if (frame.stay as Rect2).has_area() and _rect_distance(frame.stay, local) <= reach: return true
+	return false
+
 ## True where an Explore walk may stand: on an island, a crossing that carries
 ## the spirit or a keepsake's walkway, and not inside a keepsake.
 func walkable(point: Vector3) -> bool:

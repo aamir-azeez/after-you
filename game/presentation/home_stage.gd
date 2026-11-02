@@ -66,6 +66,8 @@ const MAX_SIZE := 25.0
 const HOME_PAN := Vector2(0.42, 0.40)
 const WALK_SPEED := 0.52
 const SEPARATION := 0.92
+## In Explore the other spirit keeps this far from a keepsake's trigger or stay.
+const TRIGGER_ROOM := 0.5
 # A tap is a short, nearly still press near a spirit; anything else stays a gesture.
 const TAP_RADIUS := 56.0
 const TAP_SLOP := 18.0
@@ -970,17 +972,20 @@ func _follow_explorer(actor: Node3D, step: float) -> void:
 	_explore_focus = actor.position if _world.reduced_motion else _explore_focus.lerp(actor.position, 1.0 - exp(-8.0 * step))
 
 ## Whether a wandering spirit may head for `goal`: on its island, clear of the
-## keepsakes and the other spirit, and in view.
+## keepsakes and the other spirit, and in view on Home. In Explore the camera
+## follows the explorer, so the other spirit roams its island out of view too,
+## but never toward a keepsake's trigger or stay, where the explorer sets one off.
 func _goal_clear(role: String, goal: Vector3) -> bool:
 	if not _floor.has_point(Vector2(goal.x,goal.z)): return false
 	if is_instance_valid(_keepsake_layer) and _keepsake_layer.blocks_step(_actors[role].position, goal, SPIRIT_CLEARANCE): return false
 	for other: String in _actors:
 		if other!=role and goal.distance_to(_actors[other].position)<SEPARATION: return false
+	if _exploring: return not (is_instance_valid(_keepsake_layer) and _keepsake_layer.near_trigger(goal, TRIGGER_ROOM))
 	return _in_view(goal)
 
 ## Whether a wandering spirit may take a step to `to`: on its island, and never
-## deeper into a keepsake, nearer the other spirit or out of view than it
-## already is, so a spirit put where it should not stand (the explorer put back
+## deeper into a keepsake, nearer the other spirit, out of view on Home or into
+## a trigger's room in Explore than it already is, so a spirit put where it should not stand (the explorer put back
 ## from Explore where the other has wandered) always walks out of it.
 func _step_clear(role: String, to: Vector3) -> bool:
 	var from: Vector3 = _actors[role].position
@@ -990,6 +995,7 @@ func _step_clear(role: String, to: Vector3) -> bool:
 		if other==role: continue
 		var apart := to.distance_to(_actors[other].position)
 		if apart<SEPARATION and apart<from.distance_to(_actors[other].position): return false
+	if _exploring: return not (is_instance_valid(_keepsake_layer) and _keepsake_layer.near_trigger(to, TRIGGER_ROOM) and not _keepsake_layer.near_trigger(from, TRIGGER_ROOM))
 	return not _in_view(from) or _in_view(to)
 
 ## Whether a spirit standing at `point` shows whole in Home's stage.
