@@ -98,7 +98,7 @@ export function pollenShopClient(request: Request): boolean {
  * read counts as "legacy". The header only allows a bounded read; it never pays anything by itself.
  */
 export const FULL_JOURNEY_HEADER = "X-AfterYou-Full-Journey";
-export const POLLEN_GRANT_HINT_MIN_VERSION = "0.7.8";
+export const POLLEN_GRANT_HINT_MIN_VERSION = "0.7.9";
 const HINT_MINIMUM = parseVersion(POLLEN_GRANT_HINT_MIN_VERSION) as Version;
 export function grantHint(request: Request): GrantHint {
   const said = request.headers.get(FULL_JOURNEY_HEADER);

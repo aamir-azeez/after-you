@@ -280,6 +280,8 @@ describe("when the grant reads RevenueCat", () => {
     expect(ask({ ...newer, [FULL_JOURNEY_HEADER]: "bought" })).toBe("bought");
     expect(ask({ ...newer, [FULL_JOURNEY_HEADER]: "yes" })).toBe("none");
     expect(ask({ ...POLLEN_CLIENT })).toBe("legacy");
+    // 0.7.8 shipped before the phone sent the header: without it, it still gets the legacy read.
+    expect(ask({ [CLIENT_HEADER]: "0.7.8 play" })).toBe("legacy");
     expect(ask({})).toBe("legacy");
   });
 });
