@@ -49,7 +49,7 @@ extends RefCounted
 ##   Explore action sets it off from somewhere it cannot (null: anywhere).
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Anim = preload("res://presentation/keepsakes/keepsake_anim.gd")
-const BASE_MAX := 2.5
+const BASE_MAX := 4.45
 const UPGRADE_MAX := 0.8
 ## The layer's ease back to rest after the last beat.
 const SETTLE := 0.3

@@ -21,7 +21,13 @@ const MAX_TRIANGLES := 6000
 const ALL_TRIANGLES := 40000
 const MAX_MOVING := 6
 ## Every beat, then the ease back to rest.
-const TOTAL_MAX := 4.5
+const TOTAL_MAX := 5.65
+## The owner let the Relay Masts take longer (2026-11-02), so its flag keeps
+## its old, unhurried pace out and back; every other keepsake keeps the
+## first limits: a base beat of at most USUAL_BASE, a tap of USUAL_TOTAL.
+const LONG_TAPS := ["relay-isles"]
+const USUAL_BASE := 2.5
+const USUAL_TOTAL := 4.5
 var checks := 0
 var failures := 0
 
@@ -54,13 +60,16 @@ func _run() -> void:
 		all_parts += counted[0]
 		all_triangles += counted[1]
 		prop.free()
-		# Timing: base at most 2.5 s, each upgrade at most 0.8 s, all within 4.5 s.
+		# Timing: base at most BASE_MAX, each upgrade at most UPGRADE_MAX, all within TOTAL_MAX.
 		var beats: Array = builder.beats(full)
 		var total := 0.0
 		for beat: Dictionary in beats:
 			total += float(beat.time)
 			_check(float(beat.time) <= (Builder.BASE_MAX if beat.beat == "base" else Builder.UPGRADE_MAX), "%s's %s beat is short enough: %.2f" % [entry.id, beat.beat, beat.time])
 		_check(beats[0].beat == "base" and total + Builder.SETTLE <= TOTAL_MAX, "%s plays every upgrade and settles within %.1f s: %.2f" % [entry.id, TOTAL_MAX, total + Builder.SETTLE])
+		if not entry.id in LONG_TAPS:
+			var bases: Array = [{}, full].map(func(state: Dictionary) -> float: return float(builder.beats(state)[0].time))
+			_check(bases.max() <= USUAL_BASE and total + Builder.SETTLE <= USUAL_TOTAL, "%s keeps the usual limits, a %.1f s base and a %.1f s tap: %s, %.2f" % [entry.id, USUAL_BASE, USUAL_TOTAL, bases, total + Builder.SETTLE])
 		_check(beats.size() == 1 + int(full.get("together", false)) + int(full.get("hard", false)) + int(full.get("top", false)), "%s adds one beat per earned upgrade" % entry.id)
 		for beat: Dictionary in beats: _check(entry.keepsake.sounds.has(beat.beat), "%s has a sound for its %s beat" % [entry.id, beat.beat])
 		_check_tap_parts(stage, entry, builder, full)

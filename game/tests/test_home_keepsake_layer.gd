@@ -577,7 +577,9 @@ func _check_play() -> void:
 				asked = true
 				_check(not stage.play_keepsake(id), "A tap halfway through %s neither stacks nor restarts it" % id)
 		_check(moved, "%s moves its parts while it plays" % id)
-		_check(not stage.keepsake_playing() and Time.get_ticks_msec() - tap_start <= 4700, "%s finishes within four and a half seconds" % id)
+		# The Relay Masts may take up to 5.65 s (test_keepsake_props.gd LONG_TAPS); the rest 4.5 s.
+		var limit := 5850 if id == "relay-isles" else 4700
+		_check(not stage.keepsake_playing() and Time.get_ticks_msec() - tap_start <= limit, "%s finishes within its time: %d ms" % [id, Time.get_ticks_msec() - tap_start])
 		await process_frame
 		# The glasshouse and the lighthouse hold their end (test_keepsake_held.gd); let go here.
 		if layer.holding(id): layer._release(id)

@@ -28,14 +28,13 @@ const HANDOFF := 0.45
 ## long the turn takes, there and back.
 const CORNER := 2
 const TURN := 0.12
-## The flag's pace along its cord and the lines (metres a second), the gap
-## between one stretch and the next, and how long it waits at the far end
-## before coming back (longer when the tap has the time).
-const SPEED := 3.0
+## The flag's pace up its cord and along the lines, and a touch quicker back
+## (metres a second), the gap between one stretch and the next, and how long
+## it waits at the far end before coming back (longer when the tap has time).
+const SPEED := 1.9
+const BACK_SPEED := 2.2
 const GAP := 0.05
 const HOLD: Array[float] = [0.2, 0.5]
-## Every beat of a tap together: the 4.5 s a tap may take, less the settle.
-const TAP_MAX := 4.5 - SETTLE
 
 static func _y0(state: Dictionary) -> float:
 	return HARD_LIFT if state.get("hard", false) else 0.0
@@ -123,51 +122,70 @@ static func route(state: Dictionary) -> Array[Vector3]:
 	points.append(far.lerp(_mint_top(), HANDOFF) - hang)
 	return points
 
-## The flag's whole trip in a tap, in times from the tap's start: "legs"
-## [[to, at, time], ...] out along route() and back the same way to rest,
-## "turns" [[rotation_y, at, time], ...] at the far mast with Together on,
-## "out" when it reaches the far end and "back" when it sets off home. It
-## comes back faster than it went when the tap is short and slower when it has
-## time to spare, and is at rest as the last beat ends, so the settle has
-## nothing left to move.
-func trip(state: Dictionary) -> Dictionary:
+## The flag's way out, in times from the tap's start: "legs" [[to, at, time],
+## ...] along route(), "turns" [[rotation_y, at, time], ...] at the far mast
+## with Together on, "out" when it reaches the far end, the route's "length"
+## and the "waits" between its stretches (the same coming back).
+static func _outward(state: Dictionary) -> Dictionary:
 	var points := route(state)
 	var turning: bool = state.get("together", false)
-	var tap := 0.0
-	for beat: Dictionary in beats(state): tap += float(beat.time)
 	var legs: Array = []
 	var turns: Array = []
 	var length := 0.0
 	var at := 0.1
 	for index in range(1, points.size()):
-		var time := points[index - 1].distance_to(points[index]) / SPEED
-		legs.append([points[index], at, time])
-		at += time + GAP
-		length += points[index - 1].distance_to(points[index])
+		var stretch := points[index - 1].distance_to(points[index])
+		legs.append([points[index], at, stretch / SPEED])
+		at += stretch / SPEED + GAP
+		length += stretch
 		if turning and index == CORNER:
 			turns.append([_mint_heading(), at, TURN])
 			at += TURN + GAP
-	var out := at - GAP
 	var waits := GAP * (points.size() - 2) + (TURN + GAP if turning else 0.0)
-	var back := out + clampf(tap - out - waits - length / SPEED, HOLD[0], HOLD[1])
+	return {"points": points, "legs": legs, "turns": turns, "out": at - GAP, "length": length, "waits": waits}
+
+## How long the whole trip takes at its own paces: out, the shortest wait at
+## the far end, and back.
+static func trip_time(state: Dictionary) -> float:
+	var way := _outward(state)
+	return float(way.out) + HOLD[0] + float(way.waits) + float(way.length) / BACK_SPEED
+
+## The flag's whole trip in a tap, in times from the tap's start: "legs"
+## [[to, at, time], ...] out along route() and back the same way to rest,
+## "turns" [[rotation_y, at, time], ...] at the far mast with Together on,
+## "out" when it reaches the far end and "back" when it sets off home. The
+## tap is as long as the trip (beats()), so it comes back at BACK_SPEED; it
+## waits longer and comes back slower only when the tap is longer than that.
+## It is at rest as the last beat ends, so the settle has nothing to move.
+func trip(state: Dictionary) -> Dictionary:
+	var way := _outward(state)
+	var points: Array[Vector3] = way.points
+	var tap := 0.0
+	for beat: Dictionary in beats(state): tap += float(beat.time)
+	var legs: Array = way.legs.duplicate()
+	var turns: Array = way.turns.duplicate()
+	var out: float = way.out
+	var waits: float = way.waits
+	var length: float = way.length
+	var back := out + clampf(tap - out - waits - length / BACK_SPEED, HOLD[0], HOLD[1])
 	var pace := (tap - back - waits) / length
-	at = back
+	var at := back
 	for index in range(points.size() - 1, 0, -1):
 		var time := points[index - 1].distance_to(points[index]) * pace
 		legs.append([points[index - 1], at, time])
 		at += time + GAP
-		if turning and index - 1 == CORNER:
+		if state.get("together", false) and index - 1 == CORNER:
 			turns.append([0.0, at, TURN])
 			at += TURN + GAP
 	return {"legs": legs, "turns": turns, "out": out, "back": back}
 
 ## The flag comes home through the upgrade beats, so the base beat takes what
-## the tap has left after them, up to BASE_MAX.
+## the trip needs after them (never less than the usual base beat).
 func beats(state: Dictionary) -> Array:
 	var result: Array = super(state)
 	var upgrades := 0.0
 	for beat: Dictionary in result.slice(1): upgrades += float(beat.time)
-	result[0].time = minf(BASE_MAX, TAP_MAX - upgrades)
+	result[0].time = maxf(base_time(), trip_time(state) - upgrades)
 	return result
 
 func upgrade_time(beat: String) -> float:
