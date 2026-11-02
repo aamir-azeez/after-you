@@ -37,6 +37,9 @@ const EQUIP_PATH := "/v1/pollen/equip"
 const MAX_SENDS := 3
 ## Answers after which the phone reads the wardrobe again, because what it showed was out of date.
 const STALE := ["already_owned", "pollen_price_changed", "not_for_sale", "not_owned", "pollen_locked"]
+## Equip refusals that will not pass: the look put on goes. Anything else
+## (rate limits, a token problem, an update needed, a server error) keeps it.
+const FINAL_REFUSALS := ["invalid_pollen_equip", "not_owned", "identity_absent"]
 
 ## The wardrobe or the balance changed.
 signal changed
@@ -138,8 +141,7 @@ func sync() -> Dictionary:
 			store.settle_look(server, owner, str(put.key), answer.receipt)
 			changed.emit()
 			continue
-		var status := int(response.get("status", 0))
-		if status >= 400 and status < 500:
+		if answer.code in FINAL_REFUSALS:
 			# Refused for good (an item no longer owned, a revision off the clock): the confirmed look shows again.
 			store.drop_pending(server, owner, str(put.key))
 			changed.emit()

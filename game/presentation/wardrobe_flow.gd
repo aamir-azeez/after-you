@@ -63,7 +63,7 @@ const Page = preload("res://presentation/wardrobe_page.gd")
 const Sheets = preload("res://presentation/wardrobe_sheets.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
-const Connectivity = preload("res://services/connectivity.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 
 const MODE_WARDROBE := "wardrobe"
 
@@ -87,6 +87,11 @@ var _gate: BusyTapGate
 ## Where Back returns: "settings" (the default) or "home".
 var return_to := "settings"
 var _status := ""
+## A look whose send got no answer while online goes again after these
+## (RefreshSchedule's failure pace); tests set shorter ones.
+var sync_retry_ms: Array = preload("res://services/refresh_schedule.gd").FAILURE_DELAYS_MS
+## Sends of a pending look that got no answer while online, in a row (sync_retry_ms).
+var _sync_misses := 0
 var _retry := false
 ## Tests: the week the shelf shows (-1: this week on the phone's clock).
 var week := -1
@@ -149,15 +154,31 @@ func show_wardrobe(from: String = "settings") -> void:
 ## a look put on offline is sent, and an open page reads again and redraws (Buy).
 func connectivity_changed(online: bool) -> void:
 	if host == null or _client().scope().is_empty(): return
+	# A card left open (confirm, short of Pollen) would buy offline: it closes.
+	if not online: _close_sheet()
 	_redraw()
 	if not online: return
-	await _client().sync()
+	_sync_misses = 0
+	await sync_pending()
 	if is_open(): refresh()
 
 ## Sends a look put on and not confirmed yet (Main, after a Pollen flush and
 ## once the identity is read). Nothing while there is none.
 func sync_pending() -> void:
-	if host != null and not _client().scope().is_empty(): _client().sync()
+	if host == null or _client().scope().is_empty(): return
+	_after_sync(await _client().sync())
+
+## A send that got no answer while the phone still reads as online (a server
+## error, one timeout) goes again soon, a few times, instead of waiting for the
+## next resume; offline, the connection coming back sends it.
+func _after_sync(answer: Dictionary) -> void:
+	if not answer.get("pending", false) or not _client().online() or _client().busy():
+		if not answer.get("pending", false): _sync_misses = 0
+		return
+	if _sync_misses >= sync_retry_ms.size() or not is_inside_tree(): return
+	var wait := float(sync_retry_ms[_sync_misses]) / 1000.0
+	_sync_misses += 1
+	get_tree().create_timer(wait).timeout.connect(sync_pending)
 
 ## Reads the wardrobe again; the page redraws with the answer.
 func refresh() -> void:
@@ -279,6 +300,7 @@ func _wear(entry: Dictionary) -> void:
 	var answer: Dictionary = await _client().wear(look)
 	if not answer.get("ok", false): _toast(_error_line(str(answer.get("code", ""))))
 	else: Soundscape.play_on(host, "ui_taken_off" if bool(entry.worn) else "ui_worn")
+	_after_sync(answer)
 	_redraw()
 
 ## Wears one owned item in its slot, over the rest of the look: the results
@@ -289,6 +311,7 @@ func wear_item(id: String) -> bool:
 	var look := _look()
 	look[Catalog.slot(id)] = id
 	var answer: Dictionary = await _client().wear(look)
+	_after_sync(answer)
 	_redraw()
 	return bool(answer.get("ok", false))
 
@@ -367,8 +390,7 @@ func _look() -> Dictionary:
 
 ## Why buying waits: the phone is offline. Asks the server once, so a connection that came back shows at once.
 func _offline_reason() -> void:
-	_toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
-	Connectivity.shared().check_now()
+	OfflineHold.refuse(_toast)
 
 func _balance() -> int:
 	var scope: Dictionary = _client().scope()

@@ -117,6 +117,7 @@ func _run() -> void:
 	await _no_buying_offline()
 	await _page()
 	await _page_shop_off()
+	await _retry_soon()
 	Catalog.set_offered([])
 	Connectivity.use_shared(null)
 	Wardrobe.use_shared(null)
@@ -285,6 +286,14 @@ func _refused() -> void:
 	await client.sync()
 	_check(store.pending(SERVER, ME).is_empty() and fake.sent.size() == 2 and fake.sent[1].path == WardrobeClient.WALLET_PATH, "A refusal drops the look and reads the wardrobe again")
 	_check(store.effective_look(SERVER, ME).is_empty() and store.view(SERVER, ME).items == ["tide"], "The page then shows what the server says")
+	# Refusals that will pass keep the look: a rate limit, a token problem, an update needed.
+	for passing: Dictionary in [{"status": 429, "code": "rate_limited"}, {"status": 401, "code": "invalid_auth"}, {"status": 426, "code": "client_update_required"}]:
+		var kept := _store(["daisy", "tide"])
+		var again := _fake()
+		var keeper := _client(kept, again, state)
+		again.replies = [{"ok": false, "status": passing.status, "code": passing.code}]
+		var answer: Dictionary = await keeper.wear({"hat": "daisy"})
+		_check(answer.ok and answer.get("pending", false) and kept.effective_look(SERVER, ME) == {"hat": "daisy"} and again.sent.size() == 1, "A %d %s keeps the look for the next sync" % [passing.status, passing.code])
 
 func _deleted_identity() -> void:
 	var state: RefCounted = Connectivity.new()
@@ -338,6 +347,7 @@ func _setup_page(state: RefCounted, saved: bool, shop: bool = true) -> Dictionar
 
 func _page() -> void:
 	var state: RefCounted = Connectivity.new()
+	Connectivity.use_shared(state)
 	state.force(false)
 	var empty := _setup_page(state, false)
 	_check(not empty.flow.available(), "Offline with nothing saved the Wardrobe does not show")
@@ -382,6 +392,7 @@ func _page() -> void:
 
 func _page_shop_off() -> void:
 	var state: RefCounted = Connectivity.new()
+	Connectivity.use_shared(state)
 	state.force(false)
 	var t := _setup_page(state, true, false)
 	t.flow.show_wardrobe()
@@ -390,6 +401,26 @@ func _page_shop_off() -> void:
 	t.flow.select("daisy")
 	await t.flow.act("daisy")
 	_check(t.store.effective_look(SERVER, ME).get("hat") == "daisy" and t.fake.sent.is_empty(), "Shop off: owned items are still wearable offline")
+	t.host.queue_free()
+	await _frames(2)
+
+## A send that got no answer while still online goes again soon (a few times), not only on the next resume.
+func _retry_soon() -> void:
+	var state: RefCounted = Connectivity.new()
+	Connectivity.use_shared(state)
+	var t := _setup_page(state, true)
+	t.flow.sync_retry_ms = [30, 30]
+	var down := {"ok": false, "status": 503, "code": "unavailable"}
+	t.fake.replies = [down, down, down]
+	var worn: bool = await t.flow.wear_item("daisy")
+	_check(worn and not t.store.pending(SERVER, ME).is_empty() and t.fake.sent.size() == 3, "Server errors keep the look put on (three tries)")
+	t.fake.replies = [func(body: Dictionary) -> Dictionary: return receipt(body.look, int(body.revision))]
+	await create_timer(0.2).timeout
+	await _frames(4)
+	_check(t.store.pending(SERVER, ME).is_empty() and t.store.view(SERVER, ME).look.get("hat") == "daisy", "It goes again by itself soon after and lands")
+	var sent: int = t.fake.sent.size()
+	await create_timer(0.2).timeout
+	_check(t.fake.sent.size() == sent, "Then nothing more is sent")
 	t.host.queue_free()
 	await _frames(2)
 
