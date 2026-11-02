@@ -975,10 +975,12 @@ func _chapter_unlocks() -> Dictionary:
 	var rooms: Dictionary = room_hub_flow.known_rooms()
 	var stamp := [hash(earned), FileAccess.get_modified_time(HardMode.MARKS_PATH), hash(rooms), _full_journey_access(), TesterSwitches.shared().generation]
 	if _unlocks_kept.size() == 2 and _unlocks_kept[0] == stamp: return _unlocks_kept[1]
-	# A fresh view opens only what its own marks open: chapters played before it stay closed.
+	# A fresh view opens what its own marks open, and the chapters of rooms and duels the player
+	# is in, so a friend waiting on a turn is never locked out. Journals and finished rooms from
+	# before open nothing more.
 	var fresh: bool = view == TesterSwitches.FRESH
 	# A duel's room is an ordinary room, so a duel's clear is among rooms.finished.
-	var progress := ChapterUnlocks.progress(earned, _hard_marks(), {} if fresh else ChapterUnlocks.touched(rooms.chapters), stamp[3], [] if fresh else rooms.finished)
+	var progress := ChapterUnlocks.progress(earned, _hard_marks(), ChapterUnlocks.touched(rooms.chapters, not fresh), stamp[3], [] if fresh else rooms.finished)
 	_unlocks_kept = [stamp, progress]
 	return progress
 

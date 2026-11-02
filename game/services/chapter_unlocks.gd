@@ -132,12 +132,12 @@ static func title(key: String) -> String:
 
 ## Chapters the player has already been in, outside the keepsake marks
 ## (progress() reads those), keyed by chain key: a room for it
-## (`room_chapters`, chapter keys) or its journal on this phone.
-static func touched(room_chapters: Array = []) -> Dictionary:
+## (`room_chapters`, chapter keys) or, with `journals`, its journal on this phone.
+static func touched(room_chapters: Array = [], journals: bool = true) -> Dictionary:
 	_build()
 	var result := {}
 	for key: Variant in room_chapters: result[chain_key(str(key))] = true
-	for key: String in _chain:
+	for key: String in (_chain if journals else []):
 		if result.has(key): continue
 		for source: String in _sources[key]:
 			var path := _journal(source)

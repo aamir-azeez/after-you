@@ -78,6 +78,11 @@ func _keepsake_codes() -> void:
 	check(store.earned(real).is_empty() and store.hard(real_hard).is_empty(), "with no keepsake and no Hard mark")
 	var fresh: Dictionary = ChapterUnlocks.progress(store.earned(real), store.hard(real_hard), {}, true, [])
 	check(ChapterUnlocks.reached(ChapterUnlocks.chain()[0], fresh) and not ChapterUnlocks.reached(ChapterUnlocks.chain()[1], fresh), "and only the first chapter open")
+	var in_room: String = ChapterUnlocks.chain()[2]
+	var touched: Dictionary = ChapterUnlocks.touched([in_room], false)
+	check(touched == {in_room: true}, "A fresh view keeps the chapter of a room the player is in, and reads no journal: %s" % [touched])
+	var with_room: Dictionary = ChapterUnlocks.progress(store.earned(real), store.hard(real_hard), touched, true, [])
+	check(ChapterUnlocks.reached(in_room, with_room) and not ChapterUnlocks.reached(ChapterUnlocks.chain()[1], with_room), "so a friend waiting there is never locked out, and nothing else opens")
 	check(store.apply("grant_keepsakes").state == "all", "The other code switches straight over")
 	check(store.apply("reset_keepsakes").state == "fresh" and store.earned(real).is_empty(), "and back, fresh again")
 	check(store.apply("reset_keepsakes").state == "real" and store.earned(real) == real, "The reset code again shows the real marks: nothing was lost")
