@@ -75,9 +75,10 @@ export class LeaderboardMember extends DurableObject<Env> {
   partyRead(now: number, look?: Look): PartyState {
     const state = this.partyRow();
     prune(state, now);
-    if (look !== undefined && this.hasPartyTable()) {
+    // The row as read, before pruning, is written back with only the look changed; an unchanged look reads nothing more.
+    if (look !== undefined && noteLook(state, look) && this.hasPartyTable()) {
       const stored = this.partyRow();
-      if (noteLook(stored, look)) { this.ctx.storage.sql.exec("INSERT OR REPLACE INTO duel_party VALUES (1,?)", JSON.stringify(stored)); noteLook(state, look); }
+      if (noteLook(stored, look)) this.ctx.storage.sql.exec("INSERT OR REPLACE INTO duel_party VALUES (1,?)", JSON.stringify(stored));
     }
     return state;
   }

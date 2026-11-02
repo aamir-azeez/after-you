@@ -5,7 +5,9 @@ extends SceneTree
 ## (services/duels_client.gd keeps `looks` and `party.partner_look`), a board
 ## ghost its row's looks, and services/outfit.gd cleans every one, so an item
 ## this phone is not offered never shows. A server without looks reads as the
-## default. Synthetic ids only.
+## default. Friends no duel reply speaks of (the party page's rows, Start a
+## duel's list) wear the look this phone last heard them wear in a room.
+## Synthetic ids only.
 const Client = preload("res://services/duels_client.gd")
 const DuelModel = preload("res://services/duel_model.gd")
 const Kit = preload("res://presentation/duels/duel_kit.gd")
@@ -13,6 +15,8 @@ const Lobby = preload("res://presentation/duels/duels_screen.gd")
 const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
 const PartyPage = preload("res://presentation/duels/duel_party_page.gd")
+const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
 const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
@@ -157,5 +161,26 @@ func _pages() -> void:
 	var worn := _worn(party_page)
 	_check(worn.size() >= 2 and worn[0] == MINE and worn[1] == MAYA_LOOK, "the party page: you in your look, your partner in theirs: %s" % [worn])
 	party_page.close()
+	# Friends: the look this phone last heard them wear in a room, the default for one it never did.
+	var looks_path := "user://test-duel-looks-turns-%s.json" % Crypto.new().generate_random_bytes(6).hex_encode()
+	var store: RefCounted = TurnLooks.new(looks_path)
+	TurnLooks.use_shared(store)
+	store.note_member(NOOR, NOOR_LOOK)
+	var friends_page := PartyPage.new()
+	friends_page.name_of = _name_of
+	friends_page.party = {"partner": null, "intact": false, "invites_in": [FINN], "invite_out": null, "partner_look": {}}
+	friends_page.friends = [{"id": NOOR, "name": "Noor"}]
+	lobby.open_overlay(friends_page)
+	await process_frame
+	_check(_worn(friends_page.find_child("Friend_" + NOOR.left(6), true, false)) == [NOOR_LOOK] and _worn(friends_page.find_child("Friend_" + FINN.left(6), true, false)) == [{}], "a friend's row wears their last seen look, one never seen the default")
+	friends_page.close()
+	var start := ChallengePage.new()
+	start.friends = [{"id": NOOR, "name": "Noor"}]
+	lobby.open_overlay(start)
+	await process_frame
+	_check(_worn(start.find_child("Pair_" + NOOR.left(6), true, false)) == [NOOR_LOOK, {}], "Start a duel shows the friend in their last seen look: %s" % [_worn(start)])
+	start.close()
+	TurnLooks.use_shared(null)
+	DirAccess.remove_absolute(ProjectSettings.globalize_path(looks_path))
 	lobby.queue_free()
 	await process_frame

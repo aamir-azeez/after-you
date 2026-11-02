@@ -11,7 +11,7 @@ import { CHAPTERS, creatable } from "../v2/chapters";
 import { blankSide, isFinal, isOpen, knownKey, newFriendDuel, newGhostRace, sideOf, viewFor, type Duel, type DuelView, type Ghost, type ProgressNote, type SideRoom } from "./model";
 import type { DuelAction, FinishProof } from "./store";
 import { mutual, type DuelRef, type PartyOp, type PartyState } from "./party";
-import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, RESULT_SHOWN_MS } from "./rules";
+import { CHALLENGE_TTL_MS, PARTY_ACTIONS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS, RESULT_SHOWN_MS } from "./rules";
 import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
@@ -20,6 +20,7 @@ import { announceLobby, hintsField } from "./news";
 import { blobBase64 } from "../blob-codec";
 import { looksOn } from "../pollen/features";
 import type { Look } from "../pollen/catalog";
+import { servedLook } from "../leaderboards/run-looks";
 
 /**
  * The phone's duel routes, all absent (falling through to 404) unless duels
@@ -44,7 +45,7 @@ export const DUELS_PREFIX = "/v1/duels";
 export const DUELS_HEADER = "X-AfterYou-Duels";
 const BOARD = "([a-z0-9-]{1,48}@[1-9][0-9]{0,3})", DUEL_ID = "([a-f0-9]{32})";
 const DUEL_PATH = new RegExp(`^/v1/duels/${BOARD}/${DUEL_ID}(?:/(accept|decline|leave|sync|their-run|their-run/ack))?$`);
-const PARTY_PATH = /^\/v1\/duels\/party\/(invite|accept|dismiss|cancel|leave)$/;
+const PARTY_PATH = new RegExp(`^/v1/duels/party/(${PARTY_ACTIONS.join("|")})$`);
 const BOARD_CONCURRENCY = 4;
 const GHOSTS_SHOWN = 3;
 
@@ -175,7 +176,7 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
   return {
     schema_version: 1,
     party: { partner: pair.partner, intact: pair.intact, invites_in: pair.state.invites_in.map(invite => invite.from), invite_out: pair.state.invite_out?.to ?? null,
-      ...(shownLooks && pair.partner ? { partner_look: pair.looks[1] ?? {} } : {}) },
+      ...(shownLooks && pair.partner ? { partner_look: servedLook(pair.looks[1]) } : {}) },
     duels: shown.map(duel => viewFor(duel, player, shownLooks)).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms),
     limits: { friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR },
     ...hintsField(env)
@@ -184,11 +185,10 @@ async function lobby(env: Env, player: string, now: number, look?: Look): Promis
 
 /** Each board's times to race: its top runs from the view (cached when it can be) and the developers' ghost. */
 async function ghosts(env: Env): Promise<unknown> {
-  const shownLooks = looksOn(env);
   const boards = await pooled([...boardKeys()], BOARD_CONCURRENCY, async key => {
     let view = await cachedView(key);
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
-    return { board: key, developer: developerGhost(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names, ...(shownLooks && row.looks ? { looks: row.looks } : {}) })) };
+    return { board: key, developer: developerGhost(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
   });
   return { schema_version: 1, boards };
 }
@@ -307,7 +307,8 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number, 
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
     const top = view.top.find(item => item.entry_id === body.entry_id);
     if (!top) throw new ApiError(404, "ghost_not_found");
-    // Names stay on the board, where erasure reaches them; the race keeps only the place and time.
+    // Names stay on the board, where erasure reaches them; the race keeps only the place, the time and, while looks are on,
+    // the pair's cosmetic looks as the row showed them (no ids, so nobody's account is named by them).
     ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: null, ...(shownLooks && top.looks ? { looks: top.looks } : {}) };
   }
   const a = [player, mine.partner] as [string, string], aKey = await pairKey(...a);

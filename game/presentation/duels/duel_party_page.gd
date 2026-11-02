@@ -115,7 +115,7 @@ func _row(id: String, words: String, buttons: Array) -> Control:
 	var line := HBoxContainer.new()
 	line.add_theme_constant_override("separation", 12)
 	card.add_child(line)
-	line.add_child(Kit.pip(Vector2(40, 48), Kit.SECOND_PIP))
+	line.add_child(Kit.pip(Vector2(40, 48), Kit.SECOND_PIP, false, Kit.last_seen(id)))
 	var label := Kit.text(words, 20)
 	label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	label.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS

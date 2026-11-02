@@ -11,6 +11,8 @@
  * Pay is in pollen/ (POLLEN-RULES.md "Duels and ghost races").
  */
 
+/** The party actions, POST /v1/duels/party/<action> (routes.ts; pollen/looks-routes.ts keeps the caller's look on each). */
+export const PARTY_ACTIONS = ["invite", "accept", "dismiss", "cancel", "leave"] as const;
 /** Friend duels a pair may have waiting or running at once (challenges it sent or got count too). Ghost races do not count. */
 export const MAX_FRIEND_DUELS_PER_PAIR = 3;
 /** Ghost races a pair may have running at once. */

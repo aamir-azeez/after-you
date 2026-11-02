@@ -1,6 +1,7 @@
 import type { ServerVars } from "../flags";
 import { validLook, type Look } from "./catalog";
 import { looksOn } from "./features";
+import { PARTY_ACTIONS } from "../duels/rules";
 
 /**
  * The Worker's side of looks in rooms (POLLEN_LOOKS; room storage is room-looks.ts). While the flag
@@ -33,7 +34,7 @@ const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;
 export function looksMemberRoute(request: Request, path: string, env: ServerVars): boolean {
   return request.method === "POST" && (path === "/v2/rooms" || path === "/v2/rooms/join" || TURN_ROUTE.test(path)) && looksOn(env);
 }
-const DUEL_LOOK_ROUTE = /^\/v1\/duels(?:\/party\/(?:invite|accept|dismiss|cancel|leave)|\/challenge|\/ghost)?$/;
+const DUEL_LOOK_ROUTE = new RegExp(`^/v1/duels(?:/party/(?:${PARTY_ACTIONS.join("|")})|/challenge|/ghost)?$`);
 /** The duel routes that keep the caller's look in their party row while looks are on: the lobby, party actions, a challenge and a race. */
 export function looksDuelRoute(request: Request, path: string, env: ServerVars): boolean {
   return DUEL_LOOK_ROUTE.test(path) && (path === "/v1/duels" ? request.method === "GET" : request.method === "POST") && looksOn(env);

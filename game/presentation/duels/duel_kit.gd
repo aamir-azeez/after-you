@@ -6,7 +6,9 @@ extends RefCounted
 ## page of tiles runs no 3D views and draws nothing per frame. Every pip wears
 ## its player's look: this player's own from services/own_look.gd, anyone
 ## else's as the server sent it, cleaned by services/outfit.gd, so an item
-## this build is not offered never shows.
+## this build is not offered never shows. A friend the duel replies say nothing
+## about (the party page's friends, Start a duel's list) wears the look this
+## phone last heard them wear in a room (last_seen).
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
@@ -16,6 +18,7 @@ const ThumbnailShelf = preload("res://presentation/chapter_thumbnail_shelf.gd")
 const Thumbnails = preload("res://services/chapter_thumbnail_catalog.gd")
 const Dots = preload("res://presentation/duels/duel_dots.gd")
 const Outfit = preload("res://services/outfit.gd")
+const TurnLooks = preload("res://services/turn_looks.gd")
 const BACKGROUND := Color("123936")
 const PANEL_FILL := Color("163f3b")
 const PANEL_EDGE := Color("2d5a53")
@@ -98,6 +101,11 @@ static func pip(pip_size: Vector2, color: Color, own: bool = false, look: Varian
 	made.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	if not own: made.wear(Outfit.from(look))
 	return made
+
+## The look this phone last heard `id` wear in a room (services/turn_looks.gd
+## members), or {} for someone it never shared a room with. No request.
+static func last_seen(id: Variant) -> Dictionary:
+	return TurnLooks.shared().member(str(id)) if id is String else {}
 
 ## The chapter's real capture in a rounded frame, loaded off the main thread.
 static func picture(key: String, frame_size: Vector2, radius: int = 12) -> PanelContainer:

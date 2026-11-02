@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "../src/duels/rules";
+import { blankParty, noteLook } from "../src/duels/party";
 import { runProgress } from "../src/duels/ticks";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
@@ -527,6 +528,16 @@ describe("duel looks", () => {
     // A stored look the catalogue no longer knows is served as the default.
     duel.sides[0].looks = [{ hat: "gone_item" }, TIDE];
     expect(viewFor(duel, A1, true)!.sides[0].looks).toEqual([{}, TIDE]);
+  });
+
+  it("keep a party row's look only when it changed, the default as no look at all", () => {
+    const row = blankParty();
+    expect(noteLook(row, {})).toBe(false);
+    expect(row).not.toHaveProperty("look");
+    expect(noteLook(row, DAISY)).toBe(true);
+    expect(noteLook(row, { hat: "daisy" })).toBe(false);
+    expect(noteLook(row, {})).toBe(true);
+    expect(row).not.toHaveProperty("look");
   });
 
   it("erasing a player takes their look with their id", () => {
