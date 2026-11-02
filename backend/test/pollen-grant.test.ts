@@ -286,6 +286,56 @@ describe("the grant's own RevenueCat status filter", () => {
     expect(await readGrant("P".repeat(22), config, false, async () => ({ ok: false, reason: "provider_http_500" }))).toEqual({ ok: false, reason: "provider_http_500" });
     expect(await readGrant("P".repeat(22), config, false, async () => ({ ok: true, status: 404, value: null }))).toEqual({ ok: true, subs: [], lifetime: null });
   });
+  it("reads a tester's sandbox subscriptions too, with one more list read for testers only", async () => {
+    const tester = "T".repeat(22), other = "P".repeat(22);
+    const config = (features: string[] = []) => ({ REVENUECAT_SECRET_KEY: "synthetic-test-key", CONFIG: configJson({ features, revenuecat: { project_id: "proj1234", play_subscription_product_ids: ["prodMonthly"],
+      app_store_subscription_product_ids: ["prodIosMonthly"], tester_ids: [tester] } }) });
+    const lists: Record<string, unknown[]> = { production: [item()], sandbox: [item({ id: "sub_test", environment: "sandbox" }), item({ id: "sub_ios", environment: "sandbox", store: "app_store", product_id: "prodIosMonthly" })] };
+    const request = vi.fn(async (url: string) => ({ ok: true as const, status: 200, value: { object: "list", items: lists[new URL(url).searchParams.get("environment")!], next_page: null } }));
+    const environments = () => request.mock.calls.map(([url]) => new URL(url).searchParams.get("environment"));
+    expect(await readGrant(tester, config(), false, request)).toMatchObject({ ok: true, subs: [{ id: "sub_1" }, { id: "sub_test", status: "paid" }] });
+    expect(environments()).toEqual(["production", "sandbox"]);
+    // With the App Store check on, the same sandbox read serves both stores.
+    request.mockClear();
+    expect((await readGrant(tester, config(["APP_STORE_ENTITLEMENTS_ENABLED"]), false, request) as { subs: GrantSub[] }).subs.map(sub => sub.id)).toEqual(["sub_1", "sub_test", "sub_ios"]);
+    expect(environments()).toEqual(["production", "sandbox"]);
+    // Anyone else: production only, one read, as before.
+    request.mockClear();
+    expect(await readGrant(other, config(["APP_STORE_ENTITLEMENTS_ENABLED"]), false, request)).toMatchObject({ ok: true, subs: [{ id: "sub_1" }] });
+    expect(environments()).toEqual(["production"]);
+    // A failed sandbox read pays nothing.
+    expect(await readGrant(tester, config(), false, async url => new URL(url).searchParams.get("environment") === "sandbox" ? { ok: false, reason: "provider_http_500" } : request(url))).toEqual({ ok: false, reason: "provider_http_500" });
+  });
+});
+
+describe("a tester's fast test renewals", () => {
+  it("pay one instalment a calendar month however often the test subscription renews or is bought again", () => {
+    // A Play license tester's monthly plan renews every 5 minutes, up to 6 times, then expires.
+    const player = fresh(), start = at(2026, 11, 2), FIVE = 5 * 60_000;
+    let paidCount = 0;
+    for (let renewal = 0; renewal <= 6; renewal++) {
+      const from = start + renewal * FIVE;
+      paidCount += player.read([paid("test_a", from, from + FIVE, { started_at: start })], from + 60_000).pay.length;
+    }
+    expect(paidCount).toBe(1);
+    expect(player.ledger.map(each => each.key)).toEqual([`grant:${start}:1`]);
+    // Expired, bought again the same day and the next week, renewing fast again: still nothing more this month.
+    player.read([{ ...ended("test_a", start + 6 * FIVE, start + 7 * FIVE), started_at: start }], start + DAY);
+    for (const [id, day] of [["test_b", 1], ["test_c", 8]] as const) {
+      const from = start + day * DAY;
+      for (let renewal = 0; renewal <= 6; renewal++)
+        paidCount += player.read([ended("test_a", start + 6 * FIVE, start + 7 * FIVE, start + 7 * FIVE, start), paid(id, from + renewal * FIVE, from + (renewal + 1) * FIVE, { started_at: from })], from + renewal * FIVE + 60_000).pay.length;
+    }
+    expect(paidCount).toBe(1);
+    // Once the month's due date passes with no cover, the anchor lapses; a new test buy after it pays the next step, once.
+    const nextMonth = anniversary(start, 1) + DAY;
+    player.read([ended("test_c", start + 8 * DAY, start + 8 * DAY + FIVE)], anniversary(start, 1) + HOUR);
+    expect(player.state).toMatchObject({ live: false, months: 1 });
+    for (let renewal = 0; renewal <= 6; renewal++)
+      paidCount += player.read([paid("test_d", nextMonth + renewal * FIVE, nextMonth + (renewal + 1) * FIVE, { started_at: nextMonth })], nextMonth + renewal * FIVE + 60_000).pay.length;
+    expect(paidCount).toBe(2);
+    expect(player.ledger.map(each => [each.key, each.amount])).toEqual([[`grant:${start}:1`, instalmentAmount(1)], [`grant:${nextMonth}:1`, instalmentAmount(2)]]);
+  });
 });
 
 // The settle step on a real Player's storage, with the provider and PollenClaims as mocks unless named.

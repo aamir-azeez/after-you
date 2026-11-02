@@ -233,6 +233,51 @@ describe("App Store environments", () => {
   });
 });
 
+describe("testers (CONFIG revenuecat.tester_ids)", () => {
+  const productionRead = ["active_entitlements?limit=100", "purchases?environment=production&limit=100", "subscriptions?environment=production&limit=100"];
+  const sandboxRead = "subscriptions?environment=sandbox&limit=100";
+  const testers = { ...stores, app_store_environment: "production", tester_ids: [owner] };
+  const testPlan = playPlan({ environment: "sandbox" });
+  it("admits a tester's Play sandbox subscription as a Play subscription, with one more read made only once production refused", async () => {
+    let requests = provider({ subscriptions: { sandbox: list([testPlan]) } });
+    expect(await storeEntitlement(owner, testers)).toEqual(admittedBy("play_subscription")); expect(reads(requests)).toEqual([...productionRead, sandboxRead]);
+    // The same read serves the App Store's sandbox, which a tester also counts.
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { sandbox: list([iosPlan({ environment: "sandbox" })]) } });
+    expect(await storeEntitlement(owner, testers)).toEqual(admittedBy("app_store_subscription")); expect(reads(requests)).toEqual([...productionRead, sandboxRead]);
+    // A real subscription admits as before, with no sandbox read.
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { production: list([playPlan()]) } });
+    expect(await storeEntitlement(owner, testers)).toEqual(admittedBy("play_subscription")); expect(reads(requests)).toEqual(productionRead);
+    // Lapsed, or without the live grant, the tester is refused like anyone.
+    vi.restoreAllMocks(); provider({ subscriptions: { sandbox: list([playPlan({ environment: "sandbox", status: "expired", gives_access: false })]) } });
+    expect(await storeEntitlement(owner, testers)).toEqual(refused);
+    vi.restoreAllMocks(); requests = provider({ active: list([]), subscriptions: { sandbox: list([testPlan]) } });
+    expect(await storeEntitlement(owner, testers)).toEqual(refused); expect(requests).toHaveBeenCalledTimes(1);
+    // A failed sandbox read holds the tester rather than refusing.
+    vi.restoreAllMocks(); provider({ subscriptions: { sandbox: () => new Response(null, { status: 503 }) } });
+    expect(await storeEntitlement(owner, testers)).toEqual({ full_journey: false, status: "unavailable", reason: "provider_http_503" });
+  });
+  it("changes nothing for anyone else: a Play sandbox subscription never admits, and no sandbox read is made", async () => {
+    const others = { ...testers, tester_ids: ["q".repeat(22)] };
+    let requests = provider({ subscriptions: { sandbox: list([testPlan]) } });
+    expect(await storeEntitlement(owner, others)).toEqual(refused); expect(reads(requests)).toEqual(productionRead);
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { sandbox: list([testPlan]) } });
+    expect(await storeEntitlement(owner, { ...stores, app_store_environment: "production" })).toEqual(refused); expect(reads(requests)).toEqual(productionRead);
+    // The review identity keeps its own grant, whatever the tester list says.
+    vi.restoreAllMocks(); requests = provider();
+    expect(await storeEntitlement(owner, { ...testers, reviewer_ids: [owner] })).toEqual(admittedBy("review_grant")); expect(requests).toHaveBeenCalledTimes(1);
+  });
+  it("admits a tester the same way when the App Store check is off", async () => {
+    let requests = provider({ subscriptions: { sandbox: list([testPlan]) } });
+    expect(await playEntitlement(owner, { ...play, tester_ids: [owner] })).toEqual(admittedBy("play_subscription")); expect(reads(requests)).toEqual([...productionRead, sandboxRead]);
+    vi.restoreAllMocks(); requests = provider({ subscriptions: { sandbox: list([testPlan]) } });
+    expect(await playEntitlement(owner, play)).toEqual(refused); expect(reads(requests)).toEqual(productionRead);
+    vi.restoreAllMocks(); provider({ subscriptions: { sandbox: list([iosPlan({ environment: "sandbox" })]) } });
+    expect(await playEntitlement(owner, { ...play, tester_ids: [owner] })).toEqual(refused);
+    vi.restoreAllMocks(); provider({ subscriptions: { sandbox: () => new Response(null, { status: 503 }) } });
+    expect(await playEntitlement(owner, { ...play, tester_ids: [owner] })).toEqual({ full_journey: false, status: "unavailable", reason: "provider_http_503" });
+  });
+});
+
 describe("hosts with both stores", () => {
   it("prefers the Play purchase and stops reading", async () => {
     const requests = provider({ purchases: list([purchase()]), subscriptions: list([iosPlan()]) });

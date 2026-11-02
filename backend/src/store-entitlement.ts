@@ -16,7 +16,8 @@ type Admission = Required<Pick<StoreEntitlementResult, "access_source" | "entitl
 /** One store's answer before the stores are combined. */
 type StoreOutcome = { admitted: Admission } | { refused: true } | { held: "unconfigured" } | { held: "unavailable"; reason: string };
 
-const ENVIRONMENTS = ["production", "sandbox"];
+const SANDBOX = "sandbox";
+const ENVIRONMENTS = ["production", SANDBOX];
 /** Subscription states RevenueCat reports as still paid for, including the billing grace period. */
 const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 
@@ -24,6 +25,10 @@ const SUBSCRIPTION_ACCESS_STATUSES = ["active", "trialing", "in_grace_period"];
 function appStoreEnvironments(raw: string | undefined): string[] | null {
   if (raw === undefined || raw === "both") return ENVIRONMENTS;
   return ENVIRONMENTS.includes(raw) ? [raw] : null;
+}
+/** A tester's App Store environments: sandbox after the configured ones. A malformed setting still holds. */
+function testerEnvironments(environments: string[] | null, tester: boolean): string[] | null {
+  return tester && environments !== null && !environments.includes(SANDBOX) ? [...environments, SANDBOX] : environments;
 }
 type ProviderList = { ok: true; items: unknown[]; incomplete: boolean } | { ok: false; reason: string };
 /** A 404 is an absent customer, so an empty and complete list. */
@@ -70,7 +75,9 @@ export async function storeEntitlement(playerId: string, env: ServerVars, onGran
   const playSubscriptions = config.play_subscription_product_ids;
   const playReady = PRODUCT_PATTERN.test(config.play_product_id ?? "") && playSubscriptions !== null;
   const appLookup = appStoreLookup(config);
-  const appEnvironments = appStoreEnvironments(config.app_store_environment);
+  // A tester (CONFIG revenuecat.tester_ids) is admitted by a sandbox subscription in either store, as by a real one.
+  const tester = config.tester_ids.includes(playerId);
+  const appEnvironments = testerEnvironments(appStoreEnvironments(config.app_store_environment), tester);
   const appSubscriptions = config.app_store_subscription_product_ids;
   // The flag is on, so an unset App Store list is a missing setting, not "no App Store products".
   const appReady = appStoreSettings(config);
@@ -124,7 +131,14 @@ export async function storeEntitlement(playerId: string, env: ServerVars, onGran
         const plans = await subscriptionsIn(playEnvironment);
         if (!plans.ok) outcomes.push({ held: "unavailable", reason: plans.reason });
         else if (subscribed(plans.items, "play_store", playSubscriptions!, playEnvironment)) return admitted({ access_source: "play_subscription", entitlement: "full_journey_play" }, playerId);
-        else outcomes.push(purchases.incomplete || plans.incomplete ? { held: "unavailable", reason: "provider_incomplete_list" } : { refused: true });
+        else if (!tester) outcomes.push(purchases.incomplete || plans.incomplete ? { held: "unavailable", reason: "provider_incomplete_list" } : { refused: true });
+        else {
+          // A tester's Play sandbox subscription (a license tester's) counts as a real one: one more read, for testers only, once production refused.
+          const test = await subscriptionsIn(SANDBOX);
+          if (!test.ok) outcomes.push({ held: "unavailable", reason: test.reason });
+          else if (subscribed(test.items, "play_store", playSubscriptions!, SANDBOX)) return admitted({ access_source: "play_subscription", entitlement: "full_journey_play" }, playerId);
+          else outcomes.push(purchases.incomplete || plans.incomplete || test.incomplete ? { held: "unavailable", reason: "provider_incomplete_list" } : { refused: true });
+        }
       }
     }
   }

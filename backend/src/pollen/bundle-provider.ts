@@ -21,7 +21,9 @@ import type { ProviderFetch } from "./grant-provider";
  * RevenueCat App User ID), and for any player while POLLEN_SANDBOX_APP_STORE is on, on a claim whose production list
  * has nothing new (bundle-settle.ts deps.sandbox). They pay once by transaction id under the same keys and first gift
  * rule, and carry `sandbox`, so the refund check looks them up in sandbox whatever the flag says later.
- * Sandbox Play purchases never count, for anyone.
+ * A player in CONFIG's revenuecat.tester_ids (the owner's own test identity, a Play license tester) has the same
+ * read for both stores: their Play sandbox purchases count too, under the same keys and first gift rule. Sandbox
+ * Play purchases count for nobody else.
  * Each counted purchase carries its reference (`order`, claims.ts bundleRef): the Play order, or "appstore:" and the
  * App Store transaction id. A purchase without one is never paid (bundle-settle.ts pays by reference); it can only
  * take back an older Play line paid under its id. Status "owned" is paid once; "refunded" takes back what it paid.
@@ -38,9 +40,18 @@ import type { ProviderFetch } from "./grant-provider";
 export type BundlePurchase = { id: string; bundle: BundleKey; refunded: boolean; quantity: number; order: string; usd_cents: number; purchased_at: number; sandbox?: true };
 /** The environment App Review, TestFlight and Play license testers buy in. */
 export const SANDBOX = "sandbox";
-/** Whether App Store sandbox bundles count for this player: the review identity only (CONFIG revenuecat.reviewer_ids). */
+const APP_STORE_ONLY: readonly BundleStore[] = Object.freeze(["app_store"]);
+/**
+ * The stores whose sandbox bundles always count for this player, read with one more list request: the App Store for
+ * the review identity (CONFIG revenuecat.reviewer_ids), both stores for a tester (revenuecat.tester_ids), none for anyone else.
+ */
+export function sandboxStores(playerId: string, env: ServerVars): readonly BundleStore[] {
+  const config = serverConfig(env).revenuecat;
+  return config.tester_ids.includes(playerId) ? BUNDLE_STORES : config.reviewer_ids.includes(playerId) ? APP_STORE_ONLY : [];
+}
+/** Whether this player's sandbox list is always read (sandboxStores is not empty). */
 export function sandboxBundles(playerId: string, env: ServerVars): boolean {
-  return serverConfig(env).revenuecat.reviewer_ids.includes(playerId);
+  return sandboxStores(playerId, env).length > 0;
 }
 /** RevenueCat product id -> the bundle it sells and the store it sells in. */
 export type BundleProducts = Readonly<Record<string, { bundle: BundleKey; store: BundleStore }>>;
@@ -60,12 +71,15 @@ function refOf(store: BundleStore, value: unknown): string {
   return ORDER_PATTERN.test(text) && !text.startsWith(APP_STORE_REF) ? text : "";
 }
 
-/** One listed purchase as the bundles see it, or null for one that never counts. `environment` SANDBOX counts App Store purchases only. */
-export function bundlePurchase(item: unknown, products: BundleProducts, environment: string = APP.playEnvironment, bundles: Bundles = BUNDLES): BundlePurchase | null {
+/**
+ * One listed purchase as the bundles see it, or null for one that never counts. `environment` SANDBOX counts the
+ * purchases of `sandbox` stores only: the App Store unless a caller names a tester's stores (sandboxStores).
+ */
+export function bundlePurchase(item: unknown, products: BundleProducts, environment: string = APP.playEnvironment, bundles: Bundles = BUNDLES, sandbox: readonly BundleStore[] = APP_STORE_ONLY): BundlePurchase | null {
   if (!isObject(item) || item.object !== "purchase" || typeof item.id !== "string" || !SUB_ID_PATTERN.test(item.id)) return null;
   if (item.environment !== environment || item.ownership !== "purchased" || typeof item.product_id !== "string" || !Object.hasOwn(products, item.product_id)) return null;
   const { bundle, store } = products[item.product_id];
-  if (item.store !== store || (environment === SANDBOX && store !== "app_store")) return null;
+  if (item.store !== store || (environment === SANDBOX && !sandbox.includes(store))) return null;
   if (item.status !== "owned" && item.status !== "refunded") return null;
   const quantity = item.quantity === undefined || item.quantity === null ? 1 : item.quantity;
   if (typeof quantity !== "number" || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_QUANTITY) return null;
@@ -101,17 +115,21 @@ function listItems(result: ProviderResult): unknown[] | string {
 /** Oldest first, ties by RevenueCat id. */
 export function byPurchaseTime(a: BundlePurchase, b: BundlePurchase): number { return a.purchased_at - b.purchased_at || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0); }
 
-/** The player's counted bundle purchases, oldest first; for the review identity, its App Store sandbox ones too. `only` SANDBOX reads the sandbox list alone. */
+/**
+ * The player's counted bundle purchases, oldest first; for the review identity and a tester, their sandbox ones too
+ * (sandboxStores). `only` SANDBOX reads the sandbox list alone, App Store purchases only (POLLEN_SANDBOX_APP_STORE).
+ */
 export async function readBundles(playerId: string, env: ServerVars, request: ProviderFetch = revenuecatRequest, only?: typeof SANDBOX): Promise<BundleRead> {
   const products = bundleProducts(), at = project(env);
   if (at === null) return { ok: false, reason: "unconfigured" };
-  const environments = only === SANDBOX ? [SANDBOX] : sandboxBundles(playerId, env) ? [APP.playEnvironment, SANDBOX] : [APP.playEnvironment];
+  const stores = only === SANDBOX ? APP_STORE_ONLY : sandboxStores(playerId, env);
+  const environments = only === SANDBOX ? [SANDBOX] : stores.length ? [APP.playEnvironment, SANDBOX] : [APP.playEnvironment];
   const lists = await Promise.all(environments.map(async environment =>
     ({ environment, items: listItems(await request(`${at.base}/customers/${encodeURIComponent(playerId)}/purchases?environment=${environment}&limit=100`, at.key)) })));
   const purchases: BundlePurchase[] = [];
   for (const { environment, items } of lists) {
     if (typeof items === "string") return { ok: false, reason: items };
-    for (const item of items) { const each = bundlePurchase(item, products, environment); if (each) purchases.push(each); }
+    for (const item of items) { const each = bundlePurchase(item, products, environment, BUNDLES, stores); if (each) purchases.push(each); }
   }
   purchases.sort(byPurchaseTime);
   return { ok: true, purchases };
@@ -122,9 +140,13 @@ export type BundleAsk = { id: string; bundle: BundleKey; order: string; sandbox?
 /** The asked purchases RevenueCat reports refunded now, by the ledger's purchase id; { ok: false } when any lookup failed. */
 export type BundleLookup = { ok: true; refunded: string[] } | { ok: false; reason: string };
 
-/** Whether `item` is the asked purchase: the same reference (or, without one, the same RevenueCat id), counted by bundlePurchase() as the same bundle. */
+/**
+ * Whether `item` is the asked purchase: the same reference (or, without one, the same RevenueCat id), counted by
+ * bundlePurchase() as the same bundle. A sandbox line matches a sandbox purchase of either store: only a tester's
+ * could have been paid in Play's, and it is still taken back after the tester leaves the list.
+ */
 function samePurchase(item: unknown, ask: BundleAsk, products: BundleProducts): boolean {
-  const counted = bundlePurchase(item, products, ask.sandbox ? SANDBOX : APP.playEnvironment);
+  const counted = bundlePurchase(item, products, ask.sandbox ? SANDBOX : APP.playEnvironment, BUNDLES, BUNDLE_STORES);
   if (counted === null || counted.bundle !== ask.bundle) return false;
   return ask.order ? counted.order === ask.order : counted.id === ask.id;
 }

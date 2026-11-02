@@ -19,7 +19,7 @@ describe("CONFIG schema", () => {
     const check = parseConfig(JSON.stringify(FULL), FLAG_NAMES);
     expect(check.problems).toEqual([]); expect(check.unknown).toEqual([]);
     expect(view(check.config)).toEqual({ ...FULL, features: [...KEPT].sort(), friend_aliases: [["owner", ALIAS_ID]],
-      revenuecat: { ...RC, app_store_subscription_product_ids: [], reviewer_ids: [] } });
+      revenuecat: { ...RC, app_store_subscription_product_ids: [], reviewer_ids: [], tester_ids: [] } });
     expect(check.config.friend_aliases.byId.get(ALIAS_ID)).toBe("owner");
     // A live-sized CONFIG, with every RevenueCat id and a few aliases, stays far under the cap and Cloudflare's 5 KB.
     expect(JSON.stringify({ ...FULL, features: [...FLAG_NAMES], friend_aliases: { a1b: ALIAS_ID, c2d: "B".repeat(22), e3f: "C".repeat(22), g4h: "D".repeat(22) } }).length).toBeLessThan(MAX_CONFIG_LENGTH / 2);
@@ -48,6 +48,9 @@ describe("CONFIG schema", () => {
       [{ revenuecat: { ...RC, app_store_entitlement_lookup_id: 5 } }, c => c.revenuecat.app_store_entitlement_lookup_id, "(malformed)"],
       [{ revenuecat: { ...RC, app_store_environment: "Production" } }, c => c.revenuecat.app_store_environment, "Production"],
       [{ revenuecat: { ...RC, reviewer_ids: ["short"] } }, c => c.revenuecat.reviewer_ids, []],
+      [{ revenuecat: { ...RC, tester_ids: ["short"] } }, c => c.revenuecat.tester_ids, []],
+      [{ revenuecat: { ...RC, tester_ids: "B".repeat(22) } }, c => c.revenuecat.tester_ids, []],
+      [{ revenuecat: { ...RC, tester_ids: Array.from({ length: 17 }, (_, i) => String(i).padStart(22, "B")) } }, c => c.revenuecat.tester_ids, []],
     ];
     for (const [change, read, expected] of cases) {
       const check = parseConfig(JSON.stringify({ ...FULL, ...change }), FLAG_NAMES);
@@ -65,6 +68,24 @@ describe("CONFIG schema", () => {
     expect(runner.unknown.sort()).toEqual(["features.SOME_LATER_FLAG", ...RETIRED_FLAGS.map(name => "features." + name), "later_key", "min_client_version.tv", "revenuecat.later_id"].sort());
     expect(view(worker.config).min_client_version).toEqual(FULL.min_client_version);
     expect(() => configJson(later as never)).toThrow(/refused/);
+  });
+  it("reads the tester list beside the review list, and a CONFIG with neither as before", () => {
+    const TESTER = "T".repeat(22), REVIEWER = "R".repeat(22);
+    const both = parseConfig(JSON.stringify({ ...FULL, revenuecat: { ...RC, reviewer_ids: [REVIEWER], tester_ids: [TESTER] } }), FLAG_NAMES);
+    expect(both.problems).toEqual([]); expect(both.unknown).toEqual([]);
+    expect([both.config.revenuecat.reviewer_ids, both.config.revenuecat.tester_ids]).toEqual([[REVIEWER], [TESTER]]);
+    // Live CONFIG may have either list, both or neither: an absent one lists nobody and reports nothing.
+    for (const revenuecat of [RC, { ...RC, reviewer_ids: [REVIEWER] }, { ...RC, tester_ids: [TESTER] }]) {
+      const check = parseConfig(JSON.stringify({ ...FULL, revenuecat }), FLAG_NAMES);
+      expect(check.problems, JSON.stringify(revenuecat)).toEqual([]); expect(check.unknown, JSON.stringify(revenuecat)).toEqual([]);
+      expect(check.config.revenuecat.tester_ids).toEqual("tester_ids" in revenuecat ? [TESTER] : []);
+      expect(check.config.revenuecat.reviewer_ids).toEqual("reviewer_ids" in revenuecat ? [REVIEWER] : []);
+    }
+    expect(EMPTY_CONFIG.revenuecat.tester_ids).toEqual([]);
+    // A malformed list names its key, never the ids in it.
+    const bad = parseConfig(JSON.stringify({ ...FULL, revenuecat: { ...RC, tester_ids: [TESTER, "short"] } }), FLAG_NAMES);
+    expect(bad.problems).toEqual(["revenuecat.tester_ids must be a list of at most 16 player ids"]);
+    expect(bad.config.revenuecat.tester_ids).toEqual([]);
   });
   it("names keys in its problems, never values", () => {
     const secretish = { ...FULL, friend_aliases: { owner: ALIAS_ID, Bad: ALIAS_ID }, revenuecat: { ...RC, project_id: "p", play_entitlement_lookup_id: "entl bad" } };
