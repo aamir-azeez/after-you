@@ -12,7 +12,10 @@ import { developerGhost } from "../src/duels/developer-ghosts";
 import { deriveJobToken } from "../src/leaderboards/job-token";
 import { forgetViews } from "../src/leaderboards/view-cache";
 import { forgetReplays } from "../src/leaderboards/replays";
-import { blankSide, newGhostRace, type DuelView } from "../src/duels/model";
+import { blankSide, newFriendDuel, newGhostRace, type DuelView } from "../src/duels/model";
+import { MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_RECENT_DUELS } from "../src/duels/rules";
+import { pairKey } from "../src/leaderboards/run";
+import gameDuelsClient from "../../game/services/duels_client.gd?raw";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
 import { countingEnv, meterRows } from "./meter";
 import { noteFullJourney } from "../src/pollen/wallet";
@@ -162,6 +165,29 @@ async function pairs(seasoned = false) {
 }
 async function challenge(from: Account, to: Account, key = crypto.randomUUID()) {
   return call("/v1/duels/challenge", "POST", from, { schema_version: 1, idempotency_key: key, friend: to.player_id, board: RELAY });
+}
+const errorCode = async (response: Response) => (await response.json<{ error: { code: string } }>()).error.code;
+/** The board key of a chapter row. */
+const boardOfRow = (row: (typeof CHAPTERS)[number]) => `${row.adapter.key.level_id}@${row.adapter.key.level_version}`;
+/**
+ * `count` friend duels of the pair `members` against made-up pairs, straight onto the boards (`boards[i % length]`)
+ * and the pair's pointers, as a busy pair's would be: running, or decided (won or lost) for the cost reads.
+ */
+async function seedDuels(members: [Account, Account], count: number, boards: string[] = [RELAY], end: "running" | "won" | "lost" = "running"): Promise<DuelView[]> {
+  const ids = members.map(member => member.player_id) as [string, string];
+  const key = await pairKey(...ids), now = Date.now(), refs: { duel_id: string; board: string; at: number }[] = [];
+  for (let index = 0; index < count; index++) {
+    const board = boards[index % boards.length], row = CHAPTERS.find(item => boardOfRow(item) === board)!;
+    const duel_id = (await digest(`seed\n${key}\n${index}\n${end}\n${now}`)).slice(0, 32);
+    const others = [`s${index}`.padEnd(22, "s"), `t${index}`.padEnd(22, "t")] as [string, string];
+    const duel = newFriendDuel({ duel_id, board, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: ids[0], a: blankSide(ids, key), b: blankSide(others, `other${index}`), known: [] }, now);
+    Object.assign(duel, { status: "running", accepted_ms: now });
+    if (end !== "running") Object.assign(duel, { status: "decided", result: { winner: end === "won" ? 0 : 1, reason: "faster", decided_ms: now, margin_ticks: 30 } });
+    await runInDurableObject(env.LEADERBOARD_BOARDS.getByName(board), async (target: LeaderboardBoard) => { target.duelCreate(duel); });
+    refs.push({ duel_id, board, at: now });
+  }
+  for (const id of ids) await env.LEADERBOARD_MEMBERS.getByName(id).partyApply(id, { kind: "add_duels", refs }, now);
+  return (await lobby(members[0])).duels.filter(view => refs.some(ref => ref.duel_id === view.duel_id));
 }
 
 describe("duels while off", () => {
@@ -354,8 +380,8 @@ describe("friend duels", () => {
     expect(hard.status).toBe(422);
   });
 
-  it("decline with Not now, keep to three at once, and need a party on both sides", async () => {
-    const { a1, b1, b2 } = await pairs();
+  it("decline with Not now, keep to the limit at once, and need a party on both sides", async () => {
+    const { a1, a2, b1, b2 } = await pairs();
     // A stranger's party is never asked about.
     const stranger = await create();
     expect((await challenge(a1, stranger)).status).toBe(403);
@@ -366,10 +392,49 @@ describe("friend duels", () => {
     const declined = await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${sent.duel_id}/decline`, "POST", b2, { schema_version: 1 }));
     expect(declined.duel.status).toBe("declined");
     expect((await call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 })).status).toBe(409);
-    const boards = CHAPTERS.slice(1, 5).map(row => `${row.adapter.key.level_id}@${row.adapter.key.level_version}`);
-    const statuses: number[] = [];
-    for (const key of boards) statuses.push((await call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: key })).status);
-    expect(statuses).toEqual([200, 200, 200, 409]);
+    // The pair already has all but two of its duels going: two more go out, and the next is refused.
+    expect(MAX_FRIEND_DUELS_PER_PAIR).toBe(10);
+    await seedDuels([a1, a2], MAX_FRIEND_DUELS_PER_PAIR - 2);
+    const boards = CHAPTERS.slice(1, 4).map(boardOfRow);
+    const answers: Response[] = [];
+    for (const key of boards) answers.push(await call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: key }));
+    expect(answers.map(answer => answer.status)).toEqual([200, 200, 409]);
+    expect(await errorCode(answers[2])).toBe("duel_limit_reached");
+    // The lobby says the number, so the phone's limit line follows the server.
+    const read = await ok<Lobby & { limits: Any }>(call("/v1/duels", "GET", a1));
+    expect(read.limits).toEqual({ friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR });
+    expect(read.duels.filter(duel => duel.status === "running" || duel.status === "challenged")).toHaveLength(MAX_FRIEND_DUELS_PER_PAIR);
+  });
+
+  it("take an accept up to the limit of running duels and refuse the one past it", async () => {
+    const { a1, b1, b2 } = await pairs();
+    const sent = await Promise.all(CHAPTERS.slice(1, 3).map(async row => (await ok<{ duel: DuelView }>(call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: boardOfRow(row) }))).duel));
+    await seedDuels([b1, b2], MAX_FRIEND_DUELS_PER_PAIR - 1);
+    const first = await call(`/v1/duels/${sent[0].board}/${sent[0].duel_id}/accept`, "POST", b1, { schema_version: 1 });
+    expect(first.status).toBe(200);
+    const second = await call(`/v1/duels/${sent[1].board}/${sent[1].duel_id}/accept`, "POST", b2, { schema_version: 1 });
+    expect(second.status).toBe(409);
+    expect(await errorCode(second)).toBe("duel_limit_reached");
+  });
+
+  it("refuse a challenge to a player who started the most duels this week, which stays above the limit", async () => {
+    const { a1, b1 } = await pairs();
+    expect(MAX_RECENT_DUELS).toBe(30);
+    const now = Date.now();
+    const refs = Array.from({ length: MAX_RECENT_DUELS - 1 }, (_, index) => ({ duel_id: index.toString(16).padStart(32, "a"), board: RELAY, at: now }));
+    await env.LEADERBOARD_MEMBERS.getByName(b1.player_id).partyApply(b1.player_id, { kind: "add_duels", refs }, now);
+    const boards = CHAPTERS.slice(1, 3).map(boardOfRow);
+    const answers: Response[] = [];
+    for (const key of boards) answers.push(await call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: key }));
+    expect(answers[0].status).toBe(200);
+    expect(answers[1].status).toBe(409);
+    expect(await errorCode(answers[1])).toBe("opponent_busy");
+  });
+
+  it("keep the phone's fallback limits in step with the server's", () => {
+    const limit = (name: string) => Number(new RegExp(`^const ${name} := (\\d+)\\s*$`, "m").exec(gameDuelsClient)?.[1]);
+    expect(limit("FRIEND_LIMIT")).toBe(MAX_FRIEND_DUELS_PER_PAIR);
+    expect(limit("GHOST_LIMIT")).toBe(MAX_GHOST_RACES_PER_PAIR);
   });
 
   it("post an unassisted duel run to the Fastest pair board with its raw time", async () => {
@@ -798,6 +863,40 @@ describe("duel cost", () => {
     expect(read.calls).toBeLessThanOrEqual(4);
     expect(plain.calls).toBeLessThanOrEqual(6);
   });
+});
+
+describe("duel lobby reads", () => {
+  /** The calls one GET makes, through the counting env. */
+  async function calls(account: Account, path: string): Promise<string[]> {
+    const meter = countingEnv(Object.assign({ ...env }, ON) as Env);
+    const answer = await call(path, "GET", account, undefined, ON, {}, meter.env);
+    expect(answer.status, await answer.text()).toBe(200);
+    return meter.calls;
+  }
+  // Measured 2026-11-02, for the hint reads on the phone (game/services/duel_hint_reads.gd): a lobby read is the sign-in, both
+  // party rows and one board per chapter holding a duel; one running duel's read is the sign-in and its board.
+  it("cost 3 requests plus one per chapter for the lobby, and 2 for one running duel", async () => {
+    const { a1, a2 } = await pairs();
+    const keys = [...new Set(CHAPTERS.map(boardOfRow))].filter(key => boardKeys().includes(key));
+    expect(keys.length).toBeGreaterThanOrEqual(10);
+    let held: DuelView[] = [];
+    for (const [count, added] of [[1, 1], [5, 4], [10, 5]] as const) {
+      held = [...held, ...await seedDuels([a1, a2], added, keys.slice(held.length, held.length + added))];
+      const lobbyCalls = await calls(a1, "/v1/duels");
+      expect(lobbyCalls).toEqual(["PLAYERS.authorize", "LEADERBOARD_MEMBERS.partyRead", "LEADERBOARD_MEMBERS.partyRead", ...Array(count).fill("LEADERBOARD_BOARDS.duelRead")]);
+    }
+    expect(held).toHaveLength(10);
+    expect(await calls(a1, `/v1/duels/${held[0].board}/${held[0].duel_id}`)).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead"]);
+  }, 60_000);
+
+  it("cost an ended duel's read the win bonus once when won, and nothing more when lost", async () => {
+    const { a1, a2 } = await pairs();
+    const [won] = await seedDuels([a1, a2], 1, [RELAY], "won");
+    const [lost] = await seedDuels([a1, a2], 1, [RELAY], "lost");
+    // The seeding lobby read already paid the win, so the read asks the wallet once more (it answers the same, once-only line) and settles again.
+    expect(await calls(a1, `/v1/duels/${won.board}/${won.duel_id}`)).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead", "PLAYERS.creditDuelWin", "LEADERBOARD_MEMBERS.partyApply"]);
+    expect(await calls(a1, `/v1/duels/${lost.board}/${lost.duel_id}`)).toEqual(["PLAYERS.authorize", "LEADERBOARD_BOARDS.duelRead"]);
+  }, 60_000);
 });
 
 describe("duel hints", () => {

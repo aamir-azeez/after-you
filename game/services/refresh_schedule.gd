@@ -10,16 +10,25 @@ extends RefCounted
 const ROOM_INTERVAL_MS := 3000
 const LOBBY_INTERVAL_MS := 10000
 ## The Duels lobby (presentation/duels/duels_flow.gd) while a challenge or a
-## running duel can change without this player. One read costs 3 to 5 Durable
-## Object requests, so it reads once a minute.
+## running duel can change without this player. One read costs 3 Durable Object
+## requests plus one per chapter holding a duel (4 to 15), so it reads once a
+## minute, and every two minutes once 5 or more duels are running
+## (DUELS_BUSY_RUNNING), whose reads cost the most.
 const DUELS_LOBBY_INTERVAL_MS := 60000
+const DUELS_LOBBY_BUSY_INTERVAL_MS := 120000
+const DUELS_BUSY_RUNNING := 5
+## A lobby read for a hint that changed the list (a new challenge, a party
+## change, a duel that ended) comes at least this long after the last one
+## began, so a burst of them reads once. Own actions and opening read at once.
+const DUELS_LIST_HINT_GAP_MS := 10000
 ## An open duel's page (about 2 Durable Object requests a read).
 const DUEL_INTERVAL_MS := 30000
 ## An open ghost race whose run waits for its replay check (the job runs every 15 minutes).
 const DUEL_CHECK_INTERVAL_MS := 60000
 ## The backup paces while duel changes come as live hints (duels_flow.gd): only
-## for a hint the server could not deliver, so the lobby costs about 16 Durable
-## Object requests an hour (4 reads of about 4) and an open duel about 12 (6 of 2).
+## for a hint the server could not deliver, so the lobby costs 4 reads an hour
+## (16 Durable Object requests with one duel, 52 with ten on ten chapters) and an
+## open duel about 12 (6 of 2).
 const DUELS_LOBBY_BACKUP_MS := 900000
 const DUEL_BACKUP_MS := 600000
 const FAILURE_DELAYS_MS := [5000, 15000, 30000]
@@ -38,6 +47,10 @@ var _active: Dictionary = {}
 var _backoff := PollBackoff.new(ROOM_INTERVAL_MS)
 var _idle_extra := 0
 var _rerun := false
+## The least gap from the start of the read out now to the rerun a hint asked for (hint min_gap_ms).
+var _rerun_gap := 0
+## When the last read in this context began (-1: none), for hint min_gap_ms.
+var _gap_from := -1
 ## When the read out now began, and when the last successful read in this context began (-1: none).
 var _read_began := -1
 var _covered_from := -1
@@ -67,6 +80,8 @@ func bind(context_key: String, now_ms: int, interval_ms: int = ROOM_INTERVAL_MS)
 	_backoff = PollBackoff.new(_interval, maxi(_interval, PollBackoff.CAP_MS))
 	_idle_extra = 0
 	_rerun = false
+	_rerun_gap = 0
+	_gap_from = -1
 	_covered_from = -1
 	# An old request still occupies the transport. Its exact completion releases
 	# the slot, but cannot schedule or validate data for this new context.
@@ -111,7 +126,11 @@ func changed(value: Variant) -> bool:
 ## `covered_since` (a catch-up after missed hints): changes since then may be
 ## missing, and a read that began at or after it, out now or done (a resume
 ## read), already shows them: no other read is asked for and it returns false.
-func hint(now_ms: int, covered_since: int = -1) -> bool:
+##
+## `min_gap_ms`: the read asked for begins no sooner than this after the last
+## read in this context began, so a burst of hints reads once. A hint without
+## it (an own action) still reads at once.
+func hint(now_ms: int, covered_since: int = -1, min_gap_ms: int = 0) -> bool:
 	var now := _now(now_ms)
 	if _context.is_empty() or _terminal:
 		return false
@@ -121,10 +140,12 @@ func hint(now_ms: int, covered_since: int = -1) -> bool:
 	# The room moved: the idle backoff starts over.
 	_backoff.reset()
 	_idle_extra = 0
+	var gap := maxi(0, min_gap_ms)
 	if not _active.is_empty() and _active.generation == _generation:
+		_rerun_gap = mini(_rerun_gap, gap) if _rerun else gap
 		_rerun = true
 	else:
-		_due = mini(_due, now)
+		_due = mini(_due, now if _gap_from < 0 else maxi(now, _gap_from + gap))
 	return true
 
 
@@ -134,8 +155,10 @@ func begin_if_due(now_ms: int, eligible: bool, transport_busy: bool) -> Dictiona
 		return {}
 	_serial += 1
 	_rerun = false
+	_rerun_gap = 0
 	_active = {"serial": _serial, "generation": _generation}
 	_read_began = now
+	_gap_from = now
 	return _active.duplicate()
 
 
@@ -155,7 +178,7 @@ func complete(token: Dictionary, now_ms: int, success: bool, retry_after_ms: int
 		_failure_count = 0
 		_covered_from = _read_began
 		var delay := _backoff.next_ms(changed)
-		_due = now if _rerun else now + delay
+		_due = maxi(now, _read_began + _rerun_gap) if _rerun else now + delay
 		_idle_extra = 0 if _rerun else delay - _interval
 	else:
 		_failure_count = mini(_failure_count + 1, FAILURE_DELAYS_MS.size())

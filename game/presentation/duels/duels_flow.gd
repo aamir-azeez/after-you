@@ -26,7 +26,8 @@ extends Node
 ##
 ## Reads on their own (services/refresh_schedule.gd keeps the pace): the lobby
 ## once a minute while a challenge or running duel can change without this
-## player, an open duel every 30 s (a ghost race waiting for its check once a
+## player (every two minutes with 5 or more running, whose reads cost the
+## most), an open duel every 30 s (a ghost race waiting for its check once a
 ## minute). Nothing reads while the app is in the background or has lost focus,
 ## or while the lobby is hidden (the other pair's run playing over it); coming
 ## back reads the screen in front once, at once. Opening, a page closing and
@@ -36,8 +37,12 @@ extends Node
 ## healthy and the latest duel read said the server sends hints (duel_hints_version), a
 ## change reads only the screen it touches, once however many arrive, and the
 ## timed reads drop to a backup pace (DUELS_LOBBY_BACKUP_MS, DUEL_BACKUP_MS).
-## A hint for the open duel reads that duel; any other reads the lobby, unless
-## a page other than Party is over it (closing that page reads it anyway). A
+## A hint for the open duel reads that duel. Any other is for the lobby, unless
+## a page other than Party is over it (closing that page reads it anyway): a
+## hint for a duel on the lobby reads only that duel and redraws its tile, one
+## duel at a time; one that changes the list (the party, a new duel, a duel
+## read that came back ended or failed) reads the whole lobby, at most once
+## per DUELS_LIST_HINT_GAP_MS (services/duel_hint_reads.gd has the rules). A
 ## socket that comes back after dropping reads both once (missed_hints), and
 ## the moment it drops the pace goes back to the one above.
 const ServerSwitches = preload("res://services/server_switches.gd")
@@ -59,6 +64,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SharedReplayLaunch = preload("res://presentation/shared_replay_launch.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const RefreshClock = preload("res://services/refresh_schedule.gd")
+const HintReads = preload("res://services/duel_hint_reads.gd")
 ## Main's mode while Duels is up.
 const MODE_DUELS := "duels"
 
@@ -76,6 +82,12 @@ var _lobby_asked := false
 var _in_front := true
 ## True for the moment a page closes right after a fresh lobby read (_already_open): that close reads nothing more.
 var _lobby_fresh := false
+## Duels on the lobby that hints named, each waiting for a read of its own, and whether one is out now.
+var _hint_reads := HintReads.new()
+var _hint_read_out := false
+## The lobby the unhinted pace was last worked out for, and that pace (lobby_refresh_ms).
+var _paced_lobby: Dictionary = {}
+var _paced_ms := RefreshClock.DUELS_LOBBY_INTERVAL_MS
 ## True while the other pair's run is fetched for one tap.
 var _their_loading := false
 ## The idempotency key of each challenge or ghost race sent with no answer yet,
@@ -108,8 +120,10 @@ func _hinted(duel_id: String, at_ms: int) -> void:
 	if page != null and page.view.duel_id == duel_id:
 		if int(page.view.get("updated_ms", 0)) < at_ms: _duel_reads.hint(now)
 		return
-	if not duel_id.is_empty() and _lobby_holds(duel_id, at_ms): return
-	_ask_lobby(now)
+	if _under_page(): return
+	var asks := HintReads.route(client().last_lobby(), duel_id, at_ms)
+	if asks == HintReads.DUEL: _hint_reads.note(duel_id, at_ms)
+	elif asks == HintReads.LOBBY: _ask_lobby(now, -1, RefreshClock.DUELS_LIST_HINT_GAP_MS)
 
 ## Hints were lost while the socket was down since `since_ms`: each screen in front reads once, unless a read begun after that covers it.
 func _caught_up(since_ms: int) -> void:
@@ -119,17 +133,41 @@ func _caught_up(since_ms: int) -> void:
 	_duel_reads.hint(now, since_ms)
 	_ask_lobby(now, since_ms)
 
-## One lobby read for a hint, while nothing but Party is over it (closing any other page reads it anyway).
-func _ask_lobby(now: int, covered_since: int = -1) -> void:
-	var overlay: CanvasLayer = screen.overlay()
-	if overlay != null and not overlay is PartyPage: return
-	if _lobby_reads.hint(now, covered_since): _lobby_asked = true
+## One lobby read for a hint, while nothing but Party is over it (closing any other page reads it anyway),
+## no sooner than `gap_ms` after the last one began.
+func _ask_lobby(now: int, covered_since: int = -1, gap_ms: int = 0) -> void:
+	if _under_page(): return
+	if _lobby_reads.hint(now, covered_since, gap_ms): _lobby_asked = true
 
-## Whether the kept lobby already has `duel_id` as of `at_ms` or later.
-func _lobby_holds(duel_id: String, at_ms: int) -> bool:
-	for view: Dictionary in client().last_lobby().get("duels", []):
-		if view.duel_id == duel_id: return int(view.updated_ms) >= at_ms
-	return false
+## Whether a page other than Party is over the lobby.
+func _under_page() -> bool:
+	var overlay: CanvasLayer = screen.overlay()
+	return overlay != null and not overlay is PartyPage
+
+## Starts the next hinted duel's own read, one at a time, while the lobby is in
+## front with no read of its own out or asked for (that read covers it). When
+## the duels waiting would cost more than the lobby, the lobby reads instead.
+func _next_hinted(now: int, shown: bool) -> void:
+	if _hint_read_out or _hint_reads.waiting() == 0 or not shown or _under_page() or _lobby_asked or _lobby_reads.busy(): return
+	var lobby: Dictionary = client().last_lobby()
+	if _hint_reads.cheaper_as_lobby(lobby):
+		_hint_reads.clear()
+		_ask_lobby(now, -1, RefreshClock.DUELS_LIST_HINT_GAP_MS)
+		return
+	var view := _hint_reads.next(lobby)
+	if not view.is_empty(): _read_hinted(view)
+
+## One hinted duel's read: services/duels_client.gd puts its newer copy into the
+## kept lobby, and its tile redraws. One that ended, or could not be read (gone
+## from the server, or a failure), asks for the whole lobby, spaced.
+func _read_hinted(view: Dictionary) -> void:
+	_hint_read_out = true
+	var answer: Dictionary = await client().duel(view.board, view.duel_id)
+	_hint_read_out = false
+	if not _reading(): return
+	var ok: bool = answer.get("ok", false)
+	if not ok or HintReads.ended(view, answer.duel): _ask_lobby(Time.get_ticks_msec(), -1, RefreshClock.DUELS_LIST_HINT_GAP_MS)
+	if ok: screen.show_lobby(client().last_lobby())
 
 func _process(_delta: float) -> void:
 	_tick(Time.get_ticks_msec())
@@ -139,6 +177,7 @@ func _tick(now: int) -> void:
 	if not _reading():
 		_lobby_reads.bind("", now)
 		_duel_reads.bind("", now)
+		_hint_reads.clear()
 		set_process(false)
 		return
 	var page := _bind(now)
@@ -150,11 +189,12 @@ func _tick(now: int) -> void:
 	var wanted: bool = _lobby_asked or (now >= _lobby_reads.next_due_ms() and not _lobby_reads.busy() and screen.overlay() == null and screen.wants_refresh())
 	var lobby_ticket: Dictionary = _lobby_reads.begin_if_due(now, shown and wanted, false)
 	if not lobby_ticket.is_empty(): _read_lobby(lobby_ticket)
+	else: _next_hinted(now, shown)
 
 ## Binds both clocks to what is open now and returns the duel page being read, or null.
 func _bind(now: int) -> CanvasLayer:
 	var hinted := _hints_live()
-	_lobby_reads.bind("lobby/%d" % screen.get_instance_id(), now, RefreshClock.DUELS_LOBBY_BACKUP_MS if hinted else RefreshClock.DUELS_LOBBY_INTERVAL_MS)
+	_lobby_reads.bind("lobby/%d" % screen.get_instance_id(), now, RefreshClock.DUELS_LOBBY_BACKUP_MS if hinted else _unhinted_lobby_ms())
 	var page: CanvasLayer = screen.overlay()
 	if not page is DuelPage or not page.alive() or page.view.is_empty():
 		_duel_reads.bind("", now)
@@ -288,9 +328,13 @@ func _open_chapters() -> Array:
 		result.append(key)
 	return result
 
-func _toast_failure(answer: Dictionary) -> void:
+## `kind`: what was asked, "friend" (a challenge or an accept) or "ghost" (a race), for the limit line.
+func _toast_failure(answer: Dictionary, kind: String = "friend") -> void:
 	var code := str(answer.get("code", ""))
-	host._toast(PlayerCopy.DUELS_LIMIT if code == "duel_limit_reached" else PlayerCopy.DUELS_FRIEND_NO_PARTNER if code == "opponent_party_required" else PlayerCopy.DUELS_NO_PARTY if code == "party_required" else PlayerCopy.DUELS_ACTION_FAILED)
+	if code == "duel_limit_reached":
+		host._toast((PlayerCopy.DUELS_RACE_LIMIT if kind == "ghost" else PlayerCopy.DUELS_LIMIT) % client().limit(kind))
+		return
+	host._toast(PlayerCopy.DUELS_FRIEND_NO_PARTNER if code == "opponent_party_required" else PlayerCopy.DUELS_NO_PARTY if code == "party_required" else PlayerCopy.DUELS_ACTION_FAILED)
 
 func _open_party() -> void:
 	if not is_open(): return
@@ -393,7 +437,7 @@ func _race(page: CanvasLayer, chapter: String, source: String, entry_id: Variant
 	var answer: Dictionary = await _send_once("ghost|%s|%s|%s" % [board, source, entry_id], func(key: String) -> Dictionary: return await client().race_ghost(board, source, entry_id, key))
 	if not is_instance_valid(page): return
 	if not answer.get("ok", false):
-		_toast_failure(answer)
+		_toast_failure(answer, "ghost")
 		return
 	page.close()
 	_open_duel(answer.duel)
@@ -459,6 +503,23 @@ func _show_duel(page: CanvasLayer, duel: Dictionary) -> void:
 	else:
 		page.close()
 		_open_result(duel)
+
+## The lobby's pace without hints, worked out again only when the kept lobby changed (_bind runs every frame).
+func _unhinted_lobby_ms() -> int:
+	var lobby: Dictionary = client().last_lobby()
+	if not is_same(lobby, _paced_lobby):
+		_paced_lobby = lobby
+		_paced_ms = lobby_refresh_ms(lobby)
+	return _paced_ms
+
+## How often the lobby reads again: DUELS_LOBBY_BACKUP_MS while hints come (`hinted`), else
+## DUELS_LOBBY_BUSY_INTERVAL_MS with DUELS_BUSY_RUNNING or more duels running, else DUELS_LOBBY_INTERVAL_MS.
+static func lobby_refresh_ms(lobby: Dictionary, hinted: bool = false) -> int:
+	if hinted: return RefreshClock.DUELS_LOBBY_BACKUP_MS
+	var running := 0
+	for view: Dictionary in lobby.get("duels", []):
+		if view.status == "running": running += 1
+	return RefreshClock.DUELS_LOBBY_BUSY_INTERVAL_MS if running >= RefreshClock.DUELS_BUSY_RUNNING else RefreshClock.DUELS_LOBBY_INTERVAL_MS
 
 ## How often an open duel reads again: DUEL_BACKUP_MS while hints come (`hinted`, the check result is one),
 ## else DUEL_CHECK_INTERVAL_MS while your ghost race run waits for its check, else DUEL_INTERVAL_MS.

@@ -92,7 +92,7 @@ func _run() -> void:
 	swapped[1].you = true
 	challenge_in.sides = swapped
 	var challenge_out := _duel("5e", rolling, "challenged", [0, 0, null], [0, 0, null, [LEE, SAM]])
-	var lobby_data := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null, "partner_look": LOOKS[MAYA]}, "duels": [running, partner_turn, won, challenge_in, challenge_out], "limits": {"friend": 3, "ghost": 3}}
+	var lobby_data := {"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null, "partner_look": LOOKS[MAYA]}, "duels": [running, partner_turn, won, challenge_in, challenge_out], "limits": {"friend": 10, "ghost": 3}}
 	var lobby := Lobby.new()
 	lobby.me = ME
 	lobby.name_of = _name_of
@@ -170,10 +170,10 @@ func _run() -> void:
 	race.show_ghosts(boards)
 	await _save("duels-race")
 	race.close()
-	lobby.show_lobby({"party": {"partner": null, "intact": false, "invites_in": [MAYA], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}})
+	lobby.show_lobby({"party": {"partner": null, "intact": false, "invites_in": [MAYA], "invite_out": null}, "duels": [], "limits": {"friend": 10, "ghost": 3}})
 	await _save("duels-lobby-empty")
 	# Both lists empty, with the owner's picked arts.
-	lobby.show_lobby({"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 3, "ghost": 3}})
+	lobby.show_lobby({"party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 10, "ghost": 3}})
 	await _save("duels-lobby-both-empty")
 	lobby.close()
 	await process_frame

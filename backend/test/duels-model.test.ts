@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { accept, awaitsCheck, blankSide, claimRoom, decide, decline, forgetPlayer, isOpen, knownKey, leave, milestone, newFriendDuel, newsRecipients, newGhostRace, players, progress as progressWith, score, settle, sideOf, verdict, viewFor, waiveChecks, type Duel, type ProgressNote } from "../src/duels/model";
-import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "../src/duels/rules";
-import { blankParty, noteLook } from "../src/duels/party";
+import { CHALLENGE_TTL_MS, MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR, MAX_MEMBER_DUELS, MAX_RECENT_DUELS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "../src/duels/rules";
+import { applyParty, blankParty, noteLook } from "../src/duels/party";
 import { runProgress } from "../src/duels/ticks";
 import firstA from "../../game/tests/fixtures/v2/relay-a.json";
 import firstB from "../../game/tests/fixtures/v2/relay-b.json";
@@ -548,5 +548,21 @@ describe("duel looks", () => {
     expect(duel.sides[0].looks).toEqual([{}, TIDE]);
     forgetPlayer(duel, B2, T0 + 6);
     expect(duel.sides[1]).not.toHaveProperty("looks");
+  });
+});
+
+describe("duel limits", () => {
+  it("let a pair have 10 duels going, under the week's cap and the pointers each player keeps", () => {
+    expect(MAX_FRIEND_DUELS_PER_PAIR).toBe(10);
+    expect(MAX_RECENT_DUELS).toBeGreaterThan(MAX_FRIEND_DUELS_PER_PAIR);
+    expect(MAX_RECENT_DUELS).toBeLessThan(MAX_MEMBER_DUELS);
+    // Every open friend duel and ghost race, with room left for a week of result tiles.
+    expect(MAX_MEMBER_DUELS).toBeGreaterThanOrEqual(MAX_FRIEND_DUELS_PER_PAIR + MAX_GHOST_RACES_PER_PAIR + 20);
+  });
+
+  it("keep the newest MAX_MEMBER_DUELS pointers, dropping the oldest", () => {
+    const refs = Array.from({ length: MAX_MEMBER_DUELS + 5 }, (_, index) => ({ duel_id: index.toString(16).padStart(32, "0"), board: "relay-isles@2", at: index }));
+    const answer = applyParty(blankParty(), "o".repeat(22), { kind: "add_duels", refs }, 0);
+    expect(answer.ok && answer.value.state.duels.map(ref => ref.at)).toEqual(refs.slice(5).map(ref => ref.at));
   });
 });

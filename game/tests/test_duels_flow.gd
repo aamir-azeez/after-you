@@ -221,6 +221,23 @@ func _run() -> void:
 	for index in range(2): await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
 	challenged = keys.call("/v1/duels/challenge")
 	_check(challenged.size() == 6 and challenged[4] != challenged[3] and challenged[5] != challenged[4], "a refusal from the server settles its key too: %s" % [challenged])
+	# The limit line names the number the lobby reported, or the server's own before any lobby said one.
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % Client.FRIEND_LIMIT and Client.FRIEND_LIMIT == 10, "a challenge past the limit says how many duels a party may have: %s" % main.toasts.back())
+	api.replies["POST /v1/duels/ghost"] = {"ok": false, "status": 409, "code": "duel_limit_reached"}
+	await flow._race(asked, Registry.FIRST_STEPS, "developer", null)
+	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % Client.GHOST_LIMIT and Client.GHOST_LIMIT == 3, "a race past its own limit says races, with its own number: %s" % main.toasts.back())
+	var kept_lobby: Dictionary = api.replies["GET /v1/duels"]
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": 7, "ghost": 2}}}
+	await flow.client().lobby()
+	await flow._challenge(asked, FINN, Registry.FIRST_STEPS)
+	_check(main.toasts.back() == PlayerCopy.DUELS_LIMIT % 7, "the server's number wins over the phone's: %s" % main.toasts.back())
+	await flow._race(asked, Registry.FIRST_STEPS, "developer", null)
+	_check(main.toasts.back() == PlayerCopy.DUELS_RACE_LIMIT % 2, "and for races too: %s" % main.toasts.back())
+	api.replies["GET /v1/duels"] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [], "limits": {"friend": "lots", "ghost": -1}}}
+	await flow.client().lobby()
+	_check(flow.client().limit("friend") == Client.FRIEND_LIMIT and flow.client().limit("ghost") == Client.GHOST_LIMIT, "a limit this build cannot read falls back to the server's own")
+	api.replies["GET /v1/duels"] = kept_lobby
+	api.replies.erase("POST /v1/duels/ghost")
 	asked.close()
 	# Back on the Party or Start a duel page while the friends list loads: the page is gone, and nothing writes to it.
 	var watch: LogWatch = LogWatch.start(["previously freed"])
@@ -489,14 +506,24 @@ func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow._tick(at + 80000)
 	await _frames(3)
 	_check(reads.call(lobby_path) == lobby_reads + 1, "a hint for a duel the lobby already has as new reads nothing")
-	# Each turn in a running duel sends a hint; its tile shows the dots, time and whose turn it is, so the lobby reads once per burst.
+	# Each turn in a running duel sends a hint; its tile shows the dots, time and whose turn it is, so that duel alone reads, once per burst.
+	var stepped := running.duplicate(true)
+	stepped.updated_ms = 252
+	stepped.sides[1].steps = 1
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": stepped, "duel_hints_version": 1}}
+	var single_reads: int = reads.call(duel_path)
 	for index in range(3): live.duels_changed.emit(DUEL, 250 + index)
 	flow._tick(at + 85000)
 	await _frames(3)
 	flow._tick(at + 85001)
 	await _frames(3)
-	_check(reads.call(lobby_path) == lobby_reads + 2, "turn hints for a duel the lobby shows read it once: %d" % (reads.call(lobby_path) - lobby_reads - 1))
-	lobby_reads += 1
+	_check(reads.call(lobby_path) == lobby_reads + 1 and reads.call(duel_path) == single_reads + 1, "turn hints for a duel the lobby shows read that duel once, and not the lobby: %d, %d" % [reads.call(lobby_path) - lobby_reads - 1, reads.call(duel_path) - single_reads])
+	var tile: Dictionary = flow.client().last_lobby().duels[0]
+	_check(int(tile.updated_ms) == 252 and int(tile.sides[1].steps) == 1 and flow.screen._lobby.duels[0].updated_ms == 252, "the duel's newer copy goes into the lobby and its tile redraws")
+	live.duels_changed.emit(DUEL, 252)
+	flow._tick(at + 85002)
+	await _frames(3)
+	_check(reads.call(duel_path) == single_reads + 1, "a hint the patched tile already shows reads nothing")
 	live.duels_changed.emit(other, 300)
 	flow._tick(at + 90000)
 	await _frames(3)
@@ -567,6 +594,168 @@ func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	await _frames(3)
 	_check(reads.call(duel_path) == duel_reads + 4, "a server that stopped sending hints brings back the 30 s pace at its next answer: %d" % (reads.call(duel_path) - duel_reads))
 	live.good = false
+	flow.close()
+	await _frames(2)
+	await _hint_reads(main, api, flow)
+
+## Hints with the lobby in front: list changes read the lobby at most once per
+## DUELS_LIST_HINT_GAP_MS; a duel that ended, or whose read failed, reads the
+## lobby too; many duels waiting at once read the lobby instead; a duel read
+## answered after a newer lobby keeps the newer copy; nothing reads in the
+## background; without hints, five running duels read every two minutes.
+func _hint_reads(main: FakeMain, api: FakeApi, flow: Node) -> void:
+	var lobby_path := "/v1/duels"
+	var reads := func(path: String) -> int: return api.requests.filter(func(item: Array) -> bool: return item[0] == "GET" and item[1] == path).size()
+	var live: FakeLive = main.live_connection
+	var ids := ["d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0d0", "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1", "f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2f2", "a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3a3", "b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4b4"]
+	var views: Array = []
+	for id: String in ids:
+		var view := _view({})
+		view.duel_id = id
+		view.updated_ms = 1000
+		views.append(view)
+	var path_of := func(index: int) -> String: return "/v1/duels/%s/%s" % [BOARD, ids[index]]
+	for index in range(ids.size()): api.replies["GET " + path_of.call(index)] = {"ok": true, "data": {"schema_version": 1, "duel": views[index], "duel_hints_version": 1}}
+	api.replies["GET " + lobby_path] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": views, "duel_hints_version": 1}}
+	live.good = true
+	flow.open()
+	flow.set_process(false)
+	await _frames(3)
+	var at := Time.get_ticks_msec() + 9000000
+	flow._tick(at)
+	await _frames(3)
+	# A read that begins at `at` for certain: the gap counts from it.
+	flow._refresh()
+	await _frames(3)
+	var lobby_reads: int = reads.call(lobby_path)
+	# A burst of list changes reads once, no sooner than the gap after the last read began.
+	live.duels_changed.emit("", 1100)
+	flow._tick(at + 1000)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads, "a list change right after a read waits for the gap")
+	live.duels_changed.emit("c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5c5", 1100)
+	flow._tick(at + Clock.DUELS_LIST_HINT_GAP_MS - 1)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads, "still waiting just before the gap")
+	flow._tick(at + Clock.DUELS_LIST_HINT_GAP_MS)
+	await _frames(3)
+	flow._tick(at + Clock.DUELS_LIST_HINT_GAP_MS + 1)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 1, "list changes in one gap read the lobby once: %d" % (reads.call(lobby_path) - lobby_reads))
+	# An own action still reads at once.
+	flow._refresh()
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 2, "an own action reads the lobby at once, gap or not")
+	lobby_reads += 2
+	var t := at + 100000
+	# A duel that ended: its read redraws the tile and asks for the lobby, spaced.
+	var ended: Dictionary = views[0].duplicate(true)
+	ended.status = "decided"
+	ended.updated_ms = 1200
+	ended.result = {"outcome": "won", "reason": "faster", "margin_ticks": 30, "decided_ms": 1200}
+	api.replies["GET " + path_of.call(0)] = {"ok": true, "data": {"schema_version": 1, "duel": ended, "duel_hints_version": 1}}
+	var ended_reads: int = reads.call(path_of.call(0))
+	live.duels_changed.emit(ids[0], 1200)
+	flow._tick(t)
+	await _frames(3)
+	_check(reads.call(path_of.call(0)) == ended_reads + 1 and flow.client().last_lobby().duels.any(func(view: Dictionary) -> bool: return view.duel_id == ids[0] and view.status == "decided"), "an ended duel's read puts its result on the lobby")
+	flow._tick(t + 1)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 1, "an ended duel reads the lobby once after it: %d" % (reads.call(lobby_path) - lobby_reads))
+	lobby_reads += 1
+	# A duel the server no longer has: the lobby reads, spaced, and nothing retries the duel.
+	api.replies["GET " + path_of.call(1)] = {"ok": false, "status": 404, "code": "duel_not_found"}
+	live.duels_changed.emit(ids[1], 1300)
+	t += 100000
+	flow._tick(t)
+	await _frames(3)
+	flow._tick(t + 1)
+	await _frames(3)
+	flow._tick(t + 2)
+	await _frames(3)
+	_check(reads.call(path_of.call(1)) == 1 and reads.call(lobby_path) == lobby_reads + 1, "a duel read that fails reads the lobby once, and never again by itself: %d, %d" % [reads.call(path_of.call(1)), reads.call(lobby_path) - lobby_reads])
+	lobby_reads += 1
+	api.replies["GET " + path_of.call(1)] = {"ok": true, "data": {"schema_version": 1, "duel": views[1], "duel_hints_version": 1}}
+	# Many duels at once (a burst of turns on every tile): the lobby once costs less than each duel's read.
+	var singles := func() -> int:
+		var count := 0
+		for index in range(ids.size()): count += reads.call(path_of.call(index))
+		return count
+	var before_singles: int = singles.call()
+	for index in range(2, 5): live.duels_changed.emit(ids[index], 1400)
+	t += 100000
+	flow._tick(t)
+	await _frames(3)
+	flow._tick(t + 1)
+	await _frames(3)
+	_check(singles.call() == before_singles and reads.call(lobby_path) == lobby_reads + 1, "three duels waiting on one chapter read the lobby once instead: %d, %d" % [singles.call() - before_singles, reads.call(lobby_path) - lobby_reads])
+	lobby_reads += 1
+	# A duel's read answered after a newer lobby keeps the newer copy.
+	var older: Dictionary = views[2].duplicate(true)
+	older.updated_ms = 1500
+	var newer: Dictionary = views[2].duplicate(true)
+	newer.updated_ms = 1600
+	newer.sides[1].steps = 3
+	api.replies["GET " + path_of.call(2)] = {"ok": true, "data": {"schema_version": 1, "duel": older, "duel_hints_version": 1}}
+	api.delays["GET " + path_of.call(2)] = 8
+	live.duels_changed.emit(ids[2], 1500)
+	t += 100000
+	flow._tick(t)
+	await _frames(1)
+	var fresh: Array = views.duplicate(true)
+	fresh[2] = newer
+	fresh[0] = ended
+	api.replies["GET " + lobby_path] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": fresh, "duel_hints_version": 1}}
+	flow._refresh()
+	await _frames(12)
+	var kept: Dictionary = flow.client().last_lobby().duels.filter(func(view: Dictionary) -> bool: return view.duel_id == ids[2])[0]
+	_check(int(kept.updated_ms) == 1600 and int(kept.sides[1].steps) == 3, "a duel read that answers after a newer lobby read leaves the newer copy: %d" % int(kept.updated_ms))
+	api.delays.erase("GET " + path_of.call(2))
+	# In the background a hinted duel waits; coming back reads the lobby, which covers it.
+	var paused_singles: int = singles.call()
+	flow._notification(NOTIFICATION_APPLICATION_PAUSED)
+	live.duels_changed.emit(ids[3], 1700)
+	t += 100000
+	flow._tick(t)
+	await _frames(3)
+	_check(singles.call() == paused_singles, "nothing reads a hinted duel in the background")
+	var moved: Array = fresh.duplicate(true)
+	moved[3].updated_ms = 1700
+	api.replies["GET " + lobby_path] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": moved, "duel_hints_version": 1}}
+	lobby_reads = reads.call(lobby_path)
+	flow._notification(NOTIFICATION_APPLICATION_RESUMED)
+	await _frames(3)
+	flow._tick(t + 1)
+	await _frames(3)
+	flow._tick(t + 2)
+	await _frames(3)
+	# (The resume's own read runs on the real clock here, so a duel read may come first; services/duel_hint_reads.gd drops one the lobby caught up on.)
+	var resumed: Dictionary = flow.client().last_lobby().duels.filter(func(view: Dictionary) -> bool: return view.duel_id == ids[3])[0]
+	_check(reads.call(lobby_path) == lobby_reads + 1 and int(resumed.updated_ms) == 1700, "coming back reads the lobby once and shows the duel hinted while away: %d" % (reads.call(lobby_path) - lobby_reads))
+	# Without hints: the minute pace, and two minutes with five or more running.
+	var four: Array = views.slice(0, 4)
+	_check(Flow.lobby_refresh_ms({"duels": four}) == Clock.DUELS_LOBBY_INTERVAL_MS and Flow.lobby_refresh_ms({"duels": views}) == Clock.DUELS_LOBBY_BUSY_INTERVAL_MS and Flow.lobby_refresh_ms({"duels": views}, true) == Clock.DUELS_LOBBY_BACKUP_MS, "five running duels read every two minutes without hints, four every minute")
+	var ended_five: Array = views.duplicate(true)
+	ended_five[0] = ended
+	_check(Flow.lobby_refresh_ms({"duels": ended_five}) == Clock.DUELS_LOBBY_INTERVAL_MS, "only running duels count toward the slower pace")
+	live.good = false
+	var busy: Array = views.duplicate(true)
+	for view: Dictionary in busy: view.updated_ms = 5000
+	api.replies["GET " + lobby_path] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": busy}}
+	flow._refresh()
+	await _frames(3)
+	# The read the minute pace still owed: from its answer on, the pace is two minutes.
+	t += 100000
+	flow._tick(t)
+	await _frames(3)
+	lobby_reads = reads.call(lobby_path)
+	var slow_start := t
+	flow._tick(slow_start + Clock.DUELS_LOBBY_INTERVAL_MS + 1)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads, "five running duels do not read after a minute")
+	flow._tick(slow_start + Clock.DUELS_LOBBY_BUSY_INTERVAL_MS + 1)
+	await _frames(3)
+	_check(reads.call(lobby_path) == lobby_reads + 1, "five running duels read after two minutes: %d" % (reads.call(lobby_path) - lobby_reads))
 	flow.close()
 	await _frames(2)
 

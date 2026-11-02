@@ -36,6 +36,10 @@ const MAX_DUELS := 64
 const STATUSES := ["challenged", "running", "decided", "declined", "withdrawn", "expired", "pair_gone", "unfinished"]
 const CHECKS := ["none", "waiting", "passed", "failed", "error"]
 const OUTCOMES := ["won", "lost", "draw", "none"]
+## The duel limits when no lobby was read yet: the server's own (backend duels/rules.ts
+## MAX_FRIEND_DUELS_PER_PAIR, MAX_GHOST_RACES_PER_PAIR), which every lobby read reports.
+const FRIEND_LIMIT := 10
+const GHOST_LIMIT := 3
 
 var _api: Node
 var _owner: String
@@ -72,6 +76,10 @@ func lobby() -> Dictionary:
 ## The last lobby read, or {}.
 func last_lobby() -> Dictionary:
 	return _lobby
+
+## How many duels of `kind` ("friend" or "ghost") a pair may have going, as the last lobby read said.
+func limit(kind: String) -> int:
+	return int(_lobby.get("limits", {}).get(kind, GHOST_LIMIT if kind == "ghost" else FRIEND_LIMIT))
 
 ## {ok, boards: [{board, developer, top}]}, kept a minute.
 func ghosts(fresh: bool = false) -> Dictionary:
@@ -310,7 +318,11 @@ static func valid_lobby(value: Variant) -> Dictionary:
 	if duels.size() > MAX_DUELS: return {}
 	var limits: Variant = value.get("limits")
 	return {"party": {"partner": partner, "intact": party.intact, "invites_in": party.invites_in.duplicate(), "invite_out": out, "partner_look": _look(party.get("partner_look"))}, "duels": duels,
-		"limits": {"friend": int(limits.get("friend", 3)), "ghost": int(limits.get("ghost", 3))} if limits is Dictionary else {"friend": 3, "ghost": 3}}
+		"limits": {"friend": _limit(limits, "friend", FRIEND_LIMIT), "ghost": _limit(limits, "ghost", GHOST_LIMIT)}}
+
+static func _limit(limits: Variant, kind: String, fallback: int) -> int:
+	var value: Variant = limits.get(kind) if limits is Dictionary else null
+	return int(value) if Typed.whole_number(value) and int(value) > 0 else fallback
 
 ## One duel as the server sent it (backend duels/model.ts DuelView), or {}.
 static func valid_view(value: Variant) -> Dictionary:

@@ -13,8 +13,12 @@
 
 /** The party actions, POST /v1/duels/party/<action> (routes.ts; pollen/looks-routes.ts keeps the caller's look on each). */
 export const PARTY_ACTIONS = ["invite", "accept", "dismiss", "cancel", "leave"] as const;
-/** Friend duels a pair may have waiting or running at once (challenges it sent or got count too). Ghost races do not count. */
-export const MAX_FRIEND_DUELS_PER_PAIR = 3;
+/**
+ * Friend duels a pair may have waiting or running at once (challenges it sent or got count too). Ghost races do not count.
+ * Plenty for normal play, too few for spam (owner, 2026-11-02). The lobby reports it (routes.ts `limits.friend`), so the
+ * phone's limit line follows; game/services/duels_client.gd FRIEND_LIMIT is only its fallback and stays in step.
+ */
+export const MAX_FRIEND_DUELS_PER_PAIR = 10;
 /** Ghost races a pair may have running at once. */
 export const MAX_GHOST_RACES_PER_PAIR = 3;
 /** A challenge nobody answers fades after this long, with no countdown shown. */
@@ -27,10 +31,13 @@ export const ROOM_CLAIM_TAKEOVER_MS = 120_000;
 export const PARTY_INVITE_TTL_MS = 7 * 86_400_000;
 /** Party invites a player may hold at once; the oldest goes past it. */
 export const MAX_PARTY_INVITES = 8;
-/** Duel pointers kept per player, the oldest going first past it. MAX_RECENT_DUELS keeps the open ones well inside it. */
-export const MAX_MEMBER_DUELS = 24;
-/** A player holding this many duels started in the last CHALLENGE_TTL_MS takes no new challenge. */
-export const MAX_RECENT_DUELS = 12;
+/**
+ * Duel pointers kept per player, the oldest going first past it: room for the open friend duels and ghost races and a
+ * week of result tiles. MAX_RECENT_DUELS keeps the open ones well inside it.
+ */
+export const MAX_MEMBER_DUELS = 40;
+/** A player holding this many duels started in the last CHALLENGE_TTL_MS takes no new challenge. Above MAX_FRIEND_DUELS_PER_PAIR, so a busy pair still reaches its limit. */
+export const MAX_RECENT_DUELS = 30;
 /** A decided duel stays on the lobby this long, as a result tile. */
 export const RESULT_SHOWN_MS = 7 * 86_400_000;
 /** Raw duel runs waiting for the replay check, per board, while duel run checks are on (DUEL_RUN_CHECKS): a friend duel's run, or a ghost race's beating the developers' ghost, is checked before its win counts. */

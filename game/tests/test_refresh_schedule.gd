@@ -26,6 +26,7 @@ func _run() -> void:
 	_test_idle_backoff()
 	_test_idle_backoff_resets()
 	_test_live_hint_and_pace()
+	_test_hint_gap()
 	print("REFRESH SCHEDULE: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
 
@@ -301,3 +302,31 @@ func _test_live_hint_and_pace() -> void:
 	_check(not resume.hint(5500, paused), "A catch-up after the resume read asks for nothing more either")
 	_check(resume.hint(5600, 5100) and resume.next_due_ms() == 5600, "Hints missed since after that read began make one read due")
 
+
+## A hint with a gap (a duel lobby's list change) reads no sooner than that
+## long after the last read began, also when it comes during a read; a hint
+## without one, or a manual read, still reads at once.
+func _test_hint_gap() -> void:
+	var clock := Schedule.new()
+	clock.bind("lobby", 0, 900000)
+	_check(clock.hint(100, -1, 10000) and clock.next_due_ms() == 100, "With no read yet, a spaced hint reads at once")
+	var token: Dictionary = clock.begin_if_due(100, true, false)
+	clock.complete(token, 300, true)
+	_check(clock.hint(400, -1, 10000) and clock.next_due_ms() == 10100, "A spaced hint waits for the gap after the last read began")
+	_check(clock.hint(500, -1, 10000) and clock.next_due_ms() == 10100, "More spaced hints in the gap ask for that one read")
+	_check(clock.begin_if_due(10099, true, false).is_empty(), "Nothing reads before the gap ends")
+	token = clock.begin_if_due(10100, true, false)
+	_check(clock.hint(10200, -1, 10000), "A spaced hint during a read is kept")
+	clock.complete(token, 10300, true)
+	_check(clock.next_due_ms() == 20100, "The read after it waits for the gap from the read that was out")
+	_check(clock.hint(10400) and clock.next_due_ms() == 10400, "A hint without a gap (an own action) still reads at once")
+	token = clock.begin_if_due(10400, true, false)
+	clock.hint(10450, -1, 10000)
+	clock.hint(10460)
+	clock.complete(token, 10500, true)
+	_check(clock.next_due_ms() == 10500, "A read out with a spaced and an unspaced hint behind it reads again at once")
+	token = clock.begin_if_due(10500, true, false)
+	clock.complete(token, 10600, true)
+	_check(clock.hint(10700, -1, 10000) and clock.request_now(10700) and clock.next_due_ms() == 10700, "A manual read is never spaced")
+	clock.bind("other", 10800, 900000)
+	_check(clock.hint(10900, -1, 10000) and clock.next_due_ms() == 10900, "A new context does not count the old one's reads")

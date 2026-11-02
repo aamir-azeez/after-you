@@ -22,6 +22,7 @@ const PipAvatar = preload("res://presentation/kit/pip_avatar.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const SoundCues = preload("res://services/sound_cues.gd")
+const HintReads = preload("res://services/duel_hint_reads.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -63,6 +64,7 @@ func _wire(status: String = "running", overrides: Dictionary = {}) -> Dictionary
 func _run() -> void:
 	_clear(SAVE_PATH)
 	_model()
+	_hint_reads()
 	await _client()
 	await _their_run()
 	await _pages()
@@ -195,6 +197,34 @@ func _their_run() -> void:
 	api.queue_free()
 	await process_frame
 
+## services/duel_hint_reads.gd: which read a duel hint asks of the lobby, and the duels waiting for their own.
+func _hint_reads() -> void:
+	var other := "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1"
+	var kept := {"duels": [_wire("running", {"updated_ms": 500}), _wire("running", {"duel_id": other, "board": "first-steps@1", "updated_ms": 500})]}
+	_check(HintReads.route(kept, "", 600) == HintReads.LOBBY, "a party hint reads the lobby")
+	_check(HintReads.route(kept, "f".repeat(32), 600) == HintReads.LOBBY, "a hint for a duel the lobby lacks (a new challenge) reads the lobby")
+	_check(HintReads.route(kept, DUEL, 500) == HintReads.NONE and HintReads.route(kept, DUEL, 400) == HintReads.NONE, "a hint the lobby already shows reads nothing")
+	_check(HintReads.route(kept, DUEL, 501) == HintReads.DUEL, "a newer hint for a duel on the lobby reads only that duel")
+	_check(HintReads.lobby_requests(kept) == 5 and HintReads.lobby_requests({}) == 3, "a lobby read costs 3 requests and one per chapter holding a duel")
+	var waiting := HintReads.new()
+	waiting.note(DUEL, 700)
+	waiting.note(DUEL, 650)
+	_check(waiting.waiting() == 1 and not waiting.cheaper_as_lobby(kept), "hints for one duel wait as one read, which costs less than the lobby")
+	waiting.note(other, 700)
+	var one_chapter := {"duels": [kept.duels[0], kept.duels[0].merged({"duel_id": other}, true), kept.duels[0].merged({"duel_id": "f".repeat(32)}, true)]}
+	_check(not waiting.cheaper_as_lobby(one_chapter) and not waiting.cheaper_as_lobby(kept), "two duels waiting cost no more one by one than a lobby read of one chapter")
+	waiting.note("f".repeat(32), 700)
+	_check(waiting.cheaper_as_lobby(one_chapter), "three duels on one chapter cost more one by one than the lobby once")
+	var first := waiting.next(kept)
+	_check(first.duel_id == DUEL and waiting.waiting() == 2, "the waiting duels come one at a time, as the lobby keeps them")
+	var caught := {"duels": [kept.duels[0], kept.duels[1].merged({"updated_ms": 700}, true)]}
+	_check(waiting.next(caught).is_empty() and waiting.waiting() == 0, "a duel the lobby caught up on, or no longer shows, needs no read")
+	waiting.note(DUEL, 800)
+	waiting.clear()
+	_check(waiting.next(kept).is_empty(), "cleared duels never read")
+	_check(HintReads.ended(_wire("running"), _wire("decided")) and HintReads.ended(_wire("challenged"), _wire("declined")), "a duel that ended changes the list")
+	_check(not HintReads.ended(_wire("challenged"), _wire("running")) and not HintReads.ended(_wire("decided"), _wire("decided")), "an accepted duel, or one that was already over, does not")
+
 func _clear_runs(folder: String) -> void:
 	for file: String in DirAccess.get_files_at(folder): DirAccess.remove_absolute(ProjectSettings.globalize_path(folder.path_join(file)))
 
@@ -202,7 +232,7 @@ func _client() -> void:
 	var api := FakeApi.new()
 	root.add_child(api)
 	var lobby := {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null},
-		"duels": [_wire("running", {"sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), _wire().sides[1]]})], "limits": {"friend": 3, "ghost": 3}}
+		"duels": [_wire("running", {"sides": [_wire().sides[0].merged({"finished": true, "check": "waiting"}, true), _wire().sides[1]]})], "limits": {"friend": 10, "ghost": 3}}
 	api.replies["GET /v1/duels"] = {"ok": true, "data": lobby}
 	var client := Client.new(api, ME, SAVE_PATH)
 	var answer: Dictionary = await client.lobby()
