@@ -923,6 +923,10 @@ func set_exploring(on: bool) -> void:
 		_goals["a"] = actor.position
 		zoom_target = float(_explore_return.get("zoom_target", DEFAULT_SIZE))
 		_world.home_bridge_raised = false
+	# The other spirit picks its next goal by the new mode's rules (in view on
+	# Home, clear of the triggers in Explore), not the one it was walking to.
+	for role: String in _actors:
+		if role != "a": _goals[role] = _actors[role].position
 	_stick.release()
 	_show_explore_controls()
 	if _world.reduced_motion: zoom_size = zoom_target
@@ -983,10 +987,11 @@ func _goal_clear(role: String, goal: Vector3) -> bool:
 	if _exploring: return not (is_instance_valid(_keepsake_layer) and _keepsake_layer.near_trigger(goal, TRIGGER_ROOM))
 	return _in_view(goal)
 
-## Whether a wandering spirit may take a step to `to`: on its island, and never
-## deeper into a keepsake, nearer the other spirit, out of view on Home or into
-## a trigger's room in Explore than it already is, so a spirit put where it should not stand (the explorer put back
-## from Explore where the other has wandered) always walks out of it.
+## Whether a wandering spirit may take a step to `to`: on its island, never
+## deeper into a keepsake, nearer the other spirit or (on Home) out of view than
+## it already is, and in Explore never from outside a trigger's room into one.
+## So a spirit put where it should not stand (the explorer put back from
+## Explore where the other has wandered) always walks out of it.
 func _step_clear(role: String, to: Vector3) -> bool:
 	var from: Vector3 = _actors[role].position
 	if not _floor.has_point(Vector2(to.x,to.z)): return false

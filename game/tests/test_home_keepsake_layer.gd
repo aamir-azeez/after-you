@@ -873,15 +873,28 @@ func _check_explore_roam() -> void:
 	away.stage._explore_recheck = true
 	var roamed := 0.0
 	var kept_clear := true
+	var was_clear := false
 	for frame in range(600):
 		var before := other.position
 		_frames(away.stage, away.world, 1)
 		roamed += other.position.distance_to(before)
 		kept_clear = kept_clear and away.stage._floor.has_point(Vector2(other.position.x, other.position.z)) and not away.layer.blocks(other.position, Stage.SPIRIT_CLEARANCE - 0.01) and not (away.layer.near_trigger(other.position, Stage.TRIGGER_ROOM - 0.01) and not away.layer.near_trigger(before, Stage.TRIGGER_ROOM - 0.01))
+		# Once clear of every trigger's room it never stands on a trigger or in a stay.
+		was_clear = was_clear or not away.layer.near_trigger(other.position, Stage.TRIGGER_ROOM)
+		if was_clear: kept_clear = kept_clear and not away.layer.near_trigger(other.position, 0.0)
 	var seen: Vector2 = away.world.camera.unproject_position(away.world.to_global(other.position))
 	_check(not Rect2(Vector2.ZERO, Vector2(1560, 720)).has_point(seen), "The explorer's walk takes the other spirit out of view: %s" % seen)
 	_check(roamed > 1.0, "Out of view, the other spirit keeps roaming its island: %.2f m" % roamed)
 	_check(kept_clear, "on its own island, clear of the keepsakes and of their triggers and stays")
+	# Back: it heads for somewhere in Home's view again, not where Explore sent it.
+	away.stage._explore_back.pressed.emit()
+	var back_in_view := false
+	for frame in range(600):
+		_frames(away.stage, away.world, 1)
+		if away.stage._in_view(other.position) and away.stage._in_view(away.stage._goals.b):
+			back_in_view = true
+			break
+	_check(back_in_view, "After Back the other spirit roams in Home's view again")
 	await _close(away)
 	for way: String in ["back", "system back"]:
 		var home := await _home(Vector2i(1560, 720), _everything(), _all_hard())
@@ -939,7 +952,7 @@ func _check_rail_face() -> void:
 			if happy and happy_from < 0.0: happy_from = time
 			if happy_from >= 0.0 and layer.riding(): steady = steady and happy
 			if cut and happy_from >= 0.0 and time > happy_from + 0.5: break
-		_check(happy_from > 0.0 and happy_from < 1.0 and steady, "The pip is happy from boarding the cart through the ride (on at %.2f s)" % happy_from)
+		_check(happy_from > 0.3 and happy_from < 1.0 and steady, "The pip is happy from boarding the cart through the ride (on at %.2f s)" % happy_from)
 		if cut:
 			layer.stop_play()
 			_check(pip.expression_target() != &"happy", "A ride cut short takes the happy face off at once")
