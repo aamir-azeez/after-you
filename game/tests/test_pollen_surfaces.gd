@@ -119,6 +119,9 @@ func _board_six(size: Vector2i) -> void:
 	prompt._show()
 	await process_frame
 	_check(_words(prompt.save_button) == [PlayerCopy.DISPLAY_NAME_SAVE_DOT, "1,000", PlayerCopy.WARDROBE_ABOUT % "$0.20"] and prompt.save_button.find_child("PollenMark", true, false) != null and not prompt.save_button.disabled, "Save · [grain] 1,000 about $0.20 at %s" % size)
+	var save_about: Label = prompt.save_button.find_child("PollenAbout", true, false)
+	var save_amount: Label = prompt.save_button.find_child("PollenAmountValue", true, false)
+	_check(save_about != null and save_amount != null and save_about.get_theme_font_size("font_size") < save_amount.get_theme_font_size("font_size") and save_about.get_theme_color("font_color").a < save_amount.get_theme_color("font_color").a, "Save's about hint is smaller and fainter than its price at %s" % size)
 	_check(prompt._have_line.visible and prompt._have_label.text == PlayerCopy.DISPLAY_NAME_PRICE_HAVE % "24,000" and prompt._have_line.find_child("PollenMark", true, false) != null, "The balance line with its grain under the choices")
 	_check(prompt._price_note.get_parent() == prompt._counter.get_parent() and prompt._price_note.visible and not prompt.get_pollen_link.visible, "The price line sits under the field beside the counter, and no link while the balance covers it")
 	_fits(modal, prompt, size, "priced")

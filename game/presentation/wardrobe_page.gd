@@ -404,7 +404,7 @@ func _show_selected(entry: Dictionary, shop: bool) -> void:
 	row.add_theme_constant_override("separation", 10)
 	row.add_child(ShopKit.text(PlayerCopy.WARDROBE_BUY_FOR, 22, INK, ShopKit.bold_font()))
 	row.add_child(ShopKit.amount(price, 22, INK))
-	var about := ShopKit.about(price, 15, INK_SOFT)
+	var about := ShopKit.about(price, 22, INK)
 	about.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(about)
 	ShopKit.set_button_content(action_button, row)
@@ -507,7 +507,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 		if tier == "earned" and shop and not small: bottom.add_child(spacer)
 		bottom.add_child(_tag(PlayerCopy.WARDROBE_WEARING if bool(entry.worn) else PlayerCopy.WARDROBE_OWNED_TAG))
 	elif bool(entry.sold) and shop:
-		bottom.add_child(ShopKit.price(int(entry.price), 13 if small else 15, INK, INK_SOFT))
+		bottom.add_child(ShopKit.price(int(entry.price), 13 if small else 15, INK))
 	return card
 
 ## Yours or Wearing, in a small mint pill.

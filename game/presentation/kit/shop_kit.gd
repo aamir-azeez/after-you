@@ -18,6 +18,13 @@ const CREAM := UiTokens.CREAM
 const MUTED := Color("afc6be")
 const INK := Color("1d3230")
 const INK_SOFT := Color("4d625d")
+## The about hint is always smaller and fainter than the price or name beside
+## it: this share of that text's size (never under ABOUT_MIN_SIZE), in that
+## text's colour at ABOUT_FADE. 0.72 keeps ink on the cream cards and buttons and
+## cream on the modal's teal at 4.5:1 or more, as small text needs.
+const ABOUT_SCALE := 0.6
+const ABOUT_MIN_SIZE := 10
+const ABOUT_FADE := 0.72
 
 static var _fonts := {}
 
@@ -75,20 +82,29 @@ static func amount(value: int, font_size: int, color: Color, before: String = ""
 	row.add_child(number)
 	return row
 
-## "about $3.96" for an amount of Pollen.
-static func about(value: int, font_size: int, color: Color) -> Label:
-	var label := text(PlayerCopy.WARDROBE_ABOUT % PollenMoney.about(value), font_size, color)
+## The about hint's size beside text of `beside_size`.
+static func about_size(beside_size: int) -> int:
+	return maxi(ABOUT_MIN_SIZE, roundi(beside_size * ABOUT_SCALE))
+
+## The about hint's colour beside text in `beside_color`.
+static func about_color(beside_color: Color) -> Color:
+	return Color(beside_color, beside_color.a * ABOUT_FADE)
+
+## "about $3.96" for an amount of Pollen, in the hint's style beside text of
+## `beside_size` in `beside_color`; `words` holds the figure ("(about %s)").
+static func about(value: int, beside_size: int, beside_color: Color, words: String = PlayerCopy.WARDROBE_ABOUT) -> Label:
+	var label := text(words % PollenMoney.about(value), about_size(beside_size), about_color(beside_color))
 	label.name = "PollenAbout"
 	return label
 
-## A price as an item card shows it: the amount over its about line.
-static func price(value: int, font_size: int, color: Color, soft: Color) -> VBoxContainer:
+## A price as an item card shows it: the amount over its about hint.
+static func price(value: int, font_size: int, color: Color) -> VBoxContainer:
 	var column := VBoxContainer.new()
 	column.name = "PollenPrice"
 	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	column.add_theme_constant_override("separation", 0)
 	column.add_child(amount(value, font_size, color))
-	column.add_child(about(value, font_size - 3, soft))
+	column.add_child(about(value, font_size, color))
 	return column
 
 ## A label-free button with `content` laid inside it, for a button whose words

@@ -61,9 +61,8 @@ const MUTED := Color("afc6be")
 const ERROR := Color("f2b8ae")
 const WIDTH := 860.0
 const PIP_SIZE := Vector2(180, 236)
-## Save's words beside the grain, on the cream main button, and its about line.
+## Save's words beside the grain, on the cream main button; its about hint takes ShopKit's style.
 const SAVE_SIZE := 20
-const SAVE_ABOUT_SIZE := 15
 
 var modal: Control
 var field: LineEdit
@@ -529,7 +528,7 @@ func _show_save(amount: int, short: int) -> void:
 	var needed := PlayerCopy.DISPLAY_NAME_SAVE_NEEDED % PollenMoney.grouped(short) if short > 0 else ""
 	row.add_child(ShopKit.amount(amount, SAVE_SIZE, ink, "", needed))
 	if short <= 0:
-		var about := ShopKit.about(amount, SAVE_ABOUT_SIZE, Color(ink, 0.75))
+		var about := ShopKit.about(amount, SAVE_SIZE, ink)
 		about.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 		row.add_child(about)
 	save_button.text = ""

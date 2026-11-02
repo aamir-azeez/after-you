@@ -274,7 +274,8 @@ const WARDROBE_TRY_AGAIN := "Try again"
 const WARDROBE_CONFIRM_TITLE := "Buy %s?"
 const WARDROBE_CONFIRM_NOTE := "Looks only, and it stays on your pip."
 const WARDROBE_YOU_HAVE := "You have"
-const WARDROBE_COST_LINE := "%s (about %s)"
+## The confirm card's about hint beside the item's name ("Daisy (about $0.20)").
+const WARDROBE_ABOUT_ASIDE := "(about %s)"
 const WARDROBE_LEFT := "You'll have left"
 ## The cost on the confirm card, with a minus sign (U+2212), never a dash.
 const WARDROBE_MINUS := "−%s"

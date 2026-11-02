@@ -5,6 +5,8 @@ extends SceneTree
 ## - it opens only while the server has the wardrobe on, on every build;
 ## - the page lists what the server sells, with the shelf of the week in its own
 ##   panel, the slot chips, tier frames, prices with the grain and about $X;
+## - every about $X hint is ShopKit's one style: smaller and fainter than the
+##   price or name beside it (cards, the Buy button and the confirm card);
 ## - the main button says Buy for [grain] N about $X, Wear or Take off; a tap
 ##   while the wardrobe is still being read waits for the read (first taps);
 ## - Buy opens the confirm card (the pip, balance, cost with its about line,
@@ -32,6 +34,7 @@ const PollenMoney = preload("res://services/pollen_money.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const TierFrame = preload("res://presentation/kit/tier_frame.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
+const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -170,11 +173,14 @@ func _buying() -> void:
 	var action: Button = t.host.overlay.find_child("WardrobeAction", true, false)
 	var words := _texts(action)
 	_check(PlayerCopy.WARDROBE_BUY_FOR in words and "20,000" in words and PlayerCopy.WARDROBE_ABOUT % "$3.96" in words and action.find_child("PollenMark", true, false) != null, "Its button says Buy for [grain] 20,000 about $3.96: " + str(words))
+	_check(_faint_beside(action.find_child("PollenAbout", true, false), action.find_child("PollenAmountValue", true, false)), "The Buy button's about hint is smaller and fainter than its price")
 	await t.flow.act("tide")
 	var sheet: Node = t.host.ui.find_child("WardrobeConfirm", true, false)
 	_check(sheet != null and t.fake.sent.size() == 1, "Buy opens the confirm card and sends nothing yet")
 	var texts := _texts(sheet)
-	_check("24,000" in texts and (PlayerCopy.WARDROBE_COST_LINE % ["Tide", PollenMoney.about(20000)]) in texts and "4,000" in texts and PollenMoney.about(20000) == "$3.96", "The card shows the balance, the cost with about $3.96 and what is left")
+	_check("24,000" in texts and "Tide" in texts and (PlayerCopy.WARDROBE_ABOUT_ASIDE % PollenMoney.about(20000)) in texts and "4,000" in texts and PollenMoney.about(20000) == "$3.96", "The card shows the balance, the cost with (about $3.96) and what is left: " + str(texts))
+	var item_row: Node = sheet.find_child("WardrobeConfirmItem", true, false)
+	_check(item_row != null and _faint_beside(item_row.find_child("PollenAbout", true, false), item_row.get_child(0)) and _texts(item_row.get_child(0)) == ["Tide"], "The item's name keeps its style and its about hint sits after it, smaller and fainter")
 	_check(sheet.find_child("WardrobeConfirmPip", true, false) != null and sheet.find_children("PollenMark", "", true, false).size() == 3, "It shows the item on a pip and the grain on each row")
 	t.fake.replies = [{"ok": true, "status": 200, "data": {"schema_version": 1.0, "op": "spend", "kind": "item", "id": "tide", "pieces": ["tide"], "cost": 20000.0, "balance": 4000.0}}]
 	await t.flow.confirm_buy("tide", 20000)
@@ -277,6 +283,9 @@ func _page_parts() -> void:
 	var daisy := (page.find_child("WardrobeCard_daisy", true, false) as Button).get_theme_stylebox("normal") as StyleBoxFlat
 	_check(daisy.border_color == TierFrame.frame("common") and daisy.shadow_size == 0, "A Common card has its frame and no glow")
 	_check(_texts(lantern).has(TierFrame.word("epic")) and lantern.find_child("TierMark", true, false) != null and lantern.find_child("PollenMark", true, false) != null and PlayerCopy.WARDROBE_ABOUT % "$9.90" in _texts(lantern), "A card has the tier mark and word, the grain and about $X")
+	_check(_faint_beside(lantern.find_child("PollenAbout", true, false), lantern.find_child("PollenAmountValue", true, false)), "A card's about hint is smaller and fainter than its price")
+	var shelf_card: Node = page.find_child("WardrobeShelfCard_lighthouse_lamp", true, false)
+	_check(_faint_beside(shelf_card.find_child("PollenAbout", true, false), shelf_card.find_child("PollenAmountValue", true, false)), "A shelf card's about hint is smaller and fainter than its price")
 	t.flow.set_kind("leaf")
 	var leaf: Button = page.find_child("WardrobeCard_gold_leaf", true, false)
 	_check(leaf != null and (leaf.get_theme_stylebox("normal") as StyleBoxFlat).border_color == TierFrame.frame("earned") and leaf.find_child("WardrobeNotForSale", true, false) != null, "An earned item has the Earned frame and the Not for sale chip")
@@ -484,6 +493,16 @@ static func _plus_shown(page: Node) -> bool:
 
 static func _build(sells: bool) -> String:
 	return "Selling" if sells else "Selling nothing"
+
+## Whether `hint` (an about $X label) has ShopKit's hint style beside `beside`:
+## a smaller size and the same colour, fainter.
+static func _faint_beside(hint: Node, beside: Node) -> bool:
+	if not hint is Label or not beside is Label: return false
+	var size := (hint as Label).get_theme_font_size("font_size")
+	var near := (beside as Label).get_theme_font_size("font_size")
+	var color := (hint as Label).get_theme_color("font_color")
+	var ink := (beside as Label).get_theme_color("font_color")
+	return size == ShopKit.about_size(near) and size < near and color.is_equal_approx(ShopKit.about_color(ink)) and color.a < ink.a
 
 ## Every visible word under `node`.
 static func _texts(node: Node) -> Array:
