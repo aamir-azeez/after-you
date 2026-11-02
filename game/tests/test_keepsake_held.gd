@@ -126,6 +126,12 @@ func _check_glasshouse(look: Array) -> void:
 	stage.play_keepsake(LIGHT)
 	_check(layer.holding(GLASS) and flower.scale.is_equal_approx(Vector3.ONE * Glasshouse.GROWN) and _petals(flower) == buds + 6 + int(look[3]), "%s tapped away from as it eases back stays grown (easing %s)" % [label, easing])
 	layer.stop_play()
+	# Pushed again as it eases back: the press counts, and it starts again.
+	stage.play_keepsake(GLASS)
+	(layer._play.tween as Tween).custom_step(10.0)
+	easing = layer.playing()
+	_check(stage.play_keepsake(GLASS) and flower.scale == Vector3.ONE and _petals(flower) == buds, "%s pushed again as it eases back starts again at once (easing %s)" % [label, easing])
+	layer.stop_play()
 	# The pump walked up to in Explore does the same.
 	stage._explore_button.pressed.emit()
 	var spirit: Node3D = home.world.actors.a
@@ -224,6 +230,13 @@ func _check_lighthouse(look: Array) -> void:
 	if parts.has("boat_lamp"): _check((parts.boat_lamp as MeshInstance3D).material_override == Parts.mat(Parts.LAMP_OFF), "%s's boat lamp is out" % label)
 	# And on again from the start.
 	_check(stage.play_keepsake(LIGHT) and not layer.holding(LIGHT), "%s pressed a third time wakes again" % label)
+	# Pressed again as it settles: the press counts and switches it off.
+	(layer._play.tween as Tween).custom_step(10.0)
+	var settling: bool = layer.playing()
+	_check(stage.play_keepsake(LIGHT) and layer.playing() and (layer._play.anim.kept as Dictionary).is_empty() and not layer.holding(LIGHT), "%s pressed as it settles fades off at once (settling %s)" % [label, settling])
+	await _finish(layer)
+	_check(not layer.holding(LIGHT) and lamp.material_override == lamp_rest, "%s is off again" % label)
+	stage.play_keepsake(LIGHT)
 	await _finish(layer)
 	_check(layer.holding(LIGHT), "%s is on again" % label)
 	# Another keepsake's tap leaves it on; cut off mid wake it goes back to sleep.

@@ -276,7 +276,8 @@ func settling() -> bool:
 func playable(id: String) -> bool:
 	return _set.get("props", {}).get(id, {}).get("look") == "keepsake"
 
-## Plays a keepsake. A second start on the one playing changes nothing; a
+## Plays a keepsake. A second start on the one playing changes nothing until
+## its beats are over (as it eases back, it counts as pressed again); a
 ## start on another ends the first in its rest pose and plays the new one,
 ## except during a ride, which always finishes. A keepsake holding what its
 ## last tap kept goes back to rest and plays from the start, or, if its
@@ -284,7 +285,8 @@ func playable(id: String) -> bool:
 ## pip, when it set the keepsake off in Explore. False for a keepsake that is
 ## not drawn earned.
 func play(id: String, rider: Node3D = null) -> bool:
-	if not playable(id) or _play.get("id") == id or riding(): return false
+	if not playable(id) or (_play.get("id") == id and not _play.settling) or riding(): return false
+	# A tap easing back ends holding what it kept (_end_play), so this press finds it held.
 	if not _play.is_empty(): _end_play()
 	var prop: Dictionary = _set.props[id]
 	var holder := (_set.root as Node3D).get_node_or_null(NodePath(prop.name)) as Node3D
