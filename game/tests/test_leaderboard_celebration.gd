@@ -98,7 +98,7 @@ func _write_runs() -> void:
 	var runs := [
 		{"board": BOARD, "entry_id": MINE, "ticks": 6300, "assisted": false, "finished_at": "2026-10-20T10:00:00Z", "partner": PARTNER},
 		{"board": BOARD, "entry_id": SECOND, "ticks": 6400, "assisted": false, "finished_at": "2026-10-21T10:00:00Z", "partner": ""},
-		{"board": BOARD, "entry_id": NEWEST, "ticks": 6000, "assisted": false, "finished_at": "2026-10-22T10:00:00Z", "partner": PARTNER},
+		{"board": BOARD, "entry_id": NEWEST, "ticks": 6250, "assisted": false, "finished_at": "2026-10-22T10:00:00Z", "partner": PARTNER},
 		{"board": BOARD, "entry_id": ASSISTED, "ticks": 5000, "assisted": true, "finished_at": "2026-10-19T10:00:00Z"}]
 	var file := FileAccess.open(RUNS_PATH, FileAccess.WRITE)
 	file.store_string(JSON.stringify({"schema_version": 1, "players": {OWNER: runs}}))
@@ -287,9 +287,11 @@ func _screen() -> void:
 	_check((mine.get_theme_stylebox("panel") as StyleBoxFlat).bg_color == Rows.MINE_FILL and (board.find_child("LeaderboardRow7", true, false).get_theme_stylebox("panel") as StyleBoxFlat).bg_color == Rows.ROW_FILL, "your row is lit")
 	_check(mine.find_child("LeaderboardReport", true, false) == null and board.find_child("LeaderboardRow7", true, false).find_child("LeaderboardReport", true, false) != null, "other pairs' rows keep Report")
 	var own: Node = screen.find_child("LeaderboardOwnRow", true, false)
-	_check(own != null and not board.is_ancestor_of(own) and _has_text(own, "8") and _has_text(own, Runs.time_text(6300)) and own.find_child("LeaderboardWatch", true, false) != null, "Your best is pinned under the list with its place, time and Watch")
-	var checking: Control = screen.find_child("LeaderboardChecking", true, false)
-	_check(checking.visible and _has_text(checking, PlayerCopy.LEADERBOARD_RUN_CHECKING) and _has_text(checking, Runs.time_text(6000)), "the run being checked shows its time")
+	_check(own != null and not board.is_ancestor_of(own) and _has_text(own, "8") and _has_text(own, Runs.time_text(6250)) and own.find_child("LeaderboardWaiting", true, false) != null and own.find_child("LeaderboardWatch", true, false) == null, "Your best is pinned under the list: the run waiting for its check, its place, time and clock, no Watch yet")
+	var clock: TextureRect = mine.find_child("LeaderboardWaiting", true, false)
+	_check(clock != null and clock.texture == Rows.CLOCK_ICON and clock.accessibility_name == PlayerCopy.LEADERBOARD_WAITING_CHECK and _has_text(mine, Runs.time_text(6250)) and board.find_children("LeaderboardWaiting", "", true, false).size() == 1, "the pair's run waiting for its check stands in the pair's place with a clock")
+	var mine_pips: Array = mine.find_children("*", "", true, false).filter(func(node: Node) -> bool: return node is PipAvatar)
+	_check(mine_pips.size() == 2 and mine_pips[0].own, "its first pip is this player's own")
 	_check(_has_text(screen.find_child("LeaderboardSharedNote", true, false), PlayerCopy.LEADERBOARD_SHARED_BOARD), "normal and duel runs share the board while duels are on")
 	var cards: Array = screen.find_child("LeaderboardChapters", true, false).find_children("Chapter_*", "Button", true, false)
 	_check(not cards.is_empty() and cards.all(func(card: Node) -> bool: return (card.find_children("*", "TextureRect", true, false)[0] as TextureRect).texture != null), "each chapter shows its capture")
@@ -307,7 +309,8 @@ func _screen() -> void:
 	await _frames(4)
 	var passed: Control = board.find_child("LeaderboardRow5", true, false)
 	_check(passed != null and passed.modulate.a < 1.0 and board.find_child("LeaderboardRow4", true, false).modulate.a == 1.0, "only the row that passed its check fades in")
-	_check(not checking.visible, "the checking note goes once its check passes")
+	var own_after: Node = screen.find_child("LeaderboardOwnRow", true, false)
+	_check(board.find_child("LeaderboardWaiting", true, false) == null and own_after.find_child("LeaderboardWaiting", true, false) == null and _has_text(own_after, "5") and own_after.find_child("LeaderboardWatch", true, false) != null, "once it passes the clock goes, and Your best has its place and Watch")
 	var deadline := Time.get_ticks_msec() + 3000
 	while is_instance_valid(passed) and passed.modulate.a < 1.0 and Time.get_ticks_msec() < deadline: await process_frame
 	_check(is_instance_valid(passed) and passed.modulate.a == 1.0, "over about 0.4 s")
@@ -324,7 +327,7 @@ func _screen() -> void:
 	var empty := _open_screen(api, false)
 	await _frames(10)
 	var empty_board: Node = empty.find_child("LeaderboardBoard", true, false)
-	_check(empty_board.find_child("LeaderboardRow1", true, false) == null and _has_text(empty_board, PlayerCopy.LEADERBOARD_EMPTY) and not empty.find_child("LeaderboardChecking", true, false).visible, "an empty board says so")
+	_check(empty_board.find_child("LeaderboardRow1", true, false) == null and _has_text(empty_board, PlayerCopy.LEADERBOARD_EMPTY), "an empty board says so")
 	_check(empty.find_child(Celebration.NODE_NAME, true, false) == null, "nothing to celebrate on an empty board")
 	_check(empty.find_child("LeaderboardSharedNote", true, false) == null, "the note that duel runs share the board waits until duels are on")
 	empty.close()

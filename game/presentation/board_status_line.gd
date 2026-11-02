@@ -4,6 +4,8 @@ extends VBoxContainer
 ## catches kept it off the board while this phone still has it on, a button
 ## that turns it off in place. show_status() redraws it in place, so a board
 ## read that arrives later changes the words without rebuilding the card.
+## A run waiting for its check has no words: its place is celebrated at once
+## (presentation/board_feedback_flow.gd), and Home says it is being checked later.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const BoardStatus = preload("res://services/board_status.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
@@ -43,7 +45,6 @@ static func text(status: Dictionary) -> String:
 	match str(status.get("state", "")):
 		BoardStatus.OFF: return PlayerCopy.BOARD_LINE_OFF
 		BoardStatus.ASSISTED: return PlayerCopy.BOARD_LINE_ASSISTED
-		BoardStatus.CHECKING: return PlayerCopy.BOARD_LINE_CHECKING % time
 		BoardStatus.NOT_LISTED: return PlayerCopy.BOARD_LINE_NOT_LISTED % time
 		BoardStatus.RANKED:
 			var rank := int(status.get("rank", 0))

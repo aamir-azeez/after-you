@@ -6,11 +6,12 @@ extends CanvasLayer
 ## the right.
 ##
 ## One board per chapter version, shared by normal and duel runs: the top 10
-## runs played together (presentation/leaderboard_rows.gd), this player's
-## confirmed best pinned under them, and, under the chapters, the time of their
-## newest run while its replay is being checked. Which runs are this player's
-## comes from services/leaderboard_runs.gd; the board itself never names anyone
-## who did not choose to show their name. It reads boards through
+## runs played together (presentation/leaderboard_rows.gd) and this player's
+## best pinned under them. A run of this player's that waits for its replay
+## check stands at the place it would get, with a clock, on this phone only
+## (services/board_status.gd shown_rows); it goes quietly if it does not pass.
+## Which runs are this player's comes from services/leaderboard_runs.gd; the
+## board itself never names anyone who did not choose to show their name. It reads boards through
 ## services/leaderboard_client.gd only and keeps no live view of its own, so it
 ## costs nothing while it sits open.
 ##
@@ -76,7 +77,6 @@ var _body: BoxContainer
 var _chapters: BoxContainer
 var _chapter_cards: Dictionary = {}
 var _side: VBoxContainer
-var _checking_card: PanelContainer
 var _board_scroll: ScrollContainer
 var _board: VBoxContainer
 var _heading: Label
@@ -242,13 +242,11 @@ func _build_body() -> void:
 	_own = VBoxContainer.new()
 	_own.name = "LeaderboardOwn"
 	column.add_child(_own)
-	# The checking card and the shared board note sit under the chapters, or
-	# under the board when the chapters are a strip.
+	# The shared board note sits under the chapters, or under the board when
+	# the chapters are a strip.
 	_side = VBoxContainer.new()
 	_side.add_theme_constant_override("separation", 10)
 	(column if _stacked else rail_column).add_child(_side)
-	_checking_card = _checking()
-	_side.add_child(_checking_card)
 	if duels_on: _side.add_child(_shared_note())
 	_render_chapters()
 	_render_board()
@@ -348,27 +346,29 @@ func _render_board() -> void:
 	_clear(_board)
 	_clear(_own)
 	_heading.text = RoomChapterTitle.title(_selected, PlayerCopy.LEADERBOARDS) if not _selected.is_empty() else PlayerCopy.LEADERBOARDS
-	_checking_card.visible = false
 	if _state != "ready":
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_LOADING if _state == "loading" else PlayerCopy.LEADERBOARD_FAILED))
 		return
 	var board := Runs.board_key(_selected)
 	var mine: Array = Runs.on_board(player_id, board)
-	var mine_ids: Array = mine.map(func(run: Dictionary) -> String: return run.entry_id)
-	var top: Array = _view.get("top", [])
+	var mine_by_id: Dictionary = {}
+	for run: Dictionary in mine: mine_by_id[run.entry_id] = run
+	var rows: Array = BoardStatus.shown_rows(_view, mine, Time.get_unix_time_from_system())
 	var checking: Array = _view.get("checking", [])
 	var passed: Array = _was_checking.get(board, [])
 	_was_checking[board] = checking.duplicate()
-	if top.is_empty():
+	if rows.is_empty():
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_EMPTY))
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_RULES))
-	for row: Dictionary in top:
-		var is_mine: bool = row.entry_id in mine_ids
+	for row: Dictionary in rows:
+		var is_mine := mine_by_id.has(row.entry_id)
+		# A waiting run is this player's own pip beside their partner's last heard look.
+		if row.pending: row.looks = [{}, _partner_look(mine_by_id[row.entry_id])]
 		var report := Callable() if is_mine else func(): _ask_report(board, row.entry_id)
 		var line := Rows.ranked(row, is_mine, report, _compact, _watcher(row))
 		_board.add_child(line)
-		if row.entry_id in passed: _fade_in(line)
-	_render_own(mine, top, checking)
+		if row.entry_id in passed and not row.pending: _fade_in(line)
+	_render_own(mine, mine_by_id, rows, checking)
 	_keep_offset.call_deferred(offset)
 
 func _keep_offset(offset: int) -> void:
@@ -388,20 +388,20 @@ static func _partner_look(run: Dictionary) -> Dictionary:
 	var partner := str(run.get("partner", ""))
 	return TurnLooks.shared().member(partner) if not partner.is_empty() else {}
 
-## "Your best": this player's ranked run, else their fastest run that is not
-## waiting for its check; and the checking card for their newest run while
-## its replay is checked.
-func _render_own(mine: Array, top: Array, checking: Array) -> void:
-	var ranked_row: Dictionary = {}
-	var ranked_run: Dictionary = {}
-	for row: Dictionary in top:
-		for run: Dictionary in mine:
-			if run.entry_id == row.entry_id: ranked_row = row; ranked_run = run; break
-		if not ranked_row.is_empty(): break
+## "Your best": this player's best placed row on the board this phone shows
+## (a waiting one with its clock), else their fastest run that is not waiting
+## for its check.
+func _render_own(mine: Array, mine_by_id: Dictionary, rows: Array, checking: Array) -> void:
+	var placed: Dictionary = {}
+	for row: Dictionary in rows:
+		if mine_by_id.has(row.entry_id):
+			placed = row
+			break
 	var settled: Array = mine.filter(func(run: Dictionary) -> bool: return not run.entry_id in checking)
 	var eligible: Array = settled.filter(func(run: Dictionary) -> bool: return not run.assisted)
-	if not ranked_row.is_empty():
-		_own.add_child(Rows.own(int(ranked_row.ticks), int(ranked_row.rank), Rows.pair_title(ranked_row), _compact, _watcher(ranked_row), _partner_look(ranked_run), ranked_row.get("looks", [])))
+	if not placed.is_empty():
+		var pending := bool(placed.pending)
+		_own.add_child(Rows.own(int(placed.ticks), int(placed.rank), Rows.pair_title(placed), _compact, _watcher(placed), _partner_look(mine_by_id[placed.entry_id]), [] if pending else placed.get("looks", []), pending))
 	elif not eligible.is_empty():
 		_own.add_child(Rows.own(int(eligible[0].ticks), 0, "", _compact, Callable(), _partner_look(eligible[0])))
 		# Why it has no place (services/board_status.gd): a run this new may not show in the board's copy yet.
@@ -411,12 +411,6 @@ func _render_own(mine: Array, top: Array, checking: Array) -> void:
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_OWN_ASSISTED))
 	elif mine.is_empty():
 		_own.add_child(_note(PlayerCopy.LEADERBOARD_NO_RUN))
-	var newest: Dictionary = {}
-	for run: Dictionary in mine:
-		if newest.is_empty() or str(run.finished_at) > str(newest.finished_at): newest = run
-	if not newest.is_empty() and newest.entry_id in checking:
-		(_checking_card.find_child("LeaderboardCheckingTime", true, false) as Label).text = Runs.time_text(int(newest.ticks))
-		_checking_card.visible = true
 
 ## Shows a celebration waiting for this player, once the page is free for it.
 func _celebrate() -> void:
@@ -474,42 +468,6 @@ static func _clear(holder: Node) -> void:
 
 static func _showing(node: Variant) -> bool:
 	return is_instance_valid(node) and not node.is_queued_for_deletion()
-
-## "Your run is being checked", the run's time, and that the best stays meanwhile.
-func _checking() -> PanelContainer:
-	var card := PanelContainer.new()
-	card.name = "LeaderboardChecking"
-	var style := ThemeRules.rounded(Color("1d4c46"), 14, UiTokens.SECONDARY_BORDER)
-	ThemeRules.padded(style, 14.0, 10.0)
-	card.add_theme_stylebox_override("panel", style)
-	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 12)
-	card.add_child(line)
-	var clock := Control.new()
-	clock.custom_minimum_size = Vector2(30, 30)
-	clock.size_flags_vertical = Control.SIZE_SHRINK_BEGIN
-	clock.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	clock.draw.connect(func() -> void:
-		var middle := clock.size * 0.5
-		clock.draw_arc(middle, 12.0, 0.0, TAU, 32, UiTokens.CREAM, 2.5, true)
-		clock.draw_line(middle, middle + Vector2(0, -7), UiTokens.CREAM, 2.5, true)
-		clock.draw_line(middle, middle + Vector2(5, 3), UiTokens.CREAM, 2.5, true))
-	line.add_child(clock)
-	var words := VBoxContainer.new()
-	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	words.add_theme_constant_override("separation", 0)
-	line.add_child(words)
-	var title := _text(PlayerCopy.LEADERBOARD_RUN_CHECKING, 18 if _compact else 20, UiTokens.CREAM, true)
-	title.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	words.add_child(title)
-	var time := _text("", 30, UiTokens.CREAM, true)
-	time.name = "LeaderboardCheckingTime"
-	words.add_child(time)
-	var note := _text(PlayerCopy.LEADERBOARD_RUN_CHECKING_NOTE, 15, UiTokens.SOFT)
-	note.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	words.add_child(note)
-	card.visible = false
-	return card
 
 func _shared_note() -> Control:
 	var line := HBoxContainer.new()

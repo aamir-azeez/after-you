@@ -52,6 +52,73 @@ static func of_run(run: Dictionary, supported: bool, view: Dictionary, now_unix:
 		if full or pair_ahead(run, view, mine) or not recent(run, now_unix): result.state = NOT_LISTED
 	return result
 
+## The board as this phone shows it to this player: the top 10 of `view` with
+## this player's runs that wait for their check (CHECKING by of_run, `mine` from
+## Runs.on_board) placed by their time, flagged `pending`. Only this phone ever
+## sees them; the server ranks them only once they pass.
+## - A pair has one entry (backend board.ts submit): only its fastest waiting
+##   run shows, and it takes the place of the pair's slower ranked row, whose
+##   names it keeps. Other pairs' waiting runs never move anyone.
+## - On equal times a listed run stays ahead: it finished first (rules.ts compareRuns).
+## - Places count again from 1 and stop at 10; the Gold leaf stays only on first place.
+## A pending row: {rank, entry_id, ticks, names, gold_leaf, finished_on,
+## replay_hash: null, looks: [], pending: true, partner}. [] without a board read.
+static func shown_rows(view: Dictionary, mine: Array, now_unix: float) -> Array:
+	if not view.get("top") is Array or not view.get("checking") is Array: return []
+	var waiting: Dictionary = {}
+	for run: Dictionary in mine:
+		# A run the pair's own listed run is no slower than never entered (pair_ahead).
+		if bool(run.get("assisted", false)) or of_run(run, true, view, now_unix, mine).state != CHECKING or pair_ahead(run, view, mine): continue
+		var pair := str(run.get("partner", ""))
+		var key := pair if not pair.is_empty() else "run:" + str(run.entry_id)
+		if not waiting.has(key) or _ahead(run, waiting[key]): waiting[key] = run
+	var replaced: Dictionary = {}
+	var names: Dictionary = {}
+	for run: Dictionary in mine:
+		var pair := str(run.get("partner", ""))
+		if not pair.is_empty() and waiting.has(pair): replaced[run.entry_id] = pair
+	var listed: Array = []
+	for row: Dictionary in view.top:
+		if replaced.has(row.get("entry_id")):
+			names[replaced[row.entry_id]] = row.get("names")
+			continue
+		var kept := row.duplicate(true)
+		kept.pending = false
+		listed.append(kept)
+	var runs: Array = waiting.values()
+	runs.sort_custom(_ahead)
+	# The listed rows keep the server's order; each waiting run goes in before
+	# the first listed row slower than it.
+	var rows: Array = []
+	var next := 0
+	for row: Dictionary in listed:
+		while next < runs.size() and int(runs[next].ticks) < int(row.ticks):
+			rows.append(_pending_row(runs[next], names))
+			next += 1
+		rows.append(row)
+	for index in range(next, runs.size()): rows.append(_pending_row(runs[index], names))
+	rows = rows.slice(0, TOP_PLACES)
+	for index in range(rows.size()):
+		rows[index].rank = index + 1
+		rows[index].gold_leaf = index == 0 and bool(rows[index].get("gold_leaf", false))
+	return rows
+
+## The place `run` has on the board this phone shows (shown_rows), or 0 when
+## it shows none there (off the board, settled, or no board read).
+static func place(run: Dictionary, view: Dictionary, now_unix: float, mine: Array) -> int:
+	for row: Dictionary in shown_rows(view, mine, now_unix):
+		if row.entry_id == run.get("entry_id"): return int(row.rank)
+	return 0
+
+static func _ahead(a: Dictionary, b: Dictionary) -> bool:
+	return int(a.ticks) < int(b.ticks) or (int(a.ticks) == int(b.ticks) and str(a.get("finished_at", "")) < str(b.get("finished_at", "")))
+
+## A waiting run as a row; `names` holds the names of the pair's ranked row it takes the place of.
+static func _pending_row(run: Dictionary, names: Dictionary) -> Dictionary:
+	var partner := str(run.get("partner", ""))
+	return {"rank": 0, "entry_id": run.entry_id, "ticks": int(run.ticks), "names": names.get(partner) if not partner.is_empty() else null, "gold_leaf": false,
+		"finished_on": str(run.get("finished_at", "")).left(10), "replay_hash": null, "looks": [], "pending": true, "partner": partner}
+
 ## Whether `view` lists the run as waiting for its check (never a guess).
 static func listed_checking(run: Dictionary, view: Dictionary) -> bool:
 	return view.get("checking") is Array and str(run.get("entry_id", "")) in view.checking

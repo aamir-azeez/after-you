@@ -2,7 +2,7 @@ extends SceneTree
 ## Leaderboards on the phone: services/leaderboard_runs.gd (which runs are
 ## ours, their ids and times), services/leaderboard_client.gd (reading a board
 ## and the name choice) and presentation/leaderboard_screen.gd (the board, the
-## pinned "Your best", the checking note and still pips only). The restyled
+## pinned "Your best" and still pips only). The restyled
 ## board's states and its celebrations: tests/test_leaderboard_celebration.gd.
 const Runs = preload("res://services/leaderboard_runs.gd")
 const Client = preload("res://services/leaderboard_client.gd")
@@ -189,7 +189,7 @@ func _screen() -> void:
 	_check(unlisted_pips.size() == 2 and unlisted_pips[0].own and unlisted_pips[1].outfit == {"hat": "straw_hat"}, "Your best on a run the board does not list dresses the partner in the look this phone last heard for them")
 	unlisted.free()
 	_check(own != null and _texts(own).has("2") and _texts(own).has(Runs.time_text(1470)), "Your best is pinned with its rank")
-	_check(screen.find_child("LeaderboardChecking", true, false).visible, "the newest run waiting for its check says so")
+	_check(screen.find_child("LeaderboardWaiting", true, false) == null, "a run listed as checking that is no faster than the pair's ranked run shows no clock")
 	var celebration: Node = screen.find_child(Celebration.NODE_NAME, true, false)
 	var pips := screen.find_children("*", "SubViewport", true, false).filter(func(view: Node) -> bool: return celebration == null or not celebration.is_ancestor_of(view))
 	_check(pips.is_empty(), "rows and Your best draw still pips, never a view of their own: %d views" % pips.size())

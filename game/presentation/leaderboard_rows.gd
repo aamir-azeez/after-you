@@ -3,7 +3,9 @@ extends RefCounted
 ## columns so header() lines up with every row: the place (with a gold leaf
 ## mark on a first place that earned the Gold leaf), the pair's two pips, their
 ## names or "A pair", the time, Watch on a run whose replay the server keeps,
-## and Report on another pair's run.
+## and Report on another pair's run. A run of this player's that waits for its
+## check (services/board_status.gd shown_rows, `pending`) stands at the place it
+## would get with a small clock beside the number, only on this phone.
 ##
 ## Pips are kit/pip_avatar.gd in still mode: one shared offscreen render per
 ## look (kit/pip_snapshots.gd), never a live view per row. A pair shows the
@@ -23,6 +25,7 @@ const Outfit = preload("res://services/outfit.gd")
 const LEAF_ICON = preload("res://assets/ui/whats_new/leaf.svg")
 const WATCH_ICON = preload("res://assets/ui/play-circle.svg")
 const REPORT_ICON = preload("res://assets/ui/room/flag.svg")
+const CLOCK_ICON = preload("res://assets/ui/social/clock.svg")
 ## The worlds' pips by slot (presentation/island_world.gd GOLD and TEAL).
 const FIRST_PIP := Color("f4c38d")
 const SECOND_PIP := Color("91d6c6")
@@ -59,12 +62,14 @@ static func header(compact: bool) -> Control:
 	return box
 
 ## A ranked run. `report` and `watch` (Callables, may be empty) show Report and Watch; `mine` lights the row.
+## A `pending` row has the clock, and its first pip is this player's own.
 static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool, watch: Callable = Callable()) -> Control:
 	var box := _row(MINE_FILL if mine else ROW_FILL, MINE_EDGE if mine else ROW_EDGE, TARGET + 2.0)
 	box.name = "LeaderboardRow%d" % int(row.rank)
 	var line: HBoxContainer = box.get_child(0)
-	_place(line, int(row.rank), bool(row.get("gold_leaf", false)), compact)
-	_pips(line, false, compact, row.get("looks", []))
+	var pending := bool(row.get("pending", false))
+	_place(line, int(row.rank), bool(row.get("gold_leaf", false)), compact, 0.0, pending)
+	_pips(line, pending, compact, row.get("looks", []))
 	_name(line, pair_title(row), compact)
 	_time(line, int(row.ticks), compact)
 	line.add_child(_watch(watch, compact))
@@ -74,7 +79,8 @@ static func ranked(row: Dictionary, mine: bool, report: Callable, compact: bool,
 ## The pinned "Your best": the place when ranked (0: none), the pair, the time and Watch.
 ## `run_looks`: the ranked row's two looks, which draw the pair as that row does;
 ## without them the first pip is this player's own and `partner_look` dresses the other.
-static func own(ticks: int, rank: int, title: String, compact: bool, watch: Callable = Callable(), partner_look: Dictionary = {}, run_looks: Array = []) -> Control:
+## `pending`: the run waits for its check, so its place has the clock.
+static func own(ticks: int, rank: int, title: String, compact: bool, watch: Callable = Callable(), partner_look: Dictionary = {}, run_looks: Array = [], pending: bool = false) -> Control:
 	var box := _row(ROW_FILL, UiTokens.SOFT, 50.0)
 	box.name = "LeaderboardOwnRow"
 	var line: HBoxContainer = box.get_child(0)
@@ -84,7 +90,7 @@ static func own(ticks: int, rank: int, title: String, compact: bool, watch: Call
 	rule.custom_minimum_size = Vector2(2, 34)
 	rule.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(rule)
-	_place(line, rank, false, compact, OWN_PLACE)
+	_place(line, rank, false, compact, OWN_PLACE, pending)
 	if run_looks.size() == 2: _pips(line, false, compact, run_looks)
 	else: _pips(line, true, compact, [{}, partner_look])
 	_name(line, title, compact)
@@ -121,8 +127,9 @@ static func _cell(line: HBoxContainer, label: Label, width: float, align: Horizo
 	label.horizontal_alignment = align
 	line.add_child(label)
 
-## The place, with the gold leaf mark beside a first place that earned it ("" when 0).
-static func _place(line: HBoxContainer, rank: int, gold_leaf: bool, compact: bool, width: float = 0.0) -> void:
+## The place, with the gold leaf mark beside a first place that earned it ("" when 0),
+## and the clock after it while the run waits for its check.
+static func _place(line: HBoxContainer, rank: int, gold_leaf: bool, compact: bool, width: float = 0.0, pending: bool = false) -> void:
 	var cell := HBoxContainer.new()
 	cell.custom_minimum_size.x = width if width > 0.0 else _width(PLACE, compact)
 	cell.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -141,7 +148,23 @@ static func _place(line: HBoxContainer, rank: int, gold_leaf: bool, compact: boo
 		mark.mouse_filter = Control.MOUSE_FILTER_PASS
 		cell.add_child(mark)
 	cell.add_child(_label(str(rank) if rank > 0 else "", 22 if compact else 24, UiTokens.CREAM, true))
+	if pending: cell.add_child(_clock())
 	line.add_child(cell)
+
+## The small clock of a run waiting for its check, named for screen readers.
+static func _clock() -> TextureRect:
+	var mark := TextureRect.new()
+	mark.name = "LeaderboardWaiting"
+	mark.texture = CLOCK_ICON
+	mark.modulate = UiTokens.SOFT
+	mark.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	mark.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	mark.custom_minimum_size = Vector2(22, 22)
+	mark.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	mark.tooltip_text = PlayerCopy.LEADERBOARD_WAITING_CHECK
+	mark.accessibility_name = PlayerCopy.LEADERBOARD_WAITING_CHECK
+	mark.mouse_filter = Control.MOUSE_FILTER_PASS
+	return mark
 
 ## `looks`: the pair's outfits in slot order ([] for none). With `own_first` the first pip is this player's own, in their own look.
 static func _pips(line: HBoxContainer, own_first: bool, compact: bool, looks: Variant = []) -> void:

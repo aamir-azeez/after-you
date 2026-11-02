@@ -142,9 +142,19 @@ func cue() -> String:
 
 ## Whether a celebration is up under `parent`.
 static func showing(parent: Node) -> bool:
+	return _up(parent) != null
+
+## Back over `parent`: closes the celebration up there; false when none is.
+static func close_over(parent: Node) -> bool:
+	var shown := _up(parent)
+	if shown == null: return false
+	shown.go_back()
+	return true
+
+static func _up(parent: Node) -> Control:
 	for child: Node in parent.get_children():
-		if child.is_in_group(GROUP) and not child.is_queued_for_deletion(): return true
-	return false
+		if child.is_in_group(GROUP) and not child.is_queued_for_deletion(): return child
+	return null
 
 ## Every moving value of `kind` at `seconds` from the start (0 to 1 unless
 ## said): lift (metres), roll toward the partner and bow (radians), ribbon,

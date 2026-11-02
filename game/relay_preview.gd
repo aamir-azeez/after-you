@@ -22,6 +22,7 @@ const LegacySave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Frames = preload("res://services/frame_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
+const LeaderboardCelebration = preload("res://presentation/leaderboard_celebration.gd")
 const ChapterSoundMap = preload("res://services/chapter_sound_map.gd")
 const LighthouseHud = preload("res://presentation/lighthouse_hud.gd")
 const JournalLoader = preload("res://services/lighthouse_loader.gd")
@@ -169,7 +170,8 @@ var share_current_room: Callable
 ## Main's view of this room's sharing: {"shared": bool, "busy": bool}.
 var room_share_state: Callable
 ## func(snapshot, chapter_key) -> Control or null: the leaderboard line on a
-## finished together run's card (presentation/board_feedback_flow.gd). Main sets it.
+## finished together run's card (presentation/board_feedback_flow.gd). Main sets
+## it, and that flow may celebrate the run's place over this screen's ui.
 var board_line: Callable
 ## services/partner_friends.gd: whether this room offers to add its partner as
 ## a friend, and the request. Main sets it; without it nothing is offered.
@@ -3184,6 +3186,12 @@ func _show_save_problem(message: String, after_retry: String) -> void:
 	card.add_child(_action_button("leave_unsaved", func(): _leave(true)))
 
 
+## Leaves the room as Back does; true once it has left (false while a load,
+## a world build or an unsaved turn keeps it here).
+func leave() -> bool:
+	_leave()
+	return _leaving
+
 func _leave(allow_unsaved: bool = false) -> void:
 	if _leaving:
 		return
@@ -3357,6 +3365,8 @@ func _notification(what: int) -> void:
 		if is_instance_valid(soundscape):
 			soundscape.set_backgrounded(false)
 	elif what == NOTIFICATION_WM_GO_BACK_REQUEST or what == NOTIFICATION_WM_CLOSE_REQUEST:
+		# Back over a leaderboard celebration closes it, never the room under it.
+		if what == NOTIFICATION_WM_GO_BACK_REQUEST and is_instance_valid(ui) and LeaderboardCelebration.close_over(ui): return
 		if is_instance_valid(_room_options_modal):
 			_close_room_options()
 			return

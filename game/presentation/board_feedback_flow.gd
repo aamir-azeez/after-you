@@ -4,7 +4,13 @@ extends RefCounted
 ##   It shows at once from what the phone knows (the run's own final
 ##   checkpoint and the board this phone last read), then reads the board
 ##   once (services/leaderboard_client.gd board(), which keeps a read for a
-##   minute) and says it again.
+##   minute) and says it again. A run that places on the board this phone
+##   shows (services/board_status.gd place(), its check still to come) is
+##   celebrated over the room at once, from the kept board or else that read:
+##   the same celebration a confirmed place gets, once a run, since it is
+##   marked shown in services/leaderboard_placings.gd before it opens. Its
+##   confirmation later is then no news; a run that fails its check just
+##   leaves the board this phone shows.
 ## - service_home(): every frame on Home, but it does work at most every
 ##   CHECK_MS. While this player's newest run of the last WATCH_SECONDS may
 ##   still wait for its check, it reads that board at most every READ_MS. Once
@@ -18,6 +24,9 @@ const BoardStatusLine = preload("res://presentation/board_status_line.gd")
 const LeaderboardClient = preload("res://services/leaderboard_client.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Placings = preload("res://services/leaderboard_placings.gd")
+const Celebration = preload("res://presentation/leaderboard_celebration.gd")
+const Soundscape = preload("res://services/soundscape.gd")
 
 const CHECK_MS := 15_000
 const READ_MS := 600_000
@@ -48,8 +57,12 @@ func line_for(snapshot: Dictionary, chapter_key: String) -> Control:
 	line.assistance_on = func() -> bool: return bool(host.saves.data.settings.get("assistance", false))
 	var supported := _supported()
 	var client := _client() if supported else null
-	line.show_status(BoardStatus.of_run(run, supported, client.kept_view(run.board) if client != null else {}, _now(), Runs.on_board(owner, run.board)))
-	if client != null and not run.assisted: _read_for_line(client, run, line)
+	var kept: Dictionary = client.kept_view(run.board) if client != null else {}
+	line.show_status(BoardStatus.of_run(run, supported, kept, _now(), Runs.on_board(owner, run.board)))
+	if client != null and not run.assisted:
+		# Once the line is on the card, so the room it belongs to is known.
+		_celebrate.call_deferred(run, kept, line)
+		_read_for_line(client, run, line)
 	return line
 
 func _read_for_line(client: RefCounted, run: Dictionary, line: Control) -> void:
@@ -62,6 +75,34 @@ func _read_for_line(client: RefCounted, run: Dictionary, line: Control) -> void:
 	# only when the board itself lists it (never on the just-finished guess).
 	if BoardStatus.listed_checking(run, answer.view): _seen_checking[run.entry_id] = true
 	line.show_status(status)
+	_celebrate(run, answer.view, line)
+
+## Celebrates the place `view` gives the run on this phone, over the room whose
+## card holds `line`, once a run. No board read, a place outside the top 10, a
+## card already gone or a celebration already up: nothing.
+func _celebrate(run: Dictionary, view: Dictionary, line: Control) -> void:
+	var owner := _owner()
+	var room: Node = host.relay_child
+	if owner.is_empty() or not is_instance_valid(line) or not is_instance_valid(room): return
+	var parent: Variant = room.get("ui")
+	if not parent is Control or not (parent as Control).is_ancestor_of(line) or not (line.get_parent() as Control).is_visible_in_tree() or Celebration.showing(parent): return
+	if Placings.shared().was_shown(owner, run.entry_id): return
+	var rank := BoardStatus.place(run, view, _now(), Runs.on_board(owner, run.board))
+	if Placings.tier(rank).is_empty(): return
+	Placings.shared().mark_shown(owner, run.entry_id)
+	# Names and the Gold leaf come with the confirmed row; until then it is A pair.
+	var placing := {"entry_id": run.entry_id, "board": run.board, "rank": rank, "ticks": int(run.ticks), "names": null, "gold_leaf": false, "partner": str(run.get("partner", ""))}
+	var shown: Control = Celebration.open(parent, placing, bool(host.saves.data.settings.get("reduced_motion", false)))
+	if shown == null: return
+	shown.view_board.connect(_view_board)
+	# The room's own soundscape: Main's is quiet under it.
+	Soundscape.play_on(room, shown.cue())
+
+## View board from a room's celebration: the room closes, then the board opens
+## as from Home. A room that does not close yet (a save still going) stays.
+func _view_board(board: String) -> void:
+	if is_instance_valid(host.relay_child) and not host.relay_child.leave(): return
+	host._view_leaderboard(board)
 
 ## Turns Forgiving catches off on this phone and in the open room; true when
 ## saved. A failed save says so, as Settings does.

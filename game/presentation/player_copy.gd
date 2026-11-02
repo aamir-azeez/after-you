@@ -709,9 +709,8 @@ const LEADERBOARD_CHAPTERS := "Chapters"
 const LEADERBOARD_PLACE := "Place"
 const LEADERBOARD_PAIR := "Pair"
 const LEADERBOARD_TIME := "Time"
-## The newest run of this player's that waits for its replay check, and its time.
-const LEADERBOARD_RUN_CHECKING := "Your time is being checked"
-const LEADERBOARD_RUN_CHECKING_NOTE := "Your best stays here until the replay is checked."
+## The clock beside the place of a run of this player's that waits for its replay check (its accessible name).
+const LEADERBOARD_WAITING_CHECK := "Waiting to be checked"
 const LEADERBOARD_SHARED_BOARD := "Normal runs and duel runs share this board."
 const LEADERBOARD_EMPTY := "No times here yet. Finish this chapter together to set the first one."
 const LEADERBOARD_NO_RUN := "Finish this chapter with a friend and your best time shows here."
@@ -726,8 +725,6 @@ const BOARD_LINE_OFF := "Leaderboards weren't open when this phone last checked,
 const BOARD_LINE_ASSISTED := "This time can't go on the leaderboard because Forgiving catches was on. Both of you need it off for a time to count."
 const BOARD_LINE_TURN_OFF := "Turn off Forgiving catches"
 const BOARD_LINE_TURNED_OFF := "Forgiving catches is off now. Your next run together can count."
-## "%s": the run's time.
-const BOARD_LINE_CHECKING := "Your time %s is being checked for the leaderboard. Your place shows in Friends under Leaderboards once it passes."
 ## "%s", "%s": the run's time and its place ("3rd").
 const BOARD_LINE_RANKED := "Your time %s is %s on the leaderboard."
 const BOARD_LINE_NOT_LISTED := "Your time %s didn't make the leaderboard."

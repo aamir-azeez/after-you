@@ -13,7 +13,9 @@ extends RefCounted
 ## - next() is the oldest placing waiting; mark_shown() records it by its
 ##   entry id when its celebration opens, so each placing shows once, after a
 ##   restart too. Runs never change their entry id, so a run that later moves
-##   up is not celebrated again.
+##   up is not celebrated again. The end-of-run card celebrates a run's place
+##   before its check (presentation/board_feedback_flow.gd) and marks it shown
+##   the same way, so its confirmation later is no news.
 ##
 ## Kept per player in one small file written whole with AtomicFile. Every
 ## value read back is checked; a file that cannot be read reads as empty.
