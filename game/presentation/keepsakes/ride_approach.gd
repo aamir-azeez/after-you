@@ -16,31 +16,48 @@ const HOP_HEIGHT := 0.1
 const SAMPLE := 0.15
 
 ## Points from `from` to `to`, `from` first and no two more than STRIDE apart,
-## going round `solids` grown by `clearance` and only where `walkable` (Vector2
-## in this frame -> bool) lets the pip stand. Empty when there is no way round
-## (or `from` stands nearer a solid than `clearance`, or `to` in a solid's
-## room or off the ground).
-static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: float, walkable: Callable) -> Array[Vector3]:
+## going round `solids` grown by `clearance`, off the ground under `overhead`
+## (parts hanging too low to hop beneath, unless the pip already stands under
+## one) and only where `walkable` (Vector2 in this frame -> bool) lets the pip
+## stand. Empty when there is no way round (or `from` stands nearer a solid
+## than `clearance`, or `to` in a solid's room or off the ground).
+static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: float, walkable: Callable, overhead: Array[Rect2] = []) -> Array[Vector3]:
 	var start := Vector2(from.x, from.z)
 	var goal := Vector2(to.x, to.z)
+	var blocked: Array[Rect2] = solids.duplicate()
+	for rect: Rect2 in overhead:
+		if not rect.has_point(start): blocked.append(rect.grow(-clearance))
 	# A leg may graze the pip's room round a solid, never cut into it.
 	var rooms: Array[Rect2] = []
-	for rect: Rect2 in solids: rooms.append(rect.grow(clearance - 0.01))
+	for rect: Rect2 in blocked: rooms.append(rect.grow(clearance - 0.01))
 	if _inside(goal, rooms) or not walkable.call(goal): return []
 	# A pip may stand in a room's square corner, as far from the solid as it may
-	# walk: its first leg then keeps out of that solid itself.
+	# walk: its first leg then keeps that far from the solid.
 	var leaving: Array[Rect2] = []
-	for index in range(solids.size()):
+	var near: Array[Rect2] = []
+	for index in range(blocked.size()):
 		if not rooms[index].has_point(start): leaving.append(rooms[index])
-		elif _distance(solids[index], start) < clearance - 0.01: return []
-		else: leaving.append(solids[index])
+		elif _distance(blocked[index], start) < clearance - 0.01: return []
+		else: near.append(blocked[index])
 	var nodes: Array[Vector2] = [start, goal]
-	for rect: Rect2 in solids:
+	for rect: Rect2 in blocked:
 		var out := rect.grow(clearance + TURN_OUT)
 		for corner: Vector2 in [out.position, Vector2(out.end.x, out.position.y), out.end, Vector2(out.position.x, out.end.y)]:
 			if not _inside(corner, rooms) and walkable.call(corner): nodes.append(corner)
-	var way := _shortest(nodes, rooms, leaving, walkable)
-	if way.is_empty(): return []
+	# The shortest way clear of the solids, its legs then checked for ground (the
+	# costly part, so only along a way that might be taken); a leg off the
+	# ground is struck out and the next shortest tried.
+	var off := {}
+	var clear := {}
+	var way := PackedInt32Array()
+	while way.is_empty():
+		way = _shortest(nodes, rooms, leaving, near, clearance - 0.01, off, clear)
+		if way.is_empty(): return []
+		for index in range(1, way.size()):
+			if _grounded(nodes[way[index - 1]], nodes[way[index]], walkable): continue
+			off[Vector2i(mini(way[index - 1], way[index]), maxi(way[index - 1], way[index]))] = true
+			way = PackedInt32Array()
+			break
 	var result: Array[Vector3] = [from]
 	for index in range(1, way.size()):
 		var a: Vector2 = nodes[way[index - 1]]
@@ -51,10 +68,12 @@ static func route(from: Vector3, to: Vector3, solids: Array[Rect2], clearance: f
 			result.append(Vector3(at.x, 0.0, at.y))
 	return result
 
-## The node indices from 0 (the start) to 1 (the goal) by the shortest clear
-## legs, the first keeping out of `leaving`, or empty. A handful of corners,
-## so a plain Dijkstra.
-static func _shortest(nodes: Array[Vector2], rooms: Array[Rect2], leaving: Array[Rect2], walkable: Callable) -> PackedInt32Array:
+## The node indices from 0 (the start) to 1 (the goal) by the shortest legs
+## that cut no room and are not `off` (Vector2i(low, high) -> true), the first
+## keeping out of `leaving` and `gap` from each of `near`, or empty; `clear`
+## remembers which legs cut nothing for the next try. A handful of corners, so
+## a plain Dijkstra.
+static func _shortest(nodes: Array[Vector2], rooms: Array[Rect2], leaving: Array[Rect2], near: Array[Rect2], gap: float, off: Dictionary, clear: Dictionary) -> PackedInt32Array:
 	var count := nodes.size()
 	var best := PackedFloat32Array()
 	best.resize(count)
@@ -75,7 +94,10 @@ static func _shortest(nodes: Array[Vector2], rooms: Array[Rect2], leaving: Array
 		for next in range(count):
 			if done[next] == 1 or next == at: continue
 			var length := nodes[at].distance_to(nodes[next])
-			if best[at] + length < best[next] and _clear(nodes[at], nodes[next], leaving if at == 0 else rooms, walkable):
+			var leg := Vector2i(mini(at, next), maxi(at, next))
+			if best[at] + length >= best[next] or off.has(leg): continue
+			if not clear.has(leg): clear[leg] = _clear(nodes[at], nodes[next], rooms) if at != 0 else _keeps(nodes[at], nodes[next], near, gap) and _clear(nodes[at], nodes[next], leaving)
+			if clear[leg]:
 				best[next] = best[at] + length
 				back[next] = at
 	var way := PackedInt32Array([1])
@@ -91,13 +113,25 @@ static func _inside(point: Vector2, rooms: Array[Rect2]) -> bool:
 		if room.has_point(point): return true
 	return false
 
-## Whether a leg cuts no solid's room and has ground all along.
-static func _clear(a: Vector2, b: Vector2, rooms: Array[Rect2], walkable: Callable) -> bool:
+## Whether a leg cuts no solid's room.
+static func _clear(a: Vector2, b: Vector2, rooms: Array[Rect2]) -> bool:
 	for room: Rect2 in rooms:
 		if _cuts(a, b, room): return false
+	return true
+
+## Whether a leg has ground all along.
+static func _grounded(a: Vector2, b: Vector2, walkable: Callable) -> bool:
 	var samples := ceili(a.distance_to(b) / SAMPLE)
 	for sample in range(1, samples):
 		if not walkable.call(a.lerp(b, float(sample) / samples)): return false
+	return true
+
+## Whether the segment from `a` to `b` stays `gap` from every rect of `near`.
+static func _keeps(a: Vector2, b: Vector2, near: Array[Rect2], gap: float) -> bool:
+	for rect: Rect2 in near:
+		if _cuts(a, b, rect) or minf(_distance(rect, a), _distance(rect, b)) < gap: return false
+		for corner: Vector2 in [rect.position, Vector2(rect.end.x, rect.position.y), rect.end, Vector2(rect.position.x, rect.end.y)]:
+			if corner.distance_to(Geometry2D.get_closest_point_to_segment(corner, a, b)) < gap: return false
 	return true
 
 ## Whether the segment from `a` to `b` passes through the inside of `room`
