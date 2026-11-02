@@ -51,15 +51,17 @@ static func _row(row: Dictionary, ink: Color, pip: Callable, flower: Callable) -
 		"item":
 			return _item(row, ink, pip, flower)
 	var size := TOTAL_SIZE if str(row.kind) in ["total", "earned"] else FONT_SIZE
-	return _line(_text(str(row.label), size, UiTokens.CREAM if size == TOTAL_SIZE else ink), str(row.value), size, bool(row.grain))
+	return _line(_text(str(row.label), size, UiTokens.CREAM if size == TOTAL_SIZE else ink), str(row.value), size, bool(row.grain), bool(row.get("plus", false)))
 
 ## Words on the left, the value (after its mark) on the right, in cream.
-static func _line(left: Control, value: String, size: int, grain: bool = true) -> HBoxContainer:
-	return amount_row(left, _text(value, size, UiTokens.CREAM) if not value.is_empty() else null, size, grain)
+static func _line(left: Control, value: String, size: int, grain: bool = true, plus: bool = false) -> HBoxContainer:
+	return amount_row(left, _text(value, size, UiTokens.CREAM) if not value.is_empty() else null, size, grain, plus)
 
 ## One Pollen row: `left` (its words, or a tag) fills the row, then the Pollen
-## mark at `size` and `amount` on the right. No amount, no mark.
-static func amount_row(left: Control, amount: Label, size: int, grain: bool = true) -> HBoxContainer:
+## mark at `size` and `amount` on the right. No amount, no mark. `plus` (a row
+## that adds to Base) puts "+" in the amount's own font and ink just before the
+## mark ("+[grain] 22").
+static func amount_row(left: Control, amount: Label, size: int, grain: bool = true, plus: bool = false) -> HBoxContainer:
 	var line := HBoxContainer.new()
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_theme_constant_override("separation", 8)
@@ -73,7 +75,19 @@ static func amount_row(left: Control, amount: Label, size: int, grain: bool = tr
 	lead.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(lead)
 	if amount == null: return line
-	if grain: line.add_child(PollenMark.beside(size))
+	if plus:
+		# The plus and the mark sit close together, as one sign before the amount.
+		var signed := HBoxContainer.new()
+		signed.name = "PollenSign"
+		signed.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		signed.add_theme_constant_override("separation", 2)
+		var plus_label := amount.duplicate() as Label
+		plus_label.name = "PollenPlus"
+		plus_label.text = "+"
+		signed.add_child(plus_label)
+		if grain: signed.add_child(PollenMark.beside(size))
+		line.add_child(signed)
+	elif grain: line.add_child(PollenMark.beside(size))
 	amount.name = "PollenAmount"
 	amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	line.add_child(amount)

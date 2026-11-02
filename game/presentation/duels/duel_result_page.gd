@@ -143,7 +143,8 @@ func _card(index: int, won: bool) -> Control:
 	return card
 
 ## The cream Pollen earned card: each line and the total, each in the one Pollen
-## row shape (pollen_breakdown_view.gd amount_row: words, then the mark and the amount).
+## row shape (pollen_breakdown_view.gd amount_row: words, then the mark and the
+## amount). The lines after the first add to it, so their amounts lead with "+".
 func _pollen(paid: Dictionary) -> Control:
 	var card := Kit.panel("DuelPollen", UiTokens.CREAM, Color.TRANSPARENT, 22, 14.0)
 	card.custom_minimum_size.x = 560
@@ -152,8 +153,9 @@ func _pollen(paid: Dictionary) -> Control:
 	column.add_theme_constant_override("separation", 0)
 	card.add_child(column)
 	column.add_child(Kit.text(PlayerCopy.DUEL_POLLEN_EARNED, 26, UiTokens.INK, true))
-	for item: Array in paid.lines:
-		column.add_child(_line(str(item[0]), PollenMoney.grouped(int(item[1])), 19, false))
+	for index in range(paid.lines.size()):
+		var item: Array = paid.lines[index]
+		column.add_child(_line(str(item[0]), PollenMoney.grouped(int(item[1])), 19, false, index > 0))
 	var rule := ColorRect.new()
 	rule.color = Color(UiTokens.INK, 0.35)
 	rule.custom_minimum_size.y = 1
@@ -165,5 +167,5 @@ func _pollen(paid: Dictionary) -> Control:
 	column.add_child(_line(PlayerCopy.DUEL_PAY_TOTAL, PollenMoney.grouped(int(paid.total)), 26, true))
 	return card
 
-func _line(label: String, amount: String, font_size: int, total: bool) -> Control:
-	return BreakdownView.amount_row(Kit.text(label, font_size, UiTokens.INK, total), Kit.text(amount, font_size, UiTokens.INK, true), font_size)
+func _line(label: String, amount: String, font_size: int, total: bool, plus: bool = false) -> Control:
+	return BreakdownView.amount_row(Kit.text(label, font_size, UiTokens.INK, total), Kit.text(amount, font_size, UiTokens.INK, true), font_size, true, plus)

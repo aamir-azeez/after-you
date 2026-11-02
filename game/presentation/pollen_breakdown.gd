@@ -6,13 +6,15 @@ extends RefCounted
 ## and why an after-bank turn paid a little. The rows above "This turn" always
 ## add up to it. Pure data: presentation/pollen_breakdown_view.gd draws the rows.
 ##
-## Rows are dictionaries: {kind, label, value, grain} and, for an item bloom,
-## item_id and tier. `value` is "" for a row that is all words. `grain` puts
-## the Pollen mark before the value. Kinds:
+## Rows are dictionaries: {kind, label, value, grain, plus} and, for an item
+## bloom, item_id and tier. `value` is "" for a row that is all words. `grain`
+## puts the Pollen mark before the value; `plus` a "+" before that, on the rows
+## that add to Base (ADDED: "First try (25%)  +[grain] 22"). Kinds:
 ## base, bonus, boost, duel, total, bloom, item, item_pollen, clear, reason, earned.
 ##
 ## A receipt from a server that sends no base or bonus percents (older ones,
 ## and receipts kept before they came) has no rows: the plain lines show then.
+## So does a bank turn whose own numbers would show a row below zero.
 ## Pace shows here only, after the turn, never during it (POLLEN-RULES.md).
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
@@ -20,13 +22,19 @@ const Catalog = preload("res://services/cosmetic_catalog.gd")
 
 ## What each Full Journey player in a room adds (backend rates.json boost_percent_per_subscriber).
 const BOOST_PERCENT_EACH := 10
+## The rows that add to Base: each shows "+" before its mark.
+const ADDED := ["bonus", "boost", "duel"]
 const BONUS_NAMES := {"first_try": PlayerCopy.POLLEN_ROW_FIRST_TRY, "gold_pace": PlayerCopy.POLLEN_ROW_GOLD_PACE, "silver_pace": PlayerCopy.POLLEN_ROW_SILVER_PACE, "hard": PlayerCopy.POLLEN_ROW_HARD}
 
 ## Whether a receipt carries what the rows need.
 static func detailed(receipt: Dictionary) -> bool:
 	if receipt.is_empty(): return false
 	var turn: Dictionary = receipt.get("turn", {})
-	return turn.is_empty() or (turn.has("base") and turn.has("bonus_percents")) or turn.get("kind") == "after_bank"
+	if turn.is_empty() or turn.get("kind") == "after_bank": return true
+	if not (turn.has("base") and turn.has("bonus_percents")): return false
+	# A malformed bank turn (an amount below its base, or bonuses its amount cannot pay) never shows a row below zero.
+	var added := int(turn.amount) - int(turn.base)
+	return added >= 0 and bonus_amounts(int(turn.base), added, turn.bonus_percents).all(func(share: int) -> bool: return share >= 0)
 
 ## The rows for one receipt, top to bottom; [] when it is not detailed.
 ## Without `full_journey` (a build that names no Full Journey) the boost row
@@ -105,7 +113,7 @@ static func bonus_amounts(base: int, added: int, percents: Array) -> Array[int]:
 	return out
 
 static func _row(kind: String, label: String, value: String = "", grain: bool = false) -> Dictionary:
-	return {"kind": kind, "label": label, "value": value, "grain": grain}
+	return {"kind": kind, "label": label, "value": value, "grain": grain, "plus": kind in ADDED}
 
 ## The tier's name for an item bloom's "Added to your Wardrobe" line.
 static func tier_name(tier: String) -> String:

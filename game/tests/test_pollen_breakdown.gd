@@ -55,6 +55,7 @@ func _bank_turn() -> void:
 	var rows := Breakdown.rows(_receipt(_turn()))
 	_check(_labels(rows) == ["Base = 166", "First try (25%) = 42", "Silver pace (5%) = 8", "Full Journey (10%) = 22", "This turn = 238"], "The board's paid chapter turn: " + str(_labels(rows)))
 	_check(rows.all(func(row: Dictionary) -> bool: return row.grain), "Every amount has its grain, as Base does")
+	_check(rows.map(func(row: Dictionary) -> bool: return row.plus) == [false, true, true, true, false], "The rows that add to Base lead with a plus; Base and This turn do not")
 	_check(_adds_up(rows), "The rows add up to This turn")
 	var both := Breakdown.rows(_receipt(_turn({"boost_percent": 20.0, "boost": 43.0, "total": 259.0, "boost_from": ["you", "partner"]})))
 	_check(_labels(both)[3] == "Full Journey (2 × 10%) = 43" and both[4].value == "259" and _adds_up(both), "Two Full Journey players, each adding 10%: " + str(_labels(both)))
@@ -115,6 +116,11 @@ func _older_server() -> void:
 	_check(PollenWallet.checked_receipt({"schema_version": 1.0, "earned": 1.0, "balance": 1.0, "clears": [], "turn": _turn({"bonus_percents": [25.0]})}).is_empty(), "Percents that do not match the bonuses refuse the receipt")
 	_check(PollenWallet.checked_receipt({"schema_version": 1.0, "earned": 1.0, "balance": 1.0, "clears": [], "turn": _turn({"base": -1.0})}).is_empty(), "So does a base below zero")
 	_check(Breakdown.rows({}).is_empty(), "No receipt, no rows")
+	# A malformed bank turn never shows a row below zero: it shows the plain line instead.
+	var below := _receipt(_turn({"base": 89.0, "bonuses": [], "bonus_percents": [], "bonus_percent": 0.0, "amount": 80.0, "boost_percent": 0.0, "boost": 0.0, "total": 80.0, "boost_from": []}))
+	_check(not below.is_empty() and not Breakdown.detailed(below) and Breakdown.rows(below).is_empty(), "An amount below its base has no rows")
+	var short := _receipt(_turn({"base": 89.0, "bonuses": ["first_try", "gold_pace"], "bonus_percents": [25.0, 15.0], "bonus_percent": 40.0, "amount": 99.0, "boost_percent": 0.0, "boost": 0.0, "total": 99.0, "boost_from": []}))
+	_check(not short.is_empty() and Breakdown.rows(short).is_empty(), "Nor do bonuses their amount cannot pay")
 
 ## Each bonus's share of the Pollen the bonuses added, over every base and pair
 ## of the server's bonus percents: the shares always add up to the turn's amount,

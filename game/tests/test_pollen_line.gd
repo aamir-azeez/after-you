@@ -313,8 +313,8 @@ func _room_flow() -> void:
 	api.credits = {fixtures["relay-a"].recording_hash: _detailed(89.0, ["first_try", "gold_pace"], [25.0, 15.0], 2.0),
 		fixtures["relay-b"].recording_hash: boosted,
 		fixtures["garden-b"].recording_hash: _detailed(89.0, ["first_try"], [25.0], 1.0, 300.0)}
-	# Each bonus with its percent and the Pollen it added, as Base shows its own: 22 + 14 is the 36 the server added.
-	var bloom_rows := ["Base", "89", "First try (25%)", "22", "Gold pace (15%)", "14", "This turn", "125", "A lucky bloom: ×2", "250"]
+	# Each bonus with its percent and the Pollen it added ("+[grain] 22"; Base and This turn have no plus): 22 + 14 is the 36 the server added.
+	var bloom_rows := ["Base", "89", "First try (25%)", "+", "22", "Gold pace (15%)", "+", "14", "This turn", "125", "A lucky bloom: ×2", "250"]
 
 	# The host's first turn, with the friend in the room: Turn saved shows its credit, then the room goes on.
 	var host := await _open(api, store, HOST)
@@ -349,7 +349,7 @@ func _room_flow() -> void:
 		return wear_works[0]
 	guest.wear_available = func() -> bool: return true
 	await _play(guest, "relay-b")
-	var item_rows := ["Base", "89", "First try (25%)", "22", "Full Journey (2 × 10%)", "22", "This turn", "133", "A lucky bloom: a new Daisy!", "Added to your Wardrobe. Common."]
+	var item_rows := ["Base", "89", "First try (25%)", "+", "22", "Full Journey (2 × 10%)", "+", "22", "This turn", "133", "A lucky bloom: a new Daisy!", "Added to your Wardrobe. Common."]
 	_check(guest.mode == "turn_saved" and _words(_line(guest)) == item_rows and _line(guest).find_child("PollenItemBloomPip", true, false) != null, "The guest's Turn saved shows the Full Journey row as Base's shape, naming no one, and the item bloom on their own pip: " + str(_words(_line(guest))))
 	_check(_line(guest).find_children("PollenMark", "", true, false).size() == 4, "A grain beside Base, First try, Full Journey and This turn")
 	var each: Array = _line(guest).find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.contains("×"))
@@ -396,7 +396,7 @@ func _room_flow() -> void:
 	host = await _open(api, store, HOST)
 	_check(host.mode == "ready" and host.role == "b", "The host plays the last turn")
 	await _play(host, "garden-b")
-	_check(host.mode == "complete" and _words(_line(host)) == ["Base", "89", "First try (25%)", "22", "This turn", "111", "First clear", "300", "Pollen earned", "411"], "The end card shows the finishing turn's rows and its first clear, with no Turn saved first: " + str(_words(_line(host))))
+	_check(host.mode == "complete" and _words(_line(host)) == ["Base", "89", "First try (25%)", "+", "22", "This turn", "111", "First clear", "300", "Pollen earned", "411"], "The end card shows the finishing turn's rows and its first clear, with no Turn saved first: " + str(_words(_line(host))))
 	await _check_layout(host, host._show_completed, "host's end card")
 	await _close(host)
 

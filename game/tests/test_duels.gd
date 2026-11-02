@@ -320,8 +320,12 @@ func _pages() -> void:
 	_check(marks.size() == 5, "a mark beside each of the four lines and the total: %d" % marks.size())
 	var boost_words: Array = pollen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.begins_with("Full Journey"))
 	_check(boost_words.size() == 1 and (boost_words[0] as Label).get_theme_font("font").has_char(0xD7), "the duel card's font has the × a two Full Journey line uses")
+	# The lines after the first add to it: a "+" right before their mark ("+[grain] 300").
+	var pluses: Array = pollen.find_children("PollenPlus", "Label", true, false)
+	_check(pluses.size() == 3 and pluses.all(func(plus: Label) -> bool: return plus.text == "+" and plus.get_parent().get_child(1).name == "PollenMark"), "a plus before the mark on the duel bonus, Full Journey and win bonus lines: %d" % pluses.size())
 	for each: Control in marks:
 		var row: Control = each.get_parent()
+		if row.name == "PollenSign": row = row.get_parent()
 		var value: Control = row.get_child(row.get_child_count() - 1)
 		_check(absf(each.get_global_rect().get_center().y - value.get_global_rect().get_center().y) <= 0.5 and absf(each.get_global_rect().get_center().y - row.get_child(0).get_global_rect().get_center().y) <= 0.5, "the Pollen mark is centred on its amount and its words: " + str((value as Label).text))
 	var mark: Control = marks[-1] if not marks.is_empty() else null
