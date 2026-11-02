@@ -927,7 +927,7 @@ const LOCKED_PICTURE_TINT := ChapterPicker.LOCKED_PICTURE_TINT
 ## the server has said it hosts hard rooms (`together`, or the relay session
 ## when null).
 func hard_states(together: Variant = null) -> Dictionary:
-	return HardMode.new().states(_chapter_marks(), hard_together() if together == null else bool(together))
+	return HardMode.new().showing(_hard_marks()).states(_chapter_marks(), hard_together() if together == null else bool(together))
 
 ## Hands Home's keepsakes the Hard marks and the together Hard switch, and
 ## remembers what it handed, so the keepsake poll only hands them on again

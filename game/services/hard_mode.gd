@@ -175,9 +175,16 @@ func completed(chapter_key: String, mode: String) -> bool:
 static func _true(value: Variant) -> bool:
 	return value is bool and value
 
+## This store drawing `marks` in place of its file's, for the menus (Main's tester view,
+## services/tester_switches.gd). It records nothing from then on.
+func showing(marks: Dictionary) -> RefCounted:
+	path = ""
+	_marks = marks.duplicate(true)
+	return self
+
 ## Records a finished hard play. True when it is on disk.
 func record(chapter_key: String, mode: String) -> bool:
-	if mode not in MODES: return false
+	if mode not in MODES or path.is_empty(): return false
 	_load()
 	var key := Registry.offered_key(chapter_key)
 	var saved := completed(key, mode)
@@ -224,6 +231,7 @@ func _write(next: Dictionary) -> bool:
 	return true
 
 func _load() -> void:
+	if path.is_empty(): return
 	var text := AtomicFile.read_text(path, func(value: String) -> bool: return _parse_marks(value) != null)
 	var parsed: Variant = _parse_marks(text)
 	_marks = parsed if parsed != null else {}

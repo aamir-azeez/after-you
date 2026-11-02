@@ -24,6 +24,7 @@ import { checkedFriendPublication, checkedFriendSubscription, FRIEND_PUBLICATION
 import { FRIEND_EVENTS_CLIENT_GATE, type FriendRoomDelivery, type FriendRoomEvent } from "./friend-room-events";
 import { interactionBlocked } from "./safety";
 import { testerReceipt, validTesterGrant, type TesterGrant, type TesterAccess } from "./tester-access";
+import { switchApplies } from "./test-codes";
 import { clearPresence, initializePresence, MAX_PRESENCE_SESSIONS, PRESENCE_SESSION, PRESENCE_TTL_MS, presenceAlarmOwned, presencePolicy, prunePresence, schedulePresence, type PresencePolicy } from "./presence";
 import { applyDisplayName, clearDisplayNameFields, MAX_CLEARED_ROOMS, type DisplayNameFields, type DisplayNameOutcome } from "./display-names";
 import { creditClear, creditSoloClear, creditTurn, dropWallet, fullJourneyUntil, historyView, noteFullJourney, payFromWallet, walletBalance, walletView, type HistoryView, type PollenReceipt, type WalletView } from "./pollen/wallet";
@@ -179,7 +180,7 @@ export class Player extends DurableObject<Env> {
   }
   /** The Full Journey end a room copies for its boost: none while the tester switch has this player as without Full Journey. */
   private roomFullJourneyUntil(identity: Identity): number {
-    return identity.full_journey_off === true ? 0 : fullJourneyUntil(this.ctx.storage);
+    return identity.full_journey_off === true && switchApplies(this.env, identity.player_id) ? 0 : fullJourneyUntil(this.ctx.storage);
   }
   /** `look`: the look the player wears (pollen/wardrobe.ts), only for routes that write it into a room while looks are on. */
   private lookField(looks: boolean): { look?: Look } {

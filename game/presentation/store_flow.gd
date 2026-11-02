@@ -467,12 +467,12 @@ func purchase_completed(id: String, operation: String, payload: Dictionary) -> v
 				return
 			store_action_request=host.purchases.restore()
 		elif host.mode==MODE_PAYWALL:
-			if identity_ready() and host.purchases.has_entitlement(): _show_full_journey_unlocked()
+			if identity_ready() and host._store_owned(): _show_full_journey_unlocked()
 			else: _track_store_read(host.purchases.fetch_offerings())
 	elif operation=="get_offerings":
 		if host.mode!=MODE_PAYWALL or store_action_pending or not identity_ready():
 			return
-		if host.purchases.has_entitlement():
+		if host._store_owned():
 			_show_full_journey_unlocked()
 			return
 		purchase_offer=Purchases.select_subscription_offer(payload,host.config)
@@ -482,7 +482,7 @@ func purchase_completed(id: String, operation: String, payload: Dictionary) -> v
 		_show_store_offer()
 	elif operation=="get_customer_info":
 		if host.mode==MODE_PAYWALL and not store_action_pending and identity_ready():
-			if host.purchases.has_entitlement(): _show_full_journey_unlocked()
+			if host._store_owned(): _show_full_journey_unlocked()
 			else: _track_store_read(host.purchases.fetch_offerings())
 	elif operation in ["purchase_package","restore_purchases"]:
 		if id!=store_action_request or id.is_empty(): return
@@ -494,7 +494,7 @@ func purchase_completed(id: String, operation: String, payload: Dictionary) -> v
 		var pollen: Variant = host.get("pollen_client")
 		if host.purchases.has_entitlement() and pollen is RefCounted: pollen.note_full_journey_bought()
 		if host.mode==MODE_PAYWALL:
-			if host.purchases.has_entitlement(): _show_full_journey_unlocked()
+			if host._store_owned(): _show_full_journey_unlocked()
 			elif not purchase_offer.is_empty(): _show_store_offer()
 			else: show_paywall(tester_store_manual)
 
@@ -585,8 +585,8 @@ func _show_tester_active(message: String = "") -> void:
 	card.add_child(host._label("Tester access active",32,CREAM,true))
 	if not message.is_empty(): card.add_child(host._paragraph(message,620))
 	card.add_child(host._back_button("Back to chapters",func(): chapters_requested.emit()))
-	# A tester's own test codes are typed here too (services/tester_switches.gd).
-	_add_code_field(card, "Use code")
+	# A tester's own test codes are typed here too (services/tester_switches.gd), where a code may be offered.
+	if PlatformSupport.tester_code_offered(): _add_code_field(card, "Use code")
 	if _play_store_enabled(): card.add_child(host._button("Store purchases",show_store_from_settings,false))
 	elif PlatformSupport.play_listing_offered(): card.add_child(host._button("Get it on Google Play",func(): google_play_requested.emit(),false))
 	card.add_child(host._back_button("Back to settings",func(): settings_requested.emit(),false))

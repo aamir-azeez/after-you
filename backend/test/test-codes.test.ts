@@ -125,6 +125,19 @@ describe("the Full Journey switch", () => {
     expect(await (await call("/v2/capabilities", "GET", tester, undefined, config)).json()).not.toHaveProperty("full_journey_off");
     expect((await call("/v2/rooms", "POST", tester, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, config)).status).toBe(200);
   });
+  it("counts only while the player is listed and the toggle code is configured, so either going gives Full Journey back", async () => {
+    const tester = await account(), config = await configured([tester]); owned();
+    await type(tester, TOGGLE, config);
+    const hashes = await codes();
+    const unlisted = { ...config, revenuecat: { ...playConfig.revenuecat, tester_ids: [] } };
+    const noToggle = { ...config, test_codes: { grant_keepsakes: hashes.grant_keepsakes, reset_keepsakes: hashes.reset_keepsakes } };
+    for (const vars of [unlisted, noToggle]) {
+      expect(await entitlement(tester.player_id, withConfig({ ...env, ...vars }) as unknown as Env)).toMatchObject({ full_journey: true, access_source: "play_purchase" });
+      expect(await (await call("/v2/capabilities", "GET", tester, undefined, vars)).json()).not.toHaveProperty("full_journey_off");
+      expect((await call("/v2/rooms", "POST", tester, { ...rollingHome.key, idempotency_key: crypto.randomUUID() }, vars)).status).toBe(200);
+    }
+    expect(await entitlement(tester.player_id, withConfig({ ...env, ...config }) as unknown as Env)).toMatchObject({ full_journey: false, access_source: "tester_switched_off" });
+  });
   it("overrides a stored tester grant too, and leaves it in place for when the switch goes back", async () => {
     const tester = await account(), config = await configured([tester]);
     await type(tester, TESTER_CODE, config); await type(tester, TOGGLE, config);

@@ -3,6 +3,7 @@ import { APP } from "./config";
 import { playEntitlement } from "./play-entitlement";
 import { appStoreReady, storeEntitlement } from "./store-entitlement";
 import { clientHeader } from "./app-status";
+import { switchApplies } from "./test-codes";
 
 export type Entitlement = { full_journey: boolean; status: "verified" | "unconfigured" | "unavailable"; environment: string; checked_at: string; reason?: string; access_source?: "review_grant" | "play_purchase" | "play_subscription" | "app_store_subscription" | "tester_grant" | "tester_switched_off"; entitlement?: "full_journey_play" | "full_journey"; player_id?: string };
 /**
@@ -19,7 +20,7 @@ export async function entitlement(playerId: string, env: ServerVars & { PLAYERS?
   const base = { full_journey: false, environment: APP.environment, checked_at: new Date().toISOString() };
   if (env.PLAYERS) {
     const { grant, full_journey_off } = await env.PLAYERS.getByName(playerId).storedAccess(playerId);
-    if (full_journey_off) return { ...base, status: "verified", access_source: "tester_switched_off", player_id: playerId };
+    if (full_journey_off && switchApplies(env, playerId)) return { ...base, status: "verified", access_source: "tester_switched_off", player_id: playerId };
     if (grant) return { ...base, full_journey: true, status: "verified", access_source: "tester_grant", entitlement: "full_journey", player_id: playerId };
   }
   return { ...base, ...(flags.appStoreEntitlements(env) ? await storeEntitlement(playerId, env, onGrant) : await playEntitlement(playerId, env, onGrant)) };

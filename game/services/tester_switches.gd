@@ -41,6 +41,9 @@ static var _shared: RefCounted = null
 var path := PATH
 ## () -> {server, owner} for the signed-in player, or {} (Main._names_scope). Tests set their own.
 var scope_source: Callable
+## The scope scope_source last named. A chapter screen replaces Main (its scope_source then goes
+## invalid) and records its awards there, so they count for the player Main last had signed in.
+var _last_key := ""
 ## Moves on with every change, so a view built from these switches knows to build again.
 var generation := 0
 ## scope -> {"keepsakes": "" | ALL | FRESH, "earned": {place: {solo, friend}}, "hard": {key: {solo, together}}, "full_journey_off": bool}
@@ -62,9 +65,11 @@ static func scope_key(server: String, owner: String) -> String:
 	return server.strip_edges().trim_suffix("/") + "|" + owner
 
 func _current_key() -> String:
-	var value: Variant = scope_source.call() if scope_source.is_valid() else {}
-	if not value is Dictionary or str(value.get("owner", "")).is_empty() or str(value.get("server", "")).strip_edges().is_empty(): return ""
-	return scope_key(str(value.server), str(value.owner))
+	if not scope_source.is_valid(): return _last_key
+	var value: Variant = scope_source.call()
+	if not value is Dictionary or str(value.get("owner", "")).is_empty() or str(value.get("server", "")).strip_edges().is_empty(): _last_key = ""
+	else: _last_key = scope_key(str(value.server), str(value.owner))
+	return _last_key
 
 func _entry(key: String) -> Dictionary:
 	return _scopes.get(key, {}) if not key.is_empty() else {}

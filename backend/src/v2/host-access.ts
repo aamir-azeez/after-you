@@ -52,12 +52,14 @@ export type RoomHostAccess = {
  */
 export async function requireRoomHostAccess(room: RoomHostAccess, hostId: string, env: Env, onGrant?: (until: number) => void): Promise<Entitlement | null> {
   // A tester's host is checked every turn, so their Full Journey switch (test-codes.ts) holds at once.
-  const age = isTester(env, hostId) ? null : await room.hostAccessAge(hostId);
+  // They lose the outage grace too, which only testers notice.
+  const tester = isTester(env, hostId);
+  const age = tester ? null : await room.hostAccessAge(hostId);
   if (age !== null && age < HOST_ACCESS_FRESH_MS) return null;
   const access = await entitlement(hostId, env, onGrant), refusal = hostAccessRefusal(access);
   if (!refusal) {
     // Tester grants are read from the host's own record each time, so revoking one stays immediate.
-    if (access.access_source !== "tester_grant") await room.rememberHostAccess(hostId, true);
+    if (access.access_source !== "tester_grant" && !tester) await room.rememberHostAccess(hostId, true);
     return access;
   }
   if (access.status === "verified") { if (age !== null) await room.rememberHostAccess(hostId, false); }

@@ -35,6 +35,8 @@ func _run() -> void:
 	_kept_and_scoped()
 	_damaged_file()
 	_observers()
+	_scope_outlives_main()
+	_hard_picker_view()
 	await _chapter_access_holds()
 	_tester_replies()
 	_restore()
@@ -157,6 +159,35 @@ func _observers() -> void:
 	marks.record(HardMode.eligible_keys()[0], HardMode.SOLO)
 	check(hard_heard.is_empty(), "Only the phone's own marks file is heard")
 	HardMode.record_observer = Callable()
+
+## A chapter screen replaces Main, whose scope_source then goes invalid: awards recorded there
+## still count for the player Main last had signed in.
+func _scope_outlives_main() -> void:
+	var store: RefCounted = Switches.new(directory.path_join("outlive.json"))
+	store.scope_source = func() -> Dictionary: return {"server": SERVER, "owner": OWNER}
+	store.apply("reset_keepsakes")
+	var gone := Node.new()
+	store.scope_source = Callable(gone, "get_name")
+	gone.free()
+	check(not store.scope_source.is_valid(), "The scope source is gone, as Main's is while a chapter shows")
+	var places := Catalog.chapter_places(Catalog.CHAPTERS[0])
+	store.note_award(places.slice(0, 2), "solo")
+	var none: Array[Dictionary] = []
+	check(store.earned(none).size() == 2, "An award recorded meanwhile counts for the player last signed in")
+
+## The Hard menus read the switched marks, as Home does (Main.hard_states).
+func _hard_picker_view() -> void:
+	var path := directory.path_join("hard-picker.json")
+	var real := HardMode.new(path)
+	real.record(HardMode.eligible_keys()[0], HardMode.SOLO)
+	var key: String = HardMode.eligible_keys()[0]
+	var shown: RefCounted = HardMode.new(path).showing({})
+	check(shown.states({key: {"solo": true, "friend": false}})[key][HardMode.SOLO] == HardMode.OPEN, "A fresh view shows a real Hard clear as not done")
+	check(not shown.record(key, HardMode.TOGETHER), "and a view records nothing")
+	check(not HardMode.new(path).completed(key, HardMode.TOGETHER), "so the file is unchanged")
+	var all: RefCounted = HardMode.new(path).showing({key: {"solo": true, "together": true}})
+	check(all.states({})[key][HardMode.TOGETHER] == HardMode.DONE, "and the all view shows every Hard play done")
+	check(HardMode.new(path).completed(key, HardMode.SOLO), "while the real mark stays on disk")
 
 func _chapter_access_holds() -> void:
 	var store := _store("access")

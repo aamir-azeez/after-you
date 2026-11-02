@@ -8,10 +8,11 @@ import type { ServerVars } from "./flags";
  * revenuecat.tester_ids, so for anyone else it is one more wrong tester code.
  *
  * - grant_keepsakes and reset_keepsakes change nothing here: the server only says yes, and the phone shows its
- *   keepsakes all earned or fresh (game/services/keepsake_test_view.gd). Real progress is never written.
+ *   keepsakes all earned or fresh (game/services/tester_switches.gd). Real progress is never written.
  * - toggle_full_journey flips a switch on the tester's Player: while it is on, every Full Journey check answers
  *   "verified, not entitled" (entitlement.ts) and rooms copy no Full Journey boost for them (player.ts). Nothing
- *   in RevenueCat or the store changes, and the Pollen wallet keeps following the real purchase.
+ *   in RevenueCat or the store changes, and the monthly grant keeps following the real purchase. The switch
+ *   counts only while switchApplies().
  */
 export const TEST_CODE_SALT = "afteryou.test-code.v1:";
 /** What the phone is told to do. The toggle answers where it now stands. */
@@ -26,6 +27,15 @@ export function testCodeHash(action: TestCodeAction, code: string): Promise<stri
 /** Whether `playerId` may use test codes at all: a listed tester. Reads CONFIG only. */
 export function isTester(env: ServerVars, playerId: string): boolean {
   return serverConfig(env).revenuecat.tester_ids.includes(playerId);
+}
+
+/**
+ * Whether a stored Full Journey switch counts: only for a listed tester while the toggle code is configured, so
+ * taking either away (a new tester id, `--set test_codes=null`) gives the real Full Journey back at once, with no
+ * code needed to clear it. Reads CONFIG only.
+ */
+export function switchApplies(env: ServerVars, playerId: string): boolean {
+  return isTester(env, playerId) && serverConfig(env).test_codes.has("toggle_full_journey");
 }
 
 /** The configured action whose hash `code` matches, or null. Every configured action is checked, matched or not. */
@@ -46,7 +56,8 @@ export async function runTestAction(action: TestCodeAction, owner: string, devic
     const { full_journey_off } = unwrap(await env.PLAYERS.getByName(owner).toggleFullJourneyOff(owner, deviceHash));
     return { schema_version: 1, player_id: owner, test_action: full_journey_off ? "full_journey_off" : "full_journey_on" };
   }
-  // A keepsake code writes nothing here; the Player still checks the credential so a revoked device learns nothing.
+  // A keepsake code writes nothing here. The Player checks the credential again after the limiter's wait, as a
+  // redemption does, so a device revoked meanwhile learns nothing.
   unwrap(await env.PLAYERS.getByName(owner).testerAccess(owner, deviceHash));
   return { schema_version: 1, player_id: owner, test_action: action };
 }
@@ -57,6 +68,6 @@ export async function runTestAction(action: TestCodeAction, owner: string, devic
  * tester with the switch off, gets the same bytes as before.
  */
 export async function testerSwitchCapability(playerId: string, env: Env): Promise<{ full_journey_off?: true }> {
-  if (!isTester(env, playerId)) return {};
+  if (!switchApplies(env, playerId)) return {};
   return (await env.PLAYERS.getByName(playerId).storedAccess(playerId)).full_journey_off ? { full_journey_off: true } : {};
 }

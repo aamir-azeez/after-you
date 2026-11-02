@@ -16,6 +16,7 @@ const LocalSave = preload("res://services/local_save.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
 const Soundscape = preload("res://services/soundscape.gd")
 const Purchases = preload("res://services/purchases.gd")
+const TesterSwitches = preload("res://services/tester_switches.gd")
 const TesterAccess = preload("res://services/tester_access.gd")
 const MemoryWait = preload("res://presentation/memory_wait.gd")
 const ScreenSwitch = preload("res://services/screen_switch.gd")
@@ -195,6 +196,12 @@ func _process(delta: float) -> void:
 
 func _check_access(force_refresh: bool = false) -> void:
 	if not _purchase_gate or not _access_request.is_empty() or _tester_checking: return
+	# A tester testing as a free player (services/tester_switches.gd) is held as one.
+	if TesterSwitches.shared().full_journey_off():
+		if running: _pause()
+		_access_granted = false
+		_show_access_hold(PlayerCopy.LIGHTHOUSE_PREVIEW_96528A1A27D4)
+		return
 	_access_force_refresh = force_refresh
 	if is_instance_valid(_tester_access):
 		_check_tester_access()
@@ -252,7 +259,7 @@ func _check_purchase_access() -> void:
 		card.add_child(controls.button_for("back", _leave))
 
 func _entitled(payload: Dictionary) -> bool:
-	return payload.get("schema_version") == 1 and _purchases.entitled_payload(payload)
+	return payload.get("schema_version") == 1 and _purchases.entitled_payload(payload) and not TesterSwitches.shared().full_journey_off()
 
 func _access_completed(id: String, operation: String, payload: Dictionary) -> void:
 	if _tester_admitted: return
