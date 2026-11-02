@@ -239,9 +239,7 @@ func wear_item(id: String) -> bool:
 
 ## Whether bundles sell: the build sells them and the server has them on.
 func bundles() -> bool:
-	if not shop() or not _surfaces().bundles_visible(): return false
-	var scope: Dictionary = _client().scope()
-	return _client().store.bundles(str(scope.server), str(scope.owner))
+	return _surfaces().store_sells(_client().store, _client().scope())
 
 ## Whether the shop shows: the build sells and the server has the shop on.
 func shop() -> bool:

@@ -78,5 +78,12 @@ func shop_visible() -> bool:
 func bundles_visible() -> bool:
 	return _bundles and _selling()
 
+## The one "the Pollen store can sell now" gate (the store, the chip's plus and
+## the short card's bundle): this build sells bundles and `store`
+## (services/wardrobe.gd) says the server has them on for the player of `scope`
+## (never without the shop).
+func store_sells(store: RefCounted, scope: Dictionary) -> bool:
+	return bundles_visible() and store != null and not scope.is_empty() and store.bundles(str(scope.server), str(scope.owner))
+
 func full_journey_visible() -> bool:
 	return _selling()

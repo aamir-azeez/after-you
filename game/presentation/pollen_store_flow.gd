@@ -130,9 +130,7 @@ func _scope() -> Dictionary:
 
 ## Whether the store may open: the build sells bundles and the server has them on for this player.
 func available() -> bool:
-	if host == null or not _surfaces().bundles_visible(): return false
-	var scope := _scope()
-	return not scope.is_empty() and _wardrobe().bundles(str(scope.server), str(scope.owner))
+	return host != null and _surfaces().store_sells(_wardrobe(), _scope())
 
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
