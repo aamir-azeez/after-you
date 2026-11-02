@@ -877,7 +877,9 @@ func _create_explore_controls() -> void:
 	ButtonTicks.quiet(_explore_action)
 	_explore_action.pressed.connect(func() -> void:
 		var item: Dictionary = _keepsake_layer.selected_item() if is_instance_valid(_keepsake_layer) else {}
-		if not item.is_empty() and is_instance_valid(_keepsake_layer): _keepsake_layer.play(str(item.id), _actors.get("a") if _exploring else null))
+		if not item.is_empty() and is_instance_valid(_keepsake_layer): _keepsake_layer.play(str(item.id), _actors.get("a") if _exploring else null)
+		# Its words follow what the press did (the lamp woken or put to rest).
+		_update_explore_action())
 	add_child(_explore_action)
 
 func is_exploring() -> bool:

@@ -25,6 +25,7 @@ const DATA := {
 		"copy": {
 			"name": PlayerCopy.KEEPSAKE_LIGHTHOUSE_NAME,
 			"action": PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION,
+			"held_action": PlayerCopy.KEEPSAKE_LIGHTHOUSE_HELD_ACTION,
 			"together": PlayerCopy.KEEPSAKE_LIGHTHOUSE_TOGETHER,
 			"hard": PlayerCopy.KEEPSAKE_LIGHTHOUSE_HARD,
 			"top": PlayerCopy.KEEPSAKE_LIGHTHOUSE_TOP,

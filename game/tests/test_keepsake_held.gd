@@ -16,6 +16,7 @@ const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Glasshouse = preload("res://presentation/keepsakes/glasshouse.gd")
 const Lighthouse = preload("res://presentation/keepsakes/lighthouse.gd")
 const Builder = preload("res://presentation/keepsakes/keepsake_builder.gd")
+const PlayerCopy = preload("res://presentation/player_copy.gd")
 const GLASS := "conservatory"
 const LIGHT := "sleeping-lighthouse"
 ## The looks: [name, with a friend, Hard solo, Hard together].
@@ -35,6 +36,7 @@ func _run() -> void:
 	for look: Array in LOOKS:
 		await _check_glasshouse(look)
 		await _check_lighthouse(look)
+	await _check_lighthouse_words()
 	await _check_running()
 	await _check_steps_press()
 	await _check_cost()
@@ -288,6 +290,35 @@ func _check_lighthouse(look: Array) -> void:
 
 ## The wake's turn eases in and hands over at the held speed: the angle a
 ## frame before the end and the held step after differ by about one held step.
+## The Explore button by the Lighthouse says what a press will do: "Wake the
+## lamp" while it sleeps, "Rest the lamp" from the press that wakes it, while
+## it stays on, until the press that puts it to rest. The Conservatory keeps
+## its one set of words.
+func _check_lighthouse_words() -> void:
+	var home := await _home(LOOKS[0])
+	var layer: Node3D = home.layer
+	var stage: Control = home.stage
+	var button: Button = stage._explore_action
+	stage._exploring = true
+	stage._actors.a.position = layer.point_of(LIGHT) * Vector3(1, 0, 1)
+	stage.select_keepsake(LIGHT)
+	_check(button.visible and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, "By the sleeping Lighthouse the button reads %s: %s" % [PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, button.text])
+	button.pressed.emit()
+	_check(layer.playing() and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_HELD_ACTION, "Pressed, it wakes and the button reads %s at once: %s" % [PlayerCopy.KEEPSAKE_LIGHTHOUSE_HELD_ACTION, button.text])
+	await _finish(layer)
+	stage._update_explore_action()
+	_check(layer.holding(LIGHT) and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_HELD_ACTION, "Left on, the button still reads %s" % PlayerCopy.KEEPSAKE_LIGHTHOUSE_HELD_ACTION)
+	button.pressed.emit()
+	_check(layer.playing() and not layer.holding(LIGHT) and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, "Pressed again, it fades to rest and the button reads %s at once: %s" % [PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, button.text])
+	await _finish(layer)
+	stage._update_explore_action()
+	_check(not layer.switched_on(LIGHT) and button.text == PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION, "Asleep again, it reads %s" % PlayerCopy.KEEPSAKE_LIGHTHOUSE_ACTION)
+	stage.select_keepsake(GLASS)
+	stage.play_keepsake(GLASS)
+	await _finish(layer)
+	_check(layer.holding(GLASS) and layer.selected_item().action == PlayerCopy.KEEPSAKE_GLASSHOUSE_ACTION, "The Conservatory, held, keeps its one set of words")
+	await _close(home)
+
 func _check_running() -> void:
 	var home := await _home(LOOKS[3])
 	var layer: Node3D = home.layer

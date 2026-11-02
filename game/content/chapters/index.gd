@@ -41,7 +41,9 @@ const OPTIONAL := {
 	## isle of presentation/keepsakes/home_isles.gd; never worked out from the
 	## price), "slot": [x, z] metres from that island's middle, optionally
 	## "yaw" (radians; it faces the Home camera without one), "copy": {"name",
-	## "action" (the Explore button's words), and the
+	## "action" (the Explore button's words), optionally "held_action" (its
+	## words while it is on, for a keepsake that holds its end state and is
+	## switched off by the next press: the Lighthouse's lamp), and the
 	## names of its "together", "hard" and "top" pieces} as PlayerCopy constants,
 	## "sounds": {beat ("base", "together", "hard", "top"): a cue name of
 	## services/sound_cues.gd CUES}}. {} for none.

@@ -341,7 +341,7 @@ func play(id: String, rider: Node3D = null) -> bool:
 	tween.tween_interval(REDUCED_HOLD if anim.reduced else time)
 	tween.finished.connect(_settle)
 	# A held turn keeps turning through the off beat.
-	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest, "settling": false, "spins": held.spins if off else []}
+	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest, "settling": false, "spins": held.spins if off else [], "off": off}
 	_sync_spins()
 	return true
 
@@ -461,6 +461,11 @@ func _sync_spins() -> void:
 func holding(id: String) -> bool:
 	return _kept.has(id)
 
+## Whether a keepsake is on: holding what its tap keeps, or playing a tap
+## that is not its switch off (a lamp waking counts as on).
+func switched_on(id: String) -> bool:
+	return holding(id) or (_play.get("id") == id and not _play.get("off", false))
+
 ## Turns what the keepsakes hold turning (a lighthouse left on) on by `step`
 ## seconds. Home's stage calls it each frame it runs (Home showing, in the
 ## foreground); nothing turns while a screen covers the 3D world, or under
@@ -521,7 +526,11 @@ func selected_item() -> Dictionary:
 	var item: Dictionary = _items[id]
 	return {"id": id, "name": entry.keepsake.copy.name, "line": Card.line(entry, item, together_hard), "look": item.look,
 		"together": item.together, "hard": item.hard, "top": item.top, "has_together": entry.together, "has_hard": entry.hard,
-		"top_offered": entry.hard and entry.together and (together_hard or item.top), "action": entry.keepsake.copy.action, "playable": playable(id)}
+		"top_offered": entry.hard and entry.together and (together_hard or item.top), "action": _action(entry.keepsake.copy, id), "playable": playable(id)}
+
+## The Explore button's words: its words for while it is on, when it has them.
+func _action(copy: Dictionary, id: String) -> String:
+	return str(copy.held_action) if copy.has("held_action") and switched_on(id) else str(copy.action)
 
 func count_line() -> String:
 	return Card.count_line(_result)

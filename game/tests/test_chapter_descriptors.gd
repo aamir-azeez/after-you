@@ -299,7 +299,10 @@ func _home_keepsakes() -> void:
 		_check(keepsake.get("island") in ["left", "right"] or Isles.is_isle(str(keepsake.get("island"))), "The keepsake of %s names a Home island or keepsake isle" % key)
 		var slot: Variant = keepsake.get("slot")
 		_check(slot is Array and slot.size() == 2 and slot.all(func(value: Variant) -> bool: return value is float or value is int), "The keepsake slot of %s is [x, z]" % key)
-		_same(_sorted(keepsake.get("copy", {}).keys()), ["action", "hard", "name", "together", "top"], "Keepsake copy of " + key)
+		var words := _sorted(keepsake.get("copy", {}).keys())
+		words.erase("held_action")
+		_same(words, ["action", "hard", "name", "together", "top"], "Keepsake copy of " + key)
+		if keepsake.get("copy", {}).has("held_action"): _check(str(keepsake.copy.held_action) != "" and load(str(keepsake.builder)).new().press_again() == "switch", "Only a keepsake switched off by the next press has words for while it is on: " + key)
 		for word: Variant in keepsake.get("copy", {}).values(): _check(word is String and not str(word).is_empty() and not str(word).contains("-"), "Keepsake copy of %s is plain text without dashes: %s" % [key, word])
 		for beat: Variant in keepsake.get("sounds", {}):
 			_check(beat in ["base", "together", "hard", "top"] and SoundCues.CUES.has(keepsake.sounds[beat]), "Keepsake sound %s of %s is a known beat and cue" % [beat, key])
