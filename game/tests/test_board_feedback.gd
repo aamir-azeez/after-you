@@ -110,6 +110,7 @@ func _run() -> void:
 	await _end_of_run_celebration()
 	await _home_watch()
 	await _board_reasons()
+	await _refused_row()
 	_settings_migration()
 	_cloud_never_turns_it_on()
 	Placings.use_shared(null)
@@ -594,6 +595,42 @@ func _open(path: String) -> RefCounted:
 	store.load_data()
 	store.start_fresh_if_unreadable()
 	return store
+
+## A run that fails its check inside the settle window leaves the board screen
+## once a read stops listing it, and stays gone when its board shows again.
+func _refused_row() -> void:
+	_clear(RUNS_PATH)
+	Runs.use_path(RUNS_PATH)
+	var api := FakeApi.new()
+	root.add_child(api)
+	var room := "X1X1X1X1X1X1X1X1X1X1X1"
+	var entry := Runs.entry_id(room, 1)
+	Runs.note(OWNER, _snapshot(room, _lighthouse_final(), _now_iso(-60)), Registry.LIGHTHOUSE_V2)
+	var lighthouse := "GET /v1/leaderboards/" + LIGHTHOUSE_BOARD
+	api.replies[lighthouse] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 900)], [entry])}
+	api.replies["GET /v1/leaderboards/" + RELAY_BOARD] = {"ok": true, "data": _view(RELAY_BOARD, [], [])}
+	var screen := Screen.new()
+	screen.client = Client.new(api, OWNER, CHOICE_PATH)
+	screen.player_id = OWNER
+	screen.chapter_key = Registry.LIGHTHOUSE_V2
+	screen.chapter_filter = func(key: String) -> bool: return key in [Registry.LIGHTHOUSE_V2, Registry.RELAY]
+	root.add_child(screen)
+	await _frames(10)
+	var waiting: Node = screen.find_child("LeaderboardRow2", true, false)
+	_check(waiting != null and waiting.find_child("LeaderboardWaiting", true, false) != null, "the run waiting for its check stands second with its clock")
+	api.replies[lighthouse] = {"ok": true, "data": _view(LIGHTHOUSE_BOARD, [_row(1, "01".repeat(16), 900)], [])}
+	screen._load(true)
+	await _frames(4)
+	_check(screen.find_child("LeaderboardWaiting", true, false) == null and screen.find_child("LeaderboardRow2", true, false) == null, "a read that lists it nowhere takes it off at once, quietly")
+	screen._choose(Registry.RELAY)
+	await _frames(4)
+	screen._choose(Registry.LIGHTHOUSE_V2)
+	await _frames(4)
+	_check(screen.find_child("LeaderboardWaiting", true, false) == null and screen.find_child("LeaderboardRow1", true, false) != null, "and it stays off when its board shows again")
+	_check(screen.find_child(Celebration.NODE_NAME, true, false) == null, "with nothing to celebrate")
+	screen.close()
+	api.queue_free()
+	await _frames(1)
 
 func _settings_migration() -> void:
 	# An existing install from before: Forgiving catches on, no migration mark.

@@ -93,6 +93,8 @@ var _modal: Control
 var _celebration: Control
 ## The checking ids each board last showed, so a run that passed since fades in.
 var _was_checking: Dictionary = {}
+## board -> {entry_id: true}: this player's runs a read listed waiting and a later one nowhere.
+var _gone: Dictionary = {}
 ## "" or "loading" while a Watch fetches, "watching" while its replay plays.
 var _replay_state := ""
 
@@ -356,11 +358,13 @@ func _render_board() -> void:
 	var checking: Array = _view.get("checking", [])
 	var passed: Array = _was_checking.get(board, [])
 	_was_checking[board] = checking.duplicate()
-	# Runs this page saw waiting that the board now lists nowhere failed their check.
-	var gone: Dictionary = {}
+	# Runs this page saw waiting that the board then listed nowhere failed their
+	# check: kept per board while the page is open, so a kept board shown again keeps them gone.
+	var gone: Dictionary = _gone.get(board, {})
 	for id: String in passed: gone[id] = true
 	for id: String in checking: gone.erase(id)
 	for row: Dictionary in _view.get("top", []): gone.erase(row.entry_id)
+	_gone[board] = gone
 	var rows: Array = BoardStatus.shown_rows(_view, mine, Time.get_unix_time_from_system(), gone)
 	if rows.is_empty():
 		_board.add_child(_note(PlayerCopy.LEADERBOARD_EMPTY))
