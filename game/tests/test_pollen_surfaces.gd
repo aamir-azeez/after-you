@@ -161,14 +161,15 @@ class StoreStub extends Node:
 	var on := true
 	var opened: Array = []
 	func available() -> bool: return on
-	func show_store(from: String = "wardrobe") -> void: opened.append(from)
+	func show_store(from: String = "wardrobe", bundle: String = "") -> void: opened.append([from, bundle])
 
 class FlowHost extends Node:
 	var pollen_store_flow: Node
 
 ## Get Pollen's short card (board 5b's, for a name change): the cost and the
-## balance, no "It stays in the shop.", and its own link to the store only while
-## the store can open, which closes the prompt and opens the store with Back to Friends.
+## balance, no "It stays in the shop.", and, only while the store can open, the
+## smallest bundle that covers the change with its own Get Pollen, which closes
+## the prompt and opens the store on that bundle with Back to Friends.
 func _short_card() -> void:
 	var holder := Control.new()
 	holder.size = Vector2(1280, 720)
@@ -190,16 +191,16 @@ func _short_card() -> void:
 	var card: Control = cards[0] if not cards.is_empty() else null
 	var words: Array = card.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) if card != null else []
 	_check(words.has(PlayerCopy.WARDROBE_SHORT_NOTE % [PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "1,000", "600"]) and words.has("400" + PlayerCopy.WARDROBE_SHORT_MORE) and not words.has(PlayerCopy.WARDROBE_SHORT_STAYS), "The short card names the change and what is needed, and nothing about the shop: " + str(words))
-	var link := card.find_child("WardrobeGetPollen", true, false) as LinkButton if card != null else null
-	_check(link != null, "Its own Get Pollen shows while the store can open")
+	var link := card.find_child("WardrobeGetPollen", true, false) as BaseButton if card != null else null
+	_check(link != null and words.has(PlayerCopy.WARDROBE_SHORT_BUNDLE % "Pinch"), "Its own Get Pollen shows while the store can open, with the Pinch that covers 400")
 	if link != null: link.pressed.emit()
 	await process_frame
-	_check(host.pollen_store_flow.opened == ["friends"] and (not is_instance_valid(prompt_card) or prompt_card.is_queued_for_deletion()), "It closes the prompt and opens the store with Back to Friends")
+	_check(host.pollen_store_flow.opened == [["friends", "pinch"]] and (not is_instance_valid(prompt_card) or prompt_card.is_queued_for_deletion()), "It closes the prompt and opens the store with Back to Friends")
 	host.pollen_store_flow.on = false
 	flow._open_short(holder, null)
 	await process_frame
 	var shut := holder.find_children("WardrobeShort", "", true, false).filter(func(node: Node) -> bool: return not node.is_queued_for_deletion())
-	_check(shut.size() == 1 and shut[0].find_child("WardrobeGetPollen", true, false) == null, "With the store shut the card has no link")
+	_check(shut.size() == 1 and shut[0].find_child("WardrobeGetPollen", true, false) == null and shut[0].find_child("WardrobeShortBundle", true, false) == null, "With the store shut the card suggests nothing")
 	shut[0].close()
 	flow._prompt_price = {"price": 1000, "balance": 600, "shown": false, "next": 1000}
 	flow._open_short(holder, null)
@@ -296,9 +297,10 @@ func _name_price() -> void:
 	store.note_view(SERVER, ME, answer)
 	wallet.note_wallet(SERVER, ME, answer)
 	PollenSurfaces.set_shared_for_tests(true)
-	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": true, "next": -1}, "Selling: the price, the balance and that it shows, with no next price from an older server: " + str(Flow.name_price(current)))
+	var offer: Dictionary = store.view(SERVER, ME).get("bundles", {})
+	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": true, "next": -1, "offer": offer}, "Selling: the price, the balance and that it shows, with no next price from an older server: " + str(Flow.name_price(current)))
 	PollenSurfaces.set_shared_for_tests(false)
-	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": false, "next": -1}, "Selling nothing: the same price, marked not shown")
+	_check(Flow.name_price(current) == {"price": 1000, "balance": 5000, "shown": false, "next": -1, "offer": offer}, "Selling nothing: the same price, marked not shown")
 	answer.name_price = 0.0
 	answer.name_price_next = 1000.0
 	store.note_view(SERVER, ME, answer)

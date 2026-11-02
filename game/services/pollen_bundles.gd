@@ -67,6 +67,24 @@ static func usd_cents(id: String, in_store: String = "") -> int:
 static func gift(id: String, percent: int) -> int:
 	return floori(pollen(id) * maxi(percent, 0) / 100.0)
 
+## The first bundle gift's percent a wardrobe view's `bundles` part offers now
+## (services/wardrobe.gd): its percent while the gift is on and unused, else 0.
+static func gift_percent(part: Dictionary) -> int:
+	return int(part.get("first_gift_percent", 0)) if bool(part.get("first_gift", false)) else 0
+
+## What buying `id` adds now: its Pollen with its bonus, and the first bundle
+## gift while `offer` (a wardrobe view's `bundles` part, see gift_percent) holds it.
+static func adds(id: String, offer: Dictionary = {}) -> int:
+	return pollen(id) + gift(id, gift_percent(offer))
+
+## The bundle to suggest when the player is `shortfall` Pollen short: the
+## smallest (store order) whose adds() covers it, else the largest. "" when no bundle is known.
+static func cover(shortfall: int, offer: Dictionary = {}) -> String:
+	var known := ids()
+	for id: String in known:
+		if adds(id, offer) >= shortfall: return id
+	return known.back() if not known.is_empty() else ""
+
 ## Pollen for one unit of the store's currency at `price_micros`, rounded to the
 ## nearest (5,051 for the Pinch at $0.99, as the rules write it). 0 when the store gave no price.
 static func per_unit(id: String, price_micros: int) -> int:

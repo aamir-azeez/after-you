@@ -1364,25 +1364,34 @@ func _host_wardrobe_flow() -> WardrobeFlow:
 	var flow := WardrobeFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
 	flow.back_requested.connect(func(): _show_home() if flow.return_to == "home" else settings_flow.show_settings())
-	flow.store_requested.connect(func(): pollen_store_flow.show_store())
+	flow.store_requested.connect(func(bundle: String): pollen_store_flow.show_store("wardrobe",bundle))
+	flow.pollen_requested.connect(func(): pollen_play_flow.open_from_wardrobe())
 	return flow
 
 ## An internal child, like StoreFlow. The Pollen store opens from the Wardrobe
-## and goes back to it (or Home, when the Wardrobe is off), or from the name
-## prompt's short card and goes back to Friends; its receipt's Open the
+## and goes back to it (or Home, when the Wardrobe is off), from the name
+## prompt's short card and goes back to Friends, and from the plus on Home's
+## chip or the Pollen page's and goes back there; its receipt's Open the
 ## Wardrobe opens the Wardrobe.
 func _host_pollen_store_flow() -> PollenStoreFlow:
 	var flow := PollenStoreFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(func():
-		if flow.return_to != "friends":
-			_back_to_wardrobe()
-			return
-		# Home first, so Friends opens over Home (its Back goes there) and a Friends that cannot open leaves Home.
-		_show_home()
-		_show_friends())
+	flow.back_requested.connect(_pollen_store_back.bind(flow))
 	flow.wardrobe_requested.connect(_back_to_wardrobe)
 	return flow
+
+## The Pollen store's Back, to where it opened (its return_to).
+func _pollen_store_back(store: PollenStoreFlow) -> void:
+	match store.return_to:
+		"home": _show_home()
+		"pollen":
+			pollen_play_flow.reopen()
+			if not pollen_play_flow.is_open(): _show_home()
+		"friends":
+			# Home first, so Friends opens over Home (its Back goes there) and a Friends that cannot open leaves Home.
+			_show_home()
+			_show_friends()
+		_: _back_to_wardrobe()
 
 ## The Wardrobe, with the Back it opened with, or Home while the Wardrobe is off.
 func _back_to_wardrobe() -> void:
@@ -1390,16 +1399,26 @@ func _back_to_wardrobe() -> void:
 	else: _show_home()
 
 ## An internal child, like StoreFlow. Back returns where it opened: Home,
-## Settings, or the Pollen store (the store's own Back when it cannot open now).
+## Settings, the Wardrobe, or the Pollen store (the store's own Back when it
+## cannot open now). The plus on its chips opens the Pollen store while it sells.
 func _host_pollen_play_flow() -> PollenPlayFlow:
 	var flow := PollenPlayFlow.new(self)
 	add_child(flow,false,Node.INTERNAL_MODE_BACK)
-	flow.back_requested.connect(func():
-		if flow.return_to == "settings": settings_flow.show_settings()
-		elif flow.return_to != "store": _show_home()
-		elif pollen_store_flow.available(): pollen_store_flow.show_store(pollen_store_flow.return_to)
-		else: _back_to_wardrobe())
+	flow.back_requested.connect(_pollen_page_back.bind(flow))
+	# Read at call time: the Pollen store is made after this flow.
+	flow.store_route = func(from: String): pollen_store_flow.show_store(from)
+	flow.store_sells = func() -> bool: return is_instance_valid(pollen_store_flow) and pollen_store_flow.available()
 	return flow
+
+## The Pollen page's Back, to where it opened (its return_to).
+func _pollen_page_back(page: PollenPlayFlow) -> void:
+	match page.return_to:
+		"settings": settings_flow.show_settings()
+		"wardrobe": _back_to_wardrobe()
+		"store":
+			if pollen_store_flow.available(): pollen_store_flow.reopen()
+			else: _back_to_wardrobe()
+		_: _show_home()
 
 ## The Pollen store's "Earn Pollen free by playing" (presentation/pollen_store_flow.gd):
 ## true once Pollen from play is open.

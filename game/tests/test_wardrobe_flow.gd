@@ -12,10 +12,11 @@ extends SceneTree
 ## - Buy opens the confirm card (the pip, balance, cost with its about line,
 ##   what is left) and only its Buy sends, at the cost the card showed;
 ## - a short balance opens the short card (Needed box, It stays in the shop,
-##   Keep playing with friends) and sends nothing; its Get Pollen link shows
-##   only while bundles sell and never for an Epic or a Special; a Special that
-##   is not unlocked cannot be bought;
-## - the balance chip's + shows only while bundles sell;
+##   Keep playing with friends) and sends nothing; only while bundles sell it
+##   names the smallest bundle that covers the gap (the first bundle gift
+##   counted) and its Get Pollen asks for the store on that bundle, for every
+##   tier; a Special that is not unlocked cannot be bought;
+## - the balance chip's + shows only while bundles sell; its balance asks for the Pollen page;
 ## - the pip switch draws your pip in mint "as your friend sees you";
 ## - an earned item has the Earned frame and a Not for sale chip;
 ## - Wear and Take off send the whole look; Back asks the host to leave and
@@ -234,8 +235,17 @@ func _short_card() -> void:
 		t.flow.show_wardrobe()
 		await _frames()
 		_check(_plus_shown(t.host.overlay) == bundles, "The chip's + shows only while bundles sell (%s)" % bundles)
-		var opened := {"count": 0}
-		t.flow.store_requested.connect(func() -> void: opened.count += 1)
+		var opened: Array = []
+		var pollen := {"count": 0}
+		t.flow.store_requested.connect(func(bundle: String) -> void: opened.append(bundle))
+		t.flow.pollen_requested.connect(func() -> void: pollen.count += 1)
+		var chip: Control = t.host.overlay.find_child("PollenChip", true, false)
+		chip.amount_pressed.emit()
+		_check(pollen.count == 1 and opened.is_empty(), "The chip's balance asks for the Pollen page")
+		if bundles:
+			chip.plus_pressed.emit()
+			_check(opened == [""], "The chip's + asks for the store with nothing highlighted")
+			opened.clear()
 		t.flow.select("tide")
 		await t.flow.act("tide")
 		var sheet: Node = t.host.ui.find_child("WardrobeShort", true, false)
@@ -243,22 +253,23 @@ func _short_card() -> void:
 		_check(sheet != null and t.fake.sent.size() == 1, "A short balance opens the short card and sends nothing")
 		_check(PlayerCopy.WARDROBE_SHORT_NOTE % ["Tide", "20,000", "14,500"] in words and PlayerCopy.WARDROBE_SHORT_NEEDED in words and "5,500" + PlayerCopy.WARDROBE_SHORT_MORE in words, "It says what it costs, what you have and Needed: 5,500 more: " + str(words))
 		_check(PlayerCopy.WARDROBE_SHORT_STAYS in words and PlayerCopy.WARDROBE_SHORT_EARN in words, "It says it stays in the shop and to keep playing with friends")
-		_check(not words.any(func(text: String) -> bool: return text.contains("$") or text.contains("Pinch") or text.contains("Basket") or text.contains("week") or text.contains("day")), "It never names a bundle or a time to earn it")
+		_check(not words.any(func(text: String) -> bool: return text.contains("$") or text.contains("week") or text.contains("day")), "It never shows money or a time to earn it")
+		_check((PlayerCopy.WARDROBE_SHORT_BUNDLE % "Pouch" in words) == bundles and words.any(func(text: String) -> bool: return text.contains("Pinch") or text.contains("Basket")) == false,
+			"While bundles sell it names the smallest bundle that covers 5,500, the Pouch (%s): %s" % [bundles, words])
 		var link: BaseButton = sheet.find_child("WardrobeGetPollen", true, false)
-		_check((link != null) == bundles, "Get Pollen shows only while bundles sell (%s)" % bundles)
+		_check((link != null) == bundles and (sheet.find_child("WardrobeShortBundle", true, false) != null) == bundles, "Get Pollen and the bundle show only while bundles sell (%s)" % bundles)
 		if link != null:
 			link.pressed.emit()
 			await _frames(2)
-			_check(opened.count == 1 and t.host.ui.find_child("WardrobeShort", true, false) == null, "Get Pollen closes the card and asks for the Pollen store")
-		for id: String in ["lantern"]:
-			t.flow.select(id)
-			await t.flow.act(id)
-			var epic: Node = t.host.ui.find_child("WardrobeShort", true, false)
-			_check(epic != null and epic.find_child("WardrobeGetPollen", true, false) == null, "Short of Pollen for an Epic: never a Get Pollen link")
+			_check(opened == ["pouch"] and t.host.ui.find_child("WardrobeShort", true, false) == null, "Get Pollen closes the card and asks for the Pollen store on the Pouch: " + str(opened))
+		t.flow.select("lantern")
+		await t.flow.act("lantern")
+		var epic: Node = t.host.ui.find_child("WardrobeShort", true, false)
+		_check(epic != null and (PlayerCopy.WARDROBE_SHORT_BUNDLE % "Jar" in _texts(epic)) == bundles, "Short 35,500 for an Epic: the Jar while bundles sell (%s)" % bundles)
 		_check(t.flow.model().get("bundles") == bundles, "The model says whether bundles sell")
 		t.host.queue_free()
 		await _frames(2)
-	# A Special's short card never links either (unlocked here so it is buyable).
+	# A Special 99,500 short points to the Basket (unlocked here so it is buyable).
 	var s := _setup(true, true)
 	s.fake.replies = [_answer([], {}, 500, ["lighthouse_lamp"])]
 	s.flow.show_wardrobe()
@@ -266,9 +277,21 @@ func _short_card() -> void:
 	s.flow.select("lighthouse_lamp")
 	await s.flow.act("lighthouse_lamp")
 	var special: Node = s.host.ui.find_child("WardrobeShort", true, false)
-	_check(special != null and special.find_child("WardrobeGetPollen", true, false) == null, "Short of Pollen for a Special: never a Get Pollen link")
+	_check(special != null and PlayerCopy.WARDROBE_SHORT_BUNDLE % "Basket" in _texts(special) and special.find_child("WardrobeGetPollen", true, false) != null, "Short 99,500 for a Special: the Basket")
 	s.host.queue_free()
 	await _frames(2)
+	# With the first bundle gift on, a 50,000 gap is the Jar's 44,000 and its 8,800 gift; past the Basket it gets you closest.
+	for row: Array in [[0, "Jar", PlayerCopy.WARDROBE_SHORT_BUNDLE], [-100000, "Basket", PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST]]:
+		var g := _setup(true, true)
+		g.fake.replies = [_answer([], {}, row[0], [], {"first_gift": true, "first_gift_percent": 20.0, "spent_usd_cents": 0.0})]
+		g.flow.show_wardrobe()
+		await _frames()
+		g.flow.select("lantern")
+		await g.flow.act("lantern")
+		var gifted: Node = g.host.ui.find_child("WardrobeShort", true, false)
+		_check(gifted != null and row[2] % row[1] in _texts(gifted), "Balance %d with the gift on: %s" % [row[0], _texts(gifted)])
+		g.host.queue_free()
+		await _frames(2)
 
 ## The frame's parts: tier frames and glow, the slot chips, the pip switch and the earned chip.
 func _page_parts() -> void:

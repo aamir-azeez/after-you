@@ -26,11 +26,16 @@ extends Node
 ## - screen: mode, running, overlay, ui, _clear_overlay, _toast, and
 ##   _mark_screen_back when Main has it
 ## - soundscape when Main has it (play_fixed_cue): a receipt's sound
-## - show_pollen_from_play() -> bool (Pollen from play, presentation/pollen_play_flow.gd,
-##   true once it opened), for "Earn Pollen free by playing"; its Back comes back here
+## - show_pollen_from_play() -> bool (the Pollen page, presentation/pollen_play_flow.gd,
+##   true once it opened), for "Earn Pollen free by playing" and the balance on
+##   the page's chip; its Back comes back here
+## - pollen_client (history) for Previous purchases, the receipts list
+##   (presentation/pollen_purchases_view.gd), read once each time it opens
 ## It asks Main to leave through back_requested and to open the Wardrobe
-## through wardrobe_requested. `return_to` names where Back goes ("wardrobe",
-## or "friends" when the name prompt's short card opened it); Main reads it.
+## through wardrobe_requested. `return_to` names where Back goes ("wardrobe";
+## "friends" when the name prompt's short card opened it; "home" from Home's
+## chip; "pollen" from the Pollen page's chip); Main reads it. A short card
+## opens the store with the bundle it suggests highlighted (`highlight`).
 ##
 ## Taps go through a BusyTapGate: a bundle tapped while the store is still
 ## loading waits for its prices instead of being dropped.
@@ -45,6 +50,8 @@ const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
 const StoreSupport = preload("res://services/store_support.gd")
+const StoreCurrency = preload("res://services/store_currency.gd")
+const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
 ## The receipt sounds on the host's soundscape (play_on).
 const Soundscape = preload("res://services/soundscape.gd")
 
@@ -91,8 +98,12 @@ var _known_at_buy: Array = []
 ## receipt another purchase showed first still counts as credited.
 var _shown: Array = []
 var _generation := 0
-## Where Back returns: "wardrobe" (Main goes to the Wardrobe, or Home) or "friends".
+## The Previous purchases sheet's history reads; only the newest one draws.
+var _purchase_reads := 0
+## Where Back returns: "wardrobe" (Main goes to the Wardrobe, or Home), "friends", "home" or "pollen".
 var return_to := "wardrobe"
+## The bundle a short card suggested, drawn highlighted while the store shows ("" for none).
+var highlight := ""
 
 func _init(main: Node = null) -> void:
 	host = main
@@ -126,9 +137,11 @@ func available() -> bool:
 func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
-func show_store(from: String = "wardrobe") -> void:
+## Opens the store, its Back going to `from`, with `bundle` highlighted ("" for none).
+func show_store(from: String = "wardrobe", bundle: String = "") -> void:
 	if not available(): return
 	return_to = from
+	highlight = bundle if bundle in Bundles.ids() else ""
 	_connect_purchases()
 	host.running = false
 	host.mode = MODE_POLLEN_STORE
@@ -138,6 +151,8 @@ func show_store(from: String = "wardrobe") -> void:
 	_page.back_pressed.connect(func() -> void: back_requested.emit())
 	_page.bundle_pressed.connect(tap_bundle)
 	_page.earn_pressed.connect(show_earning)
+	_page.pollen_pressed.connect(show_earning)
+	_page.purchases_pressed.connect(show_purchases)
 	_page.retry_pressed.connect(load_store)
 	host.overlay.add_child(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
@@ -151,6 +166,10 @@ func show_store(from: String = "wardrobe") -> void:
 	if _claims().pending(): await _claims().flush()
 	_show_unseen()
 	load_store()
+
+## Opens the store again with the Back and the highlight it had (when the Pollen page it opened goes Back).
+func reopen() -> void:
+	show_store(return_to, highlight)
 
 ## Reads the store's prices for the bundles.
 func load_store() -> void:
@@ -242,8 +261,7 @@ func confirm(id: String) -> void:
 	if not is_open() or not _packages.has(id) or not _buying.is_empty(): return
 	_close_sheet()
 	var package: Dictionary = _packages[id]
-	var view := _view()
-	var gift := Bundles.gift(id, int(view.get("bundles", {}).get("first_gift_percent", 0))) if bool(view.get("bundles", {}).get("first_gift", false)) else 0
+	var gift := Bundles.gift(id, Bundles.gift_percent(_view().get("bundles", {})))
 	_sheet = weakref(Sheets.confirm(host.ui, id, str(package.price), gift, _balance(), _balance_known(), func() -> void: buy(id), _page.button(id)))
 
 ## The confirm card's Buy: hands over to the store's sheet.
@@ -306,12 +324,34 @@ func _show_unseen(bought: Dictionary = {}) -> void:
 	Soundscape.play_on(host, "ui_bought")
 	_redraw()
 
-## "Earn Pollen free by playing": Pollen from play, whose Back returns here. A
-## page that cannot open (Pollen not known on this phone yet) says so.
+## "Earn Pollen free by playing" and the balance on the page's chip: the Pollen
+## page, whose Back returns here. When the Pollen page opened this store, that
+## page is where Back leads, so it goes Back. A page that cannot open (Pollen
+## not known on this phone yet) says so.
 func show_earning() -> void:
 	if not is_open() or not host.has_method("show_pollen_from_play"): return
 	_close_sheet()
-	if not host.show_pollen_from_play(): _toast(PlayerCopy.POLLEN_PLAY_OFFLINE)
+	if return_to == "pollen": back_requested.emit()
+	elif not host.show_pollen_from_play(): _toast(PlayerCopy.POLLEN_PLAY_OFFLINE)
+
+## Previous purchases: the receipts list on its sheet, from one history read.
+## Money shows only while the store sells in US dollars (services/store_currency.gd),
+## since the server keeps each store's US figure.
+func show_purchases() -> void:
+	if not is_open(): return
+	_close_sheet()
+	var sheet := PurchasesView.open(host.ui, _page.purchases_button)
+	_sheet = weakref(sheet)
+	PurchasesView.render(sheet, {"status": PlayerCopy.POLLEN_PLAY_LOADING})
+	_purchase_reads += 1
+	var read := _purchase_reads
+	var client: Variant = host.get("pollen_client")
+	var answer: Dictionary = {}
+	if client != null: answer = await client.history()
+	# A newer read, or the sheet closed meanwhile: this answer is not shown.
+	if read != _purchase_reads or not is_instance_valid(sheet) or sheet.is_queued_for_deletion(): return
+	if answer.is_empty(): PurchasesView.render(sheet, {"status": PlayerCopy.POLLEN_PLAY_OFFLINE})
+	else: PurchasesView.render(sheet, {"lines": answer.get("purchases", []), "money": StoreCurrency.usd()})
 
 ## The page's model (presentation/pollen_store_page.gd).
 func model() -> Dictionary:
@@ -326,7 +366,7 @@ func model() -> Dictionary:
 		if micros > 0: per = (PlayerCopy.POLLEN_STORE_PER_DOLLAR % PollenMoney.grouped(Bundles.per_unit(id, micros))) if currency in ["", "USD"] else (PlayerCopy.POLLEN_STORE_PER_UNIT % [PollenMoney.grouped(Bundles.per_unit(id, micros)), currency])
 		bundles.append({"id": id, "name": str(PlayerCopy.POLLEN_STORE_BUNDLES.get(id, id)), "pollen": Bundles.pollen(id), "base": Bundles.base(id), "bonus": Bundles.bonus(id),
 			"percent": Bundles.bonus_percent(id), "per": per, "price": str(package.get("price", ""))})
-	return {"balance": _balance(), "balance_known": _balance_known(), "status": _status, "retry": _retry, "gift_percent": int(part.get("first_gift_percent", 0)) if bool(part.get("first_gift", false)) else 0, "bundles": bundles}
+	return {"balance": _balance(), "balance_known": _balance_known(), "status": _status, "retry": _retry, "gift_percent": Bundles.gift_percent(part), "bundles": bundles, "highlight": highlight}
 
 func _redraw() -> void:
 	if is_open(): _page.render(model())

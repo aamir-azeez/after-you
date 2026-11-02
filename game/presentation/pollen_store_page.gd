@@ -8,11 +8,15 @@ extends Control
 ##   ("20,000 + 1,000 bonus · 5% more") or "No bonus", Pollen per $1, and the
 ##   price button with the store's own local price. A bundle the store did not
 ##   price shows no button. Prices are never crossed out; nothing counts down.
-## - "Earn Pollen free by playing" and the footnote.
+## - "Earn Pollen free by playing", Previous purchases (the receipts list) and
+##   the footnote.
+## The chip has no plus here (this is where the plus leads); its balance opens
+## the Pollen page, as Earn does.
 ##
 ## A view only: presentation/pollen_store_flow.gd builds the model and answers
 ## the signals. The model: balance (int; -1 while unknown), status, retry,
-## gift_percent (0 hides the first bundle line), and bundles: Array of
+## gift_percent (0 hides the first bundle line), highlight (the bundle a short
+## card suggested, drawn with a gold edge; "" for none), and bundles: Array of
 ## {id, name, pollen, base, bonus, percent, per, price}, in store order.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const SafeArea = preload("res://presentation/safe_area.gd")
@@ -33,14 +37,20 @@ const INK_SOFT := ShopKit.INK_SOFT
 const CARD := Color("f5eedb")
 const BONUS := Color("dcefe2")
 const PRICE := Color("234e47")
+## The suggested bundle's edge, from the store card's gold family (the chip's gain gold).
+const HIGHLIGHT := PollenChip.GOLD
 
 signal back_pressed
 signal bundle_pressed(id: String)
 signal earn_pressed
+## The balance on the header's chip.
+signal pollen_pressed
+signal purchases_pressed
 signal retry_pressed
 
 var back_button: Button
-var chip: Button
+var chip: Control
+var purchases_button: Button
 var _chip_box: HBoxContainer
 var _chip_shown := []
 var _gift: PanelContainer
@@ -159,6 +169,14 @@ func _footer() -> Control:
 	ThemeRules.secondary(earn)
 	earn.pressed.connect(func() -> void: earn_pressed.emit())
 	row.add_child(earn)
+	purchases_button = Button.new()
+	purchases_button.name = "PollenStorePurchases"
+	purchases_button.text = PlayerCopy.POLLEN_PURCHASES_TITLE
+	purchases_button.custom_minimum_size = Vector2(0, 50)
+	purchases_button.add_theme_font_size_override("font_size", 17)
+	ThemeRules.secondary(purchases_button)
+	purchases_button.pressed.connect(func() -> void: purchases_pressed.emit())
+	row.add_child(purchases_button)
 	var foot := ShopKit.text(PlayerCopy.for_platform(PlayerCopy.POLLEN_STORE_FOOT, PlayerCopy.POLLEN_STORE_FOOT_IOS), 14, MUTED)
 	foot.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	foot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -178,6 +196,7 @@ func render(model: Dictionary) -> void:
 			chip.queue_free()
 		# The store is where the plus leads, so its own chip has none.
 		chip = PollenChip.make(balance, false)
+		chip.amount_pressed.connect(func() -> void: pollen_pressed.emit())
 		_chip_box.add_child(chip)
 	var percent := int(model.get("gift_percent", 0))
 	_gift.visible = percent > 0
@@ -190,17 +209,21 @@ func render(model: Dictionary) -> void:
 		_cards.remove_child(child)
 		child.queue_free()
 	_buttons.clear()
-	for entry: Dictionary in model.get("bundles", []): _cards.add_child(_card(entry))
+	var highlight := str(model.get("highlight", ""))
+	for entry: Dictionary in model.get("bundles", []): _cards.add_child(_card(entry, str(entry.id) == highlight))
 
 ## The price button of a bundle, or null (tests, the flow's tap gate).
 func button(id: String) -> Button:
 	return _buttons.get(id)
 
-func _card(entry: Dictionary) -> Control:
+## A bundle's card; `picked`: the bundle a short card suggested, with a gold edge.
+func _card(entry: Dictionary, picked: bool = false) -> Control:
 	var panel := PanelContainer.new()
 	panel.name = "PollenStoreBundle_" + str(entry.id)
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	panel.add_theme_stylebox_override("panel", ThemeRules.padded(ThemeRules.rounded(CARD, 22), 16, 16))
+	var card := ThemeRules.rounded(CARD, 22, HIGHLIGHT if picked else Color.TRANSPARENT)
+	if picked: card.set_border_width_all(4)
+	panel.add_theme_stylebox_override("panel", ThemeRules.padded(card, 16, 16))
 	var column := VBoxContainer.new()
 	column.add_theme_constant_override("separation", 6)
 	column.alignment = BoxContainer.ALIGNMENT_CENTER

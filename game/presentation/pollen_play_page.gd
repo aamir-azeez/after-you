@@ -1,15 +1,13 @@
 extends Control
-## Pollen from play (pollen board 7b): what play has earned and what it still
-## can. A header with the coral back square, the title and the balance chip;
+## The Pollen page (pollen board 7b, titled "Pollen"): what play has earned and
+## what it still can. A header with the coral back square, the title and the
+## balance chip (its plus opens the Pollen store);
 ## then two cards, each drawn by its own view:
 ## - Turns with friends (presentation/pollen_turns_view.gd): the turn bank and
 ##   the newest turns;
 ## - First chapter clears (presentation/pollen_clears_view.gd): what first
 ##   clears still pay, and each free chapter, paid or not.
-## While the page lists purchases (a Google Play build where bundles sell or
-## were bought: pollen board 1's "Pollen and purchases"), a Purchases card comes
-## first (presentation/pollen_purchases_view.gd) and the title says so; with
-## three cards the rows leave out their chapter pictures, which need the width.
+## Receipts live behind the Pollen store's Previous purchases, not here.
 ## presentation/pollen_play_flow.gd reads the data and calls render(); this
 ## script only draws it. Each card scrolls on its own. No timers, no countdown.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
@@ -20,7 +18,6 @@ const UiTokens = preload("res://presentation/ui_tokens.gd")
 const Parts = preload("res://presentation/pollen_play_parts.gd")
 const TurnsView = preload("res://presentation/pollen_turns_view.gd")
 const ClearsView = preload("res://presentation/pollen_clears_view.gd")
-const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
 const BACK_ICON = preload("res://assets/ui/social/arrow-left.svg")
 
 const CARD := Color("f3efdf")
@@ -36,9 +33,6 @@ var _chip_slot: HBoxContainer
 var _title_label: Label
 var _turns: VBoxContainer
 var _clears: VBoxContainer
-## The Purchases card's column, and the card, hidden until the page lists purchases.
-var _purchases: VBoxContainer
-var _purchases_card: Control
 
 func _init(heading_font: Font = null) -> void:
 	title_font = heading_font
@@ -59,9 +53,6 @@ func _init(heading_font: Font = null) -> void:
 	body.add_theme_constant_override("separation", 18)
 	body.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	outer.add_child(body)
-	_purchases = _card(body, "PollenPurchasesCard", false)
-	_purchases_card = body.get_node("PollenPurchasesCard")
-	_purchases_card.visible = false
 	_turns = _card(body, "PollenTurnsCard")
 	_clears = _card(body, "PollenClearsCard")
 
@@ -94,9 +85,8 @@ func _header() -> Control:
 	header.add_child(_chip_slot)
 	return header
 
-## A card's column; with `gutter`, room for the scroll bar while it shows
-## (the Purchases card keeps that room in its own rows).
-func _card(parent: Control, card_name: String, gutter: bool = true) -> VBoxContainer:
+## A card's column, with room for the scroll bar while it shows.
+func _card(parent: Control, card_name: String) -> VBoxContainer:
 	var panel := PanelContainer.new()
 	panel.name = card_name
 	panel.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -110,9 +100,8 @@ func _card(parent: Control, card_name: String, gutter: bool = true) -> VBoxConta
 	inset.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	inset.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.add_child(inset)
-	if gutter:
-		var bar := scroll.get_v_scroll_bar()
-		bar.visibility_changed.connect(func() -> void: inset.add_theme_constant_override("margin_right", GUTTER if bar.visible else 0))
+	var bar := scroll.get_v_scroll_bar()
+	bar.visibility_changed.connect(func() -> void: inset.add_theme_constant_override("margin_right", GUTTER if bar.visible else 0))
 	var column := VBoxContainer.new()
 	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	column.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -122,9 +111,7 @@ func _card(parent: Control, card_name: String, gutter: bool = true) -> VBoxConta
 
 ## Draws `model` from the flow: {chip (kit/pollen_chip.gd, or null before a
 ## balance is known), full_journey, status ("" when the history is in), retry,
-## history (services/pollen_history.gd), purchases (bool: the Purchases card
-## shows, with the history's purchases), spent_usd_cents (-1: no total shows),
-## money (bool: the card shows money at all, only for a store selling in US dollars)}.
+## history (services/pollen_history.gd)}.
 func render(model: Dictionary) -> void:
 	var chip: Variant = model.get("chip")
 	for child: Node in _chip_slot.get_children():
@@ -132,16 +119,12 @@ func render(model: Dictionary) -> void:
 		_chip_slot.remove_child(child)
 		child.queue_free()
 	if chip is Control and (chip as Control).get_parent() != _chip_slot: _chip_slot.add_child(chip)
-	for column: VBoxContainer in [_purchases, _turns, _clears]:
+	for column: VBoxContainer in [_turns, _clears]:
 		for child: Node in column.get_children():
 			column.remove_child(child)
 			child.queue_free()
-	var purchases := bool(model.get("purchases", false))
 	var status := str(model.get("status", ""))
 	var history: Dictionary = model.get("history", {})
-	_title_label.text = PlayerCopy.SETTINGS_POLLEN_PURCHASES if purchases else PlayerCopy.POLLEN_PLAY_TITLE
-	_purchases_card.visible = purchases
-	if purchases: PurchasesView.fill(_purchases, {"loading": not status.is_empty(), "lines": history.get("purchases", []), "spent_usd_cents": int(model.get("spent_usd_cents", -1)), "money": bool(model.get("money", false))}, title_font)
 	if not status.is_empty():
 		Parts.heading(_turns, PlayerCopy.POLLEN_TURNS_TITLE, PlayerCopy.POLLEN_TURNS_NOTE, title_font)
 		Parts.heading(_clears, PlayerCopy.POLLEN_CLEARS_TITLE, PlayerCopy.POLLEN_CLEARS_NOTE, title_font)
@@ -157,6 +140,6 @@ func render(model: Dictionary) -> void:
 			retry.pressed.connect(func() -> void: retry_pressed.emit())
 			_turns.add_child(retry)
 		return
-	var cards := {"history": history, "full_journey": bool(model.get("full_journey", true)), "pictures": not purchases}
+	var cards := {"history": history, "full_journey": bool(model.get("full_journey", true))}
 	TurnsView.fill(_turns, cards, title_font)
 	ClearsView.fill(_clears, cards, title_font)

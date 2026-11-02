@@ -24,8 +24,9 @@ extends Node
 ## and no Buy.
 ## While bundles sell too (the server's POLLEN_BUNDLES and a build that sells
 ## them, services/pollen_surfaces.gd bundles_visible), the balance chip's + and
-## the short card's "Get Pollen" link ask the host to open the Pollen store
-## (store_requested); never for an Epic or a Special.
+## the short card's Get Pollen ask the host to open the Pollen store
+## (store_requested), the short card's with the bundle it suggests highlighted.
+## The chip's balance asks for the Pollen page (pollen_requested).
 ## Hooks for later phases: reaction packs (owned `packs`, the server's
 ## `offered_packs`) and sets (`sets`) are kept by services/wardrobe.gd and
 ## priced by the server. The page lists items only: the Faces tab is still to
@@ -54,8 +55,11 @@ const BusyTapGate = preload("res://presentation/busy_tap_gate.gd")
 const MODE_WARDROBE := "wardrobe"
 
 signal back_requested
-## The balance chip's + or the short card's Get Pollen: open the Pollen store.
-signal store_requested
+## The balance chip's + or the short card's Get Pollen: open the Pollen store,
+## with `bundle` highlighted ("" for none).
+signal store_requested(bundle: String)
+## The balance chip's balance: open the Pollen page.
+signal pollen_requested
 
 var host: Node
 var client: RefCounted
@@ -112,7 +116,8 @@ func show_wardrobe(from: String = "settings") -> void:
 	_page.more_chosen.connect(show_more)
 	_page.action_pressed.connect(tap_action)
 	_page.retry_pressed.connect(refresh)
-	_page.plus_pressed.connect(func() -> void: if bundles(): store_requested.emit())
+	_page.plus_pressed.connect(func() -> void: if bundles(): store_requested.emit(""))
+	_page.pollen_pressed.connect(func() -> void: pollen_requested.emit())
 	host.overlay.add_child(_page)
 	_gate = BusyTapGate.new(_page)
 	if host.has_method("_mark_screen_back"): host._mark_screen_back(_page.back_button)
@@ -196,8 +201,10 @@ func act(id: String) -> void:
 	_close_sheet()
 	var parent: Control = host.ui
 	var opener: Control = _page.action_button if is_open() else null
-	var get_pollen := (func() -> void: store_requested.emit()) if bundles() else Callable()
-	if balance < int(entry.price): _sheet = weakref(Sheets.short(parent, str(entry.name), str(entry.tier), int(entry.price), balance, get_pollen, opener))
+	if balance < int(entry.price):
+		# The card suggests the smallest bundle that covers the gap; its Get Pollen opens the store on it.
+		var get_pollen := (func(bundle: String) -> void: store_requested.emit(bundle)) if bundles() else Callable()
+		_sheet = weakref(Sheets.short(parent, str(entry.name), str(entry.tier), int(entry.price), balance, get_pollen, opener, true, _view().get("bundles", {})))
 	else: _sheet = weakref(Sheets.confirm(parent, id, str(entry.name), int(entry.price), balance, func() -> void: confirm_buy(id, int(entry.price)), opener))
 
 ## The confirm card's Buy: sends the purchase at the cost the card showed.

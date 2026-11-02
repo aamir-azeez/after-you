@@ -39,11 +39,9 @@ const PollenPlayFlow=preload("res://presentation/pollen_play_flow.gd")
 
 ## Stands in for Main's pollen_play_flow (presentation/pollen_play_flow.gd).
 class PollenStub extends PollenPlayFlow:
-	var purchases := false
 	var opened := 0
 	func available() -> bool: return true
 	func balance() -> int: return 24000
-	func purchases_shown(_history: Dictionary = {}) -> bool: return purchases
 	func open_from_settings() -> void: opened += 1
 
 class Ticks extends Node:
@@ -464,8 +462,8 @@ func _pollen_row(app: Node) -> void:
 	var stub := PollenStub.new()
 	app.add_child(stub)
 	app.pollen_play_flow = stub
-	for purchases: bool in [true, false]:
-		stub.purchases = purchases
+	# Receipts moved to the Pollen store, so the row is Pollen on every build.
+	for visit: int in [1, 2]:
 		app.settings_flow.show_settings(Flow.ACCOUNT)
 		await _settle()
 		var button := _control(app, "pollen") as Button
@@ -473,8 +471,8 @@ func _pollen_row(app: Node) -> void:
 		if button == null: continue
 		var row := button.get_parent() as Control
 		var words: Array = row.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.is_visible_in_tree()).map(func(label: Label) -> String: return label.text)
-		var name := PlayerCopy.SETTINGS_POLLEN_PURCHASES if purchases else PlayerCopy.SETTINGS_POLLEN
-		var note := PlayerCopy.SETTINGS_POLLEN_PURCHASES_NOTE if purchases else PlayerCopy.SETTINGS_POLLEN_NOTE
+		var name := PlayerCopy.SETTINGS_POLLEN
+		var note := PlayerCopy.SETTINGS_POLLEN_NOTE
 		_check(words.has(name) and words.has(note) and words.has("24,000") and row.find_child("PollenMark", true, false) != null and button.accessibility_name == name, "The row reads %s, its note, and the balance with the grain: %s" % [name, str(words)])
 		var style := button.get_theme_stylebox("normal") as StyleBoxFlat
 		_check(style != null and style.bg_color == Kit.FEATURE and style.border_color == Kit.FEATURE_EDGE and style.border_width_left == 2, "It sits on board 1's gold surface")
@@ -482,7 +480,7 @@ func _pollen_row(app: Node) -> void:
 		_check(links.is_empty(), "It is the category's first row: " + str(links.map(func(other: Button) -> String: return other.name)))
 		_check(_scroll_of(button).get_global_rect().encloses(button.get_global_rect()), "and wholly on show")
 		await _click(app, button)
-		_check(stub.opened == (1 if purchases else 2), "A tap opens the Pollen page")
+		_check(stub.opened == visit, "A tap opens the Pollen page")
 	app.pollen_play_flow = real
 	stub.free()
 	app.settings_flow.show_settings(Flow.ACCOUNT)

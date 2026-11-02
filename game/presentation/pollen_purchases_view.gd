@@ -1,16 +1,17 @@
 extends RefCounted
-## The Purchases card on Pollen from play when the page lists purchases (pollen
-## boards 1 and 2: Settings › Account & recovery › Pollen and purchases): the
-## money spent on bundles in total, then each bundle bought or refunded, newest
-## first, with its art, its Pollen, its date and the receipt line the store's
-## receipt shows ("$3.99 · Google Play order GPA.1234-..."). Money is the server's
-## US figure (services/pollen_history.gd), so it shows only for a player whose
-## store sells in US dollars (`money`), and the total says it is in US dollars.
-## Anyone else sees no total and receipt lines with the order alone.
-## Pure drawing: presentation/pollen_play_page.gd gives it the card's column and
-## the data; it keeps nothing and takes no input.
+## The receipts list behind the Pollen store's Previous purchases (pollen board
+## 2's store, presentation/pollen_store_flow.gd show_purchases): each bundle bought
+## or refunded, newest first, with its art, its Pollen, its date and the receipt
+## line the store's receipt shows ("$3.99 · Google Play order GPA.1234-...").
+## Money is the server's US figure (services/pollen_history.gd), so it shows
+## only for a player whose store sells in US dollars (`money`); anyone else sees
+## receipt lines with the order alone. No total shows anywhere.
+## open() makes the sheet (the shared in-game modal with the list on a light
+## card that scrolls); render() draws the data into it. Pure drawing: it keeps
+## nothing; presentation/pollen_store_flow.gd reads the history and calls render().
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 const BundleArt = preload("res://presentation/kit/bundle_art.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
@@ -19,21 +20,52 @@ const StoreSheets = preload("res://presentation/pollen_store_sheets.gd")
 
 const INK := Color("1d3230")
 const SOFT_INK := Color("4e6660")
-const BOX := Color("fbf8ec")
-const BOX_EDGE := Color("e4dcc4")
+## The light card the list sits on, as on the Pollen page's cards, and the list's height.
+const CARD := Color("f3efdf")
+const LIST_HEIGHT := 330.0
 const REFUND_INK := Color("8a4b42")
 const ROW_SIZE := 17
 const ART := 46.0
 const GUTTER := 10.0
 
+## The Previous purchases sheet over `parent`, its list empty until render().
+static func open(parent: Control, opener: Control = null) -> Control:
+	var modal: Control = InGameModal.open(parent, "PollenPurchases", PlayerCopy.POLLEN_PURCHASES_TITLE, PlayerCopy.for_platform(PlayerCopy.POLLEN_PURCHASES_NOTE, PlayerCopy.POLLEN_PURCHASES_NOTE_IOS), opener)
+	modal.widen(680.0)
+	var card := PanelContainer.new()
+	card.name = "PollenPurchasesCard"
+	card.add_theme_stylebox_override("panel", ControlTheme.padded(ControlTheme.rounded(CARD, 18), 20.0, 16.0))
+	modal.content.add_child(card)
+	var scroll := ScrollContainer.new()
+	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.custom_minimum_size.y = LIST_HEIGHT
+	card.add_child(scroll)
+	var column := VBoxContainer.new()
+	column.name = "PollenPurchasesList"
+	column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	column.add_theme_constant_override("separation", 10)
+	scroll.add_child(column)
+	return modal
+
+## Draws `model` (as fill() takes it) into a sheet open() made, over what it showed.
+static func render(modal: Control, model: Dictionary) -> void:
+	var column: VBoxContainer = modal.find_child("PollenPurchasesList", true, false) if is_instance_valid(modal) else null
+	if column == null: return
+	for child: Node in column.get_children():
+		column.remove_child(child)
+		child.queue_free()
+	fill(column, model)
+
 ## Fills `column` (already empty) from {lines (services/pollen_history.gd
-## purchases), spent_usd_cents (-1 when unknown: no total), money (false: no
-## money anywhere on the card), loading}: the title always, the rest once the history is in.
-static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> void:
-	var heading := ShopKit.text(PlayerCopy.POLLEN_PURCHASES_TITLE, 23, INK, title_font if title_font != null else ShopKit.heading_font())
-	column.add_child(heading)
-	column.add_child(_wrapped(PlayerCopy.for_platform(PlayerCopy.POLLEN_PURCHASES_NOTE, PlayerCopy.POLLEN_PURCHASES_NOTE_IOS), 15, SOFT_INK))
-	if bool(model.get("loading", false)): return
+## purchases), money (false: no money anywhere on the list), status (shown
+## instead of the rows while the history is loading or could not be read)}.
+static func fill(column: VBoxContainer, model: Dictionary) -> void:
+	var status := str(model.get("status", ""))
+	if not status.is_empty():
+		var waiting := _wrapped(status, ROW_SIZE, SOFT_INK)
+		waiting.name = "PollenPurchasesStatus"
+		column.add_child(waiting)
+		return
 	var lines: Array = model.get("lines", [])
 	if lines.is_empty():
 		var none := _wrapped(PlayerCopy.POLLEN_PURCHASES_NONE, ROW_SIZE, SOFT_INK)
@@ -41,30 +73,9 @@ static func fill(column: VBoxContainer, model: Dictionary, title_font: Font) -> 
 		column.add_child(none)
 		return
 	var money := bool(model.get("money", false))
-	if money and int(model.get("spent_usd_cents", -1)) >= 0: column.add_child(_total(int(model.spent_usd_cents), title_font))
 	for index in range(lines.size()):
 		if index > 0: column.add_child(_rule())
 		column.add_child(_row(lines[index], index, money))
-
-## "$23.97 spent in total", and that it is in US dollars.
-static func _total(cents: int, title_font: Font) -> Control:
-	var box := PanelContainer.new()
-	box.name = "PollenPurchasesTotal"
-	box.add_theme_stylebox_override("panel", ControlTheme.padded(ControlTheme.rounded(BOX, 14, BOX_EDGE), 16.0, 12.0))
-	var column := VBoxContainer.new()
-	column.add_theme_constant_override("separation", 4)
-	box.add_child(column)
-	var line := HBoxContainer.new()
-	line.add_theme_constant_override("separation", 10)
-	column.add_child(line)
-	var amount := ShopKit.text(PollenMoney.usd(cents), 34, INK, title_font if title_font != null else ShopKit.heading_font())
-	amount.name = "PollenPurchasesSpent"
-	line.add_child(amount)
-	var words := ShopKit.text(PlayerCopy.POLLEN_PURCHASES_SPENT, ROW_SIZE, INK)
-	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	line.add_child(words)
-	column.add_child(_wrapped(PlayerCopy.for_platform(PlayerCopy.POLLEN_PURCHASES_USD, PlayerCopy.POLLEN_PURCHASES_USD_IOS), 14, SOFT_INK))
-	return box
 
 ## One bundle or refund: its art, then the name with its Pollen on the right,
 ## the date, and the receipt line across the row's full width (an order number

@@ -110,32 +110,34 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 
 ## What the next name change costs and the balance it comes from, as the prompt
 ## shows them ({} while the shop is off or this phone has not heard the price).
-## `shown` is false on a build that shows no price (services/pollen_surfaces.gd).
+## `shown` is false on a build that shows no price (services/pollen_surfaces.gd);
+## `offer` is the wardrobe's bundles part, for the short card's suggested bundle.
 static func name_price(current: Dictionary) -> Dictionary:
 	if current.is_empty(): return {}
 	var price: int = Wardrobe.shared().name_price(str(current.server), str(current.owner))
 	var wallet: Dictionary = PollenWallet.shared().wallet(str(current.server), str(current.owner))
 	return {} if price < 0 or wallet.is_empty() else {"price": price, "balance": int(wallet.balance), "shown": PollenSurfaces.shared().shop_visible(),
-		"next": Wardrobe.shared().name_price_next(str(current.server), str(current.owner))}
+		"next": Wardrobe.shared().name_price_next(str(current.server), str(current.owner)), "offer": Wardrobe.shared().view(str(current.server), str(current.owner)).get("bundles", {})}
 
 func _price_for_prompt(current: Dictionary) -> Dictionary:
 	_prompt_price = name_price(current)
 	return _prompt_price
 
 ## The short of Pollen card for the change the open prompt prices (board 5b's
-## card, without "It stays in the shop."). Its own link, only while the Pollen
-## store can open, closes the prompt and opens the store with Back to Friends.
+## card, without "It stays in the shop."). Only while the Pollen store can open,
+## it suggests the smallest bundle that covers the change; its Get Pollen closes
+## the prompt and opens the store on that bundle, with Back to Friends.
 func _open_short(parent: Control, opener: Control) -> void:
 	var open: Variant = _short.get_ref() if _short != null else null
 	if (open is Node and is_instance_valid(open) and not open.is_queued_for_deletion()) or _prompt_price.is_empty() or not bool(_prompt_price.get("shown", false)) or not is_instance_valid(parent): return
 	var store: Variant = host.get("pollen_store_flow") if host != null else null
 	var to_store := Callable()
 	if store is Object and is_instance_valid(store) and store.available():
-		to_store = func() -> void:
+		to_store = func(bundle: String) -> void:
 			var prompt: Variant = _prompt.get_ref() if _prompt != null else null
 			if prompt is Control and is_instance_valid(prompt): prompt.close(false)
-			store.show_store("friends")
-	var card: Control = WardrobeSheets.short(parent, PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "", int(_prompt_price.price), int(_prompt_price.balance), to_store, opener, false)
+			store.show_store("friends", bundle)
+	var card: Control = WardrobeSheets.short(parent, PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "", int(_prompt_price.price), int(_prompt_price.balance), to_store, opener, false, _prompt_price.get("offer", {}))
 	# The prompt's name tag draws one step up (over its pip); the card goes over the whole prompt.
 	card.z_index = 1
 	_short = weakref(card)

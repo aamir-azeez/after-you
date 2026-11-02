@@ -11,13 +11,15 @@ extends SceneTree
 ##   names no Full Journey; the own pip shows in a short list's spare room and
 ##   never in a long one; the back square; it lays out inside the screen at
 ##   1280x720, 1600x738 and 800x360;
-## - the flow: opens from Home, Settings or the Pollen store and goes back there, reads once per
-##   opening, and the chip opens the page while the shop is off;
+## - the flow: opens from Home, Settings, the Wardrobe or the Pollen store and
+##   goes back there, reads once per opening; the chip's balance opens the page,
+##   its plus shows only while the Pollen store can open and opens it with Back
+##   to Home or the page, and on a page the store opened it goes Back instead;
 ## - purchases (pollen boards 1 and 2, Batch D): the history's purchases checked
-##   (and read from older servers' entries), the Purchases card with the money
-##   spent, each bundle and refund with its receipt line, its empty and loading
-##   states inside the screen at every size, and the page lists them only on a
-##   build that sells bundles (never iPhone or a build without bundles).
+##   (and read from older servers' entries); the Previous purchases sheet with
+##   each bundle and refund and its receipt line, money only in US dollars and
+##   never a total, its empty, loading and offline states inside the screen at
+##   every size; the page itself, titled Pollen, never lists purchases.
 const Page = preload("res://presentation/pollen_play_page.gd")
 const Flow = preload("res://presentation/pollen_play_flow.gd")
 const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
@@ -26,7 +28,6 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const HomeMenu = preload("res://presentation/home_menu.gd")
 const HomeStage = preload("res://presentation/home_stage.gd")
-const Wardrobe = preload("res://services/wardrobe.gd")
 const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
 const TurnsView = preload("res://presentation/pollen_turns_view.gd")
 const Spare = preload("res://presentation/pollen_play_spare.gd")
@@ -53,15 +54,6 @@ class FakeClient:
 		reads += 1
 		await Engine.get_main_loop().process_frame
 		return answer.duplicate(true)
-
-class FakeWardrobe:
-	extends RefCounted
-	var selling := false
-	func shop(_server: String, _owner: String) -> bool: return selling
-	func bundles(_server: String, _owner: String) -> bool: return selling
-	func view(_server: String, _owner: String) -> Dictionary: return {"bundles": {"spent_usd_cents": 777}}
-	## The own pip on the page reads the look through services/own_look.gd.
-	func active_look() -> Dictionary: return {}
 
 class Host:
 	extends Node
@@ -244,7 +236,13 @@ func _flow() -> void:
 	flow.open_from_store()
 	await _settle()
 	(host.overlay.find_child("PollenPlayBack", true, false) as Button).pressed.emit()
-	_check(back == ["home", "settings", "store"] and host.pollen_client.reads == 3, "Back goes where it opened from; each opening reads once: " + str(back))
+	flow.open_from_wardrobe()
+	await _settle()
+	(host.overlay.find_child("PollenPlayBack", true, false) as Button).pressed.emit()
+	_check(back == ["home", "settings", "store", "wardrobe"] and host.pollen_client.reads == 4, "Back goes where it opened from; each opening reads once: " + str(back))
+	flow.reopen()
+	await _settle()
+	_check(flow.is_open() and flow.return_to == "wardrobe" and host.pollen_client.reads == 5, "Opening again keeps the Back it had")
 	host.pollen_client.answer = {}
 	flow.open_from_home()
 	await _settle()
@@ -262,15 +260,16 @@ func _flow() -> void:
 		gains.append(made.gain_label.text if made.gain_label.visible else "")
 		made.free()
 	_check(gains == ["", "+125", "", ""], "The gain shows just after earning, never after a spend or on the first chip: " + str(gains))
+	await _chip_routes(flow, host, back)
 	# While the shop is off it opens this page, and no plus shows.
 	PollenSurfaces.set_shared_for_tests(false)
 	host._clear_overlay()
 	host.mode = "home"
 	await _settle()
 	var chip := flow.chip()
-	_check(chip != null and chip.plus_icon == null, "A build that sells nothing shows the chip without its plus")
-	chip.pressed.emit()
-	_check(host.mode == Flow.MODE, "The chip opens Pollen from play")
+	_check(chip != null and chip.plus_icon == null and chip.plus_button == null, "A build that sells nothing shows the chip without its plus")
+	chip.amount_pressed.emit()
+	_check(host.mode == Flow.MODE, "The chip's balance opens the Pollen page")
 	chip.free()
 	host.pollen_client.on = false
 	_check(flow.chip() == null and not flow.available(), "No chip and no page while the server has Pollen off")
@@ -332,103 +331,109 @@ func _purchase_history() -> void:
 	_check(PurchasesView.receipt_line({"usd_cents": 399, "order": "GPA.1"}) == PlayerCopy.POLLEN_STORE_ORDER % ["$3.99", "GPA.1"] and PurchasesView.receipt_line({"usd_cents": -1, "order": "GPA.1"}) == PlayerCopy.POLLEN_STORE_ORDER_ONLY % "GPA.1"
 		and PurchasesView.receipt_line({"usd_cents": 99, "order": ""}) == "$0.99", "The receipt line is the store receipt's Paid line, from what the server kept")
 
+## The chip's two halves on Home and on the page, with a stand-in Pollen store.
+func _chip_routes(flow: Node, host: Node, back: Array) -> void:
+	var routes: Array = []
+	var sells := {"on": false}
+	host._clear_overlay()
+	host.mode = "home"
+	await _settle()
+	_check(not _has_plus(flow) and flow.chip_state()[1] == false, "No plus while no Pollen store is wired")
+	flow.store_route = func(from: String) -> void: routes.append(from)
+	flow.store_sells = func() -> bool: return sells.on
+	_check(not _has_plus(flow) and flow.chip_state()[1] == false, "No plus while the Pollen store cannot sell")
+	sells.on = true
+	var home_chip: Control = flow.chip()
+	_check(home_chip.plus_button != null and flow.chip_state()[1] == true, "A plus once the Pollen store sells, and Home's chip state says so")
+	home_chip.plus_pressed.emit()
+	_check(routes == ["home"] and host.mode == "home", "Home's plus opens the store with Back to Home")
+	home_chip.amount_pressed.emit()
+	_check(flow.is_open() and flow.return_to == "home", "Home's balance opens the Pollen page")
+	await _settle()
+	var page_chip: Control = host.overlay.find_child("PollenChip", true, false)
+	page_chip.plus_pressed.emit()
+	_check(routes == ["home", "pollen"], "The page's plus opens the store with Back to the page")
+	var reads: int = host.pollen_client.reads
+	page_chip.amount_pressed.emit()
+	await _settle()
+	_check(flow.is_open() and flow.return_to == "home" and host.pollen_client.reads == reads, "The page's own balance does nothing")
+	back.clear()
+	flow.open_from_store()
+	await _settle()
+	(host.overlay.find_child("PollenChip", true, false) as Control).plus_pressed.emit()
+	_check(routes == ["home", "pollen"] and back == ["store"], "On a page the store opened, the plus goes Back to it instead of stacking another store")
+	sells.on = false
+	home_chip.plus_pressed.emit()
+	_check(routes == ["home", "pollen"], "A plus left on screen does nothing once the store stops selling")
+	home_chip.free()
+	flow.store_route = Callable()
+	flow.store_sells = Callable()
+
+## Whether a fresh chip from `flow` has its plus (the chip is freed).
+static func _has_plus(flow: Node) -> bool:
+	var made: Control = flow.chip()
+	var plus := made.plus_button != null
+	made.free()
+	return plus
+
+## The Previous purchases sheet (presentation/pollen_purchases_view.gd) at every size,
+## and the Pollen page, titled Pollen, with its two cards and no purchases.
 func _purchase_card() -> void:
 	for size: Vector2i in SIZES + [Vector2i(1600, 738)]:
 		var viewport := _viewport(size)
+		var holder := Control.new()
+		holder.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+		viewport.add_child(holder)
+		var bought := PollenHistory.checked(_with_purchases())
+		var sheet := PurchasesView.open(holder)
+		PurchasesView.render(sheet, {"status": PlayerCopy.POLLEN_PLAY_LOADING})
+		await _settle()
+		_check(_texts(sheet).has(PlayerCopy.POLLEN_PURCHASES_TITLE) and _texts(sheet).has(PlayerCopy.POLLEN_PLAY_LOADING) and sheet.find_child("PollenPurchasesNone", true, false) == null, "Loading: the sheet's title and nothing it does not know")
+		PurchasesView.render(sheet, {"lines": bought.purchases, "money": true})
+		await _settle()
+		var texts := _texts(sheet)
+		_check(sheet.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and texts.has(PlayerCopy.POLLEN_PURCHASE_REFUNDED % "Pouch") and texts.has("Basket") and texts.has("Pinch")
+			and texts.has(PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"]), "Each bundle and refund with its receipt line: " + str(texts))
+		_check(sheet.find_child("PollenPurchaseRow0", true, false).find_children("BundleArt", "", true, false).size() == 1, "A purchase row has its bundle's art")
+		_check(not texts.has("$19.99") and sheet.find_child("PollenPurchasesTotal", true, false) == null, "No total is ever shown")
+		_layout(sheet.find_child("PollenPurchasesCard", true, false), size, "the receipts list")
+		# A store selling in another currency: the same purchases, no money anywhere.
+		PurchasesView.render(sheet, {"lines": bought.purchases, "money": false})
+		await _settle()
+		var local := _texts(sheet)
+		_check(not local.any(func(text: String) -> bool: return text.contains("$")) and sheet.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and local.has(PlayerCopy.POLLEN_STORE_ORDER_ONLY % "GPA.2222-3333-4444-55555"),
+			"Not in US dollars: each bundle with its order and no money at %s: %s" % [size, str(local)])
+		PurchasesView.render(sheet, {"lines": [], "money": true})
+		await _settle()
+		_check(sheet.find_child("PollenPurchasesNone", true, false) != null and sheet.find_children("PollenPurchaseRow*", "", true, false).is_empty(), "No purchases yet")
 		var page := Page.new()
 		viewport.add_child(page)
 		var history := _history()
-		var bought := PollenHistory.checked(_with_purchases())
 		history.purchases = bought.purchases
-		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": bought.spent_usd_cents, "money": true})
+		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history})
 		await _settle()
-		var texts := _texts(page)
-		var card := page.find_child("PollenPurchasesCard", true, false) as Control
-		_check(card.visible and (page.find_child("PollenPlayTitle", true, false) as Label).text == PlayerCopy.SETTINGS_POLLEN_PURCHASES, "The page is Pollen and purchases, with its Purchases card first at %s" % size)
-		_check((page.find_child("PollenPurchasesSpent", true, false) as Label).text == "$19.99" and texts.has(PlayerCopy.POLLEN_PURCHASES_SPENT) and texts.has(PlayerCopy.POLLEN_PURCHASES_USD), "The money spent, in US dollars")
-		_check(page.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and texts.has(PlayerCopy.POLLEN_PURCHASE_REFUNDED % "Pouch") and texts.has("Basket") and texts.has("Pinch")
-			and texts.has(PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"]), "Each bundle and refund with its receipt line: " + str(texts))
-		_check(page.find_child("PollenPurchaseRow0", true, false).find_children("BundleArt", "", true, false).size() == 1, "A purchase row has its bundle's art")
-		_check(page.find_child("PollenTurnRow0", true, false).find_child("ChapterPicture", true, false) == null and page.find_child("PollenClearRow0", true, false).find_child("ChapterPicture", true, false) == null, "Three cards leave the chapter pictures out at %s" % size)
-		_layout(page, size, "the page with purchases")
-		# A store selling in another currency: the same purchases, no money anywhere.
-		page.render({"chip": PollenChip.make(24000, true), "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": bought.spent_usd_cents, "money": false})
-		await _settle()
-		var local := _texts(page)
-		_check(page.find_child("PollenPurchasesTotal", true, false) == null and not local.has(PlayerCopy.POLLEN_PURCHASES_USD) and not local.any(func(text: String) -> bool: return text.contains("$")),
-			"Not in US dollars: no total and no money at %s: %s" % [size, str(local)])
-		_check(page.find_children("PollenPurchaseRow*", "", true, false).size() == 4 and local.has(PlayerCopy.POLLEN_STORE_ORDER_ONLY % "GPA.2222-3333-4444-55555") and local.has("Basket"),
-			"Not in US dollars: each bundle still shows with its order")
-		_layout(page, size, "the page with purchases and no money")
-		page.render({"chip": PollenChip.make(0, true), "full_journey": true, "status": "", "retry": false, "history": PollenHistory.checked({"schema_version": 1.0, "entries": []}), "purchases": true})
-		await _settle()
-		_check(page.find_child("PollenPurchasesNone", true, false) != null and page.find_child("PollenPurchasesTotal", true, false) == null, "No purchases yet, and no total")
-		page.render({"chip": null, "full_journey": true, "status": "", "retry": false, "history": history, "purchases": true, "spent_usd_cents": -1, "money": true})
-		await _settle()
-		_check(page.find_child("PollenPurchasesTotal", true, false) == null and page.find_children("PollenPurchaseRow*", "", true, false).size() == 4, "An unknown total shows no figure; the purchases still show")
-		page.render({"chip": null, "full_journey": true, "status": PlayerCopy.POLLEN_PLAY_LOADING, "retry": false, "history": {}, "purchases": true})
-		await _settle()
-		_check(card.visible and _texts(card).has(PlayerCopy.POLLEN_PURCHASES_TITLE) and page.find_child("PollenPurchasesNone", true, false) == null, "Loading: the card keeps its title and shows nothing it does not know")
-		page.render({"chip": null, "full_journey": true, "status": "", "retry": false, "history": _history(), "purchases": false})
-		await _settle()
-		_check(not card.visible and (page.find_child("PollenPlayTitle", true, false) as Label).text == PlayerCopy.POLLEN_PLAY_TITLE, "Without purchases it is Pollen from play, as before")
+		_check((page.find_child("PollenPlayTitle", true, false) as Label).text == "Pollen" and page.find_child("PollenPurchasesCard", true, false) == null and page.find_children("PollenPurchaseRow*", "", true, false).is_empty(), "The page is Pollen, with no purchases on it at %s" % size)
+		_check(page.find_child("PollenTurnRow0", true, false).find_child("ChapterPicture", true, false) != null, "Two cards keep their chapter pictures at %s" % size)
 		viewport.queue_free()
 		await _settle()
 
+## The page from Settings on a Google Play build while bundles sell: purchases
+## in the history never show here, nor any money.
 func _purchase_flow() -> void:
-	var store := FakeWardrobe.new()
-	Wardrobe.use_shared(store)
 	var viewport := _viewport(SIZES[1])
 	var host := Host.new()
 	viewport.add_child(host)
 	var flow := Flow.new(host)
 	host.add_child(flow)
 	host.pollen_client.answer = PollenHistory.checked(_with_purchases())
-	for build: Array in [[true, true, true, "a Google Play build while bundles sell"], [false, false, false, "iPhone"], [true, false, false, "a build without bundles"]]:
-		PollenSurfaces.set_shared_for_tests(build[0], build[1])
-		flow.surfaces = null
-		store.selling = true
-		StoreCurrency.note(_offerings("USD"))
-		_check(flow.purchases_shown() == build[2], "The row and page list purchases on %s: %s" % [build[3], build[2]])
-		flow.open_from_settings()
-		await _settle()
-		var card := host.overlay.find_child("PollenPurchasesCard", true, false) as Control
-		_check(card != null and card.visible == build[2], "The Purchases card on %s: %s" % [build[3], build[2]])
-		var money := _texts(host.overlay).any(func(text: String) -> bool: return text.contains("$") or text.contains("Google Play"))
-		_check(money == build[2], "%s: money shows only with purchases" % build[3])
-	_check(flow.spent_usd_cents({"spent_usd_cents": 1999}) == 1999 and flow.spent_usd_cents({"spent_usd_cents": -1}) == 777, "The total is the history's, else the wallet read's")
-	# The flow shows money only while the store sells in US dollars.
 	PollenSurfaces.set_shared_for_tests(true, true)
-	flow.surfaces = null
-	store.selling = true
-	StoreCurrency.note(_offerings("GBP"))
-	_check(not flow.money_shown(), "A store in pounds shows no money")
-	flow.open_from_settings()
-	await _settle()
-	var pounds := _texts(host.overlay)
-	_check(host.overlay.find_child("PollenPurchasesCard", true, false).visible and not pounds.any(func(text: String) -> bool: return text.contains("$")) and pounds.any(func(text: String) -> bool: return text.contains("Google Play order")),
-		"In pounds the page lists each purchase with its order and no dollar figure: " + str(pounds))
 	StoreCurrency.note(_offerings("USD"))
-	_check(flow.money_shown(), "Back in US dollars the money shows again")
-	# Bundles off later: a player who bought still sees them once the history says so.
-	PollenSurfaces.set_shared_for_tests(true, true)
-	flow.surfaces = null
-	store.selling = false
-	_check(not flow.purchases_shown(), "With bundles off the Settings row is Pollen")
 	flow.open_from_settings()
 	await _settle()
-	_check((host.overlay.find_child("PollenPurchasesCard", true, false) as Control).visible, "but a history with purchases still lists them")
-	host.pollen_client.answer = {}
-	flow.open_from_settings()
-	await _settle()
-	_check(not (host.overlay.find_child("PollenPurchasesCard", true, false) as Control).visible and _texts(host.overlay).has(PlayerCopy.POLLEN_PLAY_OFFLINE), "Offline with bundles off: no card, the page says so")
-	store.selling = true
-	flow.open_from_settings()
-	await _settle()
-	var offline := host.overlay.find_child("PollenPurchasesCard", true, false) as Control
-	_check(offline.visible and host.overlay.find_child("PollenPurchasesNone", true, false) == null and host.overlay.find_child("PollenPlayRetry", true, false) != null, "Offline while bundles sell: the card's title, no guess, and Try again")
+	var texts := _texts(host.overlay)
+	_check(host.overlay.find_child("PollenPurchasesCard", true, false) == null and not texts.any(func(text: String) -> bool: return text.contains("$") or text.contains("Google Play")) and texts.has("Pollen"),
+		"The Pollen page from Settings lists no purchases and no money: " + str(texts))
 	PollenSurfaces.set_shared_for_tests(null)
-	Wardrobe.use_shared(null)
 	viewport.queue_free()
 	await _settle()
 

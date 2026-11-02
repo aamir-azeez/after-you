@@ -171,7 +171,7 @@ const POLLEN_WEAR_FAILED := "That did not go on just now. It's in your Wardrobe 
 const POLLEN_BLOOM_SHORT := "×%d"
 # Pollen from play (presentation/pollen_play_page.gd, pollen board 7b). Every
 # number in these lines comes from the server.
-const POLLEN_PLAY_TITLE := "Pollen from play"
+const POLLEN_PLAY_TITLE := "Pollen"
 const POLLEN_PLAY_SUBTITLE := "A week away costs you nothing."
 const POLLEN_PLAY_LOADING := "Loading your Pollen…"
 const POLLEN_PLAY_OFFLINE := "Pollen from play did not load. Try again in a moment."
@@ -208,16 +208,10 @@ const POLLEN_CLEARS_ALL_PAID := "earned from first clears"
 const POLLEN_CLEARS_COUNT := "%d of %d cleared"
 const SETTINGS_POLLEN := "Pollen"
 const SETTINGS_POLLEN_NOTE := "Your balance, the turn bank and first clears."
-## The same row while bundles sell (pollen board 1), and Pollen from play's title when it lists purchases.
-const SETTINGS_POLLEN_PURCHASES := "Pollen and purchases"
-const SETTINGS_POLLEN_PURCHASES_NOTE := "Your balance, total money spent, bundles and their receipts."
-# The purchases card on that page (presentation/pollen_purchases_view.gd).
-const POLLEN_PURCHASES_TITLE := "Purchases"
+# Previous purchases, opened from the Pollen store (presentation/pollen_purchases_view.gd).
+const POLLEN_PURCHASES_TITLE := "Previous purchases"
 const POLLEN_PURCHASES_NOTE := "Pollen bundles you bought, each with its Google Play receipt."
 const POLLEN_PURCHASES_NOTE_IOS := "Pollen bundles you bought, each with its store receipt."
-const POLLEN_PURCHASES_SPENT := "spent in total"
-const POLLEN_PURCHASES_USD := "In US dollars, as Google Play reported each purchase."
-const POLLEN_PURCHASES_USD_IOS := "In US dollars, as each store reported the purchase."
 const POLLEN_PURCHASES_NONE := "No purchases yet."
 const POLLEN_PURCHASE_REFUNDED := "%s refunded"
 
@@ -311,6 +305,11 @@ const WARDROBE_SHORT_NEEDED := "Needed:"
 const WARDROBE_SHORT_MORE := " more"
 const WARDROBE_SHORT_STAYS := "It stays in the shop."
 const WARDROBE_GET_POLLEN := "Get Pollen"
+## The short card's nudge to the smallest bundle that covers the gap, or the largest when none does.
+const WARDROBE_SHORT_BUNDLE := "Get the %s to buy this."
+const WARDROBE_SHORT_BUNDLE_CLOSEST := "The %s gets you closest."
+## The balance chip's left half, for screen readers.
+const POLLEN_CHIP_BALANCE := "Pollen: %s"
 
 # The Pollen store (board 2: presentation/pollen_store_page.gd, pollen_store_flow.gd).
 const POLLEN_STORE_TITLE := "Pollen"
@@ -325,8 +324,8 @@ const POLLEN_STORE_BONUS := "%s + %s bonus · %d%% more"
 const POLLEN_STORE_PER_DOLLAR := "%s Pollen per $1"
 const POLLEN_STORE_PER_UNIT := "%s Pollen per 1 %s"
 const POLLEN_STORE_EARN := "Earn Pollen free by playing"
-const POLLEN_STORE_FOOT := "Google Play shows the price in your currency before you pay. Receipts: Settings › Account & recovery."
-const POLLEN_STORE_FOOT_IOS := "The App Store shows the price in your currency before you pay. Receipts: Settings › Account & recovery."
+const POLLEN_STORE_FOOT := "Google Play shows the price in your currency before you pay."
+const POLLEN_STORE_FOOT_IOS := "The App Store shows the price in your currency before you pay."
 const POLLEN_STORE_LOADING := "Opening the store…"
 const POLLEN_STORE_OFFLINE := "The store isn't reachable right now. Try again in a moment."
 ## The confirm card ("Buy a Pouch?") with its plain sums.

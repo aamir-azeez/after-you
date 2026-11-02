@@ -104,11 +104,9 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "account_intro", "category": ACCOUNT, "kind": INFO, "label": "", "visible_if": state.call(["pending", "restart", "ready", "missing", "unread", "offline"]),
 			"note": PlayerCopy.for_platform(PlayerCopy.MAIN_F890477C65DE, PlayerCopy.MAIN_F890477C65DE_IOS)},
 		{"id": "cleanup_note", "category": ACCOUNT, "kind": INFO, "label": "", "note": PlayerCopy.MAIN_EC79109D7607, "visible_if": state.call(["cleanup"])},
-		# Pollen board 1's row: the balance, the turn bank and first clears (presentation/pollen_play_flow.gd);
-		# "Pollen and purchases", with the money spent and receipts, on a build where bundles sell (never iPhone).
-		{"id": "pollen", "category": ACCOUNT, "kind": LINK, "featured": true,
-			"label": func() -> String: return PlayerCopy.SETTINGS_POLLEN_PURCHASES if host.pollen_play_flow.purchases_shown() else PlayerCopy.SETTINGS_POLLEN,
-			"note": func() -> String: return PlayerCopy.SETTINGS_POLLEN_PURCHASES_NOTE if host.pollen_play_flow.purchases_shown() else PlayerCopy.SETTINGS_POLLEN_NOTE,
+		# Pollen board 1's row: the balance, the turn bank and first clears (presentation/pollen_play_flow.gd).
+		# Receipts live behind the Pollen store's Previous purchases.
+		{"id": "pollen", "category": ACCOUNT, "kind": LINK, "featured": true, "label": PlayerCopy.SETTINGS_POLLEN, "note": PlayerCopy.SETTINGS_POLLEN_NOTE,
 			"open": func() -> void: host.pollen_play_flow.open_from_settings(), "pollen_value": func() -> int: return host.pollen_play_flow.balance(),
 			"visible_if": func() -> bool: return host.get("pollen_play_flow") != null and host.pollen_play_flow.available()},
 		{"id": "retry_cleanup", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_RETRY_CLEANUP, "run": account.clear_deleted_identity, "visible_if": state.call(["cleanup"])},

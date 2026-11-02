@@ -21,7 +21,12 @@ extends SceneTree
 ##   stays waiting, goes again on the next flush, and its receipt shows on the
 ##   next visit; a refund the server took back shows in the balance, below zero;
 ## - a tap while a claim is still out waits for it (first taps);
-## - the claims service checks every answer and keeps its waiting mark on disk.
+## - the claims service checks every answer and keeps its waiting mark on disk;
+## - the bundle a short card suggests (services/pollen_bundles.gd cover) and
+##   its highlight; the chip without a plus, whose balance opens the Pollen
+##   page (or goes Back to it when the page opened the store); Previous
+##   purchases opens the receipts list from one history read, money only in US
+##   dollars; the footnote no longer points to Settings.
 const Flow = preload("res://presentation/pollen_store_flow.gd")
 const BundleClaims = preload("res://services/bundle_claims.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
@@ -32,6 +37,9 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const StoreSupport = preload("res://services/store_support.gd")
+const StoreCurrency = preload("res://services/store_currency.gd")
+const PollenHistory = preload("res://services/pollen_history.gd")
+const PollenChip = preload("res://presentation/kit/pollen_chip.gd")
 
 # Synthetic ids only.
 const ME := "bbbbbbbbbbbbbbbbbbbbbb"
@@ -52,6 +60,7 @@ class Host extends Node:
 	var scope := {}
 	var earning_opened := 0
 	var earning_opens := true
+	var pollen_client: RefCounted = null
 	func show_pollen_from_play() -> bool:
 		earning_opened += 1
 		return earning_opens
@@ -101,6 +110,16 @@ class FakePurchases extends Node:
 			"silent": pass
 			_: failed.emit.call_deferred(id, "purchase_package", "revenuecat_STORE_PROBLEM", "The store had a problem.", false)
 		return id
+
+## The Pollen history read behind Previous purchases (services/pollen_client.gd history).
+class FakeHistory extends RefCounted:
+	var tree: SceneTree
+	var answer: Dictionary = {}
+	var reads := 0
+	func history() -> Dictionary:
+		reads += 1
+		await tree.process_frame
+		return answer.duplicate(true)
 
 class Fake extends RefCounted:
 	var tree: SceneTree
@@ -207,6 +226,9 @@ func _run() -> void:
 	await _first_tap_waits()
 	await _claims_service()
 	await _iphone()
+	_cover()
+	await _suggested_and_routes()
+	await _previous_purchases()
 	for path: String in _paths:
 		for suffix: String in ["", ".tmp", ".backup"]:
 			if FileAccess.file_exists(path + suffix): DirAccess.remove_absolute(path + suffix)
@@ -248,7 +270,8 @@ func _cards() -> void:
 	_check(page.find_children("BundleArt", "", true, false).size() == 4, "Each card has its art")
 	_check(not (page.find_child("PollenStoreGift", true, false) as Control).visible, "No first bundle line while that gift is off")
 	_check("9,000" in _texts(page.find_child("PollenStoreBalance", true, false)) and PlayerCopy.POLLEN_STORE_YOU_HAVE in words, "The chip says You have 9,000")
-	_check(PlayerCopy.POLLEN_STORE_EARN in words and PlayerCopy.POLLEN_STORE_FOOT in words and PlayerCopy.POLLEN_STORE_FOOT.ends_with("Receipts: Settings › Account & recovery."), "Earn Pollen free by playing and the footnote, with where receipts are")
+	_check(PlayerCopy.POLLEN_STORE_EARN in words and PlayerCopy.POLLEN_PURCHASES_TITLE in words and PlayerCopy.POLLEN_STORE_FOOT in words and not words.any(func(word: String) -> bool: return word.contains("Settings")),
+		"Earn Pollen free by playing, Previous purchases, and the footnote, which no longer points to Settings")
 	var toasts: int = t.host.toasts.size()
 	(page.find_child("PollenStoreEarn", true, false) as Button).pressed.emit()
 	_check(t.host.earning_opened == 1 and t.host.toasts.size() == toasts, "Earn Pollen free by playing opens Pollen from play on the first tap")
@@ -642,6 +665,90 @@ func _iphone() -> void:
 	await _frames(2)
 	StoreSupport.use_shared(null)
 	PlatformSupport.override_platform = ""
+
+## The bundle a short card suggests: the smallest that covers the gap, the first
+## bundle gift counted only while it is on, else the largest.
+func _cover() -> void:
+	var gift := {"first_gift": true, "first_gift_percent": 20}
+	_check(Bundles.cover(80000 - 1200) == "basket", "An 80,000 item with 1,200 Pollen points to the Basket")
+	_check(Bundles.cover(1) == "pinch" and Bundles.cover(5000) == "pinch" and Bundles.cover(5001) == "pouch" and Bundles.cover(44000) == "jar", "The smallest bundle whose Pollen covers the gap, bonus included")
+	_check(Bundles.cover(50000) == "basket" and Bundles.cover(50000, gift) == "jar" and Bundles.adds("jar", gift) == 52800, "The first bundle gift counts while it is on: %s" % Bundles.adds("jar", gift))
+	_check(Bundles.cover(50000, {"first_gift": false, "first_gift_percent": 20}) == "basket", "A used gift counts for nothing")
+	_check(Bundles.cover(500000) == "basket", "A gap no bundle covers points to the largest")
+
+## A short card's suggestion opens the store with that bundle highlighted; the
+## chip there has no plus and its balance opens the Pollen page, or goes Back
+## to it when the Pollen page opened the store.
+func _suggested_and_routes() -> void:
+	var t := _setup()
+	t.flow.show_store("wardrobe", "basket")
+	await _frames()
+	var page: Node = t.host.overlay
+	var picked := (page.find_child("PollenStoreBundle_basket", true, false) as Control).get_theme_stylebox("panel") as StyleBoxFlat
+	var other := (page.find_child("PollenStoreBundle_jar", true, false) as Control).get_theme_stylebox("panel") as StyleBoxFlat
+	_check(t.flow.highlight == "basket" and picked.border_width_top > 0 and picked.border_color == PollenChip.GOLD and other.border_width_top == 0, "The suggested bundle has a gold edge, the others none")
+	var chip: Control = page.find_child("PollenChip", true, false)
+	_check(chip != null and chip.plus_button == null, "The store's own chip has no plus")
+	chip.amount_pressed.emit()
+	_check(t.host.earning_opened == 1, "Its balance opens the Pollen page")
+	t.flow.show_store("pollen")
+	await _frames()
+	_check(t.flow.highlight == "" and page.find_child("PollenStoreBundle_basket", true, false).get_theme_stylebox("panel").border_width_top == 0, "Opened without a suggestion, no bundle is highlighted")
+	var back := {"count": 0}
+	t.flow.back_requested.connect(func() -> void: back.count += 1)
+	(page.find_child("PollenChip", true, false) as Control).amount_pressed.emit()
+	(page.find_child("PollenStoreEarn", true, false) as Button).pressed.emit()
+	_check(back.count == 2 and t.host.earning_opened == 1, "Opened from the Pollen page, its balance and Earn go Back to it instead of stacking another")
+	t.flow.show_store("home", "jar")
+	t.flow.reopen()
+	_check(t.flow.return_to == "home" and t.flow.highlight == "jar", "Opening again keeps its Back and its highlight")
+	t.flow.show_store("home", "chest")
+	_check(t.flow.highlight == "", "An unknown bundle is never highlighted")
+	t.host.queue_free()
+	await _frames(2)
+
+## Previous purchases: the receipts list, read once per opening, money only while
+## the store sells in US dollars, offline said plainly, and a newer read wins.
+func _previous_purchases() -> void:
+	var t := _setup()
+	var history := FakeHistory.new()
+	history.tree = self
+	history.answer = PollenHistory.checked({"schema_version": 1.0, "entries": [], "first_clears": [], "spent_usd_cents": 1999.0, "purchases": [
+		{"kind": "bundle", "amount": 115000.0, "at": 1.80e12, "bundle": "basket", "order": "GPA.2222-3333-4444-55555", "usd_cents": 1999.0}]})
+	t.host.pollen_client = history
+	StoreCurrency.use_path(_path("currency"))
+	StoreCurrency.note(_offerings())
+	t.flow.show_store()
+	await _frames()
+	var button := t.host.overlay.find_child("PollenStorePurchases", true, false) as Button
+	_check(button != null and button.is_visible_in_tree(), "Previous purchases shows on the store")
+	button.pressed.emit()
+	var sheet: Node = t.host.ui.find_child("PollenPurchases", true, false)
+	_check(sheet != null and PlayerCopy.POLLEN_PLAY_LOADING in _texts(sheet) and history.reads == 1, "It opens the receipts list at once, loading, from one read")
+	await _frames()
+	var words := _texts(sheet)
+	_check(PlayerCopy.POLLEN_PURCHASES_TITLE in words and "Basket" in words and PlayerCopy.POLLEN_STORE_ORDER % ["$19.99", "GPA.2222-3333-4444-55555"] in words and sheet.find_children("PollenPurchaseRow*", "", true, false).size() == 1,
+		"Each bundle with its receipt line: " + str(words))
+	_check(not words.any(func(word: String) -> bool: return word.contains("total")), "No total")
+	sheet.close()
+	await _frames(2)
+	StoreCurrency.note({"schema_version": 1, "offerings": [{"id": "pollen", "packages": [{"id": "p", "product_id": Bundles.product("pinch", Bundles.PLAY_STORE), "price": "£0.99", "price_micros": 990000.0, "currency": "GBP"}]}]})
+	button.pressed.emit()
+	await _frames()
+	sheet = t.host.ui.find_child("PollenPurchases", true, false)
+	words = _texts(sheet)
+	_check(history.reads == 2 and not words.any(func(word: String) -> bool: return word.contains("$")) and PlayerCopy.POLLEN_STORE_ORDER_ONLY % "GPA.2222-3333-4444-55555" in words, "In pounds: the order and no money: " + str(words))
+	history.answer = {}
+	button.pressed.emit()
+	await _frames()
+	# A second tap closes the open list and opens a fresh one.
+	var open: Array = t.host.ui.get_children().filter(func(node: Node) -> bool: return str(node.name).contains("PollenPurchases") and not node.is_queued_for_deletion())
+	_check(open.size() == 1, "One receipts list at a time")
+	sheet = open.back()
+	_check(PlayerCopy.POLLEN_PLAY_OFFLINE in _texts(sheet) and sheet.find_child("PollenPurchasesNone", true, false) == null, "Offline: it says so and guesses nothing")
+	StoreCurrency.use_path(StoreCurrency.PATH)
+	t.host.queue_free()
+	await _frames(2)
 
 static func _texts(node: Node) -> Array:
 	var out: Array = []

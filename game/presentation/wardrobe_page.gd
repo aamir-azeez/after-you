@@ -1,8 +1,8 @@
 extends Control
 ## The Wardrobe page as Pollen board 5b draws it ("Wardrobe, always open"):
 ## - the header: the coral back square, "Wardrobe" over its note, and the
-##   balance chip with the grain (kit/pollen_chip.gd), whose + opens the Pollen
-##   store only while bundles sell;
+##   balance chip with the grain (kit/pollen_chip.gd): its balance opens the
+##   Pollen page, and its +, only while bundles sell, the Pollen store;
 ## - on the left, the big pip wearing what is picked, with the "Your pip" /
 ##   "As your friend sees you" switch (the friend's room shows your pip in mint),
 ##   "Drag to turn your pip." and one main button: Buy for [grain] N about $X,
@@ -79,12 +79,14 @@ signal more_chosen(kind: String)
 signal action_pressed(id: String)
 signal retry_pressed
 signal plus_pressed
+## The balance on the chip: the Pollen page.
+signal pollen_pressed
 
 var back_button: Button
 var action_button: Button
 var preview: Control
 ## The balance chip (kit/pollen_chip.gd), made again only when what it shows changes.
-var chip: Button
+var chip: Control
 var _chip_box: HBoxContainer
 var _chip_shown := []
 var _status: Label
@@ -381,7 +383,8 @@ func _show_chip(balance: int, known: bool, plus: bool) -> void:
 	chip = null
 	if not known: return
 	chip = PollenChip.make(balance, plus)
-	chip.pressed.connect(func() -> void: if plus: plus_pressed.emit())
+	chip.amount_pressed.connect(func() -> void: pollen_pressed.emit())
+	chip.plus_pressed.connect(func() -> void: plus_pressed.emit())
 	_chip_box.add_child(chip)
 
 func _show_selected(entry: Dictionary, shop: bool) -> void:
