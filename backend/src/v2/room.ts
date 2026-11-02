@@ -1128,7 +1128,11 @@ export class RoomV2 extends DurableObject<Env> {
   /** The duel this room plays for, or null (duels/room-link.ts); a retried premium turn's hook asks it. */
   duelLinkOf(): DuelLink | null { return duelLink(this.ctx.storage); }
   /** Binding only: a friend duel's run for one of the other pair (duels/their-run.ts), in the blob format. */
-  theirRun(viewer: string, now: number = Date.now()): Promise<Outcome<TheirRun>> { return serveTheirRun(this.ctx.storage, viewer, now); }
+  /** `looks` (POLLEN_LOOKS on): also each turn's look by recording hash (pollen/room-looks.ts), so the run plays in the looks it was played in. */
+  async theirRun(viewer: string, now: number = Date.now(), looks = false): Promise<Outcome<TheirRun & { turn_looks?: Record<string, Look> }>> {
+    const run = await serveTheirRun(this.ctx.storage, viewer, now);
+    return run.ok && looks ? ok({ ...run.value, turn_looks: turnLooks(this.ctx.storage) }) : run;
+  }
   /** Binding only: one of the other pair keeps the run named by `digest`; the copy goes once both do. */
   acknowledgeTheirRun(viewer: string, digest: string): Outcome<{ kept: boolean }> { return acknowledgeTheirRun(this.ctx.storage, viewer, digest); }
   /** Binding only: the board's sweep drops the copy (keep over) or an erased player from it. */

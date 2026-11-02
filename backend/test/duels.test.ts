@@ -1002,6 +1002,26 @@ describe("duel looks", () => {
     expect((await detail(a1, raced)).duel.ghost).not.toHaveProperty("looks");
   }, 60_000);
 
+  it("let the other pair's run play in the looks each turn was played in", async () => {
+    const { a1, a2, b1, b2 } = await pairs();
+    await wear(a1, { hat: "daisy" });
+    const sent = (await ok<{ duel: DuelView }>(call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY }, LOOKS))).duel;
+    await ok(call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 }, LOOKS));
+    const hashes: string[] = [];
+    for (const [host, guest, slower] of [[a1, a2, 0], [b1, b2, 40]] as [Account, Account, number][]) {
+      let current = await joinWith(guest, await openWith(host, sent));
+      for (const [who, recording, checkpoint] of (await relayRun(slower)).turns) {
+        current = (await ok<MutationV2>(call(`/v2/rooms/${current.room_id}/turns`, "POST", [host, guest][who], turn(current, recording, checkpoint), LOOKS))).room;
+        if (host === a1 && who === 0) hashes.push(recording.recording_hash as string);
+      }
+    }
+    const theirs = (vars: typeof LOOKS) => ok<Any>(call(`/v1/duels/${RELAY}/${sent.duel_id}/their-run`, "GET", b1, undefined, vars));
+    const looks = (await theirs(LOOKS)).turn_looks as Record<string, Any>;
+    expect(Object.keys(looks).sort()).toEqual([...hashes].sort());
+    for (const hash of hashes) expect(looks[hash]).toEqual({ hat: "daisy" });
+    expect(await theirs(ON)).not.toHaveProperty("turn_looks");
+  }, 60_000);
+
   it("add no request to any step and write a party row only when a look changed", async () => {
     const { a1, a2, b1 } = await pairs(true);
     await wear(a1, { hat: "daisy" });

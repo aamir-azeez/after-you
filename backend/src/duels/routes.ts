@@ -422,15 +422,17 @@ async function otherRun(env: Env, player: string, board: string, duelId: string)
  * GET /v1/duels/<board>/<duel>/their-run: the other pair's run, from the room that played it, once the
  * duel is over for this pair (their own run finished or they left, or the duel settled) and until its
  * keep is over. The answer names the duel only: the final checkpoint holds no player or room id.
- * Requests: 2 (the board, to check and find the room; the room).
+ * While looks are on it also carries `turn_looks`, each turn's look by recording hash from the same
+ * room, which the phone keeps as for any replay (services/turn_looks.gd). Requests: 2 (the board, to
+ * check and find the room; the room).
  */
 async function theirRun(env: Env, player: string, board: string, duelId: string, now: number) {
   const { duel, mine, room_id } = await otherRun(env, player, board, duelId);
   const own = duel.sides[mine]!;
   if (!isFinal(duel) && own.finished_ms === null && !own.left) throw new ApiError(409, "their_run_not_yet");
   if (isFinal(duel) && (duel.result?.decided_ms ?? duel.updated_ms) + THEIR_RUN_KEEP_MS <= now) throw new ApiError(410, "their_run_gone");
-  const run = unwrap(await env.ROOMS_V2.getByName(room_id).theirRun(player, now));
-  return { schema_version: 1, duel_id: duel.duel_id, board, digest: run.digest, byte_length: run.byte_length, body: blobBase64(run.body) };
+  const run = unwrap(await env.ROOMS_V2.getByName(room_id).theirRun(player, now, looksOn(env)));
+  return { schema_version: 1, duel_id: duel.duel_id, board, digest: run.digest, byte_length: run.byte_length, body: blobBase64(run.body), ...(run.turn_looks ? { turn_looks: run.turn_looks } : {}) };
 }
 
 /**
