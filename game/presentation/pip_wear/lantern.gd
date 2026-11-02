@@ -1,10 +1,10 @@
 extends RefCounted
-## Lantern (hat): a stalk that grows out of the head beside the leaf, arcs
-## forward and over, and holds a paper lantern on a short string with a hook
-## at its tip, beside the head, clear of the eyes and a carried seed. It sits
-## on the upper body (not the leaf). The glow is the paper's emission plus one
-## small sprite on the lantern's outer side, away from the head. Draw calls:
-## stalk, string and trim; paper; glow.
+## Lantern (hat): a stalk that grows out of the head on the side away from the
+## leaf, arcs forward and over, and holds a paper lantern on a short string
+## with a hook at its tip, beside the head, clear of the eyes and a carried
+## seed. It sits on the upper body (not the leaf). The glow is the paper's
+## emission plus one small sprite on the lantern's outer side, away from the
+## head. Draw calls: stalk, string and trim; paper; glow.
 const Kit = preload("res://presentation/kit/pip_wear_kit.gd")
 
 const GREEN := Color("5e9e45")
@@ -17,23 +17,23 @@ const STRING := Color("6b4c31")
 const GLOW := Color("ffb85c")
 ## The stalk's points, upper body space: it starts inside the head, so it
 ## grows out of the skin, and its tip sits above the lantern.
-const STALK: Array[Vector3] = [Vector3(-0.135, 0.79, 0.07), Vector3(-0.16, 0.9, 0.11), Vector3(-0.2, 0.955, 0.145), Vector3(-0.27, 0.975, 0.17), Vector3(-0.33, 0.95, 0.18), Vector3(-0.35, 0.91, 0.18)]
+const STALK: Array[Vector3] = [Vector3(0.135, 0.79, 0.07), Vector3(0.16, 0.9, 0.11), Vector3(0.2, 0.955, 0.145), Vector3(0.27, 0.975, 0.17), Vector3(0.33, 0.95, 0.18), Vector3(0.35, 0.91, 0.18)]
 const STALK_RADIUS := 0.018
 ## How far each stalk piece runs past its ends, so the joints close.
 const STALK_OVERLAP := 0.008
-const POD_AT := Vector3(-0.35, 0.782, 0.18)
+const POD_AT := Vector3(0.35, 0.782, 0.18)
 const POD_SCALE := 1.15
 const POD_SIZE := Vector3(0.058, 0.05, 0.058)
 ## The string from the stalk's tip down to the cap, and the hook at the tip.
-const STRING_FROM := Vector3(-0.35, 0.914, 0.18)
-const STRING_TO := Vector3(-0.35, 0.846, 0.18)
+const STRING_FROM := Vector3(0.35, 0.914, 0.18)
+const STRING_TO := Vector3(0.35, 0.846, 0.18)
 const STRING_RADIUS := 0.0065
-const HOOK_AT := Vector3(-0.35, 0.912, 0.18)
+const HOOK_AT := Vector3(0.35, 0.912, 0.18)
 ## The glow sprite: its size, strength, and how far it sits out from the pod
 ## (away from the head).
 const GLOW_SIZE := 0.17
 const GLOW_STRENGTH := 0.55
-const GLOW_OUT := Vector3(-0.02, 0.0, 0.025)
+const GLOW_OUT := Vector3(0.02, 0.0, 0.025)
 
 static func wear(look: RefCounted) -> void:
 	var body: Node3D = look.upper_body()
