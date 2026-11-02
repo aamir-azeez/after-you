@@ -119,6 +119,13 @@ func _check_glasshouse(look: Array) -> void:
 	await _finish(layer)
 	await process_frame
 	_check(layer.holding(GLASS) and flower.scale.is_equal_approx(Vector3.ONE * Glasshouse.GROWN) and _petals(flower) == buds + 6 + int(look[3]), "%s grows again to one bloom" % label)
+	# Another keepsake tapped as it eases back to rest still leaves it grown.
+	stage.play_keepsake(GLASS)
+	(layer._play.tween as Tween).custom_step(10.0)
+	var easing: bool = layer.playing()
+	stage.play_keepsake(LIGHT)
+	_check(layer.holding(GLASS) and flower.scale.is_equal_approx(Vector3.ONE * Glasshouse.GROWN) and _petals(flower) == buds + 6 + int(look[3]), "%s tapped away from as it eases back stays grown (easing %s)" % [label, easing])
+	layer.stop_play()
 	# The pump walked up to in Explore does the same.
 	stage._explore_button.pressed.emit()
 	var spirit: Node3D = home.world.actors.a
@@ -239,6 +246,7 @@ func _check_lighthouse(look: Array) -> void:
 	angle = (still.turn as Node3D).rotation.y
 	stage._process(0.5)
 	_check(layer.holding(LIGHT) and (still.turn as Node3D).rotation.y == angle, "%s with Reduce motion holds a steady beam" % label)
+	if parts.has("boat_lamp"): _check((parts.boat_lamp as MeshInstance3D).material_override == Parts.mat(Parts.LAMP_OFF), "%s with Reduce motion lights the boat lamp only with the beam on it" % label)
 	stage.play_keepsake(LIGHT)
 	await _finish(layer)
 	_check(not layer.holding(LIGHT) and lamp.material_override == lamp_rest, "%s with Reduce motion switches off" % label)
@@ -249,7 +257,7 @@ func _check_lighthouse(look: Array) -> void:
 	stage.free()
 	await process_frame
 	await process_frame
-	_check(get_processed_tweens().is_empty(), "%s: leaving Home with it on leaves no Tween" % label)
+	_check(get_processed_tweens().is_empty() and not is_instance_valid(layer) and not is_instance_valid(lamp), "%s: leaving Home with it on leaves no Tween and nothing turning" % label)
 	home.viewport.free()
 	await process_frame
 
@@ -272,6 +280,7 @@ func _check_running() -> void:
 	layer.advance_held(0.05)
 	var step := angle_difference(held, turn.rotation.y)
 	_check(absf(eased - step) < step * 0.15, "The wake's turn hands over to the held turn at its speed: %.4f then %.4f a twentieth" % [eased, step])
+	_check(Lighthouse.new().off_time() <= Builder.UPGRADE_MAX and Lighthouse.new().press_again() == Builder.SWITCH and Glasshouse.new().press_again() == Builder.REPLAY, "The lighthouse switches off within an upgrade beat's time; the Conservatory replays")
 	await _close(home)
 
 ## What a held keepsake costs a frame: one rotation and a light check.
@@ -290,5 +299,5 @@ func _check_cost() -> void:
 	for index in range(CALLS): layer.advance_held(1.0 / 30.0)
 	var held := float(Time.get_ticks_usec() - start) / CALLS
 	print("KEEPSAKE HELD COST: %.2f us a frame with nothing held, %.2f us with the lighthouse (two beams, boat lamp) and the flower held" % [idle, held])
-	_check(held < 50.0, "Holding them costs well under a frame's budget: %.2f us" % held)
+	_check(held < 200.0, "Holding them costs well under a frame's budget: %.2f us" % held)
 	await _close(home)

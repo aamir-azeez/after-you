@@ -10,7 +10,7 @@ extends RefCounted
 ## With reduced motion on nothing slides or spins: each node and property jumps
 ## once to the first value a beat gives it (the lit pose: a path's `peak`) when
 ## the layer calls apply_jumps(), and the layer holds that for a moment before
-## putting everything back.
+## putting everything back but what a beat keeps.
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const SparkleStar = preload("res://presentation/kit/sparkle_star.gd")
 
@@ -57,6 +57,7 @@ var _jumps: Array = []
 ## instead of putting it back: the keepsake's builder says what pressing it
 ## again does (keepsake_builder.gd press_again()).
 func keep(node: Node) -> void:
+	touched[node] = true
 	kept[node] = true
 
 ## Keeps `node` turning about its up axis at `rate` radians a second once the
@@ -78,14 +79,14 @@ const ANSWER_WIDTH := 0.22
 ## nothing else; a light changes only as an arm comes or goes.
 static func advance_spins(list: Array[Dictionary], step: float) -> void:
 	for turning: Dictionary in list:
+		if not is_instance_valid(turning.node): continue
 		var node: Node3D = turning.node
-		if not is_instance_valid(node): continue
 		var angle := fposmod(node.rotation.y + float(turning.rate) * step, TAU)
 		node.rotation.y = angle
 		var gap := TAU / int(turning.beams)
 		for answer: Array in turning.answers:
+			if not is_instance_valid(answer[0]): continue
 			var part: MeshInstance3D = answer[0]
-			if not is_instance_valid(part): continue
 			var off := fposmod(angle - float(answer[1]), gap)
 			var look: Material = answer[2] if minf(off, gap - off) <= ANSWER_WIDTH else answer[3]
 			if part.material_override != look: part.material_override = look

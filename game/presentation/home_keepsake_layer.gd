@@ -394,6 +394,8 @@ func _settle() -> void:
 	if not anim.spins.is_empty():
 		_play.spins = anim.spins
 		_sync_spins()
+		# Lights its answers from where the beam stands now (and for good under Reduce motion).
+		Anim.advance_spins(anim.spins, 0.0)
 	if anim.reduced or moved.is_empty():
 		_end_play(true)
 		return
@@ -415,14 +417,15 @@ func _land(anim: RefCounted, landed: bool = false) -> void:
 		if anim.rider.has_method("end_ride"): anim.rider.end_ride(LANDED_FACE if landed else 0.0)
 	anim.landing = null
 
-## Ends the tap: everything goes back to rest and its parts go, except, when
-## it `finished` (not cut off), what its beats kept, which the keepsake holds.
+## Ends the tap: everything goes back to rest and its parts go, except, once
+## its beats have all played (`finished`, or cut off while easing back), what
+## they kept, which the keepsake holds.
 func _end_play(finished: bool = false) -> void:
 	if _play.is_empty(): return
 	var anim: RefCounted = _play.anim
 	if is_instance_valid(_play.tween): (_play.tween as Tween).kill()
 	_land(anim)
-	var keeping: Dictionary = anim.kept if finished else {}
+	var keeping: Dictionary = anim.kept if finished or _play.settling else {}
 	var held_rest: Array = []
 	for rest: Array in _play.rest:
 		if keeping.has(rest[0]): held_rest.append(rest)
