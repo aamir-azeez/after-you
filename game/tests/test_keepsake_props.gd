@@ -341,6 +341,23 @@ func _check_giant_steps_ride() -> void:
 		# The hops touch down before their end, so the landing squash is on the ground.
 		var hop: Callable = Anim.hop_leg(Vector3.ZERO, Vector3(0.36, 0.24, 0), Steps.HOP_HEIGHT)
 		_check((hop.call(Anim.HOP_CONTACT) as Vector3).distance_to(Vector3(0.36, 0.24, 0)) < 0.001 and (hop.call(0.9) as Vector3) == (hop.call(1.0) as Vector3), "A hop touches down at its contact and holds there")
+	# The Explore action beside or behind the steps hops the pip round to the
+	# middle of the walk-up area, in front; from in front it rides from there.
+	var Approach: GDScript = load("res://presentation/keepsakes/ride_approach.gd")
+	var front: Variant = builder.ride_start({}, Vector3(1.4, 0, -1.2))
+	var area: Rect2 = builder.trigger().area
+	_check(front is Vector3 and area.has_point(Vector2(front.x, front.z)) and (front as Vector3).z >= Steps.FRONT_Z and builder.ride_start({}, Vector3(0.3, 0, 0.6)) == null, "Giant Steps rides from the walk-up area, and from anywhere in front as it is")
+	for hard: bool in [false, true]:
+		var round_state := {"hard": hard, "together": true}
+		var solids: Array[Rect2] = builder.solids(round_state)
+		var hops: Array[Vector3] = Approach.route(Vector3(1.4, 0, -1.2), front, solids, 0.12, func(_at: Vector2) -> bool: return true)
+		var clear := hops.size() > 2 and hops[0] == Vector3(1.4, 0, -1.2) and (hops[hops.size() - 1] as Vector3).is_equal_approx(front)
+		for index in range(1, hops.size()):
+			clear = clear and hops[index - 1].distance_to(hops[index]) <= Approach.STRIDE + 0.001
+			for rect: Rect2 in solids:
+				for sample in range(11): clear = clear and not rect.grow(0.1).has_point(Vector2(hops[index - 1].x, hops[index - 1].z).lerp(Vector2(hops[index].x, hops[index].z), sample / 10.0))
+		_check(clear, "From behind, the way round goes past every solid in hops of at most %.2f m (hard %s): %d hops" % [Approach.STRIDE, hard, hops.size()])
+	_check(Approach.route(Vector3(1.4, 0, -1.2), front, builder.solids({}), 0.12, func(at: Vector2) -> bool: return at.x > 1.0).is_empty(), "With no ground round the steps there is no way, and the ball goes as before")
 
 ## The height of the Giant Steps' surface under a point: a step's top, the
 ## tower's top on Hard, else the grass.

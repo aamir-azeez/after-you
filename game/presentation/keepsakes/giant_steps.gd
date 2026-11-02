@@ -4,7 +4,9 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## up the steps one at a time (a crouch, a stretch, a squash and a footstep on
 ## each), then it sits, slides the chute's curve leaning into it, and hops off
 ## its lip onto the grass with a little bounce (the pip's ride hooks,
-## presentation/spirit_visual.gd). A tap sends a peach ball the same way. Together: a mint seesaw flings
+## presentation/spirit_visual.gd). Its Explore action pressed beside or behind
+## the steps first hops the pip round to their front (ride_start()). A tap
+## sends a peach ball the same way. Together: a mint seesaw flings
 ## a mint ball up after the pip. Hard: a slate tower with a ladder for a higher
 ## climb and a longer ride. Together Hard: a gold flag at the very top pops up
 ## as the pip arrives.
@@ -118,9 +120,10 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 		"base":
 			# Hop up the steps (and the ladder on Hard), sit and slide the chute,
 			# hop off onto the grass. From a tap a peach ball goes the same way.
-			# The pip rides from in front of the steps (where walking up sets it off);
-			# from anywhere else (the Explore action beside or behind them) the
-			# ball goes instead, so no hop ever crosses a step.
+			# The pip rides from in front of the steps (walking up there sets it off,
+			# and the Explore action hops it round to there first); should it still
+			# stand anywhere else (no way round), the ball goes instead, so no hop
+			# ever crosses a step.
 			var rides: bool = anim.rider != null and anim.rider_from.z >= FRONT_Z
 			var start: Vector3 = anim.rider_from if rides else Vector3(-0.7, 0, 0.75)
 			var ball: MeshInstance3D = null
@@ -160,6 +163,13 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 ## Walking up to the first step.
 func trigger() -> Dictionary:
 	return {"area": Rect2(-0.95, 0.42, 0.6, 0.38)}
+
+## The Explore action from beside or behind the steps: the pip hops round to
+## the middle of the walk-up area first, so it climbs as it does walking up.
+func ride_start(_state: Dictionary, from: Vector3) -> Variant:
+	if from.z >= FRONT_Z: return null
+	var middle := (trigger().area as Rect2).get_center()
+	return Vector3(middle.x, 0, middle.y)
 
 func solids(state: Dictionary) -> Array[Rect2]:
 	var result: Array[Rect2] = [Rect2(-0.88, -0.4, 1.8, 0.8)]

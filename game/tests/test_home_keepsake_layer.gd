@@ -52,6 +52,7 @@ func _run() -> void:
 	await _check_tap()
 	await _check_play()
 	await _check_explore()
+	await _check_explore_climb()
 	await _check_explore_bridge()
 	await _check_explore_arrows()
 	for size: Vector2i in [Vector2i(1560, 720), Vector2i(1280, 720), Vector2i(1600, 720)]:
@@ -745,6 +746,90 @@ func _check_explore() -> void:
 		_check(not action.visible, "Walking away hides the action" + context)
 		stage._explore_back.pressed.emit()
 		_check(not stage.is_exploring() and menu.visible and spirit.position == start and not action.visible, "Back returns to the normal Home" + context)
+		await _close(home)
+
+## "Climb the steps" pressed beside or behind the Giant Steps, in every look
+## (plain, Together, Hard, and all three with the gold flag): the pip hops round
+## on open ground to the front, climbs the steps and slides down, with no ball;
+## a tap outside Explore still sends the ball.
+func _check_explore_climb() -> void:
+	var Steps: GDScript = load("res://presentation/keepsakes/giant_steps.gd")
+	var Parts: GDScript = load("res://presentation/keepsakes/keepsake_parts.gd")
+	var key := ""
+	for eligible: String in HardMode.eligible_keys():
+		if eligible.begins_with("high-and-low"): key = eligible
+	var looks := {
+		"plain": [_cleared("high-and-low", true, false), {}],
+		"together": [_cleared("high-and-low", true, true), {}],
+		"hard": [_cleared("high-and-low", true, false), {key: {"solo": true, "together": false}}],
+		"all": [_everything(), _all_hard()],
+	}
+	for look: String in looks:
+		var home := await _home(Vector2i(1560, 720), looks[look][0], looks[look][1])
+		var stage: Control = home.stage
+		var layer: Node3D = home.layer
+		var spirit: Node3D = home.world.actors.a
+		await _settle(layer)
+		stage._explore_button.pressed.emit()
+		var placed: Transform3D = layer.slot_transform("high-and-low")
+		var action: Button = stage._explore_action
+		var front: Vector3 = placed * (Steps.new().ride_start({}, Vector3(0, 0, -5)) as Vector3)
+		# Every spot beside or behind the steps that offers the climb.
+		var spots: Array[Vector3] = []
+		for x in range(-14, 13):
+			for z in range(-9, 3):
+				var local := Vector3(x * 0.2, 0, z * 0.2)
+				var at := placed * local
+				if local.z >= Steps.FRONT_Z or not layer.walkable(at) or layer.nearest(at, Stage.EXPLORE_NOTICE) != "high-and-low": continue
+				spots.append(local)
+		var behind := spots.filter(func(local: Vector3) -> bool: return local.z < -0.5)
+		var beside := spots.filter(func(local: Vector3) -> bool: return local.z > -0.3 and absf(local.x) > 1.0)
+		_check(not behind.is_empty() and not beside.is_empty(), "The climb is offered beside and behind the Giant Steps (%s): %d behind, %d beside" % [look, behind.size(), beside.size()])
+		var tried: Array[Vector3] = []
+		for index in range(0, spots.size(), maxi(1, spots.size() / 8)): tried.append(spots[index])
+		for picked: Array in [behind, beside]:
+			if not picked.is_empty(): tried.append_array([picked[0], picked[picked.size() - 1]])
+		for local: Vector3 in tried:
+			var label := "%s from %s" % [look, local]
+			var at := placed * local
+			spirit.position = at
+			stage._explore_last = at
+			stage._explore_recheck = true
+			stage._process(1.0 / 30.0)
+			_check(action.is_visible_in_tree() and action.text == PlayerCopy.KEEPSAKE_GIANT_STEPS_ACTION, "The action offers the climb (%s)" % label)
+			action.pressed.emit()
+			_check(layer.riding(), "Climb the steps carries the pip (%s)" % label)
+			if not layer.riding():
+				layer.stop_play()
+				continue
+			var anim: RefCounted = layer._play.anim
+			var balls: Array = anim.spawned.filter(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).mesh == Parts.low_sphere(0.12))
+			_check(balls.is_empty(), "and sends no ball (%s)" % label)
+			var tween: Tween = layer._play.tween
+			var on_grass := true
+			var arrived := false
+			var risen := 0.0
+			var frames := 0
+			while layer.riding() and frames < 400:
+				frames += 1
+				tween.custom_step(1.0 / 30.0)
+				if not layer.riding(): break
+				var flat := Vector3(spirit.position.x, 0, spirit.position.z)
+				# Until it reaches the front it hops round on open ground.
+				if not arrived: on_grass = on_grass and layer.walkable(flat)
+				arrived = arrived or flat.distance_to(front) < 0.12
+				risen = maxf(risen, spirit.position.y)
+			_check(on_grass and arrived, "The pip hops round on open ground to the front, never through the steps (%s)" % label)
+			_check(risen > 1.1, "then climbs to the top (%s): %.2f" % [label, risen])
+			_check(not layer.riding() and spirit.position.y == 0.0 and layer.walkable(spirit.position), "and lands on open ground past the chute (%s): %s" % [label, spirit.position])
+			layer.stop_play()
+		stage._explore_back.pressed.emit()
+		# Outside Explore a tap still sends the ball, and the pip stays put.
+		var still: Vector3 = spirit.position
+		_check(stage.play_keepsake("high-and-low") and not layer.riding(), "A tap on the Giant Steps plays without carrying the pip (%s)" % look)
+		var tapped: RefCounted = layer._play.anim
+		_check(tapped.spawned.any(func(part: Node) -> bool: return part is MeshInstance3D and (part as MeshInstance3D).mesh == Parts.low_sphere(0.12)) and spirit.position == still, "and sends the ball (%s)" % look)
+		layer.stop_play()
 		await _close(home)
 
 ## Spirits wandering at Home never walk into a keepsake.

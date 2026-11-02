@@ -38,6 +38,8 @@ extends RefCounted
 ##   Rect2() for none. floor() is the height the pip stands at in there.
 ## - solids(state): what the pip may not walk into; walkways(): extra ground
 ##   off the islands (a jetty).
+## - ride_start(state, from): where the pip must stand to ride, when the
+##   Explore action sets it off from somewhere it cannot (null: anywhere).
 const Parts = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const Anim = preload("res://presentation/keepsakes/keepsake_anim.gd")
 const BASE_MAX := 2.5
@@ -113,6 +115,13 @@ func trigger() -> Dictionary:
 
 func stay() -> Rect2:
 	return Rect2()
+
+## Where the pip must stand for its ride when the Explore action sets it off
+## from `from` (this frame), or null when it rides from where it stands (or
+## carries no pip). The layer hops the pip round the solids to there first
+## (ride_approach.gd).
+func ride_start(_state: Dictionary, _from: Vector3) -> Variant:
+	return null
 
 ## The pip walked into the stay: make what it shows under `visit` (freed when
 ## the pip leaves) and change any part it needs (put back in depart()).

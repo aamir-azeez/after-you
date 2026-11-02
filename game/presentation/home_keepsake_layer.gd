@@ -30,6 +30,7 @@ const Primitives = preload("res://presentation/kit/primitives.gd")
 const Isles = preload("res://presentation/keepsakes/home_isles.gd")
 const Builder = preload("res://presentation/keepsakes/keepsake_builder.gd")
 const Explore = preload("res://presentation/keepsakes/keepsake_explore.gd")
+const Approach = preload("res://presentation/keepsakes/ride_approach.gd")
 ## Home draws each keepsake this many island metres per prop unit.
 const HOME_SCALE := 1.0
 ## A keepsake faces the Home camera (its +z along the camera's ground
@@ -297,7 +298,7 @@ func play(id: String, rider: Node3D = null) -> bool:
 		anim.rider_from = anim.rider_frame.affine_inverse() * rider.position
 	var tween := create_tween().set_parallel(true)
 	if not anim.reduced: anim.tween = tween
-	var time := 0.0
+	var time := _approach(id, builder, state, anim)
 	for beat: Dictionary in builder.beats(state):
 		anim.start = time
 		builder.play(str(beat.beat), anim, prop.parts, state)
@@ -312,6 +313,23 @@ func play(id: String, rider: Node3D = null) -> bool:
 	tween.finished.connect(_settle)
 	_play = {"id": id, "tween": tween, "anim": anim, "rest": rest, "settling": false}
 	return true
+
+## A ride set off where the pip cannot ride from (the Explore action beside or
+## behind the Giant Steps): the pip hops round the keepsake's solids, on ground
+## it may walk, to where it can (builder.ride_start(), ride_approach.gd), and
+## the ride starts from there. Returns when it gets there (0 for no hops).
+func _approach(id: String, builder: RefCounted, state: Dictionary, anim: RefCounted) -> float:
+	if anim.rider == null: return 0.0
+	var goal: Variant = builder.ride_start(state, anim.rider_from)
+	if goal == null: return 0.0
+	var placed := slot_transform(id)
+	var ground := func(at: Vector2) -> bool: return walkable(placed * Vector3(at.x, 0, at.y))
+	var hops := Approach.route(anim.rider_from, goal, _set.props[id].solids, WALK_CLEARANCE, ground)
+	if hops.is_empty(): return 0.0
+	anim.start = 0.0
+	var time: float = anim.hop_steps(hops, 0.0, Approach.HOP_TIME, Approach.HOP_HEIGHT)
+	anim.rider_from = hops[hops.size() - 1]
+	return time
 
 static func _rest_of(node: Node) -> Array:
 	var shape := node as Node3D
