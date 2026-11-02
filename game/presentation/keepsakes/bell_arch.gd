@@ -140,10 +140,15 @@ func _swing(anim: RefCounted, bell: Node3D, property: String, amount: float, at:
 func trigger() -> Dictionary:
 	return {"line": [Vector2(-(HALF - 0.1) * SIZE, 0), Vector2((HALF - 0.1) * SIZE, 0)]}
 
+## Each post's round stone foot, or Hard's square plinth under it.
 func solids(state: Dictionary) -> Array[Rect2]:
-	var half := (0.31 if state.get("hard", false) else 0.22) * SIZE
+	var hard: bool = state.get("hard", false)
+	var half := 0.31 * SIZE
 	var result: Array[Rect2] = []
-	for side: int in [-1, 1]: result.append(Rect2(side * HALF * SIZE - half, -half, half * 2.0, half * 2.0))
+	for side: int in [-1, 1]:
+		var x := side * HALF * SIZE
+		if hard: result.append(Rect2(x - half, -half, half * 2.0, half * 2.0))
+		else: result.append_array(round_solid(Vector2(x, 0), 0.22 * SIZE))
 	return result
 
 func footprint() -> Rect2:

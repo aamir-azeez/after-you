@@ -117,7 +117,7 @@ func follow(visit: Node3D, _parts: Dictionary, state: Dictionary, at: Vector2) -
 
 func solids(_state: Dictionary) -> Array[Rect2]:
 	var result: Array[Rect2] = []
-	for x: float in [-SPAN, SPAN]: result.append(Rect2(x - 0.18, -0.18, 0.36, 0.36))
+	for x: float in [-SPAN, SPAN]: result.append_array(round_solid(Vector2(x, 0), 0.18))
 	return result
 
 func full_state() -> Dictionary:

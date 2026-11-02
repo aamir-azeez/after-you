@@ -118,10 +118,11 @@ func _coin(anim: RefCounted, at: Vector3) -> MeshInstance3D:
 func trigger() -> Dictionary:
 	return {}
 
+## The round well to its rim, or Hard's square plinth, and the mint bucket.
 func solids(state: Dictionary) -> Array[Rect2]:
-	var half := 0.88 if state.get("hard", false) else 0.78
-	var result: Array[Rect2] = [Rect2(-half, -half, half * 2.0, half * 2.0)]
-	if state.get("together", false): result.append(Rect2(MINT_BUCKET.x - 0.28, MINT_BUCKET.z - 0.28, 0.56, 0.56))
+	var result: Array[Rect2] = round_solid(Vector2.ZERO, 0.78)
+	if state.get("hard", false): result = [Rect2(-0.88, -0.88, 1.76, 1.76)]
+	if state.get("together", false): result.append_array(round_solid(Vector2(MINT_BUCKET.x, MINT_BUCKET.z), 0.28))
 	return result
 
 func footprint() -> Rect2:

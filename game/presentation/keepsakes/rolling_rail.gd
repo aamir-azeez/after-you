@@ -142,7 +142,7 @@ func solids(state: Dictionary) -> Array[Rect2]:
 	var rail := _rail()
 	var result: Array[Rect2] = [Rect2(-2.1, -0.25, 0.86, 0.5)]
 	for index: int in [3, 6, 9, 12]: result.append(Rect2(rail[index].x - 0.08, rail[index].z - 0.28, 0.16, 0.16))
-	if state.get("together", false): result.append(Rect2(CUP.x - 0.46, CUP.z - 0.46, 0.92, 0.92))
+	if state.get("together", false): result.append_array(round_solid(Vector2(CUP.x, CUP.z), 0.48))
 	if state.get("hard", false): result.append(Rect2(-0.3, -0.85, 0.6, 0.6))
 	return result
 

@@ -131,9 +131,12 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 func trigger() -> Dictionary:
 	return {"area": Rect2(WEIGHT.x - 0.3, WEIGHT.z - 0.3, 0.6, 0.6)}
 
+## The round stone rim and the gauge post behind it, the mint rock pool and
+## Hard's marker plinth.
 func solids(state: Dictionary) -> Array[Rect2]:
-	var result: Array[Rect2] = [Rect2(-RADIUS - 0.1, -RADIUS - 0.15, RADIUS * 2.0 + 0.2, RADIUS * 2.0 + 0.25)]
-	if state.get("together", false): result.append(Rect2(ROCK_POOL.x - 0.52, ROCK_POOL.z - 0.5, 1.04, 1.02))
+	var result: Array[Rect2] = round_solid(Vector2.ZERO, RADIUS + 0.08)
+	result.append(Rect2(-0.08, -RADIUS - 0.13, 0.16, 0.16))
+	if state.get("together", false): result.append_array(round_solid(Vector2(ROCK_POOL.x, ROCK_POOL.z), 0.52))
 	if state.get("hard", false): result.append(Rect2(MARK.x - 0.25, MARK.z - 0.25, 0.5, 0.5))
 	return result
 

@@ -169,10 +169,11 @@ func trigger() -> Dictionary:
 func walkways() -> Array[Rect2]:
 	return [Rect2(JETTY_END, -JETTY_HALF, -0.55 - JETTY_END, JETTY_HALF * 2.0)]
 
+## The round stone foot, or Hard's square plinth, and the mint boat's pond.
 func solids(state: Dictionary) -> Array[Rect2]:
-	var half := 0.63
-	var result: Array[Rect2] = [Rect2(-half, -half, half * 2.0, half * 2.0)]
-	if state.get("together", false): result.append(Rect2(POND.x - 0.56, POND.z - 0.56, 1.12, 1.12))
+	var result: Array[Rect2] = round_solid(Vector2.ZERO, 0.62)
+	if state.get("hard", false): result = [Rect2(-0.63, -0.63, 1.26, 1.26)]
+	if state.get("together", false): result.append_array(round_solid(Vector2(POND.x, POND.z), 0.56))
 	return result
 
 func footprint() -> Rect2:
