@@ -151,7 +151,8 @@ func _write_choice() -> bool:
 	return AtomicFile.write_text(_choice_path, JSON.stringify(all))
 
 ## Forgets a player's name choice (account deletion); other players' choices stay.
-static func clear_owner(owner: String, choice_path: String = CHOICE_PATH) -> void:
+## False when the file, or a damaged copy of it kept aside, could not be changed (services/deleted_identity_stores.gd tries again).
+static func clear_owner(owner: String, choice_path: String = CHOICE_PATH) -> bool:
 	# A client still holding the player (a request awaiting its answer) must never write them back.
 	if _shared != null and _shared._owner == owner:
 		_shared._owner = ""
@@ -160,8 +161,8 @@ static func clear_owner(owner: String, choice_path: String = CHOICE_PATH) -> voi
 	all.erase(owner)
 	# Written even when nothing changed: a damaged file read as empty, and the
 	# copy of it kept aside (AtomicFile.read_json), hold every player's choice here.
-	AtomicFile.write_text(choice_path, JSON.stringify(all))
-	AtomicFile.remove_unreadable(choice_path)
+	var saved := AtomicFile.write_text(choice_path, JSON.stringify(all))
+	return AtomicFile.remove_unreadable(choice_path) and saved
 
 ## Every player's choice in the file, or {} when no copy of it reads.
 func _read_choices() -> Dictionary:

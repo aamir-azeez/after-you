@@ -63,15 +63,16 @@ func clear_friend(server: String, owner: String, friend: String) -> void:
 		_entries = remaining
 		_save()
 
-func clear_owner(owner: String, server: String = "") -> void:
+## False when the file, or a damaged copy of it kept aside, could not be changed (services/deleted_identity_stores.gd tries again).
+func clear_owner(owner: String, server: String = "") -> bool:
 	var remaining: Array[Dictionary] = []
 	for entry: Dictionary in _entries:
 		if entry.owner != owner or not (server.is_empty() or entry.server == server): remaining.append(entry)
 	_entries = remaining
 	# Written even when nothing changed: a damaged file read as empty, and the
 	# copy of it kept aside (AtomicFile.read_json), hold nicknames of every player here.
-	_save()
-	AtomicFile.remove_unreadable(path)
+	var saved := _save()
+	return AtomicFile.remove_unreadable(path) and saved
 
 ## Whether the word list (services/name_filter.gd) refuses a nickname.
 static func refused(value: String) -> bool:

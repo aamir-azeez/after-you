@@ -19,6 +19,7 @@ const StoreSupport = preload("res://services/store_support.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
 const Board = preload("res://services/leaderboard_client.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
+const DeletedStores = preload("res://services/deleted_identity_stores.gd")
 const OWNER := "HHHHHHHHHHHHHHHHHHHHHH"
 const PEER := "GGGGGGGGGGGGGGGGGGGGGG"
 const ROOM := "RRRRRRRRRRRRRRRRRRRRRR"
@@ -159,9 +160,15 @@ func _test_ack() -> void:
 	await process_frame
 
 func _test_main_order() -> void:
+	# An earlier deletion whose store clears the app closed on: this launch finishes it.
+	var closed_on := "LLLLLLLLLLLLLLLLLLLLLL"
+	write(DeletedStores.PATH, {"schema_version": 1, "owners": [{"owner": closed_on, "server": "https://caches.test"}]})
+	write(Duels.SAVE_PATH, {closed_on: {"rooms": {}, "rung": []}, PEER: {"rooms": {}, "rung": []}})
 	var app := Main.new()
 	app.saves = Save.new(directory.path_join("main.json"))
 	root.add_child(app)
+	var launched: Variant = JSON.parse_string(FileAccess.get_file_as_string(Duels.SAVE_PATH))
+	check(not FileAccess.file_exists(DeletedStores.PATH) and launched is Dictionary and not launched.has(closed_on) and launched.has(PEER), "App start finishes an unfinished deletion's store clears for that player only")
 	app.set_process(false)
 	app.set_physics_process(false)
 	app.config["revenuecat_public_key"] = ""
@@ -230,6 +237,7 @@ func _test_main_order() -> void:
 	check(api.calls.size() == count and app.identity_data.is_empty() and app.api.device_token.is_empty(), "Retry clears credentials only after persisted server confirmation")
 	check(not app.saves.data.has(Photos.MARKER_KEY) and not app.saves.data.has(Ack.KEY) and app.saves.data.completed == {"solo": true}, "Cleanup markers removed last; solo completion retained")
 	check(app.friend_nicknames.nickname(api.base_url, OWNER, PEER) == "", "Account deletion clears this device's friend nicknames for the removed identity")
+	check(not FileAccess.file_exists(DeletedStores.PATH), "Every shared store cleared, so no deletion waits for the next launch")
 	check(wallet.wallet(api.base_url, OWNER).is_empty() and not wallet.wallet(api.base_url, PEER).is_empty(), "Account deletion clears the removed identity's Pollen wallet copy and keeps another player's")
 	check(not wardrobe.enabled(api.base_url, OWNER) and wardrobe.enabled(api.base_url, PEER), "and its wardrobe copy")
 	Runs.use_path(directory.path_join("main-runs.json"))

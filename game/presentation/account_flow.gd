@@ -38,17 +38,7 @@ const DeletedPhotos = preload("res://services/deleted_identity_photo_cleanup.gd"
 const DeletedCaches = preload("res://services/deleted_identity_cache_cleanup.gd")
 const DeletedAck = preload("res://services/deleted_identity_ack.gd")
 const Typed = preload("res://services/typed_values.gd")
-const DisplayNames = preload("res://services/display_names.gd")
-const FriendRoster = preload("res://services/friend_roster.gd")
-const PollenWallet = preload("res://services/pollen_wallet.gd")
-const Wardrobe = preload("res://services/wardrobe.gd")
-const LeaderboardRuns = preload("res://services/leaderboard_runs.gd")
-const DuelsClient = preload("res://services/duels_client.gd")
-const BundleClaims = preload("res://services/bundle_claims.gd")
-const PollenGrant = preload("res://services/pollen_grant.gd")
-const StoreSupport = preload("res://services/store_support.gd")
-const LeaderboardPlacings = preload("res://services/leaderboard_placings.gd")
-const LeaderboardClient = preload("res://services/leaderboard_client.gd")
+const DeletedStores = preload("res://services/deleted_identity_stores.gd")
 const SettingsKit = preload("res://presentation/settings_kit.gd")
 const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
 const CREAM := Color("eceddb")
@@ -611,18 +601,9 @@ func clear_deleted_identity() -> void:
 		return
 	host.identity_data={}
 	host.platform_games_flow.forget_identity()
-	host.friend_nicknames.clear_owner(owner, host.api.base_url)
-	DisplayNames.shared().clear_owner(owner)
-	FriendRoster.shared().clear_owner(owner)
-	PollenWallet.shared().clear_owner(owner)
-	Wardrobe.shared().clear_owner(owner)
-	LeaderboardRuns.clear_owner(owner)
-	DuelsClient.clear_owner(owner)
-	BundleClaims.shared().clear_owner(owner)
-	PollenGrant.shared().clear_owner(owner)
-	StoreSupport.shared().clear_owner(owner)
-	LeaderboardPlacings.shared().clear_owner(owner)
-	LeaderboardClient.clear_owner(owner)
+	# The stores every player of this phone shares forget only this player. One
+	# that cannot write now finishes on the next launch (services/deleted_identity_stores.gd).
+	DeletedStores.new().forget(owner, host.api.base_url, host.friend_nicknames)
 	host.identity_read_state=host.IdentityReadState.MISSING
 	host.api.player_id=""
 	host.api.device_token=""

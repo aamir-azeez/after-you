@@ -340,13 +340,14 @@ static func _trim(names: Dictionary) -> void:
 	for player: String in rooms.slice(0, names.size() - MAX_NAMES): names.erase(player)
 
 ## Forgets everything kept for a player (account deletion, a new identity).
-func clear_owner(owner: String) -> void:
+## False when the file, or a damaged copy of it kept aside, could not be changed (services/deleted_identity_stores.gd tries again).
+func clear_owner(owner: String) -> bool:
 	for key: String in _scopes.keys():
 		if key.get_slice("|", 1) == owner: _scopes.erase(key)
 	# Written even when nothing changed: a damaged file read as empty, and the
 	# copy of it kept aside (AtomicFile.read_json), hold names of every player here.
-	_save()
-	AtomicFile.remove_unreadable(path)
+	var saved := _save()
+	return AtomicFile.remove_unreadable(path) and saved
 
 static func _now() -> int:
 	return int(Time.get_unix_time_from_system())

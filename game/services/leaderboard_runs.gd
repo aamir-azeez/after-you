@@ -94,17 +94,18 @@ static func _save(owner: String, mine: Array) -> void:
 	_data[owner] = mine
 	_write()
 
-static func _write() -> void:
-	AtomicFile.write_text(_path, JSON.stringify({"schema_version": 1, "players": _data}))
+static func _write() -> bool:
+	return AtomicFile.write_text(_path, JSON.stringify({"schema_version": 1, "players": _data}))
 
 ## Forgets every run kept for a player (account deletion); other players' runs stay.
-static func clear_owner(owner: String) -> void:
+## False when the file, or a damaged copy of it kept aside, could not be changed (services/deleted_identity_stores.gd tries again).
+static func clear_owner(owner: String) -> bool:
 	_load()
 	_data.erase(owner)
 	# Written even when nothing changed: a damaged file read as empty, and the
 	# copy of it kept aside (AtomicFile.read_json), hold every player's runs here.
-	_write()
-	AtomicFile.remove_unreadable(_path)
+	var saved := _write()
+	return AtomicFile.remove_unreadable(_path) and saved
 
 ## This player's runs, oldest first.
 static func runs_of(owner: String) -> Array:

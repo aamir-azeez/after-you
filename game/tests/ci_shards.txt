@@ -62,6 +62,7 @@ cutout_full_bleed 3
 damaged_save 1
 deleted_identity_caches 3
 deleted_identity_photo_cleanup 1
+deleted_identity_stores 1
 dev_ghosts 3
 display_name_prompt 3
 display_names 3

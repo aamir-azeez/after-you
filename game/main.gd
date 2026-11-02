@@ -3,6 +3,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ChapterRegistry = preload("res://services/chapter_registry.gd")
 const Frames = preload("res://services/frame_policy.gd")
 const SoloReplayLaunch = preload("res://services/solo_replay_launch.gd")
+const DeletedStores = preload("res://services/deleted_identity_stores.gd")
 
 const Simulation = preload("res://core/simulation.gd")
 const Levels = preload("res://core/levels.gd")
@@ -349,6 +350,9 @@ func _ready() -> void:
 	body_font=body
 	# A replay open that never reached its chapter leaves nothing behind.
 	SoloReplayLaunch.discard()
+	# Account deletion's store clears that a failed write or a closed app left
+	# unfinished go again; one file check when none wait.
+	DeletedStores.new().resume(friend_nicknames)
 	saves.load_data()
 	saves.start_fresh_if_unreadable()
 	saves.settle_settings()

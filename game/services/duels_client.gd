@@ -242,7 +242,8 @@ func _save() -> void:
 	AtomicFile.write_text(_path, JSON.stringify(all))
 
 ## Forgets a player's part of the file (account deletion); other players' parts stay.
-static func clear_owner(owner: String, path: String = SAVE_PATH) -> void:
+## False when the file, or a damaged copy of it kept aside, could not be changed (services/deleted_identity_stores.gd tries again).
+static func clear_owner(owner: String, path: String = SAVE_PATH) -> bool:
 	# A client still holding the player (a request awaiting its answer) must never write them back.
 	if _shared != null and _shared._owner == owner:
 		_shared._owner = ""
@@ -251,8 +252,8 @@ static func clear_owner(owner: String, path: String = SAVE_PATH) -> void:
 	all.erase(owner)
 	# Written even when nothing changed: a damaged file read as empty, and the
 	# copy of it kept aside (AtomicFile.read_json), hold every player's part here.
-	AtomicFile.write_text(path, JSON.stringify(all))
-	AtomicFile.remove_unreadable(path)
+	var saved := AtomicFile.write_text(path, JSON.stringify(all))
+	return AtomicFile.remove_unreadable(path) and saved
 
 ## Every player's part of the file, or {} when no copy of it reads.
 static func _read_all(path: String) -> Dictionary:

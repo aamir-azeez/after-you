@@ -62,13 +62,14 @@ func note_request(server: String, owner: String, player: String) -> void:
 	_scopes[_key(server, owner)] = rows
 	_save()
 
-func clear_owner(owner: String) -> void:
+## False when the file, or a damaged copy of it kept aside, could not be changed (services/deleted_identity_stores.gd tries again).
+func clear_owner(owner: String) -> bool:
 	for key: String in _scopes.keys():
 		if key.get_slice("|", 1) == owner: _scopes.erase(key)
 	# Written even when nothing changed: a damaged file read as empty, and the
 	# copy of it kept aside (AtomicFile.read_json), hold friend ids of every player here.
-	_save()
-	AtomicFile.remove_unreadable(path)
+	var saved := _save()
+	return AtomicFile.remove_unreadable(path) and saved
 
 func _load() -> void:
 	_scopes = {}

@@ -127,12 +127,13 @@ static func _placing(value: Variant) -> bool:
 	return value.get("gold_leaf") is bool and value.get("partner") is String
 
 ## Forgets every placing kept for a player (account deletion); other players' stay.
-func clear_owner(owner: String) -> void:
+## False when the file, or a damaged copy of it kept aside, could not be changed (services/deleted_identity_stores.gd tries again).
+func clear_owner(owner: String) -> bool:
 	_players.erase(owner)
 	# Written even when nothing changed: a damaged file read as empty, and the
 	# copy of it kept aside (AtomicFile.read_json), hold every player's placings here.
-	_save()
-	AtomicFile.remove_unreadable(path)
+	var saved := _save()
+	return AtomicFile.remove_unreadable(path) and saved
 
 func _load() -> void:
 	_players = {}
