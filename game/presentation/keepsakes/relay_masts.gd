@@ -11,6 +11,15 @@ const P = preload("res://presentation/keepsakes/keepsake_parts.gd")
 const POLE := 2.4
 const ENDS: Array[float] = [-1.3, 1.3]
 const HARD_LIFT := 0.34
+## The Hard crossbars: ARM out each side of a mast, BAR_DROP below its top,
+## with a signal flag hanging just past each end. With Together the far
+## mast's mint-side arm stops at the mast (the owner's choice, 2026-11-02),
+## so the flag turning onto the mint line passes clear, and that arm's flag
+## hangs inboard on the other arm.
+const ARM := 0.35
+const BAR_DROP := 0.3
+const SIGNAL_OUT := 0.04
+const SIGNAL_INBOARD := 0.2
 const MINT_MAST := Vector3(2.0, 0, 0.5)
 ## The flag's cord runs up CORD_X beside the first mast. The flag clips to it
 ## by toggles at its hoist's ends, HANG above and below its pivot, the top one
@@ -51,9 +60,10 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 		P.sph(root, 0.07, P.CREAM, Vector3(x, y0 + POLE + 0.05, 0))
 		if hard:
 			# The crossbar's two signal flags flick out together, one row per mast.
-			P.box(root, Vector3(0.7, 0.05, 0.05), P.WOOD, Vector3(x, y0 + POLE - 0.3, 0))
-			var flags := P.pivot(root, Vector3(x, y0 + POLE - 0.32, 0), "Signals")
-			for side: int in [-1, 1]: P.box(flags, Vector3(0.14, 0.18, 0.015), P.CORAL if side < 0 else P.CREAM, Vector3(side * 0.39, -0.1, 0))
+			var bar := crossbar(index, state)
+			P.box(root, Vector3(bar.to - bar.from, 0.05, 0.05), P.WOOD, Vector3(x + (bar.from + bar.to) * 0.5, y0 + POLE - BAR_DROP, 0))
+			var flags := P.pivot(root, Vector3(x, y0 + POLE - BAR_DROP - 0.02, 0), "Signals")
+			for side in range(2): P.box(flags, Vector3(0.14, 0.18, 0.015), P.CORAL if side == 0 else P.CREAM, Vector3(bar.flags[side], -0.1, 0))
 			parts["signals_%d" % index] = flags
 	var line := _line_y(state)
 	P.bar(root, Vector3(ENDS[0], line, 0), Vector3(ENDS[1], line, 0), 0.02, P.CREAM)
@@ -88,6 +98,14 @@ func build(root: Node3D, state: Dictionary) -> Dictionary:
 			P.ring(lamp, 0.15, 0.025, P.GOLD_DEEP, Vector3.ZERO, Vector3(PI / 2, 0, 0))
 			parts["lamp_%d" % index] = lamp
 	return parts
+
+## A Hard crossbar along x from its mast: {"from", "to", "flags": [the coral
+## flag's x, the cream flag's x]}. The far mast's mint-side arm stops at the
+## mast with Together on, its cream flag hanging inboard on the other arm.
+static func crossbar(index: int, state: Dictionary) -> Dictionary:
+	if index == 1 and state.get("together", false):
+		return {"from": -ARM, "to": 0.05, "flags": [-ARM - SIGNAL_OUT, -SIGNAL_INBOARD]}
+	return {"from": -ARM, "to": ARM, "flags": [-ARM - SIGNAL_OUT, ARM + SIGNAL_OUT]}
 
 static func _flag_rest(state: Dictionary) -> Vector3:
 	return Vector3(ENDS[0] + CORD_X, _y0(state) + 0.6, 0)

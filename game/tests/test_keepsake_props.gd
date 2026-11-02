@@ -428,6 +428,15 @@ func _check_relay_flag() -> void:
 			tap += float(beat.time)
 		var on_lines := true
 		var clear := true
+		var bar_clear := true
+		# With Hard on, the far crossbar and its signal flags (at rest; they flick
+		# out to the front, away from the flag), grown by half the flag's thickness.
+		var far_parts: Array[AABB] = []
+		if state.hard:
+			var bar: Dictionary = Relay.crossbar(1, state)
+			var bar_y: float = y0 + Relay.POLE - Relay.BAR_DROP
+			far_parts.append(AABB(Vector3(Relay.ENDS[1] + float(bar.from), bar_y - 0.025, -0.025), Vector3(float(bar.to) - float(bar.from), 0.05, 0.05)).grow(0.01))
+			for x: float in bar.flags: far_parts.append(AABB(Vector3(Relay.ENDS[1] + x - 0.07, bar_y - 0.02 - 0.19, -0.0075), Vector3(0.14, 0.18, 0.015)).grow(0.01))
 		var now := 0.0
 		while now < tap - 0.0001:
 			var step := minf(0.05, tap - now)
@@ -438,10 +447,16 @@ func _check_relay_flag() -> void:
 			for share: float in [0.2, 0.5, 0.8]:
 				var body: Vector3 = flag.transform * Vector3(Relay.FLY * share, 0, Relay.BEHIND)
 				clear = clear and Vector2(body.x - Relay.ENDS[1], body.z).length() >= 0.05
+			# The whole flag (its hoist to its tip, top to bottom) against the far crossbar.
+			for u in range(11):
+				for v in range(-4, 5):
+					var spot: Vector3 = flag.transform * Vector3(Relay.FLY * u / 10.0, Relay.HANG * (1.0 - u / 10.0) * v / 4.0, Relay.BEHIND)
+					bar_clear = bar_clear and far_parts.all(func(box: AABB) -> bool: return not box.has_point(spot))
 		# The layer's Tween runs until its last tweener ends, a hair past the beats.
 		anim.tween.custom_step(0.001)
 		_check(on_lines, "%s: its top toggle stays on the cord or a line all the way" % label)
 		_check(clear, "%s: it keeps clear of the far mast" % label)
+		_check(bar_clear, "%s: it keeps clear of the far crossbar and its signal flags" % label)
 		_check(flag.transform == built, "%s: stands in its built pose as the last beat ends: %s" % [label, flag.transform])
 		# Out and back by the same points, one stretch after the other, in time.
 		var trip: Dictionary = builder.trip(state)
