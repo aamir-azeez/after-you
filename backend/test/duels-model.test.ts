@@ -487,3 +487,55 @@ describe("duel news", () => {
     expect(newsRecipients(asked, open, null).sort()).toEqual([A1, A2, B1].sort());
   });
 });
+
+describe("duel looks", () => {
+  const DAISY = { hat: "daisy" }, TIDE = { body: "tide" };
+  it("keep only looks that are not the default, in members order, and nothing for a pair in the default", () => {
+    expect(blankSide([A1, A2], "pa", [DAISY, undefined]).looks).toEqual([DAISY, {}]);
+    expect(blankSide([A1, A2], "pa", [{}, undefined])).not.toHaveProperty("looks");
+    expect(blankSide([A1, A2], "pa", [{ hat: "no_such_item" }, {}])).not.toHaveProperty("looks");
+    expect(blankSide([A1, A2], "pa")).not.toHaveProperty("looks");
+  });
+
+  it("take each turn's room looks by member id, keep a look the note leaves out, and ignore an older note", () => {
+    const duel = running();
+    duel.sides[0].looks = [DAISY, {}];
+    progress(duel, { ...note("ra", 2, 100), looks: { [A2]: TIDE } }, T0 + 10_000);
+    expect(duel.sides[0].looks).toEqual([DAISY, TIDE]);
+    progress(duel, { ...note("ra", 3, 120), looks: { [A1]: {}, [A2]: TIDE } }, T0 + 11_000);
+    expect(duel.sides[0].looks).toEqual([{}, TIDE]);
+    progress(duel, { ...note("ra", 1, 90), looks: { [A2]: DAISY } }, T0 + 12_000);
+    expect(duel.sides[0].looks).toEqual([{}, TIDE]);
+    progress(duel, { ...note("ra", 4, 130), looks: { [A2]: {} } }, T0 + 13_000);
+    expect(duel.sides[0]).not.toHaveProperty("looks");
+    // A note for one side never dresses the other.
+    expect(duel.sides[1]).not.toHaveProperty("looks");
+  });
+
+  it("serve two looks per side, and the ghost's, only while looks are on, also for a member whose id is hidden", () => {
+    const duel = running();
+    duel.sides[0].looks = [DAISY, TIDE];
+    const forB1 = viewFor(duel, B1, true)!;
+    expect(forB1.sides[0].members).toEqual([A1, null]);
+    expect(forB1.sides[0].looks).toEqual([DAISY, TIDE]);
+    expect(forB1.sides[1]!.looks).toEqual([{}, {}]);
+    expect(viewFor(duel, B1)!.sides[0]).not.toHaveProperty("looks");
+    const race = ghost();
+    race.ghost!.looks = [DAISY, {}];
+    expect(viewFor(race, A1, true)!.ghost!.looks).toEqual([DAISY, {}]);
+    expect(viewFor(race, A1)!.ghost).not.toHaveProperty("looks");
+    // A stored look the catalogue no longer knows is served as the default.
+    duel.sides[0].looks = [{ hat: "gone_item" }, TIDE];
+    expect(viewFor(duel, A1, true)!.sides[0].looks).toEqual([{}, TIDE]);
+  });
+
+  it("erasing a player takes their look with their id", () => {
+    const duel = running();
+    duel.sides[0].looks = [DAISY, TIDE];
+    duel.sides[1]!.looks = [{}, TIDE];
+    forgetPlayer(duel, A1, T0 + 5);
+    expect(duel.sides[0].looks).toEqual([{}, TIDE]);
+    forgetPlayer(duel, B2, T0 + 6);
+    expect(duel.sides[1]).not.toHaveProperty("looks");
+  });
+});

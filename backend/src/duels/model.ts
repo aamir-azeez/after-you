@@ -1,6 +1,8 @@
 import { fail, ok, type Outcome } from "../protocol";
 import type { ChapterKey } from "../v2/chapter-types";
 import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "./rules";
+import { keptLook, servedLook } from "../leaderboards/run-looks";
+import type { Look } from "../pollen/catalog";
 
 /**
  * The duel state machine. Pure: every function takes the duel and the clock,
@@ -29,6 +31,14 @@ import { CHALLENGE_TTL_MS, ROOM_CLAIM_TAKEOVER_MS, STALL_MS } from "./rules";
  * Time rules are read lazily (settle): a challenge fades after
  * CHALLENGE_TTL_MS, and a running duel nobody has played for STALL_MS ends
  * unfinished, with no win and no loss, even when one pair finished.
+ *
+ * Looks (POLLEN_LOOKS): each side keeps what its two members wear, in
+ * `members` order (`looks`), taken from data a call already holds: the party
+ * rows a challenge or race reads (duels/party.ts) and, on every accepted turn,
+ * the room's member looks (ProgressNote.looks). So a side wears what its pair
+ * last played in, and a pair that has not played yet what they wore when the
+ * duel began. A board ghost keeps its board row's looks. Only looks that are
+ * not the default are kept; viewFor serves them only while looks are on.
  *
  * Extension points, unused today: `modifiers` is where a card layer's
  * effects would sit, read only by score(); `result` names the winner and the
@@ -61,8 +71,11 @@ export type Side = {
    * What tells such a win over the developers' ghost, which pays, from a race decided before that bonus existed.
    */
   waived?: true;
+  /** What each member wears, in `members` order ({} for the default); absent while neither wears anything known. */
+  looks?: Look[];
 };
-export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null };
+/** `looks`: a board run's pair looks as its row showed them when the race began (leaderboards/run-looks.ts). */
+export type Ghost = { source: "board" | "developer"; entry_id: string | null; rank: number | null; ticks: number; names: string[] | null; looks?: Look[] };
 export type ResultReason = "faster" | "draw" | "left" | "failed_check" | "unchecked" | "stalled" | "erased";
 /** `winner`: the side index that won (1 is the ghost in a ghost race), or null for a draw or no result. */
 export type DuelResult = { winner: 0 | 1 | null; reason: ResultReason; decided_ms: number; margin_ticks: number | null };
@@ -89,10 +102,28 @@ export type Duel = {
   /** A settled friend duel's rooms are queued for the board's sweep of their run copies (store.ts, their-run.ts). */
   copies_queued?: true;
 };
-export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null };
+/** `looks`: the room's members' looks by player id, while looks are on (v2/room.ts commit `duel_looks`). */
+export type ProgressNote = { room_id: string; revision: number; steps: number; ticks: number; turn: string | null; complete: boolean; at_ms: number; entry_id: string | null; looks?: Record<string, Look> };
 
-export function blankSide(members: [string, string], pairKey: string): Side {
-  return { members, pair_key: pairKey, room: null, revision: 0, steps: 0, ticks: 0, turn: null, finished_ms: null, entry_id: null, check: "none", left: false, last_ms: null };
+/** `looks`: what the members wear, in `members` order, when known (while looks are on). */
+export function blankSide(members: [string, string], pairKey: string, looks?: readonly (Look | undefined)[]): Side {
+  const side: Side = { members, pair_key: pairKey, room: null, revision: 0, steps: 0, ticks: 0, turn: null, finished_ms: null, entry_id: null, check: "none", left: false, last_ms: null };
+  if (looks) wearLooks(side, id => looks[side.members.indexOf(id)]);
+  return side;
+}
+
+/**
+ * Sets each member's look from `lookOf` (undefined keeps the one held). Only looks that are not the
+ * default are stored, and a side with none keeps no `looks` at all, so a duel nobody dresses up reads
+ * byte for byte as before.
+ */
+export function wearLooks(side: Side, lookOf: (member: string) => Look | undefined): void {
+  const looks = side.members.map((id, index) => {
+    const fresh = id === null ? undefined : lookOf(id);
+    return fresh === undefined ? keptLook(side.looks?.[index]) : keptLook(fresh);
+  });
+  if (looks.some(look => look !== undefined)) side.looks = looks.map(look => look ?? {});
+  else delete side.looks;
 }
 
 export type FriendDuelInput = { duel_id: string; board: string; chapter: ChapterKey; steps: number; starter: string; a: Side; b: Side; known: string[] };
@@ -271,6 +302,9 @@ export function progress(duel: Duel, note: ProgressNote, now: number, checks: bo
   // A pair that left hands the duel over: its room's later turns change nothing here.
   if (duel.status !== "running" || side.left || side.finished_ms !== null || note.revision <= side.revision) return ok({ finished: false });
   Object.assign(side, { revision: note.revision, steps: Math.min(note.steps, duel.steps), ticks: note.ticks, turn: note.complete ? null : note.turn, last_ms: note.at_ms });
+  // The pair's looks as their room holds them at this turn; a member the note leaves out keeps theirs.
+  const looks = note.looks;
+  if (looks) wearLooks(side, id => Object.hasOwn(looks, id) ? looks[id] : undefined);
   if (note.complete) {
     side.finished_ms = note.at_ms;
     side.entry_id = note.entry_id;
@@ -335,6 +369,8 @@ export function forgetPlayer(duel: Duel, player: string, now: number): boolean {
   if (sideOf(duel, player) < 0 && duel.starter !== player) return false;
   for (const side of duel.sides) {
     if (!side) continue;
+    // An erased member's look goes with their id.
+    if (side.looks) wearLooks(side, id => id === player ? {} : undefined);
     side.members = side.members.map(id => id === player ? null : id) as [string | null, string | null];
     if (side.room?.host === player) side.room.host = null;
     if (side.turn === player) side.turn = null;
@@ -382,6 +418,8 @@ export type SideView = {
   finished: boolean; left: boolean; check: RunCheck;
   /** Own side only: the room to open or join, and whether this player claimed it. */
   room_id?: string | null; invite_code?: string | null; hosting?: boolean;
+  /** While looks are on: what each member wears, in `members` order, {} for the default; also for a member whose id is hidden. */
+  looks?: Look[];
 };
 export type DuelView = {
   schema_version: 1; duel_id: string; kind: DuelKind; board: string; status: DuelStatus; steps: number;
@@ -391,7 +429,8 @@ export type DuelView = {
   eligible: boolean | null;
 };
 
-export function viewFor(duel: Duel, viewer: string): DuelView | null {
+/** `looks`: whether looks are on (POLLEN_LOOKS); off, a view carries none, as before looks. */
+export function viewFor(duel: Duel, viewer: string, looks = false): DuelView | null {
   const mine = sideOf(duel, viewer);
   if (mine < 0) return null;
   const known = new Set(duel.known);
@@ -401,15 +440,27 @@ export function viewFor(duel: Duel, viewer: string): DuelView | null {
     const turn = side.turn === null ? -1 : side.members.indexOf(side.turn);
     // A run that counted without its check (waived) shows none, so no phone says it waits for one.
     return { members, you: own, steps: side.steps, ticks: side.ticks, turn: turn < 0 ? null : turn, finished: side.finished_ms !== null, left: side.left, check: side.waived ? "none" : side.check,
-      ...(own ? { room_id: side.room?.room_id ?? null, invite_code: side.room?.invite_code ?? null, hosting: side.room?.host === viewer } : {}) };
+      ...(own ? { room_id: side.room?.room_id ?? null, invite_code: side.room?.invite_code ?? null, hosting: side.room?.host === viewer } : {}),
+      ...(looks ? { looks: pairShown(side.looks) } : {}) };
   };
   const result = duel.result;
   const outcome = !result ? null : result.winner === null ? (result.reason === "draw" ? "draw" : "none") : result.winner === mine ? "won" : "lost";
   return {
     schema_version: 1, duel_id: duel.duel_id, kind: duel.kind, board: duel.board, status: duel.status, steps: duel.steps,
     created_ms: duel.created_ms, accepted_ms: duel.accepted_ms, updated_ms: duel.updated_ms, mine: mine as 0 | 1,
-    sides: [sideView(duel.sides[0], 0), duel.sides[1] ? sideView(duel.sides[1], 1) : null], ghost: duel.ghost,
+    sides: [sideView(duel.sides[0], 0), duel.sides[1] ? sideView(duel.sides[1], 1) : null], ghost: ghostView(duel.ghost, looks),
     result: result && outcome ? { outcome, reason: result.reason, margin_ticks: result.margin_ticks, decided_ms: result.decided_ms } : null,
     eligible: duel.eligible
   };
+}
+
+/** Two looks as a view serves them, each checked again on the way out ({} for the default or anything else). */
+function pairShown(looks: readonly unknown[] | undefined): Look[] {
+  return [servedLook(looks?.[0]), servedLook(looks?.[1])];
+}
+/** The ghost as a view serves it: its looks only while looks are on. */
+function ghostView(ghost: Ghost | null, looks: boolean): Ghost | null {
+  if (!ghost) return null;
+  const { looks: kept, ...rest } = ghost;
+  return looks ? { ...rest, looks: pairShown(kept) } : rest;
 }

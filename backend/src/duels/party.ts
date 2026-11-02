@@ -1,5 +1,7 @@
 import { fail, ok, type Outcome } from "../protocol";
 import { MAX_MEMBER_DUELS, MAX_PARTY_INVITES, PARTY_INVITE_TTL_MS } from "./rules";
+import { keptLook } from "../leaderboards/run-looks";
+import { lookText, type Look } from "../pollen/catalog";
 
 /**
  * A player's duel party and duel pointers, one JSON row in their own
@@ -15,6 +17,10 @@ import { MAX_MEMBER_DUELS, MAX_PARTY_INVITES, PARTY_INVITE_TTL_MS } from "./rule
  *
  * `duels`: the duels this player is in, by board, so the lobby asks only
  * those boards. Pure functions here; member.ts runs them in a transaction.
+ *
+ * `look`: what the player wore at their latest duel read while looks are on
+ * (POLLEN_LOOKS), so their partner's lobby and a new duel can show it from the
+ * rows they already read (routes.ts pairOf). Kept only when not the default.
  */
 export type PartyInvite = { from: string; at: number };
 export type DuelRef = { duel_id: string; board: string; at: number };
@@ -23,6 +29,8 @@ export type PartyState = {
   invites_in: PartyInvite[]; invite_out: { to: string; at: number } | null; duels: DuelRef[];
   /** Duels whose win bonus this player was already paid or refused, so a read asks the wallet once. */
   settled: string[];
+  /** The player's own look as of their latest duel read; absent for the default. */
+  look?: Look;
 };
 export type PartyOp =
   | { kind: "invite"; to: string }
@@ -107,6 +115,14 @@ export function applyParty(state: PartyState, owner: string, op: PartyOp, now: n
       break;
   }
   return ok({ state, previous });
+}
+
+/** Keeps `look` as the player's current look. Returns whether the row changed; the default removes it. */
+export function noteLook(state: PartyState, look: Look): boolean {
+  const kept = keptLook(look), held = keptLook(state.look);
+  if ((kept && lookText(kept)) === (held && lookText(held))) return false;
+  if (kept) state.look = kept; else delete state.look;
+  return true;
 }
 
 /** Whether two rows name each other: a party that counts. */

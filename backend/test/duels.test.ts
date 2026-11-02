@@ -15,6 +15,7 @@ import { forgetReplays } from "../src/leaderboards/replays";
 import { blankSide, newGhostRace, type DuelView } from "../src/duels/model";
 import type { LeaderboardBoard } from "../src/leaderboards/board";
 import { countingEnv, meterRows } from "./meter";
+import { noteFullJourney } from "../src/pollen/wallet";
 import { POLLEN_CLIENT, configJson } from "./config";
 import { bytesDigest, decodeBlob } from "../src/blob-codec";
 import { dropRunCopies } from "../src/duels/their-run-sweep";
@@ -926,4 +927,108 @@ describe("duel hints", () => {
     expect(told.rows.a2.written).toBe(quiet.rows.a2.written);
     expect(told.rows.a1.written).toBe(quiet.rows.a1.written);
   });
+});
+
+describe("duel looks", () => {
+  // Looks on (POLLEN_LOOKS), with the shop to buy and wear them.
+  const LOOKS = { ...ON, CONFIG: configJson({ features: ["LEADERBOARDS", "DUELS", "POLLEN_EARN", "POLLEN_WARDROBE", "POLLEN_SHOP", "POLLEN_LOOKS"] }) };
+  const ASK = { "X-AfterYou-Looks": "1" };
+  const PRICES: Record<string, number> = { daisy: 1000, seashell: 1000, straw_hat: 5000, tide: 20000 };
+  /** Buys and wears `look` through the shop, as the phone would. */
+  async function wear(account: Account, look: Record<string, string>): Promise<void> {
+    await runInDurableObject(env.PLAYERS.getByName(account.player_id), async (_, ctx) => {
+      noteFullJourney(ctx.storage, Date.now() + DAY, Date.now());
+      ctx.storage.sql.exec("UPDATE pollen_wallet SET data=json_set(data,'$.balance',100000,'$.earned',100000) WHERE id=1");
+    });
+    for (const id of Object.values(look)) await ok(call("/v1/pollen/spend", "POST", account, { schema_version: 1, idempotency_key: crypto.randomUUID(), kind: "item", id, expected_cost: PRICES[id] }, LOOKS));
+    await ok(call("/v1/pollen/equip", "POST", account, { schema_version: 1, idempotency_key: crypto.randomUUID(), revision: Date.now(), look }, LOOKS));
+  }
+  const looksLobby = (account: Account, vars = LOOKS) => ok<Lobby & { party: { partner_look?: Any } }>(call("/v1/duels", "GET", account, undefined, vars));
+  const sideLooks = (view: DuelView) => view.sides.map(side => side?.looks);
+  const partyRow = (account: Account) => runInDurableObject(env.LEADERBOARD_MEMBERS.getByName(account.player_id), async (_, ctx) =>
+    JSON.parse(ctx.storage.sql.exec<{ data: string }>("SELECT data FROM duel_party WHERE id=1").one().data) as Any);
+  const openWith = (host: Account, duel: DuelView) => ok<RoomSnapshotV2>(call("/v2/rooms", "POST", host, { idempotency_key: crypto.randomUUID(), ...RELAY_KEY, duel: { duel_id: duel.duel_id, board: RELAY } }, LOOKS));
+  const joinWith = (guest: Account, room: RoomSnapshotV2) => ok<RoomSnapshotV2>(call("/v2/rooms/join", "POST", guest, { invite_code: room.invite_code }, LOOKS));
+
+  it("dress each side in what its members wear, from their party rows and then each turn in their room, only while looks are on", async () => {
+    const { a1, a2, b1, b2 } = await pairs();
+    await wear(a1, { hat: "daisy" }); await wear(a2, { hat: "seashell" }); await wear(b1, { hat: "straw_hat" });
+    // Each lobby read keeps the reader's look in their own party row; the partner's comes from the row the lobby already reads.
+    for (const account of [a1, a2, b1, b2]) await looksLobby(account);
+    expect((await looksLobby(a1)).party.partner_look).toEqual({ hat: "seashell" });
+    expect((await looksLobby(b1)).party.partner_look).toEqual({});
+    expect(await partyRow(b2)).not.toHaveProperty("look");
+    // Off, nothing about looks is said.
+    expect((await lobby(a1)).party).not.toHaveProperty("partner_look");
+
+    const sent = (await ok<{ duel: DuelView }>(call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY }, LOOKS))).duel;
+    expect(sideLooks(sent)).toEqual([[{ hat: "daisy" }, { hat: "seashell" }], [{ hat: "straw_hat" }, {}]]);
+    // The other pair sees A's looks, even for A2, whose id it may not see.
+    const accepted = (await ok<{ duel: DuelView }>(call(`/v1/duels/${RELAY}/${sent.duel_id}/accept`, "POST", b1, { schema_version: 1 }, LOOKS))).duel;
+    expect(accepted.sides[0].members).toEqual([a1.player_id, null]);
+    expect(sideLooks(accepted)).toEqual([[{ hat: "daisy" }, { hat: "seashell" }], [{ hat: "straw_hat" }, {}]]);
+    // Looks off: views read as before looks.
+    expect(sideLooks((await detail(b1, sent)).duel)).toEqual([undefined, undefined]);
+
+    // A2 changes before joining the room and never opens the lobby again: the room's member look reaches the duel with the next turn.
+    await wear(a2, { body: "tide" });
+    const room = await openWith(a1, sent);
+    const joined = await joinWith(a2, room);
+    // In the duel's own room each member reads the partner's look, as in any room.
+    expect((await ok<Any>(call(`/v2/rooms/${room.room_id}`, "GET", a2, undefined, LOOKS, ASK))).partner_look).toEqual({ hat: "daisy" });
+    expect((await ok<Any>(call(`/v2/rooms/${room.room_id}`, "GET", a1, undefined, LOOKS, ASK))).partner_look).toEqual({ body: "tide" });
+    const run = await relayRun(0);
+    const reply = await ok<Any>(call(`/v2/rooms/${joined.room_id}/turns`, "POST", a1, turn(joined, run.turns[0][1]), LOOKS));
+    // The duel's looks are server only: the turn reply never carries them.
+    expect(reply).not.toHaveProperty("duel_looks");
+    const seen = (await looksLobby(b2)).duels.find(item => item.duel_id === sent.duel_id)!;
+    expect(sideLooks(seen)).toEqual([[{ hat: "daisy" }, { body: "tide" }], [{ hat: "straw_hat" }, {}]]);
+  }, 60_000);
+
+  it("race a board run in the looks its row shows, and the developers' run in the default", async () => {
+    const { a1, a2 } = await pairs(true);
+    await wear(a1, { hat: "daisy" });
+    const first = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }, LOOKS))).duel;
+    expect(first.ghost!.looks).toEqual([{}, {}]);
+    // A finished run of A puts A on the board in A's looks.
+    let current = await joinWith(a2, await openWith(a1, first));
+    for (const [who, recording, checkpoint] of (await relayRun(0)).turns) current = (await ok<MutationV2>(call(`/v2/rooms/${current.room_id}/turns`, "POST", [a1, a2][who], turn(current, recording, checkpoint), LOOKS))).room;
+    await verdicts((await job()).entries, () => true);
+    await forgetViews(boardKeys());
+    const top = (await ok<{ boards: { board: string; top: { entry_id: string }[] }[] }>(call("/v1/duels/ghosts", "GET", a1, undefined, LOOKS))).boards.find(item => item.board === RELAY)!.top;
+    expect(top.length).toBeGreaterThan(0);
+    const raced = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "board", entry_id: top[0].entry_id }, LOOKS))).duel;
+    expect(raced.ghost!.looks).toEqual([{ hat: "daisy" }, {}]);
+    expect((await detail(a1, raced)).duel.ghost).not.toHaveProperty("looks");
+  }, 60_000);
+
+  it("add no request to any step and write a party row only when a look changed", async () => {
+    const { a1, a2, b1 } = await pairs(true);
+    await wear(a1, { hat: "daisy" });
+    const counted = async (work: (target: Env) => Promise<Response>) => {
+      const meter = countingEnv(Object.assign({ ...env }, LOOKS) as Env);
+      const answer = await work(meter.env);
+      expect(answer.status, await answer.clone().text()).toBe(200);
+      return { answer, calls: meter.calls.length };
+    };
+    const sent = await counted(target => call("/v1/duels/challenge", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), friend: b1.player_id, board: RELAY }, LOOKS, {}, target));
+    const duel = (await sent.answer.json<{ duel: DuelView }>()).duel;
+    const accepted = await counted(target => call(`/v1/duels/${RELAY}/${duel.duel_id}/accept`, "POST", b1, { schema_version: 1 }, LOOKS, {}, target));
+    const read = await counted(target => call("/v1/duels", "GET", a1, undefined, LOOKS, {}, target));
+    const joined = await joinWith(a2, await openWith(a1, duel));
+    const first = (await relayRun(0)).turns[0][1];
+    const played = await counted(target => call(`/v2/rooms/${joined.room_id}/turns`, "POST", a1, turn(joined, first), LOOKS, {}, target));
+    // The same budget as with looks off ("stays within its request budget per step").
+    expect(sent.calls).toBeLessThanOrEqual(24);
+    expect(accepted.calls).toBeLessThanOrEqual(5);
+    expect(read.calls).toBeLessThanOrEqual(4);
+    expect(played.calls).toBeLessThanOrEqual(6);
+    const member = { a1: env.LEADERBOARD_MEMBERS.getByName(a1.player_id) as unknown as DurableObjectStub };
+    const same = await meterRows(member, () => looksLobby(a1));
+    expect(same.rows.a1.written).toBe(0);
+    await wear(a1, { hat: "seashell" });
+    const changed = await meterRows(member, () => looksLobby(a1));
+    expect(changed.rows.a1.written).toBe(1);
+    expect((await partyRow(a1)).look).toEqual({ hat: "seashell" });
+  }, 60_000);
 });

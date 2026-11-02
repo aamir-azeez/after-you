@@ -367,11 +367,11 @@ export async function routeV2(request: Request, path: string, playerId: string, 
   }
   if (operation === "fork") return json(unwrap(await room.fork(playerId, input, context, await bearerDigest(request))));
   // Story rooms never earn; a standalone turn with `pollen` freezes its facts and is credited once.
-  // `board_looks` and `duel_link` are server only: they go to the board and the duel, never into the reply.
-  const { board_looks, duel_link, ...committed } = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
+  // `board_looks`, `duel_link` and `duel_looks` are server only: they go to the board and the duel, never into the reply.
+  const { board_looks, duel_link, duel_looks, ...committed } = unwrap(await room.commit(playerId, input, context, besideWanted(request, env, context), memberName, context === undefined ? pollen : undefined, context === undefined ? look : undefined));
   // A turn that finished a together run that might place goes to its board (leaderboards/submit.ts); the reply is unchanged.
   await postFinishedRun(env, committed, context, board_looks);
   // A duel room's turn moves its duel (duels/turn-hook.ts); the reply is unchanged.
-  await noteDuelTurn(env, committed.room, duel_link, playerId);
+  await noteDuelTurn(env, committed.room, duel_link, playerId, duel_looks);
   return json(await creditCommitted(request, env, playerId, committed));
 }

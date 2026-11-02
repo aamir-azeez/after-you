@@ -13,6 +13,10 @@ import { looksOn } from "./features";
  *   each of the other member's turns, by recording hash), and `turn_looks` for every turn beside a
  *   replay transfer. Leaderboard rows also carry each pair's looks while the flag is on, on the public
  *   cached board read with no header asked, also for a pair that hides its names (leaderboards/run-looks.ts).
+ * - Duels (duels/model.ts): the lobby, a party action, a challenge and a race learn the caller's look
+ *   the same way (looksDuelRoute), keep it in their party row and seed a new duel's sides from those
+ *   rows; every duel read carries each side's looks and the partner's, with no header asked, since
+ *   older phones read past fields they do not know.
  */
 export const LOOKS_HEADER = "X-AfterYou-Looks";
 export const LOOKS_VERSION = 1;
@@ -28,6 +32,11 @@ const TURN_ROUTE = /^\/v2\/rooms\/[A-Za-z0-9_-]{22}\/turns$/;
 /** The routes that write the caller's look into a room while looks are on: create, join and a turn. */
 export function looksMemberRoute(request: Request, path: string, env: ServerVars): boolean {
   return request.method === "POST" && (path === "/v2/rooms" || path === "/v2/rooms/join" || TURN_ROUTE.test(path)) && looksOn(env);
+}
+const DUEL_LOOK_ROUTE = /^\/v1\/duels(?:\/party\/(?:invite|accept|dismiss|cancel|leave)|\/challenge|\/ghost)?$/;
+/** The duel routes that keep the caller's look in their party row while looks are on: the lobby, party actions, a challenge and a race. */
+export function looksDuelRoute(request: Request, path: string, env: ServerVars): boolean {
+  return DUEL_LOOK_ROUTE.test(path) && (path === "/v1/duels" ? request.method === "GET" : request.method === "POST") && looksOn(env);
 }
 /** The look a Player answer carries, when it carries a valid one. */
 export function memberLookOf(answer: { look?: unknown }): Look | undefined {

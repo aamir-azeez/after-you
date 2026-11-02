@@ -18,7 +18,7 @@ import { LIVE_PATH, forwardLiveUpgrade } from "./live";
 import { grantHint, paidUntil, pollenAuthView, pollenEarning, pollenRoute, pollenMember, pollenMemberRoute, pollenTurnRoute, routePollen, walletMode } from "./pollen/routes";
 import type { PollenMember } from "./pollen/turn-facts";
 import type { HistoryView, WalletView } from "./pollen/wallet";
-import { looksMemberRoute, memberLookOf } from "./pollen/looks-routes";
+import { looksDuelRoute, looksMemberRoute, memberLookOf } from "./pollen/looks-routes";
 import { facePacksTurnRoute } from "./v2/face-packs";
 import type { Look } from "./pollen/catalog";
 export { FriendRoomEvents } from "./friend-room-events";
@@ -63,7 +63,7 @@ const ROOM_ROUTE = /^\/v[12]\/rooms\/([A-Za-z0-9_-]{22})(?:\/(?!leave(?:\/|$))|$
  * display name from the same call (`memberName`: a name, or null when anonymous); otherwise undefined.
  * While Pollen earning is on, a turn, room creation and joining learn the player's Full Journey end
  * the same way (`pollen`), and the wallet reads get their answer from it (`pollenView`).
- * While looks are on, a turn, room creation and joining learn the look the player wears the same way (`memberLook`).
+ * While looks are on, a turn, room creation and joining learn the look the player wears the same way (`memberLook`), as do the duel routes that keep it (looksDuelRoute).
  * A turn from a phone that sends pack faces learns the reaction packs the player owns the same way (`facePacks`, v2/face-packs.ts).
  */
 async function auth(request: Request, env: Env, path: string, deleting = false): Promise<{ playerId: string; safetyToken?: string; memberName?: string | null; pollen?: PollenMember; pollenView?: WalletView | HistoryView; memberLook?: Look; facePacks?: string[] }> {
@@ -75,7 +75,7 @@ async function auth(request: Request, env: Env, path: string, deleting = false):
   if (!SECRET_PATTERN.test(token)) throw new ApiError(401, "invalid_auth");
   const hash = await digest(token), player = env.PLAYERS.getByName(id), room = ROOM_ROUTE.exec(path)?.[1];
   // The same single Player call either way; a room route also learns whether the room is linked.
-  const memberRoute = pollenMemberRoute(request, path, env), view = pollenAuthView(request, path, env), looks = looksMemberRoute(request, path, env);
+  const memberRoute = pollenMemberRoute(request, path, env), view = pollenAuthView(request, path, env), looks = looksMemberRoute(request, path, env) || looksDuelRoute(request, path, env);
   const access: { authorized: boolean; linked: boolean; safety_token?: string; display_name?: string | null; fj_until?: number; pollen?: WalletView | HistoryView; look?: Look; face_packs?: string[] } = room !== undefined ? await player.authorizeRoom(hash, room, pollenTurnRoute(request, path, env), looks, facePacksTurnRoute(request, path))
     : namesRoomRoute(request, path, env) || memberRoute || looks ? await player.authorizeNamed(hash, memberRoute, looks) : view !== null ? await player.authorizeWallet(hash, view, walletMode(request, env), grantHint(request))
     : { authorized: await player.authorize(hash, deleting), linked: true };
@@ -161,7 +161,7 @@ export default {
       if (path === DISPLAY_NAME_PATH) return json(await routeDisplayName(request, playerId, env));
       if (pollenRoute(path, env)) return json(await routePollen(request, path, playerId, env, pollenView));
       const leaderboards = await routeLeaderboards(request, path, playerId, env); if (leaderboards !== null) return json(leaderboards);
-      const duels = await routeDuels(request, path, playerId, env); if (duels !== null) return json(duels);
+      const duels = await routeDuels(request, path, playerId, env, memberLook); if (duels !== null) return json(duels);
       if (path === "/v1/invitations/resolve") return json(await resolveInvitation(request, env));
       if (path === "/v1/social/inbox") {
         if (request.method !== "GET") throw new ApiError(405, "method_not_allowed");

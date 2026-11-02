@@ -2,7 +2,8 @@ import { DurableObject } from "cloudflare:workers";
 import { answerWhileBlank, openLazyStorage } from "../lazy-storage";
 import { knownBoard } from "./boards";
 import { fail, type Outcome } from "../protocol";
-import { applyParty, blankParty, parsedParty, prune, type PartyAnswer, type PartyOp, type PartyState } from "../duels/party";
+import { applyParty, blankParty, noteLook, parsedParty, prune, type PartyAnswer, type PartyOp, type PartyState } from "../duels/party";
+import type { Look } from "../pollen/catalog";
 
 /**
  * One player's leaderboard settings, one Durable Object per player id: whether
@@ -66,10 +67,18 @@ export class LeaderboardMember extends DurableObject<Env> {
       this.ctx.storage.sql.exec("DROP TABLE IF EXISTS duel_party");
     });
   }
-  /** The duel party and pointers (duels/party.ts) as of `now`; blank for a player who never duelled. Reads only. */
-  partyRead(now: number): PartyState {
+  /**
+   * The duel party and pointers (duels/party.ts) as of `now`; blank for a player who never duelled. Reads only,
+   * except that `look` (the owner's own look on their duel reads while looks are on) is kept in a row that
+   * exists when it changed: one row write per change of look, never a new row.
+   */
+  partyRead(now: number, look?: Look): PartyState {
     const state = this.partyRow();
     prune(state, now);
+    if (look !== undefined && this.hasPartyTable()) {
+      const stored = this.partyRow();
+      if (noteLook(stored, look)) { this.ctx.storage.sql.exec("INSERT OR REPLACE INTO duel_party VALUES (1,?)", JSON.stringify(stored)); noteLook(state, look); }
+    }
     return state;
   }
   /** One party op for `owner`, in one transaction. An erased player changes nothing. */

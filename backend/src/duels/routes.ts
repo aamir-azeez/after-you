@@ -18,6 +18,8 @@ import { THEIR_RUN_KEEP_MS } from "./their-run";
 import { developerGhost } from "./developer-ghosts";
 import { announceLobby, hintsField } from "./news";
 import { blobBase64 } from "../blob-codec";
+import { looksOn } from "../pollen/features";
+import type { Look } from "../pollen/catalog";
 
 /**
  * The phone's duel routes, all absent (falling through to 404) unless duels
@@ -34,6 +36,9 @@ import { blobBase64 } from "../blob-codec";
  * - POST /v1/duels/<board>/<duel_id>/{accept,decline,leave,sync}
  * A duel's rooms are made through POST /v2/rooms with a `duel` field
  * (prepareDuelRoom below), so every room rule still applies there.
+ * While looks are on (POLLEN_LOOKS), every duel view carries each side's looks
+ * (model.ts), and the lobby the partner's (party.partner_look), all from rows
+ * these calls already read: no request is added for a look.
  */
 export const DUELS_PREFIX = "/v1/duels";
 export const DUELS_HEADER = "X-AfterYou-Duels";
@@ -91,12 +96,16 @@ async function friends(env: Env, a: string, b: string): Promise<boolean> {
   return Boolean(one?.link.accepted && two?.link.accepted) && !await interactionBlocked(env, a, b);
 }
 
-/** A player's party, with whether it counts (both name each other). Requests: 1, or 2 with a partner. */
-async function pairOf(env: Env, player: string, now: number, own?: PartyState): Promise<{ state: PartyState; partner: string | null; intact: boolean }> {
-  const state = own ?? await party(env, player).partyRead(now);
-  if (!state.partner) return { state, partner: null, intact: false };
+/**
+ * A player's party, with whether it counts (both name each other) and both members' looks as their rows keep
+ * them (party.ts `look`), the player's first. `look`: the caller's own look from auth(), kept in their row when it
+ * changed. Requests: 1, or 2 with a partner.
+ */
+async function pairOf(env: Env, player: string, now: number, look?: Look): Promise<{ state: PartyState; partner: string | null; intact: boolean; looks: [Look | undefined, Look | undefined] }> {
+  const state = await party(env, player).partyRead(now, look);
+  if (!state.partner) return { state, partner: null, intact: false, looks: [state.look, undefined] };
   const theirs = await party(env, state.partner).partyRead(now);
-  return { state, partner: state.partner, intact: mutual(player, state, state.partner, theirs) };
+  return { state, partner: state.partner, intact: mutual(player, state, state.partner, theirs), looks: [state.look, theirs.look] };
 }
 
 /** The duels `player`'s pointers name, settled now, read one request per board. */
@@ -146,9 +155,13 @@ async function winBonus(env: Env, player: string, duel: Duel, settled: readonly 
   } catch { return null; }
 }
 
-/** The lobby. Requests: 1 (own party) + 1 (partner, when named) + 1 per board holding a duel + a wallet credit per new win + 1 write when pointers change. */
-async function lobby(env: Env, player: string, now: number): Promise<unknown> {
-  const pair = await pairOf(env, player, now);
+/**
+ * The lobby. Requests: 1 (own party) + 1 (partner, when named) + 1 per board holding a duel + a wallet credit per new win + 1 write when pointers change.
+ * While looks are on, `party.partner_look` is the partner's look from the row already read ({} for the default).
+ */
+async function lobby(env: Env, player: string, now: number, look?: Look): Promise<unknown> {
+  const pair = await pairOf(env, player, now, look);
+  const shownLooks = looksOn(env);
   const { duels, missing } = await duelsOf(env, pair.state.duels, player);
   const stale = duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS).map(duel => duel.duel_id);
   const shown = duels.filter(duel => !stale.includes(duel.duel_id));
@@ -161,8 +174,9 @@ async function lobby(env: Env, player: string, now: number): Promise<unknown> {
   for (const op of ops) await party(env, player).partyApply(player, op, now);
   return {
     schema_version: 1,
-    party: { partner: pair.partner, intact: pair.intact, invites_in: pair.state.invites_in.map(invite => invite.from), invite_out: pair.state.invite_out?.to ?? null },
-    duels: shown.map(duel => viewFor(duel, player)).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms),
+    party: { partner: pair.partner, intact: pair.intact, invites_in: pair.state.invites_in.map(invite => invite.from), invite_out: pair.state.invite_out?.to ?? null,
+      ...(shownLooks && pair.partner ? { partner_look: pair.looks[1] ?? {} } : {}) },
+    duels: shown.map(duel => viewFor(duel, player, shownLooks)).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms),
     limits: { friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR },
     ...hintsField(env)
   };
@@ -170,10 +184,11 @@ async function lobby(env: Env, player: string, now: number): Promise<unknown> {
 
 /** Each board's times to race: its top runs from the view (cached when it can be) and the developers' ghost. */
 async function ghosts(env: Env): Promise<unknown> {
+  const shownLooks = looksOn(env);
   const boards = await pooled([...boardKeys()], BOARD_CONCURRENCY, async key => {
     let view = await cachedView(key);
     if (!view) { view = await board(env, key).view(key); await storeView(view); }
-    return { board: key, developer: developerGhost(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names })) };
+    return { board: key, developer: developerGhost(key), top: view.top.slice(0, GHOSTS_SHOWN).map(row => ({ rank: row.rank, entry_id: row.entry_id, ticks: row.ticks, names: row.names, ...(shownLooks && row.looks ? { looks: row.looks } : {}) })) };
   });
   return { schema_version: 1, boards };
 }
@@ -182,7 +197,7 @@ async function ghosts(env: Env): Promise<unknown> {
  * A party op, answered with the lobby. Every other player whose row it changed (an invite arrived or
  * was taken back, an invite was accepted, a partner left) is told once it is stored (news.ts).
  */
-async function partyRoute(env: Env, action: string, player: string, input: unknown, now: number): Promise<unknown> {
+async function partyRoute(env: Env, action: string, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
   const told: string[] = [];
   const apply = async (id: string, op: PartyOp) => unwrap(await party(env, id).partyApply(id, op, now));
   // Leaving the old party when a new one forms: the old partner stops naming this player.
@@ -224,7 +239,7 @@ async function partyRoute(env: Env, action: string, player: string, input: unkno
   } finally {
     await announceLobby(env, told.filter(id => id !== player), now);
   }
-  return lobby(env, player, now);
+  return lobby(env, player, now, look);
 }
 
 /** Every pair of players across the two pairs who are friends: they see each other's ids. Requests: 2 per pair checked. */
@@ -234,7 +249,8 @@ async function knownAcross(env: Env, a: readonly string[], b: readonly string[])
   return found.filter((key): key is string => key !== null);
 }
 
-async function challenge(env: Env, player: string, input: unknown, now: number): Promise<unknown> {
+async function challenge(env: Env, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
+  const shownLooks = looksOn(env);
   const body = fields(input, ["idempotency_key", "friend", "board"]);
   if (typeof body.idempotency_key !== "string" || !IDEMPOTENCY_PATTERN.test(body.idempotency_key)) throw new ApiError(400, "invalid_duel_request");
   const friend = playerId(body.friend), key = boardOf(body.board), row = chapterRow(key);
@@ -242,10 +258,10 @@ async function challenge(env: Env, player: string, input: unknown, now: number):
   const duelId = (await digest(`after-you duel v1\n${player}\n${body.idempotency_key}`)).slice(0, 32);
   // Friends first, so nobody can ask about a stranger's party.
   if (!await friends(env, player, friend)) throw new ApiError(403, "duel_friends_only");
-  const mine = await pairOf(env, player, now);
+  const mine = await pairOf(env, player, now, look);
   // A retried challenge answers the duel it made.
   const held = mine.state.duels.find(ref => ref.duel_id === duelId);
-  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player) }; }
+  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, shownLooks) }; }
   if (!mine.intact || !mine.partner) throw new ApiError(409, "party_required");
   const theirs = await pairOf(env, friend, now);
   if (!theirs.intact || !theirs.partner) throw new ApiError(409, "opponent_party_required");
@@ -258,25 +274,27 @@ async function challenge(env: Env, player: string, input: unknown, now: number):
   if (openFor(duels, aKey, "friend") >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
   if (duels.some(duel => duel.kind === "friend" && isOpen(duel) && duel.board === key && duel.sides.some(side => side?.pair_key === bKey))) throw new ApiError(409, "duel_already_open");
   const known = await knownAcross(env, a, b);
+  // Each side starts in the looks its members' party rows keep (read above); turns bring their room's looks.
   const duel = duelsAt(env, key).create(newFriendDuel({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
-    a: blankSide(a, aKey), b: blankSide(b, bKey), known }, now));
+    a: blankSide(a, aKey, shownLooks ? mine.looks : undefined), b: blankSide(b, bKey, shownLooks ? theirs.looks : undefined), known }, now));
   const made = await duel;
   if (!made) throw new ApiError(503, "duels_busy");
   await addRefs(env, [...a, ...b], { duel_id: duelId, board: key, at: now }, now);
   // Only now does every lobby list it.
   await announceLobby(env, [...a, ...b].filter(id => id !== player), made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player) };
+  return { schema_version: 1, duel: viewFor(made, player, shownLooks) };
 }
 
-async function ghostRace(env: Env, player: string, input: unknown, now: number): Promise<unknown> {
+async function ghostRace(env: Env, player: string, input: unknown, now: number, look?: Look): Promise<unknown> {
+  const shownLooks = looksOn(env);
   const body = fields(input, ["idempotency_key", "board", "source", "entry_id"]);
   if (typeof body.idempotency_key !== "string" || !IDEMPOTENCY_PATTERN.test(body.idempotency_key) || (body.source !== "board" && body.source !== "developer")) throw new ApiError(400, "invalid_duel_request");
   const key = boardOf(body.board), row = chapterRow(key);
   if (!creatable(row.adapter, env)) throw new ApiError(503, "chapter_creation_disabled");
   const duelId = (await digest(`after-you ghost v1\n${player}\n${body.idempotency_key}`)).slice(0, 32);
-  const mine = await pairOf(env, player, now);
+  const mine = await pairOf(env, player, now, look);
   const held = mine.state.duels.find(ref => ref.duel_id === duelId);
-  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player) }; }
+  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player, shownLooks) }; }
   if (!mine.intact || !mine.partner) throw new ApiError(409, "party_required");
   let ghost: Ghost;
   if (body.source === "developer") {
@@ -290,19 +308,21 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number):
     const top = view.top.find(item => item.entry_id === body.entry_id);
     if (!top) throw new ApiError(404, "ghost_not_found");
     // Names stay on the board, where erasure reaches them; the race keeps only the place and time.
-    ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: null };
+    ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: null, ...(shownLooks && top.looks ? { looks: top.looks } : {}) };
   }
   const a = [player, mine.partner] as [string, string], aKey = await pairKey(...a);
   const { duels } = await duelsOf(env, mine.state.duels, player);
   if (openFor(duels, aKey, "ghost") >= MAX_GHOST_RACES_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
-  const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player, a: blankSide(a, aKey), ghost }, now));
+  const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player,
+    a: blankSide(a, aKey, shownLooks ? mine.looks : undefined), ghost }, now));
   if (!made) throw new ApiError(503, "duels_busy");
   await addRefs(env, a, { duel_id: duelId, board: key, at: now }, now);
   await announceLobby(env, [mine.partner], made.updated_ms, duelId);
-  return { schema_version: 1, duel: viewFor(made, player) };
+  return { schema_version: 1, duel: viewFor(made, player, shownLooks) };
 }
 
 async function duelAction(env: Env, player: string, key: string, duelId: string, action: string | undefined, input: unknown, now: number): Promise<unknown> {
+  const shownLooks = looksOn(env);
   const [duel] = await duelsAt(env, key).read([duelId], player);
   const mine = duel ? sideOf(duel, player) : -1;
   if (!duel || mine < 0) throw new ApiError(404, "duel_not_found");
@@ -320,11 +340,11 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
       }
     }
     const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: "accept", player, intact }));
-    return { schema_version: 1, duel: viewFor(answer.duel, player) };
+    return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks) };
   }
   if (action === "decline" || action === "leave") {
     const answer = unwrap(await duelsAt(env, key).act(duelId, { kind: action, player }));
-    return { schema_version: 1, duel: viewFor(answer.duel, player) };
+    return { schema_version: 1, duel: viewFor(answer.duel, player, shownLooks) };
   }
   // sync: the phone saw its room ahead of the duel; note the room as it is now.
   const room = duel.sides[mine as 0 | 1]!.room;
@@ -333,10 +353,10 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
     const link = snapshot.ok ? await env.ROOMS_V2.getByName(room.room_id).duelLinkOf() : null;
     if (snapshot.ok && link?.duel_id === duelId) {
       const made = await roomNote(snapshot.value, link);
-      if (made) { const noted = await duelsAt(env, key).progress(duelId, made.note, made.proof, player); if (noted.ok) return { schema_version: 1, duel: viewFor(noted.value, player) }; }
+      if (made) { const noted = await duelsAt(env, key).progress(duelId, made.note, made.proof, player); if (noted.ok) return { schema_version: 1, duel: viewFor(noted.value, player, shownLooks) }; }
     }
   }
-  return { schema_version: 1, duel: viewFor(duel, player) };
+  return { schema_version: 1, duel: viewFor(duel, player, shownLooks) };
 }
 
 /**
@@ -346,7 +366,7 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
  * party row's write when a bonus was asked.
  */
 async function duelDetail(env: Env, player: string, duel: Duel, now: number): Promise<unknown> {
-  const view = viewFor(duel, player)!;
+  const view = viewFor(duel, player, looksOn(env))!;
   const room = duel.sides[sideOf(duel, player) as 0 | 1]!.room;
   let pay: DuelRoomPay | undefined, bonus: DuelWinAnswer | null = null;
   if (isFinal(duel) && pollenEarning(env)) {
@@ -358,12 +378,15 @@ async function duelDetail(env: Env, player: string, duel: Duel, now: number): Pr
   return { schema_version: 1, duel: view, ...(pay ? { pay } : {}), ...(shown && duel.kind === "friend" ? { win_bonus: shown } : {}), ...(shown?.counted && duel.kind === "ghost" ? { ghost_bonus: shown } : {}), ...hintsField(env) };
 }
 
-/** The signed-in routes under /v1/duels; null for any other path or while duels are off. */
-export async function routeDuels(request: Request, path: string, player: string, env: Env): Promise<unknown | null> {
+/**
+ * The signed-in routes under /v1/duels; null for any other path or while duels are off. `look`: the caller's
+ * look from auth() while looks are on (pollen/looks-routes.ts looksDuelRoute), undefined otherwise.
+ */
+export async function routeDuels(request: Request, path: string, player: string, env: Env, look?: Look): Promise<unknown | null> {
   if ((path !== DUELS_PREFIX && !path.startsWith(DUELS_PREFIX + "/")) || !duelsOn(env)) return null;
   const now = Date.now();
   if (request.method === "GET") {
-    if (path === DUELS_PREFIX) return lobby(env, player, now);
+    if (path === DUELS_PREFIX) return lobby(env, player, now, look);
     if (path === DUELS_PREFIX + "/ghosts") return ghosts(env);
     const match = DUEL_PATH.exec(path);
     if (match && !match[3]) return duelAction(env, player, boardOf(match[1]), match[2], undefined, null, now);
@@ -373,9 +396,9 @@ export async function routeDuels(request: Request, path: string, player: string,
   if (request.method !== "POST") throw new ApiError(405, "method_not_allowed");
   const input = await boundedJson(request, 2048);
   const partyMatch = PARTY_PATH.exec(path);
-  if (partyMatch) return partyRoute(env, partyMatch[1], player, input, now);
-  if (path === DUELS_PREFIX + "/challenge") return challenge(env, player, input, now);
-  if (path === DUELS_PREFIX + "/ghost") return ghostRace(env, player, input, now);
+  if (partyMatch) return partyRoute(env, partyMatch[1], player, input, now, look);
+  if (path === DUELS_PREFIX + "/challenge") return challenge(env, player, input, now, look);
+  if (path === DUELS_PREFIX + "/ghost") return ghostRace(env, player, input, now, look);
   const match = DUEL_PATH.exec(path);
   if (match?.[3] === "their-run/ack") return acknowledgeRun(env, player, boardOf(match[1]), match[2], input);
   if (match?.[3] && match[3] !== "their-run") return duelAction(env, player, boardOf(match[1]), match[2], match[3], input, now);

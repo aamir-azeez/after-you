@@ -93,7 +93,7 @@ export type MutationV2 = { receipt: ReceiptV2; room: RoomSnapshotV2 } & BesideFi
  * A standalone turn that finishes the room while looks are on returns both members' looks for its leaderboard post (leaderboards/run-looks.ts), also taken out.
  * A duel room's turn also returns its duel (duels/room-link.ts), which the Worker takes out likewise (duels/turn-hook.ts).
  */
-export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?: PairLooks; duel_link?: DuelLink };
+export type CommittedV2 = MutationV2 & { pollen_facts?: TurnFacts; board_looks?: PairLooks; duel_link?: DuelLink; duel_looks?: PairLooks };
 /**
  * What a standalone member's read or turn reply carries beside the room, each
  * only when the member asked for it (names and looks also while their flags are on): the room's end reactions
@@ -723,7 +723,9 @@ export class RoomV2 extends DurableObject<Env> {
     const link = duelLink(this.ctx.storage);
     const extra = { ...(facts?.player_id === player ? { pollen_facts: facts } : {}),
       ...(look !== undefined && finished.active_role === "complete" ? { board_looks: pairLooks(this.ctx.storage, finished.host_id, finished.guest_id) } : {}),
-      ...(link ? { duel_link: link } : {}) };
+      ...(link ? { duel_link: link } : {}),
+      // A duel room's turn while looks are on: both members' looks now, host first, for the duel's side (duels/model.ts).
+      ...(link && look !== undefined ? { duel_looks: pairLooks(this.ctx.storage, finished.host_id, finished.guest_id) } : {}) };
     if (!(beside.faces || beside.names || beside.tracks || beside.looks)) return Object.keys(extra).length ? ok<CommittedV2>({ ...outcome.value, ...extra }) : outcome;
     const state = this.stored();
     return state ? ok<CommittedV2>({ ...outcome.value, ...this.beside(state, player, beside), ...extra }) : outcome;
