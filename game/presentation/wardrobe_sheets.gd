@@ -1,8 +1,7 @@
 extends RefCounted
 ## The Wardrobe's two cards (Pollen board 5b), on the shared in-game modal:
 ## - confirm(): before any Pollen leaves the balance: "Buy Toadstool cap?", the
-##   item on a still pip, then You have, the item with its "about $X", and
-##   You'll have left, each with the grain. Buy names the cost.
+##   item on a still pip, then You have, the item, and You'll have left, each with the grain. Buy names the cost.
 ## - short(): when the balance is short: what it costs and what the player has,
 ##   the Needed box ("Needed: [grain] 5,500 more", "It stays in the shop."),
 ##   and "Keep playing with friends to earn more." While bundles sell
@@ -52,7 +51,7 @@ static func confirm(parent: Control, id: String, item_name: String, cost: int, b
 	table.add_theme_constant_override("v_separation", 10)
 	row.add_child(table)
 	_line(table, PlayerCopy.WARDROBE_YOU_HAVE, ShopKit.amount(balance, 18, CREAM))
-	_line(table, item_name, ShopKit.amount(cost, 18, CREAM, PlayerCopy.WARDROBE_MINUS % ""), ShopKit.about(cost, 18, CREAM, PlayerCopy.WARDROBE_ABOUT_ASIDE))
+	_line(table, item_name, ShopKit.amount(cost, 18, CREAM, PlayerCopy.WARDROBE_MINUS % ""))
 	_line(table, PlayerCopy.WARDROBE_LEFT, ShopKit.amount(balance - cost, 18, CREAM))
 	var button: Button = modal.add_actions(PlayerCopy.WARDROBE_BUY % PollenMoney.grouped(cost), buy, PlayerCopy.DISPLAY_NAME_CANCEL)
 	# A purchase sounds its own chord once the server confirms it.
@@ -62,22 +61,11 @@ static func confirm(parent: Control, id: String, item_name: String, cost: int, b
 	button.name = "WardrobeConfirmBuy"
 	return modal
 
-## A row: `words`, with an optional `aside` after them (the item's about hint), then the amount.
-static func _line(table: GridContainer, words: String, amount: Control, aside: Control = null) -> void:
+## A row: `words`, then the amount.
+static func _line(table: GridContainer, words: String, amount: Control) -> void:
 	var name_label := ShopKit.text(words, 18, CREAM)
-	if aside == null:
-		name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		table.add_child(name_label)
-	else:
-		var cell := HBoxContainer.new()
-		cell.name = "WardrobeConfirmItem"
-		cell.mouse_filter = Control.MOUSE_FILTER_IGNORE
-		cell.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		cell.add_theme_constant_override("separation", 6)
-		cell.add_child(name_label)
-		aside.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		cell.add_child(aside)
-		table.add_child(cell)
+	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	table.add_child(name_label)
 	amount.size_flags_horizontal = Control.SIZE_SHRINK_END
 	table.add_child(amount)
 

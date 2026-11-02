@@ -69,7 +69,7 @@ const DISPLAY_NAME_ERRORS := {
 	"name_price_hidden": DISPLAY_NAME_PRICE_HIDDEN,
 }
 ## The name change price (POLLEN-RULES.md "Prices", pollen board 6): Save says what the change costs
-## ("Save · [grain] 1,000 about $0.20"), or that this one is free, or what is still needed.
+## ("Save · [grain] 1,000"), or that this one is free, or what is still needed.
 ## SAVE_PRICED is what a screen reader hears for the priced Save.
 const DISPLAY_NAME_SAVE_PRICED := "Save for %s Pollen"
 const DISPLAY_NAME_SAVE_DOT := "Save ·"
@@ -77,7 +77,7 @@ const DISPLAY_NAME_SAVE_FREE := "Save · free this time"
 const DISPLAY_NAME_SAVE_NEEDED := " · %s more needed"
 const DISPLAY_NAME_SAVE_SHORT := "Save for %s Pollen, %s more needed"
 ## Under the field: the amount is bold ([b]), as drawn.
-const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change now costs [b]%s Pollen[/b] (about %s)."
+const DISPLAY_NAME_PRICE_NOTE := "Your free change is used. Each change now costs [b]%s Pollen[/b]."
 ## Under the choices, after the grain.
 const DISPLAY_NAME_PRICE_HAVE := "You have %s. Keeping me anonymous is always free."
 ## The short of Pollen card (board 5b) for a name change: what costs.
@@ -234,7 +234,7 @@ const POLLEN_ODDS_ITEMS := "The same turns can also bring a new item. In every 1
 const POLLEN_ODDS_PAID := "Paid chapters never bloom, and Full Journey never changes these odds."
 
 # The wardrobe (presentation/wardrobe_flow.gd, wardrobe_page.gd, wardrobe_sheets.gd).
-# Amounts come in grouped ("24,000") and money as "$0.20" (services/pollen_money.gd).
+# Amounts come in grouped ("24,000") (services/pollen_money.gd).
 const WARDROBE_OPEN := "Wardrobe"
 const WARDROBE_TITLE := "Wardrobe"
 const WARDROBE_BACK := "Back"
@@ -250,7 +250,6 @@ const WARDROBE_GET_MORE := "Get more"
 const WARDROBE_TIERS := {"common": "Common", "uncommon": "Uncommon", "rare": "Rare", "epic": "Epic", "special": "Special", "earned": "Earned"}
 const WARDROBE_SLOTS := {"hat": "Hat", "body": "Body", "leaf": "Leaf"}
 const WARDROBE_PRICE := "%s Pollen"
-const WARDROBE_ABOUT := "about %s"
 const WARDROBE_BUY := "Buy for %s"
 const WARDROBE_WEAR := "Wear"
 const WARDROBE_TAKE_OFF := "Take off"
@@ -271,8 +270,6 @@ const WARDROBE_TRY_AGAIN := "Try again"
 const WARDROBE_CONFIRM_TITLE := "Buy %s?"
 const WARDROBE_CONFIRM_NOTE := "Looks only, and it stays on your pip."
 const WARDROBE_YOU_HAVE := "You have"
-## The confirm card's about hint beside the item's name ("Daisy (about $0.20)").
-const WARDROBE_ABOUT_ASIDE := "(about %s)"
 const WARDROBE_LEFT := "You'll have left"
 ## The cost on the confirm card, with a minus sign (U+2212), never a dash.
 const WARDROBE_MINUS := "−%s"

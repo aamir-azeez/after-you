@@ -3,12 +3,12 @@ extends SceneTree
 ## - Android, desktop and iOS with a store show every part;
 ## - iOS that sells nothing (Purchases.paid_content_hidden) shows earning, the
 ##   balance and the Wardrobe, and hides the shop, every price and Full Journey;
-## - the name change on both builds: the selling build says the price and its
-##   money figure; the build that sells nothing names no price and never sends
+## - the name change on both builds: the selling build says the price in
+##   Pollen with no money figure; the build that sells nothing names no price and never sends
 ##   a change that costs, while a free change and going anonymous still save;
 ## - pollen board 6's Save states on the selling build: "Save · free this
 ##   time" only for the last free change (the server's next price, or the
-##   phone's own reading without it), Save with the grain and "about $X" inside,
+##   phone's own reading without it), Save with the grain and the price inside,
 ##   "N more needed" with Save held back and a Get Pollen link that opens the
 ##   short card, the price line under the field and the balance line under the
 ##   choices, all inside the card at 1280x720 and 1600x738.
@@ -118,10 +118,7 @@ func _board_six(size: Vector2i) -> void:
 	price.balance = 24000
 	prompt._show()
 	await process_frame
-	_check(_words(prompt.save_button) == [PlayerCopy.DISPLAY_NAME_SAVE_DOT, "1,000", PlayerCopy.WARDROBE_ABOUT % "$0.20"] and prompt.save_button.find_child("PollenMark", true, false) != null and not prompt.save_button.disabled, "Save · [grain] 1,000 about $0.20 at %s" % size)
-	var save_about: Label = prompt.save_button.find_child("PollenAbout", true, false)
-	var save_amount: Label = prompt.save_button.find_child("PollenAmountValue", true, false)
-	_check(save_about != null and save_amount != null and save_about.get_theme_font_size("font_size") < save_amount.get_theme_font_size("font_size") and save_about.get_theme_color("font_color").a < save_amount.get_theme_color("font_color").a, "Save's about hint is smaller and fainter than its price at %s" % size)
+	_check(_words(prompt.save_button) == [PlayerCopy.DISPLAY_NAME_SAVE_DOT, "1,000"] and prompt.save_button.find_child("PollenMark", true, false) != null and not prompt.save_button.disabled, "Save · [grain] 1,000 and no money figure at %s: %s" % [size, str(_words(prompt.save_button))])
 	_check(prompt._have_line.visible and prompt._have_label.text == PlayerCopy.DISPLAY_NAME_PRICE_HAVE % "24,000" and prompt._have_line.find_child("PollenMark", true, false) != null, "The balance line with its grain under the choices")
 	_check(prompt._price_note.get_parent() == prompt._counter.get_parent() and prompt._price_note.visible and not prompt.get_pollen_link.visible, "The price line sits under the field beside the counter, and no link while the balance covers it")
 	_fits(modal, prompt, size, "priced")
@@ -344,8 +341,8 @@ func _name_prompt(sells: bool) -> void:
 	await process_frame
 	var note: RichTextLabel = prompt._price_note
 	if sells:
-		_check(not prompt.save_button.disabled and prompt.save_button.accessibility_name == PlayerCopy.DISPLAY_NAME_SAVE_PRICED % "1,000" and _words(prompt.save_button) == [PlayerCopy.DISPLAY_NAME_SAVE_DOT, "1,000", PlayerCopy.WARDROBE_ABOUT % "$0.20"], "Selling: Save says the price with the grain and its money figure: " + str(_words(prompt.save_button)))
-		_check(note.visible and note.text == PlayerCopy.DISPLAY_NAME_PRICE_NOTE % ["1,000", "$0.20"] and note.get_parsed_text().contains("1,000 Pollen"), "Selling: the note says the price and its money figure: " + note.text)
+		_check(not prompt.save_button.disabled and prompt.save_button.accessibility_name == PlayerCopy.DISPLAY_NAME_SAVE_PRICED % "1,000" and _words(prompt.save_button) == [PlayerCopy.DISPLAY_NAME_SAVE_DOT, "1,000"], "Selling: Save says the price with the grain and no money figure: " + str(_words(prompt.save_button)))
+		_check(note.visible and note.text == PlayerCopy.DISPLAY_NAME_PRICE_NOTE % "1,000" and note.get_parsed_text().contains("1,000 Pollen") and not note.text.contains("$") and not note.text.contains("about"), "Selling: the note says the price in Pollen and no money figure: " + note.text)
 		prompt.field.text_submitted.emit("Robin Sky")
 		for i in range(3): await process_frame
 		_check(saved == [["typed", "Robin Sky"]], "Selling: Enter saves the priced change")

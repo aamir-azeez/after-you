@@ -1,14 +1,12 @@
 extends RefCounted
 ## The shared pieces of the Pollen pages (the Wardrobe, board 5b, and the
-## Pollen store, board 2): their type, any amount of Pollen with its grain, and
-## the "about $X" line beside a price. Every Pollen amount on those pages is
-## built here, so the grain always comes from kit/pollen_mark.gd sized from its
-## amount's font, and the about figure always comes from services/pollen_money.gd.
+## Pollen store, board 2): their type and any amount of Pollen with its grain.
+## Every Pollen amount on those pages is built here, so the grain always comes
+## from kit/pollen_mark.gd sized from its amount's font.
 ##
 ## Fonts are made once and shared. Every piece takes no input unless it is a button.
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
-const PlayerCopy = preload("res://presentation/player_copy.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const FREDOKA = preload("res://assets/fonts/fredoka.ttf")
@@ -18,13 +16,6 @@ const CREAM := UiTokens.CREAM
 const MUTED := Color("afc6be")
 const INK := Color("1d3230")
 const INK_SOFT := Color("4d625d")
-## The about hint is always smaller and fainter than the price or name beside
-## it: this share of that text's size (never under ABOUT_MIN_SIZE), in that
-## text's colour at ABOUT_FADE. 0.72 keeps ink on the cream cards and buttons and
-## cream on the modal's teal at 4.5:1 or more, as small text needs.
-const ABOUT_SCALE := 0.6
-const ABOUT_MIN_SIZE := 10
-const ABOUT_FADE := 0.72
 
 static var _fonts := {}
 
@@ -82,33 +73,8 @@ static func amount(value: int, font_size: int, color: Color, before: String = ""
 	row.add_child(number)
 	return row
 
-## The about hint's size beside text of `beside_size`.
-static func about_size(beside_size: int) -> int:
-	return maxi(ABOUT_MIN_SIZE, roundi(beside_size * ABOUT_SCALE))
-
-## The about hint's colour beside text in `beside_color`.
-static func about_color(beside_color: Color) -> Color:
-	return Color(beside_color, beside_color.a * ABOUT_FADE)
-
-## "about $3.96" for an amount of Pollen, in the hint's style beside text of
-## `beside_size` in `beside_color`; `words` holds the figure ("(about %s)").
-static func about(value: int, beside_size: int, beside_color: Color, words: String = PlayerCopy.WARDROBE_ABOUT) -> Label:
-	var label := text(words % PollenMoney.about(value), about_size(beside_size), about_color(beside_color))
-	label.name = "PollenAbout"
-	return label
-
-## A price as an item card shows it: the amount over its about hint.
-static func price(value: int, font_size: int, color: Color) -> VBoxContainer:
-	var column := VBoxContainer.new()
-	column.name = "PollenPrice"
-	column.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	column.add_theme_constant_override("separation", 0)
-	column.add_child(amount(value, font_size, color))
-	column.add_child(about(value, font_size, color))
-	return column
-
 ## A label-free button with `content` laid inside it, for a button whose words
-## sit beside a grain ("Buy for [grain] 20,000 about $3.96"). The content takes
+## sit beside a grain ("Buy for [grain] 20,000"). The content takes
 ## no input, so the whole button is the target.
 static func content_button(content: Control, height: float = 54.0) -> Button:
 	var button := Button.new()

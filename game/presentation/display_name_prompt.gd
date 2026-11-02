@@ -32,7 +32,7 @@ extends Node
 ##   dismissed (Callable, optional): called when the card closes with nothing saved;
 ##   price (Dictionary, optional): {price, balance, shown, next} while the shop is
 ##     on. As pollen board 6 draws it, a change to another name then says its
-##     price on Save ("Save · [grain] 1,000 about $0.20") and in the line under the
+##     price on Save ("Save · [grain] 1,000") and in the line under the
 ##     field, with the balance under the choices; while the balance is short Save
 ##     waits ("Save · [grain] 1,000 · 400 more needed") and a "Get Pollen" link
 ##     shows under it. A free change followed by a paid one (`next`, what the
@@ -61,7 +61,7 @@ const MUTED := Color("afc6be")
 const ERROR := Color("f2b8ae")
 const WIDTH := 860.0
 const PIP_SIZE := Vector2(180, 236)
-## Save's words beside the grain, on the cream main button; its about hint takes ShopKit's style.
+## Save's words beside the grain, on the cream main button.
 const SAVE_SIZE := 20
 
 var modal: Control
@@ -501,7 +501,7 @@ func _show_price() -> void:
 	_price_note.visible = amount > 0 and _error.text.is_empty()
 	_error.visible = not _price_note.visible
 	if amount > 0:
-		_price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_NOTE % [PollenMoney.grouped(amount), PollenMoney.about(amount)] if shown else PlayerCopy.DISPLAY_NAME_PRICE_HIDDEN
+		_price_note.text = PlayerCopy.DISPLAY_NAME_PRICE_NOTE % PollenMoney.grouped(amount) if shown else PlayerCopy.DISPLAY_NAME_PRICE_HIDDEN
 	_have_line.visible = amount > 0 and shown
 	if _have_line.visible:
 		_have_label.text = PlayerCopy.DISPLAY_NAME_PRICE_HAVE % PollenMoney.grouped(int((_context.get("price", {}) as Dictionary).get("balance", 0)))
@@ -527,10 +527,6 @@ func _show_save(amount: int, short: int) -> void:
 	row.add_child(ShopKit.text(PlayerCopy.DISPLAY_NAME_SAVE_DOT, SAVE_SIZE, ink, ShopKit.bold_font()))
 	var needed := PlayerCopy.DISPLAY_NAME_SAVE_NEEDED % PollenMoney.grouped(short) if short > 0 else ""
 	row.add_child(ShopKit.amount(amount, SAVE_SIZE, ink, "", needed))
-	if short <= 0:
-		var about := ShopKit.about(amount, SAVE_SIZE, ink)
-		about.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-		row.add_child(about)
 	save_button.text = ""
 	ShopKit.set_button_content(save_button, row)
 	if short > 0: save_button.accessibility_name = PlayerCopy.DISPLAY_NAME_SAVE_SHORT % [PollenMoney.grouped(amount), PollenMoney.grouped(short)]

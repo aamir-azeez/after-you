@@ -5,13 +5,13 @@ extends Control
 ##   Pollen page, and its +, only while bundles sell, the Pollen store;
 ## - on the left, the big pip wearing what is picked, with the "Your pip" /
 ##   "As your friend sees you" switch (the friend's room shows your pip in mint),
-##   "Drag to turn your pip." and one main button: Buy for [grain] N about $X,
-##   Wear, or Take off;
+##   "Drag to turn your pip." and one main button: Buy for [grain] N, Wear,
+##   or Take off;
 ## - on the right, the All items and Owned tabs with "Every item stays in the
 ##   shop", the "Featured this week" shelf in its own tinted panel, the slot
 ##   chips (Hat, Body, Leaf: only slots that have something to show), and the
 ##   item cards in their tier frames (kit/tier_frame.gd) with the tier mark and
-##   word, and the price with its grain and about line, or Yours and Wearing.
+##   word, and the price with its grain, or Yours and Wearing.
 ##   An earned item has the Earned frame and a "Not for sale" lock chip.
 ##   While the shop has anything the player does not own, every slot of Owned
 ##   ends with a "Get more" card, an item card's size: the empty Wardrobe's bare
@@ -414,16 +414,13 @@ func _show_selected(entry: Dictionary, shop: bool) -> void:
 		_cream(action_button)
 		return
 	if not action_button.visible: return
-	# Buy for [grain] 20,000 about $3.96, all inside the one button.
+	# Buy for [grain] 20,000, all inside the one button.
 	var price := int(entry.price)
 	var row := HBoxContainer.new()
 	row.name = "WardrobeBuyContent"
 	row.add_theme_constant_override("separation", 10)
 	row.add_child(ShopKit.text(PlayerCopy.WARDROBE_BUY_FOR, 22, INK, ShopKit.bold_font()))
 	row.add_child(ShopKit.amount(price, 22, INK))
-	var about := ShopKit.about(price, 22, INK)
-	about.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(about)
 	ShopKit.set_button_content(action_button, row)
 	action_button.accessibility_name = PlayerCopy.WARDROBE_BUY % str(price)
 	_cream(action_button)
@@ -524,7 +521,7 @@ func _card(entry: Dictionary, small: bool, shop: bool) -> Control:
 		if tier == "earned" and shop and not small: bottom.add_child(spacer)
 		bottom.add_child(_tag(PlayerCopy.WARDROBE_WEARING if bool(entry.worn) else PlayerCopy.WARDROBE_OWNED_TAG))
 	elif bool(entry.sold) and shop:
-		bottom.add_child(ShopKit.price(int(entry.price), 13 if small else 15, INK))
+		bottom.add_child(ShopKit.amount(int(entry.price), 13 if small else 15, INK))
 	return card
 
 ## The Owned tab's Get more card for slot `kind`: an item card's size, the
