@@ -31,6 +31,7 @@ const Wardrobe = preload("res://services/wardrobe.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const OwnLook = preload("res://services/own_look.gd")
 const ServerSwitches = preload("res://services/server_switches.gd")
+const DuelsClient = preload("res://services/duels_client.gd")
 ## Every rules version this build can replay, for a server that allows at most
 ## 8 entries (every server before room level 2): 10 = the tide rules of
 ## turn-of-the-tide@2. Saved joins keep their exact body: each array ever sent
@@ -567,8 +568,12 @@ func create_duel_room(chapter: String, duel_id: String, board: String) -> String
 	if not _index.pending.is_empty():
 		last_error = PlayerCopy.RELAY_ONLINE_SESSION_8C3AC7311985
 		return ""
+	var ask := {"duel_id": duel_id, "board": board}
+	if not DuelsClient.valid_room_ask(ask):
+		last_error = PlayerCopy.DUELS_ACTION_FAILED
+		return ""
 	var chosen := Registry.descriptor(chapter)
-	var body := {"idempotency_key": RoomsApi.new_key(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash, "duel": {"duel_id": duel_id, "board": board}}
+	var body := {"idempotency_key": RoomsApi.new_key(), "level_id": chosen.level_id, "level_version": chosen.level_version, "definition_hash": chosen.definition_hash, "duel": ask}
 	var requested_rules := int(_simulation_versions().get(chapter, Registry.definition(chapter).simulation_version))
 	if requested_rules != int(Registry.definition(chapter).simulation_version):
 		body["simulation_version"] = requested_rules
@@ -1241,7 +1246,10 @@ func _valid_index(value: Dictionary) -> bool:
 		var optional_pin: bool = body.has("simulation_version")
 		var hard_room: bool = body.has("mode")
 		if hard_room and not Typed.equal(body.mode, "hard"): return false
-		return body.size() == (5 if optional_pin else 4) + int(hard_room) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Typed.whole_number(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
+		# A duel's room (create_duel_room) names its duel; never a hard room.
+		var duel_room: bool = body.has("duel")
+		if duel_room and (hard_room or not DuelsClient.valid_room_ask(body.duel)): return false
+		return body.size() == (5 if optional_pin else 4) + int(hard_room) + int(duel_room) and body.get("idempotency_key") is String and body.idempotency_key.length() == 36 and not Registry.resolve(body).is_empty() and (not optional_pin or (Typed.whole_number(body.simulation_version) and int(body.simulation_version) in Registry.supported_rules(Registry.resolve(body)) and int(body.simulation_version) != int(Registry.definition(Registry.resolve(body)).simulation_version)))
 	var optional_versions: bool = body.has("supported_simulation_versions")
 	return body.size() == (2 if optional_versions else 1) and body.get("invite_code") is String and body.invite_code.length() == 20 and (not optional_versions or Typed.same(body.supported_simulation_versions, [2, 4, 5]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9]) or Typed.same(body.supported_simulation_versions, [2, 4, 5, 6, 7, 8, 9, 11]) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS) or Typed.same(body.supported_simulation_versions, JOIN_SIMULATION_VERSIONS + ROOM_LEVEL_JOIN_VERSIONS))
 

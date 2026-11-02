@@ -1660,6 +1660,8 @@ func _return_to_room_hub(notice: String = "", refresh: bool = true) -> void:
 		_show_home()
 		if not notice.is_empty(): _toast(notice)
 		return
+	# A duel's Play goes back to its duel, never to the hub (presentation/duels/duels_flow.gd).
+	if duels_flow.return_instead(notice): return
 	room_hub_flow.open_hub(notice,refresh)
 
 ## The server removed a room from the hub: this device forgets its share, its

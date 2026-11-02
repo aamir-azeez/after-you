@@ -392,6 +392,10 @@ static func _bonus(value: Variant) -> Dictionary:
 static func _id(value: Variant) -> bool:
 	return Typed.valid_id(value)
 
+## Whether `value` names a duel's room as a create sends it (backend duels/routes.ts parseDuelAsk): {duel_id, board}.
+static func valid_room_ask(value: Variant) -> bool:
+	return value is Dictionary and value.size() == 2 and _entry(value.get("duel_id")) and _board(value.get("board"))
+
 static func _entry(value: Variant) -> bool:
 	return value is String and value.length() == 32 and value.is_valid_hex_number()
 
