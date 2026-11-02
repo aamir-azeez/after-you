@@ -64,13 +64,16 @@ class Host extends Node:
 	func _names_scope() -> Dictionary: return {"server": str(api.base_url), "owner": str(api.player_id)}
 	func _toast(text: String) -> void: toasts.append(text)
 
-## Stands in for the PlatformGames autoload: offered and signed in together.
+## Stands in for the PlatformGames autoload: the name offered and signed in together
+## (test_platform_name_choice.gd drives the real service through the real Main).
 class Games extends Node:
 	signal changed
 	var on := false
 	var reads := 0
-	func offered() -> bool: return on
-	func signed_in() -> bool: return on
+	var refreshes := 0
+	func name_offered() -> bool: return on
+	func account_key() -> String: return "k".repeat(64) if on else ""
+	func refresh_offer() -> void: refreshes += 1
 	func kind() -> String: return "play_games"
 	func player_name() -> Dictionary:
 		reads += 1
@@ -392,6 +395,7 @@ func _platform_follows() -> void:
 	var prompt := _prompt_node(modal)
 	_check(prompt.platform_row == null, "Opened before the sign-in: no platform row yet")
 	_check(games.changed.get_connections().size() == 1, "and the card listens to the platform while it is open")
+	_check(games.refreshes == 1, "and asks the platform once for an offer this session may have missed")
 	await _type("Robin")
 	await _click(prompt.anonymous_row)
 	var focused: bool = prompt.anonymous_row.has_focus()

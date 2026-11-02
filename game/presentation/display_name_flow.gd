@@ -14,7 +14,10 @@ extends Node
 ## (read at call time): api, _names_scope, saves (reduced motion), _toast,
 ## soundscape (the pip's grab tick), and the PlatformGames autoload (its state
 ## read when the prompt opens and followed through its changed signal while the
-## prompt is open, since Play Games signs in a few seconds after launch).
+## prompt is open, since Play Games is checked a few seconds after launch). Every
+## card that offers the platform name (the first-run prompt and Change) opens
+## through _open, so all of them read the one source: PlatformGames.name_offered,
+## account_key and player_name, which signs in on the tap when it has to.
 ## While the shop is on, the prompt shows the name change price from the
 ## wardrobe and wallet this phone keeps, and a saved change asks wardrobe_flow
 ## (refresh) to read them again. While the balance is short, the prompt's "Get
@@ -98,6 +101,7 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 		"anonymous": DisplayNames.anonymous_name(current.owner),
 		"platform": _platform_label,
 		"platform_changed": Signal(platform, &"changed") if platform != null and platform.has_signal(&"changed") else Signal(),
+		"platform_account": _platform_account,
 		"read_platform": _read_platform,
 		"save": _save,
 		"reduced_motion": bool(host.saves.data.settings.get("reduced_motion", false)) if host.saves != null else false,
@@ -108,6 +112,8 @@ func _open(parent: Control, editing: bool, opener: Control, hint_later: bool = f
 	}
 	var modal: Control = Prompt.open(parent, context, opener)
 	_prompt = weakref(modal)
+	# An offer this session never learned (a launch read that failed) is read again; the card follows it.
+	if platform != null: platform.refresh_offer()
 	# Flush a send that waited from an earlier visit.
 	_client().flush()
 
@@ -189,13 +195,19 @@ func _refresh_chips() -> void:
 	_chips = kept
 	changed.emit()
 
-## The platform row's label when Play Games or Game Center is offered and
-## signed in, else "".
+## The platform row's label while Play Games or Game Center can give the name
+## (offered, and signed in or able to sign in on the tap), else "".
 func _platform_label() -> String:
 	var platform := _games()
-	if platform == null or not platform.offered() or not platform.signed_in(): return ""
+	if platform == null or not platform.name_offered(): return ""
 	return PlayerCopy.DISPLAY_NAME_GAME_CENTER if platform.kind() == GamesProvider.GAME_CENTER else PlayerCopy.DISPLAY_NAME_PLAY_GAMES
 
+## The signed-in platform account ("" for none), so the card drops a name read from another one.
+func _platform_account() -> String:
+	var platform := _games()
+	return platform.account_key() if platform != null else ""
+
+## The gamer name; the service signs in first when the quiet check did not.
 func _read_platform() -> Dictionary:
 	var platform := _games()
 	if platform == null: return {"ok": false, "code": "unavailable"}

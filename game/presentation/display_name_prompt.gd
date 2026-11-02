@@ -8,15 +8,19 @@ extends Node
 ## - type a name (1 to 18 characters; the counter and the error line say what
 ##   the rules want; services/display_names.gd);
 ## - "Keep me anonymous": others see the anonymous name made from the player id;
-## - "Use my Play Games name" / "Use my Game Center name": shown only while the
-##   platform is signed in. The name is read from the platform only when this
-##   row is picked, then copied once through the same rules.
+## - "Use my Play Games name" / "Use my Game Center name": shown while the
+##   platform can give the name (signed in, being checked, or one sign-in sheet
+##   away). The name is read from the platform only when this row is picked
+##   (signing in first if needed, "Getting your name…" meanwhile), then copied
+##   once through the same rules.
 ##
-## The platform row follows the platform while the card is open: a sign-in that
-## finishes after the card opened adds the row under the anonymous one, and a
-## sign-out takes it away (a platform choice falls back to the typed name, which
-## may be empty). Neither moves focus or the choice; a change that lands while a
-## finger is down on the card waits for the release, so that tap still counts.
+## The platform row follows the platform while the card is open: an offer that
+## arrives after the card opened adds the row under the anonymous one, and losing
+## it takes the row away (a platform choice falls back to the typed name, which
+## may be empty). A name read from one account is dropped the same way once that
+## account signs out or another signs in. Neither moves focus; a row change that
+## lands while a finger is down on the card waits for the release, so that tap
+## still counts.
 ##
 ## The prompt keeps no state of its own beyond the open card. `context`:
 ##   edit (bool): opened from Friends to change the name (its own title);
@@ -26,6 +30,8 @@ extends Node
 ##     or "" for none; asked when the card opens and on every platform_changed;
 ##   platform_changed (Signal, optional): the platform's state changed. The card
 ##     listens only while it is open (the connection goes with it);
+##   platform_account (Callable () -> String, optional): the signed-in account's
+##     key, "" for none; asked when a name is read and on every platform_changed;
 ##   read_platform (Callable () -> {"ok", "name"}): awaited when that row is picked;
 ##   save (Callable (choice, name) -> {"closed": bool, "code": String}): awaited on Save;
 ##   reduced_motion (bool), haptic (Callable, optional): the pip's grab tick;
@@ -94,6 +100,8 @@ var _platform_drop_pending := false
 var _context: Dictionary = {}
 var _choice := "typed"
 var _platform_name := ""
+## The account `_platform_name` was read from ("" when it came from the saved choice).
+var _platform_account := ""
 var _busy := false
 var _saved := false
 
@@ -312,7 +320,22 @@ func _platform_now() -> String:
 	return str(source)
 
 func _platform_changed() -> void:
+	_forget_other_account()
 	set_platform(_platform_now())
+
+func _account_now() -> String:
+	var source: Variant = _context.get("platform_account")
+	return str((source as Callable).call()) if source is Callable and (source as Callable).is_valid() else ""
+
+## A name read from an account that is no longer the signed-in one goes at once
+## (no rows move, so a press needs no wait); the row stays for the next read.
+func _forget_other_account() -> void:
+	if _platform_account.is_empty() or _platform_account == _account_now(): return
+	_platform_account = ""
+	_platform_name = ""
+	if _choice == "platform": _choice = "typed"
+	if _platform_note != null and not _busy: _platform_note.text = PlayerCopy.DISPLAY_NAME_PLATFORM_NOTE
+	_show()
 
 ## Shows the platform row with `label`, or takes it away for "", in place under
 ## the anonymous row. Focus and the choice stay put; only a platform choice
@@ -381,6 +404,7 @@ func _drop_platform() -> void:
 	_platform_label = ""
 	# The account may be a different one when it signs in again.
 	_platform_name = ""
+	_platform_account = ""
 	if _choice == "platform": _choice = "typed"
 
 func _typed(_text: String) -> void:
@@ -425,6 +449,7 @@ func _pick_platform() -> void:
 		_show()
 		return
 	_platform_name = name
+	_platform_account = _account_now()
 	_pick("platform")
 
 ## The tag, the rows, the counter and the field's look for the choice now.

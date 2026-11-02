@@ -16,6 +16,9 @@ extends Node
 ##    linked elsewhere asks which to keep (platform_games_flow.gd).
 ## 4. Cloud save: progress is joined with a Saved Games slot after meaningful moments. It needs a
 ##    signed-in account and the server's offer, not a friend link, so solo players get it too.
+## 5. The gamer name, for the name prompt only (name_offered, player_name): offered whenever the
+##    server offers the platform and its account can be had, and signed in on the player's tap
+##    when the quiet check did not (Play Games may want its own sheet on a phone).
 ## Every call is async with a timeout; every failure leaves the game as it was. Main is freed
 ## while a solo chapter is open: detach() abandons work that ran through Main, and the next
 ## attach() starts again from the top.
@@ -50,6 +53,10 @@ const LINK_ERROR := "error"
 const START_DELAY_MS := 4000
 ## How long the service waits for Main to finish loading an identity before giving up for now.
 const ACCOUNT_WAIT_MS := 60000
+## A player who asked for the gamer name waits this long for a quiet check already under way,
+## and at most this long for the platform's sign-in sheet (a little over the provider's own limits).
+const NAME_CHECK_WAIT_MS := 16000
+const NAME_SHEET_WAIT_MS := 125000
 
 var provider: RefCounted
 var sign_in := SignIn.UNAVAILABLE
@@ -174,6 +181,28 @@ func offered() -> bool:
 func signed_in() -> bool:
 	return sign_in == SignIn.SIGNED_IN
 
+## Whether the player's gamer name can be offered (the name prompt's "Use my Play Games name"):
+## the server offers the platform and its account can be had, signed in, being checked, or one
+## sign-in sheet away. Play Games often answers the quiet check "signed out" on a phone that
+## needs its sheet, so a signed-out account still counts; a phone or build the platform refuses
+## (unavailable, not configured) does not.
+func name_offered() -> bool:
+	if not offered(): return false
+	return sign_in != SignIn.SIGNED_OUT or sign_in_code not in ["unavailable", "not_configured"]
+
+## The signed-in account's one-way key ("" while signed out), so a screen holding that account's
+## gamer name can tell when another account (or none) took its place.
+func account_key() -> String:
+	return _player_key if signed_in() else ""
+
+## A screen that offers the platform opened (the name prompt): when this session never learned
+## the server's offer (a read that failed or was cut short at launch) or never ran the quiet
+## check, try again now. The screen follows `changed`; nothing waits on this.
+func refresh_offer() -> void:
+	if _running or busy or provider == null or not provider.available() or state == null or _account == null: return
+	if not state.capability().is_empty() and (not offered() or sign_in != SignIn.UNAVAILABLE): return
+	await start()
+
 func linked() -> bool:
 	return link_state == LINK_LINKED
 
@@ -184,12 +213,34 @@ func waiting_for_choice() -> bool:
 func offer_pending() -> bool:
 	return link_state == LINK_OFFER and not offer_declined and not busy and _account != null and _account.identity_state() == "missing"
 
-## The signed-in player's gamer name, read only now (the player picked "Use my
-## Play Games name" or "Use my Game Center name"): {"ok", "name"} or a code.
+## The player's gamer name, read only now (the player picked "Use my Play Games name" or
+## "Use my Game Center name"): {"ok", "name"} or a code. The player asked for it, so it signs in
+## first when needed: a quiet check under way is waited for, and an account that is still
+## signed out gets the platform's sign-in sheet once.
 func player_name() -> Dictionary:
 	if provider == null or not provider.available(): return {"ok": false, "code": "unavailable"}
-	if not signed_in(): return {"ok": false, "code": "signed_out"}
+	if not signed_in():
+		var signed: Dictionary = await _sign_in_for_name()
+		if not signed.ok: return signed
 	return await provider.player_name()
+
+func _sign_in_for_name() -> Dictionary:
+	if not name_offered(): return {"ok": false, "code": "unavailable"}
+	# The launch's own quiet check (or a sheet from Settings) is under way: its answer comes first.
+	await _wait_sign_in(NAME_CHECK_WAIT_MS, func() -> bool: return sign_in == SignIn.CHECKING or (_running and sign_in == SignIn.UNAVAILABLE))
+	if signed_in(): return {"ok": true}
+	if _running or busy or not name_offered(): return {"ok": false, "code": "busy" if _running or busy else "unavailable"}
+	# Not awaited: the sign-in's link and cloud steps go on after the name is read.
+	sign_in_now()
+	await _wait_sign_in(NAME_SHEET_WAIT_MS, func() -> bool: return sign_in == SignIn.CHECKING)
+	if signed_in(): return {"ok": true}
+	return {"ok": false, "code": sign_in_code if not sign_in_code.is_empty() else "signed_out"}
+
+## Waits while `pending` holds (checked a few times a second, never past `limit_ms`).
+func _wait_sign_in(limit_ms: int, pending: Callable) -> void:
+	var deadline := Time.get_ticks_msec() + limit_ms
+	while is_inside_tree() and pending.call() and Time.get_ticks_msec() < deadline:
+		await get_tree().create_timer(0.1).timeout
 
 ## The platform's name as players know it.
 func display_name() -> String:
