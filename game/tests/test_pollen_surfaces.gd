@@ -211,6 +211,8 @@ func _short_card() -> void:
 	_check(words.has(PlayerCopy.WARDROBE_SHORT_NOTE % [PlayerCopy.DISPLAY_NAME_SHORT_ITEM, "1,000", "600"]) and words.has("400" + PlayerCopy.WARDROBE_SHORT_MORE) and not words.has("It stays in the shop."), "The short card names the change and what is needed, and nothing about the shop: " + str(words))
 	var buy := card.find_child("WardrobeShortBuy", true, false) as BaseButton if card != null else null
 	_check(buy != null and card.find_child("WardrobeGetPollen", true, false) == null and words.has(PlayerCopy.WARDROBE_SHORT_BUNDLE_NAME % "Pinch"), "Its own buy button shows while the store can open, with the Pinch that covers 400")
+	var gets: Node = card.find_child("WardrobeShortBundleGets", true, false) if card != null else null
+	_check(gets != null and gets.find_child("PollenMark", true, false) != null and gets.find_children("*", "Label", true, false).map(func(label: Label) -> String: return label.text) == ["5,000" + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS], "Under it the grain and the Pinch's 5,000 Pollen")
 	flow._after_bundle()
 	await process_frame
 	_check((not is_instance_valid(card) or card.is_queued_for_deletion()) and is_instance_valid(prompt_card) and not prompt_card.is_queued_for_deletion() and host.pollen_store_flow.opened.is_empty(), "Once the Pollen arrived the card closes, the prompt stays and no store page opens")

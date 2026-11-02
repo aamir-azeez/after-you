@@ -7,9 +7,10 @@ extends RefCounted
 ##   friends to earn more." While bundles sell (a `buyer`) it also names the
 ##   smallest bundle that covers the gap (services/pollen_bundles.gd cover:
 ##   "Get the Basket to buy this.", or the largest, "The Basket gets you
-##   closest.") beside its art, with a button that shows that bundle's store
-##   price and buys it right there (presentation/short_card_buy.gd), and a line
-##   under it for how a purchase ended. It never estimates how long earning takes.
+##   closest.") beside its art, what it gives under that ("[grain] 115,000
+##   Pollen", the store's own sum with any first bundle gift), with a button
+##   that shows that bundle's store price and buys it right there
+##   (presentation/short_card_buy.gd), and a line under it for how a purchase ended. It never estimates how long earning takes.
 const ButtonTicks = preload("res://presentation/button_ticks.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
 const ThemeRules = preload("res://presentation/control_theme.gd")
@@ -27,6 +28,8 @@ const MUTED := ShopKit.MUTED
 const CREAM := ShopKit.CREAM
 const BOX := Color("143a35")
 const BOX_EDGE := Color("2f5f56")
+## What the suggested bundle gives, under its line.
+const GETS_SIZE := 15
 ## Tiers whose short card never suggests a bundle. Empty since the owner asked
 ## (2026-11-02) for every short card to name one; POLLEN-RULES had kept Epic
 ## and Special out ("epic", "special" here puts that back).
@@ -103,15 +106,16 @@ static func short(parent: Control, item_name: String, tier: String, cost: int, b
 	earn.add_child(icon)
 	earn.add_child(ShopKit.text(PlayerCopy.WARDROBE_SHORT_EARN, 17, CREAM, ShopKit.bold_font()))
 	var bundle := Bundles.cover(cost - balance, offer)
-	if is_instance_valid(buyer) and not tier in NO_BUNDLE_TIERS and not bundle.is_empty(): _suggest(modal, bundle, Bundles.adds(bundle, offer) >= cost - balance, buyer, credited, in_shop)
+	if is_instance_valid(buyer) and not tier in NO_BUNDLE_TIERS and not bundle.is_empty(): _suggest(modal, bundle, offer, cost - balance, buyer, credited, in_shop)
 	modal.refresh_focus_order()
 	return modal
 
 ## The suggested bundle's box: its art, "Get the Basket to buy this." ("to
 ## change your name." for a name change, `item` false; "The Basket gets you
-## closest." when even it does not `covers` the gap), its price button, and
-## the line under the box for how a purchase ended.
-static func _suggest(modal: Control, bundle: String, covers: bool, buyer: Node, credited: Callable, item: bool = true) -> void:
+## closest." when even it does not cover the `gap`), under it what the bundle
+## gives (Bundles.adds with `offer`, as the store's confirm card sums it), its
+## price button, and the line under the box for how a purchase ended.
+static func _suggest(modal: Control, bundle: String, offer: Dictionary, gap: int, buyer: Node, credited: Callable, item: bool = true) -> void:
 	var box := _box(modal.content, "WardrobeShortBundle")
 	var row := HBoxContainer.new()
 	row.add_theme_constant_override("separation", 14)
@@ -120,18 +124,41 @@ static func _suggest(modal: Control, bundle: String, covers: bool, buyer: Node, 
 	art.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(art)
 	var title := str(PlayerCopy.POLLEN_STORE_BUNDLES.get(bundle, bundle))
-	var line := ShopKit.text((PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST if not covers else PlayerCopy.WARDROBE_SHORT_BUNDLE if item else PlayerCopy.WARDROBE_SHORT_BUNDLE_NAME) % title, 17, CREAM, ShopKit.bold_font())
+	var gets := Bundles.adds(bundle, offer)
+	var words := VBoxContainer.new()
+	words.add_theme_constant_override("separation", 2)
+	words.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	words.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	row.add_child(words)
+	var line := ShopKit.text((PlayerCopy.WARDROBE_SHORT_BUNDLE_CLOSEST if gets < gap else PlayerCopy.WARDROBE_SHORT_BUNDLE if item else PlayerCopy.WARDROBE_SHORT_BUNDLE_NAME) % title, 17, CREAM, ShopKit.bold_font())
 	line.name = "WardrobeShortBundleLine"
 	line.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	line.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
-	row.add_child(line)
+	words.add_child(line)
+	words.add_child(_gets_line(gets, Bundles.gift(bundle, Bundles.gift_percent(offer)) > 0))
 	var status := ShopKit.text("", 15, CREAM)
 	status.name = "WardrobeShortStatus"
 	status.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	status.visible = false
 	row.add_child(ShortCardBuy.make(modal, box, bundle, buyer, status, credited))
 	modal.content.add_child(status)
+
+## "[grain] 115,000 Pollen": what the suggested bundle gives. With the first
+## bundle gift counted (`gift`) it says so while that fits on the one line,
+## else the total alone; these words never widen the card.
+static func _gets_line(gets: int, gift: bool) -> HBoxContainer:
+	var row := ShopKit.amount(gets, GETS_SIZE, MUTED, "", PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS)
+	row.name = "WardrobeShortBundleGets"
+	if not gift: return row
+	var value: Label = row.find_child("PollenAmountValue", false, false)
+	value.clip_text = true
+	value.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	var long := PollenMoney.grouped(gets) + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS_GIFT
+	var plain := value.text
+	value.resized.connect(func() -> void:
+		var fits := value.get_theme_font("font").get_string_size(long, HORIZONTAL_ALIGNMENT_LEFT, -1, GETS_SIZE).x <= value.size.x
+		var wanted := long if fits else plain
+		if value.text != wanted: value.text = wanted)
+	return row
 
 static func _box(parent: Control, node_name: String) -> PanelContainer:
 	var box := PanelContainer.new()

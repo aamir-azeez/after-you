@@ -39,6 +39,9 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const TierFrame = preload("res://presentation/kit/tier_frame.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
 const Page = preload("res://presentation/wardrobe_page.gd")
+const Sheets = preload("res://presentation/wardrobe_sheets.gd")
+const Bundles = preload("res://services/pollen_bundles.gd")
+const PollenMoney = preload("res://services/pollen_money.gd")
 
 # Synthetic ids only.
 const ME := "aaaaaaaaaaaaaaaaaaaaaa"
@@ -162,6 +165,7 @@ func _run() -> void:
 	await _buying()
 	await _first_tap_waits()
 	await _short_card()
+	await _gets_fit()
 	await _page_parts()
 	await _offline()
 	await _negative_balance()
@@ -295,6 +299,9 @@ func _short_card() -> void:
 		await t.flow.act("lantern")
 		var epic: Node = t.host.ui.find_child("WardrobeShort", true, false)
 		_check(epic != null and (PlayerCopy.WARDROBE_SHORT_BUNDLE % "Jar" in _texts(epic)) == bundles, "Short 35,500 for an Epic: the Jar while bundles sell (%s)" % bundles)
+		if bundles:
+			var gets: Node = epic.find_child("WardrobeShortBundleGets", true, false)
+			_check(gets != null and gets.find_child("PollenMark", true, false) != null and _texts(gets) == ["44,000" + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS], "Under it the grain and what the Jar gives, its bonus in: " + str(_texts(gets)))
 		_check(t.flow.model().get("bundles") == bundles, "The model says whether bundles sell")
 		t.host.queue_free()
 		await _frames(2)
@@ -319,6 +326,12 @@ func _short_card() -> void:
 		await g.flow.act("lantern")
 		var gifted: Node = g.host.ui.find_child("WardrobeShort", true, false)
 		_check(gifted != null and row[2] % row[1] in _texts(gifted), "Balance %d with the gift on: %s" % [row[0], _texts(gifted)])
+		# The store's confirm card sums the same: the bundle with its bonus and the 20% gift.
+		var total := Bundles.adds(str(row[1]).to_lower(), {"first_gift": true, "first_gift_percent": 20})
+		var value: Label = gifted.find_child("WardrobeShortBundleGets", true, false).find_child("PollenAmountValue", true, false)
+		var long := PollenMoney.grouped(total) + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS_GIFT
+		var fits := value.get_theme_font("font").get_string_size(long, HORIZONTAL_ALIGNMENT_LEFT, -1, value.get_theme_font_size("font_size")).x <= value.size.x
+		_check(value.text == (long if fits else PollenMoney.grouped(total) + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS) and PollenMoney.grouped(total) == ("52,800" if row[1] == "Jar" else "138,000"), "With the gift on it gives %s, naming the gift only while that fits: %s" % [PollenMoney.grouped(total), value.text])
 		g.host.queue_free()
 		await _frames(2)
 
@@ -612,6 +625,20 @@ static func _build(sells: bool) -> String:
 ## Whether nothing visible under `node` names money ("$" or "about").
 static func _no_money(node: Node) -> bool:
 	return not _texts(node).any(func(text: String) -> bool: return text.contains("$") or text.contains("about"))
+
+## The gift's longer words show only while they fit: the total alone on a narrow line, the words on a wide one.
+func _gets_fit() -> void:
+	for row: Array in [[150.0, "138,000" + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS], [900.0, "138,000" + PlayerCopy.WARDROBE_SHORT_BUNDLE_GETS_GIFT]]:
+		var holder := Control.new()
+		root.add_child(holder)
+		var line: HBoxContainer = Sheets._gets_line(138000, true)
+		holder.add_child(line)
+		line.size = Vector2(row[0], 24)
+		await _frames(3)
+		var value: Label = line.find_child("PollenAmountValue", true, false)
+		_check(value.text == row[1] and line.size.x <= row[0] + 0.5, "At %d px the line says %s" % [row[0], value.text])
+		holder.queue_free()
+	await _frames(2)
 
 ## Every visible word under `node`.
 static func _texts(node: Node) -> Array:

@@ -306,6 +306,10 @@ const WARDROBE_GET_POLLEN := "Get Pollen"
 const WARDROBE_SHORT_BUNDLE := "Get the %s to buy this."
 const WARDROBE_SHORT_BUNDLE_NAME := "Get the %s to change your name."
 const WARDROBE_SHORT_BUNDLE_CLOSEST := "The %s gets you closest."
+## Under it, after the grain and what the bundle gives ("[grain] 115,000 Pollen");
+## with the first bundle gift counted, the longer one while it fits on the line.
+const WARDROBE_SHORT_BUNDLE_GETS := " Pollen"
+const WARDROBE_SHORT_BUNDLE_GETS_GIFT := " Pollen with your first bundle gift"
 ## The balance chip's left half, for screen readers.
 const POLLEN_CHIP_BALANCE := "Pollen: %s"
 
