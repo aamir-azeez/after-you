@@ -16,7 +16,7 @@ import { duelsOn, roomNote } from "./turn-hook";
 import type { DuelLink } from "./room-link";
 import { THEIR_RUN_KEEP_MS } from "./their-run";
 import { developerGhost } from "./developer-ghosts";
-import { announceLobby, duelHintsOn } from "./news";
+import { announceLobby, hintsField } from "./news";
 import { blobBase64 } from "../blob-codec";
 
 /**
@@ -43,14 +43,9 @@ const PARTY_PATH = /^\/v1\/duels\/party\/(invite|accept|dismiss|cancel|leave)$/;
 const BOARD_CONCURRENCY = 4;
 const GHOSTS_SHOWN = 3;
 
-/**
- * `duels_version: 1` on /v2/capabilities for a phone that asks while duels are on, with
- * `duel_hints_version: 1` while duel changes also come over the live socket (news.ts): only
- * then may a phone slow its duel reads down to a backup pace.
- */
-export function duelsCapability(request: Request, env: Env): { duels_version?: number; duel_hints_version?: number } {
-  if (!duelsOn(env) || request.headers.get(DUELS_HEADER) !== "1") return {};
-  return { duels_version: 1, ...(duelHintsOn(env) ? { duel_hints_version: 1 } : {}) };
+/** `duels_version: 1` on /v2/capabilities for a phone that asks while duels are on. */
+export function duelsCapability(request: Request, env: Env): { duels_version?: number } {
+  return duelsOn(env) && request.headers.get(DUELS_HEADER) === "1" ? { duels_version: 1 } : {};
 }
 
 function fields(input: unknown, keys: string[]): Record<string, unknown> {
@@ -81,7 +76,8 @@ const board = (env: Env, key: string) => env.LEADERBOARD_BOARDS.getByName(key);
 function duelsAt(env: Env, key: string) {
   const stub = board(env, key);
   return {
-    read: async (ids: string[]) => (await stub.duelRead(ids)) as unknown as Duel[],
+    /** `reader`: whose read this is; a duel it settles (an expiry, a stall) is news to the others only. */
+    read: async (ids: string[], reader?: string) => (await stub.duelRead(ids, reader)) as unknown as Duel[],
     create: async (duel: Duel) => (await stub.duelCreate(duel)) as unknown as Duel | null,
     act: async (id: string, action: DuelAction) => (await stub.duelAct(id, action)) as unknown as Outcome<{ duel: Duel; room?: SideRoom }>,
     progress: async (id: string, note: ProgressNote, proof?: FinishProof, actor?: string) => (await stub.duelProgress(id, note, proof, actor)) as unknown as Outcome<Duel>
@@ -103,11 +99,11 @@ async function pairOf(env: Env, player: string, now: number, own?: PartyState): 
   return { state, partner: state.partner, intact: mutual(player, state, state.partner, theirs) };
 }
 
-/** The duels a player's pointers name, settled now, read one request per board. */
-async function duelsOf(env: Env, refs: readonly DuelRef[]): Promise<{ duels: Duel[]; missing: string[] }> {
+/** The duels `player`'s pointers name, settled now, read one request per board. */
+async function duelsOf(env: Env, refs: readonly DuelRef[], player: string): Promise<{ duels: Duel[]; missing: string[] }> {
   const byBoard = new Map<string, string[]>();
   for (const ref of refs) byBoard.set(ref.board, [...(byBoard.get(ref.board) ?? []), ref.duel_id]);
-  const lists = await pooled([...byBoard], BOARD_CONCURRENCY, async ([key, ids]) => duelsAt(env, key).read(ids));
+  const lists = await pooled([...byBoard], BOARD_CONCURRENCY, async ([key, ids]) => duelsAt(env, key).read(ids, player));
   const duels = lists.flat() as Duel[];
   const found = new Set(duels.map(duel => duel.duel_id));
   return { duels, missing: refs.map(ref => ref.duel_id).filter(id => !found.has(id)) };
@@ -150,8 +146,8 @@ async function winBonus(env: Env, player: string, duel: Duel, settled: readonly 
 /** The lobby. Requests: 1 (own party) + 1 (partner, when named) + 1 per board holding a duel + a wallet credit per new win + 1 write when pointers change. */
 async function lobby(env: Env, player: string, now: number): Promise<unknown> {
   const pair = await pairOf(env, player, now);
-  const { duels, missing } = await duelsOf(env, pair.state.duels);
-  const stale = duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS).map(duel => duel.duel_id);
+  const { duels, missing } = await duelsOf(env, pair.state.duels, player);
+  const stale =duels.filter(duel => isFinal(duel) && now - (duel.result?.decided_ms ?? duel.updated_ms) >= RESULT_SHOWN_MS).map(duel => duel.duel_id);
   const shown = duels.filter(duel => !stale.includes(duel.duel_id));
   const settled: string[] = [];
   // Every won duel is paid before its pointer goes, so a winner who stays away a while still gets it.
@@ -164,7 +160,8 @@ async function lobby(env: Env, player: string, now: number): Promise<unknown> {
     schema_version: 1,
     party: { partner: pair.partner, intact: pair.intact, invites_in: pair.state.invites_in.map(invite => invite.from), invite_out: pair.state.invite_out?.to ?? null },
     duels: shown.map(duel => viewFor(duel, player)).filter((view): view is DuelView => view !== null).sort((a, b) => b.updated_ms - a.updated_ms),
-    limits: { friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR }
+    limits: { friend: MAX_FRIEND_DUELS_PER_PAIR, ghost: MAX_GHOST_RACES_PER_PAIR },
+    ...hintsField(env)
   };
 }
 
@@ -191,35 +188,39 @@ async function partyRoute(env: Env, action: string, player: string, input: unkno
     await party(env, previous).partyApply(previous, { kind: "unpartner", partner: from }, now);
     told.push(previous);
   };
-  if (action === "invite") {
-    const friend = playerId(fields(input, ["friend"]).friend);
-    if (!await friends(env, player, friend)) throw new ApiError(403, "party_friends_only");
-    await apply(friend, { kind: "invited", from: player });
-    told.push(friend);
-    await apply(player, { kind: "invite", to: friend });
-  } else if (action === "accept") {
-    const from = playerId(fields(input, ["from"]).from);
-    if (!await friends(env, player, from)) throw new ApiError(403, "party_friends_only");
-    // The inviter's own row first: their invite must still stand.
-    const confirmed = await party(env, from).partyApply(from, { kind: "confirm", partner: player }, now);
-    if (!confirmed.ok) { await party(env, player).partyApply(player, { kind: "dismiss", from }, now); throw new ApiError(confirmed.status, confirmed.code); }
-    told.push(from);
-    await release(confirmed.value.previous, from);
-    const accepted = await apply(player, { kind: "accept", from });
-    await release(accepted.previous, player);
-  } else if (action === "dismiss") {
-    await apply(player, { kind: "dismiss", from: playerId(fields(input, ["from"]).from) });
-  } else if (action === "cancel") {
-    fields(input, []);
-    const state = await party(env, player).partyRead(now);
-    if (state.invite_out) { await party(env, state.invite_out.to).partyApply(state.invite_out.to, { kind: "dismiss", from: player }, now); told.push(state.invite_out.to); }
-    await apply(player, { kind: "cancel" });
-  } else {
-    fields(input, []);
-    const left = await apply(player, { kind: "leave" });
-    await release(left.previous, player);
+  // A friend whose row changed is told even when a later step fails: the backup read heals the rest.
+  try {
+    if (action === "invite") {
+      const friend = playerId(fields(input, ["friend"]).friend);
+      if (!await friends(env, player, friend)) throw new ApiError(403, "party_friends_only");
+      await apply(friend, { kind: "invited", from: player });
+      told.push(friend);
+      await apply(player, { kind: "invite", to: friend });
+    } else if (action === "accept") {
+      const from = playerId(fields(input, ["from"]).from);
+      if (!await friends(env, player, from)) throw new ApiError(403, "party_friends_only");
+      // The inviter's own row first: their invite must still stand.
+      const confirmed = await party(env, from).partyApply(from, { kind: "confirm", partner: player }, now);
+      if (!confirmed.ok) { await party(env, player).partyApply(player, { kind: "dismiss", from }, now); throw new ApiError(confirmed.status, confirmed.code); }
+      told.push(from);
+      await release(confirmed.value.previous, from);
+      const accepted = await apply(player, { kind: "accept", from });
+      await release(accepted.previous, player);
+    } else if (action === "dismiss") {
+      await apply(player, { kind: "dismiss", from: playerId(fields(input, ["from"]).from) });
+    } else if (action === "cancel") {
+      fields(input, []);
+      const state = await party(env, player).partyRead(now);
+      if (state.invite_out) { await party(env, state.invite_out.to).partyApply(state.invite_out.to, { kind: "dismiss", from: player }, now); told.push(state.invite_out.to); }
+      await apply(player, { kind: "cancel" });
+    } else {
+      fields(input, []);
+      const left = await apply(player, { kind: "leave" });
+      await release(left.previous, player);
+    }
+  } finally {
+    await announceLobby(env, told.filter(id => id !== player), now);
   }
-  await announceLobby(env, told.filter(id => id !== player), now);
   return lobby(env, player, now);
 }
 
@@ -241,7 +242,7 @@ async function challenge(env: Env, player: string, input: unknown, now: number):
   const mine = await pairOf(env, player, now);
   // A retried challenge answers the duel it made.
   const held = mine.state.duels.find(ref => ref.duel_id === duelId);
-  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId]); if (duel) return { schema_version: 1, duel: viewFor(duel, player) }; }
+  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player) }; }
   if (!mine.intact || !mine.partner) throw new ApiError(409, "party_required");
   const theirs = await pairOf(env, friend, now);
   if (!theirs.intact || !theirs.partner) throw new ApiError(409, "opponent_party_required");
@@ -250,7 +251,7 @@ async function challenge(env: Env, player: string, input: unknown, now: number):
   // A pair already holding many recent duels takes no more, so its open ones never drop off its list.
   if (theirs.state.duels.filter(ref => now - ref.at < CHALLENGE_TTL_MS).length >= MAX_RECENT_DUELS) throw new ApiError(409, "opponent_busy");
   const [aKey, bKey] = await Promise.all([pairKey(...a), pairKey(...b)]);
-  const { duels } = await duelsOf(env, mine.state.duels);
+  const { duels } = await duelsOf(env, mine.state.duels, player);
   if (openFor(duels, aKey, "friend") >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
   if (duels.some(duel => duel.kind === "friend" && isOpen(duel) && duel.board === key && duel.sides.some(side => side?.pair_key === bKey))) throw new ApiError(409, "duel_already_open");
   const known = await knownAcross(env, a, b);
@@ -272,7 +273,7 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number):
   const duelId = (await digest(`after-you ghost v1\n${player}\n${body.idempotency_key}`)).slice(0, 32);
   const mine = await pairOf(env, player, now);
   const held = mine.state.duels.find(ref => ref.duel_id === duelId);
-  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId]); if (duel) return { schema_version: 1, duel: viewFor(duel, player) }; }
+  if (held) { const [duel] = await duelsAt(env, held.board).read([duelId], player); if (duel) return { schema_version: 1, duel: viewFor(duel, player) }; }
   if (!mine.intact || !mine.partner) throw new ApiError(409, "party_required");
   let ghost: Ghost;
   if (body.source === "developer") {
@@ -289,7 +290,7 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number):
     ghost = { source: "board", entry_id: top.entry_id, rank: top.rank, ticks: top.ticks, names: null };
   }
   const a = [player, mine.partner] as [string, string], aKey = await pairKey(...a);
-  const { duels } = await duelsOf(env, mine.state.duels);
+  const { duels } = await duelsOf(env, mine.state.duels, player);
   if (openFor(duels, aKey, "ghost") >= MAX_GHOST_RACES_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
   const made = await duelsAt(env, key).create(newGhostRace({ duel_id: duelId, board: key, chapter: { ...row.adapter.key }, steps: row.adapter.stages.length * 2, starter: player, a: blankSide(a, aKey), ghost }, now));
   if (!made) throw new ApiError(503, "duels_busy");
@@ -299,7 +300,7 @@ async function ghostRace(env: Env, player: string, input: unknown, now: number):
 }
 
 async function duelAction(env: Env, player: string, key: string, duelId: string, action: string | undefined, input: unknown, now: number): Promise<unknown> {
-  const [duel] = await duelsAt(env, key).read([duelId]);
+  const [duel] = await duelsAt(env, key).read([duelId], player);
   const mine = duel ? sideOf(duel, player) : -1;
   if (!duel || mine < 0) throw new ApiError(404, "duel_not_found");
   if (action === undefined) return duelDetail(env, player, duel, now);
@@ -311,7 +312,7 @@ async function duelAction(env: Env, player: string, key: string, duelId: string,
       const pair = await pairOf(env, player, now);
       intact = pair.intact && pair.partner === partner;
       if (intact) {
-        const { duels } = await duelsOf(env, pair.state.duels.filter(ref => ref.duel_id !== duelId));
+        const { duels } = await duelsOf(env, pair.state.duels.filter(ref => ref.duel_id !== duelId), player);
         if (duels.filter(item => item.kind === "friend" && item.status === "running" && item.sides.some(side => side?.pair_key === duel.sides[1]!.pair_key)).length >= MAX_FRIEND_DUELS_PER_PAIR) throw new ApiError(409, "duel_limit_reached");
       }
     }
@@ -351,7 +352,7 @@ async function duelDetail(env: Env, player: string, duel: Duel, now: number): Pr
     if (bonus) await party(env, player).partyApply(player, { kind: "settle_wins", ids: [duel.duel_id] }, now);
   }
   const shown = bonus ? { amount: bonus.amount, counted: bonus.counted, ...(bonus.reason ? { reason: bonus.reason } : {}) } : null;
-  return { schema_version: 1, duel: view, ...(pay ? { pay } : {}), ...(shown && duel.kind === "friend" ? { win_bonus: shown } : {}), ...(shown?.counted && duel.kind === "ghost" ? { ghost_bonus: shown } : {}) };
+  return { schema_version: 1, duel: view, ...(pay ? { pay } : {}), ...(shown && duel.kind === "friend" ? { win_bonus: shown } : {}), ...(shown?.counted && duel.kind === "ghost" ? { ghost_bonus: shown } : {}), ...hintsField(env) };
 }
 
 /** The signed-in routes under /v1/duels; null for any other path or while duels are off. */
@@ -383,7 +384,7 @@ export async function routeDuels(request: Request, path: string, player: string,
  * must be a friend duel and the other pair's run finished in its room (duels/their-run.ts).
  */
 async function otherRun(env: Env, player: string, board: string, duelId: string): Promise<{ duel: Duel; mine: 0 | 1; room_id: string }> {
-  const [duel] = await duelsAt(env, board).read([duelId]);
+  const [duel] = await duelsAt(env, board).read([duelId], player);
   const mine = duel ? sideOf(duel, player) : -1;
   if (!duel || mine < 0) throw new ApiError(404, "duel_not_found");
   const other = duel.sides[1 - mine];
@@ -431,7 +432,7 @@ export function parseDuelAsk(value: unknown): DuelRoomAsk {
  */
 export async function prepareDuelRoom(env: Env, player: string, ask: DuelRoomAsk, key: { level_id: string; level_version: number; definition_hash: string }): Promise<DuelLink> {
   if (!duelsOn(env)) throw new ApiError(503, "duels_disabled");
-  const [duel] = await duelsAt(env, ask.board).read([ask.duel_id]);
+  const [duel] = await duelsAt(env, ask.board).read([ask.duel_id], player);
   const side = duel ? sideOf(duel, player) : -1;
   if (!duel || side < 0) throw new ApiError(404, "duel_not_found");
   if (duel.status !== "running") throw new ApiError(409, "duel_not_running");

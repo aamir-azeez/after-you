@@ -15,6 +15,10 @@ extends RefCounted
 ##   idempotency key made once per tap, so a retry answers the duel it made.
 ## Every answer is checked before it is used; one this build cannot read is a
 ## failure, never a partial page.
+## - hints_sent(): whether the latest lobby or duel read said duel changes also
+##   come over the live socket (duel_hints_version), so the screens may read at
+##   their backup pace. A server rolled back to one without hints says nothing,
+##   and the next read brings the old pace back.
 const Typed = preload("res://services/typed_values.gd")
 const AtomicFile = preload("res://services/atomic_file.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
@@ -34,6 +38,7 @@ var _path := SAVE_PATH
 var _lobby: Dictionary = {}
 var _ghosts: Dictionary = {}
 var _ghosts_at := -GHOSTS_KEEP_MS
+var _hints := false
 ## {rooms: {room_id: kind}, rung: {duel_id: true} oldest first} for this player.
 var _saved: Dictionary = {}
 
@@ -54,6 +59,7 @@ func _init(api: Node, owner: String, path: String = SAVE_PATH) -> void:
 func lobby() -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_GET, PREFIX)
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
+	_note_hints(response.get("data"))
 	var checked := valid_lobby(response.get("data"))
 	if checked.is_empty(): return {"ok": false, "code": "invalid_duels"}
 	return {"ok": true, "lobby": _take(checked)}
@@ -86,7 +92,15 @@ func ghosts(fresh: bool = false) -> Dictionary:
 ## server's `ghost_bonus`, its first win over Our run on the board.
 func duel(board: String, duel_id: String) -> Dictionary:
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_GET, "%s/%s/%s" % [PREFIX, board, duel_id])
+	if response.get("ok", false): _note_hints(response.get("data"))
 	return _duel_answer(response, true)
+
+## Whether the latest lobby or duel read said duel changes come as live hints.
+func hints_sent() -> bool:
+	return _hints
+
+func _note_hints(data: Variant) -> void:
+	_hints = data is Dictionary and Typed.equal(data.get("duel_hints_version"), 1)
 
 func invite(friend: String) -> Dictionary: return await _party("invite", {"friend": friend})
 func accept_party(from: String) -> Dictionary: return await _party("accept", {"from": from})
@@ -175,6 +189,7 @@ func _party(action: String, body: Dictionary) -> Dictionary:
 	sent["schema_version"] = 1
 	var response: Dictionary = await _api.request_json(HTTPClient.METHOD_POST, "%s/party/%s" % [PREFIX, action], sent)
 	if not response.get("ok", false): return {"ok": false, "code": str(response.get("code", ""))}
+	_note_hints(response.get("data"))
 	var checked := valid_lobby(response.get("data"))
 	if checked.is_empty(): return {"ok": false, "code": "invalid_duels"}
 	return {"ok": true, "lobby": _take(checked)}

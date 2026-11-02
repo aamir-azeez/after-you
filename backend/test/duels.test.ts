@@ -722,12 +722,14 @@ describe("duel hints", () => {
   const players = (...accounts: Account[]) => accounts.map(account => env.PLAYERS.getByName(account.player_id) as unknown as DurableObjectStub);
   const board = () => env.LEADERBOARD_BOARDS.getByName(RELAY) as unknown as DurableObjectStub;
 
-  it("are advertised only while duels and the live socket are both on, to a phone that asks for duels", async () => {
-    const a = await create();
-    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, LIVE, { "X-AfterYou-Duels": "1" }))).toMatchObject({ duels_version: 1, duel_hints_version: 1 });
-    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, LIVE_OFF, { "X-AfterYou-Duels": "1" }))).not.toHaveProperty("duel_hints_version");
-    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, LIVE))).not.toHaveProperty("duel_hints_version");
-    expect(await ok<Any>(call("/v2/capabilities", "GET", a, undefined, { ...LIVE, CONFIG: configJson({ features: ["LEADERBOARDS", "LIVE_CONNECTION_ENABLED"] }) }, { "X-AfterYou-Duels": "1" }))).not.toHaveProperty("duel_hints_version");
+  it("are said to be on in every duel read while duels and the live socket are both on, so a rolled back server slows nobody", async () => {
+    const { a1 } = await pairs();
+    const race = (await ok<{ duel: DuelView }>(call("/v1/duels/ghost", "POST", a1, { schema_version: 1, idempotency_key: crypto.randomUUID(), board: RELAY, source: "developer", entry_id: null }, LIVE))).duel;
+    const read = (vars: typeof LIVE) => Promise.all([ok<Any>(call("/v1/duels", "GET", a1, undefined, vars)), ok<Any>(call("/v1/duels/" + RELAY + "/" + race.duel_id, "GET", a1, undefined, vars))]);
+    for (const answer of await read(LIVE)) expect(answer).toHaveProperty("duel_hints_version", 1);
+    for (const answer of await read(LIVE_OFF)) expect(answer).not.toHaveProperty("duel_hints_version");
+    // The capability answer keeps its bytes: the pace follows the latest read, never a capability read once per session.
+    expect(await ok<Any>(call("/v2/capabilities", "GET", a1, undefined, LIVE, { "X-AfterYou-Duels": "1" }))).not.toHaveProperty("duel_hints_version");
   });
 
   it("tell only the player whose party row changed: an invite, an accept, a cancel and a leave, never a dismiss", async () => {

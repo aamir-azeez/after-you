@@ -33,7 +33,7 @@ extends Node
 ## this player's own actions read at once. A failed read keeps the same pace.
 ##
 ## Hints (services/live_connection.gd duels_changed): while the live socket is
-## healthy and the server says it sends duel hints (duel_hints_version), a
+## healthy and the latest duel read said the server sends hints (duel_hints_version), a
 ## change reads only the screen it touches, once however many arrive, and the
 ## timed reads drop to a backup pace (DUELS_LOBBY_BACKUP_MS, DUEL_BACKUP_MS).
 ## A hint for the open duel reads that duel; any other reads the lobby, unless
@@ -95,7 +95,7 @@ func _ready() -> void:
 ## Whether duel changes reach this phone as hints now: a healthy socket to a server that sends them.
 func _hints_live() -> bool:
 	var live: Node = host.get("live_connection")
-	return is_instance_valid(live) and live.healthy() and host.relay_session != null and host.relay_session.duel_hints_supported()
+	return is_instance_valid(live) and live.healthy() and client().hints_sent()
 
 ## A duel this player is in changed at `at_ms` (`duel_id` empty: the party or the list of duels).
 ## The read starts on the next frame, so hints arriving together read once.
@@ -246,6 +246,7 @@ func _read_lobby(ticket: Dictionary) -> void:
 	var answer: Dictionary = await client().lobby()
 	# A failed read waits the same minute: the schedule's quicker failure retries would cost more.
 	_lobby_reads.complete(ticket, Time.get_ticks_msec(), true)
+	_repace()
 	if not is_open(): return
 	screen.show_lobby(answer.get("lobby", {}), not answer.get("ok", false))
 	var overlay: CanvasLayer = screen.overlay()
@@ -439,7 +440,12 @@ func _read_duel(page: CanvasLayer, ticket: Dictionary) -> void:
 	var answer: Dictionary = await client().duel(page.view.board, page.view.duel_id)
 	# A failed read waits the same pace, as the lobby's does.
 	_duel_reads.complete(ticket, Time.get_ticks_msec(), true)
+	_repace()
 	if answer.get("ok", false): _show_duel(page, answer.duel)
+
+## An answer may say hints stopped (a server rolled back) or started: the next read keeps the pace that holds now.
+func _repace() -> void:
+	if _reading(): _bind(Time.get_ticks_msec())
 
 ## A newer copy of the open duel, from a read or this player's own action
 ## (Leave shows at once): a running duel redraws its page, an ended one swaps in

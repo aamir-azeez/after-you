@@ -238,8 +238,8 @@ export class LeaderboardBoard extends DurableObject<Env> {
 
   /** A new duel or ghost race on this chapter version (duels/store.ts create); null while the board is full of open ones. */
   duelCreate(duel: Duel): Duel | null { return this.duels.create(duel, Date.now()); }
-  /** The duels named, settled to now. Unknown ids are left out. */
-  duelRead(ids: string[]): Duel[] { return this.duels.read(ids, Date.now()); }
+  /** The duels named, settled to now. Unknown ids are left out. `reader`: whose read it is, left out of the news. */
+  duelRead(ids: string[], reader?: string): Duel[] { return this.duels.read(ids, Date.now(), reader ?? null); }
   /** A player's accept, Not now, leave or room claim on one duel. */
   duelAct(duelId: string, action: DuelAction): Outcome<{ duel: Duel; room?: SideRoom }> { return this.duels.act(duelId, action, Date.now()); }
   /** A turn accepted in one of the duel's rooms; the finishing turn of a friend run brings its final checkpoint. `actor`: whose turn it was. */

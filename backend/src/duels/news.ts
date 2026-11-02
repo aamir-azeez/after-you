@@ -23,14 +23,18 @@ export type DuelNews = { duel_id: string; at: number; recipients: string[] };
 /** Duel hints go out, and phones are told so (duelsCapability), only while duels and the live socket are both on. */
 export function duelHintsOn(env: ServerVars): boolean { return duelsOn(env) && flags.liveConnection(env); }
 
-/** Board side: one hint per recipient. A player told of more than one duel at once gets one hint naming none, so their lobby reads once. */
+/**
+ * Board side: one hint per duel to each of its recipients, so a phone with that duel open reads it
+ * (several duels at once, as a verdict batch, is rare; the phone reads its lobby once for them all).
+ */
 export function announceDuelNews(env: ServerVars & Pick<Env, "PLAYERS">, news: readonly DuelNews[]): Promise<unknown> {
   if (!news.length || !duelHintsOn(env)) return Promise.resolve();
-  const byPlayer = new Map<string, DuelNews[]>();
-  for (const item of news) for (const id of item.recipients) byPlayer.set(id, [...(byPlayer.get(id) ?? []), item]);
-  return Promise.all([...byPlayer].map(([id, items]) => hintPlayers(env, [id], items.length === 1
-    ? { kind: "duels", duel_id: items[0].duel_id, at: items[0].at }
-    : { kind: "duels", duel_id: null, at: Math.max(...items.map(item => item.at)) })));
+  return Promise.all(news.map(item => hintPlayers(env, item.recipients, { kind: "duels", duel_id: item.duel_id, at: item.at })));
+}
+
+/** Beside every duel read the phone paces itself by: while true, duel changes come as hints, so it may read at its backup pace. */
+export function hintsField(env: ServerVars): { duel_hints_version?: number } {
+  return duelHintsOn(env) ? { duel_hints_version: 1 } : {};
 }
 
 /** Route side: the players whose lobby changed, told after the change is stored. `duel`: the one new duel, when that is the change. */

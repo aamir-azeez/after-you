@@ -41,9 +41,6 @@ class FakeApi extends Node:
 
 class FakeSession extends RefCounted:
 	var on := true
-	## The server sends duel hints (duel_hints_version).
-	var hints := false
-	func duel_hints_supported() -> bool: return on and hints
 	var capabilities := {"duels_version": 1}
 	var last_lobby_code := ""
 	func duels_supported() -> bool: return on
@@ -467,10 +464,10 @@ func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	var live: FakeLive = main.live_connection
 	var running := _view({})
 	running.updated_ms = 200
-	api.replies["GET " + lobby_path] = {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [running]}}
-	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": running}}
+	var hinted_lobby := {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": [running], "duel_hints_version": 1}}
+	api.replies["GET " + lobby_path] = hinted_lobby
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": running, "duel_hints_version": 1}}
 	live.good = true
-	main.relay_session.hints = true
 	flow.open()
 	flow.set_process(false)
 	await _frames(3)
@@ -538,8 +535,18 @@ func _hinted(main: FakeMain, api: FakeApi, flow: Node) -> void:
 	flow._tick(later + Clock.DUEL_INTERVAL_MS + 2 + Clock.DUEL_BACKUP_MS)
 	await _frames(3)
 	_check(reads.call(duel_path) == duel_reads + 2, "an open duel still reads at its backup pace")
+	# A server rolled back to one without hints: its next answer brings back the old pace.
+	var plain := running.duplicate(true)
+	plain.updated_ms = 700
+	api.replies["GET " + duel_path] = {"ok": true, "data": {"schema_version": 1, "duel": plain}}
+	live.duels_changed.emit(DUEL, 700)
+	var ending := later + Clock.DUEL_INTERVAL_MS + 3 + Clock.DUEL_BACKUP_MS
+	flow._tick(ending)
+	await _frames(3)
+	flow._tick(ending + Clock.DUEL_INTERVAL_MS)
+	await _frames(3)
+	_check(reads.call(duel_path) == duel_reads + 4, "a server that stopped sending hints brings back the 30 s pace at its next answer: %d" % (reads.call(duel_path) - duel_reads))
 	live.good = false
-	main.relay_session.hints = false
 	flow.close()
 	await _frames(2)
 

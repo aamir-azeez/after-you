@@ -84,9 +84,9 @@ export class DuelStore {
   }
 
   /** The duels named, settled to `now` (a changed one is saved), in the order asked; unknown ids are left out. */
-  read(ids: readonly string[], now: number): Duel[] {
+  read(ids: readonly string[], now: number, reader: string | null = null): Duel[] {
     if (!this.present() || !ids.length) return [];
-    return this.tell(null, () => this.storage.transactionSync(() => ids.map(id => this.duel(id)).filter((duel): duel is Duel => duel !== null).map(duel => {
+    return this.tell(reader, () => this.storage.transactionSync(() => ids.map(id => this.duel(id)).filter((duel): duel is Duel => duel !== null).map(duel => {
       if (settle(duel, now)) this.save(duel);
       return duel;
     })));

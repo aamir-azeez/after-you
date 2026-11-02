@@ -1334,10 +1334,6 @@ func leaderboards_supported() -> bool:
 func duels_supported() -> bool:
 	return Typed.equal(capabilities.get("duels_version"), 1.0)
 
-## The server also sends duel changes over the live socket (backend src/duels/news.ts), so duel screens may read at a backup pace.
-func duel_hints_supported() -> bool:
-	return duels_supported() and Typed.equal(capabilities.get("duel_hints_version"), 1.0)
-
 func nickname_scope() -> Dictionary:
 	## Server and owner that key this device's local friend nicknames and the
 	## display names it keeps; {} without a server address (a test's API).
