@@ -22,6 +22,7 @@ const PlayerCopy = preload("res://presentation/player_copy.gd")
 const RoomActions = preload("res://presentation/room_actions.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const KeyboardLift = preload("res://presentation/kit/keyboard_lift.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const CREAM := Color("eceddb")
 const MUTED := Color("afc6be")
 const INK := Color("123936")
@@ -184,9 +185,9 @@ func _ready() -> void:
 	show_name_chip()
 	_countdown = Label.new()
 	_countdown.add_theme_color_override("font_color",MUTED)
-	_leaderboards_button = _icon_button(LEADERBOARD_ICON,PlayerCopy.LEADERBOARDS,_open_leaderboards,true,refresh_row)
+	_leaderboards_button = _online(_icon_button(LEADERBOARD_ICON,PlayerCopy.LEADERBOARDS,_open_leaderboards,true,refresh_row))
 	_leaderboards_button.visible = false
-	_refresh_button = _icon_button(REFRESH_ICON,"Refresh",func(): _refresh(true),true,refresh_row)
+	_refresh_button = _online(_icon_button(REFRESH_ICON,"Refresh",func(): _refresh(true),true,refresh_row))
 	refresh_row.add_child(_countdown)
 	_scroll = ScrollContainer.new()
 	_scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
@@ -264,7 +265,7 @@ func _update_countdowns() -> void:
 	var manual_wait := ceili(float(client.refresh_wait_ms(true))/1000.0)
 	var auto_wait := ceili(float(client.refresh_wait_ms())/1000.0)
 	_refresh_button.tooltip_text = "Refresh" if manual_wait == 0 else "Refresh (%ds)" % manual_wait
-	_refresh_button.disabled = not _foreground or _busy or client.busy or manual_wait > 0
+	OfflineHold.set_enabled(_refresh_button,not (not _foreground or _busy or client.busy or manual_wait > 0))
 	# The list refresh keeps Join and Notify live: a tap on them is kept and
 	# runs when the refresh lands, like every other row action.
 	var acting: bool = (_busy or client.busy) and not _refreshing
@@ -274,9 +275,9 @@ func _update_countdowns() -> void:
 		if not is_instance_valid(button): continue
 		var action: String = button.get_meta("room_action")
 		button.text = action if join_wait == 0 else "%s (%ds)" % [action,join_wait]
-		button.disabled = not _foreground or acting or join_wait > 0
+		OfflineHold.set_enabled(button,not (not _foreground or acting or join_wait > 0))
 	for button: Button in _notify_buttons:
-		if is_instance_valid(button): button.disabled = not _foreground or acting or event_client == null
+		if is_instance_valid(button): OfflineHold.set_enabled(button,not (not _foreground or acting or event_client == null))
 
 func _presence_key(page: Dictionary) -> String:
 	var values := []
@@ -306,6 +307,11 @@ func _button(value: String, action: Callable, enabled: bool = true, parent: Node
 		button.add_theme_color_override("icon_"+state+"_color",INK)
 	button.add_theme_color_override("icon_disabled_color",Color("9aaaa3"))
 	(parent if parent != null else _content).add_child(button)
+	return button
+
+## A button that needs the server: greyed while offline, its reason in the pop-up (presentation/offline_hold.gd).
+func _online(button: Button) -> Button:
+	OfflineHold.hold(button,func(text: String) -> void: _say(text))
 	return button
 
 func _secondary(button: Button, quiet: bool = false) -> void:
@@ -409,7 +415,7 @@ func _render() -> void:
 		var choices := HBoxContainer.new()
 		choices.add_theme_constant_override("separation",12)
 		confirmation.add_child(choices)
-		_button("Remove",func(): _act("remove",_remove),not _busy,choices)
+		_online(_button("Remove",func(): _act("remove",_remove),not _busy,choices))
 		_secondary(_button("Cancel",func(): _remove = {}; _render(),not _busy,choices))
 		_update_countdowns()
 		return
@@ -558,8 +564,8 @@ func _render() -> void:
 		field.grab_focus()
 		field.caret_column = caret
 		if selection_to > selection_from: field.select(selection_from,selection_to)
-	var add := _button("Add friend",func(): _act("add"),not _busy and not _code.strip_edges().is_empty(),add_row)
-	field.text_changed.connect(func(value: String): add.disabled = _busy or value.strip_edges().is_empty())
+	var add := _online(_button("Add friend",func(): _act("add"),not _busy and not _code.strip_edges().is_empty(),add_row))
+	field.text_changed.connect(func(value: String): OfflineHold.set_enabled(add,not _busy and not value.strip_edges().is_empty()))
 	add.icon = ADD_ICON
 	_secondary(add)
 	_pad_labeled_icon(add)
@@ -630,7 +636,7 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 	var room_actions := HBoxContainer.new() if _compact and openable_room else null
 	if room_actions != null: room_actions.add_theme_constant_override("separation",8)
 	if has_room:
-		var host := _button("Host a room",_host,not _busy and not client.busy,room_actions if room_actions != null else heading)
+		var host := _online(_button("Host a room",_host,not _busy and not client.busy,room_actions if room_actions != null else heading))
 		host.add_theme_font_size_override("font_size",16)
 		host.custom_minimum_size = Vector2(112,48)
 		host.size_flags_horizontal = Control.SIZE_SHRINK_END
@@ -657,16 +663,16 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 	spacer.custom_minimum_size.y = 0 if _compact else 6
 	spacer.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	room.add_child(spacer)
-	if not has_room: _button("Host a room",_host,not _busy and not client.busy,room)
+	if not has_room: _online(_button("Host a room",_host,not _busy and not client.busy,room))
 	if room_actions != null: room.add_child(room_actions)
 	if openable_room:
-		var return_button := _button("Return to room",_open,not _busy and not client.busy,room_actions if room_actions != null else room)
+		var return_button := _online(_button("Return to room",_open,not _busy and not client.busy,room_actions if room_actions != null else room))
 		if room_actions != null: room_actions.move_child(return_button,0)
 	if not shareable_room.is_empty():
 		if FriendsClient.same_room(page.get("shared_room"),shareable_room):
 			_label(RoomActions.SHARED,20,room).add_theme_color_override("font_color",MUTED)
 		else:
-			var share := _button(RoomActions.SHARE,func(): _act("share"),not _busy,room)
+			var share := _online(_button(RoomActions.SHARE,func(): _act("share"),not _busy,room))
 			share.icon = SHARE_ICON
 			_secondary(share)
 			_pad_labeled_icon(share)
@@ -682,7 +688,7 @@ func _room_panel(page: Dictionary, parent: Node) -> void:
 		other.name = "SharedRoomLine"
 		other.add_theme_color_override("font_color",MUTED)
 	if page.get("shared_room") != null:
-		var unshare := _button(RoomActions.STOP_SHARING,func(): _act("unshare"),not _busy,room)
+		var unshare := _online(_button(RoomActions.STOP_SHARING,func(): _act("unshare"),not _busy,room))
 		_secondary(unshare)
 
 func _friend_row(peer: Dictionary, parent: Node) -> void:
@@ -797,21 +803,21 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 	actions.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	row.add_child(actions)
 	if peer.status == "incoming":
-		var accept := _button("Accept",func(): _act("accept",peer),not _busy,actions)
+		var accept := _online(_button("Accept",func(): _act("accept",peer),not _busy,actions))
 		accept.custom_minimum_size.x = 112
-		_icon_button(REMOVE_ICON,"Decline",func(): _act("remove",peer),not _busy,actions)
-	elif peer.status == "outgoing": _icon_button(REMOVE_ICON,"Cancel request",func(): _act("remove",peer),not _busy,actions)
+		_online(_icon_button(REMOVE_ICON,"Decline",func(): _act("remove",peer),not _busy,actions))
+	elif peer.status == "outgoing": _online(_icon_button(REMOVE_ICON,"Cancel request",func(): _act("remove",peer),not _busy,actions))
 	else:
 		var action_width := 112 if _compact else 128
 		if peer.join_available:
-			var join := _button("Join",func(): _act("join",peer),not _busy,actions)
+			var join := _online(_button("Join",func(): _act("join",peer),not _busy,actions))
 			join.custom_minimum_size.x = action_width
 			join.add_theme_font_size_override("font_size",18 if _compact else 22)
 			join.set_meta("room_action","Join")
 			_join_buttons.append(join)
 		# Hosting alerts are a separate per-friend choice, so Notify stays beside Join.
 		var notifying: bool = bool(_notification_preferences.get(str(peer.player_id),false))
-		var notify := _button("Notifying" if notifying else "Notify",func(): _ask_hosting_alert(peer),not _busy and event_client != null,actions)
+		var notify := _online(_button("Notifying" if notifying else "Notify",func(): _ask_hosting_alert(peer),not _busy and event_client != null,actions))
 		notify.custom_minimum_size.x = action_width
 		notify.add_theme_font_size_override("font_size",18 if _compact else 22)
 		notify.tooltip_text = "Turn hosting alerts on or off"
@@ -820,7 +826,7 @@ func _friend_row(peer: Dictionary, parent: Node) -> void:
 			notify.add_theme_color_override("font_disabled_color",Color("9aaaa3"))
 		else: _secondary(notify)
 		_notify_buttons.append(notify)
-		_icon_button(REMOVE_ICON,"Remove friend",func(): _remove = peer.duplicate(true); _render(),not _busy,actions)
+		_online(_icon_button(REMOVE_ICON,"Remove friend",func(): _remove = peer.duplicate(true); _render(),not _busy,actions))
 
 ## Adds the Display name chip beside the title once names are on (no-op after).
 func show_name_chip() -> void:
@@ -879,7 +885,7 @@ func _add_hosting_events() -> void:
 		panel.add_child(row)
 		var detail := _label(FriendNicknames.sentence_start(_display_name(str(event.player_id)))+" has a room ready",20,row)
 		detail.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var join := _button("Join",func(): _act("join",peer),not _busy,row)
+		var join := _online(_button("Join",func(): _act("join",peer),not _busy,row))
 		join.custom_minimum_size.x = 120
 
 func _ack_visible_events() -> void:
@@ -1048,11 +1054,12 @@ func _offer_link() -> void:
 	var cancel: Button = _modal.find_child("ModalCancel",true,false)
 	if cancel != null: _outlined(cancel)
 	# The modal can appear right after an automatic navigation; a stray tap must not confirm.
+	_online(add)
 	add.disabled = true
 	var armed: WeakRef = weakref(add)
 	get_tree().create_timer(INVITE_CONFIRM_ARM_SEC).timeout.connect(func():
 		var button: Button = armed.get_ref()
-		if button != null: button.disabled = false)
+		if button != null: OfflineHold.set_enabled(button,true))
 	add.grab_focus()
 
 func _outlined(button: Button) -> void:

@@ -267,6 +267,8 @@ const WARDROBE_NOTHING_IN_SHOP := "Nothing in the shop right now."
 const WARDROBE_LOADING := "Opening your wardrobe…"
 const WARDROBE_OFFLINE := "The wardrobe isn't reachable right now. Try again in a moment."
 const WARDROBE_TRY_AGAIN := "Try again"
+## A tap on anything greyed out while the phone is offline (presentation/offline_hold.gd).
+const OFFLINE_NEEDS_CONNECTION := "You're offline. This needs an internet connection."
 const WARDROBE_CONFIRM_TITLE := "Buy %s?"
 const WARDROBE_CONFIRM_NOTE := "Looks only, and it stays on your pip."
 const WARDROBE_YOU_HAVE := "You have"

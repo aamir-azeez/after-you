@@ -26,6 +26,7 @@ extends RefCounted
 ## - expand: a Callable returning more rows to draw in its place (licences).
 ## - featured: a LINK drawn on the gold tinted surface (pollen board 1's row).
 ## - pollen_value: a Callable giving the Pollen balance a LINK shows with its grain (-1 for none).
+## - online: needs the server; greyed while the phone is offline (presentation/offline_hold.gd).
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PlatformSupport = preload("res://services/platform_support.gd")
 const GraphicsPolicy = preload("res://services/graphics_policy.gd")
@@ -88,7 +89,7 @@ static func rows(host: Node) -> Array[Dictionary]:
 
 		{"id": "share_online_status", "icon": preload("res://assets/ui/whats_new/people.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_ONLINE_STATUS, "note": PlayerCopy.SETTINGS_ONLINE_STATUS_NOTE, "key": "share_online_status"},
 		# Shown while the server has leaderboards open (presentation/leaderboard_screen.gd); off by default.
-		{"id": "leaderboard_name", "icon": preload("res://assets/ui/whats_new/star.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_LEADERBOARD_NAME, "note": PlayerCopy.SETTINGS_LEADERBOARD_NAME_NOTE,
+		{"id": "leaderboard_name", "online": true, "icon": preload("res://assets/ui/whats_new/star.svg"), "category": FRIENDS, "kind": TOGGLE, "label": PlayerCopy.SETTINGS_LEADERBOARD_NAME, "note": PlayerCopy.SETTINGS_LEADERBOARD_NAME_NOTE,
 			"get": func() -> bool: return LeaderboardClient.shared(host.api, str(host.api.player_id)).show_name(),
 			"set": func(on: bool) -> bool: return LeaderboardClient.shared(host.api, str(host.api.player_id)).set_show_name(on),
 			"visible_if": func() -> bool: return host.relay_session != null and host.relay_session.leaderboards_supported() and not str(host.api.player_id).is_empty()},
@@ -109,11 +110,11 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "pollen", "category": ACCOUNT, "kind": LINK, "featured": true, "label": PlayerCopy.SETTINGS_POLLEN, "note": PlayerCopy.SETTINGS_POLLEN_NOTE,
 			"open": func() -> void: host.pollen_play_flow.open_from_settings(), "pollen_value": func() -> int: return host.pollen_play_flow.balance(),
 			"visible_if": func() -> bool: return host.get("pollen_play_flow") != null and host.pollen_play_flow.available()},
-		{"id": "retry_cleanup", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_RETRY_CLEANUP, "run": account.clear_deleted_identity, "visible_if": state.call(["cleanup"])},
+		{"id": "retry_cleanup", "online": true, "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_RETRY_CLEANUP, "run": account.clear_deleted_identity, "visible_if": state.call(["cleanup"])},
 		{"id": "check_deleted_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CHECK_IDENTITY, "run": account.retry_deleted_identity_read,
 			"visible_if": func() -> bool: return account.panel_state() == "cleanup" and account.identity_unread()},
 		{"id": "pending_note", "category": ACCOUNT, "kind": INFO, "label": "", "note": PlayerCopy.MAIN_93BF3A28C6F9, "visible_if": state.call(["pending"])},
-		{"id": "finish_recovery", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_FINISH_RECOVERY, "run": account.resume_pending_recovery, "visible_if": state.call(["pending"])},
+		{"id": "finish_recovery", "online": true, "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_FINISH_RECOVERY, "run": account.resume_pending_recovery, "visible_if": state.call(["pending"])},
 		{"id": "restart_note", "category": ACCOUNT, "kind": INFO, "label": "", "note": PlayerCopy.MAIN_5BC549F4B951, "visible_if": state.call(["restart"])},
 		{"id": "recovery_details", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_RECOVERY_DETAILS, "note": PlayerCopy.SETTINGS_RECOVERY_DETAILS_NOTE,
 			"inline": account.toggle_recovery_details, "visible_if": func() -> bool: return account.panel_state() == "ready" or (account.panel_state() == "restart" and not host.identity_data.is_empty())},
@@ -121,7 +122,7 @@ static func rows(host: Node) -> Array[Dictionary]:
 		{"id": "platform_games", "category": ACCOUNT, "kind": ACTION, "label": games.label, "note": games.status_line,
 			"inline": games.toggle_detail, "visible_if": func() -> bool: return games.offered() and account.panel_state() in ["ready", "missing"], "enabled_if": games.enabled},
 		{"id": "close_app", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CLOSE_APP, "run": func(): host.get_tree().quit(), "visible_if": state.call(["restart"])},
-		{"id": "hosting_access", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_HOSTING_ACCESS, "note": PlayerCopy.SETTINGS_HOSTING_ACCESS_NOTE,
+		{"id": "hosting_access", "online": true, "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_HOSTING_ACCESS, "note": PlayerCopy.SETTINGS_HOSTING_ACCESS_NOTE,
 			"inline": func(detail: VBoxContainer, _row: Control): account.check_hosting_access(detail),
 			"visible_if": func() -> bool: return account.panel_state() == "ready" and not host._paid_content_hidden(),
 			"enabled_if": func() -> bool: return not account.hosting_check_busy},
@@ -132,15 +133,15 @@ static func rows(host: Node) -> Array[Dictionary]:
 		# Subscribers reach Manage subscription and Restore here once Home hides the offer.
 		{"id": "full_journey", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_FULL_JOURNEY, "note": PlayerCopy.SETTINGS_FULL_JOURNEY_NOTE,
 			"open": host.store_flow.show_store_from_settings, "visible_if": func() -> bool: return host._play_store_enabled() and not host._paid_content_hidden()},
-		{"id": "photo_transfer", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_PHOTO_TRANSFER, "note": PlayerCopy.SETTINGS_PHOTO_TRANSFER_NOTE,
+		{"id": "photo_transfer", "online": true, "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_PHOTO_TRANSFER, "note": PlayerCopy.SETTINGS_PHOTO_TRANSFER_NOTE,
 			"open": account.open_photo_transfer, "visible_if": state.call(["ready"])},
 		# Room history is never removed automatically, so show what it takes.
 		{"id": "room_history", "category": ACCOUNT, "kind": INFO, "note": "",
 			"label": func() -> String: return PlayerCopy.MAIN_ROOM_HISTORY_SPACE % HistoryStore.size_text(HistoryStore.new().usage_bytes()),
 			"visible_if": func() -> bool: return account.panel_state() == "ready" and RoomsApi.history_supported},
-		{"id": "safety_reports", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_REPORTS, "note": PlayerCopy.SETTINGS_REPORTS_NOTE,
+		{"id": "safety_reports", "online": true, "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_REPORTS, "note": PlayerCopy.SETTINGS_REPORTS_NOTE,
 			"open": account.open_safety, "visible_if": state.call(["ready"])},
-		{"id": "create_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CREATE_IDENTITY, "run": account.create_identity, "visible_if": state.call(["missing"])},
+		{"id": "create_identity", "online": true, "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CREATE_IDENTITY, "run": account.create_identity, "visible_if": state.call(["missing"])},
 		{"id": "unread_note", "category": ACCOUNT, "kind": INFO, "label": "", "visible_if": state.call(["unread"]),
 			"note": func() -> String: return PlayerCopy.MAIN_3E50EF2B7ECB if account.recovery_start_allowed() else PlayerCopy.UNREAD_CHECK_AGAIN},
 		{"id": "check_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_CHECK_IDENTITY, "run": account.retry_saved_identity, "visible_if": state.call(["unread"])},
@@ -151,9 +152,9 @@ static func rows(host: Node) -> Array[Dictionary]:
 			"run": account.confirm_discard_recovery, "visible_if": func() -> bool: return account.panel_state() in ["pending", "unread"] and account.can_discard_recovery()},
 		{"id": "offline_note", "category": ACCOUNT, "kind": INFO, "label": "", "visible_if": state.call(["offline"]),
 			"note": PlayerCopy.for_platform(PlayerCopy.MAIN_570EC629872D, PlayerCopy.MAIN_570EC629872D_IOS)},
-		{"id": "recover_identity", "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_RECOVER, "note": PlayerCopy.SETTINGS_RECOVER_NOTE,
+		{"id": "recover_identity", "online": true, "category": ACCOUNT, "kind": LINK, "label": PlayerCopy.SETTINGS_RECOVER, "note": PlayerCopy.SETTINGS_RECOVER_NOTE,
 			"open": account.show_recovery_form, "visible_if": func() -> bool: return account.panel_state() in ["ready", "missing", "unread"] and host.api.configured() and host.secrets.is_available() and account.recovery_start_allowed()},
-		{"id": "delete_identity", "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_DELETE_IDENTITY, "danger": true,
+		{"id": "delete_identity", "online": true, "category": ACCOUNT, "kind": ACTION, "label": PlayerCopy.SETTINGS_DELETE_IDENTITY, "danger": true,
 			"run": func(): account.confirm_delete_identity(), "visible_if": state.call(["ready"])},
 
 		{"id": "community", "category": ABOUT, "kind": LINK, "label": PlayerCopy.SETTINGS_COMMUNITY, "note": PlayerCopy.SETTINGS_COMMUNITY_NOTE, "open": func(): host._open_safety()},

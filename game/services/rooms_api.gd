@@ -28,6 +28,8 @@ var base_url := ""
 var player_id := ""
 var device_token := ""
 var _queue := RequestQueue.new()
+## Main's API tells the app whether the server is reached (services/connectivity.gd); others say nothing.
+var connectivity: RefCounted = null
 ## A request came back 426 client_update_required (a route that refuses this build).
 signal update_required
 
@@ -97,6 +99,7 @@ func _raw_result(method: int, path: String, response: Array) -> Dictionary:
 	return result
 
 func _result(response: Array, method: int = HTTPClient.METHOD_GET, path: String = "") -> Dictionary:
+	if connectivity != null: connectivity.note_response(response)
 	if response.is_empty():
 		return {"ok":false,"status":0,"error":for_route(PlayerCopy.ROOMS_API_7795AD99E31E,method,path)}
 	var parser := JSON.new()

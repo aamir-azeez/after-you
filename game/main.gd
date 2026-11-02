@@ -73,6 +73,9 @@ const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const FriendRoomEventsClient = preload("res://services/friend_room_events_client.gd")
 const RoomSharing = preload("res://services/room_sharing.gd")
 const LiveConnection = preload("res://services/live_connection.gd")
+const Connectivity = preload("res://services/connectivity.gd")
+const ConnectivityProbe = preload("res://services/connectivity_probe.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalog.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const InGameModal = preload("res://presentation/in_game_modal.gd")
@@ -375,6 +378,14 @@ func _ready() -> void:
 	api=RoomsApi.new()
 	api.base_url=str(config.get("api_base_url",""))
 	add_child(api)
+	# Every answer, or none, tells the app whether the server is reached (services/connectivity.gd).
+	api.connectivity=Connectivity.shared()
+	# Greyed buttons say why on a tap through the toast (presentation/offline_hold.gd).
+	OfflineHold.say_default=_toast
+	var probe := ConnectivityProbe.new()
+	probe.base_url=api.base_url
+	probe.configured=api.configured()
+	add_child(probe,false,Node.INTERNAL_MODE_BACK)
 	pollen_client=PollenClient.new(api,_names_scope)
 	# The player's own look follows the signed-in player (services/own_look.gd).
 	Wardrobe.shared().scope_source=_names_scope
@@ -471,6 +482,7 @@ func _ready() -> void:
 	app_status = AppStatus.new()
 	app_status.base_url = api.base_url
 	app_status.configured = api.configured()
+	app_status.connectivity = Connectivity.shared()
 	add_child(app_status)
 	if api.has_signal("update_required"): api.update_required.connect(_on_update_required)
 	_check_app_status()
@@ -802,6 +814,9 @@ func _show_home() -> void:
 	# A tap made while the room session is still busy waits on the Play button (RoomHubFlow.open_from_home).
 	menu.build({"play":room_hub_flow.open_from_home,"solo":journey_flow.show_journey,"friends":_show_friends,"duels":_show_duels,"replays":replays_flow.show_collection,"wardrobe":_open_wardrobe_from_home,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
 	home_menu_view = menu
+	# Playing with a friend and Duels need the server: greyed while offline, back on their own.
+	OfflineHold.hold(menu.play_button)
+	OfflineHold.hold(menu.duels_button)
 	# A tap on the player's own pip opens the Wardrobe too (presentation/home_stage.gd own_pip_tapped).
 	home_stage.own_pip_tapped = _open_wardrobe_from_pip
 	menu.set_play_icon(FriendPlayIcon.new())
@@ -1065,6 +1080,7 @@ func _react(reaction: String) -> void:
 	if code.is_empty():
 		return
 	if room_play:
+		if _offline_blocked(): return
 		await _one_room_write(_send_reaction.bind(code))
 		return
 	saves.data["last_reaction"]=reaction
@@ -1129,7 +1145,7 @@ func _replay_preview_thumb(key: String, min_size: Vector2, radius: int) -> Contr
 	return ChapterPicker.thumbnail(key,min_size,radius)
 
 func _open_photo_transfer() -> void:
-	if _online_gated(): return
+	if _online_gated() or _offline_blocked(): return
 	if not _relay_identity().ready:
 		_toast(PlayerCopy.MAIN_2BCA37F28163)
 		return
@@ -1300,6 +1316,8 @@ func _host_live_connection() -> LiveConnection:
 	var live := LiveConnection.new()
 	live.capabilities = func() -> Dictionary: return relay_session.capabilities if relay_session != null else {}
 	live.wanted = func() -> bool: return mode in [RoomHubFlow.MODE_ROOMS, FriendsFlow.MODE_FRIENDS, DuelsFlow.MODE_DUELS, "relay_online"] or is_instance_valid(relay_child)
+	# The socket opening is the server answering: the app reads as online at once.
+	live.health_changed.connect(_live_health_changed)
 	add_child(live,false,Node.INTERNAL_MODE_BACK)
 	return live
 
@@ -1617,7 +1635,7 @@ func _room_session_idle() -> bool:
 
 ## Duels from Home's row, while the server has them on (presentation/duels/duels_flow.gd).
 func _show_duels(report: Callable = Callable()) -> void:
-	if _online_gated(): return
+	if _online_gated() or _offline_blocked(report): return
 	var view := store_view_generation
 	var lifecycle := lifecycle_generation
 	if not _relay_available(report) or not await _ensure_identity(report): return
@@ -2145,6 +2163,19 @@ func _check_app_status() -> void:
 	if _update_gate_active(): return
 	update_gate_dismissed = false
 	if mode == "update_gate": _show_home()
+
+## Entry points that need the server ask too: while the phone is offline
+## (services/connectivity.gd) they say why and ask the server once, instead of
+## trying. Their buttons are greyed already (presentation/offline_hold.gd); this
+## covers routes with no button (a notification, a link).
+func _offline_blocked(report: Callable = Callable()) -> bool:
+	if Connectivity.shared().online(): return false
+	_report(report,PlayerCopy.OFFLINE_NEEDS_CONNECTION)
+	Connectivity.shared().check_now()
+	return true
+
+func _live_health_changed(healthy: bool) -> void:
+	if healthy: Connectivity.shared().note_reached()
 
 ## True while online play needs a newer build and there is a store page to get it from.
 func _update_gate_active() -> bool:

@@ -27,6 +27,8 @@ var base_url := ""
 ## Whether base_url may be used (RoomsApi.configured()).
 var configured := false
 var busy := false
+## Each answer tells the app the server is reached, or not (services/connectivity.gd); null says nothing.
+var connectivity: RefCounted = null
 var result: Dictionary = OFF.duplicate()
 ## Wall-clock seconds of the last finished check, or -1 before the first.
 var checked_at := -1.0
@@ -60,6 +62,7 @@ func check() -> Dictionary:
 	busy = true
 	var response: Array = await _send(base_url.trim_suffix("/") + PATH, PackedStringArray([header]))
 	busy = false
+	if connectivity != null: connectivity.note_response(response)
 	result = interpret(response, ClientIdentity.version(), channel)
 	checked_at = now()
 	answered.emit(result)

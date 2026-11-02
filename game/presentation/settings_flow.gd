@@ -44,6 +44,7 @@ const Spirit = preload("res://presentation/settings_spirit.gd")
 const TouchInput = preload("res://presentation/touch_input.gd")
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const CREAM := Color("eceddb")
 ## Main's modes on these screens.
 const MODE_SETTINGS := "settings"
@@ -359,6 +360,7 @@ func _build_rows(rows: Array[Dictionary], keep_scroll: bool = false) -> void:
 		for row: Dictionary in tiles:
 			var tile := _row_control(row, stacked)
 			grid.add_child(tile)
+			_hold_online(row, tile)
 			_live.append({"row": row, "control": tile})
 		_list.add_child(Kit.pad(grid, Kit.ROW_PAD, 6))
 	var previous: Dictionary = {}
@@ -368,10 +370,18 @@ func _build_rows(rows: Array[Dictionary], keep_scroll: bool = false) -> void:
 		elif not previous.is_empty(): _list.add_child(Kit.divider())
 		var control := _row_control(row, stacked)
 		_list.add_child(control)
+		_hold_online(row, control)
 		_live.append({"row": row, "control": control})
 		previous = row
 	_shown_ids = _visible_ids()
 	_update_fade.call_deferred()
+
+## A row that needs the server (`online`) is greyed while the phone is
+## offline and says why on a tap (presentation/offline_hold.gd).
+func _hold_online(row: Dictionary, control: Control) -> void:
+	if not row.get("online", false): return
+	var target := control.find_child(str(row.id), true, false)
+	if target is BaseButton: OfflineHold.hold(target)
 
 ## The ids of the category's own rows whose visible_if holds now (expanded
 ## rows follow their parent, so they are not read again).
@@ -525,7 +535,7 @@ func refresh() -> void:
 			Rows.TOGGLE:
 				var toggle := target as CheckButton
 				toggle.set_pressed_no_signal(bool(_value(row)))
-				toggle.disabled = not on
+				OfflineHold.set_enabled(toggle, on)
 				var mark := toggle.get_parent().find_child("Switch", true, false) as Kit.Switch
 				mark.reduced = _reduced_motion()
 				mark.refresh()
@@ -534,7 +544,7 @@ func refresh() -> void:
 					option.set_pressed_no_signal(str(option.get_meta("value")) == str(_value(row)))
 					option.disabled = not on
 			Rows.LINK, Rows.ACTION:
-				if target is BaseButton: (target as BaseButton).disabled = not on
+				if target is BaseButton: OfflineHold.set_enabled(target as BaseButton, on)
 		if row.get("label") is Callable and str(row.kind) != Rows.INFO:
 			var title := control.find_child("Label", true, false) as Label
 			if title != null: title.text = Rows.text(row.label)

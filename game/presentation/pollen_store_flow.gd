@@ -44,6 +44,7 @@ const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Wardrobe = preload("res://services/wardrobe.gd")
+const Connectivity = preload("res://services/connectivity.gd")
 const StoreCurrency = preload("res://services/store_currency.gd")
 const PurchasesView = preload("res://presentation/pollen_purchases_view.gd")
 ## The receipt sounds on the host's soundscape (play_on).
@@ -112,8 +113,13 @@ func is_open() -> bool:
 	return is_instance_valid(_page) and _page.is_inside_tree() and not _page.is_queued_for_deletion()
 
 ## Opens the store, its Back going to `from`.
+## Offline it says why and asks the server once instead: prices and buying need it.
 func show_store(from: String = "wardrobe") -> void:
 	if not available(): return
+	if not Connectivity.shared().online():
+		if host.has_method("_toast"): host._toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
+		Connectivity.shared().check_now()
+		return
 	return_to = from
 	host.running = false
 	host.mode = MODE_POLLEN_STORE

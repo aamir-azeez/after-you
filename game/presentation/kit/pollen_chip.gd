@@ -21,6 +21,7 @@ const PollenMoney = preload("res://services/pollen_money.gd")
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const PLUS := preload("res://assets/ui/social/plus.svg")
 
 const FONT_SIZE := 22
@@ -79,6 +80,8 @@ func _build(balance: int, plus: bool) -> void:
 		plus_button = _half("PollenChipPlusButton", PlayerCopy.WARDROBE_GET_POLLEN)
 		plus_button.custom_minimum_size = Vector2(PLUS_WIDTH, HEIGHT)
 		plus_button.pressed.connect(func() -> void: plus_pressed.emit())
+		# The store needs the server: the plus greys while offline (presentation/offline_hold.gd).
+		OfflineHold.hold(plus_button)
 		plus_icon = TextureRect.new()
 		plus_icon.name = "PollenChipPlus"
 		plus_icon.texture = PLUS

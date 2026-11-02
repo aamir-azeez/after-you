@@ -32,6 +32,8 @@ const Wardrobe = preload("res://services/wardrobe.gd")
 const PollenWallet = preload("res://services/pollen_wallet.gd")
 const PollenSurfaces = preload("res://services/pollen_surfaces.gd")
 const WardrobeSheets = preload("res://presentation/wardrobe_sheets.gd")
+const Connectivity = preload("res://services/connectivity.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 
 ## The player's own name or where it stands changed (chips redraw).
 signal changed
@@ -76,8 +78,13 @@ func maybe_ask(parent: Control, hint_later: bool = false) -> bool:
 	return true
 
 ## The prompt opened to change the name (the Friends chip's Change).
+## A name change needs the server: offline it says why and asks the server once.
 func edit(parent: Control, opener: Control = null) -> void:
 	if not enabled() or prompt_open() or not is_instance_valid(parent): return
+	if not Connectivity.shared().online():
+		if host != null and host.has_method("_toast"): host._toast(PlayerCopy.OFFLINE_NEEDS_CONNECTION)
+		Connectivity.shared().check_now()
+		return
 	_open(parent, true, opener)
 
 func prompt_open() -> bool:
@@ -158,6 +165,8 @@ func chip() -> Control:
 	if not enabled(): return null
 	var made: Control = Chip.new(bool(host.saves.data.settings.get("reduced_motion", false)) if host.saves != null else false)
 	made.change_requested.connect(func(source: Control) -> void: edit(_chip_parent(made), source))
+	# Change is greyed while offline (presentation/offline_hold.gd).
+	if made.get("change_button") is BaseButton: OfflineHold.hold(made.change_button)
 	_chips.append(weakref(made))
 	_show_chip(made)
 	return made
