@@ -16,7 +16,10 @@ export type PushRegistration = { token: string; device_hash: string; updated_at:
 export type PushPhone = { binding_epoch: string; data: string; registration: PushRegistration };
 
 export type PhoneSelection = {
-  /** "redo": only rows with a redo opt-in row in notification_categories (redo requests); "all" otherwise. */
+  /**
+   * "redo": only rows with a redo opt-in row in notification_categories (redo requests); "all" otherwise.
+   * This picks the rows only: a caller that opts in also checks the opt-in row again in its stillCurrent.
+   */
   optIn: "all" | "redo";
   /**
    * The caller's own rule on top of the iOS category check: the hosting push's client gate, the
@@ -55,7 +58,7 @@ export type PhoneSend = {
 /**
  * One try per phone, all in parallel (they share one OAuth exchange). A phone already finished for this
  * event answers "sent" without a send. The sender cancels a phone that stops being current; a token FCM
- * calls gone is erased while its row is still current; "sent", "invalid_token" and "rejected" are remembered.
+ * calls gone is erased while its row is still current. Every result goes to memory.finish, which decides what to keep.
  */
 export function sendToPhones(storage: DurableObjectStorage, sender: FcmSender, phones: readonly PushPhone[], memory: FinishedPushes, plan: PhoneSend): Promise<SendResult[]> {
   return Promise.all(phones.map(async (phone): Promise<SendResult> => {

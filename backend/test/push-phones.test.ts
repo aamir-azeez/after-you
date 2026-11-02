@@ -40,7 +40,6 @@ async function call(path: string, method = "GET", account?: Account, body?: unkn
 const create = async (): Promise<Account> => { const made = await call("/v1/identity", "POST", undefined, {}); expect(made.status).toBe(201); return made.json<Account>(); };
 const player = (account: Account) => env.PLAYERS.getByName(account.player_id);
 const IOS_TURNS_OFF = { "X-AfterYou-Platform": "ios", "X-AfterYou-Push-Categories": "hosting" };
-const IOS_HOSTING_OFF = { "X-AfterYou-Platform": "ios", "X-AfterYou-Push-Categories": "turns" };
 /** Registers a phone and returns its binding. A registration erases rows older than 30 days, so age rows only after the last one. */
 async function phone(account: Account, token: string, extra: Record<string, string> = {}): Promise<string> {
   const binding = randomToken(16);
@@ -53,6 +52,12 @@ async function age(account: Account, days: Record<string, number>): Promise<void
     for (const [binding, back] of Object.entries(days)) ctx.storage.sql.exec("UPDATE notification_registrations SET data=json_set(data,'$.updated_at',?) WHERE binding_epoch=?", Date.now() - back * DAY, binding);
   });
 }
+/** A row left by another device by a client that reads hosting events (a registration erases these, so add it after the last one). */
+async function otherDevice(account: Account, token: string): Promise<void> {
+  await runInDurableObject(player(account), (_, ctx) => { ctx.storage.sql.exec("INSERT INTO notification_registrations VALUES (?,?)", randomToken(16), JSON.stringify({ token, device_hash: "o".repeat(43), updated_at: Date.now(), friend_events: 2 })); });
+}
+/** The Player's own memory of finished pushes, by key. */
+const finished = (account: Account) => runInDurableObject(player(account), instance => [...(Reflect.get(instance, "finishedPushes") as Set<string>)]);
 /** Five rows for the current device, one more than a Player may hold. */
 async function overfill(account: Account): Promise<void> {
   await runInDurableObject(player(account), (_, ctx) => {
@@ -91,16 +96,17 @@ describe("the turn push through the shared loop", () => {
     const snapshot = await joined.json<{ room_id: string; revision: number }>();
     return { host, guest, hint: makeHint("legacy", snapshot.room_id, snapshot.revision) };
   }
-  it("erases rows older than 30 days before choosing, and skips an iPhone with turns off", async () => {
+  it("erases rows older than 30 days or from another device before choosing, and skips an iPhone with turns off", async () => {
     const { guest, hint } = await room();
     await phone(guest, "synthetic-turn-fresh");
     const days29 = await phone(guest, "synthetic-turn-29-days"), days31 = await phone(guest, "synthetic-turn-31-days");
     await phone(guest, "synthetic-turn-iphone-off", IOS_TURNS_OFF);
     await age(guest, { [days29]: 29, [days31]: 31 });
+    await otherDevice(guest, "synthetic-turn-other-device");
     const run = await stubbed(guest, {}, instance => instance.deliverTurnNotification(hint));
     expect(run.sent.map(item => `${item.token}:${item.platform}`)).toEqual(["synthetic-turn-29-days:android", "synthetic-turn-fresh:android"]);
     expect(run.value).toEqual({ delivered: true, retry_after_ms: 0 });
-    // The 31 day row is gone for good; the skipped iPhone's row stays.
+    // The 31 day and other-device rows are gone for good; the skipped iPhone's row stays.
     expect(await tokens(guest)).toEqual(["synthetic-turn-29-days", "synthetic-turn-fresh", "synthetic-turn-iphone-off"]);
   });
   it("erases a gone token, keeps a refused one, retries only the phone that failed and tells the outbox to retry", async () => {
@@ -115,6 +121,9 @@ describe("the turn push through the shared loop", () => {
     const second = await stubbed(guest, answers, instance => instance.deliverTurnNotification(hint));
     expect(second.sent.map(item => item.token)).toEqual(["synthetic-turn-busy"]);
     expect(second.value).toEqual({ delivered: true, retry_after_ms: 0 });
+    const keys = await finished(guest);
+    expect(keys).toHaveLength(4);
+    for (const key of keys) expect(key.startsWith(`room:${hint.event_id}:`)).toBe(true);
   });
   it("keeps a gone token's row that changed during the send, and answers an over-full table with a retry and no send", async () => {
     const { guest, hint } = await room();
@@ -169,19 +178,20 @@ describe("the hosting push through the shared loop", () => {
     const { created_at, attempts, next_at, push_state, ...event } = JSON.parse(rows[0].data) as FriendRoomEvent & Record<string, unknown>;
     return { guest, event: event as FriendRoomEvent };
   }
-  it("chooses every row but an old client's or an iPhone with hosting off; a row older than 30 days is tried and cancelled", async () => {
+  it("chooses every row but an old client's (iPhones: social-events.test.ts); a row older than 30 days or from another device is tried and cancelled", async () => {
     const { guest, event } = await hosting(async account => {
       await phone(account, "synthetic-hosting-fresh");
       const days31 = await phone(account, "synthetic-hosting-31-days");
-      await phone(account, "synthetic-hosting-iphone-off", IOS_HOSTING_OFF);
       await phone(account, "synthetic-hosting-old-client", { "X-AfterYou-Friend-Events": "1" });
       await age(account, { [days31]: 31 });
+      await otherDevice(account, "synthetic-hosting-other-device");
     });
     const run = await stubbed(guest, {}, instance => instance.deliverFriendRoomNotification(event), true);
-    expect(run.sent).toEqual([{ token: "synthetic-hosting-31-days", platform: "android", current: false }, { token: "synthetic-hosting-fresh", platform: "android", current: true }]);
+    expect(run.sent).toEqual([{ token: "synthetic-hosting-31-days", platform: "android", current: false }, { token: "synthetic-hosting-fresh", platform: "android", current: true },
+      { token: "synthetic-hosting-other-device", platform: "android", current: false }]);
     expect(run.value).toEqual({ status: "done" });
     // Nothing erases the old row here, unlike the turn push.
-    expect(await tokens(guest)).toEqual(["synthetic-hosting-31-days", "synthetic-hosting-fresh", "synthetic-hosting-iphone-off", "synthetic-hosting-old-client"]);
+    expect(await tokens(guest)).toEqual(["synthetic-hosting-31-days", "synthetic-hosting-fresh", "synthetic-hosting-old-client", "synthetic-hosting-other-device"]);
   });
   it("cancels the event when its only phones are older than 30 days", async () => {
     const { guest, event } = await hosting(async account => { await age(account, { [await phone(account, "synthetic-hosting-stale-only")]: 31 }); });
@@ -189,12 +199,18 @@ describe("the hosting push through the shared loop", () => {
     expect(run.sent).toEqual([{ token: "synthetic-hosting-stale-only", platform: "android", current: false }]);
     expect(run.value).toEqual({ status: "cancelled" });
   });
-  it("erases a gone token, keeps a refused one, and retries with the longest wait", async () => {
+  it("erases a gone token, keeps a refused one, retries with the longest wait and then only the phone that failed", async () => {
     const { guest, event } = await hosting(async account => { for (const token of ["synthetic-hosting-gone", "synthetic-hosting-refused", "synthetic-hosting-busy"]) await phone(account, token); });
     const answers: Record<string, SendResult[]> = { "synthetic-hosting-gone": [{ status: "invalid_token" }], "synthetic-hosting-refused": [{ status: "rejected" }], "synthetic-hosting-busy": [{ status: "retry", retry_after_ms: 90_000 }] };
     const run = await stubbed(guest, answers, instance => instance.deliverFriendRoomNotification(event), true);
     expect(run.value).toEqual({ status: "retry", retry_after_ms: 90_000 });
     expect(await tokens(guest)).toEqual(["synthetic-hosting-busy", "synthetic-hosting-refused"]);
+    const keys = await finished(guest);
+    expect(keys).toHaveLength(2);
+    for (const key of keys) expect(key.startsWith(`friend:${event.event_id}:`)).toBe(true);
+    const again = await stubbed(guest, answers, instance => instance.deliverFriendRoomNotification(event), true);
+    expect(again.sent.map(item => item.token)).toEqual(["synthetic-hosting-busy"]);
+    expect(again.value).toEqual({ status: "done" });
   });
   it("is done without a send when unconfigured, and retries with no wait over an over-full table", async () => {
     const { guest, event } = await hosting(account => phone(account, "synthetic-hosting-unconfigured").then(() => undefined));
@@ -220,16 +236,16 @@ describe("the monthly Pollen push through the shared loop", () => {
     return sendPollenPush(ctx.storage, env, sender, deviceHash(ctx), hash => hash === deviceHash(ctx), lines,
       { finished: key => memory.has(key), finish: (key, sent) => { if (sent.status === "sent" || sent.status === "invalid_token" || sent.status === "rejected") memory.add(key); } });
   }
-  it("reaches phones registered in the last 62 days only, skips an iPhone with turns off and erases nothing it skipped", async () => {
+  it("reaches this device's phones registered in the last 62 days only (iPhones: pollen-grant-alarm.test.ts) and erases nothing it skipped", async () => {
     const account = await create();
     await phone(account, "synthetic-pollen-fresh");
     const days31 = await phone(account, "synthetic-pollen-31-days"), days63 = await phone(account, "synthetic-pollen-63-days");
-    await phone(account, "synthetic-pollen-iphone-off", IOS_TURNS_OFF);
     await age(account, { [days31]: 31, [days63]: 63 });
+    await otherDevice(account, "synthetic-pollen-other-device");
     const run = await stubbed(account, {}, (instance, ctx) => push(instance, ctx), true);
     expect(run.sent).toEqual([{ token: "synthetic-pollen-31-days", platform: "android", current: true }, { token: "synthetic-pollen-fresh", platform: "android", current: true }]);
     expect(run.value).toEqual([{ status: "sent" }, { status: "sent" }]);
-    expect(await tokens(account)).toEqual(["synthetic-pollen-31-days", "synthetic-pollen-63-days", "synthetic-pollen-fresh", "synthetic-pollen-iphone-off"]);
+    expect(await tokens(account)).toEqual(["synthetic-pollen-31-days", "synthetic-pollen-63-days", "synthetic-pollen-fresh", "synthetic-pollen-other-device"]);
   });
   it("erases a gone token, keeps a refused one, never retries itself and on a repeat sends only to the phone that failed", async () => {
     const account = await create();
@@ -241,6 +257,19 @@ describe("the monthly Pollen push through the shared loop", () => {
     expect(await tokens(account)).toEqual(["synthetic-pollen-busy", "synthetic-pollen-refused"]);
     const again = await stubbed(account, answers, (instance, ctx) => push(instance, ctx, memory));
     expect(again.sent.map(item => item.token)).toEqual(["synthetic-pollen-busy"]);
+  });
+  it("remembers finished phones in the Player's own memory, so the Player's repeat sends only to the phone that failed", async () => {
+    const account = await create();
+    for (const token of ["synthetic-pollen-player-busy", "synthetic-pollen-player-fine"]) await phone(account, token);
+    const answers: Record<string, SendResult[]> = { "synthetic-pollen-player-busy": [{ status: "retry", retry_after_ms: 60_000 }] };
+    const pushPollen = (instance: import("../src/player").Player) => (Reflect.get(instance, "pushPollen") as (lines: readonly { key: string; amount: number }[]) => Promise<void>).call(instance, lines);
+    const first = await stubbed(account, answers, instance => pushPollen(instance));
+    expect(first.sent.map(item => item.token)).toEqual(["synthetic-pollen-player-busy", "synthetic-pollen-player-fine"]);
+    const keys = await finished(account);
+    expect(keys).toHaveLength(1);
+    expect(keys[0]).toMatch(/^pollen:pollen_[a-f0-9]{32}:/);
+    const again = await stubbed(account, answers, instance => pushPollen(instance));
+    expect(again.sent.map(item => item.token)).toEqual(["synthetic-pollen-player-busy"]);
   });
   it("sends nothing when unconfigured or over a full table, and logs only the full table", async () => {
     const account = await create();
