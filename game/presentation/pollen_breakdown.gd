@@ -1,9 +1,10 @@
 extends RefCounted
 ## What a confirmed Pollen receipt says, as the results card's rows (pollen
-## concepts board 7b): the base, each skill bonus, the Full Journey room boost
-## and whose it was, "This turn" with its total, a lucky bloom with the bloomed
-## total, an item bloom, the first clears, and why an after-bank turn paid a
-## little. Pure data: presentation/pollen_result_line.gd draws the rows.
+## concepts board 7b): the base, each skill bonus and the Full Journey room
+## boost (each with its percent and the Pollen it added), "This turn" with its
+## total, a lucky bloom with the bloomed total, an item bloom, the first clears,
+## and why an after-bank turn paid a little. The rows above "This turn" always
+## add up to it. Pure data: presentation/pollen_breakdown_view.gd draws the rows.
 ##
 ## Rows are dictionaries: {kind, label, value, grain} and, for an item bloom,
 ## item_id and tier. `value` is "" for a row that is all words. `grain` puts
@@ -15,9 +16,10 @@ extends RefCounted
 ## Pace shows here only, after the turn, never during it (POLLEN-RULES.md).
 const PlayerCopy = preload("res://presentation/player_copy.gd")
 const PollenMoney = preload("res://services/pollen_money.gd")
-const FriendNicknames = preload("res://services/friend_nicknames.gd")
 const Catalog = preload("res://services/cosmetic_catalog.gd")
 
+## What each Full Journey player in a room adds (backend rates.json boost_percent_per_subscriber).
+const BOOST_PERCENT_EACH := 10
 const BONUS_NAMES := {"first_try": PlayerCopy.POLLEN_ROW_FIRST_TRY, "gold_pace": PlayerCopy.POLLEN_ROW_GOLD_PACE, "silver_pace": PlayerCopy.POLLEN_ROW_SILVER_PACE, "hard": PlayerCopy.POLLEN_ROW_HARD}
 
 ## Whether a receipt carries what the rows need.
@@ -27,21 +29,22 @@ static func detailed(receipt: Dictionary) -> bool:
 	return turn.is_empty() or (turn.has("base") and turn.has("bonus_percents")) or turn.get("kind") == "after_bank"
 
 ## The rows for one receipt, top to bottom; [] when it is not detailed.
-## `partner` is the friend's name as the room shows it ("" when unknown).
 ## Without `full_journey` (a build that names no Full Journey) the boost row
-## is left out; the totals still count the boost.
-static func rows(receipt: Dictionary, partner: String, full_journey: bool = true) -> Array[Dictionary]:
+## is left out and its Pollen counts in Base, so the rows still add up.
+static func rows(receipt: Dictionary, full_journey: bool = true) -> Array[Dictionary]:
 	var out: Array[Dictionary] = []
 	if not detailed(receipt): return out
 	var turn: Dictionary = receipt.get("turn", {})
 	if not turn.is_empty():
 		if turn.kind == "bank":
-			out.append(_row("base", PlayerCopy.POLLEN_ROW_BASE, PollenMoney.grouped(int(turn.base)), true))
+			var boost := int(turn.boost)
+			var boost_row := int(turn.boost_percent) > 0 and full_journey
+			out.append(_row("base", PlayerCopy.POLLEN_ROW_BASE, PollenMoney.grouped(int(turn.base) + (0 if boost_row else boost)), true))
 			var percents: Array = turn.bonus_percents
+			var added := bonus_amounts(int(turn.base), int(turn.amount) - int(turn.base), percents)
 			for index in range(turn.bonuses.size()):
-				out.append(_row("bonus", BONUS_NAMES[turn.bonuses[index]], PlayerCopy.POLLEN_ROW_PERCENT % int(percents[index])))
-			if int(turn.boost_percent) > 0 and full_journey:
-				out.append(_row("boost", PlayerCopy.POLLEN_ROW_BOOST % [int(turn.boost_percent), PollenMoney.grouped(int(turn.boost)), _boost_whose(turn.get("boost_from", []), partner)]))
+				out.append(_row("bonus", PlayerCopy.POLLEN_ROW_PERCENT % [BONUS_NAMES[turn.bonuses[index]], int(percents[index])], PollenMoney.grouped(added[index]), true))
+			if boost_row: out.append(_row("boost", boost_label(int(turn.boost_percent), (turn.get("boost_from", []) as Array).size()), PollenMoney.grouped(boost), true))
 			# A friend duel's turn: its premium, as the duel result page names it (duel_model.gd pay_lines).
 			if int(turn.get("duel", 0)) > 0: out.append(_row("duel", PlayerCopy.DUEL_PAY_PREMIUM % int(turn.duel_percent), PollenMoney.grouped(int(turn.duel)), true))
 		# This turn: everything but a bloom's extra, which the bloom row adds.
@@ -68,13 +71,38 @@ static func rows(receipt: Dictionary, partner: String, full_journey: bool = true
 	if parts > 1: out.append(_row("earned", PlayerCopy.POLLEN_ROW_EARNED, PollenMoney.grouped(int(receipt.get("earned", 0))), true))
 	return out
 
-## Whose Full Journey boosted the room, from the viewer's side.
-static func _boost_whose(from: Array, partner: String) -> String:
-	# A friend with no name the room knows reads "Your friend" first and "your friend" after "You and".
-	var named := not partner.is_empty() and partner != FriendNicknames.FALLBACK
-	if "you" in from and "partner" in from: return PlayerCopy.POLLEN_ROW_BOOST_BOTH % (partner if named else PlayerCopy.POLLEN_BOOST_FRIEND.to_lower())
-	if "you" in from: return PlayerCopy.POLLEN_ROW_BOOST_YOU
-	return PlayerCopy.POLLEN_ROW_BOOST_PARTNER % (partner if named else PlayerCopy.POLLEN_BOOST_FRIEND)
+## The Full Journey row's words, on every surface that shows the room boost:
+## "Full Journey (10%)" for one Full Journey player, "Full Journey (2 × 10%)"
+## for two. `players` is how many had it; 0 works it out from the percent (a
+## duel's pay names no one).
+static func boost_label(percent: int, players: int = 0) -> String:
+	if players <= 0 and percent % BOOST_PERCENT_EACH == 0: players = percent / BOOST_PERCENT_EACH
+	if players > 1 and percent % players == 0: return PlayerCopy.POLLEN_ROW_BOOST_EACH % [players, percent / players]
+	return PlayerCopy.POLLEN_ROW_BOOST % percent
+
+## The Pollen each bonus added: `added` (the turn's amount less its base, which
+## the server rounds once for all the bonuses) shared out by each bonus's
+## percent of `base`. Each share is rounded down, then what is left goes one at
+## a time to the largest remainders (the earlier bonus on a tie), so the shares
+## always add up to `added`.
+static func bonus_amounts(base: int, added: int, percents: Array) -> Array[int]:
+	var out: Array[int] = []
+	var remainders: Array[int] = []
+	var left := added
+	for percent: Variant in percents:
+		var exact := base * int(percent)
+		out.append(floori(exact / 100.0))
+		remainders.append(exact - out[-1] * 100)
+		left -= out[-1]
+	if out.is_empty(): return out
+	var order: Array = range(out.size())
+	order.sort_custom(func(first: int, second: int) -> bool: return remainders[first] > remainders[second] or (remainders[first] == remainders[second] and first < second))
+	for step in range(mini(maxi(left, 0), out.size())):
+		out[order[step]] += 1
+		left -= 1
+	# A server amount these percents cannot explain: the rest goes on the last bonus, so the rows still add up.
+	out[-1] += left
+	return out
 
 static func _row(kind: String, label: String, value: String = "", grain: bool = false) -> Dictionary:
 	return {"kind": kind, "label": label, "value": value, "grain": grain}

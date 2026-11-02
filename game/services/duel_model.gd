@@ -5,6 +5,7 @@ extends RefCounted
 ## callable the page passes (the friends list and this player's partner), so a
 ## player the server did not name shows as "Sam's partner", never as an id.
 const PlayerCopy = preload("res://presentation/player_copy.gd")
+const Breakdown = preload("res://presentation/pollen_breakdown.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
 const TICK_RATE := Runs.TICK_RATE
 
@@ -173,7 +174,7 @@ static func pay_lines(pay: Dictionary, bonus: Dictionary, with_boost: bool = tru
 		var boosted := with_boost and int(pay.boost) > 0
 		lines.append([PlayerCopy.DUEL_PAY_TURNS, int(pay.plain) + int(pay.blooms) + (0 if boosted else int(pay.boost))])
 		if int(pay.duel) > 0: lines.append([PlayerCopy.DUEL_PAY_PREMIUM % int(pay.duel_percent), int(pay.duel)])
-		if boosted: lines.append([PlayerCopy.DUEL_PAY_BOOST % int(pay.boost_percent), int(pay.boost)])
+		if boosted: lines.append([Breakdown.boost_label(int(pay.boost_percent)), int(pay.boost)])
 	if not bonus.is_empty():
 		lines.append([PlayerCopy.DUEL_PAY_GHOST_FIRST if ghost else PlayerCopy.DUEL_PAY_WIN if bonus.counted else _bonus_note(str(bonus.reason)), int(bonus.amount)])
 	var total := 0

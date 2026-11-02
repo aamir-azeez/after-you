@@ -2,11 +2,13 @@ extends RefCounted
 ## Draws the Pollen results card's rows (presentation/pollen_breakdown.gd) as
 ## pollen board 7b lays them out: each row's words on the left and its value on
 ## the right, a Pollen mark (kit/pollen_mark.gd, the one grain) before every
-## amount, thin rules between the rows, "This turn" a size up, a lucky bloom as
-## a small tag with its flower beside the bloomed total, and an item bloom as
-## the player's own pip wearing the new item beside its tag and tier line.
-## Words-only rows (the boost, why a turn paid a little) take the whole width
-## and wrap by words. Built once per card, never per frame; nothing moves.
+## amount (`amount_row`, the one row shape every Pollen amount row uses, the
+## duel result card's too), thin rules between the rows, "This turn" a size up,
+## a lucky bloom as a small tag with its flower beside the bloomed total, and an
+## item bloom as the player's own pip wearing the new item beside its tag and
+## tier line.
+## Words-only rows (why a turn paid a little) take the whole width and wrap by
+## words. Built once per card, never per frame; nothing moves.
 const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
 const UiTokens = preload("res://presentation/ui_tokens.gd")
 const ControlTheme = preload("res://presentation/control_theme.gd")
@@ -35,7 +37,7 @@ static func build(rows: Array[Dictionary], ink: Color, pip: Callable, flower: Ca
 
 static func _row(row: Dictionary, ink: Color, pip: Callable, flower: Callable) -> Control:
 	match str(row.kind):
-		"boost", "reason":
+		"reason":
 			var words := _text(str(row.label), FONT_SIZE, ink)
 			words.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 			return words
@@ -51,8 +53,13 @@ static func _row(row: Dictionary, ink: Color, pip: Callable, flower: Callable) -
 	var size := TOTAL_SIZE if str(row.kind) in ["total", "earned"] else FONT_SIZE
 	return _line(_text(str(row.label), size, UiTokens.CREAM if size == TOTAL_SIZE else ink), str(row.value), size, bool(row.grain))
 
-## Words on the left, the value (after its mark) on the right.
+## Words on the left, the value (after its mark) on the right, in cream.
 static func _line(left: Control, value: String, size: int, grain: bool = true) -> HBoxContainer:
+	return amount_row(left, _text(value, size, UiTokens.CREAM) if not value.is_empty() else null, size, grain)
+
+## One Pollen row: `left` (its words, or a tag) fills the row, then the Pollen
+## mark at `size` and `amount` on the right. No amount, no mark.
+static func amount_row(left: Control, amount: Label, size: int, grain: bool = true) -> HBoxContainer:
 	var line := HBoxContainer.new()
 	line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	line.add_theme_constant_override("separation", 8)
@@ -65,9 +72,8 @@ static func _line(left: Control, value: String, size: int, grain: bool = true) -
 	lead.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	lead.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 	line.add_child(lead)
-	if value.is_empty(): return line
+	if amount == null: return line
 	if grain: line.add_child(PollenMark.beside(size))
-	var amount := _text(value, size, UiTokens.CREAM)
 	amount.name = "PollenAmount"
 	amount.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
 	line.add_child(amount)

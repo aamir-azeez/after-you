@@ -1139,7 +1139,7 @@ func _waiting_partner_name(room: Dictionary) -> String:
 var _pollen_seen: Dictionary = {}
 func _add_pollen_line(parent: Container, receipt: Dictionary = {}) -> void:
 	if online_session == null or not online_session.has_method("nickname_scope") or not journey.pending().is_empty(): return
-	var line := PollenResultLine.once(_pollen_seen, mode, online_session.nickname_scope(), receipt if not receipt.is_empty() else journey.last_receipt(), _waiting_partner_name(journey.snapshot()), MUTED)
+	var line := PollenResultLine.once(_pollen_seen, mode, online_session.nickname_scope(), receipt if not receipt.is_empty() else journey.last_receipt(), MUTED)
 	if line == null: return
 	parent.add_child(line)
 	# Pollen arriving sparkles once, the first time its line shows.

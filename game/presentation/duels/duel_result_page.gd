@@ -10,7 +10,7 @@ extends "res://presentation/duels/duel_page_base.gd"
 const DuelModel = preload("res://services/duel_model.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
-const PollenMark = preload("res://presentation/kit/pollen_mark.gd")
+const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
 const PLAY_ICON = preload("res://assets/ui/play-circle.svg")
 const PollenMoney = preload("res://services/pollen_money.gd")
 const Backdrop = preload("res://presentation/duels/duel_result_backdrop.gd")
@@ -142,7 +142,8 @@ func _card(index: int, won: bool) -> Control:
 	column.add_child(Kit.stage_line(steps.x / 2, steps.y / 2, _picture_key(), 340.0 if not compact else 290.0))
 	return card
 
-## The cream Pollen earned card: each line and the total.
+## The cream Pollen earned card: each line and the total, each in the one Pollen
+## row shape (pollen_breakdown_view.gd amount_row: words, then the mark and the amount).
 func _pollen(paid: Dictionary) -> Control:
 	var card := Kit.panel("DuelPollen", UiTokens.CREAM, Color.TRANSPARENT, 22, 14.0)
 	card.custom_minimum_size.x = 560
@@ -152,7 +153,7 @@ func _pollen(paid: Dictionary) -> Control:
 	card.add_child(column)
 	column.add_child(Kit.text(PlayerCopy.DUEL_POLLEN_EARNED, 26, UiTokens.INK, true))
 	for item: Array in paid.lines:
-		column.add_child(_line(str(item[0]), ("+" if column.get_child_count() > 1 else "") + PollenMoney.grouped(int(item[1])), 19, false))
+		column.add_child(_line(str(item[0]), PollenMoney.grouped(int(item[1])), 19, false))
 	var rule := ColorRect.new()
 	rule.color = Color(UiTokens.INK, 0.35)
 	rule.custom_minimum_size.y = 1
@@ -165,11 +166,4 @@ func _pollen(paid: Dictionary) -> Control:
 	return card
 
 func _line(label: String, amount: String, font_size: int, total: bool) -> Control:
-	var row := HBoxContainer.new()
-	row.add_theme_constant_override("separation", 12)
-	var name_label := Kit.text(label, font_size, UiTokens.INK, total)
-	name_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	row.add_child(name_label)
-	if total: row.add_child(PollenMark.beside(font_size))
-	row.add_child(Kit.text(amount, font_size, UiTokens.INK, true))
-	return row
+	return BreakdownView.amount_row(Kit.text(label, font_size, UiTokens.INK, total), Kit.text(amount, font_size, UiTokens.INK, true), font_size)

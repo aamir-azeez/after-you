@@ -112,7 +112,8 @@ func _model() -> void:
 	var first := DuelModel.pay_lines(pay, {"amount": 100, "counted": true, "reason": ""}, true, true)
 	_check(first.total == 1171 and first.lines[-1] == [PlayerCopy.DUEL_PAY_GHOST_FIRST, 100], "the first win over Our run is its own line: %s" % first)
 	_check(DuelModel.pay_lines(pay, {}, true, true).lines.size() == 3, "and no line where the board already paid it")
-	_check(lines.lines[2][0] == "Full Journey (+10%)", "the boost line names Full Journey: " + str(lines.lines[2][0]))
+	_check(lines.lines[2][0] == "Full Journey (10%)", "the boost line words Full Journey as the room rows do: " + str(lines.lines[2][0]))
+	_check(DuelModel.pay_lines(pay.merged({"boost_percent": 20}, true), {}).lines[2][0] == "Full Journey (2 × 10%)", "both with Full Journey: each one's 10%")
 	var ours := {"source": "developer", "ticks": 3000, "rank": null, "names": null}
 	var failed_check := Client.valid_view(_wire("decided", {"kind": "ghost", "ghost": ours, "sides": [_wire().sides[0], null], "result": {"outcome": "lost", "reason": "failed_check", "margin_ticks": null}}))
 	_check(DuelModel.result_title(failed_check, _name_of) == PlayerCopy.DUEL_NO_RESULT, "a run that failed its check never says the recorded run was faster")
@@ -314,10 +315,18 @@ func _pages() -> void:
 	var pollen: Node = result.find_child("DuelPollen", true, false)
 	_check(pollen != null and _has_text(pollen, PlayerCopy.DUEL_PAY_PREMIUM % 50) and _has_text(pollen, PlayerCopy.DUEL_PAY_WIN) and _has_text(pollen, "1,210"), "Pollen earned lists the duel's real pay and its total")
 	await process_frame
-	var mark: Control = pollen.find_child("PollenMark", true, false)
+	# Every line is Base's row shape (pollen_breakdown_view.gd amount_row): its words, the mark, the amount.
+	var marks: Array = pollen.find_children("PollenMark", "", true, false)
+	_check(marks.size() == 5, "a mark beside each of the four lines and the total: %d" % marks.size())
+	var boost_words: Array = pollen.find_children("*", "Label", true, false).filter(func(label: Label) -> bool: return label.text.begins_with("Full Journey"))
+	_check(boost_words.size() == 1 and (boost_words[0] as Label).get_theme_font("font").has_char(0xD7), "the duel card's font has the × a two Full Journey line uses")
+	for each: Control in marks:
+		var row: Control = each.get_parent()
+		var value: Control = row.get_child(row.get_child_count() - 1)
+		_check(absf(each.get_global_rect().get_center().y - value.get_global_rect().get_center().y) <= 0.5 and absf(each.get_global_rect().get_center().y - row.get_child(0).get_global_rect().get_center().y) <= 0.5, "the Pollen mark is centred on its amount and its words: " + str((value as Label).text))
+	var mark: Control = marks[-1] if not marks.is_empty() else null
 	var total_row: Control = mark.get_parent() if mark != null else null
 	var amount: Control = total_row.get_child(total_row.get_child_count() - 1) if total_row != null else null
-	_check(amount != null and absf(mark.get_global_rect().get_center().y - amount.get_global_rect().get_center().y) <= 0.5 and absf(mark.get_global_rect().get_center().y - total_row.get_child(0).get_global_rect().get_center().y) <= 0.5, "the Pollen mark is centred on the total and its label")
 	_check(amount != null and mark.size.y <= amount.size.y and mark.get_global_rect().position.y > total_row.get_parent().get_child(total_row.get_index() - 2).get_global_rect().end.y, "and stays inside the total's line, clear of the rule above")
 	_check(not _has_text(result, "member in your party"), "no Full Journey member line")
 	var stages: Node = result.find_child("ResultStages", true, false)
@@ -360,7 +369,7 @@ func _pages() -> void:
 		var card: Node = raced.find_child("DuelPollen", true, false)
 		_check(raced.find_child("DuelResultHeadline", true, false).text == PlayerCopy.DUEL_BEAT_GHOST and card != null, "a won ghost race shows its title and Pollen card")
 		if paid_before: _check(not _has_text(card, PlayerCopy.DUEL_PAY_GHOST_FIRST) and not _has_text(card, PlayerCopy.DUEL_PAY_WIN) and _has_text(card, "600"), "a board already paid shows nothing extra")
-		else: _check(_has_text(card, PlayerCopy.DUEL_PAY_GHOST_FIRST) and _has_text(card, "+100") and _has_text(card, "700") and not _has_text(card, PlayerCopy.DUEL_PAY_WIN), "the first win over Our run shows its own line and counts in the total")
+		else: _check(_has_text(card, PlayerCopy.DUEL_PAY_GHOST_FIRST) and _has_text(card, "100") and _has_text(card, "700") and not _has_text(card, PlayerCopy.DUEL_PAY_WIN), "the first win over Our run shows its own line and counts in the total")
 		raced.close()
 		await process_frame
 	# The party page.

@@ -71,11 +71,11 @@ func _receipts() -> void:
 
 func _lines() -> void:
 	var item := PollenWallet.checked_receipt(_receipt({"tier": "common", "roll": 5000.0, "item_id": "daisy"}))
-	_check(ResultLine.lines(item, "Maya") == PackedStringArray(["+89 Pollen", "@daisy|A lucky bloom: a new Daisy!"]), "A drop names the new item, where the pip goes")
+	_check(ResultLine.lines(item) == PackedStringArray(["+89 Pollen", "@daisy|A lucky bloom: a new Daisy!"]), "A drop names the new item, where the pip goes")
 	var pollen := PollenWallet.checked_receipt(_receipt({"tier": "common", "roll": 5000.0, "pollen": 1000.0}, 1089))
-	_check(ResultLine.lines(pollen, "Maya") == PackedStringArray(["+1089 Pollen", "*A lucky bloom: +1,000 Pollen"]), "A fully owned tier pays its price, with the flower")
+	_check(ResultLine.lines(pollen) == PackedStringArray(["+1089 Pollen", "*A lucky bloom: +1,000 Pollen"]), "A fully owned tier pays its price, with the flower")
 	var unknown := PollenWallet.checked_receipt(_receipt({"tier": "rare", "roll": 900.0, "item_id": "future_item"}))
-	_check(ResultLine.lines(unknown, "")[1] == "@future_item|A lucky bloom: a new item for your pip!", "An item this build does not know yet still reads plainly")
+	_check(ResultLine.lines(unknown)[1] == "@future_item|A lucky bloom: a new item for your pip!", "An item this build does not know yet still reads plainly")
 	for line: String in [PlayerCopy.POLLEN_ITEM_BLOOM, PlayerCopy.POLLEN_ITEM_BLOOM_POLLEN, PlayerCopy.POLLEN_ITEM_BLOOM_UNKNOWN, PlayerCopy.POLLEN_ODDS, PlayerCopy.POLLEN_ODDS_ITEMS, PlayerCopy.POLLEN_ODDS_PAID, PlayerCopy.POLLEN_ODDS_TITLE]:
 		_check(not line.contains("-") and not line.contains("—") and not line.contains("–"), "No dashes: " + line)
 
@@ -86,7 +86,7 @@ func _built_line() -> void:
 	store.set_enabled(SERVER, ME, true)
 	store.note_receipt(SERVER, ME, ROOM, _hash(1), _receipt({"tier": "common", "roll": 5000.0, "item_id": "daisy"}))
 	PollenSurfaces.set_shared_for_tests(true)
-	var line: Control = ResultLine.build({"server": SERVER, "owner": ME}, ROOM, _hash(1), "Maya", Color.WHITE, store)
+	var line: Control = ResultLine.build({"server": SERVER, "owner": ME}, ROOM, _hash(1), Color.WHITE, store)
 	_check(line != null, "The line shows for a drop")
 	if line == null: return
 	root.add_child(line)

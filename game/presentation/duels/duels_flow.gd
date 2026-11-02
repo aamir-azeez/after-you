@@ -48,6 +48,7 @@ const ChallengePage = preload("res://presentation/duels/duel_challenge_page.gd")
 const GhostPage = preload("res://presentation/duels/duel_ghost_page.gd")
 const DuelsClient = preload("res://services/duels_client.gd")
 const DuelModel = preload("res://services/duel_model.gd")
+const PollenBreakdown = preload("res://presentation/pollen_breakdown.gd")
 const ChapterUnlocks = preload("res://services/chapter_unlocks.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
@@ -200,7 +201,7 @@ func open() -> void:
 	screen = DuelsScreen.new()
 	screen.me = str(host.api.player_id)
 	screen.name_of = _name_of
-	screen.boost_percent = 10 if host._full_journey_access() and _surfaces().full_journey_visible() else 0
+	screen.boost_percent = PollenBreakdown.BOOST_PERCENT_EACH if host._full_journey_access() and _surfaces().full_journey_visible() else 0
 	screen.closed.connect(_left)
 	screen.notice.connect(func(text: String, _news: bool) -> void: host._toast(text))
 	screen.start_requested.connect(_open_challenge)
