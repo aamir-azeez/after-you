@@ -844,6 +844,11 @@ func _check_explore_rides() -> void:
 			var spots := _ride_spots(layer, id)
 			var far := spots.filter(func(local: Vector3) -> bool: return (ride.far as Rect2).has_point(Vector2(local.x, local.z)))
 			_check(not far.is_empty(), "%s's action is offered on its far side (%s): %d spots, %d far" % [id, look, spots.size(), far.size()])
+			# From every spot that offers it there is a way round, so none plays as a tap.
+			var Approach: GDScript = load("res://presentation/keepsakes/ride_approach.gd")
+			var ground := func(at: Vector2) -> bool: return layer.walkable(placed * Vector3(at.x, 0, at.y))
+			var stuck := spots.filter(func(at: Vector3) -> bool: return Approach.route(at, builder.ride_start(state, at), layer.current_props()[id].solids, Layer.WALK_CLEARANCE, ground, builder.ride_overhead(state)).is_empty())
+			_check(stuck.is_empty(), "From every spot offering %s there is a way round (%s): none from %s" % [id, look, stuck])
 			# From its start it rides at once.
 			var start: Vector3 = builder.ride_start(state, Vector3(0, 0, -9))
 			_check(builder.ride_start(state, start) == null and layer.walkable(placed * start), "%s's start is on open ground (%s)" % [id, look])

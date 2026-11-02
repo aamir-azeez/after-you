@@ -392,8 +392,10 @@ func _check_ride_press() -> void:
 			settled = layer.playing() and layer._play.settling
 			if pass_index == 0 and ride[1]: _check(settled, "%s eases back to rest after its ride, where the next press lands" % id)
 			_check(not layer.riding() and not layer.holding(id), "and lands the pip, holding nothing (%s pass %d)" % [id, pass_index])
-			# Pressed again from where it landed, if that is away from its start.
+			# Pressed again from where it landed, if that is away from its start
+			# (the rail and the tide land past it; the steps land in front).
 			if offers.call(spirit.position): from = spirit.position
+			if pass_index == 0 and id != "high-and-low": _check(from != beside, "%s is pressed again from where its ride landed" % id)
 		layer.stop_play()
 		await _close(home)
 
