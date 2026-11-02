@@ -269,11 +269,37 @@ func _challenge(page: CanvasLayer, friend: String, chapter: String) -> void:
 	var board := Runs.board_key(chapter)
 	var answer: Dictionary = await _send_once("challenge|%s|%s" % [friend, board], func(key: String) -> Dictionary: return await client().challenge(friend, board, key))
 	if not is_instance_valid(page): return
+	if answer.get("code") == "duel_already_open":
+		await _already_open(page, friend, board)
+		return
 	if not answer.get("ok", false):
 		_toast_failure(answer)
 		return
 	host._toast(PlayerCopy.DUELS_SENT)
 	page.close()
+
+## The server already has a friend duel between the two pairs on `board`: a
+## fresh lobby finds it. A running one opens; one still waiting for an answer
+## shows on the lobby, with a short line saying why. Not found: only the line.
+func _already_open(page: CanvasLayer, friend: String, board: String) -> void:
+	var answer: Dictionary = await client().lobby()
+	if not is_open(): return
+	if answer.get("ok", false): screen.show_lobby(answer.lobby)
+	var found := _open_with(friend, board)
+	if not is_instance_valid(page): return
+	if found.get("status") == "running":
+		page.close()
+		_open_duel(found)
+		return
+	host._toast(PlayerCopy.DUELS_ALREADY_OPEN)
+	if not found.is_empty(): page.close()
+
+## The open friend duel on `board` whose other pair has `friend`, from the kept lobby, or {}.
+func _open_with(friend: String, board: String) -> Dictionary:
+	for view: Dictionary in client().last_lobby().get("duels", []):
+		var other: Variant = view.sides[1 - int(view.mine)]
+		if view.kind == "friend" and view.board == board and view.status in ["challenged", "running"] and other is Dictionary and friend in other.members: return view
+	return {}
 
 ## Sends `request` with the key kept for `asked` (_unanswered), made on its
 ## first tap, and drops that key once the server answers it.

@@ -12,6 +12,7 @@ const Registry = preload("res://services/chapter_registry.gd")
 const LogWatch = preload("res://tests/log_watch.gd")
 const Clock = preload("res://services/refresh_schedule.gd")
 const ResultPage = preload("res://presentation/duels/duel_result_page.gd")
+const DuelPage = preload("res://presentation/duels/duel_page.gd")
 const ME := "MMMMMMMMMMMMMMMMMMMMMM"
 const MAYA := "AAAAAAAAAAAAAAAAAAAAAA"
 const FINN := "FFFFFFFFFFFFFFFFFFFFFF"
@@ -227,6 +228,7 @@ func _run() -> void:
 	main.friends = FakeFriends.new()
 	await _polling(main, api, flow)
 	await _leaving(api, flow)
+	await _already_open(main, api, flow)
 	flow.open()
 	await _frames(2)
 	flow.close()
@@ -374,6 +376,35 @@ func _leaving(api: FakeApi, flow: Node) -> void:
 	_check(flow.screen.overlay() is ResultPage, "a duel that Leave ended shows its result at once")
 	flow.close()
 	await _frames(2)
+
+## A challenge the server refuses with duel_already_open: the running duel
+## opens, one still waiting for an answer shows on the lobby with a line, and
+## with none found only the line shows, never the generic failure.
+func _already_open(main: FakeMain, api: FakeApi, flow: Node) -> void:
+	api.replies["POST /v1/duels/challenge"] = {"ok": false, "status": 409, "code": "duel_already_open"}
+	var lobby_with := func(duels: Array) -> Dictionary: return {"ok": true, "data": {"schema_version": 1, "party": {"partner": MAYA, "intact": true, "invites_in": [], "invite_out": null}, "duels": duels}}
+	for case: Array in [["running", true], ["challenged", false], ["", false]]:
+		var duels: Array = [] if case[0] == "" else [_view({}, case[0])]
+		api.replies["GET /v1/duels"] = lobby_with.call(duels)
+		flow.open()
+		flow.set_process(false)
+		await _frames(3)
+		var page: CanvasLayer = FakePage.new()
+		root.add_child(page)
+		main.toasts.clear()
+		await flow._challenge(page, FINN, Registry.FIRST_STEPS)
+		await _frames(2)
+		var overlay: CanvasLayer = flow.screen.overlay()
+		var page_gone := not is_instance_valid(page)
+		if case[1]:
+			_check(page_gone and overlay is DuelPage and overlay.view.duel_id == DUEL and main.toasts.is_empty(), "a running duel with that pair opens instead")
+		else:
+			_check(main.toasts == [PlayerCopy.DUELS_ALREADY_OPEN], "the refusal says a duel is already open: %s" % [main.toasts])
+			_check(overlay == null and page_gone == (case[0] == "challenged"), "a challenge waiting for an answer shows on the lobby; with none found the page stays")
+		if is_instance_valid(page): page.close()
+		flow.close()
+		await _frames(2)
+	api.replies.erase("POST /v1/duels/challenge")
 
 func _frames(count: int) -> void:
 	for index in range(count): await process_frame
