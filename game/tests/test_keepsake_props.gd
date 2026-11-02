@@ -79,6 +79,7 @@ func _run() -> void:
 		_check(meshes.size() == 3, "%s's outline has one dot per stage" % entry.id)
 		outline_root.free()
 	_check_giant_steps_ride()
+	_check_relay_flag()
 	print("KEEPSAKE PROPS: all eleven with every upgrade: %d parts, %d triangles before folding" % [all_parts, all_triangles])
 	_check(all_triangles <= ALL_TRIANGLES, "All eleven with every upgrade stay under %d triangles: %d" % [ALL_TRIANGLES, all_triangles])
 	_check(Primitives.changed_shared_looks().is_empty(), "No keepsake changes a shared look in place: %s" % [Primitives.changed_shared_looks()])
@@ -378,6 +379,47 @@ static func _to_polyline(at: Vector3, points: Array[Vector3]) -> float:
 		var t := clampf((at - a).dot(b - a) / maxf((b - a).length_squared(), 0.000001), 0.0, 1.0)
 		best = minf(best, at.distance_to(a.lerp(b, t)))
 	return best
+
+## The Relay Masts flag never floats: every stretch of its trip keeps its top
+## toggle on the cord up the first mast, the top line or the mint line, it
+## comes back along the same points it went out by, one stretch after the
+## other, and is at rest as the tap's last beat ends (so the settle moves
+## nothing), with the Together cue inside the tap.
+func _check_relay_flag() -> void:
+	var Relay: GDScript = load("res://presentation/keepsakes/relay_masts.gd")
+	var builder: RefCounted = Relay.new()
+	for flags in range(8):
+		var state := {"together": flags & 1 != 0, "hard": flags & 2 != 0, "top": flags & 4 != 0}
+		var y0: float = Relay.HARD_LIFT if state.hard else 0.0
+		var line: float = y0 + Relay.POLE - 0.08
+		var hang := Vector3(0, Relay.HANG, 0)
+		var rest: Vector3 = Relay.route(state)[0]
+		var cord: Array[Vector3] = [Vector3(rest.x, 0, 0), Vector3(rest.x, line, 0)]
+		var top_line: Array[Vector3] = [Vector3(Relay.ENDS[0], line, 0), Vector3(Relay.ENDS[1], line, 0)]
+		var mint_line: Array[Vector3] = [Vector3(Relay.ENDS[1], line, 0), Relay.MINT_MAST + Vector3(0, Relay.POLE * 0.85 - 0.08, 0)]
+		var trip: Dictionary = builder.trip(state)
+		var tap := 0.0
+		for beat: Dictionary in builder.beats(state): tap += float(beat.time)
+		var label := "Relay Masts flag %s" % state
+		var from := rest
+		var free := 0.0
+		var on_lines := true
+		var in_turn := true
+		var visits: Array[Vector3] = [rest]
+		for leg: Array in trip.legs:
+			var to: Vector3 = leg[0]
+			on_lines = on_lines and [cord, top_line, mint_line].any(func(segment: Array[Vector3]) -> bool: return _to_polyline(from + hang, segment) < 0.001 and _to_polyline(to + hang, segment) < 0.001)
+			in_turn = in_turn and float(leg[1]) >= free - 0.001 and float(leg[2]) >= 0.1
+			free = float(leg[1]) + float(leg[2])
+			visits.append(to)
+			from = to
+		var there := visits.slice(0, visits.size() / 2 + 1)
+		var home := visits.slice(visits.size() / 2)
+		home.reverse()
+		_check(on_lines, "%s: every stretch keeps its top toggle on the cord or a line" % label)
+		_check(in_turn and there == home and there.size() == (4 if state.together else 3), "%s: goes out one stretch at a time and comes back the same way" % label)
+		_check(from == rest and free <= tap + 0.001 and float(trip.out) < float(trip.back), "%s: is home at rest by the tap's end: %.2f of %.2f" % [label, free, tap])
+		_check(float(builder.beats(state)[0].time) <= Builder.BASE_MAX and tap + Builder.SETTLE <= TOTAL_MAX, "%s: the tap keeps within its time: %.2f" % [label, tap])
 
 ## A pip that counts the ride hooks it is given.
 class HookedPip extends Node3D:
