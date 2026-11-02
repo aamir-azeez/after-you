@@ -42,6 +42,7 @@ const ChapterThumbnailCatalog = preload("res://services/chapter_thumbnail_catalo
 const RoomStages = preload("res://services/room_stages.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const FriendNicknames = preload("res://services/friend_nicknames.gd")
+const OfflineHold = preload("res://presentation/offline_hold.gd")
 const ReplayLoadProgress = preload("res://services/replay_load_progress.gd")
 const Reaper = preload("res://services/worker_reaper.gd")
 const EarlierIslandReplay = preload("res://services/earlier_island_replay.gd")
@@ -1218,7 +1219,8 @@ func _room_partner_name(room: Dictionary) -> String:
 	var shown := _room_partner_nickname(room)
 	return shown if not shown.is_empty() else FriendNicknames.FALLBACK
 
-## The nickname of the other player in a shared room, or "".
+## The other player in a shared room as the one resolver names them
+## (Main._friend_display_name: nickname, then their chosen name), or "".
 func _room_partner_nickname(room: Dictionary) -> String:
 	var owner := str(host._relay_identity().player_id)
 	var friend := str(room.get("guest_id","")) if str(room.get("host_id",""))==owner else str(room.get("host_id",""))
@@ -1226,8 +1228,8 @@ func _room_partner_nickname(room: Dictionary) -> String:
 	if replay_partner_label.is_valid():
 		var resolved := str(replay_partner_label.call(friend))
 		if not resolved.is_empty(): return resolved
-	if host.friend_nicknames == null: return ""
-	return str(host.friend_nicknames.nickname(str(host.api.base_url),str(host.api.player_id),friend))
+	var shown := str(host._friend_display_name(friend))
+	return "" if shown == FriendNicknames.FALLBACK else shown
 
 ## settled is false while a refresh is starting: the list may not be empty.
 func _draw_shared_replay_empty(message: String="", settled: bool=true) -> void:
@@ -1507,6 +1509,9 @@ func _open_shared_options() -> void:
 		var offline: Button = host._button("Save all replays offline",func(): modal.close(); _sync_shared_archive(),false)
 		offline.disabled=busy or (host.relay_session!=null and host.relay_session.busy())
 		modal.content.add_child(offline)
+		OfflineHold.hold(offline)
+	# Each asks the server: greyed while offline (presentation/offline_hold.gd).
+	for button: Button in [refresh, rooms, photos]: OfflineHold.hold(button)
 
 func _add_replay_library_tabs(parent: VBoxContainer, selected: String) -> void:
 	var row := HBoxContainer.new()

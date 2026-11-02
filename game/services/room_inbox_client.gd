@@ -5,6 +5,7 @@ const Presence = preload("res://services/friend_presence.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const Typed = preload("res://services/typed_values.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const EndReactionStore = preload("res://services/end_reaction_store.gd")
 const DisplayNames = preload("res://services/display_names.gd")
 const SpiritLook = preload("res://presentation/spirit_look.gd")
@@ -281,7 +282,7 @@ func _save() -> void:
 	# Bounded, newest kept: the oldest entries hide rooms long gone from the list.
 	while _hidden.size() > 256: _hidden.erase(_hidden.keys()[0])
 	config.set_value(key,"hidden",_hidden)
-	config.save(CACHE_PATH)
+	AtomicFile.write_text(CACHE_PATH,config.encode_to_text())
 
 func _cache_section() -> String:
 	return "inbox_" + (_binding.server + "|" + _binding.player_id).sha256_text()

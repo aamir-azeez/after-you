@@ -114,7 +114,7 @@ const TRY_SECOND_TURN := "Second turn"
 
 # Pollen after a turn (presentation/pollen_result_line.gd). Plain words; the
 # numbers come from the server's receipt.
-const POLLEN_EARNED := "+%d Pollen"
+const POLLEN_EARNED := "+%s Pollen"
 ## A skill bonus line: the bonuses by name, then their total percent ("First try and gold pace: +40%").
 const POLLEN_BONUS := "%s: +%d%%"
 const POLLEN_FIRST_TRY := "First try"
@@ -126,8 +126,8 @@ const POLLEN_BLOOM := "A lucky bloom: ×%d"
 const POLLEN_REPEAT := "You played this part already this week, so it pays a little."
 const POLLEN_BANK_EMPTY := "Your full pay turns this week are used up, so it pays a little."
 const POLLEN_LATE := "This turn was from an earlier week, so it pays a little."
-const POLLEN_FIRST_CLEAR := "First clear: +%d"
-const POLLEN_FIRST_HARD_CLEAR := "First Hard clear: +%d"
+const POLLEN_FIRST_CLEAR := "First clear: +%s"
+const POLLEN_FIRST_HARD_CLEAR := "First Hard clear: +%s"
 ## An item bloom, beside the player's own pip wearing the new item ("A lucky bloom: a new Daisy!").
 const POLLEN_ITEM_BLOOM := "A lucky bloom: a new %s!"
 ## An item bloom when the player has every item it could bring: that item's Pollen price instead.
@@ -181,8 +181,8 @@ const POLLEN_BANK_CAP := "holds up to %d"
 const POLLEN_BANK_EMPTY_LINE := "Bank empty · turns still earn a little"
 ## After the bank: the tail's steps joined by POLLEN_TAIL_THEN, then the Monday refill.
 const POLLEN_TAIL := "After the bank runs out, each turn earns %s, then nothing until Monday, when the bank gains %d more turns."
-const POLLEN_TAIL_FIRST := "%d for the next %d turns"
-const POLLEN_TAIL_STEP := "%d for the next %d"
+const POLLEN_TAIL_FIRST := "%s for the next %d turns"
+const POLLEN_TAIL_STEP := "%s for the next %d"
 const POLLEN_TAIL_THEN := ", then "
 const POLLEN_TURN_PLACE := "%s, stage %d"
 const POLLEN_TURN_REPEAT := "You've already earned full Pollen for this part this week."

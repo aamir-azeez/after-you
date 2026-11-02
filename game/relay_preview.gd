@@ -1200,7 +1200,8 @@ func _partner_id(room: Dictionary) -> String:
 
 
 ## A replay names each spirit from this player's side: "You", and the friend
-## by the nickname given to them. Live turns keep their usual badges. The room
+## as the one resolver names them (FriendNicknames.display_name: nickname, then
+## their chosen name; "Friend" when neither). Live turns keep their usual badges. The room
 ## and nickname are read once per room view, not every tick.
 var _replay_label: Dictionary = {}
 func _replay_badges(state: Dictionary) -> Dictionary:
@@ -1209,7 +1210,9 @@ func _replay_badges(state: Dictionary) -> Dictionary:
 		var slot := str(room.get("player_slot", ""))
 		var partner: Variant = room.get("guest_id") if slot == "p0" else room.get("host_id")
 		var scope: Dictionary = online_session.nickname_scope() if partner is String and online_session != null and online_session.has_method("nickname_scope") else {}
-		_replay_label = {"slot": slot, "name": "" if scope.is_empty() else FriendNicknames.new().nickname(str(scope.server), str(scope.owner), str(partner))}
+		var names: RefCounted = nickname_store if nickname_store != null else FriendNicknames.new()
+		var shown := "" if scope.is_empty() else str(names.display_name(str(scope.server), str(scope.owner), str(partner)))
+		_replay_label = {"slot": slot, "name": "" if shown == FriendNicknames.FALLBACK else shown}
 	return preload("res://presentation/kit/badges.gd").viewer_labels(state, _replay_label.slot, _replay_label.name)
 
 

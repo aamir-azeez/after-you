@@ -5,6 +5,7 @@ extends RefCounted
 const Presence = preload("res://services/friend_presence.gd")
 const RoomsApi = preload("res://services/rooms_api.gd")
 const Typed = preload("res://services/typed_values.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const PENDING_PATH := "user://friend-room-publication-pending.cfg"
 ## An owed hosting alert older than the server's event lifetime is dropped.
 const OWED_TTL_S := 24 * 60 * 60
@@ -207,7 +208,7 @@ func _save_pending() -> void:
 		config.set_value(key,"publication_id",_pending_publication_id)
 		config.set_value(key,"room",_pending_room)
 		config.set_value(key,"owed_at",_pending_owed_at)
-	config.save(PENDING_PATH)
+	AtomicFile.write_text(PENDING_PATH,config.encode_to_text())
 
 func _load_pending() -> void:
 	_pending_publication_id = ""

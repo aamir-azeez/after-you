@@ -319,6 +319,7 @@ seed_visual 2
 session_release 3
 settings 1
 share_codes 2
+shared_paths 1
 shared_photo_fetch 2
 shared_replay_delete_ui 2
 shared_replay_progress 2

@@ -40,7 +40,7 @@ static func lines(receipt: Dictionary, full_journey: bool = true) -> PackedStrin
 	var out := PackedStringArray()
 	if receipt.is_empty(): return out
 	var turn: Dictionary = receipt.get("turn", {})
-	if int(receipt.get("earned", 0)) > 0: out.append(PlayerCopy.POLLEN_EARNED % int(receipt.earned))
+	if int(receipt.get("earned", 0)) > 0: out.append(PlayerCopy.POLLEN_EARNED % PollenMoney.grouped(int(receipt.earned)))
 	if not turn.is_empty():
 		var names := PackedStringArray()
 		for bonus: String in turn.get("bonuses", []):
@@ -62,7 +62,7 @@ static func lines(receipt: Dictionary, full_journey: bool = true) -> PackedStrin
 	elif item.has("pollen"):
 		out.append("*" + PlayerCopy.POLLEN_ITEM_BLOOM_POLLEN % PollenMoney.grouped(int(item.pollen)))
 	for clear: Dictionary in receipt.get("clears", []):
-		out.append((PlayerCopy.POLLEN_FIRST_HARD_CLEAR if clear.get("kind") == "hardclear" else PlayerCopy.POLLEN_FIRST_CLEAR) % int(clear.get("total", 0)))
+		out.append((PlayerCopy.POLLEN_FIRST_HARD_CLEAR if clear.get("kind") == "hardclear" else PlayerCopy.POLLEN_FIRST_CLEAR) % PollenMoney.grouped(int(clear.get("total", 0))))
 	return out
 
 ## The item an item bloom brought on one of the viewer's turns (its room

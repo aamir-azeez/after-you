@@ -155,7 +155,7 @@ func _ask_hosting_permission_once() -> void:
 	var section := key.sha256_text()
 	if Typed.equal(asked.get_value(section,"asked",false), true): return
 	asked.set_value(section,"asked",true)
-	if asked.save(permission_asked_path) != OK: return
+	if not AtomicFile.write_text(permission_asked_path, asked.encode_to_text()): return
 	_request_permission = true
 	queue_reconcile()
 

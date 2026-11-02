@@ -40,6 +40,7 @@ const OwnLook = preload("res://services/own_look.gd")
 const TurnLooks = preload("res://services/turn_looks.gd")
 const Placings = preload("res://services/leaderboard_placings.gd")
 const Runs = preload("res://services/leaderboard_runs.gd")
+const Rows = preload("res://presentation/leaderboard_rows.gd")
 const Registry = preload("res://services/chapter_registry.gd")
 const RoomChapterTitle = preload("res://services/room_chapter_title.gd")
 const EmptyStateArt = preload("res://presentation/empty_state_art.gd")
@@ -341,8 +342,7 @@ func _build_column() -> Control:
 	if _spec.frame == "gold":
 		details = _details_panel()
 		column.add_child(details.get_parent())
-	var names: Variant = placing.get("names")
-	var pair := _text(PlayerCopy.LEADERBOARD_NAMES % [names[0], names[1]] if names is Array else PlayerCopy.LEADERBOARD_A_PAIR, 26, UiTokens.CREAM)
+	var pair := _text(Rows.pair_title(placing), 26, UiTokens.CREAM)
 	pair.name = "CelebrationPair"
 	details.add_child(pair)
 	var time := _text(Runs.time_text(int(placing.ticks)), 50, UiTokens.CREAM, true)

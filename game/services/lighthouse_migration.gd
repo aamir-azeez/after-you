@@ -15,6 +15,7 @@ const V1Journey = preload("res://services/lighthouse_journey.gd")
 const Native = preload("res://core/lighthouse/borrowed_light.gd")
 const RoomSimulation = preload("res://core/lighthouse/room_simulation.gd")
 const Typed = preload("res://services/typed_values.gd")
+const AtomicFile = preload("res://services/atomic_file.gd")
 const KEY := Registry.LIGHTHOUSE_V2
 const V1_PATH := V1Journey.PATH
 const MARKER_PATH := "user://sleeping-lighthouse-v1-migration.json"
@@ -100,11 +101,7 @@ static func carry(journey: RefCounted, converted: Dictionary) -> String:
 ## "fallback" (keep playing @1) or "fresh" (start @2 anew).
 static func remember(result: String, v1_path: String = V1_PATH, marker_path: String = MARKER_PATH) -> bool:
 	var text := JSON.stringify({"schema_version": MARKER_SCHEMA, "source": _digest(v1_path), "result": result})
-	var file := FileAccess.open(marker_path, FileAccess.WRITE)
-	if file == null: return false
-	file.store_string(text)
-	file.close()
-	return true
+	return AtomicFile.write_text(marker_path, text)
 
 static func _marker(marker_path: String, v1_path: String) -> String:
 	if not FileAccess.file_exists(marker_path): return ""

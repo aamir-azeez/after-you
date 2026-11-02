@@ -13,6 +13,7 @@ const Parts = preload("res://presentation/pollen_play_parts.gd")
 const Spare = preload("res://presentation/pollen_play_spare.gd")
 const ShopKit = preload("res://presentation/kit/shop_kit.gd")
 const PollenHistory = preload("res://services/pollen_history.gd")
+const PollenMoney = preload("res://services/pollen_money.gd")
 const PollenResultLine = preload("res://presentation/pollen_result_line.gd")
 const BreakdownView = preload("res://presentation/pollen_breakdown_view.gd")
 const Breakdown = preload("res://presentation/pollen_breakdown.gd")
@@ -53,7 +54,7 @@ static func _bank(column: VBoxContainer, bank: Dictionary, title_font: Font) -> 
 static func tail_line(bank: Dictionary) -> String:
 	var steps := PackedStringArray()
 	for step: Dictionary in bank.get("tail", []):
-		steps.append((PlayerCopy.POLLEN_TAIL_FIRST if steps.is_empty() else PlayerCopy.POLLEN_TAIL_STEP) % [int(step.pay), int(step.turns)])
+		steps.append((PlayerCopy.POLLEN_TAIL_FIRST if steps.is_empty() else PlayerCopy.POLLEN_TAIL_STEP) % [PollenMoney.grouped(int(step.pay)), int(step.turns)])
 	return PlayerCopy.POLLEN_TAIL % [PlayerCopy.POLLEN_TAIL_THEN.join(steps), int(bank.get("refill", 0))]
 
 ## One turn: its chapter's picture, where, what added to it, its Pollen and when.
