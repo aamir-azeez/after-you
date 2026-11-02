@@ -380,7 +380,7 @@ func _ready() -> void:
 	Wardrobe.shared().scope_source=_names_scope
 	# On iPhone, whether the server takes App Store purchases follows the signed-in player (services/store_support.gd).
 	StoreSupport.shared().scope_source=_names_scope
-	# Home's Wardrobe row follows the server's wardrobe capability and the player's look.
+	# Home's Wardrobe row and Pollen chip follow the server's wardrobe capability and the player's look.
 	Wardrobe.shared().changed.connect(_refresh_home_wardrobe)
 	# Bundle purchases whose claim got no answer go again with each flush (services/bundle_claims.gd).
 	BundleClaims.shared().connect_to(api,_names_scope)
@@ -394,7 +394,8 @@ func _ready() -> void:
 	Wardrobe.shared().follow_drops(PollenWallet.shared().item_dropped)
 	pollen_client.settled.connect(func() -> void: grant_card_check=true)
 	# A wallet read that lands while Home shows updates its chip (the gain shows then).
-	pollen_client.settled.connect(_refresh_pollen_chip)
+	# Every capabilities read with Pollen on ends in a flush, so the Wardrobe row follows it too.
+	pollen_client.settled.connect(_refresh_home_pollen)
 	# Only a phone with the synced native write that passes its startup check tells
 	# the server it keeps room attempts; every other build keeps today's behaviour.
 	if NativeFiles.durable_available(): RoomsApi.history_supported = HistoryStore.new().self_test()
@@ -800,11 +801,10 @@ func _show_home() -> void:
 	# A tap made while the room session is still busy waits on the Play button (RoomHubFlow.open_from_home).
 	menu.build({"play":room_hub_flow.open_from_home,"solo":journey_flow.show_journey,"friends":_show_friends,"duels":_show_duels,"replays":replays_flow.show_collection,"wardrobe":_open_wardrobe_from_home,"invite":_share_invite_from_home,"whats_new":_open_whats_new_from_home,"settings":settings_flow.show_settings,"full_journey":store_flow.show_paywall},title_font)
 	home_menu_view = menu
-	menu.show_wardrobe(wardrobe_flow.available())
 	# A tap on the player's own pip opens the Wardrobe too (presentation/home_stage.gd own_pip_tapped).
 	home_stage.own_pip_tapped = _open_wardrobe_from_pip
 	menu.set_play_icon(FriendPlayIcon.new())
-	_refresh_pollen_chip()
+	_refresh_home_pollen()
 	# The Duels row shows once the server says duels are on.
 	duels_flow.offer(menu)
 	menu.journey_offer.visible = _full_journey_offered()
@@ -824,11 +824,31 @@ func _open_wardrobe_from_pip() -> bool:
 	wardrobe_flow.show_wardrobe("home")
 	return true
 
-## Shows Home's Wardrobe row while the server has the wardrobe on, with the pip in its current look.
-func _refresh_home_wardrobe() -> void:
+## Home's Wardrobe row and Pollen chip follow what this phone knows now: the
+## signed-in player, and what the server last said is on for them. These arrive
+## in any order (Home is built before the saved identity is read, and a saved
+## wardrobe that was already on announces nothing when it is), so this one hook
+## runs on every event that may change them: a wardrobe change, a settled
+## Pollen flush (each capabilities read with Pollen on ends in one), the
+## identity read or made, a resume, and Home's periodic refresh, which catches
+## anything missed while another screen was up. Cheap when nothing changed:
+## the row and the chip are made again only when what they show changes. A
+## failed read changes nothing kept, so only the server saying off hides them.
+func _refresh_home_pollen() -> void:
 	if mode != "home" or not is_instance_valid(home_menu_view): return
 	home_menu_view.show_wardrobe(wardrobe_flow.available())
-	home_menu_view.refresh_wardrobe_look()
+	_refresh_pollen_chip()
+
+## The wardrobe changed (services/wardrobe.gd changed): the row and the chip, and the row's pip in the current look.
+func _refresh_home_wardrobe() -> void:
+	_refresh_home_pollen()
+	if mode == "home" and is_instance_valid(home_menu_view): home_menu_view.refresh_wardrobe_look()
+
+## The identity was read or made: the wardrobe follows the signed-in player
+## (their look, and what the catalogue releases), then Home's row and chip.
+func _follow_identity() -> void:
+	Wardrobe.shared().follow()
+	_refresh_home_pollen()
 
 func _share_invite_from_home() -> void:
 	if mode != "home" or application_backgrounded: return
@@ -1389,9 +1409,10 @@ func show_pollen_from_play() -> bool:
 
 ## Home's Pollen chip, left of Full Journey: shown once the server has Pollen on
 ## and a balance is known (presentation/pollen_play_flow.gd chip).
+## A new chip only when what it shows changed, so a refresh never replaces one under a finger.
 func _refresh_pollen_chip() -> void:
 	if mode != "home" or not is_instance_valid(home_menu_view) or not home_menu_view.is_inside_tree(): return
-	home_menu_view.set_pollen_chip(pollen_play_flow.chip())
+	if not home_menu_view.show_pollen(pollen_play_flow.chip_state(), pollen_play_flow.chip): return
 	if is_instance_valid(home_stage_view): home_stage_view.set_header_actions(home_menu_view.header_actions())
 
 ## An internal child, like StoreFlow.
@@ -1516,8 +1537,10 @@ func _secret_completed(id: String, operation: String, payload: Dictionary) -> vo
 			identity_restart_required=true
 			deleted_identity_owner=DeletedPhotos.marker_owner(saves.data[DeletedPhotos.MARKER_KEY])
 		secret_results.erase(id)
-	# Settings' Account & recovery shows rows by identity state.
-	if id in [identity_request,recovery_read_request]: settings_flow.refresh()
+	# Settings' Account & recovery shows rows by identity state, and Home's Pollen surfaces follow it.
+	if id in [identity_request,recovery_read_request]:
+		settings_flow.refresh()
+		_follow_identity()
 
 func _secret_failed(id: String, _operation: String, code: String) -> void:
 	secret_results[id]={"ok":false,"code":code}
@@ -1850,6 +1873,7 @@ func _ensure_identity(report: Callable = Callable()) -> bool:
 	api.device_token=str(response.data.device_token)
 	store_flow.configure_purchases()
 	settings_flow.refresh()
+	_follow_identity()
 	return true
 
 func _room_simulation_version() -> int:
@@ -2090,6 +2114,7 @@ func _resume_application() -> void:
 	foreground_refresh_queued=true
 	if app_status != null and app_status.due(): _check_app_status()
 	if pollen_client != null: pollen_client.flush()
+	_refresh_home_pollen()
 	# Do not resume the simulation automatically. The player explicitly presses
 	# Continue on the pause card, keeping the recording clock under their control.
 
@@ -2381,6 +2406,9 @@ func _service_home_keepsakes(delta: float) -> void:
 		if offer != null: offer.visible = _full_journey_offered()
 		# The Duels row follows whatever capabilities this session has read since Home opened; it asks nothing itself.
 		duels_flow.offer(overlay.get_node_or_null("HomeMenu"))
+		# So do the Wardrobe row and the Pollen chip; the wardrobe first follows an identity that became ready meanwhile.
+		Wardrobe.shared().follow()
+		_refresh_home_pollen()
 
 ## The friend keepsake pass, once per ready identity (owner and epoch). The
 ## cached index is enough here. Loading every saved room would replay its full

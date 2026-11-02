@@ -67,6 +67,8 @@ var settings_button: Button
 var journey_offer: Button
 ## The Pollen chip's slot, at the top right left of Full Journey (or in its place when it is hidden).
 var pollen_slot: HBoxContainer
+## What the chip in the slot shows (show_pollen); null until set that way.
+var _pollen_state: Variant = null
 var compact := false
 var _panel: Control
 var _margin: MarginContainer
@@ -312,7 +314,18 @@ func set_pollen_chip(chip: Control) -> void:
 		child.queue_free()
 	if chip != null: pollen_slot.add_child(chip)
 	pollen_slot.visible = chip != null
+	_pollen_state = null
 	_place_pollen()
+
+## Shows the chip for `state` (presentation/pollen_play_flow.gd chip_state; []
+## hides it), made by `make` only when the state changed, so a refresh with
+## nothing new never replaces the chip under a finger or plays its gain again.
+## True when the chip changed.
+func show_pollen(state: Array, make: Callable) -> bool:
+	if state == _pollen_state: return false
+	set_pollen_chip(make.call() if not state.is_empty() else null)
+	_pollen_state = state
+	return true
 
 func _place_pollen() -> void:
 	if not is_instance_valid(pollen_slot): return

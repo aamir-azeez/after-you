@@ -95,14 +95,22 @@ func spent_usd_cents(history: Dictionary) -> int:
 func _reduced() -> bool:
 	return bool(host.saves.data.settings.get("reduced_motion", false)) if host.get("saves") != null else false
 
+## What a chip shows now: [balance, whether its plus reaches the store], or []
+## while Pollen does not show or no balance is known yet. Home makes a new chip
+## only when this changes.
+func chip_state() -> Array:
+	if not available() or balance() < 0: return []
+	# The plus only where a tap reaches the store.
+	return [balance(), shop() and store_route.is_valid()]
+
 ## A chip for Home or the page, or null while Pollen does not show or no balance is known yet.
 func chip() -> Button:
-	if not available() or balance() < 0: return null
+	var state := chip_state()
+	if state.is_empty(): return null
 	var scope := _scope()
 	var key := PollenWallet.scope_key(str(scope.server), str(scope.owner))
-	var now := balance()
-	# The plus only where a tap reaches the store.
-	var made := PollenChip.make(now, shop() and store_route.is_valid())
+	var now: int = state[0]
+	var made := PollenChip.make(now, state[1])
 	var before: Variant = _shown.get(key)
 	_shown[key] = now
 	if before is int and now > before: made.show_gain(now - before, _reduced())
