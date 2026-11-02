@@ -2,7 +2,8 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## The Rolling Home keepsake: a Rolling Rail that curves overhead from a
 ## boarding stand, with a peach cart. Walking up to the stand sets the pip
 ## climbing into the cart, and it rides the rail, happy, to the far end and hops off;
-## a tap sends the cart along empty. Together: a mint catch cup at the end of
+## its Explore action pressed from anywhere else first hops the pip round to
+## the stand's low step (ride_start()). A tap sends the cart along empty. Together: a mint catch cup at the end of
 ## the rail that the pip slides into. Hard: a loop in the middle, and the ride
 ## goes all the way round it. Together Hard: a gold bell over the dip rings as
 ## the pip passes under.
@@ -137,6 +138,15 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 ## Walking up to the front of the boarding stand.
 func trigger() -> Dictionary:
 	return {"area": Rect2(-2.15, 0.3, 0.9, 0.45)}
+
+## In front of the stand's low step: the first hop from here clears the
+## taller steps beside it.
+const BOARDING := Rect2(-2.15, 0.3, 0.35, 0.45)
+
+## Set off from anywhere else (beside or behind the stand, under the rail, or
+## the far end of the walk-up), the pip hops round to the low step first.
+func ride_start(_state: Dictionary, from: Vector3) -> Variant:
+	return start_in(BOARDING, from)
 
 func solids(state: Dictionary) -> Array[Rect2]:
 	var rail := _rail()

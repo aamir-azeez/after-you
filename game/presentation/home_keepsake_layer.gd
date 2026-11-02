@@ -346,9 +346,12 @@ func play(id: String, rider: Node3D = null) -> bool:
 	return true
 
 ## A ride set off where the pip cannot ride from (the Explore action beside or
-## behind the Giant Steps): the pip hops round the keepsake's solids, on ground
-## it may walk, to where it can (builder.ride_start(), ride_approach.gd), and
-## the ride starts from there. Returns when it gets there (0 for no hops).
+## behind the Giant Steps, the Rolling Rail's stand or the Turn of the Tide's
+## pool): the pip hops round the keepsake's solids, on ground it may walk, to
+## where it can (builder.ride_start(), ride_approach.gd), and the ride starts
+## from there. With no way round it plays as a tap and the pip stays put, so
+## no ride ever hops it through the keepsake. Returns when it gets there (0
+## for no hops).
 func _approach(id: String, builder: RefCounted, state: Dictionary, anim: RefCounted) -> float:
 	if anim.rider == null: return 0.0
 	var goal: Variant = builder.ride_start(state, anim.rider_from)
@@ -356,7 +359,9 @@ func _approach(id: String, builder: RefCounted, state: Dictionary, anim: RefCoun
 	var placed := slot_transform(id)
 	var ground := func(at: Vector2) -> bool: return walkable(placed * Vector3(at.x, 0, at.y))
 	var hops := Approach.route(anim.rider_from, goal, _set.props[id].solids, WALK_CLEARANCE, ground)
-	if hops.is_empty(): return 0.0
+	if hops.is_empty():
+		anim.rider = null
+		return 0.0
 	anim.start = 0.0
 	var time: float = anim.hop_steps(hops, 0.0, Approach.HOP_TIME, Approach.HOP_HEIGHT)
 	anim.rider_from = hops[hops.size() - 1]

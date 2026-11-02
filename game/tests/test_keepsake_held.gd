@@ -38,7 +38,7 @@ func _run() -> void:
 		await _check_lighthouse(look)
 	await _check_lighthouse_words()
 	await _check_running()
-	await _check_steps_press()
+	await _check_ride_press()
 	await _check_cost()
 	print("KEEPSAKE HELD: %d checks, %d failures" % [checks, failures])
 	quit(1 if failures else 0)
@@ -344,46 +344,58 @@ func _check_running() -> void:
 	_check(Lighthouse.new().off_time() <= Builder.UPGRADE_MAX and Lighthouse.new().press_again() == Builder.SWITCH and Glasshouse.new().press_again() == Builder.REPLAY, "The lighthouse switches off within an upgrade beat's time; the Conservatory replays")
 	await _close(home)
 
-## "Climb the steps" pressed again beside the Giant Steps while its last climb
-## eases back to rest: the press counts, the pip hops round to the front again
-## (ride_approach.gd) and climbs, and the Giant Steps holds nothing.
-func _check_steps_press() -> void:
-	var STEPS := "high-and-low"
-	var home := await _home(LOOKS[3], [STEPS])
-	var layer: Node3D = home.layer
-	var stage: Control = home.stage
-	var spirit: Node3D = home.world.actors.a
-	stage._explore_button.pressed.emit()
-	var placed: Transform3D = layer.slot_transform(STEPS)
-	var beside := Vector3.INF
-	for x in range(-14, 13):
-		var local := Vector3(x * 0.2, 0, 0.0)
-		if absf(local.x) > 1.0 and layer.walkable(placed * local) and layer.nearest(placed * local, Stage.EXPLORE_NOTICE) == STEPS:
-			beside = placed * local
-			break
-	_check(beside.is_finite(), "There is a spot beside the Giant Steps that offers the climb")
-	if not beside.is_finite():
+## A ride's action pressed again away from its start while its last ride eases
+## back to rest (the Giant Steps from beside them, the Rolling Rail and the Turn
+## of the Tide from where their last ride landed): the press counts, the pip
+## hops round to the start again (ride_approach.gd) and rides, and the keepsake
+## holds nothing.
+func _check_ride_press() -> void:
+	# Whether its ride leaves parts to ease back (the Rolling Rail's cart rolls
+	# home on its own, so a press after it simply plays again).
+	for ride: Array in [["high-and-low", true], ["rolling-home", false], ["turn-of-the-tide", true]]:
+		var id: String = ride[0]
+		var home := await _home(LOOKS[3], [id])
+		var layer: Node3D = home.layer
+		var stage: Control = home.stage
+		var spirit: Node3D = home.world.actors.a
+		stage._explore_button.pressed.emit()
+		var placed: Transform3D = layer.slot_transform(id)
+		var builder: RefCounted = layer._builders[id]
+		var state: Dictionary = layer.current_props()[id].state
+		var offers := func(at: Vector3) -> bool: return layer.walkable(at) and layer.nearest(at, Stage.EXPLORE_NOTICE) == id and builder.ride_start(state, placed.affine_inverse() * at) != null
+		var beside := Vector3.INF
+		for x in range(-14, 13):
+			var at := placed * Vector3(x * 0.2, 0, 0.0)
+			if absf(x * 0.2) > 1.0 and offers.call(at):
+				beside = at
+				break
+		_check(beside.is_finite(), "There is a spot beside %s that offers its ride away from its start" % id)
+		if not beside.is_finite():
+			await _close(home)
+			continue
+		var settled := false
+		var from := beside
+		for pass_index in range(2):
+			spirit.position = from
+			spirit.reset_motion()
+			layer.select_id(id)
+			var pressed: bool = layer.play(id, spirit)
+			var anim: RefCounted = layer._play.get("anim")
+			var goal: Vector3 = builder.ride_start(state, placed.affine_inverse() * from)
+			_check(pressed and layer.riding() and anim != null and (anim.rider_from as Vector3).is_equal_approx(goal), "%s pressed from %s hops round to its start first (pass %d, pressed as it eased back: %s)" % [id, placed.affine_inverse() * from, pass_index, settled])
+			if not pressed: break
+			var tween: Tween = layer._play.tween
+			var frames := 0
+			while layer.playing() and not layer._play.settling and frames < 600:
+				frames += 1
+				tween.custom_step(1.0 / 30.0)
+			settled = layer.playing() and layer._play.settling
+			if pass_index == 0 and ride[1]: _check(settled, "%s eases back to rest after its ride, where the next press lands" % id)
+			_check(not layer.riding() and not layer.holding(id), "and lands the pip, holding nothing (%s pass %d)" % [id, pass_index])
+			# Pressed again from where it landed, if that is away from its start.
+			if offers.call(spirit.position): from = spirit.position
+		layer.stop_play()
 		await _close(home)
-		return
-	var settled := false
-	for pass_index in range(2):
-		spirit.position = beside
-		spirit.reset_motion()
-		layer.select_id(STEPS)
-		var pressed: bool = layer.play(STEPS, spirit)
-		var anim: RefCounted = layer._play.get("anim")
-		_check(pressed and layer.riding() and anim != null and anim.start > 0.0, "Climb pressed beside the Giant Steps hops round first (pass %d, pressed as it eased back: %s)" % [pass_index, settled])
-		if not pressed: break
-		var tween: Tween = layer._play.tween
-		var frames := 0
-		while layer.playing() and not layer._play.settling and frames < 600:
-			frames += 1
-			tween.custom_step(1.0 / 30.0)
-		settled = layer.playing() and layer._play.settling
-		if pass_index == 0: _check(settled, "The Giant Steps eases back to rest after its climb, where the next press lands")
-		_check(not layer.riding() and not layer.holding(STEPS), "and lands the pip, holding nothing (pass %d)" % pass_index)
-	layer.stop_play()
-	await _close(home)
 
 ## What a held keepsake costs a frame: one rotation and a light check.
 func _check_cost() -> void:

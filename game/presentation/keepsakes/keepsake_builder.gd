@@ -135,10 +135,17 @@ func stay() -> Rect2:
 	return Rect2()
 
 ## Where the pip must stand for its ride when the Explore action sets it off
-## from `from` (this frame), or null when it rides from where it stands. The layer hops the pip round the solids to there first
-## (ride_approach.gd).
+## from `from` (this frame), or null when it rides from where it stands. The
+## layer hops the pip round the solids to there first (ride_approach.gd), and
+## plays it as a tap, without the pip, when there is no way round.
 func ride_start(_state: Dictionary, _from: Vector3) -> Variant:
 	return null
+
+## A ride_start() for a ride that boards from `area`: null when `from` stands
+## in it, else its middle on the grass.
+static func start_in(area: Rect2, from: Vector3) -> Variant:
+	if area.has_point(Vector2(from.x, from.z)): return null
+	return Vector3(area.get_center().x, 0, area.get_center().y)
 
 ## The pip walked into the stay: make what it shows under `visit` (freed when
 ## the pip leaves) and change any part it needs (put back in depart()).

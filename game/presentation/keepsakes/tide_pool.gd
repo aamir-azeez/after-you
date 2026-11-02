@@ -2,8 +2,9 @@ extends "res://presentation/keepsakes/keepsake_builder.gd"
 ## The Turn of the Tide keepsake: a round tide pool with a wheel on a post and
 ## a low weight stone at its edge. Stepping on the low stone sinks it under the
 ## pip, the wheel turns and the tide rises, lifting a row of stepping stones;
-## the pip hops across them to the far side, and the tide goes out again. A tap
-## turns the tide without the pip. Together: a mint rock pool joined by a
+## the pip hops across them to the far side, and the tide goes out again.
+## Its Explore action pressed away from the stone first hops the pip round the
+## rim to it (ride_start()). A tap turns the tide without the pip. Together: a mint rock pool joined by a
 ## channel, and its toy boat floats up. Hard: a tide post on a slate plinth;
 ## the water runs past the top mark and spills. Together Hard: a gold lantern
 ## on the wheel post that lights at high tide.
@@ -130,6 +131,11 @@ func play(beat: String, anim: RefCounted, parts: Dictionary, state: Dictionary) 
 ## Stepping on the low stone.
 func trigger() -> Dictionary:
 	return {"area": Rect2(WEIGHT.x - 0.3, WEIGHT.z - 0.3, 0.6, 0.6)}
+
+## Set off from beside or behind the pool, the pip hops round its rim to the
+## low stone first.
+func ride_start(_state: Dictionary, from: Vector3) -> Variant:
+	return start_in(trigger().area, from)
 
 ## The round stone rim and the gauge post behind it, the mint rock pool and
 ## Hard's marker plinth.
