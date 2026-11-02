@@ -7,7 +7,7 @@ extends SceneTree
 ## - a return from a chapter builds a new Main whose wardrobe already follows
 ##   that player: Home's periodic refresh brings the row back;
 ## - a wardrobe change while another screen is up, with Home back without a
-##   rebuild, is caught by the periodic refresh;
+##   rebuild, is caught by the periodic refresh or a resume;
 ## - a failed or unreadable capabilities read keeps the row; only a read that
 ##   says the wardrobe is off hides it, and the next that says on shows it;
 ## - an idle refresh or a settled Pollen flush with nothing new keeps the same
@@ -144,6 +144,18 @@ func _test_away_from_home(app: Node, wardrobe: RefCounted) -> void:
 	app.mode = "home"
 	_tick(app)
 	_check(_row(app), "The server said on again while Home was away: the row shows on Home's next refresh")
+	# The same on a resume, before any periodic refresh.
+	app.mode = "rooms"
+	wardrobe.set_enabled(SERVER, ME, false)
+	app.mode = "home"
+	app.application_backgrounded = true
+	app._resume_application()
+	_check(not _row(app), "A resume brings Home's row up to date")
+	app.mode = "rooms"
+	wardrobe.set_enabled(SERVER, ME, true)
+	app.mode = "home"
+	_tick(app)
+	_check(_row(app), "And the next refresh shows it again")
 
 ## Only an answer that says the wardrobe is off hides the row.
 func _test_failed_reads(app: Node, wardrobe: RefCounted) -> void:
